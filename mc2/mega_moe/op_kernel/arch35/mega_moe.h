@@ -43,19 +43,19 @@ using namespace AscendC;
 #define MEGA_MOE_GMM2_READY_PER_EXPERT 0
 #define MEGA_MOE_GMM2_READY_PER_BATCH 1
 #ifndef MEGA_MOE_GMM2_READY_MODE
-#define MEGA_MOE_GMM2_READY_MODE MEGA_MOE_GMM2_READY_PER_BATCH
+#define MEGA_MOE_GMM2_READY_MODE MEGA_MOE_GMM2_READY_PER_EXPERT
 #endif
 #if MEGA_MOE_GMM2_READY_MODE != MEGA_MOE_GMM2_READY_PER_EXPERT && \
     MEGA_MOE_GMM2_READY_MODE != MEGA_MOE_GMM2_READY_PER_BATCH
 #error "MEGA_MOE_GMM2_READY_MODE must be PER_EXPERT(0) or PER_BATCH(1)"
 #endif
 
-// Performance experiment: retain the final wave's full combine tail, but
-// skip combine work in earlier PER_BATCH waves after preserving their GMM2
-// ready dependency.  This is default-on so the requested A/B needs no extra
-// compiler option.
+// Optional A/B switch: retain the final wave's full combine tail, but skip
+// combine work in earlier PER_BATCH waves after preserving their GMM2 ready
+// dependency.  The critical-path diagnostic defaults to the full PER_EXPERT
+// path, so this remains off.
 #ifndef MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY
-#define MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY 1
+#define MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY 0
 #endif
 
 // Default-off NPU timeline diagnostic for the 16-local-expert target.  When
@@ -149,6 +149,7 @@ private:
     __aicore__ inline void ProcessCombineNoQuantGm(GM_ADDR gmm2OutGlobal, uint32_t tokenStart, uint32_t tokenCount,
                                                    uint32_t tripleUbTokenOffset, uint32_t &rowSequence);
     __aicore__ inline void ProcessGmm2GmWaves();
+    __aicore__ inline void WriteCriticalPathTrace();
     __aicore__ inline void ProcessCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
                                           uint32_t expertIdx);
     __aicore__ inline void CrossRankSyncInWorldSize();
@@ -170,6 +171,8 @@ private:
     // 无法保持。cumsumInfoGlobalTensor_ 作为 cumsum 数据的 GM 持久备份：
     // SendCntCal 中 Load → 计算 → Store；TripleInfoCalAndDispatch/ExpertTokenNumCopyOut 从 GM 恢复。
     GlobalTensor<int32_t> cumsumInfoGlobalTensor_;
+    MegaMoeImpl::CriticalPathTrace criticalPathTrace_{};
+    bool criticalPathTraceOutputValid_ = false;
 
     uint32_t m_ = 0;
     uint32_t k_ = 0;
@@ -347,6 +350,12 @@ MegaMoe<TemplateMegaMoeTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkI
     params_.peermemInfo = PeermemInfo(winRankAddr_[rankId_], tilingData, A_ELEMS_PER_BYTE);
     params_.tilingData = tilingData;
     expertTokenNumsOut_.SetGlobalBuffer((__gm__ int32_t *)params_.expertTokenNumsOutGmAddr);
+    if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+        uint64_t traceWords = static_cast<uint64_t>(CRITICAL_PATH_TRACE_HEADER_WORDS) +
+                              static_cast<uint64_t>(aicNum_) * 3U * CRITICAL_PATH_TRACE_RECORD_WORDS;
+        uint64_t outputBytes = static_cast<uint64_t>(m_) * static_cast<uint64_t>(k_) * sizeof(OutputType);
+        criticalPathTraceOutputValid_ = outputBytes >= traceWords * sizeof(uint32_t);
+    }
     expertRevNumsGlobalTensor_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.expertRevTokenNumsPtr);
     // 每个 block 负责一个专家，cumsumInfo 中每个专家占 worldSize 个
     // int32_t 存 rank 维度的 cumsum 结果，blockIdx 决定了负责哪个专家。
@@ -1165,11 +1174,13 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
             __gm__ int32_t *sendCntFlag = (__gm__ int32_t *)params_.workspaceInfo.flagSendCntCalToUpdParamsPtr +
                                           static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
                                           static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
+            uint32_t waitBegin = CriticalPathTrace::Now();
             while (AscendC::ReadGmByPassDCache(sendCntFlag) == 0) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {
                 }
             }
+            criticalPathTrace_.AddSendCntWait(waitBegin);
 
             uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
             DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
@@ -1412,6 +1423,7 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PublishGmm2NoQuantReady(uint32_t slotIdx)
 {
     if constexpr (g_coreType == AIC) {
+        criticalPathTrace_.BeginPublish(CriticalPathTrace::Now());
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
         __gm__ int32_t *readyBase =
@@ -1430,6 +1442,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PublishGmm2NoQuantReady
             AscendC::WriteGmByPassDCache(
                 readyBase + slotOffset + static_cast<uint64_t>(blockIdx_) * INT_CACHELINE, int32_t(1));
         }
+        criticalPathTrace_.EndPublish(CriticalPathTrace::Now());
     }
 }
 
@@ -1448,6 +1461,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
         if (logicalAiv1Num == 0U) {
             return;
         }
+        uint32_t readyBegin = CriticalPathTrace::Now();
+        criticalPathTrace_.BeginReady(readyBegin);
 
         if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE) {
             constexpr uint32_t INT32_PER_DATABLOCK = ALIGN_32 / sizeof(int32_t);
@@ -1491,6 +1506,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
                 SetFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
                 WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
                 if (sumUb.GetValue(0) >= static_cast<int32_t>(blockNum_)) {
+                    criticalPathTrace_.EndReady(CriticalPathTrace::Now(), readyBegin);
                     return;
                 }
                 int64_t waitStart = AscendC::GetSystemCycle();
@@ -1510,6 +1526,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
                 while (AscendC::GetSystemCycle() - waitStart < 100) {
                 }
             }
+            criticalPathTrace_.EndReady(CriticalPathTrace::Now(), readyBegin);
             return;
         }
 
@@ -1577,6 +1594,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
         DataCopy(releaseGm[releaseSlotOffset], releaseUb, releaseElements);
         SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID7);
         WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID7);
+        criticalPathTrace_.EndReady(CriticalPathTrace::Now(), readyBegin);
     }
 }
 
@@ -1649,6 +1667,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombineNoQuantGm
         if (subBlockIdx_ != 1 || tokenCount == 0U) {
             return;
         }
+        criticalPathTrace_.BeginCombine(CriticalPathTrace::Now());
 
         // Only the cumsum state below 64 KiB remains live here.  Six maximum
         // H=8K BF16 rows end at 160 KiB, immediately before ready scratch.
@@ -2018,13 +2037,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                 QuantScaleOutType, QuantScaleOutType, true, GMM1_INTERLEAVED>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                gmm1PingPongIdx_);
+                gmm1PingPongIdx_, &criticalPathTrace_);
         } else {
             // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                 QuantScaleOutType, QuantScaleOutType, false, GMM1_INTERLEAVED>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                gmm1PingPongIdx_);
+                gmm1PingPongIdx_, &criticalPathTrace_);
         }
     }
 }
@@ -2050,12 +2069,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                                       QuantScaleOutType, true, false, GMM1_INTERLEAVED>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, state.expertBeforeCnt,
-                gmm2PingPongIdx_, expertIdx);
+                gmm2PingPongIdx_, expertIdx, &criticalPathTrace_);
         } else {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                                       QuantScaleOutType, false, false, GMM1_INTERLEAVED>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, state.expertBeforeCnt,
-                gmm2PingPongIdx_, expertIdx);
+                gmm2PingPongIdx_, expertIdx, &criticalPathTrace_);
         }
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
@@ -2072,6 +2091,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
 {
+    if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+        criticalPathTrace_.rollingBegin = CriticalPathTrace::Now();
+    }
     GMMAddrInfo dispatchAddrInfo;
     GMMAddrInfo gmm1AddrInfo;
     GMMAddrInfo gmm2AddrInfo;
@@ -2185,6 +2207,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
                 while (nextDispatchExpert < nextBatchEnd) {
                     DispatchExpert(dispatchState, dispatchAddrInfo, nextDispatchExpert);
                     ++nextDispatchExpert;
+                }
+                if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+                    if (batchIdx == 0U) {
+                        criticalPathTrace_.dispatchNextWaveEnd = CriticalPathTrace::Now();
+                    } else if (batchIdx == 1U) {
+                        criticalPathTrace_.dispatchSecondNextWaveEnd = CriticalPathTrace::Now();
+                    }
                 }
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
                 if (batchIdx == 0U && nextBatchEnd > batchEnd && aivCoreIdx_ / 2U == 0U) {
@@ -2335,6 +2364,21 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
                 // A slot can remain in flight across expert boundaries, but
                 // dispatch for the following wave may reuse the same UB/events.
                 DrainCombineNoQuantRowRing();
+                if (rowSequence != 0U) {
+                    criticalPathTrace_.EndCombineScalar(CriticalPathTrace::Now());
+                }
+                if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+                    if (batchEnd == expertPerRank_ && criticalPathTrace_.firstCombineBegin != 0U) {
+                        // DrainCombineNoQuantRowRing orders MTE3 behind MTE2,
+                        // but its Scalar return is only an issue boundary.  On
+                        // the final wave only, bridge that MTE2 dependency to
+                        // Scalar so this one timestamp denotes true send
+                        // completion without serializing any following wave.
+                        SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                        criticalPathTrace_.lastCombineActualEnd = CriticalPathTrace::Now();
+                    }
+                }
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
                 if (batchIdx == 0U && aivCoreIdx_ / 2U == 0U) {
                     RecordGmm2WaveTimeline(9U); // AIV1 Combine(B) end
@@ -2346,6 +2390,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
 
     // The only terminal GMM handshake retained by the rolling path is the last
     // outstanding GMM1 AIC->AIV0 UB consumer acknowledgement.
+    if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+        criticalPathTrace_.rollingBodyEnd = CriticalPathTrace::Now();
+    }
     EndSync<GMM1_UB_PINGPONG>(vecSetSyncCom_, gmm1PingPongIdx_);
     vecSetSyncCom_ = 0;
     gmm1PingPongIdx_ = 0;
@@ -2364,11 +2411,92 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
 #endif
         }
     }
+    if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+        criticalPathTrace_.rollingEnd = CriticalPathTrace::Now();
+    }
+}
+
+// The trace is deliberately emitted only after the terminal diagnostic sync.
+// Event-time code above only updates named scalar fields, so GM traffic from
+// diagnostics cannot contend with Dispatch, GMM2, or Combine.
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WriteCriticalPathTrace()
+{
+    if constexpr (!CRITICAL_PATH_TRACE_ENABLED) {
+        return;
+    }
+    if (!criticalPathTraceOutputValid_) {
+        return;
+    }
+
+    uint32_t recordIdx = 0U;
+    if constexpr (g_coreType == AIC) {
+        recordIdx = blockIdx_;
+    } else {
+        recordIdx = aicNum_ + aivCoreIdx_;
+    }
+    __gm__ uint32_t *traceOut = reinterpret_cast<__gm__ uint32_t *>(params_.y2GmAddr);
+
+    if (recordIdx == 0U) {
+        uint32_t waveCount = (expertPerRank_ + expertsPerBatch_ - 1U) / expertsPerBatch_;
+        WriteGmByPassDCache(traceOut + 0U, CRITICAL_PATH_TRACE_MAGIC);
+        WriteGmByPassDCache(traceOut + 1U, CRITICAL_PATH_TRACE_VERSION);
+        WriteGmByPassDCache(traceOut + 2U, CRITICAL_PATH_TRACE_HEADER_WORDS);
+        WriteGmByPassDCache(traceOut + 3U, CRITICAL_PATH_TRACE_RECORD_WORDS);
+        WriteGmByPassDCache(traceOut + 4U, aicNum_);
+        WriteGmByPassDCache(traceOut + 5U, blockAivNum_);
+        WriteGmByPassDCache(traceOut + 6U, aicNum_ * 3U);
+        WriteGmByPassDCache(traceOut + 7U, expertsPerBatch_);
+        WriteGmByPassDCache(traceOut + 8U, expertPerRank_);
+        WriteGmByPassDCache(traceOut + 9U, static_cast<uint32_t>(MEGA_MOE_GMM2_READY_MODE));
+        WriteGmByPassDCache(traceOut + 10U, static_cast<uint32_t>(MEGA_MOE_GMM2_FANIN_MODE));
+        WriteGmByPassDCache(traceOut + 11U, static_cast<uint32_t>(MEGA_MOE_GMM2_READY_CORE_STRIDE));
+        WriteGmByPassDCache(traceOut + 12U, static_cast<uint32_t>(MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY));
+        WriteGmByPassDCache(traceOut + 13U, waveCount);
+        WriteGmByPassDCache(traceOut + 14U, 3U); // bit0: terminal PIPE_ALL; bit1: final MTE2->S bridge
+        WriteGmByPassDCache(traceOut + 15U, m_);
+        WriteGmByPassDCache(traceOut + 16U, k_);
+        WriteGmByPassDCache(traceOut + 17U, rankId_);
+        WriteGmByPassDCache(traceOut + 18U, worldSize_);
+        WriteGmByPassDCache(traceOut + 19U, static_cast<uint32_t>(GMM1_INTERLEAVED));
+    }
+
+    __gm__ uint32_t *record = traceOut + CRITICAL_PATH_TRACE_HEADER_WORDS +
+                              static_cast<uint64_t>(recordIdx) * CRITICAL_PATH_TRACE_RECORD_WORDS;
+    WriteGmByPassDCache(record + 0U, criticalPathTrace_.processBegin);
+    WriteGmByPassDCache(record + 1U, criticalPathTrace_.rollingBegin);
+    WriteGmByPassDCache(record + 2U, criticalPathTrace_.dispatchNextWaveEnd);
+    WriteGmByPassDCache(record + 3U, criticalPathTrace_.dispatchSecondNextWaveEnd);
+    WriteGmByPassDCache(record + 4U, criticalPathTrace_.firstPublishBegin);
+    WriteGmByPassDCache(record + 5U, criticalPathTrace_.firstPublishEnd);
+    WriteGmByPassDCache(record + 6U, criticalPathTrace_.lastPublishBegin);
+    WriteGmByPassDCache(record + 7U, criticalPathTrace_.lastPublishEnd);
+    WriteGmByPassDCache(record + 8U, criticalPathTrace_.firstReadyBegin);
+    WriteGmByPassDCache(record + 9U, criticalPathTrace_.firstReadyEnd);
+    WriteGmByPassDCache(record + 10U, criticalPathTrace_.lastReadyBegin);
+    WriteGmByPassDCache(record + 11U, criticalPathTrace_.lastReadyEnd);
+    WriteGmByPassDCache(record + 12U, criticalPathTrace_.firstCombineBegin);
+    WriteGmByPassDCache(record + 13U, criticalPathTrace_.firstCombineScalarEnd);
+    WriteGmByPassDCache(record + 14U, criticalPathTrace_.lastCombineBegin);
+    WriteGmByPassDCache(record + 15U, criticalPathTrace_.lastCombineScalarEnd);
+    WriteGmByPassDCache(record + 16U, criticalPathTrace_.lastCombineActualEnd);
+    WriteGmByPassDCache(record + 17U, criticalPathTrace_.rollingBodyEnd);
+    WriteGmByPassDCache(record + 18U, criticalPathTrace_.rollingEnd);
+    WriteGmByPassDCache(record + 19U, criticalPathTrace_.localSyncEnd);
+    WriteGmByPassDCache(record + 20U, criticalPathTrace_.crossRankEnd);
+    WriteGmByPassDCache(record + 21U, criticalPathTrace_.workEnd);
+    WriteGmByPassDCache(record + 22U, criticalPathTrace_.sendCntWaitCycles);
+    WriteGmByPassDCache(record + 23U, criticalPathTrace_.gmm1ReadyWaitCycles);
+    WriteGmByPassDCache(record + 24U, criticalPathTrace_.gmm2ReadyWaitCycles);
+    WriteGmByPassDCache(record + 25U, criticalPathTrace_.combineReadyWaitCycles);
 }
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 {
+    if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+        criticalPathTrace_.processBegin = CriticalPathTrace::Now();
+    }
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
@@ -2471,13 +2599,30 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
+    if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+        criticalPathTrace_.localSyncEnd = CriticalPathTrace::Now();
+    }
 
     // 4. 本卡数据Unpermute
     if constexpr (g_coreType == AIV) {
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            criticalPathTrace_.crossRankEnd = CriticalPathTrace::Now();
+        }
         Unpermute();
     }
+    if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+        // This terminal drain is outside the measured rolling schedule.  Its
+        // sole purpose is to make workEnd a true completion timestamp for the
+        // final Unpermute writes before y is repurposed for trace records.
+        PipeBarrier<PIPE_ALL>();
+        criticalPathTrace_.workEnd = CriticalPathTrace::Now();
+    }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
+    if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+        SyncAll<true>();
+        WriteCriticalPathTrace();
+    }
 }
 
 } // namespace MegaMoeImpl

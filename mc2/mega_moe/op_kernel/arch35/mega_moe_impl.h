@@ -111,17 +111,22 @@ __aicore__ inline void NotifyCombineTileComplete(uint32_t mLoc, uint32_t m, uint
 // WaitForUpstreamReady：等待上游 GMM 计算完成，GMM1/GMM2 分流（A8W8/A4W4 和 A8W4 共用）
 // =================================================================================================
 template <typename Policy, typename Config>
-__aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc)
+__aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, const Config &config, uint32_t mLoc,
+                                             CriticalPathTrace *criticalTrace = nullptr)
 {
     if constexpr (Policy::IS_GMM1) {
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
         __gm__ int32_t *flagValueAddr =
             gmmAddrInfo.dispatchToGmm1Flag + static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
+        uint32_t waitBegin = CriticalPathTrace::Now();
         while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
             }
+        }
+        if (criticalTrace != nullptr) {
+            criticalTrace->AddGmm1ReadyWait(waitBegin);
         }
     } else {
         if constexpr (Config::SOURCE_GMM1_INTERLEAVED) {
@@ -132,18 +137,26 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
                                    Ops::Base::CeilDiv(config.k * SWIGLU_N_HALF, L1_TILE_N);
             __gm__ int32_t *flagValueAddr =
                 gmmAddrInfo.swigluToGmm2Flag + static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
+            uint32_t waitBegin = CriticalPathTrace::Now();
             while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {
                 }
             }
+            if (criticalTrace != nullptr) {
+                criticalTrace->AddGmm2ReadyWait(waitBegin);
+            }
         } else {
             uint32_t targetLoops = Ops::Base::CeilDiv(config.m, L1_TILE_M_256) *
                                    Ops::Base::CeilDiv(config.k, L1_TILE_N);
+            uint32_t waitBegin = CriticalPathTrace::Now();
             while (targetLoops != AscendC::ReadGmByPassDCache(gmmAddrInfo.swigluToGmm2Flag)) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {
                 }
+            }
+            if (criticalTrace != nullptr) {
+                criticalTrace->AddGmm2ReadyWait(waitBegin);
             }
         }
     }
@@ -360,7 +373,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
         if constexpr (Policy::IS_GMM1) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
             if (waveIdx != lastWaveWaited) {
-                WaitForUpstreamReady<Policy>(workSet.gmmAddrInfo, config, mLoc);
+                WaitForUpstreamReady<Policy>(workSet.gmmAddrInfo, config, mLoc, args.criticalTrace);
                 lastWaveWaited = waveIdx;
             }
             if constexpr (IsGmm1Interleaved) {
@@ -374,11 +387,11 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             if constexpr (std::remove_reference_t<decltype(config)>::SOURCE_GMM1_INTERLEAVED) {
                 uint32_t waveIdx = mLoc / L1_TILE_M_256;
                 if (waveIdx != lastWaveWaited) {
-                    WaitForUpstreamReady<Policy>(workSet.gmmAddrInfo, config, mLoc);
+                    WaitForUpstreamReady<Policy>(workSet.gmmAddrInfo, config, mLoc, args.criticalTrace);
                     lastWaveWaited = waveIdx;
                 }
             } else if (loopIdx == startLoopIdx) {
-                WaitForUpstreamReady<Policy>(workSet.gmmAddrInfo, config, mLoc);
+                WaitForUpstreamReady<Policy>(workSet.gmmAddrInfo, config, mLoc, args.criticalTrace);
             }
             if constexpr (CombineQuantMode == COMBINE_NO_QUANT && !GMM2_DIRECT_GM) {
                 if (args.vecSetSyncCom2 >= 2) {
@@ -554,6 +567,7 @@ struct Gmm1ArgsGeneric {
     SwigluQuantOp &swigluQuantOp;
     int32_t &vecSetSyncCom;
     uint16_t &pingpongIdx;
+    CriticalPathTrace *criticalTrace;
 };
 
 struct Gmm2ArgsGeneric {
@@ -561,6 +575,7 @@ struct Gmm2ArgsGeneric {
     uint32_t groupCnt;
     uint16_t &pingpongIdx;
     uint32_t groupIdx;
+    CriticalPathTrace *criticalTrace;
 };
 
 template <typename Scheduler, typename TensorA, typename TensorB, typename TensorScaleA, typename TensorScaleB,
@@ -679,10 +694,11 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true,
                                IsGmm1Interleaved> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
-    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint16_t &pingpongIdx)
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom, uint16_t &pingpongIdx,
+    CriticalPathTrace *criticalTrace = nullptr)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
-    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom, pingpongIdx};
+    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom, pingpongIdx, criticalTrace};
     Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, false, IsGmm1Interleaved>(
         params, problemShape, gmmAddrInfo, startBlockIdx, args);
@@ -697,9 +713,10 @@ template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typena
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
-                                    uint32_t groupCnt, uint16_t &pingpongIdx, uint32_t groupIdx)
+                                    uint32_t groupCnt, uint16_t &pingpongIdx, uint32_t groupIdx,
+                                    CriticalPathTrace *criticalTrace = nullptr)
 {
-    Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx, groupIdx};
+    Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx, groupIdx, criticalTrace};
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, IsLayered, IsGmm1Interleaved>(
         params, problemShape, gmmAddrInfo, startBlockIdx, args);

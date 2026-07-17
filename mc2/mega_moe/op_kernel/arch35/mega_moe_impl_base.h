@@ -23,6 +23,143 @@ namespace MegaMoeImpl {
 #define MEGA_MOE_HOST_DEVICE_INLINE inline
 #endif
 
+// Diagnostic build used to locate the rolling GMM2/Combine critical path.
+// Event-time samples stay in named scalar state and are copied to y only after
+// all useful work has completed.  Keeping the fields named (rather than using
+// an indexed array) also avoids device-side dynamic indexing and the spills it
+// can introduce on the hot path.
+#ifndef MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE
+#define MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE 1
+#endif
+
+static constexpr bool CRITICAL_PATH_TRACE_ENABLED =
+    static_cast<bool>(MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE);
+static constexpr uint32_t CRITICAL_PATH_TRACE_MAGIC = 0x43505452U; // "CPTR"
+static constexpr uint32_t CRITICAL_PATH_TRACE_VERSION = 1U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_HEADER_WORDS = 20U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_RECORD_WORDS = 26U;
+
+struct CriticalPathTrace {
+    uint32_t processBegin = 0U;
+    uint32_t rollingBegin = 0U;
+    uint32_t dispatchNextWaveEnd = 0U;
+    uint32_t dispatchSecondNextWaveEnd = 0U;
+    uint32_t firstPublishBegin = 0U;
+    uint32_t firstPublishEnd = 0U;
+    uint32_t lastPublishBegin = 0U;
+    uint32_t lastPublishEnd = 0U;
+    uint32_t firstReadyBegin = 0U;
+    uint32_t firstReadyEnd = 0U;
+    uint32_t lastReadyBegin = 0U;
+    uint32_t lastReadyEnd = 0U;
+    uint32_t firstCombineBegin = 0U;
+    uint32_t firstCombineScalarEnd = 0U;
+    uint32_t lastCombineBegin = 0U;
+    uint32_t lastCombineScalarEnd = 0U;
+    uint32_t lastCombineActualEnd = 0U;
+    uint32_t rollingBodyEnd = 0U;
+    uint32_t rollingEnd = 0U;
+    uint32_t localSyncEnd = 0U;
+    uint32_t crossRankEnd = 0U;
+    uint32_t workEnd = 0U;
+    uint32_t sendCntWaitCycles = 0U;
+    uint32_t gmm1ReadyWaitCycles = 0U;
+    uint32_t gmm2ReadyWaitCycles = 0U;
+    uint32_t combineReadyWaitCycles = 0U;
+
+#if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
+    __aicore__ inline static uint32_t Now()
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            return static_cast<uint32_t>(AscendC::GetSystemCycle());
+        }
+        return 0U;
+    }
+
+    __aicore__ inline void BeginPublish(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if (firstPublishBegin == 0U) {
+                firstPublishBegin = now;
+            }
+            lastPublishBegin = now;
+        }
+    }
+
+    __aicore__ inline void EndPublish(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if (firstPublishEnd == 0U) {
+                firstPublishEnd = now;
+            }
+            lastPublishEnd = now;
+        }
+    }
+
+    __aicore__ inline void BeginReady(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if (firstReadyBegin == 0U) {
+                firstReadyBegin = now;
+            }
+            lastReadyBegin = now;
+        }
+    }
+
+    __aicore__ inline void EndReady(uint32_t now, uint32_t begin)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if (firstReadyEnd == 0U) {
+                firstReadyEnd = now;
+            }
+            lastReadyEnd = now;
+            combineReadyWaitCycles += now - begin;
+        }
+    }
+
+    __aicore__ inline void BeginCombine(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if (firstCombineBegin == 0U) {
+                firstCombineBegin = now;
+            }
+            lastCombineBegin = now;
+        }
+    }
+
+    __aicore__ inline void EndCombineScalar(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if (firstCombineScalarEnd == 0U) {
+                firstCombineScalarEnd = now;
+            }
+            lastCombineScalarEnd = now;
+        }
+    }
+
+    __aicore__ inline void AddSendCntWait(uint32_t begin)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            sendCntWaitCycles += Now() - begin;
+        }
+    }
+
+    __aicore__ inline void AddGmm1ReadyWait(uint32_t begin)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            gmm1ReadyWaitCycles += Now() - begin;
+        }
+    }
+
+    __aicore__ inline void AddGmm2ReadyWait(uint32_t begin)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            gmm2ReadyWaitCycles += Now() - begin;
+        }
+    }
+#endif
+};
+
 constexpr uint32_t ALIGN32 = 32U;
 constexpr uint32_t L1_TILE_M_256 = 256;
 constexpr uint32_t L1_TILE_M_128 = 128;
