@@ -131,7 +131,7 @@ ge::graphStatus CommonChecker::CheckSingleParaDtype(const QfaTilingInfo &qfaInfo
 
 ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QfaTilingInfo &qfaInfo)
 {
-    const std::vector<uint32_t> supportedKvDims = {DIM_NUM_3, DIM_NUM_4, DIM_NUM_6};
+    const std::vector<uint32_t> supportedKvDims = {DIM_NUM_3, DIM_NUM_4, DIM_NUM_5};
 
     // q: shape dim 仅支持 3
     const gert::StorageShape *queryShape = qfaInfo.opParamInfo.query.shape;
@@ -143,23 +143,23 @@ ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QfaTilingInfo &qfaI
                     return ge::GRAPH_FAILED);
     }
 
-    // k: shape dim 支持 3、4、6
+    // k: shape dim 支持 3、4、5
     const gert::StorageShape *keyShape = qfaInfo.opParamInfo.key.shape;
     if (keyShape != nullptr) {
         uint32_t keyDimNum = keyShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(std::find(supportedKvDims.begin(), supportedKvDims.end(), keyDimNum) == supportedKvDims.end(),
                     OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, KEY_NAME.c_str(),
-                        (std::to_string(keyDimNum) + "D").c_str(), "3D/4D/6D"),
+                        (std::to_string(keyDimNum) + "D").c_str(), "3D/4D/5D"),
                     return ge::GRAPH_FAILED);
     }
 
-    // v: shape dim 支持 3、4、6
+    // v: shape dim 支持 3、4、5
     const gert::StorageShape *valueShape = qfaInfo.opParamInfo.value.shape;
     if (valueShape != nullptr) {
         uint32_t valueDimNum = valueShape->GetStorageShape().GetDimNum();
         OP_CHECK_IF(std::find(supportedKvDims.begin(), supportedKvDims.end(), valueDimNum) == supportedKvDims.end(),
                     OP_LOGE_FOR_INVALID_SHAPEDIM(qfaInfo.opName, VALUE_NAME.c_str(),
-                        (std::to_string(valueDimNum) + "D").c_str(), "3D/4D/6D"),
+                        (std::to_string(valueDimNum) + "D").c_str(), "3D/4D/5D"),
                     return ge::GRAPH_FAILED);
     }
 

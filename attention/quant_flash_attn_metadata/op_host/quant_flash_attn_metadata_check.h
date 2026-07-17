@@ -97,8 +97,24 @@ QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ
 {
     CHECK_COND((batchSize == -1 || batchSize > 0), ACLNN_ERR_RUNTIME_ERROR,
         "batchSize must be -1 or greater than 0, but got %ld", batchSize);
-    CHECK_COND((maxSeqlenQ == -1 || maxSeqlenQ > 0), ACLNN_ERR_RUNTIME_ERROR,
-        "maxSeqlenQ must be -1 or greater than 0, but got %ld", maxSeqlenQ);
+
+    // quant_mode: 1=MxFP8, 2=HiF8, 3=MxFP4
+    constexpr int64_t QUANT_MODE_MXFP8 = 1;
+    constexpr int64_t QUANT_MODE_HIF8 = 2;
+    constexpr int64_t QUANT_MODE_MXFP4 = 3;
+    static const std::unordered_set<int64_t> quantModeSet = { QUANT_MODE_MXFP8, QUANT_MODE_HIF8, QUANT_MODE_MXFP4 };
+    CHECK_COND(quantModeSet.count(quantMode) > 0, ACLNN_ERR_RUNTIME_ERROR,
+        "quantMode only supports %ld, %ld, %ld, but got %ld", QUANT_MODE_MXFP8, QUANT_MODE_HIF8, QUANT_MODE_MXFP4,
+        quantMode);
+
+    // 文档约束: MxFP8 场景下 max_seqlen_q 为必选且必须 >= 0; 其他场景仅支持 -1
+    if (quantMode == QUANT_MODE_MXFP8) {
+        CHECK_COND(maxSeqlenQ >= 0, ACLNN_ERR_RUNTIME_ERROR,
+            "maxSeqlenQ must be greater than or equal to 0 in MxFP8 scenario, but got %ld", maxSeqlenQ);
+    } else {
+        CHECK_COND(maxSeqlenQ == -1, ACLNN_ERR_RUNTIME_ERROR,
+            "maxSeqlenQ must be -1 in non-MxFP8 scenario, but got %ld", maxSeqlenQ);
+    }
     CHECK_COND((maxSeqlenKv == -1 || maxSeqlenKv > 0), ACLNN_ERR_RUNTIME_ERROR,
         "maxSeqlenKv must be -1 or greater than 0, but got %ld", maxSeqlenKv);
 
@@ -110,15 +126,6 @@ QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ
     static const std::unordered_set<int64_t> headDimSet = { HEAD_DIM_64, HEAD_DIM_128 };
     CHECK_COND(headDimSet.count(headDim) > 0, ACLNN_ERR_RUNTIME_ERROR,
         "headDim only supports %ld, %ld, but got %ld", HEAD_DIM_64, HEAD_DIM_128, headDim);
-
-    // quant_mode: 1=MxFP8, 2=HiF8, 3=MxFP4
-    constexpr int64_t QUANT_MODE_MXFP8 = 1;
-    constexpr int64_t QUANT_MODE_HIF8 = 2;
-    constexpr int64_t QUANT_MODE_MXFP4 = 3;
-    static const std::unordered_set<int64_t> quantModeSet = { QUANT_MODE_MXFP8, QUANT_MODE_HIF8, QUANT_MODE_MXFP4 };
-    CHECK_COND(quantModeSet.count(quantMode) > 0, ACLNN_ERR_RUNTIME_ERROR,
-        "quantMode only supports %ld, %ld, %ld, but got %ld", QUANT_MODE_MXFP8, QUANT_MODE_HIF8, QUANT_MODE_MXFP4,
-        quantMode);
 
     static const std::unordered_set<std::string> layoutQSet = { "BSND", "TND", "BNSD" };
     CHECK_COND(layoutQSet.count(layoutQ) > 0, ACLNN_ERR_RUNTIME_ERROR,

@@ -304,7 +304,7 @@ cann_ops_transformer.ops.quant_flash_attn(
         <td rowspan="2">
             <ul>
                 <li>tensor_type仅支持FLOAT8_E4M3FN</li>
-                <li>shape dim支持3、4、6</li>
+                <li>shape dim支持3、4、5</li>
             </ul>
         </td>
     </tr>
