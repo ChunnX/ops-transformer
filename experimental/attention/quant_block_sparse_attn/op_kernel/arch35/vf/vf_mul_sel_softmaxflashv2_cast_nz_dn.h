@@ -108,6 +108,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
+    Duplicate(vreg_p_scale, pScale);
+    Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     RegTensor<uint32_t> vreg_qgather_idx;
     MaskReg preg_qstore8;
@@ -552,7 +554,7 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
     }
 }
 
-template <typename T, typename T2, bool hasAtten = false, uint32_t ubN = 128>
+template <typename T, typename T2, bool hasAtten = false, bool needAtten = false, uint32_t ubN = 128>
 __simd_vf__ inline void ProcessVec1DnUpdateVF(
     __ubuf__ T2 *x_exp, __ubuf__ float *input_x_local_UB, __ubuf__ float *exp_max_fp32, __ubuf__ float *new_global_sum,
     __ubuf__ float *new_global_max, __ubuf__ uint32_t *maskUb, __ubuf__ float *qScaleUb, __ubuf__ float *kScaleUb,
@@ -635,6 +637,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
+    Duplicate(vreg_p_scale, pScale);
+    Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     RegTensor<uint32_t> vreg_qgather_idx;
     MaskReg preg_qstore8;
@@ -912,7 +916,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
         Mul(vreg_data_tmp2, vreg_data_tmp2, vreg_kscale_val, preg_135);
         LoadAlign<float, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_kscale_val, kScaleUb + iter_m * 4 + 3);
         Mul(vreg_data_tmp3, vreg_data_tmp3, vreg_kscale_val, preg_135);
-        
+
         if constexpr (needAtten) {
             LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare0, mask_ub0 + iter_m * m);
             LoadAlign<uint32_t, MicroAPI::MaskDist::DIST_DS>(preg_compare1, mask_ub1 + iter_m * m);
@@ -1725,6 +1729,8 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
+    Duplicate(vreg_p_scale, pScale);
+    Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     LoadAlign(vreg_qscale_vec, qScaleUb);
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
@@ -1951,6 +1957,8 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     Duplicate(vreg_min, minValue);
     Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_empty_lse, VF_BSA_EMPTY_LSE_VALUE);
+    Duplicate(vreg_p_scale, pScale);
+    Ln(vreg_ln_p_scale, vreg_p_scale, preg_135);
 
     for (uint16_t i = originN; i < ubN; ++i) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)input_x_local_UB + i * m, vreg_min, preg_135);
