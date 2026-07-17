@@ -135,12 +135,16 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclTensorList *tmpSharedWeightList = nullptr;
     CreateEmptyTensor(ACL_FLOAT, bias1Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, bias2Optional, tmpBiasList, *executor);
-    CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales1Optional, tmpScaleList, *executor);
-    CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales2Optional, tmpScaleList, *executor);
     CreateEmptyTensor(ACL_FLOAT, sharedBias1Optional, tmpSharedBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
-    CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
-    CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
+
+    // weight scales dtype: arch35 → E8M0, arch22 → UINT64
+    bool isArch22 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201;
+    aclDataType weightScalesDtype = isArch22 ? ACL_UINT64 : ACL_FLOAT8_E8M0;
+    CreateEmptyTensor(weightScalesDtype, weightScales1Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(weightScalesDtype, weightScales2Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(weightScalesDtype, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
+    CreateEmptyTensor(weightScalesDtype, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
 
     // 只在DAV_2201架构上对weight进行int32到int4的转换预处理
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
