@@ -45,7 +45,22 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 - `npu`：调用 NPU 算子
 - `compare`：比较 CPU/NPU 输出
 
-每个 case 开始时会打印 `CASE START [idx/total]` 标志；一次运行多个 case 时，脚本末尾会输出 `QBSA MXFP8 CASE SUMMARY` 汇总表。
+每个 case 开始时会打印 `CASE START [idx/total]` 标志；一次运行多个 case 时，脚本末尾会输出
+`QBSA MXFP8 CASE SUMMARY` 汇总表。汇总表各列含义：
+
+| 列名 | 含义 |
+|------|------|
+| `No.` | 用例序号 |
+| `Status` | `Pass` / `Failed` / `Generated` / `CpuDone` / `NpuDone` / `Error` |
+| `Time(s)` | 该 case 总耗时（秒） |
+| `mfu*time` | MFU×时间(us)，即 FLOPS / 算力；`-` 表示未计算（如未走数据生成阶段） |
+| `OutPct` / `OutMaxErr` | Attention 输出的通过率与最大误差 |
+| `LsePct` / `LseMaxErr` | softmax LSE 的通过率与最大误差 |
+| `Case` | case 名称 |
+
+其中 `mfu*time` 在每个 case 的数据生成阶段会同时打印 FLOPS 与算力的完整计算过程，包括基本块数量、
+基本块 shape、单基本块计算量、FLOPS 公式、最小分型 shape、算力公式，以及最终
+`FLOPS / 算力 = MFU * 时间(us)`。
 
 ## 指定单个 Case
 
@@ -121,8 +136,8 @@ block size、重点 head 组合、三种 S1/S2 关系、四种对齐状态、`ma
 
 ## Debug 模式
 
-`--debug` 必须与一个 `--case_name` 配合使用，只允许执行单个 case，并固定执行完整的
-`gen/cpu/npu/compare` 流程：
+`--debug` 必须与一个 `--case_name` 配合使用，只允许执行单个 case。默认（不指定 `--mode` 或
+`--mode all`）执行完整的 `gen/cpu/npu/compare` 流程：
 
 ```bash
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
@@ -134,6 +149,14 @@ CSV case 同样支持 debug：
 ```bash
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
   --csv --debug --case_name F_BS64_R5_N3_BN1_GT_AA
+```
+
+也支持指定 `--mode` 为非 `all` 的组合，例如只复用已有缓存跑 NPU 对比，不再重新生成数据和
+CPU golden：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --debug --case_name F_BS64_R5_N3_BN1_GT_AA --csv --mode="npu,compare"
 ```
 
 输出目录固定为 `debug/<case_name>/`：
@@ -156,8 +179,16 @@ debug/<case_name>/
 只要存在一个失败元素，该像素就是蓝色。因此整体比较允许少量失败元素而最终为 Pass 时，图片中仍可能
 出现少量蓝点。生成 PNG 需要安装 `matplotlib`。
 
-Debug 模式自行管理输出目录，因此不能同时指定 `--cache-dir`、`--cache_case_name` 或非 `all` 的
-`--mode`，也不能与 `--list_cases` 组合使用。
+Debug 模式的数据读写位置取决于 `--mode` 是否包含 `gen`：
+
+- **包含 `gen`**（如 `all`、`gen`、`gen,cpu`）：数据生成后写入 `debug/<case_name>/pt/`，即上述目录
+  中的 `pt/`，此模式下不允许指定 `--cache-dir`（debug 自行管理 pt 目录）。
+- **不含 `gen`**（如 `npu,compare`、`compare`、`npu`）：从已有缓存读取 `input.pt`、`cpu_output.pt`
+  等数据。默认读取本目录下的 `golden_cache/`；可通过 `--cache-dir` 指定其他缓存来源。precision PNG
+  始终输出到 `debug/<case_name>/precision/`。
+
+无论哪种 `--mode`，Debug 模式都不允许使用 `--cache_case_name`（命名由 debug 内部管理），也不能与
+`--list_cases` 组合使用。
 
 ## 指定执行阶段
 
