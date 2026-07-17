@@ -1,3 +1,13 @@
+"""精度失败分析: 把比对失败点渲染成坐标化、可读的失败报告。
+
+设计:
+- analyze_failure 为唯一入口, 复用 compare 的 _diff/_fail_mask, 不重复计算。
+- 按 verbosity 分级输出: None(≤10 散点+片段, 截断提示)/fold(全量折叠)/all
+  (逐点坐标+cpu/npu/diff 值)。大面积失败自动逐级合并全覆盖维度为单行。
+- 坐标列名由 layout 签名推导 (BNSD/BSND/TND), 未知排布退化为"轴N"。
+- 表格 CJK 感知对齐 (unicodedata.east_asian_width)。
+- analyze_dimensions/analyze_continuity/visualize_failure 为扩展点, 算子可 override。
+"""
 import os
 import unicodedata
 
@@ -417,3 +427,18 @@ def analyze_continuity(cpu_out: dict, npu_out: dict, compare_result: dict) -> li
 def visualize_failure(cpu_out: dict, npu_out: dict, compare_result: dict, save_dir: str = None) -> list[str]:
     """可视化扩展点。算子可 override, 默认不输出。"""
     return []
+
+
+def analyze_failure_three_way(cpu_out: dict, npu_out: dict, gpu_out: dict,
+                              compare_result: dict, *, case_dir: str = None,
+                              verbose: str = None, layout: str = "") -> str:
+    """三方比对 (cpu/npu/gpu) 的精度失败分析接口。
+
+    设计: 与 compare.compare_three_way 命名对称。三方比对多出 GPU 维度, 理想情况下
+    应分析"NPU 误差相对 GPU benchmark 的分布"等三方独有信息。
+    当前为占位实现: 退化为两方分析 (委托 analyze_failure), 仅产出 cpu-vs-npu 报告,
+    不消费 gpu_out 与 compare_result 中的 gpu_*/ratio_* 字段。
+    未来扩展时在此实现三方专属分析, orchestrator 据 gpu_out 是否为空分派本接口。
+    """
+    return analyze_failure(cpu_out, npu_out, compare_result,
+                           case_dir=case_dir, verbose=verbose, layout=layout)

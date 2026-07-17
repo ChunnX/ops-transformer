@@ -1,3 +1,10 @@
+"""精度比对: 定义比对抽象与默认实现。
+
+Comparator(ABC) 抽象出双向 (cpu vs npu) 与三方 (cpu vs npu vs gpu) 比对接口;
+DefaultComparator 实现"双千分之五"标准 (fail_ratio ≤ 0.5%), 三方比对额外约束
+NPU 误差不显著大于 GPU 误差。算子可继承子类覆盖精度标准与比对算法。
+_stats 产出 _diff/_fail_mask 供 precision_analyze 复用, 避免重复计算。
+"""
 import logging
 from abc import ABC, abstractmethod
 from typing import Callable
@@ -181,13 +188,5 @@ class DefaultComparator(Comparator):
                 "rtol": rtol,
             }
         return _stats(cpu_f, npu_f, atol, rtol)
-
-
-def compare_outputs(cpu_out, npu_out, *, chunk_size=0, dtype_handler=None,
-                    atol=None, rtol=None) -> dict:
-    """已废弃: 使用 DefaultComparator().compare_two_way()。"""
-    return DefaultComparator().compare_two_way(
-        cpu_out, npu_out, chunk_size=chunk_size,
-        dtype_handler=dtype_handler, atol=atol, rtol=rtol)
 
 

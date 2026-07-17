@@ -1,3 +1,12 @@
+"""精度测试编排器: 串联 gen→cpu→npu→gpu→compare 流水线, 并管理结果汇总。
+
+设计:
+- run_case 为薄编排层, 每个 stage 拆成独立函数 (_stage_*), 内聚"执行-or-加载 pt"
+  与阶段日志; run_case 只管顺序、异常兜底、显存回收。
+- 跳过的 stage 从 data/<set>/<id>/<stage>.pt 加载 (断点续跑/单独比对); pt 缺失
+  则抛错, 由 run_case 捕获记为失败 (数据依赖不满足必须显式暴露)。
+- Reporter 贯穿 session 收集每 case 结果, 落 CSV + 打印汇总表。
+"""
 import csv
 import gc
 import logging
@@ -12,13 +21,20 @@ from core.gen_data import GenDataBackend
 from core.cpu import CpuBackend
 from core.npu import NpuBackend
 from csv_parser import CSV_HEADERS
-from precision_analyze import analyze_failure
+from precision_analyze import analyze_failure, analyze_failure_three_way
 
 logger = logging.getLogger("orchestrator")
 
 
 # ============ Reporter ============
 class Reporter:
+    """结果收集器: 逐 case 记录精度指标, 落 CSV + 渲染汇总表。
+
+    一个 Reporter 实例贯穿整个测试 session: record() 累积结果, print_interim()
+    周期性打印中间统计, print_final() 收尾并返回失败数。check_results() 提供
+    主动校验入口 (供非 pytest 调用方触发 pytest.fail)。
+    """
+
     def __init__(self):
         self._results = {}
         self._dtypes = {}
@@ -264,9 +280,15 @@ def _stage_compare(stages: set, cpu_out, npu_out, gpu_out, params: dict,
     result["fail_msg"] = "" if result.get("passed", False) else "compare failed"
     if not result.get("passed", False):
         layout = params.get("layout_out", "")
-        print(analyze_failure(cpu_out, npu_out, result,
-                              case_dir=result_dir, verbose=verbose_diff,
-                              layout=layout))
+        # 分析分派与比对分派对称: 三方走三方接口 (当前委托两方, 占位)
+        if gpu_out is not None:
+            print(analyze_failure_three_way(cpu_out, npu_out, gpu_out, result,
+                                            case_dir=result_dir, verbose=verbose_diff,
+                                            layout=layout))
+        else:
+            print(analyze_failure(cpu_out, npu_out, result,
+                                  case_dir=result_dir, verbose=verbose_diff,
+                                  layout=layout))
     reporter.record(case_id, result, dtype=params.get("dtype", ""))
     return result
 

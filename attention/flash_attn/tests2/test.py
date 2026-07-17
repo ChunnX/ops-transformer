@@ -1,3 +1,10 @@
+"""精度测试入口: 同时承载 pytest 用例 (test_op) 与裸 CLI (main) 两个入口。
+
+两个入口共享同一套: CLI 参数定义 (_register_cli_params)、用例收集 (_collect_cases)、
+报告器构造 (_make_reporter)、阶段解析 (_parse_stages)。conftest.py 复用这些实现,
+保证 pytest 入口与 CLI 入口行为一致。test_op 把 run_case 成败翻译成 pytest 用例成败;
+main 自行遍历 case 并以退出码反映失败数。
+"""
 import argparse
 import logging
 import sys
@@ -47,6 +54,7 @@ def _parse_stages(raw):
 
 
 def _collect_cases(case_set, case_id_opt):
+    """加载 case_set 全部用例, 按 --case_id 过滤 (支持前缀/后缀/全名匹配)。"""
     cases, case_ids = load_cases(case_set)
     if case_id_opt != "all":
         filtered = resolve_case_ids(case_id_opt, case_ids)
@@ -58,6 +66,7 @@ def _collect_cases(case_set, case_id_opt):
 
 
 def _make_reporter():
+    """构造 Reporter 并绑定带时间戳的结果 CSV (每次运行独立文件)。"""
     rep = Reporter()
     result_dir = Path("result")
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
