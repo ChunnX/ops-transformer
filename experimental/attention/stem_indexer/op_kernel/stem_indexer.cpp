@@ -35,7 +35,7 @@
     } while (0)
 #endif
 
-template <int DT_Q, int DT_K, int DT_OUT, int CAUSAL>
+template <int DT_Q, int DT_K, int DT_OUT, int CAUSAL, int TOPK_SCORE_PRECISION>
 __global__ __aicore__ void stem_indexer(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_t *vbias,
                                                    __gm__ uint8_t *qSeqLens, __gm__ uint8_t *kvSeqLens,
                                                    __gm__ uint8_t *numPromptTokens, __gm__ uint8_t *metadata,
@@ -46,7 +46,7 @@ __global__ __aicore__ void stem_indexer(__gm__ uint8_t *qflat, __gm__ uint8_t *k
     AscendC::TPipe tPipe;
     __gm__ uint8_t *user = AscendC::GetUserWorkspace(workspace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
-    INVOKE_LI_NO_KFC_OP_IMPL(SIKernel::SIPreload, bfloat16_t, bfloat16_t, int32_t, CAUSAL, uint16_t);
+    INVOKE_LI_NO_KFC_OP_IMPL(SIKernel::SIPreload, bfloat16_t, bfloat16_t, int32_t, CAUSAL, TOPK_SCORE_PRECISION);
 #else
     (void)qflat;
     (void)kflat;

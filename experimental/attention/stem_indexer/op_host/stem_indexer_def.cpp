@@ -74,6 +74,7 @@ public:
         this->Attr("k_block_num_bias_medium").AttrType(OPTIONAL).Int(30);
         this->Attr("k_block_num_rate_large").AttrType(OPTIONAL).Float(0.1f);
         this->Attr("k_block_num_bias_large").AttrType(OPTIONAL).Int(30);
+        this->Attr("topk_score_precision").AttrType(OPTIONAL).Int(1);
 
         OpAICoreConfig aicoreConfig;
         aicoreConfig.DynamicCompileStaticFlag(true)

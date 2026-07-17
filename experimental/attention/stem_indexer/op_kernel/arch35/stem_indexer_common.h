@@ -84,15 +84,20 @@ __aicore__ inline uint32_t GetLane(const T &value4, uint32_t lane)
 }
 
 
-template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false, typename SCORE_T = uint32_t,
-          typename... Args>
+template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false,
+          const int TOPK_SCORE_PRECISION = 1, typename... Args>
 struct SIType {
-    static_assert(std::is_same_v<SCORE_T, uint32_t> || std::is_same_v<SCORE_T, uint16_t>,
-                  "Invalid SCORE_T");
+    static_assert(TOPK_SCORE_PRECISION == 1 || TOPK_SCORE_PRECISION == 2,
+                  "TOPK_SCORE_PRECISION must be 1(uint32) or 2(uint16)");
+
     using queryType = Q_T;
     using keyType = K_T;
     using outputType = OUT_T;
-    using scoreType = SCORE_T;
+
+    using scoreType = std::conditional_t<
+        TOPK_SCORE_PRECISION == 1,
+        uint32_t,
+        uint16_t>;
 
     static constexpr bool causalFlag = CAUSAL;
     static constexpr bool pageAttention = false;

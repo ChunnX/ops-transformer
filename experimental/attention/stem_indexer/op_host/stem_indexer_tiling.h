@@ -50,6 +50,7 @@ constexpr uint32_t ATTR_K_BLOCK_NUM_RATE_MEDIUM_INDEX = 6;
 constexpr uint32_t ATTR_K_BLOCK_NUM_BIAS_MEDIUM_INDEX = 7;
 constexpr uint32_t ATTR_K_BLOCK_NUM_RATE_LARGE_INDEX = 8;
 constexpr uint32_t ATTR_K_BLOCK_NUM_BIAS_LARGE_INDEX = 9;
+constexpr uint32_t ATTR_TOPK_SCORE_PRECISION_INDEX = 10;
 
 constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
@@ -76,6 +77,8 @@ constexpr float ALPHA_MIN = 0.0f;
 constexpr float ATTR_FLOAT_EPS = 0.000001f;
 constexpr float K_BLOCK_NUM_RATE_MEDIUM_LIMIT = 0.2f;
 constexpr float K_BLOCK_NUM_RATE_LARGE_LIMIT = 0.1f;
+constexpr int64_t TOPK_SCORE_PRECISION_UINT32 = 1;
+constexpr int64_t TOPK_SCORE_PRECISION_UINT16 = 2;
 
 BEGIN_TILING_DATA_DEF(StemIndexerTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, bSize)
@@ -125,6 +128,7 @@ struct StemIndexerParaInfo {
     const int64_t *kBlockNumBiasMedium = nullptr;
     const float *kBlockNumRateLarge = nullptr;
     const int64_t *kBlockNumBiasLarge = nullptr;
+    const int64_t *topkScorePrecision = nullptr;
 };
 
 class StemIndexerTilingInfo {
@@ -150,6 +154,7 @@ public:
     uint32_t kBlockNumBiasMedium = 30;
     float kBlockNumRateLarge = K_BLOCK_NUM_RATE_LARGE_LIMIT;
     uint32_t kBlockNumBiasLarge = 30;
+    uint32_t topkScorePrecision = TOPK_SCORE_PRECISION_UINT32;
     float rSquare = 1.0f / 64.0f;
     ge::DataType inputQType = ge::DT_BF16;
     ge::DataType inputKType = ge::DT_BF16;

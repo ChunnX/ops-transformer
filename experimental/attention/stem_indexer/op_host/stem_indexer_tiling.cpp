@@ -115,6 +115,7 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
     opParamInfo_.kBlockNumBiasMedium = attrs->GetAttrPointer<int64_t>(ATTR_K_BLOCK_NUM_BIAS_MEDIUM_INDEX);
     opParamInfo_.kBlockNumRateLarge = attrs->GetAttrPointer<float>(ATTR_K_BLOCK_NUM_RATE_LARGE_INDEX);
     opParamInfo_.kBlockNumBiasLarge = attrs->GetAttrPointer<int64_t>(ATTR_K_BLOCK_NUM_BIAS_LARGE_INDEX);
+    opParamInfo_.topkScorePrecision = attrs->GetAttrPointer<int64_t>(ATTR_TOPK_SCORE_PRECISION_INDEX);
 
     if (CheckRequiredAttrExistence() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
@@ -140,6 +141,11 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
                 OP_LOGE(opName_, "k_block_num_rate_large only support 0.1."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.kBlockNumBiasLarge != 30,
                 OP_LOGE(opName_, "k_block_num_bias_large only support 30."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(*opParamInfo_.topkScorePrecision != TOPK_SCORE_PRECISION_UINT32 &&
+                    *opParamInfo_.topkScorePrecision != TOPK_SCORE_PRECISION_UINT16,
+                OP_LOGE(opName_, "topk_score_precision only supports 1(uint32) or 2(uint16), but got %ld.",
+                        *opParamInfo_.topkScorePrecision),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -206,6 +212,8 @@ ge::graphStatus StemIndexerInfoParser::CheckRequiredAttrExistence() const
                 OP_LOGE(opName_, "attr k_block_num_rate_large is nullptr"), return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.kBlockNumBiasLarge == nullptr,
                 OP_LOGE(opName_, "attr k_block_num_bias_large is nullptr"), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.topkScorePrecision == nullptr,
+                OP_LOGE(opName_, "attr topk_score_precision is nullptr"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -343,6 +351,7 @@ void StemIndexerInfoParser::GenerateInfo(StemIndexerTilingInfo &stemInfo)
     stemInfo.kBlockNumBiasMedium = static_cast<uint32_t>(*opParamInfo_.kBlockNumBiasMedium);
     stemInfo.kBlockNumRateLarge = *opParamInfo_.kBlockNumRateLarge;
     stemInfo.kBlockNumBiasLarge = static_cast<uint32_t>(*opParamInfo_.kBlockNumBiasLarge);
+    stemInfo.topkScorePrecision = static_cast<uint32_t>(*opParamInfo_.topkScorePrecision);
     uint32_t stemRepTokens = stemInfo.stemBlockSize / stemInfo.stemStride;
     stemInfo.rSquare = 1.0f / static_cast<float>(stemRepTokens * stemRepTokens);
     stemInfo.inputQType = inputQType_;
@@ -416,7 +425,8 @@ ge::graphStatus StemIndexerTiling::DoTiling(const StemIndexerTilingInfo *tilingI
     uint32_t inputKType = static_cast<uint32_t>(tilingInfo->inputKType);
     uint32_t outputType = static_cast<uint32_t>(tilingInfo->outputType);
     uint32_t causal = static_cast<uint32_t>(tilingInfo->causal);
-    uint64_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, causal);
+    uint32_t topkScorePrecision = tilingInfo->topkScorePrecision;
+    uint64_t tilingKey = GET_TPL_TILING_KEY(inputQType, inputKType, outputType, causal, topkScorePrecision);
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
     return ge::GRAPH_SUCCESS;
