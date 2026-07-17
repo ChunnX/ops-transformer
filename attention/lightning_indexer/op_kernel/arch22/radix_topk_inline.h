@@ -110,24 +110,6 @@ __aicore__ inline void InlineRadixTopK(
     event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
 
     for (int32_t roundId = RDX_ROUNDS - 1; roundId >= 0; roundId--) {
-        // === Step 1: Read first score from GM for debug ===
-        if (roundId == static_cast<int32_t>(RDX_ROUNDS) - 1 && dbg) {
-            bfloat16_t s0 = xGm.GetValue(0);
-            bfloat16_t s1 = xGm.GetValue(1);
-            bfloat16_t s512 = xGm.GetValue(512);
-            uint16_t b0 = *reinterpret_cast<uint16_t*>(&s0);
-            uint16_t b1 = *reinterpret_cast<uint16_t*>(&s1);
-            uint16_t b512 = *reinterpret_cast<uint16_t*>(&s512);
-            indexGm.SetValue(dbgPos++, static_cast<int32_t>(sortLen));
-            indexGm.SetValue(dbgPos++, static_cast<int32_t>(tileNum_));
-            indexGm.SetValue(dbgPos++, static_cast<int32_t>(b0));
-            indexGm.SetValue(dbgPos++, static_cast<int32_t>(b1));
-            indexGm.SetValue(dbgPos++, static_cast<int32_t>(b512));
-            indexGm.SetValue(dbgPos++, globalHistBoundaryNum_);
-            indexGm.SetValue(dbgPos++, static_cast<int32_t>(kValue));
-            indexGm.SetValue(dbgPos++, static_cast<int32_t>(tailTileLen_));
-        }
-
         // ClearHist
         if (roundId == static_cast<int32_t>(RDX_ROUNDS) - 1) {
             Duplicate<int32_t>(tileHist, static_cast<int32_t>(tileLen_), tileNum_);
@@ -244,21 +226,6 @@ __aicore__ inline void InlineRadixTopK(
         }
         RDX_S_V_SYNC();
 
-        // === Debug: per-round state ===
-        if (dbg) {
-            RDX_V_S_SYNC();
-            indexGm.SetValue(dbgPos++, roundId);
-            indexGm.SetValue(dbgPos++, globalHist.GetValue(0));
-            indexGm.SetValue(dbgPos++, globalHist.GetValue(1));
-            indexGm.SetValue(dbgPos++, globalHist.GetValue(2));
-            indexGm.SetValue(dbgPos++, globalHist.GetValue(3));
-            indexGm.SetValue(dbgPos++, boundaryBin);
-            indexGm.SetValue(dbgPos++, totalDefinitelyInTopK_);
-            indexGm.SetValue(dbgPos++, remainK_);
-            indexGm.SetValue(dbgPos++, globalHistBoundaryNum_);
-            RDX_S_V_SYNC();
-        }
-
         // AddTileHistToTileTopK
         RDX_V_S_SYNC();
         if (globalHist.GetValue(boundaryBin) == remainK_) {
@@ -311,20 +278,11 @@ __aicore__ inline void InlineRadixTopK(
     }
     RDX_S_V_SYNC();
 
-    // === Debug: final state ===
-    // Debug: write final state to indexGm (will be partially overwritten by TileTopK)
-    if (dbg) {
-        indexGm.SetValue(50, coreTopKOffset);
-        indexGm.SetValue(51, static_cast<int32_t>(involvedMask16_));
-        indexGm.SetValue(52, tileTopK.GetValue(0));
-        indexGm.SetValue(53, tileTopK.GetValue(1));
-    }
-
     int16_t boundaryNumber16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
     bfloat16_t boundaryBf16 = *reinterpret_cast<bfloat16_t *>(&boundaryNumber16);
     float boundaryFloat = AscendC::Cast(boundaryBf16);
 
-    uint32_t writeOffset = dbg ? 60 : 0;  // Start after debug data for debug batch
+    uint32_t writeOffset = 0;
     for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
         RDX_V_S_SYNC();
         int32_t curTileK = tileTopK.GetValue(tileId);

@@ -695,6 +695,8 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
 {
     if ASCEND_IS_AIV {
+        // Ensure all MTE3 writes (scoreB16Gm) from ProcessVec are visible to MTE2 reads
+        PipeBarrier<PIPE_ALL>();
         uint32_t sortLen = constInfo.radixSortLen;
         uint32_t sortLenAlign = constInfo.radixSortLenAlign;
         uint32_t kValue = constInfo.sparseCount;
