@@ -140,7 +140,7 @@ protected:
     void FillLowApiTilingData();
     void FillMkTilingData();
     bool CanUseLowApiBs() const;
-    bool IsMkPerfProbe() const;
+    bool CanUseMk() const;
     size_t GetLastRequiredInputIndex() const;
 
 private:

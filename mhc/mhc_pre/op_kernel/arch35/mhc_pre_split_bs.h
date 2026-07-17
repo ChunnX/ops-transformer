@@ -112,7 +112,7 @@ public:
     __aicore__ inline MhcPreKernelSplitBS(MT &matmul) : Base(matmul) {}
     __aicore__ inline void Init(InitParams initParams);
     __aicore__ inline void InitHMixBuffer(InitParams initParams);
-    __aicore__ inline void InitUbBuffers();
+    __aicore__ inline void InitUbBuffers(bool splitAcrossSubBlocks = true);
     __aicore__ inline void Process();
     __aicore__ inline void InitBlockParams(uint64_t curblock, uint32_t tBlockNum);
     __aicore__ inline void AICProcess(uint32_t offsetNd, uint32_t outOffset);
@@ -152,7 +152,7 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::InitHMixBuffer(InitP
 }
 
 template <class T, class P, int8_t HAS_RESI>
-__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::InitUbBuffers()
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::InitUbBuffers(bool splitAcrossSubBlocks)
 {
     if ASCEND_IS_NOT_AIV {
         return;
@@ -164,7 +164,11 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::InitUbBuffers()
 
     pipe_->InitBuffer(xInQueue_, kDoubleBufferCount, kXInQueueBufferBytes);
     pipe_->InitBuffer(outQueue_, kDoubleBufferCount, kOutQueueBufferBytes);
-    pipe_->InitBuffer(invRmsOutQueue_, kSingleBufferCount, (curSingleT_ / kHalfSplitDivisor) * sizeof(P));
+    uint32_t invRmsRows = splitAcrossSubBlocks ?
+        (curSingleT_ + kHalfSplitDivisor - 1U) / kHalfSplitDivisor : curSingleT_;
+    uint32_t invRmsBytes = MhcPreUtils::Align(
+        invRmsRows, Base::kAlignmentBytes / sizeof(P)) * sizeof(P);
+    pipe_->InitBuffer(invRmsOutQueue_, kSingleBufferCount, invRmsBytes);
 
     if (hasGamma_) {
         pipe_->InitBuffer(gammaInQueue_, kSingleBufferCount, ND_LENGTH * sizeof(P));
@@ -172,8 +176,10 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::InitUbBuffers()
 
     pipe_->InitBuffer(tmpBuff_, kTmpBufferBytes);
 
-    pipe_->InitBuffer(biasInQue_, kSingleBufferCount, mnConfig_.n * sizeof(P));
-    pipe_->InitBuffer(alphaBuf_, mnConfig_.n * sizeof(P));
+    uint32_t parameterBufferBytes = MhcPreUtils::Align(
+        mnConfig_.n * sizeof(P), Base::kAlignmentBytes);
+    pipe_->InitBuffer(biasInQue_, kSingleBufferCount, parameterBufferBytes);
+    pipe_->InitBuffer(alphaBuf_, parameterBufferBytes);
     alphaInUb_ = alphaBuf_.template Get<P>();
 
     preOffsetBuf_ = tmpBuff_.template GetWithOffset<uint32_t>(uint32_t(mnConfig_.n * V1_BASE_T), 0);
