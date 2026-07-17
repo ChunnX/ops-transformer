@@ -107,6 +107,7 @@ template <uint32_t UB_STAGES_>
 struct EpilogueAtlasA2PerTokenDequantSwigluQuant {
     using ArchTag = Arch::AtlasA2;
     using Activation = Catlass::Epilogue::SwigluActivation;
+    static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };
 
@@ -114,6 +115,7 @@ template <uint32_t UB_STAGES_>
 struct EpilogueAtlasA2W4A8PostPerTokenDequantSwigluQuant {
     using ArchTag = Arch::AtlasA2;
     using Activation = Catlass::Epilogue::SwigluActivation;
+    static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };
 
@@ -139,6 +141,7 @@ template <uint32_t UB_STAGES_>
 struct EpilogueAtlasA2PerTokenDequantSwigluQuantInt8 {
     using ArchTag = Arch::AtlasA2;
     using Activation = Catlass::Epilogue::SwigluActivation;
+    static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };
 
@@ -149,6 +152,7 @@ template <uint32_t UB_STAGES_>
 struct EpilogueAtlasA2PerTokenDequantSwigluQuantBF16 {
     using ArchTag = Arch::AtlasA2;
     using Activation = Catlass::Epilogue::SwigluActivation;
+    static constexpr uint32_t TILE_LENGTH = Activation::PREFERRED_TILE_LENGTH;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
 };
 

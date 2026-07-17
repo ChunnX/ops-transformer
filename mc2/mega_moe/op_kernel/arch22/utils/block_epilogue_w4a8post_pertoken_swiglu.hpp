@@ -32,8 +32,9 @@ public:
     using ArchTag = typename DispatchPolicy::ArchTag;
     using Activation = typename DispatchPolicy::Activation;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
-    static constexpr uint32_t TILE_LENGTH = GATED_ACTIVATION_TILE_LENGTH;
+    static constexpr uint32_t TILE_LENGTH = DispatchPolicy::TILE_LENGTH;
     static constexpr uint32_t MAX_SCALE_COUNT = 4096;
+    static constexpr uint32_t ROW_MAX_BYTES = BYTE_PER_BLK;
 
     using ElementC = typename CType_::Element;
     using LayoutC = typename CType_::Layout;
@@ -45,8 +46,11 @@ public:
     static constexpr size_t BUFFER_SIZE =
         UB_STAGES * (4 * TILE_LENGTH * sizeof(ElementC) + 2 * TILE_LENGTH * sizeof(float) + TILE_LENGTH) +
         3 * TILE_LENGTH * sizeof(float) + TILE_LENGTH * sizeof(ElementD) + 128 * sizeof(int16_t) +
-        (MAX_SCALE_COUNT + BYTE_PER_BLK / sizeof(ElementPerTokenScale)) * sizeof(ElementPerTokenScale);
-    static_assert(BUFFER_SIZE < ArchTag::UB_SIZE, "The tiled W4A8 activation buffers exceed UB capacity");
+        (MAX_SCALE_COUNT + BYTE_PER_BLK / sizeof(ElementPerTokenScale)) * sizeof(ElementPerTokenScale) + ROW_MAX_BYTES;
+    static_assert(TILE_LENGTH % 256 == 0, "The W4A8 activation tile must be aligned to 256 elements");
+    static_assert(UB_STAGES >= 2, "The pipelined W4A8 activation epilogue requires double buffering");
+    static_assert(BUFFER_SIZE + Activation::MIN_SHARED_TMP_BYTES <= ArchTag::UB_SIZE,
+                  "The tiled W4A8 activation buffers and workspace exceed UB capacity");
 
     static_assert((std::is_same_v<ElementC, half> ||
                    std::is_same_v<ElementC, bfloat16_t>)&&std::is_same_v<ElementD, int8_t>,
@@ -167,7 +171,8 @@ public:
         }
 
         uint32_t scaleBlock = RoundUp<BYTE_PER_BLK>(perCoreData * sizeof(ElementPerTokenScale) + BYTE_PER_BLK);
-        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset + scaleBlock);
+        ubRowAbsMax = resource.ubBuf.template GetBufferByByte<float>(ubOffset + scaleBlock);
+        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset + scaleBlock + ROW_MAX_BYTES);
         Duplicate(xLowI16Tensor, static_cast<int16_t>(0x0F0F), 128);
         PipeBarrier<PIPE_V>();
 
@@ -184,33 +189,46 @@ public:
 
             dcci(gmPerTokenScale1.GetPhyAddr(loopIdx), 0);
             ElementPerTokenScale perTokenScale = gmPerTokenScale1(loopIdx);
-            ElementPerTokenScale rowAbsMax = 0.0f;
-            for (uint32_t tileOffset = 0; tileOffset < branchLength; tileOffset += TILE_LENGTH) {
+            uint32_t tileCount = TileCount(branchLength);
+            uint32_t currentStage = 0;
+            LoadTile(gmTileC, weightAux[weightAuxOffset], branchLength, 0, TileLength(branchLength, 0),
+                     gmmOutPreRowStride, currentStage);
+            ResetRowAbsMax();
+            for (uint32_t tileIdx = 0; tileIdx < tileCount; ++tileIdx) {
+                uint32_t tileOffset = tileIdx * TILE_LENGTH;
                 uint32_t tileLength = TileLength(branchLength, tileOffset);
-                ComputeTile(gmTileC, weightAux[weightAuxOffset], branchLength, tileOffset, tileLength,
-                            gmmOutPreRowStride, perTokenScale, activationClamp, DEFAULT_MUL_SCALE);
-                AscendC::Abs(ubGateFp32, ubActivation, tileLength);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::ReduceMax<float>(ubUpFp32, ubGateFp32, ubUpFp32, tileLength, false);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
-                AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
-                ElementPerTokenScale tileAbsMax = ubUpFp32.GetValue(0);
-                rowAbsMax = rowAbsMax > tileAbsMax ? rowAbsMax : tileAbsMax;
-                AdvanceStage();
+                uint32_t nextStage = NextStage(currentStage);
+                uint32_t nextOffset = tileOffset + TILE_LENGTH;
+                if (nextOffset < branchLength) {
+                    LoadTile(gmTileC, weightAux[weightAuxOffset], branchLength, nextOffset,
+                             TileLength(branchLength, nextOffset), gmmOutPreRowStride, nextStage);
+                }
+                ComputeLoadedTile(currentStage, tileLength, perTokenScale, activationClamp, DEFAULT_MUL_SCALE);
+                AccumulateRowAbsMax(tileLength);
+                currentStage = nextStage;
             }
 
+            ElementPerTokenScale rowAbsMax = ReadRowAbsMax();
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
             ubPerTokenScaleOutput.SetValue(loopIdx - loopStartIdx, rowAbsMax / 127.0f);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
             ElementPerTokenScale quantMultiplier = rowAbsMax > 0.0f ? 127.0f / rowAbsMax : 0.0f;
 
-            for (uint32_t tileOffset = 0; tileOffset < branchLength; tileOffset += TILE_LENGTH) {
+            currentStage = 0;
+            LoadTile(gmTileC, weightAux[weightAuxOffset], branchLength, 0, TileLength(branchLength, 0),
+                     gmmOutPreRowStride, currentStage);
+            for (uint32_t tileIdx = 0; tileIdx < tileCount; ++tileIdx) {
+                uint32_t tileOffset = tileIdx * TILE_LENGTH;
                 uint32_t tileLength = TileLength(branchLength, tileOffset);
-                ComputeTile(gmTileC, weightAux[weightAuxOffset], branchLength, tileOffset, tileLength,
-                            gmmOutPreRowStride, perTokenScale, activationClamp, DEFAULT_MUL_SCALE);
-                QuantizeAndCopyTile(gmTileD, branchLength, tileOffset, tileLength, quantMultiplier);
-                AdvanceStage();
+                uint32_t nextStage = NextStage(currentStage);
+                uint32_t nextOffset = tileOffset + TILE_LENGTH;
+                if (nextOffset < branchLength) {
+                    LoadTile(gmTileC, weightAux[weightAuxOffset], branchLength, nextOffset,
+                             TileLength(branchLength, nextOffset), gmmOutPreRowStride, nextStage);
+                }
+                ComputeLoadedTile(currentStage, tileLength, perTokenScale, activationClamp, DEFAULT_MUL_SCALE);
+                QuantizeAndCopyTile(currentStage, gmTileD, branchLength, tileOffset, tileLength, quantMultiplier);
+                currentStage = nextStage;
             }
         }
 
@@ -242,10 +260,22 @@ private:
     }
 
     CATLASS_DEVICE
+    static uint32_t TileCount(uint32_t branchLength)
+    {
+        return (branchLength + TILE_LENGTH - 1) / TILE_LENGTH;
+    }
+
+    CATLASS_DEVICE
     static uint32_t TileLength(uint32_t branchLength, uint32_t tileOffset)
     {
         uint32_t remaining = branchLength - tileOffset;
         return remaining < TILE_LENGTH ? remaining : TILE_LENGTH;
+    }
+
+    CATLASS_DEVICE
+    static uint32_t NextStage(uint32_t stageId)
+    {
+        return stageId + 1 < UB_STAGES ? stageId + 1 : 0;
     }
 
     CATLASS_DEVICE
@@ -262,30 +292,38 @@ private:
     }
 
     CATLASS_DEVICE
-    void ComputeTile(AscendC::GlobalTensor<ElementC> const &gmTileC, AscendC::GlobalTensor<float> const &weightAux,
-                     uint32_t branchLength, uint32_t tileOffset, uint32_t tileLength, uint32_t gmRowStride,
-                     ElementPerTokenScale perTokenScale, float activationClamp, float reconstructScale)
+    void LoadTile(AscendC::GlobalTensor<ElementC> const &gmTileC, AscendC::GlobalTensor<float> const &weightAux,
+                  uint32_t branchLength, uint32_t tileOffset, uint32_t tileLength, uint32_t gmRowStride,
+                  uint32_t stageId)
     {
-        auto &ubC = ubCList[ubListId];
-        auto &ubWeightAux = ubWeightAuxList[ubListId];
+        auto &ubC = ubCList[stageId];
+        auto &ubWeightAux = ubWeightAuxList[stageId];
         LayoutC tileLayout{1, tileLength};
         LayoutC gmTileLayout{1, tileLength, gmRowStride};
 
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
         copyGmToUbC(ubC, gmTileC[tileOffset], tileLayout, gmTileLayout);
         copyGmToUbC(ubC[TILE_LENGTH], gmTileC[branchLength + tileOffset], tileLayout, gmTileLayout);
         copyGmToUbC(ubC[2 * TILE_LENGTH], gmTileC[gmRowStride + tileOffset], tileLayout, gmTileLayout);
         copyGmToUbC(ubC[3 * TILE_LENGTH], gmTileC[gmRowStride + branchLength + tileOffset], tileLayout, gmTileLayout);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
 
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbWAVMTE2List[ubListId]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbWAVMTE2List[stageId]);
         DataCopyExtParams copyParams{1, tileLength * sizeof(float), 0, 0, 0};
         DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
         DataCopyPad(ubWeightAux, weightAux[tileOffset], copyParams, padParams);
         DataCopyPad(ubWeightAux[TILE_LENGTH], weightAux[branchLength + tileOffset], copyParams, padParams);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbWAMTE2VList[ubListId]);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbWAMTE2VList[stageId]);
+    }
 
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+    CATLASS_DEVICE
+    void ComputeLoadedTile(uint32_t stageId, uint32_t tileLength, ElementPerTokenScale perTokenScale,
+                           float activationClamp, float reconstructScale)
+    {
+        auto &ubC = ubCList[stageId];
+        auto &ubWeightAux = ubWeightAuxList[stageId];
+
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
         AscendC::Cast(ubGateFp32, ubC, AscendC::RoundMode::CAST_NONE, tileLength);
         AscendC::Cast(ubActivation, ubC[2 * TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
         AscendC::PipeBarrier<PIPE_V>();
@@ -295,17 +333,17 @@ private:
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Cast(ubUpFp32, ubC[TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
         AscendC::Cast(ubActivation, ubC[3 * TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Muls(ubUpFp32, ubUpFp32, reconstructScale, tileLength);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Add(ubUpFp32, ubUpFp32, ubActivation, tileLength);
 
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbWAMTE2VList[ubListId]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbWAMTE2VList[stageId]);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Add(ubGateFp32, ubGateFp32, ubWeightAux, tileLength);
         AscendC::Add(ubUpFp32, ubUpFp32, ubWeightAux[TILE_LENGTH], tileLength);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbWAVMTE2List[ubListId]);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbWAVMTE2List[stageId]);
 
         AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
         AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
@@ -317,8 +355,8 @@ private:
     }
 
     CATLASS_DEVICE
-    void QuantizeAndCopyTile(AscendC::GlobalTensor<ElementD> const &gmTileD, uint32_t branchLength, uint32_t tileOffset,
-                             uint32_t tileLength, ElementPerTokenScale quantMultiplier)
+    void QuantizeAndCopyTile(uint32_t stageId, AscendC::GlobalTensor<ElementD> const &gmTileD, uint32_t branchLength,
+                             uint32_t tileOffset, uint32_t tileLength, ElementPerTokenScale quantMultiplier)
     {
         auto ubQuantS32 = ubGateFp32.template ReinterpretCast<int32_t>();
         auto ubQuantF16 = ubGateFp32.template ReinterpretCast<half>();
@@ -332,18 +370,18 @@ private:
         AscendC::Cast(ubD, ubQuantF16, AscendC::RoundMode::CAST_RINT, tileLength);
         AscendC::PipeBarrier<PIPE_V>();
 
-        auto &xHighI4Tensor = xHighI4TensorList[ubListId];
-        auto &xLowI4Tensor = xLowI4TensorList[ubListId];
+        auto &xHighI4Tensor = xHighI4TensorList[stageId];
+        auto &xLowI4Tensor = xLowI4TensorList[stageId];
         Cast(ubQuantF16, ubD, AscendC::RoundMode::CAST_NONE, tileLength);
         PipeBarrier<PIPE_V>();
         Muls(ubQuantF16, ubQuantF16, static_cast<half>(0.0625f), tileLength);
         PipeBarrier<PIPE_V>();
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventxHighMTE3VList[ubListId]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventxHighMTE3VList[stageId]);
         Cast(xHighI4Tensor, ubQuantF16, AscendC::RoundMode::CAST_FLOOR, tileLength);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventxHighVMTE3List[ubListId]);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventxHighVMTE3List[ubListId]);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventxHighVMTE3List[stageId]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventxHighVMTE3List[stageId]);
         DataCopy(gmTileD[tileOffset / 2], xHighI4Tensor.template ReinterpretCast<int8_t>(), tileLength / 2);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventxHighMTE3VList[ubListId]);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventxHighMTE3VList[stageId]);
 
         auto xLowHalfTensor = ubActivation.template ReinterpretCast<half>();
         auto xLowHalfTensor2 = xLowHalfTensor[TILE_LENGTH];
@@ -361,19 +399,39 @@ private:
         PipeBarrier<PIPE_V>();
         Adds(ubQuantF16, xLowHalfTensor2, static_cast<half>(-8), tileLength);
         PipeBarrier<PIPE_V>();
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventxLowMTE3VList[ubListId]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventxLowMTE3VList[stageId]);
         Cast(xLowI4Tensor, ubQuantF16, AscendC::RoundMode::CAST_NONE, tileLength);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventxLowVMTE3List[ubListId]);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventxLowVMTE3List[ubListId]);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventxLowVMTE3List[stageId]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventxLowVMTE3List[stageId]);
         DataCopy(gmTileD[branchLength / 2 + tileOffset / 2], xLowI4Tensor.template ReinterpretCast<int8_t>(),
                  tileLength / 2);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventxLowMTE3VList[ubListId]);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventxLowMTE3VList[stageId]);
     }
 
     CATLASS_DEVICE
-    void AdvanceStage()
+    void ResetRowAbsMax()
     {
-        ubListId = (ubListId + 1 < UB_STAGES) ? ubListId + 1 : 0;
+        AscendC::Duplicate(ubRowAbsMax, 0.0f, BYTE_PER_BLK / sizeof(float));
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    CATLASS_DEVICE
+    void AccumulateRowAbsMax(uint32_t tileLength)
+    {
+        AscendC::Abs(ubGateFp32, ubActivation, tileLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::ReduceMax<float>(ubUpFp32, ubGateFp32, ubUpFp32, tileLength, false);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Max(ubRowAbsMax, ubRowAbsMax, ubUpFp32, 1);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    CATLASS_DEVICE
+    ElementPerTokenScale ReadRowAbsMax()
+    {
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
+        return ubRowAbsMax.GetValue(0);
     }
 
     Params params;
@@ -387,6 +445,7 @@ private:
     AscendC::LocalTensor<ElementD> ubD;
     AscendC::LocalTensor<int16_t> xLowI16Tensor;
     AscendC::LocalTensor<float> ubPerTokenScaleOutput;
+    AscendC::LocalTensor<float> ubRowAbsMax;
     AscendC::LocalTensor<uint8_t> sharedTmpBuffer;
 
     int32_t eventUbCVMTE2List[UB_STAGES];
@@ -397,7 +456,6 @@ private:
     int32_t eventxHighVMTE3List[UB_STAGES];
     int32_t eventxLowMTE3VList[UB_STAGES];
     int32_t eventxLowVMTE3List[UB_STAGES];
-    uint32_t ubListId{0};
     size_t ubOffset{0};
 
     CopyGmToUbC copyGmToUbC;

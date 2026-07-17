@@ -15,14 +15,15 @@
 
 namespace Catlass::Epilogue {
 
-// The epilogue owns two stages of input/output buffers and three FP32 work
-// buffers. Keeping this value independent of N makes UB usage constant.
-constexpr uint32_t GATED_ACTIVATION_TILE_LENGTH = 2048;
-
 // All gated activations used by MegaMoe follow this interface. A new
 // activation only needs to implement Compute; data movement, tiling and
 // quantization remain shared by the epilogues.
 struct SwigluActivation {
+    // 3072 is the largest common tile that leaves at least 32 KiB of
+    // temporary UB for every BF16, INT8 and W4A8 double-buffered path.
+    static constexpr uint32_t PREFERRED_TILE_LENGTH = 3072;
+    static constexpr uint32_t MIN_SHARED_TMP_BYTES = 32 * 1024;
+
     CATLASS_DEVICE
     static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
                         AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,

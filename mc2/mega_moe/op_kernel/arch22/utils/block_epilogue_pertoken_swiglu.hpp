@@ -31,8 +31,9 @@ public:
     using ArchTag = typename DispatchPolicy::ArchTag;
     using Activation = typename DispatchPolicy::Activation;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
-    static constexpr uint32_t TILE_LENGTH = GATED_ACTIVATION_TILE_LENGTH;
+    static constexpr uint32_t TILE_LENGTH = DispatchPolicy::TILE_LENGTH;
     static constexpr uint32_t MAX_SCALE_COUNT = 4096;
+    static constexpr uint32_t ROW_MAX_BYTES = BYTE_PER_BLK;
 
     using ElementC = typename CType_::Element;
     using LayoutC = typename CType_::Layout;
@@ -44,8 +45,10 @@ public:
     static constexpr size_t BUFFER_SIZE =
         UB_STAGES *
             (2 * TILE_LENGTH * sizeof(ElementC) + TILE_LENGTH * sizeof(ElementD) + 3 * TILE_LENGTH * sizeof(float)) +
-        (MAX_SCALE_COUNT + BYTE_PER_BLK / sizeof(ElementPerTokenScale)) * sizeof(ElementPerTokenScale);
-    static_assert(BUFFER_SIZE < ArchTag::UB_SIZE, "The tiled activation buffers exceed UB capacity");
+        (MAX_SCALE_COUNT + BYTE_PER_BLK / sizeof(ElementPerTokenScale)) * sizeof(ElementPerTokenScale) + ROW_MAX_BYTES;
+    static_assert(UB_STAGES >= 2, "The pipelined activation epilogue requires double buffering");
+    static_assert(BUFFER_SIZE + Activation::MIN_SHARED_TMP_BYTES <= ArchTag::UB_SIZE,
+                  "The tiled activation buffers and workspace exceed UB capacity");
 
     static_assert((std::is_same_v<ElementC, half> || std::is_same_v<ElementC, bfloat16_t>)&&(
                       std::is_same_v<ElementD, float> || std::is_same_v<ElementD, int8_t> ||
@@ -146,41 +149,50 @@ public:
             return;
         }
         uint32_t scaleBlock = RoundUp<BYTE_PER_BLK>(perCoreData * sizeof(ElementPerTokenScale) + BYTE_PER_BLK);
-        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset + scaleBlock);
+        ubRowAbsMax = resource.ubBuf.template GetBufferByByte<float>(ubOffset + scaleBlock);
+        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset + scaleBlock + ROW_MAX_BYTES);
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
             auto gmTileC = gmC[loopIdx * gmmOutPreRowStride];
             auto gmTileD = gmD[loopIdx * branchLength];
             ElementPerTokenScale perTokenScale = gmPerTokenScale1(loopIdx);
-            ElementPerTokenScale rowAbsMax = 0.0f;
-
-            for (uint32_t tileOffset = 0; tileOffset < branchLength; tileOffset += TILE_LENGTH) {
+            uint32_t tileCount = TileCount(branchLength);
+            uint32_t currentStage = 0;
+            LoadTile(gmTileC, branchLength, 0, TileLength(branchLength, 0), gmmOutPreRowStride, currentStage);
+            ResetRowAbsMax();
+            for (uint32_t tileIdx = 0; tileIdx < tileCount; ++tileIdx) {
+                uint32_t tileOffset = tileIdx * TILE_LENGTH;
                 uint32_t tileLength = TileLength(branchLength, tileOffset);
-                ComputeTile(gmTileC, branchLength, tileOffset, tileLength, gmmOutPreRowStride, perTokenScale, true,
-                            activationClamp);
-                auto &ubAbs = ubGateFp32List[ubListId];
-                auto &ubReduceMax = ubUpFp32List[ubListId];
-                AscendC::Abs(ubAbs, ubActivationList[ubListId], tileLength);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::ReduceMax<float>(ubReduceMax, ubAbs, ubReduceMax, tileLength, false);
-                AscendC::PipeBarrier<PIPE_V>();
-                AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
-                AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
-                ElementPerTokenScale tileAbsMax = ubReduceMax.GetValue(0);
-                rowAbsMax = rowAbsMax > tileAbsMax ? rowAbsMax : tileAbsMax;
-                AdvanceStage();
+                uint32_t nextStage = NextStage(currentStage);
+                uint32_t nextOffset = tileOffset + TILE_LENGTH;
+                if (nextOffset < branchLength) {
+                    LoadTile(gmTileC, branchLength, nextOffset, TileLength(branchLength, nextOffset),
+                             gmmOutPreRowStride, nextStage);
+                }
+                ComputeLoadedTile(currentStage, tileLength, perTokenScale, true, activationClamp);
+                AccumulateRowAbsMax(currentStage, tileLength);
+                currentStage = nextStage;
             }
 
+            ElementPerTokenScale rowAbsMax = ReadRowAbsMax();
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
             ubPerTokenScaleOutput.SetValue(loopIdx - loopStartIdx, rowAbsMax / 127.0f);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
             ElementPerTokenScale quantMultiplier = rowAbsMax > 0.0f ? 127.0f / rowAbsMax : 0.0f;
-            for (uint32_t tileOffset = 0; tileOffset < branchLength; tileOffset += TILE_LENGTH) {
+            currentStage = 0;
+            LoadTile(gmTileC, branchLength, 0, TileLength(branchLength, 0), gmmOutPreRowStride, currentStage);
+            for (uint32_t tileIdx = 0; tileIdx < tileCount; ++tileIdx) {
+                uint32_t tileOffset = tileIdx * TILE_LENGTH;
                 uint32_t tileLength = TileLength(branchLength, tileOffset);
-                ComputeTile(gmTileC, branchLength, tileOffset, tileLength, gmmOutPreRowStride, perTokenScale, true,
-                            activationClamp);
-                QuantizeAndCopyTile(gmTileD[tileOffset], tileLength, quantMultiplier);
-                AdvanceStage();
+                uint32_t nextStage = NextStage(currentStage);
+                uint32_t nextOffset = tileOffset + TILE_LENGTH;
+                if (nextOffset < branchLength) {
+                    LoadTile(gmTileC, branchLength, nextOffset, TileLength(branchLength, nextOffset),
+                             gmmOutPreRowStride, nextStage);
+                }
+                ComputeLoadedTile(currentStage, tileLength, perTokenScale, true, activationClamp);
+                QuantizeAndCopyTile(currentStage, gmTileD[tileOffset], tileLength, quantMultiplier);
+                currentStage = nextStage;
             }
         }
 
@@ -208,23 +220,27 @@ public:
             return;
         }
         uint32_t scaleBlock = RoundUp<BYTE_PER_BLK>(perCoreData * sizeof(ElementPerTokenScale) + BYTE_PER_BLK);
-        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset + scaleBlock);
+        ubRowAbsMax = resource.ubBuf.template GetBufferByByte<float>(ubOffset + scaleBlock);
+        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset + scaleBlock + ROW_MAX_BYTES);
 
         for (uint32_t loopIdx = loopStartIdx; loopIdx < loopStartIdx + tasksForIdx; ++loopIdx) {
             auto gmTileC = gmC[loopIdx * gmmOutPreRowStride];
             auto gmTileD = gmD[loopIdx * branchLength];
-            for (uint32_t tileOffset = 0; tileOffset < branchLength; tileOffset += TILE_LENGTH) {
+            uint32_t tileCount = TileCount(branchLength);
+            uint32_t currentStage = 0;
+            LoadTile(gmTileC, branchLength, 0, TileLength(branchLength, 0), gmmOutPreRowStride, currentStage);
+            for (uint32_t tileIdx = 0; tileIdx < tileCount; ++tileIdx) {
+                uint32_t tileOffset = tileIdx * TILE_LENGTH;
                 uint32_t tileLength = TileLength(branchLength, tileOffset);
-                ComputeTile(gmTileC, branchLength, tileOffset, tileLength, gmmOutPreRowStride, 1.0f, false,
-                            activationClamp);
-                AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
-                AscendC::Cast(ubDList[ubListId], ubActivationList[ubListId], AscendC::RoundMode::CAST_RINT, tileLength);
-                AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
-                LayoutD tileLayout{1, tileLength};
-                AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
-                copyUbToGmD(gmTileD[tileOffset], ubDList[ubListId], tileLayout, tileLayout);
-                AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
-                AdvanceStage();
+                uint32_t nextStage = NextStage(currentStage);
+                uint32_t nextOffset = tileOffset + TILE_LENGTH;
+                if (nextOffset < branchLength) {
+                    LoadTile(gmTileC, branchLength, nextOffset, TileLength(branchLength, nextOffset),
+                             gmmOutPreRowStride, nextStage);
+                }
+                ComputeLoadedTile(currentStage, tileLength, 1.0f, false, activationClamp);
+                CopyDirectTile(currentStage, gmTileD[tileOffset], tileLength);
+                currentStage = nextStage;
             }
         }
     }
@@ -249,6 +265,12 @@ private:
     }
 
     CATLASS_DEVICE
+    static uint32_t TileCount(uint32_t branchLength)
+    {
+        return (branchLength + TILE_LENGTH - 1) / TILE_LENGTH;
+    }
+
+    CATLASS_DEVICE
     static uint32_t TileLength(uint32_t branchLength, uint32_t tileOffset)
     {
         uint32_t remaining = branchLength - tileOffset;
@@ -256,23 +278,35 @@ private:
     }
 
     CATLASS_DEVICE
-    void ComputeTile(AscendC::GlobalTensor<ElementC> const &gmTileC, uint32_t branchLength, uint32_t tileOffset,
-                     uint32_t tileLength, uint32_t gmRowStride, ElementPerTokenScale perTokenScale,
-                     bool applyPerTokenScale, float activationClamp)
+    static uint32_t NextStage(uint32_t stageId)
     {
-        auto &ubC = ubCList[ubListId];
-        auto &ubGate = ubGateFp32List[ubListId];
-        auto &ubUp = ubUpFp32List[ubListId];
+        return stageId + 1 < UB_STAGES ? stageId + 1 : 0;
+    }
+
+    CATLASS_DEVICE
+    void LoadTile(AscendC::GlobalTensor<ElementC> const &gmTileC, uint32_t branchLength, uint32_t tileOffset,
+                  uint32_t tileLength, uint32_t gmRowStride, uint32_t stageId)
+    {
+        auto &ubC = ubCList[stageId];
         LayoutC tileLayout{1, tileLength};
         LayoutC gmTileLayout{1, tileLength, gmRowStride};
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
         copyGmToUbC(ubC, gmTileC[tileOffset], tileLayout, gmTileLayout);
         copyGmToUbC(ubC[TILE_LENGTH], gmTileC[branchLength + tileOffset], tileLayout, gmTileLayout);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[ubListId]);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
+    }
+
+    CATLASS_DEVICE
+    void ComputeLoadedTile(uint32_t stageId, uint32_t tileLength, ElementPerTokenScale perTokenScale,
+                           bool applyPerTokenScale, float activationClamp)
+    {
+        auto &ubC = ubCList[stageId];
+        auto &ubGate = ubGateFp32List[stageId];
+        auto &ubUp = ubUpFp32List[stageId];
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
         AscendC::Cast(ubGate, ubC, AscendC::RoundMode::CAST_NONE, tileLength);
         AscendC::Cast(ubUp, ubC[TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[ubListId]);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
         if (applyPerTokenScale) {
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
@@ -281,36 +315,70 @@ private:
             AscendC::Muls(ubUp, ubUp, perTokenScale, tileLength);
             AscendC::PipeBarrier<PIPE_V>();
         }
-        Activation::Compute(ubActivationList[ubListId], ubGate, ubUp, sharedTmpBuffer, tileLength, activationClamp);
+        Activation::Compute(ubActivationList[stageId], ubGate, ubUp, sharedTmpBuffer, tileLength, activationClamp);
     }
 
     CATLASS_DEVICE
-    void QuantizeAndCopyTile(AscendC::GlobalTensor<ElementD> const &gmTileD, uint32_t tileLength,
+    void QuantizeAndCopyTile(uint32_t stageId, AscendC::GlobalTensor<ElementD> const &gmTileD, uint32_t tileLength,
                              ElementPerTokenScale quantMultiplier)
     {
-        auto &ubQuantTmp = ubGateFp32List[ubListId];
+        auto &ubQuantTmp = ubGateFp32List[stageId];
         auto ubQuantS32 = ubQuantTmp.template ReinterpretCast<int32_t>();
         auto ubQuantF16 = ubQuantTmp.template ReinterpretCast<half>();
-        AscendC::Muls(ubQuantTmp, ubActivationList[ubListId], quantMultiplier, tileLength);
+        AscendC::Muls(ubQuantTmp, ubActivationList[stageId], quantMultiplier, tileLength);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Cast(ubQuantS32, ubQuantTmp, AscendC::RoundMode::CAST_RINT, tileLength);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::SetDeqScale(static_cast<half>(1.0));
         AscendC::Cast(ubQuantF16, ubQuantS32, AscendC::RoundMode::CAST_RINT, tileLength);
         AscendC::PipeBarrier<PIPE_V>();
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
-        AscendC::Cast(ubDList[ubListId], ubQuantF16, AscendC::RoundMode::CAST_RINT, tileLength);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[ubListId]);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[stageId]);
+        AscendC::Cast(ubDList[stageId], ubQuantF16, AscendC::RoundMode::CAST_RINT, tileLength);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[stageId]);
         LayoutD tileLayout{1, tileLength};
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3VList[ubListId]);
-        copyUbToGmD(gmTileD, ubDList[ubListId], tileLayout, tileLayout);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[ubListId]);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[stageId]);
+        copyUbToGmD(gmTileD, ubDList[stageId], tileLayout, tileLayout);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[stageId]);
     }
 
     CATLASS_DEVICE
-    void AdvanceStage()
+    void ResetRowAbsMax()
     {
-        ubListId = (ubListId + 1 < UB_STAGES) ? ubListId + 1 : 0;
+        AscendC::Duplicate(ubRowAbsMax, 0.0f, BYTE_PER_BLK / sizeof(float));
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    CATLASS_DEVICE
+    void AccumulateRowAbsMax(uint32_t stageId, uint32_t tileLength)
+    {
+        auto &ubAbs = ubGateFp32List[stageId];
+        auto &ubTileMax = ubUpFp32List[stageId];
+        AscendC::Abs(ubAbs, ubActivationList[stageId], tileLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::ReduceMax<float>(ubTileMax, ubAbs, ubTileMax, tileLength, false);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Max(ubRowAbsMax, ubRowAbsMax, ubTileMax, 1);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    CATLASS_DEVICE
+    ElementPerTokenScale ReadRowAbsMax()
+    {
+        AscendC::SetFlag<AscendC::HardEvent::V_S>(0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_S>(0);
+        return ubRowAbsMax.GetValue(0);
+    }
+
+    CATLASS_DEVICE
+    void CopyDirectTile(uint32_t stageId, AscendC::GlobalTensor<ElementD> const &gmTileD, uint32_t tileLength)
+    {
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[stageId]);
+        AscendC::Cast(ubDList[stageId], ubActivationList[stageId], AscendC::RoundMode::CAST_RINT, tileLength);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[stageId]);
+        LayoutD tileLayout{1, tileLength};
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(eventUbDVMTE3List[stageId]);
+        copyUbToGmD(gmTileD, ubDList[stageId], tileLayout, tileLayout);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventUbDMTE3VList[stageId]);
     }
 
     Params params;
@@ -320,12 +388,12 @@ private:
     AscendC::LocalTensor<float> ubUpFp32List[UB_STAGES];
     AscendC::LocalTensor<float> ubActivationList[UB_STAGES];
     AscendC::LocalTensor<float> ubPerTokenScaleOutput;
+    AscendC::LocalTensor<float> ubRowAbsMax;
     AscendC::LocalTensor<uint8_t> sharedTmpBuffer;
     int32_t eventUbCVMTE2List[UB_STAGES];
     int32_t eventUbCMTE2VList[UB_STAGES];
     int32_t eventUbDMTE3VList[UB_STAGES];
     int32_t eventUbDVMTE3List[UB_STAGES];
-    uint32_t ubListId{0};
     size_t ubOffset{0};
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;
