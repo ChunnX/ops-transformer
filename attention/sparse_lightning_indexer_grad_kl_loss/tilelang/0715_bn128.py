@@ -15,6 +15,7 @@ BLOCK_N = 128
 BLOCK_K = 128
 
 VECTOR_BASEG = 32
+VECTOR_BASEG_BN128 = 16
 VECTOR_BASEN = 256
 
 GATHER_CHUNK_SIZE = 16
@@ -188,7 +189,8 @@ def tilelang_grad_kl_loss_single_kernel(
     d_num_total = d_num_query + d_num_rope
 
     d_num_query_index = DQueryIndex // k_block
-    vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
+    vector_baseg_limit = VECTOR_BASEG_BN128 if n_block >= 128 else VECTOR_BASEG
+    vector_baseg = Nidx1 if Nidx1 <= vector_baseg_limit else vector_baseg_limit
     g_num = Nidx1 // vector_baseg
 
     v3_chunks = Nidx1 // 4
@@ -440,12 +442,10 @@ def tilelang_grad_kl_loss_single_kernel(
                 weight_all_half_ub = T.alloc_ub(Nidx1, input_dtype)
                 weight_2d_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
                 p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
-                rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                 rsy_reduce_db = T.alloc_ub((2, n_block), calc_dtype)  # DB for MTE3 overlap
                 sm_max_ub = T.alloc_ub(G, calc_dtype)
                 sm_sum_ub = T.alloc_ub(G, calc_dtype)
                 eps_sm_ub = T.alloc_ub(G, calc_dtype)
-                sm_2d_ub = T.alloc_ub((G, n_block), calc_dtype)
                 rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_bc_ub = T.alloc_ub((1, n_block), calc_dtype)
                 rsy_max_ub = T.alloc_ub((1,), calc_dtype)
@@ -616,6 +616,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     diff_ub = T.alloc_ub(n_block, calc_dtype)
                     diff_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                    rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
                     rg_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     ones_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
