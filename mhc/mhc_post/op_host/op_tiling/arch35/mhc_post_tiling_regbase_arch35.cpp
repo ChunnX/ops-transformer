@@ -35,6 +35,12 @@ constexpr uint32_t BF16_FP16_ALIGN_SIZE = 16;  // 16 elements = 32 bytes for bf1
 constexpr int64_t DB_BYTES_F32 = 8;  // DOUBLE_BUFFER_DEPTH * sizeof(float) = 2 * 4
 constexpr int64_t DB_BYTES_F16 = 4;  // DOUBLE_BUFFER_DEPTH * sizeof(T) = 2 * 2 (bf16/fp16)
 
+// RegBase capability thresholds
+constexpr int64_t REGBASE_BS_HALF_CORE_RATIO = 2;          // BS < AIV / RATIO
+constexpr int64_t REGBASE_D_LARGE_THRESHOLD = 4096;        // D > threshold
+constexpr int64_t REGBASE_BS_SMALL_TILE_LIMIT = 2048;      // BS > limit
+constexpr int64_t REGBASE_ND_SMALL_TILE_LIMIT = 8;         // N*D < limit
+
 // Input indices
 const static int64_t X_INPUT_INDEX = 0;       // x (B, S, n, D)
 const static int64_t H_RES_INPUT_INDEX = 1;   // h_res (B, S, n, n)
@@ -121,22 +127,26 @@ bool MhcPostTilingRegBaseArch35::IsCapable()
     uint32_t dimNum = xShape.GetDimNum();
 
     int64_t tt;
+    int64_t d;
     int64_t n;
     if (dimNum == DIM_NUM_4) {
         tt = xShape.GetDim(DIM_0) * xShape.GetDim(DIM_1);
         n = xShape.GetDim(DIM_2);
+        d = xShape.GetDim(DIM_3);
     } else if (dimNum == DIM_NUM_3) {
         tt = xShape.GetDim(DIM_0);
         n = xShape.GetDim(DIM_1);
+        d = xShape.GetDim(DIM_2);
     } else {
         return false;
     }
 
-    if (tt < static_cast<int64_t>(ascendcPlatform.GetCoreNumAiv()) / 2) {
+    if (tt < static_cast<int64_t>(ascendcPlatform.GetCoreNumAiv()) / REGBASE_BS_HALF_CORE_RATIO &&
+        d > REGBASE_D_LARGE_THRESHOLD) {
         return false;
     }
 
-    if (n < 4) {
+    if (tt > REGBASE_BS_SMALL_TILE_LIMIT && n * d < REGBASE_ND_SMALL_TILE_LIMIT) {
         return false;
     }
 
