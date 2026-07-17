@@ -58,7 +58,7 @@ aclnnStatus aclnnQuantLightningIndexer(
 ```
 
 ## aclnnQuantLightningIndexerGetWorkspaceSize
- 	 
+
 - **参数说明：**
 
 > [!NOTE]
@@ -430,7 +430,7 @@ aclnnStatus aclnnQuantLightningIndexer(
     aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
  ## 约束说明
- 	 
+
 - 确定性说明：aclnnQuantLightningIndexer默认确定性实现。
 - 参数query中的N支持小于等于64/32/24/16，key的N支持1。
 - headdim支持128。
@@ -439,6 +439,7 @@ aclnnStatus aclnnQuantLightningIndexer(
 - Atlas A3训练系列产品/Atlas A3推理系列产品：
   - query和key的数据类型支持`INT8`。
   - 仅支持weights、query_dequant_scale、key_dequant_scale数据类型为`FLOAT16、FLOAT16、FLOAT16`。
+  - key和key_dequant_scale不支持非连续。
 - Ascend 950PR/Ascend 950DT：
   - query N1仅支持8、16、24、32、64。
   - query和key的数据类型支持`FLOAT8_E4M3、HIFLOAT8、INT8`。
