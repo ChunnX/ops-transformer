@@ -320,7 +320,7 @@ AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
             reinterpret_cast<__gm__ AscendC::fp8_e8m0_t*>(x2Scale)), layoutScaleB);
     auto gmBias = AscendC::Te::MakeTensor(
         AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
-            reinterpret_cast<__gm__ float*>(nullptr)), layoutBias);
+            reinterpret_cast<__gm__ float*>(static_cast<uintptr_t>(0))), layoutBias);
     auto gmC = AscendC::Te::MakeTensor(
         AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
             reinterpret_cast<__gm__ YType*>(cGM)), layoutC);
