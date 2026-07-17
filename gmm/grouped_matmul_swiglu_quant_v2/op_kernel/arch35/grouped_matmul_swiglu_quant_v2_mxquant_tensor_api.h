@@ -25,7 +25,7 @@
 #endif
 
 #include "blaze/gemm/block/block_mmad_swiglu_mx.h"
-#include "blaze/gemm/block/block_scheduler_gmm_aswt_with_tail_split.h"
+#include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/kernel/kernel_gmm_swiglu_mx_tensor_api.h"
 #include "blaze/epilogue/block/block_epilogue_swiglu_mx_quant_te.h"
