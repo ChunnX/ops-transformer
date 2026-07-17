@@ -776,7 +776,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::TopKCompute()
         __local_mem__ uint32_t *indexAddr = (__local_mem__ uint32_t *)indexTensor.GetPhyAddr();
         __local_mem__ float *xSigmoidAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
         __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
-        __local_mem__ int32_t *expertIdxAddr = (__local_mem__ int32_t *)expertIdxTensor.GetPhyAddr();
+        __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxTensor.GetPhyAddr();
         uint32_t expertCountU32 = static_cast<uint32_t>(expertCount_);
         int32_t expertIdxPad = perGroupExpertCountAlign_ - perGroupExpertCount_;
         int32_t perGroupExpertCountAlign = perGroupExpertCountAlign_;
