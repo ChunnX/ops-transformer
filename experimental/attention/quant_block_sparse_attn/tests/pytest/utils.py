@@ -74,6 +74,7 @@ def _row_from_dict(params, result, fulfill_percent):
         "p_scale_value",
         "seed",
         "FLOPS",
+        "MFU*时间",
     ]
     row_data = {"case_name": params.get("Testcase_Name")}
     row_data.update({key: params.get(key) for key in keys if key != "Testcase_Name"})

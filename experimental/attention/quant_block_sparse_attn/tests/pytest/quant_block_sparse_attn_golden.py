@@ -414,7 +414,7 @@ def _log_cube_compute_amount(case_name, case, q_lengths, kv_lengths, sparse_indi
     logger.info(
         "MFU*时间计算公式: FLOPS(%d) / 算力(%.6f) = MFU * 时间 = %.6f",
         compute_info["cube_compute_amount"], capacity_info["cube_compute_capacity"], mfu_time)
-    return compute_info["cube_compute_amount"]
+    return compute_info["cube_compute_amount"], mfu_time
 
 
 def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
@@ -613,7 +613,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             f"quantBlockSparseAttn_{mode}_{case['layout_q']}_{case['layout_kv']}_"
             f"{batch}_{n1}_{n2}_{s1}_{s2}_{head_dim}"
         )
-    case["FLOPS"] = _log_cube_compute_amount(
+    case["FLOPS"], case["MFU*时间"] = _log_cube_compute_amount(
         case["Testcase_Name"], case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
 
     attention_out, softmax_lse = _reference_attention(
