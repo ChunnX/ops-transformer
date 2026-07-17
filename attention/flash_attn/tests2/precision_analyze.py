@@ -1,8 +1,18 @@
 import os
+import unicodedata
 
 import torch
 
 SEP = "━" * 80
+
+
+def _display_width(s):
+    """CJK 感知的字符串显示宽度。"""
+    w = 0
+    for c in str(s):
+        eaw = unicodedata.east_asian_width(c)
+        w += 2 if eaw in ("W", "F") else 1
+    return w
 
 DEFAULT_SCATTER_LIMIT = 10
 DEFAULT_SEGMENT_LIMIT = 10
@@ -20,22 +30,24 @@ def _col_names(shape, layout):
 # ═══════════════════════════════════════════════════════════════
 
 def _render_table(col_names, col_types, rows):
-    """先扫描算列宽, 统一 pad 输出。col_types: 'c'=坐标左对齐, 'n'=数字右对齐。"""
-    widths = [len(h) for h in col_names]
+    """先扫描算列宽(CJK感知), 统一 pad 输出。col_types: 'c'=坐标左对齐, 'n'=数字右对齐。"""
+    widths = [_display_width(h) for h in col_names]
     for row in rows:
         for i, cell in enumerate(row):
-            widths[i] = max(widths[i], len(str(cell)))
+            widths[i] = max(widths[i], _display_width(cell))
 
     header = "    " + "  ".join(h.rjust(w) for h, w in zip(col_names, widths))
     sep_line = "    " + "  ".join("─" * w for w in widths)
 
     lines = [header, sep_line]
     for row in rows:
-        line = "    " + "  ".join(
-            str(c).rjust(w) if col_types[i] == "n" else str(c).ljust(w)
-            for i, (c, w) in enumerate(zip(row, widths))
-        )
-        lines.append(line)
+        cells = []
+        for i, (c, w) in enumerate(zip(row, widths)):
+            s = str(c)
+            dw = _display_width(s)
+            pad = " " * max(0, w - dw)
+            cells.append(pad + s if col_types[i] == "n" else s + pad)
+        lines.append("    " + "  ".join(cells))
     return lines
 
 
