@@ -166,22 +166,127 @@ def _shapes_summary(data: dict) -> str:
     return " ".join(parts) if parts else "(no tensors)"
 
 
-def _run_stage(stages: set, stage_name: str, compute_fn, case_set: str,
-               case_id: str, note: str = ""):
-    """执行阶段(在stages中: 计算+保存pt) 或 从pt加载(pt不存在返回None), 内聚 start/done/skip 日志。"""
-    if stage_name not in stages:
-        pt = _pt_path(case_set, case_id, stage_name)
-        loaded = _load_pt(pt) if pt.exists() else None
+def _exec_or_load(stages: set, stage_name: str, compute_fn, case_set: str,
+                  case_id: str, extra: str = ""):
+    """执行阶段(若在stages中)并保存pt, 否则从pt加载, pt不存在则返回None。
+    内聚 start/done/skip 计时日志, extra 追加到 start 行 (如 npu_mode)。"""
+    if stage_name in stages:
+        if extra:
+            logger.info("[%s]  start | %s", stage_name, extra)
+        else:
+            logger.info("[%s]  start", stage_name)
+        t0 = time.perf_counter()
+        output = compute_fn()
+        logger.info("[%s]  done  | %.2fs | %s", stage_name, time.perf_counter() - t0,
+                    _shapes_summary(output) if output else "(none)")
+        _save_pt(output, _pt_path(case_set, case_id, stage_name))
+        return output
+    pt = _pt_path(case_set, case_id, stage_name)
+    if pt.exists():
+        output = _load_pt(pt)
         logger.info("[%s]  skip  | %s", stage_name,
-                    _shapes_summary(loaded) if loaded else "pt not found")
-        return loaded
-    logger.info("[%s]  start | %s", stage_name, note)
+                    _shapes_summary(output) if output else "(none)")
+        return output
+    logger.info("[%s]  skip  | pt not found", stage_name)
+    return None
+
+
+# ============ Stages ============
+def _stage_gen(stages: set, params: dict, case_set: str, case_id: str):
+    """生成输入。start 日志含参数摘要, 与统一格式不同, 故内联。"""
+    if "gen" in stages:
+        gen = GenDataBackend()
+        logger.info("[gen]  start | %s", _params_summary(params))
+        t0 = time.perf_counter()
+        inputs = gen.gen_inputs(gen.normalize_params(params))
+        logger.info("[gen]  done  | %.2fs | %s", time.perf_counter() - t0, _shapes_summary(inputs))
+        _save_pt(inputs, _pt_path(case_set, case_id, "input"))
+        return inputs
+    logger.info("[gen]  skip  | loading from pt")
+    return _load_pt(_pt_path(case_set, case_id, "input"))
+
+
+def _stage_cpu(stages: set, inputs: dict, case_set: str, case_id: str):
+    """CPU 计算。"""
+    cpu = CpuBackend()
+    return _exec_or_load(stages, "cpu", lambda: cpu.cpu_compute(inputs),
+                         case_set, case_id)
+
+
+def _stage_npu(stages: set, inputs: dict, npu_mode: str, case_set: str, case_id: str):
+    """NPU 计算 (extra=npu_mode 显示在 start 行)。"""
+    npu = NpuBackend()
+    return _exec_or_load(
+        stages, "npu",
+        lambda: npu.npu_compute(_to_device(inputs, "npu"), npu_mode),
+        case_set, case_id, extra=npu_mode)
+
+
+def _stage_gpu(stages: set, inputs: dict, case_set: str, case_id: str):
+    """GPU 计算 (仅 stages 时执行+save, 不加载; 否则返回 None)。"""
+    if "gpu" not in stages:
+        return None
+    from core.gpu import GpuBackend
+    gpu = GpuBackend()
+    logger.info("[gpu]  start")
     t0 = time.perf_counter()
-    output = compute_fn()
-    _save_pt(output, _pt_path(case_set, case_id, stage_name))
-    logger.info("[%s]  done  | %.2fs | %s", stage_name, time.perf_counter() - t0,
-                _shapes_summary(output) if output else "(none)")
-    return output
+    gpu_out = gpu.gpu_compute(_to_device(inputs, "cuda"))
+    logger.info("[gpu]  done  | %.2fs | %s", time.perf_counter() - t0, _shapes_summary(gpu_out))
+    _save_pt(gpu_out, _pt_path(case_set, case_id, "gpu"))
+    return gpu_out
+
+
+def _stage_compare(stages: set, cpu_out, npu_out, gpu_out, params: dict,
+                   reporter: "Reporter", case_id: str, result_dir: str,
+                   verbose_diff, chunk_size: int, comparator: Comparator) -> dict:
+    """精度比对 + 失败分析 + 记录。"""
+    result = {"passed": True, "fail_msg": ""}
+    if "compare" not in stages:
+        return result
+    if cpu_out is None or npu_out is None:
+        raise RuntimeError(
+            "compare 阶段缺少 cpu/npu 输出 (上游未执行且无 pt 缓存)")
+    logger.info("[cmp]  start")
+    t0 = time.perf_counter()
+    if gpu_out is not None:
+        result = comparator.compare_three_way(
+            cpu_out, npu_out, gpu_out, chunk_size=chunk_size)
+    else:
+        result = comparator.compare_two_way(
+            cpu_out, npu_out, chunk_size=chunk_size)
+    logger.info("[cmp]  done  | %.2fs", time.perf_counter() - t0)
+    for key, m in result.items():
+        if isinstance(m, dict):
+            status = "PASS" if m.get("passed") else "FAIL"
+            logger.info("[cmp]  %s | %s: max_abs=%.6f fail_ratio=%.4f%%",
+                        status, key, m.get("max_abs", 0), m.get("fail_ratio", 0) * 100)
+    result["fail_msg"] = "" if result.get("passed", False) else "compare failed"
+    if not result.get("passed", False):
+        layout = params.get("layout_out", "")
+        print(analyze_failure(cpu_out, npu_out, result,
+                              case_dir=result_dir, verbose=verbose_diff,
+                              layout=layout))
+    reporter.record(case_id, result, dtype=params.get("dtype", ""))
+    return result
+
+
+def _run_profs(stages: set, case_id: str, result_dir: str):
+    """prof 阶段 (接口未定, 暂为 NotImplementedError 占位)。"""
+    if "npuprof" in stages:
+        from prof.npuprof import run_msprof
+        _run_prof_stage("npuprof", run_msprof, case_id, result_dir)
+    if "npuprofop" in stages:
+        from prof.npuprofop import run_msprof_op
+        _run_prof_stage("npuprofop", run_msprof_op, case_id, result_dir)
+    if "gpuprof" in stages:
+        from prof.gpuprof import run_gpuprof
+        _run_prof_stage("gpuprof", run_gpuprof, case_id, result_dir)
+    if "l2_flush" in stages:
+        from prof.l2_flush import flush_l2_cache
+        try:
+            flush_l2_cache()
+        except NotImplementedError:
+            pass
 
 
 # ============ Engine ============
@@ -193,84 +298,19 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
     case_id = params.get("case_id", params.get("name", ""))
     result_dir = str(Path("result") / case_id)
     dtype = params.get("dtype", "")
-    result = {"passed": True, "fail_msg": ""}
-    inputs = None
-    cpu_out = None
-    npu_out = None
-    gpu_out = None
     if comparator is None:
         comparator = DefaultComparator()
+    result = {"passed": True, "fail_msg": ""}
+    inputs = cpu_out = npu_out = gpu_out = None
     try:
-        gen = GenDataBackend()
-        cpu = CpuBackend()
-        npu = NpuBackend()
-
-        if "gen" in stages:
-            logger.info("[gen]  start | %s", _params_summary(params))
-            t0 = time.perf_counter()
-            inputs = gen.gen_inputs(gen.normalize_params(params))
-            logger.info("[gen]  done  | %.2fs | %s", time.perf_counter() - t0, _shapes_summary(inputs))
-            _save_pt(inputs, _pt_path(case_set, case_id, "input"))
-        else:
-            logger.info("[gen]  skip  | loading from pt")
-            inputs = _load_pt(_pt_path(case_set, case_id, "input"))
-
-        cpu_out = _run_stage(stages, "cpu", lambda: cpu.cpu_compute(inputs),
-                             case_set, case_id)
-        npu_out = _run_stage(stages, "npu",
-                             lambda: npu.npu_compute(_to_device(inputs, "npu"), npu_mode),
-                             case_set, case_id, note=npu_mode)
-
-        if "gpu" in stages:
-            from core.gpu import GpuBackend
-            gpu = GpuBackend()
-            dev_inputs = _to_device(inputs, "cuda")
-            logger.info("[gpu]  start")
-            t0 = time.perf_counter()
-            gpu_out = gpu.gpu_compute(dev_inputs)
-            logger.info("[gpu]  done  | %.2fs | %s", time.perf_counter() - t0, _shapes_summary(gpu_out))
-            _save_pt(gpu_out, _pt_path(case_set, case_id, "gpu"))
-            del dev_inputs
-
-        if "compare" in stages and cpu_out is not None and npu_out is not None:
-            logger.info("[cmp]  start")
-            t0 = time.perf_counter()
-            if gpu_out is not None:
-                result = comparator.compare_three_way(
-                    cpu_out, npu_out, gpu_out, chunk_size=chunk_size)
-            else:
-                result = comparator.compare_two_way(
-                    cpu_out, npu_out, chunk_size=chunk_size)
-            logger.info("[cmp]  done  | %.2fs", time.perf_counter() - t0)
-            for key, m in result.items():
-                if isinstance(m, dict):
-                    status = "PASS" if m.get("passed") else "FAIL"
-                    logger.info("[cmp]  %s | %s: max_abs=%.6f fail_ratio=%.4f%%",
-                                status, key, m.get("max_abs", 0), m.get("fail_ratio", 0) * 100)
-            result["fail_msg"] = "" if result.get("passed", False) else "compare failed"
-            if not result.get("passed", False):
-                layout = params.get("layout_out", "")
-                print(analyze_failure(cpu_out, npu_out, result,
-                                      case_dir=result_dir, verbose=verbose_diff,
-                                      layout=layout))
-            reporter.record(case_id, result, dtype=dtype)
-
-        if "npuprof" in stages:
-            from prof.npuprof import run_msprof
-            _run_prof_stage("npuprof", run_msprof, case_id, result_dir)
-        if "npuprofop" in stages:
-            from prof.npuprofop import run_msprof_op
-            _run_prof_stage("npuprofop", run_msprof_op, case_id, result_dir)
-        if "gpuprof" in stages:
-            from prof.gpuprof import run_gpuprof
-            _run_prof_stage("gpuprof", run_gpuprof, case_id, result_dir)
-        if "l2_flush" in stages:
-            from prof.l2_flush import flush_l2_cache
-            try:
-                flush_l2_cache()
-            except NotImplementedError:
-                pass
-
+        inputs = _stage_gen(stages, params, case_set, case_id)
+        cpu_out = _stage_cpu(stages, inputs, case_set, case_id)
+        npu_out = _stage_npu(stages, inputs, npu_mode, case_set, case_id)
+        gpu_out = _stage_gpu(stages, inputs, case_set, case_id)
+        result = _stage_compare(stages, cpu_out, npu_out, gpu_out, params,
+                                reporter, case_id, result_dir,
+                                verbose_diff, chunk_size, comparator)
+        _run_profs(stages, case_id, result_dir)
         return result
     except Exception as e:
         logger.error("[err]  %s: %s", type(e).__name__, e)
@@ -285,12 +325,7 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
             torch.npu.empty_cache()
         if "gpu" in stages:
             torch.cuda.empty_cache()
-        if inputs is not None:
-            del inputs
-        if cpu_out is not None:
-            del cpu_out
-        if npu_out is not None:
-            del npu_out
-        if gpu_out is not None:
-            del gpu_out
+        for t in (inputs, cpu_out, npu_out, gpu_out):
+            if t is not None:
+                del t
         gc.collect()
