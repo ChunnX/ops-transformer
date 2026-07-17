@@ -27,8 +27,8 @@ layout_out = "BSND"
 # quant_mode = torch.ops.npu_ops_transformer.npu_mixed_quant_flash_attn._QuantMode.A16C4_MXFP4
 # 创建实际序列长度 tensor（可选）
 q = torch.randn(batch_size, qs, num_heads_q, head_dim).to(dtype=torch.float16).npu()
-k = torch.randn(batch_size, block_size, num_heads_kv, head_dim // 2).to(dtype=torch.uint8).npu()
-v = torch.randn(batch_size, block_size, num_heads_kv, head_dim // 2).to(dtype=torch.uint8).npu()
+k = torch.randn(num_blocks, block_size, num_heads_kv, head_dim // 2).to(dtype=torch.uint8).npu()
+v = torch.randn(num_blocks, block_size, num_heads_kv, head_dim // 2).to(dtype=torch.uint8).npu()
 k_descale = torch.randn(num_blocks, block_size, num_heads_kv, int(head_dim / 32)).to(dtype=torch.float8_e8m0fnu).npu()
 v_descale = torch.randn(num_blocks, block_size, num_heads_kv, int(head_dim / 32)).to(dtype=torch.float8_e8m0fnu).npu()
 seqused_kv = torch.tensor([1024], dtype=torch.int32, device="npu")

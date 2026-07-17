@@ -102,9 +102,6 @@ public:
 
     QSeqParserType *qActSeqLensParser = nullptr;
 
-    TEventID mte3ToVId[2]; 
-    TEventID vToMte3Id[2];
-
     bool isFd = false;
 
     const ConstInfoX &constInfo;
@@ -367,7 +364,7 @@ public:
             copyInPadParams.leftPadding = 0;
             copyInPadParams.rightPadding = 0;
             copyInPadParams.paddingValue = 0;
-            DataCopyPad(dstLocal[copyFinishRowCnt * grpNum], srcGm[curOffset],
+            DataCopyPad(dstLocal[(copyFinishRowCnt * grpNum) >> 1], srcGm[curOffset >> 1],
                         copyInParams, copyInPadParams);
             copyFinishRowCnt += copyRowCnt;
             curSequence += copyRowCnt;
@@ -467,12 +464,10 @@ public:
         SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[0]);
         SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[1]);
 
-        mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();	 
-        mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();	 
-        vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();	 
-        vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();	 
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);	 
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
+        SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[0]);
+        SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[1]);
+        SetFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[0]);
+        SetFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[1]);       
     }
 
     __aicore__ inline void FreeEventID()
@@ -490,12 +485,10 @@ public:
         WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[0]);
         WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[1]);
 
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);	 
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);	 
-        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[0]);	 
-        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[1]);	 
-        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[0]);	 
-        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[1]);
+        WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[0]);
+        WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[1]);
+        WaitFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[0]);
+        WaitFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[1]);  
     }
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
@@ -674,7 +667,7 @@ public:
         int64_t vec2CalcSize = runInfo.actVecMSize * dTemplateAlign64;
         LocalTensor<T> vec2ResUb = stage2OutBuf.template Get<T>();
         LocalTensor<T> mm2Res = bmm2ResBuf.template GetTensor<T>();
-        WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[0]);
 
         if (unlikely(runInfo.isFirstS2Loop)) {
             DataCopy(vec2ResUb, mm2Res, vec2CalcSize);
@@ -702,7 +695,7 @@ public:
             }
             CopyOutAttentionOut(runInfo, vec2ResUb, 0, runInfo.actVecMSize);
         }
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
+        SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[0]);
     }
 
     __aicore__ inline void CopyOutAttentionOut(RunInfoX runInfo, LocalTensor<T> &vec2ResUb,
@@ -726,8 +719,8 @@ public:
         int64_t dSizeAligned64 = (int64_t)dVBaseSize;
         attenOut.SetAddr(vec2ResUb.address_);
         Cast(attenOut, vec2ResUb, RoundMode::CAST_ROUND, mDealSize * dSizeAligned64);
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[0]);
+        SetFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[0]);
+        WaitFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[0]);
         Bmm2DataCopyOutTrans(runInfo, attenOut, mStartVec, mDealSize);
     }
 
@@ -775,8 +768,8 @@ public:
                                                 uint32_t mStartVec, uint32_t mDealSize)
     {
         int64_t dSizeAligned64 = (int64_t)dVBaseSize;
-        SetFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3Id[runInfo.loop & (DB - 1)]);
+        SetFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[runInfo.loop & (DB - 1)]);
+        WaitFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[runInfo.loop & (DB - 1)]);
         uint64_t gmOffset = runInfo.faTmpOutWsPos * mBaseSize * constInfo.dSizeV +
                             (runInfo.vecMbaseIdx + mStartVec) * constInfo.dSizeV;
         DataCopyExtParams dataCopyParams;

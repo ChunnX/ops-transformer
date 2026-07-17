@@ -109,6 +109,9 @@ static constexpr uint32_t MQFA_V_MTE2_KV_V[2] = {6, 7};
 static constexpr uint32_t MQFA_V_MTE3_V[2] = {2, 3};
 static constexpr uint32_t MQFA_MTE3_V_V[2] = {2, 3};
 
+static constexpr uint32_t MQFA_V_MTE3_VEC2[2] = {4, 5};
+static constexpr uint32_t MQFA_MTE3_V_VEC2[2] = {4, 5};
+
 static constexpr uint64_t MQFA_SYNC_MODE = 4;
 
 static constexpr uint32_t MQFA_NEGATIVE_MIN_VALUE_FP32 = 0xFF7FFFFF;
