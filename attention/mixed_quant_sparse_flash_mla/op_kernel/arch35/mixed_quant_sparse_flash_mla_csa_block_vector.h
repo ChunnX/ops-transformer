@@ -97,6 +97,7 @@ public:
     static constexpr uint32_t DATABLOCK_BYTES = 32;
     static constexpr uint32_t uint64Touint8 = sizeof(uint64_t) / sizeof(uint8_t);
     static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
+    bool isSoftmaxLseGmValid = false;  // 标记 softmaxLseGm 是否已有效 SetGlobalBuffer
     // ==================== Functions ======================
     __aicore__ inline CSABlockVec() {};
     __aicore__ inline void InitVecBlock(TPipe *pipe, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensOriKv,
@@ -1190,7 +1191,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
             workspaceIdx, stagingMOffset, runInfo.halfMRealSize,
             maxUb, sumUb, tmpUb, vToMte3Id, mte3ToVId);
     }
-    if (constInfo.isSoftmaxLseEnable && runInfo.halfMRealSize > 0 &&
+    if (constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid && runInfo.halfMRealSize > 0 &&
         runInfo.s2LoopCount == runInfo.s2LoopLimit) {
         LocalTensor<float> outLse = this->outLseBuf[runInfo.multiCoreIdxMod2].template Get<float>();
         DataCopyExtParams lseParams;
@@ -1354,7 +1355,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
-    if (constInfo.isSoftmaxLseEnable) {
+    if (constInfo.isSoftmaxLseEnable && this->isSoftmaxLseGmValid) {
         uint64_t totalLseSize = 0;
         if constexpr (LAYOUT_T == QSMLA_LAYOUT::BSND) {
             totalLseSize = constInfo.bSize * constInfo.n2Size * constInfo.gSize * constInfo.s1Size;
@@ -1384,6 +1385,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *a
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
         if (constInfo.isSoftmaxLseEnable && softmaxLse != nullptr) {
             this->softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
+            this->isSoftmaxLseGmValid = true;
         }
         if (constInfo.needInit == 1) {
             SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);

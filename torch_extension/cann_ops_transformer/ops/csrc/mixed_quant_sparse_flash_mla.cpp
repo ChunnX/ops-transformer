@@ -89,7 +89,7 @@ ConstructMixedQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::T
                                                 std::string layoutKvStr, const uint64_t &ropeHeadDim,
                                                 bool returnSoftmaxLse)
 {
-    printf("construct_mixed_quant_sparse_flash_mla_atten_out_tensor 开始\n");
+    printf("construct_mixed_quant_sparse_flash_mla_atten_out_tensor start\n");
     TORCH_CHECK(layoutQStr == "BSND" || layoutQStr == "TND", "The layout of query only support BSND and TND, but got ",
                 layoutQStr);
     for (auto i = 0; i < q.sizes().size(); i++) {
@@ -114,12 +114,14 @@ ConstructMixedQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::T
     at::Tensor attenOut = at::empty(attenOutSize, q.options().dtype(q.dtype()));
 
     if (!attenOut.defined()) {
-        printf("[aclnnMixedQuantSparseFlashMla] atten_out 制作失败\n");
+        printf("[aclnnMixedQuantSparseFlashMla] atten_out creation failed\n");
     } else {
-        printf("[aclnnMixedQuantSparseFlashMla] atten_out 制作完成\n");
+        printf("[aclnnMixedQuantSparseFlashMla] atten_out creation succeeded\n");
     }
 
     if (returnSoftmaxLse) {
+        TORCH_CHECK(oriKv.size(DIM_1) > 0, "oriKv.size(DIM_1) must be greater than 0, but got ", oriKv.size(DIM_1));
+        TORCH_CHECK(oriKv.size(DIM_2) > 0, "oriKv.size(DIM_2) must be greater than 0, but got ", oriKv.size(DIM_2));
         if (layoutQStr == "BSND") {
             int64_t dim0 = static_cast<int64_t>(q.size(DIM_0));
             int64_t dim1 = static_cast<int64_t>(oriKv.size(DIM_2));
@@ -145,9 +147,9 @@ ConstructMixedQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::T
     }
     at::Tensor softmaxLse = at::empty(softmaxLseSize, q.options().dtype(torch::kFloat32));
     if (!softmaxLse.defined()) {
-        printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 制作失败\n");
+        printf("[aclnnMixedQuantSparseFlashMla] softmax_lse creation failed\n");
     } else {
-        printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 制作完成\n");
+        printf("[aclnnMixedQuantSparseFlashMla] softmax_lse creation succeeded\n");
     }
 
     return std::tuple<at::Tensor, at::Tensor>(attenOut, softmaxLse);
