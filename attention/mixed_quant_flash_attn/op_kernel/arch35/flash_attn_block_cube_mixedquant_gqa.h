@@ -309,6 +309,10 @@ public:
             CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[0] + 16);
             CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[1]);
             CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[1] + 16);
+            CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[2]);
+            CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[2] + 16);
+            CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[3]);
+            CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_CV_L1_EVENT[3] + 16);
         }
     }
 
@@ -319,6 +323,10 @@ public:
             CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[0] + 16);
             CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[1]);
             CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[1] + 16);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[2]);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[2] + 16);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[3]);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE1>(MQFA_VC_L1_EVENT[3] + 16);
         }
     }
 
@@ -575,7 +583,7 @@ public:
                                     (uint32_t)runInfo.actSingleLoopS2Size, false, false,
                                     true, true, 0, (uint32_t)runInfo.actMSize);
 
-        MatmulN<Q_T, Q_T, MM_T, mBaseSize, dVBaseSize, s2BaseSize, ABLayout::MK, ABLayout::KN>(
+        MatmulN<Q_T, Q_T, MM_T, mBaseSize, 64, s2BaseSize, ABLayout::MK, ABLayout::KN>(
         mm2A.GetTensor<Q_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers, mm2ResL0C.GetTensor<MM_T>(), param);
         mm2ResL0C.Set<HardEvent::M_FIX>();
         mm2ResL0C.Wait<HardEvent::M_FIX>();

@@ -351,6 +351,7 @@ public:
             // bmm1Buffers.Get().SetCrossCore();
             // bmm2Buffers.Get().SetCrossCore();
             bmmBuffers.Get().SetCrossCore();
+            bmmBuffers.Get().SetCrossCore();
         }
     }
 
@@ -359,7 +360,8 @@ public:
         if ASCEND_IS_AIC {
             // bmm1Buffers.Get().WaitCrossCore();
             // bmm2Buffers.Get().WaitCrossCore();
-            bmmBuffers.Get().WaitCrossCore();
+            // bmmBuffers.Get().WaitCrossCore();
+            // bmmBuffers.Get().WaitCrossCore();
         }
     }
 

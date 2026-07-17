@@ -264,10 +264,12 @@ public:
         constexpr uint32_t grpNum = dBaseSize / MQFA_GRP_SIZE;
         // FP4为4bit打包类型，每个字节存储2个FP4元素，因此kvInBufSize按字节计算时需除以2
         constexpr uint32_t kvInBufSize = dAlign64 * s2BaseSize / 2;
-        constexpr uint32_t kvOutBufSize = dAlign64 * s2BaseSize * sizeof(QINPUT_T);
+        constexpr uint32_t kvOutBufSize = dAlign64 * s2BaseSize * sizeof(QINPUT_T) / 2;
         // Scale类型为FP8E8M0，每个元素占1字节
         constexpr uint32_t scaleInBufSize = s2BaseSize * grpNum;
         constexpr uint32_t scaleResBufSize = s2BaseSize * grpNum * sizeof(bfloat16_t);
+        constexpr uint32_t stage1OutQueSize = (mBaseSize / CV_RATIO + 1) * s2BaseSize * sizeof(QINPUT_T);
+        constexpr uint32_t stage2OutQueSize = mBaseSize / CV_RATIO * dAlign64 * sizeof(T);
 
         for (uint32_t i = 0; i < MQFA_KV_IN_BUF_NUM; i++) {
             tPipe->InitBuffer(kvInBuf[i], kvInBufSize);
@@ -280,10 +282,6 @@ public:
 
         tPipe->InitBuffer(SharedBuffer2[0], 1, 8192);
         tPipe->InitBuffer(SharedBuffer2[1], 1, 8192);
-        tPipe->InitBuffer(SharedBuffer3, 32768);
-        tPipe->InitBuffer(SharedBuffer1[0], 1, 33024);
-        tPipe->InitBuffer(SharedBuffer1[1], 1, 33024);
-
         tPipe->InitBuffer(softmaxSumBuf[0], 256);
         tPipe->InitBuffer(softmaxSumBuf[1], 256);
         tPipe->InitBuffer(softmaxSumBuf[2], 256);
@@ -296,6 +294,9 @@ public:
         tPipe->InitBuffer(maxBrdcst, 1, 2048);
         tPipe->InitBuffer(sumBrdcst, 1, 2048);
         tPipe->InitBuffer(commonTBuf, 512);
+        tPipe->InitBuffer(SharedBuffer3, 32768);
+        tPipe->InitBuffer(SharedBuffer1[0], 1, stage1OutQueSize);
+        tPipe->InitBuffer(SharedBuffer1[1], 1, stage2OutQueSize);
 
         if (constInfo.isSoftmaxLseEnable) {
             tPipe->InitBuffer(softmaxLseQueue, 1, (mBaseSize >> 1U) * sizeof(float) * 8);
@@ -360,9 +361,10 @@ public:
             if (constInfo.paLayoutType == static_cast<uint32_t>(MqfaPaLayoutType::BNBD)) {
                 copyInParams.srcStride = 0;
             }
-            copyInPadParams.isPad = false;
+            uint32_t  blockLenAlign32 = ((copyInParams.blockLen + blockBytes - 1) / blockBytes) / sizeof(QINPUT_T);
+            copyInPadParams.isPad = true;
             copyInPadParams.leftPadding = 0;
-            copyInPadParams.rightPadding = 0;
+            copyInPadParams.rightPadding = blockLenAlign32 - copyInParams.blockLen / sizeof(QINPUT_T);
             copyInPadParams.paddingValue = 0;
             DataCopyPad(dstLocal[(copyFinishRowCnt * grpNum) >> 1], srcGm[curOffset >> 1],
                         copyInParams, copyInPadParams);
@@ -978,8 +980,8 @@ public:
 
         LocalTensor<QINPUT_T> scaleE8M0Ub = scaleInBuf.Get<QINPUT_T>();
         LocalTensor<QINPUT_T> scaleBf16Ub = scaleResBuf.Get<QINPUT_T>();
-        LocalTensor<KV_T> kvInUb = kvInBuf[taskId % MQFA_KV_IN_BUF_NUM].Get<KV_T>();
-        LocalTensor<QINPUT_T> kvOutUb = kvOutBuf[idx].Get<QINPUT_T>();
+        LocalTensor<KV_T> kvInUb = kvInBuf[subTaskId % MQFA_KV_IN_BUF_NUM].Get<KV_T>();
+        LocalTensor<QINPUT_T> kvOutUb = kvOutBuf[subTaskId % MQFA_KV_OUT_BUF_NUM].Get<QINPUT_T>();
 
         LoadAndConvertScale(scaleE8M0Ub, scaleBf16Ub, kDeScaleGm, runInfo, copyTotalS, grpNum,
                             idx, MQFA_MTE2_V_SCALE_K, MQFA_V_MTE2_SCALE_K);
@@ -1007,8 +1009,8 @@ public:
 
         LocalTensor<QINPUT_T> scaleE8M0Ub = scaleInBuf.Get<QINPUT_T>();
         LocalTensor<QINPUT_T> scaleBf16Ub = scaleResBuf.Get<QINPUT_T>();
-        LocalTensor<KV_T> kvInUb = kvInBuf[taskId % MQFA_KV_IN_BUF_NUM].Get<KV_T>();
-        LocalTensor<QINPUT_T> kvOutUb = kvOutBuf[idx].Get<QINPUT_T>();
+        LocalTensor<KV_T> kvInUb = kvInBuf[subTaskId % MQFA_KV_IN_BUF_NUM].Get<KV_T>();
+        LocalTensor<QINPUT_T> kvOutUb = kvOutBuf[subTaskId % MQFA_KV_OUT_BUF_NUM].Get<QINPUT_T>();
 
         LoadAndConvertScale(scaleE8M0Ub, scaleBf16Ub, vDeScaleGm, runInfo, copyTotalS, grpNum,
                             idx, MQFA_MTE2_V_SCALE_V, MQFA_V_MTE2_SCALE_V);
