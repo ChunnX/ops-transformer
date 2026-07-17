@@ -30,13 +30,26 @@
 #define MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC 0
 #define MEGA_MOE_GMM2_FANIN_PRIVATE_COMPACT 1
 #define MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED 2
+#define MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE 3
 #ifndef MEGA_MOE_GMM2_FANIN_MODE
-#define MEGA_MOE_GMM2_FANIN_MODE MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC
+#define MEGA_MOE_GMM2_FANIN_MODE MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
 #endif
 #if MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC && \
     MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_PRIVATE_COMPACT && \
-    MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED
+    MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED && \
+    MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
 #error "invalid MEGA_MOE_GMM2_FANIN_MODE"
+#endif
+
+// Number of int32 elements reserved per AIC arrival.  The default 16 keeps
+// writers on distinct 64B cache lines.  Set this one value to 1 for the
+// compact-layout A/B; the GM layout, reset size and AIV1 reduction adapt
+// together without extra compiler options.
+#ifndef MEGA_MOE_GMM2_READY_CORE_STRIDE
+#define MEGA_MOE_GMM2_READY_CORE_STRIDE 16
+#endif
+#if MEGA_MOE_GMM2_READY_CORE_STRIDE < 1
+#error "MEGA_MOE_GMM2_READY_CORE_STRIDE must be positive"
 #endif
 
 namespace {
@@ -246,21 +259,28 @@ struct WorkspaceInfo {
         if (useMteNoQuantGmm2Gm) {
             gmm2NoQuantReadyPtr = base + workspaceSize;
             // slotIdx is expertIdx in PER_EXPERT mode and batchIdx in
-            // PER_BATCH mode.  The strided A/B gives every AIC a private
-            // 512B line; shared/compact A/Bs need one 512B line per slot.
+            // PER_BATCH mode.  The all-AIV reduction A/B uses a configurable
+            // int32 stride per AIC and keeps each generation 64B aligned.
             int64_t readyStrideBytes = ALIGN_512;
 #if MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED
             readyStrideBytes *= static_cast<int64_t>(tilingData->aicNum);
+#elif MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
+            readyStrideBytes = Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum) *
+                                                        static_cast<int64_t>(MEGA_MOE_GMM2_READY_CORE_STRIDE) *
+                                                        static_cast<int64_t>(SIZE_INT_32),
+                                                    static_cast<int64_t>(64));
 #endif
             int64_t readyBytes = static_cast<int64_t>(tilingData->expertPerRank) * readyStrideBytes;
             workspaceSize += Ops::Base::CeilAlign(readyBytes, static_cast<int64_t>(ALIGN_512));
 
+#if MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
             // One private 512B release line for every (slot, logical AIV1).
             // The coordinator publishes the whole slot with one MTE3 copy.
             gmm2NoQuantReleasePtr = base + workspaceSize;
             int64_t releaseBytes = static_cast<int64_t>(tilingData->expertPerRank) *
                                    static_cast<int64_t>(tilingData->aicNum) * ALIGN_512;
             workspaceSize += Ops::Base::CeilAlign(releaseBytes, static_cast<int64_t>(ALIGN_512));
+#endif
         }
 
         // Combine synchronization workspace buffers.
