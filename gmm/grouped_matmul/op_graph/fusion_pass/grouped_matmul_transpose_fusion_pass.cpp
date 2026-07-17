@@ -422,7 +422,8 @@ Status CheckGmmNode(GNode& groupedMatmulNode)
         OP_LOGD(kPassName, "Only one x and one weight input are supported by this fusion pass.");
         return GRAPH_NOT_CHANGED;
     }
-    if (GetInputNode(groupedMatmulNode, kXIndex) == nullptr || GetInputNode(groupedMatmulNode, kWeightIndex) == nullptr) {
+    if (GetInputNode(groupedMatmulNode, kXIndex) == nullptr ||
+        GetInputNode(groupedMatmulNode, kWeightIndex) == nullptr) {
         OP_LOGW(kPassName, "GroupedMatmul x/weight input node is null.");
         return GRAPH_NOT_CHANGED;
     }
