@@ -51,14 +51,14 @@ struct CcuMemInfo {
     uint32_t resv{0};
 };
 
-// MS_BLOCK 的 bitmap
 constexpr uint64_t CCU_MEMTYPE_MS_BLOCK0 = 1ULL << 32;
 constexpr uint64_t CCU_MEMTYPE_MS_BLOCK1 = 1ULL << 33;
 constexpr uint64_t CCU_MEMTYPE_MS_BLOCK2 = 1ULL << 34;
 constexpr uint64_t CCU_MEMTYPE_MS_BLOCK3 = 1ULL << 35;
 
-// hcomm 暴露的两个 C 接口
+// hcomm 暴露的接口
 extern "C" CcuResult CcuGetTlvHandle(uint32_t devLogicId, void **outTlvHandle);
+extern "C" CcuResult CcuPutTlvHandle(void *tlvHandle);
 extern "C" CcuResult CcuGetMemInfo(void *tlvHandle, uint32_t udieIdx, uint64_t memTypeBitmap,
                                     void *memInfoList, uint32_t count);
 
@@ -241,6 +241,9 @@ int main(int argc, char *argv[])
 
     // ========== 释放资源 ==========
     aclrtFree(timeGm);
+    if (tlvHandle != nullptr) {
+        CcuPutTlvHandle(tlvHandle);
+    }
     HcclCommDestroy(comms);
     aclrtDestroyStream(stream);
     aclrtDestroyContext(context);
