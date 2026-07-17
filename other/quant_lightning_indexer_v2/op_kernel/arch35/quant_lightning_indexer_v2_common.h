@@ -214,20 +214,16 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }  // namespace QLIV2Common
 
 // bank冲突优化
-// 新芯片 bank layout: 4 banks/group × 8 groups, 每 bank 256B, sub-bank 16B
-// 冲突条件: (addr/256)%4 相同 且 (addr/1024)%8 相同
-//
-// 解QK 4路并发冲突: qkStride 附加 256B 偏移, Fixpipe 按 S1 行组拆分写入
-#define UB_BLOCK              32
+// david 256KB bank layout
+// shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
+// stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
+#define UB_BLOCK              32   // 32B
 #define UB_BANK_GROUPS        8
-#define UB_BANKS              4     // 新芯片 4 banks/group (950 为 2)
-#define UB_BANK_DEPTH         384   // 384KB / 1024B
+#define UB_BANKS              2
+#define UB_BANK_DEPTH         512
 
+#define UB_BANK_GROUP_STRIDE  UB_BLOCK                                   // 32B
 #define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
-#define UB_BANK_GROUP_STRIDE  (UB_BANKS * UB_BANK_STRIDE)               // 1024B
-#define UB_BANK_DEPTH_STRIDE  (2 * UB_BANK_GROUPS * UB_BLOCK)           // 512B (保持950值, kernel硬编码依赖)
-
-// qkStride 附加偏移: 使不同 S1 行组落不同 bank (解 4 路并发读冲突)
-#define QLIV2_BANK_OFF_QK_S1     256    // 256B → bank+1
+#define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 512B
 
 #endif  // QUANT_LIGHTNING_INDEXER_V2_COMMON_H
