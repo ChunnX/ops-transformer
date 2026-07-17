@@ -383,15 +383,15 @@ __aicore__ inline void DLITMatmulService<DLIT>::LoadDataMmA(LocalTensor<Q_T> &aL
     uint32_t alignM = AlignTo(mmParam.singleM, static_cast<uint32_t>(C0_SIZE));
     uint32_t alignK = AlignTo(mmParam.singleK, static_cast<uint32_t>(C0_SIZE));
 
-    LoadData2DParams loadData2DParams;
-    loadData2DParams.startIndex = 0;
-    loadData2DParams.repeatTimes = alignK / C0_SIZE;
+    LoadData2DParamsV2 loadData2DParams;
+    loadData2DParams.mStartPosition = 0;
+    loadData2DParams.kStartPosition = 0;
+    loadData2DParams.mStep = alignM / C0_SIZE;
+    loadData2DParams.kStep = alignK / C0_SIZE;
     loadData2DParams.srcStride = alignM / C0_SIZE;
-    loadData2DParams.dstGap = 0;
-    loadData2DParams.ifTranspose = mmParam.isLeftTranspose;
-    for (int32_t i = 0; i < alignM / C0_SIZE; i++) {
-        LoadData(aL0Tensor[i * alignK * C0_SIZE], aL1Tensor[i * CUBE_MATRIX_SIZE], loadData2DParams);
-    }
+    loadData2DParams.dstStride = alignM / C0_SIZE;
+    loadData2DParams.ifTranspose = false;
+    LoadData(aL0Tensor, aL1Tensor, loadData2DParams);
 }
 
 template <typename DLIT>
@@ -402,11 +402,13 @@ __aicore__ inline void DLITMatmulService<DLIT>::LoadDataMmAWithTranspose(LocalTe
     uint32_t alignM = AlignTo(mmParam.singleM, static_cast<uint32_t>(C0_SIZE));
     uint32_t alignK = AlignTo(mmParam.singleK, static_cast<uint32_t>(C0_SIZE));
 
-    LoadData2DParams loadData2DParams;
-    loadData2DParams.startIndex = 0;
-    loadData2DParams.repeatTimes = alignM * alignK / CUBE_MATRIX_SIZE;
-    loadData2DParams.srcStride = 1;
-    loadData2DParams.dstGap = 0;
+    LoadData2DParamsV2 loadData2DParams;
+    loadData2DParams.mStartPosition = 0;
+    loadData2DParams.kStartPosition = 0;
+    loadData2DParams.mStep = alignK / C0_SIZE;
+    loadData2DParams.kStep = alignM / C0_SIZE;
+    loadData2DParams.srcStride = alignK / C0_SIZE;
+    loadData2DParams.dstStride = alignM / C0_SIZE;
     loadData2DParams.ifTranspose = true;
     LoadData(aL0Tensor, aL1Tensor, loadData2DParams);
 }

@@ -132,6 +132,8 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::InitConstInfo(
         constInfo.subBlockIdx = constInfo.aivIdx % 2;
     } else {
         constInfo.aicIdx = GetBlockIdx(); // cube:0-23
+        constInfo.aivIdx = constInfo.aicIdx * AIC_AIV_RATIO;
+        constInfo.subBlockIdx = 0;
     }
     constInfo.aivNum = GetBlockNum() * AIC_AIV_RATIO;
 
