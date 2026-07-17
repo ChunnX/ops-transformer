@@ -240,7 +240,8 @@ static ge::graphStatus ValidateQScaleDesc(gert::TilingContext *context, ge::Data
         }
     } else {
         if (qScaleDesc != nullptr) {
-            std::string reason = "must be null when q is " + std::string(qDtype == ge::DT_BF16 ? "DT_BF16" : "DT_FLOAT16") + " (not DT_FLOAT8_E4M3FN)";
+            std::string dtype_str = (qDtype == ge::DT_BF16) ? "DT_BF16" : "DT_FLOAT16";
+            std::string reason = "must be null when q is " + dtype_str + " (not DT_FLOAT8_E4M3FN)";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "qScale", "present", reason.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -334,9 +335,10 @@ static ge::graphStatus ValidateCuSeqLens(const char *nodeName, const int64_t *cu
         if (cuSeqLensData[b + 1] - cuSeqLensData[b] != qSeqLensData[b]) {
             std::string expected_qLens = std::to_string(qSeqLensData[b]);
             std::string actual_diff = std::to_string(cuSeqLensData[b + 1] - cuSeqLensData[b]);
+            std::string reason = "prefix sum mismatch at batch " + std::to_string(b) +
+                                 ": expected qSeqLens[" + std::to_string(b) + "]=" + expected_qLens;
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "cuSeqLensQ", actual_diff.c_str(),
-                                                   ("prefix sum mismatch at batch " + std::to_string(b) + 
-                                                    ": expected qSeqLens[" + std::to_string(b) + "]=" + expected_qLens).c_str());
+                                                  reason.c_str());
             return ge::GRAPH_FAILED;
         }
         sum_qSeqLens += qSeqLensData[b];
@@ -344,8 +346,9 @@ static ge::graphStatus ValidateCuSeqLens(const char *nodeName, const int64_t *cu
     if (cuSeqLensData[batchU32] != sum_qSeqLens) {
         std::string expected_sum = std::to_string(sum_qSeqLens);
         std::string actual_final = std::to_string(cuSeqLensData[batchU32]);
+        std::string reason = "final element must be equal to sum of qSeqLens=" + expected_sum;
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "cuSeqLensQ", actual_final.c_str(),
-                                               ("final element must be equal to sum of qSeqLens=" + expected_sum).c_str());
+                                              reason.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
