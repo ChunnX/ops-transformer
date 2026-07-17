@@ -26,7 +26,7 @@ namespace optiling {
 constexpr int64_t ANTIQUANT_GROUP_SIZE_MIN_VALUE = 32;
 constexpr uint64_t STANDARD_CARD_CGMPAD_WORKSPACE_CNT = 3;
 constexpr uint64_t FIVE_ONE_TWO = 512;
-constexpr uint64_t WEIGHT_QUANT_A2APATH_CRITICAL_K = 3584;
+constexpr uint64_t WEIGHT_QUANT_A2APATH_CRITICAL_K = 2048;
 bool WeightQuantMatmulAllReduceTilingA5::IsCapable()
 {
     if (isA16W8_ || isA16W4_) {
@@ -217,7 +217,7 @@ uint64_t WeightQuantMatmulAllReduceTilingA5::GetTilingKey() const
     }
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K) {
+    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         isUseA2APath = false;
     }
     bool isA2ARSAG = isUseA2APath;
@@ -281,7 +281,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::GetWorkspaceSize()
     } else {
         bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
         const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-        if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K) {
+        if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
             isUseA2APath = false;
         }
         if (isUseA2APath) {
@@ -498,7 +498,7 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
     const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
-    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K) {
+    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
         isUseA2APath = false;
     }
     if (isUseA2APath) {
