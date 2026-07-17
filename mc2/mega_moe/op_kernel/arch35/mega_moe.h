@@ -1193,12 +1193,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 1.本卡数据处理
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
-    MegaMoeCombineReduceImpl::CombineReduceTileSchedule combineReduceTileSchedule{
-        aivCoreIdx_, blockAivNum_};
-    MegaMoeCombineCommImpl::AivCommTileSchedule combineCommTileSchedule{
-        aivCoreIdx_, blockAivNum_};
-    MegaMoeCombineCommImpl::CrossRankSyncContext combineSyncContext{
-        params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_};
     SendAndQuantBuffInit();
     SendMaskCal();   // 源卡按所有全局专家算 mask 并推送到目标专家卡
     ResetFlagList(); // 清理workSpace空间上的flag位
@@ -1208,8 +1202,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>(); // aic需要等待flag位reset清理完成
-    MegaMoeCombineCommImpl::CrossRankSyncSingleCore(
-        combineCommTileSchedule, combineSyncContext); // 全卡同步
+    if constexpr (g_coreType == AIV) {
+        MegaMoeCombineCommImpl::AivCommTileSchedule syncTileSchedule{aivCoreIdx_, blockAivNum_};
+        MegaMoeCombineCommImpl::CrossRankSyncContext syncContext{
+            params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_};
+        MegaMoeCombineCommImpl::CrossRankSyncSingleCore(syncTileSchedule, syncContext); // 全卡同步
+    }
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBuffInit();
@@ -1297,8 +1295,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 4. 本卡数据Unpermute
     if constexpr (g_coreType == AIV) {
+        MegaMoeCombineCommImpl::AivCommTileSchedule syncTileSchedule{aivCoreIdx_, blockAivNum_};
+        MegaMoeCombineCommImpl::CrossRankSyncContext syncContext{
+            params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_};
         MegaMoeCombineCommImpl::CrossRankSyncSingleCore(
-            combineCommTileSchedule, combineSyncContext); // 全卡软同步，确认combine send完成
+            syncTileSchedule, syncContext); // 全卡软同步，确认combine send完成
+        MegaMoeCombineReduceImpl::CombineReduceTileSchedule combineReduceTileSchedule{
+            aivCoreIdx_, blockAivNum_};
         MegaMoeCombineReduceImpl::CombineReduceShapeContext combineReduceShapeContext{m_, k_, topK_};
         MegaMoeCombineReduceImpl::CombineReduceBufferContext combineReduceBufferContext{
             params_.peermemInfo.combineSendPtr, params_.probsGmAddr, params_.y2GmAddr};
