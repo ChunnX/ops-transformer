@@ -526,12 +526,21 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Compute(int64
     LocalTensor<float> invScaleLocal = invScaleBuffer_.Get<float>();
     __ubuf__ float *invScaleAddr = reinterpret_cast<__ubuf__ float *>(invScaleLocal.GetPhyAddr());
 
-    VF_CALL<vfComputeAmax<T, CLAMP_AMAX>>(xAddr, amaxAddr, static_cast<uint32_t>(loopCols),
-                                           static_cast<uint16_t>(loopScaleCols));
-    VF_CALL<vfComputeRoundScale<CLAMP_AMAX>>(amaxAddr, scaleAddr, invScaleAddr,
-                                  static_cast<uint16_t>(loopScaleCols), fp8Emax_);
-    VF_CALL<vfComputeData<T, U>>(xAddr, invScaleAddr, outAddr, static_cast<uint32_t>(loopCols),
-                                  static_cast<uint16_t>(loopScaleCols));
+    __VEC_SCOPE__
+    {
+        vfComputeAmax<T, CLAMP_AMAX>(xAddr, amaxAddr, static_cast<uint32_t>(loopCols),
+                                     static_cast<uint16_t>(loopScaleCols));
+    }
+    __VEC_SCOPE__
+    {
+        vfComputeRoundScale<CLAMP_AMAX>(amaxAddr, scaleAddr, invScaleAddr,
+                                        static_cast<uint16_t>(loopScaleCols), fp8Emax_);
+    }
+    __VEC_SCOPE__
+    {
+        vfComputeData<T, U>(xAddr, invScaleAddr, outAddr, static_cast<uint32_t>(loopCols),
+                            static_cast<uint16_t>(loopScaleCols));
+    }
 
     inQueue_.FreeTensor(xLocal);
     outQueue_.EnQue(outLocal);
