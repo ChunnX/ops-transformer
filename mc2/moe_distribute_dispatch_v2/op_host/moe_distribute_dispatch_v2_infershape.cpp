@@ -257,7 +257,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     int64_t localMoeExpertNum = *moeExpertNum / moeRankNum;
     int64_t globalBsReal = ((*globalBs == 0) ? (bs * *epWorldSize) : *globalBs);
     if (globalBsReal < 0) {
-        globalBsReal = -1;
+        globalBsReal = NEG_ONE;
     }
 
     if (*epRankId < *sharedExpertRankNum) {
@@ -282,7 +282,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
         }
     }
     if (globalBsReal < 0) {
-        a = -1;
+        a = NEG_ONE;
     }
 
     expandXShape->SetDimNum(DIM_TWO);
