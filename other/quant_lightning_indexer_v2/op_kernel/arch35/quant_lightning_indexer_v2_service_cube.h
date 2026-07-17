@@ -650,7 +650,8 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         } else {
             fixpipeParams.nSize = S2_BASIC_BLOCK_L0 / 2;
             fixpipeParams.params.ndNum = 2;
-            fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
+            // srcNdStride 用总 mSize (L0C 布局由 mmad 以 M=mSize 写入)
+            fixpipeParams.params.srcNdStride = ((mSize + 15) / 16) * fixpipeParams.nSize;
             fixpipeParams.params.dstNdStride = fixpipeParams.mSize * fixpipeParams.dstStride;
         }
 
@@ -662,9 +663,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
 
         auto l0cBase = cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET];
         for (uint32_t s1g = 0; s1g < numS1Groups; s1g++) {
+            // L0C src 偏移: starting_row * 16 (L0C 按 16 行 tile 寻址)
             Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(
                 mm1ResUB_[ppOffset + s1g * qkStrideWithBank],
-                l0cBase[s1g * constInfo_.gSize * (mSize)], // L0C src: s1组号 × gSize行 × srcStride(=mSize)
+                l0cBase[s1g * constInfo_.gSize * 16],
                 fixpipeParams);
         }
     } else {
