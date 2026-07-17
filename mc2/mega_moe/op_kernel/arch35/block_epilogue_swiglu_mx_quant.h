@@ -196,6 +196,9 @@ private:
     GM_ADDR yGmAddr_{nullptr};
     GM_ADDR yScaleGmAddr_{nullptr};
     GM_ADDR groupFlagListGmBaseAddr_{nullptr};
+    GM_ADDR yGmAddr_{nullptr};
+    GM_ADDR yScaleGmAddr_{nullptr};
+    GM_ADDR groupFlagListGmBaseAddr_{nullptr};
 
     // UB ADDR
     AscendC::LocalTensor<DataTypeIn> l0cOutUbFirst_{AscendC::TPosition::VECIN, 0, MAX_SINGLE_MN};
@@ -207,6 +210,7 @@ private:
     AscendC::LocalTensor<bfloat16_t> gluRes_;
     AscendC::LocalTensor<uint16_t> maxExp_;
     AscendC::LocalTensor<uint16_t> halfScale_;
+
     int64_t n_;
     int64_t scaleN_;
     uint32_t subBlockIdx_ = AscendC::GetSubBlockIdx();
