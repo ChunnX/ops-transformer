@@ -48,9 +48,9 @@ __aicore__ inline void InlineRadixTopK(
     TBuf<TPosition::VECCALC> globalHistBuf;
     TBuf<TPosition::VECCALC> tileTopKBuf;
     TBuf<TPosition::VECCALC> tempBuf;
+    TBuf<TPosition::VECCALC> dbgBuf;
 
     pipe->Reset();
-    // xBuf: float at [0], bf16 at [tileLenAlign_*4 bytes] — no overlap
     pipe->InitBuffer(xBuf, tileLenAlign_ * sizeof(float) + tileLenAlign_ * sizeof(bfloat16_t) + 64);
     pipe->InitBuffer(outValueBuf, tileLenAlign_ * sizeof(float) + 64);
     pipe->InitBuffer(outIndexBuf, tileLenAlign_ * sizeof(int32_t) + 64);
@@ -59,6 +59,12 @@ __aicore__ inline void InlineRadixTopK(
     uint32_t cmpMaskSize = (tileLenAlign_ + 7) / 8 * 8;
     uint32_t tileHistSize = tileNumAlign_ * RDX_BINS * sizeof(int32_t);
     pipe->InitBuffer(tempBuf, tileHistSize + cmpMaskSize + 64);
+    pipe->InitBuffer(dbgBuf, 256 * sizeof(int32_t));
+
+    // Debug state
+    bool dbg = (debugBatchId == 512);
+    int32_t dbgIdx = 0;
+    LocalTensor<int32_t> dbgLocal = dbgBuf.Get<int32_t>();
 
     GlobalTensor<float> xGm;
     xGm.SetGlobalBuffer((__gm__ float *)scoreGmAddr);
@@ -88,7 +94,7 @@ __aicore__ inline void InlineRadixTopK(
     LocalTensor<int32_t> tileTopK = tileTopKBuf.Get<int32_t>();
 
     int16_t involvedMask16_ = 0;
-    uint16_t andMask16_ = 0xC000;
+    int16_t andMask16_ = static_cast<int16_t>(0xC000);  // signed: arithmetic shift accumulates
     int32_t totalDefinitelyInTopK_ = 0;
     int32_t boundaryBin = 0;
     int32_t boundaryBinPrev = 1;
@@ -152,6 +158,15 @@ __aicore__ inline void InlineRadixTopK(
             Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
             PipeBarrier<PIPE_V>();
 
+            // Debug: dump bf16 values after Cast(float→bf16) for round 7, tile 0
+            if (dbg && roundId == 7 && tileId == 0) {
+                RDX_V_S_SYNC();
+                for (int32_t i = 0; i < 4; i++) {
+                    dbgLocal.SetValue(dbgIdx++, static_cast<int32_t>(xLocalInt16.GetValue(i)));
+                }
+                RDX_S_V_SYNC();
+            }
+
             // TwiddleInB16 operates on xLocalInt16 (xBuf back)
             LocalTensor<int16_t> xLocalInt16Cast = xLocalInt16;
 
@@ -173,27 +188,48 @@ __aicore__ inline void InlineRadixTopK(
             PipeBarrier<PIPE_V>();
             And(xLocalInt16Cast, xLocalInt16Cast, temp1, calcLen);
 
-            // DoAndMask: use accumulated mask (involvedMask16_ | andMask16_)
-            uint16_t accumMask = static_cast<uint16_t>(involvedMask16_) | andMask16_;
-            Duplicate<int16_t>(maskTensor.template ReinterpretCast<int16_t>(), static_cast<int16_t>(accumMask), curTileLen);
+            // DoAndMask: andMask16_ accumulates via arithmetic shift (int16_t)
+            Duplicate<int16_t>(maskTensor.template ReinterpretCast<int16_t>(), andMask16_, curTileLen);
             PipeBarrier<PIPE_V>();
             And(xLocalInt16Cast, xLocalInt16Cast, maskTensor.template ReinterpretCast<int16_t>(), calcLen);
             PipeBarrier<PIPE_V>();
 
-            // CalcCumsumHistogram: Cast int16 -> float, compare with involvedMaskFloat
+            // Debug: dump int16 values after DoAndMask for round 7, tile 0
+            if (dbg && roundId == 7 && tileId == 0) {
+                RDX_V_S_SYNC();
+                for (int32_t i = 0; i < 4; i++) {
+                    dbgLocal.SetValue(dbgIdx++, static_cast<int32_t>(xLocalInt16Cast.GetValue(i)));
+                }
+                dbgLocal.SetValue(dbgIdx++, static_cast<int32_t>(andMask16_));
+                RDX_S_V_SYNC();
+            }
+
+            // CalcCumsumHistogram: Cast int16 -> float -> int32, compare int32 (matching math repo)
             RDX_V_S_SYNC();
             RDX_S_V_SYNC();
             Cast(xLocalFp32, xLocalInt16Cast, RoundMode::CAST_NONE, curTileLen);
             PipeBarrier<PIPE_V>();
+            Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
+            PipeBarrier<PIPE_V>();
+
+            // Debug: dump float values after Cast(int16→float) for round 7, tile 0
+            if (dbg && roundId == 7 && tileId == 0) {
+                RDX_V_S_SYNC();
+                for (int32_t i = 0; i < 4; i++) {
+                    float fv = xLocalFp32.GetValue(i);
+                    int32_t fb = *reinterpret_cast<int32_t *>(&fv);
+                    dbgLocal.SetValue(dbgIdx++, fb);
+                }
+                RDX_S_V_SYNC();
+            }
 
             int32_t cumSumOne = 0;
-            uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(float) - 1) /
-                (REPEAT_SIZE / sizeof(float)) * (REPEAT_SIZE / sizeof(float));
+            uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(int32_t) - 1) /
+                (REPEAT_SIZE / sizeof(int32_t)) * (REPEAT_SIZE / sizeof(int32_t));
             for (int16_t binMask = RDX_BINS - 1; binMask > 0; binMask--) {
-                int16_t involvedMaskTemp = static_cast<int16_t>(
+                int32_t involvedMaskTemp = static_cast<int32_t>(
                     involvedMask16_ | static_cast<int16_t>(binMask << (roundId * RDX_BITS)));
-                float involvedMaskFloat = static_cast<float>(involvedMaskTemp);
-                Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, involvedMaskFloat,
+                Compares<int32_t, uint8_t>(cmpMaskTensor, xLocalInt32, involvedMaskTemp,
                     AscendC::CMPMODE::EQ, curTileLenAlign32);
                 PipeBarrier<PIPE_V>();
                 uint64_t rsvdCnt = 0;
@@ -202,10 +238,39 @@ __aicore__ inline void InlineRadixTopK(
                 RDX_V_S_SYNC();
                 cumSumOne += static_cast<int32_t>(rsvdCnt);
 
+                // Debug: dump rsvdCnt for round 7, tile 0
+                if (dbg && roundId == 7 && tileId == 0) {
+                    dbgLocal.SetValue(dbgIdx++, static_cast<int32_t>(involvedMaskTemp));
+                    dbgLocal.SetValue(dbgIdx++, static_cast<int32_t>(rsvdCnt));
+                    dbgLocal.SetValue(dbgIdx++, cumSumOne);
+                }
+
                 tileHist[binMask * tileNumAlign_].SetValue(tileId, cumSumOne);
                 globalHist.SetValue(binMask, globalHist.GetValue(binMask) + cumSumOne);
                 RDX_S_V_SYNC();
             }
+        }
+
+        // Debug: dump per-round state after histogram (batch 512 only)
+        if (dbg) {
+            RDX_V_S_SYNC();
+            dbgLocal.SetValue(dbgIdx++, roundId);
+            dbgLocal.SetValue(dbgIdx++, globalHist.GetValue(0));
+            dbgLocal.SetValue(dbgIdx++, globalHist.GetValue(1));
+            dbgLocal.SetValue(dbgIdx++, globalHist.GetValue(2));
+            dbgLocal.SetValue(dbgIdx++, globalHist.GetValue(3));
+            dbgLocal.SetValue(dbgIdx++, static_cast<int32_t>(involvedMask16_));
+            dbgLocal.SetValue(dbgIdx++, static_cast<int32_t>(andMask16_));
+            dbgLocal.SetValue(dbgIdx++, remainK_);
+            dbgLocal.SetValue(dbgIdx++, globalHistBoundaryNum_);
+            // tileHist for tile 0 and tile 1 across bins
+            for (uint32_t b = 0; b < RDX_BINS; b++) {
+                dbgLocal.SetValue(dbgIdx++, tileHist.GetValue(b * tileNumAlign_));
+            }
+            for (uint32_t b = 0; b < RDX_BINS; b++) {
+                dbgLocal.SetValue(dbgIdx++, tileHist.GetValue(b * tileNumAlign_ + 1));
+            }
+            RDX_S_V_SYNC();
         }
 
         // FindBoundaryBin
@@ -251,6 +316,20 @@ __aicore__ inline void InlineRadixTopK(
 
         remainK_ = static_cast<int32_t>(kValue) - totalDefinitelyInTopK_;
 
+        // Debug: dump post-boundary state (batch 512 only)
+        if (dbg) {
+            RDX_V_S_SYNC();
+            dbgLocal.SetValue(dbgIdx++, boundaryBin);
+            dbgLocal.SetValue(dbgIdx++, boundaryBinPrev);
+            dbgLocal.SetValue(dbgIdx++, static_cast<int32_t>(involvedMask16_));
+            dbgLocal.SetValue(dbgIdx++, totalDefinitelyInTopK_);
+            dbgLocal.SetValue(dbgIdx++, remainK_);
+            for (uint32_t i = 0; i < tileNum_; i++) {
+                dbgLocal.SetValue(dbgIdx++, tileTopK.GetValue(i));
+            }
+            RDX_S_V_SYNC();
+        }
+
         // HandleLastRoundBoundary
         if (roundId == 0 && remainK_ > 0) {
             RDX_V_S_SYNC();
@@ -288,6 +367,17 @@ __aicore__ inline void InlineRadixTopK(
     int16_t boundaryNumber16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
     bfloat16_t boundaryBf16 = *reinterpret_cast<bfloat16_t *>(&boundaryNumber16);
     float boundaryFloat = AscendC::Cast(boundaryBf16);
+
+    // Debug: dump extraction info
+    if (dbg) {
+        RDX_V_S_SYNC();
+        dbgLocal.SetValue(dbgIdx++, static_cast<int32_t>(involvedMask16_));
+        dbgLocal.SetValue(dbgIdx++, *reinterpret_cast<int32_t *>(&boundaryFloat));
+        for (uint32_t i = 0; i < tileNum_; i++) {
+            dbgLocal.SetValue(dbgIdx++, tileTopK.GetValue(i));
+        }
+        RDX_S_V_SYNC();
+    }
 
     uint32_t writeOffset = 0;
     for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
@@ -334,6 +424,17 @@ __aicore__ inline void InlineRadixTopK(
 
     for (uint32_t i = writeOffset; i < kValue; i++) {
         indexGm.SetValue(i, -1);
+    }
+
+    // Debug: overwrite batch 512 output with debug data
+    if (dbg) {
+        RDX_V_S_SYNC();
+        for (int32_t i = 0; i < dbgIdx && i < static_cast<int32_t>(kValue); i++) {
+            indexGm.SetValue(i, dbgLocal.GetValue(i));
+        }
+        for (uint32_t i = static_cast<uint32_t>(dbgIdx); i < kValue; i++) {
+            indexGm.SetValue(i, -1);
+        }
     }
 
     GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(mte2ToV);
