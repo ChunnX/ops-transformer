@@ -9,6 +9,7 @@
 # -----------------------------------------------------------------------------------------------------------
 from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_metadata
 from .moe_token_permute import moe_token_permute
+from .moe_finalize_routing import moe_finalize_routing
 from .mega_moe import (
     get_symm_buffer_for_mega_moe,
     mega_moe,
