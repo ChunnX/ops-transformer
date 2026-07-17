@@ -47,7 +47,7 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 # GRAPH_PATH: 0=单算子, 3=静态图, 5=动态图, 6=tiling下沉, 7=aclgraph
 GRAPH_PATH = 0
-B = 7
+B = 1
 N_q = 1           # query heads
 N_kv = 1           # kv heads
 D = 64
@@ -55,13 +55,13 @@ D = 64
 ENABLE_ROPE = True
 D_rope = 64
 
-ACTUAL_SEQ_Q = [568,301, 2315, 726, 1860, 918, 1812]
-ACTUAL_SEQ_KV = [2701,2701,2701,2701,2701,2701,3072]
+ACTUAL_SEQ_Q = [128]
+ACTUAL_SEQ_KV = [512]
 
 ENABLE_PA = True
-BLOCK_SIZE = 1024
+BLOCK_SIZE = 512
 
-SPARSE_MODE = 3
+SPARSE_MODE = 0
 FP8_DTYPE = torch.float8_e4m3fn
 QUANT_GROUP_SIZE = 32
 
@@ -69,12 +69,12 @@ QUANT_GROUP_SIZE = 32
 INPUT_LAYOUT = "TND"  # 支持: BNSD, BSND, TND
 Q_SCALE_LAYOUT = "TND"  # 支持: AUTO, TND, N2TGD (GQA 专用)
 Q_SCALE_AUTO_GS1_THRESHOLD = 80  # AUTO 模式下 G*S1 > 此值用 TND，否则用 N2TGD
-P_SCALE = 143.1
+P_SCALE = 1.0
 
 # PA KV Cache Layout
 # BnNBsD: [BlockNum, N, BlockSize, D]
 # PA_NZ: fp8=[Bn,N,D//32,Bs,32], Kscale=[Bn,N,Bs//16,D//64,16,2], Vscale=[Bn,N,D//16,Bs//64,16,2]
-KV_CACHE_LAYOUT = "PA_NZ"
+KV_CACHE_LAYOUT = "BnNBsD"
 
 IS_CONTIGUOUS = True
 
@@ -90,9 +90,9 @@ SEED_V = 4
 SEED_QR = 8
 SEED_KR = 9
 
-DATA_RANGE_Q = 448
-DATA_RANGE_K = 448
-DATA_RANGE_V = 448
+DATA_RANGE_Q = 5.0
+DATA_RANGE_K = 10.0
+DATA_RANGE_V = 10.0
 DEVICE_ID = 0
 
 
@@ -692,29 +692,38 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
         return q_padding_mask | k_padding_mask
 
 
-def _compute_c1_npu(A, B, deq_scale_q_i, deq_scale_k_j,
+def _compute_c1_npu(Qi, Kj, deq_scale_q_i, deq_scale_k_j,
                      Qri=None, Krj=None):
     """计算单个 S block (attention score)"""
-    batch, headnum, M, _ = A.shape
-    _, _, N, _ = B.shape
-    A = A.npu()
-    B = B.npu()
-    S_ij = torch.zeros(batch, headnum, M, N, dtype=torch.float32)
-    for b in range(batch):
-        for n in range(headnum):
-            A_tmp = A[b, n, :, :].to(torch.float8_e4m3fn)
-            B_tmp = B[b, n, :, :].to(torch.float8_e4m3fn)
+    B, N, S1, D = Qi.shape
+    _, _, S2, _ = Kj.shape
+    Qi = Qi.npu()
+    Kj = Kj.npu()
+    Qri = Qri.npu()
+    Krj = Krj.npu()
+    S_ij = torch.zeros(B, N, S1, S2, dtype=torch.float32)
+    for b in range(B):
+        for n in range(N):
+            Qi_tmp = Qi[b, n, :, :].to(torch.float8_e4m3fn)
+            Kj_tmp = Kj[b, n, :, :].to(torch.float8_e4m3fn)
             input_deq_scale = deq_scale_k_j[b, n, :, :]
-            input_deq_scale = input_deq_scale.reshape(N, -1, 2)
+            input_deq_scale = input_deq_scale.reshape(S2, -1, 2)
             pertoken_scale = deq_scale_q_i[b, n, :, :]
-            pertoken_scale = pertoken_scale.reshape(M, -1, 2)
+            pertoken_scale = pertoken_scale.reshape(S1, -1, 2)
             torch.npu.synchronize()
-            tmp_res = torch_npu.npu_quant_matmul(A_tmp, B_tmp.t(), input_deq_scale.transpose(0,1), pertoken_scale=pertoken_scale, output_dtype=torch.float32, pertoken_scale_dtype=torch_npu.float8_e8m0fnu, scale_dtype=torch_npu.float8_e8m0fnu, group_sizes=[1, 1, 32])
+            tmp_res = torch_npu.npu_quant_matmul(Qi_tmp, Kj_tmp.t(), input_deq_scale.transpose(0,1), pertoken_scale=pertoken_scale, output_dtype=torch.float32, pertoken_scale_dtype=torch_npu.float8_e8m0fnu, scale_dtype=torch_npu.float8_e8m0fnu, group_sizes=[1, 1, 32])
             torch.npu.synchronize()
             S_ij[b, n, :, :] = tmp_res
     if Qri is not None and Krj is not None:
-        S_ij += torch.matmul(Qri.to(torch.float32), Krj.to(torch.float32).permute(0, 1, 3, 2))
-    return S_ij
+        # Qri: (B, N, S1, D) -> (B*N, S1, D)
+        Qri_bmm = Qri.reshape(B * N, S1, D)
+        # Krj: (B, N, S2, D) -> (B, N, D, S2) -> (B*N, D, S2)
+        Krj_bmm = Krj.permute(0, 1, 3, 2).reshape(B * N, D, S2).contiguous()
+        # bmm 输出: (B*N, S1, S2) -> (B, N, S1, S2)
+        S_ij_rope = torch.bmm(Qri_bmm, Krj_bmm).reshape(B, N, S1, S2)
+    else:
+        S_ij_rope = torch.zeros(B, N, S1, S2, dtype=torch.float32, device=Qi.device)
+    return S_ij + S_ij_rope.cpu()
 
 
 def _compute_c2_npu(P, V, deq_scale_p, deq_scale_v):
@@ -732,18 +741,13 @@ def _compute_c2_npu(P, V, deq_scale_p, deq_scale_v):
         for n in range(headnum):
             P_tmp = P[b, n, :, :].to(torch.float8_e4m3fn)
             V_tmp = V[b, n, :, :].to(torch.float8_e4m3fn)
-            input_deq_scale = deq_scale_v[b, n, :, :]
-            input_deq_scale = input_deq_scale.reshape(-1, 2, N).permute(0, 2, 1).contiguous()
+            input_deq_scale = deq_scale_v[b, n, :, :].permute(1,0)
+            input_deq_scale = input_deq_scale.reshape(N, -1, 2).permute(1,0,2).contiguous()
             pertoken_scale = deq_scale_p[b, n, :, :]
             pertoken_scale = pertoken_scale.reshape(M, -1, 2)
             torch.npu.synchronize()
             tmp_res = torch_npu.npu_quant_matmul(P_tmp, V_tmp, input_deq_scale, pertoken_scale=pertoken_scale, output_dtype=torch.float32, pertoken_scale_dtype=torch_npu.float8_e8m0fnu, scale_dtype=torch_npu.float8_e8m0fnu, group_sizes=[1, 1, 32])
             torch.npu.synchronize()
-            # print(f"=======tmp_res: \n{tmp_res} {tmp_res.dtype}")
-            # print(f"=======P_tmp: {P_tmp.shape} {P_tmp.dtype}")
-            # print(f"=======V_tmp: {V_tmp.shape} {V_tmp.dtype}")
-            # print(f"=======input_deq_scale: {input_deq_scale.shape} {input_deq_scale.dtype} \n {input_deq_scale}")
-            # print(f"=======pertoken_scale: {pertoken_scale.shape} {pertoken_scale.dtype} \n {pertoken_scale}")
             S_ij[b, n, :, :] = tmp_res
     return S_ij
 
@@ -1021,7 +1025,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     dequant_scale_v = torch.from_numpy(dequant_scale_v_np)
 
     logger.info("[CPU Golden] TILES_Q=%d, TILES_KV=%d, Sq=%d, Skv=%d", TILES_Q, TILES_KV, Sq, Skv)
-    torch.set_printoptions(threshold=torch.inf, sci_mode=False, precision=6)
+    torch.set_printoptions(threshold=torch.inf, sci_mode=False, precision=10)
     for i in range(TILES_Q):
         Qi = Q_BLOCKS[i]
         Sq_start = i * Q_BLOCK_SIZE
@@ -1042,12 +1046,10 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 
             deq_scale_q_i = dequant_scale_q[:, :, Sq_start:Sq_end, :]
             S_ij = _compute_c1_npu(Qi, Kj, deq_scale_q_i, deq_scale_k_j, Qri, Krj)
-            # print(f"================C1-1: {S_ij.shape} \n {S_ij[0,:,65,:]}")
 
             mask_j = mask_global[:, :, Sq_start:Sq_end, Sk_start:Sk_end]
             m_block_j, s_block_j, P_ij_drop = _online_softmax_update(
                 S_ij, mask_j, mi, si, oi, ln_p_scale, d_total)
-            # print(f"================m_block_j: {m_block_j.shape} \n {m_block_j[0,:,65,:]}")
 
             if j + 1 < TILES_KV:
                 # --- 第二个 K block (j+1) ---
@@ -1058,28 +1060,34 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 Krj1 = Kr_BLOCKS[j + 1] if Kr_BLOCKS is not None else None
 
                 S_ij1 = _compute_c1_npu(Qi, Kj1, deq_scale_q_i, deq_scale_k_j1, Qri, Krj1)
-                # print(f"================C1-2: {S_ij1.shape} \n {S_ij1[0,:,65,:]}")
                 mask_j1 = mask_global[:, :, Sq_start:Sq_end, Sk1_start:Sk1_end]
                 m_block_j1, s_block_j1, P_ij1_drop = _online_softmax_update(
                     S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, d_total)
-                # print(f"================m_block_j1: {m_block_j1.shape} \n {m_block_j1[0,:,65,:]}")
 
                 # V block: 一个 V_BLOCK_SIZE 对应两个 K_BLOCK_SIZE
                 Vj = V_BLOCKS[j // 2]
                 Sv_start = (j // 2) * V_BLOCK_SIZE
                 Sv_end = min(Sv_start + V_BLOCK_SIZE, math.ceil(Skv / 64) * 64)
                 deq_scale_v_j = dequant_scale_v[:, :, Sv_start//QUANT_GROUP_SIZE:Sv_end//QUANT_GROUP_SIZE, :]
-
-                P_ij = torch.cat((P_ij_drop * torch.exp(m_block_j - m_block_j1), P_ij1_drop), dim=3)
+                
                 actual_s2size = Vj.shape[2]
                 padded_s2size = 0
                 if actual_s2size % 64 != 0:
                     padded_s2size = math.ceil(actual_s2size / 64) * 64 - actual_s2size
-                    P_ij = F.pad(P_ij, (0, padded_s2size))
+                    P_ij1_drop = F.pad(P_ij1_drop, (0, padded_s2size))
                     Vj = F.pad(Vj, (0, 0, 0, padded_s2size))
-
-                deq_scale_p = torch.ones(P_ij.shape[0], P_ij.shape[1], P_ij.shape[2], P_ij.shape[3]//QUANT_GROUP_SIZE, dtype=torch.int8)*127
-                P_ij_Vj = _compute_c2_npu(P_ij, Vj, deq_scale_p, deq_scale_v_j)
+                
+                diff = m_block_j - m_block_j1
+                exponent = diff / 0.6931471805599453
+                rounded_exponent = torch.round(exponent)  # 四舍五入到最近整数
+                max_update = (rounded_exponent + 127).to(torch.int8)
+                max_update = max_update.repeat(1, 1, 1, 8)
+                P_ij_Vj1 = _compute_c2_npu(P_ij_drop, Vj[:,:,:256,:], max_update, deq_scale_v_j[:,:,:8,:])
+                
+                deq_scale_p = torch.ones(P_ij1_drop.shape[0], P_ij1_drop.shape[1], P_ij1_drop.shape[2], P_ij1_drop.shape[3]//QUANT_GROUP_SIZE, dtype=torch.int8)*127
+                P_ij_Vj2 = _compute_c2_npu(P_ij1_drop, Vj[:,:,256:,:], deq_scale_p, deq_scale_v_j[:,:,8:,:])
+                
+                P_ij_Vj = P_ij_Vj1 + P_ij_Vj2
 
                 update_mul_si = torch.exp(mi - m_block_j1)
                 si_new = update_mul_si * si + s_block_j * torch.exp(m_block_j - m_block_j1) + s_block_j1
@@ -1100,7 +1108,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                     Vj = F.pad(Vj, (0, 0, 0, padded_s2size))
 
                 deq_scale_p = torch.ones(P_ij_drop.shape[0], P_ij_drop.shape[1], P_ij_drop.shape[2], P_ij_drop.shape[3]//QUANT_GROUP_SIZE, dtype=torch.int8)*127
-                P_ij_Vj = P_ij_Vj = _compute_c2_npu(P_ij_drop, Vj, deq_scale_p, deq_scale_v_j)
+                P_ij_Vj = _compute_c2_npu(P_ij_drop, Vj, deq_scale_p, deq_scale_v_j)
 
                 update_mul_si = torch.exp(mi - m_block_j)
                 si_new = update_mul_si * si + s_block_j
@@ -1110,8 +1118,8 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 
     out = torch.cat(o_BLOCKS, dim=2)
     out_sum = torch.cat(s_BLOCKS, dim=2)
-    # print(f"================out: {out.shape} \n {out[0,:,65,:]}")
-    # print(f"================out_sum: {out_sum.shape} \n {out_sum[0,:,65,:]}")
+    # print(f"================out: {out.shape} \n {out}")
+    # print(f"================out_sum: {out_sum.shape} \n {out_sum}")
     out = out / (out_sum + EPSILON)
 
     o_max = torch.cat(m_BLOCKS, dim=2)
