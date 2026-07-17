@@ -347,7 +347,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
         <th>x2</th>
         <th>bias</th>
          <th>antiquantScale</th>
-        <th>antiquantOffset</th>       
+        <th>antiquantOffset</th>
         <th>x3</th>
         <th>output</th>
         <th>限制</th>
@@ -376,7 +376,7 @@ aclnnStatus aclnnWeightQuantMatmulAllReduce(
       </tr>
     </tbody>
   </table>
-  
+
 - Ascend 950PR/Ascend 950DT
   <table style="undefined;table-layout: fixed; width: 600px">
     <col style="width: 90px">
