@@ -960,10 +960,8 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
     int64_t epWorldSize, int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank, int64_t expertAlignment,
     bool doCpuSync, int64_t hostPinnedCounterAddr)
 {
-    TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D");
-    TORCH_CHECK((epWorldSize > 1), "The ep_world_sizes should be greater than 1, current is: ", epWorldSize);
-    TORCH_CHECK(epRankId >= 0 && epRankId < epWorldSize, "ep_rank_id out of range");
-    TORCH_CHECK(numExperts % epWorldSize == 0, "num_experts must be divisible by ep_world_size");
+    TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
+    TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
     EnsureMoeContext();
 
     bool anyCached = cachedHandleDstBufferSlotIdx.has_value();
@@ -982,11 +980,10 @@ Mc2Api::ElasticBuffer::DispatchTensorList Mc2Api::ElasticBuffer::MoeEpDispatch(
     at::Tensor cachedSlotTensor =
         cachedHandleDstBufferSlotIdx.has_value() ? *cachedHandleDstBufferSlotIdx : at::Tensor();
 
-    aclDataType scalesDtype = aclDataType::ACL_FLOAT;
     at::Tensor scalesTensor = scales.has_value() ? *scales : at::Tensor();
-    if (scales.has_value() && scalesTensor.scalar_type() == at::kByte) {
-        scalesDtype = aclDataType::ACL_FLOAT8_E8M0;
-    }
+    aclDataType scalesDtype = (scales.has_value() && scalesTensor.scalar_type() == at::kByte) ?
+                                  aclDataType::ACL_FLOAT8_E8M0 :
+                                  ConvertToAclDataType(scales.has_value() ? scalesTensor.scalar_type() : at::kFloat);
     TensorWrapper scalesWrapper = TensorWrapper{scalesTensor, scalesDtype};
 
     ACLNN_CMD(aclnnMoeEpDispatch, moeContextTensor_, x, topkIdx, topkWeightsTensor, scalesWrapper, cachedSlotTensor,
@@ -1003,16 +1000,15 @@ Mc2Api::ElasticBuffer::DispatchEpilogueTensorList Mc2Api::ElasticBuffer::MoeEpDi
     at::Tensor &recvSrcMetadata, const c10::optional<at::Tensor> &recvTopkWeightsOpt,
     const c10::optional<at::Tensor> &recvScalesOpt)
 {
-    TORCH_CHECK(dstBufferSlotIdx.dim() == DIM_TWO, "dst_buffer_slot_idx must be 2D");
     EnsureMoeContext();
 
     at::Tensor cachedRecvSrcMetadataTensor = cachedRecvSrcMetadata.has_value() ? *cachedRecvSrcMetadata : at::Tensor();
 
-    aclDataType recvScalesDtype = aclDataType::ACL_FLOAT;
     at::Tensor recvScalesTensor = recvScalesOpt.has_value() ? *recvScalesOpt : at::Tensor();
-    if (recvScalesOpt.has_value() && recvScalesTensor.scalar_type() == at::kByte) {
-        recvScalesDtype = aclDataType::ACL_FLOAT8_E8M0;
-    }
+    aclDataType recvScalesDtype =
+        (recvScalesOpt.has_value() && recvScalesTensor.scalar_type() == at::kByte) ?
+            aclDataType::ACL_FLOAT8_E8M0 :
+            ConvertToAclDataType(recvScalesOpt.has_value() ? recvScalesTensor.scalar_type() : at::kFloat);
     TensorWrapper recvScalesWrapper = TensorWrapper{recvScalesTensor, recvScalesDtype};
 
     at::Tensor recvTopkWeightsTensor = recvTopkWeightsOpt.has_value() ? *recvTopkWeightsOpt : at::Tensor();
@@ -1038,9 +1034,8 @@ Mc2Api::ElasticBuffer::CombineTensorList Mc2Api::ElasticBuffer::MoeEpCombine(
     const c10::optional<at::Tensor> &bias0, const c10::optional<at::Tensor> &bias1, int64_t epWorldSize,
     int64_t epRankId, int64_t numExperts, int64_t numMaxTokensPerRank)
 {
-    TORCH_CHECK(x.dim() == DIM_TWO, "x must be 2D");
-    TORCH_CHECK(!bias0.has_value(), "bias not supported in first release");
-    TORCH_CHECK(!bias1.has_value(), "bias not supported in first release");
+    TORCH_CHECK(x.dim() == DIM_TWO, "x dims must be 2, but got ", x.dim());
+    TORCH_CHECK(topkIdx.dim() == DIM_TWO, "topk_idx dims must be 2, but got ", topkIdx.dim());
     EnsureMoeContext();
 
     int64_t numTokens = topkIdx.size(0);
