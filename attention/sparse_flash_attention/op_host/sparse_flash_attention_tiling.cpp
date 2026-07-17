@@ -594,8 +594,8 @@ ge::graphStatus SFATilingCheck::CompareShape(SFATilingShapeCompareParam &param, 
 
     for (size_t i = 0; i < shape.GetDimNum(); i++) {
         if (shape.GetDim(i) != sfaShapeExpected.GetDim(i)) {
-            OP_LOGE_FOR_INVALID_SHAPE(opName_, name.c_str(), GetShapeStr(shape).c_str(),
-                                      GetShapeStr(sfaShapeExpected).c_str());
+            OP_LOGE_FOR_INVALID_SHAPE(opName_, name.c_str(), Ops::Base::ToString(shape).c_str(),
+                                      Ops::Base::ToString(sfaShapeExpected).c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -1277,7 +1277,8 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensQDType()
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.actualSeqLengthsQ.desc == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(opName_, "actualSeqLengthsQ's dtype");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actualSeqLengthsQ's dtype",
+            "actualSeqLengthsQ is not empty, but actualSeqLengthsQ's dtype is nullptr");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengthsQ.desc->GetDataType() != ge::DT_INT32) {
@@ -1312,7 +1313,9 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensQShape()
 ge::graphStatus SFATilingCheck::CheckActualSeqLens()
 {
     if (std::string(opParamInfo_.layoutKV) == "TND" && opParamInfo_.actualSeqLengths.tensor == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(opName_, "actualSeqLengths of key and value");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actualSeqLengths of key and value",
+            "when the layout of key and value is TND, "
+            "the actualSeqLengths of key and value shoule not be empty");
         return ge::GRAPH_PARAM_INVALID;
     }
     if (ge::GRAPH_SUCCESS != CheckActualSeqLensDType() || ge::GRAPH_SUCCESS != CheckActualSeqLensShape()) {
@@ -1327,7 +1330,8 @@ ge::graphStatus SFATilingCheck::CheckActualSeqLensDType()
         return ge::GRAPH_SUCCESS;
     }
     if (opParamInfo_.actualSeqLengths.desc == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(opName_, "actualSeqLengths's dtype");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actualSeqLengths's dtype",
+            "actualSeqLengths is not empty, but actualSeqLengths's dtype is nullptr");
         return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32) {
@@ -1415,12 +1419,12 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
     }
 
     OP_CHECK_IF(qkHeadDim_ != 512,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qkHeadDim_", std::to_string(qkHeadDim_).c_str(),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "qk_head_dim", std::to_string(qkHeadDim_).c_str(),
                                                       "qk_head_dim only support 512"),
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(qkHeadDim_ != vHeadDim_,
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "qkHeadDim_ and vHeadDim_",
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "qk_head_dim and v_head_dim",
                                                        std::to_string(qkHeadDim_) + " , " + std::to_string(vHeadDim_),
                                                        "qk_head_dim and v_head_dim must be same"),
                 return ge::GRAPH_FAILED);
@@ -1674,7 +1678,7 @@ ge::graphStatus SFAInfoParser::GetActualSeqLenQSize(uint32_t &size)
 ge::graphStatus SFAInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("SparseFlashAttention", "opName");
+        OP_LOGE_WITH_INVALID_INPUT("SparseFlashAttention", "opName got from TilingContext");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -1895,7 +1899,8 @@ ge::graphStatus SFAInfoParser::GetS2SizeForBatchContinuous()
 ge::graphStatus SFAInfoParser::GetMaxBlockNumPerBatch()
 {
     if (opParamInfo_.blockTable.tensor == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(opName_, "blockTable");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "blockTable",
+            "the layout_kv is " + SFALayoutToSerialString(kvLayout_) + ", blockTable must be provided");
         return ge::GRAPH_FAILED;
     }
     uint32_t sfaDimNum = opParamInfo_.blockTable.tensor->GetStorageShape().GetDimNum();

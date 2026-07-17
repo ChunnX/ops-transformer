@@ -977,7 +977,7 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_8)
                 &compileInfo, "Ascend950", A5SocInfo, 4096);
     int64_t expectTilingKey = 18577350610917264;
     std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {21046784};
+    std::vector<size_t> expectWorkspaces = {21037056};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
@@ -1082,7 +1082,7 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_9)
                 &compileInfo, "Ascend950", A5SocInfo, 4096);
     int64_t expectTilingKey = 19703249444018098;
     std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {25765888};
+    std::vector<size_t> expectWorkspaces = {25756160};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
 
@@ -1188,6 +1188,6 @@ TEST_F(FlashAttentionScoreGradTiling, FlashAttentionScoreGrad_950_tiling_10)
                 &compileInfo, "Ascend950", A5SocInfo, 4096);
     int64_t expectTilingKey = 18577350610917264;
     std::string expectTilingData = "";
-    std::vector<size_t> expectWorkspaces = {21046784};
+    std::vector<size_t> expectWorkspaces = {21037056};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
