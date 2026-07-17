@@ -1,4 +1,4 @@
-fzx_py311) root@aa:/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test# GRAPH_PATH=7 python3 -m pytest test_fia_fullquant_mxfp8_func_rdv.py -v -k "TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0" -s
+(fzx_py311) root@aa:/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test# GRAPH_PATH=7 python3 -m pytest test_fia_fullquant_mxfp8_func_rdv.py -v -k "TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0" -s
 ================================================================================== test session starts ===================================================================================
 platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda3/envs/fzx_py311/bin/python3
 cachedir: .pytest_cache
@@ -9,24 +9,24 @@ ninja: no work to do.
 ninja: no work to do.
 collected 151 items / 150 deselected / 1 selected                                                                                                                                        
 
-test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] [2026/07/17 09:57:17] [INFO]-fia_fullquant_mxfp8_golden.py:0609 - [INFO] max_sq=3, max_skv=640
-[2026/07/17 09:57:17] [INFO]-fia_fullquant_mxfp8_golden.py:0628 - [INFO] q_fp16=torch.Size([1, 1, 3, 64]), k_fp16=torch.Size([1, 1, 640, 64]), v_fp16=torch.Size([1, 1, 640, 64])
-[2026/07/17 09:57:17] [INFO]-fia_fullquant_mxfp8_golden.py:0639 - [INFO] V scale Sg=20, 是否奇数=False
-[2026/07/17 09:57:17] [INFO]-golden_cache.py:0036 - [CACHE] save input → /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0_input.pt
-[2026/07/17 09:57:17] [INFO]-fia_fullquant_mxfp8_golden.py:0791 - [CPU Golden] TILES_Q=1, TILES_KV=3, Sq=3, Skv=640
-[2026/07/17 09:57:17] [INFO]-fia_fullquant_mxfp8_golden.py:0870 - [CPU Golden] output=torch.Size([1, 1, 3, 64])
-[2026/07/17 09:57:17] [INFO]-golden_cache.py:0058 - [CACHE] save CPU output → /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0_cpu_output.pt
-[2026/07/17 09:57:19] [INFO]-fia_fullquant_mxfp8_golden.py:1008 - [NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
-[2026/07/17 09:57:19] [INFO]-fia_fullquant_mxfp8_golden.py:1012 - [NPU TND] q=torch.Size([3, 1, 64])
-[2026/07/17 09:57:19] [INFO]-fia_fullquant_mxfp8_golden.py:1017 - [NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
-[2026/07/17 09:57:19] [INFO]-fia_fullquant_mxfp8_golden.py:1087 - [NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
-[2026/07/17 09:57:19] [INFO]-fia_fullquant_mxfp8_golden.py:1095 - [NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
-[2026/07/17 09:57:19] [INFO]-fia_fullquant_mxfp8_golden.py:1100 - [NPU] 调用 TND 模式...
-[2026/07/17 09:57:19] [INFO]-fia_fullquant_mxfp8_golden.py:1138 - [NPU] 调用 aclgraph (reduce-overhead)...
-[2026/07/17 09:57:19] [INFO]-patch_getenv.py:0015 - get env TORCHINDUCTOR_CACHE_DIR = /tmp/torchinductor_root
+test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] [2026/07/17 10:11:34] [INFO]-fia_fullquant_mxfp8_golden.py:0609 - [INFO] max_sq=3, max_skv=640
+[2026/07/17 10:11:34] [INFO]-fia_fullquant_mxfp8_golden.py:0628 - [INFO] q_fp16=torch.Size([1, 1, 3, 64]), k_fp16=torch.Size([1, 1, 640, 64]), v_fp16=torch.Size([1, 1, 640, 64])
+[2026/07/17 10:11:34] [INFO]-fia_fullquant_mxfp8_golden.py:0639 - [INFO] V scale Sg=20, 是否奇数=False
+[2026/07/17 10:11:34] [INFO]-golden_cache.py:0036 - [CACHE] save input → /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0_input.pt
+[2026/07/17 10:11:34] [INFO]-fia_fullquant_mxfp8_golden.py:0791 - [CPU Golden] TILES_Q=1, TILES_KV=3, Sq=3, Skv=640
+[2026/07/17 10:11:34] [INFO]-fia_fullquant_mxfp8_golden.py:0870 - [CPU Golden] output=torch.Size([1, 1, 3, 64])
+[2026/07/17 10:11:34] [INFO]-golden_cache.py:0058 - [CACHE] save CPU output → /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0_cpu_output.pt
+[2026/07/17 10:11:36] [INFO]-fia_fullquant_mxfp8_golden.py:1008 - [NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
+[2026/07/17 10:11:36] [INFO]-fia_fullquant_mxfp8_golden.py:1012 - [NPU TND] q=torch.Size([3, 1, 64])
+[2026/07/17 10:11:36] [INFO]-fia_fullquant_mxfp8_golden.py:1017 - [NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
+[2026/07/17 10:11:36] [INFO]-fia_fullquant_mxfp8_golden.py:1087 - [NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
+[2026/07/17 10:11:36] [INFO]-fia_fullquant_mxfp8_golden.py:1095 - [NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
+[2026/07/17 10:11:36] [INFO]-fia_fullquant_mxfp8_golden.py:1100 - [NPU] 调用 TND 模式...
+[2026/07/17 10:11:36] [INFO]-fia_fullquant_mxfp8_golden.py:1138 - [NPU] 调用 aclgraph (reduce-overhead)...
+[2026/07/17 10:11:36] [INFO]-patch_getenv.py:0015 - get env TORCHINDUCTOR_CACHE_DIR = /tmp/torchinductor_root
 Fatal Python error: Segmentation fault
 
-Current thread 0x00007f1ce4214700 (most recent call first):
+Current thread 0x00007f395a957700 (most recent call first):
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/quant_flash_attn.py", line 192 in quant_flash_attn_metadata
   File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 908 in _call_npu_fa_op
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/utils.py", line 3895 in run_node
@@ -56,6 +56,7 @@ Current thread 0x00007f1ce4214700 (most recent call first):
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_utils_internal.py", line 96 in wrapper_function
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 1827 in _compile
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 729 in __call__
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 2052 in __call__
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 2316 in __call__
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1790 in _call_impl
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1779 in _wrapped_call_impl
@@ -63,7 +64,7 @@ Current thread 0x00007f1ce4214700 (most recent call first):
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1790 in _call_impl
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1779 in _wrapped_call_impl
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/eval_frame.py", line 472 in __call__
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1152 in mxfp8_fa_torch_npu
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1156 in mxfp8_fa_torch_npu
   File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1101 in npu_mxfp8_fa
   File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/test_runner.py", line 82 in execute_test
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/concurrent/futures/thread.py", line 58 in run
@@ -72,7 +73,7 @@ Current thread 0x00007f1ce4214700 (most recent call first):
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/threading.py", line 1045 in _bootstrap_inner
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/threading.py", line 1002 in _bootstrap
 
-Thread 0x00007f1dc243db80 (most recent call first):
+Thread 0x00007f3a38b83b80 (most recent call first):
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/threading.py", line 327 in wait
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/concurrent/futures/_base.py", line 451 in result
   File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/test_fia_fullquant_mxfp8_func_rdv.py", line 41 in test_fia_fullquant_mxfp8
