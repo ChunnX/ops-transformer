@@ -146,6 +146,7 @@ public:
         S_ = tiling->stem_stride;
         R_ = tiling->R_val;
         qflat_dim_ = tiling->kflat_dim;
+        total_tokens_ = tiling->total_tokens;
         pp_num_ = tiling->ub_factor > 1 ? 2 : 1;
 
         InitTaskRange(tiling->blocks_per_core_base, tiling->blocks_remainder);
@@ -186,7 +187,7 @@ public:
 
     __aicore__ inline void ProcessOneBlock()
     {
-        if (qb_local_ >= num_Qb_) {
+        if (total_tokens_ == 0 || qb_local_ >= num_Qb_) {
             WriteZeroBlock();
             return;
         }
@@ -429,6 +430,7 @@ public:
     uint32_t S_ = 0;
     uint32_t R_ = 0;
     uint32_t qflat_dim_ = 0;
+    uint32_t total_tokens_ = 0;
 
     uint32_t qb_start_ = 0;
     uint32_t qb_end_ = 0;

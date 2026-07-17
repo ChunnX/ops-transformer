@@ -75,6 +75,7 @@ static void PrintTilingData(const char *nodeName, const StemPrepQTilingData *til
     OP_LOGD(nodeName, "R_val: %u", tiling->R_val);
     OP_LOGD(nodeName, "kflat_dim: %u", tiling->kflat_dim);
     OP_LOGD(nodeName, "max_Qb: %u", tiling->max_Qb);
+    OP_LOGD(nodeName, "total_tokens: %u", tiling->total_tokens);
     OP_LOGD(nodeName, "used_core_num: %u", tiling->used_core_num);
     OP_LOGD(nodeName, "blocks_per_core_base: %u", tiling->blocks_per_core_base);
     OP_LOGD(nodeName, "blocks_remainder: %u", tiling->blocks_remainder);
@@ -356,6 +357,7 @@ static ge::graphStatus ValidateCuSeqLens(const char *nodeName, const int64_t *cu
 static void CalcMaxQB(const char *nodeName, const gert::StorageShape *qShape, const int64_t *qSeqLensData,
                       uint32_t batchU32, uint32_t H_q, uint32_t B, StemPrepQTilingData *tiling, uint32_t &totalBlocks)
 {
+    tiling->total_tokens = static_cast<uint32_t>(qShape->GetStorageShape().GetDim(0));
     if (qSeqLensData != nullptr) {
         uint32_t max_Qb = 0;
         for (uint32_t b = 0; b < batchU32; b++) {
