@@ -99,6 +99,7 @@ class OpTiling:
     max_seqlen_k: int
     k_length: int
     cmp_ratio: int
+    softmax_scale: float
     has_seqused_q: bool
     has_seqused_k: bool
     has_topk_length: bool
@@ -414,7 +415,7 @@ def compute_softmax_l1_norm(softmax_l1_norm, qk_vec_db, lse_vec_slot, out_vec_db
             qk_vec_slot,
             lse_vec_slot,
             out_vec_slot,
-            SCALE,
+            constInfo.softmax_scale,
             constInfo.current_g_size,
             runInfo.s2_base_size,
             constInfo.softmax_l1_norm_scale,
@@ -506,7 +507,7 @@ def sparse_flash_mla_softmax_l1_norm(
     workspace: pl.Ptr[pl.DT_UINT8],
     tiling: OpTiling,
 ):
-    pl.printf("SPARSE_MODE: %d, IS_TND: %d, IS_SPARSE: %d\n", SPARSE_MODE, IS_TND, IS_SPARSE)
+    # pl.printf("SPARSE_MODE: %d, IS_TND: %d, IS_SPARSE: %d\n", SPARSE_MODE, IS_TND, IS_SPARSE)
     if IS_TND == 1:
         tensor_q = pl.make_tensor(
             query,
@@ -662,7 +663,7 @@ def sparse_flash_mla_softmax_l1_norm(
     if sub_id == 1:
         currentHalfG = secondHalfG
     
-    constInfo = pl.make_tuple(b_size=tiling.b, g_size=tiling.g, s1_size=tiling.sq, s2_size=tiling.sk, is_sparse=IS_SPARSE, k_length=tiling.k_length, mask_mode=SPARSE_MODE, cmp_ratio=tiling.cmp_ratio, is_tnd=IS_TND, has_seqused_q=tiling.has_seqused_q, has_seqused_k=tiling.has_seqused_k, first_g_size=firstHalfG, current_g_size=currentHalfG, softmax_l1_norm_scale=1.0/tiling.g, sub_id=sub_id, core_id=core_id, num_cores=num_cores)
+    constInfo = pl.make_tuple(b_size=tiling.b, g_size=tiling.g, s1_size=tiling.sq, s2_size=tiling.sk, is_sparse=IS_SPARSE, k_length=tiling.k_length, mask_mode=SPARSE_MODE, cmp_ratio=tiling.cmp_ratio, is_tnd=IS_TND, has_seqused_q=tiling.has_seqused_q, has_seqused_k=tiling.has_seqused_k, first_g_size=firstHalfG, current_g_size=currentHalfG, softmax_scale=tiling.softmax_scale, softmax_l1_norm_scale=1.0/tiling.g, sub_id=sub_id, core_id=core_id, num_cores=num_cores)
     runInfos = pl.struct_array(1, "RunInfo", batch_id=0, s1_idx=0, s1_size=tiling.sq, s2_size=tiling.sk, used_t1_index=0, used_t1_offset=0, next_used_t1_offset=0, t1_offset=0, next_t1_offset=0, t2_offset=0, ki=0, s2_real_size=0, s2_base_size=TKV, task_id=0)
     runInfo = runInfos[0]
     if has_seqused_q:
