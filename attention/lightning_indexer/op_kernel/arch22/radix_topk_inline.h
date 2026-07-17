@@ -205,6 +205,23 @@ __aicore__ inline void InlineRadixTopK(
             }
         }
 
+        // Debug
+        if (debugBatchId == 512) {
+            RDX_V_S_SYNC();
+            uint16_t am = static_cast<uint16_t>(involvedMask16_) | andMask16_;
+            indexGm.SetValue(0, roundId);
+            indexGm.SetValue(1, globalHist.GetValue(0));
+            indexGm.SetValue(2, globalHist.GetValue(1));
+            indexGm.SetValue(3, globalHist.GetValue(2));
+            indexGm.SetValue(4, globalHist.GetValue(3));
+            indexGm.SetValue(5, static_cast<int32_t>(involvedMask16_));
+            indexGm.SetValue(6, static_cast<int32_t>(andMask16_));
+            indexGm.SetValue(7, static_cast<int32_t>(am));
+            indexGm.SetValue(8, remainK_);
+            for (uint32_t i = 9; i < kValue; i++) { indexGm.SetValue(i, -1); }
+            if (roundId == 0) return;
+        }
+
         // FindBoundaryBin
         RDX_V_S_SYNC();
         boundaryBin = -1;
