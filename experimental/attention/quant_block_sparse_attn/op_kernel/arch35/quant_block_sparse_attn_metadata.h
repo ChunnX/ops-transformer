@@ -56,10 +56,11 @@ __aicore__ inline uint32_t GetBsaSectionNum(AscendC::GlobalTensor<int32_t> &meta
     return metadataGm.GetValue(BSA_FA_HEAD_SECTION_NUM_INDEX);
 }
 
-__aicore__ inline uint32_t GetBsaCoreMetadataOffset(uint32_t sectionIdx, uint32_t coreIdx)
+__aicore__ inline uint64_t GetBsaCoreMetadataOffset(uint32_t sectionIdx, uint32_t coreIdx)
 {
-    return BSA_FA_HEAD_METADATA_SIZE + sectionIdx * BSA_FA_AIC_CORE_NUM * BSA_FA_METADATA_SIZE +
-           coreIdx * BSA_FA_METADATA_SIZE;
+    return BSA_FA_HEAD_METADATA_SIZE +
+           static_cast<uint64_t>(sectionIdx) * BSA_FA_AIC_CORE_NUM * BSA_FA_METADATA_SIZE +
+           static_cast<uint64_t>(coreIdx) * BSA_FA_METADATA_SIZE;
 }
 
 __aicore__ inline uint32_t GetBsaAttrMetadata(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionIdx,
@@ -89,7 +90,7 @@ __aicore__ inline uint32_t GetBsaLastValidSectionIdx(AscendC::GlobalTensor<int32
 __aicore__ inline BsaFaCoreMetadata GetBsaCoreMetadata(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionIdx,
                                                        uint32_t coreIdx)
 {
-    uint32_t baseOffset = GetBsaCoreMetadataOffset(sectionIdx, coreIdx);
+    uint64_t baseOffset = GetBsaCoreMetadataOffset(sectionIdx, coreIdx);
     BsaFaCoreMetadata coreMetadata;
     coreMetadata.coreEnable = metadataGm.GetValue(baseOffset + BSA_FA_CORE_ENABLE_INDEX);
     coreMetadata.bn1StartIdx = metadataGm.GetValue(baseOffset + BSA_FA_BN1_START_INDEX);
