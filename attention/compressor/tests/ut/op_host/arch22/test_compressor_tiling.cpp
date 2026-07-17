@@ -18,7 +18,7 @@
 using namespace std;
 
 // 构造版本
-std::string MlaPrologV3_tiling_A3SocInfo = 
+std::string Compressor_tiling_A3SocInfo = 
     "{\n"
     "  \"hardware_info\": {\n"
     "    \"BT_SIZE\": 0,\n"
@@ -35,7 +35,7 @@ std::string MlaPrologV3_tiling_A3SocInfo =
     "    \"L0C_SIZE\": 131072,\n"
     "    \"vector_core_cnt\": 40,\n"
     "    \"cube_core_cnt\": 20,\n"
-    "    \"socVersion\": \"Ascend910_B3\"\n"
+    "    \"socVersion\": \"Ascend910_93\"\n"
     "  }\n"
     "}";
 
@@ -82,7 +82,7 @@ TEST_F(CompressorTilingArch22, test1)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
-        &compileInfo, "Ascend910_93", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend910_93", Compressor_tiling_A3SocInfo, 4096);
     int64_t expectTilingKey = 32;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -114,7 +114,7 @@ TEST_F(CompressorTilingArch22, test2)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
-        &compileInfo, "Ascend910_93", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend910_93", Compressor_tiling_A3SocInfo, 4096);
     int64_t expectTilingKey = 34;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -146,7 +146,7 @@ TEST_F(CompressorTilingArch22, test3)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
         },
-        &compileInfo, "Ascend910_93", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend910_93", Compressor_tiling_A3SocInfo, 4096);
     int64_t expectTilingKey = 32;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -178,7 +178,7 @@ TEST_F(CompressorTilingArch22, test4)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(131072)},
         },
-        &compileInfo, "Ascend910_93", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend910_93", Compressor_tiling_A3SocInfo, 4096);
     int64_t expectTilingKey = 0;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -210,7 +210,7 @@ TEST_F(CompressorTilingArch22, test5)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(65536)},
         },
-        &compileInfo, "Ascend910_93", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend910_93", Compressor_tiling_A3SocInfo, 4096);
     int64_t expectTilingKey = 32;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -246,7 +246,7 @@ TEST_F(CompressorTilingArch22, test6)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
-        &compileInfo, "Ascend910_93", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend910_93", Compressor_tiling_A3SocInfo, 4096);
     int64_t expectTilingKey = 33;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey);
 }
@@ -282,7 +282,7 @@ TEST_F(CompressorTilingArch22, test7)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
-        &compileInfo, "Ascend910_93", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend910_93", Compressor_tiling_A3SocInfo, 4096);
     int64_t expectTilingKey = 32;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -314,7 +314,7 @@ TEST_F(CompressorTilingArch22, test8)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
-        &compileInfo, "Ascend910_93", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend910_93", Compressor_tiling_A3SocInfo, 4096);
     int64_t expectTilingKey = 32;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -346,7 +346,7 @@ TEST_F(CompressorTilingArch22, test9)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
-        &compileInfo, "Ascend910_93", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend910_93", Compressor_tiling_A3SocInfo, 4096);
     int64_t expectTilingKey = 32;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
@@ -378,7 +378,7 @@ TEST_F(CompressorTilingArch22, test10)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(262144)},
         },
-        &compileInfo, "Ascend910_93", MlaPrologV3_tiling_A3SocInfo, 4096);
+        &compileInfo, "Ascend910_93", Compressor_tiling_A3SocInfo, 4096);
     int64_t expectTilingKey = 32;
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, expectTilingKey);
 }
