@@ -1,43 +1,152 @@
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/assets --backend npu -t TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0
-2026-07-17 07:29:09,118 [INFO] [2422887 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/assets 
-2026-07-17 07:29:13,604 [INFO] [2422887 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-17 07:29:14,158 [INFO] [2422887 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-17 07:29:14,159 [INFO] [2422887 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-17 07:29:14,159 [INFO] [2422887 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-17 07:29:14,159 [INFO] [2422887 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-17 07:29:15,261 [INFO] [2422887 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-17 07:29:15,266 [INFO] [2422887 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-17 07:29:15,266 [INFO] [2422887 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-17 07:29:16,404 [INFO] [2422887 MP MT] [instance.py:42]: Device count: 1 
-2026-07-17 07:29:16,404 [INFO] [2422887 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-17 07:29:16,404 [INFO] [2422887 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-17 07:29:16,404 [INFO] [2422887 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/assets ... 
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv --plugin /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/assets --backend npu -t PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3
+2026-07-17 07:36:29,830 [INFO] [2432127 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv 
+2026-07-17 07:36:34,353 [INFO] [2432127 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-17 07:36:34,910 [INFO] [2432127 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-17 07:36:34,932 [INFO] [2432127 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-17 07:36:34,933 [INFO] [2432127 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-17 07:36:34,933 [INFO] [2432127 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-17 07:36:36,070 [INFO] [2432127 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-17 07:36:36,076 [INFO] [2432127 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-17 07:36:36,076 [INFO] [2432127 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-17 07:36:37,212 [INFO] [2432127 MP MT] [instance.py:42]: Device count: 1 
+2026-07-17 07:36:37,212 [INFO] [2432127 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-17 07:36:37,212 [INFO] [2432127 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-17 07:36:37,212 [INFO] [2432127 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv ... 
+2026-07-17 07:36:37,213 [INFO] [2432127 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-17 07:36:37,213 [INFO] [2432127 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+ninja: no work to do.
+ninja: no work to do.
+[2026/07/17 07:36:38] [INFO]-instance_base.py:0237 - Checking testcase name...
+[2026/07/17 07:36:38] [INFO]-instance_base.py:0240 - Case number: 1
+[2026/07/17 07:36:38] [INFO]-instance_base.py:0313 - Initialize output csv file...
+[2026/07/17 07:36:38] [INFO]-instance_base.py:0321 - Output csv file is not specified. It will be set as /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_result.csv
+[2026/07/17 07:36:38] [INFO]-instance_base.py:0145 - Process per device: 1
+[2026/07/17 07:36:38] [INFO]-instance_base.py:0147 - Preparing Task Executors...
+[2026/07/17 07:36:38] [INFO]-instance_base.py:0211 - 
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 2432570 D0P0             UNKNOWN              IDLE     0s  |
++-------------------------------------------------------------------------------------------------------+
+2026-07-17 07:36:43,335 [INFO] [2432570 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67
+ninja: no work to do.
+ninja: no work to do.
+[2026/07/17 07:36:45] [INFO]-profiling.py:0056 - 
+----------------------------------------------------------------------------------------------------
+API Name: qfa_mxfp8_wrapper.npu_qfa_mxfp8
+Golden API: 
+Backend: npu
+////////////// Tensors //////////////
+Input View Shapes: ((1, 1, 0, 128), (1, 1, 64, 128), (1, 1, 64, 128), (1, 1, 0, 4), (1, 1, 64, 4), (1, 1, 2, 128), (1,), (1, 1))
+Input Dtypes: ('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')
+Input Storage Shapes: ()
+Input Formats: ()
+Input View Offsets: ()
+Input View Strides: ()
+//////////// Output Info //////////
+Output Tensor Indexes: ()
+//////////// Attributes //////////
+B: 1
+N_q: 1
+N_kv: 1
+D: 128
+actual_seq_q: [0]
+actual_seq_kv: [64]
+enable_pa: True
+kv_cache_layout: BnNBsD
+block_size: 512
+mask_mode: 3
+q_scale_layout: N2TGD
+quant_mode: 1
+enable_lse: False
+graph_path: 0
+input_layout: TND
+is_contiguous: True
+device_id: 0
+//////////// Test Config //////////
+Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None))
+Precision Tolerance: None
+Absolute Precision: (1e-08,)
+Mode: ASCEND_ONBOARD
+PID: 2432570
+Device: 0
+----------------------------------------------------------------------------------------------------
+[2026/07/17 07:36:46] [INFO]-qfa_mxfp8_wrapper.py:0084 - [WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[2026/07/17 07:36:46] [INFO]-qfa_mxfp8_wrapper.py:0107 - [WRAPPER] graph_path=0, 调用 npu_mxfp8_fa
+[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:0996 - [NPU] Q layout auto: G=1, S1=0, G*S1=0, q_layout=N2TGD
+[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1000 - [NPU TND] q=torch.Size([0, 1, 128])
+[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1005 - [NPU] Q scale layout=N2TGD, shape=torch.Size([1, 0, 1, 2, 2])
+[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1054 - [NPU PA] kv_layout=BnNBsD
+[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1055 - [NPU PA] k=torch.Size([1, 1, 512, 128]), v=torch.Size([1, 1, 512, 128])
+[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1056 - [NPU PA] deq_k=torch.Size([1, 1, 512, 2, 2]), deq_v=torch.Size([1, 1, 8, 128, 2])
+[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1066 - [NPU] 调用 PA 模式...
+[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1109 - [NPU] 调用 QFA 单算子模式...
+[2026/07/17 07:36:46] [ERROR]-profiling.py:0218 - [PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3] Error: call aclnnQuantFlashAttnMetadata failed, detail:[PID: 2432570] 2026-07-17-07:36:46.917.373 AclNN_Runtime_Error(EZ9903): maxSeqlenQ must be -1 or greater than 0, but got 0
+        Solution: In this scenario, collect the plog when the fault occurs and locate the fault based on the plog.
 Traceback (most recent call last):
-  File "<frozen runpy>", line 198, in _run_module_as_main
-  File "<frozen runpy>", line 88, in _run_code
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/__main__.py", line 4, in <module>
-    main()
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/cli/__init__.py", line 18, in main
-    _cli_main()
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/cli/__init__.py", line 67, in _cli_main
-    args.handler(args)
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/cli/e2e.py", line 33, in _handle_e2e
-    run_with_switches(sw)
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/cli/bridge.py", line 207, in run_with_switches
-    ins.profile()
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/infra/instance_base.py", line 112, in profile
-    self._parse_testcases()
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/infra/instance_base.py", line 234, in _parse_testcases
-    self._load_cases(case_file)
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/infra/instance_base.py", line 292, in _load_cases
-    self._load_case_from_zip(testcase_file)
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/infra/instance_base.py", line 443, in _load_case_from_zip
-    with zipfile.ZipFile(testcase_path) as zipped_file:
-         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/zipfile.py", line 1311, in __init__
-    self.fp = io.open(file, filemode)
-              ^^^^^^^^^^^^^^^^^^^^^^^
-IsADirectoryError: [Errno 21] Is a directory: '/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/assets'
-[ERROR] 2026-07-17-07:29:16 (PID:2422887, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# ^C
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# 
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
+    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
+    result_nps, perf = _execute_eager(
+                       ^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 328, in _execute_eager
+    resolved(*args, **kwargs)
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 108, in npu_qfa_mxfp8
+    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1067, in npu_mxfp8_fa
+    atten_out, lse_out = mxfp8_fa_torch_npu(
+                         ^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1110, in mxfp8_fa_torch_npu
+    return _call_npu_fa_op(
+           ^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 901, in _call_npu_fa_op
+    metadata = quant_flash_attn_metadata(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/quant_flash_attn.py", line 192, in quant_flash_attn_metadata
+    return op_module.quant_flash_attn_metadata(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: call aclnnQuantFlashAttnMetadata failed, detail:[PID: 2432570] 2026-07-17-07:36:46.917.373 AclNN_Runtime_Error(EZ9903): maxSeqlenQ must be -1 or greater than 0, but got 0
+        Solution: In this scenario, collect the plog when the fault occurs and locate the fault based on the plog.
+
+[2026/07/17 07:36:46] [ERROR]-profile_object.py:0172 - Profiling process failed for testcase PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3 with pid 2432570, fail reason:
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
+    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
+    result_nps, perf = _execute_eager(
+                       ^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 328, in _execute_eager
+    resolved(*args, **kwargs)
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 108, in npu_qfa_mxfp8
+    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1067, in npu_mxfp8_fa
+    atten_out, lse_out = mxfp8_fa_torch_npu(
+                         ^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1110, in mxfp8_fa_torch_npu
+    return _call_npu_fa_op(
+           ^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 901, in _call_npu_fa_op
+    metadata = quant_flash_attn_metadata(
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/quant_flash_attn.py", line 192, in quant_flash_attn_metadata
+    return op_module.quant_flash_attn_metadata(
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: call aclnnQuantFlashAttnMetadata failed, detail:[PID: 2432570] 2026-07-17-07:36:46.917.373 AclNN_Runtime_Error(EZ9903): maxSeqlenQ must be -1 or greater than 0, but got 0
+        Solution: In this scenario, collect the plog when the fault occurs and locate the fault based on the plog.
+
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/tbe_multiprocessing/pool.py", line 202, in intermediate_func
+    function_return = func(*func_args, **func_kwargs)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 219, in profile_process
+    return_struct.precision = str(e)
+    ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
+
+[2026/07/17 07:36:46] [INFO]-instance_base.py:0126 - ttk Profiling complete
