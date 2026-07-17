@@ -348,14 +348,15 @@ def analyze_failure(
                 all_rows = []
                 for flat, coord in zip(fail_indices.tolist(), coords):
                     all_rows.append(
-                        tuple(str(v.item()) for v in coord)
+                        (str(flat),)
+                        + tuple(str(v.item()) for v in coord)
                         + (f"{cpu_flat[flat].item():>+.6f}",
                            f"{npu_flat[flat].item():>+.6f}",
                            f"{diff_flat_t[flat].item():.6f}")
                     )
                 if all_rows:
-                    table_header = col_names + ["cpu", "npu", "diff"]
-                    col_types = (["n"] * len(col_names)) + ["n", "n", "n"]
+                    table_header = ["idx"] + col_names + ["cpu", "npu", "diff"]
+                    col_types = ["n"] * (len(col_names) + 4)
                     lines += _render_table(table_header, col_types, all_rows)
             else:
                 rows, axis_width, truncated = _compact_rows(
