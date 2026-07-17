@@ -158,6 +158,8 @@ private:
     int32_t compareCount_ = 0;
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
 
+    Mc2Kernel::KernelTiming kernelTiming_; // 累计打点计时器（持久成员，跨 expert 循环累加）
+
     // 大 BS route batch、ring buffer 和 reset batch 成员
     int32_t sendRouteItemsPerBatch_ = 0; // SendMaskCal 每个 batch 处理的 route item 数
     int32_t sendRouteBatchCount_ = 0;    // SendMaskCal 的 batch 总数
@@ -258,6 +260,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkI
     params_.b2ScaleGmAddr = GetTensorAddr(0, weightScales2);
 
     params_.y2GmAddr = yOut;
+    kernelTiming_.Init(yOut); // 累计打点：复用输出 y 头部空间存储 timing 数据
     params_.expertTokenNumsOutGmAddr = expertTokenNumsOut;
     params_.probsGmAddr = topkWeights;
     params_.workspaceInfo = WorkspaceInfo(workspaceGM, tilingData);
@@ -1583,14 +1586,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
                                                 QuantScaleOutType, QuantScaleOutType, true, GMM1_TILE_M,
                                                 TopkWeightsPrefetch>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt);
+                state.expertBeforeCnt, &kernelTiming_);
         } else {
             // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                 QuantScaleOutType, QuantScaleOutType, false, GMM1_TILE_M,
                                                 TopkWeightsPrefetch>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt);
+                state.expertBeforeCnt, &kernelTiming_);
         }
     }
 }
@@ -1727,6 +1730,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
     }
+    // 累计打点：将 blockMmad(slot0, AIC) 与 swigluQuantOp(slot1, AIV) 的累计耗时写入输出 y 头部。
+    // 必须放在 Process 最末尾，确保所有业务逻辑（含 MTE3/Unpermute）完成后再写 timing。
+    kernelTiming_.WriteTimingToOutput(GetBlockIdx(), true, aicNum_);
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
 

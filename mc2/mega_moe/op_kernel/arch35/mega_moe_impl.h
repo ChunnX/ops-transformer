@@ -32,6 +32,15 @@
 #include "mega_moe_impl_base.h"
 #include "mega_moe_combine_send.h"
 
+// KernelTiming 累计打点计时（无全局变量）
+#if __has_include("../../../common/utils/mc2_kernel_timing.h")
+#include "../../../common/utils/mc2_kernel_timing.h"
+#elif __has_include("../../../../common/utils/mc2_kernel_timing.h")
+#include "../../../../common/utils/mc2_kernel_timing.h"
+#elif __has_include("mc2_kernel_timing.h")
+#include "mc2_kernel_timing.h"
+#endif
+
 namespace MegaMoeImpl {
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
 // =================================================================================================
@@ -374,8 +383,10 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                 auto gmBlockScaleB = workSet.gmScaleB.Slice(
                     Te::MakeCoord(kLoc / MXFP_SCALE_GROUP_NUM, nLoc + weightBlock * config.outputN),
                     Te::MakeShape(CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM), Get<N_VALUE>(actualShape)));
+                if (args.pTiming != nullptr) { args.pTiming->StartTiming(0); }
                 blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias,
                           weightBlock == 0 ? tensorBlockUbFirst : tensorBlockUbSecond, singleShape);
+                if (args.pTiming != nullptr) { args.pTiming->StopTiming(0); }
             }
             NotifyVector();
             args.vecSetSyncCom = 1;
@@ -429,7 +440,9 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
             0};
         WaitForCube();
         AscendC::SetCtrlSpr<60, 60>(0);
+        if (args.pTiming != nullptr) { args.pTiming->StartTiming(1); }
         args.swigluQuantOp(epilogueShape, epilogueOffset);
+        if (args.pTiming != nullptr) { args.pTiming->StopTiming(1); }
         NotifyCube();
     }
 }
@@ -479,6 +492,7 @@ struct Gmm1ArgsGeneric {
     SwigluQuantOp &swigluQuantOp;
     int32_t &vecSetSyncCom;
     uint32_t expertBeforeCnt{0};
+    Mc2Kernel::KernelTiming *pTiming{nullptr}; // 累计打点计时器（指向 Kernel 类持久成员，跨 expert 累加）
 };
 
 struct Gmm2ArgsGeneric {
@@ -597,10 +611,10 @@ __aicore__ inline void GroupMatmulSwigluQuant(
                                L1_TILE_N, TopkWeightsPrefetch> &epilogueOp,
     const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom,
-    uint32_t expertBeforeCnt)
+    uint32_t expertBeforeCnt, Mc2Kernel::KernelTiming *pTiming = nullptr)
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
-    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom, expertBeforeCnt};
+    Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom, expertBeforeCnt, pTiming};
     Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
                                    ElementMxScaleB, IsWeightNZ, false, Gmm1TileM>(params, problemShape, gmmAddrInfo,
                                                                                 startBlockIdx, args);
