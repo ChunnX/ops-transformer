@@ -43,24 +43,24 @@ public:
         const CommTilingData& tilingData,
         GM_ADDR localAddr,
         __ubuf__ uint8_t* commbuf,
-        uint32_t useCoreNum,
-        uint32_t curCoreId,
+        uint32_t threadCnt,
+        uint32_t threadIdx,
         uint64_t winOffset = 0)
     {
         udmaCtx_ = udmaCtx;
         barrier_ = barrier;
         localAddr_ = localAddr;
         tilingData_ = &tilingData;
-        useCoreNum_ = useCoreNum;
-        curCoreId_ = curCoreId;
+        threadCnt_ = threadCnt;
+        threadIdx_ = threadIdx;
         commBuf_ = commbuf;
         winOffsset_ = winOffset;
 
         comm_.Init(commBuf_, COMM_WORKSPACE_SIZE);
 
         uint32_t rankSize = udmaCtx_->rankSize;
-        uint32_t targetRankPerCore = (rankSize + useCoreNum - 1) / useCoreNum;
-        uint32_t targetRankStart = curCoreId * targetRankPerCore;
+        uint32_t targetRankPerCore = (rankSize + threadCnt - 1) / threadCnt;
+        uint32_t targetRankStart = threadIdx * targetRankPerCore;
 
         uint32_t targetRankCnt;
         if (targetRankStart + targetRankPerCore <= rankSize) {
@@ -165,8 +165,8 @@ protected:
     uint32_t targetRankStart_;
     uint32_t targetRankCnt_;
 
-    uint32_t useCoreNum_;
-    uint32_t curCoreId_;
+    uint32_t threadCnt_;
+    uint32_t threadIdx_;
 };
 
 } // namespace AivComm

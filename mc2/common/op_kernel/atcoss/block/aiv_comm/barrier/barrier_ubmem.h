@@ -40,7 +40,7 @@ public:
     }
 
     __aicore__ inline void Init(
-        __ubuf__ uint8_t* syncBuf, __gm__ CommUbmemContext* ctx, uint32_t threadCnt, uint32_t threadId);
+        __ubuf__ uint8_t* syncBuf, __gm__ CommUbmemContext* ctx, uint32_t threadCnt, uint32_t threadIdx);
 
     __aicore__ inline void Execute();
 
@@ -48,7 +48,7 @@ private:
     __ubuf__ uint8_t* syncBuf_;
     __gm__ CommUbmemContext* ctx_;
     uint32_t threadCnt_;
-    uint32_t threadId_;
+    uint32_t threadIdx_;
     int32_t count_;
     __aicore__ inline void FlushCacheLine(__gm__ uint8_t* addr)
     {
@@ -66,23 +66,23 @@ private:
 };
 
 __aicore__ inline void TeamBarrier::Init(
-    __ubuf__ uint8_t* syncBuf, __gm__ CommUbmemContext* ctx, uint32_t threadCnt, uint32_t threadId)
+    __ubuf__ uint8_t* syncBuf, __gm__ CommUbmemContext* ctx, uint32_t threadCnt, uint32_t threadIdx)
 {
     syncBuf_ = syncBuf;
     ctx_ = ctx;
     threadCnt_ = threadCnt;
-    threadId_ = threadId;
+    threadIdx_ = threadIdx;
 }
 
 __aicore__ inline void TeamBarrier::Execute()
 {
     if ASCEND_IS_AIV {
-        if (threadId_ >= threadCnt_) {
+        if (threadIdx_ >= threadCnt_) {
             return;
         }
 
         __gm__ uint64_t* teamSyncCounter = (__gm__ uint64_t*)(ctx_->commBufferAddrs[ctx_->rankId]
-            + BARRIER_FLAG_SIZE + threadId_ * BARRIER_FLAG_SIZE);
+            + BARRIER_FLAG_SIZE + threadIdx_ * BARRIER_FLAG_SIZE);
         count_ = (int32_t)(*teamSyncCounter) + 1;
 
         BarrierCrossCore();
@@ -114,11 +114,11 @@ __aicore__ inline void TeamBarrier::BarrierCrossCore()
     uint32_t offset = 0;
 
     while (shift < threadCnt_) {
-        uint32_t next = (threadId_ + shift) % threadCnt_;
+        uint32_t next = (threadIdx_ + shift) % threadCnt_;
         __gm__ uint64_t* dst = (__gm__ uint64_t*)(coreSyncPool + next * SYNC_SLOT_PEER_CORE + offset);
         *dst = count_;
         FlushCacheLine((__gm__ uint8_t*)dst);
-        __gm__ uint64_t* src = (__gm__ uint64_t*)(coreSyncPool + threadId_ * SYNC_SLOT_PEER_CORE + offset);
+        __gm__ uint64_t* src = (__gm__ uint64_t*)(coreSyncPool + threadIdx_ * SYNC_SLOT_PEER_CORE + offset);
         do {
             if (*src == count_) {
                 break;
@@ -151,7 +151,7 @@ __aicore__ inline void TeamBarrier::BarrierCrossDevice()
     SetFlag<HardEvent::MTE3_S>(1);
     WaitFlag<HardEvent::MTE3_S>(1);
 
-    for (uint32_t i = threadId_; i < nranks; i += (uint32_t)step) {
+    for (uint32_t i = threadIdx_; i < nranks; i += (uint32_t)step) {
         if (i == myRank) {
             continue;
         }
