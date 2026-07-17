@@ -1205,13 +1205,18 @@ def generate_sparse_indices_loop(
     cmp_ratio: int,
     layout = "BSND",
     seq_q = None,
-    seq_k = None
-) -> torch.Tensor:
+    seq_k = None,
+    has_topk_length = False
+):
     """
     逐循环版本生成 sparse_indices。
     """
     # 初始化全 0 的 tensor，shape 为 [b, sq, 1, k]
     sparse_indices = torch.zeros(b, sq, 1, k, dtype=torch.int32)
+    if has_topk_length:
+        topk_length = torch.zeros(b, sq, 1, dtype=torch.int32)
+    else:
+        topk_length = None
     
     for b_id in range(b):
         cur_sq = sq if layout == "BSND" else seq_q[b_id]
@@ -1220,6 +1225,9 @@ def generate_sparse_indices_loop(
             if maskmode == 0:
                 # 有效长度为 k 跟 cur_skv 的最小值
                 limit = min(cur_skv, k)
+                if has_topk_length:
+                    topk_length[b_id, s1_idx, :] = torch.randint(0, limit, (1,), dtype=torch.int32)
+                    limit = int(topk_length[b_id, s1_idx, 0])
                 # 生成 [0, cur_skv) 范围内的随机整数
                 rand_vals = torch.randint(0, cur_skv, (limit,), dtype=torch.int32)
                 # rand_vals = torch.arange(limit, dtype=torch.int32)
@@ -1230,14 +1238,17 @@ def generate_sparse_indices_loop(
                 actual_sk = max((cur_skv - cur_sq + s1_idx + 1) // cmp_ratio, 0)
                 limit = min(actual_sk, k)
                 
+                if has_topk_length:
+                    topk_length[b_id, s1_idx, 0] = limit
+                
                 if limit > 0:
                     # 生成 [0, actual_sk) 范围内的随机整数
                     rand_vals = torch.randint(0, actual_sk, (limit,), dtype=torch.int32)
                     # rand_vals = torch.arange(limit, dtype=torch.int32)
                     sparse_indices[b_id, s1_idx, 0, :limit] = rand_vals
                     
-    return sparse_indices
-
+    return sparse_indices, topk_length
+     
 def compute_softmax_l1_norm_loop(
     q: torch.Tensor,                              # [B, Sq, G, D], FP16
     k: torch.Tensor,                              # [B, Sk, 1, D], FP16
@@ -1246,6 +1257,7 @@ def compute_softmax_l1_norm_loop(
     seqused_k: Optional[torch.Tensor] = None,     # [B], INT32 or None
     cmp_residual_k: Optional[torch.Tensor] = None,# [B], INT32 or None
     sparse_indices: Optional[torch.Tensor] = None,# [B, Sq, 1, K], INT32 or None
+    topk_length: Optional[torch.Tensor] = None,
     mask_mode: int = 0,                           # 掩码模式
     cmp_ratio: int = 1,                           # 压缩比例
     core_num = 32,
@@ -1314,7 +1326,8 @@ def compute_softmax_l1_norm_loop(
             # ---------- sparse_indices 逻辑 ----------
             if sparse_indices is not None:
                 K = sparse_indices.shape[-1]
-                # actual_sk = min(actual_sk, K)
+                if topk_length is not None:
+                    K = min(int(topk_length[b_id, s1_id, 0]), K)
                 actual_sk = min(actual_sk, K)
                 
                 if actual_sk > 0:
@@ -1435,9 +1448,9 @@ def test_smla_softmax_l1_bs_sparse_a5():
         lse = torch.rand((b, 1, sq, g), device=device, dtype=torch.float32)
         
         if k > 0:
-            sparse_indices = generate_sparse_indices_loop(b, sq, skv, k, maskmode, cmp_ratio).to(device)
+            sparse_indices, topk_length = generate_sparse_indices_loop(b, sq, skv, k, maskmode, cmp_ratio, has_topk_length=has_topk_length).to(device)
         else:
-            sparse_indices = None
+            sparse_indices, topk_length = None, None
         if maskmode == 3 and cmp_ratio > 1:
             cmp_residual_k = torch.randint(0, cmp_ratio, (b,), dtype=torch.int32).to(device)
         else:
@@ -1476,6 +1489,7 @@ def test_smla_softmax_l1_bs_sparse_a5():
                                                               seqused_k.cpu() if seqused_k is not None else None,
                                                               cmp_residual_k.cpu() if cmp_residual_k is not None else None,
                                                               sparse_indices.cpu() if sparse_indices is not None else None,
+                                                              None,
                                                               maskmode, cmp_ratio, num_cores)
         print(f"metadata: {metadata}")
         metadata = metadata.to(device)
@@ -1629,9 +1643,9 @@ def test_smla_softmax_l1_tnd_sparse_a5():
         key = torch.rand((b, skv, 1, d), device=device, dtype=torch.float16)
         lse = torch.rand((b, 1, sq, g), device=device, dtype=torch.float32)
         if k > 0:
-            sparse_indices = generate_sparse_indices_loop(b, sq, skv, k, maskmode, cmp_ratio, layout, seq_q, seq_k).to(device)
+            sparse_indices, topk_length = generate_sparse_indices_loop(b, sq, skv, k, maskmode, cmp_ratio, layout, seq_q, seq_k, has_topk_length=has_topk_length).to(device)
         else:
-            sparse_indices = None
+            sparse_indices, topk_length = None, None
         if maskmode == 3 and cmp_ratio > 1:
             cmp_residual_k = torch.randint(0, cmp_ratio, (b,), dtype=torch.int32).to(device)
         else:
@@ -1673,6 +1687,7 @@ def test_smla_softmax_l1_tnd_sparse_a5():
                                                               seqused_k.cpu() if seqused_k is not None else None,
                                                               cmp_residual_k.cpu() if cmp_residual_k is not None else None,
                                                               sparse_indices.cpu() if sparse_indices is not None else None,
+                                                              None,
                                                               maskmode, cmp_ratio, num_cores, layout, seq_q, seq_k)
         print(f"metadata: {metadata}")
         metadata = metadata.to(device)
@@ -1744,9 +1759,9 @@ def test_smla_softmax_l1_bsnd_dense_a5():
         key = torch.rand((b, skv, 1, d), device=device, dtype=torch.float16)
         lse = torch.rand((b, 1, sq, g), device=device, dtype=torch.float32)
         if k > 0:
-            sparse_indices = generate_sparse_indices_loop(b, sq, skv, k, maskmode, cmp_ratio).to(device)
+            sparse_indices, topk_length = generate_sparse_indices_loop(b, sq, skv, k, maskmode, cmp_ratio, has_topk_length=has_topk_length).to(device)
         else:
-            sparse_indices = None
+            sparse_indices, topk_length = None, None
         if maskmode == 3 and cmp_ratio > 1:
             cmp_residual_k = torch.randint(0, cmp_ratio, (b,), dtype=torch.int32).to(device)
         else:
@@ -1787,6 +1802,7 @@ def test_smla_softmax_l1_bsnd_dense_a5():
                                                               seqused_k.cpu() if seqused_k is not None else None,
                                                               cmp_residual_k.cpu() if cmp_residual_k is not None else None,
                                                               sparse_indices.cpu() if sparse_indices is not None else None,
+                                                              None,
                                                               maskmode, cmp_ratio, num_cores)
         print(f"metadata: {metadata}")
         metadata = metadata.to(device)
@@ -1868,9 +1884,9 @@ def test_smla_softmax_l1_tnd_dense_a5():
         key = torch.rand((b, skv, 1, d), device=device, dtype=torch.float16)
         lse = torch.rand((b, 1, sq, g), device=device, dtype=torch.float32)
         if k > 0:
-            sparse_indices = generate_sparse_indices_loop(b, sq, skv, k, maskmode, cmp_ratio, layout, seq_q, seq_k).to(device)
+            sparse_indices, topk_length = generate_sparse_indices_loop(b, sq, skv, k, maskmode, cmp_ratio, layout, seq_q, seq_k, has_topk_length=has_topk_length).to(device)
         else:
-            sparse_indices = None
+            sparse_indices, topk_length = None, None
         if maskmode == 3 and cmp_ratio > 1:
             cmp_residual_k = torch.randint(0, cmp_ratio, (b,), dtype=torch.int32).to(device)
         else:
@@ -1913,6 +1929,7 @@ def test_smla_softmax_l1_tnd_dense_a5():
                                                               seqused_k.cpu() if seqused_k is not None else None,
                                                               cmp_residual_k.cpu() if cmp_residual_k is not None else None,
                                                               sparse_indices.cpu() if sparse_indices is not None else None,
+                                                              None,
                                                               maskmode, cmp_ratio, num_cores, layout, seq_q, seq_k)
         print(f"metadata: {metadata}")
         metadata = metadata.to(device)

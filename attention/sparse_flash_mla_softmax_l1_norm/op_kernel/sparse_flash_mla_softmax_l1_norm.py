@@ -109,8 +109,8 @@ class OpTiling:
 # ================================================================
 class SmlaTilingKey:
     SPARSE_MODE = TilingKeyField(bits=2, values=[0, 1, 2, 3])
-    IS_TND = TilingKeyField(bits=1, values=[0])
-    IS_SPARSE = TilingKeyField(bits=1, values=[0])
+    IS_TND = TilingKeyField(bits=1, values=[0, 1])
+    IS_SPARSE = TilingKeyField(bits=1, values=[0, 1])
 
 
 def get_q_offset(constInfo, runInfo):
@@ -656,8 +656,8 @@ def sparse_flash_mla_softmax_l1_norm(
     if sub_id == 1:
         currentHalfG = secondHalfG
     
-    constInfo = pl.make_tuple(b_size=tiling.b, g_size=tiling.g, s1_size=0, s2_size=0, is_sparse=IS_SPARSE, k_length=tiling.k_length, mask_mode=SPARSE_MODE, cmp_ratio=tiling.cmp_ratio, is_tnd=IS_TND, has_seqused_q=tiling.has_seqused_q, has_seqused_k=tiling.has_seqused_k, first_g_size=firstHalfG, current_g_size=currentHalfG, softmax_l1_norm_scale=1.0/tiling.g, sub_id=sub_id, core_id=core_id, num_cores=num_cores)
-    runInfos = pl.struct_array(1, "RunInfo", batch_id=0, s1_idx=0, s1_size=0, s2_size=0, used_t1_index=0, used_t1_offset=0, next_used_t1_offset=0, t1_offset=0, next_t1_offset=0, t2_offset=0, ki=0, s2_real_size=0, s2_base_size=TKV, task_id=0)
+    constInfo = pl.make_tuple(b_size=tiling.b, g_size=tiling.g, s1_size=tiling.sq, s2_size=tiling.sk, is_sparse=IS_SPARSE, k_length=tiling.k_length, mask_mode=SPARSE_MODE, cmp_ratio=tiling.cmp_ratio, is_tnd=IS_TND, has_seqused_q=tiling.has_seqused_q, has_seqused_k=tiling.has_seqused_k, first_g_size=firstHalfG, current_g_size=currentHalfG, softmax_l1_norm_scale=1.0/tiling.g, sub_id=sub_id, core_id=core_id, num_cores=num_cores)
+    runInfos = pl.struct_array(1, "RunInfo", batch_id=0, s1_idx=0, s1_size=tiling.sq, s2_size=tiling.sk, used_t1_index=0, used_t1_offset=0, next_used_t1_offset=0, t1_offset=0, next_t1_offset=0, t2_offset=0, ki=0, s2_real_size=0, s2_base_size=TKV, task_id=0)
     runInfo = runInfos[0]
     if has_seqused_q:
         runInfo.next_used_t1_offset = pl.getval(tensor_seqused_q, 0)
