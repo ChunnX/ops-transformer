@@ -26,6 +26,7 @@ namespace optiling {
 constexpr int64_t ANTIQUANT_GROUP_SIZE_MIN_VALUE = 32;
 constexpr uint64_t STANDARD_CARD_CGMPAD_WORKSPACE_CNT = 3;
 constexpr uint64_t FIVE_ONE_TWO = 512;
+constexpr uint64_t WEIGHT_QUANT_A2APATH_CRITICAL_K = 2048;
 bool WeightQuantMatmulAllReduceTilingA5::IsCapable()
 {
     if (isA16W8_ || isA16W4_) {
@@ -215,6 +216,10 @@ uint64_t WeightQuantMatmulAllReduceTilingA5::GetTilingKey() const
         return tilingKey;
     }
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
+    const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
+    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
+        isUseA2APath = false;
+    }
     bool isA2ARSAG = isUseA2APath;
     uint8_t commMode = GetCommMode();
     const uint64_t tilingKey = GET_TPL_TILING_KEY(  \
@@ -274,7 +279,12 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::GetWorkspaceSize()
             OP_LOGD(opName_, "Empty tensor k is 0, set workspace size=%lu to context.", myWorkSpaceSize_);
         }
     } else {
-        if (mc2tiling::IsUseA2APath(args_.rankDim, npuArch_)) {
+        bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
+        const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
+        if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
+            isUseA2APath = false;
+        }
+        if (isUseA2APath) {
             OP_TILING_CHECK(
                 GetWorkspaceSizeForA2ARSAG() != ge::GRAPH_SUCCESS,
                 OP_LOGE(opName_, "get workspace size By GetWorkspaceSizeForA2ARSAG failed."),
@@ -487,6 +497,10 @@ ge::graphStatus WeightQuantMatmulAllReduceTilingA5::SetMc2Hcomm()
     const uint32_t reduceType = HcclReduceOp::HCCL_REDUCE_SUM;
     const char* groupName = context_->GetAttrs()->GetAttrPointer<char>(static_cast<int>(0));
     bool isUseA2APath = mc2tiling::IsUseA2APath(args_.rankDim, npuArch_);
+    const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
+    if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K && mc2tiling::Is8P(args_.rankDim, npuArch_)) {
+        isUseA2APath = false;
+    }
     if (isUseA2APath) {
         OP_TILING_CHECK(
             SetMc2HcommTwoShot(groupName, reduceType) != ge::GRAPH_SUCCESS,
@@ -710,9 +724,16 @@ CutResult WeightQuantMatmulAllReduceTilingA5::GetTilingResult()
                                                         TopoType::STANDARD_CARD);
         mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
     } else if (mc2tiling::Is8P(args_.rankDim, npuArch_)) {
+        const uint64_t k = MatmulAllReduceTilingBase::GetKValue();
+        KernelType kernelType;
+        if (k >= WEIGHT_QUANT_A2APATH_CRITICAL_K) {
+            kernelType = KernelType::ALL_REDUCE;
+        } else {
+            kernelType = KernelType::ALL_REDUCE_VIA_TWO_SHOT;
+        }
         MMAllReduceFitBalanceTiling allReduceTilingHcclInst(args_,
-                                                        KernelType::ALL_REDUCE_VIA_TWO_SHOT,
-                                                        TopoType::EIGHT_P);
+                                                            kernelType,
+                                                            TopoType::EIGHT_P);
         mCutAllreduceOutput = allReduceTilingHcclInst.GetTiling();
     } else {
         MMPlusAllReduce allReduceTilingHcclInst(args_, args_.rankDim, KernelType::ALL_REDUCE, inputSocVer, isPerBlock_);
