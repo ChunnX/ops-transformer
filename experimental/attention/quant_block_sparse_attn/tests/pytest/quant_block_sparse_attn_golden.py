@@ -286,10 +286,6 @@ def _count_mask_valid_pairs(case, q_start, q_end, kv_start, kv_end, q_len, kv_le
     return valid_pairs
 
 
-def _dtype_size(dtype):
-    return torch.empty((), dtype=dtype).element_size()
-
-
 def _calc_cube_compute_amount(case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
     q_block_size = int(case["sparse_q_block_size"])
     kv_block_size = int(case["sparse_kv_block_size"])
@@ -317,7 +313,7 @@ def _calc_cube_compute_amount(case, q_lengths, kv_lengths, sparse_indices, spars
             f"sparse head dimension is smaller than N1={n1}: sparse_indices={tuple(sparse_indices_cpu.shape)}, "
             f"sparse_seq_len={tuple(sparse_seq_len_cpu.shape)}")
 
-    valid_pairs = 0
+    basic_block_count = 0
     qb_limit = sparse_seq_len_cpu.shape[2]
     kb_limit = sparse_indices_cpu.shape[3]
     for batch_idx in range(batch):
@@ -340,15 +336,85 @@ def _calc_cube_compute_amount(case, q_lengths, kv_lengths, sparse_indices, spars
                     kv_end = min(kv_start + kv_block_size, kv_len)
                     if kv_start >= kv_end:
                         continue
-                    valid_pairs += _count_mask_valid_pairs(case, q_start, q_end, kv_start, kv_end, q_len, kv_len)
+                    basic_block_count += 1
 
-    return valid_pairs * head_dim * _dtype_size(_fp8_dtype()) * 2
+    single_basic_block_compute = q_block_size * kv_block_size * head_dim
+    multiply_add_compute = 2
+    bmm_compute_count = 2
+    cube_compute_amount = (
+        basic_block_count * single_basic_block_compute * multiply_add_compute * bmm_compute_count
+    )
+    return {
+        "basic_block_count": basic_block_count,
+        "basic_block_shape": (q_block_size, kv_block_size, head_dim),
+        "single_basic_block_compute": single_basic_block_compute,
+        "multiply_add_compute": multiply_add_compute,
+        "bmm_compute_count": bmm_compute_count,
+        "cube_compute_amount": cube_compute_amount,
+    }
+
+
+def _calc_cube_compute_capacity():
+    unit_conversion = 1000
+    fractal_m = 16
+    fractal_n = 16
+    fp8_fractal_k = 32
+    min_fractal_compute = fractal_m * fractal_n * fp8_fractal_k
+    frequency_ghz = 1.65
+    aic_count = 32
+    multiply_add_compute = 2
+    cube_compute_capacity = (
+        unit_conversion * min_fractal_compute * frequency_ghz * aic_count * multiply_add_compute
+    )
+    return {
+        "unit_conversion": unit_conversion,
+        "fractal_shape": (fractal_m, fractal_n, fp8_fractal_k),
+        "min_fractal_compute": min_fractal_compute,
+        "frequency_ghz": frequency_ghz,
+        "aic_count": aic_count,
+        "multiply_add_compute": multiply_add_compute,
+        "cube_compute_capacity": cube_compute_capacity,
+    }
 
 
 def _log_cube_compute_amount(case_name, case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
-    cube_compute_amount = _calc_cube_compute_amount(case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
-    logger.info("case_name=%s, cube_compute_amount=%d", case_name, cube_compute_amount)
-    return cube_compute_amount
+    compute_info = _calc_cube_compute_amount(case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
+    capacity_info = _calc_cube_compute_capacity()
+    basic_block_shape = compute_info["basic_block_shape"]
+    fractal_shape = capacity_info["fractal_shape"]
+    mfu_time = compute_info["cube_compute_amount"] / capacity_info["cube_compute_capacity"]
+    logger.info("case_name=%s", case_name)
+    logger.info("FLOPS计算过程量:")
+    logger.info("基本块数量: %d", compute_info["basic_block_count"])
+    logger.info(
+        "基本块的shape: q_block_size=%d, kv_block_size=%d, head_dim=%d",
+        basic_block_shape[0], basic_block_shape[1], basic_block_shape[2])
+    logger.info("单基本块计算量: %d", compute_info["single_basic_block_compute"])
+    logger.info(
+        "FLOPS计算公式: 基本块数(%d) * 单基本块计算量(%d) * 乘加计算(%d) * 两次bmm计算(%d) = %d",
+        compute_info["basic_block_count"],
+        compute_info["single_basic_block_compute"],
+        compute_info["multiply_add_compute"],
+        compute_info["bmm_compute_count"],
+        compute_info["cube_compute_amount"])
+    logger.info("算力计算过程量:")
+    logger.info(
+        "一轮cycle对应最小分型shape: m=%d, n=%d, k=%d(fp8为32)",
+        fractal_shape[0], fractal_shape[1], fractal_shape[2])
+    logger.info("一轮cycle对应最小分型计算量: %d", capacity_info["min_fractal_compute"])
+    logger.info(
+        "算力计算公式: 单位换算(%d) * (一轮cycle对应最小分型计算量(%d) * 频率GHz(%.2f) * "
+        "AIC数量(%d) * 乘加计算(%d)) = %.6f",
+        capacity_info["unit_conversion"],
+        capacity_info["min_fractal_compute"],
+        capacity_info["frequency_ghz"],
+        capacity_info["aic_count"],
+        capacity_info["multiply_add_compute"],
+        capacity_info["cube_compute_capacity"])
+    logger.info(
+        "MFU*时间计算公式: FLOPS(%d) / 算力(%.6f) = MFU * 时间(us) = %.6f",
+        compute_info["cube_compute_amount"], capacity_info["cube_compute_capacity"], mfu_time)
+    return compute_info["cube_compute_amount"], mfu_time
 
 
 def _reference_attention(case, query, dense_key, dense_value, q_scale, k_scale, v_scale, p_scale,
@@ -547,7 +613,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             f"quantBlockSparseAttn_{mode}_{case['layout_q']}_{case['layout_kv']}_"
             f"{batch}_{n1}_{n2}_{s1}_{s2}_{head_dim}"
         )
-    case["FLOPS"] = _log_cube_compute_amount(
+    case["FLOPS"], case["MFU*时间"] = _log_cube_compute_amount(
         case["Testcase_Name"], case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
 
     attention_out, softmax_lse = _reference_attention(
