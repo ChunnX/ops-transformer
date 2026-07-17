@@ -286,10 +286,6 @@ def _count_mask_valid_pairs(case, q_start, q_end, kv_start, kv_end, q_len, kv_le
     return valid_pairs
 
 
-def _dtype_size(dtype):
-    return torch.empty((), dtype=dtype).element_size()
-
-
 def _calc_cube_compute_amount(case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
     q_block_size = int(case["sparse_q_block_size"])
     kv_block_size = int(case["sparse_kv_block_size"])
@@ -342,7 +338,7 @@ def _calc_cube_compute_amount(case, q_lengths, kv_lengths, sparse_indices, spars
                         continue
                     valid_pairs += _count_mask_valid_pairs(case, q_start, q_end, kv_start, kv_end, q_len, kv_len)
 
-    return valid_pairs * head_dim * _dtype_size(_fp8_dtype()) * 2
+    return valid_pairs * head_dim * 2 * 2
 
 
 def _log_cube_compute_amount(case_name, case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
