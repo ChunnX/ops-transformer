@@ -34,9 +34,6 @@ if (BUILD_OPEN_PROJECT)  # custom
                     -cce-aicore-dcci-before-kernel-end=false
                     -DENABLE_CV_COMM_VIA_SSBUF=true
                     -I${OPTENSOR_INCLUDE_ROOT}
-                    -I${TENSOR_API_INCLUDE_ROOT}
-                    -I${TENSOR_API_IMPL_INCLUDE_ROOT}
-                    -I${TENSOR_API}
                     -I${BLAZE}
         )
     elseif("${CONDITION_UNIT}" STREQUAL "ascend910_93")

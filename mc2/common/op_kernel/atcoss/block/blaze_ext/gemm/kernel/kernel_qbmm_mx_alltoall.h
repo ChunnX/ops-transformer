@@ -31,7 +31,6 @@
 #include "blaze/gemm/utils/common_utils.h"
 #include "../block/block_mmad_qbmm_mx_alltoall.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
-#include "tensor_api/tensor.h"
 
 namespace Blaze {
 namespace Gemm {
