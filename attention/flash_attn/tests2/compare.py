@@ -189,3 +189,5 @@ def compare_outputs(cpu_out, npu_out, *, chunk_size=0, dtype_handler=None,
     return DefaultComparator().compare_two_way(
         cpu_out, npu_out, chunk_size=chunk_size,
         dtype_handler=dtype_handler, atol=atol, rtol=rtol)
+
+

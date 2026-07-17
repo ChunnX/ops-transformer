@@ -3,7 +3,6 @@ import gc
 import logging
 import time
 import traceback
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import torch
@@ -167,15 +166,22 @@ def _shapes_summary(data: dict) -> str:
     return " ".join(parts) if parts else "(no tensors)"
 
 
-def _exec_or_load(stages: set, stage_name: str, compute_fn, case_set: str,
-                  case_id: str):
-    """执行阶段(若在stages中)并保存pt, 否则从pt加载, pt不存在则返回None。"""
-    if stage_name in stages:
-        output = compute_fn()
-        _save_pt(output, _pt_path(case_set, case_id, stage_name))
-        return output
-    pt = _pt_path(case_set, case_id, stage_name)
-    return _load_pt(pt) if pt.exists() else None
+def _run_stage(stages: set, stage_name: str, compute_fn, case_set: str,
+               case_id: str, note: str = ""):
+    """执行阶段(在stages中: 计算+保存pt) 或 从pt加载(pt不存在返回None), 内聚 start/done/skip 日志。"""
+    if stage_name not in stages:
+        pt = _pt_path(case_set, case_id, stage_name)
+        loaded = _load_pt(pt) if pt.exists() else None
+        logger.info("[%s]  skip  | %s", stage_name,
+                    _shapes_summary(loaded) if loaded else "pt not found")
+        return loaded
+    logger.info("[%s]  start | %s", stage_name, note)
+    t0 = time.perf_counter()
+    output = compute_fn()
+    _save_pt(output, _pt_path(case_set, case_id, stage_name))
+    logger.info("[%s]  done  | %.2fs | %s", stage_name, time.perf_counter() - t0,
+                _shapes_summary(output) if output else "(none)")
+    return output
 
 
 # ============ Engine ============
@@ -209,34 +215,11 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
             logger.info("[gen]  skip  | loading from pt")
             inputs = _load_pt(_pt_path(case_set, case_id, "input"))
 
-        logger.info("[cpu]  start")
-        t0 = time.perf_counter()
-        cpu_out = _exec_or_load(stages, "cpu", lambda: cpu.cpu_compute(inputs),
-                                case_set, case_id)
-        if "cpu" in stages:
-            logger.info("[cpu]  done  | %.2fs | %s", time.perf_counter() - t0,
-                        _shapes_summary(cpu_out) if cpu_out else "(none)")
-        else:
-            logger.info("[cpu]  skip  | %s", _shapes_summary(cpu_out) if cpu_out else "pt not found")
-
-        def _do_npu():
-            dev_inputs = _to_device(inputs, "npu")
-            with ThreadPoolExecutor(max_workers=1) as executor:
-                future = executor.submit(npu.npu_compute, dev_inputs, npu_mode)
-                return future.result()
-
-        if "npu" in stages:
-            logger.info("[npu]  start | %s", npu_mode)
-            t0 = time.perf_counter()
-        npu_out = _exec_or_load(stages, "npu", _do_npu,
-                                case_set, case_id)
-        if "npu" in stages:
-            logger.info("[npu]  done  | %.2fs | %s", time.perf_counter() - t0,
-                        _shapes_summary(npu_out) if npu_out else "(none)")
-        elif npu_out is not None:
-            logger.info("[npu]  skip  | %s", _shapes_summary(npu_out))
-        else:
-            logger.info("[npu]  skip  | pt not found")
+        cpu_out = _run_stage(stages, "cpu", lambda: cpu.cpu_compute(inputs),
+                             case_set, case_id)
+        npu_out = _run_stage(stages, "npu",
+                             lambda: npu.npu_compute(_to_device(inputs, "npu"), npu_mode),
+                             case_set, case_id, note=npu_mode)
 
         if "gpu" in stages:
             from core.gpu import GpuBackend
