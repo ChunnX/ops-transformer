@@ -46,7 +46,6 @@ ge::graphStatus InferShapeMixedQuantSparseFlashMla(gert::InferShapeContext *cont
             softmaxLseShape->SetDim(DIM_INDEX_0, kvHeadNum);
             softmaxLseShape->SetDim(DIM_INDEX_1, queryShape->GetDim(DIM_INDEX_0));
             softmaxLseShape->SetDim(DIM_INDEX_2, queryShape->GetDim(DIM_INDEX_1) / kvHeadNum);
-        int dimCount = softmaxLseShape->GetDimNum();
         } else {
             softmaxLseShape->SetDimNum(DIM_NUM_4);
             softmaxLseShape->SetDim(DIM_INDEX_0, queryShape->GetDim(DIM_INDEX_0));
