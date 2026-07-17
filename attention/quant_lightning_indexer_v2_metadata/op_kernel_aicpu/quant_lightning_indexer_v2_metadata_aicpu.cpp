@@ -140,9 +140,9 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
     if (cmpResidualK_ != nullptr && cmpResidualK_->GetData() != nullptr) {
         const int32_t *cmpResidualKPtr = static_cast<const int32_t*>(cmpResidualK_->GetData());
         for (int i = 0; i < batchSize; i++) {
-            if (cmpResidualKPtr[i] < 0) {
-                KERNEL_LOG_ERROR("The elements in cmp_residual_k should be >= 0, but got cmp_residual_k[%d] = %d",
-                    i, cmpResidualKPtr[i]);
+            if (cmpResidualKPtr[i] < 0 || cmpResidualKPtr[i] >= cmpRatio_) {
+                KERNEL_LOG_ERROR("The elements in cmp_residual_k should be in [0, cmpRatio_), but got "
+                    "cmp_residual_k[%d] = %d", i, cmpResidualKPtr[i]);
                 return false;
             }
         }

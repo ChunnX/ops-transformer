@@ -220,9 +220,9 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
             const int32_t *cmpResidualKvPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
             for (int i = 0; i < batchSize; i++) {
                 // 校验 cmp_residual_kv 元素非负
-                if (cmpResidualKvPtr[i] < 0) {
-                    KERNEL_LOG_ERROR("The elements in cmp_residual_kv should be >= 0, but got cmp_residual_kv[%d] = %d",
-                        i, cmpResidualKvPtr[i]);
+                if (cmpResidualKvPtr[i] < 0 || cmpResidualKvPtr[i] >= cmpRatio_) {
+                    KERNEL_LOG_ERROR("The elements in cmp_residual_kv should be in [0, cmpRatio_), but got "
+                        "cmp_residual_kv[%d] = %d", i, cmpResidualKvPtr[i]);
                     return false;
                 }
             }
@@ -511,9 +511,9 @@ uint64_t SparseFlashMlaMetadataCpuKernel::GetRevertS2Size(uint32_t bIdx)
     uint32_t cmpS2Size = GetCmpS2SeqSize(bIdx);
     if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
         const int32_t *residualPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
-        return static_cast<uint64_t>(cmpS2Size) * cmpRatio_ + residualPtr[bIdx];
+        return static_cast<uint64_t>(cmpS2Size) * static_cast<uint64_t>(cmpRatio_) + residualPtr[bIdx];
     } else {
-        return static_cast<uint64_t>(cmpS2Size) * cmpRatio_;
+        return static_cast<uint64_t>(cmpS2Size) * static_cast<uint64_t>(cmpRatio_);
     }
 }
 
