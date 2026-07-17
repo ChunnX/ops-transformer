@@ -120,8 +120,8 @@ ge::graphStatus AlltoAllvMXQuantGmmTiling::CheckScaleShape() const
 ge::graphStatus AlltoAllvMXQuantGmmTiling::DoGmmTiling(uint64_t gmmxMSzie)
 {
     OP_LOGD(context_->GetNodeName(), "start DoGmmTiling.");
-    constexpr uint32_t FIXED_EXPERT_NUM = 4U;
-    uint32_t expertNum = (e_ <= FIXED_EXPERT_NUM) ? static_cast<uint32_t>(e_) : FIXED_EXPERT_NUM;
+    uint32_t packFactor = (gmmXDataType_ == ge::DT_FLOAT4_E2M1) ? MXFP4_PACK_FACTOR : 1U;
+    uint32_t expertNum = CalcExpertNum(e_, epWorldSize_, bsk_, n1_, packFactor);
     uint32_t gmmGroupNum = expertNum * static_cast<uint32_t>(epWorldSize_);
     // gmm group matmul tiling
     if (gmmxMSzie != 0) {
