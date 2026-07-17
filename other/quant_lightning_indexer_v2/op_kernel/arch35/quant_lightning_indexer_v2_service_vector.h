@@ -159,9 +159,10 @@ private:
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // 大小：2(开dB) 2 * 64 * 128 * 4 = 128KB
+    // resMm1Buf_ (QK): 增大分配以容纳 qkStride 的 bank 偏移
     pipe->InitBuffer(resMm1Buf_,
-        2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
+        2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T)
+        + s1BaseSize_ * QLIV2_BANK_OFF_QK_S1);
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>(); // weight
@@ -496,13 +497,18 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
-    auto qkVLstride = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
-        * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
+    // qkStride 附加 bank 偏移: 使不同 S1 行组落不同 bank (解 4 路并发读冲突)
+    // qkVLstride 需用含偏移的 qkStride 重新计算, 保持配对路一致性
+    uint32_t qkStrideWithBank = (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T))
+                              + (QLIV2_BANK_OFF_QK_S1 / sizeof(QK_T));
+    uint32_t numS1Groups = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
+                           / constInfo_.gSize;
+    auto qkVLstride = numS1Groups * qkStrideWithBank;
 
     if constexpr (IS_MXFP8) {
         vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
-                                                    (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+                                                    qkStrideWithBank,
                                                     weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),
                                                     weightTempBase,
                                                     gSize_, curAivS1ProcNum);

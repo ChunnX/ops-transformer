@@ -537,7 +537,7 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
             MicroAPI::LoadAlign<float>(regQK1[1], qk1 + 128 * i + qkVLStride);
             // 混合使用对整体性能更好
             BroadcastLane(regwBrc[0], regW[0], i);
-            // Weight 无bank冲突，用LoadAlign来提取weight标量
+            // Weight无bank冲突，用LoadAlign来提取weight标量
             BroadcastLane(regwBrc[1], weightTemp, i);
             AscendC::MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
             AscendC::MicroAPI::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
@@ -652,9 +652,9 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
         MicroAPI::LoadAlign<float, MicroAPI::LoadDist::DIST_DINTLV_B32>(regKScale[0], regKScale[1], kScale0);
 
         for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i++) {
-            // RowStride=256 bf16(512B), 950布局含padding
+            // RowStride是256, 行都落在一个bank上
             AscendC::MicroAPI::LoadAlign<bfloat16_t>(regQKB16[0], qk0 + 256 * i);
-            // RowStride同上
+            // RowStride是256, 行都落在一个bank上
             AscendC::MicroAPI::LoadAlign<bfloat16_t>(regQKB16[1], qk1 + 256 * i);
             AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(regwBrc[0], weightTemp0 + i);
             AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(regwBrc[1], weightTemp1 + i);
@@ -940,7 +940,7 @@ __aicore__ inline void MulWeightAndReduceSum2_MxFP8(__ubuf__ uint16_t* out0,
             MicroAPI::LoadAlign<float>(regQK1[1], qk1 + 128 * i + qkVLStride);
             // 混合使用对整体性能更好
             BroadcastLane(regwBrc[0], regW[0], i);
-            // Weight 无bank冲突，用LoadAlign来提取weight标量
+            // Weight无bank冲突，用LoadAlign来提取weight标量
             BroadcastLane(regwBrc[1], weightTemp, i);
             AscendC::MicroAPI::MulAddDst(regSum0[0], regQK0[0], regwBrc[0], maskAllB32);
             AscendC::MicroAPI::MulAddDst(regSum0[1], regQK0[1], regwBrc[0], maskAllB32);
