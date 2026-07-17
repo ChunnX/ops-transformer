@@ -8,10 +8,13 @@
 - 表格 CJK 感知对齐 (unicodedata.east_asian_width)。
 - analyze_dimensions/analyze_continuity/visualize_failure 为扩展点, 算子可 override。
 """
+import logging
 import os
 import unicodedata
 
 import torch
+
+logger = logging.getLogger("precision_analyze")
 
 SEP = "━" * 80
 
@@ -286,6 +289,113 @@ def _preview(cpu_flat, npu_flat, total):
 # 入口
 # ═══════════════════════════════════════════════════════════════
 
+def _render_failure_detail(fail_indices, cpu_t, npu_t, diff, shape, layout,
+                           verbose, total) -> list[str]:
+    """失败主体: 三分支表 (超量跳过/all逐点/compact折叠) + Max-RE前3 + 预览。"""
+    lines = []
+    col_names = _col_names(shape, layout or "")
+    cpu_flat = cpu_t.reshape(-1)
+    npu_flat = npu_t.reshape(-1)
+    diff_flat_t = diff.reshape(-1)
+
+    if len(fail_indices) > LARGE_FAIL_THRESHOLD:
+        lines.append(f"    失败点数过多 ({len(fail_indices):,} > {LARGE_FAIL_THRESHOLD:,}), "
+                     f"跳过坐标分析以节省内存")
+        lines.append("    (尝试缩小 --case_id 范围或使用 --verbose_diff all 查看全部)")
+        lines.append("")
+    elif verbose == "all":
+        # 逐点坐标 + cpu/npu/diff 值
+        coords = _flat_to_coords(fail_indices, tuple(shape))
+        all_rows = []
+        for flat, coord in zip(fail_indices.tolist(), coords):
+            all_rows.append(
+                (str(flat),)
+                + tuple(str(v.item()) for v in coord)
+                + (f"{cpu_flat[flat].item():>+.6f}",
+                   f"{npu_flat[flat].item():>+.6f}",
+                   f"{diff_flat_t[flat].item():.6f}")
+            )
+        if all_rows:
+            table_header = ["idx"] + col_names + ["cpu", "npu", "diff"]
+            col_types = ["n"] * (len(col_names) + 4)
+            lines += _render_table(table_header, col_types, all_rows)
+    else:
+        rows, axis_width, truncated = _compact_rows(
+            fail_indices, tuple(shape), layout or "", verbose)
+        if rows:
+            table_header = col_names + ["元素数"]
+            col_types = (["n"] * (axis_width + 1))
+            lines += _render_table(table_header, col_types, rows)
+        lines.append("")
+        if truncated:
+            lines.append(
+                "    (使用 --verbose_diff fold 查看全部, "
+                "--verbose_diff all 查看全部点位)"
+            )
+            lines.append("")
+
+    # ── Max-RE 前3 ──
+    rel = torch.abs(cpu_flat - npu_flat) / (torch.abs(cpu_flat) + 1e-6)
+    lines.append(f"  [Max-RE 前3] (绝对误差最大)")
+    lines.append(f"  {'idx':>10}  {'cpu':>14}  {'npu':>14}  {'absErr':>12}  {'relErr':>10}")
+    lines.append(f"  {'─' * 10}  {'─' * 14}  {'─' * 14}  {'─' * 12}  {'─' * 10}")
+    for i in diff_flat_t.topk(min(3, total)).indices.tolist():
+        lines.append(
+            f"  {i:>10}  {cpu_flat[i].item():>+14.8f}  {npu_flat[i].item():>+14.8f}"
+            f"  {diff_flat_t[i].item():>12.8f}  {rel[i].item():>10.6f}"
+        )
+
+    # ── 预览 (仅非 all 模式) ──
+    if verbose != "all":
+        lines += _preview(cpu_flat, npu_flat, total)
+    return lines
+
+
+def _analyze_one_key(key, result, cpu_out, npu_out, verbose, layout) -> list[str]:
+    """单个 key 的失败分析: 校验 → 概要 → 失败主体。"""
+    lines = []
+    if key not in cpu_out or key not in npu_out:
+        lines.append(f"\n  [WARN] key '{key}' 不在 cpu_out/npu_out 中, 跳过")
+        return lines
+
+    cpu_t = cpu_out[key].float()
+    npu_t = npu_out[key].float()
+    if cpu_t.shape != npu_t.shape:
+        lines.append(
+            f"\n  [ERROR] key='{key}' shape不匹配: "
+            f"cpu={tuple(cpu_t.shape)} npu={tuple(npu_t.shape)}")
+        return lines
+
+    # 复用 compare 已算好的 _diff/_fail_mask (避免重复 torch.abs + isclose)
+    diff = result.get("_diff")
+    fail_mask = result.get("_fail_mask")
+    if diff is None or fail_mask is None:
+        diff = torch.abs(cpu_t - npu_t)
+        rtol = result.get("rtol", 0.005)
+        atol = result.get("atol", 0.0001)
+        fail_mask = ~torch.isclose(cpu_t, npu_t, rtol=rtol, atol=atol)
+
+    fail_cnt = result.get("fail_cnt", int(fail_mask.sum().item()))
+    total = result.get("total", cpu_t.numel())
+    max_abs = result.get("max_abs", diff.max().item())
+    mean_abs = result.get("mean_abs", diff.mean().item())
+    rtol = result.get("rtol", 0.005)
+    atol = result.get("atol", 0.0001)
+
+    lines += _summary(key, cpu_t.shape, cpu_out[key].dtype, fail_cnt, total,
+                      max_abs, mean_abs, atol, rtol, layout or "")
+    if fail_cnt > 0:
+        lines.append("  " + "═" * 64)
+        fail_indices = fail_mask.reshape(-1).nonzero(as_tuple=False).squeeze(1)
+        lines += _render_failure_detail(
+            fail_indices, cpu_t, npu_t, diff, cpu_t.shape, layout, verbose, total)
+    return lines
+
+
+# ═══════════════════════════════════════════════════════════════
+# 入口
+# ═══════════════════════════════════════════════════════════════
+
 def analyze_failure(
     cpu_out: dict,
     npu_out: dict,
@@ -294,123 +404,23 @@ def analyze_failure(
     verbose: str | None = None,
     layout: str = "",
 ) -> str:
-    """精度失败分析: 概要 → 坐标化紧凑表 → Max-RE → 预览, 写 fail_analysis.txt"""
+    """精度失败分析: 遍历失败 key, 逐个产出 概要→坐标化紧凑表→Max-RE→预览, 写 fail_analysis.txt"""
     lines = [SEP, "  精度失败分析报告", SEP]
-
     for key, result in compare_result.items():
-        if not isinstance(result, dict):
+        if not isinstance(result, dict) or result.get("passed", True):
             continue
-        if result.get("passed", True):
-            continue
-        if key not in cpu_out or key not in npu_out:
-            lines.append(f"\n  [WARN] key '{key}' 不在 cpu_out/npu_out 中, 跳过")
-            continue
-
-        cpu_t = cpu_out[key].float()
-        npu_t = npu_out[key].float()
-
-        if cpu_t.shape != npu_t.shape:
-            lines.append(
-                f"\n  [ERROR] key='{key}' shape不匹配: "
-                f"cpu={tuple(cpu_t.shape)} npu={tuple(npu_t.shape)}"
-            )
-            continue
-
-        # 复用 compare 已算好的 _diff/_fail_mask (避免重复 torch.abs + isclose)
-        cpu_dtype = cpu_out[key].dtype
-        diff = result.get("_diff")
-        fail_mask = result.get("_fail_mask")
-        if diff is None or fail_mask is None:
-            diff = torch.abs(cpu_t - npu_t)
-            rtol = result.get("rtol", 0.005)
-            atol = result.get("atol", 0.0001)
-            fail_mask = ~torch.isclose(cpu_t, npu_t, rtol=rtol, atol=atol)
-
-        fail_cnt = result.get("fail_cnt", int(fail_mask.sum().item()))
-        total = result.get("total", cpu_t.numel())
-        max_abs = result.get("max_abs", diff.max().item())
-        mean_abs = result.get("mean_abs", diff.mean().item())
-        rtol = result.get("rtol", 0.005)
-        atol = result.get("atol", 0.0001)
-
-        # ── 概要 ──
-        lines += _summary(key, cpu_t.shape, cpu_dtype, fail_cnt, total,
-                          max_abs, mean_abs, atol, rtol, layout or "")
-
-        if fail_cnt > 0:
-            lines.append("  " + "═" * 64)
-
-            fail_indices = fail_mask.reshape(-1).nonzero(as_tuple=False).squeeze(1)
-            col_names = _col_names(cpu_t.shape, layout or "")
-
-            cpu_flat = cpu_t.reshape(-1)
-            npu_flat = npu_t.reshape(-1)
-            diff_flat_t = diff.reshape(-1)
-
-            if fail_cnt > LARGE_FAIL_THRESHOLD:
-                lines.append(f"    失败点数过多 ({fail_cnt:,} > {LARGE_FAIL_THRESHOLD:,}), "
-                             f"跳过坐标分析以节省内存")
-                lines.append("    (尝试缩小 --case_id 范围或使用 --verbose_diff all 查看全部)")
-                lines.append("")
-            elif verbose == "all":
-                # 逐点坐标 + cpu/npu/diff 值
-                coords = _flat_to_coords(fail_indices, tuple(cpu_t.shape))
-                all_rows = []
-                for flat, coord in zip(fail_indices.tolist(), coords):
-                    all_rows.append(
-                        (str(flat),)
-                        + tuple(str(v.item()) for v in coord)
-                        + (f"{cpu_flat[flat].item():>+.6f}",
-                           f"{npu_flat[flat].item():>+.6f}",
-                           f"{diff_flat_t[flat].item():.6f}")
-                    )
-                if all_rows:
-                    table_header = ["idx"] + col_names + ["cpu", "npu", "diff"]
-                    col_types = ["n"] * (len(col_names) + 4)
-                    lines += _render_table(table_header, col_types, all_rows)
-            else:
-                rows, axis_width, truncated = _compact_rows(
-                    fail_indices, tuple(cpu_t.shape), layout or "", verbose)
-                if rows:
-                    table_header = col_names + ["元素数"]
-                    col_types = (["n"] * (axis_width + 1))
-                    lines += _render_table(table_header, col_types, rows)
-                lines.append("")
-                if truncated:
-                    lines.append(
-                        "    (使用 --verbose_diff fold 查看全部, "
-                        "--verbose_diff all 查看全部点位)"
-                    )
-                    lines.append("")
-
-            # ── Max-RE 前3 ──
-            rel = torch.abs(cpu_flat - npu_flat) / (torch.abs(cpu_flat) + 1e-6)
-
-            lines.append(f"  [Max-RE 前3] (绝对误差最大)")
-            lines.append(f"  {'idx':>10}  {'cpu':>14}  {'npu':>14}  {'absErr':>12}  {'relErr':>10}")
-            lines.append(f"  {'─' * 10}  {'─' * 14}  {'─' * 14}  {'─' * 12}  {'─' * 10}")
-            for i in diff_flat_t.topk(min(3, total)).indices.tolist():
-                lines.append(
-                    f"  {i:>10}  {cpu_flat[i].item():>+14.8f}  {npu_flat[i].item():>+14.8f}"
-                    f"  {diff_flat_t[i].item():>12.8f}  {rel[i].item():>10.6f}"
-                )
-
-            # ── 预览 (仅默认模式) ──
-            if verbose != "all":
-                lines += _preview(cpu_flat, npu_flat, total)
+        lines += _analyze_one_key(key, result, cpu_out, npu_out, verbose, layout)
 
     lines += analyze_dimensions(cpu_out, npu_out, compare_result)
     lines += analyze_continuity(cpu_out, npu_out, compare_result)
     lines += visualize_failure(cpu_out, npu_out, compare_result, case_dir)
     lines.append(f"\n{SEP}")
-    report = "\n".join(lines)
 
+    report = "\n".join(lines)
     if case_dir is not None:
         os.makedirs(case_dir, exist_ok=True)
-        report_file = os.path.join(case_dir, "fail_analysis.txt")
-        with open(report_file, "w", encoding="utf-8") as f:
+        with open(os.path.join(case_dir, "fail_analysis.txt"), "w", encoding="utf-8") as f:
             f.write(report)
-
     return report
 
 
@@ -440,5 +450,8 @@ def analyze_failure_three_way(cpu_out: dict, npu_out: dict, gpu_out: dict,
     不消费 gpu_out 与 compare_result 中的 gpu_*/ratio_* 字段。
     未来扩展时在此实现三方专属分析, orchestrator 据 gpu_out 是否为空分派本接口。
     """
+    logger.warning(
+        "[pa] 三方比对精度分析尚未实现, 退化为 cpu-vs-npu 两方报告; "
+        "gpu 逐点分析 (含 NPU 相对 GPU 误差分布) 暂不可用")
     return analyze_failure(cpu_out, npu_out, compare_result,
                            case_dir=case_dir, verbose=verbose, layout=layout)
