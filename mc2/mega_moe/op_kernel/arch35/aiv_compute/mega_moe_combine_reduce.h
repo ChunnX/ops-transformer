@@ -23,7 +23,6 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineReduceImpl {
-// 连续逻辑 tile 的调度信息；tileId 不与物理核 ID 绑定。
 struct CombineReduceTileSchedule {
     uint32_t tileId;
     uint32_t tileNum;
@@ -52,31 +51,39 @@ struct CombineReduceWorkspace {
 };
 
 // ===============================================================
-// ComputeCombineReduceTileRange：将 m 个 token 均匀分配给连续逻辑 tile
+// ComputeCombineReduceCoreRange：复用原 TilingByCore 公式，核 ID/核数改由逻辑核调度传入
 // ===============================================================
-__aicore__ inline void ComputeCombineReduceTileRange(const CombineReduceTileSchedule& tileSchedule,
-    uint32_t totalLength, int32_t& tileLength, int32_t& tileOffset)
+__aicore__ inline void ComputeCombineReduceCoreRange(const CombineReduceTileSchedule& tileSchedule,
+    uint32_t totalLength, int32_t& coreLen, int32_t& coreOffset)
 {
-    tileLength = 0;
-    tileOffset = 0;
+    coreLen = 0;
+    coreOffset = 0;
     if (tileSchedule.tileNum == 0 || tileSchedule.tileId >= tileSchedule.tileNum) {
         return;
     }
-    uint32_t lengthPerTile = Ops::Base::CeilDiv(totalLength, tileSchedule.tileNum);
-    uint32_t offset = tileSchedule.tileId * lengthPerTile;
-    if (offset >= totalLength) {
-        return;
+
+    int32_t totalLen = static_cast<int32_t>(totalLength);
+    int32_t coreIdx = static_cast<int32_t>(tileSchedule.tileId);
+    int32_t coreNum = static_cast<int32_t>(tileSchedule.tileNum);
+    int32_t lenPerCore = Ops::Base::CeilDiv(
+        static_cast<uint32_t>(totalLen), static_cast<uint32_t>(coreNum));
+    int32_t lenPerCoreAlign = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(lenPerCore), static_cast<uint32_t>(1));
+    coreLen = lenPerCoreAlign;
+    coreOffset = coreIdx * lenPerCoreAlign;
+    if (coreOffset + coreLen >= totalLen) {
+        coreLen = totalLen - coreOffset;
     }
-    tileOffset = static_cast<int32_t>(offset);
-    tileLength = static_cast<int32_t>((lengthPerTile < totalLength - offset) ?
-        lengthPerTile : totalLength - offset);
+    if (coreOffset >= totalLen) {
+        coreLen = 0;
+    }
 }
 
 // ===============================================================
 // InitCombineReduceWorkspace：分配 CombineReduce 所需固定 buffer，返回 batchLength
 // ===============================================================
 template <int32_t CombineQuantMode, typename TopkWeightsType>
-__aicore__ inline int32_t InitCombineReduceWorkspace(int32_t tileLength,
+__aicore__ inline int32_t InitCombineReduceWorkspace(int32_t coreLen,
     const CombineReduceShapeContext& shapeContext, CombineReduceWorkspace& workspace)
 {
     // dataResTensor：3 个 token 长度，2 块用于 MTE2 double buffer，1 块存储 Cast 后的搬出结果。
@@ -99,8 +106,8 @@ __aicore__ inline int32_t InitCombineReduceWorkspace(int32_t tileLength,
     if (shapeContext.topK > static_cast<uint32_t>(UNPERMUTE_BASE_TOPK)) {
         batchLength = batchLength * UNPERMUTE_BASE_TOPK / shapeContext.topK;
     }
-    if (batchLength > tileLength) {
-        batchLength = tileLength;
+    if (batchLength > coreLen) {
+        batchLength = coreLen;
     }
     uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(
         static_cast<uint32_t>(batchLength * shapeContext.topK * sizeof(float)),
@@ -139,7 +146,7 @@ __aicore__ inline int32_t InitCombineReduceWorkspace(int32_t tileLength,
 // LoadCombineReduceWeights：加载一个 token batch 的 topK 权重到 UB
 // ===============================================================
 template <typename TopkWeightsType>
-__aicore__ inline void LoadCombineReduceWeights(int32_t tileOffset, int32_t batchStart, int32_t tokenCount,
+__aicore__ inline void LoadCombineReduceWeights(int32_t coreOffset, int32_t batchStart, int32_t tokenCount,
     const CombineReduceShapeContext& shapeContext, const CombineReduceBufferContext& bufferContext,
     CombineReduceWorkspace& workspace)
 {
@@ -150,7 +157,7 @@ __aicore__ inline void LoadCombineReduceWeights(int32_t tileOffset, int32_t batc
             1U, static_cast<uint32_t>(tokenCount * shapeContext.topK * sizeof(float)), 0U, 0U, 0U};
         DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
         DataCopyPad(workspace.topKWeightsTensor,
-            topKWeightsGlobal[(tileOffset + batchStart) * shapeContext.topK], copyParams, copyPadParams);
+            topKWeightsGlobal[(coreOffset + batchStart) * shapeContext.topK], copyParams, copyPadParams);
         SetFlag<AscendC::HardEvent::MTE2_S>(0);
         WaitFlag<AscendC::HardEvent::MTE2_S>(0);
     }
@@ -161,7 +168,7 @@ __aicore__ inline void LoadCombineReduceWeights(int32_t tileOffset, int32_t batc
             1U, static_cast<uint32_t>(tokenCount * shapeContext.topK * sizeof(bfloat16_t)), 0U, 0U, 0U};
         DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
         DataCopyPad(workspace.topKWeightsBf16Tensor,
-            topKWeightsGlobal[(tileOffset + batchStart) * shapeContext.topK], copyParams, copyPadParams);
+            topKWeightsGlobal[(coreOffset + batchStart) * shapeContext.topK], copyParams, copyPadParams);
         SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
         Cast(workspace.topKWeightsTensor, workspace.topKWeightsBf16Tensor,
             AscendC::RoundMode::CAST_NONE, tokenCount * shapeContext.topK);
@@ -235,32 +242,32 @@ template <int32_t CombineQuantMode, typename TopkWeightsType>
 __aicore__ inline void ProcessCombineReduceSingleCore(const CombineReduceTileSchedule& tileSchedule,
     const CombineReduceShapeContext& shapeContext, const CombineReduceBufferContext& bufferContext)
 {
-    int32_t tileLength = 0;
-    int32_t tileOffset = 0;
-    ComputeCombineReduceTileRange(tileSchedule, shapeContext.m, tileLength, tileOffset);
-    if (tileLength == 0) {
+    int32_t coreLen = 0;
+    int32_t coreOffset = 0;
+    ComputeCombineReduceCoreRange(tileSchedule, shapeContext.m, coreLen, coreOffset);
+    if (coreLen == 0) {
         return;
     }
 
     CombineReduceWorkspace workspace;
     int32_t batchLength = InitCombineReduceWorkspace<CombineQuantMode, TopkWeightsType>(
-        tileLength, shapeContext, workspace);
+        coreLen, shapeContext, workspace);
     GlobalTensor<bfloat16_t> expandedX;
     expandedX.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(bufferContext.expandedXAddr));
     GlobalTensor<bfloat16_t> output;
     output.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(bufferContext.outputAddr));
 
     // 外层：token batch，权重 buffer 在 batch 之间复用。
-    for (int32_t batchStart = 0; batchStart < tileLength; batchStart += batchLength) {
-        int32_t tokenCount = (batchStart + batchLength > tileLength) ?
-            (tileLength - batchStart) : batchLength;
+    for (int32_t batchStart = 0; batchStart < coreLen; batchStart += batchLength) {
+        int32_t tokenCount = (batchStart + batchLength > coreLen) ?
+            (coreLen - batchStart) : batchLength;
         LoadCombineReduceWeights<TopkWeightsType>(
-            tileOffset, batchStart, tokenCount, shapeContext, bufferContext, workspace);
+            coreOffset, batchStart, tokenCount, shapeContext, bufferContext, workspace);
         // 内层：token 循环，EVENT_ID0/1 用于 expert 数据搬运的 double buffer。
         SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
         SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
         for (int32_t localIdx = 0; localIdx < tokenCount; ++localIdx) {
-            int32_t tokenIdx = tileOffset + batchStart + localIdx;
+            int32_t tokenIdx = coreOffset + batchStart + localIdx;
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
             ProcessCombineReduceToken<CombineQuantMode>(tokenIdx, localIdx, shapeContext, expandedX, workspace);
             Cast(workspace.dataResTensor, workspace.dataResFp32Tensor, AscendC::RoundMode::CAST_RINT,
