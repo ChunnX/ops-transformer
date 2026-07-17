@@ -241,9 +241,17 @@ private:
     // arena and out of the row-buffer range, including the H=8K maximum.
     static constexpr uint32_t GMM2_READY_RELEASE_UB_ADDR = 160U * 1024U;
     static constexpr uint32_t GMM2_READY_SCAN_UB_ADDR = 184U * 1024U;
+    static constexpr uint32_t GMM2_READY_MAX_SCAN_BYTES =
+        MAX_AICORE_NUM * MEGA_MOE_GMM2_READY_CORE_STRIDE * sizeof(int32_t) > ALIGN_512 ?
+            MAX_AICORE_NUM * MEGA_MOE_GMM2_READY_CORE_STRIDE * sizeof(int32_t) :
+            ALIGN_512;
+    static constexpr uint32_t GMM2_READY_PARTIAL_UB_ADDR =
+        GMM2_READY_SCAN_UB_ADDR +
+        ((GMM2_READY_MAX_SCAN_BYTES + ALIGN_512 - 1U) / ALIGN_512) * ALIGN_512;
+    static constexpr uint32_t GMM2_READY_SUM_UB_ADDR = GMM2_READY_PARTIAL_UB_ADDR + ALIGN_512;
     static_assert(GMM2_READY_RELEASE_UB_ADDR + MAX_AICORE_NUM * ALIGN_512 <= GMM2_READY_SCAN_UB_ADDR,
                   "GMM2 ready release and scan scratch overlap");
-    static_assert(GMM2_READY_SCAN_UB_ADDR + 2U * ALIGN_512 <= TRIPLE_TENSOR_ADDR,
+    static_assert(GMM2_READY_SUM_UB_ADDR + ALIGN_512 <= TRIPLE_TENSOR_ADDR,
                   "GMM2 ready scan scratch overlaps triple arena");
     static constexpr uint32_t COMBINE_TRIPLE_TOKEN_CAPACITY =
         (COMBINE_UB_USABLE_BYTES - TRIPLE_TENSOR_ADDR) / (TRIPLE_SIZE * sizeof(int32_t));
@@ -1274,6 +1282,11 @@ __aicore__ inline uint64_t MegaMoe<TemplateMegaMoeTypeFunc>::Gmm2NoQuantReadySlo
 {
     if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED) {
         return static_cast<uint64_t>(blockNum_) * static_cast<uint64_t>(INT_CACHELINE);
+    } else if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE) {
+        constexpr uint64_t INT32_PER_64B = 64U / sizeof(int32_t);
+        uint64_t readyElements =
+            static_cast<uint64_t>(blockNum_) * static_cast<uint64_t>(MEGA_MOE_GMM2_READY_CORE_STRIDE);
+        return (readyElements + INT32_PER_64B - 1U) / INT32_PER_64B * INT32_PER_64B;
     }
     return static_cast<uint64_t>(INT_CACHELINE);
 }
@@ -1295,11 +1308,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2NoQuantReadyCo
         if (logicalAiv1Num == 0U) {
             return;
         }
-        // The general resetTensor_ may be smaller than one cache line for a
-        // tiny shape.  Use the dedicated ready scratch and always materialize
-        // a full 512B zero line here.
-        LocalTensor<int32_t> zeroLine(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR, INT_CACHELINE);
-        Duplicate<int32_t>(zeroLine, 0, INT_CACHELINE);
+        uint32_t resetElements = INT_CACHELINE;
+        if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE) {
+            resetElements = static_cast<uint32_t>(Gmm2NoQuantReadySlotStride());
+        }
+        // The general resetTensor_ may be smaller than the selected ready
+        // slot.  Materialize the whole zero slot in dedicated scratch.
+        LocalTensor<int32_t> zeroLine(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR, resetElements);
+        Duplicate<int32_t>(zeroLine, 0, resetElements);
         SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
 
         GlobalTensor<int32_t> readyGm;
@@ -1311,6 +1327,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2NoQuantReadyCo
                                       static_cast<uint64_t>(logicalAiv1Idx) * INT_CACHELINE;
                 DataCopy(readyGm[slotOffset], zeroLine, INT_CACHELINE);
             }
+        } else if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE) {
+            // One worker resets one complete generation at a time.  This
+            // preserves all zero padding consumed by the AIV1 reduction.
+            for (uint32_t slot = logicalAiv1Idx; slot < expertPerRank_; slot += logicalAiv1Num) {
+                uint64_t slotOffset = static_cast<uint64_t>(slot) * Gmm2NoQuantReadySlotStride();
+                DataCopy(readyGm[slotOffset], zeroLine, resetElements);
+            }
         } else {
             // Shared-atomic and compact-private layouts both occupy one line
             // per slot, distributed across AIV1 reset workers.
@@ -1320,12 +1343,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2NoQuantReadyCo
             }
         }
 
-        GlobalTensor<int32_t> releaseGm;
-        releaseGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReleasePtr));
-        for (uint32_t slot = 0U; slot < expertPerRank_; ++slot) {
-            uint64_t releaseOffset =
-                (static_cast<uint64_t>(slot) * logicalAiv1Num + logicalAiv1Idx) * INT_CACHELINE;
-            DataCopy(releaseGm[releaseOffset], zeroLine, INT_CACHELINE);
+        if constexpr (MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE) {
+            GlobalTensor<int32_t> releaseGm;
+            releaseGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReleasePtr));
+            for (uint32_t slot = 0U; slot < expertPerRank_; ++slot) {
+                uint64_t releaseOffset =
+                    (static_cast<uint64_t>(slot) * logicalAiv1Num + logicalAiv1Idx) * INT_CACHELINE;
+                DataCopy(releaseGm[releaseOffset], zeroLine, INT_CACHELINE);
+            }
         }
     }
 }
@@ -1396,6 +1421,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PublishGmm2NoQuantReady
             AscendC::AtomicAdd(readyBase + slotOffset, int32_t(1));
         } else if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_COMPACT) {
             AscendC::WriteGmByPassDCache(readyBase + slotOffset + blockIdx_, int32_t(1));
+        } else if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE) {
+            AscendC::WriteGmByPassDCache(
+                readyBase + slotOffset +
+                    static_cast<uint64_t>(blockIdx_) * MEGA_MOE_GMM2_READY_CORE_STRIDE,
+                int32_t(1));
         } else {
             AscendC::WriteGmByPassDCache(
                 readyBase + slotOffset + static_cast<uint64_t>(blockIdx_) * INT_CACHELINE, int32_t(1));
@@ -1417,6 +1447,56 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
         uint32_t logicalAiv1Num = blockAivNum_ / 2U;
         if (logicalAiv1Num == 0U) {
             return;
+        }
+
+        if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE) {
+            constexpr uint32_t INT32_PER_DATABLOCK = ALIGN_32 / sizeof(int32_t);
+            constexpr uint32_t INT32_PER_REPEAT = 256U / sizeof(int32_t);
+            uint32_t readyElements = blockNum_ * static_cast<uint32_t>(MEGA_MOE_GMM2_READY_CORE_STRIDE);
+            uint32_t copyElements =
+                (readyElements + INT32_PER_DATABLOCK - 1U) / INT32_PER_DATABLOCK * INT32_PER_DATABLOCK;
+            uint32_t fullRepeats = readyElements / INT32_PER_REPEAT;
+            uint32_t tailElements = readyElements % INT32_PER_REPEAT;
+            uint32_t partialCount = fullRepeats + (tailElements == 0U ? 0U : 1U);
+
+            __gm__ int32_t *readyBase =
+                reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr);
+            uint64_t readySlotOffset = static_cast<uint64_t>(slotIdx) * Gmm2NoQuantReadySlotStride();
+            GlobalTensor<int32_t> readyGm;
+            readyGm.SetGlobalBuffer(readyBase);
+            LocalTensor<int32_t> scanUb(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR, copyElements);
+            LocalTensor<int32_t> partialUb(TPosition::VECCALC, GMM2_READY_PARTIAL_UB_ADDR, INT_CACHELINE);
+            LocalTensor<int32_t> sumUb(TPosition::VECCALC, GMM2_READY_SUM_UB_ADDR, INT_CACHELINE);
+
+            while (true) {
+                DataCopy(scanUb, readyGm[readySlotOffset], copyElements);
+                SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
+
+                if (readyElements <= INT32_PER_REPEAT) {
+                    WholeReduceSum<int32_t>(sumUb, scanUb, static_cast<int32_t>(readyElements), 1, 1, 1, 8);
+                } else {
+                    if (fullRepeats != 0U) {
+                        WholeReduceSum<int32_t>(partialUb, scanUb, static_cast<int32_t>(INT32_PER_REPEAT),
+                                                static_cast<int32_t>(fullRepeats), 1, 1, 8);
+                    }
+                    if (tailElements != 0U) {
+                        WholeReduceSum<int32_t>(partialUb[fullRepeats], scanUb[fullRepeats * INT32_PER_REPEAT],
+                                                static_cast<int32_t>(tailElements), 1, 1, 1, 8);
+                    }
+                    PipeBarrier<PIPE_V>();
+                    WholeReduceSum<int32_t>(sumUb, partialUb, static_cast<int32_t>(partialCount), 1, 1, 1, 8);
+                }
+
+                SetFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
+                WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
+                if (sumUb.GetValue(0) >= static_cast<int32_t>(blockNum_)) {
+                    return;
+                }
+                int64_t waitStart = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - waitStart < 100) {
+                }
+            }
         }
 
         __gm__ int32_t *releaseBase =
