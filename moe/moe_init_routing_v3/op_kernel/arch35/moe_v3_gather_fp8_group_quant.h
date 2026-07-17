@@ -49,9 +49,9 @@ __simd_callee__ inline void LoadFp8GroupInput(RegTensor<float> &dst, __local_mem
     }
 }
 
-template <typename T, typename U, bool CLAMP_AMAX>
-__simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, __ubuf__ U *yAddr,
-                                               uint32_t totalElemNum, uint16_t groupNum, uint32_t fp8EmaxValue)
+template <typename T, bool CLAMP_AMAX>
+__simd_vf__ inline void vfComputeAmax(__ubuf__ T *xAddr, __ubuf__ float *amaxOutAddr, uint32_t totalElemNum,
+                                      uint16_t groupNum)
 {
     const uint16_t vfLen = AscendC::VECTOR_REG_WIDTH / sizeof(float);
 
@@ -62,42 +62,10 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         RegTensor<float> absLeftReg;
         RegTensor<float> absRightReg;
         RegTensor<float> maxReg;
-        RegTensor<float> roundScaleReg;
-        RegTensor<float> invScaleReg;
-        RegTensor<float> quantLeftReg;
-        RegTensor<float> quantRightReg;
-        RegTensor<U> outLeftReg;
-        RegTensor<U> outRightReg;
-
-        RegTensor<uint32_t> expBitsReg;
-        RegTensor<uint32_t> mantBitsReg;
-        RegTensor<uint32_t> expMaskReg;
-        RegTensor<uint32_t> mantMaskReg;
-        RegTensor<uint32_t> oneIntReg;
-        RegTensor<uint32_t> zeroIntReg;
-        RegTensor<uint32_t> mantAddReg;
-        RegTensor<uint32_t> roundedExpBitsReg;
-        RegTensor<uint32_t> invExpBitsReg;
-        RegTensor<uint32_t> invExpSubReg;
-        RegTensor<uint32_t> fp8MantReg;
-        RegTensor<uint32_t> fp8EmaxReg;
-        RegTensor<uint32_t> threshold254Reg;
 
         MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
-        MaskReg maskAllUint = CreateMask<uint32_t, MaskPattern::ALL>();
-        MaskReg maskLoop;
         MaskReg maskRight;
-        MaskReg maskMantHigh;
-        MaskReg maskClamp;
-
-        Duplicate(expMaskReg, FP32_EXPONENT_MASK, maskAllUint);
-        Duplicate(mantMaskReg, FP32_MANTISSA_MASK, maskAllUint);
-        Duplicate(oneIntReg, 1U, maskAllUint);
-        Duplicate(zeroIntReg, 0U, maskAllUint);
-        Duplicate(invExpSubReg, FP32_INV_EXP_SUB, maskAllUint);
-        Duplicate(fp8MantReg, FP8_GROUP_FP8_MAX_MANT, maskAllUint);
-        Duplicate(fp8EmaxReg, fp8EmaxValue, maskAllUint);
-        Duplicate(threshold254Reg, 254U, maskAllUint);
+        MaskReg maskLoop;
 
         uint32_t tailElemNum = totalElemNum % FP8_GROUP_QUANT_SIZE;
         uint16_t fullGroupNum = (tailElemNum == 0) ? groupNum : static_cast<uint16_t>(groupNum - 1);
@@ -115,35 +83,7 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
                 Maxs(maxReg, maxReg, 0.0001f, maskAll);
             }
 
-            // 从 maxReg 直接提取指数/尾数（amax 为正常 float，不受 FTZ 影响），整数域计算 round_scale 指数
-            ShiftRights(expBitsReg, (RegTensor<uint32_t> &)maxReg, FP32_EXPONENT_SHIFT, maskAllUint);
-            And(expBitsReg, expBitsReg, expMaskReg, maskAllUint);
-            And(mantBitsReg, (RegTensor<uint32_t> &)maxReg, mantMaskReg, maskAllUint);
-            // mant_add = (mant_amax > fp8_mant) ? 1 : 0
-            Compare<uint32_t, CMPMODE::GT>(maskMantHigh, mantBitsReg, fp8MantReg, maskAllUint);
-            Select(mantAddReg, oneIntReg, zeroIntReg, maskMantHigh);
-            // biased_exp = exp_amax - fp8_emax + mant_add（uint32_t 下溢回绕由下方 clamp 处理）
-            Sub<uint32_t>(roundedExpBitsReg, expBitsReg, fp8EmaxReg, maskAllUint);
-            Add<uint32_t>(roundedExpBitsReg, roundedExpBitsReg, mantAddReg, maskAllUint);
-            // 下溢钳位：biased_exp == 0 或回绕 > 254 时钳到 1（= 2^-126），匹配标杆对 denormal 的处理
-            Compare<uint32_t, CMPMODE::EQ>(maskClamp, roundedExpBitsReg, zeroIntReg, maskAllUint);
-            Select(roundedExpBitsReg, oneIntReg, roundedExpBitsReg, maskClamp);
-            Compare<uint32_t, CMPMODE::GT>(maskClamp, roundedExpBitsReg, threshold254Reg, maskAllUint);
-            Select(roundedExpBitsReg, oneIntReg, roundedExpBitsReg, maskClamp);
-            // amax == 0 时 exp_amax=0 使 biased_exp 下溢回绕为 >254，同样被钳到 1（round_scale = 2^-126）
-            // round_scale = biased_exp << 23
-            ShiftLefts((RegTensor<uint32_t> &)roundScaleReg, roundedExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
-
-            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr + groupIdx, roundScaleReg, maskAll);
-            Sub<uint32_t>(invExpBitsReg, invExpSubReg, roundedExpBitsReg, maskAllUint);
-            ShiftLefts((RegTensor<uint32_t> &)invScaleReg, invExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
-
-            Mul(quantLeftReg, xLeftReg, invScaleReg, maskAll);
-            Mul(quantRightReg, xRightReg, invScaleReg, maskAll);
-            Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskAll);
-            Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outRightReg, quantRightReg, maskAll);
-            DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + groupOffset, outLeftReg, maskAll);
-            DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + groupOffset + vfLen, outRightReg, maskAll);
+            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(amaxOutAddr + groupIdx, maxReg, maskAll);
         }
 
         if (tailElemNum > 0) {
@@ -170,6 +110,58 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
                 Maxs(maxReg, maxReg, 0.0001f, maskAll);
             }
 
+            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(amaxOutAddr + fullGroupNum, maxReg, maskAll);
+        }
+    }
+}
+
+__simd_vf__ inline void vfComputeRoundScale(__ubuf__ float *amaxInAddr, __ubuf__ float *scaleOutAddr,
+                                            __ubuf__ float *invScaleOutAddr, uint16_t groupNum,
+                                            uint32_t fp8EmaxValue)
+{
+    const uint16_t vfLen = AscendC::VECTOR_REG_WIDTH / sizeof(float);
+    uint16_t vfLoopNum = (groupNum + vfLen - 1) / vfLen;
+
+    __VEC_SCOPE__
+    {
+        RegTensor<float> maxReg;
+        RegTensor<float> roundScaleReg;
+        RegTensor<float> invScaleReg;
+        RegTensor<uint32_t> expBitsReg;
+        RegTensor<uint32_t> mantBitsReg;
+        RegTensor<uint32_t> expMaskReg;
+        RegTensor<uint32_t> mantMaskReg;
+        RegTensor<uint32_t> oneIntReg;
+        RegTensor<uint32_t> zeroIntReg;
+        RegTensor<uint32_t> mantAddReg;
+        RegTensor<uint32_t> roundedExpBitsReg;
+        RegTensor<uint32_t> invExpBitsReg;
+        RegTensor<uint32_t> invExpSubReg;
+        RegTensor<uint32_t> fp8MantReg;
+        RegTensor<uint32_t> fp8EmaxReg;
+        RegTensor<uint32_t> threshold254Reg;
+
+        MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
+        MaskReg maskAllUint = CreateMask<uint32_t, MaskPattern::ALL>();
+        MaskReg maskGroupNum;
+        MaskReg maskMantHigh;
+        MaskReg maskClamp;
+
+        Duplicate(expMaskReg, FP32_EXPONENT_MASK, maskAllUint);
+        Duplicate(mantMaskReg, FP32_MANTISSA_MASK, maskAllUint);
+        Duplicate(oneIntReg, 1U, maskAllUint);
+        Duplicate(zeroIntReg, 0U, maskAllUint);
+        Duplicate(invExpSubReg, FP32_INV_EXP_SUB, maskAllUint);
+        Duplicate(fp8MantReg, FP8_GROUP_FP8_MAX_MANT, maskAllUint);
+        Duplicate(fp8EmaxReg, fp8EmaxValue, maskAllUint);
+        Duplicate(threshold254Reg, 254U, maskAllUint);
+
+        for (uint16_t i = 0; i < vfLoopNum; i++) {
+            uint32_t remaining = static_cast<uint32_t>(groupNum - i * vfLen);
+            maskGroupNum = UpdateMask<float>(remaining);
+
+            DataCopy<float, PostLiteral::POST_MODE_UPDATE>(maxReg, amaxInAddr, vfLen);
+
             ShiftRights(expBitsReg, (RegTensor<uint32_t> &)maxReg, FP32_EXPONENT_SHIFT, maskAllUint);
             And(expBitsReg, expBitsReg, expMaskReg, maskAllUint);
             And(mantBitsReg, (RegTensor<uint32_t> &)maxReg, mantMaskReg, maskAllUint);
@@ -183,11 +175,60 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
             Select(roundedExpBitsReg, oneIntReg, roundedExpBitsReg, maskClamp);
             ShiftLefts((RegTensor<uint32_t> &)roundScaleReg, roundedExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
 
-            DataCopy<float, StoreDist::DIST_FIRST_ELEMENT_B32>(scaleAddr + fullGroupNum, roundScaleReg, maskAll);
+            DataCopy<float, PostLiteral::POST_MODE_UPDATE>(scaleOutAddr, roundScaleReg, vfLen, maskGroupNum);
             Sub<uint32_t>(invExpBitsReg, invExpSubReg, roundedExpBitsReg, maskAllUint);
             ShiftLefts((RegTensor<uint32_t> &)invScaleReg, invExpBitsReg, FP32_EXPONENT_SHIFT, maskAllUint);
+            DataCopy<float, PostLiteral::POST_MODE_UPDATE>(invScaleOutAddr, invScaleReg, vfLen, maskGroupNum);
+        }
+    }
+}
+
+template <typename T, typename U>
+__simd_vf__ inline void vfComputeData(__ubuf__ T *xAddr, __ubuf__ float *invScaleInAddr, __ubuf__ U *yAddr,
+                                      uint32_t totalElemNum, uint16_t groupNum)
+{
+    const uint16_t vfLen = AscendC::VECTOR_REG_WIDTH / sizeof(float);
+
+    __VEC_SCOPE__
+    {
+        RegTensor<float> xLeftReg;
+        RegTensor<float> xRightReg;
+        RegTensor<float> invScaleReg;
+        RegTensor<float> quantLeftReg;
+        RegTensor<float> quantRightReg;
+        RegTensor<U> outLeftReg;
+        RegTensor<U> outRightReg;
+
+        MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
+        MaskReg maskRight;
+        MaskReg maskLoop;
+
+        uint32_t tailElemNum = totalElemNum % FP8_GROUP_QUANT_SIZE;
+        uint16_t fullGroupNum = (tailElemNum == 0) ? groupNum : static_cast<uint16_t>(groupNum - 1);
+        for (uint16_t groupIdx = 0; groupIdx < fullGroupNum; groupIdx++) {
+            uint32_t groupOffset = groupIdx * FP8_GROUP_QUANT_SIZE;
+
+            DataCopy<float, LoadDist::DIST_BRC_B32>(invScaleReg, invScaleInAddr + groupIdx);
+            LoadFp8GroupInput<T>(xLeftReg, xAddr + groupOffset, maskAll, 0);
+            LoadFp8GroupInput<T>(xRightReg, xAddr + groupOffset, maskAll, vfLen);
+            Mul(quantLeftReg, xLeftReg, invScaleReg, maskAll);
+            Mul(quantRightReg, xRightReg, invScaleReg, maskAll);
+            Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskAll);
+            Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outRightReg, quantRightReg, maskAll);
+            DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + groupOffset, outLeftReg, maskAll);
+            DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + groupOffset + vfLen, outRightReg, maskAll);
+        }
+
+        if (tailElemNum > 0) {
+            uint32_t groupOffset = fullGroupNum * FP8_GROUP_QUANT_SIZE;
+
+            DataCopy<float, LoadDist::DIST_BRC_B32>(invScaleReg, invScaleInAddr + fullGroupNum);
 
             if (tailElemNum > vfLen) {
+                uint32_t rightElemNum = tailElemNum - vfLen;
+                maskRight = UpdateMask<float>(rightElemNum);
+                LoadFp8GroupInput<T>(xLeftReg, xAddr + groupOffset, maskAll, 0);
+                LoadFp8GroupInput<T>(xRightReg, xAddr + groupOffset, maskRight, vfLen);
                 Mul(quantLeftReg, xLeftReg, invScaleReg, maskAll);
                 Mul(quantRightReg, xRightReg, invScaleReg, maskRight);
                 Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskAll);
@@ -196,6 +237,7 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
                 DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + groupOffset + vfLen, outRightReg, maskRight);
             } else {
                 maskLoop = UpdateMask<float>(tailElemNum);
+                LoadFp8GroupInput<T>(xLeftReg, xAddr + groupOffset, maskLoop, 0);
                 Mul(quantLeftReg, xLeftReg, invScaleReg, maskLoop);
                 Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskLoop);
                 DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + groupOffset, outLeftReg, maskLoop);
@@ -230,6 +272,8 @@ private:
     TQue<QuePosition::VECIN, GATHER_OUT_BUFFER_NUM> inQueue_;
     TQue<QuePosition::VECOUT, GATHER_OUT_BUFFER_NUM> outQueue_;
     TQue<QuePosition::VECOUT, GATHER_OUT_BUFFER_NUM> scaleQueue_;
+    TBuf<QuePosition::VECCALC> amaxBuffer_;
+    TBuf<QuePosition::VECCALC> invScaleBuffer_;
     TQue<QuePosition::VECIN, GATHER_OUT_BUFFER_NUM> sortedRowIdxInQueue_;
 
     GlobalTensor<T> xInGm_;
@@ -344,6 +388,10 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::InitBuffer()
     pipe_->InitBuffer(outQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(U)));
     pipe_->InitBuffer(scaleQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopScaleCols_, sizeof(float)));
     pipe_->InitBuffer(sortedRowIdxInQueue_, GATHER_OUT_BUFFER_NUM, AlignBytes(perLoopRows_, sizeof(int32_t)));
+    int64_t tmpBufferSize = Max(static_cast<int64_t>(AlignBytes(perLoopScaleCols_, sizeof(float))),
+                                static_cast<int64_t>(AscendC::VECTOR_REG_WIDTH));
+    pipe_->InitBuffer(amaxBuffer_, tmpBufferSize);
+    pipe_->InitBuffer(invScaleBuffer_, tmpBufferSize);
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
@@ -471,8 +519,18 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Compute(int64
     LocalTensor<float> scaleLocal = scaleQueue_.AllocTensor<float>();
     __ubuf__ float *scaleAddr = reinterpret_cast<__ubuf__ float *>(scaleLocal.GetPhyAddr());
 
-    VF_CALL<ComputeFp8GroupQuantVF<T, U, CLAMP_AMAX>>(xAddr, scaleAddr, outAddr, static_cast<uint32_t>(loopCols),
-                                                       static_cast<uint16_t>(loopScaleCols), fp8Emax_);
+    LocalTensor<float> amaxLocal = amaxBuffer_.Get<float>();
+    __ubuf__ float *amaxAddr = reinterpret_cast<__ubuf__ float *>(amaxLocal.GetPhyAddr());
+
+    LocalTensor<float> invScaleLocal = invScaleBuffer_.Get<float>();
+    __ubuf__ float *invScaleAddr = reinterpret_cast<__ubuf__ float *>(invScaleLocal.GetPhyAddr());
+
+    VF_CALL<vfComputeAmax<T, CLAMP_AMAX>>(xAddr, amaxAddr, static_cast<uint32_t>(loopCols),
+                                           static_cast<uint16_t>(loopScaleCols));
+    VF_CALL<vfComputeRoundScale>(amaxAddr, scaleAddr, invScaleAddr,
+                                  static_cast<uint16_t>(loopScaleCols), fp8Emax_);
+    VF_CALL<vfComputeData<T, U>>(xAddr, invScaleAddr, outAddr, static_cast<uint32_t>(loopCols),
+                                  static_cast<uint16_t>(loopScaleCols));
 
     inQueue_.FreeTensor(xLocal);
     outQueue_.EnQue(outLocal);
