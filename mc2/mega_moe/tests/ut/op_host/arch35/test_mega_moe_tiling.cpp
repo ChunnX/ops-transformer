@@ -54,6 +54,11 @@ uint64_t ReadyBytesPerSlot(const MegaMoeTilingData &tiling)
 {
 #if MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED
     return static_cast<uint64_t>(tiling.aicNum) * READY_SLOT_BYTES;
+#elif MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
+    constexpr uint64_t CACHE_LINE_BYTES = 64U;
+    uint64_t readyBytes = static_cast<uint64_t>(tiling.aicNum) *
+                          static_cast<uint64_t>(MEGA_MOE_GMM2_READY_CORE_STRIDE) * sizeof(int32_t);
+    return (readyBytes + CACHE_LINE_BYTES - 1U) / CACHE_LINE_BYTES * CACHE_LINE_BYTES;
 #else
     (void)tiling;
     return READY_SLOT_BYTES;
@@ -88,26 +93,36 @@ TEST_F(MegaMoeArch35TilingTest, MteGenericNoQuantWorkspaceOutputReadyLayout)
     WorkspaceInfo info(base, &tiling);
     ASSERT_NE(info.gmm2MmadResPtr, nullptr);
     ASSERT_NE(info.gmm2NoQuantReadyPtr, nullptr);
+#if MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
+    ASSERT_EQ(info.gmm2NoQuantReleasePtr, nullptr);
+#else
     ASSERT_NE(info.gmm2NoQuantReleasePtr, nullptr);
+#endif
 
     uint64_t outputOffset = WorkspaceOffset(base, info.gmm2MmadResPtr);
     uint64_t readyOffset = WorkspaceOffset(base, info.gmm2NoQuantReadyPtr);
-    uint64_t releaseOffset = WorkspaceOffset(base, info.gmm2NoQuantReleasePtr);
     uint64_t outputBytes =
         AlignWorkspace(2ULL * static_cast<uint64_t>(tiling.maxOutputSize) * static_cast<uint64_t>(tiling.h));
     uint64_t readySlotBytes = ReadyBytesPerSlot(tiling);
     uint64_t readyBytes = AlignWorkspace(static_cast<uint64_t>(tiling.expertPerRank) * readySlotBytes);
+#if MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
+    uint64_t releaseOffset = WorkspaceOffset(base, info.gmm2NoQuantReleasePtr);
     uint64_t releaseBytes = AlignWorkspace(static_cast<uint64_t>(tiling.expertPerRank) *
                                            static_cast<uint64_t>(tiling.aicNum) * READY_SLOT_BYTES);
+#endif
 
     EXPECT_EQ(outputOffset % WORKSPACE_ALIGNMENT, 0U);
     EXPECT_EQ(readyOffset % WORKSPACE_ALIGNMENT, 0U);
-    EXPECT_EQ(releaseOffset % WORKSPACE_ALIGNMENT, 0U);
     EXPECT_EQ(readyOffset, outputOffset + outputBytes);
+#if MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
+    EXPECT_EQ(static_cast<uint64_t>(info.workspaceSize), readyOffset + readyBytes);
+#else
+    EXPECT_EQ(releaseOffset % WORKSPACE_ALIGNMENT, 0U);
     EXPECT_EQ(releaseOffset, readyOffset + readyBytes);
     EXPECT_EQ(static_cast<uint64_t>(info.workspaceSize), releaseOffset + releaseBytes);
+#endif
     for (uint32_t expertIdx = 0; expertIdx < tiling.expertPerRank; ++expertIdx) {
-        EXPECT_EQ((readyOffset + static_cast<uint64_t>(expertIdx) * readySlotBytes) % READY_SLOT_BYTES, 0U);
+        EXPECT_EQ((readyOffset + static_cast<uint64_t>(expertIdx) * readySlotBytes) % 64U, 0U);
     }
 }
 
@@ -138,7 +153,11 @@ TEST_F(MegaMoeArch35TilingTest, MteGenericNoQuantWorkspaceUses64BitOffsets)
     WorkspaceInfo info(base, &tiling);
     ASSERT_NE(info.gmm2MmadResPtr, nullptr);
     ASSERT_NE(info.gmm2NoQuantReadyPtr, nullptr);
+#if MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
+    ASSERT_EQ(info.gmm2NoQuantReleasePtr, nullptr);
+#else
     ASSERT_NE(info.gmm2NoQuantReleasePtr, nullptr);
+#endif
 
     uint64_t outputOffset = WorkspaceOffset(base, info.gmm2MmadResPtr);
     uint64_t readyOffset = WorkspaceOffset(base, info.gmm2NoQuantReadyPtr);
@@ -173,7 +192,11 @@ TEST_F(MegaMoeArch35TilingTest, NewNoQuantReadyLayoutIsMteGenericOnly)
     WorkspaceInfo nzInfo(base, &tiling);
     EXPECT_NE(nzInfo.gmm2MmadResPtr, nullptr);
     EXPECT_NE(nzInfo.gmm2NoQuantReadyPtr, nullptr);
+#if MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
+    EXPECT_EQ(nzInfo.gmm2NoQuantReleasePtr, nullptr);
+#else
     EXPECT_NE(nzInfo.gmm2NoQuantReleasePtr, nullptr);
+#endif
 }
 
 TEST_F(MegaMoeArch35TilingTest, BalancedTokenOwnershipCoversEveryTokenOnce)
