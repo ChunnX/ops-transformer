@@ -20,7 +20,8 @@ static constexpr int64_t OUTPUT_Q_FLAT = 0;
 static constexpr int64_t ATTR_STEM_BLOCK_SIZE = 0;
 static constexpr int64_t ATTR_STEM_STRIDE = 1;
 
-static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext* context) {
+static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext* context)
+{
     auto attrs = context->GetAttrs();
     const int64_t *stemStridePtr = attrs->GetInt(ATTR_STEM_STRIDE);
     if (stemStridePtr == nullptr) {
@@ -54,7 +55,8 @@ static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext* 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeForStemOamPrepVarlenQ(gert::InferDataTypeContext* context) {
+static ge::graphStatus InferDataTypeForStemOamPrepVarlenQ(gert::InferDataTypeContext* context)
+{
     auto qDtype = context->GetInputDataType(INPUT_Q);
     if (qDtype == ge::DT_FLOAT16) {
         context->SetOutputDataType(OUTPUT_Q_FLAT, ge::DT_FLOAT16);

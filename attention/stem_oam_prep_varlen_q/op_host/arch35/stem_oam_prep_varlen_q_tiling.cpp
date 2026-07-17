@@ -240,7 +240,8 @@ static ge::graphStatus ValidateQScaleDesc(gert::TilingContext *context, ge::Data
         }
     } else {
         if (qScaleDesc != nullptr) {
-            std::string reason = "must be null when q is " + std::string(qDtype == ge::DT_BF16 ? "DT_BF16" : "DT_FLOAT16") + " (not DT_FLOAT8_E4M3FN)";
+            std::string reason = "must be null when q is " + std::string(qDtype == ge::DT_BF16 ? "DT_BF16" : "DT_FLOAT16") + 
+                                 " (not DT_FLOAT8_E4M3FN)";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "qScale", "present", reason.c_str());
             return ge::GRAPH_FAILED;
         }

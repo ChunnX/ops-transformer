@@ -130,7 +130,8 @@ public:
 
     __aicore__ inline void Init(GM_ADDR q, GM_ADDR qscale, GM_ADDR cu_seqlens_q,
                                 GM_ADDR qflat,
-                                const StemPrepQTilingData *tiling) {
+                                const StemPrepQTilingData *tiling)
+    {
         tiling_ = tiling;
         task_id_ = GetBlockIdx();
         if (task_id_ >= tiling->used_core_num) {
@@ -153,7 +154,8 @@ public:
         LoadCuSeqLensQ();
     }
 
-    __aicore__ inline void Process() {
+    __aicore__ inline void Process()
+    {
         if (task_id_ >= tiling_->used_core_num)
             return;
 
@@ -163,7 +165,8 @@ public:
         }
     }
 
-    __aicore__ inline void DecodeTaskId(uint32_t task_idx) {
+    __aicore__ inline void DecodeTaskId(uint32_t task_idx)
+    {
         // 整数除法定位 batch（替代线性扫描，O(1) 复杂度）
         uint32_t tasks_per_batch = tiling_->max_Qb * num_q_heads_;
         batch_idx_ = task_idx / tasks_per_batch;
@@ -181,7 +184,8 @@ public:
         num_Qb_ = (q_len_ + B_ - 1) / B_;
     }
 
-    __aicore__ inline void ProcessOneBlock() {
+    __aicore__ inline void ProcessOneBlock()
+    {
         if (total_tokens_ == 0 || qb_local_ >= num_Qb_) {
             WriteZeroBlock();
             return;
@@ -194,7 +198,8 @@ public:
         CopyOutBlock();
     }
 
-    __aicore__ inline void CopyInQBlock() {
+    __aicore__ inline void CopyInQBlock()
+    {
         LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf_.AllocTensor<fp8_e4m3fn_t>();
         Duplicate((LocalTensor<int8_t> &)qBlockLocal, (int8_t)0, B_ * dim_qk_);
         SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
@@ -221,7 +226,8 @@ public:
         qBlockBuf_.EnQue(qBlockLocal);
     }
 
-    __aicore__ inline void CastBlockToFP32() {
+    __aicore__ inline void CastBlockToFP32()
+    {
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
         LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf_.DeQue<fp8_e4m3fn_t>();
@@ -242,7 +248,8 @@ public:
         qBlockFP32Buf_.EnQue(qBlockFP32Local);
     }
 
-    __aicore__ inline void CopyInScalesBulk() {
+    __aicore__ inline void CopyInScalesBulk()
+    {
         LocalTensor<float> scalesLocal = scalesBuf_.AllocTensor<float>();
         Duplicate(scalesLocal, 0.0f, B_);
         SetFlag<HardEvent::V_MTE2>(EVENT_ID1);
@@ -269,7 +276,8 @@ public:
         SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
     }
 
-    __aicore__ inline void AccumulateBlock() {
+    __aicore__ inline void AccumulateBlock()
+    {
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
 
         LocalTensor<float> fp32Buf = qBlockFP32Buf_.DeQue<float>();
@@ -286,7 +294,8 @@ public:
         qBlockFP32Buf_.EnQue(fp32Buf);
     }
 
-    __aicore__ inline void FlattenAndCast() {
+    __aicore__ inline void FlattenAndCast()
+    {
         LocalTensor<float> groupSumLocal = qBlockFP32Buf_.DeQue<float>();
         LocalTensor<bfloat16_t> qflatLocal = outQueueQflat_.AllocTensor<bfloat16_t>();
         Cast<bfloat16_t, float>(qflatLocal, groupSumLocal, RoundMode::CAST_RINT,
@@ -295,7 +304,8 @@ public:
         outQueueQflat_.EnQue(qflatLocal);
     }
 
-    __aicore__ inline void CopyOutBlock() {
+    __aicore__ inline void CopyOutBlock()
+    {
         LocalTensor<bfloat16_t> qflatLocal = outQueueQflat_.DeQue<bfloat16_t>();
         uint32_t outOffset = batch_idx_ * (num_q_heads_ * tiling_->max_Qb * qflat_dim_) +
                              head_idx_ * (tiling_->max_Qb * qflat_dim_) + qb_local_ * qflat_dim_;
@@ -305,7 +315,8 @@ public:
         outQueueQflat_.FreeTensor(qflatLocal);
     }
 
-    __aicore__ inline void WriteZeroBlock() {
+    __aicore__ inline void WriteZeroBlock()
+    {
         LocalTensor<bfloat16_t> qflatLocal = outQueueQflat_.AllocTensor<bfloat16_t>();
         Duplicate(qflatLocal, (bfloat16_t)0, qflat_dim_);
         outQueueQflat_.EnQue<bfloat16_t>(qflatLocal);
@@ -320,7 +331,8 @@ public:
 
 private:
     __aicore__ inline void InitTaskRange(uint32_t tasks_per_core_base,
-                                        uint32_t tasks_remainder) {
+                                        uint32_t tasks_remainder)
+    {
         if (task_id_ < tasks_remainder) {
             qb_start_ = task_id_ * (tasks_per_core_base + 1);
             qb_end_ = qb_start_ + tasks_per_core_base + 1;
@@ -332,21 +344,24 @@ private:
     }
 
     __aicore__ inline void InitGlobalBuffers(GM_ADDR q, GM_ADDR qscale,
-                                            GM_ADDR cu_seqlens_q, GM_ADDR qflat) {
+                                            GM_ADDR cu_seqlens_q, GM_ADDR qflat)
+    {
         qBase_ = q;
         qscaleBase_ = qscale;
         cuSeqLensQBase_ = cu_seqlens_q;
         qflatBase_ = qflat;
     }
 
-    __aicore__ inline void InitUBBuffers() {
+    __aicore__ inline void InitUBBuffers()
+    {
         pipe_.InitBuffer(qBlockBuf_, pp_num_, B_ * dim_qk_ * sizeof(fp8_e4m3fn_t));
         pipe_.InitBuffer(qBlockFP32Buf_, pp_num_, B_ * dim_qk_ * sizeof(float));
         pipe_.InitBuffer(scalesBuf_, pp_num_, B_ * num_q_heads_ * sizeof(float));
         pipe_.InitBuffer(outQueueQflat_, pp_num_, qflat_dim_ * sizeof(bfloat16_t));
     }
 
-    __aicore__ inline void LoadCuSeqLensQ() {
+    __aicore__ inline void LoadCuSeqLensQ()
+    {
         uint32_t cuSeqLensQCount = tiling_->batch_size + 1;
         pipe_.InitBuffer(cuSeqLensQBuf_, cuSeqLensQCount * sizeof(int64_t));
         LocalTensor<int64_t> cuSeqLensQLocal = cuSeqLensQBuf_.Get<int64_t>();
