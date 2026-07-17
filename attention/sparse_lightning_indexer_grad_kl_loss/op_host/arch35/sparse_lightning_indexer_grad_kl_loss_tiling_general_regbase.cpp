@@ -153,7 +153,7 @@ ge::graphStatus SparseLightningIndexerGradKLLossTilingBaseRegbase::CheckOutPut()
             weightsShape.GetDim(DIM_NUM_0) != dWeightsShape.GetDim(DIM_NUM_0) ||
             weightsShape.GetDim(DIM_NUM_1) != dWeightsShape.GetDim(DIM_NUM_1) ||
             (wDimNum > DIM_NUM_2 && weightsShape.GetDim(DIM_NUM_2) != dWeightsShape.GetDim(DIM_NUM_2))) {
-            OP_LOGE(context_, "The input weights shape is %s, but d_weights got %s",
+            OP_LOGE(context_, "SparseLightningIndexerGradKLLoss Input weights %s is not equal to Output d_weights %s",
                 Ops::Base::ToString(weightsShape).c_str(), Ops::Base::ToString(dWeightsShape).c_str());
             return ge::GRAPH_FAILED;
         }
