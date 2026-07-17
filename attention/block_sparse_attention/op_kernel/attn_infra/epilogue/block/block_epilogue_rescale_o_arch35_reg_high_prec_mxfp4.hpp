@@ -26,26 +26,30 @@ template <
     class ElementO_,
     class ElementOTmp_,
     class ElementS_,
-    class ElementKV_,
     class TileCopy_,
     class OTmpSrcPos_,
     LseMode LSE_MODE_,
-    LseFormat LSE_FORMAT_>
+    LseFormat LSE_FORMAT_,
+    bool transposedMm1_>
 class BlockEpilogue<
-    EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_>,
+    EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, transposedMm1_>,
     ElementO_,
     ElementOTmp_,
     ElementS_,
-    ElementKV_,
     TileCopy_,
     OTmpSrcPos_>
 {
 public:
-    using DispatchPolicy = EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_>;
+    using DispatchPolicy = EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, transposedMm1_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
+    using ElementO = ElementO_;
+    using ElementOTmp = ElementOTmp_;
+    using ElementLse = float;
+    using SMDtype = ElementS_;
+    using TileCopy = TileCopy_;
+    using OTmpSrcPos = OTmpSrcPos_;
 
-    static constexpr uint32_t RESCALE_ROW_MAX_ELEM_NUM = 64;
-    static constexpr uint32_t RESCALE_COL_MAX_ELEM_NUM = 128;
+    using CopyUbToGmO = typename TileCopy::CopyUbToGmO;
 
     __aicore__ inline BlockEpilogue(Arch::Resource<ArchTag> &resource) {}
     __aicore__ inline ~BlockEpilogue() {}

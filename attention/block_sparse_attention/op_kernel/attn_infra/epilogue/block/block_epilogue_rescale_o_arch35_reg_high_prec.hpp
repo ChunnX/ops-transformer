@@ -35,9 +35,10 @@ template <
     class TileCopy_,
     class OTmpSrcPos_, // the src TPosition of pv res, viable configurations: GM/L0C
     LseMode LSE_MODE_,
-    LseFormat LSE_FORMAT_>
+    LseFormat LSE_FORMAT_,
+    bool transposedMm1_>
 class BlockEpilogue<
-    EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_>,
+    EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, transposedMm1_>,
     ElementO_,
     ElementOTmp_,
     ElementS_,
@@ -46,7 +47,7 @@ class BlockEpilogue<
     OTmpSrcPos_>
 {
 public:
-    using DispatchPolicy = EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_>;
+    using DispatchPolicy = EpilogueAtlasA5BsaRescaleO<LSE_MODE_, LSE_FORMAT_, transposedMm1_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementO = ElementO_;
     using ElementOTmp = ElementOTmp_;
