@@ -50,9 +50,8 @@ __aicore__ inline void InlineRadixTopK(
     TBuf<TPosition::VECCALC> tempBuf;
 
     pipe->Reset();
-    // xBuf: bf16 data at [tileLen_] offset, Cast output (float/int32) at offset 0
-    // Size: tileLen * sizeof(float) = tileLen * 4 bytes (covers both halves)
-    pipe->InitBuffer(xBuf, tileLenAlign_ * sizeof(float) + 64);
+    // xBuf: float at [0], bf16 at [tileLenAlign_*4 bytes] — no overlap
+    pipe->InitBuffer(xBuf, tileLenAlign_ * sizeof(float) + tileLenAlign_ * sizeof(bfloat16_t) + 64);
     pipe->InitBuffer(outValueBuf, tileLenAlign_ * sizeof(float) + 64);
     pipe->InitBuffer(outIndexBuf, tileLenAlign_ * sizeof(int32_t) + 64);
     pipe->InitBuffer(globalHistBuf, RDX_BINS * sizeof(int32_t) + 64);
@@ -66,15 +65,14 @@ __aicore__ inline void InlineRadixTopK(
     GlobalTensor<int32_t> indexGm;
     indexGm.SetGlobalBuffer((__gm__ int32_t *)indicesGmAddr);
 
-    // xBuf layout (matching math repo):
-    //   [0 .. tileLen_*sizeof(float)-1] = front half: Cast output (float/int32)
-    //   [tileLen_*sizeof(bfloat16_t) .. end] = back half: bf16 data (reinterpreted as int16)
-    // For T=bfloat16_t: front = [0..1023], back = [1024..2047]
-    LocalTensor<float> xLocalFp32 = xBuf.Get<float>();                    // offset 0 (Cast dst)
-    LocalTensor<int32_t> xLocalInt32 = xLocalFp32.template ReinterpretCast<int32_t>();  // offset 0
-    LocalTensor<bfloat16_t> xLocalB16 = xBuf.Get<bfloat16_t>();          // offset 0
-    LocalTensor<int16_t> xLocalInt16 = xLocalB16[tileLen_].template ReinterpretCast<int16_t>();  // offset tileLen_*2
+    // xBuf: float at offset 0, bf16 at offset tileLenAlign_*2 (bfloat16 elements) = tileLenAlign_*4 bytes
+    LocalTensor<float> xLocalFp32 = xBuf.Get<float>();
+    LocalTensor<int32_t> xLocalInt32 = xLocalFp32.template ReinterpretCast<int32_t>();
+    LocalTensor<bfloat16_t> xLocalB16Base = xBuf.Get<bfloat16_t>();
+    LocalTensor<bfloat16_t> xLocalB16 = xLocalB16Base[tileLenAlign_ * 2];  // byte offset = tileLenAlign_*4
+    LocalTensor<int16_t> xLocalInt16 = xLocalB16.template ReinterpretCast<int16_t>();
 
+    // outValueBuf: signMask, mask, tempHalf — separate from xBuf
     LocalTensor<int16_t> signMaskTensor = outValueBuf.Get<int16_t>();
     LocalTensor<int32_t> maskTensor = outValueBuf.Get<int32_t>();
     LocalTensor<half> tempHalf = outValueBuf.Get<half>();
@@ -150,13 +148,12 @@ __aicore__ inline void InlineRadixTopK(
             SetFlag<HardEvent::MTE2_V>(mte2ToV);
             WaitFlag<HardEvent::MTE2_V>(mte2ToV);
 
-            // Cast float -> bfloat16 to outValueBuf (different buffer, no overlap)
-            LocalTensor<bfloat16_t> xLocalB16Cast = outValueBuf.Get<bfloat16_t>();
-            Cast(xLocalB16Cast, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
+            // Cast float -> bf16 into xLocalB16 (xBuf back, no overlap with xLocalFp32 in front)
+            Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
             PipeBarrier<PIPE_V>();
 
-            // xLocalInt16 points to the Cast output in outValueBuf
-            LocalTensor<int16_t> xLocalInt16Cast = xLocalB16Cast.template ReinterpretCast<int16_t>();
+            // TwiddleInB16 operates on xLocalInt16 (xBuf back)
+            LocalTensor<int16_t> xLocalInt16Cast = xLocalInt16;
 
             uint64_t calcLen = curTileLen;
             uint64_t curTileLenAlign = (curTileLen + UB_BLOCK_SIZE / sizeof(int16_t) - 1) /
@@ -182,7 +179,7 @@ __aicore__ inline void InlineRadixTopK(
             And(xLocalInt16Cast, xLocalInt16Cast, maskTensor.template ReinterpretCast<int16_t>(), calcLen);
 
             // CalcCumsumHistogram: Cast int16 -> float -> int32
-            // Cast dst = xLocalFp32 (xBuf offset 0), src = xLocalInt16Cast (outValueBuf) -> no overlap!
+            // Cast dst = xLocalFp32 (xBuf front [0,2047]), src = xLocalInt16Cast (xBuf back [2048,3071]) -> no overlap!
             Cast(xLocalFp32, xLocalInt16Cast, RoundMode::CAST_NONE, curTileLen);
             PipeBarrier<PIPE_V>();
             Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
@@ -202,6 +199,7 @@ __aicore__ inline void InlineRadixTopK(
                            true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
                 RDX_V_S_SYNC();
                 cumSumOne += static_cast<int32_t>(rsvdCnt);
+
                 tileHist[binMask * tileNumAlign_].SetValue(tileId, cumSumOne);
                 globalHist.SetValue(binMask, globalHist.GetValue(binMask) + cumSumOne);
                 RDX_S_V_SYNC();
@@ -219,6 +217,7 @@ __aicore__ inline void InlineRadixTopK(
                 break;
             }
         }
+
         involvedMask16_ = involvedMask16_ |
             (static_cast<int16_t>(boundaryBin) << (roundId * RDX_BITS));
         RDX_S_V_SYNC();
@@ -297,14 +296,13 @@ __aicore__ inline void InlineRadixTopK(
 
         uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
 
-        // CopyIn float, Cast to bf16 in outValueBuf
+        // CopyIn float data, Cast to bf16 in xLocalB16
         DataCopyPad(xLocalFp32, xGm[tileId * tileLen_], DataCopyExtParams{
             static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * curTileLen), 0, 0, 0},
             DataCopyPadExtParams<float>{true, 0, 0, 0});
         SetFlag<HardEvent::MTE2_V>(mte2ToV);
         WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-        LocalTensor<bfloat16_t> xLocalB16TileTopK = outValueBuf.Get<bfloat16_t>();
-        Cast(xLocalB16TileTopK, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
+        Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
         PipeBarrier<PIPE_V>();
 
         int32_t tileOffset = static_cast<int32_t>(tileId * tileLen_);
@@ -312,7 +310,7 @@ __aicore__ inline void InlineRadixTopK(
         // Scalar GT + EQ: read each bf16 score, compare with boundary
         RDX_V_S_SYNC();
         for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
-            bfloat16_t score = xLocalB16TileTopK.GetValue(i);
+            bfloat16_t score = xLocalB16.GetValue(i);
             float scoreFloat = AscendC::Cast(score);
             if (scoreFloat > boundaryFloat) {
                 indexGm.SetValue(writeOffset, static_cast<int32_t>(i) + tileOffset);
@@ -321,7 +319,7 @@ __aicore__ inline void InlineRadixTopK(
             }
         }
         for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
-            bfloat16_t score = xLocalB16TileTopK.GetValue(i);
+            bfloat16_t score = xLocalB16.GetValue(i);
             float scoreFloat = AscendC::Cast(score);
             if (scoreFloat == boundaryFloat) {
                 indexGm.SetValue(writeOffset, static_cast<int32_t>(i) + tileOffset);
