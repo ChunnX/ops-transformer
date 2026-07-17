@@ -621,7 +621,7 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
     }
 
     uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
-    bool isDecode = (s1Size_ * gSize_ <= 80);
+    bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
     if (isDecode && qDescaleDimNum != 5) {
         OP_LOGE(opName_, "q_descale must be 5D in decode mode(s1Size=%lu, gSize=%lu), but got %uD.",
                 s1Size_, gSize_, qDescaleDimNum);

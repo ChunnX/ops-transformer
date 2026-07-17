@@ -114,7 +114,7 @@ void QuantFlashAttnTilingImpl::InitImplParam()
     seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
     seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
 
-    decodeS1GMerge_ = (qfaInfo_->qLayout == QfaLayout::N2TGD);
+    decodeS1GMerge_ = (qfaInfo_->qDescaleLayout == QfaLayout::N2TGD);
 }
 
 void QuantFlashAttnTilingImpl::SplitPolicy()

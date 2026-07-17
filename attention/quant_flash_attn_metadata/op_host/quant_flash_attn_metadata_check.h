@@ -124,13 +124,13 @@ QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ
     CHECK_COND(headDimSet.count(headDim) > 0, ACLNN_ERR_RUNTIME_ERROR,
         "headDim only supports %ld, %ld, but got %ld", HEAD_DIM_64, HEAD_DIM_128, headDim);
 
-    static const std::unordered_set<std::string> layoutQSet = { "BSND", "TND", "BNSD", "N2TGD" };
+    static const std::unordered_set<std::string> layoutQSet = { "BSND", "TND", "BNSD" };
     CHECK_COND(layoutQSet.count(layoutQ) > 0, ACLNN_ERR_RUNTIME_ERROR,
-        "layoutQ only supports BSND, TND, BNSD, N2TGD, but got %s", layoutQ);
+        "layoutQ only supports BSND, TND, BNSD, but got %s", layoutQ);
 
     static const std::unordered_set<std::string> layoutQDescaleSet = { "BSND", "TND", "BNSD", "N2TGD" };
     CHECK_COND(layoutQDescaleSet.count(layoutQDescale) > 0, ACLNN_ERR_RUNTIME_ERROR,
-        "layoutQDescale only supports BSND, TND, BNSD, but got %s", layoutQDescale);
+        "layoutQDescale only supports BSND, TND, BNSD, N2TGD, but got %s", layoutQDescale);
 
     static const std::unordered_set<std::string> layoutKvSet = { "BSND", "TND", "BNSD", "PA_BNBD", "PA_BBND", "PA_NZ" };
     CHECK_COND(layoutKvSet.count(layoutKv) > 0, ACLNN_ERR_RUNTIME_ERROR,

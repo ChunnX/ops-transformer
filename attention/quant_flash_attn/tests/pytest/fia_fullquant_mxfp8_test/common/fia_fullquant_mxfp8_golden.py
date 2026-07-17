@@ -898,7 +898,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
                     max_seqlen_q_val, max_seqlen_kv_val,
                     dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                     block_table, q_n, kv_n, softmax_scale,
-                    layout_q, layout_kv, layout_out, block_size, sparse_mode, out_dtype):
+                    layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype):
     """调用 NPU 双算子 (QFA: quant_flash_attn_metadata + quant_flash_attn)"""
     if not _HAS_NPU:
         raise ImportError("cann_ops_transformer.ops.quant_flash_attn is not available. "
@@ -920,7 +920,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
         cu_seqlens_kv=cu_seqlens_kv_t,
         seqused_q=seqused_q_t, seqused_kv=seqused_kv_t,
         mask_mode=sparse_mode,
-        layout_q=layout_q, layout_q_descale=layout_q, layout_kv=layout_kv, layout_out=layout_out,
+        layout_q=layout_q, layout_q_descale=layout_q_descale, layout_kv=layout_kv, layout_out=layout_out,
         max_seqlen_q=max_seqlen_q_val, max_seqlen_kv=max_seqlen_kv_val,
     )
 
@@ -937,7 +937,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
         metadata=metadata,
         softmax_scale=softmax_scale,
         mask_mode=sparse_mode,
-        layout_q=layout_q, layout_q_descale=layout_q, layout_kv=layout_kv, layout_out=layout_out,
+        layout_q=layout_q, layout_q_descale=layout_q_descale, layout_kv=layout_kv, layout_out=layout_out,
         max_seqlen_q=max_seqlen_q_val, max_seqlen_kv=max_seqlen_kv_val,
         **_get_npu_fa_kwargs(),
     )
@@ -956,14 +956,14 @@ class Network(nn.Module):
                 max_seqlen_q_val, max_seqlen_kv_val,
                 dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                 block_table, q_n, kv_n, softmax_scale,
-                layout_q, layout_kv, layout_out, block_size, sparse_mode, out_dtype):
+                layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype):
         return _call_npu_fa_op(
             q, k, v, q_rope, k_rope, mask,
             seqused_q, seqused_kv, cu_seqlens_q, cu_seqlens_kv,
             max_seqlen_q_val, max_seqlen_kv_val,
             dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
             block_table, q_n, kv_n, softmax_scale,
-            layout_q, layout_kv, layout_out, block_size, sparse_mode, out_dtype)
+            layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype)
 
 
 def _build_causal_mask():
@@ -1118,7 +1118,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             eff_seqused_q, eff_seqused_kv, eff_cu_seqlens_q, eff_cu_seqlens_kv,
             max_seqlen_q_val, max_seqlen_kv_val,
             deq_q_npu, deq_k_npu, deq_v_npu, p_scale_npu, block_table_npu,
-            N_q, N_kv, softmax_scale, "TND", pa_layout_kv, "TND", BLOCK_SIZE, SPARSE_MODE, out_dtype)
+            N_q, N_kv, softmax_scale, "TND", q_runtime_layout, pa_layout_kv, "TND", BLOCK_SIZE, SPARSE_MODE, out_dtype)
     else:
         k_npu = convert_kv_bnsd_to_layout(k_fp8, eff_seqused_kv, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
         v_npu = convert_kv_bnsd_to_layout(v_fp8, eff_seqused_kv, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
@@ -1138,7 +1138,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             eff_seqused_q, eff_seqused_kv, eff_cu_seqlens_q, eff_cu_seqlens_kv,
             max_seqlen_q_val, max_seqlen_kv_val,
             deq_q_npu, deq_k_npu, deq_v_npu, p_scale_npu, None,
-            N_q, N_kv, softmax_scale, npu_input_layout, npu_input_layout, npu_input_layout, 0, SPARSE_MODE, out_dtype)
+            N_q, N_kv, softmax_scale, npu_input_layout, q_runtime_layout, npu_input_layout, npu_input_layout, 0, SPARSE_MODE, out_dtype)
 
     npu_output = atten_out
     T_actual = sum(eff_seqused_q)
@@ -1153,7 +1153,7 @@ def mxfp8_fa_torch_npu(q, k, v, q_rope, k_rope, mask,
                         max_seqlen_q_val, max_seqlen_kv_val,
                         dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                         block_table, q_n, kv_n, softmax_scale,
-                        layout_q, layout_kv, layout_out, block_size, sparse_mode, out_dtype):
+                        layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype):
     logger.info("[NPU] 调用 QFA 双算子模式...")
     return _call_npu_fa_op(
         q, k, v, q_rope, k_rope, mask,
@@ -1161,7 +1161,7 @@ def mxfp8_fa_torch_npu(q, k, v, q_rope, k_rope, mask,
         max_seqlen_q_val, max_seqlen_kv_val,
         dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
         block_table, q_n, kv_n, softmax_scale,
-        layout_q, layout_kv, layout_out, block_size, sparse_mode, out_dtype)
+        layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype)
 
 
 # ==============================================================================

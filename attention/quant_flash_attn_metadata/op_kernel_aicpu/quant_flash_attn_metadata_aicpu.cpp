@@ -221,7 +221,7 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     }
     if (quantMode_ == 1 || quantMode_ == 2) {
         uint32_t gSize = (numHeadsKv_ > 0) ? (numHeadsQ_ / numHeadsKv_) : 1;
-        bool isDecode = (layoutQ_ == "N2TGD");
+        bool isDecode = (layoutQDescale_ == "N2TGD");
         if (!isDecode) {
             baseInfo.kvHeadNum = numHeadsQ_;
         }
