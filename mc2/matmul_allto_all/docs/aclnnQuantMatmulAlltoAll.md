@@ -513,7 +513,7 @@ aclnnStatus aclnnQuantMatmulAlltoAll(
 * 不支持跨超节点通信，只支持超节点内。
 * 通信约束：
    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持MTE通信，且通信缓冲区大于等于200MB。
-   - <term>Ascend 950PR/Ascend 950DT</term>：支持CCU通信。由于CCU通信域存在限制，可能出现HCCL集合通信库自动降级使用AI\_CPU通信引擎从而导致报错的场景，如出现此种报错请使用aclnnQuantMatmulAlltoAllV2接口，并指定commMode参数为ai\_cpu。
+   - <term>Ascend 950PR/Ascend 950DT</term>：支持AI_CPU通信。
 
 ## 调用示例
 
