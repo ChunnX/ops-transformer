@@ -94,6 +94,9 @@ static inline int64_t AlignTo(int64_t x, int64_t y)
     return CeilDiv(x, y) * y;
 }
 
+// CommContext structure for HCCL communication
+// 推理/训练共用：virtualAddrList + hcommHandle 由 EngramContextBuilder 一次性填充
+// 训练态：virtualAddrList 由 AllocateAndExchangeGm 覆盖为 a2a GM 地址
 struct EngramCommContext {
     uint32_t rankId = 0;
     uint32_t rankSize = 0;
@@ -190,6 +193,7 @@ class EngramContextBuilder : public HcclContextBuilderBase {
 public:
     EngramContextResources Build(const std::string &groupName, int64_t numCpuBytes)
     {
+        withGrad_ = withGrad;
         EngramContextResources resources;
         AcquireHcclHandle(groupName, resources.hcclComm);
 
@@ -204,6 +208,8 @@ public:
     }
 
 private:
+    bool withGrad_ = false;
+
     static void ValidateRankSize(uint32_t rankSize)
     {
         TORCH_CHECK(rankSize >= HCCL_MIN_RANK_SIZE, "rankSize must be at least HCCL_MIN_RANK_SIZE, got ", rankSize,
@@ -324,7 +330,6 @@ private:
                 HcclChannelGetRemoteMemsFunc(commHandle, resources.context.hcommHandle[i], &memNum, &remoteMems,
                                              &memTags);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", i, ") failed, ret=", hcclRet);
-            // 取自己注册的buffer作为通信buffer
             bool hasTargetMem = false;
             for (uint32_t j = 0; j < memNum; j++) {
                 if (memTags == nullptr || remoteMems == nullptr) {
@@ -632,15 +637,30 @@ private:
 };
 
 // ElasticBuffer class - unified interface for Engram storage and MoE EP kernels
+// 推理(with_grad=false): RDMA read (one-sided GET), 异步 fetch + wait callable
+// 训练(with_grad=true): all-to-all (桶排序→a2a→gather→a2a→还原), save-for-backward 输出 + EngramFetchGrad
 class ElasticBuffer {
 public:
-    ElasticBuffer(const std::string &groupName, int64_t numCpuBytes);
+    ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank = 0,
+                  bool withGrad = false);
     ~ElasticBuffer();
 
+    // EngramFetch: 推理/训练共用前向接口
+    // 推理(with_grad=false): RDMA read, 返回 callable 内调 wait（异步）, ctxOut=nullptr
+    // 训练(with_grad=true): all-to-all, 同步返回 fetched, save-for-backward 通过 ctxOut 输出
     void EngramWrite(const at::Tensor &storage);
-    std::function<at::Tensor()> EngramFetch(const at::Tensor &indices);
+    std::function<at::Tensor()> EngramFetch(const at::Tensor &indices,
+                                            EngramFetchCtx *ctxOut = nullptr);
+    // EngramFetchGrad: 训练反向
+    std::tuple<at::Tensor, at::Tensor> EngramFetchGrad(
+        const at::Tensor &gradFetched,
+        const at::Tensor &perm, const at::Tensor &sendCounts,
+        const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry,
+        const at::Tensor &numRecv);
     void EngramBarrier(bool withDeviceSync = false);
     void Destroy();
+
+    bool IsWithGrad() const { return withGrad_; }
 
     int64_t GetHostBufPtr() const
     {
@@ -679,12 +699,18 @@ private:
     void EnsureEngramContext();
     void EnsureMoeContext();
 
+    // HCCL 默认 buffer 查询（训练态 a2a 收发缓冲）
+    void QueryAndExchangeHcclBuffer();
+    void UpdateContextTensor();
+
     std::string groupName_;
     int64_t engramNumCpuBytes_;
+    int64_t numMaxTokensPerRank_ = 0;
 
     void *engramHostBufPtr_ = nullptr;
-    void *engramDeviceBufPtr_ = nullptr;
+    void *engramDeviceBufPtr_ = nullptr;          // host-pinned 设备映射地址（推理RDMA read源 / 训练gather源）
     HcclMemHandle engramMemHandle_ = nullptr;
+    int64_t commBufferSize_ = 0;             // HCCL 默认 buffer 大小（从 HcclGetHcclBufferFunc 查询，训练 a2a 收发缓冲）
     HcclComm engramHcclComm_ = nullptr;
     EngramCommContext engramCommContext_;
     at::Tensor engramContextTensor_; // Cached Engram context tensor
@@ -704,8 +730,10 @@ private:
 };
 
 // Constructor
-ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes)
-    : groupName_(groupName), engramNumCpuBytes_(numCpuBytes), destroyed_(false), engramWriteCalled_(false)
+ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank,
+                             bool withGrad)
+    : groupName_(groupName), engramNumCpuBytes_(numCpuBytes), destroyed_(false), writeCalled_(false), numMaxTokensPerRank_(numMaxTokensPerRank),
+      withGrad_(withGrad)
 {
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
@@ -737,6 +765,10 @@ void ElasticBuffer::EnsureEngramContext()
     engramCommContext_ = resources.context;
     engramContextTensor_ = resources.contextTensor;
     engramContextInitialized_ = true;
+
+    if (withGrad_ && commBufferSize_ == 0) {
+        QueryAndExchangeHcclBuffer();
+    }
 }
 
 void ElasticBuffer::EnsureMoeContext()
@@ -793,8 +825,11 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
     engramWriteCalled_ = true;
 }
 
-// EngramFetch - fetch data using stored metadata
-std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices)
+// EngramFetch - fetch data using stored metadata (inference/training shared)
+// 推理: ACLNN_CMD(aclnnEngramFetch, nullptr×5) → return callable { aclnnEngramFetchWait }（异步）
+// 训练: ACLNN_CMD(aclnnEngramFetch, 5 outputs) → save-for-backward 通过 ctxOut 输出 → return [fetched]()（同步, 无 wait）
+std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices,
+                                                       EngramFetchCtx *ctxOut)
 {
     TORCH_CHECK(!destroyed_, "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance");
     TORCH_CHECK(engramWriteCalled_, "engram_fetch must be called after at least one engram_write");
@@ -814,7 +849,49 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
     auto fetched =
         at::empty({numTokens, engramHiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
 
-    ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices, engramHiddenSize_, engramNumEntries_, fetched);
+    // 训练态: save-for-backward 通过 ctxOut 输出（局部变量, 不存成员）
+    if (withGrad_) {
+        TORCH_CHECK(commBufferSize_ > 0,
+                    "HCCL buffer not queried, engram_write must be called first with with_grad=True");
+        TORCH_CHECK(numMaxTokensPerRank_ > 0,
+                    "num_max_tokens_per_rank must be > 0 for training mode, got ", numMaxTokensPerRank_);
+
+        uint32_t rankSize = commContext_.rankSize;
+        int64_t maxR = numMaxTokensPerRank_ * static_cast<int64_t>(rankSize);
+        auto intOpts = at::TensorOptions().dtype(at::kInt).device(indices.device());
+
+        EngramFetchCtx ctx{
+            at::empty({numTokens}, intOpts),
+            at::empty({static_cast<int64_t>(rankSize * 8)}, intOpts), // 32b对齐
+            at::empty({static_cast<int64_t>(rankSize)}, intOpts),
+            at::empty({maxR}, intOpts),
+            at::empty({1}, intOpts)};
+
+        if (numTokens > 0) {
+            fetchInProgress_.store(true);
+            int64_t localStorageAddr = reinterpret_cast<int64_t>(deviceBufPtr_);
+            ACLNN_CMD(aclnnEngramFetchTrain, contextTensor_, indices,
+                      fetched,
+                      ctx.perm, ctx.sendCounts, ctx.recvCounts, ctx.recvLocalEntry, ctx.numRecv,
+                      hiddenSize_, numEngramEntries_, localStorageAddr,
+                      numMaxTokensPerRank_, commBufferSize_);
+            fetchInProgress_.store(false);
+        }
+        if (ctxOut != nullptr) {
+            *ctxOut = std::move(ctx);
+        }
+        return [fetched]() { return fetched; };
+    }
+
+    // 推理态: 原逻辑不变
+    if (numTokens == 0) {
+        return [=]() { return fetched; };
+    }
+
+    fetchInProgress_.store(true);
+
+    ACLNN_CMD(aclnnEngramFetch, contextTensor_, indices,
+              hiddenSize_, numEngramEntries_, fetched);
 
     auto capturedContext = engramContextTensor_;
     auto fetchFlag = &engramFetchInProgress_;
@@ -823,6 +900,93 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
         fetchFlag->store(false);
         return fetched;
     };
+}
+
+// EngramFetchGrad - training backward: produce gradUnique (fp32), uniqueLocalEntry (sparse index)
+// GM 已在 write 阶段申请，destroy 时释放
+std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
+    const at::Tensor &gradFetched,
+    const at::Tensor &perm, const at::Tensor &sendCounts,
+    const at::Tensor &recvCounts, const at::Tensor &recvLocalEntry,
+    const at::Tensor &numRecv)
+{
+    EnsureEngramContext();
+    TORCH_CHECK(!destroyed_, "engram_fetch_grad cannot be called after destroy");
+    TORCH_CHECK(withGrad_, "engram_fetch_grad requires with_grad=True");
+    TORCH_CHECK(writeCalled_, "engram_fetch_grad must be called after at least one engram_write");
+    TORCH_CHECK(!fetchInProgress_.load(),
+                "Cannot call engram_fetch_grad while previous fetch callback is pending");
+
+    int64_t numTokens = gradFetched.size(0);
+    int64_t hidden = gradFetched.size(1);
+    uint32_t rankSize = commContext_.rankSize;
+    int64_t maxR = numTokens * static_cast<int64_t>(rankSize);
+
+    auto gradUnique = at::empty({maxR, hidden},
+        at::TensorOptions().dtype(at::kFloat).device(gradFetched.device()));
+    auto uniqueLocalEntry = at::empty({maxR},
+        at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+    auto numUnique = at::empty({1},
+        at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
+
+    ACLNN_CMD(aclnnEngramFetchGrad, contextTensor_, gradFetched,
+              perm, sendCounts, recvCounts, recvLocalEntry, numRecv,
+              gradUnique, uniqueLocalEntry, numUnique,
+              numEngramEntries_, commBufferSize_);
+
+
+    int64_t actualK = static_cast<int64_t>(numUnique.item<int32_t>());
+
+    if (actualK < maxR) {
+        gradUnique = gradUnique.narrow(0, 0, actualK);
+        uniqueLocalEntry = uniqueLocalEntry.narrow(0, 0, actualK);
+    }
+
+    fetchInProgress_.store(false);
+    return {gradUnique, uniqueLocalEntry};
+}
+
+// QueryAndExchangeHcclBuffer - query HCCL default buffer address+size, exchange remote addresses
+// 训练态 a2a 收发缓冲使用 HCCL 默认 buffer（大小受环境变量控制，默认 200MB）
+void ElasticBuffer::QueryAndExchangeHcclBuffer()
+{
+    TORCH_CHECK(!destroyed_, "QueryAndExchangeHcclBuffer cannot be called after destroy");
+    TORCH_CHECK(hcclComm_ != nullptr, "HCCL comm not initialized");
+
+    void *localBuffer = nullptr;
+    uint64_t localBufferSize = 0;
+    auto hcclRet = HcclGetHcclBufferFunc(hcclComm_, &localBuffer, &localBufferSize);
+    TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclGetHcclBuffer failed, ret=", hcclRet);
+    TORCH_CHECK(localBuffer != nullptr && localBufferSize > 0,
+                "HCCL default buffer is null or empty, size=", localBufferSize);
+
+    commBufferSize_ = static_cast<int64_t>(localBufferSize);
+    commContext_.virtualAddrList[commContext_.epRankId] = reinterpret_cast<uint64_t>(localBuffer);
+
+    for (uint32_t i = 0; i < commContext_.rankSize; ++i) {
+        if (i == commContext_.epRankId)
+            continue;
+        void *remoteBuffer = nullptr;
+        uint64_t remoteBufSize = 0;
+        hcclRet = HcclChannelGetHcclBufferFunc(hcclComm_, commContext_.hcommHandle[i],
+                                                &remoteBuffer, &remoteBufSize);
+        TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetHcclBuffer(peer=", i, ") failed, ret=", hcclRet);
+        commContext_.virtualAddrList[i] = reinterpret_cast<uint64_t>(remoteBuffer);
+        printf("[Engram] QueryHcclBuffer: peer=%u, remoteBuffer=%p, remoteBufSize=%lu\n",
+               i, remoteBuffer, remoteBufSize);
+        fflush(stdout);
+    }
+
+    UpdateContextTensor();
+    EngramBarrier(true);
+}
+
+// UpdateContextTensor - refresh contextTensor_ with latest commContext_
+void ElasticBuffer::UpdateContextTensor()
+{
+    TORCH_CHECK(!destroyed_, "UpdateContextTensor cannot be called after destroy");
+    at::Tensor hostTensor = at::from_blob(&commContext_, {sizeof(CommContext) / sizeof(int32_t)}, at::kInt);
+    contextTensor_.copy_(hostTensor);
 }
 
 // EngramBarrier - cross-rank synchronization
@@ -854,8 +1018,11 @@ void ElasticBuffer::Destroy()
     if (destroyed_)
         return;
 
-    if (engramHostBufPtr_ != nullptr) {
-        aclError ret = aclrtHostUnregister(engramHostBufPtr_);
+    // HCCL 默认 buffer 由框架管理，无需手动释放
+    commBufferSize_ = 0;
+
+    if (hostBufPtr_ != nullptr) {
+        aclError ret = aclrtHostUnregister(hostBufPtr_);
         TORCH_CHECK(ret == ACL_SUCCESS, "aclrtHostUnregister failed, ret: ", ret);
         ret = aclrtFreeHost(engramHostBufPtr_);
         TORCH_CHECK(ret == ACL_SUCCESS, "aclrtFreeHost failed, ret: ", ret);
@@ -870,7 +1037,7 @@ void ElasticBuffer::Destroy()
     destroyed_ = true;
 }
 
-// GetEngramStorageSizeHint - calculate recommended CPU buffer size (static method)
+// GetEngramStorageSizeHint - calculate recommended CPU buffer size for Engram storage
 int64_t ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize, at::ScalarType dtype)
 {
     int64_t dtypeSize = at::elementSize(dtype);
@@ -882,7 +1049,6 @@ int64_t ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hidd
     TORCH_CHECK(numBytesPerEntry > 0 && numEntries <= INT64_MAX / numBytesPerEntry,
                 "numBytesPerEntry * numEntries overflow");
     int64_t numCpuBytes = AlignTo(numBytesPerEntry * numEntries, BUFFER_ALIGNMENT);
-
     return numCpuBytes;
 }
 
@@ -1080,11 +1246,38 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("device_ptr", &OpApi::HostPinnedCounter::DevicePtr)
         .def("host_ptr", &OpApi::HostPinnedCounter::HostPtr);
 
+    pybind11::class_<Mc2Api::EngramFetchCtx>(m, "EngramFetchCtx")
+        .def_readwrite("perm", &Mc2Api::EngramFetchCtx::perm)
+        .def_readwrite("sendCounts", &Mc2Api::EngramFetchCtx::sendCounts)
+        .def_readwrite("recvCounts", &Mc2Api::EngramFetchCtx::recvCounts)
+        .def_readwrite("recvLocalEntry", &Mc2Api::EngramFetchCtx::recvLocalEntry)
+        .def_readwrite("numRecv", &Mc2Api::EngramFetchCtx::numRecv);
+
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
-        .def(pybind11::init<const std::string &, int64_t>(), pybind11::arg("groupName"),
+        .def(pybind11::init<const std::string &, int64_t, int64_t>(), pybind11::arg("groupName"),
+             pybind11::arg("numMaxTokensPerRank") = 0,
              pybind11::arg("numCpuBytes"))
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
-        .def("engram_fetch", &Mc2Api::ElasticBuffer::EngramFetch, pybind11::arg("indices").noconvert())
+        .def("engram_fetch",
+            [](Mc2Api::ElasticBuffer &self, const at::Tensor &indices) -> pybind11::object {
+                if (self.IsWithGrad()) {
+                    Mc2Api::EngramFetchCtx ctx;
+                    auto hook = self.EngramFetch(indices, &ctx);
+                    return pybind11::cpp_function(
+                        [hook = std::move(hook), ctx = std::move(ctx)]() mutable -> pybind11::object {
+                            return pybind11::make_tuple(hook(), pybind11::cast(ctx));
+                        });
+                }
+                return pybind11::cast(self.EngramFetch(indices));
+            },
+            pybind11::arg("indices").noconvert())
+        .def("engram_fetch_grad", &Mc2Api::ElasticBuffer::EngramFetchGrad,
+             pybind11::arg("gradFetched").noconvert(),
+             pybind11::arg("perm").noconvert(),
+             pybind11::arg("sendCounts").noconvert(),
+             pybind11::arg("recvCounts").noconvert(),
+             pybind11::arg("recvLocalEntry").noconvert(),
+             pybind11::arg("numRecv").noconvert())
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("withDeviceSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
         .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
@@ -1092,5 +1285,6 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def("moe_ep_dispatch_epilogue", &Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue)
         .def("moe_ep_combine", &Mc2Api::ElasticBuffer::MoeEpCombine)
         .def_static("get_engram_storage_size_hint", &Mc2Api::ElasticBuffer::GetEngramStorageSizeHint,
-                    pybind11::arg("numEntries"), pybind11::arg("hiddenSize"), pybind11::arg("dtype") = at::kBFloat16);
+                    pybind11::arg("numEntries"), pybind11::arg("hiddenSize"),
+                    pybind11::arg("dtype") = at::kBFloat16);
 }
