@@ -101,12 +101,13 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     CHECK_RET(ret_param == ACLNN_SUCCESS, ret_param);
     aclnnStatus aclnnRet = ACLNN_ERR_INNER;
     
-#if defined(BUILD_OPEN_PROJECT) && HCOMM_VERSION_NUM >= HCCL_CHANNEL_SUPPORT_VERSION
     aclTensor *mc2Context = nullptr;
     uint64_t hcclBuffSize = 0;
     const char *opName = "bandwidth_test";
     if ((commAlg != nullptr && std::strcmp(commAlg, "urma") == 0)) { // uraMA
+        OP_LOGD("enter urma");
         aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context,CommProtocol::COMM_PROTOCOL_UBC_CTP);
+        OP_LOGD("urma finish");
     } else {
         aclnnRet = Mc2Aclnn::Mc2Context::GetMc2ContextTensor(group, opName, hcclBuffSize, mc2Context);
     }
@@ -114,7 +115,7 @@ aclnnStatus aclnnBandwidthTestGetWorkspaceSize(
     aclnnRet = aclnnInnerBandwidthTestGetWorkspaceSize(
         mc2Context, x, dstRankId, group, worldSize, maxBs, mode, hcclBuffSize, commAlg, aivNum,
         y, receiveCnt, workspaceSize, executor);
-#endif
+
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NNOPBASE_HCCL_SERVER_TYPE_MTE);
     }
