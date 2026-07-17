@@ -98,6 +98,7 @@ public:
             cubeBlock.InitBuffers();
         } else {
             vecBlock.InitBuffers();
+            vecBlock.ClearOutput(tilingData->emptyTensorParams, constInfo);
         }
         ProcessMainLoop();
         CrossCoreBufferUninit();
@@ -116,6 +117,7 @@ private:
         }
 
         const auto &baseParams = tilingData->baseParams;
+        const auto &attenMaskParams = tilingData->attenMaskParams;
         const auto &pageAttentionParams = tilingData->pageAttentionParams;
         const auto &sparseParams = tilingData->sparseParams;
         const auto &scaleParams = tilingData->scaleParams;
@@ -134,6 +136,7 @@ private:
         constInfo.isSoftmaxLseEnable = baseParams.isSoftMaxLseEnable != 0U;
         constInfo.isActualLenDimsNull = baseParams.isActualSeqLengthsNull != 0U;
         constInfo.isActualLenDimsKVNull = baseParams.isActualSeqLengthsKVNull != 0U;
+        constInfo.isRowInvalidOpen = attenMaskParams.isRowInvalidOpen != 0U;
         constInfo.coreNum = baseParams.coreNum;
         constInfo.n2GD = constInfo.realN2Size * constInfo.dSize;
         constInfo.attentionOutStride = (constInfo.realN2Size - 1U) * constInfo.dSizeV * sizeof(bfloat16_t);
