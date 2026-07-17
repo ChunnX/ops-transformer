@@ -69,7 +69,7 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
         """Path to C++ source code."""
         return ["ops/csrc/mixed_quant_flash_attn.cpp"]
 
-    def schema(self) -> str:
+    def schema(self) -> list[str]:
         """PyTorch operator signature."""
         return [
             "mixed_quant_flash_attn_metadata(int num_heads_q, int num_heads_kv, int head_dim, int quant_mode, *, "
@@ -112,7 +112,7 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
             layout_q: Optional[str] = "BSND",
             layout_kv: Optional[str] = "PA_BBND",
             layout_attn_out: Optional[str] = "BSND",
-        ):
+        ) -> torch.Tensor:
             batch_size = (
                 _calculate_batch_size(batch_size, cu_seqlens_q, seqused_q)
                 if batch_size is None
@@ -146,7 +146,7 @@ class MixedQuantFlashAttenOpBuilder(OpBuilder):
             layout_kv: Optional[str] = "PA_BBND",
             layout_attn_out: Optional[str] = "BSND",
             return_softmax_lse: Optional[bool] = False,
-        ):
+        ) -> tuple[torch.Tensor, torch.Tensor]:
             if layout_q == "TND":
                 t_size = q.size(0)
                 n_size = q.size(1)
@@ -212,7 +212,7 @@ def mixed_quant_flash_attn_metadata(
     layout_q: Optional[str] = "BSND",
     layout_kv: Optional[str] = "PA_BBND",
     layout_attn_out: Optional[str] = "BSND",
-):
+) -> torch.Tensor:
     """
     Dispatcher implementation: NPU.
     'PrivateUse1' is dispatch key for custom NPU backends.
@@ -271,7 +271,7 @@ def mixed_quant_flash_attn_metadata_fallback(
     layout_q: Optional[str] = "BSND",
     layout_kv: Optional[str] = "PA_BBND",
     layout_attn_out: Optional[str] = "BSND",
-):
+) -> torch.Tensor:
     return _mixed_quant_flash_attn_metadata(
         num_heads_q=num_heads_q,
         num_heads_kv=num_heads_kv,
@@ -317,7 +317,7 @@ def mixed_quant_flash_attn(
     layout_kv: Optional[str] = "PA_BBND",
     layout_attn_out: Optional[str] = "BSND",
     return_softmax_lse: Optional[bool] = False,
-):
+) -> tuple[torch.Tensor, torch.Tensor]:
     """
     dispatcher implementation for NPU.
     'PrivateUse1' is the combine key for custom NPU backends.
