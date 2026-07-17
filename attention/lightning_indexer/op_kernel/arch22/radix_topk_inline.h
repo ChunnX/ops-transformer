@@ -88,7 +88,7 @@ __aicore__ inline void InlineRadixTopK(
     LocalTensor<int32_t> tileTopK = tileTopKBuf.Get<int32_t>();
 
     int16_t involvedMask16_ = 0;
-    int16_t andMask16_ = static_cast<int16_t>(0xC000);
+    uint16_t andMask16_ = 0xC000;
     int32_t totalDefinitelyInTopK_ = 0;
     int32_t boundaryBin = 0;
     int32_t boundaryBinPrev = 1;
@@ -173,37 +173,35 @@ __aicore__ inline void InlineRadixTopK(
             PipeBarrier<PIPE_V>();
             And(xLocalInt16Cast, xLocalInt16Cast, temp1, calcLen);
 
-            // DoAndMask
-            Duplicate<int16_t>(maskTensor.template ReinterpretCast<int16_t>(), andMask16_, curTileLen);
+            // DoAndMask: use accumulated mask (involvedMask16_ | andMask16_) to preserve prior round bits
+            uint16_t accumMask = static_cast<uint16_t>(involvedMask16_) | andMask16_;
+            Duplicate<int16_t>(maskTensor.template ReinterpretCast<int16_t>(), static_cast<int16_t>(accumMask), curTileLen);
             PipeBarrier<PIPE_V>();
             And(xLocalInt16Cast, xLocalInt16Cast, maskTensor.template ReinterpretCast<int16_t>(), calcLen);
             PipeBarrier<PIPE_V>();
             RDX_V_S_SYNC();
             RDX_S_V_SYNC();
 
-            // CalcCumsumHistogram: Cast int16 -> float, then compare float directly (skip float→int32)
-            Cast(xLocalFp32, xLocalInt16Cast, RoundMode::CAST_NONE, curTileLen);
+            // CalcCumsumHistogram: scalar comparison (no Cast, no Compares)
             PipeBarrier<PIPE_V>();
+            RDX_V_S_SYNC();
 
             int32_t cumSumOne = 0;
-            uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(float) - 1) /
-                (REPEAT_SIZE / sizeof(float)) * (REPEAT_SIZE / sizeof(float));
             for (int16_t binMask = RDX_BINS - 1; binMask > 0; binMask--) {
-                int32_t involvedMaskTemp = static_cast<int32_t>(
+                int16_t involvedMaskTemp = static_cast<int16_t>(
                     involvedMask16_ | static_cast<int16_t>(binMask << (roundId * RDX_BITS)));
-                float involvedMaskFloat = static_cast<float>(involvedMaskTemp);
-                Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, involvedMaskFloat,
-                    AscendC::CMPMODE::EQ, curTileLenAlign32);
-                PipeBarrier<PIPE_V>();
-                uint64_t rsvdCnt = 0;
-                GatherMask(tempHalf, tempHalf, cmpMaskTensor.template ReinterpretCast<uint16_t>(),
-                           true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
-                RDX_V_S_SYNC();
-                cumSumOne += static_cast<int32_t>(rsvdCnt);
-
+                int32_t matchCount = 0;
+                for (uint32_t i = 0; i < curTileLen; i++) {
+                    int16_t val = xLocalInt16Cast.GetValue(i);
+                    if (val == involvedMaskTemp) {
+                        matchCount++;
+                    }
+                }
+                cumSumOne += matchCount;
+                RDX_S_V_SYNC();
                 tileHist[binMask * tileNumAlign_].SetValue(tileId, cumSumOne);
                 globalHist.SetValue(binMask, globalHist.GetValue(binMask) + cumSumOne);
-                RDX_S_V_SYNC();
+                RDX_V_S_SYNC();
             }
         }
 

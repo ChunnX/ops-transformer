@@ -15,5 +15,8 @@ if r is not None:
     f = r.flatten()
     b = 512
     vals = f[b*512:(b+1)*512].tolist()
-    print(f"gh[0]={vals[0]}, gh[1]={vals[1]}, gh[2]={vals[2]}, gh[3]={vals[3]}")
-    print(f"sortLen={vals[4]}, tileNum={vals[5]}")
+    gh = [vals[0], vals[1], vals[2], vals[3]]
+    im = vals[4] & 0xFFFF
+    am = vals[5] & 0xFFFF
+    bins = [gh[3], gh[2]-gh[3], gh[1]-gh[2], gh[0]-gh[1]]
+    print(f"round 7: gh={gh}, bins={bins}, involvedMask=0x{im:04x}, andMask=0x{am:04x}")
