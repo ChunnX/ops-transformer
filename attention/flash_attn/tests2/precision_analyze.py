@@ -12,7 +12,7 @@ _LAYOUT_COLUMNS = {"BNSD": ["B", "N", "S", "D"], "BSND": ["B", "S", "N", "D"], "
 
 
 def _col_names(shape, layout):
-    return _LAYOUT_COLUMNS.get(layout, [str(i) for i in range(len(shape))])
+    return _LAYOUT_COLUMNS.get(layout, [f"轴{i}" for i in range(len(shape))])
 
 
 # ═══════════════════════════════════════════════════════════════
