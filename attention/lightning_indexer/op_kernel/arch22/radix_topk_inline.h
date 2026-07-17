@@ -173,30 +173,30 @@ __aicore__ inline void InlineRadixTopK(
             PipeBarrier<PIPE_V>();
             And(xLocalInt16Cast, xLocalInt16Cast, temp1, calcLen);
 
-            // DoAndMask: use andMask16_ only (matching math repo, not accumulated)
-            Duplicate<int16_t>(maskTensor.template ReinterpretCast<int16_t>(), static_cast<int16_t>(andMask16_), curTileLen);
+            // DoAndMask: use accumulated mask (involvedMask16_ | andMask16_)
+            uint16_t accumMask = static_cast<uint16_t>(involvedMask16_) | andMask16_;
+            Duplicate<int16_t>(maskTensor.template ReinterpretCast<int16_t>(), static_cast<int16_t>(accumMask), curTileLen);
             PipeBarrier<PIPE_V>();
             And(xLocalInt16Cast, xLocalInt16Cast, maskTensor.template ReinterpretCast<int16_t>(), calcLen);
             PipeBarrier<PIPE_V>();
             RDX_V_S_SYNC();
             RDX_S_V_SYNC();
 
-            // CalcCumsumHistogram: Cast int16 -> float -> int32, compare int32
+            // CalcCumsumHistogram: Cast int16 -> float, compare with current-round-only mask
             PipeBarrier<PIPE_V>();
             RDX_V_S_SYNC();
             RDX_S_V_SYNC();
             Cast(xLocalFp32, xLocalInt16Cast, RoundMode::CAST_NONE, curTileLen);
             PipeBarrier<PIPE_V>();
-            Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
-            PipeBarrier<PIPE_V>();
 
             int32_t cumSumOne = 0;
-            uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(int32_t) - 1) /
-                (REPEAT_SIZE / sizeof(int32_t)) * (REPEAT_SIZE / sizeof(int32_t));
+            uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(float) - 1) /
+                (REPEAT_SIZE / sizeof(float)) * (REPEAT_SIZE / sizeof(float));
             for (int16_t binMask = RDX_BINS - 1; binMask > 0; binMask--) {
-                int32_t involvedMaskTemp = static_cast<int32_t>(
+                int16_t involvedMaskTemp = static_cast<int16_t>(
                     involvedMask16_ | static_cast<int16_t>(binMask << (roundId * RDX_BITS)));
-                Compares<int32_t, uint8_t>(cmpMaskTensor, xLocalInt32, involvedMaskTemp,
+                float involvedMaskFloat = static_cast<float>(involvedMaskTemp);
+                Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, involvedMaskFloat,
                     AscendC::CMPMODE::EQ, curTileLenAlign32);
                 PipeBarrier<PIPE_V>();
                 uint64_t rsvdCnt = 0;

@@ -19,7 +19,6 @@ if r is not None:
     gh = [vals[1], vals[2], vals[3], vals[4]]
     im = vals[5] & 0xFFFF
     am = vals[6] & 0xFFFF
-    acc = vals[7] & 0xFFFF
-    rk = vals[8]
+    rk = vals[7]
     bins = [gh[3], gh[2]-gh[3], gh[1]-gh[2], gh[0]-gh[1]]
-    print(f"round {rd}: gh={gh}, bins={bins}, involved=0x{im:04x}, andMask=0x{am:04x}, accum=0x{acc:04x}, remainK={rk}")
+    print(f"round {rd}: gh={gh}, bins={bins}, involved=0x{im:04x}, andMask=0x{am:04x}, remainK={rk}")
