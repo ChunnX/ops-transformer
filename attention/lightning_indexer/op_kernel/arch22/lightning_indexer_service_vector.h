@@ -32,6 +32,7 @@ constexpr uint32_t LD_PARAM_NUM = 16;
 constexpr uint32_t EVENTID_V_TO_MTE2_PING = 0;
 constexpr uint32_t EVENTID_V_TO_MTE2_PONG = 1;
 constexpr uint32_t EVENTID_V_TO_MTE2_TMPUB = 2;
+constexpr uint32_t EVENTID_V_TO_MTE3_SCORE = EVENT_ID3;
 
 // 主模板：Q_T必选，W_T可选（默认void），无论W_T传什么，默认weightsType=Q_T
 template<typename Q_T, typename W_T = void>
@@ -79,7 +80,7 @@ protected:
     GlobalTensor<MM1_OUT_T> mm1ResGm;
     GlobalTensor<float> vec1ResGm;
     GlobalTensor<int64_t> vec1ParamGm;
-    GlobalTensor<float> scoreB16Gm;  // float score for RadixTopK
+    GlobalTensor<float> scoreB16Gm;  // temporarily float for debugging
     GlobalTensor<W_T> weightsGm;
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<K_T> valueOutGm;
@@ -97,6 +98,7 @@ private:
     TBuf<TPosition::VECCALC> reduceOutBuf_;
     TBuf<TPosition::VECCALC> brcBuf_;
     TBuf<TPosition::VECCALC> paramBuf_;
+    TBuf<TPosition::VECCALC> scoreCastBuf_;  // for Cast float→bf16 in RadixTopK path
 
     // tmp buff for LD
     TBuf<> ldToBeMrgBuf_;
@@ -379,7 +381,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 PipeBarrier<PIPE_V>();
             }
             {
-                // Directly DataCopyPad float reduceOutInner to scoreB16Gm (no Cast needed)
+                // Debug: write float directly to scoreB16Gm (no Cast, no sync)
                 PipeBarrier<PIPE_V>();
                 uint64_t globalS1Idx = static_cast<uint64_t>(cuS1Idx);
                 uint64_t scoreOffset = globalS1Idx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
