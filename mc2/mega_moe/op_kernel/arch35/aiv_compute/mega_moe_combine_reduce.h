@@ -23,6 +23,11 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineReduceImpl {
+struct CombineReduceTileSchedule {
+    uint32_t logicalCoreId;
+    uint32_t logicalCoreNum;
+};
+
 struct CombineReduceShapeContext {
     uint32_t m;
     uint32_t k;
@@ -44,6 +49,35 @@ struct CombineReduceWorkspace {
     LocalTensor<bfloat16_t> bf16ScaleTensor;
     LocalTensor<float> fp32ScaleTensor;
 };
+
+// ===============================================================
+// ComputeCombineReduceCoreRange：复用原 TilingByCore 公式，核 ID/核数改由逻辑核调度传入
+// ===============================================================
+__aicore__ inline void ComputeCombineReduceCoreRange(const CombineReduceTileSchedule& tileSchedule,
+    uint32_t totalLength, int32_t& coreLen, int32_t& coreOffset)
+{
+    coreLen = 0;
+    coreOffset = 0;
+    if (tileSchedule.logicalCoreNum == 0 || tileSchedule.logicalCoreId >= tileSchedule.logicalCoreNum) {
+        return;
+    }
+
+    int32_t totalLen = static_cast<int32_t>(totalLength);
+    int32_t coreIdx = static_cast<int32_t>(tileSchedule.logicalCoreId);
+    int32_t coreNum = static_cast<int32_t>(tileSchedule.logicalCoreNum);
+    int32_t lenPerCore = Ops::Base::CeilDiv(
+        static_cast<uint32_t>(totalLen), static_cast<uint32_t>(coreNum));
+    int32_t lenPerCoreAlign = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(lenPerCore), static_cast<uint32_t>(1));
+    coreLen = lenPerCoreAlign;
+    coreOffset = coreIdx * lenPerCoreAlign;
+    if (coreOffset + coreLen >= totalLen) {
+        coreLen = totalLen - coreOffset;
+    }
+    if (coreOffset >= totalLen) {
+        coreLen = 0;
+    }
+}
 
 // ===============================================================
 // InitCombineReduceWorkspace：分配 CombineReduce 所需固定 buffer，返回 batchLength
@@ -205,25 +239,12 @@ __aicore__ inline void ProcessCombineReduceToken(int32_t tokenIdx, int32_t local
 // ProcessCombineReduceSingleCore：单核入口——分核、初始化 buffer，再按 batch 执行 CombineReduce
 // ===============================================================
 template <int32_t CombineQuantMode, typename TopkWeightsType>
-__aicore__ inline void ProcessCombineReduceSingleCore(const CombineReduceShapeContext& shapeContext,
-    const CombineReduceBufferContext& bufferContext)
+__aicore__ inline void ProcessCombineReduceSingleCore(const CombineReduceTileSchedule& tileSchedule,
+    const CombineReduceShapeContext& shapeContext, const CombineReduceBufferContext& bufferContext)
 {
-    // 直接展开原 TilingByCore(m_, coreLen, coreOffset, 1) 的分核逻辑。
-    int32_t totalLen = static_cast<int32_t>(shapeContext.m);
-    int32_t coreIdx = GetBlockIdx();
-    int32_t coreNum = GetBlockNum() * 2;
-    int32_t lenPerCore = Ops::Base::CeilDiv(
-        static_cast<uint32_t>(totalLen), static_cast<uint32_t>(coreNum));
-    int32_t lenPerCoreAlign = Ops::Base::CeilAlign(
-        static_cast<uint32_t>(lenPerCore), static_cast<uint32_t>(1));
-    int32_t coreLen = lenPerCoreAlign;
-    int32_t coreOffset = coreIdx * lenPerCoreAlign;
-    if (coreOffset + coreLen >= totalLen) {
-        coreLen = totalLen - coreOffset;
-    }
-    if (coreOffset >= totalLen) {
-        coreLen = 0;
-    }
+    int32_t coreLen = 0;
+    int32_t coreOffset = 0;
+    ComputeCombineReduceCoreRange(tileSchedule, shapeContext.m, coreLen, coreOffset);
     if (coreLen == 0) {
         return;
     }
