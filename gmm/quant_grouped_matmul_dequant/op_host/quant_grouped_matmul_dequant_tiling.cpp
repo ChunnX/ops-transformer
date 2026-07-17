@@ -564,26 +564,26 @@ bool QuantMatmulDequantTiling::GetTilingData(gert::TilingContext *context)
                 uint32_t BaseMFractalN_ = (singleCoreM + _Params.baseMNum - 1) / _Params.baseMNum + 1;
                 while (_Params.baseNNum_2 > 1 &&
                        BaseMFractalN_ * ((singleCoreN + _Params.baseNNum_2 - NUMBER_2) / (_Params.baseNNum_2 - 1)) <=
-                       l0CMNFractal) {
+                           l0CMNFractal) {
                     _Params.baseNNum_2 -= 1;
                 }
                 uint32_t BaseNFractalN_ = (singleCoreN + _Params.baseNNum_2 - 1) / _Params.baseNNum_2;
                 while (_Params.baseMNum > 1 &&
                        BaseNFractalN_ * ((singleCoreM + _Params.baseMNum - NUMBER_2) / (_Params.baseMNum - 1)) <=
-                       l0CMNFractal) {
+                           l0CMNFractal) {
                     _Params.baseMNum -= 1;
                 }
             } else {
                 uint32_t BaseNFractalN_ = (singleCoreN + _Params.baseNNum_2 - 1) / _Params.baseNNum_2;
                 while (_Params.baseMNum > 1 &&
                        BaseNFractalN_ * ((singleCoreM + _Params.baseMNum - NUMBER_2) / (_Params.baseMNum - 1)) <=
-                       l0CMNFractal) {
+                           l0CMNFractal) {
                     _Params.baseMNum -= 1;
                 }
                 uint32_t BaseMFractalN_ = (singleCoreM + _Params.baseMNum - 1) / _Params.baseMNum + 1;
                 while (_Params.baseNNum_2 > 1 &&
                        BaseMFractalN_ * ((singleCoreN + _Params.baseNNum_2 - NUMBER_2) / (_Params.baseNNum_2 - 1)) <=
-                       l0CMNFractal) {
+                           l0CMNFractal) {
                     _Params.baseNNum_2 -= 1;
                 }
             }
@@ -711,27 +711,29 @@ bool QuantMatmulDequantTiling::GetTilingData(gert::TilingContext *context)
                 while (_Params.baseNNum > 1 &&
                        BaseMFractalN_ * ((_Params.singleCoreN + _Params.baseNNum - NUMBER_2) / (_Params.baseNNum - 1) +
                                          extraN) <=
-                       l0CMNFractal) {
+                           l0CMNFractal) {
                     _Params.baseNNum -= 1;
                 }
                 uint32_t BaseNFractalN_ = (_Params.singleCoreN + _Params.baseNNum - 1) / _Params.baseNNum + extraN;
                 while (_Params.baseMNum > 1 &&
-                       BaseNFractalN_ * ((_Params.singleCoreM + _Params.baseMNum - NUMBER_2) / (_Params.baseMNum - 1) + 1) <=
-                       l0CMNFractal) {
+                       BaseNFractalN_ *
+                               ((_Params.singleCoreM + _Params.baseMNum - NUMBER_2) / (_Params.baseMNum - 1) + 1) <=
+                           l0CMNFractal) {
                     _Params.baseMNum -= 1;
                 }
             } else {
                 uint32_t BaseNFractalN_ = (_Params.singleCoreN + _Params.baseNNum - 1) / _Params.baseNNum + extraN;
                 while (_Params.baseMNum > 1 &&
-                       BaseNFractalN_ * ((_Params.singleCoreM + _Params.baseMNum - NUMBER_2) / (_Params.baseMNum - 1) + 1) <=
-                       l0CMNFractal) {
+                       BaseNFractalN_ *
+                               ((_Params.singleCoreM + _Params.baseMNum - NUMBER_2) / (_Params.baseMNum - 1) + 1) <=
+                           l0CMNFractal) {
                     _Params.baseMNum -= 1;
                 }
                 uint32_t BaseMFractalN_ = (_Params.singleCoreM + _Params.baseMNum - 1) / _Params.baseMNum + 1;
                 while (_Params.baseNNum > 1 &&
                        BaseMFractalN_ * ((_Params.singleCoreN + _Params.baseNNum - NUMBER_2) / (_Params.baseNNum - 1) +
                                          extraN) <=
-                       l0CMNFractal) {
+                           l0CMNFractal) {
                     _Params.baseNNum -= 1;
                 }
             }

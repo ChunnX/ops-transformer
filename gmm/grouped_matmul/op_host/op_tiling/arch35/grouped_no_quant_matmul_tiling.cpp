@@ -178,9 +178,7 @@ void GroupedNoQuantMatmulTiling::SetDisableL2Cache(const gert::TilingContext *co
     uint64_t dataTypeSize = GetSizeByDataType(xDType_);
     bool flag = transposeWeight_ ? (baseK_ * stepKb_ * dataTypeSize % ALIGN_128 == 0) :
                                    (baseN_ * dataTypeSize % ALIGN_128 == 0);
-    uint64_t totalSize = m_ * k_ * dataTypeSize +
-                         groupNum_ * k_ * n_ * dataTypeSize +
-                         m_ * n_ * dataTypeSize;
+    uint64_t totalSize = m_ * k_ * dataTypeSize + groupNum_ * k_ * n_ * dataTypeSize + m_ * n_ * dataTypeSize;
     OP_LOGD(context->GetNodeName(), "Input and Output TotalSize: %lu, l2Size: %lu", totalSize, compileInfoPtr->l2Size);
     if (totalSize < compileInfoPtr->l2Size) {
         weightNoL2Cache_ = false;
@@ -227,8 +225,7 @@ bool GroupedNoQuantMatmulTiling::Init(const gert::TilingContext *context)
             nzFactor_ = transposeWeight_ ? BASIC_BLOCK_SIZE_16 : static_cast<int64_t>(c0);
         }
         OP_CHECK_IF(!CheckWeightNZShape(context, static_cast<int64_t>(c0)),
-                    OP_LOGE(context->GetNodeName(), "The shape of nz weight is invalid."),
-                    return false);
+                    OP_LOGE(context->GetNodeName(), "The shape of nz weight is invalid."), return false);
     }
 
     return HandleGroupTypeDispatch(context, xShape, wShape, wDimNum);
@@ -257,11 +254,14 @@ bool GroupedNoQuantMatmulTiling::HandleGroupTypeDispatch(const gert::TilingConte
 
 bool GroupedNoQuantMatmulTiling::CheckWeightNZShape(const gert::TilingContext *context, int64_t numInOneBlk) const
 {
-    OP_CHECK_IF(numInOneBlk <= 0, OP_LOGE(context->GetNodeName(), "the value of numInOneBlk is invalid, %ld", numInOneBlk), return false);
+    OP_CHECK_IF(numInOneBlk <= 0,
+                OP_LOGE(context->GetNodeName(), "the value of numInOneBlk is invalid, %ld", numInOneBlk), return false);
     uint32_t i = 0;
     while (true) {
         auto wTensor = context->GetDynamicInputTensor(INDEX_WEIGHT, i++);
-        if (wTensor == nullptr) { break; }
+        if (wTensor == nullptr) {
+            break;
+        }
         auto wShape = wTensor->GetOriginShape();
         size_t kValue = wShape.GetDim(wShape.GetDimNum() - (transposeWeight_ ? 1 : 2));
         size_t nValue = wShape.GetDim(wShape.GetDimNum() - (transposeWeight_ ? 2 : 1));
@@ -470,8 +470,8 @@ bool GroupedNoQuantMatmulTiling::GMMGetTensorShapeSplitK(const gert::TilingConte
     if (isSingleX_ && !isSingleWeight_ && !isSingleY_) { // splitK, s-m-m
         return SplitKSingleXSeparatedWeight(context, xShape);
     }
-    if (!isSingleX_ && isSingleWeight_) {  // splitK, m-s-m/m-s-s
-      return SeparatedXSingleWeight(context, wShape);
+    if (!isSingleX_ && isSingleWeight_) { // splitK, m-s-m/m-s-s
+        return SeparatedXSingleWeight(context, wShape);
     }
     if (isSingleX_ && isSingleWeight_ && isSingleY_) { // splitK, s-s-s
         return SplitKSingleXSingleWeightSingleY(context, xShape, wShape);

@@ -110,6 +110,6 @@ struct EpilogueAtlasA2Gemv {
     using ArchTag = Arch::AtlasA2;
 };
 ///////////////////////////
-}  // namespace Catlass::Epilogue
+} // namespace Catlass::Epilogue
 
-#endif  // GMM_EPILOGUE_DISPATCH_POLICY_HPP
+#endif // GMM_EPILOGUE_DISPATCH_POLICY_HPP

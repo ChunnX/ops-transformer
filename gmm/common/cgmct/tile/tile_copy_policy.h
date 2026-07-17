@@ -20,15 +20,16 @@
 namespace Cgmct {
 namespace Gemm {
 namespace Tile {
-struct CopyWithParams {};                      ///< Copy policy with additional parameters
-struct CopyOutSplitMWithParams {};             ///< Copy policy for splitting output along the M dimension with parameters
-struct CopyOutSplitNWithParams {};             ///< Copy policy for splitting output along the N dimension with parameters
-struct CopyWithLayout {};                      ///< Copy policy with specific layout considerations
-struct CopyEnUnitFlagWithLayout {};            ///< Copy policy with layout and unit flag considerations
-struct CopySparseWithLayout {};                ///< Copy policy for sparse data with layout considerations
-struct CopyNoGmIn {};                          ///< Copy policy excluding global memory input
-struct CopyBasedBaseK {};                      ///< Copy policy based on base K dimension
-struct CopyInAndCopyOutSplitMWithParams {};    ///< Copy policy for splitting input and output along the M dimension with parameters
+struct CopyWithParams {};           ///< Copy policy with additional parameters
+struct CopyOutSplitMWithParams {};  ///< Copy policy for splitting output along the M dimension with parameters
+struct CopyOutSplitNWithParams {};  ///< Copy policy for splitting output along the N dimension with parameters
+struct CopyWithLayout {};           ///< Copy policy with specific layout considerations
+struct CopyEnUnitFlagWithLayout {}; ///< Copy policy with layout and unit flag considerations
+struct CopySparseWithLayout {};     ///< Copy policy for sparse data with layout considerations
+struct CopyNoGmIn {};               ///< Copy policy excluding global memory input
+struct CopyBasedBaseK {};           ///< Copy policy based on base K dimension
+struct CopyInAndCopyOutSplitMWithParams {
+}; ///< Copy policy for splitting input and output along the M dimension with parameters
 
 /**
  * @struct Copy
@@ -42,7 +43,7 @@ struct CopyInAndCopyOutSplitMWithParams {};    ///< Copy policy for splitting in
  * @param [in] cfg: configuration settings, default is CFG_NORM
  */
 template <class ArchTag, class DispatchPolicy, class DataType, class DstTrait, class SrcTrait, typename Enable = void,
-          const auto& cfg = CFG_NORM>
+          const auto &cfg = CFG_NORM>
 struct Copy {};
 } // namespace Tile
 } // namespace Gemm

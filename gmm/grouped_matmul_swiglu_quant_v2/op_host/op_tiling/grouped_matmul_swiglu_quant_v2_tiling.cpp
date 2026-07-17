@@ -36,25 +36,25 @@ using namespace Ops::Transformer::OpTiling;
 namespace optiling {
 constexpr int64_t GMMSQ_FUSING_TILING_TEMPLATE = 0;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2FusionTiling,
-    GMMSQ_FUSING_TILING_TEMPLATE);
+                             GMMSQ_FUSING_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_BASE_TILING_TEMPLATE = 1;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2BaseTiling,
-    GMMSQ_BASE_TILING_TEMPLATE);
+                             GMMSQ_BASE_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_950_TILING_TEMPLATE = 2;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2Tiling950,
-    GMMSQ_950_TILING_TEMPLATE);
+                             GMMSQ_950_TILING_TEMPLATE);
 
 constexpr int64_t GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE = 3;
 REGISTER_OPS_TILING_TEMPLATE(GroupedMatmulSwigluQuantV2, GroupedMatmulSwigluQuantV2WeightQuantTiling,
-    GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE);
+                             GMMSQ_WEIGHT_QUANT_TILING_TEMPLATE);
 
 static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext *context)
 {
     OP_CHECK_IF(context == nullptr,
-            OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "Tilingcontext is null"),
-            return ge::GRAPH_FAILED);
+                OPS_REPORT_CUBE_INNER_ERR("GroupedMatmulSwigluQuantV2TilingFunc", "Tilingcontext is null"),
+                return ge::GRAPH_FAILED);
     auto compileInfoPtr = context->GetCompileInfo<GMMSwigluV2CompileInfo>();
     if (compileInfoPtr->supportL12BtBf16) {
         std::vector<int32_t> registerList = {GMMSQ_950_TILING_TEMPLATE};
@@ -73,7 +73,7 @@ static ge::graphStatus GroupedMatmulSwigluQuantV2TilingFunc(gert::TilingContext 
             OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the tiling strategy in the mxfp8");
         }
         return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
-    }else {
+    } else {
         std::vector<int32_t> registerList = {GMMSQ_FUSING_TILING_TEMPLATE, GMMSQ_BASE_TILING_TEMPLATE};
         OP_LOGD("GroupedMatmulSwigluQuantV2TilingFunc", "Using the tiling strategy in the int8");
         return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);

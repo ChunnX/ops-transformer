@@ -59,7 +59,7 @@ struct GMMBaseParams {
 };
 #pragma pack(pop)
 
-#pragma pack(push,8)
+#pragma pack(push, 8)
 struct A8W4HPTiling {
     uint32_t group_num = 0;
     int8_t group_type = 0;
@@ -95,24 +95,24 @@ struct GMMTilingData {
 #pragma pack(pop)
 
 template <class T>
-void InitGmmMemberData(uint8_t* tiling, T* const_data)
+void InitGmmMemberData(uint8_t *tiling, T *const_data)
 {
     memcpy(const_data, tiling, sizeof(T));
 }
 
-inline void InitGMMTilingData(uint8_t* tiling, GMMTilingData* const_data)
+inline void InitGMMTilingData(uint8_t *tiling, GMMTilingData *const_data)
 {
     memcpy(const_data, tiling, sizeof(GMMTilingData));
 }
 
-#define GET_TILING_DATA(tilingData, tilingPointer) \
-    GMMTilingData tilingData;         \
+#define GET_TILING_DATA(tilingData, tilingPointer)                                                                     \
+    GMMTilingData tilingData;                                                                                          \
     InitGMMTilingData(tilingPointer, &tilingData)
 
-#define GET_TILING_DATA_MEMBER(tiling_type, member, var, tiling) \
-    REGISTER_TILINGDATA_SIZE(tiling_type, __COUNTER__); \
-    decltype(((tiling_type *)0)->member) var; \
-    size_t offset##var = (size_t)(&((tiling_type *)0)->member); \
+#define GET_TILING_DATA_MEMBER(tiling_type, member, var, tiling)                                                       \
+    REGISTER_TILINGDATA_SIZE(tiling_type, __COUNTER__);                                                                \
+    decltype(((tiling_type *)0)->member) var;                                                                          \
+    size_t offset##var = (size_t)(&((tiling_type *)0)->member);                                                        \
     InitGmmMemberData<decltype(((tiling_type *)0)->member)>(tiling + offset##var, &var)
 
 #endif

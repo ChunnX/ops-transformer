@@ -53,10 +53,9 @@ constexpr int64_t DYNAMIC_GRAPH_FIRST_INFERSHAPE_DIM_VALUE = -1;
 
 static std::set<std::string> GmmDavidSupportSoc = {"Ascend950"};
 static const std::unordered_set<ge::DataType> DavidSupportedInputDtypes = {
-    ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_FLOAT8_E4M3FN,
-    ge::DataType::DT_FLOAT4_E2M1, ge::DataType::DT_FLOAT4_E1M2,
-    ge::DataType::DT_INT8, ge::DataType::DT_HIFLOAT8};
-bool  isSupportedInputDtypeForDavid(ge::DataType dtype)
+    ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT4_E2M1,
+    ge::DataType::DT_FLOAT4_E1M2, ge::DataType::DT_INT8,          ge::DataType::DT_HIFLOAT8};
+bool isSupportedInputDtypeForDavid(ge::DataType dtype)
 {
     return DavidSupportedInputDtypes.find(dtype) != DavidSupportedInputDtypes.end();
 }
@@ -129,9 +128,9 @@ static graphStatus InferDataType4GroupedMatmulSwigluQuantV2(gert::InferDataTypeC
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t* outDtype = attrs->GetInt(GMMSQ_INDEX_ATTR_QUANT_DTYPE);
+    const int64_t *outDtype = attrs->GetInt(GMMSQ_INDEX_ATTR_QUANT_DTYPE);
     OP_CHECK_NULL_WITH_CONTEXT(context, outDtype);
-    const int64_t* quantMode = attrs->GetInt(GMMSQ_INDEX_ATTR_QUANT_MODE);
+    const int64_t *quantMode = attrs->GetInt(GMMSQ_INDEX_ATTR_QUANT_MODE);
     OP_CHECK_NULL_WITH_CONTEXT(context, quantMode);
 
     fe::PlatformInfo platformInfo;
@@ -141,25 +140,24 @@ static graphStatus InferDataType4GroupedMatmulSwigluQuantV2(gert::InferDataTypeC
         auto xDtype = context->GetInputDataType(X_INDEX);
         auto weightDtype = context->GetDynamicInputDataType(WEIGHT_INDEX, 0);
         OP_CHECK_IF(!isSupportedInputDtypeForDavid(xDtype) || !isSupportedInputDtypeForDavid(weightDtype),
-                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
-                    GROUPED_MATMUL_SWIGLU_QUANT_V2_OP_TYPE, "x, weight",
-                    ListToString(ge::TypeUtils::DataTypeToSerialString(xDtype),
-                                 ge::TypeUtils::DataTypeToSerialString(weightDtype)),
-                    "On this platform, the dtypes of x and weight must be within the range FLOAT8_E4M3, "
-                    "FLOAT8_E5M2, FLOAT4_E2M1, INT8 or HIFLOAT8"),
-                return GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                        GROUPED_MATMUL_SWIGLU_QUANT_V2_OP_TYPE, "x, weight",
+                        ListToString(ge::TypeUtils::DataTypeToSerialString(xDtype),
+                                     ge::TypeUtils::DataTypeToSerialString(weightDtype)),
+                        "On this platform, the dtypes of x and weight must be within the range FLOAT8_E4M3, "
+                        "FLOAT8_E5M2, FLOAT4_E2M1, INT8 or HIFLOAT8"),
+                    return GRAPH_FAILED);
 
         OP_CHECK_IF(*quantMode != QUANT_MODE_MX_TYPE && *quantMode != QUANT_MODE_PERTOKEN_TYPE,
-                OP_LOGE_FOR_INVALID_VALUE(GROUPED_MATMUL_SWIGLU_QUANT_V2_OP_TYPE, "quant_mode",
-                                          std::to_string(*quantMode),
-                                          "0(Pertoken) or 2(MX)"),
-                return GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_VALUE(GROUPED_MATMUL_SWIGLU_QUANT_V2_OP_TYPE, "quant_mode",
+                                              std::to_string(*quantMode), "0(Pertoken) or 2(MX)"),
+                    return GRAPH_FAILED);
     }
     auto weightScaleDtype = context->GetDynamicInputDataType(WEIGHTSCALE_INDEX, 0);
     if (*quantMode == QUANT_MODE_MX_TYPE) {
         if (weightScaleDtype == ge::DataType::DT_FLOAT8_E8M0) {
             context->SetOutputDataType(1, DataType::DT_FLOAT8_E8M0);
-        }  else {
+        } else {
             OP_LOGE(context->GetNodeName(),
                     "In mx quant mode, the dtype of weightScale should be FLOAT8_E8M0, but actual dtype is %s.",
                     ge::TypeUtils::DataTypeToSerialString(weightScaleDtype).c_str());

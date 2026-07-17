@@ -25,20 +25,20 @@
 
 #if (ORIG_DTYPE_X == DT_FLOAT8_E4M3FN && ORIG_DTYPE_WEIGHT == DT_FLOAT4_E2M1)
 // 伪量化MxA8W4场景识别宏：x=FP8_E4M3FN, w=FP4_E2M1
-    #define GMM_SWIGLU_QUANT_WEIGHT_QUANT
-    #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
-    #include "arch35/weight_quant_basic_block/gmmsq_weight_quant_resplit_controller.h"
-    #include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
+#define GMM_SWIGLU_QUANT_WEIGHT_QUANT
+#include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_data.h"
+#include "arch35/weight_quant_basic_block/gmmsq_weight_quant_resplit_controller.h"
+#include "arch35/weight_quant_basic_block/grouped_matmul_swiglu_quant_v2_weight_quant_tiling_key.h"
 #else
 // 全量化Mx量化
-    #include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
-    #include "arch35/grouped_matmul_swiglu_quant_v2_mxfp4_weight_nz.h"
-    #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_mxquant.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_mxfp4_weight_nz.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
 
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT
-    #include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
-    #include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_pertoken_quant.h"
+#include "arch35/grouped_matmul_swiglu_quant_v2_tiling_key.h"
 #endif
 
 #define FLOAT_OVERFLOW_MODE_CTRL 60
@@ -53,12 +53,11 @@ constexpr CubeFormat wFormat = CubeFormat::NZ;
 constexpr CubeFormat wFormat = CubeFormat::ND;
 #endif
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
-constexpr bool isMxFp4Input = (AscendC::IsSameType<DTYPE_X, fp4x2_e2m1_t>::value ||
-                               AscendC::IsSameType<DTYPE_X, fp4x2_e1m2_t>::value) &&
-                               (AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e2m1_t>::value ||
-                               AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e1m2_t>::value);
+constexpr bool isMxFp4Input =
+    (AscendC::IsSameType<DTYPE_X, fp4x2_e2m1_t>::value || AscendC::IsSameType<DTYPE_X, fp4x2_e1m2_t>::value) &&
+    (AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e2m1_t>::value || AscendC::IsSameType<DTYPE_WEIGHT, fp4x2_e1m2_t>::value);
 #endif
-}
+} // namespace
 
 #if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, bool IS_SINGLE_MULTI_SINGLE>
@@ -81,8 +80,8 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
     GET_TILING_DATA_WITH_STRUCT(GMMSQArch35Tiling::GMMSQWeightQuantTilingData, tilingDataIn, tiling);
 
     GMMSQWeightQuant::GMMSQWeightQuantResplitController<
-        DTYPE_X, DTYPE_WEIGHT, DTYPE_WEIGHT_SCALE, DTYPE_X_SCALE, DTYPE_Y, DTYPE_Y_SCALE,
-        GMMSQWeightQuant::MXA8W4_NZNK, GMMSQWeightQuant::VEC_ANTIQUANT_CONFIG_DYNAMIC, IS_SINGLE_MULTI_SINGLE>
+        DTYPE_X, DTYPE_WEIGHT, DTYPE_WEIGHT_SCALE, DTYPE_X_SCALE, DTYPE_Y, DTYPE_Y_SCALE, GMMSQWeightQuant::MXA8W4_NZNK,
+        GMMSQWeightQuant::VEC_ANTIQUANT_CONFIG_DYNAMIC, IS_SINGLE_MULTI_SINGLE>
         controller;
 
     controller.Init(x, weight, weightScale, groupList, xScale, y, yScale, &tilingDataIn);
@@ -97,27 +96,33 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
 #if ORIG_DTYPE_X_SCALE == DT_FLOAT8_E8M0
     if constexpr (wFormat == CubeFormat::NZ && isMxFp4Input) {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(x, weight, weightScale,
-                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(x, weight, weightScale,
-                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            GmmSwigluMxFp4WeightNz<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
         }
     } else if constexpr (wFormat == CubeFormat::NZ) {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(x, weight, weightScale, xScale,
-                weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Nz>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(x, weight, weightScale, xScale,
-                weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::Zn>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
         }
     } else {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(x, weight, weightScale,
-                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(x, weight, weightScale,
-                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
+            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
+                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace,
+                tiling);
         }
     }
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT

@@ -51,7 +51,7 @@ enum class QuantDtype : uint8_t {
 namespace {
 constexpr int64_t OUT_ELE_NUM_ONE_BLK = 64;
 constexpr uint64_t MX_QUANT_COMPUTE_ALIGN = 64UL; // MX量化计算的对齐约束: N轴需按64对齐处理
-constexpr uint64_t DATA_BLOCK_SIZE = 32UL; // UB上一个DataBlock的大小，即32字节。
+constexpr uint64_t DATA_BLOCK_SIZE = 32UL;        // UB上一个DataBlock的大小，即32字节。
 constexpr uint32_t Y_IDX = 0;
 constexpr uint32_t Y_SCALE_IDX = 1;
 constexpr uint32_t BLOCK_SIZE = 32;
@@ -128,8 +128,8 @@ public:
     using DataTypeX2Scale = DataTypeX2Scale_;
 
     // 输出为FP4类型(e2m1/e1m2)的编译期标记
-    static constexpr bool IS_FP4_OUT = AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value ||
-                                         AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value;
+    static constexpr bool IS_FP4_OUT =
+        AscendC::IsSameType<DataTypeOut, fp4x2_e2m1_t>::value || AscendC::IsSameType<DataTypeOut, fp4x2_e1m2_t>::value;
 
     // shape
     using BlockShape = AscendC::Shape<int64_t, int64_t, int64_t, int64_t>;
@@ -544,7 +544,7 @@ __aicore__ inline void BlockEpilogueSwigluQuant<QMM_BLOCK_EPILOGUE_DEQUANT_FUNC_
         CeilDiv(static_cast<uint64_t>(nSize), static_cast<uint64_t>(sizePerRepeat)); // 一行需要循环的次数，等于n/64
     uint32_t nSrcUbAligned = CeilAlign(nSize, AscendC::ONE_BLK_SIZE / sizeof(DataTypeIn));
     uint32_t nDstUbAligned64 = Align64(nSize); // 64 对齐
-    
+
     const float scalarOne = 1.0;
     __ubuf__ bfloat16_t *gluResAddr = (__ubuf__ bfloat16_t *)gluRes_.GetPhyAddr();
 

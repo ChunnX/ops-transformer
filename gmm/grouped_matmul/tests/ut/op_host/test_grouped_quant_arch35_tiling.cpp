@@ -111,15 +111,15 @@ public:
         bool isSplitKPertensor = groupType == 2 && scaleDtype != ge::DT_FLOAT8_E8M0;
         gert::StorageShape perTokenScaleShape =
             isSplitKPertensor ? ops::ut::MakeGertStorageShape({groupNum}, {groupNum}) :
-            groupType == 2 ? ops::ut::MakeGertStorageShape({splitKScaleBlocks, m, 2}, {splitKScaleBlocks, m, 2}) :
-                             ops::ut::MakeGertStorageShape({m, kScaleBlocks, 2}, {m, kScaleBlocks, 2});
+            groupType == 2    ? ops::ut::MakeGertStorageShape({splitKScaleBlocks, m, 2}, {splitKScaleBlocks, m, 2}) :
+                                ops::ut::MakeGertStorageShape({m, kScaleBlocks, 2}, {m, kScaleBlocks, 2});
 
         vector<int64_t> weightOriginDims =
             transposeWeight ? vector<int64_t>{groupNum, n, k} : vector<int64_t>{groupNum, k, n};
         vector<int64_t> weightStorageDims;
         if (weightFormat == "NZ") {
-            const bool weight4Bit = weightDtype == ge::DT_INT4 || weightDtype == ge::DT_FLOAT4_E2M1 ||
-                                    weightDtype == ge::DT_FLOAT4_E1M2;
+            const bool weight4Bit =
+                weightDtype == ge::DT_INT4 || weightDtype == ge::DT_FLOAT4_E2M1 || weightDtype == ge::DT_FLOAT4_E1M2;
             const int64_t n0 = weight4Bit ? 64 : 32;
             const int64_t n1 = (n + n0 - 1) / n0;
             const int64_t k1 = (k + 15) / 16;
@@ -130,11 +130,10 @@ public:
         }
         gert::StorageShape weightShape = ops::ut::MakeGertStorageShape(weightOriginDims, weightStorageDims);
 
-        vector<int64_t> scaleDims =
-            isSplitKPertensor ? vector<int64_t>{groupNum} :
-            groupType == 2 ? vector<int64_t>{splitKScaleBlocks, n, 2}
-                           : (transposeWeight ? vector<int64_t>{groupNum, n, kScaleBlocks, 2}
-                                              : vector<int64_t>{groupNum, kScaleBlocks, n, 2});
+        vector<int64_t> scaleDims = isSplitKPertensor ? vector<int64_t>{groupNum} :
+                                    groupType == 2    ? vector<int64_t>{splitKScaleBlocks, n, 2} :
+                                                        (transposeWeight ? vector<int64_t>{groupNum, n, kScaleBlocks, 2} :
+                                                                           vector<int64_t>{groupNum, kScaleBlocks, n, 2});
         gert::StorageShape scaleShape = ops::ut::MakeGertStorageShape(scaleDims, scaleDims);
 
         gert::TilingContextPara tilingContextPara(
@@ -151,8 +150,8 @@ public:
                 {perTokenScaleShape, perTokenScaleDtype, ge::FORMAT_ND}, // perTokenScale
             },
             {{ops::ut::MakeGertStorageShape({m}, {n}), yDtype, ge::FORMAT_ND}},
-            GetGroupedQmmAttrs(transposeX, transposeWeight, groupType),
-            &compileInfo, "3510", compileInfo.aicNum, compileInfo.ubSize);
+            GetGroupedQmmAttrs(transposeX, transposeWeight, groupType), &compileInfo, "3510", compileInfo.aicNum,
+            compileInfo.ubSize);
 
         TilingInfo tilingInfo;
         bool tilingResult = ExecuteTiling(tilingContextPara, tilingInfo);
@@ -306,7 +305,6 @@ TEST_P(TestGroupedQuantArch35Tiling, generalTest)
 {
     GetParam().Test();
 }
-
 
 
 INSTANTIATE_TEST_SUITE_P(GROUPED_QMM_950, TestGroupedQuantArch35Tiling, testing::ValuesIn(GetAscend950Params()),

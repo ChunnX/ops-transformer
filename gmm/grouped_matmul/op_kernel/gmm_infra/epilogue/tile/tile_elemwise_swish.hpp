@@ -28,11 +28,13 @@ struct TileElemWiseSwish {
     static constexpr uint32_t COMPUTE_LENGTH = COMPUTE_COMPUTE_LENGTH_;
 
     CATLASS_DEVICE
-    TileElemWiseSwish() {}
+    TileElemWiseSwish()
+    {
+    }
 
     CATLASS_DEVICE
-    void operator () (AscendC::LocalTensor<ElementCompute> const & dstLocal,
-        AscendC::LocalTensor<ElementCompute> const & srcLocal)
+    void operator()(AscendC::LocalTensor<ElementCompute> const &dstLocal,
+                    AscendC::LocalTensor<ElementCompute> const &srcLocal)
     {
         using namespace AscendC;
         // d: -x, s: x

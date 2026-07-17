@@ -265,7 +265,7 @@ struct SplitkInOneCoreGemmIdentityBlockSwizzle {
     uint32_t blockIdexList[MAX_TILE_NUM];
     uint32_t blockCnt = 0;
     uint32_t beginBlockIdex = 0;
-    
+
     /// Methods
     CATLASS_DEVICE
     SplitkInOneCoreGemmIdentityBlockSwizzle()

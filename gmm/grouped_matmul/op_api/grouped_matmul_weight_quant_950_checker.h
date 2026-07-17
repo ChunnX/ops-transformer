@@ -18,8 +18,8 @@ namespace gmm {
 class AclnnGroupedMatmulWeightQuantDAV3510Checker {
 public:
     explicit AclnnGroupedMatmulWeightQuantDAV3510Checker(const GroupedMatmulParams &gmmParams)
-        : gmmParams_(gmmParams){};
-    ~AclnnGroupedMatmulWeightQuantDAV3510Checker(){};
+        : gmmParams_(gmmParams) {};
+    ~AclnnGroupedMatmulWeightQuantDAV3510Checker() {};
     aclnnStatus CheckGroupedMatmulWeightQuantDAV3510();
 
 private:
@@ -52,8 +52,7 @@ private:
     aclnnStatus CheckScaleAndPerTokenScaleShape() const;
     aclnnStatus CheckS8S4NZScaleShape() const;
     static aclnnStatus CheckOptionalListSize(const aclTensorList *optional, const aclTensorList *reference,
-                                             const char *optionalName, const char *referenceName,
-                                             const char *opName);
+                                             const char *optionalName, const char *referenceName, const char *opName);
     aclnnStatus CheckGroupSize(size_t idx) const;
     aclnnStatus CheckDimValueAllOne(const aclTensorList *tensorList, const size_t idx,
                                     const std::string &paramName) const;
@@ -68,7 +67,7 @@ private:
     bool IsA16W4Pergroup(const size_t xIdx) const;
 
     std::string GetDataFlowString() const;
-    const char* GetAclnnName() const;
+    const char *GetAclnnName() const;
 
 private:
     GroupedMatmulParams gmmParams_;
