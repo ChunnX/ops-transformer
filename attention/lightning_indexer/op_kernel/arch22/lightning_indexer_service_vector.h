@@ -379,9 +379,11 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 PipeBarrier<PIPE_V>();
             }
             {
-                LocalTensor<bfloat16_t> scoreB16Ub = tmpUb_.template ReinterpretCast<bfloat16_t>();
+                // Use reduceOutBuff[0] as Cast target (not tmpUb_, avoids V->MTE3 sync issue)
+                // reduceOutBuff layout: [0..s2BaseSize-1] = unused in RadixTopK path, [s2BaseSize..2*s2BaseSize-1] = reduceOutInner
+                LocalTensor<bfloat16_t> scoreB16Ub = reduceOutBuff.template ReinterpretCast<bfloat16_t>();
                 Cast(scoreB16Ub, reduceOutInner, RoundMode::CAST_ROUND, s2BaseSize_);
-                PipeBarrier<PIPE_V>();
+                PipeBarrier<PIPE_ALL>();
                 uint64_t globalS1Idx = static_cast<uint64_t>(cuS1Idx);
                 uint64_t scoreOffset = globalS1Idx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
                 AscendC::DataCopyParams dcParams;
@@ -390,6 +392,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 dcParams.srcStride = 0;
                 dcParams.dstStride = 0;
                 DataCopyPad(scoreB16Gm[scoreOffset], scoreB16Ub, dcParams);
+                PipeBarrier<PIPE_ALL>();
             }
             } // end if radixCuS2Len > 0
             } else {
