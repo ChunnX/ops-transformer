@@ -320,7 +320,7 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqlensQOptional, const aclTen
                                const aclTensor *oriTopkLengthOptional, const aclTensor *cmpTopkLengthOptional,
                                int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio, int64_t oriMaskMode,
                                int64_t cmpMaskMode, bool hasOriKv, bool hasCmpKv, const char *layoutQOptional,
-                               const char *layoutKvOptional, const aclTensor *metadata)
+                               const char *layoutKvOptional, bool isA5, const aclTensor *metadata)
 {
     // cu_seqlens_q 存在性校验
     if (strcmp(layoutQOptional, "TND") == 0) {
@@ -339,11 +339,21 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqlensQOptional, const aclTen
             }
         }
         // seqused_ori_kv 存在性校验
-        if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
-            if (!IsTensorExistSmla(sequsedOriKvOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and layout_kv is PA_BBND, "
-                    "seqused_ori_kv must be provided!");
-                return ACLNN_ERR_PARAM_INVALID;
+        if (isA5) {
+            if ((oriMaskMode != 0 || oriTopk == 0) && strcmp(layoutKvOptional, "PA_BBND") == 0) {
+                if (!IsTensorExistSmla(sequsedOriKvOptional)) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_mask_mode != 0 or ori_topk == 0, "
+                    "and layout_kv is PA_BBND, seqused_ori_kv must be provided!");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+            }
+        } else {
+            if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
+                if (!IsTensorExistSmla(sequsedOriKvOptional)) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and layout_kv is PA_BBND, "
+                        "seqused_ori_kv must be provided!");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
             }
         }
         // ori_topk_length 存在性校验
@@ -365,11 +375,21 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqlensQOptional, const aclTen
             }
         }
         // seqused_cmp_kv 存在性校验
-        if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
-            if (!IsTensorExistSmla(sequsedCmpKvOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true and layout_kv is PA_BBND, "
-                    "seqused_cmp_kv must be provided!");
-                return ACLNN_ERR_PARAM_INVALID;
+        if (isA5) {
+            if ((cmpMaskMode != 0 || cmpTopk == 0) && strcmp(layoutKvOptional, "PA_BBND") == 0) {
+                if (!IsTensorExistSmla(sequsedCmpKvOptional)) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true, cmp_mask_mode != 0 or cmp_topk == 0, "
+                    "and layout_kv is PA_BBND, seqused_cmp_kv must be provided!");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
+            }
+        } else {
+            if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
+                if (!IsTensorExistSmla(sequsedCmpKvOptional)) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true and layout_kv is PA_BBND, "
+                        "seqused_cmp_kv must be provided!");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
             }
         }
         // cmp_residual_kv 存在性校验
@@ -737,7 +757,7 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
         CheckExistenceSmla(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedOriKvOptional,
                            sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional, cmpTopkLengthOptional,
                            oriTopk, cmpTopk, cmpRatio, oriMaskMode, cmpMaskMode, hasOriKv, hasCmpKv, layoutQOptional,
-                           layoutKvOptional, metaData) == ACLNN_SUCCESS &&
+                           layoutKvOptional, isA5, metaData) == ACLNN_SUCCESS &&
         CheckConsistencySmla(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                              sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
                              cmpTopkLengthOptional, batchSize, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
