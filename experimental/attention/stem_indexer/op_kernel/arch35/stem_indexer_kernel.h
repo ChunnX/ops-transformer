@@ -409,8 +409,8 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
         vbiasGm.SetGlobalBuffer((__gm__ float *)vbias);
         sparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
         sparseSeqLenGm.SetGlobalBuffer((__gm__ int32_t *)sparseSeqLen);
-        vectorService.InitParams(constInfo, tiling);
-        vectorService.InitVecInputTensor(vbiasGm, numPromptTokensGm, sparseIndicesGm, sparseSeqLenGm);
+        vectorService.InitParams(constInfo);
+        vectorService.InitVecInputTensor(vbiasGm, sparseIndicesGm, sparseSeqLenGm);
     } else {
         queryGm.SetGlobalBuffer((__gm__ Q_T *)qflat);
         keyGm.SetGlobalBuffer((__gm__ K_T *)kflat);
