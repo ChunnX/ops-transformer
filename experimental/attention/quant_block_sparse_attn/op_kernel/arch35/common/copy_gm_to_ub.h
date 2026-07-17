@@ -41,7 +41,9 @@ private:
         if constexpr (GM_FORMAT == BSALayout::PA_BNSD) {
             DataCopyExtParams dataCopyParams;
             dataCopyParams.blockCount = 1;
-            dataCopyParams.blockLen = constInfo.kvSparseBlockSize * sizeof(float);
+
+            // 当 runInfo.sparseBlkIdx2 >= 0 的情况时，runInfo.s2SparseBlk1RealSize = constInfo.kvSparseBlockSize
+            dataCopyParams.blockLen = runInfo.s2SparseBlk1RealSize * sizeof(float);
             dataCopyParams.srcStride = 0;
             dataCopyParams.dstStride = 0;
             DataCopyPadExtParams<T> dataCopyPadParams{};
