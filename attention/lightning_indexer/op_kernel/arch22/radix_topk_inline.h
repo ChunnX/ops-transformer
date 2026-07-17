@@ -83,6 +83,12 @@ __aicore__ inline void InlineRadixTopK(
     LocalTensor<int16_t> tempTensor = outIndexBuf.Get<int16_t>();
     LocalTensor<int32_t> outIndexLocal = outIndexBuf.Get<int32_t>();
 
+    // Debug: skip RadixTopK for debug batch, just output score values
+    if (dbg) {
+        for (uint32_t i = 5; i < kValue; i++) { indexGm.SetValue(i, -1); }
+        return;
+    }
+
     // cmpMaskTopK reuses outValueBuf during TileTopK phase (signMaskTensor not needed then)
     LocalTensor<uint8_t> cmpMaskTopK = outValueBuf.Get<uint8_t>();
     LocalTensor<int32_t> tileHist = tempBuf.Get<int32_t>();
