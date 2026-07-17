@@ -18,7 +18,7 @@
  *     AIC: ProcessCompute()      →  setupComputeContext_(i) + executeGemm_(i)
  *
  * AIV side: pure communication via MxQuantAlltoAllComm (replaceable with AllGather etc).
- * AIC side: pure computation, directly invokes Blaze GemmKernel.
+ * AIC side: pure computation, directly invokes BlockMmad with inlined scheduling.
  */
 
 #ifndef DISTA_ALL_TO_ALL_MX_QUANT_MATMUL_ARCH35_H
@@ -26,12 +26,12 @@
 
 #include "../../block/ccu/ccu_alltoall_communicator.h"
 #include "blaze/gemm/utils/common_utils.h"
+#include "blaze/gemm/utils/layout_utils.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "../../block/blaze_ext/gemm/policy/dispatch_policy_alltoall.h"
-#include "../../block/blaze_ext/gemm/kernel/kernel_qbmm_mx_alltoall.h"
 #include "../../block/blaze_ext/gemm/block/block_mmad_qbmm_mx_alltoall.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
-#include "blaze/epilogue/block/block_epilogue_empty.h"
+#include "tensor_api/tensor.h"
 #include "../../utils/qbmm_tiling_data.h"
 
 namespace Dista {
@@ -73,25 +73,27 @@ private:
     using LayoutB = AscendC::Te::DNExtLayoutPtn;
     using LayoutC = AscendC::Te::NDExtLayoutPtn;
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
+    using BlockCoord = AscendC::Te::Coord<int64_t, int64_t, int64_t, int64_t>;
 
     using DispatchPolicy = Blaze::Gemm::MatmulWithScaleMxAlltoAll<0, false>;
-    using BlockEpilogue = Blaze::Gemm::Block::BlockEpilogueEmpty;
     using BlockScheduler =
         Blaze::Gemm::Block::BlockSchedulerQuantBatchMatmulV3<ProblemShape, 0, LayoutA, LayoutB, X1Type>;
     using BlockMmad = Blaze::Gemm::Block::BlockMmad<DispatchPolicy, X1Type, LayoutA, X2Type, LayoutB, YType, LayoutC,
                                                      float, LayoutC>;
-    using GemmKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler,
-        AscendC::Std::enable_if_t<AscendC::Std::is_same_v<Blaze::Gemm::KernelMmadWithScaleMxAlltoAll,
-                                                           typename BlockMmad::DispatchPolicy::ScheduleType>>>;
 
-    using GemmParams = typename GemmKernel::Params;
-    using BlockMmadParams = typename BlockMmad::Params;
     using L1Params = typename BlockMmad::L1Params;
     using SchParams = typename BlockScheduler::Params;
-    using QBMMTiling = typename GemmKernel::QBMMTiling;
-    using AlltoAllParams = typename BlockMmad::AlltoAllParams;
 
     using ComputeContextType = BlazeMXQuantMMContext<QuantBatchMatmulTilingData>;
+
+    static constexpr int64_t C0_SIZE = Blaze::Gemm::IsFp4<X1Type>() ? Blaze::Gemm::C0_SIZE_B4 : Blaze::Gemm::C0_SIZE_B8;
+    static constexpr int64_t kCacheLineAlignMask = Blaze::Gemm::IsFp4<X1Type>() ? 0xff : 0x7f;
+    static constexpr int32_t SCALE_C0 = 2;
+
+    using MakeLayoutB = AscendC::Te::FrameLayoutFormat<LayoutB, AscendC::Std::Int<C0_SIZE>>;
+    using MakeLayoutC = AscendC::Te::FrameLayoutFormat<LayoutC, AscendC::Std::Int<AscendC::AuxGetC0Size<YType>()>>;
+    using MakeLayoutScaleB = AscendC::Te::FrameLayoutFormat<AscendC::Te::ScaleBNDLayoutPtn, AscendC::Std::Int<SCALE_C0>>;
 
 public:
     __aicore__ inline AlltoAllMxQuantMatmulArch35(AlltoAllMatmulTilingDataType *tilingData,
@@ -260,27 +262,11 @@ AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
     uint64_t aRankStride = static_cast<uint64_t>(computeContext_.additionalData.rankM) * rankKPerRank;
     uint64_t scaleARankStride = static_cast<uint64_t>(computeContext_.additionalData.rankM) * scaleKPerRank;
 
-    GemmParams params;
-
-    AscendC::Std::get<Blaze::Gemm::MNK_M>(params.problemShape) = static_cast<int64_t>(mmTile.m);
-    AscendC::Std::get<Blaze::Gemm::MNK_N>(params.problemShape) = static_cast<int64_t>(mmTile.n);
-    AscendC::Std::get<Blaze::Gemm::MNK_K>(params.problemShape) = static_cast<int64_t>(mmTile.k);
-    AscendC::Std::get<Blaze::Gemm::MNK_B>(params.problemShape) = 1;
-
-    BlockMmadParams mmad;
-    mmad.aGmAddr = aGM;
-    mmad.bGmAddr = bGM;
-    mmad.cGmAddr = cGM;
-    mmad.scaleAGmAddr = x1Scale;
-    mmad.scaleBGmAddr = x2Scale;
-    mmad.biasGmAddr = nullptr;
-    params.mmadParams = mmad;
-
-    L1Params l1;
-    l1.kL1 = static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK;
-    l1.scaleKL1 = mmTile.scaleKL1;
-    l1.l1BufNum = mmTile.nBufferNum;
-    params.l1Params = l1;
+    ProblemShape problemShape;
+    AscendC::Std::get<Blaze::Gemm::MNK_M>(problemShape) = static_cast<int64_t>(mmTile.m);
+    AscendC::Std::get<Blaze::Gemm::MNK_N>(problemShape) = static_cast<int64_t>(mmTile.n);
+    AscendC::Std::get<Blaze::Gemm::MNK_K>(problemShape) = static_cast<int64_t>(mmTile.k);
+    AscendC::Std::get<Blaze::Gemm::MNK_B>(problemShape) = 1;
 
     SchParams sch;
     sch.baseM = 256;
@@ -291,39 +277,116 @@ AlltoAllMxQuantMatmulArch35<X1Type, X2Type, YType, CommDataTypeX1,
     sch.nBaseTailSplitCnt = mmTile.nBaseTailSplitCnt;
     sch.mTailMain = mmTile.mTailMain;
     sch.nTailMain = mmTile.nTailMain;
-    params.schParams = sch;
 
-    QBMMTiling qb;
-    qb.batchA1 = 1;
-    qb.batchA2 = 1;
-    qb.batchA3 = 1;
-    qb.batchA4 = 1;
-    qb.batchB1 = 1;
-    qb.batchB2 = 1;
-    qb.batchB3 = 1;
-    qb.batchB4 = 1;
-    qb.batchC1 = 1;
-    qb.batchC2 = 1;
-    qb.batchC3 = 1;
-    qb.batchC4 = 1;
-    qb.biasThreeDim = 0;
-    qb.baseM = 256;
-    qb.baseN = 128;
-    qb.baseK = mmTile.baseK;
-    qb.isBias = 0;
-    qb.dbL0C = 1;
-    params.qbmmParams = qb;
+    BlockScheduler bs(problemShape, sch);
 
-    AlltoAllParams alltoall;
-    alltoall.rankDim = rankDim;
-    alltoall.rankKPerRank = rankKPerRank;
-    alltoall.scaleKPerRank = scaleKPerRank;
-    alltoall.aRankStride = aRankStride;
-    alltoall.scaleARankStride = scaleARankStride;
-    params.alltoallParams = alltoall;
+    BlockMmad mmadOp;
+    BlockShape l0TileShape{256, 128, static_cast<int64_t>(mmTile.baseK), 0};
+    L1Params l1;
+    l1.kL1 = static_cast<uint64_t>(mmTile.stepK) * mmTile.baseK;
+    l1.scaleKL1 = mmTile.scaleKL1;
+    l1.l1BufNum = mmTile.nBufferNum;
+    mmadOp.Init(problemShape, l0TileShape, l1, false, false);
 
-    GemmKernel gemm;
-    gemm(params);
+    typename BlockMmad::AlltoAllParams alltoallParams;
+    alltoallParams.rankDim = rankDim;
+    alltoallParams.rankKPerRank = rankKPerRank;
+    alltoallParams.scaleKPerRank = scaleKPerRank;
+    alltoallParams.aRankStride = aRankStride;
+    alltoallParams.scaleARankStride = scaleARankStride;
+    mmadOp.SetAlltoAllParams(alltoallParams);
+    mmadOp.SetGmAddrs(aGM, x1Scale);
+
+    auto scaleKLen = Blaze::Gemm::CeilDiv(
+        AscendC::Te::Get<Blaze::Gemm::MNK_K>(problemShape),
+        static_cast<int64_t>(Blaze::Gemm::MXFP_DIVISOR_SIZE)) * Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
+
+    auto layoutB = MakeLayoutB{}(
+        AscendC::Te::Get<Blaze::Gemm::MNK_K>(problemShape),
+        AscendC::Te::Get<Blaze::Gemm::MNK_N>(problemShape));
+    auto layoutScaleB = MakeLayoutScaleB{}(scaleKLen,
+        AscendC::Te::Get<Blaze::Gemm::MNK_N>(problemShape));
+    auto layoutBias = AscendC::Te::MakeFrameLayout<AscendC::Te::NDExtLayoutPtn>(
+        1L, AscendC::Te::Get<Blaze::Gemm::MNK_N>(problemShape));
+    auto layoutC = MakeLayoutC{}(
+        AscendC::Te::Get<Blaze::Gemm::MNK_M>(problemShape),
+        AscendC::Te::Get<Blaze::Gemm::MNK_N>(problemShape));
+
+    auto gmB = AscendC::Te::MakeTensor(
+        AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
+            reinterpret_cast<__gm__ X2Type*>(bGM)), layoutB);
+    auto gmScaleB = AscendC::Te::MakeTensor(
+        AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
+            reinterpret_cast<__gm__ AscendC::fp8_e8m0_t*>(x2Scale)), layoutScaleB);
+    auto gmBias = AscendC::Te::MakeTensor(
+        AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
+            reinterpret_cast<__gm__ float*>(nullptr)), layoutBias);
+    auto gmC = AscendC::Te::MakeTensor(
+        AscendC::Te::MakeMemPtr<AscendC::Te::Location::GM>(
+            reinterpret_cast<__gm__ YType*>(cGM)), layoutC);
+
+    {
+        auto& mTailTile = sch.mTailTile;
+        auto& nTailTile = sch.nTailTile;
+        if ((bs.GetEndBlockIdx() + 1) * mTailTile * nTailTile <= AscendC::GetBlockNum()) {
+            bs.UpdateTailTile(mTailTile, nTailTile);
+        }
+    }
+
+    {
+        bool fullMTile = (256 >= AscendC::Te::Get<Blaze::Gemm::MNK_M>(problemShape));
+        if (fullMTile) {
+            int64_t scaleNStrideBytes =
+                AscendC::Te::Get<Blaze::Gemm::MNK_N>(problemShape) * Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
+            int64_t scaleBaseNStrideBytes = 128 * Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
+            bool scaleAlign = (scaleNStrideBytes & 0x7f) == 0 && (scaleBaseNStrideBytes & 0x7f) == 0;
+            gmScaleB.SetL2CacheHint(scaleAlign ?
+                AscendC::Te::CacheMode::CACHE_MODE_DISABLE : AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+
+            bool bAlign = (AscendC::Te::Get<Blaze::Gemm::MNK_N>(problemShape) & kCacheLineAlignMask) == 0 &&
+                          (128 & kCacheLineAlignMask) == 0;
+            gmB.SetL2CacheHint(bAlign ?
+                AscendC::Te::CacheMode::CACHE_MODE_DISABLE : AscendC::Te::CacheMode::CACHE_MODE_NORMAL);
+        }
+    }
+
+    BlockCoord blockIdx;
+    int64_t mPos = 0L;
+    int64_t nPos = 0L;
+    constexpr int64_t kPos = 0L;
+    while (bs.GetTileIdx(blockIdx)) {
+        BlockShape singleShape =
+            bs.template GetBlockShape<Blaze::Gemm::QuantMode::MX_PERGROUP_MODE,
+                                      Blaze::Gemm::QuantMode::MX_PERGROUP_MODE, false>(blockIdx);
+        if (AscendC::Te::Get<Blaze::Gemm::IDX_M_TILEIDX>(singleShape) <= 0 ||
+            AscendC::Te::Get<Blaze::Gemm::IDX_N_TILEIDX>(singleShape) <= 0) {
+            return;
+        }
+
+        bs.GetTileCoord(blockIdx, mPos, nPos);
+        mmadOp.SetMPos(static_cast<uint64_t>(mPos));
+
+        auto gmBlockB = gmB.Slice(
+            AscendC::Te::MakeCoord(kPos, nPos),
+            AscendC::Te::MakeShape(
+                AscendC::Te::Get<Blaze::Gemm::MNK_K>(problemShape),
+                AscendC::Te::Get<Blaze::Gemm::IDX_N_TILEIDX>(singleShape)));
+        auto gmBlockScaleB = gmScaleB.Slice(
+            AscendC::Te::MakeCoord(kPos, nPos),
+            AscendC::Te::MakeShape(scaleKLen,
+                AscendC::Te::Get<Blaze::Gemm::IDX_N_TILEIDX>(singleShape)));
+        auto gmBlockBias = gmBias.Slice(
+            AscendC::Te::MakeCoord(0L, nPos),
+            AscendC::Te::MakeShape(1L,
+                AscendC::Te::Get<Blaze::Gemm::IDX_N_TILEIDX>(singleShape)));
+        auto gmBlockC = gmC.Slice(
+            AscendC::Te::MakeCoord(mPos, nPos),
+            AscendC::Te::MakeShape(
+                AscendC::Te::Get<Blaze::Gemm::IDX_M_TILEIDX>(singleShape),
+                AscendC::Te::Get<Blaze::Gemm::IDX_N_TILEIDX>(singleShape)));
+
+        mmadOp(gmBlockB, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape);
+    }
 }
 
 } // namespace Kernel
