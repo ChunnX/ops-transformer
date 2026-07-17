@@ -382,7 +382,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             {
                 LocalTensor<bfloat16_t> scoreB16Ub = tmpUb_.template ReinterpretCast<bfloat16_t>();
                 Cast(scoreB16Ub, reduceOutInner, RoundMode::CAST_ROUND, s2BaseSize_);
-                PipeBarrier<PIPE_ALL>();
+                PipeBarrier<PIPE_V>();
                 uint64_t globalS1Idx = static_cast<uint64_t>(cuS1Idx);
                 uint64_t scoreOffset = globalS1Idx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
                 AscendC::DataCopyParams dcParams;
@@ -391,7 +391,6 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 dcParams.srcStride = 0;
                 dcParams.dstStride = 0;
                 DataCopyPad(scoreB16Gm[scoreOffset], scoreB16Ub, dcParams);
-                PipeBarrier<PIPE_ALL>();
             }
             } // end if radixCuS2Len > 0
             } else {
