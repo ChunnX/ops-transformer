@@ -29,8 +29,13 @@ constexpr int32_t CONSTANT_TWO = 2;
 constexpr int32_t CONSTANT_THREE = 3;
 constexpr int32_t CONSTANT_FOUR = 4;
 constexpr int32_t CONSTANT_EIGHT = 8;
+constexpr int32_t B32_BLOCK_COUNT = 8;
 constexpr uint32_t VL_FLOAT_SIZE = VECTOR_REG_WIDTH / sizeof(float);
 constexpr MicroAPI::DivSpecificMode mode = {MicroAPI::MaskMergeMode::ZEROING, true};
+static constexpr MicroAPI::CastTrait castTraitFp32ToInt32 = {
+    MicroAPI::RegLayout::UNKNOWN, MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
+static constexpr MicroAPI::CastTrait castTraitInt32ToFp32 = {
+    MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::SAT, MicroAPI::MaskMergeMode::ZEROING, RoundMode::CAST_RINT};
 
 template <typename T, typename U1 = int32_t, typename U2 = int32_t>
 class MoeGatingTopKRegbase {
@@ -757,11 +762,8 @@ template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::TopKCompute()
 {
     LocalTensor<float> xBiasTensor = xBiasBuf_.Get<float>();
-    LocalTensor<float> sortedInGroupTensor = sortedInGroupBuf_.Get<float>(); // 组内排序的结果, 后续归并需要
+    LocalTensor<float> sortedInGroupTensor = sortedInGroupBuf_.Get<float>();
     LocalTensor<float> tmpLocal = finalSortBuffer_.Get<float>();
-
-    Sort<float, true>(sortedInGroupTensor, xBiasTensor, indexTensor, tmpLocal,
-                      perGroupExpertCountAlign_ * groupCount_ / ONE_REPEAT_SORT_NUM);
 
     LocalTensor<float> xSigmoidTensor = xSigmoidBuf_.Get<float>();
     LocalTensor<T> yTensor = yOutQueue_.AllocTensor<T>();
@@ -769,22 +771,91 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::TopKCompute()
 
     LocalTensor<int32_t> sortedInGroupTensorCast = sortedInGroupTensor.template ReinterpretCast<int32_t>();
 
-    int32_t expertIdxPad = perGroupExpertCountAlign_ - perGroupExpertCount_;
-    if (k_ <= VL_FLOAT_SIZE) {
-        if (expertIdxPad != 0) {
-            smallKNotAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
-                              routedScalingFactor_, expertIdxPad, perGroupExpertCountAlign_);
-        } else {
-            smallKAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
-                           routedScalingFactor_);
+    if (k_ == 1 && expertCount_ <= B32_BLOCK_COUNT) {
+        __local_mem__ float *xBiasAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
+        __local_mem__ uint32_t *indexAddr = (__local_mem__ uint32_t *)indexTensor.GetPhyAddr();
+        __local_mem__ float *xSigmoidAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
+        __local_mem__ T *outputAddr = (__local_mem__ T *)yTensor.GetPhyAddr();
+        __local_mem__ int32_t *expertIdxAddr = (__local_mem__ int32_t *)expertIdxTensor.GetPhyAddr();
+        uint32_t expertCountU32 = static_cast<uint32_t>(expertCount_);
+        int32_t expertIdxPad = perGroupExpertCountAlign_ - perGroupExpertCount_;
+        int32_t perGroupExpertCountAlign = perGroupExpertCountAlign_;
+        float eps = eps_;
+        float routedScalingFactor = routedScalingFactor_;
+        bool needNorm = !(tilingData_->normType == 0 && tilingData_->renorm == 0);
+        bool needExpertIdxAdjust = (expertIdxPad != 0);
+        uint32_t kU32 = static_cast<uint32_t>(k_);
+
+        __VEC_SCOPE__
+        {
+            RegTensor<float> vregValue;
+            RegTensor<float> vregMax;
+            RegTensor<uint32_t> vregIdx;
+            RegTensor<uint32_t> vregArgmax;
+            RegTensor<float> vregMaxBcast;
+            RegTensor<float> vregScore;
+            RegTensor<float> vregSum;
+            RegTensor<float> vregSumBcast;
+            MicroAPI::MaskReg pregExpert = MicroAPI::UpdateMask<uint32_t>(expertCountU32);
+            MicroAPI::MaskReg pregCmp;
+            MicroAPI::MaskReg pregK = MicroAPI::UpdateMask<float>(kU32);
+
+            MicroAPI::DataCopy(vregValue, xBiasAddr);
+            MicroAPI::DataCopy(vregIdx, indexAddr);
+            MicroAPI::ReduceMax(vregMax, vregValue, pregExpert);
+            MicroAPI::Duplicate(vregMaxBcast, vregMax, pregExpert);
+            MicroAPI::Compare<float, CMPMODE::EQ>(pregCmp, vregValue, vregMaxBcast, pregExpert);
+            RegTensor<uint32_t> vregZero;
+            MicroAPI::Duplicate(vregZero, static_cast<uint32_t>(0), pregExpert);
+            MicroAPI::Select<uint32_t>(vregArgmax, vregIdx, vregZero, pregCmp);
+            RegTensor<float> vregArgmaxFp32;
+            MicroAPI::Cast<float, uint32_t, castTraitInt32ToFp32>(vregArgmaxFp32, vregArgmax, pregExpert);
+            MicroAPI::ReduceMax(vregArgmaxFp32, vregArgmaxFp32, pregExpert);
+            MicroAPI::Cast<uint32_t, float, castTraitFp32ToInt32>(vregArgmax, vregArgmaxFp32, pregExpert);
+
+            MicroAPI::DataCopyGather(vregScore, xSigmoidAddr, vregArgmax, pregK);
+
+            if (needNorm) {
+                MicroAPI::ReduceSum(vregSum, vregScore, pregK);
+                MicroAPI::Adds(vregSum, vregSum, eps, pregK);
+                MicroAPI::Duplicate(vregSumBcast, vregSum, pregK);
+                MicroAPI::Div(vregScore, vregScore, vregSumBcast, pregK);
+            }
+            MicroAPI::Muls(vregScore, vregScore, routedScalingFactor, pregK);
+
+            if (needExpertIdxAdjust) {
+                RegTensor<uint32_t> vregAlign;
+                MicroAPI::Duplicate(vregAlign, perGroupExpertCountAlign, pregK);
+                RegTensor<uint32_t> vregExpertIdxTmp;
+                MicroAPI::Div(vregExpertIdxTmp, vregArgmax, vregAlign, pregK);
+                MicroAPI::Muls(vregExpertIdxTmp, vregExpertIdxTmp, expertIdxPad, pregK);
+                MicroAPI::Sub(vregArgmax, vregArgmax, vregExpertIdxTmp, pregK);
+            }
+
+            ops::StoreOneTensorForDtypeT<T>(outputAddr, vregScore, pregK, 0);
+            MicroAPI::DataCopy(expertIdxAddr, vregArgmax, pregK);
         }
     } else {
-        if (expertIdxPad != 0) {
-            largeKNotAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
-                              routedScalingFactor_, expertIdxPad, perGroupExpertCountAlign_);
+        Sort<float, true>(sortedInGroupTensor, xBiasTensor, indexTensor, tmpLocal,
+                          perGroupExpertCountAlign_ * groupCount_ / ONE_REPEAT_SORT_NUM);
+
+        int32_t expertIdxPad = perGroupExpertCountAlign_ - perGroupExpertCount_;
+        if (k_ <= VL_FLOAT_SIZE) {
+            if (expertIdxPad != 0) {
+                smallKNotAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
+                                  routedScalingFactor_, expertIdxPad, perGroupExpertCountAlign_);
+            } else {
+                smallKAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
+                               routedScalingFactor_);
+            }
         } else {
-            largeKAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
-                           routedScalingFactor_);
+            if (expertIdxPad != 0) {
+                largeKNotAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
+                                  routedScalingFactor_, expertIdxPad, perGroupExpertCountAlign_);
+            } else {
+                largeKAlignEVF(xSigmoidTensor, sortedInGroupTensorCast, expertIdxTensor, yTensor, k_, eps_,
+                               routedScalingFactor_);
+            }
         }
     }
 
