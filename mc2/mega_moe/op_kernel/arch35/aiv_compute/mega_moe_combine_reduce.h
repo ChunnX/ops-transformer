@@ -20,6 +20,12 @@
 #include "../mega_moe_base.h"
 #include "../mega_moe_combine_send.h"
 
+#if __has_include("../../../common/utils/mc2_kernel_timing.h")
+#include "../../../common/utils/mc2_kernel_timing.h"
+#elif __has_include("../../../../common/utils/mc2_kernel_timing.h")
+#include "../../../../common/utils/mc2_kernel_timing.h"
+#endif
+
 using namespace AscendC;
 
 namespace MegaMoeCombineReduceImpl {
@@ -242,16 +248,28 @@ template <int32_t CombineQuantMode, typename TopkWeightsType>
 __aicore__ inline void ProcessCombineReduceSingleCore(const CombineReduceTileSchedule& tileSchedule,
     const CombineReduceShapeContext& shapeContext, const CombineReduceBufferContext& bufferContext)
 {
+    Mc2Kernel::KernelTiming kernelTiming;
+    kernelTiming.Init(bufferContext.outputAddr);
+
     int32_t coreLen = 0;
     int32_t coreOffset = 0;
+
+    kernelTiming.StartTiming(0);
     ComputeCombineReduceCoreRange(tileSchedule, shapeContext.m, coreLen, coreOffset);
+    kernelTiming.StopTiming(0);
+
     if (coreLen == 0) {
+        kernelTiming.WriteTimingToOutput(tileSchedule.tileId);
         return;
     }
 
     CombineReduceWorkspace workspace;
+
+    kernelTiming.StartTiming(1);
     int32_t batchLength = InitCombineReduceWorkspace<CombineQuantMode, TopkWeightsType>(
         coreLen, shapeContext, workspace);
+    kernelTiming.StopTiming(1);
+
     GlobalTensor<bfloat16_t> expandedX;
     expandedX.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(bufferContext.expandedXAddr));
     GlobalTensor<bfloat16_t> output;
@@ -261,15 +279,23 @@ __aicore__ inline void ProcessCombineReduceSingleCore(const CombineReduceTileSch
     for (int32_t batchStart = 0; batchStart < coreLen; batchStart += batchLength) {
         int32_t tokenCount = (batchStart + batchLength > coreLen) ?
             (coreLen - batchStart) : batchLength;
+
+        kernelTiming.StartTiming(2);
         LoadCombineReduceWeights<TopkWeightsType>(
             coreOffset, batchStart, tokenCount, shapeContext, bufferContext, workspace);
+        kernelTiming.StopTiming(2);
+
         // 内层：token 循环，EVENT_ID0/1 用于 expert 数据搬运的 double buffer。
         SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
         SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
         for (int32_t localIdx = 0; localIdx < tokenCount; ++localIdx) {
             int32_t tokenIdx = coreOffset + batchStart + localIdx;
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
+
+            kernelTiming.StartTiming(3);
             ProcessCombineReduceToken<CombineQuantMode>(tokenIdx, localIdx, shapeContext, expandedX, workspace);
+            kernelTiming.StopTiming(3);
+
             Cast(workspace.dataResTensor, workspace.dataResFp32Tensor, AscendC::RoundMode::CAST_RINT,
                 shapeContext.k);
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
@@ -279,6 +305,9 @@ __aicore__ inline void ProcessCombineReduceSingleCore(const CombineReduceTileSch
         WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
         WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
     }
+
+    // 必须放在 Process 最末尾
+    kernelTiming.WriteTimingToOutput(tileSchedule.tileId);
 }
 
 } // namespace MegaMoeCombineReduceImpl
