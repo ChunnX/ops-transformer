@@ -326,8 +326,8 @@ aclnnStatus aclnnQuantLightningIndexer(
     <td>ND</td>
     <td>
         <ul>
-                <li>layoutQuery为"BSND"时输出shape为[B, S1, N2, sparseCount]。</li>
-                <li>layoutQuery为"TND"时输出shape为[T1, N2, sparseCount]。</li>
+                <li>layoutQuery为BSND时输出shape为[B, S1, N2, sparseCount]。</li>
+                <li>layoutQuery为TND时输出shape为[T1, N2, sparseCount]。</li>
         </ul>
     </td>
     <td>x</td>
