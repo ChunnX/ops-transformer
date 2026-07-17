@@ -26,6 +26,7 @@ static constexpr uint32_t TENSOR_LIST_SIZE = 512U;
 static constexpr uint32_t SCALE_COMM_BATCH_THRESHOLD = 32U;
 static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
 static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
+static constexpr uint64_t PERMUTE_BUF_SIZE = 32768U;
 
 // 类型复用声明
 using GMMQuantTilingData = Mc2GroupedMatmulTilingData::GMMQuantTilingData;
@@ -51,13 +52,15 @@ struct TaskTilingInfo {
     uint64_t e;           // 单卡上的专家数量
 
     // 平台信息
-    uint64_t ubSize; // UB大小
+    uint64_t ubSize;        // UB大小
+    uint64_t aivCoreNum;    // AIV 核数量
 
     // 循环调度参数
-    uint32_t mainLoopExpertNum; // 主循环每次处理的expert数量
-    uint32_t tailLoopExpertNum; // 尾循环处理的expert数量
-    uint32_t totalLoopCount;    // 总循环次数
-
+    uint32_t expertNum = 1U;     // 每次GMM计算合并的专家数量（计算批大小）
+    uint32_t mainLoopExpertNum;  // 主循环每次处理的expert数量（=expertNum）
+    uint32_t tailLoopExpertNum;  // 尾循环处理的expert数量（=e%expertNum的余数）
+    uint32_t totalLoopCount;     // 总循环次数（=CeilDiv(e,expertNum))
+    
     // 通信参数（对应sendCounts和recvCounts）
     int32_t sendCnt[MAX_EXPERT_SIZE]; // 每个expert的发送计数
     int32_t recvCnt[MAX_EXPERT_SIZE]; // 每个expert的接收计数
