@@ -22,7 +22,8 @@ namespace liV2Vector1 {
 
 __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<float> &out_,
                                               const LocalTensor<uint32_t> &in,
-                                              const uint32_t topK)
+                                              const uint32_t topK,
+                                              const uint32_t negInfBits)
 {
     auto outBuf = (__local_mem__ float*)out_.GetPhyAddr();
     auto inBuf = (__local_mem__ uint32_t*)in.GetPhyAddr();
@@ -34,19 +35,31 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<float> &out_,
     {
         AscendC::MicroAPI::RegTensor<uint32_t> regIn[2];
         AscendC::MicroAPI::RegTensor<float> regOut[2];
+        AscendC::MicroAPI::RegTensor<uint32_t> regNegInf;
+        AscendC::MicroAPI::RegTensor<uint32_t> regZero;
+        AscendC::MicroAPI::MaskReg maskInvalid[2];
         AscendC::MicroAPI::MaskReg maskAllB32 =
             AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
 
+        AscendC::MicroAPI::Duplicate(regNegInf, negInfBits, maskAllB32);
+        AscendC::MicroAPI::Duplicate(regZero, (uint32_t)0, maskAllB32);
+
+        UIntSortConstCtx<float> uint32Ctx;
+        InitUIntSortConstCtx(uint32Ctx, maskAllB32);
         for (uint16_t i = 0; i < topkLoopNum; ++i) {
             AscendC::MicroAPI::LoadAlign<uint32_t>(regIn[0], inBuf + i * repeatSize32);
             AscendC::MicroAPI::LoadAlign<uint32_t>(regIn[1], inBuf + i * repeatSize32 + 64);
 
-            UIntSortConstCtx<float> uint32Ctx;
-            InitUIntSortConstCtx(uint32Ctx, maskAllB32);
+            MicroAPI::Compare<uint32_t, CMPMODE::EQ>(maskInvalid[0], regIn[0], regZero, maskAllB32);
+            MicroAPI::Compare<uint32_t, CMPMODE::EQ>(maskInvalid[1], regIn[1], regZero, maskAllB32);
 
             UIntToSortableKey<float>(regOut[0], regIn[0], uint32Ctx, maskAllB32);
             UIntToSortableKey<float>(regOut[1], regIn[1], uint32Ctx, maskAllB32);
 
+            MicroAPI::Select((AscendC::MicroAPI::RegTensor<uint32_t>&)regOut[0], regNegInf,
+                    (AscendC::MicroAPI::RegTensor<uint32_t>&)regOut[0], maskInvalid[0]);
+            MicroAPI::Select((AscendC::MicroAPI::RegTensor<uint32_t>&)regOut[1], regNegInf,
+                    (AscendC::MicroAPI::RegTensor<uint32_t>&)regOut[1], maskInvalid[1]);
             AscendC::MicroAPI::StoreAlign<float, AscendC::MicroAPI::StoreDist::DIST_NORM>(outBuf + i * repeatSize32,
                                                                                           regOut[0],
                                                                                           maskAllB32);
