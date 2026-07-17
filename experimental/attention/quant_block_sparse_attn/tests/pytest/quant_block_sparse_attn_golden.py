@@ -354,9 +354,35 @@ def _calc_cube_compute_amount(case, q_lengths, kv_lengths, sparse_indices, spars
     }
 
 
+def _calc_cube_compute_capacity():
+    unit_conversion = 1000
+    fractal_m = 16
+    fractal_n = 16
+    fp8_fractal_k = 32
+    min_fractal_compute = fractal_m * fractal_n * fp8_fractal_k
+    frequency_ghz = 1.65
+    aic_count = 32
+    multiply_add_compute = 2
+    cube_compute_capacity = (
+        unit_conversion * min_fractal_compute * frequency_ghz * aic_count * multiply_add_compute
+    )
+    return {
+        "unit_conversion": unit_conversion,
+        "fractal_shape": (fractal_m, fractal_n, fp8_fractal_k),
+        "min_fractal_compute": min_fractal_compute,
+        "frequency_ghz": frequency_ghz,
+        "aic_count": aic_count,
+        "multiply_add_compute": multiply_add_compute,
+        "cube_compute_capacity": cube_compute_capacity,
+    }
+
+
 def _log_cube_compute_amount(case_name, case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
     compute_info = _calc_cube_compute_amount(case, q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
+    capacity_info = _calc_cube_compute_capacity()
     basic_block_shape = compute_info["basic_block_shape"]
+    fractal_shape = capacity_info["fractal_shape"]
+    mfu_time = compute_info["cube_compute_amount"] / capacity_info["cube_compute_capacity"]
     logger.info("case_name=%s", case_name)
     logger.info("FLOPS计算过程量:")
     logger.info("一共计算了多少基本块: %d", compute_info["basic_block_count"])
@@ -371,6 +397,23 @@ def _log_cube_compute_amount(case_name, case, q_lengths, kv_lengths, sparse_indi
         compute_info["multiply_add_compute"],
         compute_info["bmm_compute_count"],
         compute_info["cube_compute_amount"])
+    logger.info("算力计算过程量:")
+    logger.info(
+        "一轮cycle对应最小分型shape: m=%d, n=%d, k=%d(fp8为32)",
+        fractal_shape[0], fractal_shape[1], fractal_shape[2])
+    logger.info("一轮cycle对应最小分型计算量: %d", capacity_info["min_fractal_compute"])
+    logger.info(
+        "算力计算公式: 单位换算(%d) * (一轮cycle对应最小分型计算量(%d) * 频率GHz(%.2f) * "
+        "AIC数量(%d) * 乘加计算(%d)) = %.6f",
+        capacity_info["unit_conversion"],
+        capacity_info["min_fractal_compute"],
+        capacity_info["frequency_ghz"],
+        capacity_info["aic_count"],
+        capacity_info["multiply_add_compute"],
+        capacity_info["cube_compute_capacity"])
+    logger.info(
+        "MFU*时间计算公式: FLOPS(%d) / 算力(%.6f) = MFU * 时间 = %.6f",
+        compute_info["cube_compute_amount"], capacity_info["cube_compute_capacity"], mfu_time)
     return compute_info["cube_compute_amount"]
 
 
