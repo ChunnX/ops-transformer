@@ -333,7 +333,7 @@ def analyze_failure(
                 all_rows = []
                 for flat, coord in zip(fail_indices.tolist(), coords):
                     all_rows.append(
-                        tuple(str(v) for v in coord)
+                        tuple(str(v.item()) for v in coord)
                         + (f"{cpu_flat[flat].item():>+.6f}",
                            f"{npu_flat[flat].item():>+.6f}",
                            f"{diff_flat_t[flat].item():.6f}")
