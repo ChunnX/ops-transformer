@@ -319,7 +319,10 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CalcMaxRows()
     int64_t availableSpace = static_cast<int64_t>(aicoreParams_.ubSize) - UB_RESERVE_SPACE;
     int64_t quePerTokenSpace =
         DOUBLE_BUFFER_NUM * (gradYQuePerTokenSpace + indicesQuePerTokenSpace + xQuePerTokenSpace) + outQuePerTokenSpace;
-    int64_t bufPerTokenSpace = NUM_TWO * bufnPerTokenSpace + wPrimeCachePerTokenSpace;
+    // bufnPerTokenSpace 仅对应 kernel 侧的 gradNormXBuf_（Scatter 目标 / sigmoid 反向输入）单个
+    // buffer；kernel 侧原有的 bufn2_（曾用于承载 A3 遗留的 sigmoid 导数中间量）在 A5 RegBase 实现
+    // 中已被 VF 内的寄存器变量取代，声明与分配均已删除，故此处不再乘以 NUM_TWO。
+    int64_t bufPerTokenSpace = bufnPerTokenSpace + wPrimeCachePerTokenSpace;
     int64_t maxRows = availableSpace / (quePerTokenSpace + bufPerTokenSpace);
 
     while (maxRows > 0) {
@@ -328,7 +331,7 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CalcMaxRows()
             DOUBLE_BUFFER_NUM * maxRows * AlignBytes_(indicesQuePerTokenSpace) +
             DOUBLE_BUFFER_NUM * AlignBytes_(maxRows * xQuePerTokenSpace) +
             AlignBytes_(maxRows * outQuePerTokenSpace);
-        int64_t bufSpace = NUM_TWO * AlignBytes_(maxRows * bufnPerTokenSpace) +
+        int64_t bufSpace = AlignBytes_(maxRows * bufnPerTokenSpace) +
                            maxRows * AlignBytes_(wPrimeCachePerTokenSpace);
 
         uint32_t reduceSumTmpSize = 0;
