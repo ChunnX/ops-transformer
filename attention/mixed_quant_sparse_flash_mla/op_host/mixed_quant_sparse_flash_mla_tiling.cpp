@@ -32,7 +32,7 @@ struct QSMLACompileInfo {
 static bool IsBatchConsistencyEnabled(gert::TilingContext *context, const char *opName)
 {
     int32_t deterministicLevel = context->GetDeterministicLevel();
-    if (deterministicLevel == 3) {
+    if (deterministicLevel == 1) {
         OP_LOGD(opName, "Tiling context deterministic level is %d.", deterministicLevel);
         return true;
     }
@@ -44,7 +44,7 @@ static bool IsBatchConsistencyEnabled(gert::TilingContext *context, const char *
         return false;
     }
     OP_LOGD(opName, "ACL_OPT_DETERMINISTIC is %ld.", deterministicValue);
-    return deterministicValue == 3;
+    return deterministicValue == 1;
 }
 
 // --------------------------QSMLAInfoParser类成员函数定义-------------------------------------

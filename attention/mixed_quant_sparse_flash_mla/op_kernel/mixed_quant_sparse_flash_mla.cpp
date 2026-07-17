@@ -49,6 +49,9 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int
     __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
+    if (g_coreType == AscendC::AIV && GetBlockIdx() == 0) {
+        printf("[MQSMLA_DEBUG] BATCH_CONSISTENCY=%d\n", BATCH_CONSISTENCY);
+    }
 
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);

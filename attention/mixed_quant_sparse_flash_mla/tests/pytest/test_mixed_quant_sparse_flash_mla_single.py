@@ -12,6 +12,7 @@
 
 import itertools
 import torch
+import torch_npu
 from mixed_quant_sparse_flash_mla_paramset import ENABLED_PARAMS
 import result_compare_method
 import check_valid_param
@@ -30,6 +31,9 @@ pt_save_path = "mqsmla_testcase"
 device_id = 0
 save_pt = False
 result_path = Path('result.xlsx')
+
+torch_npu.npu.set_deterministic_level(1)
+print(f"[MQSMLA_DEBUG] torch_npu deterministic level={torch_npu.npu._get_deterministic_level()}")
 
 param_combinations = []
 for params in ENABLED_PARAMS:

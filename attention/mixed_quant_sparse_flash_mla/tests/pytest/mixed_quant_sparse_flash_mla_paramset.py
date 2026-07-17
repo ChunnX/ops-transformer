@@ -45,10 +45,10 @@ TEST_PARAMS["single_batch_2_cores"] = {
     "cmp_mask_mode": [3],
     "ori_win_left": [127],
     "ori_win_right": [0],
-    "kv_quant_mode": [1],
+    "quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -87,7 +87,7 @@ TEST_PARAMS["single_batch_3_cores"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -126,7 +126,7 @@ TEST_PARAMS["N32_single_batch_3_cores"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -165,7 +165,7 @@ TEST_PARAMS["single_batch_full_cores"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -204,7 +204,7 @@ TEST_PARAMS["single_batch_full_cores_with_blocks"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -243,7 +243,7 @@ TEST_PARAMS["multi_batch_full_cores"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -282,7 +282,7 @@ TEST_PARAMS["1_core_has_2_reduce"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -321,7 +321,7 @@ TEST_PARAMS["1_core_has_2_reduce_with_no_reduce_insight"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -360,7 +360,7 @@ TEST_PARAMS["with_qs_0"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -399,7 +399,7 @@ TEST_PARAMS["with_kvs_0"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -438,7 +438,7 @@ TEST_PARAMS["tnd_padding_kv"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -476,7 +476,7 @@ TEST_PARAMS["tnd_padding_1_bak"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -514,7 +514,7 @@ TEST_PARAMS["tnd_padding_1"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -552,7 +552,7 @@ TEST_PARAMS["K_1024"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -590,7 +590,7 @@ TEST_PARAMS["K_1024"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -628,7 +628,7 @@ TEST_PARAMS["N128"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -666,7 +666,7 @@ TEST_PARAMS["residual"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -704,7 +704,7 @@ TEST_PARAMS["with_tail"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
@@ -743,13 +743,13 @@ TEST_PARAMS["N2"] = {
     "kv_quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["CFA"],
+    "template_run_mode": ["HCA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
 
-TEST_PARAMS["SCFA_33"] = {
-    "Testcase_Name": ["SCFA_33"],
+TEST_PARAMS["CSA_33"] = {
+    "Testcase_Name": ["CSA_33"],
     "layout_q": ["BSND"],
     "layout_kv": ["PA_BBND"],
     "q_type": [torch.bfloat16],
@@ -779,13 +779,13 @@ TEST_PARAMS["SCFA_33"] = {
     "cmp_mask_mode": [3],
     "ori_win_left": [127],
     "ori_win_right": [0],
-    "kv_quant_mode": [1],
+    "quant_mode": [1],
     "tile_size": [64],
     "rope_head_dim": [64],
-    "template_run_mode": ["SCFA"],
+    "template_run_mode": ["CSA"],
     "actlen_mode": ["full"],
     "S1EQS2": [False],
 }
 # ENABLED_PARAMS = [TEST_PARAMS["residual"]]
-ENABLED_PARAMS = [TEST_PARAMS["SCFA_33"]]
+ENABLED_PARAMS = [TEST_PARAMS["single_batch_2_cores"]]
 # ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
