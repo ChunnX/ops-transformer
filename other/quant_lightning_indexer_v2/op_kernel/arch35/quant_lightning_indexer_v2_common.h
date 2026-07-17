@@ -214,24 +214,23 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 }  // namespace QLIV2Common
 
 // bank冲突优化
-// 新芯片 bank layout (Vector UB 384KB, 8 bank groups × 4 banks/group × 32B/bank)
-// 每 1KB: bank0=[0,255B], bank1=[256,511B], bank2=[512,767B], bank3=[768,1023B]
-// sub-bank: 16B (950 为 8B)
-// shape  (       bank_depth  (            banks  bank_groups  block))  (384  (  4   8  32))
-// stride (banks*bank_groups  (bank_groups*block        block      1))  (1024 (256  32   1))
-#define UB_BLOCK              32    // 32B bank block
-#define UB_BANK_GROUPS        8     // 8 bank groups
-#define UB_BANKS              4     // 4 banks/group (原: 2)
-#define UB_BANK_DEPTH         384   // 384KB / 1024B = 384
+// 新芯片 bank layout: 4 banks/group × 8 groups, 每 bank 256B, sub-bank 16B
+// 冲突条件: (addr/256)%4 相同 且 (addr/1024)%8 相同
+//
+// 解冲突策略:
+//   rowStride=512B 保持950布局 (kernel硬编码128*float/256*bf16=512B行stride不动)
+//   在 qkStride / qkVLStride 上附加 bank 偏移, 使4路并发QK读取落不同 bank
+//   Fixpipe 按 S1 行组拆分, 每组 dst base 附加对应偏移
+#define UB_BLOCK              32
+#define UB_BANK_GROUPS        8
+#define UB_BANKS              4     // 新芯片 4 banks/group (950 为 2)
+#define UB_BANK_DEPTH         384   // 384KB / 1024B
 
-#define UB_BANK_STRIDE        256   // 一个 bank 宽度 = 256B (值不变, 语义变为"同 group 下一 bank")
-#define UB_BANK_GROUP_STRIDE  1024  // 一个 bank group 宽度 = 4 × 256B
-#define UB_BANK_DEPTH_STRIDE  1024  // 完整 depth 行 = 4 banks × 8 groups × 32B
+#define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
+#define UB_BANK_GROUP_STRIDE  (UB_BANKS * UB_BANK_STRIDE)               // 1024B
+#define UB_BANK_DEPTH_STRIDE  (2 * UB_BANK_GROUPS * UB_BLOCK)           // 512B (保持950值, kernel硬编码依赖)
 
-// Buffer bank 分配偏移: 确保并发访问的不同 buffer 落在不同 bank
-// QK(bank0/offset=0), weight(bank1/+256B), vec1Out(bank2/+512B), weightTemp(bank3/+768B)
-#define QLIV2_BANK_OFFSET_W      256
-#define QLIV2_BANK_OFFSET_OUT    512
-#define QLIV2_BANK_OFFSET_WTEMP  768
+// qkStride 附加偏移: 使 S1行B 落 bank+1 (解 A/C 同 bank 冲突)
+#define QLIV2_BANK_OFF_QK_S1     256    // 256B → bank+1
 
 #endif  // QUANT_LIGHTNING_INDEXER_V2_COMMON_H

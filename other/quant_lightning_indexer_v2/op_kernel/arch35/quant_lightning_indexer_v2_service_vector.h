@@ -159,33 +159,26 @@ private:
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // 大小：2(开dB) 2 * 64 * 128 * 4 = 128KB
+    // resMm1Buf_ (QK): 增大分配以容纳 qkStride 的 bank 偏移
+    // 原始: 2 * CeilDiv(mBaseSize, CVRATIO) * s2BaseSize * sizeof(QK_T)
+    // 新增: s1BaseSize * QLIV2_BANK_OFF_QK_S1 (每个S1组附加256B偏移)
     pipe->InitBuffer(resMm1Buf_,
-        2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
+        2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T)
+        + s1BaseSize_ * QLIV2_BANK_OFF_QK_S1);
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
-
-    // weight: 紧凑分配 + bank 偏移 (bank1, +256B)
-    uint32_t weightPingPongElems = CeilDiv(s1BaseSize_, CVRATIO) * gSize_;
-    pipe->InitBuffer(weightBuf_, 2 * weightPingPongElems * sizeof(W_T) + QLIV2_BANK_OFFSET_W);
-    weightUB_ = weightBuf_.Get<W_T>()[QLIV2_BANK_OFFSET_W / sizeof(W_T)]; // weight
-
-    // weightTemp: 紧凑分配 + bank 偏移 (bank3, +768B)
-    pipe->InitBuffer(weightTempBuf_, 2 * weightPingPongElems * sizeof(float) + QLIV2_BANK_OFFSET_WTEMP);
-    weightTempUB_ = weightTempBuf_.Get<float>()[QLIV2_BANK_OFFSET_WTEMP / sizeof(float)];
-
+    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
+    weightUB_ = weightBuf_.Get<W_T>(); // weight
+    pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
+    weightTempUB_ = weightTempBuf_.Get<float>();
     if constexpr (!IS_MXFP8) {
         // 大小：2(开dB) * 128 * 4 = 1KB
         pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(SCALE_T));
         kScaleUB_ = kScaleBuf_.Get<SCALE_T>(); // kScale
-        // qScale: 紧凑分配
-        pipe->InitBuffer(qScaleBuf_, 2 * weightPingPongElems * sizeof(SCALE_T));
+        pipe->InitBuffer(qScaleBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
         qScaleUB_ = qScaleBuf_.Get<SCALE_T>(); // qScale
     }
-
-    // out: 紧凑分配 + bank 偏移 (bank2, +512B)
-    uint32_t outPingPongElems = CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_;
-    pipe->InitBuffer(outBuf_, 2 * outPingPongElems * sizeof(uint16_t) + QLIV2_BANK_OFFSET_OUT);
-    vec1OutUB_ = outBuf_.Get<uint16_t>()[QLIV2_BANK_OFFSET_OUT / sizeof(uint16_t)]; // out
+    pipe->InitBuffer(outBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_ * sizeof(uint16_t));
+    vec1OutUB_ = outBuf_.Get<uint16_t>(); // out
 
     pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLen_) * sizeof(uint16_t));
     mrgValueLocal_ = mrgValueBuf_.Get<uint16_t>();
@@ -448,13 +441,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     int64_t curAivS1ProcNum = (blockId_ % CVRATIO == 0) ? CeilDiv(curS1ProcNum, CVRATIO) : curS1ProcNum / CVRATIO;
     uint32_t aivOffset = (blockId_ % CVRATIO) * QLIV2Common::ConstInfo::AIV0_AIV1_OFFSET;
 
-    // 紧凑布局下的 ping-pong 偏移量与 stride（替代旧的 UB_BANK_STRIDE/sizeof 和 UB_BANK_DEPTH_STRIDE/sizeof）
-    uint32_t weightPingPongElems = CeilDiv(s1BaseSize_, CVRATIO) * gSize_;
-    uint32_t outPingPongElems = CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_;
-    uint32_t outStrideCompact = s2BaseSize_;
-    uint32_t weightStrideCompact = gSize_;
-    uint32_t qkStrideCompact = gSize_ * s2BaseSize_;
-
     if (curAivS1ProcNum == 0) {
         CrossCoreWaitFlag<QLIV2Common::ConstInfo::QLIV2_SYNC_MODE4, PIPE_V>(QLIV2Common::ConstInfo::CROSS_CV_EVENT
             + pingpong + aivOffset);  // V核等C核计算完mm1，mm1Res已搬运到UB
@@ -474,14 +460,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         qwDataCopyExtParams.blockCount = curAivS1ProcNum;
         qwDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
         qwDataCopyExtParams.srcStride = 0;
-        qwDataCopyExtParams.dstStride = 0;  // 紧凑: 无 padding
-        DataCopyPad(weightUB_[qScalepingpong * weightPingPongElems],
+        qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
+        DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
         if constexpr (!IS_MXFP8) {
             // qScaleGm  -->  qScaleUB_
             DataCopyPadExtParams<SCALE_T> padQScaleParams{false, 0, 0, 0};
-            DataCopyPad(qScaleUB_[qScalepingpong * weightPingPongElems],
+            DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(SCALE_T))],
                         qScaleGm[weightGmOffset], qwDataCopyExtParams, padQScaleParams);
         }
         SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_QSCALE + qScalepingpong);
@@ -508,20 +494,27 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         + info.loop % 2 + aivOffset);   // V核等C核计算完mm1，mm1Res已搬运到UB
 
     static_assert(std::is_same_v<SCORE_T, uint16_t>);
-
-    auto outBase = vec1OutUB_[pingpong * outPingPongElems];
-    auto weightBase = weightUB_[qScalepingpong * weightPingPongElems];
-    auto weightTempBase = weightTempUB_[qScalepingpong * weightPingPongElems];
+    auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCORE_T))];
+    auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))];
+    auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
-    auto qkVLstride = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
-        * s2BaseSize_;  // 紧凑: s2BaseSize_ 而非 UB_BANK_DEPTH_STRIDE/sizeof
+    // qkVLstride: 跳到 ping-pong 另一半区, 需用含bank偏移的 qkStride 重新计算
+    // 原: Align(mBase, 2g) * rowStride = 跳过所有 S1 组到另一半
+    // 新: (Align(mBase,2g) / gSize) * qkStrideWithBank = S1组数 × 含偏移stride
+    uint32_t qkStrideWithBank = (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T))
+                              + (QLIV2_BANK_OFF_QK_S1 / sizeof(QK_T));
+    uint32_t numS1Groups = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
+                           / constInfo_.gSize;
+    auto qkVLstride = numS1Groups * qkStrideWithBank;
 
     if constexpr (IS_MXFP8) {
-        vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, outStrideCompact,
+        // qkStride 附加 bank 偏移: 使 S1行B 落 bank+1 (解 A/C 同 bank 冲突)
+        // Fixpipe 端按 S1 行组拆分写入, 每组 dst base 附加对应偏移 (见 service_cube.h Fixp)
+        vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
-                                                    qkStrideCompact,
-                                                    weightBase, weightStrideCompact,
+                                                    qkStrideWithBank,
+                                                    weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),
                                                     weightTempBase,
                                                     gSize_, curAivS1ProcNum);
     }
@@ -542,7 +535,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     DataCopyExtParams copyOutParams;
     copyOutParams.blockCount = curAivS1ProcNum;
     copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
-    copyOutParams.srcStride = 0;  // 紧凑: 无 padding
+    copyOutParams.srcStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;
     copyOutParams.dstStride = (QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_)
         * sizeof(SCORE_T);
     DataCopyPad(scoreGm[vec1OutGmOffset], outBase, copyOutParams);
