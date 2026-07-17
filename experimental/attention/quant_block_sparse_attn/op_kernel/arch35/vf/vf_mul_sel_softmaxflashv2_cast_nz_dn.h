@@ -2287,6 +2287,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     preg_compare_all = CreateMask<T, MaskPattern::ALLF>();
     MaskReg preg = AscendC::MicroAPI::CreateMask<T, AscendC::MicroAPI::MaskPattern::ALL>();
     RegTensor<float> vreg_min;
+    RegTensor<float> vreg_zero;
+    MaskReg preg_invalid_cur;
     RegTensor<float> vreg_p_scale;
     RegTensor<float> vreg_ln_p_scale;
 
@@ -2316,6 +2318,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Duplicate(max2, minValue);
     Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
+    Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
     for (uint16_t i = originN; i < ubN; ++i) {
@@ -2364,10 +2367,12 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
+    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
     Muls(max0, max0, dScale, preg_108);
     Muls(max0, max0, INV_LN2, preg_108);
     Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
     Muls(max0, max0, LN2, preg_108);
+    Select(max0, vreg_min, max0, preg_invalid_cur);
 
     if (subLoop == 1) {
         LoadAlign(vreg_x_max_f32_b, new_global_max);
@@ -2427,6 +2432,10 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
+        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
+        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
+        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
+        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
 
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
@@ -2439,6 +2448,10 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
             FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
             FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
             FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134); // vreg_x_exp_i softmax分子
+            Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
+            Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
+            Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
+            Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
         }
 
         if constexpr (AscendC::IsSameType<T2, bfloat16_t>::value) {
@@ -2697,6 +2710,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     preg_compare_all = CreateMask<T, MaskPattern::ALLF>();
     MaskReg preg = AscendC::MicroAPI::CreateMask<T, AscendC::MicroAPI::MaskPattern::ALL>();
     RegTensor<float> vreg_min;
+    RegTensor<float> vreg_zero;
+    MaskReg preg_invalid_cur;
     RegTensor<float> vreg_p_scale;
     RegTensor<float> vreg_ln_p_scale;
 
@@ -2724,6 +2739,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     Duplicate(max2, minValue);
     Duplicate(max3, minValue);
     Duplicate(vreg_min, minValue);
+    Duplicate(vreg_zero, 0.0f);
     Duplicate(vreg_p_scale, static_cast<float>(pScale));
     Ln(vreg_ln_p_scale, vreg_p_scale, preg_108);
     for (uint16_t i = originN; i < ubN; ++i) {
@@ -2773,11 +2789,13 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
     Max(max0, max0, max2, preg_108);
     Max(max1, max1, max3, preg_108);
     Max(max0, max0, max1, preg_108);
+    Compares<T, CMPMODE::EQ>(preg_invalid_cur, max0, minValue, preg_108);
     Muls(max0, max0, dScale, preg_108);
-    Max(max0, max0, vreg_x_max_f32_b, preg_108);
     Muls(max0, max0, INV_LN2, preg_108);
     Truncate<T, RoundMode::CAST_CEIL>(max0, max0, preg_108);
     Muls(max0, max0, LN2, preg_108);
+    Select(max0, vreg_min, max0, preg_invalid_cur);
+    Max(max0, max0, vreg_x_max_f32_b, preg_108);
 
     if (subLoop == 0) {
         StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B16>(
@@ -2845,6 +2863,10 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         FusedExpSub(vreg_x_exp_1, vreg_x_f32_1, max0, preg_134);
         FusedExpSub(vreg_x_exp_2, vreg_x_f32_2, max0, preg_134);
         FusedExpSub(vreg_x_exp_3, vreg_x_f32_3, max0, preg_134);
+        Select(vreg_x_exp_0, vreg_zero, vreg_x_exp_0, preg_invalid_cur);
+        Select(vreg_x_exp_1, vreg_zero, vreg_x_exp_1, preg_invalid_cur);
+        Select(vreg_x_exp_2, vreg_zero, vreg_x_exp_2, preg_invalid_cur);
+        Select(vreg_x_exp_3, vreg_zero, vreg_x_exp_3, preg_invalid_cur);
 
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
@@ -2857,6 +2879,10 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
             FusedExpSub(vreg_x_exp_5, vreg_x_f32_5, max0, preg_134);
             FusedExpSub(vreg_x_exp_6, vreg_x_f32_6, max0, preg_134);
             FusedExpSub(vreg_x_exp_7, vreg_x_f32_7, max0, preg_134);
+            Select(vreg_x_exp_4, vreg_zero, vreg_x_exp_4, preg_invalid_cur);
+            Select(vreg_x_exp_5, vreg_zero, vreg_x_exp_5, preg_invalid_cur);
+            Select(vreg_x_exp_6, vreg_zero, vreg_x_exp_6, preg_invalid_cur);
+            Select(vreg_x_exp_7, vreg_zero, vreg_x_exp_7, preg_invalid_cur);
         }
         if constexpr (AscendC::IsSameType<T2, bfloat16_t>::value) {
             Cast<T2, T, castTraitZero>(vreg_x_exp_even_bf16, vreg_x_exp_0, preg_135);
