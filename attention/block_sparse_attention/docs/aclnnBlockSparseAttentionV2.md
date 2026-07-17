@@ -45,17 +45,17 @@
   
   qDequantScale（query量化缩放因子）
   - 数据类型：FLOAT32
-  - shape：(Batch, HeadNum, CeilDiv(maxQSeqLength, 128), 1)
+  - shape：(Batch, HeadNum, CeilDiv(maxQSeqLength, blockshapeX), 1)
   - 用途：在QK矩阵乘法时对query进行反量化。
 
   kDequantScale（key量化缩放因子）
   - 数据类型：FLOAT32
-  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
+  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, blockShapeY), 1)
   - 用途：在QK矩阵乘法时对key进行反量化。
 
   qDequantScale（value量化缩放因子）
   - 数据类型：FLOAT32
-  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)
+  - shape：(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, blockShapeY), 1)
   - 用途：在PV矩阵乘法时对value进行反量化。
 
 ## 函数原型
@@ -75,7 +75,7 @@ aclnnStatus aclnnBlockSparseAttentionV2GetWorkspaceSize(
   const aclTensor   *blockTableOptional,
   const aclTensor   *qDequantScale,
   const aclTensor   *kDequantScale,
-  const aclTesnor   *vDequantScale,
+  const aclTensor   *vDequantScale,
   char              *qInputLayout,
   char              *kvInputLayout,
   int64_t            numKeyValueHeads,
@@ -216,8 +216,8 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：必须包含两个元素[blockShapeX, blockShapeY]
         <ul>
-          <li>blockShapeX: Q方向块大小，值必须大于0。</li>
-          <li>blockShapeY: KV方向块大小，值必须大于0且为128的倍数。</li>
+          <li>blockShapeX: Q方向块大小，值必须大于0（无对齐约束）。</li>
+          <li>blockShapeY: KV方向块大小，值必须大于0；在<term>Ascend 950PR/Ascend 950DT</term>上须为<strong>16的倍数</strong>，在Atlas A2/A3上须为<strong>128的倍数</strong>。</li>
         </ul>
       </td>
       <td>INT64</td>
@@ -278,7 +278,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：
         <ul>
-          <li>shape为[batch, headNum, ceilDiv(maxQSeqLength, 128), 1]。</li>
+          <li>shape为[batch, headNum, ceilDiv(maxQSeqLength, blockShapeX), 1]。</li>
         </ul>
       </td>
       <td>FLOAT32</td>
@@ -298,7 +298,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：
         <ul>
-          <li>shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 256), 1]或shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 512), 1]。</li>
+          <li>shape为[batch, kvHeadNum, ceilDiv(maxKvSeqLength, blockShapeY), 1]。</li>
         </ul>
       </td>
       <td>FLOAT32</td>
@@ -318,7 +318,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         </ul>
         当配置此输入时：
         <ul>
-          <li>shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 256), 1]或shape为[batch, kvHeadNum, ceilDiv(maxKVSeqLength, 512), 1]。</li>
+          <li>shape为[batch, kvHeadNum, ceilDiv(maxKvSeqLength, blockShapeY), 1]。</li>
         </ul>
       </td>
       <td>FLOAT32</td>
@@ -463,7 +463,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
         <ul>
           <li>query为"TND": [totalQTokens, headNum, 1]。</li>
           <li>query为"BNSD": [batch, headNum, maxQSeqLength, 1]。</li>
-          <li>query为"BNSD": [batch, maxQSeqLength, headNum, 1]。</li>
+          <li>query为"BSND": [batch, maxQSeqLength, headNum, 1]。</li>
         </ul>
       </td>
       <td>FLOAT</td>
@@ -588,7 +588,7 @@ aclnnStatus aclnnBlockSparseAttentionV2(
 - 当前query、key、value的InputLayout必须保持一致。
 - 输入query、key、value的数据类型必须一致，支持FLOAT16和BFLOAT16。
 - query、key、value的D轴当前仅支持配置为64或128
-- blockShapeOptional如果传入，则必须包含至少两个元素[blockShapeX, blockShapeY]，且值必须大于0，blockShapeY必须为128的倍数。
+- blockShapeOptional如果传入，则必须包含至少两个元素[blockShapeX, blockShapeY]，且值必须大于0，blockShapeY必须为16的倍数。
 - blockSparseMaskOptional当前必须传入，且shape必须为[batch, headNum, ceilDiv(maxQS, blockShapeX), ceilDiv(maxKVS, blockShapeY)]。
 - attentionMaskOptional当前只支持传入nullptr。
 - actualSeqLengthsOptional在qInputLayout为“TND”时必选；actualSeqLengthsKvOptional在kvInputLayout为“TND”时必选。
@@ -606,8 +606,8 @@ aclnnStatus aclnnBlockSparseAttentionV2(
   - 当query、key、value中任意一个数据类型为FLOAT8_E4M3FN时，query、key、value必须同时为FLOAT8_E4M3FN数据类型。
   - 使用FP8输入时，必须提供对应的量化缩放因子输入qDequantScale、kDequantScale、vDequantScale。
   - 量化缩放因子的数据类型必须为FLOAT32。
-  - qDequantScale的shape必须为(Batch, HeadNum, CeilDiv(maxQSeqLength, 128), 1)。
-  - kDequantScale和vDequantScale的shape必须一致，为(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 256), 1)或(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, 512), 1)。
+  - qDequantScale的shape必须为(Batch, HeadNum, CeilDiv(maxQSeqLength, blockShapeX), 1)。
+  - kDequantScale和vDequantScale的shape必须一致，为(Batch, KVHeadNum, CeilDiv(maxKVSeqLength, blockShapeY), 1)。
   - 当query、key、value中任意一个数据类型不为FLOAT8_E4M3FN时，qDequantScale、kDequantScale、vDequantScale必须传入nullptr。
   - blockShapeOptional必须传入。
   - q和kv的量化块大小必须与blockShapeOptional的两个元素大小分别保持一致。
