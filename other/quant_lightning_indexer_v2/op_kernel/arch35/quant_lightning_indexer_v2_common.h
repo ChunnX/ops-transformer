@@ -217,10 +217,9 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 // 新芯片 bank layout: 4 banks/group × 8 groups, 每 bank 256B, sub-bank 16B
 // 冲突条件: (addr/256)%4 相同 且 (addr/1024)%8 相同
 //
-// 解冲突策略:
-//   rowStride=512B 保持950布局 (kernel硬编码128*float/256*bf16=512B行stride不动)
-//   在 qkStride / qkVLStride 上附加 bank 偏移, 使4路并发QK读取落不同 bank
-//   Fixpipe 按 S1 行组拆分, 每组 dst base 附加对应偏移
+// 注意: QK 4路并发全在同 bank (gSize=64 是 4 的倍数, 数学上无法通过调 rowStride 解决)
+//       拆 Fixpipe 解冲突会导致性能劣化 (4x调用开销 > 冲突开销)
+//       950 上同样存在此冲突且性能可接受, 新芯片保持不变
 #define UB_BLOCK              32
 #define UB_BANK_GROUPS        8
 #define UB_BANKS              4     // 新芯片 4 banks/group (950 为 2)
@@ -229,8 +228,5 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 #define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
 #define UB_BANK_GROUP_STRIDE  (UB_BANKS * UB_BANK_STRIDE)               // 1024B
 #define UB_BANK_DEPTH_STRIDE  (2 * UB_BANK_GROUPS * UB_BLOCK)           // 512B (保持950值, kernel硬编码依赖)
-
-// qkStride 附加偏移: 使 S1行B 落 bank+1 (解 A/C 同 bank 冲突)
-#define QLIV2_BANK_OFF_QK_S1     256    // 256B → bank+1
 
 #endif  // QUANT_LIGHTNING_INDEXER_V2_COMMON_H

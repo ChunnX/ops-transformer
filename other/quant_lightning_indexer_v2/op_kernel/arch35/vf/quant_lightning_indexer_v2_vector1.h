@@ -342,7 +342,7 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
 
         // unroll2
         for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i += 2) {
-            MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i); // RowStride=128 floats(512B), 950布局含padding
+            MicroAPI::LoadAlign<float>(regQK[0], qk + 128 * i); // RowStride是128, 行都落在一个bank上
             MicroAPI::LoadAlign<float>(regQK[1], qk + 128 * i + qkVLStride);
             BroadcastLane(regwBrc, regW, i);
             WeightedAccum<float, 2, false>(regSum0, regQK, regwBrc, maskAllB32);
@@ -435,7 +435,7 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
 
         // Relu在cube随路做
         for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); i++) {
-            // RowStride=256 bf16(512B), 950布局含padding, qkStride附加bank偏移使S1组跨bank
+            // RowStride是256, 行都落在一个bank上
             AscendC::MicroAPI::LoadAlign<bfloat16_t>(regQKB16[0], qk + 256 * i);
             AscendC::MicroAPI::LoadAlign<float, AscendC::MicroAPI::LoadDist::DIST_BRC_B32>(regwBrc[0], weight + i);
             // interleave cast

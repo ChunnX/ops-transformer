@@ -165,14 +165,15 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
         2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
 
-    // weight: 紧凑布局 + base 偏移到 bank3
-    //   原始: 2 * CeilDiv(s1Base, CVRATIO) * UB_BANK_DEPTH_STRIDE = 2*4*512 = 4KB
-    //   紧凑: 2 * CeilDiv(s1Base, CVRATIO) * gSize * sizeof(W_T) = 2*4*64*4 = 2KB + 768B偏移
+    // weight: 保持 512B rowStride (UB_BANK_DEPTH_STRIDE) + base 偏移到 bank3
+    // ⚠️ 不能用紧凑布局: 紧凑下每ping 4×256B=1024B > 256B ping偏移 → ping-pong 重叠 → 精度失败
+    //   512B rowStride 让 ping=0/1 的 256B 数据 slot 交错排列, 不重叠
     pipe->InitBuffer(weightBuf_,
-        2 * CeilDiv(s1BaseSize_, CVRATIO) * gSize_ * sizeof(W_T) + QLIV2_BANK_OFF_WEIGHT);
+        2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE + QLIV2_BANK_OFF_WEIGHT);
     weightUB_ = weightBuf_.Get<W_T>()[QLIV2_BANK_OFF_WEIGHT / sizeof(W_T)]; // weight → bank3
 
-    // weightTemp: 紧凑布局 + base 偏移到 group1 (与 QK group0 彻底分开)
+    // weightTemp: 紧凑布局 + base 偏移到 group1
+    //   ✓ 安全: 每 ping 只写 64 float = 256B = ping偏移, 不重叠
     pipe->InitBuffer(weightTempBuf_,
         2 * CeilDiv(s1BaseSize_, CVRATIO) * gSize_ * sizeof(float) + QLIV2_BANK_OFF_WTEMP);
     weightTempUB_ = weightTempBuf_.Get<float>()[QLIV2_BANK_OFF_WTEMP / sizeof(float)]; // weightTemp → group1
@@ -181,14 +182,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
         // 大小：2(开dB) * 128 * 4 = 1KB
         pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(SCALE_T));
         kScaleUB_ = kScaleBuf_.Get<SCALE_T>(); // kScale
-        // qScale: 紧凑布局 (非 MXFP8 才使用)
+        // qScale: 保持 512B rowStride + base 偏移 (与 weight 同理, ping-pong 隔离)
         pipe->InitBuffer(qScaleBuf_,
-            2 * CeilDiv(s1BaseSize_, CVRATIO) * gSize_ * sizeof(SCALE_T) + QLIV2_BANK_OFF_WEIGHT);
+            2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE + QLIV2_BANK_OFF_WEIGHT);
         qScaleUB_ = qScaleBuf_.Get<SCALE_T>()[QLIV2_BANK_OFF_WEIGHT / sizeof(SCALE_T)]; // qScale → bank3
     }
-    // out: 紧凑布局 + base 偏移到 group1
-    //   原始: 2 * CeilDiv(s1Base, CVRATIO) * s2Base * sizeof(uint16_t) = 2*4*128*2 = 2KB
-    //   紧凑: 同上 + 1KB偏移
+    // out: 保持 512B rowStride + base 偏移到 group1
+    // ⚠️ 不能用紧凑布局: 同 weight, ping-pong 会重叠
+    //   原始大小 2*4*128*2=2048B, 512B rowStride 下 8个256B slot 交错填满, 刚好够
     pipe->InitBuffer(outBuf_,
         2 * CeilDiv(s1BaseSize_, CVRATIO) * s2BaseSize_ * sizeof(uint16_t) + QLIV2_BANK_OFF_OUT);
     vec1OutUB_ = outBuf_.Get<uint16_t>()[QLIV2_BANK_OFF_OUT / sizeof(uint16_t)]; // out → group1
@@ -467,14 +468,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
             WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
         }
         // weightsGm --> weightUB_
-        // 紧凑布局: 行 stride = gSize 个元素 (无 padding), dstStride=0
+        // 保持 512B rowStride (dstStride=8): ping-pong 数据交错隔离, 紧凑会重叠
         int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
         DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
         DataCopyExtParams qwDataCopyExtParams;
         qwDataCopyExtParams.blockCount = curAivS1ProcNum;
         qwDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
         qwDataCopyExtParams.srcStride = 0;
-        qwDataCopyExtParams.dstStride = 0;  // 紧凑布局, 原 (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32
+        qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;  // 8, 恢复原始
         DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
@@ -521,10 +522,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         //   qkStride = gSize * rowStride = 64 * 128 = 8192 float, bank 增量 = 0 → A/C 同 bank
         //   解法需 Fixpipe 分段+偏移, 但分段导致 srcStride 错误(精度) + 调用次数×4(性能), 已回退。
         //   TODO: 需在不分段的前提下解 QK s1 行间冲突 (如调整 gSize 对齐或 Fixpipe ndNum 级偏移)
-        vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, s2BaseSize_,
+        // outStride/weightStride 恢复 512B rowStride (UB_BANK_DEPTH_STRIDE/sizeof), 不可紧凑
+        vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
                                                     (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-                                                    weightBase, gSize_,
+                                                    weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),
                                                     weightTempBase,
                                                     gSize_, curAivS1ProcNum);
     }
@@ -545,7 +547,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     DataCopyExtParams copyOutParams;
     copyOutParams.blockCount = curAivS1ProcNum;
     copyOutParams.blockLen = s2BaseSize_ * sizeof(SCORE_T);
-    copyOutParams.srcStride = 0;  // 紧凑布局, 原 (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32
+    copyOutParams.srcStride = (UB_BANK_DEPTH_STRIDE - UB_BANK_STRIDE) / 32;  // 8, 恢复原始
     copyOutParams.dstStride = (QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) - s2BaseSize_)
         * sizeof(SCORE_T);
     DataCopyPad(scoreGm[vec1OutGmOffset], outBase, copyOutParams);

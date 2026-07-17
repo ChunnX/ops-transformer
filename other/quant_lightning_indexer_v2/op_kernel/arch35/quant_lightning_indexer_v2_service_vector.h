@@ -159,12 +159,9 @@ private:
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // resMm1Buf_ (QK): 增大分配以容纳 qkStride 的 bank 偏移
-    // 原始: 2 * CeilDiv(mBaseSize, CVRATIO) * s2BaseSize * sizeof(QK_T)
-    // 新增: s1BaseSize * QLIV2_BANK_OFF_QK_S1 (每个S1组附加256B偏移)
+    // 大小：2(开dB) 2 * 64 * 128 * 4 = 128KB
     pipe->InitBuffer(resMm1Buf_,
-        2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T)
-        + s1BaseSize_ * QLIV2_BANK_OFF_QK_S1);
+        2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, CVRATIO) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<W_T>(); // weight
@@ -499,21 +496,13 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
-    // qkVLstride: 跳到 ping-pong 另一半区, 需用含bank偏移的 qkStride 重新计算
-    // 原: Align(mBase, 2g) * rowStride = 跳过所有 S1 组到另一半
-    // 新: (Align(mBase,2g) / gSize) * qkStrideWithBank = S1组数 × 含偏移stride
-    uint32_t qkStrideWithBank = (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T))
-                              + (QLIV2_BANK_OFF_QK_S1 / sizeof(QK_T));
-    uint32_t numS1Groups = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
-                           / constInfo_.gSize;
-    auto qkVLstride = numS1Groups * qkStrideWithBank;
+    auto qkVLstride = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
+        * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
 
     if constexpr (IS_MXFP8) {
-        // qkStride 附加 bank 偏移: 使 S1行B 落 bank+1 (解 A/C 同 bank 冲突)
-        // Fixpipe 端按 S1 行组拆分写入, 每组 dst base 附加对应偏移 (见 service_cube.h Fixp)
         vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
-                                                    qkStrideWithBank,
+                                                    (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
                                                     weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),
                                                     weightTempBase,
                                                     gSize_, curAivS1ProcNum);
