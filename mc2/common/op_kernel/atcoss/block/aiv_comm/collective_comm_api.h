@@ -18,6 +18,8 @@
 #include "collective_comm_base.h"
 #include "all_to_all/all_to_all_udma_get.h"
 #include "all_to_all/all_to_all_udma_put.h"
+#include "all_gather/all_gather_udma_get.h"
+#include "all_gather/all_gather_udma_put.h"
 
 namespace Atcoss {
 namespace AivComm {
@@ -35,16 +37,28 @@ enum class CommMode {
     PUT
 };
 
-template<CommCollectiveOp Op, CommMode Mode, typename T, typename Barrier> struct CollectiveCommHelper;
-template<typename T, typename Barrier> struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::GET, T, Barrier> {
-    using type = AllToAllCommGetImpl<T, Barrier>;
+template<CommCollectiveOp Op, CommMode Mode, typename T, typename Barrier, CommAddrLayout Layout = CommAddrLayout::DEFAULT>
+struct CollectiveCommHelper;
+
+template<typename T, typename Barrier, CommAddrLayout Layout>
+struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::GET, T, Barrier, Layout> {
+    using type = AllToAllCommGetImpl<T, Barrier, Layout>;
 };
-template<typename T, typename Barrier> struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::PUT, T, Barrier> {
-    using type = AllToAllCommPutImpl<T, Barrier>;
+template<typename T, typename Barrier, CommAddrLayout Layout>
+struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::PUT, T, Barrier, Layout> {
+    using type = AllToAllCommPutImpl<T, Barrier, Layout>;
+};
+template<typename T, typename Barrier, CommAddrLayout Layout>
+struct CollectiveCommHelper<CommCollectiveOp::AllGather, CommMode::GET, T, Barrier, Layout> {
+    using type = AllGatherCommGetImpl<T, Barrier, Layout>;
+};
+template<typename T, typename Barrier, CommAddrLayout Layout>
+struct CollectiveCommHelper<CommCollectiveOp::AllGather, CommMode::PUT, T, Barrier, Layout> {
+    using type = AllGatherCommPutImpl<T, Barrier, Layout>;
 };
 
-template<CommCollectiveOp Op, CommMode Mode, typename T, typename Barrier>
-using CollectiveComm = typename CollectiveCommHelper<Op, Mode, T, Barrier>::type;
+template<CommCollectiveOp Op, CommMode Mode, typename T, typename Barrier, CommAddrLayout Layout = CommAddrLayout::DEFAULT>
+using CollectiveComm = typename CollectiveCommHelper<Op, Mode, T, Barrier, Layout>::type;
 
 } // namespace AivComm
 } // namespace Atcoss
