@@ -95,12 +95,14 @@ const constexpr uint32_t LOW_API_ROW_INNER_FACTOR = 8;
 const constexpr uint32_t LOW_API_D_FACTOR = 1024;
 const constexpr uint32_t LOW_API_BUFFER_POOL0_SIZE = 64 * 1024;
 const constexpr uint32_t LOW_API_BUFFER_POOL1_SIZE = 96 * 1024;
-const constexpr uint64_t M_K_PERF_PROBE_TOTAL_LENGTH = 1024;
-const constexpr uint64_t M_K_PERF_PROBE_D = 5120;
-const constexpr TilingMode M_K_PERF_PROBE_MODE = TilingMode::SPLIT_M_K;
+// Boundary sweeps on 36 AIC cores favor M-K through M=1536 and BS from M=2048.
+const constexpr uint64_t M_K_MAX_TOTAL_LENGTH = 1536;
+const constexpr uint64_t M_K_MIN_TOTAL_LENGTH = 64;
+const constexpr uint64_t M_K_MIN_MAT_K = 512;
 const constexpr uint32_t M_K_M_L1_MAX_SIZE = 256;
 const constexpr uint32_t M_K_SPLIT_ALIGN = 256;
 const constexpr uint32_t M_K_A_L1_ELEMENT_COUNT = 128 * 256;
+const constexpr uint32_t M_K_B_L1_ELEMENT_COUNT = 128 * 256;
 const constexpr uint32_t M_K_K_L1_MAX_SIZE = 1024;
 const constexpr uint32_t M_K_K_L1_ALIGN = 128;
 const constexpr size_t M_K_WORKSPACE_ALIGN = 512;
@@ -620,10 +622,12 @@ bool MhcPreBaseTiling::CanUseLowApiBs() const
     return tilingMode_ == TilingMode::SPLIT_BS && N_ == 4;
 }
 
-bool MhcPreBaseTiling::IsMkPerfProbe() const
+bool MhcPreBaseTiling::CanUseMk() const
 {
-    return M_K_PERF_PROBE_MODE == TilingMode::SPLIT_M_K && N_ == 4 &&
-           totalLength_ == M_K_PERF_PROBE_TOTAL_LENGTH && D_ == M_K_PERF_PROBE_D &&
+    bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
+    return supportedN && totalLength_ >= M_K_MIN_TOTAL_LENGTH && totalLength_ <= M_K_MAX_TOTAL_LENGTH &&
+           matK_ >= M_K_MIN_MAT_K &&
+           context_->GetDeterministic() != 1 &&
            context_->GetDeterministicLevel() != 2;
 }
 
@@ -665,7 +669,10 @@ void MhcPreBaseTiling::FillMkTilingData()
     uint64_t splitK = roundUp(ceilDiv(matK_, kDim), M_K_SPLIT_ALIGN);
     uint64_t actualKBlockNum = ceilDiv(matK_, splitK);
     uint64_t mL1Size = std::min<uint64_t>(M_K_M_L1_MAX_SIZE, singleCoreM);
-    uint64_t kL1Size = std::min<uint64_t>(M_K_A_L1_ELEMENT_COUNT / mL1Size, M_K_K_L1_MAX_SIZE);
+    uint64_t fusionAlign = roundUp(matN_, LOW_API_FLOAT_ALIGN);
+    uint64_t kL1Size = std::min<uint64_t>(M_K_A_L1_ELEMENT_COUNT / mL1Size,
+        M_K_B_L1_ELEMENT_COUNT / fusionAlign);
+    kL1Size = std::min<uint64_t>(kL1Size, M_K_K_L1_MAX_SIZE);
     kL1Size = std::max<uint64_t>(M_K_K_L1_ALIGN,
                                  kL1Size / M_K_K_L1_ALIGN * M_K_K_L1_ALIGN);
 
@@ -676,14 +683,16 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_kL1Size(static_cast<uint32_t>(kL1Size));
     tilingData_.set_mUbSize(static_cast<uint32_t>(ceilDiv(mL1Size, 2)));
     tilingData_.set_kUbSize(static_cast<uint32_t>(kL1Size));
-    tilingData_.set_fusionAlign(static_cast<uint32_t>(roundUp(matN_, LOW_API_FLOAT_ALIGN)));
+    tilingData_.set_fusionAlign(static_cast<uint32_t>(fusionAlign));
     tilingData_.set_nAlign(static_cast<uint32_t>(roundUp(N_, LOW_API_FLOAT_ALIGN)));
     tilingData_.set_bufferPool0Size(LOW_API_BUFFER_POOL0_SIZE);
     tilingData_.set_bufferPool1Size(LOW_API_BUFFER_POOL1_SIZE);
-    uint64_t stage2UsedAivNum = std::min<uint64_t>(aivBlockDim_, totalLength_);
+    uint64_t stage2RowsPerCore = roundUp(
+        ceilDiv(totalLength_, aivBlockDim_), LOW_API_FLOAT_ALIGN);
+    uint64_t stage2UsedAivNum = std::min<uint64_t>(
+        aivBlockDim_, ceilDiv(totalLength_, stage2RowsPerCore));
     tilingData_.set_stage2UsedAivNum(static_cast<uint32_t>(stage2UsedAivNum));
-    tilingData_.set_stage2RowsPerCore(
-        static_cast<uint32_t>(ceilDiv(totalLength_, stage2UsedAivNum)));
+    tilingData_.set_stage2RowsPerCore(static_cast<uint32_t>(stage2RowsPerCore));
 
     size_t partialMmBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * matN_ * sizeof(float);
     size_t partialRmsBytes = static_cast<size_t>(actualKBlockNum) * totalLength_ * sizeof(float);
@@ -757,7 +766,7 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
     if (CanUseLowApiBs()) {
         tilingMode_ = TilingMode::LOW_API_BS;
     }
-    if (IsMkPerfProbe()) {
+    if (CanUseMk()) {
         tilingMode_ = TilingMode::SPLIT_M_K;
         FillMkTilingData();
     }
