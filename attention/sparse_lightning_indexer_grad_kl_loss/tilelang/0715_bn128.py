@@ -475,15 +475,16 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte2", "v", 5)
                     T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
                     T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
-                    # sm_max 逐行减：row_expand_sub 融合替代标量广播+sub（消除 128 PIPE_ALL）
-                    # bmm1[g,k] = bmm1[g,k] - sm_max[g]，走 brcb+sub_mask（PIPE_V，非 PIPE_ALL）
                     T.pipe_barrier("v")
-                    T.tile.row_expand_sub_experiment(bmm1_ub, bmm1_ub, sm_max_ub, re_tmp_ub)
+                    # BN128 with N1=128 makes row_expand_sub/div emit repeat=256,
+                    # which overflows the Ascend intrinsic uint8 repeat field.
+                    for g_id in range(G):
+                        T.tile.sub(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_max_ub[g_id])
                     T.pipe_barrier("v")
                     T.tile.exp(bmm1_ub, bmm1_ub)
-                    # sm_sum 逐行除：row_expand_div 融合替代标量广播+div（消除 128 PIPE_ALL）
                     T.pipe_barrier("v")
-                    T.tile.row_expand_div_experiment(bmm1_ub, bmm1_ub, sm_sum_ub, re_tmp_ub)
+                    for g_id in range(G):
+                        T.tile.div(bmm1_ub[g_id, :], bmm1_ub[g_id, :], sm_sum_ub[g_id])
                     T.pipe_barrier("v")
                     T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
                     T.pipe_barrier("v")
