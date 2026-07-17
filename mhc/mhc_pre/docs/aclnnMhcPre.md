@@ -331,7 +331,7 @@ aclnnStatus aclnnMhcPre(
 - 规格约束：
   - n目前支持4、6、8。
   - D支持1~16384范围以内，需满足D为16对齐。
-  - 当alpha=[3]时，支持hRes输出，必须满足以下条件：输入phi=[n^2+2n, nD],bias=[n^2+2n]，输出hMixOptional=[B,S,n^2+2n] 或 [T,n^2+2n]；当alpha=[2]时，hRes输出为0，必须满足以下条件：输入phi=[2n, nD],bias=[2n]，输出hMixOptional=[B,S,2n] 或 [T,2n]。
+  - 当alpha=[3]时，支持hRes输出，必须满足以下条件：输入phi=[n!+2n, nD],bias=[n!+2n]，输出hMixOptional=[B,S,n!+2n] 或 [T,n!+2n]；当alpha=[2]时，hRes输出为0，必须满足以下条件：输入phi=[2n, nD],bias=[2n]，输出hMixOptional=[B,S,2n] 或 [T,2n]。
   - 可选输出 invRmsOptional、hMixOptional、hPreOptional 为互存关系，需同时输出或全部不输出，不支持仅返回其中部分，输出条件：invRmsOptional!=nullptr && hMixOptional!=nullptr && hPreOptional!=nullptr。
 
 ## 调用示例
@@ -594,6 +594,15 @@ void FreeDeviceMemory(Tensors &tensors)
     aclrtFree(tensors.h_pre_addr);
 }
 
+int64_t Factorial(int64_t n)
+{
+    int64_t r = 1;
+    for (int64_t i = 2; i <= n; ++i) {
+        r *= i;
+    }
+    return r;
+}
+
 int main()
 {
     int32_t device_id = 0;
@@ -601,10 +610,10 @@ int main()
     aclrtStream stream = nullptr;
     Tensors tensors;
     int B = 1, S = 2048, n = 4, D = 2560;
-    std::vector<int64_t> x_shape = {B * S, n, D}, phi_shape = {n * n + 2 * n, n * D}, alpha_shape = {3},
-                         bias_shape = {n * n + 2 * n}, gamma_shape = {n, D};
-    std::vector<int64_t> hin_shape = {B * S, D}, h_post_shape = {B * S, n}, h_res_shape = {B * S, n, n},
-                         inv_rms_shape = {B * S}, h_mix_shape = {B * S, n * n + 2 * n}, h_pre_shape = {B * S, n};
+    std::vector<int64_t> x_shape = {B * S, n, D}, phi_shape = {Factorial(n) + 2 * n, n * D}, alpha_shape = {3},
+                         bias_shape = {Factorial(n) + 2 * n}, gamma_shape = {n, D};
+    std::vector<int64_t> hin_shape = {B * S, D}, h_post_shape = {B * S, n}, h_res_shape = {B * S, Factorial(n)},
+                         inv_rms_shape = {B * S}, h_mix_shape = {B * S, Factorial(n) + 2 * n}, h_pre_shape = {B * S, n};
     int ret = InitAcl(device_id, context, stream);
     CHECK_RET(ret == 0, LOG_PRINT("InitAcl failed, error: %d\n", ret); return -1);
     ret = CreateInputTensors(x_shape, phi_shape, alpha_shape, bias_shape, gamma_shape, tensors);
