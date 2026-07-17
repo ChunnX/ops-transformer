@@ -33,7 +33,9 @@ class BlockEpilogue {
 #if (__CCE_AICORE__ == 310)
 #include "../../../attn_infra/epilogue/block/block_epilogue_mask2idx_arch35.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o_arch35_reg_high_prec.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_rescale_o_arch35_reg_high_prec_mxfp4.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec.hpp"
 #include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_bf16.hpp"
+#include "../../../attn_infra/epilogue/block/block_epilogue_online_softmax_arch35_reg_low_prec_fp16_mxfp4.hpp"
 #endif
 #endif  // EPILOGUE_BLOCK_BLOCK_EPILOGUE_HPP
