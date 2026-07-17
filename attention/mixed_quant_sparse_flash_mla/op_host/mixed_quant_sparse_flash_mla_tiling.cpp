@@ -314,7 +314,7 @@ ge::graphStatus QSMLAInfoParser::GetActualSeqLenSize(uint32_t &size, const gert:
 
 ge::graphStatus QSMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
 {
-    return GetActualSeqLenSize(size, opParamInfo_.sequsedOriKv.tensor, qLayout_, "cuSeqLensQ");
+    return GetActualSeqLenSize(size, opParamInfo_.cuSeqLensQ.tensor, qLayout_, "cuSeqLensQ");
 }
 
 ge::graphStatus QSMLAInfoParser::GetBatchSize()
@@ -323,7 +323,7 @@ ge::graphStatus QSMLAInfoParser::GetBatchSize()
     // 1、非TND时, 以query的batch_size维度为基准;
     // 2、TND时, actual_seq_lens_q必须传入, 以actual_seq_lens_q数组的长度为B轴大小
     if (qLayout_ == QSMLALayout::TND) {
-        return GetActualSeqLenQSize(bSize_);
+        return GetActualSeqLenSize(shapeSize, opParamInfo_.cuSeqLensQ.tensor, qLayout_, "cuSeqLensQ") - 1;
     } else { // BSND
         bSize_ = GetAxisNum(qShape_, QSMLAAxis::B, qLayout_);
         return ge::GRAPH_SUCCESS;

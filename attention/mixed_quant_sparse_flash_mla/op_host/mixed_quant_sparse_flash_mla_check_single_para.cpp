@@ -405,8 +405,15 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaCuSeqLensQ() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaSequsedKv() const
 {
-    OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
-                OP_LOGE(opName_, "input sequsedOriKv can not be nullptr, but it's empty"), return ge::GRAPH_FAILED);
+    if (perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
+        perfMode_ != QSMLATemplateMode::ORI_SPARSE_MODE) {
+        OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
+                    OP_LOGE(opName_, "input sequsedOriKv can not be nullptr, but it's empty"), return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor != nullptr,
+                    OP_LOGE(opName_, "input sequsedOriKv should be nullptr in SWA and ORI_SPARSE mode"), return ge::GRAPH_FAILED);
+        return 
+    }
     const std::vector<size_t> expectDimNumList = {DIM_NUM_ONE};
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedOriKv.desc, SEQUSED_ORI_KV_NAME) ||
         ge::GRAPH_SUCCESS !=
