@@ -1147,6 +1147,7 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     tilingData_.set_scoreB16GmOffset(scoreB16GmOffset);
     tilingData_.set_radixWsOffset(radixWsOffset);
     tilingData_.set_radixAivNum(aivNumTotal);
+    OP_LOGI(context_->GetNodeName(), "radixTopK: blockDim=%u, aivNumTotal=%u, radixTotalBatch=%u, sortLen=%u, sortLenAlign=%u",
     // For RadixTopK: totalBatch = bSize * actS1Size * n2Size
     // For TND, s1Size=0, use s2Size as actS1Size (single batch case)
     uint32_t actS1ForRadix = static_cast<uint32_t>(tilingInfo->s1Size);
@@ -1156,6 +1157,8 @@ ge::graphStatus LightningIndexerTiling::DoTiling(LITilingInfo *tilingInfo)
     }
     uint32_t radixTotalBatch = tilingInfo->bSize * actS1ForRadix * tilingInfo->n2Size;
     tilingData_.set_radixTotalBatch(radixTotalBatch);
+    OP_LOGI(context_->GetNodeName(), "radixTopK: blockDim=%u, aivNumTotal=%u, radixTotalBatch=%u, actS1ForRadix=%u, s1Size=%u, s2Size=%u",
+        blockDim, aivNumTotal, radixTotalBatch, actS1ForRadix, tilingInfo->s1Size, tilingInfo->s2Size);
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
 
