@@ -1401,13 +1401,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // 4. 本卡数据Unpermute
     if constexpr (g_coreType == AIV) {
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-        MegaMoeCombineReduceImpl::CombineReduceTileSchedule combineReduceTileSchedule{
-            aivCoreIdx_, blockAivNum_};
         MegaMoeCombineReduceImpl::CombineReduceShapeContext combineReduceShapeContext{m_, k_, topK_};
         MegaMoeCombineReduceImpl::CombineReduceBufferContext combineReduceBufferContext{
             params_.peermemInfo.combineSendPtr, params_.probsGmAddr, params_.y2GmAddr};
         MegaMoeCombineReduceImpl::ProcessCombineReduceSingleCore<CombineQuantMode, TopkWeightsType>(
-            combineReduceTileSchedule, combineReduceShapeContext, combineReduceBufferContext);
+            combineReduceShapeContext, combineReduceBufferContext);
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
