@@ -355,14 +355,14 @@ def analyze_failure(
                     )
                 if all_rows:
                     table_header = col_names + ["cpu", "npu", "diff"]
-                    col_types = (["c"] * len(col_names)) + ["n", "n", "n"]
+                    col_types = (["n"] * len(col_names)) + ["n", "n", "n"]
                     lines += _render_table(table_header, col_types, all_rows)
             else:
                 rows, axis_width, truncated = _compact_rows(
                     fail_indices, tuple(cpu_t.shape), layout or "", verbose)
                 if rows:
                     table_header = col_names + ["元素数"]
-                    col_types = (["c"] * axis_width) + ["n"]
+                    col_types = (["n"] * (axis_width + 1))
                     lines += _render_table(table_header, col_types, rows)
                 lines.append("")
                 if truncated:
