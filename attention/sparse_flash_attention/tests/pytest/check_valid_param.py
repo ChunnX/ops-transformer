@@ -36,11 +36,19 @@ def _check_actual_seq(actual_seq, B, upper_bound, name):
 
 def check_valid_param(params):
     # 按 sparse_flash_attention tiling 约束校验测试参数。
-    (Testcase_Name, layout_query, layout_kv, q_type,
-     B, S1, S2, N1, N2, D, K,
-     scale_value, sparse_block_size, rope_head_dim,
-     sparse_mode, attention_mode, return_softmax_lse,
-     block_size, block_num, actual_seq_q, actual_seq_kv) = params
+    if len(params) == 21:
+        (Testcase_Name, layout_query, layout_kv, q_type,
+         B, S1, S2, N1, N2, D, K,
+         scale_value, sparse_block_size, rope_head_dim,
+         sparse_mode, attention_mode, return_softmax_lse,
+         block_size, block_num, actual_seq_q, actual_seq_kv) = params
+        use_sinks = False
+    else:
+        (Testcase_Name, layout_query, layout_kv, q_type,
+         B, S1, S2, N1, N2, D, K,
+         scale_value, sparse_block_size, rope_head_dim,
+         sparse_mode, attention_mode, return_softmax_lse, use_sinks,
+         block_size, block_num, actual_seq_q, actual_seq_kv) = params
 
     if q_type not in SUPPORTED_Q_TYPE:
         raise ValueError(f"q_type 仅支持 torch.float16/torch.bfloat16，当前: {q_type}")
@@ -50,6 +58,8 @@ def check_valid_param(params):
         raise ValueError(f"layout_kv 仅支持 {sorted(SUPPORTED_LAYOUT_KV)}，当前: {layout_kv}")
     if layout_kv != "PA_BSND" and layout_kv != layout_query:
         raise ValueError(f"非 PA_BSND 场景下 layout_kv({layout_kv}) 必须等于 layout_query({layout_query})")
+    if use_sinks and layout_kv == "PA_BSND":
+        raise ValueError("sinks 场景不支持 PA_BSND")
 
     for name, value in (("B", B), ("S1", S1), ("S2", S2), ("N1", N1), ("N2", N2), ("D", D), ("K", K)):
         if int(value) <= 0:

@@ -34,12 +34,12 @@ ge::Status AttentionToFFNCalcParamFunc(gert::ExeResGenerationContext *context)
 {
     const ge::AscendString name = AICPU_KFC_SERVER_NAME;
     const ge::AscendString reuseKey = KFC_STREAM_NAME;
-    
+
     return Mc2GenTaskOpsUtils::CommonKFCMc2CalcParamFunc(context, name, reuseKey);
 }
 
 ge::Status AttentionToFFNGenTaskFunc(const gert::ExeResGenerationContext *context,
-                                            std::vector<std::vector<uint8_t>> &tasks)
+                                     std::vector<std::vector<uint8_t>> &tasks)
 {
     const char *nodeName = context->GetNodeName();
     OPS_LOG_I(nodeName, "MC2 Generate task start.");
@@ -47,7 +47,5 @@ ge::Status AttentionToFFNGenTaskFunc(const gert::ExeResGenerationContext *contex
 }
 
 // new ver
-IMPL_OP(AttentionToFFN)
-    .CalcOpParam(AttentionToFFNCalcParamFunc)
-    .GenerateTask(AttentionToFFNGenTaskFunc);
+IMPL_OP(AttentionToFFN).CalcOpParam(AttentionToFFNCalcParamFunc).GenerateTask(AttentionToFFNGenTaskFunc);
 } // namespace ops

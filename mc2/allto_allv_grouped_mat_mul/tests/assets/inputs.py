@@ -10,12 +10,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
 __input__ = {
-    "kernel": {
-        "allto_allv_grouped_mat_mul": "allto_allv_grouped_mat_mul_inputs"
-    }
+    "kernel": {"allto_allv_grouped_mat_mul": "allto_allv_grouped_mat_mul_inputs"}
 }
 
-import numpy as np
 
 def allto_allv_grouped_mat_mul_inputs(
     gmm_x,
@@ -31,11 +28,11 @@ def allto_allv_grouped_mat_mul_inputs(
     trans_gmm_weight: bool = False,
     trans_mm_weight: bool = False,
     permute_out_flag: bool = False,
-    **kwargs
+    **kwargs,
 ):
     """
     AlltoAllvGroupedMatMul inputs validation and adjustment
-    
+
     Args:
         gmm_x: Input tensor for grouped matmul
         gmm_weight: Weight tensor for grouped matmul
@@ -51,15 +48,32 @@ def allto_allv_grouped_mat_mul_inputs(
         trans_mm_weight: Whether to transpose mm_weight
         permute_out_flag: Whether to output permute result
         **kwargs: Additional arguments
-    
+
     Returns:
         Processed inputs
     """
     if trans_gmm_weight:
-        gmm_weight = gmm_weight.transpose(0, 2, 1) if len(gmm_weight.shape) == 3 else gmm_weight.transpose()
-    
+        gmm_weight = (
+            gmm_weight.transpose(0, 2, 1)
+            if len(gmm_weight.shape) == 3
+            else gmm_weight.transpose()
+        )
+
     if trans_mm_weight and mm_weight is not None:
         mm_weight = mm_weight.transpose()
-    
-    return gmm_x, gmm_weight, send_counts_tensor, recv_counts_tensor, mm_x, mm_weight, \
-           group, ep_world_size, send_counts, recv_counts, trans_gmm_weight, trans_mm_weight, permute_out_flag
+
+    return (
+        gmm_x,
+        gmm_weight,
+        send_counts_tensor,
+        recv_counts_tensor,
+        mm_x,
+        mm_weight,
+        group,
+        ep_world_size,
+        send_counts,
+        recv_counts,
+        trans_gmm_weight,
+        trans_mm_weight,
+        permute_out_flag,
+    )

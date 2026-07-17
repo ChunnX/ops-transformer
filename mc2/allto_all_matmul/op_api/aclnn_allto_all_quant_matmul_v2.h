@@ -72,7 +72,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllQuantMatmulV2Get
 /**
  * @brief aclnnAlltoAllQuantMatMulV2的第二段接口，用于执行计算。
  * @param [in] workspace: 在Device侧申请的workspace内存地址。
- * @param [in] workspacesize: 在Device侧申请的workspace大小，由第一段接口aclnnAlltoAllQuantMatMulV2GetWorkspaceSize获取。
+ * @param [in] workspacesize:
+ * 在Device侧申请的workspace大小，由第一段接口aclnnAlltoAllQuantMatMulV2GetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: 指定执行任务的Stream。
  * @return aclnnStatus: 返回状态码

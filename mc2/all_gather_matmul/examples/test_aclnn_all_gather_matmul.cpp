@@ -22,17 +22,17 @@
 #include "aclnn/opdev/fp16_t.h"
 #include "aclnnop/aclnn_all_gather_matmul.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
-    } while(0)
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
+    } while (0)
 
 constexpr int DEV_NUM = 2;
 
@@ -45,9 +45,9 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shape_size;
 }
 
-template<typename T>
+template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-    aclDataType dataType, aclTensor **tensor)
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -56,10 +56,10 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
     std::vector<int64_t> strides(shape.size(), 1);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i +1] * strides[i + 1];
+        strides[i] = shape[i + 1] * strides[i + 1];
     }
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-        shape.data(), shape.size(), *deviceAddr);
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
@@ -120,15 +120,15 @@ int launchOneThread_AllGatherMm(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(gatherOutHostData, gatherOutShape, &gatherOutDeviceAddr,
-        aclDataType::ACL_FLOAT16, &gatherOut);
+    ret =
+        CreateAclTensor(gatherOutHostData, gatherOutShape, &gatherOutDeviceAddr, aclDataType::ACL_FLOAT16, &gatherOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 调用第一阶段接口
-    ret = aclnnAllGatherMatmulGetWorkspaceSize(
-        x1, x2, bias, hcomName, gatherIndex, commTurn, streamMode, out, gatherOut, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnAllGatherMatmulGetWorkspaceSize failed. ret = %d \n", ret); return ret);
+    ret = aclnnAllGatherMatmulGetWorkspaceSize(x1, x2, bias, hcomName, gatherIndex, commTurn, streamMode, out,
+                                               gatherOut, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAllGatherMatmulGetWorkspaceSize failed. ret = %d \n", ret);
+              return ret);
     // 根据第一阶段接口计算出的workspaceSize申请device内存
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -140,7 +140,7 @@ int launchOneThread_AllGatherMm(Args &args)
     // （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
-        return ret);
+              return ret);
     LOG_PRINT("[INFO] device_%d aclnnAllGatherMatmul execute successfully.\n", args.rankId);
     // 释放device资源，需要根据具体API的接口定义修改
     if (x1 != nullptr) {
@@ -218,7 +218,7 @@ int main(int argc, char *argv[])
         args[rankId].hcclComm = comms[rankId];
         args[rankId].context = context[rankId];
         args[rankId].stream = stream[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThread_AllGatherMm, std::ref(args[rankId])));
+        threads[rankId].reset(new (std::nothrow) std::thread(&launchOneThread_AllGatherMm, std::ref(args[rankId])));
     }
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         threads[rankId]->join();

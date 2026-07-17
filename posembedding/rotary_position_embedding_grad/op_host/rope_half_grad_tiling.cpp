@@ -156,11 +156,11 @@ static ge::graphStatus RopeHalfGradShapeDimCheck(const gert::TilingContext* cont
 
     uint64_t inputDimNum = DIM_FOUR;
 
-    if (xDimNum == DIM_THREE) {
+    isTndLayout = (xDimNum == DIM_THREE);
+    if (isTndLayout) {
         // TND
         OP_LOGD(context->GetNodeName(), "Enter TND layout.");
         inputDimNum = DIM_THREE;
-        isTndLayout = true;
     }
 
     if (xDimNum != inputDimNum) {

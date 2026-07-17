@@ -57,7 +57,8 @@ const std::vector<uint32_t> QUANT_MODE_MAP = {0, 0, 1, 2, 4, 5, 3};
 
 class AlltoAllvQuantGmmTilingCommon : public AlltoAllvQuantGmmTilingBase {
 public:
-    explicit AlltoAllvQuantGmmTilingCommon(gert::TilingContext *context) : AlltoAllvQuantGmmTilingBase(context){
+    explicit AlltoAllvQuantGmmTilingCommon(gert::TilingContext *context) : AlltoAllvQuantGmmTilingBase(context)
+    {
         tilingData = context->GetTilingData<QuantAlltoAllvGroupedMatmulTilingData>();
     };
     QuantAlltoAllvGroupedMatmulTilingData *tilingData;
@@ -71,11 +72,26 @@ protected:
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
     // quant base
-    virtual ge::graphStatus CheckInputDtype() const {return ge::GRAPH_SUCCESS;};
-    virtual ge::graphStatus CheckScaleFormatAndDtype() const {return ge::GRAPH_SUCCESS;};
-    virtual ge::graphStatus CheckQuantMode() const {return ge::GRAPH_SUCCESS;};
-    virtual ge::graphStatus CheckScaleShape() const {return ge::GRAPH_SUCCESS;};
-    virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize) {return ge::GRAPH_SUCCESS;};
+    virtual ge::graphStatus CheckInputDtype() const
+    {
+        return ge::GRAPH_SUCCESS;
+    };
+    virtual ge::graphStatus CheckScaleFormatAndDtype() const
+    {
+        return ge::GRAPH_SUCCESS;
+    };
+    virtual ge::graphStatus CheckQuantMode() const
+    {
+        return ge::GRAPH_SUCCESS;
+    };
+    virtual ge::graphStatus CheckScaleShape() const
+    {
+        return ge::GRAPH_SUCCESS;
+    };
+    virtual ge::graphStatus DoGmmTiling(uint64_t gmmMSize)
+    {
+        return ge::GRAPH_SUCCESS;
+    };
     virtual void GetPermuteOutSize() {};
     ge::graphStatus CheckInputNotNull() const;
     ge::graphStatus SetHcclTiling() const;
@@ -85,5 +101,5 @@ protected:
     uint64_t permuteScaleOutSize_{0};
     uint64_t permuteOutSize_{0};
 };
-}  // namespace optiling
-#endif  // ALLTO_ALLV_QUANT_GROUPED_MATMUL_TILING_COMMON_H
+} // namespace optiling
+#endif // ALLTO_ALLV_QUANT_GROUPED_MATMUL_TILING_COMMON_H

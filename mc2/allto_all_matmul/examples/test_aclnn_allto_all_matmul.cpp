@@ -4,7 +4,8 @@
  * This file is a part of the CANN Open Software.
  * Licensed under CANN Open Software License Agreement Version 2.0 (the "License").
  * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED, INCLUDING
+BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
@@ -24,29 +25,31 @@
 
 int ndev = 2;
 
-#define CHECK_RET(cond, return_expr) \
-do {                               \
-if (!(cond)) {                   \
-return_expr;                   \
-}                                \
-} while (0)
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
+    } while (0)
 
-#define LOG_PRINT(message, ...)     \
-do {                              \
-printf(message, ##__VA_ARGS__); \
-} while (0)
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
+    } while (0)
 
-int64_t GetShapeSize(const std::vector<int64_t> &shape) {
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
+{
     int64_t shapeSize = 1;
-    for (auto i: shape) {
+    for (auto i : shape) {
         shapeSize *= i;
     }
     return shapeSize;
 }
 
-template<typename T>
+template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-                    aclDataType dataType, aclTensor **tensor) {
+                    aclDataType dataType, aclTensor **tensor)
+{
     auto size = GetShapeSize(shape) * sizeof(T);
     // 调用aclrtMalloc申请device侧内存
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -61,7 +64,7 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     }
     // 调用aclCreateTensor接口创建aclTensor
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                            shape.data(), shape.size(), *deviceAddr);
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
@@ -80,8 +83,7 @@ int launchOneThreadAlltoAllMatmul(Args &args)
     char hcom_name[128] = {0};
     ret = HcclGetCommName(args.hcclComm, hcom_name);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret = %d \n", ret); return -1);
-    LOG_PRINT("[INFO] rank %d hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream,
-            args.context);
+    LOG_PRINT("[INFO] rank %d hcom: %s stream: %p, context : %p\n", args.rankId, hcom_name, args.stream, args.context);
 
     std::vector<int64_t> x1Shape = {32, 64};
     std::vector<int64_t> x2Shape = {64 * ndev, 128};
@@ -100,7 +102,7 @@ int launchOneThreadAlltoAllMatmul(Args &args)
     aclTensor *alltoallout = nullptr;
 
     int64_t a2aAxes[2] = {-2, -1};
-    aclIntArray* alltoAllAxesOptional = aclCreateIntArray(a2aAxes, static_cast<uint64_t>(2));
+    aclIntArray *alltoAllAxesOptional = aclCreateIntArray(a2aAxes, static_cast<uint64_t>(2));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor;
     void *workspaceAddr = nullptr;
@@ -124,13 +126,14 @@ int launchOneThreadAlltoAllMatmul(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(alltoalloutHostData, alltoalloutShape, &alltoalloutDeviceAddr, aclDataType::ACL_FLOAT16, &alltoallout);
+    ret = CreateAclTensor(alltoalloutHostData, alltoalloutShape, &alltoalloutDeviceAddr, aclDataType::ACL_FLOAT16,
+                          &alltoallout);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     // 调用第一段接口
-    ret = aclnnAlltoAllMatmulGetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, false, false,
-                                            out, alltoallout, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-            LOG_PRINT("aclnnAlltoAllMatmulGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
+    ret = aclnnAlltoAllMatmulGetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, false, false, out,
+                                              alltoallout, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAlltoAllMatmulGetWorkspaceSize failed. ERROR: %d\n", ret);
+              return ret);
     // 根据第一段接口计算出的workspaceSize申请device内存
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -139,7 +142,7 @@ int launchOneThreadAlltoAllMatmul(Args &args)
     // 调用第二段接口
     ret = aclnnAlltoAllMatmul(workspaceAddr, workspaceSize, executor, args.stream);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnAlltoAllMatmul failed. ERROR: %d\n", ret); return ret);
-    //（固定写法）同步等待任务执行结束
+    // （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); return ret);
     LOG_PRINT("device%d aclnnAlltoAllMatmul execute success \n", args.rankId);
@@ -219,7 +222,7 @@ int main(int argc, char *argv[])
         args[rankId].hcclComm = comms[rankId];
         args[rankId].stream = stream[rankId];
         args[rankId].context = context[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&launchOneThreadAlltoAllMatmul, std::ref(args  [rankId])));
+        threads[rankId].reset(new (std::nothrow) std::thread(&launchOneThreadAlltoAllMatmul, std::ref(args[rankId])));
     }
     for (uint32_t rankId = 0; rankId < ndev; rankId++) {
         threads[rankId]->join();
