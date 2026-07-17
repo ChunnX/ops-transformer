@@ -429,7 +429,7 @@ aclnnStatus Mc2Context::CheckProtocolSupport(const HcclComm &hcclHandle, uint32_
                                         srcRankId, rankIdLists[rankId], layerList[layerIndex]);
                 return ACLNN_ERR_INNER;
             }
-            if (CheckLinks(netLinkNum, linksList) != ACLNN_SUCCESS) {
+            if (CheckLinks(netLinkNum, linksList, protocol) != ACLNN_SUCCESS) {
                 OP_LOGE_LIBOPAPI_REPORT("Mc2Context",
                                         "No HCCL links support UB_MEM srcRankID %u, dstRankID %u layer is %u",
                                         srcRankId, rankIdLists[rankId], layerList[layerIndex]);
