@@ -309,7 +309,7 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
 
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbWAVMTE2List[stageId]);
-        DataCopyExtParams copyParams{1, tileLength * sizeof(float), 0, 0, 0};
+        DataCopyExtParams copyParams{1, static_cast<uint32_t>(tileLength * sizeof(float)), 0, 0, 0};
         DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
         DataCopyPad(ubWeightAux, weightAux[tileOffset], copyParams, padParams);
         DataCopyPad(ubWeightAux[TILE_LENGTH], weightAux[branchLength + tileOffset], copyParams, padParams);
