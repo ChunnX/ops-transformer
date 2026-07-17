@@ -1,44 +1,45 @@
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv --plugin /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/assets --backend npu -t PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3
-2026-07-17 07:36:29,830 [INFO] [2432127 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv 
-2026-07-17 07:36:34,353 [INFO] [2432127 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-17 07:36:34,910 [INFO] [2432127 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-17 07:36:34,932 [INFO] [2432127 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-17 07:36:34,933 [INFO] [2432127 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-17 07:36:34,933 [INFO] [2432127 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-17 07:36:36,070 [INFO] [2432127 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-17 07:36:36,076 [INFO] [2432127 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-17 07:36:36,076 [INFO] [2432127 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-17 07:36:37,212 [INFO] [2432127 MP MT] [instance.py:42]: Device count: 1 
-2026-07-17 07:36:37,212 [INFO] [2432127 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-17 07:36:37,212 [INFO] [2432127 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-17 07:36:37,212 [INFO] [2432127 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv ... 
-2026-07-17 07:36:37,213 [INFO] [2432127 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
-2026-07-17 07:36:37,213 [INFO] [2432127 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# GRAPH_PATH=7 PYTHONPATH=/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv --plugin /home/z00954345/jialu/ops-transformer/attention
+/quant_flash_attn/tests/assets --backend npu -t TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0
+2026-07-17 07:56:25,633 [INFO] [2451766 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv 
+2026-07-17 07:56:30,083 [INFO] [2451766 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-17 07:56:30,635 [INFO] [2451766 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-17 07:56:30,635 [INFO] [2451766 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-17 07:56:30,635 [INFO] [2451766 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-17 07:56:30,635 [INFO] [2451766 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-17 07:56:31,781 [INFO] [2451766 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-17 07:56:31,787 [INFO] [2451766 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-17 07:56:31,787 [INFO] [2451766 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-17 07:56:32,909 [INFO] [2451766 MP MT] [instance.py:42]: Device count: 1 
+2026-07-17 07:56:32,909 [INFO] [2451766 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-17 07:56:32,909 [INFO] [2451766 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-17 07:56:32,909 [INFO] [2451766 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv ... 
+2026-07-17 07:56:32,910 [INFO] [2451766 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-17 07:56:32,910 [INFO] [2451766 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
 ninja: no work to do.
 ninja: no work to do.
-[2026/07/17 07:36:38] [INFO]-instance_base.py:0237 - Checking testcase name...
-[2026/07/17 07:36:38] [INFO]-instance_base.py:0240 - Case number: 1
-[2026/07/17 07:36:38] [INFO]-instance_base.py:0313 - Initialize output csv file...
-[2026/07/17 07:36:38] [INFO]-instance_base.py:0321 - Output csv file is not specified. It will be set as /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_result.csv
-[2026/07/17 07:36:38] [INFO]-instance_base.py:0145 - Process per device: 1
-[2026/07/17 07:36:38] [INFO]-instance_base.py:0147 - Preparing Task Executors...
-[2026/07/17 07:36:38] [INFO]-instance_base.py:0211 - 
+[2026/07/17 07:56:33] [INFO]-instance_base.py:0237 - Checking testcase name...
+[2026/07/17 07:56:33] [INFO]-instance_base.py:0240 - Case number: 1
+[2026/07/17 07:56:33] [INFO]-instance_base.py:0313 - Initialize output csv file...
+[2026/07/17 07:56:33] [INFO]-instance_base.py:0321 - Output csv file is not specified. It will be set as /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_result.csv
+[2026/07/17 07:56:34] [INFO]-instance_base.py:0145 - Process per device: 1
+[2026/07/17 07:56:34] [INFO]-instance_base.py:0147 - Preparing Task Executors...
+[2026/07/17 07:56:34] [INFO]-instance_base.py:0211 - 
 +-------------------------------------------------------------------------------------------------------+
 | Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
 +-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 2432570 D0P0             UNKNOWN              IDLE     0s  |
+| npu:0                                    | 2452144 D0P0             UNKNOWN              IDLE     0s  |
 +-------------------------------------------------------------------------------------------------------+
-2026-07-17 07:36:43,335 [INFO] [2432570 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-17 07:56:38,727 [INFO] [2452144 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
 get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67
 ninja: no work to do.
 ninja: no work to do.
-[2026/07/17 07:36:45] [INFO]-profiling.py:0056 - 
+[2026/07/17 07:56:40] [INFO]-profiling.py:0056 - 
 ----------------------------------------------------------------------------------------------------
 API Name: qfa_mxfp8_wrapper.npu_qfa_mxfp8
 Golden API: 
 Backend: npu
 ////////////// Tensors //////////////
-Input View Shapes: ((1, 1, 0, 128), (1, 1, 64, 128), (1, 1, 64, 128), (1, 1, 0, 4), (1, 1, 64, 4), (1, 1, 2, 128), (1,), (1, 1))
+Input View Shapes: ((1, 1, 3, 64), (1, 1, 640, 64), (1, 1, 640, 64), (1, 1, 3, 2), (1, 1, 640, 2), (1, 1, 20, 64), (1,), (0,))
 Input Dtypes: ('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')
 Input Storage Shapes: ()
 Input Formats: ()
@@ -50,17 +51,17 @@ Output Tensor Indexes: ()
 B: 1
 N_q: 1
 N_kv: 1
-D: 128
-actual_seq_q: [0]
-actual_seq_kv: [64]
-enable_pa: True
-kv_cache_layout: BnNBsD
+D: 64
+actual_seq_q: [3]
+actual_seq_kv: [640]
+enable_pa: False
+kv_cache_layout: TND
 block_size: 512
-mask_mode: 3
+mask_mode: 0
 q_scale_layout: N2TGD
 quant_mode: 1
 enable_lse: False
-graph_path: 0
+graph_path: 7
 input_layout: TND
 is_contiguous: True
 device_id: 0
@@ -69,48 +70,56 @@ Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None
 Precision Tolerance: None
 Absolute Precision: (1e-08,)
 Mode: ASCEND_ONBOARD
-PID: 2432570
+PID: 2452144
 Device: 0
 ----------------------------------------------------------------------------------------------------
-[2026/07/17 07:36:46] [INFO]-qfa_mxfp8_wrapper.py:0084 - [WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[2026/07/17 07:36:46] [INFO]-qfa_mxfp8_wrapper.py:0107 - [WRAPPER] graph_path=0, 调用 npu_mxfp8_fa
-[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:0996 - [NPU] Q layout auto: G=1, S1=0, G*S1=0, q_layout=N2TGD
-[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1000 - [NPU TND] q=torch.Size([0, 1, 128])
-[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1005 - [NPU] Q scale layout=N2TGD, shape=torch.Size([1, 0, 1, 2, 2])
-[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1054 - [NPU PA] kv_layout=BnNBsD
-[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1055 - [NPU PA] k=torch.Size([1, 1, 512, 128]), v=torch.Size([1, 1, 512, 128])
-[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1056 - [NPU PA] deq_k=torch.Size([1, 1, 512, 2, 2]), deq_v=torch.Size([1, 1, 8, 128, 2])
-[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1066 - [NPU] 调用 PA 模式...
-[2026/07/17 07:36:46] [INFO]-fia_fullquant_mxfp8_golden.py:1109 - [NPU] 调用 QFA 单算子模式...
-[2026/07/17 07:36:46] [ERROR]-profiling.py:0218 - [PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3] Error: call aclnnQuantFlashAttnMetadata failed, detail:[PID: 2432570] 2026-07-17-07:36:46.917.373 AclNN_Runtime_Error(EZ9903): maxSeqlenQ must be -1 or greater than 0, but got 0
-        Solution: In this scenario, collect the plog when the fault occurs and locate the fault based on the plog.
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
-    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
-    result_nps, perf = _execute_eager(
-                       ^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 328, in _execute_eager
-    resolved(*args, **kwargs)
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 108, in npu_qfa_mxfp8
-    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1067, in npu_mxfp8_fa
-    atten_out, lse_out = mxfp8_fa_torch_npu(
-                         ^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1110, in mxfp8_fa_torch_npu
-    return _call_npu_fa_op(
-           ^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 901, in _call_npu_fa_op
-    metadata = quant_flash_attn_metadata(
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/quant_flash_attn.py", line 192, in quant_flash_attn_metadata
-    return op_module.quant_flash_attn_metadata(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: call aclnnQuantFlashAttnMetadata failed, detail:[PID: 2432570] 2026-07-17-07:36:46.917.373 AclNN_Runtime_Error(EZ9903): maxSeqlenQ must be -1 or greater than 0, but got 0
-        Solution: In this scenario, collect the plog when the fault occurs and locate the fault based on the plog.
+[2026/07/17 07:56:42] [INFO]-qfa_mxfp8_wrapper.py:0084 - [WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[2026/07/17 07:56:42] [INFO]-qfa_mxfp8_wrapper.py:0107 - [WRAPPER] graph_path=7, 调用 npu_mxfp8_fa
+[2026/07/17 07:56:42] [INFO]-fia_fullquant_mxfp8_golden.py:0996 - [NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
+[2026/07/17 07:56:42] [INFO]-fia_fullquant_mxfp8_golden.py:1000 - [NPU TND] q=torch.Size([3, 1, 64])
+[2026/07/17 07:56:42] [INFO]-fia_fullquant_mxfp8_golden.py:1005 - [NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
+[2026/07/17 07:56:42] [INFO]-fia_fullquant_mxfp8_golden.py:1075 - [NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
+[2026/07/17 07:56:42] [INFO]-fia_fullquant_mxfp8_golden.py:1083 - [NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
+[2026/07/17 07:56:42] [INFO]-fia_fullquant_mxfp8_golden.py:1088 - [NPU] 调用 TND 模式...
+[2026/07/17 07:56:42] [INFO]-fia_fullquant_mxfp8_golden.py:1126 - [NPU] 调用 aclgraph (npugraph_ex)...
+[2026/07/17 07:56:42] [INFO]-patch_getenv.py:0015 - get env TORCHINDUCTOR_CACHE_DIR = /tmp/torchinductor_root
+[2026/07/17 07:56:42] [ERROR]-qfa_mxfp8_wrapper.py:0116 - [WRAPPER] NPU 调用失败: Attempted to call function marked as skipped
+  Explanation: Dynamo does not know how to trace the builtin `quant_flash_attn.pybind11_detail_function_record_v1_system_libstdcpp_gxx_abi_1xxx_use_cxx11_abi_1.quant_flash_attn_metadata.` This function is either a Python builtin (e.g. _warnings.warn) or a third-party C/C++ Python extension (perhaps created with pybind).
+  Hint: If it is a Python builtin, please file an issue on GitHub so the PyTorch team can add support for it and see the next case for a workaround.
+  Hint: If it is a third-party C/C++ Python extension, please either wrap it into a PyTorch-understood custom operator (see https://pytorch.org/tutorials/advanced/custom_ops_landing_page.html for more details) or, if it is traceable, use `torch.compiler.allow_in_graph`.
 
-[2026/07/17 07:36:46] [ERROR]-profile_object.py:0172 - Profiling process failed for testcase PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3 with pid 2432570, fail reason:
+  Developer debug context: module: quant_flash_attn, qualname: pybind11_detail_function_record_v1_system_libstdcpp_gxx_abi_1xxx_use_cxx11_abi_1.quant_flash_attn_metadata, skip reason: <missing reason>
+
+ For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0007.html
+
+from user code:
+   File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 942, in forward
+    return _call_npu_fa_op(
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 901, in _call_npu_fa_op
+    metadata = quant_flash_attn_metadata(
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/quant_flash_attn.py", line 192, in quant_flash_attn_metadata
+    return op_module.quant_flash_attn_metadata(
+
+Set TORCHDYNAMO_VERBOSE=1 for the internal stack trace (please do this especially if you're reporting a bug to PyTorch). For even more developer context, set TORCH_LOGS="+dynamo"
+
+[2026/07/17 07:56:42] [ERROR]-profiling.py:0218 - [TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] Error: Attempted to call function marked as skipped
+  Explanation: Dynamo does not know how to trace the builtin `quant_flash_attn.pybind11_detail_function_record_v1_system_libstdcpp_gxx_abi_1xxx_use_cxx11_abi_1.quant_flash_attn_metadata.` This function is either a Python builtin (e.g. _warnings.warn) or a third-party C/C++ Python extension (perhaps created with pybind).
+  Hint: If it is a Python builtin, please file an issue on GitHub so the PyTorch team can add support for it and see the next case for a workaround.
+  Hint: If it is a third-party C/C++ Python extension, please either wrap it into a PyTorch-understood custom operator (see https://pytorch.org/tutorials/advanced/custom_ops_landing_page.html for more details) or, if it is traceable, use `torch.compiler.allow_in_graph`.
+
+  Developer debug context: module: quant_flash_attn, qualname: pybind11_detail_function_record_v1_system_libstdcpp_gxx_abi_1xxx_use_cxx11_abi_1.quant_flash_attn_metadata, skip reason: <missing reason>
+
+ For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0007.html
+
+from user code:
+   File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 942, in forward
+    return _call_npu_fa_op(
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 901, in _call_npu_fa_op
+    metadata = quant_flash_attn_metadata(
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/quant_flash_attn.py", line 192, in quant_flash_attn_metadata
+    return op_module.quant_flash_attn_metadata(
+
+Set TORCHDYNAMO_VERBOSE=1 for the internal stack trace (please do this especially if you're reporting a bug to PyTorch). For even more developer context, set TORCH_LOGS="+dynamo"
 Traceback (most recent call last):
   File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
     _do_profile(testcase, backend, device_grant_events, device_granted_indices,
@@ -119,23 +128,94 @@ Traceback (most recent call last):
                        ^^^^^^^^^^^^^^^
   File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 328, in _execute_eager
     resolved(*args, **kwargs)
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 108, in npu_qfa_mxfp8
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 109, in npu_qfa_mxfp8
     atten_out, lse_out = golden_mod.npu_mxfp8_fa(
                          ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1067, in npu_mxfp8_fa
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1089, in npu_mxfp8_fa
     atten_out, lse_out = mxfp8_fa_torch_npu(
                          ^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1110, in mxfp8_fa_torch_npu
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1133, in mxfp8_fa_torch_npu
+    atten_out, lse_out = npu_mode(*fa_args)
+                         ^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/eval_frame.py", line 472, in __call__
+    return super().__call__(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/eval_frame.py", line 1034, in compile_wrapper
+    raise e.with_traceback(None) from e.__cause__  # User compiler error
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch._dynamo.exc.Unsupported: Attempted to call function marked as skipped
+  Explanation: Dynamo does not know how to trace the builtin `quant_flash_attn.pybind11_detail_function_record_v1_system_libstdcpp_gxx_abi_1xxx_use_cxx11_abi_1.quant_flash_attn_metadata.` This function is either a Python builtin (e.g. _warnings.warn) or a third-party C/C++ Python extension (perhaps created with pybind).
+  Hint: If it is a Python builtin, please file an issue on GitHub so the PyTorch team can add support for it and see the next case for a workaround.
+  Hint: If it is a third-party C/C++ Python extension, please either wrap it into a PyTorch-understood custom operator (see https://pytorch.org/tutorials/advanced/custom_ops_landing_page.html for more details) or, if it is traceable, use `torch.compiler.allow_in_graph`.
+
+  Developer debug context: module: quant_flash_attn, qualname: pybind11_detail_function_record_v1_system_libstdcpp_gxx_abi_1xxx_use_cxx11_abi_1.quant_flash_attn_metadata, skip reason: <missing reason>
+
+ For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0007.html
+
+from user code:
+   File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 942, in forward
     return _call_npu_fa_op(
-           ^^^^^^^^^^^^^^^^
   File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 901, in _call_npu_fa_op
     metadata = quant_flash_attn_metadata(
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^
   File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/quant_flash_attn.py", line 192, in quant_flash_attn_metadata
     return op_module.quant_flash_attn_metadata(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: call aclnnQuantFlashAttnMetadata failed, detail:[PID: 2432570] 2026-07-17-07:36:46.917.373 AclNN_Runtime_Error(EZ9903): maxSeqlenQ must be -1 or greater than 0, but got 0
-        Solution: In this scenario, collect the plog when the fault occurs and locate the fault based on the plog.
+
+Set TORCHDYNAMO_VERBOSE=1 for the internal stack trace (please do this especially if you're reporting a bug to PyTorch). For even more developer context, set TORCH_LOGS="+dynamo"
+
+[2026/07/17 07:56:42] [ERROR]-profile_object.py:0172 - Profiling process failed for testcase TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 with pid 2452144, fail reason:
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
+    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
+    result_nps, perf = _execute_eager(
+                       ^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 328, in _execute_eager
+    resolved(*args, **kwargs)
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 109, in npu_qfa_mxfp8
+    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1089, in npu_mxfp8_fa
+    atten_out, lse_out = mxfp8_fa_torch_npu(
+                         ^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1133, in mxfp8_fa_torch_npu
+    atten_out, lse_out = npu_mode(*fa_args)
+                         ^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/eval_frame.py", line 472, in __call__
+    return super().__call__(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1779, in _wrapped_call_impl
+    return self._call_impl(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1790, in _call_impl
+    return forward_call(*args, **kwargs)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/eval_frame.py", line 1034, in compile_wrapper
+    raise e.with_traceback(None) from e.__cause__  # User compiler error
+    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+torch._dynamo.exc.Unsupported: Attempted to call function marked as skipped
+  Explanation: Dynamo does not know how to trace the builtin `quant_flash_attn.pybind11_detail_function_record_v1_system_libstdcpp_gxx_abi_1xxx_use_cxx11_abi_1.quant_flash_attn_metadata.` This function is either a Python builtin (e.g. _warnings.warn) or a third-party C/C++ Python extension (perhaps created with pybind).
+  Hint: If it is a Python builtin, please file an issue on GitHub so the PyTorch team can add support for it and see the next case for a workaround.
+  Hint: If it is a third-party C/C++ Python extension, please either wrap it into a PyTorch-understood custom operator (see https://pytorch.org/tutorials/advanced/custom_ops_landing_page.html for more details) or, if it is traceable, use `torch.compiler.allow_in_graph`.
+
+  Developer debug context: module: quant_flash_attn, qualname: pybind11_detail_function_record_v1_system_libstdcpp_gxx_abi_1xxx_use_cxx11_abi_1.quant_flash_attn_metadata, skip reason: <missing reason>
+
+ For more details about this graph break, please visit: https://meta-pytorch.github.io/compile-graph-break-site/gb/gb0007.html
+
+from user code:
+   File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 942, in forward
+    return _call_npu_fa_op(
+  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 901, in _call_npu_fa_op
+    metadata = quant_flash_attn_metadata(
+  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/quant_flash_attn.py", line 192, in quant_flash_attn_metadata
+    return op_module.quant_flash_attn_metadata(
+
+Set TORCHDYNAMO_VERBOSE=1 for the internal stack trace (please do this especially if you're reporting a bug to PyTorch). For even more developer context, set TORCH_LOGS="+dynamo"
 
 
 During handling of the above exception, another exception occurred:
@@ -148,5 +228,3 @@ Traceback (most recent call last):
     return_struct.precision = str(e)
     ^^^^^^^^^^^^^^^^^^^^^^^
 AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
-
-[2026/07/17 07:36:46] [INFO]-instance_base.py:0126 - ttk Profiling complete
