@@ -232,10 +232,9 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
         Epilogue::Tile::TileOneBlkColumnBroadcastMul<ArchTag, OneBlkColumnBroadcastMulType, EpilogueTileShape>;
     using TileCopy = Epilogue::Tile::TileCopy<ArchTag, CType, ScaleType, PerTokenScaleType, DType>;
     using TileScheduler = Epilogue::Tile::EpilogueHorizontalTileSwizzle;
-    using BlockEpilogue =
-        Epilogue::Block::BlockEpilogue<ArchTag, CType, ScaleType, PerTokenScaleType, BiasGType, DType,
-                                       TileRowBroadcastMul, TileRowBroadcastAdd,
-                                       TileBroadcastOneBlk, TileOneBlkColumnBroadcastMul, TileCopy, TileScheduler>;
+    using BlockEpilogue = Epilogue::Block::BlockEpilogue<ArchTag, CType, ScaleType, PerTokenScaleType, BiasGType, DType,
+                                                         TileRowBroadcastMul, TileRowBroadcastAdd, TileBroadcastOneBlk,
+                                                         TileOneBlkColumnBroadcastMul, TileCopy, TileScheduler>;
 
     using LayoutC = layout::RowMajor;
 
@@ -287,8 +286,8 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
         layout::VectorLayout layoutPerChannelScale{blockSizeCoord.n()};
         layout::VectorLayout layoutPerTokenScale{blockSizeCoord.m()};
         layout::VectorLayout layoutBias{blockSizeCoord.n()};
-        __gm__ biasType *gmBiasOffset = (biasGM_ != 0)
-            ? (reinterpret_cast<__gm__ biasType *>(biasGM_) + blockLocCoord.n()) : nullptr;
+        __gm__ biasType *gmBiasOffset =
+            (biasGM_ != 0) ? (reinterpret_cast<__gm__ biasType *>(biasGM_) + blockLocCoord.n()) : nullptr;
         if (needPerChannel & needPerToken) {
             blockEpilogue(perChannelScale + blockLocCoord.n(), layoutPerChannelScale, perTokenScale + blockLocCoord.m(),
                           layoutPerTokenScale, gmBiasOffset, layoutBias, workspace + gmOffsetC, layout_tmp,
@@ -311,7 +310,7 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
         using ArchTag = Arch::AtlasA2;
         constexpr bool ENABLE_UNIT_FLAG = false;
         constexpr bool ENABLE_SHUFFLE_K = true;
-        constexpr bool aicCalBias = !quantFlag && hasBias;   // 如果计算量化后的矩阵乘，bias不由CatlassMatmul负责
+        constexpr bool aicCalBias = !quantFlag && hasBias; // 如果计算量化后的矩阵乘，bias不由CatlassMatmul负责
         using ElementA = AType;
         using ElementB = BType;
         using ElementC = typename std::conditional<quantFlag, int32_t, cType>::type;
@@ -337,7 +336,7 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
         }
 
         using DispatchPolicy = std::conditional_t<aicCalBias, Gemm::MmadAtlasA2PingpongBias<ENABLE_UNIT_FLAG>,
-                                                    Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG, ENABLE_SHUFFLE_K>>;
+                                                  Gemm::MmadAtlasA2Preload<ENABLE_UNIT_FLAG, ENABLE_SHUFFLE_K>>;
         using AType_ = Gemm::GemmType<ElementA, LayoutA>;
         using BType_ = Gemm::GemmType<ElementB, LayoutB>;
         using CType_ = Gemm::GemmType<ElementC, LayoutC>;
@@ -378,7 +377,8 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
                 reinterpret_cast<GM_ADDR>(gm_a_src),
                 layoutA,
                 reinterpret_cast<GM_ADDR>(gm_b_src),
-                layoutB, biasGM_,
+                layoutB,
+                biasGM_,
                 blockmat_output_ptr, // mte远端读，结果矩阵直接写在peermem，提供读取能力
                 reinterpret_cast<GM_ADDR>(perChannelScaleGM_),
                 p_value,
@@ -401,7 +401,8 @@ __aicore__ inline void MatmulReduceScatterAivModeSmallM<TemplateMMReduceScatterV
                 reinterpret_cast<GM_ADDR>(gm_a_src),
                 layoutA,
                 reinterpret_cast<GM_ADDR>(gm_b_src),
-                layoutB, biasGM_,
+                layoutB,
+                biasGM_,
                 blockmat_output_ptr, // mte远端读，结果矩阵直接写在peermem，提供读取能力
                 reinterpret_cast<GM_ADDR>(perChannelScaleGM_),
                 p_value,
