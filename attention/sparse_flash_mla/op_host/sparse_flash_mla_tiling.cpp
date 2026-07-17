@@ -694,17 +694,7 @@ ge::graphStatus SMLAInfoParser::GetN2Size()
         n2Size_ = GetAxisNum(oriKvShape_, SMLAAxis::N, kvLayout_);
     }
     if (opParamInfo_.cmpKv.tensor != nullptr) {
-        uint32_t cmpKvN2Size_ = GetAxisNum(cmpKvShape_, SMLAAxis::N, kvLayout_);
-        if (perfMode_ == SMLATemplateMode::CSA_TEMPLATE_MODE) {
-            uint32_t cmpSparseIndicesN2Size_ = GetAxisNum(cmpSparseIndicesShape_, SMLAAxis::N, cmpSparseIndicesLayout_);
-            OP_CHECK_IF(cmpKvN2Size_ != n2Size_ || n2Size_ != cmpSparseIndicesN2Size_,
-                OP_LOGE(opName_, "N2 size check failed! Expected oriKvN2 == cmpSparseIndicesN2."),
-                return ge::GRAPH_FAILED);
-        }
-        OP_CHECK_IF(cmpKvN2Size_ != n2Size_,
-            OP_LOGE(opName_, "N2 size check failed! Expected cmpKvN2 == oriKvN2."),
-            return ge::GRAPH_FAILED);
-        n2Size_ = cmpKvN2Size_;
+        n2Size_  = GetAxisNum(cmpKvShape_, SMLAAxis::N, kvLayout_);
     }
     return ge::GRAPH_SUCCESS;
 }
