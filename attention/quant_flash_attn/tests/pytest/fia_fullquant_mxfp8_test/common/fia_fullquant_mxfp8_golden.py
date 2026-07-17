@@ -920,7 +920,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
         cu_seqlens_kv=cu_seqlens_kv_t,
         seqused_q=seqused_q_t, seqused_kv=seqused_kv_t,
         mask_mode=sparse_mode,
-        layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
+        layout_q=layout_q, layout_q_descale=layout_q, layout_kv=layout_kv, layout_out=layout_out,
         max_seqlen_q=max_seqlen_q_val, max_seqlen_kv=max_seqlen_kv_val,
     )
 
@@ -937,7 +937,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
         metadata=metadata,
         softmax_scale=softmax_scale,
         mask_mode=sparse_mode,
-        layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
+        layout_q=layout_q, layout_q_descale=layout_q, layout_kv=layout_kv, layout_out=layout_out,
         max_seqlen_q=max_seqlen_q_val, max_seqlen_kv=max_seqlen_kv_val,
         **_get_npu_fa_kwargs(),
     )
@@ -1021,10 +1021,13 @@ def _resolve_seqlen_params(seqused, cu_seqlens, max_seqlen):
 
     effective_cu_seqlens = list(cu_seqlens) if cu_seqlens is not None else _cu_seqlens_from_seqused(effective_seqused)
 
-    if max_seqlen is not None and max_seqlen >= 0:
+    if max_seqlen is not None and max_seqlen > 0:
         effective_max_seqlen = max(max(effective_seqused), max_seqlen)
     else:
-        effective_max_seqlen = max(effective_seqused) if effective_seqused else 0
+        effective_max_seqlen = max(effective_seqused) if effective_seqused else -1
+
+    if effective_max_seqlen <= 0:
+        effective_max_seqlen = -1
 
     return effective_seqused, effective_cu_seqlens, effective_max_seqlen
 

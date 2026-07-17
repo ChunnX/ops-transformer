@@ -139,6 +139,9 @@ public:
         this->Attr("layout_q")
             .AttrType(OPTIONAL)
             .String("BSND");
+        this->Attr("layout_q_descale")
+            .AttrType(OPTIONAL)
+            .String("BSND");
         this->Attr("layout_kv")
             .AttrType(OPTIONAL)
             .String("BSND");

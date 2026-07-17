@@ -5415,3 +5415,5 @@ TEST_PARAMS = {
         'enable_rope': [False],
     },
 }
+
+CASES = expand_paramset_to_cases(TEST_PARAMS)

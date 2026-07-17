@@ -60,6 +60,7 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     GetAttrValueOpt(ctx, "win_left", winLeft_);
     GetAttrValueOpt(ctx, "win_right", winRight_);
     GetAttrValueOpt(ctx, "layout_q", layoutQ_);
+    GetAttrValueOpt(ctx, "layout_q_descale", layoutQDescale_);
     GetAttrValueOpt(ctx, "layout_kv", layoutKv_);
     GetAttrValueOpt(ctx, "layout_out", layoutOut_);
     return ParamsInit();
@@ -220,7 +221,7 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     }
     if (quantMode_ == 1 || quantMode_ == 2) {
         uint32_t gSize = (numHeadsKv_ > 0) ? (numHeadsQ_ / numHeadsKv_) : 1;
-        bool isDecode = baseInfo.querySeqSize * gSize <= 80;
+        bool isDecode = (layoutQ_ == "N2TGD");
         if (!isDecode) {
             baseInfo.kvHeadNum = numHeadsQ_;
         }

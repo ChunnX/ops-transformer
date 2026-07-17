@@ -145,33 +145,22 @@ ge::graphStatus SeqLenChecker::CheckSingleParaCuSeqlensKv(const QfaTilingInfo &q
 
 ge::graphStatus SeqLenChecker::CheckSingleParaMaxSeqlenQ(const QfaTilingInfo &qfaInfo)
 {
-    // 文档约束(单参数校验): data_type 支持 INT32
-    //   - MxFP8 场景: 必须大于等于 0（必传，默认值 -1 会被拦截）
-    //   - 其他场景: 暂不生效，仅支持 -1
-    // qfaInfo.maxSeqQ 为 parser 解引用后的 int64_t 值
-    if (qfaInfo.quantMode == QfaQuantMode::MXFP8_FP32) {
-        OP_CHECK_IF(qfaInfo.maxSeqQ < 0,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MAX_SEQLEN_Q_NAME.c_str(),
-                        std::to_string(qfaInfo.maxSeqQ).c_str(),
-                        "max_seqlen_q must be greater than or equal to 0 in MxFP8 scenario"),
-                    return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(qfaInfo.maxSeqQ != -1,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MAX_SEQLEN_Q_NAME.c_str(),
-                        std::to_string(qfaInfo.maxSeqQ).c_str(),
-                        "max_seqlen_q is not effective currently, only -1 is supported"),
-                    return ge::GRAPH_FAILED);
-    }
+    // -1 means auto-compute; explicit value must be > 0
+    OP_CHECK_IF(qfaInfo.maxSeqQ != -1 && qfaInfo.maxSeqQ <= 0,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MAX_SEQLEN_Q_NAME.c_str(),
+                    std::to_string(qfaInfo.maxSeqQ).c_str(),
+                    "max_seqlen_q must be -1 or greater than 0"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus SeqLenChecker::CheckSingleParaMaxSeqlenKv(const QfaTilingInfo &qfaInfo)
 {
-    // 文档约束(单参数校验): data_type 支持 INT32，暂不生效，仅支持 -1，默认值为 -1
-    OP_CHECK_IF(qfaInfo.maxSeqKv != -1,
+    // -1 means auto-compute; explicit value must be > 0
+    OP_CHECK_IF(qfaInfo.maxSeqKv != -1 && qfaInfo.maxSeqKv <= 0,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MAX_SEQLEN_KV_NAME.c_str(),
                     std::to_string(qfaInfo.maxSeqKv).c_str(),
-                    "max_seqlen_kv is not effective currently, only -1 is supported"),
+                    "max_seqlen_kv must be -1 or greater than 0"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

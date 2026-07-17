@@ -76,6 +76,7 @@ enum class Layout : uint8_t {
     PA_NZ,
     PA_BBND,
     PA_BNBD,
+    N2TGD,
     BUTT
 };
 
@@ -183,7 +184,8 @@ static inline Layout ConvertToLayout(const std::string &layoutStr)
         { "NBSD",  Layout::NBSD },
         { "TND",   Layout::TND },
         { "NTD",   Layout::NTD },
-        { "PA_NZ", Layout::PA_NZ }
+        { "PA_NZ", Layout::PA_NZ },
+        { "N2TGD", Layout::N2TGD }
     };
     if (layoutTable.find(layoutStr) != layoutTable.end()) {
         return layoutTable[layoutStr];

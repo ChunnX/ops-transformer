@@ -30,7 +30,7 @@ extern aclnnStatus aclnnInnerQuantFlashAttnGetWorkspaceSize(
     int64_t quantMode,
     double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
     int64_t maxSeqlenQ, int64_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutKv, const char *layoutOut,
+    const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut,
     bool returnSoftmaxLse,
     const aclTensor *attnOut, const aclTensor *softmaxLse,
     uint64_t *workspaceSize, aclOpExecutor **executor);

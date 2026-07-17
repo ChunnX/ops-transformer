@@ -44,6 +44,7 @@ namespace l0op {
  * @param maxSeqlenQ          max query sequence length (int64_t)
  * @param maxSeqlenKV         max kv sequence length (int64_t)
  * @param layoutQ             query layout string
+ * @param layoutQDescale      query descale layout string
  * @param layoutKv            kv layout string
  * @param layoutOut           output layout string
  * @param returnSoftmaxLse    whether to output softmax_lse (bool)
@@ -75,6 +76,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     int64_t maxSeqlenQ,
     int64_t maxSeqlenKV,
     const char *layoutQ,
+    const char *layoutQDescale,
     const char *layoutKv,
     const char *layoutOut,
     bool returnSoftmaxLse,
