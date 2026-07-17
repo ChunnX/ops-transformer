@@ -38,7 +38,6 @@ private:
     __aicore__ inline void CopyInXNorm(int64_t loopIdx);
     __aicore__ inline void CopyInExpertIdx(int64_t loopIdx);
     __aicore__ inline void SigmoidRenormBackward();
-    __aicore__ inline void ScatterGradNormX();
     __aicore__ inline void SigmoidGrad();
     __aicore__ inline void CopyOut(int64_t loopIdx);
 
@@ -47,8 +46,7 @@ private:
     TQue<QuePosition::VECIN, 2> indicesQue_;
     TQue<QuePosition::VECIN, 2> xQue_;
     TQue<QuePosition::VECOUT, 1> outQue_;
-    TBuf<TPosition::VECCALC> bufn2_;
-    TBuf<TPosition::VECCALC> bufn3_;
+    TBuf<TPosition::VECCALC> gradNormXBuf_;
     TBuf<TPosition::VECCALC> wPrimeCache_;
     GlobalTensor<float> xNormGm_;
     GlobalTensor<T> gradYGm_;
@@ -85,13 +83,14 @@ __aicore__ inline void MoeGatingTopKBackward<T>::Init(GM_ADDR xNorm, GM_ADDR gra
     expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx + tilingData_->perCoreRows * tilingData_->k * blockIdx_);
     gradXGm_.SetGlobalBuffer((__gm__ T *)gradX + tilingData_->perCoreRows * tilingData_->expertCount * blockIdx_);
     pipe_->InitBuffer(gradYQue_, 2, tilingData_->baseRows * AlignBytes(tilingData_->k, tilingData_->gradYDtypeSize));
-    pipe_->InitBuffer(indicesQue_, 2, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_INT32));
+    pipe_->InitBuffer(indicesQue_, 2,
+                      tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_INT32) + VECTOR_REG_WIDTH);
     pipe_->InitBuffer(xQue_, 2, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(outQue_, 1,
                       AlignBytes(tilingData_->baseRows * tilingData_->expertCount, tilingData_->gradYDtypeSize));
-    pipe_->InitBuffer(bufn2_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(bufn3_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
-    pipe_->InitBuffer(wPrimeCache_, tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(gradNormXBuf_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
+    pipe_->InitBuffer(wPrimeCache_,
+                      tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32) + VECTOR_REG_WIDTH);
 }
 
 // ── Process ──────────────────────────────────────────────────
@@ -106,7 +105,6 @@ __aicore__ inline void MoeGatingTopKBackward<T>::Process()
         CopyInXNorm(loopIdx);
         CopyInExpertIdx(loopIdx);
         SigmoidRenormBackward();
-        ScatterGradNormX();
         SigmoidGrad();
         CopyOut(loopIdx);
     }
@@ -133,12 +131,11 @@ __aicore__ inline void MoeGatingTopKBackward<T>::CopyInGradY(int64_t loopIdx)
         Muls(wPrimeCache, gradYLocal_, tilingData_->routedScalingFactor, curRowsByKAlign_);
     } else {
         if (kAlign16_ == kAlign_) {
-            Cast(wPrimeCache, gradYLocal_, RoundMode::CAST_NONE, curRowsByKAlign_);
+            CallCastGradYFlatVF<T>(gradYLocal_, wPrimeCache, static_cast<uint32_t>(curRowsByKAlign_));
         } else {
-            PipeBarrier<PIPE_V>();
-            for (int64_t i = 0; i < curRows_; i++) {
-                Cast(wPrimeCache[i * kAlign_], gradYLocal_[i * kAlign16_], RoundMode::CAST_NONE, kAlign_);
-            }
+            CallCastGradYRowsVF<T>(gradYLocal_, wPrimeCache, static_cast<uint16_t>(curRows_),
+                                   static_cast<uint16_t>(tilingData_->k), static_cast<uint16_t>(kAlign16_),
+                                   static_cast<uint16_t>(kAlign_));
         }
         PipeBarrier<PIPE_V>();
         Muls(wPrimeCache, wPrimeCache, tilingData_->routedScalingFactor, curRowsByKAlign_);
@@ -168,142 +165,45 @@ __aicore__ inline void MoeGatingTopKBackward<T>::CopyInExpertIdx(int64_t loopIdx
     expertIdxLocal_ = indicesQue_.AllocTensor<int32_t>();
     DataCopyExtParams copyParams;
     copyParams.blockCount = static_cast<uint16_t>(curRows_);
-    copyParams.blockLen = static_cast<uint32_t>(tilingData_->k * SIZE_OF_INT32);
+    copyParams.blockLen = static_cast<uint32_t>(tilingData_->k) * static_cast<uint32_t>(SIZE_OF_INT32);
     copyParams.srcStride = static_cast<uint32_t>(0);
     copyParams.dstStride = static_cast<uint32_t>(0);
     DataCopyPadExtParams<int32_t> padParams{true, 0, static_cast<uint8_t>(kAlign_ - tilingData_->k), 0};
-    DataCopyPad(expertIdxLocal_, expertIdxGm_[loopIdx * tilingData_->baseRows * tilingData_->k], copyParams, padParams);
+    DataCopyPad(expertIdxLocal_, expertIdxGm_[loopIdx * tilingData_->baseRows * tilingData_->k], copyParams,
+               padParams);
     indicesQue_.EnQue(expertIdxLocal_);
     expertIdxLocal_ = indicesQue_.DeQue<int32_t>();
 }
 
-// ── SigmoidRenormBackward ────────────────────────────────────
+// -- SigmoidRenormBackward (VF: gather + row-reduce + vectorized scatter,   --
+// -- with duplicate-expertIdx lanes dropped from the scatter mask so       --
+// -- results match PyTorch's scatter_ last-K-position-wins semantics       --
+// -- without a scalar GetValue/SetValue loop; see                          --
+// -- moe_gating_top_k_backward_vf.h for the full rationale)                --
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackward<T>::SigmoidRenormBackward()
 {
     PipeBarrier<PIPE_V>();
-
-    __local_mem__ float *xNormAddr = (__local_mem__ float *)xNormLocal_.GetPhyAddr();
-    __local_mem__ float *wCacheAddr = (__local_mem__ float *)wPrimeCache_.Get<float>().GetPhyAddr();
-    __local_mem__ int32_t *idxAddr = (__local_mem__ int32_t *)expertIdxLocal_.GetPhyAddr();
-    __local_mem__ float *tempAddr = (__local_mem__ float *)bufn3_.Get<float>().GetPhyAddr();
-
-    int32_t n = static_cast<int32_t>(tilingData_->expertCount);
-    int32_t k = static_cast<int32_t>(tilingData_->k);
-    int32_t kAlign = static_cast<int32_t>(kAlign_);
-    float eps = tilingData_->eps;
-    uint32_t VL_FP32 = VECTOR_REG_WIDTH / sizeof(float);
-
-    __local_mem__ float *scalarBuf = tempAddr + kAlign + kAlign;
-    __local_mem__ float *betaBuf = scalarBuf + 1;
-
-    for (int32_t row = 0; row < curRows_; row++) {
-        __local_mem__ float *xNormRow = xNormAddr + row * n;
-        __local_mem__ float *wCacheRow = wCacheAddr + row * kAlign;
-        __local_mem__ uint32_t *idxRowUB = reinterpret_cast<__local_mem__ uint32_t *>(idxAddr + row * kAlign);
-
-        // Pass 1: gather w', accumulate w' and w'*gradYScaled in registers
-        __VEC_SCOPE__
-        {
-            RegTensor<float> wPrimeReg, gradYSReg, dSumReg, betaSumReg, wReg;
-            RegTensor<uint32_t> idxReg;
-            MicroAPI::MaskReg pregFp = MicroAPI::CreateMask<float>();
-            MicroAPI::Duplicate(dSumReg, static_cast<float>(0), pregFp);
-            MicroAPI::Duplicate(betaSumReg, static_cast<float>(0), pregFp);
-            uint16_t numChunks = static_cast<uint16_t>((k + VL_FP32 - 1) / VL_FP32);
-            for (uint16_t chunk = 0; chunk < numChunks; chunk++) {
-                uint32_t chunkStart = chunk * VL_FP32;
-                uint32_t chunkElems = (chunkStart + VL_FP32 > static_cast<uint32_t>(k))
-                                          ? (static_cast<uint32_t>(k) - chunkStart)
-                                          : VL_FP32;
-                pregFp = MicroAPI::UpdateMask<float>(chunkElems);
-                MicroAPI::DataCopy(idxReg, idxRowUB + chunkStart);
-                MicroAPI::DataCopy(gradYSReg, wCacheRow + chunkStart);
-                MicroAPI::DataCopyGather(wPrimeReg, xNormRow, idxReg, pregFp);
-                MicroAPI::DataCopy(wCacheRow + chunkStart, wPrimeReg, pregFp);
-                MicroAPI::DataCopy(tempAddr + chunkStart, gradYSReg, pregFp);
-                MicroAPI::Add(dSumReg, dSumReg, wPrimeReg, pregFp);
-                MicroAPI::Mul(wReg, wPrimeReg, gradYSReg, pregFp);
-                MicroAPI::Add(betaSumReg, betaSumReg, wReg, pregFp);
-            }
-            MicroAPI::ReduceSum(dSumReg, dSumReg, pregFp);
-            MicroAPI::DataCopy(scalarBuf, dSumReg, pregFp);
-            MicroAPI::ReduceSum(betaSumReg, betaSumReg, pregFp);
-            MicroAPI::DataCopy(betaBuf, betaSumReg, pregFp);
-        }
-
-        float D = scalarBuf[0] + eps;
-        float invD = 1.0f / D;
-        float beta = betaBuf[0] * invD;
-
-        // Pass 2: gradWPrime = (gradYScaled - beta) * invD
-        __VEC_SCOPE__
-        {
-            RegTensor<float> wPrimeReg, gradYSReg, wReg;
-            MicroAPI::MaskReg pregFp = MicroAPI::CreateMask<float>();
-            uint16_t numChunks = static_cast<uint16_t>((k + VL_FP32 - 1) / VL_FP32);
-            for (uint16_t chunk = 0; chunk < numChunks; chunk++) {
-                uint32_t chunkStart = chunk * VL_FP32;
-                uint32_t chunkElems = (chunkStart + VL_FP32 > static_cast<uint32_t>(k))
-                                          ? (static_cast<uint32_t>(k) - chunkStart)
-                                          : VL_FP32;
-                pregFp = MicroAPI::UpdateMask<float>(chunkElems);
-                MicroAPI::DataCopy(wPrimeReg, wCacheRow + chunkStart);
-                MicroAPI::DataCopy(gradYSReg, tempAddr + chunkStart);
-                MicroAPI::Adds(wReg, gradYSReg, -beta, pregFp);
-                MicroAPI::Muls(wReg, wReg, invD, pregFp);
-                MicroAPI::DataCopy(wCacheRow + chunkStart, wReg, pregFp);
-            }
-        }
-    }
-}
-
-// ── Scatter ──────────────────────────────────────────────────
-template <typename T>
-__aicore__ inline void MoeGatingTopKBackward<T>::ScatterGradNormX()
-{
-    LocalTensor<float> bufn3 = bufn3_.Get<float>();
-    Duplicate<float>(bufn3, 0.0f, elementCountPerLoop_);
+    LocalTensor<float> wCache = wPrimeCache_.Get<float>();
+    LocalTensor<float> gradNormX = gradNormXBuf_.Get<float>();
+    Duplicate<float>(gradNormX, 0.0f, elementCountPerLoop_);
     PipeBarrier<PIPE_V>();
-    LocalTensor<float> wPrimeCache = wPrimeCache_.Get<float>();
-    int32_t n = static_cast<int32_t>(tilingData_->expertCount);
-    SetWaitFlag<HardEvent::V_S>(HardEvent::V_S);
-    for (int64_t row = 0; row < curRows_; row++) {
-        for (int64_t p = 0; p < tilingData_->k; p++) {
-            int32_t expert = expertIdxLocal_.GetValue(row * kAlign_ + p);
-            float val = wPrimeCache.GetValue(row * kAlign_ + p);
-            bufn3.SetValue(row * n + expert, val);
-        }
-    }
+    CallSigmoidRenormBackwardVF(xNormLocal_, expertIdxLocal_, wCache, gradNormX, tilingData_->eps,
+                                static_cast<uint16_t>(curRows_), static_cast<uint16_t>(tilingData_->k),
+                                static_cast<uint16_t>(kAlign_), static_cast<uint16_t>(tilingData_->expertCount));
+    PipeBarrier<PIPE_V>();
+    indicesQue_.FreeTensor(expertIdxLocal_);
 }
 
 // ── SigmoidGrad ──────────────────────────────────────────────
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackward<T>::SigmoidGrad()
 {
-    SetWaitFlag<HardEvent::S_V>(HardEvent::S_V);
     gradXOutTensor_ = outQue_.AllocTensor<T>();
-    LocalTensor<float> wPrimeCache = wPrimeCache_.Get<float>();
-    __local_mem__ float *xNormUBA = (__local_mem__ float *)xNormLocal_.GetPhyAddr();
-    __local_mem__ float *gNormxUBA = (__local_mem__ float *)bufn3_.Get<float>().GetPhyAddr();
-    constexpr uint32_t oneRepeatSize = VECTOR_REG_WIDTH / sizeof(float);
-    uint16_t repeatTimes =
-        static_cast<uint16_t>((static_cast<uint32_t>(elementCountPerLoop_) * sizeof(float) + VECTOR_REG_WIDTH - 1) /
-                              VECTOR_REG_WIDTH);
-    if constexpr (IsSameType<T, float>::value) {
-        asc_vf_call<MoeGatingTopKBackwardNs::SigmoidGradFP32VF>(
-            xNormUBA, gNormxUBA, (__ubuf__ float *)wPrimeCache.GetPhyAddr(),
-            static_cast<uint32_t>(elementCountPerLoop_), oneRepeatSize, repeatTimes);
-        PipeBarrier<PIPE_V>();
-        DataCopy(gradXOutTensor_, wPrimeCache, elementCountPerLoop_);
-    } else {
-        asc_vf_call<MoeGatingTopKBackwardNs::SigmoidGradHalfVF<T>>(
-            xNormUBA, gNormxUBA, (__ubuf__ T *)wPrimeCache.GetPhyAddr(),
-            static_cast<uint32_t>(elementCountPerLoop_), oneRepeatSize, repeatTimes);
-        PipeBarrier<PIPE_V>();
-        Cast(gradXOutTensor_, wPrimeCache, RoundMode::CAST_RINT, elementCountPerLoop_);
-    }
+    LocalTensor<float> gradNormX = gradNormXBuf_.Get<float>();
+    CallSigmoidGradVF<T>(gradXOutTensor_, xNormLocal_, gradNormX, static_cast<uint32_t>(elementCountPerLoop_));
     outQue_.EnQue(gradXOutTensor_);
+    xQue_.FreeTensor(xNormLocal_);
 }
 
 // ── CopyOut ──────────────────────────────────────────────────

@@ -22,6 +22,7 @@ using namespace MoeGatingTopKBackwardNs;
 extern "C" __global__ __aicore__ void moe_gating_top_k_backward(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx,
                                                                 GM_ADDR gradX, GM_ADDR workspace, GM_ADDR tiling)
 {
+    KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
     if (g_coreType == AIC) {
         return;
     }
