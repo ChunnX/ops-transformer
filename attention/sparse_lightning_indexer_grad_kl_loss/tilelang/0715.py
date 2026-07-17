@@ -563,6 +563,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.fill(p_reduced_tmp_ub, 1.0)
                     T.pipe_barrier("v")
                     T.tile.broadcast(rsy_bc_ub, rsy_max_ub)
+                    # BRCB and the following V op have a RAW dependency.
+                    T.pipe_barrier("v")
                     T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_bc_ub[0, :])
 
                     # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
@@ -592,6 +594,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                     T.pipe_barrier("v")
                     T.tile.broadcast(rsy_bc_ub, rsy_sum_ub)
+                    # BRCB and div both use PIPE_V; preserve the broadcast result.
+                    T.pipe_barrier("v")
                     T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_bc_ub[0, :])
                     T.set_flag("v", "mte3", 4)
                     T.wait_flag("v", "mte3", 4)
@@ -636,7 +640,11 @@ def tilelang_grad_kl_loss_single_kernel(
                     # WAR pre-fill: dw_chunk_ub 初始可安全写入（无前序 V 读者）
                     T.set_flag("v", "mte2", 4)
 
-                    for g_id in T.serial(g_num):
+                    # MIX_AIC_1_2 provides two AIVs for each cid.  Split the
+                    # independent Nidx1 halves so they write disjoint outputs.
+                    g_id_start = vid
+                    g_id_end = T.min(vid + 1, g_num)
+                    for g_id in T.serial(g_id_start, g_id_end):
                         g_start = g_id * vector_baseg
 
                         T.tile.fill(weight_ub, 0)
