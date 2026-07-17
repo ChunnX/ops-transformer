@@ -24,8 +24,8 @@ using namespace AscendC;
 
 namespace MegaMoeCombineReduceImpl {
 struct CombineReduceTileSchedule {
-    uint32_t logicalCoreId;
-    uint32_t logicalCoreNum;
+    uint32_t tileId;
+    uint32_t tileNum;
 };
 
 struct CombineReduceShapeContext {
@@ -58,13 +58,13 @@ __aicore__ inline void ComputeCombineReduceCoreRange(const CombineReduceTileSche
 {
     coreLen = 0;
     coreOffset = 0;
-    if (tileSchedule.logicalCoreNum == 0 || tileSchedule.logicalCoreId >= tileSchedule.logicalCoreNum) {
+    if (tileSchedule.tileNum == 0 || tileSchedule.tileId >= tileSchedule.tileNum) {
         return;
     }
 
     int32_t totalLen = static_cast<int32_t>(totalLength);
-    int32_t coreIdx = static_cast<int32_t>(tileSchedule.logicalCoreId);
-    int32_t coreNum = static_cast<int32_t>(tileSchedule.logicalCoreNum);
+    int32_t coreIdx = static_cast<int32_t>(tileSchedule.tileId);
+    int32_t coreNum = static_cast<int32_t>(tileSchedule.tileNum);
     int32_t lenPerCore = Ops::Base::CeilDiv(
         static_cast<uint32_t>(totalLen), static_cast<uint32_t>(coreNum));
     int32_t lenPerCoreAlign = Ops::Base::CeilAlign(
