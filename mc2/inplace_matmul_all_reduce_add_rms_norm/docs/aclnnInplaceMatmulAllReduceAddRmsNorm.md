@@ -19,7 +19,7 @@
 
 ## 功能说明
 
-- **算子功能**：完成mm + all_reduce + add + rms_norm计算。
+- **算子功能**：完成原地的mm + all_reduce + add + rms_norm计算。
 - **计算公式**：
 
     $$
@@ -96,7 +96,7 @@ aclnnStatus aclnnInplaceMatmulAllReduceAddRmsNorm(
         <tr>
           <td>x1</td>
           <td>输入</td>
-          <td>MatMul计算的左矩阵，即计算公式中的x1。</td>
+          <td>MatMul计算的左矩阵，即计算公式中的x1，同时也是输出，即公式中的y。</td>
           <td><ul><li>支持空Tensor。</li><li>与x2的数据类型保持一致。</li><li>当前版本仅支持二维或者三维输入。</li></ul></td>
           <td>FLOAT16、BFLOAT16</td>
           <td>ND</td>
