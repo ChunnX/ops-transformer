@@ -7,7 +7,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-set(OPTENSOR_TAG_ID a524601b399f0e2b6fb3824ffb777d2617d520ae)
+set(OPTENSOR_TAG_ID 3e078d2541402abbc67d347fb9a94d53c4f0a0bf)
 
 if(EXISTS "${PROJECT_SOURCE_DIR}/../ops-tensor")
   get_filename_component(OPTENSOR_SOURCE_PATH
@@ -54,10 +54,10 @@ else()
     ERROR_QUIET
   )
   if(GIT_REMOTE_URL MATCHES "^git@|^ssh://")
-    set(OPTENSOR_GIT_URL "git@gitcode.com:cann/ops-tensor.git")
+    set(OPTENSOR_GIT_URL "git@gitcode.com:AlbertYoung192/ops-tensor_gmm_swiglu_quant_slave.git")
     message(STATUS "[ThirdPartyLib][ops-tensor] using SSH protocol: ${OPTENSOR_GIT_URL}")
   else()
-    set(OPTENSOR_GIT_URL "https://gitcode.com/cann/ops-tensor.git")
+    set(OPTENSOR_GIT_URL "https://gitcode.com/AlbertYoung192/ops-tensor_gmm_swiglu_quant_slave.git")
     message(STATUS "[ThirdPartyLib][ops-tensor] using HTTPS protocol: ${OPTENSOR_GIT_URL}")
   endif()
   include(FetchContent)
