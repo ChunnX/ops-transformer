@@ -67,8 +67,8 @@ example (M*rank_size, N).
 of x1. The type support float16, bfloat16, float8_e4m3fn, float8_e5m2, hifloat8, float4_e2m1. The format support ND.
 * @li amax_out: A matrix tensor. Maximum value of output matrix. The type support float32. The format support ND. The
 amax_out is 1 dimension and only one element, for example (1,). The amax_out only support nullptr in current version. \n
-* @li comm_mode: A string. Communication mode. Default: "ccu". The comm_mode only supports empty string, "ccu" ,
-"ai_cpu" or "aiv" in current version. \n
+* @li comm_mode: A string. Communication mode. Default: "ai_cpu". The comm_mode only supports "ccu" , "ai_cpu" or "aiv"
+in current version. \n
 */
 REG_OP(AllGatherMatmulV2)
     .INPUT(x1, TensorType({DT_FLOAT16, DT_BF16, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_HIFLOAT8, DT_FLOAT4_E2M1}))
