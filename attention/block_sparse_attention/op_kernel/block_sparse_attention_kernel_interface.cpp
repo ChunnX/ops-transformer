@@ -287,7 +287,7 @@ __global__ __aicore__ void BsaInferInterfaceFullQuant(
 }
 
 template <
-    class InDtype, class SMDtype, class REDtype,
+    class InDtype, class SMDtype, class REDtype, class Otype,
     Format qFormat, Format kvFormat,
     Epilogue::LseMode lseMode, Epilogue::LseFormat lseFormat, Epilogue::MXQuantMode mxQuantMode,
     Gemm::Tile::CopyL0CToUBMode mm1L0C2UBMode,
@@ -308,8 +308,8 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using ElementS = SMDtype; // half
     using ElementP = InDtype; // fp4x2_e2m1_t
     using ElementScale = uint8_t; // e8m0
-    using ElementO = InDtype; // bfloat16_t / fp16
     using ElementOTmp = REDtype; // float
+    using ElementO = Otype; // bfloat16_t / fp16
     using ElementGroupMax = SMDtype;
     using ElementLocalGlobalMax = SMDtype;
     // layout tags
@@ -377,8 +377,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
         EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO,
         EpilogueComputePScale, EpilogueCopyGlobalMaxUbToL1, BlockMmadCopyGlobalMaxL1ToUB,
         qFormat, kvFormat, transposedMm1>;
-    // BsaKernelParamsArch35 params{q, k, v, mask, blockTables,
-    //     actualQseqlen, actualKvseqlen, blockSparseMask, o, workspace, lse, tiling};
+
      BsaFullQuantKernelParamsArch35 params{query,
                                           key,
                                           value,
