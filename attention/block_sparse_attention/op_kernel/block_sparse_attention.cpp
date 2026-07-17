@@ -294,21 +294,21 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
     // mxfp4全量化+dn
     #elif TILING_KEY_VAR == QMFP4OCP_KVMFP4OCP_OBF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND,
+            fp4x2_e2m1_t, half, float, bfloat16_t, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::TN1, Epilogue::MXQuantMode::OCP,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 qDequantScale, kDequantScale, vDequantScale, attentionOut, user, softmaxLse, tiling);
     #elif TILING_KEY_VAR == QMFP4OCP_KVMFP4OCP_OBF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD,
+            fp4x2_e2m1_t, half, float, bfloat16_t, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::BNS1, Epilogue::MXQuantMode::OCP,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 qDequantScale, kDequantScale, vDequantScale, attentionOut, user, softmaxLse, tiling);
     #elif TILING_KEY_VAR == QMFP4OCP_KVMFP4OCP_OBF16_QBSND_KVBSND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::BSND, BsaKernelArch35::Format::BSND,
+            fp4x2_e2m1_t, half, float, bfloat16_t, BsaKernelArch35::Format::BSND, BsaKernelArch35::Format::BSND,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::BSN1, Epilogue::MXQuantMode::OCP,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
@@ -316,21 +316,21 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
     // mxfp4 OCP 量化(mxfp4 OCP + mixed SM + FP16 out)
     #elif TILING_KEY_VAR == QMFP4OCP_KVMFP4OCP_OF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND,
+            fp4x2_e2m1_t, half, float, half, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::TN1, Epilogue::MXQuantMode::OCP,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 qDequantScale, kDequantScale, vDequantScale, attentionOut, user, softmaxLse, tiling);
     #elif TILING_KEY_VAR == QMFP4OCP_KVMFP4OCP_OF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD,
+            fp4x2_e2m1_t, half, float, half, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::BNS1, Epilogue::MXQuantMode::OCP,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 qDequantScale, kDequantScale, vDequantScale, attentionOut, user, softmaxLse, tiling);
     #elif TILING_KEY_VAR == QMFP4OCP_KVMFP4OCP_OF16_QBSND_KVBSND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::BSND, BsaKernelArch35::Format::BSND,
+            fp4x2_e2m1_t, half, float, half, BsaKernelArch35::Format::BSND, BsaKernelArch35::Format::BSND,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::BSN1, Epilogue::MXQuantMode::OCP,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
@@ -338,21 +338,21 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
     // mxfp4 CX 量化(mxfp4 CX + mixed SM + BF16 out)
     #elif TILING_KEY_VAR == QMFP4CX_KVMFP4CX_OBF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND,
+            fp4x2_e2m1_t, half, float, bfloat16_t, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::TN1, Epilogue::MXQuantMode::CX,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 qDequantScale, kDequantScale, vDequantScale, attentionOut, user, softmaxLse, tiling);
     #elif TILING_KEY_VAR == QMFP4CX_KVMFP4CX_OBF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD,
+            fp4x2_e2m1_t, half, float, bfloat16_t, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::BNS1, Epilogue::MXQuantMode::CX,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 qDequantScale, kDequantScale, vDequantScale, attentionOut, user, softmaxLse, tiling);
     #elif TILING_KEY_VAR == QMFP4CX_KVMFP4CX_OBF16_QBSND_KVBSND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::BSND, BsaKernelArch35::Format::BSND,
+            fp4x2_e2m1_t, half, float, bfloat16_t, BsaKernelArch35::Format::BSND, BsaKernelArch35::Format::BSND,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::BSN1, Epilogue::MXQuantMode::CX,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
@@ -360,21 +360,21 @@ extern "C" __global__ __aicore__ void block_sparse_attention(
     // mxfp4 CX 量化(mxfp4 CX + mixed SM + FP16 out)
     #elif TILING_KEY_VAR == QMFP4CX_KVMFP4CX_OF16_QTND_KVTND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND,
+            fp4x2_e2m1_t, half, float, half, BsaKernelArch35::Format::TND, BsaKernelArch35::Format::TND,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::TN1, Epilogue::MXQuantMode::CX,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 qDequantScale, kDequantScale, vDequantScale, attentionOut, user, softmaxLse, tiling);
     #elif TILING_KEY_VAR == QMFP4CX_KVMFP4CX_OF16_QBNSD_KVBNSD_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD,
+            fp4x2_e2m1_t, half, float, half, BsaKernelArch35::Format::BNSD, BsaKernelArch35::Format::BNSD,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::BNS1, Epilogue::MXQuantMode::CX,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
                 qDequantScale, kDequantScale, vDequantScale, attentionOut, user, softmaxLse, tiling);
     #elif TILING_KEY_VAR == QMFP4CX_KVMFP4CX_OF16_QBSND_KVBSND_NOCACHE_SMF16_REF32_NOMASK_KEY
         BsaInferInterfaceMXFP4FullQuant<
-            fp4x2_e2m1_t, half, float, BsaKernelArch35::Format::BSND, BsaKernelArch35::Format::BSND,
+            fp4x2_e2m1_t, half, float, half, BsaKernelArch35::Format::BSND, BsaKernelArch35::Format::BSND,
             Epilogue::LseMode::NONE, Epilogue::LseFormat::BSN1, Epilogue::MXQuantMode::CX,
             Gemm::Tile::CopyL0CToUBMode::SPLIT_N, true>(
                 query, key, value, blockSparseMask, mask, blockTable, actualSeqLengths, actualSeqLengthsKv,
