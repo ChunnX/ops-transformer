@@ -428,18 +428,18 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
             vecBlock.ProcessVector6(bmm1Res, this->reluGradResL1Buf.Get(), runInfo[(s2TaskId + 2) % MODE_NUM_3]);
         }
         runInfo[(s2TaskId + 2) % MODE_NUM_3].taskStep = TASK_V1;
-    }
-
-    if (runInfo[(s2TaskId + 1) % MODE_NUM_3].taskStep == TASK_V1) {
-        if ASCEND_IS_AIC {
-            cubeBlock.ComputeMm3(this->reluGradResL1Buf.Get(),
-                runInfo[(s2TaskId + 1) % MODE_NUM_3], constInfo);
-            cubeBlock.ComputeMm4(reluGradResL1Buf.GetPre(), runInfo[(s2TaskId + 1) % MODE_NUM_3],
-                constInfo, runInfo[(s2TaskId + 1) % MODE_NUM_3].isLastBlock);
+        if (runInfo[(s2TaskId + 1) % MODE_NUM_3].taskStep == TASK_V1) {
+            if ASCEND_IS_AIC {
+                cubeBlock.ComputeMm3(this->reluGradResL1Buf.Get(),
+                    runInfo[(s2TaskId + 1) % MODE_NUM_3], constInfo);
+                cubeBlock.ComputeMm4(reluGradResL1Buf.GetPre(), runInfo[(s2TaskId + 1) % MODE_NUM_3],
+                    constInfo, runInfo[(s2TaskId + 1) % MODE_NUM_3].isLastBlock);
+            }
+            runInfo[(s2TaskId + 1) % MODE_NUM_3].taskStep = TASK_C2;
         }
-        runInfo[(s2TaskId + 1) % MODE_NUM_3].taskStep = TASK_C2;
         s2TaskId++;
     }
+
 
     if (runInfo[(s2TaskId + 1) % MODE_NUM_3].taskStep == TASK_V1) {
         if ASCEND_IS_AIC {
@@ -608,10 +608,8 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     runInfo.firstNIndexSize = AlignTo(constInfo.gSizeQueryIndex, ALIGN_NUM_2) / 2;
     if (constInfo.subBlockIdx == 0) {
         runInfo.nIndexSize = runInfo.firstNIndexSize;
-        runInfo.nVecSize = AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) / 2;
     } else {
         runInfo.nIndexSize = constInfo.gSizeQueryIndex - runInfo.firstNIndexSize;
-        runInfo.nVecSize = constInfo.gSizeQuery - AlignTo(constInfo.gSizeQuery, ALIGN_NUM_2) / 2;
     }
 
     runInfo.weightOffset =
