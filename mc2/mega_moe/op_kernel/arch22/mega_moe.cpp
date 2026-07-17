@@ -33,7 +33,9 @@ using namespace MegaMoeA2Impl;
 template <bool TPL_IS_TRANSPOSE_W1, bool TPL_IS_TRANSPOSE_W2, int TPL_QUANT_MODE, int TPL_QUANT_OUT_TYPE, int TPL_ARCH>
 __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1,
                                     GM_ADDR weight2, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR bias1,
-                                    GM_ADDR bias2, GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR yOut,
+                                    GM_ADDR bias2, GM_ADDR xActiveMask, GM_ADDR scales, GM_ADDR sharedWeight1,
+                                    GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2,
+                                    GM_ADDR sharedBias1, GM_ADDR sharedBias2, GM_ADDR yOut,
                                     GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
@@ -49,14 +51,16 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
 
             MegaMoeA2<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, true> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+                    xActiveMask, scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2,
+                    sharedBias1, sharedBias2, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         } else if constexpr (TPL_QUANT_MODE == MEGA_MOE_QUANT_MODE_NO_QUANT) {
             GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
 
             MegaMoeA2<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, true> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+                    xActiveMask, scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2,
+                    sharedBias1, sharedBias2, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         }
 #endif
@@ -65,14 +69,16 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
             GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataQuant, tilingData, tilingGM);
             MegaMoe<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, false> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+                    xActiveMask, scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2,
+                    sharedBias1, sharedBias2, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         } else {
             GET_TILING_DATA_WITH_STRUCT(MegaMoeTilingDataNonQuant, tilingData, tilingGM);
 
             MegaMoe<DTYPE_X, DTYPE_WEIGHT1, DTYPE_Y, TPL_IS_TRANSPOSE_W1, TPL_IS_TRANSPOSE_W2, isNz, false> op;
             op.Init(context, x, topkIds, topkWeights, weight1, weight2, weightScales1, weightScales2, bias1, bias2,
-                    xActiveMask, scales, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
+                    xActiveMask, scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2,
+                    sharedBias1, sharedBias2, yOut, expertTokenNumsOut, workspaceGM, tilingGM);
             op.Process();
         }
     }
