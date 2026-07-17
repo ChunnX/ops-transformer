@@ -44,12 +44,18 @@ public:
     __aicore__ inline void CopyInA1Nd2Nz(uint64_t m, uint64_t currentK,
         const AscendC::GlobalTensor<float>& aGlobal, const AscendC::LocalTensor<float>& al1Local)
     {
+        CopyInA1Nd2Nz(m, currentK, currentK, aGlobal, al1Local);
+    }
+
+    __aicore__ inline void CopyInA1Nd2Nz(uint64_t m, uint64_t currentK, uint64_t srcDValue,
+        const AscendC::GlobalTensor<float>& aGlobal, const AscendC::LocalTensor<float>& al1Local)
+    {
         AscendC::Nd2NzParams nd2nzParam;
         nd2nzParam.ndNum = 1;
         nd2nzParam.nValue = m;
         nd2nzParam.dValue = currentK;
         nd2nzParam.srcNdMatrixStride = 1;
-        nd2nzParam.srcDValue = currentK;
+        nd2nzParam.srcDValue = srcDValue;
         nd2nzParam.dstNzC0Stride = LowApiAlign(m, AscendC::BLOCK_CUBE);
         nd2nzParam.dstNzNStride = 1;
         nd2nzParam.dstNzMatrixStride = 1;
@@ -58,7 +64,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(2);
     }
 
-    __aicore__ inline void Init()
+    __aicore__ inline void Init(bool enableHf32 = true)
     {
         uint32_t aL0OneBuffer = 256 * 32;
         uint32_t bL0OneBuffer = 256 * 32;
@@ -79,8 +85,10 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(1);
 
         if ASCEND_IS_AIC {
-            AscendC::SetHF32Mode(1);
-            AscendC::SetHF32TransMode(1);
+            if (enableHf32) {
+                AscendC::SetHF32Mode(1);
+                AscendC::SetHF32TransMode(1);
+            }
         }
     }
 

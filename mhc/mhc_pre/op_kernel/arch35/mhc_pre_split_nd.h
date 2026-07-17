@@ -21,6 +21,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_pre_utils.h"
 #include "mhc_pre_kernel_base.h"
+#include "mhc_pre_cube_compute_arch35.h"
 #include "mhc_pre_tiling_key.h"
 
 namespace MhcPre {
@@ -137,6 +138,10 @@ public:
 
     GlobalTensor<P> mmResGm_;
     GlobalTensor<P> tempMMResGm_;
+    TBuf<TPosition::A1> l1Buffer_;
+    LocalTensor<P> aL1_;
+    LocalTensor<P> bL1_;
+    MhcPreCubeCompute mmService_;
 
     static constexpr uint32_t ND_LENGTH = 2048;
     static constexpr uint64_t V1_BASE_T = 8;
@@ -217,6 +222,12 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::Init(InitParams init
     if ASCEND_IS_AIV {
         InitLocalBuffers();
     }
+    if ASCEND_IS_AIC {
+        pipe_->InitBuffer(l1Buffer_, MHC_PRE_LOW_API_L1_ALLOC_SIZE);
+        aL1_ = l1Buffer_.Get<P>();
+        bL1_ = aL1_[MHC_PRE_LOW_API_L1_BUF_NUM * MHC_PRE_LOW_API_L1_BUF_OFFSET];
+        mmService_.Init(true);
+    }
 
     SyncAll<false>();
 }
@@ -291,6 +302,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::Process()
         if (coreIdx_ < ndBlockNum) {
             AICProcess();
         }
+        mmService_.End();
     }
 
     if ASCEND_IS_AIV {
@@ -360,12 +372,34 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AICProcess()
         mnConfig_.curSingleCoreK = mnConfig_.k - offset;
     }
 
-    mm.SetOrgShape(mnConfig_.singleCoreM, mnConfig_.singleCoreN, mnConfig_.k);
-    mm.SetSingleShape(mnConfig_.singleCoreM, mnConfig_.singleCoreN, mnConfig_.curSingleCoreK);
-    mm.SetTensorA(xFloatGm_[offset]);
-    mm.SetTensorB(phiGm_[offset], true);
-    mm.IterateAll(tempMMResGm_[outOffset], 0);
-    mm.End();
+    uint64_t mAlign = LowApiAlign(mnConfig_.singleCoreM, AscendC::BLOCK_CUBE);
+    uint64_t nAlign = LowApiAlign(mnConfig_.singleCoreN, AscendC::BLOCK_CUBE);
+    uint64_t maxKL1 = MHC_PRE_LOW_API_L1_BUF_OFFSET / mAlign;
+    maxKL1 = LowApiAlign(maxKL1, MHC_PRE_LOW_API_C0_SIZE) - MHC_PRE_LOW_API_C0_SIZE;
+    maxKL1 = AscendC::Std::max(maxKL1, static_cast<uint64_t>(MHC_PRE_LOW_API_C0_SIZE));
+    uint64_t baseK = (256U / AscendC::Std::max(mAlign, nAlign)) * 32U;
+    baseK = AscendC::Std::max(baseK, 32UL);
+
+    uint8_t aL1BufferId = 0;
+    uint64_t endOffset = offset + mnConfig_.curSingleCoreK;
+    for (uint64_t kOffset = offset; kOffset < endOffset; kOffset += maxKL1) {
+        uint64_t currentK = AscendC::Std::min(maxKL1, endOffset - kOffset);
+        uint8_t bL1BufferId = mmService_.GetBL1BufferId();
+        LocalTensor<P> currentAL1 = aL1_[aL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET];
+        LocalTensor<P> currentBL1 = bL1_[bL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET];
+        mmService_.CopyInA1Nd2Nz(mnConfig_.singleCoreM, currentK, mnConfig_.k,
+            xFloatGm_[kOffset], currentAL1);
+        mmService_.CopyInB1Nd2Nz(mnConfig_.k, currentK, mnConfig_.singleCoreN,
+            phiGm_[kOffset], currentBL1);
+        bool isFirst = kOffset == offset;
+        bool isLast = kOffset + currentK >= endOffset;
+        mmService_.Process(mnConfig_.singleCoreM, mnConfig_.singleCoreN,
+            mnConfig_.singleCoreM, baseK, isFirst, isLast, currentAL1, currentBL1);
+        if (isLast) {
+            mmService_.CopyOut(tempMMResGm_[outOffset], mnConfig_.singleCoreN);
+        }
+        aL1BufferId ^= 1U;
+    }
     AscendC::CrossCoreSetFlag<0x0, PIPE_FIX>(SYNC_CtoC);
     AscendC::CrossCoreWaitFlag(SYNC_CtoC);
     AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_CtoV1);
