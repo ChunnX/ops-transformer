@@ -14,12 +14,14 @@ import itertools
 
 PARAM_NAMES = [
     "B", "N_q", "N_kv", "D",
-    "actual_seq_q", "actual_seq_kv",
+    "seqused_q", "seqused_kv",
+    "cu_seqlens_q", "cu_seqlens_kv",
     "enable_pa", "kv_cache_layout", "block_size",
     "mask_mode", "q_scale_layout", "p_scale",
     "data_range_q", "data_range_k", "data_range_v",
     "enable_lse", "quant_mode",
     "device_id", "is_contiguous",
+    "max_seqlen_q", "max_seqlen_kv",
 ]
 
 TEST_PARAMS_DEFAULTS = {
@@ -29,6 +31,10 @@ TEST_PARAMS_DEFAULTS = {
     "quant_mode": [1],
     "device_id": [0],
     "is_contiguous": [True],
+    "cu_seqlens_q": [None],
+    "cu_seqlens_kv": [None],
+    "max_seqlen_q": [-1],
+    "max_seqlen_kv": [-1],
 }
 
 

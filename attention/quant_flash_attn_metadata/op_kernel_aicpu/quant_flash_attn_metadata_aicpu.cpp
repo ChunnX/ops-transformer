@@ -218,6 +218,13 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
         mBaseSize_ = 64U;
         s2BaseSize_ = 512U;
     }
+    if (quantMode_ == 1 || quantMode_ == 2) {
+        uint32_t gSize = (numHeadsKv_ > 0) ? (numHeadsQ_ / numHeadsKv_) : 1;
+        bool isDecode = baseInfo.querySeqSize * gSize <= 80;
+        if (!isDecode) {
+            baseInfo.kvHeadNum = numHeadsQ_;
+        }
+    }
     mBaseSize_ = mBaseSize_ * (aivCoreNum_ / aicCoreNum_);
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;

@@ -22,8 +22,10 @@ PARAM_MAP = {
     "N_q": "N_q",
     "N_kv": "N_kv",
     "D": "D",
-    "actual_seq_q": "ACTUAL_SEQ_Q",
-    "actual_seq_kv": "ACTUAL_SEQ_KV",
+    "seqused_q": "SEQUSED_Q",
+    "seqused_kv": "SEQUSED_KV",
+    "cu_seqlens_q": "CU_SEQLENS_Q",
+    "cu_seqlens_kv": "CU_SEQLENS_KV",
     "enable_pa": "ENABLE_PA",
     "kv_cache_layout": "KV_CACHE_LAYOUT",
     "block_size": "BLOCK_SIZE",
@@ -34,9 +36,11 @@ PARAM_MAP = {
     "data_range_k": "DATA_RANGE_K",
     "data_range_v": "DATA_RANGE_V",
     "enable_lse": "ENABLE_LSE",
-    "quant_mode": None,  # quant_mode 用于新接口，golden 中不需要设置全局变量
+    "quant_mode": None,
     "device_id": "DEVICE_ID",
     "is_contiguous": "IS_CONTIGUOUS",
+    "max_seqlen_q": "MAX_SEQLEN_Q",
+    "max_seqlen_kv": "MAX_SEQLEN_KV",
 }
 
 
@@ -64,10 +68,12 @@ def execute_test(params, mode, cdir=None):
         return None, None
 
     if "cpu" in mode:
+        eff_sq = golden._get_effective_seqused_q()
+        eff_skv = golden._get_effective_seqused_kv()
         cpu_out, cpu_lse = golden.cpu_mxfp8_golden(
             q_fp8, k_fp8, v_fp8,
             deq_q, deq_k, deq_v, p_scale,
-            golden.ACTUAL_SEQ_Q, golden.ACTUAL_SEQ_KV,
+            eff_sq, eff_skv,
             qr_bf16, kr_bf16,
         )
         golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
@@ -82,7 +88,7 @@ def execute_test(params, mode, cdir=None):
             npu_out, lse_out = golden.npu_mxfp8_fa(
                 q_fp8, k_fp8, v_fp8,
                 deq_q, deq_k, deq_v, p_scale,
-                golden.ACTUAL_SEQ_Q, golden.ACTUAL_SEQ_KV,
+                golden._get_effective_seqused_q(), golden._get_effective_seqused_kv(),
                 block_table_torch, qr_bf16, kr_bf16,
             )
         golden_cache.save_npu_output(case_name, npu_out, lse_out, cache_dir=cdir)
@@ -93,13 +99,14 @@ def execute_test(params, mode, cdir=None):
         return None, None
 
     compare_layout = "TND" if golden.ENABLE_PA else golden.INPUT_LAYOUT
-    cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.ACTUAL_SEQ_Q, compare_layout)
+    eff_sq = golden._get_effective_seqused_q()
+    cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, eff_sq, compare_layout)
 
     atten_result = result_compare_method.check_result(cpu_cmp, npu_out)
 
     lse_result = None
     if golden.ENABLE_LSE:
-        lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.ACTUAL_SEQ_Q, compare_layout)
+        lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, eff_sq, compare_layout)
         lse_result = result_compare_method.check_result(lse_cmp, lse_out)
 
     return atten_result, lse_result
