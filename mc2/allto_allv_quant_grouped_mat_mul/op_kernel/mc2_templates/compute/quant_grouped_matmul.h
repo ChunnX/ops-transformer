@@ -126,9 +126,8 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
         wScaleGlobalBuffer_.SetGlobalBuffer((__gm__ scaleType *)weightScaleGM);
     }
     if constexpr (PERTENSOR_QUANT_MODE) {
-        uint32_t expertNumMax = tilingData_->taskTilingInfo.expertNum;
         ttWeightScaleRepeatGm_ = ptrTableBase_ + TENSOR_LIST_SIZE;
-        ttXScaleRepeatGm_ = ttWeightScaleRepeatGm_ + sizeof(float) * expertNumMax;
+        ttXScaleRepeatGm_ = ttWeightScaleRepeatGm_ + sizeof(float) * expertNumInOneRank_;
     }
 
     const auto *opCnt = isA2avGmm ? &tilingData_->taskTilingInfo.recvCnt[0] :
@@ -208,8 +207,8 @@ __aicore__ inline void QuantGroupedMatmul<TilingDataType, GmmTilingDataType, xTy
         __gm__ float *ttXScalePtr = reinterpret_cast<__gm__ float *>(ttXScaleRepeatGm_);
         __gm__ float *ttWeightScalePtr = reinterpret_cast<__gm__ float *>(ttWeightScaleRepeatGm_);
         for (uint32_t i = 0; i < expertNum; i++) {
-            ttXScalePtr[startExpertIdx + i] = xScaleValue;
-            ttWeightScalePtr[startExpertIdx + i] = wScaleValue;
+            ttXScalePtr[i] = xScaleValue;
+            ttWeightScalePtr[i] = wScaleValue;
         }
     }
 
