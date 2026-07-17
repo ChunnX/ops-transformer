@@ -82,8 +82,8 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto Q_L1_0 = ascend_l1.GetWithOffset<half>(16384, 0);
   auto GK_L1_0 = ascend_l1.GetWithOffset<half>(8192, 32768);
   auto C_L0C = ascend_l0c.GetWithOffset<float>(8192, 0);
-  auto Q_L1_1 = ascend_l1.GetWithOffset<half>(16384, 65536);
-  auto GK_L1_1 = ascend_l1.GetWithOffset<half>(8192, 49152);
+  auto Q_L1_1 = ascend_l1.GetWithOffset<half>(16384, 49152);
+  auto GK_L1_1 = ascend_l1.GetWithOffset<half>(8192, 81920);
   auto QI_L1 = ascend_l1.GetWithOffset<half>(8192, 98304);
   auto GKI_L1 = ascend_l1.GetWithOffset<half>(8192, 114688);
   auto C2_L0C = ascend_l0c.GetWithOffset<float>(4096, 32768);
@@ -376,14 +376,18 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
     AscendC::PipeBarrier<PIPE_V>();
     tl::ascend::Broadcast<float, 2, 1, false>(rsy_bc_ub[0],rsy_sum_ub[0],tmp_ub,(uint32_t[]){1, 64}, (uint32_t[]){1, 1});
     AscendC::Div(rsy_chunk_ub[0], rsy_chunk_ub[0], rsy_bc_ub[0], 64);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(4);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(4);
+    tl::ascend::copy_ub_to_gm<float, 64>(SoftmaxI[(cid * 64)], rsy_chunk_ub[0], 2048, 1, 64);
     tl::ascend::Fill<float>(ones_2d_ub[0], 1.000000e+00f, 2048);
     tl::ascend::Fill<float>(eps_ub[0], 1.000000e-08f, 64);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(5);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(5);
+    tl::ascend::copy_gm_to_ub<float, 64>(softmax_i_chunk_ub[0], SoftmaxI[(cid * 64)], 2048, 1, 64, 0.000000e+00f);
     tl::ascend::copy_gm_to_ub<float, 64>(p_reduced_tmp_ub[0], PReduced[(cid * 64)], 2048, 1, 64, 0.000000e+00f);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(6);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(6);
-    AscendC::Sub(diff_ub[0], rsy_chunk_ub[0], p_reduced_tmp_ub[0], 64);
+    AscendC::Sub(diff_ub[0], softmax_i_chunk_ub[0], p_reduced_tmp_ub[0], 64);
     tl::ascend::Broadcast<float, 2, 0, false>(diff_2d_ub[0],diff_ub[0],tmp_ub,(uint32_t[]){32, 64}, (uint32_t[]){1, 64});
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(4);
     for (int32_t g_id = 0; g_id < 2; ++g_id) {
@@ -432,8 +436,9 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
     AscendC::Ln(loss_log_p_ub[0], loss_chunk_ub[0], 64);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(1);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(1);
-    tl::ascend::copy_ub_to_ub<float, float, 64>(loss_chunk_ub[0], rsy_chunk_ub[0], 1, 64, 64, 1, 64, 64);
-    AscendC::PipeBarrier<PIPE_V>();
+    tl::ascend::copy_gm_to_ub<float, 64>(loss_chunk_ub[0], SoftmaxI[(cid * 64)], 2048, 1, 64, 0.000000e+00f);
+    AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(2);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(2);
     AscendC::Max(loss_chunk_ub[0], loss_chunk_ub[0], eps_ub[0], 64);
     AscendC::PipeBarrier<PIPE_V>();
     AscendC::Ln(loss_log_si_ub[0], loss_chunk_ub[0], 64);
