@@ -81,9 +81,9 @@ __aicore__ inline void TeamBarrier::Execute()
             return;
         }
 
-        __gm__ uint64_t* teamSyncCounter = (__gm__ uint64_t*)(ctx_->commBufferAddrs[ctx_->rankId]
+        __gm__ int32_t* teamSyncCounter = (__gm__ int32_t*)(ctx_->commBufferAddrs[ctx_->rankId]
             + BARRIER_FLAG_SIZE + threadIdx_ * BARRIER_FLAG_SIZE);
-        count_ = (int32_t)(*teamSyncCounter) + 1;
+        count_ = (*teamSyncCounter) + 1;
 
         BarrierCrossCore();
         SetFlag<HardEvent::S_V>(1);

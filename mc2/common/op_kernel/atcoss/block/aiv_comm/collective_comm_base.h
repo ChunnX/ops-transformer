@@ -24,7 +24,7 @@ namespace Atcoss {
 namespace AivComm {
 
 using namespace AscendC;
-using Utils::CommTilingData;
+Utils::CommTilingData;
 
 enum class CommAddrLayout {
     DEFAULT,
