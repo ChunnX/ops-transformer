@@ -1,8 +1,4 @@
 # EngramFetch 训练设计文档
-
-> 需求文档：`mc2/requriment.md` v4.0
-> 推理基线：`mc2/engram_fetch_算子源码详解.md`、`mc2/ElasticBuffer_详解.md`
-
 ---
 
 ## 一、接口变化与新增
@@ -13,7 +9,15 @@
 
 | 参数 | 变化 | 类型 | 测试关注 |
 |------|------|------|---------|
+| ★ `num_max_tokens_per_rank` | 当前已有，engram使用 | INT32 | 训练使用（每张卡接受的最大token数） |
 | ★ `with_grad` | 新增 | bool=False | True→训练态，触发 GM 申请 + save-for-backward |
+
+
+**`engram_fetch`（函数签名不变）**
+
+| 参数 | 类型 | 测试关注 |
+|------|------|---------|
+| `fetch_ctx` | EngramFetchCtx（出参） | 训练独有 |
 
 **`engram_fetch_grad`（★新增）**
 
