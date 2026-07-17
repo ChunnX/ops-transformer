@@ -279,7 +279,7 @@ void FiaInfoParser::GetKvIsContiguous()
             keyNonContigDim_ = dim;
         }
     }
-    for (size_t i = 0; i < kStrideCache_.size(); ++i) {
+    for (size_t i = 0; i < vStrideCache_.size(); ++i) {
         int32_t dim = 0;
         if (CheckTensorContiguousLocal(vCache_[i]->GetStorageShape().GetDimNum(),
                                        vCache_[i]->GetStorageShape(),
