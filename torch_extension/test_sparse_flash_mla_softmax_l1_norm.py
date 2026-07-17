@@ -2079,3 +2079,5 @@ if __name__ == "__main__":
     test_smla_softmax_l1_bsnd_dense_a5()
     test_smla_softmax_l1_tnd_dense_a5()
     logging.info("\nAll SparseMlaSoftmaxL1Norm sparse tests passed!")
+    #op_name	testcase_name	enable	level	network_type	bin_path	manual_seed	range_type	robustness	B	N1	N2	S1	S2	D	dtype	sparse_size	sparse_mode	seqlens_list_q	seqlens_list_kv	seqused_q	seqused_kv	cmp_residual_kv	softmax_scale	cmp_ratio	mask_mode	layout_q	layout_kv	is_deterministic
+
