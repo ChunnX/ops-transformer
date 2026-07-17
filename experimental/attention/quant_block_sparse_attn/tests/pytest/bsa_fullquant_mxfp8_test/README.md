@@ -7,6 +7,8 @@
 - `qbsa_mxfp8_golden.py`：执行入口，负责生成输入、CPU golden、NPU 调用和精度对比。
 - `qbsa_mxfp8_test_cases.py`：默认 testcase 文件，保留少量典型 case，便于日常快速回归。
 - `qbsa_mxfp8_test_cases.csv`：批量 testcase 文件，每行对应一个 case。
+- `qbsa_mxfp8_test_cases_full.csv`：单 batch 全量因子组合表。
+- `qbsa_mxfp8_test_cases_batch_large.csv`：多 batch、ragged 和规模压力典型组合表。
 - `golden_cache.py`：输入、CPU 输出、NPU 输出缓存工具。
 - `result_compare_method.py`：精度比较工具。
 
@@ -89,6 +91,13 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
   --csv --case_files /path/to/cases_a.csv,/path/to/cases_b.csv
 ```
 
+执行 300 条多 batch 与规模压力用例：
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --csv --case_files qbsa_mxfp8_test_cases_batch_large.csv
+```
+
 不带 `--csv` 时，`--case_files` 按 Python testcase 文件解析：
 
 ```bash
@@ -98,7 +107,7 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 
 ## 批量用例设计
 
-CSV 当前包含 500 条 case：
+`qbsa_mxfp8_test_cases.csv` 包含 500 条 case：
 
 - 352 条重点全交叉：`block_size=64/128`、`N1/N2=5/16`、`N2=3/8`、
   `block_num=1/128/256/512`，再与 11 组可实现的 S1/S2 大小关系及对齐状态完全交叉；
@@ -114,10 +123,22 @@ CSV 当前包含 500 条 case：
 S1/S2 相等时，“S1 不对齐 128、S2 对齐 512”在数学上不可实现：一个数只要对齐 512，就必然对齐
 128。因此三个关系与四种对齐状态共有 11 个有效组合，而不是 12 个。
 
-默认 Python testcase 文件当前包含 14 条典型覆盖用例，覆盖两种
-block size、重点 head 组合、三种 S1/S2 关系、四种对齐状态、`mask_mode=0/3`、大 `block_num`、空
-`actualSeqLengths`、64大小KV块拼接、变长多batch、反序block/sparse、双S2循环和关闭LSE；其中大
-`block_num` 典型用例默认关闭。
+`qbsa_mxfp8_test_cases_full.csv` 包含 11780 条单 batch 用例，补齐 `mask_mode=0/3` 与
+`return_softmax_lse=true/false` 的排列组合；小 `block_num` 完整交叉，大 `block_num` 采用重点抽样。
+
+`qbsa_mxfp8_test_cases_batch_large.csv` 包含 300 条全部启用的多 batch 典型与大规模用例：
+
+- 48 条等长主路径，交叉 `B=2/4/8`、两种 block size、mask、LSE 和重点 head；
+- 24 条 ragged batch，覆盖递减、交替、一长多短和 Q/KV 长度反向变化；
+- 16 条规模压力用例，最大 `S1=16384`、`S2=32768`，并以低头数限制内存；
+- 8 条 sparse/block-table 顺序、反序、随机、尾块和部分稀疏用例；
+- 4 条 `B=16`、缩放参数、部分零长度 batch 和空 `actualSeqLengths` 边界用例；
+- 80 条扩展典型用例，补齐多 batch 下的 `N2=2/5/6/7`；
+- 80 条 `B=3/12` 中大型等长和一长多短用例；
+- 40 条扩展 ragged/部分空 batch/部分 sparse 用例，将 batch 覆盖扩展到 `B=32`。
+
+默认 Python testcase 文件当前包含 24 条 STC，其中 21 条默认启用；除原有覆盖外，还选取了 3 条
+单 batch 因子组合和 7 条多 batch 典型场景，便于日常回归。
 
 ## Debug 模式
 
