@@ -10,191 +10,186 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Batch consistency NPU test entry point.
-
-**Default: OFF.**  Set ``SMLA_CONSISTENCY_TEST=1`` to enable.
-
-This module is completely isolated from the existing ``single``, ``save``,
-``load`` and ``load_graph`` entry points.  It does not modify any existing
-file and only reads from the PT files produced by ``save``.
-
-Usage::
-
-    SMLA_CONSISTENCY_TEST=1 SMLA_CONSISTENCY_MODES=1,2 \\
-        python3 -m pytest -s test_sparse_flash_mla_batch_consistency.py -v -m consistency
-
-Or via test_run.sh::
-
-    bash test_run.sh consistency -P ./data -M 1,2 --seed 20260716
-"""
+"""Opt-in SMLA batch-consistency NPU tests."""
 
 import os
+from typing import List
+
 import pytest
 import torch
 
-# ------------------------------------------------------------------ #
-#  Switch: default OFF
-# ------------------------------------------------------------------ #
-
-_CONSISTENCY_ENABLED = os.environ.get("SMLA_CONSISTENCY_TEST", "0") == "1"
+from batch_consistency.registry import ConsistencyMode, ModeRegistry
+from batch_consistency.adapter import CaseAdapter
+from batch_consistency import schema
 
 
-def _parse_modes(value):
+class ConsistencyTestConfig:
+    """Collects environment configuration without module-private helper functions."""
+
+    enabled = os.environ.get("SMLA_CONSISTENCY_TEST", "0") == "1"
+    seed = int(os.environ.get("SMLA_CONSISTENCY_SEED", "20260716"))
+    randomize = os.environ.get("SMLA_CONSISTENCY_RANDOMIZE", "0") == "1"
+    pt_dir = os.getenv("SMLA_PT_LOAD_PATH", "./data")
+    single_case_path = os.environ.get("QSAS_TESTCASE_PATH", "").strip()
+    modes_value = os.environ.get("SMLA_CONSISTENCY_MODES", "").strip() or None
+    profile_value = os.environ.get("SMLA_CONSISTENCY_PROFILE", "").strip() or None
+
     try:
-        return {int(mode.strip()) for mode in value.split(",") if mode.strip()}
-    except ValueError as error:
-        raise pytest.UsageError(f"Invalid SMLA_CONSISTENCY_MODES value: {value!r}") from error
-
-
-_CONSISTENCY_MODES = _parse_modes(os.environ.get("SMLA_CONSISTENCY_MODES", "1,2"))
-_CONSISTENCY_SEED = int(os.environ.get("SMLA_CONSISTENCY_SEED", "20260716"))
-
-if _CONSISTENCY_ENABLED:
-    unsupported = _CONSISTENCY_MODES & {3, 4}
-    invalid = _CONSISTENCY_MODES - {1, 2, 3, 4}
-    if unsupported:
-        reasons = {
-            3: "requires CPU-golden query-position/mask equivalence validation",
-            4: "changes query position, masks, prefix sums, and sparse indices",
-        }
-        detail = "; ".join(f"mode {mode}: {reasons[mode]}" for mode in sorted(unsupported))
-        raise pytest.UsageError(f"Unsupported consistency mode requested: {detail}")
-    if invalid or not _CONSISTENCY_MODES:
-        raise pytest.UsageError(
-            f"SMLA_CONSISTENCY_MODES must contain mode 1 and/or 2, got {sorted(_CONSISTENCY_MODES)}"
+        modes = ModeRegistry.resolve(
+            modes=modes_value,
+            profile=profile_value,
+            warn_legacy=enabled,
         )
+    except ValueError as error:
+        raise pytest.UsageError(str(error)) from error
 
-pt_dir = os.getenv("SMLA_PT_LOAD_PATH", "./data")
-_single_case_path = os.environ.get("QSAS_TESTCASE_PATH", "").strip()
+    unsupported_modes = ModeRegistry.unsupported(modes)
+    if enabled and unsupported_modes:
+        names = ", ".join(mode.value for mode in unsupported_modes)
+        raise pytest.UsageError(f"Unsupported consistency modes requested: {names}")
 
-# Collect PT files (same logic as test_sparse_flash_mla_batch.py but isolated)
-_testcase_files: list = []
-if _single_case_path:
-    if os.path.isfile(_single_case_path):
-        _testcase_files.append(_single_case_path)
-elif os.path.isdir(pt_dir):
-    for f in sorted(os.listdir(pt_dir)):
-        if f.endswith(".pt"):
-            _testcase_files.append(os.path.join(pt_dir, f))
+    @classmethod
+    def collect_pt_files(cls) -> List[str]:
+        files = []
+        if cls.single_case_path:
+            if os.path.isfile(cls.single_case_path):
+                files.append(cls.single_case_path)
+            return files
+        if not os.path.isdir(cls.pt_dir):
+            return files
+        return [
+            os.path.join(cls.pt_dir, filename)
+            for filename in sorted(os.listdir(cls.pt_dir))
+            if filename.endswith(".pt")
+        ]
 
-# Skip entire module if consistency is not enabled
+    @staticmethod
+    def filter_by_batch_size(files: List[str], minimum: int) -> List[str]:
+        selected = []
+        for path in files:
+            try:
+                data = torch.load(path, map_location="cpu")
+                adapter = CaseAdapter(data)
+                if adapter.name == "smla" and adapter.get_batch_size() >= minimum:
+                    selected.append(path)
+            except Exception as error:
+                if ConsistencyTestConfig.enabled:
+                    raise pytest.UsageError(f"Cannot inspect PT case {path}: {error}") from error
+        return selected
+
+    @staticmethod
+    def filter_mode3(files: List[str]) -> List[str]:
+        selected = []
+        for path in files:
+            try:
+                data = torch.load(path, map_location="cpu")
+                adapter = CaseAdapter(data)
+                if adapter.name != "smla":
+                    continue
+                if max(schema.get_q_lengths(data, valid_only=True), default=0) > 1:
+                    selected.append(path)
+            except Exception as error:
+                if ConsistencyTestConfig.enabled:
+                    raise pytest.UsageError(f"Cannot inspect PT case {path}: {error}") from error
+        return selected
+
+    @staticmethod
+    def set_npu_device() -> None:
+        import torch_npu
+
+        torch_npu.npu.set_device(int(os.environ.get("SMLA_DEVICE_ID", "0")))
+
+
+TESTCASE_FILES = ConsistencyTestConfig.filter_by_batch_size(
+    ConsistencyTestConfig.collect_pt_files(),
+    1,
+)
+BATCH_TESTCASE_FILES = ConsistencyTestConfig.filter_by_batch_size(TESTCASE_FILES, 2)
+MODE3_TESTCASE_FILES = ConsistencyTestConfig.filter_mode3(TESTCASE_FILES)
+
 pytestmark = [
     pytest.mark.consistency,
     pytest.mark.skipif(
-        not _CONSISTENCY_ENABLED,
+        not ConsistencyTestConfig.enabled,
         reason="SMLA_CONSISTENCY_TEST is not set to 1; consistency tests are opt-in",
     ),
     pytest.mark.skipif(
-        len(_testcase_files) == 0,
-        reason=f"No .pt files found in {pt_dir}; run 'save' mode first",
+        not TESTCASE_FILES,
+        reason=f"No .pt files found in {ConsistencyTestConfig.pt_dir}; run save mode first",
     ),
 ]
 
 
-def _filter_by_b(testcase_files, min_b=2):
-    """Filter PT files to those with B >= min_b."""
-    filtered = []
-    for f in testcase_files:
-        try:
-            data = torch.load(f, map_location="cpu")
-            if int(data.get("B", 0)) >= min_b:
-                filtered.append(f)
-        except Exception:
-            pass
-    return filtered
-
-
-_consistency_files = _filter_by_b(_testcase_files, min_b=2)
-
-
-def _set_npu_device():
-    import torch_npu
-
-    device_id = int(os.environ.get("SMLA_DEVICE_ID", "0"))
-    torch_npu.npu.set_device(device_id)
-
-
 @pytest.mark.consistency
-@pytest.mark.parametrize("testcase_file", _consistency_files)
+@pytest.mark.parametrize("testcase_file", BATCH_TESTCASE_FILES)
 def test_mode1_batch_reorder(testcase_file):
-    """Mode 1: reorder batches, verify output consistency by token origin."""
-    if 1 not in _CONSISTENCY_MODES:
-        pytest.skip("Mode 1 not in SMLA_CONSISTENCY_MODES")
-
+    if ConsistencyMode.REORDER not in ConsistencyTestConfig.modes:
+        pytest.skip("reorder not requested")
     from batch_consistency.runner import BatchConsistencyUnsupportedError, run_mode1
 
     test_data = torch.load(testcase_file, map_location="cpu")
-    _set_npu_device()
-    B = int(test_data["B"])
-    assert B >= 2, f"Mode 1 requires B >= 2, got B={B}"
-
+    ConsistencyTestConfig.set_npu_device()
     try:
-        case, baseline_res, derived_res, comparison = run_mode1(
-            test_data, seed=_CONSISTENCY_SEED
-        )
+        case, _, _, comparison = run_mode1(test_data, seed=ConsistencyTestConfig.seed)
     except BatchConsistencyUnsupportedError as error:
         pytest.skip(str(error))
 
-    print(f"\n[Mode1] file={os.path.basename(testcase_file)}")
-    print(f"  order={case.transform_meta['order']}")
-    print(f"  layout_q={case.transform_meta['layout_q']}, layout_kv={case.transform_meta['layout_kv']}")
-    print(f"  output: pass={comparison['pass']}, fulfill={comparison['output']['fulfill_percent']:.2f}%")
-    if comparison["output"]["bitwise_equal"]:
-        print("  [diagnostic] output bitwise equal (md5 match)")
-    if "lse" in comparison:
-        print(f"  lse: pass={comparison['lse']['pass']}, fulfill={comparison['lse']['fulfill_percent']:.2f}%")
-
+    print(f"\n[reorder] file={os.path.basename(testcase_file)}, order={case.transform_meta['order']}")
     if not comparison["pass"]:
-        first_fail = "output"
-        if "error" in comparison:
-            pytest.fail(f"Origin alignment error: {comparison['error']}")
-        if "lse" in comparison and not comparison["lse"]["pass"]:
-            first_fail = "lse"
-        pytest.fail(
-            f"Mode 1 consistency failed: {first_fail} "
-            f"fulfill={comparison[first_fail]['fulfill_percent']:.2f}%, "
-            f"order={case.transform_meta['order']}, seed={_CONSISTENCY_SEED}"
-        )
+        pytest.fail(f"reorder failed: {comparison}")
 
 
 @pytest.mark.consistency
-@pytest.mark.parametrize("testcase_file", _consistency_files)
+@pytest.mark.parametrize("testcase_file", BATCH_TESTCASE_FILES)
 def test_mode2_batch_split(testcase_file):
-    """Mode 2: split batches into sub-cases, verify merged output consistency."""
-    if 2 not in _CONSISTENCY_MODES:
-        pytest.skip("Mode 2 not in SMLA_CONSISTENCY_MODES")
-
+    if ConsistencyMode.SPLIT not in ConsistencyTestConfig.modes:
+        pytest.skip("split not requested")
     from batch_consistency.runner import BatchConsistencyUnsupportedError, run_mode2
 
     test_data = torch.load(testcase_file, map_location="cpu")
-    _set_npu_device()
-    B = int(test_data["B"])
-    assert B >= 2, f"Mode 2 requires B >= 2, got B={B}"
-
+    ConsistencyTestConfig.set_npu_device()
     try:
-        cases, baseline_res, derived_results, _, comparison = run_mode2(
-            test_data, seed=_CONSISTENCY_SEED
+        cases, _, _, comparisons, aggregate = run_mode2(
+            test_data,
+            seed=ConsistencyTestConfig.seed,
+            randomize=ConsistencyTestConfig.randomize,
         )
     except BatchConsistencyUnsupportedError as error:
         pytest.skip(str(error))
 
-    print(f"\n[Mode2] file={os.path.basename(testcase_file)}")
-    for i, case in enumerate(cases):
-        print(f"  sub-case {i}: batches={case.transform_meta['batch_ids']}, "
-              f"B={len(case.transform_meta['batch_ids'])}")
-    print(f"  merged: pass={comparison['pass']}, "
-          f"fulfill={comparison['output']['fulfill_percent']:.2f}%")
-    if comparison["output"]["bitwise_equal"]:
-        print("  [diagnostic] merged output bitwise equal (md5 match)")
-    if "lse" in comparison:
-        print(f"  lse: pass={comparison['lse']['pass']}, "
-              f"fulfill={comparison['lse']['fulfill_percent']:.2f}%")
-
-    if not comparison["pass"]:
-        failed_component = "lse" if "lse" in comparison and not comparison["lse"]["pass"] else "output"
-        pytest.fail(
-            f"Mode 2 consistency failed: component={failed_component}, "
-            f"fulfill={comparison[failed_component]['fulfill_percent']:.2f}%, "
-            f"groups={[c.transform_meta['batch_ids'] for c in cases]}, "
-            f"seed={_CONSISTENCY_SEED}"
+    print(f"\n[split] file={os.path.basename(testcase_file)}")
+    for case, comparison in zip(cases, comparisons):
+        print(
+            f"  batches={case.transform_meta['batch_ids']}, "
+            f"bitwise={comparison['output']['bitwise_equal']}, "
+            f"numeric={comparison['output']['fulfill_percent']:.2f}%"
         )
+    if aggregate["merged"] is not None:
+        print(f"  optional full-partition merge pass={aggregate['merged']['pass']}")
+    if not aggregate["pass"]:
+        pytest.fail(f"split failed: {aggregate}")
+
+
+@pytest.mark.consistency
+@pytest.mark.parametrize("testcase_file", MODE3_TESTCASE_FILES)
+def test_mode3_batch_internal_token_split(testcase_file):
+    if ConsistencyMode.TOKEN_SPLIT not in ConsistencyTestConfig.modes:
+        pytest.skip("token-split not requested")
+    from batch_consistency.runner import BatchConsistencyUnsupportedError, run_mode3
+    from batch_consistency.transform import InvalidTransformError
+
+    test_data = torch.load(testcase_file, map_location="cpu")
+    ConsistencyTestConfig.set_npu_device()
+    try:
+        case, _, _, comparison = run_mode3(test_data)
+    except InvalidTransformError as error:
+        pytest.skip(f"INVALID_TRANSFORM: {error}")
+    except BatchConsistencyUnsupportedError as error:
+        pytest.skip(str(error))
+
+    print(
+        f"\n[token-split] file={os.path.basename(testcase_file)}, "
+        f"selection={case.transform_meta['token_ids_by_batch']}"
+    )
+    if not comparison["pass"]:
+        pytest.fail(f"token-split failed: {comparison}")
