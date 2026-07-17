@@ -88,6 +88,14 @@ __aicore__ inline void GatherMaskByDiagonal(const LocalTensor<float>& output, co
     PipeBarrier<PIPE_V>();
 }
 
+__aicore__ inline uint64_t Factorial(uint64_t n)
+{
+    uint64_t r = 1;
+    for (uint64_t i = 2; i <= n; ++i) {
+        r *= i;
+    }
+    return r;
+}
 
 template <typename T, bool needBrc = true>
 __aicore__ inline void MulABLastDimBrcInline(const LocalTensor<T> &output, const LocalTensor<T> &input0,
