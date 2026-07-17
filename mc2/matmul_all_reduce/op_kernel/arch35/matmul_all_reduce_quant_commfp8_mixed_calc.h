@@ -37,31 +37,32 @@ using namespace MatmulAllReduceMixedDequantReduceQuantImpl;
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
 class MatmulAllReduceCommFp8MixedCalc {
 public:
-    __aicore__ inline MatmulAllReduceCommFp8MixedCalc() 
+    __aicore__ inline MatmulAllReduceCommFp8MixedCalc()
     {
     }
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR dequantScaleGM,
-                                GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM, 
-                                GM_ADDR workspaceGM, Mc2Tiling::QuantMatmulAllReduceTilingDataA5* tilingData, TPipe* tPipe);
+                                GM_ADDR pertokenGM, GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM,
+                                GM_ADDR workspaceGM, Mc2Tiling::QuantMatmulAllReduceTilingDataA5 *tilingData,
+                                TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void InnerProcess(MmType &mmOp, MatmulAllReduceDynamicQuantPertile<XType, float> &quantOp,
                                         MatmulAllReduceMixedDequantReduceQuant<XType> &mixedOp, uint32_t tileCnt,
-                                        DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *mmTiling, uint32_t curPadM, uint32_t isAdd,
-                                        bool isTail);
+                                        DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *mmTiling, uint32_t curPadM,
+                                        uint32_t isAdd, bool isTail);
     __aicore__ inline void StepOneTurn(MmType &mmOp, MatmulAllReduceDynamicQuantPertile<XType, float> &quantOp,
                                        MatmulAllReduceMixedDequantReduceQuant<XType> &mixedOp,
-                                       DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *mmTiling, uint32_t curPadM, bool isTail,
-                                       bool isFirst);
+                                       DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *mmTiling, uint32_t curPadM,
+                                       bool isTail, bool isFirst);
     __aicore__ inline void ProcessLast(MatmulAllReduceDynamicQuantPertile<XType, YType> &quantOp);
     __aicore__ inline void PrepareInit();
     __aicore__ inline void InitCommTasks();
     __aicore__ inline uint32_t SendCountCheck(uint32_t prepareIndex);
-    Mc2Tiling::QuantMatmulAllReduceTilingDataA5* tilingData_;
+    Mc2Tiling::QuantMatmulAllReduceTilingDataA5 *tilingData_;
 
-    TPipe* tPipe_;
+    TPipe *tPipe_;
     GM_ADDR aGM_;
     GM_ADDR bGM_;
     GM_ADDR biasGM_;
@@ -113,13 +114,13 @@ template <typename XType, typename WType, typename YType, class MmType, Mc2CoreT
 __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmType, CoreType, commMode>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR addGM, GM_ADDR dequantScaleGM, GM_ADDR pertokenGM,
     GM_ADDR commQuantScale1GM, GM_ADDR commQuantScale2GM, GM_ADDR cGM, GM_ADDR workspaceGM,
-    Mc2Tiling::QuantMatmulAllReduceTilingDataA5* tilingData, TPipe* tPipe)
+    Mc2Tiling::QuantMatmulAllReduceTilingDataA5 *tilingData, TPipe *tPipe)
 {
-    __gm__ HcclCombinOpParam* context = (__gm__ HcclCombinOpParam*)(GetHcclContext<0>());
+    __gm__ HcclCombinOpParam *context = (__gm__ HcclCombinOpParam *)(GetHcclContext<0>());
     OOMInit(context);
-    hccl_.InitV2(GetHcclContext<0>(),tilingData);
-    hccl_.SetCcTilingV2(offsetof(Mc2Tiling::QuantMatmulAllReduceTilingDataA5,mc2CcTiling));
-    hccl_.SetCcTilingV2(offsetof(Mc2Tiling::QuantMatmulAllReduceTilingDataA5,mc2CcTilingComm));
+    hccl_.InitV2(GetHcclContext<0>(), tilingData);
+    hccl_.SetCcTilingV2(offsetof(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, mc2CcTiling));
+    hccl_.SetCcTilingV2(offsetof(Mc2Tiling::QuantMatmulAllReduceTilingDataA5, mc2CcTilingComm));
     tilingData_ = tilingData;
     rankNum_ = tilingData_->param.rankDim;
     tPipe_ = tPipe;
@@ -135,9 +136,9 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
     outGM_ = cGM;
     cGM_ = workspaceGM_ + tilingData_->param.commWorkSpaceSize;
     coreNum_ = GetBlockNum() * GetTaskRation();
-    if constexpr(std::is_same<XType, fp8_e5m2_t>::value) {
+    if constexpr (std::is_same<XType, fp8_e5m2_t>::value) {
         hcclType_ = AscendC::HCCL_DATA_TYPE_FP8E5M2;
-    } else if constexpr(std::is_same<XType, fp8_e4m3fn_t>::value) {
+    } else if constexpr (std::is_same<XType, fp8_e4m3fn_t>::value) {
         hcclType_ = AscendC::HCCL_DATA_TYPE_FP8E4M3;
     }
     if ASCEND_IS_AIV { // V核的0核下发通信任务
@@ -148,8 +149,8 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
 }
 
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
-__aicore__ inline uint32_t MatmulAllReduceCommFp8MixedCalc<
-    XType, WType, YType, MmType, CoreType, commMode>::SendCountCheck(uint32_t prepareIndex)
+__aicore__ inline uint32_t
+MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmType, CoreType, commMode>::SendCountCheck(uint32_t prepareIndex)
 {
     uint32_t sendCount = (tilePadDataCnt_ * sizeof(XType) + tileScaleCnt_ * sizeof(float)) / sizeof(XType);
     if (prepareIndex >= tilingData_->param.tileCnt) {
@@ -161,7 +162,7 @@ __aicore__ inline uint32_t MatmulAllReduceCommFp8MixedCalc<
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
 __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmType, CoreType, commMode>::PrepareInit()
 {
-    auto&& mc2Tiling = tilingData_->param;
+    auto &&mc2Tiling = tilingData_->param;
     tileM_ = tilingData_->tilematmulTiling.matmulTiling.M;
     tileN_ = tilingData_->tilematmulTiling.matmulTiling.N;
     uint32_t tailN = tilingData_->tailmatmulTiling.matmulTiling.N;
@@ -215,7 +216,7 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
         return;
     }
     if (GetBlockIdx() == 0) {
-        auto&& mc2Tiling = tilingData_->param;
+        auto &&mc2Tiling = tilingData_->param;
         uint32_t nowAll2allIdx = 0U;
         uint32_t nowAllGatherIdx = 0U;
         uint32_t numN = (mc2Tiling.tileCnt + mc2Tiling.tailCnt) / NUM_TWO_PERTILE_MIXED;
@@ -227,22 +228,22 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
             all2allHandleId_[nowAll2allIdx] = hccl_.template AlltoAll<false>(
                 all2allSendGM_[nowAll2allIdx], all2allRecvGM_[nowAll2allIdx], SendCountCheck(nowAll2allIdx), hcclType_);
             nowAll2allIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
-                allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
-                hcclType_, 0);
+            allGatherHandleId_[nowAllGatherIdx] =
+                hccl_.template AllGather<false>(allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx],
+                                                SendCountCheck(nowAllGatherIdx), hcclType_, 0);
             nowAllGatherIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
-                allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
-                hcclType_, 0);
+            allGatherHandleId_[nowAllGatherIdx] =
+                hccl_.template AllGather<false>(allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx],
+                                                SendCountCheck(nowAllGatherIdx), hcclType_, 0);
             nowAllGatherIdx++;
         }
         if (numReN != 0U) {
             all2allHandleId_[nowAll2allIdx] = hccl_.template AlltoAll<false>(
                 all2allSendGM_[nowAll2allIdx], all2allRecvGM_[nowAll2allIdx], SendCountCheck(nowAll2allIdx), hcclType_);
             nowAll2allIdx++;
-            allGatherHandleId_[nowAllGatherIdx] = hccl_.template AllGather<false>(
-                allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx], SendCountCheck(nowAllGatherIdx),
-                hcclType_, 0);
+            allGatherHandleId_[nowAllGatherIdx] =
+                hccl_.template AllGather<false>(allGatherSendGM_[nowAllGatherIdx], allGatherRecvGM_[nowAllGatherIdx],
+                                                SendCountCheck(nowAllGatherIdx), hcclType_, 0);
             nowAllGatherIdx++;
         }
     }
@@ -251,8 +252,8 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
 __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmType, CoreType, commMode>::InnerProcess(
     MmType &mmOp, MatmulAllReduceDynamicQuantPertile<XType, float> &quantOp,
-    MatmulAllReduceMixedDequantReduceQuant<XType> &mixedOp, uint32_t tileCnt, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *mmTiling,
-    uint32_t curPadM, uint32_t isAdd, bool isTail)
+    MatmulAllReduceMixedDequantReduceQuant<XType> &mixedOp, uint32_t tileCnt,
+    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *mmTiling, uint32_t curPadM, uint32_t isAdd, bool isTail)
 {
     uint32_t oneLineSCnt = isTail ? tailOneLineSCnt_ : tileOneLineSCnt_;
     uint32_t quantNandSLen = mmTiling->matmulTiling.N * sizeof(XType) + oneLineSCnt * sizeof(float);
@@ -295,8 +296,8 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
 __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmType, CoreType, commMode>::StepOneTurn(
     MmType &mmOp, MatmulAllReduceDynamicQuantPertile<XType, float> &quantOp,
-    MatmulAllReduceMixedDequantReduceQuant<XType> &mixedOp, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *mmTiling, uint32_t curPadM,
-    bool isTail, bool isFirst)
+    MatmulAllReduceMixedDequantReduceQuant<XType> &mixedOp, DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *mmTiling,
+    uint32_t curPadM, bool isTail, bool isFirst)
 {
     if ASCEND_IS_AIC {
         return;
@@ -326,7 +327,7 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
 template <typename XType, typename WType, typename YType, class MmType, Mc2CoreType CoreType, int commMode>
 __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmType, CoreType, commMode>::Process()
 {
-    auto&& mc2Tiling = tilingData_->param;
+    auto &&mc2Tiling = tilingData_->param;
     PrepareInit();
     MmType opTile;
     MatmulAllReduceDynamicQuantPertile<XType, float> quantOpTile;
@@ -354,7 +355,7 @@ template <typename XType, typename WType, typename YType, class MmType, Mc2CoreT
 __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmType, CoreType, commMode>::ProcessLast(
     MatmulAllReduceDynamicQuantPertile<XType, YType> &quantOp)
 {
-    auto&& mc2Tiling = tilingData_->param;
+    auto &&mc2Tiling = tilingData_->param;
     if ASCEND_IS_AIV {
         for (uint32_t i = 0U; i < (mc2Tiling.tileCnt + mc2Tiling.tailCnt); i++) {
             if (notifyFlag_) {
@@ -382,7 +383,7 @@ __aicore__ inline void MatmulAllReduceCommFp8MixedCalc<XType, WType, YType, MmTy
                 quantOp.Init(allGatherOutGM_, outGM_, tilingData_->tailmatmulTiling.matmulTiling.M,
                              tilingData_->tailmatmulTiling.matmulTiling.N, tailOneLineSCnt_, coreNum_,
                              maxProcRowsDequantLast_, false, tPipe_);
-                quantOp.Process(tilingData_->tailmatmulTiling.matmulTiling.N, coreNum_, quantNandSLen, false);                   
+                quantOp.Process(tilingData_->tailmatmulTiling.matmulTiling.N, coreNum_, quantNandSLen, false);
                 allGatherOutGM_ += allGatherOutOffset;
                 outGM_ += outOffset;
             }
