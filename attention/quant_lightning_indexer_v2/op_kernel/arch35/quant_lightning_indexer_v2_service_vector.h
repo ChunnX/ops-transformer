@@ -159,8 +159,9 @@ private:
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // resMm1Buf_ (QK): 保持原大小不变 (含 bank 偏移余量, qkStride +256B 在 256KB 内绰绰有余)
-    // 大小：2(开dB) 2 * 64 * 128 * 4 = 128KB (float), 256KB (float MXFP8: 2*256*128*4)
+    // resMm1Buf_ (QK): 保持原始大小, 足够容纳 bank 偏移
+    //   原始: 2 * 256 * 128 * 4 = 256KB (含双 ping 空间, 但 ping/pong 靠时序隔离复用)
+    //   bank 偏移后单 ping 最大地址 ≈ 161KB < 256KB → 无需增大
     pipe->InitBuffer(resMm1Buf_,
         2 * CeilDiv(constInfo_.mBaseSize, CVRATIO) * s2BaseSize_ * sizeof(QK_T));
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
@@ -514,18 +515,23 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
-    auto qkVLstride = QLIV2Common::Align((uint64_t)info.actMBaseSize, 2 * constInfo_.gSize)
-        * (UB_BANK_DEPTH_STRIDE / sizeof(QK_T));
 
     if constexpr (IS_MXFP8) {
-        // QK s1 行间冲突 (A/C 同 bank) 暂未解决:
-        //   qkStride = gSize * rowStride = 64 * 128 = 8192 float, bank 增量 = 0 → A/C 同 bank
-        //   解法需 Fixpipe 分段+偏移, 但分段导致 srcStride 错误(精度) + 调用次数×4(性能), 已回退。
-        //   TODO: 需在不分段的前提下解 QK s1 行间冲突 (如调整 gSize 对齐或 Fixpipe ndNum 级偏移)
-        // outStride/weightStride 恢复 512B rowStride (UB_BANK_DEPTH_STRIDE/sizeof), 不可紧凑
+        // === bank 冲突优化: qkStride/qkVLstride 附加偏移 ===
+        // qkStrideWithBank: s1行间 stride, 附加 +256B → A/C 落不同 bank (bank0/bank1)
+        // qkVLstride: N方向后半偏移 = Fixpipe 修改后的 dstNdStride
+        //   = gSize × rowStride + 512B偏移 → A/B 落不同 bank (bank0/bank2)
+        //   ⚠️ 分段后 N方向布局改变, qkVLstride 不再用全局 actMBase×rowStride 计算
+        //   必须等于 Fixpipe 的 dstNdStride (见 service_cube.h Fixp)
+        uint32_t qkStrideWithBank = (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T))
+                                  + (QLIV2_BANK_OFF_QK_S1 / sizeof(QK_T));   // +256B → bank+1
+        uint32_t qkVLstride = (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T))
+                            + (QLIV2_BANK_OFF_QK_VL / sizeof(QK_T));         // +512B → bank+2
+
+        // outStride/weightStride 保持 512B rowStride (不可紧凑, ping-pong 隔离)
         vector1::BatchMulWeightAndReduceSum_MxFP8(outBase, UB_BANK_DEPTH_STRIDE / sizeof(uint16_t),
                                                     qkBase, qkVLstride,
-                                                    (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+                                                    qkStrideWithBank,
                                                     weightBase, UB_BANK_DEPTH_STRIDE / sizeof(W_T),
                                                     weightTempBase,
                                                     gSize_, curAivS1ProcNum);

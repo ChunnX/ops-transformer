@@ -267,16 +267,12 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 // ============================================================================
 
 // qkStride 附加偏移: s1行B 落 bank+1 (解 A/C 同 bank 冲突)
-// ⚠️ 已回退: Fixpipe 分段实现此偏移导致 (1)srcStride 错误→精度失败 (2)调用次数×4→性能劣化
-//   保留宏定义供未来参考, 当前不使用。
-//   TODO: 需在不分段 Fixpipe 的前提下解 QK s1 行间冲突
+// 实现: Fixpipe 按 s1 行组(gSize)分段, 每段 UB 目标递增此偏移; vector1 qkStride 同步附加
 #define QLIV2_BANK_OFF_QK_S1     256    // 256B → bank+1
 
-// qkVLStride 附加偏移: 配对路落 bank+2 (解 A/B 同 bank 冲突)
-// ⚠️ TODO: 需确认 cube Fixpipe 写配对路(pong块)的路径后才能启用。
-//    当前不启用 (vector端不加, cube端不加), 配对路冲突保持, A/B 仍同 bank。
-//    启用方法: vector 端 qkVLstride += (QLIV2_BANK_OFF_QK_VL/sizeof(QK_T)),
-//              cube 端 Fixpipe 写配对路时同步偏移。
+// qkVLStride/dstNdStride 附加偏移: N后半 落 bank+2 (解 A/B 同 bank 冲突)
+// 实现: Fixpipe dstNdStride 附加此偏移; vector1 qkVLstride = 修改后的 dstNdStride
+//   注: qkVLStride = Fixpipe dstNdStride (N方向后半偏移, 非配对路)
 #define QLIV2_BANK_OFF_QK_VL     512    // 512B → bank+2
 
 // weight base 偏移 → bank3 (与 QK bank0/1 错开)
