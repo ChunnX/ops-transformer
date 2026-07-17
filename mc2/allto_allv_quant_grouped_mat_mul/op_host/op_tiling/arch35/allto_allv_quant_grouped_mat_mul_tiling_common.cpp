@@ -161,8 +161,7 @@ ge::graphStatus AlltoAllvQuantGmmTilingCommon::PostTiling()
     tilingData->taskTilingInfo.aivCoreNum = aivCoreNum_;
     tilingData->taskTilingInfo.aicCoreNum = aicCoreNum_;
 
-    constexpr uint32_t FIXED_EXPERT_NUM = 4U;
-    uint32_t expertNum = (e_ <= FIXED_EXPERT_NUM) ? static_cast<uint32_t>(e_) : FIXED_EXPERT_NUM;
+    uint32_t expertNum = CalcExpertNum(e_, epWorldSize_, bsk_, n1_);
     tilingData->taskTilingInfo.expertNum = expertNum;
     tilingData->taskTilingInfo.mainLoopExpertNum = expertNum;
     tilingData->taskTilingInfo.tailLoopExpertNum =

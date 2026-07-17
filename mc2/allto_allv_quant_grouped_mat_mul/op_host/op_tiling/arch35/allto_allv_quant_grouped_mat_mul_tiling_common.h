@@ -55,13 +55,36 @@ constexpr uint32_t SCALE_BATCH_THRESHOLD = 32;
 // quant mode offset
 const std::vector<uint32_t> QUANT_MODE_MAP = {0, 0, 1, 2, 4, 5, 3};
 
+constexpr uint32_t GMM_ARRAY_MAX_NUM = 128U;
+constexpr uint32_t MAX_HANDLE_ID_NUM = 64U;
+constexpr uint32_t DEFAULT_MERGED_EXPERT_NUM = 4U;
+constexpr uint64_t PER_RANK_TOTAL_MN_THRESHOLD = 20UL * 1024UL * 1024UL;
+
 class AlltoAllvQuantGmmTilingCommon : public AlltoAllvQuantGmmTilingBase {
 public:
     explicit AlltoAllvQuantGmmTilingCommon(gert::TilingContext *context) : AlltoAllvQuantGmmTilingBase(context)
     {
-        tilingData = context->GetTilingData<QuantAlltoAllvGroupedMatmulTilingData>();
+        tilingData = context_->GetTilingData<QuantAlltoAllvGroupedMatmulTilingData>();
     };
     QuantAlltoAllvGroupedMatmulTilingData *tilingData;
+
+    static uint32_t CalcExpertNum(uint64_t e, uint64_t epWorldSize, uint64_t bsk, uint64_t n1)
+    {
+        if (e == 0) {
+            return 1U;
+        }
+        uint64_t perRankTokens = (epWorldSize == 0) ? bsk : bsk / epWorldSize;
+        uint64_t perRankTotalMN = perRankTokens * n1;
+
+        uint32_t expertNum = DEFAULT_MERGED_EXPERT_NUM;
+        if (perRankTotalMN < PER_RANK_TOTAL_MN_THRESHOLD) {
+            uint32_t upperByArray = (epWorldSize == 0) ? GMM_ARRAY_MAX_NUM
+                : static_cast<uint32_t>(GMM_ARRAY_MAX_NUM / epWorldSize);
+            uint32_t upperBound = std::min(static_cast<uint32_t>(e), upperByArray);
+            expertNum = upperBound;
+        }
+        return expertNum;
+    }
 
 protected:
     // Tiling base
