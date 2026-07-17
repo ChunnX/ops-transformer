@@ -47,12 +47,15 @@ show_help() {
 
   consistency    执行batch一致性测试（默认关闭，需显式指定）
     -P           pt文件读取地址（默认 ./data）
-    -M           一致性模式列表，逗号分隔（默认 1,2；模式3/4暂不支持）
+    --modes      命名模式列表（显式模式优先）
+    --profile    命名模式组合（默认 blackbox-basic）
+    -M           数字模式兼容别名（例如 1,2，已废弃）
     --seed       随机种子（默认 20260716）
-    示例1: bash $0 consistency -P ./data -M 1,2 --seed 20260716
-    示例2: bash $0 consistency -P ./data -M 1
-    示例3: bash $0 consistency -P ./data -M 3
-      （模式3会报错退出并输出unsupported原因）
+    --randomize  显式启用模式2随机分组（模式1排列始终由seed固定）
+    示例1: bash $0 consistency -P ./data --modes reorder,split --seed 20260716
+    示例2: bash $0 consistency -P ./data --profile blackbox-supported
+    示例3: bash $0 consistency -P ./data --modes token-split
+    示例4: bash $0 consistency -P ./data -M 1,2 --randomize
 
 通用选项:
   -h, --help   显示此帮助信息
@@ -546,8 +549,11 @@ run_script_consistency() {
 
     # 默认值
     CONSISTENCY_PT_DIR="./data"
-    CONSISTENCY_MODES="1,2"
+    CONSISTENCY_MODES=""
+    CONSISTENCY_PROFILE="blackbox-basic"
     CONSISTENCY_SEED="20260716"
+    CONSISTENCY_RANDOMIZE="0"
+    CONSISTENCY_SELECTOR_SET="0"
 
     # 解析参数
     while [[ $# -gt 0 ]]; do
@@ -560,13 +566,37 @@ run_script_consistency() {
                 CONSISTENCY_PT_DIR="$2"
                 shift 2
                 ;;
-            -M)
+            -M|--modes)
                 if [ -z "$2" ] || [[ "$2" == -* ]]; then
                     echo "错误: -M 参数需要值"
                     exit 1
                 fi
+                if [ "$CONSISTENCY_SELECTOR_SET" = "1" ]; then
+                    echo "错误: --modes/-M 与 --profile 只能指定一个"
+                    exit 1
+                fi
                 CONSISTENCY_MODES="$2"
+                CONSISTENCY_PROFILE=""
+                CONSISTENCY_SELECTOR_SET="1"
                 shift 2
+                ;;
+            --profile)
+                if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                    echo "错误: --profile 参数需要值"
+                    exit 1
+                fi
+                if [ "$CONSISTENCY_SELECTOR_SET" = "1" ]; then
+                    echo "错误: --modes/-M 与 --profile 只能指定一个"
+                    exit 1
+                fi
+                CONSISTENCY_PROFILE="$2"
+                CONSISTENCY_MODES=""
+                CONSISTENCY_SELECTOR_SET="1"
+                shift 2
+                ;;
+            --randomize)
+                CONSISTENCY_RANDOMIZE="1"
+                shift
                 ;;
             --seed)
                 if [ -z "$2" ] || [[ "$2" == -* ]]; then
@@ -582,7 +612,7 @@ run_script_consistency() {
                 ;;
             *)
                 echo "错误: 未知参数 '$1'"
-                echo "consistency 脚本支持的参数: -P, -M, --seed"
+                echo "consistency 脚本支持的参数: -P, --modes, --profile, -M, --seed, --randomize"
                 exit 1
                 ;;
         esac
@@ -593,8 +623,13 @@ run_script_consistency() {
     echo "脚本: test_sparse_flash_mla_batch_consistency.py"
     echo "参数配置:"
     echo "  PT文件读取地址 $CONSISTENCY_PT_DIR"
-    echo "  一致性模式 $CONSISTENCY_MODES"
+    if [ -n "$CONSISTENCY_MODES" ]; then
+        echo "  一致性模式 $CONSISTENCY_MODES"
+    else
+        echo "  一致性配置组合 $CONSISTENCY_PROFILE"
+    fi
     echo "  随机种子 $CONSISTENCY_SEED"
+    echo "  随机压力模式 $CONSISTENCY_RANDOMIZE"
     echo "==============================="
 
     # 检查脚本是否存在
@@ -608,33 +643,38 @@ run_script_consistency() {
         exit 1
     fi
 
-    # 只接受本阶段实际实现的模式，避免 pytest 全部 skip 后被误报为通过。
-    IFS=',' read -r -a requested_modes <<< "$CONSISTENCY_MODES"
-    if [ "${#requested_modes[@]}" -eq 0 ]; then
-        echo "错误: -M 至少需要指定模式1或2"
+    # 模式语义和合法性由 Python registry 统一校验，shell 只透传。
+    if [ -z "$CONSISTENCY_MODES" ] && [ -z "$CONSISTENCY_PROFILE" ]; then
+        echo "错误: --modes 或 --profile 至少需要指定一个"
         exit 1
     fi
-    for m in "${requested_modes[@]}"; do
-        case "$m" in
-            1|2)
-                ;;
-            3)
-                echo "错误: 模式3 (batch内token拆分) 暂不支持。"
-                echo "原因: 需要CPU golden等价性预检查和query-position/mask语义验证。参见开发计划§10。"
-                exit 1
-                ;;
-            4)
-                echo "错误: 模式4 (前插/删除token) 暂不支持。"
-                echo "原因: 改变query position、causal/window mask、TND prefix sums和稀疏索引。"
-                echo "需要mask语义预检查和stateful prefill/decode测试设计。参见开发计划§11。"
-                exit 1
-                ;;
-            *)
-                echo "错误: 不支持的一致性模式 '$m'，当前仅支持1和2"
-                exit 1
-                ;;
-        esac
-    done
+
+    # 入口只调用Python registry做一次预检，不在shell复制模式定义。
+    if ! python3 - "$CONSISTENCY_MODES" "$CONSISTENCY_PROFILE" <<'PY'
+import sys
+import warnings
+
+from batch_consistency.registry import ModeRegistry
+
+warnings.simplefilter("default", DeprecationWarning)
+try:
+    modes = ModeRegistry.resolve(
+        modes=sys.argv[1] or None,
+        profile=sys.argv[2] or None,
+        warn_legacy=True,
+    )
+    unsupported = ModeRegistry.unsupported(modes)
+    if unsupported:
+        names = ", ".join(mode.value for mode in unsupported)
+        raise ValueError(f"Unsupported consistency modes requested: {names}")
+except ValueError as error:
+    print(error, file=sys.stderr)
+    raise SystemExit(2) from error
+PY
+    then
+        echo "错误: 一致性模式或profile配置无效"
+        exit 1
+    fi
 
     # 检查用例目录
     if [ ! -d "$CONSISTENCY_PT_DIR" ]; then
@@ -644,42 +684,39 @@ run_script_consistency() {
 
     # 设置环境变量
     export SMLA_CONSISTENCY_TEST=1
-    export SMLA_CONSISTENCY_MODES="$CONSISTENCY_MODES"
+    if [ -n "$CONSISTENCY_MODES" ]; then
+        export SMLA_CONSISTENCY_MODES="$CONSISTENCY_MODES"
+        unset SMLA_CONSISTENCY_PROFILE
+    else
+        unset SMLA_CONSISTENCY_MODES
+        export SMLA_CONSISTENCY_PROFILE="$CONSISTENCY_PROFILE"
+    fi
     export SMLA_CONSISTENCY_SEED="$CONSISTENCY_SEED"
+    export SMLA_CONSISTENCY_RANDOMIZE="$CONSISTENCY_RANDOMIZE"
     export SMLA_PT_LOAD_PATH="$CONSISTENCY_PT_DIR"
 
-    # 获取B>=2的.pt文件列表
+    # Python按模式判断case是否适用；模式3允许B=1，因此shell不再按B过滤。
     CASE_FILES=()
     for pt_file in "$CONSISTENCY_PT_DIR"/*.pt; do
         [ -f "$pt_file" ] || continue
-        B_VAL=$(python3 - "$pt_file" 2>/dev/null <<'PY'
-import torch
-import sys
-try:
-    d = torch.load(sys.argv[1], map_location='cpu')
-    print(int(d.get('B', 0)))
-except Exception:
-    print(0)
-PY
-)
-        if [ -n "$B_VAL" ] && [ "$B_VAL" -ge 2 ]; then
-            CASE_FILES+=("$pt_file")
-        fi
+        CASE_FILES+=("$pt_file")
     done
 
     TOTAL=${#CASE_FILES[@]}
     if [ "$TOTAL" -eq 0 ]; then
-        echo "错误: 目录 $CONSISTENCY_PT_DIR 下未找到 B>=2 的 .pt 用例"
-        echo "提示: 先运行 'bash test_run.sh save' 生成多batch的.pt文件"
+        echo "错误: 目录 $CONSISTENCY_PT_DIR 下未找到 .pt 用例"
+        echo "提示: 先运行 'bash test_run.sh save' 生成PT文件"
         exit 1
     fi
 
-    echo "共 $TOTAL 条B>=2用例待执行, 目录: $CONSISTENCY_PT_DIR"
+    echo "共 $TOTAL 条用例待执行, 目录: $CONSISTENCY_PT_DIR"
     echo "开始隔离批量执行（每条用例独立 pytest 进程）..."
 
     PASS=0
     FAIL=0
     UNSUPPORTED=0
+    INVALID=0
+    NOT_APPLICABLE=0
     FAIL_LIST=()
     SUMMARY_LOG="consistency_summary.log"
     FAIL_LOG="consistency_fail_list.log"
@@ -698,12 +735,18 @@ PY
             -v -m consistency 2>&1 | tee -a "$SUMMARY_LOG" | tee "$CASE_LOG"
         status=${PIPESTATUS[0]}
 
-        if [ "$status" -eq 0 ] && grep -q "Batch-consistency NPU validation is unavailable" "$CASE_LOG"; then
+        if [ "$status" -eq 0 ] && grep -q "only levels 0/1/2 are supported" "$CASE_LOG"; then
             UNSUPPORTED=$((UNSUPPORTED+1))
             echo "[UNSUPPORTED] $case_name" | tee -a "$SUMMARY_LOG"
-        elif [ "$status" -eq 0 ]; then
+        elif [ "$status" -eq 0 ] && grep -q "INVALID_TRANSFORM:" "$CASE_LOG"; then
+            INVALID=$((INVALID+1))
+            echo "[INVALID_TRANSFORM] $case_name" | tee -a "$SUMMARY_LOG"
+        elif [ "$status" -eq 0 ] && grep -Eq "[0-9]+ passed" "$CASE_LOG"; then
             PASS=$((PASS+1))
             echo "[PASS] $case_name" | tee -a "$SUMMARY_LOG"
+        elif [ "$status" -eq 0 ]; then
+            NOT_APPLICABLE=$((NOT_APPLICABLE+1))
+            echo "[NOT_APPLICABLE] $case_name" | tee -a "$SUMMARY_LOG"
         else
             FAIL=$((FAIL+1))
             FAIL_LIST+=("$case_name")
@@ -714,7 +757,7 @@ PY
     done
 
     echo -e "\n========== batch一致性测试汇总 ==========" | tee -a "$SUMMARY_LOG"
-    echo "总计: $TOTAL  通过: $PASS  环境不支持: $UNSUPPORTED  失败: $FAIL" | tee -a "$SUMMARY_LOG"
+    echo "总计: $TOTAL  通过: $PASS  环境不支持: $UNSUPPORTED  变换无效: $INVALID  不适用: $NOT_APPLICABLE  失败: $FAIL" | tee -a "$SUMMARY_LOG"
     if [ "$FAIL" -gt 0 ]; then
         echo "失败用例:" | tee -a "$SUMMARY_LOG"
         for f in "${FAIL_LIST[@]}"; do

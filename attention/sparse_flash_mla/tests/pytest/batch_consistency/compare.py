@@ -10,15 +10,10 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Origin-aligned comparison for batch consistency testing.
-
-Reuses :func:`result_compare_method.check_result` for numerical tolerance
-so that consistency comparisons use the same thresholds as the golden
-comparison.  MD5 is used only as a diagnostic for bitwise equality.
-"""
+"""Origin-aware numeric and bitwise comparison for consistency tests."""
 
 import hashlib
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import torch
 
@@ -26,29 +21,286 @@ import result_compare_method
 from .model import TokenOrigin
 
 
-def _tensor_md5(t: torch.Tensor) -> str:
-    """Return hex MD5 of a tensor's raw bytes (CPU, contiguous).
+class TensorDigest:
+    """Computes dtype-agnostic tensor digests used by the STC MD5 checks."""
 
-    Uses ``view(torch.uint8)`` to handle BF16 and other non-NumPy dtypes
-    that would cause ``TypeError`` with ``tensor.numpy()``.
-    """
-    if t is None:
-        return ""
-    t = t.detach().cpu().contiguous()
-    return hashlib.md5(t.view(torch.uint8).numpy().tobytes()).hexdigest()
+    @staticmethod
+    def md5(tensor: Optional[torch.Tensor]) -> str:
+        if tensor is None:
+            return ""
+        contiguous = tensor.detach().cpu().contiguous()
+        return hashlib.md5(contiguous.view(torch.uint8).numpy().tobytes()).hexdigest()
 
 
-def compare_pair(expected: torch.Tensor, actual: torch.Tensor) -> Dict[str, Any]:
-    """Thin adapter around ``result_compare_method.check_result``.
+class OriginComparator:
+    """Maps tensors between source and target token-origin orderings."""
 
-    Returns a dict with ``pass``, ``fulfill_percent``, and diagnostic md5.
-    MD5 is computed once per tensor (not three times).
-    """
-    expected_md5 = _tensor_md5(expected)
-    actual_md5 = _tensor_md5(actual)
+    @staticmethod
+    def _positions(
+        q_lengths: Sequence[int],
+        layout_q: str,
+        valid_q_lengths: Optional[Sequence[int]] = None,
+    ) -> List[Any]:
+        valid_q_lengths = valid_q_lengths or q_lengths
+        if len(q_lengths) != len(valid_q_lengths):
+            raise ValueError("physical and valid Q length counts do not match")
+        if any(valid < 0 or valid > physical for physical, valid in zip(q_lengths, valid_q_lengths)):
+            raise ValueError(
+                f"valid Q lengths {list(valid_q_lengths)} exceed physical lengths {list(q_lengths)}"
+            )
+        if layout_q == "BSND":
+            return [
+                (batch, token)
+                for batch, length in enumerate(valid_q_lengths)
+                for token in range(length)
+            ]
+        positions = []
+        offset = 0
+        for physical, valid in zip(q_lengths, valid_q_lengths):
+            positions.extend(range(offset, offset + valid))
+            offset += physical
+        return positions
+
+    @classmethod
+    def _read_token(cls, tensor: torch.Tensor, position: Any, layout_q: str, lse: bool) -> torch.Tensor:
+        if layout_q == "TND":
+            return tensor[position].clone()
+        batch, token = position
+        return tensor[batch, :, token, :].clone() if lse else tensor[batch, token, :, :].clone()
+
+    @classmethod
+    def _write_token(
+        cls, tensor: torch.Tensor, position: Any, value: torch.Tensor, layout_q: str, lse: bool
+    ) -> None:
+        if layout_q == "TND":
+            tensor[position] = value
+            return
+        batch, token = position
+        if lse:
+            tensor[batch, :, token, :] = value
+        else:
+            tensor[batch, token, :, :] = value
+
+    @classmethod
+    def align_to_template(
+        cls,
+        source: torch.Tensor,
+        source_origins: Sequence[TokenOrigin],
+        source_q_lengths: Sequence[int],
+        target_origins: Sequence[TokenOrigin],
+        target_q_lengths: Sequence[int],
+        target_template: torch.Tensor,
+        layout_q: str,
+        lse: bool = False,
+        source_valid_q_lengths: Optional[Sequence[int]] = None,
+        target_valid_q_lengths: Optional[Sequence[int]] = None,
+    ) -> torch.Tensor:
+        source_positions = cls._positions(source_q_lengths, layout_q, source_valid_q_lengths)
+        target_positions = cls._positions(target_q_lengths, layout_q, target_valid_q_lengths)
+        if len(source_positions) != len(source_origins):
+            raise ValueError(
+                f"source origin count {len(source_origins)} != token positions {len(source_positions)}"
+            )
+        if len(target_positions) != len(target_origins):
+            raise ValueError(
+                f"target origin count {len(target_origins)} != token positions {len(target_positions)}"
+            )
+
+        source_map = {
+            origin: cls._read_token(source, position, layout_q, lse)
+            for origin, position in zip(source_origins, source_positions)
+        }
+        if len(source_map) != len(source_origins):
+            raise ValueError("Source origin list contains duplicate tokens")
+
+        aligned = torch.zeros_like(target_template)
+        for origin, target_position in zip(target_origins, target_positions):
+            if origin not in source_map:
+                raise ValueError(f"Source output is missing origin {origin}")
+            cls._write_token(aligned, target_position, source_map[origin], layout_q, lse)
+        return aligned
+
+    @classmethod
+    def pack_valid_tokens(
+        cls,
+        tensor: torch.Tensor,
+        q_lengths: Sequence[int],
+        layout_q: str,
+        valid_q_lengths: Optional[Sequence[int]] = None,
+        lse: bool = False,
+    ) -> torch.Tensor:
+        """Pack only semantically valid tokens into a canonical token-major tensor."""
+        positions = cls._positions(q_lengths, layout_q, valid_q_lengths)
+        values = [cls._read_token(tensor, position, layout_q, lse) for position in positions]
+        if values:
+            return torch.stack(values, dim=0)
+        if layout_q == "TND":
+            token_shape = tuple(tensor.shape[1:])
+        elif lse:
+            token_shape = (tensor.shape[1], tensor.shape[3])
+        else:
+            token_shape = tuple(tensor.shape[2:])
+        return tensor.new_empty((0,) + token_shape)
+
+    @staticmethod
+    def validate_origin_sets(
+        baseline_origins: Sequence[TokenOrigin], derived_origins: Sequence[TokenOrigin]
+    ) -> Optional[str]:
+        baseline_set = set(baseline_origins)
+        derived_set = set(derived_origins)
+        if len(baseline_set) != len(baseline_origins) or len(derived_set) != len(derived_origins):
+            return "Origin list contains duplicate tokens"
+        if baseline_set != derived_set:
+            return f"Origin mismatch: missing={baseline_set - derived_set}, extra={derived_set - baseline_set}"
+        return None
+
+
+class SplitMerger:
+    """Retains full-partition merge as an optional diagnostic, not mode-2's primary oracle."""
+
+    @staticmethod
+    def _baseline_origins(q_lengths: Sequence[int]) -> List[TokenOrigin]:
+        return [
+            TokenOrigin(source_batch=batch, source_token=token)
+            for batch, length in enumerate(q_lengths)
+            for token in range(length)
+        ]
+
+    @classmethod
+    def merge_outputs(
+        cls,
+        sub_results: List[Tuple[torch.Tensor, List[TokenOrigin], Dict[str, Any]]],
+        layout_q: str,
+        baseline_q_lengths: List[int],
+        baseline_valid_q_lengths: Optional[List[int]] = None,
+    ) -> Tuple[torch.Tensor, List[TokenOrigin]]:
+        baseline_valid_q_lengths = baseline_valid_q_lengths or baseline_q_lengths
+        all_tokens: Dict[TokenOrigin, torch.Tensor] = {}
+        for output, origins, transform_meta in sub_results:
+            physical_lengths, valid_lengths = cls._case_lengths(origins, transform_meta)
+            positions = OriginComparator._positions(physical_lengths, layout_q, valid_lengths)
+            for origin, position in zip(origins, positions):
+                if origin in all_tokens:
+                    raise ValueError(f"Duplicate output origin while merging: {origin}")
+                all_tokens[origin] = OriginComparator._read_token(output, position, layout_q, False)
+
+        baseline_origins = cls._baseline_origins(baseline_valid_q_lengths)
+        missing = [origin for origin in baseline_origins if origin not in all_tokens]
+        if missing:
+            raise ValueError(f"Cannot merge an incomplete partition; missing origins: {missing[:4]}")
+        sample = next(iter(all_tokens.values()))
+        if layout_q == "BSND":
+            merged = torch.zeros(
+                (len(baseline_q_lengths), max(baseline_q_lengths), sample.shape[0], sample.shape[1]),
+                dtype=sample.dtype,
+                device=sample.device,
+            )
+        else:
+            merged = torch.zeros(
+                (sum(baseline_q_lengths), sample.shape[0], sample.shape[1]),
+                dtype=sample.dtype,
+                device=sample.device,
+            )
+        baseline_positions = OriginComparator._positions(
+            baseline_q_lengths,
+            layout_q,
+            baseline_valid_q_lengths,
+        )
+        for origin, position in zip(baseline_origins, baseline_positions):
+            OriginComparator._write_token(merged, position, all_tokens[origin], layout_q, False)
+        return merged, baseline_origins
+
+    @classmethod
+    def merge_lse(
+        cls,
+        sub_lses: List[Tuple[Any, ...]],
+        layout_q: str,
+        baseline_q_lengths: List[int],
+        baseline_valid_q_lengths: Optional[List[int]] = None,
+    ) -> Tuple[torch.Tensor, List[TokenOrigin]]:
+        baseline_valid_q_lengths = baseline_valid_q_lengths or baseline_q_lengths
+        all_tokens: Dict[TokenOrigin, torch.Tensor] = {}
+        for sub_lse in sub_lses:
+            if len(sub_lse) == 2:
+                lse, origins = sub_lse
+                transform_meta: Dict[str, Any] = {}
+            elif len(sub_lse) == 3:
+                lse, origins, transform_meta = sub_lse
+            else:
+                raise ValueError("Each split LSE entry must have 2 or 3 values")
+            if lse is None:
+                raise ValueError("return_softmax_lse=True but a split result has no LSE tensor")
+            physical_lengths, valid_lengths = cls._case_lengths(origins, transform_meta)
+            positions = OriginComparator._positions(physical_lengths, layout_q, valid_lengths)
+            for origin, position in zip(origins, positions):
+                if origin in all_tokens:
+                    raise ValueError(f"Duplicate LSE origin while merging: {origin}")
+                all_tokens[origin] = OriginComparator._read_token(lse, position, layout_q, True)
+
+        baseline_origins = cls._baseline_origins(baseline_valid_q_lengths)
+        missing = [origin for origin in baseline_origins if origin not in all_tokens]
+        if missing:
+            raise ValueError(f"Cannot merge incomplete LSE results; missing origins: {missing[:4]}")
+        sample = next(iter(all_tokens.values()))
+        if layout_q == "BSND":
+            merged = torch.zeros(
+                (len(baseline_q_lengths), sample.shape[0], max(baseline_q_lengths), sample.shape[1]),
+                dtype=sample.dtype,
+                device=sample.device,
+            )
+        else:
+            merged = torch.zeros(
+                (sum(baseline_q_lengths), sample.shape[0], sample.shape[1]),
+                dtype=sample.dtype,
+                device=sample.device,
+            )
+        baseline_positions = OriginComparator._positions(
+            baseline_q_lengths,
+            layout_q,
+            baseline_valid_q_lengths,
+        )
+        for origin, position in zip(baseline_origins, baseline_positions):
+            OriginComparator._write_token(merged, position, all_tokens[origin], layout_q, True)
+        return merged, baseline_origins
+
+    @classmethod
+    def _case_lengths(
+        cls,
+        origins: Sequence[TokenOrigin],
+        transform_meta: Dict[str, Any],
+    ) -> Tuple[List[int], List[int]]:
+        valid_lengths = list(
+            transform_meta.get("valid_q_lengths", cls._lengths_from_origins(origins))
+        )
+        physical_lengths = list(transform_meta.get("physical_q_lengths", valid_lengths))
+        return physical_lengths, valid_lengths
+
+    @staticmethod
+    def _lengths_from_origins(origins: Sequence[TokenOrigin]) -> List[int]:
+        lengths = []
+        current_batch = object()
+        for origin in origins:
+            if origin.source_batch != current_batch:
+                lengths.append(0)
+                current_batch = origin.source_batch
+            lengths[-1] += 1
+        return lengths
+
+
+def tensor_md5(tensor: Optional[torch.Tensor]) -> str:
+    return TensorDigest.md5(tensor)
+
+
+def compare_pair(
+    expected: torch.Tensor, actual: torch.Tensor, require_bitwise: bool = False
+) -> Dict[str, Any]:
+    expected_md5 = TensorDigest.md5(expected)
+    actual_md5 = TensorDigest.md5(actual)
+    bitwise_equal = expected_md5 == actual_md5
     if expected.shape != actual.shape:
         return {
             "pass": False,
+            "numeric_pass": False,
             "fulfill_percent": 0.0,
             "error": f"shape mismatch: expected {tuple(expected.shape)}, actual {tuple(actual.shape)}",
             "expected_md5": expected_md5,
@@ -56,67 +308,16 @@ def compare_pair(expected: torch.Tensor, actual: torch.Tensor) -> Dict[str, Any]
             "bitwise_equal": False,
         }
     result = result_compare_method.check_result(expected, actual)
-    status, percent = result[0], result[1]
+    numeric_pass = result[0].lower() in {"pass", "passed"}
     return {
-        "pass": status.lower() in {"pass", "passed"},
-        "fulfill_percent": float(percent),
+        "pass": numeric_pass and (bitwise_equal or not require_bitwise),
+        "numeric_pass": numeric_pass,
+        "fulfill_percent": float(result[1]),
         "expected_md5": expected_md5,
         "actual_md5": actual_md5,
-        "bitwise_equal": expected_md5 == actual_md5,
+        "bitwise_equal": bitwise_equal,
+        "bitwise_required": require_bitwise,
     }
-
-
-def _align_by_origin(
-    output: torch.Tensor,
-    origins: List[TokenOrigin],
-    target_origins: List[TokenOrigin],
-    layout_q: str,
-    B: int,
-    q_lengths: List[int],
-) -> torch.Tensor:
-    """Reorder *output* so its tokens are in *target_origins* order.
-
-    Each token in *output* is identified by its *origins* entry.  We gather
-    them into the order given by *target_origins*.
-
-    For BSND output ``[B, S1, N1, D]`` the token at ``(b, s)`` is at
-    ``output[b, s, :, :]``.
-
-    For TND output ``[T, N1, D]`` tokens are laid out contiguously per batch
-    in the same order as *origins*.
-    """
-    # Build a lookup: origin -> position in output
-    origin_to_pos: Dict[TokenOrigin, int] = {}
-    for pos, origin in enumerate(origins):
-        origin_to_pos[origin] = pos
-
-    if layout_q == "BSND":
-        # output shape: [B, S1, N1, D]
-        S1 = output.shape[1]
-        # Build the target tensor
-        target = torch.zeros_like(output)
-        for target_idx, target_origin in enumerate(target_origins):
-            src_pos = origin_to_pos[target_origin]
-            # In BSND, position maps to (batch, token)
-            src_b = src_pos // S1 if S1 > 0 else 0
-            src_s = src_pos % S1 if S1 > 0 else 0
-            tgt_b = target_idx // S1 if S1 > 0 else 0
-            tgt_s = target_idx % S1 if S1 > 0 else 0
-            target[tgt_b, tgt_s, :, :] = output[src_b, src_s, :, :]
-        return target
-
-    else:  # TND
-        # output shape: [T, N1, D]
-        N1 = output.shape[1]
-        D = output.shape[2]
-        total_T = sum(q_lengths)
-        target = torch.zeros((total_T, N1, D), dtype=output.dtype, device=output.device)
-        tgt_offset = 0
-        for target_origin in target_origins:
-            src_pos = origin_to_pos[target_origin]
-            target[tgt_offset] = output[src_pos]
-            tgt_offset += 1
-        return target
 
 
 def compare_consistency(
@@ -126,223 +327,187 @@ def compare_consistency(
     derived_origins: List[TokenOrigin],
     layout_q: str,
     baseline_q_lengths: List[int],
+    derived_q_lengths: Optional[List[int]] = None,
     compare_lse: bool = False,
     baseline_lse: Optional[torch.Tensor] = None,
     derived_lse: Optional[torch.Tensor] = None,
+    require_bitwise: bool = True,
+    baseline_valid_q_lengths: Optional[List[int]] = None,
+    derived_valid_q_lengths: Optional[List[int]] = None,
 ) -> Dict[str, Any]:
-    """Compare derived output against baseline by token origin.
-
-    The derived output is realigned to baseline order, then
-    :func:`compare_pair` is applied.
-
-    Returns a dict with overall pass/fail and per-component results.
-    """
-    # Verify origin sets match
-    baseline_origin_set = set(baseline_origins)
-    derived_origin_set = set(derived_origins)
-    if len(baseline_origin_set) != len(baseline_origins) or len(derived_origin_set) != len(derived_origins):
-        return {"pass": False, "error": "Origin list contains duplicate tokens"}
-    if baseline_origin_set != derived_origin_set:
-        missing = baseline_origin_set - derived_origin_set
-        extra = derived_origin_set - baseline_origin_set
-        return {
-            "pass": False,
-            "error": f"Origin mismatch: missing={missing}, extra={extra}",
-        }
-
-    # Align derived output to baseline order
-    aligned_output = _align_by_origin(
+    error = OriginComparator.validate_origin_sets(baseline_origins, derived_origins)
+    if error:
+        return {"pass": False, "error": error}
+    derived_q_lengths = derived_q_lengths or baseline_q_lengths
+    baseline_valid_q_lengths = baseline_valid_q_lengths or baseline_q_lengths
+    derived_valid_q_lengths = derived_valid_q_lengths or derived_q_lengths
+    aligned_output = OriginComparator.align_to_template(
         derived_output,
         derived_origins,
+        derived_q_lengths,
         baseline_origins,
-        layout_q,
-        len(baseline_q_lengths),
         baseline_q_lengths,
+        baseline_output,
+        layout_q,
+        source_valid_q_lengths=derived_valid_q_lengths,
+        target_valid_q_lengths=baseline_valid_q_lengths,
     )
-
-    output_result = compare_pair(baseline_output, aligned_output)
-    result: Dict[str, Any] = {
-        "output": output_result,
-        "pass": output_result["pass"],
-    }
-
+    expected_output = OriginComparator.pack_valid_tokens(
+        baseline_output,
+        baseline_q_lengths,
+        layout_q,
+        baseline_valid_q_lengths,
+    )
+    actual_output = OriginComparator.pack_valid_tokens(
+        aligned_output,
+        baseline_q_lengths,
+        layout_q,
+        baseline_valid_q_lengths,
+    )
+    output_result = compare_pair(expected_output, actual_output, require_bitwise=require_bitwise)
+    result: Dict[str, Any] = {"output": output_result, "pass": output_result["pass"]}
     if compare_lse and (baseline_lse is None or derived_lse is None):
-        result["lse"] = {
-            "pass": False,
-            "fulfill_percent": 0.0,
-            "error": "return_softmax_lse=True but an LSE result is missing",
-        }
+        result["lse"] = {"pass": False, "fulfill_percent": 0.0, "error": "LSE result is missing"}
         result["pass"] = False
     elif compare_lse:
-        aligned_lse = _align_lse_by_origin(
-            derived_lse, derived_origins, baseline_origins, layout_q, baseline_q_lengths
+        aligned_lse = OriginComparator.align_to_template(
+            derived_lse,
+            derived_origins,
+            derived_q_lengths,
+            baseline_origins,
+            baseline_q_lengths,
+            baseline_lse,
+            layout_q,
+            lse=True,
+            source_valid_q_lengths=derived_valid_q_lengths,
+            target_valid_q_lengths=baseline_valid_q_lengths,
         )
-        lse_result = compare_pair(baseline_lse, aligned_lse)
-        result["lse"] = lse_result
-        result["pass"] = result["pass"] and lse_result["pass"]
-
+        expected_lse = OriginComparator.pack_valid_tokens(
+            baseline_lse,
+            baseline_q_lengths,
+            layout_q,
+            baseline_valid_q_lengths,
+            lse=True,
+        )
+        actual_lse = OriginComparator.pack_valid_tokens(
+            aligned_lse,
+            baseline_q_lengths,
+            layout_q,
+            baseline_valid_q_lengths,
+            lse=True,
+        )
+        result["lse"] = compare_pair(expected_lse, actual_lse, require_bitwise=require_bitwise)
+        result["pass"] = result["pass"] and result["lse"]["pass"]
     return result
 
 
-def _align_lse_by_origin(
-    lse: torch.Tensor,
-    origins: List[TokenOrigin],
-    target_origins: List[TokenOrigin],
+def compare_subset(
+    baseline_output: torch.Tensor,
+    baseline_origins: List[TokenOrigin],
+    baseline_q_lengths: List[int],
+    derived_output: torch.Tensor,
+    derived_origins: List[TokenOrigin],
+    derived_q_lengths: List[int],
     layout_q: str,
-    q_lengths: List[int],
-) -> torch.Tensor:
-    """Align LSE tensor by token origin.
-
-    LSE shape for BSND: [B, N2, S1, G]
-    LSE shape for TND:  [T, N2, G]
-    """
-    origin_to_pos: Dict[TokenOrigin, int] = {}
-    for pos, origin in enumerate(origins):
-        origin_to_pos[origin] = pos
-
-    if layout_q == "BSND":
-        S1 = lse.shape[2]
-        target = torch.zeros_like(lse)
-        for target_idx, target_origin in enumerate(target_origins):
-            src_pos = origin_to_pos[target_origin]
-            src_b = src_pos // S1 if S1 > 0 else 0
-            src_s = src_pos % S1 if S1 > 0 else 0
-            tgt_b = target_idx // S1 if S1 > 0 else 0
-            tgt_s = target_idx % S1 if S1 > 0 else 0
-            target[tgt_b, :, tgt_s, :] = lse[src_b, :, src_s, :]
-        return target
-    else:  # TND
-        N2 = lse.shape[1] if lse.dim() >= 2 else 1
-        G = lse.shape[2] if lse.dim() >= 3 else 1
-        total_T = sum(q_lengths)
-        target = torch.zeros((total_T, N2, G), dtype=lse.dtype, device=lse.device)
-        tgt_offset = 0
-        for target_origin in target_origins:
-            src_pos = origin_to_pos[target_origin]
-            target[tgt_offset] = lse[src_pos]
-            tgt_offset += 1
-        return target
+    compare_lse: bool = False,
+    baseline_lse: Optional[torch.Tensor] = None,
+    derived_lse: Optional[torch.Tensor] = None,
+    require_bitwise: bool = True,
+    baseline_valid_q_lengths: Optional[List[int]] = None,
+    derived_valid_q_lengths: Optional[List[int]] = None,
+) -> Dict[str, Any]:
+    baseline_valid_q_lengths = baseline_valid_q_lengths or baseline_q_lengths
+    derived_valid_q_lengths = derived_valid_q_lengths or derived_q_lengths
+    try:
+        expected_output = OriginComparator.align_to_template(
+            baseline_output,
+            baseline_origins,
+            baseline_q_lengths,
+            derived_origins,
+            derived_q_lengths,
+            derived_output,
+            layout_q,
+            source_valid_q_lengths=baseline_valid_q_lengths,
+            target_valid_q_lengths=derived_valid_q_lengths,
+        )
+    except ValueError as error:
+        return {"pass": False, "error": str(error)}
+    expected_packed = OriginComparator.pack_valid_tokens(
+        expected_output,
+        derived_q_lengths,
+        layout_q,
+        derived_valid_q_lengths,
+    )
+    actual_packed = OriginComparator.pack_valid_tokens(
+        derived_output,
+        derived_q_lengths,
+        layout_q,
+        derived_valid_q_lengths,
+    )
+    output_result = compare_pair(expected_packed, actual_packed, require_bitwise=require_bitwise)
+    result: Dict[str, Any] = {"output": output_result, "pass": output_result["pass"]}
+    if compare_lse and (baseline_lse is None or derived_lse is None):
+        result["lse"] = {"pass": False, "fulfill_percent": 0.0, "error": "LSE result is missing"}
+        result["pass"] = False
+    elif compare_lse:
+        expected_lse = OriginComparator.align_to_template(
+            baseline_lse,
+            baseline_origins,
+            baseline_q_lengths,
+            derived_origins,
+            derived_q_lengths,
+            derived_lse,
+            layout_q,
+            lse=True,
+            source_valid_q_lengths=baseline_valid_q_lengths,
+            target_valid_q_lengths=derived_valid_q_lengths,
+        )
+        expected_lse_packed = OriginComparator.pack_valid_tokens(
+            expected_lse,
+            derived_q_lengths,
+            layout_q,
+            derived_valid_q_lengths,
+            lse=True,
+        )
+        actual_lse_packed = OriginComparator.pack_valid_tokens(
+            derived_lse,
+            derived_q_lengths,
+            layout_q,
+            derived_valid_q_lengths,
+            lse=True,
+        )
+        result["lse"] = compare_pair(
+            expected_lse_packed,
+            actual_lse_packed,
+            require_bitwise=require_bitwise,
+        )
+        result["pass"] = result["pass"] and result["lse"]["pass"]
+    return result
 
 
 def merge_split_outputs(
     sub_results: List[Tuple[torch.Tensor, List[TokenOrigin], Dict[str, Any]]],
     layout_q: str,
     baseline_q_lengths: List[int],
+    baseline_valid_q_lengths: Optional[List[int]] = None,
 ) -> Tuple[torch.Tensor, List[TokenOrigin]]:
-    """Merge sub-case outputs from Mode 2 into a single tensor.
-
-    Each element of *sub_results* is ``(output, origins, meta)``.
-    The merged tensor is ordered by the baseline batch/token order.
-
-    BSND output: [B, S1, N1, D]
-    TND output:  [T, N1, D]
-    """
-    all_tokens: Dict[TokenOrigin, torch.Tensor] = {}
-
-    for output, origins, _meta in sub_results:
-        if layout_q == "BSND":
-            S1 = output.shape[1]
-            for pos, origin in enumerate(origins):
-                b = pos // S1 if S1 > 0 else 0
-                s = pos % S1 if S1 > 0 else 0
-                if origin in all_tokens:
-                    raise ValueError(f"Duplicate output origin while merging: {origin}")
-                all_tokens[origin] = output[b, s, :, :].clone()
-        else:  # TND
-            for pos, origin in enumerate(origins):
-                if origin in all_tokens:
-                    raise ValueError(f"Duplicate output origin while merging: {origin}")
-                all_tokens[origin] = output[pos].clone()
-
-    # Build merged tensor in baseline order
-    baseline_origins = []
-    for b, length in enumerate(baseline_q_lengths):
-        for s in range(length):
-            baseline_origins.append(TokenOrigin(source_batch=b, source_token=s))
-
-    if layout_q == "BSND":
-        B = len(baseline_q_lengths)
-        S1 = max(baseline_q_lengths) if baseline_q_lengths else 0
-        sample_token = next(iter(all_tokens.values()))
-        N1 = sample_token.shape[0]
-        D = sample_token.shape[1]
-        merged = torch.zeros((B, S1, N1, D), dtype=sample_token.dtype, device=sample_token.device)
-        for origin in baseline_origins:
-            b = origin.source_batch
-            s = origin.source_token
-            merged[b, s, :, :] = all_tokens[origin]
-    else:  # TND
-        total_T = sum(baseline_q_lengths)
-        sample_token = next(iter(all_tokens.values()))
-        N1 = sample_token.shape[0]
-        D = sample_token.shape[1]
-        merged = torch.zeros((total_T, N1, D), dtype=sample_token.dtype, device=sample_token.device)
-        offset = 0
-        for b, length in enumerate(baseline_q_lengths):
-            for s in range(length):
-                merged[offset] = all_tokens[TokenOrigin(source_batch=b, source_token=s)]
-                offset += 1
-
-    return merged, baseline_origins
+    return SplitMerger.merge_outputs(
+        sub_results,
+        layout_q,
+        baseline_q_lengths,
+        baseline_valid_q_lengths,
+    )
 
 
 def merge_split_lse(
-    sub_lses: List[Tuple[torch.Tensor, List[TokenOrigin]]],
+    sub_lses: List[Tuple[Any, ...]],
     layout_q: str,
     baseline_q_lengths: List[int],
+    baseline_valid_q_lengths: Optional[List[int]] = None,
 ) -> Tuple[torch.Tensor, List[TokenOrigin]]:
-    """Merge sub-case LSE outputs from Mode 2 into a single tensor.
-
-    Each element of *sub_lses* is ``(lse, origins)``.
-
-    BSND LSE: [B, N2, S1, G]
-    TND LSE:  [T, N2, G]
-    """
-    all_tokens: Dict[TokenOrigin, torch.Tensor] = {}
-
-    for lse, origins in sub_lses:
-        if lse is None:
-            raise ValueError("return_softmax_lse=True but a split result has no LSE tensor")
-        if layout_q == "BSND":
-            S1 = lse.shape[2]
-            for pos, origin in enumerate(origins):
-                b = pos // S1 if S1 > 0 else 0
-                s = pos % S1 if S1 > 0 else 0
-                if origin in all_tokens:
-                    raise ValueError(f"Duplicate LSE origin while merging: {origin}")
-                all_tokens[origin] = lse[b, :, s, :].clone()
-        else:  # TND
-            for pos, origin in enumerate(origins):
-                if origin in all_tokens:
-                    raise ValueError(f"Duplicate LSE origin while merging: {origin}")
-                all_tokens[origin] = lse[pos].clone()
-
-    baseline_origins = []
-    for b, length in enumerate(baseline_q_lengths):
-        for s in range(length):
-            baseline_origins.append(TokenOrigin(source_batch=b, source_token=s))
-
-    if layout_q == "BSND":
-        B = len(baseline_q_lengths)
-        S1 = max(baseline_q_lengths) if baseline_q_lengths else 0
-        sample_token = next(iter(all_tokens.values()))
-        N2 = sample_token.shape[0]
-        G = sample_token.shape[1]
-        merged = torch.zeros((B, N2, S1, G), dtype=sample_token.dtype, device=sample_token.device)
-        for origin in baseline_origins:
-            b = origin.source_batch
-            s = origin.source_token
-            merged[b, :, s, :] = all_tokens[origin]
-    else:  # TND
-        total_T = sum(baseline_q_lengths)
-        sample_token = next(iter(all_tokens.values()))
-        N2 = sample_token.shape[0]
-        G = sample_token.shape[1]
-        merged = torch.zeros((total_T, N2, G), dtype=sample_token.dtype, device=sample_token.device)
-        offset = 0
-        for b, length in enumerate(baseline_q_lengths):
-            for s in range(length):
-                merged[offset] = all_tokens[TokenOrigin(source_batch=b, source_token=s)]
-                offset += 1
-
-    return merged, baseline_origins
+    return SplitMerger.merge_lse(
+        sub_lses,
+        layout_q,
+        baseline_q_lengths,
+        baseline_valid_q_lengths,
+    )

@@ -1,279 +1,323 @@
-# 需求一
+# SMLA/MQSMLA batch 一致性需求与开发台账
 
-requs/docs下提供了`batch一致性测试框架.md`、`SMLA支持batch一致性.md`、`SMLA batch一致性.md`、`metadata输出结果解析.md`文档，batch一致性这是SMLA算子的一个特性，`batch一致性测试框架.md`是测试框架适配的开发需求规划，现在我需要在SMLA pytest上去适配这个batch一致性，请chatgpt和glm查阅文档和ops-transformer/attention/sparse_flash_mla/tests/pytest的实现，`batch一致性测试框架.md`的`# 大纲`下图片展示了当前开发流程与重要点，chatgpt按照`batch一致性测试框架.md`一步步去`SMLA_batch一致性测试开发计划.md`规划设计指导glm-5.2完成开发任务（通过`SMLA_batch一致性测试开发计划.md`文档沟通，如何判断对方是否回答完：可以通过在文档中设置时间节点），
-入门先优先适配`# 支持的黑盒场景`，一步步走，比如说
-ops-transformer/attention/sparse_flash_mla下面其他目录有算子具体实现pytest要跑`batch一致性`的用例，肯定要在当前SMLA pytest基础上加一个开关，去控制`batch一致性`的分支逻辑
-有了开关后肯定开始黑盒场景实现，`batch一致性测试框架.md`中也提供了一些思路，白盒就重点对场景规约情况做分析了，在`SMLA batch一致性.md`、`SMLA支持batch一致性.md`、`metadata输出结果解析.md`就对`batch一致性`做了重点介绍，一定要多查阅，`metadata输出结果解析.md`也有FD相关分核结果理解展示
+> 最近整理：2026-07-17
+> 第一阶段基线提交：`b680bfbdd test(smla): add phase-one batch consistency framework`
+> 本文用途：归档需求背景、权威资料、需求冲突裁决、实现记录、检视答复和当前状态。具体后续里程碑见
+> `SMLA_batch一致性测试开发计划.md`。
 
-关于实现过程glm-5.2有问题的可以和chatgpt探讨一下，但有一个前提是`batch一致性测试`实现时不要影响到SMLA pytest已有的一些功能
+## 1. 项目背景与最终范围
 
-环境支持，当前环境是ascend910_93的，根据ops-transformer_0716/attention/sparse_flash_mla/op_host/sparse_flash_mla_def.cpp可知SMLA是支持ascend910_93，可以尝试构造`batch一致性`的excel用例验证跑下(当时如果`batch一致性`这个特性只在ascend950实现的话，本环境肯定不支持了，告知我一声就行),还有不要在沙箱内用N卡，沙箱外执行，python环境支持请在跑用例前`source /mnt/workspace/gitCode/env.sh`
+batch 一致性的根因不是普通数值精度不足，而是 FlashDecode 在 S2 方向切到不同核后，
+FA partial result 的归约顺序可能随 batch、token 或 shape 改变。浮点加法不满足结合律，
+所以结果虽然可能仍通过普通容差，却不再逐 bit 一致。
 
-/mnt/workspace/gitCode/cann/ops-transformer_0716/attention/sparse_flash_mla是SMLA的最新代码，可以查阅一下，我只允许你们动/mnt/workspace/gitCode/cann/ops-transformer_0716/attention/sparse_flash_mla/tests/pytest目录，注意代码规范
+本需求的最终范围同时包含两个主算子：
 
-# 第一阶段开发记录（2026-07-17）
+- `sparse_flash_mla`，简称 SMLA；
+- `mixed_quant_sparse_flash_mla`，简称 MQSMLA。
 
-## 1. 本阶段结论与变更边界
+二者要同步完成两条开发线：
 
-第一阶段按照“先打通黑盒模式、保持原 pytest git  1
-（batch 调序）和模式 2（batch 拆分）。实现支持 Q 的 BSND/TND layout，以及 KV
-的 BSND/TND/PA_BBND layout；主输出和可选 LSE 均按源 token 对齐后复用原 pytest
-的数值精度标准比较。
+1. 主算子读取 deterministic level 3，并实现与其他 token 调度无关的固定规约语义；
+2. pytest 构造等价输入、执行 level 3、按源 token 对齐输出，并同时检查 MD5 与原精度标准。
 
-本阶段代码变更只位于：
+当前 SMLA/MQSMLA 主算子和本机 torch_npu/CANN 组合都不能视为已支持 batch 一致性。
+pytest 框架通过只代表测试侧逻辑可用，普通 level 0 精度通过也不能代替 level 3 特性验收。
 
-~~~text
-attention/sparse_flash_mla/tests/pytest/
-~~~
+## 2. 需求资料与采用顺序
 
-没有修改 SMLA host/kernel、`sparse_flash_mla_golden.py`、原 batch 测试入口或
-`batch/sparse_flash_mla_process.py`。一致性测试默认关闭，原有
-`single/save/load/load_graph` 行为不变。另更新本需求记录和开发计划文档，用于
-记录实际交付边界和第二阶段设计。
-
-当前实现状态：
-
-| 范围 | 状态 | 说明 |
+| 优先级 | 资料 | 用途 |
 | --- | --- | --- |
-| 模式 1：batch 调序 | 已实现 | 随机种子可复现，强制生成非恒等排列 |
-| 模式 2：batch 拆分 | 已实现 | 分组非空、无重复、完整覆盖原 batch |
-| BSND/TND/PA_BBND | 已实现 | 使用 layout-aware 变换，不做统一 `tensor[order]` |
-| 主输出/LSE 对齐 | 已实现 | 使用 `TokenOrigin(source_batch, source_token)` |
-| metadata 白盒解析 | 未实现 | 进入第二阶段设计，当前 `RunResult.metadata` 为 `None` |
-| 模式 3/4 | 未实现 | 明确报 unsupported，不做语义不可靠的伪实现 |
-| graph 一致性 | 未实现 | 原 graph 测试未受影响，第二阶段单独适配 |
-| level 3 NPU 验证 | 环境阻塞 | 当前 910_93 环境的 torch_npu/CANN 9.2 首次 NPU 操作拒绝 level 3 |
+| 1 | `docs/Milan&TorinoC12_RP3_B050_G项目_STC用例.xlsx` | 001-027 正式验收场景、基准/派生 case 关系和 shape |
+| 2 | `docs/会议纪要.md` | 开发者对黑盒模式、S2 切分、FA/FD 和 metadata 控制方式的解释 |
+| 3 | `docs/batch一致性测试框架.md` | 四种黑盒模式、白盒层级和自动化流程 |
+| 4 | `docs/SMLA batch一致性.md`、`docs/SMLA支持batch一致性.md` | 特性背景、level 3 开关、Level-1/2 规约设计 |
+| 5 | `docs/metadata输出结果解析.md` | FA/FD record 的旧版与 split-G 布局说明 |
+| 6 | 当前 header、metadata AICPU 和 kernel 消费源码 | 字段偏移、闭开区间和部署代码现状的最终静态证据 |
 
-## 2. 本次每个文件的职责
+出现冲突时不静默选择一个说法：STC 决定验收意图，源码决定当前接口事实；仍不能证明
+等价的变换必须报告 `INVALID_TRANSFORM` 或保持未实现。
 
-| 文件 | 类型 | 本次职责 |
+## 3. 已确认的需求事实与资料冲突
+
+### 3.1 deterministic level
+
+- level 3 是 batch 一致性功能开关；
+- setter/getter 成功不代表算子可执行，当前环境会在第一次 NPU 操作时延迟拒绝；
+- 测试必须保存并恢复真实旧 level；
+- 不允许退回 level 0 后把结果标成 batch consistency PASS。
+
+### 3.2 metadata 当前布局
+
+SMLA 和 MQSMLA 当前 header 均定义：
+
+```text
+总长: 1024 * int32
+FA:   [0, 324)   = 36 cores * 9 fields
+FD:   [324, 900) = 72 cores * 8 fields
+尾部: [900, 1024)= 124 int32 reserved
+```
+
+FA 索引 0-8 均已命名；FD record size 为 8，但 header 只命名 0-6，索引 7 必须按未知/
+预留槽报告。`int32_t` backing tensor 对应 `uint32_t` struct，解析时按原始 bit pattern 转成
+无符号值。
+
+MQSMLA metadata AICPU 源码已经明确：
+
+- `s2End` 是取不到的右开边界；
+- `bN2End/gS1End/s2End` 是连续任务端点，下一核 start 来自上一核 end；
+- FD 的 `workspace_num` 是该归约任务的 S2 split 数，`m_start/m_num` 是同一任务进一步
+  分配到 AIV 核的 M 范围；
+- FD `M` 是 `s1g` 行，缺少 group-size 等上下文时不能直接称为一个 query token。
+
+### 3.3 S2 分类冲突
+
+框架定义 Level-1 四类：
+
+1. `S2 / 32 == 128`；
+2. `S2 / 32 < 128`；
+3. `S2 / 32 > 128 && S2 % 32 == 0`；
+4. `S2 / 32 > 128 && S2 % 32 != 0`。
+
+STC 014 把 `S2=5120` 描述为“不是整数倍”，但 `5120 % 32 == 0`，并且两份设计文档都
+给出 `R=align_up(5120/32, 128)=256`。因此代码按可计算事实把 5120 归入第 3 类；STC
+文字需由用例负责人修订，不能在代码里制造错误分类来迁就描述。
+
+## 4. 四种黑盒模式的裁决
+
+| 模式 | 规范名称 | 当前裁决 | STC 对应 |
+| --- | --- | --- | --- |
+| 1 | `reorder` | 同一组 batch 改变执行顺序，Q/KV/长度/索引同步重排，按 origin 还原后逐 token 比较 | 018，以及 020/024-027 的组合场景 |
+| 2 | `split` | 从基准多 batch case 选取一个或多个 batch 子集；每个子 case 直接和基准对应 batch 比较 | 003/008/011/015，随机组合见 020/024-027 |
+| 3 | `token-split` | 保持所选 batch 的 KV，上下文不变；选取 batch 内指定 Q token，比较这些 token 的对应输出 | 002/006/007/012/016，随机 token 见 019/020/024-027 |
+| 4 | `shape-change` | 保留目标 token，增减其他 Q token 以改变 batch shape；当前资料冲突，暂不执行 | 004/009/013/017 |
+
+### 4.1 模式 2 为什么不以合并结果为主
+
+用户检视意见正确。模式 2 的主验收应是：
+
+```text
+基准 case 的对应 origin 输出 <-> 每个派生子 case 的输出
+```
+
+每个子 case 单独报告 MD5、数值精度和 batch id。只有显式 groups 恰好完整覆盖原 batch
+时，框架才额外合并一次做诊断；合并失败不能掩盖某个子 case 的直接结果，不完整子集也
+不再被强制补全。
+
+### 4.2 模式 3 到底在测什么
+
+模式 3 要验证一个 query token 的结果不受同 batch 其他 query token 的组合与调度影响。
+Attention 对不同 Q token 数学上独立，但 metadata 分核会看到整组 shape；抽取 token 后
+调度可能变化，因此目标 token 必须仍逐 bit 一致。
+
+资料中有三种表述：
+
+- STC：从基准选取每个 batch 的第一个 token、前 x 个 token或单个 token，派生 S1 可变；
+- 框架方法 1：把一个 batch 的 token 分到多个逻辑 batch，保持 KV；
+- 会议/框架方法 2：保持 shape 和目标 token 位置，只替换其他 Q token，保持 KV。
+
+当前实现优先满足有明确 case 对的 STC 语义，即“token 子集选择”。同 shape 替换其他 Q
+并不会改变 shape 驱动的 metadata 调度，单独作为主验收价值较弱，后续可作为 query
+独立性补充测试。
+
+位置敏感 mask 不能机械抽取 token。当前 guard 检查目标 token 到有效 Q 右边界的距离：
+距离改变则报告 `INVALID_TRANSFORM`；选择后缀并保持右对齐时可以继续。后续 actual-input
+CPU golden oracle 建立后，再用真实计算代替有限的静态 guard。
+
+### 4.3 模式 4 为什么仍未实现
+
+- 框架和会议纪要建议在首部 prepend，以维持右下角对齐 mask；
+- STC 004/009/013/017 写的是在各 batch 后面追加 token；
+- 另一份背景材料又用“前 300 token 相同”描述前缀比较。
+
+三者在 causal/window mask 下并不等价。没有 actual-input golden oracle 和接口负责人裁决
+前，模式 4明确报 unsupported，不能用某一种随机实现冒充验收。
+
+## 5. 随机策略与 seed 的检视结论
+
+默认分组完全由 seed 决定不适合作为基础 STC：失败 case 不直观，固定用例与调度覆盖也
+难对应。当前规则调整为：
+
+- 模式 1仍按需求打乱 batch，但固定 seed 使排列可复现且强制非恒等；
+- 模式 2基础 profile 默认确定性二分，例如 B=5 得到 `[0,1,2] + [3,4]`，seed 不改变它；
+- STC 可通过 Python API 显式给出任意 batch 子集，子集不必覆盖全集；
+- 只有 `--randomize`/fuzz profile 才用 seed 打乱模式 2分组；
+- 随机场景主要对应 STC 018-020、024-027，不能替代 001-017 的显式基准/派生关系。
+
+算子侧不是按测试 seed 分组。metadata 根据 B/N2/S1/S2、有效长度、mask、top-k 和核数
+连续分配 FA 任务；seed 只是测试输入组合控制，不是 kernel 调度参数。
+
+## 6. 第一阶段开发检视一：逐项答复与修复
+
+| 检视项 | 处理结果 | 当前状态 |
 | --- | --- | --- |
-| `pytest.ini` | 修改 | 注册 `consistency` marker，避免 pytest 未注册告警，并表明该测试默认关闭 |
-| `test_run.sh` | 修改 | 增加独立 `consistency` 子命令；解析 PT 目录、模式和 seed；筛选 `B>=2` 的 PT；每个 case 使用独立 pytest 进程；汇总 PASS/UNSUPPORTED/FAIL |
-| `batch_consistency/__init__.py` | 新增 | 声明 batch consistency Python 包；不承载业务逻辑 |
-| `batch_consistency/model.py` | 新增 | 定义 `TokenOrigin`、`ConsistencyCase` 和 `RunResult`；保存源 token 映射、变换元信息和统一运行结果 |
-| `batch_consistency/layouts.py` | 新增 | 提供 BSND batch 选择、TND 分段/拼接/重算 prefix sum、PA block table 行选择、per-batch 向量选择等纯变换原语 |
-| `batch_consistency/schema.py` | 新增 | 校验 PT 必需字段、layout 和 tensor rank；提取物理 Q 长度；检查变换后的 B、prefix sum、seqused、max length 和 PA block id invariant；构造基准 origin |
-| `batch_consistency/transform.py` | 新增 | 实现模式 1/2 共用的 `_select_batches`，同步所有 batch/token 耦合字段并更新派生标量；模式 3/4 仅提供带原因的显式 unsupported |
-| `batch_consistency/compare.py` | 新增 | 按 `TokenOrigin` 对齐主输出/LSE；合并模式 2 的子 case 输出；复用 `result_compare_method.check_result`；BF16-safe MD5 仅用于 bitwise 诊断 |
-| `batch_consistency/runner.py` | 新增 | 在不改旧 `call_npu()` 二元返回契约的前提下设置 deterministic level 3、运行基准/派生 case，并在 `finally` 中恢复真实旧 level；识别当前运行时的 level-3 unsupported |
-| `test_batch_consistency_unit.py` | 新增 | 85 条 CPU 单测，覆盖三类 layout、模式 1/2、字段同步、schema/invariant、origin/LSE、BF16 MD5、分组边界、模式 3/4 unsupported 和 deterministic level 恢复 |
-| `test_sparse_flash_mla_batch_consistency.py` | 新增 | NPU pytest 入口；默认 skip，仅在 `SMLA_CONSISTENCY_TEST=1` 时收集执行；从 PT 加载 `B>=2` case，分别执行模式 1/2 并输出可诊断信息 |
-| `requs/requs.md` | 修改 | 保留原始需求，并追加第一阶段逐文件开发记录、模式分析、验证状态和配置演进结论 |
-| `requs/SMLA_batch一致性测试开发计划.md` | 修改 | 校正实际阶段边界，记录与 GLM-5.2 的第二阶段联合审议、阻断项、里程碑和验收门禁 |
+| 模块级 `_private_function` 不符合本项目风格 | schema、transform、compare、runner、配置、registry、metadata 逻辑封装进职责类；模块只保留兼容的公开函数 | 已修复，生产 `batch_consistency/*.py` 无模块级 `def _...` |
+| 范围遗漏 MQSMLA | 新增 `CaseAdapter` 统一 `input/op_input` 和 metadata 命名；变换/schema 有 MQSMLA synthetic 回归；新增已安装 MQ metadata 探针 | 数据面已适配；MQ 主算子 executor 尚未接入 |
+| 误以为只是环境不支持 | 文档和状态改为“主算子功能与 pytest 同步开发，当前均不能验收” | 已修正 |
+| 模式 2不应依赖完整合并 | 每个子 case 用 `compare_subset` 直接比较，merge 仅完整分区诊断 | 已修复 |
+| 模式 3目的不清 | 按 STC token 子集语义实现，并记录资料差异和 mask 前置条件 | 已实现受限版本 |
+| 默认 seed 分组合理性 | 基础模式改为确定性二分，随机仅显式启用 | 已修复 |
+| `-M 1,2` 太简陋 | 新增命名 Enum/registry、`--modes`、`--profile`；数字形式仅 deprecated 兼容别名 | 已修复控制面 |
+| metadata 应利用已安装 MQ 包 | 新增严格 parser、保守 analyzer、CLI probe，并完成真实 level 0/3 探测 | 已推进 |
 
-## 3. 第一阶段执行链路
+## 7. 当前执行与比较链路
 
-~~~text
-bash test_run.sh consistency -P <pt_dir> -M 1,2 --seed <seed>
-  -> 设置独立的 SMLA_CONSISTENCY_* 环境变量
-  -> 仅选择 B>=2 的已有 PT
-  -> 对每个 PT 启动独立 pytest 进程
-  -> schema 校验并在 level 3 下运行原始基准 case
-  -> 生成模式 1 或模式 2 派生 case
-  -> 再次执行 SMLA
-  -> 按 TokenOrigin 对齐/合并主输出和可选 LSE
-  -> 复用原数值容差判断
-  -> 汇总 PASS / UNSUPPORTED / FAIL
-~~~
+```text
+命名 modes/profile
+  -> schema + CaseAdapter 识别 SMLA/MQSMLA case 格式
+  -> 在任何 NPU 调用前生成并校验派生 case
+  -> 保存旧 deterministic level，设置并校验 level 3
+  -> 执行基准 case，SMLA eager 捕获主算子实际消费的 metadata
+  -> 执行派生 case
+  -> TokenOrigin(source_batch, source_token) 对齐有效 token
+  -> 去除 BSND padding，打包成规范 token-major tensor
+  -> MD5 bitwise 必须相等，同时复用原 check_result 数值精度检查
+  -> finally 恢复真实旧 level
+  -> PASS / FAIL / UNSUPPORTED / INVALID_TRANSFORM / NOT_APPLICABLE
+```
 
-每个 PT 独立进程可以隔离 NPU/编译状态及单 case 异常；一致性入口不复用原
-`load`/`load_graph` 分支，因此不会改变已有测试的默认收集和执行路径。
+MD5 不再只是日志诊断。会议和 STC 明确要求对应 token 结果逐 bit 一致，因此 batch
+consistency PASS 同时要求 bitwise 与数值精度通过。无效 padding 不属于对应 token，不能
+参与 MD5；框架保留物理 Q 长度用于定位，同时用 `seqused_q` 记录有效长度。
 
-## 4. 模式 1：batch 调序实现分析
+## 8. 文件级开发记录
 
-模式 1 的输入是原始 `B>=2` case 和一个 `[0, B)` 的排列。未显式传入排列时，
-使用 `seed` 生成非恒等排列；如果传入自定义排列，则校验它不遗漏、不重复且不越界。
+以下均位于 `attention/sparse_flash_mla/tests/pytest/`，除文档外没有修改主算子 host/kernel。
 
-变换过程不是只重排 Q，而是通过共用 `_select_batches` 同步处理完整语义：
-
-1. BSND Q/KV 按显式 batch 第 0 维 `index_select`；
-2. TND Q/KV 先用原 `cu_seqlens_*` 切成 per-batch segment，再按排列拼接，最后
-   重算新的 prefix sum；
-3. PA_BBND 的 KV 是共享物理 cache，不能随逻辑 batch 搬动；实现保持 cache tensor
-   原样，仅重排 `ori_block_table`/`cmp_block_table` 的行；
-4. 稀疏索引和可变 top-k 按 Q token 的原始分段同步重排；
-5. `seqused_*`、`cmp_residual_kv` 等 per-batch 向量使用同一个排列；
-6. 更新顶层、`params` 和 `metadata_input` 中的 B、S/T、prefix sum 和 max length；
-7. 为派生输出生成 origin 序列，例如新 batch 0 来自旧 batch 2，则该 batch 的
-   token 记录为 `(2, 0)`, `(2, 1)` 等；
-8. 派生执行结束后，按 origin 把主输出和 LSE 恢复到基准顺序再比较。
-
-因此模式 1 验证的是“改变 batch 调度顺序不应改变每个源 token 的结果”，而不是
-比较两个 shape 恰好相同但语义已经错位的 tensor。
-
-## 5. 模式 2：batch 拆分实现分析
-
-模式 2 将 `[0, B)` 划分为 2 到 B 个非空子组。默认分组由 `seed` 决定；自定义分组
-必须满足所有原 batch 恰好出现一次。每个子组调用与模式 1 相同的
-`_select_batches`，所以三类 layout 和全部耦合字段只有一套变换规则。
-
-执行和比较过程如下：
-
-1. 原多 batch case 在 level 3 下执行一次，得到基准输出和基准 origin；
-2. 每个子组派生为独立 case，B、S/T、prefix sum、seqused、metadata 派生字段都
-   调整到子 case 的实际值；
-3. 子 case 串行执行，避免同时保留多份大 KV；PA_BBND 仍共享原物理 cache；
-4. BSND 主输出按 `[batch, token]`、TND 主输出按扁平 token 收集到
-   `TokenOrigin -> tensor` 映射；
-5. 可选 LSE 使用相同 origin 规则合并；
-6. 检查 origin 无重复、无缺失，再按原 batch/token 顺序重建完整输出并与基准比较。
-
-该模式验证的是“一个多 batch 调用与若干子 batch 调用合并后的逐 token 结果一致”。
-拆分组本身可以乱序，但比较不依赖子组执行顺序。
-
-## 6. Layout 与字段同步规则
-
-| 类别 | 字段/规则 | 处理方式 |
-| --- | --- | --- |
-| Q | `q` | BSND 选 batch 行；TND 按原 Q prefix sum 选 segment |
-| KV | `ori_kv`、`cmp_kv` | BSND 选 batch 行；TND 选 segment；PA 保持物理 cache 不动 |
-| 稀疏索引 | `ori_sparse_indices`、`cmp_sparse_indices` | 与 Q token 使用同一分段和顺序 |
-| PA 映射 | `ori_block_table`、`cmp_block_table` | 只选/重排行，不复制或重排 cache block |
-| Q 长度 | `cu_seqlens_q`、`seqused_q` | 重算 prefix sum，选择 per-batch valid length |
-| KV 长度 | `cu_seqlens_ori_kv`、`cu_seqlens_cmp_kv`、`seqused_ori_kv`、`seqused_cmp_kv` | 按 layout 重算或选择 |
-| 压缩残差 | `cmp_residual_kv` | 按 batch 选择 |
-| 可变 top-k | `ori_topk_length`、`cmp_topk_length` | BSND 按 batch；TND 使用变换前 Q prefix sum 分段 |
-| 派生字段 | `B/S1/S2/T1/T2/T3`、`max_seqlen_*` | 同步更新顶层、`params`、`metadata_input` 中实际存在的字段 |
-| 不变字段 | `sinks`、scale、mask/window、layout、PA 物理 cache | 语义不是 batch 行，不做机械重排 |
-| 旧 golden | `cpu_output`、`softmax_lse` | 派生后已过期，明确清空，绝不伪装成派生 case golden |
-
-变换完成后立即执行 invariant 校验；prefix sum 长度、tensor token 总数、B 维、
-seqused 上界、metadata max length 或 PA block id 任一不一致都会在调用 NPU 前失败。
-
-## 7. 精度判定与兼容性设计
-
-- 主输出和 LSE 最终调用已有 `result_compare_method.check_result`，保持与 SMLA 原
-  pytest 相同的容差和通过率标准；
-- MD5 只报告是否 bitwise equal，不作为最终通过条件，因为不同调度可能产生合法的
-  浮点累加顺序差异；BF16 通过 `view(torch.uint8)` 取原始字节，避免 NumPy dtype
-  不支持；
-- 旧 `call_npu(input_data) -> (output, softmax_lse)` 未修改；一致性 runner 只在外层
-  包装为 `RunResult`；
-- 每次 NPU 调用前读取真实旧 deterministic level，设置并校验 level 3，无论成功、
-  精度失败还是异常都在 `finally` 中恢复旧 level；
-- 模式 3/4 在 shell、pytest 和 transform 层都有明确原因，不会因“全部 skip”被误报
-  为模式已通过。
-
-## 8. 验证记录与当前环境状态
-
-已完成的验证：
-
-| 验证项 | 结果 |
+| 文件 | 本轮职责 |
 | --- | --- |
-| CPU 单元测试 | `85 passed` |
-| 新 NPU 入口默认关闭 | `2 skipped`，符合 opt-in 设计 |
-| 原 single/batch/graph 测试收集 | 15 个原测试可正常收集 |
-| shell/static/diff 门禁 | `bash -n`、Python 静态检查、`git diff --check` 通过 |
-| 三类真实 PT 纯变换 | 临时生成 BSND、TND、PA_BBND 的 B=2 case，模式 1/2 和 schema invariant 均通过 |
-| 普通 SMLA+LSE NPU 基线 | Ascend910_9362（910_93 系列）deterministic level 0 下 `Pass，100%` |
+| `batch/sparse_flash_mla_process.py` | 给 eager `call_npu` 增加默认关闭的 `metadata_sink`；旧二元返回不变，一致性 runner 可捕获主算子实际使用的同一 metadata tensor |
+| `batch_consistency/model.py` | 保留 `TokenOrigin`、`ConsistencyCase`、`RunResult` 统一数据模型和旧 tuple 适配 |
+| `batch_consistency/layouts.py` | 保留 BSND/TND/PA_BBND 选择、TND prefix sum、PA table 和 per-batch 向量原语 |
+| `batch_consistency/adapter.py` | 新增 SMLA/MQSMLA case 格式描述；统一 tensor 容器、B/N1/N2/D 命名和 layout 访问 |
+| `batch_consistency/registry.py` | 新增 `reorder/split/token-split/shape-change` Enum、数字兼容别名、profile、能力状态和统一解析 |
+| `batch_consistency/schema.py` | 将内部逻辑收敛到 `CaseSchema`；支持两种 case 格式，区分物理/有效 Q 长度并校验变换 invariant |
+| `batch_consistency/transform.py` | 将内部逻辑收敛到 `BatchCaseTransformer`/`TransformSemanticGuard`；修正模式 2，新增模式 3 BSND/TND token 选择，模式 4保留冲突说明 |
+| `batch_consistency/compare.py` | 将 origin 对齐、digest、merge 封装成类；新增逐 subset 比较；只打包有效 token 做 MD5/LSE 比较，完整 merge 降为诊断 |
+| `batch_consistency/runner.py` | 类化 level guard/executor/orchestration；先做 CPU 变换校验再碰 NPU；模式 2逐 case 比较；SMLA metadata 填入 `RunResult` |
+| `batch_consistency/metadata_layout.py` | 新增严格 1024-int32 parser；支持当前 9-field 和文档 legacy 8-field FA 布局，显式解析未知/预留区域 |
+| `batch_consistency/metadata_analyzer.py` | 新增 S2 Level-1 分类、FA endpoint chain、FD task/workspace/M-range 和异常报告；不猜缺上下文的 token 映射 |
+| `batch_consistency/metadata_probe.py` | 新增 MQSMLA metadata-only 探针和 CLI；支持指定 level 并恢复旧值；明确不代表主算子 PASS |
+| `batch_consistency/__init__.py` | 只导出无 PyTorch 依赖的 registry；其他 API 从具体子模块导入，避免 CLI 配置预检初始化 NPU backend |
+| `test_batch_consistency_unit.py` | 从第一阶段 85 条扩充到 114 条 CPU 测试；新增 registry/profile、模式 2 subset、模式 3变长/TND、padding、MQ 格式、metadata parser/analyzer 和捕获回归 |
+| `test_sparse_flash_mla_batch_consistency.py` | 使用类化配置和命名 registry；新增 mode 3入口；只收集 SMLA PT，避免误用 SMLA executor 执行 MQ PT |
+| `test_run.sh` | shell 仅透传命名配置；新增 `--modes/--profile/--randomize`；保留 `-M`；区分 UNSUPPORTED/INVALID/NOT_APPLICABLE |
+| `pytest.ini` | 第一阶段已注册 `consistency` marker，本轮未改变原 marker 行为 |
+| `requs.md` | 本文；归档背景、资料、裁决、检视答复、文件职责、实测和状态 |
+| `SMLA_batch一致性测试开发计划.md` | 记录多模型审议、阶段二实际进展、剩余里程碑和验收门禁 |
 
-当前 NPU 阻塞不是精度失败。环境中的 torch_npu/CANN 9.2 允许先设置并读回 level 3，
-但在第一次 NPU 操作时返回：
+## 9. 配置接口与运行方法
 
-~~~text
-torch_npu.npu.set_deterministic_level currently only supports configuring 0/1/2
-~~~
+推荐使用可读名称：
 
-runner 将其转换为 `BatchConsistencyUnsupportedError`，pytest 记为 skip，shell 汇总为
-`UNSUPPORTED`；它不会被统计为 PASS 或 FAIL。也就是说，第一阶段的软件框架和纯变换
-已经完成，但真正的 level-3 batch 一致性 NPU 精度闭环仍需支持该能力的 torch_npu/CANN
-及 kernel 环境复验。普通 level-0 基线通过不能替代 level-3 验收。
+```bash
+cd attention/sparse_flash_mla/tests/pytest
+source /mnt/workspace/gitCode/env.sh
 
-验证过程中产生的临时 Excel/PT、日志、cache 和隔离 CANNBot 数据均已清理，未纳入
-版本管理。
-
-## 9. 关于 `-M 1,2` 的结论
-
-`-M 1,2` 确实比较简陋，它是第一阶段为了低耦合打通模式 1/2 而保留的临时兼容入口，
-不是长期配置设计。第一阶段只有两个可执行模式，数字参数可以让 shell、环境变量和
-pytest 快速贯通，同时避免改动 Excel/PT 生成链路；但它存在明显问题：数字不可读、
-shell 中有模式语义、增加模式时需要修改多处，也无法表达 graph/metadata/profile 等能力。
-
-第二阶段计划改成 Python 侧统一的命名 Enum/registry，推荐入口为：
-
-~~~bash
 bash test_run.sh consistency \
   -P ./data \
   --modes reorder,split \
   --seed 20260716
-~~~
 
-计划中的迁移规则：
-
-1. `reorder`、`split`、`token-split`、`prepend-delete` 成为唯一规范名称；
-2. shell 只透传模式字符串，不再理解 `1/2/3/4` 的业务含义；
-3. 第二阶段继续接受 `-M 1,2`，统一在 registry 中映射并给出 deprecated 提示；
-4. CI 和文档迁移到 `--modes reorder,split` 后，数字形式只作为兼容别名；是否最终删除
-   要在下游脚本完成迁移后单独评审，不在本阶段强制移除；
-5. 增加 `--profile blackbox-basic` 等组合配置，并在 Excel/每 case 配置链路打通后使用
-   versioned、namespaced 配置，避免继续增加魔法数字。
-
-本次按要求只记录第二阶段设计，尚未修改上述配置代码。详细方案见
-`requs/SMLA_batch一致性测试开发计划.md` 的第二阶段联合分析。
-
-# 第一阶段开发检视一
-
-cannbot模型不止glm-5.2还有deepseek v4和qwen3.7-max，我希望chatgpt能和多方合作沟通商量规划，毕竟别的模型有可能关注到chatgpt没关注到的点，实现的时候chatgpt可以指导其他模型帮你修改一下
-
-```
-# batch一致性测试框架开发大纲
-
-## 1. 图例说明 (Legend)
-- 🔴 **实现速度快，优先实现** (粉色背景)
-- ⬜ **现有功能** (白色背景)
-- 🔵 **实现速度慢，后期实现** (蓝色背景)
-
-## 2. 核心流程 (Main Flow)
-- **S2_B分析模块** 🔵
-  - *描述：保障至少有token能被切到多核*
-  - ⬇️
-- **给定的参数** ⬜
-  - ⬇️
-- **当前生成golden的代码** ⬜
-  - ⬇️
-- **黑盒场景覆盖模块** 🔴
-  - ⬇️
-- **metadata算子调用** ⬜
-  - ⬇️
-- **自动场景覆盖模块** 🔵
-  - ⬇️
-- **白盒覆盖情况自动分析** 🔵
-  - ⬇️
-- **一致性对比模块** 🔴
-  - ⬇️
-- **精度对比** ⬜
-
-## 3. 并行/辅助逻辑 (Parallel Logic)
-- **两次执行间random方式** 🔴
-  - *说明：此步骤与“黑盒场景覆盖模块”并行，并汇入“一致性对比模块”*
+bash test_run.sh consistency \
+  -P ./data \
+  --profile blackbox-supported
 ```
 
-1. 首先一个问题就是代码规范：我检视你第一阶段修改的代码，有些函数采用了`_`开头不对外开放，但这种风格不符合开源规范，可以看看pytest之前的规范风格，对于不想开放的，封装在类里面
+当前 profile：
 
-2. 项目背景我更新一下，一是要适配的算子应该是sparse_flash_mla和mixed_quant_sparse_flash_mla两个算子，两个算子需求基本都一样。
-二是准确的说`batch一致性`当前SMLA和MQSMLA应该并没有支持，也就是cann环境里面没有支持相关功能，这是我疏忽的点。和开发对了之后，应该是SMLA/MQSMLA支持`batch一致性`和pytest适配`batch一致性测试`应该是同步进行的，后面SMLA/MQSMLA支持`batch一致性`的功能开发完成时就需要用到pytest进行验收测试，但当前我并不清楚有什么方法可以完成测试
+| profile | modes | 用途 |
+| --- | --- | --- |
+| `blackbox-basic` | `reorder,split` | 默认稳定入口 |
+| `blackbox-supported` | `reorder,split,token-split` | 启用当前所有已实现变换，部分 case 可报 INVALID_TRANSFORM |
+| `blackbox-all` | 再加 `shape-change` | 用于显式暴露未实现能力；当前会配置失败，不会伪 PASS |
 
-`ops-transformer_0716/requs/docs/Milan&TorinoC12_RP3_B050_G项目_STC用例.xlsx`就是当前SMLA/MQSMLA支持`batch一致性`特性的STC验收用例，查阅一下对你理解推进当前pytest的需求有帮助
+`-M 1,2` 仍映射到 `reorder,split` 并发出 deprecated warning，只用于下游迁移期。命名形式
+已经是正式入口，不需要等整个 batch consistency 特性打通后再调整。
 
-`/mnt/workspace/gitCode/cann/ops-transformer_0716/requs/docs/会议纪要.md`是请SMLA/MQSMLA支持`batch一致性`的开发者讲解思路，看看有没有信息能用，对于黑盒四模式的分析我觉得还重要的
+MQ metadata CLI：
 
-虽然SMLA/MQSMLA目前还不支持`batch一致性`，但mixed_quant_sparse_flash_mla_metadata算子的`batch一致性`编码已完成： https://gitcode.com/cann/ops-transformer/pull/8737，该修改我已下载到ops-transformer下，并编译了自定义算子包安装（不理解自定义算子包的可以在ops-transformer/docs/zh中找相关文档）
-```
-# ops-transformer仓
-bash build.sh --pkg --ops=mixed_quant_sparse_flash_mla_metadata,mixed_quant_sparse_flash_mla --soc=ascend910_93
-cd build_out/
-sudo bash cann-ops-transformer-custom_linux-aarch64.run --quiet --install-path=/home/Ascend/
-```
-要使用mixed_quant_sparse_flash_mla_metadata相关修改
-```
+```bash
 source /mnt/workspace/gitCode/env.sh
 source /home/Ascend/vendors/custom_transformer/bin/set_env.bash
+python3 -m batch_consistency.metadata_probe \
+  --pt /path/to/mqsmla_case.pt \
+  --level 3 \
+  --s2 4096,2048,5120
 ```
-可以用这个修改跑MQSMLA metadata结果，来辅助验证和代码开发（有能力甚至可以自己尝试去修改sparse_flash_mla_grad_metadata代码编译装包来辅助验证）
 
-3. 查阅`SMLA_batch一致性测试开发计划.md`文档，我对模式2、模式3的的理解有点不同，模式2把一个多 batch case 拆成多个子 case，但预期应该不用合并子 case 吧，各case对应输出一致就行，当然如果你觉得合并起来不影响各自case输出并且好比较，那就合并吧；对于模式3，我就不太理解原规划是什么目的，可以麻烦结合所有文档讲解一下吗
+本机 `/home/Ascend/vendors/custom_transformer` 当前为 `root:root 0750`，普通 developer 用户
+无法读取 `set_env.bash`。这属于安装权限问题，不是探针代码问题；应由环境维护者修正为
+团队约定的可读权限，或在受控 root 会话中运行，不能通过把目录全局改成 0777 来规避。
 
-默认分组由 `seed` 决定————这个决策评估一下合理吗，符合文档需求？看看分组这事在算子侧是怎么实现的？
+## 10. 2026-07-17 验证与真实环境结论
 
+### 10.1 CPU/兼容门禁
 
+| 验证项 | 当前结果 |
+| --- | --- |
+| batch consistency CPU 单测 | `114 passed` |
+| 新 NPU 入口默认关闭 | `3 skipped`，符合 opt-in 设计 |
+| 原 single/batch/graph 收集 | 15 个原测试可收集 |
+| Python/shell/diff 静态门禁 | `compileall`、`bash -n`、`git diff --check` 通过 |
+
+第一阶段曾在普通 level 0 下跑通 SMLA+LSE，结果为 `Pass，100%`；该结果只证明普通基线
+可用，不计入 batch consistency 验收。
+
+### 10.2 已安装 MQ metadata 实测
+
+运行前按用户提供的两个 env 脚本配置，并因当前安装目录权限使用受控 root 会话。实测：
+
+1. level 0 调用成功，返回 `(1024,) torch.int32 npu:0`；
+2. 示例 `B=1, S1=1, S2=8192, TND+PA_BBND` 解析得到 1 个 enabled FA core、0 个 FD
+   core、reserved 全 0；这是普通调度结果，不是 batch 一致性证据；
+3. 设置 level 3 后 getter 返回 3，但第一次 MQ metadata NPU 调用报：
+
+```text
+'torch_npu.npu.set_deterministic_level' currently only supports configuring 0/1/2 !
+```
+
+4. 探测结束后 level 已恢复为 0；
+5. 当前工作树 MQ metadata AICPU 中 `supportFd` 默认 `false`，未检索到赋值路径。静态源码
+   和 level 0 的无 FD 结果一致；但 level 3 在 runtime 层已被拒绝，所以不能据此断言已安装
+   二进制的 level-3 路径最终行为。
+
+## 11. 当前能力状态
+
+| 能力 | 状态 | 可声明边界 |
+| --- | --- | --- |
+| 模式 1 reorder | 测试框架完成 | 主算子/level 3未支持，不能声明 NPU PASS |
+| 模式 2 subset split | 测试框架完成 | 每个子 case 直比；merge 仅诊断 |
+| 模式 3 token split | 受限实现 | BSND/TND、KV 保持、静态 mask guard；actual-input oracle 尚缺 |
+| 模式 4 shape change | 未实现 | STC 与会议冲突待裁决 |
+| SMLA/MQSMLA 双格式变换 | 完成 | MQ synthetic CPU 回归通过 |
+| SMLA eager metadata 同对象捕获 | 完成 | 旧 `call_npu` 返回契约不变 |
+| MQ metadata probe | 完成 | metadata-only，不执行/验收 MQ 主算子 |
+| raw metadata parser | 完成 | 当前 9-field + legacy 8-field，严格 size/dtype |
+| conservative analyzer | 部分完成 | Level-1、FA chain、FD task；完整 token/core 展开尚缺上下文 |
+| MQ 主算子 executor | 未接入 | 应在 MQ pytest 侧复用共享框架，不能复制整套 op 调用 |
+| graph consistency | 未实现 | 原 `load_graph` 不受影响 |
+| 支持 level 3 的真实 CI | 阻塞 | 当前 910_93 + torch_npu/CANN 9.2 延迟拒绝 |
+
+## 12. 原始需求归档
+
+最初需求要求：
+
+- 只修改 `attention/sparse_flash_mla/tests/pytest` 内测试代码，不影响 SMLA host/kernel；
+- 先完成黑盒场景，再推进 metadata 白盒分析；
+- 新增显式开关，默认不改变 `single/save/load/load_graph`；
+- 复用当前 golden 和精度比较逻辑；
+- 在 NPU 运行前 `source /mnt/workspace/gitCode/env.sh`；
+- 通过开发计划与 GLM-5.2 交互，并做好文档和 Git 版本管理。
+
+第一次阶段检视进一步修正为：
+
+- 目标是 SMLA 和 MQSMLA 两个算子；
+- 主算子功能本身尚未支持，pytest 与功能同步开发；
+- 查阅 STC Excel 和会议纪要后重新裁决模式 2/3；
+- 使用已安装 MQ metadata 自定义包辅助验证；
+- 邀请 GLM-5.2、DeepSeek V4、Qwen3.7-Max 多方独立审议；
+- 清理模块级私有函数风格，说明 `-M 1,2` 的长期替代方案。
+
+上述要求已转成本文的可追踪条目；未完成部分进入开发计划的阻断项和后续里程碑，不再
+把原始口述需求与当前实现状态混写在同一段落。

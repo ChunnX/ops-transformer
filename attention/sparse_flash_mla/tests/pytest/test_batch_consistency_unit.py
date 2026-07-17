@@ -21,7 +21,7 @@ They cover:
 * PA_BBND block table reorder: block ids unchanged and in-bounds
 * Per-batch vector synchronization
 * Schema invariant validation (positive and negative)
-* Mode 3 / 4 explicit unsupported
+* Mode 3 token selection and mode 4 conflict guard
 * Deterministic level save/restore (monkeypatch)
 * Physical Q length priority over seqused_q
 * BSND cu_seqlens_q recompute for mode2
@@ -45,14 +45,21 @@ from batch_consistency.transform import (
     transform_mode2_split,
     transform_mode3_token_split,
     transform_mode4_prepend_delete,
+    InvalidTransformError,
     UnsupportedTransformError,
 )
 from batch_consistency.compare import (
-    _tensor_md5,
+    tensor_md5,
     compare_consistency,
+    compare_subset,
     merge_split_lse,
     compare_pair,
 )
+from batch_consistency.metadata_analyzer import MetadataCoverageAnalyzer, S2Category
+from batch_consistency.metadata_layout import MetadataLayout
+from batch_consistency.registry import ConsistencyMode, ModeRegistry
+from batch_consistency.adapter import CaseAdapter
+from batch_consistency.runner import ConsistencyRunner, DeterministicLevelGuard
 
 
 # ------------------------------------------------------------------ #
@@ -595,28 +602,30 @@ class TestNoMutation:
 #  Tests: Mode 3 / 4 explicit unsupported
 # ------------------------------------------------------------------ #
 
-class TestUnsupportedModes:
-    def test_mode3_raises_unsupported(self):
-        with pytest.raises(UnsupportedTransformError, match="Mode 3"):
-            transform_mode3_token_split()
+class TestAdvancedModes:
+    def test_mode3_selects_first_token_per_batch(self):
+        input_data = _make_bsnd_bsnd_input(B=3, S1=2)
+        input_data["input"]["cmp_mask_mode"] = 0
+        input_data["metadata_input"]["cmp_mask_mode"] = 0
+        input_data["params"]["cmp_mask_mode"] = 0
+        case = transform_mode3_token_split(input_data)
+        assert case.input_data["input"]["q"].shape[:2] == (3, 1)
+        assert case.output_origins == [TokenOrigin(0, 0), TokenOrigin(1, 0), TokenOrigin(2, 0)]
+
+    def test_mode3_rejects_position_sensitive_selection(self):
+        input_data = _make_bsnd_bsnd_input(B=2, S1=2)
+        with pytest.raises(InvalidTransformError, match="position-sensitive"):
+            transform_mode3_token_split(input_data)
 
     def test_mode4_raises_unsupported(self):
         with pytest.raises(UnsupportedTransformError, match="Mode 4"):
             transform_mode4_prepend_delete()
 
-    def test_mode3_message_has_reason(self):
-        try:
-            transform_mode3_token_split()
-        except UnsupportedTransformError as e:
-            assert "Reason:" in str(e)
-            assert "query position" in str(e).lower() or "mask" in str(e).lower()
-
     def test_mode4_message_has_reason(self):
         try:
             transform_mode4_prepend_delete()
         except UnsupportedTransformError as e:
-            assert "Reason:" in str(e)
-            assert "mask" in str(e).lower() or "position" in str(e).lower()
+            assert "oracle" in str(e).lower()
 
 
 # ------------------------------------------------------------------ #
@@ -743,8 +752,10 @@ class TestDeterministicLevel:
         monkeypatch.setattr(runner.torch_npu.npu, "set_deterministic_level", mock_set_level)
 
         # Mock call_npu to avoid NPU
-        def mock_call_npu(input_data):
+        def mock_call_npu(input_data, metadata_sink=None):
             call_log.append(("call_npu",))
+            if metadata_sink is not None:
+                metadata_sink(torch.tensor([7], dtype=torch.int32))
             return torch.tensor([1.0]), None
 
         monkeypatch.setattr(runner.sparse_flash_mla_process, "call_npu", mock_call_npu)
@@ -752,7 +763,7 @@ class TestDeterministicLevel:
         # Use a minimal valid input_data
         input_data = _make_bsnd_bsnd_input(B=2)
         input_data["cpu_output"] = torch.randn(2, 2, 4, 16, dtype=torch.bfloat16)
-        runner.run_with_batch_consistency(input_data, validate=True)
+        result = runner.run_with_batch_consistency(input_data, validate=True)
 
         # Extract set and call_npu events (get is called for verify too)
         set_calls = [e for e in call_log if e[0] == "set"]
@@ -765,6 +776,7 @@ class TestDeterministicLevel:
         assert set_calls == [("set", 3), ("set", 0)]
         # call_npu happened exactly once
         assert npu_calls == [("call_npu",)]
+        assert result.metadata.tolist() == [7]
         # Final level restored to 0
         assert state["level"] == 0
 
@@ -790,6 +802,28 @@ class TestDeterministicLevel:
         with pytest.raises(RuntimeError, match="NPU unavailable"):
             runner.run_with_batch_consistency(input_data, validate=True)
 
+    def test_immediate_level3_rejection_is_classified(self, monkeypatch):
+        import batch_consistency.runner as runner
+
+        state = {"level": 0}
+        monkeypatch.setattr(
+            runner.torch_npu.npu,
+            "_get_deterministic_level",
+            lambda: state["level"],
+        )
+
+        def mock_set_level(level):
+            if level == 3:
+                raise RuntimeError(
+                    "'torch_npu.npu.set_deterministic_level' currently only supports configuring 0/1/2 !"
+                )
+            state["level"] = level
+
+        monkeypatch.setattr(runner.torch_npu.npu, "set_deterministic_level", mock_set_level)
+        with pytest.raises(runner.BatchConsistencyUnsupportedError, match="only levels 0/1/2"):
+            runner.run_with_batch_consistency(_make_bsnd_bsnd_input(B=2))
+        assert state["level"] == 0
+
     def test_restore_on_call_npu_failure(self, monkeypatch):
         """If call_npu raises, old level must still be restored."""
         import batch_consistency.runner as runner
@@ -807,7 +841,7 @@ class TestDeterministicLevel:
         monkeypatch.setattr(runner.torch_npu.npu, "_get_deterministic_level", mock_get_level)
         monkeypatch.setattr(runner.torch_npu.npu, "set_deterministic_level", mock_set_level)
 
-        def mock_call_npu(input_data):
+        def mock_call_npu(input_data, metadata_sink=None):
             raise ValueError("op failed")
 
         monkeypatch.setattr(runner.sparse_flash_mla_process, "call_npu", mock_call_npu)
@@ -837,7 +871,7 @@ class TestDeterministicLevel:
 
         monkeypatch.setattr(runner.torch_npu.npu, "set_deterministic_level", mock_set_level)
 
-        def mock_call_npu(input_data):
+        def mock_call_npu(input_data, metadata_sink=None):
             raise RuntimeError(
                 "'torch_npu.npu.set_deterministic_level' currently only supports configuring 0/1/2 !"
             )
@@ -1143,20 +1177,20 @@ class TestBF16Md5:
     def test_bf16_tensor_md5_no_typeerror(self):
         """BF16 tensor MD5 should not raise TypeError."""
         t = torch.randn(2, 3, dtype=torch.bfloat16)
-        md5 = _tensor_md5(t)
+        md5 = tensor_md5(t)
         assert len(md5) == 32  # hex MD5 length
 
     def test_bf16_md5_consistent(self):
         """Same BF16 tensor should produce same MD5."""
         t1 = torch.randn(2, 3, dtype=torch.bfloat16)
         t2 = t1.clone()
-        assert _tensor_md5(t1) == _tensor_md5(t2)
+        assert tensor_md5(t1) == tensor_md5(t2)
 
     def test_bf16_md5_different_for_different_tensors(self):
         """Different BF16 tensors should produce different MD5."""
         t1 = torch.randn(2, 3, dtype=torch.bfloat16)
         t2 = torch.randn(2, 3, dtype=torch.bfloat16)
-        assert _tensor_md5(t1) != _tensor_md5(t2)
+        assert tensor_md5(t1) != tensor_md5(t2)
 
     def test_compare_pair_bf16_no_error(self):
         """compare_pair should work with BF16 tensors."""
@@ -1205,3 +1239,323 @@ class TestSplitValidation:
         for ng in range(2, 6):
             groups = generate_split_groups(6, num_groups=ng, seed=42)
             assert len(groups) == ng
+
+
+class TestModeRegistry:
+    def test_named_modes_and_duplicates(self):
+        assert ModeRegistry.parse("reorder, split,reorder") == (
+            ConsistencyMode.REORDER,
+            ConsistencyMode.SPLIT,
+        )
+
+    def test_numeric_modes_are_compatibility_aliases(self):
+        with pytest.warns(DeprecationWarning):
+            modes = ModeRegistry.parse("1,2")
+        assert modes == (ConsistencyMode.REORDER, ConsistencyMode.SPLIT)
+
+    def test_numeric_and_named_modes_cannot_be_mixed(self):
+        with pytest.raises(ValueError, match="mix"):
+            ModeRegistry.parse("1,split")
+
+    def test_unknown_mode_and_profile_fail(self):
+        with pytest.raises(ValueError, match="Unknown consistency modes"):
+            ModeRegistry.parse("missing")
+        with pytest.raises(ValueError, match="Unknown consistency profile"):
+            ModeRegistry.resolve_profile("missing")
+
+    def test_profile_and_explicit_modes_are_mutually_exclusive(self):
+        with pytest.raises(ValueError, match="either"):
+            ModeRegistry.resolve(modes="reorder", profile="blackbox-basic")
+
+    def test_supported_profile_excludes_unimplemented_mode4(self):
+        modes = ModeRegistry.resolve(profile="blackbox-supported")
+        assert modes[-1] == ConsistencyMode.TOKEN_SPLIT
+        assert ModeRegistry.unsupported(modes) == ()
+        assert ModeRegistry.unsupported((ConsistencyMode.SHAPE_CHANGE,)) == (
+            ConsistencyMode.SHAPE_CHANGE,
+        )
+
+
+class TestSplitProfiles:
+    def test_acceptance_split_is_seed_independent(self):
+        expected = [[0, 1, 2], [3, 4]]
+        assert generate_split_groups(5, seed=1) == expected
+        assert generate_split_groups(5, seed=999) == expected
+
+    def test_random_split_is_explicit_and_reproducible(self):
+        first = generate_split_groups(6, num_groups=3, seed=17, randomize=True)
+        second = generate_split_groups(6, num_groups=3, seed=17, randomize=True)
+        assert first == second
+        assert sorted(batch for group in first for batch in group) == list(range(6))
+
+    def test_explicit_mode2_subset_need_not_cover_all_batches(self):
+        cases = transform_mode2_split(
+            _make_bsnd_bsnd_input(B=4),
+            groups=[[3, 1]],
+        )
+        assert len(cases) == 1
+        assert cases[0].transform_meta["batch_ids"] == [3, 1]
+        assert cases[0].transform_meta["complete_partition"] is False
+
+
+class TestMode3TokenSelection:
+    @staticmethod
+    def make_position_independent_case(B=3, S1=3):
+        input_data = _make_bsnd_bsnd_input(B=B, S1=S1)
+        for container in (
+            input_data["input"],
+            input_data["metadata_input"],
+            input_data["params"],
+        ):
+            container["ori_mask_mode"] = 0
+            container["cmp_mask_mode"] = 0
+        return input_data
+
+    def test_variable_token_counts_keep_padding_out_of_origins(self):
+        input_data = self.make_position_independent_case()
+        tensors = input_data["input"]
+        tensors["cmp_sparse_indices"] = torch.arange(3 * 1 * 3 * 2).reshape(3, 1, 3, 2)
+        tensors["cmp_topk_length"] = torch.arange(9, dtype=torch.int32).reshape(3, 3)
+
+        case = transform_mode3_token_split(
+            input_data,
+            token_ids_by_batch=[[0], [0, 2], [1]],
+        )
+
+        derived = case.input_data["input"]
+        assert derived["q"].shape[:2] == (3, 2)
+        assert derived["seqused_q"].tolist() == [1, 2, 1]
+        assert derived["cmp_sparse_indices"].shape == (3, 1, 2, 2)
+        assert derived["cmp_topk_length"].shape == (3, 2)
+        assert case.transform_meta["physical_q_lengths"] == [2, 2, 2]
+        assert case.transform_meta["valid_q_lengths"] == [1, 2, 1]
+        assert case.output_origins == [
+            TokenOrigin(0, 0),
+            TokenOrigin(1, 0),
+            TokenOrigin(1, 2),
+            TokenOrigin(2, 1),
+        ]
+
+    def test_position_sensitive_suffix_keeps_right_alignment(self):
+        input_data = _make_bsnd_bsnd_input(B=2, S1=2)
+        case = transform_mode3_token_split(
+            input_data,
+            token_ids_by_batch=[[1], [1]],
+        )
+        assert case.output_origins == [TokenOrigin(0, 1), TokenOrigin(1, 1)]
+
+    def test_tnd_selection_recomputes_prefix_sum(self):
+        input_data = _make_tnd_tnd_input(B=4)
+        for container in (
+            input_data["input"],
+            input_data["metadata_input"],
+            input_data["params"],
+        ):
+            container["ori_mask_mode"] = 0
+            container["cmp_mask_mode"] = 0
+        case = transform_mode3_token_split(
+            input_data,
+            batch_ids=[3, 0],
+            token_ids_by_batch=[[1, 3], [0]],
+        )
+        derived = case.input_data["input"]
+        assert derived["q"].shape[0] == 3
+        assert derived["cu_seqlens_q"].tolist() == [0, 2, 3]
+        assert derived["seqused_q"].tolist() == [2, 1]
+        assert case.output_origins == [
+            TokenOrigin(3, 1),
+            TokenOrigin(3, 3),
+            TokenOrigin(0, 0),
+        ]
+        schema.check_invariants(case.input_data)
+
+    def test_batch_ids_must_be_unique_and_in_range(self):
+        input_data = self.make_position_independent_case()
+        with pytest.raises(ValueError, match="duplicates"):
+            transform_mode3_token_split(input_data, batch_ids=[0, 0])
+        with pytest.raises(ValueError, match="within"):
+            transform_mode3_token_split(input_data, batch_ids=[3])
+
+
+class TestValidTokenComparison:
+    @staticmethod
+    def make_subset_tensors():
+        baseline = torch.arange(6, dtype=torch.float32).reshape(2, 3, 1, 1)
+        derived = torch.zeros(2, 2, 1, 1, dtype=torch.float32)
+        derived[0, 0] = baseline[0, 0]
+        derived[0, 1] = 999
+        derived[1, 0] = baseline[1, 0]
+        derived[1, 1] = baseline[1, 2]
+        return baseline, derived
+
+    def test_compare_subset_ignores_bsnd_padding(self):
+        baseline, derived = self.make_subset_tensors()
+        result = compare_subset(
+            baseline,
+            [TokenOrigin(0, 0), TokenOrigin(1, 0), TokenOrigin(1, 1), TokenOrigin(1, 2)],
+            [3, 3],
+            derived,
+            [TokenOrigin(0, 0), TokenOrigin(1, 0), TokenOrigin(1, 2)],
+            [2, 2],
+            "BSND",
+            baseline_valid_q_lengths=[1, 3],
+            derived_valid_q_lengths=[1, 2],
+        )
+        assert result["pass"] is True
+        assert result["output"]["bitwise_equal"] is True
+
+    def test_compare_subset_still_detects_valid_token_change(self):
+        baseline, derived = self.make_subset_tensors()
+        derived[1, 1] += 1
+        result = compare_subset(
+            baseline,
+            [TokenOrigin(0, 0), TokenOrigin(1, 0), TokenOrigin(1, 1), TokenOrigin(1, 2)],
+            [3, 3],
+            derived,
+            [TokenOrigin(0, 0), TokenOrigin(1, 0), TokenOrigin(1, 2)],
+            [2, 2],
+            "BSND",
+            baseline_valid_q_lengths=[1, 3],
+            derived_valid_q_lengths=[1, 2],
+        )
+        assert result["pass"] is False
+
+
+class TestMode2Runner:
+    def test_each_subset_is_primary_oracle_without_merge(self, monkeypatch):
+        monkeypatch.setattr(DeterministicLevelGuard, "__enter__", lambda guard: guard)
+        monkeypatch.setattr(
+            DeterministicLevelGuard,
+            "__exit__",
+            lambda guard, exc_type, error, traceback: False,
+        )
+        input_data = _make_bsnd_bsnd_input(B=4)
+        runner = ConsistencyRunner(
+            executor=lambda data: RunResult(output=data["input"]["q"].clone())
+        )
+
+        cases, _, _, comparisons, aggregate = runner.run_mode2(
+            input_data,
+            groups=[[2, 0]],
+        )
+
+        assert len(cases) == 1
+        assert comparisons[0]["pass"] is True
+        assert comparisons[0]["batch_ids"] == [2, 0]
+        assert aggregate["pass"] is True
+        assert aggregate["merged"] is None
+
+
+class TestMqsmlaCaseAdapter:
+    @staticmethod
+    def make_case():
+        smla = _make_bsnd_bsnd_input(B=3, S1=2)
+        metadata = dict(smla["metadata_input"])
+        metadata["num_heads_q"] = metadata.pop("N1")
+        metadata["num_heads_kv"] = metadata.pop("N2")
+        metadata["head_dim"] = metadata.pop("D")
+        metadata["batch_size"] = metadata.pop("B")
+        return {
+            "params": dict(smla["params"]),
+            "metadata_input": metadata,
+            "op_input": dict(smla["input"]),
+            "cpu_output": smla["cpu_output"],
+        }
+
+    def test_schema_and_reorder_support_mqsmla_format(self):
+        input_data = self.make_case()
+        schema.validate_schema(input_data)
+        assert CaseAdapter(input_data).name == "mqsmla"
+
+        case = transform_mode1_reorder(input_data, order=[2, 0, 1])
+        assert case.transform_meta["operator"] == "mqsmla"
+        assert case.input_data["metadata_input"]["batch_size"] == 3
+        assert torch.equal(
+            case.input_data["op_input"]["q"],
+            input_data["op_input"]["q"][[2, 0, 1]],
+        )
+        assert input_data["cpu_output"] is not None
+        assert case.input_data["cpu_output"] is None
+
+
+class TestMetadataLayout:
+    @staticmethod
+    def make_metadata():
+        raw = torch.zeros(MetadataLayout.TOTAL_SIZE, dtype=torch.int32)
+        raw[0:9] = torch.tensor([1, 0, 0, 0, 0, 1, 0, -1, 32], dtype=torch.int32)
+        raw[9:18] = torch.tensor([1, 0, 1, 0, 1, 0, 0, 7, 16], dtype=torch.int32)
+        fd_offset = MetadataLayout.FA_CORE_COUNT * MetadataLayout.SPLIT_G_FA_RECORD_SIZE
+        raw[fd_offset:fd_offset + 8] = torch.tensor(
+            [1, 0, 0, 5, 2, 0, 1, 0],
+            dtype=torch.int32,
+        )
+        raw[900] = 11
+        return raw
+
+    def test_current_layout_boundaries_and_unsigned_fields(self):
+        parsed = MetadataLayout().parse(self.make_metadata())
+        assert parsed.layout_version == MetadataLayout.CURRENT_LAYOUT_VERSION
+        assert len(parsed.fa_records) == 36
+        assert len(parsed.fd_records) == 72
+        assert len(parsed.reserved) == 124
+        assert parsed.fa_records[0].first_fd_workspace_index == (1 << 32) - 1
+        assert parsed.fd_records[0].workspace_num == 2
+        assert parsed.reserved[0] == 11
+
+    def test_legacy_layout_has_distinct_version_and_offset(self):
+        parsed = MetadataLayout(fa_record_size=8).parse(
+            torch.zeros(MetadataLayout.TOTAL_SIZE, dtype=torch.int32)
+        )
+        assert parsed.layout_version == MetadataLayout.LEGACY_LAYOUT_VERSION
+        assert parsed.fa_record_size == 8
+        assert len(parsed.reserved) == 160
+
+    def test_parser_rejects_wrong_size_dtype_and_type(self):
+        parser = MetadataLayout()
+        with pytest.raises(ValueError, match="size"):
+            parser.parse(torch.zeros(1023, dtype=torch.int32))
+        with pytest.raises(ValueError, match="dtype"):
+            parser.parse(torch.zeros(1024, dtype=torch.int64))
+        with pytest.raises(TypeError, match="torch.Tensor"):
+            parser.parse([0] * 1024)
+
+
+class TestMetadataCoverageAnalyzer:
+    @pytest.mark.parametrize(
+        "s2,category,block_size,block_count",
+        [
+            (4096, S2Category.EQUAL_128, 128, 32),
+            (2048, S2Category.LESS_THAN_128, 128, 16),
+            (1152, S2Category.LESS_THAN_128, 128, 9),
+            (5120, S2Category.GREATER_DIVISIBLE, 256, 20),
+            (12288, S2Category.GREATER_DIVISIBLE, 384, 32),
+            (4097, S2Category.GREATER_REMAINDER, 256, 17),
+        ],
+    )
+    def test_s2_level1_categories(self, s2, category, block_size, block_count):
+        analysis = MetadataCoverageAnalyzer.classify_s2(s2)
+        assert analysis.category == category
+        assert analysis.reduction_block_size == block_size
+        assert analysis.reduction_block_count == block_count
+
+    def test_fd_task_and_endpoint_report(self):
+        parsed = MetadataLayout().parse(TestMetadataLayout.make_metadata())
+        report = MetadataCoverageAnalyzer.analyze(parsed, s2_values=[4096, 5120])
+        assert report["enabled_fa_cores"] == 2
+        assert report["enabled_fd_cores"] == 1
+        assert report["fa_endpoint_chain_valid"] is True
+        assert report["cross_core_reduction_task_count"] == 1
+        assert report["fd_reduction_tasks"][0]["workspace_num"] == 2
+        assert report["level2_observed"]["has_cross_core_reduction"] is True
+        assert report["reserved_nonzero_count"] == 1
+        assert report["errors"] == []
+
+    def test_invalid_fd_record_is_not_silently_accepted(self):
+        raw = TestMetadataLayout.make_metadata()
+        fd_offset = MetadataLayout.FA_CORE_COUNT * MetadataLayout.SPLIT_G_FA_RECORD_SIZE
+        raw[fd_offset + 4] = 1
+        raw[fd_offset + 6] = 0
+        raw[fd_offset + 7] = 9
+        report = MetadataCoverageAnalyzer.analyze(MetadataLayout().parse(raw))
+        assert len(report["errors"]) == 2
+        assert report["unknown_fd_slot_nonzero"] == [0]
