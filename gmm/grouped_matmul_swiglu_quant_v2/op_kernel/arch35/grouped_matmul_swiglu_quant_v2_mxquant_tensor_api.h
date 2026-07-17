@@ -93,7 +93,6 @@ __aicore__ inline void GmmSwigluAswtTensorApi(
                         static_cast<uint32_t>(kBL1),
                         static_cast<uint32_t>(scaleKL1),
                         static_cast<uint32_t>(scaleKL1),
-                        static_cast<uint32_t>(mmTilingData_.scaleKL1),
                         static_cast<uint8_t>(mmTilingData_.dbL0C),
                         static_cast<int8_t>(0),                                     // groupType
                         static_cast<uint8_t>(gmmSwigluQuantParams_.groupListType),
