@@ -107,7 +107,6 @@ private:
     uint32_t aivCoreNum_ = 40U;
     bool permuteBufInitialized_ = false;
 
-    
     uint64_t scalePermuteBaseOffset_ = 0UL;
 };
 

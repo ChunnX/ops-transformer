@@ -147,10 +147,12 @@ __aicore__ inline void QuantASWBlockSch::UpdateGroupOffset(int32_t m, int32_t n,
                 if (isExpertBoundary) {
                     if constexpr (bTrans) {
                         params_.bGroupAddrOffset += Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::WEIGHTNZ_K0_32) *
-                            Mc2QuantUtils::CeilDiv(params_.n, Mc2QuantUtils::WEIGHTNZ_N0_16) * Mc2QuantUtils::WEIGHTNZ_N0_K0;
+                            Mc2QuantUtils::CeilDiv(params_.n, Mc2QuantUtils::WEIGHTNZ_N0_16) *
+                            Mc2QuantUtils::WEIGHTNZ_N0_K0;
                     } else {
                         params_.bGroupAddrOffset += Mc2QuantUtils::CeilDiv(params_.n, Mc2QuantUtils::WEIGHTNZ_N0_32) *
-                            Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::WEIGHTNZ_K0_16) * Mc2QuantUtils::WEIGHTNZ_N0_K0;
+                            Mc2QuantUtils::CeilDiv(params_.k, Mc2QuantUtils::WEIGHTNZ_K0_16) *
+                            Mc2QuantUtils::WEIGHTNZ_N0_K0;
                     }
                 }
             } else {
