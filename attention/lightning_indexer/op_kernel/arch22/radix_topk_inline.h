@@ -63,11 +63,6 @@ __aicore__ inline void InlineRadixTopK(
     xGm.SetGlobalBuffer((__gm__ bfloat16_t *)scoreGmAddr);
     GlobalTensor<int32_t> indexGm;
     indexGm.SetGlobalBuffer((__gm__ int32_t *)indicesGmAddr);
-    GlobalTensor<int32_t> dbgGm;
-    dbgGm.SetGlobalBuffer((__gm__ int32_t *)wsGmAddr + coreNum * RDX_BINS + coreNum);  // after coreTopK
-
-    bool dbg = false;
-    uint32_t dbgPos = 0;
 
     LocalTensor<bfloat16_t> xLocalB16 = xBuf.Get<bfloat16_t>();
     LocalTensor<int16_t> xLocalInt16 = xLocalB16[tileLen_].template ReinterpretCast<int16_t>();
@@ -82,12 +77,6 @@ __aicore__ inline void InlineRadixTopK(
     LocalTensor<uint8_t> cmpMaskTensor = outIndexBuf.Get<uint8_t>();
     LocalTensor<int16_t> tempTensor = outIndexBuf.Get<int16_t>();
     LocalTensor<int32_t> outIndexLocal = outIndexBuf.Get<int32_t>();
-
-    // Debug: skip RadixTopK for debug batch, just output score values
-    if (dbg) {
-        for (uint32_t i = 5; i < kValue; i++) { indexGm.SetValue(i, -1); }
-        return;
-    }
 
     // cmpMaskTopK reuses outValueBuf during TileTopK phase (signMaskTensor not needed then)
     LocalTensor<uint8_t> cmpMaskTopK = outValueBuf.Get<uint8_t>();

@@ -363,13 +363,12 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             // Fix cuRealAcSeq for TND (actS1=0 causes wrong cuRealAcSeq in ProcessVec)
             int32_t radixCuRealAcSeq = cuRealAcSeq;
             if (constInfo_.qSeqSize == 0 && constInfo_.attenMaskFlag) {
-                // TND: actS1 was 0, recalculate cuRealAcSeq correctly
                 radixCuRealAcSeq = info.actS2Size - (info.actS2Size - cuS1Idx) + 1;
             }
             int32_t radixCuS2Len = cuBaseS2Idx + s2BaseSize_ >= radixCuRealAcSeq ?
                 radixCuRealAcSeq - cuBaseS2Idx : s2BaseSize_;
             if (radixCuS2Len <= 0) {
-                // Skip scoreB16Gm write, go to end of RadixTopK path
+                // Skip scoreB16Gm write
             } else {
             // Write reduce result to scoreB16Gm for RadixTopK (bf16)
             if (radixCuS2Len < s2BaseSize_) {
