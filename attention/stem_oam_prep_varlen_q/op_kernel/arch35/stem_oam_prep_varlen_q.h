@@ -60,72 +60,7 @@
 using namespace AscendC;
 
 constexpr uint32_t DIM_QK = 128;
-constexpr uint32_t MAX_STEM_BLOCK_SIZE = 256;
-constexpr uint32_t MAX_STEM_STRIDE = 64;
-constexpr uint32_t MAX_QFLAT_DIM = MAX_STEM_STRIDE * DIM_QK;
-constexpr uint32_t MAX_BATCH_SIZE = 1024;
-constexpr uint32_t VARLEN_READ_ALIGN = 8;
-
-// Double-buffer scheme: N = tiling->ub_factor (capped at DOUBLE_BUFFER_DEPTH = 2)
 constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2;
-
-// Event IDs (per-direction, so V_MTE2 and MTE2_V can reuse the same ID):
-//   EVENT_ID0: CopyInQ (V→MTE2 handshake, then MTE2→V completion)
-//   EVENT_ID1: CopyInScales (V→MTE2 handshake, then MTE2→V completion)
-
-constexpr static AscendC::MicroAPI::CastTrait CAST_FP8_TO_FP32 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::UNKNOWN, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::UNKNOWN};
-
-constexpr static AscendC::MicroAPI::CastTrait CAST_FP32_TO_BF16 = {
-    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
-    AscendC::RoundMode::CAST_RINT};
-
-/**
- * CastFP8ToFP32Vf: UB 内 FP8 → FP32 类型转换 (VF 寄存器)
- *   srcPtr:  [count] FP8_e4m3fn
- *   dstPtr:  [count] FP32
- */
-__simd_vf__ inline void CastFP8ToFP32Vf(__ubuf__ fp8_e4m3fn_t *srcPtr, __ubuf__ float *dstPtr, uint32_t count)
-{
-    using namespace AscendC::MicroAPI;
-
-    constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
-    uint16_t vlIter = (count + VL_F - 1) / VL_F;
-
-    RegTensor<fp8_e4m3fn_t> srcReg;
-    RegTensor<float> dstReg;
-    MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
-
-    for (uint16_t vi = 0; vi < vlIter; vi++) {
-        DataCopy<fp8_e4m3fn_t, LoadDist::DIST_UNPACK_B8>(srcReg, srcPtr + vi * VL_F);
-        Cast<float, fp8_e4m3fn_t, CAST_FP8_TO_FP32>(dstReg, srcReg, maskAll);
-        DataCopy(dstPtr + vi * VL_F, dstReg, maskAll);
-    }
-}
-
-/**
- * CastFP32ToBF16Vf: UB 内 FP32 → BF16 类型转换 (VF 寄存器)
- *   srcPtr:  [count] FP32
- *   dstPtr:  [count] BF16
- */
-__simd_vf__ inline void CastFP32ToBF16Vf(__ubuf__ float *srcPtr, __ubuf__ bfloat16_t *dstPtr, uint32_t count)
-{
-    using namespace AscendC::MicroAPI;
-
-    constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
-    uint16_t vlIter = (count + VL_F - 1) / VL_F;
-
-    RegTensor<float> srcReg;
-    RegTensor<bfloat16_t> dstReg;
-    MaskReg maskAll = CreateMask<float, MaskPattern::ALL>();
-
-    for (uint16_t vi = 0; vi < vlIter; vi++) {
-        DataCopy(srcReg, srcPtr + vi * VL_F);
-        Cast<bfloat16_t, float, CAST_FP32_TO_BF16>(dstReg, srcReg, maskAll);
-        DataCopy<bfloat16_t, StoreDist::DIST_PACK_B32>(dstPtr + vi * VL_F, dstReg, maskAll);
-    }
-}
 
 __simd_callee__ inline void MulsOnAllRows(__ubuf__ float *qFP32Ptr, __ubuf__ float *scalePtr, uint16_t R, uint16_t S,
                                           uint16_t D)
@@ -197,7 +132,7 @@ public:
     {
     }
 
-    __aicore__ inline void Init(GM_ADDR q, GM_ADDR qscale, GM_ADDR q_seq_lens, GM_ADDR cu_seqlens_q, GM_ADDR qflat,
+    __aicore__ inline void Init(GM_ADDR q, GM_ADDR qscale, GM_ADDR cu_seqlens_q, GM_ADDR qflat,
                                 const StemPrepQTilingData *tiling)
     {
         tiling_ = tiling;
@@ -213,45 +148,10 @@ public:
         qflat_dim_ = tiling->kflat_dim;
         pp_num_ = tiling->ub_factor > 1 ? 2 : 1;
 
-        cuSeqLensBase_ = cu_seqlens_q;
-
-        // qb 粒度切核: 总任务 = H_q × Σ_b ceil(qSeqLens[b]/B)
-        // 每核分配 [qb_start_, qb_end_) 范围的连续 qb
-        uint32_t tasks_per_core_base = tiling->blocks_per_core_base;
-        uint32_t tasks_remainder = tiling->blocks_remainder;
-
-        if (task_id_ < tasks_remainder) {
-            qb_start_ = task_id_ * (tasks_per_core_base + 1);
-            qb_end_ = qb_start_ + tasks_per_core_base + 1;
-        } else {
-            qb_start_ =
-                tasks_remainder * (tasks_per_core_base + 1) + (task_id_ - tasks_remainder) * tasks_per_core_base;
-            qb_end_ = qb_start_ + tasks_per_core_base;
-        }
-
-        qBase_ = q;
-        qscaleBase_ = qscale;
-        qflatBase_ = qflat;
-
-        // UB Buffer 分配 (PP_NUM = 2 slots):
-        // qBlockBuf_[pp]:      [B, D] FP8   = 128×128×1 = 16 KB
-        // qBlockFP32Buf_[pp]:  [B, D] FP32  = 128×128×4 = 64 KB (also stores binary-reduced results)
-        // scalesBuf_[pp]:      [B, H_q] FP32 = 128×H_q×4
-        // outQueueQflat_:      [S*D] BF16 × PP_NUM = 2048×2 = 4 KB each
-        // cuSeqLensQBuf_:      [batch+1] INT64 (dynamically sized, shared)
-        pipe_.InitBuffer(qBlockBuf_, pp_num_, B_ * dim_qk_ * sizeof(fp8_e4m3fn_t));
-        pipe_.InitBuffer(qBlockFP32Buf_, pp_num_, B_ * dim_qk_ * sizeof(float));
-        pipe_.InitBuffer(scalesBuf_, pp_num_, B_ * num_q_heads_ * sizeof(float));
-        pipe_.InitBuffer(outQueueQflat_, pp_num_, qflat_dim_ * sizeof(bfloat16_t));
-
-        // 分配 cuSeqLensQBuf_：动态大小，只存实际需要的 batch+1 个 INT64
-        uint32_t cuSeqLensQCount = tiling_->batch_size + 1;
-        pipe_.InitBuffer(cuSeqLensQBuf_, cuSeqLensQCount * sizeof(int64_t));
-        LocalTensor<int64_t> cuSeqLensQLocal = cuSeqLensQBuf_.Get<int64_t>();
-        cuSeqLensGm_.SetGlobalBuffer((__gm__ int64_t *)cuSeqLensBase_, cuSeqLensQCount);
-        DataCopyPad(cuSeqLensQLocal, cuSeqLensGm_, {1, static_cast<uint16_t>(cuSeqLensQCount * sizeof(int64_t)), 0, 0},
-                    {0, 0, 0, 0});
-        PipeBarrier<PIPE_ALL>();
+        InitTaskRange(tiling->blocks_per_core_base, tiling->blocks_remainder);
+        InitGlobalBuffers(q, qscale, cu_seqlens_q, qflat);
+        InitUBBuffers();
+        LoadCuSeqLensQ();
     }
 
     __aicore__ inline void Process()
@@ -261,7 +161,7 @@ public:
 
         for (uint32_t task_idx = qb_start_; task_idx < qb_end_; task_idx++) {
             DecodeTaskId(task_idx);
-            ProcessOneBlock(task_idx);
+            ProcessOneBlock();
         }
     }
 
@@ -282,12 +182,10 @@ public:
         cu_off_ = static_cast<uint32_t>(cu_start);
         q_len_ = static_cast<uint32_t>(cu_end - cu_start);
         num_Qb_ = (q_len_ + B_ - 1) / B_;
-        q_padded_ = num_Qb_ * B_;
     }
 
-    __aicore__ inline void ProcessOneBlock(uint32_t task_idx)
+    __aicore__ inline void ProcessOneBlock()
     {
-        // 虚拟块：qb_local_ >= num_Qb_，输出补 0
         if (qb_local_ >= num_Qb_) {
             WriteZeroBlock();
             return;
@@ -299,6 +197,48 @@ public:
         FlattenAndCast();
         CopyOutBlock();
     }
+
+private:
+    __aicore__ inline void InitTaskRange(uint32_t tasks_per_core_base, uint32_t tasks_remainder)
+    {
+        if (task_id_ < tasks_remainder) {
+            qb_start_ = task_id_ * (tasks_per_core_base + 1);
+            qb_end_ = qb_start_ + tasks_per_core_base + 1;
+        } else {
+            qb_start_ =
+                tasks_remainder * (tasks_per_core_base + 1) + (task_id_ - tasks_remainder) * tasks_per_core_base;
+            qb_end_ = qb_start_ + tasks_per_core_base;
+        }
+    }
+
+    __aicore__ inline void InitGlobalBuffers(GM_ADDR q, GM_ADDR qscale, GM_ADDR cu_seqlens_q, GM_ADDR qflat)
+    {
+        qBase_ = q;
+        qscaleBase_ = qscale;
+        cuSeqLensQBase_ = cu_seqlens_q;
+        qflatBase_ = qflat;
+    }
+
+    __aicore__ inline void InitUBBuffers()
+    {
+        pipe_.InitBuffer(qBlockBuf_, pp_num_, B_ * dim_qk_ * sizeof(fp8_e4m3fn_t));
+        pipe_.InitBuffer(qBlockFP32Buf_, pp_num_, B_ * dim_qk_ * sizeof(float));
+        pipe_.InitBuffer(scalesBuf_, pp_num_, B_ * num_q_heads_ * sizeof(float));
+        pipe_.InitBuffer(outQueueQflat_, pp_num_, qflat_dim_ * sizeof(bfloat16_t));
+    }
+
+    __aicore__ inline void LoadCuSeqLensQ()
+    {
+        uint32_t cuSeqLensQCount = tiling_->batch_size + 1;
+        pipe_.InitBuffer(cuSeqLensQBuf_, cuSeqLensQCount * sizeof(int64_t));
+        LocalTensor<int64_t> cuSeqLensQLocal = cuSeqLensQBuf_.Get<int64_t>();
+        cuSeqLensGm_.SetGlobalBuffer((__gm__ int64_t *)cuSeqLensQBase_, cuSeqLensQCount);
+        DataCopyPad(cuSeqLensQLocal, cuSeqLensGm_,
+                    {1, static_cast<uint16_t>(cuSeqLensQCount * sizeof(int64_t)), 0, 0}, {0, 0, 0, 0});
+        PipeBarrier<PIPE_ALL>();
+    }
+
+public:
 
     /**
      * CopyInQBlock: GM → UB, 搬入 1 个 qb block 的 Q 数据
@@ -484,7 +424,6 @@ public:
     uint32_t dim_qk_ = 0;
     uint32_t q_len_ = 0;
     uint32_t cu_off_ = 0;
-    uint32_t q_padded_ = 0;
     uint32_t num_Qb_ = 0;
     uint32_t B_ = 0;
     uint32_t S_ = 0;
@@ -494,11 +433,9 @@ public:
     uint32_t qb_start_ = 0;
     uint32_t qb_end_ = 0;
     uint32_t qb_local_ = 0;
-    uint32_t core_in_bh_ = 0;
-    uint32_t cores_per_bh_this_ = 1;
     uint32_t pp_num_ = 2;
 
-    GM_ADDR cuSeqLensBase_ = nullptr;
+    GM_ADDR cuSeqLensQBase_ = nullptr;
     GM_ADDR qBase_ = nullptr;
     GM_ADDR qscaleBase_ = nullptr;
     GM_ADDR qflatBase_ = nullptr;

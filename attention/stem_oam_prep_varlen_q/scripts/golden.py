@@ -56,7 +56,8 @@ def golden_seq(context: "tbetoolkits.UniversalTestcaseStructure"):
     print(f"[golden_seq] qscale_shape={qscale_np.shape if qscale_np is not None else None}")
 
     q_fp32 = q_np.astype(np.float32)
-    if qscale_np is not None:
+    # 空 qScale (size 0) 视为未提供 scale, 走 unweighted path
+    if qscale_np is not None and qscale_np.size > 0:
         qscale = qscale_np.astype(np.float32)
         if qscale.ndim == 1:
             qscale = qscale.reshape(-1, 1)
@@ -89,10 +90,11 @@ def golden_seq(context: "tbetoolkits.UniversalTestcaseStructure"):
 
             if qscale is not None:
                 positions = np.arange(num_Qb * B).reshape(num_Qb, R, S)
-                global_positions = cu_off + positions
-                valid_mask = global_positions < len(qscale)
+                # scale 有效性由 q_len 决定 (与 kernel CopyInScalesBulk 语义一致:
+                #   只读 min(B, q_len - start_row) 个 scale, 多余 Duplicate 为 0)
+                valid_mask = positions < q_len
                 scales = np.zeros((num_Qb, R, S), dtype=np.float32)
-                scales[valid_mask] = qscale[global_positions[valid_mask], h]
+                scales[valid_mask] = qscale[cu_off + positions[valid_mask], h]
                 Q_weighted = Q_blocks * scales[:, :, :, np.newaxis]
             else:
                 Q_weighted = Q_blocks
@@ -216,7 +218,8 @@ def golden_binary_reduce(context: "tbetoolkits.UniversalTestcaseStructure"):
     print(f"[golden_binary] qscale_shape={qscale_np.shape if qscale_np is not None else None}")
 
     q_fp32 = q_np.astype(np.float32)
-    if qscale_np is not None:
+    # 空 qScale (size 0) 视为未提供 scale, 走 unweighted path
+    if qscale_np is not None and qscale_np.size > 0:
         qscale = qscale_np.astype(np.float32)
         if qscale.ndim == 1:
             qscale = qscale.reshape(-1, 1)
@@ -246,10 +249,10 @@ def golden_binary_reduce(context: "tbetoolkits.UniversalTestcaseStructure"):
         for h in range(H_q):
             if qscale is not None:
                 positions = np.arange(num_Qb * B).reshape(num_Qb, R, S)
-                global_positions = cu_off + positions
-                valid_mask = global_positions < len(qscale)
+                # scale 有效性由 q_len 决定 (与 kernel CopyInScalesBulk 语义一致)
+                valid_mask = positions < q_len
                 scales = np.zeros((num_Qb, R, S), dtype=np.float32)
-                scales[valid_mask] = qscale[global_positions[valid_mask], h]
+                scales[valid_mask] = qscale[cu_off + positions[valid_mask], h]
             else:
                 scales = None
 
@@ -284,8 +287,8 @@ def golden_binary_reduce(context: "tbetoolkits.UniversalTestcaseStructure"):
 # Switch: uncomment exactly ONE of the three lines below.
 # ============================================================
 # SELECTED_GOLDEN = golden_seq
-SELECTED_GOLDEN = golden_torch_vectorized    # requires PyTorch
-# SELECTED_GOLDEN = golden_binary_reduce       # matches current kernel algorithm
+# SELECTED_GOLDEN = golden_torch_vectorized    # requires PyTorch
+SELECTED_GOLDEN = golden_binary_reduce       # matches current kernel algorithm
 
 
 # ============================================================
