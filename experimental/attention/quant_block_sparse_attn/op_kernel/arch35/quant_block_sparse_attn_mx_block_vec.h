@@ -16,6 +16,7 @@
 #define QUANT_BLOCK_SPARSE_ATTN_MX_BLOCK_VEC_H_
 
 #include "kernel_operator.h"
+#include "../quant_block_sparse_attn_mx_tiling_data.h"
 #include "quant_block_sparse_attn_common_arch35.h"
 #include "quant_block_sparse_attn_attenmask.h"
 #include "common/buffer_manager.h"
@@ -132,6 +133,27 @@ public:
             // 同步 V2 cast 与 GM copy。
             mte3ToVId_[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
             vToMte3Id_[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+            SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
+        }
+    }
+
+    __aicore__ inline void ClearOutput(const optiling::QuantBlockSparseAttnMxEmptyTensorParams &emptyTensorParams,
+                                       const MxConstInfo &constInfo)
+    {
+        if ASCEND_IS_AIV {
+            if (emptyTensorParams.needInit == 0U) {
+                return;
+            }
+            // sparseSeqLen=0 的 Q block 不进入主循环，需预置输出，避免留下未写 GM。
+            const uint64_t aivCoreNum = static_cast<uint64_t>(constInfo.coreNum) * GetSubBlockNum();
+            InitOutputSingleCore(attentionOutGm_, emptyTensorParams.totalOutputSize, aivCoreNum,
+                                 constInfo.aivIdx, 0.0F);
+            if (constInfo.isSoftmaxLseEnable) {
+                InitOutputSingleCore(softmaxLseGm_, emptyTensorParams.totalSoftMaxLseOutputSize, aivCoreNum,
+                                     constInfo.aivIdx, BSA_EMPTY_LSE_VALUE);
+            }
+            WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
+            SyncAll();
             SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
         }
     }
@@ -313,6 +335,25 @@ public:
     }
 
 private:
+    template <typename T>
+    __aicore__ inline void InitOutputSingleCore(GlobalTensor<T> &outputGm, uint64_t totalSize,
+                                                uint64_t aivCoreNum, uint32_t aivIdx, float initValue)
+    {
+        if (aivCoreNum == 0U) {
+            return;
+        }
+        const uint64_t singleCoreSize = (totalSize + aivCoreNum - 1U) / aivCoreNum;
+        const uint64_t coreOffset = static_cast<uint64_t>(aivIdx) * singleCoreSize;
+        const uint64_t singleInitSize = coreOffset < totalSize ?
+            (totalSize - coreOffset < singleCoreSize ? totalSize - coreOffset : singleCoreSize) : 0U;
+        if (singleInitSize == 0U) {
+            return;
+        }
+        WaitFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
+        InitOutput<T>(outputGm[coreOffset], singleInitSize, initValue);
+        SetFlag<HardEvent::MTE3_V>(mte3ToVId_[0]);
+    }
+
     __aicore__ inline float DecodeE8M0Scale(uint8_t scale) const
     {
         // e8m0 字节对应 fp32 的 exponent bits[30:23]。
@@ -494,6 +535,16 @@ private:
     __aicore__ inline void CopyOutAttentionOut(MxRunInfo &runInfo, const MxConstInfo &constInfo,
                                                LocalTensor<MM_T> &vec2ResUb)
     {
+        if constexpr (HAS_ATTEN) {
+            if (constInfo.isRowInvalidOpen) {
+                // 使用所有 S2 loop 累计后的 max 判断整行是否始终无有效 key。
+                // 当前 tile 无效但历史 tile 有效时，max 仍为历史有效值，不会误清零。
+                LocalTensor<float> maxUb =
+                    softmaxMaxBuf_[runInfo.mLoop % (PRELOAD_N + 1U)].template Get<float>();
+                FaVectorApi::RowInvalidUpdateVF<MM_T>(vec2ResUb, maxUb, runInfo.actVecMSize, constInfo.dSizeV,
+                                                      static_cast<int64_t>(dTemplateAlign64));
+            }
+        }
         // 按 TND token/head stride 写回。
         LocalTensor<OUTPUT_T> attenOut;
         attenOut.SetAddr(vec2ResUb.address_);
