@@ -745,7 +745,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV2(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口
         ret = aclnnAlltoAllQuantMatmulV2GetWorkspaceSize(x1, x2, bias, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
-                                                hcom_name, "", alltoAllAxesOptional, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype,
+                                                hcom_name, "aiv", alltoAllAxesOptional, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype,
                                                 groupSize, false, true,
                                                 out, allToAllOut, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
@@ -983,7 +983,7 @@ aclnnStatus aclnnAlltoAllQuantMatmulV2(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口
         ret = aclnnAlltoAllQuantMatmulV2GetWorkspaceSize(x1, x2, bias, x1ScaleOptional, x2Scale, commScaleOptional, x1OffsetOptional, x2OffsetOptional,
-                                                hcom_name, "ccu", alltoAllAxesOptional, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype,
+                                                hcom_name, "ai_cpu", alltoAllAxesOptional, x1QuantMode, x2QuantMode, commQuantMode, commQuantDtype, x1QuantDtype,
                                                 groupSize, false, false,
                                                 out, allToAllOut, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
