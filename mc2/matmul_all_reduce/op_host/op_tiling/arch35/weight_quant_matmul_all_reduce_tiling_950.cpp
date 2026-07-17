@@ -26,7 +26,7 @@ namespace optiling {
 constexpr int64_t ANTIQUANT_GROUP_SIZE_MIN_VALUE = 32;
 constexpr uint64_t STANDARD_CARD_CGMPAD_WORKSPACE_CNT = 3;
 constexpr uint64_t FIVE_ONE_TWO = 512;
-constexpr uint64_t WEIGHT_QUANT_A2APATH_CRITICAL_K = 3584;
+constexpr uint64_t WEIGHT_QUANT_A2APATH_CRITICAL_K = 2048;
 bool WeightQuantMatmulAllReduceTilingA5::IsCapable()
 {
     if (isA16W8_ || isA16W4_) {
