@@ -60,6 +60,7 @@ extern "C" {
  * @param maxSeqlenQ          [IN]  ATTR. Max query sequence length. INT. -1 for auto.
  * @param maxSeqlenKV         [IN]  ATTR. Max KV sequence length. INT. -1 for auto.
  * @param layoutQ             [IN]  ATTR. Query layout: "BSND"/"BNSD"/"TND".
+ * @param layoutQDescale      [IN]  ATTR. Q descale layout: "BSND"/"BNSD"/"TND"/"N2TGD".
  * @param layoutKv            [IN]  ATTR. KV layout: "BSND"/"TND"/"PA_ND"/"PA_NZ".
  * @param layoutOut           [IN]  ATTR. Output layout: "BSND"/"BNSD"/"TND".
  * @param returnSoftmaxLse    [IN]  ATTR. Whether to output softmax_lse. BOOL. True=output, False=no.
@@ -83,7 +84,7 @@ aclnnStatus aclnnQuantFlashAttnGetWorkspaceSize(
     int64_t quantMode,
     double softmaxScale, int64_t maskMode, int64_t winLeft, int64_t winRight,
     int64_t maxSeqlenQ, int64_t maxSeqlenKV,
-    const char *layoutQ, const char *layoutKv, const char *layoutOut,
+    const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut,
     bool returnSoftmaxLse,
     const aclTensor *attnOut, const aclTensor *softmaxLseOptional,
     uint64_t *workspaceSize, aclOpExecutor **executor);

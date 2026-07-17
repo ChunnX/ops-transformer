@@ -75,6 +75,7 @@ private:
     int32_t winLeft_ = -1;
     int32_t winRight_ = -1;
     std::string layoutQ_ = "BSND";
+    std::string layoutQDescale_ = "BSND";
     std::string layoutKv_ = "BSND";
     std::string layoutOut_ = "BSND";
     std::string socVersion_ = "";

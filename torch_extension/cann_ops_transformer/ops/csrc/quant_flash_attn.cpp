@@ -28,11 +28,11 @@ quant_flash_attn_metadata(
     int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim,
     int64_t quant_mode,
     int64_t mask_mode, int64_t win_left, int64_t win_right,
-    std::string layout_q, std::string layout_kv, std::string layout_out, const at::Tensor &output)
+    std::string layout_q, std::string layout_q_descale, std::string layout_kv, std::string layout_out, const at::Tensor &output)
 {
     ACLNN_CMD(aclnnQuantFlashAttnMetadata, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, batch_size, max_seqlen_q,
               max_seqlen_kv, num_heads_q, num_heads_kv, head_dim, quant_mode, mask_mode, win_left, win_right,
-              layout_q, layout_kv, layout_out, output);
+              layout_q, layout_q_descale, layout_kv, layout_out, output);
     return output;
 }
 
@@ -49,7 +49,7 @@ quant_flash_attn(
     const c10::optional<at::Tensor> &metadata,
     double softmax_scale, int64_t mask_mode, int64_t win_left, int64_t win_right,
     int64_t max_seqlen_q, int64_t max_seqlen_kv,
-    std::string layout_q, std::string layout_kv, std::string layout_out,
+    std::string layout_q, std::string layout_q_descale, std::string layout_kv, std::string layout_out,
     bool return_softmax_lse)
 {
     const c10::string_view device = "npu";
@@ -102,13 +102,14 @@ quant_flash_attn(
     at::Tensor attentionOutput = at::empty(attentionOutSize, torch::dtype(at::kBFloat16).device(outputDevice));
 
     char *layout_q_ptr = const_cast<char *>(layout_q.c_str());
+    char *layout_q_descale_ptr = const_cast<char *>(layout_q_descale.c_str());
     char *layout_kv_ptr = const_cast<char *>(layout_kv.c_str());
     char *layout_out_ptr = const_cast<char *>(layout_out.c_str());
 
     ACLNN_CMD(aclnnQuantFlashAttn, q, k, v, q_descale, k_descale, v_descale,
               block_table, p_scale, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, sinks, attn_mask, metadata,
               quant_mode,
-              softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr, layout_kv_ptr,
+              softmax_scale, mask_mode, win_left, win_right, max_seqlen_q, max_seqlen_kv, layout_q_ptr, layout_q_descale_ptr, layout_kv_ptr,
               layout_out_ptr, return_softmax_lse, attentionOutput, softmaxLse);
 
     return std::tuple<at::Tensor, at::Tensor>(attentionOutput, softmaxLse);
