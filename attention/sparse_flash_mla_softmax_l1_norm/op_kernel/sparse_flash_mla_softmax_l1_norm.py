@@ -795,7 +795,13 @@ def sparse_flash_mla_softmax_l1_norm(
             tick = tick + 1
             _pl_sync_id = _pl_sync_id + 1
         q_count = q_count + 1
-
+    with pl.section_cube():
+        pl.system.wait_cross_core(pipe=pl.PipeType.FIX, event_id=QK_READY_BARKWARD_IDS[0])
+        pl.system.wait_cross_core(pipe=pl.PipeType.FIX, event_id=QK_READY_BARKWARD_IDS[1])
+    with pl.section_vector():
+        if IS_SPARSE == 1:
+            pl.system.wait_cross_core(pipe=pl.PipeType.MTE3, event_id=GATHER_READY_BARKWARD_IDS[0])
+            pl.system.wait_cross_core(pipe=pl.PipeType.MTE3, event_id=GATHER_READY_BARKWARD_IDS[1])
 
 # # ================================================================
 # #  Kernel — dynamic rank: inputs are raw pointers, shapes come from tiling
