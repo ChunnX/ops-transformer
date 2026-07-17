@@ -584,7 +584,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
 
-                    # Per-core SoftmaxI: use UB-held ReduceSumY + broadcast rsy_max (no GM reads)
+                    # Per-core SoftmaxI: use UB-held ReduceSumY, then materialize to GM.
                     T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
                     T.pipe_barrier("v")
                     T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
@@ -593,6 +593,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.broadcast(rsy_bc_ub, rsy_sum_ub)
                     T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_bc_ub[0, :])
+                    T.set_flag("v", "mte3", 4)
+                    T.wait_flag("v", "mte3", 4)
+                    T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
                     # dWeight, reluGrad for MY K block (same V scope, no cross flag)
                     # Strategy: 2D-vectorized per-row ops to eliminate scalar tile.mul
@@ -618,14 +621,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.fill(eps_ub, 1e-8)
 
                     # dWeight, reluGrad for MY K block
-                    # RAW: PReduced 刚由 mte3 写，mte2 读回前等 mte3 完成.
-                    # SoftmaxI 当前 block 保留在 rsy_chunk_ub，避免写 GM 后读回.
+                    # RAW: PReduced/SoftmaxI 刚由 mte3 写，mte2 读回前等 mte3 完成.
                     T.set_flag("mte3", "mte2", 5)
                     T.wait_flag("mte3", "mte2", 5)
+                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], softmax_i_chunk_ub)
                     T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], p_reduced_tmp_ub)
                     T.set_flag("mte2", "v", 6)
                     T.wait_flag("mte2", "v", 6)
-                    T.tile.sub(diff_ub, rsy_chunk_ub, p_reduced_tmp_ub)
+                    T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
 
                     # Broadcast diff_ub → diff_2d_ub via BRCB (1 instruction replaces 32 serial copies)
                     T.tile.broadcast(diff_2d_ub, diff_ub)
@@ -697,8 +700,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("v", "mte2", 1)
                     T.wait_flag("v", "mte2", 1)
 
-                    T.copy(rsy_chunk_ub, loss_chunk_ub)
-                    T.pipe_barrier("v")
+                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
+                    T.set_flag("mte2", "v", 2)
+                    T.wait_flag("mte2", "v", 2)
                     T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
                     T.pipe_barrier("v")
                     T.tile.ln(loss_log_si_ub, loss_chunk_ub)
