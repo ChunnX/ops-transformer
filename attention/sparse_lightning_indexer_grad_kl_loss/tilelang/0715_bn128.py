@@ -15,7 +15,9 @@ BLOCK_N = 128
 BLOCK_K = 128
 
 VECTOR_BASEG = 32
-VECTOR_BASEG_BN128 = 16
+# Keep each fp32 2D vector tile below the Ascend uint8 repeat limit:
+# 8 * 128 fp32 elements = 128 repeats, while 16 * 128 = 256 overflows.
+VECTOR_BASEG_BN128 = 8
 VECTOR_BASEN = 256
 
 GATHER_CHUNK_SIZE = 16
