@@ -21,6 +21,9 @@ template <
     class EpilogueOnlineSoftmax,
     class BlockMmadPV,
     class EpilogueRescaleO,
+    class EpilogueComputePScale,
+    class EpilogueCopyGlobalMaxUbToL1,
+    class BlockMmadCopyGlobalMaxL1ToUB,
     Format qFormat,
     Format kvFormat,
     bool transposedMm1 = false>
@@ -39,6 +42,9 @@ public:
     using ElementSparseMask = typename EpilogueMask2Idx::ElementSparseMask;
     using ElementSparseIdx = typename EpilogueMask2Idx::ElementSparseIdx;
     using ElementSparseCount = typename EpilogueMask2Idx::ElementSparseCount;
+    using ElementGroupMax = typename EpilogueComputePScale::ElementGroupMax;
+    using ElementScale = typename EpilogueComputePScale::ElementScale;
+    using ElementLocalGlobalMax = typename EpilogueCopyGlobalMaxUbToL1::ElementLocalGlobalMax;
 
     using LayoutQ = layout::RowMajor;
     using LayoutK = layout::ColumnMajor;
@@ -48,6 +54,7 @@ public:
     using LayoutO = layout::RowMajor;
     using LayoutLse = layout::RowMajor;
     using LayoutOTmp = layout::RowMajor;
+    using LayoutLocalGlobalMax = layout::RowMajor;
     using LayoutSparseIdx = layout::RowMajor;
     using LayoutSparseCount = layout::RowMajor;
 

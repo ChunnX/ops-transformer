@@ -56,10 +56,8 @@ struct EpilogueComputePScaleBsa {
     static constexpr MXQuantMode MX_QUANT_MODE = MX_QUANT_MODE_;
 };
 
-template <bool transposedMm1_ = false>
 struct EpilogueCopyGlobalMaxUbToL1Bsa {
     using ArchTag = Arch::AtlasA5;
-    static constexpr bool transposedMm1 = transposedMm1_;;
 };
 
 template <

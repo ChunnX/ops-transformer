@@ -310,6 +310,8 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using ElementScale = uint8_t; // e8m0
     using ElementO = InDtype; // bfloat16_t / fp16
     using ElementOTmp = REDtype; // float
+    using ElementGroupMax = SMDtype;
+    using ElementLocalGlobalMax = SMDtype;
     // layout tags
     using LayoutQ = layout::RowMajor;
     using LayoutK = layout::ColumnMajor;
@@ -324,6 +326,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using LayoutOTmp = layout::RowMajor;
     using LayoutSparseIdx = layout::RowMajor;
     using LayoutSparseCount = layout::RowMajor;
+    using LayoutLocalGlobalMax = layout::RowMajor;
     // block mask pre-process
     using DispatchPolicyMask2Idx = Epilogue::EpilogueBsaMask2Idx;
     using EpilogueMask2Idx = Epilogue::Block::BlockEpilogue<
@@ -343,6 +346,14 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     using SType = Gemm::GemmType<ElementS, LayoutS>;
     using PScaleType = Gemm::GemmType<ElementScale, LayoutPScale>;
     using EpilogueOnlineSoftmax = Epilogue::Block::BlockEpilogue<DispatchPolicyOnlineSoftmax, PType, SType, PScaleType>;
+    // compute PScale from group max: 输入 ElementGroupMax, 输出 PScaleType
+    using DispatchPolicyComputePScale = Epilogue::EpilogueComputePScaleBsa<transposedMm1, mxQuantMode>;
+    using EpilogueComputePScale = Epilogue::Block::BlockEpilogue<
+        DispatchPolicyComputePScale, ElementGroupMax, PScaleType>;
+    // copy global max from UB to L1: 输入 ElementLocalGlobalMax
+    using DispatchPolicyCopyGlobalMaxUbToL1 = Epilogue::EpilogueCopyGlobalMaxUbToL1Bsa;
+    using EpilogueCopyGlobalMaxUbToL1 = Epilogue::Block::BlockEpilogue<
+        DispatchPolicyCopyGlobalMaxUbToL1, ElementLocalGlobalMax>;
     // 处理单个tile内P和Value的matmul
     using L1TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
@@ -352,6 +363,9 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
         void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M, false, Gemm::Tile::ScaleGranularity::PER_GROUP>;
     using BlockMmadPV = Gemm::Block::BlockMmadTla<
         DispatchPolicyPV, L1TileShapePV, L0TileShapePV, ElementP, ElementV, ElementOTmp, void, TileCopyPV>;
+    // copy global max from L1 to UB: 输入 ElementLocalGlobalMax
+    using BlockMmadCopyGlobalMaxL1ToUB = Gemm::Block::BlockMmadTla<
+        Gemm::CopyGlobalMaxL1ToUBBsa, void, void, ElementLocalGlobalMax, void, void, void, void, void>;
     // rescale O
     using DispatchPolicyRescaleO = Epilogue::EpilogueAtlasA5BsaRescaleO<lseMode, lseFormat, transposedMm1>;
     using TileCopyRescaleO = Epilogue::Tile::TileCopyRescaleO<
@@ -360,7 +374,9 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
         DispatchPolicyRescaleO, ElementO, ElementOTmp, ElementS, TileCopyRescaleO, Arch::PositionL0C>;
 
     using BsaMXFP4FullQuantKernelArch35 = BsaMXFP4FullQuantKernelArch35<
-        EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO, qFormat, kvFormat, transposedMm1>;
+        EpilogueMask2Idx, BlockMmadQK, EpilogueOnlineSoftmax, BlockMmadPV, EpilogueRescaleO,
+        EpilogueComputePScale, EpilogueCopyGlobalMaxUbToL1, BlockMmadCopyGlobalMaxL1ToUB,
+        qFormat, kvFormat, transposedMm1>;
     // BsaKernelParamsArch35 params{q, k, v, mask, blockTables,
     //     actualQseqlen, actualKvseqlen, blockSparseMask, o, workspace, lse, tiling};
      BsaFullQuantKernelParamsArch35 params{query,
