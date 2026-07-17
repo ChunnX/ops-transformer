@@ -45,6 +45,7 @@ def convert_npu_stem_indexer(
     k_block_num_bias_medium: int = 30,
     k_block_num_rate_large: float = 0.1,
     k_block_num_bias_large: int = 30,
+    topk_score_precision: int = 1,
     meta_outputs: List[TensorSpec] = None,
 ):
     return torchair.ge.custom_op(
@@ -67,6 +68,7 @@ def convert_npu_stem_indexer(
                "k_block_num_bias_medium": attr.Int(k_block_num_bias_medium),
                "k_block_num_rate_large": attr.Float(k_block_num_rate_large),
                "k_block_num_bias_large": attr.Int(k_block_num_bias_large),
+               "topk_score_precision": attr.Int(topk_score_precision),
                },
         outputs=['sparse_indices', 'sparse_seq_len']
     )

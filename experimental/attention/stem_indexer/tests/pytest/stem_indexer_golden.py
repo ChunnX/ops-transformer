@@ -22,7 +22,8 @@ K_BLOCK_NUM_BIAS_MEDIUM = 30
 K_BLOCK_NUM_RATE_LARGE = 0.1
 K_BLOCK_NUM_BIAS_LARGE = 30
 METADATA_SIZE = 2048
-GOLDEN_TOPK_SCORE_TYPE = "uint16"
+DEFAULT_TOPK_SCORE_PRECISION = 1
+GOLDEN_TOPK_SCORE_TYPE = "uint32"
 SUPPORTED_GOLDEN_TOPK_SCORE_TYPES = {"uint32", "uint16"}
 
 DTYPE_MAP = {
@@ -65,8 +66,10 @@ def dtype_from_name(dtype_name):
 
 def get_golden_topk_score_type(case):
     special = parse_special_setting(case.get("special_setting", ""))
+    precision = int(case.get("topk_score_precision", DEFAULT_TOPK_SCORE_PRECISION))
+    precision_score_type = {1: "uint32", 2: "uint16"}.get(precision, GOLDEN_TOPK_SCORE_TYPE)
     score_type = case.get("golden_topk_score_type", special.get(
-        "golden_topk_score_type", GOLDEN_TOPK_SCORE_TYPE
+        "golden_topk_score_type", precision_score_type
     ))
     score_type = str(score_type).strip().lower()
     if score_type not in SUPPORTED_GOLDEN_TOPK_SCORE_TYPES:
@@ -159,6 +162,7 @@ def get_call_attrs(case):
         "k_block_num_bias_medium": K_BLOCK_NUM_BIAS_MEDIUM,
         "k_block_num_rate_large": K_BLOCK_NUM_RATE_LARGE,
         "k_block_num_bias_large": K_BLOCK_NUM_BIAS_LARGE,
+        "topk_score_precision": int(case.get("topk_score_precision", DEFAULT_TOPK_SCORE_PRECISION)),
     }
 
 
