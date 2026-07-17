@@ -1763,6 +1763,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     if (sharedExpertNum_ > 0) {
         ProcessSharedExpertGmm1(initShape, initOffset);
+        SyncAll<false>();
     }
 
     CrossRankSyncInWorldSize();
