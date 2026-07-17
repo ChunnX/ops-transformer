@@ -46,7 +46,7 @@ at::Tensor npu_stem_oam_prep_varlen_q(
     int64_t qflat_dim = stemStride * DIM_QK;
 
     at::Tensor qFlat = at::empty({batch, H_q, maxQb, qflat_dim},
-                                  q.options().dtype(at::kBFloat16));
+                                 q.options().dtype(at::kBFloat16));
 
     ACLNN_CMD(aclnnStemOamPrepVarlenQ, q, qScale, qSeqLens, cuSeqLensQ,
               stemBlockSize, stemStride, qFlat);

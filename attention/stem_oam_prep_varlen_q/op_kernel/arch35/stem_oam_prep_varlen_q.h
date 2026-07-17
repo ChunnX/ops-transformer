@@ -63,8 +63,7 @@ constexpr uint32_t DIM_QK = 128;
 constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2;
 
 __simd_callee__ inline void MulsOnAllRows(__ubuf__ float *qFP32Ptr, __ubuf__ float *scalePtr, uint16_t R, uint16_t S,
-                                          uint16_t D)
-{
+                                          uint16_t D) {
     using namespace AscendC::MicroAPI;
 
     constexpr uint16_t VL_F = VECTOR_REG_WIDTH / sizeof(float);
@@ -90,8 +89,7 @@ __simd_callee__ inline void MulsOnAllRows(__ubuf__ float *qFP32Ptr, __ubuf__ flo
 }
 
 __simd_vf__ inline void WeightedBinaryReduceFull(__ubuf__ float *qFP32Ptr, __ubuf__ float *scalePtr, uint16_t R,
-                                                  uint16_t S, uint16_t D)
-{
+                                                  uint16_t S, uint16_t D) {
     MulsOnAllRows(qFP32Ptr, scalePtr, R, S, D);
 
     using namespace AscendC::MicroAPI;

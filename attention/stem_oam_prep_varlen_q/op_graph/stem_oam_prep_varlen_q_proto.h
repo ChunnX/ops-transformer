@@ -40,7 +40,8 @@ namespace ge {
  *
  * @par Attributes:
  * @li stemBlockSize: Optional. Stem block size (B). Default: 128. Must be a multiple of 32; max 256.
- * @li stemStride: Optional. Stem stride (S). Default: 16. Must be a multiple of 16; max 64; must satisfy stemStride <= stemBlockSize.
+ * @li stemStride: Optional. Stem stride (S). Default: 16. Must be a multiple of 16; max 64;
+                   must satisfy stemStride <= stemBlockSize.
  *
  * @par Outputs:
  * @li qFlat: Flattened Q output for OAM score computation. Shape [batch, H_q, max_Qb, kflat_dim].

@@ -164,14 +164,14 @@ static ge::graphStatus ValidateInputSizes(const char *nodeName, const gert::Stor
 
     if (qSeqLensSize != batch) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "qSeqLens",
-                                               std::to_string(qSeqLensSize).c_str(),
-                                               ("must equal batch size=" + std::to_string(batch)).c_str());
+                                              std::to_string(qSeqLensSize).c_str(),
+                                              ("must equal batch size=" + std::to_string(batch)).c_str());
         return ge::GRAPH_FAILED;
     }
     if (cuSeqLensSize != batch + 1) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "cuSeqLensQ",
-                                               std::to_string(cuSeqLensSize).c_str(),
-                                               ("must equal batch+1=" + std::to_string(batch + 1)).c_str());
+                                              std::to_string(cuSeqLensSize).c_str(),
+                                              ("must equal batch+1=" + std::to_string(batch + 1)).c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -240,8 +240,7 @@ static ge::graphStatus ValidateQScaleDesc(gert::TilingContext *context, ge::Data
         }
     } else {
         if (qScaleDesc != nullptr) {
-            std::string dtype_str = (qDtype == ge::DT_BF16) ? "DT_BF16" : "DT_FLOAT16";
-            std::string reason = "must be null when q is " + dtype_str + " (not DT_FLOAT8_E4M3FN)";
+            std::string reason = "must be null when q is " + std::string(qDtype == ge::DT_BF16 ? "DT_BF16" : "DT_FLOAT16") + " (not DT_FLOAT8_E4M3FN)";
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(nodeName, "qScale", "present", reason.c_str());
             return ge::GRAPH_FAILED;
         }
@@ -290,7 +289,7 @@ static ge::graphStatus ValidateDtypes(gert::TilingContext *context, ge::DataType
 // 4. ValidateConsistency: Cross-tensor consistency + empty input detection
 // ===========================================================================
 static ge::graphStatus ValidateConsistency(gert::TilingContext *context, int64_t batch, int64_t numQHeads,
-                                            ge::DataType qDtype)
+                                           ge::DataType qDtype)
 {
     const char *nodeName = context->GetNodeName();
 
@@ -305,12 +304,11 @@ static ge::graphStatus ValidateConsistency(gert::TilingContext *context, int64_t
         int64_t total_tokens = qShape->GetStorageShape().GetDim(0);
         int64_t scaleTokens = qScaleShape->GetStorageShape().GetDim(0);
         int64_t scaleHeads = qScaleShape->GetStorageShape().GetDim(1);
-        
         if (scaleTokens != total_tokens || scaleHeads != numQHeads) {
             std::string expected = "[" + std::to_string(total_tokens) + ", " + std::to_string(numQHeads) + "]";
             std::string actual = "[" + std::to_string(scaleTokens) + ", " + std::to_string(scaleHeads) + "]";
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "qScale", actual.c_str(),
-                                                   ("must match q shape in first two dimensions: " + expected).c_str());
+                                                  ("must match q shape in first two dimensions: " + expected).c_str());
             return ge::GRAPH_FAILED;
         }
     }
@@ -423,25 +421,25 @@ static ge::graphStatus CheckOutputDimValues(const char *nodeName, const gert::St
     if (actual_batch != static_cast<int64_t>(tiling->batch_size)) {
         std::string reason = "must equal batch_size=" + std::to_string(tiling->batch_size);
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "qFlat dim 0",
-                                                  std::to_string(actual_batch).c_str(), reason.c_str());
+                                                 std::to_string(actual_batch).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if (actual_heads != static_cast<int64_t>(tiling->num_q_heads)) {
         std::string reason = "must equal num_q_heads=" + std::to_string(tiling->num_q_heads);
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "qFlat dim 1",
-                                                  std::to_string(actual_heads).c_str(), reason.c_str());
+                                                 std::to_string(actual_heads).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if (actual_maxQb < static_cast<int64_t>(tiling->max_Qb)) {
         std::string reason = "must be >= max_Qb=" + std::to_string(tiling->max_Qb);
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "qFlat dim 2",
-                                                  std::to_string(actual_maxQb).c_str(), reason.c_str());
+                                                 std::to_string(actual_maxQb).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     if (actual_kflat < static_cast<int64_t>(expected_kflat)) {
         std::string reason = "must be >= kflat_dim=" + std::to_string(expected_kflat);
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "qFlat dim 3",
-                                                  std::to_string(actual_kflat).c_str(), reason.c_str());
+                                                 std::to_string(actual_kflat).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -478,7 +476,7 @@ static ge::graphStatus ValidateOutputShape(gert::TilingContext *context, const S
     auto &shape = qFlatShape->GetStorageShape();
     if (shape.GetDimNum() != QFLAT_RANK) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "qFlat", std::to_string(shape.GetDimNum()).c_str(),
-                                                  "must be 4D");
+                                                 "must be 4D");
         return ge::GRAPH_FAILED;
     }
 
