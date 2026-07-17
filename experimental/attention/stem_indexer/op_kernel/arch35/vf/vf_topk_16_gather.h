@@ -359,13 +359,12 @@ __simd_callee__ inline void FindValueOutputProcessRow(__ubuf__ uint16_t* outputV
                                                       __ubuf__ uint16_t* inputValueBuf,
                                                       __ubuf__ uint16_t* tmpIdxBuf, uint16_t vfLoop,
                                                       uint32_t inputOffset, uint32_t tmpIdxOffset,
+                                                      uint32_t outputValueOffset,
                                                       uint32_t rowSlot, uint32_t realRowIdx)
 {
     MicroAPI::MaskReg pregB16 = MicroAPI::CreateMask<uint16_t, MicroAPI::MaskPattern::ALL>();
 
-    uint32_t outputOffset = tmpIdxOffset;
-
-    __ubuf__ uint16_t* roundOutputValueBuf = outputValueBuf + rowSlot * outputOffset;
+    __ubuf__ uint16_t* roundOutputValueBuf = outputValueBuf + rowSlot * outputValueOffset;
     __ubuf__ uint16_t* roundInputValueBuf = inputValueBuf + realRowIdx * inputOffset;
     __ubuf__ uint16_t* roundTmpIdxBuf = tmpIdxBuf + rowSlot * tmpIdxOffset;
 
@@ -384,14 +383,19 @@ __simd_callee__ inline void FindValueOutputProcessRow(__ubuf__ uint16_t* outputV
 __simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint16_t* outputValueBuf, __ubuf__ uint16_t* inputValueBuf,
                                         __ubuf__ uint16_t* tmpIdxBuf, uint16_t vfLoop,
                                         uint16_t loopM, uint32_t inputOffset, uint32_t tmpIdxOffset,
+                                        uint32_t outputValueOffset,
                                         uint32_t rowIdx0, uint32_t rowIdx1,
                                         uint32_t rowIdx2, uint32_t rowIdx3)
 {
     (void)loopM;
-    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset, 0, rowIdx0);
-    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset, 1, rowIdx1);
-    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset, 2, rowIdx2);
-    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset, 3, rowIdx3);
+    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset,
+                              outputValueOffset, 0, rowIdx0);
+    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset,
+                              outputValueOffset, 1, rowIdx1);
+    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset,
+                              outputValueOffset, 2, rowIdx2);
+    FindValueOutputProcessRow(outputValueBuf, inputValueBuf, tmpIdxBuf, vfLoop, inputOffset, tmpIdxOffset,
+                              outputValueOffset, 3, rowIdx3);
 }
 
 /**
@@ -437,7 +441,8 @@ __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ u
  * @param offset 每行输入数据之间的偏移(元素个数)
  * @param rowIdx0-rowIdx3 compact行对应的真实mInnerIdx
  * @param topkNum0-topkNum3 compact行对应的topK元素个数
- * @param tmpIdxStride tmpIdxLocal/outputValueLocal 每行之间的偏移(元素个数)
+ * @param tmpIdxStride tmpIdxLocal 每行之间的偏移(元素个数)
+ * @param outputValueStride outputValueLocal 每行之间的偏移(元素个数)
  */
 template<bool ISOUTVALUE> // 是否输出VALUE
 __aicore__ inline void SiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
@@ -458,7 +463,8 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
                                 uint32_t topkNum1,
                                 uint32_t topkNum2,
                                 uint32_t topkNum3,
-                                uint32_t tmpIdxStride)
+                                uint32_t tmpIdxStride,
+                                uint32_t outputValueStride)
 {
     __ubuf__ uint16_t* tmpIdxBuf = (__ubuf__ uint16_t*)tmpIdxLocal.GetPhyAddr();
     __ubuf__ uint16_t* outputValueBuf = (__ubuf__ uint16_t*)outputValueLocal.GetPhyAddr();
@@ -512,7 +518,8 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
     // 是否输出Value
     if constexpr (ISOUTVALUE) {
         FindValueOutputVFImpl(outputValueBuf, inputValueBuf, tmpIdxBuf, topkLoopNum16,
-                              (uint16_t)loopM, offset, tmpIdxOffset, rowIdx0, rowIdx1, rowIdx2, rowIdx3);
+                              (uint16_t)loopM, offset, tmpIdxOffset, outputValueStride,
+                              rowIdx0, rowIdx1, rowIdx2, rowIdx3);
     }
 }
 

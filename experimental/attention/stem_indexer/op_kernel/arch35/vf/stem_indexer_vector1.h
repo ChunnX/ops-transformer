@@ -347,6 +347,91 @@ __aicore__ inline void PadMrgRowsRangeVF(const LocalTensor<uint32_t> &mrgValueLo
     PadMrgRowsRangeVFImpl(mrgValueBuf, rowStride, actS1Size, s1Idx, validGSize, padStart, padEnd);
 }
 
+__simd_vf__ inline void PackSparseIndicesU32VFImpl(__ubuf__ uint32_t* outBuf,
+                                                   __ubuf__ uint32_t* topkBuf,
+                                                   const uint32_t packLen,
+                                                   const uint32_t initialBlocks,
+                                                   const uint32_t topkSelectNum,
+                                                   const uint32_t windowSize,
+                                                   const uint32_t windowBase)
+{
+    // 每行整理长度由最大topK数量、initBlocks和windowSize共同决定，单轮处理64个uint32_t。
+    constexpr uint32_t VF_ELEMS = 64U;
+    MicroAPI::MaskReg maskAll = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
+    // Arange只支持有符号类型，生成后按相同bit位解释为uint32_t索引。
+    MicroAPI::RegTensor<int32_t> regIdx;
+    // regOut默认填-1，再依次用init、topK和window三个区段覆盖有效位置。
+    MicroAPI::RegTensor<uint32_t> regOut;
+    // topK输出位置减去initialBlocks后，得到topkBuf中的相对下标。
+    MicroAPI::RegTensor<uint32_t> regTopkIdx;
+    MicroAPI::RegTensor<uint32_t> regTopkValue;
+    // window区段直接根据输出位置生成连续索引。
+    MicroAPI::RegTensor<uint32_t> regWindowValue;
+    MicroAPI::RegTensor<uint32_t> regInitialBlocks;
+    MicroAPI::RegTensor<uint32_t> regTopkEnd;
+    auto& regIdxU32 = (MicroAPI::RegTensor<uint32_t>&)regIdx;
+
+    // 最终布局：[0, initialBlocks) | topK | window | -1填充。
+    const uint32_t topkEnd = initialBlocks + topkSelectNum;
+    const uint32_t windowEnd = topkEnd + windowSize;
+    MicroAPI::Duplicate(regInitialBlocks, initialBlocks, maskAll);
+    MicroAPI::Duplicate(regTopkEnd, topkEnd, maskAll);
+
+    const uint32_t vfLoop = (packLen + VF_ELEMS - 1U) / VF_ELEMS;
+    for (uint32_t loopIdx = 0U; loopIdx < vfLoop; loopIdx++) {
+        const uint32_t blockBase = loopIdx * VF_ELEMS;
+        // 生成当前64个输出位置，并先将整组初始化为无效索引-1。
+        MicroAPI::Arange(regIdx, static_cast<int32_t>(blockBase));
+        MicroAPI::Duplicate(regOut, static_cast<uint32_t>(-1), maskAll);
+
+        // init区段直接输出位置本身，即0、1、2、...、initialBlocks-1。
+        MicroAPI::MaskReg maskInit;
+        MicroAPI::Compares<uint32_t, CMPMODE::LT>(maskInit, regIdxU32, initialBlocks, maskAll);
+        MicroAPI::Select(regOut, regIdxU32, regOut, maskInit);
+
+        // topK区段通过Gather读取已经计算完成的global index。
+        MicroAPI::MaskReg maskTopkStart;
+        MicroAPI::MaskReg maskTopkEnd;
+        MicroAPI::MaskReg maskTopk;
+        MicroAPI::Compares<uint32_t, CMPMODE::GE>(maskTopkStart, regIdxU32, initialBlocks, maskAll);
+        MicroAPI::Compares<uint32_t, CMPMODE::LT>(maskTopkEnd, regIdxU32, topkEnd, maskAll);
+        MicroAPI::And(maskTopk, maskTopkStart, maskTopkEnd, maskAll);
+        MicroAPI::Sub(regTopkIdx, regIdxU32, regInitialBlocks, maskTopk);
+        MicroAPI::Gather(regTopkValue, topkBuf, regTopkIdx, maskTopk);
+        MicroAPI::Select(regOut, regTopkValue, regOut, maskTopk);
+
+        // window区段生成windowBase开始的连续索引，并拼在topK区段之后。
+        MicroAPI::MaskReg maskWindowStart;
+        MicroAPI::MaskReg maskWindowEnd;
+        MicroAPI::MaskReg maskWindow;
+        MicroAPI::Compares<uint32_t, CMPMODE::GE>(maskWindowStart, regIdxU32, topkEnd, maskAll);
+        MicroAPI::Compares<uint32_t, CMPMODE::LT>(maskWindowEnd, regIdxU32, windowEnd, maskAll);
+        MicroAPI::And(maskWindow, maskWindowStart, maskWindowEnd, maskAll);
+        MicroAPI::Sub(regWindowValue, regIdxU32, regTopkEnd, maskWindow);
+        MicroAPI::Adds(regWindowValue, regWindowValue, windowBase, maskWindow);
+        MicroAPI::Select(regOut, regWindowValue, regOut, maskWindow);
+
+        // 最后一轮仅写packLen以内的lane，避免覆盖当前行固定输出区间之外的数据。
+        MicroAPI::MaskReg maskPack;
+        MicroAPI::Compares<uint32_t, CMPMODE::LT>(maskPack, regIdxU32, packLen, maskAll);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + blockBase, regOut, maskPack);
+    }
+}
+
+__aicore__ inline void PackSparseIndicesU32VF(const LocalTensor<uint32_t> &outLocal,
+                                              const LocalTensor<uint32_t> &topkLocal,
+                                              const uint32_t packLen,
+                                              const uint32_t initialBlocks,
+                                              const uint32_t topkSelectNum,
+                                              const uint32_t windowSize,
+                                              const uint32_t windowBase)
+{
+    __ubuf__ uint32_t *outBuf = (__ubuf__ uint32_t *)outLocal.GetPhyAddr();
+    __ubuf__ uint32_t *topkBuf = (__ubuf__ uint32_t *)topkLocal.GetPhyAddr();
+    PackSparseIndicesU32VFImpl(outBuf, topkBuf, packLen,
+                               initialBlocks, topkSelectNum, windowSize, windowBase);
+}
+
 // float in uint32 out
 template <typename QK_T>
 __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t* outBuf,

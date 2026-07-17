@@ -20,49 +20,35 @@
 #include "vf_topk_16_gather.h"
 
 namespace SIKernel {
-// Radix uses 8-bit buckets, with 256 buckets and 64 nkValue elements.
-constexpr uint32_t HISTOGRAM_BIN_NUM = 256U;
-constexpr uint32_t NK_VALUE_SIZE = 64U;
-constexpr uint32_t TOPK_COUNT_ALIGN = 256U;
-// Primary template placeholder; only the uint32_t sortable-key specialization is implemented.
-template <typename T>
+template<typename SCORE_T>
 class SITopk {
 public:
-    __aicore__ inline uint32_t GetSharedTmpBufferSize()
-    {
-        // 2 * SICommon::Align(topK, HISTOGRAM_BIN_NUM): 两块hisIndexLocal
-        // 5 * 256：histogramsLocal + idxLocal[0-3]
-        // 64：nkValueLocal
-        uint64_t bufferSize1 = (2 * SICommon::Align(topK, HISTOGRAM_BIN_NUM) +
-                                5 * HISTOGRAM_BIN_NUM + NK_VALUE_SIZE) * sizeof(uint32_t);
-        // SICommon::Align(topK, HISTOGRAM_BIN_NUM) + trunkLen：tmpIndexLocal
-        uint64_t bufferSize2 = (SICommon::Align(topK, HISTOGRAM_BIN_NUM) + trunkLen) * sizeof(uint32_t);
-        return bufferSize1 + bufferSize2;
-    }
 
     static constexpr uint32_t MAX_LOOP_M = 4;
 
-    // reuseMm1ResLocal 内的复用偏移（indices 按 uint32_t 元素数，score 按 SCORE_T 元素数）
-    // idx0~idx3: 4 * 4*256 = 4096
-    // histograms: 4*256 = 1024
-    // nkValue: 4*64 = 256
-    // tmpIndex: 4*256 = 1024
-    // 合计 6400，之后排布 indicesOut(1024) 和 scoreOut(1024)
-    static constexpr uint32_t REUSE_INDICES_OUT_OFFSET = 6400;
-    static constexpr uint32_t REUSE_SCORE_OUT_OFFSET_U32 = 7424;
+    // reuseMm1ResLocal 内的复用偏移，以下大小均以 uint32_t 元素为单位。
+    static constexpr uint32_t TOPK_ALIGN_SIZE = 256U;
+    static constexpr uint32_t NK_VALUE_PER_ROW = 64U;
+    // uint16只需要idxHigh和idxLow两组；uint32需要idx0到idx3四组。
+    static constexpr uint32_t IDX_BUFFER_NUM = std::is_same_v<SCORE_T, uint16_t> ? 2U : 4U;
+    static constexpr uint32_t IDX_BUFFER_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
+
+    static constexpr uint32_t IDX_WORKSPACE_SIZE_U32 =
+        IDX_BUFFER_NUM * IDX_BUFFER_SIZE_U32;
+    static constexpr uint32_t HISTOGRAM_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
+    static constexpr uint32_t NK_VALUE_SIZE_U32 = MAX_LOOP_M * NK_VALUE_PER_ROW;
+    // uint16 路径每行使用 512 个 uint16_t，折算后同样占 256 个 uint32_t。
+    static constexpr uint32_t TMP_INDEX_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
+    // indicesOut在mm1Res复用区内使用独立子区，避免覆盖仍需读取的历史索引。
+    static constexpr uint32_t INDICES_OUT_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
+
+    static constexpr uint32_t REUSE_INDICES_OUT_OFFSET =
+        IDX_WORKSPACE_SIZE_U32 + HISTOGRAM_SIZE_U32 + NK_VALUE_SIZE_U32 + TMP_INDEX_SIZE_U32;
+    static constexpr uint32_t REUSE_SCORE_OUT_OFFSET_U32 =
+        REUSE_INDICES_OUT_OFFSET + INDICES_OUT_SIZE_U32;
     static constexpr uint32_t REUSE_SCORE_OUT_OFFSET =
         REUSE_SCORE_OUT_OFFSET_U32 * sizeof(uint32_t) / sizeof(SCORE_T);
 
-    __aicore__ inline uint32_t GetReUseSharedTmpBufferSize()
-    {
-        // MAX_LOOP_M * 256：histogramsLocal
-        // MAX_LOOP_M * 64：nkValueLocal
-        // 其余(idx0-3/hisIndex)皆复用；每行topK通过4-lane标量传入，不单独申请UB
-        uint64_t histograms = MAX_LOOP_M * HISTOGRAM_BIN_NUM;
-        uint64_t nkValue = MAX_LOOP_M * NK_VALUE_SIZE;
-        uint64_t tmpIndex = MAX_LOOP_M * SICommon::Align(topK, (uint32_t)TOPK_COUNT_ALIGN);
-        return (histograms + nkValue + tmpIndex) * sizeof(uint32_t);
-    }
 
     __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
     {
@@ -70,33 +56,32 @@ public:
         this->trunkLen = trunkLen;
     }
 
-    
-    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer)
+    __aicore__ inline void InitBuffers(
+        const LocalTensor<uint32_t>& reuseMm1ResLocal,
+        const LocalTensor<uint32_t>& reuseGlobalIndexLocal)
     {
-        LocalTensor<uint32_t> hisIndexLocal1 = sharedTmpBuffer[0];
-        LocalTensor<uint32_t> hisIndexLocal2 = hisIndexLocal1[SICommon::Align(topK, (uint32_t)TOPK_COUNT_ALIGN)];
-        hisIndexLocal[0] = hisIndexLocal1;
-        hisIndexLocal[1] = hisIndexLocal2;
-        histogramsLocal = hisIndexLocal2[SICommon::Align(topK, (uint32_t)TOPK_COUNT_ALIGN)];
-        idx0Local = histogramsLocal[MAX_LOOP_M * HISTOGRAM_BIN_NUM];
-        idx1Local = idx0Local[MAX_LOOP_M * HISTOGRAM_BIN_NUM];
-        idx2Local = idx1Local[MAX_LOOP_M * HISTOGRAM_BIN_NUM];
-        idx3Local = idx2Local[MAX_LOOP_M * HISTOGRAM_BIN_NUM];
-        nkValueLocal = idx3Local[MAX_LOOP_M * HISTOGRAM_BIN_NUM];
-        tmpIndexLocal = nkValueLocal[MAX_LOOP_M * NK_VALUE_SIZE];
-    }
+        // reuseMm1ResLocal按idx -> histogram -> nk -> tmpIndex -> indicesOut -> scoreOut排布。
+        idx0Local = reuseMm1ResLocal;
+        idx1Local = idx0Local[IDX_BUFFER_SIZE_U32];
+        if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
+            histogramsLocal = idx1Local[IDX_BUFFER_SIZE_U32];
+        } else {
+            idx2Local = idx1Local[IDX_BUFFER_SIZE_U32];
+            idx3Local = idx2Local[IDX_BUFFER_SIZE_U32];
+            histogramsLocal = idx3Local[IDX_BUFFER_SIZE_U32];
+        }
+        nkValueLocal = histogramsLocal[HISTOGRAM_SIZE_U32];
+        tmpIndexLocal = nkValueLocal[NK_VALUE_SIZE_U32];
+        indicesOutLocal = reuseMm1ResLocal[REUSE_INDICES_OUT_OFFSET];
+        hisValueLocal = reuseMm1ResLocal[REUSE_SCORE_OUT_OFFSET_U32].ReinterpretCast<SCORE_T>();
 
-    __aicore__ inline void InitBuffers(LocalTensor<uint32_t>& sharedTmpBuffer,
-                                       LocalTensor<uint32_t>& indicesOutLocal)
-    {
-        // hisIndexLocal[0] 复用 indicesOutLocal；其余(hisIndex[1]/histograms/nk/tmpIndex)在 Batch4Rows 中复用
-        hisIndexLocal[0] = indicesOutLocal;
+        // globalIndexLocal保存跨S2轮次的索引；indicesOutLocal作为本轮gather输出，避免原地覆盖。
+        hisIndexLocal[0] = reuseGlobalIndexLocal;
+        hisIndexLocal[1] = indicesOutLocal;
     }
 
     __aicore__ inline void Batch4Rows(
         const LocalTensor<SCORE_T>& mrgValueLocal,
-        const LocalTensor<uint32_t>& indicesOutLocal,
-        const LocalTensor<SCORE_T>& hisValueLocal,
         const LocalTensor<uint32_t>& reuseMm1ResLocal,
         const LocalTensor<uint32_t>& reuseGlobalIndexLocal,
         const SICommon::RowIdx4 &rowIdx4,
@@ -106,18 +91,9 @@ public:
     {
         const uint32_t offset = mrgRowStride;
         const uint32_t computeRowNum = MAX_LOOP_M;
-        const uint32_t topkAlign = TOPK_COUNT_ALIGN;
-        // 所有临时 buffer 复用 reuseMm1ResLocal，按 idx0-3 → histograms → nk → tmpIndex 顺序排布
-        idx0Local = reuseMm1ResLocal;
-        idx1Local = idx0Local[MAX_LOOP_M * HISTOGRAM_BIN_NUM];
-        idx2Local = idx1Local[MAX_LOOP_M * HISTOGRAM_BIN_NUM];
-        idx3Local = idx2Local[MAX_LOOP_M * HISTOGRAM_BIN_NUM];
-        histogramsLocal = idx3Local[MAX_LOOP_M * HISTOGRAM_BIN_NUM];
-        nkValueLocal = histogramsLocal[HISTOGRAM_BIN_NUM];
-        tmpIndexLocal = nkValueLocal[MAX_LOOP_M * NK_VALUE_SIZE];
-        // hisIndexLocal[0] 复用 globalIndexLocal，hisIndexLocal[1] 复用 indicesOutLocal
-        hisIndexLocal[0] = reuseGlobalIndexLocal;
-        hisIndexLocal[1] = indicesOutLocal;
+        const uint32_t topkAlign = 256U;
+        const uint32_t tmpIdxStride16 = topkAlign + trunkLen;
+        InitBuffers(reuseMm1ResLocal, reuseGlobalIndexLocal);
 
         LocalTensor<SCORE_T> inputValueLocal = mrgValueLocal[inputOffset];
 
@@ -129,21 +105,20 @@ public:
                                                  validLen, MAX_LOOP_M, offset,
                                                  rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
                                                  topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3,
-                                                 topkAlign);
+                                                 tmpIdxStride16, topkAlign);
             } else {
-            SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
-                                               idx0Local, idx1Local, idx2Local, idx3Local,
-                                               nkValueLocal, validLen, computeRowNum, offset,
-                                               rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
-                                               topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
-
+                SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
+                                                 idx0Local, idx1Local, idx2Local, idx3Local,
+                                                 nkValueLocal, validLen, computeRowNum, offset,
+                                                 rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
+                                                 topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
             }
             PipeBarrier<PIPE_V>();
             for (uint32_t m = 0; m < batchRowNum; ++m) {
                 uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, m);
                 if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                     LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
-                    AscendC::Cast(hisIndexLocal[0][mInnerIdx * topkAlign], tmpIdxLocal16[m * topkAlign],
+                    AscendC::Cast(hisIndexLocal[0][mInnerIdx * topkAlign], tmpIdxLocal16[m * tmpIdxStride16],
                                   RoundMode::CAST_NONE, topkAlign);
                 } else {
                     AscendC::DataCopy(hisIndexLocal[0][mInnerIdx * topkAlign], tmpIndexLocal[m * topkAlign], topkAlign);
@@ -157,22 +132,21 @@ public:
                                                 validLen, MAX_LOOP_M, offset,
                                                 rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
                                                 topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3,
-                                                topkAlign);
+                                                tmpIdxStride16, topkAlign);
             } else {
-            SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
-                                              idx0Local, idx1Local, idx2Local, idx3Local,
-                                              nkValueLocal, validLen, computeRowNum, offset,
-                                              rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
-                                              topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
-
+                SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
+                                                idx0Local, idx1Local, idx2Local, idx3Local,
+                                                nkValueLocal, validLen, computeRowNum, offset,
+                                                rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
+                                                topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
             }
             PipeBarrier<PIPE_V>();
             for (uint32_t m = 0; m < batchRowNum; ++m) {
                 uint32_t mInnerIdx = SICommon::GetLane(rowIdx4, m);
-                // 输出到 globalIndexLocal(hisIndexLocal[0])，给下一轮 gather 和 CopyOutFourRows 用
+                // 输出到 globalIndexLocal(hisIndexLocal[0])，给下一轮 gather 和最终打包搬出使用
                 if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                     LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
-                    AscendC::Cast(hisIndexLocal[0][mInnerIdx * topkAlign], tmpIdxLocal16[m * topkAlign],
+                    AscendC::Cast(hisIndexLocal[0][mInnerIdx * topkAlign], tmpIdxLocal16[m * tmpIdxStride16],
                                   RoundMode::CAST_NONE, topkAlign);
                 } else {
                     AscendC::DataCopy(hisIndexLocal[0][mInnerIdx * topkAlign], tmpIndexLocal[m * topkAlign], topkAlign);
@@ -187,14 +161,13 @@ public:
                                                 validLen, MAX_LOOP_M, offset,
                                                 rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
                                                 topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3,
-                                                topkAlign);
+                                                tmpIdxStride16, topkAlign);
             } else {
-            SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
-                                              idx0Local, idx1Local, idx2Local, idx3Local,
-                                              nkValueLocal, validLen, computeRowNum, offset,
-                                              rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
-                                              topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
-
+                SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
+                                                idx0Local, idx1Local, idx2Local, idx3Local,
+                                                nkValueLocal, validLen, computeRowNum, offset,
+                                                rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
+                                                topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
             }
             PipeBarrier<PIPE_V>();
             // gather: 从 globalIndexLocal(hisIndexLocal[0]) 读上轮结果，输出到 indicesOutLocal(hisIndexLocal[1])
@@ -207,7 +180,7 @@ public:
                         hisIndexLocal[1][m * topkAlign],
                         hisValueLocal[m * topkAlign],
                         inputValueLocal[mInnerIdx * offset],
-                        tmpIdxLocal16[m * topkAlign],
+                        tmpIdxLocal16[m * tmpIdxStride16],
                         hisIndexLocal[0][mInnerIdx * topkAlign],
                         topkNum,
                         loopIdx * trunkLen - topkAlign,
@@ -224,7 +197,7 @@ public:
                         validLen);
                 }
                 PipeBarrier<PIPE_V>();
-                // 拷回 globalIndexLocal(hisIndexLocal[0])，给下一轮/CopyOutFourRows 用
+                // 拷回 globalIndexLocal(hisIndexLocal[0])，给下一轮和最终打包搬出使用
                 AscendC::DataCopy(hisIndexLocal[0][mInnerIdx * topkAlign], hisIndexLocal[1][m * topkAlign], topkAlign);
                 AscendC::DataCopy(mrgValueLocal[mInnerIdx * mrgRowStride], hisValueLocal[m * topkAlign], topkAlign);
             }
@@ -240,6 +213,8 @@ private:
     LocalTensor<uint32_t> idx3Local;        // 输入数据第4个8位Buf MAX_LOOP_M * 256 * 4B
     LocalTensor<uint32_t> nkValueLocal;     // next_k 暂存Buf MAX_LOOP_M * 64 * 4B
     LocalTensor<uint32_t> tmpIndexLocal;    // 每行tmpIdx MAX_LOOP_M * Align(topK,256) * 4B
+    LocalTensor<uint32_t> indicesOutLocal;  // 本轮gather产生的TopK索引 MAX_LOOP_M * 256 * 4B
+    LocalTensor<SCORE_T> hisValueLocal;     // 本轮TopK value MAX_LOOP_M * 256 * sizeof(SCORE_T)
     uint32_t topK = 512;
     uint32_t trunkLen = 8192;
 };
