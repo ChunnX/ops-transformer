@@ -23,12 +23,6 @@
 using namespace AscendC;
 
 namespace MegaMoeCombineReduceImpl {
-// 连续逻辑 tile 的调度信息；tileId 不与物理核 ID 绑定。
-struct CombineReduceTileSchedule {
-    uint32_t tileId;
-    uint32_t tileNum;
-};
-
 struct CombineReduceShapeContext {
     uint32_t m;
     uint32_t k;
@@ -50,27 +44,6 @@ struct CombineReduceWorkspace {
     LocalTensor<bfloat16_t> bf16ScaleTensor;
     LocalTensor<float> fp32ScaleTensor;
 };
-
-// ===============================================================
-// ComputeCombineReduceTileRange：将 m 个 token 均匀分配给连续逻辑 tile
-// ===============================================================
-__aicore__ inline void ComputeCombineReduceTileRange(const CombineReduceTileSchedule& tileSchedule,
-    uint32_t totalLength, int32_t& tileLength, int32_t& tileOffset)
-{
-    tileLength = 0;
-    tileOffset = 0;
-    if (tileSchedule.tileNum == 0 || tileSchedule.tileId >= tileSchedule.tileNum) {
-        return;
-    }
-    uint32_t lengthPerTile = Ops::Base::CeilDiv(totalLength, tileSchedule.tileNum);
-    uint32_t offset = tileSchedule.tileId * lengthPerTile;
-    if (offset >= totalLength) {
-        return;
-    }
-    tileOffset = static_cast<int32_t>(offset);
-    tileLength = static_cast<int32_t>((lengthPerTile < totalLength - offset) ?
-        lengthPerTile : totalLength - offset);
-}
 
 // ===============================================================
 // InitCombineReduceWorkspace：分配 CombineReduce 所需固定 buffer，返回 batchLength
@@ -232,12 +205,25 @@ __aicore__ inline void ProcessCombineReduceToken(int32_t tokenIdx, int32_t local
 // ProcessCombineReduceSingleCore：单核入口——分核、初始化 buffer，再按 batch 执行 CombineReduce
 // ===============================================================
 template <int32_t CombineQuantMode, typename TopkWeightsType>
-__aicore__ inline void ProcessCombineReduceSingleCore(const CombineReduceTileSchedule& tileSchedule,
-    const CombineReduceShapeContext& shapeContext, const CombineReduceBufferContext& bufferContext)
+__aicore__ inline void ProcessCombineReduceSingleCore(const CombineReduceShapeContext& shapeContext,
+    const CombineReduceBufferContext& bufferContext)
 {
-    int32_t tileLength = 0;
-    int32_t tileOffset = 0;
-    ComputeCombineReduceTileRange(tileSchedule, shapeContext.m, tileLength, tileOffset);
+    // 与原 Unpermute 中 TilingByCore(m_, ..., 1) 保持相同的分核逻辑。
+    int32_t totalLength = static_cast<int32_t>(shapeContext.m);
+    int32_t coreIdx = GetBlockIdx();
+    int32_t coreNum = GetBlockNum() * 2;
+    int32_t lengthPerCore = Ops::Base::CeilDiv(
+        static_cast<uint32_t>(totalLength), static_cast<uint32_t>(coreNum));
+    int32_t lengthPerCoreAlign = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(lengthPerCore), static_cast<uint32_t>(1));
+    int32_t tileLength = lengthPerCoreAlign;
+    int32_t tileOffset = coreIdx * lengthPerCoreAlign;
+    if (tileOffset + tileLength >= totalLength) {
+        tileLength = totalLength - tileOffset;
+    }
+    if (tileOffset >= totalLength) {
+        tileLength = 0;
+    }
     if (tileLength == 0) {
         return;
     }
