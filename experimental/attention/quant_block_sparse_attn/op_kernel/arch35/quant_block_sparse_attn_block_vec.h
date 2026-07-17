@@ -348,6 +348,12 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
 
     LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
     LocalTensor<float> kScaleUbTensor = kScaleInputQue.template AllocTensor<float>();
+    if (runInfo.s2SparseBlk1RealSize < constInfo.kvSparseBlockSize) {
+        Duplicate<float>(kScaleUbTensor, 1, 256);
+        TEventID vDoneEvent = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+        SetFlag<HardEvent::V_MTE2>(vDoneEvent);  // Vector 完成
+        WaitFlag<HardEvent::V_MTE2>(vDoneEvent); // MTE2 等待
+    }
     copyQueryScaleGmToUb(qScaleUbTensor, deScaleQGm, runInfo, constInfo);
     copyKeyScaleGmToUb(kScaleUbTensor, deScaleKGm, blockTableGm, runInfo, constInfo);
     qScaleInputQue.template EnQue(qScaleUbTensor);
