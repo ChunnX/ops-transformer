@@ -23,18 +23,20 @@
 namespace NpuArch::Epilogue::Block {
 
 template <
+    bool transposedMm1_,
+    MXQuantMode MX_QUANT_MODE_,
     class OutputType_,
     class LayoutS_,
     class ScaleType_>
 class BlockEpilogue<
-    EpilogueOnlineSoftmaxBsa,
+    EpilogueOnlineSoftmaxBsa<transposedMm1_, MX_QUANT_MODE_>,
     OutputType_,
     Gemm::GemmType<half, LayoutS_>,
     ScaleType_>
 {
 public:
-    using DispatchPolicy = EpilogueOnlineSoftmaxBsa;
-    using mxQuantMode = typename DispatchPolicy::MXQuantMode;
+    using DispatchPolicy = EpilogueOnlineSoftmaxBsa<transposedMm1_, MX_QUANT_MODE_>;
+    static constexpr MXQuantMode mxQuantMode = DispatchPolicy::MX_QUANT_MODE;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementOutput = typename OutputType_::Element;
     using ElementInput = half;

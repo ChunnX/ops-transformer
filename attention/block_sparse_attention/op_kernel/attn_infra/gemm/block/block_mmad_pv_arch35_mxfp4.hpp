@@ -53,6 +53,7 @@ struct Mm2L1TileHelper {
 };
 
 template <
+    bool transposedMm1_,
     class L1TileShape_,
     class L0TileShape_,
     class ElementA_,
@@ -62,7 +63,7 @@ template <
     class TileCopy_,
     class TileMmad_>
 struct BlockMmadTla<
-    MmadAtlasA5BsaPV,
+    MmadAtlasA5BsaPV<transposedMm1_>,
     L1TileShape_,
     L0TileShape_,
     ElementA_,
@@ -73,7 +74,7 @@ struct BlockMmadTla<
     TileMmad_>
 {
 public:
-    using DispatchPolicy = MmadAtlasA5BsaPV;
+    using DispatchPolicy = MmadAtlasA5BsaPV<transposedMm1_>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using TileCopy = TileCopy_;
     using ElementA = ElementA_;
