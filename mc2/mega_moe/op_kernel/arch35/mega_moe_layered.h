@@ -163,16 +163,26 @@ private:
     uint16_t gmm2PingPongIdx_ = 0;
     uint64_t sendTotalNum_ = 0;
     uint32_t maskAlignSize_ = 0;
-    uint32_t maskSlotSize_ = 0;      // 单个 win 槽位 = maskAlignSize_(mask) + 32B(count)
-    uint64_t maskWinOffset_ = 0;     // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
-    uint64_t quantWinOffset_ = 0;    // quantTokenScalePtr 相对 win 基址的偏移
-    uint64_t dispatchWinOffset_ = 0; // peermemInfo dispatchRecivePtr 相对 URMA win 基址的偏移
+    uint32_t maskSlotSize_ = 0;    // 单个 win 槽位 = maskAlignSize_(mask) + 32B(count)
+    uint32_t roundSendTotalNum_ = 0;  // 分轮次：每轮处理的 token*topK 数量（256 对齐保证 GM 写 32B 对齐）
+    uint32_t roundCompareCount_ = 0;  // 分轮次：每轮 CompareScalar 的元素数
+    uint32_t roundMaskAlignSize_ = 0; // 分轮次：每轮部分 mask 的字节大小（32B 对齐）
+    uint32_t roundMaskSlotSize_ = 0;  // 分轮次：每轮部分 [mask|count] 槽位字节大小
+    uint32_t totalRounds_ = 0;        // 分轮次：总轮数 = CeilDiv(sendTotalNum, roundSendTotalNum)
+    uint32_t dispatchRoundSendTotalNum_ = 0; // dispatch分轮次：每轮处理的 token*topK 数量（256 对齐）
+    uint32_t dispatchTotalRounds_ = 0;       // dispatch分轮次：总轮数
+    uint32_t dispatchRoundMaskAlignSize_ = 0; // dispatch分轮次：每轮mask的字节大小（32B对齐）
+    uint64_t maskWinOffset_ = 0;   // maskRecvPtr 相对 win 基址(rankSyncInWorldPtr)的偏移
+    uint64_t quantWinOffset_ = 0;  // quantTokenScalePtr 相对 win 基址的偏移
+    uint64_t dispatchWinOffset_ = 0;  // peermemInfo dispatchRecivePtr 相对 URMA win 基址的偏移
     uint32_t relayRecordBytes_ = 0;
     uint64_t sendWorkspaceRecordBytes_ = 0;
     uint64_t sendWorkspaceServerBytes_ = 0;
     uint64_t cumsumRevCntInRank_ = 0;
     int32_t compareCount_ = 0;
     int64_t combineUbTensorSize_ = 0; // combineUbTensor 的大小（元素数）
+    uint32_t topKWeightsChunkLen_ = 0;
+    uint32_t topKWeightsTempAddr_ = 0;
 
     static constexpr uint32_t A_ELEMS_PER_BYTE = Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
     static constexpr uint32_t B_ELEMS_PER_BYTE = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value ? 2U : 1U;
@@ -188,6 +198,7 @@ private:
     static constexpr uint32_t SEND_DEDUP_MASK_BITS_PER_WORD = 32U;
     static constexpr uint32_t SEND_SCAN_WINDOW = 32U;
     static constexpr uint32_t MX_QUANT_TEMP_UB_BYTES = 2U * 1024U;
+    static constexpr uint32_t SEND_MASK_UB_LIMIT = 248U * 1024U;
     static constexpr uint32_t MAX_CORENUM_USE_SEND = 8U;
     LocalTensor<int32_t> topkIndexTensor_;
     LocalTensor<uint8_t> gatherMaskTensor_;
@@ -327,47 +338,82 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
 
     LocalTensor<uint8_t> hcommTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512);
     hcomm_.Init(hcommTensor_, ALIGN_512 / sizeof(uint8_t));
-    // Tensor用处：SendCntCal 函数中记录本卡各专家收到的token总数；
-    // Tensor大小：仅记录count值，且各专家之间复用，申请大小为32字节；
     uint32_t expertTokenCntTensorAddr = ALIGN_512;
     uint32_t expertTokenCntTensorSize = ALIGN_32;
-    expertTokenCntTensor_ =
-        LocalTensor<int32_t>(TPosition::VECCALC, expertTokenCntTensorAddr, expertTokenCntTensorSize / sizeof(int32_t));
-    // Tensor用处：SendCntCal 函数中记录本卡专家收到token count的cumsum累加值；
-    // Tensor大小：worldSize_ * expertPerRank_ * sizeof(int32_t) align至32字节对齐；
+    expertTokenCntTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, expertTokenCntTensorAddr,
+        expertTokenCntTensorSize / sizeof(int32_t));
     uint32_t cumsumInfoTensorAddr = expertTokenCntTensorAddr + expertTokenCntTensorSize;
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(worldSize_ * expertPerRank_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    cumsumInfoTensor_ =
-        LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr, cumsumInfoTensorSize / sizeof(int32_t));
-    // Tensor用处：SendCntCal 函数中用来存储本卡上专家收到的mask+count位的buffer；
-    // Tensor大小：maskSlotSize_ * worldSize_，每个maskSlotSize_中包含mask与count；
-    uint32_t gatherMaskTensorAddr = cumsumInfoTensorAddr + cumsumInfoTensorSize;
-    uint32_t gatherMaskTensorSize = maskSlotSize_ * worldSize_;
-    gatherMaskTensor_ =
-        LocalTensor<uint8_t>(TPosition::VECCALC, gatherMaskTensorAddr, gatherMaskTensorSize / sizeof(uint8_t));
-    gatherMaskInt32Tensor_ =
-        LocalTensor<uint32_t>(TPosition::VECCALC, gatherMaskTensorAddr, gatherMaskTensorSize / sizeof(uint32_t));
-    // Tensor用处：TripleInfoCalAndDispatch 函数中GatherMask的dst Tensor；
-    // Tensor大小：sendTotalNum_ * sizeof(int32_t) align至32字节对齐；
-    uint32_t validTopkIndexTensorAddr = gatherMaskTensorAddr + gatherMaskTensorSize;
-    uint32_t validTopkIndexTensorSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    validTopkIndexTensor_ =
-        LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr, validTopkIndexTensorSize / sizeof(int32_t));
-    // Tensor用处：TripleInfoCalAndDispatch 函数中GatherMask的src Tensor；
-    // Tensor大小：sendTotalNum_ * sizeof(int32_t) align至32字节对齐；
+    cumsumInfoTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, cumsumInfoTensorAddr,
+        cumsumInfoTensorSize / sizeof(int32_t));
+    // 分轮次参数计算：validTopkIndexTensor_ + topkIndexTensor_ + gatherMaskTensor_ 均为 round-sized
+    // SendCntCal 改为直接从 GM 读 count，不再加载完整 mask slot 到 UB
+    // round 张量: validTopkIndex(R*4) + topkIndex(R*4) + gatherMask(R/8) = 8R + R/8 = 65R/8
+    // 预留 tripleTensor_: DISPATCH_WAVE_TILE_M * ALIGN_32
+    uint32_t dispatchFixedCost = 0;
+    {
+        uint32_t tokenScaleSize = Ops::Base::CeilAlign(
+            static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
+            static_cast<int64_t>(ALIGN_32));
+        dispatchFixedCost = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * tokenScaleSize
+            + SEND_DEDUP_MASK_UB_BYTES + MX_QUANT_TEMP_UB_BYTES
+            + mxQuantTokenScaleAlignBytes_ + static_cast<uint32_t>(ALIGN_32)
+            + Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t)
+            + Ops::Base::CeilAlign(static_cast<int64_t>(expertPerRank_ * sizeof(int32_t)),
+            static_cast<int64_t>(ALIGN_32))
+            + static_cast<uint32_t>(DISPATCH_WAVE_TILE_M) * static_cast<uint32_t>(ALIGN_32);
+    }
+    uint32_t fixedBefore = cumsumInfoTensorAddr + cumsumInfoTensorSize;
+    uint32_t dispatchAvailUb = 0;
+    if (SEND_MASK_UB_LIMIT > fixedBefore &&
+        SEND_MASK_UB_LIMIT - fixedBefore > dispatchFixedCost) {
+        dispatchAvailUb = SEND_MASK_UB_LIMIT - fixedBefore - dispatchFixedCost;
+    } else {
+        dispatchAvailUb = 0;
+    }
+    uint32_t maxDispatchRoundSize = dispatchAvailUb * 8U / 65U;
+    maxDispatchRoundSize = (maxDispatchRoundSize / 256U) * 256U;
+    if (maxDispatchRoundSize == 0) { maxDispatchRoundSize = 256U; }
+    if (static_cast<uint64_t>(sendTotalNum_) <= static_cast<uint64_t>(maxDispatchRoundSize)) {
+        dispatchRoundSendTotalNum_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
+            static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256)));
+    } else {
+        uint32_t minDispatchRounds = static_cast<uint32_t>(Ops::Base::CeilDiv(
+            static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(maxDispatchRoundSize)));
+        uint32_t evenDispatchRoundSize = static_cast<uint32_t>(Ops::Base::CeilAlign(
+            Ops::Base::CeilDiv(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(minDispatchRounds)),
+            static_cast<int64_t>(ALIGN_256)));
+        dispatchRoundSendTotalNum_ = (evenDispatchRoundSize <= maxDispatchRoundSize) ?
+            evenDispatchRoundSize : maxDispatchRoundSize;
+    }
+    if (dispatchRoundSendTotalNum_ == 0) { dispatchRoundSendTotalNum_ = 256U; }
+    dispatchTotalRounds_ = static_cast<uint32_t>(Ops::Base::CeilDiv(
+        static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(dispatchRoundSendTotalNum_)));
+    dispatchRoundMaskAlignSize_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<int64_t>(dispatchRoundSendTotalNum_) / 8, static_cast<int64_t>(ALIGN_32)));
+
+    uint32_t validTopkIndexTensorAddr = fixedBefore;
+    uint32_t validTopkIndexTensorSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(dispatchRoundSendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+    validTopkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, validTopkIndexTensorAddr,
+        validTopkIndexTensorSize / sizeof(int32_t));
     uint32_t topkIndexTensorAddr = validTopkIndexTensorAddr + validTopkIndexTensorSize;
-    uint32_t topkIndexTensorSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    topkIndexTensor_ =
-        LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIndexTensorSize / sizeof(int32_t));
-    // Tensor用处：TripleInfoCalAndDispatch 函数中的6个dispatch buffer, 配合EVENT_ID0..EVENT_ID5做软流水
-    // Tensor大小：每块容纳token+scale，动态计算以节省UB空间
+    uint32_t topkIndexTensorSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(dispatchRoundSendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+    topkIndexTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr,
+        topkIndexTensorSize / sizeof(int32_t));
+    // gatherMaskTensor_ 改为分轮次：仅容纳单轮 mask 位，SendCntCal 直接从 GM 读 count
+    uint32_t gatherMaskTensorAddr = topkIndexTensorAddr + topkIndexTensorSize;
+    uint32_t gatherMaskTensorSize = dispatchRoundMaskAlignSize_;
+    gatherMaskTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, gatherMaskTensorAddr,
+        gatherMaskTensorSize / sizeof(uint8_t));
+    gatherMaskInt32Tensor_ = LocalTensor<uint32_t>(TPosition::VECCALC, gatherMaskTensorAddr,
+        gatherMaskTensorSize / sizeof(uint32_t));
     uint32_t tokenScaleSize = Ops::Base::CeilAlign(
         static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_), static_cast<int64_t>(ALIGN_32));
     uint32_t COPY_TMP_BUFFER_SIZE = tokenScaleSize;
-    uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
+    uint32_t copyTmpBaseAddr = gatherMaskTensorAddr + gatherMaskTensorSize;
     for (int32_t index = 0; index < DISPATCH_BUFFER_NUM; ++index) {
         copyTmpTensors_[index] = LocalTensor<ActivationType>(
             TPosition::VECCALC, copyTmpBaseAddr + static_cast<uint32_t>(index) * COPY_TMP_BUFFER_SIZE,
@@ -402,13 +448,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
                                                      expertTokenNumsOutTensorSize / sizeof(int32_t));
     // 记录当前已被使用的ub地址，用于后续TripleInfoCalAndDispatch函数中分核后神申请tripleTensor_
     ubBufferUsedAddr_ = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
-    CreateVecIndex(topkIndexTensor_, 0, (topkIndexTensorSize / sizeof(int32_t)));
     Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
     PipeBarrier<PIPE_ALL>();
 }
 
 // ======================================================================================
 // SendAndQuantBuffInit：SendMaskCal & ResetFlagList localTensor申请
+// --------------------------------------------------------------------------------------
+//   大 bs 场景下 sendTotalNum 可能超出 UB 248KB 限制，因此按 roundSendTotalNum_ 分轮次
+//   分配 UB 张量（topkIds / sendMask / sendGatherOut），每轮仅加载一部分 topkIds，
+//   在 UB 中计算部分 mask 后拼写到 workspace 对应偏移，最终合并为完整 mask slot。
 // ======================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
@@ -418,20 +467,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
     }
     LocalTensor<uint8_t> hcommTensor_ = LocalTensor<uint8_t>(TPosition::VECCALC, 0, ALIGN_512 / sizeof(uint8_t));
     hcomm_.Init(hcommTensor_, ALIGN_512);
-    // Tensor用处：SendMaskCal 函数中搬运本卡的 topkIds；
-    // Tensor大小：该Tensor在进行CompareScalar时，compareCount_要求256B对齐，申请大小256字节对齐；
-    uint32_t topkIdsTensorAddr = ALIGN_512;
-    uint32_t topkIdsTensorSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_256));
-    topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
-    // Tensor用处：ResetFlagList中对于workSpace上的Flag位置区域进行清理；
-    // Tensor大小：大小为清理区域大小均分到所有的blockAivNum_；
-    // SwiGluToGmm2区 DispatchToGmm1区 SendCntCalToUpdParams区，三段在workSpace上连续；
-    uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
-    uint64_t totalFlagInt32 =
-        static_cast<uint64_t>(expertPerRank_) *
+
+    // 计算 resetTensor 大小（与原逻辑一致）
+    uint64_t totalFlagInt32 = static_cast<uint64_t>(expertPerRank_) *
         (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
-         static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_));
+        static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_)); // 64 * (16 + 256 + 16 * 28) = 46080
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         int64_t tokenGroupResetSize = static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE;
         totalFlagInt32 = (static_cast<int64_t>(totalFlagInt32) > tokenGroupResetSize) ?
@@ -439,26 +479,60 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendAndQuantBuff
                              tokenGroupResetSize;
     }
     uint32_t resetNumPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
-    uint32_t resetTensorSize =
-        Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore), static_cast<uint64_t>(INT32_PER_256B)) *
-        sizeof(int32_t);
+    uint32_t resetTensorSize = Ops::Base::CeilAlign(static_cast<uint64_t>(resetNumPerCore),
+        static_cast<uint64_t>(INT32_PER_256B)) * sizeof(int32_t);
+
+    // 分轮次参数计算：UB 预算扣除固定开销后，求解最大 roundSendTotalNum_
+    // round 张量: topkIds(R*4) + 2*maskSlot(CeilAlign(R/8,32)+32) + gatherOut(R*4)
+    //            = 8R + R/4 + 64  (R 为 256 对齐时 CeilAlign(R/8,32)=R/8)
+    // 解: R <= (available - 64) * 4 / 33，再 floor-align 到 256（保证 GM 写 32B 对齐）
+    uint32_t fixedUbCosts = ALIGN_512 + resetTensorSize;
+    uint32_t availableUb = SEND_MASK_UB_LIMIT - fixedUbCosts;
+    uint32_t maxRoundSize = (availableUb - 64U) * 4U / 33U;
+    if (maxRoundSize == 0) { maxRoundSize = 256U; }
+    maxRoundSize = (maxRoundSize / 256U) * 256U;
+    if (static_cast<uint64_t>(sendTotalNum_) <= static_cast<uint64_t>(maxRoundSize)) {
+        roundSendTotalNum_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
+            static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(ALIGN_256)));
+    } else {
+        uint32_t minRounds = static_cast<uint32_t>(Ops::Base::CeilDiv(
+            static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(maxRoundSize)));
+        uint32_t evenRoundSize = static_cast<uint32_t>(Ops::Base::CeilAlign(
+            Ops::Base::CeilDiv(static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(minRounds)),
+            static_cast<int64_t>(ALIGN_256)));
+        roundSendTotalNum_ = (evenRoundSize <= maxRoundSize) ? evenRoundSize : maxRoundSize;
+    }
+    if (roundSendTotalNum_ == 0) { roundSendTotalNum_ = 256U; }
+    roundCompareCount_ = roundSendTotalNum_; // 16K
+    roundMaskAlignSize_ = static_cast<uint32_t>(Ops::Base::CeilAlign(
+        static_cast<int64_t>(roundCompareCount_) / 8, static_cast<int64_t>(ALIGN_32)));
+    roundMaskSlotSize_ = roundMaskAlignSize_ + static_cast<uint32_t>(ALIGN_32);
+    totalRounds_ = static_cast<uint32_t>(Ops::Base::CeilDiv(
+        static_cast<int64_t>(sendTotalNum_), static_cast<int64_t>(roundSendTotalNum_)));
+
+    // Tensor用处：SendMaskCal 每轮搬运本卡 topkIds 的一个子段；
+    // Tensor大小：roundCompareCount_ 个 int32（256B 对齐）；
+    uint32_t topkIdsTensorAddr = ALIGN_512;
+    uint32_t topkIdsTensorSize = roundCompareCount_ * sizeof(int32_t);
+    topkIdsTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, topkIdsTensorAddr, topkIdsTensorSize / sizeof(int32_t));
+
+    uint32_t resetTensorAddr = topkIdsTensorAddr + topkIdsTensorSize;
     resetTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, resetTensorAddr, resetTensorSize / sizeof(int32_t));
     Duplicate<int32_t>(resetTensor_, 0, (resetTensorSize / sizeof(int32_t)));
-    // Tensor用处：SendMaskCal函数中用于存储mask位；
-    // Tensor大小：大小maskSlotSize_与保持一致，DOUBLE_BUFFER为2，开启双buffer；
+    // Tensor用处：SendMaskCal 每轮存储部分 mask 位；DOUBLE_BUFFER 双缓冲；
+    // Tensor大小：roundMaskSlotSize_（每轮部分 [mask|count] 槽位大小）；
     uint32_t sendMaskAddr = resetTensorAddr + resetTensorSize;
     for (int32_t index = 0; index < DOUBLE_BUFFER; ++index) {
-        sendMaskTensor_[index] = LocalTensor<uint8_t>(
-            TPosition::VECCALC, sendMaskAddr + static_cast<uint32_t>(index) * maskSlotSize_, maskSlotSize_);
+        sendMaskTensor_[index] = LocalTensor<uint8_t>(TPosition::VECCALC,
+            sendMaskAddr + static_cast<uint32_t>(index) * roundMaskSlotSize_, roundMaskSlotSize_);
     }
-    // Tensor用处：SendMaskCal函数中用于GatherMask的dstTensor；
-    // Tensor大小：大小为一次GatherMaksk长度compareCount_对齐到256；
-    // SendMaskCal GatherMask 计 count 用的废弃输出 scratch(compareCount_ 个 int, 256B 对齐)。
-    uint32_t sendGatherOutAddr = sendMaskAddr + static_cast<uint32_t>(DOUBLE_BUFFER) * maskSlotSize_;
-    uint32_t sendGatherOutSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(compareCount_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_256));
-    sendGatherOutTensor_ =
-        LocalTensor<int32_t>(TPosition::VECCALC, sendGatherOutAddr, sendGatherOutSize / sizeof(int32_t));
+
+    // Tensor用处：SendMaskCal 每轮 GatherMask 计 count 的废弃输出 scratch；
+    // Tensor大小：roundCompareCount_ 个 int32（256B 对齐）；
+    uint32_t sendGatherOutAddr = sendMaskAddr + static_cast<uint32_t>(DOUBLE_BUFFER) * roundMaskSlotSize_;
+    uint32_t sendGatherOutSize = roundCompareCount_ * sizeof(int32_t);
+    sendGatherOutTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, sendGatherOutAddr,
+        sendGatherOutSize / sizeof(int32_t));
 }
 
 // ===============================================================================================
@@ -521,8 +595,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ExpertTokenNumCo
 // ======================================================================================================
 // SendMaskCal：对本卡 topk 按通信域内所有专家id计算mask位，并发送至目标专家卡
 // ------------------------------------------------------------------------------------------------------
-//   Phase 1: 本卡 topk 的搬入；
-//   Phase 2: 根据专家id进行CompareScalar & GatherMask，生成mask位与count总数，doubleBuffer进行计算并进行发送；
+//   大 bs 场景下 sendTotalNum 可能超出 UB 限制，因此按 roundSendTotalNum_ 分轮次计算：
+//   Phase 1: 对每个全局专家，逐轮加载 topkIds 子段 → CompareScalar → 部分 mask；
+//   Phase 2: 每轮部分 mask 拼写到 workspace/win 对应字节偏移，GatherMask 累加本轮 count；
+//   Phase 3: 所有轮次完成后，写入 total count，URMA 发送完整 mask slot。
 // ======================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
@@ -530,74 +606,100 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendMaskCal()
     if constexpr (g_coreType == AIC) {
         return;
     }
-    // Phase 1: 加载本卡 topk 到 topkIdsTensor_ (compareCount_ 个 int, 尾部补 0)
-    GlobalTensor<int32_t> srcGlobalTensor;
-    srcGlobalTensor.SetGlobalBuffer((__gm__ int32_t *)params_.expertIdxGmAddr);
-    Duplicate<int32_t>(topkIdsTensor_, 0, compareCount_);
-    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
-    DataCopyExtParams loadParams{1U, static_cast<uint32_t>(sendTotalNum_ * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
-    DataCopyPad(topkIdsTensor_, srcGlobalTensor, loadParams, loadPad);
-    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-
-    // Phase 2: 逐个全局专家算 [mask|count] 推送 (ping-pong 双 buffer 软流水)
-    // buffer内前 maskAlignSize_ 存mask, 末 32B 存 count
-    constexpr TEventID kBufEvents[DOUBLE_BUFFER] = {EVENT_ID1, EVENT_ID2};
-    for (int32_t index = 0; index < static_cast<int32_t>(DOUBLE_BUFFER); ++index) {
-        SetFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
-    }
     int32_t totalExperts = static_cast<int32_t>(worldSize_);
-    uint32_t countWordIdx = static_cast<uint32_t>(maskAlignSize_) / sizeof(int32_t); // count 在槽内 int32 偏移
-    DataCopyExtParams maskCopyParams{1U, static_cast<uint32_t>(maskSlotSize_), 0U, 0U, 0U};
-    int32_t iter = 0;
-    GlobalTensor<uint8_t> dstGlobalTensor;
-    for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
-        for (uint32_t expertIdIndex = 0; expertIdIndex < expertPerRank_; ++expertIdIndex, ++iter) {
-            int32_t curExpertId = curRankId * expertPerRank_ + expertIdIndex;
-            TEventID eventId = kBufEvents[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
-            LocalTensor<uint8_t> maskBuf = sendMaskTensor_[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
-            LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
-            LocalTensor<int32_t> maskBufI32 = maskBuf.template ReinterpretCast<int32_t>();
-            WaitFlag<AscendC::HardEvent::MTE3_V>(eventId); // 等本 buffer 上一轮 MTE3 推送完成
-            CompareScalar(maskBuf, topkIdsTensor_, curExpertId, AscendC::CMPMODE::EQ, compareCount_);
-            // 同步算 count: GatherMask 对 mask 取 set-bit 数(mask=sendTotalNum_ 跳过尾部 padding)。
-            uint64_t sendCnt = 0;
-            GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true, static_cast<uint32_t>(sendTotalNum_),
-                       {1, 1, 0, 0}, sendCnt);
-            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();        // count 标量就绪
-            maskBufI32.SetValue(countWordIdx, static_cast<int32_t>(sendCnt)); // 写入槽内 count
-            SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>(); // count 对 MTE3 可见(V 已被 V_S 排空)
-
+    for (uint32_t curRankId = aivCoreIdx_; curRankId < static_cast<uint32_t>(totalExperts);
+         curRankId += blockAivNum_) { // 按卡处理,只用前worldsize个核
+        for (uint32_t expertIdIndex = 0; expertIdIndex < expertPerRank_; ++expertIdIndex) { // 按专家处理
+            int32_t curExpertId = static_cast<int32_t>(curRankId * expertPerRank_ + expertIdIndex);
             uint64_t srcOffset = static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) +
-                                                       static_cast<int32_t>(curRankId)) *
-                                 static_cast<uint64_t>(maskSlotSize_);
-            uint64_t dstOffset =
-                maskWinOffset_ + static_cast<uint64_t>(expertIdIndex * static_cast<int32_t>(worldSize_) +
-                                                       static_cast<int32_t>(rankId_)) *
-                                     static_cast<uint64_t>(maskSlotSize_);
-            dstGlobalTensor.SetGlobalBuffer((__gm__ uint8_t *)(params_.workspaceInfo.maskSlotPtr + srcOffset));
-            if (curRankId == rankId_) {
-                dstGlobalTensor.SetGlobalBuffer((__gm__ uint8_t *)(GetRankWinAddrWithOffset(rankId_, dstOffset)));
+                                 static_cast<int32_t>(curRankId)) * static_cast<uint64_t>(maskSlotSize_);
+            uint64_t dstOffset = maskWinOffset_ + static_cast<uint64_t>(expertIdIndex *
+                static_cast<int32_t>(worldSize_) + static_cast<int32_t>(rankId_)) *
+                static_cast<uint64_t>(maskSlotSize_);
+            uint64_t totalSendCnt = 0;
+
+            for (uint32_t roundIdx = 0; roundIdx < totalRounds_; ++roundIdx) {
+                uint64_t roundStart = static_cast<uint64_t>(roundIdx) * static_cast<uint64_t>(roundSendTotalNum_);
+                uint64_t roundLen64 = (roundIdx + 1 < totalRounds_) ? static_cast<uint64_t>(roundSendTotalNum_) :
+                    sendTotalNum_ - roundStart;
+                uint32_t roundLen = static_cast<uint32_t>(roundLen64);
+                uint32_t curRoundCompareCount = (roundLen == roundSendTotalNum_) ? roundCompareCount_ :
+                    static_cast<uint32_t>(Ops::Base::CeilAlign(
+                        static_cast<int64_t>(roundLen) * static_cast<int64_t>(sizeof(int32_t)),
+                        static_cast<int64_t>(ALIGN_256)) / static_cast<int64_t>(sizeof(int32_t)));
+                uint32_t curRoundMaskAlignSize = (roundLen == roundSendTotalNum_) ? roundMaskAlignSize_ :
+                    static_cast<uint32_t>(Ops::Base::CeilAlign(
+                        static_cast<int64_t>(curRoundCompareCount) / 8,
+                        static_cast<int64_t>(ALIGN_32)));
+
+                // Phase 1: 加载本轮 topkIds 子段（零填充尾部）
+                Duplicate<int32_t>(topkIdsTensor_, 0, roundCompareCount_);
+                SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
+                GlobalTensor<int32_t> roundSrcGlobal;
+                roundSrcGlobal.SetGlobalBuffer((__gm__ int32_t*)(params_.expertIdxGmAddr +
+                    static_cast<uint64_t>(roundStart) * sizeof(int32_t)));
+                DataCopyExtParams roundLoadParams{1U, static_cast<uint32_t>(roundLen * sizeof(int32_t)), 0U, 0U, 0U};
+                DataCopyPadExtParams<int32_t> roundLoadPad{false, 0U, 0U, 0U};
+                DataCopyPad(topkIdsTensor_, roundSrcGlobal, roundLoadParams, roundLoadPad);
+                SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+
+                // Phase 2: CompareScalar → 本轮部分 mask + GatherMask 累加 count
+                LocalTensor<uint8_t> maskBuf = sendMaskTensor_[roundIdx % DOUBLE_BUFFER];
+                LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
+                CompareScalar(maskBuf, topkIdsTensor_, curExpertId, AscendC::CMPMODE::EQ, curRoundCompareCount);
+                PipeBarrier<PIPE_V>();
+                uint64_t roundSendCnt = 0;
+                GatherMask(sendGatherOutTensor_, topkIdsTensor_, maskBufU32, true,
+                    static_cast<uint32_t>(roundLen), {1, 1, 0, 0}, roundSendCnt);
+                totalSendCnt += roundSendCnt;
+                SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+                SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
+
+                // Phase 2b: 将本轮部分 mask 写入 workspace 或 local win 对应字节偏移
+                // roundByteOffset = roundStart/8，因 roundSendTotalNum_ 为 256 对齐，该偏移 32B 对齐
+                uint64_t roundByteOffset = static_cast<uint64_t>(roundStart) / 8U;
+                uint32_t writeBytes = (static_cast<uint64_t>(curRoundMaskAlignSize) <=
+                    static_cast<uint64_t>(maskAlignSize_) - roundByteOffset) ?
+                    curRoundMaskAlignSize :
+                    static_cast<uint32_t>(static_cast<uint64_t>(maskAlignSize_) - roundByteOffset);
+                DataCopyExtParams partialMaskCopyParams{1U, writeBytes, 0U, 0U, 0U};
+
+                if (curRankId == rankId_) {
+                    GlobalTensor<uint8_t> winDstGlobal;
+                    winDstGlobal.SetGlobalBuffer((__gm__ uint8_t*)(GetRankWinAddrWithOffset(
+                        rankId_, dstOffset + roundByteOffset)));
+                    DataCopyPad(winDstGlobal, maskBuf, partialMaskCopyParams);
+                } else {
+                    GlobalTensor<uint8_t> wsDstGlobal;
+                    wsDstGlobal.SetGlobalBuffer((__gm__ uint8_t*)(params_.workspaceInfo.maskSlotPtr +
+                        srcOffset + roundByteOffset));
+                    DataCopyPad(wsDstGlobal, maskBuf, partialMaskCopyParams);
+                }
+                PipeBarrier<PIPE_ALL>();
             }
-            DataCopyPad(dstGlobalTensor, maskBuf, maskCopyParams);
-            PipeBarrier<PIPE_ALL>();
-            if (curRankId != rankId_) {
+
+            // Phase 3: 写入 total count 并发送完整 mask slot
+            if (curRankId == rankId_) {
+                __gm__ int32_t* winCountPtr = reinterpret_cast<__gm__ int32_t*>(GetRankWinAddrWithOffset(
+                    rankId_, dstOffset + maskAlignSize_));
+                WriteGmByPassDCache(winCountPtr, static_cast<int32_t>(totalSendCnt));
+                PipeBarrier<PIPE_ALL>();
+            } else {
+                __gm__ int32_t* wsCountPtr = reinterpret_cast<__gm__ int32_t*>(params_.workspaceInfo.maskSlotPtr +
+                    srcOffset + maskAlignSize_);
+                WriteGmByPassDCache(wsCountPtr, static_cast<int32_t>(totalSendCnt));
+                PipeBarrier<PIPE_ALL>();
                 GM_ADDR remoteDataAddr = GetRankWinAddrWithOffset(curRankId, dstOffset);
                 GM_ADDR localGmAddr = params_.workspaceInfo.maskSlotPtr + srcOffset;
-                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr, localGmAddr,
-                                maskSlotSize_);
+                hcomm_.WriteNbi(GetUrmaCommHandle(mc2Context_, curRankId, rankId_), remoteDataAddr,
+                    localGmAddr, maskSlotSize_);
             }
-            SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
         }
     }
-    for (int32_t index = 0; index < static_cast<int32_t>(DOUBLE_BUFFER); ++index) {
-        WaitFlag<AscendC::HardEvent::MTE3_V>(kBufEvents[index]);
-    }
-    for (uint32_t curRankId = aivCoreIdx_; curRankId < totalExperts; curRankId += blockAivNum_) {
-        if (curRankId == rankId_) {
-            continue;
+    for (uint32_t curRankId = aivCoreIdx_; curRankId < static_cast<uint32_t>(totalExperts); curRankId += blockAivNum_) {
+        if (curRankId != rankId_) {
+            hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
         }
-        hcomm_.Drain(GetUrmaCommHandle(mc2Context_, curRankId, rankId_));
     }
 }
 
@@ -890,6 +992,7 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFromRmtServer(uint32_t rela
         GlobalTensor<ActivationType> relayGlobalTensor;
         relayGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(remoteRecordAddr));
         DataCopy(copyTmpTensors_[bufferIdx], relayGlobalTensor, copyInNum);
+        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
         return;
     }
     GM_ADDR scratchAddr = params_.workspaceInfo.dispatchL2CommPtr +
@@ -906,34 +1009,26 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::ReceiveTokenFromRmtServer(uint32_t rela
             break;
         }
     } while (true);
-    hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr, remoteRecordAddr, copyInNum);
+    hcomm_.ReadNbi<true>(GetUrmaCommHandle(mc2Context_, relayRank, rankId_), scratchAddr, remoteRecordAddr,
+        copyInNum);
     hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
     PipeBarrier<PIPE_ALL>();
     GlobalTensor<ActivationType> scratchGlobalTensor;
     scratchGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(scratchAddr));
     DataCopy(copyTmpTensors_[bufferIdx], scratchGlobalTensor, copyInNum);
+    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 }
 
 // ==================================================================================================
 // SendCntCal：目标专家卡读 count 计数，得到当前专家Id收到的token总数
 // --------------------------------------------------------------------------------------------------
-//   Phase 1: 从本卡 win 将当前 localExpertId 的 worldSize_ 个 [mask|count] 槽位读进 gatherMaskTensor_;
-//   Phase 2: 逐卡读取 count → 累加 sendCnt/cumsumRevCntInRank_, 写 cumsumInfoTensor_;
-//   Phase 3: 写 expertRevNumsGlobalTensor_ + AtomicAdd 通知 AIC;
+//   Phase 1: 逐 rank 从本卡 win 加载单个 [mask|count] 槽位，提取 count 并累加 cumsum；
+//   Phase 2: 写 expertRevNumsGlobalTensor_ + AtomicAdd 通知 AIC;
 // ==================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t localExpertId, uint64_t &sendCnt)
 {
     sendCnt = 0;
-    uint32_t slotWordStride = static_cast<uint32_t>(maskSlotSize_) / sizeof(uint32_t);
-    uint32_t countWordIdx = static_cast<uint32_t>(maskAlignSize_) / sizeof(uint32_t);
-
-    // Phase 1: 从本卡 win 读本 localExpert 的全部 worldSize_ 个 [mask|count] 槽位
-    GlobalTensor<uint8_t> maskSrcGlobal;
-    maskSrcGlobal.SetGlobalBuffer(
-        (__gm__ uint8_t *)(params_.peermemInfo.maskRecvPtr +
-                           static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_));
-    DataCopy(gatherMaskTensor_, maskSrcGlobal, worldSize_ * maskSlotSize_);
 
     if constexpr (ENABLE_A8W4) {
         if (localExpertId != 0) {
@@ -944,18 +1039,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SendCntCal(int32
         }
     }
 
-    SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>(); // count 读取(标量)就绪
-    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>(); // mask 供 Triple 的 GatherMask(V)就绪
-
-    // Phase 2: 逐源卡直接读取槽内 count + cumsum
+    // Phase 1: 逐 rank 直接从 GM 读 count，累计 cumsum（不再加载完整 mask slot 到 UB）
     for (int32_t calRankId = 0; calRankId < static_cast<int32_t>(worldSize_); ++calRankId) {
-        int32_t perRankCnt = gatherMaskInt32Tensor_.GetValue(calRankId * slotWordStride + countWordIdx);
+        __gm__ int32_t* rankCountPtr = reinterpret_cast<__gm__ int32_t*>(
+            params_.peermemInfo.maskRecvPtr +
+            static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
+            static_cast<uint64_t>(calRankId) * maskSlotSize_ +
+            maskAlignSize_);
+        int32_t perRankCnt = ReadGmByPassDCache(rankCountPtr);
         sendCnt += static_cast<uint64_t>(perRankCnt);
         cumsumRevCntInRank_ += static_cast<uint64_t>(perRankCnt);
         cumsumInfoTensor_.SetValue(localExpertId * worldSize_ + calRankId, static_cast<int32_t>(cumsumRevCntInRank_));
     }
-
-    // Phase 3: 写到 gm 上，并通知 AIC
+    
+    // Phase 2: 写到 gm 上，并通知 AIC
     expertTokenCntTensor_.SetValue(0, sendCnt);
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
     DataCopy<int32_t>(expertRevNumsGlobalTensor_[localExpertId * INT32_PER_256B * aicNum_ + INT32_PER_256B * blockIdx_],
@@ -1071,26 +1168,17 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffset
 // ====================================================================================================
 // TripleInfoCalAndDispatch：专家接收token的三元组信息计算搬出 & token dispatch & 写Flag位
 // ----------------------------------------------------------------------------------------------------
-//   Phase 1: 按照blockNumPerRank_对aiv进行分组，一个rank归一个组aiv处理，组内根据该卡要发的token数量进行分核；
-//   Phase 2: dispatch->gmm1 flag位AtomicAdd，每个 expert 有 maxWavesPerExpert_ 个槽位读写Flag；
+//   逐 rank 从 win 加载单个 [mask|count] 槽位到 gatherMaskTensor_，
+//   再按 dispatchTotalRounds_ 分轮次做 GatherMask → CopyGMToGMPerToken；
+//   Phase 2: dispatch->gmm1 flag 位 AtomicAdd，每个 expert 有 maxWavesPerExpert_ 个槽位；
 // ====================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo,
                                                                                          int32_t localExpertId)
 {
-    // Phase 1: 分组分核进行三元组组装以及token dispatch
     constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
-    int32_t priorExpertCumsum = (localExpertId == 0) ? 0 : // 前面所有 expert 在本卡的总 token 数
-                                                       cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1);
-    uint32_t topkIndexTensorSize =
-        Ops::Base::CeilAlign(static_cast<int64_t>(sendTotalNum_ * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
-    // A8W4 路径下 SwigluQuant 覆盖 V1 UB，topkIndexTensor_ 需重新初始化
-    if constexpr (ENABLE_A8W4) {
-        if (localExpertId != 0) {
-            CreateVecIndex(topkIndexTensor_, 0, topkIndexTensorSize / sizeof(int32_t));
-            AscendC::PipeBarrier<PIPE_V>();
-        }
-    }
+    int32_t priorExpertCumsum = (localExpertId == 0) ? 0 :
+        cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1);
 
     constexpr int32_t MAX_TRIPLE_ROWS_PER_CHUNK = static_cast<int32_t>(DISPATCH_WAVE_TILE_M);
     for (uint32_t srcRankInServer = blockIdx_; srcRankInServer < rankPerServer_; srcRankInServer += blockNum_) {
@@ -1099,48 +1187,93 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
             if (dstRankIdx >= worldSize_) {
                 continue;
             }
-            uint64_t sendToCurExpTokenCnt = 0;
-            GatherMask(validTopkIndexTensor_, topkIndexTensor_,
-                       gatherMaskInt32Tensor_[dstRankIdx * (maskSlotSize_ / sizeof(uint32_t))], true, sendTotalNum_,
-                       {1, 1, 0, 0}, sendToCurExpTokenCnt);
-            int32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ?
-                                            0 :
-                                            cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
+            int32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
+                cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
             if (rowStartIdxInDst >= maxOutputSize_) {
                 continue;
             }
-            int32_t rowsCopyCnt = sendToCurExpTokenCnt;
-            if (rowStartIdxInDst + rowsCopyCnt > maxOutputSize_) {
-                rowsCopyCnt = maxOutputSize_ - rowStartIdxInDst;
-            }
-            for (int32_t rowSrcIdxInCore = 0; rowSrcIdxInCore < rowsCopyCnt;
-                 rowSrcIdxInCore += MAX_TRIPLE_ROWS_PER_CHUNK) {
-                int32_t rowsNumInCore = rowsCopyCnt - rowSrcIdxInCore;
-                if (rowsNumInCore > MAX_TRIPLE_ROWS_PER_CHUNK) {
-                    rowsNumInCore = MAX_TRIPLE_ROWS_PER_CHUNK;
+
+            __gm__ uint8_t* rankMaskBasePtr = reinterpret_cast<__gm__ uint8_t*>(
+                params_.peermemInfo.maskRecvPtr +
+                static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
+                static_cast<uint64_t>(dstRankIdx) * maskSlotSize_);
+
+            uint64_t totalSendToCurExp = 0;
+            int32_t accumulatedRowSrcOffset = 0;
+
+            for (uint32_t roundIdx = 0; roundIdx < dispatchTotalRounds_; ++roundIdx) {
+                uint64_t roundStart = static_cast<uint64_t>(roundIdx) *
+                    static_cast<uint64_t>(dispatchRoundSendTotalNum_);
+                uint32_t roundLen = (roundIdx + 1 < dispatchTotalRounds_) ?
+                    dispatchRoundSendTotalNum_ :
+                    static_cast<uint32_t>(sendTotalNum_ - roundStart);
+                uint32_t topkIndexTensorElemCount = Ops::Base::CeilAlign(
+                    static_cast<int64_t>(roundLen * sizeof(int32_t)),
+                    static_cast<int64_t>(ALIGN_32)) / sizeof(int32_t);
+
+                // 逐轮加载本轮 mask 位（从完整 mask 的 roundStart/8 偏移处读取）
+                uint32_t curRoundMaskBytes = (roundLen == dispatchRoundSendTotalNum_) ?
+                    dispatchRoundMaskAlignSize_ :
+                    static_cast<uint32_t>(Ops::Base::CeilAlign(
+                        static_cast<int64_t>(Ops::Base::CeilDiv(roundLen, 8U)), static_cast<int64_t>(ALIGN_32)));
+                uint64_t roundMaskByteOffset = static_cast<uint64_t>(roundStart) / 8U;
+                GlobalTensor<uint8_t> roundMaskSrc;
+                roundMaskSrc.SetGlobalBuffer(rankMaskBasePtr + roundMaskByteOffset);
+                SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
+                DataCopy(gatherMaskTensor_, roundMaskSrc, curRoundMaskBytes);
+                SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+
+                CreateVecIndex(topkIndexTensor_, static_cast<int32_t>(roundStart),
+                    topkIndexTensorElemCount);
+                AscendC::PipeBarrier<PIPE_V>();
+
+                uint64_t roundTokenCnt = 0;
+                LocalTensor<uint32_t> rankMaskSlice = gatherMaskInt32Tensor_[0];
+                GatherMask(validTopkIndexTensor_, topkIndexTensor_,
+                    rankMaskSlice, true, roundLen, {1, 1, 0, 0}, roundTokenCnt);
+                totalSendToCurExp += roundTokenCnt;
+
+                if (roundTokenCnt == 0) {
+                    continue;
                 }
-                int32_t rowDstOffsetInCore = rowStartIdxInDst + rowSrcIdxInCore;
-                uint32_t tripleTensorAddr = ubBufferUsedAddr_;
-                uint32_t tripleTensorSize = rowsNumInCore * ALIGN_32;
-                tripleTensor_ =
-                    LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr, tripleTensorSize / sizeof(int32_t));
-                SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
-                PipeBarrier<PIPE_ALL>();
-                CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, rowSrcIdxInCore, rowsNumInCore);
-                PipeBarrier<PIPE_ALL>();
-                SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
-                int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
-                int32_t rowEndLocal = rowStartLocal + rowsNumInCore;
-                int32_t waveLo = rowStartLocal / L1_TILE_M_I32;
-                int32_t waveHi = (rowEndLocal - 1) / L1_TILE_M_I32;
-                __gm__ int32_t *flagBase = gmmAddrInfo.dispatchToGmm1Flag;
-                for (int32_t w = waveLo; w <= waveHi; ++w) {
-                    int32_t waveStartLocal = w * L1_TILE_M_I32;
-                    int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
-                    int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
-                    int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
-                    AtomicAdd(flagBase + w, int32_t(hi - lo));
+
+                int32_t roundCopyCnt = static_cast<int32_t>(roundTokenCnt);
+                if (rowStartIdxInDst + accumulatedRowSrcOffset + roundCopyCnt > maxOutputSize_) {
+                    roundCopyCnt = maxOutputSize_ - rowStartIdxInDst - accumulatedRowSrcOffset;
                 }
+                if (roundCopyCnt <= 0) {
+                    accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
+                    continue;
+                }
+
+                for (int32_t chunkSrcIdx = 0; chunkSrcIdx < roundCopyCnt;
+                    chunkSrcIdx += MAX_TRIPLE_ROWS_PER_CHUNK) {
+                    int32_t chunkRows = roundCopyCnt - chunkSrcIdx;
+                    if (chunkRows > MAX_TRIPLE_ROWS_PER_CHUNK) {
+                        chunkRows = MAX_TRIPLE_ROWS_PER_CHUNK;
+                    }
+                    int32_t rowDstOffsetInCore = rowStartIdxInDst + accumulatedRowSrcOffset + chunkSrcIdx;
+                    uint32_t tripleTensorAddr = ubBufferUsedAddr_;
+                    uint32_t tripleTensorSize = chunkRows * ALIGN_32;
+                    tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
+                        tripleTensorSize / sizeof(int32_t));
+                    SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+                    CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, chunkSrcIdx, chunkRows);
+                    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+                    int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
+                    int32_t rowEndLocal = rowStartLocal + chunkRows;
+                    int32_t waveLo = rowStartLocal / L1_TILE_M_I32;
+                    int32_t waveHi = (rowEndLocal - 1) / L1_TILE_M_I32;
+                    __gm__ int32_t* flagBase = gmmAddrInfo.dispatchToGmm1Flag;
+                    for (int32_t w = waveLo; w <= waveHi; ++w) {
+                        int32_t waveStartLocal = w * L1_TILE_M_I32;
+                        int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
+                        int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
+                        int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
+                        AtomicAdd(flagBase + w, int32_t(hi - lo));
+                    }
+                }
+                accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
             }
         }
     }
@@ -1389,11 +1522,28 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UnpermuteBuffIni
         Ops::Base::CeilAlign(static_cast<uint32_t>(worldSize_ * expertPerRank_), static_cast<uint32_t>(ALIGN_128)) *
         sizeof(int32_t);
     uint32_t dataResFp32BufAlign = dataResBufAlign * HALF_TO_FP32;
-    uint32_t topKWeightsBufAlign =
-        Ops::Base::CeilAlign(static_cast<uint32_t>(m_ * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
-    uint32_t tempBufAlign =
-        Ops::Base::CeilAlign(static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
-
+    uint32_t fixedUbBeforeTopK = dataResBufAlign + dataResFp32BufAlign;
+    uint32_t scaleUbCost = 0;
+    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
+        uint32_t scaleNum = Ops::Base::CeilAlign(static_cast<uint32_t>(k_), static_cast<uint32_t>(ALIGN_32));
+        scaleUbCost = Ops::Base::CeilAlign(static_cast<uint32_t>
+            (scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * HALF_TO_FP32), static_cast<uint32_t>(ALIGN_32))
+            + Ops::Base::CeilAlign(static_cast<uint32_t>
+            (scaleNum * sizeof(float) * DOUBLE_BUFFER * HALF_TO_FP32), static_cast<uint32_t>(ALIGN_32));
+    }
+    uint32_t availUb = SEND_MASK_UB_LIMIT - fixedUbBeforeTopK - scaleUbCost;
+    uint32_t perTokenBytes = topK_ * sizeof(float);
+    if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+        perTokenBytes += topK_ * sizeof(bfloat16_t);
+    }
+    topKWeightsChunkLen_ = (perTokenBytes > 0) ? availUb / perTokenBytes : m_;
+    if (topKWeightsChunkLen_ == 0) { topKWeightsChunkLen_ = 1; }
+    if (topKWeightsChunkLen_ > m_) { topKWeightsChunkLen_ = m_; }
+    uint32_t topKWeightsBufAlign = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(topKWeightsChunkLen_ * topK_ * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+    uint32_t tempBufAlign = Ops::Base::CeilAlign(
+        static_cast<uint32_t>(topKWeightsChunkLen_ * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
+    
     // Tensor用处：Unpermute 函数用于存储mte2搬入token；
     // Tensor大小：大小为3 *
     // 单个token长度，2块是用于mte2搬运的doubleBuffer，1块是用于存储累加计算Cast完的输出结果，用于搬出；
@@ -1429,24 +1579,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UnpermuteBuffIni
         fp32ScaleTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, fp32ScaleBufAlign / sizeof(float));
         tempAddr += fp32ScaleBufAlign;
     }
-    if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
-        GlobalTensor<float> topKWeightsGlobalTensor_;
-        topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float *)params_.probsGmAddr);
-        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(m_ * topK_ * sizeof(float)), 0U, 0U, 0U};
-        DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
-        DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_, copyParams, copyPadParams);
-    }
-    if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-        uint32_t tempSize = tempBufAlign / sizeof(bfloat16_t);
-        LocalTensor<bfloat16_t> tempLocal(TPosition::VECCALC, tempAddr, tempSize);
-        GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
-        topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t *)params_.probsGmAddr);
-        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(m_ * topK_ * sizeof(bfloat16_t)), 0U, 0U, 0U};
-        DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
-        DataCopyPad(tempLocal, topkWeightsGlobalTensor, copyParams, copyPadParams);
-        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
-        Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, m_ * topK_);
-    }
+    topKWeightsTempAddr_ = tempAddr;
 }
 
 // ===============================================================
@@ -1463,53 +1596,86 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Unpermute()
     output.SetGlobalBuffer((__gm__ bfloat16_t *)params_.y2GmAddr);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-    for (int32_t tokenIdx = coreOffset; tokenIdx < coreLen + coreOffset; tokenIdx++) {
-        SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
-        LocalTensor<bfloat16_t> dataIn0Bf16 = dataResTensor_[k_];
-        LocalTensor<bfloat16_t> dataIn1Bf16 = dataResTensor_[k_ * 2];
-        LocalTensor<float> dataIn0Fp32 = dataResFp32Tensor_[k_];
-        LocalTensor<float> dataIn1Fp32 = dataResFp32Tensor_[k_ * 2];
-        for (int32_t expId = 0; expId < topK_; ++expId) {
-            float expScale = topKWeightsTensor_.GetValue(tokenIdx * topK_ + expId);
-            auto event = (expId % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
-            auto dataInBf16 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
-            auto dataInFp32 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
-            if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-                WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-                DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * k_], k_);
-                SetFlag<AscendC::HardEvent::MTE2_V>(event);
-                WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-                SetFlag<AscendC::HardEvent::S_V>(event);
-                WaitFlag<AscendC::HardEvent::S_V>(event);
-                Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
-            } else {
-                uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
-                uint32_t quantTokenSize = k_ + nScale;
-                uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
-                WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-                DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * quantEleNum], quantEleNum);
-                SetFlag<AscendC::HardEvent::MTE2_V>(event);
-                WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-                using Fp8Type = typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT, fp8_e4m3fn_t,
-                                                          fp8_e5m2_t>::type;
-                MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
-                                                                      fp32ScaleTensor_, nScale, k_);
-            }
-            PipeBarrier<PIPE_V>();
-            if (expId == 0) {
-                Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
-            } else {
-                Muls(dataInFp32, dataInFp32, expScale, k_);
-                PipeBarrier<PIPE_V>();
-                Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
-                PipeBarrier<PIPE_V>();
-            }
-            SetFlag<AscendC::HardEvent::V_MTE2>(event);
+    for (int32_t chunkStart = coreOffset; chunkStart < coreLen + coreOffset;) {
+        int32_t chunkEnd = chunkStart + static_cast<int32_t>(topKWeightsChunkLen_);
+        if (chunkEnd > coreLen + coreOffset) { chunkEnd = coreLen + coreOffset; }
+        int32_t chunkTokenCnt = chunkEnd - chunkStart;
+        if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
+            GlobalTensor<float> topKWeightsGlobalTensor_;
+            topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float*)params_.probsGmAddr);
+            DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(float)),
+                                            0U, 0U, 0U};
+            DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
+            DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[chunkStart * topK_], copyParams, copyPadParams);
+            SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
         }
-        // fp32 -> bf16
-        Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
-        SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
-        DataCopy(output[tokenIdx * k_], dataResTensor_, k_);
+        if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
+            uint32_t tempBufAlign = Ops::Base::CeilAlign(
+                static_cast<uint32_t>(topKWeightsChunkLen_ * topK_ * sizeof(bfloat16_t)), uint32_t(ALIGN_32));
+            LocalTensor<bfloat16_t> tempLocal(TPosition::VECCALC, topKWeightsTempAddr_,
+                tempBufAlign / sizeof(bfloat16_t));
+            GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
+            topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t*)params_.probsGmAddr);
+            DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(chunkTokenCnt * topK_ * sizeof(bfloat16_t)),
+                                            0U, 0U, 0U};
+            DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
+            DataCopyPad(tempLocal, topkWeightsGlobalTensor[chunkStart * topK_], copyParams, copyPadParams);
+            SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
+            Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, chunkTokenCnt * topK_);
+            SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
+        }
+        for (int32_t tokenIdx = chunkStart; tokenIdx < chunkEnd; tokenIdx++) {
+            int32_t localIdx = tokenIdx - chunkStart;
+            SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
+            LocalTensor<bfloat16_t> dataIn0Bf16 = dataResTensor_[k_];
+            LocalTensor<bfloat16_t> dataIn1Bf16 = dataResTensor_[k_ * 2];
+            LocalTensor<float> dataIn0Fp32 = dataResFp32Tensor_[k_];
+            LocalTensor<float> dataIn1Fp32 = dataResFp32Tensor_[k_ * 2];
+            for (int32_t expId = 0; expId < topK_; ++expId) {
+                float expScale = topKWeightsTensor_.GetValue(localIdx * topK_ + expId);
+                auto event = (expId % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
+                auto dataInBf16 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
+                auto dataInFp32 = (expId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
+                if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+                    WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+                    DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * k_], k_);
+                    SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                    WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                    SetFlag<AscendC::HardEvent::S_V>(event);
+                    WaitFlag<AscendC::HardEvent::S_V>(event);
+                    Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
+                } else {
+                    uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
+                    uint32_t quantTokenSize = k_ + nScale;
+                    uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
+                    WaitFlag<AscendC::HardEvent::V_MTE2>(event);
+                    DataCopy(dataInBf16, expandedX[(tokenIdx * topK_ + expId) * quantEleNum], quantEleNum);
+                    SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                    WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                    using Fp8Type = typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT,
+                        fp8_e4m3fn_t, fp8_e5m2_t>::type;
+                    SetFlag<AscendC::HardEvent::S_V>(event);
+                    WaitFlag<AscendC::HardEvent::S_V>(event);
+                    MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32,
+                        bf16ScaleTensor_, fp32ScaleTensor_, nScale, k_);
+                }
+                PipeBarrier<PIPE_V>();
+                if (expId == 0) {
+                    Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
+                } else {
+                    Muls(dataInFp32, dataInFp32, expScale, k_);
+                    PipeBarrier<PIPE_V>();
+                    Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
+                    PipeBarrier<PIPE_V>();
+                }
+                SetFlag<AscendC::HardEvent::V_MTE2>(event);
+            }
+            // fp32 -> bf16
+            Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
+            SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
+            DataCopy(output[tokenIdx * k_], dataResTensor_, k_);
+        }
+        chunkStart = chunkEnd;
     }
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
     WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
