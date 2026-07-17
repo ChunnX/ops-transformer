@@ -157,7 +157,8 @@ __aicore__ inline void MatmulReduceScatterFP16BF16<AType, BType, BiasType, CType
     cfg.rankID = rankId_;
     MC2MatmulV3::MC2MatmulAswKernelDerive<AType, BType, CType, BiasType, MC2MatmulV3::MC2MatmulAswBlockDerive> mmv3;
     auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
-    mmv3.Init(aGM_, bGM_, tempGM, biasGM_, nullptr, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
+    GM_ADDR ownRedirectGM = (debugMode_ == 0) ? cGM_ : nullptr;
+    mmv3.Init(aGM_, bGM_, tempGM, biasGM_, ownRedirectGM, nullptr, &tiling, GetTPipePtr(), cfg, isTail, false);
     uint64_t sliceM = static_cast<uint64_t>(tiling.tCubeTiling.M) / cfg.rankDim;
     auto recvCount = sliceM * static_cast<uint64_t>(tiling.tCubeTiling.N);
     auto cOffset = recvCount * sizeof(cDataType);
