@@ -177,21 +177,22 @@ __aicore__ inline void InlineRadixTopK(
             Duplicate<int16_t>(maskTensor.template ReinterpretCast<int16_t>(), andMask16_, curTileLen);
             PipeBarrier<PIPE_V>();
             And(xLocalInt16Cast, xLocalInt16Cast, maskTensor.template ReinterpretCast<int16_t>(), calcLen);
-
-            // CalcCumsumHistogram: Cast int16 -> float -> int32
-            // Cast dst = xLocalFp32 (xBuf front [0,2047]), src = xLocalInt16Cast (xBuf back [2048,3071]) -> no overlap!
-            Cast(xLocalFp32, xLocalInt16Cast, RoundMode::CAST_NONE, curTileLen);
             PipeBarrier<PIPE_V>();
-            Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
+            RDX_V_S_SYNC();
+            RDX_S_V_SYNC();
+
+            // CalcCumsumHistogram: Cast int16 -> float, then compare float directly (skip float→int32)
+            Cast(xLocalFp32, xLocalInt16Cast, RoundMode::CAST_NONE, curTileLen);
             PipeBarrier<PIPE_V>();
 
             int32_t cumSumOne = 0;
-            uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(int32_t) - 1) /
-                (REPEAT_SIZE / sizeof(int32_t)) * (REPEAT_SIZE / sizeof(int32_t));
+            uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(float) - 1) /
+                (REPEAT_SIZE / sizeof(float)) * (REPEAT_SIZE / sizeof(float));
             for (int16_t binMask = RDX_BINS - 1; binMask > 0; binMask--) {
                 int32_t involvedMaskTemp = static_cast<int32_t>(
                     involvedMask16_ | static_cast<int16_t>(binMask << (roundId * RDX_BITS)));
-                Compares<int32_t, uint8_t>(cmpMaskTensor, xLocalInt32, involvedMaskTemp,
+                float involvedMaskFloat = static_cast<float>(involvedMaskTemp);
+                Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, involvedMaskFloat,
                     AscendC::CMPMODE::EQ, curTileLenAlign32);
                 PipeBarrier<PIPE_V>();
                 uint64_t rsvdCnt = 0;

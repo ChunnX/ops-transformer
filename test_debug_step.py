@@ -15,5 +15,5 @@ if r is not None:
     f = r.flatten()
     b = 512
     vals = f[b*512:(b+1)*512].tolist()
-    print(f"batch {b}: float[0]={struct.unpack('f', struct.pack('i', vals[0]))[0]}, float[1]={struct.unpack('f', struct.pack('i', vals[1]))[0]}, float[512]={struct.unpack('f', struct.pack('i', vals[2]))[0]}")
-    print(f"  sortLen={vals[3]}, tileNum={vals[4]}")
+    print(f"gh[0]={vals[0]}, gh[1]={vals[1]}, gh[2]={vals[2]}, gh[3]={vals[3]}")
+    print(f"sortLen={vals[4]}, tileNum={vals[5]}")
