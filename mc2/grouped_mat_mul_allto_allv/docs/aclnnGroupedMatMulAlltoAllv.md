@@ -330,8 +330,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 - 确定性计算：
   - aclnnGroupedMatMulAlltoAllv默认确定性实现。
 - 通信引擎约束：
-  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AICPU通信。
-  - Ascend 950DT：支持CCU通信。
+  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AI_CPU通信。
+  - Ascend 950DT：支持AI_CPU通信。
 
 - 参数说明里shape使用的变量：
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。

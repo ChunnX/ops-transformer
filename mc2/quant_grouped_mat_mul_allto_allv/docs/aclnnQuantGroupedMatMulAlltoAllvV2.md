@@ -789,7 +789,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
             commQuantDtypeOptional,
             groupSize,
             hcomName,
-            "ccu",
+            "ai_cpu",
             EP_WORLD_SIZE,
             sendCounts,
             recvCounts,
