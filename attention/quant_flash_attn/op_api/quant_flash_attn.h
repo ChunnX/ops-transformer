@@ -75,6 +75,7 @@ const std::array<const aclTensor *, 2> QuantFlashAttn(
     int64_t maxSeqlenQ,
     int64_t maxSeqlenKV,
     const char *layoutQ,
+    const char *layoutQDescale,
     const char *layoutKv,
     const char *layoutOut,
     bool returnSoftmaxLse,

@@ -245,6 +245,7 @@ ge::graphStatus QfaInfoParser::GetAttrParaInfo()
     opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_Q_INDEX);
     opParamInfo_.maxSeqlenKV = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_KV_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
+    opParamInfo_.layoutQDescale = attrs->GetStr(ATTR_LAYOUT_Q_DESCALE_INDEX);
     opParamInfo_.layoutKV = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.layoutOut = attrs->GetStr(ATTR_LAYOUT_OUT_INDEX);
     opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<bool>(ATTR_RETURN_LSE_INDEX);
@@ -439,6 +440,17 @@ ge::graphStatus QfaInfoParser::GetInAndOutLayout()
     }
     layoutQ_ = itQ->second;
 
+    if (opParamInfo_.layoutQDescale != nullptr) {
+        auto itQDescale = qfaLayoutMap.find(opParamInfo_.layoutQDescale);
+        if (itQDescale == qfaLayoutMap.end()) {
+            std::string reason = "layout_q_descale: " + std::string(opParamInfo_.layoutQDescale) + " is not supported.";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q_descale",
+                opParamInfo_.layoutQDescale, reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
+        layoutQDescale_ = itQDescale->second;
+    }
+
     auto itKV = qfaLayoutMap.find(opParamInfo_.layoutKV);
     if (itKV == qfaLayoutMap.end()) {
         std::string reason = "layout_kv: " + std::string(opParamInfo_.layoutKV) + " is not supported.";
@@ -527,6 +539,7 @@ void QfaInfoParser::GenerateFeatureInfo(QfaTilingInfo &qfaInfo)
 void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo &qfaInfo)
 {
     qfaInfo.qLayout = layoutQ_;
+    qfaInfo.qDescaleLayout = layoutQDescale_;
     qfaInfo.kvLayout = layoutKV_;
     qfaInfo.outLayout = layoutOut_;
 }
@@ -608,7 +621,7 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
     }
 
     uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
-    bool isDecode = (s1Size_ * gSize_ <= 80);
+    bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
     if (isDecode && qDescaleDimNum != 5) {
         OP_LOGE(opName_, "q_descale must be 5D in decode mode(s1Size=%lu, gSize=%lu), but got %uD.",
                 s1Size_, gSize_, qDescaleDimNum);

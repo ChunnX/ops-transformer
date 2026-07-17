@@ -29,9 +29,9 @@ static constexpr size_t ATTR_IDX_WIN_RIGHT        = 4;
 static constexpr size_t ATTR_IDX_MAX_SEQLEN_Q     = 5;
 static constexpr size_t ATTR_IDX_MAX_SEQLEN_KV    = 6;
 static constexpr size_t ATTR_IDX_LAYOUT_Q         = 7;
-static constexpr size_t ATTR_IDX_LAYOUT_KV        = 8;
-static constexpr size_t ATTR_IDX_LAYOUT_OUT       = 9;
-static constexpr size_t ATTR_IDX_PA_BLOCK_SIZE    = 10;
+static constexpr size_t ATTR_IDX_LAYOUT_Q_DESCALE = 8;
+static constexpr size_t ATTR_IDX_LAYOUT_KV        = 9;
+static constexpr size_t ATTR_IDX_LAYOUT_OUT       = 10;
 static constexpr size_t ATTR_IDX_RETURN_SOFTMAX_LSE = 11;
 
 static constexpr size_t INPUT_IDX_Q         = 0;

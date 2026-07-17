@@ -38,13 +38,13 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
     const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
     const aclTensor *sequsedKvOptional, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
     int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode, int64_t winLeft, int64_t winRight,
-    const char *layoutQ, const char *layoutKv, const char *layoutOut, const aclTensor *metaData,
+    const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut, const aclTensor *metaData,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     L2_DFX_PHASE_1(aclnnQuantFlashAttnMetadata,
                    DFX_IN(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional, batchSize,
                           maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, maskMode, winLeft,
-                          winRight, layoutQ, layoutKv, layoutOut),
+                          winRight, layoutQ, layoutQDescale, layoutKv, layoutOut),
                    DFX_OUT(metaData));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -52,8 +52,8 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
 
     auto ret = QuantFlashAttnMetadataCheck::ParamsCheck(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
                                                         sequsedKvOptional, batchSize, maxSeqlenQ, maxSeqlenKv,
-                                                        numHeadsQ, numHeadsKv, headDim, quantMode, maskMode, winLeft,
-                                                        winRight, layoutQ, layoutKv, layoutOut, metaData);
+                                                         numHeadsQ, numHeadsKv, headDim, quantMode, maskMode, winLeft,
+                                                         winRight, layoutQ, layoutQDescale, layoutKv, layoutOut, metaData);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     const op::PlatformInfo &npuInfo = op::GetCurrentPlatformInfo();
@@ -63,8 +63,8 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
 
     auto output = l0op::QuantFlashAttnMetadata(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional,
                                                sequsedKvOptional, batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ,
-                                               numHeadsKv, headDim, quantMode, maskMode, winLeft, winRight, layoutQ,
-                                               layoutKv, layoutOut, socVersion, aicCoreNum, aivCoreNum, metaData,
+                                                numHeadsKv, headDim, quantMode, maskMode, winLeft, winRight, layoutQ,
+                                                layoutQDescale, layoutKv, layoutOut, socVersion, aicCoreNum, aivCoreNum, metaData,
                                                uniqueExecutor.get());
     CHECK_RET(output != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
