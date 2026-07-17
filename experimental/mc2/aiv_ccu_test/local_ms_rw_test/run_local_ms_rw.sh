@@ -14,9 +14,9 @@
 #   -b build-type      Release or Debug
 #   -c cmake-rebuild   ON=重新编译, OFF=不编译
 #   -r run-test        ON=运行用例, OFF=不运行
-#   -m mode0           0=写, 1=读, 2=读写混合
+#   -m mode0           0=写, 1=读, 2=读写混合, 3=先写后读
 #   -i mode1           0=不交织, 1=交织
-#   -s data_size       数据量(字节), 4KB=4096 ~ 6MB=6291456
+#   -s data_size       数据量(字节), 4KB=4096 ~ 120KB=122880 (mode0=3时上限120KB)
 #   -n ranksize        卡数(默认1)
 # 环境变量:
 #   RANK_TABLE_FILE    rank table 文件路径(多卡时必须设置)
@@ -118,7 +118,7 @@ fi
 if [[ "$RUN_TEST" == "ON" ]]; then
     export LD_LIBRARY_PATH=${INSTALL_PREFIX}/lib:${INSTALL_PREFIX}/lib64:${_ASCEND_INSTALL_PATH}/lib64:$LD_LIBRARY_PATH
     echo "========== 开始执行本地 MS 读写测试 =========="
-    echo "mode0(WRITE=0/READ=1/READ_WRITE=2): $MODE0"
+    echo "mode0(WRITE=0/READ=1/READ_WRITE=2/WRITE_THEN_READ=3): $MODE0"
     echo "mode1(SEQUENTIAL=0/INTERLEAVED=1):  $MODE1"
     echo "data_size:                          $DATA_SIZE bytes ($(($DATA_SIZE / 1024)) KB)"
     echo "ranksize:                           $RANKSIZE"
