@@ -41,6 +41,7 @@ def _parse_stages(raw):
     if invalid:
         raise ValueError(f"Invalid stages: {invalid}. Valid: {_VALID_STAGES}")
     if "all" in parts:
+        # all = 精度主流程 4 阶段 (不含 gpu/prof, 那些需显式指定)
         return {"gen", "cpu", "npu", "compare"}
     return parts
 
@@ -65,6 +66,9 @@ def _make_reporter():
 
 
 def _setup_hookwrapper(_pytest_terminal):
+    """monkeypatch pytest 终端行渲染: 让失败用例名后追加 fail_msg (默认只显示 'FAILED')。
+    两步: ① hookwrapper 捕获每个失败用例的 fail_msg 存入 _fail_msgs[nodeid];
+          ② 替换 _get_line_with_reprcrash_message, 渲染时取出 fail_msg 拼到行尾。"""
     _original_get_line = _pytest_terminal._get_line_with_reprcrash_message
     _fail_msgs = {}
 
@@ -100,6 +104,10 @@ def _setup_hookwrapper(_pytest_terminal):
 
 
 def test_op(params, stages, reporter, request):
+    """pytest 唯一测试入口 (函数名 test_* 被 pytest 自动收集)。
+    params/stages/reporter 由 conftest 注入 (params 经 pytest_generate_tests 参数化,
+    每个case一份); request 运行时读 CLI 运行控制项。职责: 把 run_case 的成败
+    翻译成 pytest 用例成败 (passed=False → pytest.fail(fail_msg))。"""
     result = run_case(stages, params, reporter,
                       npu_mode=request.config.getoption("--npu_mode"),
                       chunk_size=request.config.getoption("--chunk_size"),
@@ -109,6 +117,8 @@ def test_op(params, stages, reporter, request):
 
 
 def main():
+    """裸 CLI 入口 (python test.py), 与 test_op 对照: 这里手动遍历 case、
+    异常自行捕获 record, 退出码反映失败数; test_op 则交给 pytest 框架。"""
     parser = argparse.ArgumentParser(description="精度测试 CLI 入口")
     _register_cli_params(parser.add_argument)
     parser.add_argument("--log_level", default="INFO",

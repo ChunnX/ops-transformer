@@ -242,8 +242,9 @@ def _stage_compare(stages: set, cpu_out, npu_out, gpu_out, params: dict,
     """精度比对 + 失败分析 + 记录。"""
     result = {"passed": True, "fail_msg": ""}
     if "compare" not in stages:
-        return result
+        return result  # 未要求比对 → 默认通过 (区别于下面缺数据的报错)
     if cpu_out is None or npu_out is None:
+        # 数据依赖不满足: 用户要求 compare 却缺上游输出 → 显式失败, 不静默通过
         raise RuntimeError(
             "compare 阶段缺少 cpu/npu 输出 (上游未执行且无 pt 缓存)")
     logger.info("[cmp]  start")
@@ -294,6 +295,8 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
              npu_mode: str = "eager",
              chunk_size: int = 0, verbose_diff: str = None,
              comparator: Comparator = None) -> dict:
+    """薄编排层: 串联各 stage 函数 + 异常捕获/资源释放。
+    stage 内部各自处理 执行-or-加载 与日志; 这里只管顺序、错误兜底、显存回收。"""
     case_set = params.get("case_set", "")
     case_id = params.get("case_id", params.get("name", ""))
     result_dir = str(Path("result") / case_id)
