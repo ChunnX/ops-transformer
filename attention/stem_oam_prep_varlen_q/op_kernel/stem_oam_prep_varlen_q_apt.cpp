@@ -20,6 +20,6 @@ extern "C" __global__ __aicore__ void stem_oam_prep_varlen_q(
     GET_TILING_DATA_WITH_STRUCT(StemPrepQTilingData, tilingData, tiling);
 
     KernelStemPrepQ op;
-    op.Init(q, qScale, qSeqLens, cuSeqLensQ, qFlat, &tilingData);
+    op.Init(q, qScale, cuSeqLensQ, qFlat, &tilingData);
     op.Process();
 }
