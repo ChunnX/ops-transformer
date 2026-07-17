@@ -92,8 +92,8 @@ enum class MqfaPaLayoutType : uint32_t {
     BBND = 1,
 };
 
-static constexpr uint32_t MQFA_CV_L1_EVENT[2] = {8, 9};
-static constexpr uint32_t MQFA_VC_L1_EVENT[2] = {10, 15};
+static constexpr uint32_t MQFA_CV_L1_EVENT[4] = {5, 6, 7, 8};
+static constexpr uint32_t MQFA_VC_L1_EVENT[4] = {9, 10, 15, 16};
 
 static constexpr uint32_t MQFA_MTE2_V_SCALE_K[2] = {0, 1};
 static constexpr uint32_t MQFA_V_MTE2_SCALE_K[2] = {0, 1};

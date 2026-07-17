@@ -485,6 +485,10 @@ public:
 
         MMParam param = MakeMMParam((uint32_t)runInfo.actMSize, (uint32_t)runInfo.actSingleLoopS2Size,
                                     (uint32_t)(constInfo.dSize), false, true);
+
+        // printf("runInfo.actMSize:%u\n",runInfo.actMSize);
+        // printf("runInfo.actSingleLoopS2Size:%u\n",runInfo.actSingleLoopS2Size);
+        // printf("constInfo.dSize:%u\n",constInfo.dSize);
         // if constexpr (dBaseSize <= 128) {
         //     MatmulBase<Q_T, KV_T, T, 128, 128, dBaseSize, ABLayout::MK, ABLayout::KN>(
         //         mm1A.GetTensor<Q_T>(), mm1B.GetTensor<KV_T>(), mmL0ABuffers, mmL0BBuffers,
@@ -500,7 +504,7 @@ public:
         //             mm1ResL0C.GetTensor<T>(), param);
         //     }
         // }
-        MatmulK<Q_T, Q_T, MM_T, mBaseSize, s2BaseSize, dBaseSize, ABLayout::MK, ABLayout::KN>(
+        MatmulK<Q_T, Q_T, MM_T, mBaseSize, s2BaseSize, 64, ABLayout::MK, ABLayout::KN>(
                     mm1A.GetTensor<Q_T>(), mm1B.GetTensor<Q_T>(), mmL0ABuffers, mmL0BBuffers,
                     mm1ResL0C.GetTensor<MM_T>(), param);
 

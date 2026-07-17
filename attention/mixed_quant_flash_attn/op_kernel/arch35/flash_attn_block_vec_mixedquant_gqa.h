@@ -972,15 +972,15 @@ public:
     __aicore__ inline void CopyResultToL1(LocalTensor<QINPUT_T>& antiqResL1,
                                            LocalTensor<QINPUT_T>& antiqResUb,
                                            uint32_t copyTotalS, uint32_t s2RealSize,
-                                           uint32_t subBlockIdx, uint32_t idx,
+                                           uint32_t subBlockIdx, uint32_t idx, uint32_t subIdx,
                                            const uint32_t* vMte3Id,
                                            const uint32_t* mte3VId)
     {
-        CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_CV_L1_EVENT[idx]);
+        CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_CV_L1_EVENT[subIdx]);
         WaitFlag<HardEvent::V_MTE3>(vMte3Id[idx]);
         CopyAntiquantResToL1(antiqResL1, antiqResUb, copyTotalS, s2RealSize, subBlockIdx);
         SetFlag<HardEvent::MTE3_V>(mte3VId[idx]);
-        CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[idx]);
+        CrossCoreSetFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[subIdx]);
     }
 
     // ===================== AntiquantKey / AntiquantValue =====================
@@ -995,8 +995,10 @@ public:
         if (subBlockIdx == 1) {
             copyTotalS = s2RealSize - copyTotalS;
         }
-        uint32_t taskId = runInfo.KvL1loop;
-        uint32_t idx = taskId & 3;
+        uint32_t taskId = runInfo.loop;
+        uint32_t idx = taskId & 1;
+        uint32_t subTaskId = runInfo.KvL1loop;
+        uint32_t subIdx = subTaskId & 3;
 
         LocalTensor<QINPUT_T> scaleE8M0Ub = scaleInBuf.Get<QINPUT_T>();
         LocalTensor<QINPUT_T> scaleBf16Ub = scaleResBuf.Get<QINPUT_T>();
@@ -1008,7 +1010,7 @@ public:
         CopyKvToUb(kvInUb, rawKeyGm, runInfo, copyTotalS, idx, MQFA_V_MTE2_KV_K, MQFA_MTE2_V_KV_K);
         DoAntiquant(kvOutUb, kvInUb, scaleBf16Ub, copyTotalS, dSize, idx,
                     MQFA_MTE3_V_K, MQFA_MTE2_V_KV_K, MQFA_V_MTE2_KV_K, MQFA_V_MTE3_K);
-        CopyResultToL1(antiqResL1, kvOutUb, copyTotalS, s2RealSize, subBlockIdx, idx,
+        CopyResultToL1(antiqResL1, kvOutUb, copyTotalS, s2RealSize, subBlockIdx, idx, subIdx,
                        MQFA_V_MTE3_K, MQFA_MTE3_V_K);
     }
 
@@ -1022,8 +1024,10 @@ public:
         if (subBlockIdx == 1) {
             copyTotalS = s2RealSize - copyTotalS;
         }
-        uint32_t taskId = runInfo.KvL1loop;
-        uint32_t idx = taskId & 3;
+        uint32_t taskId = runInfo.loop;
+        uint32_t idx = taskId & 1;
+        uint32_t subTaskId = runInfo.KvL1loop;
+        uint32_t subIdx = subTaskId & 3;
 
         LocalTensor<QINPUT_T> scaleE8M0Ub = scaleInBuf.Get<QINPUT_T>();
         LocalTensor<QINPUT_T> scaleBf16Ub = scaleResBuf.Get<QINPUT_T>();
@@ -1035,7 +1039,7 @@ public:
         CopyKvToUb(kvInUb, rawValueGm, runInfo, copyTotalS, idx, MQFA_V_MTE2_KV_V, MQFA_MTE2_V_KV_V);
         DoAntiquant(kvOutUb, kvInUb, scaleBf16Ub, copyTotalS, dSize, idx,
                     MQFA_MTE3_V_V, MQFA_MTE2_V_KV_V, MQFA_V_MTE2_KV_V, MQFA_V_MTE3_V);
-        CopyResultToL1(antiqResL1, kvOutUb, copyTotalS, s2RealSize, subBlockIdx, idx,
+        CopyResultToL1(antiqResL1, kvOutUb, copyTotalS, s2RealSize, subBlockIdx, idx, subIdx,
                        MQFA_V_MTE3_V, MQFA_MTE3_V_V);
     }
 };

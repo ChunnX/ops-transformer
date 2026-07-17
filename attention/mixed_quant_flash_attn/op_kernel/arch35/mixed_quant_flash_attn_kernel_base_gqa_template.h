@@ -359,7 +359,7 @@ public:
         if ASCEND_IS_AIC {
             // bmm1Buffers.Get().WaitCrossCore();
             // bmm2Buffers.Get().WaitCrossCore();
-            bmmBuffers.Get().SetCrossCore();
+            bmmBuffers.Get().WaitCrossCore();
         }
     }
 
