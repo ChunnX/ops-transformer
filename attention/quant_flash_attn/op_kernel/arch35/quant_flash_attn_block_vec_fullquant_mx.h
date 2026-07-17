@@ -1108,12 +1108,11 @@ public:
         maskInfo.attenMaskType = MASK_BOOL; // compatible with int8/uint8
 
         bool IsSkipMask = IsSkipAttentionmask(maskInfo);
-        if (IsSkipMask) {
+        if (unlikely(!IsSkipMask)) {
+            AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
+        } else {
             Duplicate(attenMaskUb, static_cast<uint8_t>(0U), maskInfo.gs1dealNum * s2BaseSizeCur);
-            return;
         }
-
-        AttentionmaskCopyIn<uint8_t, MASK_LAYOUT, true, s2BaseSizeCur>(attenMaskUb, attenMaskGmInt, maskInfo);
     }
 
     __aicore__ inline void AttenMaskCopyInDn(LocalTensor<uint8_t> attenMaskUb,
