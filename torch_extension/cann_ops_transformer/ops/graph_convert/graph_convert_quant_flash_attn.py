@@ -48,6 +48,7 @@ if _TORCHAIR_AVAILABLE:
         max_seqlen_q: int = -1,
         max_seqlen_kv: int = -1,
         layout_q: str = "BSND",
+        layout_q_descale: str = "BSND",
         layout_kv: str = "BSND",
         layout_out: str = "BSND",
         return_softmax_lse: bool = False):
@@ -80,6 +81,7 @@ if _TORCHAIR_AVAILABLE:
         max_seqlen_q: int = -1,
         max_seqlen_kv: int = -1,
         layout_q: str = "BSND",
+        layout_q_descale: str = "BSND",
         layout_kv: str = "BSND",
         layout_out: str = "BSND",
         return_softmax_lse: bool = False):

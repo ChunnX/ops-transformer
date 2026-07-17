@@ -30,6 +30,7 @@ const aclTensor* QuantFlashAttnMetadata(
     int64_t winLeft,
     int64_t winRight,
     const char* layoutQ,
+    const char* layoutQDescale,
     const char* layoutKv,
     const char* layoutOut,
     const char* socVersion,

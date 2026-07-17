@@ -46,7 +46,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None, "
             "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
             "int? mask_mode=None, int? win_left=None, int? win_right=None, "
-            "str? layout_q=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
+            "str? layout_q=None, str? layout_q_descale=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
 
             "quant_flash_attn(Tensor q, Tensor k, Tensor v, "
             "Tensor q_descale, Tensor k_descale, Tensor v_descale, int quant_mode, "
@@ -56,7 +56,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             "Tensor? sinks=None, Tensor? attn_mask=None, Tensor? metadata=None, "
             "float softmax_scale=1.0, int mask_mode=0, int win_left=-1, int win_right=-1, "
             "int max_seqlen_q=-1, int max_seqlen_kv=-1, "
-            "str layout_q=\"BSND\", str layout_kv=\"BSND\", str layout_out=\"BSND\", "
+            "str layout_q=\"BSND\", str layout_q_descale=\"BSND\", str layout_kv=\"BSND\", str layout_out=\"BSND\", "
             "bool return_softmax_lse=False) -> (Tensor, Tensor)"
         ]
 
@@ -73,7 +73,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             batch_size: Optional[int] = None,
             max_seqlen_q: Optional[int] = None, max_seqlen_kv: Optional[int] = None,
             mask_mode: Optional[int] = None, win_left: Optional[int] = None, win_right: Optional[int] = None,
-            layout_q: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
+            layout_q: Optional[str] = None, layout_q_descale: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
         ):
             metadata_size = _calculate_metadata_size()
             return torch.empty((metadata_size,), dtype=torch.int32, device="npu")
@@ -93,7 +93,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             softmax_scale: Optional[float] = 1.0,
             mask_mode: Optional[int] = 0, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
             max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
-            layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
+            layout_q: Optional[str] = "BSND", layout_q_descale: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
             return_softmax_lse: Optional[bool] = False
         ):
             if layout_q == "TND":
@@ -157,7 +157,7 @@ def quant_flash_attn_metadata(
         batch_size: Optional[int] = None,
         max_seqlen_q: Optional[int] = None, max_seqlen_kv: Optional[int] = None,
         mask_mode: Optional[int] = None, win_left: Optional[int] = None, win_right: Optional[int] = None,
-        layout_q: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
+        layout_q: Optional[str] = None, layout_q_descale: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
     ):
     """
     Dispatcher implementation: NPU.
@@ -170,6 +170,7 @@ def quant_flash_attn_metadata(
     win_left = -1 if win_left is None else win_left
     win_right = -1 if win_right is None else win_right
     layout_q = "BSND" if layout_q is None else layout_q
+    layout_q_descale = "BSND" if layout_q_descale is None else layout_q_descale
     layout_kv = "BSND" if layout_kv is None else layout_kv
     layout_out = "BSND" if layout_out is None else layout_out
 
@@ -182,7 +183,7 @@ def quant_flash_attn_metadata(
         num_heads_q, num_heads_kv, head_dim,
         quant_mode,
         mask_mode, win_left, win_right,
-        layout_q, layout_kv, layout_out, output)
+        layout_q, layout_q_descale, layout_kv, layout_out, output)
 
 
 @torch.library.register_kernel("cann_ops_transformer::" + QFA_METADATA_OP_NAME, None)
@@ -194,16 +195,15 @@ def quant_flash_attn_metadata_fallback(
         batch_size: Optional[int] = None,
         max_seqlen_q: Optional[int] = None, max_seqlen_kv: Optional[int] = None,
         mask_mode: Optional[int] = None, win_left: Optional[int] = None, win_right: Optional[int] = None,
-        layout_q: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
+        layout_q: Optional[str] = None, layout_q_descale: Optional[str] = None, layout_kv: Optional[str] = None, layout_out: Optional[str] = None
     ):
-    # 处理所有 tensor 都为 None 的情况
     return quant_flash_attn_metadata(
         num_heads_q, num_heads_kv, head_dim,
         quant_mode,
         cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
         batch_size, max_seqlen_q, max_seqlen_kv,
         mask_mode, win_left, win_right,
-        layout_q, layout_kv, layout_out)
+        layout_q, layout_q_descale, layout_kv, layout_out)
 
 
 @impl(AS_LIBRARY, quant_flash_attn_op_builder.name, "PrivateUse1")
@@ -221,7 +221,7 @@ def quant_flash_attn(
         softmax_scale: Optional[float] = 1.0,
         mask_mode: Optional[int] = 0, win_left: Optional[int] = -1, win_right: Optional[int] = -1,
         max_seqlen_q: Optional[int] = -1, max_seqlen_kv: Optional[int] = -1,
-        layout_q: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
+        layout_q: Optional[str] = "BSND", layout_q_descale: Optional[str] = "BSND", layout_kv: Optional[str] = "BSND", layout_out: Optional[str] = "BSND",
         return_softmax_lse: Optional[bool] = False
     ):
     """
@@ -239,5 +239,5 @@ def quant_flash_attn(
         sinks, attn_mask, metadata,
         softmax_scale, mask_mode, win_left, win_right,
         max_seqlen_q, max_seqlen_kv,
-        layout_q, layout_kv, layout_out,
+        layout_q, layout_q_descale, layout_kv, layout_out,
         return_softmax_lse)

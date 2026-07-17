@@ -102,6 +102,7 @@ private:
 
     // Layout
     QfaLayout layoutQ_ = QfaLayout::BSND;
+    QfaLayout layoutQDescale_ = QfaLayout::BSND;
     QfaLayout layoutKV_ = QfaLayout::BSND;
     QfaLayout layoutOut_ = QfaLayout::BSND;
 
