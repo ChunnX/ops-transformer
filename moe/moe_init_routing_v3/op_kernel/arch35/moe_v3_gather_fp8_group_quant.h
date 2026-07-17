@@ -115,6 +115,7 @@ __simd_vf__ inline void vfComputeAmax(__ubuf__ T *xAddr, __ubuf__ float *amaxOut
     }
 }
 
+template <bool CLAMP_AMAX>
 __simd_vf__ inline void vfComputeRoundScale(__ubuf__ float *amaxInAddr, __ubuf__ float *scaleOutAddr,
                                             __ubuf__ float *invScaleOutAddr, uint16_t groupNum,
                                             uint32_t fp8EmaxValue)
@@ -527,7 +528,7 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Compute(int64
 
     VF_CALL<vfComputeAmax<T, CLAMP_AMAX>>(xAddr, amaxAddr, static_cast<uint32_t>(loopCols),
                                            static_cast<uint16_t>(loopScaleCols));
-    VF_CALL<vfComputeRoundScale>(amaxAddr, scaleAddr, invScaleAddr,
+    VF_CALL<vfComputeRoundScale<CLAMP_AMAX>>(amaxAddr, scaleAddr, invScaleAddr,
                                   static_cast<uint16_t>(loopScaleCols), fp8Emax_);
     VF_CALL<vfComputeData<T, U>>(xAddr, invScaleAddr, outAddr, static_cast<uint32_t>(loopCols),
                                   static_cast<uint16_t>(loopScaleCols));
