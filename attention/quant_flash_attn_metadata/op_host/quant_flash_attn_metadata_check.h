@@ -30,7 +30,8 @@ public:
                                           const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
                                           int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
                                           int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode,
-                                          int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutKv,
+                                           int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale,
+                                           const char *layoutKv,
                                           const char *layoutOut, const aclTensor *metadata);
 
 private:
@@ -41,8 +42,8 @@ private:
     // 校验基础属性：batchSize / maxSeqlen / numHeads / headDim / quantMode / layout
     // 文档约束: headDim 仅支持 64/128; quantMode 支持输入范围为 1/2/3
     static inline aclnnStatus CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
-                                            const char *layoutQ, const char *layoutKv, const char *layoutOut);
+                                            int64_t numHeadsQ, int64_t numHeadsKv,                                             int64_t headDim, int64_t quantMode,
+                                            const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut);
 
     // 校验 mask 参数组: maskMode 支持 0/3/4, winLeft/winRight >= -1
     static inline aclnnStatus CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight);
@@ -67,11 +68,12 @@ QuantFlashAttnMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, co
                                          const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
                                          int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
                                          int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode,
-                                         int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutKv,
+                                          int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale,
+                                          const char *layoutKv,
                                          const char *layoutOut, const aclTensor *metadata)
 {
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, layoutQ,
-                             layoutKv, layoutOut);
+                             layoutQDescale, layoutKv, layoutOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     ret = CheckMask(maskMode, winLeft, winRight);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
@@ -93,7 +95,7 @@ inline bool QuantFlashAttnMetadataCheck::IsTensorExist(const aclTensor *tensor)
 inline aclnnStatus
 QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
-                                           const char *layoutQ, const char *layoutKv, const char *layoutOut)
+                                           const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut)
 {
     CHECK_COND((batchSize == -1 || batchSize > 0), ACLNN_ERR_RUNTIME_ERROR,
         "batchSize must be -1 or greater than 0, but got %ld", batchSize);
@@ -130,6 +132,10 @@ QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ
     static const std::unordered_set<std::string> layoutQSet = { "BSND", "TND", "BNSD" };
     CHECK_COND(layoutQSet.count(layoutQ) > 0, ACLNN_ERR_RUNTIME_ERROR,
         "layoutQ only supports BSND, TND, BNSD, but got %s", layoutQ);
+
+    static const std::unordered_set<std::string> layoutQDescaleSet = { "BSND", "TND", "BNSD", "N2TGD" };
+    CHECK_COND(layoutQDescaleSet.count(layoutQDescale) > 0, ACLNN_ERR_RUNTIME_ERROR,
+        "layoutQDescale only supports BSND, TND, BNSD, N2TGD, but got %s", layoutQDescale);
 
     static const std::unordered_set<std::string> layoutKvSet = { "BSND", "TND", "BNSD", "PA_BNBD", "PA_BBND", "PA_NZ" };
     CHECK_COND(layoutKvSet.count(layoutKv) > 0, ACLNN_ERR_RUNTIME_ERROR,

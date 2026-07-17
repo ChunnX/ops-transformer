@@ -245,6 +245,7 @@ ge::graphStatus QfaInfoParser::GetAttrParaInfo()
     opParamInfo_.maxSeqlenQ = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_Q_INDEX);
     opParamInfo_.maxSeqlenKV = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_KV_INDEX);
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
+    opParamInfo_.layoutQDescale = attrs->GetStr(ATTR_LAYOUT_Q_DESCALE_INDEX);
     opParamInfo_.layoutKV = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.layoutOut = attrs->GetStr(ATTR_LAYOUT_OUT_INDEX);
     opParamInfo_.returnSoftMaxLse = attrs->GetAttrPointer<bool>(ATTR_RETURN_LSE_INDEX);
@@ -438,6 +439,16 @@ ge::graphStatus QfaInfoParser::GetInAndOutLayout()
         return ge::GRAPH_FAILED;
     }
     layoutQ_ = itQ->second;
+
+    if (opParamInfo_.layoutQDescale != nullptr && strcmp(opParamInfo_.layoutQDescale, "N2TGD") != 0) {
+        auto itQDescale = qfaLayoutMap.find(opParamInfo_.layoutQDescale);
+        if (itQDescale == qfaLayoutMap.end()) {
+            std::string reason = "layout_q_descale: " + std::string(opParamInfo_.layoutQDescale) + " is not supported.";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layout_q_descale",
+                opParamInfo_.layoutQDescale, reason.c_str());
+            return ge::GRAPH_FAILED;
+        }
+    }
 
     auto itKV = qfaLayoutMap.find(opParamInfo_.layoutKV);
     if (itKV == qfaLayoutMap.end()) {

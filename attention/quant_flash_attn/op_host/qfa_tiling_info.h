@@ -51,6 +51,7 @@ const std::string WIN_RIGHT_NAME = "win_right";
 const std::string MAX_SEQLEN_Q_NAME = "max_seqlen_q";
 const std::string MAX_SEQLEN_KV_NAME = "max_seqlen_kv";
 const std::string LAYOUT_Q_NAME = "layout_q";
+const std::string LAYOUT_Q_DESCALE_NAME = "layout_q_descale";
 const std::string LAYOUT_KV_NAME = "layout_kv";
 const std::string LAYOUT_OUT_NAME = "layout_out";
 const std::string QUANT_MODE_NAME = "quant_mode";
@@ -88,9 +89,10 @@ constexpr uint32_t ATTR_WIN_RIGHT_INDEX = 4;
 constexpr uint32_t ATTR_MAX_SEQLEN_Q_INDEX = 5;
 constexpr uint32_t ATTR_MAX_SEQLEN_KV_INDEX = 6;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 7;
-constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 8;
-constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 9;
-constexpr uint32_t ATTR_RETURN_LSE_INDEX = 10;
+constexpr uint32_t ATTR_LAYOUT_Q_DESCALE_INDEX = 8;
+constexpr uint32_t ATTR_LAYOUT_KV_INDEX = 9;
+constexpr uint32_t ATTR_LAYOUT_OUT_INDEX = 10;
+constexpr uint32_t ATTR_RETURN_LSE_INDEX = 11;
 
 // Output Index
 constexpr uint32_t ATTN_OUT_INDEX = 0;
@@ -200,6 +202,7 @@ struct QfaParaInfo {
     const int64_t *maxSeqlenQ = nullptr;
     const int64_t *maxSeqlenKV = nullptr;
     const char *layoutQ = nullptr;
+    const char *layoutQDescale = nullptr;
     const char *layoutKV = nullptr;
     const char *layoutOut = nullptr;
     const bool *returnSoftMaxLse = nullptr;
