@@ -74,7 +74,7 @@
     <tr>
       <td>x1</td>
       <td>输入/输出</td>
-      <td>MatMul左矩阵，即公式中的输入x1，同时也是输出，公式中的y</td>
+      <td>MatMul左矩阵，即公式中的输入x1，同时也是输出，公式中的y。</td>
       <td>FLOAT16、BFLOAT16、INT8</td>
       <td>ND</td>
     </tr>
