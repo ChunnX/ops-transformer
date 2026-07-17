@@ -150,19 +150,13 @@ at::Tensor sparse_flash_mla_softmax_l1_norm(
         s2 = key.size(DIM_0);
     }
 
-    at::Tensor oriSoftmaxL1Norm;
-    if (oriSparseIndicesConst.defined()) {
-        oriSoftmaxL1Norm = at::empty(oriSparseIndicesConst.sizes(), oriSparseIndicesConst.options().dtype(at::kFloat));
-    } else {
-        oriSoftmaxL1Norm = at::empty({0}, q.options().dtype(at::kFloat));
-    }
-
     at::Tensor softmax_l1_norm{nullptr};
     {
         auto local_device = c10::Device(query.device());
         const c10::OptionalDeviceGuard device_guard(local_device);
-        if (sparse_indices.defined()) {
-            softmax_l1_norm = at::zeros(sparse_indices.sizes(), query.options().dtype(at::kFloat));
+        const at::Tensor &sparse_indices_value = sparse_indices.value_or(at::Tensor());
+        if (sparse_indices_value.defined()) {
+            softmax_l1_norm = at::zeros(sparse_indices_value.sizes(), query.options().dtype(at::kFloat));
         } else {
             if (layout_q_str == "BSND") {
                 softmax_l1_norm = at::zeros(

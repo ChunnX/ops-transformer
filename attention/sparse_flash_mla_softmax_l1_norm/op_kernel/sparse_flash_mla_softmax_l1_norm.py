@@ -168,7 +168,7 @@ def get_seqused(seq_dim, has_seqused, seqused_tensor, batch_id):
     return seq_length
 
 @pl.pipeline.stage
-def gatherK(k_l1_db, k, sparse_indices, gather_nd_db, gather_nz_db, constInfo, runInfo):
+def gather_k(k_l1_db, k, sparse_indices, gather_nd_db, gather_nz_db, constInfo, runInfo):
     half_s2_base_size =  _ceil_div(runInfo.s2_base_size, 2)
     # half_s2_base_size =  32
     first_core_half_s2_base_size = half_s2_base_size
@@ -238,7 +238,6 @@ def gatherK(k_l1_db, k, sparse_indices, gather_nd_db, gather_nz_db, constInfo, r
         # pl.insert(key_l1_slot, gather_k_nz_slot, [0, 0]) # UB → L1
         pl.insert(key_l1_slot, gather_k_nz_slot, [constInfo.sub_id * first_core_half_s2_base_size + loop_idx * GATHER_ROW_NUM, 0]) # UB → L1
     # pl.system.sync_all(core_type=pl.SyncCoreType)
-    pass
 
 @pl.pipeline.stage
 def compute_qk(q, k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_vec_db, constInfo, runInfo):
@@ -670,11 +669,16 @@ def sparse_flash_mla_softmax_l1_norm(
         type=pl.TileType(shape=[TG_HALF, TKV], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec), addrs=VA0, mutex_ids=[0,1],
         fwd_ids=QK_READY_FORWARD_IDS, bwd_ids=QK_READY_BARKWARD_IDS
     )
-        
-    with pl.section_cube():
+    if IS_SPARSE == 1:
         k_l1_db = pl.make_tile_group(type=pl.TileType(
-                shape=[TD, TKV], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Mat, layout=pl.ZN, valid_shape=[-1, -1], compact=1), addrs=MA1, mutex_ids=[12,13]
+                shape=[D_TOTAL, TKV], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Mat, layout=pl.ZN, valid_shape=[-1, -1], compact=1), addrs=MA1, mutex_ids=[12,13],
+                fwd_ids=GATHER_READY_FORWARD_IDS, bwd_ids=GATHER_READY_BARKWARD_IDS
                 )
+    with pl.section_cube():
+        if IS_SPARSE == 0:
+            k_l1_db = pl.make_tile_group(type=pl.TileType(
+                    shape=[TD, TKV], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Mat, layout=pl.ZN, valid_shape=[-1, -1], compact=1), addrs=MA1, mutex_ids=[12,13]
+                    )
         q_mat_db = pl.make_tile_group(type=pl.TileType(
                 shape=[TG, D_TOTAL], dtype=pl.DT_FP16, target_memory=pl.MemorySpace.Mat, layout=pl.NZ, valid_shape=[-1, -1], compact=1), addrs=MA0, mutex_ids=[2,3])
         left_db = pl.make_tile_group(
@@ -702,7 +706,14 @@ def sparse_flash_mla_softmax_l1_norm(
         )
     tick = 0
     q_count = 0
-    
+    with pl.section_vector():
+        pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_BARKWARD_IDS[0])
+        pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_BARKWARD_IDS[1])
+    with pl.section_cube():
+        if IS_SPARSE == 1:
+            pl.system.set_cross_core(pipe=pl.PipeType.MTE1, event_id=GATHER_READY_BARKWARD_IDS[0])
+            pl.system.set_cross_core(pipe=pl.PipeType.MTE1, event_id=GATHER_READY_BARKWARD_IDS[1])
+    _pl_sync_id = 0
     for used_t1_index in pl.range(core_id, sq_tiles, num_cores):
         runInfo.used_t1_index = used_t1_index
         get_seq_length(tensor_seqused_q, tensor_cu_seqlens_q, tensor_cu_seqlens_k, constInfo, runInfo)
@@ -760,14 +771,29 @@ def sparse_flash_mla_softmax_l1_norm(
             runInfo.ki = ki
             if ki + TKV > runInfo.s2_real_size:
                 runInfo.s2_base_size =  runInfo.s2_real_size - ki
+            if IS_SPARSE == 1:
+                with pl.section_vector():
+                    if IS_SPARSE == 1:
+                        pl.system.wait_cross_core(pipe=pl.PipeType.MTE3, event_id=GATHER_READY_BARKWARD_IDS[_pl_sync_id % 2])
+                        gather_k(k_l1_db, tensor_k, tensor_sparse_indices, gather_nd_db, gather_nz_db, constInfo, runInfo)
+                        pl.system.set_cross_core(pipe=pl.PipeType.MTE3, event_id=GATHER_READY_FORWARD_IDS[_pl_sync_id % 2])
             with pl.section_cube():
                 if IS_SPARSE == 1:
+                    pl.system.wait_cross_core(pipe=pl.PipeType.MTE1, event_id=GATHER_READY_FORWARD_IDS[_pl_sync_id % 2])
+                    pl.system.wait_cross_core(pipe=pl.PipeType.FIX, event_id=QK_READY_BARKWARD_IDS[_pl_sync_id % 2])
                     compute_qk(tensor_q, tensor_k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_vec_db, constInfo, runInfo)
+                    pl.system.set_cross_core(pipe=pl.PipeType.MTE1, event_id=GATHER_READY_BARKWARD_IDS[_pl_sync_id % 2])
+                    pl.system.set_cross_core(pipe=pl.PipeType.FIX, event_id=QK_READY_FORWARD_IDS[_pl_sync_id % 2])
                 else:
+                    pl.system.wait_cross_core(pipe=pl.PipeType.FIX, event_id=QK_READY_BARKWARD_IDS[_pl_sync_id % 2])
                     compute_qk_dense(tensor_q, tensor_k, cur_q_slot, k_l1_db, left_db, right_db, acc_db, qk_vec_db, constInfo, runInfo)
+                    pl.system.set_cross_core(pipe=pl.PipeType.FIX, event_id=QK_READY_FORWARD_IDS[_pl_sync_id % 2])
             with pl.section_vector():
+                pl.system.wait_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_FORWARD_IDS[_pl_sync_id % 2])
                 compute_softmax_l1_norm(tensor_softmax_l1_norm, qk_vec_db, lse_vec_slot, out_vec_db, constInfo, runInfo)
+                pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_BARKWARD_IDS[_pl_sync_id % 2])
             tick = tick + 1
+            _pl_sync_id = _pl_sync_id + 1
         q_count = q_count + 1
 
 
