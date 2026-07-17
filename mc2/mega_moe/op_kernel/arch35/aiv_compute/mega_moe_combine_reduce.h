@@ -177,19 +177,16 @@ __aicore__ inline __attribute__((always_inline)) void LoadCombineReduceWeights(
 // ===============================================================
 template <int32_t CombineQuantMode>
 __aicore__ inline __attribute__((always_inline)) void ProcessCombineReduceToken(
-    int32_t tokenIdx, int32_t localIdx, uint32_t k, uint32_t topK,
+    int32_t tokenIdx, int32_t localIdx, const CombineReduceShapeContext& shapeContext,
     const GlobalTensor<bfloat16_t>& expandedX,
     CombineReduceWorkspace& workspace)
 {
-    LocalTensor<bfloat16_t> dataResTensor = workspace.dataResTensor;
-    LocalTensor<float> dataResFp32Tensor = workspace.dataResFp32Tensor;
-    LocalTensor<float> topKWeightsTensor = workspace.topKWeightsTensor;
-    LocalTensor<bfloat16_t> dataIn0Bf16 = dataResTensor[k];
-    LocalTensor<bfloat16_t> dataIn1Bf16 = dataResTensor[k * 2];
-    LocalTensor<float> dataIn0Fp32 = dataResFp32Tensor[k];
-    LocalTensor<float> dataIn1Fp32 = dataResFp32Tensor[k * 2];
-    for (int32_t expertId = 0; expertId < static_cast<int32_t>(topK); ++expertId) {
-        float expertScale = topKWeightsTensor.GetValue(localIdx * topK + expertId);
+    LocalTensor<bfloat16_t> dataIn0Bf16 = workspace.dataResTensor[shapeContext.k];
+    LocalTensor<bfloat16_t> dataIn1Bf16 = workspace.dataResTensor[shapeContext.k * 2];
+    LocalTensor<float> dataIn0Fp32 = workspace.dataResFp32Tensor[shapeContext.k];
+    LocalTensor<float> dataIn1Fp32 = workspace.dataResFp32Tensor[shapeContext.k * 2];
+    for (int32_t expertId = 0; expertId < static_cast<int32_t>(shapeContext.topK); ++expertId) {
+        float expertScale = workspace.topKWeightsTensor.GetValue(localIdx * shapeContext.topK + expertId);
         auto event = (expertId % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
         auto dataInBf16 = (expertId % DOUBLE_BUFFER == 0) ? dataIn0Bf16 : dataIn1Bf16;
         auto dataInFp32 = (expertId % DOUBLE_BUFFER == 0) ? dataIn0Fp32 : dataIn1Fp32;
@@ -197,38 +194,37 @@ __aicore__ inline __attribute__((always_inline)) void ProcessCombineReduceToken(
             // 非量化路径：直接搬入 bf16 token 并 Cast 为 fp32。
             WaitFlag<AscendC::HardEvent::V_MTE2>(event);
             DataCopy(dataInBf16,
-                expandedX[(static_cast<uint64_t>(tokenIdx) * topK + expertId) * k], k);
+                expandedX[(static_cast<uint64_t>(tokenIdx) * shapeContext.topK + expertId) * shapeContext.k],
+                shapeContext.k);
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
             SetFlag<AscendC::HardEvent::S_V>(event);
             WaitFlag<AscendC::HardEvent::S_V>(event);
-            Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k);
+            Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, shapeContext.k);
         } else {
             // 量化路径：搬入 FP8 token+scale，反量化为 fp32。
-            uint32_t scaleNum = Ops::Base::CeilDiv(k, uint32_t(MXFP_SCALE_GROUP_NUM));
-            uint32_t quantTokenSize = k + scaleNum;
+            uint32_t scaleNum = Ops::Base::CeilDiv(shapeContext.k, uint32_t(MXFP_SCALE_GROUP_NUM));
+            uint32_t quantTokenSize = shapeContext.k + scaleNum;
             uint32_t quantElementNum = quantTokenSize / sizeof(bfloat16_t);
             WaitFlag<AscendC::HardEvent::V_MTE2>(event);
             DataCopy(dataInBf16,
-                expandedX[(static_cast<uint64_t>(tokenIdx) * topK + expertId) * quantElementNum],
+                expandedX[(static_cast<uint64_t>(tokenIdx) * shapeContext.topK + expertId) * quantElementNum],
                 quantElementNum);
             SetFlag<AscendC::HardEvent::MTE2_V>(event);
             WaitFlag<AscendC::HardEvent::MTE2_V>(event);
             using Fp8Type = typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT,
                 fp8_e4m3fn_t, fp8_e5m2_t>::type;
-            LocalTensor<bfloat16_t> bf16ScaleTensor = workspace.bf16ScaleTensor;
-            LocalTensor<float> fp32ScaleTensor = workspace.fp32ScaleTensor;
             MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32,
-                bf16ScaleTensor, fp32ScaleTensor, scaleNum, k);
+                workspace.bf16ScaleTensor, workspace.fp32ScaleTensor, scaleNum, shapeContext.k);
         }
         PipeBarrier<PIPE_V>();
         // 将每个 expert 的输出乘以对应 topK weight，累加到第 0 块 fp32 buffer。
         if (expertId == 0) {
-            Muls(dataResFp32Tensor, dataInFp32, expertScale, k);
+            Muls(workspace.dataResFp32Tensor, dataInFp32, expertScale, shapeContext.k);
         } else {
-            Muls(dataInFp32, dataInFp32, expertScale, k);
+            Muls(dataInFp32, dataInFp32, expertScale, shapeContext.k);
             PipeBarrier<PIPE_V>();
-            Add(dataResFp32Tensor, dataResFp32Tensor, dataInFp32, k);
+            Add(workspace.dataResFp32Tensor, workspace.dataResFp32Tensor, dataInFp32, shapeContext.k);
             PipeBarrier<PIPE_V>();
         }
         SetFlag<AscendC::HardEvent::V_MTE2>(event);
@@ -270,8 +266,7 @@ __aicore__ inline __attribute__((always_inline)) void ProcessCombineReduceSingle
         for (int32_t localIdx = 0; localIdx < tokenCount; ++localIdx) {
             int32_t tokenIdx = tileOffset + batchStart + localIdx;
             SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
-            ProcessCombineReduceToken<CombineQuantMode>(
-                tokenIdx, localIdx, shapeContext.k, shapeContext.topK, expandedX, workspace);
+            ProcessCombineReduceToken<CombineQuantMode>(tokenIdx, localIdx, shapeContext, expandedX, workspace);
             Cast(workspace.dataResTensor, workspace.dataResFp32Tensor, AscendC::RoundMode::CAST_RINT,
                 shapeContext.k);
             SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
