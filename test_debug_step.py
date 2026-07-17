@@ -15,10 +15,11 @@ if r is not None:
     f = r.flatten()
     b = 512
     vals = f[b*512:(b+1)*512].tolist()
-    bf = struct.unpack('f', struct.pack('i', vals[0]))[0]
-    curTileK = vals[1]
-    print(f"boundaryFloat={bf}, curTileK={curTileK}")
-    for i in range(8):
-        sf = struct.unpack('f', struct.pack('i', vals[2+i*2]))[0]
-        gt = vals[3+i*2]
-        print(f"  score[{i}]={sf}, gt={gt}")
+    tpk0 = vals[511]
+    tpk1 = vals[510]
+    bf = struct.unpack('f', struct.pack('i', vals[509]))[0]
+    tdtk = vals[508]
+    valid = sum(1 for v in vals[:508] if v >= 0)
+    print(f"tileTopK[0]={tpk0}, tileTopK[1]={tpk1}, boundaryFloat={bf}, totalDefInTopK={tdtk}")
+    print(f"valid indices (first 508): {valid}")
+    print(f"first 5 indices: {vals[:5]}")
