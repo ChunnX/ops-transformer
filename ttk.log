@@ -1,116 +1,15 @@
-(fzx_py311) root@aa:/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test# find /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/ -name "*.pyc" -delete
-(fzx_py311) root@aa:/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test# find /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/__pycache__ -name "*.pyc" -delete
-(fzx_py311) root@aa:/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test# GRAPH_PATH=7 python3 -m pytest test_fia_fullquant_mxfp8_func_rdv.py -v -k "TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0" -s
-================================================================================== test session starts ===================================================================================
-platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda3/envs/fzx_py311/bin/python3
-cachedir: .pytest_cache
-rootdir: /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test
-configfile: pytest.ini
-collecting ... get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67
+(fzx_py311) root@aa:/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test# bash test.sh 
+=== 1. 检查安装包里的 allow_in_graph ===
+201:torch.compiler.allow_in_graph(quant_flash_attn_metadata)
+262:torch.compiler.allow_in_graph(quant_flash_attn)
+
+=== 2. 清除 __pycache__ ===
+已清除
+
+=== 3. python 加载路径 ===
 ninja: no work to do.
 ninja: no work to do.
-collected 151 items / 150 deselected / 1 selected                                                                                                                                        
-
-test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] [2026/07/17 10:21:58] [INFO]-fia_fullquant_mxfp8_golden.py:0609 - [INFO] max_sq=3, max_skv=640
-[2026/07/17 10:21:58] [INFO]-fia_fullquant_mxfp8_golden.py:0628 - [INFO] q_fp16=torch.Size([1, 1, 3, 64]), k_fp16=torch.Size([1, 1, 640, 64]), v_fp16=torch.Size([1, 1, 640, 64])
-[2026/07/17 10:21:58] [INFO]-fia_fullquant_mxfp8_golden.py:0639 - [INFO] V scale Sg=20, 是否奇数=False
-[2026/07/17 10:21:58] [INFO]-golden_cache.py:0036 - [CACHE] save input → /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0_input.pt
-[2026/07/17 10:21:58] [INFO]-fia_fullquant_mxfp8_golden.py:0791 - [CPU Golden] TILES_Q=1, TILES_KV=3, Sq=3, Skv=640
-[2026/07/17 10:21:58] [INFO]-fia_fullquant_mxfp8_golden.py:0870 - [CPU Golden] output=torch.Size([1, 1, 3, 64])
-[2026/07/17 10:21:58] [INFO]-golden_cache.py:0058 - [CACHE] save CPU output → /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0_cpu_output.pt
-[2026/07/17 10:22:00] [INFO]-fia_fullquant_mxfp8_golden.py:1008 - [NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
-[2026/07/17 10:22:00] [INFO]-fia_fullquant_mxfp8_golden.py:1012 - [NPU TND] q=torch.Size([3, 1, 64])
-[2026/07/17 10:22:00] [INFO]-fia_fullquant_mxfp8_golden.py:1017 - [NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
-[2026/07/17 10:22:00] [INFO]-fia_fullquant_mxfp8_golden.py:1087 - [NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
-[2026/07/17 10:22:00] [INFO]-fia_fullquant_mxfp8_golden.py:1095 - [NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
-[2026/07/17 10:22:00] [INFO]-fia_fullquant_mxfp8_golden.py:1100 - [NPU] 调用 TND 模式...
-[2026/07/17 10:22:00] [INFO]-fia_fullquant_mxfp8_golden.py:1138 - [NPU] 调用 aclgraph (reduce-overhead)...
-[2026/07/17 10:22:00] [INFO]-patch_getenv.py:0015 - get env TORCHINDUCTOR_CACHE_DIR = /tmp/torchinductor_root
-Fatal Python error: Segmentation fault
-
-Current thread 0x00007f730a10e700 (most recent call first):
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/quant_flash_attn.py", line 192 in quant_flash_attn_metadata
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 908 in _call_npu_fa_op
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/utils.py", line 3895 in run_node
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/utils.py", line 3712 in <lambda>
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/utils.py", line 3102 in wrap_fake_exception
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/utils.py", line 3711 in _get_fake_value_impl
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/utils.py", line 3627 in get_fake_value
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/variables/builder.py", line 3231 in _wrap_fx_proxy
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/variables/builder.py", line 3107 in wrap_fx_proxy_cls
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/variables/builder.py", line 3032 in wrap_fx_proxy
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/variables/torch.py", line 2322 in call_function
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/variables/lazy.py", line 294 in realize_and_forward
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/symbolic_convert.py", line 1360 in call_function
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/symbolic_convert.py", line 4084 in _call
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/symbolic_convert.py", line 4093 in CALL
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/symbolic_convert.py", line 1001 in wrapper
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/symbolic_convert.py", line 1459 in step
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/symbolic_convert.py", line 1794 in run
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 844 in run_tracer
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 863 in trace_frame
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 341 in _fn
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 1380 in transform
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/bytecode_transformation.py", line 1608 in transform_code_object
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 1408 in compile_frame
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 1534 in _compile_inner
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 1500 in compile_inner
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_utils_internal.py", line 96 in wrapper_function
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 1827 in _compile
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 729 in __call__
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 2052 in __call__
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/convert_frame.py", line 2316 in __call__
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1790 in _call_impl
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1779 in _wrapped_call_impl
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/eval_frame.py", line 1024 in compile_wrapper
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1790 in _call_impl
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/nn/modules/module.py", line 1779 in _wrapped_call_impl
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/eval_frame.py", line 472 in __call__
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1156 in mxfp8_fa_torch_npu
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1101 in npu_mxfp8_fa
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/test_runner.py", line 82 in execute_test
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/concurrent/futures/thread.py", line 58 in run
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/concurrent/futures/thread.py", line 83 in _worker
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/threading.py", line 982 in run
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/threading.py", line 1045 in _bootstrap_inner
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/threading.py", line 1002 in _bootstrap
-
-Thread 0x00007f73e8334b80 (most recent call first):
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/threading.py", line 327 in wait
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/concurrent/futures/_base.py", line 451 in result
-  File "/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/test_fia_fullquant_mxfp8_func_rdv.py", line 41 in test_fia_fullquant_mxfp8
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/python.py", line 167 in pytest_pyfunc_call
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_callers.py", line 121 in _multicall
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_manager.py", line 120 in _hookexec
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_hooks.py", line 512 in __call__
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/python.py", line 1707 in runtest
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/runner.py", line 184 in pytest_runtest_call
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_callers.py", line 121 in _multicall
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_manager.py", line 120 in _hookexec
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_hooks.py", line 512 in __call__
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/runner.py", line 250 in <lambda>
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/runner.py", line 361 in from_call
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/runner.py", line 249 in call_and_report
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/runner.py", line 139 in runtestprotocol
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/runner.py", line 118 in pytest_runtest_protocol
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_callers.py", line 121 in _multicall
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_manager.py", line 120 in _hookexec
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_hooks.py", line 512 in __call__
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/main.py", line 408 in pytest_runtestloop
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_callers.py", line 121 in _multicall
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_manager.py", line 120 in _hookexec
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_hooks.py", line 512 in __call__
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/main.py", line 384 in _main
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/main.py", line 330 in wrap_session
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/main.py", line 377 in pytest_cmdline_main
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_callers.py", line 121 in _multicall
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_manager.py", line 120 in _hookexec
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pluggy/_hooks.py", line 512 in __call__
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/config/__init__.py", line 229 in _main
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/_pytest/config/__init__.py", line 253 in _console_main
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/pytest/__main__.py", line 9 in <module>
-  File "<frozen runpy>", line 88 in _run_code
-  File "<frozen runpy>", line 198 in _run_module_as_main
-
-Extension modules: numpy._core._multiarray_umath, numpy.linalg._umath_linalg, torch._C, torch._C._dynamo.autograd_compiler, torch._C._dynamo.eval_frame, torch._C._dynamo.guards, torch._C._dynamo.utils, torch._C._fft, torch._C._linalg, torch._C._nested, torch._C._nn, torch._C._sparse, torch._C._special, torch_npu._C, numpy.random._common, numpy.random.bit_generator, numpy.random._bounded_integers, numpy.random._pcg64, numpy.random._generator, numpy.random._mt19937, numpy.random._philox, numpy.random._sfc64, numpy.random.mtrand, markupsafe._speedups, yaml._yaml, google._upb._message (total: 26)
-Segmentation fault
+Traceback (most recent call last):
+  File "<string>", line 1, in <module>
+AttributeError: 'function' object has no attribute '__file__'. Did you mean: '__le__'?
+[ERROR] 2026-07-17-10:29:09 (PID:2617492, Device:-1, RankID:-1) ERR99999 UNKNOWN applicaiton exception
