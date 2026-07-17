@@ -179,11 +179,8 @@ __aicore__ inline void InlineRadixTopK(
             PipeBarrier<PIPE_V>();
             And(xLocalInt16Cast, xLocalInt16Cast, maskTensor.template ReinterpretCast<int16_t>(), calcLen);
             PipeBarrier<PIPE_V>();
-            RDX_V_S_SYNC();
-            RDX_S_V_SYNC();
 
-            // CalcCumsumHistogram: Cast int16 -> float, compare with current-round-only mask
-            PipeBarrier<PIPE_V>();
+            // CalcCumsumHistogram: Cast int16 -> float, compare with involvedMaskFloat
             RDX_V_S_SYNC();
             RDX_S_V_SYNC();
             Cast(xLocalFp32, xLocalInt16Cast, RoundMode::CAST_NONE, curTileLen);
@@ -293,15 +290,6 @@ __aicore__ inline void InlineRadixTopK(
     float boundaryFloat = AscendC::Cast(boundaryBf16);
 
     uint32_t writeOffset = 0;
-    // Debug: dump tileTopK without returning
-    if (debugBatchId == 512) {
-        RDX_V_S_SYNC();
-        indexGm.SetValue(kValue - 1, static_cast<int32_t>(tileTopK.GetValue(0)));
-        indexGm.SetValue(kValue - 2, static_cast<int32_t>(tileTopK.GetValue(1)));
-        indexGm.SetValue(kValue - 3, *reinterpret_cast<int32_t *>(&boundaryFloat));
-        indexGm.SetValue(kValue - 4, totalDefinitelyInTopK_);
-        RDX_S_V_SYNC();
-    }
     for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
         RDX_V_S_SYNC();
         int32_t curTileK = tileTopK.GetValue(tileId);
