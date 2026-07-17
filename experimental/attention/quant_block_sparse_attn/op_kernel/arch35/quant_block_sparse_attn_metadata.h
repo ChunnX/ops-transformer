@@ -41,14 +41,14 @@ constexpr uint32_t BSA_FA_S2_END_INDEX = 6U;
 constexpr uint32_t BSA_FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7U;
 
 struct BsaFaCoreMetadata {
-    uint32_t coreEnable { 0U };
-    uint32_t bn1StartIdx { 0U };
-    uint32_t s1StartIdx { 0U };
-    uint32_t s2StartIdx { 0U };
-    uint32_t bn1EndIdx { 0U };
-    uint32_t s1EndIdx { 0U };
-    uint32_t s2EndIdx { 0U };
-    uint32_t firstFdDataWorkspaceIdx { 0U };
+    uint32_t coreEnable{0U};
+    uint32_t bn1StartIdx{0U};
+    uint32_t s1StartIdx{0U};
+    uint32_t s2StartIdx{0U};
+    uint32_t bn1EndIdx{0U};
+    uint32_t s1EndIdx{0U};
+    uint32_t s2EndIdx{0U};
+    uint32_t firstFdDataWorkspaceIdx{0U};
 };
 
 __aicore__ inline uint32_t GetBsaSectionNum(AscendC::GlobalTensor<int32_t> &metadataGm)
@@ -68,7 +68,8 @@ __aicore__ inline uint32_t GetBsaAttrMetadata(AscendC::GlobalTensor<int32_t> &me
     return metadataGm.GetValue(GetBsaCoreMetadataOffset(sectionIdx, coreIdx) + metaIdx);
 }
 
-__aicore__ inline bool IsBsaCoreEnabled(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionIdx, uint32_t coreIdx)
+__aicore__ inline bool IsBsaCoreEnabled(AscendC::GlobalTensor<int32_t> &metadataGm, uint32_t sectionIdx,
+                                        uint32_t coreIdx)
 {
     return GetBsaAttrMetadata(metadataGm, sectionIdx, coreIdx, BSA_FA_CORE_ENABLE_INDEX) != 0U;
 }
