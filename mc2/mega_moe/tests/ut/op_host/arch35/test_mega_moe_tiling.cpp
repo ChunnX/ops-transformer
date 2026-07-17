@@ -232,9 +232,17 @@ TEST_F(MegaMoeArch35TilingTest, BalancedTokenOwnershipCoversEveryTokenOnce)
 
 TEST_F(MegaMoeArch35TilingTest, ExpertsPerBatchUsesTileWorkAndAicCount)
 {
-    // Fixed EP8 case: 8 GMM1 tiles/expert and 16 GMM2 tiles/expert, so
-    // ceil(36 / min(8, 16)) = 5 experts are needed to fill the AICs.
-    EXPECT_EQ(optiling::MegaMoeBatchTiling::CalcExpertsPerBatch(512U, 8U, 16U, 4096U, 4096U, 36U), 5U);
+    // Fixed EP8 case: hiddenDim is the complete 2N=4096 dimension, hence
+    // every M=256 expert owns 16 GMM1 tiles.  Five experts provide 80 tiles,
+    // covering two complete rounds on 36 AICs (72 tiles).
+    constexpr uint64_t expectedTokens = 512U * 8U / 16U;
+    uint64_t gmm1Tiles = optiling::MegaMoeBatchTiling::CalcGmm1TilesPerExpert(expectedTokens, 4096U);
+    EXPECT_EQ(gmm1Tiles, 16U);
+    uint32_t expertsPerBatch =
+        optiling::MegaMoeBatchTiling::CalcExpertsPerBatch(512U, 8U, 16U, 4096U, 4096U, 36U);
+    EXPECT_EQ(expertsPerBatch, 5U);
+    EXPECT_GE(gmm1Tiles * expertsPerBatch,
+              36U * optiling::MegaMoeBatchTiling::GMM1_TARGET_AIC_ROUNDS);
 
     // The result follows available AICs and tile work rather than epWorldSize.
     EXPECT_EQ(optiling::MegaMoeBatchTiling::CalcExpertsPerBatch(512U, 8U, 16U, 4096U, 4096U, 64U), 8U);

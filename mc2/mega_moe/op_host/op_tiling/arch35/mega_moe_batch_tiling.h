@@ -21,10 +21,24 @@ namespace MegaMoeBatchTiling {
 constexpr uint32_t GMM1_TILE_M = 256U;
 constexpr uint32_t GMM2_GM_TILE_M = 256U;
 constexpr uint32_t GMM_TILE_N = 256U;
+constexpr uint32_t GMM1_TARGET_AIC_ROUNDS = 2U;
 
 inline uint64_t CeilDiv(uint64_t value, uint64_t divisor)
 {
     return value / divisor + static_cast<uint64_t>(value % divisor != 0U);
+}
+
+inline uint64_t CalcGmm1TilesPerExpert(uint64_t expectedTokens, uint32_t hiddenDim)
+{
+    uint64_t expectedMWaves = std::max<uint64_t>(1U, CeilDiv(expectedTokens, GMM1_TILE_M));
+    // hiddenDim is GMM1's complete 2N output dimension.  Interleaving changes
+    // the gate/up layout and ownership, not the amount of MMAD tile work.
+    return expectedMWaves * std::max<uint64_t>(1U, CeilDiv(hiddenDim, GMM_TILE_N));
+}
+
+inline uint64_t CalcGmm2TilesPerExpert(uint64_t expectedTokens, uint32_t h)
+{
+    return std::max<uint64_t>(1U, CeilDiv(expectedTokens, GMM2_GM_TILE_M) * CeilDiv(h, GMM_TILE_N));
 }
 
 inline uint32_t CalcExpertsPerBatch(uint32_t bs, uint32_t topK, uint32_t expertPerRank, uint32_t hiddenDim,
@@ -35,16 +49,20 @@ inline uint32_t CalcExpertsPerBatch(uint32_t bs, uint32_t topK, uint32_t expertP
     }
 
     uint64_t expectedTokens = CeilDiv(static_cast<uint64_t>(bs) * static_cast<uint64_t>(topK), expertPerRank);
-    uint64_t expectedMWaves = std::max<uint64_t>(1U, CeilDiv(expectedTokens, GMM1_TILE_M));
-    // One GMM1 scheduler N step covers gate+up, hence 2 * GMM_TILE_N output columns.
-    uint64_t gmm1TilesPerExpert = expectedMWaves * CeilDiv(hiddenDim, GMM_TILE_N * 2U);
-    uint64_t gmm2TilesPerExpert = CeilDiv(expectedTokens, GMM2_GM_TILE_M) * CeilDiv(h, GMM_TILE_N);
-    uint64_t limitingTilesPerExpert = std::max<uint64_t>(
-        1U, std::min(gmm1TilesPerExpert, gmm2TilesPerExpert));
-    uint64_t expertsToFillAic = CeilDiv(aicNum, limitingTilesPerExpert);
+    uint64_t gmm1TilesPerExpert = CalcGmm1TilesPerExpert(expectedTokens, hiddenDim);
+    uint64_t gmm2TilesPerExpert = CalcGmm2TilesPerExpert(expectedTokens, h);
+
+    // Fill both GMM1 UB ping-pong generations before switching the AICs to
+    // GMM2.  This gives AIV0 a full extra round to consume/quantize GMM1
+    // output instead of making GMM2 immediately poll SwiGLU readiness.
+    uint64_t gmm1TargetTiles = static_cast<uint64_t>(aicNum) * GMM1_TARGET_AIC_ROUNDS;
+    uint64_t expertsForGmm1Pipeline = CeilDiv(gmm1TargetTiles, gmm1TilesPerExpert);
+    // GMM2 writes directly to GM and only needs one full AIC round.
+    uint64_t expertsForGmm2Occupancy = CeilDiv(aicNum, gmm2TilesPerExpert);
+    uint64_t expertsPerBatch = std::max(expertsForGmm1Pipeline, expertsForGmm2Occupancy);
     return static_cast<uint32_t>(std::max<uint64_t>(
         1U, std::min<uint64_t>(MEGA_MOE_MAX_EXPERTS_PER_BATCH,
-                               std::min<uint64_t>(expertPerRank, expertsToFillAic))));
+                               std::min<uint64_t>(expertPerRank, expertsPerBatch))));
 }
 } // namespace MegaMoeBatchTiling
 } // namespace optiling
