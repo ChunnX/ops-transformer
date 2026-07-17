@@ -15,10 +15,8 @@ if r is not None:
     f = r.flatten()
     b = 512
     vals = f[b*512:(b+1)*512].tolist()
-    rd = vals[0]
-    gh = [vals[1], vals[2], vals[3], vals[4]]
-    im = vals[5] & 0xFFFF
-    am = vals[6] & 0xFFFF
-    rk = vals[7]
-    bins = [gh[3], gh[2]-gh[3], gh[1]-gh[2], gh[0]-gh[1]]
-    print(f"round {rd}: gh={gh}, bins={bins}, involved=0x{im:04x}, andMask=0x{am:04x}, remainK={rk}")
+    im = vals[0] & 0xFFFF
+    bf = struct.unpack('f', struct.pack('i', vals[1]))[0]
+    print(f"involvedMask=0x{im:04x}, boundaryFloat={bf}")
+    print(f"tileTopK[0]={vals[2]}, tileTopK[1]={vals[3]}, sum={vals[4]}")
+    print(f"totalDefinitelyInTopK={vals[5]}, remainK={vals[6]}")
