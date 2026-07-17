@@ -1,40 +1,40 @@
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# GRAPH_PATH=7 PYTHONPATH=/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test 
- python3 -m ttk e2e -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv --plugin /home/z00954345/jialu/ops-transformer/attentio
-n/quant_flash_attn/tests/assets --backend npu -t TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0
-2026-07-17 08:07:12,067 [INFO] [2461944 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv 
-2026-07-17 08:07:16,461 [INFO] [2461944 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-17 08:07:17,014 [INFO] [2461944 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-17 08:07:17,014 [INFO] [2461944 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-17 08:07:17,014 [INFO] [2461944 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-17 08:07:17,014 [INFO] [2461944 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-17 08:07:18,157 [INFO] [2461944 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-17 08:07:18,163 [INFO] [2461944 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-17 08:07:18,163 [INFO] [2461944 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-17 08:07:19,301 [INFO] [2461944 MP MT] [instance.py:42]: Device count: 1 
-2026-07-17 08:07:19,301 [INFO] [2461944 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-17 08:07:19,301 [INFO] [2461944 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-17 08:07:19,302 [INFO] [2461944 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv ... 
-2026-07-17 08:07:19,302 [INFO] [2461944 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
-2026-07-17 08:07:19,303 [INFO] [2461944 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# GRAPH_PATH=7 PYTHONPATH=/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mx
+fp8_test python3 -m ttk e2e -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv --plugin /home/z00954345/jialu/ops-tra
+nsformer/attention/quant_flash_attn/tests/assets --backend npu -t TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0
+2026-07-17 09:40:48,936 [INFO] [2570632 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv 
+2026-07-17 09:40:53,407 [INFO] [2570632 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-17 09:40:53,968 [INFO] [2570632 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-17 09:40:53,969 [INFO] [2570632 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-17 09:40:53,969 [INFO] [2570632 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-17 09:40:53,969 [INFO] [2570632 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-17 09:40:55,112 [INFO] [2570632 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-17 09:40:55,118 [INFO] [2570632 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-17 09:40:55,119 [INFO] [2570632 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-17 09:40:56,256 [INFO] [2570632 MP MT] [instance.py:42]: Device count: 1 
+2026-07-17 09:40:56,257 [INFO] [2570632 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-17 09:40:56,257 [INFO] [2570632 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-17 09:40:56,257 [INFO] [2570632 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv ... 
+2026-07-17 09:40:56,258 [INFO] [2570632 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-17 09:40:56,258 [INFO] [2570632 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
 ninja: no work to do.
 ninja: no work to do.
-[2026/07/17 08:07:20] [INFO]-instance_base.py:0237 - Checking testcase name...
-[2026/07/17 08:07:20] [INFO]-instance_base.py:0240 - Case number: 1
-[2026/07/17 08:07:20] [INFO]-instance_base.py:0313 - Initialize output csv file...
-[2026/07/17 08:07:20] [INFO]-instance_base.py:0321 - Output csv file is not specified. It will be set as /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_result.csv
-[2026/07/17 08:07:20] [INFO]-instance_base.py:0145 - Process per device: 1
-[2026/07/17 08:07:20] [INFO]-instance_base.py:0147 - Preparing Task Executors...
-[2026/07/17 08:07:20] [INFO]-instance_base.py:0211 - 
+[2026/07/17 09:40:57] [INFO]-instance_base.py:0237 - Checking testcase name...
+[2026/07/17 09:40:57] [INFO]-instance_base.py:0240 - Case number: 1
+[2026/07/17 09:40:57] [INFO]-instance_base.py:0313 - Initialize output csv file...
+[2026/07/17 09:40:57] [INFO]-instance_base.py:0321 - Output csv file is not specified. It will be set as /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_result.csv
+[2026/07/17 09:40:57] [INFO]-instance_base.py:0145 - Process per device: 1
+[2026/07/17 09:40:57] [INFO]-instance_base.py:0147 - Preparing Task Executors...
+[2026/07/17 09:40:57] [INFO]-instance_base.py:0211 - 
 +-------------------------------------------------------------------------------------------------------+
 | Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
 +-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 2462247 D0P0             UNKNOWN              IDLE     0s  |
+| npu:0                                    | 2571087 D0P0             UNKNOWN              IDLE     0s  |
 +-------------------------------------------------------------------------------------------------------+
-2026-07-17 08:07:25,512 [INFO] [2462247 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-17 09:41:02,235 [INFO] [2571087 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
 get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67
 ninja: no work to do.
 ninja: no work to do.
-[2026/07/17 08:07:27] [INFO]-profiling.py:0056 - 
+[2026/07/17 09:41:03] [INFO]-profiling.py:0056 - 
 ----------------------------------------------------------------------------------------------------
 API Name: qfa_mxfp8_wrapper.npu_qfa_mxfp8
 Golden API: 
@@ -71,19 +71,19 @@ Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None
 Precision Tolerance: None
 Absolute Precision: (1e-08,)
 Mode: ASCEND_ONBOARD
-PID: 2462247
+PID: 2571087
 Device: 0
 ----------------------------------------------------------------------------------------------------
-[2026/07/17 08:07:29] [INFO]-qfa_mxfp8_wrapper.py:0084 - [WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[2026/07/17 08:07:29] [INFO]-qfa_mxfp8_wrapper.py:0107 - [WRAPPER] graph_path=7, 调用 npu_mxfp8_fa
-[2026/07/17 08:07:29] [INFO]-fia_fullquant_mxfp8_golden.py:1001 - [NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
-[2026/07/17 08:07:29] [INFO]-fia_fullquant_mxfp8_golden.py:1005 - [NPU TND] q=torch.Size([3, 1, 64])
-[2026/07/17 08:07:29] [INFO]-fia_fullquant_mxfp8_golden.py:1010 - [NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
-[2026/07/17 08:07:29] [INFO]-fia_fullquant_mxfp8_golden.py:1080 - [NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
-[2026/07/17 08:07:29] [INFO]-fia_fullquant_mxfp8_golden.py:1088 - [NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
-[2026/07/17 08:07:29] [INFO]-fia_fullquant_mxfp8_golden.py:1093 - [NPU] 调用 TND 模式...
-[2026/07/17 08:07:29] [INFO]-fia_fullquant_mxfp8_golden.py:1131 - [NPU] 调用 aclgraph (npugraph_ex)...
-[2026/07/17 08:07:29] [INFO]-patch_getenv.py:0015 - get env TORCHINDUCTOR_CACHE_DIR = /tmp/torchinductor_root
-[2026/07/17 08:07:30] [WARNING]-pool.py:0504 - Process TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 exited unexpectedly with code -11
-[2026/07/17 08:07:30] [CRITICAL]-profile_object.py:0159 - Profile process crashed at stage UNKNOWN for testcase TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 with pid None. System error: Process TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 exited unexpectedly with code -11
-[2026/07/17 08:07:30] [INFO]-instance_base.py:0126 - ttk Profiling complete
+[2026/07/17 09:41:05] [INFO]-qfa_mxfp8_wrapper.py:0084 - [WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[2026/07/17 09:41:05] [INFO]-qfa_mxfp8_wrapper.py:0107 - [WRAPPER] graph_path=7, 调用 npu_mxfp8_fa
+[2026/07/17 09:41:05] [INFO]-fia_fullquant_mxfp8_golden.py:1001 - [NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
+[2026/07/17 09:41:05] [INFO]-fia_fullquant_mxfp8_golden.py:1005 - [NPU TND] q=torch.Size([3, 1, 64])
+[2026/07/17 09:41:05] [INFO]-fia_fullquant_mxfp8_golden.py:1010 - [NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
+[2026/07/17 09:41:05] [INFO]-fia_fullquant_mxfp8_golden.py:1080 - [NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
+[2026/07/17 09:41:05] [INFO]-fia_fullquant_mxfp8_golden.py:1088 - [NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
+[2026/07/17 09:41:05] [INFO]-fia_fullquant_mxfp8_golden.py:1093 - [NPU] 调用 TND 模式...
+[2026/07/17 09:41:05] [INFO]-fia_fullquant_mxfp8_golden.py:1131 - [NPU] 调用 aclgraph (npugraph_ex)...
+[2026/07/17 09:41:05] [INFO]-patch_getenv.py:0015 - get env TORCHINDUCTOR_CACHE_DIR = /tmp/torchinductor_root
+[2026/07/17 09:41:06] [WARNING]-pool.py:0504 - Process TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 exited unexpectedly with code -11
+[2026/07/17 09:41:06] [CRITICAL]-profile_object.py:0159 - Profile process crashed at stage UNKNOWN for testcase TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 with pid None. System error: Process TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 exited unexpectedly with code -11
+[2026/07/17 09:41:06] [INFO]-instance_base.py:0126 - ttk Profiling complete
