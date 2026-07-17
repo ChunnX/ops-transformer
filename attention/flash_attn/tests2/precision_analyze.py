@@ -1,0 +1,455 @@
+"""精度失败分析: 把比对失败点渲染成坐标化、可读的失败报告。
+
+设计:
+- analyze_failure 为唯一入口, 复用 compare 的 _diff/_fail_mask, 不重复计算。
+- 按 verbosity 分级输出: None(≤10 散点+片段, 截断提示)/fold(全量折叠)/all
+  (逐点坐标+cpu/npu/diff 值)。大面积失败自动逐级合并全覆盖维度为单行。
+- 坐标列名由 layout 签名推导 (BNSD/BSND/TND), 未知排布退化为"轴N"。
+- 表格 CJK 感知对齐 (unicodedata.east_asian_width)。
+- analyze_dimensions/analyze_continuity/visualize_failure 为扩展点, 算子可 override。
+"""
+import logging
+import os
+import unicodedata
+
+import torch
+
+logger = logging.getLogger("precision_analyze")
+
+SEP = "━" * 80
+
+
+def _display_width(s):
+    """CJK 感知的字符串显示宽度。"""
+    w = 0
+    for c in str(s):
+        eaw = unicodedata.east_asian_width(c)
+        w += 2 if eaw in ("W", "F") else 1
+    return w
+
+DEFAULT_SCATTER_LIMIT = 10
+DEFAULT_SEGMENT_LIMIT = 10
+LARGE_FAIL_THRESHOLD = 1_000_000  # 超过此数量跳过坐标分析, 仅显示概要
+
+_LAYOUT_COLUMNS = {"BNSD": ["B", "N", "S", "D"], "BSND": ["B", "S", "N", "D"], "TND": ["T", "N", "D"]}
+
+
+def _col_names(shape, layout):
+    return _LAYOUT_COLUMNS.get(layout, [f"轴{i}" for i in range(len(shape))])
+
+
+# ═══════════════════════════════════════════════════════════════
+# 表格渲染
+# ═══════════════════════════════════════════════════════════════
+
+def _pad(s, width, right_align):
+    """CJK 感知的左/右填充。"""
+    pad = " " * max(0, width - _display_width(s))
+    return pad + s if right_align else s + pad
+
+
+def _render_table(col_names, col_types, rows):
+    """先扫描算列宽(CJK感知), 统一 pad 输出。col_types: 'c'=坐标左对齐, 'n'=数字右对齐。"""
+    widths = [_display_width(h) for h in col_names]
+    for row in rows:
+        for i, cell in enumerate(row):
+            widths[i] = max(widths[i], _display_width(cell))
+
+    header = "    " + "  ".join(
+        _pad(h, w, col_types[i] == "n") for i, (h, w) in enumerate(zip(col_names, widths)))
+    sep_line = "    " + "  ".join("─" * w for w in widths)
+
+    lines = [header, sep_line]
+    for row in rows:
+        cells = [_pad(str(c), w, col_types[i] == "n")
+                 for i, (c, w) in enumerate(zip(row, widths))]
+        lines.append("    " + "  ".join(cells))
+    return lines
+
+
+# ═══════════════════════════════════════════════════════════════
+# 连续段查找 (矢量化)
+# ═══════════════════════════════════════════════════════════════
+
+def _flat_to_coords(fail_indices, shape):
+    """矢量化: 扁平索引 → 坐标张量 (N, ndim), 按字典序排序。"""
+    ndim = len(shape)
+    strides = [1]
+    for s in reversed(shape[1:]):
+        strides.insert(0, strides[0] * s)
+
+    coords = torch.zeros(len(fail_indices), ndim, dtype=torch.int64)
+    r = fail_indices.long()
+    for i in range(ndim):
+        coords[:, i] = r // strides[i]
+        r = r % strides[i]
+
+    # 稳定排序 (从最后一维到第一维)
+    order = torch.arange(len(coords), dtype=torch.int64)
+    for i in range(ndim - 1, -1, -1):
+        order = order[coords[order, i].argsort(stable=True)]
+    return coords[order]
+
+
+def _find_ranges(coords_t, shape):
+    """矢量化: 在已排序坐标张量上找前缀分组和D连续段。接受 list-of-tuples 或 tensor。"""
+    if isinstance(coords_t, list):
+        coords_t = torch.tensor(coords_t, dtype=torch.int64)
+    ndim = len(shape)
+    dim_size = shape[-1]
+    n = len(coords_t)
+    segments = []
+    scatter = []
+
+    if n == 0:
+        return segments, scatter
+
+    if ndim == 1:
+        # 1D: 所有点同一前缀(空), 直接在D维找连续段
+        _emit_ranges(segments, scatter, (), coords_t[:, 0], dim_size)
+        return segments, scatter
+
+    # 找前缀变化边界: 前 ndim-1 维任意变化处
+    prefix_cols = coords_t[:, :ndim - 1]
+    prefix_change = torch.zeros(n, dtype=torch.bool)
+    prefix_change[1:] = (prefix_cols[1:] != prefix_cols[:-1]).any(dim=1)
+    boundaries = prefix_change.nonzero(as_tuple=True)[0].tolist() + [n]
+
+    prev = 0
+    for b in boundaries:
+        prefix = tuple(coords_t[prev, :ndim - 1].tolist())
+        d_col = coords_t[prev:b, -1]
+        _emit_ranges(segments, scatter, prefix, d_col, dim_size)
+        prev = b
+
+    return segments, scatter
+
+
+def _emit_ranges(segments, scatter, prefix, d_vals, dim_size):
+    """从D值列中找出连续区间并发射片段/散点。"""
+    if len(d_vals) == 0:
+        return
+    unique_d = torch.unique(d_vals)
+    if len(unique_d) == 0:
+        return
+    # 找间隙
+    gaps = torch.cat([torch.tensor([True]),
+                      (unique_d[1:] - unique_d[:-1]) > 1,
+                      torch.tensor([True])])
+    gap_pos = gaps.nonzero(as_tuple=True)[0]
+    for j in range(len(gap_pos) - 1):
+        start = int(unique_d[gap_pos[j]])
+        end = int(unique_d[gap_pos[j + 1] - 1])
+        if start == end:
+            scatter.append(prefix + (start,))
+        elif start == 0 and end == dim_size - 1:
+            segments.append((prefix, (-1, -1)))
+        else:
+            segments.append((prefix, (start, end)))
+
+
+# ═══════════════════════════════════════════════════════════════
+# 紧凑报告
+# ═══════════════════════════════════════════════════════════════
+
+def _merge_full_coverage(segments, shape):
+    """逐级合并全覆盖: 从 S 向 B (从最内层 prefix 维向外)。合并后 prefix 长度不变。"""
+    if not segments or len(segments) <= 1:
+        return segments
+
+    ndim = len(shape)
+    # prefix_len: ndim-2(S) → ndim-3(N)... → 0
+    for prefix_len in range(ndim - 2, -1, -1):
+        groups = {}
+        for prefix, d_range in segments:
+            key = prefix[:prefix_len] if prefix_len > 0 else ()
+            groups.setdefault(key, []).append((prefix, d_range))
+
+        merged = []
+        for key, items in groups.items():
+            all_full = all(dr == (-1, -1) for _, dr in items)
+            positions = sorted({p[prefix_len] for p, _ in items})
+            if all_full and len(positions) == shape[prefix_len]:
+                # 合并: prefix 保持不变但该位改为全覆盖标记
+                template = list(items[0][0])
+                template[prefix_len] = (-1, -1)
+                merged.append((tuple(template), (-1, -1)))
+            else:
+                merged.extend(items)
+        segments = merged
+
+    return segments
+
+
+def _compact_rows(fail_indices, shape, layout, verbose):
+    """构建紧凑表行: 散点+片段。返回(rows, truncated)。"""
+    ndim = len(shape)
+    col_names = _col_names(shape, layout)
+
+    # 扁平索引 → 坐标列表
+    coords = _flat_to_coords(fail_indices, shape)
+
+    segments, scatter = _find_ranges(coords, shape)
+    segments = _merge_full_coverage(segments, shape)
+
+    rows = []
+
+    # 片段行
+    seg_limit = DEFAULT_SEGMENT_LIMIT if verbose is None else len(segments)
+    for prefix, sd in segments[:seg_limit]:
+        row = _fmt_prefix_range(prefix, sd, shape, col_names)
+        count = _range_count(prefix, sd, shape)
+        rows.append(row + (f"{count:,}",))
+
+    # 散点行
+    sct_limit = DEFAULT_SCATTER_LIMIT if verbose is None else len(scatter)
+    for coord in scatter[:sct_limit]:
+        rows.append(tuple(str(v) for v in coord) + ("1",))
+
+    # 截断提示 (表外独立行, 不混入表格 rows)
+    trunc_hint = ""
+    if verbose is None:
+        hidden_s = len(scatter) - DEFAULT_SCATTER_LIMIT
+        hidden_g = len(segments) - DEFAULT_SEGMENT_LIMIT
+        if hidden_s > 0 or hidden_g > 0:
+            parts = []
+            if hidden_s > 0:
+                parts.append(f"{hidden_s} 散点")
+            if hidden_g > 0:
+                parts.append(f"{hidden_g} 片段")
+            trunc_hint = "... " + " + ".join(parts) + " (--verbose_diff 查看)"
+
+    return rows, len(col_names), trunc_hint
+
+
+
+
+def _fmt_coord_val(v, size):
+    """坐标值或区间 → 字符串。"""
+    if isinstance(v, tuple):
+        if v == (-1, -1):
+            return f"[0..{size - 1}]"
+        return f"[{v[0]}..{v[1]}]"
+    return str(v)
+
+
+def _fmt_prefix_range(prefix, d_range, shape, col_names):
+    """前缀 + D区间 → 行单元格元组。"""
+    parts = [_fmt_coord_val(v, shape[i]) for i, v in enumerate(prefix)]
+    parts.append(_fmt_coord_val(d_range, shape[-1]))
+    return tuple(parts)
+
+
+def _range_count(prefix, d_range, shape):
+    """片段覆盖的元素数。"""
+    count = 1
+    for i, v in enumerate(prefix):
+        if v == (-1, -1):
+            count *= shape[i]
+    if d_range == (-1, -1):
+        count *= shape[-1]
+    else:
+        count *= d_range[1] - d_range[0] + 1
+    return count
+
+
+# ═══════════════════════════════════════════════════════════════
+# 概要 / 预览
+# ═══════════════════════════════════════════════════════════════
+
+def _summary(key, shape, dtype, fail_cnt, total, max_abs, mean_abs, atol, rtol, layout):
+    pct = fail_cnt / total * 100 if total else 0.0
+    return [
+        f"  key='{key}'  shape={tuple(shape)}  dtype={dtype}  layout={layout}",
+        f"  总数: {total:,}   失败: {fail_cnt:,} ({pct:.4f}%)   "
+        f"MaxΔ: {max_abs:.6f}  MeanΔ: {mean_abs:.6f}  "
+        f"阈值: atol={atol} rtol={rtol}",
+    ]
+
+
+def _preview(cpu_flat, npu_flat, total):
+    lines = [f"\n  [前10后10预览]", f"  {'idx':>10}  {'cpu':>14}  {'npu':>14}",
+             f"  {'─' * 10}  {'─' * 14}  {'─' * 14}"]
+    n = min(10, total)
+    for i in range(n):
+        lines.append(f"  {i:>10}  {cpu_flat[i].item():>+14.8f}  {npu_flat[i].item():>+14.8f}")
+    if total > 20:
+        lines.append(f"  {'...':>10}")
+        for i in range(total - 10, total):
+            lines.append(f"  {i:>10}  {cpu_flat[i].item():>+14.8f}  {npu_flat[i].item():>+14.8f}")
+    elif total > 10:
+        for i in range(10, total):
+            lines.append(f"  {i:>10}  {cpu_flat[i].item():>+14.8f}  {npu_flat[i].item():>+14.8f}")
+    return lines
+
+
+# ═══════════════════════════════════════════════════════════════
+# 入口
+# ═══════════════════════════════════════════════════════════════
+
+def _render_failure_detail(fail_indices, cpu_t, npu_t, diff, shape, layout,
+                           verbose, total) -> list[str]:
+    """失败主体: 三分支表 (超量跳过/all逐点/compact折叠) + Max-RE前3 + 预览。"""
+    lines = []
+    col_names = _col_names(shape, layout or "")
+    cpu_flat = cpu_t.reshape(-1)
+    npu_flat = npu_t.reshape(-1)
+    diff_flat_t = diff.reshape(-1)
+
+    if len(fail_indices) > LARGE_FAIL_THRESHOLD:
+        lines.append(f"    失败点数过多 ({len(fail_indices):,} > {LARGE_FAIL_THRESHOLD:,}), "
+                     f"跳过坐标分析以节省内存")
+        lines.append("    (尝试缩小 --case_id 范围或使用 --verbose_diff all 查看全部)")
+        lines.append("")
+    elif verbose == "all":
+        # 逐点坐标 + cpu/npu/diff 值
+        coords = _flat_to_coords(fail_indices, tuple(shape))
+        all_rows = []
+        for flat, coord in zip(fail_indices.tolist(), coords):
+            all_rows.append(
+                (str(flat),)
+                + tuple(str(v.item()) for v in coord)
+                + (f"{cpu_flat[flat].item():>+.6f}",
+                   f"{npu_flat[flat].item():>+.6f}",
+                   f"{diff_flat_t[flat].item():.6f}")
+            )
+        if all_rows:
+            table_header = ["idx"] + col_names + ["cpu", "npu", "diff"]
+            col_types = ["n"] * (len(col_names) + 4)
+            lines += _render_table(table_header, col_types, all_rows)
+    else:
+        rows, axis_width, trunc_hint = _compact_rows(
+            fail_indices, tuple(shape), layout or "", verbose)
+        if rows:
+            table_header = col_names + ["元素数"]
+            col_types = (["n"] * (axis_width + 1))
+            lines += _render_table(table_header, col_types, rows)
+        if trunc_hint:
+            lines.append(f"    {trunc_hint}")
+            lines.append(
+                "    (使用 --verbose_diff fold 查看全部, "
+                "--verbose_diff all 查看全部点位)"
+            )
+        lines.append("")
+
+    # ── Max-RE 前3 ──
+    rel = torch.abs(cpu_flat - npu_flat) / (torch.abs(cpu_flat) + 1e-6)
+    lines.append(f"  [Max-RE 前3] (绝对误差最大)")
+    lines.append(f"  {'idx':>10}  {'cpu':>14}  {'npu':>14}  {'absErr':>12}  {'relErr':>10}")
+    lines.append(f"  {'─' * 10}  {'─' * 14}  {'─' * 14}  {'─' * 12}  {'─' * 10}")
+    for i in diff_flat_t.topk(min(3, total)).indices.tolist():
+        lines.append(
+            f"  {i:>10}  {cpu_flat[i].item():>+14.8f}  {npu_flat[i].item():>+14.8f}"
+            f"  {diff_flat_t[i].item():>12.8f}  {rel[i].item():>10.6f}"
+        )
+
+    # ── 预览 (仅非 all 模式) ──
+    if verbose != "all":
+        lines += _preview(cpu_flat, npu_flat, total)
+    return lines
+
+
+def _analyze_one_key(key, result, cpu_out, npu_out, verbose, layout) -> list[str]:
+    """单个 key 的失败分析: 校验 → 概要 → 失败主体。"""
+    lines = []
+    if key not in cpu_out or key not in npu_out:
+        lines.append(f"\n  [WARN] key '{key}' 不在 cpu_out/npu_out 中, 跳过")
+        return lines
+
+    cpu_t = cpu_out[key].float()
+    npu_t = npu_out[key].float()
+    if cpu_t.shape != npu_t.shape:
+        lines.append(
+            f"\n  [ERROR] key='{key}' shape不匹配: "
+            f"cpu={tuple(cpu_t.shape)} npu={tuple(npu_t.shape)}")
+        return lines
+
+    # 复用 compare 已算好的 _diff/_fail_mask (避免重复 torch.abs + isclose)
+    diff = result.get("_diff")
+    fail_mask = result.get("_fail_mask")
+    if diff is None or fail_mask is None:
+        diff = torch.abs(cpu_t - npu_t)
+        rtol = result.get("rtol", 0.005)
+        atol = result.get("atol", 0.0001)
+        fail_mask = ~torch.isclose(cpu_t, npu_t, rtol=rtol, atol=atol)
+
+    fail_cnt = result.get("fail_cnt", int(fail_mask.sum().item()))
+    total = result.get("total", cpu_t.numel())
+    max_abs = result.get("max_abs", diff.max().item())
+    mean_abs = result.get("mean_abs", diff.mean().item())
+    rtol = result.get("rtol", 0.005)
+    atol = result.get("atol", 0.0001)
+
+    lines += _summary(key, cpu_t.shape, cpu_out[key].dtype, fail_cnt, total,
+                      max_abs, mean_abs, atol, rtol, layout or "")
+    if fail_cnt > 0:
+        lines.append("  " + "═" * 64)
+        fail_indices = fail_mask.reshape(-1).nonzero(as_tuple=False).squeeze(1)
+        lines += _render_failure_detail(
+            fail_indices, cpu_t, npu_t, diff, cpu_t.shape, layout, verbose, total)
+    return lines
+
+
+# ═══════════════════════════════════════════════════════════════
+# 入口
+# ═══════════════════════════════════════════════════════════════
+
+def analyze_failure(
+    cpu_out: dict,
+    npu_out: dict,
+    compare_result: dict,
+    case_dir: str = None,
+    verbose: str | None = None,
+    layout: str = "",
+) -> str:
+    """精度失败分析: 遍历失败 key, 逐个产出 概要→坐标化紧凑表→Max-RE→预览, 写 fail_analysis.txt"""
+    lines = [SEP, "  精度失败分析报告", SEP]
+    for key, result in compare_result.items():
+        if not isinstance(result, dict) or result.get("passed", True):
+            continue
+        lines += _analyze_one_key(key, result, cpu_out, npu_out, verbose, layout)
+
+    lines += analyze_dimensions(cpu_out, npu_out, compare_result)
+    lines += analyze_continuity(cpu_out, npu_out, compare_result)
+    lines += visualize_failure(cpu_out, npu_out, compare_result, case_dir)
+    lines.append(f"\n{SEP}")
+
+    report = "\n".join(lines)
+    if case_dir is not None:
+        os.makedirs(case_dir, exist_ok=True)
+        with open(os.path.join(case_dir, "fail_analysis.txt"), "w", encoding="utf-8") as f:
+            f.write(report)
+    return report
+
+
+def analyze_dimensions(cpu_out: dict, npu_out: dict, compare_result: dict) -> list[str]:
+    """维度分析扩展点。算子可 override, 默认不输出。"""
+    return []
+
+
+def analyze_continuity(cpu_out: dict, npu_out: dict, compare_result: dict) -> list[str]:
+    """连续性分析扩展点。算子可 override, 默认不输出。"""
+    return []
+
+
+def visualize_failure(cpu_out: dict, npu_out: dict, compare_result: dict, save_dir: str = None) -> list[str]:
+    """可视化扩展点。算子可 override, 默认不输出。"""
+    return []
+
+
+def analyze_failure_three_way(cpu_out: dict, npu_out: dict, gpu_out: dict,
+                              compare_result: dict, *, case_dir: str = None,
+                              verbose: str = None, layout: str = "") -> str:
+    """三方比对 (cpu/npu/gpu) 的精度失败分析接口。
+
+    设计: 与 compare.compare_three_way 命名对称。三方比对多出 GPU 维度, 理想情况下
+    应分析"NPU 误差相对 GPU benchmark 的分布"等三方独有信息。
+    当前为占位实现: 退化为两方分析 (委托 analyze_failure), 仅产出 cpu-vs-npu 报告,
+    不消费 gpu_out 与 compare_result 中的 gpu_*/ratio_* 字段。
+    未来扩展时在此实现三方专属分析, orchestrator 据 gpu_out 是否为空分派本接口。
+    """
+    logger.warning(
+        "[pa] 三方比对精度分析尚未实现, 退化为 cpu-vs-npu 两方报告; "
+        "gpu 逐点分析 (含 NPU 相对 GPU 误差分布) 暂不可用")
+    return analyze_failure(cpu_out, npu_out, compare_result,
+                           case_dir=case_dir, verbose=verbose, layout=layout)

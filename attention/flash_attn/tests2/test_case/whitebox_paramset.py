@@ -1,0 +1,4 @@
+PARAM_NAMES = []
+DEFAULTS = {}
+CASE_SETS = {}
+SKIP_CASES = {}
