@@ -475,7 +475,6 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGradRunInfo &runInfo)
 {
-    // SyncAll<true>();
     // printf("ProcessVector7Deter : %d \n", runInfo.deterTaskId);
     CrossCoreSetFlag<0, PIPE_MTE2>(SYNC_C3_TO_V7_DETER_MTE2_FLAG);
     CrossCoreWaitFlag<0, PIPE_MTE2>(SYNC_C3_TO_V7_DETER_MTE2_FLAG);
@@ -499,7 +498,6 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGra
     event_t mte2WaitMte3EventId = static_cast<event_t>(GetTPipePtr()->AllocEventID<AscendC::HardEvent::MTE3_MTE2>());
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3EventId);
     SetAtomicAdd<T>();
-    // pipe_barrier(PIPE_ALL);
     for (int32_t idx = 0; idx < coreNum; idx++) {
         usedBS1Index = runInfo.sTaskId * coreNum + idx;
         // 重新获取b和S1的值
@@ -507,8 +505,6 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGra
             runInfo.taskId, currentS2Size)) {
             continue;
         }
-        // pipe_barrier(PIPE_ALL);
-
         int64_t processSize;
         int32_t v0RealKSize;
         int32_t v1RealKSize;
@@ -523,18 +519,16 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGra
                     currentS2Size - runInfo.s2BlockOffset;
         processSize = Max(processSize, 0);
         // printf("idx : %d processSize : %d \n", idx, processSize);
-        // pipe_barrier(PIPE_ALL);
         perCoreKSize = CeilDiv(processSize, coreNum);
         int32_t usedCoreNum = CeilDiv(processSize, perCoreKSize);
-        // if (constInfo.aicIdx == 0 || constInfo.aicIdx == 31) {
-        //     printf("idx : %d usedBS1Index : %d accumS2Len : %d runInfo.s2BlockOffset : %d currentS2Size : %d processSize : %d perCoreKSize : %d \n", idx, usedBS1Index, accumS2Len, runInfo.s2BlockOffset, currentS2Size, processSize, perCoreKSize);
+        // if (bIdx == 1 ) {
+        //     // printf("idx : %d usedBS1Index : %d accumS2Len : %d runInfo.s2BlockOffset : %d currentS2Size : %d processSize : %d perCoreKSize : %d \n", idx, usedBS1Index, accumS2Len, runInfo.s2BlockOffset, currentS2Size, processSize, perCoreKSize);
         // }
         if (constInfo.aicIdx >= usedCoreNum) {
             CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
             CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
             continue;
         }
-        // pipe_barrier(PIPE_ALL);
         tailCoreKSize = processSize - (usedCoreNum - 1) * perCoreKSize;
         curCoreKSize = constInfo.aicIdx == usedCoreNum - 1 ? tailCoreKSize : perCoreKSize;
         v0RealKSize = CeilDiv(curCoreKSize, MODE_NUM_2);
@@ -553,31 +547,21 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGra
             CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
             continue;
         }
-        // pipe_barrier(PIPE_ALL);
         CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
         int64_t mm3GmBaseOffset = idx * PROCESS_KV_SIZE * constInfo.dSizeQueryIndex +
                                 vCoreKOffset * constInfo.dSizeQueryIndex;
         int64_t bmm3Offset = (accumS2Len + runInfo.s2BlockOffset + vCoreKOffset) * constInfo.dSizeQueryIndex;
         GlobalTensor<T> srcGm = mm3DeterResGm[mm3GmBaseOffset];
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3EventId);
-        // pipe_barrier(PIPE_ALL);
         AscendC::Mutex::Lock<PIPE_MTE2>(mteBufMutexId);
         // printf("idx : %d vCoreKOffset : %d vRealKSize : %d processSize : %d perCoreKSize : %d \n",idx, vCoreKOffset, vRealKSize, processSize, perCoreKSize);
         DataCopy(dkTensor, srcGm, vRealKSize * constInfo.dSizeQueryIndex);
-            pipe_barrier(PIPE_ALL);
-            uint32_t array1[] = {static_cast<uint32_t>(1), static_cast<uint32_t>(64)}; 
-            AscendC::ShapeInfo shapeInfo1(2, array1); // dim为2， shape为(8,8) 
-            // AscendC::DumpTensor(deterRes, 111, 1 * 64, shapeInfo1);
-            // AscendC::DumpTensor(dkTensor, 222, 1 * 64, shapeInfo1);
         AscendC::Mutex::Unlock<PIPE_MTE2>(mteBufMutexId);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
         WaitFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
         AscendC::Mutex::Lock<PIPE_MTE3>(mteBufMutexId);
         DataCopy(bmm3Res[bmm3Offset], dkTensor, vRealKSize * constInfo.dSizeQueryIndex);
         AscendC::Mutex::Unlock<PIPE_MTE3>(mteBufMutexId);
-            pipe_barrier(PIPE_ALL);
-            // AscendC::DumpTensor(bmm3Res[bmm3Offset], 222, 1 * 64, shapeInfo1);
-
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3EventId);
         CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
     }

@@ -38,18 +38,13 @@ public:
     static constexpr uint32_t N_SPLIT_SIZE = 128;    // n方向切分
     static constexpr uint32_t K_SPLIT_SIZE = 128;    // k方向切分
     static constexpr uint32_t QUERY_INDEX_SIZE = 128; // k方向切分
-    static constexpr uint32_t DROPE_SIZE = 64;
 
     static constexpr uint8_t SYNC_MODE = 2;
     static constexpr uint32_t C0_SIZE = 16;
 
     // matmul global tensor
-    GlobalTensor<INPUT_T> queryGm;
-    GlobalTensor<INPUT_T> qRopeGm;
     GlobalTensor<INPUT_T> queryIndexGm;
     GlobalTensor<INPUT_T> keyIndexGm;
-    GlobalTensor<T> mm2ResGm;
-    GlobalTensor<INPUT_T> gatherSYResGm;
     GlobalTensor<OUT_T> mm4ResGm;
     GlobalTensor<OUT_T> mm3ResGm;
     GlobalTensor<T> deterRes;
@@ -59,7 +54,6 @@ public:
     BufferManager<BufferType::L1> *l1BufferManagerPtr;
     BuffersPolicy3buff<BufferType::L1> sYKeyL1Buf;
     BuffersPolicy3buff<BufferType::L1> sYQueryL1Buf;
-    // BuffersPolicySingleBuffer<BufferType::L1> sYGatherResBuf; // mm4右矩阵用
 
     BufferManager<BufferType::L0A> l0aBufferManager;
     BufferManager<BufferType::L0B> l0bBufferManager;
@@ -89,16 +83,10 @@ public:
 private:
     __aicore__ inline void CopyGmToL1(LocalTensor<INPUT_T> &l1Tensor, GlobalTensor<INPUT_T> &gmSrcTensor, uint32_t srcN,
         uint32_t srcD, uint32_t srcDstride);
-    __aicore__ inline void CopyInMm1AToL1(LocalTensor<INPUT_T> &l1Tensor, const DLIKGradRunInfo &info,
-        DLIKGradConstInfo &constInfo);
-    __aicore__ inline void CopyInMm1ARopeToL1(LocalTensor<INPUT_T> &l1Tensor, const DLIKGradRunInfo &info,
-        DLIKGradConstInfo &constInfo);
     __aicore__ inline void CopyInMm2AToL1(LocalTensor<INPUT_T> &l1Tensor, const DLIKGradRunInfo &info,
         DLIKGradConstInfo &constInfo);
     __aicore__ inline void CopyInMm2BToL1(LocalTensor<INPUT_T> &l1Tensor, const DLIKGradRunInfo &info,
         DLIKGradConstInfo &constInfo);
-    __aicore__ inline void CopyInMm4BToL1(LocalTensor<INPUT_T> &l1Tensor, uint64_t gatherOffset, uint32_t mSizeAct,
-        uint32_t realDSize, uint32_t headOffset);
 };
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -173,13 +161,6 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::CopyInMm2BToL1(LocalTensor
     CopyGmToL1(l1Tensor, srcGm, info.kProcessSize, constInfo.dSizeQueryIndex, constInfo.dSizeQueryIndex);
 }
 
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::CopyInMm4BToL1(LocalTensor<INPUT_T> &l1Tensor,
-    uint64_t gatherOffset, uint32_t mSizeAct, uint32_t realDSize, uint32_t headOffset)
-{
-    auto srcGm = gatherSYResGm[gatherOffset];
-    CopyGmToL1(l1Tensor, srcGm, mSizeAct, realDSize, headOffset);
-}
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
@@ -187,10 +168,10 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo)
 {
-    uint32_t dSize = constInfo.dSizeQueryIndex;                          // 128
-    uint32_t kSize = runInfo.kProcessSize;                             // 128
-    uint32_t kLoopTimes = CeilDiv(kSize, VEC_SY_BASESIZE);               // 循环次数，循环累计kSize行搬出UB
-    uint32_t tailLoopKSize = kSize - (kLoopTimes - 1) * VEC_SY_BASESIZE; // 尾块大小
+    uint32_t dSize = constInfo.dSizeQueryIndex;
+    uint32_t kSize = runInfo.kProcessSize;
+    uint32_t kLoopTimes = CeilDiv(kSize, VEC_SY_BASESIZE);
+    uint32_t tailLoopKSize = kSize - (kLoopTimes - 1) * VEC_SY_BASESIZE;
     LocalTensor<T> outTensor = bmm2ResBuf.template GetTensor<T>();
     MMParam mmParam = {
         constInfo.gSizeQueryIndex,
@@ -203,7 +184,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
         UNITFLAG_DISABLE
     };
 
-    // 首次搬运query_index
+    // 搬运query_index
     if (runInfo.s2Offset == 0) {
         sYQL1Buffer[runInfo.sTaskIdMod3] = sYQueryL1Buf.Get();
         sYQL1Buffer[runInfo.sTaskIdMod3].Wait<HardEvent::MTE1_MTE2>();
@@ -215,7 +196,6 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     // 搬运key_index
     sYKL1Buffer[runInfo.taskIdMod3] = sYKeyL1Buf.Get();
     LocalTensor<INPUT_T> syKL1Tensor = sYKL1Buffer[runInfo.taskIdMod3].GetTensor<INPUT_T>();
-    // printf("1 runInfo.taskId : %d runInfo.taskIdMod3 : %d runInfo.s2Offset %d \n",runInfo.taskId,runInfo.taskIdMod3,runInfo.s2Offset);
     sYKL1Buffer[runInfo.taskIdMod3].Wait<HardEvent::MTE1_MTE2>();
     CopyInMm2BToL1(syKL1Tensor, runInfo, constInfo);
     sYKL1Buffer[runInfo.taskIdMod3].Set<HardEvent::MTE2_MTE1>();
@@ -223,9 +203,8 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     Buffer<BufferType::L0C> mm2L0CBuffer = commonL0CBuf.Get();
     LocalTensor<T> mm2L0CTensor = mm2L0CBuffer.GetTensor<T>();
 
-    mm2L0CBuffer.Wait<HardEvent::FIX_M>(); // 反向同步
+    mm2L0CBuffer.Wait<HardEvent::FIX_M>();
     for (uint32_t kIdx = 0; kIdx < kLoopTimes; kIdx++) {
-        // 右矩阵
         uint64_t l0cOffset = kIdx * VEC_SY_BASESIZE * constInfo.gSizeQueryIndex;
         MatmulBase<INPUT_T, INPUT_T, T, QUERY_INDEX_SIZE, N_SPLIT_SIZE, K_SPLIT_SIZE, ABLayout::MK, ABLayout::KN>(
             sYQL1Tensor[runInfo.sTaskIdMod3], syKL1Tensor, l0aBuf, l0bBuf, mm2L0CTensor[l0cOffset], mmParam);
@@ -238,9 +217,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     fixpipe2UbParams.nSize = (kSize + 7) >> 3 << 3;
     fixpipe2UbParams.mSize = (constInfo.gSizeQueryIndex + 1) >> 1 << 1;
     fixpipe2UbParams.srcStride = AlignTo(fixpipe2UbParams.mSize, static_cast<uint16_t>(C0_SIZE));
-    // mmResUb上两行之间的间隔，单位：element。
     fixpipe2UbParams.dstStride = AlignTo(constInfo.syKBaseSize, static_cast<int32_t>(C0_SIZE));
-    // 双目标模式，按M维度拆分，M / 2 * N写入每个UB, M必须为2的倍数
     fixpipe2UbParams.dualDstCtl = 1;
     fixpipe2UbParams.params.ndNum = 1;
     fixpipe2UbParams.params.srcNdStride = 0;
@@ -248,10 +225,6 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
     Fixpipe<T, T, PFA_CFG_ROW_MAJOR_UB>(outTensor, mm2L0CTensor, fixpipe2UbParams);
     CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_MM2_TO_V1_FLAG[runInfo.taskIdMod3]);
     mm2L0CBuffer.Set<HardEvent::FIX_M>();
-    // if (runInfo.isLastBlock) {
-    //     sYQL1Buffer[runInfo.sTaskIdMod3].Set<HardEvent::MTE1_MTE2>();
-    // }
-    // sYKL1Buffer[runInfo.taskIdMod3].Set<HardEvent::MTE1_MTE2>();
 };
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -259,9 +232,9 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
     Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo)
 {
-    uint32_t kSize = runInfo.kProcessSize;                             // 2048
-    uint32_t kLoopTimes = CeilDiv(kSize, VEC_P_BASESIZE);               // 循环次数，循环累计kSize行搬出UB
-    uint32_t tailLoopKSize = kSize - (kLoopTimes - 1) * VEC_P_BASESIZE; // 尾块大小
+    uint32_t kSize = runInfo.kProcessSize;
+    uint32_t kLoopTimes = CeilDiv(kSize, VEC_P_BASESIZE);
+    uint32_t tailLoopKSize = kSize - (kLoopTimes - 1) * VEC_P_BASESIZE;
     LocalTensor<INPUT_T> reluGradL1Tensor;
     MMParam mmParam = {
         kSize,
@@ -328,23 +301,20 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm4(
     Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo, bool isFixOut)
 {
-    uint32_t kSize = runInfo.kProcessSize;                             // 2048
-    uint32_t kLoopTimes = CeilDiv(kSize, VEC_P_BASESIZE);               // 循环次数，循环累计kSize行搬出UB
-    uint32_t tailLoopKSize = kSize - (kLoopTimes - 1) * VEC_P_BASESIZE; // 尾块大小
+    uint32_t kSize = runInfo.kProcessSize;
+    uint32_t kLoopTimes = CeilDiv(kSize, VEC_P_BASESIZE);
+    uint32_t tailLoopKSize = kSize - (kLoopTimes - 1) * VEC_P_BASESIZE;
     uint32_t dSize = constInfo.dSizeQueryIndex;
 
     LocalTensor<INPUT_T> reluGradL1Tensor;
     LocalTensor<INPUT_T> syKL1Tensor = sYKL1Buffer[runInfo.taskIdMod3].GetTensor<INPUT_T>();
     MMParam mmParam = { constInfo.gSizeQueryIndex, dSize, K_SPLIT_SIZE, false, false, true, true, UNITFLAG_DISABLE };
     Buffer<BufferType::L0C> mm4L0CBuffer = mm4L0CSpecialBuf.Get();
-    for (uint32_t kIdx = 0; kIdx < kLoopTimes; kIdx++) { // 2048 / 128
+    for (uint32_t kIdx = 0; kIdx < kLoopTimes; kIdx++) {
         if (kIdx == kLoopTimes - 1) {
             mmParam.singleK = tailLoopKSize;
         }
-
         reluGradL1Tensor = reluGradResL1Buf.GetTensor<INPUT_T>();
-        // 拷贝左矩阵
-        // 拷贝右矩阵
         int64_t reluGradOffset =
             kIdx * VEC_P_BASESIZE * AlignTo(constInfo.gSizeQueryIndex, static_cast<uint32_t>(C0_SIZE));
         int64_t gatherWorkspaceOffset = (runInfo.s2Offset + kIdx * VEC_P_BASESIZE) * dSize;
@@ -360,12 +330,9 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm4(
     }
     mm4L0CBuffer.Set<HardEvent::M_FIX>();
     mm4L0CBuffer.Wait<HardEvent::M_FIX>();
-    // printf("2 runInfo.taskId : %d runInfo.taskIdMod3 : %d runInfo.s2Offset %d \n",runInfo.taskId,runInfo.taskIdMod3,runInfo.s2Offset);
     sYKL1Buffer[runInfo.taskIdMod3].Set<HardEvent::MTE1_MTE2>();
     CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG[runInfo.taskIdMod3]);
     if (isFixOut) {
-        // fix2gm
-        // printf("!!! fixout !!!  runInfo.queryIndexTensorOffset : %d\n",runInfo.queryIndexTensorOffset);
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
         fixpipe2GmParams.nSize = dSize;
         fixpipe2GmParams.mSize = constInfo.gSizeQueryIndex;

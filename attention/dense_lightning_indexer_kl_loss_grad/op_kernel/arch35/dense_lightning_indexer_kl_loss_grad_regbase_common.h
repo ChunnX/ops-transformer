@@ -20,13 +20,14 @@
 using namespace fa_base_matmul;
 
 static constexpr uint32_t VEC_SY_BASESIZE = 128;
-static constexpr uint32_t PROCESS_KV_SIZE = 128;
+static constexpr uint32_t PROCESS_KV_SIZE = 4096;
 static constexpr uint32_t VEC_P_BASESIZE = 128;
 static constexpr uint32_t ATTN_SOFTMAX_REDUCE_BASESIZE = 8192;
 // task step
 constexpr int8_t TASK_INIT = 0;
 constexpr int8_t TASK_C1 = 1;
 constexpr int8_t TASK_V1 = 2;
+constexpr int8_t TASK_C2 = 3;
 
 enum class DLILayout { BSND = 0, TND = 1 };
 
@@ -111,7 +112,6 @@ struct DLIKGradConstInfo {
     int32_t gatherKeyIndexSize;
     int32_t sparseBlockSize = 1;
 
-    int32_t gatherKBaseSize; // gather一次做的行数，一般128
     int32_t syKBaseSize;
     int32_t pKBaseSize;
     int64_t bmm3BaseOffset = 0;
@@ -151,7 +151,6 @@ struct DLIKGradRunInfo {
     uint32_t nRealSizeSY;
     uint32_t nIdxP;
     uint32_t nIdxSY;
-    uint32_t nVecSize;
 
     // 存放一些offset，减少重复计算
     int32_t s2SparseLen;
@@ -163,7 +162,6 @@ struct DLIKGradRunInfo {
     int32_t nIndexSize;
     int32_t firstNIndexSize;
     int32_t weightOffset;
-    int32_t softmaxInputOffset;
     int32_t reduceSumOffset;
 
     // 根据bIdx、s1Idx算出的偏移
@@ -199,7 +197,7 @@ constexpr uint8_t SYNC_MM2_TO_V1_FLAG[3] = {1, 2, 3};
 constexpr uint8_t SYNC_V6_TO_C3_FLAG[3] = {10, 11, 12};
 constexpr uint8_t DETER_TO_FIX_SYNC_FLAG = 9;
 constexpr uint8_t SCATTER_CUBE_SYNC_FLAG = 4;
-constexpr uint8_t SYNC_C3_TO_V7_FLAG = 5;
+constexpr uint8_t SYNC_C3_TO_V7_FLAG = 15;
 
 constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG = 6;
 constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 0;
