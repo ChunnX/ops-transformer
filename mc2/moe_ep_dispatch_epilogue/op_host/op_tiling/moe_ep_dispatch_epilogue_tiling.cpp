@@ -411,8 +411,9 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
     uint64_t moeExpertNumPerRank = static_cast<uint64_t>(info.cfg.numLocalExperts);
     uint64_t topK = static_cast<uint64_t>(info.cfg.topK);
 
-    uint64_t dispatchWinStateSize =
-        epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) + 2 * epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t cntWinStateSize = epWorldSize * AlignUpWin(moeExpertNumPerRank * sizeof(int32_t)) +
+                               epWorldSize * WIN_ADDR_ALIGN;
+    uint64_t dispatchWinStateSize = cntWinStateSize + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t combineWinStateSize = nmt * topK * WIN_ADDR_ALIGN + epWorldSize * WIN_ADDR_ALIGN;
     uint64_t dispatchWinDataSize = epWorldSize * nmt * perSlotBytes;
     uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
@@ -426,6 +427,7 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, const ch
         return ge::GRAPH_FAILED);
 
     info.winDataOffset = totalStateWinSizeEp;
+    info.slotWinStateOffset = cntWinStateSize;
     return ge::GRAPH_SUCCESS;
 }
 
