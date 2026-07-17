@@ -123,7 +123,7 @@ public:
 
     __aicore__ inline void Wait(bool waitLast=false)
     {
-        if (waitLast) {
+        if (waitLast && currentTileIdx_ != totalTiles_ - 1) {
             return;
         }
         for (uint32_t i = 0; i < targetRankCnt_; i++) {
