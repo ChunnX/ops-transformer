@@ -79,7 +79,7 @@ constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t G_SIZE_LIMIT = 64;
 constexpr uint32_t G_SIZE_LIMIT_950 = 24;
-constexpr uint32_t G_SIZE_LIMIT_32_950 = 32; 
+constexpr uint32_t G_SIZE_LIMIT_32_950 = 32;
 constexpr uint32_t G_SIZE_LIMIT_16_950 = 16; // ascend950只支持 G = 8/16/24/32/64
 constexpr uint32_t G_SIZE_LIMIT_8_950 = 8;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
@@ -210,6 +210,7 @@ public:
     ge::graphStatus ParseAndCheck(QLITilingInfo &QLIInfo);
     size_t GetTensorDimNum(const uint32_t tensorIdx);
     int64_t GetTensorDim(const uint32_t tensorIdx, const size_t idx);
+    ge::graphStatus CheckContiguous();
 
 public:
     gert::TilingContext *context_ = nullptr;

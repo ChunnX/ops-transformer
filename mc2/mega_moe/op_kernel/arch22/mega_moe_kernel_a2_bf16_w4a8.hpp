@@ -103,6 +103,9 @@ public:
         uint64_t maxOutputSize;
         // for reuse workspace, gmm1 out preRow Stride use max(n,k)
         uint32_t gmmOutPreRowStride;
+        // Padded token-slot stride for GMM1 input. It prevents packed SwiGLU
+        // output from overwriting unread GMM1 rows when k < n/2.
+        uint32_t gmmA1PreRowStride = 0;
         //--------------
         GM_ADDR expertIdx;
         GM_ADDR moeInitRoutingQuantV2Scale;
@@ -173,6 +176,7 @@ public:
             moeInitRoutingQuantV2TilingData.gatherOutComputeParamsOp =
                 moeInitRoutingQuantV2TilingData_.gatherOutComputeParamsOp;
             gmmOutPreRowStride = problemShape.n() > problemShape.k() ? problemShape.n() : problemShape.k();
+            gmmA1PreRowStride = static_cast<uint32_t>(layoutA.stride(0));
         }
     };
 
@@ -312,7 +316,7 @@ private:
 
     CATLASS_DEVICE void FetchAndPreprocessInt8ToInt4(uint64_t gmOffsetA, AscendC::GlobalTensor<float> dstScale,
                                                      AscendC::GlobalTensor<int8_t> src, int32_t rows,
-                                                     int32_t hiddenSize)
+                                                     int32_t hiddenSize, uint32_t aStride)
     {
         uint32_t tmpBufferOffset = 0;
 
@@ -382,7 +386,7 @@ private:
 
         int pingpongId = 0;
         for (uint32_t processIndex = 0; processIndex < rows; ++processIndex) {
-            uint64_t relStartAddr = processIndex * hiddenSize;
+            const uint64_t relStartAddr = processIndex * aStride;
             uint64_t absStartAddr = gmOffsetA + relStartAddr;
             AscendC::TEventID EVENT_ID = pingpongId == 0 ? EVENT_ID6 : EVENT_ID7;
             AscendC::LocalTensor<int8_t> buf = pingpongId == 0 ? tmpBuffer0 : tmpBuffer1;
@@ -434,7 +438,7 @@ private:
             Cast(xLowI4Tensor, xHighHalfTensor.ReinterpretCast<half>(), AscendC::RoundMode::CAST_NONE, hiddenSize);
             SetFlag<HardEvent::V_MTE3>(EVENT_ID7);
             WaitFlag<HardEvent::V_MTE3>(EVENT_ID7);
-            DataCopy(gmA1I4_I8[absStartAddr + hiddenSize / 2], xLowI4Tensor.ReinterpretCast<int8_t>(), hiddenSize / 2);
+            DataCopy(gmA1I4_I8[absStartAddr + aStride / 2], xLowI4Tensor.ReinterpretCast<int8_t>(), hiddenSize / 2);
             SetFlag<HardEvent::MTE3_V>(EVENT_ID6);
             // 低四位处理结束
             pingpongId = (pingpongId + 1) % BufferNum;
@@ -574,7 +578,7 @@ private:
             }
             preCurrentmSum += currentM / 2;
 
-            gmGroupOffsetA += inGroupProblemShape.m() * inGroupProblemShape.k();
+            gmGroupOffsetA += static_cast<int64_t>(inGroupProblemShape.m()) * params.gmmA1PreRowStride;
             if (params.listLen == 1) {
                 gmGroupOffsetB += inGroupProblemShape.k() * inGroupProblemShape.n();
             }
@@ -973,7 +977,8 @@ private:
 
         // -- Path A: self-rank --
         if (static_cast<int32_t>(RuntimeRank(params)) == dstEpIdx) {
-            FetchAndPreprocessInt8ToInt4(gmOffsetA, gmPerTokenScale1[rowStart], src, rows, hiddenSize);
+            FetchAndPreprocessInt8ToInt4(gmOffsetA, gmPerTokenScale1[rowStart], src, rows, hiddenSize,
+                                         params.gmmA1PreRowStride);
             return;
         }
 
@@ -1090,7 +1095,7 @@ private:
         gmDstA.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(shmem() + peermemInfo.offsetA));
         AscendC::PipeBarrier<PIPE_ALL>();
         FetchAndPreprocessInt8ToInt4(gmOffsetA, gmPerTokenScale1[rowStart2], gmDstA[rowStart2 * copyInNum], rows2,
-                                     hiddenSize);
+                                     hiddenSize, params.gmmA1PreRowStride);
         return;
     }
 
@@ -1229,7 +1234,7 @@ private:
                     SendTokensV3<ElementABefore>(gmRemoteDstA[gmDstOffset], gmSrcA[gmSrcOffset],
                                                  static_cast<int32_t>(rows), params.problemShape.k(), dstEpIdx,
                                                  groupIdx, static_cast<int32_t>(rowStart), params,
-                                                 static_cast<uint64_t>(rowStart) * params.problemShape.k());
+                                                 static_cast<uint64_t>(rowStart) * params.gmmA1PreRowStride);
                 }
                 prevGroupSum1Arr[arrIdx] += currentMSend;
             }
@@ -1251,7 +1256,7 @@ private:
                     }
                     RecvTokensV3<ElementABefore>(static_cast<int32_t>(rows2), static_cast<int32_t>(rowStart2),
                                                  params.problemShape.k(), srcEpIdx, groupIdx, params,
-                                                 static_cast<uint64_t>(rowStart2) * params.problemShape.k());
+                                                 static_cast<uint64_t>(rowStart2) * params.gmmA1PreRowStride);
                 }
             }
             AscendC::SyncAll<true>();

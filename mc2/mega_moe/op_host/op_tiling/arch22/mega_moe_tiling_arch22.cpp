@@ -396,6 +396,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     // 10. activation_clamp
     OP_TILING_CHECK(CheckActivationClampAttr(activationClampPtr) != ge::GRAPH_SUCCESS,
                     OP_LOGE(K_INNER_DEBUG, "CheckActivationClampAttr failed."), return GRAPH_FAILED);
+    info.activationClamp = *activationClampPtr;
 
     // 11. activation_out_dtype
     OP_TILING_CHECK(CheckActivationOutDtypeAttr(activationOutDtypePtr) != ge::GRAPH_SUCCESS,
@@ -424,6 +425,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_LOGD(K_INNER_DEBUG, "dispatchQuantOutDtype=%u", info.dispatchQuantOutDtype);
     OP_LOGD(K_INNER_DEBUG, "combineQuantMode=%u", info.combineQuantMode);
     OP_LOGD(K_INNER_DEBUG, "numMaxTokensPerRank=%u", info.numMaxTokensPerRank);
+    OP_LOGD(K_INNER_DEBUG, "activationClamp=%f", info.activationClamp);
     OP_LOGD(K_INNER_DEBUG, "activationOutDtype=%u", info.activationOutDtype);
     OP_LOGD(K_INNER_DEBUG, "transposeWeight1=%u", info.isTransposeW1);
     OP_LOGD(K_INNER_DEBUG, "transposeWeight2=%u", info.isTransposeW2);

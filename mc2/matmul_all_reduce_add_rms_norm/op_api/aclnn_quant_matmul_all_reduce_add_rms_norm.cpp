@@ -37,23 +37,22 @@ using namespace op;
 extern "C" {
 #endif
 
-aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
-    const aclTensor* residual, const aclTensor* gamma, double epsilon, const char* group, const char* reduceOp,
-    int64_t commTurn, int64_t streamMode, const aclTensor* y, const aclTensor* normOut, uint64_t* workspaceSize,
-    aclOpExecutor** executor)
+aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
+                                                                const aclTensor *bias, const aclTensor *dequantScale,
+                                                                const aclTensor *residual, const aclTensor *gamma,
+                                                                double epsilon, const char *group, const char *reduceOp,
+                                                                int64_t commTurn, int64_t streamMode,
+                                                                const aclTensor *y, const aclTensor *normOut,
+                                                                uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    DEPRECATED_MM_ARN_API_WARN_ONCE(
-        "aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
-        "aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
-        "December 2026",
-        "aclnnQuantMatmulAllReduceV2GetWorkspaceSize",
-        "aclnnAddRmsNormGetWorkspaceSize");
+    DEPRECATED_MM_ARN_API_WARN_ONCE("aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
+                                    "aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize", "December 2026",
+                                    "aclnnQuantMatmulAllReduceV2GetWorkspaceSize", "aclnnAddRmsNormGetWorkspaceSize");
     CHECK_RET(ArnCheckNotNull(x1, x2, residual, gamma), ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(dequantScale, return ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(ArnCheckShape(x1, x2, residual), ACLNN_ERR_PARAM_INVALID);
     // dequantScale转为uint64
-    auto dequant = const_cast<aclTensor*>(dequantScale);
+    auto dequant = const_cast<aclTensor *>(dequantScale);
     if (dequant == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT("aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize", "dequantScale");
         return ACLNN_ERR_INNER;
@@ -69,7 +68,8 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
         int64_t kValue = x1->GetViewShape().GetDim(x1->GetViewShape().GetDimNum() - 1);
         OP_LOGD("QuantMatmulAllReduceAddRmsNorm, kValue: %ld.", kValue);
         if (kValue == 0) {
-            OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1 k-dim", "0", "non-zero");
+            OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1 k-dim", "0",
+                                      "non-zero");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 固定写法，创建OpExecutor
@@ -89,15 +89,11 @@ aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     return ret;
 }
 
-aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
+aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                const aclrtStream stream)
 {
-    DEPRECATED_MM_ARN_API_WARN_ONCE(
-        "aclnnQuantMatmulAllReduceAddRmsNorm",
-        "aclnnInplaceQuantMatmulAllReduceAddRmsNorm",
-        "December 2026",
-        "aclnnQuantMatmulAllReduceV2",
-        "aclnnAddRmsNorm");
+    DEPRECATED_MM_ARN_API_WARN_ONCE("aclnnQuantMatmulAllReduceAddRmsNorm", "aclnnInplaceQuantMatmulAllReduceAddRmsNorm",
+                                    "December 2026", "aclnnQuantMatmulAllReduceV2", "aclnnAddRmsNorm");
     if (workspace == nullptr || workspaceSize == 0UL) {
         OP_LOGD("Skip the api for empty tensor, workspace addr %p, size %lu.", workspace, workspaceSize);
         return ACLNN_SUCCESS;
