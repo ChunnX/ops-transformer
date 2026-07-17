@@ -102,12 +102,6 @@ public:
 
     QSeqParserType *qActSeqLensParser = nullptr;
 
-<<<<<<< HEAD
-=======
-    TEventID mte3ToVId[2];
-    TEventID vToMte3Id[2];
-
->>>>>>> 69c719436 (添加C1代码&&修复一些问题)
     bool isFd = false;
 
     const ConstInfoX &constInfo;
@@ -470,19 +464,10 @@ public:
         SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[0]);
         SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[1]);
 
-<<<<<<< HEAD
         SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[0]);
         SetFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[1]);
         SetFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[0]);
-        SetFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[1]);       
-=======
-        mte3ToVId[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-        mte3ToVId[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
-        vToMte3Id[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-        vToMte3Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
-        SetFlag<HardEvent::MTE3_V>(mte3ToVId[1]);
->>>>>>> 69c719436 (添加C1代码&&修复一些问题)
+        SetFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[1]);
     }
 
     __aicore__ inline void FreeEventID()
@@ -500,19 +485,10 @@ public:
         WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[0]);
         WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_V[1]);
 
-<<<<<<< HEAD
         WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[0]);
         WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[1]);
         WaitFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[0]);
-        WaitFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[1]);  
-=======
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[0]);
-        WaitFlag<AscendC::HardEvent::MTE3_V>(mte3ToVId[1]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[0]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(mte3ToVId[1]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[0]);
-        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(vToMte3Id[1]);
->>>>>>> 69c719436 (添加C1代码&&修复一些问题)
+        WaitFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[1]);
     }
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
