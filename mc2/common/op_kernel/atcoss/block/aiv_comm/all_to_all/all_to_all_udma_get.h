@@ -33,7 +33,7 @@ private:
     __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileOffset, uint64_t tileSize)
     {
         this->barrier_.Execute();
-        if ((this->curCoreId_ >= this->useCoreNum_) || (targetRankId == this->udmaCtx_->rankId)) {
+        if ((this->threadIdx_ >= this->threadCnt_) || (targetRankId == this->udmaCtx_->rankId)) {
             return;
         }
 
@@ -57,7 +57,7 @@ private:
 
     __aicore__ inline void DoWait(uint32_t targetRankId)
     {
-        if ((this->curCoreId_ >= this->useCoreNum_) || (targetRankId == this->udmaCtx_->rankId)) {
+        if ((this->threadIdx_ >= this->threadCnt_) || (targetRankId == this->udmaCtx_->rankId)) {
             return;
         }
         this->comm_.Drain(static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]));
