@@ -57,7 +57,7 @@ public:
     BsaMXFP4FullQuantKernelArch35() {}
 
     __aicore__ inline
-    void operator()(BsaKernelParamsArch35 const &params)
+    void operator()(BsaFullQuantKernelParamsArch35 const &params)
     {
         // TODO: implement mxfp4 full quant kernel
     }
