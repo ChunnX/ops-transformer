@@ -511,7 +511,7 @@ __aicore__ inline void BandwidthUrmaTest<TemplateBandwidthTestTypeFunc>::CommPro
                     PipeBarrier<PIPE_ALL>();
                     uint64_t endTime = GetSystemCycle();
                     uint64_t sendTime = endTime - startTime;
-                    PRINTF("CommProcess sendTime = %d\n", sendTime);
+                    PRINTF("rankID = %d, CommProcess sendTime = %d\n", epRankId_, sendTime);
                     curSumCnt += 1;
                     sendSumTensor_(i - startExpert) = curSumCnt;
                     sendFlag = 0;
