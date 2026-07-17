@@ -1054,6 +1054,10 @@ ge::graphStatus LightningIndexerV2Tiling::DoTiling(LIV2TilingInfo *tilingInfo)
         workspaceSize +=
             li3510S1Base * ((tilingInfo->s2Size + li3510S2Base - 1) / li3510S2Base) * li3510S2Base *
             sizeof(uint32_t) * aicNum;
+        workspaceSize +=
+            V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_RES_ELEM_TYPE * TOPK_MAX_SIZE * V1_RES_ELEM_SIZE * aicNum;
+        workspaceSize +=
+            V1_DECODE_DATA_NUM * S1_BASE_SIZE * V1_DECODE_PARAM_NUM * V1_DECODE_PARAM_ELEM_SIZE * aicNum;
     } else {
         // 主流程需Workspace大小
         uint32_t mm1ResSize = M_BASE_SIZE * S2_BASE_SIZE;
