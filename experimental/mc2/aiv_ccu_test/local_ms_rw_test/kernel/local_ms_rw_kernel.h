@@ -32,6 +32,7 @@ enum RwMode : uint32_t {
     MODE_WRITE = 0,
     MODE_READ = 1,
     MODE_READ_WRITE = 2,
+    MODE_WRITE_THEN_READ = 3,
 };
 
 enum InterleaveMode : uint32_t {
@@ -52,6 +53,9 @@ private:
     __aicore__ inline void WriteMode();
     __aicore__ inline void ReadMode();
     __aicore__ inline void ReadWriteMode();
+    __aicore__ inline void WriteThenReadMode();
+    __aicore__ inline void FillData();
+    __aicore__ inline void VerifyResult();
     __aicore__ inline void GetBlockTargetAddr(uint64_t blockIdx, uint32_t &ccuaIdx, uint64_t &offsetBytes);
 
     uint32_t mode0_;
@@ -65,11 +69,15 @@ private:
 
     TBuf<TPosition::VECCALC> dataBuf_;
     TBuf<TPosition::VECCALC> readBuf_;
+    LocalTensor<T> dataLocal_;
+    LocalTensor<T> readLocal_;
 
     uint32_t totalBlocks_;
     uint32_t blocksPerCore_;
     uint32_t myStartBlock_;
     uint32_t myBlocks_;
+    uint32_t totalElem_{0};
+    uint32_t verifyResult_{0};
 };
 
 template <typename T>
@@ -81,14 +89,24 @@ __aicore__ inline void LocalMsRw<T>::Init(uint32_t mode0, uint32_t mode1, uint64
     dataSize_ = dataSize;
     blockDim_ = blockDim;
     aivId_ = GetBlockIdx();
+    if (aivId_ > 0) return;
 
     for (uint32_t i = 0; i < CCUA_NUM; i++) {
         msGm_[i].SetGlobalBuffer((__gm__ T *)msAddrs[i]);
     }
     timeGm_.SetGlobalBuffer((__gm__ uint64_t *)timeAddr);
 
-    pipe->InitBuffer(dataBuf_, BLOCK_4K_BYTES);
-    pipe->InitBuffer(readBuf_, BLOCK_4K_BYTES);
+    if (mode0_ == MODE_WRITE_THEN_READ) {
+        // WriteThenRead 模式：按 dataSize 分配 buffer，一次搬运
+        pipe->InitBuffer(dataBuf_, dataSize);
+        pipe->InitBuffer(readBuf_, dataSize);
+        totalElem_ = static_cast<uint32_t>(dataSize / sizeof(T));
+        dataLocal_ = dataBuf_.Get<T>();
+        readLocal_ = readBuf_.Get<T>();
+    } else {
+        // 其他模式：固定 4KB 分块搬运
+        pipe->InitBuffer(dataBuf_, BLOCK_4K_BYTES);
+        pipe->InitBuffer(readBuf_, BLOCK_4K_BYTES);
 
     totalBlocks_ = static_cast<uint32_t>(dataSize / BLOCK_4K_BYTES);
     blocksPerCore_ = totalBlocks_ / blockDim_;
@@ -101,6 +119,7 @@ __aicore__ inline void LocalMsRw<T>::Init(uint32_t mode0, uint32_t mode1, uint64
         myStartBlock_ = aivId_ * blocksPerCore_ + tailBlocks;
         myBlocks_ = blocksPerCore_;
     }
+}
 }
 
 template <typename T>
@@ -127,17 +146,14 @@ __aicore__ inline void LocalMsRw<T>::GetBlockTargetAddr(uint64_t blockIdx, uint3
 template <typename T>
 __aicore__ inline void LocalMsRw<T>::WriteMode()
 {
-    LocalTensor<T> dataLocal = dataBuf_.Get<T>();
     uint32_t elemPerBlock = BLOCK_4K_BYTES / sizeof(T);
-    Duplicate<T>(dataLocal, (T)1, elemPerBlock);
-
     for (uint32_t i = 0; i < myBlocks_; i++) {
         uint64_t blockIdx = myStartBlock_ + i;
         uint32_t ccuaIdx;
         uint64_t offsetBytes;
         GetBlockTargetAddr(blockIdx, ccuaIdx, offsetBytes);
         uint64_t offsetElem = offsetBytes / sizeof(T);
-        DataCopy(msGm_[ccuaIdx][offsetElem], dataLocal, elemPerBlock);
+        DataCopy(msGm_[ccuaIdx][offsetElem], dataLocal_, elemPerBlock);
     }
 }
 
@@ -160,8 +176,6 @@ __aicore__ inline void LocalMsRw<T>::ReadMode()
 template <typename T>
 __aicore__ inline void LocalMsRw<T>::ReadWriteMode()
 {
-    LocalTensor<T> dataLocal = dataBuf_.Get<T>();
-    LocalTensor<T> readLocal = readBuf_.Get<T>();
     uint32_t elemPerBlock = BLOCK_4K_BYTES / sizeof(T);
 
     for (uint32_t i = 0; i < myBlocks_; i++) {
@@ -170,17 +184,62 @@ __aicore__ inline void LocalMsRw<T>::ReadWriteMode()
         uint64_t offsetBytes;
         GetBlockTargetAddr(blockIdx, ccuaIdx, offsetBytes);
         uint64_t offsetElem = offsetBytes / sizeof(T);
-        // 先读 MS → UB
-        DataCopy(readLocal, msGm_[ccuaIdx][offsetElem], elemPerBlock);
-        // 再写 UB → MS（写回不同数据以区分）
-        Duplicate<T>(dataLocal, (T)2, elemPerBlock);
-        DataCopy(msGm_[ccuaIdx][offsetElem], dataLocal, elemPerBlock);
+        DataCopy(readLocal_, msGm_[ccuaIdx][offsetElem], elemPerBlock);
+        Duplicate<T>(dataLocal_, (T)2, elemPerBlock);
+        DataCopy(msGm_[ccuaIdx][offsetElem], dataLocal_, elemPerBlock);
+    }
+}
+
+template <typename T>
+__aicore__ inline void LocalMsRw<T>::WriteThenReadMode()
+{
+    // === 写阶段：一次写全部 ===
+    DataCopy(msGm_[0], dataLocal_, totalElem_);  // UB → MS
+
+    PipeBarrier<PIPE_ALL>();  // 确保写完
+
+    // === 读阶段：一次读全部 ===
+    DataCopy(readLocal_, msGm_[0], totalElem_);  // MS → UB
+
+    PipeBarrier<PIPE_ALL>();  // 确保读完
+}
+
+template <typename T>
+__aicore__ inline void LocalMsRw<T>::FillData()
+{
+    for (uint32_t i = 0; i < totalElem_; i++) {
+        dataLocal_.SetValue(i, static_cast<T>(i & 0xFF));
+    }
+}
+
+template <typename T>
+__aicore__ inline void LocalMsRw<T>::VerifyResult()
+{
+    verifyResult_ = 0;  // 0=通过, 1=失败
+
+    DataCopy(readLocal_, msGm_[0], totalElem_);  // 重读一次
+    for (uint32_t i = 0; i < totalElem_; i++) {
+        if (readLocal_.GetValue(i) != static_cast<T>(i & 0xFF)) {
+            verifyResult_ = 1;
+            return;
+        }
     }
 }
 
 template <typename T>
 __aicore__ inline void LocalMsRw<T>::Process()
 {
+    if (aivId_ > 0) return;
+
+    // 打点外：填充数据
+    if (mode0_ == MODE_WRITE_THEN_READ) {
+        FillData();
+    } else {
+        uint32_t elemPerBlock = BLOCK_4K_BYTES / sizeof(T);
+        Duplicate<T>(dataLocal_, (T)1, elemPerBlock);
+    }
+
+    // 打点内
     uint64_t startCycle = GetSystemCycle();
 
     switch (mode0_) {
@@ -193,6 +252,9 @@ __aicore__ inline void LocalMsRw<T>::Process()
         case MODE_READ_WRITE:
             ReadWriteMode();
             break;
+        case MODE_WRITE_THEN_READ:
+            WriteThenReadMode();
+            break;
         default:
             break;
     }
@@ -200,11 +262,15 @@ __aicore__ inline void LocalMsRw<T>::Process()
     PipeBarrier<PIPE_ALL>();
     uint64_t endCycle = GetSystemCycle();
 
-    // core 0 将计时结果写入 timeGm
-    if (aivId_ == 0) {
-        timeGm_.SetValue(0, startCycle);
-        timeGm_.SetValue(1, endCycle);
+    // 打点外：校验（仅新模式）
+    if (mode0_ == MODE_WRITE_THEN_READ) {
+        VerifyResult();
     }
+
+    // 写结果
+    timeGm_.SetValue(0, startCycle);
+    timeGm_.SetValue(1, endCycle);
+    timeGm_.SetValue(2, verifyResult_);
 }
 
 } // namespace LocalMsRwImpl
