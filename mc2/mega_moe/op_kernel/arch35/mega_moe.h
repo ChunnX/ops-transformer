@@ -28,7 +28,6 @@
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
-#include "aiv_comm/mega_moe_combine_sync.h"
 #include "aiv_compute/mega_moe_combine_reduce.h"
 #if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../moe_distribute_dispatch_v2/quantize_functions.h"
@@ -92,6 +91,7 @@ private:
     __aicore__ inline bool UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx, uint64_t sendCnt = 0);
     template <AddrUpdateMode Mode>
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
+    __aicore__ inline void CrossRankSyncInWorldSize();
     __aicore__ inline void ExpertTokenNumCopyOut();
     __aicore__ inline void CopyGMToGMPerToken(int32_t rowDstOffsetInCore, int32_t remoteRankIdx, int32_t copyStartIdx,
                                               int32_t copyNum);
@@ -1106,10 +1106,29 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
                                      Get<IDX_FLAG_OFFSET>(state.baseOffset) * dispatchFlagSlotsPerExpert_;
 }
 
-
-
-
-
+// ==============================================================================================
+// CrossRankSyncInWorldSize：全卡同步，rankSyncInWorldPtr前48K用于同步，后面区域用于记录当前syncCnt值
+// ==============================================================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSize()
+{
+    if constexpr (g_coreType == AIC) {
+        return;
+    }
+    __gm__ int32_t *syncRank = (__gm__ int32_t *)(params_.peermemInfo.rankSyncInWorldPtr);
+    __gm__ int32_t *syncCount =
+        (__gm__ int32_t *)(params_.peermemInfo.rankSyncInWorldPtr + 48 * 1024 + aivCoreIdx_ * 64);
+    int count = ReadGmByPassDCache(syncCount) + 1;
+    for (int i = aivCoreIdx_; i < worldSize_; i += blockAivNum_) {
+        __gm__ int32_t *syncRemoteAddr = (__gm__ int32_t *)(winRankAddr_[i]) + rankId_ * 16;
+        WriteGmByPassDCache(syncRemoteAddr, count);
+        auto syncCheck = syncRank + i * 16;
+        GmSignalWaitBarrier(syncCheck, count);
+    }
+    WriteGmByPassDCache(syncCount, count);
+    PipeBarrier<PIPE_ALL>();
+    SyncAll<true>();
+}
 
 // ===============================================================
 // GroupMatmulWithSwigluQuant：按实现路径分发到 A8W4 或 generic GMM1。
@@ -1195,10 +1214,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     MegaMoeCombineReduceImpl::CombineReduceTileSchedule combineReduceTileSchedule{
         aivCoreIdx_, blockAivNum_};
-    MegaMoeCombineCommImpl::AivCommTileSchedule combineCommTileSchedule{
-        aivCoreIdx_, blockAivNum_};
-    MegaMoeCombineCommImpl::CrossRankSyncContext combineSyncContext{
-        params_.peermemInfo.rankSyncInWorldPtr, rankId_, worldSize_};
     SendAndQuantBuffInit();
     SendMaskCal();   // 源卡按所有全局专家算 mask 并推送到目标专家卡
     ResetFlagList(); // 清理workSpace空间上的flag位
@@ -1207,9 +1222,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     if constexpr (g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
     }
-    SyncAll<false>(); // aic需要等待flag位reset清理完成
-    MegaMoeCombineCommImpl::CrossRankSyncSingleCore(
-        combineCommTileSchedule, combineSyncContext); // 全卡同步
+    SyncAll<false>();           // aic需要等待flag位reset清理完成
+    CrossRankSyncInWorldSize(); // 全卡同步
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
     DispatchBuffInit();
@@ -1297,8 +1311,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 4. 本卡数据Unpermute
     if constexpr (g_coreType == AIV) {
-        MegaMoeCombineCommImpl::CrossRankSyncSingleCore(
-            combineCommTileSchedule, combineSyncContext); // 全卡软同步，确认combine send完成
+        CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         MegaMoeCombineReduceImpl::CombineReduceShapeContext combineReduceShapeContext{m_, k_, topK_};
         MegaMoeCombineReduceImpl::CombineReduceBufferContext combineReduceBufferContext{
             params_.peermemInfo.combineSendPtr, params_.probsGmAddr, params_.y2GmAddr};
