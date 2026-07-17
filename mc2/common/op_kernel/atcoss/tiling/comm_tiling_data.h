@@ -22,8 +22,6 @@
 #include <cstdint>
 #endif
 
-namespace Atcoss {
-namespace Utils {
 
 /*!
  * \brief 统一的 CommTilingData 结构体（kernel 端简化格式）
@@ -53,5 +51,3 @@ struct CommTilingData {
     uint64_t nonSplitAxisSize;      // 非切分轴数据块大小（元素个数，所有内轴乘积）
 };
 
-} // namespace Utils
-} // namespace Atcoss
