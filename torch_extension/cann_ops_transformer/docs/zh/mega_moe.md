@@ -15,6 +15,7 @@
 
     Mega MoE算子 将 MoE 层的专家 FFN 的完整计算流程及前后数据通信（即 Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
     该算子提供了 mega_moe 与 get_symm_buffer_for_mega_moe等接口，这些接口需配套使用。
+    该算子提供了 mega_moe 与 get_symm_buffer_for_mega_moe等接口，这些接口需配套使用。
 
     - get_symm_buffer_for_mega_moe：需与mega_moe配套使用，用于封装输入参数并创建SymmBuffer结构体，生成`context`、`ep_world_size`和`ccl_buffer_size`等mega_moe算子运行所需信息。
 
