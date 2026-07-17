@@ -1149,29 +1149,6 @@ def _build_causal_mask():
     return torch.triu(torch.ones(2048, 2048, dtype=torch.uint8), diagonal=0).npu()
 
 
-def _count_mask_valid_pairs(q_start, q_end, kv_start, kv_end, q_len, kv_len):
-    q_count = max(0, q_end - q_start)
-    kv_count = max(0, kv_end - kv_start)
-    if q_count == 0 or kv_count == 0:
-        return 0
-    if MASK_MODE == 0:
-        return q_count * kv_count
-    if MASK_MODE != 3:
-        raise ValueError(f"Unsupported mask_mode: {MASK_MODE}")
-
-    valid_pairs = 0
-    causal_offset = kv_len - q_len
-    for q_idx in range(q_start, q_end):
-        valid_kv_end = min(kv_end, q_idx + causal_offset + 1)
-        if valid_kv_end > kv_start:
-            valid_pairs += valid_kv_end - kv_start
-    return valid_pairs
-
-
-def _dtype_size(dtype):
-    return torch.empty((), dtype=dtype).element_size()
-
-
 def _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
     q_block_size = int(CASE["sparse_q_block_size"])
     kv_block_size = int(CASE["sparse_kv_block_size"])
@@ -1197,7 +1174,7 @@ def _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_
             f"sparse head dimension is smaller than N_q={N_q}: sparse_indices={tuple(sparse_indices_cpu.shape)}, "
             f"sparse_seq_len={tuple(sparse_seq_len_cpu.shape)}")
 
-    valid_pairs = 0
+    basic_block_count = 0
     qb_limit = sparse_seq_len_cpu.shape[2]
     kb_limit = sparse_indices_cpu.shape[3]
     for batch_idx in range(batch):
@@ -1220,15 +1197,86 @@ def _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_
                     kv_end = min(kv_start + kv_block_size, kv_len)
                     if kv_start >= kv_end:
                         continue
-                    valid_pairs += _count_mask_valid_pairs(q_start, q_end, kv_start, kv_end, q_len, kv_len)
+                    basic_block_count += 1
 
-    return valid_pairs * D * _dtype_size(FP8_DTYPE) * 2
+    head_dim = int(D)
+    single_basic_block_compute = q_block_size * kv_block_size * head_dim
+    multiply_add_compute = 2
+    bmm_compute_count = 2
+    cube_compute_amount = (
+        basic_block_count * single_basic_block_compute * multiply_add_compute * bmm_compute_count
+    )
+    return {
+        "basic_block_count": basic_block_count,
+        "basic_block_shape": (q_block_size, kv_block_size, head_dim),
+        "single_basic_block_compute": single_basic_block_compute,
+        "multiply_add_compute": multiply_add_compute,
+        "bmm_compute_count": bmm_compute_count,
+        "cube_compute_amount": cube_compute_amount,
+    }
 
 
-def _log_attention_compute_stats(q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
-    cube_compute_amount = _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
-    logger.info("cube_compute_amount=%d", cube_compute_amount)
-    return cube_compute_amount
+def _calc_cube_compute_capacity():
+    unit_conversion = 1000
+    fractal_m = 16
+    fractal_n = 16
+    fp8_fractal_k = 32
+    min_fractal_compute = fractal_m * fractal_n * fp8_fractal_k
+    frequency_ghz = 1.65
+    aic_count = 32
+    multiply_add_compute = 2
+    cube_compute_capacity = (
+        unit_conversion * min_fractal_compute * frequency_ghz * aic_count * multiply_add_compute
+    )
+    return {
+        "unit_conversion": unit_conversion,
+        "fractal_shape": (fractal_m, fractal_n, fp8_fractal_k),
+        "min_fractal_compute": min_fractal_compute,
+        "frequency_ghz": frequency_ghz,
+        "aic_count": aic_count,
+        "multiply_add_compute": multiply_add_compute,
+        "cube_compute_capacity": cube_compute_capacity,
+    }
+
+
+def _log_attention_compute_stats(case_name, q_lengths, kv_lengths, sparse_indices, sparse_seq_len):
+    compute_info = _calc_cube_compute_amount(q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
+    capacity_info = _calc_cube_compute_capacity()
+    basic_block_shape = compute_info["basic_block_shape"]
+    fractal_shape = capacity_info["fractal_shape"]
+    mfu_time = compute_info["cube_compute_amount"] / capacity_info["cube_compute_capacity"]
+    logger.info("case_name=%s", case_name)
+    logger.info("FLOPS计算过程量:")
+    logger.info("基本块数量: %d", compute_info["basic_block_count"])
+    logger.info(
+        "基本块的shape: q_block_size=%d, kv_block_size=%d, head_dim=%d",
+        basic_block_shape[0], basic_block_shape[1], basic_block_shape[2])
+    logger.info("单基本块计算量: %d", compute_info["single_basic_block_compute"])
+    logger.info(
+        "FLOPS计算公式: 基本块数(%d) * 单基本块计算量(%d) * 乘加计算(%d) * 两次bmm计算(%d) = %d",
+        compute_info["basic_block_count"],
+        compute_info["single_basic_block_compute"],
+        compute_info["multiply_add_compute"],
+        compute_info["bmm_compute_count"],
+        compute_info["cube_compute_amount"])
+    logger.info("算力计算过程量:")
+    logger.info(
+        "一轮cycle对应最小分型shape: m=%d, n=%d, k=%d(fp8为32)",
+        fractal_shape[0], fractal_shape[1], fractal_shape[2])
+    logger.info("一轮cycle对应最小分型计算量: %d", capacity_info["min_fractal_compute"])
+    logger.info(
+        "算力计算公式: 单位换算(%d) * (一轮cycle对应最小分型计算量(%d) * 频率GHz(%.2f) * "
+        "AIC数量(%d) * 乘加计算(%d)) = %.6f",
+        capacity_info["unit_conversion"],
+        capacity_info["min_fractal_compute"],
+        capacity_info["frequency_ghz"],
+        capacity_info["aic_count"],
+        capacity_info["multiply_add_compute"],
+        capacity_info["cube_compute_capacity"])
+    logger.info(
+        "MFU*时间计算公式: FLOPS(%d) / 算力(%.6f) = MFU * 时间(us) = %.6f",
+        compute_info["cube_compute_amount"], capacity_info["cube_compute_capacity"], mfu_time)
+    return compute_info["cube_compute_amount"], mfu_time
 
 
 def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
@@ -1386,7 +1434,7 @@ def _log_case_start(case_idx, total_case_num, case_id, mode, cache_case_name):
 
 
 def _make_case_result(case_id, status, elapsed, out_result=None, lse_result=None, error=None,
-                      compute_amount=None):
+                      mfu_time=None):
     return {
         "case": case_id,
         "status": status,
@@ -1394,7 +1442,7 @@ def _make_case_result(case_id, status, elapsed, out_result=None, lse_result=None
         "out": out_result,
         "lse": lse_result,
         "error": error,
-        "compute_amount": compute_amount,
+        "mfu_time": mfu_time,
     }
 
 
@@ -1410,11 +1458,11 @@ def _result_max_error(compare_result):
     return "-" if compare_result is None else f"{compare_result[2]:.6g}"
 
 
-def _result_compute_amount(item):
-    value = item.get("compute_amount")
+def _result_mfu_time(item):
+    value = item.get("mfu_time")
     if value is None:
         return "-"
-    return f"{value / 1000000 / 432:.2f}"
+    return f"{value:.2f}"
 
 
 def _log_final_summary(results):
@@ -1437,7 +1485,7 @@ def _log_final_summary(results):
     logger.info("-" * table_width)
     for idx, item in enumerate(results, 1):
         logger.info("%-4d %-10s %-10.2f %-24s %-12s %-12s %-12s %-12s %-*s",
-                    idx, item["status"], item["elapsed"], _result_compute_amount(item),
+                    idx, item["status"], item["elapsed"], _result_mfu_time(item),
                     _result_pct(item["out"]),
                     _result_max_error(item["out"]), _result_pct(item["lse"]),
                     _result_max_error(item["lse"]), case_col_width, item["case"])
@@ -1509,11 +1557,11 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
         if sparse_indices is None or sparse_seq_len is None:
             sparse_indices, sparse_seq_len = _make_reference_sparse_for_lengths(q_lengths, kv_lengths)
 
-    cube_compute_amount = _log_attention_compute_stats(q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
+    _, mfu_time = _log_attention_compute_stats(case_id, q_lengths, kv_lengths, sparse_indices, sparse_seq_len)
 
     if "gen" in mode and not (mode & {"cpu", "npu", "compare"}):
         logger.info("\n[Done] 数据已保存，退出")
-        return _make_case_result(case_id, "Generated", time.time() - start_time, compute_amount=cube_compute_amount)
+        return _make_case_result(case_id, "Generated", time.time() - start_time, mfu_time=mfu_time)
 
     if "cpu" in mode:
         logger.info("\n[Step 2] CPU Golden")
@@ -1526,7 +1574,7 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
 
     if "cpu" in mode and not (mode & {"npu", "compare"}):
         logger.info("\n[Done] CPU 输出已保存，退出")
-        return _make_case_result(case_id, "CpuDone", time.time() - start_time, compute_amount=cube_compute_amount)
+        return _make_case_result(case_id, "CpuDone", time.time() - start_time, mfu_time=mfu_time)
 
     if "npu" in mode:
         logger.info("\n[Step 3] NPU 调用")
@@ -1540,7 +1588,7 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
 
     if "npu" in mode and "compare" not in mode:
         logger.info("\n[Done] NPU 输出已保存，退出")
-        return _make_case_result(case_id, "NpuDone", time.time() - start_time, compute_amount=cube_compute_amount)
+        return _make_case_result(case_id, "NpuDone", time.time() - start_time, mfu_time=mfu_time)
 
     logger.info("\n[Step 4] Atten OUT 精度对比")
     out_result = result_compare_method.check_result(cpu_out, atten_out)
@@ -1562,7 +1610,7 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
     if _result_status(out_result) != "Pass" or (lse_result is not None and _result_status(lse_result) != "Pass"):
         status = "Failed"
     return _make_case_result(case_id, status, time.time() - start_time, out_result, lse_result,
-                             compute_amount=cube_compute_amount)
+                             mfu_time=mfu_time)
 
 
 if __name__ == '__main__':
