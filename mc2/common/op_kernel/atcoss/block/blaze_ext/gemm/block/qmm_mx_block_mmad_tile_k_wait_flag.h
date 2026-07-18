@@ -9,8 +9,11 @@
  */
 
 /*!
- * \file qmm_mx_block_mmad_wait_flag.h
+ * \file qmm_mx_block_mmad_tile_k_wait_flag.h
  * \brief BlockMmad specialization for MatmulWithScaleMx with split-K hard sync support.
+ *
+ * Based on Blaze's block_mmad_qbmm_mx.h, extended with:
+ *   - split-K hard sync: CrossCoreWaitFlag(9) every AG_SYNC_INTERVAL/kL1 K-iterations
  */
 
 #pragma once
