@@ -103,11 +103,23 @@ class SymmBuffer:
         self.rank_id = torch.distributed.get_rank(group)
         self.group_name = group._get_backend(torch.device("npu")).get_hccl_comm_name(self.rank_id, init_comm=False)
         self.ep_world_size = torch.distributed.get_world_size(group)
+        required_ccl_buffer_size = _get_mega_moe_ccl_buffer_size(
+            self.ep_world_size,
+            num_experts,
+            num_max_tokens_per_rank,
+            num_topk,
+            hidden,
+            max_recv_token_num,
+            dispatch_quant_mode,
+            dispatch_quant_out_dtype,
+            combine_quant_mode,
+            comm_alg,
+        )
         self._ctx_manager = CommContextManager(self.group_name, self.ep_world_size, backend={
             "Ascend910B": "kfc",
             "Ascend910_93": "kfc",
             "Ascend950": "channel"
-        })
+        }, customCclBufferSize=required_ccl_buffer_size)
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
         self.num_experts = num_experts
@@ -120,6 +132,9 @@ class SymmBuffer:
         self.dispatch_quant_out_dtype = dispatch_quant_out_dtype
         self.combine_quant_mode = combine_quant_mode
         self.comm_alg = comm_alg
+
+    def destroy(self):
+        self._ctx_manager.destroy()
 
 
 _TORCH_DTYPE_TO_INT = {  # torch枚举
