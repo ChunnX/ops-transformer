@@ -24,6 +24,7 @@ namespace op_api {
 
 constexpr static uint8_t COMM_ENGINE_AIV = 4;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
+constexpr uint32_t HCCL_CONTEXT_TAG_MAX_LEN = 255;
 
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
@@ -184,10 +185,15 @@ private:
 
 class HcclChannelContextBuilder {
 public:
-    void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor)
+    void Build(const std::string &group, int64_t worldSize, int64_t &cclBufferSize, at::Tensor &contextTensor,
+               int64_t customCclBufferSize = 0, void **customDeviceBuffer = nullptr,
+               HcclMemHandle *customMemHandle = nullptr)
     {
         ASCEND_LOGI("Start to get CommContext Tensor, group: %s", group.c_str());
         InitHcclEngineCtxFunctions();
+        customCclBufferSize_ = customCclBufferSize;
+        customDeviceBuffer_ = customDeviceBuffer;
+        customMemHandle_ = customMemHandle;
 
         HcclComm hcclHandle;
         AcquireHcclHandle(group, hcclHandle);
@@ -216,8 +222,9 @@ public:
                       int64_t &cclBufferSize)
     {
         std::string mc2ContextTag = std::string(group) + "moe_dispatch_ffn_combine";
-        TORCH_CHECK(mc2ContextTag.size() <= 255, "Mc2ContextTag is too long, max size is 255, got ",
-                    mc2ContextTag.size());
+        TORCH_CHECK(mc2ContextTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN,
+                    "Mc2ContextTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN,
+                    ", got ", mc2ContextTag.size());
 
         CommEngine engine = CommEngine::COMM_ENGINE_AIV;
         void *ctx = nullptr;
@@ -322,9 +329,10 @@ public:
             GetHcclCommLink(commHandle, layerId, srcRankId, dstRank, protocol, links);
             channelDesc[channelId].channelProtocol = protocol;
             channelDesc[channelId].remoteRank = dstRank;
-            channelDesc[channelId].notifyNum = channelNum;
             channelDesc[channelId].localEndpoint = links->srcEndpointDesc;
             channelDesc[channelId].remoteEndpoint = links->dstEndpointDesc;
+            channelDesc[channelId].memHandles = customMemHandle_;
+            channelDesc[channelId].memHandleNum = 1;
         }
     }
 
@@ -354,7 +362,8 @@ public:
     // ---- Resource management helpers ----
 
     void GetHcclCommResource(const HcclComm &commHandle, const CommEngine &engine, const CommProtocol &protocol,
-                              CommContext *commContextStruct, uint32_t rankSize, uint64_t &hcclBuffSize)
+                             CommContext *commContextStruct, uint32_t rankSize, uint64_t &hcclBuffSize,
+                             const std::string &targetTag)
     {
         ASCEND_LOGI("Start to get HCCL communication resource");
         uint32_t rankId = commContextStruct->epRankId;
@@ -365,24 +374,65 @@ public:
         commContextStruct->rankSizePerServer = rankSizePerServer;
         ASCEND_LOGI("Get HCCL communication channel success, channel num is: %zu", channels.size());
 
-        for (uint32_t i = 0; i < rankSize; ++i) {
-            void *tempBuffer = nullptr;
-            uint64_t bufSize = 0;
-            HcclResult hcclRet;
-
-            if (i == rankId) {
-                hcclRet = HcclGetHcclBufferFunc(commHandle, &tempBuffer, &hcclBuffSize);
-            } else {
-                uint32_t idx = (i < rankId) ? i : (i - 1);
-                hcclRet = HcclChannelGetHcclBufferFunc(commHandle, channels[idx], &tempBuffer, &bufSize);
-            }
-
-            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get HCCL buffer failed, src: ", rankId, ", dst: ", i,
-                        ", ret: ", hcclRet);
-
-            commContextStruct->epHcclBuffer_[i] = reinterpret_cast<uint64_t>(tempBuffer);
-        }
+        GetRegisteredCommResource(commHandle, commContextStruct, rankSize, channels, targetTag);
+        hcclBuffSize = static_cast<uint64_t>(customCclBufferSize_);
         ASCEND_LOGI("Get HCCL CommResource success");
+    }
+
+    void AllocateAndRegisterDeviceBuffer(const HcclComm &commHandle, const std::string &memBufferTag)
+    {
+        TORCH_CHECK(customDeviceBuffer_ != nullptr && customMemHandle_ != nullptr,
+                    "custom buffer owner pointers must not be null");
+        TORCH_CHECK(customCclBufferSize_ > 0, "customCclBufferSize must be greater than 0");
+
+        uint64_t bufferSizeBytes = static_cast<uint64_t>(customCclBufferSize_);
+        if (*customDeviceBuffer_ == nullptr) {
+            aclError aclRet = aclrtMalloc(customDeviceBuffer_, bufferSizeBytes, ACL_MEM_MALLOC_HUGE_FIRST);
+            TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtMalloc(", bufferSizeBytes, ") failed, ret=", aclRet);
+            aclRet = aclrtMemset(*customDeviceBuffer_, bufferSizeBytes, 0, bufferSizeBytes);
+            TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtMemset(customDeviceBuffer_) failed, ret=", aclRet);
+        }
+        if (*customMemHandle_ == nullptr) {
+            CommMem mem;
+            mem.type = COMM_MEM_TYPE_DEVICE;
+            mem.addr = *customDeviceBuffer_;
+            mem.size = bufferSizeBytes;
+            auto hcclRet = HcclCommMemRegFunc(commHandle, memBufferTag.c_str(), &mem, customMemHandle_);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclCommMemReg(tag='", memBufferTag,
+                        "', size=", bufferSizeBytes, ") failed, ret=", hcclRet);
+        }
+    }
+
+    void GetRegisteredCommResource(const HcclComm &commHandle, CommContext *commContextStruct,
+                                   uint32_t rankSize, const std::vector<ChannelHandle> &channels,
+                                   const std::string &targetTag)
+    {
+        uint32_t rankId = commContextStruct->epRankId;
+        commContextStruct->epHcclBuffer_[rankId] = reinterpret_cast<uint64_t>(*customDeviceBuffer_);
+        for (uint32_t peer = 0; peer < rankSize; ++peer) {
+            if (peer == rankId) {
+                continue;
+            }
+            uint32_t channelIndex = peer < rankId ? peer : peer - 1;
+            uint32_t memNum = 0;
+            CommMem *remoteMems = nullptr;
+            char **memTags = nullptr;
+            auto hcclRet = HcclChannelGetRemoteMemsFunc(
+                commHandle, channels[channelIndex], &memNum, &remoteMems, &memTags);
+            TORCH_CHECK(hcclRet == HCCL_SUCCESS,
+                        "HcclChannelGetRemoteMems(peer=", peer, ") failed, ret=", hcclRet);
+            bool found = false;
+            for (uint32_t index = 0; index < memNum; ++index) {
+                if (memTags != nullptr && remoteMems != nullptr && memTags[index] != nullptr &&
+                    targetTag == memTags[index]) {
+                    commContextStruct->epHcclBuffer_[peer] =
+                        reinterpret_cast<uint64_t>(remoteMems[index].addr);
+                    found = true;
+                    break;
+                }
+            }
+            TORCH_CHECK(found, "Target Mem '", targetTag, "' is not found for peer ", peer);
+        }
     }
 
     // ---- Context lifecycle helpers ----
@@ -406,7 +456,13 @@ public:
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
         ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
-        GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize);
+        std::string memBufferTag = mc2ContextTag + "_buffer";
+        TORCH_CHECK(memBufferTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN,
+                    "MemBufferTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN,
+                    ", got ", memBufferTag.size());
+        AllocateAndRegisterDeviceBuffer(commHandle, memBufferTag);
+
+        GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize, memBufferTag);
 
         hcclRet =
             HcclEngineCtxCopyFunc(commHandle, engine, mc2ContextTag.c_str(), commContextStruct, commContextSize, 0);
@@ -474,6 +530,9 @@ public:
 
     // 记录本卡与其他卡的通信层数，key为其他卡的rankId，value为通信层数
     std::unordered_map<uint32_t, uint32_t> layerMap_;
+    int64_t customCclBufferSize_ = 0;
+    void **customDeviceBuffer_ = nullptr;
+    HcclMemHandle *customMemHandle_ = nullptr;
 };
 
 // ======================== CommContextManager ========================
@@ -481,9 +540,19 @@ public:
 class CommContextManager {
 public:
     CommContextManager(const std::string &group, int64_t worldSize,
-                       const py::object &backend = py::str("kfc"))
+                       const py::object &backend = py::str("kfc"), int64_t customCclBufferSize = 0)
         : group_(group), worldSize_(worldSize),
-          backend_(backend), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0) {}
+          backend_(backend), mode_(BackendMode::UNINITIALIZED), cclBufferSize_(0),
+          customCclBufferSize_(customCclBufferSize) {}
+
+    ~CommContextManager()
+    {
+        try {
+            destroy();
+        } catch (const std::exception &error) {
+            ASCEND_LOGE("CommContextManager destroy failed: %s", error.what());
+        }
+    }
 
     at::Tensor create_context()
     {
@@ -503,6 +572,20 @@ public:
     }
 
     int64_t ccl_buffer_size() const { return cclBufferSize_; }
+
+    void destroy()
+    {
+        if (customMemHandle_ != nullptr || customDeviceBuffer_ != nullptr) {
+            aclError aclRet = aclrtSynchronizeDevice();
+            TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed, ret=", aclRet);
+        }
+        customMemHandle_ = nullptr;
+        if (customDeviceBuffer_ != nullptr) {
+            aclError aclRet = aclrtFree(customDeviceBuffer_);
+            TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtFree(customDeviceBuffer_) failed, ret=", aclRet);
+            customDeviceBuffer_ = nullptr;
+        }
+    }
 
 private:
     static int64_t context_tensor_size()
@@ -527,7 +610,8 @@ private:
             }
             case BackendMode::CHANNEL: {
                 HcclChannelContextBuilder builder;
-                builder.Build(group_, worldSize_, cclBufferSize_, tensor);
+                builder.Build(group_, worldSize_, cclBufferSize_, tensor, customCclBufferSize_,
+                              &customDeviceBuffer_, &customMemHandle_);
                 return;
             }
             default:
@@ -540,16 +624,21 @@ private:
     py::object backend_;
     BackendMode mode_;
     int64_t cclBufferSize_ = 0;
+    int64_t customCclBufferSize_ = 0;
+    void *customDeviceBuffer_ = nullptr;
+    HcclMemHandle customMemHandle_ = nullptr;
 };
 
 // Bind the CommContextManager class to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
     py::class_<CommContextManager>(m, "CommContextManager")
-        .def(py::init<const std::string &, int64_t, const py::object &>(),
-             py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"))
+        .def(py::init<const std::string &, int64_t, const py::object &, int64_t>(),
+             py::arg("group"), py::arg("worldSize"), py::arg("backend") = std::string("kfc"),
+             py::arg("customCclBufferSize") = 0)
         .def("create_context", &CommContextManager::create_context)
         .def("update_group", &CommContextManager::update_group, py::arg("group"), py::arg("contextTensor").noconvert())
+        .def("destroy", &CommContextManager::destroy)
         .def_property_readonly("ccl_buffer_size", &CommContextManager::ccl_buffer_size);
 }
 } // op_api
