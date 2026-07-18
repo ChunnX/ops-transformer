@@ -454,11 +454,6 @@ public:
         uint32_t rankSize = 0;
         hcclRet = HcclGetRankSizeFunc(commHandle, &rankSize);
         TORCH_CHECK(hcclRet == HCCL_SUCCESS, "Get rank size failed, ret: ", hcclRet);
-        TORCH_CHECK(rankSize > 0, "rankSize must be greater than 0, got ", rankSize);
-        TORCH_CHECK(rankSize <= HCCL_MAX_RANK_SIZE, "rankSize exceeds HCCL_MAX_RANK_SIZE, rankSize=", rankSize,
-                    ", HCCL_MAX_RANK_SIZE=", HCCL_MAX_RANK_SIZE);
-        TORCH_CHECK(commContextStruct->epRankId < rankSize, "epRankId must be less than rankSize, epRankId=",
-                    commContextStruct->epRankId, ", rankSize=", rankSize);
         ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
         std::string memBufferTag = mc2ContextTag + "_buffer";
