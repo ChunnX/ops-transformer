@@ -1,4 +1,4 @@
-# Copyright (c) PyPTO Contributors.
+﻿# Copyright (c) PyPTO Contributors.
 # This program is free software; you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -15,15 +15,12 @@ import torch
 import torch_npu
 import cann_ops_transformer
 
-# ================================================================
-#  Constants
-# ================================================================
 D_TOTAL = 512
 SCALE = 1.0 / math.sqrt(D_TOTAL)
 
 
 def _parse_list(val):
-    if val is None or val == "" or val == "no":
+    if val is None or val == "" or str(val).lower() == "no":
         return None
     if isinstance(val, str):
         try:
@@ -34,7 +31,7 @@ def _parse_list(val):
 
 
 def _to_torch_dtype(dtype_str):
-    if dtype_str == "bfloat16":
+    if str(dtype_str).lower() == "bfloat16":
         return torch.bfloat16
     return torch.float16
 
@@ -45,115 +42,118 @@ def build_cumsum_offsets(a):
     return c.to(a.dtype)
 
 
-def compress_bnsd_to_tnd(x, seqlist):
-    if x is None:
-        return None
-    B, S, N, D = x.shape
-    idxs = torch.arange(S, device=x.device).unsqueeze(0).expand(B, S)
-    mask = idxs < seqlist.unsqueeze(1)
-    return x[mask]
-
-
-def compress_bnsd_to_ntd(x, seqlist):
-    if x is None:
-        return None
-    B, N, S, D = x.shape
-    x_bsnd = x.transpose(1, 2)
-    idxs = torch.arange(S, device=x.device).unsqueeze(0).expand(B, S)
-    mask = idxs < seqlist.unsqueeze(1)
-    tnd = x_bsnd[mask]
-    ntd = tnd.transpose(0, 1)
-    return ntd.contiguous()
-
-
-def generate_sparse_indices_loop(b, gen_s1, gen_s2, k, maskmode, cmp_ratio, layout, seq_q_actual, seq_k_actual, has_topk_length, cmp_residual_k):
-    sparse_indices = torch.zeros(b, gen_s1, 1, k, dtype=torch.int32)
-    if has_topk_length:
-        topk_length = torch.zeros(b, gen_s1, 1, 1, dtype=torch.int32)
+def compute_metadata(seqused_q, seq_q_cpu, core_num):
+    if seqused_q is not None:
+        total_t1 = int(seqused_q.sum().item())
     else:
-        topk_length = None
+        total_t1 = int(seq_q_cpu.sum().item())
+    
+    if total_t1 <= core_num:
+        return [total_t1, 1, 0, 0, total_t1]
+    
+    former = math.ceil(total_t1 / core_num)
+    remain = former - 1
+    former_num = total_t1 - core_num * remain
+    return [total_t1, former, remain, core_num - former_num, core_num]
+
+
+def generate_sparse_indices_bsnd(b, gen_s1, gen_s2, k, mask_mode, cmp_ratio, seq_q, seq_k, sparse_mode, has_topk, cmp_residual_k):
+    sparse_indices = torch.zeros(b, gen_s1, 1, k, dtype=torch.int32)
+    topk_length = torch.zeros(b, gen_s1, 1, 1, dtype=torch.int32) if has_topk else None
 
     for b_id in range(b):
-        cur_sq = seq_q_actual[b_id].item() if seq_q_actual is not None else gen_s1
-        cur_skv = seq_k_actual[b_id].item() if seq_k_actual is not None else gen_s2
+        cur_sq = seq_q[b_id].item() if seq_q is not None else gen_s1
+        cur_skv = seq_k[b_id].item() if seq_k is not None else gen_s2
         for s1_idx in range(cur_sq):
-            if maskmode == 0:
-                limit = min(cur_skv, k)
-            elif maskmode == 3:
-                if cmp_ratio > 1:
-                    cur_skv_ = cur_skv * cmp_ratio + int(cmp_residual_k[b_id])
-                else:
-                    cur_skv_ = cur_skv * cmp_ratio
-                actual_sk = max((cur_skv_ - cur_sq + s1_idx + 1) // cmp_ratio, 0)
-                limit = min(actual_sk, k)
+            if mask_mode == 0:
+                actual_sk = cur_skv
             else:
-                limit = 0
+                cmp_val = cmp_residual_k[b_id].item() if cmp_residual_k is not None else 0
+                if cmp_ratio > 1:
+                    ori_sk = cur_skv * cmp_ratio + cmp_val
+                else:
+                    ori_sk = cur_skv * cmp_ratio
+                actual_sk = max((ori_sk - cur_sq + s1_idx + 1) // cmp_ratio, 0)
+            
+            limit = min(actual_sk, k)
 
-            if has_topk_length:
+            if has_topk and sparse_mode == "random":
                 if limit > 0:
                     topk_length[b_id, s1_idx, 0, :] = torch.randint(0, limit, (1,), dtype=torch.int32)
                 else:
                     topk_length[b_id, s1_idx, 0, :] = 0
                 limit = int(topk_length[b_id, s1_idx, 0, 0])
 
-            if limit > 0:
-                upper_bound = cur_skv if maskmode == 0 else actual_sk
-                if upper_bound > 0:
-                    rand_vals = torch.randint(0, upper_bound, (limit,), dtype=torch.int32)
-                    sparse_indices[b_id, s1_idx, 0, :limit] = rand_vals
+            if limit > 0 and actual_sk > 0:
+                sparse_indices[b_id, s1_idx, 0, :limit] = torch.randint(0, actual_sk, (limit,), dtype=torch.int32)
+
     return sparse_indices, topk_length
 
 
-def compute_softmax_l1_norm_loop(q, k, softmax_lse, seqused_q=None, seqused_k=None, cmp_residual_k=None, sparse_indices=None, topk_length=None, mask_mode=0, cmp_ratio=1, core_num=32, layout="BSND", seq_q=None, seq_k=None, softmax_scale=SCALE):
+def generate_sparse_indices_tnd(seq_q_cpu, seq_k_cpu, k, mask_mode, cmp_ratio, seqused_q, seqused_k, sparse_mode, has_topk, cmp_residual_k):
+    B = seq_q_cpu.shape[0]
+    T1 = seq_q_cpu.sum().item()
+    cu_q = build_cumsum_offsets(seq_q_cpu).int()
+
+    sparse_indices = torch.zeros(T1, 1, k, dtype=torch.int32)
+    topk_length = torch.zeros(T1, dtype=torch.int32) if has_topk else None
+
+    for b_id in range(B):
+        sq_len = seqused_q[b_id].item() if seqused_q is not None else seq_q_cpu[b_id].item()
+        sk_len = seqused_k[b_id].item() if seqused_k is not None else seq_k_cpu[b_id].item()
+        for s1_idx in range(sq_len):
+            global_idx = cu_q[b_id].item() + s1_idx
+            if mask_mode == 0:
+                actual_sk = sk_len
+            else:
+                cmp_val = cmp_residual_k[b_id].item() if cmp_residual_k is not None else 0
+                if cmp_ratio > 1:
+                    ori_sk = sk_len * cmp_ratio + cmp_val
+                else:
+                    ori_sk = sk_len * cmp_ratio
+                actual_sk = max((ori_sk - sq_len + s1_idx + 1) // cmp_ratio, 0)
+
+            limit = min(actual_sk, k)
+
+            if has_topk and sparse_mode == "random":
+                if limit > 0:
+                    topk_length[global_idx] = torch.randint(0, limit, (1,), dtype=torch.int32).item()
+                else:
+                    topk_length[global_idx] = 0
+                limit = int(topk_length[global_idx])
+
+            if limit > 0 and actual_sk > 0:
+                sparse_indices[global_idx, 0, :limit] = torch.randint(0, actual_sk, (limit,), dtype=torch.int32)
+
+    return sparse_indices, topk_length
+
+
+def compute_golden_bsnd(q, k, lse, seqused_q, seqused_k, cmp_residual_k, sparse_indices, topk_length, mask_mode, cmp_ratio, core_num, softmax_scale):
     B, Sq, G, _ = q.shape
     Sk = k.shape[1]
     device = q.device
-
+    
     metadata = torch.zeros(1024, dtype=torch.int32, device=device)
-    if seqused_q is not None:
-        usedQ = seqused_q
-    elif layout == "BSND":
-        usedQ = [Sq for _ in range(B)]
-    else:
-        usedQ = seq_q.numpy()
-    total_t1 = sum(usedQ)
-    if total_t1 <= core_num:
-        used_core_num = total_t1
-        remain_core_num = 0
-        former_core_process_num = 1
-        remain_core_process_num = 0
-    else:
-        former_core_process_num = math.ceil(total_t1 / core_num)
-        remain_core_process_num = former_core_process_num - 1
-        former_core_num = total_t1 - core_num * remain_core_process_num
-        remain_core_num = core_num - former_core_num
-        used_core_num = core_num
-    metadata[0] = total_t1
-    metadata[1] = former_core_process_num
-    metadata[2] = remain_core_process_num
-    metadata[3] = remain_core_num
-    metadata[4] = used_core_num
+    meta_vals = compute_metadata(seqused_q, torch.full((B,), Sq, dtype=torch.int32), core_num)
+    metadata[:5] = torch.tensor(meta_vals, dtype=torch.int32)
 
-    if sparse_indices is not None:
-        k_length = sparse_indices.shape[-1]
-    else:
-        k_length = Sk
+    k_length = sparse_indices.shape[-1] if sparse_indices is not None else Sk
+    out = torch.zeros(B, Sq, 1, k_length, dtype=torch.float32, device=device)
 
-    softmax_l1_norm = torch.zeros(B, Sq, 1, k_length, dtype=torch.float32, device=device)
     for b_id in range(B):
-        sq_len = int(seqused_q[b_id].item() if seqused_q is not None else (Sq if layout == "BSND" else seq_q[b_id].item()))
-        sk_len = int(seqused_k[b_id].item() if seqused_k is not None else (Sk if layout == "BSND" else seq_k[b_id].item()))
-
+        sq_len = seqused_q[b_id].item() if seqused_q is not None else Sq
+        sk_len = seqused_k[b_id].item() if seqused_k is not None else Sk
         for s1_id in range(sq_len):
             query = q[b_id, s1_id, :, :].float()
             if mask_mode == 0:
                 actual_sk = sk_len
             else:
+                cmp_val = cmp_residual_k[b_id].item() if cmp_residual_k is not None else 0
                 if cmp_ratio > 1:
-                    ori_sk_len = sk_len * cmp_ratio + cmp_residual_k[b_id]
+                    ori_sk = sk_len * cmp_ratio + cmp_val
                 else:
-                    ori_sk_len = sk_len * cmp_ratio
-                actual_sk = max((ori_sk_len - sq_len + s1_id + 1) // cmp_ratio, 0)
+                    ori_sk = sk_len * cmp_ratio
+                actual_sk = max((ori_sk - sq_len + s1_id + 1) // cmp_ratio, 0)
 
             if sparse_indices is not None:
                 K = sparse_indices.shape[-1]
@@ -161,23 +161,74 @@ def compute_softmax_l1_norm_loop(q, k, softmax_lse, seqused_q=None, seqused_k=No
                     K = min(int(topk_length[b_id, s1_id, 0, 0]), K)
                 actual_sk = min(actual_sk, K)
                 if actual_sk > 0:
-                    indices = sparse_indices[b_id, s1_id, 0, :actual_sk]
-                    key = k[b_id, indices, 0, :].float()
+                    key = k[b_id, sparse_indices[b_id, s1_id, 0, :actual_sk], 0, :].float()
                 else:
                     key = k[b_id, :0, 0, :].float()
             else:
                 key = k[b_id, :actual_sk, 0, :].float()
 
             qk = query @ key.T
-            qk_scale = qk * softmax_scale
-            lse = softmax_lse[b_id, 0, s1_id, :]
-            p = torch.exp(qk_scale - lse.unsqueeze(1))
-            softmax_l1 = p.sum(dim=0) / G
-
+            lse_vec = lse[b_id, 0, s1_id, :]
+            p = torch.exp(qk * softmax_scale - lse_vec.unsqueeze(1))
             if actual_sk > 0:
-                softmax_l1_norm[b_id, s1_id, 0, :actual_sk] = softmax_l1[:actual_sk]
+                out[b_id, s1_id, 0, :actual_sk] = (p.sum(dim=0) / G)[:actual_sk]
 
-    return softmax_l1_norm, metadata
+    return out, metadata
+
+
+def compute_golden_tnd(q, k, lse, seq_q_cpu, seq_k_cpu, seqused_q, seqused_k, cmp_residual_k, sparse_indices, topk_length, mask_mode, cmp_ratio, core_num, softmax_scale):
+    B = seq_q_cpu.shape[0]
+    G = q.shape[1]
+    device = q.device
+    cu_q = build_cumsum_offsets(seq_q_cpu).int()
+    cu_k = build_cumsum_offsets(seq_k_cpu).int()
+    T1 = seq_q_cpu.sum().item()
+    K = sparse_indices.shape[-1] if sparse_indices is not None else seq_k_cpu.sum().item()
+    out = torch.zeros(T1, 1, K, dtype=torch.float32, device=device)
+
+    metadata = torch.zeros(1024, dtype=torch.int32, device=device)
+    meta_vals = compute_metadata(seqused_q, seq_q_cpu, core_num)
+    metadata[:5] = torch.tensor(meta_vals, dtype=torch.int32)
+
+    for b_id in range(B):
+        sq_len = seqused_q[b_id].item() if seqused_q is not None else seq_q_cpu[b_id].item()
+        sk_len = seqused_k[b_id].item() if seqused_k is not None else seq_k_cpu[b_id].item()
+        q_start = cu_q[b_id].item()
+        k_start = cu_k[b_id].item()
+
+        for s1_idx in range(sq_len):
+            query = q[q_start + s1_idx].float()
+            if mask_mode == 0:
+                actual_sk = sk_len
+            else:
+                cmp_val = cmp_residual_k[b_id].item() if cmp_residual_k is not None else 0
+                if cmp_ratio > 1:
+                    ori_sk = sk_len * cmp_ratio + cmp_val
+                else:
+                    ori_sk = sk_len * cmp_ratio
+                actual_sk = max((ori_sk - sq_len + s1_idx + 1) // cmp_ratio, 0)
+
+            global_idx = q_start + s1_idx
+            if sparse_indices is not None:
+                KK = sparse_indices.shape[-1]
+                if topk_length is not None:
+                    KK = min(int(topk_length[global_idx].item()), KK)
+                actual_sk = min(actual_sk, KK)
+                if actual_sk > 0:
+                    indices = sparse_indices[global_idx, 0, :actual_sk].long()
+                    key = k[k_start + indices, 0, :].float()
+                else:
+                    key = k[k_start:k_start, 0, :].float()
+            else:
+                key = k[k_start:k_start + actual_sk, 0, :].float()
+
+            qk = query @ key.T
+            lse_vec = lse[0, global_idx, :]
+            p = torch.exp(qk * softmax_scale - lse_vec.unsqueeze(1))
+            if actual_sk > 0:
+                out[global_idx, 0, :actual_sk] = (p.sum(dim=0) / G)[:actual_sk]
+
+    return out, metadata
 
 
 def find_mismatched_elements(actual, expected, rtol=5e-3, atol=5e-3):
@@ -216,153 +267,130 @@ def find_mismatched_elements(actual, expected, rtol=5e-3, atol=5e-3):
 def run_test_case(params):
     device = "npu:0"
     torch.npu.set_device(device)
-    torch.manual_seed(params.get("manual_seed", 42))
+    torch.manual_seed(int(params.get("manual_seed", 42)))
 
-    B = params["B"]
-    S1 = params["S1"]
-    S2 = params["S2"]
-    G = params["N1"]
-    D = params["D"]
+    B = int(params["b"])
+    S1 = int(params["s1"])
+    S2 = int(params["s2"])
+    G = int(params["n1"])
+    D = int(params["d"])
     dtype = _to_torch_dtype(params.get("dtype", "float16"))
     layout = params.get("layout_q", "BSND")
-    mask_mode = params.get("mask_mode", 0)
-    cmp_ratio = params.get("cmp_ratio", 1)
-    softmax_scale = params.get("softmax_scale", SCALE)
+    mask_mode = int(params.get("mask_mode", 0))
+    cmp_ratio = int(params.get("cmp_ratio", 1))
+    softmax_scale = float(params.get("softmax_scale", SCALE))
     core_num = 32
 
-    # 1. sparse_size 表示 K
     K = params.get("sparse_size")
+    if K is not None: K = int(K)
     is_sparse = K is not None and K > 0
 
-    # 5. topk_mode 为 no 表示不生成 topk_length
-    topk_mode = params.get("topk_mode")
-    has_topk_length = topk_mode is not None and str(topk_mode).lower() not in ["no", ""]
+    sparse_mode = params.get("sparse_mode", "")
+    topk_mode = params.get("topk_mode", "")
+    has_topk = str(topk_mode).lower() != "no" and str(topk_mode) != ""
 
-    # 提取表格参数
     seq_q_list = _parse_list(params.get("seqlens_list_q"))
     seq_k_list = _parse_list(params.get("seqlens_list_kv"))
     seqused_q_list = _parse_list(params.get("seqused_q"))
     seqused_k_list = _parse_list(params.get("seqused_kv"))
     cmp_residual_k_list = _parse_list(params.get("cmp_residual_kv"))
 
-    # 2. TND场景下 seqlens_list_q 和 seqlens_list_kv 对应每个 batch 的 sq 和 sk
-    if layout == "TND":
-        # Ensure length matches B
-        if seq_q_list is None: seq_q_list = [1] * B
-        if seq_k_list is None: seq_k_list = [1] * B
-        while len(seq_q_list) < B: seq_q_list.append(1)
-        seq_q_list = seq_q_list[:B]
-        while len(seq_k_list) < B: seq_k_list.append(1)
-        seq_k_list = seq_k_list[:B]
-
-        seq_q_cpu = torch.tensor(seq_q_list, dtype=torch.int32)
-        seq_k_cpu = torch.tensor(seq_k_list, dtype=torch.int32)
-        
-        # 3. 使用表格中的 seqused_q 和 seqused_kv
-        seqused_q_cpu = torch.tensor(seqused_q_list, dtype=torch.int32) if seqused_q_list is not None else None
-        seqused_k_cpu = torch.tensor(seqused_k_list, dtype=torch.int32) if seqused_k_list is not None else None
-        
-        gen_s1 = max(seq_q_list)
-        gen_s2 = max(seq_k_list)
-    else:
-        # BSND
-        gen_s1 = S1
-        gen_s2 = S2
-        
-        if seqused_q_list is not None:
-            seqused_q_cpu = torch.tensor(seqused_q_list, dtype=torch.int32)
-        else:
-            seqused_q_cpu = None
-            
-        if seqused_k_list is not None:
-            seqused_k_cpu = torch.tensor(seqused_k_list, dtype=torch.int32)
-        else:
-            seqused_k_cpu = None
-
-        seq_q_cpu = seqused_q_cpu.clone() if seqused_q_cpu is not None else torch.full((B,), S1, dtype=torch.int32)
-        seq_k_cpu = seqused_k_cpu.clone() if seqused_k_cpu is not None else torch.full((B,), S2, dtype=torch.int32)
-
-    # 3. cmp_residual_kv 使用表格中的
-    cmp_residual_k_cpu = torch.tensor(cmp_residual_k_list, dtype=torch.int32) if cmp_residual_k_list is not None else None
-
-    logging.info(f"\nRunning test: {params.get('testcase_name', 'N/A')} (layout={layout}, sparse={is_sparse}, topk={has_topk_length})")
-
-    # Generate base BSND data on CPU
-    query = torch.rand((B, gen_s1, G, D), dtype=dtype)
-    key = torch.rand((B, gen_s2, 1, D), dtype=dtype)
-    lse = torch.rand((B, 1, gen_s1, G), dtype=torch.float32)
-
-    # 4. sparse_mode 逻辑处理
-    if is_sparse:
-        sparse_indices_cpu, topk_length_cpu = generate_sparse_indices_loop(
-            B, gen_s1, gen_s2, K, mask_mode, cmp_ratio, "BSND", 
-            seqused_q_cpu if seqused_q_cpu is not None else seq_q_cpu, 
-            seqused_k_cpu if seqused_k_cpu is not None else seq_k_cpu, 
-            has_topk_length, cmp_residual_k_cpu
-        )
-    else:
-        sparse_indices_cpu, topk_length_cpu = None, None
-
-    # Golden
-    golden_out, metadata = compute_softmax_l1_norm_loop(
-        query, key, lse, seqused_q_cpu, seqused_k_cpu, cmp_residual_k_cpu,
-        sparse_indices_cpu, topk_length_cpu, mask_mode, cmp_ratio, core_num,
-        "BSND", seq_q_cpu, seq_k_cpu, softmax_scale
-    )
-
-    # Move to device
-    query_dev = query.to(device)
-    key_dev = key.to(device)
-    lse_dev = lse.to(device)
-    seqused_q_dev = seqused_q_cpu.to(device) if seqused_q_cpu is not None else None
-    seqused_k_dev = seqused_k_cpu.to(device) if seqused_k_cpu is not None else None
-    cmp_residual_k_dev = cmp_residual_k_cpu.to(device) if cmp_residual_k_cpu is not None else None
-    metadata_dev = metadata.to(device)
+    logging.info(f"\nRunning test: {params.get('testcase_name', 'N/A')} (layout={layout}, sparse={is_sparse}, topk={has_topk})")
 
     if layout == "TND":
-        seq_q_dev = build_cumsum_offsets(seq_q_cpu.to(device))
-        seq_k_dev = build_cumsum_offsets(seq_k_cpu.to(device))
+        if seq_q_list is None or len(seq_q_list) < B:
+            seq_q_list = [S1 // B] * B
+            seq_q_list[-1] += S1 - sum(seq_q_list)
+        if seq_k_list is None or len(seq_k_list) < B:
+            seq_k_list = [S2 // B] * B
+            seq_k_list[-1] += S2 - sum(seq_k_list)
 
-        query_tnd = compress_bnsd_to_tnd(query_dev, seq_q_cpu.to(device))
-        key_tnd = compress_bnsd_to_tnd(key_dev, seq_k_cpu.to(device))
-        lse_tnd = compress_bnsd_to_ntd(lse_dev, seq_q_cpu.to(device))
+        seq_q_cpu = torch.tensor(seq_q_list[:B], dtype=torch.int32)
+        seq_k_cpu = torch.tensor(seq_k_list[:B], dtype=torch.int32)
+        T1 = seq_q_cpu.sum().item()
+        T2 = seq_k_cpu.sum().item()
 
-        if sparse_indices_cpu is not None:
-            sparse_indices_tnd = compress_bnsd_to_tnd(sparse_indices_cpu.to(device), seq_q_cpu.to(device))
-            if topk_length_cpu is not None:
-                topk_length_tnd = compress_bnsd_to_tnd(topk_length_cpu.to(device), seq_q_cpu.to(device)).squeeze(-1)
-            else:
-                topk_length_tnd = None
+        seqused_q_cpu = torch.tensor(seqused_q_list[:B], dtype=torch.int32) if seqused_q_list else None
+        seqused_k_cpu = torch.tensor(seqused_k_list[:B], dtype=torch.int32) if seqused_k_list else None
+        cmp_residual_k_cpu = torch.tensor(cmp_residual_k_list[:B], dtype=torch.int32) if cmp_residual_k_list else None
+
+        query = torch.rand((T1, G, D), dtype=dtype)
+        key = torch.rand((T2, 1, D), dtype=dtype)
+        lse = torch.rand((1, T1, G), dtype=torch.float32)
+
+        if is_sparse:
+            sparse_indices, topk_length = generate_sparse_indices_tnd(seq_q_cpu, seq_k_cpu, K, mask_mode, cmp_ratio,
+                                                                      seqused_q_cpu, seqused_k_cpu, sparse_mode, has_topk, cmp_residual_k_cpu)
         else:
-            sparse_indices_tnd = None
-            topk_length_tnd = None
+            sparse_indices, topk_length = None, None
 
-        golden_tnd = compress_bnsd_to_tnd(golden_out, seq_q_cpu)
+        golden_out, metadata = compute_golden_tnd(query, key, lse, seq_q_cpu, seq_k_cpu,
+                                                   seqused_q_cpu, seqused_k_cpu, cmp_residual_k_cpu,
+                                                   sparse_indices, topk_length,
+                                                   mask_mode, cmp_ratio, core_num, softmax_scale)
 
-        max_seqlen_k = S2
+        query_dev = query.to(device)
+        key_dev = key.to(device)
+        lse_dev = lse.to(device)
+        sparse_indices_dev = sparse_indices.to(device) if sparse_indices is not None else None
+        topk_length_dev = topk_length.to(device) if topk_length is not None else None
+        seqused_q_dev = seqused_q_cpu.to(device) if seqused_q_cpu is not None else None
+        seqused_k_dev = seqused_k_cpu.to(device) if seqused_k_cpu is not None else None
+        cmp_residual_k_dev = cmp_residual_k_cpu.to(device) if cmp_residual_k_cpu is not None else None
+        metadata_dev = metadata.to(device)
+        seq_q_dev = build_cumsum_offsets(seq_q_cpu).to(device)
+        seq_k_dev = build_cumsum_offsets(seq_k_cpu).to(device)
+
         npu_out = cann_ops_transformer.sparse_flash_mla_softmax_l1_norm(
-            query_tnd, key_tnd, lse_tnd,
-            sparse_indices=sparse_indices_tnd,
+            query_dev, key_dev, lse_dev,
+            sparse_indices=sparse_indices_dev,
             cu_seqlens_q=seq_q_dev,
             cu_seqlens_k=seq_k_dev,
             seqused_q=seqused_q_dev,
             seqused_k=seqused_k_dev,
             cmp_residual_k=cmp_residual_k_dev,
-            topk_length=topk_length_tnd,
+            topk_length=topk_length_dev,
             metadata=metadata_dev,
             scale_value=softmax_scale,
-            max_seqlen_k=max_seqlen_k,
+            max_seqlen_k=S2,
             cmp_ratio=cmp_ratio,
             mask_mode=mask_mode,
             layout_q="TND",
             layout_k="TND",
         )
-        golden_out_final = golden_tnd
+        golden_out_final = golden_out
+
     else:
-        # BSND
-        sparse_indices_dev = sparse_indices_cpu.to(device) if sparse_indices_cpu is not None else None
-        topk_length_dev = topk_length_cpu.to(device) if topk_length_cpu is not None else None
-        max_seqlen_k = gen_s2 if not is_sparse else 0
+        gen_s1 = S1
+        gen_s2 = S2
+        seqused_q_cpu = torch.tensor(seqused_q_list[:B], dtype=torch.int32) if seqused_q_list else None
+        seqused_k_cpu = torch.tensor(seqused_k_list[:B], dtype=torch.int32) if seqused_k_list else None
+        cmp_residual_k_cpu = torch.tensor(cmp_residual_k_list[:B], dtype=torch.int32) if cmp_residual_k_list else None
+
+        query = torch.rand((B, gen_s1, G, D), dtype=dtype)
+        key = torch.rand((B, gen_s2, 1, D), dtype=dtype)
+        lse = torch.rand((B, 1, gen_s1, G), dtype=torch.float32)
+
+        if is_sparse:
+            sparse_indices, topk_length = generate_sparse_indices_bsnd(B, gen_s1, gen_s2, K, mask_mode, cmp_ratio,
+                                                                       seqused_q_cpu if seqused_q_cpu is not None else torch.full((B,), gen_s1, dtype=torch.int32),
+                                                                       seqused_k_cpu if seqused_k_cpu is not None else torch.full((B,), gen_s2, dtype=torch.int32),
+                                                                       sparse_mode, has_topk, cmp_residual_k_cpu)
+        else:
+            sparse_indices, topk_length = None, None
+
+        golden_out, metadata = compute_golden_bsnd(query, key, lse, seqused_q_cpu, seqused_k_cpu, cmp_residual_k_cpu,
+                                                    sparse_indices, topk_length, mask_mode, cmp_ratio, core_num, softmax_scale)
+
+        query_dev = query.to(device)
+        key_dev = key.to(device)
+        lse_dev = lse.to(device)
+        sparse_indices_dev = sparse_indices.to(device) if sparse_indices is not None else None
+        topk_length_dev = topk_length.to(device) if topk_length is not None else None
+        seqused_q_dev = seqused_q_cpu.to(device) if seqused_q_cpu is not None else None
+        seqused_k_dev = seqused_k_cpu.to(device) if seqused_k_cpu is not None else None
+        cmp_residual_k_dev = cmp_residual_k_cpu.to(device) if cmp_residual_k_cpu is not None else None
+        metadata_dev = metadata.to(device)
 
         npu_out = cann_ops_transformer.sparse_flash_mla_softmax_l1_norm(
             query_dev, key_dev, lse_dev,
@@ -375,7 +403,7 @@ def run_test_case(params):
             topk_length=topk_length_dev,
             metadata=metadata_dev,
             scale_value=softmax_scale,
-            max_seqlen_k=max_seqlen_k,
+            max_seqlen_k=gen_s2 if not is_sparse else 0,
             cmp_ratio=cmp_ratio,
             mask_mode=mask_mode,
             layout_q="BSND",
@@ -428,7 +456,7 @@ def load_excel_params(filepath):
 
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-    logging.info("SparseFlashMlaSoftmaxL1Norm Merged Tests 2")
+    logging.info("SparseFlashMlaSoftmaxL1Norm Merged Tests V2")
 
     excel_path = r"C:\daiyuwen\01.code\ops-transformer\torch_extension\smla_softmax_l1_norm.xlsx"
     test_cases = load_excel_params(excel_path)

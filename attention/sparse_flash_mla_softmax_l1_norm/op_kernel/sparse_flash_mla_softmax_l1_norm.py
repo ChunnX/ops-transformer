@@ -483,6 +483,7 @@ def set_preload_info(runInfo, preload_info, ki):
     if ki + TKV > runInfo.s2_real_size:
         preload_info.s2_base_size =  runInfo.s2_real_size - ki
     
+    preload_info.used_t1_index = runInfo.used_t1_index
     preload_info.batch_id = runInfo.batch_id
     preload_info.s1_idx = runInfo.s1_idx
     if IS_TND == 1:
@@ -767,6 +768,9 @@ def sparse_flash_mla_softmax_l1_norm(
                 s2_real_size = pl.min(cur_k_length, s2_valid_size)
 
         runInfo.s2_real_size = s2_real_size
+        if runInfo.s2_real_size <= 0:
+            continue
+            
         ###
         # pl.system.bar_all()
         
@@ -810,18 +814,27 @@ def sparse_flash_mla_softmax_l1_norm(
                     pl.system.set_cross_core(pipe=pl.PipeType.FIX, event_id=QK_READY_FORWARD_IDS[_pl_sync_id % 2])
             if tick > 0:
                 with pl.section_vector():
+                    if last_loop_preload_info.used_t1_index == cur_loop_preload_info.used_t1_index:
+                        cur_lse_vec_slot = lse_vec_db.current()
+                    else:
+                        cur_lse_vec_slot = lse_vec_db.previous()
                     pl.system.wait_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_FORWARD_IDS[(_pl_sync_id + 1) % 2])
-                    compute_softmax_l1_norm(tensor_softmax_l1_norm, qk_vec_db, lse_vec_slot, out_vec_db, constInfo, last_loop_preload_info)
+                    compute_softmax_l1_norm(tensor_softmax_l1_norm, qk_vec_db, cur_lse_vec_slot, out_vec_db, constInfo, last_loop_preload_info)
                     pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_BARKWARD_IDS[(_pl_sync_id + 1) % 2])
             tick = tick + 1
             _pl_sync_id = _pl_sync_id + 1
         q_count = q_count + 1
 
     if tick > 0:
+        cur_loop_preload_info = preload_infos[tick % 2]
         last_loop_preload_info = preload_infos[(tick + 1) % 2]
         with pl.section_vector():
+            if last_loop_preload_info.used_t1_index == cur_loop_preload_info.used_t1_index:
+                cur_lse_vec_slot = lse_vec_db.current()
+            else:
+                cur_lse_vec_slot = lse_vec_db.previous()
             pl.system.wait_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_FORWARD_IDS[(_pl_sync_id + 1) % 2])
-            compute_softmax_l1_norm(tensor_softmax_l1_norm, qk_vec_db, lse_vec_slot, out_vec_db, constInfo, last_loop_preload_info)
+            compute_softmax_l1_norm(tensor_softmax_l1_norm, qk_vec_db, cur_lse_vec_slot, out_vec_db, constInfo, last_loop_preload_info)
             pl.system.set_cross_core(pipe=pl.PipeType.V, event_id=QK_READY_BARKWARD_IDS[(_pl_sync_id + 1) % 2])
     
     with pl.section_cube():
