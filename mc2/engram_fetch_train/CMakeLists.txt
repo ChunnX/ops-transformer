@@ -18,3 +18,4 @@ foreach(SUB_DIR ${CURRENT_DIRS})
 endforeach()
 
 set(MC2_COMPILE ${SUB_MC2_COMPILE} PARENT_SCOPE)
+set(engram_fetch_train_depends ${engram_fetch_train_depends} PARENT_SCOPE)

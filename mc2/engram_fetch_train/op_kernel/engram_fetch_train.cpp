@@ -31,7 +31,6 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "engram_fetch_train_tiling_data.h"
 #include "engram_fetch_train_tiling_key.h"
-#include "../../engram_fetch/op_kernel/engram_fetch.h"
 
 using namespace AscendC;
 using namespace Mc2Kernel;
