@@ -1163,9 +1163,25 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
     logger.info("[NPU] output=%s", npu_output.shape)
 
     if lse_out is not None and ENABLE_LSE:
-        for b in range(B):
-            if _sq[b] < lse_out.shape[2]:
-                lse_out[b, :, _sq[b]:] = float('inf')
+        if lse_out.dim() == 3:
+            for b in range(B):
+                if _sq[b] < lse_out.shape[2]:
+                    lse_out[b, :, _sq[b]:] = float('inf')
+            lse_out = convert_q_bnsd_to_layout(lse_out, _sq, "TND")
+        elif lse_out.dim() == 2:
+            offset = 0
+            for b in range(B):
+                cu_diff = _cuq[b + 1] - _cuq[b]
+                if _sq[b] < cu_diff:
+                    lse_out[offset + _sq[b]:offset + cu_diff, :] = float('inf')
+                offset += cu_diff
+            lse_parts = []
+            offset = 0
+            for b in range(B):
+                if _sq[b] > 0:
+                    lse_parts.append(lse_out[offset:offset + _sq[b]])
+                offset += _cuq[b + 1] - _cuq[b]
+            lse_out = torch.cat(lse_parts, dim=0) if lse_parts else lse_out[:0]
         logger.info("[NPU] lse=%s", lse_out.shape)
 
     return npu_output, lse_out
