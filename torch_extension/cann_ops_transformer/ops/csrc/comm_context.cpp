@@ -25,6 +25,7 @@ namespace op_api {
 
 constexpr static uint8_t COMM_ENGINE_AIV = 4;
 constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024;
+constexpr uint32_t HCCL_CONTEXT_TAG_MAX_LEN = 255;
 
 constexpr uint32_t HCCL_COMM_LAYERS_MTE_CCU = 1;
 constexpr uint32_t HCCL_COMM_LAYERS_UB_MEM = 0;
@@ -239,8 +240,9 @@ public:
                       const CommProtocol &protocol, CommContext &commContextStruct, int64_t &cclBufferSize)
     {
         std::string mc2ContextTag = std::string(group) + opName;
-        TORCH_CHECK(mc2ContextTag.size() <= 255, "Mc2ContextTag is too long, max size is 255, got ",
-                    mc2ContextTag.size());
+        TORCH_CHECK(mc2ContextTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN,
+            "Mc2ContextTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN,
+            ", got ", mc2ContextTag.size()); 
 
         CommEngine engine = CommEngine::COMM_ENGINE_AIV;
         void *ctx = nullptr;
@@ -527,6 +529,9 @@ public:
         ASCEND_LOGI("Get rank size success, rankSize is: %u", rankSize);
 
         std::string memBufferTag = mc2ContextTag + "_buffer";
+        TORCH_CHECK(memBufferTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN,
+            "MemBufferTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN,
+            ", got ", memBufferTag.size());
         AllocateAndRegisterDeviceBuffer(commHandle, memBufferTag);
 
         GetHcclCommResource(commHandle, engine, protocol, commContextStruct, rankSize, hcclBuffSize, memBufferTag);
