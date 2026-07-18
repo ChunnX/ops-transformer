@@ -42,11 +42,11 @@ public:
         const CommTilingData& tilingData,
         GM_ADDR localAddr,
         __ubuf__ uint8_t* commbuf,
-        uint32_t threadCnt,
-        uint32_t threadIdx,
+        uint32_t totalJobs,
+        uint32_t jobIndex,
         uint64_t winOffset = 0)
     {
-        if (threadIdx >= threadCnt) {
+        if (jobIndex >= totalJobs) {
             return 0;
         }
         udmaCtx_ = udmaCtx;
@@ -59,8 +59,8 @@ public:
         comm_.Init(commBuf_, COMM_WORKSPACE_SIZE);
 
         uint32_t rankSize = udmaCtx_->rankSize;
-        uint32_t targetRankPerCore = (rankSize + threadCnt - 1) / threadCnt;
-        uint32_t targetRankStart = threadIdx * targetRankPerCore;
+        uint32_t targetRankPerCore = (rankSize + totalJobs - 1) / totalJobs;
+        uint32_t targetRankStart = jobIndex * targetRankPerCore;
 
         uint32_t targetRankCnt;
         if (targetRankStart + targetRankPerCore <= rankSize) {
@@ -87,7 +87,7 @@ public:
         slotByteOffset_ = 0;
         chunkByteOffset_ = 0;
         static_cast<Impl*>(this)->PostInit();
-        uint64_t totalTiles = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt
+        uint64_t totalTiles = tilingData_->splitAxisTileCnt + tilingData_->splitAxisTailCnt;
         return totalTiles;
     }
 
