@@ -59,11 +59,21 @@ at::Tensor dense_lightning_indexer_softmax_lse_v2_metadata(
 {
     TORCH_CHECK((num_heads_q > 0), "The num_heads_q should be greater than 0, current is: ", num_heads_q);
     TORCH_CHECK((num_heads_k > 0), "The num_heads_k should be greater than 0, current is: ", num_heads_k);
-    TORCH_CHECK((head_dim > 0), "The head_dim should be greater than 0, current is: ", head_dim);
+    TORCH_CHECK((head_dim == 128), "head_dim only supports 128, current is: ", head_dim);
+    TORCH_CHECK((num_heads_q >= 1 && num_heads_q <= 128),
+                "num_heads_q should be in [1, 128], current is: ", num_heads_q);
+    TORCH_CHECK((num_heads_k == 1), "num_heads_k only supports 1, current is: ", num_heads_k);
     TORCH_CHECK((num_heads_q % num_heads_k == 0),
                 "num_heads_q should be divisible by num_heads_k, but got nq=", num_heads_q, " nk=", num_heads_k);
     TORCH_CHECK((cmp_ratio >= 1 && cmp_ratio <= 128),
                 "cmp_ratio should be in [1, 128], current is: ", cmp_ratio);
+    TORCH_CHECK((mask_mode == 0 || mask_mode == 3),
+                "mask_mode only supports 0 or 3, current is: ", mask_mode);
+    TORCH_CHECK((layout_q == layout_k),
+                "layout_q and layout_k must be the same, but got layout_q=", layout_q, " layout_k=", layout_k);
+    TORCH_CHECK(!((mask_mode == 3 && cmp_ratio > 1) &&
+                  (!cmp_residual_k.has_value() || !cmp_residual_k.value().defined())),
+                "cmp_residual_k must be provided when mask_mode=3 and cmp_ratio>1.");
 
     at::Tensor output{nullptr};
     {
@@ -109,11 +119,16 @@ at::Tensor dense_lightning_indexer_softmax_lse_v2(
     at::Tensor softmax_lse_out{nullptr};
     {
         const c10::OptionalDeviceGuard device_guard(query_index.device());
-        // Output shape (B, S1) for BSND, dtype FP32 (kernel computes in FP32).
-        int64_t bSize = query_index.size(0);
-        int64_t s1Size = (layout_q == "BSND") ? query_index.size(1) : query_index.size(0);
-        softmax_lse_out = at::zeros({bSize, s1Size},
-            query_index.options().dtype(at::kFloat));
+        if (layout_q == "BSND") {
+            int64_t bSize = query_index.size(0);
+            int64_t s1Size = query_index.size(1);
+            softmax_lse_out = at::zeros({bSize, s1Size},
+                query_index.options().dtype(at::kFloat));
+        } else {
+            int64_t t1Size = query_index.size(0);
+            softmax_lse_out = at::zeros({t1Size},
+                query_index.options().dtype(at::kFloat));
+        }
     }
 
     char *layout_q_ptr = const_cast<char *>(layout_q.c_str());
