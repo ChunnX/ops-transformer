@@ -615,14 +615,14 @@
   <tr>
    <td>activation</td>
    <td>可选属性</td>
-   <td>激活函数类型。默认值为"swiglu"。当前仅支持"swiglu"。</td>
+   <td>激活函数类型。默认值为"swiglu"。A2/A3支持"swiglu"和"swiglu_gpt_oss"。"swiglu"按前后半区拆分gate/up并计算gate * sigmoid(gate) * up；"swiglu_gpt_oss"按偶奇列拆分gate/up并计算gate * sigmoid(1.702 * gate) * (up + 1)。A5当前仅支持"swiglu"。</td>
    <td>STRING</td>
    <td></td>
   </tr>
   <tr>
    <td>activation_clamp</td>
    <td>可选属性</td>
-   <td>激活函数输入的对称截断阈值，将输入张量限制在[-activation_clamp, activation_clamp]区间内。默认值为float最大值，表示不截断，值需≥0。</td>
+   <td>激活函数输入截断阈值。gate分支仅限制上界为activation_clamp，up分支限制在[-activation_clamp, activation_clamp]区间内。默认值为float最大值，表示不截断，值需≥0。</td>
    <td>FLOAT</td>
    <td></td>
   </tr>
