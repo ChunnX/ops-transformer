@@ -77,6 +77,8 @@ INPUT_LAYOUT = "TND"  # 支持: BNSD, BSND, TND
 Q_SCALE_LAYOUT = "TND"  # 支持: TND, N2TGD
 P_SCALE = 1.0
 
+SOFTMAX_SCALE = None
+
 # PA KV Cache Layout
 # BnNBsD: [BlockNum, N, BlockSize, D]
 # PA_NZ: fp8=[Bn,N,D//32,Bs,32], Kscale=[Bn,N,Bs//16,D//64,16,2], Vscale=[Bn,N,D//16,Bs//64,16,2]
@@ -707,13 +709,13 @@ def _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, sparse_mode):
         return q_padding_mask | k_padding_mask
 
 
-def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total,
+def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale,
                      Qri=None, Krj=None):
     """计算单个 S block (attention score)"""
     S_ij = torch.matmul(Qi * deq_scale_q_i, (Kj * deq_scale_k_j).permute(0, 1, 3, 2))
     if Qri is not None and Krj is not None:
         S_ij += torch.matmul(Qri.to(torch.float32), Krj.to(torch.float32).permute(0, 1, 3, 2))
-    return S_ij / math.sqrt(d_total)
+    return S_ij * softmax_scale
 
 
 def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2):
@@ -742,6 +744,7 @@ def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2):
 def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                      dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                      actual_seq_q, actual_seq_kv,
+                     softmax_scale=None,
                      qr_bf16=None, kr_bf16=None):
     """CPU Flash Attention golden with MXFP8, C1V1C1V1C2V2 流水"""
     EPSILON = 1e-20
@@ -767,6 +770,8 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
 
     b, n, s, d = q_tensor.shape
     d_total = d + (D_rope if ENABLE_ROPE else 0)
+    if softmax_scale is None:
+        softmax_scale = 1.0 / math.sqrt(d_total)
     dv = v_tensor.shape[-1]
     Sq, Skv = q_tensor.shape[2], k_tensor.shape[2]
 
@@ -820,7 +825,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
             deq_scale_k_j = dequant_scale_k_expanded[:, :, Sk_start:Sk_end, :]
             Krj = Kr_BLOCKS[j] if Kr_BLOCKS is not None else None
 
-            S_ij = _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total, Qri, Krj)
+            S_ij = _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, softmax_scale, Qri, Krj)
             mask_j = mask_global[:, :, Sq_start:Sq_end, Sk_start:Sk_end]
             m_block_j, s_block_j, P_ij_drop = _online_softmax_update(
                 S_ij, mask_j, mi, si, oi, ln_p_scale, LN2)
@@ -833,7 +838,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                 deq_scale_k_j1 = dequant_scale_k_expanded[:, :, Sk1_start:Sk1_end, :]
                 Krj1 = Kr_BLOCKS[j + 1] if Kr_BLOCKS is not None else None
 
-                S_ij1 = _compute_s_block(Qi, Kj1, deq_scale_q_i, deq_scale_k_j1, d_total, Qri, Krj1)
+                S_ij1 = _compute_s_block(Qi, Kj1, deq_scale_q_i, deq_scale_k_j1, softmax_scale, Qri, Krj1)
                 mask_j1 = mask_global[:, :, Sq_start:Sq_end, Sk1_start:Sk1_end]
                 m_block_j1, s_block_j1, P_ij1_drop = _online_softmax_update(
                     S_ij1, mask_j1, m_block_j, s_block_j, oi, ln_p_scale, LN2)
@@ -1004,7 +1009,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
     """调用 NPU 算子，支持 N2TGD layout"""
     torch_npu.npu.set_device(int(DEVICE_ID))
 
-    softmax_scale = 1.0 / math.sqrt(D + (D_rope if ENABLE_ROPE else 0))
+    softmax_scale = SOFTMAX_SCALE if SOFTMAX_SCALE is not None else 1.0 / math.sqrt(D + (D_rope if ENABLE_ROPE else 0))
 
     q_runtime_layout, q_group = resolve_q_scale_layout()
     logger.info("[NPU] Q layout: q_layout=%s, G=%d", q_runtime_layout, q_group)

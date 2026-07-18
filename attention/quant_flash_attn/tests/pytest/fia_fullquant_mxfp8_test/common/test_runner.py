@@ -34,6 +34,7 @@ PARAM_MAP = {
     "mask_mode": "SPARSE_MODE",
     "q_scale_layout": "Q_SCALE_LAYOUT",
     "p_scale": "P_SCALE",
+    "softmax_scale": "SOFTMAX_SCALE",
     "data_range_q": "DATA_RANGE_Q",
     "data_range_k": "DATA_RANGE_K",
     "data_range_v": "DATA_RANGE_V",
@@ -72,7 +73,8 @@ def execute_test(params, mode, cdir=None):
             q_fp8, k_fp8, v_fp8,
             deq_q, deq_k, deq_v, p_scale,
             golden.SEQUSED_Q, golden.SEQUSED_KV,
-            qr_bf16, kr_bf16,
+            softmax_scale=golden.SOFTMAX_SCALE,
+            qr_bf16=qr_bf16, kr_bf16=kr_bf16,
         )
         golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
     else:
