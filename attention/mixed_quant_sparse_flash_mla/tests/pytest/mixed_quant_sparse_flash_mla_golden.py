@@ -1461,12 +1461,13 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     max_seqlen_ori_kv = seqused_ori_kv.max().item()
     max_seqlen_cmp_kv = seqused_cmp_kv.max().item() if seqused_cmp_kv is not None else 0
 
-    # ORI_SPARSE/ORI_CMP_SPARSE: actualLength not passed to op, determined by sparse_indices and topkLength
+    # ORI_SPARSE/ORI_CMP_SPARSE: seqused (actualLength) not passed to op, determined by sparse_indices and topkLength
+    # cu_seqlens still passed for TND kv layout (needed for data addressing in kernel)
     no_actual_length = template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE")
     op_seqused_ori_kv = None if no_actual_length else seqused_ori_kv
     op_seqused_cmp_kv = None if no_actual_length else seqused_cmp_kv
-    op_cu_seqlens_ori_kv = None if no_actual_length else cu_seqlens_ori_kv
-    op_cu_seqlens_cmp_kv = None if no_actual_length else cu_seqlens_cmp_kv
+    op_cu_seqlens_ori_kv = cu_seqlens_ori_kv
+    op_cu_seqlens_cmp_kv = cu_seqlens_cmp_kv
 
     input_data = {
         'Testcase_Name':Testcase_Name,
