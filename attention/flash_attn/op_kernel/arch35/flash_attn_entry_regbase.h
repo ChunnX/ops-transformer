@@ -107,6 +107,11 @@ flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t
 #endif
 
     // 5. Tiling 解析、实例化并执行
+    // 根因（静态图）：固定 shape 下 tiling 是编译期常量字节数组而非 __gm__ buffer，
+    // 不能直接 reinterpret_cast 成结构体指针访问，必须先拷贝到栈局部结构体对象再取指针。
+    // 该宏由编译器(generate_tiling_code.py)按动态/静态图自动生成两套展开：
+    //   动态图 → (__gm__ FlashAttnTilingData*)tiling 直接强转，零拷贝；
+    //   静态图 → convert_from_bytes 把常量数组拷成栈局部对象，dst_ptr 取其地址。
     GET_TILING_DATA_PTR_WITH_STRUCT(FlashAttnTilingData, tilingData, tiling);
 
     TPipe tPipe;

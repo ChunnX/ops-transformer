@@ -115,6 +115,20 @@ using CommQuantModeType = std::underlying_type_t<CommQuantMode>;
 } // namespace
 
 namespace optiling {
+static bool IsPresentTensorShape(const gert::StorageShape *storageShape)
+{
+    if (storageShape == nullptr) {
+        return false;
+    }
+    const auto &shape = storageShape->GetStorageShape();
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        if (shape.GetDim(i) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 // a3专有
 static void PrintTilingDataInfo(const char *nodeName, MoeDistributeCombineV2TilingData &tilingData)
 {
@@ -136,6 +150,7 @@ static void PrintTilingDataInfo(const char *nodeName, MoeDistributeCombineV2Tili
     OP_LOGD(nodeName, "totalWinSizeEP is %lu.", tilingData.moeDistributeCombineV2Info.totalWinSizeEp);
     OP_LOGD(nodeName, "hasElastic is %d.", tilingData.moeDistributeCombineV2Info.hasElasticInfo);
     OP_LOGD(nodeName, "isPerformance is %d.", tilingData.moeDistributeCombineV2Info.isPerformance);
+    OP_LOGD(nodeName, "hasExpertScales is %d.", tilingData.moeDistributeCombineV2Info.hasExpertScales);
 }
 
 static ge::graphStatus GetExpertsAttrAndSetTilingData(const gert::TilingContext *context,
@@ -411,7 +426,8 @@ static bool CheckInputTensorDimARN(const gert::TilingContext *context, const cha
     return true;
 }
 
-static bool CheckInputTensorDim(const gert::TilingContext *context, const char *nodeName, const CombineV2Config &config)
+static bool CheckInputTensorDim(const gert::TilingContext *context, const char *nodeName,
+                                const CombineV2Config &config, const bool hasExpertScales)
 {
     const gert::StorageShape *expandXStorageShape = context->GetInputShape(config.expandXIndex);
     OP_TILING_CHECK(expandXStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandX"), return false);
@@ -458,17 +474,19 @@ static bool CheckInputTensorDim(const gert::TilingContext *context, const char *
                     return false);
     OP_LOGD(nodeName, "epSendCounts dim0 = %ld", epSendCountsStorageShape->GetStorageShape().GetDim(0));
 
-    const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(config.expertScalesIndex);
-    OP_TILING_CHECK(expertScalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScales"),
-                    return false);
-    OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
-                        nodeName, "expertScales",
-                        std::to_string(expertScalesStorageShape->GetStorageShape().GetDimNum()).c_str(),
-                        "The shape dim of expertScales must be 2D."),
-                    return false);
-    OP_LOGD(nodeName, "expertScales dim0 = %ld", expertScalesStorageShape->GetStorageShape().GetDim(0));
-    OP_LOGD(nodeName, "expertScales dim1 = %ld", expertScalesStorageShape->GetStorageShape().GetDim(1));
+    if (hasExpertScales) {
+        const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(config.expertScalesIndex);
+        OP_TILING_CHECK(expertScalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScales"),
+                        return false);
+        OP_TILING_CHECK(expertScalesStorageShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                            nodeName, "expertScales",
+                            std::to_string(expertScalesStorageShape->GetStorageShape().GetDimNum()).c_str(),
+                            "The shape dim of expertScales must be 2D."),
+                        return false);
+        OP_LOGD(nodeName, "expertScales dim0 = %ld", expertScalesStorageShape->GetStorageShape().GetDim(0));
+        OP_LOGD(nodeName, "expertScales dim1 = %ld", expertScalesStorageShape->GetStorageShape().GetDim(1));
+    }
 
     return true;
 }
@@ -676,11 +694,11 @@ static bool CheckOutputTensorDim(const gert::TilingContext *context, const char 
 }
 
 static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName, const bool isActiveMask,
-                           const bool hasElasticInfo, const bool isPerformance, const CombineV2Config &config,
-                           const bool isLayered)
+                           const bool hasExpertScales, const bool hasElasticInfo, const bool isPerformance,
+                           const CombineV2Config &config, const bool isLayered)
 {
     OP_TILING_CHECK(
-        !CheckInputTensorDim(context, nodeName, config),
+        !CheckInputTensorDim(context, nodeName, config, hasExpertScales),
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "input tensor", "", "param shape of input tensor is invalid"),
         return false);
 
@@ -692,7 +710,7 @@ static bool CheckTensorDim(gert::TilingContext *context, const char *nodeName, c
 }
 
 static bool CheckExpertTensorDataType(const gert::TilingContext *context, const char *nodeName,
-                                      const CombineV2Config &config)
+                                      const CombineV2Config &config, const bool hasExpertScales)
 {
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     auto oriXDesc = context->GetOptionalInputDesc(config.oriXIndex);
@@ -748,14 +766,16 @@ static bool CheckExpertTensorDataType(const gert::TilingContext *context, const 
                             "The dtype of sharedExpertX must be the same as that of expandX."),
                         return false);
     }
-    auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
-    OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScalesDesc"),
-                    return false);
-    OP_TILING_CHECK((expertScalesDesc->GetDataType() != ge::DT_FLOAT),
-                    OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "expertScales",
-                                                          Ops::Base::ToString(expertScalesDesc->GetDataType()).c_str(),
-                                                          "The dtype of expertScales must be float."),
-                    return false);
+    if (hasExpertScales) {
+        auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
+        OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScalesDesc"),
+                        return false);
+        OP_TILING_CHECK((expertScalesDesc->GetDataType() != ge::DT_FLOAT),
+                        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                            nodeName, "expertScales", Ops::Base::ToString(expertScalesDesc->GetDataType()).c_str(),
+                            "The dtype of expertScales must be float."),
+                        return false);
+    }
     return true;
 }
 
@@ -862,7 +882,7 @@ static bool CheckZeroComputeExpertTensorFormat(const gert::TilingContext *contex
 }
 
 static bool CheckInputTensorFormat(const gert::TilingContext *context, const char *nodeName,
-                                   const CombineV2Config &config)
+                                   const CombineV2Config &config, const bool hasExpertScales)
 {
     auto expandXDesc = context->GetInputDesc(config.expandXIndex);
     OP_TILING_CHECK(expandXDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandxDesc"), return false);
@@ -889,23 +909,27 @@ static bool CheckInputTensorFormat(const gert::TilingContext *context, const cha
                         ge::FORMAT_FRACTAL_NZ,
                     OP_LOGE_FOR_INVALID_FORMAT(nodeName, "epSendCounts", "not FRACTAL_NZ", "FRACTAL_NZ"), return false);
 
-    auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
-    OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScalesDesc"),
-                    return false);
-    OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
-                        ge::FORMAT_FRACTAL_NZ,
-                    OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertScales", "not FRACTAL_NZ", "FRACTAL_NZ"), return false);
+    if (hasExpertScales) {
+        auto expertScalesDesc = context->GetInputDesc(config.expertScalesIndex);
+        OP_TILING_CHECK(expertScalesDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScalesDesc"),
+                        return false);
+        OP_TILING_CHECK(static_cast<ge::Format>(ge::GetPrimaryFormat(expertScalesDesc->GetStorageFormat())) ==
+                            ge::FORMAT_FRACTAL_NZ,
+                        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "expertScales", "not FRACTAL_NZ", "FRACTAL_NZ"),
+                        return false);
+    }
 
     return true;
 }
 
 static bool CheckTensorFormat(const gert::TilingContext *context, const char *nodeName, const bool isActiveMask,
-                              const bool hasElasticInfo, const bool isPerformance, const CombineV2Config &config)
+                              const bool hasExpertScales, const bool hasElasticInfo, const bool isPerformance,
+                              const CombineV2Config &config)
 {
     OP_TILING_CHECK(!CheckZeroComputeExpertTensorFormat(context, nodeName, config),
                     OP_LOGE_FOR_INVALID_FORMAT(nodeName, "zero_compute_expert", "invalid", "FRACTAL_NZ"),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(!CheckInputTensorFormat(context, nodeName, config),
+    OP_TILING_CHECK(!CheckInputTensorFormat(context, nodeName, config, hasExpertScales),
                     OP_LOGE_FOR_INVALID_FORMAT(nodeName, "input tensor", "invalid", "FRACTAL_NZ"),
                     return ge::GRAPH_FAILED);
     // 除特殊专家外的可选输入Format check
@@ -1101,7 +1125,7 @@ static bool CheckZeroComputeExpertsTensorShape(const gert::TilingContext *contex
 
 static bool CheckExpertsTensorShape(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
                                     const char *nodeName, const CombineV2Config &config, const uint32_t expertIdsDim0,
-                                    const uint32_t expertIdsDim1)
+                                    const uint32_t expertIdsDim1, const bool hasExpertScales)
 {
     int64_t moeExpertNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.moeExpertNum);
     int64_t zeroExpertNum = static_cast<int64_t>(tilingData.moeDistributeCombineV2Info.zeroExpertNum);
@@ -1118,17 +1142,23 @@ static bool CheckExpertsTensorShape(const gert::TilingContext *context, MoeDistr
     tilingData.moeDistributeCombineV2Info.k = static_cast<uint32_t>(expertIdsDim1);
 
     // 校验expertScales的维度
-    const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(config.expertScalesIndex);
-    int64_t expertScalesDim0 = expertScalesStorageShape->GetStorageShape().GetDim(0);
-    int64_t expertScalesDim1 = expertScalesStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(expertScalesDim0 != expertIdsDim0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertScales(dim0)", std::to_string(expertScalesDim0).c_str(),
-                                              ("should equal to bs=" + std::to_string(expertIdsDim0)).c_str()),
-                    return false);
-    OP_TILING_CHECK(expertScalesDim1 != expertIdsDim1,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertScales(dim1)", std::to_string(expertScalesDim1).c_str(),
-                                              ("should equal to k=" + std::to_string(expertIdsDim1)).c_str()),
-                    return false);
+    if (hasExpertScales) {
+        const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(config.expertScalesIndex);
+        OP_TILING_CHECK(expertScalesStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expertScales"),
+                        return false);
+        int64_t expertScalesDim0 = expertScalesStorageShape->GetStorageShape().GetDim(0);
+        int64_t expertScalesDim1 = expertScalesStorageShape->GetStorageShape().GetDim(1);
+        OP_TILING_CHECK(expertScalesDim0 != expertIdsDim0,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertScales(dim0)",
+                                                  std::to_string(expertScalesDim0).c_str(),
+                                                  ("should equal to bs=" + std::to_string(expertIdsDim0)).c_str()),
+                        return false);
+        OP_TILING_CHECK(expertScalesDim1 != expertIdsDim1,
+                        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertScales(dim1)",
+                                                  std::to_string(expertScalesDim1).c_str(),
+                                                  ("should equal to k=" + std::to_string(expertIdsDim1)).c_str()),
+                        return false);
+    }
 
     // 校验sharedExpertX的维度
     const gert::StorageShape *sharedExpertXShape = context->GetOptionalInputShape(config.sharedExpertXIndex);
@@ -1284,8 +1314,8 @@ static bool CheckSendCountTensorShape(const gert::TilingContext *context, MoeDis
 
 static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCombineV2TilingData &tilingData,
                              const char *nodeName, bool isShared, bool isActiveMask, uint32_t localMoeExpertNum,
-                             const bool hasElasticInfo, const bool isPerformance, const CombineV2Config &config,
-                             bool isLayered)
+                             const bool hasElasticInfo, const bool isPerformance, const bool hasExpertScales,
+                             const CombineV2Config &config, bool isLayered)
 {
     // 校验输入expertIds的维度1并设k, bs已校验过
     const gert::StorageShape *expertIdsStorageShape = context->GetInputShape(config.expertIdsIndex);
@@ -1340,7 +1370,8 @@ static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCo
     OP_TILING_CHECK(!CheckZeroComputeExpertsTensorShape(context, tilingData, nodeName, config, expertIdsDim0),
                     OP_LOGE(nodeName, "Zero_compute_experts' param dim check failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(!CheckExpertsTensorShape(context, tilingData, nodeName, config, expertIdsDim0, expertIdsDim1),
+    OP_TILING_CHECK(!CheckExpertsTensorShape(context, tilingData, nodeName, config, expertIdsDim0, expertIdsDim1,
+                                             hasExpertScales),
                     OP_LOGE(nodeName, "Experts' param dim check failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(!CheckFromDispatchTensorShape(context, tilingData, nodeName, config, A, isLayered),
@@ -1536,19 +1567,21 @@ static bool CheckAttrs(const gert::TilingContext *context, MoeDistributeCombineV
 
 static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *context, const char *nodeName,
                                                        const bool isActiveMask, const bool hasElasticInfo,
-                                                       const bool isPerformance, const CombineV2Config &config,
-                                                       const bool isLayered)
+                                                       const bool isPerformance, const bool hasExpertScales,
+                                                       const CombineV2Config &config, const bool isLayered)
 {
     // 检查参数shape信息
-    OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, config, isLayered),
+    OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isActiveMask, hasExpertScales, hasElasticInfo, isPerformance,
+        config, isLayered),
                     OP_LOGE(nodeName, "param shape is invalid"), return ge::GRAPH_FAILED);
     // 检查参数dataType信息
-    OP_TILING_CHECK(!CheckExpertTensorDataType(context, nodeName, config),
+    OP_TILING_CHECK(!CheckExpertTensorDataType(context, nodeName, config, hasExpertScales),
                     OP_LOGE(nodeName, "Experts param dataType is invalid"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(!CheckTensorDataType(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, config),
                     OP_LOGE(nodeName, "param dataType is invalid"), return ge::GRAPH_FAILED);
     // 检查参数format信息
-    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, config),
+    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName, isActiveMask, hasExpertScales, hasElasticInfo,
+        isPerformance, config),
                     OP_LOGE(nodeName, "param Format is invalid"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1759,7 +1792,7 @@ static ge::graphStatus CheckCombineOrARN(gert::TilingContext *context, MoeDistri
 
 ge::graphStatus CheckAndGetOptionalInput(gert::TilingContext *context, MoeDistributeCombineV2TilingData *tilingData,
                                          const CombineV2Config &config, bool &isActiveMask, bool &hasElasticInfo,
-                                         bool &isPerformance)
+                                         bool &isPerformance, bool &hasExpertScales)
 {
     const gert::StorageShape *xActiveMaskStorageShape = context->GetOptionalInputShape(config.xActiveMaskIndex);
     isActiveMask = (xActiveMaskStorageShape != nullptr);
@@ -1777,17 +1810,21 @@ ge::graphStatus CheckAndGetOptionalInput(gert::TilingContext *context, MoeDistri
     isPerformance = (performanceInfoStorageShape != nullptr);
     tilingData->moeDistributeCombineV2Info.isPerformance = isPerformance;
 
+    const gert::StorageShape *expertScalesStorageShape = context->GetInputShape(config.expertScalesIndex);
+    hasExpertScales = IsPresentTensorShape(expertScalesStorageShape);
+    tilingData->moeDistributeCombineV2Info.hasExpertScales = hasExpertScales;
+
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus CheckInputParam(gert::TilingContext *context, const char *nodeName, const bool isActiveMask,
-                                const bool hasElasticInfo, const bool isPerformance, uint32_t &localMoeExpertNum,
-                                const bool isLayered, bool &isShared, MoeDistributeCombineV2TilingData *tilingData,
-                                const CombineV2Config &config)
+                                const bool hasElasticInfo, const bool isPerformance, const bool hasExpertScales,
+                                uint32_t &localMoeExpertNum, const bool isLayered, bool &isShared,
+                                MoeDistributeCombineV2TilingData *tilingData, const CombineV2Config &config)
 {
     // 检查输入输出的dim、format、dataType
     OP_TILING_CHECK(TilingCheckMoeDistributeCombine(context, nodeName, isActiveMask, hasElasticInfo, isPerformance,
-                                                    config, isLayered) != ge::GRAPH_SUCCESS,
+                                                    hasExpertScales, config, isLayered) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling check params failed"), return ge::GRAPH_FAILED);
 
     // 检查属性的取值是否合法
@@ -1799,8 +1836,9 @@ ge::graphStatus CheckInputParam(gert::TilingContext *context, const char *nodeNa
     isShared = (epRankId < sharedExpertRankNum);
 
     // 检查shape各维度并赋值h,k
-    OP_TILING_CHECK(!CheckTensorShape(context, *tilingData, nodeName, isShared, isActiveMask, localMoeExpertNum,
-                                      hasElasticInfo, isPerformance, config, isLayered),
+    OP_TILING_CHECK(!CheckTensorShape(context, *tilingData, nodeName, isShared, isActiveMask,
+                                      localMoeExpertNum, hasElasticInfo, isPerformance, hasExpertScales, config,
+                                      isLayered),
                     OP_LOGE(nodeName, "param dim check failed."), return ge::GRAPH_FAILED);
 
     // 校验combine或combineARN有差异的参数
@@ -1848,6 +1886,7 @@ MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3TilingFuncImpl(gert:
     bool isActiveMask = false;
     bool hasElasticInfo = false;
     bool isPerformance = false;
+    bool hasExpertScales = false;
     uint32_t localMoeExpertNum = 1;
     uint32_t commQuantMode = 0U;
 
@@ -1858,7 +1897,7 @@ MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3TilingFuncImpl(gert:
 
     // 检查并填充可选输入
     OP_TILING_CHECK(CheckAndGetOptionalInput(context, tilingData, config, isActiveMask, hasElasticInfo,
-                                             isPerformance) != ge::GRAPH_SUCCESS,
+                                             isPerformance, hasExpertScales) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check and get optional input param failed."), return ge::GRAPH_FAILED);
 
     // 检查context输入
@@ -1867,7 +1906,8 @@ MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3TilingFuncImpl(gert:
                         OP_LOGE(nodeName, "Tiling check context failed."), return ge::GRAPH_FAILED);
     }
 
-    OP_TILING_CHECK(CheckInputParam(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, localMoeExpertNum,
+    OP_TILING_CHECK(CheckInputParam(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, hasExpertScales,
+                                    localMoeExpertNum,
                                     isLayered, isShared, tilingData, config) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling check input param failed."), return ge::GRAPH_FAILED);
 

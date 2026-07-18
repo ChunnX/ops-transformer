@@ -1093,7 +1093,7 @@ ge::graphStatus AlltoAllMatmulTiling910b::CheckShapeInfo(AlltoAllMatmulInfo &inf
     if (status != ge::GRAPH_SUCCESS)
         return status;
     // info.K * info.rankSize限制：A16W8时不超过6144，其余情况不超过35000；A16W8要为32倍数，A4W4要为偶数
-    uint32_t tokenSize = info.K * info.rankSize;
+    int64_t tokenSize = static_cast<int64_t>(info.K) * info.rankSize;
     if (quantType == TILINGKEY_TPL_A16W8) {
         OP_TILING_CHECK(
             (tokenSize % 16 != 0),
@@ -1586,7 +1586,7 @@ void AlltoAllMatmulTiling910b::CalcQuantWorkspaceSize(const CoCTiling &cocTiling
         CalcQuantTokenNumPerUb(cocTilingData, info);
         uint32_t numPerRankM = cocTilingData.m0 * cocTilingData.pValue;
         uint32_t midOutputKSize = orgK * rankSize;
-        uint32_t quantSize = numPerRankM * midOutputKSize * MAX_BLOCK_COUNT;
+        int64_t quantSize = static_cast<int64_t>(numPerRankM) * midOutputKSize * MAX_BLOCK_COUNT;
         info.quantSize = quantType == TILINGKEY_TPL_A16W8 ?
                              quantSize :
                              (quantSize + 1) / 2; // int8类型每个元素占用1个字节，int4类型每两个元素占用1个字节

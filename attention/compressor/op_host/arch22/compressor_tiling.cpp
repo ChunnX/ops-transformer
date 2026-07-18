@@ -263,9 +263,12 @@ ge::graphStatus CompressorTiling::CalcWorkSpace()
 
 ge::graphStatus CompressorTiling::CheckEmptyTensor() const
 {
-    if (context_->layout == LayoutType::LAYOUT_BSH && context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0 ||
-        context_->layout == LayoutType::LAYOUT_BSH && context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1) == 0 ||
-        context_->layout == LayoutType::LAYOUT_TH && context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0) {
+    if ((context_->layout == LayoutType::LAYOUT_BSH &&
+            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0) ||
+        (context_->layout == LayoutType::LAYOUT_BSH &&
+            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1) == 0) ||
+        (context_->layout == LayoutType::LAYOUT_TH &&
+            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0)) {
         context_->templateId = TemplateId::EMPTY_X;
     } else {
         if (context_->x.shape->GetStorageShape().GetShapeSize() == 0 ||
@@ -462,7 +465,7 @@ ge::graphStatus CompressorTiling::CheckDimNumInLayoutSupport(const std::string &
 {
     const auto& dimIt = LAYOUT_DIM_MAP.find(layout);
     OP_CHECK_IF(shape->GetStorageShape().GetDimNum() != dimIt->second,
-        OP_LOGE(context_->opName, "When layout is %s, %s dimension should be %zu, but it's %zu",
+        OP_LOGE(context_->opName, "When layout is %s, %s dimension should be %u, but it's %zu",
             layout.c_str(), name.c_str(), dimIt->second,
             shape->GetStorageShape().GetDimNum()),
         return ge::GRAPH_FAILED);
@@ -733,7 +736,7 @@ ge::graphStatus CompressorTiling::CheckFeature() const
                             context_->stateCache.shape->GetShape().GetDim(2);
     OP_CHECK_IF(cacheStride != baseParams_->stateCacheStrideDim0,
                 OP_LOGE(context_->opName,
-                        "state_cache must be contiguous, first axes stride should be equal to %u, but got %u",
+                        "state_cache must be contiguous, first axes stride should be equal to %lu, but got %lu",
                         cacheStride, baseParams_->stateCacheStrideDim0),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -820,7 +823,7 @@ ge::graphStatus CompressorTiling::CheckDimNumConsistency() const
 {
     auto xDimNum = context_->x.shape->GetStorageShape().GetDimNum();
     OP_CHECK_IF(xDimNum != context_->cmpKv.shape->GetStorageShape().GetDimNum(),
-                OP_LOGE(context_->opName, "cmpKv dim num should be equal to x: %u, but got %u", xDimNum,
+                OP_LOGE(context_->opName, "cmpKv dim num should be equal to x: %lu, but got %zu", xDimNum,
                         context_->cmpKv.shape->GetStorageShape().GetDimNum()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -836,15 +839,15 @@ ge::graphStatus CompressorTiling::CheckScenarioConsistency() const
 
     OP_CHECK_IF(std::find(allowdScenarios.begin(), allowdScenarios.end(), curScenario) == allowdScenarios.end(),
                 OP_LOGE(context_->opName, "Cmpratio Coff Headdim should be equal to {4, 2, 512}, {4, 2, 128}, {128, 1, 512},\
- but now cmpratio=%u, coff=%u, headdim=%u", curCmpratio, curCoff, curHeaddim), return ge::GRAPH_FAILED);
+                but now cmpratio=%u, coff=%u, headdim=%u", curCmpratio, curCoff, curHeaddim), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus CompressorTiling::CheckBlockDimConstrain() const
 {
     uint32_t minBlockNum = baseParams_->headDim / 64;  // 64 is the largest dBaseSize
-    OP_CHECK_IF(aicNum_ < minBlockNum, OP_LOGE(context_->opName, "aicNum is %d, which should not be less than %d", 
-    aicNum_, minBlockNum), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(aicNum_ < minBlockNum, OP_LOGE(context_->opName, "aicNum is %u, which should not be less than %u",
+        aicNum_, minBlockNum), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 

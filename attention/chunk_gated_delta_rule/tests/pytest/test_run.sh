@@ -7,32 +7,45 @@ TEST_CHUNK_GATED_DELTA_RULE_SINGLE_SCRIPT="test_chunk_gated_delta_rule_single.py
 
 # 算子调测
 run_single() {
-    echo "===== 执行单算子用例调测 ====="
-    TEST_MODE=single python3 -m pytest -rA -s $TEST_CHUNK_GATED_DELTA_RULE_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    echo "===== 执行单算子用例调测 (USE_GRAPH=${USE_GRAPH}) ====="
+    TEST_MODE=single USE_GRAPH=${USE_GRAPH} python3 -m pytest -rA -s $TEST_CHUNK_GATED_DELTA_RULE_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
 # RDV测试
 run_rdv() {
-    echo "===== 执行RDV参数集测试 ====="
-    TEST_MODE=rdv python3 -m pytest -rA -s $TEST_CHUNK_GATED_DELTA_RULE_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+    echo "===== 执行RDV参数集测试 (USE_GRAPH=${USE_GRAPH}) ====="
+    TEST_MODE=rdv USE_GRAPH=${USE_GRAPH} python3 -m pytest -rA -s $TEST_CHUNK_GATED_DELTA_RULE_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
 # 显示帮助信息
 show_help() {
-    echo "用法: $0 [参数]"
+    echo "用法: $0 <模式> [graph]"
     echo "参数说明："
-    echo "  single    执行单算子用例调测"
-    echo "  rdv       执行RDV参数集测试"
-    echo "  help      显示本帮助信息"
+    echo "  模式:"
+    echo "    single    执行单算子用例调测"
+    echo "    rdv       执行RDV参数集测试"
+    echo "  graph       可选，启用静态图模式（_USE_GRAPH=True）"
+    echo "  help        显示本帮助信息"
     echo "示例："
-    echo "  $0 single  # 执行single模式"
-    echo "  $0 rdv     # 执行rdv模式"
+    echo "  $0 single          # single模式（eager）"
+    echo "  $0 single graph    # single模式（静态图）"
+    echo "  $0 rdv             # rdv模式（eager）"
+    echo "  $0 rdv graph       # rdv模式（静态图）"
 }
 
 # ====================== 主逻辑 ======================
 # 检查传入的参数数量
-if [ $# -ne 1 ]; then
-    echo "错误：必须传入且仅传入一个参数（single/rdv/help）"
+if [ $# -lt 1 ] || [ $# -gt 2 ]; then
+    echo "错误：参数数量不正确（需1-2个参数）"
+    show_help
+    exit 1
+fi
+
+USE_GRAPH=false
+if [ "$2" == "graph" ]; then
+    USE_GRAPH=true
+elif [ -n "$2" ]; then
+    echo "错误：第二个参数仅支持 'graph'"
     show_help
     exit 1
 fi

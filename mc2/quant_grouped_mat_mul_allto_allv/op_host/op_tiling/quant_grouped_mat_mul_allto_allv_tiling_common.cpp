@@ -839,7 +839,6 @@ ge::graphStatus QuantGroupedMatmulAllToAllvTilingCommon::SetTilingCommonInfo()
     gmmQTilingCommonInfoPtr->epWorldSize = localParams_.epWorldSize;
     gmmQTilingCommonInfoPtr->e = localParams_.ep;
     gmmQTilingCommonInfoPtr->aivCoreNum = static_cast<uint64_t>(localParams_.aivCoreNum);
-    gmmQTilingCommonInfoPtr->aicCoreNum = static_cast<uint64_t>(localParams_.aicCoreNum);
 
     // 动态计算 expertNum_，保证不同专家数量下通信和计算次数不超过4次
     // expertNum_ = CeilDiv(ep, 4)，使得 totalLoopCount = CeilDiv(ep, expertNum_) <= 4

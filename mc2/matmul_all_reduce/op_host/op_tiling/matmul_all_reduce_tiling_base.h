@@ -63,8 +63,7 @@ struct L2TilePara {
     uint32_t mBlockCntTail;
     uint32_t nBlockCntTail;
 };
-enum class MatmulAllReduceTiling
-{
+enum class MatmulAllReduceTiling {
     ALL_REDUCE_GENERAL_910 = 1,
     ALL_REDUCE_GENERAL_310 = 2,
     ALL_REDUCE_A16W8 = 3,
@@ -99,8 +98,7 @@ const std::map<matmul_tiling::DataType, uint64_t> D_MTYPE_SIZE_MAP = {
     {matmul_tiling::DataType::DT_FLOAT4_E2M1, D_TYPE_SIZE_MAP.at(ge::DT_FLOAT4_E2M1)},
 };
 
-enum class AllReduceScenario
-{
+enum class AllReduceScenario {
     A8W8 = 0,
     A16W8 = 1,
     A16W4 = 2,
@@ -111,8 +109,7 @@ enum class AllReduceScenario
 };
 
 // currently 310p use
-enum class ParamValue
-{
+enum class ParamValue {
     INPUT = 0,
     WEIGHT = 1,
     BIAS = 2,
@@ -122,34 +119,32 @@ enum class ParamValue
     DEQUANT = 6,
 };
 
-class MatmulAllReduceTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass
-{
+class MatmulAllReduceTilingBase : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
-    explicit MatmulAllReduceTilingBase(gert::TilingContext* context)
+    explicit MatmulAllReduceTilingBase(gert::TilingContext *context)
         : TilingBaseClass(context), mmrCtxInfo_(mmrCtxInfoSelf_), tilingData_(tilingDataSelf_)
     {
         Reset();
         // tilingdata作为类的成员随构造函数实例化，使用引用来统一数据访问接口，同时用实体对象来管理数据的生命周期
         // 在PostTiling中memcpy到device
-        OP_TILING_CHECK(memset_s(
-                            context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(), 0,
-                            context_->GetRawTilingData()->GetCapacity()) != EOK,
+        OP_TILING_CHECK(memset_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
+                                 0, context_->GetRawTilingData()->GetCapacity()) != EOK,
                         OP_LOGE(opName_, "fail to memset tiling data"), return;);
     }
-    MatmulAllReduceTilingBase(gert::TilingContext* context, MMRCtxInfo* mmrCtxInfo)
+    MatmulAllReduceTilingBase(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo)
         : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(tilingDataSelf_)
     {
         Reset();
     }
-    MatmulAllReduceTilingBase(gert::TilingContext* context,
-        MMRCtxInfo* mmrCtxInfo, Mc2Tiling::MatmulAllReduceTilingData* tilingData)
+    MatmulAllReduceTilingBase(gert::TilingContext *context, MMRCtxInfo *mmrCtxInfo,
+                              Mc2Tiling::MatmulAllReduceTilingData *tilingData)
         : TilingBaseClass(context), mmrCtxInfo_(*mmrCtxInfo), tilingData_(*tilingData)
     {
         Reset();
     }
     ~MatmulAllReduceTilingBase() override = default;
 
-    void Reset(gert::TilingContext* context) override
+    void Reset(gert::TilingContext *context) override
     {
         TilingBaseClass::Reset(context);
         Reset();
@@ -162,37 +157,37 @@ protected:
     ge::graphStatus DoLibApiTiling() override;
     ge::graphStatus GetWorkspaceSize() override;
     ge::graphStatus PostTiling() override;
-    virtual Mc2Tiling::RCSTiling& MutableRCSTilingData()
+    virtual Mc2Tiling::RCSTiling &MutableRCSTilingData()
     {
         return tilingData_.param;
     }
-    virtual Mc2Tiling::Mc2Msg& MutableMc2MsgData()
+    virtual Mc2Tiling::Mc2Msg &MutableMc2MsgData()
     {
         return tilingData_.msg;
     }
-    virtual AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData()
+    virtual AscendC::tiling::TCubeTiling &MutableTCubeTileTilingData()
     {
         return tilingData_.matmulTiling;
     }
-    virtual AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData()
+    virtual AscendC::tiling::TCubeTiling &MutableTCubeTailTilingData()
     {
         return tilingData_.tailTiling;
     }
     ge::graphStatus AnalyzeShapeAttr();
     void PrintTilingData();
-    virtual void PrintExtendMatmulTiling([[maybe_unused]] bool isTail){};
+    virtual void PrintExtendMatmulTiling([[maybe_unused]] bool isTail) {};
     // tiling
     void DoAllReduceTiling(bool useHcclApi = false);
     void CalcAllReduceSendRecvParams();
     void DoRCSTiling();
-    void SetMCutSocVersion(SocVersion& inputSocVersion);
+    void SetMCutSocVersion(SocVersion &inputSocVersion);
     void DoSplitMTiling();
     virtual CutResult GetTilingResult();
-    ge::graphStatus DoMatmulTiling(matmul_tiling::MultiCoreMatmulTiling& mm1, AscendC::tiling::TCubeTiling& cubeTiling);
-    void DoL2CacheTiling(Mc2Tiling::Mc2L2cacheTilePara& l2cacheTiling);
+    ge::graphStatus DoMatmulTiling(matmul_tiling::MultiCoreMatmulTiling &mm1, AscendC::tiling::TCubeTiling &cubeTiling);
+    void DoL2CacheTiling(Mc2Tiling::Mc2L2cacheTilePara &l2cacheTiling);
     void setUseBufferType();
     uint8_t CalcBufferTypeByWindowSize();
-    void CalcSendOffWithPadM(uint64_t& tileSendOff, uint64_t& tailSendOff);
+    void CalcSendOffWithPadM(uint64_t &tileSendOff, uint64_t &tailSendOff);
 
     void Reset();
     bool AnalyzeAttrs();
@@ -201,26 +196,27 @@ protected:
     void SetCommQuantScale();
     void GetAtomicAddData();
     bool CheckBiasShape(const uint64_t nValue) const;
-    virtual bool IsPerTensorDequantScale(const gert::Shape& dequantShape) const;
+    virtual bool IsPerTensorDequantScale(const gert::Shape &dequantShape) const;
     bool CheckDequantScaleShape(const uint64_t nValue) const;
-    bool CheckDequantScalePerBlock(const gert::StorageShape* dequantScaleShape) const;
+    bool CheckDequantScalePerBlock(const gert::StorageShape *dequantScaleShape) const;
     bool CheckPerblockShape(const uint64_t mValue, const uint64_t kValue) const;
     bool CheckPertokenScaleShape(const uint64_t mValue, const uint64_t kValue) const;
     bool CheckCommQuantScaleShape(const uint64_t nValue) const;
     bool CheckAntiQuantScaleShape(const uint64_t kValue, const uint64_t nValue);
     bool CheckAntiQuantOffsetValid() const;
-    bool CheckAntiQuantOffsetShape(const gert::StorageShape* scale) const;
+    bool CheckAntiQuantOffsetShape(const gert::StorageShape *scale) const;
     bool CheckA16W4Shape(const uint64_t kValue, const uint64_t nValue);
     bool CheckPlatformInfo() const;
-    bool CheckMXScenarioScaleShape(
-        const uint64_t dimZeroValue, const uint64_t kValue,
-        const gert::StorageShape* scaleShape, const bool isPertoken, const bool isMXfp4) const;
-    void GetScaleMNAndKIdx(const gert::StorageShape* scaleShape, bool isPertoken,
-        uint64_t scaleDimNum, uint64_t& MN, uint64_t& K) const;
-    AllReduceScenario GetAllReduceScenario(
-        const ge::DataType aType, const ge::DataType bType, const gert::StorageShape* dequantScale,
-        const gert::StorageShape* antiQuantScale) const;
-    bool IsA16W8Scenario(const ge::DataType aType, const ge::DataType bType, const gert::StorageShape* antiQuantScale) const;
+    bool CheckMXScenarioScaleShape(const uint64_t dimZeroValue, const uint64_t kValue,
+                                   const gert::StorageShape *scaleShape, const bool isPertoken,
+                                   const bool isMXfp4) const;
+    void GetScaleMNAndKIdx(const gert::StorageShape *scaleShape, bool isPertoken, uint64_t scaleDimNum, uint64_t &MN,
+                           uint64_t &K) const;
+    AllReduceScenario GetAllReduceScenario(const ge::DataType aType, const ge::DataType bType,
+                                           const gert::StorageShape *dequantScale,
+                                           const gert::StorageShape *antiQuantScale) const;
+    bool IsA16W8Scenario(const ge::DataType aType, const ge::DataType bType,
+                         const gert::StorageShape *antiQuantScale) const;
     bool AnalyzeInputs();
     bool SetArgs(ge::DataType aType, ge::DataType bType, ge::DataType cType, ge::DataType biasType, bool isBias);
     uint64_t GetNValue() const;
@@ -236,9 +232,9 @@ protected:
     ge::graphStatus CheckQuantEmptyTensor();
     ge::graphStatus CheckWeightQuantEmptyTensor();
     mc2tiling::HcclDataType GetDataType(ge::DataType type);
-    virtual void DoEmptyTensorTiling(){};
-    virtual void GetL2CacheParm(
-        uint64_t& l2CacheSize, uint64_t& singleMatrixSize, uint32_t& tileSize, uint32_t& tileLimit, bool useNewPara)
+    virtual void DoEmptyTensorTiling() {};
+    virtual void GetL2CacheParm(uint64_t &l2CacheSize, uint64_t &singleMatrixSize, uint32_t &tileSize,
+                                uint32_t &tileLimit, bool useNewPara)
     {
         (void)l2CacheSize;
         (void)singleMatrixSize;
@@ -246,10 +242,10 @@ protected:
         (void)tileLimit;
         (void)useNewPara;
     };
-    bool CalL2TilePara(L2TilePara& tileL2, uint64_t mValue, uint64_t kValue, uint64_t nValue, uint32_t cubeCoreNum);
-    void CalcL2TileBlock(L2TilePara& tileL2, uint64_t mValue, uint64_t nValue, uint64_t kValue,
-        uint64_t blockBaseM, uint64_t blockBaseN, uint32_t tileSize, uint32_t tileLimit,
-        uint64_t sizeA, uint64_t sizeB, uint32_t cubeCoreNum) const;
+    bool CalL2TilePara(L2TilePara &tileL2, uint64_t mValue, uint64_t kValue, uint64_t nValue, uint32_t cubeCoreNum);
+    void CalcL2TileBlock(L2TilePara &tileL2, uint64_t mValue, uint64_t nValue, uint64_t kValue, uint64_t blockBaseM,
+                         uint64_t blockBaseN, uint32_t tileSize, uint32_t tileLimit, uint64_t sizeA, uint64_t sizeB,
+                         uint32_t cubeCoreNum) const;
     AntiQuantType GetAntiQuantType();
     bool HasAntiQuantOffset() const;
     void CalcUbTiling();
@@ -265,8 +261,8 @@ protected:
     bool isUbQuant_{false};
     bool enableL2Cache_{false};
     bool enableBiasConvert_{false};
-    const char* opName_;
-    const char* reduceOp_;
+    const char *opName_;
+    const char *reduceOp_;
     uint32_t rankSize_{0U};
     uint32_t libApiWorkSpaceSize_{0U};
     platform_ascendc::SocVersion socVersion_;
@@ -280,9 +276,9 @@ protected:
     bool isA16W4_{false};
     AllReduceScenario scenario_{AllReduceScenario::INVALID};
     MMRCtxInfo mmrCtxInfoSelf_{};
-    MMRCtxInfo& mmrCtxInfo_;
+    MMRCtxInfo &mmrCtxInfo_;
     Mc2Tiling::MatmulAllReduceTilingData tilingDataSelf_{};
-    Mc2Tiling::MatmulAllReduceTilingData& tilingData_;
+    Mc2Tiling::MatmulAllReduceTilingData &tilingData_;
     ge::graphStatus GetAndConvertCommMode(uint8_t &commMode) const;
     uint8_t GetCommMode() const;
     ge::graphStatus CheckCommModeA2() const;

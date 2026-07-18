@@ -461,7 +461,8 @@ __aicore__ inline void MatmulReduceScatterAivMode<TemplateMMReduceScatterV2Func,
             actual_move_m = actual_m < m_offset + left_m ? actual_m - m_offset : left_m;
             // left_m较大，则该块copy完，下次再copy下一块；
             // left_m较小，则只copy left_m的部分
-            int64_t out_buff_offset = batch_idx * m * n / rank_size + (m_idx * m0 + m_offset) * n + n_idx * n0;
+            int64_t out_buff_offset = batch_idx * m * n / rank_size +
+                                      (static_cast<int64_t>(m_idx) * m0 + m_offset) * n + n_idx * n0;
             CopyUbufToGmUnknown(nAlign16, reinterpret_cast<__gm__ cType *>(cGM_) + out_buff_offset,
                                 ub_buff[ub_buff_offset], actual_move_m, actual_n * sizeof(cType),
                                 (n0 - actual_n) * sizeof(cType) / 32, (n - actual_n) * sizeof(cType));

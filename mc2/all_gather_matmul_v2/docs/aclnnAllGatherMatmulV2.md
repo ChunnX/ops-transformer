@@ -314,7 +314,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         - x1、x2：数据类型支持FLOAT16、BFLOAT16、INT8、INT4。
         - bias：在commMode为aiv时，当前版本仅支持输入nullptr。
         - x1Scale：数据类型支持FLOAT。当x1和x2数据类型为FLOAT16/BFLOAT16时，仅支持输入为nullptr。在pertoken场景，shape为(m, 1)。
-        - x2Scale：数据类型支持FLOAT、INT64。INT64数据类型仅在x1和x2数据类型为INT4或者output数据类型为FLOAT16场景支持。当x1和x2数据类型为FLOAT16/BFLOAT16时，仅支持输入为nullptr。在perchannel场景，shape为(1, n)。
+        - x2Scale：数据类型支持FLOAT、INT64。INT64数据类型仅在x1和x2数据类型为INT8或者output数据类型为FLOAT16场景支持。当x1和x2数据类型为FLOAT16/BFLOAT16时，仅支持输入为nullptr。在perchannel场景，shape为(1, n)。
         - groupSize：当前版本仅支持输入为0。
         - commMode：当前仅支持aiv模式。aiv模式下使用AI VECTOR核完成通信任务。当前版本仅支持输入“aiv”。
         - output：数据类型支持FLOAT16、BFLOAT16。如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。
@@ -449,9 +449,8 @@ aclnnStatus aclnnAllGatherMatmulV2(
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>
-
-    ```Cpp
+- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
+    ```c++
     #include <iostream>
     #include <vector>
     #include <thread>
@@ -707,6 +706,8 @@ aclnnStatus aclnnAllGatherMatmulV2(
     #include <iostream>
     #include <vector>
     #include <thread>
+    #include <cstdlib>
+    #include <cstring>
     #include "hccl/hccl.h"
     #include "aclnnop/aclnn_all_gather_matmul_v2.h"
 
@@ -723,6 +724,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         } while(0)
 
     constexpr int DEV_NUM = 2;
+    constexpr const char *COMM_MODE = "ccu";
 
     int64_t GetShapeSize(const std::vector<int64_t> &shape)
     {
@@ -832,7 +834,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
 
         // 调用第一阶段接口
         ret = aclnnAllGatherMatmulV2GetWorkspaceSize(
-            x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, gatherIndex, commTurn, streamMode, groupSize, "ccu",
+            x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, gatherIndex, commTurn, streamMode, groupSize, COMM_MODE,
             out, gatherOut, amax, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("[ERROR] aclnnAllGatherMatmulV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
@@ -844,7 +846,7 @@ aclnnStatus aclnnAllGatherMatmulV2(
         // 调用第二阶段接口
         ret = aclnnAllGatherMatmulV2(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAllGatherMatmulV2 failed. ret = %d \n", ret); return ret);
-        //（固定写法）同步等待任务执行结束
+        // （固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);
@@ -914,6 +916,34 @@ aclnnStatus aclnnAllGatherMatmulV2(
 
     int main(int argc, char *argv[])
     {
+        class EnvGuard {
+        public:
+            EnvGuard(const char *key, const char *val, bool enable = true)
+                : key_(enable ? key : nullptr)
+            {
+                if (!enable) return;
+                const char *old = getenv(key);
+                if (old != nullptr) {
+                    strncpy(saved_, old, sizeof(saved_) - 1);
+                }
+                setenv(key, val, 1);
+            }
+            ~EnvGuard()
+            {
+                if (key_ == nullptr) return;
+                if (saved_[0] != '\0') {
+                    setenv(key_, saved_, 1);
+                } else {
+                    unsetenv(key_);
+                }
+            }
+        private:
+            const char *key_;
+            char saved_[256] = {0};
+        };
+
+        EnvGuard envGuard("HCCL_OP_EXPANSION_MODE", "CCU_SCHED", strcmp(COMM_MODE, "ccu") == 0);
+
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
         aclrtStream stream[DEV_NUM];
