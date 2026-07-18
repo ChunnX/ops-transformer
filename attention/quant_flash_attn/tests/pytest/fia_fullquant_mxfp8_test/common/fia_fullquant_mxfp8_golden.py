@@ -65,6 +65,39 @@ SEQUSED_KV = [1024]
 MAX_SEQLEN_Q = 4
 MAX_SEQLEN_KV = 1024
 
+
+def _resolve_seq_params():
+    if CU_SEQLENS_Q is None:
+        raise ValueError("cu_seqlens_q is required (Q is TND layout)")
+    _cuq = list(CU_SEQLENS_Q)
+    if SEQUSED_Q is not None:
+        _sq = list(SEQUSED_Q)
+    else:
+        _sq = [_cuq[i + 1] - _cuq[i] for i in range(len(_cuq) - 1)]
+    _bnsd_sq = max(_cuq[i + 1] - _cuq[i] for i in range(len(_cuq) - 1))
+
+    if ENABLE_PA:
+        if CU_SEQLENS_KV is not None:
+            raise ValueError("PA mode: cu_seqlens_kv must not be provided")
+        if SEQUSED_KV is None:
+            raise ValueError("PA mode: seqused_kv is required")
+        _skv = list(SEQUSED_KV)
+        _cukv = None
+        _bnsd_skv = max(_skv)
+    else:
+        if CU_SEQLENS_KV is None:
+            raise ValueError("TND mode requires cu_seqlens_kv")
+        _cukv = list(CU_SEQLENS_KV)
+        if SEQUSED_KV is not None:
+            _skv = list(SEQUSED_KV)
+        else:
+            _skv = [_cukv[i + 1] - _cukv[i] for i in range(len(_cukv) - 1)]
+        _bnsd_skv = max(_cukv[i + 1] - _cukv[i] for i in range(len(_cukv) - 1))
+
+    _msq = MAX_SEQLEN_Q if MAX_SEQLEN_Q is not None else max(_sq)
+    _mskv = MAX_SEQLEN_KV if MAX_SEQLEN_KV is not None else max(_skv)
+    return _sq, _skv, _cuq, _cukv, _msq, _mskv, _bnsd_sq, _bnsd_skv
+
 ENABLE_PA = False
 BLOCK_SIZE = 512
 
@@ -192,8 +225,11 @@ def broadcast_kv(num_heads, num_kv_heads, kv_tensor):
 # Layout 转换函数 - 数据 (Q/K/V)
 # ==============================================================================
 
-def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
-    """Q/K/V BNSD → 各种 layout，支持 fp8 tensor"""
+def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout, cu_seqlens=None):
+    """Q/K/V BNSD → 各种 layout，支持 fp8 tensor
+    cu_seqlens: 当非 None 时，TND 按 cu_seqlens 偏移摆放（NPU 用）；
+               为 None 时紧凑排列（CPU golden 比较用）。
+    """
     tensor = tensor_bnsd if isinstance(tensor_bnsd, torch.Tensor) else torch.as_tensor(tensor_bnsd)
     B, N, _, D = tensor.shape
     max_org_s = max(seq_lens)
@@ -205,21 +241,31 @@ def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
     elif layout == "BSH":
         return tensor[:, :, :max_org_s, :].permute(0, 2, 1, 3).reshape(B, max_org_s, N * D).contiguous()
     elif layout == "TND":
-        T = sum(seq_lens)
-        result = torch.zeros((T, N, D), dtype=tensor.dtype, device=tensor.device)
-        t = 0
-        for b in range(B):
-            act_s = seq_lens[b]
-            for n in range(N):
-                result[t:t + act_s, n, :] = tensor[b, n, :act_s, :]
-            t += act_s
-        return result.contiguous()
+        if cu_seqlens is not None:
+            T = cu_seqlens[-1]
+            result = torch.zeros((T, N, D), dtype=tensor.dtype, device=tensor.device)
+            for b in range(B):
+                act_s = seq_lens[b]
+                offset = cu_seqlens[b]
+                for n in range(N):
+                    result[offset:offset + act_s, n, :] = tensor[b, n, :act_s, :]
+            return result.contiguous()
+        else:
+            T = sum(seq_lens)
+            result = torch.zeros((T, N, D), dtype=tensor.dtype, device=tensor.device)
+            t = 0
+            for b in range(B):
+                act_s = seq_lens[b]
+                for n in range(N):
+                    result[t:t + act_s, n, :] = tensor[b, n, :act_s, :]
+                t += act_s
+            return result.contiguous()
     else:
         raise ValueError(f"Unsupported layout: {layout}")
 
 
-def convert_kv_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
-    return convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout)
+def convert_kv_bnsd_to_layout(tensor_bnsd, seq_lens, layout, cu_seqlens=None):
+    return convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout, cu_seqlens)
 
 
 def convert_qk_rope_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
@@ -315,22 +361,31 @@ def pack_v_scale_for_npu(scale_flat):
     return result
 
 
-def _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens):
-    # Q scale 已 packed: 最后一维 Dg = Dg_half * 2，需要 reshape 为 (Dg_half, 2)
+def _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens, cu_seqlens=None):
     B, N, _, Dg = scale_bnsd.shape
     Dg_half = Dg // 2
-    T = sum(seq_lens)
-    result = torch.zeros((T, N, Dg_half, 2), dtype=scale_bnsd.dtype, device=scale_bnsd.device)
-    t = 0
-    for b in range(B):
-        act_s = seq_lens[b]
-        for n in range(N):
-            result[t:t + act_s, n, :, :] = scale_bnsd[b, n, :act_s, :].reshape(act_s, Dg_half, 2)
-        t += act_s
-    return result
+    if cu_seqlens is not None:
+        T = cu_seqlens[-1]
+        result = torch.zeros((T, N, Dg_half, 2), dtype=scale_bnsd.dtype, device=scale_bnsd.device)
+        for b in range(B):
+            act_s = seq_lens[b]
+            offset = cu_seqlens[b]
+            for n in range(N):
+                result[offset:offset + act_s, n, :, :] = scale_bnsd[b, n, :act_s, :].reshape(act_s, Dg_half, 2)
+        return result
+    else:
+        T = sum(seq_lens)
+        result = torch.zeros((T, N, Dg_half, 2), dtype=scale_bnsd.dtype, device=scale_bnsd.device)
+        t = 0
+        for b in range(B):
+            act_s = seq_lens[b]
+            for n in range(N):
+                result[t:t + act_s, n, :, :] = scale_bnsd[b, n, :act_s, :].reshape(act_s, Dg_half, 2)
+            t += act_s
+        return result
 
 
-def convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout):
+def convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, cu_seqlens=None):
     """Q scale BNSD → 各种 layout (已 packed: D//2, 2)"""
     layout = canonical_q_scale_layout(layout)
     B, N, _, Dg = scale_bnsd.shape
@@ -344,16 +399,16 @@ def convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout):
     elif layout == "BSH":
         return scale_bnsd[:, :, :max_org_s, :].permute(0, 2, 1, 3).reshape(B, max_org_s, N * Dg_half, 2)
     elif layout == "TND":
-        return _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens)
+        return _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens, cu_seqlens)
     elif layout == "N2TGD":
-        tnd_result = _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens)
+        tnd_result = _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens, cu_seqlens)
         return convert_q_scale_tnd_to_n2tgd_layout(tnd_result, N_kv)
     else:
         raise ValueError(f"Unsupported layout: {layout}")
 
 
-def convert_k_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout):
-    return convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout)
+def convert_k_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, cu_seqlens=None):
+    return convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, cu_seqlens)
 
 
 def convert_v_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, group_size=32):
@@ -592,8 +647,9 @@ def make_accum_seq(seq_lens):
 
 def generate_data():
     """生成 BNSD FP16 Q/K/V 并做 MXFP8 量化，使用原始序列长度"""
-    max_sq = MAX_SEQLEN_Q
-    max_skv = MAX_SEQLEN_KV
+    _sq, _skv, _cuq, _cukv, _msq, _mskv, _bnsd_sq, _bnsd_skv = _resolve_seq_params()
+    max_sq = _bnsd_sq
+    max_skv = _bnsd_skv
 
     logger.info("[INFO] max_sq=%d, max_skv=%d", max_sq, max_skv)
 
@@ -606,6 +662,14 @@ def generate_data():
     torch.manual_seed(SEED_V)
     v_fp16 = (torch.rand(B, N_kv, max_skv, D, dtype=torch.float16) * 2 - 1) * DATA_RANGE_V
 
+    for b in range(B):
+        if _sq[b] < _cuq[b + 1] - _cuq[b]:
+            q_fp16[b, :, _sq[b]:_cuq[b + 1] - _cuq[b], :] = 0
+    for b in range(B):
+        if _skv[b] < _cukv[b + 1] - _cukv[b]:
+            k_fp16[b, :, _skv[b]:_cukv[b + 1] - _cukv[b], :] = 0
+            v_fp16[b, :, _skv[b]:_cukv[b + 1] - _cukv[b], :] = 0
+
     qr_bf16 = None
     kr_bf16 = None
     if ENABLE_ROPE and D_rope > 0:
@@ -613,6 +677,11 @@ def generate_data():
         qr_bf16 = torch.randn(B, N_q, max_sq, D_rope, dtype=torch.bfloat16)
         torch.manual_seed(SEED_KR)
         kr_bf16 = torch.randn(B, N_kv, max_skv, D_rope, dtype=torch.bfloat16)
+        for b in range(B):
+            if _sq[b] < _cuq[b + 1] - _cuq[b]:
+                qr_bf16[b, :, _sq[b]:_cuq[b + 1] - _cuq[b], :] = 0
+            if _skv[b] < _cukv[b + 1] - _cukv[b]:
+                kr_bf16[b, :, _skv[b]:_cukv[b + 1] - _cukv[b], :] = 0
 
     logger.info("[INFO] q_fp16=%s, k_fp16=%s, v_fp16=%s", q_fp16.shape, k_fp16.shape, v_fp16.shape)
 
@@ -634,13 +703,13 @@ def generate_data():
 
     block_table_torch = None
     if ENABLE_PA:
-        block_num = sum(math.ceil(s / BLOCK_SIZE) for s in SEQUSED_KV)
-        max_blocks = max(math.ceil(s / BLOCK_SIZE) for s in SEQUSED_KV)
+        block_num = sum(math.ceil(s / BLOCK_SIZE) for s in _skv)
+        max_blocks = max(math.ceil(s / BLOCK_SIZE) for s in _skv)
         block_idx_list = torch.randperm(block_num, dtype=torch.int32)
         block_table_torch = torch.full((B, max_blocks), -1, dtype=torch.int32)
         idx = 0
         for b in range(B):
-            n_blocks = math.ceil(SEQUSED_KV[b] / BLOCK_SIZE)
+            n_blocks = math.ceil(_skv[b] / BLOCK_SIZE)
             for j in range(n_blocks):
                 block_table_torch[b, j] = block_idx_list[idx]
                 idx += 1
@@ -877,10 +946,10 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
         raise ImportError("cann_ops_transformer.ops.quant_flash_attn is not available. "
                           "Please check that cann_ops_transformer is installed and all .so are compiled.")
 
-    cu_seqlens_q_t = torch.tensor(cu_seqlens_q, dtype=torch.int32).npu()
-    cu_seqlens_kv_t = torch.tensor(cu_seqlens_kv, dtype=torch.int32).npu()
-    seqused_q_t = torch.tensor(seqused_q, dtype=torch.int32).npu()
-    seqused_kv_t = torch.tensor(seqused_kv, dtype=torch.int32).npu()
+    cu_seqlens_q_t = torch.tensor(cu_seqlens_q, dtype=torch.int32).npu() if cu_seqlens_q is not None else None
+    cu_seqlens_kv_t = torch.tensor(cu_seqlens_kv, dtype=torch.int32).npu() if cu_seqlens_kv is not None else None
+    seqused_q_t = torch.tensor(seqused_q, dtype=torch.int32).npu() if seqused_q is not None else None
+    seqused_kv_t = torch.tensor(seqused_kv, dtype=torch.int32).npu() if seqused_kv is not None else None
 
     is_tnd_q = (layout_q == "TND")
     is_tnd_kv = (layout_kv == "TND")
@@ -981,17 +1050,19 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
     """调用 NPU 算子，支持 N2TGD layout"""
     torch_npu.npu.set_device(int(DEVICE_ID))
 
+    _sq, _skv, _cuq, _cukv, _msq, _mskv, _bnsd_sq, _bnsd_skv = _resolve_seq_params()
+
     softmax_scale = 1.0 / math.sqrt(D + (D_rope if ENABLE_ROPE else 0))
 
     q_runtime_layout, q_group = resolve_q_scale_layout()
     logger.info("[NPU] Q layout: q_layout=%s, G=%d", q_runtime_layout, q_group)
 
     npu_input_layout = "TND" if ENABLE_PA else INPUT_LAYOUT
-    q_npu = convert_q_bnsd_to_layout(q_fp8, SEQUSED_Q, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
+    q_npu = convert_q_bnsd_to_layout(q_fp8, _sq, npu_input_layout, cu_seqlens=_cuq).contiguous().view(FP8_DTYPE).npu()
     logger.info("[NPU %s] q=%s", npu_input_layout, q_npu.shape)
 
     q_scale_e8m0 = fp32_to_e8m0fnu_safe(
-        convert_q_scale_bnsd_to_layout(dequant_scale_q, SEQUSED_Q, q_runtime_layout), "Q scale")
+        convert_q_scale_bnsd_to_layout(dequant_scale_q, _sq, q_runtime_layout, cu_seqlens=_cuq), "Q scale")
     deq_q_npu = q_scale_e8m0.npu()
     logger.info("[NPU] Q scale layout=%s, shape=%s", q_runtime_layout, q_scale_e8m0.shape)
 
@@ -1001,14 +1072,14 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
 
     mask_arg = _build_causal_mask()
     q_rope_npu, k_rope_npu = _prepare_rope_npu(
-        qr_bf16, kr_bf16, SEQUSED_Q, SEQUSED_KV,
+        qr_bf16, kr_bf16, _sq, _skv,
         npu_input_layout, block_table_torch, ENABLE_PA)
 
     if ENABLE_PA:
         # PA 模式: K/V 走 mxfp8_pa_preprocessing 转换为 PagedAttention KV Cache 格式
-        k_pa = mxfp8_pa_preprocessing(k_fp8, SEQUSED_KV, BLOCK_SIZE, block_table_torch,
+        k_pa = mxfp8_pa_preprocessing(k_fp8, _skv, BLOCK_SIZE, block_table_torch,
                                        is_scale=False, kv_layout=KV_CACHE_LAYOUT)
-        v_pa = mxfp8_pa_preprocessing(v_fp8, SEQUSED_KV, BLOCK_SIZE, block_table_torch,
+        v_pa = mxfp8_pa_preprocessing(v_fp8, _skv, BLOCK_SIZE, block_table_torch,
                                        is_scale=False, kv_layout=KV_CACHE_LAYOUT)
         k_npu = k_pa.contiguous().view(FP8_DTYPE).npu()
         v_npu = v_pa.contiguous().view(FP8_DTYPE).npu()
@@ -1020,9 +1091,9 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             v_npu = kv_cache[:, :, 1]
             logger.info(f"[NPU] key is_contiguous={k_npu.is_contiguous()}, value is_contiguous={v_npu.is_contiguous()}")
 
-        k_scale_pa = mxfp8_pa_preprocessing(dequant_scale_k, SEQUSED_KV, BLOCK_SIZE, block_table_torch,
+        k_scale_pa = mxfp8_pa_preprocessing(dequant_scale_k, _skv, BLOCK_SIZE, block_table_torch,
                                               is_scale=True, is_vscale=False, kv_layout=KV_CACHE_LAYOUT)
-        v_scale_pa = mxfp8_pa_preprocessing(dequant_scale_v, SEQUSED_KV, BLOCK_SIZE, block_table_torch,
+        v_scale_pa = mxfp8_pa_preprocessing(dequant_scale_v, _skv, BLOCK_SIZE, block_table_torch,
                                              is_scale=True, is_vscale=True, kv_layout=KV_CACHE_LAYOUT)
 
         k_scale_e8m0_pa = fp32_to_e8m0fnu_safe(k_scale_pa, "K PA scale")
@@ -1054,19 +1125,19 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
         logger.info("[NPU] 调用 PA 模式...")
         atten_out, lse_out = mxfp8_fa_torch_npu(
             q_npu, k_npu, v_npu, q_rope_npu, k_rope_npu, mask_arg,
-            cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
+            _cuq, _cukv, _sq, _skv, _msq, _mskv,
             deq_q_npu, deq_k_npu, deq_v_npu, p_scale_npu, block_table_npu,
             N_q, N_kv, softmax_scale, "TND", q_runtime_layout, pa_layout_kv, "TND", BLOCK_SIZE, SPARSE_MODE, out_dtype)
     else:
         # 非 PA 模式: K/V 按 INPUT_LAYOUT 转换
-        k_npu = convert_kv_bnsd_to_layout(k_fp8, SEQUSED_KV, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
-        v_npu = convert_kv_bnsd_to_layout(v_fp8, SEQUSED_KV, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
+        k_npu = convert_kv_bnsd_to_layout(k_fp8, _skv, npu_input_layout, cu_seqlens=_cukv).contiguous().view(FP8_DTYPE).npu()
+        v_npu = convert_kv_bnsd_to_layout(v_fp8, _skv, npu_input_layout, cu_seqlens=_cukv).contiguous().view(FP8_DTYPE).npu()
         logger.info("[NPU %s] k=%s, v=%s", npu_input_layout, k_npu.shape, v_npu.shape)
 
         k_scale_e8m0 = fp32_to_e8m0fnu_safe(
-            convert_k_scale_bnsd_to_layout(dequant_scale_k, SEQUSED_KV, npu_input_layout), "K scale")
+            convert_k_scale_bnsd_to_layout(dequant_scale_k, _skv, npu_input_layout, cu_seqlens=_cukv), "K scale")
         v_scale_e8m0 = fp32_to_e8m0fnu_safe(
-            convert_v_scale_bnsd_to_layout(dequant_scale_v, SEQUSED_KV, npu_input_layout), "V scale")
+            convert_v_scale_bnsd_to_layout(dequant_scale_v, _skv, npu_input_layout), "V scale")
         deq_k_npu = k_scale_e8m0.npu()
         deq_v_npu = v_scale_e8m0.npu()
         logger.info("[NPU %s] K scale shape=%s, V scale shape=%s", npu_input_layout, k_scale_e8m0.shape, v_scale_e8m0.shape)
@@ -1074,15 +1145,18 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
         logger.info("[NPU] 调用 %s 模式...", npu_input_layout)
         atten_out, lse_out = mxfp8_fa_torch_npu(
             q_npu, k_npu, v_npu, q_rope_npu, k_rope_npu, mask_arg,
-            cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
+            _cuq, _cukv, _sq, _skv, _msq, _mskv,
             deq_q_npu, deq_k_npu, deq_v_npu, p_scale_npu, None,
             N_q, N_kv, softmax_scale, npu_input_layout, q_runtime_layout, npu_input_layout, npu_input_layout, 0, SPARSE_MODE, out_dtype)
 
     npu_output = atten_out
-    T_actual = cu_seqlens_q[-1]
-    # NPU 输出可能包含 padding，截取到实际序列长度
-    if npu_output.shape[0] > T_actual:
-        npu_output = npu_output[:T_actual]
+    result_parts = []
+    for b in range(B):
+        start = _cuq[b]
+        valid_len = _sq[b]
+        if valid_len > 0:
+            result_parts.append(npu_output[start:start + valid_len])
+    npu_output = torch.cat(result_parts, dim=0) if result_parts else npu_output[:0]
     logger.info("[NPU] output=%s", npu_output.shape)
     return npu_output, lse_out
 
@@ -1138,8 +1212,9 @@ if __name__ == '__main__':
     logger.info("场景: %s", 'PA' if ENABLE_PA else 'TND')
     logger.info("INPUT_LAYOUT=%s, Q_SCALE_LAYOUT=%s", INPUT_LAYOUT, Q_SCALE_LAYOUT)
     logger.info("KV_CACHE_LAYOUT=%s", KV_CACHE_LAYOUT)
+    _sq, _skv, _cuq, _cukv, _msq, _mskv, _bnsd_sq, _bnsd_skv = _resolve_seq_params()
     logger.info("B=%d, N_q=%d, N_kv=%d, D=%d", B, N_q, N_kv, D)
-    logger.info("ACTUAL_SEQ_Q=%s, ACTUAL_SEQ_KV=%s", SEQUSED_Q, SEQUSED_KV)
+    logger.info("SEQUSED_Q=%s, SEQUSED_KV=%s", _sq, _skv)
 
     if "gen" in mode:
         logger.info("\n[Step 1] 数据生成")
@@ -1164,7 +1239,7 @@ if __name__ == '__main__':
         logger.info("\n[Step 2] CPU Golden")
         cpu_out, cpu_lse = cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                                     dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-                                    SEQUSED_Q, SEQUSED_KV,
+                                    _sq, _skv,
                                     qr_bf16, kr_bf16)
         golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
     else:
@@ -1189,10 +1264,10 @@ if __name__ == '__main__':
         exit(0)
 
     logger.info("\n[Step 4] Atten OUT 精度对比")
-    cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out, SEQUSED_Q, "TND")
+    cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out, _sq, "TND")
     result_compare_method.check_result(cpu_tnd_torch, atten_out)
 
     if ENABLE_LSE:
         logger.info("\n[Step 5] LSE 精度对比")
-        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_lse, SEQUSED_Q, "TND")
+        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_lse, _sq, "TND")
         result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)
