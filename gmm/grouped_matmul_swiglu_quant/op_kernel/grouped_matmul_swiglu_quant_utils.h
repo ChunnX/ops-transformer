@@ -75,6 +75,15 @@ constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr uint8_t NUM_8 = 8;
 constexpr bool NO_BIAS = false;
 constexpr int64_t DOUBLE_ROW = 2;
+constexpr uint32_t GMMSQ_CROSS_CORE_SYNC_MODE = 0x2;
+constexpr uint32_t GMMSQ_INTER_BLOCK_SYNC_MODE = 0x0;
+constexpr uint16_t GMMSQ_PIPE_PRE_READY_FLAG0 = 0;
+constexpr uint16_t GMMSQ_PIPE_PRE_FREE_FLAG0 = 2;
+constexpr uint16_t GMMSQ_PIPE_MID_READY_FLAG0 = 4;
+constexpr uint16_t GMMSQ_PIPE_MID_FREE_FLAG0 = 6;
+constexpr uint16_t GMMSQ_SPLIT_WS_FREE_FLAG0 = 0;
+constexpr uint16_t GMMSQ_CUBE_VEC_READY_FLAG = 8;
+constexpr uint16_t GMMSQ_CUBE_AIC_BARRIER_FLAG = 9;
 constexpr MatmulConfig CUSTOM_CFG_MDL = GetMDLConfig(false, false, 0, true, false, false, true);
 constexpr MatmulConfig GetMMStaticCFG()
 {
@@ -99,6 +108,130 @@ constexpr static MatmulApiStaticTiling GetMMTiling(const MatmulApiStaticTiling &
     tiling.depthB1 = DEPTH_B1;
     tiling.isBias = NO_BIAS;
     return tiling;
+}
+
+template <HardEvent event>
+__aicore__ inline void GmmsqSetWaitFlag()
+{
+    event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(event));
+    SetFlag<event>(eventId);
+    WaitFlag<event>(eventId);
+}
+
+__aicore__ inline uint16_t GmmsqDoubleBufferFlag(uint16_t flag0, int64_t loopIdx)
+{
+    return flag0 + static_cast<uint16_t>(loopIdx & 1);
+}
+
+template <uint32_t mode, const pipe_t pipe>
+__aicore__ inline void GmmsqCrossCoreSetFlag(uint16_t flagId)
+{
+#ifndef __CCE_KT_TEST__
+    CrossCoreSetFlag<mode, pipe>(flagId);
+#endif
+}
+
+__aicore__ inline void GmmsqCrossCoreWaitFlag(uint16_t flagId)
+{
+#ifndef __CCE_KT_TEST__
+    CrossCoreWaitFlag(flagId);
+#endif
+}
+
+template <const pipe_t pipe>
+__aicore__ inline void GmmsqAicInterBlockBarrier()
+{
+    if ASCEND_IS_AIC {
+        GmmsqCrossCoreSetFlag<GMMSQ_INTER_BLOCK_SYNC_MODE, pipe>(GMMSQ_CUBE_AIC_BARRIER_FLAG);
+        GmmsqCrossCoreWaitFlag(GMMSQ_CUBE_AIC_BARRIER_FLAG);
+    }
+}
+
+// Cube writes the whole GM workspace before vector reads it. The ready edge only
+// needs AIC producers to notify AIV consumers. The AIC-only barrier first proves
+// every cube core has finished its workspace write without stalling vector cores.
+__aicore__ inline void GmmsqAllCoreCubeVecStageBarrier()
+{
+    if ASCEND_IS_AIC {
+        GmmsqAicInterBlockBarrier<PIPE_FIX>();
+        GmmsqCrossCoreSetFlag<GMMSQ_CROSS_CORE_SYNC_MODE, PIPE_FIX>(GMMSQ_CUBE_VEC_READY_FLAG);
+    }
+    if ASCEND_IS_AIV {
+        GmmsqCrossCoreWaitFlag(GMMSQ_CUBE_VEC_READY_FLAG);
+    }
+}
+
+__aicore__ inline void GmmsqWaitSplitWorkspaceFree(int64_t loopIdx)
+{
+    if ASCEND_IS_AIC {
+        GmmsqCrossCoreWaitFlag(GmmsqDoubleBufferFlag(GMMSQ_SPLIT_WS_FREE_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqNotifySplitWorkspaceFree(int64_t loopIdx)
+{
+    if ASCEND_IS_AIV {
+        GmmsqCrossCoreSetFlag<GMMSQ_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
+            GmmsqDoubleBufferFlag(GMMSQ_SPLIT_WS_FREE_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqWaitPipelinePreReady(int64_t loopIdx)
+{
+    if ASCEND_IS_AIC {
+        GmmsqCrossCoreWaitFlag(GmmsqDoubleBufferFlag(GMMSQ_PIPE_PRE_READY_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqNotifyPipelinePreReady(int64_t loopIdx)
+{
+    if ASCEND_IS_AIV {
+        GmmsqCrossCoreSetFlag<GMMSQ_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
+            GmmsqDoubleBufferFlag(GMMSQ_PIPE_PRE_READY_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqWaitPipelinePreFree(int64_t loopIdx)
+{
+    if ASCEND_IS_AIV {
+        GmmsqCrossCoreWaitFlag(GmmsqDoubleBufferFlag(GMMSQ_PIPE_PRE_FREE_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqWaitPipelineMidReady(int64_t loopIdx)
+{
+    if ASCEND_IS_AIV {
+        GmmsqCrossCoreWaitFlag(GmmsqDoubleBufferFlag(GMMSQ_PIPE_MID_READY_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqNotifyPipelineMidDone(int64_t loopIdx, int64_t loopCount)
+{
+    if ASCEND_IS_AIC {
+        if (loopIdx < loopCount - DOUBLE_BUFFER) {
+            GmmsqCrossCoreSetFlag<GMMSQ_CROSS_CORE_SYNC_MODE, PIPE_FIX>(
+                GmmsqDoubleBufferFlag(GMMSQ_PIPE_PRE_FREE_FLAG0, loopIdx));
+        }
+        GmmsqCrossCoreSetFlag<GMMSQ_CROSS_CORE_SYNC_MODE, PIPE_FIX>(
+            GmmsqDoubleBufferFlag(GMMSQ_PIPE_MID_READY_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqWaitPipelineMidFree(int64_t loopIdx)
+{
+    if ASCEND_IS_AIC {
+        GmmsqCrossCoreWaitFlag(GmmsqDoubleBufferFlag(GMMSQ_PIPE_MID_FREE_FLAG0, loopIdx));
+    }
+}
+
+__aicore__ inline void GmmsqNotifyPipelinePostDone(int64_t loopIdx, int64_t loopCount)
+{
+    if ASCEND_IS_AIV {
+        if (loopIdx < loopCount - DOUBLE_BUFFER) {
+            GmmsqCrossCoreSetFlag<GMMSQ_CROSS_CORE_SYNC_MODE, PIPE_MTE3>(
+                GmmsqDoubleBufferFlag(GMMSQ_PIPE_MID_FREE_FLAG0, loopIdx));
+        }
+    }
 }
 
 template <class AT_, class BT_, class CT_>

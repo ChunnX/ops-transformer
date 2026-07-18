@@ -209,7 +209,7 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
 
         if ASCEND_IS_AIC {
             if (workspaceSplitLoopIdx >= parallelNum) { // first parallelNum core no need to wait
-                SyncAll<false>();
+                GmmsqWaitSplitWorkspaceFree(workspaceSplitLoopIdx);
             }
             MNConfig mnConfig;
             int32_t prevSplitValue = workspaceSplitConfig.leftMatrixStartIndex;
@@ -240,7 +240,7 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
                 }
                 count = curCount % gmmBaseParams->coreNum;
             }
-            SyncAll<false>();
+            GmmsqAllCoreCubeVecStageBarrier();
         }
 
         if ASCEND_IS_AIV {
@@ -256,25 +256,19 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
                 quantOutQueue.EnQue(quantLocal);
                 PreLoadTokenAndChannel<CHANNELDTYPE>(channelScaleLocal, vecConfig);
             }
-            SyncAll<false>();
+            GmmsqAllCoreCubeVecStageBarrier();
             if (blockIdx < vecConfig.usedCoreNum) {
                 for (uint32_t outLoopIdx = 0; outLoopIdx < vecConfig.outLoopNum; outLoopIdx++) {
                     vecConfig.innerLoopNum =
                         outLoopIdx == (vecConfig.outLoopNum - 1) ? vecConfig.tailLoopNum : gmmSwiglu->maxProcessRowNum;
-                    int32_t eventIdMTE3ToMTE2 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
-                    SetFlag<HardEvent::MTE3_MTE2>(eventIdMTE3ToMTE2);
-                    WaitFlag<HardEvent::MTE3_MTE2>(eventIdMTE3ToMTE2);
+                    GmmsqSetWaitFlag<HardEvent::MTE3_MTE2>();
                     customDataCopyIn(outLoopIdx, mmOutGM, vecConfig);
                     for (uint32_t innerLoopIdx = 0; innerLoopIdx < vecConfig.innerLoopNum; innerLoopIdx++) {
                         UpdateChannelScale<CHANNELDTYPE>(innerLoopIdx, vecConfig);
                         VectorCompute(innerLoopIdx, vecConfig);
                     }
-                    int32_t eventIdVToMTE3 = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-                    SetFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
-                    WaitFlag<HardEvent::V_MTE3>(eventIdVToMTE3);
                     customDataCopyOut(vecConfig);
                 }
-
                 LocalTensor<float> channelScaleLocal = perChannelScaleInQueue.DeQue<float>();
                 LocalTensor<int32_t> mmLocal = mmOutQueue.DeQue<int32_t>();
                 LocalTensor<int8_t> quantLocal = quantOutQueue.DeQue<int8_t>();
@@ -285,7 +279,7 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
                 quantOutQueue.FreeTensor(quantLocal);
             }
             if (workspaceSplitLoopIdx < workspaceSplitConfig.loopCount - parallelNum) {
-                SyncAll<false>();
+                GmmsqNotifySplitWorkspaceFree(workspaceSplitLoopIdx);
             }
         }
     }
@@ -302,13 +296,13 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
         LocalTensor<DTYPE_CS> dstLocalT = channelScaleLocal.template ReinterpretCast<DTYPE_CS>();
         DataCopyPad(dstLocalT[gmmSwiglu->tokenLen], perChannelScaleGM[vecConfig.curGroupIdx * gmmSwiglu->tokenLen],
                     copyChannelParams, padParams);
-        int32_t eventIdMTE2ToV = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-        SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
-        WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+        GmmsqSetWaitFlag<HardEvent::MTE2_V>();
         Cast(channelScaleLocal, dstLocalT[gmmSwiglu->tokenLen], RoundMode::CAST_NONE, gmmSwiglu->tokenLen);
+        PipeBarrier<PIPE_V>();
     } else {
         DataCopyPad(channelScaleLocal, perChannelScaleGM[vecConfig.curGroupIdx * gmmSwiglu->tokenLen],
                     copyChannelParams, padParams);
+        GmmsqSetWaitFlag<HardEvent::MTE2_V>();
     }
     perChannelScaleInQueue.EnQue(channelScaleLocal);
 }
@@ -459,27 +453,23 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
         1, static_cast<uint32_t>(vecConfig.innerLoopNum * gmmSwiglu->tokenLen * sizeof(int32_t)), 0, 0, 0};
     DataCopyPadExtParams<int32_t> padParams_0{false, 0, 0, 0};
     DataCopyPad(_inMMLocal_0, mmOutGM[vecConfig.curOffset], copyParams_0, padParams_0);
+    GmmsqSetWaitFlag<HardEvent::MTE2_V>();
     mmOutQueue.EnQue(_inMMLocal_0);
 
     LocalTensor<int32_t> _inMMLocal_1 = mmOutQueue.DeQue<int32_t>();
 
     Cast(_inMMLocal_1.ReinterpretCast<float>(), _inMMLocal_1, RoundMode::CAST_NONE,
          vecConfig.innerLoopNum * gmmSwiglu->tokenLen);
+    PipeBarrier<PIPE_V>();
 
     mmOutQueue.EnQue(_inMMLocal_1);
     LocalTensor<float> _inMMLocal_2 = mmOutQueue.DeQue<float>();
-    int32_t eventIdSToV = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-    SetFlag<HardEvent::S_V>(eventIdSToV);
     for (uint32_t i = 0; i < vecConfig.innerLoopNum; i++) {
-        WaitFlag<HardEvent::S_V>(eventIdSToV);
         float scale = perTokenScaleGM.GetValue(vecConfig.curIdx + workspaceSplitConfig.leftMatrixStartIndex);
-        SetFlag<HardEvent::S_V>(eventIdSToV);
-        WaitFlag<HardEvent::S_V>(eventIdSToV);
         Muls(_inMMLocal_2[i * gmmSwiglu->tokenLen], _inMMLocal_2[i * gmmSwiglu->tokenLen], scale, gmmSwiglu->tokenLen);
-        SetFlag<HardEvent::S_V>(eventIdSToV);
         vecConfig.curIdx++;
     }
-    WaitFlag<HardEvent::S_V>(eventIdSToV);
+    PipeBarrier<PIPE_V>();
     vecConfig.curOffset = vecConfig.curIdx * gmmSwiglu->tokenLen;
     mmOutQueue.EnQue(_inMMLocal_2);
 }
@@ -508,13 +498,13 @@ GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE>::UpdateChannelScale(u
             LocalTensor<DTYPE_CS> dstLocalT = _inChannel.template ReinterpretCast<DTYPE_CS>();
             DataCopyPad(dstLocalT[gmmSwiglu->tokenLen], perChannelScaleGM[vecConfig.curGroupIdx * gmmSwiglu->tokenLen],
                         copyParams, padParams);
-            int32_t eventIdMTE2ToV = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
-            SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
-            WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
+            GmmsqSetWaitFlag<HardEvent::MTE2_V>();
             Cast(_inChannel, dstLocalT[gmmSwiglu->tokenLen], RoundMode::CAST_NONE, gmmSwiglu->tokenLen);
+            PipeBarrier<PIPE_V>();
         } else {
             DataCopyPad(_inChannel, perChannelScaleGM[vecConfig.curGroupIdx * gmmSwiglu->tokenLen], copyParams,
                         padParams);
+            GmmsqSetWaitFlag<HardEvent::MTE2_V>();
         }
         perChannelScaleInQueue.EnQue(_inChannel);
     }
@@ -538,6 +528,7 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
     LocalTensor<float> perChannelLocal = perChannelScaleInQueue.DeQue<float>();
     Mul(mmLocal[loopIdx * gmmSwiglu->tokenLen], mmLocal[loopIdx * gmmSwiglu->tokenLen], perChannelLocal,
         gmmSwiglu->tokenLen);
+    PipeBarrier<PIPE_V>();
     vecConfig.nextUpadteInterVal--;
     mmOutQueue.EnQue(mmLocal);
     perChannelScaleInQueue.EnQue(perChannelLocal);
@@ -559,6 +550,7 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
     DataCopyParams repeatParams{1, static_cast<uint16_t>((gmmSwiglu->tokenLen / SWIGLU_REDUCE_FACTOR) / ALIGN_8_ELE), 0,
                                 0};
     DataCopy(_inMMLocal[loopIdx * gmmSwiglu->tokenLen], workspaceLocal, repeatParams);
+    PipeBarrier<PIPE_ALL>();
     mmOutQueue.EnQue(_inMMLocal);
 }
 
@@ -580,16 +572,15 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
     ReduceMaxTemplate(reduceResLocal, workLocal, _inMMLocal[preOffset + gmmSwiglu->tokenLen / BISECT], reduceTmpLocal,
                       static_cast<uint32_t>(halfTokenLen));
 
-    int32_t eventIdVToS = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    SetFlag<HardEvent::V_S>(eventIdVToS);
-    WaitFlag<HardEvent::V_S>(eventIdVToS);
+    GmmsqSetWaitFlag<HardEvent::V_S>();
     float quantScale = reduceResLocal.GetValue(0) / QUANT_SCALE_INT8;
     LocalTensor<float> quantScaleLocal = quantScaleOutQueue.DeQue<float>();
     quantScaleLocal.SetValue(loopIdx, quantScale);
+    GmmsqSetWaitFlag<HardEvent::S_MTE3>();
+    if constexpr (!IsSameType<CHANNELDTYPE, float>::value) {
+        quantScaleOutQueue.EnQue(quantScaleLocal);
+    }
     quantScale = 1 / quantScale;
-    int32_t eventIdSToV = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-    SetFlag<HardEvent::S_V>(eventIdSToV);
-    WaitFlag<HardEvent::S_V>(eventIdSToV);
     Muls(_inMMLocal[preOffset], _inMMLocal[preOffset], quantScale, halfTokenLen);
     PipeBarrier<PIPE_V>();
     LocalTensor<int8_t> quantLocal = quantOutQueue.DeQue<int8_t>();
@@ -598,6 +589,7 @@ __aicore__ inline void GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE
     int32_t tempCount = static_cast<int32_t>(halfTokenLen);
     LocalTensor<int8_t> castSpace = reduceWorkspace.Get<int8_t>(UB_BLOCK_UNIT_SIZE);
     CastFp32ToInt8Template(quantLocal, _inMMLocal, castSpace, dstTempOffset, srcTempOffset, tempCount);
+    PipeBarrier<PIPE_V>();
     mmOutQueue.EnQue(_inMMLocal);
     quantOutQueue.EnQue(quantLocal);
 }
@@ -608,6 +600,7 @@ GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE>::customDataCopyOut(Ve
 {
     LocalTensor<float> quantScaleLocal = quantScaleOutQueue.DeQue<float>();
     DataCopyParams copyParams_0{1, (uint16_t)(vecConfig.innerLoopNum * sizeof(float)), 0, 0};
+    GmmsqSetWaitFlag<HardEvent::S_MTE3>();
     DataCopyPad(quantScaleOutputGM[workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx], quantScaleLocal,
                 copyParams_0);
     LocalTensor<int8_t> quantLocal = quantOutQueue.DeQue<int8_t>();
@@ -616,6 +609,7 @@ GMMSwigluSplitWorkSpaceCompute<mmType, sync, CHANNELDTYPE>::customDataCopyOut(Ve
     DataCopyPad(quantOutputGM[(workspaceSplitConfig.leftMatrixStartIndex + vecConfig.startIdx) * gmmSwiglu->tokenLen /
                               SWIGLU_REDUCE_FACTOR],
                 quantLocal, copyParams_1);
+    GmmsqSetWaitFlag<HardEvent::MTE3_V>();
     vecConfig.startIdx += vecConfig.innerLoopNum;
     vecConfig.startOffset = vecConfig.startIdx * gmmSwiglu->tokenLen;
     quantOutQueue.EnQue(quantLocal);
