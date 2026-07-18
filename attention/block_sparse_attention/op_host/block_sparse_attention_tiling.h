@@ -59,6 +59,7 @@ TILING_DATA_FIELD_DEF(uint32_t, blockSize);
 TILING_DATA_FIELD_DEF(uint32_t, maxNumBlocksPerBatch);
 TILING_DATA_FIELD_DEF(uint32_t, firstBatchTaskNum);
 TILING_DATA_FIELD_DEF(uint32_t, totalTaskNum);
+TILING_DATA_FIELD_DEF(uint32_t, coreTaskNum);      // 向下取整: totalTaskNum / blockDim
 TILING_DATA_FIELD_DEF(uint32_t, maskType);
 TILING_DATA_FIELD_DEF(float, scaleValue);
 TILING_DATA_FIELD_DEF(uint32_t, totalQBlocks);       // T: 所有batch中Q方向切块的总数
@@ -237,6 +238,7 @@ private:
     uint32_t firstQBlockNum_ = 0;
     uint32_t firstBatchTaskNum_ = 0;
     uint32_t totalTaskNum_ = 0;
+    uint32_t coreTaskNum_ = 0;  // 向下取整: totalTaskNum_ / blockDim_
     uint32_t maxNumBlocksPerBatch_ = 0;
     const int64_t *qSeqLenList_ = nullptr;
     const int64_t *kvSeqLenList_ = nullptr;
