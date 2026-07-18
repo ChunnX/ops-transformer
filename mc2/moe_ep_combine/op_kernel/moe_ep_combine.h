@@ -185,6 +185,7 @@ private:
     TBuf<> rowTmpFloatBuf_;
     TBuf<> tokenBuf_;
     TBuf<> tokenTargetTBuf_;
+    TBuf<> metadataBuf_; // 发送阶段recvSrcMetadata的UB缓冲，批量搬运避免GetValue
 
     TQueBind<QuePosition::VECIN, QuePosition::VECOUT, 1> xQueue_; // 数据队列
     AscendC::Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;                 // 通信上下文
@@ -347,21 +348,37 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
 {
     uint32_t startRankId, endRankId, sendRankNum;
     SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum);
-    if (startRankId >= endRankId || sendRankNum == 0) {
+    if (startRankId >= endRankId || sendRankNum == 0 || actualA_ == 0) {
         return;
     }
     Duplicate<float>(statusTensor_, (float)1, FLOAT_PER_UB_ALIGN);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
-    for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
-        for (uint32_t tokenIndex = 0; tokenIndex < actualA_; ++tokenIndex) {
-            int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 0);
-            int32_t src_token_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 1);
-            int32_t src_topK_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 2);
-            if (src_rank < 0 || src_rank != rankId) { // 只处理当前rank负责的token
+    constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
+    constexpr uint32_t metaChunkTokenMax = 8192U; // 分块上限，平衡UB占用与搬运次数（128KB，A5 UB 256KB余量充足）
+
+    uint32_t metaChunkTokens = (actualA_ < metaChunkTokenMax) ? actualA_ : metaChunkTokenMax;
+    uint32_t metaChunkBytes = Ceil(metaChunkTokens * metaBytesPerToken, UB_ALIGN) * UB_ALIGN;
+    tpipe_->InitBuffer(metadataBuf_, metaChunkBytes);
+    LocalTensor<int32_t> metadataLocal = metadataBuf_.Get<int32_t>();
+    const DataCopyPadExtParams<int32_t> metaPadParams{false, 0U, 0U, 0U};
+
+    for (uint64_t chunkStart = 0; chunkStart < actualA_; chunkStart += metaChunkTokens) {
+        uint64_t chunkEnd = (chunkStart + metaChunkTokens > actualA_) ? actualA_ : (chunkStart + metaChunkTokens);
+        uint32_t curChunkTokens = static_cast<uint32_t>(chunkEnd - chunkStart);
+
+        DataCopyExtParams metaCopyParams{1U, curChunkTokens * metaBytesPerToken, 0U, 0U, 0U};
+        DataCopyPad(metadataLocal, recvSrcMetadataGm_[chunkStart * RECV_META_FIELDS], metaCopyParams, metaPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
+
+        for (uint32_t i = 0; i < curChunkTokens; ++i) {
+            uint32_t tokenIndex = static_cast<uint32_t>(chunkStart) + i;
+            int32_t src_rank = metadataLocal.GetValue(i * RECV_META_FIELDS + 0);
+            int32_t src_token_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 1);
+            int32_t src_topK_idx = metadataLocal.GetValue(i * RECV_META_FIELDS + 2);
+            if (src_rank < 0 || src_rank < static_cast<int32_t>(startRankId) ||
+                src_rank >= static_cast<int32_t>(endRankId)) {
                 continue;
             }
-            // 计算目标窗口地址:
-            // 当前rank的workspaceGM地址（src_rank只是为了workspace内的以卡分区）
             uint64_t slotOffset = (static_cast<uint64_t>(src_token_idx) * topK_ + src_topK_idx) * perSlotBytes_;
             GM_ADDR localRankWorkSpaceAddr = GetLocalWorkspaceDataAddr(src_rank, workspaceStateSize_) + slotOffset;
             GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) + slotOffset;
@@ -374,6 +391,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
 
             SetStatus(localRankStateAddr, remoteRankStateAddr, tokenIndex, src_rank);
         }
+        SyncFunc<AscendC::HardEvent::S_MTE2>(); // 确保本轮 Scalar GetValue 读完，下一块 DataCopyPad 才可覆盖 metadataLocal
     }
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
 }
