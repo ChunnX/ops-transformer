@@ -25,7 +25,8 @@ if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor(
         [False, False, False, False, False, False, False, False, False, False, False, False, False],
         [False, False, False, True, True, True, True, True, True, True, True, True, True])
-    def QuantFlashAttn(q: Tensor,
+    def QuantFlashAttn(
+        q: Tensor,
         k: Tensor,
         v: Tensor,
         q_descale: Tensor,

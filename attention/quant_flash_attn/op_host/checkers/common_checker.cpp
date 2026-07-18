@@ -280,7 +280,8 @@ ge::graphStatus CommonChecker::CheckAxis(const QfaTilingInfo &qfaInfo)
             "S of query must be greater than or equal to 0"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(qfaInfo.s2Size < 0,
-        OP_LOGE(qfaInfo.opName, "The axis KV_S must be greater than or equal to 0, the current is %ld.", qfaInfo.s2Size),
+        OP_LOGE(qfaInfo.opName,
+                "The axis KV_S must be greater than or equal to 0, the current is %ld.", qfaInfo.s2Size),
         return ge::GRAPH_FAILED);
 
     const std::vector<int64_t> supportedHeadDims = {64, 128};

@@ -359,7 +359,7 @@ int64_t QuantChecker::CalcVDescaleTndDim0(const QfaTilingInfo &qfaInfo) const
     }
 
     int64_t batchSize = qfaInfo.bSize;
-    int64_t dim0 = 0;  
+    int64_t dim0 = 0;
     for (int64_t bIdx = 0; bIdx < batchSize; bIdx++) {
         int64_t curLen = cuSeqlensKvTensor->GetData<int32_t>()[bIdx + 1] - cuSeqlensKvTensor->GetData<int32_t>()[bIdx];
         dim0 += CeilDivision(curLen, mxfp8BlockSize);
@@ -530,7 +530,8 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
     OP_CHECK_IF(std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(),
                           qfaInfo.kvLayout) == config.supportedKvLayouts.end(),
                 OP_LOGE(qfaInfo.opName,
-                    "When quant_mode is MxFP8 and layout_q is %s, layout_kv must be in {TND, PA_BNBD, PA_NZ}, but got %s",
+                    "When quant_mode is MxFP8 and layout_q is %s, layout_kv must be in "
+                    "{TND, PA_BNBD, PA_NZ}, but got %s",
                     qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.kvLayout).c_str()),
                 return ge::GRAPH_FAILED);
 
