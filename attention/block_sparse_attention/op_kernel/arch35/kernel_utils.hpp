@@ -31,16 +31,16 @@
 namespace BsaKernelArch35 {
 
 struct TaskInfo {
-    uint32_t batchIdx;
-    uint32_t qHeadIdx;
-    uint32_t kvHeadIdx;
-    uint32_t qSTileIdx;
-    uint32_t xBlockIdx;
-    uint64_t gatheredKvSeqlen;
-    uint32_t qsActBaseTile;
-    uint32_t qsBaseTile;
-    uint32_t kvsBaseTile;
-    uint32_t taskTileNum;
+    uint32_t batchIdx = 0;
+    uint32_t qHeadIdx = 0;
+    uint32_t kvHeadIdx = 0;
+    uint32_t qSTileIdx = 0;
+    uint32_t xBlockIdx = 0;
+    uint64_t gatheredKvSeqlen = 0;
+    uint32_t qsActBaseTile = 0;
+    uint32_t qsBaseTile = 0;
+    uint32_t kvsBaseTile = 0;
+    uint32_t taskTileNum = 0;
 };
 
 struct RunInfo {
@@ -59,7 +59,7 @@ struct RunInfo {
     bool isKvsFirstTilePerCore = false; // 16个softmax均分在两个core, 当前任务是否是分在当前core上的第一个，    
     
     uint32_t kvsActBaseTile = 0; 
-}
+};
 
 enum class Format {
     TND = 0,

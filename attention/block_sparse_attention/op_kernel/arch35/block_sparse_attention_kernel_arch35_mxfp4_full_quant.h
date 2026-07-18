@@ -82,7 +82,7 @@ public:
 
     // Methods
     __aicore__ inline
-    BsaFullQuantKernelArch35() {}
+    BsaMXFP4FullQuantKernelArch35() {}
 
     __aicore__ inline
     void operator()(BsaFullQuantKernelParamsArch35 const &params)
@@ -397,21 +397,21 @@ public:
         AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_OTMP_BUF_STAGES],
         AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
     {
-        for (uint32_t i = 0; i < pL1BufNum_; i++) {
-            l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
-                mm2L1AddrStart_ + mm2L1TileM_ * mm2L1TileKLeft_ * sizeof(ElementP) * i);
-        }
-        uint32_t rowNumPerSubCore = EpilogueOnlineSoftmax::SM_ROW_MAX_ELEM_NUM;
-        uint32_t colNumPerSubCore = EpilogueOnlineSoftmax::SM_COL_MAX_ELEM_NUM;
-        uint32_t rescaleCol = EpilogueRescaleO::RESCALE_COL_MAX_ELEM_NUM;
-        for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
-            ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
-                rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * i);
-            ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-                rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
-                rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
-                rowNumPerSubCore * rescaleCol * sizeof(ElementOTmp) * i);
-        }
+        // for (uint32_t i = 0; i < pL1BufNum_; i++) {
+        //     l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
+        //         mm2L1AddrStart_ + mm2L1TileM_ * mm2L1TileKLeft_ * sizeof(ElementP) * i);
+        // }
+        // uint32_t rowNumPerSubCore = EpilogueOnlineSoftmax::SM_ROW_MAX_ELEM_NUM;
+        // uint32_t colNumPerSubCore = EpilogueOnlineSoftmax::SM_COL_MAX_ELEM_NUM;
+        // uint32_t rescaleCol = EpilogueRescaleO::RESCALE_COL_MAX_ELEM_NUM;
+        // for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
+        //     ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
+        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * i);
+        //     ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
+        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
+        //         rowNumPerSubCore * rescaleCol * sizeof(ElementOTmp) * i);
+        // }
     }
 
     template <uint32_t MM1_SM_MODE, uint32_t MM2_RE_MODE, uint32_t SM_MM2_MODE>
@@ -547,12 +547,6 @@ public:
     }
 
     // 每个 tile 调用一次，根据 coreTileLoop / curTaskTileIdx / taskInfo 填充 RunInfo
-    // 参考实现: qfa.cpp CalcParams
-    //   loop        -> coreTileLoop   (本核全局 tile 序号, 累加递增)
-    //   s2Cur       -> curTaskTileIdx (当前 task 内的 tile 序号, 从 0 开始)
-    //   curS2Start  -> 0              (task 内 tile 从 0 开始)
-    //   curS2End    -> taskInfo.taskTileNum
-    //   TILE_GROUP_N      -> 16             (16 个 kvs 基本块为一个 TileGroup)
     __aicore__ inline
     void CreateRunInfo(
         RunInfo& info,
@@ -589,7 +583,9 @@ public:
         info.updateScaleIdx = updateScaleIdx_;
         info.isKvsFirstTilePerCore = (info.curKvsTileLoopIdx % TILE_GROUP_N / 2 == 0);
 
-        info.kvsActBaseTile = isLastKvsTile ? (taskInfo.gatheredKvSeqlen - taskInfo.kvsBaseTile 怎么处理) : taskInfo.kvsBaseTile;
+       info.kvsActBaseTile = info.isLastKvsTile ?
+            (taskInfo.gatheredKvSeqlen - (taskInfo.taskTileNum - 1) * kvBaseTile_) :
+            kvBaseTile_;    
     }
 
 private:
@@ -647,7 +643,7 @@ private:
     // ---- CreateRunInfo 持久状态 (跨 tile 保持, 参考 qfa.cpp CalcParams) ----
     uint32_t kvsFirstStartVecCore_ = 0; // task 首 tile 时切换 (loop % 2)
     uint32_t updateScaleIdx_ = 3;       // C2 Sync 时切换 (循环 0~3)
-    uint32_t tileLoopIdx_ 1= ;          // 双缓冲索引 (0/1)
+    uint32_t tileLoopIdx_ = 1;          // 双缓冲索引 (0/1)
     uint32_t tileMaxIdx_ = 3;           // 四缓冲索引 (0~3)
 };
 
