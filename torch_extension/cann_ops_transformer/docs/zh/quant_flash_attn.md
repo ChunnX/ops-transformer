@@ -162,8 +162,8 @@ cann_ops_transformer.ops.quant_flash_attn(
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 数据格式 | 维度 | 非连续Tensor |
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | Tensor | 必选 | 公式中的Q | float8_e4m3fn | ND | (Q_T, Q_N, D) | ✓ |
-| k | Tensor | 必选 | 公式中的K | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li></ul> | ✓ |
-| v | Tensor | 必选 | 公式中的V | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li></ul> | ✓ |
+| k | Tensor | 必选 | 公式中的K | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | ✓ |
+| v | Tensor | 必选 | 公式中的V | float8_e4m3fn | ND | <ul><li>(KV_T, KV_N, D)</li><li>(Bn, KV_N, Bs, D)</li><li>(Bn, KV_N, D/32, Bs, 32)</li></ul> | ✓ |
 | q_descale | Tensor | 必选 | q的反量化scale | float8_e8m0/float32 | ND | <ul><li>(Q_T, Q_N, D/64, 2)</li><li>(KV_N, Q_T, G, D/64, 2)</li></ul> | ✓ |
 | k_descale | Tensor | 必选 | k的反量化scale | float8_e8m0/float32 | ND | <ul><li>(KV_T, KV_N, D/64, 2)</li><li>(Bn, KV_N, Bs, D/64, 2)</li><li>(Bn, KV_N, Bs/16, D/64, 16, 2)</li></ul> | ✓ |
 | v_descale | Tensor | 必选 | v的反量化scale | float8_e8m0/float32 | ND | <ul><li>(KV_T/64, KV_N, D, 2)</li><li>(Bn, KV_N, Bs/64, D, 2)</li><li>(Bn, KV_N, D/16, Bs/64, 16, 2)</li></ul> | ✓ |
@@ -619,7 +619,7 @@ q/k/v/attn_out shape匹配关系表
         </tr>
         <tr>
             <td>PA_NZ</td>
-            <td>(Bn, KV_N, D/16, Bs/64, 16, 2)</td>
+            <td>(Bn, KV_N, D/32, Bs, 32)</td>
         </tr>
         <tr>
             <td>attn_out</td>

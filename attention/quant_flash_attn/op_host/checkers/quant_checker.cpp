@@ -347,21 +347,21 @@ ge::graphStatus QuantChecker::CheckVDescaleShape(const QfaTilingInfo &qfaInfo) c
 
 int64_t QuantChecker::CalcVDescaleTndDim0(const QfaTilingInfo &qfaInfo) const
 {
+    return (qfaInfo.kTSize + 64 - 1) / 64;
     // MxFP8场景下, TND(非PA)场景 v_descale 第一维 KV_T/64 的实际计算:
     // 各 batch 实际 KV 序列长度按 64 向上取整后累加, 即 Σ ceil(curLen, 64)
     // 其中 curLen = cu_seqlens_kv[b+1] - cu_seqlens_kv[b]
-    const gert::Tensor *cuSeqlensKv = qfaInfo.opParamInfo.cuSeqlensKv.tensor;
+    auto &cuSeqlensKvTensor = qfaInfo.opParamInfo.cuSeqlensKv.tensor;
     constexpr int64_t mxfp8BlockSize = 64; // MxFP8 block size
-    if (cuSeqlensKv == nullptr || cuSeqlensKv->GetData<int32_t>() == nullptr) {
+    if (cuSeqlensKvTensor == nullptr || cuSeqlensKvTensor->GetData<int32_t>() == nullptr) {
         // cu_seqlens_kv 不可用时回退到整数除法, 保持兼容
         return qfaInfo.kTSize / mxfp8BlockSize;
     }
 
-    const int32_t *data = cuSeqlensKv->GetData<int32_t>();
     int64_t batchSize = qfaInfo.bSize;
-    int64_t dim0 = 0;
+    int64_t dim0 = 0;  
     for (int64_t bIdx = 0; bIdx < batchSize; bIdx++) {
-        int64_t curLen = static_cast<int64_t>(data[bIdx + 1]) - static_cast<int64_t>(data[bIdx]);
+        int64_t curLen = cuSeqlensKvTensor->GetData<int32_t>()[bIdx + 1] - cuSeqlensKvTensor->GetData<int32_t>()[bIdx];
         dim0 += CeilDivision(curLen, mxfp8BlockSize);
     }
     return dim0;
@@ -571,7 +571,8 @@ ge::graphStatus QuantChecker::CheckQueryShape(const QfaTilingInfo &qfaInfo) cons
 
 ge::graphStatus QuantChecker::CheckKVShape(const QfaTilingInfo &qfaInfo) const
 {
-    // k/v: TND -> (KV_T, KV_N, D)；PA_BNBD -> (Bn, KV_N, Bs, D)；PA_NZ -> 6D
+    // k/v: TND -> (KV_T, KV_N, D)；PA_BNBD -> (Bn, KV_N, Bs, D)；
+    //      PA_NZ -> (Bn, KV_N, D/32, Bs, 32)
     QfaTilingShapeCompareParam shapeParams;
     shapeParams.N = qfaInfo.n2Size;
     shapeParams.D = qfaInfo.qkHeadDim;
@@ -581,6 +582,10 @@ ge::graphStatus QuantChecker::CheckKVShape(const QfaTilingInfo &qfaInfo) const
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD || qfaInfo.kvLayout == QfaLayout::PA_NZ) {
         shapeParams.Bn = qfaInfo.totalBlockNum;
         shapeParams.Bs = qfaInfo.blockSize;
+    }
+    // PA_NZ k/v: D0=32, shape 为 (Bn, KV_N, D/32, Bs, 32)
+    if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
+        shapeParams.D0 = 32;
     }
 
     if (keyShapeCmp_->CompareShape(shapeParams, __func__) != ge::GRAPH_SUCCESS) {
