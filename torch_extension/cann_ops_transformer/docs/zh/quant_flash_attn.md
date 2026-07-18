@@ -741,10 +741,20 @@ mask_mode参数解释
             </td>
             <td rowspan="6">可选参数</td>
             <td rowspan="6">无</td>
-            <td rowspan="2">无</td>
+            <td>
+                <ul>
+                    <li>当layout_q不为TND时，seqused_q与max_seqlen_q至少传入其中一个</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>seqused_kv</td>
+            <td>
+                <ul>
+                    <li>当layout_kv为PA场景时，必须传入</li>
+                    <li>当layout_kv不为TND且不为PA场景时，seqused_kv与max_seqlen_kv至少传入其中一个</li>
+                </ul>
+            </td>
         </tr>
         <tr>
             <td>cu_seqlens_q</td>
@@ -758,7 +768,7 @@ mask_mode参数解释
             </td>
             <td>
                 <ul>
-                    <li>当layout_q为TND时，必须传入</li>
+                    <li>当layout_q为TND时，必须传入（此时seqused_q与max_seqlen_q均为可选）</li>
                     <li>当layout_q不为TND时，不支持传入</li>
                 </ul>
             </td>
@@ -775,7 +785,7 @@ mask_mode参数解释
             </td>
             <td>
                 <ul>
-                    <li>当layout_kv为TND时，必须传入</li>
+                    <li>当layout_kv为TND时，必须传入（此时seqused_kv与max_seqlen_kv均为可选）</li>
                     <li>当layout_kv不为TND时，不支持传入</li>
                 </ul>
             </td>
@@ -785,13 +795,12 @@ mask_mode参数解释
             <td>
                 <ul>
                     <li>data_type支持INT32</li>
-                    <li>MxFP8场景下必须大于等于0</li>
-                    <li>其他场景暂不生效，仅支持-1，默认值为-1</li>
+                    <li>默认值为-1</li>
                 </ul>
             </td>
             <td>
                 <ul>
-                    <li>可选属性；MxFP8场景下为必选，必须传入</li>
+                    <li>当layout_q不为TND时，seqused_q与max_seqlen_q至少传入其中一个</li>
                 </ul>
             </td>
         </tr>
@@ -800,13 +809,12 @@ mask_mode参数解释
             <td>
                 <ul>
                     <li>data_type支持INT32</li>
-                    <li>暂不生效，仅支持-1</li>
                     <li>默认值为-1</li>
                 </ul>
             </td>
             <td>
                 <ul>
-                    <li>暂不生效，仅支持传入-1</li>
+                    <li>当layout_kv不为TND且不为PA场景时，seqused_kv与max_seqlen_kv至少传入其中一个</li>
                 </ul>
             </td>
         </tr>

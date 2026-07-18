@@ -213,7 +213,8 @@ ge::graphStatus QuantChecker::CheckShapeEqual(const gert::StorageShape &actual, 
     }
     for (size_t i = 0; i < expected.size(); i++) {
         int64_t actDim = actual.GetStorageShape().GetDim(i);
-        if (actDim != expected[i]) {
+        // expected[i] < 0 表示该维度不做数值校验(通配), 用于依赖 device 数据的维度
+        if (expected[i] >= 0 && actDim != expected[i]) {
             OP_LOGE(opName, "%s shape dim[%zu] is %ld, expected %ld.", paraName.c_str(), i, actDim, expected[i]);
             return ge::GRAPH_FAILED;
         }
@@ -323,10 +324,10 @@ ge::graphStatus QuantChecker::CheckVDescaleShape(const QfaTilingInfo &qfaInfo) c
 
     std::vector<int64_t> expected;
     if (qfaInfo.kvLayout == QfaLayout::TND) {
-        // MxFP8场景下, TND(非PA)场景: dim0 为各 batch 实际 KV 序列长度按 64 向上取整后的累加和,
-        // 而非简单的 kTSize/64 整数除法(见文档 NOTE 说明)
-        int64_t tndDim0 = CalcVDescaleTndDim0(qfaInfo);
-        expected = {tndDim0, qfaInfo.n2Size, D, 2};
+        // TND(非PA)场景: dim0 = Σ ceil(curLen, 64), 依赖 cu_seqlens_kv 的实际数值。
+        // tiling 阶段 cu_seqlens_kv 为 device tensor, host 侧无法安全读取,
+        // 因此 dim0 不做数值校验(用 -1 占位), 仅校验维度数为 4D 及 dim[1..3]。
+        expected = {-1, qfaInfo.n2Size, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_BNBD) {
         expected = {qfaInfo.totalBlockNum, qfaInfo.n2Size, qfaInfo.blockSize / 64, D, 2};
     } else if (qfaInfo.kvLayout == QfaLayout::PA_NZ) {
@@ -347,24 +348,10 @@ ge::graphStatus QuantChecker::CheckVDescaleShape(const QfaTilingInfo &qfaInfo) c
 
 int64_t QuantChecker::CalcVDescaleTndDim0(const QfaTilingInfo &qfaInfo) const
 {
+    // TND 场景下 v_descale dim0 的精确计算依赖 cu_seqlens_kv 的 device 数据,
+    // tiling(host)阶段无法安全读取, 该函数已不再被 CheckVDescaleShape 调用,
+    // 保留仅供其他场景或后续 host 数据可用时使用。
     return (qfaInfo.kTSize + 64 - 1) / 64;
-    // MxFP8场景下, TND(非PA)场景 v_descale 第一维 KV_T/64 的实际计算:
-    // 各 batch 实际 KV 序列长度按 64 向上取整后累加, 即 Σ ceil(curLen, 64)
-    // 其中 curLen = cu_seqlens_kv[b+1] - cu_seqlens_kv[b]
-    auto &cuSeqlensKvTensor = qfaInfo.opParamInfo.cuSeqlensKv.tensor;
-    constexpr int64_t mxfp8BlockSize = 64; // MxFP8 block size
-    if (cuSeqlensKvTensor == nullptr || cuSeqlensKvTensor->GetData<int32_t>() == nullptr) {
-        // cu_seqlens_kv 不可用时回退到整数除法, 保持兼容
-        return qfaInfo.kTSize / mxfp8BlockSize;
-    }
-
-    int64_t batchSize = qfaInfo.bSize;
-    int64_t dim0 = 0;  
-    for (int64_t bIdx = 0; bIdx < batchSize; bIdx++) {
-        int64_t curLen = cuSeqlensKvTensor->GetData<int32_t>()[bIdx + 1] - cuSeqlensKvTensor->GetData<int32_t>()[bIdx];
-        dim0 += CeilDivision(curLen, mxfp8BlockSize);
-    }
-    return dim0;
 }
 
 ge::graphStatus QuantChecker::CheckDescaleShape(const QfaTilingInfo &qfaInfo)
