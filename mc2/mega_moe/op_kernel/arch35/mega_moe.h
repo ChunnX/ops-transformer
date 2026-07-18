@@ -29,7 +29,6 @@
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
 #include "block/mega_moe_gmm2_block.h"
-#include "epilogue/mega_moe_gmm2_epilogue.h"
 #include "aiv_compute/mega_moe_combine_reduce.h"
 #if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../moe_distribute_dispatch_v2/quantize_functions.h"
@@ -1245,11 +1244,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     // Combine 后处理只使用连续逻辑 tile；A8W4 中由外部将 AIV1 映射为每 block 一个 tile。
     uint32_t combineTileId = aivCoreIdx_;
     uint32_t combineTileNum = blockAivNum_;
-    bool enableCombineSend = true;
     if constexpr (ENABLE_A8W4) {
         combineTileId = aivCoreIdx_ / 2;
         combineTileNum = blockAivNum_ / 2;
-        enableCombineSend = subBlockIdx_ == 1;
     }
     MegaMoeCombineImpl::CombineTileSchedule combineTileSchedule{combineTileId, combineTileNum};
 
@@ -1260,19 +1257,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
         MegaMoeGmm2BlockImpl::Gmm2ProblemContext gmm2ProblemContext{
             gmm2State.problemShape, gmm2AddrInfo, gmm2State.expertBeforeCnt, expertIdx};
-        if constexpr (g_coreType == AIC) {
-            MegaMoeGmm2BlockImpl::ProcessGmm2BlockSingleCore<
-                CombineQuantMode, QuantOutType, SwigluQuantOutType, Weight1Type, QuantScaleOutType,
-                ENABLE_A8W4, ENABLE_A4W4>(params_, gmm2ProblemContext, gmm2RuntimeState);
-        } else {
-            MegaMoeGmm2EpilogueImpl::ProcessGmm2EpilogueSingleCore<
-                CombineQuantMode, QuantOutType, SwigluQuantOutType, Weight1Type, QuantScaleOutType,
-                ENABLE_A8W4, ENABLE_A4W4>(params_, gmm2ProblemContext, gmm2RuntimeState);
-        }
+        MegaMoeGmm2BlockImpl::ProcessGmm2BlockSingleCore<
+            CombineQuantMode, QuantOutType, SwigluQuantOutType, Weight1Type, QuantScaleOutType,
+            ENABLE_A8W4, ENABLE_A4W4>(params_, gmm2ProblemContext, gmm2RuntimeState);
 
         // GMM2 只产生 expert 输出；CombineSend 由总编排器在 GMM2 之后显式调用。
         if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
-            if (enableCombineSend) {
+            if (!ENABLE_A8W4 || subBlockIdx_ == 1) {
                 uint64_t syncCounterOffset = (static_cast<uint64_t>(expertIdx) * blockAivNum_ + aivCoreIdx_) *
                                              INT_CACHELINE * sizeof(int32_t);
                 MegaMoeCombineImpl::CombineExpertContext combineExpertContext{
@@ -1286,7 +1277,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             }
         }
     }
-    MegaMoeGmm2EpilogueImpl::FinalizeGmm2SingleCore<CombineQuantMode>(gmm2RuntimeState);
+    MegaMoeGmm2BlockImpl::FinalizeGmm2SingleCore<CombineQuantMode>(gmm2RuntimeState);
     PipeBarrier<PIPE_ALL>();
     SyncAll<true>();
 

@@ -10,7 +10,7 @@
 
 /*!
  * \file mega_moe_gmm2_block.h
- * \brief Pure AIC single-core entry for GMM2 matmul.
+ * \brief Single-core entry for GMM2 matmul and post processing.
  */
 
 #ifndef MEGA_MOE_GMM2_BLOCK_H
@@ -45,23 +45,29 @@ template <int32_t CombineQuantMode, typename QuantOutType, typename SwigluQuantO
 __aicore__ inline void ProcessGmm2BlockSingleCore(const Params& params,
     const Gmm2ProblemContext& problemContext, Gmm2RuntimeState& runtimeState)
 {
-    if constexpr (g_coreType == AIC) {
-        if constexpr (EnableA8W4 || EnableA4W4) {
-            MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, SwigluQuantOutType, WeightType, bfloat16_t,
-                QuantScaleType, QuantScaleType>(params, problemContext.problemShape, problemContext.addrInfo,
-                runtimeState.logicalTileId, runtimeState.vecSetSyncCom, problemContext.expertBeforeCnt,
-                runtimeState.pingPongIdx, problemContext.expertIdx);
-        } else if (params.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
-            MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
-                QuantScaleType, QuantScaleType, true>(params, problemContext.problemShape, problemContext.addrInfo,
-                runtimeState.logicalTileId, runtimeState.vecSetSyncCom, problemContext.expertBeforeCnt,
-                runtimeState.pingPongIdx, problemContext.expertIdx);
-        } else {
-            MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
-                QuantScaleType, QuantScaleType>(params, problemContext.problemShape, problemContext.addrInfo,
-                runtimeState.logicalTileId, runtimeState.vecSetSyncCom, problemContext.expertBeforeCnt,
-                runtimeState.pingPongIdx, problemContext.expertIdx);
-        }
+    if constexpr (EnableA8W4 || EnableA4W4) {
+        MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, SwigluQuantOutType, WeightType, bfloat16_t,
+            QuantScaleType, QuantScaleType>(params, problemContext.problemShape, problemContext.addrInfo,
+            runtimeState.logicalTileId, runtimeState.vecSetSyncCom, problemContext.expertBeforeCnt,
+            runtimeState.pingPongIdx, problemContext.expertIdx);
+    } else if (params.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
+        MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
+            QuantScaleType, QuantScaleType, true>(params, problemContext.problemShape, problemContext.addrInfo,
+            runtimeState.logicalTileId, runtimeState.vecSetSyncCom, problemContext.expertBeforeCnt,
+            runtimeState.pingPongIdx, problemContext.expertIdx);
+    } else {
+        MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
+            QuantScaleType, QuantScaleType>(params, problemContext.problemShape, problemContext.addrInfo,
+            runtimeState.logicalTileId, runtimeState.vecSetSyncCom, problemContext.expertBeforeCnt,
+            runtimeState.pingPongIdx, problemContext.expertIdx);
+    }
+}
+
+template <int32_t CombineQuantMode>
+__aicore__ inline void FinalizeGmm2SingleCore(Gmm2RuntimeState& runtimeState)
+{
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        EndGMM2Sync(runtimeState.vecSetSyncCom, runtimeState.pingPongIdx);
     }
 }
 
