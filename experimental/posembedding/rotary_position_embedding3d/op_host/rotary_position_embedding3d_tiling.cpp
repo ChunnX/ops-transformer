@@ -1,0 +1,86 @@
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+#include "log/log.h"
+#include "util/math_util.h"
+#include "op_host/tiling_util.h"
+#include "op_host/tiling_templates_registry.h"
+#include "../op_kernel/rotary_position_embedding3d_tiling_data.h"
+#include "../op_kernel/rotary_position_embedding3d_tiling_key.h"
+
+namespace optiling {
+using namespace Ops::Transformer::OpTiling;
+
+constexpr uint32_t BLOCK_DIM = 8;
+constexpr int64_t TILE_NUM = 8;
+
+struct RotaryPositionEmbedding3dCompileInfo {};
+
+static ge::graphStatus GetPlatformInfo(gert::TilingContext* context, uint64_t& ubSize, int64_t& coreNum)
+{
+    auto* pi = context->GetPlatformInfo();
+    OP_CHECK_NULL_WITH_CONTEXT(context, pi);
+    auto plat = platform_ascendc::PlatformAscendC(pi);
+    coreNum = plat.GetCoreNumAiv();
+    OP_CHECK_IF(coreNum == 0, OP_LOGE(context, "coreNum is 0"), return ge::GRAPH_FAILED);
+    plat.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
+    OP_CHECK_IF(ubSize == 0, OP_LOGE(context, "ubSize is 0"), return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus ParseInputs(gert::TilingContext* context, int64_t& totalLength, int64_t& lastDim)
+{
+    auto xShape = EnsureNotScalar(context->GetInputShape(0)->GetStorageShape());
+    int64_t dimNum = xShape.GetDimNum();
+    OP_CHECK_IF(dimNum < 1, OP_LOGE(context, "x1 dim=%ld < 1", dimNum), return ge::GRAPH_FAILED);
+    lastDim = static_cast<int64_t>(xShape.GetDim(dimNum - 1));
+    totalLength = 1;
+    for (int64_t i = 0; i < dimNum; i++) {
+        totalLength *= static_cast<int64_t>(xShape.GetDim(i));
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus RotaryPositionEmbedding3dTilingFunc(gert::TilingContext* context)
+{
+    uint64_t ubSize;
+    int64_t coreNum;
+    OP_CHECK_IF(GetPlatformInfo(context, ubSize, coreNum) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "GetPlatformInfo error"), return ge::GRAPH_FAILED);
+
+    int64_t totalLength;
+    int64_t lastDim;
+    OP_CHECK_IF(ParseInputs(context, totalLength, lastDim) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context, "ParseInputs error"), return ge::GRAPH_FAILED);
+
+    auto* td = context->GetTilingData<RotaryPositionEmbedding3dTilingData>();
+    OP_CHECK_NULL_WITH_CONTEXT(context, td);
+    memset_s(td, sizeof(RotaryPositionEmbedding3dTilingData), 0, sizeof(RotaryPositionEmbedding3dTilingData));
+    td->totalLength = totalLength;
+    td->lastDim = lastDim;
+    td->tileNum = TILE_NUM;
+
+    size_t* ws = context->GetWorkspaceSizes(1);
+    ws[0] = 16U * 1024U * 1024U;
+
+    context->SetBlockDim(BLOCK_DIM);
+    context->SetTilingKey(GET_TPL_TILING_KEY(ELEMENTWISE_TPL_SCH_MODE_0));
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus TilingParse([[maybe_unused]] gert::TilingParseContext* context)
+{
+    return ge::GRAPH_SUCCESS;
+}
+
+IMPL_OP_OPTILING(RotaryPositionEmbedding3d)
+    .Tiling(RotaryPositionEmbedding3dTilingFunc)
+    .TilingParse<RotaryPositionEmbedding3dCompileInfo>(TilingParse);
+} // namespace optiling
