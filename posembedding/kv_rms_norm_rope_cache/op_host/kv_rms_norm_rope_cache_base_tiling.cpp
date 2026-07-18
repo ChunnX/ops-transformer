@@ -338,6 +338,9 @@ bool KvRmsNormRopeCacheTilingBase::CheckIndexValid(
         isValid = isValid && (shapeSize == batchSize * seqLen);
         OP_CHECK_IF(!isValid, OP_LOGE(context, "Index's shape size must equal with B*S."), return false);
     } else {
+        OP_CHECK_IF(
+            pageSize <= 0,
+            OP_LOGE(context, "invalid BlockSize(%ld) of k_cache for PA_BLK cache mode.", pageSize), return false);
         int64_t page_num = (seqLen + pageSize - 1) / pageSize;
         isValid = isValid && (shapeSize == batchSize * page_num);
         OP_CHECK_IF(
