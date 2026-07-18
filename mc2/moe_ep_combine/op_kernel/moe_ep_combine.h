@@ -355,7 +355,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         uint64_t slotOffset = (static_cast<uint64_t>(src_token_idx) * topK_ + src_topK_idx) * perSlotBytes_;
         GM_ADDR localRankWorkSpaceAddr = GetLocalWorkspaceDataAddr(src_rank, workspaceStateSize_) + slotOffset;
         GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) + slotOffset;
-        //SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);
+        SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);
         PipeBarrier<PIPE_MTE3>();
         if (src_rank != rankId_) {
             hcomm_.WriteNbi(GetCommHandle(src_rank), remoteRankWinAddr, localRankWorkSpaceAddr, XTypeAlign32Size_);
