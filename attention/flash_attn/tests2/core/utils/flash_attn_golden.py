@@ -344,58 +344,6 @@ class FlashAttentionGolden:
     # Tiled (segmented) golden - block-wise online softmax
     # ==========================================================================
 
-    def _compute_tiled(
-        self,
-        q: torch.Tensor,       # (B, N_q, Sq, D) float32
-        k: torch.Tensor,       # (B, N_kv, Skv, D) float32
-        v: torch.Tensor,       # (B, N_kv, Skv, D) float32
-        q_lens: list,
-        kv_lens: list,
-        mask_mode: int,
-        attn_mask: Optional[torch.Tensor],
-        scale: float,
-        sinks: Optional[torch.Tensor],
-        num_heads_q: int,
-        num_heads_kv: int,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Block-wise online softmax golden, mirroring operator tiling.
-
-        Q_BLOCK=128, K_BLOCK=256, V_BLOCK=512.
-        Processes KV in pairs (j, j+1); V block = 2 K blocks.
-        Loops over batch and kv_head group to avoid KV expansion (GQA).
-        """
-        B, _, Sq, D = q.shape
-        _, _, Skv, _ = k.shape
-        dv = v.shape[-1]
-        group = num_heads_q // num_heads_kv
-
-        out = torch.zeros(B, num_heads_q, Sq, dv, dtype=torch.float32, device=q.device)
-        lse = torch.zeros(B, num_heads_q, Sq, dtype=torch.float32, device=q.device)
-
-        for b in range(B):
-            sq = q_lens[b]
-            skv = kv_lens[b]
-            if sq <= 0 or skv <= 0:
-                continue
-            mask_b = self._build_global_mask(
-                sq, skv, [sq], [skv], mask_mode, attn_mask, q.device,
-            )  # (1, 1, sq, skv) or None
-            if mask_b is not None:
-                mask_b = mask_b[0, 0]  # (sq, skv)
-
-            for kv_h in range(num_heads_kv):
-                k_b = k[b, kv_h, :skv, :]  # (skv, D)
-                v_b = v[b, kv_h, :skv, :]  # (skv, D)
-                for g in range(group):
-                    qh = kv_h * group + g
-                    q_b = q[b, qh, :sq, :]  # (sq, D)
-                    sink = sinks[qh] if sinks is not None else None
-                    o, l = self._compute_tiled_single(q_b, k_b, v_b, mask_b, scale, sink)
-                    out[b, qh, :sq, :] = o
-                    lse[b, qh, :sq] = l
-
-        return out, lse
-
     def _compute_tiled_single(
         self,
         q: torch.Tensor,       # (Sq, D) float32
@@ -498,56 +446,6 @@ class FlashAttentionGolden:
     # Full (non-tiled) golden - per-batch bmm
     # ==========================================================================
 
-    def _compute_full(
-        self,
-        q: torch.Tensor,       # (B, N_q, Sq, D) float32
-        k: torch.Tensor,       # (B, N_kv, Skv, D) float32
-        v: torch.Tensor,       # (B, N_kv, Skv, D) float32
-        q_lens: list,
-        kv_lens: list,
-        mask_mode: int,
-        attn_mask: Optional[torch.Tensor],
-        scale: float,
-        sinks: Optional[torch.Tensor],
-        num_heads_q: int,
-        num_heads_kv: int,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Full per-batch attention: bmm(Q,K) -> softmax -> bmm(P,V).
-
-        Loops over batch and kv_head group to avoid KV expansion (GQA).
-        """
-        B, _, Sq, D = q.shape
-        _, _, Skv, _ = k.shape
-        dv = v.shape[-1]
-        group = num_heads_q // num_heads_kv
-
-        out = torch.zeros(B, num_heads_q, Sq, dv, dtype=torch.float32, device=q.device)
-        lse = torch.zeros(B, num_heads_q, Sq, dtype=torch.float32, device=q.device)
-
-        for b in range(B):
-            sq = q_lens[b]
-            skv = kv_lens[b]
-            if sq <= 0 or skv <= 0:
-                continue
-            mask_b = self._build_global_mask(
-                sq, skv, [sq], [skv], mask_mode, attn_mask, q.device,
-            )
-            if mask_b is not None:
-                mask_b = mask_b[0, 0]  # (sq, skv)
-
-            for kv_h in range(num_heads_kv):
-                k_b = k[b, kv_h, :skv, :]  # (skv, D)
-                v_b = v[b, kv_h, :skv, :]  # (skv, D)
-                for g in range(group):
-                    qh = kv_h * group + g
-                    q_b = q[b, qh, :sq, :]  # (sq, D)
-                    sink = sinks[qh] if sinks is not None else None
-                    o, l = self._compute_full_single(q_b, k_b, v_b, mask_b, scale, sink)
-                    out[b, qh, :sq, :] = o
-                    lse[b, qh, :sq] = l
-
-        return out, lse
-
     def _compute_full_single(
         self,
         q: torch.Tensor,       # (Sq, D) float32
@@ -623,52 +521,6 @@ class FlashAttentionGolden:
             return attn_mask[:sq, :skv].to(torch.bool)
 
         return None
-
-    def _build_global_mask(
-        self,
-        Sq: int,
-        Skv: int,
-        q_lens: list,
-        kv_lens: list,
-        mask_mode: int,
-        attn_mask: Optional[torch.Tensor],
-        device: torch.device,
-    ) -> Optional[torch.Tensor]:
-        """Build (B, 1, Sq, Skv) bool mask. True = mask out (set to -inf).
-
-        mask_mode=0: only padding mask
-        mask_mode=3: causal + padding mask
-        """
-        B = len(q_lens)
-        q_lens_t = torch.tensor(q_lens, dtype=torch.int64, device=device)  # (B,)
-        kv_lens_t = torch.tensor(kv_lens, dtype=torch.int64, device=device)  # (B,)
-
-        # Padding masks: (B, Sq) and (B, Skv)
-        q_padding = torch.arange(Sq, device=device).unsqueeze(0) >= q_lens_t.unsqueeze(1)
-        k_padding = torch.arange(Skv, device=device).unsqueeze(0) >= kv_lens_t.unsqueeze(1)
-
-        # Base: padding mask -> (B, Sq, Skv)
-        mask = q_padding.unsqueeze(-1) | k_padding.unsqueeze(1)
-
-        if mask_mode == 3:
-            # Causal: k_idx > q_idx + (kv_len - q_len) per batch
-            # delta_b = kv_len_b - q_len_b
-            delta = (kv_lens_t - q_lens_t)  # (B,)
-            q_idx = torch.arange(Sq, device=device).view(1, Sq, 1)  # (1, Sq, 1)
-            k_idx = torch.arange(Skv, device=device).view(1, 1, Skv)  # (1, 1, Skv)
-            delta_b = delta.view(B, 1, 1)  # (B, 1, 1)
-            causal = k_idx > (q_idx + delta_b)  # (B, Sq, Skv)
-            mask = mask | causal
-
-        # Apply attn_mask if provided (2048x2048 upper-triangular, 0=keep, nonzero=mask)
-        # For mask_mode=3 with Sq != Skv (e.g. decode), the operator applies attn_mask
-        # with a per-batch offset of (kv_len - q_len), which is equivalent to the causal
-        # calculation above. So we only apply the raw attn_mask slice for mask_mode != 3.
-        if attn_mask is not None and mask_mode != 3:
-            am = attn_mask[:Sq, :Skv].to(torch.bool)  # (Sq, Skv)
-            mask = mask | am.unsqueeze(0)  # broadcast (B, Sq, Skv)
-
-        return mask.unsqueeze(1)  # (B, 1, Sq, Skv)
 
     # ==========================================================================
     # Layout conversion
