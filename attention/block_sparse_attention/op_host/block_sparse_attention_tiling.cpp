@@ -1235,6 +1235,9 @@ ge::graphStatus BSATiling::FillTilingData(gert::TilingContext *bsaContext)
     tilingData_->set_maxNumBlocksPerBatch(maxNumBlocksPerBatch_);
     tilingData_->set_firstBatchTaskNum(firstBatchTaskNum_);
     tilingData_->set_totalTaskNum(totalTaskNum_);
+    // 向下取整: 每个核至少处理的 task 数（余数由前 totalTaskNum_ % blockDim_ 个核各多处理一个）
+    coreTaskNum_ = (blockDim_ > 0) ? (totalTaskNum_ / blockDim_) : 0;
+    tilingData_->set_coreTaskNum(coreTaskNum_);
     tilingData_->set_maskType(maskType_);
 
     tilingData_->set_blockShapeX(blockShapeX_);
