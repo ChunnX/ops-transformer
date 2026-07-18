@@ -682,7 +682,7 @@ __aicore__ inline void AicComputeA8W4(
                     config.blockNum * 2, groupIdx, gmm2CombineSyncCounterPtr);
             }
         }
-        constexpr bool hasAiv1GmEpilogue = Policy::IS_GMM1 || CombineQuantMode == COMBINE_NO_QUANT;
+        constexpr bool hasAiv1GmEpilogue = Policy::IS_GMM1 || (CombineQuantMode == COMBINE_NO_QUANT && !IsShared);
         if constexpr (hasAiv1GmEpilogue) {
             // Keep at most one AIC-to-AIV1 GM tile notification outstanding.
             NotifyAiv1GmTileReady();
