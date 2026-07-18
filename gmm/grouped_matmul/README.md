@@ -9,7 +9,7 @@ abbr {
 
 ## 简介
 
-GroupedMatmul是 MoE网络中的重要算子，核心功能是做分组矩阵乘：将输入 token按组分配给不同专家，每组独立执行矩阵乘法。支持按 M轴或K轴对输入张量进行分组，涵盖非量化、伪量化和全量化三种计算场景。在 MoE推理中，GroupedMatmul通常被调用两次：第一次对输入 token与各专家的上投影权重做分组矩阵乘，得到各专家的中间结果；第二次将中间结果与各专家的下投影权重做分组矩阵乘，得到各专家的输出。
+GroupedMatmul是MoE网络中的重要算子，核心功能是将已经按专家分组的token打包，一次完成所有分组的矩阵乘计算。支持按M轴或K轴分组，涵盖非量化、伪量化和全量化三种计算场景。在MoE推理中，GroupedMatmul通常被调用两次：第一次对输入token与各专家的上投影权重做分组矩阵乘，得到各专家的中间结果；第二次将中间结果与各专家的下投影权重做分组矩阵乘，得到各专家的输出。
 
 ```mermaid
 %%{init: {'theme': 'base', 'themeVariables': {'background': '#ffffff'}}}%%
@@ -69,9 +69,8 @@ graph LR
 
 接口功能：实现分组矩阵乘计算。公式为 $y_i[m_i,n_i]=x_i[m_i,k_i] \times weight_i[k_i,n_i], i=1...g$，其中 $g$ 为分组数。
 
-- **M轴分组（groupType=0）**：$k_i$、$n_i$ 各组相同，$m_i$ 可以不相同。
-- **K轴分组（groupType=2）**：$m_i$、$n_i$ 各组相同，$k_i$ 可以不相同。
-- **不分组（groupType=-1）**：各组 shape 完全独立。
+- **M轴分组（groupType=0）**：$k_i$、$n_i$各组相同，$m_i$可以不相同。
+- **K轴分组（groupType=2）**：$m_i$、$n_i$各组相同，$k_i$可以不相同。
 
 基础计算公式：
 
@@ -85,12 +84,8 @@ $$
 
 ## 参数说明
 
-> 标注规则：
-> - <sup>1</sup>：仅 <term>Ascend 950PR/950DT</term> 不支持
-> - <sup>2</sup>：仅 <term>Atlas A3/A2</term> 不支持
-
 | 参数名 | 输入/输出 | 描述 | 数据类型 | 数据格式 |
-|--------|:---:|------|----------|:---:|
+|--------|:---:|------|----------|:-----------:|
 | x | 输入 | 公式中的输入 $x$ | FLOAT、FLOAT16、INT16<sup>1</sup>、INT8、INT4<sup>1</sup>、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup>、FLOAT4_E2M1<sup>2</sup> | ND |
 | weight | 输入 | 公式中的 $weight$ | FLOAT、FLOAT16、INT16<sup>1</sup>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<sup>2</sup>、FLOAT8_E4M3FN<sup>2</sup>、HIFLOAT8<sup>2</sup>、FLOAT4_E2M1<sup>2</sup> | ND/NZ |
 | biasOptional | 可选输入 | 公式中的 $bias$ | FLOAT、FLOAT16、INT32、BFLOAT16<sup>2</sup> | ND |
@@ -100,17 +95,17 @@ $$
 | antiquantOffsetOptional | 可选输入 | 公式中的 $antiquant\_offset$，代表伪量化参数中的偏移量 | FLOAT16、BFLOAT16 | ND |
 | perTokenScaleOptional | 可选输入 | 公式中的 $per\_token\_scale$，代表量化参数中由 x量化引入的缩放因子 | FLOAT、FLOAT8_E8M0<sup>2</sup> | ND |
 | groupListOptional | 可选输入 | 代表输入和输出分组轴方向的 matmul大小分布 | INT64 | ND |
-| activationInputOptional | 可选输入 | 代表激活函数的反向输入，当前只支持传入 nullptr | — | — |
-| activationQuantScaleOptional | 可选输入 | 激活函数量化缩放因子（预留参数），当前只支持传入 nullptr | — | — |
-| activationQuantOffsetOptional | 可选输入 | 激活函数量化偏移量（预留参数），当前只支持传入 nullptr | — | — |
-| <abbr title="代表输出是否要做 Tensor切分：0/1=多Tensor 输出；2/3=单Tensor 输出">splitItem</abbr> | 属性 | 代表输出是否要做 Tensor切分 | INT64 | — |
-| <abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr> | 属性 | 代表需要分组的轴 | INT64 | — |
-| <abbr title="代表 groupList输入的分组方式：0=累积和；1=各组大小；2=[组索引, 组大小] 对">groupListType</abbr> | 属性 | 代表 groupList输入的分组方式 | INT64 | — |
-| <abbr title="代表激活函数类型：0=NONE/1=ReLU/2=GELU_TANH/4=FAST_GELU/5=SILU">actType</abbr> | 属性 | 代表激活函数类型 | INT64 | — |
-| tuningConfigOptional | 可选输入 | 第一个数代表各个专家处理的 token数的预期值；第二个数代表 A8W4 可选开启 weight 先转置的 NZ格式；第三个数代表允许额外使用的内存空间 | INT64 | — |
+| activationInputOptional | 可选输入 | 代表激活函数的反向输入，当前只支持传入 nullptr | - | - |
+| activationQuantScaleOptional | 可选输入 | 激活函数量化缩放因子（预留参数），当前只支持传入 nullptr | - | - |
+| activationQuantOffsetOptional | 可选输入 | 激活函数量化偏移量（预留参数），当前只支持传入 nullptr | - | - |
+| <abbr title="代表输出是否要做 Tensor切分：0/1=多Tensor 输出；2/3=单Tensor 输出">splitItem</abbr> | 属性 | 代表输出是否要做 Tensor切分 | INT64 | - |
+| <abbr title="指定分组轴：-1=不分组，0=M轴，2=K轴">groupType</abbr> | 属性 | 代表需要分组的轴 | INT64 | - |
+| <abbr title="代表 groupList输入的分组方式：0=累积和；1=各组大小；2=[组索引, 组大小] 对">groupListType</abbr> | 属性 | 代表 groupList输入的分组方式 | INT64 | - |
+| <abbr title="代表激活函数类型：0=NONE/1=ReLU/2=GELU_TANH/4=FAST_GELU/5=SILU">actType</abbr> | 属性 | 代表激活函数类型 | INT64 | - |
+| tuningConfigOptional | 可选输入 | 第一个数代表各个专家处理的 token数的预期值；第二个数代表 A8W4 可选开启 weight 先转置的 NZ格式；第三个数代表允许额外使用的内存空间 | INT64 | - |
 | out | 输出 | 公式中的输出 $y$ | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND |
-| activationFeatureOutOptional | 输出 | 激活函数的输入数据，当前只支持传入 nullptr | — | — |
-| dynQuantScaleOutOptional | 输出 | 动态量化缩放因子，当前只支持传入 nullptr | — | — |
+| activationFeatureOutOptional | 输出 | 激活函数的输入数据，当前只支持传入 nullptr | - | - |
+| dynQuantScaleOutOptional | 输出 | 动态量化缩放因子，当前只支持传入 nullptr | - | - |
 
 - **<term>Ascend 950PR/Ascend 950DT</term>**：
   - 上表数据类型列中的角标 <sup>1</sup> 代表该系列不支持的数据类型。
