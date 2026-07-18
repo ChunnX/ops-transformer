@@ -966,6 +966,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
             AscendC::DataCopy(ldIndexLocal_, indicesOutLocal_, copyBytes);
             AscendC::DataCopy(mrgValueLocal_, scoreOutLocal_, copyBytes);
         }
+        if (returnValueFlag) {
+            PipeBarrier<PIPE_V>();
+            vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
+        }
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         uint64_t indiceOutGmOffset = ldInfo_.indiceOutCoreOffset + (ldInfo_.mStart + j) * constInfo_.kHeadNum
@@ -973,6 +977,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
         AscendC::DataCopyPad(indiceOutGm[indiceOutGmOffset],
                          indicesOutLocal_.ReinterpretCast<int32_t>(),
                          copyOutParams);
+        if (returnValueFlag) {
+            AscendC::DataCopyParams copyOutValueParams;
+            copyOutValueParams.blockCount = 1;
+            copyOutValueParams.blockLen = topkCount_ * sizeof(bfloat16_t);
+            copyOutValueParams.srcStride = 0;
+            copyOutValueParams.dstStride = 0;
+            AscendC::DataCopyPad(valueOutGm[indiceOutGmOffset], valueOutLocal_, copyOutValueParams);
+        }
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     }
     WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
