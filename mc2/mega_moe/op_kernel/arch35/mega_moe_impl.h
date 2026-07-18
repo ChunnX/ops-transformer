@@ -546,7 +546,6 @@ __aicore__ inline void GroupMatmulImplGeneric(
 
     if constexpr (Policy::IS_GMM1) {
         if (GetSubBlockIdx() != 0) {
-            startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
             return;
         }
         args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
