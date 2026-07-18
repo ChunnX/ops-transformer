@@ -15,7 +15,7 @@
 
 #include "kernel_operator.h"
 #include "kernel_tiling/kernel_tiling.h"
-#include "./arch35/mhc_post_backward_kernel.h"
+#include "./arch35/mhc_post_backward_kernel_no_hres.h"
 #include "./arch35/mhc_post_backward_tiling_data_arch35.h"
 #include "./arch35/mhc_post_backward_tiling_key_arch35.h"
 
