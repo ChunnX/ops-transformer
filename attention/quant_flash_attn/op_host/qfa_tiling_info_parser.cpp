@@ -43,7 +43,6 @@ ge::graphStatus QfaInfoParser::GetEmptyTensorFlag()
         }
         return false;
     };
-
     if (checkEmptyTensor(opParamInfo_.query.shape, QUERY_NAME) ||
         checkEmptyTensor(opParamInfo_.key.shape, KEY_NAME) ||
         checkEmptyTensor(opParamInfo_.value.shape, VALUE_NAME) ||
