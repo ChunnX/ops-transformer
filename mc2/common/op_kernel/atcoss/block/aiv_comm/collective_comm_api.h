@@ -18,7 +18,6 @@
 #include "collective_comm_base.h"
 #include "all_to_all/all_to_all_udma_get.h"
 #include "all_to_all/all_to_all_udma_put.h"
-#include "all_gather/all_gather_udma_get.h"
 #include "all_gather/all_gather_udma_put.h"
 
 namespace Atcoss {
@@ -47,10 +46,6 @@ struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::GET, T, Barrie
 template<typename T, typename Barrier, CommAddrLayout Layout>
 struct CollectiveCommHelper<CommCollectiveOp::AllToAll, CommMode::PUT, T, Barrier, Layout> {
     using type = AllToAllCommPutImpl<T, Barrier, Layout>;
-};
-template<typename T, typename Barrier, CommAddrLayout Layout>
-struct CollectiveCommHelper<CommCollectiveOp::AllGather, CommMode::GET, T, Barrier, Layout> {
-    using type = AllGatherCommGetImpl<T, Barrier, Layout>;
 };
 template<typename T, typename Barrier, CommAddrLayout Layout>
 struct CollectiveCommHelper<CommCollectiveOp::AllGather, CommMode::PUT, T, Barrier, Layout> {

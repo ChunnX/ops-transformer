@@ -33,31 +33,31 @@ private:
         this->barrier_.Execute();
     }
 
-    __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileOffset, uint64_t tileSize)
+    __aicore__ inline void DoCommit(uint32_t targetRankId, uint64_t tileByteSize)
     {
-        if ((this->threadIdx_ >= this->threadCnt_) || (targetRankId == this->udmaCtx_->rankId)) {
+        if (targetRankId == this->udmaCtx_->rankId) {
             return;
         }
-        GM_ADDR srcAddr = this->localAddr_ + tileOffset * this->nonSplitAxisBytes_;
+        GM_ADDR srcAddr = this->localAddr_ + this->tileByteOffset_;
 
         GM_ADDR dstAddr;
         if constexpr (Layout == CommAddrLayout::CONTIGUOUS) {
-            dstAddr = this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffsset_ + this->currentTileIdx_ * this->udmaCtx_->rankSize * this->tileMaxByteSize_ +
-                      this->udmaCtx_->rankId * tileSize * this->nonSplitAxisBytes_;
+            dstAddr = this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_ + this->slotByteOffset_ +
+                      this->udmaCtx_->rankId * tileByteSize;
         } else {
-            dstAddr = this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffsset_ + this->currentTileIdx_ * this->chunkBytes_ +
-                      tileOffset * this->nonSplitAxisBytes_;
+            dstAddr = this->udmaCtx_->commBufferAddrs[targetRankId] + this->winOffset_ + this->chunkByteOffset_ +
+                      this->tileByteOffset_;
         }
 
         this->comm_.WriteNbi(
             static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]), dstAddr, srcAddr,
-            static_cast<uint64_t>(tileSize * this->nonSplitAxisBytes_));
+            static_cast<uint64_t>(tileByteSize));
     }
 
     __aicore__ inline void DoWait(uint32_t targetRankId)
     {
         this->barrier_.Execute();
-        if ((this->threadIdx_ >= this->threadCnt_) || (targetRankId == this->udmaCtx_->rankId)) {
+        if (targetRankId == this->udmaCtx_->rankId) {
             return;
         }
         this->comm_.Drain(this->udmaCtx_->channelHandles[targetRankId]);
