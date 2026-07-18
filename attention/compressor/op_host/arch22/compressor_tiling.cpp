@@ -725,11 +725,11 @@ ge::graphStatus CompressorTiling::CheckFeature() const
     }
     OP_CHECK_IF(baseParams_->hiddenSize > MAX_HIDDEN_SIZE || baseParams_->hiddenSize < MIN_HIDDEN_SIZE ||
         baseParams_->hiddenSize % ALIGN_FACTOR_HIDDEN_SIZE != 0,
-        OP_LOGE(context_->opName, "hiddenSize should be within [1k, 10k] and be 512-aligned, but got %u",
-        baseParams_->hiddenSize), return ge::GRAPH_FAILED);
+        OP_LOGE(context_->opName, "hiddenSize should be within [%u, %u] and be 512-aligned, but got %u",
+        MIN_HIDDEN_SIZE, MAX_HIDDEN_SIZE, baseParams_->hiddenSize), return ge::GRAPH_FAILED);
     OP_CHECK_IF(pageAttentionParams_->blockSize > MAX_BLOCK_SIZE || pageAttentionParams_->blockSize < MIN_BLOCK_SIZE,
-        OP_LOGE(context_->opName, "blockSize should be within [1, 1024], but got %u", pageAttentionParams_->blockSize),
-        return ge::GRAPH_FAILED);
+        OP_LOGE(context_->opName, "blockSize should be within [%u, %u], but got %u", MIN_BLOCK_SIZE, MAX_BLOCK_SIZE,
+        pageAttentionParams_->blockSize), return ge::GRAPH_FAILED);
     uint64_t cacheStride = context_->stateCache.shape->GetShape().GetDim(1) *
         context_->stateCache.shape->GetShape().GetDim(2);
     OP_CHECK_IF(cacheStride != baseParams_->stateCacheStrideDim0,
