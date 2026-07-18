@@ -14,7 +14,7 @@ import itertools
 
 PARAM_NAMES = [
     "B", "N_q", "N_kv", "D",
-    "actual_seq_q", "actual_seq_kv",
+    "cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv", "max_seqlen_q", "max_seqlen_kv",
     "enable_pa", "kv_cache_layout", "block_size",
     "mask_mode", "q_scale_layout", "p_scale",
     "data_range_q", "data_range_k", "data_range_v",
