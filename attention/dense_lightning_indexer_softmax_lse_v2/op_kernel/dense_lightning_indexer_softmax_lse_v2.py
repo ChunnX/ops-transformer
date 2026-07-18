@@ -77,6 +77,7 @@ class OpTiling:
     isLongS2: int
     mask_mode: int
     cmp_ratio: int
+    layout: int
 
 
 # ================================================================
@@ -165,18 +166,42 @@ def process_lse_vf(lse_vec_tile, reduce_res, tmp_s2_max):
 #  Inner kernel — receives typed tensor views + workspace
 # ================================================================
 
+def resolve_b_s1(work_id, layout, b_dim, s1_dim, s2_dim, cu_seq_lens_q, cu_seq_lens_k):
+    b_idx = 0
+    s1_i = 0
+    q_offset = 0
+    k_offset_base = 0
+    if layout == 1:
+        for b in pl.range(b_dim):
+            cu_val = pl.getval(cu_seq_lens_q, b + 1)
+            if work_id >= cu_val:
+                b_idx = b + 1
+        s1_i = work_id - pl.getval(cu_seq_lens_q, b_idx)
+        q_offset = work_id
+        k_offset_base = pl.getval(cu_seq_lens_k, b_idx)
+    else:
+        b_idx = work_id // s1_dim
+        s1_i = work_id % s1_dim
+        q_offset = b_idx * s1_dim + s1_i
+        k_offset_base = b_idx * s2_dim
+    return b_idx, s1_i, q_offset, k_offset_base
+
+
 def dense_lightning_indexer_softmax_lse_v2_inner(
     query_index, key_index, weight, lse_out,
     seqused_q, seqused_k, cmp_residual_k,
+    cu_seq_lens_q, cu_seq_lens_k,
     workspace_max, workspace_sum, workspace,
     tiling, metadata
 ):
     s1_dim = tiling.s1
     s2_dim = tiling.s2
     n1_dim = tiling.n1
+    b_dim = tiling.b
     is_long_s2 = tiling.isLongS2
     mask_mode = tiling.mask_mode
     cmp_ratio = tiling.cmp_ratio
+    layout = tiling.layout
 
     # s2_tiles = (s2_dim + TKV - 1) // TKV
     core_id = pl.get_block_idx()
@@ -248,10 +273,9 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
         task_id = 0
         for j in pl.range(0, work_count):
             work_id = core_id + j * total_cores
-            b_idx = work_id // s1_dim
-            s1_i = work_id % s1_dim
-            q_used_size = pl.getval(seqused_q, b_idx) #if q_used else s1_dim
-            k_used_size = pl.getval(seqused_k, b_idx) #if k_used else s2_dim
+            b_idx, s1_i, q_offset, k_offset_base = resolve_b_s1(work_id, layout, b_dim, s1_dim, s2_dim, cu_seq_lens_q, cu_seq_lens_k)
+            q_used_size = pl.getval(seqused_q, b_idx)
+            k_used_size = pl.getval(seqused_k, b_idx)
             valid_s1_start = 0
             valid_k_size = k_used_size
             if mask_mode == 3:
@@ -268,7 +292,7 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                 s2_tail_size = TKV + valid_k_size - s2_tiles * TKV
 
                 q_tile = q_mat.next()
-                pl.load(q_tile, query_index, [b_idx, s1_i * TS, 0, 0])
+                pl.load(q_tile, query_index, [q_offset, 0, 0, 0])
                 for s2_i in pl.range(0, s2_tiles + 1):
                     k_tile_nxt = k_mat.next() # 0-a 1-b 2-a
                     if s2_i < s2_tiles:
@@ -276,7 +300,7 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                             pl.set_validshape(k_tile_nxt, [TD, s2_tail_size])
                         else:
                             pl.set_validshape(k_tile_nxt, [TD, TKV])
-                        pl.load(k_tile_nxt, key_index, [b_idx, s2_i * TKV, 0, 0], is_transpose=True) # 0-a 1-b 2-a
+                        pl.load(k_tile_nxt, key_index, [k_offset_base + s2_i * TKV, 0, 0, 0], is_transpose=True)
                     if s2_i > 0:
                         k_tile_cur = k_mat.previous() # 1-a 2-b
                         left_tile = left.next()
@@ -318,14 +342,14 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
         prev_is_s1_valid = False
         prev_valid_k_size = 0
         prev_s2_tail_size = TKV
+        prev_q_offset = 0
         s2_tiles = 0
         s2_tail_size = 0
         valid_k_size = 0
 
         for j in pl.range(0, work_count + 1):
             work_id = core_id + j * total_cores
-            b_idx = work_id // s1_dim
-            s1_i = work_id % s1_dim
+            b_idx, s1_i, q_offset, _ = resolve_b_s1(work_id, layout, b_dim, s1_dim, s2_dim, cu_seq_lens_q, cu_seq_lens_k)
 
             max_tile = max_vec.next()
             init_data(max_tile)
@@ -348,7 +372,7 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                 if is_s1_valid:
                     s2_tiles = (valid_k_size + TKV - 1) // TKV
                     s2_tail_size = TKV + valid_k_size - s2_tiles * TKV
-                    pl.load(weight_vec_nxt, weight, [b_idx, s1_i * TS, 0])
+                    pl.load(weight_vec_nxt, weight, [q_offset, 0, 0])
 
             if j > 0 and prev_is_s1_valid:
                 reduce_sum_vec_tile = reduce_sum_vec.next()
@@ -447,17 +471,18 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
                 reduce_res = v0_tmp_sum + v1_tmp_sum
                 process_lse_vf(lse_vec_tile, reduce_res, tmp_s2_max)
                 pl.set_validshape(lse_vec_tile, [1, 1])
-                pl.store(lse_out, lse_vec_tile, [prev_b_idx, prev_s1_i])
+                pl.store(lse_out, lse_vec_tile, [prev_q_offset, 0])
             elif j > 0:
                 lse_vec_tile = lse_vec.next()
                 write_neg_inf_vf(lse_vec_tile)
                 pl.set_validshape(lse_vec_tile, [1, 1])
-                pl.store(lse_out, lse_vec_tile, [prev_b_idx, prev_s1_i])
+                pl.store(lse_out, lse_vec_tile, [prev_q_offset, 0])
 
             prev_b_idx = b_idx
             prev_s1_i = s1_i
             prev_s2_tiles = s2_tiles
             prev_is_s1_valid = is_s1_valid
+            prev_q_offset = q_offset
             if is_s1_valid:
                 prev_valid_k_size = valid_k_size
                 prev_s2_tail_size = s2_tail_size
@@ -489,30 +514,6 @@ def dense_lightning_indexer_softmax_lse_v2(
     workspace: pl.Ptr[pl.DT_UINT8],
     tiling: OpTiling,
 ):
-    tensor_query_index = pl.make_tensor(
-        query_index,
-        [tiling.b, tiling.s1, tiling.n1, tiling.d],
-        [tiling.s1 * tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
-        dtype=pl.DT_FP16,
-    )
-    tensor_key_index = pl.make_tensor(
-        key_index,
-        [tiling.b, tiling.s2, 1, tiling.d],
-        [tiling.s2 * tiling.d, tiling.d, tiling.d, 1],
-        dtype=pl.DT_FP16,
-    )
-    tensor_weight = pl.make_tensor(
-        weight,
-        [tiling.b, tiling.s1, tiling.n1],
-        [tiling.s1 * tiling.n1, tiling.n1, 1],
-        dtype=pl.DT_FP32,
-    )
-    tensor_lse_out = pl.make_tensor(
-        softmax_lse,
-        [tiling.b, tiling.s1],
-        [tiling.s1, 1],
-        dtype=pl.DT_FP32,
-    )
     tensor_seqused_q = pl.make_tensor(
         seq_used_q,
         [tiling.b, 1],
@@ -528,6 +529,18 @@ def dense_lightning_indexer_softmax_lse_v2(
     tensor_cmp_residual_k = pl.make_tensor(
         cmp_residual_k,
         [tiling.b, 1],
+        [1, 1],
+        dtype=pl.DT_INT32,
+    )
+    tensor_cu_seq_lens_q = pl.make_tensor(
+        cu_seq_lens_q,
+        [tiling.b + 1, 1],
+        [1, 1],
+        dtype=pl.DT_INT32,
+    )
+    tensor_cu_seq_lens_k = pl.make_tensor(
+        cu_seq_lens_k,
+        [tiling.b + 1, 1],
         [1, 1],
         dtype=pl.DT_INT32,
     )
@@ -556,17 +569,87 @@ def dense_lightning_indexer_softmax_lse_v2(
         dtype=pl.DT_FP32,
     )
 
-    dense_lightning_indexer_softmax_lse_v2_inner(
-        tensor_query_index,
-        tensor_key_index,
-        tensor_weight,
-        tensor_lse_out,
-        tensor_seqused_q,
-        tensor_seqused_k,
-        tensor_cmp_residual_k,
-        tensor_workspace_max,
-        tensor_workspace_sum,
-        tensor_workspace,
-        tiling,
-        tensor_metadata,
-    )
+    if tiling.layout == 1:
+        tensor_query_index = pl.make_tensor(
+            query_index,
+            [tiling.s1, 1, tiling.n1, tiling.d],
+            [tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
+            dtype=pl.DT_FP16,
+        )
+        tensor_key_index = pl.make_tensor(
+            key_index,
+            [tiling.s2, 1, 1, tiling.d],
+            [tiling.d, tiling.d, tiling.d, 1],
+            dtype=pl.DT_FP16,
+        )
+        tensor_weight = pl.make_tensor(
+            weight,
+            [tiling.s1, 1, tiling.n1],
+            [tiling.n1, tiling.n1, 1],
+            dtype=pl.DT_FP32,
+        )
+        tensor_lse_out = pl.make_tensor(
+            softmax_lse,
+            [tiling.s1, 1],
+            [1, 1],
+            dtype=pl.DT_FP32,
+        )
+        dense_lightning_indexer_softmax_lse_v2_inner(
+            tensor_query_index,
+            tensor_key_index,
+            tensor_weight,
+            tensor_lse_out,
+            tensor_seqused_q,
+            tensor_seqused_k,
+            tensor_cmp_residual_k,
+            tensor_cu_seq_lens_q,
+            tensor_cu_seq_lens_k,
+            tensor_workspace_max,
+            tensor_workspace_sum,
+            tensor_workspace,
+            tiling,
+            tensor_metadata,
+        )
+    else:
+        total_s1 = tiling.b * tiling.s1
+        total_s2 = tiling.b * tiling.s2
+        tensor_query_index = pl.make_tensor(
+            query_index,
+            [total_s1, 1, tiling.n1, tiling.d],
+            [tiling.n1 * tiling.d, tiling.n1 * tiling.d, tiling.d, 1],
+            dtype=pl.DT_FP16,
+        )
+        tensor_key_index = pl.make_tensor(
+            key_index,
+            [total_s2, 1, 1, tiling.d],
+            [tiling.d, tiling.d, tiling.d, 1],
+            dtype=pl.DT_FP16,
+        )
+        tensor_weight = pl.make_tensor(
+            weight,
+            [total_s1, 1, tiling.n1],
+            [tiling.n1, tiling.n1, 1],
+            dtype=pl.DT_FP32,
+        )
+        tensor_lse_out = pl.make_tensor(
+            softmax_lse,
+            [total_s1, 1],
+            [1, 1],
+            dtype=pl.DT_FP32,
+        )
+        dense_lightning_indexer_softmax_lse_v2_inner(
+            tensor_query_index,
+            tensor_key_index,
+            tensor_weight,
+            tensor_lse_out,
+            tensor_seqused_q,
+            tensor_seqused_k,
+            tensor_cmp_residual_k,
+            tensor_cu_seq_lens_q,
+            tensor_cu_seq_lens_k,
+            tensor_workspace_max,
+            tensor_workspace_sum,
+            tensor_workspace,
+            tiling,
+            tensor_metadata,
+        )

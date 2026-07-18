@@ -33,6 +33,7 @@ TILING_DATA_FIELD_DEF(int64_t, d)
 TILING_DATA_FIELD_DEF(int64_t, isLongS2)
 TILING_DATA_FIELD_DEF(int64_t, mask_mode)
 TILING_DATA_FIELD_DEF(int64_t, cmp_ratio)
+TILING_DATA_FIELD_DEF(int64_t, layout)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(DenseLightningIndexerSoftmaxLseV2, DenseLISoftmaxLseV2TilingData)
 
