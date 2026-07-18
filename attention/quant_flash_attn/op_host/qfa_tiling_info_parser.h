@@ -104,6 +104,7 @@ private:
     QfaLayout layoutQ_ = QfaLayout::BSND;
     QfaLayout layoutKV_ = QfaLayout::BSND;
     QfaLayout layoutOut_ = QfaLayout::BSND;
+    QfaLayout layoutQDescale_ = QfaLayout::BSND;
 
     // Strides (for non-contiguous tensor check)
     const gert::Stride *keyStrides_ = nullptr;

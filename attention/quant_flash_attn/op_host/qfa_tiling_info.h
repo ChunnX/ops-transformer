@@ -119,7 +119,8 @@ enum class QfaLayout : uint32_t {
     PA_BNBD = 4,
     PA_NZ = 5,
     LSE_BNS = 6,
-    LSE_NT = 7
+    LSE_NT = 7,
+    N2TGD = 8
 };
 
 const std::map<std::string, QfaLayout> qfaLayoutMap = {{"BSND", QfaLayout::BSND},
@@ -127,7 +128,8 @@ const std::map<std::string, QfaLayout> qfaLayoutMap = {{"BSND", QfaLayout::BSND}
                                                         {"TND", QfaLayout::TND},
                                                         {"PA_BBND", QfaLayout::PA_BBND},
                                                         {"PA_BNBD", QfaLayout::PA_BNBD},
-                                                        {"PA_NZ", QfaLayout::PA_NZ}};
+                                                        {"PA_NZ", QfaLayout::PA_NZ},
+                                                        {"N2TGD", QfaLayout::N2TGD}};
 
 enum class QfaAxis : uint32_t {
     B = 0,
@@ -274,6 +276,7 @@ public:
     QfaLayout qLayout = QfaLayout::BSND;
     QfaLayout outLayout = QfaLayout::BSND;
     QfaLayout kvLayout = QfaLayout::BSND;
+    QfaLayout layoutQDescale = QfaLayout::BSND;
 
     // Strides (for non-contiguous tensor check)
     const gert::Stride *keyStrides = nullptr;

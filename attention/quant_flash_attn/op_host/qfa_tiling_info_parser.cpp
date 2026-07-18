@@ -440,7 +440,7 @@ ge::graphStatus QfaInfoParser::GetInAndOutLayout()
     }
     layoutQ_ = itQ->second;
 
-    if (opParamInfo_.layoutQDescale != nullptr && strcmp(opParamInfo_.layoutQDescale, "N2TGD") != 0) {
+    if (opParamInfo_.layoutQDescale != nullptr) {
         auto itQDescale = qfaLayoutMap.find(opParamInfo_.layoutQDescale);
         if (itQDescale == qfaLayoutMap.end()) {
             std::string reason = "layout_q_descale: " + std::string(opParamInfo_.layoutQDescale) + " is not supported.";
@@ -448,6 +448,7 @@ ge::graphStatus QfaInfoParser::GetInAndOutLayout()
                 opParamInfo_.layoutQDescale, reason.c_str());
             return ge::GRAPH_FAILED;
         }
+        layoutQDescale_ = itQDescale->second;
     }
 
     auto itKV = qfaLayoutMap.find(opParamInfo_.layoutKV);
@@ -540,6 +541,7 @@ void QfaInfoParser::GenerateLayoutInfo(QfaTilingInfo &qfaInfo)
     qfaInfo.qLayout = layoutQ_;
     qfaInfo.kvLayout = layoutKV_;
     qfaInfo.outLayout = layoutOut_;
+    qfaInfo.layoutQDescale = layoutQDescale_;
 }
 
 void QfaInfoParser::GenerateQuantInfo(QfaTilingInfo &qfaInfo)
@@ -619,15 +621,15 @@ ge::graphStatus QfaInfoParser::ParseAxisInfo()
     }
 
     uint32_t qDescaleDimNum = opParamInfo_.qDescale.shape->GetStorageShape().GetDimNum();
-    bool isDecode = (s1Size_ * gSize_ <= 80);
+    bool isDecode = (layoutQDescale_ == QfaLayout::N2TGD);
     if (isDecode && qDescaleDimNum != 5) {
-        OP_LOGE(opName_, "q_descale must be 5D in decode mode(s1Size=%lu, gSize=%lu), but got %uD.",
-                s1Size_, gSize_, qDescaleDimNum);
+        OP_LOGE(opName_, "q_descale must be 5D in decode mode(layout_q_descale=N2TGD), but got %uD.",
+                qDescaleDimNum);
         return ge::GRAPH_FAILED;
     }
     if (!isDecode && qDescaleDimNum != 4) {
-        OP_LOGE(opName_, "q_descale must be 4D in prefill mode(s1Size=%lu, gSize=%lu), but got %uD.",
-                s1Size_, gSize_, qDescaleDimNum);
+        OP_LOGE(opName_, "q_descale must be 4D in prefill mode(layout_q_descale=TND), but got %uD.",
+                qDescaleDimNum);
         return ge::GRAPH_FAILED;
     }
 
