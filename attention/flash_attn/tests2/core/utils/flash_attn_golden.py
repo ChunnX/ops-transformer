@@ -147,8 +147,8 @@ class FlashAttentionGolden:
             softmax_lse = torch.zeros(1, dtype=torch.float32, device=attn_out.device)
         else:
             if layout_out == "TND":
-                # lse_f32 is already (T, N_q) from _compute_per_batch
-                softmax_lse = lse_f32
+                # _compute_per_batch 输出 (T, N_q), NPU 算子 TND 约定 (N_q, T)
+                softmax_lse = lse_f32.t().contiguous()
             else:
                 softmax_lse = lse_f32  # (B, N_q, Sq)
 
