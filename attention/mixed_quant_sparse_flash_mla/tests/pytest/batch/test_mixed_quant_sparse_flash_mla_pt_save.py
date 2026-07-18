@@ -46,6 +46,18 @@ for _, params in enumerate(ENABLED_PARAMS):
         normalized_params[key] = value
     normalized_params["topk_value_mode"] = params.get("topk_value_mode", 1)
     normalized_params["return_softmax_lse"] = params.get("return_softmax_lse", False)
+    normalized_params["ori_kv_topk_mode"] = params.get("ori_kv_topk_mode", "fullK")
+    normalized_params["cmp_kv_topk_mode"] = params.get("cmp_kv_topk_mode", "fullK")
+    normalized_params["ori_sparse_indices_mode"] = params.get("ori_sparse_indices_mode", "full")
+    normalized_params["cmp_sparse_indices_mode"] = params.get("cmp_sparse_indices_mode", "full")
+    int_keys = ["B", "S1", "S2", "N1", "N2", "D", "K", "K1", "block_num1", "block_num2",
+                "block_size1", "block_size2", "cmp_ratio", "ori_mask_mode", "cmp_mask_mode",
+                "ori_win_left", "ori_win_right", "quant_mode", "tile_size", "rope_head_dim",
+                "topk_value_mode"]
+    for ik in int_keys:
+        v = normalized_params.get(ik)
+        if v is not None and not isinstance(v, bool):
+            normalized_params[ik] = int(v)
     for key in ["seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
                 "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"]:
         normalized_params[key] = utils.parse_list_param(params.get(key))
@@ -55,9 +67,10 @@ for _, params in enumerate(ENABLED_PARAMS):
 
     param_names = [
         "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", \
-        "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio", "ori_mask_mode", "cmp_mask_mode", \
-        "ori_win_left", "ori_win_right", "quant_mode", "tile_size", "rope_head_dim", "template_run_mode", \
-        "actlen_mode", "S1EQS2", "topk_value_mode", "return_softmax_lse", \
+        "N2", "D", "K", "K1", "block_num1", "block_num2", "block_size1", "block_size2", "softmax_scale", "cmp_ratio", \
+        "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "quant_mode", "tile_size", "rope_head_dim", \
+        "template_run_mode", "actlen_mode", "S1EQS2", "topk_value_mode", "return_softmax_lse", \
+        "ori_kv_topk_mode", "cmp_kv_topk_mode", "ori_sparse_indices_mode", "cmp_sparse_indices_mode", \
         "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv", \
         "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"
     ]
@@ -76,6 +89,9 @@ for _, params in enumerate(ENABLED_PARAMS):
         [normalized_params["N2"]],
         [normalized_params["D"]],
         [normalized_params["K"]],
+        [normalized_params.get("K1")],
+        [normalized_params.get("block_num1")],
+        [normalized_params.get("block_num2")],
         [normalized_params["block_size1"]],
         [normalized_params["block_size2"]],
         [normalized_params["softmax_scale"]],
@@ -92,6 +108,10 @@ for _, params in enumerate(ENABLED_PARAMS):
         [normalized_params["S1EQS2"]],
         [normalized_params["topk_value_mode"]],
         [normalized_params["return_softmax_lse"]],
+        [normalized_params["ori_kv_topk_mode"]],
+        [normalized_params["cmp_kv_topk_mode"]],
+        [normalized_params["ori_sparse_indices_mode"]],
+        [normalized_params["cmp_sparse_indices_mode"]],
         [normalized_params["seqused_q"]],
         [normalized_params["cu_seqlens_q"]],
         [normalized_params["seqused_ori_kv"]],
