@@ -893,6 +893,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
     head_dim = D
     softmax_scale = float(CASE["softmax_scale"])
     p_scale_value = float(torch.as_tensor(p_scale).reshape(-1)[0].item())
+    ln_p_scale = math.log(p_scale_value)
 
     attention_out = torch.zeros((total_q, n1, head_dim), dtype=torch.float32)
     softmax_lse = torch.full((total_q, n1), EMPTY_LSE, dtype=torch.float32)
@@ -987,12 +988,12 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                     rescale = torch.where(run_started, torch.exp(m_run - m_new), torch.zeros_like(m_run))
                     rescale = torch.where(torch.isfinite(rescale), rescale, torch.zeros_like(rescale))
 
-                    # 本轮 P 基于同一个 aligned m_new 计算；无效 token 置 0。
-                    # p_quant 仅用于 PV，l_run 仍累加未量化的 p_round，和参考 online softmax 数据流一致。
-                    p_round = torch.exp(s_round - m_new.view(nq, 1))
+                    # 与 common MX 一致：VF 先保存原始 aligned max，再用 max-ln(pScale) 计算 P。
+                    # 因此 P 和 softmax sum 都包含 pScale，最终 OUT 归一化时该系数会相消。
+                    p_round = torch.exp(s_round - m_new.view(nq, 1) + ln_p_scale)
                     p_round = torch.where(vm_round, p_round, torch.zeros_like(p_round))
                     p_round = torch.where(round_has.view(nq, 1), p_round, torch.zeros_like(p_round))
-                    p_quant = (p_round * p_scale_value).to(FP8_DTYPE).to(torch.float32)
+                    p_quant = p_round.to(FP8_DTYPE).to(torch.float32)
 
                     # C2V2 阶段读取与本轮 K token 完全对应的 V token。
                     # round_pos_tensor 覆盖本轮最多 512 个 KV token；尾轮只处理实际 token。
@@ -1003,7 +1004,7 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                     v_dequant = v_mat * v_scale_mat
 
                     # 完成本轮 C2V2，并把历史 online 状态推进到 m_new 基准。
-                    pv = torch.matmul(p_quant, v_dequant) / p_scale_value
+                    pv = torch.matmul(p_quant, v_dequant)
                     acc = acc * rescale.view(nq, 1) + pv
                     l_run = l_run * rescale + p_round.sum(dim=-1)
                     m_run = torch.where(round_has, m_new, m_run)
