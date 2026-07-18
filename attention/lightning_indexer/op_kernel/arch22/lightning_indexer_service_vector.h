@@ -356,6 +356,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
 
             int32_t gRedCnt = groupInner_ > gSize_ ? gSize_ : groupInner_;
             bool isS2End = cuBaseS2Idx + s2BaseSize_ >= cuRealAcSeq;
+
             LIServiceVec::DoReduce(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], reduceOutInner, gRedCnt, s2BaseSize_);
             outQueue_.FreeTensor(reduceCacheBuf);
             PipeBarrier<PIPE_V>();
@@ -392,7 +393,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             if (radixCuS2Len < s2BaseSize_) {
                 int32_t cuS2LenAlign8 = (radixCuS2Len + 7) / 8 * 8;
                 if (cuS2LenAlign8 < s2BaseSize_) {
-                    // Fill with +1e30 so that after NegateDataForLargest (* -1), it becomes -1e30 (excluded from smallest-K)
+                    // Fill with +1e30 so that after NegateDataForLargest (* -1), it becomes -1e30
                     Duplicate(reduceOutInner[cuS2LenAlign8], 1.0e30f, s2BaseSize_ - cuS2LenAlign8);
                 }
                 PipeBarrier<PIPE_V>();
