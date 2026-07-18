@@ -283,7 +283,7 @@
 - 通用规格约束如下：
   - N2仅支持1，D仅支持512。其中，`ori_kv`和`cmp_kv`的D_kv由nope、rope、scale、padding拼接而成，详见`quant_mode`。
   - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时，`cmp_ratio`不参与压缩KV计算，需保持默认值1；支持1到128。
-  - `ori_mask_mode`仅支持4，`cmp_mask_mode`仅支持3，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
+  - `ori_mask_mode`支持3和4，`cmp_mask_mode`仅支持3，`ori_win_left`和`ori_win_right`支持-1或非负数，-1表示对应方向不受限。
   - `rope_head_dim`仅支持64。
   - `layout_q`和`layout_kv`组合仅支持"BSND"/"BSND"、"TND"/"TND"、"BSND"/"PA_BBND"、"TND"/"PA_BBND"；非PA_BBND场景下`layout_q`和`layout_kv`必须一致；PA_BBND场景下`block_size`支持1到1024。
   - `ori_topk_length`和`cmp_topk_length`为预留输入，全平台均不支持传入非空Tensor。
