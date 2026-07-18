@@ -1,0 +1,338 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MegaMoe 当前分支流水审计</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #090d16;
+      --panel: #111827;
+      --panel2: #0d1423;
+      --line: #2a3850;
+      --text: #e8eef9;
+      --muted: #9aacbe;
+      --dispatch: #4cc9f0;
+      --combine: #f72585;
+      --gmm1: #6ee7b7;
+      --gmm2: #fbbf24;
+      --swiglu: #a78bfa;
+      --wait: #64748b;
+      --danger: #fb7185;
+      --good: #34d399;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background:
+        radial-gradient(circle at 15% 0%, rgba(76, 201, 240, .08), transparent 30rem),
+        radial-gradient(circle at 85% 0%, rgba(247, 37, 133, .07), transparent 28rem),
+        var(--bg);
+      color: var(--text);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+    main { max-width: 1680px; margin: 0 auto; padding: 30px 28px 56px; }
+    h1 { margin: 0; font-size: clamp(25px, 3vw, 42px); letter-spacing: -.035em; }
+    h2 { margin: 0 0 14px; font-size: 21px; }
+    h3 { margin: 0 0 8px; font-size: 16px; }
+    p { margin: 8px 0; }
+    code, .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; }
+    code { color: #c7d7ef; }
+    .subtitle { max-width: 1160px; color: var(--muted); font-size: 15px; }
+    .badge-row { display: flex; flex-wrap: wrap; gap: 8px; margin: 18px 0 4px; }
+    .badge {
+      border: 1px solid #31415c; background: rgba(17, 24, 39, .78); color: #c9d6e8;
+      border-radius: 999px; padding: 6px 11px; font-size: 12px;
+    }
+    .badge.hot { border-color: rgba(251,113,133,.55); color: #fecdd3; }
+    section {
+      margin-top: 22px; padding: 20px; border: 1px solid #223047; border-radius: 15px;
+      background: linear-gradient(145deg, rgba(17,24,39,.94), rgba(10,16,28,.96));
+      box-shadow: 0 16px 60px rgba(0,0,0,.18);
+    }
+    .callout {
+      border-left: 4px solid var(--danger); padding: 11px 14px; margin-top: 18px;
+      border-radius: 8px; background: rgba(251,113,133,.08); color: #ffe4e6;
+    }
+    .callout.info { border-left-color: var(--dispatch); background: rgba(76,201,240,.07); color: #dff8ff; }
+    .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; color: var(--muted); font-size: 12px; margin: 10px 0 15px; }
+    .legend span { display: inline-flex; gap: 7px; align-items: center; }
+    .swatch { width: 19px; height: 10px; border-radius: 3px; display: inline-block; }
+    .swatch.envelope { background: transparent; border: 1px dashed #91a4bd; }
+    .chart { overflow-x: auto; padding-bottom: 6px; }
+    svg { display: block; min-width: 1180px; width: 100%; height: auto; }
+    svg text { fill: var(--text); font-family: Inter, ui-sans-serif, system-ui, sans-serif; }
+    svg .small { fill: var(--muted); font-size: 12px; }
+    svg .label { font-size: 14px; font-weight: 700; }
+    svg .tiny { font-size: 10px; }
+    svg .axis { stroke: #44536a; stroke-width: 1; }
+    svg .guide { stroke: #243247; stroke-width: 1; stroke-dasharray: 4 7; }
+    svg .dep { stroke: #d2dbea; stroke-width: 1.5; fill: none; marker-end: url(#arrow); }
+    svg .softdep { stroke: #8091a8; stroke-width: 1.2; fill: none; stroke-dasharray: 5 4; marker-end: url(#arrowSoft); }
+    svg .env { fill: rgba(255,255,255,.018); stroke: #75869e; stroke-width: 1.2; stroke-dasharray: 7 5; rx: 10; }
+    svg .dispatch { fill: rgba(76,201,240,.18); stroke: var(--dispatch); }
+    svg .combine { fill: rgba(247,37,133,.18); stroke: var(--combine); }
+    svg .gmm1 { fill: rgba(110,231,183,.17); stroke: var(--gmm1); }
+    svg .gmm2 { fill: rgba(251,191,36,.18); stroke: var(--gmm2); }
+    svg .swiglu { fill: rgba(167,139,250,.18); stroke: var(--swiglu); }
+    svg .wait { fill: rgba(100,116,139,.18); stroke: #718096; stroke-dasharray: 3 3; }
+    svg .stage { stroke-width: 1.3; rx: 7; }
+    .grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 13px; }
+    .card { grid-column: span 4; background: rgba(8,13,23,.55); border: 1px solid #223149; border-radius: 11px; padding: 14px; }
+    .card.wide { grid-column: span 6; }
+    .card p, .card li { color: #b9c7d9; font-size: 13px; }
+    .card ul, .refs ol { margin: 8px 0 0; padding-left: 20px; }
+    .metric { font: 700 25px/1 ui-monospace, monospace; color: #f8fafc; margin: 8px 0; }
+    .risk { color: #fecdd3; }
+    .refs { columns: 2; column-gap: 34px; }
+    .refs li { break-inside: avoid; color: #b8c6d9; font-size: 13px; margin: 0 0 9px; }
+    .foot { margin-top: 18px; color: #8292a7; font-size: 12px; }
+    @media (max-width: 900px) {
+      main { padding: 22px 14px 40px; }
+      section { padding: 15px; }
+      .card, .card.wide { grid-column: span 12; }
+      .refs { columns: 1; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>MegaMoe 当前分支流水：代码审计图</h1>
+    <p class="subtitle">
+      审计对象：<span class="mono">codex/0717-critical-path-trace @ ebf0970ea</span>。这是从控制流和同步依赖反推的结构图，
+      不是实测cycle，也不假装所有核同时进入同一个wave。真正的核间偏斜应由critical-path trace HTML填入。
+    </p>
+    <div class="badge-row">
+      <span class="badge">bs=512</span><span class="badge">topk=8</span>
+      <span class="badge">16 experts / die</span><span class="badge">36 AIC + 72 AIV</span>
+      <span class="badge">M≈256 / expert</span><span class="badge">h=4096, GMM1 2N=4096</span>
+      <span class="badge">5 experts / full wave</span><span class="badge">B0=0..4 · B1=5..9 · B2=10..14 · B3=15</span>
+      <span class="badge hot">PER_EXPERT ready</span><span class="badge hot">ALL_AIV_REDUCE stride=64B</span>
+      <span class="badge hot">TRACE 默认开启（诊断包）</span>
+    </div>
+  </header>
+
+  <div class="callout">
+    <strong>先看这个：</strong>当前HEAD的 <code>MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE=1</code>。它每wave加入完成语义更强的定向桥，
+    并保存/回写trace字段。因此这张图适合验证“是不是按设计重叠”，但当前诊断包的总耗时不能直接用于证明相对主线的性能差距。
+  </div>
+
+  <section>
+    <h2>1. 全局控制流水（非等比例）</h2>
+    <div class="legend">
+      <span><i class="swatch" style="background:var(--dispatch)"></i>Dispatch</span>
+      <span><i class="swatch" style="background:var(--gmm1)"></i>GMM1</span>
+      <span><i class="swatch" style="background:var(--swiglu)"></i>SwiGLU</span>
+      <span><i class="swatch" style="background:var(--gmm2)"></i>GMM2 direct-GM</span>
+      <span><i class="swatch" style="background:var(--combine)"></i>Combine</span>
+      <span><i class="swatch envelope"></i>每核/每wave控制包络：内部允许等待、expert切换和空洞</span>
+    </div>
+    <div class="chart">
+      <svg viewBox="0 0 1600 610" role="img" aria-label="当前MegaMoe三类核的wave流水">
+        <defs>
+          <marker id="arrow" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#d2dbea"/></marker>
+          <marker id="arrowSoft" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#8091a8"/></marker>
+        </defs>
+
+        <text x="116" y="28" class="small">更早</text><line x1="155" y1="24" x2="1530" y2="24" class="axis" marker-end="url(#arrowSoft)"/><text x="1537" y="28" class="small">更晚</text>
+        <text x="8" y="112" class="label">AIV1 ×36</text><text x="8" y="127" class="small">dispatch / combine</text>
+        <text x="8" y="286" class="label">AIV0 ×36</text><text x="8" y="301" class="small">SwiGLU</text>
+        <text x="8" y="451" class="label">AIC ×36</text><text x="8" y="466" class="small">GMM1 / GMM2</text>
+        <line x1="125" y1="53" x2="125" y2="560" class="axis"/>
+        <line x1="125" y1="179" x2="1550" y2="179" class="guide"/><line x1="125" y1="352" x2="1550" y2="352" class="guide"/>
+
+        <!-- AIV1 envelopes and expert substructure -->
+        <rect x="145" y="65" width="185" height="100" class="env"/>
+        <rect x="150" y="83" width="31" height="49" class="dispatch stage"/><rect x="184" y="83" width="31" height="49" class="dispatch stage"/>
+        <rect x="218" y="83" width="31" height="49" class="dispatch stage"/><rect x="252" y="83" width="31" height="49" class="dispatch stage"/><rect x="286" y="83" width="35" height="49" class="dispatch stage"/>
+        <text x="151" y="105" class="tiny">D e0</text><text x="185" y="105" class="tiny">e1</text><text x="219" y="105" class="tiny">e2</text><text x="253" y="105" class="tiny">e3</text><text x="290" y="105" class="tiny">e4</text>
+        <text x="194" y="154" class="small">Dispatch B0</text>
+
+        <rect x="342" y="65" width="176" height="100" class="env"/>
+        <rect x="348" y="83" width="31" height="49" class="dispatch stage"/><rect x="382" y="83" width="31" height="49" class="dispatch stage"/>
+        <rect x="416" y="83" width="31" height="49" class="dispatch stage"/><rect x="450" y="83" width="31" height="49" class="dispatch stage"/><rect x="484" y="83" width="27" height="49" class="dispatch stage"/>
+        <text x="352" y="105" class="tiny">e5</text><text x="386" y="105" class="tiny">e6</text><text x="420" y="105" class="tiny">e7</text><text x="454" y="105" class="tiny">e8</text><text x="487" y="105" class="tiny">e9</text>
+        <text x="391" y="154" class="small">Dispatch B1</text>
+
+        <rect x="530" y="65" width="185" height="100" class="env"/>
+        <rect x="537" y="83" width="30" height="49" class="combine stage"/><rect x="570" y="83" width="30" height="49" class="combine stage"/>
+        <rect x="603" y="83" width="30" height="49" class="combine stage"/><rect x="636" y="83" width="30" height="49" class="combine stage"/><rect x="669" y="83" width="37" height="49" class="combine stage"/>
+        <text x="539" y="105" class="tiny">C e0</text><text x="572" y="105" class="tiny">e1</text><text x="605" y="105" class="tiny">e2</text><text x="638" y="105" class="tiny">e3</text><text x="673" y="105" class="tiny">e4</text>
+        <text x="585" y="154" class="small">Combine B0</text>
+
+        <rect x="727" y="65" width="175" height="100" class="env"/><rect x="734" y="83" width="31" height="49" class="dispatch stage"/>
+        <rect x="768" y="83" width="31" height="49" class="dispatch stage"/><rect x="802" y="83" width="31" height="49" class="dispatch stage"/>
+        <rect x="836" y="83" width="31" height="49" class="dispatch stage"/><rect x="870" y="83" width="25" height="49" class="dispatch stage"/>
+        <text x="738" y="105" class="tiny">e10</text><text x="772" y="105" class="tiny">e11</text><text x="806" y="105" class="tiny">e12</text><text x="840" y="105" class="tiny">e13</text><text x="873" y="105" class="tiny">e14</text>
+        <text x="776" y="154" class="small">Dispatch B2</text>
+
+        <rect x="914" y="65" width="181" height="100" class="env"/><rect x="921" y="83" width="31" height="49" class="combine stage"/>
+        <rect x="955" y="83" width="31" height="49" class="combine stage"/><rect x="989" y="83" width="31" height="49" class="combine stage"/>
+        <rect x="1023" y="83" width="31" height="49" class="combine stage"/><rect x="1057" y="83" width="31" height="49" class="combine stage"/>
+        <text x="925" y="105" class="tiny">e5</text><text x="959" y="105" class="tiny">e6</text><text x="993" y="105" class="tiny">e7</text><text x="1027" y="105" class="tiny">e8</text><text x="1061" y="105" class="tiny">e9</text>
+        <text x="961" y="154" class="small">Combine B1</text>
+
+        <rect x="1107" y="65" width="80" height="100" class="env"/><rect x="1115" y="83" width="64" height="49" class="dispatch stage"/><text x="1127" y="105" class="tiny">D e15</text><text x="1118" y="154" class="small">Dispatch B3</text>
+        <rect x="1199" y="65" width="181" height="100" class="env"/><rect x="1206" y="83" width="31" height="49" class="combine stage"/>
+        <rect x="1240" y="83" width="31" height="49" class="combine stage"/><rect x="1274" y="83" width="31" height="49" class="combine stage"/>
+        <rect x="1308" y="83" width="31" height="49" class="combine stage"/><rect x="1342" y="83" width="31" height="49" class="combine stage"/>
+        <text x="1209" y="105" class="tiny">e10</text><text x="1243" y="105" class="tiny">e11</text><text x="1277" y="105" class="tiny">e12</text><text x="1311" y="105" class="tiny">e13</text><text x="1345" y="105" class="tiny">e14</text>
+        <text x="1248" y="154" class="small">Combine B2</text>
+        <rect x="1393" y="65" width="95" height="100" class="env"/><rect x="1401" y="83" width="79" height="49" class="combine stage"/><text x="1420" y="105" class="tiny">C e15</text><text x="1404" y="154" class="small">Combine B3</text>
+
+        <!-- AIV0 -->
+        <rect x="231" y="219" width="245" height="112" class="env"/><rect x="245" y="240" width="50" height="49" class="swiglu stage"/><rect x="302" y="240" width="50" height="49" class="swiglu stage"/><rect x="359" y="240" width="50" height="49" class="swiglu stage"/><rect x="416" y="240" width="46" height="49" class="swiglu stage"/>
+        <text x="257" y="268" class="tiny">SW t0</text><text x="314" y="268" class="tiny">t1</text><text x="371" y="268" class="tiny">t2</text><text x="426" y="268" class="tiny">…</text><text x="314" y="318" class="small">SwiGLU B0（tile ping/pong）</text>
+        <rect x="621" y="219" width="240" height="112" class="env"/><rect x="635" y="240" width="212" height="49" class="swiglu stage"/><text x="706" y="268" class="label">SwiGLU B1</text>
+        <rect x="1003" y="219" width="238" height="112" class="env"/><rect x="1017" y="240" width="210" height="49" class="swiglu stage"/><text x="1088" y="268" class="label">SwiGLU B2</text>
+        <rect x="1345" y="219" width="111" height="112" class="env"/><rect x="1359" y="240" width="83" height="49" class="swiglu stage"/><text x="1369" y="268" class="label">SW B3</text>
+
+        <!-- AIC -->
+        <rect x="202" y="389" width="280" height="132" class="env"/><rect x="218" y="412" width="178" height="50" class="gmm1 stage"/><rect x="403" y="412" width="63" height="50" class="gmm2 stage"/>
+        <text x="271" y="441" class="label">GMM1 B0</text><text x="411" y="441" class="label">GMM2</text><text x="262" y="505" class="small">80个GMM1 tiles：每核2次，8核第3次</text>
+        <rect x="579" y="389" width="284" height="132" class="env"/><rect x="595" y="412" width="178" height="50" class="gmm1 stage"/><rect x="780" y="412" width="67" height="50" class="gmm2 stage"/>
+        <text x="648" y="441" class="label">GMM1 B1</text><text x="790" y="441" class="label">GMM2</text>
+        <rect x="962" y="389" width="284" height="132" class="env"/><rect x="978" y="412" width="178" height="50" class="gmm1 stage"/><rect x="1163" y="412" width="67" height="50" class="gmm2 stage"/>
+        <text x="1031" y="441" class="label">GMM1 B2</text><text x="1173" y="441" class="label">GMM2</text>
+        <rect x="1308" y="389" width="139" height="132" class="env"/><rect x="1324" y="412" width="49" height="50" class="gmm1 stage"/><rect x="1380" y="412" width="51" height="50" class="gmm2 stage"/>
+        <text x="1331" y="441" class="tiny">G1 B3</text><text x="1387" y="441" class="tiny">G2 B3</text><text x="1320" y="505" class="small">仅16 tiles：20 AIC无任务</text>
+
+        <!-- Dependencies, intentionally schematic -->
+        <path d="M181 132 C181 183, 218 181, 218 410" class="softdep"/><text x="135" y="201" class="tiny">e0的256行ready即可</text>
+        <path d="M300 412 C302 370, 275 340, 270 290" class="softdep"/><text x="282" y="365" class="tiny">FIX→V</text>
+        <path d="M447 462 C470 555, 537 203, 555 133" class="softdep"/><text x="463" y="371" class="tiny">publish e0 → fan-in → C e0</text>
+        <path d="M518 80 C522 43, 706 43, 713 80" class="dep"/><text x="551" y="51" class="small">同一AIV1：D(B+1)必须先于C(B)</text>
+
+        <rect x="145" y="545" width="20" height="10" class="env"/><text x="173" y="555" class="small">虚线框只表示该物理核在这个wave中“首任务开始→末任务完成”的包络；内部不保证连续忙碌。</text>
+        <text x="145" y="586" class="small">注意：各物理核无wave级barrier。快核可能已进入下一wave的GMM1，慢核仍在上一wave的GMM2；上图横坐标只是依赖拓扑，不是统一全局时钟。</text>
+      </svg>
+    </div>
+  </section>
+
+  <section>
+    <h2>2. 一个full wave内部：真正的触发粒度</h2>
+    <p class="subtitle">这里画的是依赖关系，不是说一颗AIC执行全部tile。BlockScheduler会把expert的tile按旋转起点分给36个AIC。</p>
+    <div class="chart">
+      <svg viewBox="0 0 1500 505" role="img" aria-label="一个wave内部expert和tile粒度流水">
+        <defs>
+          <marker id="arrow2" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto"><path d="M0,0 L8,4 L0,8 z" fill="#d2dbea"/></marker>
+        </defs>
+        <text x="12" y="75" class="label">AIV1</text><text x="12" y="194" class="label">AIC</text><text x="12" y="307" class="label">AIV0</text><text x="12" y="426" class="label">AIV1</text>
+        <text x="12" y="91" class="small">Dispatch</text><text x="12" y="210" class="small">GMM1 / GMM2</text><text x="12" y="323" class="small">SwiGLU</text><text x="12" y="442" class="small">ready / Combine</text>
+        <line x1="100" y1="112" x2="1455" y2="112" class="guide"/><line x1="100" y1="230" x2="1455" y2="230" class="guide"/><line x1="100" y1="350" x2="1455" y2="350" class="guide"/>
+
+        <rect x="115" y="48" width="164" height="52" class="dispatch stage"/><text x="153" y="79" class="label">D(e0): 256 rows</text>
+        <rect x="292" y="48" width="164" height="52" class="dispatch stage"/><text x="330" y="79" class="label">D(e1): 256 rows</text>
+        <rect x="469" y="48" width="120" height="52" class="dispatch stage"/><text x="496" y="79" class="label">D(e2)…</text>
+        <rect x="602" y="48" width="120" height="52" class="dispatch stage"/><text x="629" y="79" class="label">D(e4)</text>
+        <rect x="820" y="48" width="270" height="52" class="dispatch stage"/><text x="894" y="79" class="label">Dispatch(next wave)</text>
+
+        <rect x="282" y="156" width="68" height="52" class="gmm1 stage"/><text x="296" y="187" class="tiny">G1 e0/t0</text>
+        <rect x="360" y="156" width="68" height="52" class="gmm1 stage"/><text x="374" y="187" class="tiny">G1 e0/t1</text>
+        <rect x="438" y="156" width="68" height="52" class="gmm1 stage"/><text x="452" y="187" class="tiny">G1 e1/t?</text>
+        <rect x="516" y="156" width="194" height="52" class="gmm1 stage"/><text x="558" y="187" class="label">更多GMM1 tiles</text>
+        <rect x="735" y="156" width="112" height="52" class="gmm2 stage"/><text x="753" y="187" class="label">G2(e0)</text>
+        <rect x="858" y="156" width="112" height="52" class="gmm2 stage"/><text x="876" y="187" class="label">G2(e1)</text>
+        <rect x="981" y="156" width="200" height="52" class="gmm2 stage"/><text x="1025" y="187" class="label">G2(e2..e4)</text>
+
+        <rect x="350" y="274" width="69" height="52" class="swiglu stage"/><text x="365" y="305" class="tiny">SW e0/t0</text>
+        <rect x="428" y="274" width="69" height="52" class="swiglu stage"/><text x="443" y="305" class="tiny">SW e0/t1</text>
+        <rect x="506" y="274" width="69" height="52" class="swiglu stage"/><text x="521" y="305" class="tiny">SW e1/t?</text>
+        <rect x="584" y="274" width="184" height="52" class="swiglu stage"/><text x="623" y="305" class="label">更多SwiGLU</text>
+
+        <rect x="725" y="392" width="121" height="52" class="wait stage"/><text x="743" y="414" class="tiny">36 slots</text><text x="738" y="433" class="tiny">copy+reduce e0</text>
+        <rect x="856" y="392" width="118" height="52" class="combine stage"/><text x="878" y="423" class="label">C(e0)</text>
+        <rect x="984" y="392" width="121" height="52" class="wait stage"/><text x="1002" y="414" class="tiny">fan-in e1</text><text x="995" y="433" class="tiny">可能重复scan</text>
+        <rect x="1115" y="392" width="118" height="52" class="combine stage"/><text x="1137" y="423" class="label">C(e1)</text>
+        <rect x="1243" y="392" width="185" height="52" class="combine stage"/><text x="1281" y="423" class="label">C(e2..e4)</text>
+
+        <path d="M279 74 C285 106, 286 129, 300 156" style="stroke:#d2dbea;fill:none;marker-end:url(#arrow2)"/><text x="204" y="137" class="tiny">MTE3→S，再AtomicAdd行数</text>
+        <path d="M350 182 C367 225, 370 247, 376 274" style="stroke:#d2dbea;fill:none;marker-end:url(#arrow2)"/>
+        <path d="M419 300 C540 365, 666 104, 735 156" style="stroke:#8091a8;fill:none;stroke-dasharray:5 4;marker-end:url(#arrow2)"/><text x="535" y="242" class="small">e0全部16个SwiGLU tile完成，G2(e0)才能过ready</text>
+        <path d="M847 182 C853 267, 786 328, 786 392" style="stroke:#d2dbea;fill:none;marker-end:url(#arrow2)"/><text x="799" y="349" class="small">每个AIC FIX→S并写自己槽；每个AIV1独立reduce到36</text>
+        <path d="M970 182 C969 272, 916 319, 916 392" style="stroke:#8091a8;fill:none;stroke-dasharray:5 4;marker-end:url(#arrow2)"/><text x="954" y="336" class="small">C(e0)可与G2(e1..e4)重叠</text>
+
+        <text x="115" y="480" class="small">关键结论：当前shape每expert恰好一组256行，所以Dispatch→GMM1看起来是“expert ready”；更大M时才会显出同一expert内多个256-row wave的提前启动。</text>
+      </svg>
+    </div>
+  </section>
+
+  <section>
+    <h2>3. 为什么当前结构可能把460μs拉到480μs</h2>
+    <p class="subtitle">下面是当前分支自身可由代码证明的成本，不把它们冒充成实测归因。最终排序要由无trace性能包和新timeline数据确认。</p>
+    <div class="grid">
+      <article class="card wide">
+        <h3>① GMM2结果完整落GM，再由Combine读回</h3>
+        <div class="metric">32 MiB write + 32 MiB read / die</div>
+        <p>16 × 256 × 4096 × 2B。GMM2在AIC上直写GM；AIV1按token读取完整8 KiB row，再发远端。这是当前重建路径最重的结构性新增流量，也可能与Dispatch/远端发送共享带宽。</p>
+        <p><code>mega_moe_impl.h:463-471</code> → <code>mega_moe.h:1716-1732</code></p>
+      </article>
+      <article class="card wide">
+        <h3>② PER_EXPERT × ALL_AIV_REDUCE fan-in</h3>
+        <div class="metric">16 × 36 publishers + 16 × 36 reducers</div>
+        <p>每expert每个AIC都做一次<code>FIX_S</code>和独槽写1；每个AIV1各自搬运36×16个int32（2304B）并做vector reduce，未ready会整段重试。它把原先的Scalar热点转移成MTE2/Vector工作，并没有消失。</p>
+        <p><code>mega_moe.h:1441-1463</code>，<code>1485-1533</code>，<code>2277-2288</code></p>
+      </article>
+      <article class="card">
+        <h3>③ AIV1上的硬顺序</h3>
+        <div class="metric">D(B+1) → C(B)</div>
+        <p>同一AIV1共享UB和event 0..5，代码先drain完整下一wave Dispatch，再进入当前wave Combine。两者不能互相覆盖；Combine若没被AIC/AIV0藏住，会直接推迟下一轮。</p>
+        <p><code>mega_moe.h:2237-2265</code>，<code>2307-2442</code></p>
+      </article>
+      <article class="card">
+        <h3>④ per-expert固定控制成本</h3>
+        <div class="metric">16 ready epochs</div>
+        <p>不是4个wave只通知4次。默认宏为PER_EXPERT，Combine循环中每个expert都bulk preload triple、等待fan-in，再发送本核约7–8条row；full wave结束才统一drain六槽。</p>
+        <p><code>mega_moe.h:43-47</code>，<code>2388-2417</code></p>
+      </article>
+      <article class="card">
+        <h3>⑤ 尾wave无法铺满AIC</h3>
+        <div class="metric risk">B3: 16 tiles / 36 AIC</div>
+        <p>前三波每波5 expert，对应80个GMM1 tile；尾波只有1 expert、16个tile，至少20个AIC在GMM1阶段无任务，GMM2也同样难以填满。尾部Combine又没有后续GMM1可掩盖。</p>
+        <p><code>mega_moe_batch_tiling.h:31-65</code>，<code>mega_moe.h:2147-2150</code></p>
+      </article>
+      <article class="card">
+        <h3>⑥ 当前HEAD是诊断build</h3>
+        <div class="metric risk">TRACE = 1</div>
+        <p>每wave额外记录时间，并为GMM1末尾加FIX→S、Combine末尾加MTE2→S完成桥；最后再写trace到GM。先用它看关系，再关闭trace复测总耗时。</p>
+        <p><code>mega_moe_impl_base.h:26-45</code>，<code>mega_moe.h:2206-2220</code>，<code>2421-2434</code></p>
+      </article>
+    </div>
+    <div class="callout info">
+      <strong>建议读图顺序：</strong>先看每核的 <code>GMM1→GMM2</code> 是否有长空洞，再看AIV1的 <code>ready_begin→ready_end</code> 与
+      <code>Combine</code> 是否压到下一wave；同时比较GMM2期间AIV1 Combine是否真在跑。只有timeline能区分“带宽变慢”“ready fan-in拖尾”和“Combine根本没藏住”。
+    </div>
+  </section>
+
+  <section>
+    <h2>4. 代码证据索引</h2>
+    <div class="refs">
+      <ol>
+        <li><code>mega_moe.h:2107-2112</code>：源码自己声明的三流水目标。</li>
+        <li><code>mega_moe.h:2135-2140</code>：进入outer loop前只prefetch expert 0。</li>
+        <li><code>mega_moe.h:2165-2204</code>：同一wave按expert交错Dispatch和GMM1调用。</li>
+        <li><code>mega_moe.h:2237-2265</code>：Combine(B)前强制补完Dispatch(B+1)。</li>
+        <li><code>mega_moe.h:2277-2288</code>：GMM2按expert执行，默认每expert publish。</li>
+        <li><code>mega_moe.h:2307-2442</code>：AIV1 ready、triple preload、Combine和统一drain。</li>
+        <li><code>mega_moe.h:1132-1149</code>：Dispatch按expert-local 256行累计ready。</li>
+        <li><code>mega_moe_impl.h:117-130</code>：GMM1每个256-row wave轮询对应flag。</li>
+        <li><code>mega_moe_impl.h:373-437</code>：GMM1 interleaved的双槽Cube→Vector交接。</li>
+        <li><code>mega_moe_impl.h:496-537</code>：AIV0逐tile WaitForCube、SwiGLU、NotifyCube。</li>
+        <li><code>block_epilogue_swiglu_mx_quant.h:744-773</code>：SwiGLU输出落GM后按wave更新GMM2 flag。</li>
+        <li><code>mega_moe_impl.h:132-148</code>：interleaved GMM2等待该256-row wave全部SwiGLU N tiles。</li>
+        <li><code>mega_moe.h:1441-1463</code>：AIC FIX→S后写自己的ready槽。</li>
+        <li><code>mega_moe.h:1485-1533</code>：每个AIV1 DataCopy + reduce fan-in。</li>
+        <li><code>mega_moe.h:1621-1628</code>：36个AIV1连续均分当前expert token。</li>
+        <li><code>mega_moe.h:1657-1674</code>：本核连续triple批量预取。</li>
+        <li><code>mega_moe.h:1680-1733</code>：六row buffer，逐token GM→UB→远端MTE3。</li>
+        <li><code>mega_moe_impl_base.h:47-60</code>：trace矩形是每核每wave的stage包络定义。</li>
+      </ol>
+    </div>
+    <p class="foot">生成方式：静态代码审计；无外部资源。图中长度仅为增强可读性，不能换算成cycle或μs。</p>
+  </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,389 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MegaMoe upstream/master 流水审计</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a2d;
+      --panel-2: #17223a;
+      --ink: #e7edf8;
+      --muted: #9eacc5;
+      --line: #30405e;
+      --dispatch: #4aa8ff;
+      --gmm1: #9b7bff;
+      --swiglu: #f3b24d;
+      --gmm2: #5bd39a;
+      --combine: #ff7285;
+      --sync: #8090ac;
+      --warn: #ffcc66;
+      --ok: #71dfae;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(145deg, #080c18 0%, var(--bg) 52%, #0d1427 100%);
+      color: var(--ink);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+      line-height: 1.55;
+    }
+    main { max-width: 1500px; margin: 0 auto; padding: 34px 28px 70px; }
+    h1 { margin: 0 0 8px; font-size: 30px; letter-spacing: .01em; }
+    h2 { margin: 0 0 18px; font-size: 21px; }
+    h3 { margin: 0 0 12px; font-size: 16px; }
+    p { margin: 8px 0; }
+    code {
+      color: #d8e4ff;
+      background: #0a1122;
+      border: 1px solid #263552;
+      border-radius: 5px;
+      padding: 1px 5px;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: .92em;
+    }
+    .subtitle { color: var(--muted); max-width: 1050px; }
+    .meta, .legend, .stats, .two-col, .three-col { display: grid; gap: 14px; }
+    .meta { grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 22px 0; }
+    .stats { grid-template-columns: repeat(5, minmax(0, 1fr)); }
+    .two-col { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .three-col { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    .card {
+      background: rgba(18, 26, 45, .92);
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      padding: 18px;
+      box-shadow: 0 10px 34px rgba(0, 0, 0, .18);
+    }
+    .meta .card, .stats .card { padding: 13px 15px; }
+    .k { color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .07em; }
+    .v { margin-top: 5px; font-weight: 700; font-size: 16px; }
+    .section { margin-top: 24px; }
+    .note {
+      border-left: 4px solid var(--warn);
+      padding: 10px 14px;
+      background: rgba(255, 204, 102, .08);
+      border-radius: 0 8px 8px 0;
+      color: #dce4f2;
+    }
+    .confirmed { border-style: solid; }
+    .inferred { border-style: dashed !important; }
+    .legend { grid-template-columns: repeat(2, max-content); align-items: center; margin: 15px 0; }
+    .legend-mark { width: 36px; height: 16px; border: 2px solid var(--ok); border-radius: 4px; display: inline-block; }
+    .legend-mark.inferred { border-color: var(--warn); }
+
+    .timeline-wrap { overflow-x: auto; padding-bottom: 8px; }
+    .timeline {
+      min-width: 1160px;
+      display: grid;
+      grid-template-columns: 90px repeat(14, minmax(62px, 1fr));
+      grid-auto-rows: 64px;
+      gap: 6px;
+      align-items: stretch;
+    }
+    .time-head { color: var(--muted); font-size: 11px; text-align: center; padding-top: 5px; border-bottom: 1px solid #2b3954; }
+    .lane-label { display: flex; flex-direction: column; justify-content: center; font-weight: 750; }
+    .lane-label small { color: var(--muted); font-weight: 500; font-size: 11px; }
+    .task {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      border-radius: 9px;
+      border: 2px solid currentColor;
+      background: color-mix(in srgb, currentColor 16%, var(--panel));
+      font-size: 12px;
+      font-weight: 700;
+      padding: 5px;
+      position: relative;
+    }
+    .task small { display: block; font-weight: 500; opacity: .86; }
+    .dispatch { color: var(--dispatch); }
+    .gmm1 { color: var(--gmm1); }
+    .swiglu { color: var(--swiglu); }
+    .gmm2 { color: var(--gmm2); }
+    .combine { color: var(--combine); }
+    .sync { color: var(--sync); }
+    .idle { color: #5f6d86; border-style: dashed; background: rgba(95, 109, 134, .06); }
+    .phase-band {
+      z-index: 0;
+      border: 1px dashed rgba(158, 172, 197, .25);
+      border-radius: 11px;
+      background: rgba(255, 255, 255, .018);
+      pointer-events: none;
+    }
+    .task, .lane-label, .time-head { z-index: 1; }
+
+    .micro {
+      display: grid;
+      grid-template-columns: 100px repeat(7, minmax(80px, 1fr));
+      gap: 7px;
+      min-width: 840px;
+      align-items: stretch;
+    }
+    .micro .label { display: flex; align-items: center; font-weight: 700; }
+    .micro .step {
+      min-height: 56px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 7px;
+      font-size: 12px;
+      background: var(--panel-2);
+    }
+    .arrow::after { content: "→"; position: absolute; right: -17px; color: var(--muted); z-index: 3; }
+    .step { position: relative; }
+
+    .owner-table { width: 100%; border-collapse: separate; border-spacing: 3px; font-size: 12px; }
+    .owner-table th { color: var(--muted); font-weight: 600; padding: 5px 6px; }
+    .owner-table td { border: 1px solid var(--line); border-radius: 5px; padding: 5px 6px; text-align: center; }
+    .owner-table .hot { background: rgba(155, 123, 255, .22); border-color: rgba(155, 123, 255, .75); }
+    .owner-table .hot2 { background: rgba(91, 211, 154, .18); border-color: rgba(91, 211, 154, .68); }
+    .owner-table .wrap { box-shadow: inset 0 0 0 1px var(--warn); }
+    .tag { display: inline-block; border: 1px solid currentColor; border-radius: 999px; padding: 2px 8px; font-size: 11px; margin-right: 5px; }
+    ul { margin: 10px 0 0; padding-left: 21px; }
+    li { margin: 8px 0; }
+    .reason { border-left: 3px solid var(--ok); }
+    .risk { border-left: 3px solid var(--warn); }
+    .source { border-left: 3px solid var(--dispatch); }
+    .source-list { display: grid; grid-template-columns: minmax(270px, .7fr) 1.3fr; gap: 6px 14px; font-size: 13px; }
+    .source-list div { padding: 7px 0; border-bottom: 1px solid rgba(48, 64, 94, .65); }
+    .source-list .where { color: #c8d7f3; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .muted { color: var(--muted); }
+    .big { font-size: 25px; font-weight: 800; }
+    @media (max-width: 900px) {
+      main { padding: 22px 14px 50px; }
+      .meta, .stats, .two-col, .three-col { grid-template-columns: 1fr; }
+      .source-list { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+<main>
+  <h1>MegaMoe upstream/master：目标 shape 流水审计</h1>
+  <p class="subtitle">这是一张<strong>源码拓扑图</strong>，不是实测 timestamp 图。横向宽度表达依赖与重叠机会，不代表真实耗时比例。所有定位固定到审计提交，避免 <code>upstream/master</code> 后续移动导致行号失效。</p>
+
+  <div class="meta">
+    <div class="card"><div class="k">审计 ref</div><div class="v"><code>090dfac1e</code></div></div>
+    <div class="card"><div class="k">目标 shape</div><div class="v">bs 512 · topk 8 · 2 die</div></div>
+    <div class="card"><div class="k">每 die</div><div class="v">16 experts · 36 AIC</div></div>
+    <div class="card"><div class="k">维度</div><div class="v">h=4096 · GMM1 2N=4096</div></div>
+  </div>
+
+  <div class="legend">
+    <span class="legend-mark confirmed"></span><span>源码直接确认</span>
+    <span class="legend-mark inferred"></span><span>由目标 shape 推导的并行包络</span>
+  </div>
+
+  <section class="card section">
+    <h2>1. 主线完整骨架：先做完全部 GMM1/SwiGLU，再做全部 GMM2/Combine</h2>
+    <div class="note">主线没有 <code>expertsPerBatch=5</code>，也没有 <code>5+5+5+1</code> 的 wave。它按专家 0…15 调用，但专家之间没有显式 barrier；每个物理核完成自己当前专家的任务后，可以继续推进后续专家。唯一明确的阶段边界是全部 GMM1/SwiGLU 后的 <code>EndSync</code>。</div>
+    <div class="timeline-wrap section">
+      <div class="timeline">
+        <div class="time-head" style="grid-column:1;grid-row:1">角色</div>
+        <div class="time-head" style="grid-column:2 / span 2;grid-row:1">初始化 / 跨卡同步</div>
+        <div class="time-head" style="grid-column:4 / span 6;grid-row:1">Phase 2：16 experts 的 Dispatch + GMM1 + SwiGLU</div>
+        <div class="time-head" style="grid-column:10;grid-row:1">阶段交接</div>
+        <div class="time-head" style="grid-column:11 / span 4;grid-row:1">Phase 3：16 experts 的 GMM2 + Combine</div>
+        <div class="time-head" style="grid-column:15;grid-row:1">汇合 / Unpermute</div>
+
+        <div class="phase-band" style="grid-column:4 / span 6;grid-row:2 / span 3"></div>
+        <div class="phase-band" style="grid-column:11 / span 4;grid-row:2 / span 3"></div>
+
+        <div class="lane-label" style="grid-column:1;grid-row:2">AIV1<small>subBlock 1</small></div>
+        <div class="task sync confirmed" style="grid-column:2 / span 2;grid-row:2">mask / quant / reset / sync</div>
+        <div class="task dispatch confirmed" style="grid-column:4;grid-row:2">预取<br>Dispatch e0</div>
+        <div class="task dispatch confirmed" style="grid-column:5 / span 5;grid-row:2">Dispatch e1 … e15<small>e+1 与当前 GMM1(e) 重叠</small></div>
+        <div class="task sync confirmed" style="grid-column:10;grid-row:2">等待阶段汇合</div>
+        <div class="task idle confirmed" style="grid-column:11 / span 4;grid-row:2">AIV1 不参与 no-quant GMM2/Combine</div>
+        <div class="task sync confirmed" style="grid-column:15;grid-row:2">跨卡同步<br>Unpermute</div>
+
+        <div class="lane-label" style="grid-column:1;grid-row:3">AIV0<small>subBlock 0</small></div>
+        <div class="task sync confirmed" style="grid-column:2 / span 2;grid-row:3">初始化 / 同步</div>
+        <div class="task swiglu inferred" style="grid-column:4 / span 6;grid-row:3">SwiGLU e0 … e15<small>与各自 AIC 单槽握手；跨专家可交错</small></div>
+        <div class="task sync confirmed" style="grid-column:10;grid-row:3">EndSync 边界</div>
+        <div class="task combine confirmed" style="grid-column:11 / span 4;grid-row:3">Combine e0 … e15<small>每个 128×256 GMM2 tile 直接从 UB 发送</small></div>
+        <div class="task sync confirmed" style="grid-column:15;grid-row:3">SyncAll<br>Unpermute</div>
+
+        <div class="lane-label" style="grid-column:1;grid-row:4">AIC<small>36 Cube</small></div>
+        <div class="task sync confirmed" style="grid-column:2 / span 2;grid-row:4">初始化 / 同步</div>
+        <div class="task gmm1 inferred" style="grid-column:4 / span 6;grid-row:4">GMM1 e0 … e15<small>滚动 startBlockIdx；无专家级 barrier</small></div>
+        <div class="task sync confirmed" style="grid-column:10;grid-row:4">EndSync</div>
+        <div class="task gmm2 inferred" style="grid-column:11 / span 4;grid-row:4">GMM2 e0 … e15<small>两槽 UB ping-pong 给 AIV0</small></div>
+        <div class="task sync confirmed" style="grid-column:15;grid-row:4">PipeAll<br>SyncAll</div>
+      </div>
+    </div>
+  </section>
+
+  <section class="card section">
+    <h2>2. Phase 2 放大：Dispatch 是 256 行 ready；GMM1/SwiGLU 本核是单槽交接</h2>
+    <p class="muted">目标 shape 每专家约 256 token，因此每个专家只有一个 Dispatch→GMM1 的 M-wave。下图是一个参与任务的 AIC/AIV0 核对与 AIV1 的依赖顺序。</p>
+    <div class="timeline-wrap section">
+      <div class="micro">
+        <div class="label">AIV1</div>
+        <div class="step dispatch arrow">6-buffer dispatch<br>该 expert 的行</div>
+        <div class="step dispatch arrow">MTE3→S drain</div>
+        <div class="step dispatch">按重叠行数<br>AtomicAdd ready</div>
+        <div class="step idle">继续 dispatch<br>下一 expert</div>
+        <div class="step idle">—</div>
+        <div class="step idle">—</div>
+        <div class="step idle">—</div>
+
+        <div class="label">AIC</div>
+        <div class="step idle">—</div>
+        <div class="step gmm1 arrow">轮询 256 行 ready</div>
+        <div class="step gmm1 arrow">MMAD gate<br>256×256</div>
+        <div class="step gmm1 arrow">MMAD up<br>256×256</div>
+        <div class="step gmm1 arrow">NotifyVector<br>单一 flag</div>
+        <div class="step gmm1">下一任务前<br>WaitForVector</div>
+        <div class="step idle">推进后续 expert</div>
+
+        <div class="label">AIV0</div>
+        <div class="step idle">—</div>
+        <div class="step idle">—</div>
+        <div class="step idle">—</div>
+        <div class="step swiglu arrow">WaitForCube</div>
+        <div class="step swiglu arrow">SwiGLU + quant<br>256×256</div>
+        <div class="step swiglu">NotifyCube</div>
+        <div class="step idle">推进后续 expert</div>
+      </div>
+    </div>
+    <div class="two-col section">
+      <div class="card source">
+        <h3>代码确认</h3>
+        <ul>
+          <li>Dispatch 完成 MTE3 后，按该核覆盖的 expert-local 行数累加对应 256 行 wave flag。</li>
+          <li>AIC 每个 M-wave 首次任务轮询该 flag；256 行目标未满足不会消费。</li>
+          <li>GMM1 一个逻辑 tile 连续计算 gate、up 两次 MMAD，再通知 AIV0。</li>
+          <li>只有一组 GMM1 Cube↔Vector flag；下一次本核 GMM1 在前一次 SwiGLU ack 之前不能下发。</li>
+        </ul>
+      </div>
+      <div class="card risk">
+        <h3>目标 shape 推导</h3>
+        <ul>
+          <li><code>M=256</code>、<code>outputN=2N/2=2048</code>，scheduler 有 <code>1×8=8</code> 个逻辑 tile/expert。</li>
+          <li>每个逻辑 tile 内有 gate/up 两次 256-wide MMAD，所以是 16 次物理 MMAD/expert，但只占 8 个 scheduler owner。</li>
+          <li>单专家只用约 8/36 核；不过 <code>startBlockIdx += 8</code> 且专家间无 barrier，使相邻专家能滚动填充不同物理核。</li>
+        </ul>
+      </div>
+    </div>
+  </section>
+
+  <section class="card section">
+    <h2>3. GMM1 滚动排核：不是一批 5 专家一起提交，但能跨专家占满核心</h2>
+    <p class="muted">下表按 scheduler 公式推导前 5 个专家的 owner。紫色代表该专家的 8 个逻辑 GMM1 tile；黄色内框代表环回。每个核心独立推进，表格表示 owner 集合，不代表专家严格串行。</p>
+    <div class="timeline-wrap">
+      <table class="owner-table" id="owner-table">
+        <thead><tr><th>Expert</th><th>C00</th><th>C01</th><th>C02</th><th>C03</th><th>C04</th><th>C05</th><th>C06</th><th>C07</th><th>C08</th><th>C09</th><th>C10</th><th>C11</th><th>C12</th><th>C13</th><th>C14</th><th>C15</th><th>C16</th><th>C17</th><th>C18</th><th>C19</th><th>C20</th><th>C21</th><th>C22</th><th>C23</th><th>C24</th><th>C25</th><th>C26</th><th>C27</th><th>C28</th><th>C29</th><th>C30</th><th>C31</th><th>C32</th><th>C33</th><th>C34</th><th>C35</th></tr></thead>
+        <tbody>
+          <tr><th>e0</th><td class="hot">0</td><td class="hot">1</td><td class="hot">2</td><td class="hot">3</td><td class="hot">4</td><td class="hot">5</td><td class="hot">6</td><td class="hot">7</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+          <tr><th>e1</th><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="hot">0</td><td class="hot">1</td><td class="hot">2</td><td class="hot">3</td><td class="hot">4</td><td class="hot">5</td><td class="hot">6</td><td class="hot">7</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+          <tr><th>e2</th><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="hot">0</td><td class="hot">1</td><td class="hot">2</td><td class="hot">3</td><td class="hot">4</td><td class="hot">5</td><td class="hot">6</td><td class="hot">7</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td></tr>
+          <tr><th>e3</th><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="hot">0</td><td class="hot">1</td><td class="hot">2</td><td class="hot">3</td><td class="hot">4</td><td class="hot">5</td><td class="hot">6</td><td class="hot">7</td><td></td><td></td><td></td><td></td></tr>
+          <tr><th>e4</th><td class="hot wrap">4</td><td class="hot wrap">5</td><td class="hot wrap">6</td><td class="hot wrap">7</td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td></td><td class="hot">0</td><td class="hot">1</td><td class="hot">2</td><td class="hot">3</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p class="note section"><strong>尾部：</strong>主线没有单独的“最后 1 专家 wave”。最后几个专家仍按同一取模轮转规则分配；真正的尾部代价来自最后一批活跃核先后退出、随后在 <code>EndSync</code> / <code>SyncAll</code> 汇合，而不是固定的 <code>5+5+5+1</code> 调度结构。</p>
+  </section>
+
+  <section class="card section">
+    <h2>4. Phase 3 放大：GMM2→Combine 是 tile-local、双槽、完全不落完整 GMM2 GM</h2>
+    <div class="timeline-wrap">
+      <div class="micro">
+        <div class="label">AIC</div>
+        <div class="step gmm2 arrow">expert 首任务<br>等全部 SwiGLU tile</div>
+        <div class="step gmm2 arrow">必要时等<br>UB slot 0/1 释放</div>
+        <div class="step gmm2 arrow">GMM2 MMAD<br>128×256 → UB</div>
+        <div class="step gmm2 arrow">NotifyVector(slot)</div>
+        <div class="step gmm2">切换 slot<br>推进后续 tile/expert</div>
+        <div class="step idle">—</div>
+        <div class="step idle">—</div>
+
+        <div class="label">AIV0</div>
+        <div class="step idle">—</div>
+        <div class="step idle">—</div>
+        <div class="step combine arrow">WaitForCube(slot)</div>
+        <div class="step combine arrow">一次载入该 tile<br>最多 128 条 triple</div>
+        <div class="step combine arrow">逐行发送 256 列<br>512 B / token</div>
+        <div class="step combine arrow">MTE3→V 完成</div>
+        <div class="step combine">NotifyCube(slot)</div>
+
+        <div class="label">AIV1</div>
+        <div class="step idle">不参与</div>
+        <div class="step idle">不参与</div>
+        <div class="step idle">不参与</div>
+        <div class="step idle">不参与</div>
+        <div class="step idle">不参与</div>
+        <div class="step idle">不参与</div>
+        <div class="step idle">等待汇合</div>
+      </div>
+    </div>
+    <div class="stats section">
+      <div class="card"><div class="k">GMM2 tile</div><div class="v">128 × 256</div></div>
+      <div class="card"><div class="k">tiles / expert</div><div class="v">2 × 16 = 32</div></div>
+      <div class="card"><div class="k">UB slots</div><div class="v">2 ping-pong</div></div>
+      <div class="card"><div class="k">ready granularity</div><div class="v">每 tile 核对握手</div></div>
+      <div class="card"><div class="k">完整 GMM2 GM 中转</div><div class="v" style="color:var(--ok)">0</div></div>
+    </div>
+  </section>
+
+  <section class="section">
+    <h2>5. 为什么这种“看起来没那么激进”的主线可能是 460 μs</h2>
+    <div class="three-col">
+      <div class="card reason">
+        <h3>① GMM2 输出不做 GM round-trip</h3>
+        <p>no-quant 主线把每个 <code>128×256</code> tile 留在双槽 UB，AIV0 直接向目标窗口发 <code>256</code> 列片。没有“整行写本地 GM → 另一 AIV 再读整行”。</p>
+        <p class="muted">balanced 目标 shape 每 die 约 4096 路由行，bf16 H=4096 的完整输出约 32 MiB；GM 重建路径若完整写一次再读一次，会额外引入约 64 MiB 本地 GM 流量。该数值是 shape 推导。</p>
+      </div>
+      <div class="card reason">
+        <h3>② 没有 36→36 ready fan-in</h3>
+        <p>主线 no-quant 不需要每个 AIC 发布 GM-ready，也不需要每个 AIV1 做 GM→UB、reduce/sum、V→S 轮询。GMM2 tile 只和配对 AIV0 通过硬件 cross-core flag 握手。</p>
+        <p class="muted">这与“实验分支 AIV Scalar 明显增大”的现象方向一致，但 20 μs 归因比例仍需同一版本 trace 才能量化。</p>
+      </div>
+      <div class="card reason">
+        <h3>③ Combine 从第一块 GMM2 tile 就开始</h3>
+        <p>无需等完整专家或完整 wave。两槽允许 AIC 在 AIV0 发送前一 tile 时推进后一 tile，完成粒度是 128 token × 256 列，而非 expert/wave。</p>
+      </div>
+      <div class="card reason">
+        <h3>④ Dispatch 与 Combine 不争 AIV1</h3>
+        <p>Phase 2 的 AIV1 专职 prefetch 下一专家；Phase 3 的 Combine 在 AIV0。主线没有“Combine 延迟下一 wave Dispatch，继而让 AIC 等输入”的同核资源冲突。</p>
+      </div>
+      <div class="card reason">
+        <h3>⑤ 简单滚动排核缓解 GMM1 低占用</h3>
+        <p>单专家虽只有 8 个逻辑 owner，但 <code>startBlockIdx</code> 每专家前移 8，且无专家间 barrier。不同核可处于不同专家，16 个专家提供足够长的滚动任务流。</p>
+      </div>
+      <div class="card risk">
+        <h3>不能仅凭源码宣称的部分</h3>
+        <p>HTML 证明拓扑与额外流量，不证明某块实际持续多少 cycle。460 μs 是否来自当前 <code>090dfac1e</code>、GMM1 单槽造成多少损失、GM round-trip 占多少，必须用相同二进制与 shape 的实测 trace 核对。</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="card section">
+    <h2>6. 固定 ref 的源码证据</h2>
+    <div class="source-list">
+      <div class="where">mega_moe.h:1517–1613</div><div>Process 总骨架；Phase 2 全部专家完成后才进入 Phase 3。</div>
+      <div class="where">mega_moe.h:1551–1572</div><div>预 Dispatch e0；循环中 Dispatch(e+1) 与 GMM1(e) 并行。</div>
+      <div class="where">mega_moe.h:1576–1583</div><div>GMM1/SwiGLU expert consumer 与全阶段 EndSync。</div>
+      <div class="where">mega_moe.h:1590–1607</div><div>全专家 GMM2/Combine 循环、双槽收尾、PipeAll/SyncAll。</div>
+      <div class="where">mega_moe.h:785–874</div><div>Dispatch 的 6-buffer MTE2→MTE3 软件流水及 drain。</div>
+      <div class="where">mega_moe.h:976–992</div><div>Dispatch 完成后按 expert 内 256 行 wave 累加 ready。</div>
+      <div class="where">mega_moe_impl.h:114–136</div><div>GMM1 等 256 行 Dispatch；GMM2 等该专家所有 SwiGLU tile。</div>
+      <div class="where">mega_moe_impl.h:256–277</div><div>GMM1/GMM2 shape 和 tileM：256 / 128。</div>
+      <div class="where">mega_moe_impl.h:322–397</div><div>AIC tile 循环；GMM1 gate/up 两次 MMAD；GMM2 双槽通知。</div>
+      <div class="where">mega_moe_impl.h:402–465</div><div>AIV0 的 SwiGLU 单槽握手，以及 GMM2 tile-local Combine 双槽路径。</div>
+      <div class="where">mega_moe_impl.h:531–575</div><div>scheduler tileNum、startLoopIdx 与跨专家滚动 startBlockIdx。</div>
+      <div class="where">mega_moe_combine_send.h:42–64</div><div>从 GMM2 UB tile 逐 token 直接 DataCopyPad 到目标 rank 窗口。</div>
+      <div class="where">mega_moe_base.h:123–140, 165–187</div><div>Cube↔Vector cross-core flags、GMM1 单槽收尾与 GMM2 双槽收尾。</div>
+      <div class="where">mega_moe_impl_base.h:20–32</div><div>tile 常量：M=256/128、N=256。</div>
+    </div>
+    <p class="muted section">所有路径均为 <code>090dfac1e:mc2/mega_moe/op_kernel/arch35/...</code>。审计对象是 generic + <code>COMBINE_NO_QUANT</code> 目标路径；A8W4、combine-quant 与 layered 路径不在本图结论范围内。</p>
+  </section>
+</main>
+</body>
+</html>
