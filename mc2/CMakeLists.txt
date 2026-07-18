@@ -33,3 +33,4 @@ if(${SUBDIR} IN_LIST MC2_EXCLUDE_DIRS
   add_subdirectory(${SUBDIR})
 endif()
 endforeach()
+
