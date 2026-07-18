@@ -30,6 +30,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS128_KVS1024_Nq64_Nkv8_D128_SP3": {
@@ -49,6 +50,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
 }

@@ -109,6 +109,7 @@ QUANT_GROUP_SIZE = 32
 INPUT_LAYOUT = "TND"  # 支持: BNSD, BSND, TND
 Q_SCALE_LAYOUT = "TND"  # 支持: TND, N2TGD
 P_SCALE = 1.0
+SOFTMAX_SCALE = None
 
 # PA KV Cache Layout
 # BnNBsD: [BlockNum, N, BlockSize, D]
@@ -759,8 +760,9 @@ def _compute_s_block(Qi, Kj, deq_scale_q_i, deq_scale_k_j, d_total,
     """计算单个 S block (attention score)"""
     S_ij = torch.matmul(Qi * deq_scale_q_i, (Kj * deq_scale_k_j).permute(0, 1, 3, 2))
     if Qri is not None and Krj is not None:
-        S_ij += torch.matmul(Qri.to(torch.float32), Krj.to(torch.float32).permute(0, 1, 3, 2))
-    return S_ij / math.sqrt(d_total)
+        S_ij += torch.matmul(Qri.to(torch.float32), Krj.to(torch.float32).permate(0, 1, 3, 2))
+    scale = SOFTMAX_SCALE if SOFTMAX_SCALE is not None else 1.0 / math.sqrt(d_total)
+    return S_ij * scale
 
 
 def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale, LN2):
@@ -1053,7 +1055,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
 
     _sq, _skv, _cuq, _cukv, _msq, _mskv, _bnsd_sq, _bnsd_skv = _resolve_seq_params()
 
-    softmax_scale = 1.0 / math.sqrt(D + (D_rope if ENABLE_ROPE else 0))
+    softmax_scale = SOFTMAX_SCALE if SOFTMAX_SCALE is not None else 1.0 / math.sqrt(D + (D_rope if ENABLE_ROPE else 0))
 
     q_runtime_layout, q_group = resolve_q_scale_layout()
     logger.info("[NPU] Q layout: q_layout=%s, G=%d", q_runtime_layout, q_group)
@@ -1159,6 +1161,14 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             result_parts.append(npu_output[start:start + valid_len])
     npu_output = torch.cat(result_parts, dim=0) if result_parts else npu_output[:0]
     logger.info("[NPU] output=%s", npu_output.shape)
+
+    if lse_out is not None and ENABLE_LSE:
+        for b in range(B):
+            cu_diff = _cuq[b + 1] - _cuq[b]
+            if _sq[b] < cu_diff:
+                lse_out[b, :, _sq[b]:cu_diff] = float('inf')
+        logger.info("[NPU] lse=%s", lse_out.shape)
+
     return npu_output, lse_out
 
 

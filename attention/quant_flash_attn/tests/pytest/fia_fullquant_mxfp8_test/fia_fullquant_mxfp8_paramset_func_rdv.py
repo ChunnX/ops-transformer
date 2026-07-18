@@ -30,6 +30,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS7_KVS1555_Nq1_Nkv1_D128_SP0": {
@@ -49,6 +50,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0": {
@@ -68,6 +70,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B8_QS60_KVS1536_Nq4_Nkv4_D128_SP3": {
@@ -87,6 +90,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B3_QS1_KVS192_Nq16_Nkv1_D128_SP3": {
@@ -106,6 +110,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0": {
@@ -125,6 +130,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS3000_KVS6000_Nq16_Nkv8_D64_SP3": {
@@ -144,6 +150,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS3_KVS3584_Nq8_Nkv1_D128_SP3": {
@@ -163,6 +170,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B6_QS700_KVS4800_Nq64_Nkv1_D128_SP3": {
@@ -182,6 +190,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS5_KVS3072_Nq32_Nkv2_D128_SP0": {
@@ -201,6 +210,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS384_KVS256_Nq48_Nkv2_D64_SP3": {
@@ -220,6 +230,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B1_QS1_KVS500_Nq40_Nkv1_D128_SP3": {
@@ -239,6 +250,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS512_KVS5120_Nq80_Nkv2_D64_SP3": {
@@ -258,6 +270,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B3_QS4_KVS3072_Nq1_Nkv1_D128_SP3": {
@@ -277,6 +290,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS1100_KVS7000_Nq20_Nkv1_D128_SP3": {
@@ -296,6 +310,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS1800_KVS1500_Nq128_Nkv2_D128_SP0": {
@@ -315,6 +330,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "TND_B1_QS600_KVS500_Nq16_Nkv8_D128_SP0": {
@@ -334,6 +350,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS3_KVS896_Nq224_Nkv16_D128_SP3": {
@@ -353,6 +370,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS2048_KVS1024_Nq40_Nkv2_D128_SP3": {
@@ -372,6 +390,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS128_KVS4500_Nq128_Nkv4_D128_SP3": {
@@ -391,6 +410,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B6_QS2000_KVS2111_Nq128_Nkv4_D128_SP0": {
@@ -410,6 +430,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS1500_KVS77_Nq80_Nkv4_D128_SP0": {
@@ -429,6 +450,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B5_QS3_KVS7000_Nq32_Nkv8_D128_SP0": {
@@ -448,6 +470,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "TND_B1_QS10_KVS128_Nq2_Nkv1_D128_SP3": {
@@ -467,6 +490,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B3_QS1_KVS999_Nq256_Nkv4_D64_SP3": {
@@ -486,6 +510,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "TND_B5_QS1_KVS5504_Nq48_Nkv1_D64_SP3": {
@@ -505,6 +530,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B7_QS455_KVS2048_Nq8_Nkv1_D128_SP3": {
@@ -524,6 +550,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS10_KVS4096_Nq48_Nkv8_D128_SP3": {
@@ -543,6 +570,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS699_KVS555_Nq8_Nkv2_D128_SP3": {
@@ -562,6 +590,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B4_QS700_KVS3584_Nq1_Nkv1_D128_SP3": {
@@ -581,6 +610,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS333_KVS1555_Nq48_Nkv8_D128_SP3": {
@@ -600,6 +630,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [128.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS100_KVS5500_Nq16_Nkv8_D128_SP3": {
@@ -619,6 +650,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS1500_KVS4200_Nq48_Nkv1_D64_SP3": {
@@ -638,6 +670,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B6_QS211_KVS900_Nq64_Nkv1_D128_SP0": {
@@ -657,6 +690,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS1088_KVS2500_Nq20_Nkv2_D64_SP3": {
@@ -676,6 +710,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B1_QS15_KVS5500_Nq16_Nkv4_D64_SP3": {
@@ -695,6 +730,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS699_KVS777_Nq64_Nkv2_D128_SP0": {
@@ -714,6 +750,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [256.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B8_QS1_KVS999_Nq128_Nkv4_D128_SP3": {
@@ -733,6 +770,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS1024_KVS2048_Nq224_Nkv8_D64_SP3": {
@@ -752,6 +790,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B5_QS1_KVS7040_Nq40_Nkv8_D128_SP3": {
@@ -771,6 +810,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B5_QS1100_KVS8000_Nq2_Nkv1_D128_SP3": {
@@ -790,6 +830,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS1_KVS8000_Nq128_Nkv4_D64_SP0": {
@@ -809,6 +850,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B4_QS2_KVS1536_Nq80_Nkv2_D128_SP0": {
@@ -828,6 +870,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B6_QS1_KVS333_Nq48_Nkv8_D128_SP3": {
@@ -847,6 +890,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS5_KVS640_Nq1_Nkv1_D64_SP3": {
@@ -866,6 +910,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B2_QS900_KVS1500_Nq96_Nkv16_D128_SP3": {
@@ -885,6 +930,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [128.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS704_KVS320_Nq128_Nkv2_D128_SP3": {
@@ -904,6 +950,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B5_QS2_KVS128_Nq16_Nkv4_D128_SP3": {
@@ -923,6 +970,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS700_KVS4480_Nq40_Nkv1_D64_SP3": {
@@ -942,6 +990,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B6_QS704_KVS700_Nq2_Nkv2_D128_SP3": {
@@ -961,6 +1010,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS3_KVS384_Nq192_Nkv8_D128_SP0": {
@@ -980,6 +1030,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS768_KVS5504_Nq56_Nkv2_D128_SP3": {
@@ -999,6 +1050,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS1500_KVS5000_Nq160_Nkv8_D128_SP0": {
@@ -1018,6 +1070,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS1500_KVS1500_Nq256_Nkv4_D128_SP0": {
@@ -1037,6 +1090,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS704_KVS555_Nq1_Nkv1_D128_SP0": {
@@ -1056,6 +1110,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS11_KVS2560_Nq1_Nkv1_D128_SP3": {
@@ -1075,6 +1130,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS512_KVS6500_Nq1_Nkv1_D128_SP3": {
@@ -1094,6 +1150,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B1_QS5_KVS6000_Nq128_Nkv16_D128_SP0": {
@@ -1113,6 +1170,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS1152_KVS900_Nq48_Nkv1_D64_SP3": {
@@ -1132,6 +1190,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [256.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B1_QS1_KVS7040_Nq64_Nkv2_D128_SP3": {
@@ -1151,6 +1210,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS3500_KVS3500_Nq20_Nkv4_D64_SP3": {
@@ -1170,6 +1230,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS1_KVS1100_Nq32_Nkv2_D128_SP3": {
@@ -1189,6 +1250,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS800_KVS3333_Nq4_Nkv4_D128_SP3": {
@@ -1208,6 +1270,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [256.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B1_QS15_KVS5000_Nq16_Nkv8_D128_SP3": {
@@ -1227,6 +1290,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B4_QS211_KVS320_Nq48_Nkv2_D64_SP3": {
@@ -1246,6 +1310,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B5_QS41_KVS4096_Nq1_Nkv1_D128_SP3": {
@@ -1265,6 +1330,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "TND_B1_QS3_KVS768_Nq16_Nkv1_D64_SP3": {
@@ -1284,6 +1350,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS150_KVS3072_Nq2_Nkv1_D128_SP3": {
@@ -1303,6 +1370,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B2_QS100_KVS320_Nq224_Nkv4_D128_SP3": {
@@ -1322,6 +1390,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS455_KVS3584_Nq56_Nkv2_D64_SP0": {
@@ -1341,6 +1410,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS2_KVS192_Nq1_Nkv1_D64_SP3": {
@@ -1360,6 +1430,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS60_KVS500_Nq64_Nkv64_D64_SP3": {
@@ -1379,6 +1450,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS211_KVS100_Nq16_Nkv1_D128_SP0": {
@@ -1398,6 +1470,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [256.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS2_KVS640_Nq56_Nkv4_D128_SP0": {
@@ -1417,6 +1490,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [256.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS2000_KVS320_Nq4_Nkv1_D128_SP0": {
@@ -1436,6 +1510,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B6_QS4000_KVS512_Nq8_Nkv8_D128_SP3": {
@@ -1455,6 +1530,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS3_KVS256_Nq64_Nkv4_D64_SP3": {
@@ -1474,6 +1550,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [256.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS700_KVS2111_Nq8_Nkv2_D128_SP3": {
@@ -1493,6 +1570,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B3_QS933_KVS3584_Nq96_Nkv2_D128_SP3": {
@@ -1512,6 +1590,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS10_KVS1536_Nq8_Nkv4_D128_SP3": {
@@ -1531,6 +1610,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [128.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS50_KVS6500_Nq1_Nkv1_D128_SP3": {
@@ -1550,6 +1630,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS4032_KVS2048_Nq8_Nkv8_D128_SP3": {
@@ -1569,6 +1650,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [256.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS1800_KVS2048_Nq20_Nkv2_D128_SP3": {
@@ -1588,6 +1670,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS1_KVS3072_Nq160_Nkv4_D128_SP0": {
@@ -1607,6 +1690,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS2048_KVS3584_Nq8_Nkv2_D128_SP3": {
@@ -1626,6 +1710,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B1_QS3_KVS320_Nq128_Nkv8_D128_SP3": {
@@ -1645,6 +1730,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS3000_KVS1100_Nq56_Nkv2_D128_SP3": {
@@ -1664,6 +1750,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B1_QS7_KVS777_Nq56_Nkv8_D64_SP3": {
@@ -1683,6 +1770,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS1_KVS999_Nq80_Nkv4_D128_SP3": {
@@ -1702,6 +1790,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS2_KVS6500_Nq96_Nkv4_D128_SP3": {
@@ -1721,6 +1810,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "TND_B1_QS2048_KVS77_Nq32_Nkv2_D128_SP0": {
@@ -1740,6 +1830,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS33_KVS6500_Nq8_Nkv4_D128_SP3": {
@@ -1759,6 +1850,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS1500_KVS2111_Nq32_Nkv2_D128_SP0": {
@@ -1778,6 +1870,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS5_KVS4480_Nq40_Nkv8_D128_SP3": {
@@ -1797,6 +1890,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B4_QS1500_KVS1500_Nq1_Nkv1_D128_SP3": {
@@ -1816,6 +1910,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [256.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS4000_KVS896_Nq8_Nkv4_D128_SP0": {
@@ -1835,6 +1930,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS3584_KVS192_Nq128_Nkv4_D64_SP0": {
@@ -1854,6 +1950,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [128.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "TND_B1_QS333_KVS5504_Nq20_Nkv4_D128_SP0": {
@@ -1873,6 +1970,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS15_KVS700_Nq4_Nkv1_D128_SP3": {
@@ -1892,6 +1990,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B4_QS5_KVS640_Nq2_Nkv1_D128_SP3": {
@@ -1911,6 +2010,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS128_KVS1536_Nq4_Nkv4_D128_SP0": {
@@ -1930,6 +2030,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS1024_KVS6000_Nq64_Nkv4_D128_SP3": {
@@ -1949,6 +2050,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS832_KVS4500_Nq128_Nkv8_D128_SP0": {
@@ -1968,6 +2070,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS3_KVS192_Nq2_Nkv1_D128_SP0": {
@@ -1987,6 +2090,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS800_KVS2000_Nq4_Nkv1_D64_SP3": {
@@ -2006,6 +2110,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B4_QS2_KVS4500_Nq56_Nkv2_D64_SP3": {
@@ -2025,6 +2130,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS384_KVS128_Nq20_Nkv4_D128_SP3": {
@@ -2044,6 +2150,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B5_QS2560_KVS5500_Nq96_Nkv8_D128_SP3": {
@@ -2063,6 +2170,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [128.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS3_KVS640_Nq40_Nkv2_D128_SP3": {
@@ -2082,6 +2190,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS1200_KVS6500_Nq16_Nkv4_D64_SP0": {
@@ -2101,6 +2210,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B3_QS4000_KVS3000_Nq80_Nkv4_D64_SP3": {
@@ -2120,6 +2230,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B4_QS5_KVS3500_Nq4_Nkv1_D128_SP3": {
@@ -2139,6 +2250,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS5_KVS900_Nq56_Nkv8_D128_SP3": {
@@ -2158,6 +2270,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "TND_B4_QS1_KVS6500_Nq8_Nkv2_D128_SP3": {
@@ -2177,6 +2290,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B4_QS150_KVS200_Nq64_Nkv2_D64_SP3": {
@@ -2196,6 +2310,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B5_QS60_KVS192_Nq8_Nkv8_D128_SP3": {
@@ -2215,6 +2330,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS1100_KVS4500_Nq2_Nkv2_D128_SP3": {
@@ -2234,6 +2350,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B7_QS65_KVS1555_Nq1_Nkv1_D64_SP3": {
@@ -2253,6 +2370,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [128.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B3_QS455_KVS7000_Nq16_Nkv1_D128_SP3": {
@@ -2272,6 +2390,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS1_KVS333_Nq32_Nkv1_D128_SP0": {
@@ -2291,6 +2410,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS1_KVS896_Nq48_Nkv2_D64_SP3": {
@@ -2310,6 +2430,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [256.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS1_KVS640_Nq32_Nkv8_D128_SP3": {
@@ -2329,6 +2450,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [128.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "TND_B1_QS704_KVS900_Nq32_Nkv32_D128_SP0": {
@@ -2348,6 +2470,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS3000_KVS3072_Nq256_Nkv8_D128_SP3": {
@@ -2367,6 +2490,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS3_KVS768_Nq160_Nkv8_D64_SP3": {
@@ -2386,6 +2510,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS1_KVS5120_Nq128_Nkv8_D128_SP3": {
@@ -2405,6 +2530,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS1_KVS256_Nq64_Nkv2_D64_SP3": {
@@ -2424,6 +2550,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [256.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B1_QS7_KVS512_Nq2_Nkv1_D128_SP3": {
@@ -2443,6 +2570,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B3_QS1_KVS128_Nq128_Nkv2_D128_SP3": {
@@ -2462,6 +2590,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "TND_B1_QS30_KVS5120_Nq32_Nkv32_D128_SP3": {
@@ -2481,6 +2610,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B8_QS1536_KVS100_Nq32_Nkv4_D64_SP0": {
@@ -2500,6 +2630,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS133_KVS512_Nq4_Nkv4_D128_SP3": {
@@ -2519,6 +2650,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [128.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS900_KVS333_Nq2_Nkv2_D64_SP3": {
@@ -2538,6 +2670,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B3_QS1_KVS6528_Nq96_Nkv8_D128_SP3": {
@@ -2557,6 +2690,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS13_KVS1555_Nq1_Nkv1_D64_SP3": {
@@ -2576,6 +2710,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS3000_KVS2500_Nq48_Nkv8_D64_SP3": {
@@ -2595,6 +2730,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B8_QS1536_KVS768_Nq20_Nkv4_D64_SP3": {
@@ -2614,6 +2750,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B8_QS1_KVS3000_Nq64_Nkv1_D128_SP3": {
@@ -2633,6 +2770,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS500_KVS192_Nq20_Nkv2_D128_SP3": {
@@ -2652,6 +2790,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [256.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B3_QS100_KVS6000_Nq48_Nkv2_D64_SP0": {
@@ -2671,6 +2810,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['TND'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS1088_KVS192_Nq4_Nkv2_D128_SP3": {
@@ -2690,6 +2830,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_NZ_B1_QS5_KVS192_Nq16_Nkv2_D128_SP3": {
@@ -2709,6 +2850,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B6_QS576_KVS1024_Nq8_Nkv2_D128_SP3": {
@@ -2728,6 +2870,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS15_KVS100_Nq4_Nkv1_D128_SP3": {
@@ -2747,6 +2890,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS20_KVS2048_Nq4_Nkv2_D128_SP3": {
@@ -2766,6 +2910,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_NZ_B1_QS3_KVS7000_Nq64_Nkv8_D64_SP3": {
@@ -2785,6 +2930,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "TND_B5_QS1_KVS448_Nq64_Nkv2_D128_SP3": {
@@ -2804,6 +2950,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B1_QS7_KVS2000_Nq8_Nkv8_D64_SP3": {
@@ -2823,6 +2970,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "TND_B1_QS70_KVS640_Nq2_Nkv2_D128_SP0": {
@@ -2842,6 +2990,7 @@ TEST_PARAMS = {
         'mask_mode': [0],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [100.0],
+        'softmax_scale': [None],
         'enable_lse': [False],
     },
     "PA_BnNBsD_B1_QS1_KVS64_Nq128_Nkv2_D64_SP3": {
@@ -2861,6 +3010,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
     "PA_BnNBsD_B2_QS2_KVS1_Nq1_Nkv1_D128_SP3": {
@@ -2880,6 +3030,7 @@ TEST_PARAMS = {
         'mask_mode': [3],
         'q_scale_layout': ['N2TGD'],
         'p_scale': [15.0],
+        'softmax_scale': [None],
         'enable_lse': [True],
     },
 }
