@@ -93,8 +93,8 @@ ACLNN_API aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     const aclTensor *sendCountsTensorOptional, const aclTensor *recvCountsTensorOptional, const aclTensor *mmXOptional,
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
     const aclTensor *commQuantScaleOptional, int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode,
-    int64_t mmWeightQuantMode, int64_t commQuantMode, int64_t commQuantDtypeOptional,
-    int64_t groupSize, const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts,
+    int64_t mmWeightQuantMode, int64_t commQuantMode, int64_t commQuantDtypeOptional, int64_t groupSize,
+    const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts,
     const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, const aclTensor *y,
     const aclTensor *mmYOptional, uint64_t *workspaceSize, aclOpExecutor **executor);
 
@@ -108,7 +108,7 @@ ACLNN_API aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize(
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(void *workspace, uint64_t workspaceSize,
-    aclOpExecutor *executor, aclrtStream stream);
+                                                         aclOpExecutor *executor, aclrtStream stream);
 
 #ifdef __cplusplus
 }

@@ -61,7 +61,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2GetWorkspaceSize(
     int64_t            mmWeightQuantMode,
     int64_t            commQuantMode,
     int64_t            commQuantDtypeOptional,
-    int64_t            groupSize, 
+    int64_t            groupSize,
     const char*        group,
     const char*        commMode,
     int64_t            epWorldSize,
@@ -544,7 +544,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
   - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
   - mx量化且gmmX与gmmWeight为FLOAT4_E2M1时，H1和H2必须为偶数且不能为2，同时transGmmWeight和transMmWeight为false情况下，N1和N2必须为偶数。
   - gmmWeight和gmmWeightScale的转置状态必须保持一致：同时转置或同时不转置。mmWeight和mmWeightScale同样需要保持转置状态一致。
-  - groupSize: 
+  - groupSize:
     - 仅当gmmXScale/gmmWeightScale/mmXScale/mmWeightScale输入都是2维及以上数据时，groupSize取值有效，其他场景需传入0。
     - groupSize值支持公式推导：传入的groupSize内部会按如下公式分解得到groupSizeM、groupSizeN、groupSizeK，当其中有1个或多个为0，会根据gmmX/gmmWeight/mmX/mmWeight/gmmXScale/gmmWeightScale/mmXScale/mmWeightScale输入shape重新设置groupSizeM、groupSizeN、groupSizeK用于计算。设置原理：如果groupSizeM=0，表示m方向量化分组值由接口推导，推导公式为groupSizeM = m / scaleM（需保证m能被scaleM整除），其中m与gmmX/mmX shape中的m一致，scaleM与gmmXScale/mmXScale shape中的m一致；如果groupSizeK=0，表示k方向量化分组值由接口推导，推导公式为groupSizeK = k / scaleK（需保证k能被scaleK整除），其中k与gmmX/mmX shape中的k一致，scaleK与gmmXScale/mmXScale shape中的k一致；如果groupSizeN=0，表示n方向量化分组值由接口推导，推导公式为groupSizeN = n / scaleN（需保证n能被scaleN整除），其中n与gmmWeight/mmWeight shape中的n一致，scaleN与gmmWeightScale/mmWeightScale shape中的n一致。
     $$
@@ -782,9 +782,9 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
             mmWScale,
             commQuantScaleOptional,
             gmmXQuantMode,
-            gmmWQuantMode, 
+            gmmWQuantMode,
             mmXQuantMode,
-            mmWQuantMode, 
+            mmWQuantMode,
             commQuantMode,
             commQuantDtypeOptional,
             groupSize,
@@ -813,7 +813,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
                 return ret);
         //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); 
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
                 return ret);
         LOG_PRINT("[INFO] device_%d aclnnQuantGroupedMatMulAlltoAllvV2 execute successfully.\n", args.rankId);
         // 释放device资源，需要根据具体API的接口定义修改
@@ -891,7 +891,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
         return 0;
     }
 
-    int main(int argc, char *argv[]) 
+    int main(int argc, char *argv[])
     {
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
@@ -932,4 +932,3 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvV2(
         return 0;
     }
     ```
-    
