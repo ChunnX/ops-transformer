@@ -569,7 +569,7 @@ void FAInferTiling::ConsumeRemainingS1GroupsFD(int64_t &resTaskNum, const BatchP
     }
 }
 
-// coreNumUsed：本次方案使用的核数（动态负载上限 = 剩余开销 / 剩余核数）。
+// coreNumUsed：使用的核数（动态负载上限 = 剩余开销 / 剩余核数）。
 uint64_t FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingData, uint32_t groupSize,
                                                    uint64_t totalCost, uint32_t coreNumUsed)
 {
@@ -584,7 +584,6 @@ uint64_t FAInferTiling::fillCoreInfoForFlashDecode(FAInferTilingData &faTilingDa
     uint64_t maxCost = 0;
     uint32_t usedCore = 0;
 
-    // 单核结算：累计已用开销、剩余开销、最慢核开销
     auto finalizeCore = [&](uint32_t coreIdx, int64_t costLimit, int64_t resTaskNum) {
         int64_t consumed = costLimit - resTaskNum;
         if (consumed < 0) {
@@ -840,11 +839,10 @@ void FAInferTiling::splitBN2S1GS2(FAInferTilingData &faTilingData)
     uint32_t maxCore = std::min(blockNum_, totalBlockNum);
     maxCore = std::min(maxCore, static_cast<uint32_t>(MAX_CORE_NUM_FD));
 
-    // 直接解析求解 e2e 下界 LB(k)=totalCost/k + C*k 的极小点 k*=sqrt(totalCost/C)
+    // 解析求解 e2e 下界 LB(k)=totalCost/k + C*k 的极小点 k*=sqrt(totalCost/C)
     uint32_t bestCore = static_cast<uint32_t>(
         std::sqrt(static_cast<double>(totalCost) / static_cast<double>(FD_CORE_LAUNCH_COST)) + 0.5);
 
-    // 取值有效性约束：至少 1 核
     bestCore = std::max(1U, std::min(bestCore, maxCore));
 
     // 用最优核数正式分核
