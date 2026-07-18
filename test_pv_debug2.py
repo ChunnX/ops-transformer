@@ -14,15 +14,15 @@ torch.npu.synchronize()
 vals = r[600, 0].cpu().tolist()
 def rd_f(i):
     return struct.unpack('f', struct.pack('i', vals[i]))[0]
-print("=== reduceOutInner (after DoReduce, before DataCopyPad) ===")
+print("=== reduceCacheBuf row 0 ===")
 for i, idx in enumerate([0, 87, 88, 511]):
     f = rd_f(i)
     tag = "INVALID" if f > 1e29 else "OK"
-    print(f"  reduceOutInner[{idx}] = {f:12.4f}  {tag}")
-print(f"\n  cuS2Len = {vals[4]}")
-print(f"  gRedCnt = {vals[5]}")
-print("\n=== score (RadixTopK read from GM row 600) ===")
-for i, idx in enumerate([0, 87, 88, 511]):
-    f = rd_f(6 + i)
+    print(f"  [{idx:3d}] = {f:12.4f}  {tag}")
+print("\n=== reduceCacheBuf detailed ===")
+indices = [84, 85, 86, 89, 90, 127, 128, 255, 256, 383, 384, 510]
+for i, idx in enumerate(indices):
+    f = rd_f(5 + i)
     tag = "INVALID" if f > 1e29 else "OK"
-    print(f"  score[{idx}] = {f:12.4f}  {tag}")
+    print(f"  [{idx:3d}] = {f:12.4f}  {tag}")
+print(f"\n  cuS2Len = {vals[4]}")
