@@ -154,8 +154,8 @@ public:
         uint64_t delay3TaskTileIdx = 0;
 
         uint32_t coreTaskId = 0;
-        uint32_t delay20coreTaskId = 0;
-        uint32_t delay3coreTaskId = 0;
+        uint32_t delay20CoreTaskId = 0;
+        uint32_t delay3CoreTaskId = 0;
 
         uint64_t preTaskTileSum = 0;
         uint64_t delay20preTaskTileSum = 0;
@@ -167,15 +167,15 @@ public:
         TaskInfo taskInfos[PRELOAD_TASK_CACHE_SIZE] = {};
         RunInfo runInfos[PRELOAD_TASK_CACHE_SIZE] = {};
 
-        while (coreTaskId < coreTaskNum || delay20coreTaskId < coreTaskNum || delay3coreTaskId < coreTaskNum)
+        while (coreTaskId < coreTaskNum || delay20CoreTaskId < coreTaskNum || delay3CoreTaskId < coreTaskNum)
         {
             curTaskTileIdx = coreTileLoop - preTaskTileSum;
             delay20TaskTileIdx = coreTileLoop - PV_RE_DELAY_N - delay20preTaskTileSum;
             delay3TaskTileIdx = coreTileLoop - DELAY_PSCALE_N - delay3preTaskTileSum;
 
             TaskInfo &curTaskInfo = taskInfos[coreTaskId % PRELOAD_TASK_CACHE_SIZE];
-            TaskInfo &delay20TaskInfo = taskInfos[delay20coreTaskId % PRELOAD_TASK_CACHE_SIZE];
-            TaskInfo &delay3TaskInfo = taskInfos[delay3coreTaskId % PRELOAD_TASK_CACHE_SIZE];
+            TaskInfo &delay20TaskInfo = taskInfos[delay20CoreTaskId % PRELOAD_TASK_CACHE_SIZE];
+            TaskInfo &delay3TaskInfo = taskInfos[delay3CoreTaskId % PRELOAD_TASK_CACHE_SIZE];
 
             RunInfo &curRunInfo = runInfos[coreTileLoop % PRELOAD_TASK_CACHE_SIZE];
             RunInfo &delay20RunInfo = runInfos[(coreTileLoop - PV_RE_DELAY_N) % PRELOAD_TASK_CACHE_SIZE];
@@ -188,7 +188,7 @@ public:
             }
 
             // main process
-            if (coreTileLoop >= PV_RE_DELAY_N && delay20coreTaskId < coreTaskNum) {
+            if (coreTileLoop >= PV_RE_DELAY_N && delay20CoreTaskId < coreTaskNum) {
                 // delay20RunInfo = runInfos[(coreTileLoop - PV_RE_DELAY_N) % PRELOAD_TASK_CACHE_SIZE];
                 if ASCEND_IS_AIC {
                     if (delay20RunInfo.isTileGoupFirstTile) {
@@ -235,7 +235,7 @@ public:
                     }
                 }
             }
-            if (coreTileLoop >= DELAY_PSCALE_N && delay3coreTaskId < coreTaskNum) {
+            if (coreTileLoop >= DELAY_PSCALE_N && delay3CoreTaskId < coreTaskNum) {
                 // delay3RunInfo = runInfos[(coreTileLoop - DELAY_PSCALE_N) % PRELOAD_TASK_CACHE_SIZE];
                 if (delay3RunInfo.isUpdatePScale) {
                     if ASCEND_IS_AIC {
@@ -259,11 +259,11 @@ public:
             }
             if (coreTileLoop >= 20 && delay20TaskTileIdx == delay20TaskInfo.taskTileNum - 1) {
                 delay20preTaskTileSum += delay20TaskInfo.taskTileNum;
-                delay20coreTaskId++;
+                delay20CoreTaskId++;
             }
-            if (coreTileLoop >= 3 && delay3TaskTileIdx == delay3TaskInfo.taskTileNum - 1  && delay3coreTaskId < coreTaskNum) {
+            if (coreTileLoop >= 3 && delay3TaskTileIdx == delay3TaskInfo.taskTileNum - 1  && delay3CoreTaskId < coreTaskNum) {
                 delay3preTaskTileSum += delay3TaskInfo.taskTileNum;
-                delay3coreTaskId++;
+                delay3CoreTaskId++;
             }
             coreTileLoop++;
         }
@@ -584,8 +584,7 @@ public:
         info.isKvsFirstTilePerCore = (info.curKvsTileLoopIdx % TILE_GROUP_N / 2 == 0);
 
        info.kvsActBaseTile = info.isLastKvsTile ?
-            (taskInfo.gatheredKvSeqlen - (taskInfo.taskTileNum - 1) * kvBaseTile_) :
-            kvBaseTile_;    
+            (taskInfo.gatheredKvSeqlen - (taskInfo.taskTileNum - 1) * kvBaseTile_) : kvBaseTile_;    
     }
 
 private:
@@ -641,7 +640,7 @@ private:
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
 
     // ---- CreateRunInfo 持久状态 (跨 tile 保持, 参考 qfa.cpp CalcParams) ----
-    uint32_t kvsFirstStartVecCore_ = 0; // task 首 tile 时切换 (loop % 2)
+    uint32_t kvsFirstTileStartVecCore_ = 0; // task 首 tile 时切换 (loop % 2)
     uint32_t updateScaleIdx_ = 3;       // C2 Sync 时切换 (循环 0~3)
     uint32_t tileLoopIdx_ = 1;          // 双缓冲索引 (0/1)
     uint32_t tileMaxIdx_ = 3;           // 四缓冲索引 (0~3)
