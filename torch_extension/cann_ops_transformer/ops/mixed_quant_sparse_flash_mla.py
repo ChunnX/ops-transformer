@@ -136,7 +136,6 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
             if return_softmax_lse:
                 if layout_q == "TND":
                     if layout_kv == "PA_BBND":
-                        assert ori_kv.shape[2] != 0, "ori_kv.shape[2] must be non-zero for softmax_lse shape inference"
                         softmax_lse = torch.empty(
                             [
                                 ori_kv.shape[2],
@@ -147,7 +146,6 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                             device="meta",
                         )
                     else:
-                        assert ori_kv.shape[1] != 0, "ori_kv.shape[1] must be non-zero for softmax_lse shape inference"
                         softmax_lse = torch.empty(
                             [
                                 ori_kv.shape[1],
@@ -158,7 +156,6 @@ class MixedQuantSparseFlashMlaOpBuilder(OpBuilder):
                             device="meta",
                         )
                 else:
-                    assert ori_kv.shape[2] != 0, "ori_kv.shape[2] must be non-zero for softmax_lse shape inference"
                     softmax_lse = torch.empty(
                         [
                             q.shape[0],
