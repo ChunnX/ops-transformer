@@ -22,7 +22,6 @@
 #include "../common/a2av_common_tiling.h"
 #include "a2av_comm_guard.h"
 #include "a2av_comm_params.h"
-#include "a2av_permute_engine.h"
 
 using namespace AscendC;
 
@@ -60,16 +59,19 @@ public:
     __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
                                 const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
                                 GM_ADDR recvBuffer, uint32_t aivCoreNum = 1U);
+    __aicore__ inline void Init(const void *hcclInitTiling, uint64_t hcclCcTilingOffset,
+                                const TaskTilingInfo *taskTilingInfo, GM_ADDR sendBuffer,
+                                GM_ADDR recvBuffer, GM_ADDR permuteBuffer,
+                                uint32_t aivCoreNum);
     __aicore__ inline void InitScaleBuffer(GM_ADDR sendBuffer, GM_ADDR commOutBuffer, GM_ADDR permuteOutBuffer);
     __aicore__ inline void LaunchCommScale(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void LaunchCommData(uint32_t startExpertIdx, uint32_t expertNum);
-    __aicore__ inline void PermuteScale(uint32_t startExpertIdx, uint32_t expertNum);
-    __aicore__ inline void PermuteScale();
     __aicore__ inline void Launch(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void LaunchScaleBeforeCompute(uint32_t startExpertIdx, uint32_t expertNum);
     __aicore__ inline void WaitScale(uint32_t startExpertIdx);
     __aicore__ inline void Wait(uint32_t startExpertIdx);
     __aicore__ inline void WaitAll(uint32_t allNum, uint32_t step = 1U);
+    __aicore__ inline void PermuteData(uint32_t startExpertIdx, uint32_t expertNum, GM_ADDR dstBuffer);
     __aicore__ inline void End();
 
 private:
@@ -80,10 +82,11 @@ private:
     uint32_t e_ = 0U;
     uint64_t H1_ = 0UL;
     uint64_t N1_ = 0UL;
+    uint64_t bufferLen_ = 0UL;
 
     GlobalTensor<CommBufType> sendGlobalBuffer_;
     GlobalTensor<CommBufType> recvGlobalBuffer_;
-    
+    GlobalTensor<CommBufType> permuteOutBuffer_;
     GlobalTensor<fp8_e8m0_t> sendScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> recvScaleGlobalBuffer_;
     GlobalTensor<fp8_e8m0_t> scalePermuteOutBuffer_;
@@ -91,7 +94,9 @@ private:
     A2avCommParams dataCommParams_;
     A2avCommParams scaleCommParams_;
 
+    uint64_t dataSendOffsetLastSum_ = 0UL;
     uint64_t dataRecvOffsetLastSum_ = 0UL;
+    uint64_t scaleSendOffsetLastSum_ = 0UL;
     uint64_t scaleRecvOffsetLastSum_ = 0UL;
 
     uint64_t recvCounts_[MAX_EXPERT_SIZE] = {0UL};
@@ -101,19 +106,26 @@ private:
     HcclHandle alltoAllvScaleHandleId_[MAX_HANDLE_ID_NUM] = {INVALID_HANDLE_ID};
     HcclDataType hcclDataType_ = HCCL_DATA_TYPE_FP16;
 
+    uint32_t aivCoreNum_ = 40U;
     TBuf<QuePosition::VECIN> permuteTBuf_;
     TBuf<QuePosition::VECIN> permuteTBuf2_;
-
-    uint32_t aivCoreNum_ = 40U;
     bool permuteBufInitialized_ = false;
-
-    uint64_t scalePermuteBaseOffset_ = 0UL;
+    uint64_t permuteBaseOffset_ = 0UL;
+    int32_t eventID_ = 0;
 };
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::Init(
     const void *hcclInitTiling, uint64_t hcclCcTilingOffset, const TaskTilingInfo *taskTilingInfo,
-    GM_ADDR sendBuffer, GM_ADDR recvBuffer,
+    GM_ADDR sendBuffer, GM_ADDR recvBuffer, uint32_t aivCoreNum)
+{
+    Init(hcclInitTiling, hcclCcTilingOffset, taskTilingInfo, sendBuffer, recvBuffer, nullptr, aivCoreNum);
+}
+
+template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
+__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::Init(
+    const void *hcclInitTiling, uint64_t hcclCcTilingOffset, const TaskTilingInfo *taskTilingInfo,
+    GM_ADDR sendBuffer, GM_ADDR recvBuffer, GM_ADDR permuteBuffer,
     uint32_t aivCoreNum)
 {
     taskTilingInfo_ = taskTilingInfo;
@@ -125,9 +137,10 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
     e_ = taskTilingInfo_->e;
     H1_ = taskTilingInfo_->H1;
     N1_ = taskTilingInfo_->N1;
+    bufferLen_ = PERMUTE_BUF_SIZE;
     sendGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)sendBuffer);
     recvGlobalBuffer_.SetGlobalBuffer((__gm__ CommBufType *)recvBuffer);
-    
+    permuteOutBuffer_.SetGlobalBuffer((__gm__ CommBufType *)permuteBuffer);
     for (int i = 0; i < e_ * rankDim_; i++) {
         recvCounts_[i] = taskTilingInfo_->recvCnt[i];
         sendCounts_[i] = taskTilingInfo_->sendCnt[i];
@@ -162,10 +175,10 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::LaunchCommScale(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    if (!A2avAivOnly()) { return; }
+    A2AV_AIV_ONLY();
     uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
     CalcA2avCommBeforeParams(scaleCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
-                       axis, scaleRecvOffsetLastSum_);
+                       axis, scaleSendOffsetLastSum_, scaleRecvOffsetLastSum_);
     alltoAllvScaleHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
         (__gm__ uint8_t *)sendScaleGlobalBuffer_.GetPhyAddr(), scaleCommParams_.sendCnt,
             scaleCommParams_.sendOffset, HCCL_DATA_TYPE_FP8E8M0,
@@ -177,45 +190,20 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::LaunchCommData(
     uint32_t startExpertIdx, uint32_t expertNum)
 {
-    if (!A2avAivOnly()) { return; }
+    A2AV_AIV_ONLY();
     if constexpr (commBeforeComputeFlag) {
         uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
         CalcA2avCommBeforeParams(dataCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
-                        axis, dataRecvOffsetLastSum_);
+                        axis, dataSendOffsetLastSum_, dataRecvOffsetLastSum_);
     } else {
         CalcA2avCommAfterParams(dataCommParams_, sendCounts_, recvCounts_, rankDim_, e_, startExpertIdx, expertNum,
-                        N1_);
+                        N1_, dataSendOffsetLastSum_, dataRecvOffsetLastSum_);
     }
     alltoAllvHandleId_[startExpertIdx] = hccl_.template AlltoAllV<true>(
         (__gm__ uint8_t *)sendGlobalBuffer_.GetPhyAddr(), dataCommParams_.sendCnt,
             dataCommParams_.sendOffset, hcclDataType_,
         (__gm__ uint8_t *)recvGlobalBuffer_.GetPhyAddr(), dataCommParams_.recvCnt,
             dataCommParams_.recvOffset, hcclDataType_);
-}
-
-template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
-__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteScale(
-    uint32_t startExpertIdx, uint32_t expertNum)
-{
-    if (!A2avAivAll()) { return; }
-    if (!permuteBufInitialized_) {
-        TPipe *pipe = GetTPipePtr();
-        pipe->InitBuffer(permuteTBuf_, PERMUTE_BUF_SIZE);
-        pipe->InitBuffer(permuteTBuf2_, PERMUTE_BUF_SIZE);
-        permuteBufInitialized_ = true;
-    }
-    uint64_t axis = CeilDiv(H1_, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
-    PermuteImplParallel<fp8_e8m0_t, false, true>(
-        recvScaleGlobalBuffer_, scalePermuteOutBuffer_,
-        recvCounts_, e_, rankDim_, startExpertIdx, expertNum,
-        axis, scalePermuteBaseOffset_, permuteTBuf_, permuteTBuf2_, PERMUTE_BUF_SIZE,
-        aivCoreNum_);
-}
-
-template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
-__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteScale()
-{
-    PermuteScale(0, e_);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
@@ -235,14 +223,14 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::WaitScale(uint32_t startExpertIdx)
 {
-    if (!A2avAivOnly()) { return; }
+    A2AV_AIV_ONLY();
     hccl_.Wait(alltoAllvScaleHandleId_[startExpertIdx]);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::Wait(uint32_t startExpertIdx)
 {
-    if (!A2avAivOnly()) { return; }
+    A2AV_AIV_ONLY();
     hccl_.Wait(alltoAllvHandleId_[startExpertIdx]);
 }
 
@@ -250,10 +238,31 @@ template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
 __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::WaitAll(
     uint32_t allNum, uint32_t step)
 {
-    if (!A2avAivOnly()) { return; }
+    A2AV_AIV_ONLY();
     for (uint32_t i = 0U; i < allNum; i += step) {
         hccl_.Wait(alltoAllvHandleId_[i]);
     }
+}
+
+template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
+__aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>::PermuteData(
+    uint32_t startExpertIdx, uint32_t expertNum, GM_ADDR dstBuffer)
+{
+    A2AV_AIV_ALL();
+    if (!permuteBufInitialized_) {
+        TPipe *pipe = GetTPipePtr();
+        pipe->InitBuffer(permuteTBuf_, PERMUTE_BUF_SIZE);
+        pipe->InitBuffer(permuteTBuf2_, PERMUTE_BUF_SIZE);
+        permuteBufInitialized_ = true;
+    }
+    GlobalTensor<CommBufType> dstGlobalBuffer;
+    dstGlobalBuffer.SetGlobalBuffer((__gm__ CommBufType *)dstBuffer);
+    uint64_t axis = CeilDiv(H1_, PACK_FACTOR);
+    PermuteImplParallel<CommBufType, false, true>(
+        recvGlobalBuffer_, dstGlobalBuffer,
+        recvCounts_, e_, rankDim_, startExpertIdx, expertNum,
+        axis, permuteBaseOffset_, permuteTBuf_, permuteTBuf2_, bufferLen_, eventID_,
+        aivCoreNum_);
 }
 
 template <typename hcclDataType, bool commBeforeComputeFlag, int commMode>
@@ -267,4 +276,3 @@ __aicore__ inline void HcclA2avOp<hcclDataType, commBeforeComputeFlag, commMode>
 }; // namespace MC2KernelTemplate
 
 #endif
-
