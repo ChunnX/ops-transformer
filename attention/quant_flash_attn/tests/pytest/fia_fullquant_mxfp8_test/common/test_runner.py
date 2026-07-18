@@ -68,10 +68,11 @@ def execute_test(params, mode, cdir=None):
         return None, None
 
     if "cpu" in mode:
+        _sq, _skv, _, _, _, _, _, _ = golden._resolve_seq_params()
         cpu_out, cpu_lse = golden.cpu_mxfp8_golden(
             q_fp8, k_fp8, v_fp8,
             deq_q, deq_k, deq_v, p_scale,
-            golden.SEQUSED_Q, golden.SEQUSED_KV,
+            _sq, _skv,
             qr_bf16, kr_bf16,
         )
         golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
@@ -99,13 +100,14 @@ def execute_test(params, mode, cdir=None):
         return None, None
 
     compare_layout = "TND" if golden.ENABLE_PA else golden.INPUT_LAYOUT
-    cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.SEQUSED_Q, compare_layout)
+    _sq, _, _, _, _, _, _, _ = golden._resolve_seq_params()
+    cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, _sq, compare_layout)
 
     atten_result = result_compare_method.check_result(cpu_cmp, npu_out)
 
     lse_result = None
     if golden.ENABLE_LSE:
-        lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.SEQUSED_Q, compare_layout)
+        lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, _sq, compare_layout)
         lse_result = result_compare_method.check_result(lse_cmp, lse_out)
 
     return atten_result, lse_result

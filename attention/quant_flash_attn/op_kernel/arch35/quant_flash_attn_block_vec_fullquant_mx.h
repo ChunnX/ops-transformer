@@ -737,7 +737,7 @@ public:
                     vec2ResUb, vec2ResUb, sumUb, vecMSize, (uint16_t)dTemplateAlign64, deSCaleVValue);
             }
             uint32_t DealRowCount;
-            if (USE_DN) {
+            if constexpr (USE_DN) {
                 DealRowCount = runInfo.actVecMSize;
             } else {
                 uint32_t groupsOf32 = (runInfo.actMSize + 31) / 32;
