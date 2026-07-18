@@ -172,7 +172,7 @@ ge::graphStatus MQSMLATilingCheck::CheckSoftmaxLse() const
     bool returnSoftmaxLse = (opParamInfo_.returnSoftmaxLse != nullptr) ? *opParamInfo_.returnSoftmaxLse : false;
     if (returnSoftmaxLse) {
         OP_CHECK_IF(opParamInfo_.softmaxLse.shape->GetStorageShape().GetShapeSize() == 0,
-                    OP_LOGE(opName_, "When return_softmax_lse is true, softmax_lse tensor cannot be empty tensor, but got %s.",
+                    OP_LOGE(opName_, "When return_softmax_lse is true, softmax_lse cannot be empty tensor, but got %s.",
                             GetShapeStr(opParamInfo_.softmaxLse.shape->GetStorageShape()).c_str()),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.softmaxLse.desc->GetDataType() != ge::DT_FLOAT,
