@@ -12,18 +12,17 @@ ask = torch.tensor([8192.0], dtype=torch.int32).npu()
 r, v = torch_npu.npu_lightning_indexer(q, k, w, actual_seq_lengths_query=asq, actual_seq_lengths_key=ask, block_table=bt, layout_query="TND", layout_key="PA_BSND", sparse_count=512, sparse_mode=3)
 torch.npu.synchronize()
 vals = r[600, 0].cpu().tolist()
-
-print("=== s2Idx=0 ProcessVec debug ===")
-labels = ['cuS1Idx', 'cuS2Len', 'radixCuS2Len', 'cuBaseS2Idx', 's2Idx', 'gS1Idx', 'blockId']
-for i in range(7):
-    print(f"  {labels[i]:15s} = {vals[i]}")
-
-print("\n=== s2Idx=1 ProcessVec debug ===")
-for i in range(7):
-    print(f"  {labels[i]:15s} = {vals[7+i]}")
-
-print("\n=== Scores ===")
-for i, label in enumerate(['score[0]', 'score[88]', 'score[511]']):
-    f = struct.unpack('f', struct.pack('i', vals[14+i]))[0]
+def rd_f(i):
+    return struct.unpack('f', struct.pack('i', vals[i]))[0]
+print("=== reduceOutInner (after DoReduce, before DataCopyPad) ===")
+for i, idx in enumerate([0, 87, 88, 511]):
+    f = rd_f(i)
     tag = "INVALID" if f > 1e29 else "OK"
-    print(f"  {label:15s} = {f:12.4f}  {tag}")
+    print(f"  reduceOutInner[{idx}] = {f:12.4f}  {tag}")
+print(f"\n  cuS2Len = {vals[4]}")
+print(f"  gRedCnt = {vals[5]}")
+print("\n=== score (RadixTopK read from GM row 600) ===")
+for i, idx in enumerate([0, 87, 88, 511]):
+    f = rd_f(6 + i)
+    tag = "INVALID" if f > 1e29 else "OK"
+    print(f"  score[{idx}] = {f:12.4f}  {tag}")

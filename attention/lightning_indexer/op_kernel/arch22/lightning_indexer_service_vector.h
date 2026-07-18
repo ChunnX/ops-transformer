@@ -360,6 +360,23 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             outQueue_.FreeTensor(reduceCacheBuf);
             PipeBarrier<PIPE_V>();
 
+            // Debug: dump reduceCacheBuf and reduceOutInner for cuS1Idx=600, s2Idx=0
+            if (cuS1Idx == 600 && info.s2Idx == 0) {
+                uint64_t dbgRow = constInfo_.radixTotalBatch * constInfo_.radixSortLenAlign;
+                // reduceCacheBuf is already freed, but reduceOutInner should have the result
+                // Dump reduceOutInner[0,87,88,511] and gRedCnt, cuS2Len
+                float fv;
+                fv = reduceOutInner.GetValue(0);   scoreB16Gm.SetValue(dbgRow + 30, fv);
+                fv = reduceOutInner.GetValue(87);  scoreB16Gm.SetValue(dbgRow + 31, fv);
+                fv = reduceOutInner.GetValue(88);  scoreB16Gm.SetValue(dbgRow + 32, fv);
+                fv = reduceOutInner.GetValue(511); scoreB16Gm.SetValue(dbgRow + 33, fv);
+                // Also dump cuS2Len and gRedCnt
+                float fCuS2Len; *reinterpret_cast<int32_t*>(&fCuS2Len) = cuS2Len;
+                float fGRedCnt; *reinterpret_cast<int32_t*>(&fGRedCnt) = gRedCnt;
+                scoreB16Gm.SetValue(dbgRow + 40, fCuS2Len);
+                scoreB16Gm.SetValue(dbgRow + 41, fGRedCnt);
+            }
+
             if (constInfo_.radixTotalBatch > 0) {
             // RadixTopK path: write scoreB16Gm, skip Sort+MergeSort
             int32_t radixCuRealAcSeq = cuRealAcSeq;

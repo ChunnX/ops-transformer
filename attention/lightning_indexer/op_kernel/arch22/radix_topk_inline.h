@@ -64,6 +64,27 @@ __aicore__ inline void InlineRadixTopK(
     GlobalTensor<int32_t> indexGm;
     indexGm.SetGlobalBuffer((__gm__ int32_t *)indicesGmAddr);
 
+    // Debug: read ProcessVec debug for batch 600
+    if (debugBatchId == 600) {
+        float sv;
+        uint64_t dbgOffset = (8192 - 600) * 8192;
+        // reduceOutInner[0,87,88,511] at dbgOffset+30..33
+        for (uint32_t i = 0; i < 4; i++) {
+            sv = xGm.GetValue(dbgOffset + 30 + i);
+            indexGm.SetValue(i, *reinterpret_cast<int32_t *>(&sv));
+        }
+        // cuS2Len, gRedCnt at dbgOffset+40,41
+        sv = xGm.GetValue(dbgOffset + 40); indexGm.SetValue(4, *reinterpret_cast<int32_t *>(&sv));
+        sv = xGm.GetValue(dbgOffset + 41); indexGm.SetValue(5, *reinterpret_cast<int32_t *>(&sv));
+        // score[0,87,88,511]
+        sv = xGm.GetValue(0);   indexGm.SetValue(6, *reinterpret_cast<int32_t *>(&sv));
+        sv = xGm.GetValue(87);  indexGm.SetValue(7, *reinterpret_cast<int32_t *>(&sv));
+        sv = xGm.GetValue(88);  indexGm.SetValue(8, *reinterpret_cast<int32_t *>(&sv));
+        sv = xGm.GetValue(511); indexGm.SetValue(9, *reinterpret_cast<int32_t *>(&sv));
+        for (uint32_t i = 10; i < kValue; i++) { indexGm.SetValue(i, -1); }
+        return;
+    }
+
     // xBuf: float at offset 0, bf16 at offset tileLenAlign_*2 (bfloat16 elements) = tileLenAlign_*4 bytes
     LocalTensor<float> xLocalFp32 = xBuf.Get<float>();
     LocalTensor<int32_t> xLocalInt32 = xLocalFp32.template ReinterpretCast<int32_t>();
