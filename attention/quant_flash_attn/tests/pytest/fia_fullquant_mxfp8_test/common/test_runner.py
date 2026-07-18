@@ -99,13 +99,19 @@ def execute_test(params, mode, cdir=None):
         return None, None
 
     compare_layout = "TND" if golden.ENABLE_PA else golden.INPUT_LAYOUT
-    cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.SEQUSED_Q, compare_layout)
+    if compare_layout == "TND":
+        cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.SEQUSED_Q, compare_layout, cu_seqlens=golden.CU_SEQLENS_Q)
+    else:
+        cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.SEQUSED_Q, compare_layout)
 
     atten_result = result_compare_method.check_result(cpu_cmp, npu_out)
 
     lse_result = None
     if golden.ENABLE_LSE:
-        lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.SEQUSED_Q, compare_layout)
+        if compare_layout == "TND":
+            lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.SEQUSED_Q, compare_layout, cu_seqlens=golden.CU_SEQLENS_Q)
+        else:
+            lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.SEQUSED_Q, compare_layout)
         lse_result = result_compare_method.check_result(lse_cmp, lse_out)
 
     return atten_result, lse_result

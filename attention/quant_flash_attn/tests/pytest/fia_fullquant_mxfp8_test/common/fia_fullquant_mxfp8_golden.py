@@ -192,8 +192,10 @@ def broadcast_kv(num_heads, num_kv_heads, kv_tensor):
 # Layout 转换函数 - 数据 (Q/K/V)
 # ==============================================================================
 
-def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
-    """Q/K/V BNSD → 各种 layout，支持 fp8 tensor"""
+def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout, cu_seqlens=None):
+    """Q/K/V BNSD → 各种 layout，支持 fp8 tensor
+    cu_seqlens: TND layout 时用于偏移量放置，T=cu_seqlens[-1]；None 时按 seq_lens 顺序紧凑排列
+    """
     tensor = tensor_bnsd if isinstance(tensor_bnsd, torch.Tensor) else torch.as_tensor(tensor_bnsd)
     B, N, _, D = tensor.shape
     max_org_s = max(seq_lens)
@@ -205,6 +207,17 @@ def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
     elif layout == "BSH":
         return tensor[:, :, :max_org_s, :].permute(0, 2, 1, 3).reshape(B, max_org_s, N * D).contiguous()
     elif layout == "TND":
+        if cu_seqlens is not None:
+            T = cu_seqlens[-1]
+            result = torch.zeros((T, N, D), dtype=tensor.dtype, device=tensor.device)
+            for b in range(B):
+                act_s = seq_lens[b]
+                offset = cu_seqlens[b]
+                if act_s <= 0:
+                    continue
+                for n in range(N):
+                    result[offset:offset + act_s, n, :] = tensor[b, n, :act_s, :]
+            return result.contiguous()
         T = sum(seq_lens)
         result = torch.zeros((T, N, D), dtype=tensor.dtype, device=tensor.device)
         t = 0
@@ -218,8 +231,8 @@ def convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
         raise ValueError(f"Unsupported layout: {layout}")
 
 
-def convert_kv_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
-    return convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout)
+def convert_kv_bnsd_to_layout(tensor_bnsd, seq_lens, layout, cu_seqlens=None):
+    return convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout, cu_seqlens=cu_seqlens)
 
 
 def convert_qk_rope_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
@@ -315,10 +328,20 @@ def pack_v_scale_for_npu(scale_flat):
     return result
 
 
-def _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens):
-    # Q scale 已 packed: 最后一维 Dg = Dg_half * 2，需要 reshape 为 (Dg_half, 2)
+def _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens, cu_seqlens=None):
     B, N, _, Dg = scale_bnsd.shape
     Dg_half = Dg // 2
+    if cu_seqlens is not None:
+        T = cu_seqlens[-1]
+        result = torch.zeros((T, N, Dg_half, 2), dtype=scale_bnsd.dtype, device=scale_bnsd.device)
+        for b in range(B):
+            act_s = seq_lens[b]
+            offset = cu_seqlens[b]
+            if act_s <= 0:
+                continue
+            for n in range(N):
+                result[offset:offset + act_s, n, :, :] = scale_bnsd[b, n, :act_s, :].reshape(act_s, Dg_half, 2)
+        return result
     T = sum(seq_lens)
     result = torch.zeros((T, N, Dg_half, 2), dtype=scale_bnsd.dtype, device=scale_bnsd.device)
     t = 0
@@ -330,7 +353,7 @@ def _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens):
     return result
 
 
-def convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout):
+def convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, cu_seqlens=None):
     """Q scale BNSD → 各种 layout (已 packed: D//2, 2)"""
     layout = canonical_q_scale_layout(layout)
     B, N, _, Dg = scale_bnsd.shape
@@ -344,16 +367,16 @@ def convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout):
     elif layout == "BSH":
         return scale_bnsd[:, :, :max_org_s, :].permute(0, 2, 1, 3).reshape(B, max_org_s, N * Dg_half, 2)
     elif layout == "TND":
-        return _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens)
+        return _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens, cu_seqlens=cu_seqlens)
     elif layout == "N2TGD":
-        tnd_result = _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens)
+        tnd_result = _convert_q_scale_bnsd_to_tnd(scale_bnsd, seq_lens, cu_seqlens=cu_seqlens)
         return convert_q_scale_tnd_to_n2tgd_layout(tnd_result, N_kv)
     else:
         raise ValueError(f"Unsupported layout: {layout}")
 
 
-def convert_k_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout):
-    return convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout)
+def convert_k_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, cu_seqlens=None):
+    return convert_q_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, cu_seqlens=cu_seqlens)
 
 
 def convert_v_scale_bnsd_to_layout(scale_bnsd, seq_lens, layout, group_size=32):
@@ -878,7 +901,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
                           "Please check that cann_ops_transformer is installed and all .so are compiled.")
 
     cu_seqlens_q_t = torch.tensor(cu_seqlens_q, dtype=torch.int32).npu()
-    cu_seqlens_kv_t = torch.tensor(cu_seqlens_kv, dtype=torch.int32).npu()
+    cu_seqlens_kv_t = torch.tensor(cu_seqlens_kv, dtype=torch.int32).npu() if cu_seqlens_kv is not None else None
     seqused_q_t = torch.tensor(seqused_q, dtype=torch.int32).npu()
     seqused_kv_t = torch.tensor(seqused_kv, dtype=torch.int32).npu()
 
@@ -987,11 +1010,11 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
     logger.info("[NPU] Q layout: q_layout=%s, G=%d", q_runtime_layout, q_group)
 
     npu_input_layout = "TND" if ENABLE_PA else INPUT_LAYOUT
-    q_npu = convert_q_bnsd_to_layout(q_fp8, SEQUSED_Q, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
+    q_npu = convert_q_bnsd_to_layout(q_fp8, SEQUSED_Q, npu_input_layout, cu_seqlens=CU_SEQLENS_Q).contiguous().view(FP8_DTYPE).npu()
     logger.info("[NPU %s] q=%s", npu_input_layout, q_npu.shape)
 
     q_scale_e8m0 = fp32_to_e8m0fnu_safe(
-        convert_q_scale_bnsd_to_layout(dequant_scale_q, SEQUSED_Q, q_runtime_layout), "Q scale")
+        convert_q_scale_bnsd_to_layout(dequant_scale_q, SEQUSED_Q, q_runtime_layout, cu_seqlens=CU_SEQLENS_Q), "Q scale")
     deq_q_npu = q_scale_e8m0.npu()
     logger.info("[NPU] Q scale layout=%s, shape=%s", q_runtime_layout, q_scale_e8m0.shape)
 
@@ -1059,12 +1082,12 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             N_q, N_kv, softmax_scale, "TND", q_runtime_layout, pa_layout_kv, "TND", BLOCK_SIZE, SPARSE_MODE, out_dtype)
     else:
         # 非 PA 模式: K/V 按 INPUT_LAYOUT 转换
-        k_npu = convert_kv_bnsd_to_layout(k_fp8, SEQUSED_KV, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
-        v_npu = convert_kv_bnsd_to_layout(v_fp8, SEQUSED_KV, npu_input_layout).contiguous().view(FP8_DTYPE).npu()
+        k_npu = convert_kv_bnsd_to_layout(k_fp8, SEQUSED_KV, npu_input_layout, cu_seqlens=CU_SEQLENS_KV).contiguous().view(FP8_DTYPE).npu()
+        v_npu = convert_kv_bnsd_to_layout(v_fp8, SEQUSED_KV, npu_input_layout, cu_seqlens=CU_SEQLENS_KV).contiguous().view(FP8_DTYPE).npu()
         logger.info("[NPU %s] k=%s, v=%s", npu_input_layout, k_npu.shape, v_npu.shape)
 
         k_scale_e8m0 = fp32_to_e8m0fnu_safe(
-            convert_k_scale_bnsd_to_layout(dequant_scale_k, SEQUSED_KV, npu_input_layout), "K scale")
+            convert_k_scale_bnsd_to_layout(dequant_scale_k, SEQUSED_KV, npu_input_layout, cu_seqlens=CU_SEQLENS_KV), "K scale")
         v_scale_e8m0 = fp32_to_e8m0fnu_safe(
             convert_v_scale_bnsd_to_layout(dequant_scale_v, SEQUSED_KV, npu_input_layout), "V scale")
         deq_k_npu = k_scale_e8m0.npu()
@@ -1079,8 +1102,7 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             N_q, N_kv, softmax_scale, npu_input_layout, q_runtime_layout, npu_input_layout, npu_input_layout, 0, SPARSE_MODE, out_dtype)
 
     npu_output = atten_out
-    T_actual = cu_seqlens_q[-1]
-    # NPU 输出可能包含 padding，截取到实际序列长度
+    T_actual = cu_seqlens_q[-1] if cu_seqlens_q is not None else sum(seqused_q)
     if npu_output.shape[0] > T_actual:
         npu_output = npu_output[:T_actual]
     logger.info("[NPU] output=%s", npu_output.shape)
@@ -1189,10 +1211,10 @@ if __name__ == '__main__':
         exit(0)
 
     logger.info("\n[Step 4] Atten OUT 精度对比")
-    cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out, SEQUSED_Q, "TND")
+    cpu_tnd_torch = convert_q_bnsd_to_layout(cpu_out, SEQUSED_Q, "TND", cu_seqlens=CU_SEQLENS_Q)
     result_compare_method.check_result(cpu_tnd_torch, atten_out)
 
     if ENABLE_LSE:
         logger.info("\n[Step 5] LSE 精度对比")
-        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_lse, SEQUSED_Q, "TND")
+        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_lse, SEQUSED_Q, "TND", cu_seqlens=CU_SEQLENS_Q)
         result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)
