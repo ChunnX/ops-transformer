@@ -54,7 +54,9 @@ public:
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
-        __gm__ uint8_t *cmpKvOut);
+        __gm__ uint8_t *cmpKvOut,
+        __gm__ uint8_t *softmaxScoreOut,
+        __gm__ uint8_t *kvOut);
     // =================================资源管理=================================
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void AllocEventID();
@@ -180,6 +182,8 @@ private:
     GlobalTensor<T> stateCacheGm_;
     GlobalTensor<T> apeGm_;
     GlobalTensor<X_T> cmpKvOutGm_;
+    GlobalTensor<T> softmaxScoreOutGm_;
+    GlobalTensor<T> kvOutGm_;
 
     // ================================Local Buffer区====================================
     // TBuf<TPosition::VECIN> mm1ResUb;
@@ -215,12 +219,15 @@ template <typename COMP>
 __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::Init(
     __gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate, __gm__ uint8_t *stateCache,
     __gm__ uint8_t *ape, __gm__ uint8_t *stateBlockTable, __gm__ uint8_t *cuSeqlens,
-    __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut)
+    __gm__ uint8_t *seqUsed, __gm__ uint8_t *startPos, __gm__ uint8_t *cmpKvOut,
+    __gm__ uint8_t *softmaxScoreOut, __gm__ uint8_t *kvOut)
 {
     stateBlockTableGm_.SetGlobalBuffer((__gm__ int32_t *)stateBlockTable);
     stateCacheGm_.SetGlobalBuffer((__gm__ T *)stateCache);
     apeGm_.SetGlobalBuffer((__gm__ T *)ape);
     cmpKvOutGm_.SetGlobalBuffer((__gm__ X_T *)cmpKvOut);
+    softmaxScoreOutGm_.SetGlobalBuffer((__gm__ T *)softmaxScoreOut);
+    kvOutGm_.SetGlobalBuffer((__gm__ T *)kvOut);
     isExistSeqUsed_ = (seqUsed != nullptr);
     isExistStartPos_ = (startPos != nullptr);
     if constexpr (COMP::xLayout == X_LAYOUT::TH) {
