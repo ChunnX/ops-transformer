@@ -366,7 +366,8 @@ ge::graphStatus CompressorTiling::GenTilingKey() const
         dtype,
         coff,
         cacheMode,
-        templateId
+        templateId,
+        0 // grad_enabled: arch22不支持，固定为0
     );
     OP_LOGI(context_->opName,
             "Compressor dtype:%hhu layout:%hhu  coff:%hhu, cacheMode: %u, template_id:%hhu", dtype,

@@ -43,6 +43,8 @@ public:
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
         __gm__ uint8_t *cmpKvOut,
+        __gm__ uint8_t *softmaxScoreOut,
+        __gm__ uint8_t *kvOut,
         __gm__ uint8_t *workspace);
     __aicore__ inline void Process();
 
@@ -117,6 +119,8 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Init(
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
         __gm__ uint8_t *cmpKvOut,
+        __gm__ uint8_t *softmaxScoreOut,
+        __gm__ uint8_t *kvOut,
         __gm__ uint8_t *workspace)
 {
     if ASCEND_IS_AIV {
@@ -162,7 +166,7 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Init(
     } else {
         blockVec_.InitParams(constInfo, tools_);
         blockVec_.Init(x, wKv, wGate, stateCache, ape, stateBlockTable,
-                        cuSeqlens, seqUsed, startPos, cmpKvOut);
+                        cuSeqlens, seqUsed, startPos, cmpKvOut, softmaxScoreOut, kvOut);
         blockVec_.InitBuffers(pipe_);
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm);
     }
