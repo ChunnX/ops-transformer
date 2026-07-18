@@ -722,20 +722,12 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             if (outputIdxOffset != 0) {
                 topkb16gather::IndicesAddOffset(indicesOutLocal_, outputIdxOffset, constInfo_.sparseCount);
             }
-            // 如果需要LD 则将需要保存Value值
-            if (info.isNeedLD) {
-                copyInParams.blockLen = validS2Len * sizeof(SCORE_T);
+            // LD或returnValue场景需要将score搬入scoreOutLocal_
+            if (info.isNeedLD || returnValueFlag) {
+                copyInParams.blockLen = QLIV2Common::Align(validS2Len, (int32_t)32) * sizeof(SCORE_T);
                 AscendC::DataCopyPad(scoreOutLocal_,
                     scoreGm[vecOffset * QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)
                     + ldDstOffset], copyInParams, padParams);
-                SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-            } else if (returnValueFlag) {
-                copyInParams.blockLen = QLIV2Common::Align(validS2Len, (int32_t)32) * sizeof(SCORE_T);
-                AscendC::DataCopyPad(scoreOutLocal_,
-                            scoreGm[vecOffset * QLIV2Common::Align(
-                                (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_)],
-                            copyInParams, padParams);
                 SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                 WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
             }
