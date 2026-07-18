@@ -964,49 +964,79 @@ def cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                     #   C1V1-0: Q(最多 128) x K(最多 256 token)
                     #   C1V1-1: Q(最多 128) x K(最多 256 token)
                     #   C2V2:   P(最多 128 x 512) x V(最多 512 x D)
-                    # 如果最后一轮只剩一个 C1V1 chunk，round_end 只覆盖实际存在的 KV token。
-                    round_start = chunk_offsets[round_idx][0]
-                    round_end = chunk_offsets[min(round_idx + 1, len(chunk_offsets) - 1)][1]
+                    # common MX 的两个 VF 会分别计算并量化各自的 256 列 P；第二个 VF 得到更大的
+                    # aligned max 时，由 C2 的随路 PScale 将前一块重新缩放到最终 max 基准。
+                    subloop_results = []
+                    m_before_round = m_run
+                    m_subloop = m_run
+                    round_has = torch.zeros((nq,), dtype=torch.bool)
+                    round_end_idx = min(round_idx + 2, len(chunk_offsets))
+                    for subloop_idx in range(round_idx, round_end_idx):
+                        subloop_start, subloop_end = chunk_offsets[subloop_idx]
+                        s_subloop = scores[:, subloop_start:subloop_end]
+                        vm_subloop = valid_mask[:, subloop_start:subloop_end]
+                        subloop_has = vm_subloop.any(dim=-1)
+                        round_has |= subloop_has
 
-                    # s_round/vm_round 是本轮最多 512 个 KV token 对应的 score 和有效 mask。
-                    # round_max 必须基于整轮两个 C1V1 的 score 共同计算，之后 C2V2 使用同一个 m_new。
-                    s_round = scores[:, round_start:round_end]
-                    vm_round = valid_mask[:, round_start:round_end]
-                    masked_scores = torch.where(vm_round, s_round, torch.full_like(s_round, neg_inf))
-                    round_max = _align_up_to_ln2(masked_scores.max(dim=-1).values)
-                    round_has = vm_round.any(dim=-1)
+                        masked_scores = torch.where(
+                            vm_subloop, s_subloop, torch.full_like(s_subloop, neg_inf))
+                        local_max = _align_up_to_ln2(masked_scores.max(dim=-1).values)
+                        subloop_started = m_subloop != neg_inf
+                        m_candidate = torch.where(
+                            subloop_started, torch.maximum(m_subloop, local_max), local_max)
+                        m_candidate = _align_up_to_ln2(m_candidate)
+                        m_subloop = torch.where(subloop_has, m_candidate, m_subloop)
 
-                    # online softmax 状态：m_run/l_run/acc 分别是历史 KV round 的 aligned max、sum、PV 累加。
-                    # VF 会执行 ceil(max / ln2) * ln2，这里同步使用 ln2 对齐后的 max。
-                    run_started = m_run != neg_inf
-                    m_new = torch.where(run_started, torch.maximum(m_run, round_max), round_max)
-                    m_new = _align_up_to_ln2(m_new)
-                    m_new = torch.where(round_has, m_new, m_run)
+                        # 输入 quantScale1 通过 max-ln(pScale) 进入 exp；P 在当前 256 列的 max
+                        # 基准下立即 cast，保持与 ProcessVec1VfDnMxfp8 的执行顺序一致。
+                        safe_m_subloop = torch.where(
+                            torch.isfinite(m_subloop), m_subloop, torch.zeros_like(m_subloop))
+                        p_subloop = torch.exp(
+                            s_subloop - safe_m_subloop.view(nq, 1) + ln_p_scale)
+                        p_subloop = torch.where(
+                            vm_subloop & subloop_has.view(nq, 1),
+                            p_subloop,
+                            torch.zeros_like(p_subloop),
+                        )
+                        p_quant_subloop = p_subloop.to(FP8_DTYPE).to(torch.float32)
+                        subloop_results.append(
+                            (subloop_start, subloop_end, m_subloop.clone(), p_subloop, p_quant_subloop))
 
-                    # 历史 acc/l_run 需要按 exp(aligned_m_old - aligned_m_new) 重标定到新的 max 基准。
-                    # 对从未启动过的行，rescale=0，避免 -inf 参与 exp 产生 NaN。
-                    rescale = torch.where(run_started, torch.exp(m_run - m_new), torch.zeros_like(m_run))
-                    rescale = torch.where(torch.isfinite(rescale), rescale, torch.zeros_like(rescale))
+                    m_new = m_subloop
+                    run_started = m_before_round != neg_inf
+                    history_rescale = torch.where(
+                        run_started & torch.isfinite(m_new),
+                        torch.exp(m_before_round - m_new),
+                        torch.zeros_like(m_new),
+                    )
+                    history_rescale = torch.where(
+                        torch.isfinite(history_rescale), history_rescale, torch.zeros_like(history_rescale))
 
-                    # 与 common MX 一致：VF 先保存原始 aligned max，再用 max-ln(pScale) 计算 P。
-                    # 因此 P 和 softmax sum 都包含 pScale，最终 OUT 归一化时该系数会相消。
-                    p_round = torch.exp(s_round - m_new.view(nq, 1) + ln_p_scale)
-                    p_round = torch.where(vm_round, p_round, torch.zeros_like(p_round))
-                    p_round = torch.where(round_has.view(nq, 1), p_round, torch.zeros_like(p_round))
-                    p_quant = p_round.to(FP8_DTYPE).to(torch.float32)
+                    pv = torch.zeros_like(acc)
+                    round_sum = torch.zeros_like(l_run)
+                    for subloop_start, subloop_end, subloop_max, p_subloop, p_quant_subloop in subloop_results:
+                        subloop_rescale = torch.where(
+                            torch.isfinite(subloop_max) & torch.isfinite(m_new),
+                            torch.exp(subloop_max - m_new),
+                            torch.zeros_like(m_new),
+                        )
+                        subloop_rescale = torch.where(
+                            torch.isfinite(subloop_rescale), subloop_rescale, torch.zeros_like(subloop_rescale))
 
-                    # C2V2 阶段读取与本轮 K token 完全对应的 V token。
-                    # round_pos_tensor 覆盖本轮最多 512 个 KV token；尾轮只处理实际 token。
-                    round_pos_tensor = pos_tensor[round_start:round_end]
-                    v_mat = v_tensor[batch_idx, n2_idx, round_pos_tensor, :]
-                    v_group_idx = torch.div(round_pos_tensor, QUANT_GROUP_SIZE, rounding_mode="floor")
-                    v_scale_mat = v_scale[batch_idx, n2_idx, v_group_idx, :].to(torch.float32)
-                    v_dequant = v_mat * v_scale_mat
+                        subloop_pos_tensor = pos_tensor[subloop_start:subloop_end]
+                        v_mat = v_tensor[batch_idx, n2_idx, subloop_pos_tensor, :]
+                        v_group_idx = torch.div(
+                            subloop_pos_tensor, QUANT_GROUP_SIZE, rounding_mode="floor")
+                        v_scale_mat = v_scale[batch_idx, n2_idx, v_group_idx, :].to(torch.float32)
+                        v_dequant = v_mat * v_scale_mat
 
-                    # 完成本轮 C2V2，并把历史 online 状态推进到 m_new 基准。
-                    pv = torch.matmul(p_quant, v_dequant)
-                    acc = acc * rescale.view(nq, 1) + pv
-                    l_run = l_run * rescale + p_round.sum(dim=-1)
+                        # 先 cast(P)，再通过随路 PScale 对齐 max；不能改成 cast(P * PScale)。
+                        pv += torch.matmul(
+                            p_quant_subloop * subloop_rescale.view(nq, 1), v_dequant)
+                        round_sum += p_subloop.sum(dim=-1) * subloop_rescale
+
+                    acc = acc * history_rescale.view(nq, 1) + pv
+                    l_run = l_run * history_rescale + round_sum
                     m_run = torch.where(round_has, m_new, m_run)
 
                 any_valid = valid_mask.any(dim=-1)
