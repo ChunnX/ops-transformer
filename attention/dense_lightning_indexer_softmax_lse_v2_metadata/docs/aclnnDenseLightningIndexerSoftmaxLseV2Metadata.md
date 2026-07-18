@@ -4,21 +4,21 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| Ascend 950PR/Ascend 950DT                                   |    √     |
-| Atlas A3训练系列产品/Atlas A3推理系列产品                 |    x     |
-| Atlas A2训练系列产品/Atlas A2推理系列产品                 |    x     |
-| Atlas 200I/500 A2推理产品                                  |    x     |
-| Atlas推理系列产品                                          |    x     |
-| Atlas训练系列产品                                          |    x     |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |    √     |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>     |    ×     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>     |    ×     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    ×     |
+| <term>Atlas 推理系列产品</term>                              |    ×     |
+| <term>Atlas 训练系列产品</term>                              |    ×     |
 
 ## 功能说明
 
-- 算子功能：该算子为AICPU算子，是aclnnDenseLightningIndexerSoftmaxLse算子的前置算子。根据aclnnDenseLightningIndexerSoftmaxLse算子的输入shape、layout、mask和压缩比例信息，计算并输出分核切分metadata。输出结果可作为aclnnDenseLightningIndexerSoftmaxLse算子的metadataOptional输入，减少主算子tiling阶段对host array的访问。
+- 算子功能：该算子为AICPU算子，是aclnnDenseLightningIndexerSoftmaxLseV2算子的前置算子。根据aclnnDenseLightningIndexerSoftmaxLseV2算子的输入shape、layout、mask和压缩比例信息，计算并输出分核切分metadata。输出结果可作为aclnnDenseLightningIndexerSoftmaxLseV2算子的metadataOptional输入，减少主算子tiling阶段对host array的访问。
 
-  **该算子不建议单独使用，建议与aclnnDenseLightningIndexerSoftmaxLse算子配合使用，形成完整的工作流。**
+  **该算子不建议单独使用，建议与aclnnDenseLightningIndexerSoftmaxLseV2算子配合使用，形成完整的工作流。**
     1. 接收主算子的shape信息，包括batchSize、maxSeqLenQ、maxSeqLenK、numHeadsQ、numHeadsK、headDim、layout和mask信息。
     2. 根据layout和可选输入seqUsedQOptional计算参与负载均衡的seq总数，采用strided方式将任务均衡切分到可用AIC核上。
-    3. 输出metadata后，后续作为aclnnDenseLightningIndexerSoftmaxLse算子的metadataOptional输入使用。
+    3. 输出metadata后，后续作为aclnnDenseLightningIndexerSoftmaxLseV2算子的metadataOptional输入使用。
 
 ## 函数原型
 
@@ -115,8 +115,8 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
     <tr>
       <td>seqUsedKOptional</td>
       <td>输入</td>
-      <td>预留接口参数，表示不同batch中key实际参与运算的sequence length。</td>
-      <td>支持空Tensor。当前kernel路径暂不使用。</td>
+      <td>表示不同batch中key实际参与运算的sequence length。</td>
+      <td>支持空Tensor。当该入参存在时，seqused_k的值不大于各batch的实际seqlen_k。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape为(B,)</td>
@@ -125,8 +125,8 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
     <tr>
       <td>cmpResidualKOptional</td>
       <td>输入</td>
-      <td>预留接口参数，表示不同batch中key的sequence length与cmpRatio相关的残差。</td>
-      <td>支持空Tensor。当前kernel路径暂不使用。</td>
+      <td>表示不同batch中key的sequence length与cmpRatio相关的残差。</td>
+      <td>支持空Tensor。当maskMode=3且cmpRatio>1时必须传入，且每个值必须小于cmpRatio。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape为(B,)</td>
@@ -166,7 +166,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
       <td>numHeadsQ</td>
       <td>输入</td>
       <td>表示query的head个数。</td>
-      <td>必须为正数，并且能被numHeadsK整除。</td>
+      <td>必须为正数，取值范围[1, 128]，并且能被numHeadsK整除。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -176,7 +176,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
       <td>numHeadsK</td>
       <td>输入</td>
       <td>表示key的head个数。</td>
-      <td>必须为正数。</td>
+      <td>必须为正数。当前仅支持1。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -186,7 +186,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
       <td>headDim</td>
       <td>输入</td>
       <td>表示q/k的head dimension。</td>
-      <td>必须为正数。</td>
+      <td>必须为正数。当前仅支持128。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -206,7 +206,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
       <td>layoutK</td>
       <td>输入</td>
       <td>表示key侧的排列格式。</td>
-      <td>支持BSND/TND，默认值为BSND。</td>
+      <td>支持BSND/TND，默认值为BSND。必须与layoutQ保持一致。</td>
       <td>STRING</td>
       <td>-</td>
       <td>-</td>
@@ -236,7 +236,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
       <td>metadata</td>
       <td>输出</td>
       <td>表示负载均衡结果输出。</td>
-      <td>输出结果作为aclnnDenseLightningIndexerSoftmaxLse的metadataOptional输入。</td>
+      <td>输出结果作为aclnnDenseLightningIndexerSoftmaxLseV2的metadataOptional输入。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1维，shape固定为(64,)</td>
@@ -363,13 +363,20 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2Metadata(
     - BSND场景下，通过maxSeqLenQ和maxSeqLenK获取q/k长度。
   - layout约束
     - layoutQ必须为BSND或TND。
-    - layoutK支持BSND和TND，建议与layoutQ保持一致。
+    - layoutK支持BSND和TND，必须与layoutQ保持一致。
   - head约束
-    - numHeadsQ、numHeadsK和headDim必须为正数。
-    - numHeadsQ必须能被numHeadsK整除。
+    - numHeadsQ取值范围为[1, 128]，必须能被numHeadsK整除。
+    - numHeadsK当前仅支持1。
+    - headDim当前仅支持128。
   - 负载均衡约束
     - cmpRatio取值范围为[1, 128]。
     - maskMode当前仅支持0和3。
+  - cmp_residual_k约束
+    - 当maskMode=3且cmpRatio>1时，必须传入cmpResidualKOptional。
+    - cmpResidualKOptional的每个值必须小于cmpRatio。
+  - seqused约束
+    - seqUsedQOptional的每个值不大于各batch的实际seqlen_q。
+    - seqUsedKOptional的每个值不大于各batch的实际seqlen_k。
 
 </details>
 
@@ -685,4 +692,4 @@ int main() {
 
 | 调用方式  | 样例代码 | 说明 |
 | ----------- | -------- | ---- |
-| aclnn接口 | [调用示例](#调用示例) | 通过`aclnnDenseLightningIndexerSoftmaxLseV2Metadata`接口方式调用，输出metadata供`aclnnDenseLightningIndexerSoftmaxLse`使用。 |
+| aclnn接口 | [调用示例](#调用示例) | 通过`aclnnDenseLightningIndexerSoftmaxLseV2Metadata`接口方式调用，输出metadata供`aclnnDenseLightningIndexerSoftmaxLseV2`使用。 |

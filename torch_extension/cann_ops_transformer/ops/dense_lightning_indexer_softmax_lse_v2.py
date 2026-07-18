@@ -17,14 +17,14 @@ from cann_ops_transformer.op_builder.builder import OpBuilder
 
 
 DLI_METADATA_SIZE = 64
-DLI_METADATA_OP_NAME = "dense_lightning_indexer_softmax_lse_v2_metadata"
-DLI_OP_NAME = "dense_lightning_indexer_softmax_lse_v2"
+DLI_METADATA_OP_NAME = "dense_lightning_indexer_softmax_lse_metadata"
+DLI_OP_NAME = "dense_lightning_indexer_softmax_lse"
 
 
 class DenseLightningIndexerSoftmaxLseV2OpBuilder(OpBuilder):
     def __init__(self):
         super(DenseLightningIndexerSoftmaxLseV2OpBuilder, self).__init__(
-            "dense_lightning_indexer_softmax_lse_v2"
+            "dense_lightning_indexer_softmax_lse"
         )
 
     def sources(self):
@@ -32,7 +32,7 @@ class DenseLightningIndexerSoftmaxLseV2OpBuilder(OpBuilder):
 
     def schema(self) -> str:
         return [
-            "dense_lightning_indexer_softmax_lse_v2_metadata("
+            "dense_lightning_indexer_softmax_lse_metadata("
             "int num_heads_q, int num_heads_k, int head_dim, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, "
             "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, int? batch_size=None, "
@@ -40,7 +40,7 @@ class DenseLightningIndexerSoftmaxLseV2OpBuilder(OpBuilder):
             "str? layout_q=None, str? layout_k=None, int? mask_mode=None, "
             "int? cmp_ratio=None) -> Tensor",
 
-            "dense_lightning_indexer_softmax_lse_v2("
+            "dense_lightning_indexer_softmax_lse("
             "Tensor query_index, Tensor key_index, Tensor weight, *, "
             "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, "
             "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, Tensor? metadata=None, "
@@ -50,7 +50,7 @@ class DenseLightningIndexerSoftmaxLseV2OpBuilder(OpBuilder):
 
     def register_meta(self):
         @torch.library.register_fake("cann_ops_transformer::" + DLI_METADATA_OP_NAME)
-        def dense_lightning_indexer_softmax_lse_v2_metadata_meta(
+        def dense_lightning_indexer_softmax_lse_metadata_meta(
             num_heads_q,
             num_heads_k,
             head_dim,
@@ -71,7 +71,7 @@ class DenseLightningIndexerSoftmaxLseV2OpBuilder(OpBuilder):
             return torch.empty((DLI_METADATA_SIZE,), dtype=torch.int32, device="meta")
 
         @impl(AS_LIBRARY, self.name, "Meta")
-        def dense_lightning_indexer_softmax_lse_v2_meta(
+        def dense_lightning_indexer_softmax_lse_meta(
             query_index,
             key_index,
             weight,
@@ -99,7 +99,7 @@ op_module = dense_lightning_indexer_softmax_lse_v2_op_builder.load()
 
 
 @impl(AS_LIBRARY, DLI_METADATA_OP_NAME, "PrivateUse1")
-def dense_lightning_indexer_softmax_lse_v2_metadata(
+def dense_lightning_indexer_softmax_lse_metadata(
     num_heads_q,
     num_heads_k,
     head_dim,
@@ -170,7 +170,7 @@ def dense_lightning_indexer_softmax_lse_v2_metadata(
 
 
 @torch.library.register_kernel("cann_ops_transformer::" + DLI_METADATA_OP_NAME, None)
-def dense_lightning_indexer_softmax_lse_v2_metadata_fallback(
+def dense_lightning_indexer_softmax_lse_metadata_fallback(
     num_heads_q,
     num_heads_k,
     head_dim,
@@ -188,7 +188,7 @@ def dense_lightning_indexer_softmax_lse_v2_metadata_fallback(
     mask_mode=None,
     cmp_ratio=None,
 ):
-    return dense_lightning_indexer_softmax_lse_v2_metadata(
+    return dense_lightning_indexer_softmax_lse_metadata(
         num_heads_q,
         num_heads_k,
         head_dim,
@@ -207,11 +207,11 @@ def dense_lightning_indexer_softmax_lse_v2_metadata_fallback(
     )
 
 
-torch.compiler.allow_in_graph(dense_lightning_indexer_softmax_lse_v2_metadata)
+torch.compiler.allow_in_graph(dense_lightning_indexer_softmax_lse_metadata)
 
 
 @impl(AS_LIBRARY, DLI_OP_NAME, "PrivateUse1")
-def dense_lightning_indexer_softmax_lse_v2(
+def dense_lightning_indexer_softmax_lse(
     query_index: torch.Tensor,
     key_index: torch.Tensor,
     weight: torch.Tensor,
@@ -270,7 +270,7 @@ def dense_lightning_indexer_softmax_lse_v2(
 
 
 @torch.library.register_kernel("cann_ops_transformer::" + DLI_OP_NAME, None)
-def dense_lightning_indexer_softmax_lse_v2_fallback(
+def dense_lightning_indexer_softmax_lse_fallback(
     query_index,
     key_index,
     weight,
@@ -286,7 +286,7 @@ def dense_lightning_indexer_softmax_lse_v2_fallback(
     mask_mode=0,
     cmp_ratio=1,
 ):
-    return dense_lightning_indexer_softmax_lse_v2(
+    return dense_lightning_indexer_softmax_lse(
         query_index,
         key_index,
         weight,
@@ -303,4 +303,4 @@ def dense_lightning_indexer_softmax_lse_v2_fallback(
     )
 
 
-torch.compiler.allow_in_graph(dense_lightning_indexer_softmax_lse_v2)
+torch.compiler.allow_in_graph(dense_lightning_indexer_softmax_lse)
