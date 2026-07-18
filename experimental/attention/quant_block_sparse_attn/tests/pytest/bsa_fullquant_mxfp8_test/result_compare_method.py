@@ -206,7 +206,7 @@ def check_result(expect, npu_result):
     if err_diff.numel() > 0:
         logger.info('Max-RelativeError is: %s. Threshold is: %s.', max_error, max_diff_hd)
 
-    if result == "Failed":
+    if err_diff.numel() > 0:
         display_error_output_torch(real_data, expect_data, err_idx, err_diff)
 
     return result, fulfill_percent, max_error
