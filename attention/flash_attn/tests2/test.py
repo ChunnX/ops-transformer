@@ -67,12 +67,11 @@ def _collect_cases(case_set, case_id_opt):
 
 
 def _make_reporter():
-    """构造 Reporter 并绑定带时间戳的结果 CSV (每次运行独立文件)。"""
+    """构造 Reporter, 绑定批次目录 run_<ts>/ (precision.csv + perf.csv)。
+    summary.csv 固定放 result 根, 跨批次累积合并精度+性能。"""
     rep = Reporter()
-    result_dir = Path("result")
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    rep.set_csv(result_dir / f"result_{ts}.csv")
-    rep.set_perf_csv(result_dir / f"perf_summary_{ts}.csv")
+    rep.set_run_dir(Path("result") / f"run_{ts}")
     return rep
 
 

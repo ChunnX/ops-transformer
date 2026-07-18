@@ -39,30 +39,32 @@ class Reporter:
         self._results = {}
         self._dtypes = {}
         self._perfs = {}
+        self._run_dir = None
         self._csv_file = None
         self._csv_writer = None
         self._perf_csv_file = None
         self._perf_csv_writer = None
+        self._summary_path = None
 
-    def set_csv(self, path: Path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        exists = path.exists()
-        self._csv_file = open(path, "a", newline="")
+    def set_run_dir(self, run_dir: Path):
+        """设置批次目录, 在其下创建 precision.csv / perf.csv。
+        summary.csv 固定放 result 根, 跨批次累积。"""
+        run_dir.mkdir(parents=True, exist_ok=True)
+        self._run_dir = run_dir
+        result_root = run_dir.parent
+        self._summary_path = result_root / "summary.csv"
+
+        self._csv_file = open(run_dir / "precision.csv", "a", newline="")
         self._csv_writer = csv.DictWriter(self._csv_file, CSV_HEADERS)
-        if not exists:
-            self._csv_writer.writeheader()
-            self._csv_file.flush()
+        self._csv_writer.writeheader()
+        self._csv_file.flush()
 
-    def set_perf_csv(self, path: Path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        exists = path.exists()
-        self._perf_csv_file = open(path, "a", newline="")
+        self._perf_csv_file = open(run_dir / "perf.csv", "a", newline="")
         self._perf_csv_writer = csv.DictWriter(
             self._perf_csv_file,
             ["case", "rule", "runs", "avg_us", "trimmed", "raw", "error"])
-        if not exists:
-            self._perf_csv_writer.writeheader()
-            self._perf_csv_file.flush()
+        self._perf_csv_writer.writeheader()
+        self._perf_csv_file.flush()
 
     def record(self, name: str, result: dict, error: str = None, dtype: str = ""):
         if error:
@@ -119,7 +121,42 @@ class Reporter:
 
     def print_final(self) -> int:
         self.close()
+        self.write_summary()
         return self._print_table(self._results, self._dtypes, len(self._results), is_final=True)
+
+    def write_summary(self):
+        """合并精度+性能写 summary.csv (跨批次累积, 同 case 覆盖)。
+        没跑性能的 case, 性能列为空。"""
+        if not self._summary_path:
+            return
+        # 读已有 summary, 同 case 覆盖
+        existing = {}
+        if self._summary_path.exists():
+            with open(self._summary_path, newline="") as f:
+                for r in csv.DictReader(f):
+                    existing[r["case"]] = r
+        headers = ["case", "dtype", "pass", "max_abs", "fail_ratio",
+                   "perf_avg_us", "perf_rule", "error"]
+        for name, res in self._results.items():
+            row = existing.get(name, {"case": name})
+            row["case"] = name
+            row["dtype"] = self._dtypes.get(name, "")
+            # 精度: 取第一个 dict key 的指标
+            prec = next((v for v in res.values() if isinstance(v, dict)), {})
+            row["pass"] = prec.get("passed", "")
+            row["max_abs"] = f"{prec['max_abs']:.6f}" if "max_abs" in prec else ""
+            row["fail_ratio"] = f"{prec['fail_ratio']:.4f}" if "fail_ratio" in prec else ""
+            row["error"] = res.get("error", "") or ""
+            # 性能: 有则填, 无则空
+            perf = self._perfs.get(name, {})
+            row["perf_avg_us"] = f"{perf['avg']:.3f}" if "avg" in perf else ""
+            row["perf_rule"] = perf.get("rule", "")
+            existing[name] = row
+        with open(self._summary_path, "w", newline="") as f:
+            w = csv.DictWriter(f, headers)
+            w.writeheader()
+            for row in existing.values():
+                w.writerow({k: row.get(k, "") for k in headers})
 
     @staticmethod
     def _print_table(results: dict, dtypes: dict, total: int, is_final: bool) -> int:
@@ -326,7 +363,7 @@ def _stage_compare(stages: set, cpu_out, npu_out, gpu_out, params: dict,
 
 
 def _stage_npuprof(stages: set, params: dict, compare_result: dict,
-                   reporter: "Reporter", case_id: str, result_dir: str,
+                   reporter: "Reporter", case_id: str, prof_dir: str,
                    runs: int) -> dict:
     """NPU 性能采集: 精度闸门 + subprocess 调 msprof。
     - 精度未通过 → 跳过, 记 SKIP
@@ -341,7 +378,6 @@ def _stage_npuprof(stages: set, params: dict, compare_result: dict,
 
     case_set = params.get("case_set", "")
     is_decode = (params.get("S1", 0) == 1)
-    prof_dir = str(Path(result_dir) / "prof")
     logger.info("[npuprof] start | %s | runs=%d | %s",
                 case_id, runs, "decode" if is_decode else "prefill")
     t0 = time.perf_counter()
@@ -388,7 +424,9 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
     stage 内部各自处理 执行-or-加载 与日志; 这里只管顺序、错误兜底、显存回收。"""
     case_set = params.get("case_set", "")
     case_id = params.get("case_id", params.get("name", ""))
-    result_dir = str(Path("result") / case_id)
+    case_dir = Path("result") / case_id
+    precision_dir = str(case_dir / "precision")
+    prof_dir = str(case_dir / "prof")
     dtype = params.get("dtype", "")
     if comparator is None:
         comparator = DefaultComparator()
@@ -400,11 +438,11 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
         npu_out = _stage_npu(stages, inputs, npu_mode, case_set, case_id)
         gpu_out = _stage_gpu(stages, inputs, case_set, case_id)
         result = _stage_compare(stages, cpu_out, npu_out, gpu_out, params,
-                                reporter, case_id, result_dir,
+                                reporter, case_id, precision_dir,
                                 verbose_diff, chunk_size, comparator)
         _stage_npuprof(stages, params, result, reporter, case_id,
-                       result_dir, perf_runs)
-        _run_profs(stages, case_id, result_dir)
+                       prof_dir, perf_runs)
+        _run_profs(stages, case_id, prof_dir)
         return result
     except Exception as e:
         logger.error("[err]  %s: %s", type(e).__name__, e)
