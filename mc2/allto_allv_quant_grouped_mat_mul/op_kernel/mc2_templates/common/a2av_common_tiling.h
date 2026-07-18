@@ -26,7 +26,17 @@ static constexpr uint32_t TENSOR_LIST_SIZE = 512U;
 static constexpr uint32_t SCALE_COMM_BATCH_THRESHOLD = 32U;
 static constexpr uint64_t MAX_HANDLE_ID_NUM = 64U;
 static constexpr uint64_t SCALE_ALIGNMENT_BLOCK_SIZE = 64U;
-static constexpr uint64_t PERMUTE_BUF_SIZE = 32768U;
+static constexpr uint16_t MAX_BUFFER_SIZE = 65534U;
+static constexpr uint16_t PERMUTE_BUF_SIZE = 32768U;
+
+// 核间同步常量
+static constexpr uint8_t SYNC_MODE_AIV_TO_AIC = 4U;      // CrossCoreSetFlag mode 4: AIV→AIC
+static constexpr uint8_t SYNC_MODE_AIC_BARRIER = 0U;      // CrossCoreSetFlag mode 0: AIC核间屏障
+static constexpr uint8_t SYNC_MODE_AIC_TO_AIV = 2U;       // CrossCoreSetFlag mode 2: AIC→AIV
+static constexpr uint16_t SYNC_FLAG_ID_COMM_DONE = 8U;    // 通信完成通知flagId
+static constexpr uint16_t SYNC_FLAG_ID_AIC_BARRIER = 9U;  // AIC屏障flagId
+static constexpr uint16_t SYNC_FLAG_ID_PERMUTE_DONE = 10U; // 重排完成通知flagId
+static constexpr uint16_t SYNC_FLAG_AIV1_OFFSET = 16U;    // AIV1 flagId偏移量(mode 4)
 
 // 类型复用声明
 using GMMQuantTilingData = Mc2GroupedMatmulTilingData::GMMQuantTilingData;
@@ -54,6 +64,7 @@ struct TaskTilingInfo {
     // 平台信息
     uint64_t ubSize;        // UB大小
     uint64_t aivCoreNum;    // AIV 核数量
+    uint64_t aicCoreNum;    // AIC 核数量
 
     // 循环调度参数
     uint32_t expertNum = 1U;     // 每次GMM计算合并的专家数量（计算批大小）

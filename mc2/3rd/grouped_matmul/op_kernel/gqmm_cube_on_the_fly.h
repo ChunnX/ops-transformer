@@ -36,7 +36,9 @@ public:
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias, GM_ADDR scale, GM_ADDR groupList,
         GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace, const GMMQuantParams *__restrict gmmBaseParamsIn,
         const TCubeTiling *__restrict mmTilingDataIn, TILING_TYPE *gmmArrayAddrIn, TPipe *que,
-        uint32_t rankDim, const __gm__ uint64_t *cGroupOffsetTableGm);
+        uint32_t rankDim, const __gm__ uint64_t *cGroupOffsetTableGm,
+        const __gm__ uint64_t *aGroupOffsetTableGm = nullptr,
+        const __gm__ uint64_t *xScaleGroupOffsetTableGm = nullptr);
     __aicore__ inline void Process();
 
 protected:
@@ -122,7 +124,8 @@ LOCAL_TEMPLATE_CLASS_PARAMS
 __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR x, GM_ADDR weight, GM_ADDR bias,
     GM_ADDR scale, GM_ADDR groupList, GM_ADDR perTokenScale, GM_ADDR y, GM_ADDR workspace,
     const GMMQuantParams *__restrict gmmBaseParamsIn, const TCubeTiling *__restrict mmTilingDataIn,
-    TILING_TYPE *gmmArrayAddrIn, TPipe *que, uint32_t rankDim, const __gm__ uint64_t *cGroupOffsetTableGm)
+    TILING_TYPE *gmmArrayAddrIn, TPipe *que, uint32_t rankDim, const __gm__ uint64_t *cGroupOffsetTableGm,
+    const __gm__ uint64_t *aGroupOffsetTableGm, const __gm__ uint64_t *xScaleGroupOffsetTableGm)
 {
     if ASCEND_IS_AIV {
         return;
@@ -135,6 +138,12 @@ __aicore__ inline void Mc2GmmASWKernel<LOCAL_TEMPLATE_FUNC_PARAMS>::Init(GM_ADDR
     mm_.Init(mmTilingData_, que);
     InitAddrAndParams(x, weight, bias, scale, groupList, perTokenScale, y, gmmArrayAddrIn);
     block_.SetRankFirstLayout(rankDim, cGroupOffsetTableGm);
+    if (aGroupOffsetTableGm != nullptr) {
+        block_.SetAGroupOffsetTable(aGroupOffsetTableGm);
+    }
+    if (xScaleGroupOffsetTableGm != nullptr) {
+        block_.SetXScaleGroupOffsetTable(xScaleGroupOffsetTableGm);
+    }
 }
 
 LOCAL_TEMPLATE_CLASS_PARAMS
