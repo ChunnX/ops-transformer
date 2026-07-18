@@ -49,8 +49,7 @@ private:
         }
 
         this->comm_.WriteNbi(
-            static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]), dstAddr, srcAddr,
-            static_cast<uint64_t>(tileByteSize));
+            static_cast<ChannelHandle>(this->udmaCtx_->channelHandles[targetRankId]), dstAddr, srcAddr, tileByteSize);
     }
 
     __aicore__ inline void DoWait(uint32_t targetRankId)

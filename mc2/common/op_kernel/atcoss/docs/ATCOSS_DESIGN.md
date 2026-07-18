@@ -658,39 +658,39 @@ __aicore__ inline void Swiglu(
     __ubuf__ DataTypeIn* secondSrc,
     uint16_t mSize, uint16_t nSize);
 ```
-`aiv_compute/` 下 quant、swiglu 等模块均**零引用** `threadId`/`blockIdx`，纯数据驱动。
+`aiv_compute/` 下 quant、swiglu 等模块均**零引用** `jobIndex`/`blockIdx`，纯数据驱动。
 
 #### 8.3.2 复杂任务：thread 抽象
 
-**设计要点**：当任务**无法按数据切分**时（如集合通信需按 rank 分配对端，每个核负责不同的 targetRank），引入 `threadId`/`threadCnt` 逻辑编号——任务切分为若干 thread，每个 AIV 认领一个 threadId 执行。
+**设计要点**：当任务**无法按数据切分**时（如集合通信需按 rank 分配对端，每个核负责不同的 targetRank），引入 `jobIndex`/`totalJobs` 逻辑编号——任务切分为若干 thread，每个 AIV 认领一个 jobIndex 执行。
 
 **接口签名**（`block/aiv_comm/collective_comm_base.h`）：
 ```cpp
 uint64_t Init(const CommContext* ctx, GM_ADDR localAddr,
               const CommTilingData& tilingData,
-              uint32_t threadCnt,   // 总参与核数
-              uint32_t threadId);   // 当前核逻辑编号（0 ~ threadCnt-1）
+              uint32_t totalJobs,   // 总参与核数
+              uint32_t jobIndex);   // 当前核逻辑编号（0 ~ totalJobs-1）
 ```
 
-**自动分核**：模块内部根据 `threadId` 自动计算本核负责的 targetRank 范围，业务代码无需手写分配逻辑：
+**自动分核**：模块内部根据 `jobIndex` 自动计算本核负责的 targetRank 范围，业务代码无需手写分配逻辑：
 ```cpp
-// collective_comm_base.h —— threadId → targetRank 自动映射
-uint32_t targetRankPerCore = (rankSize + threadCnt - 1) / threadCnt;
-uint32_t targetRankStart = threadId * targetRankPerCore;
+// collective_comm_base.h —— jobIndex → targetRank 自动映射
+uint32_t targetRankPerCore = (rankSize + totalJobs - 1) / totalJobs;
+uint32_t targetRankStart = jobIndex * targetRankPerCore;
 // 尾核自动处理剩余 rank
 ```
 
-> **单核独立模式核心价值**：算法只描述"一个核做什么"（处理哪些 targetRank、参与哪轮 Barrier），`threadId` 是逻辑编号而非硬件编号。模块可适配任意核分配策略。
+> **单核独立模式核心价值**：算法只描述"一个核做什么"（处理哪些 targetRank、参与哪轮 Barrier），`jobIndex` 是逻辑编号而非硬件编号。模块可适配任意核分配策略。
 
-`blockIdx` 到 `threadId` 的映射**仅在 kernel 入口发生一次**，模块内部零感知。调用方根据算子场景需求选择映射方式，模块代码无需修改：
+`blockIdx` 到 `jobIndex` 的映射**仅在 kernel 入口发生一次**，模块内部零感知。调用方根据算子场景需求选择映射方式，模块代码无需修改：
 
 ```cpp
 // kernel 入口：映射收敛点（all_to_all_matmul_kernel.h）
 uint32_t blockIdx = GetBlockIdx();
 if ((blockIdx >= 4) && (blockIdx < 8)) {
-    uint32_t threadCnt = 4;           // ← 仅核4~7参与
-    uint32_t threadId = blockIdx - 4; // ← 模块只接收 threadId
-    allToAll_.Init(ctx, aGM, tilingData, threadCnt, threadId);
+    uint32_t totalJobs = 4;           // ← 仅核4~7参与
+    uint32_t jobIndex = blockIdx - 4; // ← 模块只接收 jobIndex
+    allToAll_.Init(ctx, aGM, tilingData, totalJobs, jobIndex);
 }
 ```
 
@@ -699,7 +699,7 @@ if ((blockIdx >= 4) && (blockIdx < 8)) {
 核心是 `block` 模块的**实现与分核逻辑解耦**，通过两种编程模式覆盖不同任务特征：
 
 - **CV 协同模式**：AIV+AIC 紧耦合任务，CrossCore Flag 保证 CV 数据依赖，Blaze 动态调度处理计算侧尾块与 double buffer
-- **单核独立模式**：简单任务数据 tile 驱动（零核依赖），复杂任务 thread 抽象（threadId 自动分核），`blockIdx → threadId` 映射收敛在入口一处
+- **单核独立模式**：简单任务数据 tile 驱动（零核依赖），复杂任务 thread 抽象（threadId 自动分核），`blockIdx → jobIndex` 映射收敛在入口一处
 
 两种模式共同达成"高内聚、低耦合、可复用"：模块实现与分核逻辑解耦，核分配策略与业务逻辑分离，换算子场景只改入口映射，模块零改动。
 

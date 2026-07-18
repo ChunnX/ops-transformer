@@ -25,8 +25,8 @@ constexpr uint32_t UB_SIZE = 64;
 constexpr uint32_t SYNC_SLOT_PEER_CORE = 8;
 constexpr uint32_t BARRIER_FLAG_SIZE = 8;
 
-static __aicore__ inline uint32_t GetCoreSyncPoolOffset(uint32_t threadCnt) {
-    return BARRIER_FLAG_SIZE + threadCnt * SYNC_SLOT_PEER_CORE * BARRIER_FLAG_SIZE;
+static __aicore__ inline uint32_t GetCoreSyncPoolOffset(uint32_t totalJobs) {
+    return BARRIER_FLAG_SIZE + totalJobs * SYNC_SLOT_PEER_CORE * BARRIER_FLAG_SIZE;
 }
 
 class TeamBarrier {
@@ -40,15 +40,15 @@ public:
     }
 
     __aicore__ inline void Init(
-        __ubuf__ uint8_t* syncBuf, __gm__ CommUbmemContext* ctx, uint32_t threadCnt, uint32_t threadIdx);
+        __ubuf__ uint8_t* syncBuf, __gm__ CommUbmemContext* ctx, uint32_t totalJobs, uint32_t jobIndex);
 
     __aicore__ inline void Execute();
 
 private:
     __ubuf__ uint8_t* syncBuf_;
     __gm__ CommUbmemContext* ctx_;
-    uint32_t threadCnt_;
-    uint32_t threadIdx_;
+    uint32_t totalJobs_;
+    uint32_t jobIndex_;
     int32_t count_;
     __aicore__ inline void FlushCacheLine(__gm__ uint8_t* addr)
     {
@@ -66,23 +66,23 @@ private:
 };
 
 __aicore__ inline void TeamBarrier::Init(
-    __ubuf__ uint8_t* syncBuf, __gm__ CommUbmemContext* ctx, uint32_t threadCnt, uint32_t threadIdx)
+    __ubuf__ uint8_t* syncBuf, __gm__ CommUbmemContext* ctx, uint32_t totalJobs, uint32_t jobIndex)
 {
     syncBuf_ = syncBuf;
     ctx_ = ctx;
-    threadCnt_ = threadCnt;
-    threadIdx_ = threadIdx;
+    totalJobs_ = totalJobs;
+    jobIndex_ = jobIndex;
 }
 
 __aicore__ inline void TeamBarrier::Execute()
 {
     if ASCEND_IS_AIV {
-        if (threadIdx_ >= threadCnt_) {
+        if (jobIndex_ >= totalJobs_) {
             return;
         }
 
         __gm__ int32_t* teamSyncCounter = (__gm__ int32_t*)(ctx_->commBufferAddrs[ctx_->rankId]
-            + BARRIER_FLAG_SIZE + threadIdx_ * BARRIER_FLAG_SIZE);
+            + BARRIER_FLAG_SIZE + jobIndex_ * BARRIER_FLAG_SIZE);
         count_ = (*teamSyncCounter) + 1;
 
         BarrierCrossCore();
@@ -109,16 +109,16 @@ __aicore__ inline void TeamBarrier::Execute()
 
 __aicore__ inline void TeamBarrier::BarrierCrossCore()
 {
-    auto coreSyncPool = (__gm__ uint64_t*)(ctx_->commBufferAddrs[ctx_->rankId] + GetCoreSyncPoolOffset(threadCnt_));
+    auto coreSyncPool = (__gm__ uint64_t*)(ctx_->commBufferAddrs[ctx_->rankId] + GetCoreSyncPoolOffset(totalJobs_));
     uint32_t shift = 1;
     uint32_t offset = 0;
 
-    while (shift < threadCnt_) {
-        uint32_t next = (threadIdx_ + shift) % threadCnt_;
+    while (shift < totalJobs_) {
+        uint32_t next = (jobIndex_ + shift) % totalJobs_;
         __gm__ uint64_t* dst = (__gm__ uint64_t*)(coreSyncPool + next * SYNC_SLOT_PEER_CORE + offset);
         *dst = count_;
         FlushCacheLine((__gm__ uint8_t*)dst);
-        __gm__ uint64_t* src = (__gm__ uint64_t*)(coreSyncPool + threadIdx_ * SYNC_SLOT_PEER_CORE + offset);
+        __gm__ uint64_t* src = (__gm__ uint64_t*)(coreSyncPool + jobIndex_ * SYNC_SLOT_PEER_CORE + offset);
         do {
             if (*src == count_) {
                 break;
@@ -134,7 +134,7 @@ __aicore__ inline void TeamBarrier::BarrierCrossDevice()
 {
     uint32_t nranks = ctx_->rankSize;
     uint32_t myRank = ctx_->rankId;
-    int32_t step = threadCnt_ < nranks ? (int32_t)threadCnt_ : (int32_t)nranks;
+    int32_t step = totalJobs_ < nranks ? (int32_t)totalJobs_ : (int32_t)nranks;
     auto localFlag = (__gm__ int32_t*)(ctx_->commBufferAddrs[ctx_->rankId]);
 
     auto copyUB2GM = Te::MakeCopy(Te::CopyUB2GM{});
@@ -151,7 +151,7 @@ __aicore__ inline void TeamBarrier::BarrierCrossDevice()
     SetFlag<HardEvent::MTE3_S>(1);
     WaitFlag<HardEvent::MTE3_S>(1);
 
-    for (uint32_t i = threadIdx_; i < nranks; i += (uint32_t)step) {
+    for (uint32_t i = jobIndex_; i < nranks; i += (uint32_t)step) {
         if (i == myRank) {
             continue;
         }
