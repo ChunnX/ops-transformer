@@ -216,6 +216,7 @@ struct RunInfo {
     uint32_t paLayoutType; \
     uint32_t oriMaxBlockNumPerBatch; \
     uint32_t cmpMaxBlockNumPerBatch; \
+    uint32_t oriMaskMode; \
     int32_t oriWinLeft; \
     int32_t oriWinRight; \
     uint32_t sparseBlockSize; \
