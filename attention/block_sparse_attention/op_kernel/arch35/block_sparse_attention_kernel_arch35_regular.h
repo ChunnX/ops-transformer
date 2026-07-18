@@ -547,6 +547,19 @@ public:
         uint32_t lseStartOffset = glStartOffset + qBaseTilePerSubCore * sizeof(float);
         uint32_t maskStartOffset = lseStartOffset + qBaseTilePerSubCore * (32 / sizeof(float)) * sizeof(float);
 
+        // AscendC::printf("tkd qBaseTilePerSubCore: %u\n", qBaseTilePerSubCore);
+        // AscendC::printf("tkd kvBaseTilePerSubCore: %u\n", kvBaseTilePerSubCore);
+        // AscendC::printf("tkd pExtraElemNum: %u\n", pExtraElemNum);
+        // AscendC::printf("tkd sStartOffset: %u\n", sStartOffset);
+        // AscendC::printf("tkd pStartOffset: %u\n", pStartOffset);
+        // AscendC::printf("tkd loStartOffset: %u\n", loStartOffset);
+        // AscendC::printf("tkd goStartOffset: %u\n", goStartOffset);
+        // AscendC::printf("tkd lmStartOffset: %u\n", lmStartOffset);
+        // AscendC::printf("tkd gmStartOffset: %u\n", gmStartOffset);
+        // AscendC::printf("tkd dmStartOffset: %u\n", dmStartOffset);
+        // AscendC::printf("tkd llStartOffset: %u\n", llStartOffset);
+        // AscendC::printf("tkd glStartOffset: %u\n", glStartOffset);
+
         Epilogue::Block::UBufTileHelper uBufTileHelper(
             qBaseTilePerSubCore, kvBaseTilePerSubCore, embedPerSubCore,
             sStartOffset, pStartOffset, loStartOffset, goStartOffset,

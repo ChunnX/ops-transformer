@@ -68,7 +68,8 @@ public:
 
     static constexpr uint32_t SPLIT_COL_IDX_2 = 2;
     static constexpr uint32_t SPLIT_COL_IDX_3 = 3;
-    static constexpr ElementInput MIN_VALUE = -65504.0f;
+    static constexpr ElementInput MIN_VALUE = std::numeric_limits<ElementInput>::lowest();
+    // static constexpr ElementInput MIN_VALUE = -65504.0f;
     static constexpr uint32_t HALF_REP_SIZE = 128;
     static constexpr uint32_t FLOAT_REP_SIZE = 64;
     static constexpr uint32_t BLOCK_REP_SIZE = 8;
@@ -164,7 +165,7 @@ public:
         ComputeLocalMax(sUbAddr, lmUbAddr, m, s2BaseSize, tailN, scaleValue);
 
         // AscendC::printf("tkd lsUbTensor[ubSBufId]\n");
-        // AscendC::DumpTensor(lsUbTensor[ubSBufId], 0, 64);
+        // AscendC::DumpTensor(lsUbTensor[ubSBufId], 0, 256);
         // AscendC::printf("tkd lmUbTensor\n");
         // AscendC::DumpTensor(lmUbTensor, 0, 16);
 
@@ -195,7 +196,7 @@ public:
         }
         
         // AscendC::printf("tkd lpUbTensor[ubSBufId]\n");
-        // AscendC::DumpTensor(lpUbTensor[ubSBufId], 0, 64);  
+        // AscendC::DumpTensor(lpUbTensor[ubSBufId], 0, 256);
         // AscendC::printf("tkd llUbTensor\n");
         // AscendC::DumpTensor(llUbTensor, 0, 16);
 
@@ -326,12 +327,12 @@ private:
         RegTensor<float> hmVreg;
 
         MaskReg maskReg32TailN = UpdateMask<float>(tailN);
-        MaskReg maskReg32All = CreateMask<float, MaskPattern::ALL>();
+        // MaskReg maskReg32All = CreateMask<float, MaskPattern::ALL>();
 
         LoadAlign(lmVreg, lmUb);
         LoadAlign(gmVreg, gmUb);
         Max(hmVreg, lmVreg, gmVreg, maskReg32TailN);
-        StoreAlign<float, StoreDist::DIST_NORM_B32>(lmUb, hmVreg, maskReg32All);
+        StoreAlign<float, StoreDist::DIST_NORM_B32>(lmUb, hmVreg, maskReg32TailN);
     }
 
     template <MAligendTileNum mTileNum>
@@ -388,7 +389,7 @@ private:
         Duplicate<float, MaskMergeMode::ZEROING, float>(sumVreg2, 0, maskReg32All);
         Duplicate<float, MaskMergeMode::ZEROING, float>(sumVreg3, 0, maskReg32All);
 
-        LoadAlign<float, LoadDist::DIST_BRC_B32>(hmVreg, lmUb);
+        LoadAlign(hmVreg, lmUb);
         for (uint16_t i = 0; i < mFirstTile; i++) {
             LoadAlign(sVreg0, sUb + i * s2BaseSize);
             LoadAlign(sVreg1, sUb + mRound * s2BaseSize / 4 + i * s2BaseSize);
@@ -400,20 +401,20 @@ private:
             Muls(sVreg2, sVreg2, scaleValue, maskReg32TailN);
             Muls(sVreg3, sVreg3, scaleValue, maskReg32TailN);
 
-            // FusedExpSub(pVreg0, sVreg0, hmVreg, maskReg16TailN);
-            // FusedExpSub(pVreg1, sVreg1, hmVreg, maskReg16TailN);
-            // FusedExpSub(pVreg2, sVreg2, hmVreg, maskReg16TailN);
-            // FusedExpSub(pVreg3, sVreg3, hmVreg, maskReg16TailN);
+            FusedExpSub(pVreg0, sVreg0, hmVreg, maskReg32TailN);
+            FusedExpSub(pVreg1, sVreg1, hmVreg, maskReg32TailN);
+            FusedExpSub(pVreg2, sVreg2, hmVreg, maskReg32TailN);
+            FusedExpSub(pVreg3, sVreg3, hmVreg, maskReg32TailN);
 
-            Sub(sVreg0, sVreg0, hmVreg, maskReg32TailN);
-            Sub(sVreg1, sVreg1, hmVreg, maskReg32TailN);
-            Sub(sVreg2, sVreg2, hmVreg, maskReg32TailN);
-            Sub(sVreg3, sVreg3, hmVreg, maskReg32TailN);
+            // Sub(sVreg0, sVreg0, hmVreg, maskReg32TailN);
+            // Sub(sVreg1, sVreg1, hmVreg, maskReg32TailN);
+            // Sub(sVreg2, sVreg2, hmVreg, maskReg32TailN);
+            // Sub(sVreg3, sVreg3, hmVreg, maskReg32TailN);
 
-            Exp(pVreg0, sVreg0, maskReg32TailN);
-            Exp(pVreg1, sVreg1, maskReg32TailN);
-            Exp(pVreg2, sVreg2, maskReg32TailN);
-            Exp(pVreg3, sVreg3, maskReg32TailN);
+            // Exp(pVreg0, sVreg0, maskReg32TailN);
+            // Exp(pVreg1, sVreg1, maskReg32TailN);
+            // Exp(pVreg2, sVreg2, maskReg32TailN);
+            // Exp(pVreg3, sVreg3, maskReg32TailN);
 
             Cast<ElementOutput, float, castTraitZeroROUND>(pVreg160, pVreg0, maskReg32All);
             Cast<ElementOutput, float, castTraitZeroROUND>(pVreg162, pVreg2, maskReg32All);
@@ -427,13 +428,14 @@ private:
             if constexpr (mTileNum >= MAligendTileNum::Zero) {
                 Add(sumVreg0, sumVreg0, pVreg0, maskReg32TailN);
             }
-            if constexpr (mTileNum >= MAligendTileNum::One) {
-                Add(sumVreg1, sumVreg1, pVreg1, maskReg32TailN);
+            if constexpr (mTileNum >= MAligendTileNum::Two) {
+                Add(sumVreg2, sumVreg2, pVreg2, maskReg32TailN);
             }
             StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
                 pUb1, deInterleaveVreg2, blockStride, 1, maskReg16VL128);
-            if constexpr (mTileNum >= MAligendTileNum::Two) {
-                Add(sumVreg2, sumVreg2, pVreg2, maskReg32TailN);
+
+            if constexpr (mTileNum >= MAligendTileNum::One) {
+                Add(sumVreg1, sumVreg1, pVreg1, maskReg32TailN);
             }
             if constexpr (mTileNum >= MAligendTileNum::Three) {
                 Add(sumVreg3, sumVreg3, pVreg3, maskReg32TailN);
@@ -451,20 +453,20 @@ private:
                 Muls(sVreg2, sVreg2, scaleValue, maskReg32TailN);
                 Muls(sVreg3, sVreg3, scaleValue, maskReg32TailN);
 
-                // FusedExpSub(pVreg0, sVreg0, hmVreg, maskReg16TailN);
-                // FusedExpSub(pVreg1, sVreg1, hmVreg, maskReg16TailN);
-                // FusedExpSub(pVreg2, sVreg2, hmVreg, maskReg16TailN);
-                // FusedExpSub(pVreg3, sVreg3, hmVreg, maskReg16TailN);
+                FusedExpSub(pVreg0, sVreg0, hmVreg, maskReg32TailN);
+                FusedExpSub(pVreg1, sVreg1, hmVreg, maskReg32TailN);
+                FusedExpSub(pVreg2, sVreg2, hmVreg, maskReg32TailN);
+                FusedExpSub(pVreg3, sVreg3, hmVreg, maskReg32TailN);
 
-                Sub(sVreg0, sVreg0, hmVreg, maskReg32TailN);
-                Sub(sVreg1, sVreg1, hmVreg, maskReg32TailN);
-                Sub(sVreg2, sVreg2, hmVreg, maskReg32TailN);
-                Sub(sVreg3, sVreg3, hmVreg, maskReg32TailN);
+                // Sub(sVreg0, sVreg0, hmVreg, maskReg32TailN);
+                // Sub(sVreg1, sVreg1, hmVreg, maskReg32TailN);
+                // Sub(sVreg2, sVreg2, hmVreg, maskReg32TailN);
+                // Sub(sVreg3, sVreg3, hmVreg, maskReg32TailN);
 
-                Exp(pVreg0, sVreg0, maskReg32TailN);
-                Exp(pVreg1, sVreg1, maskReg32TailN);
-                Exp(pVreg2, sVreg2, maskReg32TailN);
-                Exp(pVreg3, sVreg3, maskReg32TailN);
+                // Exp(pVreg0, sVreg0, maskReg32TailN);
+                // Exp(pVreg1, sVreg1, maskReg32TailN);
+                // Exp(pVreg2, sVreg2, maskReg32TailN);
+                // Exp(pVreg3, sVreg3, maskReg32TailN);
 
                 Cast<ElementOutput, float, castTraitZeroROUND>(pVreg160, pVreg0, maskReg32All);
                 Cast<ElementOutput, float, castTraitZeroROUND>(pVreg162, pVreg2, maskReg32All);
@@ -478,13 +480,13 @@ private:
                 if constexpr (mTileNum > MAligendTileNum::Zero) {
                     Add(sumVreg0, sumVreg0, pVreg0, maskReg32TailN);
                 }
-                if constexpr (mTileNum > MAligendTileNum::One) {
-                    Add(sumVreg1, sumVreg1, pVreg1, maskReg32TailN);
+                if constexpr (mTileNum > MAligendTileNum::Two) {
+                    Add(sumVreg2, sumVreg2, pVreg2, maskReg32TailN);
                 }
                 StoreAlign<ElementOutput, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
                     pUb1, deInterleaveVreg2, blockStride, 1, maskReg16VL128);
-                if constexpr (mTileNum > MAligendTileNum::Two) {
-                    Add(sumVreg2, sumVreg2, pVreg2, maskReg32TailN);
+                if constexpr (mTileNum > MAligendTileNum::One) {
+                    Add(sumVreg1, sumVreg1, pVreg1, maskReg32TailN);
                 }
             }
         }
