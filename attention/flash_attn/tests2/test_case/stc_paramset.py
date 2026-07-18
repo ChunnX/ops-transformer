@@ -82,6 +82,7 @@ CASE_SETS = {
             "layout_q": ["BNSD"], "layout_kv": ["PA_BBND"], "layout_out": ["BNSD"],
             "dtype": ["fp16"],
             "block_size": 128,
+            "seqused_kv": [1024, 1024],
         },
         "FP16_PA_BNBD_08": {
             "B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
@@ -89,6 +90,7 @@ CASE_SETS = {
             "layout_q": ["BNSD"], "layout_kv": ["PA_BNBD"], "layout_out": ["BNSD"],
             "dtype": ["fp16"],
             "block_size": 128,
+            "seqused_kv": [1024, 1024],
         },
         "FP16_mask3_09": {
             "B": [2], "N1": [8], "N2": [1], "S1": [64], "S2": [1024],
