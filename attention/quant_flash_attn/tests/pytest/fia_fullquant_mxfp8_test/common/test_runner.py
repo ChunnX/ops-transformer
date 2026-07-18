@@ -112,6 +112,7 @@ def execute_test(params, mode, cdir=None):
     if golden.ENABLE_LSE:
         if compare_layout == "TND":
             lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.SEQUSED_Q, compare_layout, cu_seqlens=golden.CU_SEQLENS_Q)
+            golden.fill_tnd_padding(lse_cmp, golden.SEQUSED_Q, golden.CU_SEQLENS_Q, fill_value=float('inf'))
         else:
             lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.SEQUSED_Q, compare_layout)
         lse_result = result_compare_method.check_result(lse_cmp, lse_out)

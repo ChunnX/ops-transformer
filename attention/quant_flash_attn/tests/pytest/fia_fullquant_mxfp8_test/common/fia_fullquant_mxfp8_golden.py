@@ -237,6 +237,22 @@ def convert_kv_bnsd_to_layout(tensor_bnsd, seq_lens, layout, cu_seqlens=None):
     return convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout, cu_seqlens=cu_seqlens)
 
 
+def fill_tnd_padding(tensor_tnd, seq_lens, cu_seqlens, fill_value=float('inf')):
+    """TND layout 中 cu_seqlens padding 区域（seqused[b] ~ cu_diff[b]）填充指定值
+    用于 LSE: padding 位置填 inf 以匹配 NPU 行为
+    """
+    if cu_seqlens is None:
+        return tensor_tnd
+    B = len(seq_lens)
+    for b in range(B):
+        act_s = seq_lens[b]
+        offset = cu_seqlens[b]
+        cu_diff = cu_seqlens[b + 1] - cu_seqlens[b]
+        if cu_diff > act_s:
+            tensor_tnd[offset + act_s:offset + cu_diff] = fill_value
+    return tensor_tnd
+
+
 def convert_qk_rope_bnsd_to_layout(tensor_bnsd, seq_lens, layout):
     return convert_q_bnsd_to_layout(tensor_bnsd, seq_lens, layout)
 
