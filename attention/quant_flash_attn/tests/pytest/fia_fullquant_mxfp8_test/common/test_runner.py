@@ -107,7 +107,10 @@ def execute_test(params, mode, cdir=None):
 
     lse_result = None
     if golden.ENABLE_LSE:
-        lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, _sq, compare_layout)
+        cpu_lse_4d = cpu_lse.unsqueeze(-1)
+        lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse_4d, _sq, compare_layout)
+        if lse_cmp.dim() == 3:
+            lse_cmp = lse_cmp.squeeze(-1)
         lse_result = result_compare_method.check_result(lse_cmp, lse_out)
 
     return atten_result, lse_result

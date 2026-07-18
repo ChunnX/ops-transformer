@@ -1167,7 +1167,14 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
             for b in range(B):
                 if _sq[b] < lse_out.shape[2]:
                     lse_out[b, :, _sq[b]:] = float('inf')
-            lse_out = convert_q_bnsd_to_layout(lse_out, _sq, "TND")
+            lse_parts = []
+            for b in range(B):
+                if _sq[b] > 0:
+                    lse_parts.append(lse_out[b, :, :_sq[b]])
+            if lse_parts:
+                lse_out = torch.cat([p.unsqueeze(0) for p in lse_parts], dim=0)
+            else:
+                lse_out = lse_out[:, :, :0]
         elif lse_out.dim() == 2:
             offset = 0
             for b in range(B):
@@ -1295,5 +1302,8 @@ if __name__ == '__main__':
 
     if ENABLE_LSE:
         logger.info("\n[Step 5] LSE 精度对比")
-        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_lse, _sq, "TND")
+        cpu_lse_4d = cpu_lse.unsqueeze(-1)
+        cpu_lse_tnd_torch = convert_q_bnsd_to_layout(cpu_lse_4d, _sq, "TND")
+        if cpu_lse_tnd_torch.dim() == 3:
+            cpu_lse_tnd_torch = cpu_lse_tnd_torch.squeeze(-1)
         result_compare_method.check_result(cpu_lse_tnd_torch, lse_out)
