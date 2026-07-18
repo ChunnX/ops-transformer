@@ -70,7 +70,7 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 
 ```bash
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
-  --case_name TYP_PAGE_REUSE_BN1_BS128_S1_LT_S2
+  --case_name STC_B1_BS128_MIN_PAGE_EQ_MASK3
 ```
 
 `--case_id` 保留为兼容参数，效果等同于 `--case_name`。
@@ -79,7 +79,7 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 
 ```bash
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
-  --case_name TYP_PAGE_REUSE_BN1_BS128_S1_LT_S2,TYP_NO_MASK_S1_EQ_S2_BS64_BOTH_UNALIGNED
+  --case_name STC_B1_BS128_MIN_PAGE_EQ_MASK3,STC_B1_NOMASK_BS128_EQ_TAIL
 ```
 
 ## 使用 Case CSV
