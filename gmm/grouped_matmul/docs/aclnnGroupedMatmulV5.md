@@ -567,8 +567,10 @@ aclnnGroupedMatmulV5 默认确定性实现。
 
 > 以下参数须传空：scale、offset、antiquantScale、antiquantOffset、perTokenScale、activationInput、activationQuantScale、activationQuantOffset、activationFeatureOut。
 
-**约束**：
-- 支持 groupType=-1、0、2，actType=0，groupListType=0/1/2。
+- **约束说明**
+
+  除平台约束外，非量化场景其余约束如下
+  - 支持 groupType=-1、0、2，actType=0，groupListType=0/1/2。
 
 </details>
 
@@ -588,13 +590,27 @@ aclnnGroupedMatmulV5 默认确定性实现。
 
 > 以下参数须传空：offset、antiquantScale、antiquantOffset、activationInput、activationQuantScale、activationQuantOffset。
 
-**约束**：
-- 仅 groupType=0（M轴分组）。
-- x、weight、out 仅支持长度为 1 的 TensorList。
-- x不支持转置，2维 `(M, K)`；weight 3维 `(E, K, N)` 或 `(E, N, K)`。
-- **定轴算法**（优化性能）需同时满足：
-  - shape（满足其一）：`(M, 7168) × (7168, 4096)` 或 `(M, 2048) × (2048, 7168)`
-  - tuningConfigOptional：[0] ∈ (128, 512)，[1]=0，[2] = -1 或 ≥ M×N×4
+- **约束说明**
+
+  除平台约束外，A8W8场景其余约束如下
+  - 仅支持groupType=0（M轴分组）
+  - 当前仅支持x、weight、out均为长度为1的TensorList
+  - x不支持转置
+  - x仅支持2维Tensor，Shape为（M，K）
+  - weight仅支持3维Tensor，Shape为（E，K，N）或（E，N，K）
+  - 如果需要启用定轴算法以优化性能，需同时满足以下输入形状与参数配置条件：
+    * 输入形状条件（满足任意一组即可）
+
+      x的shape为(M, 7168)，weight的shape为(7168, 4096)。
+
+      x的shape为(M, 2048)，weight的shape为(2048, 7168)。
+    * 参数配置条件
+
+      tuningConfigOptional的第一个元素：设为大于128 且小于512。
+
+      tuningConfigOptional的第二个元素：设为0。
+
+      tuningConfigOptional的第三个元素：设为 -1，或设为大于等于M × N × 4 的数值。
 
 </details>
 
@@ -611,14 +627,18 @@ aclnnGroupedMatmulV5 默认确定性实现。
 
 > 以下参数须传空：offset、antiquantScale、antiquantOffset、activationInput、activationQuantScale、activationQuantOffset。
 
-**约束**：
-- groupType=0，actType=0，groupListType=0/1/2。
-- x/weight/out 仅支持长度为 1 的 TensorList。
-- x不转置，2维 `(M, K)`。
-- weight 3维 `(E, K, N)`。ND格式时 N为 8 的倍数。
-- weight NZ格式支持转置，ND 仅支持非转置。
-- perchannel：scale shape `(E, N)`；pergroup：scale shape `(E, G, N)`，G能整除 K 且 K/G 为偶数。
-- 开启右矩阵 NZ 转置后：K/G 对齐 64，K 对齐 64，N 对齐 16。
+- **约束说明**
+
+  除平台约束外，A4W4场景其余约束如下：
+  - 仅支持groupType=0（M轴分组），actType=0，groupListType=0/1/2
+  - 当前仅支持x、weight、out均为长度为1的TensorList
+  - x不支持转置，weight为NZ格式时，支持转置。ND格式仅支持非转置。
+  - x仅支持2维Tensor，Shape为（M，K）
+  - weight仅支持3维Tensor，Shape为（E，K，N）
+  - weight的数据格式为ND时，要求n为8的整数倍。
+  - 支持perchannel和pergroup量化。perchannel场景的scale的shape需为 $[E, N]$，pergroup场景需为 $[E, G, N]$。
+  - pergroup场景下，$G$必须要能整除$K$，且$k/G$需为偶数。
+  - 开启右矩阵NZ转置后，$K/G$必须按照64对齐， K按照64对齐， N按照16对齐。
 
 </details>
 
@@ -627,33 +647,33 @@ aclnnGroupedMatmulV5 默认确定性实现。
 <details>
 <summary>A8W4 场景约束</summary>
 
-**数据类型要求：**
+**数据类型要求**：
 
 | x | weight | bias | scale | offset | perTokenScale | out |
-|:---|:---|:---|:---|:---|:---|:---|
+|---------|----------------|--------------|--------|------------|---------------|---------|
 | INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | null | FLOAT | BFLOAT16 |
 | INT8 | INT4 (ND/NZ) | FLOAT | UINT64 | FLOAT/null | FLOAT | FLOAT16 |
 
-> 以下参数须传空：antiquantScale、antiquantOffset、activationInput、activationQuantScale、activationQuantOffset。
+- **约束说明**
 
-**约束**：
-- groupType=0，actType=0。
-- 当前支持x、out均为长度为1的TensorList。
-- weight、scaleOptional、biasOptional和offsetOptional支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）
-- x/weight均不转置。x 2维 `(M, K)`；weight 3维 `(E, K, N)`。
-- bias 为离线辅助结果：$bias_i = 8 \times weight_i \times scale_i$ 沿 K轴规约，shape `(E, N)`。
-- weight=INT32 时，每个 INT32 视为 8 个 INT4。
-- tuningConfigOptional[1] 可置 1 开启 weight 亲核格式（仅 perchannel 生效，需 weight shape `(E, N, K)` 经 ND2NZ 转换；K ≥ 2048 && N ≥ 2048 时有性能优势）。
-
-**offset为空（对称量化）：**
-- 按 count模式（不检查 groupListType），K为 quantGroupSize=256 的整数倍，K ≤ 18432。
-- N为 8 的整数倍。
-- scale shape `(E, K/256, N)`。
-- tuningConfigOptional[0] > N/4 时性能更优（显存额外增加 $g \times K \times N$ 字节）。
-
-**offset 不为空（非对称量化）：**
-- scale shape `(E, 1, N)`。
-- offset为离线辅助结果（$antiquantOffset \times scale$），shape `(E, 1, N)`，dtype=FLOAT32。
+  除平台约束外，A8W4场景其余约束如下：
+  - 仅支持groupType=0（M轴分组），actType=0
+  - 当前支持x、out均为长度为1的TensorList
+  - weight、scaleOptional、biasOptional和offsetOptional支持单Tensor场景（tensorlist长度为1）和多Tensor场景（tensorlist长度大于1）
+  - x不支持转置、weight不支持转置
+  - x仅支持2维Tensor，Shape为（M，K）
+  - weight默认支持3维Tensor，Shape为（E，K，N）
+  - Bias为计算过程中离线计算的辅助结果，值要求为 $8 \times weight \times scale$，并在第1维累加，shape要求为 $[E, N]$
+  - 当weight传入数据类型为INT32时，会将每个INT32视为8个INT4
+  - offset为空时
+    - 该场景下仅支持groupListType为1（算子不会检查groupListType的值，会认为groupListType为1），k要求为quantGroupSize的整数倍，且要求k <= 18432。其中quantGroupSize为k方向上pergroup量化长度，当前支持quantGroupSize=256
+    - 该场景下要求n为8的整数倍
+    - 该场景下scale为pergroup与perchannel离线融合后的结果，shape要求为 $[E, quantGroupNum, N]$，其中 $quantGroupNum = k \div quantGroupSize$
+    - 该场景下，各个专家处理的token数的预期值大于n/4时，即tuningConfigOptional中第一个值大于n/4时，通常会取得更好的性能，此时显存占用会增加 $g \times k \times n$ 字节（其中g为matmul组数即分组数）
+  - offset不为空时
+    - scale为pergroup与perchannel离线融合后的结果，shape要求为 $[E, 1, N]$
+    - 该场景下offsetOptional不为空。非对称量化offsetOptional为计算过程中离线计算辅助结果，即 $antiquantOffset \times scale$，shape要求为 $[E, 1, N]$，dtype为FLOAT32
+  - tuningConfigOptional数组第二个元素可置1，以使能A8W4场景(仅支持perchannel)中weight的特殊格式模板，以优化算子性能(性能优势的shape范围参考：K >= 2048 && N >= 2048)。需要说明的是，该模板要求weight的shape为（E，N，K）,然后再对其进行ND2NZ转换后作为算子输入
 
 </details>
 
@@ -671,16 +691,19 @@ aclnnGroupedMatmulV5 默认确定性实现。
 
 > 以下参数须传空：scale、offset、perTokenScale、activationInput、activationQuantScale、activationQuantOffset。
 
-**约束**：
-- x不转置；groupType=-1/0；actType=0；groupListType=0/1/2。
-- 仅 perchannel 模式。
-- weight 多Tensor时，pergroup长度 $s_i = K_i / G_i$ 须各组相等。
-- antiquantScale/Offset shape：
+- **约束说明**
 
-| 子场景 | shape |
-|:---|:---|
-| weight 单，perchannel | `(E, N)` |
-| weight 多，perchannel | `(N_i)` |
+  除平台约束外，A16W8场景其余约束如下：
+  - x不支持转置
+  - 仅支持groupType=-1、0，actType=0，groupListType=0/1/2
+  - 仅支持perchannel量化模式。
+  - 若weight为多tensor，定义pergroup长度 $s_i = k_i / G_i$，要求所有 $s_i (i=1,2,...g)$都相等。
+  - 伪量化参数antiquantScaleOptional和antiquantOffsetOptional的shape要满足下表（其中g为matmul组数）：
+
+    | 使用场景 | 子场景 | shape限制 |
+    |:---------:|:-------:| :-------|
+    | 伪量化perchannel | weight单 | $[E, N]$|
+    | 伪量化perchannel | weight多 | $[N_i]$|
 
 </details>
 
@@ -698,19 +721,24 @@ aclnnGroupedMatmulV5 默认确定性实现。
 
 > 以下参数须传空：scale、offset、perTokenScale、activationInput、activationQuantScale、activationQuantOffset。
 
-**约束**：
-- x不转置；groupType=-1/0；actType=0；groupListType=0/1/2。
-- weight 最后一维为偶数（最后一维指 weight不转置时 $weight_i$ 的 N轴、转置时 $weight_i$ 的 K轴）；pergroup场景下 weight转置时 pergroup长度为偶数。
-- 对称量化支持 perchannel 和 pergroup 两种模式；pergroup场景：G须能整除对应 $K_i$。多Tensor时所有 $s_i$ 相等。
-- 非对称量化仅 perchannel。
-- antiquantScale/Offset shape：
+- **约束说明**
 
-| 子场景 | shape |
-|:---|:---|
-| weight 单，perchannel | `(E, N)` |
-| weight 单，pergroup | `(E, G, N)` |
-| weight 多，perchannel | `(N_i)` |
-| weight 多，pergroup | `(G_i, N_i)` |
+  除平台约束外，A16W4场景其余约束如下：
+  - x不支持转置
+  - 仅支持groupType=-1、0，actType=0，groupListType=0/1/2
+  - weight中每一组tensor的最后一维大小都应是偶数，最后一维指weight不转置时 $weight_i$ 的N轴或当weight转置时 $weight_i$ 的K轴。
+  - 对称量化支持perchannel和pergroup量化模式，若为pergroup，pergroup数G或 $G_i$ 必须要能整除对应的 $k_i$。
+  - 非对称量化仅支持perchannel模式。
+  - 在pergroup场景下，当weight转置时，要求pergroup长度 $s_i$ 是偶数。
+  - 若weight为多tensor，定义pergroup长度 $s_i = k_i / G_i$，要求所有 $s_i (i=1,2,...g)$都相等。
+  - 伪量化参数antiquantScaleOptional和antiquantOffsetOptional的shape要满足下表（其中g为matmul组数，G为pergroup数，$G_i$为第i个tensor的pergroup数）：
+
+    | 使用场景 | 子场景 | shape限制 |
+    |:---------:|:-------:| :-------|
+    | 伪量化perchannel | weight单 | $[E, N]$|
+    | 伪量化perchannel | weight多 | $[N_i]$|
+    | 伪量化pergroup | weight单 | $[E, G, N]$|
+    | 伪量化pergroup | weight多 | $[G_i, N_i]$|
 
 </details>
 
