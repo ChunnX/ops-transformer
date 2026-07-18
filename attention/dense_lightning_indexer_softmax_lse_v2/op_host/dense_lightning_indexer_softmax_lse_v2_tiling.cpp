@@ -14,6 +14,7 @@
  */
 
 #include "dense_lightning_indexer_softmax_lse_v2_tiling.h"
+#include "dense_lightning_indexer_softmax_lse_v2_tiling_key.h"
 #include "log/log.h"
 
 using namespace ge;
@@ -28,15 +29,56 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
     uint32_t blockDim = ascendcPlatform.CalcTschBlockDim(aivNum, aicNum, aivNum);
     context->SetBlockDim(blockDim);
 
-    // Extract runtime dimensions from input shapes (BSND layout).
-    // query_index: [B, S1, N1, D], key_index: [B, S2, 1, D]
+    // Extract layout attr
+    auto attrs = context->GetAttrs();
+    int64_t maskMode = 0;
+    int64_t cmpRatio = 1;
+    int64_t layout = 0;  // 0=BSND, 1=TND
+    if (attrs != nullptr) {
+        auto maskModePtr = attrs->GetAttrPointer<int64_t>(2);
+        auto cmpRatioPtr = attrs->GetAttrPointer<int64_t>(3);
+        if (maskModePtr != nullptr) {
+            maskMode = *maskModePtr;
+        }
+        if (cmpRatioPtr != nullptr) {
+            cmpRatio = *cmpRatioPtr;
+        }
+        // Attr indices: 0=layoutQ(String), 1=layoutK(String), 2=maskMode(Int), 3=cmpRatio(Int)
+        auto layoutQPtr = attrs->GetAttrPointer<char>(0);
+        if (layoutQPtr != nullptr) {
+            std::string layoutQStr(layoutQPtr);
+            if (layoutQStr == "TND") {
+                layout = 1;
+            }
+        }
+    }
+
+    // Extract runtime dimensions from input shapes.
     auto queryShape = context->GetInputShape(0);
     auto keyShape = context->GetInputShape(1);
-    int64_t bSize = queryShape->GetStorageShape().GetDim(0);
-    int64_t s1Size = queryShape->GetStorageShape().GetDim(1);
-    int64_t n1Size = queryShape->GetStorageShape().GetDim(2);
-    int64_t dSize = queryShape->GetStorageShape().GetDim(3);
-    int64_t s2Size = keyShape->GetStorageShape().GetDim(1);
+    int64_t bSize, s1Size, n1Size, dSize, s2Size;
+
+    if (layout == 1) {
+        // TND: query [T1, N1, D], key [T2, 1, D]
+        s1Size = queryShape->GetStorageShape().GetDim(0);
+        n1Size = queryShape->GetStorageShape().GetDim(1);
+        dSize = queryShape->GetStorageShape().GetDim(2);
+        s2Size = keyShape->GetStorageShape().GetDim(0);
+        // B from cu_seq_lens_q input (index 3, shape [B+1])
+        auto cuSeqLensQShape = context->GetInputShape(3);
+        if (cuSeqLensQShape != nullptr) {
+            bSize = cuSeqLensQShape->GetStorageShape().GetDim(0) - 1;
+        } else {
+            bSize = 1;
+        }
+    } else {
+        // BSND: query [B, S1, N1, D], key [B, S2, 1, D]
+        bSize = queryShape->GetStorageShape().GetDim(0);
+        s1Size = queryShape->GetStorageShape().GetDim(1);
+        n1Size = queryShape->GetStorageShape().GetDim(2);
+        dSize = queryShape->GetStorageShape().GetDim(3);
+        s2Size = keyShape->GetStorageShape().GetDim(1);
+    }
 
     // OpTiling comes from the pypto kernel (.py dataclass) via force-include.
     OpTiling *tilingData = context->GetTilingData<OpTiling>();
@@ -47,34 +89,32 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
     tilingData->d = dSize;
 
     // Determine if S2 exceeds reduce_sum_vec UB capacity.
-    // KV_CACHE_NUM is computed from UB layout in the kernel .py.
     constexpr int64_t TKV = 128;
     constexpr int64_t TKV_HALF = TKV / 2;
-    constexpr int64_t KV_CACHE_NUM = 46832;  // mirrors kernel .py computation
+    constexpr int64_t KV_CACHE_NUM = 46832;
     int64_t s2Tiles = (s2Size + TKV - 1) / TKV;
     int64_t maxUbS2Tiles = KV_CACHE_NUM / TKV_HALF;
     int64_t isLongS2 = (s2Tiles > maxUbS2Tiles) ? 1 : 0;
     tilingData->isLongS2 = isLongS2;
 
-    auto attrs = context->GetAttrs();
-    int64_t maskMode = 0;
-    int64_t cmpRatio = 1;
-    if (attrs != nullptr) {
-        auto maskModePtr = attrs->GetAttrPointer<int64_t>(2);
-        auto cmpRatioPtr = attrs->GetAttrPointer<int64_t>(3);
-        if (maskModePtr != nullptr) {
-            maskMode = *maskModePtr;
-        }
-        if (cmpRatioPtr != nullptr) {
-            cmpRatio = *cmpRatioPtr;
-        }
-    }
     tilingData->mask_mode = maskMode;
     tilingData->cmp_ratio = cmpRatio;
+    tilingData->layout = layout;
 
-    context->SetTilingKey(static_cast<uint32_t>(isLongS2));
+    // Check if optional inputs seq_used_q (index 5) and seq_used_k (index 6) are provided
+    int64_t hasSeqUsedQ = (context->GetInputShape(5) != nullptr) ? 1 : 0;
+    int64_t hasSeqUsedK = (context->GetInputShape(6) != nullptr) ? 1 : 0;
+    tilingData->has_seqused_q = hasSeqUsedQ;
+    tilingData->has_seqused_k = hasSeqUsedK;
 
-    // Workspace: system reserve + workspace_max [1,576] FP32 (2560 bytes) + workspace_sum [1,576] FP32 (2560 bytes)
+    // TilingKey: bit0=isLongS2, bit1=hasSeqUsedQ, bit2=hasSeqUsedK
+    uint64_t tilingKey = GET_TPL_TILING_KEY(
+        static_cast<uint32_t>(isLongS2),
+        static_cast<uint32_t>(hasSeqUsedQ),
+        static_cast<uint32_t>(hasSeqUsedK));
+    context->SetTilingKey(tilingKey);
+
+    // Workspace: system reserve + workspace_max [1,72] FP32 (288 bytes) + workspace_sum [1,72] FP32 (288 bytes)
     //            + workspace [36, S2] FP32 (for long S2 reduce_sum spill).
     constexpr size_t WS_MAX_BYTES = 288;
     constexpr int64_t WS_MAX_CORES = 36;
@@ -84,8 +124,8 @@ static ge::graphStatus DenseLightningIndexerSoftmaxLseV2TilingFunc(gert::TilingC
     size_t* workSpaces = context->GetWorkspaceSizes(1);
     workSpaces[0] = workspaceSize;
 
-    OP_LOGI(context->GetNodeName(), "DenseLightningIndexerSoftmaxLseV2 tiling completed: blockDim=%u, aivNum=%u, aicNum=%u, B=%ld, S1=%ld, S2=%ld, N1=%ld, D=%ld, isLongS2=%ld, maskMode=%ld, cmpRatio=%ld, workspaceSize=%zu.",
-            blockDim, aivNum, aicNum, bSize, s1Size, s2Size, n1Size, dSize, isLongS2, maskMode, cmpRatio, workspaceSize);
+    OP_LOGI(context->GetNodeName(), "DenseLightningIndexerSoftmaxLseV2 tiling completed: blockDim=%u, aivNum=%u, aicNum=%u, layout=%ld, B=%ld, S1=%ld, S2=%ld, N1=%ld, D=%ld, isLongS2=%ld, maskMode=%ld, cmpRatio=%ld, hasSeqUsedQ=%ld, hasSeqUsedK=%ld, workspaceSize=%zu.",
+            blockDim, aivNum, aicNum, layout, bSize, s1Size, s2Size, n1Size, dSize, isLongS2, maskMode, cmpRatio, hasSeqUsedQ, hasSeqUsedK, workspaceSize);
     return ge::GRAPH_SUCCESS;
 }
 
