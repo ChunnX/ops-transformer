@@ -897,11 +897,29 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchExpert(ExpertLo
         if (subBlockIdx_ != 1) {
             return;
         }
+        uint32_t traceWaveIdx = expertIdx / expertsPerBatch_;
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if (expertIdx == traceWaveIdx * expertsPerBatch_) {
+                criticalPathTrace_.BeginWaveDispatch(traceWaveIdx, CriticalPathTrace::Now());
+            }
+        }
         uint64_t sendCnt = 0;
         SendCntCal(static_cast<int32_t>(expertIdx), sendCnt);
         if (UpdateGroupParams<AddrUpdateMode::GMM1>(state, expertIdx, sendCnt)) {
             UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmmAddrInfo, state);
             TripleInfoCalAndDispatch(gmmAddrInfo, static_cast<int32_t>(expertIdx));
+        }
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            uint32_t traceWaveEnd = (traceWaveIdx + 1U) * expertsPerBatch_;
+            if (traceWaveEnd > expertPerRank_) {
+                traceWaveEnd = expertPerRank_;
+            }
+            if (expertIdx + 1U == traceWaveEnd) {
+                // TripleInfoCalAndDispatch returns after its existing MTE3->S
+                // drain, so all token/triple GM writes owned by this core are
+                // complete.  No diagnostic PIPE_ALL is required here.
+                criticalPathTrace_.EndWaveDispatch(traceWaveIdx, CriticalPathTrace::Now());
+            }
         }
     }
 }
@@ -1668,6 +1686,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombineNoQuantGm
             return;
         }
         criticalPathTrace_.BeginCombine(CriticalPathTrace::Now());
+        // The caller has already passed ready fan-in and the matching bulk
+        // triple MTE2->S dependency.  This is the first real row-send entry,
+        // not the beginning of either wait.
+        criticalPathTrace_.BeginWaveCombine(CriticalPathTrace::Now());
 
         // Only the cumsum state below 64 KiB remains live here.  Six maximum
         // H=8K BF16 rows end at 160 KiB, immediately before ready scratch.
@@ -2126,6 +2148,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
         uint32_t batchEnd = batchBegin + expertsPerWave < expertPerRank_ ?
                                 batchBegin + expertsPerWave :
                                 expertPerRank_;
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            criticalPathTrace_.SetActiveWave(batchIdx);
+        }
 
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
         if (batchIdx == 1U) {
@@ -2176,6 +2201,23 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
             }
 #endif
             GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
+        }
+
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if constexpr (g_coreType == AIC) {
+                if (criticalPathTrace_.HasGmm1Work()) {
+                    // NotifyVector is FIX-ordered, but Scalar may otherwise
+                    // run ahead.  This narrow bridge makes gmm1_end an actual
+                    // per-core FIX completion point without draining V/MTE.
+                    SetFlag<HardEvent::FIX_S>(EVENT_ID7);
+                    WaitFlag<HardEvent::FIX_S>(EVENT_ID7);
+                    criticalPathTrace_.EndGmm1(CriticalPathTrace::Now());
+                }
+            } else if (subBlockIdx_ == 0U && criticalPathTrace_.HasSwigluWork()) {
+                // Every epilogue tile returns only after its own MTE3->S GM
+                // completion bridge, so the outer wave return is actual.
+                criticalPathTrace_.EndSwiglu(CriticalPathTrace::Now());
+            }
         }
 
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
@@ -2244,6 +2286,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
         }
         if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
             PublishGmm2NoQuantReady(batchIdx);
+        }
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if constexpr (g_coreType == AIC) {
+                if (criticalPathTrace_.HasGmm2Work()) {
+                    // The last ready publication above contains FIX->S, which
+                    // orders every direct-GM GMM2 write from this AIC.
+                    criticalPathTrace_.EndGmm2(CriticalPathTrace::Now());
+                }
+            }
         }
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
         if constexpr (g_coreType == AIC) {
@@ -2368,15 +2419,18 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
                     criticalPathTrace_.EndCombineScalar(CriticalPathTrace::Now());
                 }
                 if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
-                    if (batchEnd == expertPerRank_ && criticalPathTrace_.firstCombineBegin != 0U) {
-                        // DrainCombineNoQuantRowRing orders MTE3 behind MTE2,
-                        // but its Scalar return is only an issue boundary.  On
-                        // the final wave only, bridge that MTE2 dependency to
-                        // Scalar so this one timestamp denotes true send
-                        // completion without serializing any following wave.
+                    if (criticalPathTrace_.HasCombineWork()) {
+                        // DrainCombineNoQuantRowRing puts six MTE3 completion
+                        // waits on MTE2.  Bridge that dependency to Scalar once
+                        // per wave so combine_end means actual remote-send
+                        // completion, rather than a drain issue boundary.
                         SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
                         WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
-                        criticalPathTrace_.lastCombineActualEnd = CriticalPathTrace::Now();
+                        uint32_t combineActualEnd = CriticalPathTrace::Now();
+                        criticalPathTrace_.EndWaveCombine(combineActualEnd);
+                        if (batchEnd == expertPerRank_) {
+                            criticalPathTrace_.lastCombineActualEnd = combineActualEnd;
+                        }
                     }
                 }
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
@@ -2453,7 +2507,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WriteCriticalPathTrace(
         WriteGmByPassDCache(traceOut + 11U, static_cast<uint32_t>(MEGA_MOE_GMM2_READY_CORE_STRIDE));
         WriteGmByPassDCache(traceOut + 12U, static_cast<uint32_t>(MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY));
         WriteGmByPassDCache(traceOut + 13U, waveCount);
-        WriteGmByPassDCache(traceOut + 14U, 3U); // bit0: terminal PIPE_ALL; bit1: final MTE2->S bridge
+        // bit0: terminal PIPE_ALL; bit1: per-wave Combine MTE2->S bridge;
+        // bit2: role-dependent per-wave stages; bits[15:8]: capture capacity.
+        constexpr uint32_t traceFlags = 7U | (CRITICAL_PATH_TRACE_MAX_WAVES << 8U);
+        WriteGmByPassDCache(traceOut + 14U, traceFlags);
         WriteGmByPassDCache(traceOut + 15U, m_);
         WriteGmByPassDCache(traceOut + 16U, k_);
         WriteGmByPassDCache(traceOut + 17U, rankId_);
@@ -2489,6 +2546,22 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WriteCriticalPathTrace(
     WriteGmByPassDCache(record + 23U, criticalPathTrace_.gmm1ReadyWaitCycles);
     WriteGmByPassDCache(record + 24U, criticalPathTrace_.gmm2ReadyWaitCycles);
     WriteGmByPassDCache(record + 25U, criticalPathTrace_.combineReadyWaitCycles);
+    WriteGmByPassDCache(record + 26U, criticalPathTrace_.wave0.stage0Begin);
+    WriteGmByPassDCache(record + 27U, criticalPathTrace_.wave0.stage0End);
+    WriteGmByPassDCache(record + 28U, criticalPathTrace_.wave0.stage1Begin);
+    WriteGmByPassDCache(record + 29U, criticalPathTrace_.wave0.stage1End);
+    WriteGmByPassDCache(record + 30U, criticalPathTrace_.wave1.stage0Begin);
+    WriteGmByPassDCache(record + 31U, criticalPathTrace_.wave1.stage0End);
+    WriteGmByPassDCache(record + 32U, criticalPathTrace_.wave1.stage1Begin);
+    WriteGmByPassDCache(record + 33U, criticalPathTrace_.wave1.stage1End);
+    WriteGmByPassDCache(record + 34U, criticalPathTrace_.wave2.stage0Begin);
+    WriteGmByPassDCache(record + 35U, criticalPathTrace_.wave2.stage0End);
+    WriteGmByPassDCache(record + 36U, criticalPathTrace_.wave2.stage1Begin);
+    WriteGmByPassDCache(record + 37U, criticalPathTrace_.wave2.stage1End);
+    WriteGmByPassDCache(record + 38U, criticalPathTrace_.wave3.stage0Begin);
+    WriteGmByPassDCache(record + 39U, criticalPathTrace_.wave3.stage0End);
+    WriteGmByPassDCache(record + 40U, criticalPathTrace_.wave3.stage1Begin);
+    WriteGmByPassDCache(record + 41U, criticalPathTrace_.wave3.stage1End);
 }
 
 template <TemplateMegaMoeTypeClass>

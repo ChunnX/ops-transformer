@@ -18,9 +18,12 @@ import numpy as np
 
 
 TRACE_MAGIC = 0x43505452
-TRACE_VERSION = 1
+TRACE_VERSION = 2
 TRACE_HEADER_WORDS = 20
-TRACE_RECORD_WORDS = 26
+TRACE_BASE_RECORD_WORDS = 26
+TRACE_MAX_WAVES = 4
+TRACE_WAVE_RECORD_WORDS = 4
+TRACE_RECORD_WORDS = TRACE_BASE_RECORD_WORDS + TRACE_MAX_WAVES * TRACE_WAVE_RECORD_WORDS
 TRACE_POINT_NAMES = (
     "process_begin",
     "rolling_begin",
@@ -175,6 +178,36 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
             name: int(record[22 + wait_idx])
             for wait_idx, name in enumerate(TRACE_WAIT_NAMES)
         }
+        if core_type == "AIC":
+            role_stages = ("gmm1", "gmm2")
+        elif core_type == "AIV0":
+            role_stages = ("swiglu", None)
+        else:
+            role_stages = ("dispatch", "combine")
+        waves = []
+        for wave_idx in range(header["captured_wave_count"]):
+            wave_base = TRACE_BASE_RECORD_WORDS + wave_idx * TRACE_WAVE_RECORD_WORDS
+            stages = []
+            for stage_idx, stage_name in enumerate(role_stages):
+                if stage_name is None:
+                    continue
+                begin = relative_value(record[wave_base + stage_idx * 2])
+                end = relative_value(record[wave_base + stage_idx * 2 + 1])
+                stages.append(
+                    {
+                        "name": stage_name,
+                        "begin": begin,
+                        "end": end,
+                        "completion": {
+                            "dispatch": "existing per-expert MTE3-to-Scalar drain",
+                            "gmm1": "diagnostic FIX-to-Scalar bridge",
+                            "swiglu": "existing per-tile MTE3-to-Scalar bridge",
+                            "gmm2": "ready publication FIX-to-Scalar bridge",
+                            "combine": "per-wave MTE2-to-Scalar bridge after the six-slot drain",
+                        }[stage_name],
+                    }
+                )
+            waves.append({"wave": wave_idx, "stages": stages})
         cores.append(
             {
                 "record_index": record_idx,
@@ -183,6 +216,7 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
                 "label": f"{core_type}-{logical_idx:02d}",
                 "points": points,
                 "wait_cycles": waits,
+                "waves": waves,
             }
         )
 
@@ -195,7 +229,8 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
 
     colors = {
         "setup": "#64748b",
-        "gmm": "#2563eb",
+        "gmm1": "#2563eb",
+        "gmm2": "#dc2626",
         "publish": "#dc2626",
         "swiglu": "#7c3aed",
         "dispatch": "#0891b2",
@@ -218,6 +253,14 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
         for value in core["points"].values()
         if value is not None
     ]
+    plotted_cycles.extend(
+        value
+        for core in cores
+        for wave in core["waves"]
+        for stage in wave["stages"]
+        for value in (stage["begin"], stage["end"])
+        if value is not None
+    )
     min_cycle = min(plotted_cycles)
     max_cycle = max(plotted_cycles)
     if min_cycle == max_cycle:
@@ -264,14 +307,14 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
         '<rect width="100%" height="100%" fill="#ffffff"/>',
         '<text x="8" y="22" font-size="16" font-weight="700">MegaMoe critical-path per-core timeline</text>',
         f'<text x="8" y="43" font-size="11">rank={rank} | cycles relative to AIC0 process_begin | '
-        "solid/high-opacity = exact bounded span; translucent/dashed = inferred activity</text>",
+        "solid/high-opacity = per-wave exact bounded stage; translucent/dashed = inferred tail</text>",
     ]
 
     legend_x = 8
     for kind, label in (
         ("setup", "setup"),
-        ("gmm", "GMM1/GMM2"),
-        ("publish", "ready publish"),
+        ("gmm1", "GMM1"),
+        ("gmm2", "GMM2"),
         ("swiglu", "SwiGLU"),
         ("dispatch", "dispatch"),
         ("ready", "ready fan-in"),
@@ -319,61 +362,18 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
         p = core["points"]
         add_segment(svg, y, p["process_begin"], p["rolling_begin"], "setup", "local setup", False)
 
-        if core["core_type"] == "AIC":
-            add_segment(
-                svg, y, p["rolling_begin"], p["first_publish_begin"],
-                "gmm", "GMM rolling before first publish", False,
-            )
-            add_segment(
-                svg, y, p["first_publish_begin"], p["first_publish_end"],
-                "publish", "first FIX->S and ready-store issue", True,
-            )
-            add_segment(
-                svg, y, p["first_publish_end"], p["last_publish_begin"],
-                "gmm", "GMM rolling between first/last publish", False,
-            )
-            add_segment(
-                svg, y, p["last_publish_begin"], p["last_publish_end"],
-                "publish", "last FIX->S and ready-store issue", True,
-            )
-            add_segment(
-                svg, y, p["last_publish_end"], p["rolling_body_end"],
-                "gmm", "GMM rolling tail", False,
-            )
-        elif core["core_type"] == "AIV0":
-            add_segment(
-                svg, y, p["rolling_begin"], p["rolling_body_end"],
-                "swiglu", "GMM1 post/SwiGLU rolling", False,
-            )
-        else:
-            add_segment(
-                svg, y, p["rolling_begin"], p["rolling_body_end"],
-                "dispatch", "Dispatch + Combine rolling", False,
-            )
-            add_segment(
-                svg, y, p["rolling_begin"], p["dispatch_next_wave_end"],
-                "dispatch", "dispatch next wave", True,
-            )
-            add_segment(
-                svg, y, p["first_ready_begin"], p["first_ready_end"],
-                "ready", "first ready fan-in", True,
-            )
-            add_segment(
-                svg, y, p["first_combine_begin"], p["first_combine_scalar_end"],
-                "combine", "first combine Scalar issue/drain", True,
-            )
-            add_segment(
-                svg, y, p["last_ready_begin"], p["last_ready_end"],
-                "ready", "last ready fan-in", True,
-            )
-            add_segment(
-                svg, y, p["last_combine_begin"], p["last_combine_scalar_end"],
-                "combine", "last combine Scalar issue/drain", True,
-            )
-            add_segment(
-                svg, y, p["last_combine_scalar_end"], p["last_combine_actual_end"],
-                "drain", "final combine async completion", True,
-            )
+        for wave in core["waves"]:
+            for stage in wave["stages"]:
+                stage_name = stage["name"]
+                add_segment(
+                    svg,
+                    y,
+                    stage["begin"],
+                    stage["end"],
+                    stage_name,
+                    f"wave {wave['wave']} {stage_name.upper()} ({stage['completion']})",
+                    True,
+                )
 
         add_segment(
             svg, y, p["rolling_body_end"], p["rolling_end"],
@@ -396,16 +396,6 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
             add_segment(
                 svg, y, p["local_sync_end"], p["work_end"],
                 "idle", "AIC tail/trace rendezvous", False,
-            )
-
-        for point_name, cycle in p.items():
-            if cycle is None:
-                continue
-            x = x_pos(cycle)
-            title = html.escape(f"{core['label']} {point_name}: {cycle} cycles")
-            svg.append(
-                f'<line class="marker" x1="{x:.2f}" y1="{y + 3}" x2="{x:.2f}" y2="{y + 22}">'
-                f"<title>{title}</title></line>"
             )
 
         waits = core["wait_cycles"]
@@ -459,6 +449,14 @@ def _print_critical_path_words(words, rank):
         raise RuntimeError(
             f"rank {rank}: invalid core layout aic={aic_num}, aiv={aiv_num}, records={record_count}"
         )
+    wave_stage_trace = (trace_flags >> 2) & 1
+    wave_capture_capacity = (trace_flags >> 8) & 0xFF
+    if wave_stage_trace != 1 or wave_capture_capacity != TRACE_MAX_WAVES:
+        raise RuntimeError(
+            f"rank {rank}: invalid wave trace flags enabled={wave_stage_trace} "
+            f"capacity={wave_capture_capacity}; expected enabled=1 capacity={TRACE_MAX_WAVES}"
+        )
+    captured_wave_count = min(wave_count, wave_capture_capacity)
 
     required_words = header_words + record_count * record_words
     if words.size < required_words:
@@ -517,7 +515,8 @@ def _print_critical_path_words(words, rank):
         f"experts_per_wave={experts_per_wave} experts={expert_per_rank} waves={wave_count} "
         f"ready={ready_name} fanin={fanin_name} stride={ready_stride} "
         f"final_only={final_only} interleaved={gmm1_interleaved} world={world_size} "
-        f"terminal_pipeall={trace_flags & 1} final_mte2_s_bridge={(trace_flags >> 1) & 1}"
+        f"terminal_pipeall={trace_flags & 1} per_wave_combine_bridge={(trace_flags >> 1) & 1} "
+        f"wave_trace={wave_stage_trace} captured_waves={captured_wave_count}/{wave_count}"
     )
 
     expected_runtime = {
@@ -527,7 +526,9 @@ def _print_critical_path_words(words, rank):
         "final_only": (final_only, 0),
         "gmm1_interleaved": (gmm1_interleaved, 1),
         "terminal_pipeall": (trace_flags & 1, 1),
-        "final_mte2_s_bridge": ((trace_flags >> 1) & 1, 1),
+        "per_wave_combine_bridge": ((trace_flags >> 1) & 1, 1),
+        "wave_stage_trace": (wave_stage_trace, 1),
+        "wave_capture_capacity": (wave_capture_capacity, TRACE_MAX_WAVES),
         "trace_rank": (trace_rank, rank),
     }
     if os.environ.get("MEGA_MOE_TRACE_KEEP_CONFIG", "0") != "1":
@@ -553,7 +554,7 @@ def _print_critical_path_words(words, rank):
         )
 
     trace_header = {
-        "schema": "mega_moe_critical_path_trace_v1",
+        "schema": "mega_moe_critical_path_trace_v2",
         "rank": rank,
         "trace_rank": trace_rank,
         "reference": "AIC-00 process_begin",
@@ -566,6 +567,9 @@ def _print_critical_path_words(words, rank):
         "experts_per_wave": experts_per_wave,
         "expert_per_rank": expert_per_rank,
         "wave_count": wave_count,
+        "captured_wave_count": captured_wave_count,
+        "wave_capture_capacity": wave_capture_capacity,
+        "wave_trace_truncated": wave_count > wave_capture_capacity,
         "ready_mode": ready_name,
         "fanin_mode": fanin_name,
         "ready_core_stride_int32": ready_stride,
@@ -573,10 +577,11 @@ def _print_critical_path_words(words, rank):
         "gmm1_interleaved": gmm1_interleaved,
         "world_size": world_size,
         "terminal_pipeall": trace_flags & 1,
-        "final_mte2_s_bridge": (trace_flags >> 1) & 1,
+        "per_wave_combine_bridge": (trace_flags >> 1) & 1,
+        "wave_stage_trace": wave_stage_trace,
         "timeline_note": (
-            "Exact spans have two recorded boundaries; broad GMM/SwiGLU/Dispatch+Combine "
-            "bands are inferred between sparse critical points."
+            "Per-wave Dispatch/GMM1/SwiGLU/GMM2/Combine bars have role-specific "
+            "dependency-aware begin points and actual-completion end points."
         ),
     }
     _write_trace_artifacts(records, aic_num, rank, int(reference), trace_header)
@@ -602,6 +607,32 @@ def _print_critical_path_words(words, rank):
             f"{format_span(groups[0], begin_idx, end_idx):>32} "
             f"{format_span(groups[1], begin_idx, end_idx):>32} "
             f"{format_span(groups[2], begin_idx, end_idx):>32}"
+        )
+
+    print("\n[WAVE_STAGE_SPANS] actual cycle min/median/max; active physical cores shown")
+    print(f"{'wave/stage':<31} {'core type':>10} {'active':>10} {'cycles':>32}")
+    wave_stage_groups = (
+        ("gmm1", groups[0], 0, "AIC"),
+        ("gmm2", groups[0], 1, "AIC"),
+        ("swiglu", groups[1], 0, "AIV0"),
+        ("dispatch", groups[2], 0, "AIV1"),
+        ("combine", groups[2], 1, "AIV1"),
+    )
+    for wave_idx in range(captured_wave_count):
+        wave_base = TRACE_BASE_RECORD_WORDS + wave_idx * TRACE_WAVE_RECORD_WORDS
+        for stage_name, group, stage_idx, core_name in wave_stage_groups:
+            begin = group[:, wave_base + stage_idx * 2]
+            end = group[:, wave_base + stage_idx * 2 + 1]
+            valid = (begin != 0) & (end != 0)
+            spans = modular_span(begin[valid], end[valid]) if np.any(valid) else np.empty(0)
+            print(
+                f"{f'wave{wave_idx}/{stage_name}':<31} {core_name:>10} "
+                f"{f'{int(valid.sum())}/{group.shape[0]}':>10} {_format_values(spans):>32}"
+            )
+    if wave_count > captured_wave_count:
+        print(
+            f"[WAVE_TRACE_TRUNCATED] captured first {captured_wave_count} of {wave_count} waves; "
+            "increase the compile-time named-slot capacity for this shape"
         )
 
     print("\n[CRITICAL_WAITS] accumulated Scalar polling/fan-in cycles")
@@ -663,8 +694,8 @@ def _print_critical_path_words(words, rank):
     for name, values in derived:
         print(f"{name:<36} {_format_values(values):>32}")
     print(
-        "[CRITICAL_NOTE] combine_scalar_end is a Scalar issue/drain boundary; "
-        "last_combine_actual_end is the only MTE2->Scalar completion-bridged combine point."
+        "[CRITICAL_NOTE] legacy combine_scalar_end remains an issue boundary; every v2 "
+        "per-wave combine_end is MTE2->Scalar completion-bridged."
     )
 
 

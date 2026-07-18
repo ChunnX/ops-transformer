@@ -35,9 +35,30 @@ namespace MegaMoeImpl {
 static constexpr bool CRITICAL_PATH_TRACE_ENABLED =
     static_cast<bool>(MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE);
 static constexpr uint32_t CRITICAL_PATH_TRACE_MAGIC = 0x43505452U; // "CPTR"
-static constexpr uint32_t CRITICAL_PATH_TRACE_VERSION = 1U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_VERSION = 2U;
 static constexpr uint32_t CRITICAL_PATH_TRACE_HEADER_WORDS = 20U;
-static constexpr uint32_t CRITICAL_PATH_TRACE_RECORD_WORDS = 26U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_BASE_RECORD_WORDS = 26U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_MAX_WAVES = 4U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_WAVE_RECORD_WORDS = 4U;
+static constexpr uint32_t CRITICAL_PATH_TRACE_RECORD_WORDS =
+    CRITICAL_PATH_TRACE_BASE_RECORD_WORDS +
+    CRITICAL_PATH_TRACE_MAX_WAVES * CRITICAL_PATH_TRACE_WAVE_RECORD_WORDS;
+
+// Each slot is a named scalar aggregate, not an indexed device array.  The
+// switch-based accessors below therefore cannot turn a dynamic wave index into
+// a hot-path GM load/store if the device compiler lowers local arrays poorly.
+// Four slots exactly cover the 16-expert / 5-experts-per-wave investigation;
+// the header reports both the real wave count and this fixed capture capacity.
+struct CriticalPathWaveTrace {
+    // Role-dependent compact layout:
+    //   AIC  stage0=GMM1,    stage1=GMM2
+    //   AIV0 stage0=SwiGLU,  stage1=unused
+    //   AIV1 stage0=Dispatch, stage1=Combine
+    uint32_t stage0Begin = 0U;
+    uint32_t stage0End = 0U;
+    uint32_t stage1Begin = 0U;
+    uint32_t stage1End = 0U;
+};
 
 struct CriticalPathTrace {
     uint32_t processBegin = 0U;
@@ -66,6 +87,11 @@ struct CriticalPathTrace {
     uint32_t gmm1ReadyWaitCycles = 0U;
     uint32_t gmm2ReadyWaitCycles = 0U;
     uint32_t combineReadyWaitCycles = 0U;
+    uint32_t activeWaveIdx = 0U;
+    CriticalPathWaveTrace wave0{};
+    CriticalPathWaveTrace wave1{};
+    CriticalPathWaveTrace wave2{};
+    CriticalPathWaveTrace wave3{};
 
 #if defined(__DAV_C310_CUBE__) || defined(__DAV_C310_VEC__)
     __aicore__ inline static uint32_t Now()
@@ -75,6 +101,181 @@ struct CriticalPathTrace {
         }
         return 0U;
     }
+
+    __aicore__ inline void SetActiveWave(uint32_t waveIdx)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            activeWaveIdx = waveIdx;
+        }
+    }
+
+#define MEGA_MOE_RECORD_WAVE_BEGIN(FIELD)                 \
+    do {                                                  \
+        switch (waveIdx) {                                \
+            case 0U:                                      \
+                if (wave0.FIELD == 0U) wave0.FIELD = now; \
+                break;                                    \
+            case 1U:                                      \
+                if (wave1.FIELD == 0U) wave1.FIELD = now; \
+                break;                                    \
+            case 2U:                                      \
+                if (wave2.FIELD == 0U) wave2.FIELD = now; \
+                break;                                    \
+            case 3U:                                      \
+                if (wave3.FIELD == 0U) wave3.FIELD = now; \
+                break;                                    \
+            default:                                      \
+                break;                                    \
+        }                                                 \
+    } while (0)
+
+#define MEGA_MOE_RECORD_WAVE_END(FIELD) \
+    do {                                    \
+        switch (waveIdx) {                  \
+            case 0U: wave0.FIELD = now; break; \
+            case 1U: wave1.FIELD = now; break; \
+            case 2U: wave2.FIELD = now; break; \
+            case 3U: wave3.FIELD = now; break; \
+            default: break;                 \
+        }                                   \
+    } while (0)
+
+    __aicore__ inline void BeginWaveDispatch(uint32_t waveIdx, uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            MEGA_MOE_RECORD_WAVE_BEGIN(stage0Begin);
+        }
+    }
+
+    __aicore__ inline void EndWaveDispatch(uint32_t waveIdx, uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            MEGA_MOE_RECORD_WAVE_END(stage0End);
+        }
+    }
+
+    __aicore__ inline void BeginGmm1(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            uint32_t waveIdx = activeWaveIdx;
+            MEGA_MOE_RECORD_WAVE_BEGIN(stage0Begin);
+        }
+    }
+
+    __aicore__ inline bool HasGmm1Work() const
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            switch (activeWaveIdx) {
+                case 0U: return wave0.stage0Begin != 0U;
+                case 1U: return wave1.stage0Begin != 0U;
+                case 2U: return wave2.stage0Begin != 0U;
+                case 3U: return wave3.stage0Begin != 0U;
+                default: break;
+            }
+        }
+        return false;
+    }
+
+    __aicore__ inline void EndGmm1(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            uint32_t waveIdx = activeWaveIdx;
+            MEGA_MOE_RECORD_WAVE_END(stage0End);
+        }
+    }
+
+    __aicore__ inline void BeginSwiglu(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            uint32_t waveIdx = activeWaveIdx;
+            MEGA_MOE_RECORD_WAVE_BEGIN(stage0Begin);
+        }
+    }
+
+    __aicore__ inline bool HasSwigluWork() const
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            switch (activeWaveIdx) {
+                case 0U: return wave0.stage0Begin != 0U;
+                case 1U: return wave1.stage0Begin != 0U;
+                case 2U: return wave2.stage0Begin != 0U;
+                case 3U: return wave3.stage0Begin != 0U;
+                default: break;
+            }
+        }
+        return false;
+    }
+
+    __aicore__ inline void EndSwiglu(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            uint32_t waveIdx = activeWaveIdx;
+            MEGA_MOE_RECORD_WAVE_END(stage0End);
+        }
+    }
+
+    __aicore__ inline void BeginGmm2(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            uint32_t waveIdx = activeWaveIdx;
+            MEGA_MOE_RECORD_WAVE_BEGIN(stage1Begin);
+        }
+    }
+
+    __aicore__ inline bool HasGmm2Work() const
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            switch (activeWaveIdx) {
+                case 0U: return wave0.stage1Begin != 0U;
+                case 1U: return wave1.stage1Begin != 0U;
+                case 2U: return wave2.stage1Begin != 0U;
+                case 3U: return wave3.stage1Begin != 0U;
+                default: break;
+            }
+        }
+        return false;
+    }
+
+    __aicore__ inline void EndGmm2(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            uint32_t waveIdx = activeWaveIdx;
+            MEGA_MOE_RECORD_WAVE_END(stage1End);
+        }
+    }
+
+    __aicore__ inline void BeginWaveCombine(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            uint32_t waveIdx = activeWaveIdx;
+            MEGA_MOE_RECORD_WAVE_BEGIN(stage1Begin);
+        }
+    }
+
+    __aicore__ inline bool HasCombineWork() const
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            switch (activeWaveIdx) {
+                case 0U: return wave0.stage1Begin != 0U;
+                case 1U: return wave1.stage1Begin != 0U;
+                case 2U: return wave2.stage1Begin != 0U;
+                case 3U: return wave3.stage1Begin != 0U;
+                default: break;
+            }
+        }
+        return false;
+    }
+
+    __aicore__ inline void EndWaveCombine(uint32_t now)
+    {
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            uint32_t waveIdx = activeWaveIdx;
+            MEGA_MOE_RECORD_WAVE_END(stage1End);
+        }
+    }
+
+#undef MEGA_MOE_RECORD_WAVE_END
+#undef MEGA_MOE_RECORD_WAVE_BEGIN
 
     __aicore__ inline void BeginPublish(uint32_t now)
     {

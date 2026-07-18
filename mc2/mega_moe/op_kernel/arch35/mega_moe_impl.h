@@ -400,6 +400,18 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             }
         }
 
+        // Record compute entry only after this core's first upstream-ready
+        // dependency (and any ping-pong reuse dependency) has actually passed.
+        // The first-write-wins wave slot keeps later local tiles out of the
+        // trace hot path without turning a polling interval into MMAD time.
+        if (args.criticalTrace != nullptr && loopIdx == startLoopIdx) {
+            if constexpr (Policy::IS_GMM1) {
+                args.criticalTrace->BeginGmm1(CriticalPathTrace::Now());
+            } else {
+                args.criticalTrace->BeginGmm2(CriticalPathTrace::Now());
+            }
+        }
+
         auto gmBlockA = workSet.gmA.Slice(Te::MakeCoord(mLoc, kLoc),
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
         auto gmBlockScaleA = workSet.gmScaleA.Slice(
@@ -507,6 +519,11 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
             WaitForCube(args.pingpongIdx);
         } else {
             WaitForCube();
+        }
+        if (args.criticalTrace != nullptr && loopIdx == startLoopIdx) {
+            // WaitForCube is the real AIC->AIV0 hand-off.  Sampling before it
+            // would incorrectly paint Cube wait time as SwiGLU execution.
+            args.criticalTrace->BeginSwiglu(CriticalPathTrace::Now());
         }
         AscendC::SetCtrlSpr<60, 60>(0);
         if constexpr (IsGmm1Interleaved) {
