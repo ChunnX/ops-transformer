@@ -198,6 +198,10 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     torch.npu.synchronize()
     metadata.npu()
     print("mixed_quant_sparse_flash_mla...")
+    print("seqused_ori_kv", op_input['seqused_ori_kv'])
+    print("seqused_cmp_kv", op_input['seqused_cmp_kv'])
+    print("ori_win_left", op_input['ori_win_left'])
+    print("ori_win_right", op_input['ori_win_right'])
     npu_result, _ = torch.ops.cann_ops_transformer.mixed_quant_sparse_flash_mla(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,
                                 ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
@@ -223,8 +227,8 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
                                 cmp_ratio=op_input['cmp_ratio'],
                                 ori_mask_mode=op_input['ori_mask_mode'],
                                 cmp_mask_mode=op_input['cmp_mask_mode'],
-                                ori_win_left=op_input['ori_win_left'],
-                                ori_win_right=op_input['ori_win_right'],
+                                **({'ori_win_left': op_input['ori_win_left']} if op_input.get('ori_win_left') is not None else {}),
+                                **({'ori_win_right': op_input['ori_win_right']} if op_input.get('ori_win_right') is not None else {}),
                                 layout_q=op_input['layout_q'],
                                 layout_kv=op_input['layout_kv'],
                                 topk_value_mode=op_input.get('topk_value_mode', 1),

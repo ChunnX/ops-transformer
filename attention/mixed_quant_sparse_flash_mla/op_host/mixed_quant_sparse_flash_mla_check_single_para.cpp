@@ -405,6 +405,23 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaCuSeqLensQ() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaSequsedKv() const
 {
+    if (perfMode_ == QSMLATemplateMode::ORI_SPARSE_MODE ||
+        perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+        if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
+            const std::vector<size_t> expectDimNumList = {DIM_NUM_ONE};
+            if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedOriKv.desc, SEQUSED_ORI_KV_NAME) ||
+                ge::GRAPH_SUCCESS !=
+                    CheckDimNumSupport(&opParamInfo_.sequsedOriKv.tensor->GetShape(), expectDimNumList,
+                                       SEQUSED_ORI_KV_NAME)) {
+                return ge::GRAPH_FAILED;
+            }
+            OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != bSize_,
+                        OP_LOGE(opName_, "input sequsedOriKv's shapeSize is not equal to B: %u, it is %ld", bSize_,
+                                opParamInfo_.sequsedOriKv.tensor->GetShapeSize()),
+                        return ge::GRAPH_FAILED);
+        }
+        return ge::GRAPH_SUCCESS;
+    }
     OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
                 OP_LOGE(opName_, "input sequsedOriKv can not be nullptr, but it's empty"), return ge::GRAPH_FAILED);
     const std::vector<size_t> expectDimNumList = {DIM_NUM_ONE};
@@ -492,10 +509,13 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaOriSparseIndices() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaCuSeqLensOriKv() const
 {
-    OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && kvLayout_ == QSMLALayout::TND &&
-                    opParamInfo_.cuSeqLensOriKv.tensor == nullptr,
-                OP_LOGE(opName_, "cuSeqLensOriKv is required when oriKv is provided and kvLayout is TND."),
-                return ge::GRAPH_FAILED);
+    if (perfMode_ != QSMLATemplateMode::ORI_SPARSE_MODE &&
+        perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+        OP_CHECK_IF(opParamInfo_.oriKv.tensor != nullptr && kvLayout_ == QSMLALayout::TND &&
+                        opParamInfo_.cuSeqLensOriKv.tensor == nullptr,
+                    OP_LOGE(opName_, "cuSeqLensOriKv is required when oriKv is provided and kvLayout is TND."),
+                    return ge::GRAPH_FAILED);
+    }
 
     if (opParamInfo_.cuSeqLensOriKv.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.cuSeqLensOriKv.tensor->GetShapeSize() == 0,

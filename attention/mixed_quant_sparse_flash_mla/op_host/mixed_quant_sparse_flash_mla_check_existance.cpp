@@ -33,9 +33,12 @@ ge::graphStatus QSMLATilingCheck::CheckParaExistenceAntiquant() const
     if (kvLayout_ == QSMLALayout::BSND) {
         return ge::GRAPH_SUCCESS;
     } else if (kvLayout_ == QSMLALayout::PA_BBND) {
-        OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
-                    OP_LOGE(opName_, "when layout_kv is PA_BBND, sequsedOriKv must not be null."),
-                    return ge::GRAPH_FAILED);
+        if (perfMode_ != QSMLATemplateMode::ORI_SPARSE_MODE &&
+            perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+            OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
+                        OP_LOGE(opName_, "when layout_kv is PA_BBND, sequsedOriKv must not be null."),
+                        return ge::GRAPH_FAILED);
+        }
         OP_CHECK_IF(opParamInfo_.oriBlockTable.tensor == nullptr,
                     OP_LOGE(opName_, "when layout_kv is PA_BBND, oriBlockTable must not be null."),
                     return ge::GRAPH_FAILED);
@@ -64,24 +67,20 @@ ge::graphStatus QSMLATilingCheck::CheckCmpSparseIndicesExistence()
 {
     if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
         if (qLayout_ == QSMLALayout::BSND) {
-            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 512 &&
-                opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3) != 1024) {
-                OP_LOGE(opName_, "When qLayout is BSND, topK should be 512 or 1024, but got %ld",
-                        opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(3));
-                return ge::GRAPH_FAILED;
-            }
+            int64_t topkDim = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_3);
+            OP_CHECK_IF(topkDim <= 0,
+                        OP_LOGE(opName_, "When qLayout is BSND, topK should be greater than 0, but got %ld", topkDim),
+                        return ge::GRAPH_FAILED);
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_1) != s1Size_) {
                 OP_LOGE(opName_, "When qLayout is BSND, cmpSparseIndices's S should be equal to s1Size:%u, but got %ld",
                         s1Size_, opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(1));
                 return ge::GRAPH_FAILED;
             }
         } else {
-            if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) != 512 &&
-                opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2) != 1024) {
-                OP_LOGE(opName_, "When qLayout is TND, topK should be 512 or 1024, but got %ld",
-                        opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(2));
-                return ge::GRAPH_FAILED;
-            }
+            int64_t topkDim = opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_2);
+            OP_CHECK_IF(topkDim <= 0,
+                        OP_LOGE(opName_, "When qLayout is TND, topK should be greater than 0, but got %ld", topkDim),
+                        return ge::GRAPH_FAILED);
             if (opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(DIM_0) != qTSize_) {
                 OP_LOGE(opName_, "When qLayout is TND, cmpSparseIndices's T should be equal to qTSize:%u, but got %ld",
                         qTSize_, opParamInfo_.cmpSparseIndices.tensor->GetStorageShape().GetDim(0));
