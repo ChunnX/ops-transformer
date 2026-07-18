@@ -856,6 +856,25 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
     copyOutParams.srcStride = 0;
     copyOutParams.dstStride = 0;
 
+    AscendC::DataCopyParams copyOutValueParams;
+    copyOutValueParams.blockCount = 1;
+    copyOutValueParams.blockLen = topkCount_ * sizeof(bfloat16_t);
+    copyOutValueParams.srcStride = 0;
+    copyOutValueParams.dstStride = 0;
+
+    uint32_t copyBytes = topkCountAlign256_; // 32B对齐 topkCountAlign256_
+
+    AscendC::DataCopyPadExtParams<SCORE_T> scorePadParams{true, 0, 0, 0};
+    AscendC::DataCopyPadExtParams<uint32_t> indexPadParams{true, 0, 0, 0};
+    AscendC::DataCopyExtParams ldScoreParams;
+    ldScoreParams.blockLen = topkCountAlign16_ * sizeof(SCORE_T); // bytes
+    ldScoreParams.srcStride = 3 * topkCountAlign16_ * sizeof(SCORE_T); // s1Basesize-1 两个基本块之间的距离
+    ldScoreParams.dstStride = 0;
+    AscendC::DataCopyExtParams ldIndexParams;
+    ldIndexParams.blockLen = topkCountAlign16_ * sizeof(uint32_t); // bytes
+    ldIndexParams.srcStride = 3 * topkCountAlign16_ * sizeof(uint32_t);
+    ldIndexParams.dstStride = 0;
+
     uint64_t ldProcessLen = ldInfo_.workspaceNum * topkCountAlign16_;
     if (ldProcessLen <= 0) {
         return;
@@ -887,21 +906,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
             Duplicate(ldIndexLocal_.ReinterpretCast<int32_t>()[ldProcessOffset], neg,
                 topkCountAlign256_ + trunkLen_ - ldProcessOffset);
 
-            AscendC::DataCopyPadExtParams<SCORE_T> scorePadParams{true, 0, 0, 0};
-            AscendC::DataCopyExtParams ldScoreParams;
             ldScoreParams.blockCount = ldProWorkspaceNum;
-            ldScoreParams.blockLen = topkCountAlign16_ * sizeof(SCORE_T); // bytes
-            // s1Basesize-1 两个基本块之间的距离
-            ldScoreParams.srcStride =
-                3 * topkCountAlign16_ * sizeof(SCORE_T);
-            ldScoreParams.dstStride = 0;
-
-            AscendC::DataCopyPadExtParams<uint32_t> indexPadParams{true, 0, 0, 0};
-            AscendC::DataCopyExtParams ldIndexParams;
             ldIndexParams.blockCount = ldProWorkspaceNum;
-            ldIndexParams.blockLen = topkCountAlign16_ * sizeof(uint32_t); // bytes
-            ldIndexParams.srcStride = 3 * topkCountAlign16_ * sizeof(uint32_t);
-            ldIndexParams.dstStride = 0;
 
             int32_t s2Len = topkCountAlign16_ * ldProWorkspaceNum + ldProcessOffset;
             uint32_t s2LenAlign = QLIV2Common::Align(s2Len, (int32_t)256); // 寄存器需要256对齐
@@ -962,7 +968,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
             }
 
             PipeBarrier<PIPE_V>();
-            uint32_t copyBytes = topkCountAlign256_; // 32B对齐 topkCountAlign256_
             AscendC::DataCopy(ldIndexLocal_, indicesOutLocal_, copyBytes);
             AscendC::DataCopy(mrgValueLocal_, scoreOutLocal_, copyBytes);
         }
@@ -978,11 +983,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
                          indicesOutLocal_.ReinterpretCast<int32_t>(),
                          copyOutParams);
         if (returnValueFlag) {
-            AscendC::DataCopyParams copyOutValueParams;
-            copyOutValueParams.blockCount = 1;
-            copyOutValueParams.blockLen = topkCount_ * sizeof(bfloat16_t);
-            copyOutValueParams.srcStride = 0;
-            copyOutValueParams.dstStride = 0;
             AscendC::DataCopyPad(valueOutGm[indiceOutGmOffset], valueOutLocal_, copyOutValueParams);
         }
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
