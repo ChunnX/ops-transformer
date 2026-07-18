@@ -1717,6 +1717,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
         GroupMatmulWithSwigluQuant<true>(sharedGmm1AddrInfo, sharedGmm1State, vecSetSyncCom);
     }
     EndSync(vecSetSyncCom);
+    startBlockIdx_ = 0; // 共享专家GMM1修改了startBlockIdx_，重置给GMM1使用
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -1746,6 +1747,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // Phase 1: 量化 + 共享专家输入拆分 + mask/reset (AIV)
     QuantProcessInRank(); // 对本卡token的量化
+    SendMaskCal();   // 源卡按所有全局专家算 mask 并推送到目标专家卡
     ResetFlagList(); // 清理workSpace空间上的flag位
     if (sharedExpertNum_ > 0) {
         SharedExpertCopyInput();
@@ -1754,7 +1756,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>();           // aic需要等待flag位reset清理完成
-    SendMaskCal();   // 源卡按所有全局专家算 mask 并推送到目标专家卡
 
     // Phase 1.5: 共享专家 GMM1+SwiGLU (前移, 在 MoE 之前执行, 复用 MoE 函数)
     TupleShape initShape;
@@ -1763,6 +1764,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     if (sharedExpertNum_ > 0) {
         ProcessSharedExpertGmm1(initShape, initOffset);
+        SyncAll<false>();
     }
 
     CrossRankSyncInWorldSize();
@@ -1850,7 +1852,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 4. 本卡数据Unpermute
     if constexpr(g_coreType == AIV) {
-        UnpermuteBuffInit();
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
     }
