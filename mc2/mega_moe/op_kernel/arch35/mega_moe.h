@@ -1769,6 +1769,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     CrossRankSyncInWorldSize();
 
     // 2.本卡专家接收数据dispatch & GroupMatmul1 & SwigluQuant
+    startBlockIdx_ = 0; // 共享专家GMM1修改了startBlockIdx_，MoE GMM1需重置
     DispatchBuffInit();
     GMMAddrInfo dispatchAddrInfo;
     GMMAddrInfo gmm1AddrInfo;
