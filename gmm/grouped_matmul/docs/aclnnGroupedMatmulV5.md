@@ -125,17 +125,14 @@ $$
 
 ### 版本演进
 
-#### Ascend 950PR/Ascend 950DT
+- **V4 → V5**：
 
-- V1 → V4：支持分组轴（groupType）；非量化支持 x/weight转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight为 INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8（INT4 支持 perchannel 和 pergroup，其余仅 perchannel）。
-- V4 → V5：无变化。
+  - Atlas A3/A2 系列产品：增加可选参数tuningConfigOptional，调优参数。数组中第一个值表示各个专家处理的token数的预期值，算子tiling时会按照该预期值进行最优tiling。
 
-#### Atlas A3/A2 系列产品
+- **V1 → V4**：
 
-- V1 → V4：支持分组轴（groupType）；非量化支持 x/weight转置；支持 x/weight/y 均为单Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式）。
-- V4 → V5：增加可选参数 `tuningConfigOptional`，数组中第一个值表示各专家处理的 token数预期值，tiling时按该值进行最优切分。
-
-**确定性计算**：GroupedMatmul默认提供确定性实现。
+  - Ascend 950PR/Ascend 950DT：支持不同分组轴，由groupType表示；非量化支持 x/weight转置；支持静态量化（T-C/T-T）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持动态量化（K-C/K-T/T-T/T-C/MX/G-B）BFLOAT16/FLOAT16/FLOAT32 输出 + bias；支持伪量化 weight为 INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8（INT4 支持 perchannel 和 pergroup，其余仅 perchannel）。
+  - Atlas A3/A2 系列产品：支持不同分组轴，由groupType表示；非量化支持 x/weight转置；支持 x/weight/y 均为单Tensor 非量化 FLOAT32 输入；支持伪量化 weight=INT4（perchannel/pergroup 模式）。
 
 
 ## 函数原型
