@@ -144,15 +144,22 @@ class ElasticBuffer:
                 f"which is not divisible by {buffer_alignment=}."
             ),
         )
-        moe_args = (num_max_tokens_per_rank, hidden, num_topk)
-        torch._check(
-            all(arg is None for arg in moe_args)
-            or all(arg is not None for arg in moe_args),
-            lambda: (
-                "num_max_tokens_per_rank, hidden and num_topk "
-                "must be specified together for MoE dispatch/combine."
-            ),
-        )
+        if not with_grad:
+            moe_args = (num_max_tokens_per_rank, hidden, num_topk)
+            torch._check(
+                all(arg is None for arg in moe_args)
+                or all(arg is not None for arg in moe_args),
+                lambda: (
+                    "num_max_tokens_per_rank, hidden and num_topk "
+                    "must be specified together for MoE dispatch/combine."
+                ),
+            )
+            torch._check(
+                num_max_tokens_per_rank is None or hidden is not None,
+                lambda: (
+                    "num_max_tokens_per_rank must be specified together with hidden."
+                ),
+            )
 
         self._group = group
         self._num_cpu_bytes = num_cpu_bytes
@@ -168,7 +175,10 @@ class ElasticBuffer:
             lambda: "HCCL comm name is empty, please check HCCL group initialization.",
         )
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
-        self._runtime = _elastic_buffer_ops.ElasticBuffer(self._group_name, self._num_cpu_bytes)
+        self._runtime = _elastic_buffer_ops.ElasticBuffer(
+            self._group_name, self._num_cpu_bytes,
+            num_max_tokens_per_rank if num_max_tokens_per_rank is not None else 0,
+            self._with_grad)
 
         self._num_max_tokens_per_rank = num_max_tokens_per_rank
         self._hidden = hidden

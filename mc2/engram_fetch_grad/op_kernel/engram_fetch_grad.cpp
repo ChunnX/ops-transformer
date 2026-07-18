@@ -31,8 +31,9 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "engram_fetch_grad_tiling_data.h"
 #include "engram_fetch_grad_tiling_key.h"
+#include "../../engram_fetch/op_kernel/engram_fetch_utils.h"
 
-using namespace AscendC;
+using namespace Mc2Kernel;
 
 template<uint32_t EngramFetchGradMode>
 __global__ __aicore__ void engram_fetch_grad(
