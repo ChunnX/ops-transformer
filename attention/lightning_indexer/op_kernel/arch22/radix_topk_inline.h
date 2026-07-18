@@ -64,6 +64,21 @@ __aicore__ inline void InlineRadixTopK(
     GlobalTensor<int32_t> indexGm;
     indexGm.SetGlobalBuffer((__gm__ int32_t *)indicesGmAddr);
 
+    // Step 1: Dump batch 600 ProcessVec debug info (at scoreOffset 600*1024+512)
+    if (debugBatchId == 600) {
+        for (uint32_t i = 0; i < 9; i++) {
+            float sv = xGm.GetValue(600 * 1024 + 512 + i);
+            indexGm.SetValue(i, *reinterpret_cast<int32_t *>(&sv));
+        }
+        // Also dump scores at index 85~95 (around boundary)
+        for (uint32_t i = 0; i < 20; i++) {
+            float sv = xGm.GetValue(85 + i);
+            indexGm.SetValue(9 + i, *reinterpret_cast<int32_t *>(&sv));
+        }
+        for (uint32_t i = 29; i < kValue; i++) { indexGm.SetValue(i, -1); }
+        return;
+    }
+
     // xBuf: float at offset 0, bf16 at offset tileLenAlign_*2 (bfloat16 elements) = tileLenAlign_*4 bytes
     LocalTensor<float> xLocalFp32 = xBuf.Get<float>();
     LocalTensor<int32_t> xLocalInt32 = xLocalFp32.template ReinterpretCast<int32_t>();
