@@ -1132,15 +1132,12 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         # 创建HCCL通信链路并初始化EP域
         print(f'[INFO] device_{rank} 创建HCCL通信链路')
         master_ip = '127.0.0.1'
-        options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
-        # 使用时hccl_buffer_size的值需根据算子接口文档中给出的通信域缓存区大小的约束进行配置
-        options.hccl_config = {"hccl_buffer_size": 200} # 单位：MB，描述windowIn或windowOut的大小
         dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001')
         print(f"device_{rank} init_process_group success")
 
         print(f"device {rank} 初始化EP域")
         for ep_ranks in ep_ranks_list:
-            tmp_group = dist.new_group(backend="hccl", ranks=ep_ranks, pg_options=options.hccl_config)
+            tmp_group = dist.new_group(backend="hccl", ranks=ep_ranks)
             if rank in ep_ranks:
                 ep_group = tmp_group
 
