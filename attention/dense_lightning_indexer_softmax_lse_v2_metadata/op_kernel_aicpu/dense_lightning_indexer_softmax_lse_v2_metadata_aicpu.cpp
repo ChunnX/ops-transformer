@@ -171,6 +171,49 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::ParamsCheck()
                          cmpResidualKey_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
     }
+
+    if (IsTensorValid(seqUsedQuery_)) {
+        auto *seqUsedQ = reinterpret_cast<const int32_t *>(seqUsedQuery_->GetData());
+        if (layoutType_ == DliLayout::TND && IsTensorValid(cuSeqLensQuery_)) {
+            auto *cuSeqQ = reinterpret_cast<const int32_t *>(cuSeqLensQuery_->GetData());
+            for (int64_t i = 0; i < bSize_; ++i) {
+                int64_t seqlenQ = static_cast<int64_t>(cuSeqQ[i + 1]) - static_cast<int64_t>(cuSeqQ[i]);
+                if (static_cast<int64_t>(seqUsedQ[i]) > seqlenQ) {
+                    KERNEL_LOG_ERROR("seqused_q[%ld]=%d exceeds seqlens_q[%ld]=%ld", i, seqUsedQ[i], i, seqlenQ);
+                    return false;
+                }
+            }
+        } else {
+            for (int64_t i = 0; i < bSize_; ++i) {
+                if (static_cast<int64_t>(seqUsedQ[i]) > s1Size_) {
+                    KERNEL_LOG_ERROR("seqused_q[%ld]=%d exceeds max_seqlen_q=%ld", i, seqUsedQ[i], s1Size_);
+                    return false;
+                }
+            }
+        }
+    }
+
+    if (IsTensorValid(seqUsedKey_)) {
+        auto *seqUsedK = reinterpret_cast<const int32_t *>(seqUsedKey_->GetData());
+        if (layoutType_ == DliLayout::TND && IsTensorValid(cuSeqLensKey_)) {
+            auto *cuSeqK = reinterpret_cast<const int32_t *>(cuSeqLensKey_->GetData());
+            for (int64_t i = 0; i < bSize_; ++i) {
+                int64_t seqlenK = static_cast<int64_t>(cuSeqK[i + 1]) - static_cast<int64_t>(cuSeqK[i]);
+                if (static_cast<int64_t>(seqUsedK[i]) > seqlenK) {
+                    KERNEL_LOG_ERROR("seqused_k[%ld]=%d exceeds seqlens_k[%ld]=%ld", i, seqUsedK[i], i, seqlenK);
+                    return false;
+                }
+            }
+        } else {
+            for (int64_t i = 0; i < bSize_; ++i) {
+                if (static_cast<int64_t>(seqUsedK[i]) > s2Size_) {
+                    KERNEL_LOG_ERROR("seqused_k[%ld]=%d exceeds max_seqlen_k=%ld", i, seqUsedK[i], s2Size_);
+                    return false;
+                }
+            }
+        }
+    }
+
     return true;
 }
 

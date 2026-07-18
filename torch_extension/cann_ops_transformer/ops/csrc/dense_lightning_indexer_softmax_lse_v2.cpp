@@ -109,11 +109,16 @@ at::Tensor dense_lightning_indexer_softmax_lse_v2(
     at::Tensor softmax_lse_out{nullptr};
     {
         const c10::OptionalDeviceGuard device_guard(query_index.device());
-        // Output shape (B, S1) for BSND, dtype FP32 (kernel computes in FP32).
-        int64_t bSize = query_index.size(0);
-        int64_t s1Size = (layout_q == "BSND") ? query_index.size(1) : query_index.size(0);
-        softmax_lse_out = at::zeros({bSize, s1Size},
-            query_index.options().dtype(at::kFloat));
+        if (layout_q == "BSND") {
+            int64_t bSize = query_index.size(0);
+            int64_t s1Size = query_index.size(1);
+            softmax_lse_out = at::zeros({bSize, s1Size},
+                query_index.options().dtype(at::kFloat));
+        } else {
+            int64_t t1Size = query_index.size(0);
+            softmax_lse_out = at::zeros({t1Size},
+                query_index.options().dtype(at::kFloat));
+        }
     }
 
     char *layout_q_ptr = const_cast<char *>(layout_q.c_str());
