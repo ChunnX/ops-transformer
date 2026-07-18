@@ -112,7 +112,6 @@ ConstructMixedQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::T
         attenOutSize = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2)};
     }
     at::Tensor attenOut = at::empty(attenOutSize, q.options().dtype(q.dtype()));
-
     if (!attenOut.defined()) {
         printf("[aclnnMixedQuantSparseFlashMla] atten_out creation failed\n");
     } else {
