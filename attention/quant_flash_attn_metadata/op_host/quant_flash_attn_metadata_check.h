@@ -30,8 +30,8 @@ public:
                                           const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
                                           int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
                                           int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode,
-                                           int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale,
-                                           const char *layoutKv,
+                                          int64_t winLeft, int64_t winRight, const char *layoutQ,
+                                          const char *layoutQDescale, const char *layoutKv,
                                           const char *layoutOut, const aclTensor *metadata);
 
 private:
@@ -42,14 +42,16 @@ private:
     // 校验基础属性：batchSize / maxSeqlen / numHeads / headDim / quantMode / layout
     // 文档约束: headDim 仅支持 64/128; quantMode 支持输入范围为 1/2/3
     static inline aclnnStatus CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                            int64_t numHeadsQ, int64_t numHeadsKv,                                             int64_t headDim, int64_t quantMode,
-                                            const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut);
+                                            int64_t numHeadsQ, int64_t numHeadsKv,
+                                            int64_t headDim, int64_t quantMode,
+                                            const char *layoutQ, const char *layoutQDescale,
+                                            const char *layoutKv, const char *layoutOut);
 
     // 校验 mask 参数组: maskMode 支持 0/3/4, winLeft/winRight >= -1
     static inline aclnnStatus CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight);
 
-    // 校验参数存在性: metadata 必须传入; TND 时必须传 cu_seqlens, 非 TND 时不可传 cu_seqlens 且
-    // max_seqlen/seqused 至少提供一个
+    // 校验参数存在性: metadata 必须传入; TND 时必须传 cu_seqlens,
+    // 非 TND 时不可传 cu_seqlens 且 max_seqlen/seqused 至少提供一个
     static inline aclnnStatus CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv, const char *layoutQ,
                                              const char *layoutKv, const aclTensor *cuSeqlensQOptional,
                                              const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional,
@@ -66,10 +68,12 @@ private:
 inline aclnnStatus
 QuantFlashAttnMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
                                          const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-                                         int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-                                         int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode,
-                                          int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale,
-                                          const char *layoutKv,
+                                         int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+                                         int64_t numHeadsQ,
+                                         int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
+                                         int64_t maskMode,
+                                         int64_t winLeft, int64_t winRight, const char *layoutQ,
+                                         const char *layoutQDescale, const char *layoutKv,
                                          const char *layoutOut, const aclTensor *metadata)
 {
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, layoutQ,
@@ -88,14 +92,16 @@ QuantFlashAttnMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, co
 
 inline bool QuantFlashAttnMetadataCheck::IsTensorExist(const aclTensor *tensor)
 {
-    return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) && (tensor->GetViewShape().GetDim(0) > 0) &&
-        (tensor->GetData() != nullptr);
+    return (tensor != nullptr) && (tensor->GetViewShape().GetDimNum() > 0) &&
+           (tensor->GetViewShape().GetDim(0) > 0) && (tensor->GetData() != nullptr);
 }
 
 inline aclnnStatus
 QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                           int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
-                                           const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut)
+                                           int64_t numHeadsQ, int64_t numHeadsKv,
+                                           int64_t headDim, int64_t quantMode,
+                                           const char *layoutQ, const char *layoutQDescale,
+                                           const char *layoutKv, const char *layoutOut)
 {
     CHECK_COND((batchSize == -1 || batchSize > 0), ACLNN_ERR_RUNTIME_ERROR,
         "batchSize must be -1 or greater than 0, but got %ld", batchSize);
@@ -179,7 +185,7 @@ QuantFlashAttnMetadataCheck::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqle
     } else {
         // layoutQ不为TND时，不可以传入cuSeqlensQOptional
         CHECK_COND(!IsTensorExist(cuSeqlensQOptional), ACLNN_ERR_RUNTIME_ERROR,
-            "When layoutQ is not TND, cuSeqlensQOptional should not be provided, but got non-null");
+                    "When layoutQ is not TND, cuSeqlensQOptional should not be provided, but got non-null");
         // maxSeqlenQ和sequsedQOptional必须有一个（-1表示不传）
         CHECK_COND(((maxSeqlenQ >= 0) || IsTensorExist(sequsedQOptional)), ACLNN_ERR_RUNTIME_ERROR,
             "When layoutQ is not TND, at least one of maxSeqlenQ or sequsedQOptional must be provided");
@@ -192,7 +198,7 @@ QuantFlashAttnMetadataCheck::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqle
     } else {
         // layoutKv不为TND时，不可以传入cuSeqlensKvOptional
         CHECK_COND(!IsTensorExist(cuSeqlensKvOptional), ACLNN_ERR_RUNTIME_ERROR,
-            "When layoutKv is not TND, cuSeqlensKvOptional should not be provided, but got non-null");
+                    "When layoutKv is not TND, cuSeqlensKvOptional should not be provided, but got non-null");
         // maxSeqlenKv和sequsedKvOptional必须有一个（-1表示不传）
         CHECK_COND(((maxSeqlenKv >= 0) || IsTensorExist(sequsedKvOptional)), ACLNN_ERR_RUNTIME_ERROR,
             "When layoutKv is not TND, at least one of maxSeqlenKv or sequsedKvOptional must be provided");
