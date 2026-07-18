@@ -19,4 +19,5 @@ struct allToAllMatmulTilingData {
     QuantMatmulTilingData tailQbmmTilingData;
     QuantMatmulTilingData localQbmmTilingData;
     uint32_t localMatmul{0}; // 是否使能local块计算先行，0：不使能；1：使能atomiadd
+    uint32_t bufferSize{0};
 };

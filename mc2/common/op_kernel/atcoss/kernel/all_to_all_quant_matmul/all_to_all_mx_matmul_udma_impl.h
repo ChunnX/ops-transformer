@@ -105,9 +105,9 @@ private:
   __gm__ CommUdmaContext* udmaCtx_{};
   CommTilingData commTilingDataA_;
   CommTilingData commTilingDataScaleA_;
-  CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier, CommAddrLayut::CONTIGUOUS> allToAllA_;
+  CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier, CommAddrLayout::CONTIGUOUS> allToAllA_;
   CollectiveComm<
-    CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier, CommAddrLayut::CONTIGUOUS> allToAllScaleA_;
+    CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier, CommAddrLayout::CONTIGUOUS> allToAllScaleA_;
   TPipe* pipe_{};
   TBuf<TPosition::VECCALC> commBuf_;
   TBuf<TPosition::VECCALC> commScaleBuf_;
@@ -201,21 +201,19 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
   commTilingDataA_ = {
     baseParams_.headMSize, static_cast<uint64_t>(baseParams_.headTileCnt),
     baseParams_.tailMSize, static_cast<uint64_t>(baseParams_.tailTileCnt),
-    baseParams_.axisKa,
-    baseParams_.bufferSize
+    baseParams_.axisKa
   };
   allToAllA_.Init(udmaCtx_, teamBarrier_, commTilingDataA_, baseParams_.aGm, commUbBuf,
     baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
 
   uint64_t scaleKLen = baseParams_.scaleKaSize / sizeof(TypeScaleA);
   commTilingDataScaleA_ = {
-    baseParams_.headMSize, static_cast<uint64_t>(baseParams_.headTileCnt),
-    baseParams_.tailMSize, static_cast<uint64_t>(baseParams_.tailTileCnt),
-    scaleKLen,
-    baseParams_.bufferSize
+    baseParams_.axisM, 1, 0, 0,scaleKLen
   };
+
+  uint64_t scaleWinOffset = baseParams_.rankSize * baseParams_.axisM * baseParams_.axisKa;
   allToAllScaleA_.Init(udmaCtx_, teamBarrier_, commTilingDataScaleA_, baseParams_.scaleAGm, commScaleUbBuf,
-    baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
+    baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()), scaleWinOffset);
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -243,16 +241,18 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
   uint32_t totalTileCnt = baseParams_.headTileCnt + baseParams_.tailTileCnt;
   for (uint32_t tid = 0; tid < totalTileCnt; ++tid) {
     CrossCoreWaitFlag<0x2, PIPE_S>(tid);
-    allToAllScaleA_.Commit();
-    allToAllScaleA_.Wait();
+    if (tid == 0) {
+      allToAllScaleA_.Commit(); // scale一次通信。
+    }
     allToAllA_.Commit();
     allToAllA_.Wait();
     if (baseParams_.bufferSize < totalTileCnt && tid < totalTileCnt - baseParams_.bufferSize) {
       CrossCoreSetFlag<0x2, PIPE_MTE3>(tid);
     }
   }
-  allToAllA_.Finalize();
+
   allToAllScaleA_.Finalize();
+  allToAllA_.Finalize();
 }
 
 // =================================================================================
@@ -278,7 +278,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 
   baseParams_.commTurn = baseParams_.tileCnt;
   baseParams_.commMSize = baseParams_.headMSize;
-  baseParams_.bufferSize = tilingData->commTilingData.bufferSize;
+  baseParams_.bufferSize = tilingData->bufferSize;
 
   // 计算地址偏移所需的参数
   baseParams_.bytesPerMRow = baseParams_.axisKa * sizeof(AType);
@@ -423,7 +423,7 @@ __global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E4M3_H
                            allToAllMatmulTilingData tilingData)
 {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_1);
-  TPipe pipe;
+  AscendC::TPipe pipe;
   Atcoss::AllToAllQuantMatmulHcommImpl<fp8_e4m3fn_t, fp8_e4m3fn_t, bfloat16_t, false, true> impl;
   impl.Init(hcommCtx, aGM, scaleAGM, bGM, scaleBGM, cGM, &tilingData, &pipe);
   impl.Run();
