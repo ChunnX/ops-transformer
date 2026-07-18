@@ -79,6 +79,7 @@ public:
     static constexpr uint32_t dVTemplateType = 512;
     static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
     static constexpr float R0 = 1.0f;
+    static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     // ==================== Functions ======================
     __aicore__ inline CSABlockVec() {};
@@ -704,7 +705,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
             LastDivNew<T, Q_T, OUTPUT_T, dTemplateAlign64, false>(
                 vec2ResUb, vec2ResUb, sumUb, runInfo.vec2MRealSize, dTemplateAlign64, 1.0);
         }
-        
+
         if (runInfo.isS2Split) {
             AttentionCommon::S2SplitFdStagingLayout stagingLayout = {constInfo.gSize,
                 dTemplateAlign64, GetStagingSlotNum(), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
@@ -811,8 +812,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
         uint64_t tailSize = totalOutputSize - constInfo.aivIdx * singleCoreSize;
         uint64_t singleInitOutputSize = tailSize < singleCoreSize ? tailSize : singleCoreSize;
         if (singleInitOutputSize > 0) {
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             matmul::InitOutput<OUTPUT_T>(
                 this->attentionOutGm[constInfo.aivIdx * singleCoreSize], singleInitOutputSize, 0);
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 
@@ -829,8 +832,10 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitOutputSingleCore(ConstInf
             uint64_t singleInitSoftmaxSize = tailSoftmaxSize < singleCoreSoftmaxSize ?
                                              tailSoftmaxSize : singleCoreSoftmaxSize;
             if (constInfo.aivIdx * singleCoreSoftmaxSize < totalReturnSoftmaxSize && singleInitSoftmaxSize > 0) {
+                WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
                 matmul::InitOutput<float>(this->softmaxLseGm[constInfo.aivIdx * singleCoreSoftmaxSize],
                     singleInitSoftmaxSize, 0);
+                SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             }
         }
     }
@@ -845,7 +850,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CleanOutput(
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
         this->softmaxLseGm.SetGlobalBuffer((__gm__ T *)softmaxLse);
         if (constInfo.needInit == 1) {
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);     // 释放剩余ub
             InitOutputSingleCore(constInfo);
+            WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
     }
 }
