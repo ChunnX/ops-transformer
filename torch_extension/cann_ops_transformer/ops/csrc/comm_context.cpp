@@ -241,8 +241,7 @@ public:
     {
         std::string mc2ContextTag = std::string(group) + opName;
         TORCH_CHECK(mc2ContextTag.size() <= HCCL_CONTEXT_TAG_MAX_LEN,
-            "Mc2ContextTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN,
-            ", got ", mc2ContextTag.size()); 
+            "Mc2ContextTag is too long, max size is ", HCCL_CONTEXT_TAG_MAX_LEN, ", got ", mc2ContextTag.size()); 
 
         CommEngine engine = CommEngine::COMM_ENGINE_AIV;
         void *ctx = nullptr;
