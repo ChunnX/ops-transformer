@@ -65,7 +65,7 @@ private:
     GlobalTensor<int64_t> groupListGlobalBuffer_;
     const TilingDataType *tilingData_;
     TPipe *tPipe_;
-    uint64_t expertTokenNum_[MAX_EXPERT_SIZE] = {0};
+    uint64_t expertTokenNum_[MAX_EXPERT_PER_RANK] = {0};
     uint64_t expertTokenOffset_ = 0;
     uint64_t expertNumInOneRank_ = 0;
     uint64_t epWorldSize_ = 0;
