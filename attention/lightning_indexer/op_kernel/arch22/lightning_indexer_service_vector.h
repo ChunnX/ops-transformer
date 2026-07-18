@@ -362,13 +362,28 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
 
             if (constInfo_.radixTotalBatch > 0) {
             // RadixTopK path: write scoreB16Gm, skip Sort+MergeSort
-            // Fix cuRealAcSeq for TND (actS1=0 causes wrong cuRealAcSeq in ProcessVec)
             int32_t radixCuRealAcSeq = cuRealAcSeq;
             if (constInfo_.qSeqSize == 0 && constInfo_.attenMaskFlag) {
                 radixCuRealAcSeq = info.actS2Size - (info.actS2Size - cuS1Idx) + 1;
             }
             int32_t radixCuS2Len = cuBaseS2Idx + s2BaseSize_ >= radixCuRealAcSeq ?
                 radixCuRealAcSeq - cuBaseS2Idx : s2BaseSize_;
+
+            // Debug: dump ProcessVec state for cuS1Idx=600
+            if (cuS1Idx == 600) {
+                uint64_t dbgOff = 600 * constInfo_.radixSortLenAlign + 512;
+                __gm__ int32_t *dbgGm = (__gm__ int32_t *)scoreB16Gm.GetPhyAddr();
+                dbgGm[dbgOff + 0] = cuS1Idx;
+                dbgGm[dbgOff + 1] = cuBaseS2Idx;
+                dbgGm[dbgOff + 2] = cuRealAcSeq;
+                dbgGm[dbgOff + 3] = radixCuRealAcSeq;
+                dbgGm[dbgOff + 4] = cuS2Len;
+                dbgGm[dbgOff + 5] = radixCuS2Len;
+                dbgGm[dbgOff + 6] = static_cast<int32_t>(info.actS1Size);
+                dbgGm[dbgOff + 7] = static_cast<int32_t>(info.actS2Size);
+                dbgGm[dbgOff + 8] = cuS1BeginIdxPerAiv;
+            }
+
             if (radixCuS2Len <= 0) {
                 // Skip scoreB16Gm write
             } else {
