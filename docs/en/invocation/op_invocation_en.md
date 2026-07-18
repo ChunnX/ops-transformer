@@ -13,11 +13,11 @@ Operators can be invoked in multiple ways. This chapter describes`AddExample`Thi
 
 ### Invoking Process ###
 
-![原理图](../figures/aclnn调用.png)	
+
 
 ### Sample Code ###
 
-`AddExample`The sample code for invoking the operator through the aclnn interface is as follows (for details, see)[test_aclnn_add_example.cpp](../../../examples/add_example/examples/test_aclnn_add_example.cpp)	) is for reference only. The API calling process of other operators is similar. Replace it with the actual aclnn API. Before calling this API, set environment variables as prompted.
+`AddExample`The sample code for invoking the operator through the aclnn interface is as follows (for details, see)[test_aclnn_add_example.cpp](../../../examples/add_example/examples/test_aclnn_add_example.cpp)	 is for reference only. The API calling process of other operators is similar. Replace it with the actual aclnn API. Before calling this API, set environment variables as prompted.
 
 Note: To invoke other operators in this project, access the corresponding operators.`examples`In the test_aclnn_$\{op_name\}.cpp directory, $\{op_name\} indicates the operator name.
 
@@ -218,11 +218,11 @@ int main()
 
 ### Invoking Process ###
 
-![原理图](../figures/IR调用.png)	
+	
 
 ### Sample Code ###
 
-`AddExample`The sample code for invoking an operator in graph mode is as follows. For details, see.[test_geir_add_example.cpp](../../../examples/add_example/examples/test_aclnn_add_example.cpp)	) is for reference only. The invoking procedures of other operators are similar. Replace it with the actual operator prototype.
+`AddExample`The sample code for invoking an operator in graph mode is as follows. For details, see.[test_geir_add_example.cpp](../../../examples/add_example/examples/test_aclnn_add_example.cpp)	 is for reference only. The invoking procedures of other operators are similar. Replace it with the actual operator prototype.
 
 To invoke other operators in this project, access the corresponding operators.`examples`In the test_geir_$\{op_name\}.cpp directory, $\{op_name\} indicates the operator name.
 

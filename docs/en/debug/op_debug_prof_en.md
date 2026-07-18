@@ -119,7 +119,7 @@ This chapter begins with`AddExample`This section uses custom operator as an exam
 
 ### Method 2 (for Ascend 950PR) ###
 
-During operator development, if the execution precision decreases and the memory usage is abnormal, you can use the[CANN Simulator](./cann_sim_en.md)	The simulation tool analyzes the instruction pipeline of the operator, and then locates the root cause of the problem and optimizes the problem accordingly.
+During operator development, if the execution precision decreases and the memory usage is abnormal, you can use the[CANN Simulator]()	The simulation tool analyzes the instruction pipeline of the operator, and then locates the root cause of the problem and optimizes the problem accordingly.
 
 This chapter begins with`AddExample`The custom operator is used as an example to describe how to use the simulation tool. How to use the simulation tool to tune the precision and performance.
 
@@ -137,5 +137,5 @@ This chapter begins with`AddExample`The custom operator is used as an example to
     ```
     trace_core0.json
     ```
-3.  Enter chrome://tracing in the address box of the Chrome browser, and drag the generated instruction pipeline diagram file (trace_core0.json) to the blank area to open it. For details about the parameters, see the CANN Simulator.[Simulation Result Analysis](./cann_sim_en.md#simulation-result-analysis-description)	Section.
+3.  Enter chrome://tracing in the address box of the Chrome browser, and drag the generated instruction pipeline diagram file (trace_core0.json) to the blank area to open it. For details about the parameters, see the CANN Simulator.[Simulation Result Analysis]()	Section.
 
