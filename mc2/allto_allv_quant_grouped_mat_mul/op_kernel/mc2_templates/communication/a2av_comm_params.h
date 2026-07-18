@@ -15,6 +15,9 @@
 
 namespace MC2KernelTemplate {
 
+static constexpr uint8_t SEND_OFFSET_BY_RAW_ARRAY = 0;
+static constexpr uint8_t SEND_OFFSET_ACCUMULATIVE = 1;
+
 struct A2avCommParams {
     uint64_t sendCnt[MAX_EP_RANK_SIZE] = {0UL};
     uint64_t sendOffset[MAX_EP_RANK_SIZE] = {0UL};
@@ -27,7 +30,7 @@ __aicore__ inline void CalcA2avCommBeforeParams(
     const uint64_t *rawSendCounts, const uint64_t *rawRecvCounts,
     uint32_t rankDim, uint32_t e, uint32_t startExpertIdx, uint32_t expertNum,
     uint64_t axis,
-    uint64_t &recvOffsetLastSum)
+    uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
 {
     for (uint64_t i = 0UL; i < rankDim; i++) {
         params.sendCnt[i] = 0UL;
@@ -43,9 +46,14 @@ __aicore__ inline void CalcA2avCommBeforeParams(
         params.sendOffset[0] += static_cast<uint64_t>(rawSendCounts[j]) * axis;
     }
     for (uint32_t i = 1U; i < rankDim; i++) {
-        params.sendOffset[i] = params.sendOffset[i - 1U];
-        for (uint32_t j = 0U; j < e; j++) {
-            params.sendOffset[i] += static_cast<uint64_t>(rawSendCounts[startExpertIdx + (i - 1U) * e + j]) * axis;
+        params.sendOffset[i] = 0UL;
+        for (uint32_t k = 0U; k < i; k++) {
+            for (uint32_t j = 0U; j < e; j++) {
+                params.sendOffset[i] += static_cast<uint64_t>(rawSendCounts[j + k * e]) * axis;
+            }
+        }
+        for (uint32_t j = 0U; j < startExpertIdx; j++) {
+            params.sendOffset[i] += static_cast<uint64_t>(rawSendCounts[j + i * e]) * axis;
         }
     }
 
@@ -64,7 +72,7 @@ __aicore__ inline void CalcA2avCommAfterParams(
     A2avCommParams &params,
     const uint64_t *rawSendCounts, const uint64_t *rawRecvCounts,
     uint32_t rankDim, uint32_t e, uint32_t startExpertIdx, uint32_t expertNum,
-    uint64_t axis)
+    uint64_t axis, uint64_t &sendOffsetLastSum, uint64_t &recvOffsetLastSum)
 {
     for (uint64_t i = 0UL; i < rankDim; i++) {
         params.sendCnt[i] = 0UL;
@@ -105,4 +113,3 @@ __aicore__ inline void CalcA2avCommAfterParams(
 } // namespace MC2KernelTemplate
 
 #endif // A2AV_COMM_PARAMS_H
-
