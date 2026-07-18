@@ -695,8 +695,6 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
 {
     if ASCEND_IS_AIV {
-        SyncAll();
-        PipeBarrier<PIPE_ALL>();  // Ensure ProcessVec MTE3 writes complete before RadixTopK MTE2 reads
         uint32_t sortLen = constInfo.radixSortLen;
         uint32_t sortLenAlign = constInfo.radixSortLenAlign;
         uint32_t kValue = constInfo.sparseCount;
