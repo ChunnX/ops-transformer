@@ -46,6 +46,18 @@ python3 mc2/mega_moe/tools/run_critical_path_trace.py \
 python3 mc2/mega_moe/tools/run_critical_path_trace.py --check-only
 ```
 
+源码宏检查只检查当前 checkout，不代表已安装的 kernel。runner 会依次从自身路径和当前工作目录向上
+寻找源码仓；若 runner 被单独复制到服务器，会跳过该检查，并在 kernel 执行后以 trace header 验证
+实际安装包。也可以显式指定源码仓，或者主动跳过预检：
+
+```bash
+python3 /path/to/run_critical_path_trace.py --repo-root /path/to/ops-transformer
+python3 /path/to/run_critical_path_trace.py --skip-source-check
+```
+
+`--check-only` 必须能够访问源码；它不能用于检查已安装包。要使用原测试脚本当前的 shape 而不是上述
+固定 case，增加 `--keep-test-config`。
+
 ## 输出
 
 每个 rank 会在测试脚本目录生成两份文件：

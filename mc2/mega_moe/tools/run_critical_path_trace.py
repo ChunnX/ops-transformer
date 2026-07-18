@@ -703,6 +703,34 @@ def _audit_source_macros(repo_root):
         raise RuntimeError("unexpected source macro defaults: " + ", ".join(failures))
 
 
+def _is_source_repo_root(path):
+    return all((path / relative_path).is_file()
+               for relative_path, _macro, _expected in EXPECTED_SOURCE_MACROS)
+
+
+def _find_source_repo_root(wrapper_path, explicit_root):
+    if explicit_root:
+        repo_root = Path(explicit_root).expanduser().resolve()
+        if not _is_source_repo_root(repo_root):
+            raise RuntimeError(
+                f"--repo-root does not point to the MegaMoe source tree: {repo_root}"
+            )
+        return repo_root
+
+    candidates = []
+    for start in (wrapper_path.parent, Path.cwd()):
+        candidates.extend((start, *start.parents))
+    seen = set()
+    for candidate in candidates:
+        candidate = candidate.resolve()
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        if _is_source_repo_root(candidate):
+            return candidate
+    return None
+
+
 def _replace_assignment(source, name, value, required=True):
     pattern = re.compile(rf"^(?P<indent>[ \t]*){re.escape(name)}\s*=.*$", re.MULTILINE)
     source, count = pattern.subn(rf"\g<indent>{name} = {value}", source, count=1)
@@ -758,6 +786,16 @@ def _parse_parent_args():
     )
     parser.add_argument("--test-script", default=default_script)
     parser.add_argument(
+        "--repo-root",
+        default=os.environ.get("MEGA_MOE_TRACE_REPO_ROOT"),
+        help="MegaMoe source repository root used only for the optional source-macro audit.",
+    )
+    parser.add_argument(
+        "--skip-source-check",
+        action="store_true",
+        help="Skip the source-macro audit; the installed kernel is still checked from its trace header.",
+    )
+    parser.add_argument(
         "--keep-test-config",
         action="store_true",
         help="Do not replace the test script's shape with bs512/topk8/16 experts/h=2n=4096.",
@@ -790,9 +828,28 @@ def _bootstrap_target():
         raise FileNotFoundError(f"MegaMoe test script does not exist: {test_script}")
 
     wrapper_path = Path(__file__).resolve()
-    repo_root = wrapper_path.parents[3]
     if not is_child_import:
-        _audit_source_macros(repo_root)
+        if args.skip_source_check:
+            if args.check_only:
+                raise RuntimeError("--check-only cannot be combined with --skip-source-check")
+            print(
+                "[TRACE_SOURCE_CONFIG] skipped by request; "
+                "the installed kernel will be validated from the runtime trace header"
+            )
+        else:
+            repo_root = _find_source_repo_root(wrapper_path, args.repo_root)
+            if repo_root is None:
+                if args.check_only:
+                    raise RuntimeError(
+                        "cannot locate the MegaMoe source tree; pass --repo-root /path/to/repo"
+                    )
+                print(
+                    "[TRACE_SOURCE_CONFIG] source tree not found; skipping the source-macro audit. "
+                    "The installed kernel will be validated from the runtime trace header."
+                )
+            else:
+                print(f"[TRACE_SOURCE_CONFIG] repo_root={repo_root}")
+                _audit_source_macros(repo_root)
         if args.check_only:
             return
         if keep_test_config:
