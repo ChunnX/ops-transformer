@@ -31,7 +31,6 @@ TEST_PARAMS = {
         'q_scale_layout': ['N2TGD'],
         'p_scale': [1.0],
         'enable_lse': [False],
-        'enable_rope': [False],
     },
     "PA_BnNBsD_B1_QS128_KVS1024_Nq64_Nkv8_D128_SP3": {
         'B': [1],
@@ -51,7 +50,6 @@ TEST_PARAMS = {
         'q_scale_layout': ['TND'],
         'p_scale': [1.0],
         'enable_lse': [False],
-        'enable_rope': [False],
     },
 }
 
