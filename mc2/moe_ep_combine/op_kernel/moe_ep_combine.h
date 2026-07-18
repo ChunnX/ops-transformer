@@ -162,6 +162,7 @@ private:
     LocalTensor<float> ubAccFp32_;
     LocalTensor<float> ubTmpFp32_;
     LocalTensor<float> ubWeighted_;
+    LocalTensor<float> statusTensor_;
     LocalTensor<uint8_t> hcommTensor_;
     LocalTensor<float> stateResetTensor_;
 
@@ -261,6 +262,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     }
     tpipe_->InitBuffer(xQueue_, 1, XTypeAlign32Size_);
     tpipe_->InitBuffer(readStateBuf_, UB_ALIGN); // 32
+    statusTensor_ = readStateBuf_.Get<float>();
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -326,17 +328,12 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStatus(GM_
                                                                              GM_ADDR remoteRankStateAddr,
                                                                              uint32_t tokenIndex, uint32_t dstRankId)
 {
-    // ============ 将状态写入目标rank的状态区 ============
-    // 写入位置: 目标rank状态区 + 当前rank的偏移
-    LocalTensor<float> statusTensor = readStateBuf_.Get<float>();
-    Duplicate<float>(statusTensor, (float)1, FLOAT_PER_UB_ALIGN);
     GlobalTensor<float> outStateTensor;
     outStateTensor.SetGlobalBuffer((__gm__ float *)localRankStateAddr);
     if (dstRankId == rankId_) {
         outStateTensor.SetGlobalBuffer((__gm__ float *)remoteRankStateAddr); // 目标rank是epRankId，直接写入remoteAddr
     }
-    SyncFunc<AscendC::HardEvent::V_MTE3>();
-    DataCopy<float>(outStateTensor, statusTensor, 8UL);
+    DataCopy<float>(outStateTensor, statusTensor_, FLOAT_PER_UB_ALIGN);
     PipeBarrier<PIPE_MTE3>();
     if (dstRankId != rankId_) {
         hcomm_.Drain(GetCommHandle(dstRankId));
@@ -353,6 +350,8 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     if (startRankId >= endRankId || sendRankNum == 0) {
         return;
     }
+    Duplicate<float>(statusTensor_, (float)1, FLOAT_PER_UB_ALIGN);
+    SyncFunc<AscendC::HardEvent::V_MTE3>();
     for (uint32_t rankId = startRankId; rankId < endRankId; rankId++) {
         for (uint32_t tokenIndex = 0; tokenIndex < actualA_; ++tokenIndex) {
             int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 0);
