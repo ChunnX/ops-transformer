@@ -344,60 +344,35 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     if (startRankId >= endRankId || sendRankNum == 0) {
         return;
     }
-        for (uint32_t tokenIndex = 0; tokenIndex < actualA_; ++tokenIndex) {
-            int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 0);
+    for (uint32_t tokenIndex = 0; tokenIndex < actualA_; ++tokenIndex) {
+        int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 0);
         if (src_rank < 0 || src_rank >= endRankId || src_rank < startRankId) {
-                continue;
-            }
+            continue;
+        }
         int32_t src_token_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 1);
         int32_t src_topK_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 2);
-            uint64_t slotOffset = (static_cast<uint64_t>(src_token_idx) * topK_ + src_topK_idx) * perSlotBytes_;
-        GM_ADDR localRankWorkSpaceAddr = GetLocalWorkspaceDataAddr(src_rank, workspaceStateSize_) +
-            slotOffset;
-        GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) +
-            slotOffset;
-            SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);
-            PipeBarrier<PIPE_MTE3>();
+
+        uint64_t slotOffset = (static_cast<uint64_t>(src_token_idx) * topK_ + src_topK_idx) * perSlotBytes_;
+        GM_ADDR localRankWorkSpaceAddr = GetLocalWorkspaceDataAddr(src_rank, workspaceStateSize_) + slotOffset;
+        GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) + slotOffset;
+        //SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);
+        PipeBarrier<PIPE_MTE3>();
         if (src_rank != rankId_) {
             hcomm_.WriteNbi(GetCommHandle(src_rank), remoteRankWinAddr, localRankWorkSpaceAddr, XTypeAlign32Size_);
         }
-    }
 
-    //DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
-    for (uint32_t tokenIndex = 0; tokenIndex < actualA_; ++tokenIndex) {
-        int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 0);
-        if (src_rank < 0 || src_rank >= endRankId || src_rank < startRankId) {
-            continue;
-        }
-        int32_t src_token_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 1);
-        int32_t src_topK_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 2);
-        GM_ADDR localRankStateAddr = GetLocalWorkspaceStateAddr(src_rank) +
-            (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
-            GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
-                                          (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
-
-            SetStatus(localRankStateAddr, remoteRankStateAddr, tokenIndex, src_rank);
-    }
-    //DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
-    for (uint32_t tokenIndex = 0; tokenIndex < actualA_; ++tokenIndex) {
-        int32_t src_rank = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 0);
-        if (src_rank < 0 || src_rank >= endRankId || src_rank < startRankId) {
-            continue;
-        }
-        int32_t src_token_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 1);
-        int32_t src_topK_idx = recvSrcMetadataGm_.GetValue(tokenIndex * RECV_META_FIELDS + 2);
         GM_ADDR localRankStateAddr = GetLocalWorkspaceStateAddr(src_rank) +
             (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
         GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
-            (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
+                                      (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
+        SetStatus(localRankStateAddr, remoteRankStateAddr, tokenIndex, src_rank);
 
         if (src_rank != rankId_) {
             hcomm_.Drain(GetCommHandle(src_rank));
             hcomm_.WriteNbi(GetCommHandle(src_rank), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
-            hcomm_.Drain(GetCommHandle(src_rank));
         }
     }
-    //DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
+    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -539,7 +514,7 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
 {
     SendPhaseExpertToToken();
-    PipeBarrier<PIPE_ALL>(); // MaskCheck中包含reset操作，需确保前面操作完成
+    PipeBarrier<PIPE_ALL>();
     BuffInit();
     RecvPhaseReduce();
 }
