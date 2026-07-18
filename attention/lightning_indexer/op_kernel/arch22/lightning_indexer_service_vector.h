@@ -368,7 +368,6 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             }
             int32_t radixCuS2Len = cuBaseS2Idx + s2BaseSize_ >= radixCuRealAcSeq ?
                 radixCuRealAcSeq - cuBaseS2Idx : s2BaseSize_;
-
             if (radixCuS2Len <= 0) {
                 // Skip scoreB16Gm write
             } else {
