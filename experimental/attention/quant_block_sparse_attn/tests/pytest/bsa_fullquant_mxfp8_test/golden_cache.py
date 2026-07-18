@@ -42,6 +42,11 @@ def save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=None):
     logger.info("[CACHE] save CPU output → %s", path)
 
 
+def has_cpu_output(case_name, cache_dir=None):
+    cache_root = cache_dir or DEFAULT_CACHE_DIR
+    return os.path.exists(os.path.join(cache_root, f"{case_name}_cpu_output.pt"))
+
+
 def load_cpu_output(case_name, cache_dir=None):
     path = _path(case_name, "cpu_output", cache_dir)
     if not os.path.exists(path):
@@ -64,4 +69,3 @@ def load_npu_output(case_name, cache_dir=None):
     data = torch.load(path, weights_only=False)
     logger.info("[CACHE] load NPU output ← %s", path)
     return data["atten_out"], data["lse_out"]
-

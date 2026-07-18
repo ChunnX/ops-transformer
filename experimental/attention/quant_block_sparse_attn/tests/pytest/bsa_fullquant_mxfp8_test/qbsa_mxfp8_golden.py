@@ -1478,7 +1478,8 @@ def _log_final_summary(results):
     logger.info("=" * table_width)
 
 
-def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_case_num=1, precision_dir=None):
+def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_case_num=1, precision_dir=None,
+                 rdv=False, rdv_cache_dir=None):
     start_time = time.time()
     golden_cache = _load_golden_cache()
     set_active_case(case)
@@ -1545,8 +1546,14 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
         logger.info("\n[Done] 数据已保存，退出")
         return _make_case_result(case_id, "Generated", time.time() - start_time, mfu_time=mfu_time)
 
-    if "cpu" in mode:
+    if rdv and golden_cache.has_cpu_output(case_name, cache_dir=rdv_cache_dir):
+        logger.info("\n[Step 2] 复用 CPU Golden")
+        logger.info("[RDV] 已找到 case=%s 的 CPU golden，跳过 CPU 生成", case_name)
+        cpu_out, cpu_lse = golden_cache.load_cpu_output(case_name, cache_dir=rdv_cache_dir)
+    elif "cpu" in mode:
         logger.info("\n[Step 2] CPU Golden")
+        if rdv:
+            logger.info("[RDV] 未找到 case=%s 的 CPU golden，按原流程生成", case_name)
         cpu_out, cpu_lse = cpu_mxfp8_golden(q_fp8, k_fp8, v_fp8,
                                             dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                                             q_lengths, kv_lengths, cu_seqlens_q, sparse_indices, sparse_seq_len)
@@ -1615,6 +1622,8 @@ if __name__ == '__main__':
                         help="缓存文件名前缀；默认使用 case name")
     parser.add_argument("--cache-dir", default=None,
                         help="缓存目录路径（默认 golden_cache/）")
+    parser.add_argument("--rdv", action="store_true",
+                        help="CPU golden 缓存存在时直接复用；缓存不存在时按 --mode 原流程生成")
     parser.add_argument("--debug", action="store_true",
                         help="单 case 调试模式；必须配合 --case_name，输出到 debug/<case_name>/。"
                              "含 gen 时数据写入 debug pt 目录；不含 gen 时从 golden_cache 加载(可用 --cache-dir 指定)")
@@ -1675,7 +1684,8 @@ if __name__ == '__main__':
             try:
                 case_results.append(
                     run_one_case(case_id, all_cases[case_id], mode, case_name, cache_dir,
-                                 case_idx, total_case_num, precision_dir))
+                                 case_idx, total_case_num, precision_dir, rdv=args.rdv,
+                                 rdv_cache_dir=args.cache_dir))
             except Exception as err:  # pylint: disable=broad-except
                 logger.exception("CASE ERROR [%d/%d] %s", case_idx, total_case_num, case_id)
                 case_results.append(_make_case_result(case_id, "Error", time.time() - case_start, error=str(err)))
