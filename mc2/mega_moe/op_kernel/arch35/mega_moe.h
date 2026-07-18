@@ -1156,8 +1156,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMA
         }
         gmmAddrInfo.aGlobal =
             params_.workspaceInfo.swigluQuantDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-        gmmAddrInfo.aScaleGlobal =
-            params_.workspaceInfo.swigluQuantScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.swigluQuantScalePtr
+            + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
         gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal =
             params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
@@ -1181,8 +1181,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateSharedGlobalBuffe
         gmmAddrInfo.aGlobal = params_.workspaceInfo.sharedExpertInputDataPtr;
         gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.sharedExpertInputScalePtr;
         if constexpr (ENABLE_A8W4) {
-            gmmAddrInfo.gmm1OutGlobal =
-                params_.workspaceInfo.sharedExpertGmm1OutPtr + Get<IDX_GMM1_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
+            gmmAddrInfo.gmm1OutGlobal = params_.workspaceInfo.sharedExpertGmm1OutPtr
+                + Get<IDX_GMM1_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         }
         gmmAddrInfo.bGlobal = params_.sharedBGmAddr +
             Get<IDX_B_OFFSET>(state.baseOffset) * sizeof(ActivationType);
@@ -1191,10 +1191,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::UpdateSharedGlobalBuffe
     } else if constexpr(Mode == AddrUpdateMode::GMM2) {
         gmmAddrInfo.gmm2OutGlobal =
             params_.workspaceInfo.sharedExpertResultPtr + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
-        gmmAddrInfo.aGlobal =
-            params_.workspaceInfo.sharedExpertSwigluDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-        gmmAddrInfo.aScaleGlobal =
-            params_.workspaceInfo.sharedExpertSwigluScalePtr + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+        gmmAddrInfo.aGlobal = params_.workspaceInfo.sharedExpertSwigluDataPtr
+            + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.sharedExpertSwigluScalePtr
+            + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
         gmmAddrInfo.bGlobal = params_.sharedB2GmAddr +
             Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal = params_.sharedB2ScaleGmAddr +
@@ -1580,8 +1580,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SharedExpertCopyInput()
 {
-    if constexpr (g_coreType == AIC) { 
-        return; 
+    if constexpr (g_coreType == AIC) {
+        return;
     }
     int32_t curentNum;
     int32_t curentOffset;
@@ -1717,6 +1717,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
         GroupMatmulWithSwigluQuant<true>(sharedGmm1AddrInfo, sharedGmm1State, vecSetSyncCom);
     }
     EndSync(vecSetSyncCom);
+    startBlockIdx_ = 0; // 共享专家GMM1修改了startBlockIdx_，重置给GMM1使用
 }
 
 template <TemplateMegaMoeTypeClass>
@@ -1746,6 +1747,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // Phase 1: 量化 + 共享专家输入拆分 + mask/reset (AIV)
     QuantProcessInRank(); // 对本卡token的量化
+    SendMaskCal();   // 源卡按所有全局专家算 mask 并推送到目标专家卡
     ResetFlagList(); // 清理workSpace空间上的flag位
     if (sharedExpertNum_ > 0) {
         SharedExpertCopyInput();
@@ -1754,7 +1756,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         PipeBarrier<PIPE_ALL>();
     }
     SyncAll<false>();           // aic需要等待flag位reset清理完成
-    SendMaskCal();   // 源卡按所有全局专家算 mask 并推送到目标专家卡
 
     // Phase 1.5: 共享专家 GMM1+SwiGLU (前移, 在 MoE 之前执行, 复用 MoE 函数)
     TupleShape initShape;
@@ -1763,6 +1764,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     if (sharedExpertNum_ > 0) {
         ProcessSharedExpertGmm1(initShape, initOffset);
+        SyncAll<false>();
     }
 
     CrossRankSyncInWorldSize();
@@ -1850,7 +1852,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
 
     // 4. 本卡数据Unpermute
     if constexpr(g_coreType == AIV) {
-        UnpermuteBuffInit();
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
         Unpermute();
     }

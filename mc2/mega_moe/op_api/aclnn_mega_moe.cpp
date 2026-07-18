@@ -78,6 +78,20 @@ static void CreateEmptyTensor(aclDataType dataType, const aclTensorList *&ioList
     }
 }
 
+static void CreateEmptyTensorWithFormat(aclDataType dataType, ge::Format format, const aclTensorList *&ioList,
+                                        aclTensorList *&outList, aclOpExecutor *executor)
+{
+    if (ioList == nullptr) {
+        std::vector<aclTensor *> emptyTensors;
+        aclTensor *emptyTensor = executor->AllocTensor({0}, static_cast<op::DataType>(dataType));
+        emptyTensor->SetStorageFormat(format);
+        emptyTensor->SetViewFormat(format);
+        emptyTensors.emplace_back(emptyTensor);
+        outList = executor->AllocTensorList(emptyTensors.data(), emptyTensors.size());
+        ioList = outList;
+    }
+}
+
 aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensor *context, const aclTensor *x, const aclTensor *topkIds, const aclTensor *topkWeights,
     const aclTensorList *weight1, const aclTensorList *weight2, const aclTensorList *weightScales1Optional,
@@ -119,20 +133,20 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     aclTensorList *tmpSharedBiasList = nullptr;
     aclTensorList *tmpSharedScaleList = nullptr;
     aclTensorList *tmpSharedWeightList = nullptr;
-    aclDataType sharedWeightDtype = (sharedWeight1Optional != nullptr && sharedWeight1Optional->Size() > 0)
-        ? static_cast<aclDataType>((*sharedWeight1Optional)[0]->GetDataType()) : ACL_FLOAT8_E4M3FN;
     CreateEmptyTensor(ACL_FLOAT, bias1Optional, tmpBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, bias2Optional, tmpBiasList, *executor);
-    CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales1Optional, tmpScaleList, *executor);
-    CreateEmptyTensor(ACL_FLOAT8_E8M0, weightScales2Optional, tmpScaleList, *executor);
     CreateEmptyTensor(ACL_FLOAT, sharedBias1Optional, tmpSharedBiasList, *executor);
     CreateEmptyTensor(ACL_FLOAT, sharedBias2Optional, tmpSharedBiasList, *executor);
-    CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
-    CreateEmptyTensor(ACL_FLOAT8_E8M0, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
-    CreateEmptyTensor(sharedWeightDtype, sharedWeight1Optional, tmpSharedWeightList, *executor);
-    CreateEmptyTensor(sharedWeightDtype, sharedWeight2Optional, tmpSharedWeightList, *executor);
 
-    // 只在DAV_2201架构上对x1和x2进行int32到int4的转换预处理
+    // weight scales dtype: arch35 → E8M0, arch22 → UINT64
+    bool isArch22 = GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201;
+    aclDataType weightScalesDtype = isArch22 ? ACL_UINT64 : ACL_FLOAT8_E8M0;
+    CreateEmptyTensor(weightScalesDtype, weightScales1Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(weightScalesDtype, weightScales2Optional, tmpScaleList, *executor);
+    CreateEmptyTensor(weightScalesDtype, sharedWeightScales1Optional, tmpSharedScaleList, *executor);
+    CreateEmptyTensor(weightScalesDtype, sharedWeightScales2Optional, tmpSharedScaleList, *executor);
+
+    // 只在DAV_2201架构上对weight进行int32到int4的转换预处理
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_2201) {
         if (weight1 != nullptr && weight1->Size() > 0 && (*weight1)[0]->GetDataType() == DataType::DT_INT32) {
             weight1 = ConvertTensorListToInt4(weight1, *executor);
@@ -140,7 +154,29 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         if (weight2 != nullptr && weight2->Size() > 0 && (*weight2)[0]->GetDataType() == DataType::DT_INT32) {
             weight2 = ConvertTensorListToInt4(weight2, *executor);
         }
+        if (sharedWeight1Optional != nullptr && sharedWeight1Optional->Size() > 0 &&
+            (*sharedWeight1Optional)[0]->GetDataType() == DataType::DT_INT32) {
+            sharedWeight1Optional = ConvertTensorListToInt4(sharedWeight1Optional, *executor);
+        }
+        if (sharedWeight2Optional != nullptr && sharedWeight2Optional->Size() > 0 &&
+            (*sharedWeight2Optional)[0]->GetDataType() == DataType::DT_INT32) {
+            sharedWeight2Optional = ConvertTensorListToInt4(sharedWeight2Optional, *executor);
+        }
     }
+
+    // 共享专家权重的dtype/format与MoE权重一致，为空时用MoE权重的dtype和format创建空tensor
+    aclDataType moeWeight1Dtype = (weight1 != nullptr && weight1->Size() > 0)
+        ? static_cast<aclDataType>((*weight1)[0]->GetDataType()) : ACL_FLOAT8_E4M3FN;
+    aclDataType moeWeight2Dtype = (weight2 != nullptr && weight2->Size() > 0)
+        ? static_cast<aclDataType>((*weight2)[0]->GetDataType()) : ACL_FLOAT8_E4M3FN;
+    ge::Format moeWeight1Format = (weight1 != nullptr && weight1->Size() > 0)
+        ? static_cast<ge::Format>((*weight1)[0]->GetViewFormat()) : ge::FORMAT_ND;
+    ge::Format moeWeight2Format = (weight2 != nullptr && weight2->Size() > 0)
+        ? static_cast<ge::Format>((*weight2)[0]->GetViewFormat()) : ge::FORMAT_ND;
+    CreateEmptyTensorWithFormat(
+        moeWeight1Dtype, moeWeight1Format, sharedWeight1Optional, tmpSharedWeightList, *executor);
+    CreateEmptyTensorWithFormat(
+        moeWeight2Dtype, moeWeight2Format, sharedWeight2Optional, tmpSharedWeightList, *executor);
 
     aclnnStatus getWorkspaceSizesRes = aclnnInnerMegaMoeGetWorkspaceSize(
         context, x, topkIds, topkWeights, weight1, weight2,

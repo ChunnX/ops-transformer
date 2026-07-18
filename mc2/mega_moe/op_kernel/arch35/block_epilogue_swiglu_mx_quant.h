@@ -207,6 +207,7 @@ private:
     AscendC::LocalTensor<bfloat16_t> gluRes_;
     AscendC::LocalTensor<uint16_t> maxExp_;
     AscendC::LocalTensor<uint16_t> halfScale_;
+
     int64_t n_;
     int64_t scaleN_;
     uint32_t subBlockIdx_ = AscendC::GetSubBlockIdx();

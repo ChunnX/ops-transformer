@@ -658,7 +658,7 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
                         "must be same as weight1"),
                     return ge::GRAPH_FAILED);
     if (CheckSharedWeightShape(sharedWeight1Shape, weightOneStorageShape,
-                        "shared_weight1", "weight1", nodeName) != ge::GRAPH_SUCCESS) {
+        "shared_weight1", "weight1", nodeName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -677,7 +677,7 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
                         (std::string("must be equal to sharedExpertNum = ") + std::to_string(sharedExpertNum)).c_str()),
                     return ge::GRAPH_FAILED);
     if (CheckSharedWeightShape(sharedWeight2Shape, weightTwoStorageShape,
-                        "shared_weight2", "weight2", nodeName) != ge::GRAPH_SUCCESS) {
+        "shared_weight2", "weight2", nodeName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -748,7 +748,8 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context, 
     OP_TILING_CHECK(expertTokenNumsDim0 != moeExpertPerRank,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expertTokenNums",
             (std::string("dim0=") + std::to_string(expertTokenNumsDim0)).c_str(),
-            (std::string("The shape [dim0] of expertTokenNums must be equal to moeExpertPerRank(") + std::to_string(moeExpertPerRank) + ").").c_str()),
+            (std::string("The shape [dim0] of expertTokenNums must be equal to moeExpertPerRank(")
+            + std::to_string(moeExpertPerRank) + ").").c_str()),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

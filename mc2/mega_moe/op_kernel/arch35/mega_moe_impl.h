@@ -592,8 +592,8 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 {
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
     Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom};
-    Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC,
-        ElementMxScaleA, ElementMxScaleB, IsWeightNZ, false, IsShared>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
+    Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
+        ElementMxScaleB, IsWeightNZ, false, IsShared>(params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
 // =================================================================================================
@@ -630,8 +630,8 @@ struct Gmm2ArgsA8W4 {
     uint32_t groupIdx = 0;
 };
 
-template <uint8_t CombineQuantMode, typename Policy, bool IsShared, typename BlockMmad, typename Scheduler, typename TensorA,
-    typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config>
+template <uint8_t CombineQuantMode, typename Policy, bool IsShared, typename BlockMmad, typename Scheduler,
+    typename TensorA, typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config>
 __aicore__ inline void AicComputeA8W4(
     BlockMmad& blockMmad, Scheduler& scheduler, TensorA& gmA, TensorScaleA& gmScaleA, TensorScaleB& gmScaleB,
     TensorC& l0cOutGm, const GMMAddrInfo& gmmAddrInfo, const Config& config,
@@ -682,7 +682,7 @@ __aicore__ inline void AicComputeA8W4(
                     config.blockNum * 2, groupIdx, gmm2CombineSyncCounterPtr);
             }
         }
-        constexpr bool hasAiv1GmEpilogue = Policy::IS_GMM1 || CombineQuantMode == COMBINE_NO_QUANT;
+        constexpr bool hasAiv1GmEpilogue = Policy::IS_GMM1 || (CombineQuantMode == COMBINE_NO_QUANT && !IsShared);
         if constexpr (hasAiv1GmEpilogue) {
             // Keep at most one AIC-to-AIV1 GM tile notification outstanding.
             NotifyAiv1GmTileReady();

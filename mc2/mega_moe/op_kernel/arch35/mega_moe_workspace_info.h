@@ -288,8 +288,8 @@ struct WorkspaceInfo {
             // sharedExpertInputScale: GMM1 input scale [bs × CeilDiv(h,32)*2]
             sharedExpertInputScalePtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->bs * Ops::Base::CeilDiv(
-                    static_cast<uint32_t>(tilingData->h), static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) * MXFP_MULTI_BASE_SIZE,
+                SIZE_INT_8 * tilingData->bs * Ops::Base::CeilDiv(static_cast<uint32_t>(tilingData->h),
+                    static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) * MXFP_MULTI_BASE_SIZE,
                 ALIGN_512);
             // sharedExpertSwigluData: SwiGLU quant output [sharedExpertNum × bs × hiddenDim/2] fp8
             sharedExpertSwigluDataPtr = base + workspaceSize;
