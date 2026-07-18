@@ -113,6 +113,21 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
   --csv --case_files qbsa_mxfp8_test_cases_batch_large.csv
 ```
 
+## 复用 CPU Golden
+
+增加 `--rdv` 后，如果缓存目录中已存在当前 case 对应的 `<case_name>_cpu_output.pt`，脚本会直接加载
+该 CPU golden，跳过耗时的 CPU 计算；缓存不存在时仍会按 `--mode` 正常生成并保存。输入生成、NPU
+调用和精度对比不受影响。
+
+```bash
+python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
+  --csv --rdv
+```
+
+`--rdv` 默认从 `golden_cache/` 查找，也可以配合 `--cache-dir` 指定缓存目录。缓存按 case 名称匹配；
+case 参数发生变化后，应删除旧缓存或使用新的 case 名称，避免复用不匹配的 golden。
+Debug 模式包含 `gen` 阶段时，新生成的 PT 仍写入 `debug/<case_name>/pt/`，RDV 查找仍使用正式缓存目录。
+
 不带 `--csv` 时，`--case_files` 按 Python testcase 文件解析：
 
 ```bash
@@ -152,8 +167,8 @@ S1/S2 相等时，“S1 不对齐 128、S2 对齐 512”在数学上不可实现
 - 80 条 `B=3/12` 中大型等长和一长多短用例；
 - 40 条扩展 ragged/部分空 batch/部分 sparse 用例，将 batch 覆盖扩展到 `B=32`。
 
-默认 Python testcase 文件当前包含 24 条 STC，其中 21 条默认启用；除原有覆盖外，还选取了 3 条
-单 batch 因子组合和 7 条多 batch 典型场景，便于日常回归。
+默认 Python testcase 文件当前保留 6 条 BASE/MIX case，并包含 37 条默认启用的 STC，覆盖单 batch、
+多 batch、ragged、稀疏拼接、scale、mask、LSE、空输入和大 block_num 场景。
 
 ## Debug 模式
 
@@ -187,7 +202,7 @@ debug/<case_name>/
 ├── run.log
 ├── pt/
 │   ├── <case_name>_input.pt
-│   ├── <case_name>_cpu_output.pt
+│   ├── <case_name>_cpu_output.pt  # RDV 命中正式缓存时不重复写入
 │   └── <case_name>_npu_output.pt
 └── precision/
     ├── attention_out.png
