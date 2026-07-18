@@ -1717,6 +1717,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm1
         GroupMatmulWithSwigluQuant<true>(sharedGmm1AddrInfo, sharedGmm1State, vecSetSyncCom);
     }
     EndSync(vecSetSyncCom);
+    startBlockIdx_ = 0; // 共享专家GMM1修改了startBlockIdx_，重置给GMM1使用
 }
 
 template <TemplateMegaMoeTypeClass>
