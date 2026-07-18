@@ -164,8 +164,14 @@ public:
         WaitCrossCoreSync<4, PIPE_V>(mm1ToSmFlag);
 
         ComputeLocalMax(sUbAddr, lmUbAddr, m, s2BaseSize, tailN, scaleValue);
+
+        AscendC::printf("tkd lsUbTensor[ubSBufId]\n");
+        AscendC::DumpTensor(lsUbTensor[ubSBufId], 1, 128);
+
         if (!isFirstKvSTile) {
             UpdateHistoricalMax(lmUbAddr, gmUbAddr, tailN);
+            AscendC::printf("tkd historical max\n");
+            AscendC::DumpTensor(lmUbFloatTensor, 1, 128);
         }
         AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(ubSBufId + 2);
 
@@ -186,6 +192,11 @@ public:
             ComputePAndLocalSum<MAligendTileNum::Four>(sUbAddr, pUbAddr, lmUbAddr, llUbAddr, mRound, m, mFirstTile,
                                                        s2BaseSize, tailN, tailNOdd, tailNEven, blockStride, scaleValue);
         }
+
+        AscendC::printf("tkd lpUbTensor[ubSBufId]\n");
+        AscendC::DumpTensor(lpUbTensor[ubSBufId], 1, 128);
+        AscendC::printf("tkd llUbFloatTensor\n");
+        AscendC::DumpTensor(llUbFloatTensor, 1, 128);
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
@@ -213,8 +224,18 @@ public:
 
         if (isFirstKvSTile) {
             SetGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, tailN);
+            AscendC::printf("tkd SetGlobalMaxAndGlobalSum\n");
+            AscendC::printf("tkd gmUbTensor\n");
+            AscendC::DumpTensor(gmUbTensor, 1, 128);
+            AscendC::printf("tkd glUbTensor\n");
+            AscendC::DumpTensor(glUbTensor, 1, 128);
         } else {
             UpdateDeltaMaxGlobalMaxAndGlobalSum(lmUbAddr, gmUbAddr, llUbAddr, glUbAddr, dmUbAddr, tailN);
+            AscendC::printf("tkd UpdateDeltaMaxGlobalMaxAndGlobalSum\n");
+            AscendC::printf("tkd gmUbTensor\n");
+            AscendC::DumpTensor(gmUbTensor, 1, 128);
+            AscendC::printf("tkd glUbTensor\n");
+            AscendC::DumpTensor(glUbTensor, 1, 128);
         }
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -444,12 +465,12 @@ private:
 
             Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat0, sVreg0, maskReg16All);
             Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat1, sVreg0, maskReg16All);
-            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat2, sVreg0, maskReg16All);
-            Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat3, sVreg0, maskReg16All);
-            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat4, sVreg0, maskReg16All);
-            Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat5, sVreg0, maskReg16All);
-            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat6, sVreg0, maskReg16All);
-            Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat7, sVreg0, maskReg16All);
+            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat2, sVreg1, maskReg16All);
+            Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat3, sVreg1, maskReg16All);
+            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat4, sVreg2, maskReg16All);
+            Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat5, sVreg2, maskReg16All);
+            Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat6, sVreg3, maskReg16All);
+            Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat7, sVreg3, maskReg16All);
 
             FusedExpSub(pVregFloat0, pVregFloat0, hmVreg, maskReg32TailNEven);
             FusedExpSub(pVregFloat1, pVregFloat1, hmVreg, maskReg32TailNOdd);
@@ -518,12 +539,12 @@ private:
 
                 Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat0, sVreg0, maskReg16All);
                 Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat1, sVreg0, maskReg16All);
-                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat2, sVreg0, maskReg16All);
-                Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat3, sVreg0, maskReg16All);
-                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat4, sVreg0, maskReg16All);
-                Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat5, sVreg0, maskReg16All);
-                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat6, sVreg0, maskReg16All);
-                Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat7, sVreg0, maskReg16All);
+                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat2, sVreg1, maskReg16All);
+                Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat3, sVreg1, maskReg16All);
+                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat4, sVreg2, maskReg16All);
+                Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat5, sVreg2, maskReg16All);
+                Cast<float, bfloat16_t, castTraitZeroUNKNOWN>(pVregFloat6, sVreg3, maskReg16All);
+                Cast<float, bfloat16_t, castTraitOneUNKNOWN>(pVregFloat7, sVreg3, maskReg16All);
 
                 FusedExpSub(pVregFloat0, pVregFloat0, hmVreg, maskReg32TailNEven);
                 FusedExpSub(pVregFloat1, pVregFloat1, hmVreg, maskReg32TailNOdd);

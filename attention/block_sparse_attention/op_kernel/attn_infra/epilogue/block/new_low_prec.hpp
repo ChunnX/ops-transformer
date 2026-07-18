@@ -205,6 +205,18 @@ public:
                                                                     s2BaseSize, tailN, blockStride, scaleValue);
             }
         }
+        AscendC::printf("tkd lsUbTensor[ubSBufId]\n");
+        AscendC::DumpTensor(lsUbTensor[ubSBufId], 1, 128);
+        AscendC::printf("tkd lpUbTensor[ubSBufId]\n");
+        AscendC::DumpTensor(lpUbTensor[ubSBufId], 1, 128);
+        AscendC::printf("tkd lmUbTensor\n");
+        AscendC::DumpTensor(lmUbTensor, 1, 128);
+        AscendC::printf("tkd llUbTensor\n");
+        AscendC::DumpTensor(llUbTensor, 1, 128);
+        AscendC::printf("tkd gmUbTensor\n");
+        AscendC::DumpTensor(gmUbTensor, 1, 128);
+        AscendC::printf("tkd glUbTensor\n");
+        AscendC::DumpTensor(glUbTensor, 1, 128);
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(ubSBufId);
@@ -473,6 +485,7 @@ private:
             StoreAlign<float, StoreDist::DIST_NORM_B32>(dmUb, dmVreg, maskReg32TailN);
             StoreAlign<float, StoreDist::DIST_NORM_B32>(gmUb, lmVregFloat, maskReg32TailN);
 
+            LoadAlign(glVreg, glUb);
             Interleave(llVreg0, llVreg1, sumVreg0, sumVreg0);
             Cast<float, half, castTraitZeroUNKNOWN>(llVregFloat, llVreg0, maskReg16All);
             Mul(glVreg, glVreg, dmVreg, maskReg32TailN);
