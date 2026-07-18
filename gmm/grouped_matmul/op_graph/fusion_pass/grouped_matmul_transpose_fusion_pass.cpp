@@ -18,7 +18,6 @@
 #if CANN_VERSION_NUM >= GROUPED_MATMUL_GRAPH_FUSION_SUPPORT_VERSION
 #include <algorithm>
 #include <cstdint>
-#include <iostream>
 #include <string>
 #include <vector>
 
@@ -825,7 +824,6 @@ Status Fusion(GraphPtr& graph, GNode& groupedMatmulNode, CustomPassContext& pass
 
 Status RunGroupedMatmulTransposeFusion(GraphPtr& graph, CustomPassContext& passContext)
 {
-    std::cout << "***RunGroupedMatmulTransposeFusion begin" << std::endl;
     OP_LOGD(kPassName, "Enter GroupedMatmul transpose fusion pass.");
     if (!IsGraphFusionRuntimeSupported()) {
         OP_LOGD(kPassName, "Skip GroupedMatmul transpose fusion pass because graph fusion runtime is unsupported.");
@@ -851,12 +849,10 @@ Status RunGroupedMatmulTransposeFusion(GraphPtr& graph, CustomPassContext& passC
     for (auto& groupedMatmulNode : groupedMatmulNodes) {
         auto status = Fusion(graph, groupedMatmulNode, passContext);
         if (status == SUCCESS) {
-            std::cout << "***status == SUCCESS" << std::endl;
             changed = true;
             continue;
         }
         if (status != GRAPH_NOT_CHANGED) {
-            std::cout << "***status != GRAPH_NOT_CHANGED" << std::endl;
             OP_LOGE(kPassName, "GroupedMatmul transpose fusion failed, status is %u.", status);
             return status;
         }
@@ -867,7 +863,6 @@ Status RunGroupedMatmulTransposeFusion(GraphPtr& graph, CustomPassContext& passC
 
 Status GroupedMatmulTransFusionPass::Run(GraphPtr& graph, CustomPassContext& passContext)
 {
-    std::cout << "***GroupedMatmulTransposeFusionPass::Run" << std::endl;
     return RunGroupedMatmulTransposeFusion(graph, passContext);
 }
 
