@@ -2685,10 +2685,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         Unpermute();
     }
     if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
-        // This terminal drain is outside the measured rolling schedule.  Its
-        // sole purpose is to make workEnd a true completion timestamp for the
-        // final Unpermute writes before y is repurposed for trace records.
-        PipeBarrier<PIPE_ALL>();
+        // Unpermute's final GM DataCopy can remain queued on MTE3 after the
+        // scalar control flow returns.  PipeBarrier only orders instructions
+        // within a pipeline; it does not make Scalar wait for MTE3 completion.
+        // Drain MTE3 explicitly before y is repurposed for trace records, or
+        // the pending Unpermute writes can overwrite the trace header.
+        if constexpr (g_coreType == AIV) {
+            SetFlag<HardEvent::MTE3_S>(EVENT_ID7);
+            WaitFlag<HardEvent::MTE3_S>(EVENT_ID7);
+        }
         criticalPathTrace_.workEnd = CriticalPathTrace::Now();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
