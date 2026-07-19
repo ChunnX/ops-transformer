@@ -1,7 +1,7 @@
 # MegaMoe 关键路径打点
 
 这套诊断用于定位 GMM1/GMM2、ready fan-in、Dispatch、Combine 和末尾同步之间的实际依赖。
-trace v3 会为每个物理 AIC/AIV0/AIV1 记录前 4 个 wave 的阶段起止，kernel 有效工作结束后再统一写入
+trace v4 会为每个物理 AIC/AIV0/AIV1 记录前 4 个 wave 的阶段起止，kernel 有效工作结束后再统一写入
 `y`，避免在热路径上反复写 GM。诊断运行会占用 `y` 的开头，因此只用于性能和时序分析，不做输出
 精度比较。
 
@@ -91,20 +91,25 @@ HTML 中五类高不透明度实线块都是逐物理核、逐 wave 的真实边
 | GMM2 / AIC | 本核首个 swiglu-ready 轮询通过，首个 MMAD 前 | ready publication 中已有 `FIX->S`，表示直写 GM 完成 |
 | Combine / AIV1 | ready fan-in 和 triple `MTE2->S` 均通过后的首条 row | 六槽 drain 后每 wave 一次 `MTE2->S`，表示远端 MTE3 发送实际完成 |
 
-因此没有在每个点前插入 `PIPE_ALL`。v3 只在每核每 wave 的首次 GMM1/SwiGLU begin 增加一次相应的
+因此没有在每个点前插入 `PIPE_ALL`。v4 只在每核每 wave 的首次 GMM1/SwiGLU begin 增加一次相应的
 `FIX->S`/`V->S` 因果桥，并在 GMM1 end、每 wave Combine end 保留完成桥。诊断版会增加少量串行化；
 这是换取可信 begin 和 actual completion end 的明确代价，不能把诊断版总耗时当作无打点版本性能。
 这些静态 Tensor 事件统一使用已完整 set/wait 回收的 `EVENT_ID0`，不使用可能与内部实现冲突的 6/7。
 
 `publish_end` 是 `FIX->S` 完成并调用 bypass GM store 后的 Scalar 边界，不等价于其他核已经观察到
 该 GM 值；可见性延迟会自然落在 publish 到 AIV1 `ready_end` 的 gap 中。类似地，
-旧的 `combine_scalar_end` 仍只是六槽 drain 已下发的 Scalar 边界；v3 中每个 wave 的
+旧的 `combine_scalar_end` 仍只是六槽 drain 已下发的 Scalar 边界；v4 中每个 wave 的
 `combine_end` 都通过 `MTE2->S` bridge 表示远端发送真正完成。
 
 终端同时打印 header、各类核的时间点和 span 的 min/median/max、累计等待，以及 publish 到 ready、
 ready 到 Combine 等派生 gap。请把完整终端输出和两个 rank 的两版 HTML/JSON 一起返回。
 
-目标 shape 的 v3 trace 至少需要 `(20 + 36 * 3 * 42) * 4 = 18224` 字节输出空间。shape 太小导致
+Unpermute 结束后，每个 AIV 先用 `MTE3->S` 排空自己的输出写，再由 `SyncAll<false>()` 做 AIC+AIV
+混合核汇合，最后才允许 AIC0 把 header 写到 `y`。不能使用 `SyncAll<true>()`：其模板参数表示
+`isAIVOnly=true`，不会等待负责写 header 的 AIC0，AIC0 提前写出的 magic 会被后续 AIV Unpermute
+结果覆盖。
+
+目标 shape 的 v4 trace 至少需要 `(20 + 36 * 3 * 42) * 4 = 18224` 字节输出空间。shape 太小导致
 `y` 不足时，kernel 不会写不完整记录，runner 会报告无效 magic。
 
 注意 profiler 看到的算子总耗时还包含末尾 trace 汇合和统一写出；分析真实工作尾部时优先看内部

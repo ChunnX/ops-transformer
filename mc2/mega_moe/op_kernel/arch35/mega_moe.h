@@ -2509,8 +2509,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WriteCriticalPathTrace(
         WriteGmByPassDCache(traceOut + 13U, waveCount);
         // bit0: terminal PIPE_ALL; bit1: per-wave Combine MTE2->S bridge;
         // bit2: role-dependent per-wave stages; bit3: causal stage-begin
-        // pipeline bridges; bits[15:8]: capture capacity.
-        constexpr uint32_t traceFlags = 15U | (CRITICAL_PATH_TRACE_MAX_WAVES << 8U);
+        // pipeline bridges; bit4: mixed AIC+AIV trace rendezvous;
+        // bits[15:8]: capture capacity.
+        constexpr uint32_t traceFlags = 31U | (CRITICAL_PATH_TRACE_MAX_WAVES << 8U);
         WriteGmByPassDCache(traceOut + 14U, traceFlags);
         WriteGmByPassDCache(traceOut + 15U, m_);
         WriteGmByPassDCache(traceOut + 16U, k_);
@@ -2699,7 +2700,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
     if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
-        SyncAll<true>();
+        // SyncAll<true> is AIV-only.  The trace header is written by AIC0,
+        // while Unpermute writes y from AIV, so an AIV-only rendezvous lets
+        // AIC0 publish CPTR before a late AIV output store overwrites it.
+        // Every AIV has already drained MTE3 above; now synchronize both core
+        // classes before repurposing y as the trace buffer.
+        SyncAll<false>();
         WriteCriticalPathTrace();
     }
 }

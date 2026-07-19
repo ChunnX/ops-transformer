@@ -18,7 +18,7 @@ import numpy as np
 
 
 TRACE_MAGIC = 0x43505452
-TRACE_VERSION = 3
+TRACE_VERSION = 4
 TRACE_HEADER_WORDS = 20
 TRACE_BASE_RECORD_WORDS = 26
 TRACE_MAX_WAVES = 4
@@ -497,17 +497,21 @@ def _print_critical_path_words(words, rank):
         )
     wave_stage_trace = (trace_flags >> 2) & 1
     dependency_bridged_begins = (trace_flags >> 3) & 1
+    mixed_core_trace_rendezvous = (trace_flags >> 4) & 1
     wave_capture_capacity = (trace_flags >> 8) & 0xFF
     if (
         wave_stage_trace != 1
         or dependency_bridged_begins != 1
+        or mixed_core_trace_rendezvous != 1
         or wave_capture_capacity != TRACE_MAX_WAVES
     ):
         raise RuntimeError(
             f"rank {rank}: invalid wave trace flags enabled={wave_stage_trace} "
             f"dependency_bridged_begins={dependency_bridged_begins} "
+            f"mixed_core_trace_rendezvous={mixed_core_trace_rendezvous} "
             f"capacity={wave_capture_capacity}; expected enabled=1 "
-            f"dependency_bridged_begins=1 capacity={TRACE_MAX_WAVES}"
+            f"dependency_bridged_begins=1 mixed_core_trace_rendezvous=1 "
+            f"capacity={TRACE_MAX_WAVES}"
         )
     captured_wave_count = min(wave_count, wave_capture_capacity)
 
@@ -570,6 +574,7 @@ def _print_critical_path_words(words, rank):
         f"final_only={final_only} interleaved={gmm1_interleaved} world={world_size} "
         f"terminal_pipeall={trace_flags & 1} per_wave_combine_bridge={(trace_flags >> 1) & 1} "
         f"wave_trace={wave_stage_trace} dependency_bridged_begins={dependency_bridged_begins} "
+        f"mixed_core_trace_rendezvous={mixed_core_trace_rendezvous} "
         f"captured_waves={captured_wave_count}/{wave_count}"
     )
 
@@ -583,6 +588,7 @@ def _print_critical_path_words(words, rank):
         "per_wave_combine_bridge": ((trace_flags >> 1) & 1, 1),
         "wave_stage_trace": (wave_stage_trace, 1),
         "dependency_bridged_begins": (dependency_bridged_begins, 1),
+        "mixed_core_trace_rendezvous": (mixed_core_trace_rendezvous, 1),
         "wave_capture_capacity": (wave_capture_capacity, TRACE_MAX_WAVES),
         "trace_rank": (trace_rank, rank),
     }
@@ -609,7 +615,7 @@ def _print_critical_path_words(words, rank):
         )
 
     trace_header = {
-        "schema": "mega_moe_critical_path_trace_v3",
+        "schema": "mega_moe_critical_path_trace_v4",
         "rank": rank,
         "trace_rank": trace_rank,
         "reference": "AIC-00 process_begin",
@@ -635,6 +641,7 @@ def _print_critical_path_words(words, rank):
         "per_wave_combine_bridge": (trace_flags >> 1) & 1,
         "wave_stage_trace": wave_stage_trace,
         "dependency_bridged_begins": dependency_bridged_begins,
+        "mixed_core_trace_rendezvous": mixed_core_trace_rendezvous,
         "timeline_note": (
             "Per-wave Dispatch/GMM1/SwiGLU/GMM2/Combine bars have role-specific "
             "dependency-bridged begin points and actual-completion end points. "
@@ -751,7 +758,7 @@ def _print_critical_path_words(words, rank):
     for name, values in derived:
         print(f"{name:<36} {_format_values(values):>32}")
     print(
-        "[CRITICAL_NOTE] legacy combine_scalar_end remains an issue boundary; every v3 "
+        "[CRITICAL_NOTE] legacy combine_scalar_end remains an issue boundary; every v4 "
         "per-wave combine_end is MTE2->Scalar completion-bridged."
     )
 
