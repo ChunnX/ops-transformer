@@ -181,28 +181,28 @@ aclnnStatus aclnnGroupedMatmulV5(
 
   | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度(shape) | 非连续Tensor |
   |--------|:---:|------|------|----------|:---:|:---|:---:|
-  | x | 输入 | 公式中的输入 $x$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | <abbr title="常规连续排布">ND</abbr> | 2~6 | √ |
-  | weight | 输入 | 公式中的 $weight$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND/<abbr title="FRACTAL_NZ格式（亲核排布）">NZ</abbr> | 2~3 | √ |
-  | biasOptional | 可选输入 | 公式中的 $bias$ | 长度与weight相同 | FLOAT、FLOAT16、INT32、BFLOAT16<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~2 | √ |
-  | scaleOptional | 可选输入 | 公式中的 $scale$，代表量化参数中的缩放因子 | 一般情况下，长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、UINT64、BFLOAT16、FLOAT8_E8M0<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、INT64<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~4 | √ |
-  | offsetOptional | 可选输入 | 公式中的 $offset$，代表量化参数中的偏移量 | 长度与weight相同 | FLOAT | ND | 3 | √ |
-  | antiquantScaleOptional | 可选输入 | 公式中的 $antiquant\_scale$，代表伪量化参数中的缩放因子 | 长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT16、BFLOAT16 | ND | 1~3 | √ |
-  | antiquantOffsetOptional | 可选输入 | 公式中的 $antiquant\_offset$，代表伪量化参数中的偏移量 | 长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT16、BFLOAT16 | ND | 1~3 | √ |
-  | perTokenScaleOptional | 可选输入 | 公式中的 $per\_token\_scale$，代表量化参数中由x量化引入的缩放因子 | 一般情况下，只支持 1维且长度与 x的M相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、FLOAT8_E8M0<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~3 | √ |
-  | groupListOptional | 可选输入 | 代表输入和输出分组轴方向的 matmul大小分布 | 根据 groupListType输入不同格式数据 | INT64 | ND | 1~2 | √ |
-  | activationInputOptional | 可选输入 | 代表激活函数的反向输入，当前只支持传入 nullptr | - | - | - | - | - |
-  | activationQuantScaleOptional | 可选输入 | 激活函数量化缩放因子（预留参数），当前只支持传入 nullptr | - | - | - | - | - |
-  | activationQuantOffsetOptional | 可选输入 | 激活函数量化偏移量（预留参数），当前只支持传入 nullptr | - | - | - | - | - |
-  | splitItem | 输入 | 代表输出是否要做 Tensor切分 | `0/1` = 多Tensor 输出；`2/3` = 单Tensor 输出。接口不区分 0/1 和 2/3 的内部差异 | - | - | - | - |
-  | groupType | 输入 | 代表需要分组的轴 | 如矩阵乘为 $C[m,n]=A[m,k]\times B[k,n]$：`-1` = 不分组；`0` = M轴分组；`2` = K轴分组 | - | - | - | - |
-  | groupListType | 输入 | 代表 groupList输入的分组方式 | `0` = 累积和（cumsum）；`1` = 各组大小；`2` = [组索引, 组大小] 对。详见 [约束说明](#7-约束说明) | - | - | - | - |
-  | actType | 输入 | 代表激活函数类型 | `0`=GMM_ACT_TYPE_NONE / `1`=GMM_ACT_TYPE_RELU / `2`=GMM_ACT_TYPE_GELU_TANH / `3`=GMM_ACT_TYPE_GELU_ERR_FUNC（不支持） / `4`=GMM_ACT_TYPE_FAST_GELU / `5`=GMM_ACT_TYPE_SILU | - | - | - | - |
-  | tuningConfigOptional | 可选输入 | 第一个数代表各个专家处理的 token数的预期值；第二个数代表 <abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A8W4</abbr> 可选开启 weight先转置的 NZ格式；第三个数代表允许额外使用的内存空间。详见 [约束说明](#7-约束说明) | 兼容历史版本，用户如不使用该参数，不传（即为 nullptr）即可 | INT64 | - | 3 | - |
-  | out | 输出 | 公式中的输出 $y$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND | 2~3 | - |
-  | activationFeatureOutOptional | 输出 | 激活函数的输入数据，当前只支持传入 nullptr | - | - | - | - | - |
-  | dynQuantScaleOutOptional | 输出 | 动态量化缩放因子，当前只支持传入 nullptr | - | - | - | - | - |
-  | workspaceSize | 输出 | 返回需要在 Device侧申请的 workspace大小（字节） | - | - | - | - | - |
-  | executor | 输出 | 返回 op执行器，包含了算子计算流程 | - | - | - | - | - |
+  | x（aclTensorList *） | 输入 | 公式中的输入 $x$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | <abbr title="常规连续排布">ND</abbr> | 2~6 | √ |
+  | weight（aclTensorList *） | 输入 | 公式中的 $weight$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT16<span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span>、INT8、INT4、BFLOAT16、FLOAT8_E5M2<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT8_E4M3FN<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、HIFLOAT8<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、FLOAT4_E2M1<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND/<abbr title="FRACTAL_NZ格式（亲核排布）">NZ</abbr> | 2~3 | √ |
+  | biasOptional（aclTensorList *） | 可选输入 | 公式中的 $bias$ | 长度与weight相同 | FLOAT、FLOAT16、INT32、BFLOAT16<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~2 | √ |
+  | scaleOptional（aclTensorList *） | 可选输入 | 公式中的 $scale$，代表量化参数中的缩放因子 | 一般情况下，长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、UINT64、BFLOAT16、FLOAT8_E8M0<span title="Atlas A3/A2 不支持"><sup>2</sup></span>、INT64<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~4 | √ |
+  | offsetOptional（aclTensorList *） | 可选输入 | 公式中的 $offset$，代表量化参数中的偏移量 | 长度与weight相同 | FLOAT | ND | 3 | √ |
+  | antiquantScaleOptional（aclTensorList *） | 可选输入 | 公式中的 $antiquant\_scale$，代表伪量化参数中的缩放因子 | 长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT16、BFLOAT16 | ND | 1~3 | √ |
+  | antiquantOffsetOptional（aclTensorList *） | 可选输入 | 公式中的 $antiquant\_offset$，代表伪量化参数中的偏移量 | 长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT16、BFLOAT16 | ND | 1~3 | √ |
+  | perTokenScaleOptional（aclTensorList *） | 可选输入 | 公式中的 $per\_token\_scale$，代表量化参数中由x量化引入的缩放因子 | 一般情况下，只支持 1维且长度与 x的M相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、FLOAT8_E8M0<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~3 | √ |
+  | groupListOptional（aclTensor *） | 可选输入 | 代表输入和输出分组轴方向的 matmul大小分布 | 根据 groupListType输入不同格式数据 | INT64 | ND | 1~2 | √ |
+  | activationInputOptional（aclTensorList *） | 可选输入 | 代表激活函数的反向输入，当前只支持传入 nullptr | - | - | - | - | - |
+  | activationQuantScaleOptional（aclTensorList *） | 可选输入 | 激活函数量化缩放因子（预留参数），当前只支持传入 nullptr | - | - | - | - | - |
+  | activationQuantOffsetOptional（aclTensorList *） | 可选输入 | 激活函数量化偏移量（预留参数），当前只支持传入 nullptr | - | - | - | - | - |
+  | splitItem（int64_t） | 输入 | 代表输出是否要做 Tensor切分 | `0/1` = 多Tensor 输出；`2/3` = 单Tensor 输出。接口不区分 0/1 和 2/3 的内部差异 | - | - | - | - |
+  | groupType（int64_t） | 输入 | 代表需要分组的轴 | 如矩阵乘为 $C[m,n]=A[m,k]\times B[k,n]$：`-1` = 不分组；`0` = M轴分组；`2` = K轴分组 | - | - | - | - |
+  | groupListType（int64_t） | 输入 | 代表 groupList输入的分组方式 | `0` = 累积和（cumsum）；`1` = 各组大小；`2` = [组索引, 组大小] 对。详见 [约束说明](#7-约束说明) | - | - | - | - |
+  | actType（int64_t） | 输入 | 代表激活函数类型 | `0`=GMM_ACT_TYPE_NONE / `1`=GMM_ACT_TYPE_RELU / `2`=GMM_ACT_TYPE_GELU_TANH / `3`=GMM_ACT_TYPE_GELU_ERR_FUNC（不支持） / `4`=GMM_ACT_TYPE_FAST_GELU / `5`=GMM_ACT_TYPE_SILU | - | - | - | - |
+  | tuningConfigOptional（aclIntArray *） | 可选输入 | 第一个数代表各个专家处理的 token数的预期值；第二个数代表 <abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A8W4</abbr> 可选开启 weight先转置的 NZ格式；第三个数代表允许额外使用的内存空间。详见 [约束说明](#7-约束说明) | 兼容历史版本，用户如不使用该参数，不传（即为 nullptr）即可 | INT64 | - | 3 | - |
+  | out（aclTensorList *） | 输出 | 公式中的输出 $y$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND | 2~3 | - |
+  | activationFeatureOutOptional（aclTensorList *） | 输出 | 激活函数的输入数据，当前只支持传入 nullptr | - | - | - | - | - |
+  | dynQuantScaleOutOptional（aclTensorList *） | 输出 | 动态量化缩放因子，当前只支持传入 nullptr | - | - | - | - | - |
+  | workspaceSize（uint64_t *） | 输出 | 返回需要在 Device侧申请的 workspace大小（字节） | - | - | - | - | - |
+  | executor（aclOpExecutor **） | 输出 | 返回 op执行器，包含了算子计算流程 | - | - | - | - | - |
 
   - **<term>Ascend 950PR/Ascend 950DT</term>**：
     - 上表数据类型列中的角标 <span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span> 代表该系列不支持的数据类型
