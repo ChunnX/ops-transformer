@@ -2,6 +2,39 @@
 
 ![](images/batch%E4%B8%80%E8%87%B4%E6%80%A7%E6%A1%86%E6%9E%B6%E5%A4%A7%E7%BA%B2.png)
 
+```txt
+# batch一致性测试框架开发大纲
+
+## 1. 图例说明 (Legend)
+- 🔴 **实现速度快，优先实现** (粉色背景)
+- ⬜ **现有功能** (白色背景)
+- 🔵 **实现速度慢，后期实现** (蓝色背景)
+
+## 2. 核心流程 (Main Flow)
+- **S2_B分析模块** 🔵
+  - *描述：保障至少有token能被切到多核*
+  - ⬇️
+- **给定的参数** ⬜
+  - ⬇️
+- **当前生成golden的代码** ⬜
+  - ⬇️
+- **黑盒场景覆盖模块** 🔴
+  - ⬇️
+- **metadata算子调用** ⬜
+  - ⬇️
+- **自动场景覆盖模块** 🔵
+  - ⬇️
+- **白盒覆盖情况自动分析** 🔵
+  - ⬇️
+- **一致性对比模块** 🔴
+  - ⬇️
+- **精度对比** ⬜
+
+## 3. 并行/辅助逻辑 (Parallel Logic)
+- **两次执行间random方式** 🔴
+  - *说明：此步骤与“黑盒场景覆盖模块”并行，并汇入“一致性对比模块”*
+
+```
 
 # 支持的黑盒场景
 
@@ -124,3 +157,49 @@ print(t3.shape)  # torch.Size([5, 4])
     实现顺序：
 
 不固定基准+手动分析用例 => 代码实现 => 白盒情况自动分析模块实现 => 自动场景覆盖用来泛化测试
+
+# 2026-07-19 实现校准
+
+本文件正文是早期开发草案，保留用于追溯。当前发生冲突时，以 `SMLA batch一致性.md` 为
+第一需求源，以两算子 README/golden/源码和 PR8737 为接口与算法证据；最终实现与状态见
+`../requs.md` 和 `../SMLA_batch一致性测试开发计划.md`。
+
+## 黑盒模式校准
+
+1. 模式 1：同一组 batch 重排，所有 batch-aligned 输入同步重排；
+2. 模式 2：pytest 参数层构造独立子调用，规范示例是 `B=8 -> B=3+B=5`，正式验收使用显式
+   groups；这不是算子内部按 seed 分核；
+3. 模式 3：对一个 batch 做完整、不重叠 token partition，例如 `16K -> 4K+12K`；
+4. 模式 4：按主需求比较 `300+100` 与 `300+200` 的共同前 300 token。
+
+模式 3/4 对 RightDownCausal/Band 不能只改变 Q。当前实现分别使用：
+
+```text
+Mode 3 [start,end): new_ori_S2 = old_ori_S2 - old_Q_length + end
+Mode 4:             new_ori_S2 = old_ori_S2 + new_Q_length - old_Q_length
+```
+
+随后 actual-input 语义 oracle 校验 Q、可见 ori/cmp KV、mask window、sparse indices、top-k
+和 sinks；不能证明等价的 case 返回 `INVALID_TRANSFORM`。
+
+## 原 pytest 流程校准
+
+当前在两个算子各自的 `tests/pytest_v2` 中保留：输入/CPU golden -> PT save/load -> 参数变换
+-> metadata -> 主算子 -> CPU 精度比较，同时增加 baseline/derived MD5、metadata 分析和 level
+恢复。命名 `--modes`/`--profile` 是正式接口；`-M 1,2` 仅为迁移兼容。
+
+## 白盒自动分析校准
+
+“白盒情况自动分析”已经实现，不修改 metadata 伪造覆盖，而是解析主算子同一次调用实际消费
+的 1024-int32 metadata：
+
+- FA `36x9`、FD `72x8` 和 reserved tail；
+- `bn2 -> (batch,n2)` 与 query-token/S2-block 展开；
+- PR8737 固定规约块 `R=align_up(ceil(actual_S2/32),128)`；
+- split-G 重复 FA range 去重；
+- FA/FD workspace 关联、G 行覆盖和结构错误；
+- Level-1 四类、Level-2 token/core 视角与 missing coverage。
+
+自动生成目标 shape、STC 001-027 manifest 和真实 level-3 coverage matrix 仍属于下一阶段。
+本机 runtime 当前在第一条 NPU 操作处拒绝 level 3，所以 level-0 metadata 只能做接口/布局
+smoke，不能作为 FD、固定调度或主算子 batch consistency 的通过证据。

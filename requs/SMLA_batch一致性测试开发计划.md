@@ -1,583 +1,397 @@
 # SMLA/MQSMLA batch 一致性测试开发计划
 
-> 版本：2026-07-17 检视修订版
-> 范围：`sparse_flash_mla` 与 `mixed_quant_sparse_flash_mla`
-> 状态来源：代码、STC、会议纪要、metadata header/AICPU 源码、已安装 MQ metadata 实测
-> 需求与历史台账：`requs.md`
+> 版本：2026-07-19 检视推进版
+> 范围：`sparse_flash_mla`（SMLA）与 `mixed_quant_sparse_flash_mla`（MQSMLA）
+> 第一需求源：`docs/SMLA batch一致性.md`
+> 需求、冲突、文件级开发日志与逐项检视答复：`requs.md`
 
 ## 1. 当前结论
 
-测试框架不能单方面“打通”尚未支持的 batch consistency。当前工作应拆成三层，并分别
-声明状态：
+阶段二的测试侧代码已经完成到以下边界：
 
-1. **测试控制与变换层**：命名模式、BSND/TND/PA 变换、origin 对齐、MD5/精度比较；
-2. **metadata 观察层**：捕获、严格解析和覆盖分析；
-3. **主算子验收层**：SMLA/MQSMLA 真正在 level 3 下执行并逐 bit 通过。
+1. 两个算子分别拥有自己的 `tests/pytest_v2`，并保留各自原 pytest 的输入生成、CPU
+   golden、PT save/load、metadata + 主算子、精度比较和 graph 文件；
+2. 模式 1-4 均有命名配置、layout-aware 变换、`TokenOrigin` 对齐、NPU MD5 与原 CPU
+   `check_result` 双门禁；
+3. 模式 3/4 有 actual-input 语义 oracle，验证 mapped Q、可见 KV、mask window、sparse
+   indices、top-k 与 sinks；
+4. MQSMLA 已有自己的 eager executor 和 `metadata_sink`，不再只做 metadata probe；
+5. metadata 白盒分析可从 1024-int32 展开到 batch/N2/query-token/S2-block/FA core/FD
+   workspace，并报告 Level-1/2 覆盖与结构错误。
 
-本轮已经完成第一层的模式 1/2 和受限模式 3，完成第二层的 parser、SMLA eager 同对象
-捕获、MQ 独立 probe 和保守 analyzer。第三层仍被两个事实阻断：
-
-- 当前 SMLA/MQSMLA 主算子源码未形成可验收的 batch-consistency 完整路径；
-- 本机 Ascend910_9362 + torch_npu/CANN 9.2 在第一次 NPU 操作时拒绝 deterministic
-  level 3，即使 setter/getter 表面成功。
-
-因此当前可声明“测试框架 CPU 门禁通过、metadata level 0 探针通过”，不能声明
-“SMLA/MQSMLA batch 一致性通过”。
-
-## 2. 资料裁决原则
-
-实现按以下顺序取证：
+但“代码完成”不等于“特性验收完成”。当前本机 torch_npu/CANN 在设置 level 3 后的第一条
+NPU 操作处拒绝该等级；本地算子源码快照也没有 PR8737 的完整改动。因此当前只能声明：
 
 ```text
-STC 001-027 的验收关系
-  + 会议纪要的开发者解释
-  + batch一致性测试框架的模式定义
-  + 两份特性设计文档
-  + metadata解析文档
-  + 当前生产/消费 metadata 的源码事实
+测试侧变换/比较/白盒分析：CPU 门禁通过
+普通 level-0 metadata probe：可用于接口与布局检查
+真实 SMLA/MQSMLA level-3 batch consistency：UNSUPPORTED / 待版本对齐
 ```
 
-STC 决定需要验收什么，源码决定当前接口实际上能做什么。冲突项不能靠模型推测解决：
+严禁自动退回 level 0 后把结果标成 batch consistency PASS。
 
-- 模式 4的 prepend/append 冲突保持阻断；
-- `S2=5120` 按数学事实归入 `S2 % 32 == 0`；
-- STC 026 的 `B=8` 与 5 个 `cu_seqlens_q` 值不一致，不能直接作为生成参数；
-- metadata FD M 是 s1g row，缺上下文时不直接换算成 query token。
+## 2. 需求裁决与冲突处理
 
-## 3. 多模型联合审议记录
+### 2.1 资料采用顺序
 
-### 3.1 已使用模型
+| 优先级 | 资料 | 决定内容 |
+| --- | --- | --- |
+| 1 | `docs/SMLA batch一致性.md` | token 粒度目标、模式 1-4、level 3 与固定规约语义 |
+| 2 | 两算子 README、golden、pytest process、metadata/opapi/tiling/kernel 源码、PR8737 | 参数、mask 数学语义、metadata 布局和当前/目标实现事实 |
+| 3 | STC 001-027 Excel | 验收 case 草案；错误数据需修订，不能覆盖主需求 |
+| 4 | `docs/batch一致性测试框架.md`、会议纪要 | 开发方法与历史理解 |
+| 5 | metadata 解析等补充文档 | 旧布局与设计背景 |
 
-本轮通过 CANNBot 分别让以下模型只读审议同一组材料和当前实现：
+冲突时必须在 `requs.md` 的集中台账登记。无法通过实际输入证明数学等价的派生 case 返回
+`INVALID_TRANSFORM`，不能包装成数值 `FAIL`。
+
+### 2.2 已裁决的关键冲突
+
+- 模式 2 是测试侧构造独立算子调用，不是 kernel 内部分组；
+- 模式 3 是完整连续 token 分区，如 `16K -> 4K+12K`；
+- 模式 4 采用主需求的共同前缀，如 `300+100` 对 `300+200`；
+- `S2 / 32 == 128` 是精确等式，即 `S2=4096`；
+- `S2=5120` 可被 32 整除，STC 014 的文字错误不进入实现；
+- STC 026 的 B 与 `cu_seqlens_q` 数量冲突，修订前不自动生成；
+- 当前 metadata 布局按 FA `36x9`、FD `72x8`、reserved 124 解析；旧 `36x8`
+  作为独立 legacy version；
+- FD slot 7 未在当前 header 中命名，只能报告 unknown，不能猜字段含义。
+
+## 3. 多模型联合审议
+
+### 3.1 审议方式
+
+已通过 CANNBot 对同一组需求、STC、代码与计划分别进行只读审议：
 
 - `cannbot/glm-5.2`；
 - `cannbot/deepseek-v4-pro`；
 - `cannbot/qwen3.7-max`。
 
-输入包括 `requs.md`、本计划、五份需求资料、STC Excel、会议纪要、第一阶段代码、SMLA/
-MQSMLA metadata header、MQ metadata AICPU 生产代码和主算子消费代码。三个模型未直接
-写仓库，最终裁决由主审结合源码和实测完成。
+模型不直接修改仓库。主审把它们作为遗漏检查与反向审查来源，再用源码、PR 和可重复测试
+裁决。
 
-### 3.2 共同关注点
+### 3.2 有效共识
 
-三个模型一致指出：
+- 两算子必须有 operator-owned pytest tree 和 executor；
+- MQ 必须调用 metadata + 主算子并捕获同一 metadata；
+- 一致性入口必须保留原 PT/golden/process/compare 流程；
+- 模式 2 应逐 subcase 与 baseline origin 直比；
+- 模式 3/4 必须考虑位置敏感 mask，不能只切/扩 Q；
+- 白盒分析必须带 B/N2/G/Q/KV/mask 上下文；
+- `UNSUPPORTED`、`INVALID_TRANSFORM`、`NOT_APPLICABLE` 与 `FAIL` 必须分开。
 
-- 模式 2应逐子 case 与基准 origin 直比，完整 merge 只能辅助诊断；
-- 默认 STC 不应随机分组，seed 应限定在可复现排列或 fuzz profile；
-- 模式 3必须保持 KV，并明确目标 token 的位置/mask 语义；
-- 模式 4在 causal/window mask 下风险最高，必须先有 actual-input oracle；
-- 数字模式应收敛到 Python registry，shell 不维护业务含义；
-- metadata 必须区分“主算子实际消费的同一对象”和“独立重复调用的 probe”；
-- `UNSUPPORTED`、`INVALID_TRANSFORM` 与数值 `FAIL` 不能混为 pytest skip；
-- 当前主算子能力和 runtime 能力都不能从普通精度 PASS 推导。
+### 3.3 已纠正的模型错误
 
-### 3.3 主审对模型意见的修正
+1. 外层 `DeterministicLevelGuard` 已包住 executor；executor 的 `call_npu` 内部按顺序
+   调 metadata 和主算子，因此两段都处于 level 3，不存在“只包第二段”的问题。
+2. `S2 / 32 == 128` 不是 Python/C++ 整数除法后的 `[4096,4127]` 区间，而是需求中的
+   数学等式 `S2=4096`。
+3. FD `workspace_num` 应与该 token 的规约块总数核对，不是简单等于参与 FA 的 core 数。
 
-模型意见不是源码事实，以下内容已按证据修正：
-
-1. **模式 3采用 STC token 子集语义。** 部分模型把它理解成每个 token 都复制成一个
-   新逻辑 batch；STC 002/006/007/012/016 实际是从基准 case 选取 batch/token 子集。
-2. **5120 可被 32 整除。** STC 描述和个别模型分类错误，代码不跟随错误文字。
-3. **FD task 不等于一个 token。** `FD_M_IDX` 是 s1g index，完整展开需要 group size。
-4. **generic NPU op 成功不能证明 SMLA/MQSMLA 支持 level 3。** 只能真实运行目标算子或
-   使用官方 per-op 能力查询。
-5. **CPU oracle 不能重新随机生成输入。** 必须消费已经变换后的实际 Q/KV/index/table。
-6. **MQ metadata probe 不能证明 MQ 主算子 PASS。** 它只证明部署 metadata op 的输出。
-
-## 4. 总体架构
+## 4. pytest_v2 总体架构
 
 ```text
-CLI / profile / per-case config
-            |
-            v
-      ModeRegistry
-            |
-            v
-       CaseAdapter -------- SMLA input / MQSMLA op_input
-            |
-            v
-       CaseSchema --------- physical length / valid length / invariant
-            |
-            v
-  BatchCaseTransformer ---- reorder / split / token-split / shape-change guard
-            |
-            +----> actual-input CPU oracle（待完成）
-            |
-            v
-  operator-specific executor
-      |                  |
-  SMLA eager         MQSMLA eager（待在 MQ pytest 接入）
-      |
-  exact metadata capture
-      |
-      v
-  OriginComparator + TensorDigest + existing numeric checker
-      |
-      +----> MetadataLayout + MetadataCoverageAnalyzer
-      |
-      v
-  PASS / FAIL / UNSUPPORTED / INVALID_TRANSFORM / CONFIG_ERROR
+原参数/Excel
+    -> 原 CPU golden + PT save
+    -> 原 PT load
+    -> CaseAdapter + schema + mode transform
+    -> actual-input semantic oracle
+    -> DeterministicLevelGuard(level=3)
+    -> operator-owned metadata op
+    -> operator-owned main op（消费同一个 metadata）
+    -> NPU baseline/derived origin 对齐 + bitwise MD5
+    -> 原 CPU golden + check_result
+    -> MetadataLayout + MetadataCoverageAnalyzer
+    -> PASS / FAIL / UNSUPPORTED / INVALID_TRANSFORM / NOT_APPLICABLE
+    -> finally 恢复进入测试前的 deterministic level
 ```
 
-跨算子共享的是数据模型、变换、比较和 metadata 解析；主算子调用必须由各自 pytest 的
-executor 负责，不能把 MQSMLA 的整段 op 调用复制进 SMLA runner。
+两棵 v2 在 `batch/consistency_*.py`、`metadata_*.py` 上保持同源镜像，但 executor 和
+process 各自留在算子目录。这样外部检视者可从本算子的 `test_*_batch_consistency.py`
+顺着原 process 看完整调用，不需要跳到另一算子目录。
 
-## 5. 模式设计
+## 5. 模式与正式配置
 
-### 5.1 模式 1：`reorder`
+### 5.1 命名接口
 
-目标：同一批 batch 改变顺序后，每个源 token 输出逐 bit 相同。
-
-变换：
-
-- BSND Q/KV 按 batch dim 选择；
-- TND Q/KV 按原 prefix sum 切段、重排、拼接并重算 prefix sum；
-- PA_BBND 保持物理 cache，只重排 block table 行；
-- sparse indices/top-k length 随 Q token；
-- `seqused_*`、`cmp_residual_kv` 等 per-batch vector 使用同一 order；
-- 更新 B/S/T/max length 和 params/metadata 中存在的镜像字段；
-- order 由 seed 固定并保证非恒等。
-
-比较：按 `TokenOrigin(source_batch, source_token)` 还原有效 token，再检查 MD5 和原数值
-精度。BSND padding 不进入 digest。
-
-### 5.2 模式 2：`split`
-
-目标：基准多 batch 调用与任意选中 batch 子调用的对应结果一致。
-
-主验收：
-
-```text
-for each derived subcase:
-    expected = select baseline output by derived origins
-    compare expected directly with derived output
-```
-
-规则：
-
-- 显式 groups 可只覆盖部分 batch；
-- 不同 group 间不允许重复 batch；
-- 默认基础 profile 使用连续确定性二分，与 seed 无关；
-- `--randomize` 才打乱 batch 并使用 seed；
-- groups 完整覆盖时可额外 merge，但不作为唯一或首要 oracle。
-
-### 5.3 模式 3：`token-split`
-
-目标：选中 query token 的结果不受同 batch 其他 query token 组合影响。
-
-当前实现：
-
-- 显式 `batch_ids + token_ids_by_batch`；默认选每个 batch 的第一个有效 token；
-- BSND 支持不同 batch 选取不同 token 数，物理 S1 pad 到最大值，`seqused_q` 保存有效数；
-- TND 直接拼接选中 token并重算 `cu_seqlens_q`；
-- Q、ori/cmp sparse indices、ori/cmp top-k length 同步选择；
-- KV、block table、KV lengths 和 residual 保持所选 batch 的完整上下文；
-- 比较只读取有效 token，不比较 padding；
-- 位置敏感 mask 检查目标 token 到有效 Q 右边界的距离，变化则 `INVALID_TRANSFORM`。
-
-当前限制：静态 guard 只覆盖已知位置关系，不能代替 actual-input golden；随机跨 batch/token
-重组和所有 mask/top-k 组合进入正式 CI 前，必须完成第 10 节 oracle。
-
-### 5.4 模式 4：`shape-change`
-
-当前不实现。待解决：
-
-- STC 要求尾部追加 token；
-- 框架/会议建议首部插入以维持右对齐；
-- “前 300 token 相同”背景又偏向前缀比较；
-- causal/window、sparse threshold 和 TND prefix 都可能变化。
-
-完成条件是接口负责人给出规范变换，并且 actual-input oracle 对每个目标 origin 证明等价。
-
-## 6. STC 001-027 映射
-
-| STC | 场景 | 框架能力 | 当前状态 |
-| --- | --- | --- | --- |
-| 001 | 128 调度块基准 | 基准 + metadata Level-1/2 | parser 可用，主算子验收阻塞 |
-| 002 | 所有 batch 第一个 token | mode 3 | 变换已支持 |
-| 003 | 选部分 batch | mode 2 subset | 已支持直比 |
-| 004 | 追加 token 改 S1 | mode 4 | 资料冲突，阻塞 |
-| 005 | 大于 128 调度块基准 | 基准 + metadata | parser/classifier 可用 |
-| 006 | 1 batch / 1 token | mode 3 + batch subset | API 已支持 |
-| 007 | 每 batch 前 x token | mode 3 variable valid length | 已支持 BSND padding 过滤 |
-| 008 | 选 2 batch | mode 2 subset | 已支持 |
-| 009 | 追加 token | mode 4 | 阻塞 |
-| 010 | `S2/32 < 128` 基准 | Level-1 less | classifier 已支持 |
-| 011 | 选部分 batch | mode 2 | 已支持 |
-| 012 | 每 batch 第一个 token | mode 3 | 已支持 |
-| 013 | 追加 token | mode 4 | 阻塞 |
-| 014 | `S2=5120` 基准 | Level-1 greater/divisible | 分类已纠正；STC 文字待修 |
-| 015 | 选部分 batch | mode 2 | 已支持 |
-| 016 | 每 batch 第一个 token | mode 3 | 已支持 |
-| 017 | 追加 token | mode 4 | 阻塞 |
-| 018 | 多次打乱 batch | mode 1 fuzz | 可由 seed/profile 驱动 |
-| 019 | 多次打乱 token | mode 3 fuzz | API 支持任意顺序；正式 fuzz 待 oracle |
-| 020 | batch/token 随机组合 | mode 1+2+3 | 原语具备；组合配置与 oracle 待完成 |
-| 021 | ACLNN 直调 | executor variant | 未接入 |
-| 022 | torch 直调 | eager executor | SMLA 框架具备，level 3阻塞 |
-| 023 | ACL graph | graph executor | 未接入 |
-| 024 | N=125 随机组合 | nightly matrix | 待主算子、oracle 和大矩阵 |
-| 025 | N=3 随机组合 | nightly matrix | 同上 |
-| 026 | TND 随机组合 | TND 原语 | 原语已支持；STC B/cu_seqlens 数据冲突待确认 |
-| 027 | PA_BBND 随机组合 | PA table 原语 | 原语已支持；组合验收待完成 |
-
-STC 是验收场景表，不是可直接运行的完整 Excel generator 输入。001-017 的 baseline/derived
-引用关系和 018-027 的随机 profile 需要转成 versioned per-case 配置。
-
-## 7. 双算子适配策略
-
-### 7.1 已完成的共享数据面
-
-`CaseAdapter` 识别：
-
-| 标准概念 | SMLA | MQSMLA |
-| --- | --- | --- |
-| tensor 容器 | `input` | `op_input` |
-| batch | 顶层/metadata `B` | metadata `batch_size` |
-| Q heads | `N1` | `num_heads_q` |
-| KV heads | `N2` | `num_heads_kv` |
-| head dim | `D` | `head_dim` |
-
-同一 schema/transform 已用 MQSMLA synthetic case 验证 reorder 和 invariant，不再维护两套
-字段变换。
-
-### 7.2 MQSMLA executor 的落地方式
-
-MQ 主算子 executor 尚未接入，计划如下：
-
-1. 在 `attention/mixed_quant_sparse_flash_mla/tests/pytest` 内新增很薄的 executor；
-2. executor 调用 MQ 现有 process，并返回统一 `RunResult`；
-3. MQ process 使用与 SMLA 相同的默认关闭 `metadata_sink` 或 sibling API，捕获主算子实际
-   消费的 metadata；
-4. 通过公共包位置或测试根目录配置复用 `CaseAdapter/transform/compare`，不能复制源码；
-5. 保留 MQ 原 single/batch/graph 返回契约；
-6. 先接 eager 模式 1/2，再接受限模式 3和 graph。
-
-在原始“只允许修改 SMLA pytest”边界未解除前，本轮不修改 MQ pytest。后续实施 MQ executor
-需要用户明确允许跨到 MQ tests 目录，或先批准把共享包移动到两个算子都可依赖的位置。
-
-## 8. 配置接口
-
-### 8.1 已实现
-
-规范模式名：
+规范名称：
 
 ```text
 reorder, split, token-split, shape-change
 ```
 
-profiles：
+| profile | modes | 用途 |
+| --- | --- | --- |
+| `blackbox-basic` | `reorder,split` | 最小稳定集 |
+| `blackbox-supported` | 四种模式 | 当前测试侧完整黑盒集 |
+| `blackbox-all` | 四种模式 | 与 supported 暂时等价，预留后续模式扩展 |
 
-- `blackbox-basic = reorder,split`；
-- `blackbox-supported = reorder,split,token-split`；
-- `blackbox-all` 包含 shape-change，当前会明确配置失败。
-
-推荐：
+推荐命令：
 
 ```bash
-bash test_run.sh consistency -P ./data --modes reorder,split
-bash test_run.sh consistency -P ./data --profile blackbox-supported
+bash test_run.sh consistency --modes reorder,split
+bash test_run.sh consistency --profile blackbox-supported
 ```
 
-兼容形式 `-M 1,2` 由 Python registry 映射并发 deprecated warning。shell 不再理解
-`1/2/3/4` 的含义。
+`-M 1,2` 只保留为 SMLA 旧入口下游迁移兼容，会映射到命名 mode 并发 deprecated warning。
+正式配置不再依赖含义不透明的数字，也不需要等待真实 NPU 打通后才迁移。
 
-### 8.2 待实现的 per-case 配置
+### 5.2 模式 1：reorder
 
-优先在保存 PT 时写入可选 namespace：
+- 同一组 batch 使用非恒等 order；
+- BSND 按 batch dim 重排；
+- TND 切段、重排、拼接并重算 prefix sum；
+- PA_BBND 保持物理 cache，只重排 block-table 行；
+- Q/KV、有效长度、sparse index、top-k、residual 和 metadata/params 镜像字段同步；
+- seed 固定 permutation，输出按 `TokenOrigin(source_batch,source_token)` 还原后比较。
 
-```python
-"consistency": {
-    "schema_version": 1,
-    "profile": "stc-fixed",
-    "modes": ["split", "token-split"],
-    "split_groups": [[0, 3]],
-    "token_batches": [0, 2],
-    "token_ids": [[0], [0, 1]],
-    "baseline_case_id": "batch_consistency_001",
+### 5.3 模式 2：split
+
+主需求示例：
+
+```text
+baseline:  B=8, [0,1,2,3,4,5,6,7]
+derived A: B=3, [0,1,2]
+derived B: B=5, [3,4,5,6,7]
+```
+
+正式验收显式配置：
+
+```bash
+--split-groups '0,1,2;3,4,5,6,7'
+```
+
+每个 derived subcase 直接选择 baseline 对应 origin 做 MD5 和数值精度比较。groups 完整覆盖
+时可额外 merge 诊断，但 merge 不是主 oracle。默认 B=8 也是 3+5；其他 B 使用连续确定性
+二分。只有显式 `--randomize` 才让 seed 参与分组。
+
+### 5.4 模式 3：token-split
+
+主需求示例：
+
+```text
+B=1, Token=16K
+  -> call A: [0,4K)
+  -> call B: [4K,16K)
+```
+
+至少两个正 split size，且 `sum(split_sizes)==old_Q_length`；所有区间连续、不重叠、完整
+覆盖。每段独立调用并直接和 baseline 对应 token 比较。
+
+对位置敏感 mask，原区间 `[start,end)` 使用：
+
+```text
+new_ori_S2 = old_ori_S2 - old_Q_length + end
+```
+
+cmp 长度与 residual 按 `cmp_ratio` 同步，确保派生 token 的可见 KV 窗口等于原 token。
+
+### 5.5 模式 4：shape-change
+
+```text
+baseline: 300 common + 100 extra
+derived:  300 common + 200 extra
+compare:  前 300 token
+```
+
+对位置敏感 mask 使用：
+
+```text
+new_ori_S2 = old_ori_S2 + new_Q_length - old_Q_length
+```
+
+该式保持 `ori_S2-Q_length` 不变。新增逻辑 KV 位于共同 token 的未来；cmp 关系和 PA block
+容量同步检查。无法构造安全上下文时返回 `INVALID_TRANSFORM`。
+
+### 5.6 actual-input 语义 oracle
+
+模式 3/4 在任何 NPU 调用前验证：
+
+- mapped Q tensor 完全相同；
+- ori/cmp mask window 与其中实际可见 KV slice 相同；
+- ori/cmp sparse indices 与 top-k length 相同；
+- sinks 相同；
+- layout、有效长度、block table 可寻址范围合法。
+
+oracle 不重新调用随机 `gen_data(params)`。通过后，derived NPU 才允许复用 baseline PT 中
+对应 token 的原 `cpu_output` 作为数值 golden；任何无法证明的 case 都拒绝执行。
+
+## 6. 阶段二：metadata 白盒分析
+
+### 6.1 布局与上下文
+
+`MetadataLayout` 严格要求 `torch.int32` 和恰好 1024 个元素；current 布局为 FA 36x9、
+FD 72x8、tail 124，legacy FA 36x8 单独版本化。负 int32 按相同 uint32 bit pattern 解释，
+FD slot 7 和 reserved 非零均显式报告。
+
+`CoverageContext.from_input_data(case)` 提供 B、N1、N2、G、每 batch Q/KV 长度、cmp residual/
+ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
+
+1. `bn2 -> (batch,n2)`；
+2. 按 PR8737 当前 `mBaseSize=G` 将 `m_index` 解释为 query token；
+3. 计算每个 token 的可见 `ori+cmp` S2；
+4. 计算 `R=align_up(ceil(actual_S2/32),128)`；
+5. 展开 FA `[start,end)` 到 token/S2 block；
+6. 合并 split-G 镜像的重复 FA range；
+7. 关联 FD workspace 与 `m_start/m_num`；
+8. 检查 `workspace_num`、G 行覆盖、range 连续性、unknown/reserved；
+9. 输出 token/core 视角、Level-1 四类、Level-2 目标与 missing coverage。
+
+### 6.2 PR8737 与本地版本差异
+
+| 提交 | 只读证据 |
+| --- | --- |
+| `e14f1559` | MQ metadata 读取 `ACL_OPT_DETERMINISTIC` 并传递 batch-consistency 状态 |
+| `8b4ea3a4` | level-3 路径开启 FD 并使用固定规约 tile |
+| `f2424c8c` | 增加 FD |
+| `f7a7856f`、`31a3b6d3` | 后续 FD 修复；公开 MR head 为 `31a3b6d3` |
+
+当前本地快照未包含这些改动并仍表现为 `supportFd=false`。已安装 custom 包来源可能不同，
+但当前 runtime 先于 metadata 执行拒绝 level 3。因此 level-0 MQ probe 只可检查接口、布局
+与普通 FA chain，不可证明 level-3 固定调度、FD 或 MQSMLA 主算子一致性。
+
+## 7. 状态模型
+
+| 状态 | 定义 | 处理 |
+| --- | --- | --- |
+| `PASS` | 变换有效、环境支持、NPU MD5、CPU 精度和 metadata integrity 全通过 | 成功 |
+| `FAIL` | 有效 case 执行异常或任一真实门禁失败 | 失败 |
+| `UNSUPPORTED` | runtime/device/operator/graph 明确不支持必要能力 | 单列，不能称通过 |
+| `INVALID_TRANSFORM` | 当前 PT 无法保持目标 token 数学输入等价 | 单列并记录原因 |
+| `NOT_APPLICABLE` | PT 对所选模式无可执行 item | 单列 |
+| `CONFIG_ERROR` | mode/profile/groups/sizes schema 非法 | 入口失败 |
+
+后续 JSON artifact 必须按 `(operator,case,mode)` 保留状态，不能只看 pytest 进程退出码。
+
+## 8. 阶段与里程碑
+
+| 里程碑 | 内容 | 当前状态 |
+| --- | --- | --- |
+| P1.0 | v1 模式 1/2、layout 原语、origin compare、level guard | 完成，`b680bfbdd` |
+| P1.R1 | v1 检视修复、命名接口、metadata 初步分析 | 完成，`183beb730` |
+| P2.1 | SMLA `pytest_v2` + 原流程整合 | 完成 |
+| P2.2 | MQSMLA `pytest_v2` + operator-owned executor | 完成 |
+| P2.3 | 模式 2 规范 `B=8 -> 3+5`、显式 groups | 完成 |
+| P2.4 | 模式 3 完整 token partition + mask 对齐 | 完成 |
+| P2.5 | 模式 4 共同前缀 shape change + mask 对齐 | 完成 |
+| P2.6 | actual-input 语义 oracle + 原 CPU golden 复用 | 完成 |
+| P2.7 | current metadata parser + contextual Level-1/2 analyzer | 完成 |
+| P2.8 | PR8737 MQ metadata probe 与版本边界记录 | 完成；真实 level 3 阻塞 |
+| P2.9 | 教学、两段调用、文件职责和冲突台账 | 完成 |
+| P3.1 | 支持 level 3 的 runtime/custom/operator 版本对齐 | 阻塞 |
+| P3.2 | SMLA eager 模式 1-4 真实 NPU | 待 P3.1 |
+| P3.3 | MQSMLA eager 模式 1-4 真实 NPU | 待 P3.1 |
+| P3.4 | STC 001-027 versioned manifest 与修订数据 | 待实现 |
+| P3.5 | 真实 metadata Level-1/2 覆盖矩阵 | 待 P3.1/P3.4 |
+| P4.1 | SMLA/MQSMLA graph executor + exact capture | 待实现 |
+| P4.2 | ACLNN STC 021 | 待实现 |
+| P4.3 | N=3/N=125、TND、PA_BBND nightly | 待 P3/P4 |
+
+## 9. 当前测试矩阵
+
+| 层级 | 内容 | 当前结果 |
+| --- | --- | --- |
+| SMLA v2 CPU | modes 1-4、双格式、oracle、MD5、metadata | `20 passed` |
+| MQSMLA v2 CPU | 与 SMLA 同源门禁 | `20 passed` |
+| SMLA opt-in 入口默认关闭 | 四模式不触发 NPU | `4 skipped` |
+| MQSMLA opt-in 入口默认关闭 | 四模式不触发 NPU | `4 skipped` |
+| shell | 两份 `test_run.sh` | `bash -n` 通过 |
+| source lint | 两份一致性新增文件 | ruff 通过 |
+| Python compile | 两棵 v2 | compileall 通过 |
+| 原 single/batch/graph collect | 两棵 v2 | SMLA 15 项、MQSMLA 3 项 |
+| MQ metadata level 0 | 接口/layout/普通 FA | 已实测，不计特性 PASS |
+| 双算子 level 3 | metadata + 主算子 | runtime 拒绝，`UNSUPPORTED` |
+
+## 10. 第三阶段实施顺序
+
+### A. 解除真实执行阻断
+
+1. 确认支持 deterministic level 3 的 torch_npu/CANN/SoC 版本矩阵；
+2. 对齐本地 operator source、PR8737 head 与已安装 custom 包构建版本；
+3. 验证第一条 SMLA、MQSMLA metadata NPU op 均可在 level 3 执行；
+4. 固化一个最小 SMLA 和一个最小 MQSMLA level-3 PT smoke；
+5. 记录软件版本、SoC、custom 包 hash、metadata digest。
+
+### B. 跑通 eager 四模式
+
+1. SMLA：BSND no-mask 模式 1-4；
+2. SMLA：RightDownCausal/Band，验证模式 3/4 上下文公式；
+3. SMLA：TND、PA_BBND、sparse/top-k、可选 LSE；
+4. MQSMLA：同样顺序，额外验证量化 KV 与 `quant_mode/rope_head_dim`；
+5. 每个 subcase 保存 baseline/derived MD5、CPU 精度、metadata digest、失败 origin。
+
+### C. 冻结 STC 数据契约
+
+优先选择 versioned JSON manifest；若 PT 已有正式 namespace 机制也可直接写 PT，但两者二选一：
+
+```json
+{
+  "schema_version": 1,
+  "case_id": "batch_consistency_003",
+  "operator": "smla",
+  "profile": "stc-fixed",
+  "modes": ["split"],
+  "split_groups": [[0, 1, 2], [3, 4, 5, 6, 7]],
+  "baseline_case_id": "batch_consistency_001"
 }
 ```
 
-若不允许扩展 PT，则使用以精确 case id 为键的 versioned JSON manifest。PT namespace 与
-sidecar 必须二选一，不能形成两个真相源，也不能运行时按模糊文件名重新读 Excel。
+配置优先级：显式 CLI > manifest/PT per-case > profile > blackbox-basic。需要先修正 STC 014
+和 026，并确认每个派生 case 对应哪个 baseline PT。
 
-配置优先级计划：
+### D. 扩展执行面
 
-```text
-显式 CLI > 显式环境变量 > PT/manifest per-case > profile > blackbox-basic
-```
+1. 实现 SMLA/MQSMLA graph consistency executor；
+2. 确认 level 3 在 compile 还是 run 时读取，并记录 compile cache；
+3. 捕获 graph 主算子实际消费的 metadata；
+4. 实现 ACLNN STC 021，使用 `aclrtSetSysParamOpt(ACL_OPT_DETERMINISTIC,3)`；
+5. 最后接入 N=3/N=125、随机组合、TND/PA nightly。
 
-## 9. Metadata 阶段二方案与进展
-
-### 9.1 M2.2 严格布局解析：已完成
-
-`MetadataLayout`：
-
-- 只接受 `torch.int32` 和恰好 1024 个元素；
-- 当前布局为 36x9 + 72x8 + 124 reserved；
-- legacy 文档布局为 36x8 + 72x8 + 160 reserved，单独 version 0；
-- 负 `int32` 按同 bit pattern 转成 `uint32`；
-- FD slot 7 和 reserved 非零均显式报告。
-
-### 9.2 M2.3 SMLA eager 精确捕获：已完成
-
-原 `call_npu(input_data)` 增加默认 `None` 的 `metadata_sink`：
-
-- metadata 先生成并作为同一个 tensor 传给 SMLA；
-- 主算子和 synchronize 成功后才复制到 CPU sink；
-- 旧调用仍得到 `(output, softmax_lse)`；
-- sink 未启用时不产生额外 CPU copy；
-- 一致性 `SmlaExecutor` 把捕获值写入 `RunResult.metadata`。
-
-graph 和 MQ 主算子尚未使用该精确捕获方式。
-
-### 9.3 MQ metadata-only probe：已完成
-
-CLI：
-
-```bash
-python3 -m batch_consistency.metadata_probe \
-  --pt /path/to/mqsmla.pt --device 0 --level 3 --s2 4096,5120
-```
-
-probe 会恢复旧 deterministic level，输出 parser/analyzer JSON，并固定写明：
-
-```text
-metadata-only; main operator batch consistency not asserted
-```
-
-本机实测 level 0 成功、level 3在第一次 NPU op 被 runtime 拒绝。安装目录为 root 0750 导致
-developer 不能直接 source，自定义包权限需环境侧修正。
-
-### 9.4 M2.5 保守 analyzer：部分完成
-
-已输出：
-
-- enabled FA/FD core；
-- raw FA start/end 和 endpoint chain 是否连续；
-- FD reduction task 的 `(bn2, m, workspace_index, workspace_num)`；
-- 同一 FD task 的 AIV core 与 M ranges；
-- workspace split 最大值、空 M range、非法 split 数和未知 slot；
-- Level-1 四类 S2、规约块大小和块数；
-- reserved 非零和分析限制。
-
-完整 Level-2/token-core 展开仍需：
-
-1. 把 `bn2` 用 N2 映射为 `(batch, n2)`；
-2. 用 group size 和 `mBaseSize` 把 s1g/M range 映射为 query token/head group；
-3. 用每 batch 的 ori/cmp 有效 S2、mask、top-k 重建每行的 S2 block 数；
-4. 按 `[start,end)` 展开每个 FA core 的首/尾 partial row 与中间完整 row；
-5. 处理 split-G 成对重复 FA record；
-6. 用 FD workspace 关联跨核 partial，并校验无重叠/无缺失；
-7. 聚合“全单核、存在跨核、一核两个跨核头、单核+跨核混合”等覆盖标签。
-
-### 9.5 新发现的源码阻断
-
-当前 MQ metadata AICPU：
-
-- 已存在按 block 连续切分和 FD record 生成代码；
-- `supportFd` 成员默认 `false`；
-- 当前工作树未检索到把 `supportFd` 设为 true 或读取 level 3 的路径。
-
-需 metadata 开发者确认 PR/安装包是否漏合、是否由外部变体设置，或是否还有未同步源码。
-在此确认前，analyzer 可以解析，但自动场景不能假设 FD 一定产生。
-
-## 10. Actual-input CPU golden oracle
-
-模式 3/4 的正式门禁必须使用已经变换的实际 tensor：
-
-```text
-baseline actual tensors -> CPU result A
-derived actual tensors  -> CPU result B
-B by TokenOrigin -> align to A
-等价 -> VALID，允许 NPU
-不等价 -> INVALID_TRANSFORM，记录第一个 origin
-```
-
-不能调用 `gen_data(params)` 重生随机 Q/KV。实现步骤：
-
-1. 从 SMLA golden 抽出“消费现有 Q/KV/sparse/table/length 的 forward adapter”；
-2. 保持原随机生成与保存接口不变；
-3. 先支持 BSND + full mask + 无 sparse 的小 case；
-4. 增加 TND、PA、cmp、top-k、causal/window；
-5. 每次扩展都用正例和故意破坏位置的负例锁定；
-6. MQSMLA 复用统一 oracle 协议，但量化输入需要自己的 actual-input golden adapter；
-7. oracle 通过只证明变换等价，最终仍需 level-3 NPU MD5。
-
-当前模式 3的 `TransformSemanticGuard` 是过渡门禁，不应在文档或 CI 中标成 oracle 完成。
-
-## 11. Graph 与 ACLNN
-
-### 11.1 Graph
-
-graph 可共享 transform/compare/guard，但需要独立 executor：
-
-1. 先实现 mode 1，同 shape 可评估编译复用；
-2. mode 2/3 shape 改变时每个子 case 可能单独编译，先放 nightly；
-3. 捕获 graph 实际消费的 metadata；
-4. 明确 level 3在 compile 还是 run 时读取；
-5. 记录 `torch._dynamo.reset()`、静态 kernel build dir 和 cache 对结果的影响。
-
-### 11.2 ACLNN
-
-STC 021 需要 C++/ACLNN executor：
-
-- 使用 `aclrtSetSysParamOpt(ACL_OPT_DETERMINISTIC, 3)`；
-- 保存/恢复原系统配置；
-- 复用同一 PT/manifest 和 origin 期望；
-- 输出与 torch eager 相同的机器可读状态和 digest；
-- 不把 Python setter 成功当成 ACLNN 路径证据。
-
-## 12. 状态模型
-
-| 状态 | 定义 | CI 含义 |
-| --- | --- | --- |
-| `PASS` | 变换有效、环境支持、MD5 与数值精度都通过 | 成功 |
-| `FAIL` | 执行异常、metadata/analyzer 错误或有效 case 不一致 | 失败 |
-| `UNSUPPORTED` | runtime/device/operator/graph 明确不支持必要能力 | 单列，不得称特性通过 |
-| `INVALID_TRANSFORM` | 源 case 无法在该模式保持数学等价 | 单列，需原因/origin |
-| `NOT_APPLICABLE` | 当前 PT 对所选模式没有可执行 test item | 单列 |
-| `CONFIG_ERROR` | mode/profile/per-case schema 非法 | 入口失败 |
-
-pytest skip 只是内部表达方式；shell/JSON artifact 必须保留上述分类。一个 PT 同时运行多个
-mode 时，后续 JSON 应按 `(case, mode)` 记录，避免当前 shell 的单 case 汇总丢失混合状态。
-
-## 13. 测试矩阵
-
-| 层级 | 内容 | 当前状态 |
-| --- | --- | --- |
-| CPU PR | registry、schema、layout、mode 1/2/3、origin、padding、MQ 格式、metadata parser/analyzer | 114 passed |
-| 默认关闭检查 | 新一致性入口不触发 NPU | 3 skipped |
-| 原功能收集 | SMLA single/batch/graph | 15 collected |
-| NPU smoke | mode 1/2、BSND/TND/PA、output+LSE | level 3阻塞 |
-| Metadata probe | MQ level 0 raw layout | 已实测 |
-| Graph smoke | mode 1 eager-equivalent | 未实现 |
-| Nightly | SWA/HCA/CSA、N=3/125、随机组合、mode 2/3 graph | 未实现 |
-| STC 001-027 | baseline/derived case pair + metadata coverage | 配置链和主算子阻塞 |
-
-每次提交最低门禁：
-
-```bash
-source /mnt/workspace/gitCode/env.sh
-cd attention/sparse_flash_mla/tests/pytest
-
-python3 -m pytest -q test_batch_consistency_unit.py
-python3 -m pytest -q test_sparse_flash_mla_batch_consistency.py
-python3 -m pytest --collect-only -q \
-  test_sparse_flash_mla_single.py \
-  test_sparse_flash_mla_batch.py \
-  test_sparse_flash_mla_batch_graph.py
-bash -n test_run.sh
-git diff --check
-```
-
-## 14. 阶段与里程碑状态
-
-| 里程碑 | 内容 | 状态 |
-| --- | --- | --- |
-| P1.0 | 模式 1/2、三类 layout、origin compare、level guard | 已完成，基线 `b680bfbdd` |
-| P1.R1 | 检视修复：类封装、mode 2直比、确定性分组、双算子背景 | 本轮完成 |
-| M2.1 | 命名 registry、profile、legacy alias | 本轮完成 |
-| M2.2 | raw metadata parser + synthetic tests | 本轮完成 |
-| M2.3 | SMLA eager exact metadata capture | 本轮完成 |
-| M2.4 | MQ metadata probe + level 3真实能力证据 | probe 完成，环境结论 UNSUPPORTED |
-| M2.5a | 保守 FA/FD analyzer | 本轮完成 |
-| M2.5b | 带上下文的完整 Level-2 token/core analyzer | 待字段/算法确认 |
-| M2.6 | SMLA graph executor/capture | 待实现 |
-| M2.7a | STC token subset transform | 本轮受限完成 |
-| M2.7b | actual-input oracle + mode 3正式矩阵 | 待实现 |
-| M2.8 | mode 4 shape change | 阻塞 |
-| M2.9 | MQ main executor + exact capture | 待授权跨 MQ pytest |
-| M2.10 | per-case STC config、JSON artifact、CI/nightly | 待实现 |
-
-## 15. 后续实施顺序
-
-### 优先级 A：让真实特性可运行
-
-1. torch_npu/CANN 确认支持 level 3的版本和 910_93/950 范围；
-2. SMLA/MQSMLA tiling 确认 `GetDeterministicLevel()==3` 路径和 tiling key；
-3. MQ metadata 开发者解释 `supportFd` 的设置入口和已安装包版本；
-4. 获得一个可运行的最小 SMLA 与 MQSMLA level-3 smoke case。
-
-### 优先级 B：冻结 STC 数据契约
-
-1. 修正 STC 014 的 5120 描述；
-2. 修正/解释 STC 026 的 B 与 cu_seqlens 数量；
-3. 确定 001/005/010/014 到派生 case 的精确 tensor 复用关系；
-4. 选择 PT namespace 或 JSON manifest；
-5. 固化 mode 4 prepend/append 规范。
-
-### 优先级 C：完成可证明的模式 3/4
-
-1. actual-input SMLA golden adapter；
-2. mode 3 full-mask 小矩阵；
-3. mode 3 position-sensitive/sparse/PA 扩展；
-4. mode 4按裁决实现；
-5. MQ quantized actual-input oracle。
-
-### 优先级 D：执行面扩展
-
-1. MQ eager executor；
-2. SMLA/MQSMLA graph mode 1；
-3. mode 2/3 graph nightly；
-4. ACLNN STC 021；
-5. JSON artifact 和真正支持 level 3的 CI。
-
-## 16. 阻断项清单
+## 11. 阻断项
 
 | 编号 | 问题 | 需要确认方 | 阻断范围 |
 | --- | --- | --- | --- |
-| RT-1 | level 3支持的 torch_npu/CANN/SoC 组合 | runtime/CANN | 全部 NPU 验收 |
-| OP-1 | SMLA/MQSMLA level-3 tiling key 和功能合入状态 | 主算子开发 | 主算子 PASS |
-| META-1 | MQ `supportFd` 设置路径/安装包源码版本 | metadata 开发 | FD 生成与自动覆盖 |
-| META-2 | FD slot 7最终定义 | metadata/kernel | layout version 冻结 |
-| META-3 | split-G 和 group/M 展开契约 | metadata/kernel | 完整 Level-2 analyzer |
-| SEM-1 | mode 4 prepend/append 正式语义 | STC/接口负责人 | mode 4 |
-| SEM-2 | mask/top-k/position 完整规则 | 接口/golden | mode 3/4 oracle |
-| DATA-1 | STC 014 5120 描述修订 | STC 负责人 | Level-1 报告一致性 |
-| DATA-2 | STC 026 B/cu_seqlens 冲突 | STC 负责人 | TND STC |
-| CFG-1 | PT namespace 或 manifest | 测试框架 | 001-027 自动化 |
-| SCOPE-1 | 允许修改 MQ pytest/公共包位置 | 用户/维护者 | MQ executor |
-| GRAPH-1 | level 3读取时机和 compile cache | torchair | graph |
+| RT-1 | 支持 level 3 的 torch_npu/CANN/SoC 组合 | runtime/CANN | 全部真实 NPU 验收 |
+| OP-1 | SMLA/MQSMLA level-3 tiling/main-op 合入版本 | 主算子开发 | 双主算子 PASS |
+| PKG-1 | 本地源码、PR8737、已安装 custom 包 hash 对齐 | 构建/环境维护 | MQ metadata/FD 证据 |
+| META-1 | FD slot 7 最终定义与部署 layout version | metadata/kernel | 最终 schema 冻结 |
+| DATA-1 | STC 014、026 修订 | STC 负责人 | STC manifest |
+| CFG-1 | PT namespace 或 JSON manifest 的最终选择 | 测试维护者 | 001-027 自动化 |
+| GRAPH-1 | level 3 读取时机与 compile cache 约束 | torchair | graph 验收 |
 
-## 17. 验收门禁
+模式 3/4 的主需求语义、MQ pytest 修改权限、上下文 analyzer 已不再是阻断项。
 
-最终不能以“代码已写”作为完成标准。至少需要：
+## 12. 最终验收门禁
 
 1. SMLA 与 MQSMLA 各有真实 level-3 eager smoke PASS；
-2. 模式 1/2 每个派生 case 对应 origin MD5 与数值精度都通过；
-3. 模式 3/4 所有 NPU case 先通过 actual-input oracle；
-4. BSND/TND/PA_BBND 和 SMLA/MQSMLA 双格式均有覆盖；
-5. output 与可选 LSE 都进入 bitwise 检查；
-6. metadata 来自主算子实际消费对象，parser/layout 与部署版本一致；
-7. Level-1 四类和 Level-2 指定覆盖标签能自动报告；
-8. STC 001-027 每项都有 PASS/FAIL/UNSUPPORTED/INVALID 的机器可读结果；
-9. torch eager、ACLNN、graph 的要求分别验收；
+2. 模式 1/2/3/4 每个派生 case 的对应 origin MD5 与 CPU 精度均通过；
+3. 模式 3/4 每个 NPU case 先通过 actual-input 语义 oracle；
+4. BSND、TND、PA_BBND 与 sparse/top-k/position-sensitive mask 有覆盖；
+5. SMLA 可选 LSE 与 output 一起进入 bitwise 检查；
+6. metadata 来自主算子实际消费对象，且 parser layout 与部署版本一致；
+7. Level-1 四类和 Level-2 指定核视角均能自动报告；
+8. STC 001-027 每项有机器可读状态和 baseline/derived 关系；
+9. eager、graph、ACLNN 各自独立验收；
 10. 原 single/save/load/load_graph 无行为回归；
-11. CI 至少存在一套真正支持 level 3的环境；
-12. 文档记录版本、环境、seed/profile、metadata digest 和失败 origin。
+11. CI 至少有一套真正支持 level 3 的环境；
+12. artifact 记录版本、case、mode、seed/profile、metadata/output digest 和失败 origin。
 
-## 18. CANNBot 使用说明
+## 13. CANNBot 交互方式
 
-启动一次只读审议：
+启动独立只读审议：
 
 ```bash
-cannbot run \
-  -m cannbot/glm-5.2 \
+cannbot run -m cannbot/glm-5.2 \
   --dir /mnt/workspace/gitCode/cann/ops-transformer_0716 \
-  '阅读 requs/requs.md、开发计划、STC、会议纪要和当前代码；只读分析，不修改文件'
-```
+  '阅读 requs/requs.md、开发计划、主需求和当前代码；只读审议，不修改文件'
 
-替换模型即可并行获得不同视角：
-
-```bash
 cannbot run -m cannbot/deepseek-v4-pro \
   --dir /mnt/workspace/gitCode/cann/ops-transformer_0716 \
-  '只读反向审查 batch consistency 方案，不修改文件'
+  '反向检查模式3/4数学语义、metadata和验收漏洞；只读，不修改文件'
 
 cannbot run -m cannbot/qwen3.7-max \
   --dir /mnt/workspace/gitCode/cann/ops-transformer_0716 \
-  '只读核对 STC 与实现差异，不修改文件'
+  '核对STC、主需求、两算子pytest_v2的差异；只读，不修改文件'
 ```
 
 继续最近 session：
@@ -585,10 +399,10 @@ cannbot run -m cannbot/qwen3.7-max \
 ```bash
 cannbot run -c \
   --dir /mnt/workspace/gitCode/cann/ops-transformer_0716 \
-  '继续上一轮，根据新证据复审；仍然不要修改文件'
+  '根据新测试结果继续复审；仍然不要修改文件'
 ```
 
-或用首轮输出的 session id：
+或使用首轮返回的 session id：
 
 ```bash
 cannbot run -s <session-id> \
@@ -596,7 +410,6 @@ cannbot run -s <session-id> \
   '继续任务'
 ```
 
-本机 CANNBot 1.0.5 的默认数据库曾报
-`SQLiteError: no such column: replacement_seq`。不要删除或直接改写用户数据库；优先升级/
-迁移 CANNBot。若临时隔离 `XDG_DATA_HOME`，目录和认证文件必须分别为 0700/0600，任务后
-立即清理，绝不能把认证信息写进仓库或日志。
+若 CANNBot 数据库出现 migration 错误，不删除或直接改写用户数据库；优先升级/迁移工具。
+若必须临时隔离 `XDG_DATA_HOME`，目录与认证文件权限分别保持 0700/0600，完成后清理，
+认证信息不得进入仓库、日志或提交。
