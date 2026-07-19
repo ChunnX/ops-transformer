@@ -48,20 +48,20 @@ graph LR
 
 | 术语 | 简要说明 |
 |------|----------|
-| 非量化 | x和 weight 均为浮点类型直接计算 |
-| 全量化 | x和 weight 均为低精度计算，通过 scale还原 |
-| 伪量化 | weight低精度存储，通过 antiquantScale/Offset反量化后计算 |
+| 非量化 | x和weight均为浮点类型直接计算 |
+| 全量化 | x和weight均为低精度计算，通过scale还原 |
+| 伪量化 | weight低精度存储，通过antiquantScale/Offset反量化后计算 |
 | perchannel | 每列独立缩放因子，详见[《量化介绍》](../../docs/zh/context/量化介绍.md) |
-| pertensor | 一个 Tensor统一缩放因子 |
+| pertensor | 一个Tensor统一缩放因子 |
 | pertoken | 每行独立缩放因子 |
-| pergroup | 在 reduce 轴上对数据分组，每组使用独立的量化参数，group size 为 gs |
-| perblock | 在所有轴上（含 M 方向）对数据分块，每块使用独立的量化参数，block size 为 bs |
+| pergroup | 在reduce轴上对数据分组，每组使用独立的量化参数，group size为gs |
+| perblock | 在所有轴上（含M方向）对数据分块，每块使用独立的量化参数，block size为bs |
 | T-C | pertensor-perchannel：输入侧统一缩放，权重侧每列独立缩放 |
 | T-T | pertensor-pertensor：输入和权重均为统一缩放 |
 | K-C | pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放 |
 | K-T | pertoken-pertensor：输入侧每行独立缩放，权重侧统一缩放 |
 | G-B | pergroup-perblock：输入侧按 K分组缩放，权重侧按 N×K分块缩放 |
-| MX | pergroup-pergroup（G-G）量化模式，量化参数类型为 FLOAT8_E8M0，group size 为 32 的特例 |
+| MX | pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32 的特例 |
 | ND | 常规连续排布 |
 | NZ | [FRACTAL_NZ](../../docs/zh/context/数据格式.md)格式（亲核排布） |
 
@@ -126,7 +126,7 @@ $$
 
 ### 公共约束
 
-- x/weight 中每组 Tensor的最后一维 < 65536。
+- x/weight 中每组Tensor的最后一维 < 65536。
   - $x_i$ 最后一维：x不转置时为 K轴，x 转置时为 M轴。
   - $weight_i$ 最后一维：weight不转置时为 N轴，weight转置时为 K轴。
 - x/weight转置时对应 Tensor必须 [非连续](../../docs/zh/context/非连续的Tensor.md)。
@@ -146,4 +146,4 @@ $$
 
 | 调用方式 | 接口文档 | 调用样例 | 说明 |
 |----------|----------|----------|------|
-| aclnn调用 | [aclnnGroupedMatmulV5](docs/aclnnGroupedMatmulV5.md) | 见接口文档 [示例代码索引](docs/aclnnGroupedMatmulV5.md#83-示例代码索引) | 两段式接口：先调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 workspace大小和 executor，再调用 `aclnnGroupedMatmulV5` 执行计算 |
+| aclnn调用 | [aclnnGroupedMatmulV5](docs/aclnnGroupedMatmulV5.md) | 见接口文档 [示例代码索引](docs/aclnnGroupedMatmulV5.md#83-示例代码索引) | 两段式接口：先调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取workspace大小和executor，再调用 `aclnnGroupedMatmulV5` 执行计算 |

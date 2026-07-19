@@ -36,14 +36,14 @@ abbr {
 | perchannel | 每列独立缩放因子，详见[《量化介绍》](../../../docs/zh/context/量化介绍.md) |
 | pertensor | 一个 Tensor统一缩放因子 |
 | pertoken | 每行独立缩放因子 |
-| pergroup | 在 reduce 轴上对数据分组，每组使用独立的量化参数，group size 为 gs |
-| perblock | 在所有轴上（含 M 方向）对数据分块，每块使用独立的量化参数，block size 为 bs |
+| pergroup | 在reduce轴上对数据分组，每组使用独立的量化参数，group size为gs |
+| perblock | 在所有轴上（含M方向）对数据分块，每块使用独立的量化参数，block size为bs |
 | T-C | pertensor-perchannel：输入侧统一缩放，权重侧每列独立缩放 |
 | T-T | pertensor-pertensor：输入和权重均为统一缩放 |
 | K-C | pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放 |
 | K-T | pertoken-pertensor：输入侧每行独立缩放，权重侧统一缩放 |
 | G-B | pergroup-perblock：输入侧按 K分组缩放，权重侧按 N×K 分块缩放 |
-| MX | pergroup-pergroup（G-G）量化模式，量化参数类型为 FLOAT8_E8M0，group size 为 32 的特例 |
+| MX | pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32 的特例 |
 | ND | 常规连续排布 |
 | NZ | [FRACTAL_NZ](../../../docs/zh/context/数据格式.md)格式（亲核排布） |
 
@@ -190,17 +190,17 @@ aclnnStatus aclnnGroupedMatmulV5(
   | antiquantOffsetOptional（aclTensorList *） | 可选输入 | 公式中的 $antiquant\_offset$，代表伪量化参数中的偏移量 | 长度与weight相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT16、BFLOAT16 | ND | 1~3 | √ |
   | perTokenScaleOptional（aclTensorList *） | 可选输入 | 公式中的 $per\_token\_scale$，代表量化参数中由x量化引入的缩放因子 | 一般情况下，只支持 1维且长度与 x的M相同。综合约束请参见 [约束说明](#7-约束说明) | FLOAT、FLOAT8_E8M0<span title="Atlas A3/A2 不支持"><sup>2</sup></span> | ND | 1~3 | √ |
   | groupListOptional（aclTensor *） | 可选输入 | 代表输入和输出分组轴方向的 matmul大小分布 | 根据 groupListType输入不同格式数据 | INT64 | ND | 1~2 | √ |
-  | activationInputOptional（aclTensorList *） | 可选输入 | 代表激活函数的反向输入，当前只支持传入 nullptr | - | - | - | - | - |
-  | activationQuantScaleOptional（aclTensorList *） | 可选输入 | 激活函数量化缩放因子（预留参数），当前只支持传入 nullptr | - | - | - | - | - |
-  | activationQuantOffsetOptional（aclTensorList *） | 可选输入 | 激活函数量化偏移量（预留参数），当前只支持传入 nullptr | - | - | - | - | - |
-  | splitItem（int64_t） | 输入 | 代表输出是否要做 Tensor切分 | `0/1` = 多Tensor 输出；`2/3` = 单Tensor 输出。接口不区分 0/1 和 2/3 的内部差异 | - | - | - | - |
+  | activationInputOptional（aclTensorList *） | 可选输入 | 代表激活函数的反向输入，当前只支持传入nullptr | - | - | - | - | - |
+  | activationQuantScaleOptional（aclTensorList *） | 可选输入 | 激活函数量化缩放因子（预留参数），当前只支持传入nullptr | - | - | - | - | - |
+  | activationQuantOffsetOptional（aclTensorList *） | 可选输入 | 激活函数量化偏移量（预留参数），当前只支持传入nullptr | - | - | - | - | - |
+  | splitItem（int64_t） | 输入 | 代表输出是否要做Tensor切分 | `0/1` = 多Tensor 输出；`2/3` = 单Tensor 输出。接口不区分 0/1 和 2/3 的内部差异 | - | - | - | - |
   | groupType（int64_t） | 输入 | 代表需要分组的轴 | 如矩阵乘为 $C[m,n]=A[m,k]\times B[k,n]$：`-1` = 不分组；`0` = M轴分组；`2` = K轴分组 | - | - | - | - |
   | groupListType（int64_t） | 输入 | 代表 groupList输入的分组方式 | `0` = 累积和（cumsum）；`1` = 各组大小；`2` = [组索引, 组大小] 对。详见 [约束说明](#7-约束说明) | - | - | - | - |
   | actType（int64_t） | 输入 | 代表激活函数类型 | `0`=GMM_ACT_TYPE_NONE / `1`=GMM_ACT_TYPE_RELU / `2`=GMM_ACT_TYPE_GELU_TANH / `3`=GMM_ACT_TYPE_GELU_ERR_FUNC（不支持） / `4`=GMM_ACT_TYPE_FAST_GELU / `5`=GMM_ACT_TYPE_SILU | - | - | - | - |
   | tuningConfigOptional（aclIntArray *） | 可选输入 | 第一个数代表各个专家处理的 token数的预期值；第二个数代表 <abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A8W4</abbr> 可选开启 weight先转置的 NZ格式；第三个数代表允许额外使用的内存空间。详见 [约束说明](#7-约束说明) | 兼容历史版本，用户如不使用该参数，不传（即为 nullptr）即可 | INT64 | - | 3 | - |
   | out（aclTensorList *） | 输出 | 公式中的输出 $y$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND | 2~3 | - |
-  | activationFeatureOutOptional（aclTensorList *） | 输出 | 激活函数的输入数据，当前只支持传入 nullptr | - | - | - | - | - |
-  | dynQuantScaleOutOptional（aclTensorList *） | 输出 | 动态量化缩放因子，当前只支持传入 nullptr | - | - | - | - | - |
+  | activationFeatureOutOptional（aclTensorList *） | 输出 | 激活函数的输入数据，当前只支持传入nullptr | - | - | - | - | - |
+  | dynQuantScaleOutOptional（aclTensorList *） | 输出 | 动态量化缩放因子，当前只支持传入nullptr | - | - | - | - | - |
   | workspaceSize（uint64_t *） | 输出 | 返回需要在 Device侧申请的 workspace大小（字节） | - | - | - | - | - |
   | executor（aclOpExecutor **） | 输出 | 返回 op执行器，包含了算子计算流程 | - | - | - | - | - |
 
@@ -279,7 +279,7 @@ aclnnStatus aclnnGroupedMatmulV5(
   | workspace | 输入 | 在 Device侧申请的 workspace内存地址 |
   | workspaceSize | 输入 | 在 Device侧申请的 workspace大小，由第一段接口 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 |
   | executor | 输入 | op执行器，包含了算子计算流程 |
-  | stream | 输入 | 指定执行任务的 Stream |
+  | stream | 输入 | 指定执行任务的Stream |
 
 - **返回值：**
 
@@ -364,7 +364,7 @@ aclnnGroupedMatmulV5 默认确定性实现。
 | groupType | 子场景 | shape |
 |:---:|:---|:---|
 | 0/2 | <abbr title="每列独立缩放因子">perchannel</abbr> | `(g, N)` |
-| 0/2 | <abbr title="一个 Tensor统一缩放因子">pertensor</abbr> | `(g, 1)` 或 `(g,)`，输出为 INT8 时不支持 Pertensor场景 |
+| 0/2 | <abbr title="一个 Tensor统一缩放因子">pertensor</abbr> | `(g, 1)` 或 `(g,)`，输出为 INT8 时不支持Pertensor场景 |
 
 </details>
 
@@ -523,7 +523,7 @@ aclnnGroupedMatmulV5 默认确定性实现。
 - x/weight中每组 Tensor的最后一维 < 65536。
   - $x_i$ 最后一维：x不转置时为K轴，x转置时为M轴。
   - $weight_i$ 最后一维：weight不转置时为N轴，weight转置时为K轴。
-- x/weight转置时对应 Tensor必须 [非连续](../../../docs/zh/context/非连续的Tensor.md)。
+- x/weight转置时对应Tensor必须 [非连续](../../../docs/zh/context/非连续的Tensor.md)。
 - weight为 [FRACTAL_NZ](../../../docs/zh/context/数据格式.md) 格式时，shape 须满足 NZ格式要求。
 - perTokenScaleOptional：通常仅1维，长度与 x的M一致。仅支持 x/weight/out均为单Tensor 场景。
 - groupListOptional：out中 TensorList长度为1时，groupList约束输出数据有效范围，未指定部分不参与更新。
