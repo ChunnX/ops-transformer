@@ -22,7 +22,7 @@ public:
         this->InitPipeAndCoreIdx(initParams.tPipeIn);
 
         // Keep this as the first UB allocation so AIC and both AIVs share the same dual-dst address.
-        uint32_t mmRowsPerAiv = this->chunkTSize_ / this->kHalfSplitDivisor;
+        uint32_t mmRowsPerAiv = (this->chunkTSize_ + this->kHalfSplitDivisor - 1U) / this->kHalfSplitDivisor;
         this->pipe_->InitBuffer(mmXBuf_, mmRowsPerAiv * this->tiling_->fusionAlign * sizeof(float));
         mmXLocal_ = mmXBuf_.Get<float>();
 
@@ -47,15 +47,9 @@ public:
 
         for (uint64_t curblock = this->coreIdx_; curblock < tBlockNum; curblock += this->coreNum_) {
             this->InitBlockParams(curblock, tBlockNum);
+            ConfigureDirectUbRowPartition();
 
-            uint64_t outOffset = 0;
             if ASCEND_IS_AIC {
-                if (this->outFlag_) {
-                    outOffset = this->globalOffsetM_ * this->mnConfig_.n;
-                } else {
-                    outOffset = this->mnConfig_.singleCoreM * this->mnConfig_.singleCoreN *
-                        ((this->mmCount_ % 2) * this->coreNum_ + this->coreIdx_);
-                }
                 this->mnConfig_.curSingleCoreK = this->mnConfig_.singleCoreK;
             }
 
@@ -72,7 +66,7 @@ public:
 
                 if ASCEND_IS_AIC {
                     AscendC::CrossCoreWaitFlag(SYNC_V2C);
-                    AICProcessLowApi(offsetNd, outOffset);
+                    AICProcessLowApi(offsetNd);
                     CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_C2V);
                 }
             }
@@ -81,11 +75,7 @@ public:
 
             if ASCEND_IS_AIV {
                 this->V0PostProcess(curblock, tBlockNum);
-                if (UseDirectUb()) {
-                    AIV1ProcessDirect();
-                } else {
-                    this->AIV1Process(curblock, tBlockNum);
-                }
+                AIV1ProcessDirect();
                 this->vec1Count_++;
             }
         }
@@ -99,7 +89,24 @@ public:
     }
 
 private:
-    __aicore__ inline void AICProcessLowApi(uint32_t offsetNd, uint32_t outOffset)
+    __aicore__ inline void ConfigureDirectUbRowPartition()
+    {
+        if ASCEND_IS_NOT_AIV {
+            return;
+        }
+        uint64_t firstRows = (this->curSingleT_ + 1U) / 2U;
+        if (this->subBlockIdx_ == 0) {
+            this->vectorOffset_.singleCoreM = firstRows;
+            this->vectorOffset_.offsetMStart = 0;
+            this->vectorOffset_.offsetMEnd = firstRows;
+        } else {
+            this->vectorOffset_.singleCoreM = this->curSingleT_ - firstRows;
+            this->vectorOffset_.offsetMStart = firstRows;
+            this->vectorOffset_.offsetMEnd = this->curSingleT_;
+        }
+    }
+
+    __aicore__ inline void AICProcessLowApi(uint32_t offsetNd)
     {
         if (offsetNd + this->mnConfig_.singleCoreK > this->mnConfig_.k) {
             this->mnConfig_.curSingleCoreK = this->mnConfig_.k - offsetNd;
@@ -127,19 +134,9 @@ private:
             this->mnConfig_.curSingleCoreM, baseK, isFirstKL1, isLastKL1, currentAL1, currentBL1);
 
         if (isLastKL1) {
-            if (UseDirectUb()) {
-                mmService_.CopyOut(mmXLocal_);
-            } else {
-                mmService_.CopyOut(this->hMixGm_[outOffset], this->mnConfig_.n);
-            }
+            mmService_.CopyOut(mmXLocal_);
         }
         this->cubeCount_++;
-    }
-
-    __aicore__ inline bool UseDirectUb() const
-    {
-        // Tail split-M ownership is not guaranteed to match the AIV row partition yet.
-        return this->curSingleT_ == this->chunkTSize_;
     }
 
     __aicore__ inline void AIV1ProcessDirect()

@@ -390,6 +390,10 @@ public:
         this->InitFromTilingData(initParams.tilingData);
         this->InitMNConfig();
         this->pipe_ = initParams.tPipeIn;
+        uint32_t mmRowsPerAiv = (this->tiling_->mL1Size + 1U) / 2U;
+        this->pipe_->InitBuffer(mmPartialBuf_,
+            mmRowsPerAiv * this->tiling_->fusionAlign * sizeof(P));
+        mmPartialLocal_ = mmPartialBuf_.template Get<P>();
 
         partialMmGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(
             initParams.workspace + this->tiling_->mkWorkspaceMmOffset));
@@ -480,9 +484,9 @@ private:
             mmService_.Process(mReal, this->matrixInfo_.fusionSize, mReal, baseK,
                 isFirst, isLast, currentAL1, currentBL1);
             if (isLast) {
-                uint64_t outputOffset = static_cast<uint64_t>(kIndex) * this->totalLength_ *
-                    this->matrixInfo_.fusionSize + static_cast<uint64_t>(mStart) * this->matrixInfo_.fusionSize;
-                mmService_.CopyOut(partialMmGm_[outputOffset], this->matrixInfo_.fusionSize);
+                mmService_.CopyOut(mmPartialLocal_);
+                CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_FIX>(SYNC_AIC_AIV_MM_FLAG);
+                CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_FIX>(SYNC_AIC_AIV_MM_FLAG + FLAG_ID_MAX);
             }
             CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
             CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG + FLAG_ID_MAX);
@@ -494,7 +498,7 @@ private:
         uint32_t kStart, uint32_t kEnd)
     {
 
-        uint32_t firstRows = mReal / 2U;
+        uint32_t firstRows = (mReal + 1U) / 2U;
         uint32_t rowStart = GetSubBlockIdx() == 0 ? 0U : firstRows;
         uint32_t rowCount = GetSubBlockIdx() == 0 ? firstRows : mReal - firstRows;
         uint8_t aL1BufferId = 0;
@@ -585,6 +589,17 @@ private:
             aL1BufferId ^= 1U;
         }
         WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+        CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_MM_FLAG);
+        DataCopyExtParams mmCopyParams;
+        mmCopyParams.blockCount = static_cast<uint16_t>(rowCount);
+        mmCopyParams.blockLen = this->matrixInfo_.fusionSize * sizeof(P);
+        mmCopyParams.srcStride =
+            (this->tiling_->fusionAlign - this->matrixInfo_.fusionSize) * sizeof(P);
+        mmCopyParams.dstStride = 0;
+        uint64_t mmOffset = (static_cast<uint64_t>(kIndex) * this->totalLength_ +
+            mStart + rowStart) * this->matrixInfo_.fusionSize;
+        // K-split reduction crosses cores, so AIV stages the UB partial to shared workspace.
+        DataCopyPad(partialMmGm_[mmOffset], mmPartialLocal_, mmCopyParams);
 
         DataCopyExtParams copyParams;
         copyParams.blockCount = 1;
@@ -600,6 +615,8 @@ private:
     GlobalTensor<P> partialMmGm_;
     GlobalTensor<P> partialRmsGm_;
     TBuf<TPosition::A1> l1Buffer_;
+    TBuf<TPosition::VECCALC> mmPartialBuf_;
+    LocalTensor<P> mmPartialLocal_;
     TBuf<TPosition::VECCALC> nd2NzBuf_;
     LocalTensor<P> aL1_;
     LocalTensor<P> bL1_;
@@ -607,6 +624,7 @@ private:
     MhcPreCubeCompute mmService_;
     static constexpr uint64_t SYNC_AIV_AIC_FLAG = 8;
     static constexpr uint64_t SYNC_AIC_AIV_FLAG = 9;
+    static constexpr uint64_t SYNC_AIC_AIV_MM_FLAG = 10;
     static constexpr uint64_t FLAG_ID_MAX = 16;
 };
 
