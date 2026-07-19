@@ -1,10 +1,14 @@
 /**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+/**
  * @file gen_position_ids_from_mask.h
- *
- * 直接 GM 逐元素读写版:
- *   - S 极小, 逐元素访问 GM 足够, 且规避 UB DataCopy 对齐 + int64 UB SetValue 两个坑
- *   - 内部全程 int32 累加, 仅写回时转 int64
- *   - 按 B 切核, 一行的 cumsum 留在同一核
  */
 #ifndef GEN_POSITION_IDS_FROM_MASK_H_
 #define GEN_POSITION_IDS_FROM_MASK_H_
