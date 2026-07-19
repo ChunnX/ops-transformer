@@ -195,7 +195,8 @@ Mode 4:             new_ori_S2 = old_ori_S2 + new_Q_length - old_Q_length
 
 - FA `36x9`、FD `72x8` 和 reserved tail；
 - `bn2 -> (batch,n2)` 与 query-token/S2-block 展开；
-- PR8737 固定规约块 `R=align_up(ceil(actual_S2/32),128)`；
+- 同时报告需求 `align_up(ceil(actual_S2/32),128)` 与 PR8737 head 的整数 floor 公式；结构
+  展开暂按 PR head，公式冲突不静默隐藏；
 - split-G 重复 FA range 去重；
 - FA/FD workspace 关联、G 行覆盖和结构错误；
 - Level-1 四类、Level-2 token/core 视角与 missing coverage。
@@ -203,3 +204,47 @@ Mode 4:             new_ori_S2 = old_ori_S2 + new_Q_length - old_Q_length
 自动生成目标 shape、STC 001-027 manifest 和真实 level-3 coverage matrix 仍属于下一阶段。
 本机 runtime 当前在第一条 NPU 操作处拒绝 level 3，所以 level-0 metadata 只能做接口/布局
 smoke，不能作为 FD、固定调度或主算子 batch consistency 的通过证据。
+
+# 2026-07-20 可离线推进项与完成状态
+
+NPU level3环境等待不再阻塞以下工作。详细代码和命令见`../level3两段式完整调用示例.md`，冲突
+见`../SMLA_MQSMLA需求冲突与对齐清单.md`。
+
+| 原大纲模块 | 无NPU能否做 | 当前状态 | 证据/剩余项 |
+| --- | --- | --- | --- |
+| 给定参数/Excel输入 | 能 | 已完成小shape双算子表 | `../cases/SMLA_MQSMLA_batch一致性离线预检.xlsx`；原STC仍需owner修订 |
+| 当前golden | 能 | 两算子真实运行通过 | 复用原golden，不另造简化数学模型 |
+| PT save/load | 能 | baseline + 6个derived round-trip通过 | `consistency_prepare`，digest before/after一致 |
+| 黑盒场景覆盖 | 能 | 模式1-4均已实现 | BSND/TND/PA变换、TokenOrigin、actual-input oracle |
+| 两次执行间random | 能 | seed可复现；默认不随机模式2 | 仅显式`--randomize`启用fuzz |
+| 一致性对比 | 大部分能 | origin映射/MD5/CPU精度代码与单测完成 | 真NPU bitwise结果仍待level3环境 |
+| metadata输入摘要 | 能 | 已完成 | PT来源、shape/dtype/device/byte/digest/sample/小tensor完整值 |
+| metadata算子调用 | 不能完整验收 | 两算子executor已接通 | runtime拒绝level3，状态为`UNSUPPORTED` |
+| 白盒自动分析 | 算法能，真实覆盖不能 | parser/analyzer/公式审计完成 | 真实FA/FD coverage matrix待NPU metadata |
+| S2生成/Level-1 manifest | 能 | 分类器完成，STC manifest未完成 | floor/ceil公式和STC错误需owner裁决 |
+| 自动场景覆盖 | 部分能 | 暂不修改metadata伪造覆盖 | 后续应生成合法输入，再观察真实metadata |
+| graph/ACLNN | 部分能 | 原graph保留，一致性executor未完成 | 等eager level3先闭环，再做STC 021/023 |
+
+## 离线链的验收边界
+
+```text
+Excel
+  -> 原input normalization
+  -> 原CPU golden
+  -> baseline PT save/reload
+  -> modes 1-4 transform + semantic oracle
+  -> 从baseline cpu_output按TokenOrigin物化比较token预期
+  -> derived PT save/reload
+  -> schema + full-byte digest + JSON input report
+```
+
+模式4额外token没有`TokenOrigin`，所以离线PT中会明确记录`unmapped_tokens`；这些位置不进入
+batch一致性比较，零模板也不宣称是完整CPU golden。若未来需要验证额外token，必须给原golden
+新增“对已有tensor重新计算”的正式接口。
+
+## 不再采用的早期策略
+
+1. 不把metadata-only临时probe放在正式`batch/`；该文件已删除。
+2. 不通过手工改metadata伪造白盒PASS；analyzer只读主算子实际消费的metadata。
+3. 不用level0普通精度PASS替代level3一致性PASS。
+4. 不再扩展`-M 1,2`数字含义；正式配置只用命名mode/profile。

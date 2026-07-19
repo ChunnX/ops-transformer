@@ -5,6 +5,13 @@
 
 ![SMLA/MQSMLA batch 一致性总览](images/smla_mqsmla_batch_consistency_overview.svg)
 
+建议第一次阅读按图走，不必先啃源码：
+
+1. 看“字段关系思维导图”，弄清 shape；
+2. 看“职责边界”，区分 pytest 拆调用与 NPU 分核；
+3. 看“四种模式”，理解哪些 token 在比较；
+4. 最后看 mask 对齐和完整数据流。
+
 ## 1. 先用一句话理解 Attention
 
 Q（Query）可以理解成“我现在想查什么”，KV（Key/Value）可以理解成“可供查询的历史资料”。
@@ -48,6 +55,8 @@ KV = [B, S2, N2, D]
 
 “一个 token”在本需求中通常指 `(batch_id, query_position)`。它内部仍有 `N1` 个 Q head；
 metadata 还会用 `bn2 = batch_id * N2 + n2_id` 表示 batch 与 KV head 的组合。
+
+![B/S/N/D/T、layout 与 metadata 的字段关系思维导图](images/dimension_layout_mindmap.svg)
 
 ### 2.1 为什么有 N1 和 N2 两种 head 数
 
@@ -94,6 +103,21 @@ seqused_kv[b]: 最后实际使用到多少个 KV token
 模式 1/2 不复制整个物理 cache，只选择或重排 `block_table` 的行。模式 3/4 若要改变逻辑 KV
 右边界，必须确认现有 block table 有足够容量；不足时应报 `INVALID_TRANSFORM`，不能越界。
 
+### 3.4 “物理长度”和“有效长度”为什么要分开
+
+以 `Q.shape=[2,8,64,512]`、`seqused_q=[3,5]` 为例：物理上两个 batch 都分配了 8 个位置，
+数学上只有前 3、前 5 个有效。后面的 padding 可以是任意 bit，不应进入 MD5。相同道理：
+
+| layout | 物理容量来自 | 有效边界来自 |
+| --- | --- | --- |
+| BSND Q | `q.shape[1]` | `seqused_q`，未给时才用物理S1 |
+| TND Q | `q.shape[0]=T` | `cu_seqlens_q` 的每段，必要时再受 `seqused_q` 限制 |
+| BSND KV | `kv.shape[1]` | `seqused_*_kv` |
+| TND KV | `kv.shape[0]` 与 prefix slot | `cu_seqlens_*_kv` / `seqused_*_kv` |
+| PA KV | `block_num*block_size` | block table可寻址容量 + `seqused_*_kv` |
+
+因此“只改 `B/S1` 数字”远远不够；tensor、长度、table、metadata mirror 字段必须同时变化。
+
 ## 4. SMLA 与 MQSMLA 的差别
 
 两者完成相似的稀疏 Attention，都是两段式调用：metadata 前置算子先排任务，主算子再消费
@@ -125,12 +149,20 @@ Q / KV / sparse indices ---------+----> SMLA 或 MQSMLA ----> output
 level 3 必须在 metadata 调用之前设置，并一直保持到主算子完成。否则可能出现“metadata 按
 level 0 排任务、主算子却按 level 3 执行”的错配。执行结束还必须恢复进入测试前的真实 level。
 
+![pytest 与算子侧职责边界](images/responsibility_boundary.svg)
+
+这张图最重要的一点是：模式2的 `B=8 -> B=3+B=5` 是 pytest 发起多次调用；每一次调用内部
+如何把 token/S2 block 分给 FA/FD core，仍然完全是算子任务。pytest 的 `split_groups` 不会变成
+core id 参数。
+
+![pytest_v2 batch consistency 完整数据流](images/batch_consistency_flow.svg)
+
 ## 6. FA、FD、规约块分别是什么
 
 ### 6.1 FA：先算局部结果
 
 一个 token 的 S2 很长时，会切成多个规约块。每个 FA 任务处理一个 S2 区间，产生局部
-`max/sum/output`。PR8737 的 level-3 规约块大小是：
+`max/sum/output`。需求文档期望的 level-3 规约块大小是：
 
 ```text
 actual_S2 = 当前 token 实际可见的 ori token + cmp token
@@ -139,6 +171,10 @@ R = align_up(ceil(actual_S2 / 32), 128)
 ```
 
 这里的 metadata `s2_start/s2_end` 是规约块索引的闭开区间，不是原始 KV token 下标。
+
+但 PR8737 head `31a3b6d3` 的 C++ 当前先做整数 `actual_S2 / 32`，也就是 floor，而不是 ceil。
+例如4097会得到128而不是256；1..31还会出现0 tile表达式。白盒报告同时列两套公式和冲突，
+结构展开暂按PR head并对0加保护。这个问题尚待tiling owner裁决，不能把文档公式写成已确认实现。
 
 ### 6.2 FD：合并跨核局部结果
 
@@ -156,6 +192,8 @@ R = align_up(ceil(actual_S2 / 32), 128)
 关系，并自动报告单核、跨核和核内多 token 组合是否覆盖。
 
 ## 7. 四种黑盒模式究竟在做什么
+
+![四种模式与 TokenOrigin 映射](images/four_modes_mapping.svg)
 
 ### 模式 1：reorder
 
@@ -205,6 +243,12 @@ new_ori_S2 = old_ori_S2 + (new_Q_length - old_Q_length)
 这使 `ori_S2-Q_length` 保持不变，新增 KV 位于共同 token 的未来并被 mask 掉。若 layout 容量、
 cmp 关系或实际可见 KV 不能证明一致，case 报 `INVALID_TRANSFORM`，不会伪装成算子失败。
 
+![RightDown/Band 三种 shape-change 构造的差异](images/rightdown_band_mask_alignment.svg)
+
+图中的 prepend 并非数学上必错：旧 token 位置同步右移时 threshold 可以保持。它的问题是语义上
+不再属于两个输入的“共同前缀”。尾部只加 Q 才是明确不等价；当前方案让 Q 与逻辑 KV 同步增长。
+更详细的资料冲突、Band start/end公式和待确认问题见 `SMLA_MQSMLA需求冲突与对齐清单.md`。
+
 ## 8. 一致性为什么同时检查 MD5 和原精度
 
 | 检查 | 回答的问题 |
@@ -228,8 +272,8 @@ bash test_run.sh consistency -P ./data \
   --split-groups '0,1,2;3,4,5,6,7'
 ```
 
-MQSMLA 自定义安装目录当前需要 root 权限。`source` 是 shell 内建命令，`sudo source ...` 不会
-工作；应让 sudo 启动一个 shell，再在同一 shell 中 source 和执行：
+如果 MQSMLA 自定义安装目录需要 root 权限，注意 `source` 是 shell 内建命令，`sudo source`
+不会工作；应让 sudo 启动一个 shell，再在同一 shell 中 source 和执行：
 
 ```bash
 sudo -n bash -lc '
@@ -240,20 +284,23 @@ sudo -n bash -lc '
 '
 ```
 
-PR8737 metadata-only 快速探针：
+不用 NPU，先把 Excel/golden/PT/mode transform 全链跑通：
 
 ```bash
-sudo -n bash -lc '
-  source /mnt/workspace/gitCode/env.sh &&
-  source /home/Ascend/vendors/custom_transformer/bin/set_env.bash &&
-  cd /mnt/workspace/gitCode/cann/ops-transformer_0716/attention/mixed_quant_sparse_flash_mla/tests/pytest_v2 &&
-  python3 -m batch.mixed_quant_sparse_flash_mla_metadata_probe \
-    --pt /path/to/mqsmla_case.pt --level 3
-'
+cd attention/sparse_flash_mla/tests/pytest_v2
+bash test_run.sh consistency_prepare \
+  --excel ../../../../requs/cases/SMLA_MQSMLA_batch一致性离线预检.xlsx \
+  --sheet SMLA --pt-dir /tmp/smla_pt --report-dir /tmp/smla_report
+
+cd attention/mixed_quant_sparse_flash_mla/tests/pytest_v2
+bash test_run.sh consistency_prepare \
+  --excel ../../../../requs/cases/SMLA_MQSMLA_batch一致性离线预检.xlsx \
+  --sheet MQSMLA --pt-dir /tmp/mqsmla_pt --report-dir /tmp/mqsmla_report
 ```
 
-当前本机 runtime 会在第一次 NPU 操作时拒绝 level 3，所以该命令预期暴露 `UNSUPPORTED`；
-level 0 可检查接口、1024 布局和 FA 链，但不能证明 batch consistency PASS。
+`consistency_prepare` 不设置device、不调用metadata/main op；它只声明CPU-only预检通过，绝不输出
+NPU batch consistency PASS。当前本机 runtime 会在第一次 NPU 操作时拒绝level3，因此真实
+`consistency` 仍预期为 `UNSUPPORTED`。
 
 ## 10. 最容易混淆的三件事
 
@@ -261,3 +308,74 @@ level 0 可检查接口、1024 布局和 FA 链，但不能证明 batch consiste
 2. 模式 2 的 `3+5` 是测试侧拆成两次算子调用；它不等于 metadata 在算子内部怎么分核。
 3. “Q 数据相同”不一定代表数学输入相同；RightDownCausal/Band 下还必须保证该 token 的 KV
    可见区间相同，这正是模式 3/4 语义 oracle 的作用。
+
+## 11. 一个从 shape 到 metadata 的手算例子
+
+假设：
+
+```text
+B=2, S1=3, N1=8, N2=2, D=128
+seqused_q=[2,3]
+seqused_ori_kv=[4096,5121]
+G=N1/N2=4
+```
+
+那么有效 query token 共 `2+3=5` 个；每个 token 有2个KV head，所以 metadata 中最多有
+`5*N2=10` 个 `(bn2,m_index)` token任务。batch1/n2=1的索引为：
+
+```text
+bn2 = batch * N2 + n2 = 1*2+1 = 3
+```
+
+若mask后仍可见5121个KV，需求ceil公式和PR floor公式的quotient分别161、160，但128对齐后
+都是256；报告会标 `quotient_formula_conflict=true`、`tile_formula_conflict=false`。若S2=4097，
+最终tile分别256/128，两项都为true，FA cursor和FD workspace预期都会受影响。
+
+## 12. 白盒报告怎样读
+
+每个 baseline/derived 现在都带 `input_summary`：
+
+| 字段 | 读法 |
+| --- | --- |
+| `provenance` | 原Excel、sheet、source PT以及baseline/derived阶段 |
+| `dimensions` | B、physical/effective S1、S2 max、N1/N2/G/D、layout |
+| `semantics` | template、mask、window、cmp_ratio、top-k |
+| `tensor_inputs.*` | shape/dtype/device/numel/byte size/MD5/SHA256；长度小tensor给完整values |
+| `metadata_input_sha256` | metadata op输入字典的稳定digest，不等同kernel输出metadata |
+| `kernel_metadata_tensor` | NPU实际metadata[1024]的shape/dtype/digest |
+| `transform` | order、group、token range、共同前缀、semantic oracle |
+| `tile_formula_audit` | 每个token的visible ori/cmp、floor/ceil公式和冲突 |
+
+Q/KV很大，JSON只保留首尾sample，不把数GB数据复制进报告；digest仍覆盖完整字节。cu/seqused/
+residual等小控制tensor在不超过256项时记录完整值。
+
+## 13. 文件导航图
+
+```text
+pytest_v2/
+├── 原 utils / golden / result_compare_method
+├── test_*_batch_consistency.py       # opt-in pytest入口
+└── batch/
+    ├── *_pt_save.py                  # 原baseline PT生成
+    ├── *_process.py                  # 算子自己的metadata+main op
+    ├── *_consistency.py              # 算子自己的executor
+    ├── *_consistency_prepare.py      # CPU-only Excel/PT离线验收
+    └── consistency/
+        ├── adapter/schema/model      # 双PT格式与不变量
+        ├── transform/layouts         # 模式1-4
+        ├── compare/flow              # origin比较与level3编排
+        ├── metadata_*                # 1024布局与FA/FD分析
+        ├── reporting                 # 原始输入摘要
+        └── offline                   # derived golden/PT round-trip
+```
+
+两棵算子各自拥有完整目录，不跨算子import；核心文件通过单测做字节级镜像一致性门禁。临时
+metadata-only probe不属于正式适配，已经从`batch/`删除。
+
+## 14. 小白自检题
+
+1. `B=8 -> B=3+B=5` 是几次算子调用？答案：三次；每次内部还会独立分核。
+2. `cu_seqlens_q=[0,3,7]` 表示什么？答案：B=2，两段Q长度3和4，T=7。
+3. PA中重排batch是否重排整个KV cache？答案：通常不动物理cache，只重排block table行。
+4. 为什么只比较Q bit不够？答案：mask窗口、可见KV、index/top-k/sinks也属于数学输入。
+5. CPU-only prepare通过能否说NPU一致性通过？答案：不能，它只证明输入/golden/PT/transform链。

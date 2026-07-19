@@ -1,0 +1,67 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="760" viewBox="0 0 1400 760">
+  <defs>
+    <style>
+      .title { font: 700 34px 'Noto Sans CJK SC', sans-serif; fill: #17231d; }
+      .head { font: 700 23px 'Noto Sans CJK SC', sans-serif; fill: #17231d; }
+      .body { font: 18px 'Noto Sans CJK SC', sans-serif; fill: #26352d; }
+      .small { font: 15px 'Noto Sans CJK SC', sans-serif; fill: #435248; }
+      .arrow { stroke: #31483b; stroke-width: 3; fill: none; marker-end: url(#arrow); }
+    </style>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto">
+      <path d="M0,0 L0,6 L9,3 z" fill="#31483b"/>
+    </marker>
+    <pattern id="grid" width="28" height="28" patternUnits="userSpaceOnUse">
+      <path d="M28 0H0V28" fill="none" stroke="#dce6df" stroke-width="1"/>
+    </pattern>
+  </defs>
+  <rect width="1400" height="760" fill="#f5f2e9"/>
+  <rect width="1400" height="760" fill="url(#grid)" opacity="0.55"/>
+  <text x="70" y="65" class="title">谁负责什么：pytest 构造调用，算子负责 NPU 内部规约</text>
+
+  <rect x="55" y="115" width="390" height="530" rx="24" fill="#dcebdc" stroke="#366a4a" stroke-width="3"/>
+  <text x="85" y="160" class="head">pytest_v2 / 用例侧</text>
+  <text x="85" y="205" class="body">1. Excel → 原 CPU golden → PT</text>
+  <text x="85" y="245" class="body">2. 构造 reorder / split</text>
+  <text x="105" y="278" class="body">token-split / shape-change</text>
+  <text x="85" y="325" class="body">3. 同步 Q/KV/length/table/index</text>
+  <text x="85" y="365" class="body">4. 维护 TokenOrigin</text>
+  <text x="85" y="405" class="body">5. 发起多次完整算子调用</text>
+  <rect x="85" y="445" width="330" height="145" rx="14" fill="#f9fbf6"/>
+  <text x="105" y="478" class="small">模式2的 8 → 3 + 5：</text>
+  <text x="105" y="510" class="small">是三次调用，不是三个 NPU 核。</text>
+  <text x="105" y="542" class="small">pytest 不指定 core id，</text>
+  <text x="105" y="574" class="small">也不执行 FA/FD combine。</text>
+
+  <rect x="505" y="115" width="350" height="530" rx="24" fill="#f4d9b8" stroke="#a76024" stroke-width="3"/>
+  <text x="535" y="160" class="head">Runtime / level 3</text>
+  <text x="535" y="210" class="body">进程状态：</text>
+  <text x="555" y="245" class="body">set_deterministic_level(3)</text>
+  <text x="535" y="295" class="body">作用域覆盖：</text>
+  <text x="555" y="330" class="body">metadata op</text>
+  <text x="555" y="365" class="body">main op</text>
+  <text x="555" y="400" class="body">synchronize</text>
+  <rect x="535" y="445" width="290" height="145" rx="14" fill="#fff8ed"/>
+  <text x="555" y="478" class="small">level 3 不是 op 参数，</text>
+  <text x="555" y="510" class="small">但 tiling/runtime 会读取。</text>
+  <text x="555" y="542" class="small">环境拒绝时必须报</text>
+  <text x="555" y="574" class="small">UNSUPPORTED，不可降级。</text>
+
+  <rect x="915" y="115" width="430" height="530" rx="24" fill="#dce6f2" stroke="#355f8a" stroke-width="3"/>
+  <text x="945" y="160" class="head">算子侧：tiling + kernel</text>
+  <text x="945" y="205" class="body">1. 读取本次 B/S1/S2/mask</text>
+  <text x="945" y="245" class="body">2. 计算固定规约 tile</text>
+  <text x="945" y="285" class="body">3. 生成 FA/FD metadata</text>
+  <text x="945" y="325" class="body">4. token / S2 block 分核</text>
+  <text x="945" y="365" class="body">5. 核内固定顺序 combine</text>
+  <text x="945" y="405" class="body">6. 跨核 workspace + FD</text>
+  <rect x="945" y="445" width="370" height="145" rx="14" fill="#f6f9fd"/>
+  <text x="965" y="478" class="small">算子不知道“模式2组A”。</text>
+  <text x="965" y="510" class="small">它只看到当前一次调用的参数，</text>
+  <text x="965" y="542" class="small">并保证不同 shape/调度下</text>
+  <text x="965" y="574" class="small">同一数学 token bitwise 一致。</text>
+
+  <path d="M445 355H500" class="arrow"/>
+  <path d="M855 355H910" class="arrow"/>
+  <path d="M1130 650V705H250V650" class="arrow"/>
+  <text x="570" y="735" class="small">output + metadata 返回 pytest：origin 对齐、MD5、CPU 精度、白盒报告</text>
+</svg>

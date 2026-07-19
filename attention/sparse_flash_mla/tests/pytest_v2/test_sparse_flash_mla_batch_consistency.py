@@ -18,11 +18,12 @@ from typing import Dict, List
 import pytest
 import torch
 
-from batch.consistency_adapter import CaseAdapter
-from batch.consistency_config import CaseConfigParser, ConsistencyMode, ModeRegistry
-from batch.consistency_flow import BatchConsistencyUnsupportedError
-from batch.consistency_schema import get_q_lengths
-from batch.consistency_transform import InvalidTransformError, generate_split_groups
+from batch.consistency.adapter import CaseAdapter
+from batch.consistency.config import CaseConfigParser, ConsistencyMode, ModeRegistry
+from batch.consistency.flow import BatchConsistencyUnsupportedError
+from batch.consistency.schema import get_q_lengths
+from batch.consistency.transform import InvalidTransformError, generate_split_groups
+from batch.consistency.reporting import attach_provenance
 from batch.sparse_flash_mla_consistency import create_consistency_flow
 
 
@@ -112,6 +113,7 @@ pytestmark = [
 
 def load_smla_case(path: str) -> Dict:
     data = torch.load(path, map_location="cpu")
+    attach_provenance(data, source_pt=path)
     if CaseAdapter(data).name != "smla":
         pytest.skip("NOT_APPLICABLE: PT is not an SMLA case")
     return data

@@ -12,7 +12,7 @@
 # 显示帮助信息
 show_help() {
     cat << EOF
-使用方法: $0 {single|save|load|load_graph|consistency} [参数]
+使用方法: $0 {single|save|load|load_graph|consistency|consistency_prepare} [参数]
 
 脚本选项:
   single         执行单跑功能
@@ -62,9 +62,43 @@ show_help() {
     示例3: bash $0 consistency -P ./data --modes token-split
     示例4: bash $0 consistency -P ./data -M 1,2 --randomize
 
+  consistency_prepare  无NPU离线验收：Excel -> CPU golden -> PT -> 模式1-4派生PT
+    --excel       Excel路径（必填）
+    --sheet       sheet名（默认 SMLA）
+    --pt-dir      临时PT输出目录（必填）
+    --report-dir  JSON报告目录（必填）
+    --seed        随机种子（默认 20260716）
+    示例: bash $0 consistency_prepare --excel cases.xlsx --sheet SMLA \
+      --pt-dir /tmp/smla_pt --report-dir /tmp/smla_report
+
 通用选项:
   -h, --help   显示此帮助信息
 EOF
+}
+
+run_script_consistency_prepare() {
+    local excel=""
+    local sheet="SMLA"
+    local pt_dir=""
+    local report_dir=""
+    local seed="20260716"
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            --excel) excel="$2"; shift 2 ;;
+            --sheet) sheet="$2"; shift 2 ;;
+            --pt-dir) pt_dir="$2"; shift 2 ;;
+            --report-dir) report_dir="$2"; shift 2 ;;
+            --seed) seed="$2"; shift 2 ;;
+            *) echo "错误: consistency_prepare 未知参数 '$1'"; exit 1 ;;
+        esac
+    done
+    if [ -z "$excel" ] || [ -z "$pt_dir" ] || [ -z "$report_dir" ]; then
+        echo "错误: consistency_prepare 必须指定 --excel、--pt-dir、--report-dir"
+        exit 1
+    fi
+    python3 batch/sparse_flash_mla_consistency_prepare.py \
+        --excel "$excel" --sheet "$sheet" --pt-dir "$pt_dir" \
+        --report-dir "$report_dir" --seed "$seed"
 }
 
 # 检查参数数量
@@ -684,7 +718,7 @@ run_script_consistency() {
 import sys
 import warnings
 
-from batch.consistency_config import ModeRegistry
+from batch.consistency.config import ModeRegistry
 
 warnings.simplefilter("default", DeprecationWarning)
 try:
@@ -823,9 +857,12 @@ case "$SCRIPT_TYPE" in
     consistency)
         run_script_consistency "$@" || exit $?
         ;;
+    consistency_prepare)
+        run_script_consistency_prepare "$@" || exit $?
+        ;;
     *)
         echo "错误: 未知的脚本类型 '$SCRIPT_TYPE'"
-        echo "可用类型: single, save, load, load_graph, consistency"
+        echo "可用类型: single, save, load, load_graph, consistency, consistency_prepare"
         show_help
         exit 1
         ;;

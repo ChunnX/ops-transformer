@@ -18,7 +18,7 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 import torch
 
 import result_compare_method
-from .consistency_model import TokenOrigin
+from .model import TokenOrigin
 
 
 class TensorDigest:
