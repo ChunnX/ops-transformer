@@ -109,16 +109,16 @@ $$
 
 - **<term>Ascend 950PR/Ascend 950DT</term>**：
   - 上表数据类型列中的角标 <sup>1</sup> 代表该系列不支持的数据类型。
-  - 输入参数 x、weight均不支持 INT16 类型，且 x 不支持 INT4 类型。
+  - 输入参数 x、weight均不支持INT16 类型，且 x 不支持INT4 类型。
   - 输入参数 x、weight，输出参数 out在非量化场景支持最多 1024个Tensor，在伪量化支持最多 128个Tensor，在全量化场景最多支持 1个Tensor。
 - **<term>Atlas A3/A2 训练系列产品</term>**：
   - 上表数据类型列中的角标 <sup>2</sup> 代表该系列不支持的数据类型。
-  - 不支持 FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0类型。
-  - 输入参数 biasOptional不支持 BFLOAT16。
-  - 输入参数 scaleOptional不支持 INT64 类型。
+  - 不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0类型。
+  - 输入参数 biasOptional不支持BFLOAT16。
+  - 输入参数 scaleOptional不支持INT64 类型。
   - 输入参数 x、weight，输出参数 out支持最多 128个Tensor。
 - **<term>Kirin X90/Kirin 9030 处理器系列产品</term>**：
-  - 不支持 BFLOAT16、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT8_E8M0、HIFLOAT8类型。
+  - 不支持BFLOAT16、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT8_E8M0、HIFLOAT8类型。
 
 ---
 

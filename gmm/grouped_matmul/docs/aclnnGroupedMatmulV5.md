@@ -43,7 +43,7 @@ abbr {
 | K-C | pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放 |
 | K-T | pertoken-pertensor：输入侧每行独立缩放，权重侧统一缩放 |
 | G-B | pergroup-perblock：输入侧按 K分组缩放，权重侧按 N×K 分块缩放 |
-| MX | pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32 的特例 |
+| MX | pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32的特例 |
 | ND | 常规连续排布 |
 | NZ | [FRACTAL_NZ](../../../docs/zh/context/数据格式.md)格式（亲核排布） |
 
@@ -206,16 +206,16 @@ aclnnStatus aclnnGroupedMatmulV5(
 
   - **<term>Ascend 950PR/Ascend 950DT</term>**：
     - 上表数据类型列中的角标 <span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span> 代表该系列不支持的数据类型
-    - 输入参数 x、weight均不支持 INT16 类型，且 x不支持 INT4 类型
+    - 输入参数 x、weight均不支持INT16 类型，且 x不支持INT4 类型
   - **<term>Atlas A3/A2 系列产品</term>**：
     - 上表数据类型列中的角标 <span title="Atlas A3/A2 不支持"><sup>2</sup></span> 代表该系列不支持的数据类型
-    - 不支持 FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0类型
-    - 输入参数 biasOptional不支持 BFLOAT16
-    - 输入参数 scaleOptional不支持 INT64 类型
+    - 不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0类型
+    - 输入参数 biasOptional不支持BFLOAT16
+    - 输入参数 scaleOptional不支持INT64 类型
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见 [aclnn 返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见 [aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一阶段接口完成入参校验，出现以下场景时报错。
 
@@ -283,7 +283,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见 [aclnn 返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见 [aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ---
 
@@ -293,22 +293,22 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 ### 确定性计算
 
-aclnnGroupedMatmulV5 默认确定性实现。
+aclnnGroupedMatmulV5默认确定性实现。
 
 ### Ascend 950PR/Ascend 950DT
 
 #### 平台约束
 
 - groupType：支持M轴分组（0）和不分组（-1）。非量化/全量化额外支持K轴分组（2）。
-- groupListType：支持 0、1、2。
+- groupListType：支持0、1、2。
   - groupListType=0：须为非负单调非递减数列（累积和）。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
   - groupListType=1：须为非负数列（各组大小）。例如：`[64, 0, 128, 64]`
   - groupListType=2：仅全量化且groupType=0场景下支持，须为非负数列，shape为`[E, 2]`，E表示Group大小，数据排布为`[[groupIdx0, groupSize0], [groupIdx1, groupSize1]...]`，非零组前置。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
 - tuningConfigOptional：不支持。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
-  - 全量化下 x/weight=INT8 且 out=BFLOAT16/FLOAT16、静态 T-C 或动态 K-C、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
-- 输入参数 x、weight，输出参数 out 在非量化场景支持最多 1024个Tensor，在伪量化支持最多 128个Tensor，在全量化场景最多支持 1个Tensor。
+  - 全量化下 x/weight=INT8且 out=BFLOAT16/FLOAT16、静态 T-C或动态 K-C、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
+- 输入参数 x、weight，输出参数 out在非量化场景支持最多 1024个Tensor，在伪量化支持最多 128个Tensor，在全量化场景最多支持 1个Tensor。
 
 #### 场景速查表
 
@@ -383,7 +383,7 @@ aclnnGroupedMatmulV5 默认确定性实现。
 | 0/2 | HIFLOAT8 | HIFLOAT8 | null | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
 | 0/2 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | null | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
 
-- **scaleOptional shape**（$g$=分组数），推荐在 Pertensor场景 shape 使用 `(g,)`，防止与 G-B量化模式混淆：
+- **scaleOptional shape**（$g$=分组数），推荐在Pertensor场景 shape 使用 `(g,)`，防止与 G-B量化模式混淆：
 
   | groupType | 子场景 | shape |
   |:---:|:---|:---|
@@ -395,7 +395,7 @@ aclnnGroupedMatmulV5 默认确定性实现。
 | groupType | 子场景 | shape |
 |:---:|:---|:---|
 | 0 | <abbr title="每行独立缩放因子">pertoken</abbr> | `(M,)` |
-| 0 | pertensor | `(g, 1)` 或 `(g,)`，输入为 INT8 时不支持 pertensor 场景 |
+| 0 | pertensor | `(g, 1)` 或 `(g,)`，输入为 INT8 时不支持pertensor场景 |
 | 2 | pertoken | `(g, M)` |
 | 2 | pertensor | `(g, 1)` 或 `(g,)` |
 
@@ -464,10 +464,10 @@ aclnnGroupedMatmulV5 默认确定性实现。
 - **动态量化特殊场景处理**：
   - 在动态量化场景 M分组或K分组情况下，当 N等于1 且 scaleOptional 的 shape 为 `(g, 1)` 时，weight既可以pertensor量化也可以perchannel量化时，优先选择pertensor量化模式。
   - 在动态量化场景 M分组情况下，当 g = M 且 perTokenScaleOptional 的 shape 为 `(g,)` 时，x选择pertoken量化模式；当 g = M，K ≤ 128 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，根据weight的量化模式选择x的量化模式（weight 如果是 perchannel 或者pertensor量化，x选择pertensor量化；weight 如果是 <abbr title="按 K/N 方向固定大小分块">perblock</abbr> 量化，x选择 <abbr title="按 K 方向等分多组">pergroup</abbr> 量化）。
-  - 在动态量化场景 K分组情况下，K小于 128，N小于等于128 且 scaleOptional 的 shape 为 `(g, 1)` 时，按照现有量化模式区分规则，既可以为非pergroup量化，又可以为G-B量化，此种场景现一律按照G-B量化处理。
+  - 在动态量化场景 K分组情况下，K小于128，N小于等于128 且 scaleOptional 的 shape 为 `(g, 1)` 时，按照现有量化模式区分规则，既可以为非pergroup量化，又可以为G-B量化，此种场景现一律按照G-B量化处理。
   - 在动态量化场景 K分组情况下，当 M等于 1 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，x既可以pertoken量化也可以pertensor量化时，优先选择pertensor量化模式。
-  - 在动态量化场景 K分组情况下，K小于 128，M等于 1 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，如果 N小于等于128，x则选择pergroup量化；如果 N大于128，根据weight的量化模式选择x的量化模式（weight 如果是 perchannel 或者pertensor量化，x选择pertensor量化；weight 如果是 perblock量化，x选择pergroup量化）。
-  - 在动态量化场景 K分组情况下，K小于 128，M不等于 1 时，如果 N小于等于128，x则选择pergroup量化；如果 N大于128，根据weight的量化模式选择x的量化模式（weight 如果是 perchannel 或者pertensor量化，x选择pertoken量化；weight 如果是 perblock量化，x选择pergroup量化）。
+  - 在动态量化场景 K分组情况下，K小于128，M等于 1 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，如果 N小于等于128，x则选择pergroup量化；如果 N大于128，根据weight的量化模式选择x的量化模式（weight 如果是 perchannel 或者pertensor量化，x选择pertensor量化；weight 如果是 perblock量化，x选择pergroup量化）。
+  - 在动态量化场景 K分组情况下，K小于128，M不等于 1 时，如果 N小于等于128，x则选择pergroup量化；如果 N大于128，根据weight的量化模式选择x的量化模式（weight 如果是 perchannel 或者pertensor量化，x选择pertoken量化；weight 如果是 perblock量化，x选择pergroup量化）。
 
 </details>
 
@@ -490,7 +490,7 @@ aclnnGroupedMatmulV5 默认确定性实现。
 - 若 weight的类型为 INT4，则 weight中每一组 tensor的最后一维大小都应是偶数。$weight_i$ 的最后一维指 weight不转置时 $weight_i$ 的 N轴或当 weight转置时 $weight_i$ 的 K轴。
 - 当 weight为 INT4 时，支持 perchannel 和 pergroup 两种伪量化模式，通过 antiquantScaleOptional 的维度数自动判定：单单单场景维度为 2 时为 perchannel、维度为 3 时为 pergroup；多多多场景维度为 1 时为 perchannel、维度为 2 时为 pergroup。
 - pergroup场景下，pergroup数 $G$ 或 $G_i$ 须能整除对应 $k_i$。多Tensor时 pergroup长度 $s_i = k_i / G_i$ 各组相等。
-- pergroup场景下，groupSize 取值仅支持 32、64、128、256。weight转置时 pergroup长度 $s_i$ 须为偶数。
+- pergroup场景下，groupSize 取值仅支持32、64、128、256。weight转置时 pergroup长度 $s_i$ 须为偶数。
 - antiquantScaleOptional 和非空的 biasOptional、antiquantOffsetOptional 要满足下表（其中 $g$ 为 matmul组数即分组数，$G$ 为 pergroup数，$G_i$ 为第 i 个 tensor的pergroup数）：
 
   | groupType | 使用场景 | shape 限制 |
@@ -536,7 +536,7 @@ aclnnGroupedMatmulV5 默认确定性实现。
   - `[0]`：预期各专家处理的 token数，tiling 按此优化，适用场景：A8W4/A8W8/A4W4，x/weight/out 单Tensor。
   - `[1]`：是否开启 weight 亲核格式（先转置再 NZ），适用场景：A8W4。
   - `[2]`：允许额外 workspace 上限（-1=不限），适用场景：A8W8 定轴算法优化。
-- actType：仅 A8W8（x、weight 为 INT8）且输出为 FLOAT16/BFLOAT16 时支持激活函数类型 0/1/2/4/5（3 不支持）；其余场景仅支持 0。
+- actType：仅 A8W8（x、weight 为 INT8）且输出为 FLOAT16/BFLOAT16时支持激活函数类型 0/1/2/4/5（3 不支持）；其余场景仅支持 0。
 - 输入参数 x、weight，输出参数 out支持最多 128个Tensor。
 
 #### 场景速查表
