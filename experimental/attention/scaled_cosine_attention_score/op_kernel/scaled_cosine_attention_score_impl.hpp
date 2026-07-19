@@ -80,9 +80,9 @@ struct Convert<float> {
 };
 
 template <typename T>
-class ScaledCosineAttentionScoreKernel {
+class ScaledCosineAttentionScoreImpl {
 public:
-    __aicore__ inline ScaledCosineAttentionScoreKernel() = default;
+    __aicore__ inline ScaledCosineAttentionScoreImpl() = default;
 
     __aicore__ inline void Init(
         GM_ADDR query, GM_ADDR key, GM_ADDR scale, GM_ADDR output,

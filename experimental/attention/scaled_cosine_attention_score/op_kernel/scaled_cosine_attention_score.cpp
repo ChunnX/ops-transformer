@@ -30,17 +30,17 @@ extern "C" __global__ __aicore__ void scaled_cosine_attention_score(
     CopyTilingData(tilingDataIn, tiling);
     const auto* tilingData = &tilingDataIn;
     if (TILING_KEY_IS(0)) {
-        NsScaledCosineAttentionScore::ScaledCosineAttentionScoreKernel<half> op;
+        NsScaledCosineAttentionScore::ScaledCosineAttentionScoreImpl<half> op;
         op.Init(query, key, scale, attnScore, tilingData);
         op.Process();
     } else if (TILING_KEY_IS(1)) {
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220
-        NsScaledCosineAttentionScore::ScaledCosineAttentionScoreKernel<bfloat16_t> op;
+        NsScaledCosineAttentionScore::ScaledCosineAttentionScoreImpl<bfloat16_t> op;
         op.Init(query, key, scale, attnScore, tilingData);
         op.Process();
 #endif
     } else if (TILING_KEY_IS(2)) {
-        NsScaledCosineAttentionScore::ScaledCosineAttentionScoreKernel<float> op;
+        NsScaledCosineAttentionScore::ScaledCosineAttentionScoreImpl<float> op;
         op.Init(query, key, scale, attnScore, tilingData);
         op.Process();
     }
