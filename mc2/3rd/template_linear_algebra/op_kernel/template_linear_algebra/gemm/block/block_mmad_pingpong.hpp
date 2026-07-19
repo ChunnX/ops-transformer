@@ -20,28 +20,10 @@
 
 namespace Catlass::Gemm::Block {
 
-template <
-    bool ENABLE_UNIT_FLAG_,
-    class L1TileShape_,
-    class L0TileShape_,
-    class AType_,
-    class BType_,
-    class CType_,
-    class BiasType_,
-    class TileCopy_,
-    class TileMmad_
->
-struct BlockMmad <
-    MmadAtlasA2Pingpong<ENABLE_UNIT_FLAG_>,
-    L1TileShape_,
-    L0TileShape_,
-    AType_,
-    BType_,
-    CType_,
-    BiasType_,
-    TileCopy_,
-    TileMmad_
-> {
+template <bool ENABLE_UNIT_FLAG_, class L1TileShape_, class L0TileShape_, class AType_, class BType_, class CType_,
+          class BiasType_, class TileCopy_, class TileMmad_>
+struct BlockMmad<MmadAtlasA2Pingpong<ENABLE_UNIT_FLAG_>, L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_,
+                 TileCopy_, TileMmad_> {
 public:
     // Type Aliases
     using DispatchPolicy = MmadAtlasA2Pingpong<ENABLE_UNIT_FLAG_>;
@@ -93,7 +75,7 @@ public:
     static_assert((L0B_TILE_SIZE * STAGES) <= L0B_SIZE, "L0TileShape exceeding the L0B space!");
 
     static_assert(L1TileShape::M == L0TileShape::M && L1TileShape::N == L0TileShape::N,
-        "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
+                  "The situation where the basic blocks of L1 and L0 differ on the m and n axes is not supported yet");
 
     /// Construct
     CATLASS_DEVICE
@@ -140,11 +122,9 @@ public:
 
     /// Perform a block-scoped matrix multiply-accumulate
     CATLASS_DEVICE
-    void operator()(
-        AscendC::GlobalTensor<ElementA> const &gmA, LayoutA const &layoutA,
-        AscendC::GlobalTensor<ElementB> const &gmB, LayoutB const &layoutB,
-        AscendC::GlobalTensor<ElementC> const &gmC, LayoutC const &layoutC,
-        GemmCoord const &actualShape)
+    void operator()(AscendC::GlobalTensor<ElementA> const &gmA, LayoutA const &layoutA,
+                    AscendC::GlobalTensor<ElementB> const &gmB, LayoutB const &layoutB,
+                    AscendC::GlobalTensor<ElementC> const &gmC, LayoutC const &layoutC, GemmCoord const &actualShape)
     {
         uint32_t mRound = RoundUp<L1AAlignHelper::M_ALIGNED>(actualShape.m());
         uint32_t nRound = RoundUp<L1BAlignHelper::N_ALIGNED>(actualShape.n());
@@ -182,8 +162,8 @@ public:
             // preload next tile from GM to L1
             if (kLoopIdx < kTileCount - 1) {
                 uint32_t kLoopIdxNext = kLoopIdx + 1;
-                kActualNext = (kLoopIdxNext < kTileCount - 1) ?
-                    L1TileShape::K : (actualShape.k() - kLoopIdxNext * L1TileShape::K);
+                kActualNext = (kLoopIdxNext < kTileCount - 1) ? L1TileShape::K :
+                                                                (actualShape.k() - kLoopIdxNext * L1TileShape::K);
 
                 // Get L1 tensor for next stage
                 auto l1ATensor = l1ATensorList[l1ListIdNext];
@@ -215,12 +195,12 @@ public:
             uint32_t kPartLoop = CeilDiv<L0TileShape::K>(kActual);
 
             for (int mPartIdx = 0; mPartIdx < mPartLoop; mPartIdx++) {
-                uint32_t mPartActual = (mPartIdx < mPartLoop - 1) ?
-                    L0TileShape::M : (mRound - mPartIdx * L0TileShape::M);
+                uint32_t mPartActual =
+                    (mPartIdx < mPartLoop - 1) ? L0TileShape::M : (mRound - mPartIdx * L0TileShape::M);
 
                 for (int kPartIdx = 0; kPartIdx < kPartLoop; kPartIdx++) {
-                    uint32_t kPartActual = (kPartIdx < kPartLoop - 1) ?
-                        L0TileShape::K : (kActual - kPartIdx * L0TileShape::K);
+                    uint32_t kPartActual =
+                        (kPartIdx < kPartLoop - 1) ? L0TileShape::K : (kActual - kPartIdx * L0TileShape::K);
 
                     // Locate the current tile on L0A
                     auto l0ATile = l0ATensorList[l0AListId];
@@ -242,8 +222,8 @@ public:
                     }
 
                     for (int nPartIdx = 0; nPartIdx < nPartLoop; nPartIdx++) {
-                        uint32_t nPartActual = (nPartIdx < nPartLoop - 1) ?
-                            L0TileShape::N : (nRound - nPartIdx * L0TileShape::N);
+                        uint32_t nPartActual =
+                            (nPartIdx < nPartLoop - 1) ? L0TileShape::N : (nRound - nPartIdx * L0TileShape::N);
 
                         // Locate the current tile on L0B
                         auto l0BTile = l0BTensorList[l0BListId];

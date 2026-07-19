@@ -86,8 +86,8 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::CheckKcTensorFormat(const gert:
     OP_TILING_CHECK(MatmulAlltoAllTilingUtil::CheckTensorFormat(context_, opName_) != ge::GRAPH_SUCCESS,
                     OP_LOGE(opName_, "Tiling check format failed."), return ge::GRAPH_FAILED);
     auto x2ScaleTensorDesc = context->GetOptionalInputDesc(INPUT_X2_SCALE_INDEX);
-    OP_TILING_CHECK((x2ScaleTensorDesc == nullptr),
-                    OP_LOGE_WITH_INVALID_INPUT(opName, "x2Scale"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((x2ScaleTensorDesc == nullptr), OP_LOGE_WITH_INVALID_INPUT(opName, "x2Scale"),
+                    return ge::GRAPH_FAILED);
     ge::Format x2ScaleFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(x2ScaleTensorDesc->GetStorageFormat()));
     OP_TILING_CHECK(x2ScaleFormat != ge::FORMAT_ND,
                     OP_LOGE_FOR_INVALID_FORMAT(opName, "x2Scale", Ops::Base::ToString(x2ScaleFormat).c_str(), "ND"),
@@ -124,8 +124,7 @@ ge::graphStatus AllToAllKcQuantMatmulTilingBase::SetKcDataTypeInfo(const gert::T
 
     OP_TILING_CHECK(
         aDTypeNum != FP8_E5M2_VALUES && aDTypeNum != FP8_E4M3_VALUES,
-        OP_LOGE_FOR_INVALID_VALUE(opName, "aDTypeNum",
-            std::to_string(aDTypeNum).c_str(), "35(fp8e5m2) or 36(fp8e4m3)"),
+        OP_LOGE_FOR_INVALID_VALUE(opName, "aDTypeNum", std::to_string(aDTypeNum).c_str(), "35(fp8e5m2) or 36(fp8e4m3)"),
         return ge::GRAPH_FAILED);
     contextInfo.x1KcDynQuantDTypeVal = aDTypeNum;
 
@@ -562,8 +561,7 @@ uint64_t AllToAllKcQuantMatmulTilingBase::GetTilingKey() const
                                                         hcclServerType) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    uint8_t commMode =
-        (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
+    uint8_t commMode = (hcclServerType == mc2tiling::A5_CCU_ENGINE) ? ALL2ALL_COMM_TYPE_CCU : ALL2ALL_COMM_TYPE_AICPU;
     const uint64_t tilingKey = GET_TPL_TILING_KEY(quantMode, x2TransposeFlag, biasDType, isSmallK, commMode);
     OP_LOGD(opName_, "QUANTMODE,X2TRANSPOSE,DTYPEBIAS,ISSMALLK,COMMMODE: [%d,%d,%d,%d,%d], TilingKey is [%lu].",
             quantMode, x2TransposeFlag, biasDType, isSmallK, commMode, tilingKey);

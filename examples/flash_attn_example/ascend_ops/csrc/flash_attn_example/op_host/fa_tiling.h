@@ -72,7 +72,9 @@ enum ScheduleMode {
 
 class FaTiling {
 public:
-    FaTiling() {}
+    FaTiling()
+    {
+    }
     ~FaTiling() = default;
 
     void DoTiling(ContextParamsForTiling &contextKeyParams);

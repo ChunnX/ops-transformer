@@ -178,11 +178,13 @@ int32_t GenOnesData(
         size *= shapes[i];
     }
     uint32_t data_len = size * GetDataTypeSize(data_type);
-    int32_t *pData = new (std::nothrow) int32_t[data_len];
-    for (uint32_t i = 0; i < size; ++i) {
-        *(pData + i) = 0;
+    // data_len 是字节数，须按字节分配并零初始化：否则 dtype 宽于 4 字节时（index 为 DT_INT64）
+    // 尾半段是未初始化堆内存。index 依赖此处填 0 —— 本用例 cache 的 seq 维为 1，合法下标只有 0。
+    uint8_t *pData = new (std::nothrow) uint8_t[data_len]();
+    if (pData == nullptr) {
+        return FAILED;
     }
-    input_tensor = Tensor(input_tensor_desc, reinterpret_cast<uint8_t *>(pData), data_len);
+    input_tensor = Tensor(input_tensor_desc, pData, data_len);
     return SUCCESS;
 }
 

@@ -323,6 +323,29 @@ public:
         __local_mem__ float* x1Fp32Ptr = (__local_mem__ float*)xPowLocal1.GetPhyAddr();
         __local_mem__ float* x2Fp32Ptr = (__local_mem__ float*)xPowLocal2.GetPhyAddr();
 
+        // dv 不超过一个 ubFactor 时无需二分折叠，basicBlockLoop 为 0，单块直接归约
+        if (basicBlockLoop == 0) {
+            uint32_t singleBlockFactor =
+                ubFactorDvTail > 0 ? static_cast<uint32_t>(ubFactorDvTail) : static_cast<uint32_t>(this->ubFactor);
+            LocalTensor<T_KV> xLocal = inQueueX.AllocTensor<T_KV>();
+            __local_mem__ T_KV* xPtr = (__local_mem__ T_KV*)xLocal.GetPhyAddr();
+
+            xDataCopyParams.blockLen = singleBlockFactor * sizeof(T_KV);
+            AscendC::DataCopyPad(xLocal, this->kvGm[xDimOffset], xDataCopyParams, padParams);
+            inQueueX.EnQue<T_KV>(xLocal);
+            xLocal = inQueueX.DeQue<T_KV>();
+
+            CastPowVF(x1Fp32Ptr, xPtr, singleBlockFactor);
+            inQueueX.FreeTensor(xLocal);
+
+            AscendC::Duplicate(tmpReduceLocal, FLOAT_ZERO, BLOCK_SIZE / sizeof(float));
+            uint32_t srcShape[2] = {A_IN_IN, singleBlockFactor};
+            AscendC::ReduceSum<float, Pattern::Reduce::AR, true>(tmpReduceLocal, xPowLocal1, srcShape, false);
+            UpdateCache(cacheLocal, tmpReduceLocal, 0, A_IN_IN * BLOCK_SIZE / sizeof(float), A_IN_IN);
+            totalSumLocal = cacheLocal[resultCacheID_ * BLOCK_SIZE / sizeof(float)];
+            return;
+        }
+
         for (uint64_t basicBlockIdx = 0; basicBlockIdx < basicBlockLoop; basicBlockIdx++) {
             LocalTensor<T_KV> x1Local = inQueueX.AllocTensor<T_KV>();
             __local_mem__ T_KV* x1Ptr = (__local_mem__ T_KV*)x1Local.GetPhyAddr();

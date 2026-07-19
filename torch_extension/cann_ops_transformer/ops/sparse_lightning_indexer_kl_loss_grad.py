@@ -9,7 +9,6 @@
 from typing import Optional
 
 import torch
-import torch_npu
 from torch.library import impl
 
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -39,17 +38,18 @@ class SparseLightningIndexerKLLossGradOpBuilder(OpBuilder):
             "int? max_seqlen_q=None, int? max_seqlen_k=None, int? topk=None, "
             "str? layout_q=None, str? layout_k=None, int? mask_mode=None, "
             "int? cmp_ratio=None) -> Tensor",
-
             "sparse_lightning_indexer_kl_loss_grad("
             "Tensor q, Tensor k, Tensor w, Tensor sparse_indices, Tensor attn_softmax_l1_norm, "
             "*, Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_k=None, Tensor? seqused_q=None, "
             "Tensor? seqused_k=None, Tensor? cmp_residual_k=None, Tensor? metadata=None, "
-            "str layout_q=\"TND\", str layout_k=\"TND\", int mask_mode=3, "
-            "int cmp_ratio=1) -> (Tensor, Tensor, Tensor, Tensor)"
+            'str layout_q="TND", str layout_k="TND", int mask_mode=3, '
+            "int cmp_ratio=1) -> (Tensor, Tensor, Tensor, Tensor)",
         ]
 
     def register_meta(self):
-        @torch.library.register_fake("cann_ops_transformer::" + SLI_KL_LOSS_GRAD_METADATA_OP_NAME)
+        @torch.library.register_fake(
+            "cann_ops_transformer::" + SLI_KL_LOSS_GRAD_METADATA_OP_NAME
+        )
         def sparse_lightning_indexer_kl_loss_grad_metadata_meta(
             num_heads_q,
             num_heads_k,
@@ -69,7 +69,9 @@ class SparseLightningIndexerKLLossGradOpBuilder(OpBuilder):
             mask_mode=None,
             cmp_ratio=None,
         ):
-            return torch.empty((SLI_KL_LOSS_GRAD_METADATA_SIZE,), dtype=torch.int32, device="npu")
+            return torch.empty(
+                (SLI_KL_LOSS_GRAD_METADATA_SIZE,), dtype=torch.int32, device="npu"
+            )
 
         @impl(AS_LIBRARY, self.name, "Meta")
         def sparse_lightning_indexer_kl_loss_grad_meta(
@@ -96,12 +98,14 @@ class SparseLightningIndexerKLLossGradOpBuilder(OpBuilder):
             softmax_out = attn_softmax_l1_norm.new_empty(
                 attn_softmax_l1_norm.shape,
                 dtype=attn_softmax_l1_norm.dtype,
-                device="meta"
+                device="meta",
             )
             return dq, dk, dw, softmax_out
 
 
-sparse_lightning_indexer_kl_loss_grad_op_builder = SparseLightningIndexerKLLossGradOpBuilder()
+sparse_lightning_indexer_kl_loss_grad_op_builder = (
+    SparseLightningIndexerKLLossGradOpBuilder()
+)
 
 
 @impl(AS_LIBRARY, SLI_KL_LOSS_GRAD_METADATA_OP_NAME, "PrivateUse1")
@@ -154,7 +158,9 @@ def sparse_lightning_indexer_kl_loss_grad_metadata(
     )
 
 
-@torch.library.register_kernel("cann_ops_transformer::" + SLI_KL_LOSS_GRAD_METADATA_OP_NAME, None)
+@torch.library.register_kernel(
+    "cann_ops_transformer::" + SLI_KL_LOSS_GRAD_METADATA_OP_NAME, None
+)
 def sparse_lightning_indexer_kl_loss_grad_metadata_fallback(
     num_heads_q,
     num_heads_k,
@@ -238,7 +244,9 @@ def sparse_lightning_indexer_kl_loss_grad(
 
 try:
     import torchair
-    from torchair._ge_concrete_graph.fx2ge_converter import register_fx_node_ge_converter
+    from torchair._ge_concrete_graph.fx2ge_converter import (
+        register_fx_node_ge_converter,
+    )
     from torchair.ge._ge_graph import Tensor, TensorSpec
     from torchair.ge import attr
 
@@ -248,6 +256,7 @@ except ImportError:
 
 
 if _TORCHAIR_AVAILABLE:
+
     @register_fx_node_ge_converter(
         torch.ops.cann_ops_transformer.sparse_lightning_indexer_kl_loss_grad.default
     )
@@ -326,7 +335,9 @@ if _TORCHAIR_AVAILABLE:
         mask_mode = 0 if mask_mode is None else mask_mode
         cmp_ratio = 1 if cmp_ratio is None else cmp_ratio
         stream_info = torch.npu.get_stream_limit(torch.npu.current_stream())
-        aic_core_num = stream_info.get("cube_core_num") or SLI_KL_LOSS_GRAD_METADATA_MAX_CORE_NUM
+        aic_core_num = (
+            stream_info.get("cube_core_num") or SLI_KL_LOSS_GRAD_METADATA_MAX_CORE_NUM
+        )
         return torchair.ge.custom_op(
             "SparseLightningIndexerKLLossGradMetadata",
             inputs={

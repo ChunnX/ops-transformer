@@ -19,8 +19,8 @@
 #include "opdev/op_executor.h"
 
 namespace l0op {
-const aclTensor* Add(const aclTensor* self, const aclTensor* other, aclOpExecutor* executor);
+const aclTensor *Add(const aclTensor *self, const aclTensor *other, aclOpExecutor *executor);
 
 }
 
-#endif  // OP_API_INC_LEVEL0_OP_ADD_OP_H_
+#endif // OP_API_INC_LEVEL0_OP_ADD_OP_H_

@@ -31,18 +31,20 @@ const uint32_t MM_ALIGN_SIZE = 512;
 const uint8_t AIV_DB_SYNC_FLAG = 0x2;
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE = Mc2MatmulBaseBlock,
-          const MatmulConfig& MM_CFG = MM_CFG_NO_PRELOAD, class MM_CB = MatmulCallBackFunc<nullptr, nullptr, nullptr>,
+          const MatmulConfig &MM_CFG = MM_CFG_NO_PRELOAD, class MM_CB = MatmulCallBackFunc<nullptr, nullptr, nullptr>,
           FIXPIPE_OPT_SELECT FIXPIPE_OPT = FIXPIPE_OPT_SELECT::BASE_ENABLE_ALIGNOUT>
-class Mc2MatmulBaseUnalignedNKernel : public Mc2MatmulBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE,
-     BLOCK_TYPE, MM_CFG, MM_CB> {
+class Mc2MatmulBaseUnalignedNKernel
+    : public Mc2MatmulBaseKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB> {
 public:
     using C_T = typename C_TYPE::T;
-    __aicore__ inline Mc2MatmulBaseUnalignedNKernel() {}
+    __aicore__ inline Mc2MatmulBaseUnalignedNKernel()
+    {
+    }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
-                                GM_ADDR workspaceGM, const void* tilingData, TPipe* pipe);
-    __aicore__ inline void AicProcess(GlobalTensor<C_T>& cTensor, uint8_t enAtomic, bool aicNeedWaitAiv,
+                                GM_ADDR workspaceGM, const void *tilingData, TPipe *pipe);
+    __aicore__ inline void AicProcess(GlobalTensor<C_T> &cTensor, uint8_t enAtomic, bool aicNeedWaitAiv,
                                       uint8_t pingPongId);
-    __aicore__ inline void AivProcess(GlobalTensor<C_T>& cTensor, uint8_t pingPongId);
+    __aicore__ inline void AivProcess(GlobalTensor<C_T> &cTensor, uint8_t pingPongId);
     __aicore__ inline void Process(uint64_t index = 0UL, uint8_t enAtomic = 0UL);
     __aicore__ inline void AivNz2NdProcess(GlobalTensor<C_T> cNzGlobal, uint8_t pingPongId);
     __aicore__ inline void CopyInWithNz(LocalTensor<C_T> tensorNZ, GlobalTensor<C_T> cNzGlobal, uint64_t ubProcessM,
@@ -59,12 +61,12 @@ protected:
     uint64_t c0Size_ = BLOCK_SIZE;
 };
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
           class MM_CB, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
 __aicore__ inline void
 Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB, FIXPIPE_OPT>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR workspaceGM,
-    const void* tilingData, TPipe* pipe)
+    const void *tilingData, TPipe *pipe)
 {
     GetSizeC0<C_T>(c0Size_);
     uint64_t cDtypeSize = sizeof(C_T);
@@ -88,7 +90,7 @@ Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_
     params_.src0RepeatStride = alignedN_ / c0Size_;
     params_.src1RepeatStride = 0;
 
-    tempCGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ C_T*>(workspaceGM),
+    tempCGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ C_T *>(workspaceGM),
                                  baseSize_ * NUM_TWO * this->block_.matmulTilingData_->matmulTiling.usedCoreNum);
     this->mm_.SetSubBlockIdx(0);
     this->mm_.Init(&this->block_.matmulTilingData_->matmulTiling, pipe);
@@ -103,11 +105,11 @@ Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_
     }
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
           class MM_CB, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
 __aicore__ inline void
 Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB, FIXPIPE_OPT>::AivProcess(
-    GlobalTensor<C_T>& cTensor, uint8_t pingPongId)
+    GlobalTensor<C_T> &cTensor, uint8_t pingPongId)
 {
     if ASCEND_IS_AIV {
         uint32_t vBlockIndex = GetBlockIdx();
@@ -152,11 +154,11 @@ Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_
     }
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
           class MM_CB, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
 __aicore__ inline void
 Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB, FIXPIPE_OPT>::AicProcess(
-    GlobalTensor<typename C_TYPE::T>& cTensor, uint8_t enAtomic, bool aicNeedWaitAiv, uint8_t pingPongId)
+    GlobalTensor<typename C_TYPE::T> &cTensor, uint8_t enAtomic, bool aicNeedWaitAiv, uint8_t pingPongId)
 {
     if ASCEND_IS_AIC {
         this->mm_.SetSingleShape(this->block_.params_.singleCoreM, this->block_.params_.singleCoreN,
@@ -177,7 +179,7 @@ Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_
     }
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
           class MM_CB, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
 __aicore__ inline void
 Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB, FIXPIPE_OPT>::CopyInWithNz(
@@ -195,7 +197,7 @@ Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_
     WaitFlag<HardEvent::MTE2_V>(static_cast<event_t>(pingPongId));
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
           class MM_CB, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
 __aicore__ inline void
 Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB, FIXPIPE_OPT>::UpdateOffsetC(
@@ -220,12 +222,12 @@ Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_
     }
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
           class MM_CB, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
 __aicore__ inline void
 Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB,
-                           FIXPIPE_OPT>::Nz2NdAndGatherMask(LocalTensor<C_T> tensorND, LocalTensor<C_T> tensorNZ,
-                                                            uint64_t ubProcessM, uint8_t pingPongId)
+                              FIXPIPE_OPT>::Nz2NdAndGatherMask(LocalTensor<C_T> tensorND, LocalTensor<C_T> tensorNZ,
+                                                               uint64_t ubProcessM, uint8_t pingPongId)
 {
     size_t NfractalNum = alignedN_ / BLOCK_SIZE;
     uint8_t repeatTimes = MMV3DivCeil(ubProcessM, 8); // ub calc 8 row every repeat
@@ -239,9 +241,9 @@ Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_
     if constexpr (std::is_same_v<typename A_TYPE::T, float>) {
         for (size_t inLoop = 0; inLoop < NfractalNum; inLoop++) {
             Muls(tensorND[inLoop * BLOCK_SIZE], tensorNZ[inLoop * ubProcessM * BLOCK_SIZE], static_cast<C_T>(1.0), mask,
-                repeatTimes, mulsRepeatParams);
+                 repeatTimes, mulsRepeatParams);
             Muls(tensorND[inLoop * BLOCK_SIZE + c0Size_], tensorNZ[inLoop * ubProcessM * BLOCK_SIZE + c0Size_],
-                static_cast<C_T>(1.0), mask, repeatTimes, mulsRepeatParams);
+                 static_cast<C_T>(1.0), mask, repeatTimes, mulsRepeatParams);
         }
     }
     PipeBarrier<PIPE_V>();
@@ -253,11 +255,11 @@ Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_
     WaitFlag<HardEvent::V_MTE3>(static_cast<event_t>(pingPongId));
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
           class MM_CB, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
-__aicore__ inline void
-Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB, FIXPIPE_OPT>::AivNz2NdProcess(
-    GlobalTensor<C_T> cNzGlobal, uint8_t pingPongId)
+__aicore__ inline void Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB,
+                                                     FIXPIPE_OPT>::AivNz2NdProcess(GlobalTensor<C_T> cNzGlobal,
+                                                                                   uint8_t pingPongId)
 {
     if ASCEND_IS_AIV {
         uint32_t vBlockIndex = GetBlockIdx();
@@ -300,7 +302,7 @@ Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_
     }
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
           class MM_CB, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
 __aicore__ inline void
 Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB, FIXPIPE_OPT>::Process(
@@ -352,7 +354,7 @@ Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_
 
 // Current Kernel support only nd2nzA. No need to do nd2nz for B.
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE = Mc2MatmulBaseBlock,
-          const MatmulConfig& MM_CFG = MM_CFG_NO_PRELOAD, class MM_CB = MatmulCallBackFunc<nullptr, nullptr, nullptr>,
+          const MatmulConfig &MM_CFG = MM_CFG_NO_PRELOAD, class MM_CB = MatmulCallBackFunc<nullptr, nullptr, nullptr>,
           FIXPIPE_OPT_SELECT FIXPIPE_OPT = FIXPIPE_OPT_SELECT::BASE_ENABLE_ALIGNOUT>
 class Mc2MatmulBaseAToNZWithBL1FixpipeKernel
     : public Mc2MatmulBaseUnalignedNKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB, FIXPIPE_OPT> {
@@ -364,10 +366,12 @@ class Mc2MatmulBaseAToNZWithBL1FixpipeKernel
     };
 
 public:
-    __aicore__ inline Mc2MatmulBaseAToNZWithBL1FixpipeKernel() {}
+    __aicore__ inline Mc2MatmulBaseAToNZWithBL1FixpipeKernel()
+    {
+    }
 
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
-                                GM_ADDR workspaceGM, const Mc2MatmulV3TilingData* tilingData, TPipe* pipe);
+                                GM_ADDR workspaceGM, const Mc2MatmulV3TilingData *tilingData, TPipe *pipe);
 
     __aicore__ inline void Process(uint64_t index = 0, uint8_t enAtomic = 0);
 
@@ -376,12 +380,12 @@ protected:
     BaseUnAlignedNKernelParams fixpipeInnerParams_;
 };
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
           class MM_CB, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
 __aicore__ inline void
 Mc2MatmulBaseAToNZWithBL1FixpipeKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB, FIXPIPE_OPT>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR workspaceGM,
-    const Mc2MatmulV3TilingData* matmulTilingData, TPipe* pipe)
+    const Mc2MatmulV3TilingData *matmulTilingData, TPipe *pipe)
 {
     GetSizeC0<C_T>(this->c0Size_);
     uint64_t cDtypeSize = sizeof(C_T);
@@ -401,11 +405,11 @@ Mc2MatmulBaseAToNZWithBL1FixpipeKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_
                           this->alignedN_);
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG,
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG,
           class MM_CB, FIXPIPE_OPT_SELECT FIXPIPE_OPT>
-__aicore__ inline void
-Mc2MatmulBaseAToNZWithBL1FixpipeKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG, MM_CB, FIXPIPE_OPT>::Process(
-    uint64_t index, uint8_t enAtomic)
+__aicore__ inline void Mc2MatmulBaseAToNZWithBL1FixpipeKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG,
+                                                              MM_CB, FIXPIPE_OPT>::Process(uint64_t index,
+                                                                                           uint8_t enAtomic)
 {
     if ASCEND_IS_AIV {
         MatrixAtoNZV2<typename A_TYPE::T>(this->fixpipeInnerParams_.workspaceGMNZ, this->fixpipeInnerParams_.aGMNZ,

@@ -15,15 +15,15 @@
 #include "grouped_matmul_util.h"
 
 namespace gmm {
-template<typename T>
+template <typename T>
 class AclnnGroupedMatmulDAV3510Checker {
 public:
-    explicit AclnnGroupedMatmulDAV3510Checker(const GroupedMatmulParamsBase<T> &gmmParams) : gmmParams_(gmmParams){};
-    ~AclnnGroupedMatmulDAV3510Checker(){};
+    explicit AclnnGroupedMatmulDAV3510Checker(const GroupedMatmulParamsBase<T> &gmmParams) : gmmParams_(gmmParams) {};
+    ~AclnnGroupedMatmulDAV3510Checker() {};
     aclnnStatus CheckGroupedMatmulDAV3510() const;
     bool IsPerTileQuantMode() const;
-    void SetInputName(const std::string& xName, const std::string& weightName, const std::string& perTokenScaleName,
-                        const std::string& scaleName, const std::string& groupTensorName);
+    void SetInputName(const std::string &xName, const std::string &weightName, const std::string &perTokenScaleName,
+                      const std::string &scaleName, const std::string &groupTensorName);
 
 private:
     struct TensorDimInfo {
@@ -47,6 +47,10 @@ private:
     aclnnStatus CheckGeneralQuantShape() const;
     aclnnStatus CheckQuantCasesFormat() const;
     aclnnStatus CheckWeightNzSpecialParams() const;
+    aclnnStatus CheckWeightNzMultiTensorElements() const;
+    aclnnStatus CheckWeightNzTensorShapes() const;
+    aclnnStatus CheckWeightNzTensorShape(const aclTensor *weightTensor, const aclTensor *firstWeightTensor,
+                                         size_t index, int64_t &firstKDimValue, int64_t &firstNDimValue) const;
     aclnnStatus CheckWeightStorageShape(const aclTensor *weightTensor, int64_t kDimValue, int64_t nDimValue) const;
 
     aclnnStatus CheckGroupedMatmulMxDtype() const;
@@ -76,7 +80,6 @@ private:
     bool IsMxfp4() const;
     bool IsMultiTensorWeight() const;
     bool IsWeightNzMultiTensorLayout() const;
-    bool IsWeightNzMultiTensorCase() const;
     TensorIndexInfo GetTensorIndexInfo(size_t index = 0) const;
     aclnnStatus CheckMxFp8TypeKCaseInputShape(const TensorDimInfo &dimInfo, size_t index) const;
     aclnnStatus CheckMxTypeMCaseInputShape(const TensorDimInfo &dimInfo, size_t index) const;

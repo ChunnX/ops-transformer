@@ -1,15 +1,17 @@
 # aclnnSparseLightningIndexerKLLossGradMetadata
 
+[📄 查看源码](https://gitcode.com/cann/ops-transformer/tree/master/attention/sparse_lightning_indexer_kl_loss_grad_metadata)
+
 ## 产品支持情况
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| Ascend 950PR/Ascend 950DT                                   |    x     |
-| Atlas A3训练系列产品/Atlas A3推理系列产品                 |    √     |
-| Atlas A2训练系列产品/Atlas A2推理系列产品                 |    √     |
-| Atlas 200I/500 A2推理产品                                  |    x     |
-| Atlas推理系列产品                                          |    x     |
-| Atlas训练系列产品                                          |    x     |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |     √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    √     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    √     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    x     |
+| <term>Atlas 推理系列产品</term>                              |    x     |
+| <term>Atlas 训练系列产品</term>                              |    x     |
 
 ## 功能说明
 
@@ -38,8 +40,8 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
     int64_t numHeadsK,
     int64_t headDim,
     int64_t topk,
-    char *layoutQ,
-    char *layoutK,
+    char *layoutQOptional,
+    char *layoutKOptional,
     int64_t maskMode,
     int64_t cmpRatio,
     const aclTensor *metadata,
@@ -56,8 +58,6 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
 ```
 
 ## aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize
-
-## 参数说明
 
 - **参数说明**
 
@@ -84,167 +84,167 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
     </tr></thead>
   <tbody>
     <tr>
-      <td>cuSeqLensQOptional</td>
+      <td>cuSeqLensQOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同batch中query的累积sequence length。</br>TND场景下必传，并可通过该入参shape推导batch。</br>第一个值固定为0。</td>
-      <td>支持空Tensor。</td>
+      <td>表示不同batch中query的累积sequence length。</td>
+      <td><ul><li>支持空Tensor</li><li>TND场景下必传，并可通过该入参shape推导batch。</li><li>第一个值固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B+1,)</td>
-      <td>x</td>
+      <td>1维</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>cuSeqLensKOptional</td>
+      <td>cuSeqLensKOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>表示不同batch中key的累积sequence length。</br>TND场景下必传。</br>第一个值固定为0。</td>
-      <td>支持空Tensor。</td>
+      <td>表示不同batch中key的累积sequence length。</td>
+      <td><ul><li>支持空Tensor</li><li>TND场景下必传。</li><li>第一个值固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B+1,)</td>
-      <td>x</td>
+      <td>1维</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>seqUsedQOptional</td>
+      <td>seqUsedQOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>预留接口参数，表示不同batch中query实际参与运算的sequence length。</td>
-      <td>支持空Tensor。当前kernel路径暂不使用。</td>
+      <td>表示不同batch中query实际参与运算的sequence length。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B,)</td>
-      <td>x</td>
+      <td>1维</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>seqUsedKOptional</td>
+      <td>seqUsedKOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>预留接口参数，表示不同batch中key实际参与运算的sequence length。</td>
-      <td>支持空Tensor。当前kernel路径暂不使用。</td>
+      <td>表示不同batch中key实际参与运算的sequence length。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B,)</td>
-      <td>x</td>
+      <td>1维</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>cmpResidualKOptional</td>
+      <td>cmpResidualKOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>预留接口参数，表示不同batch中key的sequence length与cmpRatio相关的残差。</td>
-      <td>支持空Tensor。当前kernel路径暂不使用。</td>
+      <td>表示不同batch中key的sequence length与cmpRatio相关的残差。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape为(B,)</td>
-      <td>x</td>
+      <td>1维</td>
+      <td>√</td>
     </tr>
     <tr>
-      <td>batchSize</td>
+      <td>batchSize（int64_t）</td>
       <td>输入</td>
       <td>表示batch数量。</td>
-      <td>支持非负数。TND场景可填0，并通过cuSeqLensQOptional推导。</td>
-      <td>INT64</td>
+      <td><ul><li>支持非负数。TND场景可填0，并通过cuSeqLensQOptional推导。</li><li>建议值为0。</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqLenQ</td>
+      <td>maxSeqLenQ（int64_t）</td>
       <td>输入</td>
       <td>表示query的最大sequence length。</td>
-      <td>支持非负数。BSND场景必须为正数。</td>
-      <td>INT64</td>
+      <td><ul><li>支持非负数。BSND场景必须为正数。</li><li>建议值为0。</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>maxSeqLenK</td>
+      <td>maxSeqLenK（int64_t）</td>
       <td>输入</td>
       <td>表示key的最大sequence length。</td>
-      <td>支持非负数。BSND场景必须为正数。</td>
-      <td>INT64</td>
+      <td><ul><li>支持非负数。BSND场景必须为正数。</li><li>建议值为0。</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>numHeadsQ</td>
+      <td>numHeadsQ（int64_t）</td>
       <td>输入</td>
       <td>表示query的head个数。</td>
-      <td>必须为正数，并且能被numHeadsK整除。</td>
-      <td>INT64</td>
+      <td>必须为正数，并且能被numHeadsK整除，当前支持[1, 128]。</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>numHeadsK</td>
+      <td>numHeadsK（int64_t）</td>
       <td>输入</td>
       <td>表示key的head个数。</td>
-      <td>必须为正数。</td>
-      <td>INT64</td>
+      <td>必须为正数，当前仅支持1。</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>headDim</td>
+      <td>headDim（int64_t）</td>
       <td>输入</td>
       <td>表示q/k的head dimension。</td>
-      <td>必须为正数。</td>
-      <td>INT64</td>
+      <td>必须为正数，当前仅支持128。</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>topk</td>
+      <td>topk（int64_t）</td>
       <td>输入</td>
       <td>表示从key中筛选出的关键token个数。</td>
-      <td>必须为正数。</td>
-      <td>INT64</td>
+      <td>必须为正数，当前支持[1, 2048]和4096、8192。</td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutQ</td>
+      <td>layoutQOptional（char*）</td>
       <td>输入</td>
       <td>表示query侧的排列格式。</td>
-      <td>支持BSND/TND，默认值为BSND。</td>
-      <td>STRING</td>
+      <td><ul><li>支持 BSND、TND。</li><li>建议值为BSND。</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>layoutK</td>
+      <td>layoutKOptional（char*）</td>
       <td>输入</td>
       <td>表示key侧的排列格式。</td>
-      <td>支持BSND/TND，默认值为BSND。</td>
-      <td>STRING</td>
+      <td><ul><li>支持 BSND、TND。</li><li>建议值为BSND。</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>maskMode</td>
+      <td>maskMode（int64_t）</td>
       <td>输入</td>
       <td>表示sparse mask模式。</td>
-      <td>0: No mask</br>3: Causal</td>
-      <td>INT64</td>
+      <td><ul><li>0: No mask。</li><li>3: rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。</li><li>建议值为0。</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>cmpRatio</td>
+      <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>表示key的压缩率。</td>
-      <td>取值范围[0, 128]。</td>
-      <td>INT64</td>
+      <td><ul><li>取值范围[1，128]</li><li>建议值1，表示无压缩。</li></ul></td>
+      <td>-</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td>metadata</td>
+      <td>metadata（aclTensor*）</td>
       <td>输出</td>
       <td>表示负载均衡结果输出。</td>
       <td>输出结果作为aclnnSparseLightningIndexerKLLossGrad的metadataOptional输入。</td>
@@ -254,7 +254,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>x</td>
     </tr>
     <tr>
-      <td>workspaceSize</td>
+      <td>workspaceSize（uint64_t*）</td>
       <td>输出</td>
       <td>返回需要在Device侧申请的workspace大小。</td>
       <td>当前实现返回0。</td>
@@ -264,7 +264,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>-</td>
     </tr>
     <tr>
-      <td>executor</td>
+      <td>executor（aclOpExecutor**）</td>
       <td>输出</td>
       <td>返回op执行器，包含了算子计算流程。</td>
       <td>-</td>
@@ -276,9 +276,43 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
   </tbody>
   </table>
 
+  <ul><li><term>Ascend 950PR/Ascend 950DT</term> ：topk仅支持[1, 2048]。</li><li><term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term> ：不支持seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional，numHeadsQ仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li><li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> ：不支持seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional，numHeadsQ仅支持8/16/32/64，topk仅支持512/1024/2048/4096/8192。</li></ul>
+
 - **返回值：**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+    第一段接口完成入参校验，出现以下场景时报错：
+
+    <table style="undefined;table-layout: fixed; width: 1134px"><colgroup>
+    <col style="width: 319px">
+    <col style="width: 144px">
+    <col style="width: 671px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
+        <td>561101</td>
+        <td>创建aclOpExecutor失败。</td>
+      </tr>
+      <tr>
+        <td>ACLNN_ERR_INNER_NULLPTR</td>
+        <td>561103</td>
+        <td>参数workspaceSize、executor是空指针，或参数cuSeqLensQOptional、cuSeqLensKOptional、seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional进行Contiguous处理后为空指针。</td>
+      </tr>
+      <tr>
+        <td rowspan="2">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="2">161002</td>
+        <td>参数cuSeqLensQOptional、cuSeqLensKOptional、seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional、batchSize、maxSeqLenQ、maxSeqLenK、numHeadsQ、numHeadsK、headDim、topk、layoutQOptional、layoutKOptional、maskMode、cmpRatio的规格不在支持范围内。</td>
+      </tr>
+    </tbody>
+    </table>
 
 ## aclnnSparseLightningIndexerKLLossGradMetadata
 
@@ -326,7 +360,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
 ## 约束说明
 
   - aclnnSparseLightningIndexerKLLossGradMetadata为确定性实现，确定性计算配置不会改变其输出规则。
-
+  - B（Batch）表示输入样本批量大小。
   - BSND场景
     - 必传batchSize、maxSeqLenQ、maxSeqLenK和topk参数，以获取shape信息。
   - TND场景
@@ -367,14 +401,14 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
 
   - Batch取值规则
     - 如果batchSize大于0，优先使用batchSize。
-    - 如果batchSize小于等于0，且layoutQ为TND，则通过cuSeqLensQOptional的shape推导batch。
-    - 如果batchSize小于等于0，且layoutQ为BSND，则报错。
+    - 如果batchSize小于等于0，且layoutQOptional为TND，则通过cuSeqLensQOptional的shape推导batch。
+    - 如果batchSize小于等于0，且layoutQOptional为BSND，则报错。
   - Seqlen取值规则
     - TND场景下，通过cuSeqLensQOptional和cuSeqLensKOptional计算每个batch的实际q/k长度。
     - BSND场景下，通过maxSeqLenQ和maxSeqLenK获取q/k长度。
   - layout约束
-    - layoutQ必须为BSND或TND。
-    - layoutK支持BSND和TND，建议与layoutQ保持一致。
+    - layoutQOptional必须为BSND或TND。
+    - layoutKOptional支持BSND和TND，建议与layoutQOptional保持一致。
   - head约束
     - numHeadsQ、numHeadsK和headDim必须为正数。
     - numHeadsQ必须能被numHeadsK整除。
@@ -516,8 +550,8 @@ struct ArgContext {
     int64_t numHeadsK { 1 };
     int64_t headDim { 128 };
     int64_t topk { 512 };
-    char *layoutQ { nullptr };
-    char *layoutK { nullptr };
+    char *layoutQOptional { nullptr };
+    char *layoutKOptional { nullptr };
     int64_t maskMode { 3 };
     int64_t cmpRatio { 4 };
 };
@@ -598,13 +632,13 @@ void DestroyArgs(ArgContext &context)
     DestroyTensor(context.seqUsedKOptional);
     DestroyTensor(context.cmpResidualKOptional);
 
-    if (context.layoutQ != nullptr) {
-        free(context.layoutQ);
-        context.layoutQ = nullptr;
+    if (context.layoutQOptional != nullptr) {
+        free(context.layoutQOptional);
+        context.layoutQOptional = nullptr;
     }
-    if (context.layoutK != nullptr) {
-        free(context.layoutK);
-        context.layoutK = nullptr;
+    if (context.layoutKOptional != nullptr) {
+        free(context.layoutKOptional);
+        context.layoutKOptional = nullptr;
     }
 }
 
@@ -616,10 +650,10 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     int64_t batchSize = 1;
     context.maxSeqLenQ = 16;
     context.maxSeqLenK = 4;
-    context.layoutQ = (char *)malloc(sizeof(char) * 16);
-    context.layoutK = (char *)malloc(sizeof(char) * 16);
-    strcpy(context.layoutQ, scenario.hasCuSeq ? "TND" : "BSND");
-    strcpy(context.layoutK, scenario.hasCuSeq ? "TND" : "BSND");
+    context.layoutQOptional = (char *)malloc(sizeof(char) * 16);
+    context.layoutKOptional = (char *)malloc(sizeof(char) * 16);
+    strcpy(context.layoutQOptional, scenario.hasCuSeq ? "TND" : "BSND");
+    strcpy(context.layoutKOptional, scenario.hasCuSeq ? "TND" : "BSND");
 
     ret = CreateTensor(aclDataType::ACL_INT32, { SLI_METADATA_SIZE }, context.metadata);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create metadata failed. Error: %d", ret);
@@ -670,8 +704,8 @@ int main() {
     ret = aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
         context.cuSeqLensQOptional.data, context.cuSeqLensKOptional.data, context.seqUsedQOptional.data,
         context.seqUsedKOptional.data, context.cmpResidualKOptional.data, context.batchSize, context.maxSeqLenQ,
-        context.maxSeqLenK, context.numHeadsQ, context.numHeadsK, context.headDim, context.topk, context.layoutQ,
-        context.layoutK, context.maskMode, context.cmpRatio, context.metadata.data, &workspaceSize, &executor);
+        context.maxSeqLenK, context.numHeadsQ, context.numHeadsK, context.headDim, context.topk, context.layoutQOptional,
+        context.layoutKOptional, context.maskMode, context.cmpRatio, context.metadata.data, &workspaceSize, &executor);
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret,
         "aclnnSparseLightningIndexerKLLossGradMetadataGetWorkspaceSize failed. ERROR: %d", ret);
 

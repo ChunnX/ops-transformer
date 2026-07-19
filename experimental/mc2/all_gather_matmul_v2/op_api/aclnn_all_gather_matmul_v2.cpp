@@ -43,16 +43,12 @@ enum class NnopbaseHcclServerType : uint32_t {
     NNOPBASE_HCCL_SERVER_TYPE_END
 };
 
-extern aclnnStatus aclnnInnerAllGatherMatmulV2GetWorkspaceSize(const aclTensor *x1, const aclTensor *x2,
-                                                               const aclTensor *bias, const aclTensor *x1Scale,
-                                                               const aclTensor *x2Scale, const aclTensor *quantScale,
-                                                               const char *group, bool transposeX1, bool transposeX2,
-                                                               int64_t gatherIndex, int64_t commTurn, 
-                                                               int64_t rankSize, int64_t blockSize, int64_t groupSize,
-                                                               bool isGatherOut, bool isAMaxOut, int64_t yDtype,
-                                                               const char *commMode, aclTensor *output,
-                                                               aclTensor *gatherOut, aclTensor *amaxOut,
-                                                               uint64_t *workspaceSize, aclOpExecutor **executor);
+extern aclnnStatus aclnnInnerAllGatherMatmulV2GetWorkspaceSize(
+    const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const aclTensor *x1Scale, const aclTensor *x2Scale,
+    const aclTensor *quantScale, const char *group, bool transposeX1, bool transposeX2, int64_t gatherIndex,
+    int64_t commTurn, int64_t rankSize, int64_t blockSize, int64_t groupSize, bool isGatherOut, bool isAMaxOut,
+    int64_t yDtype, const char *commMode, aclTensor *output, aclTensor *gatherOut, aclTensor *amaxOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor);
 extern aclnnStatus aclnnInnerAllGatherMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                                aclrtStream stream);
 extern "C" uint64_t NnopbaseMsprofSysTime();
@@ -64,14 +60,14 @@ static const aclTensor *TransX2Tensor(const aclTensor *x2)
     uint64_t storageDimsNum = x2->GetStorageShape().GetDimNum();
     std::vector<int64_t> storageDims(storageDimsNum);
     for (uint64_t i = 0; i < storageDimsNum; i++) {
-    storageDims[i] = x2->GetStorageShape().GetDim(i);
+        storageDims[i] = x2->GetStorageShape().GetDim(i);
     }
 
     uint64_t viewDimsNum = x2->GetViewShape().GetDimNum();
     std::vector<int64_t> viewDims;
     viewDims.resize(viewDimsNum);
     for (uint64_t i = 0; i < viewDimsNum; i++) {
-    viewDims[i] = x2->GetViewShape().GetDim(i);
+        viewDims[i] = x2->GetViewShape().GetDim(i);
     }
     // transpose the viewshape last two dimensions
     viewDims[0] = x2->GetViewShape().GetDim(1);
@@ -88,17 +84,17 @@ static const aclTensor *TransX2Tensor(const aclTensor *x2)
     auto offset = x2->GetViewOffset();
     aclFormat format = aclFormat::ACL_FORMAT_ND;
 
-    return aclCreateTensor(viewDims.data(), viewDimsNum, dataType, stride.data(), offset, format,
-                           storageDims.data(), storageDimsNum, x2->GetTensor()->GetAddr());
+    return aclCreateTensor(viewDims.data(), viewDimsNum, dataType, stride.data(), offset, format, storageDims.data(),
+                           storageDimsNum, x2->GetTensor()->GetAddr());
 }
 
-aclnnStatus allGatherMatmulGetWorkspaceSizeCCUMode(const aclTensor* x1, const aclTensor* x2, const aclTensor* bias,
-                                                   const aclTensor* x1Scale, const aclTensor* x2Scale,
-                                                   const aclTensor* quantScale, int64_t blockSize, const char* group,
+aclnnStatus allGatherMatmulGetWorkspaceSizeCCUMode(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
+                                                   const aclTensor *x1Scale, const aclTensor *x2Scale,
+                                                   const aclTensor *quantScale, int64_t blockSize, const char *group,
                                                    int64_t gatherIndex, int64_t commTurn, int64_t streamMode,
-                                                   int64_t groupSize, const char* commMode, aclTensor* output,
-                                                   aclTensor* gatherOut, aclTensor* amaxOut,
-                                                   uint64_t* workspaceSize, aclOpExecutor** executor)
+                                                   int64_t groupSize, const char *commMode, aclTensor *output,
+                                                   aclTensor *gatherOut, aclTensor *amaxOut, uint64_t *workspaceSize,
+                                                   aclOpExecutor **executor)
 {
     uint64_t timeStamp = NnopbaseMsprofSysTime();
     uint32_t rankSize = 0;
@@ -112,43 +108,38 @@ aclnnStatus allGatherMatmulGetWorkspaceSizeCCUMode(const aclTensor* x1, const ac
     auto transX2 = x2;
     auto transX2Scale = x2Scale;
     if (transposeX2) {
-    // x2转置时将两轴shape调换
-    transX2 = TransX2Tensor(x2);
+        // x2转置时将两轴shape调换
+        transX2 = TransX2Tensor(x2);
     }
     if ((x2Scale != nullptr) && MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
-    transX2Scale = TransX2Tensor(x2Scale);
+        transX2Scale = TransX2Tensor(x2Scale);
     }
-    aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(x1, transX2, bias, x1Scale, transX2Scale,
-                                                                quantScale, group, transposeX1, transposeX2,
-                                                                gatherIndex, commTurn, rankSize, blockSize,
-                                                                groupSize, isGatherOut, isAMaxOut, outDtype,
-                                                                commMode, output, gatherOut, amaxOut,
-                                                                workspaceSize, executor);
+    aclnnStatus ret = aclnnInnerAllGatherMatmulV2GetWorkspaceSize(
+        x1, transX2, bias, x1Scale, transX2Scale, quantScale, group, transposeX1, transposeX2, gatherIndex, commTurn,
+        rankSize, blockSize, groupSize, isGatherOut, isAMaxOut, outDtype, commMode, output, gatherOut, amaxOut,
+        workspaceSize, executor);
     static NnopbaseDfxId dfxId = {0x60000, __func__, false};
     NnopbaseReportApiInfo(timeStamp, dfxId);
     return ret;
 }
 
-aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor* x1, const aclTensor* x2,
-                                                   const aclTensor* bias, const aclTensor* x1Scale,
-                                                   const aclTensor* x2Scale, const aclTensor* quantScale,
-                                                   int64_t blockSize, const char* group,
-                                                   int64_t gatherIndex, int64_t commTurn,
-                                                   int64_t streamMode, int64_t groupSize,
-                                                   const char* commMode, aclTensor* output,
-                                                   aclTensor* gatherOut, aclTensor* amaxOut,
-                                                   uint64_t* workspaceSize, aclOpExecutor** executor)
+aclnnStatus aclnnAllGatherMatmulV2GetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
+                                                   const aclTensor *x1Scale, const aclTensor *x2Scale,
+                                                   const aclTensor *quantScale, int64_t blockSize, const char *group,
+                                                   int64_t gatherIndex, int64_t commTurn, int64_t streamMode,
+                                                   int64_t groupSize, const char *commMode, aclTensor *output,
+                                                   aclTensor *gatherOut, aclTensor *amaxOut, uint64_t *workspaceSize,
+                                                   aclOpExecutor **executor)
 {
     aclnnStatus ret = ACLNN_SUCCESS;
-    ret = allGatherMatmulGetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize,
-                                                 group, gatherIndex, commTurn, streamMode, groupSize,
-                                                 commMode, output, gatherOut, amaxOut, workspaceSize, executor);
-                                                      
+    ret = allGatherMatmulGetWorkspaceSizeCCUMode(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, group,
+                                                 gatherIndex, commTurn, streamMode, groupSize, commMode, output,
+                                                 gatherOut, amaxOut, workspaceSize, executor);
+
     return ret;
 }
 
-aclnnStatus aclnnAllGatherMatmulV2(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
-                                   aclrtStream stream)
+aclnnStatus aclnnAllGatherMatmulV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream)
 {
     if (NnopbaseSetHcclServerType) {
         NnopbaseSetHcclServerType(executor, NnopbaseHcclServerType::NNOPBASE_HCCL_SERVER_TYPE_CCU);

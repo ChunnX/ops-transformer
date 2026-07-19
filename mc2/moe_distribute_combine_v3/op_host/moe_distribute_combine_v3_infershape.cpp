@@ -29,7 +29,7 @@ static constexpr size_t COMBINE_OUTPUT_X_INDEX = 0;
 
 static ge::graphStatus InferShapeMoeDistributeCombineV3(gert::InferShapeContext *context)
 {
-    if (context == nullptr){
+    if (context == nullptr) {
         return ge::GRAPH_FAILED;
     }
     OP_LOGD(context->GetNodeName(), "Begin to do InferShapeMoeDistributeCombineV3.");
@@ -48,8 +48,7 @@ static ge::graphStatus InferShapeMoeDistributeCombineV3(gert::InferShapeContext 
     xShape->SetDim(0U, bs);
     xShape->SetDim(1U, h);
 
-    OP_LOGD(context->GetNodeName(), "x shape shape is :%s after infershape.",
-        Ops::Base::ToString(*xShape).c_str());
+    OP_LOGD(context->GetNodeName(), "x shape shape is :%s after infershape.", Ops::Base::ToString(*xShape).c_str());
     OP_LOGD(context->GetNodeName(), "End to do InferShapeMoeDistributeCombineV3.");
     return ge::GRAPH_SUCCESS;
 }
@@ -66,4 +65,4 @@ static ge::graphStatus InferDataTypeMoeDistributeCombineV3(gert::InferDataTypeCo
 IMPL_OP_INFERSHAPE(MoeDistributeCombineV3)
     .InferShape(InferShapeMoeDistributeCombineV3)
     .InferDataType(InferDataTypeMoeDistributeCombineV3);
-}  // namespace ops
+} // namespace ops

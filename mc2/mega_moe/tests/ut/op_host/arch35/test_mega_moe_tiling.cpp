@@ -30,9 +30,11 @@ protected:
 
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
 {
-    struct MegaMoeCompileInfo {} compileInfo;
+    struct MegaMoeCompileInfo {
+    } compileInfo;
 
-    gert::TilingContextPara tilingContextPara("MegaMoe",
+    gert::TilingContextPara tilingContextPara(
+        "MegaMoe",
         {
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{128, 4096}, {128, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -63,14 +65,14 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
             {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
             {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-            {"activation_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+            {"activation_out_dtype",
+             Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
             {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo
-    );
+        &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
     uint64_t expectTilingKey = 16UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -78,9 +80,11 @@ TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
 
 TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
 {
-    struct MegaMoeCompileInfo {} compileInfo;
+    struct MegaMoeCompileInfo {
+    } compileInfo;
 
-    gert::TilingContextPara tilingContextPara("MegaMoe",
+    gert::TilingContextPara tilingContextPara(
+        "MegaMoe",
         {
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{256, 5120}, {256, 5120}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -111,14 +115,14 @@ TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
             {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
             {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-            {"activation_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+            {"activation_out_dtype",
+             Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
             {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo
-    );
+        &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -126,9 +130,11 @@ TEST_F(MegaMoeArch35TilingTest, H5120_BS256_FP8E5M2)
 
 TEST_F(MegaMoeArch35TilingTest, H7168_BS512)
 {
-    struct MegaMoeCompileInfo {} compileInfo;
+    struct MegaMoeCompileInfo {
+    } compileInfo;
 
-    gert::TilingContextPara tilingContextPara("MegaMoe",
+    gert::TilingContextPara tilingContextPara(
+        "MegaMoe",
         {
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{512, 7168}, {512, 7168}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -159,14 +165,14 @@ TEST_F(MegaMoeArch35TilingTest, H7168_BS512)
             {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
             {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-            {"activation_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+            {"activation_out_dtype",
+             Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
             {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo
-    );
+        &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 2}};
     uint64_t expectTilingKey = 16UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
@@ -174,9 +180,11 @@ TEST_F(MegaMoeArch35TilingTest, H7168_BS512)
 
 TEST_F(MegaMoeArch35TilingTest, DifferentNConfig)
 {
-    struct MegaMoeCompileInfo {} compileInfo;
+    struct MegaMoeCompileInfo {
+    } compileInfo;
 
-    gert::TilingContextPara tilingContextPara("MegaMoe",
+    gert::TilingContextPara tilingContextPara(
+        "MegaMoe",
         {
             {{{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND},
             {{{128, 4096}, {128, 4096}}, ge::DT_BF16, ge::FORMAT_ND},
@@ -207,17 +215,17 @@ TEST_F(MegaMoeArch35TilingTest, DifferentNConfig)
             {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
             {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
-            {"activation_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+            {"activation_out_dtype",
+             Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
             {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
             {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"topo_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo
-    );
+        &compileInfo);
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 4}};
     uint64_t expectTilingKey = 0UL;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
 }
 
-} // MegaMoeUT
+} // namespace MegaMoeUT

@@ -961,6 +961,16 @@ if (NOT ENABLE_AICPU_KERNEL)
     # and add matching install(DIRECTORY ...) if they need the same dedup treatment.
     set(OPS_TRANSFORMER_SHARED_KERNEL_INSTALL_DEPS mc2/common)
 
+    # pypto-pro ops (marked by enable_pypto_kernel, global property PYPTO_ENABLED_OPS keyed by op_file):
+    # forward so ascendc_impl_build.py emits the pypto wrapper variant (calls pypto_compile_op).
+    # Comma-joined so it stays a single argv token.
+    get_property(_pypto_adapt_ops GLOBAL PROPERTY PYPTO_ENABLED_OPS)
+    set(PYPTO_ADAPT_OPS_OPTION "")
+    if (_pypto_adapt_ops)
+        list(JOIN _pypto_adapt_ops "," _pypto_adapt_ops_str)
+        set(PYPTO_ADAPT_OPS_OPTION --pypto-ops ${_pypto_adapt_ops_str})
+    endif ()
+
     add_custom_target(generate_transformer_adapt_py
             COMMAND ${HI_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/cmake/scripts/util/ascendc_impl_build.py
             \"\"
@@ -972,12 +982,21 @@ if (NOT ENABLE_AICPU_KERNEL)
             --opsinfo-dir ${base_aclnn_binary_dir} ${base_aclnn_binary_dir}/inner ${base_aclnn_binary_dir}/exc
             --compute-unit ${ASCEND_COMPUTE_UNIT}
             --enable-experimental ${ENABLE_EXPERIMENTAL}
+            ${PYPTO_ADAPT_OPS_OPTION}
     )
 
     add_dependencies(generate_transformer_adapt_py opbuild_gen_default opbuild_gen_inner opbuild_gen_exc)
 
     foreach (_op_name ${OP_LIST})
         install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}.py
+                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                OPTIONAL
+        )
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_a2.py
+                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                OPTIONAL
+        )
+        install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_a3.py
                 DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
                 OPTIONAL
         )
@@ -997,8 +1016,11 @@ if (NOT ENABLE_AICPU_KERNEL)
     install(DIRECTORY ${BLAZE}
             DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
     )
-    install(DIRECTORY ${TENSOR_API}
-            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common
+    install(DIRECTORY ${TENSOR_API}/impl/tensor_api
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/impl
+    )
+    install(DIRECTORY ${TENSOR_API}/include/tensor_api
+            DESTINATION ${IMPL_INSTALL_DIR}/ascendc/common/tensor_api/include
     )
     # Shared kernel headers for whitelist deps (contents -> ascendc/common).
     install(DIRECTORY ${OPS_ADV_DIR}/mc2/common/op_kernel/
@@ -1061,6 +1083,32 @@ endforeach(    )
                         OPTIONAL
                 )
             endif ()
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
+        endforeach ()
+        foreach (op_depend_dir ${${_op_name}_a2_depends})
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
+            if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
+                set(COMMON_SRC_DIR "")
+                if (ENABLE_EXPERIMENTAL)
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/experimental/${op_depend_dir}" REALPATH)
+                else()
+                    get_filename_component(COMMON_SRC_DIR "${OPS_TRANSFORMER_DIR}/${op_depend_dir}" REALPATH)
+                endif()
+                list(APPEND ALL_COMMON_SRC_DIRS "${COMMON_SRC_DIR}")
+            endif()
+        endforeach ()
+        foreach (op_depend_dir ${${_op_name}_a3_depends})
+            get_filename_component(_op_depened_name "${op_depend_dir}" NAME)
+            get_filename_component(_op_parent_name "${op_depend_dir}" DIRECTORY)
             if (ENABLE_OPS_KERNEL AND ${_op_depened_name} STREQUAL "common")
                 set(COMMON_SRC_DIR "")
                 if (ENABLE_EXPERIMENTAL)
@@ -1217,7 +1265,7 @@ if (NOT ENABLE_BUILT_IN AND BUILD_OPEN_PROJECT)
     set(CPACK_GENERATOR External)
     set(CPACK_CMAKE_GENERATOR "Unix Makefiles")
     set(CPACK_EXTERNAL_ENABLE_STAGING TRUE)
-    
+
     if (ENABLE_BUILD_PKG)
         set(CPACK_MAKESELF_PATH ${OPS_TRANSFORMER_DIR}/third_party/makeself)
         set(CPACK_EXTERNAL_PACKAGE_SCRIPT ${ASCEND_PROJECT_DIR}/fwk_modules/makeself.cmake)

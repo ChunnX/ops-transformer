@@ -321,6 +321,7 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
 - 该算子仅支持Ascend 950 AI Processor。
 - 该算子仅支持连续Tensor，不支持非连续Tensor。
 - **该算子当前版本仅支持 interleave 模式（`rotary_mode=1`）**。half（0）、quarter（2）、interleave-half（3）模式暂未实现。
+- 该算子不支持输入空Tensor（任意维度大小不能为0），不支持 slice 长度为零（即 `partial_slice[0] == partial_slice[1]`）的场景。
 
 - 确定性计算：
   - aclnnInplacePartialRotaryMulGrad默认确定性实现。
@@ -331,7 +332,6 @@ aclnnStatus aclnnInplacePartialRotaryMulGrad(
   - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dyRef满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dyRef的B、S、N。
   - half、interleave和interleave-half模式下，切片长度(end - start)必须能被2整除。
   - quarter模式下，切片长度(end - start)必须能被4整除。
-  - 当start等于end时，算子不执行有效计算，直接返回。
   - 输入张量cos和sin的数据类型必须相同。
 
 

@@ -31,13 +31,15 @@ static inline bool CheckEmptyTensor(const aclTensor *tensor, const char *name)
 {
     const auto &shape = tensor->GetViewShape();
     if (shape.GetDimNum() == 0) {
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMoeDistributeCombineSetup", name, "[]", (std::string("The shape of ") + name + " cannot be empty.").c_str());
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMoeDistributeCombineSetup", name, "[]",
+                                              (std::string("The shape of ") + name + " cannot be empty.").c_str());
         return false;
     }
     for (size_t i = 0; i < shape.GetDimNum(); ++i) {
         if (shape.GetDim(i) <= 0) {
             OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeCombineSetup", name,
-                std::to_string(shape.GetDim(i)).c_str(), "dimension must be positive");
+                                                     std::to_string(shape.GetDim(i)).c_str(),
+                                                     "dimension must be positive");
             return false;
         }
     }
@@ -116,7 +118,8 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *expert
     OP_CHECK_EMPTY_TENSOR(commCmdInfoOut, return ACLNN_ERR_PARAM_INVALID);
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombineSetup", "groupEp",
-            "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX), "groupEp name too long");
+                                              "length exceeds " + std::to_string(HCCL_GROUP_NAME_MAX),
+                                              "groupEp name too long");
         return ACLNN_ERR_PARAM_INVALID;
     }
     OP_LOGD("aclnn_moe_distribute_combine_setup CheckParams success");
@@ -144,7 +147,8 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
 {
     OP_LOGD("aclnnMoeDistributeCombineSetupGetWorkspaceSize start.");
     if (GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombineSetup", "npuArch",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnMoeDistributeCombineSetup", "npuArch",
             std::to_string(static_cast<int64_t>(GetCurrentPlatformInfo().GetCurNpuArch())).c_str(),
             "only support NpuArch::DAV_3510");
         return ACLNN_ERR_PARAM_INVALID;
@@ -156,9 +160,9 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupGetWorkspaceSize(
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
 
     aclnnStatus retStatus = aclnnInnerMoeDistributeCombineSetupGetWorkspaceSize(
-        expandX, expertIds, assistInfoForCombine, const_cast<char*>(groupEp), epWorldSize, epRankId,
-        moeExpertNum, expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode,
-        commType, const_cast<char*>(commAlg), quantExpandXOut, commCmdInfoOut, workspaceSize, executor);
+        expandX, expertIds, assistInfoForCombine, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum,
+        expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType,
+        const_cast<char *>(commAlg), quantExpandXOut, commCmdInfoOut, workspaceSize, executor);
     return retStatus;
 }
 
@@ -184,14 +188,16 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineSetupTeardownCalcOutputSize(
     OP_CHECK_EMPTY_TENSOR(expandX, return ACLNN_ERR_PARAM_INVALID);
     if (expandX->GetViewShape().GetDimNum() != TWO_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnMoeDistributeCombineSetup", "expandX",
-            "dim=" + std::to_string(expandX->GetViewShape().GetDimNum()), "The shape dim of expandX must be 2D.");
+                                                 "dim=" + std::to_string(expandX->GetViewShape().GetDimNum()),
+                                                 "The shape dim of expandX must be 2D.");
         return ACLNN_ERR_PARAM_INVALID;
     }
     int64_t a = expandX->GetViewShape().GetDim(0);
     int64_t h = expandX->GetViewShape().GetDim(1);
     if (a <= 0 || h <= 0) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON("aclnnMoeDistributeCombineSetup", "expandX",
-            "[" + std::to_string(a) + "," + std::to_string(h) + "]", "dimensions must be greater than zero");
+                                              "[" + std::to_string(a) + "," + std::to_string(h) + "]",
+                                              "dimensions must be greater than zero");
         return ACLNN_ERR_PARAM_INVALID;
     }
 

@@ -22,10 +22,10 @@ static const std::unordered_map<std::string, int64_t> mode_map = {
     {"half", 0}, {"interleave", 1}, {"quarter", 2}, {"interleave-half", 3}};
 
 void InplacePartialRotaryMulBackward(at::Tensor &gradOutput, const at::Tensor &r1, const at::Tensor &r2,
-    std::string rotaryMode, c10::IntArrayRef partialSlice)
+                                     std::string rotaryMode, c10::IntArrayRef partialSlice)
 {
-    TORCH_CHECK(gradOutput.dim() == 4,
-                "Input tensor grad_output's dim num should be 4, actual ", gradOutput.dim(), ".");
+    TORCH_CHECK(gradOutput.dim() == 4, "Input tensor grad_output's dim num should be 4, actual ", gradOutput.dim(),
+                ".");
     auto it = mode_map.find(rotaryMode);
     TORCH_CHECK(it != mode_map.end(),
                 "rotary_mode must be one of 'half', 'interleave', 'quarter', 'interleave-half', got '", rotaryMode,
@@ -38,10 +38,10 @@ void InplacePartialRotaryMulBackward(at::Tensor &gradOutput, const at::Tensor &r
     int64_t sliceEnd = partialSlice[1];
     TORCH_CHECK(sliceStart >= 0, "partial_slice start must be >= 0, got ", sliceStart, ".");
     TORCH_CHECK(sliceEnd >= 0, "partial_slice end must be >= 0, got ", sliceEnd, ".");
-    TORCH_CHECK(sliceStart <= sliceEnd,
-                "partial_slice start must be <= end, got start=", sliceStart, ", end=", sliceEnd, ".");
-    TORCH_CHECK(sliceEnd <= gradOutput.size(3),
-                "partial_slice end must be <= D (", gradOutput.size(3), "), got end=", sliceEnd, ".");
+    TORCH_CHECK(sliceStart <= sliceEnd, "partial_slice start must be <= end, got start=", sliceStart,
+                ", end=", sliceEnd, ".");
+    TORCH_CHECK(sliceEnd <= gradOutput.size(3), "partial_slice end must be <= D (", gradOutput.size(3),
+                "), got end=", sliceEnd, ".");
     TORCH_CHECK(gradOutput.is_contiguous(), "grad_output must be a contiguous tensor.");
     TORCH_CHECK(r1.is_contiguous(), "r1 must be a contiguous tensor.");
     TORCH_CHECK(r2.is_contiguous(), "r2 must be a contiguous tensor.");

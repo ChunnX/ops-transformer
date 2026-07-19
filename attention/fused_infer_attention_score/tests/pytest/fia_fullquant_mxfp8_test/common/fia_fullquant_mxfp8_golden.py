@@ -711,15 +711,16 @@ def _online_softmax_update(S_ij, mask_j, mi, si, oi, ln_p_scale):
     6. 求 s = sum(P)
     7. P 转 FP8 再转回 FP32，模拟 NPU 侧 P 的量化损失
     """
-    LN2 = 0.6931471806
-    INV_LN2 = 1.4426950409
+    LN2 = 0.6931471824645996
+    INV_LN2 = 1.4426950216293335
     S_ij = S_ij.masked_fill(mask_j, float('-inf'))
 
     m_block_j, _ = torch.max(S_ij, dim=-1, keepdims=True)
     m_block_j = torch.ceil(m_block_j * INV_LN2) * LN2
     m_block_j = torch.max(mi, m_block_j)
+    m_block_j_sub = m_block_j - ln_p_scale
 
-    P_ij_raw = torch.exp(S_ij - m_block_j + ln_p_scale)
+    P_ij_raw = torch.exp(S_ij - m_block_j_sub)
     s_block_j = torch.sum(P_ij_raw, dim=-1, keepdims=True)
     P_ij_drop = P_ij_raw.to(FP8_DTYPE).to(torch.float32)
 

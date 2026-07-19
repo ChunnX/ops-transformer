@@ -350,7 +350,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
 
 - 通信引擎约束：
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持AICPU通信。
-  - <term>Ascend 950DT</term>：支持CCU通信。
+  - <term>Ascend 950DT</term>：支持AI_CPU通信。
 
 - 确定性计算：
   - aclnnAlltoAllvGroupedMatMul默认确定性实现。
@@ -570,7 +570,7 @@ aclnnStatus aclnnAlltoAllvGroupedMatMul(
                 return ret);
         //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); 
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
                 return ret);
 
         // 释放device资源，需要根据具体API的接口定义修改

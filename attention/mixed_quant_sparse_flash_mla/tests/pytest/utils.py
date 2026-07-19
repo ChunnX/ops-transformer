@@ -106,6 +106,24 @@ def parse_list_param(value):
     return None
 
 
+def parse_datarange_param(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        s = value.strip()
+        if s.lower() == 'none' or s == '':
+            return None
+        if s.startswith('[') and s.endswith(']'):
+            s = s[1:-1]
+        try:
+            return [float(x.strip()) for x in s.split(',') if x.strip() != '']
+        except ValueError:
+            return None
+    return None
+
+
 
 def gen_cu_seqlens_from_seqused(seqused):
     """
@@ -370,6 +388,9 @@ def fill_none_params(params_dict):
         'S1EQS2': S1EQS2,
         'topk_value_mode': params_dict.get('topk_value_mode', 1),
         'return_softmax_lse': params_dict.get('return_softmax_lse', False),
+        'q_datarange': params_dict.get('q_datarange'),
+        'ori_kv_datarange': params_dict.get('ori_kv_datarange'),
+        'cmp_kv_datarange': params_dict.get('cmp_kv_datarange'),
     }
 
     return filled_params
@@ -403,12 +424,18 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
             "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
             "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "quant_mode", "tile_size",
             "rope_head_dim", "template_run_mode", "actlen_mode", "S1EQS2",
-            "topk_value_mode", "return_softmax_lse",
+            "topk_value_mode",
         ]
         optional_columns = [
             "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
             "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv",
         ]
+        datarange_columns = [
+            "q_datarange", "ori_kv_datarange", "cmp_kv_datarange",
+        ]
+        default_value_columns = {
+            "return_softmax_lse": False,
+        }
         # 检查是否缺少必要列
         missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
@@ -424,6 +451,14 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                     row_dict[col] = None
                 else:
                     row_dict[col] = parse_list_param(row_dict[col])
+            for col in datarange_columns:
+                if col not in row_dict:
+                    row_dict[col] = None
+                else:
+                    row_dict[col] = parse_datarange_param(row_dict[col])
+            for col, default_val in default_value_columns.items():
+                if col not in row_dict or row_dict[col] is None:
+                    row_dict[col] = default_val
             test_cases.append(row_dict)
             i = i + 1
 
@@ -478,6 +513,9 @@ def save_result(params, result, fulfill_percent, result_path):
         "rope_head_dim": params.get('rope_head_dim'),
         "topk_value_mode": params.get('topk_value_mode'),
         "return_softmax_lse": params.get('return_softmax_lse'),
+        "q_datarange": params.get('q_datarange'),
+        "ori_kv_datarange": params.get('ori_kv_datarange'),
+        "cmp_kv_datarange": params.get('cmp_kv_datarange'),
         "result": result,
         "fulfill_percent": fulfill_percent,
     }

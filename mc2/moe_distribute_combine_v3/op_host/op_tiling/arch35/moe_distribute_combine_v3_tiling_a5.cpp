@@ -25,8 +25,8 @@
 #include "mc2_hcom_topo_info.h"
 #include "mc2_exception_dump.h"
 namespace optiling {
-ge::graphStatus MoeDistributeCombineV3TilingFuncA5::MoeDistributeCombineV2TilingFuncNew(
-    gert::TilingContext* context, const CombineV2Config& config)
+ge::graphStatus MoeDistributeCombineV3TilingFuncA5::MoeDistributeCombineV2TilingFuncNew(gert::TilingContext *context,
+                                                                                        const CombineV2Config &config)
 {
     MoeDistributeCombineV2TilingFuncA5 funcA5;
     return funcA5.MoeDistributeCombineV2TilingFuncNew(context, config);
@@ -39,7 +39,7 @@ static ge::graphStatus TilingParseForMoeDistributeCombineV3(gert::TilingParseCon
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MoeDistributeCombineV3TilingFuncImplA5(gert::TilingContext* context)
+ge::graphStatus MoeDistributeCombineV3TilingFuncImplA5(gert::TilingContext *context)
 {
     MoeDistributeCombineV3TilingFuncA5 impl;
     return impl.MoeDistributeCombineV3TilingFunc(context);
@@ -48,4 +48,4 @@ ge::graphStatus MoeDistributeCombineV3TilingFuncImplA5(gert::TilingContext* cont
 IMPL_OP_OPTILING(MoeDistributeCombineV3)
     .Tiling(MoeDistributeCombineV3TilingFuncImplA5)
     .TilingParse<MoeDistributeCombineV3CompileInfo>(TilingParseForMoeDistributeCombineV3);
-}
+} // namespace optiling

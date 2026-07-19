@@ -32,9 +32,9 @@ namespace optiling {
 class MoeDistributeDispatchV3TilingFuncBase {
 public:
     virtual ge::graphStatus MoeDistributeDispatchA3TilingFuncImplPublic(gert::TilingContext *context,
-                                                                         DispatchV2Config &config) = 0;
-    ge::graphStatus MoeDistributeDispatchV3TilingFunc(gert::TilingContext* context);
+                                                                        DispatchV2Config &config) = 0;
+    ge::graphStatus MoeDistributeDispatchV3TilingFunc(gert::TilingContext *context);
 };
-}
+} // namespace optiling
 
 #endif

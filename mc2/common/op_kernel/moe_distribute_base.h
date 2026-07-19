@@ -66,10 +66,11 @@ struct ReservedStruct {
     uint32_t streamNum;
     uint32_t signalNum;
     HcclSignalInfo localSignals[LOCAL_NOTIFY_MAX_NUM];
-    HcclStreamInfo streamInfo[RES_LOCAL_STREAM_MAX_NUM]; // 19为630版本数组的实际大小，不能使用已经变更为40的LOCAL_NOTIFY_MAX_NUM，否则会有兼容问题
+    HcclStreamInfo streamInfo
+        [RES_LOCAL_STREAM_MAX_NUM]; // 19为630版本数组的实际大小，不能使用已经变更为40的LOCAL_NOTIFY_MAX_NUM，否则会有兼容问题
     HcclStreamInfo mainStreamInfo;
-    HcclSignalInfo aicpuOpNotify[AICPU_OP_NOTIFY_MAX_NUM];  // 集合通信AICPU展开资源
-    ListCommon nextTagRes;                                  // HccltagLocalResV2
+    HcclSignalInfo aicpuOpNotify[AICPU_OP_NOTIFY_MAX_NUM]; // 集合通信AICPU展开资源
+    ListCommon nextTagRes;                                 // HccltagLocalResV2
 };
 
 // 算子计数信息
@@ -94,15 +95,15 @@ struct LocalResInfoV2 {
     HcclSignalInfo localSignals[LOCAL_NOTIFY_MAX_NUM];
     HcclStreamParam streamParam[CUR_LOCAL_STREAM_MAX_NUM];
     HcclStreamParam mainStreamParam;
-    HcclSignalInfo aicpuOpNotify[AICPU_OP_NOTIFY_MAX_NUM];  // 集合通信AICPU展开资源
-    ListCommon nextTagRes;                                  // HccltagLocalResV2
+    HcclSignalInfo aicpuOpNotify[AICPU_OP_NOTIFY_MAX_NUM]; // 集合通信AICPU展开资源
+    ListCommon nextTagRes;                                 // HccltagLocalResV2
 };
 
 struct HierarchicalAlgInfo {
-    uint64_t commplaneSubGroupRankLength;  // complanSubGroupRank占用的字节数
-    uint64_t commplaneSubGroupRank;  // 指针
+    uint64_t commplaneSubGroupRankLength; // complanSubGroupRank占用的字节数
+    uint64_t commplaneSubGroupRank;       // 指针
     uint32_t hierarchicalAlgOptionNum;
-    uint64_t hierarchicalAlgOptionVec;    // hierarchicalAlgOptionVec数组指针
+    uint64_t hierarchicalAlgOptionVec; // hierarchicalAlgOptionVec数组指针
 };
 
 enum class rtFloatOverflowMode_t {
@@ -116,8 +117,8 @@ struct AlgoTopoInfo {
     uint32_t userRankSize; // 通信域的Rank数量
     int32_t deviceLogicId;
     bool isSingleMeshAggregation;
-    uint32_t deviceNumPerAggregation;  // 每个Module中的Device数量
-    uint32_t superPodNum;              // 集群中总的超节点数
+    uint32_t deviceNumPerAggregation; // 每个Module中的Device数量
+    uint32_t superPodNum;             // 集群中总的超节点数
     uint32_t devicePhyId;
     uint32_t topoType; // TopoType
     uint32_t deviceType;
@@ -135,27 +136,27 @@ struct AlgoTopoInfo {
     uint32_t pairLinkCounterNum;
     uint64_t pairLinkCounter;
     uint32_t nicNum;
-    uint64_t nicList;           // niclist数组指针
-    uint64_t complanRankLength; // complanRank占用的字节数
-    uint64_t complanRank;       // 指针
-    uint64_t bridgeRankNum;     // bridgeRank占用的个数
-    uint64_t bridgeRank;        // 指针
+    uint64_t nicList;                     // niclist数组指针
+    uint64_t complanRankLength;           // complanRank占用的字节数
+    uint64_t complanRank;                 // 指针
+    uint64_t bridgeRankNum;               // bridgeRank占用的个数
+    uint64_t bridgeRank;                  // 指针
     uint64_t serverAndsuperPodRankLength; // serverAndsuperPodRank占用的字节数
-    uint64_t serverAndsuperPodRank; // 指针
+    uint64_t serverAndsuperPodRank;       // 指针
 };
 
 struct HcclOpConfig {
-    uint8_t deterministic; //确定性计算开关
+    uint8_t deterministic; // 确定性计算开关
     uint8_t retryEnable;   // 是否重执行
     uint8_t highPerfEnable;
-    uint8_t padding[5];    // 大小需要64By对齐，未来添加参数时减小padding
-    uint8_t linkTimeOut[8]; // 发送超时时长
+    uint8_t padding[5];      // 大小需要64By对齐，未来添加参数时减小padding
+    uint8_t linkTimeOut[8];  // 发送超时时长
     uint64_t notifyWaitTime; // 超时时长，同HCCL_EXEC_TIMEOUT
     uint32_t retryHoldTime;
     uint32_t retryIntervalTime;
-    bool interHccsDisable = false; //使能rdma开关
+    bool interHccsDisable = false; // 使能rdma开关
     rtFloatOverflowMode_t floatOverflowMode = rtFloatOverflowMode_t::RT_OVERFLOW_MODE_UNDEF;
-    uint32_t multiQpThreshold = 512;  // 多QP每个QP分担数据量最小阈值
+    uint32_t multiQpThreshold = 512; // 多QP每个QP分担数据量最小阈值
 };
 
 struct HcclMC2WorkSpace {
@@ -169,12 +170,12 @@ struct RemoteResPtr {
 };
 
 struct HDCommunicateParams {
-    uint64_t hostAddr { 0 };
-    uint64_t deviceAddr { 0 };
-    uint64_t readCacheAddr { 0 };
-    uint32_t devMemSize{ 0 };
-    uint32_t buffLen{ 0 };
-    uint32_t flag{ 0 };
+    uint64_t hostAddr{0};
+    uint64_t deviceAddr{0};
+    uint64_t readCacheAddr{0};
+    uint32_t devMemSize{0};
+    uint32_t buffLen{0};
+    uint32_t flag{0};
 };
 
 struct HcclRankRelationResV2 {
@@ -198,13 +199,13 @@ struct HcclOpResParam {
     uint32_t localUsrRankId; // usrrankid
     uint32_t rankSize;       // 通信域内total rank个数
     uint64_t winSize; // 每个win大小，静态图时，可能是0，如果通信域内也有动态图，则可能为非0
-    uint64_t localWindowsIn; // 全F为无效值
+    uint64_t localWindowsIn;  // 全F为无效值
     uint64_t localWindowsOut; // 全F为无效值
     char hcomId[128];
     // aicore识别remote window
     uint64_t winExpSize;
     uint64_t localWindowsExp;
-    uint32_t rWinStart; // 为HcclRankRelationRes起始位置
+    uint32_t rWinStart;  // 为HcclRankRelationRes起始位置
     uint32_t rWinOffset; // 为HcclRemoteRes的大小
     uint64_t version;
     ReservedStruct reservedStruct;
@@ -216,21 +217,21 @@ struct HcclOpResParam {
     uint64_t aicpuStateInfo;
     uint64_t lockAddr;
     uint32_t rsv[16];
-    uint32_t notifysize;                         // RDMA场景使用，910B/910_93为4B，其余芯片为8B
-    uint32_t remoteResNum;                       // 有效的remoteResNum
-    RemoteResPtr remoteRes[AICPU_MAX_RANK_NUM];  //数组指针，指向HcclRankRelationResV2，下标为remoteUserRankId
+    uint32_t notifysize;                        // RDMA场景使用，910B/910_93为4B，其余芯片为8B
+    uint32_t remoteResNum;                      // 有效的remoteResNum
+    RemoteResPtr remoteRes[AICPU_MAX_RANK_NUM]; // 数组指针，指向HcclRankRelationResV2，下标为remoteUserRankId
 
     // communicate retry
     HDCommunicateParams kfcControlTransferH2DParams;
     HDCommunicateParams kfcStatusTransferD2HParams;
-    uint64_t tinyMem;  // for all2all
+    uint64_t tinyMem; // for all2all
     uint64_t tinyMemSize;
     // 零拷贝场景使用
     uint64_t zeroCopyHeadPtr;
     uint64_t zeroCopyTailPtr;
     uint64_t zeroCopyRingBuffer;
-    uint64_t zeroCopyIpcPtrs[MAX_MODULE_DEVICE_NUM];                // 保存集合通信时每个对端的输入输出内存地址
-    uint32_t zeroCopyDevicePhyId[MAX_MODULE_DEVICE_NUM];            // 保存每个rank对应的物理卡Id
+    uint64_t zeroCopyIpcPtrs[MAX_MODULE_DEVICE_NUM];     // 保存集合通信时每个对端的输入输出内存地址
+    uint32_t zeroCopyDevicePhyId[MAX_MODULE_DEVICE_NUM]; // 保存每个rank对应的物理卡Id
 
     bool utraceStatusFlag;
     OpCounterInfo opCounterInfo;
@@ -242,7 +243,7 @@ struct HcclOpResParam {
     uint64_t aicpuCustomParamAddr;
     uint64_t aicpuCustomParamSize;
 
-    MemDetails1 userMemRes[MAX_RANK_NUM_A3];  // 下标为rank id
+    MemDetails1 userMemRes[MAX_RANK_NUM_A3]; // 下标为rank id
     uint32_t userMemType = 0;
 
     HcclStreamParam aicpuOrderStreamParam; // 按序下发的stream
@@ -253,9 +254,9 @@ struct HcclOpResParam {
     bool isARSDoubleRing;
     // 读取HCCL_ENTRY_LOG_ENABLE环境变量，用于增加算子kernel展开信息
     bool opEntry{false};
-    uint32_t hcclSdmaQos;   // HCCL SDMA QOS TAG
-    uint64_t sizeOfAiRMAInfo = 0; //用于内存校验
-    uint64_t aiRMAInfo = 0; //HcclAiRMAInfo* 单个结构体指针
+    uint32_t hcclSdmaQos;         // HCCL SDMA QOS TAG
+    uint64_t sizeOfAiRMAInfo = 0; // 用于内存校验
+    uint64_t aiRMAInfo = 0;       // HcclAiRMAInfo* 单个结构体指针
 };
 
 // Transport 内存类型
@@ -274,21 +275,21 @@ enum class HcclAiRMAMemType : uint32_t {
 
 // Transport 内存信息
 struct HcclAiRMAMemInfo {
-    uint32_t memMaxNum{0};  // 最大内存数量，等于 HcclAiRMAMemType::MAX_NUM
-    uint32_t sizeOfMemDetails{0};  // sizeof(MemDetails)，用于内存校验和偏移计算
-    uint64_t memDetailPtr{0};  // MemDetails数组首地址, 个数: HcclAiRMAMemType::MAX_NUM
+    uint32_t memMaxNum{0};        // 最大内存数量，等于 HcclAiRMAMemType::MAX_NUM
+    uint32_t sizeOfMemDetails{0}; // sizeof(MemDetails)，用于内存校验和偏移计算
+    uint64_t memDetailPtr{0};     // MemDetails数组首地址, 个数: HcclAiRMAMemType::MAX_NUM
     // 可往后追加字段
 };
 
 // 全部 Transport QP/Mem 信息
 struct HcclAiRMAInfo {
-    uint32_t curRankId{0};  // 当前rankId
-    uint32_t rankNum{0};  // rank数量
-    uint32_t qpNum{0};  // 单个Transport的QP数量
+    uint32_t curRankId{0}; // 当前rankId
+    uint32_t rankNum{0};   // rank数量
+    uint32_t qpNum{0};     // 单个Transport的QP数量
 
     uint32_t sizeOfAiRMAWQ{0};  // sizeof(HcclAiRMAWQ)
     uint32_t sizeOfAiRMACQ{0};  // sizeof(HcclAiRMACQ)
-    uint32_t sizeOfAiRMAMem{0};  // sizeof(HcclAiRMAMemInfo)
+    uint32_t sizeOfAiRMAMem{0}; // sizeof(HcclAiRMAMemInfo)
 
     // HcclAiRMAWQ二维数组首地址
     // QP个数: rankNum * qpNum
@@ -326,28 +327,28 @@ struct CombinedCapability {
 };
 
 struct HcclA2CombineOpParam {
-    uint64_t workSpace;                         // Address for communication between client and server,
-                                                // hccl requests and clears
-    uint64_t workSpaceSize;                     // Space for communication between client and server
-    uint32_t rankId;                            // id of this rank
-    uint32_t rankNum;                           // num of ranks in this comm group
-    uint64_t winSize;                           // size of each windows memory
-    uint64_t windowsIn[AscendC::HCCL_MAX_RANK_NUM];      // windows address for input, windowsIn[rankId] corresponds
-                                                // to the local card address,
-                                                // and others are cross-card mapping addresses.
-    uint64_t windowsOut[AscendC::HCCL_MAX_RANK_NUM];     // windows address for output, windowsOut[rankId] corresponds
-                                                // to the local card address,
-                                                // and others are cross-card mapping addresses.
+    uint64_t workSpace;                              // Address for communication between client and server,
+                                                     // hccl requests and clears
+    uint64_t workSpaceSize;                          // Space for communication between client and server
+    uint32_t rankId;                                 // id of this rank
+    uint32_t rankNum;                                // num of ranks in this comm group
+    uint64_t winSize;                                // size of each windows memory
+    uint64_t windowsIn[AscendC::HCCL_MAX_RANK_NUM];  // windows address for input, windowsIn[rankId] corresponds
+                                                     // to the local card address,
+                                                     // and others are cross-card mapping addresses.
+    uint64_t windowsOut[AscendC::HCCL_MAX_RANK_NUM]; // windows address for output, windowsOut[rankId] corresponds
+                                                     // to the local card address,
+                                                     // and others are cross-card mapping addresses.
     uint8_t res[8328];
     uint8_t multiFlag;
     __gm__ AscendC::IbVerbsData *data;
     uint64_t dataSize;
     // 追加字段
     uint64_t sizeOfAiRMAInfo; // sizeof(HcclAiRMAInfo)
-    uint64_t aiRMAInfo; // HcclAiRMAInfo* 单个结构体指针
+    uint64_t aiRMAInfo;       // HcclAiRMAInfo* 单个结构体指针
 
-    CombinedCapability* capability;             // address of the communication capability information structure on the Device
-    uint64_t capabilitySize;                    // size of the communication capability information structure
+    CombinedCapability *capability; // address of the communication capability information structure on the Device
+    uint64_t capabilitySize;        // size of the communication capability information structure
 };
 enum class DataplaneMode : uint32_t {
     HOST = 0,
@@ -409,21 +410,23 @@ struct ReadTokenMetaDataStruct {
     uint32_t curTokenTopkOffset;
 };
 
-__aicore__ inline void cacheWriteThrough(__gm__ uint8_t* sourceAddr, uint64_t length) {
-    __gm__ uint8_t* start =
-        (__gm__ uint8_t*)((uint64_t)sourceAddr / AscendC::CACHE_LINE_SIZE * AscendC::CACHE_LINE_SIZE);
-    __gm__ uint8_t* end =
-        (__gm__ uint8_t*)(((uint64_t)sourceAddr + length) / AscendC::CACHE_LINE_SIZE * AscendC::CACHE_LINE_SIZE);
+__aicore__ inline void cacheWriteThrough(__gm__ uint8_t *sourceAddr, uint64_t length)
+{
+    __gm__ uint8_t *start =
+        (__gm__ uint8_t *)((uint64_t)sourceAddr / AscendC::CACHE_LINE_SIZE * AscendC::CACHE_LINE_SIZE);
+    __gm__ uint8_t *end =
+        (__gm__ uint8_t *)(((uint64_t)sourceAddr + length) / AscendC::CACHE_LINE_SIZE * AscendC::CACHE_LINE_SIZE);
     AscendC::GlobalTensor<uint8_t> global;
     global.SetGlobalBuffer(start);
     for (uint32_t i = 0; i <= end - start; i += AscendC::CACHE_LINE_SIZE) {
         AscendC::DataCacheCleanAndInvalid<uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE,
-            AscendC::DcciDst::CACHELINE_OUT>(global[i]);
+                                          AscendC::DcciDst::CACHELINE_OUT>(global[i]);
     }
 }
-__aicore__ inline DataplaneMode GetDataplaneMode(GM_ADDR contextGM0) {
+__aicore__ inline DataplaneMode GetDataplaneMode(GM_ADDR contextGM0)
+{
     __gm__ HcclA2CombineOpParam *winContext_ = (__gm__ HcclA2CombineOpParam *)contextGM0;
-    CombinedCapability* capability = winContext_->capability;
+    CombinedCapability *capability = winContext_->capability;
     uint64_t capabilitySize = winContext_->capabilitySize;
     DataplaneMode dataplaneMode = DataplaneMode::AICPU;
     if (capability == 0) {
@@ -441,70 +444,77 @@ __aicore__ inline int64_t GetCurrentTimestampUs()
     return AscendC::GetSystemCycle() / TIME_CYCLE;
 }
 
-__aicore__ inline void RecordRankCommDuration(AscendC::LocalTensor<int32_t> performanceInfoU32Tensor, uint32_t rankId, int64_t startTime)
+__aicore__ inline void RecordRankCommDuration(AscendC::LocalTensor<int32_t> performanceInfoU32Tensor, uint32_t rankId,
+                                              int64_t startTime)
 {
     int64_t endTime = GetCurrentTimestampUs();
-    int32_t duration = static_cast<int32_t>(endTime - startTime); // int32_t可以表示2^31(us)，约35min在实际场景下满足需要
-    performanceInfoU32Tensor.SetValue(rankId * sizeof(int64_t) / sizeof(int32_t), duration); // 使用int32_t是因为atomicAdd不支持int64_t类型，这里只赋值到int64_t的低32位。
+    int32_t duration =
+        static_cast<int32_t>(endTime - startTime); // int32_t可以表示2^31(us)，约35min在实际场景下满足需要
+    performanceInfoU32Tensor.SetValue(
+        rankId * sizeof(int64_t) / sizeof(int32_t),
+        duration); // 使用int32_t是因为atomicAdd不支持int64_t类型，这里只赋值到int64_t的低32位。
 }
 
 namespace Mc2Kernel {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A5 implmentation
 using HcclOpParam = HcclCombinOpParam;
 
-__aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam * winContext)
+__aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam *winContext)
 {
     return winContext->rankId;
 }
 
-__aicore__ inline uint32_t GetRankDim(__gm__ HcclOpParam * winContext)
+__aicore__ inline uint32_t GetRankDim(__gm__ HcclOpParam *winContext)
 {
     return winContext->rankDim;
 }
 
-__aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam * winContext)
+__aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam *winContext)
 {
     return winContext->winSize;
 }
 
-__aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam * winContext)
+__aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam *winContext)
 {
     return (GM_ADDR)(winContext->windowsIn[winContext->rankId] + winContext->rankId * EP_RANK_OFFSET_STEP);
 }
 
-__aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
+__aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam *winContext, const int32_t rankId,
+                                                  const int32_t curRankId)
 {
     return (GM_ADDR)(winContext->windowsIn[rankId] + A5_MTE_STATE_WIN_SIZE + rankId * EP_RANK_OFFSET_STEP);
 }
 
-__aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
+__aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam *winContext, const int32_t rankId,
+                                                       const int32_t curRankId)
 {
     return (GM_ADDR)(winContext->windowsIn[rankId] + rankId * EP_RANK_OFFSET_STEP);
 }
-#else // A3 implementation
+#else  // A3 implementation
 using HcclOpParam = HcclOpResParam;
 
-__aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam * winContext)
+__aicore__ inline uint32_t GetRankId(__gm__ HcclOpParam *winContext)
 {
     return winContext->localUsrRankId;
 }
 
-__aicore__ inline uint32_t GetRankDim(__gm__ HcclOpParam * winContext)
+__aicore__ inline uint32_t GetRankDim(__gm__ HcclOpParam *winContext)
 {
     return winContext->rankSize;
 }
 
-__aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam * winContext)
+__aicore__ inline uint64_t GetWinSize(__gm__ HcclOpParam *winContext)
 {
     return winContext->winSize;
 }
 
-__aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam * winContext)
+__aicore__ inline GM_ADDR GetStatusDataSpaceGm(__gm__ HcclOpParam *winContext)
 {
     return (GM_ADDR)(winContext->localWindowsExp);
 }
 
-__aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
+__aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam *winContext, const int32_t rankId,
+                                                  const int32_t curRankId)
 {
     if (rankId == curRankId) {
         return (GM_ADDR)(winContext->localWindowsIn);
@@ -512,7 +522,8 @@ __aicore__ inline GM_ADDR GetBaseWindAddrByRankId(__gm__ HcclOpParam * winContex
     return (GM_ADDR)(((HcclRankRelationResV2 *)(winContext->remoteRes[rankId].nextDevicePtr))->windowsIn);
 }
 
-__aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam * winContext, const int32_t rankId, const int32_t curRankId)
+__aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam *winContext, const int32_t rankId,
+                                                       const int32_t curRankId)
 {
     if (rankId == curRankId) {
         return (GM_ADDR)(winContext->localWindowsExp);
@@ -520,5 +531,5 @@ __aicore__ inline GM_ADDR GetBaseWindStateAddrByRankId(__gm__ HcclOpParam * winC
     return (GM_ADDR)(((HcclRankRelationResV2 *)(winContext->remoteRes[rankId].nextDevicePtr))->windowsExp);
 }
 #endif // __NPU_ARCH__ == 3510
-} // Mc2Kernel
+} // namespace Mc2Kernel
 #endif // MOE_DISTRIBUTE_BASE_H

@@ -82,16 +82,6 @@ def _silu(x: torch.Tensor) -> torch.Tensor:
     return x * torch.sigmoid(x)
 
 
-def _split_sequences(
-        x: torch.Tensor, query_start_loc: torch.Tensor | None
-) -> tuple[list[torch.Tensor], int]:
-    if x.ndim == 3:
-        B = x.shape[0]
-        return [x[i] for i in range(B)], B
-    qsl = query_start_loc.to(torch.int64)
-    B = qsl.shape[0] - 1
-    return [x[qsl[i]:qsl[i + 1]] for i in range(B)], B
-
 
 def CausalConv1d(
     x,  # [T, D] varlen or [B, S, D] batch
@@ -133,150 +123,103 @@ def CausalConv1d(
         is_fn_mode = seq_len > 1
     elif x_t.ndim == 2:
         if query_start_loc is None:
-            is_fn_mode = False  # update mode
+            is_fn_mode = False
         else:
-            qsl = _to_torch(query_start_loc)
-            batch = qsl.shape[0] - 1
-            x_first_dim = x_t.shape[0]
-            is_fn_mode = x_first_dim > batch
+            is_fn_mode = True
 
     # Step 1: convert inputs to torch tensors and cast to float32
-    orig_dtype = x_t.dtype  # save before float32 cast for output conversion
+    orig_dtype = x_t.dtype
     x_t = x_t.to(torch.float32)
-    w_t = _to_torch(weight).to(torch.float32)
-    b_t = _to_torch(bias)
-    if b_t is not None:
-        b_t = b_t.to(torch.float32)
-    cs_t = _to_torch(conv_states)
-    qsl_t = _to_torch(query_start_loc)
-    ci_t = _to_torch(cache_indices)
-    ism_t = _to_torch(initial_state_mode)
+    weight_t = _to_torch(weight).to(torch.float32)
+    bias_t = _to_torch(bias)
+    if bias_t is not None:
+        bias_t = bias_t.to(torch.float32)
+    conv_states_t = _to_torch(conv_states)
+    query_start_loc_t = _to_torch(query_start_loc)
+    cache_indices_t = _to_torch(cache_indices)
+    init_state_mode_t = _to_torch(initial_state_mode)
 
     activation = (activation_mode == "silu")
-    W = w_t.shape[0]
+    kernel_size = weight_t.shape[0]
     dtype = orig_dtype
     device = x_t.device
 
     # Step 2: split input into per-sequence tensors
     if x_t.ndim == 3:
-        B = x_t.shape[0]
-        xs = [x_t[i] for i in range(B)]
+        batch_size = x_t.shape[0]
+        seq_list = [x_t[i] for i in range(batch_size)]
         is_3d = True
     else:
-        qsl = qsl_t.to(torch.int64)
-        B = qsl.shape[0] - 1
-        xs = [x_t[qsl[i]:qsl[i + 1]] for i in range(B)]
+        query_starts = query_start_loc_t.to(torch.int64)
+        batch_size = query_starts.shape[0] - 1
+        seq_list = [x_t[query_starts[i]:query_starts[i + 1]] for i in range(batch_size)]
         is_3d = False
 
-    cache_idx = ci_t.tolist() if ci_t is not None else list(range(B))
-    ism = ism_t.tolist() if ism_t is not None else [0] * B
-    nat = _to_torch(num_accepted_tokens)
-    state_len = cs_t.shape[1]
-    cs_out = cs_t.clone()
-    ys = []
+    cache_indices_list = cache_indices_t.tolist() if cache_indices_t is not None else list(range(batch_size))
+    init_state_modes = init_state_mode_t.tolist() if init_state_mode_t is not None else [0] * batch_size
+    accepted_tokens_t = _to_torch(num_accepted_tokens)
+    state_len = conv_states_t.shape[1]
+    conv_states_out = conv_states_t.clone()
+    output_list = []
 
     # Step 3: compute per sequence
-    for i in range(B):
-        ci = int(cache_idx[i])
-        if ci_t is not None and ci == null_block_id:
-            seq_len = x_t.shape[1] if is_3d else xs[i].shape[0]
-            ys.append(
-                torch.zeros(seq_len,
+    for i in range(batch_size):
+        cache_idx = int(cache_indices_list[i])
+        if cache_indices_t is not None and cache_idx == null_block_id:
+            cur_seq_len = x_t.shape[1] if is_3d else seq_list[i].shape[0]
+            output_list.append(
+                torch.zeros(cur_seq_len,
                             x_t.shape[-1],
                             dtype=torch.float32,
                             device=device))
             continue
 
-        seq_x = xs[i]
-        has_init = (not is_fn_mode) or bool(ism[i])
+        seq_input = seq_list[i]
+        has_init = (not is_fn_mode) or bool(init_state_modes[i])
         if has_init:
             state_offset = 0
-            if nat is not None:
-                state_offset = max(int(nat[i]) - 1, 0)
-            history = cs_t[ci][state_offset:state_offset + W - 1].to(torch.float32)
+            if accepted_tokens_t is not None:
+                state_offset = max(int(accepted_tokens_t[i]) - 1, 0)
+            history = conv_states_t[cache_idx][state_offset:state_offset + kernel_size - 1].to(torch.float32)
         else:
-            history = torch.zeros(W - 1,
-                                  seq_x.shape[-1],
+            history = torch.zeros(kernel_size - 1,
+                                  seq_input.shape[-1],
                                   dtype=torch.float32,
                                   device=device)
 
         # Step 4: causal conv1d via F.conv1d(groups=dim)
-        padded = torch.cat([history, seq_x], dim=0)
-        w = w_t.T.unsqueeze(1)
-        b = b_t
+        padded = torch.cat([history, seq_input], dim=0)
+        weight_view = weight_t.T.unsqueeze(1)
         result = F.conv1d(padded.T.unsqueeze(0),
-                          w,
-                          bias=b,
+                          weight_view,
+                          bias=bias_t,
                           stride=1,
                           padding=0,
-                          groups=seq_x.shape[-1]).squeeze(0).T
+                          groups=seq_input.shape[-1]).squeeze(0).T
 
         # Step 5: activation
         if activation:
             result = _silu(result)
 
-        ys.append(result.to(dtype))
+        output_list.append(result.to(dtype))
 
         # Step 7: write back conv_states
         write_history = history if has_init else torch.zeros(
-            W - 1, seq_x.shape[-1], dtype=torch.float32, device=device)
-        write_padded = torch.cat([write_history, seq_x], dim=0)
-        cs_out[ci] = write_padded[-state_len:].to(dtype)
+            kernel_size - 1, seq_input.shape[-1], dtype=torch.float32, device=device)
+        write_padded = torch.cat([write_history, seq_input], dim=0)
+        conv_states_out[cache_idx][0:state_len] = write_padded[-state_len:].to(dtype)
 
     # Step 8: assemble output
-    y = torch.stack(ys, dim=0) if is_3d else torch.cat(ys, dim=0)
-    # Convert to numpy. Use ml_dtypes for bfloat16 (PyTorch .numpy() doesn't support it).
-    cs_out = cs_out.detach().cpu()
-    y = y.detach().cpu()
-    if cs_out.dtype == torch.bfloat16:
-        cs_out = cs_out.view(torch.uint16).numpy().view(ml_dtypes.bfloat16)
+    output = torch.stack(output_list, dim=0) if is_3d else torch.cat(output_list, dim=0)
+    conv_states_out = conv_states_out.detach().cpu()
+    output = output.detach().cpu()
+    if conv_states_out.dtype == torch.bfloat16:
+        conv_states_out = conv_states_out.view(torch.uint16).numpy().view(ml_dtypes.bfloat16)
     else:
-        cs_out = cs_out.numpy()
-    if y.dtype == torch.bfloat16:
-        y = y.view(torch.uint16).numpy().view(ml_dtypes.bfloat16)
+        conv_states_out = conv_states_out.numpy()
+    if output.dtype == torch.bfloat16:
+        output = output.view(torch.uint16).numpy().view(ml_dtypes.bfloat16)
     else:
-        y = y.numpy()
-    return cs_out, y
+        output = output.numpy()
+    return conv_states_out, output
 
-
-# -----------------------------------------------------------
-# Quick smoke test
-# -----------------------------------------------------------
-if __name__ == "__main__":
-    torch.manual_seed(42)
-    B, S, D, W = 2, 8, 128, 4
-    x = torch.randn(B, S, D, dtype=torch.float16)
-    weight = torch.randn(W, D, dtype=torch.float16)
-    bias = torch.randn(D, dtype=torch.float16)
-    cs_fwd = torch.zeros(B, W - 1, D, dtype=torch.float16)
-
-    cs_out, y = CausalConv1d(x.numpy(),
-                             weight.numpy(),
-                             cs_fwd.numpy(),
-                             bias.numpy(),
-                             None,
-                             None,
-                             None,
-                             None,
-                             activation_mode="silu",
-                             run_mode=0)
-    print(
-        f"fwd:    y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}"
-    )
-
-    x_upd = x[:, -1:, :]
-    cs_out, y = CausalConv1d(x_upd.numpy(),
-                             weight.numpy(),
-                             cs_fwd.numpy(),
-                             bias.numpy(),
-                             None,
-                             None,
-                             None,
-                             None,
-                             activation_mode="silu",
-                             run_mode=1)
-    print(
-        f"update: y shape={y.shape}  cs_out shape={cs_out.shape}  dtype={y.dtype}"
-    )
-
-    print("All passed.")

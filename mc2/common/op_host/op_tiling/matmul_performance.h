@@ -53,7 +53,7 @@ constexpr double FRONT_UTIL_EXPONENT_COEFFICIENT = 0.6;
 constexpr double CUBE_UTIL_EXPONENT_COEFFICIENT = 0.7;
 constexpr double MAX_CUBE_UTIL = 0.95;
 constexpr double AVERAGE_CUBE_UTIL = 0.75;
-}
+} // namespace MatmulPerformance
 
 class MatmulPerformanceModel {
 public:
@@ -61,7 +61,7 @@ public:
     MatmulCalcType calcType_; // Distinguish the non-quantization, full-quantization and fake-quantization
     double cubeUtil_ = 0.8;
     double matmulGradient_ = 1.0;
-    uint64_t mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_OTHER_SOC; 
+    uint64_t mmMinDataSize_ = MatmulPerformance::MM_MIN_DATASIZE_OTHER_SOC;
 
     void SetCyclePerMicroSec(SocVersion inputSocVersion)
     {
@@ -75,7 +75,7 @@ public:
             mmShapeInfo_.cyclePerMicroSec = MatmulPerformance::CYCLE_PER_MICRO_SEC;
         }
     }
-    void SetCalcType(const mc2tiling::TilingArgs& args)
+    void SetCalcType(const mc2tiling::TilingArgs &args)
     {
         if ((mmShapeInfo_.socType == SocVersion::SOC950) &&
             ((args.aType == matmul_tiling::DataType::DT_HIFLOAT8) ||
@@ -83,17 +83,18 @@ public:
              (args.aType == matmul_tiling::DataType::DT_FLOAT8_E5M2))) {
             calcType_ = MatmulCalcType::QUANT;
         } else if ((args.aType == matmul_tiling::DataType::DT_INT8) &&
-                   (mmShapeInfo_.socType != SocVersion::SOC910_B)) {  // A8W8
+                   (mmShapeInfo_.socType != SocVersion::SOC910_B)) { // A8W8
             calcType_ = MatmulCalcType::QUANT;
         } else if ((mmShapeInfo_.socType == SocVersion::SOC310_P) &&
-                   (args.bType == matmul_tiling::DataType::DT_INT8)) {  // A16W8
+                   (args.bType == matmul_tiling::DataType::DT_INT8)) { // A16W8
             mmShapeInfo_.inMatrixBDtypeSize = MatmulPerformance::INT8_DTYPE_SIZE;
             calcType_ = MatmulCalcType::ANTI_QUANT;
         }
     }
     // Constructor
-    explicit MatmulPerformanceModel(const mc2tiling::TilingArgs& args,
-        SocVersion inputSocVersion = SocVersion::SOC910_B) : calcType_(MatmulCalcType::FP16)
+    explicit MatmulPerformanceModel(const mc2tiling::TilingArgs &args,
+                                    SocVersion inputSocVersion = SocVersion::SOC910_B)
+        : calcType_(MatmulCalcType::FP16)
     {
         mmShapeInfo_.socType = inputSocVersion;
         mmShapeInfo_.coreNum = args.aicCoreNum; // 每die核数
@@ -113,19 +114,19 @@ public:
         GetMachineParameters();
     };
 
-    std::string GetCalcTypeString() {
+    std::string GetCalcTypeString()
+    {
         return std::to_string(static_cast<int>(mmShapeInfo_.socType)) + "_" +
-            std::to_string(static_cast<int>(calcType_)) + "_" +
-            std::to_string(mmShapeInfo_.inMatrixADtypeSize) + "_" +
-            std::to_string(mmShapeInfo_.inMatrixBDtypeSize) + "_" +
-            std::to_string(mmShapeInfo_.outMatrixCDtypeSize);
+               std::to_string(static_cast<int>(calcType_)) + "_" + std::to_string(mmShapeInfo_.inMatrixADtypeSize) +
+               "_" + std::to_string(mmShapeInfo_.inMatrixBDtypeSize) + "_" +
+               std::to_string(mmShapeInfo_.outMatrixCDtypeSize);
     }
     // 根据输入shape，预测cube利用率（取值0 < cubeUtil_ < 1），再用利用率预测耗时
     // 耗时 = M * k * N / 频率 / 每cycle多少计算  /核数 / 利用率
     void GetMachineParameters();
     void CheckKvalueAlignVersion310P();
-    void FindCubeUtil(uint64_t mSize, uint64_t rankTileNum, bool flagAllReduce, uint64_t* maxTileLen = nullptr);
-    double FindCubeUtilByL2Usage(uint64_t mSize, uint64_t rankTileNum, uint64_t* maxTileLen = nullptr);
+    void FindCubeUtil(uint64_t mSize, uint64_t rankTileNum, bool flagAllReduce, uint64_t *maxTileLen = nullptr);
+    double FindCubeUtilByL2Usage(uint64_t mSize, uint64_t rankTileNum, uint64_t *maxTileLen = nullptr);
     double FindCubeUtilQuantVersion310P() const;
     double FindCubeUtilVersion310P() const;
     void ChangeCubeUtilByKAlign();

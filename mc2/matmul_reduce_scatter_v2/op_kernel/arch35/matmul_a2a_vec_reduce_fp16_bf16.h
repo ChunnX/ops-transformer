@@ -320,7 +320,8 @@ TEMPLATE_CLASS_PARAMS
 __aicore__ inline void MatmulA2AVecReduceFP16BF16<TEMPLATE_FUNC_PARAMS>::VecWaitCube()
 {
     // 等待 AIC 完成
-    CrossCoreWaitFlag<SYNC_MODE2, PIPE_MTE2>(SYNC_AIC_AIV_DET_FLAG);
+    // 修复同步问题，适配AICPU接口（等待管线由 PIPE_MTE2 改为 PIPE_S）
+    CrossCoreWaitFlag<SYNC_MODE2, PIPE_S>(SYNC_AIC_AIV_DET_FLAG);
 }
 
 } // namespace MatmulReduceScatterV2Impl

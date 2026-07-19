@@ -37,11 +37,13 @@ constexpr uint8_t SYNC_V4_TO_C5_FLAG = 5;
 constexpr uint8_t SYNC_C3_TO_V5_FLAG = 6;
 constexpr uint8_t SYNC_C4_TO_V6_FLAG = 7;
 constexpr uint8_t SYNC_C4_TO_V3_FLAG = 8;
-constexpr uint8_t SYNC_DETER_FIX_FLAG = 9;
-constexpr uint8_t SYNC_C5_TO_V4_FLAG = 10;
+constexpr uint8_t SYNC_C5_TO_V4_FLAG = 9;
+constexpr uint8_t SYNC_DETER_FIX_FLAG = 10;
 constexpr uint8_t SYNC_DK_DETER_FIX_FLAG = 11;
 constexpr uint8_t SYNC_DV_DETER_FIX_FLAG = 12;
-constexpr uint8_t SYNC_ALL_PRE_FLAG = 13;
+// for small D preload 2 times
+constexpr uint8_t SYNC_V2_TO_C1_FLAG[2] = {10, 11};
+constexpr uint8_t SYNC_V2_TO_C2_FLAG[2] = {12, 13};
 
 // MM_IDX
 constexpr uint8_t DQ_IDX = 0;

@@ -22,7 +22,7 @@ using std::pair;
 using std::string;
 namespace optiling {
 
-std::string QSMLADataTypeToSerialString(ge::DataType type)
+std::string MQSMLADataTypeToSerialString(ge::DataType type)
 {
     const auto it = DATATYPE_TO_STRING_MAP.find(type);
     if (it != DATATYPE_TO_STRING_MAP.end()) {
@@ -33,14 +33,14 @@ std::string QSMLADataTypeToSerialString(ge::DataType type)
     }
 }
 
-std::string QSMLALayoutToSerialString(QSMLALayout layout)
+std::string MQSMLALayoutToSerialString(MQSMLALayout layout)
 {
     switch (layout) {
-        case QSMLALayout::BSND:
+        case MQSMLALayout::BSND:
             return "BSND";
-        case QSMLALayout::TND:
+        case MQSMLALayout::TND:
             return "TND";
-        case QSMLALayout::PA_BBND:
+        case MQSMLALayout::PA_BBND:
             return "PA_BBND";
         default:
             return "UNKNOWN";
@@ -61,14 +61,14 @@ std::string GetShapeStr(gert::Shape shape)
     return oss.str();
 }
 
-bool QSMLATilingCheck::HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout, const gert::Shape &shape) const
+bool MQSMLATilingCheck::HasAxis(const MQSMLAAxis &axis, const MQSMLALayout &layout, const gert::Shape &shape) const
 {
     const auto &layoutIt = QSMLA_LAYOUT_AXIS_MAP.find(layout);
     if (layoutIt == QSMLA_LAYOUT_AXIS_MAP.end()) {
         return false;
     }
 
-    const std::vector<QSMLAAxis> &axes = layoutIt->second;
+    const std::vector<MQSMLAAxis> &axes = layoutIt->second;
     const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
     if (axisIt == axes.end()) {
         return false;
@@ -80,19 +80,20 @@ bool QSMLATilingCheck::HasAxis(const QSMLAAxis &axis, const QSMLALayout &layout,
     return true;
 }
 
-size_t QSMLATilingCheck::GetAxisIdx(const QSMLAAxis &axis, const QSMLALayout &layout) const
+size_t MQSMLATilingCheck::GetAxisIdx(const MQSMLAAxis &axis, const MQSMLALayout &layout) const
 {
-    const std::vector<QSMLAAxis> &axes = QSMLA_LAYOUT_AXIS_MAP.find(layout)->second;
+    const std::vector<MQSMLAAxis> &axes = QSMLA_LAYOUT_AXIS_MAP.find(layout)->second;
     const auto &axisIt = std::find(axes.begin(), axes.end(), axis);
     return std::distance(axes.begin(), axisIt);
 }
 
-uint32_t QSMLATilingCheck::GetAxisNum(const gert::Shape &shape, const QSMLAAxis &axis, const QSMLALayout &layout) const
+uint32_t MQSMLATilingCheck::GetAxisNum(const gert::Shape &shape, const MQSMLAAxis &axis,
+                                       const MQSMLALayout &layout) const
 {
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : invalidDimValue_;
 }
 
-void QSMLATilingCheck::Init()
+void MQSMLATilingCheck::Init()
 {
     opName_ = qsmlaInfo_.opName;
     platformInfo_ = qsmlaInfo_.platformInfo;
@@ -119,10 +120,10 @@ void QSMLATilingCheck::Init()
     dSize_ = qsmlaInfo_.dSize;
     dSizeV_ = qsmlaInfo_.dSizeV;
     if (opParamInfo_.oriKv.tensor != nullptr) {
-        dSizeOriKvInput_ = GetAxisNum(opParamInfo_.oriKv.tensor->GetStorageShape(), QSMLAAxis::D, kvLayout_);
+        dSizeOriKvInput_ = GetAxisNum(opParamInfo_.oriKv.tensor->GetStorageShape(), MQSMLAAxis::D, kvLayout_);
     }
     if (opParamInfo_.cmpKv.tensor != nullptr) {
-        dSizeCmpKvInput_ = GetAxisNum(opParamInfo_.cmpKv.tensor->GetStorageShape(), QSMLAAxis::D, kvLayout_);
+        dSizeCmpKvInput_ = GetAxisNum(opParamInfo_.cmpKv.tensor->GetStorageShape(), MQSMLAAxis::D, kvLayout_);
     }
 
     maxActualseq_ = qsmlaInfo_.maxActualseq;
@@ -161,21 +162,21 @@ void QSMLATilingCheck::Init()
     }
 }
 static ge::graphStatus ValidateKvContiguous(const char *opName, const std::vector<int64_t> &strides,
-                                            const gert::Shape &shape, const QSMLALayout &kvLayout,
+                                            const gert::Shape &shape, const MQSMLALayout &kvLayout,
                                             const std::string &tensorName)
 {
     std::vector<int64_t> expectedStrides;
     const size_t dimNum = shape.GetDimNum();
-    if (kvLayout == QSMLALayout::BSND) {
+    if (kvLayout == MQSMLALayout::BSND) {
         const int64_t S2 = shape.GetDim(1);
         const int64_t N2 = shape.GetDim(2);
         const int64_t D2 = shape.GetDim(3);
         expectedStrides = {S2 * N2 * D2, N2 * D2, D2, 1};
-    } else if (kvLayout == QSMLALayout::TND) {
+    } else if (kvLayout == MQSMLALayout::TND) {
         const int64_t N2 = shape.GetDim(1);
         const int64_t D2 = shape.GetDim(2);
         expectedStrides = {N2 * D2, D2, 1};
-    } else if (kvLayout == QSMLALayout::PA_BBND) {
+    } else if (kvLayout == MQSMLALayout::PA_BBND) {
         const int64_t Bs = shape.GetDim(1);
         const int64_t N2 = shape.GetDim(2);
         const int64_t D2 = shape.GetDim(3);
@@ -183,7 +184,7 @@ static ge::graphStatus ValidateKvContiguous(const char *opName, const std::vecto
     }
 
     for (size_t i = 0; i < expectedStrides.size(); ++i) {
-        if (kvLayout == QSMLALayout::PA_BBND && i == 0) {
+        if (kvLayout == MQSMLALayout::PA_BBND && i == 0) {
             continue;
         }
         if (strides[i] != expectedStrides[i]) {
@@ -195,7 +196,7 @@ static ge::graphStatus ValidateKvContiguous(const char *opName, const std::vecto
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::CheckKvContiguous() const
+ge::graphStatus MQSMLATilingCheck::CheckKvContiguous() const
 {
     if (!qsmlaInfo_.oriKvStrides.empty()) {
         if (ValidateKvContiguous(opName_, qsmlaInfo_.oriKvStrides, qsmlaInfo_.oriKvStorageShape, kvLayout_,
@@ -212,7 +213,7 @@ ge::graphStatus QSMLATilingCheck::CheckKvContiguous() const
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus QSMLATilingCheck::Process()
+ge::graphStatus MQSMLATilingCheck::Process()
 {
     Init();
     if (CheckSinglePara() != ge::GRAPH_SUCCESS || CheckConsistency() != ge::GRAPH_SUCCESS ||

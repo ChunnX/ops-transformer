@@ -32,14 +32,16 @@ using namespace AscendC;
 using namespace matmul;
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias,
-    bool IsNeedY2, bool IsNeedY3>
+          bool IsNeedY2, bool IsNeedY3>
 class AlltoAllAllGatherBatchMatMulShardH {
 public:
     __aicore__ inline AlltoAllAllGatherBatchMatMulShardH(){};
     __aicore__ inline void Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR biasGM, GM_ADDR y1GM, GM_ADDR y2GM, GM_ADDR y3GM,
-        GM_ADDR workspaceGM, TPipe *pipe, AlltoAllAllGatherBatchMatMulTilingData *tilingData,
-        __gm__ void* hcclInitTiling, __gm__ void* allGatherCcTiling, __gm__ void* alltoAllCcTiling);
+                                GM_ADDR workspaceGM, TPipe *pipe, AlltoAllAllGatherBatchMatMulTilingData *tilingData,
+                                __gm__ void *hcclInitTiling, __gm__ void *allGatherCcTiling,
+                                __gm__ void *alltoAllCcTiling);
     __aicore__ inline void Process();
+
 private:
     __aicore__ inline void InitTpipe();
     __aicore__ inline void GetTilingData(AlltoAllAllGatherBatchMatMulTilingData *tilingData);
@@ -48,9 +50,11 @@ private:
     __aicore__ inline void LocalCalculation();
     __aicore__ inline void NonLocalCalculation();
     __aicore__ inline void TransposeBeforeBMM(bool isLocal, bool isCTail, uint64_t tileLenE,
-        GlobalTensor<DataType1> dataCopyInBaseGM, GlobalTensor<DataType1> y2BaseGM);
+                                              GlobalTensor<DataType1> dataCopyInBaseGM,
+                                              GlobalTensor<DataType1> y2BaseGM);
     __aicore__ inline void TransposeAfterBMM(bool isLocal, bool isCTail, uint64_t tileLenE,
-        GlobalTensor<DataType1> dataCopyOutBaseGM, GlobalTensor<DataType1> y3BaseGM, GlobalTensor<DataType2> biasGM);
+                                             GlobalTensor<DataType1> dataCopyOutBaseGM,
+                                             GlobalTensor<DataType1> y3BaseGM, GlobalTensor<DataType2> biasGM);
 
     AlltoAllAllGatherBatchMatmulActType actType;
     // shardType 0/1: 输入 E,C,H
@@ -126,12 +130,15 @@ private:
 };
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias,
-    bool IsNeedY2, bool IsNeedY3>
-__aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight,
-    IsNeedBias, IsNeedY2, IsNeedY3>::Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR biasGM, GM_ADDR y1GM, GM_ADDR y2GM,
-    GM_ADDR y3GM, GM_ADDR workspaceGM, TPipe *pipe, AlltoAllAllGatherBatchMatMulTilingData *tilingData,
-    __gm__ void* hcclInitTiling, __gm__ void* allGatherCcTiling, __gm__ void* alltoAllCcTiling) {
-
+          bool IsNeedY2, bool IsNeedY3>
+__aicore__ inline void
+AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight, IsNeedBias, IsNeedY2,
+                                   IsNeedY3>::Init(GM_ADDR xGM, GM_ADDR weightGM, GM_ADDR biasGM, GM_ADDR y1GM,
+                                                   GM_ADDR y2GM, GM_ADDR y3GM, GM_ADDR workspaceGM, TPipe *pipe,
+                                                   AlltoAllAllGatherBatchMatMulTilingData *tilingData,
+                                                   __gm__ void *hcclInitTiling, __gm__ void *allGatherCcTiling,
+                                                   __gm__ void *alltoAllCcTiling)
+{
     this->tpipe = pipe;
     GetTilingData(tilingData);
     InitTpipe();
@@ -154,13 +161,14 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
     uint64_t maxLenLocalE = ((localE.tileLen > localE.tailLen) ? localE.tileLen : localE.tailLen);
     alltoallNonLocalOutGM.SetGlobalBuffer((__gm__ DataType1 *)workspaceGM);
     allgatherLocalOutGM.SetGlobalBuffer((__gm__ DataType1 *)alltoallNonLocalOutGM.GetPhyAddr() + E * C * H);
-    allgatherNonLocalOutGM.SetGlobalBuffer((__gm__ DataType1 *)allgatherLocalOutGM.GetPhyAddr() + expertOverEp * C * H * tpRankSize);
+    allgatherNonLocalOutGM.SetGlobalBuffer((__gm__ DataType1 *)allgatherLocalOutGM.GetPhyAddr() +
+                                           expertOverEp * C * H * tpRankSize);
     transposeOutGM.SetGlobalBuffer((__gm__ DataType1 *)allgatherNonLocalOutGM.GetPhyAddr() + E * C * H * tpRankSize);
     bmmOutGM.SetGlobalBuffer((__gm__ DataType1 *)transposeOutGM.GetPhyAddr() +
                              ((maxLenLocalE * localC.tileLen * H * tpRankSize >
-                             (epRankSize - 1U) * maxLenNonLocalE * maxLenNonLocalC * H * tpRankSize) ?
-                              maxLenLocalE * localC.tileLen * H * tpRankSize :
-                              (epRankSize - 1U) * maxLenNonLocalE * maxLenNonLocalC * H * tpRankSize));
+                               (epRankSize - 1U) * maxLenNonLocalE * maxLenNonLocalC * H * tpRankSize) ?
+                                  maxLenLocalE * localC.tileLen * H * tpRankSize :
+                                  (epRankSize - 1U) * maxLenNonLocalE * maxLenNonLocalC * H * tpRankSize));
 
     auto contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
     auto contextGM1 = AscendC::GetHcclContext<1>();
@@ -185,16 +193,17 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
 }
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias,
-    bool IsNeedY2, bool IsNeedY3>
+          bool IsNeedY2, bool IsNeedY3>
 __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight,
-    IsNeedBias, IsNeedY2, IsNeedY3>::InitTpipe()
+                                                          IsNeedBias, IsNeedY2, IsNeedY3>::InitTpipe()
 {
     tpipe->InitBuffer(tBuf, ubSize);
     transposeTmp = tBuf.Get<DataType1>();
     xTmp = tBuf.Get<DataType1>(ubCapacityForAct);
     uint32_t offset = ubCapacityForAct * xDataLen;
     if (IsNeedBias || (actType != AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE)) {
-        if (AscendC::IsSameType<DataType1, bfloat16_t>::value || (actType == AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_SILU)) {
+        if (AscendC::IsSameType<DataType1, bfloat16_t>::value ||
+            (actType == AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_SILU)) {
             xCastTmp = tBuf.Get<float>()[offset / SIZE_OF_FLOAT32];
             offset += (ubCapacityForAct * SIZE_OF_FLOAT32);
             actCastOutTmp = tBuf.Get<float>()[offset / SIZE_OF_FLOAT32];
@@ -217,9 +226,10 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
 }
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias,
-    bool IsNeedY2, bool IsNeedY3>
-__aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight,
-    IsNeedBias, IsNeedY2, IsNeedY3>::GetTilingData(AlltoAllAllGatherBatchMatMulTilingData *tilingData)
+          bool IsNeedY2, bool IsNeedY3>
+__aicore__ inline void
+AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight, IsNeedBias, IsNeedY2,
+                                   IsNeedY3>::GetTilingData(AlltoAllAllGatherBatchMatMulTilingData *tilingData)
 {
     E = tilingData->commonTiling.expert;
     C = tilingData->commonTiling.C;
@@ -257,9 +267,9 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
 }
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias,
-    bool IsNeedY2, bool IsNeedY3>
+          bool IsNeedY2, bool IsNeedY3>
 __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight,
-    IsNeedBias, IsNeedY2, IsNeedY3>::Process()
+                                                          IsNeedBias, IsNeedY2, IsNeedY3>::Process()
 {
     LocalCommunication();
     NonLocalCommunication();
@@ -268,9 +278,9 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
 }
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias,
-    bool IsNeedY2, bool IsNeedY3>
+          bool IsNeedY2, bool IsNeedY3>
 __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight,
-    IsNeedBias, IsNeedY2, IsNeedY3>::LocalCommunication()
+                                                          IsNeedBias, IsNeedY2, IsNeedY3>::LocalCommunication()
 {
     // E_ep切分有尾块；尾块长度为1；Local块不切C
     GM_ADDR allgatherSendBuf = (__gm__ uint8_t *)xGM.GetPhyAddr() + expertOverEp * epRankId * C * H * xDataLen;
@@ -290,9 +300,9 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
 }
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias,
-    bool IsNeedY2, bool IsNeedY3>
+          bool IsNeedY2, bool IsNeedY3>
 __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight,
-    IsNeedBias, IsNeedY2, IsNeedY3>::NonLocalCommunication()
+                                                          IsNeedBias, IsNeedY2, IsNeedY3>::NonLocalCommunication()
 {
     GM_ADDR alltoallSendBuf = (__gm__ uint8_t *)xGM.GetPhyAddr();
     GM_ADDR alltoallRecvBuf = (__gm__ uint8_t *)alltoallNonLocalOutGM.GetPhyAddr();
@@ -347,16 +357,18 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
     for (uint32_t eIdx = 0U; eIdx < nonLocalE.tileCnt; eIdx++) {
         for (uint32_t cIdx = 0U; cIdx < nonLocalC.tileCnt; cIdx++) {
             if ASCEND_IS_AIV {
-                hcclAlltoall.InterHcclGroupSync(1,
-                    allgatherHandleList[allgatherHandleIdx - 1]);  // 等待上一块的allgather完成
+                hcclAlltoall.InterHcclGroupSync(
+                    1,
+                    allgatherHandleList[allgatherHandleIdx - 1]); // 等待上一块的allgather完成
                 alltoallHandle = hcclAlltoall.AlltoAllV<true>(alltoallSendBuf, alltoallDataCountsTile, alltoallSdispls,
-                    hcclDataType, alltoallRecvBuf, alltoallDataCountsTile, alltoallRdisplsTile,  hcclDataType);
+                                                              hcclDataType, alltoallRecvBuf, alltoallDataCountsTile,
+                                                              alltoallRdisplsTile, hcclDataType);
                 alltoallSendBuf += alltoallSendBufOffsetTile;
                 alltoallRecvBuf += alltoallRecvBufOffsetTile;
                 alltoallHandleList[alltoallHandleIdx++] = alltoallHandle;
                 hcclAllgather.InterHcclGroupSync(HCCL_GROUP_ID_0, alltoallHandle); // 等待本块的alltoall完成
-                allgatherHandleList[allgatherHandleIdx++] = hcclAllgather.AllGather<true>(allgatherSendBuf,
-                    allgatherRecvBuf, allgatherSendCountTile, hcclDataType, 0U);
+                allgatherHandleList[allgatherHandleIdx++] = hcclAllgather.AllGather<true>(
+                    allgatherSendBuf, allgatherRecvBuf, allgatherSendCountTile, hcclDataType, 0U);
                 allgatherSendBuf += allgatherSendBufOffsetTile;
                 allgatherRecvBuf += allgatherRecvBufOffsetTile;
             }
@@ -364,17 +376,18 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
         if (nonLocalC.tailCnt != 0U) { // 处理C的尾块，不切C的情况走不进来
             for (uint32_t cIdx = 0U; cIdx < nonLocalC.tailCnt; cIdx++) {
                 if ASCEND_IS_AIV {
-                    hcclAlltoall.InterHcclGroupSync(1,
-                        allgatherHandleList[allgatherHandleIdx - 1]);  // 等待上一块的allgather完成
-                    alltoallHandle =
-                        hcclAlltoall.AlltoAllV<true>(alltoallSendBuf, alltoallDataCountsTail, alltoallSdispls,
-                        hcclDataType, alltoallRecvBuf, alltoallDataCountsTail, alltoallRdisplsTail,  hcclDataType);
+                    hcclAlltoall.InterHcclGroupSync(
+                        1,
+                        allgatherHandleList[allgatherHandleIdx - 1]); // 等待上一块的allgather完成
+                    alltoallHandle = hcclAlltoall.AlltoAllV<true>(
+                        alltoallSendBuf, alltoallDataCountsTail, alltoallSdispls, hcclDataType, alltoallRecvBuf,
+                        alltoallDataCountsTail, alltoallRdisplsTail, hcclDataType);
                     alltoallSendBuf += alltoallSendBufOffsetTail;
                     alltoallRecvBuf += alltoallRecvBufOffsetTail;
                     alltoallHandleList[alltoallHandleIdx++] = alltoallHandle;
                     hcclAllgather.InterHcclGroupSync(HCCL_GROUP_ID_0, alltoallHandle); // 等待本块的alltoall完成
-                    allgatherHandleList[allgatherHandleIdx++] = hcclAllgather.AllGather<true>(allgatherSendBuf,
-                        allgatherRecvBuf, allgatherSendCountTail, hcclDataType, 0U);
+                    allgatherHandleList[allgatherHandleIdx++] = hcclAllgather.AllGather<true>(
+                        allgatherSendBuf, allgatherRecvBuf, allgatherSendCountTail, hcclDataType, 0U);
                     allgatherSendBuf += allgatherSendBufOffsetTail;
                     allgatherRecvBuf += allgatherRecvBufOffsetTail;
                 }
@@ -384,16 +397,18 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
     if (nonLocalE.tailCnt != 0U) { // 处理E的尾块，切C的情况走不进来
         for (uint32_t eIdx = 0U; eIdx < nonLocalE.tailCnt; eIdx++) {
             if ASCEND_IS_AIV {
-                hcclAlltoall.InterHcclGroupSync(1,
+                hcclAlltoall.InterHcclGroupSync(
+                    1,
                     allgatherHandleList[allgatherHandleIdx - 1]); // 等待上一块的allgather完成
                 alltoallHandle = hcclAlltoall.AlltoAllV<true>(alltoallSendBuf, alltoallDataCountsTail, alltoallSdispls,
-                    hcclDataType, alltoallRecvBuf, alltoallDataCountsTail, alltoallRdisplsTail,  hcclDataType);
+                                                              hcclDataType, alltoallRecvBuf, alltoallDataCountsTail,
+                                                              alltoallRdisplsTail, hcclDataType);
                 alltoallSendBuf += alltoallSendBufOffsetTail;
                 alltoallRecvBuf += alltoallRecvBufOffsetTail;
                 alltoallHandleList[alltoallHandleIdx++] = alltoallHandle;
                 hcclAllgather.InterHcclGroupSync(HCCL_GROUP_ID_0, alltoallHandle); // 等待本块的alltoall完成
-                allgatherHandleList[allgatherHandleIdx++] = hcclAllgather.AllGather<true>(allgatherSendBuf,
-                    allgatherRecvBuf, allgatherSendCountTail, hcclDataType, 0U);
+                allgatherHandleList[allgatherHandleIdx++] = hcclAllgather.AllGather<true>(
+                    allgatherSendBuf, allgatherRecvBuf, allgatherSendCountTail, hcclDataType, 0U);
                 allgatherSendBuf += allgatherSendBufOffsetTail;
                 allgatherRecvBuf += allgatherRecvBufOffsetTail;
             }
@@ -402,9 +417,9 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
 }
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias,
-    bool IsNeedY2, bool IsNeedY3>
+          bool IsNeedY2, bool IsNeedY3>
 __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight,
-    IsNeedBias, IsNeedY2, IsNeedY3>::LocalCalculation()
+                                                          IsNeedBias, IsNeedY2, IsNeedY3>::LocalCalculation()
 {
     using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DataType1, false>;
     using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DataType1, IsTransposeWeight>;
@@ -459,10 +474,10 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
         Mc2BatchMatMulCommonKernel<aType, bType, cType, biasType> bmmv3;
         if (eIdx < localE.tileCnt) {
             bmmv3.Init(bmmInGm, wGM, (__gm__ uint8_t *)bmmOutGM.GetPhyAddr(), nullptr, nullptr, nullptr,
-                &bmmLocalTiling->bmmTilingData, tpipe);
+                       &bmmLocalTiling->bmmTilingData, tpipe);
         } else {
             bmmv3.Init(bmmInGm, wGM, (__gm__ uint8_t *)bmmOutGM.GetPhyAddr(), nullptr, nullptr, nullptr,
-                &bmmLocalTailTiling->bmmTilingData, tpipe);
+                       &bmmLocalTailTiling->bmmTilingData, tpipe);
         }
         bmmv3.Process();
         SyncAll<false>();
@@ -488,9 +503,9 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
 }
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias,
-    bool IsNeedY2, bool IsNeedY3>
+          bool IsNeedY2, bool IsNeedY3>
 __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight,
-    IsNeedBias, IsNeedY2, IsNeedY3>::NonLocalCalculation()
+                                                          IsNeedBias, IsNeedY2, IsNeedY3>::NonLocalCalculation()
 {
     using aType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DataType1, false>;
     using bType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DataType1, IsTransposeWeight>;
@@ -515,7 +530,7 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
     } else {
         allgatherRecvBufOffsetTail = nonLocalE.tailLen * epRankSize * C * H * tpRankSize;
     }
-    
+
     if constexpr (IsNeedBias) {
         biasBuf = biasGM;
     }
@@ -567,13 +582,13 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
             if (isCTail) {
                 allgatherRecvTensor = allgatherRecvTensor[allgatherRecvBufOffsetTail];
                 bmmv3.Init((__gm__ uint8_t *)transposeOutGM.GetPhyAddr(), wGM, (__gm__ uint8_t *)bmmOutGM.GetPhyAddr(),
-                    nullptr, nullptr, nullptr, &bmmNonLocalTailTiling->bmmTilingData, tpipe); 
+                           nullptr, nullptr, nullptr, &bmmNonLocalTailTiling->bmmTilingData, tpipe);
             } else {
                 allgatherRecvTensor = allgatherRecvTensor[allgatherRecvBufOffsetTile];
                 bmmv3.Init((__gm__ uint8_t *)transposeOutGM.GetPhyAddr(), wGM, (__gm__ uint8_t *)bmmOutGM.GetPhyAddr(),
-                    nullptr, nullptr, nullptr, &bmmNonLocalTileTiling->bmmTilingData, tpipe);
+                           nullptr, nullptr, nullptr, &bmmNonLocalTileTiling->bmmTilingData, tpipe);
             }
-            
+
             bmmv3.Process();
             SyncAll<false>();
             tpipe->Reset();
@@ -628,7 +643,7 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
             Mc2BatchMatMulCommonKernel<aType, bType, cType, biasType> bmmv3;
             allgatherRecvTensor = allgatherRecvTensor[allgatherRecvBufOffsetTail];
             bmmv3.Init((__gm__ uint8_t *)transposeOutGM.GetPhyAddr(), wGM, (__gm__ uint8_t *)bmmOutGM.GetPhyAddr(),
-                nullptr, nullptr, nullptr, &bmmNonLocalTailETiling->bmmTilingData, tpipe);
+                       nullptr, nullptr, nullptr, &bmmNonLocalTailETiling->bmmTilingData, tpipe);
             bmmv3.Process();
             SyncAll<false>();
             tpipe->Reset();
@@ -652,9 +667,12 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
 }
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias,
-    bool IsNeedY2, bool IsNeedY3>
-__aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight,
-    IsNeedBias, IsNeedY2, IsNeedY3>::TransposeBeforeBMM(bool isLocal, bool isCTail, uint64_t tileLenE, GlobalTensor<DataType1> dataCopyInBaseGM, GlobalTensor<DataType1> y2BaseGM)
+          bool IsNeedY2, bool IsNeedY3>
+__aicore__ inline void
+AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight, IsNeedBias, IsNeedY2,
+                                   IsNeedY3>::TransposeBeforeBMM(bool isLocal, bool isCTail, uint64_t tileLenE,
+                                                                 GlobalTensor<DataType1> dataCopyInBaseGM,
+                                                                 GlobalTensor<DataType1> y2BaseGM)
 {
     uint32_t factorIn, factorOut;
     uint32_t tileLenC;
@@ -672,35 +690,35 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
         factorOut = epRankSize - 1U;
     }
 
-    
-    DataCopyExtParams dataCopyInParams = { 1U, 0U, 0U, 0U, 0U };
-    DataCopyExtParams dataCopyOutParams = { 1U, 0U, 0U, 0U, 0U };
-    DataCopyPadExtParams<DataType1> dataCopyInPadParams = { false, 0U, 0U, 0U };
+
+    DataCopyExtParams dataCopyInParams = {1U, 0U, 0U, 0U, 0U};
+    DataCopyExtParams dataCopyOutParams = {1U, 0U, 0U, 0U, 0U};
+    DataCopyPadExtParams<DataType1> dataCopyInPadParams = {false, 0U, 0U, 0U};
 
     uint64_t totalM = tpRankSize * tileLenE * tileLenC * factorOut; // 待处理的行数，无local块
     uint64_t tileLen = totalM % vecCoreNum == 0 ?
-        (totalM / vecCoreNum) :
-        (totalM / vecCoreNum + 1); // 每个核处理的行数（头块），除不尽时候向上取整
+                           (totalM / vecCoreNum) :
+                           (totalM / vecCoreNum + 1); // 每个核处理的行数（头块），除不尽时候向上取整
     uint32_t blockIdx = GetBlockIdx();
-    uint64_t curRowOffset = tileLen * blockIdx;               // 每个核取到起始数据的行偏移
-    uint64_t curDataOffset = curRowOffset * H;               // 每个核取到起始数据的个数偏移
+    uint64_t curRowOffset = tileLen * blockIdx;             // 每个核取到起始数据的行偏移
+    uint64_t curDataOffset = curRowOffset * H;              // 每个核取到起始数据的个数偏移
     uint64_t endDataOffset = tileLen * H * (blockIdx + 1U); // 每个核取到数据的结尾
     endDataOffset = endDataOffset < totalM * H ? endDataOffset : totalM * H; // 分核有尾块时候防止越界
     uint64_t endRowOffset = endDataOffset / H;
-    uint64_t curBlockMaxRow = ((curRowOffset / tileLenC) + 1) * tileLenC;   // 单核可以计算的行数，不能跨C
+    uint64_t curBlockMaxRow = ((curRowOffset / tileLenC) + 1) * tileLenC; // 单核可以计算的行数，不能跨C
     curBlockMaxRow = curBlockMaxRow < endRowOffset ? curBlockMaxRow : endRowOffset; // 单次计算的尾块, 防止越界
-    uint64_t HAlign = (H % 256 == 0) ? H : ((H / 256 + 1) * 256); // 512字节对齐
+    uint64_t HAlign = (H % 256 == 0) ? H : ((H / 256 + 1) * 256);                   // 512字节对齐
     uint64_t perMaxRow = ubCapacityForTrans / HAlign;
-    uint64_t dataCnt = 0UL;                     // 单次计算的数据量
+    uint64_t dataCnt = 0UL; // 单次计算的数据量
     uint32_t t, eIn, eOut, k, c, blockInnerOffset, eY2;
     GlobalTensor<DataType1> dataCopyInGM, dataCopyOutGM, y2OutGM;
     uint32_t i = 0U;
 
     while (curDataOffset < endDataOffset) {
         i += 1;
-        t = curRowOffset / (factorOut * tileLenE * tileLenC);                                 // tp
-        eOut = (curRowOffset % (factorOut * tileLenE * tileLenC)) / (tileLenE * tileLenC);   // ep
-        k = (curRowOffset % (tileLenE * tileLenC)) / tileLenC;                              // tile_e
+        t = curRowOffset / (factorOut * tileLenE * tileLenC);                              // tp
+        eOut = (curRowOffset % (factorOut * tileLenE * tileLenC)) / (tileLenE * tileLenC); // ep
+        k = (curRowOffset % (tileLenE * tileLenC)) / tileLenC;                             // tile_e
         c = curRowOffset % tileLenC;                                                       // tile_c
         eIn = eOut >= epRankId ? eOut + 1U : eOut;
         eY2 = eIn;
@@ -735,14 +753,15 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
             curRowOffset += dataCnt / H;
         }
         uint64_t copyInOffset = t * (factorIn * tileLenE * tileLenC * H) + eIn * (tileLenE * tileLenC * H) +
-            k * (tileLenC * H) + c * H + blockInnerOffset;
+                                k * (tileLenC * H) + c * H + blockInnerOffset;
         uint64_t copyOutOffset =
             k * (factorOut * tileLenC * totalH) + eOut * (tileLenC * totalH) + c * totalH + t * H + blockInnerOffset;
         dataCopyInGM = dataCopyInBaseGM[copyInOffset];
         dataCopyOutGM = transposeOutGM[copyOutOffset];
         if (i > 1) {
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(
+                GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
         }
         DataCopyPad(transposeTmp, dataCopyInGM, dataCopyInParams, dataCopyInPadParams);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
@@ -759,9 +778,14 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
 }
 
 template <typename DataType1, typename DataType2, int64_t ShardType, bool IsTransposeWeight, bool IsNeedBias,
-    bool IsNeedY2, bool IsNeedY3>
-__aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight,
-    IsNeedBias, IsNeedY2, IsNeedY3>::TransposeAfterBMM(bool isLocal, bool isCTail, uint64_t tileLenE, GlobalTensor<DataType1> dataCopyOutBaseGM, GlobalTensor<DataType1> y3BaseGM, GlobalTensor<DataType2> biasBaseGM) {
+          bool IsNeedY2, bool IsNeedY3>
+__aicore__ inline void
+AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, ShardType, IsTransposeWeight, IsNeedBias, IsNeedY2,
+                                   IsNeedY3>::TransposeAfterBMM(bool isLocal, bool isCTail, uint64_t tileLenE,
+                                                                GlobalTensor<DataType1> dataCopyOutBaseGM,
+                                                                GlobalTensor<DataType1> y3BaseGM,
+                                                                GlobalTensor<DataType2> biasBaseGM)
+{
     uint32_t tileLenC;
     uint32_t factorIn, factorOut;
     if (isLocal) {
@@ -783,10 +807,10 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
         factorOut = epRankSize;
     }
 
-    DataCopyExtParams dataCopyInParams = { 1U, 0U, 0U, 0U, 0U };
+    DataCopyExtParams dataCopyInParams = {1U, 0U, 0U, 0U, 0U};
     DataCopyExtParams dataCopyInBiasParams = {1U, 0U, 0U, 0U, 0U};
-    DataCopyExtParams dataCopyOutParams = { 1U, 0U, 0U, 0U, 0U };
-    DataCopyPadExtParams<DataType1> dataCopyInPadParams = { false, 0U, 0U, 0U };
+    DataCopyExtParams dataCopyOutParams = {1U, 0U, 0U, 0U, 0U};
+    DataCopyPadExtParams<DataType1> dataCopyInPadParams = {false, 0U, 0U, 0U};
     DataCopyPadExtParams<DataType2> dataCopyInBiasPadParams = {false, 0U, 0U, 0U};
 
     uint64_t totalM = tileLenE * factorIn * tileLenC;
@@ -850,15 +874,20 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
         }
         dataCopyInGM = bmmOutGM[k * (factorIn * tileLenC * M) + eIn * (tileLenC * M) + c * M + blockInnerOffset];
         dataCopyOutGM = dataCopyOutBaseGM[k * (epRankSize * C * M) + eOut * (C * M) + c * M + blockInnerOffset];
-        if (i > 1) {  // 从第二次循环开始，等待上一次循环xTmp向dataCopyOutGM/y3GM的拷贝
+        if (i > 1) { // 从第二次循环开始，等待上一次循环xTmp向dataCopyOutGM/y3GM的拷贝
             AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(
+                GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_MTE2));
         }
         DataCopyPad(xTmp, dataCopyInGM, dataCopyInParams, dataCopyInPadParams);
 
-        if ((!IsNeedBias) && (actType == AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE)) {  // 无bias无激活, 直接拷出
+        if ((!IsNeedBias) &&
+            (actType ==
+             AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE)) { // 无bias无激活,
+                                                                                                   // 直接拷出
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
+            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(
+                GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE2_MTE3));
             DataCopyPad(dataCopyOutGM, xTmp, dataCopyOutParams);
             curDataOffset += dataCnt;
             continue;
@@ -876,42 +905,47 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
 
             if constexpr (IsNeedBias) {
                 for (uint64_t index = 0UL; index < biasCnt; index++) {
-                    Add(xCastTmp[index * MAlign], xCastTmp[index * MAlign], biasTmp, dataCopyInBiasParams.blockLen / biasDataLen);
+                    Add(xCastTmp[index * MAlign], xCastTmp[index * MAlign], biasTmp,
+                        dataCopyInBiasParams.blockLen / biasDataLen);
                     PipeBarrier<PIPE_V>();
                 }
             }
 
             if constexpr (IsNeedY3) {
                 Cast(xTmp, xCastTmp, RoundMode::CAST_ROUND, realDataCnt);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_MTE3));
-                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_MTE3));
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(
+                    GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_MTE3));
+                AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(
+                    GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_MTE3));
                 y3OutGM = y3BaseGM[k * (epRankSize * C * M) + eOut * (C * M) + c * M + blockInnerOffset];
                 DataCopyPad(y3OutGM, xTmp, dataCopyOutParams);
             }
 
             if (actType != AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE) {
-                    switch (actType) {
-                        case AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_GELU:
-                            Gelu(actCastOutTmp, xCastTmp, sharedTmp, realDataCnt);
-                            break;
-                        case AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_SILU:
-                            Silu(actCastOutTmp, xCastTmp, realDataCnt);
-                            break;
-                        case AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_RELU:
-                            Relu(actCastOutTmp, xCastTmp, realDataCnt);
-                            break;
-                        case AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_FASTGELU:
-                            FasterGelu(actCastOutTmp, xCastTmp, sharedTmp, realDataCnt);
-                            break;
-                        default:
-                            break;
-                    }
-                    PipeBarrier<PIPE_V>();
-                    if constexpr (IsNeedY3) {
-                        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_V));
-                        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_V));
-                    }
-                    Cast(xTmp, actCastOutTmp, RoundMode::CAST_ROUND, realDataCnt);
+                switch (actType) {
+                    case AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_GELU:
+                        Gelu(actCastOutTmp, xCastTmp, sharedTmp, realDataCnt);
+                        break;
+                    case AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_SILU:
+                        Silu(actCastOutTmp, xCastTmp, realDataCnt);
+                        break;
+                    case AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_RELU:
+                        Relu(actCastOutTmp, xCastTmp, realDataCnt);
+                        break;
+                    case AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_FASTGELU:
+                        FasterGelu(actCastOutTmp, xCastTmp, sharedTmp, realDataCnt);
+                        break;
+                    default:
+                        break;
+                }
+                PipeBarrier<PIPE_V>();
+                if constexpr (IsNeedY3) {
+                    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(
+                        GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_V));
+                    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(
+                        GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_V));
+                }
+                Cast(xTmp, actCastOutTmp, RoundMode::CAST_ROUND, realDataCnt);
             } else {
                 Cast(xTmp, xCastTmp, RoundMode::CAST_ROUND, realDataCnt);
             }
@@ -921,7 +955,8 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
         } else {
             if constexpr (IsNeedBias) {
                 for (uint64_t index = 0UL; index < biasCnt; index++) {
-                    Add(xTmp[index * MAlign], xTmp[index * MAlign], biasTmp, dataCopyInBiasParams.blockLen / biasDataLen);
+                    Add(xTmp[index * MAlign], xTmp[index * MAlign], biasTmp,
+                        dataCopyInBiasParams.blockLen / biasDataLen);
                     PipeBarrier<PIPE_V>();
                 }
             }
@@ -931,7 +966,7 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
                 y3OutGM = y3BaseGM[k * (epRankSize * C * M) + eOut * (C * M) + c * M + blockInnerOffset];
                 DataCopyPad(y3OutGM, xTmp, dataCopyOutParams);
             }
-            
+
             if (actType != AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE) {
                 switch (actType) {
                     case AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_GELU:
@@ -942,9 +977,11 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
                         PipeBarrier<PIPE_V>();
                         Silu(actCastOutTmp, xCastTmp, realDataCnt);
                         PipeBarrier<PIPE_V>();
-                        if constexpr(IsNeedY3) {
-                            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_V));
-                            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_V));
+                        if constexpr (IsNeedY3) {
+                            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(
+                                GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_V));
+                            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(
+                                GetTPipePtr()->FetchEventID(AscendC::HardEvent::MTE3_V));
                         }
                         Cast(xTmp, actCastOutTmp, RoundMode::CAST_ROUND, realDataCnt);
                         break;
@@ -962,9 +999,9 @@ __aicore__ inline void AlltoAllAllGatherBatchMatMulShardH<DataType1, DataType2, 
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(GetTPipePtr()->FetchEventID(AscendC::HardEvent::V_MTE3));
             if ((actType == AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_NONE) ||
                 (actType == AlltoAllAllGatherBatchMatmulActType::ALLTOALL_ALLGATHER_BATCHMATMUL_ACT_TYPE_SILU)) {
-                    DataCopyPad(dataCopyOutGM, xTmp, dataCopyOutParams);
+                DataCopyPad(dataCopyOutGM, xTmp, dataCopyOutParams);
             } else {
-                    DataCopyPad(dataCopyOutGM, actOutTmp, dataCopyOutParams);
+                DataCopyPad(dataCopyOutGM, actOutTmp, dataCopyOutParams);
             }
         }
         curDataOffset += dataCnt;

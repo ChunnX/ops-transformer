@@ -48,7 +48,7 @@ target_link_libraries(incre_flash_attention_meta_objects PRIVATE incre_flash_att
 
 # add target obj to OBJECTS_LIST
 set(TEMP_LIST ${OBJECTS_LIST})
-list(APPEND TEMP_LIST $<TARGET_OBJECTS:incre_flash_attention_meta_objects>) 
-list(APPEND TEMP_LIST $<TARGET_OBJECTS:incre_flash_attention_meta_kernel_objects>) 
+list(APPEND TEMP_LIST $<TARGET_OBJECTS:incre_flash_attention_meta_objects>)
+list(APPEND TEMP_LIST $<TARGET_OBJECTS:incre_flash_attention_meta_kernel_objects>)
 set(OBJECTS_LIST ${TEMP_LIST} CACHE INTERNAL "List of objects" FORCE)
 return()

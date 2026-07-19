@@ -17,7 +17,7 @@
 namespace ops {
 class AddExample : public OpDef {
 public:
-    explicit AddExample(const char* name) : OpDef(name)
+    explicit AddExample(const char *name) : OpDef(name)
     {
         // 输入参数说明
         this->Input("x1")                                       // 输入x1定义
