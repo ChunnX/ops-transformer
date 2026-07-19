@@ -984,8 +984,13 @@ def gen_data(params, template_mode=None):
     sinks = (torch.rand((N1,)) * (q_datarange[1] - q_datarange[0])/10 + q_datarange[0]/10).to(torch.float)
 
     # kv_cache 0轴非连续
-    properties = torch.npu.get_device_properties()
-    if "Ascend950" in properties.name and layout_kv == "PA_BBND":
+    use_ascend950_stride = False
+    if os.environ.get("SMLA_CPU_ONLY") != "1":
+        try:
+            use_ascend950_stride = "Ascend950" in torch.npu.get_device_properties().name
+        except (AttributeError, RuntimeError):
+            use_ascend950_stride = False
+    if use_ascend950_stride and layout_kv == "PA_BBND":
         key_stride = 10  # 0轴非连续增加stride
         blocksize_with_stride = block_size1 + key_stride # 整个非连续的长度
         blockFusion1 = torch.zeros((block_num1, blocksize_with_stride * N2 * D), dtype=ori_kv_type)

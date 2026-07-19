@@ -16,6 +16,7 @@ TEST_QSMLA_PT_BATCH_SCRIPT="test_mixed_quant_sparse_flash_mla_batch.py"
 TEST_QSMLA_PT_BATCH_GRAPH_SCRIPT="test_mixed_quant_sparse_flash_mla_batch_graph.py"
 TEST_QSMLA_SINGLE_SCRIPT="test_mixed_quant_sparse_flash_mla_single.py"
 TEST_QSMLA_CONSISTENCY_SCRIPT="test_mixed_quant_sparse_flash_mla_batch_consistency.py"
+QSMLA_CONSISTENCY_PREPARE_SCRIPT="./batch/mixed_quant_sparse_flash_mla_consistency_prepare.py"
 
 PT_SAVE_DIR="mqsmla_testcase"
 EXCEL_FILE="./excel/example.xlsx"
@@ -33,6 +34,7 @@ CONSISTENCY_TOKEN_SPLIT_SIZES=""
 CONSISTENCY_MODE3_BATCH=0
 CONSISTENCY_COMMON_TOKENS=""
 CONSISTENCY_DERIVED_EXTRA=""
+PREPARE_REPORT_DIR=""
 
 # ====================== 执行区 ======================
 
@@ -167,6 +169,17 @@ run_consistency() {
     python3 -m pytest -rA -s "$TEST_QSMLA_CONSISTENCY_SCRIPT" -v -m consistency
 }
 
+run_consistency_prepare() {
+    if [ -z "$PREPARE_REPORT_DIR" ]; then
+        echo "错误: consistency_prepare 必须指定 --report-dir"
+        exit 1
+    fi
+    echo "===== 执行 MQSMLA 无NPU一致性离线预检 ====="
+    python3 "$QSMLA_CONSISTENCY_PREPARE_SCRIPT" \
+        --excel "$EXCEL_FILE" --sheet "$SHEET_NAME" --pt-dir "$PT_SAVE_DIR" \
+        --report-dir "$PREPARE_REPORT_DIR" --seed "$CONSISTENCY_SEED"
+}
+
 show_help() {
     echo "用法: $0 <命令> [选项]"
     echo ""
@@ -177,6 +190,7 @@ show_help() {
     echo "  batch_exec_graph   批量读取pt文件并执行Graph模式NPU测试"
     echo "  batch              全流程：从excel生成pt + NPU测试"
     echo "  consistency        执行level 3 batch一致性模式1-4"
+    echo "  consistency_prepare 无NPU验收：Excel -> CPU golden -> PT -> 模式1-4派生PT"
     echo "  help               显示本帮助信息"
     echo ""
     echo "选项（batch_save/batch_exec/batch_exec_graph/batch 命令支持）："
@@ -184,6 +198,7 @@ show_help() {
     echo "  --sheet <名称>      指定excel sheet名（默认: decode）"
     echo "  --pt-dir <目录>     指定pt文件保存/读取目录（默认: mqsmla_testcase）"
     echo "  --result <路径>     指定结果保存路径（默认: ./mqsmla_result.xlsx）"
+    echo "  --report-dir <目录> consistency_prepare JSON报告目录（必填）"
     echo "  --device-id <id>    指定NPU设备ID（默认: 0）"
     echo "  --mode <0|1>        批跑模式: 0=全量批跑(默认), 1=按表格中case批跑"
     echo "  --keep-pt           执行完成后保留pt文件（默认清理，仅batch命令）"
@@ -216,6 +231,7 @@ show_help() {
     echo "  $0 batch_exec_graph --mode 1                           # Graph模式按表格批跑"
     echo "  $0 batch --keep-pt"
     echo "  $0 consistency --pt-dir my_pt --modes reorder,split --split-groups '0,1,2;3,4,5,6,7'"
+    echo "  $0 consistency_prepare --excel cases.xlsx --sheet MQSMLA --pt-dir /tmp/mq_pt --report-dir /tmp/mq_report"
     echo "  $0 batch --excel my.xlsx --sheet decode --pt-dir my_pt --mode 1 --keep-pt"
 }
 
@@ -230,7 +246,7 @@ fi
 COMMAND="$1"
 shift
 
-if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch_exec_graph" ] || [ "$COMMAND" = "batch" ] || [ "$COMMAND" = "consistency" ]; then
+if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch_exec_graph" ] || [ "$COMMAND" = "batch" ] || [ "$COMMAND" = "consistency" ] || [ "$COMMAND" = "consistency_prepare" ]; then
     while [ $# -gt 0 ]; do
         case "$1" in
             --excel)
@@ -263,6 +279,14 @@ if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND
                     exit 1
                 fi
                 RESULT_PATH="$2"
+                shift 2
+                ;;
+            --report-dir)
+                if [ $# -lt 2 ]; then
+                    echo "错误：--report-dir 需要参数值"
+                    exit 1
+                fi
+                PREPARE_REPORT_DIR="$2"
                 shift 2
                 ;;
             --device-id)
@@ -354,6 +378,9 @@ case "$COMMAND" in
         ;;
     consistency)
         run_consistency
+        ;;
+    consistency_prepare)
+        run_consistency_prepare
         ;;
     help)
         show_help

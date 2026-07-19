@@ -12,16 +12,18 @@
 
 """CPU-only tests for the pytest_v2 consistency data path."""
 
+from pathlib import Path
+
 import pytest
 import torch
 
-from batch.consistency_adapter import CaseAdapter
-from batch.consistency_compare import compare_pair, tensor_md5
-from batch.consistency_config import CaseConfigParser, ConsistencyMode, ModeRegistry
-from batch.consistency_flow import ConsistencyFlow, DeterministicLevelGuard
-from batch.consistency_model import RunResult
-from batch.consistency_schema import check_invariants, get_q_lengths
-from batch.consistency_transform import (
+from batch.consistency.adapter import CaseAdapter
+from batch.consistency.compare import compare_pair, tensor_md5
+from batch.consistency.config import CaseConfigParser, ConsistencyMode, ModeRegistry
+from batch.consistency.flow import ConsistencyFlow, DeterministicLevelGuard
+from batch.consistency.model import RunResult
+from batch.consistency.schema import check_invariants, get_q_lengths
+from batch.consistency.transform import (
     ActualInputSemanticOracle,
     InvalidTransformError,
     generate_split_groups,
@@ -31,8 +33,10 @@ from batch.consistency_transform import (
     transform_mode3_token_partition,
     transform_mode4_shape_change,
 )
-from batch.metadata_coverage import CoverageContext, MetadataCoverageAnalyzer, S2Category
-from batch.metadata_layout import MetadataLayout
+from batch.consistency.metadata_coverage import CoverageContext, MetadataCoverageAnalyzer, S2Category
+from batch.consistency.metadata_layout import MetadataLayout
+from batch.consistency.offline import mode_options_from_mapping
+from batch.consistency.reporting import attach_provenance, build_input_summary
 
 
 def make_case(batch=2, q_length=4, ori_length=8, physical_ori=None, mask_mode=0):
@@ -225,6 +229,11 @@ def test_actual_input_oracle_detects_changed_q():
         ActualInputSemanticOracle.validate_mapped_tokens(baseline, derived, [(0, 0, 0, 0)])
 
 
+def test_actual_input_oracle_uses_bits_for_identical_float8_nan_payloads():
+    payload = torch.tensor([0x7F], dtype=torch.uint8).view(torch.float8_e4m3fn)
+    assert ActualInputSemanticOracle._tensor_bits_equal(payload, payload.clone())
+
+
 def test_named_modes_and_explicit_config_parsing():
     assert ModeRegistry.parse("reorder,shape-change", warn_legacy=False) == (
         ConsistencyMode.REORDER,
@@ -233,6 +242,23 @@ def test_named_modes_and_explicit_config_parsing():
     assert ModeRegistry.unsupported((ConsistencyMode.SHAPE_CHANGE,)) == ()
     assert CaseConfigParser.split_groups("0,1,2;3,4") == [[0, 1, 2], [3, 4]]
     assert CaseConfigParser.split_sizes("4096,12288", "token") == [4096, 12288]
+    assert mode_options_from_mapping(
+        {
+            "consistency_modes": "reorder, split",
+            "split_groups": "0,1;2,3",
+            "token_split_sizes": "4,12",
+            "mode_batch": 1,
+            "common_tokens": 3,
+            "derived_extra": 0,
+        }
+    ) == {
+        "modes": ("reorder", "split"),
+        "split_groups": [[0, 1], [2, 3]],
+        "token_split_sizes": [4, 12],
+        "mode_batch": 1,
+        "common_tokens": 3,
+        "derived_extra": 0,
+    }
 
 
 def test_md5_and_numeric_compare_are_both_reported():
@@ -240,6 +266,33 @@ def test_md5_and_numeric_compare_are_both_reported():
     result = compare_pair(tensor, tensor.clone(), require_bitwise=True)
     assert result["pass"] and result["bitwise_equal"]
     assert tensor_md5(tensor) == result["expected_md5"]
+
+
+def test_whitebox_input_summary_contains_source_shapes_values_and_digests(tmp_path):
+    case = make_case()
+    source = tmp_path / "baseline.pt"
+    attach_provenance(case, source_pt=str(source), source_excel="cases.xlsx", source_sheet="SMLA")
+    summary = build_input_summary(case, role="baseline", mode="reorder")
+    assert summary["operator"] == "smla"
+    assert summary["provenance"]["source_pt"] == str(source)
+    assert summary["dimensions"]["S1_effective"] == [4, 4]
+    assert summary["tensor_inputs"]["q"]["shape"] == [2, 4, 1, 4]
+    assert len(summary["tensor_inputs"]["q"]["sha256"]) == 64
+    assert summary["tensor_inputs"]["seqused_q"]["values"] == [4, 4]
+    assert summary["tensor_inputs"]["seqused_q"]["values_complete"]
+    assert summary["metadata_input_sha256"]
+
+
+def test_pr8737_floor_and_requirement_ceil_formula_are_both_reported():
+    boundary = MetadataCoverageAnalyzer.classify_s2(4097)
+    assert boundary.pr8737_floor_tile == 128
+    assert boundary.requirement_ceil_tile == 256
+    assert boundary.quotient_formula_conflict
+    assert boundary.tile_formula_conflict
+
+    same_aligned_tile = MetadataCoverageAnalyzer.classify_s2(5121)
+    assert same_aligned_tile.quotient_formula_conflict
+    assert not same_aligned_tile.tile_formula_conflict
 
 
 @pytest.mark.parametrize(
@@ -315,3 +368,33 @@ def test_flow_runs_all_modes_with_original_cpu_golden(bypass_level_guard):
     assert flow.run_mode2(make_case(batch=2), [[0], [1]])["pass"]
     assert flow.run_mode3(make_case(batch=1), 0, [1, 3])["pass"]
     assert flow.run_mode4(make_case(batch=1), 0, 3, 2)["pass"]
+
+
+def test_dual_operator_consistency_core_is_an_exact_mirror():
+    repo = next(
+        parent
+        for parent in Path(__file__).resolve().parents
+        if parent.name == "ops-transformer_0716"
+    )
+    smla = repo / "attention/sparse_flash_mla/tests/pytest_v2/batch/consistency"
+    mqsmla = repo / "attention/mixed_quant_sparse_flash_mla/tests/pytest_v2/batch/consistency"
+    names = {
+        "adapter.py",
+        "compare.py",
+        "config.py",
+        "flow.py",
+        "layouts.py",
+        "metadata_coverage.py",
+        "metadata_layout.py",
+        "model.py",
+        "offline.py",
+        "reporting.py",
+        "schema.py",
+        "transform.py",
+    }
+    mismatched = [
+        name
+        for name in sorted(names)
+        if (smla / name).read_bytes() != (mqsmla / name).read_bytes()
+    ]
+    assert not mismatched, f"pytest_v2 consistency mirror drift: {mismatched}"

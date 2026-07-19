@@ -15,8 +15,8 @@
 import os
 from typing import Any, Dict
 
-from .consistency_flow import ConsistencyFlow
-from .consistency_model import RunResult
+from .consistency.flow import ConsistencyFlow
+from .consistency.model import RunResult
 from . import mixed_quant_sparse_flash_mla_process
 
 

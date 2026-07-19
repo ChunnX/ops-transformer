@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="940" viewBox="0 0 1500 940">
+  <defs>
+    <style>
+      .title { font: 700 34px 'Noto Sans CJK SC', sans-serif; fill: #17241d; }
+      .head { font: 700 23px 'Noto Sans CJK SC', sans-serif; fill: #17241d; }
+      .body { font: 17px 'Noto Sans CJK SC', sans-serif; fill: #2a3930; }
+      .mono { font: 17px monospace; fill: #2a3930; }
+      .ok { font: 700 18px 'Noto Sans CJK SC', sans-serif; fill: #21643d; }
+      .bad { font: 700 18px 'Noto Sans CJK SC', sans-serif; fill: #9b3729; }
+    </style>
+  </defs>
+  <rect width="1500" height="940" fill="#f7f4ea"/>
+  <text x="55" y="60" class="title">RightDown / Band 对齐：Q 相同，不代表可见 KV 相同</text>
+  <rect x="70" y="95" width="1360" height="130" rx="22" fill="#dce6f2" stroke="#3a638a" stroke-width="2"/>
+  <text x="105" y="140" class="head">共同公式</text>
+  <text x="105" y="180" class="mono">threshold = K - Q + i + 1</text>
+  <text x="600" y="180" class="mono">Band start=max(0, threshold-win_left-1)</text>
+  <text x="1050" y="180" class="mono">end=min(K, threshold+win_right)</text>
+
+  <rect x="70" y="265" width="420" height="555" rx="24" fill="#f2d5cf" stroke="#a64b3b" stroke-width="2"/>
+  <text x="105" y="310" class="head">A. 只在 Q 尾部追加</text>
+  <text x="105" y="355" class="mono">old: Q, K, i</text>
+  <text x="105" y="395" class="mono">new: Q+δ, K, i</text>
+  <text x="105" y="445" class="mono">new threshold = old - δ</text>
+  <rect x="105" y="485" width="350" height="95" rx="12" fill="#fff8f5"/>
+  <text x="125" y="525" class="body">可见右边界左移，Band start/end</text>
+  <text x="125" y="555" class="body">也随之漂移。</text>
+  <text x="105" y="625" class="bad">不等价：STC“后面追加”若未同步KV</text>
+  <text x="105" y="680" class="body">即使共同 Q tensor 的 bit 完全相同，</text>
+  <text x="105" y="715" class="body">它读到的 KV 集合已经不同。</text>
+  <text x="105" y="770" class="body">oracle：window + 实际 KV slice 均检查</text>
+
+  <rect x="540" y="265" width="420" height="555" rx="24" fill="#f2dfc5" stroke="#a46b2f" stroke-width="2"/>
+  <text x="575" y="310" class="head">B. 在 Q 首部 prepend</text>
+  <text x="575" y="355" class="mono">old: Q, K, i</text>
+  <text x="575" y="395" class="mono">new: Q+δ, K, i+δ</text>
+  <text x="575" y="445" class="mono">new threshold = old</text>
+  <rect x="575" y="485" width="350" height="95" rx="12" fill="#fffaf2"/>
+  <text x="595" y="525" class="body">mask 数学可以保持，旧 token 的</text>
+  <text x="595" y="555" class="body">position 同时右移。</text>
+  <text x="575" y="625" class="ok">数学可行，但不是“共同前缀”</text>
+  <text x="575" y="680" class="body">会议纪要采用此直觉；若保留，</text>
+  <text x="575" y="715" class="body">应成为单独命名模式，而非混入模式4。</text>
+  <text x="575" y="770" class="body">需求 owner 仍需裁决。</text>
+
+  <rect x="1010" y="265" width="420" height="555" rx="24" fill="#dcebdc" stroke="#427450" stroke-width="2"/>
+  <text x="1045" y="310" class="head">C. 共同前缀 + KV同步增长</text>
+  <text x="1045" y="355" class="mono">old: Q, K, i</text>
+  <text x="1045" y="395" class="mono">new: Q+δ, K+δ, i</text>
+  <text x="1045" y="445" class="mono">new threshold = old</text>
+  <rect x="1045" y="485" width="350" height="95" rx="12" fill="#f7fcf7"/>
+  <text x="1065" y="525" class="body">共同 token 仍在前缀原位置，</text>
+  <text x="1065" y="555" class="body">新增 KV 位于其未来并被 mask。</text>
+  <text x="1045" y="625" class="ok">当前模式4暂定实现</text>
+  <text x="1045" y="680" class="mono">new_K = old_K + new_Q - old_Q</text>
+  <text x="1045" y="725" class="body">cmp length/residual 同步；PA必须</text>
+  <text x="1045" y="760" class="body">有足够 block table 容量。</text>
+
+  <text x="265" y="880" class="head">最终判定条件：mapped Q、window、visible KV、indices、top-k、sinks 全部 bitwise 相同</text>
+</svg>

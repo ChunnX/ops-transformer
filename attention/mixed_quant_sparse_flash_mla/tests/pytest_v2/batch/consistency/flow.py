@@ -16,11 +16,11 @@ from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import torch_npu
 
-from .consistency_adapter import CaseAdapter
-from .consistency_compare import compare_consistency, compare_subset
-from .consistency_model import ConsistencyCase, RunResult
-from .consistency_schema import build_baseline_origins, get_q_lengths
-from .consistency_transform import (
+from .adapter import CaseAdapter
+from .compare import compare_consistency, compare_subset
+from .model import ConsistencyCase, RunResult
+from .schema import build_baseline_origins, get_q_lengths
+from .transform import (
     transform_mode1_reorder,
     transform_mode2_split,
     transform_mode3_token_partition,
@@ -28,6 +28,7 @@ from .consistency_transform import (
 )
 from .metadata_coverage import CoverageContext, MetadataCoverageAnalyzer
 from .metadata_layout import MetadataLayout
+from .reporting import build_input_summary, summarize_tensor
 
 
 class DeterministicLevelError(RuntimeError):
@@ -45,6 +46,7 @@ class DeterministicLevelGuard:
 
     def __init__(self):
         self.previous_level: Optional[int] = None
+        self.observed_level: Optional[int] = None
 
     @staticmethod
     def current_level() -> int:
@@ -78,6 +80,7 @@ class DeterministicLevelGuard:
                     "The installed torch_npu/CANN runtime rejects deterministic level 3."
                 ) from error
             raise
+        self.observed_level = self.current_level()
         return self
 
     def _restore(self) -> None:
@@ -179,7 +182,9 @@ class ConsistencyFlow:
             return None
         parsed = MetadataLayout().parse(result.metadata)
         context = CoverageContext.from_input_data(input_data)
-        return MetadataCoverageAnalyzer.analyze(parsed, context=context)
+        report = MetadataCoverageAnalyzer.analyze(parsed, context=context)
+        report["kernel_metadata_tensor"] = summarize_tensor("kernel_metadata", result.metadata)
+        return report
 
     def _run_case(
         self,
@@ -188,6 +193,7 @@ class ConsistencyFlow:
         case: ConsistencyCase,
         subset: bool,
         derived_valid_lengths: Optional[List[int]] = None,
+        deterministic_level: Optional[int] = None,
     ) -> Tuple[RunResult, Dict[str, Any]]:
         derived = self.executor(case.input_data)
         compare = self._subset_comparison if subset else self._full_comparison
@@ -221,6 +227,23 @@ class ConsistencyFlow:
         report = {
             "case": case.name,
             "transform": case.transform_meta,
+            "deterministic_level": {
+                "requested": DeterministicLevelGuard.LEVEL,
+                "observed": deterministic_level,
+            },
+            "input_summary": {
+                "baseline": build_input_summary(
+                    baseline_data,
+                    role="baseline",
+                    mode=case.transform_meta.get("mode_name"),
+                ),
+                "derived": build_input_summary(
+                    case.input_data,
+                    role="derived",
+                    mode=case.transform_meta.get("mode_name"),
+                    transform=case.transform_meta,
+                ),
+            },
             "batch_consistency": consistency,
             "precision": precision,
             "metadata_coverage": coverage,
@@ -236,9 +259,15 @@ class ConsistencyFlow:
         seed: Optional[int] = None,
     ) -> Dict[str, Any]:
         case = transform_mode1_reorder(input_data, order=order, seed=seed)
-        with DeterministicLevelGuard():
+        with DeterministicLevelGuard() as guard:
             baseline = self.executor(input_data)
-            _, report = self._run_case(input_data, baseline, case, subset=False)
+            _, report = self._run_case(
+                input_data,
+                baseline,
+                case,
+                subset=False,
+                deterministic_level=guard.observed_level,
+            )
         return report
 
     def run_mode2(
@@ -246,18 +275,36 @@ class ConsistencyFlow:
     ) -> Dict[str, Any]:
         normalized = [list(group) for group in groups]
         cases = transform_mode2_split(input_data, groups=normalized)
-        with DeterministicLevelGuard():
+        with DeterministicLevelGuard() as guard:
             baseline = self.executor(input_data)
-            reports = [self._run_case(input_data, baseline, case, subset=True)[1] for case in cases]
+            reports = [
+                self._run_case(
+                    input_data,
+                    baseline,
+                    case,
+                    subset=True,
+                    deterministic_level=guard.observed_level,
+                )[1]
+                for case in cases
+            ]
         return {"mode": "split", "subcases": reports, "pass": all(item["pass"] for item in reports)}
 
     def run_mode3(
         self, input_data: Dict[str, Any], batch_id: int, split_sizes: Sequence[int]
     ) -> Dict[str, Any]:
         cases = transform_mode3_token_partition(input_data, batch_id, split_sizes)
-        with DeterministicLevelGuard():
+        with DeterministicLevelGuard() as guard:
             baseline = self.executor(input_data)
-            reports = [self._run_case(input_data, baseline, case, subset=True)[1] for case in cases]
+            reports = [
+                self._run_case(
+                    input_data,
+                    baseline,
+                    case,
+                    subset=True,
+                    deterministic_level=guard.observed_level,
+                )[1]
+                for case in cases
+            ]
         return {
             "mode": "token-split",
             "split_sizes": list(split_sizes),
@@ -278,7 +325,7 @@ class ConsistencyFlow:
             common_tokens,
             derived_extra_tokens,
         )
-        with DeterministicLevelGuard():
+        with DeterministicLevelGuard() as guard:
             baseline = self.executor(input_data)
             _, report = self._run_case(
                 input_data,
@@ -286,5 +333,6 @@ class ConsistencyFlow:
                 case,
                 subset=True,
                 derived_valid_lengths=[common_tokens],
+                deterministic_level=guard.observed_level,
             )
         return report

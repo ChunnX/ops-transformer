@@ -9,12 +9,12 @@
 ```text
 原 golden / PT save
   -> PT load
-  -> consistency_transform 同步处理 Q/KV/长度/索引
+  -> batch/consistency/transform 同步处理 Q/KV/长度/索引
   -> DeterministicLevelGuard(level=3)
   -> sparse_flash_mla_metadata
   -> sparse_flash_mla（消费同一 metadata）
   -> origin 对齐 + MD5 + 原 check_result
-  -> metadata 白盒覆盖报告
+  -> metadata 白盒覆盖 + baseline/derived 输入摘要
   -> 恢复旧 level
 ```
 
@@ -25,12 +25,15 @@
 | `test_sparse_flash_mla_batch_consistency.py` | 沿用原 batch PT 收集方式，提供模式 1-4 opt-in pytest 入口 |
 | `test_batch_consistency_unit.py` | CPU 回归：四模式、双 case 格式、语义 oracle、MD5、FA/FD 展开 |
 | `batch/sparse_flash_mla_consistency.py` | SMLA executor；调用原 process 并捕获实际 metadata |
-| `batch/consistency_flow.py` | level 3、baseline/derived、CPU 精度与 bitwise 双门禁编排 |
-| `batch/consistency_transform.py` | BSND/TND/PA_BBND 模式变换与实际输入语义 oracle |
-| `batch/consistency_compare.py` | `TokenOrigin` 对齐、有效 token 打包、MD5 和原精度复用 |
-| `batch/metadata_layout.py` | 严格解析 1024-int32、36x9 FA、72x8 FD 和 reserved |
-| `batch/metadata_coverage.py` | 将 FA/FD 展开到 batch/N2/query token/S2 block/workspace 并统计 Level-1/2 |
-| 其余 `batch/consistency_*.py` | case 格式、layout、schema、数据模型和命名配置 |
+| `batch/sparse_flash_mla_consistency_prepare.py` | Excel→原golden→baseline/derived PT的CPU-only验收入口 |
+| `batch/consistency/flow.py` | level 3、baseline/derived、CPU 精度与 bitwise 双门禁编排 |
+| `batch/consistency/transform.py` | BSND/TND/PA_BBND 模式变换与实际输入语义 oracle |
+| `batch/consistency/compare.py` | `TokenOrigin` 对齐、有效 token 打包、MD5 和原精度复用 |
+| `batch/consistency/metadata_layout.py` | 严格解析 1024-int32、36x9 FA、72x8 FD 和 reserved |
+| `batch/consistency/metadata_coverage.py` | FA/FD token/core/workspace展开及floor/ceil公式审计 |
+| `batch/consistency/reporting.py` | PT来源、shape/dtype/device/byte/digest/sample输入摘要 |
+| `batch/consistency/offline.py` | origin-mapped expected output与derived PT round-trip |
+| 其余 `batch/consistency/*.py` | case格式、layout、schema、数据模型和命名配置 |
 
 ## 运行
 
@@ -52,8 +55,16 @@ bash test_run.sh consistency -P ./data \
   --modes shape-change \
   --common-tokens 300 \
   --derived-extra 200
+
+# 不用NPU，验证Excel、原golden、baseline/derived PT和四种模式。
+bash test_run.sh consistency_prepare \
+  --excel ../../../../requs/cases/SMLA_MQSMLA_batch一致性离线预检.xlsx \
+  --sheet SMLA --pt-dir /tmp/smla_pt --report-dir /tmp/smla_report
 ```
 
 数字 `-M 1,2` 仅为 v1 下游迁移兼容；正式配置使用 `--modes` 或 `--profile`。当前本机
 torch_npu/CANN 在第一条 NPU 操作处拒绝 level 3，真实运行应报告 `UNSUPPORTED`，不能回退
 level 0 伪造 PASS。
+
+`consistency_prepare`只输出CPU-only预检状态，不代表NPU一致性通过。模式4没有origin的额外token
+会在报告中记为`unmapped_tokens`，不会冒充完整CPU golden。

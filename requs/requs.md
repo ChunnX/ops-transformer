@@ -1,12 +1,14 @@
 # SMLA/MQSMLA batch 一致性需求与开发台账
 
-> 最近整理：2026-07-19
+> 最近整理：2026-07-20
 > 第一阶段基线提交：`b680bfbdd test(smla): add phase-one batch consistency framework`
 > 第一阶段二次推进提交：`183beb730 test(smla): advance batch consistency framework phase two`
+> pytest_v2阶段二基线提交：`f9ca0da86 test(smla): integrate dual-op batch consistency pytest v2`
 > 本文用途：归档需求背景、权威资料、需求冲突裁决、实现记录、检视答复和当前状态。具体后续里程碑见
 > `SMLA_batch一致性测试开发计划.md`。
-> 阅读提示：第 6-12 节保留第一阶段历史快照；本轮权威状态、冲突台账和逐项回复见原始
-> `# 检视意见` 后的“检视意见处理记录（2026-07-19）”。若历史状态与新记录冲突，以新记录为准。
+> 阅读提示：第 6-12 节和“检视意见处理记录（2026-07-19）”保留历史快照；当前权威状态见
+> 原始`# 检视意见二`后追加的“检视意见二处理记录（2026-07-20）”。逐STC/公式/mask冲突见
+> `SMLA_MQSMLA需求冲突与对齐清单.md`。若历史状态与新记录冲突，以2026-07-20记录为准。
 
 ## 1. 项目背景与最终范围
 
@@ -85,6 +87,14 @@ MQSMLA metadata AICPU 源码已经明确：
 STC 014 把 `S2=5120` 描述为“不是整数倍”，但 `5120 % 32 == 0`，并且两份设计文档都
 给出 `R=align_up(5120/32, 128)=256`。因此代码按可计算事实把 5120 归入第 3 类；STC
 文字需由用例负责人修订，不能在代码里制造错误分类来迁就描述。
+
+### 3.4 2026-07-20 新发现的 floor/ceil 公式冲突
+
+PR8737 head `31a3b6d3` 的 C++ 使用整数 `actTotalS2Size / 32`，即先 floor；需求文档与此前
+analyzer按ceil理解。两者在4097处会分别得到tile128/256，在1..31还存在PR表达式zero edge。
+当前白盒报告同时输出两套quotient/tile/conflict，结构展开暂按PR head并显式记录zero guard。
+这不是已裁决事项，必须由tiling/需求owner确认。完整证据和数值表见
+`SMLA_MQSMLA需求冲突与对齐清单.md`。
 
 ## 4. 四种黑盒模式的裁决
 
@@ -370,6 +380,9 @@ sudo source /home/Ascend/vendors/custom_transformer/bin/set_env.bash
 
 ## 检视意见处理记录（2026-07-19）
 
+> 历史快照：本节记录提交`f9ca0da86`前后的设计。其平铺`batch/consistency_*.py`路径和
+> metadata-only probe已在2026-07-20整理/删除；当前文件结构与状态以“检视意见二处理记录”为准。
+
 ### 处理结论
 
 本轮已把测试侧实现迁入两个算子各自的 `tests/pytest_v2`，并在原 pytest 的输入生成、CPU
@@ -597,3 +610,242 @@ STC manifest 或 nightly profile 也只扩展名字，不继续增加含义不�
 
 在第 1 项完成前，任何 level 0 的普通精度 PASS 都只记录为环境 smoke，不得写成 batch
 consistency PASS。
+
+
+# 检视意见二
+
+cannbot模型不止glm-5.2还有deepseek v4和qwen3.7-max，我希望chatgpt能和多方合作沟通商量规划，毕竟别的模型有可能关注到chatgpt没关注到的点，实现的时候chatgpt可以指导其他模型帮你修改一下
+
+做好开发日志记录和文档记录
+
+1. 关于上一个检视的分核和规约等事，我挺好奇一点，模式1~4究竟是pytest框架来做输入前的处理？还是说让NPU做分核规约的事？我搞不懂这究竟是哪一侧的任务（算子开发/pytest框架适配），如果全交给pytest做参数参数处理，那还有算子开发什么事？请结合当前ops-transformer_0716/requs/docs分析一下，算子开发/pytest框架适配分别做什么。就像你上一个检视实现的`### 四种模式的最终实现分析`关于1~4分核规约的问题全部交给pytest参数控制，那问题来了，需求文档中算子开发干了啥？我们设置的参数能传入NPU侧？
+
+2. `### 需求冲突集中台账`写详细一点，或者单独列出一个文档，比如STC有冲突，就列出哪一条用例冲突了什么，后面我好找算子开发那边的人对齐，模式4冲突，就详细说明具体问题（哪个资料指导了什么，和其他文档冲突，mask详细冲突问题我建议仔细说说，这和后期可能需要核对，mask怎么实现的，右下角计算会和当前有什么冲突）
+
+3. 当前由于MQSMLA的pytest侧没适配batch一致性，只有pytest_v2做了适配，当前代码实现应该切到pytest_v2为主了，同时`level3两段式完整调用示例.md`我并不满意，关于上一个检视的意见2我提的是用例侧如何调用batch一致性（由于改了metadata，我想知道用例参数会不会有什么变动，没有就直说，有就模式1~4分别需要什么样的用例）
+
+4. 关于pytest适配batch一致性绘一张流程图，我实在不理解，为什么batch一致性会不需要改动golden和输入pt保存，讲解一下，我理解一直是batch一致性是CPU golden的一个特性，是用例集参数的变动，但我看你的修改好像需求是框架侧的问题
+
+5. SMLA和MQSMLA算子虽然NPU侧的算子开发还没有实现，但输入处理、CPU golden生成、pt文件保存一直都是框架独立支持的功能（除了compare需要NPU结果），我觉得关于batch一致性可以生成excel用例表单独验下输入处理、CPU golden生成、pt文件保存的功能。对了有些临时验证的文件别提交上去了，记得及时删除（excel文件可以保留），| `batch/mixed_quant_sparse_flash_mla_metadata_probe.py` | PR8737 metadata-only 临时验证，恢复旧 level 并输出白盒 JSON |这种不是真正的适配代码都放进batch中提交上去不合理，有些可以创一个临时目录去放临时测试文件
+
+6. 关于`### 当前验证状态与下一阶段`的NPU算子开发侧实现也不急，这个只能等，先看看`batch一致性测试框架.md`文档的大纲里面还有什么能实现的
+
+7. 上一个检视的意见6生成的SMLA_MQSMLA入门教学.md我觉得还是不够详细，对于列出的很多字段关系我还是有点不太理解，能生成更多的关系图逻辑图以及思维导图辅助理解吗？（因为我原来本就不是底层transform的开发人员，属于一个小白接触这些）
+
+8. 白盒分析带上原有输入，列出详细信息。当前batch一致性的实现文件还是有点杂乱，在整理验证一下
+
+
+## 检视意见二处理记录（2026-07-20）
+
+### 一、处理结论
+
+本轮没有等待NPU算子/环境，先把所有可离线闭环的工作推进完：
+
+1. 明确pytest与算子侧的责任边界，并重写用例调用说明；
+2. 建立逐STC、模式4、mask和PR公式的独立冲突文档；
+3. 正式只在两棵`pytest_v2`推进新功能，整理`batch/consistency/`子包；
+4. 删除MQSMLA metadata-only临时probe；
+5. 新增双算子Excel→原CPU golden→baseline PT→模式1-4→derived PT的无NPU验收；
+6. 白盒报告增加原始输入来源、参数、tensor shape/dtype/device/byte/digest/sample；
+7. analyzer同时报告PR floor与需求ceil公式，避免静默掩盖冲突；
+8. 扩充小白教学并增加5张关系/流程/模式/mask SVG；
+9. 发现并修复MQSMLA FP8相同NaN payload被`torch.equal`误判不一致的问题。
+
+当前准确状态：**两算子输入/golden/PT/模式变换的CPU-only链已真实通过；真实NPU level3仍是
+`UNSUPPORTED`，没有被包装成PASS。**
+
+### 二、8条检视意见逐项答复
+
+| 编号 | 回答、修复与实现 | 证据/状态 |
+| --- | --- | --- |
+| 1 | 四种模式是pytest构造baseline/derived多次调用；metadata tiling、固定规约块、FA/FD分核、workspace和kernel combine仍由算子完成。模式不会作为op参数传入，变化后的原Q/KV/length/table/index参数会正常进入metadata/main op；level3通过进程状态被runtime/tiling读取 | `level3两段式完整调用示例.md`、`images/responsibility_boundary.svg`；职责已澄清 |
+| 2 | 新建独立冲突清单，逐条列出STC 001-027原文/字段/问题/修订项/待确认角色；模式4单列主需求、会议prepend、STC尾部追加三种说法，并推导RightDown/Band threshold/start/end；新增PR floor/需求ceil冲突 | `SMLA_MQSMLA需求冲突与对齐清单.md`；待owner确认项未伪装成已裁决 |
+| 3 | 新开发主线正式指向`tests/pytest_v2`。重写两段调用文档，开头直接回答“operator API无新增mode参数”；逐模式列baseline最低条件、derived调用、同步字段和命令。原Excel/PT只需baseline，derived由pytest生成，避免generator二次随机 | `level3两段式完整调用示例.md`、两棵README；已完成 |
+| 4 | 新增完整流程图，并解释golden/PT为何不加mode字段：golden定义一次具体输入；一致性新增的是多次调用间的TokenOrigin关系。baseline复用原golden；derived只从baseline CPU output物化有origin的比较token，模式4额外token明确不冒充完整golden | `images/batch_consistency_flow.svg`、调用文档第5节；已完成 |
+| 5 | 新增正式Excel和`consistency_prepare`命令，双算子真实跑通原parser、原golden、baseline PT save/reload、模式1-4、oracle、derived PT save/reload、schema/digest。临时MQ probe已删除 | `cases/SMLA_MQSMLA_batch一致性离线预检.xlsx`、两棵`batch/*_consistency_prepare.py`；已通过 |
+| 6 | 对照框架大纲逐项标记无NPU可做/已做/仍依赖NPU；完成输入表、golden、PT、黑盒、random、输入报告和白盒算法部分。NPU优先级下调，先关闭公式/STC/manifest/MQ LSE等离线问题 | `docs/batch一致性测试框架.md`、开发计划第10节 |
+| 7 | 教学增加字段关系思维导图、职责边界、完整流程、四模式TokenOrigin映射和RightDown/Band三方案对比；新增物理/有效长度、手算例、报告读法、文件导航和小白自检 | `SMLA_MQSMLA入门教学.md`及`images/*.svg`；已完成 |
+| 8 | 白盒`input_summary`带Excel/sheet/PT来源、baseline/derived、B/S/N/D/G/layout/mask、所有输入tensor的完整digest和有界sample；控制tensor给完整values。公共文件移入`batch/consistency/`，operator process/executor/prepare留顶层；双树核心增加字节级镜像门禁 | `batch/consistency/reporting.py`、整理后的文件树和unit test；已完成 |
+
+### 三、算子开发与pytest适配的最终责任边界
+
+```text
+pytest_v2：
+  Excel/PT -> baseline输入 -> modes 1-4派生输入 -> 多次metadata+main调用
+  -> TokenOrigin对齐 -> NPU MD5 -> CPU精度 -> metadata/input报告
+
+runtime：
+  保存/设置/读取/恢复 deterministic level 3
+
+算子 metadata/tiling：
+  根据“本次调用”的B/S1/S2/mask/length计算规约tile、负载与FA/FD任务
+
+算子 kernel：
+  执行FA局部结果、同核固定combine、跨核workspace与FD固定combine
+```
+
+所以算子开发不是“被pytest替代”。pytest只制造会改变调度但应保持数学等价的调用组合，并验证
+结果；如果算子没有level3固定规约实现，pytest会得到真实不一致或`UNSUPPORTED`。pytest配置的
+`split_groups`不会传入NPU，NPU收到的是每个derived调用正常的B、tensor和length等已有参数。
+
+### 四、golden与PT的边界
+
+本轮保留原golden/PT schema，不是因为batch一致性属于“纯框架、不需要CPU”，而是因为职责不同：
+
+1. 原golden已经为baseline的具体Q/KV计算`cpu_output`；
+2. batch一致性要证明mapped token的实际数学输入未变，因此它的CPU预期就是baseline中对应
+   `TokenOrigin`的output，而不是再次随机生成另一份输入；
+3. reorder/split/token-split可为所有derived有效token物化expected output；
+4. shape-change只为共同前缀物化expected，额外token写入`unmapped_tokens`且不进入比较；
+5. 若未来要求验证shape-change额外token，必须让原golden支持“对给定现成tensor重新计算”，
+   本轮没有用零模板假装这项能力。
+
+离线prepare因此验证的是“原baseline golden + 一致性comparison golden scope”，不是NPU结果。
+
+### 五、多模型审议记录与主审裁决
+
+本轮沿用隔离CANNBot会话对`cannbot/glm-5.2`、`cannbot/deepseek-v4-pro`、
+`cannbot/qwen3.7-max`的独立只读审议。认证和临时数据未进入仓库；模型不直接修改代码，主审按
+源码、需求和可重复测试裁决。
+
+三方有效共识：
+
+- 明确pytest/算子边界；
+- 用Excel→golden→PT做无NPU验收；
+- 删除正式`batch/`中的metadata-only临时probe；
+- 白盒报告带tensor shape/dtype/digest/PT来源；
+- 整理双树重复文件并加镜像一致性门禁。
+
+模型意见中已纠正的错误：
+
+1. DeepSeek/Qwen说oracle没检查mask window；实际`ActualInputSemanticOracle._windows()`和可见KV
+   slice检查已存在，本轮是把证据写进报告和教学；
+2. DeepSeek/Qwen把prepend一律判错；实际Q位置同步右移时threshold可保持，冲突在于不符合
+   主需求“共同前缀”；
+3. GLM怀疑visible ori+cmp与PR不符；PR head实际正用`actOriS2Size+actCmpS2Size`，真正冲突是
+   C++ floor与需求ceil；
+4. 多模型都未提前指出FP8 NaN bit比较问题；真实MQ离线链暴露后由主审定位并修复。
+
+### 六、本轮代码实现与文件职责
+
+#### 6.1 双算子镜像子包
+
+以下文件在SMLA/MQSMLA两棵`tests/pytest_v2/batch/consistency/`逐字镜像，各算子独立拥有，
+没有跨算子import：
+
+| 文件 | 职责 |
+| --- | --- |
+| `adapter.py` | 适配SMLA `input`与MQSMLA `op_input`及metadata字段名 |
+| `model.py` | `TokenOrigin`、`ConsistencyCase`、`RunResult`数据模型 |
+| `layouts.py` | BSND/TND/PA的batch/token选择、prefix sum和block table原语 |
+| `schema.py` | PT schema、物理/有效长度和派生invariant校验 |
+| `transform.py` | 模式1-4、mask对齐、actual-input oracle；FP8按存储bit比较 |
+| `compare.py` | origin对齐、有效token打包、MD5和原`check_result`复用 |
+| `config.py` | 命名mode/profile和CLI groups/sizes解析；数字别名仅deprecated兼容 |
+| `flow.py` | level3 guard、baseline/derived、MD5/CPU/metadata三重门禁和input summary |
+| `metadata_layout.py` | 严格解析1024-int32、FA36x9、FD72x8、unknown/reserved |
+| `metadata_coverage.py` | token/core/S2/workspace展开、Level-1/2和floor/ceil公式审计 |
+| `reporting.py` | provenance、参数和所有tensor的shape/dtype/device/byte/MD5/SHA256/sample |
+| `offline.py` | Excel辅助配置解析、mapped CPU expected、derived PT save/reload报告 |
+| `__init__.py` | 明确子包边界，不在import时触发NPU |
+
+#### 6.2 SMLA operator-owned文件
+
+| 文件 | 本轮作用/变化 |
+| --- | --- |
+| `batch/sparse_flash_mla_process.py` | 保留原metadata+main op，仍由SMLA executor调用 |
+| `batch/sparse_flash_mla_consistency.py` | SMLA专用eager executor，捕获同次metadata |
+| `batch/sparse_flash_mla_pt_save.py` | 原baseline PT保存，不改schema |
+| `batch/sparse_flash_mla_consistency_prepare.py` | 新增SMLA Excel→原golden→PT CPU-only CLI |
+| `sparse_flash_mla_golden.py` | `SMLA_CPU_ONLY=1`时跳过Ascend950设备属性/stride分支，使无NPU生成可重复 |
+| `test_sparse_flash_mla_batch_consistency.py` | PT加载时记录source path，模式1-4正式opt-in入口 |
+| `test_batch_consistency_unit.py` | 新增input report、公式、FP8 bit、离线配置和镜像门禁测试 |
+| `test_run.sh` | 新增`consistency_prepare`命令，原single/save/load/load_graph不变 |
+| `README.md` | 更新子包结构、离线/NPU命令和状态边界 |
+
+#### 6.3 MQSMLA operator-owned文件
+
+| 文件 | 本轮作用/变化 |
+| --- | --- |
+| `batch/mixed_quant_sparse_flash_mla_process.py` | 保留原metadata+main op及旧返回契约 |
+| `batch/mixed_quant_sparse_flash_mla_consistency.py` | MQ专用executor，不借用SMLA调用 |
+| `batch/test_mixed_quant_sparse_flash_mla_pt_save.py` | 原Excel→量化golden→baseline PT流程 |
+| `batch/mixed_quant_sparse_flash_mla_consistency_prepare.py` | 新增MQ Excel→原量化golden→PT CPU-only CLI |
+| `batch/mixed_quant_sparse_flash_mla_metadata_probe.py` | **已删除**；它是临时探索，不属于正式适配 |
+| `test_mixed_quant_sparse_flash_mla_batch_consistency.py` | PT加载时记录source path，模式1-4正式opt-in入口 |
+| `test_batch_consistency_unit.py` | 与SMLA同源的CPU与镜像门禁 |
+| `test_run.sh` | 新增`consistency_prepare`命令，原MQ命令不变 |
+| `README.md` | 删除probe说明，补正式子包、离线链和状态边界 |
+
+#### 6.4 需求、教学和验收资料
+
+| 文件 | 作用 |
+| --- | --- |
+| `cases/SMLA_MQSMLA_batch一致性离线预检.xlsx` | SMLA/MQSMLA各1个小shape baseline及说明sheet；不替代调度STC |
+| `SMLA_MQSMLA需求冲突与对齐清单.md` | 逐STC 001-027、模式4、mask、PR公式和待确认人 |
+| `level3两段式完整调用示例.md` | 重写为用例参数、四模式调用和参数到NPU的说明 |
+| `SMLA_MQSMLA入门教学.md` | 扩写字段、例子、报告和文件导航 |
+| `docs/batch一致性测试框架.md` | 标记原大纲各模块的离线可做性和完成状态 |
+| `SMLA_batch一致性测试开发计划.md` | 调低NPU等待优先级，增加离线/冲突/报告里程碑 |
+| `images/responsibility_boundary.svg` | pytest/runtime/算子责任边界 |
+| `images/batch_consistency_flow.svg` | Excel/golden/PT/baseline/derived/NPU/compare完整流程 |
+| `images/dimension_layout_mindmap.svg` | B/S/N/D/T、length、layout、metadata关系思维导图 |
+| `images/four_modes_mapping.svg` | 四模式调用与TokenOrigin映射 |
+| `images/rightdown_band_mask_alignment.svg` | 尾部只加Q、prepend、Q+KV同步增长的mask对比 |
+
+### 七、离线验收实测
+
+使用正式workbook和两棵`test_run.sh consistency_prepare`真实运行：
+
+| 算子 | baseline | derived调用 | 覆盖 | 结果 |
+| --- | ---: | ---: | --- | --- |
+| SMLA | 1 | 6 | reorder 1、split 2、token-split 2、shape-change 1 | 全部schema有效，CPU output PT round-trip MD5一致 |
+| MQSMLA | 1 | 6 | reorder 1、split 2、token-split 2、shape-change 1 | 全部schema有效，CPU output PT round-trip MD5一致 |
+
+MQ首次运行暴露FP8打包KV中相同NaN bit被`torch.equal`判不等。修复为shape/dtype一致后比较完整
+uint8存储bit，再次运行通过。这也证明离线链不是只做mock单测，而是真正调用了原量化golden。
+
+报告同时包含baseline/derived PT绝对来源、Excel/sheet、完整tensor digest和模式4golden scope。
+生成的PT/JSON放在`/tmp`验证目录，未提交；只提交可复现的Excel。
+
+### 八、PR公式的新阻断
+
+PR8737 head当前表达式：
+
+```text
+PR:          align_up(floor(visible_S2/32), 128)
+requirement: align_up(ceil (visible_S2/32), 128)
+```
+
+4097会得到128/256两种不同tile；1..31的PR表达式为0。analyzer现在输出两套值和冲突字段，
+结构检查暂按PR head且对0使用base-size保护。此处理只保证工具不会崩溃，不代表需求已裁决。
+需要tiling owner明确：是否源码少了`+31`、是否有前置clamp，以及白盒STC应以哪一式为准。
+
+### 九、当前状态与后续顺序
+
+已完成且不依赖NPU：
+
+- 双算子pytest_v2模式1-4与三种layout变换基础；
+- actual-input oracle、origin比较、CPU精度/MD5编排；
+- Excel/golden/baseline+derived PT离线链；
+- 原始输入白盒摘要、metadata parser/analyzer和公式冲突报告；
+- 目录整理、镜像门禁、冲突/教学/流程文档。
+
+下一步先做，不等NPU：
+
+1. 找owner关闭floor/ceil/zero edge；
+2. 修STC 014/015、018-020、024-027及公共缺字段；
+3. 选择versioned JSON manifest或PT namespace，把001-027机器化；
+4. 为TND、PA、position mask增加更多小shape离线表；
+5. MQ process保留LSE且MQ CPU golden生成LSE后，再启用`return_softmax_lse=True`；
+6. 完成graph/ACLNN调用边界设计，但不在eager level3前虚报验收。
+
+环境/算子可用后再做：
+
+1. SMLA/MQSMLA各一个真实level3 smoke；
+2. eager模式1-4的NPU baseline/derived MD5+CPU精度+同次metadata；
+3. 真实Level-1/2 coverage matrix；
+4. graph、ACLNN、N=3/N=125、TND/PA nightly。
+
+当前`-M 1,2`仍只作为SMLA旧入口迁移兼容并发deprecated warning；正式接口已经是
+`--modes reorder,split,...`或`--profile`，不会等NPU打通后才迁移，也不会继续给数字增加新含义。

@@ -1,6 +1,6 @@
 # SMLA/MQSMLA batch 一致性测试开发计划
 
-> 版本：2026-07-19 检视推进版
+> 版本：2026-07-20 检视意见二推进版
 > 范围：`sparse_flash_mla`（SMLA）与 `mixed_quant_sparse_flash_mla`（MQSMLA）
 > 第一需求源：`docs/SMLA batch一致性.md`
 > 需求、冲突、文件级开发日志与逐项检视答复：`requs.md`
@@ -17,14 +17,18 @@
    indices、top-k 与 sinks；
 4. MQSMLA 已有自己的 eager executor 和 `metadata_sink`，不再只做 metadata probe；
 5. metadata 白盒分析可从 1024-int32 展开到 batch/N2/query-token/S2-block/FA core/FD
-   workspace，并报告 Level-1/2 覆盖与结构错误。
+   workspace，并报告 Level-1/2 覆盖、结构错误和 PR floor/需求 ceil 公式冲突；
+6. 双算子已有正式 CPU-only `consistency_prepare`：真实跑通 Excel、原 golden、baseline PT、
+   模式1-4、派生PT round-trip和详细输入报告；
+7. 公共实现已收拢到各自 `batch/consistency/` 子包，临时 metadata-only probe 已删除，镜像
+   一致性由单测门禁。
 
 但“代码完成”不等于“特性验收完成”。当前本机 torch_npu/CANN 在设置 level 3 后的第一条
 NPU 操作处拒绝该等级；本地算子源码快照也没有 PR8737 的完整改动。因此当前只能声明：
 
 ```text
 测试侧变换/比较/白盒分析：CPU 门禁通过
-普通 level-0 metadata probe：可用于接口与布局检查
+Excel -> CPU golden -> baseline/derived PT：双算子离线门禁通过
 真实 SMLA/MQSMLA level-3 batch consistency：UNSUPPORTED / 待版本对齐
 ```
 
@@ -42,7 +46,7 @@ NPU 操作处拒绝该等级；本地算子源码快照也没有 PR8737 的完�
 | 4 | `docs/batch一致性测试框架.md`、会议纪要 | 开发方法与历史理解 |
 | 5 | metadata 解析等补充文档 | 旧布局与设计背景 |
 
-冲突时必须在 `requs.md` 的集中台账登记。无法通过实际输入证明数学等价的派生 case 返回
+冲突时必须在 `SMLA_MQSMLA需求冲突与对齐清单.md` 登记。无法通过实际输入证明数学等价的派生 case 返回
 `INVALID_TRANSFORM`，不能包装成数值 `FAIL`。
 
 ### 2.2 已裁决的关键冲突
@@ -87,6 +91,12 @@ NPU 操作处拒绝该等级；本地算子源码快照也没有 PR8737 的完�
 2. `S2 / 32 == 128` 不是 Python/C++ 整数除法后的 `[4096,4127]` 区间，而是需求中的
    数学等式 `S2=4096`。
 3. FD `workspace_num` 应与该 token 的规约块总数核对，不是简单等于参与 FA 的 core 数。
+4. DeepSeek/Qwen 认为 oracle 未检查 mask window，但代码的 `_windows()` 和实际KV slice检查
+   已存在；有效建议是把这项证据写入报告，而不是重复实现。
+5. prepend 并非一概数学错误：Q位置同步右移时 threshold 可保持；它与当前主需求冲突在于
+   “共同前缀”定义，而不是 mask 必然变化。
+6. GLM担心 visible S2 不符合PR；PR head实际正是 `actOriS2Size+actCmpS2Size`。真正冲突是
+   C++整数floor与需求/analyzer的ceil，现已双轨报告。
 
 ## 4. pytest_v2 总体架构
 
@@ -102,13 +112,18 @@ NPU 操作处拒绝该等级；本地算子源码快照也没有 PR8737 的完�
     -> NPU baseline/derived origin 对齐 + bitwise MD5
     -> 原 CPU golden + check_result
     -> MetadataLayout + MetadataCoverageAnalyzer
+    -> baseline/derived InputSummary（来源、shape/dtype/digest/sample）
     -> PASS / FAIL / UNSUPPORTED / INVALID_TRANSFORM / NOT_APPLICABLE
     -> finally 恢复进入测试前的 deterministic level
 ```
 
-两棵 v2 在 `batch/consistency_*.py`、`metadata_*.py` 上保持同源镜像，但 executor 和
+两棵 v2 在 `batch/consistency/*.py` 上保持同源镜像，但 executor、prepare wrapper 和
 process 各自留在算子目录。这样外部检视者可从本算子的 `test_*_batch_consistency.py`
 顺着原 process 看完整调用，不需要跳到另一算子目录。
+
+CPU-only分支在 mode transform 后不进入 level guard/NPU，而是按`TokenOrigin`物化比较范围的
+expected output，保存并重载derived PT。模式4额外token明确记为`unmapped_tokens`，不冒充完整
+CPU golden。
 
 ## 5. 模式与正式配置
 
@@ -230,7 +245,8 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 1. `bn2 -> (batch,n2)`；
 2. 按 PR8737 当前 `mBaseSize=G` 将 `m_index` 解释为 query token；
 3. 计算每个 token 的可见 `ori+cmp` S2；
-4. 计算 `R=align_up(ceil(actual_S2/32),128)`；
+4. 同时计算PR8737 head的`align_up(floor(actual_S2/32),128)`与需求
+   `align_up(ceil(actual_S2/32),128)`，结构展开暂按PR并报告冲突/zero edge；
 5. 展开 FA `[start,end)` 到 token/S2 block；
 6. 合并 split-G 镜像的重复 FA range；
 7. 关联 FD workspace 与 `m_start/m_num`；
@@ -247,8 +263,8 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 | `f7a7856f`、`31a3b6d3` | 后续 FD 修复；公开 MR head 为 `31a3b6d3` |
 
 当前本地快照未包含这些改动并仍表现为 `supportFd=false`。已安装 custom 包来源可能不同，
-但当前 runtime 先于 metadata 执行拒绝 level 3。因此 level-0 MQ probe 只可检查接口、布局
-与普通 FA chain，不可证明 level-3 固定调度、FD 或 MQSMLA 主算子一致性。
+但当前 runtime 先于 metadata 执行拒绝 level 3。此前用于接口探索的 level-0 MQ probe 已从
+正式目录删除；历史观察只保留为开发记录，不可证明 level-3 固定调度、FD 或主算子一致性。
 
 ## 7. 状态模型
 
@@ -276,8 +292,11 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 | P2.5 | 模式 4 共同前缀 shape change + mask 对齐 | 完成 |
 | P2.6 | actual-input 语义 oracle + 原 CPU golden 复用 | 完成 |
 | P2.7 | current metadata parser + contextual Level-1/2 analyzer | 完成 |
-| P2.8 | PR8737 MQ metadata probe 与版本边界记录 | 完成；真实 level 3 阻塞 |
-| P2.9 | 教学、两段调用、文件职责和冲突台账 | 完成 |
+| P2.8 | PR8737源码与版本边界记录 | 完成；临时probe已删除，真实level3阻塞 |
+| P2.9 | 教学、两段调用、文件职责和逐STC冲突台账 | 完成（2026-07-20扩写） |
+| P2.10 | 双算子Excel->golden->PT离线预检 | 完成；各1 baseline + 6 derived round-trip |
+| P2.11 | 白盒原始输入摘要与floor/ceil公式审计 | 完成 |
+| P2.12 | pytest_v2目录整理与双树镜像门禁 | 完成 |
 | P3.1 | 支持 level 3 的 runtime/custom/operator 版本对齐 | 阻塞 |
 | P3.2 | SMLA eager 模式 1-4 真实 NPU | 待 P3.1 |
 | P3.3 | MQSMLA eager 模式 1-4 真实 NPU | 待 P3.1 |
@@ -291,20 +310,30 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 
 | 层级 | 内容 | 当前结果 |
 | --- | --- | --- |
-| SMLA v2 CPU | modes 1-4、双格式、oracle、MD5、metadata | `20 passed` |
-| MQSMLA v2 CPU | 与 SMLA 同源门禁 | `20 passed` |
+| SMLA v2 CPU | modes 1-4、双格式、oracle、MD5、metadata、report/offline/mirror | `24 passed`（2026-07-20实测） |
+| MQSMLA v2 CPU | 与 SMLA 同源门禁 | `24 passed`（2026-07-20实测） |
+| SMLA离线prepare | Excel/原golden/baseline+derived PT | 1 baseline + 6 derived，全部round-trip一致 |
+| MQSMLA离线prepare | Excel/原量化golden/baseline+derived PT | 1 baseline + 6 derived，全部round-trip一致 |
 | SMLA opt-in 入口默认关闭 | 四模式不触发 NPU | `4 skipped` |
 | MQSMLA opt-in 入口默认关闭 | 四模式不触发 NPU | `4 skipped` |
 | shell | 两份 `test_run.sh` | `bash -n` 通过 |
 | source lint | 两份一致性新增文件 | ruff 通过 |
 | Python compile | 两棵 v2 | compileall 通过 |
 | 原 single/batch/graph collect | 两棵 v2 | SMLA 15 项、MQSMLA 3 项 |
-| MQ metadata level 0 | 接口/layout/普通 FA | 已实测，不计特性 PASS |
 | 双算子 level 3 | metadata + 主算子 | runtime 拒绝，`UNSUPPORTED` |
 
-## 10. 第三阶段实施顺序
+## 10. 剩余阶段二与第三阶段实施顺序
 
-### A. 解除真实执行阻断
+### A. 不依赖NPU，优先关闭数据和规格问题
+
+1. 由需求/算子/STC owner逐项处理`SMLA_MQSMLA需求冲突与对齐清单.md`；
+2. 先确认PR floor/需求ceil与`S2<32`zero edge，再冻结白盒预期；
+3. 修STC 014/015、018-020、024-027，并补齐001-020公共字段；
+4. 选择versioned JSON manifest或PT namespace，把001-027变为机器可读关系；
+5. 给MQ CPU golden补LSE后，再开启`return_softmax_lse=True`一致性验收；
+6. 为TND/PA/position mask各补一个小shape离线workbook case。
+
+### B. 解除真实执行阻断（环境可用时）
 
 1. 确认支持 deterministic level 3 的 torch_npu/CANN/SoC 版本矩阵；
 2. 对齐本地 operator source、PR8737 head 与已安装 custom 包构建版本；
@@ -312,7 +341,7 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 4. 固化一个最小 SMLA 和一个最小 MQSMLA level-3 PT smoke；
 5. 记录软件版本、SoC、custom 包 hash、metadata digest。
 
-### B. 跑通 eager 四模式
+### C. 跑通 eager 四模式
 
 1. SMLA：BSND no-mask 模式 1-4；
 2. SMLA：RightDownCausal/Band，验证模式 3/4 上下文公式；
@@ -320,7 +349,7 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 4. MQSMLA：同样顺序，额外验证量化 KV 与 `quant_mode/rope_head_dim`；
 5. 每个 subcase 保存 baseline/derived MD5、CPU 精度、metadata digest、失败 origin。
 
-### C. 冻结 STC 数据契约
+### D. 冻结 STC 数据契约
 
 优先选择 versioned JSON manifest；若 PT 已有正式 namespace 机制也可直接写 PT，但两者二选一：
 
@@ -339,7 +368,7 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 配置优先级：显式 CLI > manifest/PT per-case > profile > blackbox-basic。需要先修正 STC 014
 和 026，并确认每个派生 case 对应哪个 baseline PT。
 
-### D. 扩展执行面
+### E. 扩展执行面
 
 1. 实现 SMLA/MQSMLA graph consistency executor；
 2. 确认 level 3 在 compile 还是 run 时读取，并记录 compile cache；
@@ -355,11 +384,14 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 | OP-1 | SMLA/MQSMLA level-3 tiling/main-op 合入版本 | 主算子开发 | 双主算子 PASS |
 | PKG-1 | 本地源码、PR8737、已安装 custom 包 hash 对齐 | 构建/环境维护 | MQ metadata/FD 证据 |
 | META-1 | FD slot 7 最终定义与部署 layout version | metadata/kernel | 最终 schema 冻结 |
-| DATA-1 | STC 014、026 修订 | STC 负责人 | STC manifest |
+| FORMULA-1 | PR floor、需求ceil和S2小于32的最终公式 | tiling/需求负责人 | 白盒结构预期 |
+| DATA-1 | STC逐项错误与缺字段修订 | STC负责人 | STC manifest |
+| MODE4-1 | 共同前缀+KV增长是否为正式产品口径 | 需求/mask负责人 | 模式4最终冻结 |
 | CFG-1 | PT namespace 或 JSON manifest 的最终选择 | 测试维护者 | 001-027 自动化 |
 | GRAPH-1 | level 3 读取时机与 compile cache 约束 | torchair | graph 验收 |
 
-模式 3/4 的主需求语义、MQ pytest 修改权限、上下文 analyzer 已不再是阻断项。
+MQ pytest修改权限和上下文analyzer已不再是阻断项；模式4已有安全暂定实现，但产品口径仍需
+owner确认。
 
 ## 12. 最终验收门禁
 
@@ -375,6 +407,8 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 10. 原 single/save/load/load_graph 无行为回归；
 11. CI 至少有一套真正支持 level 3 的环境；
 12. artifact 记录版本、case、mode、seed/profile、metadata/output digest 和失败 origin。
+13. 白盒artifact携带baseline/derived原始输入摘要及floor/ceil公式审计；
+14. MQ `return_softmax_lse=True` 只有在process保留LSE且CPU golden生成LSE后才可列入通过项。
 
 ## 13. CANNBot 交互方式
 

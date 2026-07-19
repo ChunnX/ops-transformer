@@ -21,8 +21,8 @@ from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
 
 import torch
 
-from .consistency_adapter import CaseAdapter
-from .consistency_schema import get_q_lengths
+from .adapter import CaseAdapter
+from .schema import get_q_lengths
 from .metadata_layout import FaRecord, ParsedMetadata
 
 
@@ -39,6 +39,10 @@ class S2Analysis:
     category: S2Category
     reduction_block_size: int
     reduction_block_count: int
+    pr8737_floor_tile: int
+    requirement_ceil_tile: int
+    quotient_formula_conflict: bool
+    tile_formula_conflict: bool
 
 
 @dataclass(frozen=True)
@@ -171,13 +175,47 @@ class CoverageContext:
             cmp_tokens = min(cmp_tokens, self.cmp_topk)
         return ori_tokens, cmp_tokens
 
-    def reduction_tile_size(self, batch: int, token: int) -> int:
+    @staticmethod
+    def _align_quotient(quotient: int, base_size: int) -> int:
+        return (quotient + base_size - 1) // base_size * base_size
+
+    def reduction_formula(self, batch: int, token: int) -> Dict[str, Any]:
         ori_tokens, cmp_tokens = self.visible_s2_lengths(batch, token)
         total = ori_tokens + cmp_tokens
         if not self.batch_consistency or total == 0:
-            return self.s2_base_size
-        quotient = (total + 31) // 32
-        return (quotient + self.s2_base_size - 1) // self.s2_base_size * self.s2_base_size
+            return {
+                "visible_ori_s2": ori_tokens,
+                "visible_cmp_s2": cmp_tokens,
+                "visible_total_s2": total,
+                "pr8737_floor_quotient": None,
+                "requirement_ceil_quotient": None,
+                "pr8737_floor_tile": self.s2_base_size,
+                "requirement_ceil_tile": self.s2_base_size,
+                "quotient_formula_conflict": False,
+                "tile_formula_conflict": False,
+                "pr8737_zero_tile_guard": False,
+            }
+        floor_quotient = total // 32
+        ceil_quotient = (total + 31) // 32
+        floor_tile = self._align_quotient(floor_quotient, self.s2_base_size)
+        ceil_tile = self._align_quotient(ceil_quotient, self.s2_base_size)
+        return {
+            "visible_ori_s2": ori_tokens,
+            "visible_cmp_s2": cmp_tokens,
+            "visible_total_s2": total,
+            "pr8737_floor_quotient": floor_quotient,
+            "requirement_ceil_quotient": ceil_quotient,
+            "pr8737_floor_tile": floor_tile,
+            "requirement_ceil_tile": ceil_tile,
+            "quotient_formula_conflict": floor_quotient != ceil_quotient,
+            "tile_formula_conflict": floor_tile != ceil_tile,
+            "pr8737_zero_tile_guard": floor_tile == 0,
+        }
+
+    def reduction_tile_size(self, batch: int, token: int) -> int:
+        """Use the PR8737-head formula for structural checks, guarding its zero edge."""
+        formula = self.reduction_formula(batch, token)
+        return int(formula["pr8737_floor_tile"] or self.s2_base_size)
 
     def s2_block_count(self, batch: int, token: int) -> int:
         ori_tokens, cmp_tokens = self.visible_s2_lengths(batch, token)
@@ -196,6 +234,26 @@ class CoverageContext:
                     values.append(total)
         return tuple(values)
 
+    def formula_audit(self) -> Dict[str, Any]:
+        details = []
+        for batch, q_length in enumerate(self.q_lengths):
+            for token in range(q_length):
+                item = self.reduction_formula(batch, token)
+                item.update({"batch": batch, "query_token": token})
+                details.append(item)
+        conflicts = [item for item in details if item["quotient_formula_conflict"]]
+        tile_conflicts = [item for item in details if item["tile_formula_conflict"]]
+        return {
+            "source_formula": "PR8737 head: align_up(floor(visible_S2/32), 128)",
+            "requirement_formula": "requirement/analyzer: align_up(ceil(visible_S2/32), 128)",
+            "checked_token_count": len(details),
+            "quotient_formula_conflict_count": len(conflicts),
+            "tile_formula_conflict_count": len(tile_conflicts),
+            "zero_tile_guard_count": sum(item["pr8737_zero_tile_guard"] for item in details),
+            "details": details[:256],
+            "details_truncated": len(details) > 256,
+        }
+
 
 class MetadataCoverageAnalyzer:
     """Analyze raw metadata conservatively, or fully expand it with shape context."""
@@ -204,7 +262,9 @@ class MetadataCoverageAnalyzer:
     def classify_s2(s2: int) -> S2Analysis:
         if s2 <= 0:
             raise ValueError(f"S2 must be positive, got {s2}")
+        quotient_floor = s2 // 32
         quotient_ceil = (s2 + 31) // 32
+        pr8737_floor_tile = ((quotient_floor + 127) // 128) * 128
         reduction_block = ((quotient_ceil + 127) // 128) * 128
         reduction_count = (s2 + reduction_block - 1) // reduction_block
         if s2 == 4096:
@@ -215,7 +275,16 @@ class MetadataCoverageAnalyzer:
             category = S2Category.GREATER_DIVISIBLE
         else:
             category = S2Category.GREATER_REMAINDER
-        return S2Analysis(s2, category, reduction_block, reduction_count)
+        return S2Analysis(
+            s2,
+            category,
+            reduction_block,
+            reduction_count,
+            pr8737_floor_tile,
+            reduction_block,
+            quotient_floor != quotient_ceil,
+            pr8737_floor_tile != reduction_block,
+        )
 
     @classmethod
     def analyze(
@@ -250,6 +319,10 @@ class MetadataCoverageAnalyzer:
                     "category": analysis.category.value,
                     "reduction_block_size": analysis.reduction_block_size,
                     "reduction_block_count": analysis.reduction_block_count,
+                    "pr8737_floor_tile": analysis.pr8737_floor_tile,
+                    "requirement_ceil_tile": analysis.requirement_ceil_tile,
+                    "quotient_formula_conflict": analysis.quotient_formula_conflict,
+                    "tile_formula_conflict": analysis.tile_formula_conflict,
                 }
             )
 
@@ -316,6 +389,7 @@ class MetadataCoverageAnalyzer:
         expanded = cls.expand_level2(metadata, context)
         expansion_errors = expanded.pop("expansion_errors", [])
         report.update(expanded)
+        report["tile_formula_audit"] = context.formula_audit()
         report["errors"].extend(expansion_errors)
         level1_targets = {category.value: level1.get(category.value, 0) > 0 for category in S2Category}
         report["level1_targets"] = level1_targets

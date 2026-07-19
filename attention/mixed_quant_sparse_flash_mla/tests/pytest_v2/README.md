@@ -97,9 +97,12 @@ golden、PT save/load、process 和 `check_result` 均保留；一致性入口�
 | `test_mixed_quant_sparse_flash_mla_batch_consistency.py` | 模式 1-4 的 MQ PT 入口 |
 | `batch/mixed_quant_sparse_flash_mla_consistency.py` | MQ 专用 executor |
 | `batch/mixed_quant_sparse_flash_mla_process.py` | 原两段调用；新增可选 `metadata_sink`，旧返回值不变 |
-| `batch/mixed_quant_sparse_flash_mla_metadata_probe.py` | PR8737 metadata-only 临时验证和白盒报告 |
-| `batch/consistency_transform.py` | 双 layout/PA 变换与实际量化输入语义检查 |
-| `batch/metadata_coverage.py` | PR8737 规约块公式和 FA/FD token/core/workspace 展开 |
+| `batch/mixed_quant_sparse_flash_mla_consistency_prepare.py` | Excel→原量化golden→baseline/derived PT的CPU-only验收 |
+| `batch/consistency/transform.py` | 双 layout/PA 变换、FP8 bit比较与实际输入语义检查 |
+| `batch/consistency/metadata_coverage.py` | FA/FD展开与PR floor/需求ceil公式双轨报告 |
+| `batch/consistency/reporting.py` | 原PT来源、shape/dtype/device/byte/digest/sample输入摘要 |
+| `batch/consistency/offline.py` | 模式1-4 derived golden scope与PT round-trip |
+| 其余 `batch/consistency/*.py` | adapter、schema、layout、compare、flow和命名配置 |
 
 ```bash
 # B=8 -> B=3 + B=5
@@ -107,10 +110,12 @@ bash test_run.sh consistency --pt-dir ./mqsmla_testcase \
   --modes reorder,split \
   --split-groups '0,1,2;3,4,5,6,7'
 
-# metadata-only；不代表 MQSMLA 主算子 PASS
-python3 -m batch.mixed_quant_sparse_flash_mla_metadata_probe \
-  --pt /path/to/mqsmla_case.pt --level 3
+# 无NPU离线验收
+bash test_run.sh consistency_prepare \
+  --excel ../../../../requs/cases/SMLA_MQSMLA_batch一致性离线预检.xlsx \
+  --sheet MQSMLA --pt-dir /tmp/mqsmla_pt --report-dir /tmp/mqsmla_report
 ```
 
-当前本机 runtime 会在第一条 NPU 操作时拒绝 level 3。level 0 探针只可验证接口、布局和普通
-FA 调度；必须等支持 level 3 的 runtime/custom 包组合后，才能验收 FD 与主算子一致性。
+当前本机 runtime 会在第一条 NPU 操作时拒绝 level 3；必须等支持 level 3 的
+runtime/custom包组合后，才能验收FD与主算子一致性。临时metadata-only probe已从正式`batch/`
+删除；`consistency_prepare`只验证CPU输入/golden/PT链，不会声称NPU PASS。

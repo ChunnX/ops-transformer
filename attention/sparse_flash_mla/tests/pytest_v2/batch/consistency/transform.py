@@ -17,10 +17,9 @@ from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 import torch
 
-from . import consistency_layouts as layouts
-from . import consistency_schema as schema
-from .consistency_adapter import CaseAdapter
-from .consistency_model import ConsistencyCase, TokenOrigin
+from . import layouts, schema
+from .adapter import CaseAdapter
+from .model import ConsistencyCase, TokenOrigin
 
 
 class UnsupportedTransformError(Exception):
@@ -61,6 +60,15 @@ class TransformSemanticGuard:
 
 class ActualInputSemanticOracle:
     """Proves that mapped tokens consume identical Q/KV inputs and mask windows."""
+
+    @staticmethod
+    def _tensor_bits_equal(left: torch.Tensor, right: torch.Tensor) -> bool:
+        """Compare exact storage bits so identical FP8 NaN payloads remain equal."""
+        if left.shape != right.shape or left.dtype != right.dtype:
+            return False
+        left_bytes = left.detach().to("cpu").contiguous().reshape(-1).view(torch.uint8)
+        right_bytes = right.detach().to("cpu").contiguous().reshape(-1).view(torch.uint8)
+        return torch.equal(left_bytes, right_bytes)
 
     @staticmethod
     def _lengths(input_data: Dict[str, Any], prefix: str) -> List[int]:
@@ -183,12 +191,14 @@ class ActualInputSemanticOracle:
             raise InvalidTransformError("Q layout changed during transform")
         if baseline_adapter.get_layout_kv() != derived_adapter.get_layout_kv():
             raise InvalidTransformError("KV layout changed during transform")
-        if not torch.equal(baseline_adapter.tensors["sinks"], derived_adapter.tensors["sinks"]):
+        if not cls._tensor_bits_equal(
+            baseline_adapter.tensors["sinks"], derived_adapter.tensors["sinks"]
+        ):
             raise InvalidTransformError("sinks changed during transform")
 
         checked = []
         for old_batch, old_token, new_batch, new_token in mapping:
-            if not torch.equal(
+            if not cls._tensor_bits_equal(
                 cls._q_token(baseline, old_batch, old_token),
                 cls._q_token(derived, new_batch, new_token),
             ):
@@ -210,7 +220,11 @@ class ActualInputSemanticOracle:
                 new_kv = cls._logical_kv(derived, prefix, new_batch)
                 if old_kv is None and new_kv is None:
                     continue
-                if old_kv is None or new_kv is None or not torch.equal(old_kv[start:end], new_kv[start:end]):
+                if (
+                    old_kv is None
+                    or new_kv is None
+                    or not cls._tensor_bits_equal(old_kv[start:end], new_kv[start:end])
+                ):
                     raise InvalidTransformError(
                         f"Visible {prefix}_kv changed for source ({old_batch}, {old_token})"
                     )
@@ -225,7 +239,11 @@ class ActualInputSemanticOracle:
                 new_value = cls._q_aligned_token(derived, name, new_batch, new_token)
                 if old_value is None and new_value is None:
                     continue
-                if old_value is None or new_value is None or not torch.equal(old_value, new_value):
+                if (
+                    old_value is None
+                    or new_value is None
+                    or not cls._tensor_bits_equal(old_value, new_value)
+                ):
                     raise InvalidTransformError(
                         f"{name} changed for source ({old_batch}, {old_token})"
                     )

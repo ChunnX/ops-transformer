@@ -16,7 +16,7 @@ from typing import Any, Dict, List, Sequence
 
 import torch
 
-from .consistency_adapter import CaseAdapter
+from .adapter import CaseAdapter
 
 
 class SchemaError(ValueError):
@@ -173,7 +173,7 @@ class CaseSchema:
         cls._check_max_length(metadata, "max_seqlen_cmp_kv", tensors.get("seqused_cmp_kv"))
 
         if layout_kv == "PA_BBND" and ori_kv is not None:
-            from .consistency_layouts import validate_block_ids
+            from .layouts import validate_block_ids
 
             validate_block_ids(tensors.get("ori_block_table"), ori_kv.shape[0])
             if cmp_kv is not None:
@@ -207,7 +207,7 @@ class CaseSchema:
 
     @classmethod
     def build_origins(cls, input_data: Dict[str, Any], valid_only: bool = False) -> List[Any]:
-        from .consistency_model import TokenOrigin
+        from .model import TokenOrigin
 
         origins = []
         for batch, length in enumerate(cls.get_q_lengths(input_data, valid_only=valid_only)):
