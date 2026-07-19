@@ -445,6 +445,9 @@ ge::graphStatus QuantBmmReduceScatterTiling::SetMc2Hcomm()
         mc2CcTilingConfig.SetCommEngine(mc2tiling::A5_CCU_ENGINE);
         OP_LOGD(opName_, "[SetCommEngine] Set CommEngine to CCU for quant_bmm_reduce_scatter_tiling.");
     }
+    // pertensor own-redirect(debugMode==0)已把 own 直写输出, RS 跳过 own 本地拷贝
+    // 仅 pertensor/mxfp8(走 Pertensor caller, 已 wire own-redirect)才 skip=1; perblock 无 own-redirect 保持 skip=0 全量reduce
+    mc2CcTilingConfig.SetSkipLocalRankCopy((quantMode_ != mc2tiling::Mc2QuantMode::PERBLOCK_MODE && mc2tiling::Mc2TilingUtils::GetDebugMode() == 0) ? 1 : 0);
     OP_TILING_CHECK(mc2CcTilingConfig.GetTiling(quantBmmMatmulReducescatterTilingData_->mc2InitTiling) != 0,
                     OP_LOGE(opName_, "mc2CcTilingConfig mc2tiling GetTiling mc2InitTiling failed"),
                     return ge::GRAPH_FAILED);

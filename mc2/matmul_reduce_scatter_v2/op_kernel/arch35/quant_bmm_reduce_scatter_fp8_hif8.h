@@ -242,9 +242,10 @@ __aicore__ inline void QuantBMMReduceScatter<TEMPLATE_FUNC_PARAMS>::MatMulComput
     Mc2MatmulV3::Mc2QuantBatchMatmulASWKernel<AType, BType, ScaleType, float, CType, CubeFormat::ND, CubeFormat::ND,
                                               CubeFormat::ND, ATrans, BTrans>
         mmv3;
+    cfg.rankID = rankId_;
     auto tempGM = (debugMode_ == MC2_DEBUG_ONLY_CUBE) ? cGM : gmToFloat_;
     mmv3.Init(aGM_, bGM_, biasGM_, x2ScaleGM_, x1ScaleGM_, tempGM, workspaceGM_, &qBMmtiling, GetTPipePtr(), cfg,
-              isTail, false, preCoreNum_);
+              isTail, false, preCoreNum_, (debugMode_ == 0) ? cGM_ : nullptr);
     for (uint32_t i = 0; i < tileCnt; i++) {
         mmv3.UpdateSlice(i, isTail);
         mmv3.Process(isLast && (i == (tileCnt - 1)));
