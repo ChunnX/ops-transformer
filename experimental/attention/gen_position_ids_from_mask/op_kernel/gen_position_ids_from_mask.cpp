@@ -10,7 +10,7 @@
 /**
  * @file gen_position_ids_from_mask.cpp
  */
-#include "gen_position_ids_from_mask.h"
+#include "kernel_gen_position_ids_from_mask.h"
 
 extern "C" __global__ __aicore__ void gen_position_ids_from_mask(
     GM_ADDR attention_mask, GM_ADDR position_ids, GM_ADDR workspace, GM_ADDR tiling)
