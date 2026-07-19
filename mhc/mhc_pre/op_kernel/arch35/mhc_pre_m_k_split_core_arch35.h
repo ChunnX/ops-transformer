@@ -6,6 +6,7 @@
 
 namespace MhcPre {
 
+constexpr uint16_t MHC_PRE_MK_RMS_REG_ROW_LIMIT = 16U;
 __aicore__ inline void MhcPreMkVFTransND2NZ(const LocalTensor<float>& dstLocal,
     const LocalTensor<float>& srcLocal, uint16_t rowCount, uint16_t columnCount)
 {
@@ -127,6 +128,56 @@ __aicore__ inline void MhcPreMkVFProcessXInGammaLoops(const LocalTensor<float>& 
         }
     }
 }
+template <typename T, bool IS_FIRST_K>
+__aicore__ inline void MhcPreMkVFProcessXInGammaSmallRows(const LocalTensor<float>& xOutLocal,
+    const LocalTensor<float>& rmsLocal, const LocalTensor<T>& xInLocal,
+    const LocalTensor<float>& gammaLocal, uint16_t rowCount, uint16_t columnCount)
+{
+    __local_mem__ float* xOut = (__local_mem__ float*)xOutLocal.GetPhyAddr();
+    __local_mem__ float* rms = (__local_mem__ float*)rmsLocal.GetPhyAddr();
+    __local_mem__ T* xIn = (__local_mem__ T*)xInLocal.GetPhyAddr();
+    __local_mem__ float* gamma = (__local_mem__ float*)gammaLocal.GetPhyAddr();
+    uint32_t srcStride = LowApiRoundUp<T>(columnCount);
+    uint32_t dstStride = LowApiRoundUp<float>(columnCount);
+    uint16_t loopCount = LowApiCeilDiv(columnCount, MHC_PRE_LOW_API_VL_FP32);
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<T> xInReg;
+        AscendC::MicroAPI::RegTensor<float> gammaReg;
+        AscendC::MicroAPI::RegTensor<float> xReg;
+        AscendC::MicroAPI::RegTensor<float> xGammaReg;
+        AscendC::MicroAPI::RegTensor<float> squareReg;
+        AscendC::MicroAPI::RegTensor<float> partialReg;
+        AscendC::MicroAPI::RegTensor<float> sumReg;
+        for (uint16_t row = 0; row < rowCount; ++row) {
+            if constexpr (IS_FIRST_K) {
+                AscendC::MicroAPI::Duplicate(sumReg, 0.0f);
+            } else {
+                AscendC::MicroAPI::Load(sumReg, rms + row);
+            }
+            uint32_t remaining = columnCount;
+            for (uint16_t loop = 0; loop < loopCount; ++loop) {
+                AscendC::MicroAPI::MaskReg mask = AscendC::MicroAPI::UpdateMask<float>(remaining);
+                uint32_t vectorOffset = static_cast<uint32_t>(loop) * MHC_PRE_LOW_API_VL_FP32;
+                AscendC::MicroAPI::LoadAlign(gammaReg, gamma + vectorOffset);
+                uint32_t srcOffset = static_cast<uint32_t>(row) * srcStride + vectorOffset;
+                AscendC::MicroAPI::LoadAlign<T, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(
+                    xInReg, xIn + srcOffset);
+                AscendC::MicroAPI::Cast<float, T, MHC_PRE_LOW_API_CAST_B16_TO_B32>(
+                    xReg, xInReg, mask);
+                AscendC::MicroAPI::Mul(xGammaReg, gammaReg, xReg, mask);
+                uint32_t dstOffset = static_cast<uint32_t>(row) * dstStride + vectorOffset;
+                AscendC::MicroAPI::StoreAlign(xOut + dstOffset, xGammaReg, mask);
+                AscendC::MicroAPI::Mul(squareReg, xReg, xReg, mask);
+                AscendC::MicroAPI::Reduce<AscendC::MicroAPI::ReduceType::SUM>(
+                    partialReg, squareReg, mask);
+                AscendC::MicroAPI::Add(sumReg, sumReg, partialReg, mask);
+            }
+            AscendC::MicroAPI::Store(rms + row, sumReg, 1U);
+        }
+    }
+}
 
 template <typename T, bool IS_FIRST_K>
 __aicore__ inline void MhcPreMkVFProcessXInGammaFull128(const LocalTensor<float>& xOutLocal,
@@ -196,6 +247,11 @@ __aicore__ inline void MhcPreMkVFProcessXInGamma(const LocalTensor<float>& xOutL
     const LocalTensor<float>& rmsLocal, const LocalTensor<T>& xInLocal,
     const LocalTensor<float>& gammaLocal, uint16_t rowCount, uint16_t columnCount)
 {
+    if (rowCount <= MHC_PRE_MK_RMS_REG_ROW_LIMIT && columnCount != 128U) {
+        MhcPreMkVFProcessXInGammaSmallRows<T, IS_FIRST_K>(
+            xOutLocal, rmsLocal, xInLocal, gammaLocal, rowCount, columnCount);
+        return;
+    }
     if (columnCount == 128U) {
         MhcPreMkVFProcessXInGammaFull128<T, IS_FIRST_K>(xOutLocal, rmsLocal, xInLocal,
             gammaLocal, rowCount);
@@ -443,6 +499,14 @@ private:
         uint32_t rowCount = GetSubBlockIdx() == 0 ? firstRows : mReal - firstRows;
         uint8_t aL1BufferId = 0;
         this->globalOffsetM_ = mStart;
+        if (rowCount == 0U) {
+            for (uint32_t kOffset = kStart; kOffset < kEnd; kOffset += this->tiling_->kL1Size) {
+                CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
+                CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
+            }
+            this->invRmsOutQueue_.FreeTensor(this->invRmsUb_);
+            return;
+        }
         SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
         uint32_t firstK = AscendC::Std::min(
             static_cast<uint64_t>(this->tiling_->kL1Size), static_cast<uint64_t>(kEnd - kStart));
