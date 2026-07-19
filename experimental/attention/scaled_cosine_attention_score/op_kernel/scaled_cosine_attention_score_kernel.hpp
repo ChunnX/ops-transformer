@@ -244,8 +244,8 @@ private:
             // SetValue ??? outputFloat ?? ????????????????? S->V??            SetFlag<HardEvent::V_S>(EVENT_ID0);
             WaitFlag<HardEvent::V_S>(EVENT_ID0);
             outputFloat.SetValue(j, scalar.GetValue(SCORE));
-            SetFlag<HardEvent::S_V>(EVENT_ID0);
-            WaitFlag<HardEvent::S_V>(EVENT_ID0);
+            SetFlag<HardEvent::S_V>(EVENT_ID1);
+            WaitFlag<HardEvent::S_V>(EVENT_ID1);
         }
 
         LocalTensor<T> outputLocal = outputQueue_.AllocTensor<T>();
