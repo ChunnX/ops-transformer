@@ -104,10 +104,11 @@ __aicore__ inline void GmmSwigluAswtTensorApi(
                         static_cast<uint8_t>(gmmSwigluQuantParams_.groupListType),
                         singleW};
 
-    GM_ADDR aDataAddr = reinterpret_cast<GM_ADDR>(
-        GroupedMatmulDequantSwigluQuant::GetTensorAddr<AType>(0, x));
-    GM_ADDR scaleADataAddr = reinterpret_cast<GM_ADDR>(
-        GroupedMatmulDequantSwigluQuant::GetTensorAddr<AscendC::fp8_e8m0_t>(0, xScale));
+    GM_ADDR aDataAddr = x;
+    GM_ADDR scaleADataAddr = xScale;
+    GM_ADDR yDataAddr = y;
+    GM_ADDR yScaleDataAddr = yScale;
+
     GM_ADDR bDataAddr = singleW == 1 ?
         reinterpret_cast<GM_ADDR>(GroupedMatmulDequantSwigluQuant::GetTensorAddr<BType>(0, weight)) :
         weight;
@@ -115,10 +116,7 @@ __aicore__ inline void GmmSwigluAswtTensorApi(
         reinterpret_cast<GM_ADDR>(
             GroupedMatmulDequantSwigluQuant::GetTensorAddr<AscendC::fp8_e8m0_t>(0, weightScale)) :
         weightScale;
-    GM_ADDR yDataAddr = reinterpret_cast<GM_ADDR>(
-        GroupedMatmulDequantSwigluQuant::GetTensorAddr<CType>(0, y));
-    GM_ADDR yScaleDataAddr = reinterpret_cast<GM_ADDR>(
-        GroupedMatmulDequantSwigluQuant::GetTensorAddr<int8_t>(0, yScale));
+
     GM_ADDR groupListDataAddr = groupList;
 
     Params params = {{gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)},
