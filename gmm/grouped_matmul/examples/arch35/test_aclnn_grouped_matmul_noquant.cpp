@@ -100,7 +100,9 @@ int CreateAclTensorList(const std::vector<T> &hostData, const std::vector<std::v
 
 void Finalize(int32_t deviceId, aclrtStream stream)
 {
-    aclrtDestroyStream(stream);
+    if (stream != nullptr) {
+        aclrtDestroyStream(stream);
+    }
     aclrtResetDevice(deviceId);
     aclFinalize();
 }
@@ -226,7 +228,7 @@ int main()
     // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
-    aclrtStream stream;
+    aclrtStream stream = nullptr;
     auto ret = aclnnGourpedMatmulTest(deviceId, stream);
     CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulTest failed. ERROR: %d\n", ret); return ret);
 

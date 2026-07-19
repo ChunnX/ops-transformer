@@ -117,7 +117,7 @@ int main() {
     // 1. （固定写法）device/stream初始化，参考AscendCL对外接口列表
     // 根据自己的实际device填写deviceId
     int32_t deviceId = 0;
-    aclrtStream stream;
+    aclrtStream stream = nullptr;
     auto ret = Init(deviceId, &stream);
     // check根据自己的需要处理
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
@@ -217,7 +217,9 @@ int main() {
     if (workspaceSize > 0) {
         aclrtFree(workspaceAddr);
     }
-    aclrtDestroyStream(stream);
+    if (stream != nullptr) {
+        aclrtDestroyStream(stream);
+    }
     aclrtResetDevice(deviceId);
     aclFinalize();
     return 0;

@@ -103,7 +103,9 @@ int CreateAclTensorList(const std::vector<T> &hostData, const std::vector<std::v
 
 void Finalize(int32_t deviceId, aclrtStream stream)
 {
-    aclrtDestroyStream(stream);
+    if (stream != nullptr) {
+        aclrtDestroyStream(stream);
+    }
     aclrtResetDevice(deviceId);
     aclFinalize();
 }
@@ -238,7 +240,7 @@ int aclnnGroupedMatmulTest(int32_t deviceId, aclrtStream &stream)
     ret = aclrtMemcpy(resultData.data(), size * sizeof(resultData[0]), yDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return ret);
-    for (int64_t j = 0; j < size; j++) {
+    for (int64_t j = 0; j < size && j < 10; j++) {
         LOG_PRINT("result[%ld] is: %d\n", j, resultData[j]);
     }
     return ACL_SUCCESS;
@@ -247,7 +249,7 @@ int aclnnGroupedMatmulTest(int32_t deviceId, aclrtStream &stream)
 int main()
 {
     int32_t deviceId = 0;
-    aclrtStream stream;
+    aclrtStream stream = nullptr;
     auto ret = aclnnGroupedMatmulTest(deviceId, stream);
     CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulTest failed. ERROR: %d\n", ret); return ret);
 
