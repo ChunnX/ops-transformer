@@ -1503,8 +1503,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
 
             while (true) {
                 DataCopy(scanUb, readyGm[readySlotOffset], copyElements);
-                SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
-                WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
+                SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 
                 if (readyElements <= INT32_PER_REPEAT) {
                     WholeReduceSum<int32_t>(sumUb, scanUb, static_cast<int32_t>(readyElements), 1, 1, 1, 8);
@@ -1521,8 +1521,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
                     WholeReduceSum<int32_t>(sumUb, partialUb, static_cast<int32_t>(partialCount), 1, 1, 1, 8);
                 }
 
-                SetFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
-                WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
+                SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+                WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
                 if (sumUb.GetValue(0) >= static_cast<int32_t>(blockNum_)) {
                     criticalPathTrace_.EndReady(CriticalPathTrace::Now(), readyBegin);
                     return;
@@ -1553,7 +1553,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
         uint32_t releaseElements = logicalAiv1Num * static_cast<uint32_t>(INT_CACHELINE);
         LocalTensor<int32_t> releaseUb(TPosition::VECCALC, GMM2_READY_RELEASE_UB_ADDR, releaseElements);
         Duplicate<int32_t>(releaseUb, 1, releaseElements);
-        SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID7);
+        SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
 
         __gm__ int32_t *readyBase =
             reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr);
@@ -1571,11 +1571,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
             LocalTensor<int32_t> sumUb(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR + ALIGN_512, INT_CACHELINE);
             while (true) {
                 DataCopy(scanUb, readyGm[readySlotOffset], INT_CACHELINE);
-                SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
-                WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
+                SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                 WholeReduceSum<int32_t>(sumUb, scanUb, static_cast<int32_t>(blockNum_), 1, 1, 1, 8);
-                SetFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
-                WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
+                SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+                WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
                 if (sumUb.GetValue(0) >= static_cast<int32_t>(blockNum_)) {
                     break;
                 }
@@ -1608,10 +1608,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
 
         GlobalTensor<int32_t> releaseGm;
         releaseGm.SetGlobalBuffer(releaseBase);
-        WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID7);
+        WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         DataCopy(releaseGm[releaseSlotOffset], releaseUb, releaseElements);
-        SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID7);
-        WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID7);
+        SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+        WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
         criticalPathTrace_.EndReady(CriticalPathTrace::Now(), readyBegin);
     }
 }
@@ -2209,8 +2209,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
                     // NotifyVector is FIX-ordered, but Scalar may otherwise
                     // run ahead.  This narrow bridge makes gmm1_end an actual
                     // per-core FIX completion point without draining V/MTE.
-                    SetFlag<HardEvent::FIX_S>(EVENT_ID7);
-                    WaitFlag<HardEvent::FIX_S>(EVENT_ID7);
+                    SetFlag<HardEvent::FIX_S>(EVENT_ID0);
+                    WaitFlag<HardEvent::FIX_S>(EVENT_ID0);
                     criticalPathTrace_.EndGmm1(CriticalPathTrace::Now());
                 }
             } else if (subBlockIdx_ == 0U && criticalPathTrace_.HasSwigluWork()) {
@@ -2351,11 +2351,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
                                                       COMBINE_TRIPLE_TOKEN_CAPACITY;
                         PreloadCombineNoQuantTriples(
                             static_cast<uint64_t>(waveTokenBegin) + waveOwned.start, wavePreloadedChunkCount, 0U);
-                        SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
                     }
                     WaitGmm2NoQuantReady(batchIdx);
                     if (wavePreloadedChunkCount != 0U) {
-                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                     }
                 }
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
@@ -2379,8 +2379,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
                                                   COMBINE_TRIPLE_TOKEN_CAPACITY;
                         PreloadCombineNoQuantTriples(
                             static_cast<uint64_t>(waveTokenBegin) + waveOwned.start + processed, chunkCount, 0U);
-                        SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
-                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                         ProcessCombineNoQuantGm(waveGmm2OutGlobal, waveOwned.start + processed, chunkCount, 0U,
                                                rowSequence);
                         processed += chunkCount;
@@ -2401,11 +2401,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
                             PreloadCombineNoQuantTriples(
                                 static_cast<uint64_t>(combineState.expertBeforeCnt) + owned.start + processed,
                                 chunkCount, 0U);
-                            SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                            SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
                             if (processed == 0U) {
                                 WaitGmm2NoQuantReady(expertIdx);
                             }
-                            WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                            WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                             ProcessCombineNoQuantGm(combineAddrInfo.gmm2OutGlobal, owned.start + processed, chunkCount,
                                                    0U, rowSequence);
                             processed += chunkCount;
@@ -2424,8 +2424,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
                         // waits on MTE2.  Bridge that dependency to Scalar once
                         // per wave so combine_end means actual remote-send
                         // completion, rather than a drain issue boundary.
-                        SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
-                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                         uint32_t combineActualEnd = CriticalPathTrace::Now();
                         criticalPathTrace_.EndWaveCombine(combineActualEnd);
                         if (batchEnd == expertPerRank_) {
@@ -2508,8 +2508,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WriteCriticalPathTrace(
         WriteGmByPassDCache(traceOut + 12U, static_cast<uint32_t>(MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY));
         WriteGmByPassDCache(traceOut + 13U, waveCount);
         // bit0: terminal PIPE_ALL; bit1: per-wave Combine MTE2->S bridge;
-        // bit2: role-dependent per-wave stages; bits[15:8]: capture capacity.
-        constexpr uint32_t traceFlags = 7U | (CRITICAL_PATH_TRACE_MAX_WAVES << 8U);
+        // bit2: role-dependent per-wave stages; bit3: causal stage-begin
+        // pipeline bridges; bits[15:8]: capture capacity.
+        constexpr uint32_t traceFlags = 15U | (CRITICAL_PATH_TRACE_MAX_WAVES << 8U);
         WriteGmByPassDCache(traceOut + 14U, traceFlags);
         WriteGmByPassDCache(traceOut + 15U, m_);
         WriteGmByPassDCache(traceOut + 16U, k_);
@@ -2691,8 +2692,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         // Drain MTE3 explicitly before y is repurposed for trace records, or
         // the pending Unpermute writes can overwrite the trace header.
         if constexpr (g_coreType == AIV) {
-            SetFlag<HardEvent::MTE3_S>(EVENT_ID7);
-            WaitFlag<HardEvent::MTE3_S>(EVENT_ID7);
+            SetFlag<HardEvent::MTE3_S>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_S>(EVENT_ID0);
         }
         criticalPathTrace_.workEnd = CriticalPathTrace::Now();
     }

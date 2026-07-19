@@ -400,14 +400,20 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
             }
         }
 
-        // Record compute entry only after this core's first upstream-ready
-        // dependency (and any ping-pong reuse dependency) has actually passed.
-        // The first-write-wins wave slot keeps later local tiles out of the
-        // trace hot path without turning a polling interval into MMAD time.
-        if (args.criticalTrace != nullptr && loopIdx == startLoopIdx) {
+        // Record only the first local compute entry in this wave.  A cross-core
+        // WaitForVector is issued on PIPE_FIX, so Scalar can otherwise sample
+        // the clock before that dependency has passed.  Bridge FIX->S before
+        // the GMM1 sample; the bridge is diagnostic-only and executes once per
+        // active core/wave.  GMM2's upstream-ready dependency is Scalar polling
+        // on the direct-GM path and therefore needs no extra bridge here.
+        if (args.criticalTrace != nullptr) {
             if constexpr (Policy::IS_GMM1) {
-                args.criticalTrace->BeginGmm1(CriticalPathTrace::Now());
-            } else {
+                if (!args.criticalTrace->HasGmm1Work()) {
+                    AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                    args.criticalTrace->BeginGmm1(CriticalPathTrace::Now());
+                }
+            } else if (!args.criticalTrace->HasGmm2Work()) {
                 args.criticalTrace->BeginGmm2(CriticalPathTrace::Now());
             }
         }
@@ -520,9 +526,13 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
         } else {
             WaitForCube();
         }
-        if (args.criticalTrace != nullptr && loopIdx == startLoopIdx) {
-            // WaitForCube is the real AIC->AIV0 hand-off.  Sampling before it
-            // would incorrectly paint Cube wait time as SwiGLU execution.
+        if (args.criticalTrace != nullptr && !args.criticalTrace->HasSwigluWork()) {
+            // WaitForCube is issued on PIPE_V, while GetSystemCycle is Scalar.
+            // A V->S bridge is therefore required before sampling; otherwise
+            // Scalar can run ahead and paint the Cube wait as SwiGLU execution.
+            // This executes only for the first local SwiGLU task in the wave.
+            AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
             args.criticalTrace->BeginSwiglu(CriticalPathTrace::Now());
         }
         AscendC::SetCtrlSpr<60, 60>(0);

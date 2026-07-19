@@ -18,7 +18,7 @@ import numpy as np
 
 
 TRACE_MAGIC = 0x43505452
-TRACE_VERSION = 2
+TRACE_VERSION = 3
 TRACE_HEADER_WORDS = 20
 TRACE_BASE_RECORD_WORDS = 26
 TRACE_MAX_WAVES = 4
@@ -72,6 +72,29 @@ TRACE_SPANS = (
     (20, 21, "unpermute_actual"),
     (0, 21, "process_to_work_end"),
 )
+
+STAGE_BOUNDARIES = {
+    "dispatch": {
+        "begin": "first expert enters Dispatch control; includes SendCntCal",
+        "end": "existing per-expert MTE3-to-Scalar drain",
+    },
+    "gmm1": {
+        "begin": "dispatch-ready passed; FIX-to-Scalar dependency bridge passed; before first MMAD issue",
+        "end": "diagnostic FIX-to-Scalar completion bridge",
+    },
+    "swiglu": {
+        "begin": "AIC-to-AIV0 PIPE_V wait and V-to-Scalar dependency bridge passed; before first vector issue",
+        "end": "existing per-tile MTE3-to-Scalar completion bridge",
+    },
+    "gmm2": {
+        "begin": "SwiGLU-ready Scalar dependency passed; before first MMAD issue",
+        "end": "ready publication FIX-to-Scalar completion bridge",
+    },
+    "combine": {
+        "begin": "ready fan-in and triple MTE2-to-Scalar dependencies passed; before first token-row send",
+        "end": "per-wave MTE2-to-Scalar completion bridge after the six-slot drain",
+    },
+}
 
 # This is the case discussed in the GMM2/Combine investigation.  Assignments
 # are replaced in memory before the existing test script computes derived
@@ -152,8 +175,11 @@ def _format_values(values):
     )
 
 
-def _write_trace_artifacts(records, aic_num, rank, reference, header):
-    """Write raw JSON plus a self-contained per-core SVG timeline."""
+def _write_trace_artifacts(records, aic_num, rank, reference, header, layout="role"):
+    """Write raw JSON plus role-grouped and logical-triplet SVG timelines."""
+    if layout not in ("role", "triplets"):
+        raise ValueError(f"unknown timeline layout: {layout}")
+
     def relative_value(value):
         value = int(value)
         if value == 0:
@@ -198,13 +224,8 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
                         "name": stage_name,
                         "begin": begin,
                         "end": end,
-                        "completion": {
-                            "dispatch": "existing per-expert MTE3-to-Scalar drain",
-                            "gmm1": "diagnostic FIX-to-Scalar bridge",
-                            "swiglu": "existing per-tile MTE3-to-Scalar bridge",
-                            "gmm2": "ready publication FIX-to-Scalar bridge",
-                            "combine": "per-wave MTE2-to-Scalar bridge after the six-slot drain",
-                        }[stage_name],
+                        "begin_boundary": STAGE_BOUNDARIES[stage_name]["begin"],
+                        "completion": STAGE_BOUNDARIES[stage_name]["end"],
                     }
                 )
             waves.append({"wave": wave_idx, "stages": stages})
@@ -222,10 +243,11 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
 
     artifact_base = Path.cwd() / f"mega_moe_critical_path_rank{rank}"
     json_path = artifact_base.with_suffix(".json")
-    json_path.write_text(
-        json.dumps({"header": header, "cores": cores}, indent=2, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    if layout == "role":
+        json_path.write_text(
+            json.dumps({"header": header, "cores": cores}, indent=2, ensure_ascii=False),
+            encoding="utf-8",
+        )
 
     colors = {
         "setup": "#64748b",
@@ -242,11 +264,22 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
         "unpermute": "#14b8a6",
         "idle": "#94a3b8",
     }
-    ordered_cores = (
-        [core for core in cores if core["core_type"] == "AIC"]
-        + [core for core in cores if core["core_type"] == "AIV0"]
-        + [core for core in cores if core["core_type"] == "AIV1"]
-    )
+    if layout == "role":
+        ordered_cores = (
+            [core for core in cores if core["core_type"] == "AIC"]
+            + [core for core in cores if core["core_type"] == "AIV0"]
+            + [core for core in cores if core["core_type"] == "AIV1"]
+        )
+        view_title = "role-grouped view"
+        view_note = "rows are grouped as all AIC, then all AIV0, then all AIV1"
+    else:
+        role_order = {"AIC": 0, "AIV0": 1, "AIV1": 2}
+        ordered_cores = sorted(
+            cores,
+            key=lambda core: (core["logical_index"], role_order[core["core_type"]]),
+        )
+        view_title = "logical-core triplet view"
+        view_note = "each AIC-i / AIV0-i / AIV1-i triplet is adjacent on the same cycle axis"
     plotted_cycles = [
         value
         for core in cores
@@ -305,9 +338,9 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
         ".inferred{stroke:#475569;stroke-width:.4;stroke-dasharray:2 2}",
         "</style>",
         '<rect width="100%" height="100%" fill="#ffffff"/>',
-        '<text x="8" y="22" font-size="16" font-weight="700">MegaMoe critical-path per-core timeline</text>',
+        f'<text x="8" y="22" font-size="16" font-weight="700">MegaMoe critical-path {view_title}</text>',
         f'<text x="8" y="43" font-size="11">rank={rank} | cycles relative to AIC0 process_begin | '
-        "solid/high-opacity = per-wave exact bounded stage; translucent/dashed = inferred tail</text>",
+        f"{html.escape(view_note)} | all rows use the same system-cycle reference</text>",
     ]
 
     legend_x = 8
@@ -343,12 +376,18 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
     previous_type = None
     for row_idx, core in enumerate(ordered_cores):
         y = top + row_idx * row_height
-        if core["core_type"] != previous_type:
+        new_group = (
+            core["core_type"] != previous_type
+            if layout == "role"
+            else row_idx % 3 == 0
+        )
+        if new_group:
             svg.append(
                 f'<line class="group-line" x1="0" y1="{y}" x2="{svg_width}" y2="{y}"/>'
             )
-            previous_type = core["core_type"]
-        if row_idx % 2:
+        previous_type = core["core_type"]
+        shaded = row_idx % 2 if layout == "role" else (row_idx // 3) % 2
+        if shaded:
             svg.append(
                 f'<rect class="row" x="0" y="{y}" width="{svg_width}" height="{row_height}" fill="#f8fafc"/>'
             )
@@ -371,7 +410,8 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
                     stage["begin"],
                     stage["end"],
                     stage_name,
-                    f"wave {wave['wave']} {stage_name.upper()} ({stage['completion']})",
+                    f"wave {wave['wave']} {stage_name.upper()}; "
+                    f"begin: {stage['begin_boundary']}; end: {stage['completion']}",
                     True,
                 )
 
@@ -409,7 +449,11 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
         )
 
     svg.append("</svg>")
-    html_path = artifact_base.with_suffix(".html")
+    html_path = (
+        artifact_base.with_suffix(".html")
+        if layout == "role"
+        else artifact_base.with_name(artifact_base.name + "_triplets").with_suffix(".html")
+    )
     html_path.write_text(
         "<!doctype html><html><head><meta charset='utf-8'>"
         "<title>MegaMoe critical path</title>"
@@ -420,8 +464,10 @@ def _write_trace_artifacts(records, aic_num, rank, reference, header):
         + "</div></main></body></html>",
         encoding="utf-8",
     )
-    print(f"[TRACE_ARTIFACT] rank={rank} html={html_path}")
-    print(f"[TRACE_ARTIFACT] rank={rank} json={json_path}")
+    print(f"[TRACE_ARTIFACT] rank={rank} layout={layout} html={html_path}")
+    if layout == "role":
+        _write_trace_artifacts(records, aic_num, rank, reference, header, layout="triplets")
+        print(f"[TRACE_ARTIFACT] rank={rank} json={json_path}")
 
 
 def _print_critical_path_words(words, rank):
@@ -450,11 +496,18 @@ def _print_critical_path_words(words, rank):
             f"rank {rank}: invalid core layout aic={aic_num}, aiv={aiv_num}, records={record_count}"
         )
     wave_stage_trace = (trace_flags >> 2) & 1
+    dependency_bridged_begins = (trace_flags >> 3) & 1
     wave_capture_capacity = (trace_flags >> 8) & 0xFF
-    if wave_stage_trace != 1 or wave_capture_capacity != TRACE_MAX_WAVES:
+    if (
+        wave_stage_trace != 1
+        or dependency_bridged_begins != 1
+        or wave_capture_capacity != TRACE_MAX_WAVES
+    ):
         raise RuntimeError(
             f"rank {rank}: invalid wave trace flags enabled={wave_stage_trace} "
-            f"capacity={wave_capture_capacity}; expected enabled=1 capacity={TRACE_MAX_WAVES}"
+            f"dependency_bridged_begins={dependency_bridged_begins} "
+            f"capacity={wave_capture_capacity}; expected enabled=1 "
+            f"dependency_bridged_begins=1 capacity={TRACE_MAX_WAVES}"
         )
     captured_wave_count = min(wave_count, wave_capture_capacity)
 
@@ -516,7 +569,8 @@ def _print_critical_path_words(words, rank):
         f"ready={ready_name} fanin={fanin_name} stride={ready_stride} "
         f"final_only={final_only} interleaved={gmm1_interleaved} world={world_size} "
         f"terminal_pipeall={trace_flags & 1} per_wave_combine_bridge={(trace_flags >> 1) & 1} "
-        f"wave_trace={wave_stage_trace} captured_waves={captured_wave_count}/{wave_count}"
+        f"wave_trace={wave_stage_trace} dependency_bridged_begins={dependency_bridged_begins} "
+        f"captured_waves={captured_wave_count}/{wave_count}"
     )
 
     expected_runtime = {
@@ -528,6 +582,7 @@ def _print_critical_path_words(words, rank):
         "terminal_pipeall": (trace_flags & 1, 1),
         "per_wave_combine_bridge": ((trace_flags >> 1) & 1, 1),
         "wave_stage_trace": (wave_stage_trace, 1),
+        "dependency_bridged_begins": (dependency_bridged_begins, 1),
         "wave_capture_capacity": (wave_capture_capacity, TRACE_MAX_WAVES),
         "trace_rank": (trace_rank, rank),
     }
@@ -554,7 +609,7 @@ def _print_critical_path_words(words, rank):
         )
 
     trace_header = {
-        "schema": "mega_moe_critical_path_trace_v2",
+        "schema": "mega_moe_critical_path_trace_v3",
         "rank": rank,
         "trace_rank": trace_rank,
         "reference": "AIC-00 process_begin",
@@ -579,9 +634,11 @@ def _print_critical_path_words(words, rank):
         "terminal_pipeall": trace_flags & 1,
         "per_wave_combine_bridge": (trace_flags >> 1) & 1,
         "wave_stage_trace": wave_stage_trace,
+        "dependency_bridged_begins": dependency_bridged_begins,
         "timeline_note": (
             "Per-wave Dispatch/GMM1/SwiGLU/GMM2/Combine bars have role-specific "
-            "dependency-aware begin points and actual-completion end points."
+            "dependency-bridged begin points and actual-completion end points. "
+            "AIC-i, AIV0-i, and AIV1-i use one shared system-cycle reference."
         ),
     }
     _write_trace_artifacts(records, aic_num, rank, int(reference), trace_header)
@@ -694,7 +751,7 @@ def _print_critical_path_words(words, rank):
     for name, values in derived:
         print(f"{name:<36} {_format_values(values):>32}")
     print(
-        "[CRITICAL_NOTE] legacy combine_scalar_end remains an issue boundary; every v2 "
+        "[CRITICAL_NOTE] legacy combine_scalar_end remains an issue boundary; every v3 "
         "per-wave combine_end is MTE2->Scalar completion-bridged."
     )
 
