@@ -42,11 +42,12 @@ param_combinations = []
 
 for _, params in enumerate(PARAM_SET):
     param_names = [
-        "B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type", "state_data_type", "has_g",
+        "_name", "B", "seqlen", "nk", "nv", "dk", "dv", "chunk_size", "data_type", "state_data_type", "has_g",
         "is_contiguous"
     ]
 
     param_values = [
+        params["_name"] if "_name" in params else [""],
         params["B"],
         params["seqlen"],
         params["nk"],
