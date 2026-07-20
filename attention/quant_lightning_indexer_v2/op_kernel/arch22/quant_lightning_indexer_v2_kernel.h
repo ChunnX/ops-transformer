@@ -119,7 +119,7 @@ protected:
     GlobalTensor<half> weightsGm;
     GlobalTensor<uint32_t> metadataGm;
     GlobalTensor<int32_t> indiceOutGm;
-    GlobalTensor<float> valueOutGm;
+    GlobalTensor<bfloat16_t> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
 
     GlobalTensor<uint32_t> actualSeqLengthsGmQ;
@@ -495,7 +495,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
     if ASCEND_IS_AIV {
         vectorService.InitParams(constInfo, ldInfo, tiling);
         indiceOutGm.SetGlobalBuffer((__gm__ int32_t *)sparseIndices);
-        valueOutGm.SetGlobalBuffer((__gm__ float *)sparseValues);
+        valueOutGm.SetGlobalBuffer((__gm__ bfloat16_t *)sparseValues);
         weightsGm.SetGlobalBuffer((__gm__ half *)weights);
         qScaleGm.SetGlobalBuffer((__gm__ half *)queryScale);
         kScaleGm.SetGlobalBuffer((__gm__ half *)keyScale);
@@ -677,17 +677,19 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessInvalid()
             GlobalTensor<OUT_T> output = indiceOutGm[baseSize];
             AscendC::InitGlobalMemory(output, dealSize, constInfo.INVALID_IDX);
 
-            // 当returnValue为true时，初始化value输出为float负无穷 (0xFF800000)
-            // When returnValue is true, initialize value output to float neg infinity (0xFF800000)
+            // 当returnValue为true时，初始化value输出为bf16负无穷 (0xFF80)
+            // When returnValue is true, initialize value output to bf16 neg infinity (0xFF80)
             if (constInfo.returnValue) {
                 event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
                 SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
 
-                GlobalTensor<float> valueOut = valueOutGm[baseSize];
+                GlobalTensor<uint16_t> valueOutGmTmp;
+                valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
+                GlobalTensor<uint16_t> valueOut = valueOutGmTmp[baseSize];
 
-                // float neg infinity bit pattern = 0xFF800000
-                constexpr float negInf = -__builtin_huge_valf();
+                // bf16 neg infinity bit pattern = 0xFF80
+                uint16_t negInf = 0xFF80;
                 AscendC::InitGlobalMemory(valueOut, dealSize, negInf);
             }
         }
