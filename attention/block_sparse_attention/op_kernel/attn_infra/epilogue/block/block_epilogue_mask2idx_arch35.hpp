@@ -157,9 +157,9 @@ public:
                         if (k == actDealtRowCurLoop - 1) {
                             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(IdxPingPongFlag);
                         }
-                        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
+                        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(2);
 
-                        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(2);
                         rsvdCountPerRow[k] += rsvdCountPerRowCurColLoop[k];
                         if (k == actDealtRowCurLoop - 1) {
                             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(0);

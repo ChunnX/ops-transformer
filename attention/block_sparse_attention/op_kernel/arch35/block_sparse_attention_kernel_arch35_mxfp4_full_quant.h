@@ -165,10 +165,11 @@ public:
         coreTaskNum = (coreIdx < totalTaskNum_ % coreNum) ? (coreTaskNum + 1) : coreTaskNum;
 
         TaskInfo taskInfos[PRELOAD_TASK_CACHE_SIZE] = {};
-        RunInfo runInfos[PRELOAD_TASK_CACHE_SIZE] = {};
+        TileInfo tileInfos[PRELOAD_TASK_CACHE_SIZE] = {};
 
         while (coreTaskId < coreTaskNum || delay20CoreTaskId < coreTaskNum || delay3CoreTaskId < coreTaskNum)
         {
+            // AscendC::PRINTF("loop:%llu \n", coreTileLoop);
             curTaskTileIdx = coreTileLoop - preTaskTileSum;
             delay20TaskTileIdx = coreTileLoop - PV_RE_DELAY_N - delay20preTaskTileSum;
             delay3TaskTileIdx = coreTileLoop - DELAY_PSCALE_N - delay3preTaskTileSum;
@@ -177,76 +178,76 @@ public:
             TaskInfo &delay20TaskInfo = taskInfos[delay20CoreTaskId % PRELOAD_TASK_CACHE_SIZE];
             TaskInfo &delay3TaskInfo = taskInfos[delay3CoreTaskId % PRELOAD_TASK_CACHE_SIZE];
 
-            RunInfo &curRunInfo = runInfos[coreTileLoop % PRELOAD_TASK_CACHE_SIZE];
-            RunInfo &delay20RunInfo = runInfos[(coreTileLoop - PV_RE_DELAY_N) % PRELOAD_TASK_CACHE_SIZE];
-            RunInfo &delay3RunInfo = runInfos[(coreTileLoop - DELAY_PSCALE_N) % PRELOAD_TASK_CACHE_SIZE];
+            TileInfo &curTileInfo = tileInfos[coreTileLoop % PRELOAD_TASK_CACHE_SIZE];
+            TileInfo &delay20TileInfo = tileInfos[(coreTileLoop - PV_RE_DELAY_N) % PRELOAD_TASK_CACHE_SIZE];
+            TileInfo &delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) % PRELOAD_TASK_CACHE_SIZE];
             
             // 创建qs任务
             if (curTaskTileIdx == 0 && coreTaskId < coreTaskNum) {
-                CreateTaskInfo(curTaskInfo, coreTaskId,
+                CreateTaskInfo(curTaskInfo, coreTaskId, coreIdx, coreNum,
                                gActualQseqlen, gActualKvseqlen, gSparseCount, gSparseIdx);
             }
 
             // main process
             if (coreTileLoop >= PV_RE_DELAY_N && delay20CoreTaskId < coreTaskNum) {
-                // delay20RunInfo = runInfos[(coreTileLoop - PV_RE_DELAY_N) % PRELOAD_TASK_CACHE_SIZE];
+                // delay20TileInfo = tileInfos[(coreTileLoop - PV_RE_DELAY_N) % PRELOAD_TASK_CACHE_SIZE];
                 if ASCEND_IS_AIC {
-                    if (delay20RunInfo.isTileGoupFirstTile) {
+                    if (delay20TileInfo.isTileGoupFirstTile) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2);
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_PSCALE_C2 + 16);
                     }
-                    if (delay20RunInfo.isUpdatePScale) {
+                    if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
                     }
-                    ComputeMm2(delay20RunInfo);
-                    if (delay20RunInfo.isUpdatePScale) {
+                    ComputeMm2(delay20TileInfo);
+                    if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + 16);
                     }
                 } else {
-                    if (delay20RunInfo.isUpdatePScale) {
+                    if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
-                        ComputeVec2(delay20RunInfo);
+                        ComputeVec2(delay20TileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
                     }
                 }
             }
             if (coreTaskId < coreTaskNum) {
-                // curRunInfo = runInfos[coreTileLoop % PRELOAD_TASK_CACHE_SIZE];
-                CreateRunInfo(curRunInfo, coreTileLoop,
+                // curTileInfo = tileInfos[coreTileLoop % PRELOAD_TASK_CACHE_SIZE];
+                CreateTileInfo(curTileInfo, coreTileLoop,
                               static_cast<uint32_t>(curTaskTileIdx), curTaskInfo);// 创建任务
 
-                uint32_t mm1ResBufId = (curRunInfo.loop / 2) % 2;
-                uint32_t subBlockIdx = curRunInfo.loop % 2;
+                uint32_t mm1ResBufId = (curTileInfo.loop / 2) % 2;
+                uint32_t subBlockIdx = curTileInfo.loop % 2;
                 if ASCEND_IS_AIC {
                     AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
-                    ComputeMm1(curRunInfo);
+                    ComputeMm1(curTileInfo);
                     AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId] + subBlockIdx * 16);
                 } else {
                     if (subBlockIdx == AscendC::GetSubBlockIdx()) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
-                        ComputeVec1(curRunInfo);
+                        ComputeVec1(curTileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[mm1ResBufId]);
                     }
-                    if (curRunInfo.isUpdatePScale) {
-                        CopyGMaxUbToL1(curRunInfo);
+                    if (curTileInfo.isUpdatePScale) {
+                        CopyGMaxUbToL1(curTileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
                     }
                 }
             }
             if (coreTileLoop >= DELAY_PSCALE_N && delay3CoreTaskId < coreTaskNum) {
-                // delay3RunInfo = runInfos[(coreTileLoop - DELAY_PSCALE_N) % PRELOAD_TASK_CACHE_SIZE];
-                if (delay3RunInfo.isUpdatePScale) {
+                // delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) % PRELOAD_TASK_CACHE_SIZE];
+                if (delay3TileInfo.isUpdatePScale) {
                     if ASCEND_IS_AIC {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1 + 16);
-                        CopyGMaxL1ToUb(delay3RunInfo);
+                        CopyGMaxL1ToUb(delay3TileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB + 16);
                     } else {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
-                        UpdatePScale(delay3RunInfo);
+                        UpdatePScale(delay3TileInfo);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2);
                     }
                 }
@@ -266,49 +267,50 @@ public:
                 delay3CoreTaskId++;
             }
             coreTileLoop++;
+            // AscendC::PRINTF("-----------------------\n");
         }
 
         // release reverse sync flags
         ReleaseSyncFlags<4, 4, 4>();
     }
 
-    __aicore__ inline void ComputeMm1(RunInfo &runInfo)
+    __aicore__ inline void ComputeMm1(TileInfo &runInfo)
     {
         AscendC::PRINTF("C1 \n");
         // cubeBlock.ComputeMm1(runInfo);
     }
 
-    __aicore__ inline void ComputeMm2(RunInfo &runInfo)
+    __aicore__ inline void ComputeMm2(TileInfo &runInfo)
     {
         AscendC::PRINTF("C2 \n");
         // cubeBlock.ComputeMm2(runInfo);
     }
 
-    __aicore__ inline void ComputeVec1(RunInfo &runInfo)
+    __aicore__ inline void ComputeVec1(TileInfo &runInfo)
     {
         AscendC::PRINTF("V1 \n");
         // vectorBlock.ComputeVec1(runInfo);
     }
 
-    __aicore__ inline void CopyGMaxUbToL1(RunInfo &runInfo)
+    __aicore__ inline void CopyGMaxUbToL1(TileInfo &runInfo)
     {
         AscendC::PRINTF("CopyGMaxUbToL1 \n");
         // vectorBlock.CopyGMaxUbToL1(runInfo);
     }
 
-    __aicore__ inline void CopyGMaxL1ToUb(RunInfo &runInfo)
+    __aicore__ inline void CopyGMaxL1ToUb(TileInfo &runInfo)
     {
         AscendC::PRINTF("CopyGMaxL1ToUb \n");
         // cubeBlock.CopyGMaxL1ToUb(runInfo);
     }
 
-    __aicore__ inline void UpdatePScale(RunInfo &runInfo)
+    __aicore__ inline void UpdatePScale(TileInfo &runInfo)
     {
         AscendC::PRINTF("UpdatePScale \n");
         // vectorBlock.UpdatePScale(runInfo);
     }
 
-    __aicore__ inline void ComputeVec2(RunInfo &runInfo)
+    __aicore__ inline void ComputeVec2(TileInfo &runInfo)
     {
         AscendC::PRINTF("V2  \n");
         // vectorBlock.ComputeVec2(runInfo);
@@ -470,17 +472,18 @@ public:
 
     // 由 coreTaskId (本核上的 task 序号) 反推 globalTaskId 并填充 TaskInfo
     // 仅在 task 起始 tile (taskTileId == 0) 调用，避免每个 tile 重复计算
+    // coreIdx / coreNum 由调用方 Process 传入, 避免重复调用 GetBlockIdx/GetBlockNum
     __aicore__ inline
     void CreateTaskInfo(
         TaskInfo& info,
         uint32_t coreTaskId,
+        uint32_t coreIdx,
+        uint32_t coreNum,
         AscendC::GlobalTensor<int64_t>& gActualQseqlen,
         AscendC::GlobalTensor<int64_t>& gActualKvseqlen,
         AscendC::GlobalTensor<ElementSparseCount>& gSparseCount,
         AscendC::GlobalTensor<ElementSparseIdx>& gSparseIdx)
     {
-        uint32_t coreIdx = AscendC::GetBlockIdx();
-        uint32_t coreNum = AscendC::GetBlockNum();
         uint32_t taskIdx = coreTaskId * coreNum + coreIdx;  // 反推全局 task 序号
 
         uint32_t groupSize = qHeads_ / kvHeads_;
@@ -546,10 +549,10 @@ public:
         info.taskTileNum = taskTileNum;
     }
 
-    // 每个 tile 调用一次，根据 coreTileLoop / curTaskTileIdx / taskInfo 填充 RunInfo
+    // 每个 tile 调用一次，根据 coreTileLoop / curTaskTileIdx / taskInfo 填充 TileInfo
     __aicore__ inline
-    void CreateRunInfo(
-        RunInfo& info,
+    void CreateTileInfo(
+        TileInfo& info,
         uint64_t coreTileLoop,
         uint32_t curTaskTileIdx,
         const TaskInfo& taskInfo)
@@ -639,7 +642,7 @@ private:
     Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
 
-    // ---- CreateRunInfo 持久状态 (跨 tile 保持, 参考 qfa.cpp CalcParams) ----
+    // ---- CreateTileInfo 持久状态 (跨 tile 保持, 参考 qfa.cpp CalcParams) ----
     uint32_t kvsFirstTileStartVecCore_ = 0; // task 首 tile 时切换 (loop % 2)
     uint32_t updateScaleIdx_ = 3;       // C2 Sync 时切换 (循环 0~3)
     uint32_t tileLoopIdx_ = 1;          // 双缓冲索引 (0/1)

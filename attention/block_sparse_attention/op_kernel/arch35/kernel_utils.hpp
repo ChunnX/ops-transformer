@@ -43,7 +43,7 @@ struct TaskInfo {
     uint32_t taskTileNum = 0;
 };
 
-struct RunInfo {
+struct TileInfo {
     uint32_t loop = 0; //单核上处理的所有qs对应的第几个kvs基本块(累加递增)
     uint32_t curKvsTileLoopIdx = 0; // 在当前qs对应的Kvs的循环下标 
     
