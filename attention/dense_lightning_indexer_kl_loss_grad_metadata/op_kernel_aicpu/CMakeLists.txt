@@ -18,13 +18,14 @@ if (BUILD_WITH_INSTALLED_DEPENDENCY_CANN_PKG)
   set_property(GLOBAL APPEND PROPERTY AICPU_JSON_FILES ${JSON_FILE})
 
   file(GLOB AICPU_SRC ${CMAKE_CURRENT_SOURCE_DIR}/*_aicpu*.cpp)
-  message(STATUS "[sparse_lightning_indexer_kl_loss_grad_metadata] Found aicpu sources: ${AICPU_SRC}")
+  message(STATUS "[dense_lightning_indexer_kl_loss_grad_metadata] Found aicpu sources: ${AICPU_SRC}")
 
-  set(OBJ_NAME sparse_lightning_indexer_kl_loss_grad_metadata_cust_obj)
+  set(OBJ_NAME dense_lightning_indexer_kl_loss_grad_metadata_cust_obj)
   add_aicpu_cust_kernel_modules(${OBJ_NAME})
   target_sources(${OBJ_NAME} PRIVATE ${AICPU_SRC})
+  target_include_directories(${OBJ_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 endif()
 
 if(UT_TEST_ALL OR OP_KERNEL_AICPU_UT)
-  AddAicpuOpTestCase(sparse_lightning_indexer_kl_loss_grad_metadata)
+  AddAicpuOpTestCase(dense_lightning_indexer_kl_loss_grad_metadata)
 endif()

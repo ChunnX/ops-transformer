@@ -9,30 +9,30 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_kl_loss_grad_metadata_infershape.cpp
+ * \file dense_lightning_indexer_kl_loss_grad_metadata_infershape.cpp
  * \brief
  */
 #include "register/op_impl_registry.h"
-#include "../../sparse_lightning_indexer_kl_loss_grad/op_kernel/sparse_lightning_indexer_kl_loss_grad_metadata.h"
+#include "../../dense_lightning_indexer_kl_loss_grad/op_kernel/arch22/dense_lightning_indexer_kl_loss_grad_metadata_arch22.h"
 
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeSparseLightningIndexerKLLossGradMetadata(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeDenseLightningIndexerKLLossGradMetadata(gert::InferShapeContext* context)
 {
     gert::Shape* oShape = context->GetOutputShape(0);
     oShape->SetDimNum(1);
-    oShape->SetDim(0, optiling::SLI_METADATA_SIZE);
+    oShape->SetDim(0, optiling::DLIKG_METADATA_SIZE);
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDtypeSparseLightningIndexerKLLossGradMetadata(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDtypeDenseLightningIndexerKLLossGradMetadata(gert::InferDataTypeContext* context)
 {
     context->SetOutputDataType(0, DT_INT32);
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(SparseLightningIndexerKLLossGradMetadata)
-    .InferShape(InferShapeSparseLightningIndexerKLLossGradMetadata)
-    .InferDataType(InferDtypeSparseLightningIndexerKLLossGradMetadata);
+IMPL_OP_INFERSHAPE(DenseLightningIndexerKLLossGradMetadata)
+    .InferShape(InferShapeDenseLightningIndexerKLLossGradMetadata)
+    .InferDataType(InferDtypeDenseLightningIndexerKLLossGradMetadata);
 } // namespace ops

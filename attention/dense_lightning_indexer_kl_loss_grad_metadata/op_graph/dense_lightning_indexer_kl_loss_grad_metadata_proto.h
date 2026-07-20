@@ -9,18 +9,18 @@
  */
 
 /*!
- * \file sparse_lightning_indexer_kl_loss_grad_metadata_proto.h
+ * \file dense_lightning_indexer_kl_loss_grad_metadata_proto.h
  * \brief
  */
-#ifndef SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_PROTO_H
-#define SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_PROTO_H
+#ifndef DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_PROTO_H
+#define DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_PROTO_H
 
 #include "graph/operator_reg.h"
 #include "graph/types.h"
 
 namespace ge {
 
-REG_OP(SparseLightningIndexerKLLossGradMetadata)
+REG_OP(DenseLightningIndexerKLLossGradMetadata)
     .OPTIONAL_INPUT(cu_seqlens_q, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(cu_seqlens_k, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(seqused_q, TensorType({DT_INT32}))
@@ -33,13 +33,12 @@ REG_OP(SparseLightningIndexerKLLossGradMetadata)
     .REQUIRED_ATTR(num_heads_q, Int)
     .REQUIRED_ATTR(num_heads_k, Int)
     .REQUIRED_ATTR(head_dim, Int)
-    .ATTR(topk, Int, 0)
     .ATTR(layout_q, String, "BSND")
     .ATTR(layout_k, String, "BSND")
     .ATTR(mask_mode, Int, 0)
     .ATTR(cmp_ratio, Int, 1)
-    .OP_END_FACTORY_REG(SparseLightningIndexerKLLossGradMetadata)
+    .OP_END_FACTORY_REG(DenseLightningIndexerKLLossGradMetadata)
 
 } // namespace ge
 
-#endif // SPARSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_PROTO_H
+#endif // DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_METADATA_PROTO_H
