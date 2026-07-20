@@ -22,7 +22,7 @@
 #include "lib/hccl/hccl.h"
 #include "atcoss/tiling/comm_tiling_data.h"
 
-namespace Dista {
+namespace Atcoss {
 namespace AivComm {
 namespace Ccu {
 
@@ -232,4 +232,4 @@ CcuAllToAllComm<TilingDataType>::Finalize()
 
 } // namespace Ccu
 } // namespace AivComm
-} // namespace Dista
+} // namespace Atcoss

@@ -97,7 +97,7 @@ public:
   QuantMatmulKernelImpl quantMatmulKernelImpl_;
 
 private:
-  Dista::AivComm::Ccu::CcuAllToAllComm<allToAllMatmulCcuTilingData> allToAll_;
+  Atcoss::AivComm::Ccu::CcuAllToAllComm<allToAllMatmulCcuTilingData> allToAll_;
   CommTilingData commTilingDataA_;
   CommTilingData commTilingDataScaleA_;
   uint64_t scaleWinOffset_{0};
