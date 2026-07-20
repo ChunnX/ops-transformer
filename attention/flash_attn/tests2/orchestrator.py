@@ -38,17 +38,30 @@ class Reporter:
     def __init__(self):
         self._results = {}
         self._dtypes = {}
+        self._perfs = {}
+        self._run_dir = None
         self._csv_file = None
         self._csv_writer = None
+        self._perf_csv_file = None
+        self._perf_csv_writer = None
 
-    def set_csv(self, path: Path):
-        path.parent.mkdir(parents=True, exist_ok=True)
-        exists = path.exists()
-        self._csv_file = open(path, "a", newline="")
+    def set_run_dir(self, run_dir: Path):
+        """设置本次运行目录, 所有产物 (precision.csv / perf.csv / summary.csv
+        以及各 case 子目录的 prof 产物) 均落在其下。"""
+        run_dir.mkdir(parents=True, exist_ok=True)
+        self._run_dir = run_dir
+
+        self._csv_file = open(run_dir / "precision.csv", "a", newline="")
         self._csv_writer = csv.DictWriter(self._csv_file, CSV_HEADERS)
-        if not exists:
-            self._csv_writer.writeheader()
-            self._csv_file.flush()
+        self._csv_writer.writeheader()
+        self._csv_file.flush()
+
+        self._perf_csv_file = open(run_dir / "perf.csv", "a", newline="")
+        self._perf_csv_writer = csv.DictWriter(
+            self._perf_csv_file,
+            ["case", "rule", "runs", "avg_us", "trimmed", "raw", "error"])
+        self._perf_csv_writer.writeheader()
+        self._perf_csv_file.flush()
 
     def record(self, name: str, result: dict, error: str = None, dtype: str = ""):
         if error:
@@ -74,10 +87,28 @@ class Reporter:
     def print_interim(self, total: int):
         self._print_table(self._results, self._dtypes, total, is_final=False)
 
+    def record_perf(self, name: str, perf: dict, error: str = ""):
+        """记录性能采集结果到独立 CSV。"""
+        self._perfs[name] = perf
+        if self._perf_csv_writer:
+            self._perf_csv_writer.writerow({
+                "case": name,
+                "rule": perf.get("rule", ""),
+                "runs": len(perf.get("raw", [])),
+                "avg_us": f"{perf['avg']:.3f}" if "avg" in perf else "",
+                "trimmed": [f"{x:.3f}" for x in perf.get("trimmed", [])],
+                "raw": [f"{x:.3f}" for x in perf.get("raw", [])],
+                "error": error,
+            })
+            self._perf_csv_file.flush()
+
     def close(self):
         if self._csv_file:
             self._csv_file.close()
             self._csv_file = None
+        if self._perf_csv_file:
+            self._perf_csv_file.close()
+            self._perf_csv_file = None
 
     def __enter__(self):
         return self
@@ -87,7 +118,32 @@ class Reporter:
 
     def print_final(self) -> int:
         self.close()
+        self.write_summary()
         return self._print_table(self._results, self._dtypes, len(self._results), is_final=True)
+
+    def write_summary(self):
+        """合并精度+性能写 summary.csv (本次运行, 没跑性能的 case 性能列为空)。"""
+        if not self._run_dir:
+            return
+        headers = ["case", "dtype", "pass", "max_abs", "fail_ratio",
+                   "perf_avg_us", "perf_rule", "error"]
+        path = self._run_dir / "summary.csv"
+        with open(path, "w", newline="") as f:
+            w = csv.DictWriter(f, headers)
+            w.writeheader()
+            for name, res in self._results.items():
+                prec = next((v for v in res.values() if isinstance(v, dict)), {})
+                perf = self._perfs.get(name, {})
+                w.writerow({
+                    "case": name,
+                    "dtype": self._dtypes.get(name, ""),
+                    "pass": prec.get("passed", ""),
+                    "max_abs": f"{prec['max_abs']:.6f}" if "max_abs" in prec else "",
+                    "fail_ratio": f"{prec['fail_ratio']:.4f}" if "fail_ratio" in prec else "",
+                    "perf_avg_us": f"{perf['avg']:.3f}" if "avg" in perf else "",
+                    "perf_rule": perf.get("rule", ""),
+                    "error": res.get("error", "") or "",
+                })
 
     @staticmethod
     def _print_table(results: dict, dtypes: dict, total: int, is_final: bool) -> int:
@@ -293,11 +349,44 @@ def _stage_compare(stages: set, cpu_out, npu_out, gpu_out, params: dict,
     return result
 
 
+def _stage_npuprof(stages: set, params: dict, compare_result: dict,
+                   reporter: "Reporter", case_id: str, prof_dir: str,
+                   runs: int) -> dict:
+    """NPU 性能采集: 精度闸门 + subprocess 调 msprof。
+    - 精度未通过 → 跳过, 记 SKIP
+    - 通过 → msprof 包裹子进程跑 N 次, 解析 op_summary, 按规则聚合"""
+    if "npuprof" not in stages:
+        return None
+    if not compare_result.get("passed", False):
+        logger.info("[npuprof] skip | precision not passed")
+        perf = {"skipped": True, "reason": "precision_fail"}
+        reporter.record_perf(case_id, perf)
+        return perf
+
+    case_set = params.get("case_set", "")
+    is_decode = (params.get("S1", 0) == 1)
+    logger.info("[npuprof] start | %s | runs=%d | %s",
+                case_id, runs, "decode" if is_decode else "prefill")
+    t0 = time.perf_counter()
+    try:
+        from prof.npuprof import run_msprof_case, parse_prof_result, aggregate
+        run_msprof_case(case_id, case_set, prof_dir, runs=runs)
+        durs = parse_prof_result(prof_dir, "FlashAttn")
+        perf = aggregate(durs, is_decode)
+        logger.info("[npuprof] done  | %.1fs | %s avg=%.3fus",
+                    time.perf_counter() - t0,
+                    perf.get("rule", ""), perf.get("avg", 0))
+        reporter.record_perf(case_id, perf)
+        return perf
+    except Exception as e:
+        logger.error("[npuprof] fail | %s: %s", type(e).__name__, e)
+        perf = {"error": str(e)}
+        reporter.record_perf(case_id, perf, error=str(e))
+        return perf
+
+
 def _run_profs(stages: set, case_id: str, result_dir: str):
-    """prof 阶段 (接口未定, 暂为 NotImplementedError 占位)。"""
-    if "npuprof" in stages:
-        from prof.npuprof import run_msprof
-        _run_prof_stage("npuprof", run_msprof, case_id, result_dir)
+    """其余 prof 阶段 (接口未定, 暂为 NotImplementedError 占位)。"""
     if "npuprofop" in stages:
         from prof.npuprofop import run_msprof_op
         _run_prof_stage("npuprofop", run_msprof_op, case_id, result_dir)
@@ -316,12 +405,17 @@ def _run_profs(stages: set, case_id: str, result_dir: str):
 def run_case(stages: set, params: dict, reporter: Reporter, *,
              npu_mode: str = "eager",
              chunk_size: int = 0, verbose_diff: str = None,
+             perf_runs: int = 5,
              comparator: Comparator = None) -> dict:
     """薄编排层: 串联各 stage 函数 + 异常捕获/资源释放。
     stage 内部各自处理 执行-or-加载 与日志; 这里只管顺序、错误兜底、显存回收。"""
     case_set = params.get("case_set", "")
     case_id = params.get("case_id", params.get("name", ""))
-    result_dir = str(Path("result") / case_id)
+    from core.case_loader import _CASE_SET_TO_PREFIX
+    paramset = _CASE_SET_TO_PREFIX.get(case_set, case_set.lower()) + "_paramset"
+    case_dir = reporter._run_dir / paramset / case_id if reporter._run_dir else Path("result") / paramset / case_id
+    precision_dir = str(case_dir / "precision")
+    prof_dir = str(case_dir / "prof")
     dtype = params.get("dtype", "")
     if comparator is None:
         comparator = DefaultComparator()
@@ -333,9 +427,11 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
         npu_out = _stage_npu(stages, inputs, npu_mode, case_set, case_id)
         gpu_out = _stage_gpu(stages, inputs, case_set, case_id)
         result = _stage_compare(stages, cpu_out, npu_out, gpu_out, params,
-                                reporter, case_id, result_dir,
+                                reporter, case_id, precision_dir,
                                 verbose_diff, chunk_size, comparator)
-        _run_profs(stages, case_id, result_dir)
+        _stage_npuprof(stages, params, result, reporter, case_id,
+                       prof_dir, perf_runs)
+        _run_profs(stages, case_id, prof_dir)
         return result
     except Exception as e:
         logger.error("[err]  %s: %s", type(e).__name__, e)

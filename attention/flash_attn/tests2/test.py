@@ -40,6 +40,7 @@ def _register_cli_params(register):
              help="精度失败分析: 不传=≤10项, fold(全量片段), all(全量点位)")
     register("--report_interval", default=20, type=int, help="中间报告间隔")
     register("--chunk_size", default=0, type=int, help="比对分块大小(0=不分块)")
+    register("--perf_runs", default=5, type=int, help="性能采集采样轮数")
 
 
 def _parse_stages(raw):
@@ -66,11 +67,11 @@ def _collect_cases(case_set, case_id_opt):
 
 
 def _make_reporter():
-    """构造 Reporter 并绑定带时间戳的结果 CSV (每次运行独立文件)。"""
+    """构造 Reporter, 绑定批次目录 run_<ts>/ (precision.csv + perf.csv)。
+    summary.csv 固定放 result 根, 跨批次累积合并精度+性能。"""
     rep = Reporter()
-    result_dir = Path("result")
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    rep.set_csv(result_dir / f"result_{ts}.csv")
+    rep.set_run_dir(Path("result") / f"run_{ts}")
     return rep
 
 
@@ -120,7 +121,8 @@ def test_op(params, stages, reporter, request):
     result = run_case(stages, params, reporter,
                       npu_mode=request.config.getoption("--npu_mode"),
                       chunk_size=request.config.getoption("--chunk_size"),
-                      verbose_diff=request.config.getoption("--verbose_diff"))
+                      verbose_diff=request.config.getoption("--verbose_diff"),
+                      perf_runs=request.config.getoption("--perf_runs"))
     if not result.get("passed", False):
         pytest.fail(result.get("fail_msg", "精度校验失败"))
 
@@ -157,7 +159,8 @@ def main():
             run_case(stages, params, reporter,
                      npu_mode=args.npu_mode,
                      chunk_size=args.chunk_size,
-                     verbose_diff=args.verbose_diff)
+                     verbose_diff=args.verbose_diff,
+                     perf_runs=args.perf_runs)
         except Exception as e:
             err = f"{e}\n{traceback.format_exc()}"
             print(f"[ERROR] {case_id} 运行异常: {e}")

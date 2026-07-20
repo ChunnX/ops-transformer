@@ -25,19 +25,15 @@ def normalize_params(raw: dict) -> dict:
             c.pop(key, None)
 
     if layout_q == "TND":
-        c.setdefault("seqused_q", [c["cu_seqlens_q"][i + 1] - c["cu_seqlens_q"][i]
-                                   for i in range(len(c["cu_seqlens_q"]) - 1)])
-        if c.get("layout_kv", layout_q) not in ("PA_BBND", "PA_BNBD", "PA_NZ"):
-            c.setdefault("cu_seqlens_kv", list(c["cu_seqlens_q"]))
-            c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i + 1] - c["cu_seqlens_kv"][i]
-                                        for i in range(len(c["cu_seqlens_kv"]) - 1)])
         c["B"] = 1
 
     layout_kv_val = c.get("layout_kv", layout_q)
     if layout_kv_val in ("PA_BBND", "PA_BNBD", "PA_NZ"):
         c.setdefault("block_size", 128)
-        if "seqused_kv" not in c:
-            c["seqused_kv"] = [c.get("S2", c.get("S1"))] * c.get("B", 1)
+        block_size = c["block_size"]
+        # block_table 排布需要每 batch 的 kv 长度; case 提供 seqused_kv 则用之,
+        # 否则按 S2 等长推导 — 仅供 block_table 生成, 不注入 params/inputs
+        seqused_kv = c.get("seqused_kv") or [c.get("S2", c.get("S1"))] * c.get("B", 1)
 
         if layout_kv_val == "PA_NZ":
             dtype_str = c.get("dtype", "fp16")
@@ -54,8 +50,6 @@ def normalize_params(raw: dict) -> dict:
             c["num_blocks"] = int(max(max(row) for row in bt_raw)) + 1
             return c
 
-        seqused_kv = c["seqused_kv"]
-        block_size = c["block_size"]
         bt_shape = c.get("block_table_shape", [])
 
         if bt_shape:

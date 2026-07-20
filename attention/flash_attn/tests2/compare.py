@@ -112,10 +112,12 @@ class DefaultComparator(Comparator):
             if key not in npu_out:
                 continue
             cpu_t, npu_t = cpu_out[key], npu_out[key]
+            if cpu_t.numel() == 0 or npu_t.numel() == 0:
+                continue
             if dtype_handler is not None:
                 cpu_t = dtype_handler(cpu_t)
                 npu_t = dtype_handler(npu_t)
-            cpu_f, npu_f = cpu_t.float(), npu_t.float()
+            cpu_f, npu_f = cpu_t.float(), npu_t.float().cpu()
             a, r = _resolve_tolerance(cpu_t.dtype, atol, rtol)
             stats = self._compute_stats(cpu_f, npu_f, a, r, chunk_size)
             stats["passed"] = stats["fail_ratio"] <= self.FAIL_RATIO_LIMIT
@@ -135,11 +137,13 @@ class DefaultComparator(Comparator):
             if key not in npu_out or key not in gpu_out:
                 continue
             cpu_t, npu_t, gpu_t = cpu_out[key], npu_out[key], gpu_out[key]
+            if cpu_t.numel() == 0 or npu_t.numel() == 0 or gpu_t.numel() == 0:
+                continue
             if dtype_handler is not None:
                 cpu_t = dtype_handler(cpu_t)
                 npu_t = dtype_handler(npu_t)
                 gpu_t = dtype_handler(gpu_t)
-            cpu_f, npu_f, gpu_f = cpu_t.float(), npu_t.float(), gpu_t.float()
+            cpu_f, npu_f, gpu_f = cpu_t.float(), npu_t.float().cpu(), gpu_t.float().cpu()
             a, r = _resolve_tolerance(cpu_t.dtype, atol, rtol)
             npu_stats = self._compute_stats(npu_f, cpu_f, a, r, chunk_size)
             gpu_stats = self._compute_stats(gpu_f, cpu_f, a, r, chunk_size)
