@@ -44,15 +44,12 @@ class Reporter:
         self._csv_writer = None
         self._perf_csv_file = None
         self._perf_csv_writer = None
-        self._summary_path = None
 
     def set_run_dir(self, run_dir: Path):
-        """设置批次目录, 在其下创建 precision.csv / perf.csv。
-        summary.csv 固定放 result 根, 跨批次累积。"""
+        """设置本次运行目录, 所有产物 (precision.csv / perf.csv / summary.csv
+        以及各 case 子目录的 prof 产物) 均落在其下。"""
         run_dir.mkdir(parents=True, exist_ok=True)
         self._run_dir = run_dir
-        result_root = run_dir.parent
-        self._summary_path = result_root / "summary.csv"
 
         self._csv_file = open(run_dir / "precision.csv", "a", newline="")
         self._csv_writer = csv.DictWriter(self._csv_file, CSV_HEADERS)
@@ -125,38 +122,28 @@ class Reporter:
         return self._print_table(self._results, self._dtypes, len(self._results), is_final=True)
 
     def write_summary(self):
-        """合并精度+性能写 summary.csv (跨批次累积, 同 case 覆盖)。
-        没跑性能的 case, 性能列为空。"""
-        if not self._summary_path:
+        """合并精度+性能写 summary.csv (本次运行, 没跑性能的 case 性能列为空)。"""
+        if not self._run_dir:
             return
-        # 读已有 summary, 同 case 覆盖
-        existing = {}
-        if self._summary_path.exists():
-            with open(self._summary_path, newline="") as f:
-                for r in csv.DictReader(f):
-                    existing[r["case"]] = r
         headers = ["case", "dtype", "pass", "max_abs", "fail_ratio",
                    "perf_avg_us", "perf_rule", "error"]
-        for name, res in self._results.items():
-            row = existing.get(name, {"case": name})
-            row["case"] = name
-            row["dtype"] = self._dtypes.get(name, "")
-            # 精度: 取第一个 dict key 的指标
-            prec = next((v for v in res.values() if isinstance(v, dict)), {})
-            row["pass"] = prec.get("passed", "")
-            row["max_abs"] = f"{prec['max_abs']:.6f}" if "max_abs" in prec else ""
-            row["fail_ratio"] = f"{prec['fail_ratio']:.4f}" if "fail_ratio" in prec else ""
-            row["error"] = res.get("error", "") or ""
-            # 性能: 有则填, 无则空
-            perf = self._perfs.get(name, {})
-            row["perf_avg_us"] = f"{perf['avg']:.3f}" if "avg" in perf else ""
-            row["perf_rule"] = perf.get("rule", "")
-            existing[name] = row
-        with open(self._summary_path, "w", newline="") as f:
+        path = self._run_dir / "summary.csv"
+        with open(path, "w", newline="") as f:
             w = csv.DictWriter(f, headers)
             w.writeheader()
-            for row in existing.values():
-                w.writerow({k: row.get(k, "") for k in headers})
+            for name, res in self._results.items():
+                prec = next((v for v in res.values() if isinstance(v, dict)), {})
+                perf = self._perfs.get(name, {})
+                w.writerow({
+                    "case": name,
+                    "dtype": self._dtypes.get(name, ""),
+                    "pass": prec.get("passed", ""),
+                    "max_abs": f"{prec['max_abs']:.6f}" if "max_abs" in prec else "",
+                    "fail_ratio": f"{prec['fail_ratio']:.4f}" if "fail_ratio" in prec else "",
+                    "perf_avg_us": f"{perf['avg']:.3f}" if "avg" in perf else "",
+                    "perf_rule": perf.get("rule", ""),
+                    "error": res.get("error", "") or "",
+                })
 
     @staticmethod
     def _print_table(results: dict, dtypes: dict, total: int, is_final: bool) -> int:
@@ -424,7 +411,7 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
     stage 内部各自处理 执行-or-加载 与日志; 这里只管顺序、错误兜底、显存回收。"""
     case_set = params.get("case_set", "")
     case_id = params.get("case_id", params.get("name", ""))
-    case_dir = Path("result") / case_id
+    case_dir = reporter._run_dir / case_id if reporter._run_dir else Path("result") / case_id
     precision_dir = str(case_dir / "precision")
     prof_dir = str(case_dir / "prof")
     dtype = params.get("dtype", "")
