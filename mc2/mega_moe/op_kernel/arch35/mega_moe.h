@@ -1434,7 +1434,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit()
     uint32_t fp32SlotBytes = bufferConfig.fp32SlotElementCount * sizeof(float);
     int32_t tokensPerBatch = bufferConfig.tokensPerBatch;
     uint32_t topKWeightsBufAlign = bufferConfig.topKWeightsBufferBytes;
-    uint32_t topKWeightsBf16BufAlign = bufferConfig.topKWeightsBf16BufferBytes;
+    uint32_t topKWeightsConversionBufferBytes = bufferConfig.topKWeightsConversionBufferBytes;
 
     uint32_t dataResBufAlign = (bufferConfig.inputBufferCount + 1) * bf16SlotBytes;
     uint32_t dataResFp32BufAlign = (bufferConfig.inputBufferCount + 1) * fp32SlotBytes;
@@ -1458,9 +1458,9 @@ MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit()
     if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
         // Tensor用处：Unpermute 中 bf16 weight 搬运中转 buffer；
         // Tensor大小：tokensPerBatch × topK_ × sizeof(bfloat16_t) align 到 32 字节；
-        topKWeightsBf16Tensor_ =
-            LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr, topKWeightsBf16BufAlign / sizeof(bfloat16_t));
-        tempAddr += topKWeightsBf16BufAlign;
+        topKWeightsBf16Tensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr,
+                                                         topKWeightsConversionBufferBytes / sizeof(bfloat16_t));
+        tempAddr += topKWeightsConversionBufferBytes;
     }
 
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {

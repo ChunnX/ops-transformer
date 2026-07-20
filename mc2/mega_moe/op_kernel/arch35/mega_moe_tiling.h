@@ -22,7 +22,7 @@
 using namespace AscendC;
 
 // MegaMoe adaptive UB buffer policy shared by host tiling and kernel address binding.
-// DAV_3510 的 AIV 可用 UB 上限按 248KB 计算。
+// 实际 UB 预算由 host tiling 从平台获取，并通过 availableUbBytes 参与以下配置计算。
 
 /*
  * Unpermute buffer policy
@@ -34,14 +34,14 @@ using namespace AscendC;
  *   1 个累加槽 + 2 个输入槽 = 3 * (8192 * 2B + 8192 * 4B) = 144KB；
  *   8192 个 weight item       = 8192 * (4B + 2B)              = 48KB；
  *   BF16/FP32 scale scratch   = 1KB + 4KB                     = 5KB；
- *   合计约 197KB，小于 248KB 可用 UB。
+ *   合计约 197KB；当前支持平台动态获取的 UB 预算可容纳该布局。
  * 若修改 MAX_H、weight batch 基准、scale scratch 布局或最低 buffer 数，必须重新验证该前提。
  *
  * weight batch 延续原基准：tokensPerBatch * topK 不超过 1024 * 8 个 weight item。
  * CalcUnpermuteBufferConfig 先按该基准确定 batch，再用剩余 UB 反推输入 buffer 数量；上述最坏规格
  * 已保证基准 batch 至少容纳 2 个输入 buffer，因此计算结果可以安全保底到最低 buffer 数。
  *
- * 固定输入 buffer 数量后扩大 weight batch 时，为 FP32 weight 和可选 BF16 中转 buffer 各预留一个
+ * 固定输入 buffer 数量后扩大 weight batch 时，为 FP32 weight 和可选输入转换 buffer 各预留一个
  * 32B 对齐块。统一预留 64B 可覆盖两个独立 buffer 各最多 31B 的 padding。
  *
  * DeQuantMxFp8 的 E8M0 scale 经 DIST_INTLV_B16 交织复制为 2 个 BF16，随后经 DIST_INTLV_B32
@@ -73,14 +73,14 @@ constexpr uint32_t DEQUANT_FP32_SCALE_EXPANSION = 4U;
  *                                  + D * (tokenScaleBytes + 32)；
  *   recvFixedBytes = 32 + Align32(worldSize * expertPerRank * 4) + worldSize * 32
  *                    + Align32(expertPerRank * 4)；
- *   recvFixedBytes + recvVariableBytes(Brecv, D) <= 248KB。
+ *   recvFixedBytes + recvVariableBytes(Brecv, D) <= availableUbBytes。
  *
  * 12288 的成立前提按 k=8192、moeExpertNum<=2048、worldSize<=1024、expertPerRank<=1024 和 D=6
  * 保守验证。分别取各 tensor 的独立上限时：
  *   recvFixedBytes             <= 32 + 8192 + 32768 + 4096 = 45088B；
  *   route batch tensor         = 12288 / 8 + 2 * 12288 * 4 = 99840B；
  *   6 个 dispatch slot         = 6 * (8448 + 32) = 50880B；
- *   合计 195808B，约 191.2KB，小于 248KB 可用 UB。
+ *   合计 195808B，约 191.2KB；当前支持平台动态获取的 UB 预算可容纳该布局。
  * 因此该基准在所有合法规格下至少支持双 buffer，且最坏规格也能支持当前上限 6 个 buffer。若修改
  * MAX_H、MAX_MOE_EXPERT_NUM、worldSize/expertPerRank 上限、DispatchBuffInit 固定 tensor 布局或
  * dispatch buffer 数量上限，必须重新验证该前提。
@@ -102,7 +102,7 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  *   sendVariableBytes(Bsend, N) = 2 * Bsend * sizeof(int32_t) + N * (Bsend / 8 + 32)；
  *   sendFixedBytes = resetTensorBytes + 2048 + 2 * xOutTensorBytes + 2 * xInTensorBytes
  *                    + sendCntAccBytes；
- *   sendFixedBytes + sendVariableBytes(Bsend, N) <= 248KB。
+ *   sendFixedBytes + sendVariableBytes(Bsend, N) <= availableUbBytes。
  *
  * 12288 的成立前提按最坏合法规格 k=8192、moeExpertNum=2048、N=6 保守验证：
  *   resetTensor                 <= 8KB；
@@ -112,7 +112,7 @@ constexpr int32_t BASE_RECV_ROUTE_ITEMS_PER_BATCH = 12288;
  *   sendCntAccTensor            <= Align32(2048 * sizeof(int32_t)) = 8KB；
  *   2 个 route int32 tensor     = 2 * 12288 * sizeof(int32_t) = 96KB；
  *   6 个 mask buffer            = 6 * (12288 / 8 + 32) = 9408B；
- *   合计 175808B，约 172KB，小于 248KB 可用 UB。
+ *   合计 175808B，约 172KB；当前支持平台动态获取的 UB 预算可容纳该布局。
  * 因此基准 batch 在所有合法规格下至少支持双 buffer，且最坏规格也能支持当前上限 6 个 buffer。
  * 若修改 MAX_H、MAX_MOE_EXPERT_NUM、DISPATCH_RESET_BATCH、Quant buffer 布局或 mask buffer 数量上限，
  * 必须重新验证该前提。
@@ -140,7 +140,7 @@ struct MegaMoeUnpermuteBufferConfig {
     uint32_t bf16SlotElementCount;
     uint32_t fp32SlotElementCount;
     uint32_t topKWeightsBufferBytes;
-    uint32_t topKWeightsBf16BufferBytes;
+    uint32_t topKWeightsConversionBufferBytes;
 };
 
 struct MegaMoeDispatchBufferConfig {
