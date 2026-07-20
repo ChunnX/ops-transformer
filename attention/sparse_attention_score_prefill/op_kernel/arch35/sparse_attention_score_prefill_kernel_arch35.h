@@ -70,25 +70,20 @@ public:
     static constexpr uint32_t SM_UB_GL_OFFSET = SM_UB_GM_OFFSET + 2U * 64U * sizeof(float);  // 229888 rowSum base
     static constexpr uint32_t SM_UB_STAGE_BYTES = 64U * sizeof(float);  // 256, per-stage stride
 
+    static constexpr uint32_t COPY_GRANULARITY = 2;
+
     __aicore__ inline
     uint64_t TaskLinearIdx(uint32_t qToken, uint32_t kvHeadIdx) const
     {
         return static_cast<uint64_t>(qToken) * kvHeads_ + kvHeadIdx;
     }
 
-    __aicore__ inline
-    uint64_t SlotOOffset(uint32_t qToken, uint32_t kvHeadIdx, uint32_t slotK) const
-    {
-        return TaskLinearIdx(qToken, kvHeadIdx) * topK_ * slotOElems_
-            + static_cast<uint64_t>(slotK) * slotOElems_;
-    }
 
     __aicore__ inline
-    uint64_t SlotStatOffset(uint32_t qToken, uint32_t kvHeadIdx, uint32_t slotK, uint32_t rowGh) const
+    uint64_t SlotStatOffset(uint32_t qToken, uint32_t kvHeadIdx, uint32_t slotK) const
     {
         return TaskLinearIdx(qToken, kvHeadIdx) * topK_ * slotStatElems_
-            + static_cast<uint64_t>(slotK) * slotStatElems_
-            + static_cast<uint64_t>(rowGh);
+            + static_cast<uint64_t>(slotK) * slotStatElems_;
     }
 
     __aicore__ inline
@@ -321,20 +316,25 @@ private:
 #endif
     }
 
+    // packedRow uses the MSA INTERLEAVED (round-robin) packing: it enumerates
+    // (kvBlockIdx outer, batchIdx inner), skipping batches whose row count <= kvBlockIdx.
+    // i.e. packedRow 0=(b0,blk0), 1=(b1,blk0), 2=(b2,blk0), 3=(b0,blk1), ... -- NOT
+    // "all of b0's blocks then all of b1's". Matches host _build_packed_row_map /
+    // decode_packed_row (golden). For batch_=1 this collapses to packedRow=(0, packedRow).
+    //
+    // The (batchIdx, kvBlockIdx) decode is an incremental state machine persisted across
+    // the task loop: each core's packedRows are strided (taskIdx stride coreNum ->
+    // packedRow stride coreNum/kvHeads_), and AdvancePackedRowCoord steps the round-robin
+    // order forward. Seeded eagerly before the loop with packedRow=0 -> (batchIdx=0,
+    // kvBlockIdx=0) (valid for non-empty batch 0 -- the only supported config; an empty
+    // batch 0 would need a skip-while seed, but a batch with kvseqlen=0 is not a real input).
+    // A direct O(batch) decode would need rows_per_batch for ALL batches (no compile-time
+    // bound on batch_, up to 4096) -> 16KB UB scratch (the reverted G-piece1 path); the
+    // incremental walk is correct, scratch-free, and its cost is negligible.
     __aicore__ inline
     uint32_t KvRowsPerBatch(uint32_t batchIdx)
     {
         return CeilDiv(static_cast<uint32_t>(gActualKvseqlen_.GetValue(batchIdx)), blockSize_);
-    }
-
-    __aicore__ inline
-    void InitPackedRowCoord(uint32_t &batchIdx, uint32_t &kvBlockIdx)
-    {
-        kvBlockIdx = 0;
-        batchIdx = 0;
-        while (batchIdx < batch_ && kvBlockIdx >= KvRowsPerBatch(batchIdx)) {
-            batchIdx++;
-        }
     }
 
     __aicore__ inline
@@ -353,44 +353,52 @@ private:
         }
     }
 
+    // After the state machine resolves (batchIdx, kvBlockIdx) for this packedRow, fetch
+    // the per-batch scalars the cvl functor needs: kvSeqlenBatch/numBlocksB for validSize,
+    // and cumQStart (= cumQ[batchIdx] = sum qseqlen[0..batchIdx-1]) + qSeqlenBatch for
+    // the Q side. Q and KV are same-batch (no cross-batch attention) -> qBatch == batchIdx,
+    // so the cvl loop (CalcCausalValidLen) does 0 GM GetValue. Cost: 1 kvseqlen GetValue +
+    // (batchIdx+1) qseqlen GetValues per task (1 each for batch_=1). Replaces the old
+    // FindBatchAndLocalQ scan (redundant: Q/KV same batch) + the per-cvl kv/qseqlen
+    // re-fetches.
     __aicore__ inline
-    void FindBatchAndLocalQ(uint32_t qToken, uint32_t &qBatch, uint32_t &localQIdx)
+    void ResolveBatchQSide(uint32_t batchIdx, uint32_t &kvSeqlenBatch, uint32_t &numBlocksB,
+                          uint32_t &cumQStart, uint32_t &qSeqlenBatch)
     {
-        uint32_t accum = 0;
-        for (uint32_t b = 0; b < batch_; b++) {
-            uint32_t batchLen = static_cast<uint32_t>(gActualQseqlen_.GetValue(b));
-            if (qToken < accum + batchLen) {
-                qBatch = b;
-                localQIdx = qToken - accum;
-                return;
+        kvSeqlenBatch = static_cast<uint32_t>(gActualKvseqlen_.GetValue(batchIdx));
+        numBlocksB = CeilDiv(kvSeqlenBatch, blockSize_);
+        cumQStart = 0;
+        for (uint32_t b = 0; b <= batchIdx; ++b) {
+            uint32_t qB = static_cast<uint32_t>(gActualQseqlen_.GetValue(b));
+            if (b < batchIdx) {
+                cumQStart += qB;
+            } else {
+                qSeqlenBatch = qB;
             }
-            accum += batchLen;
         }
-        qBatch = batch_ - 1;
-        localQIdx = qToken - accum;
     }
 
+    // kvSeqlenBatch + numBlocksB are pre-fetched by ResolveBatchQSide for the batch
+    // resolved by the state machine (avoids a redundant gActualKvseqlen_ GetValue here).
     __aicore__ inline
-    uint32_t CalcKvBlockValidSize(uint32_t batchIdx, uint32_t localBlockIdx)
+    uint32_t CalcKvBlockValidSize(uint32_t kvSeqlenBatch, uint32_t numBlocksB, uint32_t localBlockIdx)
     {
-        uint32_t kvSeqlenBatch = static_cast<uint32_t>(gActualKvseqlen_.GetValue(batchIdx));
-        uint32_t numBlocksB = CeilDiv(kvSeqlenBatch, blockSize_);
         if (localBlockIdx == numBlocksB - 1) {
             return kvSeqlenBatch - localBlockIdx * blockSize_;
         }
         return blockSize_;
     }
 
+    // qBatch == batchIdx (Q/KV same batch). cumQStart/qSeqlenBatch/kvSeqlenBatch are all
+    // pre-fetched by ResolveBatchQSide (state machine resolved batchIdx) -> pure compute,
+    // 0 GM GetValue in the cvl loop.
     __aicore__ inline
     uint32_t CalcCausalValidLen(
-        uint32_t qToken, uint32_t validSize, uint32_t kvStartPos)
+        uint32_t qToken, uint32_t validSize, uint32_t kvStartPos,
+        uint32_t cumQStart, uint32_t qSeqlenBatch, uint32_t kvSeqlenBatch)
     {
-        uint32_t qBatch = 0;
-        uint32_t localQIdx = 0;
-        FindBatchAndLocalQ(qToken, qBatch, localQIdx);
-        uint32_t kvSeqlen = static_cast<uint32_t>(gActualKvseqlen_.GetValue(qBatch));
-        uint32_t qSeqlen = static_cast<uint32_t>(gActualQseqlen_.GetValue(qBatch));
-        uint32_t qPosition = kvSeqlen - qSeqlen + localQIdx;
+        uint32_t localQIdx = qToken - cumQStart;
+        uint32_t qPosition = kvSeqlenBatch - qSeqlenBatch + localQIdx;
         if (qPosition < kvStartPos) {
             return 0U;
         }
@@ -398,14 +406,23 @@ private:
         return (maxLen < validSize) ? maxLen : validSize;
     }
 
+    // Copies rowMax + rowSum for 1 or 2 groups (PAIR) from UB to GM in one DataCopyPad each
+    // (blockCount = ndNum). Mirrors the Q-gather/O-partial ndNum=2 pairing: the caller
+    // computes the per-pair GM dst gap (dstStride, 32B-block units = end-of-group0 to
+    // start-of-group1) and UB src gap (srcStride, 32B-block units) from the two groups'
+    // actual (qToken, slotK) lseOff -- no uniform-stride assumption (ndNum=2 needs only
+    // the one inter-pair gap, computed per pair). Falls back to blockCount=1 (single group)
+    // at the caller when the pair's gaps aren't 32B-aligned or exceed the uint16 stride.
     __aicore__ inline
     void CopyPartialStatsToGm(AscendC::GlobalTensor<float> &gSoftmaxMax,
                               AscendC::GlobalTensor<float> &gSoftmaxSum,
-                              AscendC::LocalTensor<float> &rowMaxLocal,
-                              AscendC::LocalTensor<float> &rowSumLocal,
+                              const AscendC::LocalTensor<float> &rowMaxLocal,
+                              const AscendC::LocalTensor<float> &rowSumLocal,
                               uint64_t lseOffset,
-                              uint32_t rowOffset,
-                              uint32_t rowCount)
+                              uint32_t rowCount,
+                              uint16_t blockCount,
+                              uint32_t srcStride,
+                              uint32_t dstStride)
     {
         if (rowCount == 0U) {
             return;
@@ -413,22 +430,23 @@ private:
         AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID3);
         AscendC::DataCopyPad(
-            gSoftmaxMax[lseOffset + rowOffset], rowMaxLocal,
-            {1, static_cast<uint16_t>(rowCount * sizeof(float)), 0, 0});
+            gSoftmaxMax[lseOffset], rowMaxLocal,
+            AscendC::DataCopyExtParams{blockCount, static_cast<uint16_t>(rowCount * sizeof(float)), srcStride, dstStride, 0});
         AscendC::DataCopyPad(
-            gSoftmaxSum[lseOffset + rowOffset], rowSumLocal,
-            {1, static_cast<uint16_t>(rowCount * sizeof(float)), 0, 0});
+            gSoftmaxSum[lseOffset], rowSumLocal,
+            AscendC::DataCopyExtParams{blockCount, static_cast<uint16_t>(rowCount * sizeof(float)), srcStride, dstStride, 0});
     }
 
     // Batched stats scatter: the softmax wrote this AIV's rowMax/rowSum into gmUb/glUb
     // (ubSBufId stage). Cores split by GROUP (not M/2): each AIV owns whole groups [gLo, gHi),
     // no group straddles the two AIVs; every owned group has rowCount = groupRows (never 0).
     // lseOff is computed on demand from the batch's qToken/slotK (== SlotStatOffset(qToken,
-    // kvHeadIdx, slotK,0)), so no lseOff array is marshalled. gmUbAlias/glUbAlias are declared
-    // outside the loop and re-bound per group. The rowMax/rowSum group base uses an 8-float-
-    // aligned stride (matches the softmax epilogue's statsOff): CopyPartialStatsToGm's DataCopyPad
-    // needs a 32B-aligned source; groupRows<8 (local groupSize=4) would otherwise misalign it.
-    // No-op for groupRows>=8 (production groupSize=16).
+    // kvHeadIdx, slotK,0)), so no lseOff array is marshalled. gmUbAlias/glUbAlias are bound
+    // ONCE before the loop to the stage base (loop-invariant ubSBufId); the per-group stride
+    // (localOff) is applied via [localOff] in the loop. The rowMax/rowSum group base uses an
+    // 8-float-aligned stride (matches the softmax epilogue's statsOff): CopyPartialStatsToGm's
+    // DataCopyPad needs a 32B-aligned source; groupRows<8 (local groupSize=4) would otherwise
+    // misalign it. No-op for groupRows>=8 (production groupSize=16).
     __aicore__ inline
     void ScatterBatchStats(AscendC::GlobalTensor<float> &gSoftmaxMax,
                            AscendC::GlobalTensor<float> &gSoftmaxSum,
@@ -451,55 +469,32 @@ private:
         // rowMax/rowSum group base stride = 8-float aligned (matches softmax epilogue's statsOff;
         // DataCopyPad source must be 32B-aligned). No-op for groupRows>=8 (production 16).
         uint32_t grpStride = RoundUp(groupRows, 8U);
-        AscendC::LocalTensor<float> gmUbAlias;
-        AscendC::LocalTensor<float> glUbAlias;
+        // Bind once to the stage base (loop-invariant); per-group offset via [localOff].
+        AscendC::LocalTensor<float> gmUbAlias = resource.ubBuf.template GetBufferByByte<float>(
+            SM_UB_GM_OFFSET + ubSBufId * SM_UB_STAGE_BYTES);
+        AscendC::LocalTensor<float> glUbAlias = resource.ubBuf.template GetBufferByByte<float>(
+            SM_UB_GL_OFFSET + ubSBufId * SM_UB_STAGE_BYTES);
 
-        for (uint32_t g = gLo; g < gHi; g++) {
-            uint32_t localOff = (g - gLo) * grpStride;
-            uint64_t lseOff = SlotStatOffset(qTokens[g], kvHeadIdx, slotKs[g], 0U);
-            gmUbAlias = resource.ubBuf.template GetBufferByByte<float>(
-                SM_UB_GM_OFFSET + ubSBufId * SM_UB_STAGE_BYTES + localOff * sizeof(float));
-            glUbAlias = resource.ubBuf.template GetBufferByByte<float>(
-                SM_UB_GL_OFFSET + ubSBufId * SM_UB_STAGE_BYTES + localOff * sizeof(float));
-            CopyPartialStatsToGm(gSoftmaxMax, gSoftmaxSum, gmUbAlias, glUbAlias,
-                                 lseOff, 0U, groupRows);
-        }
-    }
-
-    // Debug: copy O_partial / max / sum after Phase1 + SyncAll.
-    __aicore__ inline
-    void DumpPhase1OPartial(AscendC::GlobalTensor<ElementWorkspaceO> &gAccumOut,
-                            AscendC::GlobalTensor<float> &gSoftmaxMax,
-                            AscendC::GlobalTensor<float> &gSoftmaxSum,
-                            AscendC::GlobalTensor<ElementO> &gO)
-    {
-        (void)gAccumOut;
-#ifdef __DAV_VEC__
-        if (AscendC::GetBlockIdx() != 0U) {
-            return;
-        }
-        if (lseStatSize_ == 0U) {
-            return;
-        }
-        static constexpr uint32_t PHASE1_O_DUMP_ELEMS = 8U;
-        static constexpr uint32_t PHASE1_STAT_DUMP_ELEMS = 8U;
-        AscendC::LocalTensor<float> ubDump =
-            resource.ubBuf.template GetBufferByByte<float>(0);
-        uint32_t totalQTokens = totalTaskNumP2_ / kvHeads_;
-        for (uint32_t qToken = 0U; qToken < totalQTokens; ++qToken) {
-            for (uint32_t kvHeadIdx = 0U; kvHeadIdx < kvHeads_; ++kvHeadIdx) {
-                for (uint32_t slotK = 0U; slotK < topK_; ++slotK) {
-                    uint64_t oOff = SlotOOffset(qToken, kvHeadIdx, slotK);
-                    uint64_t lseOff = SlotStatOffset(qToken, kvHeadIdx, slotK, 0U);
-                    if (qToken == totalQTokens - 1) {
-                        AscendC::DumpTensor(gAccumOut[oOff], 123, 32);
-                        AscendC::DumpTensor(gSoftmaxMax[lseOff], 456U, PHASE1_STAT_DUMP_ELEMS);
-                        AscendC::DumpTensor(gSoftmaxSum[lseOff], 789U, PHASE1_STAT_DUMP_ELEMS);
-                    }
+        for (uint32_t g = gLo; g < gHi; g += COPY_GRANULARITY) {
+            uint32_t localOff0 = (g - gLo) * grpStride;
+            uint64_t lseOff0 = SlotStatOffset(qTokens[g], kvHeadIdx, slotKs[g]);
+            uint16_t blockCount = 1U;
+            uint32_t srcStride = 0U;
+            uint32_t dstStride = 0U;
+            if ((g + 1U) < gHi) {
+                uint64_t lseOff1 = SlotStatOffset(qTokens[g + 1U], kvHeadIdx, slotKs[g + 1U]);
+                if (lseOff0 < lseOff1) {
+                    dstStride = (lseOff1 - lseOff0 - groupRows) * sizeof(float);
+                } else {
+                    dstStride = (lseOff0 - lseOff1 - groupRows) * sizeof(float);
+                    lseOff0 = lseOff1;
                 }
+                blockCount = COPY_GRANULARITY;
             }
+            CopyPartialStatsToGm(gSoftmaxMax, gSoftmaxSum,
+                                 gmUbAlias[localOff0], glUbAlias[localOff0],
+                                 lseOff0, groupRows, blockCount, srcStride, dstStride);
         }
-#endif
     }
 
     // Phase 1: KV-centric partial compute (Cube QK/PV + Vector softmax).
@@ -563,7 +558,8 @@ private:
         }
 #endif
 
-        int32_t curPackedRow = -1;
+        // Eager seed: packedRow=0 -> (batchIdx=0, kvBlockIdx=0) for non-empty batch 0.
+        int32_t curPackedRow = 0;
         uint32_t batchIdx = 0;
         uint32_t kvBlockIdx = 0;
 
@@ -574,23 +570,27 @@ private:
                 continue;
             }
 
-            if (static_cast<int32_t>(packedRow) != curPackedRow) {
-                if (curPackedRow < 0) {
-                    InitPackedRowCoord(batchIdx, kvBlockIdx);
-                    curPackedRow = 0;
-                }
-                while (curPackedRow < static_cast<int32_t>(packedRow)) {
-                    AdvancePackedRowCoord(batchIdx, kvBlockIdx);
-                    curPackedRow++;
-                }
+            // Incremental round-robin decode of packedRow -> (batchIdx, kvBlockIdx).
+            // State persists across the strided task loop; Advance steps forward only.
+            while (curPackedRow < static_cast<int32_t>(packedRow)) {
+                AdvancePackedRowCoord(batchIdx, kvBlockIdx);
+                curPackedRow++;
             }
+
+            uint32_t kvSeqlenBatch = 0;
+            uint32_t numBlocksB = 0;
+            uint32_t cumQStart = 0;
+            uint32_t qSeqlenBatch = 0;
+            // Fetch per-batch scalars for the resolved batchIdx (Q/KV same batch ->
+            // qBatch==batchIdx). cvl loop reuses these -> 0 GM GetValue per (bi,g).
+            ResolveBatchQSide(batchIdx, kvSeqlenBatch, numBlocksB, cumQStart, qSeqlenBatch);
             uint32_t localBlockIdx = kvBlockIdx;
 
             int64_t btOffset =
                 static_cast<int64_t>(batchIdx) * maxBlocksPerBatch_ + localBlockIdx;
             int32_t physicalBlockId = gBlockTable.GetValue(btOffset);
 
-            uint32_t validSize = CalcKvBlockValidSize(batchIdx, localBlockIdx);
+            uint32_t validSize = CalcKvBlockValidSize(kvSeqlenBatch, numBlocksB, localBlockIdx);
             if (validSize == 0) {
                 continue;
             }
@@ -607,7 +607,6 @@ private:
             
             uint64_t csrDataBase = static_cast<uint64_t>(kvHeadIdx) * k2qNnzUpperBound_;
             uint32_t kvStartPos = localBlockIdx * blockSize_;
-            //AscendC::printf("111111111111111111111111\n");
 
 #ifdef __DAV_CUBE__
             uint64_t kvBlockBase =
@@ -621,7 +620,6 @@ private:
             auto gmVLayout = tla::MakeLayout<ElementV, LayoutV>(blockSize_, strideKVRow);
             auto gmVTensor = tla::MakeTensor(gV[kvBlockBase], gmVLayout, Arch::PositionGM{});
             blockMmadPV.LoadVResident(gmVTensor, validSize, embed_);
-            //AscendC::printf("222222222222222222222222222\n");
 #endif
 
             // --- Batched QK/softmax/PV: group numQTokens into batches of batchGroupsMax ---
@@ -649,27 +647,33 @@ private:
             constexpr uint32_t BATCH_RING_STAGES = PRE_LAUNCH + 1U;
             uint32_t batchQToken[BATCH_RING_STAGES][MAX_BATCH_GROUPS] = {};
             uint32_t batchSlotK[BATCH_RING_STAGES][MAX_BATCH_GROUPS] = {};
-            //AscendC::printf("33333333333333333333333333333\n");
 
             for (uint32_t bi = 0U; bi < numBatches + PRE_LAUNCH; bi++) {
                 uint32_t stage = bi % BATCH_RING_STAGES;
 
                 // QK + softmax for batch bi (collect + compute). Input guarantees every qToken
                 // has cvl>=1; batchGroupCount = batchGroupsMax except the tail batch (remainder).
-                //AscendC::printf("4444444444444444444444444444444\n");
                 if (bi < numBatches) {
-                    //AscendC::printf("55555555555555555555\n");
                     uint32_t rem = numQTokens - bi * batchGroupsMax;
                     uint32_t batchGroupCount = (rem < batchGroupsMax) ? rem : batchGroupsMax;
                     uint32_t batchM = batchGroupCount * groupSize_;
+#ifdef __DAV_VEC__
+                    // cvl[g] is only used by the VEC softmax mask; compute it here alongside the
+                    // qToken/slotK gather. Pure compute -- CalcCausalValidLen takes pre-fetched
+                    // cumQStart/qSeqlenBatch/kvSeqlenBatch, 0 GM GetValue.
+                    uint32_t cvlArr[MAX_BATCH_GROUPS];
+#endif
                     for (uint32_t g = 0U; g < batchGroupCount; g++) {
                         uint32_t csrIdx = csrStart + bi * batchGroupsMax + g;
                         batchQToken[stage][g] = static_cast<uint32_t>(
                             gK2qQIndices.GetValue(csrDataBase + csrIdx));
                         batchSlotK[stage][g] = static_cast<uint32_t>(
                             gK2qSlotIndices.GetValue(csrDataBase + csrIdx));
+#ifdef __DAV_VEC__
+                        cvlArr[g] = CalcCausalValidLen(batchQToken[stage][g], validSize, kvStartPos,
+                                                       cumQStart, qSeqlenBatch, kvSeqlenBatch);
+#endif
                     }
-                    //AscendC::printf("666666666666666666666666\n");
 
                     uint32_t ubSBufId = bi % UB_S_OTMP_BUF_STAGES;
                     uint32_t l1PBufId = bi % P_L1_BUF_NUM;
@@ -685,11 +689,9 @@ private:
                     uint32_t mAlignedB = RoundUp(mPerSubCoreB, 16u);
                     auto ubSLayout = tla::MakeLayout<ElementS, LayoutS>(mAlignedB, RoundUp(validSize, 16U));
                     auto ubSTensorTla = tla::MakeTensor(ubSTensor[ubSBufId], ubSLayout, Arch::PositionUB{});
-                    //AscendC::printf("77777777777777777777777777\n");
                     blockMmadQK(gQ, batchQToken[stage], batchGroupCount, groupSize_,
                                 ubSTensorTla, validSize, embed_, perQTokenStrideQ, qHeadStartBase,
                                 mm1ToSmFlag);
-                    //AscendC::printf("888888888888888888888888\n");
 #endif
 #ifdef __DAV_VEC__
                     // P L1 layout extent = validSize (uniform batch K). softmax writes the
@@ -697,13 +699,7 @@ private:
                     // [cvl[g], validSize)); PV reduces over uniform K=validSize (= residentValidSize_).
                     auto l1PLayout = tla::MakeLayout<ElementP, layout::zN>(batchM, validSize);
                     auto l1PTensor = tla::MakeTensor(l1PBuf[l1PBufId], l1PLayout, Arch::PositionL1{});
-                    // cvl[g] computed on demand from qToken (used once here, by the softmax mask).
-                    uint32_t cvlArr[MAX_BATCH_GROUPS];
-                    //AscendC::printf("999999999999999999999999999\n");
-                    for (uint32_t g = 0U; g < batchGroupCount; g++) {
-                        cvlArr[g] = CalcCausalValidLen(batchQToken[stage][g], validSize, kvStartPos);
-                    }
-                    //AscendC::printf("aaaaaaaaaaaaaaaaaaaaaaaaaaa\n");
+                    // cvlArr filled above alongside the qToken/slotK gather.
                     epilogueSoftmax(
                         l1PTensor,
                         GemmCoord{batchM, validSize, embed_},
@@ -714,14 +710,12 @@ private:
                         cvlArr,
                         batchGroupCount,
                         groupSize_);
-                    //AscendC::printf("bbbbbbbbbbbbbbbbbbbbbbbb\n");
                     // softmax wrote this AIV's rowMax/rowSum into 2-deep gmUb/glUb[ubSBufId];
                     // scatter to per-qToken GM stat slots (per-AIV group ownership may straddle).
                     // lseOff computed on demand inside ScatterBatchStats from qToken/slotK.
                     ScatterBatchStats(gSoftmaxMax, gSoftmaxSum, ubSBufId, batchM, groupSize_,
                                       batchQToken[stage], batchSlotK[stage], kvHeadIdx,
                                       batchGroupCount);
-                    //AscendC::printf("cccccccccccccccccccccccccc\n");
 #endif
                 }
 
@@ -732,7 +726,6 @@ private:
                 if (bi >= PRE_LAUNCH) {
                     uint32_t bDe = bi - PRE_LAUNCH;
                     if (bDe < numBatches) {
-                        //AscendC::printf("dddddddddddddddddddddddddddd\n");
                         uint32_t l1PBufIdDe = bDe % P_L1_BUF_NUM;
                         uint32_t smToMm2FlagId = l1PBufIdDe + UB_S_OTMP_BUF_STAGES;
                         Arch::CrossCoreFlag smToMm2Flag(smToMm2FlagId);
@@ -744,7 +737,6 @@ private:
                         blockMmadPV(gAccumOut, batchQToken[stageDe], batchSlotK[stageDe], pvGrpCnt,
                                    groupSize_, embed_, perQTokenStride, kvHeadBase, slotOElems_,
                                    smToMm2Flag);
-                        //AscendC::printf("eeeeeeeeeeeeeeeeeeeeeeeeee\n");
 #endif
                     }
                 }

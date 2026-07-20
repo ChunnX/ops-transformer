@@ -54,6 +54,8 @@ struct BlockMmadPVPrefillArch35 {
     static constexpr uint32_t L0C_HALF_SIZE = ArchTag::L0C_SIZE / 2;
     static constexpr uint32_t L0C_BUF_SIZE = L0C_HALF_SIZE / L0_STAGES;
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16;
+    static constexpr uint32_t COPY_GRANULARITY = 2;
+    static constexpr uint32_t C0_SIZE = 16;
 
     AscendC::LocalTensor<ElementV> l1VTensor_;
     AscendC::LocalTensor<ElementP> l1PTensor_;
@@ -263,15 +265,31 @@ struct BlockMmadPVPrefillArch35 {
             // computed on demand from the batch's qToken/slotK (see operator() comment).
             // GM O_partial layout per slot is [groupRows, D]; only the valid groupRows rows are
             // written (not mFixPAligned8Grp) to avoid fixpipe overflow into the next slot.
-            for (uint32_t g = 0; g < groupCount; g++) {
+            for (uint32_t g = 0; g < groupCount; g += COPY_GRANULARITY) {
                 uint64_t wsOOff = static_cast<uint64_t>(qTokens[g]) * perQTokenStride + kvHeadBase
                                 + static_cast<uint64_t>(slotKs[g]) * slotOElems;
+                uint16_t ndNum = 1;
+                uint16_t srcNdStride = 1;
+                uint32_t dstNdStride = 1;
+                if (g + 1 < groupCount) {
+                    uint32_t nextQ = qTokens[g + 1];
+                    uint32_t nextSlot = slotKs[g + 1];
+                    if (nextQ > qTokens[g]) {
+                        dstNdStride = static_cast<int32_t>(nextQ - qTokens[g]) * perQTokenStride + static_cast<int32_t>(nextSlot - slotKs[g]) * static_cast<int32_t>(slotOElems);
+                    } else {
+                        dstNdStride = static_cast<int32_t>(qTokens[g] - nextQ) * perQTokenStride + static_cast<int32_t>(slotKs[g] - nextSlot) * static_cast<int32_t>(slotOElems);
+                        wsOOff = static_cast<uint64_t>(nextQ) * perQTokenStride + kvHeadBase
+                                + static_cast<uint64_t>(nextSlot) * slotOElems;
+                    }
+                    srcNdStride = groupRows;
+                    ndNum = COPY_GRANULARITY;
+                }
                 auto gmOSlot = tla::MakeTensor(gAccumOut[wsOOff], gmOLayout, Arch::PositionGM{});
                 auto oTile = GetTile(gmOSlot,
                     tla::MakeCoord(0, nL0Itr * L0_TILE_N), tla::MakeShape(groupRows, nFixPAligned8));
                 auto l0CTile = GetTile(l0CTensorTla,
                     tla::MakeCoord(g * groupRows, 0), tla::MakeShape(mFixPAligned8Grp, nAct));
-                copyL0CToGm(oTile, l0CTile);
+                copyL0CToGm(oTile, l0CTile, ndNum, srcNdStride, dstNdStride);
             }
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
         }

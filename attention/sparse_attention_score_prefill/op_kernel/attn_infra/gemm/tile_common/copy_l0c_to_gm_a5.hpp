@@ -32,7 +32,7 @@ struct CopyL0CToGmTla<
     static constexpr auto reluEn = ReluEnable_;
 
     template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint8_t unitFlag = 0)
+    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, uint16_t ndNum = 1, uint16_t srcNdStride = 1, uint32_t dstNdStride = 1, uint8_t unitFlag = 0)
     {
         // TODO: check why use fixpipe is not OK
         // L0C->GM via AscendC::DataCopy (NZ2ND) + SetFixpipeNz2ndFlag, matching matmul_act
@@ -44,7 +44,7 @@ struct CopyL0CToGmTla<
         auto dstOffset = dstTensor.layout()(dstTensor.coord());
         auto srcOffset = srcTensor.layout()(srcTensor.coord());
 
-        AscendC::SetFixpipeNz2ndFlag(1, 1, 1);
+        AscendC::SetFixpipeNz2ndFlag(ndNum, srcNdStride, dstNdStride);
         AscendC::DataCopyCO12DstParams intriParams;
         intriParams.nSize = tla::get<1>(dstTensor.shape());
         intriParams.mSize = tla::get<0>(dstTensor.shape());
@@ -72,30 +72,6 @@ struct CopyL0CToGmTla<
 
         // AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_GM>(
         //     dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
-    }
-
-    template <class TensorDst, class TensorSrc>
-    __aicore__ inline void operator()(TensorDst const &dstTensor, TensorSrc const &srcTensor, bool subBlockId,
-                                      uint8_t unitFlag = 0)
-    {
-        AscendC::FixpipeParamsC310<AscendC::CO2Layout::ROW_MAJOR> intriParams;
-
-        intriParams.nSize = tla::get<1>(dstTensor.shape());
-        intriParams.mSize = tla::get<0>(dstTensor.shape());
-        intriParams.srcStride = tla::get<1, 1>(srcTensor.stride()) / tla::get<0, 0>(srcTensor.stride());
-        intriParams.dstStride = tla::get<0>(dstTensor.stride());
-
-        intriParams.quantPre = quantPre;
-        intriParams.reluEn = reluEn;
-        intriParams.unitFlag = unitFlag;
-        intriParams.dualDstCtl = 0;
-        intriParams.subBlockId = subBlockId;
-
-        auto dstOffset = dstTensor.layout()(dstTensor.coord());
-        auto srcOffset = srcTensor.layout()(srcTensor.coord());
-
-        AscendC::Fixpipe<ElementDst, ElementSrc, CFG_ROW_MAJOR_GM>(
-            dstTensor.data()[dstOffset], srcTensor.data()[srcOffset], intriParams);
     }
 };
 #endif

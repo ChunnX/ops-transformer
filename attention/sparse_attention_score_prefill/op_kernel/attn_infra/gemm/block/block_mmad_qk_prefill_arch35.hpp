@@ -56,6 +56,8 @@ struct BlockMmadQKPrefillArch35 {
     static constexpr uint32_t L0C_BUF_SIZE = L0C_HALF_SIZE / L0_STAGES;
     static constexpr uint32_t L1_Q_STAGES = 1;
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16;
+    static constexpr uint32_t COPY_GRANULARITY = 2;
+    static constexpr uint32_t C0_SIZE = 16;
 
     AscendC::LocalTensor<ElementK> l1KTensor_;
     AscendC::LocalTensor<ElementQ> l1QTensor_[L1_Q_STAGES];
@@ -172,14 +174,29 @@ struct BlockMmadQKPrefillArch35 {
         auto l1KTensorTla = tla::MakeTensor(l1KTensor_, l1KLayout, Arch::PositionL1{});
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID1);
-        for (uint32_t g = 0; g < groupCount; g++) {
+        for (uint32_t g = 0; g < groupCount; g += COPY_GRANULARITY) {
             uint64_t qBase = static_cast<uint64_t>(qTokens[g]) * perQTokenStrideQ + qHeadStartBase;
+            uint64_t srcNdMatrixStride = 0;
+            uint64_t dstNzMatrixStride = 0;
+            uint32_t ndNum = 1;
+            if (g + 1 < groupCount) {
+                uint32_t nextQ = qTokens[g + 1];
+                // 950平台，srcNdMatrixStride不限制小于65536
+                if (nextQ > qTokens[g]) {
+                    srcNdMatrixStride = static_cast<uint64_t>(nextQ - qTokens[g]) * perQTokenStrideQ;
+                } else {
+                    srcNdMatrixStride = static_cast<uint64_t>(qTokens[g] - nextQ) * perQTokenStrideQ;
+                    qBase = static_cast<uint64_t>(nextQ) * perQTokenStrideQ + qHeadStartBase;
+                }
+                dstNzMatrixStride = groupRows * C0_SIZE;
+                ndNum = COPY_GRANULARITY;
+            }
             auto gmQTensor = tla::MakeTensor(gQ[qBase], gmQLayout, Arch::PositionGM{});
             auto gmQTile = GetTile(gmQTensor,
                 tla::MakeCoord(0, 0), tla::MakeShape(groupRows, K));
             auto l1QTile = GetTile(l1QTensorTla,
                 tla::MakeCoord(g * groupRows, 0), tla::MakeShape(groupRows, K));
-            copyGmToL1Q(l1QTile, gmQTile);
+            copyGmToL1Q(l1QTile, gmQTile, ndNum, srcNdMatrixStride, dstNzMatrixStride);
         }
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID1);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID1);
