@@ -241,25 +241,31 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::CopyInX(int64_t row)
 template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::CopyInXBatch(int64_t batchIdx, int64_t rowCount)
 {
-    DataCopyExtParams dataCopyParams;
-    dataCopyParams.blockCount = static_cast<uint16_t>(rowCount);
-    dataCopyParams.blockLen = static_cast<uint32_t>(expertCount_ * sizeof(T));
-    dataCopyParams.srcStride = 0;
-    dataCopyParams.dstStride = static_cast<uint32_t>((perGroupExpertCountAlign_ - perGroupExpertCount_) * sizeof(T) / BLOCK_BYTES);
+    DataCopyExtParams dataCopyParams{1, static_cast<uint32_t>(expertCount_ * sizeof(T)), 0, 0,
+                                     static_cast<uint32_t>((perGroupExpertCountAlign_ - perGroupExpertCount_) * sizeof(T) / BLOCK_BYTES)};
     DataCopyPadExtParams<T> dataCopyPadParams{false, 0, 0, static_cast<T>(0)};
     int64_t gmOffset = batchIdx * batchRows_ * expertCount_;
     if (tilingData_->normType == 0) {
         LocalTensor<float> xInLocalTensor = xInQueue_.AllocTensor<float>();
         if constexpr (IsSameType<T, float>::value) {
-            DataCopyPad(xInLocalTensor, xGm_[gmOffset], dataCopyParams, dataCopyPadParams);
+            for (int64_t r = 0; r < rowCount; r++) {
+                DataCopyPad(xInLocalTensor[r * expertCountAlign_], xGm_[gmOffset + r * expertCount_], dataCopyParams,
+                            dataCopyPadParams);
+            }
         } else {
-            DataCopyPad(xInLocalTensor[expertCountAlign_ * batchRows_].ReinterpretCast<T>(), xGm_[gmOffset],
-                        dataCopyParams, dataCopyPadParams);
+            LocalTensor<T> rawTensor = xInLocalTensor[expertCountAlign_ * batchRows_].ReinterpretCast<T>();
+            for (int64_t r = 0; r < rowCount; r++) {
+                DataCopyPad(rawTensor[r * expertCountAlign_], xGm_[gmOffset + r * expertCount_], dataCopyParams,
+                            dataCopyPadParams);
+            }
         }
         xInQueue_.EnQue(xInLocalTensor);
     } else {
         LocalTensor<T> xInLocalTensor = xInQueue_.AllocTensor<T>();
-        DataCopyPad(xInLocalTensor, xGm_[gmOffset], dataCopyParams, dataCopyPadParams);
+        for (int64_t r = 0; r < rowCount; r++) {
+            DataCopyPad(xInLocalTensor[r * expertCountAlign_], xGm_[gmOffset + r * expertCount_], dataCopyParams,
+                        dataCopyPadParams);
+        }
         xInQueue_.EnQue(xInLocalTensor);
     }
 }
