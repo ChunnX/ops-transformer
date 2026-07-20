@@ -588,8 +588,11 @@ __aicore__ inline void LightningIndexerKernel<LIT>::Process()
         return;
     }
     ProcessMain();
-    ProcessRadixTopK();
-    // ProcessDecode();
+    if (constInfo.radixTotalBatch > 0) {
+        ProcessRadixTopK();
+    } else {
+        ProcessDecode();
+    }
 }
 
 template <typename LIT>

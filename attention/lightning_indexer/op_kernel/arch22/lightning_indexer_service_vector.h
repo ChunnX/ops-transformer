@@ -358,7 +358,6 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             bool isS2End = cuBaseS2Idx + s2BaseSize_ >= cuRealAcSeq;
             LIServiceVec::DoReduce(reduceCacheBuf[REDUCE_BANK_CONFLICT_NUM], reduceOutInner, gRedCnt, s2BaseSize_);
             outQueue_.FreeTensor(reduceCacheBuf);
-            PipeBarrier<PIPE_V>();
 
             if (constInfo_.radixTotalBatch > 0) {
             // RadixTopK path: write scoreB16Gm, skip Sort+MergeSort
