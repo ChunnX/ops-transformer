@@ -89,6 +89,7 @@ constexpr uint64_t COMBINE_STATE_WIN_OFFSET = 818UL * 1024UL;   // combine 0/1�
 constexpr uint32_t COMBINE_STATE_OFFSET = 64U * 1024U;  // 本卡状态空间偏移地址，前面的地址给dispatch用
 constexpr uint8_t EP_DOMAIN = 0;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
+constexpr uint32_t B32_PER_UB_ALIGN = 8U;
 constexpr uint32_t ALIGNED_LEN = 256U;                  // blockReduceMax中，最多支持连续256字节数据参与计算
 constexpr float SCALE_PARAM = 127.0;                    // 计算量化参数所需的缩放倍数
 constexpr uint32_t REDUCE_NUM = 8U;
