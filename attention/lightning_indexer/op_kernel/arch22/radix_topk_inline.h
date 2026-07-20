@@ -155,12 +155,13 @@ __aicore__ inline void InlineRadixTopK(
             // But 910B has no Select. Use Mins with a value that becomes 0x0000 after twiddle.
             // float 1e30 -> bf16 0x7149 -> negated as half is NaN (exp overflow)
             // float 200 -> bf16 0x43B0 -> negated -200 -> twiddle = 0x???? (small, excluded)
-            // Use Maxs to clamp negative values, Mins to clamp positive values
-            // But Mins produced 0 before. Let me try with explicit float literal.
-            Mins<float, true>(xLocalFp32, xLocalFp32, (float)200.0, curTileLen);
+            // Normalize scores: multiply by 1e-7 to compress range from ±7e7 to ±7
+            // bf16 at ±7e7 has ~524288 precision (useless), at ±7 has ~0.03 (sufficient)
+            // Sort order preserved (same positive scale), +1e30->1e23 still largest (matches Golden)
+            Muls<float, true>(xLocalFp32, xLocalFp32, (float)1.0e-7, curTileLen);
             PipeBarrier<PIPE_V>();
 
-            // Cast float -> bf16 into xLocalB16 (xBuf back, no overlap with xLocalFp32 in front)
+            // Cast float -> bf16 into xLocalB16
             Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
             PipeBarrier<PIPE_V>();
 
@@ -316,7 +317,7 @@ __aicore__ inline void InlineRadixTopK(
             DataCopyPadExtParams<float>{true, 0, 0, 0});
         SetFlag<HardEvent::MTE2_V>(mte2ToV);
         WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-        Mins<float, true>(xLocalFp32, xLocalFp32, (float)200.0, curTileLen);
+        Muls<float, true>(xLocalFp32, xLocalFp32, (float)1.0e-7, curTileLen);
         PipeBarrier<PIPE_V>();
         Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
         PipeBarrier<PIPE_V>();
