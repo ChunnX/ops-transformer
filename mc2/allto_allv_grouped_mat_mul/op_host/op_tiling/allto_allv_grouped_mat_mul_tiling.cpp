@@ -1139,11 +1139,13 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
     OP_TILING_CHECK(workspaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "workspace"),
                     return ge::GRAPH_FAILED);
     const uint64_t tensorListSize = 512;
-    uint64_t groupListSize = sizeof(int64_t) * e_;
     uint64_t xDataTypeSize = GetSizeByDataType(gmmXDataType_);
-    uint64_t permuteOutSize = permuteOutFlag_ ? 0 : Ops::Base::CeilAlign(a_ * h1_ * xDataTypeSize, tensorListSize);
-    uint64_t permuteScaleOutSize = 0;
-    workspaces[0] = libApiWorkSpaceSize_ + permuteOutSize + permuteScaleOutSize + groupListSize + tensorListSize;
+    uint64_t commOutSize = Ops::Base::CeilAlign(a_ * h1_ * xDataTypeSize, tensorListSize);
+    uint64_t groupListSize = sizeof(int64_t) * e_ * epWorldSize_;
+    uint64_t aGroupOffsetTableSize = sizeof(uint64_t) * e_ * epWorldSize_;
+    uint64_t xScaleOffsetTableSize = sizeof(uint64_t) * e_ * epWorldSize_;
+    workspaces[0] = libApiWorkSpaceSize_ + commOutSize + groupListSize + aGroupOffsetTableSize +
+                    xScaleOffsetTableSize + tensorListSize;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1162,9 +1164,12 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     tilingData->taskTilingInfo.epWorldSize = epWorldSize_;
     tilingData->taskTilingInfo.e = e_;
     tilingData->taskTilingInfo.ubSize = ubSize_;
-    tilingData->taskTilingInfo.mainLoopExpertNum = e_;
+    tilingData->taskTilingInfo.aivCoreNum = aivCoreNum_;
+    tilingData->taskTilingInfo.aicCoreNum = aicCoreNum_;
+    tilingData->taskTilingInfo.expertNum = 1U;
+    tilingData->taskTilingInfo.mainLoopExpertNum = 1U;
     tilingData->taskTilingInfo.tailLoopExpertNum = 0;
-    tilingData->taskTilingInfo.totalLoopCount = e_;
+    tilingData->taskTilingInfo.totalLoopCount = static_cast<uint32_t>(e_);
 
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "attrs"),
