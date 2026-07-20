@@ -268,8 +268,8 @@ bool GroupedMatmulAddNoQuantTiling::SplitKSingleXSingleWeightSingleY(const gert:
                                                                      const gert::Shape xShape, const gert::Shape wShape)
 {
     auto groupListTensor = context->GetDynamicInputTensor(INDEX_GROUPLIST, 0);
-    OP_CHECK_IF(groupListTensor == nullptr,
-                OP_LOGE(context->GetNodeName(), "groupListTensor is nullptr"), return false);
+    OP_CHECK_IF(groupListTensor == nullptr, OP_LOGE(context->GetNodeName(), "groupListTensor is nullptr"),
+                return false);
     gert::Shape groupListShape = groupListTensor->GetStorageShape();
     groupNum_ = static_cast<uint32_t>(groupListShape.GetDim(0)); // 0: the first dim of groupList is groupNum
     m_ = static_cast<uint64_t>(xShape.GetDim(1));
