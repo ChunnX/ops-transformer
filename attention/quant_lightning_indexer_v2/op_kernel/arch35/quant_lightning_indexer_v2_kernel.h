@@ -125,7 +125,7 @@ protected:
     GlobalTensor<uint32_t> metadataGm;
 
     GlobalTensor<int32_t> indiceOutGm;
-    GlobalTensor<float> valueOutGm;
+    GlobalTensor<bfloat16_t> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
     GlobalTensor<int32_t> outputIdxOffsetGm;
     GlobalTensor<uint32_t> cuSeqlensQGm;
@@ -509,7 +509,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
         qScaleGm.SetGlobalBuffer((__gm__ float *)queryScale);
         kScaleGm.SetGlobalBuffer((__gm__ float *)keyScale);
         blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTable);
-        valueOutGm.SetGlobalBuffer((__gm__ float *)sparseValues);
+        valueOutGm.SetGlobalBuffer((__gm__ bfloat16_t *)sparseValues);
         if (outputIdxOffset != nullptr) {
             isOutputIdxOffsetValid = true;
             outputIdxOffsetGm.SetGlobalBuffer((__gm__ int32_t *)outputIdxOffset);
@@ -718,9 +718,11 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessInvalid()
                 SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
                 
-                GlobalTensor<float> valueOut = valueOutGm[baseSize];
+                GlobalTensor<uint16_t> valueOutGmTmp;
+                valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
+                GlobalTensor<uint16_t> valueOut = valueOutGmTmp[baseSize];
 
-                AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_FLOAT);
+                AscendC::InitGlobalMemory(valueOut, dealSize, constInfo.NEG_INF_BFLOAT);
             }
         }
     }

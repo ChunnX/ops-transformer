@@ -687,7 +687,7 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessInvalid()
                 GlobalTensor<float> valueOut = valueOutGm[baseSize];
 
                 // float neg infinity bit pattern = 0xFF800000
-                uint32_t negInf = 0xFF800000;
+                constexpr float negInf = -__builtin_huge_valf();
                 AscendC::InitGlobalMemory(valueOut, dealSize, negInf);
             }
         }
