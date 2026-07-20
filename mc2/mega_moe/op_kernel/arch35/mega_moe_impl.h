@@ -306,7 +306,7 @@ struct Config {
 template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename ElementC, typename WorkSet,
           typename ExtraArgs>
 __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet, uint32_t startLoopIdx,
-                                         uint32_t totalJobs, ExtraArgs &args)
+                                         uint32_t tileNum, ExtraArgs &args)
 {
     constexpr uint32_t ubBufSize = Policy::IS_GMM1 ?
                                        MAX_SINGLE_MN_ALIGN32_NUM_256 :
@@ -319,7 +319,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
     const auto &config = workSet.config;
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
 
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < totalJobs; loopIdx += config.blockNum) {
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
@@ -399,11 +399,10 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
 }
 
 template <typename WorkSet, typename ExtraArgs>
-__aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uint32_t startLoopIdx,
-                                         uint32_t totalJobs)
+__aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uint32_t startLoopIdx, uint32_t tileNum)
 {
     const auto &config = workSet.config;
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < totalJobs; loopIdx += config.blockNum) {
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
@@ -427,8 +426,7 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
 }
 
 template <typename ElementC, bool IsLayered = false, typename WorkSet, typename ExtraArgs>
-__aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uint32_t startLoopIdx,
-                                         uint32_t totalJobs)
+__aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uint32_t startLoopIdx, uint32_t tileNum)
 {
     constexpr uint32_t ubBufSize = MAX_SINGLE_MN_ALIGN32_NUM_128;
     int64_t ubOffsetFirst = 0;
@@ -436,7 +434,7 @@ __aicore__ inline void AivGmm2PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
     LocalTensor<ElementC> l0cOutUbGMM2First(TPosition::VECIN, ubOffsetFirst, L1_TILE_M_128 * L1_TILE_N);
     LocalTensor<ElementC> l0cOutUbGMM2Second(TPosition::VECIN, ubOffsetSecond, L1_TILE_M_128 * L1_TILE_N);
 
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < totalJobs; loopIdx += workSet.config.blockNum) {
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += workSet.config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
         auto actualShape = workSet.scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
@@ -497,7 +495,7 @@ struct WorkSetGeneric {
 
 template <typename Policy, uint8_t CombineQuantMode, typename BlockMmad, typename ElementC, bool IsLayered = false,
           typename WorkSet, typename ExtraArgs>
-__aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLoopIdx, uint32_t totalJobs,
+__aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLoopIdx, uint32_t tileNum,
                                               ExtraArgs &args)
 {
     if constexpr (g_coreType == AscendC::AIC) {
@@ -507,13 +505,13 @@ __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLo
         typename BlockMmad::ProblemShape matmulShape{workSet.config.m, workSet.config.n, workSet.config.k, 0};
         blockMmad.Init(matmulShape, l0TileShape, workSet.config.l1Params, false, enableL0CPingPong);
 
-        AicComputeGeneric<CombineQuantMode, Policy, BlockMmad, ElementC>(blockMmad, workSet, startLoopIdx, totalJobs,
+        AicComputeGeneric<CombineQuantMode, Policy, BlockMmad, ElementC>(blockMmad, workSet, startLoopIdx, tileNum,
                                                                          args);
     } else {
         if constexpr (Policy::IS_GMM1) {
-            AivGmm1PostGeneric(workSet, args, startLoopIdx, totalJobs);
+            AivGmm1PostGeneric(workSet, args, startLoopIdx, tileNum);
         } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            AivGmm2PostGeneric<ElementC, IsLayered>(workSet, args, startLoopIdx, totalJobs);
+            AivGmm2PostGeneric<ElementC, IsLayered>(workSet, args, startLoopIdx, tileNum);
         }
         // GMM2 量化模式：AIV 不经此路径，由 ProcessCombine 独立处理
     }
@@ -533,7 +531,7 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
     BlockScheduler scheduler(
         {config.m, config.outputN, config.k},
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
-    uint32_t totalJobs = scheduler.GetTileNum();
+    uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx =
         (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
 
@@ -541,7 +539,7 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
 
     if constexpr (Policy::IS_GMM1) {
         if (GetSubBlockIdx() != 0) {
-            startBlockIdx = (startBlockIdx + totalJobs) % config.blockNum;
+            startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
             return;
         }
         args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
@@ -571,10 +569,10 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
                                        decltype(gmScaleB), decltype(gmBias), decltype(config), decltype(layouts)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, gmBias, gmmAddrInfo, params, config, layouts};
 
-    GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, ElementC, IsLayered>(workSet, startLoopIdx, totalJobs,
+    GroupMatmulExecGeneric<Policy, CombineQuantMode, BlockMmad, ElementC, IsLayered>(workSet, startLoopIdx, tileNum,
                                                                                      args);
 
-    startBlockIdx = (startBlockIdx + totalJobs) % config.blockNum;
+    startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
 } // namespace Detail
 
@@ -631,11 +629,11 @@ template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typenam
           typename TensorScaleA, typename TensorScaleB, typename TensorC, typename Config>
 __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler, TensorA &gmA, TensorScaleA &gmScaleA,
                                       TensorScaleB &gmScaleB, TensorC &l0cOutGm, const GMMAddrInfo &gmmAddrInfo,
-                                      const Config &config, uint32_t startLoopIdx, uint32_t totalJobs,
+                                      const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
                                       uint32_t groupIdx = 0, __gm__ int32_t *gmm2CombineSyncCounterPtr = nullptr)
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < totalJobs; loopIdx += config.blockNum) {
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
 
@@ -692,9 +690,9 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
 
 template <typename Policy, typename BlockPrologue, typename Scheduler, typename TensorB, typename Config>
 __aicore__ inline void AivPrologueA8W4(BlockPrologue &blockPrologue, Scheduler &scheduler, TensorB &gmB,
-                                       const Config &config, uint32_t startLoopIdx, uint32_t totalJobs)
+                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
 {
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < totalJobs; loopIdx += config.blockNum) {
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
@@ -715,9 +713,9 @@ __aicore__ inline void AivPrologueA8W4(BlockPrologue &blockPrologue, Scheduler &
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename SwigluQuantOp,
           typename Config>
 __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &scheduler, TensorC &l0cOutGm,
-                                       const Config &config, uint32_t startLoopIdx, uint32_t totalJobs)
+                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
 {
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < totalJobs; loopIdx += config.blockNum) {
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
@@ -765,9 +763,9 @@ __aicore__ inline void AivGmm1PostA8W4(SwigluQuantOp &swigluQuantOp, Scheduler &
 
 template <typename ElementC, typename MakeLayoutC, typename Scheduler, typename TensorC, typename Config>
 __aicore__ inline void AivGmm2PostA8W4(Scheduler &scheduler, TensorC &l0cOutGm, const Params &params, uint32_t groupCnt,
-                                       const Config &config, uint32_t startLoopIdx, uint32_t totalJobs)
+                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
 {
-    for (uint32_t loopIdx = startLoopIdx; loopIdx < totalJobs; loopIdx += config.blockNum) {
+    for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
         uint32_t mLoc = Get<M_VALUE>(blockCoord);
@@ -813,7 +811,7 @@ struct WorkSetA8W4 {
 template <uint8_t CombineQuantMode, typename Policy, typename BlockMmad, typename BlockPrologue, typename ElementC,
           typename MakeLayoutC, typename WorkSet, typename Config, typename ExtraArgs>
 __aicore__ inline void GroupMatmulExecA8W4(WorkSet &workSet, const Params &params, const GMMAddrInfo &gmmAddrInfo,
-                                           const Config &config, uint32_t startLoopIdx, uint32_t totalJobs,
+                                           const Config &config, uint32_t startLoopIdx, uint32_t tileNum,
                                            ExtraArgs &args)
 {
     if constexpr (g_coreType == AscendC::AIC) {
@@ -823,20 +821,20 @@ __aicore__ inline void GroupMatmulExecA8W4(WorkSet &workSet, const Params &param
         blockMmad.Init(matmulShape, l0TileShape, config.l1Params);
         AicComputeA8W4<CombineQuantMode, Policy>(blockMmad, workSet.scheduler, workSet.gmA, workSet.gmScaleA,
                                                  workSet.gmScaleB, workSet.l0cOutGm, gmmAddrInfo, config, startLoopIdx,
-                                                 totalJobs, args.groupIdx,
+                                                 tileNum, args.groupIdx,
                                                  (__gm__ int32_t *)params.workspaceInfo.gmm2CombineSyncCounterPtr);
     } else {
         if (GetSubBlockIdx() == 0) {
             BlockPrologue blockPrologue;
-            AivPrologueA8W4<Policy>(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, totalJobs);
+            AivPrologueA8W4<Policy>(blockPrologue, workSet.scheduler, workSet.gmB, config, startLoopIdx, tileNum);
         } else {
             if constexpr (Policy::IS_GMM1) {
                 AivGmm1PostA8W4<ElementC, MakeLayoutC>(args.swigluQuantOp, workSet.scheduler, workSet.l0cOutGm, config,
-                                                       startLoopIdx, totalJobs);
+                                                       startLoopIdx, tileNum);
             } else {
                 if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
                     AivGmm2PostA8W4<ElementC, MakeLayoutC>(workSet.scheduler, workSet.l0cOutGm, params, args.groupCnt,
-                                                           config, startLoopIdx, totalJobs);
+                                                           config, startLoopIdx, tileNum);
                 }
             }
         }
@@ -881,11 +879,11 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params &params,
     BlockScheduler scheduler(
         {config.m, config.outputN, config.k},
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(L1_TILE_M_256), static_cast<int64_t>(L1_TILE_N))});
-    uint32_t totalJobs = scheduler.GetTileNum();
+    uint32_t tileNum = scheduler.GetTileNum();
     uint32_t startLoopIdx =
         (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
-    if (startLoopIdx >= totalJobs) {
-        startBlockIdx = (startBlockIdx + totalJobs) % config.blockNum;
+    if (startLoopIdx >= tileNum) {
+        startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
         return;
     }
 
@@ -893,9 +891,9 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params &params,
                                     decltype(gmScaleB), decltype(l0cOutGm)>;
     WorkSetType workSet{scheduler, gmA, gmB, gmScaleA, gmScaleB, l0cOutGm};
     GroupMatmulExecA8W4<CombineQuantMode, Policy, BlockMmad, BlockPrologue, ElementC, MakeLayoutC>(
-        workSet, params, gmmAddrInfo, config, startLoopIdx, totalJobs, args);
+        workSet, params, gmmAddrInfo, config, startLoopIdx, tileNum, args);
 
-    startBlockIdx = (startBlockIdx + totalJobs) % config.blockNum;
+    startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
 }
 } // namespace Detail
 
