@@ -445,9 +445,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 sm_max_ub = T.alloc_ub(G, calc_dtype)
                 sm_sum_ub = T.alloc_ub(G, calc_dtype)
                 eps_sm_ub = T.alloc_ub(G, calc_dtype)
-                # Reuse the former unused sm_2d buffer for the global K-block
-                # broadcast.  n_num is 32 for the target K=2048 case.
-                sm_2d_ub = T.alloc_ub((n_num, n_block), calc_dtype)
+                sm_2d_ub = T.alloc_ub((G, n_block), calc_dtype)
                 rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_bc_ub = T.alloc_ub((1, n_block), calc_dtype)
                 rsy_max_ub = T.alloc_ub((1,), calc_dtype)
@@ -506,6 +504,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.row_expand_mul_experiment(weight_2d_ub, weight_2d_ub, weight_all_ub, re_tmp_ub)
                     # ReduceSumY + GlobalSoftmaxI max: fused K-block pass
                     # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
+                    T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
                     # Double-buffer ReduceSumY loop: overlap copy[n_rsy+1] ∥ compute[n_rsy]
                     # bmm2 DB: V_MTE2{0,1} (WAR) / MTE2_V{0,1} (RAW)
                     T.set_flag("v", "mte2", 0)
@@ -534,6 +533,12 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.pipe_barrier("v")
                         # Save to UB for global SoftmaxI; ReduceSumY workspace is unused downstream.
                         T.copy(rsy_reduce_db[cur, :], rsy_all_ub[n_rsy, :])
+                        # Fused: update global max from rsy_reduce_db[cur, :]
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur, :], 1.0)
+                        T.pipe_barrier("v")
+                        T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
+                        T.pipe_barrier("v")
+                        T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
                         # WAR: current slot consumed → safe to refill
                         T.set_flag("v", "mte2", cur)
 
@@ -551,14 +556,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("v", "mte2", 0)
                     T.wait_flag("v", "mte2", 1)
 
-                    # Batch the global max over all ReduceSumY blocks.  The
-                    # previous per-block scalar max created a long V bubble.
-                    T.pipe_barrier("v")
-                    T.reduce_max(rsy_all_ub, rsy_bc_ub, 0)
-                    T.pipe_barrier("v")
-                    T.reduce_max(rsy_bc_ub, rsy_max_ub, 1)
-                    T.pipe_barrier("v")
-
                     # Broadcast rsy_max to vector via T.tile.broadcast (BRCB, PIPE_V, 0 PIPE_ALL)
                     # Drain PReduced MTE3 write before refilling p_reduced_tmp_ub.
                     T.set_flag("mte3", "v", 0)
@@ -570,29 +567,28 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_bc_ub[0, :])
 
-                    # Save this core's original block before transforming the
-                    # full rsy_all_ub buffer in place to compute the denominator.
-                    T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
-                    T.pipe_barrier("v")
-
-                    # GlobalSoftmaxI: one 2048-element Sub/Exp pass followed
-                    # by two reductions, replacing 32 scalar reduction loops.
-                    T.tile.broadcast(sm_2d_ub, softmax_i_chunk_ub)
-                    T.pipe_barrier("v")
-                    T.tile.sub(rsy_all_ub, rsy_all_ub, sm_2d_ub)
-                    T.pipe_barrier("v")
-                    T.tile.exp(rsy_all_ub, rsy_all_ub)
-                    T.pipe_barrier("v")
-                    T.reduce_sum(rsy_all_ub, rsy_bc_ub, 0)
-                    T.pipe_barrier("v")
-                    T.reduce_sum(rsy_bc_ub, rsy_sum_ub, 1)
-                    T.pipe_barrier("v")
+                    # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
+                    T.tile.fill(rsy_sum_ub, 0)
+                    for n_idx_iter in T.serial(n_num):
+                        T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
+                        T.pipe_barrier("v")
+                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
+                        T.pipe_barrier("v")
+                        T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
+                        T.pipe_barrier("v")
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
+                        T.pipe_barrier("v")
+                        T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
+                        T.pipe_barrier("v")
+                        T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
 
                     T.tile.fill(eps_sum_ub, 1e-8)
                     T.pipe_barrier("v")
                     T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
 
                     # Per-core SoftmaxI: use UB-held ReduceSumY, then materialize to GM.
+                    T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
+                    T.pipe_barrier("v")
                     T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
                     T.pipe_barrier("v")
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
@@ -803,12 +799,18 @@ def tilelang_grad_kl_loss_single_kernel(
             with T.Scope("V"):
                 T.wait_cross_flag(3)
 
-                dq_fp32_db = T.alloc_ub((2, 4, BLOCK_K), calc_dtype)
-                dq_fp16_db = T.alloc_ub((2, 4, BLOCK_K), input_dtype)
+                # Batch dQueryIndex writeback in 8 rows per AIV chunk to
+                # reduce the number of MTE3 transfers and event waits.
+                v3_groups_per_aiv = v3_chunks // 2
+                dq_rows_per_aiv = v3_groups_per_aiv * 4
+                dq_rows_per_chunk = min(8, dq_rows_per_aiv)
+                dq_groups_per_chunk = dq_rows_per_chunk // 4
+                dq_chunk_num = (dq_rows_per_aiv + dq_rows_per_chunk - 1) // dq_rows_per_chunk
+
+                dq_fp32_db = T.alloc_ub((2, dq_rows_per_chunk, BLOCK_K), calc_dtype)
+                dq_fp16_db = T.alloc_ub((2, dq_rows_per_chunk, BLOCK_K), input_dtype)
                 dk_chunk_0 = T.alloc_ub((1, DQueryIndex), calc_dtype)
                 dk_chunk_1 = T.alloc_ub((1, DQueryIndex), calc_dtype)
-
-                g_per_aiv = v3_chunks // 2
                 half_block = n_block // 2
 
                 for s1_row in T.serial(s1_start, s1_end):
@@ -816,8 +818,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Pipeline: MTE2 fill ∥ (V cast → MTE3 write) ∥ MTE2 prefetch
                     # Events: MTE2_V{7,8} (RAW), V_MTE3{7,8} (RAW), MTE3_MTE2{7,8} (WAR)
                     # vid 是 Python int(0/1)，直接算术求 g_start/g_end，避免 if/else 跨分支变量
-                    g_start = vid * g_per_aiv           # 0 or 32
-                    g_end = g_start + g_per_aiv         # 32 or 64
+                    g_start = vid * v3_groups_per_aiv
 
                     # Pre-fill WAR: both slots initially free
                     T.set_flag("mte3", "mte2", 7)
@@ -826,32 +827,33 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Prologue: MTE2 fill + V cast for slot 0 (MTE3 deferred to loop)
                     T.wait_flag("mte3", "mte2", 7)
                     for d_idx in T.serial(d_num_query_index):
-                        T.copy(dQueryIndexAccum[bz, s1_row, g_start * 4:(g_start + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[0, :, :])
+                        T.copy(dQueryIndexAccum[bz, s1_row, g_start * 4:(g_start + dq_groups_per_chunk) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[0, :, :])
                     T.set_flag("mte2", "v", 7)
                     T.wait_flag("mte2", "v", 7)
-                    T.tile.cast(dq_fp16_db[0, :, :], dq_fp32_db[0, :, :], "CAST_ROUND", 4 * BLOCK_K)
+                    T.tile.cast(dq_fp16_db[0, :, :], dq_fp32_db[0, :, :], "CAST_ROUND", dq_rows_per_chunk * BLOCK_K)
                     T.set_flag("v", "mte3", 7)
 
-                    for g_id in T.serial(g_start, g_end):
-                        cur = (g_id - g_start) % 2
-                        nxt = (g_id - g_start + 1) % 2
+                    for chunk_id in T.serial(dq_chunk_num):
+                        cur = chunk_id % 2
+                        nxt = (chunk_id + 1) % 2
+                        chunk_start = g_start + chunk_id * dq_groups_per_chunk
 
                         # MTE3 write slot cur → GM (∥ MTE2+V prefetch of nxt)
                         T.wait_flag("v", "mte3", cur + 7)
                         for d_idx in T.serial(d_num_query_index):
-                            T.copy(dq_fp16_db[cur, :, :], dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
+                            T.copy(dq_fp16_db[cur, :, :], dQueryIndex[bz, s1_row, chunk_start * 4:(chunk_start + dq_groups_per_chunk) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
                         # WAR: slot cur consumed → safe to refill
                         T.set_flag("mte3", "mte2", cur + 7)
 
-                        # Prefetch next g_id → slot nxt (MTE2 fill + V cast)
-                        next_g = g_id + 1
-                        if next_g < g_end:
+                        # Prefetch next chunk → slot nxt (MTE2 fill + V cast)
+                        if chunk_id + 1 < dq_chunk_num:
+                            next_chunk_start = g_start + (chunk_id + 1) * dq_groups_per_chunk
                             T.wait_flag("mte3", "mte2", nxt + 7)
                             for d_idx in T.serial(d_num_query_index):
-                                T.copy(dQueryIndexAccum[bz, s1_row, next_g * 4:(next_g + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[nxt, :, :])
+                                T.copy(dQueryIndexAccum[bz, s1_row, next_chunk_start * 4:(next_chunk_start + dq_groups_per_chunk) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[nxt, :, :])
                             T.set_flag("mte2", "v", nxt + 7)
                             T.wait_flag("mte2", "v", nxt + 7)
-                            T.tile.cast(dq_fp16_db[nxt, :, :], dq_fp32_db[nxt, :, :], "CAST_ROUND", 4 * BLOCK_K)
+                            T.tile.cast(dq_fp16_db[nxt, :, :], dq_fp32_db[nxt, :, :], "CAST_ROUND", dq_rows_per_chunk * BLOCK_K)
                             T.set_flag("v", "mte3", nxt + 7)
 
                     # Clear: drain remaining WAR events
