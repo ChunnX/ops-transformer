@@ -135,8 +135,6 @@ class GeneralizedSFAQuant:
         attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
         softmax_lse = None
         if return_softmax_lse:
-            softmax_max = torch.zeros((q_bnsd.shape[0], ori_k_bnsd.shape[1], q_bnsd.shape[2], q_bnsd.shape[1] // ori_k_bnsd.shape[1]), dtype=torch.float32)
-            softmax_sum = torch.zeros((q_bnsd.shape[0], ori_k_bnsd.shape[1], q_bnsd.shape[2], q_bnsd.shape[1] // ori_k_bnsd.shape[1]), dtype=torch.float32)
             softmax_lse = torch.zeros((q_bnsd.shape[0], ori_k_bnsd.shape[1], q_bnsd.shape[2], q_bnsd.shape[1] // ori_k_bnsd.shape[1]), dtype=torch.float32)
         B = q_bnsd.shape[0]
         act_q = self.seqused_q
@@ -206,9 +204,6 @@ class GeneralizedSFAQuant:
                         mm2_res = torch.matmul(softmax_res, v_concat_fp32)
                         v2_res = torch.div(mm2_res, softmax_sum)
                         attn_out[i_B, i_N2 * G: (i_N2 + 1) * G, i_S1, :] = v2_res
-                        if return_softmax_lse:
-                            softmax_max[batch, n2Idx, s1Idx, :] = x_max[:, 0]
-                            softmax_sum[batch, n2Idx, s1Idx, :] = x_sum[:, 0]
                     elif RUN_MODE == 1:
                         ori_s2_loop_time = math.ceil(cur_ori_k_bnsd.size(0) / s2_base_size)
                         total_s2_loop_time = ori_s2_loop_time + cmp_s2_loop_time
