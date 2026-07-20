@@ -79,7 +79,6 @@ public:
     static constexpr uint32_t dVTemplateType = 512;
     static constexpr uint32_t dTemplateAlign64 = Align64Func(dVTemplateType);
     static constexpr float R0 = 1.0f;
-    static constexpr uint32_t initOutputEventId = 0U;  // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 
     // ==================== Functions ======================
     __aicore__ inline CSABlockVec() {};
@@ -248,6 +247,8 @@ private:
     int64_t sparseCalSize;
     int64_t sparseS2Start;
     int64_t sparseS2End;
+
+    TEventID initOutputEventId; // attenOut和lse，刷无效行会用到剩余ub，需要加同步
 };
 
 TEMPLATES_DEF_NO_DEFAULT
@@ -850,7 +851,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CleanOutput(
         this->attentionOutGm.SetGlobalBuffer((__gm__ OUTPUT_T *)attentionOut);
         this->softmaxLseGm.SetGlobalBuffer((__gm__ T *)softmaxLse);
         if (constInfo.needInit == 1) {
-            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);     // 释放剩余ub
+            SetFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId); // 释放剩余ub
             InitOutputSingleCore(constInfo);
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
         }
@@ -959,6 +960,7 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, 
     vToMte2V0Id[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
     SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
     SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
+    initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
 }
 
 TEMPLATES_DEF_NO_DEFAULT
