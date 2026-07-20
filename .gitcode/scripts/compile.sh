@@ -53,6 +53,13 @@ DP_ASSERT_EQUAL()
 LOG_HEAD "Build ${REPOSITORY_NAME}."
 cd "${WORKSPACE}/" || exit
 
+if [[ "${task_name}" =~ Compile_Ascend_X86_ubuntu24 ]]; then
+    sed -i "1i set(CMAKE_EXPORT_COMPILE_COMMANDS ON)" "CMakeLists.txt"
+    echo "api-check=compile" >> "${ATOMGIT_OUTPUT}"
+else
+    echo "api-check=continue" >> "${ATOMGIT_OUTPUT}"
+fi
+
 if [ "${task_name}" == "Pre_Compile" ]; then
     LOG_DO bash build.sh --PR_PKG ./pr_filelist.txt -j16 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH}
     ret=$?
@@ -62,12 +69,6 @@ if [ "${task_name}" == "Pre_Compile" ]; then
     fi
     DP_ASSERT_EQUAL "$ret" "0" "Build ${REPOSITORY_NAME}"
 else
-    if [[ "${task_name}" =~ Compile_Ascend_X86_ubuntu24 ]]; then
-        sed -i "1i set(CMAKE_EXPORT_COMPILE_COMMANDS ON)" "CMakeLists.txt"
-        echo "api-check=compile" >> "${ATOMGIT_OUTPUT}"
-    else
-        echo "api-check=continue" >> "${ATOMGIT_OUTPUT}"
-    fi
     if [ "${GE_ST_RT2}X" == "kirinx90X" ]; then
         if [ "${GIT_TARGET_BRANCH}" = "master" ]; then
             wget -nv https://kiri-obs.obs.cn-north-4.myhuaweicloud.com/Cann%20Large%20Model%20Foundation%208.5.0.beta005/cann-bisheng-compiler_9.0.0_linux-x86_64.run
