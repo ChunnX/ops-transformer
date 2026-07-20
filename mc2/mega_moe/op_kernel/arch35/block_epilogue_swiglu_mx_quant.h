@@ -207,6 +207,7 @@ private:
     AscendC::LocalTensor<bfloat16_t> gluRes_;
     AscendC::LocalTensor<uint16_t> maxExp_;
     AscendC::LocalTensor<uint16_t> halfScale_;
+
     int64_t n_;
     int64_t scaleN_;
     uint32_t subBlockIdx_ = AscendC::GetSubBlockIdx();
@@ -269,8 +270,12 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlob
     if constexpr (g_coreType == AscendC::AIV) {
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)yGmAddr_ + Get<Y_IDX>(baseOffset));
         quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)yScaleGmAddr_ + Get<Y_SCALE_IDX>(baseOffset));
-        groupFlagListGmAddr_ =
-            (__gm__ int32_t *)groupFlagListGmBaseAddr_ + Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
+        if (groupFlagListGmBaseAddr_ != nullptr) {
+            groupFlagListGmAddr_ = (__gm__ int32_t *)groupFlagListGmBaseAddr_ +
+                Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
+        } else {
+            groupFlagListGmAddr_ = nullptr;
+        }
     }
 }
 
@@ -765,7 +770,9 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(0);
-    AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
+    if (groupFlagListGmAddr_ != nullptr) {
+        AscendC::AtomicAdd(groupFlagListGmAddr_, 1);
+    }
     return;
 }
 
