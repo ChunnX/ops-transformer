@@ -94,6 +94,22 @@ static inline int64_t AlignTo(int64_t x, int64_t y)
     return CeilDiv(x, y) * y;
 }
 
+static inline void NpuStreamWait(aclrtStream waitStream, aclrtStream recordStream)
+{
+    if (waitStream == recordStream) {
+        return;
+    }
+    aclrtEvent event = nullptr;
+    aclError ret = aclrtCreateEvent(&event);
+    TORCH_CHECK(ret == ACL_SUCCESS, "aclrtCreateEvent failed, ret: ", ret);
+    ret = aclrtRecordEvent(event, recordStream);
+    TORCH_CHECK(ret == ACL_SUCCESS, "aclrtRecordEvent failed, ret: ", ret);
+    ret = aclrtStreamWaitEvent(waitStream, event);
+    TORCH_CHECK(ret == ACL_SUCCESS, "aclrtStreamWaitEvent failed, ret: ", ret);
+    ret = aclrtDestroyEvent(event);
+    TORCH_CHECK(ret == ACL_SUCCESS, "aclrtDestroyEvent failed, ret: ", ret);
+}
+
 struct EngramCommContext {
     uint32_t rankId = 0;
     uint32_t rankSize = 0;
@@ -352,6 +368,10 @@ private:
 
         GetRankInfo(resources.hcclComm, resources.context.rankId, resources.context.rankSize);
         ValidateRankSize(resources.context.rankSize);
+
+        if (numCpuBytes == 0) {
+            return;
+        }
 
         std::string memBufferTag = contextTag + "_buffer";
         AllocateAndRegisterBuffer(resources.hcclComm, memBufferTag, numCpuBytes, resources, guard);
@@ -639,7 +659,7 @@ public:
 
     void EngramWrite(const at::Tensor &storage);
     std::function<at::Tensor()> EngramFetch(const at::Tensor &indices);
-    void EngramBarrier(bool withDeviceSync = false);
+    void EngramBarrier(bool useCommStream = true, bool withCpuSync = false);
     void Destroy();
 
     int64_t GetHostBufPtr() const
@@ -701,6 +721,7 @@ private:
     bool destroyed_ = false;
     bool engramWriteCalled_ = false;
     std::atomic<bool> engramFetchInProgress_{false};
+    aclrtStream commStream_ = nullptr;
 };
 
 // Constructor
@@ -727,7 +748,8 @@ void ElasticBuffer::EnsureEngramContext()
     if (engramContextInitialized_) {
         return;
     }
-    TORCH_CHECK(engramNumCpuBytes_ > 0, "num_cpu_bytes must be greater than 0 to use Engram operations");
+    commStream_ = c10_npu::getNPUStreamFromPool().stream(false);
+    TORCH_CHECK(commStream_ != nullptr, "Failed to get NPU stream from pool for comm stream");
     EngramContextBuilder builder;
     EngramContextResources resources = builder.Build(groupName_, engramNumCpuBytes_);
     engramHcclComm_ = resources.hcclComm;
@@ -766,7 +788,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
                 ", rank_size=", engramCommContext_.rankSize, ", product=",
                 storage.size(0) * static_cast<int64_t>(engramCommContext_.rankSize));
 
-    EngramBarrier(true);
+    EngramBarrier(false, true);
 
     engramHiddenSize_ = storage.size(1);
     engramNumEntries_ = storage.size(0);
@@ -789,7 +811,7 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
         }
     }
 
-    EngramBarrier(true);
+    EngramBarrier(false, true);
     engramWriteCalled_ = true;
 }
 
@@ -803,9 +825,9 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
                 "please invoke the callback function returned by the previous engram_fetch first");
 
     int64_t numTokens = indices.size(0);
-    if (numTokens == 0) {
+    if (numTokens == 0 || engramNumCpuBytes_ == 0) {
         auto emptyTensor =
-            at::empty({0, engramHiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
+            at::empty({numTokens, engramHiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
         return [=]() { return emptyTensor; };
     }
 
@@ -826,33 +848,50 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 }
 
 // EngramBarrier - cross-rank synchronization
-void ElasticBuffer::EngramBarrier(bool withDeviceSync)
+void ElasticBuffer::EngramBarrier(bool useCommStream, bool withCpuSync)
 {
     TORCH_CHECK(!destroyed_,
                 "engram_barrier cannot be called after destroy, please create a new ElasticBuffer instance");
     EnsureEngramContext();
     TORCH_CHECK(engramHcclComm_ != nullptr, "HCCL comm not initialized");
 
-    if (withDeviceSync) {
+    aclrtStream computeStream = c10_npu::getCurrentNPUStream().stream(false);
+    aclrtStream stream = useCommStream ? commStream_ : computeStream;
+
+    if (useCommStream) {
+        NpuStreamWait(commStream_, computeStream);
+    }
+
+    if (withCpuSync) {
         aclError aclRet = aclrtSynchronizeDevice();
         TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed, ret: ", aclRet);
     }
 
-    aclrtStream stream = c10_npu::getCurrentNPUStream().stream(false);
     HcclResult ret = HcclBarrierFunc(engramHcclComm_, stream);
     TORCH_CHECK(ret == HCCL_SUCCESS, "HcclBarrier failed, ret: ", ret);
 
-    if (withDeviceSync) {
+    if (withCpuSync) {
         aclError aclRet = aclrtSynchronizeDevice();
         TORCH_CHECK(aclRet == ACL_SUCCESS, "aclrtSynchronizeDevice failed, ret: ", aclRet);
+    }
+
+    if (useCommStream) {
+        NpuStreamWait(computeStream, commStream_);
     }
 }
 
 // Destroy - explicit resource cleanup
 void ElasticBuffer::Destroy()
 {
-    if (destroyed_)
+    if (destroyed_) {
         return;
+    }
+
+    try {
+        EngramBarrier(true, true);
+    } catch (const std::exception &e) {
+        ASCEND_LOGE("EngramBarrier in Destroy failed: %s", e.what());
+    }
 
     if (engramHostBufPtr_ != nullptr) {
         aclError ret = aclrtHostUnregister(engramHostBufPtr_);
@@ -1080,7 +1119,8 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
              pybind11::arg("numCpuBytes"))
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
         .def("engram_fetch", &Mc2Api::ElasticBuffer::EngramFetch, pybind11::arg("indices").noconvert())
-        .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("withDeviceSync") = false)
+        .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("useCommStream") = true,
+             pybind11::arg("withCpuSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
         .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
         .def("moe_ep_dispatch", &Mc2Api::ElasticBuffer::MoeEpDispatch)

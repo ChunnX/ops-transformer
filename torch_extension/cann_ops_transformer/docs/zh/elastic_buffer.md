@@ -14,7 +14,7 @@
 
   ElasticBuffer 提供统一的分布式通信 buffer 管理能力：
 
-  - Engram 存储接口用于分布式 Engram 存储管理，支持将本 rank 的表分片写入 host pinned 共享段，以及通过 RDMA 从远端 rank 抓取 Engram 数据。需与 [get_engram_storage_size_hint](#get-engram-storage-size-hint) 配套使用。
+  - Engram 存储接口用于分布式 Engram 存储管理，支持将本 rank 的表写入 host pinned 共享段，以及通过 RDMA 从远端 rank 抓取 Engram 数据。需与 [get_engram_storage_size_hint](#get-engram-storage-size-hint) 配套使用。
   - Dispatch/Combine 接口用于 MoE 的 Expert Parallelism（EP）并行部署，支持通过 [dispatch](#dispatch) 将 token 数据分发到对应专家卡，再通过 [combine](#combine) 将专家输出按原路由聚合回原始序列。需与 [get_moe_ep_ccl_buffer_size](#get-moe-ep-ccl-buffer-size) 配套使用。
 
 ## ElasticBuffer 类接口原型
@@ -35,10 +35,12 @@ class ElasticBuffer:
 
     def engram_fetch(self, indices: torch.Tensor) -> Callable[[], torch.Tensor]
 
+    def barrier(self, use_comm_stream: bool = True, with_cpu_sync: bool = False) -> None
+
     @staticmethod
     def get_engram_storage_size_hint(
         num_entries: int,
-        hidden_size: int,
+        hidden: int,
         dtype: torch.dtype = torch.bfloat16,
     ) -> int
 
@@ -87,7 +89,7 @@ class ElasticBuffer:
 
 - **group** (`torch.distributed.ProcessGroup`)：必选参数，分布式进程组，用于跨 rank 通信和同步。
 - <strong>*</strong>：其之前的变量是位置相关的；之后的变量是可选参数，需要使用键值对赋值，不赋值会使用默认值。
-- **num_cpu_bytes** (`int`)：可选参数，CPU buffer 大小（字节），用于 host pinned 存储区分配。默认值为 0；使用 [engram_write](#engram-write) 时必须大于 0，且必须 2MB 对齐。
+- **num_cpu_bytes** (`int`)：可选参数，CPU buffer 大小（字节），用于 host pinned 存储区分配。默认值为 0，且必须 2MB 对齐。
 - **num_max_tokens_per_rank** (`int`)：可选参数，表示每张卡上的最大 token 数量上限。使用 [dispatch](#dispatch) 和 [combine](#combine) 时必须与 `hidden`、`num_topk` 一起指定。
 - **hidden** (`int`)：可选参数，hidden size 隐藏层大小。
 - **num_topk** (`int`)：可选参数，表示选取 topK 个专家。
@@ -96,49 +98,124 @@ class ElasticBuffer:
 
 ### engram_write<a name="engram-write"></a>
 
-**功能**：将本 rank 的表分片写入 host pinned 共享段。首次调用时会懒初始化 Engram 运行时资源和通信上下文。
+**功能**：将本 rank 的 Engram 表数据写入 host pinned 共享内存段，使其他 rank 可通过 RDMA 读取该数据。
+
+> **host pinned 共享内存段**：指通过 `aclrtMallocHost` 分配的页锁定（pinned）主机内存，并经 `aclrtHostRegisterV2` 映射后获得设备可访问地址。该内存段既可被本卡 NPU 直接访问，也可被远端 rank 的 NPU 通过 RDMA 读取，从而实现跨 rank 的零拷贝数据共享。其大小由构造函数的 `num_cpu_bytes` 参数指定。
+
+**计算公式**：
+
+$$HostPinnedBuf[0 : storage.nbytes()] \leftarrow storage.data()$$
+
+即通过 `memcpy_s` 将 `storage` 的数据按字节拷贝到 host pinned 共享内存段起始位置。拷贝前后的两次 `Barrier` 保证所有 rank 写入完成且对彼此可见：
+
+$$Barrier \rightarrow memcpy\_s(storage \rightarrow HostPinnedBuf) \rightarrow Barrier$$
+
+其中 `storage.nbytes() = num_entries × hidden × dtype_size`，须满足 `storage.nbytes() ≤ num_cpu_bytes`。
+
+**函数原型**：
+
+```python
+ElasticBuffer.engram_write(storage) -> None
+```
 
 **输入参数**：
 
-- **storage** (`Tensor`)：必选参数，待写入的 CPU tensor，shape 为 `(num_entries, hidden_size)`，表示有 `num_entries` 个条目，每个条目维度为 `hidden_size`。
+- **storage** (`Tensor`)：必选参数，待写入的 CPU tensor，shape 为 `(num_entries, hidden)`，表示有 `num_entries` 个条目，每个条目维度为 `hidden`。
 
-**输出**：无返回值，数据写入 host pinned 内存。
+**输出说明**：无返回值，数据写入 host pinned 内存。
 
 ### engram_fetch<a name="engram-fetch"></a>
 
-**功能**：通过 RDMA 从远端 rank 抓取 Engram 数据，返回 callable 实现异步获取。
+**功能**：根据输入的全局索引，通过 RDMA 从对应 rank 的 host pinned 共享内存中抓取对应的 Engram 数据。接口采用异步设计：调用后立即返回一个 callable，执行该 callable 时阻塞等待 RDMA 传输完成并返回结果 tensor。
+
+**计算公式**：
+
+每个全局索引按如下方式映射到目标 rank 和本地条目索引：
+
+$$rank\_id = \lfloor global\_idx / num\_entries \rfloor$$
+
+$$local\_idx = global\_idx \bmod num\_entries$$
+
+$$fetched[i] = EngramTable[rank\_id][local\_idx]$$
+
+其中各变量含义如下：
+
+- $global\_idx$：输入索引张量 `indices` 的元素值，取值范围 $[0, world\_size \times num\_entries)$。
+- $num\_entries$：[engram_write](#engram-write) 时各 rank 写入的条目数，即 `storage.size(0)`。
+- $world\_size$：通信域中的 rank 总数。
+- $rank\_id$：$global\_idx$ 映射到的目标 rank 编号，取值范围 $[0, world\_size)$。当 $rank\_id$ 为本 rank 时，数据直接从本地 host pinned 内存读取；当 $rank\_id$ 为远端 rank 时，通过 RDMA 跨卡读取。
+- $local\_idx$：目标 rank 内的本地条目索引，取值范围 $[0, num\_entries)$。
+- $EngramTable[rank\_id]$：目标 rank 通过 [engram_write](#engram-write) 写入 host pinned 共享内存的 Engram 表数据，shape 为 `(num_entries, hidden)`，
+$EngramTable[rank\_id][local\_idx]$ 表示其中第 $local\_idx$ 个条目。
+- $fetched[i]$：输出张量中第 $i$ 个 token 对应的 Engram 数据，$i \in [0, num\_tokens)$，$num\_tokens$ 为 `indices` 的长度。
+
+**函数原型**：
+
+```python
+ElasticBuffer.engram_fetch(indices) -> Callable[[], Tensor]
+```
 
 **输入参数**：
 
-- **indices** (`Tensor`)：必选参数，查询索引的 NPU tensor，shape 为 `(num_tokens,)`，表示要抓取的条目全局索引。数据类型支持 `int32`，数据格式为 $ND$。元素取值范围需在 `[0, world_size × num_entries)`。
+- **indices** (`Tensor`)：必选参数，查询索引的 NPU tensor，shape 为 `(num_tokens,)`，表示要抓取的条目全局索引。数据类型支持 `int32`，数据格式为 $ND$。元素取值范围需在 `[0, world_size × num_entries)`，若某一位置的元素取值超过了该范围，则返回值中该位置对应的数据为0。
 
-**输出**：
+**输出说明**：
 
 - **wait_callable** (`Callable[[], Tensor]`)：返回一个 callable，调用时阻塞至 RDMA 完成并返回 fetched tensor。
 
 调用 `wait_callable()` 返回：
 
-- **fetched** (`Tensor`)：NPU tensor，shape 为 `(num_tokens, hidden_size)`，数据类型与 [engram_write](#engram-write) 的 `storage.dtype` 相同，数据格式为 $ND$。
+- **fetched** (`Tensor`)：NPU tensor，shape 为 `(num_tokens, hidden)`，数据类型与 [engram_write](#engram-write) 的 `storage.dtype` 相同，数据格式为 $ND$。
 
-### get_engram_storage_size_hint（静态方法）<a name="get-engram-storage-size-hint"></a>
+### barrier<a name="barrier"></a>
 
-**功能**：计算 Engram CPU buffer 大小。
+**功能**：跨卡同步。
 
 **函数原型**：
 
 ```python
-ElasticBuffer.get_engram_storage_size_hint(num_entries, hidden_size, dtype=torch.bfloat16) -> int
+ElasticBuffer.barrier(use_comm_stream=True, with_cpu_sync=False) -> None
+```
+
+**输入参数**：
+
+- **use_comm_stream** (`bool`)：可选参数，表示是否使用专用通信 stream 执行 barrier。默认值为 `True`，使用专用通信 stream，barrier 前后通过 event 同步计算流与通信流；设为 `False` 时使用当前计算 stream。
+- **with_cpu_sync** (`bool`)：可选参数，表示是否在 barrier 前后同步设备。默认值为 `False`。设为 `True` 时，在 barrier 前后各调用一次 `aclrtSynchronizeDevice`，确保设备侧操作完成。
+
+**输出说明**：无返回值。
+
+### get_engram_storage_size_hint（静态方法）<a name="get-engram-storage-size-hint"></a>
+
+**功能**：计算 Engram 存储所需的 CPU buffer 大小。
+
+**计算公式**：
+
+```text
+dtype_size = elementSize(dtype)              # 如 bfloat16=2, float16=2, float32=4
+hidden_size_bytes = hidden × dtype_size
+num_bytes_per_entry = Align32(hidden_size_bytes)
+num_cpu_bytes = Align2MB(num_bytes_per_entry × num_entries)
+```
+
+其中 `AlignX(value) = ((value + X - 1) / X) × X`，`/` 表示整除。`num_bytes_per_entry` 按 32 字节对齐，最终结果按 2MB 对齐。
+
+**函数原型**：
+
+```python
+ElasticBuffer.get_engram_storage_size_hint(
+    num_entries, hidden, dtype=torch.bfloat16
+) -> int
 ```
 
 **输入参数**：
 
 - **num_entries** (`int`)：必选参数，Engram storage 的条目数，必须非负。
-- **hidden_size** (`int`)：必选参数，每个条目的隐藏维度，必须 128 数量对齐且大于 0。
+- **hidden** (`int`)：必选参数，每个条目的隐藏层维度，必须 128 数量对齐且大于 0。
 - **dtype** (`torch.dtype`)：可选参数，数据类型，默认为 `torch.bfloat16`。仅在此处用于按 dtype 计算字节数。
 
-**输出**：
+**输出说明**：
 
-- **num_cpu_bytes** (`int`)：CPU buffer 大小（字节），已 2MB 对齐。
+- **num_cpu_bytes** (`int`)：CPU buffer 大小（字节），用于 engram_write 的本地存储区，已 2MB 对齐。
 
 ### dispatch<a name="dispatch"></a>
 
@@ -293,7 +370,7 @@ ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
 
 - **参数对齐约束**：
   - `num_cpu_bytes` 必须为 2MB 对齐（即能被 `2 × 1024 × 1024` 整除）。
-  - `hidden_size` 必须为 128 数量对齐。
+  - `hidden` 必须为 128 数量对齐。
   - [get_engram_storage_size_hint](#get-engram-storage-size-hint) 返回值自动满足 2MB 对齐。
 
 - **Engram 维度约束**：
@@ -313,9 +390,10 @@ ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
   - 同一 ElasticBuffer 实例上不允许并发 [engram_fetch](#engram-fetch)（需等待上次 fetch 的 callable 执行完成）。
 
 - **Engram 数值约束**：
-  - `num_cpu_bytes`、`num_entries`、`hidden_size` 必须非负。
-  - 使用 [engram_write](#engram-write) 时，`num_cpu_bytes` 必须大于 0。
-  - `storage.nbytes()` 必须小于等于 `num_cpu_bytes`。
+  - `num_cpu_bytes`、`num_entries`必须非负。
+  - `hidden` 必须大于0。
+  - `storage.nbytes()` 必须小于等于 `num_cpu_bytes`。`storage.nbytes()` 表示 tensor 实际占用的字节数，即 `num_entries × hidden × dtype_size`（其中 
+  `dtype_size` 为单个元素的字节大小，如 `bfloat16` 为 2 字节、`float32` 为 4 字节）。
   - 全局条目总数 `world_size × num_entries` 必须小于 2^31（int32 最大值），保证 indices 索引不溢出。
 
 - **Dispatch/Combine 配套约束**：
@@ -343,7 +421,7 @@ ccl_buffer_size = Align2(Align1MB(minimum_buffer_size) / 1MB) / 2
 - **特殊场景处理**：
   - 支持 `num_entries = 0`。
   - 支持 `num_tokens = 0`。
-  - 二进制一致：EngramWrite 和 EngramFetch 全程纯数据搬运，输出与源必须逐字节相等，无任何容差。
+  - 二进制一致：engram_write 和 engram_fetch 全程纯数据搬运，输出与源必须逐字节相等，无任何容差。
 
 ## 调用示例
 
@@ -356,10 +434,10 @@ import torch_npu
 import torch.distributed as dist
 import torch.multiprocessing as mp
 from torch.multiprocessing import Process, Manager
-from cann_ops_transformer.ops import ElasticBuffer
+from cann_ops_transformer import ElasticBuffer
 
 num_entries = 10000
-hidden_size = 4096
+hidden = 4096
 dtype = torch.bfloat16
 world_size = 2
 
@@ -390,7 +468,7 @@ def run_elastic_buffer(queue, rank, world_size, storage, indices):
     group = init_hccl_comm(rank, world_size)
 
     num_cpu_bytes = ElasticBuffer.get_engram_storage_size_hint(
-        num_entries, hidden_size, dtype
+        num_entries, hidden, dtype
     )
     print(f"[INFO] device_{rank} num_cpu_bytes={num_cpu_bytes}")
 
@@ -413,7 +491,7 @@ def run_elastic_buffer(queue, rank, world_size, storage, indices):
 
 
 if __name__ == "__main__":
-    storage = torch.randn(num_entries, hidden_size, dtype=dtype)
+    storage = torch.randn(num_entries, hidden, dtype=dtype)
     indices = torch.randint(
         0,
         num_entries * world_size,
@@ -460,7 +538,7 @@ import torch
 import torch_npu
 import torch.distributed as dist
 from torch.multiprocessing import Process
-from cann_ops_transformer.ops import ElasticBuffer
+from cann_ops_transformer import ElasticBuffer
 
 master_ip = "127.0.0.1"
 world_size = 2
