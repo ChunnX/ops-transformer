@@ -133,7 +133,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                             q.shape[0],
                             ori_kv.shape[2],
                             q.shape[1],
-                            q.shape[2] / ori_kv.shape[2],
+                            q.shape[2] // ori_kv.shape[2],
                         ],
                         dtype=torch.float32,
                         device="meta",
@@ -145,7 +145,7 @@ class SparseFlashMlaOpBuilder(OpBuilder):
                 attn_out = torch.empty(q.shape, dtype=q.dtype, device="meta")
                 if return_softmax_lse:
                     softmax_lse = torch.empty(
-                        [ori_kv.shape[1], q.shape[0], q.shape[1] / ori_kv.shape[1]],
+                        [ori_kv.shape[1], q.shape[0], q.shape[1] // ori_kv.shape[1]],
                         dtype=torch.float32,
                         device="meta",
                     )
