@@ -44,6 +44,7 @@ struct Args {
     aclrtStream dispatchV2Stream;
     aclrtStream combineV2Stream;
     aclrtContext context;
+    int result{ACL_SUCCESS};
 };
 
 const uint32_t MACHINE_NUM = 1;
@@ -52,8 +53,8 @@ const char *env_dev_num = std::getenv("ENV_DEV_NUM");
 const uint32_t EP_WORLD_SIZE = 2;
 const uint32_t DEV_NUM = EP_WORLD_SIZE;
 
-const bool IS_TEST_A2 = false;
-const bool IS_TEST_A3A5 = true;
+const bool IS_TEST_A2 = true;
+const bool IS_TEST_A3A5 = false;
 const uint32_t EP_WORLD_SIZE_A2 = 8;
 const uint32_t DEV_NUM_A2 = EP_WORLD_SIZE_A2;
 
@@ -64,6 +65,21 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
         shape_size *= i;
     }
     return shape_size;
+}
+
+int32_t MakePackedInt4Value(uint32_t rankId, uint32_t tokenId, uint32_t hIndex)
+{
+    uint32_t value = 0;
+    for (uint32_t nibble = 0; nibble < 8; ++nibble) {
+        uint32_t int4Value = (rankId + tokenId + hIndex + nibble) & 0xFU;
+        value |= int4Value << (nibble * 4U);
+    }
+    return static_cast<int32_t>(value);
+}
+
+float MakeTokenScale(uint32_t rankId, uint32_t tokenId)
+{
+    return static_cast<float>(rankId * 1024U + tokenId) + 0.5F;
 }
 
 template <typename T>
@@ -335,6 +351,203 @@ int launchOneThreadDispatchV2AndCombineV2_A3A5(Args &args)
     aclrtResetDevice(args.rankId);
 
     return 0;
+}
+
+int launchOneThreadDispatchV2Int32_A2(Args &args)
+{
+    int ret = aclrtSetCurrentContext(args.context);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSetCurrentContext failed, ret %d\n", ret); return ret);
+
+    char hcomEpName[128] = {0};
+    ret = HcclGetCommName(args.hcclEpComm, hcomEpName);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetEpCommName failed, ret %d\n", ret); return ret);
+
+    // 一个int32承载8个int4。token按tokenId % 8发往对应rank，每个输出都可由源rank和源token唯一校验。
+    constexpr int64_t Bs = 32;
+    constexpr int64_t H = 896;
+    constexpr int64_t K = 1;
+    constexpr int64_t moeExpertNum = EP_WORLD_SIZE_A2;
+    constexpr int64_t localExpertNum = 1;
+    constexpr int64_t quantMode = 0;
+    constexpr int64_t globalBs = Bs * EP_WORLD_SIZE_A2;
+    constexpr int64_t A = globalBs;
+    constexpr int64_t tokensPerSourceRank = Bs / EP_WORLD_SIZE_A2;
+    constexpr int64_t expectedTokenNum = tokensPerSourceRank * EP_WORLD_SIZE_A2;
+    const std::string commAlg = "fullmesh";
+
+    std::vector<int64_t> xShape{Bs, H};
+    std::vector<int64_t> expertIdsShape{Bs, K};
+    std::vector<int64_t> scalesShape{Bs};
+    std::vector<int64_t> expandXShape{A, H};
+    std::vector<int64_t> dynamicScalesShape{A};
+    std::vector<int64_t> assistInfoForCombineShape{A * 128};
+    std::vector<int64_t> expertTokenNumsShape{localExpertNum};
+    std::vector<int64_t> epRecvCountsShape{localExpertNum * EP_WORLD_SIZE_A2};
+    std::vector<int64_t> tpRecvCountsShape{1};
+    std::vector<int64_t> expandScalesShape{A};
+
+    std::vector<int32_t> xHostData(GetShapeSize(xShape));
+    std::vector<int32_t> expertIdsHostData(GetShapeSize(expertIdsShape));
+    std::vector<float> scalesHostData(GetShapeSize(scalesShape));
+    for (uint32_t tokenId = 0; tokenId < static_cast<uint32_t>(Bs); ++tokenId) {
+        expertIdsHostData[tokenId] = tokenId % EP_WORLD_SIZE_A2;
+        scalesHostData[tokenId] = MakeTokenScale(args.rankId, tokenId);
+        for (uint32_t hIndex = 0; hIndex < static_cast<uint32_t>(H); ++hIndex) {
+            xHostData[tokenId * H + hIndex] = MakePackedInt4Value(args.rankId, tokenId, hIndex);
+        }
+    }
+
+    std::vector<int32_t> expandXHostData(GetShapeSize(expandXShape), 0);
+    std::vector<float> dynamicScalesHostData(GetShapeSize(dynamicScalesShape), 0.0F);
+    std::vector<int32_t> assistInfoForCombineHostData(GetShapeSize(assistInfoForCombineShape), 0);
+    std::vector<int64_t> expertTokenNumsHostData(GetShapeSize(expertTokenNumsShape), 0);
+    std::vector<int32_t> epRecvCountsHostData(GetShapeSize(epRecvCountsShape), 0);
+    std::vector<int32_t> tpRecvCountsHostData(GetShapeSize(tpRecvCountsShape), 0);
+    std::vector<float> expandScalesHostData(GetShapeSize(expandScalesShape), 0.0F);
+
+    void *xDeviceAddr = nullptr;
+    void *expertIdsDeviceAddr = nullptr;
+    void *scalesDeviceAddr = nullptr;
+    void *expandXDeviceAddr = nullptr;
+    void *dynamicScalesDeviceAddr = nullptr;
+    void *assistInfoForCombineDeviceAddr = nullptr;
+    void *expertTokenNumsDeviceAddr = nullptr;
+    void *epRecvCountsDeviceAddr = nullptr;
+    void *tpRecvCountsDeviceAddr = nullptr;
+    void *expandScalesDeviceAddr = nullptr;
+
+    aclTensor *x = nullptr;
+    aclTensor *expertIds = nullptr;
+    aclTensor *scales = nullptr;
+    aclTensor *expandX = nullptr;
+    aclTensor *dynamicScales = nullptr;
+    aclTensor *assistInfoForCombine = nullptr;
+    aclTensor *expertTokenNums = nullptr;
+    aclTensor *epRecvCounts = nullptr;
+    aclTensor *tpRecvCounts = nullptr;
+    aclTensor *expandScales = nullptr;
+
+    ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_INT32, &x);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(expertIdsHostData, expertIdsShape, &expertIdsDeviceAddr, aclDataType::ACL_INT32, &expertIds);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(scalesHostData, scalesShape, &scalesDeviceAddr, aclDataType::ACL_FLOAT, &scales);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(expandXHostData, expandXShape, &expandXDeviceAddr, aclDataType::ACL_INT32, &expandX);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(dynamicScalesHostData, dynamicScalesShape, &dynamicScalesDeviceAddr, aclDataType::ACL_FLOAT,
+                          &dynamicScales);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(assistInfoForCombineHostData, assistInfoForCombineShape, &assistInfoForCombineDeviceAddr,
+                          aclDataType::ACL_INT32, &assistInfoForCombine);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(expertTokenNumsHostData, expertTokenNumsShape, &expertTokenNumsDeviceAddr,
+                          aclDataType::ACL_INT64, &expertTokenNums);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(epRecvCountsHostData, epRecvCountsShape, &epRecvCountsDeviceAddr, aclDataType::ACL_INT32,
+                          &epRecvCounts);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(tpRecvCountsHostData, tpRecvCountsShape, &tpRecvCountsDeviceAddr, aclDataType::ACL_INT32,
+                          &tpRecvCounts);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT,
+                          &expandScales);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+    uint64_t workspaceSize = 0;
+    aclOpExecutor *executor = nullptr;
+    void *workspaceAddr = nullptr;
+    ret = aclnnMoeDistributeDispatchV2GetWorkspaceSize(
+        x, expertIds, scales, nullptr, nullptr, hcomEpName, EP_WORLD_SIZE_A2, args.epRankId, moeExpertNum, "", 0, 0, 0,
+        0, 0, quantMode, globalBs, 1, commAlg.c_str(), expandX, dynamicScales, assistInfoForCombine, expertTokenNums,
+        epRecvCounts, tpRecvCounts, expandScales, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("[ERROR] rank_%u GetWorkspaceSize failed, ret=%d\n", args.rankId, ret); return ret);
+
+    if (workspaceSize > 0) {
+        ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
+        CHECK_RET(ret == ACL_SUCCESS,
+                  LOG_PRINT("[ERROR] rank_%u workspace malloc failed, ret=%d\n", args.rankId, ret); return ret);
+    }
+    ret = aclnnMoeDistributeDispatchV2(workspaceAddr, workspaceSize, executor, args.dispatchV2Stream);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("[ERROR] rank_%u dispatch failed, ret=%d\n", args.rankId, ret); return ret);
+    ret = aclrtSynchronizeStreamWithTimeout(args.dispatchV2Stream, 10000);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("[ERROR] rank_%u stream synchronize failed, ret=%d\n", args.rankId, ret); return ret);
+
+    ret = aclrtMemcpy(expandXHostData.data(), expandXHostData.size() * sizeof(int32_t), expandXDeviceAddr,
+                      expandXHostData.size() * sizeof(int32_t), ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("[ERROR] rank_%u copy expandX failed, ret=%d\n", args.rankId, ret); return ret);
+    ret = aclrtMemcpy(dynamicScalesHostData.data(), dynamicScalesHostData.size() * sizeof(float),
+                      dynamicScalesDeviceAddr, dynamicScalesHostData.size() * sizeof(float),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("[ERROR] rank_%u copy dynamicScales failed, ret=%d\n", args.rankId, ret); return ret);
+    ret = aclrtMemcpy(epRecvCountsHostData.data(), epRecvCountsHostData.size() * sizeof(int32_t),
+                      epRecvCountsDeviceAddr, epRecvCountsHostData.size() * sizeof(int32_t),
+                      ACL_MEMCPY_DEVICE_TO_HOST);
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("[ERROR] rank_%u copy epRecvCounts failed, ret=%d\n", args.rankId, ret); return ret);
+
+    int64_t actualTokenNum = epRecvCountsHostData.back();
+    CHECK_RET(actualTokenNum == expectedTokenNum,
+              LOG_PRINT("[ERROR] rank_%u token count mismatch, expected=%ld, actual=%ld\n", args.rankId,
+                        expectedTokenNum, actualTokenNum);
+              return -1);
+    for (int64_t outputToken = 0; outputToken < actualTokenNum; ++outputToken) {
+        uint32_t sourceRank = outputToken / tokensPerSourceRank;
+        uint32_t indexInSource = outputToken % tokensPerSourceRank;
+        uint32_t sourceToken = args.epRankId + indexInSource * EP_WORLD_SIZE_A2;
+        float expectedScale = MakeTokenScale(sourceRank, sourceToken);
+        CHECK_RET(dynamicScalesHostData[outputToken] == expectedScale,
+                  LOG_PRINT("[ERROR] rank_%u scale mismatch at token=%ld, expected=%f, actual=%f\n", args.rankId,
+                            outputToken, expectedScale, dynamicScalesHostData[outputToken]);
+                  return -1);
+        for (uint32_t hIndex = 0; hIndex < static_cast<uint32_t>(H); ++hIndex) {
+            int32_t expectedValue = MakePackedInt4Value(sourceRank, sourceToken, hIndex);
+            int32_t actualValue = expandXHostData[outputToken * H + hIndex];
+            CHECK_RET(actualValue == expectedValue,
+                      LOG_PRINT("[ERROR] rank_%u x mismatch at token=%ld, h=%u, expected=0x%08x, actual=0x%08x\n",
+                                args.rankId, outputToken, hIndex, static_cast<uint32_t>(expectedValue),
+                                static_cast<uint32_t>(actualValue));
+                      return -1);
+        }
+    }
+    LOG_PRINT("[INFO] rank_%u int32 dispatch verification passed, tokenNum=%ld, H_pack=%ld.\n", args.rankId,
+              actualTokenNum, H);
+
+    if (workspaceAddr != nullptr) {
+        aclrtFree(workspaceAddr);
+    }
+    DestroyTensor(x);
+    DestroyTensor(expertIds);
+    DestroyTensor(scales);
+    DestroyTensor(expandX);
+    DestroyTensor(dynamicScales);
+    DestroyTensor(assistInfoForCombine);
+    DestroyTensor(expertTokenNums);
+    DestroyTensor(epRecvCounts);
+    DestroyTensor(tpRecvCounts);
+    DestroyTensor(expandScales);
+    FreeDeviceAddr(xDeviceAddr);
+    FreeDeviceAddr(expertIdsDeviceAddr);
+    FreeDeviceAddr(scalesDeviceAddr);
+    FreeDeviceAddr(expandXDeviceAddr);
+    FreeDeviceAddr(dynamicScalesDeviceAddr);
+    FreeDeviceAddr(assistInfoForCombineDeviceAddr);
+    FreeDeviceAddr(expertTokenNumsDeviceAddr);
+    FreeDeviceAddr(epRecvCountsDeviceAddr);
+    FreeDeviceAddr(tpRecvCountsDeviceAddr);
+    FreeDeviceAddr(expandScalesDeviceAddr);
+
+    HcclCommDestroy(args.hcclEpComm);
+    aclrtDestroyStream(args.dispatchV2Stream);
+    aclrtDestroyStream(args.combineV2Stream);
+    aclrtDestroyContext(args.context);
+    aclrtResetDevice(args.rankId);
+    return ACL_SUCCESS;
 }
 
 int launchOneThreadDispatchV2AndCombineV2_A2(Args &args)
@@ -650,17 +863,22 @@ int run_example_on_A2()
         args[rankId].dispatchV2Stream = dispatchV2Stream[rankId];
         args[rankId].combineV2Stream = combineV2Stream[rankId];
         args[rankId].context = context[rankId];
-        threads[rankId].reset(new (std::nothrow)
-                                  std::thread(&launchOneThreadDispatchV2AndCombineV2_A2, std::ref(args[rankId])));
+        threads[rankId].reset(new (std::nothrow) std::thread([&args, rankId]() {
+            args[rankId].result = launchOneThreadDispatchV2Int32_A2(args[rankId]);
+        }));
     }
 
+    int testResult = ACL_SUCCESS;
     for (uint32_t rankId = 0; rankId < DEV_NUM_A2; rankId++) {
         threads[rankId]->join();
+        if (args[rankId].result != ACL_SUCCESS) {
+            testResult = args[rankId].result;
+        }
     }
 
     aclFinalize();
     LOG_PRINT("[INFO] aclFinalize success\n");
-    return 0;
+    return testResult;
 }
 
 int run_example_on_A3A5()
@@ -722,16 +940,18 @@ int main(int argc, char *argv[])
         return 0;
     }
     int actual_env_dev_num = std::stoi(std::string(env_dev_num));
-    if (actual_env_dev_num < DEV_NUM) {
-        LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %d, currently not supported\n", actual_env_dev_num, DEV_NUM);
+    uint32_t requiredDeviceNum = IS_TEST_A2 ? DEV_NUM_A2 : DEV_NUM;
+    if (actual_env_dev_num < static_cast<int>(requiredDeviceNum)) {
+        LOG_PRINT("[INFO] ENV_DEV_NUM = %d is less than %u, currently not supported\n", actual_env_dev_num,
+                  requiredDeviceNum);
         return 0;
     }
     if (IS_TEST_A2) {
-        LOG_PRINT("Example on <Atlas A2> will be executed!\n");
-        int ret = run_example_on_A2();
+        LOG_PRINT("INT32 dispatch example on <Atlas A2> will be executed!\n");
+        return run_example_on_A2();
     } else if (IS_TEST_A3A5) {
         LOG_PRINT("Example on <Atlas A3> or <Atlas A5> will be executed!\n");
-        int ret = run_example_on_A3A5();
+        return run_example_on_A3A5();
     }
 
     return 0;
