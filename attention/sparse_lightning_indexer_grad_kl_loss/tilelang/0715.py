@@ -192,11 +192,6 @@ def tilelang_grad_kl_loss_single_kernel(
     g_num = Nidx1 // vector_baseg
 
     v3_chunks = Nidx1 // 4
-    v3_groups_per_aiv = v3_chunks // 2
-    dq_rows_per_aiv = v3_groups_per_aiv * 4
-    dq_rows_per_chunk = 8 if dq_rows_per_aiv >= 8 else dq_rows_per_aiv
-    dq_groups_per_chunk = dq_rows_per_chunk // 4
-    dq_chunk_num = (dq_rows_per_aiv + dq_rows_per_chunk - 1) // dq_rows_per_chunk
     @T.prim_func
     def main(
         # === SPECIAL: int32 indices must be first to avoid dtype inference issues ===
@@ -804,12 +799,12 @@ def tilelang_grad_kl_loss_single_kernel(
             with T.Scope("V"):
                 T.wait_cross_flag(3)
 
-                # Batch dQueryIndex writeback in 8 rows per AIV chunk to
-                # reduce the number of MTE3 transfers and event waits.
-                dq_fp32_db = T.alloc_ub((2, dq_rows_per_chunk, BLOCK_K), calc_dtype)
-                dq_fp16_db = T.alloc_ub((2, dq_rows_per_chunk, BLOCK_K), input_dtype)
+                dq_fp32_db = T.alloc_ub((2, 4, BLOCK_K), calc_dtype)
+                dq_fp16_db = T.alloc_ub((2, 4, BLOCK_K), input_dtype)
                 dk_chunk_0 = T.alloc_ub((1, DQueryIndex), calc_dtype)
                 dk_chunk_1 = T.alloc_ub((1, DQueryIndex), calc_dtype)
+
+                g_per_aiv = v3_chunks // 2
                 half_block = n_block // 2
 
                 for s1_row in T.serial(s1_start, s1_end):
@@ -817,7 +812,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Pipeline: MTE2 fill ∥ (V cast → MTE3 write) ∥ MTE2 prefetch
                     # Events: MTE2_V{7,8} (RAW), V_MTE3{7,8} (RAW), MTE3_MTE2{7,8} (WAR)
                     # vid 是 Python int(0/1)，直接算术求 g_start/g_end，避免 if/else 跨分支变量
-                    g_start = vid * v3_groups_per_aiv
+                    g_start = vid * g_per_aiv           # 0 or 32
+                    g_end = g_start + g_per_aiv         # 32 or 64
 
                     # Pre-fill WAR: both slots initially free
                     T.set_flag("mte3", "mte2", 7)
@@ -826,33 +822,32 @@ def tilelang_grad_kl_loss_single_kernel(
                     # Prologue: MTE2 fill + V cast for slot 0 (MTE3 deferred to loop)
                     T.wait_flag("mte3", "mte2", 7)
                     for d_idx in T.serial(d_num_query_index):
-                        T.copy(dQueryIndexAccum[bz, s1_row, g_start * 4:(g_start + dq_groups_per_chunk) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[0, :, :])
+                        T.copy(dQueryIndexAccum[bz, s1_row, g_start * 4:(g_start + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[0, :, :])
                     T.set_flag("mte2", "v", 7)
                     T.wait_flag("mte2", "v", 7)
-                    T.tile.cast(dq_fp16_db[0, :, :], dq_fp32_db[0, :, :], "CAST_ROUND", dq_rows_per_chunk * BLOCK_K)
+                    T.tile.cast(dq_fp16_db[0, :, :], dq_fp32_db[0, :, :], "CAST_ROUND", 4 * BLOCK_K)
                     T.set_flag("v", "mte3", 7)
 
-                    for chunk_id in T.serial(dq_chunk_num):
-                        cur = chunk_id % 2
-                        nxt = (chunk_id + 1) % 2
-                        chunk_start = g_start + chunk_id * dq_groups_per_chunk
+                    for g_id in T.serial(g_start, g_end):
+                        cur = (g_id - g_start) % 2
+                        nxt = (g_id - g_start + 1) % 2
 
                         # MTE3 write slot cur → GM (∥ MTE2+V prefetch of nxt)
                         T.wait_flag("v", "mte3", cur + 7)
                         for d_idx in T.serial(d_num_query_index):
-                            T.copy(dq_fp16_db[cur, :, :], dQueryIndex[bz, s1_row, chunk_start * 4:(chunk_start + dq_groups_per_chunk) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
+                            T.copy(dq_fp16_db[cur, :, :], dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
                         # WAR: slot cur consumed → safe to refill
                         T.set_flag("mte3", "mte2", cur + 7)
 
-                        # Prefetch next chunk → slot nxt (MTE2 fill + V cast)
-                        if chunk_id + 1 < dq_chunk_num:
-                            next_chunk_start = g_start + (chunk_id + 1) * dq_groups_per_chunk
+                        # Prefetch next g_id → slot nxt (MTE2 fill + V cast)
+                        next_g = g_id + 1
+                        if next_g < g_end:
                             T.wait_flag("mte3", "mte2", nxt + 7)
                             for d_idx in T.serial(d_num_query_index):
-                                T.copy(dQueryIndexAccum[bz, s1_row, next_chunk_start * 4:(next_chunk_start + dq_groups_per_chunk) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[nxt, :, :])
+                                T.copy(dQueryIndexAccum[bz, s1_row, next_g * 4:(next_g + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[nxt, :, :])
                             T.set_flag("mte2", "v", nxt + 7)
                             T.wait_flag("mte2", "v", nxt + 7)
-                            T.tile.cast(dq_fp16_db[nxt, :, :], dq_fp32_db[nxt, :, :], "CAST_ROUND", dq_rows_per_chunk * BLOCK_K)
+                            T.tile.cast(dq_fp16_db[nxt, :, :], dq_fp32_db[nxt, :, :], "CAST_ROUND", 4 * BLOCK_K)
                             T.set_flag("v", "mte3", nxt + 7)
 
                     # Clear: drain remaining WAR events
