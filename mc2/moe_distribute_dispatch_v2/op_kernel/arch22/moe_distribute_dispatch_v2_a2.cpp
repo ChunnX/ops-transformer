@@ -36,7 +36,7 @@ moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR
     TPipe pipe;
 #if ((ORIG_DTYPE_EXPAND_X == DT_BF16) || (ORIG_DTYPE_EXPAND_X == DT_FLOAT16))
     if constexpr ((ArchTag == TILINGKEY_TPL_A2) && (CommMode == TILINGKEY_TPL_MTE)) {
-        MoeDistributeDispatchA2<DTYPE_X, DTYPE_EXPAND_X, false, false, false> op;
+        MoeDistributeDispatchA2<DTYPE_X, DTYPE_EXPAND_X, false, false, false, false> op;
         op.Init(x, expertIds, scales, xActiveMask, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
                 expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, tilingGM);
         op.Process();
@@ -57,13 +57,13 @@ moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR
     }
 #elif (ORIG_DTYPE_EXPAND_X == DT_INT8)
     if constexpr ((ArchTag == TILINGKEY_TPL_A2) && (CommMode == TILINGKEY_TPL_MTE) && (ScaleMode == false)) {
-        MoeDistributeDispatchA2<DTYPE_X, DTYPE_EXPAND_X, false, true, false> op;
+        MoeDistributeDispatchA2<DTYPE_X, DTYPE_EXPAND_X, false, true, false, false> op;
         op.Init(x, expertIds, scales, xActiveMask, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
                 expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, tilingGM);
         op.Process();
     }
     if constexpr ((ArchTag == TILINGKEY_TPL_A2) && (CommMode == TILINGKEY_TPL_MTE) && (ScaleMode == true)) {
-        MoeDistributeDispatchA2<DTYPE_X, DTYPE_EXPAND_X, false, true, true> op;
+        MoeDistributeDispatchA2<DTYPE_X, DTYPE_EXPAND_X, false, true, true, false> op;
         op.Init(x, expertIds, scales, xActiveMask, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
                 expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, tilingGM);
         op.Process();
@@ -97,6 +97,14 @@ moe_distribute_dispatch_v2(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR
                     expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, &pipe, tilingGM, contextGM0);
             op.Process();
         }
+    }
+#elif ((ORIG_DTYPE_X == DT_INT32) && (ORIG_DTYPE_EXPAND_X == DT_INT32))
+    if constexpr ((ArchTag == TILINGKEY_TPL_A2) && (CommMode == TILINGKEY_TPL_MTE) &&
+                  (FullMesh == TILINGKEY_NO_FULLMESH) && (QuantMode == TILINGKEY_NO_QUANT) && (ScaleMode == true)) {
+        MoeDistributeDispatchA2<DTYPE_X, DTYPE_EXPAND_X, false, false, false, true> op;
+        op.Init(x, expertIds, scales, xActiveMask, performanceInfo, expandXOut, dynamicScalesOut, assistInfoOut,
+                expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, tilingGM);
+        op.Process();
     }
 #endif
 }
