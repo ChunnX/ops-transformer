@@ -132,10 +132,10 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto RG_L0A_dk = ascend_l0a.GetWithOffset<half>(4096, 0);
   auto QI_L0B_dk = ascend_l0b.GetWithOffset<half>(8192, 0);
   auto DK_L0C = ascend_l0c.GetWithOffset<float>(8192, 81920);
-  auto dq_fp32_db = ascend_ub.GetWithOffset<float>(2048, 9728);
-  auto dq_fp16_db = ascend_ub.GetWithOffset<half>(2048, 17920);
+  auto dq_fp32_db = ascend_ub.GetWithOffset<float>(1024, 9728);
+  auto dq_fp16_db = ascend_ub.GetWithOffset<half>(1024, 13824);
   auto dk_chunk_0 = ascend_ub.GetWithOffset<float>(128, 195456);
-  auto dk_chunk_1 = ascend_ub.GetWithOffset<float>(128, 22016);
+  auto dk_chunk_1 = ascend_ub.GetWithOffset<float>(128, 15872);
   auto vid = AscendC::GetSubBlockIdx();
   if ASCEND_IS_AIV {
     tl::ascend::Fill<half>(zero_key_row[0], 0, 512);
@@ -495,22 +495,22 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
     AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(7);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(8);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(7);
-    tl::ascend::copy_gm_to_ub<float, 128, 8>(dq_fp32_db[0], dQueryIndexAccum[(vid * 4096)], 128, 8, 128, 0.000000e+00f);
+    tl::ascend::copy_gm_to_ub<float, 128, 4>(dq_fp32_db[0], dQueryIndexAccum[(vid * 4096)], 128, 4, 128, 0.000000e+00f);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(7);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(7);
-    AscendC::Cast(dq_fp16_db[0], dq_fp32_db[0], AscendC::RoundMode::CAST_ROUND, 1024);
+    AscendC::Cast(dq_fp16_db[0], dq_fp32_db[0], AscendC::RoundMode::CAST_ROUND, 512);
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(7);
-    for (int32_t chunk_id_1 = 0; chunk_id_1 < 4; ++chunk_id_1) {
-      AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(((chunk_id_1 % 2) + 7));
-      tl::ascend::copy_ub_to_gm<half, 128, 8>(dQueryIndex[((vid * 4096) + (chunk_id_1 * 1024))], dq_fp16_db[((chunk_id_1 % 2) * 1024)], 128, 8, 128);
-      AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(((chunk_id_1 % 2) + 7));
-      if (chunk_id_1 < 3) {
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>((((chunk_id_1 + 1) % 2) + 7));
-        tl::ascend::copy_gm_to_ub<float, 128, 8>(dq_fp32_db[(((chunk_id_1 + 1) % 2) * 1024)], dQueryIndexAccum[(((vid * 4096) + (chunk_id_1 * 1024)) + 1024)], 128, 8, 128, 0.000000e+00f);
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>((((chunk_id_1 + 1) % 2) + 7));
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>((((chunk_id_1 + 1) % 2) + 7));
-        AscendC::Cast(dq_fp16_db[(((chunk_id_1 + 1) % 2) * 1024)], dq_fp32_db[(((chunk_id_1 + 1) % 2) * 1024)], AscendC::RoundMode::CAST_ROUND, 1024);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>((((chunk_id_1 + 1) % 2) + 7));
+    for (int32_t g_id_1 = (vid * 8); g_id_1 < ((vid * 8) + 8); ++g_id_1) {
+      AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(((g_id_1 % 2) + 7));
+      tl::ascend::copy_ub_to_gm<half, 128, 4>(dQueryIndex[(g_id_1 * 512)], dq_fp16_db[((g_id_1 % 2) * 512)], 128, 4, 128);
+      AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(((g_id_1 % 2) + 7));
+      if (g_id_1 < ((vid * 8) + 7)) {
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>((((g_id_1 + 1) % 2) + 7));
+        tl::ascend::copy_gm_to_ub<float, 128, 4>(dq_fp32_db[(((g_id_1 + 1) % 2) * 512)], dQueryIndexAccum[((g_id_1 * 512) + 512)], 128, ((g_id_1 <= 14) ? 4 : 0), 128, 0.000000e+00f);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_V>((((g_id_1 + 1) % 2) + 7));
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>((((g_id_1 + 1) % 2) + 7));
+        AscendC::Cast(dq_fp16_db[(((g_id_1 + 1) % 2) * 512)], dq_fp32_db[(((g_id_1 + 1) % 2) * 512)], AscendC::RoundMode::CAST_ROUND, 512);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>((((g_id_1 + 1) % 2) + 7));
       }
     }
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(7);
