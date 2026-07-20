@@ -44,7 +44,7 @@ struct PAShape{
 struct Position{
     uint32_t bIdx;
     uint32_t n2Idx;
-    uint32_t s2Offset;
+    uint64_t s2Offset;
     uint32_t dIdx; // N轴被切，对应D轴被切
 };
 
@@ -144,8 +144,8 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
                                 const PAShape &shape, const Position &startPos)
 {
     uint32_t copyFinishRowCnt = 0;
-    uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch; // 块表的基偏移量
-    uint32_t curS2Idx = startPos.s2Offset;
+    uint64_t blockTableBaseOffset = static_cast<uint64_t>(startPos.bIdx) * shape.maxblockNumPerBatch; // 块表的基偏移量
+    uint64_t curS2Idx = startPos.s2Offset;
     uint32_t blockElementCnt = 32U / sizeof(L1Type); // 每个块的元素数量
     while(copyFinishRowCnt < shape.copyRowNum){
         uint64_t blockIdOffset = curS2Idx / shape.blockSize; // 获取block table上的索引
@@ -158,19 +158,21 @@ __aicore__ inline void GmCopyInToL1PA(LocalTensor<L1Type>& l1Tensor, GlobalTenso
         }
         uint64_t offset = idInBlockTable * shape.blockSize * shape.headNum * shape.headDim; // PA的偏移
         if (kvLayout == KVLAYOUT::NZ) {
-            offset += static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.headDim) + remainRowCnt * blockElementCnt + startPos.dIdx * shape.blockSize;
-            
+            offset += static_cast<uint64_t>(startPos.n2Idx) * shape.blockSize * shape.headDim +
+                      remainRowCnt * blockElementCnt + static_cast<uint64_t>(startPos.dIdx) * shape.blockSize;
+
             LocalTensor<L1Type> tmpNopeDstTensor = l1Tensor[copyFinishRowCnt * blockElementCnt];
             GlobalTensor<L1Type> tmpNopeSrcTensor = gmTensor[offset];
             DataCopyGmNZToL1(tmpNopeDstTensor, tmpNopeSrcTensor, copyRowCnt, (shape.copyRowNumAlign - copyRowCnt), (shape.blockSize - copyRowCnt), shape.actHeadDim);
         } else {
             uint64_t dStride = shape.headDim;
             if (kvLayout == KVLAYOUT::BBH) {
-                offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim) + remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
+                offset += static_cast<uint64_t>(startPos.n2Idx) * shape.headDim +
+                          remainRowCnt * shape.headDim * shape.headNum + startPos.dIdx;
                 dStride = shape.headDim * shape.headNum;
             } else {
                 offset = idInBlockTable * shape.pageStride +
-                    static_cast<uint64_t>(startPos.n2Idx * shape.blockSize * shape.rowStride) +
+                    static_cast<uint64_t>(startPos.n2Idx) * shape.blockSize * shape.rowStride +
                     remainRowCnt * shape.rowStride + startPos.dIdx;
                 dStride = shape.rowStride;
             }
