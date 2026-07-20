@@ -570,7 +570,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.wait_cross_flag(13)
                 T.set_cross_flag("FIX", 13)
 
-# ============================================================
+            # ============================================================
             # V scope 1b: consume the exchanged P/SY results.
             # ============================================================
             with T.Scope("V"):
