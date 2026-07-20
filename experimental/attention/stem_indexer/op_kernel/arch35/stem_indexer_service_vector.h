@@ -19,6 +19,7 @@
 #include "stem_indexer_common.h"
 #include "../arch35/vf/stem_indexer_vector1.h"
 #include "../arch35/vf/stem_indexer_topk.h"
+#include "../arch35/vf/stem_indexer_topk_utils.h"
 
 namespace SIKernel {
 using namespace SICommon;
@@ -419,11 +420,11 @@ __aicore__ inline void SIVector<SIT>::RunTopKBatchRows(
 
     // padding（各行按自身 s2BlockValidLen 补齐到 trunkLen，非零行结果一致）
     if (isFirstS2InnerLoop) {
-        vector1::PadMrgFourRowsFirstS2RangeVF<SCORE_T>(mrgValueLocal_, rowIdx4, topkNum4, s2ValidLen4,
+        TopkUtils::PadMrgFourRowsFirstS2RangeVF<SCORE_T>(mrgValueLocal_, rowIdx4, topkNum4, s2ValidLen4,
                                               batchRowNum, mrgRowStride_,
                                               trunkLen_);
     } else {
-        vector1::PadMrgFourRowsNotFirstS2RangeVF<SCORE_T>(mrgValueLocal_, rowIdx4, topkNum4, s2ValidLen4,
+        TopkUtils::PadMrgFourRowsNotFirstS2RangeVF<SCORE_T>(mrgValueLocal_, rowIdx4, topkNum4, s2ValidLen4,
                                                  batchRowNum,
                                                  mrgRowStride_, trunkLen_);
     }
@@ -462,7 +463,7 @@ __aicore__ inline void SIVector<SIT>::RunTopKBatchRows(
         uint32_t globalIndexOffset = mInnerIdx * MAX_TOPK_COUNT;
         LocalTensor<uint32_t> packedRow =
             mrgValueLocal_[mrgValueOffset].template ReinterpretCast<uint32_t>();
-        vector1::PackSparseIndicesU32VF(
+        TopkUtils::PackSparseIndicesU32VF(
             packedRow, globalIndexLocal_[globalIndexOffset], packedOutputLen,
             initialBlocks_, topkSelectNum, windowSize_, curS1RealS2Len - windowSize_);
 
@@ -497,7 +498,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     // 当mBaseSize大于等于actS1Size时， curAivS1Size为info.actS1Size
     uint32_t curAivS1Size = Min(info.actS1Size, static_cast<uint32_t>(curAivGS1ProcNum));
     if (isFirstS2InnerLoop && initialBlocks_ > 0) {
-        vector1::PadMrgRowsInitBlockVF(mrgValueLocal_, mrgRowStride_,
+        TopkUtils::PadMrgRowsInitBlockVF(mrgValueLocal_, mrgRowStride_,
                                        static_cast<uint32_t>(curAivGS1ProcNum), TOPK_ALIGN_SIZE, initialBlocks_);
     }
 
@@ -533,7 +534,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                     uint32_t globalIndexOffset = mInnerIdx * MAX_TOPK_COUNT;
                     LocalTensor<uint32_t> packedRow =
                         mrgValueLocal_[mrgValueOffset].template ReinterpretCast<uint32_t>();
-                    vector1::PackSparseIndicesU32VF(
+                    TopkUtils::PackSparseIndicesU32VF(
                         packedRow, globalIndexLocal_[globalIndexOffset], packedOutputLen,
                         0U, 0U, directOutputLen, 0U);
                     Duplicate(indiceLenLocal_[mInnerIdx * INDICE_LEN_ROW_STRIDE], directOutputLen, 1);
