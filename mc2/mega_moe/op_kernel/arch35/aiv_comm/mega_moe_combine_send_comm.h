@@ -251,7 +251,7 @@ __aicore__ inline void DrainUrmaConnections(uint32_t startRankId, uint32_t endRa
 // CombineSendTokenToRemote: single-tile sender; tile scheduling is owned by the caller.
 // =============================================
 template <typename ElementMMadOut2>
-__aicore__ inline void CombineSendTokenToRemote(uint32_t tileId, uint32_t tileNum, const Params &params)
+__aicore__ inline void CombineSendTokenToRemote(uint32_t jobIndex, uint32_t totalJobs, const Params &params)
 {
     uint32_t maxDataLengthPerBlock =
         Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(ElementMMadOut2)), (int64_t)ALIGN_32);
@@ -262,10 +262,10 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t tileId, uint32_t tileNu
 
     uint32_t rankId = params.combineCommParams.rankId;
     uint32_t worldSize = params.tilingData->epWorldSize;
-    uint32_t rankPerTile = worldSize / tileNum;
-    uint32_t remainder = worldSize % tileNum;
-    uint32_t startRankId = rankPerTile * tileId + (tileId < remainder ? tileId : remainder);
-    uint32_t processRankNum = rankPerTile + (tileId < remainder ? 1 : 0);
+    uint32_t rankPerTile = worldSize / totalJobs;
+    uint32_t remainder = worldSize % totalJobs;
+    uint32_t startRankId = rankPerTile * jobIndex + (jobIndex < remainder ? jobIndex : remainder);
+    uint32_t processRankNum = rankPerTile + (jobIndex < remainder ? 1 : 0);
     uint32_t endRankId = startRankId + processRankNum;
     uint32_t cntTensorLength =
         Ops::Base::CeilAlign(static_cast<uint64_t>(processRankNum) * sizeof(uint32_t), (uint64_t)ALIGN_32);
@@ -320,9 +320,9 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t tileId, uint32_t tileNu
 template <typename ElementMMadOut2>
 __aicore__ inline void CombineSendTokenToRemote(const Params &params)
 {
-    uint32_t tileId = GetBlockIdx() / GetTaskRation();
-    uint32_t tileNum = GetBlockNum();
-    CombineSendTokenToRemote<ElementMMadOut2>(tileId, tileNum, params);
+    uint32_t jobIndex = GetBlockIdx() / GetTaskRation();
+    uint32_t totalJobs = GetBlockNum();
+    CombineSendTokenToRemote<ElementMMadOut2>(jobIndex, totalJobs, params);
 }
 
 // =============================================
