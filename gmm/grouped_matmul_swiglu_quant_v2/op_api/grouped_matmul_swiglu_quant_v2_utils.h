@@ -613,6 +613,9 @@ protected:
     int64_t GetWeightK(const aclTensor *weight) const
     {
         auto dimNum = weight->GetViewShape().GetDimNum();
+        if (gmmDsqParams_.isMxA8W4 && IsMultiTensorWeight()) {
+            return weight->GetViewShape().GetDim(0);
+        }
         return gmmDsqParams_.transposeWeight
             ? weight->GetViewShape().GetDim(dimNum - 1)
             : weight->GetViewShape().GetDim(dimNum - LAST_SECOND_DIM_INDEX);
@@ -621,6 +624,9 @@ protected:
     int64_t GetWeightN(const aclTensor *weight) const
     {
         auto dimNum = weight->GetViewShape().GetDimNum();
+        if (gmmDsqParams_.isMxA8W4 && IsMultiTensorWeight()) {
+            return weight->GetViewShape().GetDim(1);
+        }
         return gmmDsqParams_.transposeWeight
             ? weight->GetViewShape().GetDim(dimNum - LAST_SECOND_DIM_INDEX)
             : weight->GetViewShape().GetDim(dimNum - 1);
@@ -711,13 +717,9 @@ protected:
         for (size_t i = 0; i < gmmDsqParams_.weight->Size(); i++) {
             const aclTensor *weight = (*gmmDsqParams_.weight)[i];
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
-            if (gmmDsqParams_.transposeWeight) {
+            if (gmmDsqParams_.transposeWeight && !gmmDsqParams_.isMxA8W4) {
                 GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
-                if (gmmDsqParams_.isMxA8W4) {
-                    GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
-                } else {
-                    GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
-                }
+                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
             } else {
                 GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightExpectShape, return false);
                 GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
@@ -973,9 +975,9 @@ protected:
     {
         int64_t m = gmmDsqParams_.x->GetViewShape().GetDim(0);
         int64_t k = gmmDsqParams_.x->GetViewShape().GetDim(1);
-        // 多tensor下shape:(n,k), 单tensor下shape:(e, n, k)
+        // MXA8W4多tensor下view shape为(k, n)，转置信息由stride表示；单tensor下shape为(e, n, k)
         int64_t n = IsMultiTensorWeight()
-            ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0)
+            ? GetWeightN((*gmmDsqParams_.weight)[0])
             : ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
         int64_t e = IsMultiTensorWeight()
             ? static_cast<int64_t>(gmmDsqParams_.weight->Size())
