@@ -28,6 +28,7 @@ if (BUILD_OPEN_PROJECT)  # custom
             OP_NAME MegaMoe
             OPTIONS --cce-auto-sync=off
             OPTIONS -I${OPTENSOR_INCLUDE_ROOT}
+            OPTIONS -DASCEND_TIME_STAMP_ON
         )
     else()
         add_ops_compile_options(
@@ -35,6 +36,7 @@ if (BUILD_OPEN_PROJECT)  # custom
             OPTIONS --cce-auto-sync=on
             OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
             OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel
+            OPTIONS -DASCEND_TIME_STAMP_ON
         )
     endif()
 
