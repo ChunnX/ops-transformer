@@ -214,7 +214,8 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::ComputeMm1(const LIV2
 
                     SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                     
-                    Fixp(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, s1gL0RealSize, s2L0RealSize, s1gL1SizeAlign2G, runInfo);
+                    Fixp(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, s1gL0RealSize, s2L0RealSize,
+                         s1gL1SizeAlign2G, runInfo);
                     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
                     l0BufIdx_++;
                 }
@@ -366,7 +367,7 @@ __aicore__ inline void LightningIndexerV2ServiceCube<LIT>::Fixp(uint64_t s1gGmOf
     // L0C->UB
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
     // L0C上的bmm1结果矩阵N方向的size大小；同mmadParams.n；8个元素（32B)对齐
-    fixpipeParams.nSize = (s2L0RealSize + 7) >> 3 << 3;
+    fixpipeParams.nSize = nSize;
     // 有效数据不足16行，只需输出部分行即可;L0C上的bmm1结果矩阵M方向的size大小必须是偶数
     fixpipeParams.mSize = s1gSizeAlign2G;
     // L0C上matmul结果相邻连续数据片断间隔（前面一个数据块的头与后面数据块的头的间隔），单位为16 *sizeof(T) //源NZ矩阵中相邻Z排布的起始地址偏移
