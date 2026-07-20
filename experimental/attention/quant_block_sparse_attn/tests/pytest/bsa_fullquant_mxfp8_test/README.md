@@ -96,7 +96,7 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 
 ```bash
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
-  --csv --case_name F_BS64_R5_N3_BN1_GT_AA
+  --csv --case_name F_BS64_R5_N3_GT_AA
 ```
 
 指定其他 CSV 或一次加载多个 CSV：
@@ -137,24 +137,32 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
 
 ## 批量用例设计
 
-`qbsa_mxfp8_test_cases.csv` 包含 500 条 case：
+`qbsa_mxfp8_test_cases.csv` 包含 212 条用例，其中 188 条默认启用，覆盖 `block_size=64/128`、重点和非重点
+head 组合、11 组可实现的 S1/S2 大小关系与对齐状态、`mask_mode=0/3`、不同稀疏模式、block-table
+顺序以及空 Tensor 场景。
 
-- 352 条重点全交叉：`block_size=64/128`、`N1/N2=5/16`、`N2=3/8`、
-  `block_num=1/128/256/512`，再与 11 组可实现的 S1/S2 大小关系及对齐状态完全交叉；
-- 72 条非重点 head 与 `mask_mode=0` 补充用例；
-- 48 条 `block_num=1024/2048/4096/8192` 用例；
-- 27 条非重点 head、稀疏模式和 block-table 模式的混合边界用例；
-- 1 条专用空 Tensor 用例：`actualSeqLengths` 和 `actualSeqLengthsKv` 传空 Tensor，序列长度仍由
-  `cuSeqlensQ/cuSeqlensKv` 表达。
+case 不再显式配置 `block_num`。物理页数与 common MX 保持一致，根据每个 batch 的实际 KV 长度自动计算：
 
-其中 48 条大 `block_num` 用例默认 `enable=false`，避免直接执行 `--csv` 时占用过多内存；仍可使用
-`--case_name` 点名执行。其余 452 条默认启用。
+```text
+block_num = sum(ceil(actual_seq_kv[b] / block_size))
+```
+
+每个逻辑页使用唯一物理页；`block_table_pattern` 只控制这些物理页编号的顺序，不改变物理页数量。
+
+以下字段仅用于记录用例设计，统一放在 case 属性末尾，不参与 pytest 的类型转换、校验或计算：
+
+```text
+case_group, s1_base_size, n1_n2_ratio, s1_s2_relation, alignment
+```
+
+CSV 按列名而非列位置解析，允许保留其他扩展参考列。因此已有外部泛化 CSV 即使列顺序不同或包含
+pytest 未使用的字段，也可以继续加载；实际运行字段仍需提供合法值。
 
 S1/S2 相等时，“S1 不对齐 128、S2 对齐 512”在数学上不可实现：一个数只要对齐 512，就必然对齐
 128。因此三个关系与四种对齐状态共有 11 个有效组合，而不是 12 个。
 
-`qbsa_mxfp8_test_cases_full.csv` 包含 11780 条单 batch 用例，补齐 `mask_mode=0/3` 与
-`return_softmax_lse=true/false` 的排列组合；小 `block_num` 完整交叉，大 `block_num` 采用重点抽样。
+`qbsa_mxfp8_test_cases_full.csv` 包含 2948 条单 batch 用例，补齐 `mask_mode=0/3` 与
+`return_softmax_lse=true/false` 的排列组合；物理页数统一由实际 KV 序列自动推导。
 
 `qbsa_mxfp8_test_cases_batch_large.csv` 包含 300 条全部启用的多 batch 典型与大规模用例：
 
@@ -168,7 +176,7 @@ S1/S2 相等时，“S1 不对齐 128、S2 对齐 512”在数学上不可实现
 - 40 条扩展 ragged/部分空 batch/部分 sparse 用例，将 batch 覆盖扩展到 `B=32`。
 
 默认 Python testcase 文件当前保留 6 条 BASE/MIX case，并包含 37 条默认启用的 STC，覆盖单 batch、
-多 batch、ragged、稀疏拼接、scale、mask、LSE、空输入和大 block_num 场景。
+多 batch、ragged、稀疏拼接、scale、mask、LSE、空输入和不同 block-table 顺序。
 
 ## Debug 模式
 
@@ -184,7 +192,7 @@ CSV case 同样支持 debug：
 
 ```bash
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
-  --csv --debug --case_name F_BS64_R5_N3_BN1_GT_AA
+  --csv --debug --case_name F_BS64_R5_N3_GT_AA
 ```
 
 也支持指定 `--mode` 为非 `all` 的组合，例如只复用已有缓存跑 NPU 对比，不再重新生成数据和
@@ -192,7 +200,7 @@ CPU golden：
 
 ```bash
 python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant_mxfp8_test/qbsa_mxfp8_golden.py \
-  --debug --case_name F_BS64_R5_N3_BN1_GT_AA --csv --mode="npu,compare"
+  --debug --case_name F_BS64_R5_N3_GT_AA --csv --mode="npu,compare"
 ```
 
 输出目录固定为 `debug/<case_name>/`：
@@ -269,7 +277,8 @@ python experimental/attention/quant_block_sparse_attn/tests/pytest/bsa_fullquant
   8 个 8192。
 - `enable`、`is_contiguous`、`return_softmax_lse`、`empty_actual_seq` 使用 `true/false`。
 - `softmax_scale` 留空时，脚本按 `1 / sqrt(D)` 自动补齐。
-- `N1` 必须等于 `N2 * n1_n2_ratio`。
+- `N1` 必须能被 `N2` 整除；`n1_n2_ratio` 仅记录用例设计，不参与运行校验。
+- `s2_base_size` 是 golden 划分 C1 子块的必需运行字段，当前 MXFP8 模板固定为 `512`。
 - `block_size`、`sparse_q_block_size`、`sparse_kv_block_size` 必须相等。
-- `s1_s2_relation` 与 `alignment` 会根据 `S1/S2` 及 `s1_base_size/s2_base_size` 做一致性校验。
+- `s1_s2_relation`、`alignment` 和 `s1_base_size` 仅作为覆盖场景说明保留，不参与 pytest 计算或校验。
 - CSV 可直接扩展到多行；case 名称在一个或多个输入文件之间都不能重复。
