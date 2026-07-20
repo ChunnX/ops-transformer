@@ -256,7 +256,7 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
             GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
             GM_ADDR dstAddr = GetUrmaAddrByRankId(epIdx, expertIdx) + epDataOffsetOnWin_;
             uint32_t length = static_cast<uint32_t>(axisHExpandXTypeSize_) * max(curTokenNum, 1U);
-            if (sendExpertId != curRankExpertNum - 1 && curTokenNum > 0) {
+            if (expertIdx != curRankExpertNum - 1 && curTokenNum > 0) {
                 hcomm_.WriteNbi<false>(channelId, dstAddr, srcAddr, length);
             }
             else {
@@ -265,7 +265,8 @@ __aicore__ inline void MoeDistributeCombineSetup<TemplateMC2TypeFunc>::Communica
                     dstAddr = GetUrmaAddrByRankId(epIdx) + epDataOffsetOnWin_;
                     length = 0;
                 }
-                hcomm_.WriteWithNotifyNbi<false>(channelId, dstAddr, srcAddr, length, notifyAddr, 0U);
+                uint64_t notifyVal = 0x3f800000;
+                hcomm_.WriteWithNotifyNbi<false>(channelId, dstAddr, srcAddr, length, notifyAddr, notifyVal);
             }
             hasWrite = true;
         }
@@ -297,7 +298,7 @@ MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(const LocalTensor<in
         }
 
         GM_ADDR srcAddr = expandXGM_ + static_cast<uint64_t>(preCount) * axisHExpandXTypeSize_;
-        GM_ADDR dstAddr = GetWinAddrByRankId(epRankId_, expertIdx) + epDataOffsetOnWin_;
+        GM_ADDR dstAddr = GetUrmaAddrByRankId(epRankId_, expertIdx) + epDataOffsetOnWin_;
 
         // expandX在GM上，winIn也属于GM，
         // 因此，数据需要GM -> local -> winIn
@@ -336,7 +337,7 @@ MoeDistributeCombineSetup<TemplateMC2TypeFunc>::CurRankComm(const LocalTensor<in
     // 向本卡状态区写状态
     GlobalTensor<int32_t> selfStatusTensor;
     selfStatusTensor.SetGlobalBuffer(
-        (__gm__ int32_t *)(GetWinStateAddrByRankId(epRankId_) + epStateOffsetOnWin_));
+        (__gm__ int32_t *)(GetUrmaStateAddrByRankId(epRankId_) + epStateOffsetOnWin_));
     selfStatusTensor.SetValue(0, 0x3f800000);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(selfStatusTensor);
 }
