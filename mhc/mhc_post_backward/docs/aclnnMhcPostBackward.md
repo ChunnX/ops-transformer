@@ -112,7 +112,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>MHC的hRes变换矩阵</td>
       <td>
         <ul>      
-          <li>支持空Tensor</li>
+          <li>不支持空Tensor</li>
         </ul>
       </td>
       <td>FLOAT32</td>
