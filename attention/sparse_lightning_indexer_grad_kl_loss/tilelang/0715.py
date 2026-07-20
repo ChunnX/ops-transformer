@@ -611,7 +611,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
                     rg_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    mask_2d_ub = T.alloc_ub((vector_baseg, n_block // 8), "uint8")
+                    mask_ub = T.alloc_ub(n_block // 8, "uint8")
                     rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
                     dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
                     eps_ub = T.alloc_ub(n_block, calc_dtype)
@@ -652,20 +652,19 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "v", 7)
                             T.wait_flag("mte2", "v", 7)
 
-                            # bmm2Res is ReLU output from MM2. Build the exact
-                            # ReLU mask directly instead of approximating it
-                            # with exp(-10000 * x).
-                            T.tile.compare(mask_2d_ub, dw_chunk_ub, 0.0, "GT")
-                            T.pipe_barrier("v")
-
                             # Op1: rg = weight_slice * diff (2D)
                             # weight切片逐行copy（整块copy参数在CANN 9.1下不正确）
                             for i in T.serial(vector_baseg):
                                 T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
                             T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
-                            # Op2: apply the exact ReLU mask (2D)
                             T.pipe_barrier("v")
-                            T.tile.select(rg_chunk_ub, mask_2d_ub, rg_chunk_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
+                            # CANN 9.0 lowering supports the ReLU mask path
+                            # reliably as row-wise packed Compare/Select.
+                            for i in T.serial(vector_baseg):
+                                T.tile.compare(mask_ub, dw_chunk_ub[i, :], 0.0, "GT")
+                                T.pipe_barrier("v")
+                                T.tile.select(rg_chunk_ub[i, :], mask_ub, rg_chunk_ub[i, :], 0.0, "VSEL_TENSOR_SCALAR_MODE")
+                                T.pipe_barrier("v")
                             # Op3: dw *= diff (2D, was per-row 1D mul)
                             T.pipe_barrier("v")
                             T.tile.mul(dw_chunk_ub, dw_chunk_ub, diff_2d_ub)
