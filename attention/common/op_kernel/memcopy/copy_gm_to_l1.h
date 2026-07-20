@@ -55,17 +55,16 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
         nd2nzPara.dstNzMatrixStride = 0;
         nd2nzPara.ndNum = 1;
         nd2nzPara.nValue = 1;
+        if constexpr (IsSameType<T, int4b_t>::value) {
+            constexpr uint32_t HALF_SIZE_DIVISOR = 2;
+            nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
+            nd2nzPara.srcDValue = dValue / HALF_SIZE_DIVISOR;
+        } else {
+            nd2nzPara.dValue = dValue;
+            nd2nzPara.srcDValue = dValue;
+        }
         for (uint32_t i = 0; i < nValue; i++) {
-            if constexpr (IsSameType<T, int4b_t>::value) {
-                constexpr uint32_t HALF_SIZE_DIVISOR = 2;
-                nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
-                nd2nzPara.srcDValue = dValue / HALF_SIZE_DIVISOR;
-            } else {
-                nd2nzPara.dValue = dValue;
-                nd2nzPara.srcDValue = dValue;
-            }
             DataCopy(l1Tensor[l1Offset], gmTensor[gmOffset], nd2nzPara);
-
             gmOffset += srcDValue;
             l1Offset += BLOCK_ELEMENT_CNT;
         }
