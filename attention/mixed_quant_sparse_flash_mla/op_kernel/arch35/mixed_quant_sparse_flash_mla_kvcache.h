@@ -57,7 +57,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     }
 
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
-        TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_MODE) {
+        TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
             if (hasActualSeqCmpKvlen) {
                 actualS2CmpSize = actualSeqCmpKvlenGm.GetValue(bIdx);
@@ -75,7 +75,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     runParam.actualS1Size = actualS1Size;
     runParam.actualS2OriSize = actualS2OriSize;
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
-        TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_MODE) {
+        TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         runParam.actualS2CmpSize = actualS2CmpSize;
         runParam.cmpResidual = cmpResidualKvGm.GetValue(bIdx);
         runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio +
@@ -129,8 +129,8 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
 
     int32_t gs1LoopEndIdx = 0;
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
-        TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_MODE ||
-        TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+        TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         gs1LoopEndIdx = runParam.actualS1Size;
     } else { // SWA/HCA
         // 不需要取topk, 每次计算gSize行, 循环qs次
@@ -249,8 +249,8 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 TEMPLATE_INTF
 __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index,
     GlobalTensor<int32_t> &cuSeqlensQGm,
-    GlobalTensor<int32_t>& oriTopkLengthGm, bool hasOriTopkLength,
-    GlobalTensor<int32_t>& cmpTopkLengthGm, bool hasCmpTopkLength,
+    GlobalTensor<int32_t>& oriTopkLengthGm,
+    GlobalTensor<int32_t>& cmpTopkLengthGm,
     RunParamStr& runParam, const ConstInfo &constInfo)
 {
     if (runParam.actualS2OriSize == 0) {
@@ -271,19 +271,19 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index,
         // runParam.preTokensPerBatch, runParam.nextTokensPerBatchOri, runParam.s1RealSize);
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         uint64_t actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runParam.boIdx);
-        runParam.oriSparseBlockCount = hasOriTopkLength ? Min(oriTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx),
+        runParam.oriSparseBlockCount = constInfo.hasOriTopkLength ? Min(oriTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx),
             constInfo.oriSparseBlockCount) : constInfo.oriSparseBlockCount;
-        runParam.cmpSparseBlockCount = hasCmpTopkLength ? Min(cmpTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx),
+        runParam.cmpSparseBlockCount = constInfo.hasCmpTopkLength ? Min(cmpTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx),
             constInfo.cmpSparseBlockCount) : constInfo.cmpSparseBlockCount;
     } else {
-        runParam.oriSparseBlockCount = hasOriTopkLength ? Min(oriTopkLengthGm.GetValue(runParam.boIdx * constInfo.s1Size + runParam.s1oIdx),
+        runParam.oriSparseBlockCount = constInfo.hasOriTopkLength ? Min(oriTopkLengthGm.GetValue(runParam.boIdx * constInfo.s1Size + runParam.s1oIdx),
             constInfo.oriSparseBlockCount) : constInfo.oriSparseBlockCount;
-        runParam.cmpSparseBlockCount = hasCmpTopkLength ? Min(cmpTopkLengthGm.GetValue(runParam.boIdx * constInfo.s1Size + runParam.s1oIdx),
+        runParam.cmpSparseBlockCount = constInfo.hasCmpTopkLength ? Min(cmpTopkLengthGm.GetValue(runParam.boIdx * constInfo.s1Size + runParam.s1oIdx),
             constInfo.cmpSparseBlockCount) : constInfo.cmpSparseBlockCount;
     }
 
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::SWA_TEMPLATE_MODE ||
-        TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_MODE) {
+        TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         runParam.cmpKvLoopEndIdx = 0;
         runParam.s2CmpLineStartIdx = 0;
         runParam.s2CmpLineEndIdx = 0;
@@ -304,8 +304,8 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index,
         runParam.cmpKvLoopEndIdx = (runParam.s2CmpLineEndIdx + s2BaseSize - 1) / s2BaseSize;
     }
 
-    if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_MODE ||
-        TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+    if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         runParam.s2LineOriEndIdx = Min(runParam.s2LineOriEndIdx, runParam.oriSparseBlockCount);
         runParam.oriKvLoopEndIdx = (runParam.s2LineOriEndIdx - runParam.s2LineStartIdx + s2BaseSize - 1) / s2BaseSize;
     } else {
@@ -324,7 +324,7 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.actualS1Size = runParam.actualS1Size;
     runInfo.actualS2OriSize = runParam.actualS2OriSize;
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
-        TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_MODE) {
+        TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         runInfo.actualS2CmpSize = runParam.actualS2CmpSize;
         runInfo.cmpResidual = runParam.cmpResidual;
         runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;

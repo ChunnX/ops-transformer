@@ -33,8 +33,8 @@ ge::graphStatus QSMLATilingCheck::CheckParaExistenceAntiquant() const
     if (kvLayout_ == QSMLALayout::BSND) {
         return ge::GRAPH_SUCCESS;
     } else if (kvLayout_ == QSMLALayout::PA_BBND) {
-        if (perfMode_ != QSMLATemplateMode::ORI_SPARSE_MODE &&
-            perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+        if (perfMode_ != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
+            perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
             OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
                         OP_LOGE(opName_, "when layout_kv is PA_BBND, sequsedOriKv must not be null."),
                         return ge::GRAPH_FAILED);
@@ -178,7 +178,7 @@ ge::graphStatus QSMLATilingCheck::CheckCmpRatioExistence()
                 return ge::GRAPH_FAILED);
 
     if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE ||
-        perfMode_ == QSMLATemplateMode::ORI_SPARSE_MODE) {
+        perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         OP_CHECK_IF(*opParamInfo_.cmpRatio != 1,
                     OP_LOGE(opName_, "When SWA or ORI_SPARSE mode, cmpRatio must be 1, but got %ld.", *opParamInfo_.cmpRatio),
                     return ge::GRAPH_FAILED);
@@ -194,7 +194,7 @@ ge::graphStatus QSMLATilingCheck::CheckCmpRatioExistence()
 
 ge::graphStatus QSMLATilingCheck::CheckORISparseExistence()
 {
-    if (perfMode_ != QSMLATemplateMode::ORI_SPARSE_MODE) {
+    if (perfMode_ != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor == nullptr,
@@ -208,7 +208,7 @@ ge::graphStatus QSMLATilingCheck::CheckORISparseExistence()
 
 ge::graphStatus QSMLATilingCheck::CheckORICmpSparseExistence()
 {
-    if (perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+    if (perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(opParamInfo_.oriSparseIndices.tensor == nullptr,

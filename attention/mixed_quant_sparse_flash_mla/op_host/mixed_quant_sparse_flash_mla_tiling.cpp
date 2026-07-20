@@ -323,7 +323,6 @@ ge::graphStatus QSMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
         size = static_cast<uint32_t>(shapeSize - 1);
         return ge::GRAPH_SUCCESS;
     }
-    return GetActualSeqLenSize(size, opParamInfo_.sequsedOriKv.tensor, qLayout_, "cuSeqLensQ");
 }
 
 ge::graphStatus QSMLAInfoParser::GetBatchSize()
@@ -606,13 +605,13 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tili
                     OP_LOGE("MixedQuantSparseFlashMla", "cmpSparseIndices must be empty when cmpKv is not provided."),
                     return ge::GRAPH_FAILED);
         if (tilingInfo->opParamInfo.oriSparseIndices.tensor != nullptr) {
-            perfMode_ = QSMLATemplateMode::ORI_SPARSE_MODE;
+            perfMode_ = QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE;
         } else {
             perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
         }
     } else if (tilingInfo->opParamInfo.cmpSparseIndices.tensor != nullptr) {
         if (tilingInfo->opParamInfo.oriSparseIndices.tensor != nullptr) {
-            perfMode_ = QSMLATemplateMode::ORI_CMP_SPARSE_MODE;
+            perfMode_ = QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE;
         } else {
             perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
         }

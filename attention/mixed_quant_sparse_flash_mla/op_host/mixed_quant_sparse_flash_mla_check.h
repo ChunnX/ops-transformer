@@ -86,8 +86,8 @@ enum class QSMLATemplateMode : uint32_t {
     SWA_TEMPLATE_MODE = 0,
     HCA_TEMPLATE_MODE = 1,
     CSA_TEMPLATE_MODE = 2,
-    ORI_SPARSE_MODE = 3,
-    ORI_CMP_SPARSE_MODE = 4
+    ORI_SPARSE_TEMPLATE_MODE = 3,
+    ORI_CMP_SPARSE_TEMPLATE_MODE = 4
 };
 
 enum class KvStorageMode : uint32_t {

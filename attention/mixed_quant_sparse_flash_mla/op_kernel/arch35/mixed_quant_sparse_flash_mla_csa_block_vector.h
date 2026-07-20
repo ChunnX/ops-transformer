@@ -105,7 +105,7 @@ public:
                 cuSeqlensOriKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensOriKv);
             }
             if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
-                TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_MODE) {
+                TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
                 if (cuSeqlensCmpKv != nullptr) {
                     cuSeqlensCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)cuSeqlensCmpKv);
                 }
@@ -114,11 +114,13 @@ public:
                 actualSeqOriKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedOriKv);
             }
             if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
-                TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_MODE) {
+                TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
                 if (sequsedCmpKv != nullptr) {
                     actualSeqCmpKvGm.SetGlobalBuffer((__gm__ int32_t *)sequsedCmpKv);
                 }
-                cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKv); // TODO  不需要判空吗
+                if (cmpResidualKv != nullptr) {
+                    cmpResidualKvGm.SetGlobalBuffer((__gm__ int32_t *)cmpResidualKv);
+                }
             }
             this->GetExtremeValue(this->negativeFloatScalar);
         }
@@ -299,9 +301,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::GetRealCmpS2Idx(int32_t *toke
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE) {
         sparseBlockCount = constInfo.cmpSparseBlockCount;
         cmpS2LoopCnt -= runInfo.oriKvLoopEndIdx;
-    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_MODE) {
+    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         sparseBlockCount = constInfo.oriSparseBlockCount;
-    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         sparseBlockCount = runInfo.isCmp ? constInfo.cmpSparseBlockCount : constInfo.oriSparseBlockCount;
         cmpS2LoopCnt = runInfo.isCmp ? (cmpS2LoopCnt - runInfo.oriKvLoopEndIdx) : cmpS2LoopCnt;
     }
@@ -959,9 +961,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CopyInKvNotSparse(LocalTensor
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::CalSparseCalSize(const RunInfo &runInfo, ConstInfo &constInfo)
 {
-    if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+    if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         sparseIndicesGm = runInfo.isCmp ? cmpSparseIndicesGm : oriSparseIndicesGm;
-    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_MODE) {
+    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         sparseIndicesGm = oriSparseIndicesGm;
     } else {
         sparseIndicesGm = cmpSparseIndicesGm;
@@ -1029,8 +1031,8 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec0(
         } else {
             ProcessNotSparseKv(outputL1, v0ResGm, runInfo, constInfo);
         }
-    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_MODE ||
-        TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+    } else if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         CalSparseCalSize(runInfo, constInfo);
         ProcessSparseKv(outputL1, v0ResGm, runInfo, constInfo);
     } else {
@@ -1490,20 +1492,20 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(__gm__ uint8
     }
 
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
-        TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_MODE) {
+        TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         cmpKVGm.SetGlobalBuffer((__gm__ KV_T *)cmpKV);
         if (cmpBlockTable != nullptr) {
             cmpBlockTableGm.SetGlobalBuffer((__gm__ int32_t *)cmpBlockTable);
         }
     }
 
-    if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_MODE ||
-        TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+    if constexpr (TEMPLATE_MODE == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         oriSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)oriSparseIndices);
     }
 
     if constexpr (TEMPLATE_MODE == QSMLATemplateMode::CSA_TEMPLATE_MODE ||
-        TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_MODE) {
+        TEMPLATE_MODE == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         cmpSparseIndicesGm.SetGlobalBuffer((__gm__ int32_t *)cmpSparseIndices);
     }
 
