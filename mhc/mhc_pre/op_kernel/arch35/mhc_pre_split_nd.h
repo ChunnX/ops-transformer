@@ -129,6 +129,9 @@ public:
     __aicore__ inline void VectorComputeOffset();
     __aicore__ inline void AIVPreLoad();
     __aicore__ inline void AIV1GetHSliceOffset();
+    template <bool hasGamma, bool isFirstND>
+    __aicore__ inline void VFDoV0ProcessXInSingleReduce(__ubuf__ P *xDst, __ubuf__ P *invRmsDst,
+        __ubuf__ T *xIn, __ubuf__ P *gamma, uint16_t mSize, uint16_t nSize);
     __aicore__ inline void DataCopyOutToWorkSpace(LocalTensor<P> &x, uint32_t curMLen, uint32_t curNdLen,
                                                   uint32_t offsetM, uint32_t offsetNd);
     __aicore__ inline void V0Prologue(uint64_t curBlock, uint64_t tBlockNum);
@@ -436,6 +439,58 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::DataCopyOutToWorkSpa
 }
 
 template <class T, class P, int8_t HAS_RESI>
+template <bool hasGamma, bool isFirstND>
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::VFDoV0ProcessXInSingleReduce(
+    __ubuf__ P *xDst, __ubuf__ P *invRmsDst, __ubuf__ T *xIn, __ubuf__ P *gamma,
+    uint16_t mSize, uint16_t nSize)
+{
+    uint32_t nSrcUbAligned = MhcPreUtils::Align(
+        nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(T)));
+    uint32_t nDstUbAligned = MhcPreUtils::Align(
+        nSize, static_cast<uint16_t>(MhcPreUtils::UB_ALIGN_SIZE / sizeof(P)));
+    uint16_t nLoopCnt = MhcPreUtils::CeilDiv(nSize, eleNumPerVf_);
+    __VEC_SCOPE__
+    {
+        MicroAPI::MaskReg fullMask = MicroAPI::CreateMask<P>();
+        for (uint16_t mIdx = 0; mIdx < mSize; ++mIdx) {
+            uint32_t elementNum = nSize;
+            MicroAPI::RegTensor<P> squareSumReg;
+            MicroAPI::Duplicate(squareSumReg, 0.0f);
+            for (uint16_t vfBlockIdx = 0; vfBlockIdx < nLoopCnt; ++vfBlockIdx) {
+                MicroAPI::RegTensor<T> xInReg;
+                MicroAPI::RegTensor<P> gammaReg;
+                MicroAPI::RegTensor<P> xFp32Reg;
+                MicroAPI::RegTensor<P> xMulReg;
+                MicroAPI::RegTensor<P> squareReg;
+                uint32_t xInOffset = mIdx * nSrcUbAligned + vfBlockIdx * eleNumPerVf_;
+                MicroAPI::LoadAlign<T, MicroAPI::LoadDist::DIST_UNPACK_B16>(xInReg, xIn + xInOffset);
+                MicroAPI::MaskReg blockMask = MicroAPI::UpdateMask<P>(elementNum);
+                MicroAPI::Cast<P, T, ctHalf2Fp32Zero>(xFp32Reg, xInReg, blockMask);
+                if constexpr (hasGamma) {
+                    MicroAPI::LoadAlign(gammaReg, gamma + vfBlockIdx * eleNumPerVf_);
+                    MicroAPI::Mul(xMulReg, gammaReg, xFp32Reg, blockMask);
+                } else {
+                    xMulReg = xFp32Reg;
+                }
+                uint32_t dstUbOffset = mIdx * nDstUbAligned + vfBlockIdx * eleNumPerVf_;
+                MicroAPI::StoreAlign(xDst + dstUbOffset, xMulReg, blockMask);
+                MicroAPI::Mul(squareReg, xFp32Reg, xFp32Reg, blockMask);
+                MicroAPI::Add(squareSumReg, squareSumReg, squareReg, blockMask);
+            }
+            MicroAPI::RegTensor<P> partialReg;
+            MicroAPI::Reduce<MicroAPI::ReduceType::SUM>(partialReg, squareSumReg, fullMask);
+            if constexpr (isFirstND) {
+                MicroAPI::Store(invRmsDst + mIdx, partialReg, 1U);
+            } else {
+                MicroAPI::RegTensor<P> sumReg;
+                MicroAPI::Load(sumReg, invRmsDst + mIdx);
+                MicroAPI::Add(sumReg, sumReg, partialReg, fullMask);
+                MicroAPI::Store(invRmsDst + mIdx, sumReg, 1U);
+            }
+        }
+    }
+}
+template <class T, class P, int8_t HAS_RESI>
 __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::V0Prologue(uint64_t curBlock, uint64_t tBlockNum)
 {
     curSingleM_ = chunkTSize_;
@@ -457,6 +512,12 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::V0Prologue(uint64_t 
             curNdLen = matrixInfo_.nD - offsetNd;
         }
 
+        if (hasGamma_) {
+            gammaUb_ = gammaInQueue_.template AllocTensor<P>();
+            this->DataCopyGamma(curNdLen, offsetNd);
+            gammaUb_ = gammaInQueue_.template DeQue<P>();
+        }
+
         for (uint32_t offsetM = vectorOffset_.offsetMStart; offsetM < vectorOffset_.offsetMEnd; offsetM += V0_BASE_T) {
             uint32_t curMLen = V0_BASE_T;
             if (offsetM + V0_BASE_T >= vectorOffset_.offsetMEnd) {
@@ -471,21 +532,16 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::V0Prologue(uint64_t 
             LocalTensor<P> aL1Ub = outQueue_.template AllocTensor<P>();
 
             if (hasGamma_) {
-                gammaUb_ = gammaInQueue_.template AllocTensor<P>();
-                this->DataCopyGamma(curNdLen, offsetNd);
-                gammaUb_ = gammaInQueue_.template DeQue<P>();
-
                 if (offsetNd == 0) {
-                    this->template VFDoV0ProcessXIn<true, true>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
+                    this->template VFDoV0ProcessXInSingleReduce<true, true>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
                 } else {
-                    this->template VFDoV0ProcessXIn<true, false>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
+                    this->template VFDoV0ProcessXInSingleReduce<true, false>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
                 }
-                gammaInQueue_.FreeTensor(gammaUb_);
             } else {
                 if (offsetNd == 0) {
-                    this->template VFDoV0ProcessXIn<false, true>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
+                    this->template VFDoV0ProcessXInSingleReduce<false, true>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
                 } else {
-                    this->template VFDoV0ProcessXIn<false, false>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
+                    this->template VFDoV0ProcessXInSingleReduce<false, false>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
                 }
             }
 
@@ -495,6 +551,9 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::V0Prologue(uint64_t 
 
             xInQueue_.FreeTensor(xLocal_);
             outQueue_.FreeTensor(aL1Ub);
+        }
+        if (hasGamma_) {
+            gammaInQueue_.FreeTensor(gammaUb_);
         }
     }
     AscendC::CrossCoreSetFlag<0x0, PIPE_MTE3>(SYNC_V0toV0);
