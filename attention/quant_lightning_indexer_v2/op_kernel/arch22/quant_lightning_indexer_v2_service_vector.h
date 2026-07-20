@@ -54,7 +54,7 @@ public:
                                                   GlobalTensor<float> vec1ResGm);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<half> weightsGm, GlobalTensor<half> qScaleGm,
                                               GlobalTensor<half> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
-                                              GlobalTensor<bfloat16_t> valueOutGm,
+                                              GlobalTensor<float> valueOutGm,
                                               GlobalTensor<int32_t> blockTableGm);
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline int32_t AlignS2(int32_t cuS2Len);
@@ -70,7 +70,7 @@ protected:
     GlobalTensor<half> kScaleGm;
     GlobalTensor<half> vec0OutGm;
     GlobalTensor<int32_t> indiceOutGm;
-    GlobalTensor<bfloat16_t> valueOutGm;
+    GlobalTensor<float> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
     // =================================常量区=================================
 
@@ -223,7 +223,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(GlobalTensor<half
     GlobalTensor<half> qScaleGm,
                                                            GlobalTensor<half> kScaleGm,
                                                            GlobalTensor<int32_t> indiceOutGm,
-                                                           GlobalTensor<bfloat16_t> valueOutGm,
+                                                           GlobalTensor<float> valueOutGm,
                                                            GlobalTensor<int32_t> blockTableGm)
 {
     this->weightsGm = weightsGm;
@@ -267,17 +267,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::CleanInvalidOutput(int64_t invalidS1
     QLIV2ServiceVec::CopyOut(indiceOutGm[invalidS1offset], idxULocal1, constInfo_.sparseCount);
     outQueue_.FreeTensor(valueULocal);
 
-    // 当returnValue为true时，初始化value为bf16负无穷 (0xFF80)
-    // When returnValue is true, initialize value to bf16 neg infinity (0xFF80)
+    // 当returnValue为true时，初始化value为float负无穷 (0xFF800000)
+    // When returnValue is true, initialize value to float neg infinity (0xFF800000)
     if (constInfo_.returnValue) {
-        uint16_t negInf = 0xFF80;
-        LocalTensor<uint16_t> valULocal = outQueue_.AllocTensor<uint16_t>();
-        Duplicate(valULocal, negInf, constInfo_.sparseCount);
-        outQueue_.EnQue<uint16_t>(valULocal);
-        valULocal = outQueue_.DeQue<uint16_t>();
-        GlobalTensor<uint16_t> valueOutGmTmp;
-        valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
-        QLIV2ServiceVec::CopyOut(valueOutGmTmp[invalidS1offset], valULocal, constInfo_.sparseCount);
+        LocalTensor<float> valULocal = outQueue_.AllocTensor<float>();
+        Duplicate(valULocal.template ReinterpretCast<int32_t>(), QLIV2ServiceVec::NEG_INF, constInfo_.sparseCount);
+        outQueue_.EnQue<float>(valULocal);
+        valULocal = outQueue_.DeQue<float>();
+        QLIV2ServiceVec::CopyOut(valueOutGm[invalidS1offset], valULocal, constInfo_.sparseCount);
         outQueue_.FreeTensor(valULocal);
     }
 }
@@ -452,26 +449,21 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                                            idxULocal.template ReinterpretCast<int32_t>(), constInfo_.sparseCount);
                     outQueue_.FreeTensor(idxULocal);
                 } else {
-                    // 同时输出索引和bf16 value / Output both indices and bf16 values
+                    // 同时输出索引和float value / Output both indices and float values
                     LocalTensor<float> outValueUb = outQueue_.AllocTensor<float>();
                     LocalTensor<uint32_t> outIdxUb = outValueUb[BASE_TOPK].template ReinterpretCast<uint32_t>();
                     Extract(outValueUb, outIdxUb,
                             globalTopkUb_[innerS1Idx * BASE_TOPK_VALUE_IDX_SIZE], (BASE_TOPK / 32));
-                    PipeBarrier<PIPE_V>();
-                    // 将float value转换为bf16 / Cast float values to bf16
-                    LocalTensor<bfloat16_t> valueULocal1 = outValueUb.template ReinterpretCast<bfloat16_t>();
-                    Cast(valueULocal1, outValueUb, RoundMode::CAST_ROUND, constInfo_.sparseCount);
                     PipeBarrier<PIPE_V>();
                     InitSortOutBuf(globalTopkUb_[innerS1Idx * BASE_TOPK_VALUE_IDX_SIZE], BASE_TOPK_VALUE_IDX_SIZE);
                     LocalTensor<int32_t> idxULocal1 = outIdxUb.template ReinterpretCast<int32_t>();
                     outQueue_.EnQue<float>(outValueUb);
                     outValueUb = outQueue_.DeQue<float>();
                     idxULocal1 = outValueUb[BASE_TOPK].template ReinterpretCast<int32_t>();
-                    valueULocal1 = outValueUb.template ReinterpretCast<bfloat16_t>();
                     QLIV2ServiceVec::CopyOut(indiceOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount],
                                            idxULocal1, constInfo_.sparseCount);
                     QLIV2ServiceVec::CopyOut(valueOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount],
-                                           valueULocal1, constInfo_.sparseCount);
+                                           outValueUb, constInfo_.sparseCount);
                     outQueue_.FreeTensor(outValueUb);
                 }
             }
@@ -666,19 +658,15 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
             AscendC::DataCopyPad(indiceOutGm[outOffset], idxULocal1, copyOutParams);
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
         } else {
-            // 同时输出索引和bf16 value / Output both indices and bf16 values
+            // 同时输出索引和float value / Output both indices and float values
             Extract(outValueUb, outIdxUb, curValueIdxUb, (BASE_TOPK / 32));
             PipeBarrier<PIPE_V>();
             InitSortOutBuf(curValueIdxUb, BASE_TOPK_VALUE_IDX_SIZE);
             LocalTensor<int32_t> idxULocal1 = outIdxUb.template ReinterpretCast<int32_t>();
-            // 将float value转换为bf16 / Cast float values to bf16
-            LocalTensor<bfloat16_t> valueULocal1 = outValueUb.template ReinterpretCast<bfloat16_t>();
-            Cast(valueULocal1, outValueUb, RoundMode::CAST_ROUND, constInfo_.sparseCount);
-            PipeBarrier<PIPE_V>();
             SetWaitFlag<HardEvent::V_MTE3>(HardEvent::V_MTE3);
             AscendC::DataCopyPad(indiceOutGm[outOffset], idxULocal1, copyOutParams);
-            AscendC::DataCopyPad(valueOutGm[outOffset], valueULocal1,
-                        {1, static_cast<uint16_t>(constInfo_.sparseCount * sizeof(bfloat16_t)), 0, 0});
+            AscendC::DataCopyPad(valueOutGm[outOffset], outValueUb,
+                        {1, static_cast<uint16_t>(constInfo_.sparseCount * sizeof(float)), 0, 0});
             SetWaitFlag<HardEvent::MTE3_V>(HardEvent::MTE3_V);
         }
     }

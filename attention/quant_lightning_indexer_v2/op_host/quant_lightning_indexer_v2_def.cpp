@@ -91,7 +91,7 @@ public:
             .FormatList({ge::FORMAT_ND});
         this->Output("sparse_values")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
+            .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
         this->Attr("topk").AttrType(REQUIRED).Int(2048);  // 2048: 筛选前2048个作为输出index
         this->Attr("quant_mode").AttrType(REQUIRED).Int(1);    // 1: per-token-head
@@ -183,7 +183,7 @@ public:
             .FormatList({ge::FORMAT_ND});
         aicore_config_95.Output("sparse_values")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
+            .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
         aicore_config_95.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

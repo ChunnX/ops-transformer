@@ -107,6 +107,7 @@ struct ConstInfo {
     // 无效索引
     static constexpr int INVALID_IDX = -1;
     static constexpr uint16_t NEG_INF_BFLOAT = 0xFF80;
+    static constexpr int32_t NEG_INF_FLOAT = 0xFF800000;
 
     // CUBE和VEC的核间同步EventID
     uint32_t syncC1V1 = 0U;

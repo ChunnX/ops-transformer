@@ -268,15 +268,10 @@ ge::graphStatus QLIV2InfoParser::CheckAttrParaInfo()
     if (npuArch_ == NpuArch::DAV_2201) {
             OP_CHECK_IF(*opParamInfo_.quantMode != 2, OP_LOGE(opName_, "input attr quant_mode only supported 2."),
                return ge::GRAPH_FAILED);
-    } else if (npuArch_ == NpuArch::DAV_3510) {
+    } else     if (npuArch_ == NpuArch::DAV_3510) {
         OP_CHECK_IF((*opParamInfo_.quantMode != 1) && (*opParamInfo_.quantMode != 4),
             OP_LOGE(opName_, "input attr quant_mode only supported 1 and 4."),
             return ge::GRAPH_FAILED);
-    }
-
-    if (npuArch_ == NpuArch::DAV_2201) {
-        OP_CHECK_IF(*opParamInfo_.returnValue, OP_LOGE(opName_, "input attr returnValue only supported False."),
-                    return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
@@ -349,8 +344,8 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
                OP_LOGE(opName_, "The data types of the output sparse_indices must be int32."),
                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(valuesOutType_ != ge::DT_BF16,
-               OP_LOGE(opName_, "The data types of the output sparse_values must be bfloat16."),
+    OP_CHECK_IF(valuesOutType_ != ge::DT_FLOAT,
+               OP_LOGE(opName_, "The data types of the output sparse_values must be float."),
                return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;

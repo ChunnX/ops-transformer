@@ -253,7 +253,7 @@ public:
     ge::DataType blockTableType_ = ge::DT_FLOAT16;
     ge::DataType inputKRopeType_ = ge::DT_FLOAT16;
     ge::DataType outputType_ = ge::DT_FLOAT16;
-    ge::DataType valuesOutType_ = ge::DT_BF16;
+    ge::DataType valuesOutType_ = ge::DT_FLOAT;
     std::vector<uint32_t> keyStridesVec_;
     std::vector<uint32_t> keyDequantScaleStridesVec_;
 };
