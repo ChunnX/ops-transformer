@@ -24,7 +24,7 @@
 #include "kernel_operator.h"
 #endif
 
-#include "blaze/gemm/block/block_mmad_swiglu_mx.h"
+#include "blaze/gemm/block/block_mmad_qgmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_gmm_swat_with_tail_split.h"
 #include "blaze/gemm/policy/dispatch_policy.h"
 #include "blaze/gemm/kernel/kernel_gmm_swiglu_mx_tensor_api.h"
@@ -62,7 +62,8 @@ __aicore__ inline void GmmSwigluAswtTensorApi(
 
     using ProblemShape = AscendC::Te::Shape<int64_t, int64_t, int64_t, int64_t>;
 
-    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulSwiGluMixMx<0>;
+    using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<
+        0, false, Blaze::Gemm::KernelGmmSwiGluMixMx>;
     using SwigluBlockMmad = Blaze::Gemm::Block::BlockMmad<
         BlockMmadPolicy, AType, LayoutA, BType, LayoutB, C1Type, LayoutC, BiasType, LayoutC>;
 
