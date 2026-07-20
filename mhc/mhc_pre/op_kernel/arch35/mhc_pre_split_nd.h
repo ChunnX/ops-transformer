@@ -229,7 +229,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::Init(InitParams init
         pipe_->InitBuffer(l1Buffer_, MHC_PRE_LOW_API_L1_ALLOC_SIZE);
         aL1_ = l1Buffer_.Get<P>();
         bL1_ = aL1_[MHC_PRE_LOW_API_L1_BUF_NUM * MHC_PRE_LOW_API_L1_BUF_OFFSET];
-        mmService_.Init(true);
+        mmService_.Init(this->implMode_);
     }
 
     SyncAll<false>();
@@ -305,7 +305,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::Process()
         if (coreIdx_ < ndBlockNum) {
             AICProcess();
         }
-        mmService_.End();
+        mmService_.End(this->implMode_);
     }
 
     if ASCEND_IS_AIV {
