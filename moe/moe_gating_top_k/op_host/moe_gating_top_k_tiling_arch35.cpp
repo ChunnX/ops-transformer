@@ -69,6 +69,7 @@ const static int64_t DEFAULT_WORKSPACE_SIZE = static_cast<int64_t>(16 * 1024 * 1
 const static int64_t DEFAULT_BATCH_ROWS = 4;
 const static int64_t MAX_BATCH_ROWS = 16;
 const static int64_t MAX_SINGLE_EXPERT_BATCH_ROWS = 4096;
+const static int64_t MAX_SIMPLIFIED_BATCH_ROWS = 64;
 
 
 class MoeGatingTopKTilingRegbase : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -655,18 +656,30 @@ void MoeGatingTopKTilingRegbase::SplitRows()
     int64_t expertCountAlign = Ops::Base::CeilAlign(expertCount_, 32L);
     int64_t batchRows = DEFAULT_BATCH_ROWS;
     if (expertCount_ == 1) {
-        // expertCount==1: no alignment, per-row UB = (xIn + yOut + expertIdx + out) * depth(2)
-        // xIn: sizeof(T), yOut: sizeof(T), expertIdx: sizeof(int32_t), out: sizeof(float)
         int64_t perRowUbSize = (inputDtypeSize_ + inputDtypeSize_ + sizeof(int32_t) + sizeof(float)) * 2;
         int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / perRowUbSize;
-        // reserve 20% UB for pipe/event overhead
         maxBatchByUb = maxBatchByUb * 4 / 5;
         batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_SINGLE_EXPERT_BATCH_ROWS);
     } else {
-        int64_t perRowUbSize = expertCountAlign * sizeof(float) * 2;
-        if (perRowUbSize > 0) {
-            int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / (perRowUbSize * 2);
-            batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_BATCH_ROWS);
+        bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);
+        int64_t perGroupExpertCountAlign = Ops::Base::CeilAlign(expertCount_ / groupCount_, 32L);
+        int64_t expertGroupAlign = groupCount_ * perGroupExpertCountAlign;
+        if (isSimplifiedPath) {
+            int64_t perRowUbSize = expertGroupAlign * sizeof(float) * 2;
+            perRowUbSize += expertGroupAlign * sizeof(float) * 5;
+            perRowUbSize += expertGroupAlign * sizeof(float) * 4;
+            int64_t kAlignBytes = (k_ * inputDtypeSize_ + 31) / 32 * 32;
+            int64_t kIdxAlignBytes = (k_ * sizeof(int32_t) + 31) / 32 * 32;
+            perRowUbSize += kAlignBytes + kIdxAlignBytes;
+            int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / perRowUbSize;
+            maxBatchByUb = maxBatchByUb * 4 / 5;
+            batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_SIMPLIFIED_BATCH_ROWS);
+        } else {
+            int64_t perRowUbSize = expertCountAlign * sizeof(float) * 2;
+            if (perRowUbSize > 0) {
+                int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / (perRowUbSize * 2);
+                batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_BATCH_ROWS);
+            }
         }
     }
     moeGatingTopKTilingData_.set_batchRows(batchRows);
