@@ -125,7 +125,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     int64_t n = 64L;
     int64_t e = 2L;
     int64_t groupSize = 32L;
-    int64_t g = k / groupSize;  // pergroup数 G = 4
+    int64_t g = k / groupSize; // pergroup数 G = 4
 
     std::vector<std::vector<int64_t>> xShape = {{m, k}};
     std::vector<std::vector<int64_t>> weightShape = {{e, k, n}};
@@ -202,7 +202,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
                               aclDataType::ACL_BF16, &antiquantScale);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     std::unique_ptr<aclTensorList, aclnnStatus (*)(const aclTensorList *)> antiquantScalePtr(antiquantScale,
-                                                                                            aclDestroyTensorList);
+                                                                                             aclDestroyTensorList);
     std::unique_ptr<void, aclError (*)(void *)> antiquantScaleDeviceAddrPtr(antiquantScaleDeviceAddr, aclrtFree);
 
     // y: BFLOAT16
@@ -229,7 +229,9 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
         x, weight, bias, scale, offset, antiquantScale, antiquantOffset, perTokenScale, groupedList, activationInput,
         activationQuantScale, activationQuantOffset, splitItem, groupType, groupListType, actType, nullptr, out,
         activationFeatureOut, dynQuantScaleOut, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV5GetWorkspaceSize failed. ERROR: %d\n[ERROR msg]%s\n", ret, aclGetRecentErrMsg()); return ret);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV5GetWorkspaceSize failed. ERROR: %d\n[ERROR msg]%s\n",
+                                            ret, aclGetRecentErrMsg());
+              return ret);
 
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -262,7 +264,9 @@ int main()
     int32_t deviceId = 0;
     aclrtStream stream;
     auto ret = aclnnGourpedMatmulTest(deviceId, stream);
-    CHECK_FREE_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnGroupedMatmulV5 A16W4 pergroup single test failed. ERROR: %d\n", ret); return ret);
+    CHECK_FREE_RET(ret == ACL_SUCCESS,
+                   LOG_PRINT("aclnnGroupedMatmulV5 A16W4 pergroup single test failed. ERROR: %d\n", ret);
+                   return ret);
 
     Finalize(deviceId, stream);
     return 0;

@@ -133,5 +133,5 @@ struct GMMWeightQuantTilingData {
 };
 #pragma pack(pop)
 
-} // GroupedMatmulTilingData
+} // namespace GroupedMatmulTilingData
 #endif

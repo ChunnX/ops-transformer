@@ -66,8 +66,10 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
 
 int64_t CeilDiv(int64_t a, int64_t b)
 {
-    if (b == 0) return 0;
-    if (a <= 0) return 0;
+    if (b == 0)
+        return 0;
+    if (a <= 0)
+        return 0;
     return (a - 1) / b + 1;
 }
 
@@ -260,7 +262,7 @@ int RunExample(int32_t deviceId, aclrtStream &stream)
     std::vector<uint8_t> wHostData(GetShapeSize(wShape));
     std::vector<uint8_t> scaleHostData(GetShapeSize(scaleShape));
     std::vector<uint8_t> pertokenScaleHostData(GetShapeSize(pertokenScaleShape));
-    std::vector<int64_t> groupListHostData(GetShapeSize(groupListShape), m/e);
+    std::vector<int64_t> groupListHostData(GetShapeSize(groupListShape), m / e);
 
     std::vector<uint16_t> sharedInputHostData(GetShapeSize(sharedInputShape));
     std::vector<float> logitHostData(GetShapeSize(logitShape));

@@ -42,12 +42,12 @@ using AscendC::WaitFlag;
 
 namespace WeightQuantBatchMatmulV2::Arch35 {
 
-#define WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM                                                                 \
-    template <typename xType, typename biasType, typename antiQuantScaleType, typename perTokenScaleType, \
+#define WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM                                                                              \
+    template <typename xType, typename biasType, typename antiQuantScaleType, typename perTokenScaleType,              \
               typename yType, const WqmmConfig &wqmmConfig, typename MatmulImplType>
 
-#define WQBMM_CUBE_COMPUTE_CLASS                                                                                   \
-    WeightQuantBatchMatmulV2CubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType, yType, wqmmConfig, \
+#define WQBMM_CUBE_COMPUTE_CLASS                                                                                       \
+    WeightQuantBatchMatmulV2CubeCompute<xType, biasType, antiQuantScaleType, perTokenScaleType, yType, wqmmConfig,     \
                                         MatmulImplType>
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
@@ -62,8 +62,7 @@ public:
                                 uint64_t mxBiasL1DbOffset);
     __aicore__ inline void MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
                                       const TCubeTiling *__restrict matmulTiling, const LocalTensor<biasType> &biasL1,
-                                      uint64_t mxScaleBL1DbOffset,
-                                      const LocalTensor<fp8_e8m0_t> &mxScaleBL1);
+                                      uint64_t mxScaleBL1DbOffset, const LocalTensor<fp8_e8m0_t> &mxScaleBL1);
     __aicore__ inline void LaunchMatmul(const LocalTensor<xType> &weightL1, int64_t kbOffset, uint64_t kbL1RealSize,
                                         uint64_t cvLoopIdx, const BasicBlockOffsetParam &param);
     __aicore__ inline void WaitMTE1ToMTE2(uint64_t kaGmOffset, const BasicBlockOffsetParam &offsetParam);
@@ -78,6 +77,7 @@ public:
     __aicore__ inline void EndSync();
     __aicore__ inline void ClearAFullLoadFlag();
     __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t xSizeLimit);
+
 private:
     __aicore__ inline void PrefetchA(uint64_t aPrefetchSize, uint64_t aGmSize, const LocalTensor<xType> &perloadBuffer);
     __aicore__ inline void InitSync();
@@ -163,9 +163,9 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::LaunchMatmul(const LocalTensor<
     }
     if constexpr (!IsMxA8W4<xType, wqmmConfig.antiQuantType>()) {
         mmObj_.SetOrgShape(CeilAlign(param.mL1Size, static_cast<uint64_t>(BLOCK_CUBE)),
-                        CeilAlign(param.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)),
-                        CeilAlign(kbL1RealSize, static_cast<uint64_t>(BLOCK_CUBE)),
-                        CeilAlign(kbL1RealSize, static_cast<uint64_t>(BLOCK_CUBE)), param.nSize);
+                           CeilAlign(param.nL1Size, static_cast<uint64_t>(BLOCK_CUBE)),
+                           CeilAlign(kbL1RealSize, static_cast<uint64_t>(BLOCK_CUBE)),
+                           CeilAlign(kbL1RealSize, static_cast<uint64_t>(BLOCK_CUBE)), param.nSize);
         mmObj_.SetTensorA(aL1_[aL1Offset], wqmmConfig.aTrans);
         mmObj_.SetTensorB(weightL1, wqmmConfig.bTrans);
 
@@ -348,10 +348,11 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::ConfigScaleDn2NzParams(uint64_t
                                                                         Dn2NzParams &dn2NzParams)
 {
     dn2NzParams.dnNum = 1;
-    dn2NzParams.dValue = rowNum;  // 矩阵的行数，即待搬运的mxScaleA的m或mxScaleB的n
-    dn2NzParams.nValue = CeilDivide(scaleKL1RealSize, SCALE_COPY_GROUP_SIZE);  // 矩阵的列数，使用B16搬B8需要除以2向上取整
+    dn2NzParams.dValue = rowNum; // 矩阵的行数，即待搬运的mxScaleA的m或mxScaleB的n
+    dn2NzParams.nValue =
+        CeilDivide(scaleKL1RealSize, SCALE_COPY_GROUP_SIZE); // 矩阵的列数，使用B16搬B8需要除以2向上取整
     dn2NzParams.srcDnMatrixStride = SCALE_COPY_DEFAULT_STRIDE;
-    dn2NzParams.srcDValue = CeilDivide(scaleKGmSize, SCALE_COPY_GROUP_SIZE);  // 源矩阵一行所含B16元素个数
+    dn2NzParams.srcDValue = CeilDivide(scaleKGmSize, SCALE_COPY_GROUP_SIZE); // 源矩阵一行所含B16元素个数
     // 目标矩阵行方向两个相邻分形起始地址之间的间隔，单位32B
     dn2NzParams.dstNzC0Stride = CeilDivide(MX_SCALE_K_L1_SIZE, MX_GROUPSIZE * SCALE_COPY_GROUP_SIZE);
     // 目标矩阵列方向两个相邻分形起始地址之间的间隔，单位32B
@@ -401,9 +402,10 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::InitSync()
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::UpdateGlobalAddr(
-    __gm__ xType *x, __gm__ yType *y, __gm__ biasType *bias, __gm__ antiQuantScaleType *antiquantScale,
-    __gm__ uint64_t *quantScale, __gm__ perTokenScaleType *perTokenScale, const bool isBias)
+__aicore__ inline void
+WQBMM_CUBE_COMPUTE_CLASS::UpdateGlobalAddr(__gm__ xType *x, __gm__ yType *y, __gm__ biasType *bias,
+                                           __gm__ antiQuantScaleType *antiquantScale, __gm__ uint64_t *quantScale,
+                                           __gm__ perTokenScaleType *perTokenScale, const bool isBias)
 {
     isBias_ = isBias;
     xGlobal_.SetGlobalBuffer(x);
@@ -458,12 +460,10 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::PrefetchA(uint64_t aPrefetchSiz
 }
 
 WQBMM_CUBE_COMPUTE_TEMPLATE_PARAM
-__aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize,
-                                                            uint64_t mxBiasL1DbOffset,
-                                                            const TCubeTiling *__restrict matmulTiling,
-                                                            const LocalTensor<biasType> &biasL1,
-                                                            uint64_t mxScaleBL1DbOffset,
-                                                            const LocalTensor<fp8_e8m0_t> &mxScaleBL1)
+__aicore__ inline void
+WQBMM_CUBE_COMPUTE_CLASS::MxA8W4Init(uint64_t l1RemainSize, uint64_t l1StartSize, uint64_t mxBiasL1DbOffset,
+                                     const TCubeTiling *__restrict matmulTiling, const LocalTensor<biasType> &biasL1,
+                                     uint64_t mxScaleBL1DbOffset, const LocalTensor<fp8_e8m0_t> &mxScaleBL1)
 {
     //  MxA8W4场景空间分配: 其中 weight\Bias为全局分配，此处不感知
     //  L1 (0~512KB): WeightL1_P0(64KB) |    Bias_P0(4KB)   | ScaleAL1_P0(32KB) | ScaleBL1_P0(32KB) | AL1_P0(80KB) |
@@ -560,5 +560,5 @@ __aicore__ inline void WQBMM_CUBE_COMPUTE_CLASS::GetTensorC(LocalTensor<yType> &
     mmObj_.GetTensorC(yUb, 0, true);
 #endif
 }
-}  // namespace WeightQuantBatchMatmulV2::Arch35
+} // namespace WeightQuantBatchMatmulV2::Arch35
 #endif
