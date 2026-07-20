@@ -611,7 +611,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
                     rg_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    mask_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                    mask_2d_ub = T.alloc_ub((vector_baseg, n_block // 8), "uint8")
                     rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
                     dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
                     eps_ub = T.alloc_ub(n_block, calc_dtype)
