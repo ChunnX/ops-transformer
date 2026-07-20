@@ -46,6 +46,8 @@ for params in ENABLED_PARAMS:
         row["cmp_kv_topk_mode"] = combo.get("cmp_kv_topk_mode", "fullK")
         row["ori_sparse_indices_mode"] = combo.get("ori_sparse_indices_mode", "full")
         row["cmp_sparse_indices_mode"] = combo.get("cmp_sparse_indices_mode", "full")
+        row["ori_topk_length"] = combo.get("ori_topk_length", None)
+        row["cmp_topk_length"] = combo.get("cmp_topk_length", None)
         all_cases.append(row)
         case_idx += 1
 
@@ -55,6 +57,7 @@ columns = [
     "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "quant_mode", "tile_size", "rope_head_dim",
     "template_run_mode", "actlen_mode", "S1EQS2", "topk_value_mode", "return_softmax_lse",
     "ori_kv_topk_mode", "cmp_kv_topk_mode", "ori_sparse_indices_mode", "cmp_sparse_indices_mode",
+    "ori_topk_length", "cmp_topk_length",
     "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
     "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv",
 ]

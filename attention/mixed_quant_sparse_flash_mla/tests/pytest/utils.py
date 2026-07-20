@@ -93,6 +93,10 @@ def parse_list_param(value):
         return None
     if isinstance(value, list):
         return value
+    if isinstance(value, (int,)) and not isinstance(value, bool):
+        return [value]
+    if isinstance(value, float) and not pd.isna(value):
+        return [int(value)]
     if isinstance(value, str):
         s = value.strip()
         if s.lower() == 'none' or s == '':
@@ -375,6 +379,8 @@ def fill_none_params(params_dict):
         'cmp_kv_topk_mode': params_dict.get('cmp_kv_topk_mode', 'fullK'),
         'ori_sparse_indices_mode': params_dict.get('ori_sparse_indices_mode', 'full'),
         'cmp_sparse_indices_mode': params_dict.get('cmp_sparse_indices_mode', 'full'),
+        'ori_topk_length': params_dict.get('ori_topk_length', None),
+        'cmp_topk_length': params_dict.get('cmp_topk_length', None),
     }
 
     return filled_params
@@ -414,6 +420,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         optional_columns = [
             "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
             "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv",
+            "ori_topk_length", "cmp_topk_length",
         ]
         # 检查是否缺少必要列
         missing_cols = [col for col in required_columns if col not in df.columns]
@@ -484,6 +491,12 @@ def save_result(params, result, fulfill_percent, result_path):
         "rope_head_dim": params.get('rope_head_dim'),
         "topk_value_mode": params.get('topk_value_mode'),
         "return_softmax_lse": params.get('return_softmax_lse'),
+        'ori_kv_topk_mode': params.get('ori_kv_topk_mode'),
+        'cmp_kv_topk_mode': params.get('cmp_kv_topk_mode'),
+        'ori_sparse_indices_mode': params.get('ori_sparse_indices_mode'),
+        'cmp_sparse_indices_mode': params.get('cmp_sparse_indices_mode'),
+        'ori_topk_length': str(params.get('ori_topk_length')),
+        'cmp_topk_length': str(params.get('cmp_topk_length')),
         "result": result,
         "fulfill_percent": fulfill_percent,
     }
