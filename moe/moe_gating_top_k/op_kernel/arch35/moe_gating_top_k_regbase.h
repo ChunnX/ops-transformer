@@ -424,10 +424,12 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::CopyOutBatch(int64_t bat
     LocalTensor<T> yOutTensor = yOutQueue_.DeQue<T>();
     LocalTensor<int32_t> expertIdxTensor = expertIdxOutQueue_.DeQue<int32_t>();
     int64_t gmOffset = batchIdx * batchRows_;
-    DataCopyExtParams yCopyParams{static_cast<uint16_t>(rowCount), static_cast<uint32_t>(k_ * sizeof(T)), 0, 0, 0};
-    DataCopyPad(yGm_[gmOffset * k_], yOutTensor, yCopyParams);
-    DataCopyExtParams idxCopyParams{static_cast<uint16_t>(rowCount), static_cast<uint32_t>(k_ * sizeof(int32_t)), 0, 0, 0};
-    DataCopyPad(expertIdxGm_[gmOffset * k_], expertIdxTensor, idxCopyParams);
+    DataCopyExtParams yCopyParams{1, static_cast<uint32_t>(k_ * sizeof(T)), 0, 0, 0};
+    DataCopyExtParams idxCopyParams{1, static_cast<uint32_t>(k_ * sizeof(int32_t)), 0, 0, 0};
+    for (int64_t r = 0; r < rowCount; r++) {
+        DataCopyPad(yGm_[(gmOffset + r) * k_], yOutTensor[r * k_], yCopyParams);
+        DataCopyPad(expertIdxGm_[(gmOffset + r) * k_], expertIdxTensor[r * k_], idxCopyParams);
+    }
     yOutQueue_.FreeTensor(yOutTensor);
     expertIdxOutQueue_.FreeTensor(expertIdxTensor);
 }
