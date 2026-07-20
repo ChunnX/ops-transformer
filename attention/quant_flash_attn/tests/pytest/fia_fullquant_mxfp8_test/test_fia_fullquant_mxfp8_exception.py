@@ -27,6 +27,7 @@ MxFP8 异常用例 runner (思路2)。
 
 import traceback
 
+import torch
 import pytest
 
 from common import fia_fullquant_mxfp8_golden as golden
@@ -87,6 +88,33 @@ def test_fia_fullquant_mxfp8_exception(base_name, mutator, expected_kw, base_par
             f"  traceback:\n{traceback.format_exc()}"
         )
 
+    # ---- 打印完整入参信息 ----
+    print("[NPU_CALL_PARAMS]")
+    print(f"  layout_q={inputs.get('layout_q')}, layout_kv={inputs.get('layout_kv')}, "
+          f"layout_out={inputs.get('layout_out')}, layout_q_descale={inputs.get('layout_q_descale')}")
+    print(f"  sparse_mode={inputs.get('sparse_mode')}, block_size={inputs.get('block_size')}")
+    q_shape = list(inputs.get('q', torch.tensor([])).shape)
+    k_shape = list(inputs.get('k', torch.tensor([])).shape)
+    v_shape = list(inputs.get('v', torch.tensor([])).shape)
+    deq_q_shape = list(inputs.get('dequant_scale_q', torch.tensor([])).shape)
+    deq_k_shape = list(inputs.get('dequant_scale_k', torch.tensor([])).shape)
+    deq_v_shape = list(inputs.get('dequant_scale_v', torch.tensor([])).shape)
+    print(f"  q={q_shape}, k={k_shape}, v={v_shape}")
+    print(f"  q_descale={deq_q_shape}, k_descale={deq_k_shape}, v_descale={deq_v_shape}")
+    bt = inputs.get('block_table')
+    print(f"  block_table={'None' if bt is None else list(bt.shape)}")
+    cuq = inputs.get('cu_seqlens_q')
+    cukv = inputs.get('cu_seqlens_kv')
+    sq = inputs.get('seqused_q')
+    skv = inputs.get('seqused_kv')
+    print(f"  cu_seqlens_q={'None' if cuq is None else cuq}, cu_seqlens_kv={'None' if cukv is None else cukv}")
+    print(f"  seqused_q={'None' if sq is None else sq}, seqused_kv={'None' if skv is None else skv}")
+    print(f"  max_seqlen_q={inputs.get('max_seqlen_q')}, max_seqlen_kv={inputs.get('max_seqlen_kv')}")
+    print(f"  q_n={inputs.get('q_n')}, kv_n={inputs.get('kv_n')}, softmax_scale={inputs.get('softmax_scale')}")
+    print(f"  meta_overrides={meta_overrides}")
+    print(f"  main_overrides={main_overrides}")
+    print("[/NPU_CALL_PARAMS]")
+
     # 5. 调用算子，预期抛错
     try:
         golden._call_npu_fa_op(
@@ -95,14 +123,10 @@ def test_fia_fullquant_mxfp8_exception(base_name, mutator, expected_kw, base_par
             main_overrides=main_overrides or None,
         )
     except (RuntimeError, AssertionError, Exception) as e:
-        # 异常被捕获 → 验证成功 ✅，打印报错信息 (需加 -s 参数才能在 log 中看到)
+        # 异常被捕获 → 验证成功 ，打印完整报错信息 (含 C++ 侧 checker 拦截文本)
+        # 不截断，确保 checker 在 TraceBack 段中的拦截原因能完整呈现到日志
         err_msg = str(e)
-        print(f"[EXCEPTION_CAUGHT] {type(e).__name__}: {err_msg[:300]}")
-        if expected_kw:
-            if expected_kw.lower() in err_msg.lower():
-                print(f"[KEYWORD_MATCH] expected keyword '{expected_kw}' found in error message")
-            else:
-                print(f"[WARN] expected keyword '{expected_kw}' NOT found in error: {err_msg[:200]}")
+        print(f"[EXCEPTION_CAUGHT] {type(e).__name__}: {err_msg}")
         print(f"[RESULT] [{case_id}] PASSED\n{SEP}")
         return  # PASS
 
