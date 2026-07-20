@@ -440,6 +440,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 weight_all_half_ub = T.alloc_ub(Nidx1, input_dtype)
                 weight_2d_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
                 p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
+                rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                 rsy_reduce_db = T.alloc_ub((2, n_block), calc_dtype)
                 sm_max_ub = T.alloc_ub(G, calc_dtype)
                 sm_sum_ub = T.alloc_ub(G, calc_dtype)
@@ -533,9 +534,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         # Save to UB for global SoftmaxI; ReduceSumY workspace is unused downstream.
                         T.copy(rsy_reduce_db[cur, :], rsy_all_ub[n_rsy, :])
                         # Fused: update global max from rsy_reduce_db[cur, :]
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur, :], 1.0)
                         T.pipe_barrier("v")
-                        T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
+                        T.reduce_max(rsy_reduce_db[cur, :], rsy_chunk_max_ub, 0)
                         T.pipe_barrier("v")
                         T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
                         # WAR: current slot consumed → safe to refill
@@ -575,9 +575,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.pipe_barrier("v")
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                         T.pipe_barrier("v")
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
                         T.pipe_barrier("v")
-                        T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
+                        T.reduce_sum(rsy_chunk_ub, rsy_chunk_sum_ub, 0)
                         T.pipe_barrier("v")
                         T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
 
@@ -611,7 +610,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
                     rg_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    mask_ub = T.alloc_ub(n_block // 8, "uint8")
+                    ones_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
                     dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
                     eps_ub = T.alloc_ub(n_block, calc_dtype)
@@ -620,6 +619,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_val_ub = T.alloc_ub(n_block, calc_dtype)
 
+                    T.tile.fill(ones_2d_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
 
                     # dWeight, reluGrad for MY K block
@@ -652,19 +652,21 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "v", 7)
                             T.wait_flag("mte2", "v", 7)
 
+                            T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
+                            T.pipe_barrier("v")
+                            T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
+                            T.pipe_barrier("v")
+                            T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
+
                             # Op1: rg = weight_slice * diff (2D)
                             # weight切片逐行copy（整块copy参数在CANN 9.1下不正确）
                             for i in T.serial(vector_baseg):
                                 T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
                             T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
+                            # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
                             T.pipe_barrier("v")
-                            # CANN 9.0 lowering supports the ReLU mask path
-                            # reliably as row-wise packed Compare/Select.
-                            for i in T.serial(vector_baseg):
-                                T.tile.compare(mask_ub, dw_chunk_ub[i, :], 0.0, "GT")
-                                T.pipe_barrier("v")
-                                T.tile.select(rg_chunk_ub[i, :], mask_ub, rg_chunk_ub[i, :], 0.0, "VSEL_TENSOR_SCALAR_MODE")
-                                T.pipe_barrier("v")
+                            T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
+                            T.pipe_barrier("v")
                             # Op3: dw *= diff (2D, was per-row 1D mul)
                             T.pipe_barrier("v")
                             T.tile.mul(dw_chunk_ub, dw_chunk_ub, diff_2d_ub)
@@ -722,10 +724,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
 
                     T.pipe_barrier("v")
-                    T.tile.mul(rsy_bc_ub[0, :], loss_val_ub, 1.0)
-                    T.pipe_barrier("v")
                     loss_sum_ub = T.alloc_ub((1,), calc_dtype)
-                    T.reduce_sum(rsy_bc_ub, loss_sum_ub, 1)
+                    T.reduce_sum(loss_val_ub, loss_sum_ub, 0)
                     T.set_flag("v", "mte3", 5)
                     T.wait_flag("v", "mte3", 5)
 
