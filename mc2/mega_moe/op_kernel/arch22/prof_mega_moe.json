@@ -1,0 +1,16 @@
+{
+    "mc2_trace_config": {
+        "enable_block_time": false,
+        "desid_displ": {
+            "70000": "GMM1",
+            "70001": "GMM2",
+            "70002": "INIT_ROUTING",
+            "70003": "ALLGATHER",
+            "70004": "PULL",
+            "70005": "SWIGLU",
+            "70006": "COMBINE",
+            "70007": "SYNC",
+            "70008": "UNPERMUTE"
+        }
+    }
+}
