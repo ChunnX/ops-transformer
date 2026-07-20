@@ -48,18 +48,11 @@ DP_ASSERT_EQUAL()
 cd "${WORKSPACE}/" || exit
 sudo rm -rf /home/jenkins/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93
 
-if [ "${GE_ST_RT2}X" == "classifyX" ]; then
-    python3 cmake/scripts/convert_yaml.py tests/test_config.yaml
-    cd "${WORKSPACE}/CI/cann/pipeline/bin/common" || exit
-    python3 count_files.py "${WORKSPACE}/tests/test_config.yaml" ops-transformer "${WORKSPACE}" "${WORKSPACE}"
-    DP_ASSERT_EQUAL "$?" "0" "count field file from classify_rule.yaml"
+if [ "${GIT_TARGET_BRANCH}" = "master" ]; then
+    LOG_DO sh build.sh --PR_UT "pr_filelist.txt" --cov --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
 else
-    if [ "${GIT_TARGET_BRANCH}" = "master" ]; then
-        LOG_DO sh build.sh --PR_UT "pr_filelist.txt" --cov --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
-    else
-        LOG_DO sh build.sh --PR_UT "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
-    fi
-    DP_ASSERT_EQUAL "$?" "0" "Run UT TESTCASE"
+    LOG_DO sh build.sh --PR_UT "pr_filelist.txt" --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
 fi
+DP_ASSERT_EQUAL "$?" "0" "Run UT TESTCASE"
 
 echo "ut_process=coverage" >> "${ATOMGIT_OUTPUT}"
