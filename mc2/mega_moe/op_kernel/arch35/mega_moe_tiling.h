@@ -158,8 +158,8 @@ struct MegaMoeSendMaskBufferConfig {
 };
 
 struct MegaMoeTilingData {
-    uint32_t expertPerRank;
-    uint32_t moeExpertPerRank;
+    uint32_t expertPerRank;    // 本卡 routed weight 容量，可大于实际参与路由的专家数
+    uint32_t moeExpertPerRank; // 本卡实际参与 topK 路由的 MoE 专家数
     uint32_t bs;
     uint32_t h;
     uint32_t hiddenDim;
@@ -173,7 +173,7 @@ struct MegaMoeTilingData {
     float clampLimit;
     uint8_t groupedMatmulMode;
     int64_t topoType;
-    uint32_t sharedExpertNum;
+    uint32_t sharedExpertNum; // 独立 dense 路径的共享专家数，不进入 topK/SendMask expert id 空间
 
     // Dispatch 的分核不改变 UB 布局，所有 AIV core 共用一套配置；对应 kernel DispatchBuffInit。
     MegaMoeDispatchBufferConfig dispatchBufferConfig;
