@@ -24,24 +24,16 @@ constexpr uint32_t PARAM_INDEX_1 = 1;
 constexpr uint32_t PARAM_INDEX_2 = 2;
 constexpr uint32_t PARAM_INDEX_3 = 3;
 // Fixpipe with quant VDEQF16
-template <
-    class ElementAccumulator_,
-    class ElementDst_,
-    bool ReluEnable_
->
-struct CopyL0CToGm<Catlass::Arch::AtlasA2,
-                   ElementAccumulator_,
-                   Gemm::GemmType<ElementDst_, layout::RowMajor>,
-                   ScaleGranularity::PER_CHANNEL,
-                   ReluEnable_>
-{
+template <class ElementAccumulator_, class ElementDst_, bool ReluEnable_>
+struct CopyL0CToGm<Catlass::Arch::AtlasA2, ElementAccumulator_, Gemm::GemmType<ElementDst_, layout::RowMajor>,
+                   ScaleGranularity::PER_CHANNEL, ReluEnable_> {
     using ArchTag = Catlass::Arch::AtlasA2;
     using ElementDst = ElementDst_;
     using ElementSrc = ElementAccumulator_;
     using LayoutSrc = Catlass::layout::zN;
     using LayoutDst = Catlass::layout::RowMajor;
-    static constexpr auto quantPre = CopyL0CToGmQuantMode<ArchTag, ElementSrc, ElementDst,
-        ScaleGranularity::PER_CHANNEL>::VALUE;
+    static constexpr auto quantPre =
+        CopyL0CToGmQuantMode<ArchTag, ElementSrc, ElementDst, ScaleGranularity::PER_CHANNEL>::VALUE;
     static constexpr auto reluEn = ReluEnable_;
 
     CATLASS_DEVICE
@@ -68,6 +60,6 @@ struct CopyL0CToGm<Catlass::Arch::AtlasA2,
 
 /////////////////////////////////////////////////////////////////////////////////////////////////////////////
 
-}  // namespace Catlass::Gemm::Tile
+} // namespace Catlass::Gemm::Tile
 
 #endif // COPY_L0C_TO_GM_H
