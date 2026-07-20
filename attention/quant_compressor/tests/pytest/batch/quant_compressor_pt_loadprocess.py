@@ -40,6 +40,9 @@ def test_compressor_process(filepath, device_id=0):
     x =test_data['x']
     wkv = test_data['wkv']
     wgate = test_data['wgate']
+    x_descale = test_data['x_descale']
+    wkv_descale = test_data['wkv_descale']
+    wgate_descale = test_data['wgate_descale']
     kv_state = test_data['kv_state']
     score_state = test_data['score_state']
     ape = test_data['ape']
@@ -50,6 +53,7 @@ def test_compressor_process(filepath, device_id=0):
     cmp_ratio = test_data['cmp_ratio']
     coff = test_data['coff']
     cache_mode = test_data['cache_mode']
+    quant_mode = test_data['quant_mode']
 
     is_contiguous_flag = True
     if cache_mode == 1:  # 连续buffer(支持在第二维非连续)
@@ -99,17 +103,21 @@ def test_compressor_process(filepath, device_id=0):
         score_block_table = block_table.npu()
 
     #调用compressor算子
-    npu_result = torch.ops.custom.quant_compressor(
+    npu_result = torch.ops.cann_ops_transformer.quant_compressor(
                 x.npu(),
                 wkv.npu(),
                 wgate.npu(),
                 state_cache,
                 ape.npu(),
-                cmp_ratio = cmp_ratio,
+                x_descale = x_descale.npu(),
+                wkv_descale = wkv_descale.npu(),
+                wgate_descale = wgate_descale.npu(),
                 state_block_table = kv_block_table,
                 cu_seqlens = cu_seqlens,
                 seqused = seqused,
                 start_pos = start_pos,
+                quant_mode = quant_mode,
+                cmp_ratio = cmp_ratio,
                 coff = coff,
                 cache_mode = cache_mode
             )
