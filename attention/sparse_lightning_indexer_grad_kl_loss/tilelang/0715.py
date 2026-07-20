@@ -445,7 +445,9 @@ def tilelang_grad_kl_loss_single_kernel(
                 sm_max_ub = T.alloc_ub(G, calc_dtype)
                 sm_sum_ub = T.alloc_ub(G, calc_dtype)
                 eps_sm_ub = T.alloc_ub(G, calc_dtype)
-                sm_2d_ub = T.alloc_ub((G, n_block), calc_dtype)
+                # Reuse the former unused sm_2d buffer for the global K-block
+                # broadcast.  n_num is 32 for the target K=2048 case.
+                sm_2d_ub = T.alloc_ub((n_num, n_block), calc_dtype)
                 rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                 rsy_bc_ub = T.alloc_ub((1, n_block), calc_dtype)
                 rsy_max_ub = T.alloc_ub((1,), calc_dtype)
@@ -504,7 +506,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.row_expand_mul_experiment(weight_2d_ub, weight_2d_ub, weight_all_ub, re_tmp_ub)
                     # ReduceSumY + GlobalSoftmaxI max: fused K-block pass
                     # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
-                    T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
                     # Double-buffer ReduceSumY loop: overlap copy[n_rsy+1] ∥ compute[n_rsy]
                     # bmm2 DB: V_MTE2{0,1} (WAR) / MTE2_V{0,1} (RAW)
                     T.set_flag("v", "mte2", 0)
@@ -533,12 +534,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.pipe_barrier("v")
                         # Save to UB for global SoftmaxI; ReduceSumY workspace is unused downstream.
                         T.copy(rsy_reduce_db[cur, :], rsy_all_ub[n_rsy, :])
-                        # Fused: update global max from rsy_reduce_db[cur, :]
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur, :], 1.0)
-                        T.pipe_barrier("v")
-                        T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
-                        T.pipe_barrier("v")
-                        T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
                         # WAR: current slot consumed → safe to refill
                         T.set_flag("v", "mte2", cur)
 
@@ -556,6 +551,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("v", "mte2", 0)
                     T.wait_flag("v", "mte2", 1)
 
+                    # Batch the global max over all ReduceSumY blocks.  The
+                    # previous per-block scalar max created a long V bubble.
+                    T.pipe_barrier("v")
+                    T.reduce_max(rsy_all_ub, rsy_bc_ub, 0)
+                    T.pipe_barrier("v")
+                    T.reduce_max(rsy_bc_ub, rsy_max_ub, 1)
+                    T.pipe_barrier("v")
+
                     # Broadcast rsy_max to vector via T.tile.broadcast (BRCB, PIPE_V, 0 PIPE_ALL)
                     # Drain PReduced MTE3 write before refilling p_reduced_tmp_ub.
                     T.set_flag("mte3", "v", 0)
@@ -567,28 +570,29 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_bc_ub[0, :])
 
-                    # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
-                    T.tile.fill(rsy_sum_ub, 0)
-                    for n_idx_iter in T.serial(n_num):
-                        T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
-                        T.pipe_barrier("v")
-                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
-                        T.pipe_barrier("v")
-                        T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
-                        T.pipe_barrier("v")
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
-                        T.pipe_barrier("v")
-                        T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
-                        T.pipe_barrier("v")
-                        T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
+                    # Save this core's original block before transforming the
+                    # full rsy_all_ub buffer in place to compute the denominator.
+                    T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
+                    T.pipe_barrier("v")
+
+                    # GlobalSoftmaxI: one 2048-element Sub/Exp pass followed
+                    # by two reductions, replacing 32 scalar reduction loops.
+                    T.tile.broadcast(sm_2d_ub, softmax_i_chunk_ub)
+                    T.pipe_barrier("v")
+                    T.tile.sub(rsy_all_ub, rsy_all_ub, sm_2d_ub)
+                    T.pipe_barrier("v")
+                    T.tile.exp(rsy_all_ub, rsy_all_ub)
+                    T.pipe_barrier("v")
+                    T.reduce_sum(rsy_all_ub, rsy_bc_ub, 0)
+                    T.pipe_barrier("v")
+                    T.reduce_sum(rsy_bc_ub, rsy_sum_ub, 1)
+                    T.pipe_barrier("v")
 
                     T.tile.fill(eps_sum_ub, 1e-8)
                     T.pipe_barrier("v")
                     T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
 
                     # Per-core SoftmaxI: use UB-held ReduceSumY, then materialize to GM.
-                    T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
-                    T.pipe_barrier("v")
                     T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
                     T.pipe_barrier("v")
                     T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
