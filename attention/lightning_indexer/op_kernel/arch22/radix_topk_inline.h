@@ -148,6 +148,7 @@ __aicore__ inline void InlineRadixTopK(
             WaitFlag<HardEvent::MTE2_V>(mte2ToV);
 
             // Cast float -> bf16 into xLocalB16 (xBuf back, no overlap with xLocalFp32 in front)
+            // Cast float -> bf16 into xLocalB16 (xBuf back, no overlap with xLocalFp32 in front)
             Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
             PipeBarrier<PIPE_V>();
 
