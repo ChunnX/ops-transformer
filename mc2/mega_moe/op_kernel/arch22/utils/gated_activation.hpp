@@ -18,6 +18,7 @@ namespace Catlass::Epilogue {
 enum class GatedActivationMode : uint32_t {
     SWIGLU = 0,
     SWIGLU_GPT_OSS = 1,
+    SITU = 2,
 };
 
 // All gated activations used by MegaMoe follow this interface. A new
@@ -88,6 +89,40 @@ struct GptOssSwigluActivation {
         AscendC::Adds(output, output, 1.0f, dataLength);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Div(output, gate, output, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Mul(output, output, up, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+};
+
+// Kimi K3 SiTU with the public-interface defaults beta = 1.0 and
+// linear_beta = None:
+//     tanh(gate) * sigmoid(gate) * up
+// gate/up use the regular contiguous half split. The optional linear_beta
+// transform is intentionally disabled until it is exposed by the public
+// MegaMoe interface.
+struct SituActivation {
+    static constexpr float DEFAULT_BETA = 1.0f;
+
+    CATLASS_DEVICE
+    static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
+                        AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
+                        uint32_t dataLength)
+    {
+        // With beta = 1, first form sigmoid(gate) * up in output. This keeps
+        // gate intact for Tanh and allows up to be reused as the Tanh output.
+        AscendC::Muls(output, gate, -DEFAULT_BETA, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Exp(output, output, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(output, output, 1.0f, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Div(output, up, output, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+
+        // Tanh requires non-overlapping dst/src/tmp tensors. Reusing up as
+        // dst satisfies that constraint without allocating another UB tile.
+        AscendC::Tanh(up, gate, sharedTmpBuffer, dataLength);
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Mul(output, output, up, dataLength);
         AscendC::PipeBarrier<PIPE_V>();
@@ -169,6 +204,10 @@ struct GatedActivation {
     {
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_GPT_OSS)) {
             GptOssSwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
+            return;
+        }
+        if (activationCode == static_cast<uint32_t>(GatedActivationMode::SITU)) {
+            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength);
             return;
         }
         SwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);

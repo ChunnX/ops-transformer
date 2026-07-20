@@ -126,7 +126,8 @@ TEST_F(MegaMoeArch22TilingTest, LargeIntermediateHiddenIsNotLimitedByUb)
             {{{kIntermediateHidden, kHiddenSize}, {kIntermediateHidden, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
     }
 
-    for (const std::string &activation : {std::string("swiglu"), std::string("swiglu_gpt_oss")}) {
+    for (const std::string &activation :
+         {std::string("swiglu"), std::string("swiglu_gpt_oss"), std::string("situ")}) {
         gert::TilingContextPara tilingContextPara(
             "MegaMoe", inputs,
             {

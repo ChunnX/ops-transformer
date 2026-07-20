@@ -56,6 +56,7 @@ constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 14;     // weight1 交错模�
 
 constexpr uint32_t ACTIVATION_CODE_SWIGLU = 0;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU_GPT_OSS = 1;
+constexpr uint32_t ACTIVATION_CODE_SITU = 2;
 
 // 输入 tensor 索引
 constexpr uint32_t CONTEXT_INDEX = 0;        // context，shape = [?]
@@ -270,8 +271,11 @@ static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activation
         activationCode = ACTIVATION_CODE_SWIGLU;
     } else if (activationStr == "swiglu_gpt_oss") {
         activationCode = ACTIVATION_CODE_SWIGLU_GPT_OSS;
+    } else if (activationStr == "situ") {
+        activationCode = ACTIVATION_CODE_SITU;
     } else {
-        OP_LOGE(K_INNER_DEBUG, "activation is invalid, support 'swiglu' and 'swiglu_gpt_oss', but got '%s'.", ptr);
+        OP_LOGE(K_INNER_DEBUG,
+                "activation is invalid, support 'swiglu', 'swiglu_gpt_oss' and 'situ', but got '%s'.", ptr);
         return GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

@@ -746,7 +746,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation</td>
         <td>str</td>
         <td>可选</td>
-        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"和"swiglu_gpt_oss"。"swiglu"按前后半区拆分gate/up并计算gate * sigmoid(gate) * up；"swiglu_gpt_oss"按偶奇列拆分gate/up并计算gate * sigmoid(1.702 * gate) * (up + 1)。A5当前仅支持"swiglu"。</td>
+        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglu_gpt_oss"和"situ"。"swiglu"按前后半区拆分gate/up并计算gate * sigmoid(gate) * up；"swiglu_gpt_oss"按偶奇列拆分gate/up并计算gate * sigmoid(1.702 * gate) * (up + 1)；"situ"按前后半区拆分gate/up，使用beta=1.0、linear_beta=None并计算tanh(gate) * sigmoid(gate) * up。A5当前仅支持"swiglu"。</td>
         <td>str</td>
         <td>不涉及</td>
         <td>不涉及</td>
