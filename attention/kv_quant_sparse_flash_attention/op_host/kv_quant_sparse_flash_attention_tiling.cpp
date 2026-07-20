@@ -41,6 +41,7 @@ static const std::string VALUE_NAME = "value";
 static const std::string SPARSE_INDICES_NAME = "sparse_indices";
 static const std::string BLOCK_TABLE_NAME = "block_table";
 static const std::string ATTEN_OUT_NAME = "attention_out";
+static const std::string SINKS_NAME = "sinks";
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {QUERY_NAME,                  {ge::DT_FLOAT16, ge::DT_BF16}},
@@ -744,6 +745,30 @@ ge::graphStatus QSFATilingCheck::CheckSingleParaSparseIndices() const
     return ge::GRAPH_SUCCESS;
 }
 
+ge::graphStatus QSFATilingCheck::CheckSingleParaSinks() const
+{
+    OP_LOGI(opName_, "jin ru CheckSingleParaSinks");
+    if (opParamInfo_.sinks.tensor == nullptr or opParamInfo_.sinks.desc == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_LOGI(opName_, "jin ru CheckSingleParaSinks next");
+    OP_CHECK_IF(kvLayout_ == QSFALayout::PA_BSND,
+        OP_LOGE(opName_, "when sinks is not null, layout_kv do not support %s", QSFALayoutToSerialString(kvLayout_).c_str()),
+        return ge::GRAPH_FAILED);
+
+    const gert::Shape &sinksShape = opParamInfo_.sinks.tensor->GetStorageShape();
+    OP_CHECK_IF(sinksShape.GetDimNum() != DIM_NUM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, SINKS_NAME.c_str(),
+            std::to_string(sinksShape.GetDimNum()).c_str(), "The shape dim of sinks must be 1"),
+        return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(sinksShape.GetShapeSize() != n1Size_,
+        OP_LOGE_FOR_INVALID_SHAPE(opName_, SINKS_NAME.c_str(), GetShapeStr(sinksShape).c_str(),
+            GetShapeStr(gert::Shape({n1Size_})).c_str()),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 ge::graphStatus QSFATilingCheck::CheckSinglePara() const
 {
     if (ge::GRAPH_SUCCESS != CheckSingleParaQuery() ||
@@ -752,6 +777,7 @@ ge::graphStatus QSFATilingCheck::CheckSinglePara() const
         ge::GRAPH_SUCCESS != CheckSingleParaNumHeads() ||
         ge::GRAPH_SUCCESS != CheckSingleParaKvHeadNums() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSparseMode() ||
+        ge::GRAPH_SUCCESS != CheckSingleParaSinks() ||
         ge::GRAPH_SUCCESS != CheckSingleParaSparseBlockSize()) {
         return ge::GRAPH_FAILED;
     }
@@ -1528,6 +1554,8 @@ void QSFAInfoParser::GetOptionalInputParaInfo()
     opParamInfo_.actualSeqLengths.desc = context_->GetOptionalInputDesc(ACT_SEQ_LEN_KV_INPUT_INDEX);
     opParamInfo_.keyDequantScale.tensor = context_->GetOptionalInputTensor(KEY_DEQUANT_SCALE_INPUT_INDEX);
     opParamInfo_.valueDequantScale.tensor = context_->GetOptionalInputTensor(VALUE_DEQUANT_SCALE_INPUT_INDEX);
+    opParamInfo_.sinks.tensor = context_->GetOptionalInputTensor(SINKS_INPUT_INDEX);
+    opParamInfo_.sinks.desc = context_->GetOptionalInputDesc(SINKS_INPUT_INDEX);
 }
 
 void QSFAInfoParser::GetInputParaInfo()
