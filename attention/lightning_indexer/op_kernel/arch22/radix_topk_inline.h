@@ -11,10 +11,8 @@ static constexpr uint32_t RDX_BINS = 4;
 static constexpr uint32_t RDX_ROUNDS = 8;
 static constexpr int16_t RDX_XOR = 0x8000;
 
-#define RDX_V_S_SYNC() do { event_t _e = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S)); \
-    SetFlag<HardEvent::V_S>(_e); WaitFlag<HardEvent::V_S>(_e); } while(0)
-#define RDX_S_V_SYNC() do { event_t _e = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V)); \
-    SetFlag<HardEvent::S_V>(_e); WaitFlag<HardEvent::S_V>(_e); } while(0)
+#define RDX_V_S_SYNC() do { SetFlag<HardEvent::V_S>(EVENT_ID0); WaitFlag<HardEvent::V_S>(EVENT_ID0); } while(0)
+#define RDX_S_V_SYNC() do { SetFlag<HardEvent::S_V>(EVENT_ID0); WaitFlag<HardEvent::S_V>(EVENT_ID0); } while(0)
 
 template <typename T = void>
 __aicore__ inline void InlineRadixTopK(
@@ -97,6 +95,10 @@ __aicore__ inline void InlineRadixTopK(
     Duplicate<int32_t>(tileTopK, 0, tileNum_);
     PipeBarrier<PIPE_V>();
     RDX_V_S_SYNC();
+
+    // Sync before RadixTopK starts: ensure all cores' GM writes are visible
+    SyncAll();
+    PipeBarrier<PIPE_ALL>();
 
     event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
 
@@ -350,6 +352,10 @@ __aicore__ inline void InlineRadixTopK(
     for (uint32_t i = writeOffset; i < kValue; i++) {
         indexGm.SetValue(i, -1);
     }
+
+    // Sync after RadixTopK finishes: ensure all GM writes are complete
+    PipeBarrier<PIPE_ALL>();
+    SyncAll();
 
     GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(mte2ToV);
 }

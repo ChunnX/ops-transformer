@@ -698,6 +698,9 @@ template <typename LIT>
 __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
 {
     if ASCEND_IS_AIV {
+        // Ensure all ProcessVec GM writes are complete before RadixTopK reads
+        SyncAll();
+        PipeBarrier<PIPE_ALL>();
         uint32_t sortLen = constInfo.radixSortLen;
         uint32_t sortLenAlign = constInfo.radixSortLenAlign;
         uint32_t kValue = constInfo.sparseCount;
@@ -766,6 +769,9 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
                 1,      // coreNum = 1
                 batchId);  // debug: batchId
         }
+        // Ensure all RadixTopK GM writes are complete before returning
+        PipeBarrier<PIPE_ALL>();
+        SyncAll();
     }
 }
 
