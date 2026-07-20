@@ -13,6 +13,7 @@
 import os
 from functools import partial
 from quant_compressor_golden import cpu_compressor, get_seq_used_by_batch
+from hif8_lut import sample_hif8_value_uniform
 import pandas as pd
 import numpy as np
 import torch
@@ -54,7 +55,8 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         required_columns = [
             'Testcase_Name', 'batch_size', 'hidden_size', 'Seq_len', 'head_dim', 'block_size', 'cmp_ratio',
             'coff', 'start_p', 'cache_mode', 'layout_x', 'data_type', 'cu_seqlens', 'seqused', 'start_pos',
-            'x_datarange','wkv_datarange','wgate_datarange','ape_datarange','kv_state_datarange','score_state_datarange'
+            'x_datarange','wkv_datarange','wgate_datarange','ape_datarange','kv_state_datarange','score_state_datarange',
+            'x_descale_datarange','wkv_descale_datarange','wgate_descale_datarange','quant_mode'
         ]
 
         # 检查是否缺少必要列
@@ -86,7 +88,11 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 row['wgate_datarange'], 
                 row['ape_datarange'], 
                 row['kv_state_datarange'], 
-                row['score_state_datarange']
+                row['score_state_datarange'],
+                row['x_descale_datarange'],
+                row['wkv_descale_datarange'],
+                row['wgate_descale_datarange'],
+                row['quant_mode']
             ))
 
         return test_cases
@@ -95,28 +101,6 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         pytest.skip(f"Failed to read Excel file: {e}", allow_module_level=True)
         return None
 
-class Generalized_operator():
-    def forward(self,
-                x,
-                wkv,
-                wgate,
-                kv_state,
-                score_state,
-                update_kv_position,
-                update_score_position,
-                ape,
-                block_table,
-                cu_seqlens,
-                seqused,
-                start_pos,
-                cmp_ratio,
-                coff,
-                cache_mode):
-        return cpu_compressor(
-            x, wkv, wgate, kv_state, score_state, update_kv_position, update_score_position, ape,
-            block_table=block_table, cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
-            cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode)
-
 
 def compressor_output_single(data_case):
     casename = data_case[0]
@@ -124,7 +108,8 @@ def compressor_output_single(data_case):
 
     batch_size, hidden_size, Seq_len, head_dim, block_size, cmp_ratio, coff, \
     start_p, cache_mode, layout_x, data_type, cu_seqlens, seqused, start_pos, \
-    x_datarange, wkv_datarange, wgate_datarange, ape_datarange, kv_state_datarange, score_state_datarange = params
+    x_datarange, wkv_datarange, wgate_datarange, ape_datarange, kv_state_datarange, score_state_datarange, \
+    x_descale_datarange, wkv_descale_datarange, wgate_descale_datarange, quant_mode = params
 
     if data_type == 'FP16':
         data_type =  torch.float16
@@ -164,6 +149,9 @@ def compressor_output_single(data_case):
     ape_datarange = [float(x.strip()) for x in ape_datarange.split(',')]
     kv_state_datarange = [float(x.strip()) for x in kv_state_datarange.split(',')]
     score_state_datarange = [float(x.strip()) for x in score_state_datarange.split(',')]
+    x_descale_datarange = [float(x.strip()) for x in x_descale_datarange.split(',')]
+    wkv_descale_datarange = [float(x.strip()) for x in wkv_descale_datarange.split(',')]
+    wgate_descale_datarange = [float(x.strip()) for x in wgate_descale_datarange.split(',')]
 
     S_max = 0
     save_state_seqlens = None
@@ -319,9 +307,12 @@ def compressor_output_single(data_case):
     else:
         x_shape = (batch_size, Seq_len, hidden_size)
 
-    x = torch.tensor(np.random.uniform(x_datarange[0], x_datarange[1], x_shape)).to(data_type)
-    wkv = torch.tensor(np.random.uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
-    wgate = torch.tensor(np.random.uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size))).to(data_type)
+    x = torch.tensor(sample_hif8_value_uniform(x_datarange[0], x_datarange[1], x_shape).astype(np.uint8))
+    wkv = torch.tensor(sample_hif8_value_uniform(wkv_datarange[0], wkv_datarange[1], (coff * head_dim, hidden_size)).astype(np.uint8))
+    wgate = torch.tensor(sample_hif8_value_uniform(wgate_datarange[0], wgate_datarange[1], (coff * head_dim, hidden_size)).astype(np.uint8))
+    x_descale = torch.tensor(np.random.uniform(x_descale_datarange[0], x_descale_datarange[1], (1,))).to(torch.float32)
+    wkv_descale = torch.tensor(np.random.uniform(wkv_descale_datarange[0], wkv_descale_datarange[1], (coff * head_dim,))).to(torch.float32)
+    wgate_descale = torch.tensor(np.random.uniform(wgate_descale_datarange[0], wgate_descale_datarange[1], (coff * head_dim,))).to(torch.float32)
     ape = torch.tensor(np.random.uniform(ape_datarange[0], ape_datarange[1], (cmp_ratio, coff * head_dim))).to(torch.float32)
     ### ======================== gen input data finish =============================
     ### ======================== execute cpu start =================================
@@ -331,22 +322,11 @@ def compressor_output_single(data_case):
     update_kv = torch.zeros((cpu_kv_state.shape[0],cpu_kv_state.shape[1],cpu_kv_state.shape[2]), dtype=torch.bool)
     update_score = torch.zeros((cpu_score_state.shape[0],cpu_score_state.shape[1],cpu_score_state.shape[2]), dtype=torch.bool)
 
-    test_operator = Generalized_operator()
-    cpu_result, kv_mask_result = test_operator.forward( x,
-                                        wkv,
-                                        wgate,
-                                        cpu_kv_state,
-                                        cpu_score_state,
-                                        update_kv,
-                                        update_score,
-                                        ape,
-                                        block_table = block_table,
-                                        cu_seqlens = cu_seqlens,
-                                        seqused = seqused,
-                                        start_pos = start_pos,
-                                        cmp_ratio = cmp_ratio,
-                                        coff = coff,
-                                        cache_mode = cache_mode)
+    cpu_result, kv_mask_result = cpu_compressor(
+        x, wkv, wgate, x_descale, wkv_descale, wgate_descale,
+        cpu_kv_state, cpu_score_state, update_kv, update_score, ape,
+        block_table=block_table, cu_seqlens=cu_seqlens, seqused=seqused, start_pos=start_pos,
+        cmp_ratio=cmp_ratio, coff=coff, cache_mode=cache_mode, quant_mode=quant_mode)
 
     output_tensors = {
         "params":params,
@@ -359,6 +339,9 @@ def compressor_output_single(data_case):
         "x":x,
         "wkv":wkv,
         "wgate":wgate,
+        "x_descale":x_descale,
+        "wkv_descale":wkv_descale,
+        "wgate_descale":wgate_descale,
         "kv_state":kv_state,
         "score_state":score_state,
         "ape":ape,
@@ -368,7 +351,8 @@ def compressor_output_single(data_case):
         "start_pos":start_pos,
         "cmp_ratio":cmp_ratio,
         "coff":coff,
-        "cache_mode":cache_mode
+        "cache_mode":cache_mode,
+        "quant_mode":quant_mode
     }
     return  casename, output_tensors
 
