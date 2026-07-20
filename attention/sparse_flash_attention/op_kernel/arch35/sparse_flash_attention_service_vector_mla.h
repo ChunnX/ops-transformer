@@ -71,7 +71,6 @@ public:
     static constexpr uint32_t dVTemplateTypeInput = 576;
     static constexpr float R0 = 1.0f;
     static constexpr uint64_t SYNC_SINKS_BUF_FLAG = 6;
-    static constexpr uint32_t initOutputEventId = 0U;
 
     // ==================== Functions ======================
     __aicore__ inline SFAVectorService() {};
@@ -192,6 +191,8 @@ private:
     int64_t sfaSparseCalSize;
     int64_t sparseS2Start;
     int64_t sparseS2End;
+
+    TEventID initOutputEventId;
 };
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void
@@ -817,6 +818,8 @@ void SFAVectorService<TEMPLATE_ARGS>::InitLocalBuffer(TPipe *pipe, ConstInfo &co
     if (this->isSinks) {
         InitSinksBuffer(constInfo);
     }
+
+    initOutputEventId = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
 }
 
 TEMPLATES_DEF_NO_DEFAULT __aicore__ inline void SFAVectorService<TEMPLATE_ARGS>::InitCubeVecSharedParams(
