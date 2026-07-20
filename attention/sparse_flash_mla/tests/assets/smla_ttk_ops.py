@@ -25,15 +25,13 @@ def _max_prefix_span(cu_seqlens, fallback=0):
     return int(fallback or 0)
 
 
-def sparse_flash_mla_ttk(
+def build_sparse_flash_mla_metadata(
     q: torch.Tensor,
     *,
     ori_kv: Optional[torch.Tensor] = None,
     cmp_kv: Optional[torch.Tensor] = None,
     ori_sparse_indices: Optional[torch.Tensor] = None,
     cmp_sparse_indices: Optional[torch.Tensor] = None,
-    ori_block_table: Optional[torch.Tensor] = None,
-    cmp_block_table: Optional[torch.Tensor] = None,
     cu_seqlens_q: Optional[torch.Tensor] = None,
     cu_seqlens_ori_kv: Optional[torch.Tensor] = None,
     cu_seqlens_cmp_kv: Optional[torch.Tensor] = None,
@@ -43,8 +41,6 @@ def sparse_flash_mla_ttk(
     cmp_residual_kv: Optional[torch.Tensor] = None,
     ori_topk_length: Optional[torch.Tensor] = None,
     cmp_topk_length: Optional[torch.Tensor] = None,
-    sinks: Optional[torch.Tensor] = None,
-    softmax_scale: float = 1.0,
     cmp_ratio: int = 1,
     ori_mask_mode: int = 4,
     cmp_mask_mode: int = 3,
@@ -52,12 +48,11 @@ def sparse_flash_mla_ttk(
     ori_win_right: int = 0,
     layout_q: str = "BSND",
     layout_kv: str = "BSND",
-    topk_value_mode: int = 1,
-    return_softmax_lse: bool = False,
     has_ori_kv: Optional[bool] = None,
     has_cmp_kv: Optional[bool] = None,
+    **_unused,
 ):
-    """Generate metadata in TTK, then call the extension op."""
+    """Build metadata before the main op or graph capture."""
     num_heads_q = int(q.shape[1] if layout_q == "TND" else q.shape[2])
     kv_ref = ori_kv if ori_kv is not None else cmp_kv
     num_heads_kv = int(kv_ref.shape[1] if layout_kv == "TND" else kv_ref.shape[2])
@@ -111,6 +106,67 @@ def sparse_flash_mla_ttk(
     )
     if hasattr(metadata, "to") and metadata.device != q.device:
         metadata = metadata.to(q.device)
+    return metadata
+
+
+def sparse_flash_mla_ttk(
+    q: torch.Tensor,
+    *,
+    ori_kv: Optional[torch.Tensor] = None,
+    cmp_kv: Optional[torch.Tensor] = None,
+    ori_sparse_indices: Optional[torch.Tensor] = None,
+    cmp_sparse_indices: Optional[torch.Tensor] = None,
+    ori_block_table: Optional[torch.Tensor] = None,
+    cmp_block_table: Optional[torch.Tensor] = None,
+    cu_seqlens_q: Optional[torch.Tensor] = None,
+    cu_seqlens_ori_kv: Optional[torch.Tensor] = None,
+    cu_seqlens_cmp_kv: Optional[torch.Tensor] = None,
+    seqused_q: Optional[torch.Tensor] = None,
+    seqused_ori_kv: Optional[torch.Tensor] = None,
+    seqused_cmp_kv: Optional[torch.Tensor] = None,
+    cmp_residual_kv: Optional[torch.Tensor] = None,
+    ori_topk_length: Optional[torch.Tensor] = None,
+    cmp_topk_length: Optional[torch.Tensor] = None,
+    sinks: Optional[torch.Tensor] = None,
+    softmax_scale: float = 1.0,
+    cmp_ratio: int = 1,
+    ori_mask_mode: int = 4,
+    cmp_mask_mode: int = 3,
+    ori_win_left: int = 127,
+    ori_win_right: int = 0,
+    layout_q: str = "BSND",
+    layout_kv: str = "BSND",
+    topk_value_mode: int = 1,
+    return_softmax_lse: bool = False,
+    has_ori_kv: Optional[bool] = None,
+    has_cmp_kv: Optional[bool] = None,
+):
+    """Generate metadata in TTK, then call the extension op."""
+    metadata = build_sparse_flash_mla_metadata(
+        q,
+        ori_kv=ori_kv,
+        cmp_kv=cmp_kv,
+        ori_sparse_indices=ori_sparse_indices,
+        cmp_sparse_indices=cmp_sparse_indices,
+        cu_seqlens_q=cu_seqlens_q,
+        cu_seqlens_ori_kv=cu_seqlens_ori_kv,
+        cu_seqlens_cmp_kv=cu_seqlens_cmp_kv,
+        seqused_q=seqused_q,
+        seqused_ori_kv=seqused_ori_kv,
+        seqused_cmp_kv=seqused_cmp_kv,
+        cmp_residual_kv=cmp_residual_kv,
+        ori_topk_length=ori_topk_length,
+        cmp_topk_length=cmp_topk_length,
+        cmp_ratio=cmp_ratio,
+        ori_mask_mode=ori_mask_mode,
+        cmp_mask_mode=cmp_mask_mode,
+        ori_win_left=ori_win_left,
+        ori_win_right=ori_win_right,
+        layout_q=layout_q,
+        layout_kv=layout_kv,
+        has_ori_kv=has_ori_kv,
+        has_cmp_kv=has_cmp_kv,
+    )
 
     return torch.ops.cann_ops_transformer.sparse_flash_mla(
         q,
