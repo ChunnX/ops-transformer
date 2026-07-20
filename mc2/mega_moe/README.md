@@ -859,6 +859,8 @@
       | A8W8-INT | BF16 | INT8 | INT8 | UINT64 | UINT64 | – | – | BF16 | 2 | 1（INT8） |
       | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1（INT8） |
 
+    - intermediate_hidden（weight1 每个专家矩阵的 dim1 / 2）需大于等于 1024 且按 512 对齐。SwiGLU 采用 UB 分块计算，不再因 UB 容量设置该维度的上限。
+
   - **<term>Ascend 950PR/Ascend 950DT</term>**：
     - BS（x.dim0）支持[1, maxBS], maxBS = (8 * (totalUbSize - 48K)) / (topK * (64 + epWorldSize)), 其中totalUbSize为UB总大小，950系列产品该值支持到当前环境能申请的最大内存。
     - H（x.dim1）支持1024、2048、3072、4096、5120、6144、7168、8192。
