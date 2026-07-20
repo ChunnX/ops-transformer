@@ -21,44 +21,27 @@ __aicore__ inline Gmm1ExpertLoopState CreateGmm1ExpertLoopState(
     Gmm1ProblemShape shape;
     Get<N_VALUE>(shape) = context.gmm1OutputDim;
     Get<K_VALUE>(shape) = context.tokenHiddenDim;
-    Gmm1BlockOffset offset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
-    return Gmm1ExpertLoopState{shape, offset, 0};
+    return Gmm1ExpertLoopState{shape, 0};
 }
 
-template <typename ActivationType, typename WeightType, typename SwigluOutType, typename BlockEpilogue>
+template <typename ActivationType, bool EnableA8W4, typename BlockEpilogue>
 __aicore__ inline bool UpdateGmm1GroupParams(
     const DispatchGmm1SwigluContext &context,
     const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
     DispatchGmm1SwigluScratch<ActivationType> &scratch,
     Gmm1ExpertLoopState &state, uint32_t expertIdx, uint64_t sendCnt)
 {
-    constexpr uint32_t aElemsPerByte = Std::IsSame<ActivationType, uint8_t>::value ? 2U : 1U;
-    constexpr uint32_t bElemsPerByte = Std::IsSame<WeightType, fp4x2_e2m1_t>::value ? 2U : 1U;
-    constexpr uint32_t cElemsPerByte = Std::IsSame<SwigluOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
+    // Generic AIV1 only dispatches and advances startBlockIdx. Keep M for the
+    // tile count, but avoid maintaining address offsets that this role never consumes.
+    if constexpr (g_coreType == AIV && !EnableA8W4) {
+        if (GetSubBlockIdx() != 0) {
+            Get<M_VALUE>(state.problemShape) = sendCnt;
+            return sendCnt != 0;
+        }
+    }
 
     if (expertIdx != 0) {
-        uint64_t m = Get<M_VALUE>(state.problemShape);
-        uint64_t n = Get<N_VALUE>(state.problemShape);
-        uint64_t k = Get<K_VALUE>(state.problemShape);
-        state.expertBeforeCnt += m;
-        Get<IDX_A_OFFSET>(state.baseOffset) += m * k / aElemsPerByte;
-        Get<IDX_B_OFFSET>(state.baseOffset) += n * k / bElemsPerByte;
-        auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-        Get<IDX_A_SCALE_OFFSET>(state.baseOffset) += m * scaleK;
-        Get<IDX_B_SCALE_OFFSET>(state.baseOffset) += n * scaleK;
-        Get<IDX_C_OFFSET>(state.baseOffset) += m * n / SWIGLU_N_HALF / cElemsPerByte;
-        Get<IDX_C_SCALE_OFFSET>(state.baseOffset) +=
-            m * Ops::Base::CeilDiv(n / SWIGLU_N_HALF,
-                static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-        Get<IDX_FLAG_OFFSET>(state.baseOffset) += 1;
-        Get<IDX_B2_OFFSET>(state.baseOffset) += k * n / SWIGLU_N_HALF / bElemsPerByte;
-        Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) +=
-            k * Ops::Base::CeilDiv(n / SWIGLU_N_HALF,
-                static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-        Get<IDX_Y2_OFFSET>(state.baseOffset) += m * k;
-        Get<IDX_M_OFFSET>(state.baseOffset) += m;
-        Get<IDX_GMM1_OFFSET>(state.baseOffset) += m * n;
-        Get<IDX_GMM2_OFFSET>(state.baseOffset) += m * k;
+        state.rowOffset += Get<M_VALUE>(state.problemShape);
     }
 
     if (GetSubBlockIdx() == 0) {
@@ -87,35 +70,56 @@ template <typename ActivationType, typename WeightType, typename SwigluOutType,
 __aicore__ inline void UpdateGmm1GlobalBuffer(
     const DispatchGmm1SwigluContext &context,
     const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
-    GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state)
+    GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state, uint32_t expertIdx)
 {
+    if constexpr (g_coreType == AIV && !EnableA8W4) {
+        if (GetSubBlockIdx() != 0) {
+            return;
+        }
+    }
+
+    constexpr uint32_t aElemsPerByte = Std::IsSame<ActivationType, uint8_t>::value ? 2U : 1U;
+    constexpr uint32_t bElemsPerByte = Std::IsSame<WeightType, fp4x2_e2m1_t>::value ? 2U : 1U;
+    constexpr uint32_t cElemsPerByte = Std::IsSame<SwigluOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
+    int64_t n = Get<N_VALUE>(state.problemShape);
+    int64_t k = Get<K_VALUE>(state.problemShape);
+    int64_t expertOffset = expertIdx;
+    int64_t scaleK = Ops::Base::CeilDiv(k, static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+
     if constexpr (EnableA8W4) {
         gmmAddrInfo.gmm1OutGlobal = args.gmm1MmadResPtr +
-            Get<IDX_GMM1_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
+            state.rowOffset * n * sizeof(bfloat16_t);
     }
     gmmAddrInfo.aGlobal = args.dispatchRevDataPtr +
-        Get<IDX_A_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        state.rowOffset * k / aElemsPerByte * sizeof(ActivationType);
     gmmAddrInfo.aScaleGlobal = args.dispatchRevScalePtr +
-        Get<IDX_A_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleType);
+        state.rowOffset * scaleK * sizeof(QuantScaleType);
     gmmAddrInfo.bGlobal = args.weight1Ptr +
-        Get<IDX_B_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        expertOffset * n * k / bElemsPerByte * sizeof(ActivationType);
     gmmAddrInfo.bScaleGlobal = args.weight1ScalePtr +
-        Get<IDX_B_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleType);
+        expertOffset * n * scaleK * sizeof(QuantScaleType);
     if constexpr (g_coreType == AIV) {
-        AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
-            Get<IDX_C_OFFSET>(state.baseOffset), Get<IDX_C_SCALE_OFFSET>(state.baseOffset),
-            Get<IDX_FLAG_OFFSET>(state.baseOffset), 0L, 0L, 0L};
-        args.epilogueOp->UpdateGlobalAddr(vecBaseOffset);
+        bool runsSwiglu = true;
+        if constexpr (EnableA8W4) {
+            runsSwiglu = GetSubBlockIdx() == 1;
+        }
+        if (runsSwiglu) {
+            int64_t scaleN = Ops::Base::CeilDiv(n / SWIGLU_N_HALF,
+                static_cast<int64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+            AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
+                state.rowOffset * n / SWIGLU_N_HALF / cElemsPerByte,
+                state.rowOffset * scaleN, expertOffset, 0L, 0L, 0L};
+            args.epilogueOp->UpdateGlobalAddr(vecBaseOffset);
+        }
     }
-    gmmAddrInfo.swigluToGmm2Flag = reinterpret_cast<__gm__ int32_t *>(
-        args.swigluToGmm2FlagPtr) +
-        Get<IDX_FLAG_OFFSET>(state.baseOffset) * INT_CACHELINE;
-    gmmAddrInfo.dispatchToGmm1Flag = reinterpret_cast<__gm__ int32_t *>(
-        args.dispatchToGmm1FlagPtr) +
-        Get<IDX_FLAG_OFFSET>(state.baseOffset) * context.dispatchFlagSlotsPerExpert;
+    if constexpr (g_coreType == AIC) {
+        gmmAddrInfo.dispatchToGmm1Flag = reinterpret_cast<__gm__ int32_t *>(
+            args.dispatchToGmm1FlagPtr) +
+            expertOffset * context.dispatchFlagSlotsPerExpert;
+    }
 }
 
-template <typename QuantOutType, typename ActivationType, typename WeightType,
+template <typename QuantOutType, typename WeightType,
     typename SwigluOutType, typename QuantScaleType, bool EnableA8W4, typename BlockEpilogue>
 __aicore__ inline void RunGmm1SwigluStageOneCore(
     const DispatchGmm1SwigluContext &context,
@@ -160,9 +164,7 @@ __aicore__ inline void DispatchGmm1SwigluOneCore(
         return;
     }
     InitDispatchGmm1SwigluBuffers<ActivationType, EnableA8W4>(context, args, scratch);
-    Gmm1ExpertLoopState dispatchState = CreateGmm1ExpertLoopState(context);
     Gmm1ExpertLoopState gmm1State = CreateGmm1ExpertLoopState(context);
-    GMMAddrInfo dispatchAddrInfo;
     GMMAddrInfo gmm1AddrInfo;
     uint64_t currentSendCnt = 0;
     uint64_t nextSendCnt = 0;
@@ -170,39 +172,34 @@ __aicore__ inline void DispatchGmm1SwigluOneCore(
     if constexpr (g_coreType == AIV) {
         if (GetSubBlockIdx() == 1) {
             SendCntCalOneCore<ActivationType, EnableA8W4>(context, args, scratch, 0, nextSendCnt);
-            if (UpdateGmm1GroupParams<ActivationType, WeightType, SwigluOutType>(
-                context, args, scratch, dispatchState, 0, nextSendCnt)) {
-                UpdateGmm1GlobalBuffer<ActivationType, WeightType, SwigluOutType,
-                    QuantScaleType, EnableA8W4>(context, args, dispatchAddrInfo, dispatchState);
-                DispatchTokensOneCore<ActivationType, QuantScaleType, EnableA8W4>(
-                    context, args, scratch, dispatchAddrInfo, 0);
+            if (nextSendCnt != 0) {
+                DispatchTokensOneCore<ActivationType, QuantScaleType>(context, args, scratch, 0);
             }
         }
     }
 
     for (uint32_t expertIdx = 0; expertIdx < context.expertPerRank; ++expertIdx) {
-        currentSendCnt = nextSendCnt;
         if constexpr (g_coreType == AIV) {
-            if (GetSubBlockIdx() == 1 && expertIdx + 1 < context.expertPerRank) {
-                SendCntCalOneCore<ActivationType, EnableA8W4>(
-                    context, args, scratch, expertIdx + 1, nextSendCnt);
-                if (UpdateGmm1GroupParams<ActivationType, WeightType, SwigluOutType>(
-                    context, args, scratch, dispatchState, expertIdx + 1, nextSendCnt)) {
-                    UpdateGmm1GlobalBuffer<ActivationType, WeightType, SwigluOutType,
-                        QuantScaleType, EnableA8W4>(context, args, dispatchAddrInfo, dispatchState);
-                    DispatchTokensOneCore<ActivationType, QuantScaleType, EnableA8W4>(
-                        context, args, scratch, dispatchAddrInfo, expertIdx + 1);
+            if (GetSubBlockIdx() == 1) {
+                currentSendCnt = nextSendCnt;
+                if (expertIdx + 1 < context.expertPerRank) {
+                    SendCntCalOneCore<ActivationType, EnableA8W4>(
+                        context, args, scratch, expertIdx + 1, nextSendCnt);
+                    if (nextSendCnt != 0) {
+                        DispatchTokensOneCore<ActivationType, QuantScaleType>(
+                            context, args, scratch, expertIdx + 1);
+                    }
                 }
             }
         }
 
-        if (!UpdateGmm1GroupParams<ActivationType, WeightType, SwigluOutType>(
+        if (!UpdateGmm1GroupParams<ActivationType, EnableA8W4>(
             context, args, scratch, gmm1State, expertIdx, currentSendCnt)) {
             continue;
         }
         UpdateGmm1GlobalBuffer<ActivationType, WeightType, SwigluOutType,
-            QuantScaleType, EnableA8W4>(context, args, gmm1AddrInfo, gmm1State);
-        RunGmm1SwigluStageOneCore<QuantOutType, ActivationType, WeightType,
+            QuantScaleType, EnableA8W4>(context, args, gmm1AddrInfo, gmm1State, expertIdx);
+        RunGmm1SwigluStageOneCore<QuantOutType, WeightType,
             SwigluOutType, QuantScaleType, EnableA8W4>(
                 context, args, gmm1AddrInfo, gmm1State);
     }

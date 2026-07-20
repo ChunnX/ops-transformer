@@ -47,40 +47,41 @@ __aicore__ inline void QuantProcessInRankOneCore(const DispatchPrepareContext &c
         return;
     }
     const AivThreadContext &thread = context.thread;
-    if (thread.threadNum == 0U || thread.threadIdx >= thread.threadNum) {
-        return;
-    }
-
     int32_t currentNum;
     int32_t currentOffset;
     TilingByThreadContext(
         context.tokenShape.tokenNum, currentNum, currentOffset, thread.threadIdx, thread.threadNum, 1);
+    if (currentNum <= 0) {
+        return;
+    }
     uint32_t hiddenDim = context.tokenShape.tokenHiddenDim;
     GlobalTensor<bfloat16_t> srcGlobalTensor;
     GlobalTensor<uint8_t> dstGlobalTensor;
+    srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t *>(args.xGmAddr) +
+        static_cast<uint64_t>(currentOffset) * hiddenDim);
+    dstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(args.quantTokenScalePtr) +
+        static_cast<uint64_t>(currentOffset) * args.quantTokenScaleAlignBytes);
     DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(hiddenDim * sizeof(bfloat16_t)), 0U, 0U};
     DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
     DataCopyExtParams xCopyOutParams = {1U,
         static_cast<uint32_t>(args.quantTokenAlignBytes + args.quantScaleAlignBytes), 0U, 0U, 0U};
+    __ubuf__ uint16_t* maxExpAddr = reinterpret_cast<__ubuf__ uint16_t *>(scratch.mxTempTensor.GetPhyAddr());
+    __ubuf__ uint16_t* halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t *>(
+        scratch.mxTempTensor[Ops::Base::CeilAlign(
+            args.quantScaleNumAlignPerToken, static_cast<uint32_t>(ALIGN_32))].GetPhyAddr());
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t index = 0; index < currentNum; index++) {
-        srcGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t *)(args.xGmAddr +
-            static_cast<uint64_t>(currentOffset + index) * static_cast<uint64_t>(hiddenDim) * sizeof(bfloat16_t)));
-        dstGlobalTensor.SetGlobalBuffer((__gm__ uint8_t *)(args.quantTokenScalePtr +
-            static_cast<uint64_t>(currentOffset + index) *
-                static_cast<uint64_t>(args.quantTokenScaleAlignBytes)));
-        auto event = (index % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
-        auto xInTensor = (index % DOUBLE_BUFFER == 0) ? scratch.xInTensor0 : scratch.xInTensor1;
-        auto xOutTensor = (index % DOUBLE_BUFFER == 0) ? scratch.xOutTensor0 : scratch.xOutTensor1;
+        bool useFirstBuffer = index % DOUBLE_BUFFER == 0;
+        auto event = useFirstBuffer ? EVENT_ID0 : EVENT_ID1;
+        auto xInTensor = useFirstBuffer ? scratch.xInTensor0 : scratch.xInTensor1;
+        auto xOutTensor = useFirstBuffer ? scratch.xOutTensor0 : scratch.xOutTensor1;
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
-        DataCopyPad(xInTensor, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
+        DataCopyPad(xInTensor, srcGlobalTensor[static_cast<uint64_t>(index) * hiddenDim],
+            xCopyInParams, xCopyInPadParams);
         SetFlag<AscendC::HardEvent::MTE2_V>(event);
         WaitFlag<AscendC::HardEvent::MTE2_V>(event);
         __ubuf__ bfloat16_t* srcAddr = (__ubuf__ bfloat16_t*)xInTensor.GetPhyAddr();
-        __ubuf__ uint16_t* maxExpAddr = (__ubuf__ uint16_t*)scratch.mxTempTensor.GetPhyAddr();
-        __ubuf__ uint16_t* halfScaleAddr = (__ubuf__ uint16_t*)scratch.mxTempTensor[Ops::Base::CeilAlign(
-            args.quantScaleNumAlignPerToken, static_cast<uint32_t>(ALIGN_32))].GetPhyAddr();
         __ubuf__ int8_t* outDataAddr = (__ubuf__ int8_t*)xOutTensor.GetPhyAddr();
         __ubuf__ uint16_t* mxScaleAddr = (__ubuf__ uint16_t*)xOutTensor[args.quantTokenAlignBytes].GetPhyAddr();
 
@@ -97,7 +98,8 @@ __aicore__ inline void QuantProcessInRankOneCore(const DispatchPrepareContext &c
         SetFlag<AscendC::HardEvent::V_MTE3>(event);
         WaitFlag<AscendC::HardEvent::V_MTE3>(event);
         auto xOutBytesTensor = xOutTensor.template ReinterpretCast<uint8_t>();
-        DataCopyPad(dstGlobalTensor, xOutBytesTensor, xCopyOutParams);
+        DataCopyPad(dstGlobalTensor[static_cast<uint64_t>(index) * args.quantTokenScaleAlignBytes],
+            xOutBytesTensor, xCopyOutParams);
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(event);
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);

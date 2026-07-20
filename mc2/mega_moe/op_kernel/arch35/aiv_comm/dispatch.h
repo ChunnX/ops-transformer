@@ -17,13 +17,11 @@
 namespace MegaMoeImpl {
 
 using Gmm1ProblemShape = Shape<int64_t, int64_t, int64_t, int64_t>;
-using Gmm1BlockOffset = Shape<int64_t, int64_t, int64_t, int64_t, int64_t,
-    int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t, int64_t>;
 
 struct Gmm1ExpertLoopState {
     Gmm1ProblemShape problemShape;
-    Gmm1BlockOffset baseOffset;
-    uint32_t expertBeforeCnt;
+    // Rows before the current expert; all variable GMM1 offsets derive from it.
+    int64_t rowOffset;
 };
 
 // GMM1 scheduling and count-workspace indexing are deliberately separate.
@@ -45,7 +43,7 @@ struct DispatchGmm1SwigluContext {
     uint32_t maskSlotSize;
     uint64_t quantWinOffset;
     uint32_t quantTokenAlignBytes;
-    uint32_t quantScaleAlignBytes;
+    uint32_t quantTokenScaleAlignBytes;
     int32_t dispatchFlagSlotsPerExpert;
     int32_t groupedMatmulMode;
 };
@@ -64,7 +62,6 @@ struct DispatchGmm1SwigluArgs {
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR weight1Ptr;
     GM_ADDR weight1ScalePtr;
-    GM_ADDR swigluToGmm2FlagPtr;
     GM_ADDR dispatchToGmm1FlagPtr;
     GM_ADDR sendCntFlagPtr;
     uint32_t *startBlockIdx;
@@ -99,17 +96,22 @@ __aicore__ inline void InitDispatchGmm1SwigluBuffers(
 {
     scratch.expertRevNumsGlobalTensor.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t *>(args.expertRevTokenNumsPtr));
-    if constexpr (EnableA8W4) {
-        uint64_t cumsumStride = Ops::Base::CeilAlign(
-            static_cast<int64_t>(context.worldSize * context.expertPerRank * sizeof(int32_t)), ALIGN_32);
-        scratch.cumsumInfoGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-            args.cumsumInfoPtr + cumsumStride * context.countWorkspace.blockIdx));
-    }
-    scratch.cumsumRevCntInRank = 0;
-
     if constexpr (g_coreType == AIC) {
         return;
     }
+    // Only AIV1 performs SendCnt/Dispatch and later exports the cumsum result.
+    if (GetSubBlockIdx() != 1) {
+        return;
+    }
+    uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
+        static_cast<int64_t>(context.worldSize * context.expertPerRank * sizeof(int32_t)),
+        static_cast<int64_t>(ALIGN_32));
+    if constexpr (EnableA8W4) {
+        scratch.cumsumInfoGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            args.cumsumInfoPtr +
+            static_cast<uint64_t>(cumsumInfoTensorSize) * context.countWorkspace.blockIdx));
+    }
+    scratch.cumsumRevCntInRank = 0;
 
     uint32_t expertTokenCntTensorAddr = 0;
     uint32_t expertTokenCntTensorSize = ALIGN_32;
@@ -117,9 +119,6 @@ __aicore__ inline void InitDispatchGmm1SwigluBuffers(
         expertTokenCntTensorAddr, expertTokenCntTensorSize / sizeof(int32_t));
 
     uint32_t cumsumInfoTensorAddr = expertTokenCntTensorAddr + expertTokenCntTensorSize;
-    uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(context.worldSize * context.expertPerRank * sizeof(int32_t)),
-        static_cast<int64_t>(ALIGN_32));
     scratch.cumsumInfoTensor = LocalTensor<int32_t>(TPosition::VECCALC,
         cumsumInfoTensorAddr, cumsumInfoTensorSize / sizeof(int32_t));
 
@@ -147,9 +146,7 @@ __aicore__ inline void InitDispatchGmm1SwigluBuffers(
     scratch.topkIndexTensor = LocalTensor<int32_t>(TPosition::VECCALC,
         topkIndexTensorAddr, topkIndexTensorSize / sizeof(int32_t));
 
-    uint32_t tokenScaleSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(context.quantTokenAlignBytes + context.quantScaleAlignBytes),
-        static_cast<int64_t>(ALIGN_32));
+    uint32_t tokenScaleSize = context.quantTokenScaleAlignBytes;
     uint32_t copyTmpBaseAddr = topkIndexTensorAddr + topkIndexTensorSize;
     for (int32_t index = 0; index < GMM1_DISPATCH_BUFFER_NUM; ++index) {
         scratch.copyTmpTensors[index] = LocalTensor<ActivationType>(TPosition::VECCALC,
@@ -245,9 +242,7 @@ __aicore__ inline void CopyDispatchTokensOneCore(
     int64_t widthAScale = Ops::Base::CeilDiv(
         static_cast<int64_t>(context.tokenHiddenDim), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
         MXFP_MULTI_BASE_SIZE;
-    uint32_t copyInNum = Ops::Base::CeilAlign(
-        static_cast<int64_t>(context.quantTokenAlignBytes + context.quantScaleAlignBytes),
-        static_cast<int64_t>(ALIGN_32));
+    uint32_t copyInNum = context.quantTokenScaleAlignBytes;
 
     GlobalTensor<ActivationType> remoteRankGlobalTensor;
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
@@ -318,16 +313,19 @@ __aicore__ inline void CopyDispatchTokensOneCore(
 }
 
 // Prototype: MegaMoe::TripleInfoCalAndDispatch. Scans route batches and dispatches one block's token shards.
-template <typename ActivationType, typename QuantScaleType, bool EnableA8W4, typename BlockEpilogue>
+template <typename ActivationType, typename QuantScaleType, typename BlockEpilogue>
 __aicore__ inline void DispatchTokensOneCore(
     const DispatchGmm1SwigluContext &context,
     const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
     DispatchGmm1SwigluScratch<ActivationType> &scratch,
-    GMMAddrInfo &gmmAddrInfo, uint32_t localExpertId)
+    uint32_t localExpertId)
 {
     constexpr int32_t gmm1WaveRowCount = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
     int32_t expertGlobalRowBegin = localExpertId == 0 ? 0 :
         scratch.cumsumInfoTensor.GetValue(localExpertId * context.worldSize - 1);
+    __gm__ int32_t *dispatchToGmm1Flag = reinterpret_cast<__gm__ int32_t *>(
+        args.dispatchToGmm1FlagPtr) +
+        static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
 
     for (uint32_t dispatchShardIdx = context.threadBlock.threadBlockIdx;
         dispatchShardIdx < context.worldSize * context.blockNumPerRank;
@@ -419,7 +417,7 @@ __aicore__ inline void DispatchTokensOneCore(
                     coreExpertRowBegin : waveExpertRowBegin;
                 int32_t overlapRowEnd = coreExpertRowEnd < waveExpertRowEnd ?
                     coreExpertRowEnd : waveExpertRowEnd;
-                AtomicAdd(gmmAddrInfo.dispatchToGmm1Flag + waveIdx, overlapRowEnd - overlapRowBegin);
+                AtomicAdd(dispatchToGmm1Flag + waveIdx, overlapRowEnd - overlapRowBegin);
             }
         }
     }

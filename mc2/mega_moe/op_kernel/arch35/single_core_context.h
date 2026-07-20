@@ -55,11 +55,12 @@ __aicore__ inline void TilingByThreadContext(int32_t totalLen, int32_t &threadLe
         Ops::Base::CeilAlign(static_cast<uint32_t>(lenPerThread), static_cast<uint32_t>(align));
     threadLen = lenPerThreadAlign;
     threadOffset = static_cast<int32_t>(threadIdx) * lenPerThreadAlign;
-    if (threadOffset + threadLen >= totalLen) {
-        threadLen = totalLen - threadOffset;
-    }
     if (threadOffset >= totalLen) {
         threadLen = 0;
+        return;
+    }
+    if (threadOffset + threadLen > totalLen) {
+        threadLen = totalLen - threadOffset;
     }
 }
 

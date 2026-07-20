@@ -362,21 +362,23 @@ __aicore__ inline void GroupMatmulImplGeneric(
         {config.m, config.outputN, config.k},
         BlockScheduler::Params{Te::MakeCoord(static_cast<int64_t>(config.tileM), static_cast<int64_t>(L1_TILE_N))});
     uint32_t tileNum = scheduler.GetTileNum();
-    uint32_t startLoopIdx =
-        (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
-
-    auto layouts = Config::BuildLayouts(config);
 
     if constexpr (Policy::IS_GMM1) {
         if (GetSubBlockIdx() != 0) {
             startBlockIdx = (startBlockIdx + tileNum) % config.blockNum;
             return;
         }
-        args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
+        if constexpr (g_coreType == AIV) {
+            args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
+        }
     } else if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
         if (GetSubBlockIdx() != 0) return;
     }
     // GMM2 量化模式：两分支均不匹配，直接往下执行
+
+    uint32_t startLoopIdx =
+        (config.blockIdx < startBlockIdx ? config.blockIdx + config.blockNum : config.blockIdx) - startBlockIdx;
+    auto layouts = Config::BuildLayouts(config);
 
     using BlockMmad = typename Config::BlockMmad;
     using BiasType = typename Config::BiasType;
@@ -503,8 +505,10 @@ __aicore__ inline void GroupMatmulImplA8W4(const Params& params,
         ElementMxScaleB, false>;
     auto config = Config::BuildProblemConfig(problemShape, blockContext);
 
-    if constexpr (Policy::IS_GMM1) {
-        args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
+    if constexpr (Policy::IS_GMM1 && g_coreType == AIV) {
+        if (GetSubBlockIdx() == 1) {
+            args.swigluQuantOp.UpdateNextProblem({config.m, config.outputN, config.k, 0});
+        }
     }
 
     auto layouts = Config::BuildLayouts(config);

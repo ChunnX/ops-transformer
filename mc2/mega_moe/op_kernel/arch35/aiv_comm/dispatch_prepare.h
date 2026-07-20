@@ -25,28 +25,19 @@ struct ResetWorkspaceArgs {
 };
 
 // Prototype: MegaMoe::ResetGmm2CombineSyncCounters. Clears one logical AIV thread's combine counters in batches.
+// ResetFlagListOneCore validates the thread and prepares the zero-filled resetTensor before calling this helper.
 __aicore__ inline void ResetGmm2CombineSyncCountersOneCore(const AivThreadContext &thread,
     const ResetWorkspaceArgs &args, LocalTensor<int32_t> &resetTensor)
 {
-    if constexpr (g_coreType == AIV) {
-        if (thread.threadNum == 0U || thread.threadIdx >= thread.threadNum ||
-            args.resetBatchElementCount <= 0) {
-            return;
-        }
-        int32_t threadLen, threadOffset;
-        TilingByThreadContext(args.gmm2CombineSyncCounterNum, threadLen, threadOffset,
-            thread.threadIdx, thread.threadNum);
-        GlobalTensor<int32_t> counterGm;
-        counterGm.SetGlobalBuffer((__gm__ int32_t *)args.gmm2CombineSyncCounterPtr);
-        if (threadLen > 0) {
-            Duplicate(resetTensor, 0, args.resetBatchElementCount);
-            SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
-            for (int32_t offset = 0; offset < threadLen; offset += args.resetBatchElementCount) {
-                int32_t batchCount = threadLen - offset < args.resetBatchElementCount ?
-                    threadLen - offset : args.resetBatchElementCount;
-                DataCopy(counterGm[threadOffset + offset], resetTensor, batchCount);
-            }
-        }
+    int32_t threadLen, threadOffset;
+    TilingByThreadContext(args.gmm2CombineSyncCounterNum, threadLen, threadOffset,
+        thread.threadIdx, thread.threadNum);
+    GlobalTensor<int32_t> counterGm;
+    counterGm.SetGlobalBuffer((__gm__ int32_t *)args.gmm2CombineSyncCounterPtr);
+    for (int32_t offset = 0; offset < threadLen; offset += args.resetBatchElementCount) {
+        int32_t batchCount = threadLen - offset < args.resetBatchElementCount ?
+            threadLen - offset : args.resetBatchElementCount;
+        DataCopy(counterGm[threadOffset + offset], resetTensor, batchCount);
     }
 }
 
@@ -81,7 +72,6 @@ __aicore__ inline void ResetFlagListOneCore(const DispatchPrepareContext &contex
 struct SendMaskArgs {
     GM_ADDR expertIdxGmAddr;
     GM_ADDR *winRankAddr;
-    int32_t compareCount;
     uint32_t maskAlignSize;
     uint32_t maskSlotSize;
     uint64_t maskWinOffset;
@@ -158,8 +148,9 @@ __aicore__ inline void SendMaskCalOneCore(const DispatchPrepareContext &context,
             int32_t globalExpertId = threadIdx + ownedIdx * threadNum;
             int32_t dstRank = globalExpertId / static_cast<int32_t>(topology.expertPerRank);
             int32_t localExpertId = globalExpertId % static_cast<int32_t>(topology.expertPerRank);
-            TEventID eventId = kBufEvents[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
-            LocalTensor<uint8_t> maskBuf = scratch.sendMaskTensor[iter % static_cast<int32_t>(DOUBLE_BUFFER)];
+            int32_t bufferIdx = iter % static_cast<int32_t>(DOUBLE_BUFFER);
+            TEventID eventId = kBufEvents[bufferIdx];
+            LocalTensor<uint8_t> maskBuf = scratch.sendMaskTensor[bufferIdx];
             LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
 
             WaitFlag<AscendC::HardEvent::MTE3_V>(eventId);

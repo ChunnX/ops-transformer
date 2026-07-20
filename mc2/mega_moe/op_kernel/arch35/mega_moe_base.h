@@ -180,11 +180,10 @@ __aicore__ inline void WaitForAiv1GmTileAccepted()
 
 __aicore__ inline void EndSync(int32_t &vecSetSyncCom)
 {
-    if (vecSetSyncCom == 0) {
-        return;
-    }
     if constexpr (g_coreType == AIC) {
-        WaitForVector();
+        if (vecSetSyncCom != 0) {
+            WaitForVector();
+        }
     }
 }
 
