@@ -150,6 +150,16 @@ private:
                                                    uint32_t tripleUbTokenOffset, uint32_t &rowSequence);
     __aicore__ inline void ProcessGmm2GmWaves();
     __aicore__ inline void WriteCriticalPathTrace();
+    __aicore__ inline MegaMoeImpl::CriticalPathTrace *CriticalPathTracePtr()
+    {
+        // Pointer presence is also the hot-path enable contract.  Returning
+        // the member unconditionally would leave diagnostic pipeline bridges
+        // live after the trace methods themselves compile to no-ops.
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            return &criticalPathTrace_;
+        }
+        return nullptr;
+    }
     __aicore__ inline void ProcessCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
                                           uint32_t expertIdx);
     __aicore__ inline void CrossRankSyncInWorldSize();
@@ -1192,13 +1202,18 @@ __aicore__ inline bool MegaMoe<TemplateMegaMoeTypeFunc>::UpdateGroupParams(Exper
             __gm__ int32_t *sendCntFlag = (__gm__ int32_t *)params_.workspaceInfo.flagSendCntCalToUpdParamsPtr +
                                           static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
                                           static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
-            uint32_t waitBegin = CriticalPathTrace::Now();
+            uint32_t waitBegin = 0U;
+            if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+                waitBegin = CriticalPathTrace::Now();
+            }
             while (AscendC::ReadGmByPassDCache(sendCntFlag) == 0) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {
                 }
             }
-            criticalPathTrace_.AddSendCntWait(waitBegin);
+            if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+                criticalPathTrace_.AddSendCntWait(waitBegin);
+            }
 
             uint64_t offsetInCnt = expertIdx * 8 * aicNum_ + 8 * blockIdx_;
             DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(
@@ -1441,7 +1456,9 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PublishGmm2NoQuantReady(uint32_t slotIdx)
 {
     if constexpr (g_coreType == AIC) {
-        criticalPathTrace_.BeginPublish(CriticalPathTrace::Now());
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            criticalPathTrace_.BeginPublish(CriticalPathTrace::Now());
+        }
         AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
         __gm__ int32_t *readyBase =
@@ -1460,7 +1477,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::PublishGmm2NoQuantReady
             AscendC::WriteGmByPassDCache(
                 readyBase + slotOffset + static_cast<uint64_t>(blockIdx_) * INT_CACHELINE, int32_t(1));
         }
-        criticalPathTrace_.EndPublish(CriticalPathTrace::Now());
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            criticalPathTrace_.EndPublish(CriticalPathTrace::Now());
+        }
     }
 }
 
@@ -1479,8 +1498,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
         if (logicalAiv1Num == 0U) {
             return;
         }
-        uint32_t readyBegin = CriticalPathTrace::Now();
-        criticalPathTrace_.BeginReady(readyBegin);
+        uint32_t readyBegin = 0U;
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            readyBegin = CriticalPathTrace::Now();
+            criticalPathTrace_.BeginReady(readyBegin);
+        }
 
         if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE) {
             constexpr uint32_t INT32_PER_DATABLOCK = ALIGN_32 / sizeof(int32_t);
@@ -1524,7 +1546,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
                 SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
                 WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
                 if (sumUb.GetValue(0) >= static_cast<int32_t>(blockNum_)) {
-                    criticalPathTrace_.EndReady(CriticalPathTrace::Now(), readyBegin);
+                    if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+                        criticalPathTrace_.EndReady(CriticalPathTrace::Now(), readyBegin);
+                    }
                     return;
                 }
                 int64_t waitStart = AscendC::GetSystemCycle();
@@ -1544,7 +1568,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
                 while (AscendC::GetSystemCycle() - waitStart < 100) {
                 }
             }
-            criticalPathTrace_.EndReady(CriticalPathTrace::Now(), readyBegin);
+            if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+                criticalPathTrace_.EndReady(CriticalPathTrace::Now(), readyBegin);
+            }
             return;
         }
 
@@ -1612,7 +1638,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
         DataCopy(releaseGm[releaseSlotOffset], releaseUb, releaseElements);
         SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
         WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
-        criticalPathTrace_.EndReady(CriticalPathTrace::Now(), readyBegin);
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            criticalPathTrace_.EndReady(CriticalPathTrace::Now(), readyBegin);
+        }
     }
 }
 
@@ -1685,11 +1713,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombineNoQuantGm
         if (subBlockIdx_ != 1 || tokenCount == 0U) {
             return;
         }
-        criticalPathTrace_.BeginCombine(CriticalPathTrace::Now());
-        // The caller has already passed ready fan-in and the matching bulk
-        // triple MTE2->S dependency.  This is the first real row-send entry,
-        // not the beginning of either wait.
-        criticalPathTrace_.BeginWaveCombine(CriticalPathTrace::Now());
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            criticalPathTrace_.BeginCombine(CriticalPathTrace::Now());
+            // The caller has already passed ready fan-in and the matching bulk
+            // triple MTE2->S dependency.  This is the first real row-send entry,
+            // not the beginning of either wait.
+            criticalPathTrace_.BeginWaveCombine(CriticalPathTrace::Now());
+        }
 
         // Only the cumsum state below 64 KiB remains live here.  Six maximum
         // H=8K BF16 rows end at 160 KiB, immediately before ready scratch.
@@ -2059,13 +2089,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                 QuantScaleOutType, QuantScaleOutType, true, GMM1_INTERLEAVED>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                gmm1PingPongIdx_, &criticalPathTrace_);
+                gmm1PingPongIdx_, CriticalPathTracePtr());
         } else {
             // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                 QuantScaleOutType, QuantScaleOutType, false, GMM1_INTERLEAVED>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                gmm1PingPongIdx_, &criticalPathTrace_);
+                gmm1PingPongIdx_, CriticalPathTracePtr());
         }
     }
 }
@@ -2091,12 +2121,12 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                                       QuantScaleOutType, true, false, GMM1_INTERLEAVED>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, state.expertBeforeCnt,
-                gmm2PingPongIdx_, expertIdx, &criticalPathTrace_);
+                gmm2PingPongIdx_, expertIdx, CriticalPathTracePtr());
         } else {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t, QuantScaleOutType,
                                       QuantScaleOutType, false, false, GMM1_INTERLEAVED>(
                 params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_, state.expertBeforeCnt,
-                gmm2PingPongIdx_, expertIdx, &criticalPathTrace_);
+                gmm2PingPongIdx_, expertIdx, CriticalPathTracePtr());
         }
     }
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT && g_coreType == AIV) {
@@ -2415,8 +2445,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves()
                 // A slot can remain in flight across expert boundaries, but
                 // dispatch for the following wave may reuse the same UB/events.
                 DrainCombineNoQuantRowRing();
-                if (rowSequence != 0U) {
-                    criticalPathTrace_.EndCombineScalar(CriticalPathTrace::Now());
+                if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+                    if (rowSequence != 0U) {
+                        criticalPathTrace_.EndCombineScalar(CriticalPathTrace::Now());
+                    }
                 }
                 if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
                     if (criticalPathTrace_.HasCombineWork()) {

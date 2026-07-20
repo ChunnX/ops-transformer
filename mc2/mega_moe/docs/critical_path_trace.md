@@ -101,6 +101,11 @@ HTML 中五类高不透明度实线块都是逐物理核、逐 wave 的真实边
 旧的 `combine_scalar_end` 仍只是六槽 drain 已下发的 Scalar 边界；v4 中每个 wave 的
 `combine_end` 都通过 `MTE2->S` bridge 表示远端发送真正完成。
 
+关闭 `MEGA_MOE_ENABLE_CRITICAL_PATH_TRACE` 时，kernel 会在编译期把所有时间戳、累计等待和
+`FIX->S`/`V->S` 诊断桥裁掉，并向共享 GMM helper 传入空 trace 指针。不能只让记录方法返回空操作却
+继续传非空指针：`HasGmm1Work`/`HasSwigluWork` 在关闭状态下恒为 false，会使首任务桥错误地退化为
+每 tile 执行。
+
 终端同时打印 header、各类核的时间点和 span 的 min/median/max、累计等待，以及 publish 到 ready、
 ready 到 Combine 等派生 gap。请把完整终端输出和两个 rank 的两版 HTML/JSON 一起返回。
 

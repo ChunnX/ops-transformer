@@ -119,14 +119,21 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
         uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
         __gm__ int32_t *flagValueAddr =
             gmmAddrInfo.dispatchToGmm1Flag + static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
-        uint32_t waitBegin = CriticalPathTrace::Now();
+        uint32_t waitBegin = 0U;
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if (criticalTrace != nullptr) {
+                waitBegin = CriticalPathTrace::Now();
+            }
+        }
         while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
             }
         }
-        if (criticalTrace != nullptr) {
-            criticalTrace->AddGmm1ReadyWait(waitBegin);
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if (criticalTrace != nullptr) {
+                criticalTrace->AddGmm1ReadyWait(waitBegin);
+            }
         }
     } else {
         if constexpr (Config::SOURCE_GMM1_INTERLEAVED) {
@@ -137,26 +144,40 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
                                    Ops::Base::CeilDiv(config.k * SWIGLU_N_HALF, L1_TILE_N);
             __gm__ int32_t *flagValueAddr =
                 gmmAddrInfo.swigluToGmm2Flag + static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
-            uint32_t waitBegin = CriticalPathTrace::Now();
+            uint32_t waitBegin = 0U;
+            if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+                if (criticalTrace != nullptr) {
+                    waitBegin = CriticalPathTrace::Now();
+                }
+            }
             while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {
                 }
             }
-            if (criticalTrace != nullptr) {
-                criticalTrace->AddGmm2ReadyWait(waitBegin);
+            if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+                if (criticalTrace != nullptr) {
+                    criticalTrace->AddGmm2ReadyWait(waitBegin);
+                }
             }
         } else {
             uint32_t targetLoops = Ops::Base::CeilDiv(config.m, L1_TILE_M_256) *
                                    Ops::Base::CeilDiv(config.k, L1_TILE_N);
-            uint32_t waitBegin = CriticalPathTrace::Now();
+            uint32_t waitBegin = 0U;
+            if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+                if (criticalTrace != nullptr) {
+                    waitBegin = CriticalPathTrace::Now();
+                }
+            }
             while (targetLoops != AscendC::ReadGmByPassDCache(gmmAddrInfo.swigluToGmm2Flag)) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {
                 }
             }
-            if (criticalTrace != nullptr) {
-                criticalTrace->AddGmm2ReadyWait(waitBegin);
+            if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+                if (criticalTrace != nullptr) {
+                    criticalTrace->AddGmm2ReadyWait(waitBegin);
+                }
             }
         }
     }
@@ -406,15 +427,17 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
         // the GMM1 sample; the bridge is diagnostic-only and executes once per
         // active core/wave.  GMM2's upstream-ready dependency is Scalar polling
         // on the direct-GM path and therefore needs no extra bridge here.
-        if (args.criticalTrace != nullptr) {
-            if constexpr (Policy::IS_GMM1) {
-                if (!args.criticalTrace->HasGmm1Work()) {
-                    AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
-                    AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
-                    args.criticalTrace->BeginGmm1(CriticalPathTrace::Now());
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if (args.criticalTrace != nullptr) {
+                if constexpr (Policy::IS_GMM1) {
+                    if (!args.criticalTrace->HasGmm1Work()) {
+                        AscendC::SetFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                        AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(EVENT_ID0);
+                        args.criticalTrace->BeginGmm1(CriticalPathTrace::Now());
+                    }
+                } else if (!args.criticalTrace->HasGmm2Work()) {
+                    args.criticalTrace->BeginGmm2(CriticalPathTrace::Now());
                 }
-            } else if (!args.criticalTrace->HasGmm2Work()) {
-                args.criticalTrace->BeginGmm2(CriticalPathTrace::Now());
             }
         }
 
@@ -526,14 +549,16 @@ __aicore__ inline void AivGmm1PostGeneric(WorkSet &workSet, ExtraArgs &args, uin
         } else {
             WaitForCube();
         }
-        if (args.criticalTrace != nullptr && !args.criticalTrace->HasSwigluWork()) {
-            // WaitForCube is issued on PIPE_V, while GetSystemCycle is Scalar.
-            // A V->S bridge is therefore required before sampling; otherwise
-            // Scalar can run ahead and paint the Cube wait as SwiGLU execution.
-            // This executes only for the first local SwiGLU task in the wave.
-            AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-            args.criticalTrace->BeginSwiglu(CriticalPathTrace::Now());
+        if constexpr (CRITICAL_PATH_TRACE_ENABLED) {
+            if (args.criticalTrace != nullptr && !args.criticalTrace->HasSwigluWork()) {
+                // WaitForCube is issued on PIPE_V, while GetSystemCycle is Scalar.
+                // A V->S bridge is therefore required before sampling; otherwise
+                // Scalar can run ahead and paint the Cube wait as SwiGLU execution.
+                // This executes only for the first local SwiGLU task in the wave.
+                AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+                AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+                args.criticalTrace->BeginSwiglu(CriticalPathTrace::Now());
+            }
         }
         AscendC::SetCtrlSpr<60, 60>(0);
         if constexpr (IsGmm1Interleaved) {
