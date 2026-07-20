@@ -454,15 +454,14 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
     bufferConfig.routeBatchCount =
         static_cast<int32_t>((sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) / bufferConfig.routeItemsPerBatch);
 
-    // 每个 slot 包含一份量化 token/scale 和一条 32B triple。
+    // copyBufferBytes 是每个 dispatch slot 中量化 token 和 scale 的拷贝区大小。
     uint32_t quantTokenBytes =
         ops::CeilAlign(tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
     uint32_t quantScaleBytes = (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
     uint32_t copyBufferBytes = ops::CeilAlign(quantTokenBytes + quantScaleBytes, static_cast<uint32_t>(ALIGN_32));
     bufferConfig.copyBufferBytes = copyBufferBytes;
 
-    // 以下四项依次对应 expertTokenCntTensor_、cumsumInfoTensor_、sendCntTensor_ 和
-    // expertTokenNumsOutTensor_。
+    // fixedBufferBytes 包含 expertTokenCntTensor_、cumsumInfoTensor_、sendCntTensor_ 和 expertTokenNumsOutTensor_。
     uint32_t fixedBufferBytes =
         static_cast<uint32_t>(ALIGN_32) +
         static_cast<uint32_t>(
@@ -472,10 +471,11 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
         static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(tilingData->expertPerRank) * sizeof(int32_t),
                                              static_cast<uint64_t>(ALIGN_32)));
     uint32_t maskBufferBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8);
-    // 单个 int32 route index tensor 的大小；Dispatch 同时需要完整 index 和压缩后的有效 index。
+    // routeIndexBufferBytes 是单个 int32 route index tensor 的大小。
     uint32_t routeIndexBufferBytes =
         static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
-    // 除动态 copy/triple ring 外，UB 还需容纳 mask 以及等大的两个 route index tensor。
+    // bytesWithoutDispatchSlots 包含固定 tensor、maskBatchTensor_、topkIndexTensor_ 和
+    // validTopkIndexTensor_（此二者等大）。
     uint32_t bytesWithoutDispatchSlots = fixedBufferBytes + maskBufferBytes + 2U * routeIndexBufferBytes;
     // dispatchSlotBytes 表示一个 ring slot：一份 token/scale copy buffer 加一条 32B triple。
     uint32_t dispatchSlotBytes = copyBufferBytes + static_cast<uint32_t>(ALIGN_32);
@@ -488,10 +488,10 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
 
     // Stage 2：固定 ring 深度，用剩余 UB 扩大 route batch。
     if (static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) < sendTotalNum) {
-        // 固定 tensor 与已选中的 dispatch slot 不再随 batch 增长。
+        // fixedBytesWithDispatchSlots 包含固定 tensor 和已选中的 dispatch slot。
         uint32_t fixedBytesWithDispatchSlots =
             fixedBufferBytes + static_cast<uint32_t>(bufferConfig.bufferCount) * dispatchSlotBytes;
-        // 剩余 UB 全部用于 maskBatchTensor_ 和两个 route index tensor。
+        // routeItemBudgetBytes 是 maskBatchTensor_ 和两个 route index tensor 可使用的 UB。
         uint32_t routeItemBudgetBytes =
             availableUbBytes > fixedBytesWithDispatchSlots ? availableUbBytes - fixedBytesWithDispatchSlots : 0U;
         // maskBatchTensor_ 占 1bit，topkIndexTensor_ 和 validTopkIndexTensor_ 各占一个 int32：
@@ -526,10 +526,10 @@ static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingD
     bufferConfig.bufferBytes =
         static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8) + static_cast<uint32_t>(ALIGN_32);
 
-    // 单个 int32 route tensor 的大小；SendMask 同时需要 topkIds 和 GatherMask 输出 scratch。
+    // routeIndexBufferBytes 是单个 int32 route tensor 的大小。
     uint32_t routeIndexBufferBytes =
         static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
-    // 除动态 mask push ring 外，UB 还需容纳等大的 topkIdsTensor_ 和 sendGatherOutTensor_。
+    // bytesWithoutMaskBuffers 包含固定 tensor、topkIdsTensor_ 和 sendGatherOutTensor_。
     uint32_t bytesWithoutMaskBuffers = fixedBufferBytes + 2U * routeIndexBufferBytes;
     // maskBufferBudgetBytes 是扣除非 ring tensor 后可用于分配 mask slot 的 UB。
     uint32_t maskBufferBudgetBytes =
@@ -537,7 +537,7 @@ static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingD
     bufferConfig.bufferCount = static_cast<int32_t>(maskBufferBudgetBytes / bufferConfig.bufferBytes);
     bufferConfig.bufferCount = std::min(bufferConfig.bufferCount, MAX_SEND_MASK_BUFFER_COUNT);
 
-    // 超过实际 push 次数的 slot 不增加流水重叠。
+    // maskPushCount 是当前 core 实际执行的 mask push 次数，更多 slot 不会增加流水重叠。
     uint64_t maskPushCount = static_cast<uint64_t>(bufferConfig.routeBatchCount) * ownedExpertCount;
     if (maskPushCount > 0U && static_cast<uint64_t>(bufferConfig.bufferCount) > maskPushCount) {
         bufferConfig.bufferCount = static_cast<int32_t>(maskPushCount);
@@ -546,11 +546,10 @@ static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingD
 
     // Stage 2：固定 ring 深度，用剩余 UB 扩大 route batch。
     if (static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) < sendTotalNum) {
-        // 32B count 尾部固定，只有 mask 随 batch 增长。
-        // fixedBytesWithMaskCount 包含固定 tensor 和所有 slot 的 count 尾部，不包含随 batch 增长的 mask。
+        // fixedBytesWithMaskCount 包含固定 tensor 和所有 slot 的 32B count 尾部。
         uint32_t fixedBytesWithMaskCount =
             fixedBufferBytes + static_cast<uint32_t>(bufferConfig.bufferCount) * static_cast<uint32_t>(ALIGN_32);
-        // 剩余 UB 用于两个 route tensor 和每个 slot 的 mask 部分。
+        // routeItemBudgetBytes 是两个 route tensor 和所有 slot 的 mask 可使用的 UB。
         uint32_t routeItemBudgetBytes =
             availableUbBytes > fixedBytesWithMaskCount ? availableUbBytes - fixedBytesWithMaskCount : 0U;
         // topkIdsTensor_ 和 sendGatherOutTensor_ 各占一个 int32，N 个 sendMask slot 各占 1bit：
@@ -585,12 +584,12 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
         ops::CeilAlign(static_cast<uint64_t>(tilingData->h) * sizeof(uint16_t), static_cast<uint64_t>(ALIGN_32)));
     uint32_t fp32SlotBytes = static_cast<uint32_t>(
         ops::CeilAlign(static_cast<uint64_t>(tilingData->h) * sizeof(float), static_cast<uint64_t>(ALIGN_32)));
-    // 一个 data slot 包含同一 token 的 BF16 搬入区和 FP32 计算区。
+    // dataSlotBytes 是同一 token 的 BF16 搬入区和 FP32 计算区之和。
     uint32_t dataSlotBytes = bf16SlotBytes + fp32SlotBytes;
     bufferConfig.bf16SlotElementCount = bf16SlotBytes / sizeof(uint16_t);
     bufferConfig.fp32SlotElementCount = fp32SlotBytes / sizeof(float);
 
-    // Combine quant 额外分配 BF16/FP32 scale 展开区。
+    // scaleBytes 是 combine quant 使用的 BF16/FP32 scale 展开区大小。
     uint32_t scaleBytes = 0U;
     if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
         uint32_t scaleElementCount = (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
@@ -614,7 +613,7 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
                            static_cast<uint64_t>(ALIGN_32)));
     }
 
-    // 先扣除 weight、scale 和一个累加/输出 data slot，再用剩余 UB 选择输入 ring 深度。
+    // bytesBeforeInputBuffers 包含 weight、scale 和一个累加/输出 data slot。
     uint32_t bytesBeforeInputBuffers = bufferConfig.topKWeightsBufferBytes +
                                        bufferConfig.topKWeightsConversionBufferBytes + scaleBytes + dataSlotBytes;
     uint32_t inputBufferBudgetBytes =
@@ -629,7 +628,7 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
     if (baseTokensPerBatch < coreTokenCount) {
         // fixedBytes 包含 scale、一个累加/输出 slot 和已经选中的所有输入 slot。
         uint32_t fixedBytes = scaleBytes + (static_cast<uint32_t>(bufferConfig.inputBufferCount) + 1U) * dataSlotBytes;
-        // 扣除固定占用和独立对齐预留后，剩余 UB 用于 FP32 weight 及可选转换中转区。
+        // weightBudgetBytes 是 FP32 weight 及可选转换中转区可使用的 UB。
         uint32_t weightBudgetBytes = availableUbBytes - fixedBytes - UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES;
         uint32_t weightBytesPerToken =
             tilingData->topK * (static_cast<uint32_t>(sizeof(float)) + topKWeightsConversionElementBytes);
