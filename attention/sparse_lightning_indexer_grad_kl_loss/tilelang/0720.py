@@ -570,12 +570,15 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.wait_cross_flag(13)
                 T.set_cross_flag("FIX", 13)
 
-            # ============================================================
+# ============================================================
             # V scope 1b: consume the exchanged P/SY results.
             # ============================================================
             with T.Scope("V"):
                 T.wait_cross_flag(13)
                 weight_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                weight_all_ub = T.alloc_ub(Nidx1, calc_dtype)
+                weight_all_half_ub = T.alloc_ub(Nidx1, input_dtype)
+                weight_2d_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
                 diff_ub = T.alloc_ub(n_block, calc_dtype)
                 diff_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                 dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
