@@ -109,7 +109,7 @@ public:
     ge::graphStatus GetWorkspaceSize();
     ge::graphStatus PostTiling();
     ge::graphStatus GetAttr();
-    ge::graphStatus GetShapeAttrsInfoInner();
+    ge::graphStatus GetShapeAttrsInfoInner(int8_t& gammaExist);
     ge::graphStatus CalcOpTiling();
     ge::graphStatus CalcMembaseOpTiling();
     ge::graphStatus CalcMKSplitCoreMembasePart2Tiling();

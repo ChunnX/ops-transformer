@@ -226,27 +226,17 @@ __aicore__ inline void MulABLastDimBrcInline2(const LocalTensor<T> &output, cons
         }
         // 非128对齐场景;
         if (numRemainPerLine > 0) {
-            if (dstRepStridePerLine > MAX_REPEAT_STRIDE) {
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = 0;
-                instrParams.src0RepStride = 0;
-                instrParams.src1RepStride = 0;
-                for (uint32_t i = 0; i < curRowNum; i++) {
-                    Mul(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
-                        input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], tmpBuffer[i * elemInOneBlock],
-                        numRemainPerLine, 1, instrParams);
-                }
-            } else {
-                instrParams.dstBlkStride = 1;
-                instrParams.src0BlkStride = 1;
-                instrParams.src1BlkStride = 0;
-                instrParams.dstRepStride = dstRepStridePerLine;
-                instrParams.src0RepStride = dstRepStridePerLine;
-                instrParams.src1RepStride = 0;
-                Mul(output[numRepeatPerLine * elemInOneRepeat], input0[numRepeatPerLine * elemInOneRepeat], tmpBuffer,
-                    numRemainPerLine, curRowNum, instrParams);
+            instrParams.dstBlkStride = 1;
+            instrParams.src0BlkStride = 1;
+            instrParams.src1BlkStride = 0;
+            instrParams.dstRepStride = 0;
+            instrParams.src0RepStride = 0;
+            instrParams.src1RepStride = 0;
+            for (uint32_t i = 0; i < curRowNum; i++) {
+                Mul(output[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign],
+                    input0[numRepeatPerLine * elemInOneRepeat + i * curColNumAlign], 
+                    tmpBuffer[i / numN * elemInOneBlock + i % numN], numRemainPerLine, 1, 
+                    instrParams);
             }
         }
     }
@@ -560,7 +550,7 @@ __aicore__ inline void ReduceSumARAPerf(const LocalTensor<float> &output, const 
             if (dim2Reminder != 0) {
                 Add(output[i * dim2Align + dim2RepeatTimes * elemInOneRepeat],
                     output[i * dim2Align + dim2RepeatTimes * elemInOneRepeat],
-                    input[i * dim1 * dim2Align + j * dim2Align + +dim2RepeatTimes * elemInOneRepeat], dim2Reminder, 1,
+                    input[i * dim1 * dim2Align + j * dim2Align + dim2RepeatTimes * elemInOneRepeat], dim2Reminder, 1,
                     instrParams);
             }
             PipeBarrier<PIPE_V>();

@@ -247,7 +247,7 @@ public:
     }
 
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hcScale, GM_ADDR hcBase, GM_ADDR y,
-                                GM_ADDR post, GM_ADDR combFrag,
+                                GM_ADDR post, GM_ADDR hRes,
                                 GM_ADDR hPre, GM_ADDR hcBeforeNorm, GM_ADDR invRms,
                                 GM_ADDR workspace,
                                 const MhcPreMembaseTilingData *tilingDataPtr, TPipe *pipePtr)
@@ -261,7 +261,7 @@ public:
         hcBaseGm.SetGlobalBuffer((__gm__ float *)hcBase);
         yGm.SetGlobalBuffer((__gm__ T *)y);
         postGm.SetGlobalBuffer((__gm__ float *)post);
-        combFragGm.SetGlobalBuffer((__gm__ float *)combFrag);
+        hResGm.SetGlobalBuffer((__gm__ float *)hRes);
         workspaceGm.SetGlobalBuffer((__gm__ float *)workspace);
 
         if (needGrad_) {
@@ -274,11 +274,11 @@ public:
             int64_t invRmsWsTotalSize = tilingData->bs * sizeof(float) / sizeof(float);
             hcBeforeNormGm.SetGlobalBuffer((__gm__ float *)workspace + xCastWsTotalSize + invRmsWsTotalSize);
         }
-        int64_t resSize = tilingData->hcMix - tilingData->hcMult * NUM_TWO;
+        int64_t resSize = 32;
         // InQue
         int64_t mixesQue01Size =  tilingData->stage2RowFactor * tilingData->hcMultAlign * NUM_TWO * sizeof(float);
         pipe->InitBuffer(mixesQue01, NUM_TWO, mixesQue01Size);
-        pipe->InitBuffer(mixesQue2, NUM_TWO, tilingData->stage2RowFactor * resSize * sizeof(float));
+        pipe->InitBuffer(mixesQue2, NUM_TWO, tilingData->stage2RowFactor * tilingData->hcMult * tilingData->hcMultAlign * sizeof(float));
         pipe->InitBuffer(squareSumQue, NUM_TWO, tilingData->stage2RowFactor * SQUARE_SUM_SIZE * sizeof(float));
         int64_t xQueNum2 = tilingData->stage2RowFactor * tilingData->hcMult * RoundUp<T>(tilingData->dFactor);
         pipe->InitBuffer(xQue, NUM_TWO, xQueNum2 * sizeof(T));
@@ -340,7 +340,7 @@ public:
             int64_t xCastFp32BufSize = curML1Size * CeilAlign(tilingData->cvLoopKSize, MM_CACHE_LINE_BYTES / sizeof(float)) * sizeof(float);
             int64_t workspaceSize1 = (tilingData->cubeCoreNum * DOUBLE_BUFFER * xCastFp32BufSize) / sizeof(float);
             int64_t workspaceSize2 = CeilAlign(stage1UsedCoreNum * tilingData->bs * mmLastAxisSize * sizeof(float), WORKSPACE_ALIGN_SIZE) / sizeof(float);
-            int64_t resSize = tilingData->hcMix - tilingData->hcMult * NUM_TWO;
+            int64_t resSize = 24;
             CopyIn(hcBaseGm, hcBase0Local, 1, tilingData->hcMult);
             CopyIn(hcBaseGm[tilingData->hcMult], hcBase1Local, 1, tilingData->hcMult);
             CopyIn(hcBaseGm[tilingData->hcMult * NUM_TWO], hcBase2Local, 1, resSize);
@@ -431,7 +431,7 @@ public:
                         curRowFactor, tilingData->hcMult);
                 postQue.FreeTensor(postLocal);
 
-                // combFrag
+                // hRes
                 mixes2Local = mixesQue2.AllocTensor<float>();
                 mixBaseOffset = stage2BlockIdx * curRowOfFormerBlock * tilingData->hcMix +
                                 rowOuterIdx * curStage2RowFactor * tilingData->hcMix;
@@ -459,7 +459,7 @@ public:
                 combFragQue.EnQue(combFragLocal);
                 combFragLocal = combFragQue.DeQue<float>();
                 CopyOut(combFragLocal,
-                        combFragGm[stage2BlockIdx * curRowOfFormerBlock * resSize +
+                        hResGm[stage2BlockIdx * curRowOfFormerBlock * resSize +
                                     rowOuterIdx * curStage2RowFactor * resSize],
                         curRowFactor, resSize);
                 combFragQue.FreeTensor(combFragLocal);
@@ -478,7 +478,7 @@ private:
     GlobalTensor<T> xGm;
     GlobalTensor<T> yGm;
     GlobalTensor<float> postGm;
-    GlobalTensor<float> combFragGm;
+    GlobalTensor<float> hResGm;
 
     GlobalTensor<float> hPreGm;
     GlobalTensor<float> hcBeforeNormGm;

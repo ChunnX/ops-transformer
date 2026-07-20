@@ -21,16 +21,8 @@
 #include "lib/matmul_intf.h"
 #include <cstdint>
 
-using AscendC::BLOCK_CUBE;
 using AscendC::GlobalTensor;
-using AscendC::HardEvent;
-using AscendC::LocalTensor;
-using AscendC::Nd2NzParams;
-using AscendC::SetFlag;
-using AscendC::TBuf;
-using AscendC::TPipe;
 using AscendC::TPosition;
-using AscendC::WaitFlag;
 using namespace AscendC;
 
 namespace MhcPre {

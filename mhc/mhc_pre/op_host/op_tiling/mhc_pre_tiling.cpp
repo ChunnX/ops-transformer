@@ -65,6 +65,15 @@ constexpr int64_t MAX_BS_PER_LOOP = 32;
 constexpr int64_t MAX_REDUCE_SIZE = 256;
 }
 
+bool CheckOptionalParamsExisting(const gert::StorageShape* checkShape)
+{
+    OP_CHECK_IF(nullptr == checkShape, OP_LOGD("CheckOptionalParamsExisting", "Get nullptr checkShape"), return 0);
+    int64_t checkShapeSize = checkShape->GetOriginShape().GetShapeSize();
+    OP_CHECK_IF(
+        (checkShapeSize <= 0), OP_LOGD("CheckOptionalParamsExisting", "Get empty checkShapeSize"), return 0);
+    return 1;
+}
+
 ge::graphStatus MhcPreMembaseTiling::GetPlatformInfo()
 {
     auto platformInfo = context_->GetPlatformInfo();
@@ -105,7 +114,7 @@ ge::graphStatus MhcPreMembaseTiling::GetAttr()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner()
+ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
 {
     auto xShape = context_->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context_, xShape);
@@ -142,7 +151,16 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner()
                     OP_LOGE(context_->GetNodeName(),
                              "bias size should be equal with mixhc, but is %ld", baseFirstDim),
                     return ge::GRAPH_FAILED);
-
+    auto shapeGamma = context_->GetInputShape(4);
+    gammaExist = CheckOptionalParamsExisting(shapeGamma);
+    if (gammaExist == 1) {
+        int64_t baseFirstDim = shapeGamma->GetStorageShape().GetDim(0);
+        int64_t baseSecondDim = shapeGamma->GetStorageShape().GetDim(1);
+        OP_CHECK_IF(baseFirstDim != hcMult_ || baseSecondDim != d_,
+                    OP_LOGE(context_->GetNodeName(),
+                             "gamma shape should be equal with [%ld, %ld], but is [%ld, %ld]", hcMult_, d_, baseFirstDim, baseSecondDim),
+                    return ge::GRAPH_FAILED);
+    }
     OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,
                   OP_LOGE(context_->GetNodeName(), "get attr failed."),
                   return ge::GRAPH_FAILED);
@@ -356,7 +374,8 @@ ge::graphStatus MhcPreMembaseTiling::DoOpTiling()
     if (GetPlatformInfo() == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
-    if (GetShapeAttrsInfoInner() == ge::GRAPH_FAILED) {
+    int8_t gammaExist = 0;
+    if (GetShapeAttrsInfoInner(gammaExist) == ge::GRAPH_FAILED) {
         return ge::GRAPH_FAILED;
     }
     // 预留参数计算（切K）与stage2计算
