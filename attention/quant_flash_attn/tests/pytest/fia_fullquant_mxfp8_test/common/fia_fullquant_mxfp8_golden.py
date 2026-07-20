@@ -940,8 +940,17 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
                     cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
                     dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                     block_table, q_n, kv_n, softmax_scale,
-                    layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype):
-    """调用 NPU 双算子 (QFA: quant_flash_attn_metadata + quant_flash_attn)"""
+                    layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype,
+                    meta_overrides=None, main_overrides=None):
+    """调用 NPU 双算子 (QFA: quant_flash_attn_metadata + quant_flash_attn)
+
+    异常用例可通过 meta_overrides / main_overrides 覆盖传给算子的关键字参数：
+      - meta_overrides: 覆盖 quant_flash_attn_metadata 的入参 (如 quant_mode/head_dim/num_heads_q)
+      - main_overrides: 覆盖 quant_flash_attn 的入参 (如 quant_mode/metadata/return_softmax_lse)
+    覆盖发生在 layout 相关的 cu_seqlens 门控之后，因此可构造 "非 TND 仍传 cu_seqlens" 等违反
+    默认门控的异常场景；tensor 类型的 override 值需为已就绪的 NPU tensor。
+    不传 overrides 时行为与原实现完全一致。
+    """
     if not _HAS_NPU:
         raise ImportError("cann_ops_transformer.ops.quant_flash_attn is not available. "
                           "Please check that cann_ops_transformer is installed and all .so are compiled.")
@@ -956,20 +965,22 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
 
     torch.npu.synchronize()
 
-    metadata = quant_flash_attn_metadata(
+    meta_kwargs = dict(
         num_heads_q=q_n, num_heads_kv=kv_n, head_dim=q.shape[-1], quant_mode=1,
         cu_seqlens_q=cu_seqlens_q_t if is_tnd_q else None,
         cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
         seqused_q=seqused_q_t, seqused_kv=seqused_kv_t,
         mask_mode=sparse_mode,
         layout_q=layout_q, layout_q_descale=layout_q_descale, layout_kv=layout_kv, layout_out=layout_out,
-        max_seqlen_q=max_seqlen_q,
-        max_seqlen_kv=max_seqlen_kv,
+        max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
     )
+    if meta_overrides:
+        meta_kwargs.update(meta_overrides)
+    metadata = quant_flash_attn_metadata(**meta_kwargs)
 
-    atten_out, lse_out = quant_flash_attn(
-        q, k, v,
-        dequant_scale_q, dequant_scale_k, dequant_scale_v,
+    main_kwargs = dict(
+        q=q, k=k, v=v,
+        q_descale=dequant_scale_q, k_descale=dequant_scale_k, v_descale=dequant_scale_v,
         quant_mode=1,
         block_table=block_table,
         p_scale=p_scale,
@@ -981,10 +992,12 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
         softmax_scale=softmax_scale,
         mask_mode=sparse_mode,
         layout_q=layout_q, layout_q_descale=layout_q_descale, layout_kv=layout_kv, layout_out=layout_out,
-        max_seqlen_q=max_seqlen_q,
-        max_seqlen_kv=max_seqlen_kv,
-        **_get_npu_fa_kwargs(),
+        max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
     )
+    main_kwargs.update(_get_npu_fa_kwargs())
+    if main_overrides:
+        main_kwargs.update(main_overrides)
+    atten_out, lse_out = quant_flash_attn(**main_kwargs)
     torch.npu.synchronize()
     return atten_out, lse_out
 
@@ -1012,7 +1025,7 @@ def _build_causal_mask():
     # sparse_mode=0 不需要 mask，其他模式需要上三角 causal mask
     if SPARSE_MODE == 0:
         return None
-    return torch.triu(torch.ones(2048, 2048, dtype=torch.bool), diagonal=1).npu()
+    return torch.triu(torch.ones(2048, 2048, dtype=torch.int8), diagonal=1).npu()
 
 
 def _prepare_rope_npu(qr_bf16, kr_bf16, actual_seq_q, actual_seq_kv,
@@ -1044,12 +1057,23 @@ def _prepare_rope_npu(qr_bf16, kr_bf16, actual_seq_q, actual_seq_kv,
     return q_rope_npu, k_rope_npu
 
 
-def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
-                 dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-                 cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
-                 block_table_torch=None,
-                 qr_bf16=None, kr_bf16=None):
-    """调用 NPU 算子，支持 N2TGD layout"""
+def prepare_npu_inputs(q_fp8, k_fp8, v_fp8,
+                       dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+                       cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
+                       block_table_torch=None,
+                       qr_bf16=None, kr_bf16=None):
+    """准备 NPU 侧入参 (layout 转换 / scale 转换 / mask / rope / block_table)，返回可直接传给
+    _call_npu_fa_op 的入参字典。异常用例可对返回字典做定向篡改后再调用 _call_npu_fa_op。
+
+    返回字典的 key 与 _call_npu_fa_op 的形参名一一对应：
+      q, k, v, q_rope, k_rope, mask,
+      cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
+      dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+      block_table, q_n, kv_n, softmax_scale,
+      layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype
+    其中 cu_seqlens_q/kv、seqused_q/kv 为 python list (或 None)，由 _call_npu_fa_op 负责转 NPU tensor；
+    其余 tensor 字段均为已就绪的 NPU tensor。
+    """
     torch_npu.npu.set_device(int(DEVICE_ID))
 
     softmax_scale = SOFTMAX_SCALE if SOFTMAX_SCALE is not None else 1.0 / math.sqrt(D + (D_rope if ENABLE_ROPE else 0))
@@ -1124,33 +1148,63 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
         _pa_layout_kv_map = {"BnNBsD": "PA_BNBD", "PA_NZ": "PA_NZ"}
         pa_layout_kv = _pa_layout_kv_map.get(KV_CACHE_LAYOUT, "PA_BNBD")
 
-        logger.info("[NPU] 调用 PA 模式...")
-        atten_out, lse_out = mxfp8_fa_torch_npu(
-            q_npu, k_npu, v_npu, q_rope_npu, k_rope_npu, mask_arg,
-            cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
-            deq_q_npu, deq_k_npu, deq_v_npu, p_scale_npu, block_table_npu,
-            N_q, N_kv, softmax_scale, "TND", q_runtime_layout, pa_layout_kv, "TND", BLOCK_SIZE, SPARSE_MODE, out_dtype)
-    else:
-        # 非 PA 模式: K/V 按 INPUT_LAYOUT 转换
-        k_npu = convert_kv_bnsd_to_layout(k_fp8, act_seqused_kv, npu_input_layout, cu_seqlens=CU_SEQLENS_KV).contiguous().view(FP8_DTYPE).npu()
-        v_npu = convert_kv_bnsd_to_layout(v_fp8, act_seqused_kv, npu_input_layout, cu_seqlens=CU_SEQLENS_KV).contiguous().view(FP8_DTYPE).npu()
-        logger.info("[NPU %s] k=%s, v=%s", npu_input_layout, k_npu.shape, v_npu.shape)
+        logger.info("[NPU] prepare PA inputs done.")
+        return dict(
+            q=q_npu, k=k_npu, v=v_npu, q_rope=q_rope_npu, k_rope=k_rope_npu, mask=mask_arg,
+            cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv, seqused_q=seqused_q, seqused_kv=seqused_kv,
+            max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
+            dequant_scale_q=deq_q_npu, dequant_scale_k=deq_k_npu, dequant_scale_v=deq_v_npu, p_scale=p_scale_npu,
+            block_table=block_table_npu, q_n=N_q, kv_n=N_kv, softmax_scale=softmax_scale,
+            layout_q="TND", layout_q_descale=q_runtime_layout, layout_kv=pa_layout_kv, layout_out="TND",
+            block_size=BLOCK_SIZE, sparse_mode=SPARSE_MODE, out_dtype=out_dtype,
+        )
 
-        k_scale_e8m0 = fp32_to_e8m0fnu_safe(
-            convert_k_scale_bnsd_to_layout(dequant_scale_k, act_seqused_kv, npu_input_layout, cu_seqlens=CU_SEQLENS_KV), "K scale")
-        v_scale_e8m0 = fp32_to_e8m0fnu_safe(
-            convert_v_scale_bnsd_to_layout(dequant_scale_v, act_seqused_kv, npu_input_layout), "V scale")
-        deq_k_npu = k_scale_e8m0.npu()
-        deq_v_npu = v_scale_e8m0.npu()
-        logger.info("[NPU %s] K scale shape=%s, V scale shape=%s", npu_input_layout, k_scale_e8m0.shape, v_scale_e8m0.shape)
+    # 非 PA 模式: K/V 按 INPUT_LAYOUT 转换
+    k_npu = convert_kv_bnsd_to_layout(k_fp8, act_seqused_kv, npu_input_layout, cu_seqlens=CU_SEQLENS_KV).contiguous().view(FP8_DTYPE).npu()
+    v_npu = convert_kv_bnsd_to_layout(v_fp8, act_seqused_kv, npu_input_layout, cu_seqlens=CU_SEQLENS_KV).contiguous().view(FP8_DTYPE).npu()
+    logger.info("[NPU %s] k=%s, v=%s", npu_input_layout, k_npu.shape, v_npu.shape)
 
-        logger.info("[NPU] 调用 %s 模式...", npu_input_layout)
-        atten_out, lse_out = mxfp8_fa_torch_npu(
-            q_npu, k_npu, v_npu, q_rope_npu, k_rope_npu, mask_arg,
-            cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
-            deq_q_npu, deq_k_npu, deq_v_npu, p_scale_npu, None,
-            N_q, N_kv, softmax_scale, npu_input_layout, q_runtime_layout, npu_input_layout, npu_input_layout, 0, SPARSE_MODE, out_dtype)
+    k_scale_e8m0 = fp32_to_e8m0fnu_safe(
+        convert_k_scale_bnsd_to_layout(dequant_scale_k, act_seqused_kv, npu_input_layout, cu_seqlens=CU_SEQLENS_KV), "K scale")
+    v_scale_e8m0 = fp32_to_e8m0fnu_safe(
+        convert_v_scale_bnsd_to_layout(dequant_scale_v, act_seqused_kv, npu_input_layout), "V scale")
+    deq_k_npu = k_scale_e8m0.npu()
+    deq_v_npu = v_scale_e8m0.npu()
+    logger.info("[NPU %s] K scale shape=%s, V scale shape=%s", npu_input_layout, k_scale_e8m0.shape, v_scale_e8m0.shape)
 
+    logger.info("[NPU] prepare non-PA inputs done.")
+    return dict(
+        q=q_npu, k=k_npu, v=v_npu, q_rope=q_rope_npu, k_rope=k_rope_npu, mask=mask_arg,
+        cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv, seqused_q=seqused_q, seqused_kv=seqused_kv,
+        max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
+        dequant_scale_q=deq_q_npu, dequant_scale_k=deq_k_npu, dequant_scale_v=deq_v_npu, p_scale=p_scale_npu,
+        block_table=None, q_n=N_q, kv_n=N_kv, softmax_scale=softmax_scale,
+        layout_q=npu_input_layout, layout_q_descale=q_runtime_layout, layout_kv=npu_input_layout, layout_out=npu_input_layout,
+        block_size=0, sparse_mode=SPARSE_MODE, out_dtype=out_dtype,
+    )
+
+
+def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
+                 dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+                 cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
+                 block_table_torch=None,
+                 qr_bf16=None, kr_bf16=None):
+    """调用 NPU 算子，支持 N2TGD layout
+
+    正常用例入口：准备入参 → 调用算子 → 输出截断/LSE 处理。
+    异常用例请直接调用 prepare_npu_inputs + _call_npu_fa_op(overrides=...)。
+    """
+    inputs = prepare_npu_inputs(
+        q_fp8, k_fp8, v_fp8,
+        dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+        cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
+        block_table_torch=block_table_torch,
+        qr_bf16=qr_bf16, kr_bf16=kr_bf16)
+
+    logger.info("[NPU] 调用 %s 模式...", "PA" if ENABLE_PA else inputs["layout_q"])
+    atten_out, lse_out = _call_npu_fa_op(**inputs)
+
+    act_seqused_q = _get_seqused_q()
     npu_output = atten_out
     T_actual = cu_seqlens_q[-1] if cu_seqlens_q is not None else sum(act_seqused_q)
     if npu_output.shape[0] > T_actual:
