@@ -494,11 +494,13 @@ namespace {
 struct QfaLayoutConstraintConfig {
     std::vector<QfaLayout> supportedKvLayouts;
     std::vector<QfaLayout> supportedOutLayouts;
+    std::vector<QfaLayout> supportedQDescaleLayouts;
 };
 
 const std::map<QfaQuantMode, QfaLayoutConstraintConfig> QFA_LAYOUT_CONSTRAINT_TABLE = {
     {QfaQuantMode::MXFP8_FP32,
-     {{QfaLayout::TND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ}, {QfaLayout::TND}}},
+     {{QfaLayout::TND, QfaLayout::PA_BNBD, QfaLayout::PA_NZ}, {QfaLayout::TND},
+      {QfaLayout::TND, QfaLayout::N2TGD}}},
 };
 } // namespace
 
@@ -527,6 +529,14 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
                     "When quant_mode is MxFP8 and layout_q is %s, layout_out must be TND, but got %s",
                     qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.outLayout).c_str()),
                 return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(std::find(config.supportedQDescaleLayouts.begin(), config.supportedQDescaleLayouts.end(),
+                          qfaInfo.layoutQDescale) == config.supportedQDescaleLayouts.end(),
+                OP_LOGE(qfaInfo.opName,
+                    "When quant_mode is MxFP8 and layout_q is %s, layout_q_descale must be in {TND, N2TGD}, but got %s",
+                    qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.layoutQDescale).c_str()),
+                return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -612,7 +622,7 @@ ge::graphStatus QuantChecker::CheckFeature(const QfaTilingInfo &qfaInfo)
 {
     // 文档"特性交叉校验"列(rowspan=5)包含三项:
     //   1. 非连续 Tensor 支持
-    //   2. Layout 校验(layout 匹配关系表)
+    //   2. Layout 校验(layout 匹配关系表, 含 layout_q_descale)
     //   3. q/k/v/attn_out shape 校验(shape 匹配关系表)
     if (CheckNonContiguousSupport(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;

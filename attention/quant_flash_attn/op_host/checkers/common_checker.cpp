@@ -177,6 +177,20 @@ ge::graphStatus CommonChecker::CheckSingleParaShapeDim(const QfaTilingInfo &qfaI
 }
 
 // ============================================================================
+// Attr — SinglePara
+// ============================================================================
+
+ge::graphStatus CommonChecker::CheckSingleParaSoftmaxScale(const QfaTilingInfo &qfaInfo)
+{
+    // 文档约束: softmax_scale 必须大于 0
+    OP_CHECK_IF(qfaInfo.softmaxScale <= 0.0f,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, SOFTMAX_SCALE_NAME.c_str(),
+                    std::to_string(qfaInfo.softmaxScale).c_str(), "softmax_scale must be greater than 0"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+// ============================================================================
 // Dtype consistency
 // ============================================================================
 
@@ -306,7 +320,8 @@ ge::graphStatus CommonChecker::CheckSinglePara(const QfaTilingInfo &qfaInfo)
 {
     if (CheckSingleParaLayout(qfaInfo) != ge::GRAPH_SUCCESS ||
         CheckSingleParaDtype(qfaInfo) != ge::GRAPH_SUCCESS ||
-        CheckSingleParaShapeDim(qfaInfo) != ge::GRAPH_SUCCESS) {
+        CheckSingleParaShapeDim(qfaInfo) != ge::GRAPH_SUCCESS ||
+        CheckSingleParaSoftmaxScale(qfaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

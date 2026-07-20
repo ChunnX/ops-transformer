@@ -42,6 +42,9 @@ private:
     ge::graphStatus CheckSingleParaDtype(const QfaTilingInfo &qfaInfo);
     ge::graphStatus CheckSingleParaShapeDim(const QfaTilingInfo &qfaInfo);
 
+    // --- Attr checks (SinglePara) ---
+    ge::graphStatus CheckSingleParaSoftmaxScale(const QfaTilingInfo &qfaInfo);
+
     // --- MultiPara: dtype consistency ---
     ge::graphStatus CheckQuantDataType(const QfaTilingInfo &qfaInfo);
     ge::graphStatus CheckDtypeConsistency(const QfaTilingInfo &qfaInfo);

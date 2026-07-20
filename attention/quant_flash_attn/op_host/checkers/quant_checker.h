@@ -63,7 +63,7 @@ private:
     ge::graphStatus CheckNonContiguousSupport(const QfaTilingInfo &qfaInfo) const;
 
     // --- Feature: layout 匹配关系校验 (文档: layout匹配关系表) ---
-    // MxFP8: layout_q=TND, layout_kv∈{TND,PA_BNBD,PA_NZ}, layout_out=TND
+    // MxFP8: layout_q=TND, layout_kv∈{TND,PA_BNBD,PA_NZ}, layout_out=TND, layout_q_descale∈{TND,N2TGD}
     ge::graphStatus CheckLayoutConstraint(const QfaTilingInfo &qfaInfo) const;
 
     // --- Feature: q/k/v/attn_out shape 校验 (文档: q/k/v/attn_out shape匹配关系表) ---
