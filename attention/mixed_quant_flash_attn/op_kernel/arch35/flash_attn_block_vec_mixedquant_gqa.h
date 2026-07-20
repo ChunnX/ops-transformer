@@ -296,14 +296,14 @@ public:
         tPipe->InitBuffer(commonTBuf, 512);
         tPipe->InitBuffer(SharedBuffer3, 32768);
         tPipe->InitBuffer(SharedBuffer1[0], 1, stage1OutQueSize);
-        tPipe->InitBuffer(SharedBuffer1[1], 1, stage2OutQueSize);
+        // tPipe->InitBuffer(SharedBuffer1[1], 1, stage2OutQueSize);
 
         if (constInfo.isSoftmaxLseEnable) {
             tPipe->InitBuffer(softmaxLseQueue, 1, (mBaseSize >> 1U) * sizeof(float) * 8);
         }
 
         stage1OutQue[0] = SharedBuffer1[0];
-        stage1OutQue[1] = SharedBuffer1[1];
+        // stage1OutQue[1] = SharedBuffer1[1];
         attenMaskInQue[0] = SharedBuffer2[0];
         attenMaskInQue[1] = SharedBuffer2[1];
         stage2OutBuf = SharedBuffer3;
@@ -551,7 +551,8 @@ public:
         LocalTensor<T> queryScaleUb;
         LocalTensor<uint8_t> apiTmpBuffer = commonTBuf.template Get<uint8_t>();
 
-        int64_t stage1Offset = runInfo.loop & (DB - 1);
+        // int64_t stage1Offset = runInfo.loop & (DB - 1);
+        int64_t stage1Offset = 0;
         float descaleQK = 1.0;
         float deSCaleKValue = 1.0;
 

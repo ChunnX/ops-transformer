@@ -172,7 +172,7 @@ public:
     uint32_t coreFirstTmpOutWsPos_;
     FDparamsX fdParams_;
 
-    TQue<QuePosition::VECOUT, 1> SharedBuffer1[2];
+    TQue<QuePosition::VECOUT, 1> SharedBuffer1[1];
     TQue<QuePosition::VECIN, 1> SharedBuffer2[2];
     TBuf<> SharedBuffer3;
 
