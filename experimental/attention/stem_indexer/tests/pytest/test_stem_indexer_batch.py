@@ -24,9 +24,14 @@ import result_compare_method
 
 TEST_INPUT_PATH = os.environ.get("STEM_INDEXER_PT_DIR", "./pt_path")
 PT_DIR = TEST_INPUT_PATH
-RESULT_PATH = Path("result.xlsx")
+RESULT_PATH = Path(os.environ.get("STEM_INDEXER_RESULT_PATH", "result.csv"))
 MAX_RESULT_DETAIL_LEN = 2048
 RESULT_COLUMNS = ["case_id", "testcase_name", "expected_result", "result", "detail"]
+
+# 支持通过环境变量 STEM_INDEXER_CASE_ID 指定只跑特定 case_id（逗号分隔多个）
+# 例: STEM_INDEXER_CASE_ID=SI_WB_002 python -m pytest test_stem_indexer_batch.py
+_FILTER_IDS_RAW = os.environ.get("STEM_INDEXER_CASE_ID", "").strip()
+_FILTER_IDS = set(x.strip() for x in _FILTER_IDS_RAW.split(",") if x.strip())
 
 
 def collect_testcase_files(pt_dir):
@@ -38,6 +43,18 @@ def collect_testcase_files(pt_dir):
         for pt_file in sorted(os.listdir(pt_dir))
         if pt_file.endswith(".pt")
     ]
+    if _FILTER_IDS:
+        filtered = []
+        for fp in testcase_files:
+            try:
+                case = stem_indexer_pt_loadprocess.torch_load_cpu(fp)["case"]
+            except Exception:
+                continue
+            if case.get("case_id", "") in _FILTER_IDS:
+                filtered.append(fp)
+        print(f"Filter by STEM_INDEXER_CASE_ID={_FILTER_IDS_RAW}: "
+              f"{len(filtered)}/{len(testcase_files)} matched.")
+        testcase_files = filtered
     print(f"Found {len(testcase_files)} StemIndexer pt testcase files.")
     return testcase_files
 
@@ -54,16 +71,16 @@ def append_result(case, result, detail=""):
         "detail": detail,
     }
     if RESULT_PATH.exists():
-        df = pd.read_excel(RESULT_PATH)
-        if set(df.columns) != set(RESULT_COLUMNS):
-            print("Warning: result.xlsx columns mismatch, skip appending StemIndexer result.")
+        df = pd.read_csv(RESULT_PATH, encoding="utf-8-sig")
+        if list(df.columns) != RESULT_COLUMNS:
+            print(f"Warning: {RESULT_PATH} columns mismatch, skip appending StemIndexer result.")
             print(f"Existing columns: {list(df.columns)}")
             print(f"Expected columns: {RESULT_COLUMNS}")
             return False
         df = pd.concat([df, pd.DataFrame([row_data], columns=RESULT_COLUMNS)], ignore_index=True)
     else:
         df = pd.DataFrame([row_data], columns=RESULT_COLUMNS)
-    df.to_excel(RESULT_PATH, index=False)
+    df.to_csv(RESULT_PATH, index=False, encoding="utf-8-sig")
     return True
 
 

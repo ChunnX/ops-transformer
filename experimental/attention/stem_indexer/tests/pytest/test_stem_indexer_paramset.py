@@ -2415,3 +2415,22 @@ ENABLED_PARAMS = [
         'special_setting': '',
     },
 ]
+
+# 未显式指定的用例使用算子默认的uint32 TopK score路径；显式配置2的用例覆盖uint16路径。
+for case in ENABLED_PARAMS:
+    case.setdefault('topk_score_precision', 1)
+
+# 镜像前100条功能场景，形成SI_WB_301～SI_WB_400的uint16 TopK score配对用例。
+# 保留原用例输入与属性，仅替换case标识和精度，便于uint32/uint16结果逐场景对照。
+_UINT16_SOURCE_CASES = tuple(ENABLED_PARAMS)
+for case_number, source_case in enumerate(_UINT16_SOURCE_CASES, start=301):
+    uint16_case = {
+        key: list(value) if isinstance(value, list) else value
+        for key, value in source_case.items()
+    }
+    uint16_case['case_id'] = f'SI_WB_{case_number:03d}'
+    uint16_case['testcase_name'] = f"{source_case['testcase_name']}_topk_uint16"
+    uint16_case['topk_score_precision'] = 2
+    ENABLED_PARAMS.append(uint16_case)
+
+del _UINT16_SOURCE_CASES

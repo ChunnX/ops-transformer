@@ -23,8 +23,7 @@ K_BLOCK_NUM_RATE_LARGE = 0.1
 K_BLOCK_NUM_BIAS_LARGE = 30
 METADATA_SIZE = 2048
 DEFAULT_TOPK_SCORE_PRECISION = 1
-GOLDEN_TOPK_SCORE_TYPE = "uint32"
-SUPPORTED_GOLDEN_TOPK_SCORE_TYPES = {"uint32", "uint16"}
+TOPK_SCORE_TYPE_BY_PRECISION = {1: "uint32", 2: "uint16"}
 
 DTYPE_MAP = {
     "BF16": torch.bfloat16,
@@ -64,25 +63,26 @@ def dtype_from_name(dtype_name):
     return DTYPE_MAP[dtype_name]
 
 
-def get_golden_topk_score_type(case):
-    special = parse_special_setting(case.get("special_setting", ""))
+def get_topk_score_precision(case):
     precision = int(case.get("topk_score_precision", DEFAULT_TOPK_SCORE_PRECISION))
-    precision_score_type = {1: "uint32", 2: "uint16"}.get(precision, GOLDEN_TOPK_SCORE_TYPE)
-    score_type = case.get("golden_topk_score_type", special.get(
-        "golden_topk_score_type", precision_score_type
-    ))
-    score_type = str(score_type).strip().lower()
-    if score_type not in SUPPORTED_GOLDEN_TOPK_SCORE_TYPES:
+    if precision not in TOPK_SCORE_TYPE_BY_PRECISION:
         raise ValueError(
-            f"Unsupported golden_topk_score_type: {score_type}. "
-            f"Supported values: {sorted(SUPPORTED_GOLDEN_TOPK_SCORE_TYPES)}"
+            f"topk_score_precision must be 1(uint32) or 2(uint16), but got {precision}"
         )
-    return score_type
+    return precision
+
+
+def get_golden_topk_score_type(case):
+    return TOPK_SCORE_TYPE_BY_PRECISION[get_topk_score_precision(case)]
+
+
+def round_float32_to_bfloat16(scores):
+    return scores.to(torch.bfloat16).to(torch.float32)
 
 
 def get_topk_sort_scores(scores, score_type):
     if score_type == "uint16":
-        return scores.to(torch.bfloat16).float()
+        return round_float32_to_bfloat16(scores)
     return scores
 
 
@@ -162,7 +162,7 @@ def get_call_attrs(case):
         "k_block_num_bias_medium": K_BLOCK_NUM_BIAS_MEDIUM,
         "k_block_num_rate_large": K_BLOCK_NUM_RATE_LARGE,
         "k_block_num_bias_large": K_BLOCK_NUM_BIAS_LARGE,
-        "topk_score_precision": int(case.get("topk_score_precision", DEFAULT_TOPK_SCORE_PRECISION)),
+        "topk_score_precision": get_topk_score_precision(case),
     }
 
 
