@@ -58,11 +58,20 @@ _DTYPE_MAP = {
 _CASE_BOOL_FIELDS = {"enable", "is_contiguous", "return_softmax_lse", "empty_actual_seq"}
 _CASE_INT_FIELDS = {
     "B", "N1", "N2", "D", "S1", "S2", "block_size", "mask_mode", "quant_group_size", "seed",
-    "device_id", "sparse_q_block_size", "sparse_kv_block_size", "sparse_count", "quant_mode", "block_num",
-    "n1_n2_ratio", "s1_base_size", "s2_base_size",
+    "device_id", "sparse_q_block_size", "sparse_kv_block_size", "sparse_count", "quant_mode",
+    "s2_base_size",
 }
 _CASE_FLOAT_FIELDS = {"p_scale_value", "data_range_q", "data_range_k", "data_range_v", "softmax_scale"}
 _CASE_INT_LIST_FIELDS = {"actual_seq_q", "actual_seq_kv"}
+_CASE_REQUIRED_RUNTIME_FIELDS = {
+    "B", "N1", "N2", "D", "S1", "S2", "actual_seq_q", "actual_seq_kv", "s2_base_size", "block_size",
+    "mask_mode", "fp8_dtype", "scale_dtype", "quant_group_size", "layout_q", "layout_kv",
+    "layout_sparse_indices", "layout_out", "kv_cache_layout", "is_contiguous", "return_softmax_lse", "seed",
+    "data_range_q", "data_range_k", "data_range_v", "device_id", "sparse_q_block_size", "sparse_kv_block_size",
+    "sparse_count", "quant_mode", "sparse_pattern", "block_table_pattern", "p_scale_value",
+}
+
+# 其余列作为用例设计参考信息原样保留，不参与 pytest 计算。CSV 按列名解析，允许继续携带扩展字段。
 
 
 def _ensure_custom_ops_registered():
@@ -194,11 +203,12 @@ def _resolve_dtype(value, field_name):
 
 
 def _validate_case_design_fields(case):
-    """校验批量用例表中的设计因子；旧用例未提供这些字段时保持兼容。"""
-    if "n1_n2_ratio" in case and case["N1"] != case["N2"] * case["n1_n2_ratio"]:
-        raise ValueError(
-            f"N1 must equal N2 * n1_n2_ratio, got {case['N1']} != "
-            f"{case['N2']} * {case['n1_n2_ratio']}")
+    """只校验实际参与运行的字段；参考字段允许由外部泛化表自由扩展。"""
+    if case["N2"] <= 0 or case["N1"] % case["N2"] != 0:
+        raise ValueError(f"N1 must be divisible by N2, got N1={case['N1']}, N2={case['N2']}")
+
+    if case["s2_base_size"] != 512:
+        raise ValueError(f"s2_base_size must be 512 for MXFP8, got {case['s2_base_size']}")
 
     block_sizes = [case.get(name) for name in ("block_size", "sparse_q_block_size", "sparse_kv_block_size")]
     if all(value is not None for value in block_sizes) and len(set(block_sizes)) != 1:
@@ -208,22 +218,6 @@ def _validate_case_design_fields(case):
 
     _get_runtime_seq_lengths(case, "actual_seq_q", "S1")
     _get_runtime_seq_lengths(case, "actual_seq_kv", "S2")
-
-    if "s1_s2_relation" in case:
-        actual_relation = "gt" if case["S1"] > case["S2"] else "lt" if case["S1"] < case["S2"] else "eq"
-        if case["s1_s2_relation"] != actual_relation:
-            raise ValueError(
-                f"s1_s2_relation must be {actual_relation} for S1/S2={case['S1']}/{case['S2']}, "
-                f"got {case['s1_s2_relation']}")
-
-    if "alignment" in case and "s1_base_size" in case and "s2_base_size" in case:
-        s1_state = "aligned" if case["S1"] % case["s1_base_size"] == 0 else "unaligned"
-        s2_state = "aligned" if case["S2"] % case["s2_base_size"] == 0 else "unaligned"
-        expected_alignment = f"s1_{s1_state}_s2_{s2_state}"
-        if case["alignment"] != expected_alignment:
-            raise ValueError(
-                f"alignment must be {expected_alignment} for S1/S2={case['S1']}/{case['S2']}, "
-                f"got {case['alignment']}")
 
 
 def _get_runtime_seq_lengths(case, field_name, total_field_name):
@@ -244,6 +238,9 @@ def _get_runtime_seq_lengths(case, field_name, total_field_name):
 
 def _normalize_case(case):
     case = dict(case)
+    missing_fields = sorted(field for field in _CASE_REQUIRED_RUNTIME_FIELDS if case.get(field) is None)
+    if missing_fields:
+        raise ValueError(f"case {case.get('name', '<unnamed>')} missing required runtime fields: {missing_fields}")
     case["fp8_dtype"] = _resolve_dtype(case["fp8_dtype"], "fp8_dtype")
     case["scale_dtype"] = _resolve_dtype(case["scale_dtype"], "scale_dtype")
     if case.get("enable") is None:
@@ -423,7 +420,7 @@ def _physical_ids(start, count, pattern, rng):
     return ids
 
 
-def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng, physical_block_num=None):
+def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng):
     if isinstance(seq_lens, int):
         seq_lens = [seq_lens] * batch
     block_nums = [math.ceil(int(seq_len) / block_size) for seq_len in seq_lens]
@@ -434,21 +431,8 @@ def _make_reference_block_table(batch, seq_lens, block_size, pattern, rng, physi
     if total_logical_blocks == 0:
         return block_table
 
-    requested_block_num = total_logical_blocks if physical_block_num is None else int(physical_block_num)
-    if requested_block_num <= 0:
-        raise ValueError(f"block_num must be positive, got {requested_block_num}")
-
-    # common MX 为每个逻辑 page 分配唯一物理 block，避免 PA preprocessing 相互覆盖。
-    actual_block_num = max(requested_block_num, total_logical_blocks)
-    if requested_block_num < total_logical_blocks:
-        logger.info(
-            "[INFO] block_num=%d is smaller than logical PA pages=%d; use %d unique physical blocks",
-            requested_block_num, total_logical_blocks, actual_block_num)
-
-    physical_ids = _physical_ids(0, actual_block_num, pattern, rng)[:total_logical_blocks]
-    # 大容量场景使用最后一个物理页，使 PA tensor 第 0 维保持 requested block_num。
-    if actual_block_num > total_logical_blocks and actual_block_num - 1 not in physical_ids:
-        physical_ids[-1] = actual_block_num - 1
+    # 与 common MX 一致：物理页数由实际 KV 序列自动推导，每个逻辑页使用唯一物理页。
+    physical_ids = _physical_ids(0, total_logical_blocks, pattern, rng)
 
     logical_offset = 0
     for batch_idx, logical_block_num in enumerate(block_nums):
@@ -760,7 +744,7 @@ def _generate_reference_style_mxfp8_inputs():
     dense_v_descale = get_mxfp8_per_channel_group_quant_scale(
         dense_value, FP8_DTYPE, QUANT_GROUP_SIZE)
     block_table = _make_reference_block_table(
-        batch, kv_lengths, BLOCK_SIZE, case["block_table_pattern"], rng, case.get("block_num"))
+        batch, kv_lengths, BLOCK_SIZE, case["block_table_pattern"], rng)
 
     sparse_indices, sparse_seq_len = _make_reference_sparse_indices(case, q_lengths, kv_lengths, rng)
     p_scale = torch.tensor([float(case["p_scale_value"])], dtype=torch.float32)
