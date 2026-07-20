@@ -294,9 +294,9 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     int64_t maxRecvTokenNum = static_cast<int64_t>(*maxRecvTokenNumPtr);
     OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > bs * epWorldSize * std::min(topK, expertPerRank),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
-                                            (std::string("should in [0, ") +
-                                            std::to_string(bs * epWorldSize * std::min(topK, expertPerRank)) + "]")
-                                                .c_str()),
+                                              (std::string("should in [0, ") +
+                                               std::to_string(bs * epWorldSize * std::min(topK, expertPerRank)) + "]")
+                                                  .c_str()),
                     return ge::GRAPH_FAILED);
 
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
@@ -356,7 +356,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
     int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
     if (numMaxTokensPerRank != 0) {
-        OP_TILING_CHECK(bs != numMaxTokensPerRank,
+        OP_TILING_CHECK(
+            bs != numMaxTokensPerRank,
             OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
                                       (std::string("should be 0 or Bs, Bs is ") + std::to_string(bs).c_str())),
             return ge::GRAPH_FAILED);
@@ -406,6 +407,282 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+static uint32_t AlignBufferBytes(uint64_t value, uint32_t alignment)
+{
+    return static_cast<uint32_t>((value + alignment - 1U) / alignment * alignment);
+}
+
+static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingData *tilingData,
+                                                            uint32_t activationElementsPerByte,
+                                                            uint32_t availableUbBytes)
+{
+    MegaMoeDispatchBufferConfig bufferConfig{};
+    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
+    uint64_t alignedTotalRouteItems =
+        (sendTotalNum + static_cast<uint64_t>(ALIGN_256) - 1U) / static_cast<uint64_t>(ALIGN_256) * ALIGN_256;
+
+    // Stage 1：使用基准 batch 确定 dispatch ring 深度。
+    bufferConfig.routeItemsPerBatch =
+        static_cast<int32_t>(std::min(alignedTotalRouteItems, static_cast<uint64_t>(BASE_RECV_ROUTE_ITEMS_PER_BATCH)));
+    bufferConfig.routeBatchCount =
+        static_cast<int32_t>((sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) / bufferConfig.routeItemsPerBatch);
+
+    // 每个 slot 包含一份量化 token/scale 和一条 32B triple。
+    uint32_t quantTokenBytes = AlignBufferBytes(tilingData->h / activationElementsPerByte, ALIGN_256);
+    uint32_t quantScaleBytes = (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
+    uint32_t copyBufferBytes = AlignBufferBytes(quantTokenBytes + quantScaleBytes, ALIGN_32);
+    bufferConfig.copyBufferBytes = copyBufferBytes;
+
+    // 固定占用：expertTokenCnt、cumsumInfo、sendCnt 和 expertTokenNumsOut。
+    uint32_t fixedBufferBytes =
+        static_cast<uint32_t>(ALIGN_32) +
+        AlignBufferBytes(static_cast<uint64_t>(tilingData->epWorldSize) * tilingData->expertPerRank * sizeof(int32_t),
+                         ALIGN_32) +
+        tilingData->epWorldSize * static_cast<uint32_t>(ALIGN_32) +
+        AlignBufferBytes(static_cast<uint64_t>(tilingData->expertPerRank) * sizeof(int32_t), ALIGN_32);
+    uint32_t maskBufferBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8);
+    uint32_t routeIndexBufferBytes =
+        static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
+    uint32_t bytesWithoutDispatchSlots = fixedBufferBytes + maskBufferBytes + 2U * routeIndexBufferBytes;
+    uint32_t dispatchSlotBytes = copyBufferBytes + static_cast<uint32_t>(ALIGN_32);
+    uint32_t dispatchSlotBudgetBytes =
+        availableUbBytes > bytesWithoutDispatchSlots ? availableUbBytes - bytesWithoutDispatchSlots : 0U;
+    bufferConfig.bufferCount = static_cast<int32_t>(dispatchSlotBudgetBytes / dispatchSlotBytes);
+    bufferConfig.bufferCount = std::min(bufferConfig.bufferCount, MAX_DISPATCH_BUFFER_COUNT);
+    bufferConfig.bufferCount = std::max(bufferConfig.bufferCount, MIN_DISPATCH_BUFFER_COUNT);
+
+    // Stage 2：固定 ring 深度，用剩余 UB 扩大 route batch。
+    if (static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) < sendTotalNum) {
+        uint32_t fixedBytesWithDispatchSlots =
+            fixedBufferBytes + static_cast<uint32_t>(bufferConfig.bufferCount) * dispatchSlotBytes;
+        uint32_t routeItemBudgetBytes =
+            availableUbBytes > fixedBytesWithDispatchSlots ? availableUbBytes - fixedBytesWithDispatchSlots : 0U;
+        // maskBatchTensor_ 占 1bit，topkIndexTensor_ 和 validTopkIndexTensor_ 各占一个 int32：
+        // bytesPerItem = 1/8 + 4 + 4 = 65/8B，因此 maxItems = budgetBytes * 8 / 65。
+        uint32_t expandedRouteItems = routeItemBudgetBytes * 8U / 65U;
+        expandedRouteItems = expandedRouteItems / static_cast<uint32_t>(ALIGN_256) * ALIGN_256;
+        expandedRouteItems =
+            static_cast<uint32_t>(std::min(static_cast<uint64_t>(expandedRouteItems), alignedTotalRouteItems));
+        if (expandedRouteItems > static_cast<uint32_t>(bufferConfig.routeItemsPerBatch)) {
+            bufferConfig.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
+            bufferConfig.routeBatchCount = static_cast<int32_t>((sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) /
+                                                                bufferConfig.routeItemsPerBatch);
+        }
+    }
+    return bufferConfig;
+}
+
+static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingData *tilingData,
+                                                            uint32_t fixedBufferBytes, uint32_t ownedExpertCount,
+                                                            uint32_t availableUbBytes)
+{
+    MegaMoeSendMaskBufferConfig bufferConfig{};
+    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
+    uint64_t alignedTotalRouteItems =
+        (sendTotalNum + static_cast<uint64_t>(ALIGN_256) - 1U) / static_cast<uint64_t>(ALIGN_256) * ALIGN_256;
+
+    // Stage 1：使用基准 batch 确定 mask push ring 深度。
+    bufferConfig.routeItemsPerBatch =
+        static_cast<int32_t>(std::min(alignedTotalRouteItems, static_cast<uint64_t>(BASE_SEND_ROUTE_ITEMS_PER_BATCH)));
+    bufferConfig.routeBatchCount =
+        static_cast<int32_t>((sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) / bufferConfig.routeItemsPerBatch);
+    bufferConfig.bufferBytes =
+        static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8) + static_cast<uint32_t>(ALIGN_32);
+
+    uint32_t routeIndexBufferBytes =
+        static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
+    uint32_t bytesWithoutMaskBuffers = fixedBufferBytes + 2U * routeIndexBufferBytes;
+    uint32_t maskBufferBudgetBytes =
+        availableUbBytes > bytesWithoutMaskBuffers ? availableUbBytes - bytesWithoutMaskBuffers : 0U;
+    bufferConfig.bufferCount = static_cast<int32_t>(maskBufferBudgetBytes / bufferConfig.bufferBytes);
+    bufferConfig.bufferCount = std::min(bufferConfig.bufferCount, MAX_SEND_MASK_BUFFER_COUNT);
+
+    // 超过实际 push 次数的 slot 不增加流水重叠。
+    uint64_t maskPushCount = static_cast<uint64_t>(bufferConfig.routeBatchCount) * ownedExpertCount;
+    if (maskPushCount > 0U && static_cast<uint64_t>(bufferConfig.bufferCount) > maskPushCount) {
+        bufferConfig.bufferCount = static_cast<int32_t>(maskPushCount);
+    }
+    bufferConfig.bufferCount = std::max(bufferConfig.bufferCount, MIN_SEND_MASK_BUFFER_COUNT);
+
+    // Stage 2：固定 ring 深度，用剩余 UB 扩大 route batch。
+    if (static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) < sendTotalNum) {
+        // 32B count 尾部固定，只有 mask 随 batch 增长。
+        uint32_t fixedBytesWithMaskCount =
+            fixedBufferBytes + static_cast<uint32_t>(bufferConfig.bufferCount) * static_cast<uint32_t>(ALIGN_32);
+        uint32_t routeItemBudgetBytes =
+            availableUbBytes > fixedBytesWithMaskCount ? availableUbBytes - fixedBytesWithMaskCount : 0U;
+        // topkIdsTensor_ 和 sendGatherOutTensor_ 各占一个 int32，N 个 sendMask slot 各占 1bit：
+        // bytesPerItem = 4 + 4 + N/8 = (64 + N)/8B。
+        uint32_t expandedRouteItems =
+            routeItemBudgetBytes * 8U / (64U + static_cast<uint32_t>(bufferConfig.bufferCount));
+        expandedRouteItems = expandedRouteItems / static_cast<uint32_t>(ALIGN_256) * ALIGN_256;
+        expandedRouteItems =
+            static_cast<uint32_t>(std::min(static_cast<uint64_t>(expandedRouteItems), alignedTotalRouteItems));
+        if (expandedRouteItems > static_cast<uint32_t>(bufferConfig.routeItemsPerBatch)) {
+            bufferConfig.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
+            bufferConfig.routeBatchCount = static_cast<int32_t>((sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) /
+                                                                bufferConfig.routeItemsPerBatch);
+            bufferConfig.bufferBytes =
+                static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8) + static_cast<uint32_t>(ALIGN_32);
+        }
+    }
+    return bufferConfig;
+}
+
+static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilingData *tilingData,
+                                                              uint32_t coreTokenCount, bool topKWeightsAreBf16,
+                                                              uint32_t availableUbBytes)
+{
+    MegaMoeUnpermuteBufferConfig bufferConfig{};
+    if (coreTokenCount == 0U) {
+        return bufferConfig;
+    }
+
+    uint32_t bf16SlotBytes = AlignBufferBytes(static_cast<uint64_t>(tilingData->h) * sizeof(uint16_t), ALIGN_32);
+    uint32_t fp32SlotBytes = AlignBufferBytes(static_cast<uint64_t>(tilingData->h) * sizeof(float), ALIGN_32);
+    uint32_t dataSlotBytes = bf16SlotBytes + fp32SlotBytes;
+    bufferConfig.bf16SlotElementCount = bf16SlotBytes / sizeof(uint16_t);
+    bufferConfig.fp32SlotElementCount = fp32SlotBytes / sizeof(float);
+
+    // Combine quant 额外分配 BF16/FP32 scale 展开区。
+    uint32_t scaleBytes = 0U;
+    if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+        uint32_t scaleElementCount = (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
+        scaleBytes =
+            AlignBufferBytes(static_cast<uint64_t>(scaleElementCount) * sizeof(uint16_t) * DEQUANT_BF16_SCALE_EXPANSION,
+                             ALIGN_32) +
+            AlignBufferBytes(static_cast<uint64_t>(scaleElementCount) * sizeof(float) * DEQUANT_FP32_SCALE_EXPANSION,
+                             ALIGN_32);
+    }
+
+    // Stage 1：构造基准 weight batch，再选择输入 ring 深度。
+    uint32_t baseTokensPerBatch = UNPERMUTE_WEIGHT_ITEMS_PER_BATCH / tilingData->topK;
+    bufferConfig.tokensPerBatch = static_cast<int32_t>(std::min(baseTokensPerBatch, coreTokenCount));
+    uint32_t weightElementCount = static_cast<uint32_t>(bufferConfig.tokensPerBatch) * tilingData->topK;
+    bufferConfig.topKWeightsBufferBytes =
+        AlignBufferBytes(static_cast<uint64_t>(weightElementCount) * sizeof(float), ALIGN_32);
+    if (topKWeightsAreBf16) {
+        bufferConfig.topKWeightsBf16BufferBytes =
+            AlignBufferBytes(static_cast<uint64_t>(weightElementCount) * sizeof(uint16_t), ALIGN_32);
+    }
+
+    uint32_t bytesBeforeInputBuffers =
+        bufferConfig.topKWeightsBufferBytes + bufferConfig.topKWeightsBf16BufferBytes + scaleBytes + dataSlotBytes;
+    uint32_t inputBufferBudgetBytes =
+        availableUbBytes > bytesBeforeInputBuffers ? availableUbBytes - bytesBeforeInputBuffers : 0U;
+    bufferConfig.inputBufferCount = static_cast<int32_t>(inputBufferBudgetBytes / dataSlotBytes);
+    bufferConfig.inputBufferCount = std::min(bufferConfig.inputBufferCount, MAX_UNPERMUTE_INPUT_BUFFER_COUNT);
+    int32_t routeItemCount = bufferConfig.tokensPerBatch * static_cast<int32_t>(tilingData->topK);
+    bufferConfig.inputBufferCount = std::min(bufferConfig.inputBufferCount, routeItemCount);
+    bufferConfig.inputBufferCount = std::max(bufferConfig.inputBufferCount, MIN_UNPERMUTE_INPUT_BUFFER_COUNT);
+
+    // Stage 2：固定 ring 深度，用剩余 UB 扩大 weight batch。
+    if (baseTokensPerBatch < coreTokenCount) {
+        uint32_t fixedBytes = scaleBytes + (static_cast<uint32_t>(bufferConfig.inputBufferCount) + 1U) * dataSlotBytes;
+        uint32_t weightBudgetBytes = availableUbBytes - fixedBytes - UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES;
+        uint32_t weightBytesPerToken = tilingData->topK * sizeof(float);
+        if (topKWeightsAreBf16) {
+            weightBytesPerToken += tilingData->topK * sizeof(uint16_t);
+        }
+        uint32_t expandedTokensPerBatch = std::min(weightBudgetBytes / weightBytesPerToken, coreTokenCount);
+        if (expandedTokensPerBatch > static_cast<uint32_t>(bufferConfig.tokensPerBatch)) {
+            bufferConfig.tokensPerBatch = static_cast<int32_t>(expandedTokensPerBatch);
+            weightElementCount = expandedTokensPerBatch * tilingData->topK;
+            bufferConfig.topKWeightsBufferBytes =
+                AlignBufferBytes(static_cast<uint64_t>(weightElementCount) * sizeof(float), ALIGN_32);
+            if (topKWeightsAreBf16) {
+                bufferConfig.topKWeightsBf16BufferBytes =
+                    AlignBufferBytes(static_cast<uint64_t>(weightElementCount) * sizeof(uint16_t), ALIGN_32);
+            }
+        }
+    }
+    return bufferConfig;
+}
+
+static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *context, MegaMoeConfig &config,
+                                                MegaMoeTilingData *tilingData, uint32_t availableUbBytes)
+{
+    const char *nodeName = context->GetNodeName();
+    auto topKWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
+    OP_TILING_CHECK(topKWeightsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "topkWeights"),
+                    return ge::GRAPH_FAILED);
+
+    uint32_t activationElementsPerByte =
+        GetOpQuantModeByAttrDispatchOutType(context, config) == DISPATCH_QUANT_OUT_DTYPE_E2M1 ? 2U : 1U;
+    // DispatchBuffInit 的 UB 布局不依赖 AIV 分核结果，所有 AIV core 使用同一套 dispatch 配置。
+    // 若 kernel 后续按 core 拆分 DispatchBuffInit 的 tensor 或改变 copyTmp slot 布局，需同步调整此处。
+    tilingData->dispatchBufferConfig =
+        CalcDispatchBufferConfig(tilingData, activationElementsPerByte, availableUbBytes);
+
+    int64_t maxWavesPerExpert =
+        (static_cast<int64_t>(tilingData->maxOutputSize) + DISPATCH_WAVE_TILE_M - 1) / DISPATCH_WAVE_TILE_M;
+    int64_t dispatchFlagSlotsPerExpert = (maxWavesPerExpert + INT_CACHELINE - 1) / INT_CACHELINE * INT_CACHELINE;
+    uint64_t totalFlagElementCount =
+        static_cast<uint64_t>(tilingData->expertPerRank) *
+        (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert) +
+         static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
+    if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+        uint64_t combineFlagElementCount = static_cast<uint64_t>(tilingData->expertPerRank) * tilingData->blockAivNum *
+                                           static_cast<uint64_t>(INT_CACHELINE);
+        totalFlagElementCount = std::max(totalFlagElementCount, combineFlagElementCount);
+    }
+    uint32_t resetElementCountPerCore =
+        static_cast<uint32_t>((totalFlagElementCount + tilingData->blockAivNum - 1U) / tilingData->blockAivNum);
+    uint32_t resetBatchElementCount = std::min(resetElementCountPerCore, static_cast<uint32_t>(DISPATCH_RESET_BATCH));
+    uint32_t resetTensorBytes = AlignBufferBytes(resetBatchElementCount, INT32_PER_256B) * sizeof(int32_t);
+    uint32_t quantTokenBytes = AlignBufferBytes(tilingData->h / activationElementsPerByte, ALIGN_256);
+    uint32_t quantOutputBufferBytes = quantTokenBytes + (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
+    uint32_t quantInputBufferBytes = AlignBufferBytes(tilingData->h, ALIGN_128) * sizeof(uint16_t);
+    uint32_t maxExpertCountPerCore =
+        (tilingData->epWorldSize * tilingData->expertPerRank + tilingData->blockAivNum - 1U) / tilingData->blockAivNum;
+    uint32_t sendCountAccumulatorBytes =
+        AlignBufferBytes(static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), ALIGN_32);
+    uint32_t sendMaskFixedBufferBytes = resetTensorBytes + 2U * 1024U + 2U * quantOutputBufferBytes +
+                                        2U * quantInputBufferBytes + sendCountAccumulatorBytes;
+
+    /*
+     * 与 kernel SendMaskCal 的 expert 遍历一一对应：
+     *   globalExpertId = aivCoreIdx + ownedIdx * blockAivNum。
+     * totalExpertCount 除以 blockAivNum 后，前 remainder 个 AIV core 各多处理一个 expert，其余 core
+     * 处理 quotient 个 expert，因此这里只需预计算两套配置。
+     *
+     * 若修改 SendMaskCal 的 expert 分核方式、ownedExpertCount 或 maskPushCount 计算，必须同步更新
+     * 这里的两类 core 划分和 kernel 配置选择条件。
+     */
+    uint32_t totalExpertCount = tilingData->epWorldSize * tilingData->expertPerRank;
+    uint32_t expertCountPerCoreWithoutExtraExpert = totalExpertCount / tilingData->blockAivNum;
+    tilingData->sendMaskCoreCountWithExtraExpert = totalExpertCount % tilingData->blockAivNum;
+    uint32_t expertCountPerCoreWithExtraExpert = expertCountPerCoreWithoutExtraExpert + 1U;
+    tilingData->sendMaskConfigForCoreWithExtraExpert = CalcSendMaskBufferConfig(
+        tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithExtraExpert, availableUbBytes);
+    tilingData->sendMaskConfigForCoreWithoutExtraExpert = CalcSendMaskBufferConfig(
+        tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithoutExtraExpert, availableUbBytes);
+
+    /*
+     * 与 kernel Unpermute 开头的 TilingByCore(m_, ..., align=1) 一一对应。TilingByCore 使用：
+     *   fullTokenChunkSize = ceil(bs / blockAivNum)
+     * 为连续 core 分配等长完整 chunk，最后一个活跃 core 可能只处理 tail，后续 core 的 coreLen 为 0
+     * 并在读取配置前返回。因此 host 只需预计算“完整 chunk”和“tail chunk”两套配置，并记录完整
+     * chunk 对应的 core 数作为 kernel 选择边界。
+     *
+     * 若修改 TilingByCore、Unpermute 的 align 参数或分核方式，必须同步更新下面的 chunk 推导以及
+     * kernel 中 UnpermuteBuffInit 的配置选择条件。
+     */
+    bool topKWeightsAreBf16 = topKWeightsDesc->GetDataType() == ge::DT_BF16;
+    uint32_t fullTokenChunkSize = (tilingData->bs + tilingData->blockAivNum - 1U) / tilingData->blockAivNum;
+    uint32_t activeCoreCount = (tilingData->bs + fullTokenChunkSize - 1U) / fullTokenChunkSize;
+    uint32_t tailTokenChunkSize = tilingData->bs - (activeCoreCount - 1U) * fullTokenChunkSize;
+    bool tailIsFullTokenChunk = tailTokenChunkSize == fullTokenChunkSize;
+    tilingData->unpermuteFullTokenChunkCoreCount = tailIsFullTokenChunk ? activeCoreCount : activeCoreCount - 1U;
+    tilingData->unpermuteConfigForFullTokenChunk =
+        CalcUnpermuteBufferConfig(tilingData, fullTokenChunkSize, topKWeightsAreBf16, availableUbBytes);
+    tilingData->unpermuteConfigForTailTokenChunk =
+        tailIsFullTokenChunk ?
+            MegaMoeUnpermuteBufferConfig{} :
+            CalcUnpermuteBufferConfig(tilingData, tailTokenChunkSize, topKWeightsAreBf16, availableUbBytes);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1006,12 +1283,6 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context, MegaMoe
     tilingData->topK = static_cast<uint32_t>(topK);
     tilingData->expertPerRank = static_cast<uint32_t>(expertPerRank);
 
-    // UB 大小由平台查询, prefill 模板动态算 route batch 用
-    uint64_t ubSize = 0U;
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    tilingData->ubSize = static_cast<uint32_t>(ubSize);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1065,6 +1336,9 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     // Attr check & set
     OP_TILING_CHECK(CheckAttrAndSetTilingData(context, config, tilingData, aicNum) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(SetAdaptiveBufferConfigs(context, config, tilingData, static_cast<uint32_t>(ubSize)) ==
+                        ge::GRAPH_FAILED,
+                    OP_LOGE(nodeName, "Setting adaptive buffer configs failed."), return ge::GRAPH_FAILED);
 
     // Cal TilingKey
     uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);
