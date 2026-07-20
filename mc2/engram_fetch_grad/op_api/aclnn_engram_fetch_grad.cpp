@@ -74,18 +74,12 @@ aclnnStatus aclnnEngramFetchGradGetWorkspaceSize(
                                 numRecv,
                                 gradUniqueOut, uniqueLocalEntryOut, numUniqueOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
-    printf("[EngramGradAclnn] aclnnEngramFetchGradGetWorkspaceSize: numEntriesPerRank=%ld, commBufferSize=%ld\n",
-           numEntriesPerRank, commBufferSize);
-    fflush(stdout);
     aclnnStatus ret = aclnnInnerEngramFetchGradGetWorkspaceSize(
         commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry,
         numRecv,
         numEntriesPerRank, commBufferSize,
         gradUniqueOut, uniqueLocalEntryOut, numUniqueOut,
         workspaceSize, executor);
-    printf("[EngramGradAclnn] aclnnEngramFetchGradGetWorkspaceSize done: ret=%d, workspaceSize=%lu\n",
-           ret, workspaceSize ? *workspaceSize : 0);
-    fflush(stdout);
     return ret;
 }
 

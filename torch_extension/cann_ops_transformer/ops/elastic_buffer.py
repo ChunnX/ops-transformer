@@ -163,6 +163,7 @@ class ElasticBuffer:
 
         self._group = group
         self._num_cpu_bytes = num_cpu_bytes
+        self._with_grad = with_grad
         self._rank_id = dist.get_rank(self._group)
         self._ep_world_size = dist.get_world_size(self._group)
 

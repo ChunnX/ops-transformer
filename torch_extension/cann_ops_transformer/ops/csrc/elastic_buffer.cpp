@@ -814,15 +814,6 @@ void ElasticBuffer::EnsureEngramContext()
     engramContextTensor_ = resources.contextTensor;
     commBufferSize_ = resources.commBufferSize;
     engramContextInitialized_ = true;
-    printf("[Engram] EnsureEngramContext done: rankId=%u, rankSize=%u, hostBufPtr=%p, deviceBufPtr=%p, "
-           "commBufferSize=%ld\n",
-           engramCommContext_.rankId, engramCommContext_.rankSize, engramHostBufPtr_, engramDeviceBufPtr_,
-           commBufferSize_);
-    fflush(stdout);
-
-    if (withGrad_) {
-        EngramBarrier(true);
-    }
 }
 
 void ElasticBuffer::EnsureMoeContext()
@@ -911,7 +902,7 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
                     "num_max_tokens_per_rank must be > 0 for training mode, got ", numMaxTokensPerRank_);
 
         uint32_t rankSize = engramCommContext_.rankSize;
-        int64_t maxR = numMaxTokensPerRank_ * static_cast<int64_t>(rankSize);
+        int64_t maxR = engramNumEntries_ * static_cast<int64_t>(rankSize);
         auto intOpts = at::TensorOptions().dtype(at::kInt).device(indices.device());
 
         EngramFetchCtx ctx{

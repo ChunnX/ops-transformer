@@ -112,45 +112,52 @@ def train_worker(rank):
         # ==================== 训练反向 ====================
         grad_fetched = fetched.clone()
 
-        # all_gather 所有 rank 的 indices，用于验证累加计数
+        # all_gather 所有 rank 的 indices 和 grad_fetched，用于验证累加
         all_indices = [torch.zeros_like(indices_npu) for _ in range(WORLD_SIZE)]
         dist.all_gather(all_indices, indices_npu, group=group)
         all_indices_list = [t.cpu().tolist() for t in all_indices]
+
+        all_grad_fetched = [torch.zeros_like(fetched) for _ in range(WORLD_SIZE)]
+        dist.all_gather(all_grad_fetched, grad_fetched, group=group)
+        all_grad_fetched_cpu = [t.cpu().float() for t in all_grad_fetched]
 
         grad_unique, unique_local_entry = buffer.engram_fetch_grad(grad_fetched, fetch_ctx)
 
         print(f"[rank {rank}] backward: grad_unique shape={grad_unique.shape} (fp32)")
         print(f"[rank {rank}] backward: unique_local_entry={unique_local_entry.cpu().tolist()}")
 
-        # ==================== 验证反向 ====================
-        my_local_indices = []
+        # ==================== 验证反向（累加 grad_fetched） ====================
+        # 对每个 local index，累加所有 rank 中请求该 index 的 token 的 grad_fetched
+        grad_acc = {}  # local_idx -> accumulated grad (fp32, hidden)
         for r in range(WORLD_SIZE):
-            for idx in all_indices_list[r]:
-                global_idx = int(idx)
+            for t_idx, global_idx in enumerate(all_indices_list[r]):
+                global_idx = int(global_idx)
                 owner = global_idx // num_entries_per_rank
                 if owner == rank:
                     local_idx = global_idx % num_entries_per_rank
-                    my_local_indices.append(local_idx)
+                    grad_val = all_grad_fetched_cpu[r][t_idx]
+                    if local_idx in grad_acc:
+                        grad_acc[local_idx] += grad_val
+                    else:
+                        grad_acc[local_idx] = grad_val.clone()
 
-        counts = Counter(my_local_indices)
-        print(f"[rank {rank}] backward: counts={dict(sorted(counts.items()))}")
+        print(f"[rank {rank}] backward: grad_acc keys={sorted(grad_acc.keys())}")
 
         grad_unique_cpu = grad_unique.cpu()
         unique_le_cpu = unique_local_entry.cpu()
         all_pass = True
         for k in range(len(unique_le_cpu)):
             local_idx = int(unique_le_cpu[k].item())
-            count = counts[local_idx]
-            expected = storage[local_idx].float() * count
+            expected = grad_acc[local_idx]
             actual = grad_unique_cpu[k]
             if torch.allclose(actual, expected, atol=1e-2, rtol=1e-2):
                 print(f"[rank {rank}] [SUCCESS] backward[{k}]: "
-                      f"localIdx={local_idx}, count={count}, "
-                      f"gradUnique={actual.tolist()[:4]}... == {count}x emb[{local_idx}]")
+                      f"localIdx={local_idx}, "
+                      f"gradUnique={actual.tolist()[:4]}... == sum of grads")
             else:
                 diff = (actual - expected).abs().max().item()
                 print(f"[rank {rank}] [FAIL] backward[{k}]: "
-                      f"localIdx={local_idx}, count={count}, max_diff={diff:.6f}")
+                      f"localIdx={local_idx}, max_diff={diff:.6f}")
                 all_pass = False
 
         if all_pass:
