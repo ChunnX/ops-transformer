@@ -386,7 +386,15 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     int32_t remainingSparseBlocks = runParam.actSparseLen - static_cast<int32_t>(s2LoopCount * 2);
     runInfo.sparseBlkIdx1 = remainingSparseBlocks > 0 ? sparseIndicesGm.GetValue(sparseLoopCountOffset) : -1;
     runInfo.sparseBlkIdx2 = remainingSparseBlocks > 1 ? sparseIndicesGm.GetValue(sparseLoopCountOffset + 1) : -1;
-    if (runInfo.sparseBlkIdx1 < 0) {
+    if constexpr (isPa) {
+        if (runInfo.sparseBlkIdx1 >= static_cast<int64_t>(constInfo.maxBlockNumPerBatch)) {
+            runInfo.sparseBlkIdx1 = -1;
+        }
+        if (runInfo.sparseBlkIdx2 >= static_cast<int64_t>(constInfo.maxBlockNumPerBatch)) {
+            runInfo.sparseBlkIdx2 = -1;
+        }
+    }
+    if ((runInfo.sparseBlkIdx1 < 0) || (runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize >= runParam.actualS2Size)) {
         runInfo.s2SparseBlk1RealSize = 0;
         runInfo.s2SparseBlk1RealAlignedSize = 0;
         runInfo.sparseBlk1PartialMask = false;
@@ -397,7 +405,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
         runInfo.s2SparseBlk1RealSize = constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk1RealSize;
     }
-    if (runInfo.sparseBlkIdx2 < 0) {
+    if ((runInfo.sparseBlkIdx2 < 0) || (runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize >= runParam.actualS2Size)) {
         runInfo.s2SparseBlk2RealSize = 0;
         runInfo.s2SparseBlk2RealAlignedSize = 0;
         runInfo.sparseBlk2PartialMask = false;
@@ -448,7 +456,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     runInfo.n2oIdx = runParam.n2oIdx;
     runInfo.goIdx = runParam.goIdx;
     runInfo.multiCoreInnerIdx = multiCoreInnerIdx;
-    runInfo.multiCoreIdxMod2 = multiCoreInnerIdx & 1;
+    runInfo.multiCoreIdxMod2 = static_cast<uint64_t>(multiCoreInnerIdx) & 1;
     runInfo.multiCoreIdxMod3 = multiCoreInnerIdx % 3;
 
     // sparseIndices 相关计算
@@ -460,7 +468,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     runInfo.actSparseLen = runParam.actSparseLen;
 
     runInfo.taskId = taskId;
-    runInfo.taskIdMod2 = taskId & 1;
+    runInfo.taskIdMod2 = static_cast<uint64_t>(taskId) & 1;
     runInfo.taskIdMod3 = taskId % 3;
     runInfo.s2LoopLimit = s2LoopLimit;
 
@@ -597,7 +605,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                 s2LoopLimit = notLastThreeLoop ? runParam.s2LoopEndIdx - 1 : 0;
                 for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
                     if (notLastThreeLoop) {
-                        RunInfo &runInfo1 = runInfo[taskId & 3];
+                        RunInfo &runInfo1 = runInfo[static_cast<uint64_t>(taskId) & 3];
                         this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx,
                                          sparseBase);
                         if ASCEND_IS_AIC {
@@ -606,14 +614,14 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                     }
                     if (likely(taskId > 0 && notLastTwoLoop)) {
                         if ASCEND_IS_AIV {
-                            auto &runInfo3 = runInfo[(taskId + 3) & 3];
+                            auto &runInfo3 = runInfo[static_cast<uint64_t>(taskId + 3) & 3];
                             this->vecBlock.ProcessVec1(this->l1PBuffers.Get(), this->bmm1Buffers.Get(), runInfo3,
                                                        this->constInfo);
                         }
                     }
                     if (likely(taskId > 1 && notLast)) {
                         if ASCEND_IS_AIC {
-                            RunInfo &runInfo2 = runInfo[(taskId + 2) & 3];
+                            RunInfo &runInfo2 = runInfo[static_cast<uint64_t>(taskId + 2) & 3];
                             if constexpr (bmm2Write2Ub) {
                                 this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo2,
                                                             this->constInfo);
@@ -625,7 +633,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                     }
                     if (likely(taskId > 2)) {
                         if ASCEND_IS_AIV {
-                            RunInfo &runInfo3 = runInfo[(taskId + 1) & 3];
+                            RunInfo &runInfo3 = runInfo[static_cast<uint64_t>(taskId + 1) & 3];
                             if constexpr (bmm2Write2Ub) {
                                 this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                             } else {
