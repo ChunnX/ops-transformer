@@ -322,9 +322,9 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::SoftMaxWithoutBias(Local
 
 template <typename T, typename U1, typename U2>
 __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::ComputeWithSoftMax(LocalTensor<float> xInLocalTensor,
-                                                                           LocalTensor<float> xSigmoidTensor,
-                                                                           LocalTensor<float> xBiasTensor,
-                                                                           LocalTensor<uint32_t> indexTensor)
+                                                                            LocalTensor<float> xSigmoidTensor,
+                                                                            LocalTensor<float> xBiasTensor,
+                                                                            LocalTensor<uint32_t> indexTensor)
 {
     if constexpr (!IsSameType<T, float>::value) {
         Cast(xInLocalTensor, xInLocalTensor[expertCountAlign_].template ReinterpretCast<T>(), RoundMode::CAST_NONE,
@@ -342,12 +342,34 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::ComputeWithSoftMax(Local
                   (perGroupExpertCountAlign_ * sizeof(float)) / BLOCK_BYTES);
     }
 
-    SoftMaxShapeInfo softmaxShapeInfo;
-    softmaxShapeInfo.srcM = 1;
-    softmaxShapeInfo.srcK = groupCount_ * perGroupExpertCountAlign_;
-    softmaxShapeInfo.oriSrcM = 1;
-    softmaxShapeInfo.oriSrcK = groupCount_ * perGroupExpertCountAlign_;
-    SoftMax<float, true, false>(xSigmoidTensor, xInLocalTensor, tilingData_->softmaxTilingData, softmaxShapeInfo);
+    uint32_t size = perGroupExpertCountAlign_ * groupCount_;
+    __local_mem__ float *xInAddr = (__local_mem__ float *)xInLocalTensor.GetPhyAddr();
+    __local_mem__ float *sigmoidOutAddr = (__local_mem__ float *)xSigmoidTensor.GetPhyAddr();
+    __local_mem__ float *addBiasOutAddr = (__local_mem__ float *)xBiasTensor.GetPhyAddr();
+    __local_mem__ int32_t *indexOutAddr = (__local_mem__ int32_t *)indexTensor.GetPhyAddr();
+
+    __VEC_SCOPE__
+    {
+        RegTensor<float> vregX;
+        RegTensor<float> vregMax;
+        RegTensor<float> vregMaxBcast;
+        RegTensor<float> vregExp;
+        RegTensor<float> vregSum;
+        RegTensor<float> vregSumBcast;
+        RegTensor<float> vregResult;
+        RegTensor<int32_t> vregIndex;
+        MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(size);
+
+        MicroAPI::DataCopy(vregX, xInAddr);
+        MicroAPI::ReduceMax(vregMax, vregX, preg0);
+        MicroAPI::Duplicate(vregMaxBcast, vregMax, preg0);
+        MicroAPI::Sub(vregExp, vregX, vregMaxBcast, preg0);
+        MicroAPI::Exp(vregExp, vregExp, preg0);
+        MicroAPI::ReduceSum(vregSum, vregExp, preg0);
+        MicroAPI::Duplicate(vregSumBcast, vregSum, preg0);
+        MicroAPI::Div(vregResult, vregExp, vregSumBcast, preg0);
+        MicroAPI::DataCopy(sigmoidOutAddr, vregResult, preg0);
+    }
 
     if (hasBias_) {
         SoftMaxWithBias(xSigmoidTensor, xBiasTensor, indexTensor);
