@@ -136,6 +136,8 @@ protected:
     float eps_ = 1e-6f;
     int64_t needAdd = 0;
     event_t eventIdVToMTE3XCast;
+    event_t eventIdMTE2ToV;
+    event_t eventIdVToMTE2;
 
     T hcScalePre_, hcScalePost_, hcScaleRes_;
 
@@ -309,6 +311,8 @@ private:
             pipe_->InitBuffer(tempBuf_, ubSizeRemain);
 
             eventIdVToMTE3XCast = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
+            eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
+            eventIdVToMTE2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
             dPrePostTempLocal_ = fusedGradHPre2AndGradHPost2Buf_.Get<T>();
             hcBaseLocal_ = hcBaseBuf_.Get<T>();
             onesLocal_ = onesBuf_.Get<T>();
@@ -494,8 +498,6 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     Mul(hat2Scale[24], scaleLocal_[8], hat2LocalTemp[24], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
         {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
     PipeBarrier<PIPE_V>();
-
-    auto eventIdVToMTE2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
     SetFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
     WaitFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
     // 新增: 加载正向输出 h_pre 、 h_post和反向的grad_h_res
@@ -509,7 +511,6 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
                 {true, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0, 0});
     // DumpTensor(hatLocal[ELEMENTS_SIZE_PER_BLOCK * tileTaskCount], 2, tileTaskCount * 8);
 
-    auto eventIdMTE2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
     SetFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMTE2ToV);
 
@@ -1108,13 +1109,19 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
 
         int8_t ping = 0;
 
+        // printf("tileCoreBS_ = %d\n", tileCoreBS_);
+        // printf("totalTasksAligned_ = %d\n", totalTasksAligned_);
+        // printf("aivNum_ = %d\n", aivNum_);
+        // printf("onceTask_ = %d\n", onceTask_);
         for (int64_t taskOffset = blkIdx_ * tileCoreBS_; taskOffset < totalTasksAligned_;
              taskOffset += aivNum_ * tileCoreBS_) {
-
+            // printf("taskOffset = %d\n", taskOffset);
             int32_t tileTaskCount =
                 min(static_cast<int32_t>(tileCoreBS_), static_cast<int32_t>(totalTasks_ - taskOffset));
             tileRepeatTimes_ = Ops::Base::CeilDiv(static_cast<int64_t>(tileTaskCount) * 2 * n_,
                                                   static_cast<int64_t>(ELEMENTS_SIZE_PER_REPEAT));
+            // printf("tileTaskCount = %d\n", tileTaskCount);
+            // printf("tileRepeatTimes_ = %d\n", tileRepeatTimes_);
             if (tileTaskCount > 0) {
                 int32_t innerId = 0;
                 Duplicate(dPrePostTempLocal_, 0.f, tileCoreBS_ * n_ * 2);
@@ -1130,9 +1137,11 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
                 ComputeGradHHat2(taskOffset, tileTaskCount);
             }
             // 通知 AIC: workspace 数据就绪，可以开始 matmul
+            // printf("CrossCoreSetFlag<0x2, PIPE_MTE3>(8);\n");
             CrossCoreSetFlag<0x2, PIPE_MTE3>(8);
+            // printf("CrossCoreWaitFlag<0x2>(9); start.\n");
             CrossCoreWaitFlag<0x2>(9);
-
+            // printf("CrossCoreWaitFlag<0x2>(9); end\n");
             
             // printf("gradH2Global_ value is \n");
             // for(int i = 0; i < batchSize_ * seqLength_; i++) {
@@ -1191,22 +1200,28 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
                 }
             }
         }
-
+        // printf("for loop end\n");
         // [公式2][3][4] bias_grad 和 α_grad 最终归约
         tileRepeatTimes_ = Ops::Base::CeilDiv(tileCoreBS_ * 2 * n_, static_cast<int64_t>(ELEMENTS_SIZE_PER_REPEAT));
         ComputeScaleBias();
         GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(eventIdVToMTE3XCast);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(eventIdMTE2ToV);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(eventIdVToMTE2);
+        // printf("aiv end\n");
     }
 
     if ASCEND_IS_AIC {
         // --- AIC 侧: Cube matmul 计算 ---
+        // printf("aic start\n");
         int8_t ping = 0;
         for (int64_t taskOffset = blkIdx_ * 2 * tileCoreBS_; taskOffset < totalTasksAligned_;
              taskOffset += aicNum_ * 2 * tileCoreBS_) {
             int32_t tileTaskCount =
                 min(static_cast<int32_t>(2 * tileCoreBS_), static_cast<int32_t>(totalTasks_ - taskOffset));
             // 等待 AIV 侧 workspace 数据就绪
+            // printf("CrossCoreWaitFlag<0x2>(8); start\n");
             CrossCoreWaitFlag<0x2>(8);
+            // printf("CrossCoreWaitFlag<0x2>(8); end\n");
 
             if (tileTaskCount > 0) {
                 // [公式6] x_rs_grad = H_mix_grad @ phi   (ProcessMatmul1)
@@ -1215,22 +1230,28 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Pro
                 ProcessMatmul2(taskOffset, tileTaskCount);
             }
             // 通知 AIV: matmul 结果就绪
+            // printf("AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(9);\n");
             AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(9);
-
             ping = (ping + 1) % 10;
         }
+        // printf("aic end\n");
     }
     // --- Deterministic 模式: 多核归约 ---
     if constexpr (DETERMINISTIC == true) {
+        // printf("DETERMINISTIC start\n");
         SyncAll<false>();
+        // printf("SyncAll end\n");
         if ASCEND_IS_AIV {
+            // printf("aiv 2 start\n");
             int64_t useCoreNum = min(Ops::Base::CeilDiv(totalTasks_, tileCoreBS_), aivNum_);
             ComputeDeterministic(gradHcBaseWSGlobal_, gradHcBaseGlobal_, useCoreNum, fusionSize_);
             ComputeDeterministic(gradHcScaleWSGlobal_, gradHcScaleGlobal_, useCoreNum, 3);
             useCoreNum = Ops::Base::CeilDiv(useCoreNum, static_cast<int64_t>(2));
             ComputeDeterministic(gradWeightWSGlobal_, gradWeightGlobal_, useCoreNum,
                                  fusionSize_ * (n_ * c_));
+            // printf("aiv 2 end\n");
         }
+        // printf("DETERMINISTIC end\n");
     }
 }
 
