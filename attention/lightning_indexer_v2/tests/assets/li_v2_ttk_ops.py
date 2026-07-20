@@ -1,5 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """TTK metadata-first adapter for the installed LightningIndexer API."""
 
 from typing import Optional
@@ -9,23 +19,58 @@ import torch
 import cann_ops_transformer  # noqa: F401 - registers torch.ops namespace
 
 
-def _max_seq(cu_seqlens, seqused, fallback):
-    if seqused is not None and seqused.numel() > 0:
-        return int(seqused.detach().cpu().max().item())
-    if cu_seqlens is not None and cu_seqlens.numel() > 1:
-        diff = cu_seqlens.detach().cpu()[1:] - cu_seqlens.detach().cpu()[:-1]
-        return int(diff.max().item())
-    return int(fallback)
+class LightningIndexerMetadataBuilder:
+    """Derive and create the metadata consumed by the main operator."""
 
+    @staticmethod
+    def max_seq(cu_seqlens, seqused, fallback):
+        if seqused is not None and seqused.numel() > 0:
+            return int(seqused.detach().cpu().max().item())
+        if cu_seqlens is not None and cu_seqlens.numel() > 1:
+            values = cu_seqlens.detach().cpu()
+            return int((values[1:] - values[:-1]).max().item())
+        return int(fallback)
 
-def _batch_size(q, layout_q, cu_seqlens_q, seqused_q):
-    if layout_q == "BSND":
-        return int(q.shape[0])
-    if seqused_q is not None:
-        return int(seqused_q.numel())
-    if cu_seqlens_q is not None:
-        return max(int(cu_seqlens_q.numel()) - 1, 0)
-    return 0
+    @staticmethod
+    def batch_size(q, layout_q, cu_seqlens_q, seqused_q):
+        if layout_q == "BSND":
+            return int(q.shape[0])
+        if seqused_q is not None:
+            return int(seqused_q.numel())
+        if cu_seqlens_q is not None:
+            return max(int(cu_seqlens_q.numel()) - 1, 0)
+        return 0
+
+    @classmethod
+    def build(cls, q, k, *, cu_seqlens_q=None, cu_seqlens_k=None,
+              seqused_q=None, seqused_k=None, cmp_residual_k=None,
+              topk=0, layout_q="BSND", layout_k="BSND",
+              mask_mode=0, cmp_ratio=1):
+        q_seq = int(q.shape[1]) if layout_q == "BSND" else int(q.shape[0])
+        k_seq = int(k.shape[1]) if layout_k == "BSND" else int(k.shape[0])
+        q_head_num = int(q.shape[2]) if layout_q == "BSND" else int(q.shape[1])
+        k_head_num = int(k.shape[2]) if layout_k != "TND" else int(k.shape[1])
+        metadata = torch.ops.cann_ops_transformer.lightning_indexer_metadata(
+            num_heads_q=q_head_num,
+            num_heads_k=k_head_num,
+            head_dim=int(q.shape[-1]),
+            topk=int(topk),
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_k=cu_seqlens_k,
+            seqused_q=seqused_q,
+            seqused_k=seqused_k,
+            cmp_residual_k=cmp_residual_k,
+            batch_size=cls.batch_size(q, layout_q, cu_seqlens_q, seqused_q),
+            max_seqlen_q=cls.max_seq(cu_seqlens_q, seqused_q, q_seq),
+            max_seqlen_k=cls.max_seq(cu_seqlens_k, seqused_k, k_seq),
+            layout_q=layout_q,
+            layout_k=layout_k,
+            mask_mode=int(mask_mode),
+            cmp_ratio=int(cmp_ratio),
+        )
+        if hasattr(metadata, "to") and metadata.device != q.device:
+            metadata = metadata.to(q.device)
+        return metadata
 
 
 def lightning_indexer_v2(
@@ -49,34 +94,20 @@ def lightning_indexer_v2(
     return_value: int = 0,
 ):
     """Compute metadata first, then call cann_ops_transformer.lightning_indexer."""
-    q_seq = int(q.shape[1]) if layout_q == "BSND" else int(q.shape[0])
-    k_seq = int(k.shape[1]) if layout_k == "BSND" else int(k.shape[0])
-    q_head_num = int(q.shape[2]) if layout_q == "BSND" else int(q.shape[1])
-    k_head_num = int(k.shape[2]) if layout_k != "TND" else int(k.shape[1])
-    head_dim = int(q.shape[-1])
-    max_q = _max_seq(cu_seqlens_q, seqused_q, q_seq)
-    max_k = _max_seq(cu_seqlens_k, seqused_k, k_seq)
-    meta_batch = _batch_size(q, layout_q, cu_seqlens_q, seqused_q)
-    metadata = torch.ops.cann_ops_transformer.lightning_indexer_metadata(
-        num_heads_q=int(q_head_num),
-        num_heads_k=int(k_head_num),
-        head_dim=int(head_dim),
-        topk=int(topk),
+    metadata = LightningIndexerMetadataBuilder.build(
+        q,
+        k,
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_k=cu_seqlens_k,
         seqused_q=seqused_q,
         seqused_k=seqused_k,
         cmp_residual_k=cmp_residual_k,
-        batch_size=meta_batch,
-        max_seqlen_q=int(max_q),
-        max_seqlen_k=int(max_k),
+        topk=topk,
         layout_q=layout_q,
         layout_k=layout_k,
-        mask_mode=int(mask_mode),
-        cmp_ratio=int(cmp_ratio),
+        mask_mode=mask_mode,
+        cmp_ratio=cmp_ratio,
     )
-    if hasattr(metadata, "to") and hasattr(q, "device") and metadata.device != q.device:
-        metadata = metadata.to(q.device)
     return torch.ops.cann_ops_transformer.lightning_indexer(
         q,
         k,

@@ -1,5 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """TTK metadata-first adapter for the installed MixedQuantSparseFlashMla API."""
 
 from typing import Optional
@@ -9,27 +19,31 @@ import torch
 import cann_ops_transformer  # noqa: F401 - registers torch.ops namespace
 
 
-def _max_seq(cu_seqlens, seqused, fallback=0):
-    if seqused is not None and seqused.numel() > 0:
-        return int(seqused.detach().cpu().max().item())
-    if cu_seqlens is not None and cu_seqlens.numel() > 1:
-        diff = cu_seqlens.detach().cpu()[1:] - cu_seqlens.detach().cpu()[:-1]
-        return int(diff.max().item())
-    return int(fallback or 0)
+class MixedQuantSparseFlashMlaMetadataBuilder:
+    """Derive scalar metadata parameters from operator inputs."""
 
+    @staticmethod
+    def max_seq(cu_seqlens, seqused, fallback=0):
+        if seqused is not None and seqused.numel() > 0:
+            return int(seqused.detach().cpu().max().item())
+        if cu_seqlens is not None and cu_seqlens.numel() > 1:
+            values = cu_seqlens.detach().cpu()
+            return int((values[1:] - values[:-1]).max().item())
+        return int(fallback or 0)
 
-def _infer_batch(cu_seqlens, seqused):
-    if seqused is not None:
-        return int(seqused.numel())
-    if cu_seqlens is not None:
-        return max(int(cu_seqlens.numel()) - 1, 0)
-    return 0
+    @staticmethod
+    def infer_batch(cu_seqlens, seqused):
+        if seqused is not None:
+            return int(seqused.numel())
+        if cu_seqlens is not None:
+            return max(int(cu_seqlens.numel()) - 1, 0)
+        return 0
 
-
-def _prefix_max(cu_seqlens, fallback=0):
-    if cu_seqlens is not None and cu_seqlens.numel() > 0:
-        return int(cu_seqlens.detach().cpu().max().item())
-    return int(fallback or 0)
+    @staticmethod
+    def prefix_max(cu_seqlens, fallback=0):
+        if cu_seqlens is not None and cu_seqlens.numel() > 0:
+            return int(cu_seqlens.detach().cpu().max().item())
+        return int(fallback or 0)
 
 
 def build_mixed_quant_sparse_flash_mla_metadata(
@@ -67,13 +81,29 @@ def build_mixed_quant_sparse_flash_mla_metadata(
     kv_ref = ori_kv if ori_kv is not None else cmp_kv
     num_heads_kv = int(kv_ref.shape[1] if layout_kv == "TND" else kv_ref.shape[2])
     head_dim = int(q.shape[-1])
-    batch_size = int(q.shape[0]) if layout_q == "BSND" else _infer_batch(cu_seqlens_q, seqused_q)
+    batch_size = (
+        int(q.shape[0])
+        if layout_q == "BSND"
+        else MixedQuantSparseFlashMlaMetadataBuilder.infer_batch(
+            cu_seqlens_q, seqused_q
+        )
+    )
     q_fallback = q.shape[1] if layout_q == "BSND" else q.shape[0]
-    max_seqlen_q = int(q_fallback) if layout_q == "BSND" else _prefix_max(cu_seqlens_q, q_fallback)
+    max_seqlen_q = (
+        int(q_fallback)
+        if layout_q == "BSND"
+        else MixedQuantSparseFlashMlaMetadataBuilder.prefix_max(
+            cu_seqlens_q, q_fallback
+        )
+    )
     ori_fallback = 0 if ori_kv is None else (ori_kv.shape[0] if layout_kv == "TND" else ori_kv.shape[1])
     cmp_fallback = 0 if cmp_kv is None else (cmp_kv.shape[0] if layout_kv == "TND" else cmp_kv.shape[1])
-    max_seqlen_ori_kv = _max_seq(cu_seqlens_ori_kv, seqused_ori_kv, ori_fallback)
-    max_seqlen_cmp_kv = _max_seq(cu_seqlens_cmp_kv, seqused_cmp_kv, cmp_fallback)
+    max_seqlen_ori_kv = MixedQuantSparseFlashMlaMetadataBuilder.max_seq(
+        cu_seqlens_ori_kv, seqused_ori_kv, ori_fallback
+    )
+    max_seqlen_cmp_kv = MixedQuantSparseFlashMlaMetadataBuilder.max_seq(
+        cu_seqlens_cmp_kv, seqused_cmp_kv, cmp_fallback
+    )
     ori_topk = int(ori_sparse_indices.shape[-1]) if ori_sparse_indices is not None else 0
     cmp_topk = (
         int(metadata_cmp_topk)

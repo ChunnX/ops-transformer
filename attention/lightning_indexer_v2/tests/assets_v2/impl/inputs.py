@@ -1,5 +1,15 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
 """Input customization for LightningIndexer V2 TTK cases."""
 
 import hashlib
@@ -59,32 +69,37 @@ def fill_output_offsets(output_idx_offset, value_range, seed=0):
     output_idx_offset.copy_(values.to(dtype=output_idx_offset.dtype, device=output_idx_offset.device))
 
 
-def _max_seq(cu_seqlens, seqused, fallback):
-    if seqused is not None and seqused.numel() > 0:
-        return int(seqused.max().item())
-    if cu_seqlens is not None and cu_seqlens.numel() > 1:
-        return int((cu_seqlens[1:] - cu_seqlens[:-1]).max().item())
-    return int(fallback)
+class LightningIndexerMetadataInput:
+    """Derive and populate the explicit metadata tensor."""
 
+    @staticmethod
+    def max_seq(cu_seqlens, seqused, fallback):
+        if seqused is not None and seqused.numel() > 0:
+            return int(seqused.max().item())
+        if cu_seqlens is not None and cu_seqlens.numel() > 1:
+            return int((cu_seqlens[1:] - cu_seqlens[:-1]).max().item())
+        return int(fallback)
 
-def _batch_size(q, layout_q, cu_seqlens_q, seqused_q):
-    if layout_q == "BSND":
-        return int(q.shape[0])
-    if seqused_q is not None:
-        return int(seqused_q.numel())
-    if cu_seqlens_q is not None:
-        return max(int(cu_seqlens_q.numel()) - 1, 0)
-    return 0
+    @staticmethod
+    def batch_size(q, layout_q, cu_seqlens_q, seqused_q):
+        if layout_q == "BSND":
+            return int(q.shape[0])
+        if seqused_q is not None:
+            return int(seqused_q.numel())
+        if cu_seqlens_q is not None:
+            return max(int(cu_seqlens_q.numel()) - 1, 0)
+        return 0
 
-
-def _fill_metadata(metadata, generated):
-    if metadata is None:
-        raise ValueError("metadata input must be declared in the CSV")
-    if tuple(metadata.shape) != tuple(generated.shape):
-        raise ValueError(
-            f"metadata shape mismatch: CSV={tuple(metadata.shape)} generated={tuple(generated.shape)}"
-        )
-    metadata.copy_(generated.to(dtype=metadata.dtype, device=metadata.device))
+    @staticmethod
+    def fill(metadata, generated):
+        if metadata is None:
+            raise ValueError("metadata input must be declared in the CSV")
+        if tuple(metadata.shape) != tuple(generated.shape):
+            raise ValueError(
+                f"metadata shape mismatch: CSV={tuple(metadata.shape)} "
+                f"generated={tuple(generated.shape)}"
+            )
+        metadata.copy_(generated.to(dtype=metadata.dtype, device=metadata.device))
 
 
 def generate_li_v2_inputs(q, k, w, *, cu_seqlens_q=None, cu_seqlens_k=None,
@@ -128,12 +143,18 @@ def generate_li_v2_inputs(q, k, w, *, cu_seqlens_q=None, cu_seqlens_k=None,
         seqused_q=seqused_q,
         seqused_k=seqused_k,
         cmp_residual_k=cmp_residual_k,
-        batch_size=_batch_size(q, layout_q, cu_seqlens_q, seqused_q),
-        max_seqlen_q=_max_seq(cu_seqlens_q, seqused_q, q_seq),
-        max_seqlen_k=_max_seq(cu_seqlens_k, seqused_k, k_seq),
+        batch_size=LightningIndexerMetadataInput.batch_size(
+            q, layout_q, cu_seqlens_q, seqused_q
+        ),
+        max_seqlen_q=LightningIndexerMetadataInput.max_seq(
+            cu_seqlens_q, seqused_q, q_seq
+        ),
+        max_seqlen_k=LightningIndexerMetadataInput.max_seq(
+            cu_seqlens_k, seqused_k, k_seq
+        ),
         layout_q=layout_q,
         layout_k=layout_k,
         mask_mode=int(mask_mode),
         cmp_ratio=int(cmp_ratio),
     )
-    _fill_metadata(metadata, generated)
+    LightningIndexerMetadataInput.fill(metadata, generated)
