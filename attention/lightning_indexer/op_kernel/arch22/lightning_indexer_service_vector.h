@@ -376,8 +376,8 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             if (radixCuS2Len < s2BaseSize_) {
                 int32_t cuS2LenAlign8 = (radixCuS2Len + 7) / 8 * 8;
                 if (cuS2LenAlign8 < s2BaseSize_) {
-                    // Fill with +1e30 so that after NegateDataForLargest (* -1), it becomes -1e30 (excluded from smallest-K)
-                    Duplicate(reduceOutInner[cuS2LenAlign8], 1.0e30f, s2BaseSize_ - cuS2LenAlign8);
+                    // Fill with +1e10 (will be clamped by Mins in RadixTopK, then negated to -1e10)
+                    Duplicate(reduceOutInner[cuS2LenAlign8], 1.0e10f, s2BaseSize_ - cuS2LenAlign8);
                 }
                 PipeBarrier<PIPE_V>();
             }
