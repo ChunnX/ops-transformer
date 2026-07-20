@@ -48,19 +48,19 @@ graph LR
 
 | 术语 | 简要说明 |
 |------|----------|
-| 非量化 | x和weight均为浮点类型直接计算 |
-| 全量化 | x和weight均为低精度计算，通过scale还原 |
-| 伪量化 | weight低精度存储，通过antiquantScale/Offset反量化后计算 |
-| perchannel | 每列独立缩放因子，详见[《量化介绍》](../../docs/zh/context/量化介绍.md) |
-| pertensor | 一个Tensor统一缩放因子 |
-| pertoken | 每行独立缩放因子 |
-| pergroup | 在reduce轴上对数据分组，每组使用独立的量化参数，group size为gs |
-| perblock | 在所有轴上（含M方向）对数据分块，每块使用独立的量化参数，block size为bs |
-| T-C | pertensor-perchannel：输入侧统一缩放，权重侧每列独立缩放 |
-| T-T | pertensor-pertensor：输入和权重均为统一缩放 |
-| K-C | pertoken-perchannel：输入侧每行独立缩放，权重侧每列独立缩放 |
-| K-T | pertoken-pertensor：输入侧每行独立缩放，权重侧统一缩放 |
-| G-B | pergroup-perblock：输入侧按 K分组缩放，权重侧按 N×K分块缩放 |
+| 非量化 | 左矩阵和右矩阵均为浮点类型直接计算 |
+| 全量化 | 左矩阵和右矩阵均为低精度计算，通过scale还原，详见[《量化介绍》](../../docs/zh/context/量化介绍.md) |
+| 伪量化 | 一般是指对权重矩阵进行量化的模式，包括perchannel量化模式 |
+| pertensor | 简称T量化，每个Tensor共用一个相同的量化参数 |
+| perchannel | 简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数 |
+| pertoken | 简称K量化，量化对象是左矩阵，每个token分别使用独立的量化参数 |
+| pergroup | 简称G量化，在reduce轴上对数据分组，每组使用独立的量化参数 |
+| perblock | 简称B量化，在所有轴上对数据分块，每块使用独立的量化参数 |
+| T-C | 左矩阵pertensor，右矩阵perchannel |
+| T-T | 左矩阵pertensor，右矩阵pertensor |
+| K-C | 左矩阵pertoken，右矩阵perchannel |
+| K-T | 左矩阵pertoken，右矩阵pertensor |
+| G-B | 左矩阵pergroup，右矩阵perblock |
 | MX | pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32 的特例 |
 | ND | 常规连续排布 |
 | NZ | [FRACTAL_NZ](../../docs/zh/context/数据格式.md)格式（亲核排布） |
