@@ -411,7 +411,9 @@ def run_case(stages: set, params: dict, reporter: Reporter, *,
     stage 内部各自处理 执行-or-加载 与日志; 这里只管顺序、错误兜底、显存回收。"""
     case_set = params.get("case_set", "")
     case_id = params.get("case_id", params.get("name", ""))
-    case_dir = reporter._run_dir / "casefile" / case_id if reporter._run_dir else Path("result") / "casefile" / case_id
+    from core.case_loader import _CASE_SET_TO_PREFIX
+    paramset = _CASE_SET_TO_PREFIX.get(case_set, case_set.lower()) + "_paramset"
+    case_dir = reporter._run_dir / paramset / case_id if reporter._run_dir else Path("result") / paramset / case_id
     precision_dir = str(case_dir / "precision")
     prof_dir = str(case_dir / "prof")
     dtype = params.get("dtype", "")
