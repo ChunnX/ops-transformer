@@ -48,11 +48,13 @@
 
 - test_run.sh                               # 执行脚本
 - recurrent_gated_delta_rule_golden.py      # cpu侧算子golden实现以及cpu golden与npu结果精度对比
+- recurrent_gated_delta_rule_small_ops.py   # 小算子拼接参考实现（matmul/mul/add/sub拼接GDN递归）及与npu结果精度对比
 - pytest.ini                                # 创建ci单算子和graph图模式的测试标记
 
 单用例测试:
 
 - test_recurrent_gated_delta_rule_single.py                 # 测试单用例运行主程序
+- test_recurrent_gated_delta_rule_small_ops.py              # 小算子拼接参考实现测试主程序
 - recurrent_gated_delta_rule_operator_single.py             # CPU侧算子逻辑实现获取golden与npu算子直调
 - test_recurrent_gated_delta_rule_paramset.py               # 单用例入参配置
 - test_recurrent_gated_delta_rule_paramset_rdv.py           # RDV测试入参配置
@@ -81,4 +83,17 @@ bash test_run.sh single
 
 ``` bash
 bash test_run.sh rdv
+```
+
+#### 小算子拼接参考实现测试
+
+小算子拼接实现将 GDN 递归计算拆解为基础算子（matmul/mul/add/sub/exp），在 head 维度向量化（bmm），仅在时间步上循环。参考 vllm-ascend 中 GDN 算子的分解方式。
+
+1、手动配置test_recurrent_gated_delta_rule_paramset.py的参数
+
+2、执行指令：
+
+``` bash
+bash test_run.sh small_ops        # single参数集
+bash test_run.sh small_ops_rdv    # RDV参数集
 ```
