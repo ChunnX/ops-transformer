@@ -148,15 +148,7 @@ __aicore__ inline void InlineRadixTopK(
             WaitFlag<HardEvent::MTE2_V>(mte2ToV);
 
             // Cast float -> bf16 into xLocalB16 (xBuf back, no overlap with xLocalFp32 in front)
-            // Cast float -> bf16 into xLocalB16 (xBuf back, no overlap with xLocalFp32 in front)
             Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
-            PipeBarrier<PIPE_V>();
-
-            // NegateDataForLargest: multiply by -1 to convert "select smallest" to "select largest"
-            // (matching Sort path which selects smallest scores)
-            // bf16 doesn't support Muls directly, use ReinterpretCast<half> (same bit layout)
-            Muls(xLocalB16.template ReinterpretCast<half>(),
-                 xLocalB16.template ReinterpretCast<half>(), (half)(-1), curTileLen);
             PipeBarrier<PIPE_V>();
 
             // TwiddleInB16 operates on xLocalInt16 (xBuf back)
@@ -295,8 +287,6 @@ __aicore__ inline void InlineRadixTopK(
     int16_t boundaryNumber16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
     bfloat16_t boundaryBf16 = *reinterpret_cast<bfloat16_t *>(&boundaryNumber16);
     float boundaryFloat = AscendC::Cast(boundaryBf16);
-    // Negate boundary to restore original space (radix ran on negated data)
-    boundaryFloat = -boundaryFloat;
 
     uint32_t writeOffset = 0;
     for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
@@ -318,12 +308,12 @@ __aicore__ inline void InlineRadixTopK(
 
         int32_t tileOffset = static_cast<int32_t>(tileId * tileLen_);
 
-        // Scalar LT + EQ: read each bf16 score, compare with boundary (select smallest)
+        // Scalar GT + EQ: read each bf16 score, compare with boundary (select largest)
         RDX_V_S_SYNC();
         for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
             bfloat16_t score = xLocalB16.GetValue(i);
             float scoreFloat = AscendC::Cast(score);
-            if (scoreFloat < boundaryFloat) {
+            if (scoreFloat > boundaryFloat) {
                 indexGm.SetValue(writeOffset, static_cast<int32_t>(i) + tileOffset);
                 writeOffset++;
                 curTileK--;
