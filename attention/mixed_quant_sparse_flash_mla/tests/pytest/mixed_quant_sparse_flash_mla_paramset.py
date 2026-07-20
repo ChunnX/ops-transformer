@@ -131,6 +131,8 @@ TEST_PARAMS = {
         "S1EQS2": [False],
         "ori_kv_topk_mode": ["random"], # fullK random
         "ori_sparse_indices_mode": ["full"], # full random
+        "ori_topk_length": [None],
+        "cmp_topk_length": [None],
     },
 
     "ori_cmp_sparse_decode": {
@@ -175,6 +177,8 @@ TEST_PARAMS = {
         "cmp_kv_topk_mode": ["random"],     
         "ori_sparse_indices_mode": ["full"],    # full random
         "cmp_sparse_indices_mode": ["full"],
+        "ori_topk_length": [None],
+        "cmp_topk_length": [None],
     },
 
     "ori_sparse_decode_bsnd": {
@@ -217,6 +221,8 @@ TEST_PARAMS = {
         "S1EQS2": [False],
         "ori_kv_topk_mode": ["random"],
         "ori_sparse_indices_mode": ["full"],
+        "ori_topk_length": [None],
+        "cmp_topk_length": [None],
     },
 
     "ori_cmp_sparse_decode_tnd": {
@@ -261,6 +267,54 @@ TEST_PARAMS = {
         "cmp_kv_topk_mode": ["random"],
         "ori_sparse_indices_mode": ["full"],
         "cmp_sparse_indices_mode": ["full"],
+        "ori_topk_length": [None],
+        "cmp_topk_length": [None],
+    },
+
+    "ori_cmp_sparse_decode_with_topk": {
+        "Testcase_Name": [None],
+        "layout_q": ["BSND"],
+        "layout_kv": ["PA_BBND"],
+        "q_type": [torch.bfloat16],
+        "ori_kv_type": [torch.float8_e4m3fn],
+        "cmp_kv_type": [torch.float8_e4m3fn],
+        "B": [2],
+        "S1": [2],
+        "S2": [8192],
+        "N1": [128],
+        "N2": [1],
+        "D": [512],
+        "K": [256],
+        "K1": [128],
+        "block_num1": [None],
+        "block_num2": [None],
+        "block_size1": [128],
+        "block_size2": [128],
+        "seqused_q": [None],
+        "cu_seqlens_q": [None],
+        "seqused_ori_kv": [None],
+        "seqused_cmp_kv": [None],
+        "cu_seqlens_ori_kv": [None],
+        "cu_seqlens_cmp_kv": [None],
+        "cmp_residual_kv": [None],
+        "softmax_scale": [0.04419417],
+        "cmp_ratio": [4],
+        "ori_mask_mode": [0],
+        "cmp_mask_mode": [0],
+        "ori_win_left": [None],
+        "ori_win_right": [None],
+        "quant_mode": [1],
+        "tile_size": [64],
+        "rope_head_dim": [64],
+        "template_run_mode": ["ORI_CMP_SPARSE"],
+        "actlen_mode": ["full"],
+        "S1EQS2": [False],
+        "ori_kv_topk_mode": ["fullK"],
+        "cmp_kv_topk_mode": ["fullK"],
+        "ori_sparse_indices_mode": ["full"],
+        "cmp_sparse_indices_mode": ["full"],
+        "ori_topk_length": [[64, 32, 48, 16]],
+        "cmp_topk_length": [[32, 16, 24, 8]],
     },
 }
 
@@ -269,5 +323,6 @@ TEST_PARAMS["ori_sparse_decode"],
 TEST_PARAMS["ori_cmp_sparse_decode"],
 TEST_PARAMS["ori_sparse_decode_bsnd"],
 TEST_PARAMS["ori_cmp_sparse_decode_tnd"],
+TEST_PARAMS["ori_cmp_sparse_decode_with_topk"],
 ]
 #ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]
