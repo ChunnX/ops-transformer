@@ -12,6 +12,8 @@ set +e
 
 REPOSITORY_NAME="ops-transformer"
 export REPOSITORY_NAME
+sudo update-alternatives --set gcc /usr/bin/gcc-14
+gcc --version
 
 if [ -z "${ASCEND_3RD_LIB_PATH}" ]; then
     export ASCEND_3RD_LIB_PATH=/home/jenkins/opensource
