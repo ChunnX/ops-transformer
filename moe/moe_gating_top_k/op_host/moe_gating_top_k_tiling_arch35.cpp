@@ -668,7 +668,9 @@ void MoeGatingTopKTilingRegbase::SplitRows()
             int64_t perRowUbSize = expertGroupAlign * sizeof(float) * 2;
             perRowUbSize += expertGroupAlign * sizeof(float) * 5;
             perRowUbSize += expertGroupAlign * sizeof(float) * 4;
-            perRowUbSize += AlignBytes(k_, sizeof(T)) + AlignBytes(k_, sizeof(int32_t));
+            int64_t kAlignBytes = (k_ * inputDtypeSize_ + 31) / 32 * 32;
+            int64_t kIdxAlignBytes = (k_ * sizeof(int32_t) + 31) / 32 * 32;
+            perRowUbSize += kAlignBytes + kIdxAlignBytes;
             int64_t maxBatchByUb = static_cast<int64_t>(aicoreParams_.ubSize) / perRowUbSize;
             maxBatchByUb = maxBatchByUb * 4 / 5;
             batchRows = std::min(std::max(maxBatchByUb, static_cast<int64_t>(1)), MAX_SIMPLIFIED_BATCH_ROWS);
