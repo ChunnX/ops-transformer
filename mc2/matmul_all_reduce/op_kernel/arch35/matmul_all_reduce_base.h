@@ -24,7 +24,7 @@
 #include "../common.h"
 #include "matmul_all_reduce_add_x3.h"
 #include "matmul_all_reduce_tiling_struct_ar35.h"
-#include "../../../common/op_kernel/reduce_sum.h"
+#include "../../../common/op_kernel/reduce_sum_cast_fp32.h"
 #include "../../../common/op_kernel/gm_ub_gm_copy.h"
 namespace MatmulAllReduceImpl {
 using namespace AscendC;
