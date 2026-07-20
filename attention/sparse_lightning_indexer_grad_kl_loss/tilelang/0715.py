@@ -440,7 +440,6 @@ def tilelang_grad_kl_loss_single_kernel(
                 weight_all_half_ub = T.alloc_ub(Nidx1, input_dtype)
                 weight_2d_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
                 p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
-                rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                 rsy_reduce_db = T.alloc_ub((2, n_block), calc_dtype)
                 sm_max_ub = T.alloc_ub(G, calc_dtype)
                 sm_sum_ub = T.alloc_ub(G, calc_dtype)
@@ -612,7 +611,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
                     rg_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    ones_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                    mask_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                     rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
                     dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
                     eps_ub = T.alloc_ub(n_block, calc_dtype)
@@ -621,7 +620,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
                     loss_val_ub = T.alloc_ub(n_block, calc_dtype)
 
-                    T.tile.fill(ones_2d_ub, 1.0)
                     T.tile.fill(eps_ub, 1e-8)
 
                     # dWeight, reluGrad for MY K block
@@ -654,20 +652,20 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "v", 7)
                             T.wait_flag("mte2", "v", 7)
 
-                            T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
+                            # bmm2Res is ReLU output from MM2. Build the exact
+                            # ReLU mask directly instead of approximating it
+                            # with exp(-10000 * x).
+                            T.tile.compare(mask_2d_ub, dw_chunk_ub, 0.0, "GT")
                             T.pipe_barrier("v")
-                            T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
-                            T.pipe_barrier("v")
-                            T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
 
                             # Op1: rg = weight_slice * diff (2D)
                             # weight切片逐行copy（整块copy参数在CANN 9.1下不正确）
                             for i in T.serial(vector_baseg):
                                 T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
                             T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
-                            # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
+                            # Op2: apply the exact ReLU mask (2D)
                             T.pipe_barrier("v")
-                            T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
+                            T.tile.select(rg_chunk_ub, mask_2d_ub, rg_chunk_ub, 0.0, "VSEL_TENSOR_SCALAR_MODE")
                             # Op3: dw *= diff (2D, was per-row 1D mul)
                             T.pipe_barrier("v")
                             T.tile.mul(dw_chunk_ub, dw_chunk_ub, diff_2d_ub)
