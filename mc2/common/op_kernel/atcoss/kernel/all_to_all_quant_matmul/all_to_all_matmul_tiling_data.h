@@ -10,8 +10,8 @@
 #pragma once
 
 #include <cstdint>
-#include "tiling/quant_matmul_tiling_data.h"
-#include "tiling/comm_tiling_data.h"
+#include "../../tiling/quant_matmul_tiling_data.h"
+#include "../../tiling/comm_tiling_data.h"
 
 struct allToAllMatmulTilingData {
     CommTilingData commTilingData;
