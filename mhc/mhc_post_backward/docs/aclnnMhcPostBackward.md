@@ -112,6 +112,7 @@ aclnnStatus aclnnMhcPostBackward(
       <td>MHC的hRes变换矩阵</td>
       <td>
         <ul>      
+          <li>可选参数，不传时置为nullptr</li>
           <li>不支持空Tensor</li>
         </ul>
       </td>
