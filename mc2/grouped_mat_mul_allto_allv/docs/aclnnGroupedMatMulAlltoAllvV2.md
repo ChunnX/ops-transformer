@@ -37,7 +37,7 @@
 
 - 新增`commMode`参数，用户根据该参数指定芯片使用的通信引擎。
 
-  - <term>Ascend 950DT</term>：支持空字符串`ai_cpu`和`ccu`。
+  - <term>Ascend 950DT</term>：支持`ai_cpu`和`ccu`。
 
 ## 函数原型
 
