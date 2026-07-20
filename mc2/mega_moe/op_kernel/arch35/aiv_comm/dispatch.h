@@ -30,7 +30,11 @@ struct DispatchGmm1SwigluContext {
     ThreadBlockContext threadBlock;
     BlockWorkspaceContext countWorkspace;
     uint32_t worldSize;
+    // Number of experts that participate in routing and GMM1.
     uint32_t expertPerRank;
+    // Capacity used by per-block GM workspaces. This may be larger than
+    // expertPerRank when routed expert weights contain reserved entries.
+    uint32_t workspaceExpertCapacity;
     uint32_t tokenHiddenDim;
     uint32_t gmm1OutputDim;
     uint32_t topK;
@@ -103,7 +107,7 @@ __aicore__ inline void InitDispatchGmm1SwigluBuffers(
     }
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
     uint32_t cumsumInfoTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(context.worldSize * context.expertPerRank * sizeof(int32_t)),
+        static_cast<int64_t>(context.worldSize * context.workspaceExpertCapacity * sizeof(int32_t)),
         static_cast<int64_t>(ALIGN_32));
     if constexpr (EnableA8W4) {
         scratch.cumsumInfoGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
@@ -153,7 +157,8 @@ __aicore__ inline void InitDispatchGmm1SwigluBuffers(
 
     uint32_t expertTokenNumsOutTensorAddr = copyTmpBaseAddr + copyTmpTotalSize;
     uint32_t expertTokenNumsOutTensorSize = Ops::Base::CeilAlign(
-        static_cast<int64_t>(context.expertPerRank * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
+        static_cast<int64_t>(context.workspaceExpertCapacity * sizeof(int32_t)),
+        static_cast<int64_t>(ALIGN_32));
     scratch.expertTokenNumsOutTensor = LocalTensor<int32_t>(TPosition::VECCALC,
         expertTokenNumsOutTensorAddr, expertTokenNumsOutTensorSize / sizeof(int32_t));
     uint32_t tripleTensorAddr = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;

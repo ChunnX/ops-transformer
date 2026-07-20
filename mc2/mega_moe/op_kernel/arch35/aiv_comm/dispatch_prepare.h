@@ -17,12 +17,39 @@ namespace MegaMoeImpl {
 
 struct ResetWorkspaceArgs {
     GM_ADDR flagSwiGluToGmm2Ptr;
+    GM_ADDR flagDispatchToGmm1Ptr;
+    GM_ADDR flagSendCntCalToUpdParamsPtr;
     GM_ADDR gmm2CombineSyncCounterPtr;
+    int32_t swiGluToGmm2FlagNum;
+    int32_t dispatchToGmm1FlagNum;
+    int32_t sendCntCalToUpdParamsFlagNum;
     int32_t flagNum;
     int32_t gmm2CombineSyncCounterNum;
     int32_t resetBatchElementCount;
+    bool contiguousFlagRanges;
     bool resetCombineCounters;
 };
+
+__aicore__ inline void ResetWorkspaceRangeOneCore(const AivThreadContext &thread,
+    GM_ADDR rangePtr, int32_t rangeElementCount, int32_t resetBatchElementCount,
+    LocalTensor<int32_t> &resetTensor)
+{
+    if (rangeElementCount <= 0) {
+        return;
+    }
+    int32_t threadLen, threadOffset;
+    TilingByThreadContext(rangeElementCount, threadLen, threadOffset,
+        thread.threadIdx, thread.threadNum, 1);
+    GlobalTensor<int32_t> rangeGm;
+    rangeGm.SetGlobalBuffer((__gm__ int32_t *)rangePtr);
+    for (int32_t offset = 0; offset < threadLen; offset += resetBatchElementCount) {
+        int32_t batchCount = threadLen - offset < resetBatchElementCount ?
+            threadLen - offset : resetBatchElementCount;
+        DataCopyExtParams copyParams{
+            1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPad(rangeGm[threadOffset + offset], resetTensor, copyParams);
+    }
+}
 
 // Prototype: MegaMoe::ResetGmm2CombineSyncCounters. Clears one logical AIV thread's combine counters in batches.
 // ResetFlagListOneCore validates the thread and prepares the zero-filled resetTensor before calling this helper.
@@ -52,17 +79,17 @@ __aicore__ inline void ResetFlagListOneCore(const DispatchPrepareContext &contex
     if (thread.threadNum == 0U || thread.threadIdx >= thread.threadNum || args.resetBatchElementCount <= 0) {
         return;
     }
-    GlobalTensor<int32_t> flagGm;
-    flagGm.SetGlobalBuffer((__gm__ int32_t *)args.flagSwiGluToGmm2Ptr);
-    int32_t threadLen, threadOffset;
-    TilingByThreadContext(args.flagNum, threadLen, threadOffset, thread.threadIdx, thread.threadNum, 1);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
-    for (int32_t offset = 0; offset < threadLen; offset += args.resetBatchElementCount) {
-        int32_t batchCount = threadLen - offset < args.resetBatchElementCount ?
-            threadLen - offset : args.resetBatchElementCount;
-        DataCopyExtParams copyParams{
-            1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
-        DataCopyPad(flagGm[threadOffset + offset], resetTensor, copyParams);
+    if (args.contiguousFlagRanges) {
+        ResetWorkspaceRangeOneCore(thread, args.flagSwiGluToGmm2Ptr,
+            args.flagNum, args.resetBatchElementCount, resetTensor);
+    } else {
+        ResetWorkspaceRangeOneCore(thread, args.flagSwiGluToGmm2Ptr,
+            args.swiGluToGmm2FlagNum, args.resetBatchElementCount, resetTensor);
+        ResetWorkspaceRangeOneCore(thread, args.flagDispatchToGmm1Ptr,
+            args.dispatchToGmm1FlagNum, args.resetBatchElementCount, resetTensor);
+        ResetWorkspaceRangeOneCore(thread, args.flagSendCntCalToUpdParamsPtr,
+            args.sendCntCalToUpdParamsFlagNum, args.resetBatchElementCount, resetTensor);
     }
     if (args.resetCombineCounters) {
         ResetGmm2CombineSyncCountersOneCore(thread, args, resetTensor);

@@ -332,7 +332,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
     gmm1PipelineContext_ = {
         {blockIdx_, blockNum_},
         {blockIdx_, aicNum_},
-        worldSize_, moeExpertPerRank_, k_, static_cast<uint32_t>(hiddenDim_), topK_, blockNumPerRank_,
+        worldSize_, moeExpertPerRank_, expertPerRank_, k_, static_cast<uint32_t>(hiddenDim_), topK_, blockNumPerRank_,
         maxOutputSize_, sendTotalNum_, tilingData->dispatchBufferConfig,
         maskAlignSize_, maskSlotSize_, quantWinOffset_,
         mxQuantTokenAlignBytes_, mxQuantTokenScaleAlignBytes_, dispatchFlagSlotsPerExpert_,
@@ -350,14 +350,23 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Init(
             tilingData->sendMaskConfigForCoreWithoutExtraExpert;
     sendMaskArgs_ = {params_.expertIdxGmAddr, ::winRankAddr_, maskAlignSize_, maskSlotSize_,
         maskWinOffset_, sendMaskBufferConfig};
-    int32_t resetFlagNum = static_cast<int32_t>(moeExpertPerRank_) *
-        (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_ +
-        static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_));
+    int32_t swiGluToGmm2FlagNum =
+        static_cast<int32_t>(moeExpertPerRank_) * static_cast<int32_t>(INT_CACHELINE);
+    int32_t dispatchToGmm1FlagNum =
+        static_cast<int32_t>(moeExpertPerRank_) * dispatchFlagSlotsPerExpert_;
+    int32_t sendCntCalToUpdParamsFlagNum = static_cast<int32_t>(moeExpertPerRank_) *
+        static_cast<int32_t>(aicNum_) * static_cast<int32_t>(INT_CACHELINE);
+    int32_t resetFlagNum =
+        swiGluToGmm2FlagNum + dispatchToGmm1FlagNum + sendCntCalToUpdParamsFlagNum;
     int32_t gmm2CombineSyncCounterNum = static_cast<int32_t>(
         static_cast<int64_t>(moeExpertPerRank_) * blockAivNum_ * INT_CACHELINE);
     resetWorkspaceArgs_ = {params_.workspaceInfo.flagSwiGluToGmm2Ptr,
-        params_.workspaceInfo.gmm2CombineSyncCounterPtr, resetFlagNum,
-        gmm2CombineSyncCounterNum, 0, CombineQuantMode != COMBINE_NO_QUANT};
+        params_.workspaceInfo.flagDispatchToGmm1Ptr,
+        params_.workspaceInfo.flagSendCntCalToUpdParamsPtr,
+        params_.workspaceInfo.gmm2CombineSyncCounterPtr,
+        swiGluToGmm2FlagNum, dispatchToGmm1FlagNum, sendCntCalToUpdParamsFlagNum,
+        resetFlagNum, gmm2CombineSyncCounterNum, 0,
+        expertPerRank_ == moeExpertPerRank_, CombineQuantMode != COMBINE_NO_QUANT};
     quantProcessArgs_ = {params_.aGmAddr, params_.peermemInfo.quantTokenScalePtr,
         mxQuantTokenAlignBytes_, mxQuantScaleAlignBytes_, mxQuantTokenScaleAlignBytes_,
         mxQuantScaleNumAlignPerToken_};
@@ -466,9 +475,13 @@ MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     }
 
     // 与 route batch 无关的固定占用
-    uint64_t totalFlagInt32 = static_cast<uint64_t>(resetWorkspaceArgs_.flagNum);
+    uint64_t totalFlagInt32 =
+        static_cast<uint64_t>(expertPerRank_) *
+        (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
+        static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_));
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        uint64_t combineCounterNum = static_cast<uint64_t>(resetWorkspaceArgs_.gmm2CombineSyncCounterNum);
+        uint64_t combineCounterNum =
+            static_cast<uint64_t>(expertPerRank_) * blockAivNum_ * static_cast<uint64_t>(INT_CACHELINE);
         totalFlagInt32 = totalFlagInt32 > combineCounterNum ? totalFlagInt32 : combineCounterNum;
     }
     uint32_t resetElementCountPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
@@ -483,7 +496,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
     uint32_t xOutTensorSize =
         quantProcessArgs_.quantTokenAlignBytes + quantProcessArgs_.quantScaleAlignBytes;
     uint32_t xInAlignSize = Ops::Base::CeilAlign(k_, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
-    uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * moeExpertPerRank_, blockAivNum_);
+    uint32_t expertPerCoreMax = Ops::Base::CeilDiv(worldSize_ * expertPerRank_, blockAivNum_);
     uint32_t sendCntAccSize =
         Ops::Base::CeilAlign(static_cast<int64_t>(expertPerCoreMax * sizeof(int32_t)), static_cast<int64_t>(ALIGN_32));
 
