@@ -484,6 +484,7 @@ public:
 
     __aicore__ inline void AIV1ProcessHIn(uint64_t offsetT, uint64_t lenT, uint64_t lenD)
     {
+        PipeBarrier<PIPE_V>();
         auto hInDealBuf = inputBuff_;
         for (uint32_t tIdx = 0; tIdx < lenT; tIdx++) {
             for (int offsetD = 0; offsetD < D_; offsetD += v1ChunkDSize_) {
