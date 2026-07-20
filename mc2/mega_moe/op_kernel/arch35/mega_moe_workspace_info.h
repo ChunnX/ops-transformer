@@ -85,6 +85,7 @@ constexpr int64_t E5M2_QUANT = 3U;
 constexpr int64_t E4M3_QUANT = 4U;
 constexpr int64_t E2M1_QUANT = 5U;
 constexpr int64_t HALF_TO_FP32 = 2U;
+constexpr int64_t DEQUANT_SCALE_EXPAND = 2U;
 constexpr int64_t OVERFLOW_MODE_CTRL = 60U;
 // Combine quantization modes
 constexpr uint8_t COMBINE_NO_QUANT = 0;
@@ -230,12 +231,12 @@ struct WorkspaceInfo {
             uint32_t scaleBytes = mxScaleNum * SIZE_INT_8;
             uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
             uint32_t recordBytes = Ops::Base::CeilAlign(tokenScaleBytes + static_cast<uint32_t>(ALIGN_32),
-                static_cast<uint32_t>(ALIGN_512));
-            int64_t serverWorkspaceBytes = static_cast<int64_t>(ALIGN_32) +
-                static_cast<int64_t>(tilingData->bs) * recordBytes;
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(serverNum) * serverWorkspaceBytes, static_cast<int64_t>(ALIGN_512));
-            
+                                                        static_cast<uint32_t>(ALIGN_512));
+            int64_t serverWorkspaceBytes =
+                static_cast<int64_t>(ALIGN_32) + static_cast<int64_t>(tilingData->bs) * recordBytes;
+            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(serverNum) * serverWorkspaceBytes,
+                                                  static_cast<int64_t>(ALIGN_512));
+
             dispatchCursorPtr = base + workspaceSize;
             workspaceSize +=
                 Ops::Base::CeilAlign(static_cast<int64_t>(serverNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
@@ -245,22 +246,21 @@ struct WorkspaceInfo {
                                                   static_cast<int64_t>(ALIGN_512));
 
             dispatchL2CommPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->aicNum) * 6 * static_cast<int64_t>(recordBytes),
-                static_cast<int64_t>(ALIGN_512));
+            workspaceSize +=
+                Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum) * 6 * static_cast<int64_t>(recordBytes),
+                                     static_cast<int64_t>(ALIGN_512));
 
             combineCommDataPtr = base + workspaceSize;
-            int64_t maxDataLengthPerBlock = Ops::Base::CeilAlign(static_cast<int64_t>(MegaMoeImpl::L1_TILE_N *
-                                                                  sizeof(uint32_t) / 2), (int64_t)ALIGN_32);
+            int64_t maxDataLengthPerBlock = Ops::Base::CeilAlign(
+                static_cast<int64_t>(MegaMoeImpl::L1_TILE_N * sizeof(uint32_t) / 2), (int64_t)ALIGN_32);
             // 每个 token 含数据+三元组(32B)
-            int64_t maxDataSizePerToken = Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h),
-                (int64_t)MegaMoeImpl::L1_TILE_N) * (ALIGN_32 + maxDataLengthPerBlock);
-            // 注意: 乘法必须在 64 位域进行, 否则 bs * maxDataSizePerToken * expertPerRank * epWorldSize
-            // 在 uint32_t 域会溢出回绕(8P 场景乘积可达 ~8GB), 导致申请不足而 kernel 越界。
-            int64_t maxDataSize = Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->bs) * maxDataSizePerToken *
-                static_cast<int64_t>(tilingData->expertPerRank) *
-                static_cast<int64_t>(tilingData->epWorldSize), (int64_t)ALIGN_512);
+            int64_t maxDataSizePerToken =
+                Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->h), (int64_t)MegaMoeImpl::L1_TILE_N) *
+                (ALIGN_32 + maxDataLengthPerBlock);
+            int64_t maxDataSize = Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->bs) * maxDataSizePerToken *
+                                                           static_cast<int64_t>(tilingData->expertPerRank) *
+                                                           static_cast<int64_t>(tilingData->epWorldSize),
+                                                       (int64_t)ALIGN_512);
             workspaceSize += maxDataSize;
 
             combineCommNotifyPtr = base + workspaceSize;
@@ -269,6 +269,7 @@ struct WorkspaceInfo {
                 Ops::Base::CeilAlign((int64_t)(tilingData->epWorldSize * sizeof(int32_t)), (int64_t)ALIGN_512);
             workspaceSize += maxNotifySize;
         }
+
         // Shared expert workspace buffers
         if (tilingData->sharedExpertNum > 0) {
             // sharedExpertResult: GMM2 output for shared experts [sharedExpertNum × bs × h]
@@ -287,8 +288,8 @@ struct WorkspaceInfo {
             // sharedExpertInputScale: GMM1 input scale [bs × CeilDiv(h,32)*2]
             sharedExpertInputScalePtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->bs * Ops::Base::CeilDiv(
-                    static_cast<uint32_t>(tilingData->h), static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) * MXFP_MULTI_BASE_SIZE,
+                SIZE_INT_8 * tilingData->bs * Ops::Base::CeilDiv(static_cast<uint32_t>(tilingData->h),
+                    static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) * MXFP_MULTI_BASE_SIZE,
                 ALIGN_512);
             // sharedExpertSwigluData: SwiGLU quant output [sharedExpertNum × bs × hiddenDim/2] fp8
             sharedExpertSwigluDataPtr = base + workspaceSize;

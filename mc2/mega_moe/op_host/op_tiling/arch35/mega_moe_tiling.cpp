@@ -263,11 +263,11 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                     return ge::GRAPH_FAILED);
 
     int64_t moeExpertPerRank = moeExpertNum / epWorldSize;
-        OP_TILING_CHECK(expertPerRank < moeExpertPerRank,
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertPerRank",
-                std::to_string(expertPerRank).c_str(),
-                (std::string("should >= moeExpertNum/epWorldSize = ") +
-                std::to_string(moeExpertPerRank)).c_str()),
+    OP_TILING_CHECK(expertPerRank < moeExpertPerRank,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertPerRank",
+            std::to_string(expertPerRank).c_str(),
+            (std::string("should >= moeExpertNum/epWorldSize = ") +
+             std::to_string(moeExpertPerRank)).c_str()),
         return ge::GRAPH_FAILED);
 
     // maskRecv Size
@@ -365,6 +365,23 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
             return ge::GRAPH_FAILED);
     }
 
+    auto sharedWeight1StorageShape = context->GetDynamicInputShape(config.sharedWeight1Index, 0);
+    int64_t sharedExpertNum = 0;
+    if (sharedWeight1StorageShape != nullptr) {
+        sharedExpertNum = sharedWeight1StorageShape->GetStorageShape().GetDim(0);
+    }
+    OP_TILING_CHECK(sharedExpertNum > NUM_FOUR,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum",
+                        std::to_string(sharedExpertNum).c_str(),
+                        "only support 0-4"),
+                    return ge::GRAPH_FAILED);
+    auto topoTypePtr = attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
+    OP_TILING_CHECK(sharedExpertNum > 0 && *topoTypePtr == TOPO_TYPE_URMA,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "topoType",
+                        std::to_string(*topoTypePtr).c_str(),
+                        "shared expert only support MTE topo type"),
+                    return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -389,8 +406,12 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
     int64_t moeExpertNum = static_cast<int64_t>(*moeExpertNumPtr);
     int64_t moeExpertPerRank = moeExpertNum / static_cast<int64_t>(tilingData->epWorldSize);
     tilingData->moeExpertPerRank = static_cast<uint32_t>(moeExpertPerRank);
-    tilingData->sharedExpertNum = static_cast<uint32_t>(
-        static_cast<int64_t>(tilingData->expertPerRank) - moeExpertPerRank);
+    auto sharedWeight1StorageShape = context->GetDynamicInputShape(config.sharedWeight1Index, 0);
+    if (sharedWeight1StorageShape != nullptr) {
+        tilingData->sharedExpertNum = static_cast<uint32_t>(sharedWeight1StorageShape->GetStorageShape().GetDim(0));
+    } else {
+        tilingData->sharedExpertNum = 0;
+    }
 
     auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
     int64_t opQuantMode = GetOpQuantModeByAttrDispatchOutType(context, config);
@@ -556,6 +577,125 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context, 
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckSharedWeightShape(const gert::StorageShape *sharedShape,
+    const gert::StorageShape *refShape, const char *sharedName, const char *refName,
+    const char *nodeName)
+{
+    OP_TILING_CHECK(sharedShape->GetStorageShape().GetDimNum() != THREE_DIMS,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, sharedName,
+                        (std::to_string(sharedShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(1) != refShape->GetStorageShape().GetDim(1),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim1").c_str(),
+                        std::to_string(sharedShape->GetStorageShape().GetDim(1)).c_str(),
+                        (std::string("must be equal to ") + refName + " dim1").c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(2) != refShape->GetStorageShape().GetDim(2),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim2").c_str(),
+                        std::to_string(sharedShape->GetStorageShape().GetDim(2)).c_str(),
+                        (std::string("must be equal to ") + refName + " dim2").c_str()),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckSharedWeightScalesInput(const gert::TilingContext *context,
+    uint32_t sharedIdx, uint32_t refIdx, const char *sharedName, const char *refName,
+    int64_t sharedExpertNum, const char *nodeName)
+{
+    auto sharedDesc = context->GetDynamicInputDesc(sharedIdx, 0);
+    auto refDesc = context->GetDynamicInputDesc(refIdx, 0);
+    OP_TILING_CHECK(sharedDesc->GetDataType() != refDesc->GetDataType(),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dtype").c_str(),
+                        std::to_string(sharedDesc->GetDataType()).c_str(),
+                        (std::string("must be same as ") + refName).c_str()),
+                    return ge::GRAPH_FAILED);
+    auto sharedShape = context->GetDynamicInputShape(sharedIdx, 0);
+    auto refShape = context->GetDynamicInputShape(refIdx, 0);
+    OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(0) != sharedExpertNum,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim0").c_str(),
+                        std::to_string(sharedShape->GetStorageShape().GetDim(0)).c_str(),
+                        (std::string("must be equal to sharedExpertNum = ") + std::to_string(sharedExpertNum)).c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sharedShape->GetStorageShape().GetDimNum() != FOUR_DIMS,
+                    OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, sharedName,
+                        (std::to_string(sharedShape->GetStorageShape().GetDimNum()) + "D").c_str(), "4D"),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(1) != refShape->GetStorageShape().GetDim(1),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim1").c_str(),
+                        std::to_string(sharedShape->GetStorageShape().GetDim(1)).c_str(),
+                        (std::string("must be equal to ") + refName + " dim1").c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(2) != refShape->GetStorageShape().GetDim(2),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim2").c_str(),
+                        std::to_string(sharedShape->GetStorageShape().GetDim(2)).c_str(),
+                        (std::string("must be equal to ") + refName + " dim2").c_str()),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(3) != refShape->GetStorageShape().GetDim(3),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim3").c_str(),
+                        std::to_string(sharedShape->GetStorageShape().GetDim(3)).c_str(),
+                        (std::string("must be equal to ") + refName + " dim3").c_str()),
+                    return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *context, MegaMoeConfig &config,
+                                               const char *nodeName)
+{
+    auto sharedWeight1Desc = context->GetDynamicInputDesc(config.sharedWeight1Index, 0);
+    if (sharedWeight1Desc == nullptr) {
+        return ge::GRAPH_SUCCESS;
+    }
+    auto sharedWeight1Shape = context->GetDynamicInputShape(config.sharedWeight1Index, 0);
+    int64_t sharedExpertNum = sharedWeight1Shape->GetStorageShape().GetDim(0);
+    if (sharedExpertNum <= 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    auto weightOneDesc = context->GetDynamicInputDesc(config.weight1Index, 0);
+    auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
+    OP_TILING_CHECK(sharedWeight1Desc->GetDataType() != weightOneDesc->GetDataType(),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "shared_weight1 dtype",
+                        std::to_string(sharedWeight1Desc->GetDataType()).c_str(),
+                        "must be same as weight1"),
+                    return ge::GRAPH_FAILED);
+    if (CheckSharedWeightShape(sharedWeight1Shape, weightOneStorageShape,
+        "shared_weight1", "weight1", nodeName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    auto sharedWeight2Desc = context->GetDynamicInputDesc(config.sharedWeight2Index, 0);
+    auto weightTwoDesc = context->GetDynamicInputDesc(config.weight2Index, 0);
+    OP_TILING_CHECK(sharedWeight2Desc->GetDataType() != weightTwoDesc->GetDataType(),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "shared_weight2 dtype",
+                        std::to_string(sharedWeight2Desc->GetDataType()).c_str(),
+                        "must be same as weight2"),
+                    return ge::GRAPH_FAILED);
+    auto weightTwoStorageShape = context->GetDynamicInputShape(config.weight2Index, 0);
+    auto sharedWeight2Shape = context->GetDynamicInputShape(config.sharedWeight2Index, 0);
+    OP_TILING_CHECK(sharedWeight2Shape->GetStorageShape().GetDim(0) != sharedExpertNum,
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "shared_weight2 dim0",
+                        std::to_string(sharedWeight2Shape->GetStorageShape().GetDim(0)).c_str(),
+                        (std::string("must be equal to sharedExpertNum = ") + std::to_string(sharedExpertNum)).c_str()),
+                    return ge::GRAPH_FAILED);
+    if (CheckSharedWeightShape(sharedWeight2Shape, weightTwoStorageShape,
+        "shared_weight2", "weight2", nodeName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    OP_TILING_CHECK(CheckSharedWeightScalesInput(context, config.sharedWeightScales1Index,
+                        config.weightScales1Index, "shared_weight_scales1", "weight_scales1",
+                        sharedExpertNum, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check shared_weight_scales1 failed."),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckSharedWeightScalesInput(context, config.sharedWeightScales2Index,
+                        config.weightScales2Index, "shared_weight_scales2", "weight_scales2",
+                        sharedExpertNum, nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check shared_weight_scales2 failed."),
+                    return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context, MegaMoeConfig &config,
                                             const char *nodeName)
 {
@@ -609,8 +749,10 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context, 
     OP_TILING_CHECK(expertTokenNumsDim0 != moeExpertPerRank,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expertTokenNums",
             (std::string("dim0=") + std::to_string(expertTokenNumsDim0)).c_str(),
-            (std::string("The shape [dim0] of expertTokenNums must be equal to moeExpertPerRank(") + std::to_string(moeExpertPerRank) + ").").c_str()),
+            (std::string("The shape [dim0] of expertTokenNums must be equal to moeExpertPerRank(")
+            + std::to_string(moeExpertPerRank) + ").").c_str()),
         return ge::GRAPH_FAILED);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -778,6 +920,12 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, MegaMo
 
     OP_TILING_CHECK(CheckWeightScalesTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "optional params shape is invalid."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(CheckWeightScalesTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
+                    OP_LOGE(nodeName, "check weight scales tensor dim failed."), return ge::GRAPH_FAILED);
+
+    OP_TILING_CHECK(CheckSharedExpertInputs(context, config, nodeName) == ge::GRAPH_FAILED,
+                    OP_LOGE(nodeName, "check shared expert inputs failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(CheckOutputTensorDim(context, config, nodeName) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "output params shape is invalid."), return ge::GRAPH_FAILED);
@@ -958,6 +1106,12 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
 
     const gert::StorageShape *topkIdsStorageShape = context->GetInputShape(config.topkIdsIndex);
     int64_t topkIdsDim1 = topkIdsStorageShape->GetStorageShape().GetDim(1);
+
+    // topk范围
+    OP_TILING_CHECK(
+        topkIdsDim1 < MIN_TOPK || topkIdsDim1 > MAX_TOPK,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "topK", std::to_string(topkIdsDim1).c_str(), "only support [1, 32]"),
+        return ge::GRAPH_FAILED);
 
     int64_t xDim1 = xStorageShape->GetStorageShape().GetDim(1);
     // 检查 H 范围 [1K, 8K]
