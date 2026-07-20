@@ -6,13 +6,13 @@
 - 新增 STC 共 37 条，默认全部启用。
 - MXFP8 固定约束为 `D=128`、`S1BaseSize=128`、`S2BaseSize=512`、TND + PA_BNSD。
 - 所有 STC 的 `sparse_count` 按 `ceil(max(actual_seq_kv) / sparse_block_size)` 设置。
-- `block_num` 至少能够容纳所有 batch 的逻辑 PA page，并额外覆盖大容量 page table 场景。
+- 物理页数不作为 case 参数，根据 `sum(ceil(actual_seq_kv[b] / block_size))` 自动生成。
 
 ## 2. 单 Batch 场景
 
 | No. | Case | 主要场景与覆盖目的 |
 |---:|---|---|
-| 1 | `STC_B1_BS128_MIN_PAGE_EQ_MASK3` | 最小 PA page，S1=S2=128，block_num/sparse_count=1。 |
+| 1 | `STC_B1_BS128_MIN_PAGE_EQ_MASK3` | 最小 PA page，S1=S2=128，sparse_count=1。 |
 | 2 | `STC_B1_BS64_STITCH_8_BLOCKS_MASK3` | 8 个 64-token sparse block 拼成一个 S2Base=512 计算块。 |
 | 3 | `STC_B1_BS128_TWO_S2_LOOPS_REVERSE` | 两轮 S2 循环，sparse indices 和 block table 均反序，LSE 关闭。 |
 | 4 | `STC_B1_BS64_S2_TAIL_MASK3` | S2=513 尾块，9 个 BS64 sparse block，tail 选块。 |
@@ -20,10 +20,10 @@
 | 6 | `STC_B1_BS64_BOTH_TAIL_GQA16` | S1/S2 均不对齐，BS64，GQA=16，高 head 数。 |
 | 7 | `STC_B1_NOMASK_BS128_EQ_TAIL` | mask_mode=0，S1=S2=127，双尾块。 |
 | 8 | `STC_B1_NOMASK_BS64_S2_TAIL_SCALE8` | 无 mask、BS64、S2 长尾、自定义 softmax scale、LSE 关闭。 |
-| 9 | `STC_B1_BLOCKNUM128_BS128_RANDOM` | block_num=128，随机 sparse indices 和随机 block table。 |
-| 10 | `STC_B1_BLOCKNUM512_BS64_REVERSE` | block_num=512，BS64，反序 sparse/page 映射。 |
-| 11 | `STC_B1_BLOCKNUM1024_BS128_TAIL` | block_num=1024，S2=2049，17 个 sparse block，tail 选块。 |
-| 12 | `STC_B1_BLOCKNUM8192_BS64_GQA10` | block_num=8192 的超大 PA 容量边界。 |
+| 9 | `STC_B1_BS128_RANDOM_SPARSE_AND_BLOCK_TABLE` | S2=1024、BS128，随机 sparse indices 和随机 block table。 |
+| 10 | `STC_B1_BS64_REVERSE_SPARSE_AND_BLOCK_TABLE` | S2=1024、BS64，反序 sparse/page 映射。 |
+| 11 | `STC_B1_BS128_TAIL_SPARSE_REVERSE_BLOCK_TABLE` | S2=2049，17 个 sparse block，tail 选块和反序页表。 |
+| 12 | `STC_B1_BS64_GQA10_S2_TAIL_SEQUENTIAL` | S2=513 尾块、BS64、GQA=10 顺序映射。 |
 | 13 | `STC_B1_HIGH_RANGE_QK_PSCALE64` | Q/K range=128，PScale=64，量化动态范围压力。 |
 | 14 | `STC_B1_ASYMMETRIC_DATA_RANGE` | Q/K/V range=64/2/128，验证非对称输入 scale。 |
 | 15 | `STC_B1_CUSTOM_SOFTMAX_HIGH_S1_GT_S2` | S1>S2，softmax_scale=0.25，验证外部 scale 生效。 |
@@ -77,7 +77,7 @@
 | Batch | `B=1/2/4/8/16`；等长、ragged、零长度、一长多短。 |
 | Head | `N2=1/2/3/4/5/8`，GQA=`5/8/10/16`，N1 最大128。 |
 | Block size | `64/128`；覆盖 BS64 多块拼接到 S2Base=512。 |
-| PA block_num | `1/2/4/5/8/16/32/64/128/512/1024/8192`。 |
+| PA 物理页数 | 由各 batch 的实际 KV 长度自动推导，STC 覆盖 `1~4096` 页。 |
 | sparse_count | `1/2/4/5/7/8/9/13/16/17/33/64`。 |
 | S1/S2关系 | `S1<S2`、`S1=S2`、`S1>S2`。 |
 | 对齐状态 | S1/S2 对齐、S1 对齐 S2 不对齐、S1 不对齐 S2 对齐、S1/S2 均不对齐。 |
@@ -87,7 +87,7 @@
 | PScale | `0.25~64`。 |
 | Q/K/V数据范围 | `0.5~128`，并覆盖三者非对称范围。 |
 | softmax_scale | 默认 `1/sqrt(128)`，以及 `0.03125/0.044194.../0.125/0.25`。 |
-| 边界输入 | 空 actual-seq、部分 batch 零长度、S1/S2 尾块、大 PA 容量。 |
+| 边界输入 | 空 actual-seq、部分 batch 零长度、S1/S2 尾块、长序列推导的大 PA 容量。 |
 
 ## 8. 设计目的
 
@@ -97,6 +97,6 @@
 2. S1/S2 尾块验证 C1、V1、C2、V2 的有效行列和偏移处理。
 3. ragged batch、零长度和一长多短验证 actual sequence、workspace 和多核任务分配。
 4. reverse/random/tail 验证 sparse_indices 与 block_table 不同映射关系。
-5. 大 block_num 验证 PA 高地址偏移，不通过叠加大量 head 无限制放大内存。
+5. 长 KV 序列自然生成大 PA cache，用于验证物理页高地址偏移。
 6. 扩大的 PScale 和 Q/K/V range 验证 MXFP8 scale、随路反量化和 P 静态量化的动态范围。
 7. mask/LSE 开关验证模板入口、tiling key 和输出分支。
