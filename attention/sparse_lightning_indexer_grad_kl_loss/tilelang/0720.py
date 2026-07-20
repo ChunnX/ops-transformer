@@ -614,7 +614,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte2", "v", 6)
                     T.tile.sub(diff_v1b_ub, softmax_i_v1b_ub, p_reduced_v1b_ub)
                     T.tile.broadcast(diff_2d_v1b_ub, diff_v1b_ub)
-                    T.set_flag("v", "mte2", 4)
+                    T.set_flag("mte3", "mte2", 4)
                     T.tile.fill(ones_2d_v1b_ub, 1.0)
                     T.tile.fill(eps_v1b_ub, 1e-8)
 
@@ -622,7 +622,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         g_start = g_id * vector_baseg
                         if g_id == vid:
                             T.tile.fill(weight_v1b_ub, 0)
-                            T.wait_flag("v", "mte2", 4)
+                            T.wait_flag("mte3", "mte2", 4)
                             T.copy(bmm2Res[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block], dw_chunk_v1b_ub)
                             T.set_flag("mte2", "v", 7)
                             T.wait_flag("mte2", "v", 7)
@@ -642,19 +642,19 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.reduce_sum(dw_chunk_v1b_ub, dw_reduce_v1b_ub, 1)
                             T.pipe_barrier("v")
                             T.tile.add(weight_v1b_ub, weight_v1b_ub, dw_reduce_v1b_ub)
-                            T.set_flag("v", "mte2", 4)
                             T.tile.cast(rg_half_v1b_ub, rg_chunk_v1b_ub, "CAST_ROUND", vector_baseg * n_block)
                             T.set_flag("v", "mte3", 0)
                             T.wait_flag("v", "mte3", 0)
                             T.pipe_barrier("mte3")
                             T.copy(rg_half_v1b_ub, reluGradRes[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                            T.set_flag("mte3", "mte2", 4)
                             T.pipe_barrier("v")
                             T.tile.cast(dw_half_v1b_ub, weight_v1b_ub, "CAST_ROUND", vector_baseg)
                             T.set_flag("v", "mte3", 1)
                             T.wait_flag("v", "mte3", 1)
                             T.copy(dw_half_v1b_ub, dWeight_partial[bz, s1_id, n_idx_k, g_start:g_start + vector_baseg])
 
-                    T.wait_flag("v", "mte2", 4)
+                    T.wait_flag("mte3", "mte2", 4)
                     T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_v1b_ub)
                     T.set_flag("mte2", "v", 0)
                     T.wait_flag("mte2", "v", 0)
@@ -1100,7 +1100,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             # # dump 编译出的 AscendC 源码到文件，供离线核对手动同步转写
             try:
                 import os as _os
-                _dump_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "0715_kernel_source.cpp")
+                _dump_path = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "0720_kernel_source.cpp")
                 with open(_dump_path, "w", encoding="utf-8") as _f:
                     _f.write(func.get_kernel_source())
                 print(f"[dump] kernel source written to {_dump_path}")
