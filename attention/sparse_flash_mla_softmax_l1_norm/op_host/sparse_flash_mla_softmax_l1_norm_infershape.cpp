@@ -21,7 +21,9 @@ using namespace ge;
 namespace ops {
 constexpr uint32_t QUERY_INDEX = 0;
 constexpr uint32_t KEY_INDEX = 1;
+constexpr uint32_t SPARSE_INDICES_INDEX = 3;
 constexpr uint32_t SOFTMAX_L1_NORM_INDEX = 0;
+constexpr uint32_t ATTR_MAX_SEQLEN_K_INDEX = 4;
 constexpr uint32_t ATTR_LAYOUT_Q_INDEX = 4;
 
 static ge::graphStatus InferShapeSparseFlashMlaSoftmaxL1Norm(gert::InferShapeContext* context)
@@ -43,10 +45,13 @@ static ge::graphStatus InferShapeSparseFlashMlaSoftmaxL1Norm(gert::InferShapeCon
     OP_CHECK_IF(layoutQStr != "BSND" && layoutQStr != "TND",
                 OP_LOGE(context, "layout_q only supports BSND or TND, but got %s.", layoutQStr.c_str()),
                 return ge::GRAPH_FAILED);
+    const int64_t* maxSeqlenKPtr = attrs->GetAttrPointer<int64_t>(ATTR_MAX_SEQLEN_K_INDEX);
+    int64_t maxSeqlenK = (maxSeqlenKPtr != nullptr) ? *maxSeqlenKPtr : 0;
 
     gert::Shape *outShape = context->GetOutputShape(SOFTMAX_L1_NORM_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, outShape);
-
+    
+    const gert::Shape *sparseIndiceShape = context->GetOptionalInputShape(static_cast<size_t>(SPARSE_INDICES_INDEX));
     if (layoutQStr == "BSND") {
         OP_CHECK_IF(queryShape->GetDimNum() != 4,
                     OP_LOGE(context, "BSND layout, query dim num (%zu) must be 4!", queryShape->GetDimNum()),
@@ -54,10 +59,16 @@ static ge::graphStatus InferShapeSparseFlashMlaSoftmaxL1Norm(gert::InferShapeCon
         OP_CHECK_IF(keyShape->GetDimNum() != 4,
                     OP_LOGE(context, "BSND layout, key dim num (%zu) must be 4!", keyShape->GetDimNum()),
                     return ge::GRAPH_FAILED);
-        outShape->SetDimNum(3);
+        outShape->SetDimNum(4);
         outShape->SetDim(0, queryShape->GetDim(0)); // B
         outShape->SetDim(1, queryShape->GetDim(1)); // S1
-        outShape->SetDim(2, keyShape->GetDim(1));   // S2
+        outShape->SetDim(2, keyShape->GetDim(2));   // N2
+
+        if (sparseIndiceShape != nullptr && sparseIndiceShape->GetShapeSize() != 0) {
+            outShape->SetDim(3, sparseIndiceShape->GetDim(3));   // K
+        } else {
+            outShape->SetDim(3, keyShape->GetDim(1));   // S2
+        }
     } else { // TND
         OP_CHECK_IF(queryShape->GetDimNum() != 3,
                     OP_LOGE(context, "TND layout, query dim num (%zu) must be 3!", queryShape->GetDimNum()),
@@ -65,9 +76,14 @@ static ge::graphStatus InferShapeSparseFlashMlaSoftmaxL1Norm(gert::InferShapeCon
         OP_CHECK_IF(keyShape->GetDimNum() != 3,
                     OP_LOGE(context, "TND layout, key dim num (%zu) must be 3!", keyShape->GetDimNum()),
                     return ge::GRAPH_FAILED);
-        outShape->SetDimNum(2);
+        outShape->SetDimNum(3);
         outShape->SetDim(0, queryShape->GetDim(0)); // T1
         outShape->SetDim(1, keyShape->GetDim(0));   // T2
+        if (sparseIndiceShape != nullptr && sparseIndiceShape->GetShapeSize() != 0) {
+            outShape->SetDim(2, sparseIndiceShape->GetDim(2));   // K
+        } else {
+            outShape->SetDim(2, maxSeqlenK);   // S2
+        }
     }
 
     OP_LOGD(context->GetNodeName(), "SparseFlashMlaSoftmaxL1Norm InferShape end.");

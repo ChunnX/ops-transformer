@@ -258,7 +258,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             <td>输入</td>
             <td>表示tiling下沉的aicpu算子输出结果。</td>
             <td>
-            -
+            必须传入。由aclnnSparseFlashMlaSoftmaxL1NormMetadata算子生成。
             </td>
             <td>INT32</td>
             <td>ND</td>
@@ -309,7 +309,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             <td>输入</td>
             <td>表示输入query的数据排布格式。</td>
             <td>
-            支持"BSND"、"TND"。
+            支持"BSND"、"TND"。需与layoutKOptional一致。
             </td>
             <td>STRING</td>
             <td>N/A</td>
@@ -321,7 +321,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1Norm(
             <td>输入</td>
             <td>表示输入key的数据排布格式。</td>
             <td>
-            支持"BSND"、"TND"。
+            支持"BSND"、"TND"。需与layoutQOptional一致。
             </td>
             <td>STRING</td>
             <td>N/A</td>
