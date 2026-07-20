@@ -591,27 +591,44 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *processedQuery = query;
     const aclTensorList *processedKey = key;
     const aclTensorList *processedValue = value;
+    const aclTensor *processedPseShift = pseShiftOptional;
     const aclTensor *processedAttenMask = attenMaskOptional;
     const aclTensor *processedBlockTable = blockTableOptional;
+    const aclTensor *processedKeySharedPrefix = keySharedPrefixOptional;
+    const aclTensor *processedValueSharedPrefix = valueSharedPrefixOptional;
+    const aclTensor *processedQueryRope = queryRopeOptional;
+    const aclTensor *processedKeyRope = keyRopeOptional;
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
     CHECK_RET(MakeTensorContiguousToViewShape(processedQuery, "query", l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguousToViewShape(processedPseShift, "pseShift", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeTensorContiguousToViewShape(processedAttenMask, "attenMask", l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
     CHECK_RET(MakeTensorContiguousToViewShape(processedBlockTable, "blockTable", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguousToViewShape(processedKeySharedPrefix, "keySharedPrefix", l0Executor) ==
+                  ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguousToViewShape(processedValueSharedPrefix, "valueSharedPrefix", l0Executor) ==
+                  ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(ReshapeTensorToViewShape(processedQueryRope, "queryRope", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(ReshapeTensorToViewShape(processedKeyRope, "keyRope", l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
     auto kvProcessRet = ProcessKVForL0Input(
         processedKey, processedValue, processedBlockTable, isFAIRoutingCandidate, l0Executor);
     CHECK_RET(kvProcessRet == ACLNN_SUCCESS, kvProcessRet);
 
     auto l0Out = l0op::FusedInferAttentionScore(
-        processedQuery, processedKey, processedValue, pseShiftOptional, processedAttenMask, actualSeqLengthsOptional,
+        processedQuery, processedKey, processedValue, processedPseShift, processedAttenMask, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, processedBlockTable,
         queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional, keyAntiquantOffsetOptional,
-        valueAntiquantScaleOptional, valueAntiquantOffsetOptional, keySharedPrefixOptional,
-        valueSharedPrefixOptional, actualSharedPrefixLenOptional, queryRopeOptional, keyRopeOptional,
+        valueAntiquantScaleOptional, valueAntiquantOffsetOptional, processedKeySharedPrefix,
+        processedValueSharedPrefix, actualSharedPrefixLenOptional, processedQueryRope, processedKeyRope,
         keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, qStartIdxOptional,
         kvStartIdxOptional, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
         sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode,
