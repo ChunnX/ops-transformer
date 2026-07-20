@@ -133,7 +133,7 @@ def display_error_output_torch(real_data, expect_data, err_idx, relative_diff):
     logger.info('-' * _TABLE_WIDTH)
 
 
-def check_result(expect, npu_result):
+def check_result(expect, npu_result, debug=False):
     diff_thd = 0.005
     pct_thd = 0.005
     max_diff_hd = 10
@@ -206,7 +206,7 @@ def check_result(expect, npu_result):
     if err_diff.numel() > 0:
         logger.info('Max-RelativeError is: %s. Threshold is: %s.', max_error, max_diff_hd)
 
-    if err_diff.numel() > 0:
+    if err_diff.numel() > 0 and (result == "Failed" or debug):
         display_error_output_torch(real_data, expect_data, err_idx, err_diff)
 
     return result, fulfill_percent, max_error
