@@ -649,7 +649,7 @@ __aicore__ inline void DenseLightningIndexerKLLossGradKernelBase<CubeBlockType, 
     constInfo.remainCoreProcessNNum = ((__gm__ uint32_t *)metadataGm)[2];
     constInfo.remainCoreNum = ((__gm__ uint32_t *)metadataGm)[3];
     constInfo.usedCoreNum = ((__gm__ uint32_t *)metadataGm)[4];
-    constInfo.maxSeqKV = ((__gm__ uint32_t *)metadataGm)[5];
+    constInfo.maxSeqKV = constInfo.maxSeqlenK;
     usedCoreNum = constInfo.usedCoreNum;
     int64_t totalCoreNum = static_cast<int64_t>(GetBlockNum());
     if (cBlockIdx >= constInfo.usedCoreNum) {
