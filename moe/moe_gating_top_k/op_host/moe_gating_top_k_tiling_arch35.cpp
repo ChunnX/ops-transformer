@@ -47,6 +47,7 @@ const static size_t EXPERT_IDX_OUTPUY_DIMS = 2;
 const static size_t OUT_OUTPUT_DIMS = 2;
 const static int64_t MAX_EXPERT_COUNT = 2048;
 const static int64_t MAX_K_FOR_HASH = 64;
+const static int64_t WITHOUT_GROUP_MAX_EXPERT_COUNT = 8;
 
 const static int64_t X_INPUT_INDEX = 0;
 const static int64_t BIAS_INPUT_INDEX = 1;
@@ -721,7 +722,7 @@ uint64_t MoeGatingTopKTilingRegbase::GetTilingKey() const
 {
     if (!hashFlag_) {
         bool isSimplifiedPath = (kGroup_ == groupCount_ || groupCount_ == expertCount_);
-        if (isSimplifiedPath && groupCount_ == 1 && expertCount_ == 1) {
+        if (isSimplifiedPath && groupCount_ == 1 && expertCount_ <= WITHOUT_GROUP_MAX_EXPERT_COUNT) {
             return MOE_GATING_TOP_K_WITHOUT_GROUP_REGBASE_TILING_KEY;
         }
         return MOE_GATING_TOP_K_REGBASE_TILING_KEY;
