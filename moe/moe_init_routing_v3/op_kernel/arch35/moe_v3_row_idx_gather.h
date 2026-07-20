@@ -33,6 +33,8 @@ public:
 private:
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<int32_t> sortedExpertIndicesGm_;
+    GlobalTensor<int32_t> gatherRowIdxGm_;
+    GlobalTensor<int32_t> gatherRowIdxInitGm_;
     GlobalTensor<int32_t> expertTotalCountGm_;
 
     TPipe *pipe_;
@@ -43,6 +45,7 @@ private:
     const MoeV3Arch35ExpertTokensCountTilingData *expertTokensCountTilingData_;
     int64_t blockIdx_;
     int64_t needCoreNum_;
+    int64_t totalNeedCoreNum_ = 0;
     int64_t perCoreElements_;
     int64_t curCoreElements_ = 0;
     int64_t actualExpertNum_ = 0;
@@ -50,6 +53,9 @@ private:
     int64_t loops_ = 0;
     int64_t perLoopElements_ = 0;
     int64_t lastLoopElements_ = 0;
+
+    int64_t rowIdxType_ = 0;
+    int64_t useGatherCopy_ = 0;
 
     int64_t perCoreElements;
     int64_t lastCoreElements;
@@ -74,8 +80,11 @@ __aicore__ inline void RowIdxGather<IS_GATHER_COPY_IN>::Init(GM_ADDR expandedRow
     expertTokensCountTilingData_ = &(tilingData->expertTokensCountTilingDataOp);
     blockIdx_ = GetBlockIdx();
     needCoreNum_ = expertTokensCountTilingData_->needCoreNum;
+    totalNeedCoreNum_ = needCoreNum_;
     perCoreElements_ = expertTokensCountTilingData_->perCoreElements;
     actualExpertNum_ = tilingData->actualExpertNum;
+    rowIdxType_ = tilingData->rowIdxType;
+    useGatherCopy_ = tilingData->useGatherCopy;
 
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx);
     if (blockIdx_ < needCoreNum_ - 1) {
@@ -112,10 +121,16 @@ __aicore__ inline void RowIdxGather<IS_GATHER_COPY_IN>::Init(GM_ADDR expandedRow
     }
 
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx, actualExpertNum_);
-    sortedExpertIndicesGm_.SetGlobalBuffer((__gm__ int32_t *)workspace +
-                                               Align(tilingData->n * tilingData->k, sizeof(int32_t)) +
-                                               blockIdx_ * perCoreElements,
-                                           actualExpertNum_);
+    int64_t totalLength = Align(tilingData->n * tilingData->k, sizeof(int32_t));
+    if (useGatherCopy_ && rowIdxType_) {
+        sortedExpertIndicesGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + totalLength, totalLength);
+        gatherRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + totalLength, totalLength);
+        gatherRowIdxInitGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + totalLength + blockIdx_ * perCoreElements_,
+                                            curCoreElements_);
+    } else {
+        sortedExpertIndicesGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + totalLength + blockIdx_ * perCoreElements,
+                                               actualExpertNum_);
+    }
 
     pipe_->InitBuffer(sortedExpertIndicesInQueue_, 1, AlignBytes(perLoopElements_, sizeof(int32_t)));
     pipe_->InitBuffer(copyOutQueue_, 1, AlignBytes(1, sizeof(int32_t)));
@@ -124,12 +139,26 @@ __aicore__ inline void RowIdxGather<IS_GATHER_COPY_IN>::Init(GM_ADDR expandedRow
 template <bool IS_GATHER_COPY_IN>
 __aicore__ inline void RowIdxGather<IS_GATHER_COPY_IN>::Process()
 {
+    if (useGatherCopy_ && rowIdxType_) {
+        if (blockIdx_ < totalNeedCoreNum_) {
+            InitGlobalMemory(gatherRowIdxInitGm_, curCoreElements_, static_cast<int32_t>(-1));
+            SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+        }
+        SyncAll();
+    }
     if (blockIdx_ < needCoreNum_) {
         int64_t elements = (blockIdx_ == needCoreNum_ - 1 ? lastCoreElements : perCoreElements);
         __gm__ int32_t *sortedExpertIndicesGmAddr = (__gm__ int32_t *)sortedExpertIndicesGm_.GetPhyAddr();
         __gm__ int32_t *expandedRowIdxGmAddr = (__gm__ int32_t *)expandedRowIdxGm_.GetPhyAddr();
-        asc_vf_call<ComputeSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, elements, blockIdx_ * perCoreElements,
-                                   sortedExpertIndicesGmAddr, expandedRowIdxGmAddr);
+        if (useGatherCopy_ && rowIdxType_) {
+            __gm__ int32_t *gatherRowIdxGmAddr = (__gm__ int32_t *)gatherRowIdxGm_.GetPhyAddr();
+            asc_vf_call<ComputeSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, elements, blockIdx_ * perCoreElements,
+                                     expandedRowIdxGmAddr + blockIdx_ * perCoreElements, gatherRowIdxGmAddr);
+        } else {
+            asc_vf_call<ComputeSimt>(dim3{SIMT_THREAD_NUM, 1, 1}, elements, blockIdx_ * perCoreElements,
+                                     sortedExpertIndicesGmAddr, expandedRowIdxGmAddr);
+        }
     }
     if (IS_GATHER_COPY_IN) {
         SyncAll();
