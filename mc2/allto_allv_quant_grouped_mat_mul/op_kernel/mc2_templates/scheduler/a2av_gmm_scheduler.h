@@ -128,8 +128,10 @@ private:
             }
             if ASCEND_IS_AIC {
                 AscendC::CrossCoreWaitFlag<SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(SYNC_FLAG_ID_COMM_DONE);
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
                 AscendC::CrossCoreWaitFlag<SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
                     SYNC_FLAG_ID_COMM_DONE + SYNC_FLAG_AIV1_OFFSET);
+#endif
                 computeOp.Process(start, actualExpertNum);
             }
         }
