@@ -52,3 +52,7 @@ third_party/
 # pre-commit log
 log/
 oat_reports/
+
+# local test outputs & torch extension build cache (误提交防护)
+csv_result/
+torch_extensions_cache/
