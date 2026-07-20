@@ -37,7 +37,7 @@ public:
             this->pipe_->InitBuffer(l1Buffer_, MHC_PRE_LOW_API_L1_ALLOC_SIZE);
             aL1_ = l1Buffer_.Get<float>();
             bL1_ = aL1_[MHC_PRE_LOW_API_L1_BUF_NUM * MHC_PRE_LOW_API_L1_BUF_OFFSET];
-            mmService_.Init();
+            mmService_.Init(this->implMode_);
         }
     }
 
@@ -84,7 +84,7 @@ public:
             this->invRmsOutQueue_.FreeTensor(this->invRmsUb_);
             this->biasInQue_.FreeTensor(this->biasInUb_);
         } else {
-            mmService_.End();
+            mmService_.End(this->implMode_);
         }
     }
 
