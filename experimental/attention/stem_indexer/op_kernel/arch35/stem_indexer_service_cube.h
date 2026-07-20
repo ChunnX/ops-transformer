@@ -152,8 +152,8 @@ SIMatmul<SIT>::InitMm1GlobalTensor(const GlobalTensor<Q_T> &queryGm, const Globa
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInfo) {
-    CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2);
-    CrossCoreWaitFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_VC_EVENT + runInfo.loop % 2 + SICommon::ConstInfo::AIV0_AIV1_OFFSET);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + runInfo.loop % 2);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + runInfo.loop % 2 + SICommon::AIV0_AIV1_OFFSET);
     uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
@@ -214,8 +214,8 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
     Fixp(0, 0, s1gProcessSize, s2ProcessSize, runInfo);
     SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0cBufIdx_ % L0_BUF_NUM);
     l0cBufIdx_++;
-    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2); 
-    CrossCoreSetFlag<SICommon::ConstInfo::QLI_SYNC_MODE4, PIPE_FIX>(SICommon::ConstInfo::CROSS_CV_EVENT + runInfo.loop % 2 + SICommon::ConstInfo::AIV0_AIV1_OFFSET); 
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_CV_EVENT + runInfo.loop % 2);
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_CV_EVENT + runInfo.loop % 2 + SICommon::AIV0_AIV1_OFFSET);
 }
 
 template <typename SIT>
