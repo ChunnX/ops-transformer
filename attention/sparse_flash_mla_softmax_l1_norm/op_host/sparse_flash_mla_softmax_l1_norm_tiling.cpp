@@ -76,7 +76,7 @@ static string DataTypeToStr(ge::DataType dtype)
     }
 }
 
-static string ParseAttrs(gert::TilingContext* context, float& scaleValue, int64_t& maxSeqlenK,
+static ge::graphStatus ParseAttrs(gert::TilingContext* context, float& scaleValue, int64_t& maxSeqlenK,
                          int64_t& cmpRatio, int64_t& maskMode, string& layoutQ, string& layoutK)
 {
     auto attrs = context->GetAttrs();
@@ -95,7 +95,7 @@ static string ParseAttrs(gert::TilingContext* context, float& scaleValue, int64_
     maskMode = (maskModePtr != nullptr) ? *maskModePtr : 0;
     layoutQ = (layoutQPtr != nullptr) ? string(layoutQPtr) : "BSND";
     layoutK = (layoutKPtr != nullptr) ? string(layoutKPtr) : "BSND";
-    return context->GetNodeName();
+    return ge::GRAPH_SUCCESS;
 }
 
 static ge::graphStatus ValidateRequiredInputs(gert::TilingContext* context, const string& opName)
@@ -483,30 +483,54 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
     int64_t maskMode;
     string layoutQ;
     string layoutK;
-    auto opName = ParseAttrs(context, scaleValue, maxSeqlenK, cmpRatio, maskMode, layoutQ, layoutK);
-
-    OP_IF_RETURN_FAIL(ValidateRequiredInputs(context, opName));
+    if (ParseAttrs(context, scaleValue, maxSeqlenK, cmpRatio, maskMode, layoutQ, layoutK)) {
+        return ge::GRAPH_FAILED;
+    }
+    auto opName = context->GetNodeName();
+    if (ValidateRequiredInputs(context, opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     bool isTnd = false;
-    OP_IF_RETURN_FAIL(ValidateLayout(layoutQ, layoutK, isTnd, opName));
+    if (ValidateLayout(layoutQ, layoutK, isTnd, opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
-    OP_IF_RETURN_FAIL(ValidateDtypes(context, opName));
-    OP_IF_RETURN_FAIL(ValidateInputDims(context, layoutQ, layoutK, isTnd, opName));
-    OP_IF_RETURN_FAIL(ValidateAttrRanges(cmpRatio, maskMode, opName));
+    if (ValidateDtypes(context, opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ValidateInputDims(context, layoutQ, layoutK, isTnd, opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ValidateAttrRanges(cmpRatio, maskMode, opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     TilingShapeInfo info;
     if (isTnd) {
-        OP_IF_RETURN_FAIL(ValidateAndExtractShapesTnd(context, info, opName));
+        if (ValidateAndExtractShapesTnd(context, info, opName) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     } else {
-        OP_IF_RETURN_FAIL(ValidateAndExtractShapesBsnd(context, info, opName));
+        if (ValidateAndExtractShapesBsnd(context, info, opName) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     }
-    OP_IF_RETURN_FAIL(ValidateShapeRanges(context, info, isTnd, opName));
-    OP_IF_RETURN_FAIL(ValidateLseShape(context, info, isTnd, opName));
-    OP_IF_RETURN_FAIL(ValidateOptionalShapeInputs(context, info.bSize, maskMode, opName));
+    if (ValidateShapeRanges(context, info, isTnd, opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ValidateLseShape(context, info, isTnd, opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ValidateOptionalShapeInputs(context, info.bSize, maskMode, opName) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     bool isSparse = false;
     int64_t kLength = 0;
-    OP_IF_RETURN_FAIL(ValidateSparseInfo(context, maskMode, isTnd, layoutQ, opName, isSparse, kLength));
+    if (ValidateSparseInfo(context, maskMode, isTnd, layoutQ, opName, isSparse, kLength) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
 
     bool has_seqused_q = (context->GetOptionalInputTensor(SEQUSED_Q_IDX) != nullptr);
     bool has_seqused_k = (context->GetOptionalInputTensor(SEQUSED_K_IDX) != nullptr);
