@@ -95,35 +95,66 @@ struct GptOssSwigluActivation {
     }
 };
 
-// Kimi K3 SiTU with the public-interface defaults beta = 1.0 and
-// linear_beta = None:
-//     tanh(gate) * sigmoid(gate) * up
-// gate/up use the regular contiguous half split. The optional linear_beta
-// transform is intentionally disabled until it is exposed by the public
-// MegaMoe interface.
+// Kimi K3 SiTU:
+//     beta * tanh(gate / beta) * sigmoid(gate) * up
+// When linearBeta is enabled, up becomes:
+//     linearBeta * tanh(up / linearBeta)
+// gate/up use the regular contiguous half split. MegaMoe keeps beta at its
+// kernel default and reuses activation_clamp as the optional linearBeta so no
+// public attribute or tiling field is added.
 struct SituActivation {
     static constexpr float DEFAULT_BETA = 1.0f;
+    static constexpr float LINEAR_BETA_DISABLED = 3.402823466e+38F;
 
     CATLASS_DEVICE
     static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
                         AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
-                        uint32_t dataLength)
+                        uint32_t dataLength, float linearBeta = LINEAR_BETA_DISABLED,
+                        float beta = DEFAULT_BETA)
     {
-        // With beta = 1, first form sigmoid(gate) * up in output. This keeps
-        // gate intact for Tanh and allows up to be reused as the Tanh output.
-        AscendC::Muls(output, gate, -DEFAULT_BETA, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Exp(output, output, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Adds(output, output, 1.0f, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Div(output, up, output, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
+        bool enableLinearBeta = linearBeta > 0.0f && linearBeta < LINEAR_BETA_DISABLED;
+        if (enableLinearBeta) {
+            // output = linearBeta * tanh(up / linearBeta). The original up
+            // tile can then be reused for the sigmoid denominator.
+            AscendC::Muls(up, up, 1.0f / linearBeta, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Tanh(output, up, sharedTmpBuffer, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Muls(output, output, linearBeta, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+
+            AscendC::Muls(up, gate, -1.0f, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Exp(up, up, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Adds(up, up, 1.0f, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Div(output, output, up, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        } else {
+            // output = sigmoid(gate) * up.
+            AscendC::Muls(output, gate, -1.0f, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Exp(output, output, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Adds(output, output, 1.0f, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Div(output, up, output, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
 
         // Tanh requires non-overlapping dst/src/tmp tensors. Reusing up as
         // dst satisfies that constraint without allocating another UB tile.
+        if (beta != DEFAULT_BETA) {
+            AscendC::Muls(gate, gate, 1.0f / beta, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
         AscendC::Tanh(up, gate, sharedTmpBuffer, dataLength);
         AscendC::PipeBarrier<PIPE_V>();
+        if (beta != DEFAULT_BETA) {
+            AscendC::Muls(up, up, beta, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
         AscendC::Mul(output, output, up, dataLength);
         AscendC::PipeBarrier<PIPE_V>();
     }
@@ -207,7 +238,7 @@ struct GatedActivation {
             return;
         }
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SITU)) {
-            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength);
+            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
             return;
         }
         SwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
