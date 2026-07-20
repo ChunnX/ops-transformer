@@ -34,42 +34,42 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("sparse_indices_optional")
+        this->Input("sparse_indices")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("cu_seqlens_q_optional")
+        this->Input("cu_seqlens_q")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("cu_seqlens_k_optional")
+        this->Input("cu_seqlens_k")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("seqused_q_optional")
+        this->Input("seqused_q")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("seqused_k_optional")
+        this->Input("seqused_k")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("cmp_residual_k_optional")
+        this->Input("cmp_residual_k")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("topk_length_optional")
+        this->Input("topk_length")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("metadata_optional")
+        this->Input("metadata")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
@@ -82,8 +82,8 @@ public:
         this->Attr("max_seqlen_k").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
-        this->Attr("layout_q_optional").AttrType(OPTIONAL).String("BSND");
-        this->Attr("layout_k_optional").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_k").AttrType(OPTIONAL).String("BSND");
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)

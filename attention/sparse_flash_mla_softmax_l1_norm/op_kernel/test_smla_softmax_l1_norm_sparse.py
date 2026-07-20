@@ -8,13 +8,16 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import ast
+import hashlib
 import logging
 import math
+import os
+import numpy as np
 import openpyxl
 import torch
 import torch_npu
 import cann_ops_transformer
-import hashlib
+from datetime import datetime
 
 D_TOTAL = 512
 SCALE = 1.0 / math.sqrt(D_TOTAL)
@@ -150,11 +153,11 @@ def md5_compare(input_md5, output):
     if all(x == input_md5[0] for x in input_md5):
         print("= " * 33 + output + " md5 compare pass " + "= " * 33)
         print()
-        return "pass", 100
+        return "pass", input_md5[0]
     else:
         print("= " * 33 + output + " md5 compare failed " + "= " * 33)
         print()
-        return "failed", 0
+        return "failed", str(input_md5)
 
 def compute_golden_bsnd(q, k, lse, seqused_q, seqused_k, cmp_residual_k, sparse_indices, topk_length, mask_mode, cmp_ratio, core_num, softmax_scale):
     B, Sq, G, _ = q.shape
@@ -391,7 +394,7 @@ def run_test_case(params):
             torch.npu.synchronize()
             md5_sum_v = tensor_md5(npu_out.cpu().flatten())
             input_md5.append(md5_sum_v)
-        md5_compare(input_md5, params.get('testcase_name', 'N/A'))
+        md5_status, md5_val = md5_compare(input_md5, params.get('testcase_name', 'N/A'))
         golden_out_final = golden_out
 
     else:
@@ -448,7 +451,7 @@ def run_test_case(params):
             torch.npu.synchronize()
             md5_sum_v = tensor_md5(npu_out.cpu().flatten())
             input_md5.append(md5_sum_v)
-        md5_compare(input_md5, params.get('testcase_name', 'N/A'))
+        md5_status, md5_val = md5_compare(input_md5, params.get('testcase_name', 'N/A'))
         golden_out_final = golden_out
 
     torch.npu.synchronize()
@@ -457,17 +460,15 @@ def run_test_case(params):
     logging.info(f"Max diff: {diff}")
 
     is_match = find_mismatched_elements(npu_out, golden_out_final, rtol=5e-3, atol=5e-3)
+    result = "pass" if is_match else "failed"
     if is_match:
-        logging.info(f"casename: {params.get('testcase_name', 'N/A')}, ✅ 精度校验通过，所有点均在容差范围内。")
+        logging.info(f"casename: {params.get('testcase_name', 'N/A')}, 精度校验通过，所有点均在容差范围内。")
     else:
-        logging.info(f"casename: {params.get('testcase_name', 'N/A')}, ❌ 精度校验失败，存在异常点。")
+        logging.info(f"casename: {params.get('testcase_name', 'N/A')}, 精度校验失败，存在异常点。")
 
-    # torch.testing.assert_close(
-    #     npu_out.cpu().flatten().to(torch.float32),
-    #     golden_out_final.cpu().flatten().to(torch.float32),
-    #     rtol=1e-6, atol=1e-6
-    # )
     logging.info(f"  PASS: {params.get('testcase_name', 'N/A')}")
+
+    return {"result": result, "max_diff": diff, "md5_result": md5_status}
 
 
 def load_excel_params(filepath):
@@ -499,16 +500,47 @@ if __name__ == "__main__":
     excel_path = r"/npu/d00483431/code/ops-transformer/torch_extension/sparse_flash_mla_softmax_l1_norm_fuzz_gate.xlsx"
     test_cases = load_excel_params(excel_path)
 
+    results = []
     for idx, case in enumerate(test_cases):
-        if not case['enable']:
-            continue
         logging.info("%s", '=' * 60)
         logging.info(f"Test Case {idx+1}: {case.get('testcase_name', 'N/A')}")
+        if not case.get('enable'):
+            logging.info(f"  SKIPPED: {case.get('testcase_name', 'N/A')} (enable=False)")
+            results.append({"result": "skipped", "max_diff": "", "md5_result": ""})
+            continue
         try:
-            run_test_case(case)
+            res = run_test_case(case)
+            results.append(res)
         except Exception as e:
             logging.error(f"Test Case {idx+1} failed with exception: {e}")
             import traceback
             traceback.print_exc()
+            results.append({"result": "error", "max_diff": "", "md5_result": str(e)})
 
     logging.info("\nAll tests completed!")
+
+    script_dir = os.path.dirname(os.path.abspath(__file__))
+    base_name = os.path.splitext(os.path.basename(excel_path))[0]
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    output_filename = f"{base_name}_Result_{timestamp}.xlsx"
+    output_path = os.path.join(script_dir, output_filename)
+
+    wb = openpyxl.load_workbook(excel_path)
+    ws = wb["Sheet1"]
+
+    result_col_idx = ws.max_column + 1
+    max_diff_col_idx = result_col_idx + 1
+    md5_result_col_idx = result_col_idx + 1
+
+    ws.cell(row=1, column=result_col_idx, value="result")
+    ws.cell(row=1, column=max_diff_col_idx, value="max_diff")
+    ws.cell(row=1, column=md5_result_col_idx, value="md5_result")
+
+    for i, res in enumerate(results):
+        row = i + 2
+        ws.cell(row=row, column=result_col_idx, value=res["result"])
+        ws.cell(row=row, column=max_diff_col_idx, value=res["max_diff"])
+        ws.cell(row=row, column=md5_result_col_idx, value=res["md5_result"])
+
+    wb.save(output_path)
+    logging.info(f"Results saved to: {output_path}")
