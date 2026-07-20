@@ -713,7 +713,11 @@ protected:
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
             if (gmmDsqParams_.transposeWeight) {
                 GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
-                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
+                if (gmmDsqParams_.isMxA8W4) {
+                    GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
+                } else {
+                    GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
+                }
             } else {
                 GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightExpectShape, return false);
                 GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
