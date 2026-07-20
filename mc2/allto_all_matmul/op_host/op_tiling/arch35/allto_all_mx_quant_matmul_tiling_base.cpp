@@ -20,6 +20,8 @@
 #include "mc2/matmul_allto_all/op_host/op_tiling/common/matmul_allto_all_util_tiling.h"
 #include "mc2_log.h"
 
+#include <cstdio>
+
 using namespace Mc2Log;
 using namespace AscendC;
 using namespace Mc2Tiling;
@@ -413,16 +415,55 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::InitTilingContextParameters()
 
 CutResult AllToAllMxQuantMatmulTilingBase::GetCutResOfCommAndCompute()
 {
-    constexpr uint32_t COMM_RANKDIM_FOUR = 4;
-    if (contextInfo_.args_.rankDim == COMM_RANKDIM_FOUR) {
-        // 950的4卡形态使用基于拟合数据的公式化tiling
-        AlltoAllMatmulFitBalanceTiling tiling(matmulQuantType_, contextInfo_.args_, TopoType::STANDARD_CARD,
-                                              SocVersion::SOC950);
-        return tiling.GetTiling();
+    constexpr uint64_t TILE_M = 512;
+    CutResult cutRes = {};
+    uint64_t mValue = contextInfo_.args_.mValue;
+    uint64_t numTiles = mValue / TILE_M;
+    uint64_t remainder = mValue % TILE_M;
+    if (remainder == 0) {
+        cutRes.longTileLen = TILE_M;
+        cutRes.numLongTile = numTiles;
+        cutRes.shortTileLen = 0;
+        cutRes.numShortTile = 0;
     } else {
-        // 调用父类的通用实现
-        return AllToAllMatmulTilingBase::GetCutResOfCommAndCompute();
+        cutRes.longTileLen = TILE_M;
+        cutRes.numLongTile = numTiles;
+        cutRes.shortTileLen = remainder;
+        cutRes.numShortTile = 1;
+        cutRes.shortTileAtBack = true;
     }
+    return cutRes;
+}
+
+void AllToAllMxQuantMatmulTilingBase::ConvertToBlazeTilingData(
+    const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams &src,
+    uint32_t mmM, QuantBatchMatmulTilingData &dst)
+{
+    const auto &cube = src.matmulTiling;
+    dst = {};
+    dst.m = mmM;
+    dst.n = static_cast<uint32_t>(cube.N);
+    dst.k = static_cast<uint32_t>(cube.Ka);
+    dst.baseM = static_cast<uint32_t>(cube.baseM);
+    dst.baseN = static_cast<uint32_t>(cube.baseN);
+    dst.baseK = static_cast<uint32_t>(cube.baseK);
+    dst.scaleKL1 = static_cast<uint32_t>(
+        std::min(static_cast<uint32_t>(cube.stepKa), static_cast<uint32_t>(cube.stepKb)) *
+        static_cast<uint32_t>(cube.baseK) *
+        std::max(1U, static_cast<uint32_t>(cube.Ka) /
+                     (std::min(static_cast<uint32_t>(cube.stepKa), static_cast<uint32_t>(cube.stepKb)) *
+                      static_cast<uint32_t>(cube.baseK))));
+    dst.mTailTile = src.adaptiveSlidingWin.mTailTile > 0 ? src.adaptiveSlidingWin.mTailTile : 1;
+    dst.nTailTile = src.adaptiveSlidingWin.nTailTile > 0 ? src.adaptiveSlidingWin.nTailTile : 1;
+    dst.mBaseTailSplitCnt = 1;
+    dst.nBaseTailSplitCnt = 1;
+    dst.mTailMain = 0;
+    dst.nTailMain = 0;
+    dst.usedCoreNum = static_cast<uint32_t>(cube.usedCoreNum);
+    uint32_t stepK = static_cast<uint32_t>(std::min(cube.stepKa, cube.stepKb));
+    dst.stepK = static_cast<uint8_t>(stepK > 0 ? stepK : 1);
+    dst.nBufferNum = 2;
+    dst.dbL0c = static_cast<uint8_t>(cube.dbL0C > 0 ? cube.dbL0C : 1);
 }
 
 /**
@@ -450,18 +491,56 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoOpTiling()
  *
  * @return ge::graphStatus
  */
+static void PrintBlazeTilingAndL1Util(const char *label, const QuantBatchMatmulTilingData &blaze,
+                                       bool isFp4, bool isBias, uint64_t orgKValue)
+{
+    constexpr uint64_t MXFP_DIVISOR_SIZE = 32;
+    constexpr uint64_t MXFP_MULTI_BASE_SIZE = 2;
+    constexpr uint64_t TOTAL_L1_SIZE = 1048576;
+    auto ceilAlign = [](uint64_t x, uint64_t a) -> uint64_t { return (x + a - 1) / a * a; };
+    auto ceilDiv = [](uint64_t x, uint64_t a) -> uint64_t { return (x + a - 1) / a; };
+
+    uint64_t kL1 = static_cast<uint64_t>(blaze.stepK) * blaze.baseK;
+    uint64_t sizeShift = isFp4 ? 1 : 0;
+    uint64_t aL1 = (static_cast<uint64_t>(blaze.baseM) * ceilAlign(kL1, MXFP_DIVISOR_SIZE)) >> sizeShift;
+    uint64_t bL1 = (static_cast<uint64_t>(blaze.baseN) * kL1) >> sizeShift;
+    uint64_t scaleKPerRank = ceilDiv(orgKValue, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+    uint64_t scaleAL1 = static_cast<uint64_t>(blaze.baseM) * scaleKPerRank;
+    uint64_t scaleBL1 = static_cast<uint64_t>(blaze.baseN) *
+                         ceilDiv(blaze.scaleKL1, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+    uint64_t biasL1 = isBias ? static_cast<uint64_t>(blaze.baseN) * sizeof(float) : 0;
+    uint64_t halfUsed = aL1 + bL1 + scaleAL1 + scaleBL1 + biasL1;
+    double util = 2.0 * static_cast<double>(halfUsed) / static_cast<double>(TOTAL_L1_SIZE) * 100.0;
+
+    printf("[%s] BlazeTiling: m=%u n=%u k=%u baseM=%u baseN=%u baseK=%u stepK=%u scaleKL1=%u kL1=%lu\n",
+           label, blaze.m, blaze.n, blaze.k, blaze.baseM, blaze.baseN, blaze.baseK,
+           blaze.stepK, blaze.scaleKL1, kL1);
+    printf("[%s] L1 per-half: A=%lu B=%lu ScaleA=%lu ScaleB=%lu Bias=%lu | total=%lu/%lu util=%.1f%%\n",
+           label, aL1, bL1, scaleAL1, scaleBL1, biasL1, halfUsed, TOTAL_L1_SIZE / 2, util);
+}
+
 ge::graphStatus AllToAllMxQuantMatmulTilingBase::DoMxQuantMMTiling()
 {
     // 在切m时已经考虑除了rankDim
     mmMvalueLen_ = inferredInfo_.tileM;
     AlltoAllMxQuantMatmulHelper mmTile(*this, localTilingData_.mc2QuantMmTileTilingData, mmMvalueLen_);
     MC2_CHECK_LOG_RET(opName_, mmTile.DoTiling());
+    ConvertToBlazeTilingData(localTilingData_.mc2QuantMmTileTilingData,
+                             static_cast<uint32_t>(inferredInfo_.tileM),
+                             localTilingData_.blazeMmTileTilingData);
+    PrintBlazeTilingAndL1Util("TILE", localTilingData_.blazeMmTileTilingData,
+                               isMxFp4_, contextInfo_.args_.isBias, contextInfo_.args_.orgKValue);
     if (inferredInfo_.tailCnt == 0) {
         return ge::GRAPH_SUCCESS;
     }
     mmMvalueLen_ = inferredInfo_.tailM;
     AlltoAllMxQuantMatmulHelper mmTail(*this, localTilingData_.mc2QuantMmTailTilingData, mmMvalueLen_);
     MC2_CHECK_LOG_RET(opName_, mmTail.DoTiling());
+    ConvertToBlazeTilingData(localTilingData_.mc2QuantMmTailTilingData,
+                             static_cast<uint32_t>(inferredInfo_.tailM),
+                             localTilingData_.blazeMmTailTilingData);
+    PrintBlazeTilingAndL1Util("TAIL", localTilingData_.blazeMmTailTilingData,
+                               isMxFp4_, contextInfo_.args_.isBias, contextInfo_.args_.orgKValue);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -719,15 +798,23 @@ void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingInfo(const
  *
  * @param outTilingData tilingData参数
  */
-void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingData(AlltoAllQuantMatmulTilingData &outTilingData)
+void AllToAllMxQuantMatmulTilingBase::PrintAlltoAllMxQuantMatmulTilingData(AlltoAllMxQuantMatmulTilingData &outTilingData)
 {
     PrintAlltoAllMxQuantMatmulTilingInfo(opName_, outTilingData.alltoAllQuantMatmulTilingInfo);
     PrintMxQuantMMV3TilingData(opName_, outTilingData.mc2QuantMmTileTilingData);
+    OP_LOGD(opName_, "BlazeMmTile: baseM=%u baseN=%u baseK=%u stepK=%u dbL0c=%u",
+            outTilingData.blazeMmTileTilingData.baseM, outTilingData.blazeMmTileTilingData.baseN,
+            outTilingData.blazeMmTileTilingData.baseK, outTilingData.blazeMmTileTilingData.stepK,
+            outTilingData.blazeMmTileTilingData.dbL0c);
     if (outTilingData.alltoAllQuantMatmulTilingInfo.tailCnt == 0) {
         return;
     }
     OP_LOGD(opName_, "AlltoallMxQuantMatmul has tail");
     PrintMxQuantMMV3TilingData(opName_, outTilingData.mc2QuantMmTailTilingData);
+    OP_LOGD(opName_, "BlazeMmTail: baseM=%u baseN=%u baseK=%u stepK=%u dbL0c=%u",
+            outTilingData.blazeMmTailTilingData.baseM, outTilingData.blazeMmTailTilingData.baseN,
+            outTilingData.blazeMmTailTilingData.baseK, outTilingData.blazeMmTailTilingData.stepK,
+            outTilingData.blazeMmTailTilingData.dbL0c);
 }
 
 /**
@@ -739,7 +826,7 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
 {
     context_->SetScheduleMode(1);
     SetTilingInfo(localTilingData_.alltoAllQuantMatmulTilingInfo);
-    AlltoAllQuantMatmulTilingData *outTilingData = context_->GetTilingData<AlltoAllQuantMatmulTilingData>();
+    AlltoAllMxQuantMatmulTilingData *outTilingData = context_->GetTilingData<AlltoAllMxQuantMatmulTilingData>();
     size_t tilingBufCap = context_->GetRawTilingData()->GetCapacity();
     OP_TILING_CHECK((outTilingData == nullptr), OP_LOGE(opName_, "Fail to get tiling data from context"),
                     return ge::GRAPH_FAILED);
@@ -752,9 +839,9 @@ ge::graphStatus AllToAllMxQuantMatmulTilingBase::PostTiling()
         OP_LOGE(opName_, "AlltoAllMxQuantMatmul postTiling: memcpy_s tiling data failed, ret=%d.", ret);
         return ge::GRAPH_FAILED;
     }
-    OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(AlltoAllQuantMatmulTilingData),
+    OP_LOGD(opName_, "Final tiling data size=%zu and context capacity size=%zu.", sizeof(AlltoAllMxQuantMatmulTilingData),
             context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(sizeof(AlltoAllQuantMatmulTilingData));
+    context_->GetRawTilingData()->SetDataSize(sizeof(AlltoAllMxQuantMatmulTilingData));
     context_->SetBlockDim(contextInfo_.args_.aicCoreNum);
     PrintAlltoAllMxQuantMatmulTilingData(*outTilingData);
     return ge::GRAPH_SUCCESS;
@@ -772,9 +859,9 @@ void AllToAllMxQuantMatmulTilingBase::SetTilingInfo(AlltoAllMatmulTilingInfo &ti
     tilingInfo.tailM = inferredInfo_.tailM;
     tilingInfo.tileCnt = inferredInfo_.tileCnt;
     tilingInfo.tailCnt = inferredInfo_.tailCnt;
-    tilingInfo.rankK = contextInfo_.args_.orgKValue;
+    tilingInfo.rankK = contextInfo_.args_.orgKValue * contextInfo_.args_.rankDim;
     tilingInfo.rankN = contextInfo_.args_.nValue;
-    tilingInfo.rankM = contextInfo_.args_.orgMValue;
+    tilingInfo.rankM = contextInfo_.args_.orgMValue / contextInfo_.args_.rankDim;
     tilingInfo.commLen = inferredInfo_.commLen;
     tilingInfo.permuteLen = inferredInfo_.permuteLen;
     tilingInfo.rankDim = contextInfo_.args_.rankDim;
