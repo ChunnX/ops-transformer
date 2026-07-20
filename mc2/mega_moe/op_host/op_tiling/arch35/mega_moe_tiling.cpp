@@ -1137,11 +1137,10 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
                     return ge::GRAPH_FAILED);
 
     int64_t weightOneDim1 = weightOneStorageShape->GetStorageShape().GetDim(1);
-    OP_TILING_CHECK(weightOneDim1 != 1LL * HIDDEN_DIM_BASE && weightOneDim1 != 2LL * HIDDEN_DIM_BASE &&
-                        weightOneDim1 != 3LL * HIDDEN_DIM_BASE && weightOneDim1 != 4LL * HIDDEN_DIM_BASE &&
-                        weightOneDim1 != 7LL * HIDDEN_DIM_BASE,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "hiddenDim", std::to_string(weightOneDim1).c_str(),
-                                              "only support 1k/2k/3k/4k/7k"),
+    OP_TILING_CHECK(weightOneDim1 < HIDDEN_DIM_BASE || weightOneDim1 > 7LL * HIDDEN_DIM_BASE,
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        nodeName, "HhiddenDim", std::to_string(weightOneDim1).c_str(),
+                        (std::string("should in [") + std::to_string(HIDDEN_DIM_BASE) + ", " + std::to_string(7LL * HIDDEN_DIM_BASE) + "]").c_str()),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
