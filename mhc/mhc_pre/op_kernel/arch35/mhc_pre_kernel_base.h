@@ -23,6 +23,9 @@
 
 namespace MhcPre {
 
+constexpr uint32_t MHC_PRE_IMPL_MODE_FP32 = 0U;
+constexpr uint32_t MHC_PRE_IMPL_MODE_HF32 = 1U;
+
 using namespace matmul;
 using namespace AscendC;
 
@@ -922,6 +925,7 @@ protected:
     bool outFlag_;
     bool hasGamma_;
     bool hasResi_ = true;
+    uint32_t implMode_ = MHC_PRE_IMPL_MODE_HF32; // Fake value until impl_mode is passed through tiling data.
 
     GlobalTensor<T> xGm_;
     GlobalTensor<P> phiGm_;
