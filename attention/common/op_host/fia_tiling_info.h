@@ -238,7 +238,13 @@ public:
     const gert::Stride *kRopeStrides = nullptr;
     const gert::Stride *kScaleStrides = nullptr;
     const gert::Stride *vScaleStrides = nullptr;
-    bool isTensorV1 = false;
+    bool hasViewStride = true;
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
+    uint64_t kRopeBnStride = 0;
+    uint64_t kRopeN2Stride = 0;
     // empty Tensor
     bool emptyTensorFlag = false;
     uint64_t totalOutputSize = 0;
@@ -312,6 +318,11 @@ public:
     bool slidingFlag = false;
     bool learnableSinkFlag = false;
     bool isQKVDDifferent = false;
+
+    int32_t keyNonContigDim = -1;
+    int32_t valueNonContigDim = -1;
+    int32_t keyRopeNonContigDim = -1;
+
     // DType
     FiaTilingInOutMode inOutMode = FiaTilingInOutMode::FP16_FP16;
     ge::DataType inputQType = ge::DT_FLOAT16;

@@ -1666,7 +1666,7 @@ ge::graphStatus DequantChecker::CheckStrideFP8GQAFullquant(const FiaTilingInfo &
     if (!enableQKPerTokenHeadVPerHead_) {
         return ge::GRAPH_SUCCESS;
     }
-    if (fiaInfo.isTensorV1) {
+    if (!fiaInfo.hasViewStride) {
         return ge::GRAPH_SUCCESS;
     }
 
