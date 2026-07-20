@@ -534,8 +534,9 @@ def tilelang_grad_kl_loss_single_kernel(
                         # Save to UB for global SoftmaxI; ReduceSumY workspace is unused downstream.
                         T.copy(rsy_reduce_db[cur, :], rsy_all_ub[n_rsy, :])
                         # Fused: update global max from rsy_reduce_db[cur, :]
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur, :], 1.0)
                         T.pipe_barrier("v")
-                        T.reduce_max(rsy_reduce_db[cur, :], rsy_chunk_max_ub, -1)
+                        T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
                         T.pipe_barrier("v")
                         T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
                         # WAR: current slot consumed → safe to refill
@@ -575,8 +576,9 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.pipe_barrier("v")
                         T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
                         T.pipe_barrier("v")
+                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
                         T.pipe_barrier("v")
-                        T.reduce_sum(rsy_chunk_ub, rsy_chunk_sum_ub, 0)
+                        T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
                         T.pipe_barrier("v")
                         T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
 
@@ -724,8 +726,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
 
                     T.pipe_barrier("v")
+                    T.tile.mul(rsy_bc_ub[0, :], loss_val_ub, 1.0)
+                    T.pipe_barrier("v")
                     loss_sum_ub = T.alloc_ub((1,), calc_dtype)
-                    T.reduce_sum(loss_val_ub, loss_sum_ub, 0)
+                    T.reduce_sum(rsy_bc_ub, loss_sum_ub, 1)
                     T.set_flag("v", "mte3", 5)
                     T.wait_flag("v", "mte3", 5)
 
