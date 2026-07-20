@@ -482,8 +482,7 @@ aclnnStatus aclnnMhcPostBackwardGetWorkspaceSize(const aclTensor *gradOutput, co
         ACLNN_ERR_PARAM_NULLPTR,
         "one of required inputs for aclnnMhcPostBackwardGetWorkspaceSize is nullptr.");
     // Check if input tensors are empty
-    if (gradOutput->IsEmpty() || x->IsEmpty() || hOut->IsEmpty() || hPost->IsEmpty() ||
-        (hRes != nullptr && hRes->IsEmpty())) {
+    if (gradOutput->IsEmpty() || x->IsEmpty() || hOut->IsEmpty() || hPost->IsEmpty()) {
         OP_LOGE(ACLNN_ERR_INNER, "aclnn_mhc_post_backward do not support empty tensor!");
         return ACLNN_ERR_PARAM_INVALID;
     }
