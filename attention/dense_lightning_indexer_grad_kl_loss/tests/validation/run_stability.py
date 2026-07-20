@@ -46,7 +46,7 @@ def compare_with_first(case_dir: Path, first_dir: Path, manifest):
     return comparison
 
 
-def run(case_dir: Path, device_id: int, repeat: int, result_name: str):
+def run(case_dir: Path, device_id: int, repeat: int, result_name: str, deterministic: bool = False):
     manifest = json.loads((case_dir / "case_manifest.json").read_text(encoding="utf-8"))
     result_dir = case_dir / result_name
     first_dir = result_dir / "first_outputs"
@@ -54,6 +54,7 @@ def run(case_dir: Path, device_id: int, repeat: int, result_name: str):
     first_dir.mkdir(parents=True, exist_ok=True)
     iterations = []
     baseline_iteration = None
+    baseline_checksums = {}
 
     for iteration in range(1, repeat + 1):
         log_path = result_dir / f"iteration_{iteration:02d}.log"
@@ -66,6 +67,8 @@ def run(case_dir: Path, device_id: int, repeat: int, result_name: str):
             "--device-id",
             str(device_id),
         ]
+        if deterministic:
+            command.append("--deterministic")
         with log_path.open("w", encoding="utf-8") as log:
             completed = subprocess.run(command, stdout=log, stderr=subprocess.STDOUT, check=False)
 
@@ -89,6 +92,7 @@ def run(case_dir: Path, device_id: int, repeat: int, result_name: str):
         if outputs_exist:
             if baseline_iteration is None:
                 baseline_iteration = iteration
+                baseline_checksums = dict(checksums)
                 for name in OUTPUTS:
                     shutil.copyfile(
                         case_dir / "outputs" / f"{name}.bin",
@@ -101,6 +105,10 @@ def run(case_dir: Path, device_id: int, repeat: int, result_name: str):
             else:
                 variation = compare_with_first(case_dir, first_dir, manifest)
 
+        bitwise_equal_to_first = outputs_exist and all(
+            item["bitwise_equal"] for item in variation.values()
+        )
+        checksum_equal_to_first = outputs_exist and checksums == baseline_checksums
         iterations.append(
             {
                 "iteration": iteration,
@@ -108,6 +116,8 @@ def run(case_dir: Path, device_id: int, repeat: int, result_name: str):
                 "passed": bool(report.get("passed", False)),
                 "elapsed_ms": report.get("elapsed_ms"),
                 "checksums": checksums,
+                "checksum_equal_to_first": checksum_equal_to_first,
+                "bitwise_equal_to_first": bitwise_equal_to_first,
                 "variation_from_first": variation,
                 "log": log_path.name,
                 "report": archived_report.name if report else None,
@@ -117,11 +127,24 @@ def run(case_dir: Path, device_id: int, repeat: int, result_name: str):
             result_dir / "stability_report.json",
             {
                 "case_id": manifest["case"]["id"],
+                "deterministic": deterministic,
                 "repeat": repeat,
                 "completed_iterations": len(iterations),
                 "baseline_iteration": baseline_iteration,
                 "passed": all(item["returncode"] == 0 and item["passed"] for item in iterations)
-                and len(iterations) == repeat,
+                and len(iterations) == repeat
+                and (
+                    not deterministic
+                    or all(
+                        item["checksum_equal_to_first"] and item["bitwise_equal_to_first"]
+                        for item in iterations
+                    )
+                ),
+                "all_outputs_bitwise_equal": bool(iterations)
+                and all(
+                    item["checksum_equal_to_first"] and item["bitwise_equal_to_first"]
+                    for item in iterations
+                ),
                 "iterations": iterations,
             },
         )
@@ -135,8 +158,9 @@ def main():
     parser.add_argument("--device-id", type=int, default=0)
     parser.add_argument("--repeat", type=int, default=10)
     parser.add_argument("--result-name", default="stability")
+    parser.add_argument("--deterministic", action="store_true")
     args = parser.parse_args()
-    report = run(args.case_dir, args.device_id, args.repeat, args.result_name)
+    report = run(args.case_dir, args.device_id, args.repeat, args.result_name, args.deterministic)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     raise SystemExit(0 if report["passed"] else 1)
 

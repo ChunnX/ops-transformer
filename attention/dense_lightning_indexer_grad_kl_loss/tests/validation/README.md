@@ -36,13 +36,21 @@ python3 check_case_coverage.py
 python3 generate_case.py --suite smoke --output-root /path/to/stage/inputs
 python3 run_case.py /path/to/stage/inputs/SMK-01 --device-id 3
 python3 run_stability.py /path/to/stage/inputs/SMK-01 --device-id 3 --repeat 10
+python3 run_stability.py /path/to/stage/inputs/SMK-01 --device-id 3 \
+  --repeat 10 --deterministic --result-name deterministic
 ```
 
 Or run a complete suite:
 
 ```bash
 DATA_ROOT=/path/to/stage/cases DEVICE_ID=3 bash run_cases.sh smoke
+DATA_ROOT=/path/to/stage/cases DEVICE_ID=3 DETERMINISTIC=1 bash run_cases.sh smoke
 ```
+
+`--deterministic` calls `torch.use_deterministic_algorithms(True)` before the
+operator. A deterministic stability run passes only when every invocation also
+passes the Golden comparison and all four output files have identical SHA256
+checksums and tensor values across all repetitions.
 
 The comparison rule is element-wise:
 

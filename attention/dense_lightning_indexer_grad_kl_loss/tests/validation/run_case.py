@@ -27,13 +27,16 @@ def load_inputs(case_dir, manifest):
     return tensors
 
 
-def run(case_dir: Path, device_id: int):
+def run(case_dir: Path, device_id: int, deterministic: bool = False):
     manifest = json.loads((case_dir / "case_manifest.json").read_text(encoding="utf-8"))
     case = manifest["case"]
     tensors = load_inputs(case_dir, manifest)
     visible_devices = os.environ.get("ASCEND_RT_VISIBLE_DEVICES")
     logical_device_id = 0 if visible_devices else device_id
     torch.npu.set_device(logical_device_id)
+    torch.use_deterministic_algorithms(deterministic)
+    if torch.are_deterministic_algorithms_enabled() != deterministic:
+        raise RuntimeError("failed to configure PyTorch deterministic algorithms")
     device = torch.device(f"npu:{logical_device_id}")
     torch.npu.empty_cache()
     torch.npu.reset_peak_memory_stats(logical_device_id)
@@ -73,6 +76,7 @@ def run(case_dir: Path, device_id: int):
     for name, tensor in zip(OUTPUTS, outputs):
         save_tensor(output_dir / f"{name}.bin", tensor.cpu())
     report = compare_case(case_dir)
+    report["deterministic"] = deterministic
     report["elapsed_ms"] = elapsed_ms
     report["npu_memory"] = {
         "allocated_before_bytes": int(allocated_before),
@@ -87,8 +91,9 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("case_dir", type=Path)
     parser.add_argument("--device-id", type=int, default=0)
+    parser.add_argument("--deterministic", action="store_true")
     args = parser.parse_args()
-    report = run(args.case_dir, args.device_id)
+    report = run(args.case_dir, args.device_id, args.deterministic)
     print(json.dumps(report, ensure_ascii=False, indent=2))
     raise SystemExit(0 if report["passed"] else 1)
 
