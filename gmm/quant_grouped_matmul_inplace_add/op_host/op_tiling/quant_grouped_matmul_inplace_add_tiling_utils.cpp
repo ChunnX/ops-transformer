@@ -215,7 +215,7 @@ bool CheckShapeForMxQuant(const gert::Shape &x1ScaleShape, const gert::Shape &x2
     auto xScaleMDim = static_cast<uint64_t>(x1ScaleShape.GetDim(x1ScaleDimNum - LAST_SECOND_DIM_INDEX));
     auto wScaleLastDim = static_cast<uint64_t>(x2ScaleShape.GetDim(x2ScaleDimNum - 1));
     auto wScaleNDim = static_cast<uint64_t>(x2ScaleShape.GetDim(x2ScaleDimNum - LAST_SECOND_DIM_INDEX));
-    auto wScaleKDim = static_cast<uint64_t>(x2ScaleShape.GetDim(0));
+    auto wScaleKDim = static_cast<uint64_t>(x1ScaleShape.GetDim(0));
     auto expectedKDimValue = inputParams.kSize / MXFP_BASEK_FACTOR + inputParams.groupNum;
     OP_CHECK_IF(
         xScaleLastDim != MXFP_MULTI_BASE_SIZE || xScaleKDim != expectedKDimValue || xScaleMDim != inputParams.mSize,
