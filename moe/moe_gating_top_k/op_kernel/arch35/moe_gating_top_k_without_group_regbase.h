@@ -59,6 +59,7 @@ private:
     __aicore__ inline void SelectTop1ByMax(int64_t rowInBatch);
     __aicore__ inline void SelectTopKBySort(int64_t rowInBatch);
     __aicore__ inline void ComputeExpertScore(int64_t rowInBatch);
+    __aicore__ inline void SelectTop1AndScore(int64_t rowInBatch);
     __aicore__ inline void CopyOut(int64_t globalRow);
 
     __aicore__ inline void ProcessSingleExpert();
@@ -180,30 +181,31 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeNorm(LocalTen
         Sigmoid(xNormTensor, xRow, calcNormTmpTensor, expertCountAlign_);
         PipeBarrier<PIPE_V>();
     } else if (normType_ == 0) {
-        LocalTensor<float> reduceValueTensor = calcTmpBuf_.Get<float>();
-        LocalTensor<float> calcTmp = calcTmpBuf_.Get<float>()[WG_CONSTANT_EIGHT];
-        ReduceMax(reduceValueTensor, xRow, calcTmp, expertCountAlign_);
-        event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-        SetFlag<HardEvent::V_S>(eventIdVToS);
-        WaitFlag<HardEvent::V_S>(eventIdVToS);
-        float maxValue = reduceValueTensor.GetValue(0);
-        event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-        SetFlag<HardEvent::S_V>(eventIdSToV);
-        WaitFlag<HardEvent::S_V>(eventIdSToV);
-        Adds(xNormTensor, xRow, -maxValue, expertCountAlign_);
-        PipeBarrier<PIPE_V>();
-        Exp(xNormTensor, xNormTensor, expertCountAlign_);
-        PipeBarrier<PIPE_V>();
-        ReduceSum(reduceValueTensor, xNormTensor, calcTmp, expertCountAlign_);
-        eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-        SetFlag<HardEvent::V_S>(eventIdVToS);
-        WaitFlag<HardEvent::V_S>(eventIdVToS);
-        float sumValue = reduceValueTensor.GetValue(0);
-        eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-        SetFlag<HardEvent::S_V>(eventIdSToV);
-        WaitFlag<HardEvent::S_V>(eventIdSToV);
-        Muls(xNormTensor, xNormTensor, 1.0f / sumValue, expertCountAlign_);
-        PipeBarrier<PIPE_V>();
+        uint32_t size = static_cast<uint32_t>(expertCountAlign_);
+        __local_mem__ float *xRowAddr = (__local_mem__ float *)xRow.GetPhyAddr();
+        __local_mem__ float *xNormAddr = (__local_mem__ float *)xNormTensor.GetPhyAddr();
+
+        __VEC_SCOPE__
+        {
+            RegTensor<float> vregX;
+            RegTensor<float> vregMax;
+            RegTensor<float> vregMaxBcast;
+            RegTensor<float> vregExp;
+            RegTensor<float> vregSum;
+            RegTensor<float> vregSumBcast;
+            RegTensor<float> vregResult;
+            MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(size);
+
+            MicroAPI::DataCopy(vregX, xRowAddr);
+            MicroAPI::ReduceMax(vregMax, vregX, preg0);
+            MicroAPI::Duplicate(vregMaxBcast, vregMax, preg0);
+            MicroAPI::Sub(vregExp, vregX, vregMaxBcast, preg0);
+            MicroAPI::Exp(vregExp, vregExp, preg0);
+            MicroAPI::ReduceSum(vregSum, vregExp, preg0);
+            MicroAPI::Duplicate(vregSumBcast, vregSum, preg0);
+            MicroAPI::Div(vregResult, vregExp, vregSumBcast, preg0);
+            MicroAPI::DataCopy(xNormAddr, vregResult, preg0);
+        }
     } else {
         Exp(xNormTensor, xRow, expertCountAlign_);
         PipeBarrier<PIPE_V>();
@@ -250,63 +252,98 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1ByMax(int6
 {
     LocalTensor<float> xNormWithBiasTensor = xNormWithBiasBuf_.Get<float>();
     LocalTensor<int32_t> expertIdxOut = expertIdxOutQueue_.AllocTensor<int32_t>();
+    LocalTensor<float> sortedScore = sortedBuf_.Get<float>();
 
-    int64_t a = expertCountAlign_;
-    LocalTensor<float> maxTensor = calcTmpBuf_.Get<float>();
-    LocalTensor<float> tmpReduce = calcTmpBuf_.Get<float>()[a];
-    LocalTensor<float> broadcastMax = calcTmpBuf_.Get<float>()[a * 2];
-    LocalTensor<float> diffTensor = calcTmpBuf_.Get<float>()[a * 3];
-    LocalTensor<float> expTensor = calcTmpBuf_.Get<float>()[a * 4];
-    LocalTensor<int32_t> maskInt32 = calcTmpBuf_.Get<int32_t>()[a * 5];
-    LocalTensor<float> maskFloat = calcTmpBuf_.Get<float>()[a * 6];
-    LocalTensor<float> idxTensor = calcTmpBuf_.Get<float>()[a * 7];
-    LocalTensor<float> maskedIdx = calcTmpBuf_.Get<float>()[a * 8];
-    LocalTensor<float> argmaxTensor = calcTmpBuf_.Get<float>()[a * 9];
+    uint32_t expertCountU32 = static_cast<uint32_t>(expertCount_);
+    __local_mem__ float *xNormWithBiasAddr = (__local_mem__ float *)xNormWithBiasTensor.GetPhyAddr();
+    __local_mem__ float *sortedAddr = (__local_mem__ float *)sortedScore.GetPhyAddr();
 
-    ReduceMax(maxTensor, xNormWithBiasTensor, tmpReduce, expertCountAlign_);
+    __VEC_SCOPE__
+    {
+        RegTensor<float> valueAndIndexReg;
+        MicroAPI::MaskReg maskForVL2 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::VL2>();
+        MicroAPI::MaskReg maskForExpertCount = MicroAPI::UpdateMask<uint32_t>(expertCountU32);
+
+        MicroAPI::DataCopy(valueAndIndexReg, xNormWithBiasAddr);
+        MicroAPI::ReduceMax(valueAndIndexReg, valueAndIndexReg, maskForExpertCount);
+        MicroAPI::DataCopy(sortedAddr, valueAndIndexReg, maskForVL2);
+    }
+
     event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
     SetFlag<HardEvent::V_S>(eventIdVToS);
     WaitFlag<HardEvent::V_S>(eventIdVToS);
-    float maxValue = maxTensor.GetValue(0);
-    event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-    SetFlag<HardEvent::S_V>(eventIdSToV);
-    WaitFlag<HardEvent::S_V>(eventIdSToV);
-
-    Duplicate(broadcastMax, maxValue, expertCountAlign_);
-    PipeBarrier<PIPE_V>();
-    Sub(diffTensor, xNormWithBiasTensor, broadcastMax, expertCountAlign_);
-    PipeBarrier<PIPE_V>();
-    Exp(expTensor, diffTensor, expertCountAlign_);
-    PipeBarrier<PIPE_V>();
-
-    Cast(maskInt32, expTensor, RoundMode::CAST_TRUNC, expertCountAlign_);
-    PipeBarrier<PIPE_V>();
-    Cast(maskFloat, maskInt32, RoundMode::CAST_NONE, expertCountAlign_);
-    PipeBarrier<PIPE_V>();
-
-    ArithProgression(idxTensor, static_cast<float>(0), static_cast<float>(1), expertCountAlign_);
-    PipeBarrier<PIPE_V>();
-    Mul(maskedIdx, idxTensor, maskFloat, expertCountAlign_);
-    PipeBarrier<PIPE_V>();
-
-    ReduceMax(argmaxTensor, maskedIdx, tmpReduce, expertCountAlign_);
-    eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-    SetFlag<HardEvent::V_S>(eventIdVToS);
-    WaitFlag<HardEvent::V_S>(eventIdVToS);
-    float argmaxValue = argmaxTensor.GetValue(0);
-    eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-    SetFlag<HardEvent::S_V>(eventIdSToV);
-    WaitFlag<HardEvent::S_V>(eventIdSToV);
-
-    int32_t argmaxIdx = static_cast<int32_t>(argmaxValue);
+    LocalTensor<int32_t> sortedScoreInt32 = sortedScore.ReinterpretCast<int32_t>();
+    int32_t argmaxIdx = sortedScoreInt32.GetValue(1);
     if (argmaxIdx >= expertCount_) {
         argmaxIdx = 0;
     }
     expertIdxOut.SetValue(0, argmaxIdx);
-    eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+    event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
     SetFlag<HardEvent::S_V>(eventIdSToV);
     WaitFlag<HardEvent::S_V>(eventIdSToV);
 
+    expertIdxOutQueue_.EnQue<int32_t>(expertIdxOut);
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1AndScore(int64_t rowInBatch)
+{
+    LocalTensor<float> xNormTensor = xNormBuf_.Get<float>();
+    LocalTensor<float> xNormWithBiasTensor = xNormWithBiasBuf_.Get<float>();
+    LocalTensor<float> sortedScore = sortedBuf_.Get<float>();
+    LocalTensor<T> yOutTensor = yOutQueue_.AllocTensor<T>();
+    LocalTensor<int32_t> expertIdxOut = expertIdxOutQueue_.AllocTensor<int32_t>();
+
+    uint32_t expertCountU32 = static_cast<uint32_t>(expertCount_);
+    __local_mem__ float *xNormWithBiasAddr = (__local_mem__ float *)xNormWithBiasTensor.GetPhyAddr();
+    __local_mem__ float *xNormAddr = (__local_mem__ float *)xNormTensor.GetPhyAddr();
+    __local_mem__ float *sortedAddr = (__local_mem__ float *)sortedScore.GetPhyAddr();
+    __local_mem__ T *outputAddr = (__local_mem__ T *)yOutTensor.GetPhyAddr();
+    __local_mem__ uint32_t *expertIdxAddr = (__local_mem__ uint32_t *)expertIdxOut.GetPhyAddr();
+
+    __VEC_SCOPE__
+    {
+        RegTensor<float> valueAndIndexReg;
+        MicroAPI::MaskReg maskForVL2 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::VL2>();
+        MicroAPI::MaskReg maskForExpertCount = MicroAPI::UpdateMask<uint32_t>(expertCountU32);
+
+        MicroAPI::DataCopy(valueAndIndexReg, xNormWithBiasAddr);
+        MicroAPI::ReduceMax(valueAndIndexReg, valueAndIndexReg, maskForExpertCount);
+        MicroAPI::DataCopy(sortedAddr, valueAndIndexReg, maskForVL2);
+    }
+
+    __VEC_SCOPE__
+    {
+        RegTensor<uint32_t> vreg0;
+        RegTensor<uint32_t> vreg1;
+        RegTensor<float> vreg2;
+        RegTensor<float> vreg3;
+        RegTensor<float> vreg4;
+        RegTensor<float> vregOutput;
+
+        uint32_t kU32 = static_cast<uint32_t>(k_);
+        MicroAPI::MaskReg preg0 = MicroAPI::UpdateMask<float>(kU32);
+
+        MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(vreg0, vreg1,
+                                                                           (__local_mem__ uint32_t *)sortedAddr);
+        MicroAPI::DataCopyGather(vreg2, xNormAddr, vreg1, preg0);
+
+        bool needRenorm = !(normType_ == 0 && renorm_ == 0);
+        if (needRenorm) {
+            MicroAPI::ReduceSum(vreg3, vreg2, preg0);
+            MicroAPI::Adds(vreg3, vreg3, eps_, preg0);
+            MicroAPI::Duplicate(vreg4, vreg3, preg0);
+            MicroAPI::Div(vreg4, vreg2, vreg4, preg0);
+            MicroAPI::Muls(vregOutput, vreg4, routedScalingFactor_, preg0);
+        } else {
+            MicroAPI::Muls(vregOutput, vreg2, routedScalingFactor_, preg0);
+        }
+
+        ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOutput, preg0, 0);
+        MicroAPI::DataCopy(expertIdxAddr, vreg1, preg0);
+    }
+
+    yOutQueue_.EnQue<T>(yOutTensor);
     expertIdxOutQueue_.EnQue<int32_t>(expertIdxOut);
 }
 
@@ -355,7 +392,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeExpertScore(i
     Gather(yOutTensor, xNormTensor, expertIdxWithByte.template ReinterpretCast<uint32_t>(),
            static_cast<uint32_t>(0), k_);
 
-    bool needRenorm = (normType_ == 1) || (normType_ == 0 && renorm_ == 1);
+    bool needRenorm = !(normType_ == 0 && renorm_ == 0);
     if (needRenorm) {
         LocalTensor<float> maxValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> tmpTensor = calcTmpBuf_.Get<float>()[BLOCK_BYTES];
@@ -613,11 +650,11 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::Process()
                 CopyOutXNorm(globalRow);
             }
             if (k_ == 1) {
-                SelectTop1ByMax(r);
+                SelectTop1AndScore(r);
             } else {
                 SelectTopKBySort(r);
+                ComputeExpertScore(r);
             }
-            ComputeExpertScore(r);
             CopyOut(globalRow);
         }
         xInQueue_.FreeTensor(xInTensor);
