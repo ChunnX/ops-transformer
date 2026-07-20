@@ -75,7 +75,8 @@ public:
     __aicore__ inline MegaMoeLayered(){};
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1,
                                 GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
-                                GM_ADDR scales, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM,
+                                GM_ADDR scales, GM_ADDR sharedWeight1,GM_ADDR sharedWeight2,GM_ADDR sharedWeightScales1,
+ 	                            GM_ADDR sharedWeightScales2, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM,
                                 MegaMoeTilingData *tilingData);
     __aicore__ inline void Process();
 
@@ -88,11 +89,14 @@ private:
     __aicore__ inline void SendMaskCal();
     __aicore__ inline void SendCntCal(int32_t localExpertId, uint64_t &sendCnt);
     __aicore__ inline void TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo, int32_t localExpertId);
-    template <AddrUpdateMode Mode, bool IsShared = false>
+    template <AddrUpdateMode Mode>
     __aicore__ inline bool UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx,
         uint64_t sendCnt = 0);
-    template <AddrUpdateMode Mode, bool IsShared = false>
+    __aicore__ inline bool UpdateSharedGroupParams(ExpertLoopState &state, uint32_t expertIdx);
+    template <AddrUpdateMode Mode>
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
+    template <AddrUpdateMode Mode>
+ 	__aicore__ inline void UpdateSharedGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     __aicore__ inline void Unpermute();
     __aicore__ inline void InitCombineBuffers();
     __aicore__ inline void ProcessCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
@@ -121,10 +125,11 @@ private:
     __aicore__ inline void ProcessSharedExpertGmm2(const TupleShape &initShape, const BlockOffset &initOffset);
     __aicore__ inline void UnpermuteSharedExpert(int32_t tokenIdx);
     template <bool IsShared = false>
-    __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
+    __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
+                                                      int32_t &vecSetSyncCom);
     template <bool IsShared = false>
     __aicore__ inline void GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
-                                                  uint32_t expertIdx);
+                                                  uint32_t expertIdx, int32_t &vecSetSyncCom);
 
     __gm__ Mc2MoeContext *mc2Context_{nullptr};
     Hcomm<COMM_PROTOCOL_UBC_CTP> hcomm_;
@@ -152,7 +157,6 @@ private:
     uint32_t expertPerRank_ = 0;
     int64_t hiddenDim_ = 0;
     uint64_t maxOutputSize_ = 0;
-    int32_t vecSetSyncCom_ = 0;
     uint32_t startBlockIdx_ = 0;
     uint32_t blockNumPerRank_ = 2;
     int32_t dispatchFlagSlotsPerExpert_ = 0;
@@ -254,8 +258,9 @@ private:
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1, GM_ADDR weight2,
-    GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales, GM_ADDR yOut,
-    GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
+    GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2, GM_ADDR scales,
+    GM_ADDR sharedWeight1, GM_ADDR sharedWeight2, GM_ADDR sharedWeightScales1, GM_ADDR sharedWeightScales2,
+    GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM, MegaMoeTilingData *tilingData)
 {
     m_ = tilingData->bs;
     k_ = tilingData->h;
@@ -292,6 +297,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     params_.b2GmAddr = GetTensorAddr(0, weight2);
     params_.bScaleGmAddr = GetTensorAddr(0, weightScales1);
     params_.b2ScaleGmAddr = GetTensorAddr(0, weightScales2);
+    params_.sharedBGmAddr = GetTensorAddr(0, sharedWeight1);
+    params_.sharedB2GmAddr = GetTensorAddr(0, sharedWeight2);
+    params_.sharedBScaleGmAddr = GetTensorAddr(0, sharedWeightScales1);
+    params_.sharedB2ScaleGmAddr = GetTensorAddr(0, sharedWeightScales2);
     params_.combineCommParams.rankId = rankId_;
     params_.combineCommParams.hcomm = &hcomm_;
     params_.combineCommParams.mc2Context = mc2Context_;
@@ -565,7 +574,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
     //        + SendCntCalToUpdParams(expertPerRank * aicNum_ * INT_CACHELINE)
     swigluToGmm2FlagGm_.SetGlobalBuffer((__gm__ int32_t *)params_.workspaceInfo.flagSwiGluToGmm2Ptr);
     int32_t flagNum =
-        static_cast<int32_t>(expertPerRank_) * (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_ +
+        static_cast<int32_t>(moeExpertPerRank_) * (static_cast<int32_t>(INT_CACHELINE) + dispatchFlagSlotsPerExpert_ +
                                                 static_cast<int32_t>(INT_CACHELINE) * static_cast<int32_t>(aicNum_));
     int32_t coreLen, coreOffset;
     TilingByCore(flagNum, coreLen, coreOffset, 1);
@@ -1310,9 +1319,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
 //   Phase 2: 更新当前专家id收到的count数;
 // =====================================================================================================
 template <TemplateMegaMoeTypeClass>
-template <AddrUpdateMode Mode, bool IsShared>
-__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGroupParams(ExpertLoopState &state,
-                                                                                  uint32_t expertIdx, uint64_t sendCnt)
+template <AddrUpdateMode Mode>
+__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx,
+                                                                           uint64_t sendCnt)
 {
     if (expertIdx != 0) {
         uint64_t m = Get<M_VALUE>(state.problemShape);
@@ -1321,7 +1330,6 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGroupParam
         state.expertBeforeCnt += m;
         Get<IDX_A_OFFSET>(state.baseOffset) += m * k / A_ELEMS_PER_BYTE;
         Get<IDX_B_OFFSET>(state.baseOffset) += n * k / B_ELEMS_PER_BYTE;
-        // only splitM
         auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
         Get<IDX_A_SCALE_OFFSET>(state.baseOffset) += m * scaleK;
         Get<IDX_B_SCALE_OFFSET>(state.baseOffset) += n * scaleK;
@@ -1336,31 +1344,14 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGroupParam
         Get<IDX_M_OFFSET>(state.baseOffset) += m;
         Get<IDX_GMM1_OFFSET>(state.baseOffset) += m * n;
         Get<IDX_GMM2_OFFSET>(state.baseOffset) += m * k;
-    } else if constexpr (!IsShared) {
-        if (sharedExpertNum_ > 0) {
-            uint64_t n = Get<N_VALUE>(state.problemShape);
-            uint64_t k = Get<K_VALUE>(state.problemShape);
-            auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
-            Get<IDX_B_OFFSET>(state.baseOffset) =
-                static_cast<int64_t>(sharedExpertNum_) * n * k / B_ELEMS_PER_BYTE;
-            Get<IDX_B_SCALE_OFFSET>(state.baseOffset) =
-                static_cast<int64_t>(sharedExpertNum_) * n * scaleK;
-            Get<IDX_B2_OFFSET>(state.baseOffset) =
-                static_cast<int64_t>(sharedExpertNum_) * k * n / SWIGLU_N_HALF / B_ELEMS_PER_BYTE;
-            Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) =
-                static_cast<int64_t>(sharedExpertNum_) * k *
-                Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) *
-                MXFP_MULTI_BASE_SIZE;
-        }
     }
 
-    if constexpr (IsShared) {
-        Get<M_VALUE>(state.problemShape) = m_;
-    } else if constexpr (Mode == AddrUpdateMode::GMM1) {
-        if (subBlockIdx_ == 0) {
-            __gm__ int32_t* sendCntFlag = (__gm__ int32_t*)params_.workspaceInfo.flagSendCntCalToUpdParamsPtr +
-                static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
-                static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
+    // gmm1中当前专家收到的count数是由subBlockIdx_=1的aiv计算出并写入expertRevNumsGlobalTensor_，通知后续aic/aiv0读取该值
+    if constexpr (Mode == AddrUpdateMode::GMM1) {
+        if (subBlockIdx_ == 0) { // aiv1进行SendCntCal计算完成后atomicAddFlag，aic/aiv0等到该flag位后读取cnt值
+            __gm__ int32_t *sendCntFlag = (__gm__ int32_t *)params_.workspaceInfo.flagSendCntCalToUpdParamsPtr +
+                                          static_cast<uint64_t>(expertIdx) * aicNum_ * INT_CACHELINE +
+                                          static_cast<uint64_t>(blockIdx_) * INT_CACHELINE;
             while (AscendC::ReadGmByPassDCache(sendCntFlag) == 0) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {
@@ -1385,7 +1376,40 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGroupParam
         return false;
     }
     return true;
-    
+}
+
+// =====================================================================================================
+// UpdateSharedGroupParams：共享专家专用，M 恒为 m_，无 flag 等待与 DCache 操作。
+// =====================================================================================================
+template <TemplateMegaMoeTypeClass>
+__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateSharedGroupParams(ExpertLoopState &state,
+    uint32_t expertIdx)
+{
+    if (expertIdx != 0) {
+        uint64_t m = Get<M_VALUE>(state.problemShape);
+        uint64_t n = Get<N_VALUE>(state.problemShape);
+        uint64_t k = Get<K_VALUE>(state.problemShape);
+        state.expertBeforeCnt += m;
+        Get<IDX_A_OFFSET>(state.baseOffset) += m * k / A_ELEMS_PER_BYTE;
+        Get<IDX_B_OFFSET>(state.baseOffset) += n * k / B_ELEMS_PER_BYTE;
+        auto scaleK = Ops::Base::CeilDiv(k, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_A_SCALE_OFFSET>(state.baseOffset) += m * scaleK;
+        Get<IDX_B_SCALE_OFFSET>(state.baseOffset) += n * scaleK;
+        Get<IDX_C_OFFSET>(state.baseOffset) += m * n / SWIGLU_N_HALF / C_ELEMS_PER_BYTE;
+        Get<IDX_C_SCALE_OFFSET>(state.baseOffset) +=
+            m * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_FLAG_OFFSET>(state.baseOffset) += 1;
+        Get<IDX_B2_OFFSET>(state.baseOffset) += k * n / SWIGLU_N_HALF / B_ELEMS_PER_BYTE;
+        Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) +=
+            k * Ops::Base::CeilDiv(n / SWIGLU_N_HALF, static_cast<uint64_t>(MXFP_DIVISOR_SIZE)) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_Y2_OFFSET>(state.baseOffset) += m * k;
+        Get<IDX_M_OFFSET>(state.baseOffset) += m;
+        Get<IDX_GMM1_OFFSET>(state.baseOffset) += m * n;
+        Get<IDX_GMM2_OFFSET>(state.baseOffset) += m * k;
+    }
+
+    Get<M_VALUE>(state.problemShape) = m_;
+    return true;
 }
 
 // ==================================================================================
@@ -1394,58 +1418,89 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGroupParam
 //                     GMM2 始终写 gmm2MmadResPtr。
 // ==================================================================================
 template <TemplateMegaMoeTypeClass>
-template <AddrUpdateMode Mode, bool IsShared>
+template <AddrUpdateMode Mode>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo,
-                                                                                   const ExpertLoopState &state)
+                                                                            const ExpertLoopState &state)
 {
     if constexpr (Mode == AddrUpdateMode::GMM1) {
-        if constexpr (IsShared) {
-            gmmAddrInfo.aGlobal = params_.workspaceInfo.sharedExpertInputDataPtr;
-            gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.sharedExpertInputScalePtr;
-        } else {
-            gmmAddrInfo.aGlobal = params_.workspaceInfo.dispatchRevDataPtr +
-                Get<IDX_A_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-            gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.dispatchRevScalePtr +
-                Get<IDX_A_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
-        }
+        // guard 与 WorkspaceInfo 分配条件一致，由 TilingKey 保证同步。
         if constexpr (ENABLE_A8W4) {
-            GM_ADDR gmm1OutBase = IsShared ? params_.workspaceInfo.sharedExpertGmm1OutPtr
-                                        : params_.workspaceInfo.gmm1MmadResPtr;
             gmmAddrInfo.gmm1OutGlobal =
-                gmm1OutBase + Get<IDX_GMM1_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
-        }
-
-        gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-        gmmAddrInfo.bScaleGlobal = params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(state.baseOffset) *
-                                    sizeof(QuantScaleOutType);
-    } else if constexpr(Mode == AddrUpdateMode::GMM2) {
-        GM_ADDR swigluDataBase = IsShared ? params_.workspaceInfo.sharedExpertSwigluDataPtr
-                                          : params_.workspaceInfo.swigluQuantDataPtr;
-        GM_ADDR swigluScaleBase = IsShared ? params_.workspaceInfo.sharedExpertSwigluScalePtr
-                                           : params_.workspaceInfo.swigluQuantScalePtr;
-        if constexpr (ENABLE_A8W4 || ENABLE_A4W4 || CombineQuantMode != COMBINE_NO_QUANT || IsShared) {
-            GM_ADDR gmm2OutBase = IsShared ? params_.workspaceInfo.sharedExpertResultPtr
-                                           : params_.workspaceInfo.gmm2MmadResPtr;
-            gmmAddrInfo.gmm2OutGlobal =
-                gmm2OutBase + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
+                params_.workspaceInfo.gmm1MmadResPtr + Get<IDX_GMM1_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
         }
         gmmAddrInfo.aGlobal =
-            swigluDataBase + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-        gmmAddrInfo.aScaleGlobal =
-            swigluScaleBase + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+            params_.workspaceInfo.dispatchRevDataPtr + Get<IDX_A_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.dispatchRevScalePtr +
+                                Get<IDX_A_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+
+        gmmAddrInfo.bGlobal = params_.bGmAddr + Get<IDX_B_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        gmmAddrInfo.bScaleGlobal =
+            params_.bScaleGmAddr + Get<IDX_B_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+
+        if constexpr (g_coreType == AIV) {
+            AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
+                Get<IDX_C_OFFSET>(state.baseOffset),
+                Get<IDX_C_SCALE_OFFSET>(state.baseOffset),
+                Get<IDX_FLAG_OFFSET>(state.baseOffset),
+                0L,
+                0L,
+                0L};
+            epilogueOp_.UpdateGlobalAddr(vecBaseOffset);
+        }
+    } else if constexpr (Mode == AddrUpdateMode::GMM2) {
+        // guard 与 WorkspaceInfo 分配条件一致，由 TilingKey 保证同步。
+        if constexpr (ENABLE_A8W4 || ENABLE_A4W4 || CombineQuantMode != COMBINE_NO_QUANT) {
+            gmmAddrInfo.gmm2OutGlobal =
+                params_.workspaceInfo.gmm2MmadResPtr + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
+        }
+        gmmAddrInfo.aGlobal =
+            params_.workspaceInfo.swigluQuantDataPtr + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.swigluQuantScalePtr
+            + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
         gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal =
             params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
     }
-    if constexpr (IsShared) {
-        gmmAddrInfo.swigluToGmm2Flag = nullptr;
-        gmmAddrInfo.dispatchToGmm1Flag = nullptr;
-    } else {
-        gmmAddrInfo.swigluToGmm2Flag = (__gm__ int32_t*)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
-                                    Get<IDX_FLAG_OFFSET>(state.baseOffset) * INT_CACHELINE;
-        gmmAddrInfo.dispatchToGmm1Flag = (__gm__ int32_t*)params_.workspaceInfo.flagDispatchToGmm1Ptr +
+    gmmAddrInfo.swigluToGmm2Flag = (__gm__ int32_t *)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
+                                Get<IDX_FLAG_OFFSET>(state.baseOffset) * INT_CACHELINE;
+    // wave-grain dispatch-gmm1 flag: per-expert 步长是 dispatchFlagSlotsPerExpert_,而不是 INT_CACHELINE。
+    gmmAddrInfo.dispatchToGmm1Flag = (__gm__ int32_t *)params_.workspaceInfo.flagDispatchToGmm1Ptr +
                                     Get<IDX_FLAG_OFFSET>(state.baseOffset) * dispatchFlagSlotsPerExpert_;
+}
+
+// ==================================================================================
+// UpdateSharedGlobalBuffer：共享专家专用，地址来自 shared* workspace，flags 为 nullptr。
+// ==================================================================================
+template <TemplateMegaMoeTypeClass>
+template <AddrUpdateMode Mode>
+__aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateSharedGlobalBuffer(GMMAddrInfo &gmmAddrInfo,
+    const ExpertLoopState &state)
+{
+    if constexpr (Mode == AddrUpdateMode::GMM1) {
+        gmmAddrInfo.aGlobal = params_.workspaceInfo.sharedExpertInputDataPtr;
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.sharedExpertInputScalePtr;
+        if constexpr (ENABLE_A8W4) {
+            gmmAddrInfo.gmm1OutGlobal = params_.workspaceInfo.sharedExpertGmm1OutPtr
+                + Get<IDX_GMM1_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
+        }
+        gmmAddrInfo.bGlobal = params_.sharedBGmAddr +
+            Get<IDX_B_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        gmmAddrInfo.bScaleGlobal = params_.sharedBScaleGmAddr +
+            Get<IDX_B_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+    } else if constexpr(Mode == AddrUpdateMode::GMM2) {
+        gmmAddrInfo.gmm2OutGlobal =
+            params_.workspaceInfo.sharedExpertResultPtr + Get<IDX_GMM2_OFFSET>(state.baseOffset) * sizeof(bfloat16_t);
+        gmmAddrInfo.aGlobal = params_.workspaceInfo.sharedExpertSwigluDataPtr
+            + Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.sharedExpertSwigluScalePtr
+            + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+        gmmAddrInfo.bGlobal = params_.sharedB2GmAddr +
+            Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
+        gmmAddrInfo.bScaleGlobal = params_.sharedB2ScaleGmAddr +
+            Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
     }
+    gmmAddrInfo.swigluToGmm2Flag = nullptr;
+    gmmAddrInfo.dispatchToGmm1Flag = nullptr;
 }
 
 // =============================================
@@ -1608,20 +1663,19 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UnpermuteBuffIni
     topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, topKWeightsAddr, topKWeightsSize);
     uint32_t tempAddr = topKWeightsAddr + topKWeightsBufAlign;
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        uint32_t scaleNum = Ops::Base::CeilAlign(static_cast<uint32_t>(k_), static_cast<uint32_t>(ALIGN_32));
+        uint32_t scaleNum = Ops::Base::CeilDiv(static_cast<uint32_t>(k_), static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
         // Tensor用处：DeQuantMxFp8 中用于存储 bf16 格式的 scale（e8m0 转换后的中间结果）
         // Tensor大小：scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * HALF_TO_FP32，双缓冲 + scale 扩展
-        uint32_t bf16ScaleBufAlign =
-            Ops::Base::CeilAlign(static_cast<uint32_t>(scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * HALF_TO_FP32),
-                                 static_cast<uint32_t>(ALIGN_32));
-        bf16ScaleTensor_ =
-            LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr, bf16ScaleBufAlign / sizeof(bfloat16_t));
+        // Tensor大小：scaleNum * sizeof(bfloat16_t) * DOUBLE_BUFFER * DEQUANT_SCALE_EXPAND，双缓冲 + scale 扩展
+        uint32_t bf16ScaleBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>
+            (scaleNum * sizeof(bfloat16_t) * DEQUANT_SCALE_EXPAND), static_cast<uint32_t>(ALIGN_32));
+        bf16ScaleTensor_ = LocalTensor<bfloat16_t>(
+            TPosition::VECCALC, tempAddr, bf16ScaleBufAlign / sizeof(bfloat16_t));
         tempAddr += bf16ScaleBufAlign;
         // Tensor用处：DeQuantMxFp8 中用于存储 fp32 格式的 scale（广播后的最终 scale）
-        // Tensor大小：scaleNum * sizeof(float) * DOUBLE_BUFFER * HALF_TO_FP32，双缓冲 + scale 扩展
-        uint32_t fp32ScaleBufAlign =
-            Ops::Base::CeilAlign(static_cast<uint32_t>(scaleNum * sizeof(float) * DOUBLE_BUFFER * HALF_TO_FP32),
-                                 static_cast<uint32_t>(ALIGN_32));
+        // Tensor大小：scaleNum * sizeof(float) * DOUBLE_BUFFER * DEQUANT_SCALE_EXPAND，双缓冲 + scale 扩展
+        uint32_t fp32ScaleBufAlign = Ops::Base::CeilAlign(static_cast<uint32_t>
+            (scaleNum * sizeof(float) * DEQUANT_SCALE_EXPAND), static_cast<uint32_t>(ALIGN_32));
         fp32ScaleTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, fp32ScaleBufAlign / sizeof(float));
         tempAddr += fp32ScaleBufAlign;
     }
@@ -1851,7 +1905,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SharedExpertCopy
 template <TemplateMegaMoeTypeClass>
 template <bool IsShared>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQuant(
-    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state)
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, int32_t &vecSetSyncCom)
 {
     BlockEpilogue &epilogueOp = IsShared ? sharedEpilogueOp_ : epilogueOp_;
     if constexpr (g_coreType == AIV) {
@@ -1863,17 +1917,17 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithS
     if constexpr (ENABLE_A8W4) {
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, Weight1Type, bfloat16_t,
             QuantScaleOutType, QuantScaleOutType, IsShared>(
-            epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+            epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom);
     } else {
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
             params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                 QuantScaleOutType, QuantScaleOutType, true, IsShared>(
-                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom);
         } else {
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                 QuantScaleOutType, QuantScaleOutType, false, IsShared>(
-                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_);
+                epilogueOp, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom);
         }
     }
 }
@@ -1885,24 +1939,24 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithS
 template <TemplateMegaMoeTypeClass>
 template <bool IsShared>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithCombine(
-    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx)
+    const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state, uint32_t expertIdx, int32_t &vecSetSyncCom)
 {
     if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode,
             SwigluQuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType, QuantScaleOutType, IsShared>(
-            params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+            params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
             state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
     } else {
         // A8W8_NZ / Generic: both use the same GroupMatmul2 template, only LayoutB differs (ZN vs ND).
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
                 QuantScaleOutType, QuantScaleOutType, true, true, IsShared>(
-                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
                 state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
         } else {
             MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
                 QuantScaleOutType, QuantScaleOutType, false, true, IsShared>(
-                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
+                params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom,
                 state.expertBeforeCnt, gmm2PingPongIdx_, expertIdx);
         }
     }
@@ -1922,32 +1976,31 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessSharedExp
 
     GMMAddrInfo sharedGmm1AddrInfo;
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};
+    int32_t vecSetSyncCom = 0;
     for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
-        if (!UpdateGroupParams<AddrUpdateMode::GMM1, true>(sharedGmm1State, sharedIdx)) {
+        if (!UpdateSharedGroupParams(sharedGmm1State, sharedIdx)) {
             continue;
         }
-        UpdateGlobalBuffer<AddrUpdateMode::GMM1, true>(sharedGmm1AddrInfo, sharedGmm1State);
-        GroupMatmulWithSwigluQuant<true>(sharedGmm1AddrInfo, sharedGmm1State);
+        UpdateSharedGlobalBuffer<AddrUpdateMode::GMM1>(sharedGmm1AddrInfo, sharedGmm1State);
+        GroupMatmulWithSwigluQuant<true>(sharedGmm1AddrInfo, sharedGmm1State, vecSetSyncCom);
     }
-    EndSync(vecSetSyncCom_);
-    vecSetSyncCom_ = 0;
-    startBlockIdx_ = 0;
+    EndSync(vecSetSyncCom);
+    startBlockIdx_ = 0; // 共享专家GMM1修改了startBlockIdx_，重置给GMM1使用
 }
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessSharedExpertGmm2(
     const TupleShape &initShape, const BlockOffset &initOffset)
 {
-    startBlockIdx_ = 0;
-    vecSetSyncCom_ = 0;
     GMMAddrInfo sharedGmm2AddrInfo;
     ExpertLoopState sharedGmm2State{initShape, initOffset, 0};
+    int32_t vecSetSyncCom = 0;
     for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
-        if (!UpdateGroupParams<AddrUpdateMode::GMM2, true>(sharedGmm2State, sharedIdx)) {
+        if (!UpdateSharedGroupParams(sharedGmm2State, sharedIdx)) {
             continue;
         }
-        UpdateGlobalBuffer<AddrUpdateMode::GMM2, true>(sharedGmm2AddrInfo, sharedGmm2State);
-        GroupMatmulWithCombine<true>(sharedGmm2AddrInfo, sharedGmm2State, sharedIdx);
+        UpdateSharedGlobalBuffer<AddrUpdateMode::GMM2>(sharedGmm2AddrInfo, sharedGmm2State);
+        GroupMatmulWithCombine<true>(sharedGmm2AddrInfo, sharedGmm2State, sharedIdx, vecSetSyncCom);
     }
     SyncAll<false>();
 }
@@ -1977,6 +2030,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     BlockOffset initOffset{0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
     if (sharedExpertNum_ > 0) {
         ProcessSharedExpertGmm1(initShape, initOffset);
+        SyncAll<false>();
     }
 
     CrossRankSyncInWorldSize();
@@ -1994,6 +2048,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     //   GMM1 consumer 始终读 curSendCnt。
     uint64_t curSendCnt = 0;  // 当前 expert 的 sendCnt（GMM1 consumer 使用）
     uint64_t nextSendCnt = 0; // 下一 expert 的 sendCnt（dispatch prefetch 算出）
+    int32_t vecSetSyncCom = 0;
 
     // 预调度 expert 0。
     if constexpr (g_coreType == AIV) {
@@ -2027,9 +2082,9 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
-        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
+        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, vecSetSyncCom);
     }
-    EndSync(vecSetSyncCom_);
+    EndSync(vecSetSyncCom);
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
             ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
@@ -2038,7 +2093,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
 
     SyncAll<true>();
     // 3. 本卡专家接收数据GroupMatmul2 & Combine
-    vecSetSyncCom_ = 0;
+    vecSetSyncCom = 0;
     GMMAddrInfo gmm2AddrInfo;
     ExpertLoopState gmm2State{initShape, initOffset, 0};
     InitCombineBuffers();
@@ -2056,21 +2111,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::GMM2>(gmm2AddrInfo, gmm2State);
-        GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx);
+        GroupMatmulWithCombine(gmm2AddrInfo, gmm2State, expertIdx, vecSetSyncCom);
     }
     if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-        EndGMM2Sync(vecSetSyncCom_, gmm2PingPongIdx_);
+        EndGMM2Sync(vecSetSyncCom, gmm2PingPongIdx_);
     }
 
-    // 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
-    if (sharedExpertNum_ > 0) {
-        if constexpr (g_coreType == AIV) {
-            SyncAll<true>();
-        }
-        ProcessSharedExpertGmm2(initShape, initOffset);
-    } else if constexpr(g_coreType == AIV) {
+    if constexpr(g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
+    }
+
+    // 3.5: 共享专家 GMM2 (MoE GMM2 之后, 复用 MoE 函数)
+    if (sharedExpertNum_ > 0) {
+        ProcessSharedExpertGmm2(initShape, initOffset);
     }
 
     // 4. 本卡数据Unpermute
