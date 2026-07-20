@@ -65,7 +65,7 @@ constexpr int64_t MAX_BS_PER_LOOP = 32;
 constexpr int64_t MAX_REDUCE_SIZE = 256;
 }
 
-bool CheckOptionalParamsExisting(const gert::StorageShape* checkShape)
+int8_t CheckOptionalParamsExisting(const gert::StorageShape* checkShape)
 {
     OP_CHECK_IF(nullptr == checkShape, OP_LOGD("CheckOptionalParamsExisting", "Get nullptr checkShape"), return 0);
     int64_t checkShapeSize = checkShape->GetOriginShape().GetShapeSize();
@@ -151,7 +151,7 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
                     OP_LOGE(context_->GetNodeName(),
                              "bias size should be equal with mixhc, but is %ld", baseFirstDim),
                     return ge::GRAPH_FAILED);
-    auto shapeGamma = context_->GetInputShape(4);
+    auto shapeGamma = context_->GetOptionalInputShape(4);
     gammaExist = CheckOptionalParamsExisting(shapeGamma);
     if (gammaExist == 1) {
         int64_t baseFirstDim = shapeGamma->GetStorageShape().GetDim(0);
