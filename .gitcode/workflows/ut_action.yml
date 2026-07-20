@@ -24,13 +24,6 @@ jobs:
           ref: ${{ atomgit.event.pull_request.merge_commit_sha || atomgit.sha }}
           token: ${{ secrets.GIT_TOKEN }}
       -
-        name: Checkout CI
-        uses: checkout
-        with:
-          repository: ${{ vars.CI_PATH }}
-          ref: refs/heads/master
-          path: "./CI"
-      -
         name: download
         uses: obs-download
         with:
