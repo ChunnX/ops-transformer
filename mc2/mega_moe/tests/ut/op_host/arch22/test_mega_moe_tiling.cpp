@@ -101,4 +101,59 @@ TEST_F(MegaMoeArch22TilingTest, Test0)
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED, UINT64_MAX);
 }
 
+TEST_F(MegaMoeArch22TilingTest, LargeIntermediateHiddenIsNotLimitedByUb)
+{
+    struct MegaMoeCompileInfo {};
+    MegaMoeCompileInfo compileInfo;
+    constexpr uint64_t coreNum = 20;
+    constexpr uint64_t ubSize = 196608;
+    constexpr int64_t kBs = 32;
+    constexpr int64_t kHiddenSize = 7168;
+    constexpr int64_t kN = 28672;
+    constexpr int64_t kIntermediateHidden = kN / 2;
+    constexpr uint32_t kExpertPerRank = 8;
+
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.push_back({{{64}, {64}}, ge::DT_INT32, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, kHiddenSize}, {kBs, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, 8}, {kBs, 8}}, ge::DT_INT32, ge::FORMAT_ND});
+    inputs.push_back({{{kBs, 8}, {kBs, 8}}, ge::DT_FLOAT, ge::FORMAT_ND});
+    for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+        inputs.push_back({{{kHiddenSize, kN}, {kHiddenSize, kN}}, ge::DT_BF16, ge::FORMAT_ND});
+    }
+    for (uint32_t i = 0; i < kExpertPerRank; ++i) {
+        inputs.push_back(
+            {{{kIntermediateHidden, kHiddenSize}, {kIntermediateHidden, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
+    }
+
+    gert::TilingContextPara tilingContextPara(
+        "MegaMoe", inputs,
+        {
+            {{{kBs, kHiddenSize}, {kBs, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{kExpertPerRank}, {kExpertPerRank}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(2LL * 1024 * 1024 * 1024)},
+         {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(64)},
+         {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"dispatch_quant_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"num_max_tokens_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+         {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+         {"activation_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        {1, 1, 1, 1, kExpertPerRank, kExpertPerRank, 0, 0, 0, 0, 0, 0}, {1, 1}, &compileInfo, "Ascend910B", coreNum,
+        ubSize);
+
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, UINT64_MAX);
+}
+
 } // namespace MegaMoeUT
