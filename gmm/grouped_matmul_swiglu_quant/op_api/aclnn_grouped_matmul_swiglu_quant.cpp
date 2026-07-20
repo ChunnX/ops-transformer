@@ -70,7 +70,7 @@ static const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {
     DataType::DT_FLOAT, DataType::DT_FLOAT16, DataType::DT_BF16};
 static const std::vector<DataType> WEIGHT_SCALE_A8W4_DTYPE_SUPPORT_LIST = {DataType::DT_UINT64};
 static const std::vector<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
-                                                                           DataType::DT_BF16};
+                                                                 DataType::DT_BF16};
 static const std::vector<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
 static const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST = {DataType::DT_INT8};
 static const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT};

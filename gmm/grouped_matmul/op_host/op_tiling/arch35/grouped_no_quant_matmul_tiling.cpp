@@ -250,7 +250,7 @@ bool GroupedNoQuantMatmulTiling::HandleGroupTypeDispatch(const gert::TilingConte
         return SeparatedXSeparatedWeight(context);
     }
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-        context->GetNodeName(), "groupType", Ops::Transformer::Gmm::FormatString("%d", groupType_).c_str(),
+        context->GetNodeName(), "groupType", Ops::Transformer::Gmm::FormatString("%ld", groupType_).c_str(),
         Ops::Transformer::Gmm::FormatString("The value of %s cannot be %s", "groupType", "this value").c_str());
     return false;
 }

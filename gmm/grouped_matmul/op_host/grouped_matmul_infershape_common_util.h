@@ -110,7 +110,7 @@ enum class GMMActType : int64_t {
 };
 
 const std::vector<ge::DataType> BIAS_DTYPE_SUPPORT_LIST = {ge::DataType::DT_FLOAT, ge::DataType::DT_FLOAT16,
-                                                                     ge::DataType::DT_BF16};
+                                                           ge::DataType::DT_BF16};
 
 class GroupedMatmulCommonUtil {
 public:

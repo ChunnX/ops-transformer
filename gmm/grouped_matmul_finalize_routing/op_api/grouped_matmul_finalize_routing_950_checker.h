@@ -59,7 +59,7 @@ inline std::string ViewShapeToString(const aclTensor *tensor)
 
 #define GMMFR_CHECK_DTYPE(tensor, paramName, supportList, retExpr)                                      \
     do {                                                                                                \
-        if (!gmm::CheckDTypeInVector((tensor)->GetDataType(), (supportList))) {                                         \
+        if (!gmm::CheckDTypeInVector((tensor)->GetDataType(), (supportList))) {                                      \
             OP_LOGE_FOR_INVALID_DTYPE(GMMFR_ACLNN_OP_NAME, paramName,                                  \
                                       op::ToString((tensor)->GetDataType()).GetString(),                \
                                       gmm::DTypeVectorToString(supportList).c_str());                           \
@@ -91,11 +91,14 @@ static const std::vector<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::Dat
 static const std::vector<op::DataType> LOGIT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 static const std::vector<op::DataType> OUT_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
 
-const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8};
+const std::vector<DataType> X_WEIGHT_TYPE_SUPPORT_LIST_PERTOKEN = {
+    DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_HIFLOAT8};
 static const std::vector<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT};
 static const std::vector<op::DataType> BIAS_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_BF16};
-static const std::vector<op::DataType> SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {op::DataType::DT_FLOAT, op::DataType::DT_BF16};
-static const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_INT8 = {op::DataType::DT_INT64, op::DataType::DT_INT32};
+static const std::vector<op::DataType> SCALE_TYPE_SUPPORT_LIST_PERTOKEN = {
+    op::DataType::DT_FLOAT, op::DataType::DT_BF16};
+static const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_INT8 = {
+    op::DataType::DT_INT64, op::DataType::DT_INT32};
 static const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST_PERTOKEN_FP8HIFLOAT8 = {op::DataType::DT_INT64};
 enum class QuantMode {
     PERTOKEN = 0, // pertoken 量化
@@ -117,7 +120,7 @@ public:
         if (gmm::CheckDTypeInVector(scaleDtype, SCALE_TYPE_SUPPORT_LIST_MX)) {
             quantMode_ = QuantMode::MX;
         } 
-        else if(gmm::CheckDTypeInVector(scaleDtype, SCALE_TYPE_SUPPORT_LIST_PERTOKEN)){
+        else if (gmm::CheckDTypeInVector(scaleDtype, SCALE_TYPE_SUPPORT_LIST_PERTOKEN)) {
             quantMode_ = QuantMode::PERTOKEN;
         }else {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
@@ -296,8 +299,10 @@ public:
     bool CheckOptionalShapes(int64_t m, int64_t k, int64_t e, int64_t n)
     {
         if (gmmParams_.pertokenScaleOptional != nullptr) {
-            op::Shape xScaleExpectShape =
-                quantMode_ == QuantMode::MX ? op::Shape{m, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE), GMMFR_SPLIT_FACTOR} : op::Shape{m};
+            op::Shape xScaleExpectShape = quantMode_ == QuantMode::MX
+                                              ? op::Shape{m, Ops::Base::CeilDiv(k, GMMFR_SPLIT_SIZE),
+                                                          GMMFR_SPLIT_FACTOR}
+                                              : op::Shape{m};
             GMMFR_CHECK_SHAPE(gmmParams_.pertokenScaleOptional, "perTokenScale", xScaleExpectShape, return false);
         }
         if (gmmParams_.bias != nullptr) {
