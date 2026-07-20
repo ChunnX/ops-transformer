@@ -79,7 +79,7 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
     SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
 }
 
-__aicore__ inline void ComputeCombineTileGrouping(uint32_t tileId, uint32_t numGroups, uint32_t totalTiles,
+__aicore__ inline void ComputeCombineTileGrouping(uint32_t jobIndex, uint32_t numGroups, uint32_t totalTiles,
     uint32_t& myGroup, uint32_t& myIdxInGrp, uint32_t& myGrpSize)
 {
     // 将 totalTiles 尽量均匀分到 numGroups，前 remainder 个 group 多分配一个 tile。
@@ -87,12 +87,12 @@ __aicore__ inline void ComputeCombineTileGrouping(uint32_t tileId, uint32_t numG
     uint32_t remainder = totalTiles % numGroups;
     uint32_t boundary = remainder * (baseSize + 1);
 
-    if (tileId < boundary) {
-        myGroup = tileId / (baseSize + 1);
-        myIdxInGrp = tileId % (baseSize + 1);
+    if (jobIndex < boundary) {
+        myGroup = jobIndex / (baseSize + 1);
+        myIdxInGrp = jobIndex % (baseSize + 1);
         myGrpSize = baseSize + 1;
     } else {
-        uint32_t adjusted = tileId - boundary;
+        uint32_t adjusted = jobIndex - boundary;
         myGroup = remainder + adjusted / baseSize;
         myIdxInGrp = adjusted % baseSize;
         myGrpSize = baseSize;
@@ -105,8 +105,8 @@ __aicore__ inline void ComputeCombineTileGrouping(uint32_t tileId, uint32_t numG
 // 3) buffer 上下文：Combine 使用的 GM/UB 地址。
 // 逻辑 tile ID 由外部计算，物理核对应的同步计数器地址也由外部映射后传入。
 struct CombineTileSchedule {
-    uint32_t tileId;
-    uint32_t tileNum;
+    uint32_t jobIndex;
+    uint32_t totalJobs;
 };
 
 struct CombineExpertContext {
@@ -139,13 +139,13 @@ __aicore__ inline void ComputeCombineAlignedTileRange(const CombineTileSchedule&
 {
     tileLength = 0;
     tileOffset = 0;
-    if (totalLength <= 0 || align <= 0 || tileSchedule.tileNum == 0 ||
-        tileSchedule.tileId >= tileSchedule.tileNum) {
+    if (totalLength <= 0 || align <= 0 || tileSchedule.totalJobs == 0 ||
+        tileSchedule.jobIndex >= tileSchedule.totalJobs) {
         return;
     }
-    uint32_t lengthPerTile = Ops::Base::CeilDiv(static_cast<uint32_t>(totalLength), tileSchedule.tileNum);
+    uint32_t lengthPerTile = Ops::Base::CeilDiv(static_cast<uint32_t>(totalLength), tileSchedule.totalJobs);
     uint32_t alignedLengthPerTile = Ops::Base::CeilAlign(lengthPerTile, static_cast<uint32_t>(align));
-    uint32_t offset = tileSchedule.tileId * alignedLengthPerTile;
+    uint32_t offset = tileSchedule.jobIndex * alignedLengthPerTile;
     if (offset >= static_cast<uint32_t>(totalLength)) {
         return;
     }
@@ -167,7 +167,7 @@ __aicore__ inline void ResetCombineSyncCountersSingleCore(const CombineSyncCount
         return;
     }
     int32_t totalCounters = static_cast<int32_t>(static_cast<int64_t>(resetContext.expertPerRank) *
-        resetContext.tileSchedule.tileNum * INT_CACHELINE);
+        resetContext.tileSchedule.totalJobs * INT_CACHELINE);
     int32_t tileLength = 0;
     int32_t tileOffset = 0;
     ComputeCombineAlignedTileRange(resetContext.tileSchedule, totalCounters, ALIGN_32, tileLength, tileOffset);
@@ -213,7 +213,7 @@ __aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileS
     const CombineExpertContext& expertContext, const CombineBufferContext& bufferContext, const Params& params)
 {
     uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(expertContext.mExpert, MegaMoeImpl::L1_TILE_M_256);
-    if (tokenGroupsThisExpert == 0 || tileSchedule.tileNum == 0) {
+    if (tokenGroupsThisExpert == 0 || tileSchedule.totalJobs == 0) {
         return;
     }
 
@@ -221,7 +221,7 @@ __aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileS
     uint32_t myGroup = 0;
     uint32_t myIdxInGrp = 0;
     uint32_t myGrpSize = 0;
-    ComputeCombineTileGrouping(tileSchedule.tileId, tokenGroupsThisExpert, tileSchedule.tileNum, myGroup,
+    ComputeCombineTileGrouping(tileSchedule.jobIndex, tokenGroupsThisExpert, tileSchedule.totalJobs, myGroup,
                                myIdxInGrp, myGrpSize);
     if (myGroup >= tokenGroupsThisExpert || myGrpSize == 0) {
         return;
