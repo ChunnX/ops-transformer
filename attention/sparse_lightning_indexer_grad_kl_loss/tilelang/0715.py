@@ -668,7 +668,6 @@ def tilelang_grad_kl_loss_single_kernel(
                             # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
                             T.pipe_barrier("v")
                             T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
-                            T.pipe_barrier("v")
                             # Op3: dw *= diff (2D, was per-row 1D mul)
                             T.pipe_barrier("v")
                             T.tile.mul(dw_chunk_ub, dw_chunk_ub, diff_2d_ub)
