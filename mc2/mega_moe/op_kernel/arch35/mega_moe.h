@@ -1733,6 +1733,9 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(uint32_t slotIdx)
 {
     if constexpr (g_coreType == AIV) {
+        // Static Tensor programming reserves event IDs 6 and 7.  ID0 is
+        // reused only after its matching wait, or by a distinct HardEvent
+        // direction with an independently completed set/wait lifetime.
         if (subBlockIdx_ != 1) {
             return;
         }
@@ -1763,8 +1766,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
 
             while (true) {
                 DataCopy(scanUb, readyGm[readySlotOffset], copyElements);
-                SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
-                WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
+                SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
 
                 if (readyElements <= INT32_PER_REPEAT) {
                     WholeReduceSum<int32_t>(sumUb, scanUb, static_cast<int32_t>(readyElements), 1, 1, 1, 8);
@@ -1781,8 +1784,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
                     WholeReduceSum<int32_t>(sumUb, partialUb, static_cast<int32_t>(partialCount), 1, 1, 1, 8);
                 }
 
-                SetFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
-                WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
+                SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+                WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
                 if (sumUb.GetValue(0) >= static_cast<int32_t>(blockNum_)) {
                     return;
                 }
@@ -1811,7 +1814,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
         uint32_t releaseElements = logicalAiv1Num * static_cast<uint32_t>(INT_CACHELINE);
         LocalTensor<int32_t> releaseUb(TPosition::VECCALC, GMM2_READY_RELEASE_UB_ADDR, releaseElements);
         Duplicate<int32_t>(releaseUb, 1, releaseElements);
-        SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID7);
+        SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
 
         __gm__ int32_t *readyBase =
             reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm2NoQuantReadyPtr);
@@ -1829,11 +1832,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
             LocalTensor<int32_t> sumUb(TPosition::VECCALC, GMM2_READY_SCAN_UB_ADDR + ALIGN_512, INT_CACHELINE);
             while (true) {
                 DataCopy(scanUb, readyGm[readySlotOffset], INT_CACHELINE);
-                SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
-                WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID7);
+                SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
                 WholeReduceSum<int32_t>(sumUb, scanUb, static_cast<int32_t>(blockNum_), 1, 1, 1, 8);
-                SetFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
-                WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID7);
+                SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
+                WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
                 if (sumUb.GetValue(0) >= static_cast<int32_t>(blockNum_)) {
                     break;
                 }
@@ -1866,10 +1869,10 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::WaitGmm2NoQuantReady(ui
 
         GlobalTensor<int32_t> releaseGm;
         releaseGm.SetGlobalBuffer(releaseBase);
-        WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID7);
+        WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
         DataCopy(releaseGm[releaseSlotOffset], releaseUb, releaseElements);
-        SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID7);
-        WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID7);
+        SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+        WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
     }
 }
 
@@ -2743,11 +2746,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
                                                       COMBINE_META_INFO_TOKEN_CAPACITY;
                         PreloadCombineNoQuantMetaInfo(
                             static_cast<uint64_t>(waveTokenBegin) + waveOwned.start, wavePreloadedChunkCount, 0U);
-                        SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
                     }
                     WaitGmm2NoQuantReady(batchIdx);
                     if (wavePreloadedChunkCount != 0U) {
-                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                     }
                 }
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
@@ -2771,8 +2774,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
                                                   COMBINE_META_INFO_TOKEN_CAPACITY;
                         PreloadCombineNoQuantMetaInfo(
                             static_cast<uint64_t>(waveTokenBegin) + waveOwned.start + processed, chunkCount, 0U);
-                        SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
-                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                        SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
+                        WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                         ProcessCombineNoQuantGm(waveGmm2OutGlobal, waveOwned.start + processed, chunkCount, 0U,
                                                rowSequence);
                         processed += chunkCount;
@@ -2793,11 +2796,11 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
                             PreloadCombineNoQuantMetaInfo(
                                 static_cast<uint64_t>(combineState.expertBeforeCnt) + owned.start + processed,
                                 chunkCount, 0U);
-                            SetFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                            SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
                             if (processed == 0U) {
                                 WaitGmm2NoQuantReady(expertIdx);
                             }
-                            WaitFlag<HardEvent::MTE2_S>(EVENT_ID6);
+                            WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                             ProcessCombineNoQuantGm(combineAddrInfo.gmm2OutGlobal, owned.start + processed, chunkCount,
                                                    0U, rowSequence);
                             processed += chunkCount;
