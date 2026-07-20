@@ -37,8 +37,8 @@ ge::graphStatus MaskChecker::CheckSingleParaMaskMode(const QfaTilingInfo &qfaInf
     // 文档约束: data_type 支持 INT32；支持输入为 0/3/4
     // qfaInfo.maskMode 为已解析的 int64_t（默认 0）
     const std::vector<int64_t> supportedMaskModes = {static_cast<int64_t>(MaskMode::NO_MASK),
-                                                      static_cast<int64_t>(MaskMode::CAUSAL),
-                                                      static_cast<int64_t>(MaskMode::BAND)};
+                                                     static_cast<int64_t>(MaskMode::CAUSAL),
+                                                     static_cast<int64_t>(MaskMode::BAND)};
     OP_CHECK_IF(std::find(supportedMaskModes.begin(), supportedMaskModes.end(), qfaInfo.maskMode) ==
                     supportedMaskModes.end(),
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MASK_MODE_NAME.c_str(),
