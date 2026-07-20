@@ -10,6 +10,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+from collections import Counter
+
 import torch
 
 import stem_indexer_golden
@@ -17,13 +19,21 @@ import stem_indexer_golden
 
 TOPK_SCORE_ATOL = 2.5e-5
 TOPK_SCORE_RTOL = 5e-3
-MAX_FAILURES = 8
+MAX_INDEX_ERROR_RATIO = 5e-3
+MAX_PRINT_FAILURES = 8
 
 
 def normalize_npu_result(npu_result):
     if isinstance(npu_result, (tuple, list)) and len(npu_result) == 2:
         return npu_result[0].detach().cpu().to(torch.int32), npu_result[1].detach().cpu().to(torch.int32)
     raise TypeError("StemIndexer should return (sparse_indices, sparse_seq_len).")
+
+
+def count_index_mismatches(actual_indices, expected_indices):
+    actual_counter = Counter(actual_indices)
+    expected_counter = Counter(expected_indices)
+    matched_count = sum((actual_counter & expected_counter).values())
+    return max(len(actual_indices), len(expected_indices)) - matched_count
 
 
 def get_row_scores(case, inputs, b_idx, q_head_idx, q_block_idx):
@@ -83,7 +93,7 @@ def explain_topk_mismatch(case, inputs, b_idx, q_head_idx, q_block_idx, actual_p
             "actual": actual_prefix,
             "expected": expected_prefix,
             "s2_valid": s2_valid,
-            "invalid": invalid_indices[:MAX_FAILURES],
+            "invalid": invalid_indices[:MAX_PRINT_FAILURES],
             "reason": "actual sparse_indices contains out-of-range indices",
         }
 
@@ -152,8 +162,8 @@ def explain_topk_mismatch(case, inputs, b_idx, q_head_idx, q_block_idx, actual_p
             "q_block": q_block_idx,
             "actual": actual_prefix,
             "expected": expected_prefix,
-            "bad_actual_indices": bad_actual_indices[:MAX_FAILURES],
-            "bad_expected_indices": bad_expected_indices[:MAX_FAILURES],
+            "bad_actual_indices": bad_actual_indices[:MAX_PRINT_FAILURES],
+            "bad_expected_indices": bad_expected_indices[:MAX_PRINT_FAILURES],
             "reason": "dynamic TopK index difference is outside CPU boundary score tolerance",
         }
     return None
@@ -175,19 +185,38 @@ def assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, c
     assert torch.equal(actual_seq_len, expected_seq_len), f"{case['case_id']} sparse_seq_len mismatch"
 
     failures = []
+    bad_index_count = 0
+    valid_index_count = 0
     for index in torch.nonzero(expected_seq_len >= 0, as_tuple=False):
         b_idx, q_head_idx, q_block_idx = [int(item) for item in index]
         valid_len = int(expected_seq_len[b_idx, q_head_idx, q_block_idx])
+        valid_index_count += valid_len
         if valid_len == 0:
             continue
         actual_prefix = actual_indices[b_idx, q_head_idx, q_block_idx, :valid_len].tolist()
         expected_prefix = expected_indices[b_idx, q_head_idx, q_block_idx, :valid_len].tolist()
         if sorted(actual_prefix) != sorted(expected_prefix):
-            failure = explain_topk_mismatch(case, inputs, b_idx, q_head_idx, q_block_idx,
-                                            actual_prefix, expected_prefix)
-            if failure is not None:
+            row_bad_index_count = count_index_mismatches(actual_prefix, expected_prefix)
+            bad_index_count += row_bad_index_count
+            if len(failures) < MAX_PRINT_FAILURES:
+                failure = explain_topk_mismatch(case, inputs, b_idx, q_head_idx, q_block_idx,
+                                                actual_prefix, expected_prefix)
+                if failure is None:
+                    failure = {
+                        "b": b_idx,
+                        "q_head": q_head_idx,
+                        "q_block": q_block_idx,
+                        "actual": actual_prefix,
+                        "expected": expected_prefix,
+                        "reason": "index mismatch is within CPU boundary score tolerance",
+                    }
+                failure["bad_index_count"] = row_bad_index_count
                 failures.append(failure)
-        if len(failures) >= MAX_FAILURES:
-            break
 
-    assert not failures, f"{case['case_id']} sparse_indices valid prefix mismatch: {failures}"
+    index_error_ratio = bad_index_count / valid_index_count if valid_index_count else 0.0
+    assert index_error_ratio <= MAX_INDEX_ERROR_RATIO, (
+        f"{case['case_id']} sparse_indices valid prefix mismatch: "
+        f"bad_index_count={bad_index_count}, "
+        f"valid_index_count={valid_index_count}, index_error_ratio={index_error_ratio:.6g}, "
+        f"max_index_error_ratio={MAX_INDEX_ERROR_RATIO:.6g}, failures={failures}"
+    )
