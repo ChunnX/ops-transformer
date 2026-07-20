@@ -29,7 +29,6 @@ constexpr uint32_t FORMER_CORE_PROCESS_NUM = 1;
 constexpr uint32_t REMAIN_CORE_PROCESS_NUM = 2;
 constexpr uint32_t REMAIN_CORE_NUM = 3;
 constexpr uint32_t USED_CORE_NUM = 4;
-constexpr uint32_t MAX_SEQ_LENGTH_K = 5;
 
 #ifdef __CCE_AICORE__
 __aicore__ inline uint32_t GetAttrAbsIndex(uint32_t coreIdx, uint32_t metaIdx)

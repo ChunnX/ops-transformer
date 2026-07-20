@@ -13,7 +13,7 @@
  * \brief
  */
 #include "register/op_impl_registry.h"
-#include "../../dense_lightning_indexer_kl_loss_grad/op_kernel/arch22/dense_lightning_indexer_kl_loss_grad_metadata_arch22.h"
+#include "../../dense_lightning_indexer_kl_loss_grad/op_kernel/arch35/dense_lightning_indexer_kl_loss_grad_metadata_arch35.h"
 
 using namespace ge;
 
