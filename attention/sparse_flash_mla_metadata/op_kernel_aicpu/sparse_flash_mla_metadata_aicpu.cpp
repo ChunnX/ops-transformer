@@ -395,7 +395,8 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetS1Idx(uint32_t s1Size, uint32_t s1G
     return s1Idx;
 }
 
-uint32_t SparseFlashMlaMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1Idx) {
+uint32_t SparseFlashMlaMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1Idx)
+{
     uint32_t bsStride = 0;
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
@@ -423,8 +424,8 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t bsStride)
 {
     // 尝试使用 oriTopkLength_
     if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
-    	const int32_t *oriTopkPtr =static_cast<const int32_t*>(oriTopkLength_->GetData());
-    	return static_cast<uint32_t>(oriTopkPtr[bsStride]);
+        const int32_t *oriTopkPtr = static_cast<const int32_t*>(oriTopkLength_->GetData());
+        return static_cast<uint32_t>(oriTopkPtr[bsStride]);
     }
     // 如果不是 DEFAULT_MASK，使用 oriTopK_
     return static_cast<uint32_t>(oriTopK_);
@@ -434,7 +435,7 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpTopkLength(uint32_t bsStride)
 {
     // 尝试使用 cmpTopkLength_
     if (cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
-        const int32_t *cmpTopkPtr =static_cast<const int32_t*>(cmpTopkLength_->GetData());
+        const int32_t *cmpTopkPtr = static_cast<const int32_t*>(cmpTopkLength_->GetData());
         return static_cast<uint32_t>(cmpTopkPtr[bsStride]);
     }
     // 如果不是 DEFAULT_MASK，使用 cmpTopK_
