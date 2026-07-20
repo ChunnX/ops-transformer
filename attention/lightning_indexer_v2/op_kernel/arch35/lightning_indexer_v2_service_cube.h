@@ -60,7 +60,6 @@ public:
     static constexpr uint64_t S2_BASIC_BLOCK = 128;
     static constexpr uint64_t D_BASIC_BLOCK_L0 = 128;
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 128;
-    
     static constexpr uint64_t BLOCK_CUBE = 16;
     static constexpr uint64_t FP16_BLOCK_CUBE = 16;
     // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
