@@ -165,5 +165,36 @@ struct GMMWeightQuantTilingData {
 };
 #pragma pack(pop)
 
+// A5 A4W4 (INT4×INT4) mix-core tiling：AIV prologue(int4->int8) + AIC int8×int8 Mmad + AIV epilogue
+#pragma pack(push, 8)
+struct GMMBaseParamsA4W4 {
+    uint32_t m = 0;
+    uint32_t n = 0;
+    uint32_t k = 0;
+    uint32_t groupNum = 0;
+    uint32_t coreNum = 0;
+    uint32_t baseM = 0;
+    uint32_t baseN = 0;
+    uint32_t baseK = 0;
+    uint32_t ubCalSize = 0;        // epilogue 单次计算元素数
+    uint32_t ubRestBytes = 0;      // 留给 prologue 的 UB (byte)
+    uint32_t quantGroupNum = 1;    // perchannel=1, pergroup=k/256
+    uint32_t singleN = 0;          // perchannel 动态分块
+    uint32_t isPerTokenQuant = 0;  // perTokenScale 是否存在
+    uint32_t isA4W4Optimize = 0;
+    int32_t groupType = 0;
+    uint32_t groupListType = 0;
+    uint32_t reserved = 0;
+};
+#pragma pack(pop)
+
+#pragma pack(push, 8)
+struct GMMA4W4QuantTilingData {
+    GMMBaseParamsA4W4 gmmA4W4Params;
+    GMMArray gmmArray;
+    TCubeTiling mmTilingData;
+};
+#pragma pack(pop)
+
 } // GroupedMatmulTilingData
 #endif

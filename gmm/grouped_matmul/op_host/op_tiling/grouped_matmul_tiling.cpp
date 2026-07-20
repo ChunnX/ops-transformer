@@ -18,6 +18,7 @@
 #include "register/op_impl_registry.h"
 #include "arch35/grouped_weight_quant_batch_matmul_tiling.h"
 #include "arch35/grouped_no_quant_matmul_tiling.h"
+#include "arch35/grouped_a4w4_quant_tiling.h"
 #include "op_host/tiling_templates_registry.h"
 #include "err/ops_err.h"
 #include "../../op_kernel/grouped_matmul_tiling_key.h"
@@ -2260,6 +2261,14 @@ ASCENDC_EXTERN_C ge::graphStatus TilingGMM(gert::TilingContext* context) {
         bool isQuant = xDType == ge::DT_FLOAT4_E2M1 || xDType == ge::DT_INT4 || xDType == ge::DT_FLOAT4_E1M2 ||
                        (ge::GetSizeByDataType(xDType) == 1 && ge::GetSizeByDataType(weightDtype) == 1);
         if (isQuant) {
+            if (xDType == ge::DT_INT4 && weightDtype == ge::DT_INT4) {  // A4W4 (INT4×INT4) mix-core
+                GroupedA4W4QuantTiling a4w4Tiling(context);
+                ge::graphStatus a4w4Ret = a4w4Tiling.DoTiling();
+                OP_CHECK_IF(a4w4Ret != ge::GRAPH_SUCCESS,
+                            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "A4W4 DoTiling failed."),
+                            return a4w4Ret);
+                return ge::GRAPH_SUCCESS;
+            }
             std::vector<int32_t> registerList = {0, 1};
             return TilingRegistry::GetInstance().DoTilingImpl(context, registerList);
         } else if (xDType != weightDtype) {
