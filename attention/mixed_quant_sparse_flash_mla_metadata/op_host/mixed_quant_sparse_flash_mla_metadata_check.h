@@ -185,6 +185,13 @@ aclnnStatus CheckSingleParamMqsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "layout_kv must be TND, BSND or PA_BBND!");
         return ACLNN_ERR_PARAM_INVALID;
     }
+    // 非PA场景下（layout_kv != PA_BBND），layout_q必须与layout_kv相同
+    if (strcmp(layoutKvOptional, "PA_BBND") != 0 &&
+        strcmp(layoutQOptional, layoutKvOptional) != 0) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When layout_kv is not PA_BBND, layout_q should be the same as layout_kv, "
+            "but got %s and %s", layoutQOptional, layoutKvOptional);
+        return ACLNN_ERR_PARAM_INVALID;
+    }
     // 核数校验
     if (aicCoreNum == 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "AIC num should be larger than 0, but got %u", aicCoreNum);
