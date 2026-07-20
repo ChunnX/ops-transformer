@@ -405,7 +405,7 @@ public:
         bL1_ = aL1_[MHC_PRE_LOW_API_L1_BUF_NUM * MHC_PRE_LOW_API_L1_BUF_OFFSET];
 
         if ASCEND_IS_AIC {
-            mmService_.Init();
+            mmService_.Init(this->implMode_);
             CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
             CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG + FLAG_ID_MAX);
             CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIC_AIV_FLAG);
@@ -456,7 +456,7 @@ public:
         }
         SyncAll<false>();
         if ASCEND_IS_AIC {
-            mmService_.End();
+            mmService_.End(this->implMode_);
         }
     }
 

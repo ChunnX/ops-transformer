@@ -274,6 +274,7 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AICProcess(uint32_t 
     mm.SetSingleShape(mnConfig_.curSingleCoreM, mnConfig_.curSingleCoreN, mnConfig_.curSingleCoreK);
     mm.SetTensorA(xFloatGm_[xOffset]);
     mm.SetTensorB(phiGm_[offsetNd], true);
+    mm.SetHF32(this->implMode_ == MHC_PRE_IMPL_MODE_HF32, 1);
     mm.IterateAll(hMixGm_[outOffset], offsetNd == 0 ? 0 : 1);
     mm.End();
     cubeCount_++;

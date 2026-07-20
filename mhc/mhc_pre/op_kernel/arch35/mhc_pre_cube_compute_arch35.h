@@ -64,7 +64,7 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(2);
     }
 
-    __aicore__ inline void Init(bool enableHf32 = true)
+    __aicore__ inline void Init(uint32_t implMode)
     {
         uint32_t aL0OneBuffer = 256 * 32;
         uint32_t bL0OneBuffer = 256 * 32;
@@ -85,7 +85,7 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(1);
 
         if ASCEND_IS_AIC {
-            if (enableHf32) {
+            if (implMode == MHC_PRE_IMPL_MODE_HF32) {
                 AscendC::SetHF32Mode(1);
                 AscendC::SetHF32TransMode(1);
             }
@@ -234,7 +234,8 @@ public:
         AscendC::SetFlag<AscendC::HardEvent::FIX_M>(cl0PingPongID_);
         cl0PingPongID_ ^= 1;
     }
-    __aicore__ inline void End()
+    
+    __aicore__ inline void End(uint32_t implMode)
     {
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
@@ -243,7 +244,9 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(1);
         if ASCEND_IS_AIC {
-            AscendC::SetHF32Mode(0);
+            if (implMode == MHC_PRE_IMPL_MODE_HF32) {
+                AscendC::SetHF32Mode(0);
+            }
         }
     }
 };
