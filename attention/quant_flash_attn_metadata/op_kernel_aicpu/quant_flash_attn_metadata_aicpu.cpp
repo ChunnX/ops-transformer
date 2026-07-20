@@ -231,10 +231,9 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     // 校验 dequant_scale_v: TND layout 下, dim0 应等于 sum(ceil(seqused_kv[i] / 64))
     if (dequantScaleV_ != nullptr && dequantScaleV_->GetTensorShape() != nullptr) {
         const int64_t DEQUANT_SCALE_V_GROUP_SIZE = 64;
-        bool isTndLayout = (layoutQ_ == "TND") || (layoutKv_ == "TND");
-        int64_t dequantScaleVDimNum = static_cast<int64_t>(dequantScaleV_->GetTensorShape()->GetDims());
-        if (isTndLayout || dequantScaleVDimNum == 3) {
-            int64_t dequantScaleVT = dequantScaleV_->GetTensorShape()->GetDimSize(0);
+        bool isTndLayout = (layoutKv_ == "TND");
+        if (isTndLayout) {
+            int64_t dequantScaleVT = dequantScaleV_->GetTensorShape()->GetDimSize(0) / (numHeadsKv_ * headDim_ * 2);
             int64_t expectedT = 0;
             if (baseInfo.isCumulativeKvSeq && batchSize_ > 0 &&
                 static_cast<int64_t>(baseInfo.actualKvSeqSize.size()) >= batchSize_) {
