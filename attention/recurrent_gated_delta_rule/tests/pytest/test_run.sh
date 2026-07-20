@@ -2,6 +2,7 @@
 
 # 脚本路径
 TEST_RECURRENT_GATED_DELTA_RULE_SINGLE_SCRIPT="test_recurrent_gated_delta_rule_single.py"
+TEST_RECURRENT_GATED_DELTA_RULE_SMALL_OPS_SCRIPT="test_recurrent_gated_delta_rule_small_ops.py"
 
 # ====================== 执行区======================
 
@@ -17,22 +18,37 @@ run_rdv() {
     TEST_MODE=rdv python3 -m pytest -rA -s $TEST_RECURRENT_GATED_DELTA_RULE_SINGLE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
 }
 
+# 小算子拼接参考实现测试
+run_small_ops() {
+    echo "===== 执行小算子拼接参考实现测试 ====="
+    TEST_MODE=single python3 -m pytest -rA -s $TEST_RECURRENT_GATED_DELTA_RULE_SMALL_OPS_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+}
+
+# 小算子拼接参考实现RDV测试
+run_small_ops_rdv() {
+    echo "===== 执行小算子拼接参考实现RDV测试 ====="
+    TEST_MODE=rdv python3 -m pytest -rA -s $TEST_RECURRENT_GATED_DELTA_RULE_SMALL_OPS_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning
+}
+
 # 显示帮助信息
 show_help() {
     echo "用法: $0 [参数]"
     echo "参数说明："
-    echo "  single    执行单算子用例调测"
-    echo "  rdv       执行RDV参数集测试"
-    echo "  help      显示本帮助信息"
+    echo "  single          执行单算子用例调测"
+    echo "  rdv             执行RDV参数集测试"
+    echo "  small_ops       执行小算子拼接参考实现测试（single参数集）"
+    echo "  small_ops_rdv   执行小算子拼接参考实现RDV测试"
+    echo "  help            显示本帮助信息"
     echo "示例："
-    echo "  $0 single  # 执行single模式"
-    echo "  $0 rdv     # 执行rdv模式"
+    echo "  $0 single        # 执行single模式"
+    echo "  $0 rdv           # 执行rdv模式"
+    echo "  $0 small_ops     # 执行小算子拼接参考实现测试"
 }
 
 # ====================== 主逻辑 ======================
 # 检查传入的参数数量
 if [ $# -ne 1 ]; then
-    echo "错误：必须传入且仅传入一个参数（single/batch/help）"
+    echo "错误：必须传入且仅传入一个参数（single/rdv/small_ops/small_ops_rdv/help）"
     show_help
     exit 1
 fi
@@ -45,11 +61,17 @@ case "$1" in
     rdv)
         run_rdv
         ;;
+    small_ops)
+        run_small_ops
+        ;;
+    small_ops_rdv)
+        run_small_ops_rdv
+        ;;
     help)
         show_help
         ;;
     *)
-        echo "错误：未知参数 '$1'，仅支持 single/rdv/help"
+        echo "错误：未知参数 '$1'，仅支持 single/rdv/small_ops/small_ops_rdv/help"
         show_help
         exit 1
         ;;
