@@ -1493,7 +1493,7 @@ def _log_final_summary(results):
 
 
 def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_case_num=1, precision_dir=None,
-                 rdv=False, rdv_cache_dir=None):
+                 rdv=False, rdv_cache_dir=None, debug=False):
     start_time = time.time()
     golden_cache = _load_golden_cache()
     set_active_case(case)
@@ -1594,7 +1594,7 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
         return _make_case_result(case_id, "NpuDone", time.time() - start_time, mfu_time=mfu_time)
 
     logger.info("\n[Step 4] Atten OUT 精度对比")
-    out_result = result_compare_method.check_result(cpu_out, atten_out)
+    out_result = result_compare_method.check_result(cpu_out, atten_out, debug=debug)
     if precision_dir is not None:
         result_compare_method.save_precision_map(
             cpu_out, atten_out, os.path.join(precision_dir, "attention_out.png"),
@@ -1603,7 +1603,7 @@ def run_one_case(case_id, case, mode, case_name, cache_dir, case_idx=1, total_ca
     lse_result = None
     if ENABLE_LSE:
         logger.info("\n[Step 5] LSE 精度对比")
-        lse_result = result_compare_method.check_result(cpu_lse, lse_out)
+        lse_result = result_compare_method.check_result(cpu_lse, lse_out, debug=debug)
         if precision_dir is not None:
             result_compare_method.save_precision_map(
                 cpu_lse, lse_out, os.path.join(precision_dir, "softmax_lse.png"),
@@ -1699,7 +1699,7 @@ if __name__ == '__main__':
                 case_results.append(
                     run_one_case(case_id, all_cases[case_id], mode, case_name, cache_dir,
                                  case_idx, total_case_num, precision_dir, rdv=args.rdv,
-                                 rdv_cache_dir=args.cache_dir))
+                                 rdv_cache_dir=args.cache_dir, debug=args.debug))
             except Exception as err:  # pylint: disable=broad-except
                 logger.exception("CASE ERROR [%d/%d] %s", case_idx, total_case_num, case_id)
                 case_results.append(_make_case_result(case_id, "Error", time.time() - case_start, error=str(err)))
