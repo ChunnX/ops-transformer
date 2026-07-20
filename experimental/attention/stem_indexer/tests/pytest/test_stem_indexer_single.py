@@ -10,6 +10,8 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import os
+
 import pytest
 import torch
 
@@ -17,9 +19,23 @@ torch_npu = pytest.importorskip("torch_npu")
 
 import result_compare_method
 import stem_indexer_golden
-import os
 import custom_ops  # 注册 torch.ops.custom.npu_stem_indexer(_metadata)
 from test_stem_indexer_paramset import ENABLED_PARAMS
+
+
+# 支持通过环境变量 STEM_INDEXER_CASE_ID 指定只跑特定 case_id（逗号分隔多个）
+# 例: STEM_INDEXER_CASE_ID=SI_WB_001,SI_WB_002 python -m pytest test_stem_indexer_single.py
+_FILTER_IDS_RAW = os.environ.get("STEM_INDEXER_CASE_ID", "").strip()
+_FILTER_IDS = {item.strip() for item in _FILTER_IDS_RAW.split(",") if item.strip()}
+TEST_CASES = [
+    case for case in ENABLED_PARAMS
+    if not _FILTER_IDS or case.get("case_id") in _FILTER_IDS
+]
+if _FILTER_IDS:
+    print(
+        f"Filter by STEM_INDEXER_CASE_ID={_FILTER_IDS_RAW}: "
+        f"{len(TEST_CASES)}/{len(ENABLED_PARAMS)} matched."
+    )
 
 
 def case_id(case):
@@ -77,6 +93,6 @@ def run_stem_indexer_case(case):
 
 
 @pytest.mark.ci
-@pytest.mark.parametrize("case", ENABLED_PARAMS, ids=case_id)
+@pytest.mark.parametrize("case", TEST_CASES, ids=case_id)
 def test_stem_indexer(case):
     run_stem_indexer_case(case)

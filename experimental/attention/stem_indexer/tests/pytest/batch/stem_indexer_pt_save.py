@@ -43,6 +43,7 @@ INT_COLUMNS = {
     "stem_stride",
     "initial_blocks",
     "window_size",
+    "topk_score_precision",
 }
 REQUIRED_COLUMNS = [
     "case_id",
@@ -60,6 +61,7 @@ REQUIRED_COLUMNS = [
     "stem_stride",
     "initial_blocks",
     "window_size",
+    "topk_score_precision",
     "qflat_dtype",
     "kflat_dtype",
     "vbias_dtype",
@@ -106,27 +108,34 @@ def row_to_case(row):
             case[column] = str(value).strip().upper()
         else:
             case[column] = str(value).strip()
+    if case["topk_score_precision"] not in (1, 2):
+        raise ValueError(
+            f"{case['case_id']} topk_score_precision must be 1(uint32) or 2(uint16), "
+            f"but got {case['topk_score_precision']}"
+        )
+    if "description" in row.index:
+        case["description"] = str(normalize_cell(row["description"])).strip()
     return case
 
 
-def find_excel_files(path_pattern):
+def find_csv_files(path_pattern):
     paths = sorted(glob.glob(path_pattern))
     if not paths and os.path.isfile(path_pattern):
         paths = [path_pattern]
-    return [path for path in paths if path.endswith((".xlsx", ".xls")) and not os.path.basename(path).startswith("~$")]
+    return [path for path in paths if path.lower().endswith(".csv")]
 
 
-def load_excel_test_cases(path_pattern, sheet_name):
-    excel_files = find_excel_files(path_pattern)
-    if not excel_files:
-        raise FileNotFoundError(f"No Excel testcase file found from path: {path_pattern}")
+def load_csv_test_cases(path_pattern):
+    csv_files = find_csv_files(path_pattern)
+    if not csv_files:
+        raise FileNotFoundError(f"No CSV testcase file found from path: {path_pattern}")
 
     test_cases = []
-    for excel_file in excel_files:
-        df = pd.read_excel(excel_file, sheet_name=sheet_name)
+    for csv_file in csv_files:
+        df = pd.read_csv(csv_file, encoding="utf-8-sig")
         missing_columns = [column for column in REQUIRED_COLUMNS if column not in df.columns]
         if missing_columns:
-            raise ValueError(f"{excel_file} missing columns: {missing_columns}")
+            raise ValueError(f"{csv_file} missing columns: {missing_columns}")
         for _, row in df.iterrows():
             if pd.isna(row["case_id"]):
                 continue
@@ -200,15 +209,14 @@ def save_test_cases(test_cases, output_dir):
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate StemIndexer pt cases from Excel.")
-    parser.add_argument("excel_path", type=str, help="Excel file path or glob pattern.")
+    parser = argparse.ArgumentParser(description="Generate StemIndexer pt cases from CSV.")
+    parser.add_argument("csv_path", type=str, help="CSV file path or glob pattern.")
     parser.add_argument("pt_output_dir", type=str, help="Output directory for pt files.")
-    parser.add_argument("--sheet-name", type=str, default="Sheet1")
     parser.add_argument("--device-id", type=int, default=0)
     args = parser.parse_args()
 
     torch_npu.npu.set_device(args.device_id)
-    test_cases = load_excel_test_cases(args.excel_path, args.sheet_name)
+    test_cases = load_csv_test_cases(args.csv_path)
     save_test_cases(test_cases, args.pt_output_dir)
 
 

@@ -15,8 +15,8 @@ import torch
 import stem_indexer_golden
 
 
-TOPK_SCORE_ATOL = 1e-4
-TOPK_SCORE_RTOL = 1e-4
+TOPK_SCORE_ATOL = 2.5e-5
+TOPK_SCORE_RTOL = 5e-3
 MAX_FAILURES = 8
 
 
