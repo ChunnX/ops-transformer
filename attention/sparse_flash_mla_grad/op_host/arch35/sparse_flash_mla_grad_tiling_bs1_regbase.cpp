@@ -286,7 +286,7 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetWorkspaceSize()
 
     selectedKWorkspaceLen = AlignData(selectedKWorkspaceLen, GM_ALIGN) * 3;
 
-    int64_t selectBlockCount = 4096;
+    int64_t selectBlockCount = tmpData.deterministic ? 4096 : 128;
 
     int64_t mm4WorkspaceLen = selectBlockCount * tmpData.d * B32;
     int64_t mm5WorkspaceLen = selectBlockCount * tmpData.d1 * B32;
