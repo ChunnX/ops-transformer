@@ -182,13 +182,13 @@ __aicore__ inline void RowMax(LocalTensor<float> &dstUb, LocalTensor<float> &src
           col 列数
           stride 一行的真实长度
  */
-template <typename T, typename O = float>
-__aicore__ inline void Dequant(const LocalTensor<O> &outputLocal, const LocalTensor<T> &inputLocal,
+template <typename T>
+__aicore__ inline void Dequant(const LocalTensor<float> &outputLocal, const LocalTensor<T> &inputLocal,
                                const LocalTensor<float> &scaleLocal, const LocalTensor<float> &scale2Local,
                                const Rectangle &rectangleParams)
 {
-    DequantVf<T, float, O>(outputLocal, inputLocal, scaleLocal, scale2Local, rectangleParams.row, rectangleParams.col,
-                           rectangleParams.stride);
+    DequantVf(outputLocal, inputLocal, scaleLocal, scale2Local, rectangleParams.row, rectangleParams.col,
+              rectangleParams.stride);
 }
 
 /**
