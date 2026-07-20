@@ -167,7 +167,7 @@ const std::map<DataType, std::string> DTYPE_STRING{{DataType::DT_FLOAT16, "FLOAT
                                                    {DataType::DT_HIFLOAT8, "HIFLOAT8"}};
 
 const std::vector<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
-                                                                DataType::DT_BF16};
+                                                      DataType::DT_BF16};
 
 bool IsTransposeLastTwoDims(const aclTensor *tensor);
 bool IsTransposeForMxShape(const aclTensor *tensor);

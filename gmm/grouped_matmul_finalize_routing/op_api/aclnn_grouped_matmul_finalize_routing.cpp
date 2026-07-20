@@ -103,7 +103,7 @@ static const std::vector<op::DataType> PERTOKEN_SCALE_TYPE_SUPPORT_LIST = { op::
 static const std::vector<op::DataType> GROUP_LIST_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64 };
 static const std::vector<op::DataType> SHARED_INPUT_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16 };
 static const std::vector<op::DataType> LOGIT_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
-static const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64,op::DataType::DT_INT32};
+static const std::vector<op::DataType> ROW_INDEX_TYPE_SUPPORT_LIST = { op::DataType::DT_INT64, op::DataType::DT_INT32};
 
 // w4a8 support dtype
 static const std::vector<op::DataType> W4A8_BIAS_TYPE_SUPPORT_LIST = { op::DataType::DT_FLOAT };
