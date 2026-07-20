@@ -12,7 +12,7 @@ if (BUILD_OPEN_PROJECT)
     target_sources(op_host_aclnnInner PRIVATE
         all_gather_add_def.cpp
     )
-    add_modules_sources(OPTYPE all_gather_add ACLNNTYPE aclnn_inner) 
-else() 
-    add_modules_sources(OPTYPE all_gather_add ACLNNTYPE aclnn_inner) 
+    add_modules_sources(OPTYPE all_gather_add ACLNNTYPE aclnn_inner)
+else()
+    add_modules_sources(OPTYPE all_gather_add ACLNNTYPE aclnn_inner)
 endif()

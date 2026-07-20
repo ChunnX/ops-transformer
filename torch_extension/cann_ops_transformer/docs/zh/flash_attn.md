@@ -40,7 +40,7 @@
   其中$Q$和$K^T$的乘积代表输入$x$的注意力，为避免该值变得过大，通常除以$\sqrt{d}$进行缩放，并对每行进行softmax归一化，与$V$相乘后得到一个$n \times d$的矩阵。
 
   增加**sink**之后计算逻辑如下所示，主要修改相关softmax_max和softmax_sum逻辑计算部分。
-    
+
   $$
   S = \frac{QK^T}{\sqrt{d}}
   $$
@@ -58,7 +58,7 @@
   $$
   S = \frac{QK^T}{\sqrt{d}}
   $$
-  
+
   $$
   softmax\_max = max(S)
   $$

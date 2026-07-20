@@ -34,8 +34,8 @@ constexpr int32_t IDX_N_LOW = 4;
 constexpr int32_t IDX_N_HIGH = 5;
 constexpr int32_t IDX_B_LOW = 6;
 
-constexpr uint64_t L2_REAL_SIZE = 168;  // B4真实的L2Size大小
-constexpr uint64_t L2_FAKE_SIZE = 96;   // B4被上层修改后的L2Size大小
+constexpr uint64_t L2_REAL_SIZE = 168; // B4真实的L2Size大小
+constexpr uint64_t L2_FAKE_SIZE = 96;  // B4被上层修改后的L2Size大小
 constexpr uint64_t GROUP_MKN_BIT_SIZE = 0xFFFF;
 constexpr size_t SCALE_PERGROUP_MIN_DIM_NUM = 2;
 
@@ -51,17 +51,18 @@ constexpr uint32_t BIAS_INDEX = 4;
 constexpr uint32_t PERTOKEN_SCALE_INDEX = 5;
 
 static optiling::Mc2QuantBatchMatmulInfoFactory g_quantBatchMatmulInfoFactory;
-}
+} // namespace
 
 namespace optiling {
 using namespace ge;
 
-const std::map<ge::DataType, std::vector<BasicQuantMode>> X2_QUANT_MODE_MAP =
-{
-    {ge::DT_FLOAT8_E4M3FN, {BasicQuantMode::PERTENSOR_MODE, BasicQuantMode::PERCHANNEL_MODE,
-        BasicQuantMode::PERBLOCK_MODE, BasicQuantMode::MX_PERGROUP_MODE}},
-    {ge::DT_FLOAT8_E5M2, {BasicQuantMode::PERTENSOR_MODE, BasicQuantMode::PERCHANNEL_MODE,
-        BasicQuantMode::PERBLOCK_MODE, BasicQuantMode::MX_PERGROUP_MODE}},
+const std::map<ge::DataType, std::vector<BasicQuantMode>> X2_QUANT_MODE_MAP = {
+    {ge::DT_FLOAT8_E4M3FN,
+     {BasicQuantMode::PERTENSOR_MODE, BasicQuantMode::PERCHANNEL_MODE, BasicQuantMode::PERBLOCK_MODE,
+      BasicQuantMode::MX_PERGROUP_MODE}},
+    {ge::DT_FLOAT8_E5M2,
+     {BasicQuantMode::PERTENSOR_MODE, BasicQuantMode::PERCHANNEL_MODE, BasicQuantMode::PERBLOCK_MODE,
+      BasicQuantMode::MX_PERGROUP_MODE}},
     {ge::DT_FLOAT4_E2M1, {BasicQuantMode::MX_PERGROUP_MODE}},
     {ge::DT_FLOAT4_E1M2, {BasicQuantMode::MX_PERGROUP_MODE}},
     {ge::DT_HIFLOAT8, {BasicQuantMode::PERTENSOR_MODE, BasicQuantMode::PERCHANNEL_MODE, BasicQuantMode::PERBLOCK_MODE}},
@@ -69,12 +70,13 @@ const std::map<ge::DataType, std::vector<BasicQuantMode>> X2_QUANT_MODE_MAP =
 
 };
 
-const std::map<ge::DataType, std::vector<BasicQuantMode>> X1_QUANT_MODE_MAP =
-{
-    {ge::DT_FLOAT8_E4M3FN, {BasicQuantMode::PERTENSOR_MODE, BasicQuantMode::PERTOKEN_MODE,
-        BasicQuantMode::PERBLOCK_MODE, BasicQuantMode::MX_PERGROUP_MODE}},
-    {ge::DT_FLOAT8_E5M2, {BasicQuantMode::PERTENSOR_MODE, BasicQuantMode::PERTOKEN_MODE,
-        BasicQuantMode::PERBLOCK_MODE, BasicQuantMode::MX_PERGROUP_MODE}},
+const std::map<ge::DataType, std::vector<BasicQuantMode>> X1_QUANT_MODE_MAP = {
+    {ge::DT_FLOAT8_E4M3FN,
+     {BasicQuantMode::PERTENSOR_MODE, BasicQuantMode::PERTOKEN_MODE, BasicQuantMode::PERBLOCK_MODE,
+      BasicQuantMode::MX_PERGROUP_MODE}},
+    {ge::DT_FLOAT8_E5M2,
+     {BasicQuantMode::PERTENSOR_MODE, BasicQuantMode::PERTOKEN_MODE, BasicQuantMode::PERBLOCK_MODE,
+      BasicQuantMode::MX_PERGROUP_MODE}},
     {ge::DT_FLOAT4_E2M1, {BasicQuantMode::MX_PERGROUP_MODE}},
     {ge::DT_FLOAT4_E1M2, {BasicQuantMode::MX_PERGROUP_MODE}},
     {ge::DT_HIFLOAT8, {BasicQuantMode::PERTENSOR_MODE, BasicQuantMode::PERTOKEN_MODE, BasicQuantMode::PERBLOCK_MODE}},
@@ -101,14 +103,12 @@ ge::graphStatus Mc2QuantBatchMatmulV3TilingBase::GetShapeAttrsInfo()
                     return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(!AnalyzeAttrs() || !AnalyzeDtype() || !AnalyzeInputs(),
-                    OP_LOGE(inputParams_.opName, "Fail to analyze context info."),
-                    return ge::GRAPH_FAILED);
+                    OP_LOGE(inputParams_.opName, "Fail to analyze context info."), return ge::GRAPH_FAILED);
     auto transA_str = inputParams_.transA ? "true" : "false";
     auto transB_str = inputParams_.transB ? "true" : "false";
     auto hasBias_str = inputParams_.hasBias ? "true" : "false";
     OP_LOGD(inputParams_.opName, "Input params: MKN[%ld, %ld, %ld], transA[%s], transB[%s], bias[%s].",
-            inputParams_.mSize, inputParams_.kSize, inputParams_.nSize, transA_str,
-            transB_str, hasBias_str);
+            inputParams_.mSize, inputParams_.kSize, inputParams_.nSize, transA_str, transB_str, hasBias_str);
 
     inputParams_.initFlag = true;
     return ge::GRAPH_SUCCESS;
@@ -125,8 +125,7 @@ ge::graphStatus Mc2QuantBatchMatmulV3TilingBase::CheckContext()
     auto outputShape = context_->GetOutputShape(0);
     auto outputDesc = context_->GetOutputDesc(0);
     auto attrs = context_->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr,
-                    OP_LOGE(inputParams_.opName, "Function context_->GetAttrs() failed!"),
+    OP_TILING_CHECK(attrs == nullptr, OP_LOGE(inputParams_.opName, "Function context_->GetAttrs() failed!"),
                     return ge::GRAPH_FAILED);
     auto dtypeAttr = attrs->GetAttrPointer<int64_t>(0);
 
@@ -141,11 +140,10 @@ ge::graphStatus Mc2QuantBatchMatmulV3TilingBase::CheckContext()
     OPS_CHECK_NULL_WITH_CONTEXT(context_, dtypeAttr);
     OPS_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData());
     OPS_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData()->GetData());
-    OP_TILING_CHECK(
-        context_->GetRawTilingData()->GetCapacity() < tilingDataSize_,
-        OP_LOGE(inputParams_.opName, "context tiling data capacity %zu < actual tiling data size %zu.",
-                              context_->GetRawTilingData()->GetCapacity(), tilingDataSize_),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(context_->GetRawTilingData()->GetCapacity() < tilingDataSize_,
+                    OP_LOGE(inputParams_.opName, "context tiling data capacity %zu < actual tiling data size %zu.",
+                            context_->GetRawTilingData()->GetCapacity(), tilingDataSize_),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -162,27 +160,28 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeAttrs()
         if (attrs->GetAttrNum() > idx) {
             groupSizePtr = attrs->GetAttrPointer<int64_t>(idx++);
         }
-        OP_TILING_CHECK(!dtypePtr,
-                        OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "dtype attr"),
-                        return false);
+        OP_TILING_CHECK(!dtypePtr, OP_LOGE_WITH_INVALID_INPUT(inputParams_.opName, "dtype attr"), return false);
         inputParams_.outDtype = *dtypePtr;
         inputParams_.transA = transposeX1Ptr ? *transposeX1Ptr : false;
         inputParams_.transB = transposeX2Ptr ? *transposeX2Ptr : false;
         inputParams_.groupSize = groupSizePtr ? static_cast<uint64_t>(*groupSizePtr) : 0ULL;
         if (inputParams_.groupSize != 0ULL) {
             inputParams_.groupSizeK = inputParams_.groupSize & GROUP_MKN_BIT_SIZE;
-            inputParams_.groupSizeN = (inputParams_.groupSize >> 16U) & GROUP_MKN_BIT_SIZE; // 16 is the bit size of MKN group size
-            inputParams_.groupSizeM = (inputParams_.groupSize >> 32U) & GROUP_MKN_BIT_SIZE; // groupSizeM start at 32 bit of groupSize
+            inputParams_.groupSizeN =
+                (inputParams_.groupSize >> 16U) & GROUP_MKN_BIT_SIZE; // 16 is the bit size of MKN group size
+            inputParams_.groupSizeM =
+                (inputParams_.groupSize >> 32U) & GROUP_MKN_BIT_SIZE; // groupSizeM start at 32 bit of groupSize
         }
     }
 
     Mc2QuantBatchMatmulV3Trans trans = Mc2QuantBatchMatmulV3Trans::NO_TRANS;
     SetTransAttr(trans);
     if (!compileInfo_.supportL0c2Out) {
-        OP_TILING_CHECK(
-            trans != Mc2QuantBatchMatmulV3Trans::B_TRANS,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", inputParams_.transA ? "true" : "false", "The value of x1 and x2 transpose must be [false, true]."),
-            return false);
+        OP_TILING_CHECK(trans != Mc2QuantBatchMatmulV3Trans::B_TRANS,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            inputParams_.opName, "x1 and x2", inputParams_.transA ? "true" : "false",
+                            "The value of x1 and x2 transpose must be [false, true]."),
+                        return false);
     }
     return true;
 }
@@ -237,7 +236,8 @@ bool Mc2QuantBatchMatmulV3TilingBase::InferOutBatchDim(const gert::Shape &x1Shap
 }
 
 int8_t Mc2QuantBatchMatmulV3TilingBase::CheckFusionBatchA(const gert::Shape &x1Shape, const gert::Shape &x2Shape,
-                                                 const gert::Shape &biasShape, uint64_t fusedDimValue) const {
+                                                          const gert::Shape &biasShape, uint64_t fusedDimValue) const
+{
     auto x1ShapeLen = x1Shape.GetDimNum();
     auto x2ShapeLen = x2Shape.GetDimNum();
     auto x1BatchLen = x1ShapeLen - 2;
@@ -287,13 +287,22 @@ void Mc2QuantBatchMatmulV3TilingBase::DoBatchFusion(uint64_t fusedDimValue)
 bool Mc2QuantBatchMatmulV3TilingBase::CheckShapeInRangeForMandtoryInputs(size_t x1ShapeLen, size_t x2ShapeLen) const
 {
     OP_TILING_CHECK(x1ShapeLen < MIN_DIM_NUM_ND || x2ShapeLen < MIN_DIM_NUM_ND,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", std::to_string(x1ShapeLen).c_str(), "The value of x1 and x2 dimension must be greater than 1."), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2",
+                                                          std::to_string(x1ShapeLen).c_str(),
+                                                          "The value of x1 and x2 dimension must be greater than 1."),
+                    return false);
     OP_TILING_CHECK(x1ShapeLen > MAX_DIM_NUM_ND || x2ShapeLen > MAX_DIM_NUM_ND,
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2", std::to_string(x1ShapeLen).c_str(), "The value of x1 and x2 dimension must be less than 7."), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "x1 and x2",
+                                                          std::to_string(x1ShapeLen).c_str(),
+                                                          "The value of x1 and x2 dimension must be less than 7."),
+                    return false);
 
     if (inputParams_.aDtype == ge::DT_INT4 && !inputParams_.isPertoken) {
         OP_TILING_CHECK(x2ShapeLen != A4W4_X2_LEN,
-                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(inputParams_.opName, "x2", std::to_string(x2ShapeLen).c_str(), "When the dtype of input is int4 without pertokenScale, the shape dim of x2 must be 2."), return false);
+                        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                            inputParams_.opName, "x2", std::to_string(x2ShapeLen).c_str(),
+                            "When the dtype of input is int4 without pertokenScale, the shape dim of x2 must be 2."),
+                        return false);
     }
     return true;
 }
@@ -303,33 +312,33 @@ bool Mc2QuantBatchMatmulV3TilingBase::IsMicroScaling() const
     return inputParams_.scaleDtype == ge::DT_FLOAT8_E8M0;
 }
 
-std::string Mc2QuantBatchMatmulV3TilingBase::QuantModeToString(BasicQuantMode quantMode) const {
+std::string Mc2QuantBatchMatmulV3TilingBase::QuantModeToString(BasicQuantMode quantMode) const
+{
     std::string mode = "default";
-    switch (quantMode)
-    {
-    case BasicQuantMode::PERTENSOR_MODE:
-        mode = "pertensor";
-        break;
-    case BasicQuantMode::PERCHANNEL_MODE:
-        mode = "perchannel";
-        break;
-    case BasicQuantMode::PERTOKEN_MODE:
-        mode = "pertoken";
-        break;
-    case BasicQuantMode::MX_PERGROUP_MODE:
-        mode = "mx_pergroup";
-        break;
-    case BasicQuantMode::PERBLOCK_MODE:
-        mode = "perblock";
-        break;
-    default:
-        break;
+    switch (quantMode) {
+        case BasicQuantMode::PERTENSOR_MODE:
+            mode = "pertensor";
+            break;
+        case BasicQuantMode::PERCHANNEL_MODE:
+            mode = "perchannel";
+            break;
+        case BasicQuantMode::PERTOKEN_MODE:
+            mode = "pertoken";
+            break;
+        case BasicQuantMode::MX_PERGROUP_MODE:
+            mode = "mx_pergroup";
+            break;
+        case BasicQuantMode::PERBLOCK_MODE:
+            mode = "perblock";
+            break;
+        default:
+            break;
     }
     return mode;
 }
 
 bool Mc2QuantBatchMatmulV3TilingBase::SetX2QuantMode(BasicQuantMode &x2QuantMode, bool isFp8Hif8Input,
-                                              const gert::Shape& scaleShape)
+                                                     const gert::Shape &scaleShape)
 {
     auto scaleShapeLen = scaleShape.GetDimNum();
     if (IsMicroScaling()) {
@@ -344,15 +353,22 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetX2QuantMode(BasicQuantMode &x2QuantMode
         x2QuantMode = BasicQuantMode::PERCHANNEL_MODE;
     } else {
         auto x2QuantModeList = X2_QUANT_MODE_MAP.find(inputParams_.bDtype);
-        OP_TILING_CHECK(x2QuantModeList == X2_QUANT_MODE_MAP.end(),
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x2", ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(), "The dtype of x2 must be within the supported range."), return false);
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x2", ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(), "The dtype of x2 and the shape of x2 and scale do not match any supported quantification, dtype: %s, quantification: %s.");
+        OP_TILING_CHECK(
+            x2QuantModeList == X2_QUANT_MODE_MAP.end(),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x2",
+                                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(),
+                                                  "The dtype of x2 must be within the supported range."),
+            return false);
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x2",
+                                              ge::TypeUtils::DataTypeToSerialString(inputParams_.bDtype).c_str(),
+                                              "The dtype of x2 and the shape of x2 and scale do not match any "
+                                              "supported quantification, dtype: %s, quantification: %s.");
         return false;
     }
     return true;
 }
 bool Mc2QuantBatchMatmulV3TilingBase::SetX1QuantMode(BasicQuantMode &x1QuantMode, bool isFp8Hif8Input,
-                                              const gert::StorageShape *pertokenShape)
+                                                     const gert::StorageShape *pertokenShape)
 {
     if (pertokenShape == nullptr) {
         return true;
@@ -366,19 +382,28 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetX1QuantMode(BasicQuantMode &x1QuantMode
     } else if (isFp8Hif8Input && pertokenLen == 1 && pertoken.GetDim(pertokenLen - LAST_FIRST_DIM_INDEX) == 1) {
         x1QuantMode = BasicQuantMode::PERTENSOR_MODE;
     } else if (pertokenLen == 1 &&
-                static_cast<uint64_t>(pertoken.GetDim(pertokenLen - LAST_FIRST_DIM_INDEX)) == inputParams_.mSize) {
+               static_cast<uint64_t>(pertoken.GetDim(pertokenLen - LAST_FIRST_DIM_INDEX)) == inputParams_.mSize) {
         x1QuantMode = BasicQuantMode::PERTOKEN_MODE;
     } else {
         auto x1QuantModeList = X1_QUANT_MODE_MAP.find(inputParams_.aDtype);
-        OP_TILING_CHECK(x1QuantModeList == X1_QUANT_MODE_MAP.end(),
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1", ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(), "The dtype of x1 must be within the supported range."), return false);
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1", ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(), "The dtype of x1 and the shape of x1 and pertokenScale do not match any supported quantification, dtype: %s, quantification: %s.");
+        OP_TILING_CHECK(
+            x1QuantModeList == X1_QUANT_MODE_MAP.end(),
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1",
+                                                  ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
+                                                  "The dtype of x1 must be within the supported range."),
+            return false);
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(inputParams_.opName, "x1",
+                                              ge::TypeUtils::DataTypeToSerialString(inputParams_.aDtype).c_str(),
+                                              "The dtype of x1 and the shape of x1 and pertokenScale do not match any "
+                                              "supported quantification, dtype: %s, quantification: %s.");
         return false;
     }
     return true;
 }
 
-std::string Mc2QuantBatchMatmulV3TilingBase::QuantModeMapToString(const std::vector<BasicQuantMode>& quantModeList) const {
+std::string
+Mc2QuantBatchMatmulV3TilingBase::QuantModeMapToString(const std::vector<BasicQuantMode> &quantModeList) const
+{
     std::stringstream ss;
     ss << "[";
     for (auto it = quantModeList.begin(); it != quantModeList.end(); it++) {
@@ -391,7 +416,8 @@ std::string Mc2QuantBatchMatmulV3TilingBase::QuantModeMapToString(const std::vec
     return ss.str();
 }
 
-bool Mc2QuantBatchMatmulV3TilingBase::SetQuantMode(const gert::Shape& scaleShape, const gert::StorageShape *pertokenShape)
+bool Mc2QuantBatchMatmulV3TilingBase::SetQuantMode(const gert::Shape &scaleShape,
+                                                   const gert::StorageShape *pertokenShape)
 {
     if (!compileInfo_.supportL12BtBf16) {
         inputParams_.isPerTensor = scaleShape.GetDim(0) == 1;
@@ -412,11 +438,12 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetQuantMode(const gert::Shape& scaleShape
     inputParams_.isPertoken = x1QuantMode == BasicQuantMode::PERTOKEN_MODE;
     inputParams_.isMxPerGroup = x1QuantMode == BasicQuantMode::MX_PERGROUP_MODE && x1QuantMode == x2QuantMode;
     inputParams_.isPerBlock = x1QuantMode == BasicQuantMode::PERBLOCK_MODE;
-    OP_TILING_CHECK(
-        !(inputParams_.isPerChannel || inputParams_.isDoubleScale || inputParams_.isPerTensor ||
-          inputParams_.isPertoken || inputParams_.isMxPerGroup || inputParams_.isPerBlock),
-        OP_LOGE(inputParams_.opName, "Unexpected quantification, quantification of x1: %s, quantification of x2: %s", QuantModeToString(x1QuantMode).c_str(), QuantModeToString(x2QuantMode).c_str()),
-        return false);
+    OP_TILING_CHECK(!(inputParams_.isPerChannel || inputParams_.isDoubleScale || inputParams_.isPerTensor ||
+                      inputParams_.isPertoken || inputParams_.isMxPerGroup || inputParams_.isPerBlock),
+                    OP_LOGE(inputParams_.opName,
+                            "Unexpected quantification, quantification of x1: %s, quantification of x2: %s",
+                            QuantModeToString(x1QuantMode).c_str(), QuantModeToString(x2QuantMode).c_str()),
+                    return false);
     return true;
 }
 
@@ -433,7 +460,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeInputs()
     inputParams_.batchBias = inputParams_.hasBias ? GetBatchSize(biasShape->GetStorageShape()) : 1;
     auto x1ShapeLen = x1Shape.GetDimNum();
     auto x2ShapeLen = x2Shape.GetDimNum();
-    if (!isTilingOut_ && !CheckShapeInRangeForMandtoryInputs(x1ShapeLen, x2ShapeLen)){
+    if (!isTilingOut_ && !CheckShapeInRangeForMandtoryInputs(x1ShapeLen, x2ShapeLen)) {
         return false;
     }
     auto x1Inner = x1Shape.GetDim(x1ShapeLen - LAST_FIRST_DIM_INDEX);
@@ -452,7 +479,11 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeInputs()
     inputParams_.batchB = GetBatchSize(x2Shape);
     AnalyzeBatchInfo(context_->GetInputShape(0)->GetOriginShape(), context_->GetInputShape(1)->GetOriginShape());
     OP_TILING_CHECK(!InferOutBatchDim(x1Shape, x2Shape),
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", (std::to_string(inputParams_.batchA) + ", " + std::to_string(inputParams_.batchB)).c_str(), "The value of the batch dimension must be broadcastable."), return false);
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                        inputParams_.opName, "input",
+                        (std::to_string(inputParams_.batchA) + ", " + std::to_string(inputParams_.batchB)).c_str(),
+                        "The value of the batch dimension must be broadcastable."),
+                    return false);
     if (!SetQuantMode(scaleShape, pertokenShape)) {
         return false;
     }
@@ -460,16 +491,20 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeInputs()
         return false;
     }
     OP_TILING_CHECK(!CheckOutputShapeAvailable(),
-                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "output",
-                        (std::to_string(inputParams_.mSize) + "x" + std::to_string(inputParams_.nSize) + "x" + std::to_string(inputParams_.batchC)).c_str(),
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        inputParams_.opName, "output",
+                        (std::to_string(inputParams_.mSize) + "x" + std::to_string(inputParams_.nSize) + "x" +
+                         std::to_string(inputParams_.batchC))
+                            .c_str(),
                         "The product of output shape dimensions must be within the boundary of INT64_MAX."),
-                                          return false);
+                    return false);
     uint64_t fusedDimValue = inputParams_.mSize * inputParams_.batchA;
     int8_t resultCheckFusionBatchA = CheckFusionBatchA(x1Shape, x2Shape, biasShape->GetStorageShape(), fusedDimValue);
     OP_TILING_CHECK(resultCheckFusionBatchA == OUTPUT_INFER_FAIL,
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "M",
-                        std::to_string(fusedDimValue).c_str(),
-                        "The fused M must not exceed INT32_MAX in a4w4 case."), return false);
+                                                          std::to_string(fusedDimValue).c_str(),
+                                                          "The fused M must not exceed INT32_MAX in a4w4 case."),
+                    return false);
     if (resultCheckFusionBatchA == OUTPUT_INFER_SUCCESS) {
         DoBatchFusion(fusedDimValue);
     }
@@ -513,27 +548,32 @@ void Mc2QuantBatchMatmulV3TilingBase::AnalyzeBatchInfo(const gert::Shape &oriSha
     inputParams_.batchC1 = numDimC > IDX_N_HIGH ? outShape.GetDim(numDimC - IDX_B_LOW) : 1UL;
 }
 
-bool Mc2QuantBatchMatmulV3TilingBase::ReCalcGroupSize(uint64_t &groupSize, uint64_t inputSize,
-                                               uint64_t scaleSize, const char *dimensionName) {
+bool Mc2QuantBatchMatmulV3TilingBase::ReCalcGroupSize(uint64_t &groupSize, uint64_t inputSize, uint64_t scaleSize,
+                                                      const char *dimensionName)
+{
     if (groupSize == 0ULL) {
         std::string inputName = "x1";
         std::string scaleName = "pertoken_scale";
         if (strcmp(dimensionName, "n") == 0) {
-            inputName =  "x2";
-            scaleName =  "scale";
+            inputName = "x2";
+            scaleName = "scale";
         }
         OP_TILING_CHECK(scaleSize == 0ULL,
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "input", std::to_string(scaleSize).c_str(), "The shape dimension of input cannot be 0."),
-            return false);
+                        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(inputParams_.opName, "input",
+                                                              std::to_string(scaleSize).c_str(),
+                                                              "The shape dimension of input cannot be 0."),
+                        return false);
         OP_TILING_CHECK(inputSize % scaleSize != 0ULL,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", dimensionName, "The group_size in the dimension cannot be inferred."),
-            return false);
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input", dimensionName,
+                                                              "The group_size in the dimension cannot be inferred."),
+                        return false);
         groupSize = inputSize / scaleSize;
     }
     return true;
 }
 
-bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeGroupInfo(const gert::Shape& scaleShape, const gert::StorageShape *pertokenShape)
+bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeGroupInfo(const gert::Shape &scaleShape,
+                                                       const gert::StorageShape *pertokenShape)
 {
     if (pertokenShape == nullptr) {
         return true;
@@ -541,7 +581,8 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeGroupInfo(const gert::Shape& scaleS
     auto &pertoken = pertokenShape->GetStorageShape();
     auto pertokenShapeLen = pertoken.GetDimNum();
     auto scaleShapeLen = scaleShape.GetDimNum();
-    if (pertokenShapeLen < 2 || scaleShapeLen < 2) { // scaleLen < 2 means invalid input, leave it to the checher behind.
+    if (pertokenShapeLen < 2 ||
+        scaleShapeLen < 2) { // scaleLen < 2 means invalid input, leave it to the checher behind.
         return true;
     }
     auto pertokenInner = pertoken.GetDim(1);
@@ -561,7 +602,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::AnalyzeGroupInfo(const gert::Shape& scaleS
         return false;
     }
     OP_LOGD(inputParams_.opName, "Infer groupSize success. groupSizeM: %lu, groupSizeN: %lu, groupSizeK: %lu.",
-             inputParams_.groupSizeM, inputParams_.groupSizeN, inputParams_.groupSizeK);
+            inputParams_.groupSizeM, inputParams_.groupSizeN, inputParams_.groupSizeK);
     return true;
 }
 
@@ -629,7 +670,10 @@ void Mc2QuantBatchMatmulV3TilingBase::SetTransAttr(Mc2QuantBatchMatmulV3Trans &t
     }
 }
 
-bool Mc2QuantBatchMatmulV3TilingBase::IsCapable() { return true; }
+bool Mc2QuantBatchMatmulV3TilingBase::IsCapable()
+{
+    return true;
+}
 
 void Mc2QuantBatchMatmulV3TilingBase::InitCompileInfo()
 {
@@ -664,7 +708,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetPlatformInfoForTiling()
 {
     // mc2和qbmm把compileInfo都赋值给compileInfo_，后续硬件信息可以直接从compileInfo_中获取
     if (!compileInfoInit_) {
-        auto mmCompileInfo =  reinterpret_cast<const Mc2QuantBatchMatmulV3CompileInfo*>(context_->GetCompileInfo());
+        auto mmCompileInfo = reinterpret_cast<const Mc2QuantBatchMatmulV3CompileInfo *>(context_->GetCompileInfo());
         OP_TILING_CHECK(mmCompileInfo == nullptr,
                         OP_LOGE(inputParams_.opName, "quant_batch_matmul_v3_tiling GetCompileInfo is null"),
                         return false);
@@ -674,8 +718,7 @@ bool Mc2QuantBatchMatmulV3TilingBase::SetPlatformInfoForTiling()
     aicoreParams_.aicNum = compileInfo_.aicNum;
     OP_LOGE_IF(compileInfo_.l2Size <= 0, false, inputParams_.opName, "l2Size <= 0");
     // 纠正L2实际物理大小
-    compileInfo_.l2Size =
-        compileInfo_.l2Size == L2_FAKE_SIZE * MB_SIZE ? L2_REAL_SIZE * MB_SIZE : compileInfo_.l2Size;
+    compileInfo_.l2Size = compileInfo_.l2Size == L2_FAKE_SIZE * MB_SIZE ? L2_REAL_SIZE * MB_SIZE : compileInfo_.l2Size;
     inputParams_.libApiWorkSpaceSize = compileInfo_.workspaceNum;
     aicoreParams_.ubSize = compileInfo_.ubSize;
     aicoreParams_.l1Size = compileInfo_.l1Size;
@@ -691,14 +734,14 @@ bool Mc2QuantBatchMatmulV3TilingBase::GetUbDequantExtreSpace()
 }
 
 bool Mc2QuantBatchMatmulV3TilingBase::CheckShape(const std::vector<gert::Shape *> &mandtoryShape,
-                                          const gert::StorageShape *biasShape,
-                                          const gert::StorageShape *pertokenShape,
-                                          const std::vector<int64_t> &dimValueOfMKN) const
+                                                 const gert::StorageShape *biasShape,
+                                                 const gert::StorageShape *pertokenShape,
+                                                 const std::vector<int64_t> &dimValueOfMKN) const
 {
-    (void) mandtoryShape;
-    (void) biasShape;
-    (void) pertokenShape;
-    (void) dimValueOfMKN;
+    (void)mandtoryShape;
+    (void)biasShape;
+    (void)pertokenShape;
+    (void)dimValueOfMKN;
     return false;
 }
 
@@ -782,4 +825,4 @@ void Mc2QuantBatchMatmulInfo::Reset()
     bFormat = ge::FORMAT_ND;
     cFormat = ge::FORMAT_ND;
 }
-}  // namespace optiling
+} // namespace optiling

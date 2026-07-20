@@ -19,6 +19,7 @@
 #include "log/error_code.h"
 #include "err/ops_err.h"
 #include "flash_attn_tiling_info_parser.h"
+#include "flash_attn_tiling_utils.h"
 
 using std::map;
 using std::pair;
@@ -190,6 +191,18 @@ void FaInfoParser::GetInputParaInfo()
     GetOptionalInputParaInfo();
 }
 
+ge::graphStatus FaInfoParser::GetStrides()
+{
+    // 用opbase版本判断：老版本opbase的输入非view, 视为tensorv1, key/value必然连续
+    if (context_->InputIsView(KEY_INDEX) == false) {
+        hasViewStride_ = false;
+        return ge::GRAPH_SUCCESS;
+    }
+    keyStrides_ = context_->GetInputStride(KEY_INDEX);
+    valueStrides_ = context_->GetInputStride(VALUE_INDEX);
+    return ge::GRAPH_SUCCESS;
+}
+
 void FaInfoParser::GetOutputParaInfo()
 {
     opParamInfo_.attnOut.desc = context_->GetOutputDesc(ATTN_OUT_INDEX);
@@ -316,6 +329,52 @@ ge::graphStatus FaInfoParser::GetS1Size()
     return ge::GRAPH_SUCCESS;
 }
 
+void FaInfoParser::GetKvIsContiguous()
+{
+    // 老版本opbase不支持strides, 无法判NC, 放过
+    if (!hasViewStride_) {
+        return;
+    }
+
+    int32_t keyDimIdx = 0;
+    int32_t valDimIdx = 0;
+    bool keyContig = false;
+    bool valContig = false;
+    if (keyStrides_ != nullptr) {
+        const gert::Shape &keyShape = opParamInfo_.key.shape->GetStorageShape();
+        keyContig = (CheckTensorContiguous(keyShape.GetDimNum(), keyShape, keyStrides_, keyDimIdx) ==
+                      ge::GRAPH_SUCCESS);
+        keyNonContigDim_ = keyContig ? -1 : keyDimIdx;
+    }
+
+    if (valueStrides_ != nullptr) {
+        const gert::Shape &valueShape = opParamInfo_.value.shape->GetStorageShape();
+        valContig = (CheckTensorContiguous(valueShape.GetDimNum(), valueShape, valueStrides_, valDimIdx) ==
+                        ge::GRAPH_SUCCESS);
+        valueNonContigDim_ = valContig ? -1 : valDimIdx;
+    }
+    
+    if (layoutKV_ == FaLayout::PA_BBND) {
+        if (keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+            keyN2Stride_ = keyStrides_->GetStride(2);
+        }
+        if (valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+            valueN2Stride_ = valueStrides_->GetStride(2);
+        }
+    } else if (layoutKV_ == FaLayout::PA_BNBD || layoutKV_ == FaLayout::PA_NZ) {
+        if (keyStrides_ != nullptr) {
+            keyBnStride_ = keyStrides_->GetStride(0);
+            keyN2Stride_ = keyStrides_->GetStride(1);
+        }
+        if (valueStrides_ != nullptr) {
+            valueBnStride_ = valueStrides_->GetStride(0);
+            valueN2Stride_ = valueStrides_->GetStride(1);
+        }
+    }
+}
+
 void FaInfoParser::GetKvStorageMode()
 {
     bool isPaLayout = (layoutKV_ == FaLayout::PA_BBND || layoutKV_ == FaLayout::PA_BNBD ||
@@ -326,6 +385,7 @@ void FaInfoParser::GetKvStorageMode()
     } else {
         kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     }
+    GetKvIsContiguous();
 }
 
 ge::graphStatus FaInfoParser::GetS2SizeForBatchContinuous()
@@ -529,12 +589,22 @@ void FaInfoParser::GenerateInfo(FaTilingInfo &faInfo)
     GenerateAxisInfo(faInfo);
     GenerateDtypeInfo(faInfo);
     faInfo.batchContinuousFlag = (kvStorageMode_ == KvStorageMode::BATCH_CONTINUOUS);
+    faInfo.kvStorageMode = kvStorageMode_;
     faInfo.emptyTensorFlag = emptyTensorFlag_;
 
     faInfo.totalOutputSize = opParamInfo_.attnOut.shape->GetStorageShape().GetShapeSize();
     faInfo.totalBlockNum = blockNum_;
     faInfo.softmaxScale = softmaxScale_;
     faInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
+
+    faInfo.keyBnStride = keyBnStride_;
+    faInfo.keyN2Stride = keyN2Stride_;
+    faInfo.valueBnStride = valueBnStride_;
+    faInfo.valueN2Stride = valueN2Stride_;
+
+    faInfo.hasViewStride = hasViewStride_;
+    faInfo.keyNonContigDim = keyNonContigDim_;
+    faInfo.valueNonContigDim = valueNonContigDim_;
 
     GenerateFeatureInfo(faInfo);
     GenerateLayoutInfo(faInfo);
@@ -576,6 +646,9 @@ ge::graphStatus FaInfoParser::Parse(FaTilingInfo &faInfo)
     GetInOutDataType();
 
     if (ge::GRAPH_SUCCESS != GetInAndOutLayout()) {
+        return ge::GRAPH_FAILED;
+    }
+    if (ge::GRAPH_SUCCESS != GetStrides()) {
         return ge::GRAPH_FAILED;
     }
     GetKvStorageMode();

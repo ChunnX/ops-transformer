@@ -38,5 +38,14 @@ static ge::graphStatus InferShapeCausalConv1d(gert::InferShapeContext *context)
     return GRAPH_SUCCESS;
 }
 
-IMPL_OP_INFERSHAPE(CausalConv1d).InferShape(InferShapeCausalConv1d);
+static ge::graphStatus InferDataTypeCausalConv1d(gert::InferDataTypeContext *context)
+{
+    context->SetOutputDataType(1, context->GetInputDataType(IDX_0));
+    context->SetOutputDataType(0, context->GetInputDataType(IDX_CONV_STATES));
+    return GRAPH_SUCCESS;
+}
+
+IMPL_OP_INFERSHAPE(CausalConv1d)
+    .InferShape(InferShapeCausalConv1d)
+    .InferDataType(InferDataTypeCausalConv1d);
 } // namespace ops

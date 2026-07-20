@@ -51,14 +51,13 @@ enum NnopbaseHcclServerType {
     NNOPBASE_HCCL_SERVER_TYPE_MTE
 };
 
-aclnnStatus MoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTensor *x,
-                                         const aclTensor *topkIdx, const aclTensor *recvSrcMetadata,
-                                         const aclTensor *numRecvTokensPerExpert, const aclTensor *topkWeightsOptional,
-                                         const aclTensor *biasOptional0, const aclTensor *biasOptional1,
-                                         int64_t epWorldSize, int64_t epRankId, int64_t numExperts,
-                                         int64_t numMaxTokensPerRank, int64_t cclBufferSize, aclTensor *combinedX,
-                                         aclTensor *combinedTopkWeightsOptional, uint64_t *workspaceSize,
-                                         aclOpExecutor **executor)
+aclnnStatus MoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTensor *x, const aclTensor *topkIdx,
+                                         const aclTensor *recvSrcMetadata, const aclTensor *numRecvTokensPerExpert,
+                                         const aclTensor *topkWeightsOptional, const aclTensor *biasOptional0,
+                                         const aclTensor *biasOptional1, int64_t epWorldSize, int64_t epRankId,
+                                         int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize,
+                                         aclTensor *combinedX, aclTensor *combinedTopkWeightsOptional,
+                                         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("MoeEpCombine", "Begin to do MoeEpCombineGetWorkspaceSize");
     auto retNotNull = CheckNotNull(context, x, topkIdx, recvSrcMetadata, numRecvTokensPerExpert, combinedX);
@@ -73,9 +72,8 @@ aclnnStatus MoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTens
                                                   combinedTopkWeightsOptional, workspaceSize, executor);
 }
 
-aclnnStatus aclnnMoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTensor *x,
-                                              const aclTensor *topkIdx, const aclTensor *recvSrcMetadata,
-                                              const aclTensor *numRecvTokensPerExpert,
+aclnnStatus aclnnMoeEpCombineGetWorkspaceSize(const aclTensor *context, const aclTensor *x, const aclTensor *topkIdx,
+                                              const aclTensor *recvSrcMetadata, const aclTensor *numRecvTokensPerExpert,
                                               const aclTensor *topkWeightsOptional, const aclTensor *biasOptional0,
                                               const aclTensor *biasOptional1, int64_t epWorldSize, int64_t epRankId,
                                               int64_t numExperts, int64_t numMaxTokensPerRank, int64_t cclBufferSize,
@@ -100,4 +98,4 @@ aclnnStatus aclnnMoeEpCombine(void *workspace, uint64_t workspaceSize, aclOpExec
 
 #ifdef __cplusplus
 }
-#endif  // extern "C"
+#endif // extern "C"

@@ -145,7 +145,6 @@ set_directory_properties(PROPERTIES
 )
 
 include(cmake/third_party/opbase.cmake)
-include(cmake/third_party/ops-tensor.cmake)
 if(DOWNLOAD_OPS_TEST_KIT)
   include(cmake/third_party/ops_test_kit.cmake)
 endif()
@@ -173,6 +172,7 @@ if (BUILD_OPEN_PROJECT)
         message(STATUS "Start building custom package.")
         include(ExternalProject)
         include(cmake/dependencies.cmake)
+        include(cmake/third_party/ops-tensor.cmake)
         include(cmake/variables.cmake)
         include(cmake/obj_func.cmake)
         add_cann_third_party(eigen)
@@ -209,6 +209,7 @@ if (BUILD_OPEN_PROJECT)
     endif()
 else()
     include(cmake/dependencies.cmake)
+    include(cmake/third_party/ops-tensor.cmake)
     include(cmake/variables.cmake)
     include(cmake/opbuild.cmake)
     include(cmake/rty_obj_func.cmake)
@@ -604,12 +605,14 @@ if (BUILD_OPS_RTY_KERNEL)
                 OPTIONAL
         )
 
-        if(EXISTS ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py)
-            install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_apt.py
-                DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
-                OPTIONAL
-            )
-        endif()
+        foreach (_suffix a2 a3 apt)
+            if(EXISTS ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_${_suffix}.py)
+                install(FILES ${ASCEND_IMPL_OUT_DIR}/dynamic/${_op_name}_${_suffix}.py
+                    DESTINATION ${IMPL_DYNAMIC_INSTALL_DIR}
+                    OPTIONAL
+                )
+            endif()
+        endforeach()
     endforeach ()
 
     install(DIRECTORY ${OPS_ADV_UTILS_KERNEL_INC}/

@@ -25,7 +25,9 @@ template <typename x1Type, typename x2Type, typename biasType, typename yType, C
           CubeFormat formatY, bool aTrans, bool bTrans>
 class MatMulPerBlockASW {
 public:
-    __aicore__ inline MatMulPerBlockASW() {}
+    __aicore__ inline MatMulPerBlockASW()
+    {
+    }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR bias, GM_ADDR scale, GM_ADDR perTokenScale,
                                 GM_ADDR cGM, GM_ADDR workSpace, const void *tilingData, TPipe *que);
     __aicore__ inline void Process();
@@ -41,10 +43,10 @@ protected:
 
 template <typename x1Type, typename x2Type, typename biasType, typename yType, CubeFormat formatX1, CubeFormat formatX2,
           CubeFormat formatY, bool aTrans, bool bTrans>
-__aicore__ inline void MatMulPerBlockASW<x1Type, x2Type, biasType, yType, formatX1, formatX2, formatY, aTrans,
-                                         bTrans>::Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR bias, GM_ADDR scale,
-                                                       GM_ADDR perTokenScale, GM_ADDR cGM, GM_ADDR workSpace,
-                                                       const void *tilingData, TPipe *que)
+__aicore__ inline void
+MatMulPerBlockASW<x1Type, x2Type, biasType, yType, formatX1, formatX2, formatY, aTrans, bTrans>::Init(
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR bias, GM_ADDR scale, GM_ADDR perTokenScale, GM_ADDR cGM, GM_ADDR workSpace,
+    const void *tilingData, TPipe *que)
 {
     quantBmmTilingData_ = static_cast<const DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *>(tilingData);
     uint32_t blockIdx = GetBlockIdx();
@@ -91,5 +93,5 @@ MatMulPerBlockASW<x1Type, x2Type, biasType, yType, formatX1, formatX2, formatY, 
         mm_.Iterate();
     }
 }
-}  // namespace Mc2QuantBatchMatmulV3
-#endif  // QBMM_MIX_PERBLOCK_H
+} // namespace Mc2QuantBatchMatmulV3
+#endif // QBMM_MIX_PERBLOCK_H

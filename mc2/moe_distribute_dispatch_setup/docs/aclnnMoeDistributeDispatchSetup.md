@@ -84,14 +84,14 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
 ## aclnnMoeDistributeDispatchSetupGetWorkspaceSize
 
 - **参数说明**
-  
+
     <table style="undefined;table-layout: fixed; width: 1550px"> <colgroup>
     <col style="width: 110px">
     <col style="width: 120px">
     <col style="width: 305px">
     <col style="width: 330px">
     <col style="width: 210px">
-    <col style="width: 100px"> 
+    <col style="width: 100px">
     <col style="width: 180px">
     <col style="width: 145px">
     </colgroup>
@@ -327,7 +327,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
         - commAlg当前版本不支持，传空指针即可。
 
 - **返回值：**
-  
+
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
@@ -412,14 +412,14 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
 ## aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize
 
 - **参数说明**
-  
+
     <table style="undefined;table-layout: fixed; width: 1550px"> <colgroup>
     <col style="width: 110px">
     <col style="width: 120px">
     <col style="width: 305px">
     <col style="width: 330px">
     <col style="width: 210px">
-    <col style="width: 100px"> 
+    <col style="width: 100px">
     <col style="width: 180px">
     <col style="width: 145px">
     </colgroup>
@@ -641,28 +641,28 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
     </table>
 
 - **返回值：**
-  
+
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
 ## 约束说明
 
 1. 确定性计算：
      - aclnnMoeDistributeDispatchSetup默认确定性实现。
-     
+
 2. aclnnMoeDistributeDispatchSetup接口与aclnnMoeDistributeDispatchTeardown，aclnnMoeDistributeCombineSetup，aclnnMoeDistributeCombineTeardown接口必须配套使用。
 
 3. 调用接口过程中使用的`groupEp`、`epWorldSize`、`moeExpertNum`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值所有卡需保持一致，`groupEp`、`epWorldSize`、`expertShardType`、`sharedExpertNum`、`sharedExpertRankNum`、`globalBs`、`commQuantMode`、`commType`、`commAlg`参数取值在网络中不同层中也需保持一致，且和`aclnnMoeDistributeDispatchTeardown`，`aclnnMoeDistributeCombineSetup`，`aclnnMoeDistributeCombineTeardown`对应参数也保持一致。
 
 4. 参数说明里shape格式说明：
     * A：表示本卡可能接收的最大token数量，取值范围如下：
-      
+
       * 对于MoE专家，当`globalBs`为0时，要满足A >= `BS` * `epWorldSize` * min(`localExpertNum`, `K`)；当`globalBs`非0时，要满足A >= `globalBs` * min(`localExpertNum`, `K`)。
       * 对于共享专家，当`globalBs`为0时，要满足A = `BS` * `epWorldSize` * `sharedExpertNum` / `sharedExpertRankNum`；当`globalBs`非0时，要满足A = `globalBs` * `sharedExpertNum` / `sharedExpertRankNum`。
     * H：表示hidden size隐藏层大小，取值范围[1024, 8192]。当前仅支持4096、7168。
     * BS：表示batch sequence size，即本卡最终输出的token数量，取值范围为0 < BS ≤ 512。当前仅支持8、16、256。
     * K：表示选取topK个专家，取值范围为0 < `K` ≤ 16同时满足0 < `K` ≤ `moeExpertNum`。当前仅支持6、8。
     * localExpertNum：表示本卡专家数量。
-      
+
       * 对于共享专家卡，localExpertNum = 1
       * 对于MoE专家卡，localExpertNum = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)。moeExpertNum当前仅支持32。
     * tokenMsgSize：表示每个token在数据通信时的维度信息。
@@ -674,7 +674,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
 5. HCCL_BUFFSIZE：
 
     调用本接口前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。要求 >= 2且满足>= 4 * (`localExpertNum` * `maxBs` * `epWorldSize` * Align512(Align32(2 * H) + 44) + (`K` + `sharedExpertNum`) * `maxBs` * Align512(2 * `H`))，`localExpertNum`代表使用MoE专家卡的本卡专家数，其中Align512(x) = ((x + 512 - 1) / 512) * 512，Align32(x) = ((x + 32 - 1) / 32) * 32。
-  
+
 6. 通信域使用约束：
     * 一个模型中的aclnnMoeDistributeDispatchSetup接口，aclnnMoeDistributeDispatchTeardown接口，aclnnMoeDistributeCombineSetup接口，aclnnMoeDistributeCombineTeardown接口仅支持相同EP通信域，且该通信域中不允许有其他算子。
 
@@ -686,9 +686,9 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
 - 文件准备：
 
     1. 按照下方指导创建rank_table_m2.json文件并修改。
-    
+
     2. 将项目拷贝到两台服务器中，并根据机器的device ip配置rank_table_m2.json文件内容。注意两机rank_table_m2.json文件保持一致。
-    
+
     3. 安装cann包，并根据[算子调用](../../../docs/zh/invocation/quick_op_invocation.md)编译运行。
 
 - 关于rankTable:
@@ -721,7 +721,7 @@ aclnnStatus aclnnMoeDistributeDispatchSetupTeardownCalcOutputSize(
 - <term>Ascend 950DT</term>：
 
     - 环境变量配置：
-    
+
         ```bash
         # 运行前需设置RANK_TABLE_FILE环境变量
         export RANK_TABLE_FILE=/home/path/to/rank_table_m2.json

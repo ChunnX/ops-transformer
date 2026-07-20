@@ -17,7 +17,7 @@ import argparse
 
 
 def match_op_proto(file_path):
-    with open(file_path, 'r', encoding='utf-8') as f:
+    with open(file_path, "r", encoding="utf-8") as f:
         content = f.read()
 
     op_def_pattern = re.compile(r"REG_OP\((.+)\).*OP_END_FACTORY_REG\(\1\)", re.DOTALL)
@@ -50,13 +50,13 @@ def merge_op_proto(protos_path, output_file):
 
 namespace ge{{
 
-{os.linesep.join([f'{op_def}{os.linesep}' for op_def in op_defs])}
+{os.linesep.join([f"{op_def}{os.linesep}" for op_def in op_defs])}
 }}  // namespace ge
 
 #endif // OP_TRANSFORMER_PROTO_H_
 """
 
-    with open(output_file, 'w', encoding='utf-8') as f:
+    with open(output_file, "w", encoding="utf-8") as f:
         f.write(merged_content)
 
     print(f"merged op transformer proto file: {output_file}")
@@ -64,14 +64,14 @@ namespace ge{{
 
 def parse_args(argv):
     parser = argparse.ArgumentParser()
-    parser.add_argument("protos", nargs='+')
+    parser.add_argument("protos", nargs="+")
     parser.add_argument("--output-file", nargs=1, default=None)
     return parser.parse_args(argv)
 
 
 if __name__ == "__main__":
     args = parse_args(sys.argv)
-    
+
     protos_path = args.protos[1:]
     output_file = args.output_file[0]
     merge_op_proto(protos_path, output_file)

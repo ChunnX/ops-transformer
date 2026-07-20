@@ -33,7 +33,7 @@
 
 namespace mc2tiling {
 constexpr uint32_t STANDARD_CARD_4P = 4;
-constexpr uint32_t EIGHT_P_8P = 8;  // 8P场景（POD8P/Server8P）
+constexpr uint32_t EIGHT_P_8P = 8; // 8P场景（POD8P/Server8P）
 constexpr uint32_t COMM_MESH = 0b1U;
 constexpr uint32_t COMM_SWITCH = (COMM_MESH << 1U);
 constexpr uint32_t COMM_RING = (COMM_MESH << 2U);
@@ -42,11 +42,10 @@ constexpr uint32_t COMM_UNDEFINED = 0xFFFFFFFFU;
 constexpr uint8_t COMM_ALG_FULL_MESH_HOST = 6;
 constexpr uint64_t CHECK_VALUE_ODD = 2;
 constexpr uint32_t AIC_NUM_950 = 32;
-constexpr uint64_t MC2_TILINGKEY_OFFSET =
-    uint64_t(1000000000000000000UL);  // 10^18
+constexpr uint64_t MC2_TILINGKEY_OFFSET = uint64_t(1000000000000000000UL); // 10^18
 constexpr size_t RES_LEN = 64;
 constexpr size_t MAX_MSG_NUM = 16;
-constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4;  // 只通信不计算
+constexpr uint8_t MC2_DEBUG_ONLY_AICPU = 4; // 只通信不计算
 constexpr char HCCL_DETERMINISTIC[] = "HCCL_DETERMINISTIC";
 /**
 当前通信API未提供枚举，后续会提供
@@ -92,15 +91,15 @@ constexpr static uint64_t ALL_GATHER_HCCL_MEM_LIMIT = 256 * 1024 * 1024;
 constexpr static uint64_t ALL_GATHER_HCCL_NUM_LIMIT = 16;
 
 enum class Mc2QuantMode {
-  DEFAULT = 0,
-  PERTENSOR_MODE,
-  PERBLOCK_MODE,
-  MXFP_MODE,
-  INVALID_MODE,
+    DEFAULT = 0,
+    PERTENSOR_MODE,
+    PERBLOCK_MODE,
+    MXFP_MODE,
+    INVALID_MODE,
 };
 
 struct HcclAicpuOpParam {
-  uint8_t res[RES_LEN];
+    uint8_t res[RES_LEN];
 };
 
 struct Mc2MatmulShapeInfo {
@@ -110,47 +109,40 @@ struct Mc2MatmulShapeInfo {
     const gert::StorageShape *x2ScaleShape{nullptr};
     bool isMxfp{false};
     bool isBTrans{false};
-    const char* opName{nullptr};
+    const char *opName{nullptr};
 };
 
 struct KFCMsgBody {
-  // Rank* aiv * MsgSize * sizeof(消息)
-  HcclAicpuOpParam msgSndArea[mc2tiling::AC_MAX_AIV][mc2tiling::AC_MSG_CNT];
-  HcclAicpuOpParam msgRcvArea[mc2tiling::AC_MAX_AIV][mc2tiling::AC_MSG_CNT];
+    // Rank* aiv * MsgSize * sizeof(消息)
+    HcclAicpuOpParam msgSndArea[mc2tiling::AC_MAX_AIV][mc2tiling::AC_MSG_CNT];
+    HcclAicpuOpParam msgRcvArea[mc2tiling::AC_MAX_AIV][mc2tiling::AC_MSG_CNT];
 };
 struct KFCNotify {
-  // 消息通信
-  HcclAicpuOpParam msgSend[MAX_MSG_NUM];  // 填充16个
-  HcclAicpuOpParam msgCnt[MAX_MSG_NUM];
+    // 消息通信
+    HcclAicpuOpParam msgSend[MAX_MSG_NUM]; // 填充16个
+    HcclAicpuOpParam msgCnt[MAX_MSG_NUM];
 };
 
 constexpr std::initializer_list<ge::DataType> FP8DTYPE_SUPPORT_LIST = {
-    ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2,
-    ge::DataType::DT_HIFLOAT8};
+    ge::DataType::DT_FLOAT8_E4M3FN, ge::DataType::DT_FLOAT8_E5M2, ge::DataType::DT_HIFLOAT8};
 
-constexpr std::initializer_list<ge::DataType> MXFP8DTYPE_SUPPORT_LIST = { ge::DataType::DT_FLOAT8_E4M3FN,
-    ge::DataType::DT_FLOAT8_E5M2 };
+constexpr std::initializer_list<ge::DataType> MXFP8DTYPE_SUPPORT_LIST = {ge::DataType::DT_FLOAT8_E4M3FN,
+                                                                         ge::DataType::DT_FLOAT8_E5M2};
 
-matmul_tiling::DataType ConvertGeTypeToMmType(const std::string &opName,
-                                              ge::DataType type);
-ge::DataType ConvertMmTypeToGeType(const std::string &opName,
-                                   matmul_tiling::DataType type);
+matmul_tiling::DataType ConvertGeTypeToMmType(const std::string &opName, ge::DataType type);
+ge::DataType ConvertMmTypeToGeType(const std::string &opName, matmul_tiling::DataType type);
 uint64_t GetDataTypeSize(const std::string &opName, ge::DataType type);
-HcclDataType ConvertGeTypeToHcclType(const std::string &opName,
-                                     ge::DataType type);
+HcclDataType ConvertGeTypeToHcclType(const std::string &opName, ge::DataType type);
 bool CheckSuppportedFormat(ge::Format format);
 bool IsDeterministic();
-bool GetRankSize(const std::string &opName, const char *group,
-                 int64_t &rankSize);
+bool GetRankSize(const std::string &opName, const char *group, int64_t &rankSize);
 bool CheckRankSize(const NpuArch npuArch, const uint32_t rankSize);
-uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group,
-                       const gert::TilingContext *context);
+uint8_t Mc2GetCommAlgo(int64_t rankDim, uint64_t mValue, const char *group, const gert::TilingContext *context);
 
-bool CheckDataTypeVaild(ge::DataType type,
-                        std::initializer_list<ge::DataType> supportDtypeList);
+bool CheckDataTypeVaild(ge::DataType type, std::initializer_list<ge::DataType> supportDtypeList);
 
-void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3Args,
-                        const mc2tiling::TilingArgs &args, const char *opName);
+void UpdateMatmulV3Args(optiling::mc2_matmul_v3_advanced::Mc2MatMulV3Args &mmV3Args, const mc2tiling::TilingArgs &args,
+                        const char *opName);
 ge::graphStatus GetMatmulV3PriorityPolicy(const NpuArch npuArch, std::vector<int32_t> &priorities, const char *opName);
 
 inline std::string GetSocVersion(const gert::TilingContext *context)
@@ -170,29 +162,27 @@ inline NpuArch GetNpuArch(const gert::TilingContext *context)
 }
 
 class Mc2TilingUtils {
- public:
-  static uint8_t GetDebugMode();
-  static uint8_t GetDebugCommAlg();
-  static uint8_t GetDebugStepSize();
-  static uint32_t GetCommSets(const char *group);
-  static ge::graphStatus CommonParamCheck(const gert::TilingContext *context);
-  static mc2tiling::HcclDataType GetDataType(ge::DataType type);
-  static uint64_t GetMaxWindowSize();
-  static bool CheckRankSize(NpuArch npuArch, uint32_t rankSize);
-  static HcclDataType ConvertGeTypeToHcclType(const std::string &opName,
-                                              ge::DataType type);
-  static bool InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupSizeM,
-                             uint64_t &groupSizeN, uint64_t &groupSizeK);
-  template <typename T>
-  static uint64_t GetTilingKey(T &tilingData, bool isFullMeshHost = false) {
-    uint8_t commAlg =
-        isFullMeshHost ? COMM_ALG_FULL_MESH_HOST : tilingData.msg.get_commAlg();
-    uint64_t castBias = tilingData.param.get_biasLen() == 0 ? 0 : 1;
-    // tiling key: commAlg(switch/doublering/fullmesh) nd2nz bias2float
-    uint64_t tilingKey =
-        optiling::RecursiveSum(castBias, 1, static_cast<uint64_t>(commAlg));
-    return tilingKey;
-  };
+public:
+    static uint8_t GetDebugMode();
+    static uint8_t GetDebugCommAlg();
+    static uint8_t GetDebugStepSize();
+    static uint32_t GetCommSets(const char *group);
+    static ge::graphStatus CommonParamCheck(const gert::TilingContext *context);
+    static mc2tiling::HcclDataType GetDataType(ge::DataType type);
+    static uint64_t GetMaxWindowSize();
+    static bool CheckRankSize(NpuArch npuArch, uint32_t rankSize);
+    static HcclDataType ConvertGeTypeToHcclType(const std::string &opName, ge::DataType type);
+    static bool InferGroupSize(Mc2MatmulShapeInfo &mmInfo, uint64_t &groupSizeM, uint64_t &groupSizeN,
+                               uint64_t &groupSizeK);
+    template <typename T>
+    static uint64_t GetTilingKey(T &tilingData, bool isFullMeshHost = false)
+    {
+        uint8_t commAlg = isFullMeshHost ? COMM_ALG_FULL_MESH_HOST : tilingData.msg.get_commAlg();
+        uint64_t castBias = tilingData.param.get_biasLen() == 0 ? 0 : 1;
+        // tiling key: commAlg(switch/doublering/fullmesh) nd2nz bias2float
+        uint64_t tilingKey = optiling::RecursiveSum(castBias, 1, static_cast<uint64_t>(commAlg));
+        return tilingKey;
+    };
 };
 
 const std::map<ge::DataType, matmul_tiling::DataType> D_TYPE_MAP = {
@@ -223,39 +213,38 @@ const std::map<ge::DataType, mc2tiling::HcclDataType> HCCL_DATA_TYPE = {
     {ge::DataType::DT_FLOAT16, mc2tiling::HcclDataType::HCCL_DATA_TYPE_FP16},
     {ge::DataType::DT_FLOAT, mc2tiling::HcclDataType::HCCL_DATA_TYPE_FP32},
     {ge::DataType::DT_BF16, mc2tiling::HcclDataType::HCCL_DATA_TYPE_BFP16},
-    {ge::DataType::DT_HIFLOAT8, mc2tiling::HcclDataType::HCCL_DATA_TYPE_HIF8}
-};
+    {ge::DataType::DT_HIFLOAT8, mc2tiling::HcclDataType::HCCL_DATA_TYPE_HIF8}};
 
- const std::map<NpuArch, std::set<uint32_t>> supportedRankSizeSet = {
+const std::map<NpuArch, std::set<uint32_t>> supportedRankSizeSet = {
     {NpuArch::DAV_2002, {1, 2, 4}},
     {NpuArch::DAV_2201, {1, 2, 4, 8}},
     {NpuArch::DAV_3510, {1, 2, 4, 8, 16, 32, 64}},
 };
 
-const std::set<ge::Format> SUPPORTED_FORMAT = {
-    ge::FORMAT_NCL,  ge::FORMAT_NCDHW, ge::FORMAT_DHWCN,
-    ge::FORMAT_NHWC, ge::FORMAT_NCHW,  ge::FORMAT_ND};
+const std::set<ge::Format> SUPPORTED_FORMAT = {ge::FORMAT_NCL,  ge::FORMAT_NCDHW, ge::FORMAT_DHWCN,
+                                               ge::FORMAT_NHWC, ge::FORMAT_NCHW,  ge::FORMAT_ND};
 
-inline ge::graphStatus GetCclBufferSize(const char* groupStr, uint64_t* cclBufferSize, const char* nodeName)
+inline ge::graphStatus GetCclBufferSize(const char *groupStr, uint64_t *cclBufferSize, const char *nodeName)
 {
     HcclComm hcclComm;
-    OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetCclBufferSizeByGroup(groupStr, cclBufferSize, &hcclComm)
-        != HCCL_SUCCESS, OP_LOGE(nodeName, "CommGetCclBufferSizeByGroup failed"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetCclBufferSizeByGroup(groupStr, cclBufferSize, &hcclComm) !=
+                        HCCL_SUCCESS,
+                    OP_LOGE(nodeName, "CommGetCclBufferSizeByGroup failed"), return ge::GRAPH_FAILED);
     if (hcclComm == nullptr) {
         OP_TILING_CHECK(Mc2Hcom::MC2HcomTopology::CommGetGroupLocalWindowSize(groupStr, cclBufferSize) != HCCL_SUCCESS,
-            OP_LOGE(nodeName, "GetGroupLocalWindowSize from topoInfo failed"), return ge::GRAPH_FAILED);
+                        OP_LOGE(nodeName, "GetGroupLocalWindowSize from topoInfo failed"), return ge::GRAPH_FAILED);
         OP_LOGD(nodeName, "Get cclBufferSize by topoInfo");
     } else {
         OP_LOGD(nodeName, "Get cclBufferSize from HCCL");
     }
-    OP_TILING_CHECK(*cclBufferSize == 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize", "0", "non-zero"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*cclBufferSize == 0, OP_LOGE_FOR_INVALID_VALUE(nodeName, "cclBufferSize", "0", "non-zero"),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
 inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const char *nodeName,
-    uint64_t &hcclBufferSizeEp, uint64_t &maxWindowSizeEp, uint32_t attrGroupEpIndex, bool isLayered)
+                                    uint64_t &hcclBufferSizeEp, uint64_t &maxWindowSizeEp, uint32_t attrGroupEpIndex,
+                                    bool isLayered)
 {
     auto attrs = context->GetAttrs();
     if (mc2tiling::GetNpuArch(context) == NpuArch::DAV_3510) {
@@ -269,7 +258,8 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
             hcclBufferSizeEp = mc2tiling::Mc2TilingUtils::GetMaxWindowSize();
         } else {
             auto groupEpHccl = attrs->GetAttrPointer<char>(static_cast<int>(attrGroupEpIndex));
-            OP_TILING_CHECK(GetCclBufferSize(groupEpHccl, &hcclBufferSizeEp, nodeName) != ge::GRAPH_SUCCESS,
+            OP_TILING_CHECK(
+                GetCclBufferSize(groupEpHccl, &hcclBufferSizeEp, nodeName) != ge::GRAPH_SUCCESS,
                 OP_LOGE(nodeName, "Get Ep HcclBufferSizeEP failed, HcclBufferSizeEP is %lu", maxWindowSizeEp),
                 return ge::GRAPH_FAILED);
         }
@@ -279,7 +269,8 @@ inline ge::graphStatus GetEpWinSize(const gert::TilingContext *context, const ch
 }
 
 // 临时判断是否为标卡4p形态(4卡，950)
-inline bool IsStandardCard4P(const uint32_t rankDim, const NpuArch npuArch) {
+inline bool IsStandardCard4P(const uint32_t rankDim, const NpuArch npuArch)
+{
     return ((rankDim == STANDARD_CARD_4P) && (npuArch == NpuArch::DAV_3510));
 }
 
@@ -292,9 +283,8 @@ inline bool Is8P(const uint32_t rankDim, const NpuArch npuArch)
 // 判断是否使用 All2All + Vec Reduce 通路（StandardCard 4P 或 8P）
 inline bool IsUseA2APath(const uint32_t rankDim, const NpuArch npuArch)
 {
-    return ((npuArch == NpuArch::DAV_3510) &&
-            (rankDim == STANDARD_CARD_4P || rankDim == EIGHT_P_8P));
+    return ((npuArch == NpuArch::DAV_3510) && (rankDim == STANDARD_CARD_4P || rankDim == EIGHT_P_8P));
 }
-}  // namespace mc2tiling
+} // namespace mc2tiling
 
 #endif

@@ -135,16 +135,12 @@ public:
     }
 
     __aicore__ inline
-    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint64_t &kOffset, uint32_t &nowNIdx,
-        uint32_t &strideKV, uint32_t &blockSize, uint64_t valueBnStride)
+    void getKVOffset(AscendC::GlobalTensor<int32_t> &gBlockTable, uint32_t &kOffset, uint32_t &nowNIdx,
+        uint32_t &strideKV, uint32_t &blockSize)
     {
         if constexpr (PAGED_CACHE_FLAG_) {
             uint32_t blockTableId = gBlockTable.GetValue(nowNIdx);
-            if (valueBnStride != 0) {
-                kOffset = blockTableId * valueBnStride;
-            } else {
-                kOffset = static_cast<uint64_t>(blockTableId) * blockSize * strideKV;
-            }
+            kOffset = blockTableId * blockSize * strideKV;
         } else {
             kOffset = nowNIdx * blockSize * strideKV;
         }
@@ -158,13 +154,13 @@ public:
         AscendC::GlobalTensor<int32_t> gBlockTable,
         LayoutA layoutA, LayoutB layoutB, LayoutC layoutC,GemmCoord actualOriShape,
         uint32_t &nIdx, uint32_t &nLoop, uint32_t &blockSize, uint32_t kvSeqlen, uint32_t strideKV,
-        uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag, uint32_t crossCoreSyncTrigger, uint64_t valueBnStride)
+        uint32_t blockStackNum, Arch::CrossCoreFlag softmaxFlag, uint32_t crossCoreSyncTrigger)
     {
         uint32_t rowNum = actualOriShape[COORD_DIM0];
         uint32_t embed = actualOriShape[COORD_DIM1];
         uint32_t stackSeqTile = actualOriShape[COORD_DIM2];
         GemmCoord actualShape{rowNum, embed, 0};
-        uint64_t gBOffset = 0;
+        uint32_t gBOffset = 0;
 
         LayoutBInL1 layoutBInL1 = LayoutBInL1::template MakeLayout<ElementB>(stackSeqTile, embed);
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(EVENT_ID4);
@@ -172,7 +168,7 @@ public:
              blockStackIdx++) {
             uint32_t nowNIdx = nIdx + blockStackIdx;
             getBlockShape(actualShape, nowNIdx, nLoop, kvSeqlen, blockSize);
-            getKVOffset(gBlockTable, gBOffset, nowNIdx, strideKV, blockSize, valueBnStride);
+            getKVOffset(gBlockTable, gBOffset, nowNIdx, strideKV, blockSize);
             auto layoutBTile = layoutB.GetTileLayout(MakeCoord(actualShape.k(), actualShape.n()));
             MatrixCoord l1BTileCoord{blockStackIdx * blockSize, 0};
             auto l1BTile = l1BTensor[layoutBInL1.GetOffset(l1BTileCoord)];

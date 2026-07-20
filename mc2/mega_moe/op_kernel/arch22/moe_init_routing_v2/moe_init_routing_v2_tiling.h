@@ -74,7 +74,8 @@ template <class T>
 #if defined(__CCE_AICORE__) || defined(__AICORE__)
 __aicore__
 #endif
-    constexpr T CeilDiv(const T dividend, const T divisor)
+    constexpr T
+    CeilDiv(const T dividend, const T divisor)
 {
     return (dividend + divisor - 1) / divisor;
 }
@@ -139,6 +140,7 @@ struct MoeInitRoutingV2TilingData {
 class MoeInitRoutingV2TilingBase : public TilingBaseClass {
 public:
     MoeInitRoutingV2TilingData moeInitRoutingTilingData;
+
 protected:
     bool GetPlatformInfo(int64_t aivCoreNum, int64_t ubSizePlatForm) override;
     bool GetShapeAttrsInfo(int64_t m, int64_t cols, int64_t topK, int64_t expertCapacity, int64_t expertNum,

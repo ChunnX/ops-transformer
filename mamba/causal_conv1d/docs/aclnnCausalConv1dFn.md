@@ -25,7 +25,7 @@
     weight: [K, dim]，其中K∈{2,3,4}
     convStates: [batch, stateLen, dim]
     bias: [dim] 或 nullptr
-    queryStartLoc: [batch+1] （必须提供）
+    queryStartLoc: [batch+1] 或 nullptr
     cacheIndices: [batch] 或 nullptr
     initialStateMode: [batch] 或 nullptr
     blockIdxFirstScheduledToken: [batch] 或 nullptr

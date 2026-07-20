@@ -469,7 +469,7 @@ aclnnStatus aclnnNormRopeConcat(
         <td>√</td>
       </tr>
       <tr>
-        <td>normEncoderQueryMean</td>
+        <td>normAddedQueryMean</td>
         <td>输出</td>
         <td>LayerNorm中的encoderQuery均值输出，用于反向。</td>
         <td>normAddedType!=0且isTraining=true时有效。</td>
@@ -479,7 +479,7 @@ aclnnStatus aclnnNormRopeConcat(
         <td>√</td>
       </tr>
       <tr>
-        <td>normEncoderQueryRstd</td>
+        <td>normAddedQueryRstd</td>
         <td>输出</td>
         <td>LayerNorm中的encoderQuery标准差输出，用于反向。</td>
         <td>normAddedType!=0且isTraining=true时有效。</td>
@@ -489,7 +489,7 @@ aclnnStatus aclnnNormRopeConcat(
         <td>√</td>
       </tr>
       <tr>
-        <td>normEncoderKeyMean</td>
+        <td>normAddedKeyMean</td>
         <td>输出</td>
         <td>LayerNorm中的encoderKey均值输出，用于反向。</td>
         <td>normAddedType!=0且isTraining=true时有效。</td>
@@ -499,7 +499,7 @@ aclnnStatus aclnnNormRopeConcat(
         <td>√</td>
       </tr>
       <tr>
-        <td>normEncoderKeyRstd</td>
+        <td>normAddedKeyRstd</td>
         <td>输出</td>
         <td>LayerNorm中的encoderKey标准差输出，用于反向。</td>
         <td>normAddedType!=0且isTraining=true时有效。</td>

@@ -19,14 +19,12 @@ using AscendC::GlobalTensor;
 using AscendC::LocalTensor;
 
 template <typename T>
-DEVICE void CopyGmToUbIntervalDataCopy(
-    const LocalTensor<T>& dst, const GlobalTensor<T>& src, uint32_t blockCount, uint32_t blockLen,
-    uint32_t dstInnerLength, uint32_t srcInnerLength)
+DEVICE void CopyGmToUbIntervalDataCopy(const LocalTensor<T> &dst, const GlobalTensor<T> &src, uint32_t blockCount,
+                                       uint32_t blockLen, uint32_t dstInnerLength, uint32_t srcInnerLength)
 {
 #if defined(__CCE_KT_TEST__)
-    ASCENDC_ASSERT(dstInnerLength >= blockLen, {
-        X_LOG("dstInnerLength[%d] should be larger than blockLen[%d].", dstInnerLength, blockLen);
-    });
+    ASCENDC_ASSERT(dstInnerLength >= blockLen,
+                   { X_LOG("dstInnerLength[%d] should be larger than blockLen[%d].", dstInnerLength, blockLen); });
 #endif
     DataCopyExtParams params;
     params.blockCount = blockCount;
@@ -46,9 +44,8 @@ DEVICE void CopyGmToUbIntervalDataCopy(
         params.dstStride = params.dstStride >> 1;
         padParams.rightPadding = padParams.rightPadding >> 1;
     }
-    X_LOG(
-        "DataCopyPad2D blockCount %d blockLen %d srcStride %d dstStride %d", params.blockCount, params.blockLen,
-        params.srcStride, params.dstStride);
+    X_LOG("DataCopyPad2D blockCount %d blockLen %d srcStride %d dstStride %d", params.blockCount, params.blockLen,
+          params.srcStride, params.dstStride);
 #if defined(__CCE_KT_TEST__)
     ASCENDC_ASSERT(params.blockLen > 0, { X_LOG("blockLen[%d] should be larger than 0.", params.blockLen); });
 #endif

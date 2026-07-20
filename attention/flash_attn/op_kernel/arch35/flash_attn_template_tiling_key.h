@@ -18,7 +18,6 @@
 
 #include "ascendc/host_api/tiling/template_argument.h"
 #include "../utils/flash_attn_common_def.h"
-#include "../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
 #include "flash_attn_tiling_data.h"
 
 #ifndef ORIG_DTYPE_QUERY

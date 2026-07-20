@@ -183,7 +183,7 @@
 
 ## 约束说明
 
--   topkNum <= 512。paddedMode为false时，每个token最多预留topkNum个专家槽位，routingMap中每行为1或true的个数小于等于topkNum；sortedIndices中允许使用-1表示无效槽位。
+- topkNum <= 512。paddedMode为false时，每个token最多预留topkNum个专家槽位，routingMap中每行为1或true的个数小于等于topkNum；sortedIndices中允许使用-1表示无效槽位。
 
 ## 调用说明
 

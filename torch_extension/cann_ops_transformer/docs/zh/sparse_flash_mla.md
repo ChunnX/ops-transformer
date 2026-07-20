@@ -134,8 +134,8 @@ cann_ops_transformer.sparse_flash_mla(
 | max_seqlen_ori_kv | 可选属性 | 所有batch中`ori_kv`的最大有效长度。默认值为0。 | INT | - |
 | max_seqlen_cmp_kv | 可选属性 | 所有batch中`cmp_kv`的最大有效长度。默认值为0。 | INT | - |
 | ori_topk | 可选属性 | 原始KV TopK长度。默认值为0。 | INT | - |
-| cmp_topk | 可选属性 | 压缩KV TopK长度，支持0、512、1024。默认值为0。 | INT | - |
-| cmp_ratio | 可选属性 | 表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。支持1、4、128。默认值为1。 | INT | - |
+| cmp_topk | 可选属性 | 压缩KV TopK长度，默认值为0。 | INT | - |
+| cmp_ratio | 可选属性 | 表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。支持1到128。默认值为1。 | INT | - |
 | ori_mask_mode | 可选属性 | 表示`q`和`ori_kv`计算的mask模式。<br>0: No Mask。<br>3: RightDownCausal模式。<br>4: Band模式。默认值为0。 | INT | - |
 | cmp_mask_mode | 可选属性 | 表示`q`和`cmp_kv`计算的mask模式。<br>0: No Mask。<br>3: RightDownCausal模式。默认值为0。 | INT | - |
 | ori_win_left | 可选属性 | 表示`q`和`ori_kv`计算中`q`对过去token计算的数量，支持-1或非负数，其中-1表示窗口不受限。默认值为-1。 | INT | - |
@@ -169,7 +169,7 @@ cann_ops_transformer.sparse_flash_mla(
 | sinks | 可选输入 | attention sinks输入。 | FLOAT | ND |
 | metadata | 输入 | `sparse_flash_mla_metadata`生成的任务切分结果。 | INT32 | ND |
 | softmax_scale | 可选属性 | QK矩阵乘后的缩放系数。默认值为1.0。 | FLOAT | - |
-| cmp_ratio | 可选属性 | 表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。支持1、4、128。默认值为1。 | INT | - |
+| cmp_ratio | 可选属性 | 表示`cmp_kv`相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度；仅传入`ori_kv`时不参与压缩KV计算。支持1到128。默认值为1。 | INT | - |
 | ori_mask_mode | 可选属性 | 表示`q`和`ori_kv`计算的mask模式。<br>0: No Mask。<br>3: RightDownCausal模式。<br>4: Band模式。默认值为0。 | INT | - |
 | cmp_mask_mode | 可选属性 | 表示`q`和`cmp_kv`计算的mask模式。<br>0: No Mask。<br>3: RightDownCausal模式。默认值为0。 | INT | - |
 | ori_win_left | 可选属性 | 表示`q`和`ori_kv`计算中`q`对过去token计算的数量，支持-1或非负数，其中-1表示窗口不受限。默认值为-1。 | INT | - |
@@ -216,20 +216,21 @@ cann_ops_transformer.sparse_flash_mla(
     - `head_dim`仅支持512，`num_heads_kv`仅支持1。
     - `num_heads_q / num_heads_kv`支持1、2、4、8、16、32、64、128。
     - `ori_mask_mode`仅支持4，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
-    - PageAttention的block_size支持16的倍数，且不超过1024。
+    - PageAttention的block_size支持1到1024。
 
   - 产品型号约束如下：
     - <term>Ascend 950PR/Ascend 950DT</term>：`num_heads_q`/`num_heads_kv`不支持1。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size支持16的倍数，且不超过1024；ori_sparse_indices当前暂不支持，cmp_sparse_indices的最后一维压缩KV TopK长度，支持0、512、1024。默认值为0。
   - SWA：
     - 仅传入`ori_kv`时，`cmp_ratio`不参与压缩KV计算，需保持默认值1。
     - 不传入`cmp_kv`、`cmp_sparse_indices`和`cmp_block_table`。
     - `cmp_topk`传0，`cmp_mask_mode`传0。
   - CSA：
-    - `cmp_ratio`仅支持4，`cmp_mask_mode`仅支持3。
-    - `cmp_sparse_indices`必须传入，最后一维支持512或1024；`cmp_topk`对应传512或1024。
+    - `cmp_mask_mode`仅支持3。
+    - `cmp_sparse_indices`必须传入，最后一维支持泛化；`cmp_topk`对应传非0。
     - `cmp_residual_kv`必须传入，长度必须等于batch大小。
   - HCA：
-    - `cmp_ratio`仅支持128，`cmp_mask_mode`仅支持3。
+    - `cmp_mask_mode`仅支持3。
     - 不传入`cmp_sparse_indices`；`cmp_topk`传0。
     - `cmp_residual_kv`必须传入，长度必须等于batch大小。
 

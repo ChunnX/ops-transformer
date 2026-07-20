@@ -28,9 +28,11 @@ template <class aType, class bType, class scaleType, class biasType, class ptSca
           class blockType = Mc2QuantBmmAswBlock, const MatmulConfig &mmCfg = MM_CFG_NO_PRELOAD_OPEN_UNIT_FLAG>
 class Mc2QuantBmmPertokenAL1FullLoad
     : public Mc2QuantBmmPertokenRegbaseKernel<aType, bType, scaleType, biasType, ptScaleType, cType, aFormat, bFormat,
-                                           cFormat, aTrans, bTrans, l0cDtype, blockType, mmCfg> {
+                                              cFormat, aTrans, bTrans, l0cDtype, blockType, mmCfg> {
 public:
-    __aicore__ inline Mc2QuantBmmPertokenAL1FullLoad() {}
+    __aicore__ inline Mc2QuantBmmPertokenAL1FullLoad()
+    {
+    }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR scale, GM_ADDR offset, GM_ADDR bias, GM_ADDR ptScale,
                                 GM_ADDR cGM, GM_ADDR workSpace, const void *tilingData, TPipe *pipe);
     __aicore__ inline void InitBuffer();
@@ -44,7 +46,7 @@ protected:
     using biasT = AscendC::MatmulType<TPosition::GM, CubeFormat::ND, biasType>;
     using cT = AscendC::MatmulType<TPosition::VECIN, CubeFormat::ND_ALIGN, l0cDtype>;
     AscendC::MatmulImpl<aT, bT, cT, biasT, mmCfg, AscendC::MatmulCallBackFunc<nullptr, nullptr, nullptr>,
-                       AscendC::QBmmCustomMatmulPolicy>
+                        AscendC::QBmmCustomMatmulPolicy>
         mm;
     TQue<QuePosition::A1, 1> InQueueAL1_;
     LocalTensor<aType> al1Local_;
@@ -75,9 +77,9 @@ LOCAL_TEMPLATE_CLASS_MIX_PARAMS
 __aicore__ inline void Mc2QuantBmmPertokenAL1FullLoad<LOCAL_TEMPLATE_FUNC_MIX_PARAMS>::InitBuffer()
 {
     if ASCEND_IS_AIC {
-        uint64_t aL1Size = DequantBmm::CalcAL1Size<aType, aTrans>(
-            this->block_.tilingData_->matmulTiling.singleCoreM, this->block_.tilingData_->matmulTiling.Ka);
-        this->pipe_->InitBuffer(InQueueAL1_, 1, aL1Size);  // m k的计算
+        uint64_t aL1Size = DequantBmm::CalcAL1Size<aType, aTrans>(this->block_.tilingData_->matmulTiling.singleCoreM,
+                                                                  this->block_.tilingData_->matmulTiling.Ka);
+        this->pipe_->InitBuffer(InQueueAL1_, 1, aL1Size); // m k的计算
         al1Local_ = InQueueAL1_.AllocTensor<aType>();
         CopyInA1<aType, aTrans>(this->block_, this->blockIdx_, isMMultiCore_, al1Local_, this->aGlobal_);
         mm.Init(&this->block_.tilingData_->matmulTiling, this->pipe_);
@@ -97,16 +99,16 @@ __aicore__ inline void Mc2QuantBmmPertokenAL1FullLoad<LOCAL_TEMPLATE_FUNC_MIX_PA
         }
         if (this->isBiasEpilogue_) {
             if (this->biasDtype_ == DT_FLOAT) {
-                this->pipe_->InitBuffer(this->vecQueBias_, 1,
-                                        this->tilingData_->matmulTiling.baseN * sizeof(float));
+                this->pipe_->InitBuffer(this->vecQueBias_, 1, this->tilingData_->matmulTiling.baseN * sizeof(float));
             } else {
                 this->pipe_->InitBuffer(this->vecQueBias_, 1,
                                         this->tilingData_->matmulTiling.baseN * sizeof(bfloat16_t));
             }
         }
         // fp16/bf16分两次输出，fp32分四次输出
-        this->pipe_->InitBuffer(this->vecQueOut_, BUFFER_NUM, DequantBmm::CeilDiv(mForSingleVec, FP32_OUTPUT_TIMES) *
-                                this->tilingData_->matmulTiling.baseN * sizeof(cType));
+        this->pipe_->InitBuffer(this->vecQueOut_, BUFFER_NUM,
+                                DequantBmm::CeilDiv(mForSingleVec, FP32_OUTPUT_TIMES) *
+                                    this->tilingData_->matmulTiling.baseN * sizeof(cType));
     }
 }
 
@@ -163,7 +165,7 @@ __aicore__ inline void Mc2QuantBmmPertokenAL1FullLoad<LOCAL_TEMPLATE_FUNC_MIX_PA
                 this->block_.template CalcGMOffset<aTrans, bTrans, aType, scaleType, bFormat>();
                 if ASCEND_IS_AIC {
                     mm.SetSingleShape(this->block_.params_.singleCoreM, this->block_.params_.singleCoreN,
-                        this->tilingData_->matmulTiling.singleCoreK);
+                                      this->tilingData_->matmulTiling.singleCoreK);
                     if (this->block_.offset_.batchCOffset * this->block_.params_.round + j > 0) {
                         this->WaitForVector();
                     }
@@ -205,6 +207,6 @@ __aicore__ inline void Mc2QuantBmmPertokenAL1FullLoad<LOCAL_TEMPLATE_FUNC_MIX_PA
     mm.GetTensorC(this->l0cOutUb_, 0, true);
 }
 
-}  // namespace Mc2QuantBatchMatmulV3
+} // namespace Mc2QuantBatchMatmulV3
 
-#endif  // QBMM_MIX_ONLINE_DYNAMIC_AL1_FULL_LOAD_H
+#endif // QBMM_MIX_ONLINE_DYNAMIC_AL1_FULL_LOAD_H

@@ -20,7 +20,7 @@ RtSocSpecMockState &MockState()
     static RtSocSpecMockState state;
     return state;
 }
-}
+} // namespace
 
 extern "C" {
 void SetRtSocSpecShortVersion(const char *version)

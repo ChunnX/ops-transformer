@@ -46,11 +46,11 @@
     - probs为None：
     
     $$
-    tokensGradOut= zeros(restoreShapeOptional, dtype=permutedTokens.dtype, device=permutedTokens.device)
+    tokenGradOut= zeros(restoreShapeOptional, dtype=permutedTokens.dtype, device=permutedTokens.device)
     $$
     
     $$
-    tokensGradOut[permuteTokenId[i]] += permutedTokens[outIndex[i]]
+    tokenGradOut[permuteTokenId[i]] += permutedTokens[outIndex[i]]
     $$
 
 ## 函数原型
@@ -185,7 +185,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGrad(
       <td>-</td>
   </tr>
   <tr>
-      <td>tokensGradOut</td>
+      <td>tokenGradOut</td>
       <td>输出</td>
       <td>输入permutedTokens的梯度</td>
       <td>要求为一个维度为2D的Tensor。</td>

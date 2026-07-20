@@ -93,7 +93,7 @@
 <tr>
 <td>groupEp</td>
 <td>属性</td>
-<td>EP通信域名称（专家并行通信域），字符串长度范围为[1, 128)，不能和groupTp相同。</td>
+<td>EP通信域名称（专家并行通信域），字符串长度范围为[1, 128)。</td>
 <td>STRING</td>
 <td>ND</td>
 </tr>
@@ -265,13 +265,13 @@
         - 对于MoE专家，当`globalBS`为0时，要满足`A` >= `BS` * `epWorldSize` * min(`localExpertNum`, `K`)；当`globalBS`非0时，要满足`A` >= `globalBS` * min(`localExpertNum`, `K`)。
     - `localExpertNum`：表示本卡专家数量。
         - 对于共享专家卡，`localExpertNum` = 1
-        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，`localExpertNum` > 1时，不支持TP域通信。
+        - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)，当前不支持TP域通信。
 
 - 本文公式中的"/"表示整除。
 
 - 通信域使用约束：
     - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同EP通信域，且该通信域中不允许有其他算子。
-    - 一个模型中的`MoeDistributeCombine`和`MoeDistributeDispatch`仅支持相同TP通信域或都不支持TP通信域，有TP通信域时该通信域中不允许有其他算子。
+    - 当前不支持TP域通信。
 
 - 通信方式约束：
   - <term>Ascend 950DT</term>：仅支持UB Memory通信。

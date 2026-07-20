@@ -444,7 +444,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
         ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口
-        ret = aclnnMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, "default", false, false,
+        ret = aclnnMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, "aiv", false, false,
                                                 out, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                 LOG_PRINT("aclnnMatmulAlltoAllV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
@@ -650,7 +650,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
         ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口
-        ret = aclnnMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, "ccu", false, false,
+        ret = aclnnMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, "ai_cpu", false, false,
                                                 out, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                 LOG_PRINT("aclnnMatmulAlltoAllV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);

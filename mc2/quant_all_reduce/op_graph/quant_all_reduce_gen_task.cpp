@@ -48,7 +48,5 @@ static ge::Status QuantAllReduceGenTask(const gert::ExeResGenerationContext *con
     return Mc2Arch35GenTaskOpsUtils::Mc2Arch35GenTaskCallBack(context, tasks);
 }
 
-IMPL_OP(QuantAllReduce)
-    .CalcOpParam(QuantAllReduceCalcOpParam)
-    .GenerateTask(QuantAllReduceGenTask);
+IMPL_OP(QuantAllReduce).CalcOpParam(QuantAllReduceCalcOpParam).GenerateTask(QuantAllReduceGenTask);
 } // namespace ops

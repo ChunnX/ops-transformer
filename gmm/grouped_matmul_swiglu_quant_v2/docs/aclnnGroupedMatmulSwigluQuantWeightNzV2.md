@@ -50,13 +50,13 @@
           >
           >注：以上两种不同的分组方式，实际为相同的分组结果。
           >
-          >第0个右矩阵`W[0,:,:]`，对应索引位置[0,3)的token`x[0:3]`（共3-0=3个token），对应`x_scale[0:3]`、`w_scale[0]`、`bias[0]`、`offset[0] `、`Q[0:3]`、`Q_scale[0:3]`、`Q_offset[0:3]`；
+          >第0个右矩阵`W[0,:,:]`，对应索引位置[0,3)的token`x[0:3]`（共3-0=3个token），对应`x_scale[0:3]`、`w_scale[0]`、`bias[0]`、`offset[0]`、`Q[0:3]`、`Q_scale[0:3]`、`Q_offset[0:3]`；
           >
-          >第1个右矩阵`W[1,:,:]`，对应索引位置[3,4)的token`x[3:4]`（共4-3=1个token），对应`x_scale[3:4]`、`w_scale[1]`、`bias[1]`、`offset[1] `、`Q[3:4]`、`Q_scale[3:4]`、`Q_offset[3:4]`；
+          >第1个右矩阵`W[1,:,:]`，对应索引位置[3,4)的token`x[3:4]`（共4-3=1个token），对应`x_scale[3:4]`、`w_scale[1]`、`bias[1]`、`offset[1]`、`Q[3:4]`、`Q_scale[3:4]`、`Q_offset[3:4]`；
           >
-          >第2个右矩阵`W[2,:,:]`，对应索引位置[4,4)的token`x[4:4]`（共4-4=0个token），对应`x_scale[4:4]`、`w_scale[2]`、`bias[2]`、`offset[2] `、`Q[4:4]`、`Q_scale[4:4]`、`Q_offset[4:4]`；
+          >第2个右矩阵`W[2,:,:]`，对应索引位置[4,4)的token`x[4:4]`（共4-4=0个token），对应`x_scale[4:4]`、`w_scale[2]`、`bias[2]`、`offset[2]`、`Q[4:4]`、`Q_scale[4:4]`、`Q_offset[4:4]`；
           >
-          >第3个右矩阵`W[3,:,:]`，对应索引位置[4,6)的token`x[4:6]`（共6-4=2个token），对应`x_scale[4:6]`、`w_scale[3]`、`bias[3]`、`offset[3] `、`Q[4:6]`、`Q_scale[4:6]`、`Q_offset[4:6]`；
+          >第3个右矩阵`W[3,:,:]`，对应索引位置[4,6)的token`x[4:6]`（共6-4=2个token），对应`x_scale[4:6]`、`w_scale[3]`、`bias[3]`、`offset[3]`、`Q[4:6]`、`Q_scale[4:6]`、`Q_offset[4:6]`；
           >
           >注：grouplist中未指定的部分将不会参与更新。
           >例如当groupList=[12,14,18]、GroupListType=cumsum，X的shape为[30，:]时。
@@ -514,59 +514,60 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
       - 仅支持dequantMode和quantMode相同取值。
       - x和xScale支持M为0的空Tensor。
       - weight和weightScale支持N为0的空Tensor。
-      - MXFP8、MXFP4场景下weight和weightScale仅支持tensorlist长度为1；MXA8W4场景下weight和weightScale支持多Tensor场景（tensorlist长度大于等于1）。
+      - MXFP4和MXFP8场景下，weight和weightScale既支持单Tensor场景（tensorlist长度必须为1）也支持多Tensor场景（tensorlist长度大于等于1）。多Tensor场景下，tensorlist长度需等于E，E可以为1，weight、weightScale的shape需要按照E的维度展平，例如{(E, K, N)}需要变成{E个(K, N)}。
+      - MXA8W4场景下weight和weightScale支持多Tensor场景（tensorlist长度大于等于1）。
       - MXFP4场景支持weight NZ格式，x和weight为FLOAT4_E2M1或FLOAT4_E1M2（支持交叉），output支持FLOAT8_E4M3FN、FLOAT4_E1M2或FLOAT4_E2M1。
 
-- **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  - **返回值**
+    
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
-  第一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
-  <col style="width: 167px">
-  <col style="width: 123px">
-  <col style="width: 860px">
-  </colgroup>
-  <thead>
-    <tr>
-      <th>返回值</th>
-      <th>错误码</th>
-      <th>描述</th>
-    </tr></thead>
-  <tbody>
-    <tr>
-      <td>ACLNN_ERR_PARAM_NULLPTR</td>
-      <td>161001</td>
-      <td>参数x、weight、weightScale、xScale、groupList、output、outputScale是空指针。</td>
-    </tr>
-    <tr>
-      <td rowspan="10">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="10">161002</td>
-      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale的数据维度不满足约束。</td>
-    </tr>
-    <tr>
-      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的shape不满足约束条件。</td>
-    </tr>
-    <tr>
-      <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的format不满足约束条件。</td>
-    </tr>
-    <tr>
-      <td>传入的weight、weightScale的tensor list长度不满足约束（MXFP8/MXFP4场景需为1，MXA8W4多tensor场景需weight与weightScale数量一致）。</td>
-    </tr>
-    <tr>
-      <td>传入的x、xScale为空tensor，传入的weight、weightScale为空tensorList。</td>
-    </tr>
-    <tr>
-      <td>groupList的元素个数大于weight的首轴长度。</td>
-    </tr>
-    <tr>
-      <td>传入的dequantMode、quantMode、dequantDtype不满足约束条件。</td>
-    </tr>
-    <tr>
-      <td>传入的bias、weightAssistMatrix、smoothScale、tuningConfig不满足约束条件。</td>
-    </tr>
-  </tbody>
-  </table>
+    第一段接口完成入参校验，出现以下场景时报错：
+    <table style="undefined;table-layout: fixed;width: 1150px"><colgroup>
+    <col style="width: 167px">
+    <col style="width: 123px">
+    <col style="width: 860px">
+    </colgroup>
+    <thead>
+      <tr>
+        <th>返回值</th>
+        <th>错误码</th>
+        <th>描述</th>
+      </tr></thead>
+    <tbody>
+      <tr>
+        <td>ACLNN_ERR_PARAM_NULLPTR</td>
+        <td>161001</td>
+        <td>参数x、weight、weightScale、xScale、groupList、output、outputScale是空指针。</td>
+      </tr>
+      <tr>
+        <td rowspan="10">ACLNN_ERR_PARAM_INVALID</td>
+        <td rowspan="10">161002</td>
+        <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale的数据维度不满足约束。</td>
+      </tr>
+      <tr>
+        <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的shape不满足约束条件。</td>
+      </tr>
+      <tr>
+        <td>传入的x、weight、weightScale、xScale、groupList、output、outputScale数据的format不满足约束条件。</td>
+      </tr>
+      <tr>
+        <td>在不支持多Tensor的场景下，传入的weight、weightScale的tensor list长度不为1；或在多Tensor场景下，weight和weightScale的tensor list长度不一致。</td>
+      </tr>
+      <tr>
+        <td>传入的x、xScale为空tensor，传入的weight、weightScale为空tensorList。</td>
+      </tr>
+      <tr>
+        <td>groupList的元素个数大于weight的首轴长度。</td>
+      </tr>
+      <tr>
+        <td>传入的dequantMode、quantMode、dequantDtype不满足约束条件。</td>
+      </tr>
+      <tr>
+        <td>传入的bias、weightAssistMatrix、smoothScale、tuningConfig不满足约束条件。</td>
+      </tr>
+    </tbody>
+    </table>
 
 ## aclnnGroupedMatmulSwigluQuantWeightNzV2
 
@@ -739,10 +740,10 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
           </tbody>
           </table>
 
-      - A8W8场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于65536。
-      - A8W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
-      - A4W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
-      - 多tensor场景下，即tensorlist长度大于1时，weight、weightScale和weightAssistMatrix的shape需要按照E的维度展平，例如{(E, K, N)}需要变成{E个(K, N)}。
+        - A8W8场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于65536。
+        - A8W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
+        - A4W4场景下，不支持N轴长度超过10240，不支持x的尾轴长度大于等于20000。
+        - 多tensor场景下，即tensorlist长度大于1时，weight、weightScale和weightAssistMatrix的shape需要按照E的维度展平，例如{(E, K, N)}需要变成{E个(K, N)}。
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - groupList第1维最大支持1024，即最多支持1024个group。
     - MX量化场景下需满足以下约束条件：
@@ -824,9 +825,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
               <td>(M, K)</td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(N / 32), ceil(K / 16), 16, 32)}</li>
+              <li>多Tensor非转置shape形如{E个(ceil(N / 32), ceil(K / 16), 16, 32)}，viewShape形如{E个(K, N)}</li>
               <li>转置shape形如{(E, ceil(K / 32), ceil(N / 16), 16, 32)}</li></ul></td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(K / 64), N, 2)}</li>
+              <li>多Tensor非转置shape形如{E个(ceil(K / 64), N, 2)}</li>
               <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></ul></td>
               <td>(M, ceil(K / 64), 2)</td>
               <td>(M, N / 2)</td>
@@ -837,9 +840,11 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
               <td>(M, K)</td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(N / 64), ceil(K / 16), 16, 64)}</li>
+              <li>多Tensor非转置shape形如{E个(ceil(N / 64), ceil(K / 16), 16, 64)}，viewShape形如{E个(K, N)}</li>
               <li>转置shape形如{(E, ceil(K / 64), ceil(N / 16), 16, 64)}</li></ul></td>
               <td><ul>
               <li>非转置shape形如{(E, ceil(K / 64), N, 2)}</li>
+              <li>多Tensor非转置shape形如{E个(ceil(K / 64), N, 2)}</li>
               <li>转置shape形如{(E, N, ceil(K / 64), 2)}</li></ul></td>
               <td>(M, ceil(K / 64), 2)</td>
               <td>(M, N / 2)</td>
@@ -872,6 +877,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
 
         - weightScale转置属性需要与weight保持一致。
         - MX量化场景下，当输入为fp8数据类型时，需满足N为64对齐；当输入为fp4数据类型时，需满足N为128对齐。
+        - MXFP4和MXFP8多Tensor场景，weight和weightScale的tensorlist长度需等于E。
         - MXFP4场景下，K需大于2。
         - MXFP4场景下，左右矩阵内轴均需为偶数。
         - MXFP4场景下，weight后两轴均不能为1。
@@ -885,6 +891,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2(
           - 多tensor场景下，weight中每个tensor的view shape为2D，weightScale中每个tensor的view shape为3D；单tensor场景下，weight中每个tensor的view shape为3D，weightScale中每个tensor的view shape为4D。
           - 多tensor场景下，所有weightScale tensor的shape需与对应weight tensor匹配。
           - 多tensor场景下，groupList的长度需等于weight/weightScale的tensor数量。
+
 ## 调用示例
 
 示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。

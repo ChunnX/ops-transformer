@@ -11,4 +11,4 @@ import importlib
 import pkgutil
 
 for _, name, _ in pkgutil.iter_modules(__path__):
-    importlib.import_module('.' + name, __package__)
+    importlib.import_module("." + name, __package__)

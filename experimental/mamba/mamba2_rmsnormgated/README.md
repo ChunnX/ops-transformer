@@ -2,7 +2,7 @@
 
 ### 功能和实现说明
 
-基于状态空间模型（SSM）的因果卷积，实现MambaV2 Prefill阶段的因果卷积计算。计算流程包含kernel_size=4的depthwise conv1d和SiLU激活。本算子采用纯Vector实现conv1d，并融合bias和SiLU运算以提升性能。
+基于 RMSNorm 和 SiLU 门控的融合算子，实现 MambaV2 Prefill 阶段的 RMSNorm + Gating 计算。计算流程为输入 x 经 SiLU(z) 门控激活后，进行分组 RMSNorm 归一化，再乘以权重 w。
 
 **计算流**  
 

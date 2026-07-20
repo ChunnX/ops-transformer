@@ -78,6 +78,7 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
     PreprocessRopeInput<T, C>(inputGm, shareTmpUb, ropeParams, kFp32Local, kLocal, cnt);
     SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
+    LocalTensor<C> kFp32OutputLocal = kFp32Local[cnt];
 
     if constexpr (std::is_same<T, int32_t>::value || enableDequant) { // 反量化
         Rectangle rectangleParams{
@@ -91,13 +92,19 @@ __aicore__ inline void RotaryPosEmbPerTensor(LocalTensor<O> &outputLocal, const 
             Dequant(kFp32Local, kLocal, channelDeqScaleLocal, scale, rectangleParams);
         }
         PipeBarrier<PIPE_V>();
-        DataSyncBarrier<MemDsbT::UB>();
     } else if constexpr (std::is_same<T, bfloat16_t>::value) {
         Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
         PipeBarrier<PIPE_V>();
     }
-    RotaryPosEmb<O, C>(outputLocal, kFp32Local, cosLocal, sinLocal, ropeParams.row, ropeParams.col, 0);
-    PipeBarrier<PIPE_V>();
+    if constexpr (std::is_same<O, C>::value) {
+        RotaryPosEmb<C>(outputLocal, kFp32Local, cosLocal, sinLocal, ropeParams.row, ropeParams.col, 0);
+        PipeBarrier<PIPE_V>();
+    } else {
+        RotaryPosEmb<C>(kFp32OutputLocal, kFp32Local, cosLocal, sinLocal, ropeParams.row, ropeParams.col, 0);
+        PipeBarrier<PIPE_V>();
+        Cast(outputLocal, kFp32OutputLocal, RoundMode::CAST_RINT, cnt);
+        PipeBarrier<PIPE_V>();
+    }
 }
 
 /**
@@ -135,6 +142,7 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
     PreprocessRopeInput<T, C>(inputGm, shareTmpUb, ropeParams, kFp32Local, kLocal, cnt);
     // scale参数可以和rope使用的空间复用
     LocalTensor<C> scaleLocal = kFp32Local[cnt];
+    LocalTensor<C> kFp32OutputLocal = scaleLocal[ropeParams.col];
     SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
     WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
     if constexpr (std::is_same<T, int32_t>::value || enableDequant) { // 反量化
@@ -158,7 +166,14 @@ __aicore__ inline void RotaryPosEmbPerHead(LocalTensor<O> &outputLocal, const Gl
         Cast(kFp32Local, kLocal, RoundMode::CAST_NONE, cnt);
     }
     PipeBarrier<PIPE_V>();
-    RotaryPosEmb<O, C>(outputLocal, kFp32Local, cosLocal, sinLocal, ropeParams.row, ropeParams.col, ropeParams.col);
+    RotaryPosEmb<C>(kFp32OutputLocal, kFp32Local, cosLocal, sinLocal, ropeParams.row, ropeParams.col, ropeParams.col);
+    PipeBarrier<PIPE_V>();
+
+    if constexpr (std::is_same<O, C>::value) {
+        DataCopy(outputLocal, kFp32OutputLocal, cnt);
+    } else {
+        Cast(outputLocal, kFp32OutputLocal, RoundMode::CAST_RINT, cnt);
+    }
     PipeBarrier<PIPE_V>();
 }
 
