@@ -111,9 +111,9 @@ __simd_vf__ void CastGradYFlatVF(__ubuf__ T *srcAddr, __ubuf__ float *dstAddr, u
 // actually is. A previous single-shot version issued exactly one LoadAlign
 // per row assuming the whole row fit in one such read; for k (or
 // srcRowStride) larger than chunkSize this silently over-reads past the row
-// into adjacent memory. Each row is now processed in
-// repeatTimes = ceil(k / chunkSize) chunks, matching the chunking approach
-// used in SigmoidRenormBackwardVF.
+// into adjacent memory (observed to stall large-K/large-M cases). Each row
+// is now processed in repeatTimes = ceil(k / chunkSize) chunks, matching the
+// chunking approach used in SigmoidRenormBackwardVF.
 // ============================================================================
 template <typename T>
 __simd_vf__ void CastGradYRowsVF(__ubuf__ T *srcAddr, __ubuf__ float *dstAddr, uint16_t curRows, uint16_t k,
@@ -220,14 +220,14 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
 
             MicroAPI::LoadAlign(idxReg, idxRow + chunkOffset);
             idxU32Reg = (MicroAPI::RegTensor<uint32_t> &)idxReg;
-            MicroAPI::Gather(wPrimeReg, xNormRow, idxU32Reg, chunkMask);
+            MicroAPI::DataCopyGather(wPrimeReg, xNormRow, idxU32Reg, chunkMask);
 
-            MicroAPI::Reduce<MicroAPI::ReduceType::SUM>(chunkSum, wPrimeReg, chunkMask);
+            MicroAPI::ReduceSum(chunkSum, wPrimeReg, chunkMask);
             MicroAPI::Add(globalD, globalD, chunkSum, maskLane0);
 
             MicroAPI::LoadAlign(gradYReg, gradYRow + chunkOffset);
             MicroAPI::Mul(tmpReg, wPrimeReg, gradYReg, chunkMask);
-            MicroAPI::Reduce<MicroAPI::ReduceType::SUM>(chunkSum, tmpReg, chunkMask);
+            MicroAPI::ReduceSum(chunkSum, tmpReg, chunkMask);
             MicroAPI::Add(globalBetaNum, globalBetaNum, chunkSum, maskLane0);
         }
 
@@ -248,7 +248,7 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
 
             MicroAPI::LoadAlign(idxReg, idxRow + chunkOffset);
             idxU32Reg = (MicroAPI::RegTensor<uint32_t> &)idxReg;
-            MicroAPI::Gather(wPrimeReg, xNormRow, idxU32Reg, chunkMask);
+            MicroAPI::DataCopyGather(wPrimeReg, xNormRow, idxU32Reg, chunkMask);
             MicroAPI::LoadAlign(gradYReg, gradYRow + chunkOffset);
 
             // Broadcast the row-global invD/beta (lane0) to every lane of this chunk.
@@ -261,7 +261,7 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
             MicroAPI::Sub(gradWPrimeReg, gradYReg, gradWPrimeReg, chunkMask);
             MicroAPI::Mul(gradWPrimeReg, gradWPrimeReg, bcastReg, chunkMask);
 
-            MicroAPI::Scatter(gradNormXRow, gradWPrimeReg, idxU32Reg, chunkMask);
+            MicroAPI::DataCopyScatter(gradNormXRow, gradWPrimeReg, idxU32Reg, chunkMask);
         }
     }
 }
