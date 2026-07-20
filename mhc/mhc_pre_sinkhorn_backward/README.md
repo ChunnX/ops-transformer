@@ -170,7 +170,7 @@ gradHRes的shape记为(B,S,N*N)或(B,S,N,N)
 phi和gradPhi的shape记为(2N+N^2, N*C)
 
 - `sk_iter_count`当前仅支持`20`。
-- `N`当前仅支持`4`。
+- `N`支持不超过8。
 - `C`大于0小于100000且可以被128整除。
 
 ## 调用说明

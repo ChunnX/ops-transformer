@@ -9,12 +9,12 @@
  */
 
 /* !
- * \file mhc_pre_sinkhorn_backward_arch35_tiling_base.h
+ * \file mhc_pre_sinkhorn_backward_arch35_tiling.h
  * \brief
  */
 
-#ifndef MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_
-#define MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_
+#ifndef MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_H_
+#define MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_H_
 
 #include "op_host/tiling_base.h"
 #include "register/tilingdata_base.h"
@@ -58,11 +58,6 @@ protected:
     int64_t seqLength_{0};
     int64_t n_{0};
     int64_t c_{0};
-    int64_t c0_{0};
-    int64_t c1_{0};
-    int64_t coreTaskCount_{0};
-    int64_t tile_{0};
-    int64_t tileUB_{0};
     int64_t skIterCount_{0};
     float hcEps_{0};
 
@@ -73,8 +68,21 @@ protected:
     int64_t mm2M_{0};
     int64_t mm2N_{0};
 
+    int64_t bsTaskCount_{0};
+    int64_t tailBsTaskCount_{0};
+    int64_t bsLoopDataLen_{0};
+    int64_t cLoopDataLen_{0};
+    int64_t ubBlock_{0};
+    int64_t usedAivNum_{0};
+    int64_t cBlockLoops_{0};
+    int64_t cBlockTailLoops_{0};
+    int64_t cBlockCount_{0};
+    int64_t cBlockTailCount_{0};
+    int64_t cBlockTailTailCount_{0};
+    int64_t finalUsedAivNum_{0};
+
     const char* opName = "MhcPreSinkhornBackward";
 };
 
 } // namespace optiling
-#endif // MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_BASE_H_
+#endif // MHC_PRE_SINKHORN_BACKWARD_ARCH35_TILING_H_
