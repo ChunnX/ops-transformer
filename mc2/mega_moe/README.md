@@ -700,7 +700,7 @@
     - H（x.dim1）支持1024、2048、3072、4096、5120、6144、7168、8192。
     - topK（topkIds.dim1）支持[1, 16]。
     - expertPerRank（weight1.dim0）范围 [1, 1024]。
-    - hiddenDim（weight1.dim1）仅支持1024、2048、3072、4096、7168。
+    - hiddenDim（weight1.dim1）仅支持1024、2048、3072、4096、5120、6144、7168。
     - epWorldSize范围 [2, 1024]。
     - moeExpertNum范围 [epWorldSize, 2048]，且moeExpertNum % epWorldSize == 0。
     - maxRecvTokenNum范围 [0, BS × epWorldSize × min(topK, expertPerRank)]。

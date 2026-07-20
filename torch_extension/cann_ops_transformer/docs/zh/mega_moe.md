@@ -1088,7 +1088,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         - hidden（x.dim1）仅支持1024、2048、3072、4096、5120、6144、7168、8192。
         - num_topk（topk_ids.dim1）支持[1, 16]。
         - num_experts_per_rank（weight1.dim0）范围 [1, 1024]。
-        - intermediate_hidden（weight1.dim1）仅支持1024、2048、3072、4096、7168。
+        - intermediate_hidden（weight1.dim1）仅支持1024、2048、3072、4096、5120、6144、7168。
         - ep_world_size范围 [2, 1024]。
         - moe_expert_num范围 [ep_world_size, 2048]，且moe_expert_num % ep_world_size == 0。
         - max_recv_token_num范围 [0, num_tokens × ep_world_size × min(num_topk, num_experts_per_rank)]。
