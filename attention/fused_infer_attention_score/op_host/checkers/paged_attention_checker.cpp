@@ -651,6 +651,25 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
     int32_t valueDim = fiaInfo.valueNonContigDim;
     int32_t keyRopeDim = fiaInfo.keyRopeNonContigDim;
 
+    // 伪量化场景还未适配PA非连续，在此进行拦截
+    if (enableAntiQuant_) {
+        OP_CHECK_IF(keyDim != -1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                ("In anti-quant scenarios, PA does not support non-contiguous key tensors, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyDim) + ".").c_str()),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(valueDim != -1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                ("In anti-quant scenarios, PA does not support non-contiguous value tensors, "
+                "but the first non-contiguous dimension is index " + std::to_string(valueDim) + ".").c_str()),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(keyRopeDim != -1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
+                ("In anti-quant scenarios, PA does not support non-contiguous keyRope tensors, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyRopeDim) + ".").c_str()),
+            return ge::GRAPH_FAILED);
+    }
+
     if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
         OP_CHECK_IF(keyDim > 0,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
