@@ -413,6 +413,7 @@ stages:
               artifact-path: |
                 ${{ steps.process_checkout.outputs.path }}/ut_cov_*.tar.gz
               object-prefix: ${{ env.obs_path }}/
+        if: env.TARGET_BRANCH == 'master'
         runs-on: [dedicate-hosted, x64, large]
         container:
           image: swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu24.04_x86:lv6_v1.1073
