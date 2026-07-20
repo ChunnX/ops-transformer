@@ -26,6 +26,7 @@ using GMMNoQuantTilingData = GroupedMatmulTilingData::GMMNoQuantTilingData;
 using GMMQuantTilingData = GroupedMatmulTilingData::GMMQuantTilingData;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
 using GMMA8W4BasicApiTilingData = GroupedMatmulTilingData::GMMA8W4BasicApiTilingData;
+using GMMA4W4QuantTilingData = GroupedMatmulTilingData::GMMA4W4QuantTilingData;
 #if defined(V310_GMM_QUANT)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tiling_key.h"
 #if defined(V310_GMM_QUANT_CUBE) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
@@ -35,6 +36,9 @@ using GMMA8W4BasicApiTilingData = GroupedMatmulTilingData::GMMA8W4BasicApiTiling
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_tensor_api_mx_kernel.h"
 #elif defined(V310_GMM_QUANT_MX)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_cgmct_mx_kernel.h"
+#endif
+#if defined(V310_GMM_QUANT_A4W4) && IS_BLAZE
+#include "arch35/qgmm_a4w4_kernel.h"
 #endif
 #if defined(V310_GMM_QUANT_MX) || defined(V310_GMM_QUANT_PERTENSOR_CUBE)
 #include "arch35/quant_adaptive_sliding_window_templates/gqmm_init_output.h"
@@ -235,6 +239,17 @@ using biasType = MatmulType<AscendC::TPosition::GM, CubeFormat::ND, DTYPE_BIAS>;
     } while (0)
 #endif
 
+#if defined(V310_GMM_QUANT_A4W4) && IS_BLAZE
+#define GMM_A4W4_IMPL_CLASS(xLayout, wLayout, yLayout) \
+    do { \
+        GET_TILING_DATA_MEMBER(GMMA4W4QuantTilingData, gmmA4W4Params, gmmA4W4Params_, tiling); \
+        GET_TILING_DATA_MEMBER(GMMA4W4QuantTilingData, mmTilingData, mmTilingData_, tiling); \
+        GmmA4W4Kernel<DTYPE_X, DTYPE_WEIGHT, DTYPE_BIAS, DTYPE_SCALE, float, DTYPE_Y, xLayout, wLayout, \
+                      yLayout, DTYPE_L0C_LOCAL>(x, weight, bias, scale, groupList, perTokenScale, y, workspace, \
+                                                &gmmA4W4Params_, &mmTilingData_, &tPipe); \
+    } while (0)
+#endif
+
 #if defined(V310_GMM_QUANT)
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE>
 #elif defined(V310_GMM_ANTI_QUANT)
@@ -345,6 +360,12 @@ __global__ __aicore__ void grouped_matmul(GM_ADDR x, GM_ADDR weight, GM_ADDR bia
         GET_TILING_DATA_WITH_STRUCT(GMMQuantTilingData, tilingData, tiling);
         GMM_QUANT_GB_IMPL_CLASS(Cgmct::Gemm::layout::ColumnMajor, Cgmct::Gemm::layout::RowMajor,
                                 Cgmct::Gemm::layout::RowMajorAlign);
+    }
+#endif
+#if defined(V310_GMM_QUANT_A4W4) && IS_BLAZE
+    if constexpr (QUANT_B_TRANS == GMM_NO_TRANS && QUANT_A_TRANS == GMM_NO_TRANS && KERNEL_TYPE == GMM_A4W4_MIX) {
+        GET_TILING_DATA_WITH_STRUCT(GMMA4W4QuantTilingData, tilingData, tiling);
+        GMM_A4W4_IMPL_CLASS(AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn);
     }
 #endif
 #elif defined(V310_GMM_ANTI_QUANT)

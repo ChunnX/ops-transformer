@@ -51,6 +51,9 @@
       #if (ORIG_DTYPE_X != DT_INT8 && ORIG_DTYPE_SCALE == DT_FLOAT)
         #define V310_GMM_QUANT_PERTILE
       #endif
+    #elif defined(ORIG_DTYPE_X) && defined(ORIG_DTYPE_WEIGHT) && defined(DT_INT4) && \
+        ORIG_DTYPE_X == DT_INT4 && ORIG_DTYPE_WEIGHT == DT_INT4
+      #define V310_GMM_QUANT_A4W4
     #else
       #define V310_GMM_QUANT_CUBE
     #endif
