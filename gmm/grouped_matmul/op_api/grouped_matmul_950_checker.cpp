@@ -1444,6 +1444,22 @@ aclnnStatus AclnnGroupedMatmulDAV3510Checker<T>::CheckGroupedMatmulDAV3510() con
     } else if ((xDtype == DataType::DT_FLOAT4_E2M1 || xDtype == DataType::DT_FLOAT4_E1M2) &&
                 (weightDtype == DataType::DT_FLOAT4_E2M1 || weightDtype == DataType::DT_FLOAT4_E1M2)) {
         return CheckFp4Params(scaleDtype);
+    } else if (xDtype == DataType::DT_INT4 && weightDtype == DataType::DT_INT4) {
+        // A4W4 (INT4×INT4) mix-core：scale=UINT64, y=FP16/BF16, bias nullptr, groupType=SPLIT_M only.
+        // offset/groupList/single/NZ 等已由上方通用校验覆盖；
+        // pergroup groupSize%128、actType=0、NZ inner%64 等细节由 tiling 侧 CheckA4W4Params/AnalyzeA4W4 兜底。
+        GMM_CHECK_REPORT(scaleDtype == DataType::DT_UINT64,
+            OP_LOGE_FOR_INVALID_DTYPE(GetAclnnOpName(), scaleName_.c_str(),
+                op::ToString(scaleDtype).GetString(), "UINT64"));
+        GMM_CHECK_REPORT(yDtype == DataType::DT_FLOAT16 || yDtype == DataType::DT_BF16,
+            OP_LOGE_FOR_INVALID_DTYPE(GetAclnnOpName(), "y",
+                op::ToString(yDtype).GetString(), "FLOAT16 or BF16"));
+        GMM_CHECK_REPORT(gmmParams_.biasOptional == nullptr,
+            OP_LOGE_FOR_INVALID_VALUE(GetAclnnOpName(), "bias", "nonnull", "nullptr"));
+        GMM_CHECK_REPORT(gmmParams_.groupType == SPLIT_M,
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(GetAclnnOpName(), "groupType",
+                std::to_string(gmmParams_.groupType), "A4W4 only supports SPLIT_M(0)"));
+        return ACLNN_SUCCESS;
     } else {
         std::string quantDtypes = std::string("x=") + op::ToString(xDtype).GetString() +
             ", weight=" + op::ToString(weightDtype).GetString();
