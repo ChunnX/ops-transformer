@@ -34,6 +34,7 @@ PARAM_MAP = {
     "mask_mode": "SPARSE_MODE",
     "q_scale_layout": "Q_SCALE_LAYOUT",
     "p_scale": "P_SCALE",
+    "softmax_scale": "SOFTMAX_SCALE",
     "data_range_q": "DATA_RANGE_Q",
     "data_range_k": "DATA_RANGE_K",
     "data_range_v": "DATA_RANGE_V",
@@ -72,8 +73,9 @@ def execute_test(params, mode, cdir=None):
         cpu_out, cpu_lse = golden.cpu_mxfp8_golden(
             q_fp8, k_fp8, v_fp8,
             deq_q, deq_k, deq_v, p_scale,
-            _sq, _skv,
-            qr_bf16, kr_bf16,
+            golden.SEQUSED_Q, golden.SEQUSED_KV,
+            softmax_scale=golden.SOFTMAX_SCALE,
+            qr_bf16=qr_bf16, kr_bf16=kr_bf16,
         )
         golden_cache.save_cpu_output(case_name, cpu_out, cpu_lse, cache_dir=cdir)
     else:
@@ -100,17 +102,20 @@ def execute_test(params, mode, cdir=None):
         return None, None
 
     compare_layout = "TND" if golden.ENABLE_PA else golden.INPUT_LAYOUT
-    _sq, _, _, _, _, _, _, _ = golden._resolve_seq_params()
-    cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, _sq, compare_layout)
+    if compare_layout == "TND":
+        cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.SEQUSED_Q, compare_layout, cu_seqlens=golden.CU_SEQLENS_Q)
+    else:
+        cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.SEQUSED_Q, compare_layout)
 
     atten_result = result_compare_method.check_result(cpu_cmp, npu_out)
 
     lse_result = None
     if golden.ENABLE_LSE:
-        cpu_lse_4d = cpu_lse.unsqueeze(-1)
-        lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse_4d, _sq, compare_layout)
-        if lse_cmp.dim() == 3:
-            lse_cmp = lse_cmp.squeeze(-1)
+        if compare_layout == "TND":
+            lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.SEQUSED_Q, compare_layout, cu_seqlens=golden.CU_SEQLENS_Q)
+            golden.fill_tnd_padding(lse_cmp, golden.SEQUSED_Q, golden.CU_SEQLENS_Q, fill_value=float('inf'))
+        else:
+            lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.SEQUSED_Q, compare_layout)
         lse_result = result_compare_method.check_result(lse_cmp, lse_out)
 
     return atten_result, lse_result
