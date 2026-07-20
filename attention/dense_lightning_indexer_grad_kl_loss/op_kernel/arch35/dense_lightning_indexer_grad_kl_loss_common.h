@@ -123,7 +123,7 @@ struct DLIGradKLLossConstInfo {
     static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16 * 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32 * 1024;
     static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 64 * 1024;
-    static constexpr uint32_t BUFFER_SIZE_BYTE_192K = 192 * 1024;  
+    static constexpr uint32_t BUFFER_SIZE_BYTE_192K = 192 * 1024;
     /** \brief 核信息 */
     uint32_t aicIdx;
     uint32_t aivIdx;
@@ -193,7 +193,7 @@ struct DLIGradKLLossRunInfo {
     uint32_t kRealSize; // k切分之后的实际大小，在P和KLLoss阶段
     uint32_t kRealSizeAlign8;
     uint32_t kLoopTimes; // k方向的循环次数，在P和KLLoss阶段
-    
+
     uint32_t curS1Size; // 当前轮次计算的S1Size
     uint32_t curS1SizeAlign16;
     uint32_t curS1SizeVec;  // 两个subBlock切分S1，当前aiv计算的S1大小
@@ -207,7 +207,7 @@ struct DLIGradKLLossRunInfo {
     uint32_t nIdxP;
     uint32_t nIdxSY;
     int32_t sparseMaskStartIdx;  // 可能会出现负数
-    
+
     // 存放一些offset，减少重复计算
     int32_t s2SparseLen;
     int32_t s2RealSize;

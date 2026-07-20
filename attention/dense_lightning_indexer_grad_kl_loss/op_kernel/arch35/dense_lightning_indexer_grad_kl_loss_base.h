@@ -393,7 +393,7 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::GetRunInfo(int
         runInfo.isValid = false;
         return;
     }
-    
+
     runInfo.taskId = taskId;
     runInfo.taskIdMod2 = taskId & 1;
 
@@ -418,7 +418,7 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::GetRunInfo(int
     runInfo.keyRopeTensorOffset = runInfo.accumS2Idx * constInfo.n2Size * constInfo.dSizeQueryRope;
     runInfo.keyIndexTensorOffset = runInfo.accumS2Idx * constInfo.n2IndexSize * constInfo.dSizeQueryIndex;
     runInfo.weightTensorOffset = runInfo.accumS1Idx * constInfo.n1IndexSize
-                                 + constInfo.subBlockIdx * curS1Size / AIC_AIV_RATIO * constInfo.n1IndexSize;    
+                                 + constInfo.subBlockIdx * curS1Size / AIC_AIV_RATIO * constInfo.n1IndexSize;
     runInfo.softmaxIndexTensorOffset = runInfo.accumS1Idx + constInfo.subBlockIdx * curS1Size / AIC_AIV_RATIO;
 
     if constexpr (LAYOUT_T == DLILayout::TND) {
@@ -570,9 +570,9 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
             s1EndIdxThisBatch = (!lastB) ? GetEndS1Etx(bIdx, constInfo.s1Size, actualSeqLengthsQueryGm, LAYOUT_T) : s1EndIdx;
         } else if constexpr (LAYOUT_T == DLILayout::BSND) {
             s1StartIdxThisBatch = (bIdx == bStartIdx) ? s1StartIdx : 0;;
-            s1EndIdxThisBatch = (!lastB) ? constInfo.s1Size : s1EndIdx;      
+            s1EndIdxThisBatch = (!lastB) ? constInfo.s1Size : s1EndIdx;
         }
-        
+
         for (int64_t s1Idx = s1StartIdxThisBatch; s1Idx < s1EndIdxThisBatch; s1Idx += S1_BASE_STEP) {
             bool lastS1 = ((s1Idx + S1_BASE_STEP) >= s1EndIdxThisBatch);
             int64_t accumS1Idx, accumS2Idx;
@@ -593,7 +593,7 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
                 bool lastS2 = ((s2Idx + S2_BASE_STEP) >= s2EndIdx);
 
 
-                // 更新本次循环的参数                
+                // 更新本次循环的参数
                 uint32_t s2EndIdxThisLoop = lastS2 ? s2EndIdx : (s2Idx + S2_BASE_STEP);
                 uint32_t curS2StepSize = s2EndIdxThisLoop - s2Idx;
                 uint32_t sparseMaskStartIdx = s2EndIdx - curS1Size;
@@ -615,7 +615,7 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
                 DLIGradKLLossRunInfo &runInfo0 = runInfos[taskId % 3];                // 当前轮
                 DLIGradKLLossRunInfo &runInfoNeg1 = runInfos[(taskId + 2) % 3];       // 上1轮
                 DLIGradKLLossRunInfo &runInfoNeg2 = runInfos[(taskId + 1) % 3];       // 上2轮
-                
+
                 if ASCEND_IS_AIC {
                     if (runInfo0.isValid) {
                         matmulService.ComputeMm1(runInfo0);   // C1
@@ -624,7 +624,7 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
                         matmulService.ComputeMm2(runInfo0);   // C1
                         CrossCoreSetFlag<SYNC_MODE, PIPE_FIX>(SYNC_C1_TO_V1_SY_FLAG[runInfo0.taskIdMod2]);
                     }
-                    
+
                 }
 
                 if ASCEND_IS_AIV {

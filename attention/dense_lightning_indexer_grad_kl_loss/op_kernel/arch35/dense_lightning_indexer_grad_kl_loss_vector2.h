@@ -27,7 +27,7 @@
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
 
-template <typename DLIT> 
+template <typename DLIT>
 class DLIKLLossVector2Service {
 public:
     // 中间计算数据类型为float，高精度模式
@@ -144,7 +144,7 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::ProcessVectorDk()
         }
 
         eventId = pingPongFlag ? EVENT_ID1 : EVENT_ID0;
-        
+
         LocalTensor<MM4_OUT_T> dKeyIndexUbIn = pingPongFlag ? ubInFloatPong_ : ubInFloatPing_;
         LocalTensor<OUT_T> dKeyIndexUbOut = pingPongFlag ? ubOutHalfPong_ : ubOutHalfPing_;
 
@@ -160,7 +160,7 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::ProcessVectorDk()
         dataCopyOutParams.blockLen = processNum * sizeof(OUT_T);
         DataCopyPad(dKeyIndexGmOut[dKeyGmOffsetCur], dKeyIndexUbOut, dataCopyOutParams);
         SetFlag<HardEvent::MTE3_MTE2>(eventId);
-        
+
         pingPongFlag = 1 - pingPongFlag;
     }
     WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -206,7 +206,7 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::DeterSumLoss()
 
         SetFlag<HardEvent::MTE3_V>(mte3ToV);
         WaitFlag<HardEvent::MTE3_V>(mte3ToV);
-        
+
         GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE2_V>(mte2ToV);
         GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::V_MTE3>(vToMte3);
         GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_V>(mte3ToV);
