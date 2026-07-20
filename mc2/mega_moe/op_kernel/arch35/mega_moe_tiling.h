@@ -193,5 +193,8 @@ struct MegaMoeTilingData {
     MegaMoeUnpermuteBufferConfig unpermuteConfigForFullTokenChunk;
     MegaMoeUnpermuteBufferConfig unpermuteConfigForTailTokenChunk;
     uint32_t unpermuteFullTokenChunkCoreCount;
+    uint32_t ubSize; // 单 AIV UB 总字节数(host 由平台查得), prefill 模板动态算 route batch 用
+    int32_t topkWeightsPrefetch;
+    uint32_t maxTilesPerExpert; // GMM1 tile 状态位区每 expert 的 tile 上限（prefetch 软同步用）
 };
 #endif
