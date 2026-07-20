@@ -20,7 +20,7 @@
 
 #define OP_CHECK_DTYPE_NOT_SUPPORT_WITH_REASON(aclnnName, tensor, supportList, retExpr)                               \
     do {                                                                                                              \
-        if (!gmm::CheckDTypeInVector((tensor)->GetDataType(), (supportList))) {                                             \
+        if (!gmm::CheckDTypeInVector((tensor)->GetDataType(), (supportList))) {                                        \
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(                                                                    \
                 aclnnName, #tensor, op::ToString(tensor->GetDataType()).GetString(),                                  \
                 "The dtype of " + std::string(#tensor) + " must be one of " + gmm::DTypeVectorToString(supportList)); \
