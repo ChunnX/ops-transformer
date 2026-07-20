@@ -61,6 +61,8 @@ constexpr int64_t H_MAX = 8192;
 constexpr int64_t K_MAX = 32;
 constexpr int64_t MAX_EP_WORLD_SIZE = 128;
 constexpr int64_t MIN_EP_WORLD_SIZE = 2;
+constexpr int64_t MAX_NUM_EXPERTS = 2048;
+constexpr int64_t MIN_NUM_EXPERTS = 2;
 constexpr uint64_t MAX_OUT_DTYPE_SIZE = 2UL;
 constexpr uint64_t FP8_DTYPE_SIZE = 1UL;
 constexpr uint64_t METADATA_DTYPE_SIZE = 4UL; // sizeof(int32)=sizeof(float)=4
@@ -110,15 +112,17 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
     OP_CHECK_NULL_WITH_CONTEXT(context, contextShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, topkIdxShape);
-    OP_TILING_CHECK(contextShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE(nodeName, "context dims must be 1, got %lu.", contextShape->GetStorageShape().GetDimNum()),
-                    return false);
+    OP_TILING_CHECK(
+        contextShape->GetStorageShape().GetDimNum() != ONE_DIM,
+        OP_LOGE(nodeName, "context dims must be 1, but got %lu.", contextShape->GetStorageShape().GetDimNum()),
+        return false);
     OP_TILING_CHECK(xShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE(nodeName, "x dims must be 2, got %lu.", xShape->GetStorageShape().GetDimNum()),
+                    OP_LOGE(nodeName, "x dims must be 2, but got %lu.", xShape->GetStorageShape().GetDimNum()),
                     return false);
-    OP_TILING_CHECK(topkIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE(nodeName, "topkIdx dims must be 2, got %lu.", topkIdxShape->GetStorageShape().GetDimNum()),
-                    return false);
+    OP_TILING_CHECK(
+        topkIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+        OP_LOGE(nodeName, "topk_idx dims must be 2, but got %lu.", topkIdxShape->GetStorageShape().GetDimNum()),
+        return false);
 
     int64_t xDim0 = xShape->GetStorageShape().GetDim(0);
     int64_t xDim1 = xShape->GetStorageShape().GetDim(1);
@@ -126,20 +130,20 @@ static bool CheckInputTensorShape(const gert::TilingContext *context, const char
     int64_t topkDim1 = topkIdxShape->GetStorageShape().GetDim(1);
     int64_t numMaxTokensPerRank = static_cast<int64_t>(info.cfg.numMaxTokensPerRank);
     int64_t numExperts = static_cast<int64_t>(info.cfg.numExperts);
-    OP_TILING_CHECK((xDim0 <= 0) || (xDim0 > numMaxTokensPerRank),
-                    OP_LOGE(nodeName, "xDim0 is invalid, should be in [1, numMaxTokensPerRank=%ld], but got %ld.",
-                            numMaxTokensPerRank, xDim0),
-                    return false);
+    OP_TILING_CHECK(
+        (xDim0 <= 0) || (xDim0 > numMaxTokensPerRank),
+        OP_LOGE(nodeName, "x dim0 is invalid, should be in [1, %ld], but got %ld.", numMaxTokensPerRank, xDim0),
+        return false);
     OP_TILING_CHECK((xDim1 <= 0) || (xDim1 > H_MAX),
-                    OP_LOGE(nodeName, "xDim1(hidden) is invalid, should be in (0, %ld], but got %ld.", H_MAX, xDim1),
+                    OP_LOGE(nodeName, "x dim1(hidden) is invalid, should be in (0, %ld], but got %ld.", H_MAX, xDim1),
                     return false);
     OP_TILING_CHECK(
         xDim0 != topkDim0,
-        OP_LOGE(nodeName, "topkIdx dim0 must equal x dim0, but got xDim0=%ld, topkDim0=%ld.", xDim0, topkDim0),
+        OP_LOGE(nodeName, "topk_idx dim0 must equal x dim0, but got x dim0=%ld, topk_idx dim0=%ld.", xDim0, topkDim0),
         return false);
     OP_TILING_CHECK((topkDim1 <= 0) || (topkDim1 > K_MAX) || (topkDim1 > numExperts),
                     OP_LOGE(nodeName,
-                            "topkIdx dim1(topK) is invalid, should be in (0, min(%ld, numExperts=%ld)], but got %ld.",
+                            "topk_idx dim1(topK) is invalid, should be in (0, min(%ld, num_experts=%ld)], but got %ld.",
                             K_MAX, numExperts, topkDim1),
                     return false);
 
@@ -156,21 +160,43 @@ static bool CheckOptionalTensorShape(const gert::TilingContext *context, const c
     const gert::StorageShape *cachedShape = context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX);
 
     if (weightsShape != nullptr) {
-        OP_TILING_CHECK(weightsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                        OP_LOGE(nodeName, "topkWeights dims must be 2."), return false);
-        OP_TILING_CHECK(weightsShape->GetStorageShape().GetDim(0) != topkDim0,
-                        OP_LOGE(nodeName, "topkWeights dim0 must equal topk dim0."), return false);
-        OP_TILING_CHECK(weightsShape->GetStorageShape().GetDim(1) != topkDim1,
-                        OP_LOGE(nodeName, "topkWeights dim1 must equal topK."), return false);
+        OP_TILING_CHECK(
+            weightsShape->GetStorageShape().GetDimNum() != TWO_DIMS,
+            OP_LOGE(nodeName, "topk_weights dims must be 2, but got %lu.", weightsShape->GetStorageShape().GetDimNum()),
+            return false);
+        OP_TILING_CHECK(
+            weightsShape->GetStorageShape().GetDim(0) != topkDim0,
+            OP_LOGE(nodeName,
+                    "topk_weights dim0 must equal topk_idx dim0, but got topk_weights dim0=%ld, topk_idx dim0=%ld.",
+                    weightsShape->GetStorageShape().GetDim(0), topkDim0),
+            return false);
+        OP_TILING_CHECK(
+            weightsShape->GetStorageShape().GetDim(1) != topkDim1,
+            OP_LOGE(nodeName,
+                    "topk_weights dim1 must equal topk_idx dim1, but got topk_weights dim1=%ld, topk_idx dim1=%ld.",
+                    weightsShape->GetStorageShape().GetDim(1), topkDim1),
+            return false);
     }
 
     if (cachedShape != nullptr) {
         OP_TILING_CHECK(cachedShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                        OP_LOGE(nodeName, "cachedSlotIdx dims must be 2."), return false);
-        OP_TILING_CHECK(cachedShape->GetStorageShape().GetDim(0) != topkDim0,
-                        OP_LOGE(nodeName, "cachedSlotIdx dim0 must equal topk dim0."), return false);
-        OP_TILING_CHECK(cachedShape->GetStorageShape().GetDim(1) != topkDim1,
-                        OP_LOGE(nodeName, "cachedSlotIdx dim1 must equal topK."), return false);
+                        OP_LOGE(nodeName, "cached_slot_idx dims must be 2, but got %lu.",
+                                cachedShape->GetStorageShape().GetDimNum()),
+                        return false);
+        OP_TILING_CHECK(
+            cachedShape->GetStorageShape().GetDim(0) != topkDim0,
+            OP_LOGE(
+                nodeName,
+                "cached_slot_idx dim0 must equal topk_idx dim0, but got cached_slot_idx dim0=%ld, topk_idx dim0=%ld.",
+                cachedShape->GetStorageShape().GetDim(0), topkDim0),
+            return false);
+        OP_TILING_CHECK(
+            cachedShape->GetStorageShape().GetDim(1) != topkDim1,
+            OP_LOGE(
+                nodeName,
+                "cached_slot_idx dim1 must equal topk_idx dim1, but got cached_slot_idx dim1=%ld, topk_idx dim1=%ld.",
+                cachedShape->GetStorageShape().GetDim(1), topkDim1),
+            return false);
     }
 
     return true;
@@ -190,8 +216,8 @@ static bool CheckInputTensorScales(const gert::TilingContext *context, const cha
         // check dtype
         ge::DataType scalesDtype = scalesDesc->GetDataType();
         OP_TILING_CHECK((scalesDtype != ge::DT_FLOAT) && (scalesDtype != ge::DT_FLOAT8_E8M0),
-                        OP_LOGE(nodeName, "scales dtype must be DT_FLOAT or DT_FLOAT8_E8M0, but got %d.",
-                                static_cast<int32_t>(scalesDtype)),
+                        OP_LOGE(nodeName, "scales dtype must be DT_FLOAT or DT_FLOAT8_E8M0, but got %s.",
+                                ge::TypeUtils::DataTypeToSerialString(scalesDtype).c_str()),
                         return false);
         // check format
         auto scalesFormat = ge::GetPrimaryFormat(scalesDesc->GetStorageFormat());
@@ -201,7 +227,7 @@ static bool CheckInputTensorScales(const gert::TilingContext *context, const cha
         // check shape
         OP_TILING_CHECK(
             scalesShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-            OP_LOGE(nodeName, "scales dims must be 2, got %lu.", scalesShape->GetStorageShape().GetDimNum()),
+            OP_LOGE(nodeName, "scales dims must be 2, but got %lu.", scalesShape->GetStorageShape().GetDimNum()),
             return false);
         int64_t scalesDim0 = scalesShape->GetStorageShape().GetDim(0);
         int64_t scalesDim1 = scalesShape->GetStorageShape().GetDim(1);
@@ -210,10 +236,10 @@ static bool CheckInputTensorScales(const gert::TilingContext *context, const cha
         if (scalesDtype == ge::DT_FLOAT8_E8M0) {
             expectedDim1 = (expectedDim1 + SCALES_ALIGN_EVEN - 1) / SCALES_ALIGN_EVEN * SCALES_ALIGN_EVEN;
         }
-        OP_TILING_CHECK(
-            scalesDim0 != static_cast<int64_t>(info.cfg.numTokens),
-            OP_LOGE(nodeName, "scales dim0 must equal x dim0, got %ld vs %u.", scalesDim0, info.cfg.numTokens),
-            return false);
+        OP_TILING_CHECK(scalesDim0 != static_cast<int64_t>(info.cfg.numTokens),
+                        OP_LOGE(nodeName, "scales dim0 must equal x dim0, but got scales dim0=%ld, x dim0=%u.",
+                                scalesDim0, info.cfg.numTokens),
+                        return false);
         OP_TILING_CHECK(
             scalesDim1 != expectedDim1,
             OP_LOGE(nodeName, "scales dim1 is invalid, expected %ld but got %ld.", expectedDim1, scalesDim1),
@@ -236,19 +262,37 @@ static bool CheckOutputTensorShape(const gert::TilingContext *context, const cha
     OP_CHECK_NULL_WITH_CONTEXT(context, recvPerExpertShape);
     OP_CHECK_NULL_WITH_CONTEXT(context, dstSlotIdxShape);
     OP_TILING_CHECK(recvPerRankShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE(nodeName, "num_recv_per_rank dims must be 1."), return false);
+                    OP_LOGE(nodeName, "num_recv_tokens_per_rank dims must be 1, but got %lu.",
+                            recvPerRankShape->GetStorageShape().GetDimNum()),
+                    return false);
     OP_TILING_CHECK(recvPerRankShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.epWorldSize),
-                    OP_LOGE(nodeName, "num_recv_per_rank dim0 must equal epWorldSize."), return false);
+                    OP_LOGE(nodeName, "num_recv_tokens_per_rank dim0 must equal ep_world_size=%u, but got %ld.",
+                            info.cfg.epWorldSize, recvPerRankShape->GetStorageShape().GetDim(0)),
+                    return false);
     OP_TILING_CHECK(recvPerExpertShape->GetStorageShape().GetDimNum() != ONE_DIM,
-                    OP_LOGE(nodeName, "num_recv_per_expert dims must be 1."), return false);
+                    OP_LOGE(nodeName, "num_recv_tokens_per_expert dims must be 1, but got %lu.",
+                            recvPerExpertShape->GetStorageShape().GetDimNum()),
+                    return false);
     OP_TILING_CHECK(recvPerExpertShape->GetStorageShape().GetDim(0) != static_cast<int64_t>(info.cfg.numLocalExperts),
-                    OP_LOGE(nodeName, "num_recv_per_expert dim0 must equal numLocalExperts."), return false);
+                    OP_LOGE(nodeName, "num_recv_tokens_per_expert dim0 must equal num_local_experts=%u, but got %ld.",
+                            info.cfg.numLocalExperts, recvPerExpertShape->GetStorageShape().GetDim(0)),
+                    return false);
     OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDimNum() != TWO_DIMS,
-                    OP_LOGE(nodeName, "dst_buffer_slot_idx dims must be 2."), return false);
+                    OP_LOGE(nodeName, "dst_buffer_slot_idx dims must be 2, but got %lu.",
+                            dstSlotIdxShape->GetStorageShape().GetDimNum()),
+                    return false);
     OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDim(0) != topkDim0,
-                    OP_LOGE(nodeName, "dst_buffer_slot_idx dim0 must equal topk dim0."), return false);
+                    OP_LOGE(nodeName,
+                            "dst_buffer_slot_idx dim0 must equal topk_idx dim0, but got dst_buffer_slot_idx dim0=%ld, "
+                            "topk_idx dim0=%ld.",
+                            dstSlotIdxShape->GetStorageShape().GetDim(0), topkDim0),
+                    return false);
     OP_TILING_CHECK(dstSlotIdxShape->GetStorageShape().GetDim(1) != topkDim1,
-                    OP_LOGE(nodeName, "dst_buffer_slot_idx dim1 must equal topK."), return false);
+                    OP_LOGE(nodeName,
+                            "dst_buffer_slot_idx dim1 must equal topk_idx dim1, but got dst_buffer_slot_idx dim1=%ld, "
+                            "topk_idx dim1=%ld.",
+                            dstSlotIdxShape->GetStorageShape().GetDim(1), topkDim1),
+                    return false);
     return true;
 }
 
@@ -263,31 +307,33 @@ static bool CheckInputTensorDtype(const gert::TilingContext *context, const char
     OP_CHECK_NULL_WITH_CONTEXT(context, xDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, topkIdxDesc);
     OP_TILING_CHECK(contextDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE(nodeName, "context dtype must be DT_INT32, but got %d.",
-                            static_cast<int32_t>(contextDesc->GetDataType())),
+                    OP_LOGE(nodeName, "context dtype must be DT_INT32, but got %s.",
+                            ge::TypeUtils::DataTypeToSerialString(contextDesc->GetDataType()).c_str()),
                     return false);
     ge::DataType xDtype = xDesc->GetDataType();
     OP_TILING_CHECK(
         (xDtype != ge::DT_BF16) && (xDtype != ge::DT_FLOAT16) && (xDtype != ge::DT_FLOAT8_E5M2) &&
             (xDtype != ge::DT_FLOAT8_E4M3FN),
-        OP_LOGE(nodeName, "x dtype must be BF16/FP16/F8_E5M2/F8_E4M3FN, but got %d.", static_cast<int32_t>(xDtype)),
+        OP_LOGE(nodeName,
+                "x dtype must be in support list [DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN], but got %s.",
+                ge::TypeUtils::DataTypeToSerialString(xDtype).c_str()),
         return false);
 
     OP_TILING_CHECK(topkIdxDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE(nodeName, "topk_idx dtype must be DT_INT32, but got %d.",
-                            static_cast<int32_t>(topkIdxDesc->GetDataType())),
+                    OP_LOGE(nodeName, "topk_idx dtype must be DT_INT32, but got %s.",
+                            ge::TypeUtils::DataTypeToSerialString(topkIdxDesc->GetDataType()).c_str()),
                     return false);
 
     if (topkWeightsDesc != nullptr) {
         OP_TILING_CHECK(topkWeightsDesc->GetDataType() != ge::DT_FLOAT,
-                        OP_LOGE(nodeName, "topk_weights dtype must be DT_FLOAT, but got %d.",
-                                static_cast<int32_t>(topkWeightsDesc->GetDataType())),
+                        OP_LOGE(nodeName, "topk_weights dtype must be DT_FLOAT, but got %s.",
+                                ge::TypeUtils::DataTypeToSerialString(topkWeightsDesc->GetDataType()).c_str()),
                         return false);
     }
     if (cachedSlotIdxDesc != nullptr) {
         OP_TILING_CHECK(cachedSlotIdxDesc->GetDataType() != ge::DT_INT32,
-                        OP_LOGE(nodeName, "cached_slot_idx dtype must be DT_INT32, but got %d.",
-                                static_cast<int32_t>(cachedSlotIdxDesc->GetDataType())),
+                        OP_LOGE(nodeName, "cached_slot_idx dtype must be DT_INT32, but got %s.",
+                                ge::TypeUtils::DataTypeToSerialString(cachedSlotIdxDesc->GetDataType()).c_str()),
                         return false);
     }
 
@@ -303,16 +349,16 @@ static bool CheckOutputTensorDtype(const gert::TilingContext *context, const cha
     OP_CHECK_NULL_WITH_CONTEXT(context, numRecvPerExpertDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, dstSlotIdxDesc);
     OP_TILING_CHECK(numRecvPerRankDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE(nodeName, "num_recv_per_rank dtype must be DT_INT32, but got %d.",
-                            static_cast<int32_t>(numRecvPerRankDesc->GetDataType())),
+                    OP_LOGE(nodeName, "num_recv_tokens_per_rank dtype must be DT_INT32, but got %s.",
+                            ge::TypeUtils::DataTypeToSerialString(numRecvPerRankDesc->GetDataType()).c_str()),
                     return false);
     OP_TILING_CHECK(numRecvPerExpertDesc->GetDataType() != ge::DT_INT64,
-                    OP_LOGE(nodeName, "num_recv_per_expert dtype must be DT_INT64, but got %d.",
-                            static_cast<int32_t>(numRecvPerExpertDesc->GetDataType())),
+                    OP_LOGE(nodeName, "num_recv_tokens_per_expert dtype must be DT_INT64, but got %s.",
+                            ge::TypeUtils::DataTypeToSerialString(numRecvPerExpertDesc->GetDataType()).c_str()),
                     return false);
     OP_TILING_CHECK(dstSlotIdxDesc->GetDataType() != ge::DT_INT32,
-                    OP_LOGE(nodeName, "dst_buffer_slot_idx dtype must be DT_INT32, but got %d.",
-                            static_cast<int32_t>(dstSlotIdxDesc->GetDataType())),
+                    OP_LOGE(nodeName, "dst_buffer_slot_idx dtype must be DT_INT32, but got %s.",
+                            ge::TypeUtils::DataTypeToSerialString(dstSlotIdxDesc->GetDataType()).c_str()),
                     return false);
     return true;
 }
@@ -432,13 +478,16 @@ static ge::graphStatus CheckCommAttr(const gert::TilingContext *context, const c
 
     int64_t epWorldSize = *epWorldSizePtr;
     OP_TILING_CHECK((epWorldSize < MIN_EP_WORLD_SIZE) || (epWorldSize > MAX_EP_WORLD_SIZE),
-                    OP_LOGE(nodeName, "epWorldSize is invalid, should be in [%ld, %ld], got %ld.", MIN_EP_WORLD_SIZE,
-                            MAX_EP_WORLD_SIZE, epWorldSize),
+                    OP_LOGE(nodeName, "ep_world_size is invalid, should be in [%ld, %ld], but got %ld.",
+                            MIN_EP_WORLD_SIZE, MAX_EP_WORLD_SIZE, epWorldSize),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(
         (*epRankIdPtr < 0) || (*epRankIdPtr >= epWorldSize),
-        OP_LOGE(nodeName, "epRankId is invalid, should be in [0, %ld), got %ld.", epWorldSize, *epRankIdPtr),
+        OP_LOGE(nodeName, "ep_rank_id is invalid, should be in [0, %ld), but got %ld.", epWorldSize, *epRankIdPtr),
         return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(*cclBufferSizePtr <= 0,
+                    OP_LOGE(nodeName, "ccl_buffer_size must be positive, but got %ld.", *cclBufferSizePtr),
+                    return ge::GRAPH_FAILED);
 
     info.cfg.epWorldSize = static_cast<uint32_t>(epWorldSize);
     info.cfg.epRankId = static_cast<uint32_t>(*epRankIdPtr);
@@ -464,19 +513,26 @@ static ge::graphStatus CheckComputeAttr(const gert::TilingContext *context, cons
     OP_TILING_CHECK(doCpuSyncPtr == nullptr, OP_LOGE(nodeName, "doCpuSyncPtr is null."), return ge::GRAPH_FAILED);
 
     int64_t epWorldSize = static_cast<int64_t>(info.cfg.epWorldSize);
-    OP_TILING_CHECK(
-        (*numExpertsPtr <= 0) || (*numExpertsPtr % epWorldSize != 0),
-        OP_LOGE(nodeName, "numExperts must be positive and divisible by epWorldSize, got %ld.", *numExpertsPtr),
-        return ge::GRAPH_FAILED);
-    OP_TILING_CHECK((*nmtPtr <= 0), OP_LOGE(nodeName, "numMaxTokensPerRank must be positive, got %ld.", *nmtPtr),
+    OP_TILING_CHECK((*numExpertsPtr < MIN_NUM_EXPERTS) || (*numExpertsPtr > MAX_NUM_EXPERTS) ||
+                        (*numExpertsPtr % epWorldSize != 0),
+                    OP_LOGE(nodeName,
+                            "num_experts is invalid, should be in [%ld, %ld] and divisible by ep_world_size, but got "
+                            "num_experts=%ld, ep_world_size=%ld.",
+                            MIN_NUM_EXPERTS, MAX_NUM_EXPERTS, *numExpertsPtr, epWorldSize),
+                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK((*nmtPtr <= 0),
+                    OP_LOGE(nodeName, "num_max_tokens_per_rank must be positive, but got %ld.", *nmtPtr),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK((*expertAlignmentPtr != 1),
-                    OP_LOGE(nodeName, "expertAlignment must be 1, got %ld.", *expertAlignmentPtr),
+                    OP_LOGE(nodeName, "expert_alignment must be 1, but got %ld.", *expertAlignmentPtr),
                     return ge::GRAPH_FAILED);
 
     bool cached = (context->GetOptionalInputShape(CACHED_SLOT_IDX_INDEX) != nullptr);
-    OP_TILING_CHECK(cached && *doCpuSyncPtr, OP_LOGE(nodeName, "doCpuSync and cached can't be true at the same time."),
+    OP_TILING_CHECK(cached && *doCpuSyncPtr,
+                    OP_LOGE(nodeName, "do_cpu_sync and cached can't be true at the same time."),
                     return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(cached && (context->GetOptionalInputShape(TOPK_WEIGHTS_INDEX) != nullptr),
+                    OP_LOGE(nodeName, "topk_weights is not supported when cached."), return ge::GRAPH_FAILED);
 
     info.cfg.numExperts = static_cast<uint32_t>(*numExpertsPtr);
     info.cfg.numLocalExperts = static_cast<uint32_t>(*numExpertsPtr / epWorldSize);
