@@ -1242,13 +1242,13 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
     int64_t combineUbTensorSize = MegaMoeCombineImpl::ComputeCombineUbTensorSize<CombineQuantMode>(k_);
 
     // Combine 后处理只使用连续逻辑 tile；A8W4 中由外部将 AIV1 映射为每 block 一个 tile。
-    uint32_t combineTileId = aivCoreIdx_;
-    uint32_t combineTileNum = blockAivNum_;
+    uint32_t combineJobIndex = aivCoreIdx_;
+    uint32_t combineTotalJobs = blockAivNum_;
     if constexpr (ENABLE_A8W4) {
-        combineTileId = aivCoreIdx_ / 2;
-        combineTileNum = blockAivNum_ / 2;
+        combineJobIndex = aivCoreIdx_ / 2;
+        combineTotalJobs = blockAivNum_ / 2;
     }
-    MegaMoeCombineImpl::CombineTileSchedule combineTileSchedule{combineTileId, combineTileNum};
+    MegaMoeCombineImpl::CombineTileSchedule combineTileSchedule{combineJobIndex, combineTotalJobs};
 
     for (uint32_t expertIdx = 0; expertIdx < expertPerRank_; expertIdx++) {
         if (!UpdateGroupParams<AddrUpdateMode::GMM2>(gmm2State, expertIdx)) {
