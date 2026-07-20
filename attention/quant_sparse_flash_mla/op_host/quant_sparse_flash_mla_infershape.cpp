@@ -9,13 +9,13 @@
 */
 
 /*!
- * \file quant_sparse_flash_mla_proto.cpp
+ * \file quant_sparse_flash_mla_infershape.cpp
  * \brief
  */
 
 #include <graph/utils/type_utils.h>
 #include <register/op_impl_registry.h>
-#include "error/ops_error.h"
+#include "log/log.h"
 
 using namespace ge;
 
@@ -25,16 +25,18 @@ constexpr uint32_t RETURN_SOFTMAX_LSE_INDEX = 10;
 
 ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
 {
-    OPS_ERR_IF(context == nullptr, OPS_LOG_E("QuantSparseFlashMla", "InferShapeContext is nullptr"),
-               return ge::GRAPH_FAILED);
+    if (context == nullptr) {
+        OP_LOGE("QuantSparseFlashMla", "context is nullptr!");
+        return ge::GRAPH_FAILED;
+    }
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
-    OPS_LOG_E_IF_NULL(context, queryShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
     gert::Shape *attentionOutShape = context->GetOutputShape(0);
-    OPS_LOG_E_IF_NULL(context, attentionOutShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, attentionOutShape);
     *attentionOutShape = *queryShape;
 
     gert::Shape *softmaxLseShape = context->GetOutputShape(1);
-    OPS_LOG_E_IF_NULL(context, softmaxLseShape, return ge::GRAPH_FAILED)
+    OP_CHECK_NULL_WITH_CONTEXT(context, softmaxLseShape);
     auto attr = context->GetAttrs();
     const bool *returnSoftmaxLsePtr = attr->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_INDEX);
     bool returnSoftmaxLse = (returnSoftmaxLsePtr != nullptr) ? *returnSoftmaxLsePtr : false;
@@ -51,10 +53,11 @@ ge::graphStatus InferShapeQuantSparseFlashMla(gert::InferShapeContext *context)
 
 ge::graphStatus InferDataTypeQuantSparseFlashMla(gert::InferDataTypeContext *context)
 {
-    OPS_ERR_IF(context == nullptr, OPS_LOG_E("QuantSparseFlashMla", "InferShapeContext is nullptr"),
-               return ge::GRAPH_FAILED);
-    const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
-    context->SetOutputDataType(0, inputDataType);
+    if (context == nullptr) {
+        OP_LOGE("QuantSparseFlashMla", "context is nullptr!");
+        return ge::GRAPH_FAILED;
+    }
+    context->SetOutputDataType(0, ge::DT_BF16); // 目前仅支持BF16
     return ge::GRAPH_SUCCESS;
 }
 
