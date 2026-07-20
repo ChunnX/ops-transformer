@@ -32,7 +32,7 @@
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
 
-namespace Mc2Kernel {
+namespace MoeEpDispatchBase {
 
 using namespace AscendC;
 
@@ -48,6 +48,20 @@ constexpr uint32_t DEBUG_OFFSET_CURRENT_SERVER_INDEX = 4U;
 constexpr uint32_t DEBUG_OFFSET_REMOTE_ROUTE_COUNT = 8U;
 constexpr uint32_t DEBUG_OFFSET_LOCAL_SEND_COUNT = 16U;
 constexpr uint32_t DEBUG_OFFSET_ERROR_FLAGS = 24U;
+constexpr uint32_t DEBUG_OFFSET_SCALEOUT_SLOT_COUNT = 32U;
+constexpr uint32_t DEBUG_OFFSET_SCALEOUT_NOTIFY_COUNT = 36U;
+constexpr uint32_t DEBUG_OFFSET_SCALEOUT_READY_COUNT = 40U;
+constexpr uint32_t DEBUG_OFFSET_FANOUT_SLOT_COUNT = 44U;
+constexpr uint32_t DEBUG_OFFSET_FANOUT_TARGET_COUNT = 48U;
+constexpr uint32_t DEBUG_OFFSET_FANOUT_LOCAL_WRITE_COUNT = 52U;
+constexpr uint32_t DEBUG_OFFSET_FANOUT_REMOTE_WRITE_COUNT = 56U;
+constexpr uint32_t DEBUG_OFFSET_LAST_FANOUT_MASK = 60U;
+constexpr uint32_t DEBUG_OFFSET_LAST_FANOUT_SCALEUP_SLOT = 64U;
+constexpr uint32_t DEBUG_OFFSET_LAST_FANOUT_SRC_SCALEOUT = 68U;
+constexpr uint32_t DEBUG_OFFSET_LAST_FANOUT_SRC_RANK = 72U;
+constexpr uint32_t DEBUG_OFFSET_LAST_FANOUT_DST_RANK = 76U;
+constexpr uint32_t DEBUG_OFFSET_STAGE1_LAST_DST_SCALEOUT = 96U;
+constexpr uint32_t DEBUG_OFFSET_STAGE1_LAST_SLOT_COUNT = 100U;
 
 constexpr uint8_t DEBUG_PATH_DIRECT = 0xD0U;
 constexpr uint8_t DEBUG_PATH_HYBRID = 0xA1U;
@@ -159,6 +173,15 @@ __aicore__ inline void IncrementDebugUint32(GlobalTensor<uint8_t> &debugOutTenso
     WriteUint32ToDebug(debugOutTensor, byteOffset, value + 1U);
 }
 
+__aicore__ inline void AddDebugUint32(GlobalTensor<uint8_t> &debugOutTensor, uint32_t byteOffset, uint32_t increment)
+{
+    uint32_t value = static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset)) |
+                     (static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset + 1U)) << 8U) |
+                     (static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset + 2U)) << 16U) |
+                     (static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset + 3U)) << 24U);
+    WriteUint32ToDebug(debugOutTensor, byteOffset, value + increment);
+}
+
 template <typename HcommType>
 __aicore__ inline void WriteRemoteWindowByChunks(HcommType &hcomm, uint64_t commHandle, GM_ADDR remoteWindowAddr,
                                                  GM_ADDR localWorkspaceAddr, uint64_t sendBytes)
@@ -178,6 +201,6 @@ __aicore__ inline void WriteRemoteWindowByChunks(HcommType &hcomm, uint64_t comm
 }
 
 
-} // namespace Mc2Kernel
+} // namespace MoeEpDispatchBase
 
 #endif // MOE_EP_DISPATCH_BASE_H

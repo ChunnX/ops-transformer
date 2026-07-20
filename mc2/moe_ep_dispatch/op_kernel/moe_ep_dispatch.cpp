@@ -55,10 +55,8 @@ __global__ __aicore__ void moe_ep_dispatch(GM_ADDR context, GM_ADDR x, GM_ADDR t
         op.Process();
     } else {
         MoeEpDispatch<DTYPE_X, ScalesType, DoCpuSync, IsCached, IsTopkWeights, NetworkMode> op;
-        op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, cachedRouteCount, cachedRouteDstScaleout,
-                cachedRouteScaleoutSlot, cachedRouteScaleupMask, cachedRouteScaleupSlot, numRecvPerRank,
-                numRecvPerExpert, dstBufferSlotIdx, routeCount, routeDstScaleout, routeScaleoutSlot, routeScaleupMask,
-                routeScaleupSlot, debugOut, workspaceGM, &pipe, &tilingData);
+        op.Init(context, x, topkIdx, topkWeights, scales, cachedSlotIdx, numRecvPerRank, numRecvPerExpert,
+                dstBufferSlotIdx, workspaceGM, &pipe, &tilingData);
         op.Process();
     }
 }
