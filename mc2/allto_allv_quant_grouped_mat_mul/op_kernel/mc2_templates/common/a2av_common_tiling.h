@@ -31,13 +31,18 @@ static constexpr uint16_t MAX_BUFFER_SIZE = 65534U;
 static constexpr uint16_t PERMUTE_BUF_SIZE = 32768U;
 
 // 核间同步常量
-static constexpr uint8_t SYNC_MODE_AIV_TO_AIC = 4U;      // CrossCoreSetFlag mode 4: AIV→AIC
-static constexpr uint8_t SYNC_MODE_AIC_BARRIER = 0U;      // CrossCoreSetFlag mode 0: AIC核间屏障
-static constexpr uint8_t SYNC_MODE_AIC_TO_AIV = 2U;       // CrossCoreSetFlag mode 2: AIC→AIV
-static constexpr uint16_t SYNC_FLAG_ID_COMM_DONE = 8U;    // 通信完成通知flagId
-static constexpr uint16_t SYNC_FLAG_ID_AIC_BARRIER = 9U;  // AIC屏障flagId
-static constexpr uint16_t SYNC_FLAG_ID_PERMUTE_DONE = 10U; // 重排完成通知flagId
-static constexpr uint16_t SYNC_FLAG_AIV1_OFFSET = 16U;    // AIV1 flagId偏移量(mode 4)
+#if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
+static constexpr uint8_t SYNC_MODE_AIV_TO_AIC = 4U;
+static constexpr uint16_t SYNC_FLAG_AIV1_OFFSET = 16U;
+#else
+static constexpr uint8_t SYNC_MODE_AIV_TO_AIC = 2U;
+static constexpr uint16_t SYNC_FLAG_AIV1_OFFSET = 0U;
+#endif
+static constexpr uint8_t SYNC_MODE_AIC_BARRIER = 0U;
+static constexpr uint8_t SYNC_MODE_AIC_TO_AIV = 2U;
+static constexpr uint16_t SYNC_FLAG_ID_COMM_DONE = 8U;
+static constexpr uint16_t SYNC_FLAG_ID_AIC_BARRIER = 9U;
+static constexpr uint16_t SYNC_FLAG_ID_PERMUTE_DONE = 10U;
 
 // 类型复用声明
 using GMMQuantTilingData = Mc2GroupedMatmulTilingData::GMMQuantTilingData;
