@@ -535,7 +535,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.copy(rsy_reduce_db[cur, :], rsy_all_ub[n_rsy, :])
                         # Fused: update global max from rsy_reduce_db[cur, :]
                         T.pipe_barrier("v")
-                        T.reduce_max(rsy_reduce_db[cur, :], rsy_chunk_max_ub, 0)
+                        T.reduce_max(rsy_reduce_db[cur, :], rsy_chunk_max_ub, -1)
                         T.pipe_barrier("v")
                         T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
                         # WAR: current slot consumed → safe to refill
