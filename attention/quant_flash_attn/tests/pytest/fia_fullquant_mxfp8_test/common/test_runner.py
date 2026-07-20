@@ -101,20 +101,21 @@ def execute_test(params, mode, cdir=None):
         return None, None
 
     compare_layout = "TND" if golden.ENABLE_PA else golden.INPUT_LAYOUT
+    act_seqused_q = golden._get_seqused_q()
     if compare_layout == "TND":
-        cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.SEQUSED_Q, compare_layout, cu_seqlens=golden.CU_SEQLENS_Q)
+        cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, act_seqused_q, compare_layout, cu_seqlens=golden.CU_SEQLENS_Q)
     else:
-        cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, golden.SEQUSED_Q, compare_layout)
+        cpu_cmp = golden.convert_q_bnsd_to_layout(cpu_out, act_seqused_q, compare_layout)
 
     atten_result = result_compare_method.check_result(cpu_cmp, npu_out)
 
     lse_result = None
     if golden.ENABLE_LSE:
         if compare_layout == "TND":
-            lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.SEQUSED_Q, compare_layout, cu_seqlens=golden.CU_SEQLENS_Q)
-            golden.fill_tnd_padding(lse_cmp, golden.SEQUSED_Q, golden.CU_SEQLENS_Q, fill_value=float('inf'))
+            lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, act_seqused_q, compare_layout, cu_seqlens=golden.CU_SEQLENS_Q)
+            golden.fill_tnd_padding(lse_cmp, act_seqused_q, golden.CU_SEQLENS_Q, fill_value=float('inf'))
         else:
-            lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, golden.SEQUSED_Q, compare_layout)
+            lse_cmp = golden.convert_q_bnsd_to_layout(cpu_lse, act_seqused_q, compare_layout)
         lse_result = result_compare_method.check_result(lse_cmp, lse_out)
 
     return atten_result, lse_result

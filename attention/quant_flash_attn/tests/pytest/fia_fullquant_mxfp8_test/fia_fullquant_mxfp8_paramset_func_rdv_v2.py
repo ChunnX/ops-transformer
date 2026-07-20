@@ -13,7 +13,26 @@
 from fia_fullquant_mxfp8_paramset_common import expand_paramset_to_cases
 
 TEST_PARAMS = {
-
+    "test1": {
+        'B': [1],
+        'N_q': [20],
+        'N_kv': [2],
+        'D': [64],
+        'cu_seqlens_q': [[0, 4096]],
+        'cu_seqlens_kv': [[0, 4096]],
+        'seqused_q': [None],
+        'seqused_kv': [None],
+        'max_seqlen_q': [4096],
+        'max_seqlen_kv': [-1],
+        'enable_pa': [False],
+        'kv_cache_layout': ['TND'],
+        'block_size': [512],
+        'mask_mode': [0],
+        'q_scale_layout': ['TND'],
+        'p_scale': [1.0],
+        'softmax_scale': [0.125],
+        'enable_lse': [True],
+    },
     "TND_B1_QS3_KVS1258_Nq48_Nkv2_D64_SP0": {
         'B': [1],
         'N_q': [48],

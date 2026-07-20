@@ -24,6 +24,8 @@ PARAM_NAMES = [
 
 TEST_PARAMS_DEFAULTS = {
     "softmax_scale": [None],
+    "max_seqlen_q": [-1],
+    "max_seqlen_kv": [-1],
     "data_range_q": [1.0],
     "data_range_k": [1.0],
     "data_range_v": [1.0],
