@@ -419,7 +419,9 @@ bool GetInputs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& c
 
     // - 1 为内轴
     auto xInner = xShape.GetDim(DIM_NUM_X - 1);
-    auto wInner = wShape.GetDim(wShapeLen - 1);
+    // In single-multi-single mode the logical weight view is [K, N];
+    // its transposed NZ layout is represented by storage shape and strides.
+    auto wInner = params.isSingleMultiSingle ? wShape.GetDim(DIM_0) : wShape.GetDim(wShapeLen - 1);
     if (unlikely(xInner != wInner)) {
         OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(OP_NAME, "x, weight",
             "x K=" + std::to_string(xInner) + ", weight K=" + std::to_string(wInner),
@@ -428,7 +430,7 @@ bool GetInputs(GMMSQWeightQuantInputParams& params, const gert::TilingContext& c
     }
     params.mSize = xShape.GetDim(DIM_0);
     params.kSize = xInner;
-    params.nSize = params.isSingleMultiSingle ? wShape.GetDim(DIM_0) : wShape.GetDim(DIM_1);
+    params.nSize = wShape.GetDim(DIM_1);
     params.groupNum = params.isSingleMultiSingle ? params.groupNum : wShape.GetDim(DIM_0);
     return true;
 }
@@ -552,8 +554,8 @@ bool CheckSingleMultiSingleInputs(
         C0_SIZE
     };
     const std::vector<int64_t> expectedWeightScaleShape = {
-        params.nSize,
         scaleKSize,
+        params.nSize,
         MX_INNER_DIM
     };
     for (int64_t i = 0; i < params.groupNum; ++i) {
