@@ -87,7 +87,6 @@ constexpr int64_t MAX_BS = 4096;
 constexpr int64_t MIN_HIDDEN_SIZE = 1024;
 constexpr int64_t MAX_HIDDEN_SIZE = 8192;
 constexpr int64_t MIN_INTERMEDIATE_HIDDEN = 1024;
-constexpr int64_t MAX_INTERMEDIATE_HIDDEN = 3072;
 constexpr int64_t MIN_TOPK = 1;
 constexpr int64_t MAX_TOPK = 16;
 constexpr int64_t MIN_EXPERT_PER_RANK = 1;
@@ -709,13 +708,13 @@ static ge::graphStatus CheckWeight2Input(gert::TilingContext *context, int64_t h
     uint32_t n2 = N / 2;
     OP_TILING_CHECK(n2 % HIDDEN_SIZE_ALIGN != 0,
                     OP_LOGE(K_INNER_DEBUG, "weight2's dim0(intermediate_hidden) should be %ld aligned, but got %ld.",
-                            HIDDEN_SIZE_ALIGN, N),
+                            HIDDEN_SIZE_ALIGN, n2),
                     return GRAPH_FAILED);
 
-    OP_TILING_CHECK(n2 < MIN_INTERMEDIATE_HIDDEN || n2 > MAX_INTERMEDIATE_HIDDEN,
+    OP_TILING_CHECK(n2 < MIN_INTERMEDIATE_HIDDEN,
                     OP_LOGE(K_INNER_DEBUG,
-                            "weight2's dim0(intermediate_hidden) is invalid, should be in [%ld, %ld], but got %ld.",
-                            MIN_INTERMEDIATE_HIDDEN, MAX_INTERMEDIATE_HIDDEN, n2),
+                            "weight2's dim0(intermediate_hidden) is invalid, should be >= %ld, but got %ld.",
+                            MIN_INTERMEDIATE_HIDDEN, n2),
                     return GRAPH_FAILED);
 
     for (uint32_t i = 0; i < expertPerRank; i++) {
