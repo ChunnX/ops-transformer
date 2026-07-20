@@ -126,19 +126,31 @@ def SinkhornGrad(
     for i in reversed(range(iters)):
 
         row_sum = sum_out[i][0].view(bs, seq_len, n, 1)
-
         col_sum = sum_out[i][1].view(bs, seq_len, 1, n)
-
         x_row_normed = norm_out[i][0].view(bs, seq_len, n, n)
 
+        # Step1 ComputeTmpMul: tmp = x_grad * x_row_normed
+        tmp = x_grad * x_row_normed
 
-        # 列归一化的梯度
+        # Step2 ComputeTmpDiv:
+        #   tmpDiv = x_grad / col_sum
+        #   tmpDiv2 = (x_grad * x_row_normed) / col_sum^2
+        tmpDiv = x_grad / col_sum
+        tmpDiv2 = tmp / (col_sum ** 2)
 
-        grad_x_row_normed = x_grad / col_sum - (x_grad * x_row_normed / (col_sum ** 2)).sum(dim=-2, keepdim=True)
+        # Step3 ReduceSumCol: tmp = tmpDiv2.sum(dim=-2, keepdim=True)
+        tmp = tmpDiv2.sum(dim=-2, keepdim=True)
 
-        # 行归一化的梯度
+        # Step4 ComputeRowNorm:
+        #   grad_x_row_normed = tmpDiv - tmp
+        #   tmpDiv3 = grad_x_row_normed / row_sum
+        #   tmpDiv4 = grad_x_row_normed * x_row_normed / row_sum
+        grad_x_row_normed = tmpDiv - tmp
+        tmpDiv3 = grad_x_row_normed / row_sum
+        tmpDiv4 = grad_x_row_normed * x_row_normed / row_sum
 
-        x_grad = grad_x_row_normed / row_sum - (grad_x_row_normed * x_row_normed / row_sum).sum(dim=-1, keepdim=True)
+        # Step5 UpdateSkGrad: x_grad = tmpDiv3 - tmpDiv4.sum(dim=-1, keepdim=True)
+        x_grad = tmpDiv3 - tmpDiv4.sum(dim=-1, keepdim=True)
 
     
 
