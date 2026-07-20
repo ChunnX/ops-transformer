@@ -1134,15 +1134,7 @@ protected:
         }
         // 从x的第1维获取k
         int64_t kInX = gmmDsqParams_.x->GetViewShape().GetDim(1);
-        int64_t kInWeight = 0;
-        if (IsMxWeightNzMultiTensorSupported()) {
-            kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(0);
-        } else if (gmmDsqParams_.isMxA8W4) {
-            auto weightViewDimNum = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDimNum();
-            kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(weightViewDimNum - LAST_SECOND_DIM_INDEX);
-        } else {
-            kInWeight = ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1);
-        }
+        int64_t kInWeight = GetWeightK((*gmmDsqParams_.weight)[0]);
         if (kInX != kInWeight) {
             std::ostringstream reason;
             reason << "K dim should be equal when " << GetGroupedMatmulSwigluQuantV2ScenarioName(gmmDsqParams_)
