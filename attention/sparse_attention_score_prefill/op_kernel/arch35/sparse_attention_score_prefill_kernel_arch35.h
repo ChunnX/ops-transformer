@@ -691,7 +691,7 @@ private:
                     auto ubSTensorTla = tla::MakeTensor(ubSTensor[ubSBufId], ubSLayout, Arch::PositionUB{});
                     blockMmadQK(gQ, batchQToken[stage], batchGroupCount, groupSize_,
                                 ubSTensorTla, validSize, embed_, perQTokenStrideQ, qHeadStartBase,
-                                mm1ToSmFlag);
+                                numBatches, bi, mm1ToSmFlag);
 #endif
 #ifdef __DAV_VEC__
                     // P L1 layout extent = validSize (uniform batch K). softmax writes the
@@ -736,7 +736,7 @@ private:
                         blockMmadPV.SetL1PBuf(l1PBufIdDe);
                         blockMmadPV(gAccumOut, batchQToken[stageDe], batchSlotK[stageDe], pvGrpCnt,
                                    groupSize_, embed_, perQTokenStride, kvHeadBase, slotOElems_,
-                                   smToMm2Flag);
+                                   numBatches, bDe, smToMm2Flag);
 #endif
                     }
                 }

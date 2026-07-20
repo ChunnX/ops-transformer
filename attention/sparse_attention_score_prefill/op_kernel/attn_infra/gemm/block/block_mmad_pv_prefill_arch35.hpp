@@ -155,6 +155,17 @@ struct BlockMmadPVPrefillArch35 {
         copyGmToL1V(l1VTile, gmVTile);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID2);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID2);
+
+        // V resident in L0B[1] (stage 1, flag 3): copy L1->L0B once per task, co-located with
+        // the GM->L1 load (above). De-aliased from QK's K (L0B[0], flag 2). Wait<M_MTE1>(3):
+        // L0B[1] free from the prev task's last PV batch drain (InitSyncFlags primes first
+        // task). Set<MTE1_M>(3): L0B[1] ready; operator()'s first PV batch (bDe==0) Wait<MTE1_M>(3)
+        // consumes it before MMA; the last PV batch's Set<M_MTE1>(3) drains for the next task.
+        auto l0BVLayout = tla::MakeLayout<ElementV, LayoutTagL0B>(validSize, D);
+        auto l0BVTensor = tla::MakeTensor(l0BTensor_[1], l0BVLayout, Arch::PositionL0B{});
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(3U);
+        copyL1ToL0B(l0BVTensor, l1VTile);
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(3U);
     }
 
     // Batched PV: M = groupCount * groupRows (up to 128 = 8 groups), K = validSize (the
@@ -176,6 +187,7 @@ struct BlockMmadPVPrefillArch35 {
                     uint32_t groupCount, uint32_t groupRows,
                     uint32_t D,
                     uint64_t perQTokenStride, uint64_t kvHeadBase, uint64_t slotOElems,
+                    uint32_t numBatches, uint32_t bDe,
                     Arch::CrossCoreFlag &smToMm2Flag)
     {
         uint32_t M = groupCount * groupRows;
@@ -203,7 +215,15 @@ struct BlockMmadPVPrefillArch35 {
         uint32_t kL0Num = CeilDiv(K, L0_TILE_K);
         for (uint32_t nL0Itr = 0; nL0Itr < nL0Num; nL0Itr++) {
             uint32_t nAct = (nL0Itr == nL0Num - 1) ? (N - nL0Itr * L0_TILE_N) : L0_TILE_N;
-            uint32_t l0CBufId = nL0Itr % L0_STAGES;
+            // Plan B: key L0C stage by bDe (nL0Num=1 always since N=D=128=L0_TILE_N). Old
+            // nL0Itr%2 keying pinned one stage -> PV fixpipe(bi) blocked MMA(bi+1) on the same
+            // upper-half L0C buffer. With bDe%2 the two upper-half L0C stages ping-pong across
+            // batches so PV's O-partial fixpipe(bi) overlaps PV-MMA(bi+1); same-stage reuse
+            // (bDe vs bDe+2) stays serialized by the Wait<FIX_M>(bDe%2+2) at MMA entry, keeping
+            // the GM O-partial scatter dst safe. Flag lifecycle unchanged: InitSyncFlags primes
+            // FIX_M(2,3) once at kernel start, ReleaseSyncFlags drains once at end, and the
+            // per-batch Wait<FIX_M>@252 / Set<FIX_M>@294 chain across batches/tasks.
+            uint32_t l0CBufId = bDe % L0_STAGES;
             uint32_t l0CEventId = l0CBufId + 2;
 
             auto l0CLayout = tla::MakeLayoutL0C(M, nAct);
@@ -215,19 +235,23 @@ struct BlockMmadPVPrefillArch35 {
                 for (uint32_t kL0Itr = 0; kL0Itr < kL0Num; kL0Itr++) {
                     uint32_t kAct = (kL0Itr == kL0Num - 1) ? (K - kL0Itr * L0_TILE_K) : L0_TILE_K;
                     uint32_t l0ABufId = kL0Itr % L0_STAGES;
-                    uint32_t l0BBufId = kL0Itr % L0_STAGES;
+                    // V resident in L0B[1] (stage 1, offset 32KB, flag 3): de-aliased from
+                    // QK's K (L0B[0], flag 2). Fixed stage 1 -- not kL0Itr%2 (kL0Num=1 anyway).
+                    uint32_t l0BBufId = 1U;
                     uint32_t l0AEventId = l0ABufId;
                     uint32_t l0BEventId = l0BBufId + 2;
 
-                    auto l1VSubTile = GetTile(l1VTensorTla,
-                        tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N),
-                        tla::MakeShape(kAct, nAct));
                     auto l0BLayout = tla::MakeLayout<ElementV, LayoutTagL0B>(kAct, nAct);
                     auto l0BTensorTla = tla::MakeTensor(
                         l0BTensor_[l0BBufId], l0BLayout, Arch::PositionL0B{});
-                    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
-                    copyL1ToL0B(l0BTensorTla, l1VSubTile);
-                    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                    // V resident in L0B[1] (stage 1, flag 3): the L1->L0B copy lives in
+                    // LoadVResident (once per task, co-located with GM->L1). De-aliased from QK's
+                    // K (L0B[0], flag 2). Only the MMA-side gate + drain remain here:
+                    // firstPVBatch (bDe==0) Wait<MTE1_M>(3) gates MMA on the load-done Set<MTE1_M>(3)
+                    // from LoadVResident; lastPVBatch (bDe+1>=numBatches) Set<M_MTE1>(3) drains
+                    // L0B[1] free for the next task's LoadVResident. Middle batches read resident.
+                    bool firstPVBatch = (bDe == 0U);
+                    bool lastPVBatch = (bDe + 1U >= numBatches);
 
                     auto l1PSubTile = GetTile(l1PTensorTla,
                         tla::MakeCoord(mL0Itr * L0_TILE_M, kL0Itr * L0_TILE_K),
@@ -247,14 +271,18 @@ struct BlockMmadPVPrefillArch35 {
                     bool initMmad = (kL0Itr == 0);
                     uint32_t mAligned = RoundUp(mAct, 16);
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                    if (firstPVBatch) {
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                    }
                     if (mL0Itr == 0 && kL0Itr == 0) {
                         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
                     }
                     tileMmad(l0CTile, l0ATensorTla, l0BTensorTla,
                              mAligned, nAct, kAct, initMmad);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-                    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                    if (lastPVBatch) {
+                        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                    }
                 }
             }
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);

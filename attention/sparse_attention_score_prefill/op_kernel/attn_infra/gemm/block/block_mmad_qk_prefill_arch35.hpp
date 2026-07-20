@@ -137,6 +137,17 @@ struct BlockMmadQKPrefillArch35 {
         copyGmToL1K(l1KTile, gmKTile);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(EVENT_ID0);
+
+        // K resident in L0B[0] (stage 0, flag 2): copy L1->L0B once per task, co-located with
+        // the GM->L1 load (above). De-aliased from PV's V (L0B[1], flag 3). Wait<M_MTE1>(2):
+        // L0B[0] free from the prev task's last QK batch drain (InitSyncFlags primes first
+        // task). Set<MTE1_M>(2): L0B[0] ready; operator()'s first QK batch (bi==0) Wait<MTE1_M>(2)
+        // consumes it before MMA; the last QK batch's Set<M_MTE1>(2) drains for the next task.
+        auto l0BKLayout = tla::MakeLayout<ElementK, LayoutTagL0B>(D, validSize);
+        auto l0BKTensor = tla::MakeTensor(l0BTensor_[0], l0BKLayout, Arch::PositionL0B{});
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(2U);
+        copyL1ToL0B(l0BKTensor, l1KTile);
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(2U);
     }
 
     // Batched QK: M = groupCount * groupRows (up to 128 = 8 groups). groupCount scattered
@@ -153,6 +164,7 @@ struct BlockMmadQKPrefillArch35 {
                     TensorS &ubSTensor,
                     uint32_t validSize, uint32_t D,
                     uint64_t perQTokenStrideQ, uint64_t qHeadStartBase,
+                    uint32_t numBatches, uint32_t bi,
                     Arch::CrossCoreFlag &mm1ToSmFlag)
     {
         uint32_t M = groupCount * groupRows;
@@ -207,7 +219,17 @@ struct BlockMmadQKPrefillArch35 {
 
         for (uint32_t nL0Itr = 0; nL0Itr < nL0Num; nL0Itr++) {
             uint32_t nAct = (nL0Itr == nL0Num - 1) ? (N - nL0Itr * L0_TILE_N) : L0_TILE_N;
-            uint32_t l0CBufId = nL0Itr % L0_STAGES;
+            // Plan B: key L0C stage by bi (nL0Num=1 always since N=validSize<=blockSize=128=
+            // L0_TILE_N, so nL0Itr is always 0 -> the old nL0Itr%2 keying pinned a single L0C
+            // stage and forced fixpipe(bi) to block MMA(bi+1) on the same buffer). With bi%2 the
+            // two L0C stages ping-pong across batches: MMA(bi)->L0C[bi%2] runs in parallel with
+            // fixpipe(bi-1) draining L0C[(bi-1)%2]. Same-stage reuse (bi vs bi+2) is still
+            // serialized by the Wait<FIX_M>(bi%2) at MMA entry, so the UB S fixpipe dst is safe.
+            // Flag lifecycle is unchanged: InitSyncFlags primes FIX_M(0..3) once at kernel start
+            // (so bi=0,1 don't deadlock), ReleaseSyncFlags drains once at kernel end, and the
+            // per-batch Wait<FIX_M>@254 / Set<FIX_M>@288 chain fixpipe done->next same-stage MMA
+            // across batches and tasks.
+            uint32_t l0CBufId = bi % L0_STAGES;
             uint32_t l0CEventId = l0CBufId;
 
             auto l0CLayout = tla::MakeLayoutL0C(M, nAct);
@@ -235,28 +257,34 @@ struct BlockMmadQKPrefillArch35 {
                     copyL1ToL0A(l0ATensorTla, l1QSubTile);
                     AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
 
-                    auto l1KSubTile = GetTile(l1KTensorTla,
-                        tla::MakeCoord(kL0Itr * L0_TILE_K, nL0Itr * L0_TILE_N),
-                        tla::MakeShape(kAct, nAct));
                     auto l0BLayout = tla::MakeLayout<ElementK, LayoutTagL0B>(kAct, nAct);
                     auto l0BTensorTla = tla::MakeTensor(l0BTensor_[l0BBufId], l0BLayout, Arch::PositionL0B{});
-
-                    AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
-                    copyL1ToL0B(l0BTensorTla, l1KSubTile);
-                    AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                    // K resident in L0B[0] (stage 0, flag 2): the L1->L0B copy lives in
+                    // LoadKResident (once per task, co-located with GM->L1). De-aliased from PV's
+                    // V (L0B[1], flag 3) -> QK<->PV L0B[0] serialization gone; QK<->PV now by L0A
+                    // flag 0 (Q/P aliased per-batch). Only the MMA-side gate + drain remain here:
+                    // firstQKBatch (bi==0) Wait<MTE1_M>(2) gates MMA on the load-done Set<MTE1_M>(2)
+                    // from LoadKResident; lastQKBatch (bi+1>=numBatches) Set<M_MTE1>(2) drains
+                    // L0B[0] free for the next task's LoadKResident. Middle batches read resident.
+                    bool firstQKBatch = (bi == 0U);
+                    bool lastQKBatch = (bi + 1U >= numBatches);
 
                     bool initMmad = (kL0Itr == 0);
                     uint32_t mAligned = RoundUp(mAct, 16);
 
                     AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-                    AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                    if (firstQKBatch) {
+                        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0BEventId);
+                    }
                     if (mL0Itr == 0 && kL0Itr == 0) {
                         AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
                     }
                     tileMmad(l0CTile, l0ATensorTla, l0BTensorTla,
                              mAligned, nAct, kAct, initMmad);
                     AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0AEventId);
-                    AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                    if (lastQKBatch) {
+                        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0BEventId);
+                    }
                 }
             }
 
