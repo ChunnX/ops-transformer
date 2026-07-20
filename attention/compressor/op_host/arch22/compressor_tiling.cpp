@@ -636,11 +636,9 @@ ge::graphStatus CompressorTiling::CheckSingleParaCmpKv() const
 
 ge::graphStatus CompressorTiling::CheckSingleParaCmpRatio() const
 {
-    uint32_t cmpRatio = static_cast<uint32_t>(*context_->cmpRatio);
-    OP_CHECK_IF(cmpRatio > MAX_CMPRATIO_SIZE || cmpRatio < MIN_CMPRATIO_SIZE,
-                OP_LOGE(context_->opName, "cmpRatio should be within [%u, %u], but got %u",
-                        MIN_CMPRATIO_SIZE, MAX_CMPRATIO_SIZE, cmpRatio),
-                return ge::GRAPH_FAILED);
+    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->cmpRatio, CMP_RATIO, CMP_RATIO_NAME)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
