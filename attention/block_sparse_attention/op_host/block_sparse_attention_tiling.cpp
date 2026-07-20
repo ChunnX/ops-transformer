@@ -833,7 +833,7 @@ uint32_t BSATiling::GetCurQSTileNum950(int64_t curQSeqlen)
     return curQSTileNum;
 }
 
-static inline uint32_t LargestDivisorAtMost(uint32_t value, uint32_t maxBound)
+static inline uint32_t GetMaxDiv(uint32_t value, uint32_t maxBound)
 {
     // 求 value 的、不超过 maxBound 的最大正约数（保证 value % result == 0 且 result <= maxBound）
     if (value == 0 || maxBound == 0) {
@@ -868,7 +868,7 @@ static inline uint32_t CalcFp8KvBaseTile(uint32_t blockShapeY, uint32_t preferre
         return TILE_SIZE_128;
     }
     if (blockShapeY > preferredTile) {
-        return LargestDivisorAtMost(blockShapeY, preferredTile);
+        return GetMaxDiv(blockShapeY, preferredTile);
     }
     return blockShapeY;
 }
@@ -1017,7 +1017,7 @@ void BSATiling::CalcMatmulPhaseL1TileInfo950()
         // V矩阵开启db，D按128分割，kvBaseTile_不分割，指令同样提前于核间同步下发
         // 如果kvBaseTile_进一步增大，考虑关闭db，使得kvBaseTile_不分割
         mm2L1TileN_ = TILE_SIZE_128;
-        mm2L1TileKLeft_ = TILE_SIZE_256; 
+        mm2L1TileKLeft_ = TILE_SIZE_256;
         vL1BufNum_ = DUO_BUF;
         // P矩阵在950上会常驻L1，由于基块的prelaunch为2，因此最好有3 buf，以免基块间流水阻塞
         mm2L1TileM_ = qBaseTileAligned128;
