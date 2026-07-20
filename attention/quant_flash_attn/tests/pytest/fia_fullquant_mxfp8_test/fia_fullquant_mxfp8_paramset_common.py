@@ -23,6 +23,7 @@ PARAM_NAMES = [
 ]
 
 TEST_PARAMS_DEFAULTS = {
+    "softmax_scale": [None],
     "data_range_q": [1.0],
     "data_range_k": [1.0],
     "data_range_v": [1.0],

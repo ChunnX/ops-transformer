@@ -306,7 +306,6 @@ void QuantFlashAttnTilingImpl::ComputeTilingData()
             tilingData_.baseTiling.quantFlashAttnPageAttentionParams.paLayoutType = 2;
         }
     }
-
 }
 
 void QuantFlashAttnTilingImpl::SetQFATilingData()

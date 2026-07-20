@@ -42,7 +42,7 @@ quant_flash_attn_kernel_run(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ u
                             __gm__ uint8_t *qDescale, __gm__ uint8_t *kDescale, __gm__ uint8_t *vDescale,
                             __gm__ uint8_t *blockTable, __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ,
                             __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
-                            __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata, 
+                            __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask, __gm__ uint8_t *metadata,
                             __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
                             __gm__ uint8_t *tiling)
 {

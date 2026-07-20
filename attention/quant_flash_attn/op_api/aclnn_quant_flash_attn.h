@@ -26,7 +26,7 @@ extern "C" {
  * @brief First phase of aclnnQuantFlashAttn: calculate workspace size.
  * @domain aclnn_ops_train_infer
  *
- * @param q                   [IN]  query tensor. Dtype FP8_E4M3 (quant_mode=1) or BF16/FP16.
+ * @param q                   [IN]  query tensor. Dtype FP8_E4M3 (quant_mode=1).
  *                                  Layout determined by layoutQ: BSND/BNSD/TND.
  * @param k                   [IN]  key tensor. Same dtype as q. Layout determined by layoutKv.
  * @param v                   [IN]  value tensor. Same dtype as q. Layout determined by layoutKv.
@@ -59,10 +59,10 @@ extern "C" {
  * @param winRight            [IN]  ATTR. Right window size (maskMode=4). INT.
  * @param maxSeqlenQ          [IN]  ATTR. Max query sequence length. INT. -1 for auto.
  * @param maxSeqlenKV         [IN]  ATTR. Max KV sequence length. INT. -1 for auto.
- * @param layoutQ             [IN]  ATTR. Query layout: "BSND"/"BNSD"/"TND".
- * @param layoutQDescale      [IN]  ATTR. Q descale layout: "BSND"/"BNSD"/"TND"/"N2TGD".
- * @param layoutKv            [IN]  ATTR. KV layout: "BSND"/"TND"/"PA_ND"/"PA_NZ".
- * @param layoutOut           [IN]  ATTR. Output layout: "BSND"/"BNSD"/"TND".
+ * @param layoutQ             [IN]  ATTR. Query layout: "BSND"/"BNSD"/"TND". STRING.
+ * @param layoutQDescale      [IN]  ATTR. Q descale layout: "BSND"/"BNSD"/"TND"/"N2TGD". STRING.
+ * @param layoutKv            [IN]  ATTR. KV layout: "BSND"/"TND"/"PA_ND"/"PA_NZ". STRING.
+ * @param layoutOut           [IN]  ATTR. Output layout: "BSND"/"BNSD"/"TND". STRING.
  * @param returnSoftmaxLse    [IN]  ATTR. Whether to output softmax_lse. BOOL. True=output, False=no.
  *                                  Training forward pass set True, inference set False.
  * @param attnOut             [OUT] Required output. Attention result, BF16, layout by layoutOut.

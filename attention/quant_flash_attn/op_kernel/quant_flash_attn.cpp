@@ -26,8 +26,8 @@ template <uint8_t inOutLayoutType, uint16_t config, uint8_t quantMode,
 __global__ __aicore__ void
 quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                  __gm__ uint8_t *dequantScaleQuery, __gm__ uint8_t *dequantScaleKey, __gm__ uint8_t *dequantScaleValue,
-                 __gm__ uint8_t *blockTable, __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ, __gm__ uint8_t *cuSeqLensKv,
-                 __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
+                 __gm__ uint8_t *blockTable, __gm__ uint8_t *pScale, __gm__ uint8_t *cuSeqLensQ,
+                 __gm__ uint8_t *cuSeqLensKv, __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedKv,
                  __gm__ uint8_t *sinks, __gm__ uint8_t *attnMask,
                  __gm__ uint8_t *metadata, __gm__ uint8_t *attnOut, __gm__ uint8_t *softmaxLse,
                  __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
@@ -38,7 +38,8 @@ quant_flash_attn(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *val
 #if (ORIG_DTYPE_Q == DT_FLOAT8_E4M3FN)
     quant_flash_attn_kernel_run<fp8_e4m3fn_t, bfloat16_t, inOutLayoutType, KvLayoutType, hasAttenMask, config,
                                 quantMode>(
-        query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale, cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks,
-        attnMask, metadata, attnOut, softmaxLse, user, tiling);
+        query, key, value, dequantScaleQuery, dequantScaleKey, dequantScaleValue, blockTable, pScale,
+        cuSeqLensQ, cuSeqLensKv, sequsedQ, sequsedKv, sinks, attnMask, metadata, attnOut, softmaxLse,
+        user, tiling);
 #endif
 }
