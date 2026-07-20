@@ -457,6 +457,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::ProcessBatched()
         CopyOutBatch(batch, rowsInBatch);
     }
 }
+template <typename T, typename U1, typename U2>
 __aicore__ inline void
 MoeGatingTopKRegbase<T, U1, U2>::PadWithMinFp32(__local_mem__ float *addBiasOutAddr, uint16_t groupCount0,
                                                 uint32_t perGroupExpertCount0, uint32_t perGroupExpertCountAlign0)
@@ -1671,14 +1672,18 @@ MoeGatingTopKRegbase<T, U1, U2>::Init(GM_ADDR x, GM_ADDR bias, GM_ADDR inputIds,
     eps_ = tilingData_->eps;
     hashFlag_ = tilingData_->hashFlag == 1;
 
-    xGm_.SetGlobalBuffer((__gm__ T *)x + tilingData_->perCoreRowCount * expertCount_ * blockIdx_, expertCount_);
+    xGm_.SetGlobalBuffer((__gm__ T *)x + tilingData_->perCoreRowCount * expertCount_ * blockIdx_,
+                         tilingData_->perCoreRowCount * expertCount_);
     if (bias != nullptr) {
         hasBias_ = true;
         biasGm_.SetGlobalBuffer((__gm__ T *)bias, expertCount_);
     }
-    yGm_.SetGlobalBuffer((__gm__ T *)y + tilingData_->perCoreRowCount * k_ * blockIdx_, k_);
-    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx + tilingData_->perCoreRowCount * k_ * blockIdx_, k_);
-    outGm_.SetGlobalBuffer((__gm__ float *)out + tilingData_->perCoreRowCount * expertCount_ * blockIdx_, expertCount_);
+    yGm_.SetGlobalBuffer((__gm__ T *)y + tilingData_->perCoreRowCount * k_ * blockIdx_,
+                         tilingData_->perCoreRowCount * k_);
+    expertIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expertIdx + tilingData_->perCoreRowCount * k_ * blockIdx_,
+                                 tilingData_->perCoreRowCount * k_);
+    outGm_.SetGlobalBuffer((__gm__ float *)out + tilingData_->perCoreRowCount * expertCount_ * blockIdx_,
+                           tilingData_->perCoreRowCount * expertCount_);
 
     if (hashFlag_) {
         inputIdsGm_.SetGlobalBuffer((__gm__ U1 *)inputIds);
