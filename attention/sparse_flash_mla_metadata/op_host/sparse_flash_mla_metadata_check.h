@@ -330,20 +330,23 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqlensQOptional, const aclTen
         }
     }
     if (hasOriKv) {
-        // cu_seqlens_ori_kv 存在性校验
-        if (strcmp(layoutKvOptional, "TND") == 0) {
-            if (!IsTensorExistSmla(cuSeqlensOriKvOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and layout_kv is TND, "
-                    "cu_seqlens_ori_kv must be provided!");
-                return ACLNN_ERR_PARAM_INVALID;
+        // ORI_SPARSE/ORI_CMP_SPARSE (oriTopk > 0): actualLength determined by sparse_indices and topkLength
+        if (oriTopk == 0) {
+            // cu_seqlens_ori_kv 存在性校验
+            if (strcmp(layoutKvOptional, "TND") == 0) {
+                if (!IsTensorExistSmla(cuSeqlensOriKvOptional)) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and layout_kv is TND, "
+                        "cu_seqlens_ori_kv must be provided!");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
             }
-        }
-        // seqused_ori_kv 存在性校验
-        if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
-            if (!IsTensorExistSmla(sequsedOriKvOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and layout_kv is PA_BBND, "
-                    "seqused_ori_kv must be provided!");
-                return ACLNN_ERR_PARAM_INVALID;
+            // seqused_ori_kv 存在性校验
+            if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
+                if (!IsTensorExistSmla(sequsedOriKvOptional)) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true and layout_kv is PA_BBND, "
+                        "seqused_ori_kv must be provided!");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
             }
         }
         // ori_topk_length 存在性校验
@@ -356,20 +359,23 @@ aclnnStatus CheckExistenceSmla(const aclTensor *cuSeqlensQOptional, const aclTen
         }
     }
     if (hasCmpKv) {
-        // cu_seqlens_cmp_kv 存在性校验
-        if (strcmp(layoutKvOptional, "TND") == 0) {
-            if (!IsTensorExistSmla(cuSeqlensCmpKvOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true and layout_kv is TND, "
-                    "cu_seqlens_cmp_kv must be provided!");
-                return ACLNN_ERR_PARAM_INVALID;
+        // ORI_CMP_SPARSE (oriTopk > 0): cmp actualLength not required
+        if (oriTopk == 0) {
+            // cu_seqlens_cmp_kv 存在性校验
+            if (strcmp(layoutKvOptional, "TND") == 0) {
+                if (!IsTensorExistSmla(cuSeqlensCmpKvOptional)) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true and layout_kv is TND, "
+                        "cu_seqlens_cmp_kv must be provided!");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
             }
-        }
-        // seqused_cmp_kv 存在性校验
-        if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
-            if (!IsTensorExistSmla(sequsedCmpKvOptional)) {
-                OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true and layout_kv is PA_BBND, "
-                    "seqused_cmp_kv must be provided!");
-                return ACLNN_ERR_PARAM_INVALID;
+            // seqused_cmp_kv 存在性校验
+            if (strcmp(layoutKvOptional, "PA_BBND") == 0) {
+                if (!IsTensorExistSmla(sequsedCmpKvOptional)) {
+                    OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_cmp_kv is true and layout_kv is PA_BBND, "
+                        "seqused_cmp_kv must be provided!");
+                    return ACLNN_ERR_PARAM_INVALID;
+                }
             }
         }
         // cmp_residual_kv 存在性校验

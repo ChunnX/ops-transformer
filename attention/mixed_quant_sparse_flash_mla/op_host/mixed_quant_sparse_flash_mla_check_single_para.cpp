@@ -273,9 +273,10 @@ ge::graphStatus MQSMLATilingCheck::CheckSingleParaSparseMode() const
     OP_CHECK_IF(oriMaskMode_ != 0 && oriMaskMode_ != 3 && oriMaskMode_ != 4,
                 OP_LOGE(opName_, "oriMaskMode only support 0, 3 and 4, but got %u.", oriMaskMode_),
                 return ge::GRAPH_FAILED);
-    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE ||
+        perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         OP_CHECK_IF(cmpMaskMode_ != 0,
-                    OP_LOGE(opName_, "cmpMaskMode only support 0 in SWA mode, but got %u.", cmpMaskMode_),
+                    OP_LOGE(opName_, "cmpMaskMode only support 0 in SWA and ORI_SPARSE mode, but got %u.", cmpMaskMode_),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(cmpMaskMode_ != 0 && cmpMaskMode_ != 3,
@@ -295,8 +296,9 @@ ge::graphStatus MQSMLATilingCheck::CheckSingleParaSparseBlockSize() const
 
 ge::graphStatus MQSMLATilingCheck::CheckSingleParaCmpResidualKv() const
 {
-    OP_CHECK_IF(perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE && opParamInfo_.cmpResidualKv.tensor == nullptr,
-                OP_LOGE(opName_, "cmp_residual_kv is required in CSA and HCA mode "), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
+        perfMode_ != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE && opParamInfo_.cmpResidualKv.tensor == nullptr,
+        OP_LOGE(opName_, "cmp_residual_kv is required in CSA and HCA mode "), return ge::GRAPH_FAILED);
 
     if (opParamInfo_.cmpResidualKv.tensor != nullptr) {
         OP_CHECK_IF(opParamInfo_.cmpResidualKv.tensor->GetShapeSize() == 0,
@@ -394,6 +396,23 @@ ge::graphStatus MQSMLATilingCheck::CheckSingleParaCuSeqLensQ() const
 
 ge::graphStatus MQSMLATilingCheck::CheckSingleParaSequsedKv() const
 {
+    if (perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE ||
+        perfMode_ == QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
+        if (opParamInfo_.sequsedOriKv.tensor != nullptr) {
+            const std::vector<size_t> expectDimNumList = {DIM_NUM_ONE};
+            if (ge::GRAPH_SUCCESS != CheckDtypeSupport(opParamInfo_.sequsedOriKv.desc, SEQUSED_ORI_KV_NAME) ||
+                ge::GRAPH_SUCCESS !=
+                    CheckDimNumSupport(&opParamInfo_.sequsedOriKv.tensor->GetShape(), expectDimNumList,
+                                       SEQUSED_ORI_KV_NAME)) {
+                return ge::GRAPH_FAILED;
+            }
+            OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor->GetShapeSize() != bSize_,
+                        OP_LOGE(opName_, "input sequsedOriKv's shapeSize is not equal to B: %u, it is %ld", bSize_,
+                                opParamInfo_.sequsedOriKv.tensor->GetShapeSize()),
+                        return ge::GRAPH_FAILED);
+        }
+        return ge::GRAPH_SUCCESS;
+    }
     OP_CHECK_IF(opParamInfo_.sequsedOriKv.tensor == nullptr,
                 OP_LOGE(opName_, "input sequsedOriKv can not be nullptr, but it's empty"), return ge::GRAPH_FAILED);
     const std::vector<size_t> expectDimNumList = {DIM_NUM_ONE};
@@ -609,9 +628,10 @@ ge::graphStatus MQSMLATilingCheck::CheckSingleParaCmpTopkLength() const
 
 ge::graphStatus MQSMLATilingCheck::CheckSingleParaTopkValueMode() const
 {
-    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE) {
+    if (perfMode_ == QSMLATemplateMode::SWA_TEMPLATE_MODE ||
+        perfMode_ == QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         OP_CHECK_IF(topkValueMode_ != 1,
-                    OP_LOGE(opName_, "topkValueMode must be 1 in SWA mode, but got %ld.", topkValueMode_),
+                    OP_LOGE(opName_, "topkValueMode must be 1 in SWA and ORI_SPARSE mode, but got %ld.", topkValueMode_),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(topkValueMode_ != 1 && topkValueMode_ != 2,
