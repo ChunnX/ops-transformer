@@ -200,7 +200,7 @@ public:
     CopyKvGmToL1<KV_T, KV_FORMAT> copyKvGmToL1;
 
     L1QType l1QBuffers;
-    L1KvType l1KvBuffers;
+    // L1KvType l1KvBuffers;
     // L1KvType l1VBuffers;
 
     L0AType mmL0ABuffers;
@@ -272,7 +272,7 @@ public:
         constexpr uint32_t mm1RightSize = dBaseSize * s2BaseSize * sizeof(KV_T);
         // constexpr uint32_t mm2RightSize = dVBaseSize * s2BaseSize * sizeof(KV_T);
         l1QBuffers.Init((*l1BufferManagerPtr), mm1LeftSize);
-        l1KvBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
+        // l1KvBuffers.Init((*l1BufferManagerPtr), mm1RightSize);
         // l1VBuffers.Init((*l1BufferManagerPtr), mm2RightSize);
 
         l0aBufferManager.Init(tPipe, 65536);
@@ -295,7 +295,7 @@ public:
     __aicore__ inline void FreeEventID()
     {
         l1QBuffers.Uninit((*l1BufferManagerPtr));
-        l1KvBuffers.Uninit((*l1BufferManagerPtr));
+        // l1KvBuffers.Uninit((*l1BufferManagerPtr));
         // l1VBuffers.Uninit((*l1BufferManagerPtr));
         mmL0ABuffers.Uninit(l0aBufferManager);
         mmL0BBuffers.Uninit(l0bBufferManager);

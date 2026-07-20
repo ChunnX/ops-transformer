@@ -293,10 +293,10 @@ public:
         tPipe->InitBuffer(softmaxExpBuf[2], 256);
         tPipe->InitBuffer(maxBrdcst, 1, 2048);
         tPipe->InitBuffer(sumBrdcst, 1, 2048);
-        tPipe->InitBuffer(commonTBuf, 512);
-        tPipe->InitBuffer(SharedBuffer3, 32768);
+        tPipe->InitBuffer(commonTBuf, 512);       
         tPipe->InitBuffer(SharedBuffer1[0], 1, stage1OutQueSize);
         // tPipe->InitBuffer(SharedBuffer1[1], 1, stage2OutQueSize);
+        tPipe->InitBuffer(SharedBuffer3, stage2OutQueSize);
 
         if (constInfo.isSoftmaxLseEnable) {
             tPipe->InitBuffer(softmaxLseQueue, 1, (mBaseSize >> 1U) * sizeof(float) * 8);
@@ -361,10 +361,9 @@ public:
             if (constInfo.paLayoutType == static_cast<uint32_t>(MqfaPaLayoutType::BNBD)) {
                 copyInParams.srcStride = 0;
             }
-            uint32_t  blockLenAlign32 = ((copyInParams.blockLen + blockBytes - 1) / blockBytes) / sizeof(QINPUT_T);
             copyInPadParams.isPad = true;
             copyInPadParams.leftPadding = 0;
-            copyInPadParams.rightPadding = blockLenAlign32 - copyInParams.blockLen / sizeof(QINPUT_T);
+            copyInPadParams.rightPadding = (blockBytes / sizeof(QINPUT_T)) - copyInParams.blockLen / sizeof(QINPUT_T);
             copyInPadParams.paddingValue = 0;
             DataCopyPad(dstLocal[(copyFinishRowCnt * grpNum) >> 1], srcGm[curOffset >> 1],
                         copyInParams, copyInPadParams);
