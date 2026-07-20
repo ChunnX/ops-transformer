@@ -911,7 +911,7 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
                     "num_max_tokens_per_rank must be > 0 for training mode, got ", numMaxTokensPerRank_);
 
         uint32_t rankSize = engramCommContext_.rankSize;
-        int64_t maxR = numMaxTokensPerRank_ * static_cast<int64_t>(rankSize);
+        int64_t maxR = engramNumEntries_ * static_cast<int64_t>(rankSize);
         auto intOpts = at::TensorOptions().dtype(at::kInt).device(indices.device());
 
         EngramFetchCtx ctx{
