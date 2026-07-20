@@ -410,12 +410,35 @@ extern "C" __global__ __aicore__ void moe_init_routing_v3(GM_ADDR x, GM_ADDR exp
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_GATHER)) {
-        // MXFP8/FP8Group量化GATHER：走MoeGatherOutMxfp8Quant/MoeV3GatherFP8GroupQuant模板，需要IS_GATHER_COPY_IN
-        TPipe rowIdxPipe;
-        RowIdxGather<true> rowIdxGatherOp;
-        rowIdxGatherOp.Init(expandedRowIdx, userWS, t, &rowIdxPipe);
-        rowIdxGatherOp.Process();
-        rowIdxPipe.Destroy();
+        if (t->useGatherCopy) {
+            TPipe rowIdxPipe;
+            RowIdxGather<true> rowIdxGatherOp;
+            rowIdxGatherOp.Init(expandedRowIdx, userWS, t, &rowIdxPipe);
+            rowIdxGatherOp.Process();
+            rowIdxPipe.Destroy();
+        } else {
+            TPipe rowIdxPipe;
+            RowIdxGather<false> rowIdxGatherOp;
+            rowIdxGatherOp.Init(expandedRowIdx, userWS, t, &rowIdxPipe);
+            rowIdxGatherOp.Process();
+            rowIdxPipe.Destroy();
+        }
+    } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_MXFP8RS_AMAX_QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_MXFP8RS_AMAX_QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_FP8GROUP_AMAX_QUANT_SCATTER) ||
+               TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_FP8GROUP_AMAX_QUANT_SCATTER)) {
+        if (t->useGatherCopy) {
+            // MXFP8/FP8Group量化GATHER：走MoeGatherOutMxfp8Quant/MoeV3GatherFP8GroupQuant模板，需要IS_GATHER_COPY_IN
+            TPipe rowIdxPipe;
+            RowIdxGather<true> rowIdxGatherOp;
+            rowIdxGatherOp.Init(expandedRowIdx, userWS, t, &rowIdxPipe);
+            rowIdxGatherOp.Process();
+            rowIdxPipe.Destroy();
+        }
     } else if (TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_STATICQUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTMULTICORE_STATICQUANT_GATHER) ||
                TILING_KEY_IS(MOE_INIT_ROUTING_V3_SORTONECORE_DYNAMICQUANT_GATHER) ||

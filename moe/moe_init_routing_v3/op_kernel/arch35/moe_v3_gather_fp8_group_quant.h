@@ -303,7 +303,7 @@ private:
     int64_t perLoopScaleCols_{0};
     int64_t lastLoopScaleCols_{0};
     int64_t indicesOffset_{0};
-    int64_t rowIdxType_{0};
+    int64_t useGatherCopy_{0};
 
     uint32_t fp8Emax_{FP8_GROUP_E5M2_EMAX};
 };
@@ -345,7 +345,7 @@ MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR sortedExper
     cols_ = tilingData->cols;
     n_ = tilingData->n;
     k_ = tilingData->k;
-    rowIdxType_ = tilingData->rowIdxType;
+    useGatherCopy_ = tilingData->useGatherCopy;
 
     scaleCols_ = Ceil(cols_, FP8_GROUP_QUANT_SIZE);
 
@@ -355,7 +355,7 @@ MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR sortedExper
                                         actualExpertNum);
 
     int64_t scanRowCount = n_ * k_;
-    if (rowIdxType_ == SCATTER) {
+    if (!useGatherCopy_) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
             expertTotalCountGm_);
         scanRowCount = expertTotalCountGm_.GetValue(0);
@@ -404,7 +404,7 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Process()
     currentLoopRows_ = perLoopRows_;
     for (int64_t loop = 0; loop < rowLoops_ - 1; loop++) {
         CopyInExpandedExpertIdx(loop);
-        if (rowIdxType_ == SCATTER) {
+        if (!useGatherCopy_) {
             ScatterCopyExpandedXAndQuant(loop);
         } else {
             GatherCopyExpandedXAndQuant(loop);
@@ -412,7 +412,7 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Process()
     }
     currentLoopRows_ = lastLoopRows_;
     CopyInExpandedExpertIdx(rowLoops_ - 1);
-    if (rowIdxType_ == SCATTER) {
+    if (!useGatherCopy_) {
         ScatterCopyExpandedXAndQuant(rowLoops_ - 1);
     } else {
         GatherCopyExpandedXAndQuant(rowLoops_ - 1);
