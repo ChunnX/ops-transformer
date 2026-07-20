@@ -656,7 +656,7 @@ private:
             // Determine the starting loopIdx of the current core under the current groupIdx
             uint32_t startLoopIdx = ((coreIdx < startCoreIdx) ? (coreIdx + coreNum) : coreIdx) - startCoreIdx;
             // Loop through the matmul of each groupIdx
-
+            AscendC::PrintTimeStamp(70000);
             for (uint32_t loopIdx = startLoopIdx; loopIdx < coreLoops; loopIdx += coreNum) {
                 for (; syncGroupIdx <= groupIdx; syncGroupIdx++) {
                     AscendC::CrossCoreWaitFlag<0x2>(syncgmmIdx / CROSS_CORE_FLAG_MAX_SET_COUNT);
@@ -697,6 +697,7 @@ private:
                     }
                 }
             }
+            AscendC::PrintTimeStamp(70000);
 
             if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                 if (IsSyncTask(groupIdx, params.expertPerRank)) {
@@ -771,7 +772,7 @@ private:
                 lastDequantExpertNum = params.expertPerRank - params.epilogueGranularity;
             }
         }
-
+        AscendC::PrintTimeStamp(70001);
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             uint32_t currentM = cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
             if (preCurrentmSum >= params.maxOutputSize) {
@@ -866,6 +867,7 @@ private:
 
             startCoreIdx = (startCoreIdx + coreLoops) % coreNum;
         }
+        AscendC::PrintTimeStamp(70001);
         if constexpr (BlockMmad::DispatchPolicy::ASYNC) {
             blockMmad.SynchronizeBlock();
             if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
@@ -1103,6 +1105,8 @@ private:
         constexpr int64_t colsAlign =
             std::is_same_v<ElementB, AscendC::int4b_t> ? int64_t{512} : static_cast<int64_t>(UB_ALIGN);
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::MOE_INIT_ROUTING);
+        
+        AscendC::PrintTimeStamp(70002);
         if constexpr (kRoutingIsQuant) {
             moe_init_routing_quant_v2<ElementD2>(
                 reinterpret_cast<GM_ADDR>(params.ptrA), params.expertIdx, params.moeInitRoutingQuantV2Scale,
@@ -1119,11 +1123,14 @@ private:
                                                 params.ptrWorkspace + expandedRowIdxOffset,
                                                 &params.moeInitRoutingV2TilingData, params.initRoutingQuantTilingKey);
         }
+        AscendC::PrintTimeStamp(70002);
 
         AscendC::SyncAll<true>();
 
         exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::ALLGATHER_TOKEN_PER_EXPERT);
+        AscendC::PrintTimeStamp(70003);
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
+        AscendC::PrintTimeStamp(70003);
 
         if (coreIdx == 0) {
             exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CUMSUM_TOKEN_PER_EXPERT);
@@ -1183,6 +1190,7 @@ private:
                     // 但是专家之内仍然是密排的
                     int64_t gmOffsetA = static_cast<int64_t>(prevGroupSum1) * params.gmm1InputExpertSlotWidth +
                                         static_cast<int64_t>(rowStartInGroup) * params.problemShape.k();
+                    AscendC::PrintTimeStamp(70004);
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                         int64_t gmOffsetPeer = rowSrc * (params.problemShape.k() + ALIGN_512);
                         FetchAndPreprocessInt8ToInt4(static_cast<uint64_t>(gmOffsetA), gmPerTokenScale1[rowStart],
@@ -1197,6 +1205,7 @@ private:
                         CopyGMToGM(gmA[gmOffsetA], gmRemoteA[gmOffsetPeer], rows * params.problemShape.k(),
                                    UB_MOVE_NUM);
                     }
+                    AscendC::PrintTimeStamp(70004);
                 }
             }
             AscendC::SyncAll<true>();
@@ -1277,11 +1286,13 @@ private:
                     LayoutC layoutC{curRowNum, params.gmmOutPreRowStride};
                     int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                     int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
+                    AscendC::PrintTimeStamp(70005);
                     blockEpilogue1(gmC[gmOffsetC * 2], shapeC, gmPerTokenScale1[rowStartThisCore],
                                    reinterpret_cast<__gm__ float *>(params.ptrBias1), gmA2I4_I8[gmOffsetD], cumsumMM,
                                    rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank,
                                    params.EP, runtimeRank, params.listLen, resource, params.epilogueCoreNum,
                                    params.swigluLimit, params.gmmOutPreRowStride);
+                    AscendC::PrintTimeStamp(70005);
                 }
                 AscendC::SyncAll<true>();
                 AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
@@ -1297,6 +1308,7 @@ private:
                 layoutC = LayoutC{dequantSum1, params.gmmOutPreRowStride};
                 int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                 int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
+                AscendC::PrintTimeStamp(70005);
                 if constexpr (std::is_same_v<ElementB, int8_t>) {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                    gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
@@ -1305,6 +1317,7 @@ private:
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, params.epilogueCoreNum,
                                    params.swigluLimit, params.gmmOutPreRowStride);
                 }
+                AscendC::PrintTimeStamp(70005);
             }
             AscendC::SyncAll<true>();
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
@@ -1321,6 +1334,7 @@ private:
                     layoutC = LayoutC{dequantLen, params.gmmOutPreRowStride};
                     int64_t gmOffsetC = layoutC.GetOffset(offsetC);
                     int64_t gmOffsetD = params.layoutD1.GetOffset(offsetC);
+                    AscendC::PrintTimeStamp(70005);
                     if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                        gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
@@ -1329,6 +1343,7 @@ private:
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, coreNum,
                                        params.swigluLimit, params.gmmOutPreRowStride);
                     }
+                    AscendC::PrintTimeStamp(70005);
                 }
                 AscendC::SyncAll<true>();
                 AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
@@ -1356,8 +1371,11 @@ private:
             shmem.InitStatusTargetSum();
             if (get_subblockid() == 0) {
                 AscendC::LocalTensor<int32_t> ctrBuffer = resource.ubBuf.template GetBufferByByte<int32_t>(0);
+                AscendC::PrintTimeStamp(70007);
                 shmem.CrossRankSyncV2Set(ctrBuffer);
+                AscendC::PrintTimeStamp(70007);
             } else {
+                AscendC::PrintTimeStamp(70008);
                 uint32_t uboffset = 0;
                 uint32_t aicCoreNum = coreNum / 2;
                 uint32_t aicCoreIdx = get_block_idx();
@@ -1387,10 +1405,13 @@ private:
                 kernelMoeTokenUnpermuteOp.Init(shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx,
                                                params.probs, reinterpret_cast<GM_ADDR>(params.ptrOutput), &tilingData);
                 kernelMoeTokenUnpermuteOp.Process();
+                AscendC::PrintTimeStamp(70008);
             }
         } else {
+            AscendC::PrintTimeStamp(70007);
             shmem.CrossRankSync();
-
+            AscendC::PrintTimeStamp(70007);
+            AscendC::PrintTimeStamp(70008);
             exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
             MoeTokenUnpermuteTilingData tilingData;
             MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData, coreNum);
@@ -1398,6 +1419,7 @@ private:
             kernelMoeTokenUnpermuteOp.Init(shmem() + peermemInfo.offsetD, workspaceInfo.expandedRowIdx, params.probs,
                                            reinterpret_cast<GM_ADDR>(params.ptrOutput), &tilingData, true);
             kernelMoeTokenUnpermuteOp.Process();
+            AscendC::PrintTimeStamp(70008);
         }
     }
 
@@ -1434,10 +1456,12 @@ private:
                     MatrixCoord shapeC{dataRows, n2};
                     int64_t gmOffsetC = params.layoutD2.GetOffset(offsetC);
                     int64_t gmOffsetPeer = params.layoutD2.GetOffset(offsetPeer);
+                    AscendC::PrintTimeStamp(70006);
                     if constexpr (std::is_same_v<ElementA, int8_t>) {
                         blockEpilogue(gmC2[gmOffsetC], shapeC, gmPerTokenScale2[srcRowOffset],
                                       gmRemotePeer[gmOffsetPeer]);
                     }
+                    AscendC::PrintTimeStamp(70006);
                 }
             }
             prevGroupSum2 += cumsumMM((params.EP - 1) * params.expertPerRank + groupIdx);
@@ -1514,6 +1538,7 @@ private:
                         actualm = actualBlockShape.m() - (m_rows / 2) * m0 - cur_row * m0;
                     }
                     GemmCoord realTileShape{actualm, actualBlockShape.n(), 1};
+                    AscendC::PrintTimeStamp(70006);
                     if constexpr (std::is_same_v<ElementB, AscendC::int4b_t>) {
                         blockEpilogue(gmC2, gmPerTokenScale2, reinterpret_cast<__gm__ float *>(params.ptrBias2),
                                       realTileCoord, realTileShape, groupIdx, preSrcExpertSum, preSumBeforeRank,
@@ -1524,6 +1549,7 @@ private:
                     } else {
                         blockEpilogue(gmC2, realTileCoord, realTileShape, groupIdx, preSrcExpertSum, preSumBeforeRank);
                     }
+                    AscendC::PrintTimeStamp(70006);
                     m_offset += m0;
                 }
             }
