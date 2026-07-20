@@ -15,9 +15,9 @@ GroupedMatmul是MoE网络中的重要算子，核心功能是将已经按专家�
 %%{init: {'theme': 'base', 'themeVariables': {'background': '#ffffff'}}}%%
 graph LR
     B["moe_gating_top_k"] --> C["moe_init_routing"]
-    C --> D["grouped_matmul(W1)"]
+    C --> D["grouped_matmul(gate_up_proj)"]
     D --> E["swiglu"]
-    E --> F["grouped_matmul(W2)"]
+    E --> F["grouped_matmul(down_proj)"]
     F --> G["moe_finalize_routing"]
 
     classDef gmm fill:#E8ECFF,stroke:none,color:#333;
@@ -63,7 +63,7 @@ graph LR
 | G-B | 左矩阵pergroup，右矩阵perblock |
 | MX | pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32 的特例 |
 | ND | 常规连续排布 |
-| NZ | [FRACTAL_NZ](../../docs/zh/context/数据格式.md)格式（亲核排布） |
+| NZ | [FRACTAL_NZ](../../docs/zh/context/数据格式.md)格式（亲和排布） |
 
 ## 功能说明
 
@@ -146,4 +146,4 @@ $$
 
 | 调用方式 | 接口文档 | 调用样例 | 说明 |
 |----------|----------|----------|------|
-| aclnn调用 | [aclnnGroupedMatmulV5](docs/aclnnGroupedMatmulV5.md) | 见接口文档 [示例代码索引](docs/aclnnGroupedMatmulV5.md#83-示例代码索引) | 两段式接口：先调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取workspace大小和executor，再调用 `aclnnGroupedMatmulV5` 执行计算 |
+| aclnn调用 | [aclnnGroupedMatmulV5](docs/aclnnGroupedMatmulV5.md) | 见接口文档 [示例代码索引](docs/aclnnGroupedMatmulV5.md#调用示例) | 两段式接口：先调用 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取workspace大小和executor，再调用 `aclnnGroupedMatmulV5` 执行计算 |

@@ -43,7 +43,7 @@ abbr {
 | G-B | 左矩阵pergroup，右矩阵perblock |
 | MX | pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32的特例 |
 | ND | 常规连续排布 |
-| NZ | [FRACTAL_NZ](../../../docs/zh/context/数据格式.md)格式（亲核排布） |
+| NZ | [FRACTAL_NZ](../../../docs/zh/context/数据格式.md)格式（亲和排布） |
 
 ---
 
@@ -760,9 +760,6 @@ aclnnGroupedMatmulV5默认确定性实现。
 ---
 
 ## 调用示例
-<a id="83-示例代码索引"></a>
-
-### 示例代码索引
 
 以下表格提供各场景下的示例代码文件链接，请参考文件中的注释了解对应场景说明。编译与运行请参考 [编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
