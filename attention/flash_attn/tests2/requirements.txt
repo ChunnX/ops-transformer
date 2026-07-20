@@ -1,0 +1,7 @@
+# tests2 测试框架依赖
+torch>=2.0
+torch_npu>=2.0
+torchair>=1.0  # 可选: npu_mode=graph 时需要
+pytest>=7.0
+numpy>=1.21.6,<2.0
+psutil>=5.9

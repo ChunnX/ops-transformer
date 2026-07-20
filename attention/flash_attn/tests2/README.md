@@ -1,0 +1,100 @@
+# FA 精度测试框架
+
+面向昇腾NPU算子的精度测试框架。
+
+## 快速开始
+
+```bash
+# CLI — 全链路
+python test.py --stages gen,cpu,npu,compare --case_set ci
+
+# pytest — 全链路
+pytest test.py --stages gen,cpu,npu,compare --case_set ci
+
+# 仅生成golden（不依赖NPU）
+python test.py --stages gen,cpu --case_set debug
+
+# 断点续跑（跳过gen/cpu，从pt加载，只跑npu+compare）
+python test.py --stages npu,compare --case_set ci
+
+# 静默日志（批量跑只看结果）
+python test.py --stages gen,cpu,npu,compare --case_set ci --log_level WARNING
+```
+
+## 核心功能
+
+| 功能 | 说明 | CLI参数 |
+|------|------|---------|
+| 流程任意组合 | gen→cpu→npu→gpu→compare按固定顺序执行，`--stages`选子集 | `--stages gen,cpu,compare` |
+| 断点续跑 | 跳过的阶段自动从pt加载 | `--stages cpu,compare` |
+| 异常兜底 | run_case 捕获单 case 异常记为失败，不中断批跑 | (自动) |
+| 精度失败分析 | 失败时输出坐标化失败表+Max-RE+预览，三档详略 | `--verbose_diff [fold\|all]` |
+| 日志系统 | 每阶段进度+耗时+shape，可调级别 | `--log_level INFO` |
+| NPU执行模式 | eager直调(默认)/graph aclgraph图模式 | `--npu_mode graph` |
+| 用例集分层 | ci/debug/func_rdv等用例集 | `--case_set ci` |
+| 用例过滤 | 精确/前缀/后缀三模式匹配 | `--case_id FP16_BNSD_01` |
+
+## 目录结构
+
+```
+tests2/
+├── test.py                 # 入口（CLI main + test_op + 共享函数）
+├── conftest.py             # pytest 装配（CLI 选项 + 参数化 + fixture）
+├── orchestrator.py         # 编排引擎（run_case 薄编排 + stage 函数 + Reporter）
+├── compare.py              # 精度判定（Comparator ABC + DefaultComparator）
+├── precision_analyze.py    # 失败诊断（analyze_failure + 三方接口）
+├── csv_parser.py           # CSV 读写（CSV_HEADERS 列契约 + parse_csv）
+├── pytest.ini              # marker 静态注册 + 日志配置
+├── core/
+│   ├── __init__.py         # ABC 基类（GenDataBase/CpuBase/NpuBase/GpuBase）
+│   ├── case_loader.py      # 用例加载 + 笛卡尔积展开
+│   ├── gen_data.py         # GenDataBackend（gen_inputs + normalize_params）
+│   ├── cpu.py              # CpuBackend（cpu_compute）
+│   ├── npu.py              # NpuBackend（npu_compute）
+│   ├── gpu.py              # GpuBackend（gpu_compute，可选）
+│   ├── quant.py            # 量化与反量化（可选）
+│   └── utils/              # 算子特有工具（input_spec / cpu_golden / data_utils）
+├── test_case/
+│   ├── stc_paramset.py     # STC 用例集（ci + debug）
+│   ├── rdv_paramset.py     # RDV 用例集（func_rdv）
+│   ├── prof_paramset.py    # PROF 用例集
+│   ├── whitebox_paramset.py # WHITEBOX 用例集
+│   └── redline_paramset.py # REDLINE 用例集
+├── prof/                   # 性能采集虚函数接口
+│   ├── npuprof/            # NPU 性能采集
+│   ├── npuprofop/          # NPU 单算子性能
+│   ├── gpuprof/            # GPU 性能
+│   ├── l2_flush/           # L2 缓存刷新
+│   └── perf_parse/         # 性能产物解析
+├── data/                   # pt 中间产物（运行时生成）
+├── result/                 # 测试结果（CSV + 失败分析，compare 时自动创建）
+└── designs/                # 设计文档
+```
+
+## 设计思路
+
+**入口 + 引擎分离**：`test.py` 只承载 CLI/pytest 入口与共享函数（CLI 参数定义、用例收集），`orchestrator.py` 是可独立 UT 的编排引擎。入口不含被测逻辑。
+
+**固定顺序 + 子集选择**：阶段间有数据依赖（gen→cpu→npu→gpu→compare），用户通过 `--stages` 选子集，框架按固定顺序执行。跳过的阶段自动从 pt 加载；数据依赖不满足（缺上游输出且无 pt）则显式失败。
+
+**判定与诊断分离**：`compare.py` 以 `Comparator` ABC + `DefaultComparator` 做精度判定（返回 dict，不打印，算子可继承 override 精度标准），`precision_analyze.py` 只做失败诊断（打印）。两者解耦，变化频率不同。
+
+**声明式用例管理**：`test_case/*.py` 声明参数值（PARAM_NAMES + DEFAULTS + CASE_SETS），`case_loader` 自动笛卡尔积展开。新增参数只需加到 DEFAULTS，所有用例自动继承。
+
+**ABC 基类集中**：接口契约定义在 `core/__init__.py`（GenDataBase/CpuBase/NpuBase/GpuBase），实现分散在各模块。接口给用户看，实现给维护者看。
+
+**标准 logging**：用 Python 官方 `logging.getLogger(__name__)`，不在基类加自定义属性。orchestrator 统一输出阶段进度日志，Backend 内部日志是 opt-in。
+
+## 新算子适配
+
+1. `test_case/{prefix}_paramset.py` — 定义参数+用例集
+2. `core/gen_data.py` — GenDataBackend(gen_inputs + normalize_params)
+3. `core/cpu.py` — CpuBackend(cpu_compute)
+4. `core/npu.py` — NpuBackend(npu_compute)
+5. (可选) `core/gpu.py` / `core/quant.py`
+
+框架核心无需修改。
+
+## 设计文档
+
+见 `designs/` 目录。
