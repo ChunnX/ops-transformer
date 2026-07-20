@@ -9,6 +9,7 @@
  */
 
 #include <dlfcn.h>
+#include <iostream>
 #include <new>
 #include <memory>
 #include <sstream>
@@ -198,6 +199,13 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
         aclTensor *output, aclTensor *outputScale,
         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    std::cout << "*** GMMSQV2 POST7302 WEIGHT_NZ_API_ENTRY dequantMode=" << dequantMode
+              << ", dequantDtype=" << dequantDtype
+              << ", quantMode=" << quantMode
+              << ", groupListType=" << groupListType
+              << ", weightIsNull=" << (weight == nullptr)
+              << ", weightSize=" << (weight == nullptr ? 0 : weight->Size())
+              << std::endl;
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnGroupedMatmulSwigluQuantWeightNzV2,
                    DFX_IN(x, weight, weightScale, xScale, groupList),
@@ -212,11 +220,22 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
     bool isSingleWeightTensor = wLength == 1 &&
                                 (firstWeightViewDimNum == WEIGHT_ND_DIM_LIMIT ||
                                  firstWeightViewDimNum == WEIGHT_NZ_DIM_LIMIT);
+    std::cout << "*** GMMSQV2 POST7302 WEIGHT_NZ_DISPATCH weightSize=" << wLength
+              << ", firstWeightViewDimNum=" << firstWeightViewDimNum
+              << ", isSingleWeightTensor=" << isSingleWeightTensor
+              << ", weightShape=" << op::ToString((*weight)[0]->GetViewShape()).GetString()
+              << ", weightStorageFormat=" << op::ToString((*weight)[0]->GetStorageFormat()).GetString()
+              << std::endl;
     if (isSingleWeightTensor) {
         CHECK_RET(ProcessSingleWeightNz(weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     } else {
         CHECK_RET(ProcessMultiWeightNz(weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
+    std::cout << "*** GMMSQV2 POST7302 WEIGHT_NZ_AFTER_PROCESS weightShape="
+              << op::ToString((*weight)[0]->GetViewShape()).GetString()
+              << ", weightViewFormat=" << op::ToString((*weight)[0]->GetViewFormat()).GetString()
+              << ", weightStorageFormat=" << op::ToString((*weight)[0]->GetStorageFormat()).GetString()
+              << std::endl;
 
     GroupedMatmulSwigluQuantParamsBase params =
         GroupedMatmulSwigluQuantParamsBuilder::Create(x, weight, weightScale, output, outputScale)
