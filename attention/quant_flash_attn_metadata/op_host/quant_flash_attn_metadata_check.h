@@ -28,11 +28,11 @@ class QuantFlashAttnMetadataCheck {
 public:
     static inline aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
                                           const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-                                          int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
+                                          const aclTensor *dequantScaleVOptional, int64_t batchSize,
+                                          int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
                                           int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode,
-                                           int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale,
-                                           const char *layoutKv,
-                                          const char *layoutOut, const aclTensor *metadata);
+                                          int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale,
+                                          const char *layoutKv, const char *layoutOut, const aclTensor *metadata);
 
 private:
     static inline bool IsTensorExist(const aclTensor *tensor);
@@ -66,12 +66,13 @@ private:
 inline aclnnStatus
 QuantFlashAttnMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
                                          const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-                                         int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
+                                         const aclTensor *dequantScaleVOptional, int64_t batchSize,
+                                         int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
                                          int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode,
-                                          int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale,
-                                          const char *layoutKv,
-                                         const char *layoutOut, const aclTensor *metadata)
+                                         int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale,
+                                         const char *layoutKv, const char *layoutOut, const aclTensor *metadata)
 {
+    (void)dequantScaleVOptional; // dequant_scale_v 校验下沉至 aicpu kernel
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, layoutQ,
                              layoutQDescale, layoutKv, layoutOut);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);

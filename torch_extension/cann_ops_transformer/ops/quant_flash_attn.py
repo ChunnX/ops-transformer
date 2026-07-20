@@ -43,7 +43,8 @@ class QuantFlashAttnOpBuilder(OpBuilder):
         """PyTorch operator signature."""
         return [
             "quant_flash_attn_metadata(int num_heads_q, int num_heads_kv, int head_dim, int quant_mode, *, "
-            "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, Tensor? seqused_kv=None, "
+            "Tensor? cu_seqlens_q=None, Tensor? cu_seqlens_kv=None, Tensor? seqused_q=None, "
+            "Tensor? seqused_kv=None, Tensor? dequant_scale_v=None, "
             "int? batch_size=None, int? max_seqlen_q=None, int? max_seqlen_kv=None, "
             "int? mask_mode=None, int? win_left=None, int? win_right=None, "
             "str? layout_q=None, str? layout_q_descale=None, str? layout_kv=None, str? layout_out=None) -> Tensor",
@@ -75,6 +76,7 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             cu_seqlens_kv: Optional[torch.Tensor] = None,
             seqused_q: Optional[torch.Tensor] = None,
             seqused_kv: Optional[torch.Tensor] = None,
+            dequant_scale_v: Optional[torch.Tensor] = None,
             batch_size: Optional[int] = None,
             max_seqlen_q: Optional[int] = None,
             max_seqlen_kv: Optional[int] = None,
@@ -181,6 +183,7 @@ def quant_flash_attn_metadata(
         cu_seqlens_kv: Optional[torch.Tensor] = None,
         seqused_q: Optional[torch.Tensor] = None,
         seqused_kv: Optional[torch.Tensor] = None,
+        dequant_scale_v: Optional[torch.Tensor] = None,
         batch_size: Optional[int] = None,
         max_seqlen_q: Optional[int] = None,
         max_seqlen_kv: Optional[int] = None,
@@ -215,6 +218,7 @@ def quant_flash_attn_metadata(
         cu_seqlens_kv,
         seqused_q,
         seqused_kv,
+        dequant_scale_v,
         batch_size,
         max_seqlen_q,
         max_seqlen_kv,
@@ -243,6 +247,7 @@ def quant_flash_attn_metadata_fallback(
         cu_seqlens_kv: Optional[torch.Tensor] = None,
         seqused_q: Optional[torch.Tensor] = None,
         seqused_kv: Optional[torch.Tensor] = None,
+        dequant_scale_v: Optional[torch.Tensor] = None,
         batch_size: Optional[int] = None,
         max_seqlen_q: Optional[int] = None,
         max_seqlen_kv: Optional[int] = None,
@@ -264,6 +269,7 @@ def quant_flash_attn_metadata_fallback(
         cu_seqlens_kv,
         seqused_q,
         seqused_kv,
+        dequant_scale_v,
         batch_size,
         max_seqlen_q,
         max_seqlen_kv,

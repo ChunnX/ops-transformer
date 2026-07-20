@@ -62,6 +62,7 @@ private:
     Tensor *cuSeqlensKv_ = nullptr;
     Tensor *sequsedQ_ = nullptr;
     Tensor *sequsedKv_ = nullptr;
+    Tensor *dequantScaleV_ = nullptr;
     Tensor *metaData_ = nullptr;
 
     int32_t batchSize_ = 0;
@@ -95,6 +96,7 @@ private:
         cuSeqlensKv = 1,
         sequsedQ = 2,
         sequsedKv = 3,
+        dequantScaleV = 4,
         metaData = 0,
     };
 };

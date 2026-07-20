@@ -19,6 +19,7 @@ const aclTensor* QuantFlashAttnMetadata(
     const aclTensor* cuSeqlensKvOptional,
     const aclTensor* sequsedQOptional,
     const aclTensor* sequsedKvOptional,
+    const aclTensor* dequantScaleVOptional,
     int64_t batchSize,
     int64_t maxSeqlenQ,
     int64_t maxSeqlenKv,
