@@ -282,6 +282,8 @@ private:
     int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
     bool IsFullLoad();
+    bool IsOneOf3GatherKernels() const;
+    void ComputeUseGatherCopy();
     void SetIndicesLoopParams4GatherOut(int64_t perLoopMaxIndicesElements, int64_t perCoreIndicesElements,
                                         int64_t lastCoreIndicesElements);
     void SetLastCoreIndicesTiling(MoeV3Arch35GatherOutComputeTilingData *gatherOutTiling,
@@ -530,6 +532,7 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::DoOpTiling()
     Tiling4ExpertTokensCountCompute();
 
     isFullload_ = IsFullLoad();
+    ComputeUseGatherCopy();
     if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
         quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 ||
         quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN ||
@@ -1491,6 +1494,7 @@ void MoeInitRoutingV3Arch35TilingClass::LogBaseTilingData()
     ss << "actualExpertNum = " << tilingDataPtr_->actualExpertNum << "\n";
     ss << "quantMode = " << tilingDataPtr_->quantMode << "\n";
     ss << "rowIdxType = " << tilingDataPtr_->rowIdxType << "\n";
+    ss << "useGatherCopy = " << tilingDataPtr_->useGatherCopy << "\n";
     ss << "isInputScale = " << tilingDataPtr_->isInputScale << "\n";
     ss << "isInputOffset = " << tilingDataPtr_->isInputOffset << "\n";
     ss << "expertNum = " << tilingDataPtr_->expertNum << "\n";
@@ -2188,6 +2192,34 @@ bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
     }
 
     return remainUb > 0;
+}
+
+bool MoeInitRoutingV3Arch35TilingClass::IsOneOf3GatherKernels() const
+{
+    if (dropPadMode_ == DROP_PAD_MODE_DROPPAD || isFullload_) {
+        return false;
+    }
+    if (quantMode_ == QUANT_MODE_MXFP8_E5M2 || quantMode_ == QUANT_MODE_MXFP8_E4M3FN ||
+        quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 ||
+        quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN ||
+        quantMode_ == QUANT_MODE_FP8_GROUP_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_E4M3FN ||
+        quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E4M3FN) {
+        return true;
+    }
+    if (isMXFP8NoQuantCase(quantMode_, xDtype_)) {
+        return true;
+    }
+    return false;
+}
+
+void MoeInitRoutingV3Arch35TilingClass::ComputeUseGatherCopy()
+{
+    if (IsOneOf3GatherKernels()) {
+        tilingDataPtr_->useGatherCopy =
+            ((expertEnd_ - expertStart_) * 8 > expertNum_) && (k_ > 1);
+    } else {
+        tilingDataPtr_->useGatherCopy = (rowIdxType_ == ROW_IDX_GATHER);
+    }
 }
 
 void MoeInitRoutingV3Arch35TilingClass::SetLoopParams4SrcToDstDropPad(int64_t perCoreRows, int64_t lastCoreRows)

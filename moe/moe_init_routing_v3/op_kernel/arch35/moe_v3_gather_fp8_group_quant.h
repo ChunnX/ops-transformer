@@ -252,13 +252,13 @@ class MoeV3GatherFP8GroupQuant {
 public:
     __aicore__ inline MoeV3GatherFP8GroupQuant(){};
 
-    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unusedScaleAddr, GM_ADDR sortedExpertIdxAddr,
+    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unusedScaleAddr, GM_ADDR workspace,
                                 GM_ADDR expandedRowIdxAddr, GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
                                 const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void InitKernelTiling(GM_ADDR sortedExpertIdxAddr,
+    __aicore__ inline void InitKernelTiling(GM_ADDR workspace,
                                             const MoeInitRoutingV3Arch35TilingData *tilingData);
     __aicore__ inline void InitBuffer();
     __aicore__ inline void CopyInExpandedExpertIdx(int64_t progress);
@@ -304,13 +304,14 @@ private:
     int64_t lastLoopScaleCols_{0};
     int64_t indicesOffset_{0};
     int64_t rowIdxType_{0};
+    int64_t useGatherCopy_{0};
 
     uint32_t fp8Emax_{FP8_GROUP_E5M2_EMAX};
 };
 
 template <typename T, typename U, bool CLAMP_AMAX>
 __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Init(
-    GM_ADDR xAddr, GM_ADDR unusedScaleAddr, GM_ADDR sortedExpertIdxAddr, GM_ADDR expandedRowIdxAddr,
+    GM_ADDR xAddr, GM_ADDR unusedScaleAddr, GM_ADDR workspace, GM_ADDR expandedRowIdxAddr,
     GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     (void)unusedScaleAddr;
@@ -319,14 +320,31 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Init(
 #endif
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
-    InitKernelTiling(sortedExpertIdxAddr, tilingData);
+    InitKernelTiling(workspace, tilingData);
 
     xInGm_.SetGlobalBuffer((__gm__ T *)xAddr);
     expandedXOutGm_.SetGlobalBuffer((__gm__ U *)expandedXAddr);
     expandedScaleOutGm_.SetGlobalBuffer((__gm__ float *)expandedScaleAddr);
 
-    sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
-                                    Align(perCoreRow_, sizeof(int32_t)));
+    if (useGatherCopy_) {
+        if (rowIdxType_ == SCATTER) {
+            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) +
+                                                blockIdx_ * perCoreRow_,
+                                            Align(perCoreRow_, sizeof(int32_t)));
+        } else {
+            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
+                                            Align(perCoreRow_, sizeof(int32_t)));
+        }
+    } else {
+        if (rowIdxType_ == SCATTER) {
+            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdxAddr + blockIdx_ * perCoreRow_,
+                                            Align(perCoreRow_, sizeof(int32_t)));
+        } else {
+            sortedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) +
+                                                blockIdx_ * perCoreRow_,
+                                            Align(perCoreRow_, sizeof(int32_t)));
+        }
+    }
 
     InitBuffer();
     if constexpr (IsSameType<U, fp8_e4m3fn_t>::value) {
@@ -338,7 +356,7 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Init(
 
 template <typename T, typename U, bool CLAMP_AMAX>
 __aicore__ inline void
-MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr,
+MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR workspace,
                                                              const MoeInitRoutingV3Arch35TilingData *tilingData)
 {
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
@@ -346,16 +364,17 @@ MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR sortedExper
     n_ = tilingData->n;
     k_ = tilingData->k;
     rowIdxType_ = tilingData->rowIdxType;
+    useGatherCopy_ = tilingData->useGatherCopy;
 
     scaleCols_ = Ceil(cols_, FP8_GROUP_QUANT_SIZE);
 
     int64_t actualExpertNum = tilingData->actualExpertNum;
-    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)sortedExpertIdxAddr + Align(n_ * k_, sizeof(int32_t)) * 2 +
+    expertTotalCountGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + Align(n_ * k_, sizeof(int32_t)) * 2 +
                                             Align(actualExpertNum, sizeof(int32_t)),
                                         actualExpertNum);
 
     int64_t scanRowCount = n_ * k_;
-    if (rowIdxType_ == SCATTER) {
+    if (!useGatherCopy_) {
         DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
             expertTotalCountGm_);
         scanRowCount = expertTotalCountGm_.GetValue(0);
@@ -404,7 +423,7 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Process()
     currentLoopRows_ = perLoopRows_;
     for (int64_t loop = 0; loop < rowLoops_ - 1; loop++) {
         CopyInExpandedExpertIdx(loop);
-        if (rowIdxType_ == SCATTER) {
+        if (!useGatherCopy_) {
             ScatterCopyExpandedXAndQuant(loop);
         } else {
             GatherCopyExpandedXAndQuant(loop);
@@ -412,7 +431,7 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Process()
     }
     currentLoopRows_ = lastLoopRows_;
     CopyInExpandedExpertIdx(rowLoops_ - 1);
-    if (rowIdxType_ == SCATTER) {
+    if (!useGatherCopy_) {
         ScatterCopyExpandedXAndQuant(rowLoops_ - 1);
     } else {
         GatherCopyExpandedXAndQuant(rowLoops_ - 1);
