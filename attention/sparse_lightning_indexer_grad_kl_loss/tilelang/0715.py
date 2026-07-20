@@ -192,6 +192,11 @@ def tilelang_grad_kl_loss_single_kernel(
     g_num = Nidx1 // vector_baseg
 
     v3_chunks = Nidx1 // 4
+    v3_groups_per_aiv = v3_chunks // 2
+    dq_rows_per_aiv = v3_groups_per_aiv * 4
+    dq_rows_per_chunk = 8 if dq_rows_per_aiv >= 8 else dq_rows_per_aiv
+    dq_groups_per_chunk = dq_rows_per_chunk // 4
+    dq_chunk_num = (dq_rows_per_aiv + dq_rows_per_chunk - 1) // dq_rows_per_chunk
     @T.prim_func
     def main(
         # === SPECIAL: int32 indices must be first to avoid dtype inference issues ===
@@ -801,12 +806,6 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 # Batch dQueryIndex writeback in 8 rows per AIV chunk to
                 # reduce the number of MTE3 transfers and event waits.
-                v3_groups_per_aiv = v3_chunks // 2
-                dq_rows_per_aiv = v3_groups_per_aiv * 4
-                dq_rows_per_chunk = min(8, dq_rows_per_aiv)
-                dq_groups_per_chunk = dq_rows_per_chunk // 4
-                dq_chunk_num = (dq_rows_per_aiv + dq_rows_per_chunk - 1) // dq_rows_per_chunk
-
                 dq_fp32_db = T.alloc_ub((2, dq_rows_per_chunk, BLOCK_K), calc_dtype)
                 dq_fp16_db = T.alloc_ub((2, dq_rows_per_chunk, BLOCK_K), input_dtype)
                 dk_chunk_0 = T.alloc_ub((1, DQueryIndex), calc_dtype)
