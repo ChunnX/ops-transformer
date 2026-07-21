@@ -86,6 +86,9 @@ constexpr int64_t MIN_BS = 1;
 constexpr int64_t MAX_BS = 4096;
 constexpr int64_t MIN_HIDDEN_SIZE = 1024;
 constexpr int64_t MAX_HIDDEN_SIZE = 8192;
+// Qwen3.5-35B uses intermediate_hidden=512. The A3 kernel supports this
+// aligned shape, while A2 must retain its validated lower bound of 1024.
+constexpr int64_t MIN_A3_INTERMEDIATE_HIDDEN = 512;
 constexpr int64_t MIN_INTERMEDIATE_HIDDEN = 1024;
 constexpr int64_t MAX_INTERMEDIATE_HIDDEN = 3072;
 constexpr int64_t MIN_TOPK = 1;
@@ -712,10 +715,13 @@ static ge::graphStatus CheckWeight2Input(gert::TilingContext *context, int64_t h
                             HIDDEN_SIZE_ALIGN, N),
                     return GRAPH_FAILED);
 
-    OP_TILING_CHECK(n2 < MIN_INTERMEDIATE_HIDDEN || n2 > MAX_INTERMEDIATE_HIDDEN,
+    const int64_t minIntermediateHidden = mc2tiling::GetSocVersion(context) == "Ascend910_93" ?
+                                              MIN_A3_INTERMEDIATE_HIDDEN :
+                                              MIN_INTERMEDIATE_HIDDEN;
+    OP_TILING_CHECK(n2 < minIntermediateHidden || n2 > MAX_INTERMEDIATE_HIDDEN,
                     OP_LOGE(K_INNER_DEBUG,
                             "weight2's dim0(intermediate_hidden) is invalid, should be in [%ld, %ld], but got %ld.",
-                            MIN_INTERMEDIATE_HIDDEN, MAX_INTERMEDIATE_HIDDEN, n2),
+                            minIntermediateHidden, MAX_INTERMEDIATE_HIDDEN, n2),
                     return GRAPH_FAILED);
 
     for (uint32_t i = 0; i < expertPerRank; i++) {
