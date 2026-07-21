@@ -625,7 +625,7 @@ static ge::graphStatus ConvertContextToParamsPFA(gert::TilingContext &context,
         (context.GetOptionalInputDesc(ATTEN_MASK_INDEX)->GetDataType() != ge::DT_INT8) &&
         (context.GetOptionalInputDesc(ATTEN_MASK_INDEX)->GetDataType() != ge::DT_UINT8),
         OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(),
-        "Invalid attention mask datatype! Only support BOOL, INT8 and UINT8"), return ge::GRAPH_FAILED);
+        "Invalid attention mask dtype! Only support BOOL, INT8 and UINT8"), return ge::GRAPH_FAILED);
     contextKeyParams.actualSequenceLengthQ = context.GetOptionalInputTensor(ACTUAL_SEQ_Q_INDEX);
     contextKeyParams.actualSequenceLengthKV = context.GetOptionalInputTensor(ACTUAL_SEQ_KV_INDEX);
     contextKeyParams.antiquantScale = context.GetOptionalInputTensor(ANTIQUANT_SCALE_INDEX);
@@ -867,8 +867,8 @@ static ge::graphStatus SetPlatformInfo(gert::TilingContext &context, PromptFlash
                 compileInfoPtr.aicNum, compileInfoPtr.aivNum), return GRAPH_FAILED);
         OP_CHECK_IF(compileInfoPtr.aivNum == compileInfoPtr.aicNum,
             OPS_REPORT_VECTOR_INNER_ERR(context.GetNodeName(), 
-                "when CV 1:1, only support MLA non-quantization(QKV type both are FP16 or BF16) "
-                "and MLA fully quantization(QKV type both are int8)"), 
+                "when CV 1:1, only support MLA non-quantization (QKV type both are FLOAT16 or BFLOAT16) "
+                "and MLA fully quantization (QKV type both are INT8)"),
             return GRAPH_FAILED);
     }
 
@@ -915,10 +915,10 @@ static ge::graphStatus TilingProcess4PFA(gert::TilingContext *context, const uin
     OP_CHECK_IF((((contextParamsForPFATiling.inputDataType == ge::DT_INT8) ||
         (contextParamsForPFATiling.kDataType == ge::DT_INT8) ||
         (contextParamsForPFATiling.outputDataType == ge::DT_INT8)) && (tempD % D_ALIGN_32 != 0)),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "D should be 32 elements aligned when int8 is involved!!"),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "D should be 32 elements aligned when INT8 is involved!!"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF((tempD % D_ALIGN_16 != 0), OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-        "D should be 16 elements aligned when with FP16/BF16 dtype!"), return ge::GRAPH_FAILED);
+        "D should be 16 elements aligned when with FLOAT16/BFLOAT16 dtype!"), return ge::GRAPH_FAILED);
     uint64_t tilingKey = 7U;
     uint32_t blockDimToBeSet;
     pfa_tiling.fromPFA_ = false;
@@ -1086,7 +1086,7 @@ ge::graphStatus CheckFAIQKV(gert::TilingContext *context, bool isPageAttention)
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Input dtype of Q, K, and V must be consistent"),
             return ge::GRAPH_FAILED);
     OP_CHECK_IF((qDataType != ge::DT_FLOAT16) && (qDataType != ge::DT_BF16),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Input dtype of Q, K, and V must be FP16 or BF16"),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Input dtype of Q, K, and V must be FLOAT16 or BFLOAT16"),
             return ge::GRAPH_FAILED);
 
     int64_t validBatchOfK = 0;
@@ -1135,7 +1135,8 @@ ge::graphStatus CheckFAILearnableSink(const gert::TilingContext *context)
 
     OP_CHECK_IF(
         ((sinkDataType != ge::DT_FLOAT16) && (sinkDataType != ge::DT_BF16)),
-        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "Input dtype of learnable sink must be FP16 or BF16"),
+        OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+            "Input dtype of learnable sink must be FLOAT16 or BFLOAT16"),
         return ge::GRAPH_FAILED);
 
     auto sinkDim = learnableSinkShape->GetStorageShape().GetDimNum();

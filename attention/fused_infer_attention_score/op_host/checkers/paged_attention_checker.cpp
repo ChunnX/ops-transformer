@@ -39,7 +39,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableDtype(const FiaTilingInfo 
     const gert::CompileTimeTensorDesc *blockTableDesc = fiaInfo.opParamInfo.blockTable.desc;
     OP_CHECK_IF(blockTableDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE(fiaInfo.opName,
-                "When page attention enable, blockTable datatype only support INT32."),
+                "When page attention enable, blockTable dtype only support INT32."),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -598,7 +598,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeAntiquant(const FiaTilingIn
             "In antiquant scenario, when page attention is enabled, block_size must be a multiple of " +
             std::to_string(blockSizeAlign) + " and in range of [" +
             std::to_string(blockSizeAlign) + ", " + std::to_string(BLOCK_SIZE_MAX) +
-            "] if kvCache datatype is " + DataTypeToSerialString(fiaInfo.inputKvType);
+            "] if kvCache dtype is " + DataTypeToSerialString(fiaInfo.inputKvType);
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size",
             std::to_string(fiaInfo.blockSize).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
@@ -691,7 +691,7 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureQueryS(const FiaTilingInfo &f
             (keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
                 fiaInfo.inputKvType == ge::DT_INT8,
             OP_LOGE(fiaInfo.opName,
-                "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, if "
+                "In keyAntiquant/valueAntiquant split mode and data type of key/value is INT8 scenario, if "
                 "keyAntiquantMode/valueAntiquantMode is 0 or 1, page attention is not supported!"),
                 return ge::GRAPH_FAILED);
     }
