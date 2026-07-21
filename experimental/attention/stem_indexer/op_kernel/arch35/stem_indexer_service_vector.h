@@ -569,13 +569,15 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                          rowIdx4, topkNum4, s2ValidLen4, batchRowNum,
                          curAivGS1Idx);
     }
+    // TopK已不再访问当前resMm1Local_槽，先归还给Cube，使下一轮MM1可与最终MTE3搬出并行。
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(
+        SICommon::CROSS_VC_EVENT + (info.loop % 2));
     if (isLastS2InnerLoop) {
         CopyOutPackedResults(info, curAivGS1Idx, curAivGS1ProcNum);
         // 等待MTE3完成对mrgValueLocal_的读取，避免下一轮Vec1提前覆盖搬出源数据。
         SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     }
-    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + (info.loop % 2));   //V核处理完，通知C核可以把mm1Res搬运到UB
 }
 
 template <typename SIT>
