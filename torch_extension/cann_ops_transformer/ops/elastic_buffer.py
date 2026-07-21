@@ -244,18 +244,15 @@ class ElasticBuffer:
         mb_conversion = 1024 * 1024
         local_experts_num = num_experts // world_size
         debug_rank_num_per_server = _debug_int_env("MOE_EP_DEBUG_RANK_NUM_PER_SERVER")
-        rank_num_per_server = (
-            world_size if debug_rank_num_per_server is None else debug_rank_num_per_server
-        )
-        torch._check(
-            (rank_num_per_server > 0) and (world_size % rank_num_per_server == 0),
-            lambda: (
-                "MOE_EP_DEBUG_RANK_NUM_PER_SERVER must be positive and divide world_size, "
-                f"got {rank_num_per_server=} and {world_size=}."
-            ),
-        )
-        scaleout_rank_count = world_size // rank_num_per_server
-        scaleout_mask_word_count = inline_align(rank_num_per_server, 32) // 32
+        if debug_rank_num_per_server is not None:
+            torch._check(
+                (debug_rank_num_per_server > 0)
+                and (world_size % debug_rank_num_per_server == 0),
+                lambda: (
+                    "MOE_EP_DEBUG_RANK_NUM_PER_SERVER must be positive and divide world_size, "
+                    f"got rank_num_per_server={debug_rank_num_per_server} and {world_size=}."
+                ),
+            )
 
         dispatch_count_size = world_size * inline_align(
             local_experts_num * state_dtype_size, win_addr_align
@@ -274,28 +271,50 @@ class ElasticBuffer:
         dispatch_per_slot_bytes = inline_align(
             hidden_align + metadata_bytes * 2 + ub_align, win_addr_align
         )
-        scaleout_per_slot_bytes = inline_align(
-            dispatch_per_slot_bytes
-            + scaleout_mask_word_count * state_dtype_size
-            + rank_num_per_server * state_dtype_size,
-            win_addr_align,
-        )
         combine_per_slot_bytes = inline_align(hidden_align + ub_align, win_addr_align)
         scaleup_recv_data_size = (
             world_size * num_max_tokens_per_rank * dispatch_per_slot_bytes
         )
-        scaleout_recv_data_size = (
-            scaleout_rank_count * num_max_tokens_per_rank * scaleout_per_slot_bytes
-        )
-        scaleout_recv_status_size = (
-            scaleout_rank_count * num_max_tokens_per_rank * win_addr_align
-        )
         scaleup_recv_status_size = world_size * num_max_tokens_per_rank * win_addr_align
-        dispatch_buffer_size = (
-            scaleout_recv_data_size
-            + scaleup_recv_data_size
-            + scaleout_recv_status_size
-            + scaleup_recv_status_size
+
+        def get_dispatch_buffer_size(rank_num_per_server):
+            scaleout_rank_count = world_size // rank_num_per_server
+            scaleout_mask_word_count = inline_align(rank_num_per_server, 32) // 32
+            scaleout_per_slot_bytes = inline_align(
+                dispatch_per_slot_bytes
+                + scaleout_mask_word_count * state_dtype_size
+                + rank_num_per_server * state_dtype_size,
+                win_addr_align,
+            )
+            scaleout_recv_data_size = (
+                scaleout_rank_count
+                * num_max_tokens_per_rank
+                * scaleout_per_slot_bytes
+            )
+            scaleout_recv_status_size = (
+                scaleout_rank_count * num_max_tokens_per_rank * win_addr_align
+            )
+            scaleout_ack_status_size = scaleout_rank_count * win_addr_align
+            return (
+                scaleout_recv_data_size
+                + scaleup_recv_data_size
+                + scaleout_recv_status_size
+                + scaleup_recv_status_size
+                + scaleout_ack_status_size
+            )
+
+        if debug_rank_num_per_server is None:
+            # Context topology is unavailable here, so reserve for the largest valid hybrid layout.
+            rank_num_per_server_candidates = [
+                rank_num_per_server
+                for rank_num_per_server in range(1, world_size + 1)
+                if world_size % rank_num_per_server == 0
+            ]
+        else:
+            rank_num_per_server_candidates = [debug_rank_num_per_server]
+        dispatch_buffer_size = max(
+            get_dispatch_buffer_size(rank_num_per_server)
+            for rank_num_per_server in rank_num_per_server_candidates
         )
         combine_buffer_size = num_max_tokens_per_rank * combine_per_slot_bytes * topk
 
@@ -439,6 +458,17 @@ class ElasticBuffer:
             num_max_tokens_per_rank,
             expert_alignment,
             do_cpu_sync,
+        )
+        torch._check(
+            args.x.shape[1] == self._hidden,
+            lambda: f"x hidden must equal configured hidden, got {args.x.shape[1]} and {self._hidden}",
+        )
+        torch._check(
+            args.topk_idx.shape[1] == self._num_topk,
+            lambda: (
+                "topk_idx topk must equal configured num_topk, "
+                f"got {args.topk_idx.shape[1]} and {self._num_topk}"
+            ),
         )
         hp_addr = self._prepare_host_counter(args.do_cpu_sync)
 
