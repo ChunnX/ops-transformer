@@ -108,6 +108,7 @@ def make_and_call(dev, hcom, ws, M_per_rank, K, N, target_row, seed, x1_scale_va
         x2_dtype=torch_npu.float8_e4m3fn,
         x1_scale_dtype=torch_npu.float8_e8m0fnu,
         x2_scale_dtype=torch_npu.float8_e8m0fnu,
+        comm_mode="ccu",
     )
     torch_npu.npu.synchronize()
     return out
