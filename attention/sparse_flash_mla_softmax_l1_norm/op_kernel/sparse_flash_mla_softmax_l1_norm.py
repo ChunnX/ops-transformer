@@ -201,7 +201,7 @@ def gather_k(k_l1_db, k, sparse_indices, gather_nd_db, gather_nz_db, constInfo, 
         for i in pl.range(actual_row_num):
             # offset11 = sparse_indices_s1k_offset + i
             # pl.printf("i: %d, offset11: %d\n", i, offset11)
-            k_index = sparse_indices[sparse_indices_s1k_offset + i]
+            k_index = pl.getval(sparse_indices, sparse_indices_s1k_offset + i)
             if k_index < 0:
                 break
             # pl.printf("i: %d, offset11: %d, k_index: %d\n", i, offset11, k_index)
