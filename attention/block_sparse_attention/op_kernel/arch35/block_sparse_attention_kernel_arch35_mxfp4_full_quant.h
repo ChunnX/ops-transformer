@@ -154,16 +154,18 @@ public:
                 totalRowNumBlockMask, yBlockNumAligned_, avgRowPerSubCore_, preActiveSubCoreNum_);
         }
         AscendC::SyncAll<false>();
-#ifdef __DAV_CUBE__
-        coreIdx = AscendC::GetBlockIdx();
-        // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
-        BlockMmadPV blockMmadPV(resource);
-#endif
-#ifdef __DAV_VEC__
-        coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-        // EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_);
-        // EpilogueRescaleO epilogueRescaleO(resource);
-#endif
+
+ #ifdef __DAV_CUBE__
+            coreIdx = AscendC::GetBlockIdx();
+            // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
+            BlockMmadPV blockMmadPV(resource);
+ #endif	 
+ #ifdef __DAV_VEC__
+            coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+            // EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_);
+            // EpilogueRescaleO epilogueRescaleO(resource);
+ #endif	 
+
         // runMainLoop
         uint64_t coreTileLoop = 0;
 
