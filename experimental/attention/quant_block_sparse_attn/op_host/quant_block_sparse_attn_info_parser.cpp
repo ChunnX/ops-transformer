@@ -357,23 +357,26 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
     opParamInfo.sparseSeqLen.desc = context_->GetInputDesc(BSA_SPARSE_SEQ_LEN_INDEX);
     opParamInfo.sparseSeqLen.shape = context_->GetInputShape(BSA_SPARSE_SEQ_LEN_INDEX);
     opParamInfo.attenMask.desc = context_->GetInputDesc(BSA_ATTEN_MASK_INDEX);
-    opParamInfo.attenMask.shape = context_->GetInputShape(BSA_ATTEN_MASK_INDEX);
+    opParamInfo.attenMask.shape = context_->GetOptionalInputShape(BSA_ATTEN_MASK_INDEX);
     opParamInfo.attnOut.desc = context_->GetOutputDesc(BSA_ATTENTION_OUT_INDEX);
     opParamInfo.attnOut.shape = context_->GetOutputShape(BSA_ATTENTION_OUT_INDEX);
     opParamInfo.lseOut.desc = context_->GetOutputDesc(BSA_SOFTMAX_LSE_INDEX);
     opParamInfo.lseOut.shape = context_->GetOutputShape(BSA_SOFTMAX_LSE_INDEX);
 
+    if (ParseAttributes(tilingInfo, attrs) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
     if (opParamInfo.query.shape == nullptr || opParamInfo.key.shape == nullptr || opParamInfo.value.shape == nullptr ||
         opParamInfo.qDescale.shape == nullptr || opParamInfo.kDescale.shape == nullptr ||
         opParamInfo.vDescale.shape == nullptr || opParamInfo.pScale.shape == nullptr ||
-        opParamInfo.sparseIndices.shape == nullptr || opParamInfo.sparseSeqLen.shape == nullptr ||
-        opParamInfo.attenMask.shape == nullptr) {
+        opParamInfo.sparseIndices.shape == nullptr || opParamInfo.sparseSeqLen.shape == nullptr) {
         OP_LOGE(kOpName,
                 "Parse: required input shape is nullptr (query=%p, key=%p, value=%p, qDescale=%p, kDescale=%p, "
-                "vDescale=%p, pScale=%p, sparseIndices=%p, sparseSeqLen=%p, attenMask=%p)",
+                "vDescale=%p, pScale=%p, sparseIndices=%p, sparseSeqLen=%p)",
                 opParamInfo.query.shape, opParamInfo.key.shape, opParamInfo.value.shape, opParamInfo.qDescale.shape,
                 opParamInfo.kDescale.shape, opParamInfo.vDescale.shape, opParamInfo.pScale.shape,
-                opParamInfo.sparseIndices.shape, opParamInfo.sparseSeqLen.shape, opParamInfo.attenMask.shape);
+                opParamInfo.sparseIndices.shape, opParamInfo.sparseSeqLen.shape);
         return ge::GRAPH_FAILED;
     }
 
@@ -381,15 +384,6 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
     const gert::Shape &keyShape = opParamInfo.key.shape->GetStorageShape();
     const gert::Shape &sparseIndicesShape = opParamInfo.sparseIndices.shape->GetStorageShape();
     const gert::Shape &sparseSeqLenShape = opParamInfo.sparseSeqLen.shape->GetStorageShape();
-    const gert::Shape &attenMaskShape = opParamInfo.attenMask.shape->GetStorageShape();
-    if (attenMaskShape.GetDimNum() != DIM_NUM_2) {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(kOpName, "attention_mask", std::to_string(attenMaskShape.GetDimNum()) + "D", "2D");
-        return ge::GRAPH_FAILED;
-    }
-
-    if (ParseAttributes(tilingInfo, attrs) != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
 
     const std::string layoutKV = BSAGetStringAttr(attrs, BSA_LAYOUT_KV_ATTR_INDEX, "PA_BNSD");
     const std::string layoutSparseIndices = BSAGetStringAttr(attrs, BSA_LAYOUT_SPARSE_INDICES_ATTR_INDEX, "B_N_Qb_Kb");
@@ -402,6 +396,19 @@ ge::graphStatus QuantBlockSparseAttnInfoParser::Parse(QuantBlockSparseAttnTiling
                                               "layout_kv must be PA_BNSD, layout_sparse_indices must be B_N_Qb_Kb, "
                                               "quant_mode must be 1, mask_mode must be 0 or 3");
         return ge::GRAPH_FAILED;
+    }
+    if (tilingInfo.maskModeVal == 3U) {
+        if (opParamInfo.attenMask.shape == nullptr ||
+            opParamInfo.attenMask.shape->GetStorageShape().GetShapeSize() <= 0) {
+            OP_LOGE(kOpName, "Parse: atten_mask is required when mask_mode=3");
+            return ge::GRAPH_FAILED;
+        }
+        const gert::Shape &attenMaskShape = opParamInfo.attenMask.shape->GetStorageShape();
+        if (attenMaskShape.GetDimNum() != DIM_NUM_2) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM(kOpName, "attention_mask",
+                                         std::to_string(attenMaskShape.GetDimNum()) + "D", "2D");
+            return ge::GRAPH_FAILED;
+        }
     }
 
     if (ParseQuery(tilingInfo, queryShape, sparseIndicesShape, attrs) != ge::GRAPH_SUCCESS) {

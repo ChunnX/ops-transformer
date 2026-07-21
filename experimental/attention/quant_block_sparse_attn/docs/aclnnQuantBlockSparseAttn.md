@@ -24,7 +24,7 @@ P = \text{softmax}((QK^T) \times q\_descale \times k\_descale \times softmax\_sc
 $$
 
 $$
-O = (quant(P / p\_scale) V) \times p\_scale \times v\_descale
+O = (quant(P \times p\_scale) V) / p\_scale \times v\_descale
 $$
 
 其中 `K`、`V` 由 `block_table` 和 `sparse_indices` 从 PageAttention KV Cache 中按块寻址获得。`mask_mode=0` 表示不加 mask，`mask_mode=3` 表示 causal mask。
@@ -46,7 +46,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
     p_scale: Tensor,
     sparse_indices: Tensor,
     sparse_seq_len: Tensor,
-    atten_mask: Tensor,
+    atten_mask: Optional[Tensor],
     softmax_scale: float,
     sparse_q_block_size: int,
     sparse_kv_block_size: int,
@@ -88,306 +88,307 @@ torch.ops.custom.npu_quant_block_sparse_attn(
 - `max_Kb`：KV block 最大数量，`max_Kb = ceil(S2 / sparse_kv_block_size)`。
 - `block_num`：PageAttention KV Cache 物理 block 总数。
 
-<table style="table-layout: auto; width: 100%;">
-  <colgroup>
-    <col style="white-space: nowrap;">
-    <col style="white-space: nowrap; width: 96px;">
-    <col>
-    <col style="white-space: nowrap;">
-    <col style="white-space: nowrap; width: 80px;">
-    <col>
-    <col>
+- **参数说明：**
+
+  <table style="undefined;table-layout: fixed; width: 1625px"><colgroup>
+    <col style="width: 247px">
+    <col style="width: 132px">
+    <col style="width: 232px">
+    <col style="width: 293px">
+    <col style="width: 185px">
+    <col style="width: 119px">
+    <col style="width: 272px">
   </colgroup>
   <thead>
     <tr>
-      <th style="white-space: nowrap;">参数名</th>
-      <th style="white-space: nowrap;">输入/输出</th>
+      <th>参数名</th>
+      <th>输入/输出</th>
       <th>描述</th>
-      <th style="white-space: nowrap;">数据类型</th>
-      <th style="white-space: nowrap;">数据格式</th>
+      <th>使用说明</th>
+      <th>数据类型</th>
+      <th>数据格式</th>
       <th>维度(shape)</th>
-      <th>说明</th>
     </tr>
   </thead>
   <tbody>
     <tr>
-      <td style="white-space: nowrap;"><code>query</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>query</td>
+      <td>输入</td>
       <td>Query 输入。</td>
-      <td style="white-space: nowrap;"><code>FLOAT8_E4M3FN</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>TND:(T1,N1,D); NTD:(N1,T1,D)</code></td>
       <td>不支持空 Tensor。PyTorch 接入层会将该输入转为连续 Tensor。</td>
+      <td>FLOAT8_E4M3FN</td>
+      <td>ND</td>
+      <td>TND:(T1,N1,D); NTD:(N1,T1,D)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>key</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>key</td>
+      <td>输入</td>
       <td>PageAttention KV Cache 中的 Key。</td>
-      <td style="white-space: nowrap;"><code>FLOAT8_E4M3FN</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(block_num,N2,sparse_kv_block_size,D)</code></td>
-      <td><code>layout_kv</code> 仅支持 <code>PA_BNSD</code>。</td>
+      <td>layout_kv 仅支持 PA_BNSD。</td>
+      <td>FLOAT8_E4M3FN</td>
+      <td>ND</td>
+      <td>(block_num,N2,sparse_kv_block_size,D)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>value</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>value</td>
+      <td>输入</td>
       <td>PageAttention KV Cache 中的 Value。</td>
-      <td style="white-space: nowrap;"><code>FLOAT8_E4M3FN</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(block_num,N2,sparse_kv_block_size,D_v)</code></td>
-      <td><code>layout_kv</code> 仅支持 <code>PA_BNSD</code>。</td>
+      <td>layout_kv 仅支持 PA_BNSD。</td>
+      <td>FLOAT8_E4M3FN</td>
+      <td>ND</td>
+      <td>(block_num,N2,sparse_kv_block_size,D_v)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>q_descale</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>q_descale</td>
+      <td>输入</td>
       <td>Query 反量化缩放因子。</td>
-      <td style="white-space: nowrap;"><code>FLOAT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>TND:(T1,N1); NTD:(N1,T1)</code></td>
-      <td><code>PERTOKEN_PERHEAD</code>。</td>
+      <td>PERTOKEN_PERHEAD。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>TND:(T1,N1); NTD:(N1,T1)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>k_descale</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>k_descale</td>
+      <td>输入</td>
       <td>Key 反量化缩放因子。</td>
-      <td style="white-space: nowrap;"><code>FLOAT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(block_num,N2,sparse_kv_block_size)</code></td>
-      <td><code>PERTOKEN_PERHEAD</code>。</td>
+      <td>PERTOKEN_PERHEAD。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>(block_num,N2,sparse_kv_block_size)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>v_descale</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>v_descale</td>
+      <td>输入</td>
       <td>Value 反量化缩放因子。</td>
-      <td style="white-space: nowrap;"><code>FLOAT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(N2)</code></td>
-      <td><code>PERHEAD</code>。</td>
+      <td>PERHEAD。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>(N2)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>p_scale</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>p_scale</td>
+      <td>输入</td>
       <td>softmax 概率 FP8 量化缩放因子。</td>
-      <td style="white-space: nowrap;"><code>FLOAT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(1)</code></td>
-      <td><code>PERTENSOR</code>。</td>
+      <td>PERTENSOR。</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>(1)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>sparse_indices</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>sparse_indices</td>
+      <td>输入</td>
       <td>稀疏 KV block 索引。</td>
-      <td style="white-space: nowrap;"><code>INT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(B,N1,max_Qb,max_Kb)</code></td>
-      <td><code>layout_sparse_indices</code> 仅支持 <code>B_N_Qb_Kb</code>。有效元素表示逻辑 KV block id，取值范围为 <code>[0, max_Kb - 1]</code>。</td>
+      <td>layout_sparse_indices 仅支持 B_N_Qb_Kb。有效元素表示逻辑 KV block id，取值范围为 [0, max_Kb - 1]。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(B,N1,max_Qb,max_Kb)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>sparse_seq_len</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>sparse_seq_len</td>
+      <td>输入</td>
       <td>每个 Query block 对应的有效 KV block 数。</td>
-      <td style="white-space: nowrap;"><code>INT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(B,N1,max_Qb)</code></td>
-      <td>每个值应在 <code>[0, max_Kb]</code> 范围内；值为 0 时对应稀疏任务输出置零，LSE 置为 <code>-FLT_MAX</code>。</td>
+      <td>每个值应在 [0, max_Kb] 范围内；值为 0 时对应稀疏任务输出置零，LSE 置为 -FLT_MAX。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(B,N1,max_Qb)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>atten_mask</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>atten_mask</td>
+      <td>输入</td>
       <td>Attention mask。</td>
-      <td style="white-space: nowrap;"><code>UINT8</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>mask_mode=3:(2048,2048)</code></td>
-      <td><code>mask_mode=0</code> 时不使用；<code>mask_mode=3</code> 时为 causal mask。</td>
+      <td>mask_mode=0 时不使用；mask_mode=3 时为 causal mask。</td>
+      <td>UINT8</td>
+      <td>ND</td>
+      <td>mask_mode=0 时可不传或传空指针；mask_mode=3:(2048,2048)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>cu_seqlens_q</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>cu_seqlens_q</td>
+      <td>输入</td>
       <td>Query 累积序列长度。</td>
-      <td style="white-space: nowrap;"><code>INT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(B+1)</code></td>
-      <td><code>TND/NTD</code> 变长场景时传入。</td>
+      <td>TND/NTD 变长场景时传入。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(B+1)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>cu_seqlens_kv</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>cu_seqlens_kv</td>
+      <td>输入</td>
       <td>KV 累积序列长度。</td>
-      <td style="white-space: nowrap;"><code>INT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(B+1)</code></td>
-      <td><code>TND/NTD</code> 变长场景时传入。</td>
+      <td>TND/NTD 变长场景时传入。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(B+1)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>seqused_q</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>seqused_q</td>
+      <td>输入</td>
       <td>每个 batch 的 Query 实际使用长度。</td>
-      <td style="white-space: nowrap;"><code>INT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(B)</code></td>
-      <td><code>TND/NTD</code> 变长场景时传入。</td>
+      <td>TND/NTD 变长场景时传入。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(B)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>seqused_kv</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>seqused_kv</td>
+      <td>输入</td>
       <td>每个 batch 的 KV 实际使用长度。</td>
-      <td style="white-space: nowrap;"><code>INT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(B)</code></td>
-      <td><code>TND/NTD</code> 变长场景时传入。</td>
+      <td>TND/NTD 变长场景时传入。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(B)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>block_table</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>block_table</td>
+      <td>输入</td>
       <td>PageAttention block 映射表。</td>
-      <td style="white-space: nowrap;"><code>INT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(B,maxBlockNumPerBatch)</code></td>
-      <td>可选输入。第 0 维必须等于 <code>B</code>。</td>
+      <td>可选输入。第 0 维必须等于 B。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(B,maxBlockNumPerBatch)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>metadata</code></td>
-      <td style="white-space: nowrap;">输入</td>
+      <td>metadata</td>
+      <td>输入</td>
       <td>负载均衡元数据。</td>
-      <td style="white-space: nowrap;"><code>INT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(metadata_size)</code></td>
-      <td>由 <code>npu_quant_block_sparse_attn_metadata</code> 生成，长度随分 section 结果动态变化。</td>
+      <td>由 npu_quant_block_sparse_attn_metadata 生成，长度随分 section 结果动态变化。</td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td>(metadata_size)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>softmax_scale</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>softmax_scale</td>
+      <td>输入属性</td>
       <td>QK 结果缩放因子。</td>
-      <td style="white-space: nowrap;"><code>FLOAT32</code></td>
-      <td style="white-space: nowrap;">-</td>
+      <td>常用值为 1 / sqrt(D)。</td>
+      <td>FLOAT32</td>
       <td>-</td>
-      <td>常用值为 <code>1 / sqrt(D)</code>。</td>
+      <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>sparse_q_block_size</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>sparse_q_block_size</td>
+      <td>输入属性</td>
       <td>Query 方向稀疏 block 大小。</td>
-      <td style="white-space: nowrap;"><code>INT64</code></td>
-      <td style="white-space: nowrap;">-</td>
-      <td>-</td>
       <td>实现仅支持 128。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>sparse_kv_block_size</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>sparse_kv_block_size</td>
+      <td>输入属性</td>
       <td>KV 方向稀疏 block 大小。</td>
-      <td style="white-space: nowrap;"><code>INT64</code></td>
-      <td style="white-space: nowrap;">-</td>
-      <td>-</td>
       <td>实现仅支持 128。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>max_seqlen_q</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>max_seqlen_q</td>
+      <td>输入属性</td>
       <td>单 batch Query 最大长度。</td>
-      <td style="white-space: nowrap;"><code>INT64</code></td>
-      <td style="white-space: nowrap;">-</td>
+      <td>-</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>max_seqlen_kv</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>max_seqlen_kv</td>
+      <td>输入属性</td>
       <td>单 batch KV 最大长度。</td>
-      <td style="white-space: nowrap;"><code>INT64</code></td>
-      <td style="white-space: nowrap;">-</td>
+      <td>-</td>
+      <td>INT64</td>
       <td>-</td>
       <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>pa_block_stride</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>pa_block_stride</td>
+      <td>输入属性</td>
       <td>PA 物理 block 外步长。</td>
-      <td style="white-space: nowrap;"><code>INT64</code></td>
-      <td style="white-space: nowrap;">-</td>
-      <td>-</td>
       <td>取值为 PA 物理 block 间隔步长，需大于 0。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>layout_kv</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>layout_kv</td>
+      <td>输入属性</td>
       <td>KV 数据布局。</td>
-      <td style="white-space: nowrap;"><code>STRING</code></td>
-      <td style="white-space: nowrap;">-</td>
+      <td>仅支持 "PA_BNSD"。</td>
+      <td>STRING</td>
       <td>-</td>
-      <td>仅支持 <code>"PA_BNSD"</code>。</td>
+      <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>layout_q</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>layout_q</td>
+      <td>输入属性</td>
       <td>Query 数据布局。</td>
-      <td style="white-space: nowrap;"><code>STRING</code></td>
-      <td style="white-space: nowrap;">-</td>
+      <td>支持 "TND"、"NTD"。</td>
+      <td>STRING</td>
       <td>-</td>
-      <td>支持 <code>"TND"</code>、<code>"NTD"</code>。</td>
+      <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>layout_sparse_indices</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>layout_sparse_indices</td>
+      <td>输入属性</td>
       <td>稀疏索引布局。</td>
-      <td style="white-space: nowrap;"><code>STRING</code></td>
-      <td style="white-space: nowrap;">-</td>
+      <td>仅支持 "B_N_Qb_Kb"。</td>
+      <td>STRING</td>
       <td>-</td>
-      <td>仅支持 <code>"B_N_Qb_Kb"</code>。</td>
+      <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>layout_out</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>layout_out</td>
+      <td>输入属性</td>
       <td>输出布局。</td>
-      <td style="white-space: nowrap;"><code>STRING</code></td>
-      <td style="white-space: nowrap;">-</td>
-      <td>-</td>
       <td>预留参数，暂未生效。</td>
+      <td>STRING</td>
+      <td>-</td>
+      <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>quant_mode</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>quant_mode</td>
+      <td>输入属性</td>
       <td>量化模式。</td>
-      <td style="white-space: nowrap;"><code>INT64</code></td>
-      <td style="white-space: nowrap;">-</td>
+      <td>当前仅支持 1，表示 Q_PERTOKEN_PERHEAD_K_PERTOKEN_PERHEAD_V_PERHEAD。</td>
+      <td>INT64</td>
       <td>-</td>
-      <td>当前仅支持 <code>1</code>，表示 <code>Q_PERTOKEN_PERHEAD_K_PERTOKEN_PERHEAD_V_PERHEAD</code>。</td>
+      <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>mask_mode</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>mask_mode</td>
+      <td>输入属性</td>
       <td>mask 模式。</td>
-      <td style="white-space: nowrap;"><code>INT64</code></td>
-      <td style="white-space: nowrap;">-</td>
-      <td>-</td>
       <td>执行路径支持 0 和 3，0 表示无 mask，3 表示 causal。</td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>return_softmax_lse</code></td>
-      <td style="white-space: nowrap;">输入属性</td>
+      <td>return_softmax_lse</td>
+      <td>输入属性</td>
       <td>是否返回 softmax LSE。</td>
-      <td style="white-space: nowrap;"><code>BOOL</code></td>
-      <td style="white-space: nowrap;">-</td>
+      <td>True 时返回有效 LSE；False 时不返回有效 LSE。</td>
+      <td>BOOL</td>
       <td>-</td>
-      <td><code>True</code> 时返回有效 LSE；<code>False</code> 时不返回有效 LSE。</td>
+      <td>-</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>attention_out</code></td>
-      <td style="white-space: nowrap;">输出</td>
+      <td>attention_out</td>
+      <td>输出</td>
       <td>Attention 输出。</td>
-      <td style="white-space: nowrap;"><code>BFLOAT16</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>(T1,N1,D_v)</code></td>
       <td>-</td>
+      <td>BFLOAT16</td>
+      <td>ND</td>
+      <td>(T1,N1,D_v)</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap;"><code>softmax_lse</code></td>
-      <td style="white-space: nowrap;">输出</td>
+      <td>softmax_lse</td>
+      <td>输出</td>
       <td>softmax log-sum-exp。</td>
-      <td style="white-space: nowrap;"><code>FLOAT32</code></td>
-      <td style="white-space: nowrap;">ND</td>
-      <td><code>return_softmax_lse=True:(N1,T1); return_softmax_lse=False:()</code></td>
       <td>-</td>
+      <td>FLOAT32</td>
+      <td>ND</td>
+      <td>return_softmax_lse=True:(N1,T1); return_softmax_lse=False:()</td>
     </tr>
   </tbody>
 </table>
@@ -562,7 +563,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
   <tr>
     <td rowspan="2">Attention Mask参数组</td>
     <td>atten_mask</td>
-    <td>INPUT</td>
+    <td>INPUT(OPTIONAL)</td>
     <td>Tensor</td>
   </tr>
   <tr>
@@ -637,7 +638,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 存在性约束
 
-  - `query`、`key`、`value`、`q_descale`、`k_descale`、`v_descale`、`p_scale`、`sparse_indices`、`sparse_seq_len`、`atten_mask` 为必选输入。
+  - `query`、`key`、`value`、`q_descale`、`k_descale`、`v_descale`、`p_scale`、`sparse_indices`、`sparse_seq_len` 为必选输入；`atten_mask` 在 `mask_mode=3` 时为必选输入，在 `mask_mode=0` 时可不传或传空指针。
   - 当前算子仅支持 FP8 全量化、4D PA_BNSD KV Cache 输入和 BF16 attention_out 输出；不支持非量化、伪量化、后量化输出、PSE、ROPE、公共前缀、左 padding、dropout、tensorlist KV 输入、1D 组合 KV 存储等扩展场景。
 
 - 一致性约束
@@ -762,12 +763,13 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 - 单参数约束
 
   - `atten_mask` 数据类型仅支持 `UINT8`，数据格式仅支持 ND。
-  - `atten_mask` 必须为二维 Tensor。
+  - `mask_mode=3` 时，`atten_mask` 必须为二维 Tensor。
   - `mask_mode` 当前执行路径仅支持 0 和 3：0 表示无 mask，3 表示 causal mask。
 
 - 存在性约束
 
-  - `atten_mask` 为必选输入。即使 `mask_mode=0`，也需要传入满足 dtype 和维度要求的 Tensor。
+  - `mask_mode=0` 时，`atten_mask` 为可选输入，可以不传或传入空指针。
+  - `mask_mode=3` 时，`atten_mask` 为必选输入。
 
 - 一致性约束
 

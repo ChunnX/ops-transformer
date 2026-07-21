@@ -210,6 +210,22 @@ TEST_F(QuantBlockSparseAttnTilingArch35, tiling_mask_mode_0)
     ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeValidAttrs(128, 128, 0)), true);
 }
 
+TEST_F(QuantBlockSparseAttnTilingArch35, tiling_mask_mode_0_without_atten_mask)
+{
+    auto inputs = MakeValidInputs();
+    inputs[14] = EmptyInput;
+
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs(128, 128, 0)), true);
+}
+
+TEST_F(QuantBlockSparseAttnTilingArch35, tiling_mask_mode_3_without_atten_mask)
+{
+    auto inputs = MakeValidInputs();
+    inputs[14] = EmptyInput;
+
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs(128, 128, 3)), false);
+}
+
 TEST_F(QuantBlockSparseAttnTilingArch35, tiling_invalid_query_dtype)
 {
     auto inputs = MakeValidInputs();
