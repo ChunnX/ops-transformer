@@ -519,7 +519,8 @@ ge::graphStatus QuantChecker::CheckLayoutConstraint(const QfaTilingInfo &qfaInfo
     OP_CHECK_IF(std::find(config.supportedKvLayouts.begin(), config.supportedKvLayouts.end(),
                           qfaInfo.kvLayout) == config.supportedKvLayouts.end(),
                 OP_LOGE(qfaInfo.opName,
-                    "When quant_mode is MxFP8 and layout_q is %s, layout_kv must be in {TND, PA_BNBD, PA_NZ}, but got %s",
+                    "When quant_mode is MxFP8 and layout_q is %s, "
+                    "layout_kv must be in {TND, PA_BNBD, PA_NZ}, but got %s",
                     qLayoutStr.c_str(), QfaLayoutToSerialString(qfaInfo.kvLayout).c_str()),
                 return ge::GRAPH_FAILED);
 

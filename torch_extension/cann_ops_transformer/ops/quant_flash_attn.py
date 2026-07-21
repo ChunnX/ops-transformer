@@ -158,7 +158,8 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             else:
                 torch._check(
                     layout_q != "TND",
-                    lambda: f"When the layout of output is BSND, the layout of query must be BNSD or BSND, but got {layout_q}",
+                    lambda: f"When the layout of output is BSND, the layout of query "
+                            f"must be BNSD or BSND, but got {layout_q}",
                 )
                 attention_out_size = (b_size, s_size, n_size, d_size)
 
