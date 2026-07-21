@@ -743,9 +743,9 @@ def sparse_flash_mla_softmax_l1_norm(
             cur_k_length = constInfo.k_length
             if has_topk_length:
                 if IS_TND == 1:
-                    cur_k_length = min(cur_k_length, tensor_topk_length[runInfo.t1_offset + runInfo.s1_idx])
+                    cur_k_length = min(cur_k_length, tensor_topk_length[runInfo.t1_offset + runInfo.s1_idx, 0])
                 else:
-                    cur_k_length = min(cur_k_length, tensor_topk_length[runInfo.batch_id * constInfo.s1_size + runInfo.s1_idx])
+                    cur_k_length = min(cur_k_length, tensor_topk_length[runInfo.batch_id, runInfo.s1_idx, 0])
             if SPARSE_MODE == 0:
                 s2_real_size = pl.min(cur_k_length, current_s2_size)
             else:
