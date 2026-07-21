@@ -32,7 +32,10 @@ C1_TO_V1_P_FLAGS = (4, 5)
 C1_TO_V1_SY_FLAGS = (6, 7)
 V1_TO_C2_FLAGS = (8, 9)
 C2_TO_V2_FLAGS = (10, 11)
-V1_PSY_READY_FLAGS = (12, 13)
+# TileLang's A3 wait intrinsic cannot encode the official mode-1 wait template,
+# so use an explicit AIV -> AIC -> AIV rendezvous on otherwise-unused flags.
+V1_PAIR_READY_FLAG = 12
+V1_PAIR_ACK_FLAG = 13
 
 DQUERY = 512
 DQUERY_INDEX = 128
@@ -225,6 +228,8 @@ def tilelang_grad_kl_loss_single_kernel(
     s1_block = BLOCK_M
     n_block = block_n
     k_block = BLOCK_K
+    p_rows_per_chunk = min(N1, 64)
+    p_row_chunk_count = ceil_div(N1, p_rows_per_chunk)
     s1_tile_num = ceil_div(S1, s1_block)
     n_num = K // n_block
     block_num = B * s1_tile_num * n_num
@@ -608,21 +613,50 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_flag("mte2", "v", 1)
                         T.tile.mul(v1_p_bmm1, v1_p_bmm1, scale_value)
                         T.pipe_barrier("v")
-                        T.tile.row_expand_sub_experiment(
-                            v1_p_bmm1,
-                            v1_p_bmm1,
-                            v1_p_max,
-                            v1_p_tmp,
-                        )
+                        # mask repeat is uint8_t.  A 128x128 FP32 tile would
+                        # lower to repeat=256 and wrap to zero, so process at
+                        # most 64 rows per row-expand instruction.
+                        for p_row_chunk in T.serial(p_row_chunk_count):
+                            p_row_start = p_row_chunk * p_rows_per_chunk
+                            T.tile.row_expand_sub_experiment(
+                                v1_p_bmm1[
+                                    p_row_start:p_row_start + p_rows_per_chunk,
+                                    0:n_block,
+                                ],
+                                v1_p_bmm1[
+                                    p_row_start:p_row_start + p_rows_per_chunk,
+                                    0:n_block,
+                                ],
+                                v1_p_max[
+                                    p_row_start:p_row_start + p_rows_per_chunk
+                                ],
+                                v1_p_tmp[
+                                    p_row_start:p_row_start + p_rows_per_chunk,
+                                    0:8,
+                                ],
+                            )
                         T.pipe_barrier("v")
                         T.tile.exp(v1_p_bmm1, v1_p_bmm1)
                         T.pipe_barrier("v")
-                        T.tile.row_expand_div_experiment(
-                            v1_p_bmm1,
-                            v1_p_bmm1,
-                            v1_p_sum,
-                            v1_p_tmp,
-                        )
+                        for p_row_chunk in T.serial(p_row_chunk_count):
+                            p_row_start = p_row_chunk * p_rows_per_chunk
+                            T.tile.row_expand_div_experiment(
+                                v1_p_bmm1[
+                                    p_row_start:p_row_start + p_rows_per_chunk,
+                                    0:n_block,
+                                ],
+                                v1_p_bmm1[
+                                    p_row_start:p_row_start + p_rows_per_chunk,
+                                    0:n_block,
+                                ],
+                                v1_p_sum[
+                                    p_row_start:p_row_start + p_rows_per_chunk
+                                ],
+                                v1_p_tmp[
+                                    p_row_start:p_row_start + p_rows_per_chunk,
+                                    0:8,
+                                ],
+                            )
                         T.pipe_barrier("v")
                         T.reduce_sum(v1_p_bmm1, v1_p_out, 0)
                         T.pipe_barrier("v")
@@ -729,28 +763,17 @@ def tilelang_grad_kl_loss_single_kernel(
                                      n_idx * n_block:(n_idx + 1) * n_block],
                         )
 
-            if task_slot == 0:
-                T.set_cross_flag("MTE3", V1_PSY_READY_FLAGS[0], mode=1)
-                T.wait_cross_flag(V1_PSY_READY_FLAGS[0])
-            else:
-                T.set_cross_flag("MTE3", V1_PSY_READY_FLAGS[1], mode=1)
-                T.wait_cross_flag(V1_PSY_READY_FLAGS[1])
+            # AIV0 computes P while AIV1 computes SY.  Publish both MTE3
+            # streams to the AIC relay, then wait until it acknowledges that
+            # both GM results are visible.
+            T.set_cross_flag("MTE3", V1_PAIR_READY_FLAG)
+            T.wait_cross_flag(V1_PAIR_ACK_FLAG)
 
     @T.macro
-    def psy_pair_relay(task_slot):
-        """Cube relay for the two AIV-produced P/SY streams.
-
-        Cross-core flags are directional.  Mirroring arch22's C-side relay
-        prevents a Vector consumer from observing only one of the P/SY GM
-        writes when the two AIVs finish at different times.
-        """
+    def vector_pair_relay():
         with T.Scope("C"):
-            T.wait_cross_flag(V1_PSY_READY_FLAGS[0])
-            T.wait_cross_flag(V1_PSY_READY_FLAGS[1])
-            if task_slot == 0:
-                T.set_cross_flag("FIX", V1_PSY_READY_FLAGS[0])
-            else:
-                T.set_cross_flag("FIX", V1_PSY_READY_FLAGS[1])
+            T.wait_cross_flag(V1_PAIR_READY_FLAG)
+            T.set_cross_flag("MTE2", V1_PAIR_ACK_FLAG)
 
     @T.macro
     def vector1_backward_task(
@@ -2024,6 +2047,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 task_prev_slot,
                                 vid,
                             )
+                            vector_pair_relay()
                             vector1_backward_task(
                                 Weights,
                                 bmm2Res,
