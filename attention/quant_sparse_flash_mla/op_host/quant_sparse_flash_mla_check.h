@@ -222,7 +222,7 @@ const std::map<QSMLALayout, size_t> QSMLA_LAYOUT_DIM_MAP = {
 
 std::string QSMLADataTypeToSerialString(ge::DataType type);
 std::string QSMLALayoutToSerialString(QSMLALayout layout);
-std::string MQSMLAGetShapeStr(gert::Shape shape);
+std::string QSMLAGetShapeStr(gert::Shape shape);
 
 // -----------算子Tiling入参信息解析及Check类---------------
 
@@ -491,7 +491,7 @@ private:
     ge::graphStatus CheckSingleParaTopkValueMode() const;
 
     ge::graphStatus CheckSinglePara() const;
-    ge::graphStatus CheckParaExistenceAntiquant() const;
+    ge::graphStatus CheckParaExistenceKv() const;
     ge::graphStatus CheckCmpSparseIndicesExistence();
     ge::graphStatus CheckParaExistence();
     ge::graphStatus CheckCmpRatioExistence();
@@ -530,12 +530,11 @@ private:
     ge::graphStatus CheckN2Consistency() const;
     ge::graphStatus CheckBConsistency() const;
     ge::graphStatus CheckFeatureWinKV() const;
-    ge::graphStatus CheckFeatureAntiquantShape() const;
-    ge::graphStatus CheckFeatureAntiquantLayout() const;
-    ge::graphStatus CheckFeatureAntiquantDtype() const;
+    ge::graphStatus CheckFeatureShape() const;
+    ge::graphStatus CheckFeatureLayout() const;
+    ge::graphStatus CheckFeatureDtype() const;
     ge::graphStatus CheckFeatureQuantModeAndDtype() const;
-    ge::graphStatus CheckFeatureAntiquantPa() const;
-    ge::graphStatus CheckFeatureAntiquant() const;
+    ge::graphStatus CheckFeaturePa() const;
     ge::graphStatus CheckFeature() const;
     ge::graphStatus CheckKvContiguous() const;
 
