@@ -90,7 +90,7 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 }
 
 int main() {
-  // 1. （固定写法）device/context/stream初始化，参考AscendCL对外接口列表
+  // 1. （固定写法）device/context/stream初始化，参考acl API手册
   // 根据自己的实际device填写deviceId
   int32_t deviceId = 0;
   aclrtContext context;
