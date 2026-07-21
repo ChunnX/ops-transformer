@@ -530,13 +530,25 @@ __aicore__ inline void DLITMatmulService<DLIT>::FixOutAtomicAdd(struct MMParam &
                                                                 uint8_t l0cPingPongFlag)
 {
     if (mmParams.atomicFlag) {
+        if constexpr (DLIT::deterministic) {
+            // A5 requires the DMA atomic state to be explicitly reset before
+            // enabling an atomic Fixpipe write.
+            AscendC::DisableDmaAtomic();
+        }
         AscendC::SetAtomicAdd<MM12_OUT_T>();
     }
 
     FixCopyOut(mmParams, resGm, l0cTensor, l0cPingPongFlag);
 
     if (mmParams.atomicFlag) {
-        SetAtomicNone();
+        if constexpr (DLIT::deterministic) {
+            // Fixpipe is asynchronous. Keep atomic mode enabled until the
+            // atomic Fixpipe write has completed.
+            AscendC::PipeBarrier<PIPE_FIX>();
+            AscendC::DisableDmaAtomic();
+        } else {
+            SetAtomicNone();
+        }
     }
 }
 
