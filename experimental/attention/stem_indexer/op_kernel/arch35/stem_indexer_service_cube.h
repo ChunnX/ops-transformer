@@ -65,6 +65,7 @@ public:
     static constexpr uint64_t S2_BASIC_BLOCK_L0 = 32;
 
     static constexpr uint64_t BF16_BLOCK_CUBE = 16;
+    static constexpr uint32_t PIPE_M_BARRIER_THRESHOLD = 10U;
     static constexpr FixpipeConfig SI_CFG_ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};   // ROW_MAJOR: 使能NZ2ND，输出数据格式为ND格式; true: 用于用户指定目的地址的位置是否是UB
 
     static constexpr uint64_t QUERY_BUFFER_OFFSET = M_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1;
@@ -154,7 +155,6 @@ template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInfo) {
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + runInfo.loop % 2);
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + runInfo.loop % 2 + SICommon::AIV0_AIV1_OFFSET);
-    uint64_t s2GmBaseOffset = runInfo.s2Idx * constInfo_.s2BaseSize;
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
     uint64_t kProcessSize = constInfo_.headDim;
@@ -233,7 +233,7 @@ __aicore__ inline void SIMatmul<SIT>::KeyNd2Nz(uint64_t s2L1RealSize, uint64_t s
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
     DataCopy(keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET],
-             keyGm_[runInfo.tensorKeyOffset + s2GmOffset * 2048 + kGmOffset], nd2nzPara);  
+             keyGm_[runInfo.tensorKeyOffset + s2GmOffset * constInfo_.headDim + kGmOffset], nd2nzPara);
 }
 
 // batch, n2, g, s1, d
@@ -329,10 +329,11 @@ __aicore__ inline void SIMatmul<SIT>::ComuteL0c(uint64_t s1gOffset, uint64_t s2O
         mmadParams.cmatrixInitVal = false;
     }
     mmadParams.cmatrixSource = false;
-    uint64_t offset = (l0cBufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET + s2Offset * CeilAlign(s1gL0RealSize, BLOCK_CUBE) + s1gOffset * S2_BASIC_BLOCK;
+    uint64_t offset = (l0cBufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET +
+                      s2Offset * static_cast<uint64_t>(mmadParams.m) + s1gOffset * S2_BASIC_BLOCK;
     Mmad(cL0_[offset], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0A_BUFFER_OFFSET],
          keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0B_BUFFER_OFFSET], mmadParams);
-    if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
+    if ((mmadParams.m / BLOCK_CUBE) * (mmadParams.n / BLOCK_CUBE) < PIPE_M_BARRIER_THRESHOLD) {
         PipeBarrier<PIPE_M>();
     }
 }
@@ -350,7 +351,8 @@ __aicore__ inline void SIMatmul<SIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOf
     uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 32B对齐
     fixpipeParams.nSize = nSize;
     fixpipeParams.mSize = mSize;
-    fixpipeParams.srcStride = ((fixpipeParams.mSize + 15) / 16) * 16;
+    fixpipeParams.srcStride =
+        ((fixpipeParams.mSize + BLOCK_CUBE - 1U) / BLOCK_CUBE) * BLOCK_CUBE;
     fixpipeParams.dstStride = constInfo_.s2BaseSize;
     fixpipeParams.dualDstCtl = 1;
     fixpipeParams.params.ndNum = 1;

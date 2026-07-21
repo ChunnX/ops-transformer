@@ -49,13 +49,6 @@ public:
     static constexpr uint32_t REUSE_SCORE_OUT_OFFSET =
         REUSE_SCORE_OUT_OFFSET_U32 * sizeof(uint32_t) / sizeof(SCORE_T);
 
-
-    __aicore__ inline void Init(uint32_t topK, uint32_t trunkLen)
-    {
-        this->topK = topK;
-        this->trunkLen = trunkLen;
-    }
-
     __aicore__ inline void InitBuffers(
         const LocalTensor<uint32_t>& reuseMm1ResLocal,
         const LocalTensor<uint32_t>& reuseGlobalIndexLocal)
@@ -92,7 +85,7 @@ public:
         const uint32_t offset = mrgRowStride;
         const uint32_t computeRowNum = MAX_LOOP_M;
         const uint32_t topkAlign = 256U;
-        const uint32_t tmpIdxStride16 = topkAlign + trunkLen;
+        const uint32_t tmpIdxStride16 = topkAlign + SICommon::TRUNK_LEN_256;
         InitBuffers(reuseMm1ResLocal, reuseGlobalIndexLocal);
 
         LocalTensor<SCORE_T> inputValueLocal = mrgValueLocal[inputOffset];
@@ -183,7 +176,7 @@ public:
                         tmpIdxLocal16[m * tmpIdxStride16],
                         hisIndexLocal[0][mInnerIdx * topkAlign],
                         topkNum,
-                        loopIdx * trunkLen - topkAlign,
+                        loopIdx * SICommon::TRUNK_LEN_256 - topkAlign,
                         validLen);
                 } else {
                     SITopkb32gather::SiTopKGatherVF(
@@ -193,7 +186,7 @@ public:
                         tmpIndexLocal[m * topkAlign],
                         hisIndexLocal[0][mInnerIdx * topkAlign],
                         topkNum,
-                        loopIdx * trunkLen - topkAlign,
+                        loopIdx * SICommon::TRUNK_LEN_256 - topkAlign,
                         validLen);
                 }
                 PipeBarrier<PIPE_V>();
@@ -215,8 +208,6 @@ private:
     LocalTensor<uint32_t> tmpIndexLocal;    // 每行tmpIdx MAX_LOOP_M * Align(topK,256) * 4B
     LocalTensor<uint32_t> indicesOutLocal;  // 本轮gather产生的TopK索引 MAX_LOOP_M * 256 * 4B
     LocalTensor<SCORE_T> hisValueLocal;     // 本轮TopK value MAX_LOOP_M * 256 * sizeof(SCORE_T)
-    uint32_t topK = 512;
-    uint32_t trunkLen = 8192;
 };
 }
 #endif
