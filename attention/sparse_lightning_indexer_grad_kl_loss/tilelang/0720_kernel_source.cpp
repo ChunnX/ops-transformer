@@ -79,12 +79,12 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto key_chunk_ub = ascend_ub.GetWithOffset<half>(16384, 1536);
   auto ki_chunk_ub = ascend_ub.GetWithOffset<half>(4096, 34304);
   auto kr_chunk_ub = ascend_ub.GetWithOffset<half>(4096, 42496);
-  auto tmp_ub = ascend_ub.GetWithOffset<uint8_t>(32768, 89600);
+  auto tmp_ub = ascend_ub.GetWithOffset<uint8_t>(32768, 89344);
   auto Q_L1_0 = ascend_l1.GetWithOffset<half>(16384, 0);
   auto GK_L1_0 = ascend_l1.GetWithOffset<half>(8192, 32768);
   auto C_L0C = ascend_l0c.GetWithOffset<float>(8192, 0);
-  auto Q_L1_1 = ascend_l1.GetWithOffset<half>(16384, 49152);
-  auto GK_L1_1 = ascend_l1.GetWithOffset<half>(8192, 81920);
+  auto Q_L1_1 = ascend_l1.GetWithOffset<half>(16384, 65536);
+  auto GK_L1_1 = ascend_l1.GetWithOffset<half>(8192, 49152);
   auto QI_L1 = ascend_l1.GetWithOffset<half>(8192, 98304);
   auto GKI_L1 = ascend_l1.GetWithOffset<half>(8192, 114688);
   auto C2_L0C = ascend_l0c.GetWithOffset<float>(4096, 32768);
@@ -94,7 +94,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto sm_max_ub = ascend_ub.GetWithOffset<float>(128, 83712);
   auto sm_sum_ub = ascend_ub.GetWithOffset<float>(128, 84224);
   auto eps_sm_ub = ascend_ub.GetWithOffset<float>(128, 84736);
-  auto p_reduced_part_ub = ascend_ub.GetWithOffset<float>(64, 89344);
+  auto p_reduced_part_ub = ascend_ub.GetWithOffset<float>(64, 122112);
   auto weight_all_half_ub = ascend_ub.GetWithOffset<half>(64, 122368);
   auto weight_all_ub = ascend_ub.GetWithOffset<float>(64, 122496);
   auto weight_2d_ub = ascend_ub.GetWithOffset<float>(4096, 122752);
@@ -552,7 +552,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
         if ASCEND_IS_AIC {
           AscendC::CrossCoreWaitFlag(8);
           AscendC::SetFlag<AscendC::HardEvent::FIX_M>(7);
-          AscendC::SetFlag<AscendC::HardEvent::FIX_M>(9);
+          AscendC::SetFlag<AscendC::HardEvent::FIX_M>(6);
           tl::ascend::copy_gm_to_l1<half, 64, 128>(QI_L1_dk[0], QueryIndex[((pipeline_step * 8192) - 8192)], 128, 64, 128, true);
           for (int32_t n_idx_k_3 = 0; n_idx_k_3 < 32; ++n_idx_k_3) {
             tl::ascend::copy_gm_to_l1<half, 64, 64>(RG_L1[0], reluGradRes[(((pipeline_step * 131072) + (n_idx_k_3 * 64)) - 131072)], 2048, 64, 64, true);
@@ -571,15 +571,15 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
             tl::ascend::copy_l1_to_l0b<half, 64, 128, false>(QI_L0B_dk[0], QI_L1_dk[0], 64, 128);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(10);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(10);
-            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(9);
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(6);
             tl::ascend::mma<half, float, 64, 128>(RG_L0A_dk[0],QI_L0B_dk[0],DK_L0C[0], (bool)1, 64);
-            AscendC::SetFlag<AscendC::HardEvent::M_FIX>(9);
-            AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(9);
+            AscendC::SetFlag<AscendC::HardEvent::M_FIX>(6);
+            AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(6);
             tl::ascend::copy_l0c_to_gm<float, float, layout::RowMajor, 64, 128, 0>(dk_matmul_partial[(((pipeline_step * 262144) + (n_idx_k_3 * 8192)) - 262144)], DK_L0C[0], 128, 64, 128);
-            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(9);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(6);
           }
           AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(7);
-          AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(9);
+          AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(6);
           AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(10);
         }
       }
