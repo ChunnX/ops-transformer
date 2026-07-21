@@ -96,8 +96,8 @@ int main() {
 
   // 2. 构造输入与输出，需要根据API的接口自定义构造
   int64_t B = 1;
-  int64_t H = 32;
-  int64_t N = 128;
+  int64_t H = 1;
+  int64_t N = 16;
   int64_t M = 128;
   int64_t K = 128;
   int64_t D = 32;
@@ -106,14 +106,14 @@ int main() {
   int64_t q_size = B * H * N * M * D;
   int64_t kv_size = B * H * N * K * D;
   int64_t k1v1_size = B * H * K * M * D;
-  int64_t atten_mask_size = B * H * N * M * K;
+  int64_t atten_mask_size = B * 1 * N * 1 * K;
 
   std::vector<int64_t> qShape = {B, H, N, M, D};
   std::vector<int64_t> kShape = {B, H, N, K, D};
   std::vector<int64_t> k1Shape = {B, H, K, M, D};
   std::vector<int64_t> vShape = {B, H, N, K, D};
   std::vector<int64_t> v1Shape = {B, H, K, M, D};
-  std::vector<int64_t> attenmaskShape = {B, H, N, M, K};
+  std::vector<int64_t> attenmaskShape = {B, 1, N, 1, K};
   std::vector<int64_t> attentionOutShape = {B, H, N, M, D};
   std::vector<int64_t> softmaxMaxShape = {B, H, N, M, 8};
   std::vector<int64_t> softmaxSumShape = {B, H, N, M, 8};
