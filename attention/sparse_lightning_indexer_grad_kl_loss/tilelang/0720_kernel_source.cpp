@@ -92,7 +92,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto QI_L1 = ascend_l1.GetWithOffset<half>(8192, 98304);
   auto GKI_L1 = ascend_l1.GetWithOffset<half>(8192, 114688);
   auto C2_L0A = ascend_l0a.GetWithOffset<half>(8192, 0);
-  auto C2_L0B = ascend_l0b.GetWithOffset<half>(8192, 32768);
+  auto C2_L0B = ascend_l0b.GetWithOffset<half>(8192, 0);
   auto C2_L0C = ascend_l0c.GetWithOffset<float>(4096, 65536);
   auto p_reduced_tmp_ub = ascend_ub.GetWithOffset<float>(64, 50688);
   auto re_tmp_ub = ascend_ub.GetWithOffset<float>(1024, 85248);
@@ -143,7 +143,7 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto DQ_L0C = ascend_l0c.GetWithOffset<float>(8192, 32768);
   auto GKI2_L1 = ascend_l1.GetWithOffset<half>(8192, 155648);
   auto DQ_L0A = ascend_l0a.GetWithOffset<half>(4096, 0);
-  auto DQ_L0B = ascend_l0b.GetWithOffset<half>(8192, 49152);
+  auto DQ_L0B = ascend_l0b.GetWithOffset<half>(8192, 0);
   auto DK_L0A = ascend_l0a.GetWithOffset<half>(4096, 0);
   auto DK_L0B = ascend_l0b.GetWithOffset<half>(8192, 0);
   auto DK_L0C = ascend_l0c.GetWithOffset<float>(8192, 81920);
