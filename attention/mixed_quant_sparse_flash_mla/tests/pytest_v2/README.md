@@ -102,6 +102,7 @@ golden、PT save/load、process 和 `check_result` 均保留；一致性入口�
 | `batch/consistency/metadata_coverage.py` | FA/FD展开与PR floor/需求ceil公式双轨报告 |
 | `batch/consistency/reporting.py` | 原PT来源、shape/dtype/device/byte/digest/sample输入摘要 |
 | `batch/consistency/offline.py` | 模式1-4 derived golden scope与PT round-trip |
+| `batch/consistency/relation_manifest.py` | versioned baseline/derived TokenOrigin关系、内容指纹、预检与覆盖清单 |
 | 其余 `batch/consistency/*.py` | adapter、schema、layout、compare、flow和命名配置 |
 
 ```bash
@@ -119,3 +120,5 @@ bash test_run.sh consistency_prepare \
 当前本机 runtime 会在第一条 NPU 操作时拒绝 level 3；必须等支持 level 3 的
 runtime/custom包组合后，才能验收FD与主算子一致性。临时metadata-only probe已从正式`batch/`
 删除；`consistency_prepare`只验证CPU输入/golden/PT链，不会声称NPU PASS。
+每个baseline和算子汇总目录还会输出relation manifest；其中PASS只代表TokenOrigin边界、scope、
+语义oracle、PT内容指纹及mode/layout/mask/S2覆盖预检通过。

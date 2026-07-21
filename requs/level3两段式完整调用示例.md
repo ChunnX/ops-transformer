@@ -174,6 +174,10 @@ CPU golden回答的是“一次具体算子输入的数学预期”；batch cons
 离线验收表额外放了 `consistency_modes/split_groups/...` 列，只供
 `consistency_prepare` 读取；原 golden parser忽略这些辅助列，正式 operator API/PT schema不变。
 
+2026-07-21新增的relation manifest也是PT旁路JSON artifact，不向operator API或原PT schema增加
+mode/output-seed字段。它把自动派生后的真实关系记录为`baseline_case_id + TokenOrigin spans`，
+并绑定baseline/derived输入内容digest，供预检、复现和未来追加NPU结果。
+
 ## 6. 不用 NPU先验证用例链
 
 SMLA：
@@ -195,8 +199,9 @@ bash test_run.sh consistency_prepare \
 ```
 
 它验证 Excel解析、原 CPU golden、baseline PT save/reload、模式1-4 transform、actual-input oracle、
-origin-mapped expected output、derived PT save/reload、schema与digest。它不调用 NPU，因此报告明确写
-“CPU-only；不能声称 batch consistency PASS”。
+origin-mapped expected output、derived PT save/reload、schema与digest；同时生成version 1 relation
+manifest，检查origin边界/重复、comparison scope、span digest和输入关系覆盖。它不调用 NPU，
+因此报告明确写“CPU-only；不能声称 batch consistency PASS”。
 
 ## 7. 当前环境预期
 

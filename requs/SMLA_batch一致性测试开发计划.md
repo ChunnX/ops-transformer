@@ -1,6 +1,6 @@
 # SMLA/MQSMLA batch 一致性测试开发计划
 
-> 版本：2026-07-20 检视意见二推进版
+> 版本：2026-07-21 检视意见三推进版
 > 范围：`sparse_flash_mla`（SMLA）与 `mixed_quant_sparse_flash_mla`（MQSMLA）
 > 第一需求源：`docs/SMLA batch一致性.md`
 > 需求、冲突、文件级开发日志与逐项检视答复：`requs.md`
@@ -21,7 +21,9 @@
 6. 双算子已有正式 CPU-only `consistency_prepare`：真实跑通 Excel、原 golden、baseline PT、
    模式1-4、派生PT round-trip和详细输入报告；
 7. 公共实现已收拢到各自 `batch/consistency/` 子包，临时 metadata-only probe 已删除，镜像
-   一致性由单测门禁。
+   一致性由单测门禁；
+8. 借鉴外部aclnnfuzz方案的“显式关系+预检+覆盖诊断”，双算子离线链新增relation manifest
+   v1；保留TokenOrigin，不引入seed重生成平行框架。
 
 但“代码完成”不等于“特性验收完成”。当前本机 torch_npu/CANN 在设置 level 3 后的第一条
 NPU 操作处拒绝该等级；本地算子源码快照也没有 PR8737 的完整改动。因此当前只能声明：
@@ -45,6 +47,7 @@ Excel -> CPU golden -> baseline/derived PT：双算子离线门禁通过
 | 3 | STC 001-027 Excel | 验收 case 草案；错误数据需修订，不能覆盖主需求 |
 | 4 | `docs/batch一致性测试框架.md`、会议纪要 | 开发方法与历史理解 |
 | 5 | metadata 解析等补充文档 | 旧布局与设计背景 |
+| 6 | `data/`外部aclnnfuzz方案 | 关系声明、预检和覆盖方法参考；不决定算子语义 |
 
 冲突时必须在 `SMLA_MQSMLA需求冲突与对齐清单.md` 登记。无法通过实际输入证明数学等价的派生 case 返回
 `INVALID_TRANSFORM`，不能包装成数值 `FAIL`。
@@ -98,6 +101,22 @@ Excel -> CPU golden -> baseline/derived PT：双算子离线门禁通过
 6. GLM担心 visible S2 不符合PR；PR head实际正是 `actOriS2Size+actCmpS2Size`。真正冲突是
    C++整数floor与需求/analyzer的ceil，现已双轨报告。
 
+### 3.4 2026-07-21 检视意见三联合审议
+
+本轮三模型围绕`requs/data`外部方案再次独立审议：GLM负责架构取舍，DeepSeek负责脚本安全与
+正确性反审，Qwen负责需求映射和覆盖维度。共同有效意见是：
+
+- 不导入`tensor_input_seed_info`随机切片生成器，继续从同一baseline PT派生完整等价输入；
+- 将外部`output_seed`“关系标签”思想升级为versioned TokenOrigin relation manifest；
+- 增加origin边界/重复/scope/oracle/digest预检和min/mid/max来源位置诊断；
+- 覆盖清单区分CPU输入关系与真实kernel metadata，不能因离线cell存在就标NPU PASS；
+- manifest绑定去除临时来源路径后的输入内容SHA256，来源路径另行保留。
+
+主审纠正了模型的三处误读：四模式都是baseline/derived多次完整调用，不能直接映射成外部
+level0/1/2；`output_seed`不是输出数值公式；同位宽unsigned读取可用于raw-bit equality，外部
+脚本的真实问题是`eval`、6元素输入被`len==5`跳过、边界/schema/分组键不足。完整审计见
+`data/README.md`。
+
 ## 4. pytest_v2 总体架构
 
 ```text
@@ -106,6 +125,7 @@ Excel -> CPU golden -> baseline/derived PT：双算子离线门禁通过
     -> 原 PT load
     -> CaseAdapter + schema + mode transform
     -> actual-input semantic oracle
+    -> relation manifest（TokenOrigin spans/content digest/config precheck/coverage）
     -> DeterministicLevelGuard(level=3)
     -> operator-owned metadata op
     -> operator-owned main op（消费同一个 metadata）
@@ -123,7 +143,8 @@ process 各自留在算子目录。这样外部检视者可从本算子的 `test
 
 CPU-only分支在 mode transform 后不进入 level guard/NPU，而是按`TokenOrigin`物化比较范围的
 expected output，保存并重载derived PT。模式4额外token明确记为`unmapped_tokens`，不冒充完整
-CPU golden。
+CPU golden。每个baseline和算子汇总目录同时保存relation manifest；其中PASS只代表输入关系
+预检，不代表NPU或metadata核覆盖。
 
 ## 5. 模式与正式配置
 
@@ -297,11 +318,12 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 | P2.10 | 双算子Excel->golden->PT离线预检 | 完成；各1 baseline + 6 derived round-trip |
 | P2.11 | 白盒原始输入摘要与floor/ceil公式审计 | 完成 |
 | P2.12 | pytest_v2目录整理与双树镜像门禁 | 完成 |
+| P2.13 | 外部aclnnfuzz方案评估、relation manifest v1与覆盖清单 | 完成（2026-07-21） |
 | P3.1 | 支持 level 3 的 runtime/custom/operator 版本对齐 | 阻塞 |
 | P3.2 | SMLA eager 模式 1-4 真实 NPU | 待 P3.1 |
 | P3.3 | MQSMLA eager 模式 1-4 真实 NPU | 待 P3.1 |
-| P3.4 | STC 001-027 versioned manifest 与修订数据 | 待实现 |
-| P3.5 | 真实 metadata Level-1/2 覆盖矩阵 | 待 P3.1/P3.4 |
+| P3.4 | STC 001-027 versioned manifest 与修订数据 | relation schema/自动派生manifest完成；STC source entries待owner修订 |
+| P3.5 | 覆盖矩阵 | CPU relation inventory完成；真实metadata Level-1/2待P3.1/P3.4 |
 | P4.1 | SMLA/MQSMLA graph executor + exact capture | 待实现 |
 | P4.2 | ACLNN STC 021 | 待实现 |
 | P4.3 | N=3/N=125、TND、PA_BBND nightly | 待 P3/P4 |
@@ -310,10 +332,11 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 
 | 层级 | 内容 | 当前结果 |
 | --- | --- | --- |
-| SMLA v2 CPU | modes 1-4、双格式、oracle、MD5、metadata、report/offline/mirror | `24 passed`（2026-07-20实测） |
-| MQSMLA v2 CPU | 与 SMLA 同源门禁 | `24 passed`（2026-07-20实测） |
-| SMLA离线prepare | Excel/原golden/baseline+derived PT | 1 baseline + 6 derived，全部round-trip一致 |
-| MQSMLA离线prepare | Excel/原量化golden/baseline+derived PT | 1 baseline + 6 derived，全部round-trip一致 |
+| SMLA v2 CPU | modes 1-4、双格式、oracle、MD5、metadata、report/offline/relation/mirror | `26 passed`（2026-07-21实测） |
+| MQSMLA v2 CPU | 与 SMLA 同源门禁 | `26 passed`（2026-07-21实测） |
+| SMLA离线prepare | Excel/原golden/baseline+derived PT/relation manifest | 1 baseline + 6 derived，round-trip与6条relation预检通过 |
+| MQSMLA离线prepare | Excel/原量化golden/baseline+derived PT/relation manifest | 1 baseline + 6 derived，round-trip与6条relation预检通过 |
+| CPU relation coverage gaps | mode/layout/mask/S2/source landmarks | 四mode齐；SMLA缺TND/PA/位置mask，MQ缺TND/BSND KV/no-mask，均单列missing |
 | SMLA opt-in 入口默认关闭 | 四模式不触发 NPU | `4 skipped` |
 | MQSMLA opt-in 入口默认关闭 | 四模式不触发 NPU | `4 skipped` |
 | shell | 两份 `test_run.sh` | `bash -n` 通过 |
@@ -329,7 +352,7 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 1. 由需求/算子/STC owner逐项处理`SMLA_MQSMLA需求冲突与对齐清单.md`；
 2. 先确认PR floor/需求ceil与`S2<32`zero edge，再冻结白盒预期；
 3. 修STC 014/015、018-020、024-027，并补齐001-020公共字段；
-4. 选择versioned JSON manifest或PT namespace，把001-027变为机器可读关系；
+4. 基于已冻结的relation manifest v1补STC source entries，把001-027变为机器可读关系；
 5. 给MQ CPU golden补LSE后，再开启`return_softmax_lse=True`一致性验收；
 6. 为TND/PA/position mask各补一个小shape离线workbook case。
 
@@ -351,22 +374,35 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 
 ### D. 冻结 STC 数据契约
 
-优先选择 versioned JSON manifest；若 PT 已有正式 namespace 机制也可直接写 PT，但两者二选一：
+已选择versioned JSON relation manifest，不向PT增加`output_seed`式平行字段。当前自动派生artifact
+结构如下；下一步在其上增加STC source entry和状态，而不是再选择另一套schema：
 
 ```json
 {
   "schema_version": 1,
-  "case_id": "batch_consistency_003",
+  "kind": "smla_mqsmla_batch_consistency_relation",
   "operator": "smla",
-  "profile": "stc-fixed",
-  "modes": ["split"],
-  "split_groups": [[0, 1, 2], [3, 4, 5, 6, 7]],
-  "baseline_case_id": "batch_consistency_001"
+  "baselines": [{
+    "case_id": "smla:batch_consistency_001:<content-sha-prefix>",
+    "input_content_fingerprint_sha256": "..."
+  }],
+  "relations": [{
+    "mode": "split",
+    "baseline_case_id": "smla:batch_consistency_001:<content-sha-prefix>",
+    "comparison_identity": {
+      "type": "TokenOrigin",
+      "origin_spans": [{
+        "target_start": 0, "target_end": 3,
+        "source_batch": 0, "source_token_start": 0, "source_token_end": 3
+      }]
+    }
+  }]
 }
 ```
 
-配置优先级：显式 CLI > manifest/PT per-case > profile > blackbox-basic。需要先修正 STC 014
-和 026，并确认每个派生 case 对应哪个 baseline PT。
+配置优先级仍为显式CLI > source manifest per-case > profile > blackbox-basic。自动派生manifest已经
+可生成和校验；仍需先修正STC 014/026，并确认001-027各自引用哪个baseline PT。source manifest
+不得把`BLOCKED_BY_SPEC/INVALID_DATA`伪装成`CONFIRMED`。
 
 ### E. 扩展执行面
 
@@ -387,7 +423,7 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 | FORMULA-1 | PR floor、需求ceil和S2小于32的最终公式 | tiling/需求负责人 | 白盒结构预期 |
 | DATA-1 | STC逐项错误与缺字段修订 | STC负责人 | STC manifest |
 | MODE4-1 | 共同前缀+KV增长是否为正式产品口径 | 需求/mask负责人 | 模式4最终冻结 |
-| CFG-1 | PT namespace 或 JSON manifest 的最终选择 | 测试维护者 | 001-027 自动化 |
+| CFG-1 | STC 001-027到relation manifest v1的source entry映射 | 测试/STC维护者 | 001-027 自动化 |
 | GRAPH-1 | level 3 读取时机与 compile cache 约束 | torchair | graph 验收 |
 
 MQ pytest修改权限和上下文analyzer已不再是阻断项；模式4已有安全暂定实现，但产品口径仍需
@@ -409,6 +445,8 @@ owner确认。
 12. artifact 记录版本、case、mode、seed/profile、metadata/output digest 和失败 origin。
 13. 白盒artifact携带baseline/derived原始输入摘要及floor/ceil公式审计；
 14. MQ `return_softmax_lse=True` 只有在process保留LSE且CPU golden生成LSE后才可列入通过项。
+15. relation manifest通过baseline内容指纹、origin span digest、边界/重复/scope/oracle预检；
+    其CPU coverage与真实metadata coverage分栏报告。
 
 ## 13. CANNBot 交互方式
 
@@ -447,3 +485,6 @@ cannbot run -s <session-id> \
 若 CANNBot 数据库出现 migration 错误，不删除或直接改写用户数据库；优先升级/迁移工具。
 若必须临时隔离 `XDG_DATA_HOME`，目录与认证文件权限分别保持 0700/0600，完成后清理，
 认证信息不得进入仓库、日志或提交。
+
+2026-07-21实测默认数据库因缺少`replacement_seq`列启动失败。本轮没有迁移/删除原数据库，
+而是为三个模型分别使用0700临时`XDG_DATA_HOME`，只复制0600认证文件；三个session均只读完成。

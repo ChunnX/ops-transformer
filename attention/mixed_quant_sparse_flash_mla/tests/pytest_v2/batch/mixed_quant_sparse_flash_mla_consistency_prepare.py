@@ -24,6 +24,8 @@ import check_valid_param
 import mixed_quant_sparse_flash_mla_golden
 import utils
 from batch.consistency.offline import mode_options_from_mapping, prepare_saved_baseline
+from batch.consistency.relation_manifest import merge_relation_manifests
+from batch.consistency.reporting import stable_json_digest
 
 
 DTYPES = {
@@ -79,14 +81,38 @@ def main() -> int:
             )
         )
 
+    report_root.mkdir(parents=True, exist_ok=True)
+    relation_manifest = (
+        merge_relation_manifests(item["relation_manifest"] for item in reports)
+        if reports
+        else None
+    )
+    relation_manifest_path = report_root / "mqsmla_consistency_relation_manifest.json"
+    if relation_manifest is not None:
+        with relation_manifest_path.open("w", encoding="utf-8") as file:
+            json.dump(relation_manifest, file, ensure_ascii=False, indent=2, sort_keys=True)
+
     aggregate = {
         "operator": "mqsmla",
         "scope": "CPU-only offline acceptance; no NPU PASS claim",
         "case_count": len(reports),
         "cases": reports,
-        "pass": bool(reports) and all(item["pass"] for item in reports),
+        "relation_manifest_path": (
+            str(relation_manifest_path.resolve()) if relation_manifest is not None else None
+        ),
+        "relation_manifest_sha256": (
+            stable_json_digest(relation_manifest) if relation_manifest is not None else None
+        ),
+        "relation_coverage": (
+            relation_manifest["coverage"] if relation_manifest is not None else None
+        ),
+        "pass": (
+            bool(reports)
+            and all(item["pass"] for item in reports)
+            and relation_manifest is not None
+            and relation_manifest["precheck"]["status"] == "PASS"
+        ),
     }
-    report_root.mkdir(parents=True, exist_ok=True)
     aggregate_path = report_root / "mqsmla_consistency_prepare_summary.json"
     with aggregate_path.open("w", encoding="utf-8") as file:
         json.dump(aggregate, file, ensure_ascii=False, indent=2, sort_keys=True)
