@@ -24,18 +24,13 @@ using namespace AscendC;
 // 将isCheckTiling设置为false, 输入输出的max&sum&exp的shape为(m, 1)
 constexpr SoftmaxConfig SFA_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC = {false, 0, 0, SoftmaxMode::SOFTMAX_OUTPUT_WITHOUT_BRC};
 
-// V0 -> C1 P
-constexpr uint8_t SYNC_V0_TO_C1_P_FLAG[2][2] = {{0, 1}, {2, 3}};
-// V0 -> C1 SY
-constexpr uint8_t SYNC_V0_TO_C1_SY_FLAG[2][2] = {{4, 5}, {6, 7}};
+// Ascend 950 SyncAll reserves flag IDs 11-14. This kernel uses direct Mmad, so its explicit CV flags use 0-7.
 // C1 -> V1 P
-constexpr uint8_t SYNC_C1_TO_V1_P_FLAG[2] = {8, 9};
+constexpr uint8_t SYNC_C1_TO_V1_P_FLAG[2] = {0, 1};
 // C1 -> V1 SY
-constexpr uint8_t SYNC_C1_TO_V1_SY_FLAG[2] = {10, 15};
-// SyncAll<false>() reserves flag IDs 11-14 on Ascend 950.
-// Reuse the completed C1 -> V1 P counters for the reverse V1 -> C2 dependency.
-constexpr uint8_t SYNC_V1_TO_C2_DW_FLAG[2] = {8, 9};
-constexpr uint8_t SYNC_C2_TO_V2_DW_FLAG[2] = {4, 5};
+constexpr uint8_t SYNC_C1_TO_V1_SY_FLAG[2] = {2, 3};
+constexpr uint8_t SYNC_V1_TO_C2_DW_FLAG[2] = {4, 5};
+constexpr uint8_t SYNC_C2_TO_V2_DW_FLAG[2] = {6, 7};
 static constexpr uint8_t SYNC_MODE = 2;
 
 static constexpr uint32_t N_WORKSPACE_SIZE = 1024; // n方向切分
