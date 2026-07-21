@@ -195,7 +195,6 @@ def tilelang_grad_kl_loss_single_kernel(
     d_num_total = d_num_query + d_num_rope
 
     d_num_query_index = DQueryIndex // k_block
-    l0a_rows = max(N1, n_block)
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
     p_repeat = (N1 // 8) * (n_block // 8)
@@ -244,10 +243,16 @@ def tilelang_grad_kl_loss_single_kernel(
             C2_L0C = T.alloc_L0C((Nidx1, n_block), calc_dtype)
             DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
             DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)
-            MM_L0A_0 = T.alloc_L0A((l0a_rows, k_block), input_dtype)
-            MM_L0A_1 = T.alloc_L0A((l0a_rows, k_block), input_dtype)
-            MM_L0B_0 = T.alloc_L0B((k_block, k_block), input_dtype)
-            MM_L0B_1 = T.alloc_L0B((k_block, k_block), input_dtype)
+            C1_L0A_0 = T.alloc_L0A((N1, k_block), input_dtype)
+            C1_L0A_1 = T.alloc_L0A((N1, k_block), input_dtype)
+            C1_L0B_0 = T.alloc_L0B((k_block, n_block), input_dtype)
+            C1_L0B_1 = T.alloc_L0B((k_block, n_block), input_dtype)
+            C2_L0A = T.alloc_L0A((Nidx1, k_block), input_dtype)
+            C2_L0B = T.alloc_L0B((k_block, n_block), input_dtype)
+            DQ_L0A = T.alloc_L0A((Nidx1, n_block), input_dtype)
+            DQ_L0B = T.alloc_L0B((n_block, k_block), input_dtype)
+            DK_L0A = T.alloc_L0A((n_block, Nidx1), input_dtype)
+            DK_L0B = T.alloc_L0B((Nidx1, DQueryIndex), input_dtype)
             # Keep every physical matrix inside one 64 KiB L0C bank.  Event 6
             # protects bank 0 and event 7 protects bank 1.
             T.annotate_address({
@@ -438,11 +443,11 @@ def tilelang_grad_kl_loss_single_kernel(
                                         T.wait_flag("mte2", "mte1", cur)
                                         T.wait_flag("m", "mte1", cur)
                                         if cur == 0:
-                                            T.copy(Q_L1_0, MM_L0A_0[0:N1, 0:k_block])
-                                            T.copy(GK_L1_0, MM_L0B_0[0:k_block, 0:n_block], transpose=True)
+                                            T.copy(Q_L1_0, C1_L0A_0)
+                                            T.copy(GK_L1_0, C1_L0B_0, transpose=True)
                                         if cur == 1:
-                                            T.copy(Q_L1_1, MM_L0A_1[0:N1, 0:k_block])
-                                            T.copy(GK_L1_1, MM_L0B_1[0:k_block, 0:n_block], transpose=True)
+                                            T.copy(Q_L1_1, C1_L0A_1)
+                                            T.copy(GK_L1_1, C1_L0B_1, transpose=True)
                                         T.set_flag("mte1", "mte2", cur)
                                         T.set_flag("mte1", "m", cur)
 
@@ -450,15 +455,15 @@ def tilelang_grad_kl_loss_single_kernel(
                                         T.pipe_barrier("m")
                                         if cur == 0:
                                             T.mma(
-                                                MM_L0A_0[0:N1, 0:k_block],
-                                                MM_L0B_0[0:k_block, 0:n_block],
+                                                C1_L0A_0,
+                                                C1_L0B_0,
                                                 C1_L0C,
                                                 init=(d_idx == 0),
                                             )
                                         if cur == 1:
                                             T.mma(
-                                                MM_L0A_1[0:N1, 0:k_block],
-                                                MM_L0B_1[0:k_block, 0:n_block],
+                                                C1_L0A_1,
+                                                C1_L0B_1,
                                                 C1_L0C,
                                                 init=(d_idx == 0),
                                             )
@@ -517,15 +522,15 @@ def tilelang_grad_kl_loss_single_kernel(
                                         T.set_flag("mte2", "mte1", 0)
                                         T.wait_flag("mte2", "mte1", 0)
                                         T.wait_flag("m", "mte1", 0)
-                                        T.copy(QI_L1, MM_L0A_0[0:Nidx1, 0:k_block])
-                                        T.copy(GKI_L1, MM_L0B_0[0:k_block, 0:n_block], transpose=True)
+                                        T.copy(QI_L1, C2_L0A)
+                                        T.copy(GKI_L1, C2_L0B, transpose=True)
                                         T.set_flag("mte1", "mte2", 0)
                                         T.set_flag("mte1", "m", 0)
                                         T.wait_flag("mte1", "m", 0)
                                         T.pipe_barrier("m")
                                         T.mma(
-                                            MM_L0A_0[0:Nidx1, 0:k_block],
-                                            MM_L0B_0[0:k_block, 0:n_block],
+                                            C2_L0A,
+                                            C2_L0B,
                                             C2_L0C,
                                             init=(k_idx == 0),
                                         )
@@ -1010,15 +1015,15 @@ def tilelang_grad_kl_loss_single_kernel(
                                         T.set_flag("mte2", "mte1", 0)
                                         T.wait_flag("mte2", "mte1", 0)
                                         T.wait_flag("m", "mte1", 0)
-                                        T.copy(RG_L1, MM_L0A_0[0:Nidx1, 0:n_block])
-                                        T.copy(GKI2_L1, MM_L0B_0[0:n_block, 0:k_block])
+                                        T.copy(RG_L1, DQ_L0A)
+                                        T.copy(GKI2_L1, DQ_L0B)
                                         T.set_flag("mte1", "mte2", 0)
                                         T.set_flag("mte1", "m", 0)
                                         T.wait_flag("mte1", "m", 0)
                                         T.pipe_barrier("m")
                                         T.mma(
-                                            MM_L0A_0[0:Nidx1, 0:n_block],
-                                            MM_L0B_0[0:n_block, 0:k_block],
+                                            DQ_L0A,
+                                            DQ_L0B,
                                             DQ_L0C,
                                             init=(n_idx_k == 0),
                                         )
@@ -1061,16 +1066,16 @@ def tilelang_grad_kl_loss_single_kernel(
                                     T.set_flag("mte2", "mte1", 2)
                                     T.wait_flag("mte2", "mte1", 2)
                                     T.wait_flag("m", "mte1", 0)
-                                    T.copy(RG_L1, MM_L0A_0[0:n_block, 0:Nidx1], transpose=True)
-                                    T.copy(QI_L1_dk, MM_L0B_0[0:Nidx1, 0:DQueryIndex])
+                                    T.copy(RG_L1, DK_L0A, transpose=True)
+                                    T.copy(QI_L1_dk, DK_L0B)
                                     T.set_flag("mte1", "mte2", 0)
                                     T.set_flag("mte1", "m", 0)
                                     T.wait_flag("mte1", "m", 0)
                                     T.wait_flag("fix", "m", 7)
                                     T.pipe_barrier("m")
                                     T.mma(
-                                        MM_L0A_0[0:n_block, 0:Nidx1],
-                                        MM_L0B_0[0:Nidx1, 0:DQueryIndex],
+                                        DK_L0A,
+                                        DK_L0B,
                                         DK_L0C,
                                         init=True,
                                     )
