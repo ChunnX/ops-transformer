@@ -1072,6 +1072,11 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::DeterAddKIndexGrad(DLIGradK
         int64_t onelineSize = constInfo.dSizeQueryIndex * sizeof(float);
         int64_t linesOneLoop = DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_8K / onelineSize;
         uint32_t loopTimes = CeilDiv(perCoreS2Line, linesOneLoop);
+        if (constInfo.aivIdx == 0 && aicIdx == 0 && loopTimes > 0) {
+            AscendC::printf("DLI_DETER_AIV aiv=%u aic=%d src=%ld dst=%ld split=%ld lines=%ld\n",
+                            constInfo.aivIdx, aicIdx, srcGmOffset, dstGmOffset, splitLine,
+                            perCoreS2Line);
+        }
 
         event_t eventId = EVENT_ID0;
         int32_t pingPongFlag = 0;
@@ -1092,9 +1097,11 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::DeterAddKIndexGrad(DLIGradK
             SetFlag<HardEvent::MTE2_MTE3>(eventId);
 
             WaitFlag<HardEvent::MTE2_MTE3>(eventId);
+            if (constInfo.aivIdx == 0 && aicIdx == 0 && loopIdx == 0) {
+                AscendC::DumpTensor(dKeyIndexUbIn, 3650, 64);
+            }
             AscendC::SetAtomicAdd<T>();
             AscendC::DataCopy(dstGm[dKeyGmOffsetCur], dKeyIndexUbIn, processNum);
-            PipeBarrier<PIPE_MTE3>();
             SetAtomicNone();
             SetFlag<HardEvent::MTE3_MTE2>(eventId);
 
