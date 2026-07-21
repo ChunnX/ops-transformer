@@ -127,7 +127,7 @@ __aicore__ inline void SIMatmul<SIT>::InitParams(const ConstInfo &constInfo)
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::InitBuffers(TPipe *pipe)
 {
-    pipe->InitBuffer(bufUB_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize * sizeof(QK_T));                   //大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
+    pipe->InitBuffer(bufUB_, 2 * ((constInfo_.mBaseSize + 1U) >> 1U) * constInfo_.s2BaseSize * sizeof(QK_T));                   //大小：2(开dB) * 2 * 64 * 128 * 4 = 128KB
     mm1ResUB_ = bufUB_.Get<QK_T>();
     pipe->InitBuffer(bufQL1_, QUERY_BUF_NUM * M_BASIC_BLOCK_L1 * D_BASIC_BLOCK_L1 * sizeof(Q_T));
     queryL1_ = bufQL1_.Get<Q_T>();
@@ -153,14 +153,14 @@ SIMatmul<SIT>::InitMm1GlobalTensor(const GlobalTensor<Q_T> &queryGm, const Globa
 
 template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInfo) {
-    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + runInfo.loop % 2);
-    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + runInfo.loop % 2 + SICommon::AIV0_AIV1_OFFSET);
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + (runInfo.loop & 1U));
+    CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_VC_EVENT + (runInfo.loop & 1U) + SICommon::AIV0_AIV1_OFFSET);
     uint64_t s1gProcessSize = runInfo.actMBaseSize;
     uint64_t s2ProcessSize = runInfo.actualSingleProcessSInnerSize;
     uint64_t kProcessSize = constInfo_.headDim;
 
     //s2轴循环
-    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0cBufIdx_ % L0_BUF_NUM);
+    WaitFlag<HardEvent::FIX_M>(FIX_M_EVENT + (l0cBufIdx_ & (L0_BUF_NUM - 1U)));
     for (uint64_t s2GmOffset = 0; s2GmOffset < s2ProcessSize; s2GmOffset += S2_BASIC_BLOCK_L1) {
         uint64_t s2L1RealSize =
             s2GmOffset + S2_BASIC_BLOCK_L1 > s2ProcessSize ? s2ProcessSize - s2GmOffset : S2_BASIC_BLOCK_L1;
@@ -175,7 +175,8 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                 s1gGmOffset + M_BASIC_BLOCK_L1 > s1gProcessSize ? s1gProcessSize - s1gGmOffset : M_BASIC_BLOCK_L1;
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryBufIdx_ = kGmOffset / D_BASIC_BLOCK_L1;
-                    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryBufIdx_ % QUERY_BUF_NUM);
+                    WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT +
+                                                   (queryBufIdx_ & (QUERY_BUF_NUM - 1U)));
                     QueryNd2Nz(s1gL1RealSize, s1gGmOffset, kGmOffset, runInfo);
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
@@ -189,7 +190,7 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                         for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1RealSize; s1gL1Offset += M_BASIC_BLOCK_L0) {
                             uint64_t s1gL0RealSize =
                             s1gL1Offset + M_BASIC_BLOCK_L0 > s1gL1RealSize ? s1gL1RealSize - s1gL1Offset : M_BASIC_BLOCK_L0;
-                            WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
+                            WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + (l0BufIdx_ & (L0_BUF_NUM - 1U)));
                             LoadQueryToL0a(s1gL1Offset, s1gL1RealSize, s1gL0RealSize, kL1Offset, runInfo);
                             LoadKeyToL0b(s2L1Offset, s2L1RealSize, s2L0RealSize, kL1Offset, runInfo);
 
@@ -197,14 +198,15 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
                             WaitFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
 
                             ComuteL0c(s1gGmOffset + s1gL1Offset, s2GmOffset + s2L1Offset, kGmOffset + kL1Offset, s1gL0RealSize, s2L0RealSize, runInfo);
-                            SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
+                            SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + (l0BufIdx_ & (L0_BUF_NUM - 1U)));
                             l0BufIdx_++;
 
                         }
                     }
                 }
                 if (s2GmOffset + S2_BASIC_BLOCK_L1 >= s2ProcessSize && runInfo.isLastS2InnerLoop) {
-                    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryBufIdx_ % QUERY_BUF_NUM);
+                    SetFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT +
+                                                  (queryBufIdx_ & (QUERY_BUF_NUM - 1U)));
                 }
             }
             SetFlag<HardEvent::MTE1_MTE2>(KEY_MTE1_MTE2_EVENT + keyL1BufIdx_ % KEY_BUF_NUM);
@@ -212,10 +214,10 @@ __aicore__ inline void SIMatmul<SIT>::ComputeMm1(const SICommon::RunInfo &runInf
         }
     }
     Fixp(0, 0, s1gProcessSize, s2ProcessSize, runInfo);
-    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0cBufIdx_ % L0_BUF_NUM);
+    SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + (l0cBufIdx_ & (L0_BUF_NUM - 1U)));
     l0cBufIdx_++;
-    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_CV_EVENT + runInfo.loop % 2);
-    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_CV_EVENT + runInfo.loop % 2 + SICommon::AIV0_AIV1_OFFSET);
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_CV_EVENT + (runInfo.loop & 1U));
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_FIX>(SICommon::CROSS_CV_EVENT + (runInfo.loop & 1U) + SICommon::AIV0_AIV1_OFFSET);
 }
 
 template <typename SIT>
@@ -257,7 +259,7 @@ template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::QueryNd2Nz(uint64_t s1gL1RealSize, uint64_t s1gGmOffset, uint64_t kGmOffset,
                                                  const SICommon::RunInfo &runInfo)
 {
-    LocalTensor<Q_T> queryL1Base = queryL1_[(queryBufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET];
+    LocalTensor<Q_T> queryL1Base = queryL1_[(queryBufIdx_ & (QUERY_BUF_NUM - 1U)) * QUERY_BUFFER_OFFSET];
     uint64_t l1RowAlign = CeilAlign(s1gL1RealSize, (uint64_t)BLOCK_CUBE);
     uint64_t logicalMStart = static_cast<uint64_t>(runInfo.gS1Idx) * constInfo_.mBaseSize + s1gGmOffset;
     uint64_t queryBaseOffset = runInfo.tensorQueryOffset;
@@ -294,8 +296,8 @@ __aicore__ inline void SIMatmul<SIT>::LoadQueryToL0a(uint64_t s1gL1Offset, uint6
     loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
     
-    LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0A_BUFFER_OFFSET],
-             queryL1_[(queryBufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
+    LoadData(queryL0_[(l0BufIdx_ & (L0_BUF_NUM - 1U)) * L0A_BUFFER_OFFSET],
+             queryL1_[(queryBufIdx_ & (QUERY_BUF_NUM - 1U)) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
 }
 
 template <typename SIT>
@@ -311,7 +313,7 @@ __aicore__ inline void SIMatmul<SIT>::LoadKeyToL0b(uint64_t s2L1Offset, uint64_t
     loadData2DParamsV2.dstStride = CeilDiv(s2L0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
     
-    LoadData(keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0B_BUFFER_OFFSET],
+    LoadData(keyL0_[(l0BufIdx_ & (L0_BUF_NUM - 1U)) * L0B_BUFFER_OFFSET],
              keyL1_[(keyL1BufIdx_ % KEY_BUF_NUM) * KEY_BUFFER_OFFSET], loadData2DParamsV2);
 }
 
@@ -329,10 +331,10 @@ __aicore__ inline void SIMatmul<SIT>::ComuteL0c(uint64_t s1gOffset, uint64_t s2O
         mmadParams.cmatrixInitVal = false;
     }
     mmadParams.cmatrixSource = false;
-    uint64_t offset = (l0cBufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET +
+    uint64_t offset = (l0cBufIdx_ & (L0_BUF_NUM - 1U)) * L0C_BUFFER_OFFSET +
                       s2Offset * static_cast<uint64_t>(mmadParams.m) + s1gOffset * S2_BASIC_BLOCK;
-    Mmad(cL0_[offset], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0A_BUFFER_OFFSET],
-         keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0B_BUFFER_OFFSET], mmadParams);
+    Mmad(cL0_[offset], queryL0_[(l0BufIdx_ & (L0_BUF_NUM - 1U)) * L0A_BUFFER_OFFSET],
+         keyL0_[(l0BufIdx_ & (L0_BUF_NUM - 1U)) * L0B_BUFFER_OFFSET], mmadParams);
     if ((mmadParams.m / BLOCK_CUBE) * (mmadParams.n / BLOCK_CUBE) < PIPE_M_BARRIER_THRESHOLD) {
         PipeBarrier<PIPE_M>();
     }
@@ -342,8 +344,8 @@ template <typename SIT>
 __aicore__ inline void SIMatmul<SIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
                                            uint64_t s2L0RealSize, const SICommon::RunInfo &runInfo)
 {
-    SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0cBufIdx_ % L0_BUF_NUM);
-    WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0cBufIdx_ % L0_BUF_NUM);
+    SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + (l0cBufIdx_ & (L0_BUF_NUM - 1U)));
+    WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + (l0cBufIdx_ & (L0_BUF_NUM - 1U)));
 
     FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
 
@@ -358,8 +360,8 @@ __aicore__ inline void SIMatmul<SIT>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOf
     fixpipeParams.params.ndNum = 1;
     fixpipeParams.params.srcNdStride = 0;
     fixpipeParams.params.dstNdStride = 0;
-    Fixpipe<QK_T, float, SI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * CeilDiv(constInfo_.mBaseSize, 2) * constInfo_.s2BaseSize], //UB偏移地址
-                                                    cL0_[(l0cBufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], fixpipeParams); // 将matmul结果从L0C搬运到UB
+    Fixpipe<QK_T, float, SI_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop & 1U) * ((constInfo_.mBaseSize + 1U) >> 1U) * constInfo_.s2BaseSize], //UB偏移地址
+                                                    cL0_[(l0cBufIdx_ & (L0_BUF_NUM - 1U)) * L0C_BUFFER_OFFSET], fixpipeParams); // 将matmul结果从L0C搬运到UB
 }
 
 template <typename SIT>

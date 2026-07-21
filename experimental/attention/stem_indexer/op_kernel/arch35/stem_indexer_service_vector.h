@@ -115,8 +115,8 @@ private:
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
 {
-    // 当前配置为2 * CeilDiv(96, 2) * 256 * 4B = 96KB。
-    pipe->InitBuffer(resMm1Buf_, 2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));
+    // 当前配置为2 * ((96 + 1) >> 1) * 256 * 4B = 96KB。
+    pipe->InitBuffer(resMm1Buf_, 2 * ((constInfo_.mBaseSize + 1U) >> 1U) * s2BaseSize_ * sizeof(QK_T));
     resMm1Local_ = resMm1Buf_.Get<QK_T>();// qk
 
     // 当前配置为2 * 256 * 4B = 2KB。
@@ -125,16 +125,16 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
 
     // Topk
     // uint16和uint32申请相同的物理空间；uint16通过更大的元素stride保留每行输出264个int32_t的空间。
-    pipe->InitBuffer(mrgValueBuf_, CeilDiv(constInfo_.mBaseSize, 2) *
+    pipe->InitBuffer(mrgValueBuf_, ((constInfo_.mBaseSize + 1U) >> 1U) *
                          (MAX_TOPK_COUNT + SICommon::TRUNK_LEN_256) * sizeof(uint32_t));
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
 
-    pipe->InitBuffer(globalIndexBuf_, CeilDiv(constInfo_.mBaseSize, 2) * MAX_TOPK_COUNT * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
+    pipe->InitBuffer(globalIndexBuf_, ((constInfo_.mBaseSize + 1U) >> 1U) * MAX_TOPK_COUNT * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
     globalIndexLocal_ = globalIndexBuf_.Get<uint32_t>();
 
     // indice_len
     // 每行长度独占一个32B槽位，满足UB地址对齐要求并支持多行连续搬出。
-    pipe->InitBuffer(indiceLenBuf_, CeilDiv(constInfo_.mBaseSize, 2) *
+    pipe->InitBuffer(indiceLenBuf_, ((constInfo_.mBaseSize + 1U) >> 1U) *
                                         INDICE_LEN_ROW_STRIDE * sizeof(uint32_t));
     indiceLenLocal_ = indiceLenBuf_.Get<uint32_t>();
 }
@@ -193,9 +193,10 @@ __aicore__ inline void SIVector<SIT>::initS2LenToNeg(uint32_t gS1Idx, uint32_t a
     // 当前GS1行需要处理的数量（可能小于mBaseSize_，处理尾块）
     int64_t curGS1ProcNum = actMBaseSize;
     // 当前AIV核处理的GS1起始索引（双核分工）
-    int64_t curAivGS1Idx = curGS1Idx + (blockId_ % 2) * CeilDiv(curGS1ProcNum, 2);
+    uint32_t aivParity = static_cast<uint32_t>(blockId_) & 1U;
+    int64_t curAivGS1Idx = curGS1Idx + aivParity * ((curGS1ProcNum + 1) >> 1U);
     // 当前AIV核需要处理的GS1行数量
-    int64_t curAivGS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curGS1ProcNum, 2) : curGS1ProcNum / 2;
+    int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((curGS1ProcNum + 1) >> 1U) : (curGS1ProcNum >> 1U);
     if (curAivGS1ProcNum == 0) {
         return;
     }
@@ -233,12 +234,9 @@ __aicore__ inline void SIVector<SIT>::SetSparseSeqLenZero(uint64_t indiceLenOffs
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
 {
-    auto pingpong = (info.loop % 2);
-    int64_t gS1BasePerVecSize_ = CeilDiv(constInfo_.mBaseSize, 2); // 当前每个vec核上分到的mbase/2行
+    auto pingpong = info.loop & 1U;
+    int64_t gS1BasePerVecSize_ = (constInfo_.mBaseSize + 1U) >> 1U; // 当前每个vec核上分到的mbase/2行
     int64_t curS2Idx = info.s2Idx * s2BaseSize_;	 
-    int64_t curMProcNum = info.actMBaseSize;
-    int64_t curAivMProcNum = (blockId_ % 2 == 0) ? CeilDiv(curMProcNum, 2) : curMProcNum / 2;
-
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
     // vBiasGm --> vBiasLocal_ 搬运vBias
     uint64_t vBiasGmOffset = info.tensorVBiasOffset + curS2Idx;
@@ -355,12 +353,12 @@ __aicore__ inline void SIVector<SIT>::CopyOutPackedResults(
     const uint32_t copyLen = Min(packedOutputLen, static_cast<uint32_t>(constInfo_.kSeqSize));
     const uint32_t copyBytes = copyLen * sizeof(int32_t);
     const uint32_t srcRowBytes = mrgRowStride_ * sizeof(SCORE_T);
-    const uint32_t srcBlockBytes = ((copyBytes + 31U) / 32U) * 32U;
+    const uint32_t srcBlockBytes = (copyBytes + 31U) & ~31U;
 
     AscendC::DataCopyParams packedCopyParams;
     packedCopyParams.blockLen = static_cast<uint16_t>(copyBytes);
     // UB侧stride以32B data block为单位，GM侧stride以字节为单位。
-    packedCopyParams.srcStride = static_cast<uint16_t>((srcRowBytes - srcBlockBytes) / 32U);
+    packedCopyParams.srcStride = static_cast<uint16_t>((srcRowBytes - srcBlockBytes) >> 5U);
     packedCopyParams.dstStride = static_cast<uint32_t>(
         (static_cast<uint32_t>(constInfo_.kSeqSize) - copyLen) * sizeof(int32_t));
 
@@ -421,7 +419,7 @@ __aicore__ inline void SIVector<SIT>::RunTopKBatchRows(
                                              (TOPK_ALIGN_SIZE + SICommon::TRUNK_LEN_256);
 
     LocalTensor<uint32_t> reuseMm1ResLocal =
-        resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)].ReinterpretCast<uint32_t>();
+        resMm1Local_[(info.loop & 1U) * (((constInfo_.mBaseSize + 1U) >> 1U) * s2BaseSize_)].ReinterpretCast<uint32_t>();
     PipeBarrier<PIPE_V>();
 
     topkOp_.Batch4Rows(mrgValueLocal_, reuseMm1ResLocal, globalIndexLocal_,
@@ -469,9 +467,10 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     // 当前GS1行需要处理的数量（可能小于mBaseSize_，处理尾块）
     int64_t curGS1ProcNum = info.actMBaseSize;
     // 当前AIV核处理的GS1起始索引（双核分工）
-    int64_t curAivGS1Idx = curGS1Idx + (blockId_ % 2) * CeilDiv(curGS1ProcNum, 2);
+    uint32_t aivParity = static_cast<uint32_t>(blockId_) & 1U;
+    int64_t curAivGS1Idx = curGS1Idx + aivParity * ((curGS1ProcNum + 1) >> 1U);
     // 当前AIV核需要处理的GS1行数量
-    int64_t curAivGS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curGS1ProcNum, 2) : curGS1ProcNum / 2;
+    int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((curGS1ProcNum + 1) >> 1U) : (curGS1ProcNum >> 1U);
 
     // S2 基本块信息
     uint32_t s2BlockStart = info.s2Idx * s2BaseSize_;
@@ -569,7 +568,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     }
     // TopK已不再访问当前resMm1Local_槽，先归还给Cube，使下一轮MM1可与最终MTE3搬出并行。
     CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(
-        SICommon::CROSS_VC_EVENT + (info.loop % 2));
+        SICommon::CROSS_VC_EVENT + (info.loop & 1U));
     if (isLastS2InnerLoop) {
         CopyOutPackedResults(info, curAivGS1Idx, curAivGS1ProcNum);
     }
@@ -597,9 +596,10 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         // 当前gS1行需要处理的数量（可能小于mBaseSize_，处理尾块）
         int64_t curGS1ProcNum = actMBaseSize;
         // 当前AIV核处理的gS1起始索引（双核分工）
-        int64_t curAivGS1Idx = curGS1Idx + (blockId_ % 2) * CeilDiv(curGS1ProcNum, 2);
+        uint32_t aivParity = static_cast<uint32_t>(blockId_) & 1U;
+        int64_t curAivGS1Idx = curGS1Idx + aivParity * ((curGS1ProcNum + 1) >> 1U);
         // 当前AIV核需要处理的gS1行数量
-        int64_t curAivGS1ProcNum = (blockId_ % 2 == 0) ? CeilDiv(curGS1ProcNum, 2) : curGS1ProcNum / 2;
+        int64_t curAivGS1ProcNum = (aivParity == 0U) ? ((curGS1ProcNum + 1) >> 1U) : (curGS1ProcNum >> 1U);
         
         uint32_t curS1RealS2Len = actS2Size;
         uint32_t curAivGSize = CeilDiv(curAivGS1ProcNum, actS1Size);

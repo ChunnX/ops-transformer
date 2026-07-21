@@ -376,7 +376,7 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx();  // vec:0-47
-        aiCoreIdx = tmpBlockIdx / 2;
+        aiCoreIdx = tmpBlockIdx >> 1U;
     } else {
         tmpBlockIdx = GetBlockIdx();  // cube:0-23
         aiCoreIdx = tmpBlockIdx;
