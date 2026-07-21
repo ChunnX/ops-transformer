@@ -23,11 +23,14 @@ namespace ge {
 * @brief Function GroupedMatMulAllReduce. This op computes multi groups of matmuls on multi-cards environment.
 
 * @par Inputs:
-* @li x: A Tensor List, contains all left matrixs of inputs for matmuls. For each tensor, the data type of elements supports float16 or bfloat16; the format supports ND. The maximum length allowed is 64.
+* @li x: A Tensor List, contains all left matrixs of inputs for matmuls. For each tensor, the data type of elements
+supports float16 or bfloat16; the format supports ND. The maximum length allowed is 64.
 * 32B-aligned size of each dim should be smaller than 2147483647. The size of inner axis should be smaller than 65536.
-* @li weight: A Tensor List of weight, contains all right matrixs of inputs for matmul. For each tensor, the data type of elements supports float16 or bfloat16; the format supports ND. The maximum length allowed is 64.
+* @li weight: A Tensor List of weight, contains all right matrixs of inputs for matmul. For each tensor, the data type
+of elements supports float16 or bfloat16; the format supports ND. The maximum length allowed is 64.
 * 32B-aligned size of each dim should be smaller than 2147483647. The size of inner axis should be smaller than 65536.
-* @li bias: A Tensor List of bias, contains all bias of inputs for matmul. For each tensor, the data type of elements supports float16 or float32; the format supports ND. The maximum length allowed is 64.
+* @li bias: A Tensor List of bias, contains all bias of inputs for matmul. For each tensor, the data type of elements
+supports float16 or float32; the format supports ND. The maximum length allowed is 64.
 * @li group_list: a Tensor, indicates M-axis distributation of groups of matmuls for inputs and outputs.
 * Data type of elements is int64. Format: ND. The maximum length allowed is 64.
 
@@ -59,7 +62,7 @@ REG_OP(GroupedMatMulAllReduce)
     .ATTR(commTurn, Int, 0)
     .OP_END_FACTORY_REG(GroupedMatMulAllReduce)
 
-}  // namespace ge
+} // namespace ge
 
 
-#endif  // GROUPED_MAT_MUL_ALL_REDUCE_PROTO_H_
+#endif // GROUPED_MAT_MUL_ALL_REDUCE_PROTO_H_

@@ -135,7 +135,7 @@
             "name": "block_axis",
             "dtype": "int",
             "value": 0
-          }, 
+          },
           {
             "name": "is_amax_out",
             "dtype": "bool",

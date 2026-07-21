@@ -71,6 +71,19 @@ static constexpr uint32_t VERSION_SIZE = 32;
 const std::set<std::string> PLATFORM_A2 = {"Ascend910B"};
 const std::set<std::string> NPUARCH_A5 = {std::to_string(static_cast<uint32_t>(NpuArch::DAV_3510))};
 
+static bool IsPresentTensorShape(const gert::Shape *shape)
+{
+    if (shape == nullptr) {
+        return false;
+    }
+    for (size_t i = 0; i < shape->GetDimNum(); ++i) {
+        if (shape->GetDim(i) == 0) {
+            return false;
+        }
+    }
+    return true;
+}
+
 static bool IsTargetSocVersionInfershape(const char *nodeName, const std::set<std::string> &targetPlatform)
 {
     char versionValVersion[VERSION_SIZE];
@@ -142,6 +155,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
     OPS_CHECK_NULL_WITH_CONTEXT(context, expertIdsShape);
     const gert::Shape *scalesShape = context->GetOptionalInputShape(DISPATCH_INPUT_SCALES_IDX_INDEX);
     const gert::Shape *expertScalesShape = context->GetOptionalInputShape(DISPATCH_INPUT_EXPERT_SCALES_IDX_INDEX);
+    bool hasExpertScales = IsPresentTensorShape(expertScalesShape);
     const gert::Shape *elasticInfoShape = context->GetOptionalInputShape(DISPATCH_INPUT_ELASTIC_INFO_IDX_INDEX);
 
     gert::Shape *expandXShape = context->GetOutputShape(DISPATCH_OUTPUT_EXPAND_X_INDEX);
@@ -299,7 +313,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
 
     epRecvCountShape->SetDimNum(DIM_ONE);
     if (IsTargetSocVersionInfershape(context->GetNodeName(), PLATFORM_A2)) {
-        if (expertScalesShape != nullptr) {
+        if (hasExpertScales) {
             epRecvCountShape->SetDim(
                 0U, *epWorldSize * localExpertNum +
                         globalBsReal * 2 * k *
@@ -309,9 +323,9 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
             epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum);
         }
     } else {
-        if (expertScalesShape != nullptr) {
-            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum + globalBsReal * SEND_COUNT_MEMORY_SIZE * k *
-                                                                             (*epWorldSize) / RANK_NUM_PER_NODE);
+        if (hasExpertScales && !IsTargetNpuArchInfershape(context->GetNodeName(), NPUARCH_A5)) {
+            epRecvCountShape->SetDim(0U, *epWorldSize * localExpertNum +
+                globalBsReal * SEND_COUNT_MEMORY_SIZE * k * (*epWorldSize) / RANK_NUM_PER_NODE);
         } else {
             epRecvCountShape->SetDim(0U, (*epWorldSize) * localExpertNum);
         }
@@ -326,7 +340,7 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
 
     expandScalesShape->SetDimNum(DIM_ONE);
     expandScalesShape->SetDim(0U, 0);
-    if (expertScalesShape != nullptr) {
+    if (hasExpertScales) {
         expandScalesShape->SetDim(0U, a);
     }
     OP_LOGD(context->GetNodeName(), "expandScalesShape shape is :%s after infershape.",

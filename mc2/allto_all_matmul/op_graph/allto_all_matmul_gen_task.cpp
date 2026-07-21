@@ -91,4 +91,4 @@ static ge::Status AlltoAllMatmulGenTaskFunc(const gert::ExeResGenerationContext 
 }
 
 IMPL_OP(AlltoAllMatmul).CalcOpParam(AlltoAllMatmulCalcOpParamFunc).GenerateTask(AlltoAllMatmulGenTaskFunc);
-}  // namespace ops
+} // namespace ops

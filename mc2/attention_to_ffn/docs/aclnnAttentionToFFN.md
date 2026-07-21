@@ -57,10 +57,10 @@ aclnnStatus aclnnAttentionToFFN(
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
       <col style="width: 170px">
       <col style="width: 120px">
-      <col style="width: 300px">  
-      <col style="width: 300px">  
-      <col style="width: 212px">  
-      <col style="width: 100px"> 
+      <col style="width: 300px">
+      <col style="width: 300px">
+      <col style="width: 212px">
+      <col style="width: 100px">
       <col style="width: 190px">
       <col style="width: 145px">
       </colgroup>
@@ -277,7 +277,7 @@ aclnnStatus aclnnAttentionToFFN(
     <table style="undefined;table-layout: fixed; width: 1150px"> <colgroup>
     <col style="width: 280px">
     <col style="width: 100px">
-    <col style="width: 900px"> 
+    <col style="width: 900px">
       </colgroup><thead>
       <tr>
         <th>返回值</th>
@@ -313,7 +313,7 @@ aclnnStatus aclnnAttentionToFFN(
   <table style="undefined;table-layout: fixed; width: 1150px"> <colgroup>
     <col style="width: 150px">
     <col style="width: 100px">
-    <col style="width: 900px"> 
+    <col style="width: 900px">
     </colgroup>
     <thead>
     <tr>
@@ -381,7 +381,7 @@ aclnnStatus aclnnAttentionToFFN(
 
 - **通信域使用约束**：
   - AttentionToFFN算子的通信域中不允许有其他算子。
-  
+
 ## 调用示例
 
 文件准备：
@@ -482,7 +482,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
     char hcomName[128] = {0};
     ret = HcclGetCommName(args.hcclComm, hcomName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed, ret %d\n", ret); return -1);
-    LOG_PRINT("[INFO] rank = %d, hcomName = %s, attentionToFFNStream = %p, context = %p\n", 
+    LOG_PRINT("[INFO] rank = %d, hcomName = %s, attentionToFFNStream = %p, context = %p\n",
               args.rankId, hcomName, args.attentionToFFNStream, args.context);
 
     int64_t X = 1;
@@ -552,10 +552,10 @@ int LaunchOneProcessAttentionToFFN(Args &args)
                 expertIdsHostData.push_back(k_id);
             }
         }
-    } 
+    }
 
-    std::vector<int32_t> expertRankTableHostData = {4, 2, 4, 3, 7, 1, 3, 2, 5, 2, 2, 5, 1, 2, 0, 0, 0, 0, 
-                                                    3, 2, 5, 0, 0, 3, 7, 0, 0, 4, 1, 3, 0, 1, 2, 4, 3, 7, 
+    std::vector<int32_t> expertRankTableHostData = {4, 2, 4, 3, 7, 1, 3, 2, 5, 2, 2, 5, 1, 2, 0, 0, 0, 0,
+                                                    3, 2, 5, 0, 0, 3, 7, 0, 0, 4, 1, 3, 0, 1, 2, 4, 3, 7,
                                                     4, 0, 0, 3, 6, 1, 3, 2, 5, 3, 3, 7, 2, 4, 1, 2, 0, 0,
                                                     2, 2, 5, 0, 0, 0, 0, 0, 0, 3, 3, 6, 2, 5, 3, 7, 0, 0,
                                                     1, 4, 8, 0, 0, 0, 0, 0, 0};
@@ -583,7 +583,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
 
     /**************************************** 调用AttentionToFFN ********************************************/
     // 调用第一阶段接口
-    ret = aclnnAttentionToFFNGetWorkspaceSize(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, (quantMode > 0 ? scales : nullptr), 
+    ret = aclnnAttentionToFFNGetWorkspaceSize(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, (quantMode > 0 ? scales : nullptr),
                                               nullptr, hcomName, WORLD_SIZE, ffnTokenInfoTableShape, ffnTokenDataShape, attnTokenInfoTableShape,
                                               moeExpertNum, quantMode, syncFlag, ffnStartRankId, &attentionToFFNWorkspaceSize, &attentionToFFNExecutor);
 
@@ -595,7 +595,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
         ret = aclrtMalloc(&attentionToFFNWorkspaceAddr, attentionToFFNWorkspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMalloc workspace failed. ret = %d \n", ret); return ret);
     }
-    
+
     if (args.rankId < FFN_WORKER_NUM) {  // FFN Worker
         // 等待Attention Worker任务执行结束
         LOG_PRINT("[INFO] device_%d is FFN worker, skipping aclnnAttentionToFFN execute.\n", args.rankId);
@@ -647,7 +647,7 @@ int LaunchOneProcessAttentionToFFN(Args &args)
     }
     if (attnTokenInfoTableShape != nullptr) {
         aclDestroyIntArray(attnTokenInfoTableShape);
-    }  
+    }
 
     if (xDeviceAddr != nullptr) {
         aclrtFree(xDeviceAddr);

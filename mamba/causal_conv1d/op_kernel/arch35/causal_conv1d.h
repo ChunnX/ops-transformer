@@ -339,8 +339,8 @@ protected:
         const int32_t ringSize = width + 1;
 
         // Write the last wCount tokens from the ring, going backwards from the newest.
-        const int32_t aliveCount = width; // InitRing always fills width tokens into the ring
-        uint16_t wCount = static_cast<uint16_t>(aliveCount < stateLen ? aliveCount : stateLen);
+        const int32_t aliveCount = (width - 1 < stateLen) ? (width - 1) : stateLen;
+        uint16_t wCount = static_cast<uint16_t>(aliveCount);
         const int32_t endSlot = CausalConv1dUtil::CurrSlot(len - 1, width);
         const int32_t startSlot = CausalConv1dUtil::CurrSlot(len - wCount, width);
 

@@ -19,11 +19,11 @@
 namespace AscendC {
 
 template <typename xDtype, typename yDtype>
-class MatmulAllReduceElementWiseAdd
-{
+class MatmulAllReduceElementWiseAdd {
 public:
     __aicore__ inline MatmulAllReduceElementWiseAdd()
-    {}
+    {
+    }
 
     __aicore__ inline void Init(GM_ADDR left, GM_ADDR right, uint64_t totalCnt, uint64_t tileCnt, TPipe *tPipe,
                                 uint32_t coreNum)
@@ -109,8 +109,8 @@ public:
     static constexpr bool X_NEED_INCREASE_ACCURACY = NEED_INCREASE_ACCURACY;
     static constexpr bool Y_NEED_INCREASE_ACCURACY = NEED_INCREASE_ACCURACY && (!std::is_same<yDtype, float>::value);
 #endif
-    
-    TPipe* pipe_;
+
+    TPipe *pipe_;
     TQue<QuePosition::VECIN, 1> inQueueX_;
     TQue<QuePosition::VECIN, 1> inQueueY_;
     TQue<QuePosition::VECOUT, 1> outQueueZ_;

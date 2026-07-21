@@ -45,6 +45,16 @@ enum class SyncType {
     CROSS_CORE_SYNC_BOTH,
 };
 
+enum class SyncMode {
+    SET_WAIT_FLAG,
+    LOCK_UNLOCK,
+};
+
+enum class IdSource {
+    INTERNAL, // TPipe自动分配
+    EXTERNAL, // 用户自定义, 需要用户传入EventId
+};
+
 constexpr uint32_t INVALID_CROSS_CORE_EVENT_ID = 16;
 static constexpr uint64_t CROSS_CORE_SYNC_MODE = 4;
 
@@ -106,7 +116,7 @@ struct BufferInfo {
 // L0A buffer的生产者为MTE1，消费者为M
 // L0B buffer的生产者为MTE1，消费者为M
 // L0C buffer的生产者为M，消费者为FIX
-template <BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC>
+template <BufferType bufferType, SyncType syncType = SyncType::INNER_CORE_SYNC, SyncMode syncMode = SyncMode::SET_WAIT_FLAG>
 class Buffer {
     using TensorType = std::conditional_t<bufferType == BufferType::GM, GlobalTensor<uint8_t>, LocalTensor<uint8_t>>;
 
@@ -133,8 +143,10 @@ public:
         }
     }
 
+    template<IdSource idSource = IdSource::INTERNAL>
     __aicore__ inline void Init()
     {
+        static_assert(idSource == IdSource::INTERNAL, "idSource should IdSource::INTERNAL.");
         if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
             p2cEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventP2C>(); // 确保只能被调用一次
             c2pEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventC2P>();
@@ -142,8 +154,10 @@ public:
         }
     }
 
+    template<IdSource idSource = IdSource::INTERNAL>
     __aicore__ inline void UnInit()
     {
+        static_assert(idSource == IdSource::INTERNAL, "idSource should IdSource::INTERNAL.");
         if constexpr (syncType == SyncType::INNER_CORE_SYNC) {
             WaitFlag<BufferInfo<bufferType>::EventC2P>(c2pEventId_);
             GetTPipePtr()->ReleaseEventID<BufferInfo<bufferType>::EventP2C>(p2cEventId_); // 确保只能被调用一次
@@ -175,8 +189,10 @@ public:
         }
     }
 
+    template<IdSource idSource = IdSource::INTERNAL>
     __aicore__ inline void SetEventID()
     {
+        static_assert(idSource == IdSource::INTERNAL, "idSource should IdSource::INTERNAL.");
         p2cEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventP2C>(); // 确保只能被调用一次
         c2pEventId_ = GetTPipePtr()->AllocEventID<BufferInfo<bufferType>::EventC2P>();
     }

@@ -17,4 +17,4 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../../op_kernel/batch_mat_mul_reduce_scatter_allto_all_tiling_struct.h"
 
-#endif  // BATCH_MATMUL_REDUCE_SCATTER_ALL_TO_ALL_TILING_DEF_H
+#endif // BATCH_MATMUL_REDUCE_SCATTER_ALL_TO_ALL_TILING_DEF_H

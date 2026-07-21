@@ -91,9 +91,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMat
     const aclTensor *mmWeightOptional, const aclTensor *mmXScaleOptional, const aclTensor *mmWeightScaleOptional,
     int64_t gmmXQuantMode, int64_t gmmWeightQuantMode, int64_t mmXQuantMode, int64_t mmWeightQuantMode,
     const char *group, const char *commMode, int64_t epWorldSize, const aclIntArray *sendCounts,
-    const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, int64_t groupSize,
-    bool permuteOutFlag, aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional,
-    uint64_t *workspaceSize, aclOpExecutor **executor);
+    const aclIntArray *recvCounts, bool transGmmWeight, bool transMmWeight, int64_t groupSize, bool permuteOutFlag,
+    aclTensor *gmmY, aclTensor *mmYOptional, aclTensor *permuteOutOptional, uint64_t *workspaceSize,
+    aclOpExecutor **executor);
 
 /* *
  * @brief aclnnAlltoAllvGroupedMatMulV2的第二段接口，用于执行计算。
@@ -105,7 +105,9 @@ __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMat
  * @return aclnnStatus: 返回状态码
  */
 __attribute__((visibility("default"))) aclnnStatus aclnnAlltoAllvQuantGroupedMatMulV2(void *workspace,
-    uint64_t workspaceSize, aclOpExecutor *executor, aclrtStream stream);
+                                                                                      uint64_t workspaceSize,
+                                                                                      aclOpExecutor *executor,
+                                                                                      aclrtStream stream);
 
 #ifdef __cplusplus
 }

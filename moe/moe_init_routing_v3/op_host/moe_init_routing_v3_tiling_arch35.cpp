@@ -151,7 +151,7 @@ struct MultipleParams {
 };
 
 struct PerLoopParams {
-    int64_t xCopyInQueueBufferNum = 2;
+    int64_t xCopyInQueueBufferNum = DOUBLE_BUFFER;
     int64_t perLoopCols = 0;
     int64_t perLoopMaxIndicesElements = 0;
 };

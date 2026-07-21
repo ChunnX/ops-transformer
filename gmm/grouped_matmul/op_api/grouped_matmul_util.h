@@ -111,29 +111,21 @@ struct GroupedMatmulParamsBase {
 
 using GroupedMatmulParams = GroupedMatmulParamsBase<aclTensorList>;
 
-const std::map<DataType, aclDataType> BIAS_DTYPE {
-    {DataType::DT_FLOAT16, aclDataType::ACL_FLOAT16},
-    {DataType::DT_BF16, aclDataType::ACL_FLOAT},
-    {DataType::DT_INT8, aclDataType::ACL_INT32},
-    {DataType::DT_FLOAT, aclDataType::ACL_FLOAT},
-    {DataType::DT_FLOAT8_E4M3FN, aclDataType::ACL_FLOAT},
-    {DataType::DT_FLOAT8_E5M2, aclDataType::ACL_FLOAT},
-    {DataType::DT_HIFLOAT8, aclDataType::ACL_FLOAT},
-    {DataType::DT_INT4, aclDataType::ACL_FLOAT16},
-    {DataType::DT_FLOAT4_E2M1, aclDataType::ACL_FLOAT},
-    {DataType::DT_FLOAT4_E1M2, aclDataType::ACL_FLOAT}
-};
+const std::map<DataType, aclDataType> BIAS_DTYPE{
+    {DataType::DT_FLOAT16, aclDataType::ACL_FLOAT16},     {DataType::DT_BF16, aclDataType::ACL_FLOAT},
+    {DataType::DT_INT8, aclDataType::ACL_INT32},          {DataType::DT_FLOAT, aclDataType::ACL_FLOAT},
+    {DataType::DT_FLOAT8_E4M3FN, aclDataType::ACL_FLOAT}, {DataType::DT_FLOAT8_E5M2, aclDataType::ACL_FLOAT},
+    {DataType::DT_HIFLOAT8, aclDataType::ACL_FLOAT},      {DataType::DT_INT4, aclDataType::ACL_FLOAT16},
+    {DataType::DT_FLOAT4_E2M1, aclDataType::ACL_FLOAT},   {DataType::DT_FLOAT4_E1M2, aclDataType::ACL_FLOAT}};
 
-const std::map<DataType, std::string> DTYPE_STRING{
-    {DataType::DT_FLOAT16, "FLOAT16"},
-    {DataType::DT_BF16, "BF16"},
-    {DataType::DT_INT8, "INT8"},
-    {DataType::DT_INT4, "INT4"},
-    {DataType::DT_FLOAT, "FLOAT"},
-    {DataType::DT_FLOAT8_E4M3FN, "FLOAT8_E4M3FN"},
-    {DataType::DT_FLOAT8_E5M2, "FLOAT8_E5M2"},
-    {DataType::DT_HIFLOAT8, "HIFLOAT8"}
-};
+const std::map<DataType, std::string> DTYPE_STRING{{DataType::DT_FLOAT16, "FLOAT16"},
+                                                   {DataType::DT_BF16, "BF16"},
+                                                   {DataType::DT_INT8, "INT8"},
+                                                   {DataType::DT_INT4, "INT4"},
+                                                   {DataType::DT_FLOAT, "FLOAT"},
+                                                   {DataType::DT_FLOAT8_E4M3FN, "FLOAT8_E4M3FN"},
+                                                   {DataType::DT_FLOAT8_E5M2, "FLOAT8_E5M2"},
+                                                   {DataType::DT_HIFLOAT8, "HIFLOAT8"}};
 
 const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT, DataType::DT_FLOAT16,
                                                                 DataType::DT_BF16};

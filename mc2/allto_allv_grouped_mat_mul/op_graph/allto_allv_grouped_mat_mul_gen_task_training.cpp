@@ -25,8 +25,7 @@
 namespace ops {
 static const size_t ATTR_COMM_MODE_INDEX = 7;
 
-static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext *context,
-                                            std::string &commMode)
+static ge::Status GetRankSizeAndSetCommmode(const gert::ExeResGenerationContext *context, std::string &commMode)
 {
     const gert::RuntimeAttrs *attrs = context->GetAttrs();
     if (attrs == nullptr) {

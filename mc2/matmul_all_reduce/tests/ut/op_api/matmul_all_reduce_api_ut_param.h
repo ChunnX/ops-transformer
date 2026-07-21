@@ -41,35 +41,27 @@ struct MatmulAllReduceApiUtParam {
     op::SocVersion soc;
     aclnnStatus expectResult;
 
-    MatmulAllReduceApiUtParam(const csv_map& csvMap)
+    MatmulAllReduceApiUtParam(const csv_map &csvMap)
     {
         this->case_name = ReadMap(csvMap, "case_name");
-        this->x1 = GetTensorACL(csvMap, 
-            "x1_shape", "x1_dtype", "x1_format");
-        this->x2 = GetTensorACL(csvMap, 
-            "x2_shape", "x2_dtype", "x2_format");
-        this->bias = GetTensorACL(csvMap, 
-            "bias_shape", "bias_dtype", "bias_format");
-        this->x3 = GetTensorACL(csvMap, 
-            "x3_shape", "x3_dtype", "x3_format");
-        this->dequantScale = GetTensorACL(csvMap, 
-            "dequant_scale_shape", "dequant_scale_dtype", "dequant_scale_format");
-        this->pertokenScale = GetTensorACL(csvMap, 
-            "pertoken_scale_shape", "pertoken_scale_dtype", "pertoken_scale_format");
-        this->x1Scale = GetTensorACL(csvMap, 
-            "x1_scale_shape", "x1_scale_dtype", "x1_scale_format");
-        this->x2Scale = GetTensorACL(csvMap, 
-            "x2_scale_shape", "x2_scale_dtype", "x2_scale_format");
-        this->commQuantScale1 = GetTensorACL(csvMap, 
-            "comm_quant_scale1_shape", "comm_quant_scale1_dtype", "comm_quant_scale1_format");
-        this->commQuantScale2 = GetTensorACL(csvMap, 
-            "comm_quant_scale2_shape", "comm_quant_scale2_dtype", "comm_quant_scale2_format");
-        this->antiquantScale = GetTensorACL(csvMap, 
-            "antiquant_scale_shape", "antiquant_scale_dtype", "antiquant_scale_format");
-        this->antiquantOffset = GetTensorACL(csvMap, 
-            "antiquant_offset_shape", "antiquant_offset_dtype", "antiquant_offset_format");
-        this->output = GetTensorACL(csvMap, 
-            "output_shape", "output_dtype", "output_format");
+        this->x1 = GetTensorACL(csvMap, "x1_shape", "x1_dtype", "x1_format");
+        this->x2 = GetTensorACL(csvMap, "x2_shape", "x2_dtype", "x2_format");
+        this->bias = GetTensorACL(csvMap, "bias_shape", "bias_dtype", "bias_format");
+        this->x3 = GetTensorACL(csvMap, "x3_shape", "x3_dtype", "x3_format");
+        this->dequantScale = GetTensorACL(csvMap, "dequant_scale_shape", "dequant_scale_dtype", "dequant_scale_format");
+        this->pertokenScale =
+            GetTensorACL(csvMap, "pertoken_scale_shape", "pertoken_scale_dtype", "pertoken_scale_format");
+        this->x1Scale = GetTensorACL(csvMap, "x1_scale_shape", "x1_scale_dtype", "x1_scale_format");
+        this->x2Scale = GetTensorACL(csvMap, "x2_scale_shape", "x2_scale_dtype", "x2_scale_format");
+        this->commQuantScale1 =
+            GetTensorACL(csvMap, "comm_quant_scale1_shape", "comm_quant_scale1_dtype", "comm_quant_scale1_format");
+        this->commQuantScale2 =
+            GetTensorACL(csvMap, "comm_quant_scale2_shape", "comm_quant_scale2_dtype", "comm_quant_scale2_format");
+        this->antiquantScale =
+            GetTensorACL(csvMap, "antiquant_scale_shape", "antiquant_scale_dtype", "antiquant_scale_format");
+        this->antiquantOffset =
+            GetTensorACL(csvMap, "antiquant_offset_shape", "antiquant_offset_dtype", "antiquant_offset_format");
+        this->output = GetTensorACL(csvMap, "output_shape", "output_dtype", "output_format");
         this->group = ReadMap(csvMap, "group");
         this->reduceOp = ReadMap(csvMap, "reduce_op");
         this->commMode = ReadMap(csvMap, "comm_mode", "ai_cpu");
@@ -85,7 +77,7 @@ struct MatmulAllReduceApiUtParam {
     }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const MatmulAllReduceApiUtParam& param)
+inline std::ostream &operator<<(std::ostream &os, const MatmulAllReduceApiUtParam &param)
 {
     return os << param.case_name;
 }
