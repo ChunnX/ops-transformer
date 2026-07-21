@@ -119,14 +119,14 @@ struct CombineExpertContext {
 
 struct CombineBufferContext {
     GM_ADDR gmm2OutAddr;
-    GM_ADDR gmm2SyncCounterAddr;
+    GM_ADDR gmm2SyncCounterBaseAddr;
     int64_t combineUbTensorSize;
 };
 
 // 量化 CombineSend 开始前清零 GMM2 完成计数器所需的信息。
 struct CombineSyncCounterResetContext {
     CombineTileSchedule tileSchedule;
-    uint32_t expertPerRank;
+    uint64_t totalSyncSlotCount;
     GM_ADDR gmm2SyncCounterAddr;
     uint32_t resetBatchElementCount;
 };
@@ -166,8 +166,8 @@ __aicore__ inline void ResetCombineSyncCountersSingleCore(const CombineSyncCount
     if (resetContext.resetBatchElementCount == 0) {
         return;
     }
-    int32_t totalCounters = static_cast<int32_t>(static_cast<int64_t>(resetContext.expertPerRank) *
-        resetContext.tileSchedule.totalJobs * INT_CACHELINE);
+    int32_t totalCounters =
+        static_cast<int32_t>(resetContext.totalSyncSlotCount * static_cast<uint64_t>(INT_CACHELINE));
     int32_t tileLength = 0;
     int32_t tileOffset = 0;
     ComputeCombineAlignedTileRange(resetContext.tileSchedule, totalCounters, ALIGN_32, tileLength, tileOffset);
@@ -177,14 +177,15 @@ __aicore__ inline void ResetCombineSyncCountersSingleCore(const CombineSyncCount
     GlobalTensor<int32_t> gmm2CombineSyncCounter;
     gmm2CombineSyncCounter.SetGlobalBuffer(
         reinterpret_cast<__gm__ int32_t*>(resetContext.gmm2SyncCounterAddr));
-    Duplicate(resetTensor, 0, resetContext.resetBatchElementCount);
     SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID2>();
     for (int32_t resetElementOffset = 0; resetElementOffset < tileLength;
          resetElementOffset += resetContext.resetBatchElementCount) {
         int32_t currentBatchElementCount =
             tileLength - resetElementOffset < static_cast<int32_t>(resetContext.resetBatchElementCount) ?
                 tileLength - resetElementOffset : static_cast<int32_t>(resetContext.resetBatchElementCount);
-        DataCopy(gmm2CombineSyncCounter[tileOffset + resetElementOffset], resetTensor, currentBatchElementCount);
+        DataCopyExtParams resetCopyParams{
+            1U, static_cast<uint32_t>(currentBatchElementCount * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPad(gmm2CombineSyncCounter[tileOffset + resetElementOffset], resetTensor, resetCopyParams);
     }
 }
 
@@ -218,59 +219,67 @@ __aicore__ inline void ProcessCombineSingleCore(const CombineTileSchedule& tileS
     }
 
     // 按 token row-group 对逻辑 tile 分组，组内 tile 分担该 row-group 的 token。
-    uint32_t myGroup = 0;
-    uint32_t myIdxInGrp = 0;
-    uint32_t myGrpSize = 0;
-    ComputeCombineTileGrouping(tileSchedule.jobIndex, tokenGroupsThisExpert, tileSchedule.totalJobs, myGroup,
-                               myIdxInGrp, myGrpSize);
-    if (myGroup >= tokenGroupsThisExpert || myGrpSize == 0) {
-        return;
-    }
+    uint32_t firstAssignedGroup = 0;
+    uint32_t assignedGroupStride = 0;
+    uint32_t coreIndexWithinGroup = 0;
+    uint32_t coresAssignedToGroup = 0;
+    MegaMoeImpl::ComputeCombineGroupsForCore(
+        tileSchedule.jobIndex, tokenGroupsThisExpert, tileSchedule.totalJobs, firstAssignedGroup,
+        assignedGroupStride, coreIndexWithinGroup, coresAssignedToGroup);
 
     // 同步计数器地址已由调用方按 expert 和物理核映射完成。
     // 计数达到 nTilesPerGroup 表示 GMM2 已产出当前 row-group 的全部 N tile。
     uint32_t nTilesPerGroup = Ops::Base::CeilDiv(expertContext.k, MegaMoeImpl::L1_TILE_N);
-    __gm__ int32_t *myCounterAddr = reinterpret_cast<__gm__ int32_t *>(bufferContext.gmm2SyncCounterAddr);
-    while (AscendC::ReadGmByPassDCache(myCounterAddr) != nTilesPerGroup) {
-        int64_t st = AscendC::GetSystemCycle();
-        while (AscendC::GetSystemCycle() - st < 100) {
-        };
-    }
 
     // 量化 token 由 k 字节数据和 nScale 字节 scale 组成，每条记录按 32B 对齐。
     uint32_t nScale = Ops::Base::CeilDiv(expertContext.k, uint32_t(MXFP_SCALE_GROUP_NUM));
     uint32_t quantTokenSizeBytes = Ops::Base::CeilAlign(
         expertContext.k + nScale, static_cast<uint32_t>(ALIGN_32));
-    uint32_t tokenStart = myGroup * MegaMoeImpl::L1_TILE_M_256;
-    uint32_t tokenCount = (MegaMoeImpl::L1_TILE_M_256 < expertContext.mExpert - tokenStart) ?
-        MegaMoeImpl::L1_TILE_M_256 : expertContext.mExpert - tokenStart;
-    // 组内再均分 token，尾 tile 可能少于 tokensPerTile 或无任务。
-    uint32_t tokensPerTile = Ops::Base::CeilDiv(tokenCount, myGrpSize);
-    int32_t myTokenOffset = myIdxInGrp * tokensPerTile;
-    int32_t myTokenCount = 0;
-    if (myTokenOffset < static_cast<int32_t>(tokenCount)) {
-        myTokenCount = (tokensPerTile < tokenCount - myTokenOffset) ?
-            tokensPerTile : tokenCount - myTokenOffset;
-    }
-    if (myTokenCount <= 0) {
-        return;
-    }
 
-    // 从 workspace 搬入本 tile 对应的 (rank, tokenIndex, topkIndex) 三元组。
-    AscendC::SetCtrlSpr<60, 60>(0);
-    int64_t offset = 0;
-    LocalTensor<int32_t> tripleTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, myTokenCount * TRIPLE_SIZE);
-    offset += myTokenCount * TRIPLE_SIZE * sizeof(int32_t);
-    AscendC::GlobalTensor<int32_t> tripleGm;
-    tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(params.workspaceInfo.tripleInfoPtr
-        + (expertContext.expertBeforeCnt + tokenStart + myTokenOffset) * TRIPLE_SIZE * sizeof(int32_t)));
-    AscendC::DataCopy(tripleTensor, tripleGm, myTokenCount * TRIPLE_SIZE);
-    PipeBarrier<PIPE_MTE2>();
-    // 读取 GMM2 结果，完成量化并按三元组发送到目标 rank。
-    CombineTokenGroup<CombineQuantMode, bfloat16_t>(
-        tokenStart + myTokenOffset, myTokenCount, expertContext.k, expertContext.expertIdx, expertContext.rankId,
-        bufferContext.gmm2OutAddr, params, tripleTensor, bufferContext.combineUbTensorSize,
-        offset, quantTokenSizeBytes);
+    for (uint32_t groupIndex = firstAssignedGroup; groupIndex < tokenGroupsThisExpert;
+         groupIndex += assignedGroupStride) {
+        uint32_t syncSlotIndex =
+            tokenGroupsThisExpert <= tileSchedule.totalJobs ? tileSchedule.jobIndex : groupIndex;
+        __gm__ int32_t *syncCounterAddress = MegaMoeImpl::GetCombineSyncCounterAddress(
+            reinterpret_cast<__gm__ int32_t *>(bufferContext.gmm2SyncCounterBaseAddr), syncSlotIndex);
+        while (AscendC::ReadGmByPassDCache(syncCounterAddress) != nTilesPerGroup) {
+            int64_t waitStartCycle = AscendC::GetSystemCycle();
+            while (AscendC::GetSystemCycle() - waitStartCycle < 100) {
+            }
+        }
+
+        uint32_t groupTokenStart = groupIndex * MegaMoeImpl::COMBINE_TOKEN_GROUP_SIZE;
+        uint32_t groupTokenCount =
+            MegaMoeImpl::COMBINE_TOKEN_GROUP_SIZE < expertContext.mExpert - groupTokenStart ?
+                MegaMoeImpl::COMBINE_TOKEN_GROUP_SIZE : expertContext.mExpert - groupTokenStart;
+        // 组内再均分 token，尾 tile 可能少于 tokensPerCore 或无任务。
+        uint32_t tokensPerCore = Ops::Base::CeilDiv(groupTokenCount, coresAssignedToGroup);
+        uint32_t tokenOffsetWithinGroup = coreIndexWithinGroup * tokensPerCore;
+        if (tokenOffsetWithinGroup >= groupTokenCount) {
+            continue;
+        }
+        uint32_t tokenCountForCore = groupTokenCount - tokenOffsetWithinGroup;
+        tokenCountForCore = tokenCountForCore < tokensPerCore ? tokenCountForCore : tokensPerCore;
+
+        // 从 workspace 搬入本 core 对应的 (rank, tokenIndex, topkIndex) 三元组。
+        AscendC::SetCtrlSpr<60, 60>(0);
+        int64_t offset = 0;
+        LocalTensor<int32_t> tripleTensor =
+            LocalTensor<int32_t>(TPosition::VECIN, offset, tokenCountForCore * TRIPLE_SIZE);
+        offset += tokenCountForCore * TRIPLE_SIZE * sizeof(int32_t);
+        AscendC::GlobalTensor<int32_t> tripleGm;
+        tripleGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
+            params.workspaceInfo.tripleInfoPtr +
+            (expertContext.expertBeforeCnt + groupTokenStart + tokenOffsetWithinGroup) *
+                TRIPLE_SIZE * sizeof(int32_t)));
+        AscendC::DataCopy(tripleTensor, tripleGm, tokenCountForCore * TRIPLE_SIZE);
+        PipeBarrier<PIPE_MTE2>();
+        // 读取 GMM2 结果，完成量化并按三元组发送到目标 rank。
+        CombineTokenGroup<CombineQuantMode, bfloat16_t>(
+            groupTokenStart + tokenOffsetWithinGroup, tokenCountForCore, expertContext.k,
+            expertContext.expertIdx, expertContext.rankId, bufferContext.gmm2OutAddr, params,
+            tripleTensor, bufferContext.combineUbTensorSize, offset, quantTokenSizeBytes);
+    }
 }
 
 }  // namespace MegaMoeCombineImpl

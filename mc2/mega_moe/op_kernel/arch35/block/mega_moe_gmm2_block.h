@@ -41,23 +41,25 @@ struct Gmm2RuntimeState {
 
 // 纯 AIC GMM2 入口。AIV 编译实例不会执行或实例化矩阵计算分支。
 template <int32_t CombineQuantMode, typename QuantOutType, typename SwigluQuantOutType, typename WeightType,
-    typename QuantScaleType, bool EnableA8W4, bool EnableA4W4>
+    typename QuantScaleType, bool EnableA8W4, bool EnableA4W4, bool IsShared = false>
 __aicore__ inline void ProcessGmm2BlockSingleCore(const Params& params,
     const Gmm2ProblemContext& problemContext, Gmm2RuntimeState& runtimeState)
 {
     if constexpr (EnableA8W4 || EnableA4W4) {
         MegaMoeImpl::GroupMatmul2CombineA8W4<CombineQuantMode, SwigluQuantOutType, WeightType, bfloat16_t,
-            QuantScaleType, QuantScaleType>(params, problemContext.problemShape, problemContext.addrInfo,
+            QuantScaleType, QuantScaleType, IsShared>(params, problemContext.problemShape, problemContext.addrInfo,
             runtimeState.logicalTileId, runtimeState.vecSetSyncCom, problemContext.expertBeforeCnt,
             runtimeState.pingPongIdx, problemContext.expertIdx);
     } else if (params.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) {
         MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
-            QuantScaleType, QuantScaleType, true>(params, problemContext.problemShape, problemContext.addrInfo,
+            QuantScaleType, QuantScaleType, true, false, IsShared>(
+            params, problemContext.problemShape, problemContext.addrInfo,
             runtimeState.logicalTileId, runtimeState.vecSetSyncCom, problemContext.expertBeforeCnt,
             runtimeState.pingPongIdx, problemContext.expertIdx);
     } else {
         MegaMoeImpl::GroupMatmul2<CombineQuantMode, QuantOutType, QuantOutType, bfloat16_t,
-            QuantScaleType, QuantScaleType>(params, problemContext.problemShape, problemContext.addrInfo,
+            QuantScaleType, QuantScaleType, false, false, IsShared>(
+            params, problemContext.problemShape, problemContext.addrInfo,
             runtimeState.logicalTileId, runtimeState.vecSetSyncCom, problemContext.expertBeforeCnt,
             runtimeState.pingPongIdx, problemContext.expertIdx);
     }
