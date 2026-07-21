@@ -79,18 +79,20 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto key_chunk_ub = ascend_ub.GetWithOffset<half>(16384, 1536);
   auto ki_chunk_ub = ascend_ub.GetWithOffset<half>(4096, 34304);
   auto kr_chunk_ub = ascend_ub.GetWithOffset<half>(4096, 42496);
-  auto MM_L0A_0 = ascend_l0a.GetWithOffset<half>(16384, 0);
-  auto MM_L0B_0 = ascend_l0b.GetWithOffset<half>(16384, 0);
   auto tmp_ub = ascend_ub.GetWithOffset<uint8_t>(32768, 89344);
   auto Q_L1_0 = ascend_l1.GetWithOffset<half>(16384, 0);
   auto GK_L1_0 = ascend_l1.GetWithOffset<half>(8192, 32768);
   auto C1_L0C = ascend_l0c.GetWithOffset<float>(8192, 0);
+  auto C1_L0A_0 = ascend_l0a.GetWithOffset<half>(16384, 0);
+  auto C1_L0B_0 = ascend_l0b.GetWithOffset<half>(8192, 0);
   auto Q_L1_1 = ascend_l1.GetWithOffset<half>(16384, 49152);
-  auto MM_L0A_1 = ascend_l0a.GetWithOffset<half>(16384, 32768);
+  auto C1_L0A_1 = ascend_l0a.GetWithOffset<half>(16384, 32768);
   auto GK_L1_1 = ascend_l1.GetWithOffset<half>(8192, 81920);
-  auto MM_L0B_1 = ascend_l0b.GetWithOffset<half>(16384, 32768);
+  auto C1_L0B_1 = ascend_l0b.GetWithOffset<half>(8192, 16384);
   auto QI_L1 = ascend_l1.GetWithOffset<half>(8192, 98304);
   auto GKI_L1 = ascend_l1.GetWithOffset<half>(8192, 114688);
+  auto C2_L0A = ascend_l0a.GetWithOffset<half>(8192, 0);
+  auto C2_L0B = ascend_l0b.GetWithOffset<half>(8192, 32768);
   auto C2_L0C = ascend_l0c.GetWithOffset<float>(4096, 65536);
   auto p_reduced_tmp_ub = ascend_ub.GetWithOffset<float>(64, 50688);
   auto re_tmp_ub = ascend_ub.GetWithOffset<float>(1024, 85248);
@@ -140,6 +142,10 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
   auto RG_L1 = ascend_l1.GetWithOffset<half>(4096, 147456);
   auto DQ_L0C = ascend_l0c.GetWithOffset<float>(8192, 32768);
   auto GKI2_L1 = ascend_l1.GetWithOffset<half>(8192, 155648);
+  auto DQ_L0A = ascend_l0a.GetWithOffset<half>(4096, 0);
+  auto DQ_L0B = ascend_l0b.GetWithOffset<half>(8192, 49152);
+  auto DK_L0A = ascend_l0a.GetWithOffset<half>(4096, 0);
+  auto DK_L0B = ascend_l0b.GetWithOffset<half>(8192, 0);
   auto DK_L0C = ascend_l0c.GetWithOffset<float>(8192, 81920);
   auto dq_fp32_db = ascend_ub.GetWithOffset<float>(1024, 0);
   auto dq_fp16_db = ascend_ub.GetWithOffset<half>(1024, 193920);
@@ -229,22 +235,22 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
               AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>((d_idx % 2));
               AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>((d_idx % 2));
               if ((d_idx % 2) == 0) {
-                tl::ascend::copy_l1_to_l0a<half, 128, 128, false>(MM_L0A_0[0], Q_L1_0[0], 128, 128);
-                tl::ascend::copy_l1_to_l0b<half, 64, 128, true>(MM_L0B_0[0], GK_L1_0[0], 128, 128);
+                tl::ascend::copy_l1_to_l0a<half, 128, 128, false>(C1_L0A_0[0], Q_L1_0[0], 128, 128);
+                tl::ascend::copy_l1_to_l0b<half, 64, 128, true>(C1_L0B_0[0], GK_L1_0[0], 128, 64);
               }
               if ((d_idx % 2) == 1) {
-                tl::ascend::copy_l1_to_l0a<half, 128, 128, false>(MM_L0A_1[0], Q_L1_1[0], 128, 128);
-                tl::ascend::copy_l1_to_l0b<half, 64, 128, true>(MM_L0B_1[0], GK_L1_1[0], 128, 128);
+                tl::ascend::copy_l1_to_l0a<half, 128, 128, false>(C1_L0A_1[0], Q_L1_1[0], 128, 128);
+                tl::ascend::copy_l1_to_l0b<half, 64, 128, true>(C1_L0B_1[0], GK_L1_1[0], 128, 64);
               }
               AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>((d_idx % 2));
               AscendC::SetFlag<AscendC::HardEvent::MTE1_M>((d_idx % 2));
               AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>((d_idx % 2));
               AscendC::PipeBarrier<PIPE_M>();
               if ((d_idx % 2) == 0) {
-                tl::ascend::mma<half, float, 128, 64>(MM_L0A_0[0],MM_L0B_0[0],C1_L0C[0], (d_idx == 0), 128);
+                tl::ascend::mma<half, float, 128, 64>(C1_L0A_0[0],C1_L0B_0[0],C1_L0C[0], (d_idx == 0), 128);
               }
               if ((d_idx % 2) == 1) {
-                tl::ascend::mma<half, float, 128, 64>(MM_L0A_1[0],MM_L0B_1[0],C1_L0C[0], (d_idx == 0), 128);
+                tl::ascend::mma<half, float, 128, 64>(C1_L0A_1[0],C1_L0B_1[0],C1_L0C[0], (d_idx == 0), 128);
               }
               AscendC::SetFlag<AscendC::HardEvent::M_MTE1>((d_idx % 2));
               if (d_idx < 4) {
@@ -299,13 +305,13 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
-            tl::ascend::copy_l1_to_l0a<half, 64, 128, false>(MM_L0A_0[0], QI_L1[0], 128, 128);
-            tl::ascend::copy_l1_to_l0b<half, 64, 128, true>(MM_L0B_0[0], GKI_L1[0], 128, 128);
+            tl::ascend::copy_l1_to_l0a<half, 64, 128, false>(C2_L0A[0], QI_L1[0], 64, 128);
+            tl::ascend::copy_l1_to_l0b<half, 64, 128, true>(C2_L0B[0], GKI_L1[0], 128, 64);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
             AscendC::PipeBarrier<PIPE_M>();
-            tl::ascend::mma<half, float, 64, 64>(MM_L0A_0[0],MM_L0B_0[0],C2_L0C[0], (bool)1, 128);
+            tl::ascend::mma<half, float, 64, 64>(C2_L0A[0],C2_L0B[0],C2_L0C[0], (bool)1, 128);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
@@ -592,13 +598,13 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
-            tl::ascend::copy_l1_to_l0a<half, 64, 64, false>(MM_L0A_0[0], RG_L1[0], 128, 128);
-            tl::ascend::copy_l1_to_l0b<half, 64, 128, false>(MM_L0B_0[0], GKI2_L1[0], 128, 128);
+            tl::ascend::copy_l1_to_l0a<half, 64, 64, false>(DQ_L0A[0], RG_L1[0], 64, 64);
+            tl::ascend::copy_l1_to_l0b<half, 64, 128, false>(DQ_L0B[0], GKI2_L1[0], 64, 128);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
             AscendC::PipeBarrier<PIPE_M>();
-            tl::ascend::mma<half, float, 64, 128>(MM_L0A_0[0],MM_L0B_0[0],DQ_L0C[0], (n_idx_k_3 == 0), 64);
+            tl::ascend::mma<half, float, 64, 128>(DQ_L0A[0],DQ_L0B[0],DQ_L0C[0], (n_idx_k_3 == 0), 64);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
           }
           AscendC::SetFlag<AscendC::HardEvent::M_FIX>(6);
@@ -615,14 +621,14 @@ extern "C" __global__ __aicore__ void main_kernel( GM_ADDR SparseIndices_handle,
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(2);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(2);
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
-            tl::ascend::copy_l1_to_l0a<half, 64, 64, true>(MM_L0A_0[0], RG_L1[0], 128, 128);
-            tl::ascend::copy_l1_to_l0b<half, 64, 128, false>(MM_L0B_0[0], QI_L1_dk[0], 128, 128);
+            tl::ascend::copy_l1_to_l0a<half, 64, 64, true>(DK_L0A[0], RG_L1[0], 64, 64);
+            tl::ascend::copy_l1_to_l0b<half, 64, 128, false>(DK_L0B[0], QI_L1_dk[0], 64, 128);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
             AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(7);
             AscendC::PipeBarrier<PIPE_M>();
-            tl::ascend::mma<half, float, 64, 128>(MM_L0A_0[0],MM_L0B_0[0],DK_L0C[0], (bool)1, 64);
+            tl::ascend::mma<half, float, 64, 128>(DK_L0A[0],DK_L0B[0],DK_L0C[0], (bool)1, 64);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(7);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(7);
