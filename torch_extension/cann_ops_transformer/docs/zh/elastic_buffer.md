@@ -36,7 +36,7 @@ class ElasticBuffer:
 
     def engram_write(self, storage: torch.Tensor) -> None
 
-    def engram_fetch(self, indices: torch.Tensor) -> Callable[[], Union[torch.Tensor, Tuple[torch.Tensor, EngramFetchCtx]]]
+    def engram_fetch(self, indices: torch.Tensor) -> Callable
 
     def engram_fetch_grad(
         self,
@@ -225,7 +225,7 @@ ElasticBuffer.barrier(use_comm_stream=True, with_cpu_sync=False) -> None
 
 **输出**：
 
-- **grad_unique** (`Tensor`)：NPU tensor，shape 为 `(K, hidden_size)`，数据类型为 `float32`（反向 FP32 聚合），数据格式为 $ND$。其中 `K` 为去重后的 local entry 数量（运行时决定），前 `K` 行有效。
+- **grad_unique** (`Tensor`)：NPU tensor，shape 为 `(K, hidden_size)`，数据类型与 `grad_fetched` 相同，数据格式为 $ND$。其中 `K` 为去重后的 local entry 数量（运行时决定），前 `K` 行有效。
 - **unique_local_entry** (`Tensor`)：NPU tensor，shape 为 `(K,)`，数据类型为 `int32`，数据格式为 $ND$。表示 `grad_unique` 每行对应的 local entry 索引，用于优化器按索引更新 `storage[unique_local_entry] -= lr × grad_unique`。
 
 ### get_engram_storage_size_hint（静态方法）<a name="get-engram-storage-size-hint"></a>

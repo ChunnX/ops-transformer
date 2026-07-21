@@ -166,12 +166,11 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
             "The dtype of numRecv must be DT_INT32."),
         return ge::GRAPH_FAILED);
 
-    // gradUniqueOut: fp32（反向 FP32 聚合）
     auto gradUniqueDesc = context->GetOutputDesc(OUT_GRAD_UNIQUE);
-    OP_TILING_CHECK(gradUniqueDesc->GetDataType() != ge::DT_FLOAT,
+    OP_TILING_CHECK(!IsContains(GRAD_DTYPE_LIST, gradUniqueDesc->GetDataType()),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "gradUniqueOut",
             Ops::Base::ToString(gradUniqueDesc->GetDataType()).c_str(),
-            "The dtype of gradUniqueOut must be DT_FLOAT."),
+            "The dtype of gradUniqueOut must be DT_BF16, DT_FLOAT16 or DT_FLOAT."),
         return ge::GRAPH_FAILED);
 
     auto uniqueLocalEntryDesc = context->GetOutputDesc(OUT_UNIQUE_LOCAL_ENTRY);
@@ -484,8 +483,9 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     auto numEntriesPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ENTRIES_PER_RANK);
     tilingData.numEntriesPerRank = static_cast<int32_t>(*numEntriesPerRankPtr);
 
-    // hiddenBytes 按 fp32 算（反向 FP32 聚合）
-    int64_t bytesPerElem = ge::GetSizeByDataType(ge::DT_FLOAT);
+    // hiddenBytes 按输出 dtype 算（kernel 内部 fp32 累加后转回输出 dtype）
+    auto gradUniqueDesc = context->GetOutputDesc(OUT_GRAD_UNIQUE);
+    int64_t bytesPerElem = ge::GetSizeByDataType(gradUniqueDesc->GetDataType());
     OP_TILING_CHECK(tilingData.hiddenDim > INT64_MAX / bytesPerElem,
         OP_LOGE(nodeName, "hiddenBytes overflow: hiddenDim=%ld * bytesPerElem=%ld exceeds INT64_MAX",
             tilingData.hiddenDim, bytesPerElem),

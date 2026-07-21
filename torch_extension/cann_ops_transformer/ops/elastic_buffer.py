@@ -18,17 +18,14 @@ from cann_ops_transformer.op_builder.builder import OpBuilder
 
 @dataclass
 class EngramFetchCtx:
-    """训练态前向的 save-for-backward，原样传给 engram_fetch_grad。
-
-    前向 EngramFetch(with_grad=True) 产出以下 5 个 tensor，打包为 EngramFetchCtx 返回给用户。
-    反向 EngramFetchGrad 吃入这些 tensor，不自行重算（会漏 a2a 结果 recvLocalEntry）。
+    """训练前向的 save-for-backward, 传给 engram_fetch_grad。
 
     Attributes:
-        perm: (T,) int32 — 桶排列序索引（原始 pos → 桶排 pos），反向步骤①按此重排 grad
+        perm: (T,) int32 — 桶排列序索引, pos反向步骤①按此重排 grad
         sendCounts: (W,) int32 — 每 rank 发送的 index 数，反向 a2a 的 send 量
         recvCounts: (W,) int32 — 每 rank 接收的 index 数，反向 a2a 的 recv 量
-        recvLocalEntry: (R_max,) int32 — 收到的 local entry，反向步骤③ scatter-add 按此聚合
-        numRecv: (1,) int32 — 实际接收行数 R（前 numRecv 个有效）
+        recvLocalEntry: (R_max,) int32 — 收到的 local entry,反向步骤③ scatter-add 按此聚合
+        numRecv: (1,) int32 — 实际接收行数 R(前 numRecv 个有效)
     """
     perm: torch.Tensor
     sendCounts: torch.Tensor
@@ -316,7 +313,7 @@ class ElasticBuffer:
         )
         self._runtime.engram_write(storage)
 
-    def engram_fetch(self, indices: torch.Tensor) -> Callable[[], torch.Tensor]:
+    def engram_fetch(self, indices: torch.Tensor) -> Callable:
         """
         Fetch Engram data from remote ranks via RDMA.
 
