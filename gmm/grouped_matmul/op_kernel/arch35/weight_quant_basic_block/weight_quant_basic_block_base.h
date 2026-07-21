@@ -22,6 +22,6 @@ public:
     __aicore__ inline WeightQuantMatmulBasicBlockBaseClass(){};
 };
 
-}  // namespace WeightQuantBatchMatmulV2::Arch35
+} // namespace WeightQuantBatchMatmulV2::Arch35
 
-#endif  // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_BASE_H
+#endif // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_BASE_H

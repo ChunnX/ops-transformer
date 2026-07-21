@@ -86,27 +86,30 @@ public:
     bool SetTiling(gert::TilingContext *context);
 
 protected:
-    bool Init(const gert::TilingContext* context);
+    bool Init(const gert::TilingContext *context);
     bool CheckNoQuantGroupListType(const gert::TilingContext *context) const;
-    bool CalBaseMMTiling(const gert::TilingContext* context, const GMMCompileInfo* compileInfoPtr);
-    void FormulateBasicBlock(const GMMCompileInfo* compileInfoPtr, uint32_t remainCoreNum);
-    void CalAswtL1Tiling(const GMMCompileInfo* compileInfoPtr);
-    bool CalL1Tiling(const gert::TilingContext* context, const GMMCompileInfo* compileInfoPtr);
-    void CalcTailBasicBlock(const GMMCompileInfo* compileInfoPtr);
+    bool CalBaseMMTiling(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
+    void FormulateBasicBlock(const GMMCompileInfo *compileInfoPtr, uint32_t remainCoreNum);
+    void CalAswtL1Tiling(const GMMCompileInfo *compileInfoPtr);
+    bool CalL1Tiling(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
+    void CalcTailBasicBlock(const GMMCompileInfo *compileInfoPtr);
     bool SetCustomParam(gert::TilingContext *context);
-    bool GetAttrs(const gert::TilingContext* context);
-    bool CalMatMulTiling(const gert::TilingContext* context, const GMMCompileInfo* compileInfoPtr);
+    bool GetAttrs(const gert::TilingContext *context);
+    bool CalMatMulTiling(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
     void SetGMMTiling();
     void SetMatMulTiling();
     void SetTilingKey(gert::TilingContext *context);
-    bool GMMGetTensorShapeSplitM(const gert::TilingContext* context, const gert::Shape xShape, const gert::Shape wShape);
-    bool GMMGetTensorShapeSplitK(const gert::TilingContext* context, const gert::Shape xShape, const gert::Shape wShape);
+    bool GMMGetTensorShapeSplitM(const gert::TilingContext *context, const gert::Shape xShape,
+                                 const gert::Shape wShape);
+    bool GMMGetTensorShapeSplitK(const gert::TilingContext *context, const gert::Shape xShape,
+                                 const gert::Shape wShape);
     bool SplitMSingleXSingleWeightSingleY(const gert::Shape xShape, const gert::Shape wShape);
-    bool SplitMSingleXSeparatedWeight(const gert::TilingContext* context, const gert::Shape xShape);
-    bool SeparatedXSeparatedWeight(const gert::TilingContext* context);
-    bool SeparatedXSingleWeight(const gert::TilingContext* context, const gert::Shape wShape);
-    bool SplitKSingleXSingleWeightSingleY(const gert::TilingContext* context, const gert::Shape xShape, const gert::Shape wShape);
-    bool SplitKSingleXSeparatedWeight(const gert::TilingContext* context, const gert::Shape xShape);
+    bool SplitMSingleXSeparatedWeight(const gert::TilingContext *context, const gert::Shape xShape);
+    bool SeparatedXSeparatedWeight(const gert::TilingContext *context);
+    bool SeparatedXSingleWeight(const gert::TilingContext *context, const gert::Shape wShape);
+    bool SplitKSingleXSingleWeightSingleY(const gert::TilingContext *context, const gert::Shape xShape,
+                                          const gert::Shape wShape);
+    bool SplitKSingleXSeparatedWeight(const gert::TilingContext *context, const gert::Shape xShape);
     void PrintTilingResult(const gert::TilingContext *context);
     void SetDisableL2Cache(const gert::TilingContext *context, const GMMCompileInfo *compileInfoPtr);
     bool CheckWeightNZShape(const gert::TilingContext *context, int64_t numInOneBlk) const;
@@ -114,7 +117,6 @@ protected:
                                  const gert::Shape &wShape, uint32_t wDimNum);
 
 private:
-
     bool transposeX_ = false;
     bool transposeWeight_ = false;
     bool isSingleX_ = true;
@@ -137,7 +139,7 @@ private:
     uint32_t xKDim_ = 0;
     uint32_t weightNDim_ = 0;
     uint32_t xDimNum_ = 0;
-    int64_t nzFactor_ = 1;  // for weight nz format
+    int64_t nzFactor_ = 1; // for weight nz format
     uint64_t baseM_ = BASE_M_DEFAULT;
     uint64_t baseN_ = BASE_N_DEFAULT;
     uint64_t baseK_ = BASE_K_DEFAULT;
@@ -155,6 +157,6 @@ private:
     TilingKeyBuilder tilingKeyBuilder_;
     GroupedMatmulTilingData::GMMNoQuantTilingData tilingData_;
 };
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // GROUPED_WEIGHT_QUANT_BATCH_MATMUL_TILING_H
+#endif // GROUPED_WEIGHT_QUANT_BATCH_MATMUL_TILING_H
