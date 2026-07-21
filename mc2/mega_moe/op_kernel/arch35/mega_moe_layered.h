@@ -1308,8 +1308,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
 // =====================================================================================================
 template <TemplateMegaMoeTypeClass>
 template <AddrUpdateMode Mode>
-__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGroupParams(ExpertLoopState &state, uint32_t expertIdx,
-                                                                           uint64_t sendCnt)
+__aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGroupParams(ExpertLoopState &state,
+                                                                                  uint32_t expertIdx, uint64_t sendCnt)
 {
     if (expertIdx != 0) {
         uint64_t m = Get<M_VALUE>(state.problemShape);
@@ -1443,8 +1443,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGlobalBuff
         }
         gmmAddrInfo.aGlobal = params_.workspaceInfo.swigluQuantDataPtr +
                               Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.swigluQuantScalePtr
-            + Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.swigluQuantScalePtr + 
+                                   Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
         gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal =
             params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
@@ -1550,7 +1550,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(c
 
     uint32_t coreIdForGrouping = aivCoreIdx_;
     uint32_t totalCoresForGrouping = blockAivNum_;
-    if constexpr (ENABLE_A8W4 || ENABLE_A4W4) {
+    if constexpr (ENABLE_A8W4) {
         if (subBlockIdx_ != 1) {
             return;
         }
@@ -2039,16 +2039,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     int64_t oriOverflowMode = GetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>();
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
     SendAndQuantBuffInit();
-    SendMaskCal();               // 源卡按所有全局专家算 mask 并推送到目标专家卡
-    ResetFlagList();             // 清理workSpace空间上的flag位
-    ResetDispatchState();    // cross-server URMA dispatch 队列与 relay ready flag 清零
+    SendMaskCal(); // 源卡按所有全局专家算 mask 并推送到目标专家卡
+    ResetFlagList(); // 清理workSpace空间上的flag位
+    ResetDispatchState(); // cross-server URMA dispatch 队列与 relay ready flag 清零
     if (sharedExpertNum_ > 0) {
         SharedExpertCopyInput();
     }
     if constexpr(g_coreType == AIV) {
         PipeBarrier<PIPE_ALL>();
     }
-    SyncAll<false>();            // aic需要等待flag位reset清理完成
+    SyncAll<false>(); // aic需要等待flag位reset清理完成
     
     // 共享专家 GMM1+SwiGLU (前移, 在 MoE 之前执行, 复用 MoE 函数)
     TupleShape initShape;
@@ -2073,7 +2073,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Process()
     //   SendCntCal 将 expert token 数写入 nextSendCnt；
     //   循环顶部 nextSendCnt → curSendCnt 显式转发；
     //   GMM1 consumer 始终读 curSendCnt。
-    uint64_t curSendCnt = 0;  // 当前 expert 的 sendCnt（GMM1 consumer 使用）
+    uint64_t curSendCnt = 0; // 当前 expert 的 sendCnt（GMM1 consumer 使用）
     uint64_t nextSendCnt = 0; // 下一 expert 的 sendCnt（dispatch prefetch 算出）
     int32_t vecSetSyncCom = 0;
 
