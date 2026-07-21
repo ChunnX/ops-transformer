@@ -691,6 +691,9 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::ProcessInvalid()
                 // bf16 neg infinity bit pattern = 0xFF80
                 uint16_t negInf = 0xFF80;
                 AscendC::InitGlobalMemory(valueOut, dealSize, negInf);
+
+                SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+                WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
             }
         }
     }

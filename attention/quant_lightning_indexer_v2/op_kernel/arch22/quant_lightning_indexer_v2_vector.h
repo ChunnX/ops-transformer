@@ -137,8 +137,8 @@ __aicore__ inline void SortAll(LocalTensor<float> &src, LocalTensor<float> &tmp,
         AscendC::PipeBarrier<PIPE_V>();
     }
     if (i % CONST_TWO == 0) {
-        AscendC::DataCopy(src, tmp, logitsNum * VALUE_AND_INDEX_NUM);
-        AscendC::PipeBarrier<PIPE_V>();
+            AscendC::DataCopy(src, tmp, logitsNum * VALUE_AND_INDEX_NUM);
+            AscendC::PipeBarrier<PIPE_ALL>();
     }
 }
 
@@ -163,8 +163,8 @@ __aicore__ inline void MergeSort(const LocalTensor<float> &mrgDst, int32_t mrgDs
 
     AscendC::MrgSort<float>(tmpTensor, srcList, params);
     AscendC::PipeBarrier<PIPE_V>();
-    AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
-    AscendC::PipeBarrier<PIPE_V>();
+            AscendC::DataCopy(mrgDst, tmpTensor, mrgDstNum * VALUE_AND_INDEX_NUM);
+            AscendC::PipeBarrier<PIPE_ALL>();
 }
 
 __aicore__ inline void ExtractIndex(const LocalTensor<uint32_t> &idxULocal, const LocalTensor<uint32_t> &sortLocal,

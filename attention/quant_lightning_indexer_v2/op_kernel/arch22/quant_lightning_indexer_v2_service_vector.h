@@ -450,6 +450,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                     idxULocal = outQueue_.DeQue<uint32_t>();
                     QLIV2ServiceVec::CopyOut(indiceOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount],
                                            idxULocal.template ReinterpretCast<int32_t>(), constInfo_.sparseCount);
+                    {
+                        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+                        SetFlag<HardEvent::MTE3_V>(eventID);
+                        WaitFlag<HardEvent::MTE3_V>(eventID);
+                    }
                     outQueue_.FreeTensor(idxULocal);
                 } else {
                     // 同时输出索引和bf16 value / Output both indices and bf16 values
@@ -470,8 +475,13 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                     PipeBarrier<PIPE_V>();
                     QLIV2ServiceVec::CopyOut(indiceOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount],
                                            idxULocal1, constInfo_.sparseCount);
-                    QLIV2ServiceVec::CopyOut(valueOutGm[info.indiceOutOffset + cuS1Idx * constInfo_.sparseCount],
-                                           valueBf16Ub, constInfo_.sparseCount);
+                    QLIV2ServiceVec::CopyOut(valueOutGm[info.valueOutOffset + cuS1Idx * constInfo_.sparseCount],
+                                             valueBf16Ub, constInfo_.sparseCount);
+                    {
+                        event_t eventID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+                        SetFlag<HardEvent::MTE3_V>(eventID);
+                        WaitFlag<HardEvent::MTE3_V>(eventID);
+                    }
                     outQueue_.FreeTensor(outValueUb);
                 }
             }
