@@ -39,8 +39,10 @@ constexpr uint32_t OUTPUT_INDEX_2 = 2;
 
 ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext *context)
 {  
-    OP_CHECK_IF(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("SparseFlashAttention", "InferShapeContext"),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("SparseFlashAttention", "InferShapeContext",
+                    "InferShapeContext is nullptr"),
+                return ge::GRAPH_FAILED);
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
 
@@ -114,8 +116,10 @@ ge::graphStatus InferShapeSparseFlashAttention(gert::InferShapeContext *context)
 
 ge::graphStatus InferDataTypeSparseFlashAttention(gert::InferDataTypeContext *context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE_WITH_INVALID_INPUT("SparseFlashAttention", "InferShapeContext"),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(context == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("SparseFlashAttention", "InferShapeContext",
+                    "InferShapeContext is nullptr"),
+                return ge::GRAPH_FAILED);
     const auto inputDataType = context->GetInputDataType(QUERY_INPUT_INDEX);
     context->SetOutputDataType(OUTPUT_INDEX_0, inputDataType);
     context->SetOutputDataType(OUTPUT_INDEX_1, ge::DT_FLOAT);
