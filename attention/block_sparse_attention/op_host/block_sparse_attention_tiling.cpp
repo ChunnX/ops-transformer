@@ -830,7 +830,8 @@ ge::graphStatus BSATiling::ValidateGenericDequantScale(gert::TilingContext *bsaC
 ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaContext, const int parameterIndex)
 {
     if (qInputLayout_ == BSAQInputLayout::TND_Q) {
-        return ge::GRAPH_SUCCESS;  // TND 暂不校验
+        OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 dequantScale not support TND layout.");
+        return ge::GRAPH_FAILED;
     }
     const auto *scaleShape = bsaContext->GetOptionalInputShape(parameterIndex);
     if (scaleShape == nullptr) {
@@ -844,22 +845,22 @@ ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaCon
     }
 
     bool isBNSD = (qInputLayout_ == BSAQInputLayout::BNSD_Q);
-    uint32_t sDiv64 = (maxKvSeqlen_ + NUM_64 - 1) / NUM_64;  // CeilDiv(S2, 64)
+    uint32_t kvsDiv64 = (maxKvSeqlen_ + NUM_64 - 1) / NUM_64;  // CeilDiv(KVS, 64)
     uint32_t dDiv64 = embeddingSize_ / NUM_64;
     uint32_t expDim1, expDim2, expDim3;
 
     if (parameterIndex == Q_DEQUANT_SCALE_INDEX) {
-        // QScale: BNSD=[B,N1,S1,D//64,2]  BSND=[B,S1,N1,D//64,2]
+        // QScale: BNSD=[B,QN,QS,D//64,2]  BSND=[B,QS,QN,D//64,2]
         expDim1 = isBNSD ? numHeads_   : maxQSeqlen_;
         expDim2 = isBNSD ? maxQSeqlen_ : numHeads_;
         expDim3 = dDiv64;
     } else if (parameterIndex == V_DEQUANT_SCALE_INDEX) {
-        // VScale: BNSD=[B,N2,S2//64,D,2]  BSND=[B,S2//64,N2,D,2]
-        expDim1 = isBNSD ? kvHeads_ : sDiv64;
-        expDim2 = isBNSD ? sDiv64   : kvHeads_;
+        // VScale: BNSD=[B,KVN,CeilDiv(KVS, 64),D,2]  BSND=[B,CeilDiv(KVS, 64),KVN,D,2]
+        expDim1 = isBNSD ? kvHeads_ : kvsDiv64;
+        expDim2 = isBNSD ? kvsDiv64   : kvHeads_;
         expDim3 = embeddingSize_;
     } else {
-        // KScale: BNSD=[B,N2,S2,D//64,2]  BSND=[B,S2,N2,D//64,2]
+        // KScale: BNSD=[B,KVN,KVS,D//64,2]  BSND=[B,KVS,KVN,D//64,2]
         expDim1 = isBNSD ? kvHeads_     : maxKvSeqlen_;
         expDim2 = isBNSD ? maxKvSeqlen_ : kvHeads_;
         expDim3 = dDiv64;
@@ -870,12 +871,13 @@ ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaCon
         if (actual != expected) {
             OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 scale dim[%d] mismatch (layout=%s, index=%d): expected %u, got %u.",
                     idx, isBNSD ? "BNSD" : "BSND", parameterIndex, expected, actual);
-            return false;
+            return ge::GRAPH_FAILED;
         }
-        return true;
+        return ge::GRAPH_SUCCESS;
     };
-    if (!checkDim(batch_, 0) || !checkDim(expDim1, 1) || !checkDim(expDim2, 2) ||
-        !checkDim(expDim3, 3) || !checkDim(NUM_2, 4)) {
+    if (checkDim(batch_, 0) != ge::GRAPH_SUCCESS || checkDim(expDim1, 1) != ge::GRAPH_SUCCESS ||
+        checkDim(expDim2, 2) != ge::GRAPH_SUCCESS || checkDim(expDim3, 3) != ge::GRAPH_SUCCESS ||
+        checkDim(NUM_2, 4) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
