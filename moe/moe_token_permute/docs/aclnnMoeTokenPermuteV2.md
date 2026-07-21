@@ -51,12 +51,12 @@ aclnnStatus aclnnMoeTokenPermuteV2(
 
 | 参数名 | 输入/输出 | 描述 | 使用说明 | 数据类型 | 数据格式 | 维度 |
 | --- | --- | --- | --- | --- | --- | --- |
-| `tokens` | 输入 | 输入token特征。 | 支持空tensor；要求维度大于等于2，第一维为`num_tokens`。Ascend 950量化模式仅支持FLOAT16、BFLOAT16。 | 非量化：FLOAT16、BFLOAT16、FLOAT32、INT8；量化：FLOAT16、BFLOAT16 | ND | ≥2 |
+| `tokens` | 输入 | 输入token特征。 | 支持空tensor；要求维度为2，shape为`[num_tokens, H]`。Ascend 950量化模式仅支持FLOAT16、BFLOAT16。 | 非量化：FLOAT16、BFLOAT16、FLOAT32、INT8；量化：FLOAT16、BFLOAT16 | ND | 2 |
 | `indices` | 输入 | 输入indices索引。 | 支持空tensor；shape为1D(`[num_tokens]`)或2D(`[num_tokens, topK]`)。`paddedMode=false`时，1D表示每个token对应1个专家，2D表示每个token对应`topK`个专家索引。`num_tokens`与`tokens`的第一维相同。tokens数据类型为INT8、MXFP4、MXFP8时，元素个数不大于`10240`。 | INT32、INT64 | ND | 1或2 |
 | `numOutTokens` | 输入 | 有效输出token数。 | `0`表示不删除token；大于0时保留排序后的前`numOutTokens`个token；小于0时按负切片索引处理。tokens数据类型为INT8时，`numOutTokens`不大于`10240`。 | - | - | - |
 | `paddedMode` | 输入 | 是否为填充模式。 | 当前不支持`true`，建议固定为`false`。 | - | - | - |
 | `quantMode` | 输入 | 量化模式。 | `-1`为非量化；`2`为MXFP8 E5M2；`3`为MXFP8 E4M3FN；`9`为MXFP4 E2M1。非Ascend 950平台静默忽略量化参数。 | - | - | - |
-| `permuteTokensOut` | 输出 | 根据indices扩展并排序后的tokens。 | 非量化时数据类型同`tokens`；`quantMode=2/3/9`时分别为FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。 | FLOAT16、BFLOAT16、FLOAT32、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1 | ND | ≥2 |
+| `permuteTokensOut` | 输出 | 根据indices扩展并排序后的tokens。 | 非量化时数据类型同`tokens`；`quantMode=2/3/9`时分别为FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1。 | FLOAT16、BFLOAT16、FLOAT32、INT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1 | ND | 2 |
 | `sortedIndicesOut` | 输出 | `permuteTokensOut`和`tokens`的映射关系。 | 1D Tensor，shape为`[indices.numel()]`。 | INT32 | ND | 1 |
 | `expandedScaleOut` | 输出 | 量化后的per-token分块scale。 | 量化场景必须提供有效输出；非量化场景可传shape为`[0]`、dtype为FLOAT32的空Tensor。 | FLOAT8_E8M0、FLOAT32 | ND | 1、2或3 |
 | `workspaceSize` | 输出 | 返回需要在Device侧申请的workspace大小。 | - | - | - | - |
@@ -116,6 +116,7 @@ aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/co
 
 ## 约束说明
 
+- `tokens`要求维度为2，shape为`[N, H]`。
 - `indices`要求元素个数小于`16777215`，值大于等于`0`且小于`16777215`。
 - `tokens`数据类型为INT8时，`indices`元素个数不大于`10240`，`numOutTokens`不大于`10240`。
 - 不支持`paddedMode=true`。
