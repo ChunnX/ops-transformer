@@ -15,7 +15,8 @@
 #ifndef MOE_GATING_TOP_K_BACKWARD_REGBASE_H
 #define MOE_GATING_TOP_K_BACKWARD_REGBASE_H
 #include "kernel_operator.h"
-#include "common.h"
+#include "../common.h"
+#include "moe_gating_top_k_backward_tiling_def.h"
 #include "basic_api/kernel_operator_utils_intf.h"
 namespace MoeGatingTopKBackward {
 using namespace AscendC;

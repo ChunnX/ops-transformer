@@ -30,6 +30,7 @@ extern "C" __global__ __aicore__ void moe_gating_top_k_backward(GM_ADDR xNorm, G
         return;
     }
 
+    REGISTER_TILING_DEFAULT(MoeGatingTopKBackwardRegbaseTilingData);
     GET_TILING_DATA_WITH_STRUCT(MoeGatingTopKBackwardRegbaseTilingData, tilingData, tiling);
     const MoeGatingTopKBackwardRegbaseTilingData *__restrict t = &tilingData;
     TPipe tPipe;
