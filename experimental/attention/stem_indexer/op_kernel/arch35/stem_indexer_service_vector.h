@@ -199,21 +199,18 @@ __aicore__ inline void SIVector<SIT>::initS2LenToNeg(uint32_t gS1Idx, uint32_t a
     if (curAivGS1ProcNum == 0) {
         return;
     }
+    uint32_t curGlobalGIdx = curAivGS1Idx / actS1Size;
+    uint32_t curGlobalS1Idx = curAivGS1Idx % actS1Size;
+    int64_t lastAivGS1Idx = curAivGS1Idx + curAivGS1ProcNum - 1;
+    uint32_t lastGlobalGIdx = lastAivGS1Idx / actS1Size;
+    uint32_t lastGlobalS1Idx = lastAivGS1Idx % actS1Size;
+    uint64_t startPhysicalRow = static_cast<uint64_t>(curGlobalGIdx) * constInfo_.qSeqSize + curGlobalS1Idx;
+    uint64_t endPhysicalRow = static_cast<uint64_t>(lastGlobalGIdx) * constInfo_.qSeqSize + lastGlobalS1Idx;
+    uint64_t clearRowNum = endPhysicalRow - startPhysicalRow + 1;
     int32_t neg = -1;
-    uint64_t logicalRow = static_cast<uint64_t>(curAivGS1Idx);
-    uint64_t remainRows = static_cast<uint64_t>(curAivGS1ProcNum);
-    // GS1逻辑行跨G连续，但物理行以qSeqSize为步长；按G边界拆分，避免清理中间的Q padding。
-    while (remainRows > 0U) {
-        uint32_t curGlobalGIdx = static_cast<uint32_t>(logicalRow / actS1Size);
-        uint32_t curGlobalS1Idx = static_cast<uint32_t>(logicalRow % actS1Size);
-        uint64_t clearRowNum = Min(remainRows, static_cast<uint64_t>(actS1Size - curGlobalS1Idx));
-        uint64_t startPhysicalRow = static_cast<uint64_t>(curGlobalGIdx) * constInfo_.qSeqSize + curGlobalS1Idx;
-        uint64_t outSplitOffset = indiceOutOffset + startPhysicalRow * constInfo_.kSeqSize;
-        GlobalTensor<int32_t> indiceSplitOut = sparseIndicesGm[outSplitOffset];
-        AscendC::InitGlobalMemory(indiceSplitOut, clearRowNum * constInfo_.kSeqSize, neg);
-        logicalRow += clearRowNum;
-        remainRows -= clearRowNum;
-    }
+    uint64_t outSplit1Offset = indiceOutOffset + startPhysicalRow * constInfo_.kSeqSize;
+    GlobalTensor<int32_t> indiceSplitOut = sparseIndicesGm[outSplit1Offset];
+    AscendC::InitGlobalMemory(indiceSplitOut, clearRowNum * constInfo_.kSeqSize, neg);
 }
 
 template <typename SIT>
