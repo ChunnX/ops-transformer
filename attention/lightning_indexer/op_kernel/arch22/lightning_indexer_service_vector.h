@@ -399,8 +399,10 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             }
             {
                 PipeBarrier<PIPE_V>();
-                uint64_t globalS1Idx = static_cast<uint64_t>(cuS1Idx);
-                uint64_t scoreOffset = globalS1Idx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
+                // Use indiceOutOffset/sparseCount + cuS1Idx as row index to match ProcessRadixTopK's batchId
+                // (cuS1Idx alone is 0,1,2 for every batch when s1BaseSize > qSeqSize, causing overwrites)
+                uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
+                uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
                 AscendC::DataCopyParams dcParams;
                 dcParams.blockCount = 1;
                 dcParams.blockLen = s2BaseSize_ * sizeof(float);
