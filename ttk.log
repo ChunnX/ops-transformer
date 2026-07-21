@@ -1,170 +1,61 @@
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# GRAPH_PATH=7 PYTHONPATH=/home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv --plugin /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/assets --backend npu -t TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 --warmup false --run 1
-2026-07-17 12:11:07,720 [INFO] [2709874 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv 
-2026-07-17 12:11:12,178 [INFO] [2709874 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-17 12:11:12,733 [INFO] [2709874 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-17 12:11:12,733 [INFO] [2709874 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-17 12:11:12,733 [INFO] [2709874 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-17 12:11:12,733 [INFO] [2709874 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-17 12:11:13,880 [INFO] [2709874 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-17 12:11:13,884 [INFO] [2709874 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-17 12:11:13,885 [INFO] [2709874 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-17 12:11:15,042 [INFO] [2709874 MP MT] [instance.py:42]: Device count: 1 
-2026-07-17 12:11:15,043 [INFO] [2709874 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-17 12:11:15,043 [INFO] [2709874 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-17 12:11:15,043 [INFO] [2709874 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv ... 
-2026-07-17 12:11:15,044 [INFO] [2709874 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
-2026-07-17 12:11:15,044 [INFO] [2709874 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
-ninja: no work to do.
-ninja: no work to do.
-[2026/07/17 12:11:15] [INFO]-patch_getenv.py:0015 - get env GRAPH_PATH = 7
-[2026/07/17 12:11:16] [INFO]-instance_base.py:0237 - Checking testcase name...
-[2026/07/17 12:11:16] [INFO]-instance_base.py:0240 - Case number: 1
-[2026/07/17 12:11:16] [INFO]-instance_base.py:0313 - Initialize output csv file...
-[2026/07/17 12:11:16] [INFO]-instance_base.py:0321 - Output csv file is not specified. It will be set as /home/z00954345/jialu/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_result.csv
-[2026/07/17 12:11:16] [INFO]-instance_base.py:0145 - Process per device: 1
-[2026/07/17 12:11:16] [INFO]-instance_base.py:0147 - Preparing Task Executors...
-[2026/07/17 12:11:16] [INFO]-instance_base.py:0211 - 
-+-------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
-+-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 2710203 D0P0             UNKNOWN              IDLE     0s  |
-+-------------------------------------------------------------------------------------------------------+
-2026-07-17 12:11:20,774 [INFO] [2710203 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67
-ninja: no work to do.
-ninja: no work to do.
-[2026/07/17 12:11:22] [INFO]-patch_getenv.py:0015 - get env GRAPH_PATH = 7
-[2026/07/17 12:11:22] [INFO]-profiling.py:0056 - 
-----------------------------------------------------------------------------------------------------
-API Name: qfa_mxfp8_wrapper.npu_qfa_mxfp8
-Golden API: 
-Backend: npu
-////////////// Tensors //////////////
-Input View Shapes: ((1, 1, 3, 64), (1, 1, 640, 64), (1, 1, 640, 64), (1, 1, 3, 2), (1, 1, 640, 2), (1, 1, 20, 64), (1,), (0,))
-Input Dtypes: ('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')
-Input Storage Shapes: ()
-Input Formats: ()
-Input View Offsets: ()
-Input View Strides: ()
-//////////// Output Info //////////
-Output Tensor Indexes: ()
-//////////// Attributes //////////
-B: 1
-N_q: 1
-N_kv: 1
-D: 64
-actual_seq_q: [3]
-actual_seq_kv: [640]
-enable_pa: False
-kv_cache_layout: TND
-block_size: 512
-mask_mode: 0
-q_scale_layout: N2TGD
-quant_mode: 1
-enable_lse: False
-graph_path: 7
-input_layout: TND
-is_contiguous: True
-device_id: 0
-//////////// Test Config //////////
-Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None))
-Precision Tolerance: None
-Absolute Precision: (1e-08,)
-Mode: ASCEND_ONBOARD
-PID: 2710203
-Device: 0
-----------------------------------------------------------------------------------------------------
-[2026/07/17 12:11:24] [INFO]-qfa_mxfp8_wrapper.py:0084 - [WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[2026/07/17 12:11:24] [INFO]-qfa_mxfp8_wrapper.py:0107 - [WRAPPER] graph_path=7, 调用 npu_mxfp8_fa
-[2026/07/17 12:11:24] [INFO]-fia_fullquant_mxfp8_golden.py:1036 - [NPU] Q layout auto: G=1, S1=3, G*S1=3, q_layout=N2TGD
-[2026/07/17 12:11:24] [INFO]-fia_fullquant_mxfp8_golden.py:1040 - [NPU TND] q=torch.Size([3, 1, 64])
-[2026/07/17 12:11:24] [INFO]-fia_fullquant_mxfp8_golden.py:1045 - [NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
-[2026/07/17 12:11:24] [INFO]-fia_fullquant_mxfp8_golden.py:1115 - [NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
-[2026/07/17 12:11:24] [INFO]-fia_fullquant_mxfp8_golden.py:1123 - [NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
-[2026/07/17 12:11:24] [INFO]-fia_fullquant_mxfp8_golden.py:1128 - [NPU] 调用 TND 模式...
-[2026/07/17 12:11:24] [INFO]-fia_fullquant_mxfp8_golden.py:1185 - [NPU] 调用 aclgraph (reduce-overhead)...
-/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/configs/compiler_config.py:106: UserWarning: The following torchair config or properties may not take effect or report error in reduce-overhead mode: config.experimental_config.topology_sorting_strategy:StableRDFS, config.experimental_config.tiling_schedule_optimize:True, config.experimental_config.enable_view_optimize:True, set_dim_gears, dynamo_export, scope, npu_print
-  warnings.warn(
-/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/configs/compiler_config.py:113: DeprecationWarning: The "reduce-overhead" mode configuration will be deprecated. Please use the "npugraph_ex" backend.
-  warnings.warn("The \"reduce-overhead\" mode configuration will be deprecated. "
-[2026/07/17 12:11:24] [INFO]-patch_getenv.py:0015 - get env TORCHINDUCTOR_CACHE_DIR = /tmp/torchinductor_root
-/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/variables/functions.py:2082: UserWarning: Dynamo does not know how to trace the builtin `quant_flash_attn.pybind11_detail_function_record_v1_system_libstdcpp_gxx_abi_1xxx_use_cxx11_abi_1.quant_flash_attn_metadata.` This function is either a Python builtin (e.g. _warnings.warn) or a third-party C/C++ Python extension (perhaps created with pybind).
-If it is a Python builtin, please file an issue on GitHub so the PyTorch team can add support for it and see the next case for a workaround.
-If it is a third-party C/C++ Python extension, please either wrap it into a PyTorch-understood custom operator (see https://pytorch.org/tutorials/advanced/custom_ops_landing_page.html for more details) or, if it is traceable, use `torch.compiler.allow_in_graph`.
-  torch._dynamo.utils.warn_once(explanation + "\n" + "\n".join(hints))
-/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_acl_concrete_graph/fx2acl_converter.py:361: UserWarning: When enable frozen_parameter, Parameters and input tensors with immutable data_ptr marked by `torch._dynamo.mark_static_address()` will be considered static. Please make sure that the Parameters data address remain the same throughout the program runtime.
-  warnings.warn('When enable frozen_parameter, Parameters and input tensors with immutable data_ptr '
-/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_acl_concrete_graph/static_kernel.py:52: UserWarning: The current version now supports caching run packages from static kernel compilation, it is recommended to delete the compilation cache and recompile when you use `torchair.inference.cache_compile` and do not use debug.run_eagerly=True.
-  warnings.warn(warn_msg)
-/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/dynamo/torchair/_acl_concrete_graph/static_kernel.py:127: UserWarning: Starting static kernel compilation, the build directory is /home/z00954345/Ascendfzxttk/cann/ops-test-kit/aclnn_static_shape_kernel_outputs/ts20260717121125143733_pid2710203_outputs
-  warnings.warn(f"Starting static kernel compilation, the build directory is {result_root}")
-/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/_dynamo/variables/functions.py:2082: UserWarning: Dynamo does not know how to trace the builtin `quant_flash_attn.pybind11_detail_function_record_v1_system_libstdcpp_gxx_abi_1xxx_use_cxx11_abi_1.quant_flash_attn.` This function is either a Python builtin (e.g. _warnings.warn) or a third-party C/C++ Python extension (perhaps created with pybind).
-If it is a Python builtin, please file an issue on GitHub so the PyTorch team can add support for it and see the next case for a workaround.
-If it is a third-party C/C++ Python extension, please either wrap it into a PyTorch-understood custom operator (see https://pytorch.org/tutorials/advanced/custom_ops_landing_page.html for more details) or, if it is traceable, use `torch.compiler.allow_in_graph`.
-  torch._dynamo.utils.warn_once(explanation + "\n" + "\n".join(hints))
-[2026/07/17 12:11:26] [INFO]-instance_base.py:0211 - 
-+-------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 13s Rev: 7f1d28b                      |
-+-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 2710203 Nq1_Nkv1_D64_SP0 OnEagerProfiling     RUNNING  3s  |
-+-------------------------------------------------------------------------------------------------------+
-[2026/07/17 12:11:27] [INFO]-fia_fullquant_mxfp8_golden.py:1139 - [NPU] output=torch.Size([3, 1, 64])
-[2026/07/17 12:11:27] [INFO]-patch_getenv.py:0015 - get env ASCEND_GLOBAL_LOG_LEVEL = 3
-[2026-07-17 12:11:27] [INFO] [2710504] profiler.py: Start parsing profiling data in sync mode at: /tmp/ttk_npu_prof_2z6vhr7t/aa_2710203_20260717121124455_ascend_pt
-[2026-07-17 12:11:29] [INFO] [2710523] profiler.py: CANN profiling data parsed in a total time of 0:00:02.037072
-[2026-07-17 12:11:30] [WARNING] [2710504] profiler.py: Failed to get api data from db.
-[2026-07-17 12:11:30] [WARNING] [2710504] profiler.py: Failed to get task data from db.
-[2026-07-17 12:11:31] [INFO] [2710504] profiler.py: All profiling data parsed in a total time of 0:00:03.513353
-/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/utilities/proc.py:50: DeprecationWarning: setName() is deprecated, set the name attribute instead
-  threading.current_thread().setName(name)
-[2026/07/17 12:11:32] [INFO]-fia_fullquant_mxfp8_golden.py:0792 - [CPU Golden] TILES_Q=1, TILES_KV=3, Sq=3, Skv=640
-[2026/07/17 12:11:32] [INFO]-fia_fullquant_mxfp8_golden.py:0871 - [CPU Golden] output=torch.Size([1, 1, 3, 64])
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0141 - split_count:192.0; max_diff_hd:10;
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0035 - ---------------------------------------------------------------------------------------
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0036 - Loop        ExpectOut       RealOut         FpDiff          RateDiff
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0038 - ---------------------------------------------------------------------------------------
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000001    -0.0041411      -0.0041504      0.0000093       0.0022365
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000002    0.0653892       0.0654297       0.0000405       0.0006187
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000003    -0.0109132      -0.0109253      0.0000121       0.0011080
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000004    0.0050197       0.0050049       0.0000149       0.0029597
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000005    -0.0169076      -0.0169678      0.0000602       0.0035591
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000006    0.0074968       0.0075073       0.0000105       0.0014045
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000007    0.0032336       0.0032349       0.0000013       0.0004057
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000008    0.0015606       0.0015640       0.0000034       0.0021910
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000009    -0.0124024      -0.0123901      0.0000122       0.0009877
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000010    -0.0067581      -0.0067444      0.0000137       0.0020342
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0072 - ...           ...             ...             ...             ...
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000183    -0.0053816      -0.0053711      0.0000105       0.0019491
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000184    0.0131806       0.0131836       0.0000030       0.0002287
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000185    0.0223322       0.0223389       0.0000066       0.0002973
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000186    -0.0211758      -0.0211182      0.0000576       0.0027198
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000187    -0.0439872      -0.0439453      0.0000419       0.0009530
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000188    -0.0027714      -0.0027771      0.0000057       0.0020634
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000189    -0.0196409      -0.0196533      0.0000125       0.0006347
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000190    0.0047039       0.0046997       0.0000042       0.0008953
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000191    0.0041473       0.0041504       0.0000031       0.0007360
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0063 - 00000192    -0.0072263      -0.0072327      0.0000064       0.0008874
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0179 - ---------------------------------------------------------------------------------------
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0180 - Rtol        Atol            PctThd          PctRlt          Result
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0181 - ---------------------------------------------------------------------------------------
-[2026/07/17 12:11:32] [INFO]-result_compare_method.py:0182 - 0.0078      0.000100        99.50%          100.000000%     Pass
-[2026/07/17 12:11:32] [INFO]-profiling.py:0176 - 
-Eager Kernels
--------------------------------------------------------------------------------------------------------
-Name                                              avg            max           min           # of Calls
--------------------------------------------------------------------------------------------------------
-aclnnInplaceFillScalar_FillAiCore_Fill            2.235          4.640         1.410         4
-aclnnQuantFlashAttnMetadata_QuantFlashAttnMetada..55544.520      110576.711    512.330       2
-QuantFlashAttn                                    18.073         18.073        18.073        1
--------------------------------------------------------------------------------------------------------
+get env GRAPH_PATH = 0
+[WRAPPER] 使用环境变量 GRAPH_PATH=0 (覆盖 CSV graph_path)
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[WRAPPER] graph_path=0, 调用 npu_mxfp8_fa
+[NPU] Q layout: q_layout=N2TGD, G=1
+[WRAPPER] NPU 调用失败: The expanded size of the tensor (4) must match the existing size (3) at non-singleton dimension 0.  Target sizes: [4, 64].  Tensor sizes: [3, 64]
+[TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] Error: The expanded size of the tensor (4) must match the existing size (3) at non-singleton dimension 0.  Target sizes: [4, 64].  Tensor sizes: [3, 64]
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
+    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
+    result_nps, perf = _execute_eager(
+                       ^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 328, in _execute_eager
+    resolved(*args, **kwargs)
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 131, in npu_qfa_mxfp8
+    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1183, in npu_mxfp8_fa
+    inputs = prepare_npu_inputs(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1074, in prepare_npu_inputs
+    q_npu = convert_q_bnsd_to_layout(q_fp8, act_seqused_q, npu_input_layout, cu_seqlens=CU_SEQLENS_Q).contiguous().view(FP8_DTYPE).npu()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 235, in convert_q_bnsd_to_layout
+    result[offset:offset + act_s, n, :] = tensor[b, n, :act_s, :]
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: The expanded size of the tensor (4) must match the existing size (3) at non-singleton dimension 0.  Target sizes: [4, 64].  Tensor sizes: [3, 64]
+Profiling process failed for testcase TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 with pid 2757556, fail reason:
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
+    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
+    result_nps, perf = _execute_eager(
+                       ^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 328, in _execute_eager
+    resolved(*args, **kwargs)
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 131, in npu_qfa_mxfp8
+    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
+                         ^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1183, in npu_mxfp8_fa
+    inputs = prepare_npu_inputs(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1074, in prepare_npu_inputs
+    q_npu = convert_q_bnsd_to_layout(q_fp8, act_seqused_q, npu_input_layout, cu_seqlens=CU_SEQLENS_Q).contiguous().view(FP8_DTYPE).npu()
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 235, in convert_q_bnsd_to_layout
+    result[offset:offset + act_s, n, :] = tensor[b, n, :act_s, :]
+    ~~~~~~^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: The expanded size of the tensor (4) must match the existing size (3) at non-singleton dimension 0.  Target sizes: [4, 64].  Tensor sizes: [3, 64]
 
+During handling of the above exception, another exception occurred:
 
- ####################################### Eager Result Summary  ######################################## 
-EAGER:       100.0%
-  DEVICE: 111116.055 us
-  CPU:    2271752.606 us
-STATUS: PASS
-Golden Shapes: ((3, 1, 64),)
-Golden Dtypes: ('float32',)
-#######################################################################################################
-[2026/07/17 12:11:32] [INFO]-instance_base.py:0126 - ttk Profiling complete
+Traceback (most recent call last):
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/tbe_multiprocessing/pool.py", line 202, in intermediate_func
+    function_return = func(*func_args, **func_kwargs)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 219, in profile_process
+    return_struct.precision = str(e)
+    ^^^^^^^^^^^^^^^^^^^^^^^
+AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
