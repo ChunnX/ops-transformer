@@ -120,13 +120,22 @@ bool MhcPostBackwardTilingNoHResArch35::IsCapable()
 {
     auto input4 = context_->GetInputDesc(H_POST_FULL_INPUT_INDEX);
     if (input4 != nullptr && input4->GetDataType() == ge::DT_FLOAT) {
+        std::cout<< "MhcPostBackwardTilingNoHResArch35 : index full 4 is not null" <<std::endl;
         return false;
     }
 
-    auto desc = context_->GetInputDesc(H_RES_INPUT_INDEX);
+    auto desc = context_->GetInputDesc(H_POST_INPUT_INDEX);
     if (desc == nullptr) {
+        std::cout<< "MhcPostBackwardTilingNoHResArch35 : index last is null" <<std::endl;
         return false;
     }
+
+    if (desc->GetDataType() != ge::DT_FLOAT) {
+        std::cout<< "MhcPostBackwardTilingNoHResArch35 : index last dtype not is float" <<std::endl;
+    }
+
+    std::cout<< "MhcPostBackwardTilingNoHResArch35 : enter in no hres tiling" <<std::endl;
+    // return (desc->GetDataType() == ge::DT_FLOAT);
     return (desc->GetDataType() == ge::DT_FLOAT);
 }
 

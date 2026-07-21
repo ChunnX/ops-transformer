@@ -75,6 +75,7 @@ public:
 protected:
     bool IsCapable() override
     {
+        std::cout<< "MhcPostBackwardTilingBaseArch35 : enter in  MhcPostBackwardTilingBaseArch35 tiling" <<std::endl;
         return true;
     }
 
