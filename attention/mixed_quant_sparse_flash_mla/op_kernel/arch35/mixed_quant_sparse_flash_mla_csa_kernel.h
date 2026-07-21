@@ -503,8 +503,19 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 if constexpr (BATCH_CONSISTENCY) {
                     int64_t s2Load = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx + runParam.s2CmpLineEndIdx;
                     int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
-                    int64_t s2PerReduceBlock = (s2Load / 32LL + s2BaseSize - 1) >> 7 << 7;
-                    runParam.baseBlockNumInTile = s2PerReduceBlock >> 7;
+                    int64_t s2PerReduceBlock = ((s2Load + 31LL) / 32LL + s2BaseSize - 1) >> 7 << 7;
+                    printf("[HUMAN]s2PerReduceBlock: %d\n", s2PerReduceBlock);
+                    int64_t baseBlockNum = s2PerReduceBlock >> 7;
+                    printf("[HUMAN]baseBlockNum: %d\n", baseBlockNum);
+                    runParam.baseBlockNumInTile = baseBlockNum > 0 ? baseBlockNum : 1LL;
+                    if ASCEND_IS_AIC {
+                        if (GetBlockIdx() < 2) {
+                            printf("[MQSMLA_AIC] BaseBlock calc line=%d blk=%d bn=%ld gs1=%ld s2Load=%ld "
+                                   "s2BaseSize=%ld s2PerReduceBlock=%ld baseBlockNumInTile=%ld\n",
+                                __LINE__, GetBlockIdx(), bnIdx, gS1Index, s2Load, s2BaseSize,
+                                s2PerReduceBlock, runParam.baseBlockNumInTile);
+                        }
+                    }
                 }
                 if (!s2NoNeedCalc) {
                     bool isFirstS2RangeTask = (bnIdx == bN2StartIdx && gS1Index == runParam.gs1LoopStartIdx);
@@ -529,15 +540,35 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                 s2LoopLimit = 0;
             }
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                if (runParam.isCrossCoreSplit && (s2LoopCount % runParam.baseBlockNumInTile == 0)) {
+                int64_t safeBaseBlockNum = runParam.baseBlockNumInTile > 0 ? runParam.baseBlockNumInTile : 1LL;
+                if (runParam.isCrossCoreSplit && (s2LoopCount % safeBaseBlockNum == 0)) {
                     runParam.s2SplitIdx = s2SplitIdxCounter++;
                 }
                 if (notLastTwoLoop) {
                     RunInfo &runInfo1 = runInfo[taskId % 3];
+                    if ASCEND_IS_AIC {
+                        if (GetBlockIdx() < 2) {
+                            printf("[MQSMLA_AIC] SetRunInfo before line=539 blk=%d task=%ld s2Loop=%ld limit=%ld baseNum=%ld cross=%d\n",
+                                GetBlockIdx(), taskId, s2LoopCount, s2LoopLimit,
+                                runParam.baseBlockNumInTile, runParam.isCrossCoreSplit);
+                        }
+                    }
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
                     if ASCEND_IS_AIC {
+                        if (GetBlockIdx() < 2) {
+                            printf("[MQSMLA_AIC] SetRunInfo after line=539 blk=%d task=%ld\n",
+                                GetBlockIdx(), taskId);
+                        }
+                    }
+                    if ASCEND_IS_AIC {
+                        if (GetBlockIdx() < 2) {
+                            printf("[MQSMLA_AIC] C1 before line=541 blk=%d task=%ld\n", GetBlockIdx(), taskId);
+                        }
                         this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), this->l1RightBuffers.Get(),
                             v0ResGmBuffers.Get(), runInfo1, this->constInfo);
+                        if (GetBlockIdx() < 2) {
+                            printf("[MQSMLA_AIC] C1 after line=541 blk=%d task=%ld\n", GetBlockIdx(), taskId);
+                        }
                     } else {
                         this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(), v0ResGmBuffers.Get(),
                             runInfo1, this->constInfo);
@@ -560,8 +591,18 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                             this->constInfo);
                     } else {
                         RunInfo &runInfo2 = runInfo[(taskId + 2) % 3];
+                        if ASCEND_IS_AIC {
+                            if (GetBlockIdx() < 2) {
+                                printf("[MQSMLA_AIC] C2 before line=565 blk=%d task=%ld\n", GetBlockIdx(), taskId);
+                            }
+                        }
                         this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers,
                             this->l1RightBuffers.GetReused(), runInfo2, this->constInfo);
+                        if ASCEND_IS_AIC {
+                            if (GetBlockIdx() < 2) {
+                                printf("[MQSMLA_AIC] C2 after line=565 blk=%d task=%ld\n", GetBlockIdx(), taskId);
+                            }
+                        }
                     }
                 }
                 if (taskId > 1) {
@@ -725,10 +766,11 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
     runInfo.isCrossCoreSplit = runParam.isCrossCoreSplit;
     runInfo.s2SplitIdx = runParam.s2SplitIdx;
     runInfo.isFirstS2SplitCore = runParam.isFirstS2SplitCore;
-    int64_t baseBlockIdInReduceBlock = s2LoopCount % runParam.baseBlockNumInTile;
-    runInfo.reduceBlockId = s2LoopCount / runParam.baseBlockNumInTile;
+    int64_t safeBaseBlockNum = runParam.baseBlockNumInTile > 0 ? runParam.baseBlockNumInTile : 1LL;
+    int64_t baseBlockIdInReduceBlock = s2LoopCount % safeBaseBlockNum;
+    runInfo.reduceBlockId = s2LoopCount / safeBaseBlockNum;
     runInfo.isFirstBase = baseBlockIdInReduceBlock == 0;
-    runInfo.isLastBase = ((runParam.baseBlockNumInTile - baseBlockIdInReduceBlock) == 1LL) ||
+    runInfo.isLastBase = ((safeBaseBlockNum - baseBlockIdInReduceBlock) == 1LL) ||
         (s2LoopCount == s2LoopLimit);  // todo: check
     runInfo.needReduce = runInfo.reduceBlockId > 0;
     this->ComputeBmm1Tail(runInfo, runParam);

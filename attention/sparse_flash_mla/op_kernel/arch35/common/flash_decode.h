@@ -207,6 +207,11 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
     int64_t outSplitStride = attenOutElems;
     int64_t mChunks = (mNum + layout.chunkRows - 1) / layout.chunkRows;
     int64_t startRow = 0;
+    if (GetBlockIdx() == 50) {
+        printf("[MQSMLA_FD_LINE] Reduce enter line=%d blk=%d wsIdx=%ld wsNum=%ld fdMOff=%ld mNum=%ld dValid=%ld chunks=%ld splitStride=%ld outSplitStride=%ld\n",
+            __LINE__, GetBlockIdx(), workspaceIdx, workspaceNum, fdMOffset, mNum, dValid,
+            mChunks, splitStride, outSplitStride);
+    }
     for (int64_t chunkIdx = 0; chunkIdx < mChunks; chunkIdx++) {
         int64_t dealRowCount = layout.chunkRows;
         if (startRow + dealRowCount > mNum) {
@@ -217,6 +222,10 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
         int64_t srcOffset = (fdMOffset + startRow) * layout.broadcastElems;
         int64_t dstOffset = 0;
         for (int64_t splitIdx = 0; splitIdx < workspaceNum; splitIdx++) {
+            if (GetBlockIdx() == 50) {
+                printf("[MQSMLA_FD_LINE] LSE copy before line=%d blk=%d chunk=%ld split=%ld srcOff=%ld dstOff=%ld elems=%ld\n",
+                    __LINE__, GetBlockIdx(), chunkIdx, splitIdx, srcOffset, dstOffset, dealRowsElems);
+            }
             DataCopy(blockMaxUb[dstOffset], maxGm[srcOffset], dealRowsElems);
             DataCopy(blockSumUb[dstOffset], sumGm[srcOffset], dealRowsElems);
             srcOffset += splitStride;
@@ -224,11 +233,23 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
         }
         SetFlag<HardEvent::MTE2_V>(mte2ToVId);
         WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
+        if (GetBlockIdx() == 50) {
+            printf("[MQSMLA_FD_LINE] LSE copy after line=%d blk=%d chunk=%ld\n",
+                __LINE__, GetBlockIdx(), chunkIdx);
+        }
 
         LocalTensor<T> sinkUb;
+        if (GetBlockIdx() == 50) {
+            printf("[MQSMLA_FD_LINE] ComputeScale before line=%d blk=%d chunk=%ld rows=%ld wsNum=%ld\n",
+                __LINE__, GetBlockIdx(), chunkIdx, dealRowCount, workspaceNum);
+        }
         FaVectorApi::ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
                                    dealRowCount, workspaceNum, false, false);
         PipeBarrier<PIPE_V>();
+        if (GetBlockIdx() == 50) {
+            printf("[MQSMLA_FD_LINE] ComputeScale after line=%d blk=%d chunk=%ld\n",
+                __LINE__, GetBlockIdx(), chunkIdx);
+        }
 
         LocalTensor<T> chunkAccumO = accumulatedO[startRow * D_ALIGN];
         int64_t outSrcOffset = (fdMOffset + startRow) * dValid;
@@ -241,11 +262,28 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
             DataCopyPadExtParams<float> padParams{true, 0,
                 static_cast<uint8_t>((D_ALIGN - dValid) % OUTPUT_ELEMS_PER_BLOCK), 0};
             WaitFlag<HardEvent::V_MTE2>(vToMte2Id1);
+            if (GetBlockIdx() == 50) {
+                printf("[MQSMLA_FD_LINE] PartialO copy before line=%d blk=%d chunk=%ld split=%ld outSrcOff=%ld rows=%ld blockLen=%u\n",
+                    __LINE__, GetBlockIdx(), chunkIdx, splitIdx, outSrcOffset, dealRowCount, inParams.blockLen);
+            }
             DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
             SetFlag<HardEvent::MTE2_V>(mte2ToVId);
             WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
+            if (GetBlockIdx() == 50) {
+                printf("[MQSMLA_FD_LINE] PartialO copy after line=%d blk=%d chunk=%ld split=%ld\n",
+                    __LINE__, GetBlockIdx(), chunkIdx, splitIdx);
+            }
+            if (GetBlockIdx() == 50) {
+                printf("[MQSMLA_FD_LINE] ReduceFinal before line=%d blk=%d chunk=%ld split=%ld\n",
+                    __LINE__, GetBlockIdx(), chunkIdx, splitIdx);
+            }
             FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32,
                                                          dealRowCount, splitIdx);
+            PipeBarrier<PIPE_V>();
+            if (GetBlockIdx() == 50) {
+                printf("[MQSMLA_FD_LINE] ReduceFinal after line=%d blk=%d chunk=%ld split=%ld\n",
+                    __LINE__, GetBlockIdx(), chunkIdx, splitIdx);
+            }
             SetFlag<HardEvent::V_MTE2>(vToMte2Id1);
             outSrcOffset += outSplitStride;
         }
