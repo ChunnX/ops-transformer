@@ -18,9 +18,6 @@
 #include <cstdint>
 
 namespace optiling {
-constexpr uint32_t BSA_MX_MAX_CORE_NUM = 48U;
-constexpr uint32_t BSA_MX_CORE_SPLIT_NUM = BSA_MX_MAX_CORE_NUM + 1U;
-
 // MX 使用独立 struct tiling data，与 FP8 路径隔离。
 struct QuantBlockSparseAttnMxStrideParams {
     uint64_t bnStride = 0;
@@ -97,19 +94,6 @@ struct QuantBlockSparseAttnMxSparseParams {
     uint32_t sparseCount = 0;
 };
 
-struct QuantBlockSparseAttnMxMultiCoreParams {
-    int32_t coreNum = 0;
-    int64_t totalSize = 0;
-    int64_t s1OuterSize = 0;
-    int64_t splitFactorSize = 0;
-    int64_t splitFactorTailSize = 0;
-    uint32_t bnStartIdx[BSA_MX_CORE_SPLIT_NUM] = {};
-    int64_t sparseStartIdx[BSA_MX_CORE_SPLIT_NUM] = {};
-    int64_t firstFullLoadS1OuterIdx = 0;
-    uint8_t splitCoreMode = 0;
-    uint8_t reserve[3] = {0, 0, 0};
-};
-
 struct QuantBlockSparseAttnMxWorkspaceParams {
     uint32_t accumOutSize = 0;
     uint32_t logSumExpSize = 0;
@@ -131,10 +115,6 @@ struct QuantBlockSparseAttnMxScaleParams {
 };
 
 struct QuantBlockSparseAttnMxEmptyTensorParams {
-    uint32_t singleCoreSize = 0;
-    uint8_t needInit = 0;
-    uint8_t isOneN = 0;
-    uint8_t reserve[2] = {0, 0};
     uint64_t totalOutputSize = 0;
     uint64_t totalSoftMaxLseOutputSize = 0;
 };
@@ -146,7 +126,6 @@ struct QuantBlockSparseAttnMxTilingData {
     QuantBlockSparseAttnMxAttenMaskParams attenMaskParams;
     QuantBlockSparseAttnMxPageAttentionParams pageAttentionParams;
     QuantBlockSparseAttnMxSparseParams sparseParams;
-    QuantBlockSparseAttnMxMultiCoreParams multiCoreParams;
     QuantBlockSparseAttnMxWorkspaceParams workspaceParams;
     QuantBlockSparseAttnMxScaleParams scaleParams;
     QuantBlockSparseAttnMxEmptyTensorParams emptyTensorParams;

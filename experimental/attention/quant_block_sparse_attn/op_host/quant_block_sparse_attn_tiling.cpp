@@ -46,7 +46,6 @@ constexpr uint32_t BSA_ATTEN_MASK_DEFAULT_BATCH = 1U;
 constexpr uint32_t BSA_ATTEN_MASK_DEFAULT_S2_SIZE = 2048U;
 constexpr uint32_t BSA_MXFP8_P_SCALE_SHAPE_SIZE = 1U;
 constexpr uint32_t BSA_MXFP8_VALUE_SCALE_LAST_DIM = 2U;
-static_assert(BSA_MX_CORE_SPLIT_NUM == BSA_CORE_SPLIT_NUM, "MX and FP8 core split array sizes must match");
 
 uint32_t GetAicCoreNum(gert::TilingContext *context)
 {
@@ -326,22 +325,6 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     sparseParams.maxKb = info.kbMax;
     sparseParams.sparseCount = info.sparseCount;
 
-    auto &multiCoreParams = mxTilingData_.multiCoreParams;
-    // MX 复用 BSA metadata 分核边界。
-    multiCoreParams.coreNum = static_cast<int32_t>(usedCoreNum_);
-    multiCoreParams.totalSize = static_cast<int64_t>(totalTaskNum_);
-    multiCoreParams.s1OuterSize = info.qbMax;
-    multiCoreParams.splitFactorSize = 0;
-    multiCoreParams.splitFactorTailSize = 0;
-    for (uint32_t boundaryIdx = 0U; boundaryIdx <= usedCoreNum_ && boundaryIdx < BSA_MX_CORE_SPLIT_NUM;
-         ++boundaryIdx) {
-        const uint64_t taskOffset = totalTaskNum_ * boundaryIdx / usedCoreNum_;
-        multiCoreParams.bnStartIdx[boundaryIdx] = static_cast<uint32_t>(taskOffset / info.gS1OuterSize);
-        multiCoreParams.sparseStartIdx[boundaryIdx] = static_cast<int64_t>(taskOffset % info.gS1OuterSize);
-    }
-    multiCoreParams.firstFullLoadS1OuterIdx = 0;
-    multiCoreParams.splitCoreMode = 0;
-
     auto &workspaceParams = mxTilingData_.workspaceParams;
     workspaceParams.accumOutSize = 0U;
     workspaceParams.logSumExpSize = 0U;
@@ -362,10 +345,6 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     auto &emptyTensorParams = mxTilingData_.emptyTensorParams;
     const uint64_t totalOutputSize = static_cast<uint64_t>(info.qTokenNum) * info.n1Size * dSizeV;
     const uint64_t totalSoftmaxLseSize = static_cast<uint64_t>(info.qTokenNum) * info.n1Size;
-    emptyTensorParams.singleCoreSize =
-        static_cast<uint32_t>((totalOutputSize + static_cast<uint64_t>(usedCoreNum_) - 1U) / usedCoreNum_);
-    emptyTensorParams.needInit = 1U;
-    emptyTensorParams.isOneN = info.n1Size == 1U ? 1U : 0U;
     emptyTensorParams.totalOutputSize = totalOutputSize;
     emptyTensorParams.totalSoftMaxLseOutputSize = totalSoftmaxLseSize;
 }
@@ -564,21 +543,8 @@ void QuantBlockSparseAttnTiling::PrintMxTilingData()
     OP_LOGD(kOpName, "queryQuantMode/keyAntiquantMode/valueAntiquantMode:%u/%u/%u", scaleParams.queryQuantMode,
             scaleParams.keyAntiquantMode, scaleParams.valueAntiquantMode);
 
-    const auto &multiCoreParams = mxTilingData_.multiCoreParams;
-    OP_LOGD(kOpName, "===== MX MultiCoreParams =====");
-    OP_LOGD(kOpName, "coreNum:%d", multiCoreParams.coreNum);
-    OP_LOGD(kOpName, "totalSize:%ld", multiCoreParams.totalSize);
-    OP_LOGD(kOpName, "s1OuterSize:%ld", multiCoreParams.s1OuterSize);
-    for (uint32_t i = 0; i <= usedCoreNum_ && i < BSA_MX_CORE_SPLIT_NUM; ++i) {
-        OP_LOGD(kOpName, "bnStartIdx[%u]:%u, sparseStartIdx[%u]:%ld", i, multiCoreParams.bnStartIdx[i], i,
-                multiCoreParams.sparseStartIdx[i]);
-    }
-
     const auto &emptyTensorParams = mxTilingData_.emptyTensorParams;
     OP_LOGD(kOpName, "===== MX EmptyTensorParams =====");
-    OP_LOGD(kOpName, "singleCoreSize:%u", emptyTensorParams.singleCoreSize);
-    OP_LOGD(kOpName, "needInit:%u", emptyTensorParams.needInit);
-    OP_LOGD(kOpName, "isOneN:%u", emptyTensorParams.isOneN);
     OP_LOGD(kOpName, "totalOutputSize:%lu", emptyTensorParams.totalOutputSize);
     OP_LOGD(kOpName, "totalSoftMaxLseOutputSize:%lu", emptyTensorParams.totalSoftMaxLseOutputSize);
 
