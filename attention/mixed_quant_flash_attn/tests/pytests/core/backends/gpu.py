@@ -42,8 +42,7 @@ class GPUBackend(Backend):
         causal = (int(mask_mode) == 3)
 
         use_paged = (layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ") and block_size % 256 == 0)
-        has_seqused = (params.get("seqused_kv") is not None or params.get("seqused_q") is not None
-                       or params.get("cu_seqlens_kv") is not None)
+        has_seqused = (params.get("seqused_kv") is not None or params.get("seqused_q") is not None)
         use_varlen = (layout_q == "TND") or (has_seqused and not use_paged)
 
         if use_paged:
@@ -148,7 +147,7 @@ class GPUBackend(Backend):
             if k.dim() == 3:
                 k_tnd = k.contiguous()
                 v_tnd = v.contiguous()
-                cu_kv = params.get("cu_seqlens_kv")
+                cu_kv = None
             else:
                 if layout_kv == "BSND":
                     k_bnsd = k.permute(0, 2, 1, 3)
@@ -161,8 +160,6 @@ class GPUBackend(Backend):
         cu_q = params.get("cu_seqlens_q")
         if cu_q is None:
             raise ValueError("TND layout 需要 cu_seqlens_q")
-        if cu_kv is None:
-            raise ValueError("TND layout 需要 cu_seqlens_kv")
 
         seqlens_q = [int(cu_q[i+1]) - int(cu_q[i]) for i in range(len(cu_q)-1)]
         seqlens_kv = [int(cu_kv[i+1]) - int(cu_kv[i]) for i in range(len(cu_kv)-1)]

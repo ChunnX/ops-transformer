@@ -188,8 +188,7 @@ KV_deq fp16/bf16 → .float() → tforward → attention 输出
 # TND（变长 Q + PA KV）
 "FP4_TND_01": {**BASE_FP4,
     "layout_q": ["TND"],
-    "cu_seqlens_q":  [[0, 64, 128]],
-    "cu_seqlens_kv": [[0, 1024, 2048]]}
+    "cu_seqlens_q":  [[0, 64, 128]]}
 ```
 
 `normalize_params` 中 `quant_mode >= 1` 时，block_table 不传则从 `seqused_kv` + `block_size` 自动生成。
