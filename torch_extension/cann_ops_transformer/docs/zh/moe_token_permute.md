@@ -134,6 +134,8 @@ print(expanded_scale.shape)   # torch.Size([0])
 permuted_tokens, sorted_indices, expanded_scale = moe_token_permute(
     tokens,
     indices,
+    num_out_tokens=0,
+    padded_mode=False,
     quant_mode=2,
 )
 
