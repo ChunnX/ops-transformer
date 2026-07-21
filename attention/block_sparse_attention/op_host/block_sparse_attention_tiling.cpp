@@ -871,13 +871,12 @@ ge::graphStatus BSATiling::ValidateMxfp4DequantScale(gert::TilingContext *bsaCon
         if (actual != expected) {
             OP_LOGE(bsaContext->GetNodeName(), "(quantMode =2/3) mxfp4 scale dim[%d] mismatch (layout=%s, index=%d): expected %u, got %u.",
                     idx, isBNSD ? "BNSD" : "BSND", parameterIndex, expected, actual);
-            return ge::GRAPH_FAILED;
+            return false;
         }
-        return ge::GRAPH_SUCCESS;
+        return true;
     };
-    if (checkDim(batch_, 0) != ge::GRAPH_SUCCESS || checkDim(expDim1, 1) != ge::GRAPH_SUCCESS ||
-        checkDim(expDim2, 2) != ge::GRAPH_SUCCESS || checkDim(expDim3, 3) != ge::GRAPH_SUCCESS ||
-        checkDim(NUM_2, 4) != ge::GRAPH_SUCCESS) {
+    if (!checkDim(batch_, 0) || !checkDim(expDim1, 1) || !checkDim(expDim2, 2) ||
+        !checkDim(expDim3, 3) || !checkDim(NUM_2, 4)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
