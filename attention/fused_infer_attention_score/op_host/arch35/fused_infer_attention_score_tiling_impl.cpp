@@ -103,6 +103,12 @@ void FusedInferAttentionScoreTilingImpl::SetIsIFA(const FiaTilingInfo &fiaInfo)
 
 void FusedInferAttentionScoreTilingImpl::SetGSMerge(const FiaTilingInfo &fiaInfo)
 {
+    // 非量化场景(NO_QUANT, 含全量化FULL_QUANT)且存在KV前缀时，GS1合轴路径AttentionmaskCopyGS1
+    // 使用全局s2StartIdx超出attenMask矩阵范围导致BAND_MODE mask计算错误，禁用合轴
+    if (!fiaInfo.antiQuantFlag && fiaInfo.systemPrefixMaxLen > 0) {
+        gsMergeFlag_ = false;
+        return;
+    }
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
         gsMergeFlag_ = true;
         return;
