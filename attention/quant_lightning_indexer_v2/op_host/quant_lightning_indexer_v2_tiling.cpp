@@ -738,8 +738,8 @@ ge::graphStatus QLIV2InfoParser::GetGSize()
     gSize_ = n1Size_ / n2Size_;
 
     if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF(gSize_ != G_SIZE_LIMIT && gSize_ != G_SIZE_LIMIT_32_950,
-            OP_LOGE(opName_, "input query's head_num divided by input key's head_num must equal 64 or 32"),
+        OP_CHECK_IF(gSize_ > G_SIZE_LIMIT,
+            OP_LOGE(opName_, "input query's head_num divided by input key's head_num must lower or equal 64"),
                return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(gSize_ != G_SIZE_LIMIT,
