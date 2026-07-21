@@ -10,39 +10,44 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Opt-in SMLA consistency tests integrated with the original PT batch flow."""
+"""Opt-in SMLA consistency tests with per-PT config and structured results."""
 
 import os
-from typing import Dict, List
+from typing import Callable, Dict, List, Optional
 
 import pytest
 import torch
 
 from batch.consistency.adapter import CaseAdapter
-from batch.consistency.config import CaseConfigParser, ConsistencyMode, ModeRegistry
+from batch.consistency.config import ConsistencyMode
 from batch.consistency.flow import BatchConsistencyUnsupportedError
-from batch.consistency.schema import get_q_lengths
-from batch.consistency.transform import InvalidTransformError, generate_split_groups
 from batch.consistency.reporting import attach_provenance
+from batch.consistency.result_artifact import (
+    ResultArtifactError,
+    ResultStatus,
+    write_result_artifact,
+)
+from batch.consistency.schema import get_q_lengths
+from batch.consistency.suite_config import (
+    ResolvedCaseConfig,
+    SuiteConfigError,
+    resolve_runtime_case_config,
+)
+from batch.consistency.transform import InvalidTransformError
 from batch.sparse_flash_mla_consistency import create_consistency_flow
+
+
+OPERATOR = "smla"
+ENV_PREFIX = "SMLA_CONSISTENCY"
 
 
 class ConsistencyTestConfig:
     enabled = os.environ.get("SMLA_CONSISTENCY_TEST", "0") == "1"
     pt_dir = os.environ.get("SMLA_PT_LOAD_PATH", "./data")
     single_case = os.environ.get("QSAS_TESTCASE_PATH", "").strip()
-    seed = int(os.environ.get("SMLA_CONSISTENCY_SEED", "20260716"))
-    randomize = os.environ.get("SMLA_CONSISTENCY_RANDOMIZE", "0") == "1"
-    modes = ModeRegistry.resolve(
-        modes=os.environ.get("SMLA_CONSISTENCY_MODES", "").strip() or None,
-        profile=os.environ.get("SMLA_CONSISTENCY_PROFILE", "").strip() or None,
-        warn_legacy=enabled,
+    report_dir = os.path.abspath(
+        os.environ.get("SMLA_CONSISTENCY_REPORT_DIR", "./result/smla_consistency")
     )
-    split_groups_value = os.environ.get("SMLA_CONSISTENCY_SPLIT_GROUPS", "").strip()
-    token_sizes_value = os.environ.get("SMLA_CONSISTENCY_TOKEN_SPLIT_SIZES", "").strip()
-    mode3_batch = int(os.environ.get("SMLA_CONSISTENCY_MODE3_BATCH", "0"))
-    common_tokens_value = os.environ.get("SMLA_CONSISTENCY_COMMON_TOKENS", "").strip()
-    derived_extra_value = os.environ.get("SMLA_CONSISTENCY_DERIVED_EXTRA_TOKENS", "").strip()
 
     @classmethod
     def collect_pt_files(cls) -> List[str]:
@@ -55,39 +60,6 @@ class ConsistencyTestConfig:
             for name in sorted(os.listdir(cls.pt_dir))
             if name.endswith(".pt")
         ]
-
-    @classmethod
-    def split_groups(cls, batch_size: int) -> List[List[int]]:
-        if cls.split_groups_value:
-            return CaseConfigParser.split_groups(cls.split_groups_value)
-        return generate_split_groups(batch_size, seed=cls.seed, randomize=cls.randomize)
-
-    @classmethod
-    def token_split_sizes(cls, token_count: int) -> List[int]:
-        if cls.token_sizes_value:
-            return CaseConfigParser.split_sizes(cls.token_sizes_value, "token_split_sizes")
-        if token_count == 16 * 1024:
-            return [4 * 1024, 12 * 1024]
-        first = token_count // 2
-        if first == 0:
-            raise InvalidTransformError("Mode 3 needs at least two query tokens")
-        return [first, token_count - first]
-
-    @classmethod
-    def shape_change(cls, token_count: int) -> Dict[str, int]:
-        if cls.common_tokens_value:
-            common = int(cls.common_tokens_value)
-        elif token_count >= 400:
-            common = 300
-        else:
-            common = max(1, token_count // 2)
-        if cls.derived_extra_value:
-            derived_extra = int(cls.derived_extra_value)
-        elif token_count == 400 and common == 300:
-            derived_extra = 200
-        else:
-            derived_extra = token_count - common + 1
-        return {"common": common, "derived_extra": derived_extra}
 
     @staticmethod
     def set_device() -> None:
@@ -114,86 +86,298 @@ pytestmark = [
 def load_smla_case(path: str) -> Dict:
     data = torch.load(path, map_location="cpu")
     attach_provenance(data, source_pt=path)
-    if CaseAdapter(data).name != "smla":
-        pytest.skip("NOT_APPLICABLE: PT is not an SMLA case")
     return data
 
 
-def run_or_skip(callable_):
+def record_result(
+    data: Dict,
+    path: str,
+    mode: ConsistencyMode,
+    status: ResultStatus,
+    *,
+    config: Optional[ResolvedCaseConfig] = None,
+    report: Optional[Dict] = None,
+    reason_code: Optional[str] = None,
+    reason: Optional[str] = None,
+) -> str:
+    return write_result_artifact(
+        ConsistencyTestConfig.report_dir,
+        operator=OPERATOR,
+        input_data=data,
+        pt_path=path,
+        mode=mode.value,
+        status=status,
+        config=config,
+        report=report,
+        reason_code=reason_code,
+        reason=reason,
+    )
+
+
+def skip_with_result(
+    data: Dict,
+    path: str,
+    mode: ConsistencyMode,
+    status: ResultStatus,
+    reason_code: str,
+    reason: str,
+    config: Optional[ResolvedCaseConfig] = None,
+) -> None:
+    record_result(
+        data,
+        path,
+        mode,
+        status,
+        config=config,
+        reason_code=reason_code,
+        reason=reason,
+    )
+    pytest.skip(f"{status.value}: {reason}")
+
+
+def fail_config(
+    data: Dict,
+    path: str,
+    mode: ConsistencyMode,
+    reason: str,
+    config: Optional[ResolvedCaseConfig] = None,
+) -> None:
+    record_result(
+        data,
+        path,
+        mode,
+        ResultStatus.CONFIG_ERROR,
+        config=config,
+        reason_code="INVALID_CASE_CONFIG",
+        reason=reason,
+    )
+    pytest.fail(f"CONFIG_ERROR: {reason}")
+
+
+def prepare_mode(
+    path: str, mode: ConsistencyMode
+) -> tuple[Dict, ResolvedCaseConfig]:
+    data = load_smla_case(path)
+    detected = CaseAdapter(data).name
+    if detected != OPERATOR:
+        skip_with_result(
+            data,
+            path,
+            mode,
+            ResultStatus.NOT_APPLICABLE,
+            "OPERATOR_MISMATCH",
+            f"PT operator is {detected}, expected {OPERATOR}",
+        )
     try:
-        return callable_()
+        config = resolve_runtime_case_config(data, path, ENV_PREFIX)
+    except SuiteConfigError as error:
+        fail_config(data, path, mode, str(error))
+    if mode not in config.modes:
+        skip_with_result(
+            data,
+            path,
+            mode,
+            ResultStatus.NOT_APPLICABLE,
+            "MODE_NOT_SELECTED",
+            f"{mode.value} is not selected by config {config.config_id}",
+            config,
+        )
+    return data, config
+
+
+def execute_mode(
+    data: Dict,
+    path: str,
+    mode: ConsistencyMode,
+    config: ResolvedCaseConfig,
+    run: Callable[[], Dict],
+) -> None:
+    try:
+        ConsistencyTestConfig.set_device()
+        report = run()
     except InvalidTransformError as error:
-        pytest.skip(f"INVALID_TRANSFORM: {error}")
+        skip_with_result(
+            data,
+            path,
+            mode,
+            ResultStatus.INVALID_TRANSFORM,
+            "SEMANTIC_TRANSFORM_REJECTED",
+            str(error),
+            config,
+        )
     except BatchConsistencyUnsupportedError as error:
-        pytest.skip(f"UNSUPPORTED: {error}")
+        skip_with_result(
+            data,
+            path,
+            mode,
+            ResultStatus.UNSUPPORTED,
+            "RUNTIME_LEVEL3_UNSUPPORTED",
+            str(error),
+            config,
+        )
+    except Exception as error:
+        record_result(
+            data,
+            path,
+            mode,
+            ResultStatus.FAIL,
+            config=config,
+            reason_code="EXECUTION_EXCEPTION",
+            reason=f"{type(error).__name__}: {error}",
+        )
+        raise
+
+    print(report)
+    passed = isinstance(report, dict) and report.get("pass") is True
+    if not passed:
+        record_result(
+            data,
+            path,
+            mode,
+            ResultStatus.FAIL,
+            config=config,
+            report=report if isinstance(report, dict) else None,
+            reason_code="COMPARISON_FAILED",
+            reason="Consistency or CPU precision comparison failed",
+        )
+        pytest.fail(f"FAIL: {report}")
+    try:
+        record_result(
+            data,
+            path,
+            mode,
+            ResultStatus.PASS,
+            config=config,
+            report=report,
+        )
+    except ResultArtifactError as error:
+        record_result(
+            data,
+            path,
+            mode,
+            ResultStatus.FAIL,
+            config=config,
+            report=report,
+            reason_code="PASS_GATE_REJECTED",
+            reason=str(error),
+        )
+        pytest.fail(f"FAIL: {error}")
 
 
 @pytest.mark.parametrize("testcase_file", TESTCASE_FILES)
 def test_mode1_reorder(testcase_file):
-    if ConsistencyMode.REORDER not in ConsistencyTestConfig.modes:
-        pytest.skip("NOT_APPLICABLE: reorder not selected")
-    data = load_smla_case(testcase_file)
+    mode = ConsistencyMode.REORDER
+    data, config = prepare_mode(testcase_file, mode)
     if CaseAdapter(data).get_batch_size() < 2:
-        pytest.skip("NOT_APPLICABLE: reorder requires B >= 2")
-    ConsistencyTestConfig.set_device()
-    report = run_or_skip(
-        lambda: create_consistency_flow().run_mode1(data, seed=ConsistencyTestConfig.seed)
+        skip_with_result(
+            data,
+            testcase_file,
+            mode,
+            ResultStatus.NOT_APPLICABLE,
+            "BATCH_TOO_SMALL",
+            "reorder requires B >= 2",
+            config,
+        )
+    order = list(config.reorder_order) if config.reorder_order is not None else None
+    execute_mode(
+        data,
+        testcase_file,
+        mode,
+        config,
+        lambda: create_consistency_flow().run_mode1(
+            data, order=order, seed=config.seed
+        ),
     )
-    print(report)
-    assert report["pass"], report
 
 
 @pytest.mark.parametrize("testcase_file", TESTCASE_FILES)
 def test_mode2_split(testcase_file):
-    if ConsistencyMode.SPLIT not in ConsistencyTestConfig.modes:
-        pytest.skip("NOT_APPLICABLE: split not selected")
-    data = load_smla_case(testcase_file)
-    batch_size = CaseAdapter(data).get_batch_size()
-    if batch_size < 2:
-        pytest.skip("NOT_APPLICABLE: split requires B >= 2")
-    groups = ConsistencyTestConfig.split_groups(batch_size)
-    ConsistencyTestConfig.set_device()
-    report = run_or_skip(lambda: create_consistency_flow().run_mode2(data, groups))
-    print(report)
-    assert report["pass"], report
+    mode = ConsistencyMode.SPLIT
+    data, config = prepare_mode(testcase_file, mode)
+    if CaseAdapter(data).get_batch_size() < 2:
+        skip_with_result(
+            data,
+            testcase_file,
+            mode,
+            ResultStatus.NOT_APPLICABLE,
+            "BATCH_TOO_SMALL",
+            "split requires B >= 2",
+            config,
+        )
+    if config.split_groups is None:
+        fail_config(data, testcase_file, mode, "split_groups were not resolved", config)
+    groups = [list(group) for group in config.split_groups]
+    execute_mode(
+        data,
+        testcase_file,
+        mode,
+        config,
+        lambda: create_consistency_flow().run_mode2(data, groups),
+    )
 
 
 @pytest.mark.parametrize("testcase_file", TESTCASE_FILES)
 def test_mode3_token_split(testcase_file):
-    if ConsistencyMode.TOKEN_SPLIT not in ConsistencyTestConfig.modes:
-        pytest.skip("NOT_APPLICABLE: token-split not selected")
-    data = load_smla_case(testcase_file)
-    lengths = get_q_lengths(data, valid_only=True)
-    batch_id = ConsistencyTestConfig.mode3_batch
-    if batch_id >= len(lengths):
-        pytest.skip(f"NOT_APPLICABLE: mode3 batch {batch_id} is outside B={len(lengths)}")
-    split_sizes = ConsistencyTestConfig.token_split_sizes(lengths[batch_id])
-    ConsistencyTestConfig.set_device()
-    report = run_or_skip(
-        lambda: create_consistency_flow().run_mode3(data, batch_id, split_sizes)
+    mode = ConsistencyMode.TOKEN_SPLIT
+    data, config = prepare_mode(testcase_file, mode)
+    token_count = get_q_lengths(data, valid_only=True)[config.mode_batch]
+    if token_count < 2:
+        skip_with_result(
+            data,
+            testcase_file,
+            mode,
+            ResultStatus.NOT_APPLICABLE,
+            "QUERY_TOO_SHORT",
+            "token-split requires at least two valid Q tokens",
+            config,
+        )
+    if config.token_split_sizes is None:
+        fail_config(
+            data, testcase_file, mode, "token_split_sizes were not resolved", config
+        )
+    execute_mode(
+        data,
+        testcase_file,
+        mode,
+        config,
+        lambda: create_consistency_flow().run_mode3(
+            data, config.mode_batch, config.token_split_sizes
+        ),
     )
-    print(report)
-    assert report["pass"], report
 
 
 @pytest.mark.parametrize("testcase_file", TESTCASE_FILES)
 def test_mode4_shape_change(testcase_file):
-    if ConsistencyMode.SHAPE_CHANGE not in ConsistencyTestConfig.modes:
-        pytest.skip("NOT_APPLICABLE: shape-change not selected")
-    data = load_smla_case(testcase_file)
-    lengths = get_q_lengths(data, valid_only=True)
-    batch_id = ConsistencyTestConfig.mode3_batch
-    if batch_id >= len(lengths):
-        pytest.skip(f"NOT_APPLICABLE: mode4 batch {batch_id} is outside B={len(lengths)}")
-    config = ConsistencyTestConfig.shape_change(lengths[batch_id])
-    ConsistencyTestConfig.set_device()
-    report = run_or_skip(
+    mode = ConsistencyMode.SHAPE_CHANGE
+    data, config = prepare_mode(testcase_file, mode)
+    token_count = get_q_lengths(data, valid_only=True)[config.mode_batch]
+    if token_count < 1:
+        skip_with_result(
+            data,
+            testcase_file,
+            mode,
+            ResultStatus.NOT_APPLICABLE,
+            "EMPTY_QUERY",
+            "shape-change requires at least one valid Q token",
+            config,
+        )
+    if config.common_tokens is None or config.derived_extra is None:
+        fail_config(
+            data,
+            testcase_file,
+            mode,
+            "shape-change values were not resolved",
+            config,
+        )
+    execute_mode(
+        data,
+        testcase_file,
+        mode,
+        config,
         lambda: create_consistency_flow().run_mode4(
             data,
-            batch_id,
-            config["common"],
-            config["derived_extra"],
-        )
+            config.mode_batch,
+            config.common_tokens,
+            config.derived_extra,
+        ),
     )
-    print(report)
-    assert report["pass"], report

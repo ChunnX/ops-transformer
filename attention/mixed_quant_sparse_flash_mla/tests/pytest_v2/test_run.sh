@@ -35,6 +35,10 @@ CONSISTENCY_MODE3_BATCH=0
 CONSISTENCY_COMMON_TOKENS=""
 CONSISTENCY_DERIVED_EXTRA=""
 PREPARE_REPORT_DIR=""
+CONSISTENCY_CONFIG_FILE=""
+CONSISTENCY_REPORT_ROOT="./result/mqsmla_consistency"
+CONSISTENCY_DETAIL_SET=0
+CONSISTENCY_SELECTOR_SET=0
 
 # ====================== 执行区 ======================
 
@@ -147,26 +151,114 @@ run_consistency() {
     echo "===== 执行 MQSMLA batch consistency（metadata + 主算子）====="
     if [ ! -d "$PT_SAVE_DIR" ]; then
         echo "错误: pt文件目录不存在: $PT_SAVE_DIR"
-        exit 1
+        return 1
     fi
+    if [ -n "$CONSISTENCY_CONFIG_FILE" ] && [ "$CONSISTENCY_DETAIL_SET" -eq 1 ]; then
+        echo "错误: --config-file 不能与模式或详细参数混用"
+        return 1
+    fi
+    if [ -n "$CONSISTENCY_CONFIG_FILE" ]; then
+        if [ ! -f "$CONSISTENCY_CONFIG_FILE" ]; then
+            echo "错误: 配置文件不存在: $CONSISTENCY_CONFIG_FILE"
+            return 1
+        fi
+    else
+        if ! [[ "$CONSISTENCY_SEED" =~ ^[0-9]+$ ]]; then
+            echo "错误: --seed 必须是非负整数，当前值: $CONSISTENCY_SEED"
+            return 1
+        fi
+        if ! python3 - "$CONSISTENCY_MODES" "$CONSISTENCY_PROFILE" <<'PY'
+import sys
+import warnings
+from batch.consistency.config import ModeRegistry
+warnings.simplefilter("default", DeprecationWarning)
+ModeRegistry.resolve(modes=sys.argv[1] or None, profile=sys.argv[2] or None, warn_legacy=True)
+PY
+        then
+            echo "错误: 一致性模式或profile配置无效"
+            return 1
+        fi
+    fi
+
+    local case_files=()
+    local pt_file
+    for pt_file in "$PT_SAVE_DIR"/*.pt; do
+        [ -f "$pt_file" ] || continue
+        case_files+=("$pt_file")
+    done
+    local total=${#case_files[@]}
+    if [ "$total" -eq 0 ]; then
+        echo "错误: 目录 $PT_SAVE_DIR 下未找到 .pt 用例"
+        return 1
+    fi
+
+    local run_id
+    run_id="$(date +%Y%m%d_%H%M%S)_$$"
+    local run_dir="$CONSISTENCY_REPORT_ROOT/$run_id"
+    mkdir -p "$run_dir"
+    local pytest_log="$run_dir/pytest.log"
+
     export MQSMLA_PT_DIR="$PT_SAVE_DIR"
     export MQSMLA_DEVICE_ID="$DEVICE_ID"
     export MQSMLA_CONSISTENCY_TEST=1
-    export MQSMLA_CONSISTENCY_SEED="$CONSISTENCY_SEED"
-    export MQSMLA_CONSISTENCY_RANDOMIZE="$CONSISTENCY_RANDOMIZE"
-    export MQSMLA_CONSISTENCY_SPLIT_GROUPS="$CONSISTENCY_SPLIT_GROUPS"
-    export MQSMLA_CONSISTENCY_TOKEN_SPLIT_SIZES="$CONSISTENCY_TOKEN_SPLIT_SIZES"
-    export MQSMLA_CONSISTENCY_MODE3_BATCH="$CONSISTENCY_MODE3_BATCH"
-    export MQSMLA_CONSISTENCY_COMMON_TOKENS="$CONSISTENCY_COMMON_TOKENS"
-    export MQSMLA_CONSISTENCY_DERIVED_EXTRA_TOKENS="$CONSISTENCY_DERIVED_EXTRA"
-    if [ -n "$CONSISTENCY_MODES" ]; then
-        export MQSMLA_CONSISTENCY_MODES="$CONSISTENCY_MODES"
-        unset MQSMLA_CONSISTENCY_PROFILE
+    export MQSMLA_CONSISTENCY_REPORT_DIR="$run_dir"
+    if [ -n "$CONSISTENCY_CONFIG_FILE" ]; then
+        export MQSMLA_CONSISTENCY_CONFIG_FILE="$CONSISTENCY_CONFIG_FILE"
+        unset MQSMLA_CONSISTENCY_MODES MQSMLA_CONSISTENCY_PROFILE
+        unset MQSMLA_CONSISTENCY_SEED MQSMLA_CONSISTENCY_RANDOMIZE
+        unset MQSMLA_CONSISTENCY_SPLIT_GROUPS MQSMLA_CONSISTENCY_TOKEN_SPLIT_SIZES
+        unset MQSMLA_CONSISTENCY_MODE3_BATCH MQSMLA_CONSISTENCY_COMMON_TOKENS
+        unset MQSMLA_CONSISTENCY_DERIVED_EXTRA_TOKENS
     else
-        unset MQSMLA_CONSISTENCY_MODES
-        export MQSMLA_CONSISTENCY_PROFILE="$CONSISTENCY_PROFILE"
+        unset MQSMLA_CONSISTENCY_CONFIG_FILE
+        export MQSMLA_CONSISTENCY_SEED="$CONSISTENCY_SEED"
+        export MQSMLA_CONSISTENCY_RANDOMIZE="$CONSISTENCY_RANDOMIZE"
+        export MQSMLA_CONSISTENCY_SPLIT_GROUPS="$CONSISTENCY_SPLIT_GROUPS"
+        export MQSMLA_CONSISTENCY_TOKEN_SPLIT_SIZES="$CONSISTENCY_TOKEN_SPLIT_SIZES"
+        export MQSMLA_CONSISTENCY_MODE3_BATCH="$CONSISTENCY_MODE3_BATCH"
+        export MQSMLA_CONSISTENCY_COMMON_TOKENS="$CONSISTENCY_COMMON_TOKENS"
+        export MQSMLA_CONSISTENCY_DERIVED_EXTRA_TOKENS="$CONSISTENCY_DERIVED_EXTRA"
+        if [ -n "$CONSISTENCY_MODES" ]; then
+            export MQSMLA_CONSISTENCY_MODES="$CONSISTENCY_MODES"
+            unset MQSMLA_CONSISTENCY_PROFILE
+        else
+            unset MQSMLA_CONSISTENCY_MODES
+            export MQSMLA_CONSISTENCY_PROFILE="$CONSISTENCY_PROFILE"
+        fi
     fi
-    python3 -m pytest -rA -s "$TEST_QSMLA_CONSISTENCY_SCRIPT" -v -m consistency
+
+    echo "共 $total 条用例；结构化结果目录: $run_dir"
+    local process_failures=0
+    local index=0
+    local case_file
+    for case_file in "${case_files[@]}"; do
+        index=$((index + 1))
+        echo "===== [$index/$total] $(basename "$case_file") =====" | tee -a "$pytest_log"
+        if QSAS_TESTCASE_PATH="$case_file" \
+            python3 -m pytest -rA -s "$TEST_QSMLA_CONSISTENCY_SCRIPT" \
+            -v -m consistency 2>&1 | tee -a "$pytest_log"
+        then
+            :
+        else
+            process_failures=$((process_failures + 1))
+        fi
+    done
+
+    local aggregate_status
+    if python3 -m batch.consistency.result_artifact \
+        --report-dir "$run_dir" \
+        --operator mqsmla \
+        --expected-case-count "$total" \
+        --execution-failure-count "$process_failures" | tee -a "$pytest_log"
+    then
+        aggregate_status=0
+    else
+        aggregate_status=${PIPESTATUS[0]}
+    fi
+    echo "权威汇总: $run_dir/consistency_result_summary.json"
+    echo "逐模式结果: $run_dir/results"
+    echo "pytest文本日志（仅诊断）: $pytest_log"
+    return "$aggregate_status"
 }
 
 run_consistency_prepare() {
@@ -198,12 +290,14 @@ show_help() {
     echo "  --sheet <名称>      指定excel sheet名（默认: decode）"
     echo "  --pt-dir <目录>     指定pt文件保存/读取目录（默认: mqsmla_testcase）"
     echo "  --result <路径>     指定结果保存路径（默认: ./mqsmla_result.xlsx）"
-    echo "  --report-dir <目录> consistency_prepare JSON报告目录（必填）"
+    echo "  --report-dir <目录> consistency结构化结果根目录；prepare为JSON目录"
     echo "  --device-id <id>    指定NPU设备ID（默认: 0）"
     echo "  --mode <0|1>        批跑模式: 0=全量批跑(默认), 1=按表格中case批跑"
     echo "  --keep-pt           执行完成后保留pt文件（默认清理，仅batch命令）"
     echo "  --modes <名称>      命名模式，例如 reorder,split,token-split,shape-change"
+    echo "  -M <数字>           数字模式迁移兼容（已废弃）"
     echo "  --profile <名称>    命名模式组合（默认 blackbox-basic）"
+    echo "  --config-file <JSON> versioned正式配置；不能与模式/详细参数混用"
     echo "  --split-groups <组> 模式2显式分组，例如 '0,1,2;3,4,5,6,7'"
     echo "  --token-split-sizes 模式3分段，例如 '4096,12288'"
     echo "  --mode3-batch <id>  模式3/4源batch id"
@@ -230,7 +324,7 @@ show_help() {
     echo "  $0 batch_exec --pt-dir my_pt --result ./my_result.xlsx"
     echo "  $0 batch_exec_graph --mode 1                           # Graph模式按表格批跑"
     echo "  $0 batch --keep-pt"
-    echo "  $0 consistency --pt-dir my_pt --modes reorder,split --split-groups '0,1,2;3,4,5,6,7'"
+    echo "  $0 consistency --pt-dir my_pt --config-file suite.json --report-dir ./result"
     echo "  $0 consistency_prepare --excel cases.xlsx --sheet MQSMLA --pt-dir /tmp/mq_pt --report-dir /tmp/mq_report"
     echo "  $0 batch --excel my.xlsx --sheet decode --pt-dir my_pt --mode 1 --keep-pt"
 }
@@ -248,6 +342,14 @@ shift
 
 if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch_exec_graph" ] || [ "$COMMAND" = "batch" ] || [ "$COMMAND" = "consistency" ] || [ "$COMMAND" = "consistency_prepare" ]; then
     while [ $# -gt 0 ]; do
+        case "$1" in
+            --excel|--sheet|--pt-dir|--result|--report-dir|--device-id|--mode|--modes|-M|--profile|--config-file|--split-groups|--token-split-sizes|--mode3-batch|--common-tokens|--derived-extra|--seed)
+                if [ $# -lt 2 ] || [ -z "$2" ]; then
+                    echo "错误：$1 需要参数值"
+                    exit 1
+                fi
+                ;;
+        esac
         case "$1" in
             --excel)
                 if [ $# -lt 2 ]; then
@@ -282,11 +384,11 @@ if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND
                 shift 2
                 ;;
             --report-dir)
-                if [ $# -lt 2 ]; then
-                    echo "错误：--report-dir 需要参数值"
-                    exit 1
+                if [ "$COMMAND" = "consistency" ]; then
+                    CONSISTENCY_REPORT_ROOT="$2"
+                else
+                    PREPARE_REPORT_DIR="$2"
                 fi
-                PREPARE_REPORT_DIR="$2"
                 shift 2
                 ;;
             --device-id)
@@ -313,42 +415,67 @@ if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND
                 KEEP_PT=true
                 shift
                 ;;
-            --modes)
+            --modes|-M)
+                if [ "$CONSISTENCY_SELECTOR_SET" -eq 1 ]; then
+                    echo "错误：--modes/-M 与 --profile 只能指定一个"
+                    exit 1
+                fi
                 CONSISTENCY_MODES="$2"
                 CONSISTENCY_PROFILE=""
+                CONSISTENCY_SELECTOR_SET=1
+                CONSISTENCY_DETAIL_SET=1
                 shift 2
                 ;;
             --profile)
+                if [ "$CONSISTENCY_SELECTOR_SET" -eq 1 ]; then
+                    echo "错误：--modes/-M 与 --profile 只能指定一个"
+                    exit 1
+                fi
                 CONSISTENCY_PROFILE="$2"
                 CONSISTENCY_MODES=""
+                CONSISTENCY_SELECTOR_SET=1
+                CONSISTENCY_DETAIL_SET=1
+                shift 2
+                ;;
+            --config-file)
+                CONSISTENCY_CONFIG_FILE="$2"
                 shift 2
                 ;;
             --split-groups)
                 CONSISTENCY_SPLIT_GROUPS="$2"
+                CONSISTENCY_DETAIL_SET=1
                 shift 2
                 ;;
             --token-split-sizes)
                 CONSISTENCY_TOKEN_SPLIT_SIZES="$2"
+                CONSISTENCY_DETAIL_SET=1
                 shift 2
                 ;;
             --mode3-batch)
                 CONSISTENCY_MODE3_BATCH="$2"
+                CONSISTENCY_DETAIL_SET=1
                 shift 2
                 ;;
             --common-tokens)
                 CONSISTENCY_COMMON_TOKENS="$2"
+                CONSISTENCY_DETAIL_SET=1
                 shift 2
                 ;;
             --derived-extra)
                 CONSISTENCY_DERIVED_EXTRA="$2"
+                CONSISTENCY_DETAIL_SET=1
                 shift 2
                 ;;
             --seed)
                 CONSISTENCY_SEED="$2"
+                if [ "$COMMAND" = "consistency" ]; then
+                    CONSISTENCY_DETAIL_SET=1
+                fi
                 shift 2
                 ;;
             --randomize)
                 CONSISTENCY_RANDOMIZE=1
+                CONSISTENCY_DETAIL_SET=1
                 shift
                 ;;
             *)

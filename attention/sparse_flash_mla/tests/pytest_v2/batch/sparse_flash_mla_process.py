@@ -21,6 +21,11 @@ import torch_npu
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 
+if __package__:
+    from .consistency.metadata_stub import apply_metadata_transform
+else:
+    from consistency.metadata_stub import apply_metadata_transform
+
 # Register sparse_flash_mla and sparse_flash_mla_metadata via PTA
 TORCH_EXT_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                  '../../../../torch_extension'))
@@ -70,7 +75,7 @@ class Network(torch.nn.Module):
             return_softmax_lse=return_softmax_lse)
         return npu_result, softmax_lse
 
-def call_npu(input_data, metadata_sink=None):
+def call_npu(input_data, metadata_sink=None, metadata_transform=None):
     params = input_data['params']
     metadata_input = input_data['metadata_input']
     tensor_input = input_data['input']
@@ -158,6 +163,7 @@ def call_npu(input_data, metadata_sink=None):
         layout_kv=layout_kv,
         has_ori_kv=ori_kv != None,
         has_cmp_kv=cmp_kv != None)
+    metadata = apply_metadata_transform(metadata, input_data, metadata_transform)
 
     # 统一调用 sparse_flash_mla，所有参数可选带默认值
     print("sparse_flash_mla...")

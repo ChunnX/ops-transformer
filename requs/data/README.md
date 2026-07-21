@@ -120,6 +120,10 @@ mqsmla_consistency_relation_manifest.json
   "kind": "smla_mqsmla_batch_consistency_relation",
   "operator": "smla",
   "claim_scope": "CPU-only relation precheck; no NPU batch-consistency PASS claim",
+  "scenario_coverage": {
+    "implemented": ["same-source-cross-call"],
+    "supplemental_gaps": ["independent-cross-case", "single-call-intra-case"]
+  },
   "baselines": [{
     "case_id": "smla:case_name:<content-sha-prefix>",
     "input_content_fingerprint_sha256": "...",
@@ -127,6 +131,7 @@ mqsmla_consistency_relation_manifest.json
   }],
   "relations": [{
     "mode": "reorder",
+    "scenario": "same-source-cross-call",
     "baseline_case_id": "...",
     "comparison_identity": {
       "type": "TokenOrigin",
@@ -190,3 +195,22 @@ manifest v1 当前完成的是“实际 baseline PT -> pytest 自动派生调用
 
 NPU 主算子、runtime level 3、PR floor/需求 ceil 和真实 FA/FD coverage 仍需等待对应 owner，
 本目录参考方案不能解除这些阻断。
+
+## 8. 两类场景的精确映射（新增检视）
+
+外部文档提出的“不同用例间比较”和“同一用例内位置比较”本身合理，与模式1-4不冲突；
+但`case`和“同一用例”必须区分生成来源与算子调用边界：
+
+| 分类 | 调用/来源 | 当前状态 |
+| --- | --- | --- |
+| `same-source-cross-call` | 同一baseline PT同步派生，执行多个完整算子调用 | 当前模式1-4 |
+| `independent-cross-case` | 两个独立编写或生成的PT，通过显式关系声明等价输出位置 | 外部要求的补充场景，待实现 |
+| `single-call-intra-case` | 一次算子调用的输出内，两个数学等价位置直接互比 | 外部要求的补充场景，待实现 |
+
+因此不能因为baseline和derived在pytest里表现成两个case，就把模式1称为“独立跨case”；也不能
+因为模式3比较不同token区间，就称为“单次调用内比较”。relation manifest和在线result现已
+固定记录第一类，并显式输出后两类gap。
+
+后两类会继续借鉴外部`output_seed`的“关系标签”思想，但正式关系必须绑定operator、两个PT
+内容指纹或单次输出位置、TokenOrigin/位置范围和actual-input等价证据。随机seed碰巧生成相同值
+不构成Attention数学输入等价，也不能成为PASS依据。

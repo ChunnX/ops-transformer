@@ -1,6 +1,6 @@
 # SMLA/MQSMLA batch 一致性测试开发计划
 
-> 版本：2026-07-21 检视意见三推进版
+> 版本：2026-07-21 检视意见三新增意见推进版
 > 范围：`sparse_flash_mla`（SMLA）与 `mixed_quant_sparse_flash_mla`（MQSMLA）
 > 第一需求源：`docs/SMLA batch一致性.md`
 > 需求、冲突、文件级开发日志与逐项检视答复：`requs.md`
@@ -24,6 +24,14 @@
    一致性由单测门禁；
 8. 借鉴外部aclnnfuzz方案的“显式关系+预检+覆盖诊断”，双算子离线链新增relation manifest
    v1；保留TokenOrigin，不引入seed重生成平行框架。
+9. 在线执行新增versioned suite config v1：同一文档按精确selector为每个PT解析独立有效配置，
+   并在NPU前完成B/Q相关预检；
+10. 每个`(operator,PT,mode)`均输出结构化JSON，汇总器只统计通过schema和level3门禁的artifact，
+    不再解析pytest文本；
+11. 当前模式1-4统一标注为`same-source-cross-call`，独立跨case和单次调用内位置比较作为两个
+    补充gap推进；
+12. metadata打桩已完成CPU-only候选规划器与默认关闭hook，真实注入仍受包版本、FD契约、
+    公式和level3阻断。
 
 但“代码完成”不等于“特性验收完成”。当前本机 torch_npu/CANN 在设置 level 3 后的第一条
 NPU 操作处拒绝该等级；本地算子源码快照也没有 PR8737 的完整改动。因此当前只能声明：
@@ -117,12 +125,18 @@ level0/1/2；`output_seed`不是输出数值公式；同位宽unsigned读取可�
 脚本的真实问题是`eval`、6元素输入被`len==5`跳过、边界/schema/分组键不足。完整审计见
 `data/README.md`。
 
+新增意见3-6的第二轮复审进一步确认：GLM建议suite按case解析，DeepSeek强调结构化结果与异常
+artifact，Qwen强调三类场景边界和metadata注入契约。主审未采纳“CPU FakeExecutor会形成NPU
+PASS”和“relation只校验外壳”两项误报；最终落地为suite config/result artifact/scenario gap/
+CPU-only stub planner四条独立控制线。
+
 ## 4. pytest_v2 总体架构
 
 ```text
 原参数/Excel
     -> 原 CPU golden + PT save
     -> 原 PT load
+    -> suite config按PT精确匹配 + shape-aware预检
     -> CaseAdapter + schema + mode transform
     -> actual-input semantic oracle
     -> relation manifest（TokenOrigin spans/content digest/config precheck/coverage）
@@ -133,7 +147,9 @@ level0/1/2；`output_seed`不是输出数值公式；同位宽unsigned读取可�
     -> 原 CPU golden + check_result
     -> MetadataLayout + MetadataCoverageAnalyzer
     -> baseline/derived InputSummary（来源、shape/dtype/digest/sample）
-    -> PASS / FAIL / UNSUPPORTED / INVALID_TRANSFORM / NOT_APPLICABLE
+    -> 每个(operator,PT,mode)原子写result JSON
+    -> JSON-only汇总 + artifact完整性/pytest进程状态核对
+    -> PASS / FAIL / UNSUPPORTED / INVALID_TRANSFORM / NOT_APPLICABLE / CONFIG_ERROR
     -> finally 恢复进入测试前的 deterministic level
 ```
 
@@ -171,6 +187,21 @@ bash test_run.sh consistency --profile blackbox-supported
 
 `-M 1,2` 只保留为 SMLA 旧入口下游迁移兼容，会映射到命名 mode 并发 deprecated warning。
 正式配置不再依赖含义不透明的数字，也不需要等待真实 NPU 打通后才迁移。
+
+#### 5.1.1 versioned suite正式入口
+
+推荐把多参数写入`cases/SMLA_MQSMLA_batch一致性执行配置.json`，并运行：
+
+```bash
+bash test_run.sh consistency \
+  --pt-dir /path/to/baseline \
+  --config-file ../../../../requs/cases/SMLA_MQSMLA_batch一致性执行配置.json \
+  --report-dir ./result
+```
+
+一个suite文档可覆盖一批PT，但每个PT独立匹配和解析，不共享`3+5`、`4K+12K`等shape相关
+常数。selector支持operator、case name、PT basename和输入内容SHA256；默认未匹配、重复匹配、
+未知字段、越界groups和token总数不符均在NPU前报`CONFIG_ERROR`。配置文件和旧详细CLI互斥。
 
 ### 5.2 模式 1：reorder
 
@@ -298,7 +329,10 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 | `NOT_APPLICABLE` | PT 对所选模式无可执行 item | 单列 |
 | `CONFIG_ERROR` | mode/profile/groups/sizes schema 非法 | 入口失败 |
 
-后续 JSON artifact 必须按 `(operator,case,mode)` 保留状态，不能只看 pytest 进程退出码。
+JSON artifact现已按`(operator,PT,mode)`落盘。`PASS`还必须证明执行报告通过，且所有记录的
+deterministic level均为requested=3、observed=3。聚合器核对预期artifact总数、唯一PT数、唯一
+PT/mode矩阵、损坏/重复/异算子artifact和pytest子进程失败数，并输出
+`PASS/PARTIAL/UNSUPPORTED/INCOMPLETE/FAIL/NO_RESULTS`；文本日志只用于诊断。
 
 ## 8. 阶段与里程碑
 
@@ -319,6 +353,9 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 | P2.11 | 白盒原始输入摘要与floor/ceil公式审计 | 完成 |
 | P2.12 | pytest_v2目录整理与双树镜像门禁 | 完成 |
 | P2.13 | 外部aclnnfuzz方案评估、relation manifest v1与覆盖清单 | 完成（2026-07-21） |
+| P2.14 | per-PT suite config v1与shape-aware预检 | 完成；正式JSON示例已验证双算子baseline |
+| P2.15 | 逐模式result artifact与JSON-only汇总 | 完成；双算子在线各4条UNSUPPORTED且无缺失 |
+| P2.16 | metadata单核->多核候选planner和默认关闭hook | 安全骨架完成；真实注入待P3.1及FD契约 |
 | P3.1 | 支持 level 3 的 runtime/custom/operator 版本对齐 | 阻塞 |
 | P3.2 | SMLA eager 模式 1-4 真实 NPU | 待 P3.1 |
 | P3.3 | MQSMLA eager 模式 1-4 真实 NPU | 待 P3.1 |
@@ -332,8 +369,8 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 
 | 层级 | 内容 | 当前结果 |
 | --- | --- | --- |
-| SMLA v2 CPU | modes 1-4、双格式、oracle、MD5、metadata、report/offline/relation/mirror | `26 passed`（2026-07-21实测） |
-| MQSMLA v2 CPU | 与 SMLA 同源门禁 | `26 passed`（2026-07-21实测） |
+| SMLA v2 CPU | modes 1-4、配置、artifact、planner、metadata、relation/mirror | `39 passed`（2026-07-21实测） |
+| MQSMLA v2 CPU | 与 SMLA 同源门禁 | `39 passed`（2026-07-21实测） |
 | SMLA离线prepare | Excel/原golden/baseline+derived PT/relation manifest | 1 baseline + 6 derived，round-trip与6条relation预检通过 |
 | MQSMLA离线prepare | Excel/原量化golden/baseline+derived PT/relation manifest | 1 baseline + 6 derived，round-trip与6条relation预检通过 |
 | CPU relation coverage gaps | mode/layout/mask/S2/source landmarks | 四mode齐；SMLA缺TND/PA/位置mask，MQ缺TND/BSND KV/no-mask，均单列missing |
@@ -344,6 +381,7 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 | Python compile | 两棵 v2 | compileall 通过 |
 | 原 single/batch/graph collect | 两棵 v2 | SMLA 15 项、MQSMLA 3 项 |
 | 双算子 level 3 | metadata + 主算子 | runtime 拒绝，`UNSUPPORTED` |
+| 双算子在线结构化结果 | 各1 baseline x 4 modes | 各4条`UNSUPPORTED`，artifact无缺失，未误报PASS |
 
 ## 10. 剩余阶段二与第三阶段实施顺序
 
@@ -355,6 +393,10 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 4. 基于已冻结的relation manifest v1补STC source entries，把001-027变为机器可读关系；
 5. 给MQ CPU golden补LSE后，再开启`return_softmax_lse=True`一致性验收；
 6. 为TND/PA/position mask各补一个小shape离线workbook case。
+7. 定义`independent-cross-case`关系source entry和`single-call-intra-case`位置关系schema，先补
+   actual-input等价证明和最小CPU用例，再接NPU；
+8. 用metadata stub planner筛选自然单核且S2 block>=2的候选，保存计划；在FD契约冻结前不生成
+   synthetic metadata。
 
 ### B. 解除真实执行阻断（环境可用时）
 
@@ -382,12 +424,17 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
   "schema_version": 1,
   "kind": "smla_mqsmla_batch_consistency_relation",
   "operator": "smla",
+  "scenario_coverage": {
+    "implemented": ["same-source-cross-call"],
+    "supplemental_gaps": ["independent-cross-case", "single-call-intra-case"]
+  },
   "baselines": [{
     "case_id": "smla:batch_consistency_001:<content-sha-prefix>",
     "input_content_fingerprint_sha256": "..."
   }],
   "relations": [{
     "mode": "split",
+    "scenario": "same-source-cross-call",
     "baseline_case_id": "smla:batch_consistency_001:<content-sha-prefix>",
     "comparison_identity": {
       "type": "TokenOrigin",
@@ -400,9 +447,10 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 }
 ```
 
-配置优先级仍为显式CLI > source manifest per-case > profile > blackbox-basic。自动派生manifest已经
-可生成和校验；仍需先修正STC 014/026，并确认001-027各自引用哪个baseline PT。source manifest
-不得把`BLOCKED_BY_SPEC/INVALID_DATA`伪装成`CONFIRMED`。
+在线配置优先级改为二选一：versioned `--config-file`，或deprecated CLI/environment；二者不得
+混用。suite内部是`defaults + 一个精确case override`，case的`modes/profile`互相替换。自动派生
+manifest已经可生成和校验；仍需先修正STC 014/026，并确认001-027各自引用哪个baseline PT。
+source manifest不得把`BLOCKED_BY_SPEC/INVALID_DATA`伪装成`CONFIRMED`。
 
 ### E. 扩展执行面
 
@@ -425,6 +473,8 @@ ratio、mask/window、sparse top-k 和 layout。analyzer 随后：
 | MODE4-1 | 共同前缀+KV增长是否为正式产品口径 | 需求/mask负责人 | 模式4最终冻结 |
 | CFG-1 | STC 001-027到relation manifest v1的source entry映射 | 测试/STC维护者 | 001-027 自动化 |
 | GRAPH-1 | level 3 读取时机与 compile cache 约束 | torchair | graph 验收 |
+| SCENARIO-1 | 独立跨case和单次调用内等价位置的正式输入/关系 | 用例与需求owner | 两个补充黑盒场景 |
+| STUB-1 | synthetic metadata生成、结构校验和独立coverage口径 | metadata/kernel/test | 单核到多核打桩激活 |
 
 MQ pytest修改权限和上下文analyzer已不再是阻断项；模式4已有安全暂定实现，但产品口径仍需
 owner确认。
@@ -447,6 +497,11 @@ owner确认。
 14. MQ `return_softmax_lse=True` 只有在process保留LSE且CPU golden生成LSE后才可列入通过项。
 15. relation manifest通过baseline内容指纹、origin span digest、边界/重复/scope/oracle预检；
     其CPU coverage与真实metadata coverage分栏报告。
+16. 每个预期`(operator,PT,mode)`都有唯一结果JSON；缺失/重复/pytest进程失败不能汇总为PASS。
+17. `independent-cross-case`与`single-call-intra-case`分别有可信输入关系和独立coverage，不借
+    `same-source-cross-call`模式改名冒充。
+18. synthetic metadata必须单独标识，不能计入自然metadata coverage；注入前后结构与workspace
+    契约均有门禁。
 
 ## 13. CANNBot 交互方式
 

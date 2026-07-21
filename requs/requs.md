@@ -7,7 +7,7 @@
 > 本文用途：归档需求背景、权威资料、需求冲突裁决、实现记录、检视答复和当前状态。具体后续里程碑见
 > `SMLA_batch一致性测试开发计划.md`。
 > 阅读提示：第 6-12 节和前两轮“检视意见处理记录”保留历史快照；当前权威状态见原始
-> `# 检视意见三`后追加的“检视意见三处理记录（2026-07-21）”。逐STC/公式/mask冲突见
+> `# 检视意见三`后追加的“检视意见三新增意见处理记录（2026-07-21）”。逐STC/公式/mask冲突见
 > `SMLA_MQSMLA需求冲突与对齐清单.md`；外部框架逐项评估见`data/README.md`。若历史状态与
 > 新记录冲突，以2026-07-21记录为准。
 
@@ -862,6 +862,24 @@ cannbot模型不止glm-5.2还有deepseek v4和qwen3.7-max，我希望chatgpt能�
 
 2. 责任田划分我大致理解了，现在ops-transformer_0716/requs/data目录下有另一个开发者基于另一个测试框架做的batch 一致性的一些测试方案和实现，我觉得有一些可取可借鉴的东西，评估一下呢？如果觉得这设计不错就可以采取并实现
 
+3. 我之前看过你做的`### 四种模式的最终实现分析`，在正式配置一项中，我知道实际上模式指定时还需要手动设置一些配置参数，但我觉得这种方式不太好，对于多个配置参数是不是写进文件中，需要的时候修改文件更好？而且batch批跑是是不是加载同一套配置，同一套配置是否适用于所有用例？这都是值得考虑，有时候我给你举的例子但不一定是普遍情况，ops-transformer_0716/requs/data目录下对这种是怎么处理的呢
+
+4. 当前pytest适配batch 一致性测试需求，输出的结果是怎么的呢，结果文件是怎么统计的呢
+
+5. ops-transformer_0716/requs/data认为
+```
+batch一致性功能测试分成两种场景：
+（1）不同用例间的batch/seq比较（必须包含），验证跨case输出一致性
+（2）同一用例内的batch/seq比较，验证同一case内不同batch/seq位置输出标识正确性
+```
+这个和当前有冲突吗，没冲突适配的怎样
+
+6. 测试场景：打桩metadata  
+例如某一个Shape  
+按照负载均衡计算，某一个规约任务，在单核完成  
+
+打桩metadata，让规约任务，在多核执行
+
 ## 检视意见三处理记录（2026-07-21）
 
 ### 一、直接答复
@@ -1056,3 +1074,223 @@ MQSMLA level-3 metadata + main op: UNSUPPORTED
 环境就绪后再做：双算子真实level3 smoke -> eager四模式 -> 真实metadata Level-1/2 matrix ->
 graph -> ACLNN -> N=3/N=125和nightly。relation manifest届时复用同一relation id追加NPU output、
 metadata digest和最终状态，不再重新设计case身份。
+
+## 检视意见三新增意见处理记录（2026-07-21）
+
+### 一、对新增意见3-6的直接答复
+
+| 检视意见 | 答复与处理 | 当前状态 |
+| --- | --- | --- |
+| 多个模式参数是否应写入文件 | 是。新增versioned JSON suite，正式执行使用`--config-file`；模式名、order、groups、token sizes、源batch和shape-change参数均可按PT配置 | 已实现并有双算子示例 |
+| 批跑是否给所有PT加载同一套参数 | 只加载同一个suite文档，但**不是把同一组数值套给所有PT**。每个PT按精确selector匹配一项，再结合自身B/Q长度解析和预检 | 已实现；默认未匹配即`CONFIG_ERROR` |
+| pytest结果和统计是什么 | 原入口依赖退出码和日志`grep`，会把skip误解成PASS。现在每个`(operator,PT,mode)`写一个JSON，汇总器只读取校验后的JSON | 已替换双算子在线入口 |
+| 外部“两种场景”是否冲突 | 不冲突，但也不能说已经全部适配。当前模式1-4是`same-source-cross-call`；外部的独立跨case与单次调用内位置比较是两个补充场景 | 已机器标注现状和缺口；未伪装完成 |
+| 单核规约任务打桩成多核 | 已完成CPU-only候选规划器和默认关闭的executor hook；因FD契约、公式、包版本和level3未确认，本轮不生成或上NPU执行伪metadata | 安全骨架完成，真实注入阻塞 |
+
+`-M 1,2`不是“等batch一致性打通后再想办法”的正式方案。现在已经完成控制面迁移：
+
+- versioned JSON和Excel正式字段只接受`reorder/split/token-split/shape-change`；
+- `--config-file`是推荐入口；
+- `--modes/--profile`仍可用于单一shape的临时运行；
+- 数字`-M 1,2`只在旧CLI兼容层转换并发deprecated warning，何时删除取决于下游调用者迁移，
+  与NPU功能何时打通无关。
+
+### 二、配置文件如何解决“例子不普遍”
+
+正式示例为`cases/SMLA_MQSMLA_batch一致性执行配置.json`，固定：
+
+```json
+{
+  "schema_version": 1,
+  "kind": "smla_mqsmla_batch_consistency_suite",
+  "unmatched_case_policy": "error",
+  "defaults": {"seed": 20260716, "randomize": false},
+  "cases": [{
+    "id": "offline-smla-b2-s4",
+    "match": {"operator": "smla", "case_name": "offline_smla_b2_s4"},
+    "config": {
+      "modes": ["reorder", "split", "token-split", "shape-change"],
+      "split_groups": [[0], [1]],
+      "token_split_sizes": [2, 2],
+      "mode_batch": 0,
+      "common_tokens": 3,
+      "derived_extra": 2
+    }
+  }]
+}
+```
+
+selector只做精确相等，支持`operator/case_name/pt_basename/input_content_fingerprint_sha256`；
+同一PT匹配多项会报歧义，默认未匹配也报错。`defaults`只放真正通用的seed、是否randomize等；
+case项的`modes`会替换默认`profile`，反之亦然。
+
+每个PT加载后才做shape-aware解析：
+
+- `reorder_order`必须是当前`[0,B)`的非恒等排列；
+- `split_groups`必须索引合法、无重复，默认要求完整覆盖当前B；
+- 未显式写groups时，只有`B=8`采用需求例子`3+5`，其他B按自身shape确定性二分；
+- `token_split_sizes`必须全为正数且总和等于所选batch的有效Q长度；未显式写时按该PT的Q长度
+  分半，16K才使用4K+12K；
+- `mode_batch/common_tokens/derived_extra`均相对当前PT校验，shape-change目标长度不能与baseline
+  相同；
+- B=1导致reorder/split天然不适用、Q不足2导致token-split不适用，记
+  `NOT_APPLICABLE`；用户显式写越界group或错误token总和才记`CONFIG_ERROR`。
+
+外部aclnnfuzz方案也是把seed/range等字段写在Excel的每一条case上，并非一套`3+5`配置覆盖
+所有case；这一点值得借鉴。本项目采用更严格的per-case selector和shape预检，但不复制其
+单tensor轴seed模型、`eval`脚本或有缺陷的5/6元素检查。
+
+配置文件与旧详细CLI严格互斥，以下命令会在执行前失败，避免两套优先级悄悄覆盖：
+
+```bash
+bash test_run.sh consistency --config-file suite.json --seed 1
+```
+
+### 三、结果文件、统计口径和退出语义
+
+每次`test_run.sh consistency`在`--report-dir`下创建独立`YYYYMMDD_HHMMSS_PID`目录：
+
+```text
+<run-dir>/
+  results/
+    <operator>__<pt>__<case>__<fingerprint>__<mode>.json
+  consistency_result_summary.json
+  pytest.log
+```
+
+逐模式JSON包含schema/kind、场景分类、算子、mode、case名、PT绝对路径、输入内容SHA256、最终
+生效配置、reason code、执行报告。状态只有：
+
+| 状态 | 含义 |
+| --- | --- |
+| `PASS` | 报告本身通过，且所有baseline/derived记录的requested和observed level都严格为3 |
+| `FAIL` | NPU执行异常、bitwise/CPU精度/metadata integrity失败，或PASS门禁拒绝 |
+| `UNSUPPORTED` | runtime/operator明确拒绝level3等必要能力 |
+| `INVALID_TRANSFORM` | 该PT不能构造数学等价派生输入 |
+| `NOT_APPLICABLE` | mode未选择或shape天然不适用 |
+| `CONFIG_ERROR` | suite歧义、未命中、字段、范围或shape配置错误 |
+
+聚合器按status/mode/operator计数，并同时核对`PT数 x 4个pytest mode`总数、唯一PT数和唯一
+`(operator,PT,mode)`矩阵。缺文件、多余/异算子旧文件、重复记录、损坏JSON或pytest子进程非零
+都进入JSON汇总，不能用“总数刚好相等”或日志文字绕过。算子级结果为：
+
+- `PASS`：至少有真实level3 PASS，无FAIL/不完整/unsupported/invalid；未选择模式的
+  `NOT_APPLICABLE`不阻塞；
+- `PARTIAL`：有PASS，同时还有`UNSUPPORTED/INVALID_TRANSFORM`；
+- `UNSUPPORTED`：没有PASS且环境能力明确不支持；
+- `INCOMPLETE`：缺artifact、只有不适用/无效变换等，无法形成验收结论；
+- `FAIL`：有`FAIL/CONFIG_ERROR`或pytest进程异常；
+- `NO_RESULTS`：没有artifact且没有给出预期case数。
+
+CLI仅在完整`PASS`时返回0，`FAIL`返回1，其余未完成状态返回2。`pytest.log`只用于诊断，不再是
+权威统计输入。本机用正式配置实测：SMLA和MQSMLA各1个PT、4个mode均写出
+`UNSUPPORTED`，`missing_artifact_count=0`；pytest自身为`4 skipped`也没有被统计成PASS。
+
+### 四、外部两种功能场景与当前四模式的关系
+
+| 场景ID | 定义 | 当前适配 |
+| --- | --- | --- |
+| `same-source-cross-call` | 一个baseline PT同步派生输入，进行两次或多次完整算子调用 | 模式1-4已实现 |
+| `independent-cross-case` | 两个独立编写/生成的PT之间声明等价输出位置 | 未实现；relation schema待扩展 |
+| `single-call-intra-case` | 同一次算子调用中两个数学等价位置互相比对 | 未实现；需要显式位置关系和专用case |
+
+所以外部说的两种场景与当前没有语义冲突，缺口在于来源和调用边界不同。不能把模式1叫作
+“独立跨case”：它虽然执行baseline和derived两个调用，但derived仍由同一个baseline同步派生；
+也不能把模式3叫作“单次调用内比较”：它会执行baseline和多个token分段调用。
+
+relation manifest与在线summary现在都明确写入`same-source-cross-call`，并列出另外两个
+`supplemental_gaps`，防止报告读者误判全覆盖。下一步实现顺序是：
+
+1. 为`independent-cross-case`增加versioned relation source entry，要求两个PT各自内容指纹、
+   完整TokenOrigin/位置映射及actual-input等价证据；外部`output_seed`只能作为关系标签参考；
+2. 新增最小`single-call-intra-case`输入，使同一调用内至少两个位置拥有完全相同Q、可见KV、
+   mask/sparse/top-k/sinks语义，再用位置对直接做bitwise+CPU精度比较；
+3. 两者各自拥有结果artifact和coverage cell，不并入模式1-4数字含义；
+4. 在没有可信用例与映射前保持gap，不用随机碰巧相等的输出冒充覆盖。
+
+### 五、metadata单核到多核打桩的实现边界
+
+新增`metadata_stub.py`的CPU-only planner：
+
+```text
+自然metadata + 对应PT上下文
+  -> 严格解析FA/FD
+  -> 展开到bn2/query-token/S2-block/core
+  -> 只选“自然状态由一个逻辑FA核完整覆盖”的token
+  -> 要求该token至少有两个S2 block
+  -> 给出拟拆成两个非空block区间的候选计划
+  -> 输出自然metadata SHA256、公式审计和activation blockers
+  -> 不生成、不修改、不执行synthetic metadata
+```
+
+双算子executor/process已增加默认`None`的`metadata_transform`注入点；不传时原路径和返回契约
+不变，当前CLI也没有开启该hook的参数。正式激活前必须同时关闭这些阻断：
+
+1. `supportFd=false`与目标实现的关系确认；
+2. 本地源码、PR head和已安装custom包build id对齐；
+3. FD record slot 7、workspace index/num和M范围的部署契约冻结；
+4. PR floor/需求ceil及`S2<32`zero edge裁决；
+5. runtime和双主算子真实支持deterministic level 3；
+6. 注入前后各自通过metadata结构检查，且synthetic结果单独标识，永远不能计作自然metadata覆盖。
+
+这不是拒绝打桩场景，而是先完成可审计的选点和注入接口，避免用错误FD记录越界写workspace，
+或让kernel消费一个“看起来多核、实际契约错误”的tensor。
+
+### 六、本轮文件级开发记录
+
+#### 6.1 双算子逐字镜像核心
+
+| 文件 | 本轮作用 |
+| --- | --- |
+| `batch/consistency/suite_config.py` | suite v1解析、未知字段拒绝、精确selector、defaults/case合并、legacy转换和per-PT shape预检 |
+| `batch/consistency/result_artifact.py` | 原子写逐模式JSON、level3 PASS硬门禁、PT/mode矩阵与损坏/重复/异算子artifact核对、状态聚合及CLI |
+| `batch/consistency/metadata_stub.py` | 自然单核token候选规划、拟拆分block ranges、安全阻断项及受约束hook helper |
+| `batch/consistency/relation_manifest.py` | relation增加`same-source-cross-call`，并机器记录两个补充场景缺口 |
+| `test_batch_consistency_unit.py` | 配置匹配/歧义/越界/shape默认、artifact PASS/矩阵/损坏门禁、场景分类、planner/hook回归；镜像门禁纳入三个新模块 |
+
+#### 6.2 operator-owned在线链
+
+| 文件 | 本轮作用 |
+| --- | --- |
+| 两个`test_*_batch_consistency.py` | 每个PT分别解析配置；所有skip/error/pass在pytest结束前落最终JSON；不再只打印report |
+| 两个`test_run.sh` | 新增`--config-file/--report-dir`、每次独立目录、逐PT进程、JSON聚合；删除一致性路径的grep统计 |
+| `batch/sparse_flash_mla_consistency.py`与MQ对应文件 | executor接收默认关闭的metadata transform并继续捕获实际消费对象 |
+| `batch/sparse_flash_mla_process.py`与MQ对应文件 | metadata op与主算子之间预留受约束hook；默认`None`保持原调用 |
+| `cases/SMLA_MQSMLA_batch一致性执行配置.json` | 与现有离线表两个小shape一一对应的正式配置示例 |
+
+本轮仍未修改两算子host、tiling、kernel、torch extension schema或已安装custom包；`data/`原始
+三文件也保持字节不变。
+
+### 七、验证结果与阶段推进
+
+- 双算子CPU unit当前各`39 passed`；
+- 双算子离线prepare仍各1 baseline、6 derived、6 relation，新增scenario字段通过manifest
+  round-trip校验；
+- 正式suite对两个真实baseline分别命中`offline-smla-b2-s4`和
+  `offline-mqsmla-b2-s4`，生效groups/token sizes/shape-change值与各自shape一致；
+- 双算子在线各4条结果JSON、1条summary，无缺失；当前结果均为`UNSUPPORTED`，原因仍为
+  runtime只支持level 0/1/2；
+- 两棵共享目录ruff、compileall、字节镜像和两份shell语法通过；原始入口与最终完整门禁见本次
+  提交前验证记录。
+
+阶段二因此新增完成三项：per-case suite配置、结构化在线结果、metadata stub候选规划；阶段三
+仍按“版本对齐 -> 双算子level3 smoke -> eager四模式 -> 自然metadata矩阵”推进。两个补充黑盒
+场景并行进入关系设计/用例准备，不抢在数学等价证据之前接NPU。metadata真实注入则在
+`PKG-1/META-1/FORMULA-1/RT-1/OP-1`全部关闭后才启用。
+
+### 八、新增意见的多模型复审记录
+
+本轮再次用三个隔离、只读CANNBot会话审阅新增意见3-6和未提交设计：
+
+| 模型 | 本轮关注 | 纳入裁决的意见 |
+| --- | --- | --- |
+| `cannbot/glm-5.2` | suite配置与现有pytest接法 | 一个suite文档、per-case selector、shape解析，legacy CLI与文件互斥 |
+| `cannbot/deepseek-v4-pro` | 结果可信度和异常路径 | pytest退出码/skip文本不能作为PASS；每个mode先落状态，聚合器检查缺失 |
+| `cannbot/qwen3.7-max` | 外部两类场景和metadata打桩 | 四模式应标same-source cross-call；独立跨case/单次调用内是gap；注入前冻结FD契约 |
+
+主审还纠正了复审中的两项过度判断：CPU `FakeExecutor`只用于显式单测，不会产生在线NPU
+PASS；现有relation validator已经逐relation检查span digest、边界和scope，不是只验证manifest
+外壳。有效风险是PASS必须绑定observed level3、异常也必须有artifact，本轮已经落实。
+
+模型没有写共享工作树。临时CANNBot目录只包含隔离数据库/认证副本和审议日志，认证权限保持
+0600；验证完成后整目录删除，不进入Git。最终实现和安全边界仍由主审依据源码、实测与需求负责。
