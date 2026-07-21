@@ -49,6 +49,8 @@
     | A8W8-INT | INT8   | INT8         |
     | A8W8-FP  | FLOAT8_E4M3FN、FLOAT8_E5M2 |FLOAT8_E4M3FN、FLOAT8_E5M2 |
     | A8W4-INT | INT8        | INT4            |
+    | A8W4-FP | FLOAT8_E4M3FN        | FLOAT4_E2M1          |
+    | A4W4-FP | FLOAT4_E2M1        | FLOAT4_E2M1            |
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持上表中A8W8-FP场景。
     - <term>Ascend 950PR/Ascend 950DT</term>：不支持上表中A16W16 、A8W8-INT、A8W4-INT场景。
@@ -467,7 +469,7 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
 - mega_moe：
 
 ```python
-mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, weight1_type=None, weight2_type=None) -> (Tensor, Tensor)
+mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, weight1_type=None, weight2_type=None, shared_l1_weights=None, shared_l2_weights=None, shared_l1_weights_sf=None, shared_l2_weights_sf=None, shared_l1_bias=None, shared_l2_bias=None) -> (Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -606,7 +608,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>Tensor</td>
         <td>必选</td>
         <td>表示MoE模型的专家门控网络为当前输入Token选出的num_topk个专家所对应的门控权重系数。</td>
-        <td>BFLOAT16<sup>2</sup>、FLOAT32</td>
+        <td>BFLOAT16、FLOAT32</td>
         <td>ND</td>
         <td>(num_tokens, num_topk)</td>
     </tr>
@@ -614,7 +616,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td rowspan="6">l1_weights</td>
         <td rowspan="6">list[Tensor]</td>
         <td rowspan="6">必选</td>
-        <td rowspan="6">专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
+        <td rowspan="6">MoE专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
         <td>BFLOAT16<sup>2</sup></td>
         <td>ND</td>
         <td>(hidden, 2 × intermediate_hidden)</td>
@@ -648,7 +650,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td rowspan="6">l2_weights</td>
         <td rowspan="6">list[Tensor]</td>
         <td rowspan="6">必选</td>
-        <td rowspan="6">专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。</td>
+        <td rowspan="6">MoE专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。</td>
         <td>BFLOAT16<sup>2</sup></td>
         <td>ND</td>
         <td>(intermediate_hidden, hidden)</td>
@@ -691,7 +693,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td rowspan="2">l1_weights_sf</td>
         <td rowspan="2">list[Tensor]</td>
         <td rowspan="2">可选</td>
-        <td rowspan="2">专家网络第一线性层的权重矩阵的量化缩放因子。</td>
+        <td rowspan="2">MoE专家网络第一线性层的权重矩阵的量化缩放因子。</td>
         <td>UINT64<sup>2</sup></td>
         <td>ND</td>
         <td>(2 × intermediate_hidden, )</td>
@@ -705,7 +707,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td rowspan="2">l2_weights_sf</td>
         <td rowspan="2">list[Tensor]</td>
         <td rowspan="2">可选</td>
-        <td rowspan="2">专家网络第二线性层的权重矩阵的量化缩放因子。</td>
+        <td rowspan="2">MoE专家网络第二线性层的权重矩阵的量化缩放因子。</td>
         <td>UINT64<sup>2</sup></td>
         <td>ND</td>
         <td>(hidden, )</td>
@@ -719,7 +721,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>l1_bias<sup>2</sup></td>
         <td>list[Tensor]</td>
         <td>可选</td>
-        <td>专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+        <td>MoE专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>(2 × intermediate_hidden, )</td>
@@ -728,7 +730,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>l2_bias<sup>2</sup></td>
         <td>list[Tensor]</td>
         <td>可选</td>
-        <td>专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+        <td>MoE专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>(hidden, )</td>
@@ -777,6 +779,80 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>预留参数</td>
         <td>不涉及</td>
         <td>不涉及</td>
+    </tr>
+    <tr>
+        <td rowspan="3">shared_l1_weights</td>
+        <td rowspan="3">list[Tensor]</td>
+        <td rowspan="3">必选</td>
+        <td rowspan="3">共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
+        <td>FLOAT8_E5M2<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+    </tr>
+    <tr>
+        <td>FLOAT8_E4M3FN<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+    </tr>
+    <tr>
+        <td>FLOAT4_E2M1<sup>1</sup></td>
+        <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
+        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+    </tr>
+    <tr>
+        <td rowspan="3">shared_l2_weights</td>
+        <td rowspan="3">list[Tensor]</td>
+        <td rowspan="3">必选</td>
+        <td rowspan="3">共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。</td>
+        <td>FLOAT8_E5M2<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+    </tr>
+    <tr>
+        <td>FLOAT8_E4M3FN<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+    </tr>
+    <tr>
+        <td>FLOAT4_E2M1<sup>1</sup></td>
+        <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
+        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+    </tr>
+    <tr>
+        <td>shared_l1_weights_sf</td>
+        <td>list[Tensor]</td>
+        <td>可选</td>
+        <td>共享专家网络第一线性层的权重矩阵的量化缩放因子。</td>
+        <td>FLOAT8_E8M0<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)</td>
+    </tr>
+    <tr>
+        <td>shared_l2_weights_sf</td>
+        <td>list[Tensor]</td>
+        <td>可选</td>
+        <td>共享专家网络第二线性层的权重矩阵的量化缩放因子。</td>
+        <td>FLOAT8_E8M0<sup>1</sup></td>
+        <td>ND</td>
+        <td>(num_experts_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)</td>
+    </tr>
+    <tr>
+        <td>shared_l1_bias<sup>2</sup></td>
+        <td>list[Tensor]</td>
+        <td>可选</td>
+        <td>共享专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+        <td>(2 × intermediate_hidden, )</td>
+    </tr>
+    <tr>
+        <td>shared_l2_bias<sup>2</sup></td>
+        <td>list[Tensor]</td>
+        <td>可选</td>
+        <td>共享专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+        <td>FLOAT32</td>
+        <td>ND</td>
+        <td>(hidden, )</td>
     </tr>
 </tbody>
 <tfoot>
