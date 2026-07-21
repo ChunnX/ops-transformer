@@ -1041,7 +1041,8 @@ def tilelang_grad_kl_loss_single_kernel(
         with T.Scope("V"):
             v2_dq_fp32 = T.alloc_ub((rows_per_aiv, DQueryIndex), calc_dtype)
             v2_dq_half = T.alloc_ub((rows_per_aiv, DQueryIndex), input_dtype)
-            v2_dk_rows = T.alloc_ub((2, n_block // 2, DQueryIndex), calc_dtype)
+            v2_dk_rows_ping = T.alloc_ub((n_block // 2, DQueryIndex), calc_dtype)
+            v2_dk_rows_pong = T.alloc_ub((n_block // 2, DQueryIndex), calc_dtype)
 
             if task_slot == 0:
                 T.wait_cross_flag(C2_TO_V2_FLAGS[0])
@@ -1085,7 +1086,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     dk_matmul_partial[bz_task, s1_id,
                                       first_k_start:first_k_start + k_half_v2,
                                       0:DQueryIndex],
-                    v2_dk_rows[0, :, :],
+                    v2_dk_rows_ping,
                 )
                 T.set_flag("mte2", "mte3", 10)
 
@@ -1098,12 +1099,20 @@ def tilelang_grad_kl_loss_single_kernel(
                             (n_idx + 1) * n_block + vector_id * k_half_v2
                         )
                         T.wait_flag("mte3", "mte2", nxt_v2 + 10)
-                        T.copy(
-                            dk_matmul_partial[bz_task, s1_id,
-                                              next_k_start:next_k_start + k_half_v2,
-                                              0:DQueryIndex],
-                            v2_dk_rows[nxt_v2, :, :],
-                        )
+                        if nxt_v2 == 0:
+                            T.copy(
+                                dk_matmul_partial[bz_task, s1_id,
+                                                  next_k_start:next_k_start + k_half_v2,
+                                                  0:DQueryIndex],
+                                v2_dk_rows_ping,
+                            )
+                        else:
+                            T.copy(
+                                dk_matmul_partial[bz_task, s1_id,
+                                                  next_k_start:next_k_start + k_half_v2,
+                                                  0:DQueryIndex],
+                                v2_dk_rows_pong,
+                            )
                         T.set_flag("mte2", "mte3", nxt_v2 + 10)
 
                     T.wait_flag("mte2", "mte3", cur_v2 + 10)
@@ -1112,10 +1121,20 @@ def tilelang_grad_kl_loss_single_kernel(
                             bz_task, s1_id, 0, k_start_v2 + row_idx
                         ]
                         if sparse_idx_v2 >= 0:
-                            T.tile.atomic_add(
-                                dKeyIndex[bz_task, sparse_idx_v2, 0, 0:DQueryIndex],
-                                v2_dk_rows[cur_v2, row_idx, 0:DQueryIndex],
-                            )
+                            if cur_v2 == 0:
+                                T.tile.atomic_add(
+                                    dKeyIndex[bz_task, sparse_idx_v2, 0, 0],
+                                    v2_dk_rows_ping[
+                                        row_idx:row_idx + 1, 0:DQueryIndex
+                                    ],
+                                )
+                            else:
+                                T.tile.atomic_add(
+                                    dKeyIndex[bz_task, sparse_idx_v2, 0, 0],
+                                    v2_dk_rows_pong[
+                                        row_idx:row_idx + 1, 0:DQueryIndex
+                                    ],
+                                )
                     T.set_flag("mte3", "mte2", cur_v2 + 10)
 
             T.wait_flag("mte3", "mte2", 8)
