@@ -334,14 +334,14 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::CalcMaxRows()
         int64_t bufSpace = AlignBytes_(maxRows * bufnPerTokenSpace) +
                            maxRows * AlignBytes_(wPrimeCachePerTokenSpace);
 
-        uint32_t reduceSumTmpSize = 0;
-        uint32_t tmpMaxValue = 0;
-        int64_t kAligned = AlignBytes_(k_ * SIZE_OF_FLOAT32) >> 1;
-        auto shape = ge::Shape({maxRows, kAligned});
-        AscendC::GetReduceSumMaxMinTmpSize(shape, ge::DataType::DT_FLOAT, AscendC::ReducePattern::AR, true, false,
-                                           tmpMaxValue, reduceSumTmpSize);
+        // 注：A5 的 K 维度归约（D、betaNum 的求和）全部由 MicroAPI::ReduceSum（Reg 矢量计算 API，
+        // 纯寄存器内完成，见 vf/moe_gating_top_k_backward_vf.h）实现，不调用需要 UB 侧
+        // sharedTmpBuffer 的 Memory API AscendC::ReduceSum，因此无需像 A3 那样调用
+        // AscendC::GetReduceSumMaxMinTmpSize 为其预留临时空间；同理 A5 也未使用 Memory API
+        // BroadCast（改用寄存器内 MicroAPI::Duplicate<HighLowPart::LOWEST> 广播），故也不需要
+        // GetBroadCastMaxMinTmpSize 对应的预留。
 
-        int64_t usedSpace = UB_RESERVE_SPACE + queSpace + bufSpace + static_cast<int64_t>(reduceSumTmpSize);
+        int64_t usedSpace = UB_RESERVE_SPACE + queSpace + bufSpace;
         if (usedSpace <= static_cast<int64_t>(aicoreParams_.ubSize)) {
             break;
         }
