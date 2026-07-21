@@ -243,6 +243,14 @@ def tilelang_grad_kl_loss_single_kernel(
             C2_L0C = T.alloc_L0C((Nidx1, n_block), calc_dtype)
             DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
             DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)
+            # Keep every physical matrix inside one 64 KiB L0C bank.  Event 6
+            # protects bank 0 and event 7 protects bank 1.
+            T.annotate_address({
+                C1_L0C: 0,
+                DQ_L0C: 32768,
+                C2_L0C: 65536,
+                DK_L0C: 81920,
+            })
             # FIX_M event 6 owns C1/dQuery; event 7 owns C2/dKey.
             with T.Scope("C"):
                 T.set_flag("fix", "m", 6)
