@@ -33,6 +33,20 @@ DISCONTINUOUS_KEYS = True      # key非连续
 DEFAULT_SPLIT_S1 = False       # golden切分S1Flag
 DEFAULT_S1SIZE = 4          # s1切分基本块大小
 
+
+class RuntimePlatform:
+    """Read optional device information without making CPU generation depend on NPU."""
+
+    @staticmethod
+    def is_ascend950():
+        npu = getattr(torch, "npu", None)
+        if npu is None or not hasattr(npu, "get_device_properties"):
+            return False
+        try:
+            return "Ascend950" in npu.get_device_properties().name
+        except (RuntimeError, AttributeError):
+            return False
+
 class GeneralizedLIV2:
     def __init__(self, batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num,
                  head_dim, block_size, block_num, qk_dtype, cu_seqlens_q, cu_seqlens_k, 
@@ -792,7 +806,7 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
     if cmp_ratio == 1 or mask_mode == 0:
         cmp_residual_k_for_npu = None
     else:
-        cmp_residual_k_for_npu = torch.tensor(cmp_residual_k).to(torch.int32).npu()
+        cmp_residual_k_for_npu = torch.tensor(cmp_residual_k).to(torch.int32)
 
     if cu_seqlens_q is not None:
         cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
@@ -870,15 +884,13 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
                 else:
                     for i_n in range(k_head_num):
                         key[cur_block_id, :, i_n, :] = key_expand[i_batch, i_n, block_start_pos:block_start_pos+block_size,:]
-        properties = torch.npu.get_device_properties() 
         blockFusion = None 
-        if "Ascend950" in properties.name and DISCONTINUOUS_KEYS: 
+        if RuntimePlatform.is_ascend950() and DISCONTINUOUS_KEYS:
             key_stride = 10  # 0轴非连续增加stride 
             bytes_per_token = head_dim + key_stride # 整个非连续的长度 
             blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype) 
             key_flat = key.view(block_num, block_size * k_head_num * head_dim) 
             blockFusion[:, :block_size * k_head_num * head_dim] = key_flat 
-            blockFusion = blockFusion.npu() 
             key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
         cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key_bnsd, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32)
@@ -974,3 +986,8 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
         torch.npu.synchronize()
         npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
         return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
+
+
+def generate_liv2_test_data(params, split_s1=DEFAULT_SPLIT_S1, s1size=DEFAULT_S1SIZE):
+    """Generate LI_V2 inputs and CPU golden without executing metadata or the NPU op."""
+    return liv2_output_single(params, is_batch=True, split_s1=split_s1, s1size=s1size)
