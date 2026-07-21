@@ -653,6 +653,7 @@ ge::graphStatus MoeDistributeCombineV2TilingFuncA2A3::MoeDistributeCombineTiling
     if (socVersion == "Ascend910B") {
         ret = MoeDistributeCombineA2TilingFuncImpl(context, config);
     } else {
+        OP_LOGE(nodeName, "→ → → → → → → → → → → → DEBUG.COMBINE Enter!! ← ← ← ← ← ← ← ← ← ← ← ←")
         ret = MoeDistributeCombineA3TilingFuncImpl(context, config);
     }
 

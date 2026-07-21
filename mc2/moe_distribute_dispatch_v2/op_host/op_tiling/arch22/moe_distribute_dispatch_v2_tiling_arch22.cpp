@@ -697,6 +697,7 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA2A3::MoeDistributeDispatchV2Ti
     if (socVersion == "Ascend910B") {
         ret = MoeDistributeDispatchTilingFuncImpl(context);
     } else {
+        OP_LOGE(nodeName, "→ → → → → → → → → → → → DEBUG.DISPATCH Enter!! ← ← ← ← ← ← ← ← ← ← ← ←")
         DispatchV2Config config;
         config.xIndex = 0U;                   // 0: 根据dispatchV2算子原型标志位初始化groupEp索引
         config.expertIdsIndex = 1U;           // 1: 根据dispatchV2算子原型标志位初始化expertIds索引
