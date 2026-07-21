@@ -128,6 +128,7 @@
              .Int(0); 
 
 
+         OpAICoreConfig aicore_config_95;
          aicore_config_95.DynamicCompileStaticFlag(true) 
              .DynamicFormatFlag(true) 
              .DynamicRankSupportFlag(true) 
