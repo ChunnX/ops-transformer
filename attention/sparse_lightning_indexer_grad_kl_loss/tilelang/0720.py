@@ -681,20 +681,19 @@ def tilelang_grad_kl_loss_single_kernel(
                     with T.Scope("V"):
                         T.wait_cross_flag(13)
                         weight_v1b_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                        weight_group_v1b_ub = T.alloc_ub(vector_baseg, calc_dtype)
                         weight_all_v1b_ub = T.alloc_ub(Nidx1, calc_dtype)
                         weight_all_half_v1b_ub = T.alloc_ub(Nidx1, input_dtype)
-                        weight_2d_v1b_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
                         p_reduced_v1b_ub = T.alloc_ub(n_block, calc_dtype)
                         softmax_i_v1b_ub = T.alloc_ub(n_block, calc_dtype)
                         rsy_bc_v1b_ub = T.alloc_ub((1, n_block), calc_dtype)
-                        re_tmp_v1b_ub = T.alloc_ub((N1, 8), calc_dtype)
+                        re_tmp_v1b_ub = T.alloc_ub((vector_baseg, 8), calc_dtype)
                         diff_v1b_ub = T.alloc_ub(n_block, calc_dtype)
                         diff_2d_v1b_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                         dw_chunk_v1b_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                         dw_reduce_v1b_ub = T.alloc_ub(vector_baseg, calc_dtype)
                         rg_chunk_v1b_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                         rsy_tmp_v1b_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                        ones_2d_v1b_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
                         rg_half_v1b_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
                         dw_half_v1b_ub = T.alloc_ub(vector_baseg, input_dtype)
                         eps_v1b_ub = T.alloc_ub(n_block, calc_dtype)
@@ -709,14 +708,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "v", 7)
                             T.wait_flag("mte2", "v", 7)
                             T.tile.cast(weight_all_v1b_ub, weight_all_half_v1b_ub, "CAST_NONE", Nidx1)
-                            T.tile.fill(weight_2d_v1b_ub, 1.0)
-                            T.tile.row_expand_mul_experiment(
-                                weight_2d_v1b_ub,
-                                weight_2d_v1b_ub,
-                                weight_all_v1b_ub,
-                                re_tmp_v1b_ub,
-                            )
-                            T.tile.fill(ones_2d_v1b_ub, 1.0)
+                            T.pipe_barrier("v")
                             T.tile.fill(eps_v1b_ub, 1e-8)
 
                             T.set_flag("v", "mte2", 6)
@@ -746,6 +738,10 @@ def tilelang_grad_kl_loss_single_kernel(
                                     g_start = g_id * vector_baseg
                                     if g_id == vid:
                                         T.tile.fill(weight_v1b_ub, 0)
+                                        T.copy(
+                                            weight_all_v1b_ub[g_start:g_start + vector_baseg],
+                                            weight_group_v1b_ub,
+                                        )
                                         T.wait_flag("v", "mte2", 4)
                                         T.copy(
                                             bmm2Res[
@@ -762,10 +758,15 @@ def tilelang_grad_kl_loss_single_kernel(
                                         T.pipe_barrier("v")
                                         T.tile.exp(rsy_tmp_v1b_ub, rsy_tmp_v1b_ub)
                                         T.pipe_barrier("v")
-                                        T.tile.sub(rsy_tmp_v1b_ub, ones_2d_v1b_ub, rsy_tmp_v1b_ub)
-                                        for i in T.serial(vector_baseg):
-                                            T.copy(weight_2d_v1b_ub[g_start + i, :], rg_chunk_v1b_ub[i, :])
-                                        T.tile.mul(rg_chunk_v1b_ub, rg_chunk_v1b_ub, diff_2d_v1b_ub)
+                                        T.tile.fill(rg_chunk_v1b_ub, 1.0)
+                                        T.pipe_barrier("v")
+                                        T.tile.sub(rsy_tmp_v1b_ub, rg_chunk_v1b_ub, rsy_tmp_v1b_ub)
+                                        T.tile.row_expand_mul_experiment(
+                                            rg_chunk_v1b_ub,
+                                            diff_2d_v1b_ub,
+                                            weight_group_v1b_ub,
+                                            re_tmp_v1b_ub,
+                                        )
                                         T.pipe_barrier("v")
                                         T.tile.mul(rg_chunk_v1b_ub, rg_chunk_v1b_ub, rsy_tmp_v1b_ub)
                                         T.pipe_barrier("v")
