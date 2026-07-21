@@ -357,7 +357,7 @@ __global__ __aicore__ void BsaInferInterfaceMXFP4FullQuant(
     // 处理单个tile内P和Value的matmul
     using L1TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
     using L0TileShapePV = Shape<Int<128>, Int<128>, Int<128>>;
-    using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPV<transposedMm1>;
+    using DispatchPolicyPV = Gemm::MmadAtlasA5BsaPVMxfp4<transposedMm1>;
     using TileCopyPV = Gemm::Tile::PackedTileCopyTlaToUB<
         ArchTag, ElementP, LayoutPDummy, ElementV, LayoutV, ElementOTmp, LayoutOTmp,
         void, Gemm::Tile::CopyL0CToUBMode::SPLIT_M, false, Gemm::Tile::ScaleGranularity::PER_GROUP>;
