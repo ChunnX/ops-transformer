@@ -172,6 +172,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &i
     OP_LOGD(nodeName, "scaleupFinalRecvDataOffset is %lu.", info.scaleupFinalRecvDataOffset);
     OP_LOGD(nodeName, "scaleoutRecvStatusOffset is %lu.", info.scaleoutRecvStatusOffset);
     OP_LOGD(nodeName, "scaleupRecvStatusOffset is %lu.", info.scaleupRecvStatusOffset);
+    OP_LOGD(nodeName, "scaleoutAckStatusOffset is %lu.", info.scaleoutAckStatusOffset);
     OP_LOGD(nodeName, "combineDataOffset is %lu.", info.combineDataOffset);
     OP_LOGD(nodeName, "totalWinSizeEp is %lu.", info.totalWinSizeEp);
     OP_LOGD(nodeName, "totalUbSize is %lu.", info.totalUbSize);
@@ -943,17 +944,21 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     uint64_t scaleupFinalRecvDataSize;
     uint64_t scaleoutRecvStatusSize;
     uint64_t scaleupRecvStatusSize;
+    uint64_t scaleoutAckStatusSize;
     if (info.networkMode == HYBRID_MODE) {
         scaleoutRecvDataSize = superNodeCount * nmt * static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
         scaleupFinalRecvDataSize = epWorldSize * nmt * static_cast<uint64_t>(info.scaleupSlotAlignedBytes);
         scaleoutRecvStatusSize = AlignUpWin(superNodeCount * nmt * WIN_ADDR_ALIGN);
         scaleupRecvStatusSize = AlignUpWin(epWorldSize * nmt * WIN_ADDR_ALIGN);
+        // 每个远端 server 一个消费确认，避免下一轮覆盖尚未消费的 scaleout payload/status。
+        scaleoutAckStatusSize = AlignUpWin(superNodeCount * WIN_ADDR_ALIGN);
     } else {
         // direct: slot 紧凑步长, 不用 scaleout/recvStatus
         scaleoutRecvDataSize = 0UL;
         scaleupFinalRecvDataSize = epWorldSize * nmt * static_cast<uint64_t>(info.cfg.perSlotBytes);
         scaleoutRecvStatusSize = 0UL;
         scaleupRecvStatusSize = 0UL;
+        scaleoutAckStatusSize = 0UL;
     }
     uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint64_t combineWinDataSize = nmt * topK * AlignUpWin(static_cast<uint64_t>(hiddenAlign + UB_ALIGN));
@@ -962,7 +967,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     info.scaleupFinalRecvDataOffset = info.scaleoutRecvDataOffset + scaleoutRecvDataSize;
     info.scaleoutRecvStatusOffset = info.scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
     info.scaleupRecvStatusOffset = info.scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
-    info.combineDataOffset = info.scaleupRecvStatusOffset + scaleupRecvStatusSize;
+    info.scaleoutAckStatusOffset = info.scaleupRecvStatusOffset + scaleupRecvStatusSize;
+    info.combineDataOffset = info.scaleoutAckStatusOffset + scaleoutAckStatusSize;
 
     uint64_t winNeed = info.combineDataOffset + combineWinDataSize;
     OP_TILING_CHECK(winNeed > maxWindowSize,
