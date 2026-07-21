@@ -1,0 +1,8999 @@
+[
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 0,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 2,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 4,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 5,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 6,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 7,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 8,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 10,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 15,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 16,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          32,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          32,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          32,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          32,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 17,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          32,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          32,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          32,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          32,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 19,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 22,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          256,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          256,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          256
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 23,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          256,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          256,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          256
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 24,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 25,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 26,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 27,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 29,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 32,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 33,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 39,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 42,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 43,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 45,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          48,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          48,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          48,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          48,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 46,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          256,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          256,
+          256,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          256
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 47,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 48,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 50,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          256,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          256,
+          128,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          256
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 51,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 52,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 53,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 54,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 55,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 57,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 58,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 59,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 61,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 63,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 64,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 72,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          7,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          7,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          7,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          7,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          7,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 73,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          7,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          7,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          7,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          7,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          7,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 88,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          7,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          7,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          7,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          7,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          7,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          7,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 89,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          7,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          7,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          7,
+          1,
+          16,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          7,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          7,
+          1,
+          128,
+          128,
+          32
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          7,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 116,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          256,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          256,
+          256,
+          64
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          256
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 117,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          256,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "fp16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          256,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "uint8",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 1,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  },
+  {
+    "acl_json": "",
+    "aclnn_api_type": "aclnn_function",
+    "aclnn_name": "aclnnFusedFloydAttention",
+    "api": "pytorch",
+    "api_type": "execute_aclnnFusedFloydAttention",
+    "backward": false,
+    "compute_times": null,
+    "default_seed": null,
+    "dist_api_type": "dist_function",
+    "downloaded": false,
+    "expected_error_msg": null,
+    "fusion_api_type": "fusion_function",
+    "fusion_mode": null,
+    "id": 118,
+    "inputs": [
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "query",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          256,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key1",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value1",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          16,
+          128,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "key2",
+        "outlier_values": null,
+        "range_values": [
+          -5,
+          5
+        ],
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          256,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bf16",
+        "name": "value2",
+        "outlier_values": null,
+        "range_values": {
+          "mean": [
+            -100,
+            100
+          ],
+          "name": "nd",
+          "std": [
+            1,
+            25
+          ]
+        },
+        "required": true,
+        "shape": [
+          1,
+          1,
+          128,
+          256,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": true,
+        "dtype": "bool",
+        "name": "atten_mask",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": false,
+        "shape": [
+          1,
+          1,
+          16,
+          1,
+          128
+        ],
+        "type": "tensor"
+      },
+      {
+        "align_32B": null,
+        "backward": false,
+        "dtype": "double",
+        "name": "scaleValue",
+        "outlier_values": null,
+        "range_values": 0,
+        "required": true,
+        "shape": null,
+        "type": "attr"
+      }
+    ],
+    "is_boundary": false,
+    "kernel_api_type": "kernel_function",
+    "kernel_name": null,
+    "method_inputs": null,
+    "name": "aclnnFusedFloydAttention",
+    "outputs": null,
+    "save_name": null,
+    "standard": {
+      "acc": {
+        "cv_fused_double_benchmark": {
+          "avg_re_ratio": 2,
+          "max_re_ratio": 10,
+          "root_mean_squared_ratio": 2
+        }
+      },
+      "mem": 1.1,
+      "perf": [
+        0.95,
+        0.95
+      ]
+    },
+    "tensor_input": null,
+    "triton_api_type": "triton_function",
+    "triton_name": null,
+    "uuid": null,
+    "version": "v2.1",
+    "xrun_cs_name": null,
+    "xrun_data": null
+  }
+]
