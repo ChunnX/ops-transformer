@@ -630,8 +630,8 @@ def sparse_flash_mla_softmax_l1_norm(
     )
     tensor_metadata = pl.make_tensor(
         metadata_optional,
-        [1, 64],
-        [64, 1],
+        [64,],
+        [1,],
         dtype=pl.DT_INT32,
     )
 
