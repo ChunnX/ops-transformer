@@ -388,11 +388,11 @@ static ge::graphStatus ValidateLseShape(gert::TilingContext* context,
 }
 
 static ge::graphStatus ValidateOptionalShapeInputs(gert::TilingContext* context,
-                                                   int64_t bSize, int64_t maskMode,
+                                                   int64_t bSize, int64_t maskMode, int64_t cmpRatio,
                                                    const string& opName)
 {
     auto cmpResidualKInput = context->GetOptionalInputTensor(CMP_RESIDUAL_K_IDX);
-    if (maskMode == 3) {
+    if (maskMode == 3 && cmpRatio > 1) {
         OP_CHECK_IF(cmpResidualKInput == nullptr,
                     OP_LOGE(opName, "cmpResidualK must be provided when maskMode is 3."),
                     return ge::GRAPH_FAILED);
@@ -522,7 +522,7 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
     if (ValidateLseShape(context, info, isTnd, opName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (ValidateOptionalShapeInputs(context, info.bSize, maskMode, opName) != ge::GRAPH_SUCCESS) {
+    if (ValidateOptionalShapeInputs(context, info.bSize, maskMode, cmpRatio, opName) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
