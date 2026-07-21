@@ -22,7 +22,6 @@
 namespace MoeInitRoutingV3 {
 using namespace AscendC;
 
-template <bool IS_GATHER_COPY_IN = false>
 class RowIdxGather {
 public:
     __aicore__ inline RowIdxGather(){};
@@ -72,8 +71,7 @@ __simt_vf__ __aicore__ LAUNCH_BOUND(SIMT_THREAD_NUM) inline void ComputeSimt(int
     }
 }
 
-template <bool IS_GATHER_COPY_IN>
-__aicore__ inline void RowIdxGather<IS_GATHER_COPY_IN>::Init(GM_ADDR expandedRowIdx, GM_ADDR workspace,
+__aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR workspace,
                                           const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     pipe_ = tPipe;
@@ -136,8 +134,7 @@ __aicore__ inline void RowIdxGather<IS_GATHER_COPY_IN>::Init(GM_ADDR expandedRow
     pipe_->InitBuffer(copyOutQueue_, 1, AlignBytes(1, sizeof(int32_t)));
 }
 
-template <bool IS_GATHER_COPY_IN>
-__aicore__ inline void RowIdxGather<IS_GATHER_COPY_IN>::Process()
+__aicore__ inline void RowIdxGather::Process()
 {
     if (useGatherCopy_ && rowIdxType_) {
         if (blockIdx_ < totalNeedCoreNum_) {
@@ -160,7 +157,7 @@ __aicore__ inline void RowIdxGather<IS_GATHER_COPY_IN>::Process()
                                      sortedExpertIndicesGmAddr, expandedRowIdxGmAddr);
         }
     }
-    if (IS_GATHER_COPY_IN) {
+    if (useGatherCopy_) {
         SyncAll();
     }
 }
