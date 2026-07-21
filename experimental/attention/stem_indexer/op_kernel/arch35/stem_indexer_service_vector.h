@@ -40,7 +40,6 @@ public:
                                               GlobalTensor<int32_t> sparseIndicesGm, GlobalTensor<int32_t> sparseSeqLenGm);
     __aicore__ inline void initS2LenToNeg(uint32_t gS1Idx, uint32_t actMBaseSize, uint32_t actS1Size,
                                           uint64_t indiceOutOffset);
-    __aicore__ inline void SetSparseSeqLenZero(uint64_t indiceLenOffset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
@@ -215,23 +214,6 @@ __aicore__ inline void SIVector<SIT>::initS2LenToNeg(uint32_t gS1Idx, uint32_t a
         logicalRow += clearRowNum;
         remainRows -= clearRowNum;
     }
-}
-
-template <typename SIT>
-__aicore__ inline void SIVector<SIT>::SetSparseSeqLenZero(uint64_t indiceLenOffset)
-{
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    Duplicate(indiceLenLocal_, 0U, 1);
-    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-
-    AscendC::DataCopyParams indiceLenCp;
-    indiceLenCp.blockCount = 1;
-    indiceLenCp.blockLen = static_cast<uint16_t>(sizeof(uint32_t));
-    indiceLenCp.srcStride = 0;
-    indiceLenCp.dstStride = 0;
-    DataCopyPad(sparseSeqLenGm[indiceLenOffset], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCp);
-    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
 
 template <typename SIT>
