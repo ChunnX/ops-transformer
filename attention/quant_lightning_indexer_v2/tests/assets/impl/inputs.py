@@ -199,12 +199,17 @@ class QuantLightningIndexerV2InputAdapter:
         dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
 
     @staticmethod
-    def golden_data(data):
+    def golden_data(data, layout_query, cu_seqlens_q):
+        cu_q = None
+        if cu_seqlens_q is not None:
+            cu_q = cu_seqlens_q.detach().cpu().clone()
         return {
             "cpu_result": data["cpu_result"],
             "topk_value": data["topk_value"],
             "cpu_topk_value": data["cpu_topk_value"],
             "output_idx_offset": data.get("output_idx_offset"),
+            "score_layout": layout_query,
+            "cu_seqlens_q": cu_q,
         }
 
     def customize(self, query, key, weights, query_dequant_scale,
@@ -238,7 +243,10 @@ class QuantLightningIndexerV2InputAdapter:
         ):
             self.copy_tensor(dst, data.get(src_name), name)
         testcase_name = kwargs.get("testcase_name")
-        golden_store.put(testcase_name, self.golden_data(data))
+        golden_store.put(
+            testcase_name,
+            self.golden_data(data, layout_query, cu_seqlens_q),
+        )
         return data
 
 

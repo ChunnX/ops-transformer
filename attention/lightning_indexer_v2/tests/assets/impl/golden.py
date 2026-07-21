@@ -22,11 +22,15 @@ class CaseDataStore:
         self.case_data = {}
         self.topk_scores = None
         self.index_offsets = None
+        self.score_layout = None
+        self.cu_seqlens_q = None
 
     def clear(self):
         self.case_data.clear()
         self.topk_scores = None
         self.index_offsets = None
+        self.score_layout = None
+        self.cu_seqlens_q = None
 
     def put(self, testcase_name, data):
         if testcase_name is not None:
@@ -42,6 +46,8 @@ class CaseDataStore:
             )
         self.topk_scores = data["topk_value"]
         self.index_offsets = data.get("output_idx_offset")
+        self.score_layout = data.get("score_layout")
+        self.cu_seqlens_q = data.get("cu_seqlens_q")
         return data
 
 
@@ -54,6 +60,10 @@ def get_topk_scores():
 
 def get_index_offsets():
     return CASE_DATA.index_offsets
+
+
+def get_score_context():
+    return CASE_DATA.score_layout, CASE_DATA.cu_seqlens_q
 
 
 def cpu_lightning_indexer_v2(q, k, w, *, return_value=0,

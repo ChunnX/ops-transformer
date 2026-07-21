@@ -50,10 +50,13 @@ class QuantLightningIndexerV2Spec:
     }
 
     def compare(*outputs, **kwargs):
+        score_layout, cu_seqlens_q = golden_module.get_score_context()
         return compare_module.compare(
             *outputs,
             scores=golden_module.get_topk_scores(),
             index_offsets=golden_module.get_index_offsets(),
+            score_layout=score_layout,
+            cu_seqlens_q=cu_seqlens_q,
         )
 
 
