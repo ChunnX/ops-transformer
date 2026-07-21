@@ -33,7 +33,10 @@ public:
     using Activation = typename DispatchPolicy::Activation;
     static constexpr uint32_t UB_STAGES = UB_STAGES_;
     static constexpr uint32_t TILE_LENGTH = DispatchPolicy::TILE_LENGTH;
-    static constexpr uint32_t MAX_SCALE_COUNT = 4096;
+    static constexpr uint32_t SCALE_BUFFER_COUNT = 2;
+    static constexpr uint32_t SCALE_BATCH_COUNT = 256;
+    static constexpr uint32_t SCALE_BUFFER_BYTES =
+        (SCALE_BATCH_COUNT + BYTE_PER_BLK / sizeof(float)) * sizeof(float);
     static constexpr uint32_t ROW_MAX_BYTES = BYTE_PER_BLK;
 
     using ElementC = typename CType_::Element;
@@ -46,9 +49,11 @@ public:
     static constexpr size_t BUFFER_SIZE =
         UB_STAGES * (4 * TILE_LENGTH * sizeof(ElementC) + 2 * TILE_LENGTH * sizeof(float) + TILE_LENGTH) +
         3 * TILE_LENGTH * sizeof(float) + TILE_LENGTH * sizeof(ElementD) + 128 * sizeof(int16_t) +
-        (MAX_SCALE_COUNT + BYTE_PER_BLK / sizeof(ElementPerTokenScale)) * sizeof(ElementPerTokenScale) + ROW_MAX_BYTES;
+        SCALE_BUFFER_COUNT * SCALE_BUFFER_BYTES + ROW_MAX_BYTES;
     static_assert(TILE_LENGTH % 256 == 0, "The W4A8 activation tile must be aligned to 256 elements");
     static_assert(UB_STAGES >= 2, "The pipelined W4A8 activation epilogue requires double buffering");
+    static_assert(SCALE_BATCH_COUNT % (BYTE_PER_BLK / sizeof(ElementPerTokenScale)) == 0,
+                  "The scale batch must be block aligned");
     static_assert(BUFFER_SIZE + Activation::MIN_SHARED_TMP_BYTES <= ArchTag::UB_SIZE,
                   "The tiled W4A8 activation buffers and workspace exceed UB capacity");
 
@@ -126,7 +131,13 @@ public:
         ubOffset += TILE_LENGTH * sizeof(ElementD);
         xLowI16Tensor = resource.ubBuf.template GetBufferByByte<int16_t>(ubOffset);
         ubOffset += 128 * sizeof(int16_t);
-        ubPerTokenScaleOutput = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
+        for (uint32_t i = 0; i < SCALE_BUFFER_COUNT; ++i) {
+            ubPerTokenScaleOutputList[i] = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
+            ubOffset += SCALE_BUFFER_BYTES;
+        }
+        ubRowAbsMax = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
+        ubOffset += ROW_MAX_BYTES;
+        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset);
     }
 
     CATLASS_DEVICE
@@ -161,20 +172,19 @@ public:
                      Callback &&callback = Callback{})
     {
         (void)rank;
+        (void)resource;
         activationCode_ = activationCode;
         callback();
         uint32_t blockM = shapeC.row();
         uint32_t branchLength = shapeC.column() / 2;
         uint32_t loopStartIdx = 0;
         uint32_t tasksForIdx = 0;
-        uint32_t perCoreData = 0;
-        if (!GetTaskRange(blockM, epilogueCoreNum, loopStartIdx, tasksForIdx, perCoreData)) {
+        if (!GetTaskRange(blockM, epilogueCoreNum, loopStartIdx, tasksForIdx)) {
             return;
         }
-
-        uint32_t scaleBlock = RoundUp<BYTE_PER_BLK>(perCoreData * sizeof(ElementPerTokenScale) + BYTE_PER_BLK);
-        ubRowAbsMax = resource.ubBuf.template GetBufferByByte<float>(ubOffset + scaleBlock);
-        sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<uint8_t>(ubOffset + scaleBlock + ROW_MAX_BYTES);
+        uint32_t scaleBatchStart = loopStartIdx;
+        uint32_t scaleBatchCount = 0;
+        uint32_t scaleBatchIndex = 0;
         Duplicate(xLowI16Tensor, static_cast<int16_t>(0x0F0F), 128);
         PipeBarrier<PIPE_V>();
 
@@ -211,8 +221,13 @@ public:
             }
 
             ElementPerTokenScale rowAbsMax = ReadRowAbsMax();
+            uint32_t scaleStage = scaleBatchIndex % SCALE_BUFFER_COUNT;
+            // Reuse waits only after both buffers have been launched, allowing scale MTE3 to overlap the next pass.
+            if (scaleBatchCount == 0 && scaleBatchIndex >= SCALE_BUFFER_COUNT) {
+                WaitScaleBuffer(scaleStage);
+            }
             AscendC::SetFlag<AscendC::HardEvent::S_V>(0);
-            ubPerTokenScaleOutput.SetValue(loopIdx - loopStartIdx, rowAbsMax / 127.0f);
+            ubPerTokenScaleOutputList[scaleStage].SetValue(scaleBatchCount, rowAbsMax / 127.0f);
             AscendC::WaitFlag<AscendC::HardEvent::S_V>(0);
             ElementPerTokenScale quantMultiplier = rowAbsMax > 0.0f ? 127.0f / rowAbsMax : 0.0f;
 
@@ -232,20 +247,25 @@ public:
                 QuantizeAndCopyTile(currentStage, gmTileD, branchLength, tileOffset, tileLength, quantMultiplier);
                 currentStage = nextStage;
             }
+            ++scaleBatchCount;
+            if (scaleBatchCount == SCALE_BATCH_COUNT) {
+                FlushScaleBatch(gmPerTokenScale2, scaleBatchStart, scaleBatchCount, scaleStage);
+                scaleBatchStart += scaleBatchCount;
+                scaleBatchCount = 0;
+                ++scaleBatchIndex;
+            }
         }
-
-        if (tasksForIdx > 0) {
-            LayoutPerTokenScale scaleLayout{tasksForIdx};
-            AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-            copyUbToGmDequantScale(gmPerTokenScale2[loopStartIdx], ubPerTokenScaleOutput, scaleLayout, scaleLayout);
+        if (scaleBatchCount > 0) {
+            FlushScaleBatch(gmPerTokenScale2, scaleBatchStart, scaleBatchCount,
+                            scaleBatchIndex % SCALE_BUFFER_COUNT);
+            ++scaleBatchIndex;
         }
+        DrainScaleBuffers(scaleBatchIndex);
     }
 
 private:
     CATLASS_DEVICE
-    bool GetTaskRange(uint32_t blockM, uint32_t epilogueCoreNum, uint32_t &loopStartIdx, uint32_t &tasksForIdx,
-                      uint32_t &perCoreData)
+    bool GetTaskRange(uint32_t blockM, uint32_t epilogueCoreNum, uint32_t &loopStartIdx, uint32_t &tasksForIdx)
     {
         uint32_t subblockIdx = get_block_idx() + get_subblockid() * get_block_num();
         uint32_t moveDataCoreNum = get_block_num() * 2 - epilogueCoreNum;
@@ -253,12 +273,43 @@ private:
             return false;
         }
         uint32_t epilogueCoreIdx = subblockIdx - moveDataCoreNum;
-        perCoreData = blockM / epilogueCoreNum;
+        uint32_t perCoreData = blockM / epilogueCoreNum;
         uint32_t remainderData = blockM % epilogueCoreNum;
         tasksForIdx = epilogueCoreIdx < remainderData ? perCoreData + 1 : perCoreData;
         loopStartIdx =
             epilogueCoreIdx * perCoreData + (epilogueCoreIdx < remainderData ? epilogueCoreIdx : remainderData);
         return true;
+    }
+
+    CATLASS_DEVICE
+    void FlushScaleBatch(AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale, uint32_t gmOffset,
+                         uint32_t scaleCount, uint32_t scaleStage)
+    {
+        if (scaleCount == 0) {
+            return;
+        }
+        LayoutPerTokenScale scaleLayout{scaleCount};
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(scaleStage);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(scaleStage);
+        copyUbToGmDequantScale(gmPerTokenScale[gmOffset], ubPerTokenScaleOutputList[scaleStage], scaleLayout,
+                               scaleLayout);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(scaleStage);
+    }
+
+    CATLASS_DEVICE
+    void WaitScaleBuffer(uint32_t scaleStage)
+    {
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(scaleStage);
+    }
+
+    CATLASS_DEVICE
+    void DrainScaleBuffers(uint32_t scaleBatchCount)
+    {
+        uint32_t pendingCount = scaleBatchCount < SCALE_BUFFER_COUNT ? scaleBatchCount : SCALE_BUFFER_COUNT;
+        uint32_t firstPendingBatch = scaleBatchCount - pendingCount;
+        for (uint32_t i = 0; i < pendingCount; ++i) {
+            WaitScaleBuffer((firstPendingBatch + i) % SCALE_BUFFER_COUNT);
+        }
     }
 
     CATLASS_DEVICE
@@ -482,7 +533,7 @@ private:
     AscendC::LocalTensor<float> ubActivation;
     AscendC::LocalTensor<ElementD> ubD;
     AscendC::LocalTensor<int16_t> xLowI16Tensor;
-    AscendC::LocalTensor<float> ubPerTokenScaleOutput;
+    AscendC::LocalTensor<float> ubPerTokenScaleOutputList[SCALE_BUFFER_COUNT];
     AscendC::LocalTensor<float> ubRowAbsMax;
     AscendC::LocalTensor<uint8_t> sharedTmpBuffer;
 
