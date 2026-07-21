@@ -86,7 +86,9 @@ static ge::graphStatus TilingFunc(gert::TilingContext* context)
     OP_CHECK_NULL_WITH_CONTEXT(context, td);
     memset_s(td, sizeof(RotaryPositionEmbedding3dTilingData), 0, sizeof(RotaryPositionEmbedding3dTilingData));
 
-    int64_t tBand, hBand, wBand;
+    int64_t tBand;
+    int64_t hBand;
+    int64_t wBand;
     ComputeBandDims(headDim, tBand, hBand, wBand);
 
     td->totalLength = totalLength;
