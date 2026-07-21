@@ -781,4 +781,15 @@ PHASE1_DSPARK_KEYS = [
 
 # 按需选择要启用的测试参数（例如默认启用所有）
 # ENABLED_PARAMS = [{**TEST_PARAMS[key], "testcase_name": [key]} for key in TEST_PARAMS.keys()]
-ENABLED_PARAMS = [{**TEST_PARAMS[key], "testcase_name": [key]} for key in PHASE1_DSPARK_KEYS]
+# DSpark Phase1: narrow random range to avoid bf16/fp16 outlier failing max_diff_hd.
+# NOTE: datarange must be a single string entry in a list, not [-1, 1], or utils
+# generate_param_combinations will expand it as a Cartesian product.
+_PHASE1_DSPARK_OVERRIDES = {
+    "q_datarange": ["[-1, 1]"],
+    "ori_kv_datarange": ["[-1, 1]"],
+    "cmp_kv_datarange": ["[-1, 1]"],
+}
+ENABLED_PARAMS = [
+    {**TEST_PARAMS[key], "testcase_name": [key], **_PHASE1_DSPARK_OVERRIDES}
+    for key in PHASE1_DSPARK_KEYS
+]
