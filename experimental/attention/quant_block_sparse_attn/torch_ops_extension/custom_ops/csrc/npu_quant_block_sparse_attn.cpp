@@ -59,7 +59,7 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
 std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &q_descale,
     const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
-    const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const at::Tensor &atten_mask,
+    const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const c10::optional<at::Tensor> &atten_mask,
     double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
@@ -131,7 +131,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
 std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &q_descale,
     const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
-    const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const at::Tensor &atten_mask,
+    const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const c10::optional<at::Tensor> &atten_mask,
     double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,

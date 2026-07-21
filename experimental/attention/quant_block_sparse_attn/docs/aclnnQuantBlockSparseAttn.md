@@ -46,7 +46,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
     p_scale: Tensor,
     sparse_indices: Tensor,
     sparse_seq_len: Tensor,
-    atten_mask: Tensor,
+    atten_mask: Optional[Tensor],
     softmax_scale: float,
     sparse_q_block_size: int,
     sparse_kv_block_size: int,
@@ -197,7 +197,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
       <td>Attention mask。</td>
       <td style="white-space: nowrap;"><code>UINT8</code></td>
       <td style="white-space: nowrap;">ND</td>
-      <td><code>mask_mode=3:(2048,2048)</code></td>
+      <td><code>mask_mode=0</code> 时可不传或传空指针；<code>mask_mode=3:(2048,2048)</code></td>
       <td><code>mask_mode=0</code> 时不使用；<code>mask_mode=3</code> 时为 causal mask。</td>
     </tr>
     <tr>
@@ -562,7 +562,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
   <tr>
     <td rowspan="2">Attention Mask参数组</td>
     <td>atten_mask</td>
-    <td>INPUT</td>
+    <td>INPUT(OPTIONAL)</td>
     <td>Tensor</td>
   </tr>
   <tr>
@@ -637,7 +637,7 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 
 - 存在性约束
 
-  - `query`、`key`、`value`、`q_descale`、`k_descale`、`v_descale`、`p_scale`、`sparse_indices`、`sparse_seq_len`、`atten_mask` 为必选输入。
+  - `query`、`key`、`value`、`q_descale`、`k_descale`、`v_descale`、`p_scale`、`sparse_indices`、`sparse_seq_len` 为必选输入；`atten_mask` 在 `mask_mode=3` 时为必选输入，在 `mask_mode=0` 时可不传或传空指针。
   - 当前算子仅支持 FP8 全量化、4D PA_BNSD KV Cache 输入和 BF16 attention_out 输出；不支持非量化、伪量化、后量化输出、PSE、ROPE、公共前缀、左 padding、dropout、tensorlist KV 输入、1D 组合 KV 存储等扩展场景。
 
 - 一致性约束
@@ -762,12 +762,13 @@ QuantBlockSparseAttn 算子约束分为 4 个档位，按约束复杂程度递�
 - 单参数约束
 
   - `atten_mask` 数据类型仅支持 `UINT8`，数据格式仅支持 ND。
-  - `atten_mask` 必须为二维 Tensor。
+  - `mask_mode=3` 时，`atten_mask` 必须为二维 Tensor。
   - `mask_mode` 当前执行路径仅支持 0 和 3：0 表示无 mask，3 表示 causal mask。
 
 - 存在性约束
 
-  - `atten_mask` 为必选输入。即使 `mask_mode=0`，也需要传入满足 dtype 和维度要求的 Tensor。
+  - `mask_mode=0` 时，`atten_mask` 为可选输入，可以不传或传入空指针。
+  - `mask_mode=3` 时，`atten_mask` 为必选输入。
 
 - 一致性约束
 
