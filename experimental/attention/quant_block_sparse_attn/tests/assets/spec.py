@@ -15,6 +15,23 @@
 import importlib.util
 from pathlib import Path
 
+from ttk.utilities.simple_param_extractor import register_api_params, ParamInfo
+
+# Manually register the API signature so TTK can parse it.
+# 10 tensor params + keyword-only params (no VAR_POSITIONAL).
+register_api_params("bsa_ttk_ops.quant_block_sparse_attn", [
+    ParamInfo(name="query", type="Tensor"),
+    ParamInfo(name="key", type="Tensor"),
+    ParamInfo(name="value", type="Tensor"),
+    ParamInfo(name="q_descale", type="Tensor"),
+    ParamInfo(name="k_descale", type="Tensor"),
+    ParamInfo(name="v_descale", type="Tensor"),
+    ParamInfo(name="p_scale", type="Tensor"),
+    ParamInfo(name="sparse_indices", type="Tensor"),
+    ParamInfo(name="sparse_seq_len", type="Tensor"),
+    ParamInfo(name="atten_mask", type="Tensor"),
+], source="manual")
+
 ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 
 
