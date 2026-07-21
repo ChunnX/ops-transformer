@@ -97,7 +97,7 @@ protected:
                                   ActualSeqLensParser<Q_MODE, int32_t>>::type;
 
     using KvSeqParserType =
-        typename std::conditional<(layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD),
+        typename std::conditional<(!isPa && (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD)),
                                   ActualSeqLensParser<KV_MODE, int32_t, true>,
                                   ActualSeqLensParser<KV_MODE, int32_t>>::type;
 
@@ -479,7 +479,6 @@ protected:
         fa_base_vector::InvalidMaskRows<UBOUT_T, T, true>(0, dealRowCount, columnCount, lseMaxUb, negativeIntScalar,
                                                           attenOutUb);
     }
-
 
 public:
     __aicore__ inline void FlashDecode(FDparamsX &fd)

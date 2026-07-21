@@ -152,7 +152,7 @@ public:
                                   ActualSeqLensParser<Q_PARSER_MODE, int32_t>>::type;
 
     using KvSeqParserType =
-        typename std::conditional<IS_TND_LAYOUT, ActualSeqLensParser<KV_PARSER_MODE, int32_t, true>,
+        typename std::conditional<(!PAGE_ATTENTION && IS_TND_LAYOUT), ActualSeqLensParser<KV_PARSER_MODE, int32_t, true>,
                                   ActualSeqLensParser<KV_PARSER_MODE, int32_t>>::type;
 
     using FaGmTensorQ = FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_NEEDS_WZH>;
