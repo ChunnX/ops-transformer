@@ -61,6 +61,7 @@ Default: "".
 * @li comm_cmd_info: A tensor. Support dtype: int32. Shape supports (BS * K, ), support format: ND.
 */
 REG_OP(MoeDistributeDispatchSetup)
+    .INPUT(context, TensorType({DT_INT32}))
     .INPUT(x, TensorType({DT_BF16, DT_FLOAT16}))
     .INPUT(expert_ids, TensorType({DT_INT32}))
     .OPTIONAL_INPUT(scales, TensorType({DT_FLOAT}))
@@ -68,10 +69,10 @@ REG_OP(MoeDistributeDispatchSetup)
     .OUTPUT(y, TensorType({DT_BF16, DT_INT8, DT_FLOAT16}))
     .OUTPUT(expand_idx, TensorType({DT_INT32}))
     .OUTPUT(comm_cmd_info, TensorType({DT_INT32}))
-    .REQUIRED_ATTR(group_ep, String)
     .REQUIRED_ATTR(ep_world_size, Int)
     .REQUIRED_ATTR(ep_rank_id, Int)
     .REQUIRED_ATTR(moe_expert_num, Int)
+    .REQUIRED_ATTR(ccl_buffer_size, Int)
     .ATTR(expert_shard_type, Int, 0)
     .ATTR(shared_expert_num, Int, 1)
     .ATTR(shared_expert_rank_num, Int, 0)
@@ -79,6 +80,7 @@ REG_OP(MoeDistributeDispatchSetup)
     .ATTR(global_bs, Int, 0)
     .ATTR(comm_type, Int, 0)
     .ATTR(comm_alg, String, "")
+    .ATTR(y_dtype, Int, 28)
     .OP_END_FACTORY_REG(MoeDistributeDispatchSetup)
 } // namespace ge
 
