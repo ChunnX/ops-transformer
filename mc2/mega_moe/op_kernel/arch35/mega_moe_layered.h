@@ -76,8 +76,8 @@ public:
     __aicore__ inline void Init(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds, GM_ADDR topkWeights, GM_ADDR weight1,
                                 GM_ADDR weight2, GM_ADDR xActiveMask, GM_ADDR weightScales1, GM_ADDR weightScales2,
                                 GM_ADDR scales, GM_ADDR sharedWeight1,GM_ADDR sharedWeight2,GM_ADDR sharedWeightScales1,
- 	                            GM_ADDR sharedWeightScales2, GM_ADDR yOut, GM_ADDR expertTokenNumsOut, GM_ADDR workspaceGM,
-                                MegaMoeTilingData *tilingData);
+ 	                            GM_ADDR sharedWeightScales2, GM_ADDR yOut, GM_ADDR expertTokenNumsOut,
+                                GM_ADDR workspaceGM, MegaMoeTilingData *tilingData);
     __aicore__ inline void Process();
 
 private:
@@ -195,7 +195,7 @@ private:
     uint32_t topKWeightsChunkLen_ = 0;
     uint32_t topKWeightsTempAddr_ = 0;
     uint32_t sharedExpertNum_ = 0;
- 	uint32_t moeExpertPerRank_ = 0;
+    uint32_t moeExpertPerRank_ = 0;
 
     static constexpr uint32_t A_ELEMS_PER_BYTE = Std::IsSame<QuantOutType, fp4x2_e2m1_t>::value ? 2U : 1U;
     static constexpr uint32_t B_ELEMS_PER_BYTE = Std::IsSame<Weight1Type, fp4x2_e2m1_t>::value ? 2U : 1U;
@@ -270,7 +270,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
     worldSize_ = tilingData->epWorldSize;
     expertPerRank_ = tilingData->expertPerRank;
     moeExpertPerRank_ = tilingData->moeExpertPerRank;
- 	sharedExpertNum_ = tilingData->sharedExpertNum;
+    sharedExpertNum_ = tilingData->sharedExpertNum;
     blockNumPerRank_ = tilingData->blockNumPerEP;
     maxOutputSize_ = tilingData->maxOutputSize;
     // 与 WorkspaceInfo 构造里 flagDispatchToGmm1Ptr 的分配公式保持一致。
@@ -1443,7 +1443,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGlobalBuff
         }
         gmmAddrInfo.aGlobal = params_.workspaceInfo.swigluQuantDataPtr +
                               Get<IDX_C_OFFSET>(state.baseOffset) * sizeof(ActivationType);
-        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.swigluQuantScalePtr + 
+        gmmAddrInfo.aScaleGlobal = params_.workspaceInfo.swigluQuantScalePtr +
                                    Get<IDX_C_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
         gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal =
@@ -1840,8 +1840,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SharedExpertCopyInput()
 {
-    if constexpr (g_coreType == AIC) { 
-        return; 
+    if constexpr (g_coreType == AIC) {
+        return;
     }
     int32_t curentNum;
     int32_t curentOffset;
@@ -1854,8 +1854,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SharedExpertCopy
 
     uint32_t xInAddr = ALIGN_512;
     uint32_t xInSize = Ops::Base::CeilAlign(H, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
-    LocalTensor<bfloat16_t> xInBuf0 = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAddr, xInSize / sizeof(bfloat16_t));
-    LocalTensor<bfloat16_t> xInBuf1 = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAddr + xInSize, xInSize / sizeof(bfloat16_t));
+    LocalTensor<bfloat16_t> xInBuf0 = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAddr,
+                                                              xInSize / sizeof(bfloat16_t));
+    LocalTensor<bfloat16_t> xInBuf1 = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAddr + xInSize,
+                                                              xInSize / sizeof(bfloat16_t));
     uint32_t mxTempAddr = xInAddr + xInSize * 2;
     LocalTensor<uint16_t> mxTempBuf = LocalTensor<uint16_t>(TPosition::VECCALC, mxTempAddr,
         MX_QUANT_TEMP_UB_BYTES / sizeof(uint16_t));
@@ -1895,7 +1897,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SharedExpertCopy
         __ubuf__ bfloat16_t *srcAddr = reinterpret_cast<__ubuf__ bfloat16_t*>(xInBuf.GetPhyAddr());
         __ubuf__ uint16_t *maxExpAddr = reinterpret_cast<__ubuf__ uint16_t*>(mxTempBuf.GetPhyAddr());
         __ubuf__ uint16_t *halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t*>(
-            mxTempBuf[Ops::Base::CeilAlign(mxQuantScaleNumAlignPerToken_, static_cast<uint32_t>(ALIGN_32))].GetPhyAddr());
+            mxTempBuf[Ops::Base::CeilAlign(mxQuantScaleNumAlignPerToken_,
+                                           static_cast<uint32_t>(ALIGN_32))].GetPhyAddr());
         __ubuf__ int8_t *outDataAddr = reinterpret_cast<__ubuf__ int8_t*>(xOutBuf.GetPhyAddr());
         __ubuf__ uint16_t *mxScaleAddr = reinterpret_cast<__ubuf__ uint16_t*>(
             xOutBuf[mxQuantTokenAlignBytes_].GetPhyAddr());
