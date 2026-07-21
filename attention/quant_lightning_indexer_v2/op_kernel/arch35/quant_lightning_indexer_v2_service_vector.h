@@ -693,7 +693,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                         if (topkCount_ > trunkLen_) {
                             copyInParams.blockLen = topkCountAlign256_ * sizeof(SCORE_T); // byte
                             AscendC::DataCopyPad(scoreOutLocal_,
-                                                scoreGm[vecOffset * LIV2Common::Align(
+                                                scoreGm[vecOffset * QLIV2Common::Align(
                                                     (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + ldDstOffset],
                                                 copyInParams, padParams);
                             SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
@@ -723,7 +723,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                     if (topkCount_ > trunkLen_) {
                         validTrunkLen = (topkCountAlign256_ + (loopIdx - 1) * trunkLen_ + trunkLen_) > validS2Len
                                             ? (validS2Len - topkCountAlign256_) % trunkLen_ : trunkLen_;
-                        offset = vecOffset * LIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) +
+                        offset = vecOffset * QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) +
                                 topkCountAlign256_ + (loopIdx - 1) * trunkLen_ + ldDstOffset;
                     } else {
                         uint32_t validTrunkLen = (loopIdx * trunkLen_ + trunkLen_) > validS2Len

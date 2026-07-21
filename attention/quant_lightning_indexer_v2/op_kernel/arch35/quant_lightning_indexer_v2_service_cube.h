@@ -266,21 +266,22 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
             uint64_t l1S2Offset = s2GmBaseOffset - keyGmStart_;
             uint64_t l1TotalSize = keyLoadedSize_;
             // s1gProcessSize当前必定不会超过2倍的s1g basic block
-            for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += constInfo_.mBaseSize) {
+            for (uint64_t s1gGmOffset = 0; s1gGmOffset < s1gProcessSize; s1gGmOffset += constInfo_.mBaseSizeMax) {
                 uint64_t s1gL1RealSize =
-                    s1gGmOffset + constInfo_.mBaseSize > s1gProcessSize ?
-                        s1gProcessSize - s1gGmOffset : constInfo_.mBaseSize;
+                    s1gGmOffset + constInfo_.mBaseSizeMax > s1gProcessSize ?
+                        s1gProcessSize - s1gGmOffset : constInfo_.mBaseSizeMax;
                 uint64_t s1gL1SizeAlign2G = CeilAlign(s1gL1RealSize, 2 * constInfo_.gSize);
+                uint64_t s1gL1SizeAlign = CeilAlign(s1gL1SizeAlign2G, BLOCK_CUBE);
                 if (runInfo.isFirstS2InnerLoop && s2GmOffset == 0) {
                     queryL1Mte2BufIdx_++;
                     queryL1Mte1BufIdx_ = queryL1Mte2BufIdx_;
                     WaitFlag<HardEvent::MTE1_MTE2>(QUERY_MTE1_MTE2_EVENT + queryL1Mte2BufIdx_ % QUERY_BUF_NUM);
-                    QueryNd2Nz(s1gL1SizeAlign2G, s1gGmOffset, runInfo);
+                    QueryNd2Nz(s1gL1RealSize, s1gGmOffset, runInfo);
                     SetFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                     WaitFlag<HardEvent::MTE2_MTE1>(MTE2_MTE1_EVENT);
                 } else {
                     queryL1Mte1BufIdx_ =
-                        queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, constInfo_.mBaseSize) - 1 - (s1gGmOffset > 0));
+                        queryL1Mte2BufIdx_ - (CeilDiv(s1gProcessSize, constInfo_.mBaseSizeMax) - 1 - (s1gGmOffset > 0));
                 }
                 uint64_t s2Boundry = l1S2Offset + s2ProcessSize;
                 for (uint64_t s2L1Offset = l1S2Offset; s2L1Offset < s2Boundry; s2L1Offset += S2_BASIC_BLOCK_L0) {
@@ -288,13 +289,13 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                         s2L1Offset + S2_BASIC_BLOCK_L0 > l1S2Offset + s2ProcessSize ?
                                             l1S2Offset + s2ProcessSize - s2L1Offset :
                                             S2_BASIC_BLOCK_L0;
-                    for (uint64_t s1gOffset = 0; s1gOffset < s1gL1SizeAlign2G; s1gOffset += constInfo_.mBaseSize) {
+                    for (uint64_t s1gOffset = 0; s1gOffset < s1gL1SizeAlign; s1gOffset += constInfo_.mBaseSizeMax) {
                         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         uint64_t s1gL0RealSize =
-                            s1gOffset + constInfo_.mBaseSize > s1gL1SizeAlign2G ?
-                                                    s1gL1SizeAlign2G - s1gOffset :
-                                                    constInfo_.mBaseSize;
-                        LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign2G, s1gL0RealSize, runInfo);
+                            s1gOffset + constInfo_.mBaseSizeMax > s1gL1SizeAlign ?
+                                                    s1gL1SizeAlign - s1gOffset :
+                                                    constInfo_.mBaseSizeMax;
+                        LoadQueryToL0a(s1gGmOffset, s1gOffset, s1gL1SizeAlign, s1gL0RealSize, runInfo);
                         LoadKeyToL0b(s2L1Offset, l1TotalSize, s2L0RealSize, runInfo);
 
                         SetFlag<HardEvent::MTE1_M>(MTE1_M_EVENT);
@@ -306,7 +307,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                         SetFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         
                         Fixp(s1gGmOffset + s1gOffset, (s2L1Offset - l1S2Offset),
-                                                s1gL0RealSize, s2L0RealSize, runInfo);
+                                                s1gL0RealSize, s2L0RealSize, s1gL1SizeAlign2G, runInfo);
                         SetFlag<HardEvent::FIX_M>(FIX_M_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         l0BufIdx_++;
                     }
