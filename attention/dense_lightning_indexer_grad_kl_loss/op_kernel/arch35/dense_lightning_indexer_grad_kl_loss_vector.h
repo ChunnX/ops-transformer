@@ -1094,6 +1094,7 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::DeterAddKIndexGrad(DLIGradK
             WaitFlag<HardEvent::MTE2_MTE3>(eventId);
             AscendC::SetAtomicAdd<T>();
             AscendC::DataCopy(dstGm[dKeyGmOffsetCur], dKeyIndexUbIn, processNum);
+            PipeBarrier<PIPE_MTE3>();
             SetAtomicNone();
             SetFlag<HardEvent::MTE3_MTE2>(eventId);
 
