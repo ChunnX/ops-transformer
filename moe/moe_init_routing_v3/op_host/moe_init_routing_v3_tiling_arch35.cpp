@@ -2215,23 +2215,7 @@ bool MoeInitRoutingV3Arch35TilingClass::IsOneOf3GatherKernels() const
 void MoeInitRoutingV3Arch35TilingClass::ComputeUseGatherCopy()
 {
     if (IsOneOf3GatherKernels()) {
-        if (k_ <= 1) {
-            tilingDataPtr_->useGatherCopy = 0;
-            return;
-        }
-        int64_t actualExpertNum = expertEnd_ - expertStart_;
-        // Cost model: GatherCopy reads n/coreNum unique source rows (sequential),
-        // ScatterCopy reads E/coreNum rows (random), where E ≈ n*k*p, p = actualExpertNum/expertNum.
-        // GatherCopy saves reads but pays random write penalty.
-        // On Ascend NPU: C_rand_read ≈ 3*C_seq_read, C_rand_write ≈ 2*C_seq_write.
-        // GatherCopy better when: 1/(k*p) < C_rand_read/C_seq_read - C_rand_write/C_seq_write + 1 ≈ 2
-        // i.e., k*p > 0.5, expressed as: 2*k*actualExpertNum > expertNum.
-        // Small cols (<512): per-call overhead dominates, raise threshold to k*p > 0.75.
-        int64_t kpScore = k_ * actualExpertNum * NUM_TWO;
-        if (cols_ < 512) {
-            kpScore = kpScore * NUM_TWO / 3;
-        }
-        tilingDataPtr_->useGatherCopy = (kpScore > expertNum_) ? 1 : 0;
+        tilingDataPtr_->useGatherCopy = 1;
     } else {
         tilingDataPtr_->useGatherCopy = (rowIdxType_ == ROW_IDX_GATHER);
     }
