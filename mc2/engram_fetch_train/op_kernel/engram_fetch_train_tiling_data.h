@@ -10,9 +10,7 @@
 
 /*!
 * \file engram_fetch_train_tiling_data.h
-* \brief kernel侧tiling data结构 — EngramFetchTrain（训练态前向）
-*        commBuffer[] 存 a2a GM 地址（各 rank）
-*        localStorageAddr 为 host-pinned 设备映射地址（gather 源）
+* \brief kernel侧tiling data结构
 */
 
 #ifndef ASCENDC_ENGRAM_FETCH_TRAIN_TILING_H
@@ -31,6 +29,6 @@ struct EngramFetchTrainTilingData {
     int64_t numMaxTokensPerRank;   // 每 rank 最大 token 数（从 attr 获取）
     int64_t totalRecv;             // a2a 接收上界 = numMaxTokensPerRank × rankSize
     int64_t localStorageAddr;      // host-pinned 设备映射地址（gather 源, 即 deviceBufPtr_）
-    int64_t commBufferSize;        // a2a GM 收发缓冲大小（即 epHcclBuffer 200MB）
+    int64_t commBufferSize;        // a2a GM 收发缓冲大小
 };
 #endif

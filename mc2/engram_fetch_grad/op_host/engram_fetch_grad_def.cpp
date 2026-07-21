@@ -10,15 +10,7 @@
 
 /*!
  * \file engram_fetch_grad_def.cpp
- * \brief 算子信息库定义 — EngramFetchGrad（反向，新算子）
- *
- * 单融合 kernel，3 步:
- * ① grad_sorted = gradFetched[perm]
- * ② a2a(grad_sorted; sendCounts↔recvCounts) → recvGrad
- * ③ owner unique + fp32 scatter-add (recvLocalEntry, recvGrad) → gradUnique + uniqueLocalEntry
- *
- * 输入: gradFetched + 前向 save-for-backward (perm/sendCounts/recvCounts/recvLocalEntry)
- * 输出: gradUniqueOut (fp32) + uniqueLocalEntryOut (int32 1D sparse index) + numUniqueOut (int32)
+ * \brief 算子信息库定义 — EngramFetchGrad
  */
 
 #include "register/op_def_registry.h"
@@ -28,61 +20,51 @@ class EngramFetchGrad : public OpDef {
 public:
     explicit EngramFetchGrad(const char *name) : OpDef(name)
     {
-        // Input 0: 通信上下文
         this->Input("commContext")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        // Input 1: 前向 fetched 的梯度 gradFetched (T, H) bf16
         this->Input("gradFetched")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
 
-        // Input 2: perm (T,) int32 — 前向 save-for-backward
         this->Input("perm")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        // Input 3: sendCounts (W,) int32 — 前向 save-for-backward
         this->Input("sendCounts")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        // Input 4: recvCounts (W,) int32 — 前向 save-for-backward
         this->Input("recvCounts")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        // Input 5: recvLocalEntry (R,) int32 — 前向 save-for-backward
         this->Input("recvLocalEntry")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        // Input 6: numRecv (1,) int32 — 前向 save-for-backward, recvLocalEntry 有效前缀长度
         this->Input("numRecv")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        // Output 0: gradUnique (R_max, H) fp32 — 前 numUnique 有效
         this->Output("gradUniqueOut")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_FLOAT})
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
 
-        // Output 1: uniqueLocalEntry (R_max,) int32
         this->Output("uniqueLocalEntryOut")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        // Output 2: numUnique (1,) int32
         this->Output("numUniqueOut")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})

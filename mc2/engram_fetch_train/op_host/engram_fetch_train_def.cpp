@@ -10,8 +10,7 @@
 
 /*!
  * \file engram_fetch_train_def.cpp
- * \brief 算子信息库定义 — EngramFetchTrain（训练态前向）
- *        commBuffer 存 a2a GM 地址；localStorageAddr 为本地 storage GM 地址（gather 源）
+ * \brief 算子信息库定义 — EngramFetchTrain（训练前向）
  */
 
 #include "register/op_def_registry.h"
