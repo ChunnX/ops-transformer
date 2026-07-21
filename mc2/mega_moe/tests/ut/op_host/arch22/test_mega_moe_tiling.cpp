@@ -35,6 +35,89 @@ protected:
     }
 };
 
+void RunBf16TilingCase(int64_t intermediateHidden, const std::string &socVersion,
+    ge::graphStatus expectedResult)
+{
+    struct MegaMoeCompileInfo {};
+    MegaMoeCompileInfo compileInfo;
+    constexpr uint64_t kCoreNum = 20;
+    constexpr uint64_t kUbSize = 196608;
+    constexpr int64_t kBatchSize = 16;
+    constexpr int64_t kHiddenSize = 2048;
+    constexpr int64_t kTopK = 8;
+    constexpr int64_t kExpertNum = 256;
+    constexpr int64_t kEpWorldSize = 16;
+    constexpr uint32_t kExpertPerRank = kExpertNum / kEpWorldSize;
+    const int64_t n = intermediateHidden * 2;
+
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.push_back({{{64}, {64}}, ge::DT_INT32, ge::FORMAT_ND});
+    inputs.push_back({{{kBatchSize, kHiddenSize}, {kBatchSize, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND});
+    inputs.push_back({{{kBatchSize, kTopK}, {kBatchSize, kTopK}}, ge::DT_INT32, ge::FORMAT_ND});
+    inputs.push_back({{{kBatchSize, kTopK}, {kBatchSize, kTopK}}, ge::DT_FLOAT, ge::FORMAT_ND});
+    for (uint32_t i = 0; i < kExpertPerRank; i++) {
+        inputs.push_back({{{kHiddenSize, n}, {kHiddenSize, n}}, ge::DT_BF16, ge::FORMAT_ND});
+    }
+    for (uint32_t i = 0; i < kExpertPerRank; i++) {
+        inputs.push_back({{{intermediateHidden, kHiddenSize}, {intermediateHidden, kHiddenSize}}, ge::DT_BF16,
+            ge::FORMAT_ND});
+    }
+
+    gert::TilingContextPara tilingContextPara(
+        "MegaMoe", inputs,
+        {
+            {{{kBatchSize, kHiddenSize}, {kBatchSize, kHiddenSize}}, ge::DT_BF16, ge::FORMAT_ND},
+            {{{kExpertPerRank}, {kExpertPerRank}}, ge::DT_INT32, ge::FORMAT_ND},
+        },
+        {{"moe_expert_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(kExpertNum)},
+         {"ep_world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(kEpWorldSize)},
+         {"ccl_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1L << 30)},
+         {"max_recv_token_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"dispatch_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"dispatch_quant_out_type",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"combine_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_alg", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"num_max_token_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(kBatchSize)},
+         {"activation", Ops::Transformer::AnyValue::CreateFrom<std::string>("swiglu")},
+         {"activation_clamp", Ops::Transformer::AnyValue::CreateFrom<float>(std::numeric_limits<float>::max())},
+         {"activation_out_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_UNDEFINED))},
+         {"transpose_weight1", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"transpose_weight2", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"weight1_interleave", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}},
+        {1, 1, 1, 1, kExpertPerRank, kExpertPerRank, 0, 0, 0, 0, 0, 0}, {1, 1}, &compileInfo, socVersion,
+        kCoreNum, kUbSize);
+
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", kEpWorldSize}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, expectedResult, UINT64_MAX);
+}
+
+TEST_F(MegaMoeArch22TilingTest, A3AcceptsQwen35Bf16ShapeWithIntermediateHidden512)
+{
+    RunBf16TilingCase(512, "Ascend910_93", ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MegaMoeArch22TilingTest, A3RejectsIntermediateHiddenBelow512)
+{
+    RunBf16TilingCase(0, "Ascend910_93", ge::GRAPH_FAILED);
+}
+
+TEST_F(MegaMoeArch22TilingTest, A2RejectsIntermediateHidden512)
+{
+    RunBf16TilingCase(512, "Ascend910B", ge::GRAPH_FAILED);
+}
+
+TEST_F(MegaMoeArch22TilingTest, A3KeepsSupportingIntermediateHidden1024)
+{
+    RunBf16TilingCase(1024, "Ascend910_93", ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MegaMoeArch22TilingTest, A2KeepsSupportingIntermediateHidden1024)
+{
+    RunBf16TilingCase(1024, "Ascend910B", ge::GRAPH_SUCCESS);
+}
+
 TEST_F(MegaMoeArch22TilingTest, Test0)
 {
     struct MegaMoeCompileInfo {};
