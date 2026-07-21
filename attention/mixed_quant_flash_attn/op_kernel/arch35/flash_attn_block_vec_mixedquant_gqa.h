@@ -228,10 +228,10 @@ public:
         __aicore__ inline void UninitAntiquantCrossCore()
     {
         if ASCEND_IS_AIV {
-            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[0]);
-            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[1]);
-            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[2]);
-            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[3]);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_CV_L1_EVENT[0]);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_CV_L1_EVENT[1]);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_CV_L1_EVENT[2]);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_CV_L1_EVENT[3]);
         }
     }
 
