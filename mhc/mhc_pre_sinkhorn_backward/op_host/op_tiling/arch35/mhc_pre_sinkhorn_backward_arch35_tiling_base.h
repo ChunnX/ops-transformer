@@ -44,6 +44,9 @@ protected:
     ge::graphStatus GetPlatformInfo() override;
     ge::graphStatus DoLibApiTiling() override;
 
+protected:
+    ge::graphStatus CheckShapeBase(int64_t batchSize, int64_t seqLength, int64_t n, int64_t c);
+
 private:
     ge::graphStatus CheckShape(int64_t batchSize, int64_t seqLength, int64_t n, int64_t c);
     ge::graphStatus SetTilingData();
