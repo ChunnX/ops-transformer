@@ -345,7 +345,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::Init(
                                              static_cast<uint64_t>(ALIGN_512));
     sendWorkspaceRecordBytes_ = relayRecordBytes_;
     sendWorkspaceServerBytes_ = static_cast<uint64_t>(ALIGN_32) + static_cast<uint64_t>(m_) * sendWorkspaceRecordBytes_;
-    PRINTF("Init suecces\n");
 }
 
 // =================================================================================================
@@ -472,7 +471,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     ubBufferUsedAddr_ = expertTokenNumsOutTensorAddr + expertTokenNumsOutTensorSize;
     Duplicate<int32_t>(cumsumInfoTensor_, 0, (cumsumInfoTensorSize / sizeof(int32_t)));
     PipeBarrier<PIPE_ALL>();
-    PRINTF("DispatchBuffInit success!\n");
 }
 
 // ======================================================================================
