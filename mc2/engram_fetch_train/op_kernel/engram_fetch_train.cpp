@@ -32,6 +32,7 @@
 #include "engram_fetch_train_tiling_data.h"
 #include "engram_fetch_train_tiling_key.h"
 #include "../../engram_fetch/op_kernel/engram_fetch_utils.h"
+#include "arch35/engram_fetch_train_arch35.h"
 
 using namespace Mc2Kernel;
 
@@ -47,11 +48,13 @@ __global__ __aicore__ void engram_fetch_train(
     GET_TILING_DATA_WITH_STRUCT(EngramFetchTrainTilingData, tilingData, tilingGM);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_AIV_ONLY);
 
-    // 待实现:
-    // ① 桶排序: indices → perm, sendCounts, sortedLocalEntry
-    // ② a2a(sortedLocalEntry) → recvLocalEntry, recvCounts (用 commBuffer[peer] = a2a GM)
-    // ③ gather: localStorageAddr[recvLocalEntry] → recvTokens
-    // ④ a2a(recvTokens) → gathered (用 commBuffer[peer] = a2a GM)
-    // ⑤ 还原: fetched[perm] = gathered
-    printf("hello engram_fetch_train\n");
+    if constexpr (EngramFetchTrainMode == ENGRAM_FETCH_TRAIN_DEFAULT_MODE) {
+        AscendC::TPipe pipe;
+        EngramFetchTrainArch35 op;
+        op.Init(commContext, indices, fetched,
+                permOut, sendCountsOut, recvCountsOut,
+                recvLocalEntryOut, numRecvOut,
+                workspaceGM, &pipe, &tilingData);
+        op.Process();
+    }
 }
