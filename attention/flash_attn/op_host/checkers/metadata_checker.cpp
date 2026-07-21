@@ -65,7 +65,7 @@ ge::graphStatus MetadataChecker::CheckSinglePara(const FaTilingInfo &faInfo)
     int64_t dim0 = metadataTensor->GetStorageShape().GetDim(0);
     OP_CHECK_IF(dim0 <= 0,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(faInfo.opName, "metadata",
-            ToString(metadataTensor->GetStorageShape()).c_str(),
+            GetShapeStr(metadataTensor->GetStorageShape()).c_str(),
             "The 1st axis of metadata must be greater than 0"),
         return ge::GRAPH_FAILED);
 

@@ -40,7 +40,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedQ(const FaTilingInfo 
 
     const gert::CompileTimeTensorDesc *sequsedQDesc = faInfo.opParamInfo.sequsedQ.desc;
     OP_CHECK_IF(sequsedQDesc != nullptr && sequsedQDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "seqused_q",
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "seqused_q",
             DataTypeToSerialString(sequsedQDesc->GetDataType()).c_str(),
             "The dtype of seqused_q must be INT32"),
         return ge::GRAPH_FAILED);
@@ -60,7 +60,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedQ(const FaTilingInfo 
         std::string shapeMsg = std::to_string(sequsedQShapeSize) + ", " + std::to_string(faInfo.bSize);
         OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
             faInfo.opName, "seqused_q and batch", shapeMsg.c_str(),
-            "The shape sizes of seqused_q and batch must be the same"),
+            "The shape sizes of seqused_q and batch must be the same");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -75,7 +75,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedKv(const FaTilingInfo
 
     const gert::CompileTimeTensorDesc *sequsedKvDesc = faInfo.opParamInfo.sequsedKv.desc;
     OP_CHECK_IF(sequsedKvDesc != nullptr && sequsedKvDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "seqused_kv",
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "seqused_kv",
             DataTypeToSerialString(sequsedKvDesc->GetDataType()).c_str(),
             "The dtype of seqused_kv must be INT32"),
         return ge::GRAPH_FAILED);
@@ -95,7 +95,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaSequsedKv(const FaTilingInfo
         std::string shapeMsg = std::to_string(sequsedKvShapeSize) + ", " + std::to_string(faInfo.bSize);
         OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
             faInfo.opName, "seqused_kv and batch", shapeMsg.c_str(),
-            "The shape sizes of seqused_kv and batch must be the same"),
+            "The shape sizes of seqused_kv and batch must be the same");
         return ge::GRAPH_FAILED;
     }
 
@@ -111,7 +111,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FaTilingInf
 
     const gert::CompileTimeTensorDesc *cuSeqlensQDesc = faInfo.opParamInfo.cuSeqlensQ.desc;
     OP_CHECK_IF(cuSeqlensQDesc != nullptr && cuSeqlensQDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "cu_seqlens_q",
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "cu_seqlens_q",
             DataTypeToSerialString(cuSeqlensQDesc->GetDataType()).c_str(),
             "The dtype of cu_seqlens_q must be INT32"),
         return ge::GRAPH_FAILED);
@@ -131,7 +131,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensQ(const FaTilingInf
         std::string shapeMsg = std::to_string(cuSeqlensQShapeSize) + ", " + std::to_string(faInfo.bSize);
         OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
             faInfo.opName, "cu_seqlens_q and batch", shapeMsg.c_str(),
-            "The shape size of cu_seqlens_q must be equal to batch + 1"),
+            "The shape size of cu_seqlens_q must be equal to batch + 1");
         return ge::GRAPH_FAILED;
     }
 
@@ -147,7 +147,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
 
     const gert::CompileTimeTensorDesc *cuSeqlensKvDesc = faInfo.opParamInfo.cuSeqlensKv.desc;
     OP_CHECK_IF(cuSeqlensKvDesc != nullptr && cuSeqlensKvDesc->GetDataType() != ge::DT_INT32,
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "cu_seqlens_kv",
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(faInfo.opName, "cu_seqlens_kv",
             DataTypeToSerialString(cuSeqlensKvDesc->GetDataType()).c_str(),
             "The dtype of cu_seqlens_kv must be INT32"),
         return ge::GRAPH_FAILED);
@@ -167,7 +167,7 @@ ge::graphStatus ActualSeqLenChecker::CheckSingleParaCuSeqlensKv(const FaTilingIn
         std::string shapeMsg = std::to_string(cuSeqlensKvShapeSize) + ", " + std::to_string(faInfo.bSize);
         OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(
             faInfo.opName, "cu_seqlens_kv and batch", shapeMsg.c_str(),
-            "The shape size of cu_seqlens_kv must be equal to batch + 1"),
+            "The shape size of cu_seqlens_kv must be equal to batch + 1");
         return ge::GRAPH_FAILED;
     }
 

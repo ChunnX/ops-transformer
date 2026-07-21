@@ -268,7 +268,7 @@ ge::graphStatus FaTilingShapeCompare::CompareShape(FaTilingShapeCompareParam &pa
         std::string reason = "[" + funcName + "] The shape dim of " + name_ + " must be " +
             std::to_string(shapeExpected.GetDimNum()) + " when layout is " + LayoutToSerialString(layout_);
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name_.c_str(),
-            std::to_string(shape_.GetDimNum()).c_str(), reason.c_str()),
+            std::to_string(shape_.GetDimNum()).c_str(), reason.c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -287,7 +287,7 @@ ge::graphStatus FaTilingShapeCompare::CompareShape(FaTilingShapeCompareParam &pa
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, name_.c_str(),
                     GetShapeStr(shape_).c_str(), reason.c_str());
             } else {
-                std::string paramStr = name_.c_str() + " and expected";
+                std::string paramStr = name_ + " and expected";
                 std::string shapeMsg = GetShapeStr(shape_) + " and " + GetShapeStr(shapeExpected);
                 std::string reason = "[" + funcName + "] The axis " + AxisToSerialString(axis) + " of " +
                     name_ + " must " + CompareTypeToSerialSymbolString(compareType) + "expected: " +
