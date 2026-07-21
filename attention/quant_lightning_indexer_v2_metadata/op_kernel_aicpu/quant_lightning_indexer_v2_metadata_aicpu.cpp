@@ -279,7 +279,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &split
             supportFd_ = false;
             return;
         }
-        if (maxS2Size_ > 5 * s2BaseSize_) {
+        if (maxS2Size_ > fdToleranceRatio * s2BaseSize_) {
             supportFd_ = true;
             return;
         }

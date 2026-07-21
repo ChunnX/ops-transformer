@@ -394,10 +394,7 @@ uint32_t MixedQuantSparseFlashMlaMetadataCpuKernel::GetBsStride(uint32_t bIdx, u
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
         for (uint32_t i = 0; i < bIdx; i++) {
-            if (i == 0) {
-                continue;
-            }
-            bsStride += seqUsedPtr[i - 1];
+            bsStride += seqUsedPtr[i];
         }
         bsStride += s1Idx;
         return bsStride;

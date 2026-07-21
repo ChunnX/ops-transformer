@@ -401,10 +401,7 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1
     if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
         const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
         for (uint32_t i = 0; i < bIdx; i++) {
-            if (i == 0) {
-                continue;
-            }
-            bsStride += seqUsedPtr[i - 1];
+            bsStride += seqUsedPtr[i];
         }
         bsStride += s1Idx;
         return bsStride;
