@@ -786,6 +786,21 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
 
 ```c++
+/**
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This file is a part of the CANN Open Software.
+ * Licensed under CANN Open Software License Agreement Version 1.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
+
+/*!
+ * \file test_aclnn_sparse_flash_mla_grad.cpp
+ * \brief
+ */
+
 #include <iostream>
 #include <vector>
 #include <numeric>
@@ -901,6 +916,8 @@ int main() {
   void* dCmpKvDeviceAddr = nullptr;
   void* dSinksDeviceAddr = nullptr;
   void* metadataDeviceAddr = nullptr;
+  void* oriSoftmaxL1NormDeviceAddr = nullptr;
+  void* cmpSoftmaxL1NormDeviceAddr = nullptr;
 
   aclTensor* q = nullptr;
   aclTensor* oriKv = nullptr;
@@ -918,6 +935,8 @@ int main() {
   aclTensor* dCmpKv = nullptr;
   aclTensor* dSinks = nullptr;
   aclTensor* metadata = nullptr;
+  aclTensor* oriSoftmaxL1Norm = nullptr;
+  aclTensor* cmpSoftmaxL1Norm = nullptr;
 
   std::vector<short> qHostData(1 * 16 * 512, 1.0);
   std::vector<short> oriKvHostData(2048 * 1 * 512, 1.0);
@@ -1013,7 +1032,7 @@ int main() {
   aclOpExecutor* executor;
   ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, dOut, out, lse, oriKv, cmpKv, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
             nullptr, nullptr, nullptr, cmpResidualKv, nullptr, nullptr, sinks, metadata, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, nullptr, nullptr, 
+            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("SparseFlashMlaGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
@@ -1052,6 +1071,8 @@ int main() {
   aclDestroyTensor(dCmpKv);
   aclDestroyTensor(dSinks);
   aclDestroyTensor(metadata);
+  aclDestroyTensor(oriSoftmaxL1Norm);
+  aclDestroyTensor(cmpSoftmaxL1Norm);
 
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
@@ -1070,6 +1091,8 @@ int main() {
   aclrtFree(dCmpKvDeviceAddr);
   aclrtFree(dSinksDeviceAddr);
   aclrtFree(metadataDeviceAddr);
+  aclrtFree(oriSoftmaxL1NormDeviceAddr);
+  aclrtFree(cmpSoftmaxL1NormDeviceAddr);
   if (metaWorkspaceSize > 0) {
     aclrtFree(metaWorkspaceAddr);
   }
