@@ -87,7 +87,7 @@ class TestSparseAttentionScorePrefillNPU(TestCase):
         data["scale_value"],
         block_size,
         top_k,
-        4,
+        1,
     )
 
     npu_out_cpu = npu_out.cpu()

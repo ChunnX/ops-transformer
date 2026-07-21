@@ -179,7 +179,7 @@ class TestSparseAttentionPrefillVsDecode(TestCase):
         def prefill_fn():
             return torch.ops.cann_ops_transformer.npu_sparse_attention_score_prefill(
                 q, k, v, bt, rpw, qidx, sidx, asl, asl_kv,
-                KV_HEADS, scale, BLOCK_SIZE, TOP_K, 4)
+                KV_HEADS, scale, BLOCK_SIZE, TOP_K, 1)
 
         def decode_fn():
             return torch_npu.npu_sparse_attention_score(

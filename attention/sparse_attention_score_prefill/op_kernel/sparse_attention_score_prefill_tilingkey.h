@@ -17,4 +17,7 @@
 
 #define SASA_PREFILL_BF16_D128_TILING 20001
 
+// innerPrecise==1: O_partial stored as bf16 (PV fixpipe F322BF16 + Phase2 regbase cast).
+#define SASA_PREFILL_BF16_D128_INNER_LOW_TILING 20002
+
 #endif  // SPARSE_ATTENTION_SCORE_PREFILL_TILINGKEY_H

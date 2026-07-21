@@ -35,10 +35,10 @@ __global__ __aicore__ void SasaPrefillInferIntf(
     using DispatchPolicyOnlineSoftmax = Epilogue::EpilogueOnlineSoftmaxBsa;
     using KernelEpilogueSoftmax = Epilogue::Block::BlockEpilogue<
         DispatchPolicyOnlineSoftmax, PType, SType>;
-    using KernelBlockMmadPV = Gemm::Block::BlockMmadPVPrefillArch35<InDtype, InDtype, float>;
+    using KernelBlockMmadPV = Gemm::Block::BlockMmadPVPrefillArch35<InDtype, InDtype, REDtype>;
     using DispatchPolicyRescaleO = Epilogue::EpilogueRescaleOPrefillArch35;
     using KernelEpilogueRescaleO = Epilogue::Block::BlockEpilogue<
-        DispatchPolicyRescaleO, InDtype>;
+        DispatchPolicyRescaleO, InDtype, REDtype>;
 
     using SasaPrefillKernel = SasaPrefillRegularKernelArch35<
         KernelBlockMmadQK,

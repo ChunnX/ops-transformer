@@ -35,7 +35,9 @@ public:
     using ElementV = typename BlockMmadPV::ElementV;
     using ElementO = typename BlockMmadQK::ElementQ;
     using ElementOTmp = float;
-    using ElementWorkspaceO = float;
+    // O_partial (workspace accumOut) dtype follows the PV block's ElementO (= REDtype):
+    // float for the fp32 path, bfloat16_t for the innerPrecise==1 bf16 path.
+    using ElementWorkspaceO = typename BlockMmadPV::ElementO;
 
     using LayoutK = layout::ColumnMajor;
     using LayoutV = layout::RowMajor;
@@ -219,7 +221,7 @@ public:
         uint64_t wsOffset = 0U;
         AscendC::GlobalTensor<ElementWorkspaceO> gAccumOut;
         gAccumOut.SetGlobalBuffer((__gm__ ElementWorkspaceO *)(params.workSpace + wsOffset));
-        wsOffset += accumOutSize_ * sizeof(float);
+        wsOffset += accumOutSize_ * sizeof(ElementWorkspaceO);
         AscendC::GlobalTensor<float> gSoftmaxMax;
         gSoftmaxMax.SetGlobalBuffer((__gm__ float *)(params.workSpace + wsOffset));
         wsOffset += lseStatSize_ * sizeof(float);
@@ -245,8 +247,7 @@ public:
         Phase1KvCentricCompute(
             coreIdx, coreNum, gQ, gK, gV, gK2qRowPtr, gK2qQIndices,
             gK2qSlotIndices, gBlockTable, gAccumOut, gSoftmaxMax, gSoftmaxSum);
-        AscendC::SyncAll();
-        //DumpPhase1OPartial(gAccumOut, gSoftmaxMax, gSoftmaxSum, gO);
+        AscendC::SyncAll<false>();
 #ifdef __DAV_VEC__
         Phase2CombineScale(gO, gAccumOut, gSoftmaxMax, gSoftmaxSum);
 #endif

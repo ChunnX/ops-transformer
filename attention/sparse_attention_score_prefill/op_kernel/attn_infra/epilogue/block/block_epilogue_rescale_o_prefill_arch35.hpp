@@ -42,22 +42,28 @@ using namespace AscendC;
 
 #include "../../../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 // Local copy of the library ReduceFinalRes_VF family with the per-row regbase Div
-// embedded (this operator's Phase1 leaves accumOut unnormalized). Must follow the
-// vf_flash_decode.h include above (relies on FLT_ZERO / MicroAPI).
+// embedded (this operator's Phase1 leaves accumOut unnormalized). FP32-only path
+// (<T, Tacc> with Tacc=float; the bf16 O_partial path uses the separate header
+// below, do NOT add bf16 branches here — keeps the verified fp32 binary identical).
+// Must follow the vf_flash_decode.h include above (relies on FLT_ZERO / MicroAPI).
 #include "../../../arch35/vector_api/vf_flash_decode_msa.h"
 
 namespace NpuArch::Epilogue::Block {
 
-template <class InDtype>
+template <class InDtype, class Tws>
 class BlockEpilogue<
     EpilogueRescaleOPrefillArch35,
-    InDtype>
+    InDtype,
+    Tws>
 {
 public:
     using DispatchPolicy = EpilogueRescaleOPrefillArch35;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementO = InDtype;
-    using T = float;
+    using T = float;            // lse / rowSum / dst / cast compute (always fp32)
+    // O_partial (workspace accumOut) dtype: float (fp32 path) or bfloat16_t (innerPrecise==1
+    // bf16 path: PV fixpipe F322BF16 writes bf16, Phase2 MTE2 reads bf16, regbase-cast to fp32).
+    using TwsO = Tws;
 
     static constexpr uint32_t FP32_ONE_BLOCK_SIZE = 8U;
     static constexpr uint32_t BYTE_BLOCK = 32U;
@@ -105,7 +111,9 @@ public:
         lseMaxBuf_       = ubBase;                       // 8K
         lseSumBuf_       = ubBase[BUF_8K_FLOATS];        // 8K
         uint32_t off = BUF_8K_FLOATS * 2U;
-        dstBuf_          = ubBase[off];
+        // dst slot carved as a 32K-float (32KB) stride; for the bf16 path TwsO=bf16, so the
+        // raw float carve is reinterpreted (bf16 dst uses <=4KB of the 32KB — slack is free).
+        dstBuf_          = ubBase[off].template ReinterpretCast<TwsO>();
         off += BUF_32K_FLOATS;   // 32K
         broadCastTmpBuf_ = ubBase[off];
         off += BUF_32K_FLOATS;  // 32K (Broadcast scratch + lse staging)
@@ -113,8 +121,10 @@ public:
         castOutBuf_      = ubBase[off];
         off += BUF_32K_FLOATS;  // 32K
         // accumOut ping-pong (kernel ubSTensor style): 2 stages, uniform 32K-slot stride.
+        // For the bf16 path the stage is ReinterpretCast<TwsO> over the same 32K-float carve
+        // (bf16 stage holds <=16KB of data, the 32KB carve leaves slack — UB only gets looser).
         for (uint32_t i = 0U; i < ACCUM_OUT_STAGES; ++i) {
-            accumOutBuf[i] = ubBase[off + BUF_32K_FLOATS * i];  // 32K each
+            accumOutBuf[i] = ubBase[off + BUF_32K_FLOATS * i].template ReinterpretCast<TwsO>();
         }
     }
 
@@ -122,7 +132,7 @@ public:
     void FlashDecodeCompute(uint32_t tmpBlockIdx,
                             uint32_t totalTaskNumP2,
                             AscendC::GlobalTensor<ElementO> &gmO,
-                            AscendC::GlobalTensor<T> &gmAccumOut,
+                            AscendC::GlobalTensor<TwsO> &gmAccumOut,
                             AscendC::GlobalTensor<T> &gmSoftmaxMax,
                             AscendC::GlobalTensor<T> &gmSoftmaxSum,
                             uint32_t numHeads,
@@ -146,8 +156,12 @@ public:
 private:
     AscendC::LocalTensor<T> lseMaxBuf_;
     AscendC::LocalTensor<T> lseSumBuf_;
-    AscendC::LocalTensor<T> dstBuf_;
-    AscendC::LocalTensor<T> accumOutBuf[ACCUM_OUT_STAGES];
+    // dst (combined O) dtype = TwsO: float for the fp32 path, bfloat16_t for the
+    // innerPrecise==1 bf16 path (regbase-fused reduce stores bf16 directly here;
+    // CopyFinalResOut then plain-copies bf16 to GM O, no cast).
+    AscendC::LocalTensor<TwsO> dstBuf_;
+    // O_partial ping-pong slot dtype = TwsO (float for fp32 path, bf16 for innerPrecise==1).
+    AscendC::LocalTensor<TwsO> accumOutBuf[ACCUM_OUT_STAGES];
     AscendC::LocalTensor<T> broadCastTmpBuf_;
     AscendC::LocalTensor<T> castOutBuf_;
 
@@ -237,7 +251,7 @@ private:
         //AscendC::DumpTensor(lseMaxLocal, 123, 64);
         //AscendC::DumpTensor(lseSumLocal, 456, 64);
         FaVectorApi::ComputeScaleValue_VF(
-            tmpSinkUb, lseMaxLocal, lseSumLocal, accumOutBuf[0],
+            tmpSinkUb, lseMaxLocal, lseSumLocal, accumOutBuf[0].template ReinterpretCast<T>(),
             dealRowCount, actualCombineLoopSize_, softmaxLseFlag, learnableSinkFlag);
         //AscendC::DumpTensor(lseSumLocal, 789, 64);
         AscendC::PipeBarrier<PIPE_V>();
@@ -249,23 +263,27 @@ private:
                         uint32_t jStart,
                         uint32_t nSplits,
                         uint32_t dealRowCount,
-                        AscendC::GlobalTensor<T> &gmAccumOut,
-                        AscendC::LocalTensor<T> &accumOutLocal)
+                        AscendC::GlobalTensor<TwsO> &gmAccumOut,
+                        AscendC::LocalTensor<TwsO> &accumOutLocal)
     {
         // E: batched contiguous read of nSplits splits in one DataCopyPad (was one
         // 8KB DataCopyPad per split). GM layout [totalQ, kvHead, topK, groupSize, D]
         // is contiguous over [jStart..jStart+nSplits) (topK slowest, D fastest,
         // srcStride 0 => rows back-to-back), so the whole span is one transaction.
+        // O_partial dtype = TwsO (float fp32 path, bf16 innerPrecise==1 path). blockElems
+        // is the 32B-block element count (8 fp32 = FP32_ONE_BLOCK_SIZE, 16 bf16); for the
+        // fp32 path blockElems==FP32_ONE_BLOCK_SIZE so the params are byte-identical to prior.
+        constexpr uint32_t blockElems = BYTE_BLOCK / sizeof(TwsO);
         AscendC::DataCopyExtParams copyInParams;
-        AscendC::DataCopyPadExtParams<T> copyInPadParams;
+        AscendC::DataCopyPadExtParams<TwsO> copyInPadParams;
         copyInParams.blockCount = nSplits * dealRowCount;
-        copyInParams.blockLen = static_cast<uint32_t>(D_) * sizeof(T);
+        copyInParams.blockLen = static_cast<uint32_t>(D_) * sizeof(TwsO);
         copyInParams.srcStride = 0;
-        copyInParams.dstStride = (headDimAlignFp32_ - D_) / FP32_ONE_BLOCK_SIZE;
+        copyInParams.dstStride = (headDimAlignFp32_ - D_) / blockElems;
 
         copyInPadParams.isPad = true;
         copyInPadParams.leftPadding = 0;
-        copyInPadParams.rightPadding = (headDimAlignFp32_ - D_) % FP32_ONE_BLOCK_SIZE;
+        copyInPadParams.rightPadding = (headDimAlignFp32_ - D_) % blockElems;
         copyInPadParams.paddingValue = 0;
 
         uint64_t oOffset = TaskAccumBase(qToken, kvHeadIdx)
@@ -276,10 +294,10 @@ private:
     __aicore__ inline
     void ReduceFinalRes(uint32_t qToken,
                         uint32_t kvHeadIdx,
-                        AscendC::LocalTensor<T> &dst,
+                        AscendC::LocalTensor<TwsO> &dst,
                         AscendC::LocalTensor<T> &scaleLocal,
                         uint32_t dealRowCount,
-                        AscendC::GlobalTensor<T> &gmAccumOut)
+                        AscendC::GlobalTensor<TwsO> &gmAccumOut)
     {
         // Slot validity check from UB (no GM round-trip). After CopyLseIn +
         // ComputeScaleValue, lseMaxBuf_ holds the per-slot rowMax in broadcast
@@ -360,11 +378,24 @@ private:
                     * headDimAlignFp32_;
                 uint64_t rowSumOff = static_cast<uint64_t>(alignedLseCount)
                     + static_cast<uint64_t>(j) * dealRowCount;
-                AscendC::LocalTensor<T> accumSplit = accumOutBuf[curId][localOff];
+                AscendC::LocalTensor<TwsO> accumSplit = accumOutBuf[curId][localOff];
                 AscendC::LocalTensor<T> rowSumLocal = broadCastTmpBuf_[rowSumOff];
-                FaVectorApiPrefill::ReduceFinalRes_VF<T>(
-                    dst, scaleLocal, accumSplit, rowSumLocal, dealRowCount,
-                    static_cast<uint64_t>(headDimAlignFp32_), j);
+                // bf16 path: regbase-fused reduce (vf_flash_decode_msa.h::ReduceFinalRes_VF_BF16).
+                // Reads bf16 accumSplit straight into a reg, fuses Cast bf16->fp32 (ZERO/ONE),
+                // fp32 Mul/Mul/Add, Cast back to bf16 (ZERO/ONE), Or-merge, vsstb store bf16
+                // directly to dst (TwsO=bf16). No vector Cast staging pass / no castOutBuf_ staging
+                // here (castOutBuf_ stays free for the fp32 path's CopyFinalResOut). dst is bf16 so
+                // the cross-split accumulation is bf16-rounded per split (innerPrecise==1 INNER_LOW).
+                // fp32 path calls the fp32 reduce directly (byte-identical to the verified binary).
+                if constexpr (AscendC::IsSameType<TwsO, bfloat16_t>::value) {
+                    FaVectorApiPrefill::ReduceFinalRes_VF_BF16<TwsO>(
+                        dst, scaleLocal, accumSplit, rowSumLocal, dealRowCount,
+                        static_cast<uint64_t>(headDimAlignFp32_), j);
+                } else {
+                    FaVectorApiPrefill::ReduceFinalRes_VF<T>(
+                        dst, scaleLocal, accumSplit, rowSumLocal, dealRowCount,
+                        static_cast<uint64_t>(headDimAlignFp32_), j);
+                }
             }
             // V done reading accumOutBuf[curId] (and dst store committed; SetFlag<V_MTE2> is a V
             // completion barrier, ordering dst V-store->V-load across iterations) -> stage reusable.
@@ -384,30 +415,44 @@ private:
     __aicore__ inline
     void CopyFinalResOut(uint64_t attenOutOffset,
                          AscendC::GlobalTensor<ElementO> &gmO,
-                         AscendC::LocalTensor<T> &accumOutLocal,
+                         AscendC::LocalTensor<TwsO> &accumOutLocal,
                          uint32_t dealRowCount)
     {
-        // castBuf is a SEPARATE buffer from accumOutLocal (dstBuf_): the old code aliased them
-        // (castBuf = dstBuf_.ReinterpretCast) making the float->bf16 Cast in-place, which corrupts.
-        // accumOutLocal (= dstBuf_, the float combined result from ReduceFinalRes_VF) is READ by Cast;
-        // castOutBuf_ is the Cast OUTPUT (bf16). No aliasing -> Cast is a normal out-of-place cast.
-        AscendC::LocalTensor<ElementO> castBuf = castOutBuf_.template ReinterpretCast<ElementO>();
-        uint32_t shapeArray[] = {dealRowCount, D_};
-        castBuf.SetShapeInfo(AscendC::ShapeInfo(2, shapeArray, AscendC::DataFormat::ND));
         AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Cast(
-            castBuf, accumOutLocal,
-            AscendC::RoundMode::CAST_ROUND,
-            dealRowCount * headDimAlignFp32_);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+        if constexpr (AscendC::IsSameType<TwsO, bfloat16_t>::value) {
+            // bf16 path: dst (dstBuf_) is already bf16 (the regbase reduce stored bf16
+            // directly). Plain copy to GM O — no Cast, no castOutBuf_ staging.
+            uint32_t shapeArray[] = {dealRowCount, D_};
+            accumOutLocal.SetShapeInfo(AscendC::ShapeInfo(2, shapeArray, AscendC::DataFormat::ND));
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = dealRowCount;
+            dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
+            dataCopyParams.srcStride = (headDimAlignFp32_ - D_) / (BYTE_BLOCK / sizeof(ElementO));
+            dataCopyParams.dstStride = 0;
+            AscendC::DataCopyPad(gmO[attenOutOffset], accumOutLocal, dataCopyParams);
+        } else {
+            // fp32 path (byte-identical to the verified binary): cast fp32 dst -> bf16
+            // out-of-place into castOutBuf_ (separate buffer; aliasing dstBuf_ corrupts),
+            // then copy. Identical for the fp32 path only.
+            AscendC::LocalTensor<ElementO> castBuf = castOutBuf_.template ReinterpretCast<ElementO>();
+            uint32_t shapeArray[] = {dealRowCount, D_};
+            castBuf.SetShapeInfo(AscendC::ShapeInfo(2, shapeArray, AscendC::DataFormat::ND));
+            AscendC::Cast(
+                castBuf, accumOutLocal,
+                AscendC::RoundMode::CAST_ROUND,
+                dealRowCount * headDimAlignFp32_);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
 
-        AscendC::DataCopyExtParams dataCopyParams;
-        dataCopyParams.blockCount = dealRowCount;
-        dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
-        dataCopyParams.srcStride = (headDimAlignFp32_ - D_) / (BYTE_BLOCK / sizeof(ElementO));
-        dataCopyParams.dstStride = 0;
-        AscendC::DataCopyPad(gmO[attenOutOffset], castBuf, dataCopyParams);
+            AscendC::DataCopyExtParams dataCopyParams;
+            dataCopyParams.blockCount = dealRowCount;
+            dataCopyParams.blockLen = static_cast<uint32_t>(D_) * sizeof(ElementO);
+            dataCopyParams.srcStride = (headDimAlignFp32_ - D_) / (BYTE_BLOCK / sizeof(ElementO));
+            dataCopyParams.dstStride = 0;
+            AscendC::DataCopyPad(gmO[attenOutOffset], castBuf, dataCopyParams);
+        }
     }
 
     __aicore__ inline
@@ -415,7 +460,7 @@ private:
                            uint32_t qToken,
                            uint32_t kvHeadIdx,
                            AscendC::GlobalTensor<ElementO> &gmO,
-                           AscendC::GlobalTensor<T> &gmAccumOut,
+                           AscendC::GlobalTensor<TwsO> &gmAccumOut,
                            AscendC::GlobalTensor<T> &gmSoftmaxMax,
                            AscendC::GlobalTensor<T> &gmSoftmaxSum)
     {
@@ -424,7 +469,7 @@ private:
         CopyLseIn(qToken, kvHeadIdx, groupSize_,
                   gmSoftmaxMax, gmSoftmaxSum, lseMaxBuf_, lseSumBuf_);
         ComputeScaleValue(lseMaxBuf_, lseSumBuf_, groupSize_);
-        AscendC::LocalTensor<T> dst = dstBuf_;
+        AscendC::LocalTensor<TwsO> dst = dstBuf_;
         ReduceFinalRes(qToken, kvHeadIdx, dst, lseSumBuf_, groupSize_, gmAccumOut);
         CopyFinalResOut(attenOutOffset, gmO, dst, groupSize_);
     }
