@@ -97,6 +97,7 @@ protected:
     static constexpr uint32_t V_MTE2_EVENT1 = EVENT_ID2;
     static constexpr uint32_t V_MTE2_EVENT2 = EVENT_ID3;
     static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
+    static constexpr uint32_t MTE3_V_EVENT = EVENT_ID6;
     
     static constexpr uint64_t BLOCK_CUBE = 16;
 
@@ -363,17 +364,16 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::DoTndPadding(const QLIV2Common::RunI
     AscendC::InitGlobalMemory(indiceOutPaddingStart, dealSize, constInfo_.INVALID_IDX);
 
     if (constInfo_.returnValue) {
-        event_t eventIDMTE3ToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
-        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
+        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
         
         GlobalTensor<uint16_t> valueOutGmTmp;
         valueOutGmTmp.SetGlobalBuffer((__gm__ uint16_t *)valueOutGm.GetPhyAddr());
         GlobalTensor<uint16_t> valueOut = valueOutGmTmp[paddingOffset];
 
         AscendC::InitGlobalMemory(valueOut, dealSize, constInfo_.NEG_INF_BFLOAT);
-        SetFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
-        WaitFlag<HardEvent::MTE3_V>(eventIDMTE3ToV);
+        SetFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
+        WaitFlag<HardEvent::MTE3_V>(MTE3_V_EVENT);
     }
 }
 template <typename QLIV2T>

@@ -119,7 +119,9 @@ protected:
     uint64_t keyBufferOffset_ = 16384; // 128*128
     
     ConstInfo constInfo_;
-
+    uint64_t queryBufferOffset_ = 0;
+    uint64_t l0abBufferOffset_ = 0;
+    uint64_t l0cBufferOffset_ = 0;
 private:
     static constexpr bool PAGE_ATTENTION = QLIV2T::pageAttention;
 };
@@ -130,6 +132,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitParams(const ConstInfo &constInf
     constInfo_ = constInfo;
     s2BasicBlock_ = (constInfo_.maxSeqlenQ <= 4 && constInfo_.maxSeqlenQ >= 0) ? 256 : 128;
     keyBufferOffset_ = s2BasicBlock_ * D_BASIC_BLOCK;
+    queryBufferOffset_ = constInfo_.mBaseSizeMax * D_BASIC_BLOCK;
+    l0abBufferOffset_ = constInfo_.mBaseSizeMax * D_BASIC_BLOCK_L0;
+    l0cBufferOffset_ = constInfo_.mBaseSizeMax * S2_BASIC_BLOCK_L0;
 }
 
 template <typename QLIV2T>
@@ -208,7 +213,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeMm1(const QLIV2Common::RunInf
                     uint64_t s2L0RealSize =
                         s2L1Offset + S2_BASIC_BLOCK_L0 > s2L1RealSize ? s2L1RealSize - s2L1Offset : S2_BASIC_BLOCK_L0;
                     for (uint64_t s1gL1Offset = 0; s1gL1Offset < s1gL1SizeAlign;
-                        s1gL1Offset += constInfo_.mBaseSize) {
+                        s1gL1Offset += constInfo_.mBaseSizeMax) {
                         WaitFlag<HardEvent::M_MTE1>(M_MTE1_EVENT + l0BufIdx_ % L0_BUF_NUM);
                         uint64_t s1gL0RealSize =
                             s1gL1Offset + constInfo_.mBaseSizeMax > s1gL1SizeAlign
@@ -396,7 +401,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::QueryNd2Nz(uint64_t s1gL1RealSize, u
     nd2nzPara.srcNdMatrixStride = 0;
     nd2nzPara.dstNzMatrixStride = 0;
     // 默认一块buf最多放两份
-    DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET],
+    DataCopy(queryL1_[(queryL1Mte2BufIdx_ % QUERY_BUF_NUM) * queryBufferOffset_],
              queryGm_[runInfo.tensorQueryOffset + s1gGmOffset * constInfo_.headDim], nd2nzPara);
 }
 
@@ -414,8 +419,8 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::LoadQueryToL0a(uint64_t s1gGmOffset,
     loadData2DParamsV2.dstStride = CeilDiv(s1gL0RealSize, BLOCK_CUBE);
     loadData2DParamsV2.ifTranspose = false;
 
-    LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
-             queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * QUERY_BUFFER_OFFSET], loadData2DParamsV2);
+    LoadData(queryL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_],
+             queryL1_[(queryL1Mte1BufIdx_ % QUERY_BUF_NUM) * queryBufferOffset_], loadData2DParamsV2);
 }
 
 template <typename QLIV2T>
@@ -446,7 +451,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeL0c(uint64_t s1gL0RealSize, u
     mmadParams.k = constInfo_.headDim;
     mmadParams.cmatrixInitVal = true;
     mmadParams.cmatrixSource = false;
-    Mmad(cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET],
+    Mmad(cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_], queryL0_[(l0BufIdx_ % L0_BUF_NUM) * l0abBufferOffset_],
          keyL0_[(l0BufIdx_ % L0_BUF_NUM) * L0AB_BUFFER_OFFSET], mmadParams);
     if ((mmadParams.m / 16) * (mmadParams.n / 16) < 10) {
         PipeBarrier<PIPE_M>();
@@ -487,11 +492,11 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
             fixpipeParams.params.ndNum = 2;
             fixpipeParams.params.srcNdStride = ((fixpipeParams.mSize + 15) / 16) * fixpipeParams.nSize;
             fixpipeParams.params.dstNdStride =
-                constInfo_.s2BaseSize * constInfo_.mBaseSize / 2; // s2BasicBlock_ * M_BASE_SIZE / 2
+                constInfo_.s2BaseSize * constInfo_.mBaseSizeMax / 2; // s2BasicBlock_ * M_BASE_SIZE / 2
         }
         Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
         // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
-            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
+            cL0_[(l0BufIdx_ % L0_BUF_NUM) * l0cBufferOffset_],
             fixpipeParams);
     } else {
         // nSize * sizeof(QT) <= 256B, 小于一个UB bank大小(VL)
