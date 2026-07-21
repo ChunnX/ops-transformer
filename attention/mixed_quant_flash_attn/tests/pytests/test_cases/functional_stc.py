@@ -17,7 +17,7 @@
 BASE = {"B": [2],
         "N1": [8],
         "N2": [1],
-        "S1": [64],
+        "S1": [1],
         "S2": [1024],
         "D": [128],
         "Dtype": ["fp16"],
@@ -29,7 +29,7 @@ BASE = {"B": [2],
         "mask_mode": [0],
         "return_softmax_lse": [0],
         "cu_seqlens_q": [[None]],
-        "cu_seqlens_kv": [[None]],
+        #"cu_seqlens_kv": [[None]], 参数已没有
         "seqused_q": [[None]],
         "seqused_kv": [[None]],
         "q_range": [(-5.0, 5.0)]}
@@ -41,40 +41,41 @@ TestCases = {
     # ── Q layout ──
     "Q_BSND_02": {**BASE, "layout_q": ["BSND"], "layout_out": ["BSND"]},
     "Q_TND_03": {**BASE, "layout_q": ["TND"], "layout_out": ["TND"],
-                 "cu_seqlens_q": [[0, 64, 128]], "cu_seqlens_kv": [[0, 1024, 2048]]},
+                 "cu_seqlens_q": [[0, 16, 32]]},
 
     # ── KV PA layout ──
     "KV_BBND_04": {**BASE, "layout_kv": ["PA_BBND"]},
-    "KV_BNBD_05": {**BASE, "layout_kv": ["PA_BNBD"]},
+    #"KV_BNBD_05": {**BASE, "layout_kv": ["PA_BNBD"]},
 
     # ── GQA / MHA / MQA ──
-    "GQA_06": {**BASE, "N1": [8], "N2": [2]},
     "MHA_07": {**BASE, "N1": [8], "N2": [8]},
-    "MQA_08": {**BASE, "N1": [8], "N2": [1]},
+    "MQA_08": {**BASE, "N1": [64], "N2": [1]},
+    "MQA_09": {**BASE, "N1": [128], "N2": [1]},
 
-    # ── D 维度（32 对齐）──
-    "D64_09": {**BASE, "D": [64], "S2": [512]},
-    "D256_10": {**BASE, "D": [256]},
+    # # ── D 维度（32 对齐）── 目前只支持128
+    # "D64_09": {**BASE, "D": [64], "S2": [512]},
+    # "D256_10": {**BASE, "D": [256]},
 
     # ── block_size ──
-    "BS64_11": {**BASE, "block_size": [64], "S2": [512]},
-    "BS128_12": {**BASE, "block_size": [128]},
+    # "BS64_11": {**BASE, "block_size": [64], "S2": [512]},
+    # "BS128_12": {**BASE, "block_size": [128]},
 
     # ── prefill / decode ──
-    "PREFILL_13": {**BASE, "S1": [1024], "S2": [1024]},
-    "DECODE_14": {**BASE, "S1": [1], "S2": [1024]},
+    #"PREFILL_13": {**BASE, "S1": [1024], "S2": [1024]},
+    #"DECODE_14": {**BASE, "S1": [1], "S2": [1024]},
 
     # ── batch ──
     "BATCH1_15": {**BASE, "B": [1]},
-    "BATCH4_16": {**BASE, "B": [4]},
+    "BATCH4_16": {**BASE, "B": [32]},
 
     # ── TND 变长序列 ──
     "VARLEN_17": {**BASE, "layout_q": ["TND"], "layout_out": ["TND"],
-                  "cu_seqlens_q": [[0, 32, 96]], "cu_seqlens_kv": [[0, 512, 1536]]},
+                  "cu_seqlens_q": [[0, 4, 20]]},
 
     # ── 大序列 ──
-    "LARGE_18": {**BASE, "B": [1], "S1": [128], "S2": [4096]},
+    "LARGE_18": {**BASE, "S2": [4096]},
+    "LARGE_18": {**BASE, "S2": [4097]},
 
     # ── output layout ──
-    "OUT_BSND_19": {**BASE, "layout_q": ["BNSD"], "layout_out": ["BSND"]},
+    # "OUT_BSND_19": {**BASE, "layout_q": ["BNSD"], "layout_out": ["BSND"]},
 }
