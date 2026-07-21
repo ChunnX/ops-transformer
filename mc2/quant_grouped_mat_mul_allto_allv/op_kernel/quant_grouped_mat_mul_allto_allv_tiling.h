@@ -29,8 +29,10 @@ using MC2KernelTemplate::TaskTilingInfo;
  *
  * 算子级 workspace 分为三部分:
  *   [0, wsGmmOutputSize) → 路由专家 GMM 输出缓冲 (rank-first布局), 传给 GmmComputeOp.Init 的 y 参数
- *   [wsGmmOutputSize, + wsGmmComputeWorkspaceSize) → 路由专家 GmmComputeOp 内部空间, 传给 GmmComputeOp.Init 的 tempAddr 参数
- *   [+, + wsSharedGmmComputeWorkspaceSize) → 共享专家 SharedGmmComputeOp 内部空间, 传给 SharedGmmComputeOp.Init 的 tempAddr 参数
+ *   [wsGmmOutputSize, + wsGmmComputeWorkspaceSize) → 路由专家 GmmComputeOp 内部空间, 传给 GmmComputeOp.Init 的 tempAddr
+ * 参数
+ *   [+, + wsSharedGmmComputeWorkspaceSize) → 共享专家 SharedGmmComputeOp 内部空间, 传给 SharedGmmComputeOp.Init 的
+ * tempAddr 参数
  *
  * 注: 后通信模式 recvBuffer=yGM (AlltoAllv直接写入输出tensor), 无需额外commRecv workspace
  *
@@ -50,9 +52,9 @@ using MC2KernelTemplate::TaskTilingInfo;
  *     [0, ep * 8)  groupList + [+, 512) ptrTable + [+, sizeof(float)*ep*2) TT scale repeat
  */
 struct GmmA2avWorkspaceInfo {
-    uint64_t wsGmmOutputSize;                    // 路由专家 GMM 主输出缓冲大小 (x @ weight -> gmm_output -> hccl send)
-    uint64_t wsGmmComputeWorkspaceSize;          // 路由专家 GmmComputeOp 内部空间大小
-    uint64_t wsSharedGmmComputeWorkspaceSize;    // 共享专家 SharedGmmComputeOp 内部空间大小
+    uint64_t wsGmmOutputSize; // 路由专家 GMM 主输出缓冲大小 (x @ weight -> gmm_output -> hccl send)
+    uint64_t wsGmmComputeWorkspaceSize;       // 路由专家 GmmComputeOp 内部空间大小
+    uint64_t wsSharedGmmComputeWorkspaceSize; // 共享专家 SharedGmmComputeOp 内部空间大小
 };
 
 struct QuantGmmA2avTilingData {
