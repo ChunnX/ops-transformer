@@ -45,23 +45,29 @@ constexpr uint32_t DEBUG_OFFSET_NETWORK_MODE = 1U;
 constexpr uint32_t DEBUG_OFFSET_SUPER_NODE_COUNT = 2U;
 constexpr uint32_t DEBUG_OFFSET_RANK_SIZE_PER_SERVER = 3U;
 constexpr uint32_t DEBUG_OFFSET_CURRENT_SERVER_INDEX = 4U;
-constexpr uint32_t DEBUG_OFFSET_REMOTE_ROUTE_COUNT = 8U;
-constexpr uint32_t DEBUG_OFFSET_LOCAL_SEND_COUNT = 16U;
-constexpr uint32_t DEBUG_OFFSET_ERROR_FLAGS = 24U;
-constexpr uint32_t DEBUG_OFFSET_SCALEOUT_SLOT_COUNT = 32U;
-constexpr uint32_t DEBUG_OFFSET_SCALEOUT_NOTIFY_COUNT = 36U;
-constexpr uint32_t DEBUG_OFFSET_SCALEOUT_READY_COUNT = 40U;
-constexpr uint32_t DEBUG_OFFSET_FANOUT_SLOT_COUNT = 44U;
-constexpr uint32_t DEBUG_OFFSET_FANOUT_TARGET_COUNT = 48U;
-constexpr uint32_t DEBUG_OFFSET_FANOUT_LOCAL_WRITE_COUNT = 52U;
-constexpr uint32_t DEBUG_OFFSET_FANOUT_REMOTE_WRITE_COUNT = 56U;
-constexpr uint32_t DEBUG_OFFSET_LAST_FANOUT_MASK = 60U;
-constexpr uint32_t DEBUG_OFFSET_LAST_FANOUT_SCALEUP_SLOT = 64U;
-constexpr uint32_t DEBUG_OFFSET_LAST_FANOUT_SRC_SCALEOUT = 68U;
-constexpr uint32_t DEBUG_OFFSET_LAST_FANOUT_SRC_RANK = 72U;
-constexpr uint32_t DEBUG_OFFSET_LAST_FANOUT_DST_RANK = 76U;
-constexpr uint32_t DEBUG_OFFSET_STAGE1_LAST_DST_SCALEOUT = 96U;
-constexpr uint32_t DEBUG_OFFSET_STAGE1_LAST_SLOT_COUNT = 100U;
+constexpr uint32_t DEBUG_OFFSET_TOTAL_CYCLES = 8U;
+constexpr uint32_t DEBUG_OFFSET_PREPARE_CYCLES = 16U;
+constexpr uint32_t DEBUG_OFFSET_TRANSFER_CYCLES = 24U;
+constexpr uint32_t DEBUG_OFFSET_CAL_SEND_COUNT_CYCLES = 32U;
+constexpr uint32_t DEBUG_OFFSET_EXCHANGE_COUNT_CYCLES = 40U;
+constexpr uint32_t DEBUG_OFFSET_RECV_COUNT_WAIT_CYCLES = 48U;
+constexpr uint32_t DEBUG_OFFSET_ROUTE_SLOT_CYCLES = 56U;
+constexpr uint32_t DEBUG_OFFSET_PAYLOAD_BUILD_CYCLES = 64U;
+constexpr uint32_t DEBUG_OFFSET_SEND_PHASE_CYCLES = 72U;
+constexpr uint32_t DEBUG_OFFSET_LOCAL_SEND_CYCLES = 80U;
+constexpr uint32_t DEBUG_OFFSET_SCALEOUT_SEND_CYCLES = 88U;
+constexpr uint32_t DEBUG_OFFSET_INITIAL_SEND_CYCLES = 96U;
+constexpr uint32_t DEBUG_OFFSET_READY_WAIT_CYCLES = 104U;
+constexpr uint32_t DEBUG_OFFSET_FANOUT_STAGE_CYCLES = 112U;
+constexpr uint32_t DEBUG_OFFSET_FANOUT_SEND_CYCLES = 120U;
+constexpr uint32_t DEBUG_OFFSET_ACK_WAIT_CYCLES = 128U;
+constexpr uint32_t DEBUG_OFFSET_READY_POLL_COUNT = 136U;
+constexpr uint32_t DEBUG_OFFSET_ACK_POLL_COUNT = 144U;
+constexpr uint32_t DEBUG_OFFSET_SCALEOUT_SLOT_COUNT = 152U;
+constexpr uint32_t DEBUG_OFFSET_FANOUT_PAYLOAD_COUNT = 156U;
+constexpr uint32_t DEBUG_OFFSET_FANOUT_ACTIVE_RANK_COUNT = 160U;
+constexpr uint32_t DEBUG_OFFSET_FANOUT_NBI_COUNT = 164U;
+constexpr uint32_t DEBUG_OFFSET_FANOUT_DRAIN_COUNT = 168U;
 
 constexpr uint8_t DEBUG_PATH_DIRECT = 0xD0U;
 constexpr uint8_t DEBUG_PATH_HYBRID = 0xA1U;
@@ -164,22 +170,12 @@ __aicore__ inline void WriteUint32ToDebug(GlobalTensor<uint8_t> &debugOutTensor,
     debugOutTensor.SetValue(byteOffset + 3U, static_cast<uint8_t>((value >> 24U) & 0xFFU));
 }
 
-__aicore__ inline void IncrementDebugUint32(GlobalTensor<uint8_t> &debugOutTensor, uint32_t byteOffset)
+__aicore__ inline void WriteUint64ToDebug(GlobalTensor<uint8_t> &debugOutTensor, uint32_t byteOffset, uint64_t value)
 {
-    uint32_t value = static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset)) |
-                     (static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset + 1U)) << 8U) |
-                     (static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset + 2U)) << 16U) |
-                     (static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset + 3U)) << 24U);
-    WriteUint32ToDebug(debugOutTensor, byteOffset, value + 1U);
-}
-
-__aicore__ inline void AddDebugUint32(GlobalTensor<uint8_t> &debugOutTensor, uint32_t byteOffset, uint32_t increment)
-{
-    uint32_t value = static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset)) |
-                     (static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset + 1U)) << 8U) |
-                     (static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset + 2U)) << 16U) |
-                     (static_cast<uint32_t>(debugOutTensor.GetValue(byteOffset + 3U)) << 24U);
-    WriteUint32ToDebug(debugOutTensor, byteOffset, value + increment);
+    for (uint32_t byteIndex = 0U; byteIndex < sizeof(uint64_t); byteIndex++) {
+        debugOutTensor.SetValue(byteOffset + byteIndex,
+                                static_cast<uint8_t>((value >> (byteIndex * 8U)) & 0xFFUL));
+    }
 }
 
 template <typename HcommType>
