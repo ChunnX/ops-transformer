@@ -409,6 +409,11 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 dcParams.srcStride = 0;
                 dcParams.dstStride = 0;
                 DataCopyPad(scoreB16Gm[scoreOffset], reduceOutInner, dcParams);
+                // Sync MTE3->V: ensure DataCopyPad finishes reading reduceOutInner
+                // before next innerS1Idx's DoReduce overwrites it
+                event_t eMTE3V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
+                SetFlag<HardEvent::MTE3_V>(eMTE3V);
+                WaitFlag<HardEvent::MTE3_V>(eMTE3V);
             }
             } // end if radixCuS2Len > 0
             } else {
