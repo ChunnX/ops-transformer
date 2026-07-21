@@ -131,15 +131,15 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.windowSize != WINDOW_SIZE_LIMIT,
                 OP_LOGE(opName_, "window_size only support %u.", WINDOW_SIZE_LIMIT), return ge::GRAPH_FAILED);
-    OP_CHECK_IF((*opParamInfo_.alpha <= ALPHA_MIN) || (*opParamInfo_.alpha > 1.0f),
+    OP_CHECK_IF((*opParamInfo_.alpha <= ALPHA_MIN) || (*opParamInfo_.alpha > ALPHA_MAX),
                 OP_LOGE(opName_, "alpha should be in (0, 1]."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateMedium, K_BLOCK_NUM_RATE_MEDIUM_LIMIT),
                 OP_LOGE(opName_, "k_block_num_rate_medium only support 0.2."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*opParamInfo_.kBlockNumBiasMedium != 30,
+    OP_CHECK_IF(*opParamInfo_.kBlockNumBiasMedium != K_BLOCK_NUM_BIAS_MEDIUM_LIMIT,
                 OP_LOGE(opName_, "k_block_num_bias_medium only support 30."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateLarge, K_BLOCK_NUM_RATE_LARGE_LIMIT),
                 OP_LOGE(opName_, "k_block_num_rate_large only support 0.1."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(*opParamInfo_.kBlockNumBiasLarge != 30,
+    OP_CHECK_IF(*opParamInfo_.kBlockNumBiasLarge != K_BLOCK_NUM_BIAS_LARGE_LIMIT,
                 OP_LOGE(opName_, "k_block_num_bias_large only support 30."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.topkScorePrecision != TOPK_SCORE_PRECISION_UINT32 &&
                     *opParamInfo_.topkScorePrecision != TOPK_SCORE_PRECISION_UINT16,

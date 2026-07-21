@@ -40,6 +40,7 @@ constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096U;
 constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192U;
 constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384U;
 constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768U;
+constexpr uint32_t TRUNK_LEN_256 = 256U;
 // Invalid index.
 constexpr int INVALID_IDX = -1;
 struct RowIdx4 {
@@ -247,18 +248,5 @@ __aicore__ inline T CeilDiv(T num, T rnd)
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
 }  // namespace SICommon
-
-// bank冲突优化
-// david 256KB bank layout
-// shape  (             bank_depth  (            banks  bank_groups  block))  (512  (  2   8  32))
-// stride (banks*bank_groups*block  (bank_groups*block        block      1))  (512  (256  32   1))
-#define UB_BLOCK              32   // 32B
-#define UB_BANK_GROUPS        8
-#define UB_BANKS              2
-#define UB_BANK_DEPTH         512
-
-#define UB_BANK_GROUP_STRIDE  UB_BLOCK                                   // 32B
-#define UB_BANK_STRIDE        (UB_BANK_GROUPS * UB_BLOCK)               // 256B
-#define UB_BANK_DEPTH_STRIDE  (UB_BANKS * UB_BANK_GROUPS * UB_BLOCK)    // 512B
 
 #endif  // stem_indexer_COMMON_H

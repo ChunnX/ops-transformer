@@ -478,7 +478,6 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
 
     const uint16_t repeatSize8 = 256;
     const uint16_t repeatSize16 = 128;
-    const uint16_t repeatSize32 = 64;
 
     uint16_t histogramsLoopNum = (validLen + repeatSize8 - 1) / repeatSize8;
     uint16_t inputLoopNum = (validLen + repeatSize16 - 1) / repeatSize16;
@@ -493,7 +492,6 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint16_t>& tmpIdxLocal,
     if (topkNum3 > maxTopK) {
         maxTopK = topkNum3;
     }
-    uint16_t topkLoopNum = (maxTopK + repeatSize32 - 1) / repeatSize32;
     uint16_t topkLoopNum16 = (maxTopK + repeatSize16 - 1) / repeatSize16;
     // tmpIdx/outputValue 的行距由外部传入，确保 VF 内部写入和外部后处理读取使用同一个 stride。
     uint32_t tmpIdxOffset = tmpIdxStride;

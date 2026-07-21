@@ -74,9 +74,12 @@ constexpr uint32_t KV_HEAD_NUM_8 = 8;
 constexpr uint32_t STEM_M_BASE_SIZE = 96;
 constexpr uint32_t STEM_S2_BASE_SIZE = 256;
 constexpr float ALPHA_MIN = 0.0f;
+constexpr float ALPHA_MAX = 1.0f;
 constexpr float ATTR_FLOAT_EPS = 0.000001f;
 constexpr float K_BLOCK_NUM_RATE_MEDIUM_LIMIT = 0.2f;
 constexpr float K_BLOCK_NUM_RATE_LARGE_LIMIT = 0.1f;
+constexpr uint32_t K_BLOCK_NUM_BIAS_MEDIUM_LIMIT = 30U;
+constexpr uint32_t K_BLOCK_NUM_BIAS_LARGE_LIMIT = 30U;
 constexpr int64_t TOPK_SCORE_PRECISION_UINT32 = 1;
 constexpr int64_t TOPK_SCORE_PRECISION_UINT16 = 2;
 
@@ -151,9 +154,9 @@ public:
     uint32_t initialBlocks = INITIAL_BLOCKS_LIMIT;
     uint32_t windowSize = WINDOW_SIZE_LIMIT;
     float kBlockNumRateMedium = K_BLOCK_NUM_RATE_MEDIUM_LIMIT;
-    uint32_t kBlockNumBiasMedium = 30;
+    uint32_t kBlockNumBiasMedium = K_BLOCK_NUM_BIAS_MEDIUM_LIMIT;
     float kBlockNumRateLarge = K_BLOCK_NUM_RATE_LARGE_LIMIT;
-    uint32_t kBlockNumBiasLarge = 30;
+    uint32_t kBlockNumBiasLarge = K_BLOCK_NUM_BIAS_LARGE_LIMIT;
     uint32_t topkScorePrecision = TOPK_SCORE_PRECISION_UINT32;
     float rSquare = 1.0f / 64.0f;
     ge::DataType inputQType = ge::DT_BF16;

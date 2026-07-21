@@ -23,7 +23,6 @@
 
 namespace SIKernel {
 using namespace SICommon;
-constexpr uint32_t TRUNK_LEN_256 = 256;
 template <typename SIT>
 class SIVector {
 public:
@@ -100,7 +99,6 @@ private:
     int32_t blockId_ = -1;
     // para for vector
     int32_t s2BaseSize_ = 0;
-    uint32_t trunkLen_ = 0;
     uint32_t mrgRowStride_ = 0;
     int32_t mBaseSize_ = 0;
     float alpha_ = 1.0f;
@@ -128,7 +126,7 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     // Topk
     // uint16和uint32申请相同的物理空间；uint16通过更大的元素stride保留每行输出264个int32_t的空间。
     pipe->InitBuffer(mrgValueBuf_, CeilDiv(constInfo_.mBaseSize, 2) *
-                         (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t));
+                         (MAX_TOPK_COUNT + SICommon::TRUNK_LEN_256) * sizeof(uint32_t));
     mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
 
     pipe->InitBuffer(globalIndexBuf_, CeilDiv(constInfo_.mBaseSize, 2) * MAX_TOPK_COUNT * sizeof(uint32_t));     // 大小：(topkCountAlign256_ + 每次排序长度) * sizeof(SCORE_T)
@@ -155,9 +153,7 @@ __aicore__ inline void SIVector<SIT>::InitParams(const struct SICommon::ConstInf
     initialBlocks_ = constInfo.initialBlocks;
     windowSize_ = constInfo.windowSize;
     blockId_ = GetBlockIdx();
-    trunkLen_ = TRUNK_LEN_256;
-    mrgRowStride_ = (MAX_TOPK_COUNT + trunkLen_) * sizeof(uint32_t) / sizeof(SCORE_T);
-    topkOp_.Init(MAX_TOPK_COUNT, trunkLen_);
+    mrgRowStride_ = (MAX_TOPK_COUNT + SICommon::TRUNK_LEN_256) * sizeof(uint32_t) / sizeof(SCORE_T);
 }
 
 template <typename SIT>
@@ -241,18 +237,13 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     int64_t curMProcNum = info.actMBaseSize;
     int64_t curAivMProcNum = (blockId_ % 2 == 0) ? CeilDiv(curMProcNum, 2) : curMProcNum / 2;
 
-    if (curAivMProcNum == 0) {
-        CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + pingpong);  // V核等C核计算完mm1，mm1Res已搬运到UB
-        CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + pingpong);   // V核处理完，通知C核可以把mm1Res搬运到UB
-        return;
-    }
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + pingpong);
     // vBiasGm --> vBiasLocal_ 搬运vBias
     uint64_t vBiasGmOffset = info.tensorVBiasOffset + curS2Idx;
     DataCopyPadExtParams<float> padVBiasParams{false, 0, 0, 0};
     DataCopyExtParams vBiasDataCopyExtParams;
     vBiasDataCopyExtParams.blockCount = 1;
-    vBiasDataCopyExtParams.blockLen = s2BaseSize_ * sizeof(float);
+    vBiasDataCopyExtParams.blockLen = info.actualSingleProcessSInnerSize * sizeof(float);
     vBiasDataCopyExtParams.srcStride = 0;
     vBiasDataCopyExtParams.dstStride = 0;
     DataCopyPad(vBiasLocal_[pingpong * s2BaseSize_], vBiasGm[vBiasGmOffset], vBiasDataCopyExtParams, padVBiasParams);
@@ -418,17 +409,18 @@ __aicore__ inline void SIVector<SIT>::RunTopKBatchRows(
     uint32_t batchRowNum, int64_t curAivGS1Idx)
 {
 
-    // padding（各行按自身 s2BlockValidLen 补齐到 trunkLen，非零行结果一致）
+    // padding（各行按自身 s2BlockValidLen 补齐到 TRUNK_LEN_256，非零行结果一致）
     if (isFirstS2InnerLoop) {
         TopkUtils::PadMrgFourRowsFirstS2RangeVF<SCORE_T>(mrgValueLocal_, rowIdx4, topkNum4, s2ValidLen4,
-                                                         mrgRowStride_, trunkLen_);
+                                                         mrgRowStride_);
     } else {
         TopkUtils::PadMrgFourRowsNotFirstS2RangeVF<SCORE_T>(mrgValueLocal_, rowIdx4, topkNum4, s2ValidLen4,
                                                             mrgRowStride_);
     }
 
     uint32_t inputOffset = isFirstS2InnerLoop ? TOPK_ALIGN_SIZE : 0U;
-    uint32_t validLen = isFirstS2InnerLoop ? trunkLen_ : (TOPK_ALIGN_SIZE + trunkLen_);
+    uint32_t validLen = isFirstS2InnerLoop ? SICommon::TRUNK_LEN_256 :
+                                             (TOPK_ALIGN_SIZE + SICommon::TRUNK_LEN_256);
 
     LocalTensor<uint32_t> reuseMm1ResLocal =
         resMm1Local_[(info.loop % 2) * (CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_)].ReinterpretCast<uint32_t>();
