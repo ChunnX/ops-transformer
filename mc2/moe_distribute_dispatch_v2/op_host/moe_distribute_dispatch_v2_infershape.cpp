@@ -252,7 +252,6 @@ static ge::graphStatus InferShapeMoeDistributeDispatchV2(gert::InferShapeContext
                                               "Each dim of x and expert_ids must be positive");
         return ge::GRAPH_FAILED;
     }
-
     int64_t a;
     int64_t localExpertNum;
     int64_t localMoeExpertNum = *moeExpertNum / moeRankNum;
