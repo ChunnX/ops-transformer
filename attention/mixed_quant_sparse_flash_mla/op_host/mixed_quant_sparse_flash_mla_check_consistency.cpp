@@ -177,14 +177,17 @@ ge::graphStatus MQSMLATilingCheck::CheckSoftmaxLse() const
                 "The shape size of softmax_lse should be greater than 0");
             return ge::GRAPH_FAILED;
         }
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "softmaxLse",
-            MQSMLADataTypeToSerialString(opParamInfo_.softmaxLse.desc->GetDataType()).c_str(),
-            "The dtype of softmax_lse must be FLOAT");
+        if (opParamInfo_.softmaxLse.desc->GetDataType() !=ge::DT_FLOAT) {
+            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "softmaxLse",
+                MQSMLADataTypeToSerialString(opParamInfo_.softmaxLse.desc->GetDataType()).c_str(),
+                "The dtype of softmax_lse must be FLOAT");
+            return ge::GRAPH_FAILED;
+        }
     } else {
         OP_CHECK_IF(opParamInfo_.softmaxLse.shape != nullptr &&
             opParamInfo_.softmaxLse.shape->GetStorageShape().GetShapeSize() != 0,
             OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "softmaxLse",
-            "When return_softmax_lse is false, softmax_lse tensor must be empty tensor"),
+                "When return_softmax_lse is false, softmax_lse tensor must be empty tensor"),
             return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
