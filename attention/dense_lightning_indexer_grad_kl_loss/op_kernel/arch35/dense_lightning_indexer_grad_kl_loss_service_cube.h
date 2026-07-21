@@ -796,9 +796,6 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34Deter(const DLIGradKL
             FixOutAtomicAdd(mm3Params, dstGm, l0cTensor, l0abPingPongFlag);
             l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
         }
-        // Each index head accumulates into the same deterministic GM tile.
-        // Ascend 950 requires overlapping FIX writes to be serialized explicitly.
-        PipeBarrier<PIPE_FIX>();
         SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q_INDEX[l1PingPongFlag & 1]);
         // 这个必须加, 因为mm3是L0B reuse，使用l1PingPongFlag去控制L0B的，而接下来的mm4是使用l0abPingPongFlag来控制的
         l0abPingPongFlag = l1PingPongFlag;
