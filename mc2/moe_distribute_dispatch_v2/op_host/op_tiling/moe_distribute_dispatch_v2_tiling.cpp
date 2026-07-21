@@ -1455,6 +1455,7 @@ static ge::graphStatus MoeDistributeDispatchV2TilingFunc(gert::TilingContext* co
     if (socVersion == "Ascend910B") {
         ret = MoeDistributeDispatchA2TilingFuncImpl(context);
     } else {
+        OP_LOGE(context->GetNodeName(), "→ → → → → → → → → → → → DEBUG.DISPATCH Enter!! ← ← ← ← ← ← ← ← ← ← ← ←")
         ret = MoeDistributeDispatchA3TilingFuncImpl(context);
     }
     return ret;
