@@ -57,7 +57,8 @@ public:
                                 __gm__ uint8_t *sparseIndices, __gm__ uint8_t *actualSeqLengthsQ,
                                 __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *attentionOut,
-                                __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
+                                __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *sinks,
+                                __gm__ uint8_t *workspace,
                                 const SparseFlashAttentionTilingDataMla *__restrict tiling,
                                 __gm__ uint8_t *gmTiling, TPipe *tPipe);
     __aicore__ inline void Process();
@@ -67,7 +68,8 @@ private:
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
         __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
         __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-        __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *workspace,
+        __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *sinks,
+        __gm__ uint8_t *workspace,
         const SparseFlashAttentionTilingDataMla *__restrict tiling,
         TPipe *tPipe);
     __aicore__ inline void InitLocalBuffer();
@@ -134,7 +136,7 @@ template <typename CubeBlockType, typename VecBlockType>
     __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *blockTable,
     __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope,
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-    __gm__ uint8_t *workspace, const SparseFlashAttentionTilingDataMla *__restrict tiling,
+    __gm__ uint8_t *sinks, __gm__ uint8_t *workspace, const SparseFlashAttentionTilingDataMla *__restrict tiling,
     __gm__ uint8_t *gmTiling, TPipe *tPipe)
 {
     fa_base_matmul::idCounterNum = 0;
@@ -180,7 +182,7 @@ template <typename CubeBlockType, typename VecBlockType>
     }
     this->ComputeConstexpr();
     this->InitGlobalBuffer(query, key, value, queryRope, keyRope, sparseIndices, \
-        blockTable, actualSeqLengthsQ, actualSeqLengths, softmaxMax, softmaxSum, \
+        blockTable, actualSeqLengthsQ, actualSeqLengths, softmaxMax, softmaxSum, sinks, \
         workspace, tiling, tPipe); // gm设置
     this->InitCalcParamsEach();
     this->InitLocalBuffer();
@@ -327,7 +329,7 @@ void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitGlobalBuffe
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
     __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *sparseIndices,
     __gm__ uint8_t *blockTable, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-    __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
+    __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *sinks,
     __gm__ uint8_t *workspace, const SparseFlashAttentionTilingDataMla *__restrict tiling, TPipe *tPipe)
 {
     if (actualSeqLengthsQ != nullptr) {
@@ -337,7 +339,7 @@ void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType>::InitGlobalBuffe
         actualSeqKvlenAddr = (__gm__ int32_t *)actualSeqLengths;
     }
 
-    vecBlock.InitGlobalBuffer(key, value, keyRope, sparseIndices, blockTable, softmaxMax, softmaxSum);
+    vecBlock.InitGlobalBuffer(key, value, keyRope, sparseIndices, blockTable, softmaxMax, softmaxSum, sinks);
     cubeBlock.InitCubeInput(key, keyRope, sparseIndices, blockTable, actualSeqLengthsQ, constInfo);
 }
 

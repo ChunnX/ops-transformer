@@ -16,20 +16,29 @@
 #ifndef FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
 #define FLASH_ATTN_KERNEL_NOQUANT_GQA_H_
 
+#if __has_include("../../../common/op_kernel/fia_public_define.h")
 #include "../../../common/op_kernel/fia_public_define.h"
+#else
+#include "../../common/fia_public_define.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h" // TensorDesc
 #include "../utils/flash_attn_common_def.h"
 #include "../utils/flash_attn_utils.h"
 
 #include "flash_attn_block_cube_noquant_gqa.h"
 #include "flash_attn_block_vec_noquant_gqa.h"
-#include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "flash_attn_block_vec_noquant_flashdecode.h"
 
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
 #else
 #include "kernel_operator.h"
+#endif
+
+#if __has_include("../../../common/op_kernel/memory_copy_arch35.h")
+#include "../../../common/op_kernel/memory_copy_arch35.h"
+#else
+#include "../../common/memory_copy_arch35.h"
 #endif
 
 #include "flash_attn_tiling_data.h"
@@ -96,7 +105,7 @@ public:
 
     ConstInfoX constInfo;
 
-    const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tilingData;
+    __tiling_data_ptr__ FlashAttnNoQuantTilingArch35* tilingData = nullptr;
     TPipe *pipe;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
@@ -164,7 +173,7 @@ public:
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
                                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                                const __gm__ FlashAttnNoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
+                                __tiling_data_ptr__ FlashAttnNoQuantTilingArch35* tiling, TPipe *tPipe)
     {
         this->pipe = tPipe;
         this->tilingData = tiling;

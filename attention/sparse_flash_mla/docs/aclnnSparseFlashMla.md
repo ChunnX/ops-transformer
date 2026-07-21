@@ -181,7 +181,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D)，ori_block_size为16的倍数且不超过1024</li>
+          <li>layoutKv为PA_BBND时：(ori_block_num, ori_block_size, N2, D)，ori_block_size支持1到1024</li>
           <li>layoutKv为BSND时：(B, S2, N2, D)</li>
           <li>layoutKv为TND时：(T2, N2, D)</li>
         </ul>
@@ -198,7 +198,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D)，cmp_block_size为16的倍数且不超过1024</li>
+          <li>layoutKv为PA_BBND时：(cmp_block_num, cmp_block_size, N2, D)，cmp_block_size支持1到1024</li>
           <li>layoutKv为BSND时：(B, S3, N2, D)</li>
           <li>layoutKv为TND时：(T3, N2, D)</li>
         </ul>
@@ -225,10 +225,10 @@ aclnnStatus aclnnSparseFlashMla(
       <td>ND</td>
       <td>
         <ul>
-          <li>layoutQ为BSND时：(B, S1, N2, K)</li>
-          <li>layoutQ为TND时：(T1, N2, K)</li>
+          <li>layoutQ为BSND时：(B, S1, N2, K2)</li>
+          <li>layoutQ为TND时：(T1, N2, K2)</li>
         </ul>
-        其中K为TopK稀疏选择数，支持512或1024。
+        其中K2为cmpKv的TopK稀疏选择数。
       </td>
       <td>√</td>
     </tr>
@@ -376,7 +376,7 @@ aclnnStatus aclnnSparseFlashMla(
       <td>cmpRatio（int64_t）</td>
       <td>输入</td>
       <td>cmpKv相对于压缩前KV长度的压缩倍率，用于恢复cmp侧mask使用的压缩前KV长度。</td>
-      <td>支持1、4、128；仅传入oriKv时不参与压缩KV计算，CSA场景传4，HCA场景传128。</td>
+      <td>支持1到128；仅传入oriKv时不参与压缩KV计算。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -511,7 +511,7 @@ aclnnStatus aclnnSparseFlashMla(
   </tbody>
   </table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：N1/N2支持1、2、4、8、16、32、64、128；cmp_ratio在SWA场景保持默认值1，CSA支持传入4，HCA支持传入128；block_size取值为16的倍数，最大支持1024；ori_sparse_indices当前暂不支持，cmp_sparse_indices的最后一维K2当前支持512或1024。
   - <term>Ascend 950PR/Ascend 950DT</term>：N1/N2支持2、4、8、16、32、64、128，不支持1。
 
 - **返回值**

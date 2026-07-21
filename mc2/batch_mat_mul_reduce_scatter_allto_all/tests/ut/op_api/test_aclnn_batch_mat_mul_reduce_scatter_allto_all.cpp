@@ -45,12 +45,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 2, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 0),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 0),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -62,12 +62,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -76,15 +76,15 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
 TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllToAllYshardtype1Trans1)
 {
     TensorDesc x = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND,{12,1,2});
+    TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND, {12, 1, 2});
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -96,12 +96,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({1025, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({1025, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({2050, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -113,12 +113,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 0, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -130,12 +130,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
-                        OUTPUT(outDesc));
+    auto ut =
+        OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                  INPUT(x, weight, biasOptional, "", "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+                  OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
@@ -147,12 +147,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        nullptr, 2, 2, 1),
-                        OUTPUT(outDesc));
+    auto ut = OP_API_UT(
+        aclnnBatchMatMulReduceScatterAlltoAll,
+        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group", nullptr, 2, 2, 1),
+        OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
@@ -164,12 +164,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -181,12 +181,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({5, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -198,12 +198,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 5}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -215,12 +215,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 0, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -232,12 +232,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 10, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 10, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -249,12 +249,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 3, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 3, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -266,12 +266,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 65536}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 65536}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 65536}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -283,12 +283,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 0, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -300,12 +300,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({0, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({0, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({0, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -316,12 +316,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({3, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 2, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -332,12 +332,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 3, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 2, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -348,12 +348,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 2, 4}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -364,12 +364,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 1, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -380,12 +380,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -397,12 +397,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 2, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 2),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 2),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -414,12 +414,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 2, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 0),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 0),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -431,12 +431,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 7}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 2, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 0),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 0),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -448,12 +448,12 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 2, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 1),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -465,13 +465,13 @@ TEST_F(L2BatchMatmulReduceScatterAllToAllTest, TestBatchMatmulReduceScatterAllTo
     TensorDesc weight = TensorDesc({2, 2, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc biasOptional = TensorDesc({2, 1, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc outDesc = TensorDesc({4, 2, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll, INPUT(x, weight, biasOptional,
-                        "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
-                        "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 0),
+    auto ut = OP_API_UT(aclnnBatchMatMulReduceScatterAlltoAll,
+                        INPUT(x, weight, biasOptional, "test_batch_matmul_reduce_scatter_all_to_all_ep_group",
+                              "test_batch_matmul_reduce_scatter_all_to_all_tp_group", 2, 2, 0),
                         OUTPUT(outDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
-} // BatchMatmulReduceScatterAlltoAll
+} // namespace BatchMatmulReduceScatterAlltoAll

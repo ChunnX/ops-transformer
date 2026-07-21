@@ -257,7 +257,7 @@ def trans_tnd_actseq(list):
             raise ValueError(f'TND情况下 act_seq_len 为非递减数列 act_seq_len={list}')
     return list_new
 
-def check_result(expect, result, topk_value, output_idx_offset, params):
+def check_result(expect, result, topk_value, output_idx_offset, params, cpu_topk_value, npu_topk_value):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
     block_num, qk_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
     seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
@@ -379,6 +379,9 @@ def check_result(expect, result, topk_value, output_idx_offset, params):
     print(f"total_line is {total_rows}")
     npu_reshape = npu_output.reshape([total_rows, sparse_count])
     cpu_reshape = cpu_output.reshape([total_rows, sparse_count])
+    if return_value:
+        cpu_topk_value = cpu_topk_value.reshape([total_rows, sparse_count])
+        npu_topk_value = npu_topk_value.reshape([total_rows, sparse_count])
     start_time = time()
     invalid_data = cpu_reshape != -1
     valid_lens = invalid_data.sum(axis=-1)  # (total_rows,)
@@ -398,18 +401,21 @@ def check_result(expect, result, topk_value, output_idx_offset, params):
         print(f"有效值集合相同，无需进行比较")
     for t_id in rows:
         bsn = np.unravel_index(t_id, sp)
+        npu_topk_output_value = None
+        cpu_topk_output_value = None
         if layout_query == "TND":
             b_idx, s1_idx = find_batch_and_position(cu_seqlens_q, bsn[0])
             bsn = (b_idx, s1_idx, bsn[-1])
-        cur_cpu_output_value = cpu_reshape[t_id, :]
-        cur_npu_output_value = npu_reshape[t_id, :]
+        if return_value:
+            cpu_topk_output_value = cpu_topk_value[t_id, :]
+            npu_topk_output_value = npu_topk_value[t_id, :]
         npu_pass_t = True
         max_re_t = 0
         valid_len = valid_lens[t_id]
         npu_pass_t, max_re_t = compare_topk_valid(cpu_reshape[t_id, :valid_len], npu_reshape[t_id, :valid_len],
                                                     topk_value, bsn, diff_npu, diff_cpu,
-                                                    cur_npu_output_value,
-                                                    cur_cpu_output_value, thres,
+                                                    npu_topk_output_value,
+                                                    cpu_topk_output_value, thres,
                                                     return_value, output_idx_offset, layout_query, cu_seqlens_q, q_seq)
         if not npu_pass_t:
             npu_pass = False

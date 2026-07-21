@@ -46,31 +46,22 @@ struct AlltoAllvQuantGroupedMatMulApiUtParam {
     op::SocVersion soc;
     aclnnStatus expectResult;
 
-    AlltoAllvQuantGroupedMatMulApiUtParam(const csv_map& csvMap)
+    AlltoAllvQuantGroupedMatMulApiUtParam(const csv_map &csvMap)
     {
         this->case_name = ReadMap(csvMap, "case_name");
-        this->gmmX = GetTensorACL(csvMap, 
-            "gmmx_shape", "gmmx_dtype", "gmmx_format");
-        this->gmmWeight = GetTensorACL(csvMap, 
-            "gmm_weight_shape", "gmm_weight_dtype", "gmm_weight_format");
-        this->gmmXScale = GetTensorACL(csvMap, 
-            "gmmx_scale_shape", "gmmx_scale_dtype", "gmmx_scale_format");
-        this->gmmWeightScale = GetTensorACL(csvMap, 
-            "gmm_weight_scale_shape", "gmm_weight_scale_dtype", "gmm_weight_scale_format");
-        this->mmXOptional = GetTensorACL(csvMap, 
-            "mmx_shape", "mmx_dtype", "mmx_format");
-        this->mmWeightOptional = GetTensorACL(csvMap, 
-            "mm_weight_shape", "mm_weight_dtype", "mm_weight_format");
-        this->mmXScaleOptional = GetTensorACL(csvMap, 
-            "mmx_scale_shape", "mmx_scale_dtype", "mmx_scale_format");
-        this->mmWeightScaleOptional = GetTensorACL(csvMap, 
-            "mm_weight_scale_shape", "mm_weight_scale_dtype", "mm_weight_scale_format");
-        this->gmmY = GetTensorACL(csvMap, 
-            "gmmy_shape", "gmmy_dtype", "gmmy_format");
-        this->mmYOptional = GetTensorACL(csvMap, 
-            "mmy_shape", "mmy_dtype", "mmy_format");
-        this->permuteOutOptional = GetTensorACL(csvMap, 
-            "permuteout_shape", "permuteout_dtype", "permuteout_format");
+        this->gmmX = GetTensorACL(csvMap, "gmmx_shape", "gmmx_dtype", "gmmx_format");
+        this->gmmWeight = GetTensorACL(csvMap, "gmm_weight_shape", "gmm_weight_dtype", "gmm_weight_format");
+        this->gmmXScale = GetTensorACL(csvMap, "gmmx_scale_shape", "gmmx_scale_dtype", "gmmx_scale_format");
+        this->gmmWeightScale =
+            GetTensorACL(csvMap, "gmm_weight_scale_shape", "gmm_weight_scale_dtype", "gmm_weight_scale_format");
+        this->mmXOptional = GetTensorACL(csvMap, "mmx_shape", "mmx_dtype", "mmx_format");
+        this->mmWeightOptional = GetTensorACL(csvMap, "mm_weight_shape", "mm_weight_dtype", "mm_weight_format");
+        this->mmXScaleOptional = GetTensorACL(csvMap, "mmx_scale_shape", "mmx_scale_dtype", "mmx_scale_format");
+        this->mmWeightScaleOptional =
+            GetTensorACL(csvMap, "mm_weight_scale_shape", "mm_weight_scale_dtype", "mm_weight_scale_format");
+        this->gmmY = GetTensorACL(csvMap, "gmmy_shape", "gmmy_dtype", "gmmy_format");
+        this->mmYOptional = GetTensorACL(csvMap, "mmy_shape", "mmy_dtype", "mmy_format");
+        this->permuteOutOptional = GetTensorACL(csvMap, "permuteout_shape", "permuteout_dtype", "permuteout_format");
         this->gmmXQuantMode = stoll(ReadMap(csvMap, "gmmx_quant_mode"));
         this->gmmWeightQuantMode = stoll(ReadMap(csvMap, "gmmx_quant_mode"));
         this->mmXQuantMode = stoll(ReadMap(csvMap, "mmx_quant_mode"));
@@ -86,11 +77,10 @@ struct AlltoAllvQuantGroupedMatMulApiUtParam {
         this->recvCounts = aclCreateIntArray(recvCountsList.data(), recvCountsList.size());
         this->soc = GetCaseSocVersion(csvMap, "soc");
         this->expectResult = GetAclnnRet(csvMap, "expect_result");
-
     }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const AlltoAllvQuantGroupedMatMulApiUtParam& param)
+inline std::ostream &operator<<(std::ostream &os, const AlltoAllvQuantGroupedMatMulApiUtParam &param)
 {
     return os << param.case_name;
 }
