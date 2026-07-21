@@ -19,7 +19,7 @@
 #include <cstdint>
 #endif
 
-namespace Atcoss {
+namespace Apace {
 namespace AivComm {
 
 static constexpr uint32_t COMM_MAX_RANK_NUM = 64;
@@ -40,4 +40,4 @@ struct CommUbmemContext {
 };
 
 } // namespace AivComm
-} // namespace Atcoss
+} // namespace Apace

@@ -1,8 +1,8 @@
-# ATCOSS
+# APACE
 
 ## 项目定位
 
-**ATCOSS**（**A**scend C **T**emplate For **C**ommunication-Compute **O**perator **S**ubroutine）是昇腾 NPU 平台 mc2 通算融合算子的底层模板库，为各类通算融合算子提供可复用的 block 层接口、kernel 层参考实现和tiling 算法，降低通算融合算子的开发成本。
+**APACE**（**A**scend **P**Arallel **C**ommunication-compute **E**ngine）是昇腾 NPU 平台通信和计算融合算子的架构底座，为各类通算融合算子提供可复用的 block 层接口、kernel 层参考实现和tiling 算法，降低通算融合算子的开发成本。
 
 **核心价值**：
 - 降低开发门槛：提供分层接口与参考实现，开发者通过接口组合即可构建融合算子，无需从零实现通信与计算的协同编排
@@ -14,7 +14,7 @@
 ## 目录结构
 
 ```
-atcoss/
+apace/
 ├── kernel/               # 通算融合算子参考实现
 ├── block/
 │   ├── blaze_ext/        #   Blaze 范式扩展
@@ -57,15 +57,15 @@ atcoss/
 
 ## 与 mc2 算子的关系
 
-`mc2/` 下的具体通算融合算子（如 `all_gather_matmul`、`matmul_all_reduce`、`matmul_allto_all` 等）可通过引用本库中的接口完成实现：
+`mc2/` 下的具体通算融合算子（如 `all_gather_matmul`、`matmul_all_reduce`、`matmul_allto_all` 等）可通过引用本软件中的接口完成实现：
 
-- 算子的 `op_host/op_tiling` 层可使用 `atcoss/tiling` 中的智能切分算法确定 tiling 参数。
-- 算子的 `op_kernel` 层可基于 `atcoss/block` 接口组合构建融合 kernel，也可参考 `atcoss/kernel` 实现。
+- 算子的 `op_host/op_tiling` 层可使用 `apace/tiling` 中的智能切分算法确定 tiling 参数。
+- 算子的 `op_kernel` 层可基于 `apace/block` 接口组合构建融合 kernel，也可参考 `apace/kernel` 实现。
 
 ```
 mc2/<op>/op_host    ──┐
-                      └──▶ atcoss/tiling       (tiling 接口)
+                      └──▶ apace/tiling       (tiling 接口)
 mc2/<op>/op_kernel  ──┐
-                      ├──▶ atcoss/block        (block 接口，组合构建)
-                      └──▶ atcoss/kernel       (算子框架，参考实现)
+                      ├──▶ apace/block        (block 接口，组合构建)
+                      └──▶ apace/kernel       (算子框架，参考实现)
 ```

@@ -16,11 +16,11 @@
 #pragma once
 
 #include "collective_comm_context.h"
-#include "atcoss/tiling/comm_tiling_data.h"
+#include "apace/tiling/comm_tiling_data.h"
 #include "tensor_api/tensor/pointer.h"
 #include "barrier/barrier_ubmem.h"
 
-namespace Atcoss {
+namespace Apace {
 namespace AivComm {
 
 using namespace AscendC;
@@ -173,4 +173,4 @@ protected:
 };
 
 } // namespace AivComm
-} // namespace Atcoss
+} // namespace Apace

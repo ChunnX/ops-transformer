@@ -17,7 +17,7 @@
 #include "basic_api/kernel_basic_intf.h"
 #include "tensor_api/tensor.h"
 
-namespace Atcoss {
+namespace Apace {
 namespace AivComm {
 using namespace AscendC;
 
@@ -165,4 +165,4 @@ __aicore__ inline void TeamBarrier::BarrierCrossDevice()
     }
 }
 } // namespace AivComm
-} // namespace Atcoss
+} // namespace Apace

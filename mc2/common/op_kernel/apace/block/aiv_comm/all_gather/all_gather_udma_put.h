@@ -18,7 +18,7 @@
 #include "adv_api/hcomm/hcomm.h"
 #include "../collective_comm_base.h"
 
-namespace Atcoss {
+namespace Apace {
 namespace AivComm {
 
 using namespace AscendC;
@@ -66,4 +66,4 @@ private:
 };
 
 } // namespace AivComm
-} // namespace Atcoss
+} // namespace Apace

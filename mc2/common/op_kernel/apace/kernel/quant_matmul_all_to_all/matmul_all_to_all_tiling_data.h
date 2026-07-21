@@ -27,6 +27,6 @@ struct MatmulAllToAllTilingData {
 };
 
 struct CommContext {
-    Atcoss::AivComm::CommUdmaContext udmaCtx;
-    Atcoss::AivComm::CommUbmemContext ubmemCtx;
+    Apace::AivComm::CommUdmaContext udmaCtx;
+    Apace::AivComm::CommUbmemContext ubmemCtx;
 };

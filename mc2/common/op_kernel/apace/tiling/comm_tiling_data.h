@@ -10,7 +10,7 @@
 
 /*!
  * \file comm_tiling_data.h
- * \brief Atcoss 统一的 CommTilingData 结构体定义
+ * \brief Apace 统一的 CommTilingData 结构体定义
  *
  * 该结构体同时被 host 端切分算法和 kernel 端通信实现使用，
  * 提供简化的 5 字段格式，足以支撑集合通信操作。

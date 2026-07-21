@@ -20,7 +20,7 @@
 #include "all_to_all/all_to_all_udma_put.h"
 #include "all_gather/all_gather_udma_put.h"
 
-namespace Atcoss {
+namespace Apace {
 namespace AivComm {
 
 using namespace AscendC;
@@ -56,4 +56,4 @@ template<CommCollectiveOp Op, CommMode Mode, typename T, typename Barrier, CommA
 using CollectiveComm = typename CollectiveCommHelper<Op, Mode, T, Barrier, Layout>::type;
 
 } // namespace AivComm
-} // namespace Atcoss
+} // namespace Apace

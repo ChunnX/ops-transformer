@@ -1,10 +1,8 @@
-# ATCOSS 模板库设计文档
+# APACE 架构底座设计文档
 
 ## 1. 文档概述
 
-本文档面向内部开发人员，用于技术串讲、评审与汇报。文档以 **6 个关键技术**为主线，系统阐述 **ATCOSS (Ascend C Template For Communication-Compute Operator Subroutine)** 模板库的架构设计与核心技术方案。
-
-ATCOSS 是昇腾 NPU 平台 MC2 通算融合算子的**基础代码架构**，为各类通算融合算子提供可复用的 block 层接口、kernel 层融合算子实现和 tiling 算法，降低通算融合算子的开发成本。
+本文档面向内部开发人员，用于技术串讲、评审与汇报。文档以 **6 个关键技术**为主线，系统阐述 **APACE (Ascend PArallel Communication-compute Engine)** 架构底座的设计与核心技术方案。
 
 **六大关键技术**：
 
@@ -23,7 +21,7 @@ ATCOSS 是昇腾 NPU 平台 MC2 通算融合算子的**基础代码架构**，�
 
 ### 2.1 项目定位
 
-ATCOSS 是 MC2 通算融合算子的基础代码架构，服务于两类目标：
+APACE 是 MC2 通算融合算子的架构底座，服务于两类目标：
 
 **1. 内置 MC2 算子开发**
 - 提供算子编程规范，统一开发标准
@@ -38,14 +36,14 @@ ATCOSS 是 MC2 通算融合算子的基础代码架构，服务于两类目标�
 
 ```
 MC2/<op>/op_host    ──┐
-                      └──▶ atcoss/tiling       (tiling 接口)
+                      └──▶ apace/tiling       (tiling 接口)
 MC2/<op>/op_kernel  ──┐
-                      ├──▶ atcoss/block        (通信、计算接口，组合构建)
-                      └──▶ atcoss/kernel       (融合算子实现，可直接调用或参考)
+                      ├──▶ apace/block        (通信、计算接口，组合构建)
+                      └──▶ apace/kernel       (融合算子实现，可直接调用或参考)
 ```
 
-- 算子的 `op_host/op_tiling` 层可使用 `atcoss/tiling` 中的智能切分算法确定 tiling 参数
-- 算子的 `op_kernel` 层可基于 `atcoss/block` 接口组合构建融合 kernel，也可参考 `atcoss/kernel` 实现
+- 算子的 `op_host/op_tiling` 层可使用 `apace/tiling` 中的智能切分算法确定 tiling 参数
+- 算子的 `op_kernel` 层可基于 `apace/block` 接口组合构建融合 kernel，也可参考 `apace/kernel` 实现
 
 ---
 
@@ -54,7 +52,7 @@ MC2/<op>/op_kernel  ──┐
 ### 3.1 目录结构
 
 ```
-atcoss/
+apace/
 ├── kernel/               # 融合算子实现
 ├── block/
 │   ├── blaze_ext/        #   Blaze 扩展
@@ -102,7 +100,7 @@ graph TB
 - **Host 侧**：`tiling` 提前计算切分参数，结果传递给 kernel 层
 - **Kernel 侧**：`kernel` 融合算子实现，调用 `block`（通信、计算、Blaze 扩展）与 `Blaze` 单核实现
 - **block 依赖 basic**：`basic` 提供 tile 级指令实现，供 `block` 调用
-- **共同依赖 Tensor API**：ATCOSS（`block`、`basic`）和 Blaze 均依赖 Tensor API（内存抽象层），为并列关系而非串行
+- **共同依赖 Tensor API**：APACE（`block`、`basic`）和 Blaze 均依赖 Tensor API（内存抽象层），为并列关系而非串行
 - **blaze_ext 复用 Blaze**：BlockScheduler、Tile 原语来自 Blaze
 
 ### 3.3 核心模块概览
@@ -123,7 +121,7 @@ graph TB
 
 ### 4.1 问题背景与设计目标
 
-昇腾 NPU 平台支持多种通信引擎和通信协议。引擎决定通信执行载体（在哪种处理单元上发起通信），协议决定数据传输路径（数据走哪条物理通路）。引擎与协议组合形成不同的通信通道，各组合的 API 风格、适用场景、性能特征差异显著。ATCOSS 覆盖了**最主流的引擎 + 协议组合**，满足通算融合算子的核心通信需求。
+昇腾 NPU 平台支持多种通信引擎和通信协议。引擎决定通信执行载体（在哪种处理单元上发起通信），协议决定数据传输路径（数据走哪条物理通路）。引擎与协议组合形成不同的通信通道，各组合的 API 风格、适用场景、性能特征差异显著。APACE 覆盖了**最主流的引擎 + 协议组合**，满足通算融合算子的核心通信需求。
 
 **通信引擎**：
 
@@ -142,7 +140,7 @@ graph TB
 
 ### 4.2 统一抽象与四段式 API
 
-为达成上述目标，ATCOSS 设计了**三层抽象 + 编译期选择**机制：
+为达成上述目标，APACE 设计了**三层抽象 + 编译期选择**机制：
 
 ```mermaid
 graph TB
@@ -155,7 +153,7 @@ graph TB
         B["Init → Commit → Wait → Finalize"]
     end
     subgraph L3["算法实现层"]
-        C1["AIV + URMA：ATCOSS 自行实现"]
+        C1["AIV + URMA：APACE 自行实现"]
         C2["AICPU / CCU：Ascend C 内置接口"]
     end
     A1 & A2 & A3 -->|"模板参数选择"| B
@@ -167,7 +165,7 @@ graph TB
 
 **可扩展性**：新增引擎或协议时，只需在算法实现层（L3）新增一个适配实现并满足四段式 API 契约，上层通信原语（L1）与已有通算融合算子代码均无需修改。扩展点从"散落各算子"收敛为"新增一个适配文件"。
 
-ATCOSS 对标准集合通信语义提供**四段式 API**：`Init → Commit → Wait → Finalize`。
+APACE 对标准集合通信语义提供**四段式 API**：`Init → Commit → Wait → Finalize`。
 
 ```mermaid
 graph LR
@@ -311,7 +309,7 @@ graph TB
 
 ### 5.2 FragmentTensor 虚拟重排
 
-ATCOSS 设计了 **FragmentTensor** 离散内存的统一抽象层：
+APACE 设计了 **FragmentTensor** 离散内存的统一抽象层：
 
 **核心思想**：不做物理搬运，通过虚拟重排让离散内存"看起来"连续。FragmentTensor 是多个独立 Tensor 沿一个轴拼接聚合，每个 Tensor 有独立的内存地址和 Layout。
 
@@ -608,7 +606,7 @@ graph LR
 
 两级切分策略从核利用率优先保底到公式化极致，覆盖不同性能需求场景。核利用率优先切分开箱即用，保证基本通算重叠效果；公式化切分通过性能建模与长短块配平，适配具体机型达到极致性能。预留参数为后续深度流水线优化保留扩展空间。
 
-以上技术一~四聚焦通算融合的性能优化。此外，ATCOSS 的代码架构设计——模块分核解耦与内存管理——支撑上述性能优化能力的可复用、可扩展实现，详见第 8、9 章。
+以上技术一~四聚焦通算融合的性能优化。此外，APACE 的代码架构设计——模块分核解耦与内存管理——支撑上述性能优化能力的可复用、可扩展实现，详见第 8、9 章。
 
 ---
 
@@ -660,9 +658,9 @@ __aicore__ inline void Swiglu(
 ```
 `aiv_compute/` 下 quant、swiglu 等模块均**零引用** `jobIndex`/`blockIdx`，纯数据驱动。
 
-#### 8.3.2 复杂任务：thread 抽象
+#### 8.3.2 复杂任务：job 抽象
 
-**设计要点**：当任务**无法按数据切分**时（如集合通信需按 rank 分配对端，每个核负责不同的 targetRank），引入 `jobIndex`/`totalJobs` 逻辑编号——任务切分为若干 thread，每个 AIV 认领一个 jobIndex 执行。
+**设计要点**：当任务**无法按数据切分**时（如集合通信需按 rank 分配对端，每个核负责不同的 targetRank），引入 `jobIndex`/`totalJobs` 逻辑编号——任务切分为若干 job，每个 AIV 认领一个 jobIndex 执行。
 
 **接口签名**（`block/aiv_comm/collective_comm_base.h`）：
 ```cpp
@@ -699,7 +697,7 @@ if ((blockIdx >= 4) && (blockIdx < 8)) {
 核心是 `block` 模块的**实现与分核逻辑解耦**，通过两种编程模式覆盖不同任务特征：
 
 - **CV 协同模式**：AIV+AIC 紧耦合任务，CrossCore Flag 保证 CV 数据依赖，Blaze 动态调度处理计算侧尾块与 double buffer
-- **单核独立模式**：简单任务数据 tile 驱动（零核依赖），复杂任务 thread 抽象（threadId 自动分核），`blockIdx → jobIndex` 映射收敛在入口一处
+- **单核独立模式**：简单任务数据 tile 驱动（零核依赖），复杂任务 job 抽象（jobIndex 自动分核），`blockIdx → jobIndex` 映射收敛在入口一处
 
 两种模式共同达成"高内聚、低耦合、可复用"：模块实现与分核逻辑解耦，核分配策略与业务逻辑分离，换算子场景只改入口映射，模块零改动。
 
@@ -774,7 +772,7 @@ auto gmA = Te::MakeTensor(
 
 ### 9.3 常量化折叠：编译期推导与 Host 预计算
 
-ATCOSS 大量使用**常量化折叠**（constant folding）手段处理内存布局与偏移计算：能在编译期确定的用 `constexpr` 折叠为常量，不能在编译期确定的由 Host 在 Tiling 阶段提前算好下发，Kernel 侧不做运行期地址计算。
+APACE 大量使用**常量化折叠**（constant folding）手段处理内存布局与偏移计算：能在编译期确定的用 `constexpr` 折叠为常量，不能在编译期确定的由 Host 在 Tiling 阶段提前算好下发，Kernel 侧不做运行期地址计算。
 
 **编译期折叠**：静态参数（通信原语 `CollectiveOp`、模式 `CommMode`、维度 `Dims`、数据类型等）作为模板参数，编译期确定并推导内存布局/偏移。典型手段：
 - `static constexpr` 定义偏移表与尺寸上限，`static_assert` 编译期校验不越界：
@@ -809,7 +807,7 @@ uint64_t availableUb = tilingData->ubSize - UB_RESERVE;
 
 **设计原则：kernel 编译期静态规划分区，block 申明需求量**
 
-每个 AIV 核的 UB 地址从 `0x0` 开始连续，各 block 模块共享。ATCOSS 的 UB 管理方式如下：
+每个 AIV 核的 UB 地址从 `0x0` 开始连续，各 block 模块共享。APACE 的 UB 管理方式如下：
 
 **1. kernel 编译期静态分配**
 
@@ -881,7 +879,7 @@ prologue_.Init(dispatchBufOffset, ...);    // block 收 constexpr offset，内�
 
 ### 9.5 小结
 
-本章从三个层面构建 ATCOSS 的内存编程基座：Tensor API 通过地址与排布分离简化数据切分与地址计算；常量化折叠将地址计算前移至编译期与 Host 侧，消除 Kernel 运行期开销；UB 管理通过 kernel 编译期静态规划、block 申明需求、裸 offset 传递实现 UB 空间的高效利用与跨阶段复用，编译期 static_assert 保证不越界。三者协同——Tensor API 提供 offset 与 layout 组合抽象，常量化折叠确定 offset 取值来源，UB 管理在此基础上实现 kernel 驱动的编译期静态分区分配。FragmentTensor（第 5 章技术二）在 Tensor API 之上构建离散内存的虚拟重排，是内存数据分离设计的上层应用。模块分核解耦（第 8 章技术五）与本章内存管理共同构成 ATCOSS 的代码架构基座，支撑技术一~四的性能优化能力可复用、可扩展。
+本章从三个层面构建 APACE 的内存编程基座：Tensor API 通过地址与排布分离简化数据切分与地址计算；常量化折叠将地址计算前移至编译期与 Host 侧，消除 Kernel 运行期开销；UB 管理通过 kernel 编译期静态规划、block 申明需求、裸 offset 传递实现 UB 空间的高效利用与跨阶段复用，编译期 static_assert 保证不越界。三者协同——Tensor API 提供 offset 与 layout 组合抽象，常量化折叠确定 offset 取值来源，UB 管理在此基础上实现 kernel 驱动的编译期静态分区分配。FragmentTensor（第 5 章技术二）在 Tensor API 之上构建离散内存的虚拟重排，是内存数据分离设计的上层应用。模块分核解耦（第 8 章技术五）与本章内存管理共同构成 APACE 的代码架构基座，支撑技术一~四的性能优化能力可复用、可扩展。
 
 ---
 

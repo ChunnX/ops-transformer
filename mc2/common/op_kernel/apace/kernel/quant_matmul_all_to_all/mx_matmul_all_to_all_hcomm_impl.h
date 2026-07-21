@@ -33,7 +33,7 @@
 namespace MatmulAllToAllMxImpl {
 
 using namespace AscendC;
-using namespace Atcoss::AivComm;
+using namespace Apace::AivComm;
 
 template <typename AType, typename BType, typename CType, bool LocalDelay>
 class MatmulAllToAllMxImpl {
