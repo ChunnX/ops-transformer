@@ -16,6 +16,25 @@ import torch.distributed as dist
 
 from cann_ops_transformer.op_builder.builder import OpBuilder
 
+@dataclass
+class EngramFetchCtx:
+    """训练态前向的 save-for-backward，原样传给 engram_fetch_grad。
+
+    前向 EngramFetch(with_grad=True) 产出以下 5 个 tensor，打包为 EngramFetchCtx 返回给用户。
+    反向 EngramFetchGrad 吃入这些 tensor，不自行重算（会漏 a2a 结果 recvLocalEntry）。
+
+    Attributes:
+        perm: (T,) int32 — 桶排列序索引（原始 pos → 桶排 pos），反向步骤①按此重排 grad
+        sendCounts: (W,) int32 — 每 rank 发送的 index 数，反向 a2a 的 send 量
+        recvCounts: (W,) int32 — 每 rank 接收的 index 数，反向 a2a 的 recv 量
+        recvLocalEntry: (R_max,) int32 — 收到的 local entry，反向步骤③ scatter-add 按此聚合
+        numRecv: (1,) int32 — 实际接收行数 R（前 numRecv 个有效）
+    """
+    perm: torch.Tensor
+    sendCounts: torch.Tensor
+    recvCounts: torch.Tensor
+    recvLocalEntry: torch.Tensor
+    numRecv: torch.Tensor
 
 class ElasticBufferOpBuilder(OpBuilder):
     """OpBuilder for ElasticBuffer operations"""
@@ -100,6 +119,7 @@ class ElasticBuffer:
         num_max_tokens_per_rank: Optional[int] = None,
         hidden: Optional[int] = None,
         num_topk: Optional[int] = None,
+        with_grad: bool = False,
     ):
         """
         Initialize the ElasticBuffer.
@@ -125,19 +145,21 @@ class ElasticBuffer:
             ),
         )
         moe_args = (num_max_tokens_per_rank, hidden, num_topk)
-        moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
-        missing_args = [name for name, val in zip(moe_arg_names, moe_args) if val is None]
-        torch._check(
-            len(missing_args) == 0 or len(missing_args) == len(moe_args),
-            lambda: (
-                "num_max_tokens_per_rank, hidden and num_topk "
-                "must be specified together for MoE dispatch/combine, "
-                f"missing: {', '.join(missing_args)}."
-            ),
-        )
+        if not with_grad:
+            moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
+            missing_args = [name for name, val in zip(moe_arg_names, moe_args) if val is None]
+            torch._check(
+                len(missing_args) == 0 or len(missing_args) == len(moe_args),
+                lambda: (
+                    "num_max_tokens_per_rank, hidden and num_topk "
+                    "must be specified together for MoE dispatch/combine, "
+                    f"missing: {', '.join(missing_args)}."
+                ),
+            )
 
         self._group = group
         self._num_cpu_bytes = num_cpu_bytes
+        self._with_grad = with_grad
         self._rank_id = dist.get_rank(self._group)
         self._ep_world_size = dist.get_world_size(self._group)
 
@@ -150,7 +172,10 @@ class ElasticBuffer:
             lambda: "HCCL comm name is empty, please check HCCL group initialization.",
         )
         _elastic_buffer_ops = _elastic_buffer_op_builder.load()
-        self._runtime = _elastic_buffer_ops.ElasticBuffer(self._group_name, self._num_cpu_bytes)
+        self._runtime = _elastic_buffer_ops.ElasticBuffer(
+            self._group_name, self._num_cpu_bytes,
+            num_max_tokens_per_rank if num_max_tokens_per_rank is not None else 0,
+            self._with_grad)
 
         self._num_max_tokens_per_rank = num_max_tokens_per_rank
         self._hidden = hidden
@@ -326,6 +351,26 @@ class ElasticBuffer:
                 to fully drain the device.
         """
         self._runtime.engram_barrier(use_comm_stream, with_cpu_sync)
+
+
+    def engram_fetch_grad(self, grad_fetched: torch.Tensor,
+                               fetch_ctx: EngramFetchCtx
+                               ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Backward: launch fused kernel aclnnEngramFetchGrad.
+
+        Returns:
+            (grad_unique, unique_local_entry):
+                grad_unique (K, H) fp32 — 累加后的稀疏梯度，喂优化器。
+                unique_local_entry (K,) int32 — 1D sparse index。
+        """
+        torch._check(grad_fetched.device.type == torch.device("npu").type,
+                     lambda: f"grad_fetched must be on NPU, got device: {grad_fetched.device}")
+        torch._check(grad_fetched.dim() == 2,
+                     lambda: f"grad_fetched must be 2D, got dimensions: {grad_fetched.dim()}")
+        return self._runtime.engram_fetch_grad(
+            grad_fetched, fetch_ctx.perm, fetch_ctx.sendCounts,
+            fetch_ctx.recvCounts, fetch_ctx.recvLocalEntry, fetch_ctx.numRecv)
 
     def dispatch(
         self,
