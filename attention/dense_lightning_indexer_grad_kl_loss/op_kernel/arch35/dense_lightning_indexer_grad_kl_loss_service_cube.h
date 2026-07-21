@@ -794,6 +794,7 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34Deter(const DLIGradKL
             auto dstGm = dKeyIndexDeterGmFloat[dKeyGmOffset];
             MmadInner(mm3Params, l1aTensor, l1bTensor, l0cTensor, l1PingPongFlag, l0abPingPongFlag, l0abPingPongFlag);
             FixOutAtomicAdd(mm3Params, dstGm, l0cTensor, l0abPingPongFlag);
+            PipeBarrier<PIPE_FIX>();
             l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
         }
         SetFlag<AscendC::HardEvent::MTE1_MTE2>(SYNC_MTE21_FLAG_Q_INDEX[l1PingPongFlag & 1]);
