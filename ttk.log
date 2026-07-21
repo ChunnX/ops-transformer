@@ -1,48 +1,43 @@
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# GRAPH_PATH=7 PYTHONPATH=/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python
-3 -m ttk e2e -i /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv --plugin /home/z00954345/jialunew/ops-transformer/attention/quant_fl
-ash_attn/tests/assets --backend npu -t TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 --run 1 --warmup false
-2026-07-21 03:48:19,503 [INFO] [2900235 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv 
-2026-07-21 03:48:23,964 [INFO] [2900235 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-21 03:48:24,540 [INFO] [2900235 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-21 03:48:24,540 [INFO] [2900235 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-21 03:48:24,540 [INFO] [2900235 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-21 03:48:24,540 [INFO] [2900235 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-21 03:48:25,700 [INFO] [2900235 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-21 03:48:25,706 [INFO] [2900235 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-21 03:48:25,706 [INFO] [2900235 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-21 03:48:26,846 [INFO] [2900235 MP MT] [instance.py:42]: Device count: 1 
-2026-07-21 03:48:26,846 [INFO] [2900235 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-21 03:48:26,846 [INFO] [2900235 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-21 03:48:26,846 [INFO] [2900235 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv ... 
-2026-07-21 03:48:26,847 [INFO] [2900235 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
-2026-07-21 03:48:26,847 [INFO] [2900235 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv --plugin /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/assets --backend npu -o func_result.csv --warmup false --run 1 -t PA_NZ_B1_QS3_KVS320_Nq128_Nkv8_D128_SP3
+2026-07-21 06:14:32,782 [INFO] [3280171 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv 
+2026-07-21 06:14:37,233 [INFO] [3280171 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-21 06:14:37,796 [INFO] [3280171 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-21 06:14:37,859 [INFO] [3280171 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-21 06:14:37,859 [INFO] [3280171 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-21 06:14:37,859 [INFO] [3280171 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-21 06:14:39,003 [INFO] [3280171 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-21 06:14:39,009 [INFO] [3280171 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-21 06:14:39,009 [INFO] [3280171 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-21 06:14:40,148 [INFO] [3280171 MP MT] [instance.py:42]: Device count: 1 
+2026-07-21 06:14:40,148 [INFO] [3280171 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-21 06:14:40,148 [INFO] [3280171 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-21 06:14:40,148 [INFO] [3280171 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv ... 
+2026-07-21 06:14:40,149 [INFO] [3280171 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-21 06:14:40,149 [INFO] [3280171 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
 ninja: no work to do.
 ninja: no work to do.
-get env GRAPH_PATH = 7
 Checking testcase name...
 Case number: 1
 Initialize output csv file...
-Output csv file is not specified. It will be set as /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_result.csv
 Process per device: 1
 Preparing Task Executors...
 
 +-------------------------------------------------------------------------------------------------------+
 | Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
 +-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 2901464 D0P0             UNKNOWN              IDLE     0s  |
+| npu:0                                    | 3280495 D0P0             UNKNOWN              IDLE     0s  |
 +-------------------------------------------------------------------------------------------------------+
-2026-07-21 03:48:33,155 [INFO] [2901464 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-21 03:48:33,811 [INFO] [2901464 TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 OnWaitingForMemory] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-21 06:14:46,538 [INFO] [3280495 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-21 06:14:47,259 [INFO] [3280495 PA_NZ_B1_QS3_KVS320_Nq128_Nkv8_D128_SP3 OnWaitingForMemory] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
 ninja: no work to do.
 ninja: no work to do.
-get env GRAPH_PATH = 7
 
 ----------------------------------------------------------------------------------------------------
 API Name: qfa_mxfp8_wrapper.npu_qfa_mxfp8
 Golden API: 
 Backend: npu
 ////////////// Tensors //////////////
-Input View Shapes: ((1, 1, 3, 64), (1, 1, 640, 64), (1, 1, 640, 64), (1, 1, 3, 2), (1, 1, 640, 2), (1, 1, 20, 64), (1,), (0,))
+Input View Shapes: ((1, 128, 3, 128), (1, 8, 0, 128), (1, 8, 0, 128), (1, 128, 3, 4), (1, 8, 0, 4), (1, 8, 0, 128), (1,), (0,))
 Input Dtypes: ('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')
 Input Storage Shapes: ()
 Input Formats: ()
@@ -52,19 +47,19 @@ Input View Strides: ()
 Output Tensor Indexes: ()
 //////////// Attributes //////////
 B: 1
-N_q: 1
-N_kv: 1
-D: 64
+N_q: 128
+N_kv: 8
+D: 128
 cu_seqlens_q: [0, 3]
-cu_seqlens_kv: [0, 640]
+cu_seqlens_kv: []
 seqused_q: [3]
-seqused_kv: [640]
+seqused_kv: [320]
 max_seqlen_q: 3
-max_seqlen_kv: 640
-enable_pa: False
-kv_cache_layout: TND
-block_size: 512
-mask_mode: 0
+max_seqlen_kv: 320
+enable_pa: True
+kv_cache_layout: PA_NZ
+block_size: 1024
+mask_mode: 3
 q_scale_layout: N2TGD
 quant_mode: 1
 enable_lse: False
@@ -81,72 +76,29 @@ Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None
 Precision Tolerance: None
 Absolute Precision: (1e-08,)
 Mode: ASCEND_ONBOARD
-PID: 2901464
+PID: 3280495
 Device: 0
 ----------------------------------------------------------------------------------------------------
-
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[WRAPPER] graph_path=0, 调用 npu_mxfp8_fa
+[NPU] Q layout: q_layout=N2TGD, G=16
+[NPU TND] q=torch.Size([3, 128, 128])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([8, 3, 16, 2, 2])
+[WRAPPER] NPU 调用失败: index 0 is out of bounds for dimension 0 with size 0
+get env ASCEND_GLOBAL_LOG_LEVEL = 3
+[2026-07-21 06:14:51] [INFO] [3281658] profiler.py: Start parsing profiling data in sync mode at: /tmp/ttk_npu_prof_1l4o_fn4/aa_3280495_20260721061450318_ascend_pt
+|
 +-------------------------------------------------------------------------------------------------------+
 | Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 13s Rev: 7f1d28b                      |
 +-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 2901464 Nq1_Nkv1_D64_SP0 OnEagerProfiling     RUNNING  3s  |
+| npu:0                                    | 3280495 28_Nkv8_D128_SP3 OnEagerProfiling     RUNNING  3s  |
 +-------------------------------------------------------------------------------------------------------+
-[WRAPPER] 使用环境变量 GRAPH_PATH=7 (覆盖 CSV graph_path)
-[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
-[WRAPPER] graph_path=7, 调用 npu_mxfp8_fa
-[NPU] Q layout: q_layout=N2TGD, G=1
-[NPU TND] q=torch.Size([3, 1, 64])
-[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 3, 1, 1, 2])
-[NPU TND] k=torch.Size([640, 1, 64]), v=torch.Size([640, 1, 64])
-[NPU TND] K scale shape=torch.Size([640, 1, 1, 2]), V scale shape=torch.Size([10, 1, 64, 2])
-[NPU] prepare non-PA inputs done.
-[NPU] 调用 TND 模式 (GRAPH_PATH=7)...
-[NPU] 调用 aclgraph (npugraph_ex)...
-get env TORCHINDUCTOR_CACHE_DIR = /tmp/torchinductor_root
-
-+--------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 23s Rev: 7f1d28b                       |
-+--------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 2901464 Nq1_Nkv1_D64_SP0 OnEagerProfiling     RUNNING  13s  |
-+--------------------------------------------------------------------------------------------------------+
-[E721 03:48:49.240893304 OpParamMaker.cpp:354] call aclnnQuantFlashAttn failed, detail:[PID: 2901464] 2026-07-21-03:48:49.520.503 AclNN_Runtime_Error(EZ9903): Assert ((NnopbaseExecutorLaunchKernel(executor, stream, numBlocks)) == 0) failed
-        Solution: In this scenario, collect the plog when the fault occurs and locate the fault based on the plog.
-TraceBack (most recent call last):
-        The error from device(chipId:0, dieId:0), serial number is 237, an exception occurred during AICPU execution, stream_id:2, task_pos:2, errcode:22007, msg:inner error.[FUNC:ProcessStarsAicpuErrorInfo][FILE:device_error_proc.cc][LINE:1198]
-        An error occurred in the kernel task, retCode=0x2a, [aicpu exception].[FUNC:PreCheckTaskErr][FILE:davinci_kernel_task.cc][LINE:1262]
-        AI CPU kernel execution failed, device_id=0, stream_id=2, task_pos=2, soName=15443894426268649239_5363520.so, funcName=RunCpuKernel, kernelName=QuantFlashAttnMetadata, errorCode=0x2a.[FUNC:PrintAicpuErrorInfo][FILE:davinci_kernel_task.cc][LINE:988]
-        Failed to check task send status, stream_id=2, retCode=0x715002a.[FUNC:StreamLaunchKernelV2][FILE:aix_starsv2.cc][LINE:520]
-        rtsLaunchKernelWithHostArgs execution failed, reason=aicpu exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:69]
-        Check aclrtLaunchKernelWithHostArgs(funcHandle, numBlocks, stream, &cfg, executor->argsExt.args, executor->argsExt.argsSize, rtsHostPlaceHolder.data(), rtsHostPlaceHolder.size()) failed
-        Assert ((NnopbaseExecutorLaunchKernel(executor, stream, numBlocks)) == 0) failed
-        Check NnopbaseExecutorKernelLaunch(executor, stream) failed
-        Check NnopbaseRunWithWorkspace(executor, stream, workspace, workspaceSize) failed
-
-Exception raised from operator() at /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/csrc/quant_flash_attn.cpp:111 (most recent call first):
-frame #0: c10::Error::Error(c10::SourceLocation, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> >) + 0x9d (0x147f67cbd3fd in /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/lib/libc10.so)
-frame #1: c10::detail::torchCheckFail(char const*, char const*, unsigned int, std::__cxx11::basic_string<char, std::char_traits<char>, std::allocator<char> > const&) + 0xc3 (0x147f67c5196d in /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/lib/libc10.so)
-frame #2: <unknown function> + 0xdaba (0x147f1eca5aba in /root/.cache/torch_extensions/py311_cpu/quant_flash_attn/quant_flash_attn.so)
-frame #3: <unknown function> + 0x5204cd6 (0x147f62fddcd6 in /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/lib/libtorch_npu.so)
-frame #4: <unknown function> + 0x185a141 (0x147f5f633141 in /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/lib/libtorch_npu.so)
-frame #5: <unknown function> + 0x185b340 (0x147f5f634340 in /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/lib/libtorch_npu.so)
-frame #6: <unknown function> + 0x1858db7 (0x147f5f631db7 in /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch_npu/lib/libtorch_npu.so)
-frame #7: <unknown function> + 0x9a7eef (0x147f5dc0beef in /home/z00954345/Ascendfzxttk/cann/lib64/libhccl.so)
-frame #8: <unknown function> + 0x8609 (0x147fe8e32609 in /lib/x86_64-linux-gnu/libpthread.so.0)
-frame #9: clone + 0x43 (0x147fe8bfb353 in /lib/x86_64-linux-gnu/libc.so.6)
-
-[WRAPPER] NPU 调用失败: The Inner error is reported as above. The process exits for this inner error, and the current working operator name is aclnnQuantFlashAttn.
-Since the operator is called asynchronously, the stacktrace may be inaccurate. If you want to get the accurate stacktrace, please set the environment variable ASCEND_LAUNCH_BLOCKING=1.
-Note: ASCEND_LAUNCH_BLOCKING=1 will force ops to run in synchronous mode, resulting in performance degradation. Please unset ASCEND_LAUNCH_BLOCKING in time after debugging.
-[ERROR] 2026-07-21-03:48:49 (PID:2901464, Device:0, RankID:-1) ERR00100 PTA call acl api failed.
-
-[2026-07-21 03:48:49] [ERROR] [2901464] profiler.py: Call step failed. Exception: npuSynchronizeDevice:../torch_npu/csrc/core/npu/NPUStream.cpp:565 NPU function error: device error type 0xFFFF, EE9999: Inner Error!
-EE9999[PID: 2901464] 2026-07-21-03:48:49.529.599 (EE9999):  rtDeviceSynchronizeWithTimeout execution failed, reason=aicpu exception[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:69]
-TraceBack (most recent call last):
-, error code is 507018
-[ERROR] 2026-07-21-03:48:49 (PID:2901464, Device:0, RankID:-1) ERR00100 PTA call acl api failed
-[TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0] Error: The Inner error is reported as above. The process exits for this inner error, and the current working operator name is aclnnQuantFlashAttn.
-Since the operator is called asynchronously, the stacktrace may be inaccurate. If you want to get the accurate stacktrace, please set the environment variable ASCEND_LAUNCH_BLOCKING=1.
-Note: ASCEND_LAUNCH_BLOCKING=1 will force ops to run in synchronous mode, resulting in performance degradation. Please unset ASCEND_LAUNCH_BLOCKING in time after debugging.
-[ERROR] 2026-07-21-03:48:49 (PID:2901464, Device:0, RankID:-1) ERR00100 PTA call acl api failed.
+[2026-07-21 06:14:53] [ERROR] [3281658] profiler.py: Failed to get acl to npu flow events. For details, please check the logs at: /tmp/ttk_npu_prof_1l4o_fn4/aa_3280495_20260721061450318_ascend_pt/logs
+[2026-07-21 06:14:53] [INFO] [3281677] profiler.py: CANN profiling data parsed in a total time of 0:00:02.037331
+[2026-07-21 06:14:54] [WARNING] [3281658] profiler.py: Failed to get api data from db.
+[2026-07-21 06:14:54] [WARNING] [3281658] profiler.py: Failed to get task data from db.
+[2026-07-21 06:14:54] [INFO] [3281658] profiler.py: All profiling data parsed in a total time of 0:00:03.508632
+[PA_NZ_B1_QS3_KVS320_Nq128_Nkv8_D128_SP3] Error: index 0 is out of bounds for dimension 0 with size 0
 Traceback (most recent call last):
   File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
     _do_profile(testcase, backend, device_grant_events, device_granted_indices,
@@ -159,18 +111,17 @@ Traceback (most recent call last):
   File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 135, in npu_qfa_mxfp8
     atten_out, lse_out = golden_mod.npu_mxfp8_fa(
                          ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1232, in npu_mxfp8_fa
-    atten_out, lse_out = mxfp8_fa_torch_npu(**inputs)
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1290, in mxfp8_fa_torch_npu
-    atten_out = atten_out.cpu().detach()
-                ^^^^^^^^^^^^^^^
-RuntimeError: The Inner error is reported as above. The process exits for this inner error, and the current working operator name is aclnnQuantFlashAttn.
-Since the operator is called asynchronously, the stacktrace may be inaccurate. If you want to get the accurate stacktrace, please set the environment variable ASCEND_LAUNCH_BLOCKING=1.
-Note: ASCEND_LAUNCH_BLOCKING=1 will force ops to run in synchronous mode, resulting in performance degradation. Please unset ASCEND_LAUNCH_BLOCKING in time after debugging.
-[ERROR] 2026-07-21-03:48:49 (PID:2901464, Device:0, RankID:-1) ERR00100 PTA call acl api failed.
-
-Profiling process failed for testcase TND_B1_QS3_KVS640_Nq1_Nkv1_D64_SP0 with pid 2901464, fail reason:
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1213, in npu_mxfp8_fa
+    inputs = prepare_npu_inputs(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1123, in prepare_npu_inputs
+    k_pa = mxfp8_pa_preprocessing(k_fp8, act_seqused_kv, BLOCK_SIZE, block_table_torch,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 560, in mxfp8_pa_preprocessing
+    blockid = int(bid_table[blk_idx])
+                  ~~~~~~~~~^^^^^^^^^
+IndexError: index 0 is out of bounds for dimension 0 with size 0
+Profiling process failed for testcase PA_NZ_B1_QS3_KVS320_Nq128_Nkv8_D128_SP3 with pid 3280495, fail reason:
 Traceback (most recent call last):
   File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
     _do_profile(testcase, backend, device_grant_events, device_granted_indices,
@@ -183,17 +134,16 @@ Traceback (most recent call last):
   File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 135, in npu_qfa_mxfp8
     atten_out, lse_out = golden_mod.npu_mxfp8_fa(
                          ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1232, in npu_mxfp8_fa
-    atten_out, lse_out = mxfp8_fa_torch_npu(**inputs)
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1290, in mxfp8_fa_torch_npu
-    atten_out = atten_out.cpu().detach()
-                ^^^^^^^^^^^^^^^
-RuntimeError: The Inner error is reported as above. The process exits for this inner error, and the current working operator name is aclnnQuantFlashAttn.
-Since the operator is called asynchronously, the stacktrace may be inaccurate. If you want to get the accurate stacktrace, please set the environment variable ASCEND_LAUNCH_BLOCKING=1.
-Note: ASCEND_LAUNCH_BLOCKING=1 will force ops to run in synchronous mode, resulting in performance degradation. Please unset ASCEND_LAUNCH_BLOCKING in time after debugging.
-[ERROR] 2026-07-21-03:48:49 (PID:2901464, Device:0, RankID:-1) ERR00100 PTA call acl api failed.
-
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1213, in npu_mxfp8_fa
+    inputs = prepare_npu_inputs(
+             ^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1123, in prepare_npu_inputs
+    k_pa = mxfp8_pa_preprocessing(k_fp8, act_seqused_kv, BLOCK_SIZE, block_table_torch,
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 560, in mxfp8_pa_preprocessing
+    blockid = int(bid_table[blk_idx])
+                  ~~~~~~~~~^^^^^^^^^
+IndexError: index 0 is out of bounds for dimension 0 with size 0
 
 During handling of the above exception, another exception occurred:
 
@@ -207,4 +157,3 @@ Traceback (most recent call last):
 AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
 
 ttk Profiling complete
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# 
