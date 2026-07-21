@@ -91,7 +91,6 @@ constexpr uint64_t UB_ALIGN = 32UL;
 constexpr uint32_t DIRECT_MODE = 0;
 constexpr uint32_t HYBRID_MODE = 1;
 constexpr uint64_t HYBRID_ROUTE_WORKSPACE_BYTES = 0UL;
-constexpr uint32_t HYBRID_COUNTER_STRIDE = 2U; // hybrid sendCntPerRank: state + dstRankRecvNum
 
 static uint32_t ApplyDebugNetworkModeOverride(uint32_t networkMode, const char *nodeName)
 {
@@ -854,9 +853,11 @@ static uint64_t CalcDispatchWorkspace(MoeEpDispatchInfo &info)
     uint64_t scaleoutSendWorkspaceBytes;
     uint64_t routeWorkspaceBytes;
     if (info.networkMode == HYBRID_MODE) {
-        // hybrid: sendCntPerRank 紧凑布局 (state + dstRankRecvNum per rank), slot 512 对齐
-        sendCntPerRankBytes = AlignUpWin(epWorldSize * HYBRID_COUNTER_STRIDE * sizeof(int32_t));
-        scaleupSendWorkspaceBytes = epWorldSize * nmt * static_cast<uint64_t>(info.scaleupSlotAlignedBytes);
+        // hybrid: sendCntPerRank 与 direct 一致, 每 rank 512B (state + dstRankRecvNum), 便于通信对齐
+        sendCntPerRankBytes = epWorldSize * WIN_ADDR_ALIGN;
+        // intraServerDataSend: 仅为本 server 内 U 个 rank 预留 staging, 按 512B 对齐 slot
+        scaleupSendWorkspaceBytes = static_cast<uint64_t>(info.rankSizePerServer) * nmt *
+                                    static_cast<uint64_t>(info.scaleupSlotAlignedBytes);
         scaleoutSendWorkspaceBytes = superNodeCount * nmt * static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
         routeWorkspaceBytes = HYBRID_ROUTE_WORKSPACE_BYTES;
     } else {
