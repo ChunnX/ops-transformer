@@ -922,7 +922,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)
 
                             T.set_flag("fix", "m", 7)
-                            T.set_flag("fix", "m", 9)
+                            T.set_flag("fix", "m", 6)
 
                             for s1_row in T.serial(s1_start_v1, s1_end_v1):
                                 # QueryIndex is invariant across K tiles for this S1 row.
@@ -978,10 +978,10 @@ def tilelang_grad_kl_loss_single_kernel(
                                     T.copy(QI_L1_dk, QI_L0B_dk)
                                     T.set_flag("mte1", "m", 10)
                                     T.wait_flag("mte1", "m", 10)
-                                    T.wait_flag("fix", "m", 9)
+                                    T.wait_flag("fix", "m", 6)
                                     T.mma(RG_L0A_dk, QI_L0B_dk, DK_L0C, init=True)
-                                    T.set_flag("m", "fix", 9)
-                                    T.wait_flag("m", "fix", 9)
+                                    T.set_flag("m", "fix", 6)
+                                    T.wait_flag("m", "fix", 6)
                                     T.copy(
                                         DK_L0C,
                                         dk_matmul_partial[
@@ -991,10 +991,10 @@ def tilelang_grad_kl_loss_single_kernel(
                                             0:DQueryIndex,
                                         ],
                                     )
-                                    T.set_flag("fix", "m", 9)
+                                    T.set_flag("fix", "m", 6)
 
                             T.wait_flag("fix", "m", 7)
-                            T.wait_flag("fix", "m", 9)
+                            T.wait_flag("fix", "m", 6)
 
                             if task_id_v1 % 2 == 0:
                                 T.set_cross_flag("FIX", 10)
