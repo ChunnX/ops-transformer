@@ -69,7 +69,7 @@ ge::graphStatus CommonChecker::CheckDtypeCommon(const gert::CompileTimeTensorDes
     if (desc != nullptr) {
         const auto& it = dataMap.find(name);
         OP_CHECK_IF(it == dataMap.end(),
-            OP_LOGE("FIA", "%s datatype support list should be specify in map", name.c_str()),
+            OP_LOGE("FIA", "%s dtype support list should be specify in map", name.c_str()),
             return ge::GRAPH_FAILED);
         auto &expectDtypeList = it->second;
         OP_CHECK_IF(std::find(expectDtypeList.begin(), expectDtypeList.end(),
@@ -537,28 +537,28 @@ ge::graphStatus CommonChecker::CheckMultiDtype(const FiaTilingInfo &fiaInfo)
         ge::GRAPH_SUCCESS != CheckDtypeCommon(fiaInfo.opParamInfo.query.desc, "query", QKVD_Different_MAP),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "query",
             ToString(fiaInfo.opParamInfo.query.desc->GetDataType()).c_str(),
-            "The dtype of query must be within the range of FLOAT16 or BF16 "
+            "The dtype of query must be within the range of FLOAT16 or BFLOAT16 "
             "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.isQKVDDifferent &&
         ge::GRAPH_SUCCESS != CheckDtypeCommon(fiaInfo.opParamInfo.attenOut.desc, "attentionOut", QKVD_Different_MAP),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
             ToString(fiaInfo.opParamInfo.attenOut.desc->GetDataType()).c_str(),
-            "The dtype of attention_out must be within the range of FLOAT16 or BF16 "
+            "The dtype of attention_out must be within the range of FLOAT16 or BFLOAT16 "
             "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.isQKVDDifferent &&
         ge::GRAPH_SUCCESS != CheckDtypeCommon(fiaInfo.opParamInfo.key.desc, "key", QKVD_Different_MAP),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "key",
             ToString(fiaInfo.opParamInfo.key.desc->GetDataType()).c_str(),
-            "The dtype of key must be within the range of FLOAT16 or BF16 "
+            "The dtype of key must be within the range of FLOAT16 or BFLOAT16 "
             "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(fiaInfo.isQKVDDifferent &&
         ge::GRAPH_SUCCESS != CheckDtypeCommon(fiaInfo.opParamInfo.value.desc, "value", QKVD_Different_MAP),
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "value",
  	        ToString(fiaInfo.opParamInfo.value.desc->GetDataType()).c_str(),
- 	        "The dtype of value must be within the range of FLOAT16 or BF16 "
+ 	        "The dtype of value must be within the range of FLOAT16 or BFLOAT16 "
             "when D of query and key is not equal to D of value"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
@@ -996,7 +996,7 @@ ge::graphStatus CommonChecker::CheckMultiAttr(const FiaTilingInfo &fiaInfo)
     }
 
     if (fiaInfo.inputQType != ge::DT_FLOAT16) {
-        OP_LOGW(fiaInfo.opName, "When query input is not fp16,innerPrecise will not take effect");
+        OP_LOGW(fiaInfo.opName, "When query input is not FLOAT16,innerPrecise will not take effect");
     }
 
     if (fiaInfo.qLayout == FiaLayout::TND) {
