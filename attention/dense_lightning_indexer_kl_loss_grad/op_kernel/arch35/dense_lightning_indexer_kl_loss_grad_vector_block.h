@@ -16,7 +16,6 @@
 #ifndef DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_VECTOR_BLOCK_H
 #define DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_VECTOR_BLOCK_H
 #include "dense_lightning_indexer_kl_loss_grad_regbase_common.h"
-#include "vf/vf_process_vec0.h"
 #include "vf/vf_process_vec1.h"
 #include "vf/vf_process_vec2.h"
 #include "vf/vf_cast_dup.h"
