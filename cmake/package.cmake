@@ -152,5 +152,16 @@ function(pack_built_in)
   message(STATUS "current compute_unit is: ${compute_unit}")
 
   # ============= CPack =============
-  set_cann_cpack_config(ops-transformer COMPUTE_UNIT ${compute_unit} SHARE_INFO_NAME ops_transformer NO_COMPONENT_INSTALL OUTPUT ${CMAKE_INSTALL_PREFIX})
+  # deb/rpm 需要 component 目录参与打包路径拼装，只有 run 包使用 NO_COMPONENT_INSTALL
+  if(PACKAGE_TYPE STREQUAL "run")
+    set(NO_COMPONENT_INSTALL_OPT NO_COMPONENT_INSTALL)
+  else()
+    # cann-cmake 强制 CPACK_DEB/RPM_COMPONENT_INSTALL=ON，CPack 默认会在包名/文件名后追加 component 名，
+    # 这里显式指定 component 级包名/文件名，避免出现 cann-ops-transformer-ops-transformer 的重复命名
+    set(CPACK_DEBIAN_OPS-TRANSFORMER_PACKAGE_NAME "cann-ops-transformer")
+    set(CPACK_DEBIAN_OPS-TRANSFORMER_FILE_NAME "cann-ops-transformer_${CANN_VERSION_ops-transformer_VERSION}_linux-${CMAKE_SYSTEM_PROCESSOR}.deb")
+    set(CPACK_RPM_OPS-TRANSFORMER_PACKAGE_NAME "cann-ops-transformer")
+    set(CPACK_RPM_OPS-TRANSFORMER_FILE_NAME "cann-ops-transformer_${CANN_VERSION_ops-transformer_VERSION}_linux-${CMAKE_SYSTEM_PROCESSOR}.rpm")
+  endif()
+  set_cann_cpack_config(ops-transformer COMPUTE_UNIT ${compute_unit} SHARE_INFO_NAME ops_transformer ${NO_COMPONENT_INSTALL_OPT} OUTPUT ${CMAKE_INSTALL_PREFIX} PACKAGE_TYPE "${PACKAGE_TYPE}")
 endfunction()
