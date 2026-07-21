@@ -216,7 +216,7 @@ def tilelang_grad_kl_loss_single_kernel(
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),                 # 7
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),               # 8
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),               # 9
-        dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 10 (input, host-zeroed: atomic_add target)
+        dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 10 (workspace: L0C-accumulated dQuery)
         # === INPUT (11) — dKeyIndex fp32 累加器，host 清零后传入（atomic_add target，照搬 dQueryIndexAccum 模式）===
         dKeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), calc_dtype),   # 11 (input, host-zeroed)
         # === WORKSPACES (12-21) ===
@@ -904,7 +904,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         # ============================================================
 
                         # C scope 2: consume every K tile owned by this (B, S1) task.
-                        # dQuery partials accumulate into GM; dKey partials keep their K rows.
+                        # dQuery accumulates across K in L0C and is fixed out once per D tile.
+                        # dKey keeps one output tile per K block for the V2 scatter stage.
                         # ============================================================
                         with T.Scope("C"):
                             if task_id_v1 % 2 == 0:
@@ -925,26 +926,30 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("fix", "m", 6)
 
                             for s1_row in T.serial(s1_start_v1, s1_end_v1):
+                                T.set_flag("m", "mte2", 6)
+                                T.set_flag("m", "mte1", 4)
+
                                 # QueryIndex is invariant across K tiles for this S1 row.
                                 T.copy(QueryIndex[bz_v1, s1_row, 0:Nidx1, 0:DQueryIndex], QI_L1_dk)
 
-                                for n_idx_k in T.serial(n_num):
-                                    k_start = n_idx_k * n_block
-                                    k_end = T.min(k_start + n_block, K)
+                                # dQuery = sum_K(reluGrad @ GatherKeyIndex). Keep the
+                                # accumulation in L0C and issue one non-atomic FIX.
+                                for d_idx in T.serial(d_num_query_index):
+                                    T.wait_flag("fix", "m", 7)
+                                    for n_idx_k in T.serial(n_num):
+                                        k_start = n_idx_k * n_block
+                                        k_end = T.min(k_start + n_block, K)
 
-                                    # One reluGrad GM->L1 load feeds both dQuery and dKey.
-                                    T.copy(
-                                        reluGradRes[
-                                            bz_v1,
-                                            s1_row,
-                                            0:Nidx1,
-                                            n_idx_k * n_block:(n_idx_k + 1) * n_block,
-                                        ],
-                                        RG_L1,
-                                    )
-
-                                    for d_idx in T.serial(d_num_query_index):
-                                        T.wait_flag("fix", "m", 7)
+                                        T.wait_flag("m", "mte2", 6)
+                                        T.copy(
+                                            reluGradRes[
+                                                bz_v1,
+                                                s1_row,
+                                                0:Nidx1,
+                                                n_idx_k * n_block:(n_idx_k + 1) * n_block,
+                                            ],
+                                            RG_L1,
+                                        )
                                         T.copy(
                                             GatherKeyIndex_ws[
                                                 bz_v1,
@@ -956,30 +961,55 @@ def tilelang_grad_kl_loss_single_kernel(
                                         )
                                         T.set_flag("mte2", "m", 6)
                                         T.wait_flag("mte2", "m", 6)
-                                        T.gemm_v0(RG_L1, GKI2_L1, DQ_L0C, transpose_B=False, init=True)
-                                        T.set_flag("m", "fix", 7)
-                                        T.wait_flag("m", "fix", 7)
-                                        T.tile.atomic_add(
-                                            dQueryIndexAccum[
-                                                bz_v1,
-                                                s1_row,
-                                                0:Nidx1,
-                                                d_idx * k_block:(d_idx + 1) * k_block,
-                                            ],
+                                        T.gemm_v0(
+                                            RG_L1,
+                                            GKI2_L1,
                                             DQ_L0C,
+                                            transpose_B=False,
+                                            init=(n_idx_k == 0),
                                         )
-                                        T.set_flag("fix", "m", 7)
+                                        T.set_flag("m", "mte2", 6)
 
-                                    # dKey = RG^T @ QI. Wait until Cube has finished reading
-                                    # RG_L1 above before MTE1 transposes the same L1 tile.
-                                    T.set_flag("m", "mte1", 4)
+                                    T.set_flag("m", "fix", 7)
+                                    T.wait_flag("m", "fix", 7)
+                                    T.copy(
+                                        DQ_L0C,
+                                        dQueryIndexAccum[
+                                            bz_v1,
+                                            s1_row,
+                                            0:Nidx1,
+                                            d_idx * k_block:(d_idx + 1) * k_block,
+                                        ],
+                                    )
+                                    T.set_flag("fix", "m", 7)
+
+                                T.wait_flag("m", "mte2", 6)
+
+                                # dKey = reluGrad^T @ QueryIndex. This path writes one
+                                # independent K tile, then V2 scatters it to dKeyIndex.
+                                for n_idx_k in T.serial(n_num):
+                                    k_start = n_idx_k * n_block
+                                    k_end = T.min(k_start + n_block, K)
+
                                     T.wait_flag("m", "mte1", 4)
+                                    T.copy(
+                                        reluGradRes[
+                                            bz_v1,
+                                            s1_row,
+                                            0:Nidx1,
+                                            n_idx_k * n_block:(n_idx_k + 1) * n_block,
+                                        ],
+                                        RG_L1,
+                                    )
+                                    T.set_flag("mte2", "mte1", 2)
+                                    T.wait_flag("mte2", "mte1", 2)
                                     T.copy(RG_L1, RG_L0A_dk, transpose=True)
                                     T.copy(QI_L1_dk, QI_L0B_dk)
                                     T.set_flag("mte1", "m", 4)
                                     T.wait_flag("mte1", "m", 4)
                                     T.wait_flag("fix", "m", 6)
                                     T.mma(RG_L0A_dk, QI_L0B_dk, DK_L0C, init=True)
+                                    T.set_flag("m", "mte1", 4)
                                     T.set_flag("m", "fix", 6)
                                     T.wait_flag("m", "fix", 6)
                                     T.copy(
@@ -992,6 +1022,8 @@ def tilelang_grad_kl_loss_single_kernel(
                                         ],
                                     )
                                     T.set_flag("fix", "m", 6)
+
+                                T.wait_flag("m", "mte1", 4)
 
                             T.wait_flag("fix", "m", 7)
                             T.wait_flag("fix", "m", 6)
