@@ -152,6 +152,7 @@ public:
         // `expertPerRank - 1`; BF16 path historically uses `expertPerRank - 2`.
         uint32_t epilogueGranularity{0};
         float swigluLimit;
+        uint32_t activationCode{0};
         GM_ADDR contextGM{nullptr};
         // 算子tiling数据地址（GM），ADump启动时由0核dump到Tiling段
         GM_ADDR tilingGM{nullptr};
@@ -178,15 +179,17 @@ public:
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData_, uint32_t epilogueGranularity_ = 0,
-               float swigluLimit_ = std::numeric_limits<float>::infinity(), GM_ADDR tilingGM_ = nullptr)
+               float swigluLimit_ = std::numeric_limits<float>::infinity(), uint32_t activationCode_ = 0,
+               GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              contextGM(contextGM_), tilingGM(tilingGM_),
-              ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)), layoutA(layoutA_),
-              layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)), layoutB1(layoutB1_),
-              ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)), ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
-              layoutB2(layoutB2_), ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
+              activationCode(activationCode_),
+              contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
+              layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
+              layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
+              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)), layoutB2(layoutB2_),
+              ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
               ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)), layoutScale1(layoutScale1_),
               ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)), layoutScale2(layoutScale2_),
               ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)), layoutD1(layoutD1_), layoutD2(layoutD2_),
@@ -223,15 +226,16 @@ public:
                GM_ADDR expertTokensBeforeCapacity_, GM_ADDR probs_, GM_ADDR ptrWorkspace_, GM_ADDR gmExpertTokenNums_,
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_, MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                uint32_t epilogueGranularity_ = 0, float swigluLimit_ = std::numeric_limits<float>::infinity(),
-               GM_ADDR tilingGM_ = nullptr)
+               uint32_t activationCode_ = 0, GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_), expertPerRank(expertPerRank_),
               maxOutputSize(maxOutputSize_), topK(topK_), initRoutingQuantTilingKey(initRoutingQuantTilingKey_),
               epilogueCoreNum(epilogueCoreNum_), epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_),
-              contextGM(contextGM_), tilingGM(tilingGM_),
-              ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)), layoutA(layoutA_),
-              layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)), layoutB1(layoutB1_),
-              ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)), ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)),
-              layoutB2(layoutB2_), ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
+              activationCode(activationCode_),
+              contextGM(contextGM_), tilingGM(tilingGM_), ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
+              layoutA(layoutA_), layoutA2(layoutA2_), ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)),
+              layoutB1(layoutB1_), ptrBias1(reinterpret_cast<__gm__ float *>(ptrBias1_)),
+              ptrB2(reinterpret_cast<__gm__ ElementB *>(ptrB2_)), layoutB2(layoutB2_),
+              ptrBias2(reinterpret_cast<__gm__ float *>(ptrBias2_)),
               ptrScale1(reinterpret_cast<__gm__ ElementScale *>(ptrScale1_)), layoutScale1(layoutScale1_),
               ptrScale2(reinterpret_cast<__gm__ ElementScale *>(ptrScale2_)), layoutScale2(layoutScale2_),
               ptrOutput(reinterpret_cast<__gm__ ElementD2 *>(ptrOutput_)), layoutD1(layoutD1_), layoutD2(layoutD2_),
@@ -1088,7 +1092,7 @@ private:
         icache_preload(8);
         exceptionDump_.Dump(shmem() + peermemInfo.offsetPeerTokenPerExpert,
                             static_cast<size_t>(paddedExpertNumAligned) * params.expertPerRank *
-                            static_cast<uint32_t>(shmem.RankSize()) * sizeof(int32_t));
+                                static_cast<uint32_t>(shmem.RankSize()) * sizeof(int32_t));
         shmem.DumpSyncRegions(exceptionDump_);
         int32_t runtimeRank = RuntimeRank(params);
         int64_t localTokenPerExpertOffset =
@@ -1281,7 +1285,7 @@ private:
                                    reinterpret_cast<__gm__ float *>(params.ptrBias1), gmA2I4_I8[gmOffsetD], cumsumMM,
                                    rowStartThisCore, gmPerTokenScale2[rowStartThisCore], params.expertPerRank,
                                    params.EP, runtimeRank, params.listLen, resource, params.epilogueCoreNum,
-                                   params.swigluLimit, params.gmmOutPreRowStride);
+                                   params.swigluLimit, params.activationCode, params.gmmOutPreRowStride);
                 }
                 AscendC::SyncAll<true>();
                 AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
@@ -1300,10 +1304,11 @@ private:
                 if constexpr (std::is_same_v<ElementB, int8_t>) {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                    gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
-                                   params.epilogueCoreNum, params.swigluLimit, params.gmmOutPreRowStride);
+                                   params.epilogueCoreNum, params.swigluLimit, params.activationCode,
+                                   params.gmmOutPreRowStride);
                 } else {
                     blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, params.epilogueCoreNum,
-                                   params.swigluLimit, params.gmmOutPreRowStride);
+                                   params.swigluLimit, params.activationCode, params.gmmOutPreRowStride);
                 }
             }
             AscendC::SyncAll<true>();
@@ -1324,10 +1329,10 @@ private:
                     if constexpr (std::is_same_v<ElementB, int8_t>) {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPerTokenScale1[rowStartThisCore],
                                        gmPermutedToken[gmOffsetD], gmPerTokenScale2[rowStartThisCore], resource,
-                                       coreNum, params.swigluLimit, params.gmmOutPreRowStride);
+                                       coreNum, params.swigluLimit, params.activationCode, params.gmmOutPreRowStride);
                     } else {
                         blockEpilogue1(gmC[gmOffsetC], shapeC, gmPermutedToken[gmOffsetD], resource, coreNum,
-                                       params.swigluLimit, params.gmmOutPreRowStride);
+                                       params.swigluLimit, params.activationCode, params.gmmOutPreRowStride);
                     }
                 }
                 AscendC::SyncAll<true>();
@@ -1602,8 +1607,7 @@ private:
             } else {
                 ptrA = params.ptrWorkspace + workspaceOffset;
                 ptrPermutedToken = params.ptrWorkspace + workspaceOffset;
-                workspaceOffset += params.maxOutputSize * params.gmm1InputExpertSlotWidth *
-                    sizeof(ElementA);
+                workspaceOffset += params.maxOutputSize * params.gmm1InputExpertSlotWidth * sizeof(ElementA);
             }
 
             ptrSumBeforeRank = params.ptrWorkspace + workspaceOffset;
@@ -1645,8 +1649,8 @@ private:
 
             // 尾部：CrossRankSync + tokenPerExpert
             int64_t tailSyncSize = static_cast<int64_t>(shmem.TailReservedSize());
-            int64_t tokenPerExpertSize = EP * AlignUp(EP * MAX_EXPERTS_PER_RANK, ALIGN_128) *
-                static_cast<int64_t>(sizeof(int32_t));
+            int64_t tokenPerExpertSize =
+                EP * AlignUp(EP * MAX_EXPERTS_PER_RANK, ALIGN_128) * static_cast<int64_t>(sizeof(int32_t));
 
             // A: dispatch 数据区（量化时含行内 scale）
             int64_t offsetASize = bs * topK * (RoutingIsQuant ? (h + ALIGN_512) : h * sizeof(int16_t));

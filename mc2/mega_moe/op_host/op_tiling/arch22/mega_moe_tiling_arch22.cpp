@@ -54,6 +54,10 @@ constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 12;      // weight1 是否转�
 constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 13;      // weight2 是否转置
 constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 14;     // weight1 交错模式
 
+constexpr uint32_t ACTIVATION_CODE_SWIGLU = 0;
+constexpr uint32_t ACTIVATION_CODE_SWIGLU_GPT_OSS = 1;
+constexpr uint32_t ACTIVATION_CODE_SITU = 2;
+
 // 输入 tensor 索引
 constexpr uint32_t CONTEXT_INDEX = 0;        // context，shape = [?]
 constexpr uint32_t X_INDEX = 1;              // 输入 token x，shape = [M, K]
@@ -259,13 +263,21 @@ static ge::graphStatus CheckNumMaxTokensPerRankAttr(gert::TilingContext *context
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckActivationAttr(const char *ptr)
+static ge::graphStatus CheckActivationAttr(const char *ptr, uint32_t &activationCode)
 {
     OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "activation is null."), return GRAPH_FAILED);
     std::string activationStr(ptr);
-    OP_TILING_CHECK(activationStr != "swiglu",
-                    OP_LOGE(K_INNER_DEBUG, "activation is invalid, only support 'swiglu', but got '%s'.", ptr),
-                    return GRAPH_FAILED);
+    if (activationStr == "swiglu") {
+        activationCode = ACTIVATION_CODE_SWIGLU;
+    } else if (activationStr == "swiglu_gpt_oss") {
+        activationCode = ACTIVATION_CODE_SWIGLU_GPT_OSS;
+    } else if (activationStr == "situ") {
+        activationCode = ACTIVATION_CODE_SITU;
+    } else {
+        OP_LOGE(K_INNER_DEBUG,
+                "activation is invalid, support 'swiglu', 'swiglu_gpt_oss' and 'situ', but got '%s'.", ptr);
+        return GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -389,7 +401,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     info.numMaxTokensPerRank = static_cast<uint32_t>(*numMaxTokensPerRankPtr);
 
     // 9. activation
-    OP_TILING_CHECK(CheckActivationAttr(activationPtr) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckActivationAttr(activationPtr, info.activationCode) != ge::GRAPH_SUCCESS,
                     OP_LOGE(K_INNER_DEBUG, "CheckActivationAttr failed."), return GRAPH_FAILED);
 
     // 10. activation_clamp
@@ -424,6 +436,7 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_LOGD(K_INNER_DEBUG, "dispatchQuantOutDtype=%u", info.dispatchQuantOutDtype);
     OP_LOGD(K_INNER_DEBUG, "combineQuantMode=%u", info.combineQuantMode);
     OP_LOGD(K_INNER_DEBUG, "numMaxTokensPerRank=%u", info.numMaxTokensPerRank);
+    OP_LOGD(K_INNER_DEBUG, "activationCode=%u", info.activationCode);
     OP_LOGD(K_INNER_DEBUG, "activationClamp=%f", info.activationClamp);
     OP_LOGD(K_INNER_DEBUG, "activationOutDtype=%u", info.activationOutDtype);
     OP_LOGD(K_INNER_DEBUG, "transposeWeight1=%u", info.isTransposeW1);
