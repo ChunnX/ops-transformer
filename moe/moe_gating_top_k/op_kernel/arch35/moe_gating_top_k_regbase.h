@@ -51,6 +51,7 @@ private:
     __aicore__ inline void TopKComputeBatch(int64_t rowCount);
     __aicore__ inline void CopyOutBatch(int64_t batchIdx, int64_t rowCount);
     __aicore__ inline void ProcessBatched();
+    __aicore__ inline void ComputeX();
     __aicore__ inline void PadWithMinFp32(__local_mem__ float *addBiasOutAddr, uint16_t groupCount0,
                                           uint32_t perGroupExpertCount0, uint32_t perGroupExpertCountAlign0);
     __aicore__ inline void GenerateIndexAndCopy(__local_mem__ float *sigmoidOutAddr,
