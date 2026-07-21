@@ -30,9 +30,10 @@ public:
                                           const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
                                           const aclTensor *dequantScaleVOptional, int64_t batchSize,
                                           int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-                                          int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode,
-                                          int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale,
-                                          const char *layoutKv, const char *layoutOut, const aclTensor *metadata);
+                                          int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
+                                          int64_t maskMode, int64_t winLeft, int64_t winRight,
+                                          const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
+                                          const char *layoutOut, const aclTensor *metadata);
 
 private:
     static inline bool IsTensorExist(const aclTensor *tensor);
@@ -42,8 +43,9 @@ private:
     // 校验基础属性：batchSize / maxSeqlen / numHeads / headDim / quantMode / layout
     // 文档约束: headDim 仅支持 64/128; quantMode 支持输入范围为 1/2/3
     static inline aclnnStatus CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                            int64_t numHeadsQ, int64_t numHeadsKv,                                             int64_t headDim, int64_t quantMode,
-                                            const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut);
+                                            int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+                                            int64_t quantMode, const char *layoutQ, const char *layoutQDescale,
+                                            const char *layoutKv, const char *layoutOut);
 
     // 校验 mask 参数组: maskMode 支持 0/3/4, winLeft/winRight >= -1
     static inline aclnnStatus CheckMask(int64_t maskMode, int64_t winLeft, int64_t winRight);
@@ -68,9 +70,10 @@ QuantFlashAttnMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, co
                                          const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
                                          const aclTensor *dequantScaleVOptional, int64_t batchSize,
                                          int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
-                                         int64_t numHeadsKv, int64_t headDim, int64_t quantMode, int64_t maskMode,
-                                         int64_t winLeft, int64_t winRight, const char *layoutQ, const char *layoutQDescale,
-                                         const char *layoutKv, const char *layoutOut, const aclTensor *metadata)
+                                         int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
+                                         int64_t maskMode, int64_t winLeft, int64_t winRight,
+                                         const char *layoutQ, const char *layoutQDescale, const char *layoutKv,
+                                         const char *layoutOut, const aclTensor *metadata)
 {
     (void)dequantScaleVOptional; // dequant_scale_v 校验下沉至 aicpu kernel
     auto ret = CheckBaseAttr(batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim, quantMode, layoutQ,
@@ -95,8 +98,9 @@ inline bool QuantFlashAttnMetadataCheck::IsTensorExist(const aclTensor *tensor)
 
 inline aclnnStatus
 QuantFlashAttnMetadataCheck::CheckBaseAttr(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
-                                           int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
-                                           const char *layoutQ, const char *layoutQDescale, const char *layoutKv, const char *layoutOut)
+                                           int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
+                                           int64_t quantMode, const char *layoutQ, const char *layoutQDescale,
+                                           const char *layoutKv, const char *layoutOut)
 {
     CHECK_COND((batchSize == -1 || batchSize > 0), ACLNN_ERR_RUNTIME_ERROR,
         "batchSize must be -1 or greater than 0, but got %ld", batchSize);
