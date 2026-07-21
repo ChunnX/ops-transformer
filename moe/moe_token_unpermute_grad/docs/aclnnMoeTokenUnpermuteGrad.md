@@ -358,7 +358,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
   // 调用aclCreateTensor接口创建aclTensor
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType,
                             strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                            *deviceAddr,0,nullptr);
+                            shape.data(), shape.size(), *deviceAddr);
   return 0;
 }
 
@@ -401,23 +401,23 @@ int main() {
   std::vector<float> probsGradHostData = {0, 0, 0};
 
   ret = CreateAclTensor(permutedTokensHostData, permutedTokensShape,
-                        &permutedTokensDeviceAddr, aclDataType::ACL FLOAT,
+                        &permutedTokensDeviceAddr, aclDataType::ACL_FLOAT,
                         &permutedTokens);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(unpermutedTokensGradHostData, unpermutedTokensGradShape, &unpermutedTokensGradDeviceAddr,
-                      aclDataType::ACL_BF16, &unpermutedTokensGrad);
+                      aclDataType::ACL_FLOAT, &unpermutedTokensGrad);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(probsHostData, probsShape, &probsDeviceAddr,
-                      aclDataType::ACL_BF16, &probs);
+                      aclDataType::ACL_FLOAT, &probs);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(sortedIndicesHostData, sortedIndicesShape, &sortedIndicesDeviceAddr,
                       aclDataType::ACL_INT32, &sortedIndices);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  ret = CreateAclTensor(permutedTokensGradHostData, permutedTokensGradShape, &permutedTokensGradDeviceAddr, aclDataType::ACL_BF16,
+  ret = CreateAclTensor(permutedTokensGradHostData, permutedTokensGradShape, &permutedTokensGradDeviceAddr, aclDataType::ACL_FLOAT,
                         &permutedTokensGrad);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(probsGradHostData, probsGradShape, &probsGradDeviceAddr, aclDataType::ACL_BF16,
+  ret = CreateAclTensor(probsGradHostData, probsGradShape, &probsGradDeviceAddr, aclDataType::ACL_FLOAT,
                         &probsGrad);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
@@ -448,7 +448,7 @@ int main() {
             LOG_PRINT("aclnnMoeTokenUnpermuteGrad failed. ERROR: %d\n", ret);
             return ret);
 
-  // 4.（固定写法）同步等待任务执行结束
+  // 4. （固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
