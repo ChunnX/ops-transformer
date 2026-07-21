@@ -144,14 +144,14 @@ string QSFATensorDesc2String(const gert::StorageShape *shape, const gert::Compil
     }
 
     std::ostringstream qsfaOss;
-    qsfaOss << "(dtype: " << ge::TypeUtils::DataTypeToAscendString(tensor->GetDataType()).GetString() << "),";
-    qsfaOss << "(shape:" << GetShapeStr(shape->GetStorageShape()) << "),";
-    qsfaOss << "(ori_shape:" << GetShapeStr(shape->GetOriginShape()) << "),";
+    qsfaOss << "(dtype: " << ge::TypeUtils::DataTypeToAscendString(tensor->GetDataType()).GetString() << "), ";
+    qsfaOss << "(shape:" << GetShapeStr(shape->GetStorageShape()) << "), ";
+    qsfaOss << "(ori_shape:" << GetShapeStr(shape->GetOriginShape()) << "), ";
     qsfaOss << "(format: "
         << ge::TypeUtils::FormatToAscendString(
             static_cast<ge::Format>(ge::GetPrimaryFormat(tensor->GetStorageFormat())))
             .GetString()
-        << "),";
+        << "), ";
     qsfaOss << "(ori_format: " << ge::TypeUtils::FormatToAscendString(tensor->GetOriginFormat()).GetString() << ") ";
 
     return qsfaOss.str();
@@ -630,7 +630,7 @@ ge::graphStatus QSFATilingCheck::CheckDimNumInLayoutSupport(const QSFALayout &la
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(opName_, name.c_str(),
             std::to_string(shape->GetStorageShape().GetDimNum()).c_str(),
             "When layout is " + QSFALayoutToSerialString(layout) +
-            ", the shape dim of " + name + "should be " + std::to_string(qsfaDimIt->second)),
+            ", the shape dim of " + name + " should be " + std::to_string(qsfaDimIt->second)),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -661,8 +661,9 @@ void QSFATilingCheck::LogErrorLayoutSupport(const std::vector<QSFALayout> &expec
             qsfaOssLayout << ", ";
         }
     }
-    OP_LOGE_FOR_INVALID_FORMAT(opName_, name.c_str(),
-        QSFALayoutToSerialString(actualLayout).c_str(), qsfaOssLayout.str().c_str());
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, name.c_str(),
+        QSFALayoutToSerialString(actualLayout).c_str(),
+            "Tensor " + name + " only supports layout " + qsfaOssLayout.str());
 }
 
 ge::graphStatus QSFATilingCheck::CheckLayoutSupport(const QSFALayout &actualLayout, const std::string &name) const
@@ -779,7 +780,8 @@ ge::graphStatus QSFATilingCheck::CheckAttrValueByMap(std::map<std::string, std::
         const std::string &qsfaAttrName = kv.first;
         const std::pair<const T *, T> &qsfaPointerValuePair = kv.second;
         if (qsfaPointerValuePair.first == nullptr) {
-            OP_LOGE_WITH_INVALID_INPUT(opName_, qsfaAttrName.c_str());
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, qsfaAttrName.c_str(),
+                "Attr " + qsfaAttrName + " should not be nullptr");
             return ge::GRAPH_FAILED;
         }
 
@@ -839,7 +841,8 @@ static ge::graphStatus GetActualSeqLenSize(uint32_t &size, const gert::Tensor *t
     const std::string &name, const char *opName)
 {
     if (tensor == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT(opName, name.c_str());
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName, name.c_str(),
+            name + " must be provided");
         return ge::GRAPH_FAILED;
     }
     int64_t qsfaShapeSize = tensor->GetShapeSize();
@@ -1057,7 +1060,7 @@ ge::graphStatus QSFATilingCheck::CheckActualSeqLensDType()
     if (opParamInfo_.actualSeqLengths.desc == nullptr) {
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actualSeqLengths's dtype",
             "actualSeqLengths is not empty, but actualSeqLengths's dtype is nullptr");
-            return ge::GRAPH_FAILED;
+        return ge::GRAPH_FAILED;
     }
     if (opParamInfo_.actualSeqLengths.desc->GetDataType() != ge::DT_INT32) {
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "actualSeqLengths",
@@ -1201,7 +1204,8 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantLayout() const
     std::string layoutQuery = opParamInfo_.layoutQuery;
     OP_CHECK_IF(std::find(qsfaLayoutSupportList.begin(),
         qsfaLayoutSupportList.end(), layoutQuery) == qsfaLayoutSupportList.end(),
-        OP_LOGE_FOR_INVALID_FORMAT(opName_, "query", layoutQuery.c_str(), "BSND or TND"),
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "layoutQuery", layoutQuery.c_str(),
+            "layoutQuery only supports BSND/TND"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1425,48 +1429,95 @@ static uint32_t GetAxisNum(const gert::Shape &shape, const QSFAAxis &axis, const
     return HasAxis(axis, layout, shape) ? shape.GetDim(GetAxisIdx(axis, layout)) : kInvalidDimValue;
 }
 
-ge::graphStatus QSFAInfoParser::CheckRequiredInOutExistence() const
+ge::graphStatus QSFAInfoParser::CheckTensorShapes() const
 {
-    OP_CHECK_IF(opParamInfo_.query.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor query"),
+    OP_CHECK_IF(opParamInfo_.query.shape == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor query",
+            "Shape of tensor query is nullptr"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.query.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor query"),
+    OP_CHECK_IF(opParamInfo_.key.shape == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor k",
+            "Shape of tensor k is nullptr"),
         return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor k"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.key.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor k"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.shape == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor value"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.value.desc == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor value"),
+    OP_CHECK_IF(opParamInfo_.value.shape == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor value",
+            "Shape of tensor value is nullptr"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.sparseIndices.shape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor sparseIndices"),
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.sparseIndices.desc == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor sparseIndices"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor sparseIndices",
+            "Shape of tensor sparseIndices is nullptr"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.shape == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(opName_, "Shape of tensor output"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Shape of tensor output",
+            "Shape of tensor output is nullptr"),
+        return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSFAInfoParser::CheckTensorDescriptions() const
+{
+    OP_CHECK_IF(opParamInfo_.query.desc == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor query",
+            "Desc of tensor query is nullptr"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.key.desc == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor k",
+            "Desc of tensor k is nullptr"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.value.desc == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor value",
+            "Desc of tensor value is nullptr"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.sparseIndices.desc == nullptr,
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor sparseIndices",
+            "Desc of tensor sparseIndices is nullptr"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.attenOut.desc == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(opName_, "Desc of tensor output"),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "Desc of tensor output",
+            "Desc of tensor output is nullptr"),
         return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSFAInfoParser::CheckRequiredInOutExistence() const
+{
+    ge::graphStatus status = CheckTensorShapes();
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
+
+    status = CheckTensorDescriptions();
+    if (status != ge::GRAPH_SUCCESS) {
+        return status;
+    }
 
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QSFAInfoParser::CheckRequiredAttrExistence() const
 {
-    OP_CHECK_IF(opParamInfo_.layoutQuery == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "layoutQuery"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.layoutKV == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "layoutKV"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.sparseBlockSize == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "sparseBlockSize"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.scaleValue == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "scaleValue"),
-               return ge::GRAPH_FAILED);
-    OP_CHECK_IF(opParamInfo_.sparseMode == nullptr, OP_LOGE_WITH_INVALID_INPUT(opName_, "sparseMode"),
-               return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.layoutQuery == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layoutQuery",
+                    "attr layoutQuery is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.layoutKV == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "layoutKV",
+                    "attr layoutKV is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.sparseBlockSize == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparseBlockSize",
+                    "attr sparseBlockSize is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.scaleValue == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "scaleValue",
+                    "attr scaleValue is nullptr"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(opParamInfo_.sparseMode == nullptr,
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "sparseMode",
+                    "attr sparseMode is nullptr"),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1488,7 +1539,8 @@ ge::graphStatus QSFAInfoParser::GetActualSeqLenQSize(uint32_t &size)
 ge::graphStatus QSFAInfoParser::GetOpName()
 {
     if (context_->GetNodeName() == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("KvQuantSparseFlashAttention", "opName got from TilingContext");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("KvQuantSparseFlashAttention", "opName got from TilingContext",
+            "opName got from TilingContext is nullptr");
         return ge::GRAPH_FAILED;
     }
     opName_ = context_->GetNodeName();
@@ -1675,12 +1727,11 @@ ge::graphStatus QSFAInfoParser::GetKvLayout()
     if (it != layoutKVMap.end()) {
         kvLayout_ = it->second;
     } else {
-        OP_LOGE_FOR_INVALID_FORMAT(opName_, "KV",
-            layout.c_str(), "BSND or PA_BSND or TND");
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "layoutKV", layout.c_str(), "BSND or PA_BSND or TND");
         return ge::GRAPH_FAILED;
     }
     if (kvLayout_ != QSFALayout::PA_BSND && qLayout_ != kvLayout_) {
-        OP_LOGE_FOR_INVALID_FORMATS_WITH_REASON(opName_, "KV and Q",
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "layoutKV and layoutQ",
             QSFALayoutToSerialString(kvLayout_) + " and " + QSFALayoutToSerialString(qLayout_),
             "When layoutKV is not PA_BSND, layoutKV and layoutQ must be same");
         return ge::GRAPH_FAILED;
@@ -1791,7 +1842,7 @@ ge::graphStatus QSFAInfoParser::GetQueryAndOutLayout()
         qLayout_ = qsfaLayoutIt->second.first;
         outLayout_ = qsfaLayoutIt->second.second;
     } else {
-        OP_LOGE_FOR_INVALID_FORMAT(opName_, "query", qsfaLayout.c_str(), "BSND or TND");
+        OP_LOGE_FOR_INVALID_VALUE(opName_, "layoutQuery", qsfaLayout.c_str(), "BSND or TND");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -1936,7 +1987,8 @@ void QSFAInfoParser::FillTilingInfoAttrsAndLayouts(QSFATilingInfo &qsfaInfo)
 ge::graphStatus QSFAInfoParser::Parse(QSFATilingInfo &qsfaInfo)
 {
     if (context_ == nullptr) {
-        OP_LOGE_WITH_INVALID_INPUT("KvQuantSparseFlashAttention", "tiling context");
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON("KvQuantSparseFlashAttention", "tiling context",
+            "tiling context is nullptr");
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != GetOpName() ||
