@@ -161,7 +161,8 @@ def qliv2(testcase_files):
     df.to_excel(result_path, index=False)
 
     if result == "NPU ERROR":
-        pytest.fail(f"用例执行失败:{Path(testcase_files).stem}")
+        return f"用例执行失败:{Path(testcase_files).stem}"
+    return None
 
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
@@ -173,6 +174,8 @@ def test_qliv2(testcase_files):
             for future in concurrent.futures.as_completed([futures]):
                 try:
                     result = future.result()
+                    if result is not None:
+                        pytest.fail(str(result))
                 except Exception as e:
                     pytest.fail(f"当前用例线程执行失败：{e}")
     else:
@@ -182,6 +185,8 @@ def test_qliv2(testcase_files):
             for future in concurrent.futures.as_completed([future1]):
                 try:
                     result = future.result()
+                    if result is not None:
+                        pytest.fail(str(result))
                 except Exception as e:
                     pytest.fail(f"当前用例子进程执行失败：{e}")
 
