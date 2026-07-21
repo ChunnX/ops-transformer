@@ -141,8 +141,8 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_pseAlibiBaseS2(0);
     inputParams.set_deqScaleFlag(1);
     inputParams.set_deqScale2Flag(1);
-    inputParams.set_isActualSeqLengthsNull(info.opParamInfo.seqUsedQ.tensor == nullptr ? 1 : 0);
-    inputParams.set_isActualSeqLengthsKVNull(info.opParamInfo.seqUsedKV.tensor == nullptr ? 1 : 0);
+    inputParams.set_isActualSeqLengthsNull(info.opParamInfo.cuSeqlensQ.tensor == nullptr ? 1 : 0);
+    inputParams.set_isActualSeqLengthsKVNull(info.opParamInfo.cuSeqlensKV.tensor == nullptr ? 1 : 0);
     inputParams.set_actualSeqLengthsSize(info.bSize);
     inputParams.set_actualSeqLengthsKVSize(info.bSize);
     inputParams.set_isKvContinuous(1);
@@ -209,7 +209,7 @@ void QuantBlockSparseAttnTiling::FillInitOutputParams()
     auto &initOutputParams = tilingData_.initOutputParams;
     const int64_t totalOutputSize = static_cast<int64_t>(info.qTokenNum) * info.n1Size * BSA_D_SIZE;
     const int64_t totalSoftmaxLseSize = static_cast<int64_t>(info.qTokenNum) * info.n1Size;
-    initOutputParams.set_singleCoreSize((totalOutputSize + static_cast<int64_t>(usedCoreNum_) * 2- 1) /
+    initOutputParams.set_singleCoreSize((totalOutputSize + static_cast<int64_t>(usedCoreNum_) * 2 - 1) /
                                         (static_cast<int64_t>(usedCoreNum_) * 2));
     initOutputParams.set_needInit(1);
     initOutputParams.set_isOneN(info.n1Size == 1U ? 1 : 0);

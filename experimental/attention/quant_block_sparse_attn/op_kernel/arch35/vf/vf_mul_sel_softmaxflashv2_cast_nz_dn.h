@@ -90,16 +90,16 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
     __ubuf__ T2 *x_exp_1;
-    x_exp_1 = x_exp + 32;
+    x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + m;
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
     __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -117,9 +117,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     uint32_t sreg_qmask = (uint32_t)0xFFULL;
     preg_qstore8 = UpdateMask<uint16_t>(sreg_qmask);
     for (uint32_t c = 0; c < 8; ++c) {
-        LoadAlign(vreg_data_tmp0, qScaleUb + c * 64);
+        LoadAlign(vreg_data_tmp0, qScaleUb + c * 64); // 64 表示元素个数
         Gather(vreg_data_tmp1, vreg_data_tmp0, vreg_qgather_idx);
-        StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8);
+        StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8); // 8 表示元素个数
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
@@ -194,7 +194,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
         LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
         LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
-        LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64); // 64 表示元素个数，取到了vreg_x_f32_0的下一行
         LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
@@ -322,16 +322,16 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
     __ubuf__ T2 *x_exp_1;
-    x_exp_1 = x_exp + 32;
+    x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + m;
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
     __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -354,9 +354,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     uint32_t sreg_qmask = (uint32_t)0xFFULL;
     preg_qstore8 = UpdateMask<uint16_t>(sreg_qmask);
     for (uint32_t c = 0; c < 8; ++c) {
-        LoadAlign(vreg_data_tmp0, qScaleUb + c * 64);
+        LoadAlign(vreg_data_tmp0, qScaleUb + c * 64); // 64 表示元素个数
         Gather(vreg_data_tmp1, vreg_data_tmp0, vreg_qgather_idx);
-        StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8);
+        StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8); // 8 表示元素个数
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
@@ -438,7 +438,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
         LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
         LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
-        LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_4,
+                  input_x_local_UB + i0 * m * 2 + 64); // 64 表示元素个数，取到了vreg_x_f32_0的下一行
         LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
@@ -523,7 +524,7 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale;
-    blockStride = ubN >> 2 | 0x1;
+    blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
     uint32_t ubN_div_8 = ubN / 8;
@@ -619,16 +620,16 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
     __ubuf__ T2 *x_exp_1;
-    x_exp_1 = x_exp + 32;
+    x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + m;
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
     __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -646,9 +647,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     uint32_t sreg_qmask = (uint32_t)0xFFULL;
     preg_qstore8 = UpdateMask<uint16_t>(sreg_qmask);
     for (uint32_t c = 0; c < 8; ++c) {
-        LoadAlign(vreg_data_tmp0, qScaleUb + c * 64);
+        LoadAlign(vreg_data_tmp0, qScaleUb + c * 64); // 64 表示元素个数
         Gather(vreg_data_tmp1, vreg_data_tmp0, vreg_qgather_idx);
-        StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8);
+        StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8); // 8 表示元素个数
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
@@ -727,7 +728,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
         LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
         LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
-        LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_4,
+                  input_x_local_UB + i0 * m * 2 + 64); // 64 表示元素个数，取到了vreg_x_f32_0的下一行
         LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
@@ -858,16 +860,16 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
     __ubuf__ T2 *x_exp_1;
-    x_exp_1 = x_exp + 32;
+    x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + m;
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
     __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -890,9 +892,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
     uint32_t sreg_qmask = (uint32_t)0xFFULL;
     preg_qstore8 = UpdateMask<uint16_t>(sreg_qmask);
     for (uint32_t c = 0; c < 8; ++c) {
-        LoadAlign(vreg_data_tmp0, qScaleUb + c * 64);
+        LoadAlign(vreg_data_tmp0, qScaleUb + c * 64); // 64 表示元素个数
         Gather(vreg_data_tmp1, vreg_data_tmp0, vreg_qgather_idx);
-        StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8);
+        StoreAlign<float>(qScaleUb + c * 8, vreg_data_tmp1, preg_qstore8); // 8 表示元素个数
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
@@ -978,7 +980,8 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
         LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
         LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
-        LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_4,
+                  input_x_local_UB + i0 * m * 2 + 64); // 64 表示元素个数，取到了vreg_x_f32_0的下一行
         LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
@@ -1065,7 +1068,7 @@ __aicore__ inline void ProcessVec1DnUpdate(
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale;
-    blockStride = ubN >> 2 | 0x1;
+    blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
     uint32_t ubN_div_8 = ubN / 8;
@@ -1205,16 +1208,16 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
     __ubuf__ T2 *x_exp_1;
-    x_exp_1 = x_exp + 32;
+    x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + m;
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
     __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -1297,7 +1300,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
         LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
         LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
-        LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_4,
+                  input_x_local_UB + i0 * m * 2 + 64); // 64 表示元素个数，取到了vreg_x_f32_0的下一行
         LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
@@ -1425,16 +1429,16 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
     __ubuf__ T2 *x_exp_1;
-    x_exp_1 = x_exp + 32;
+    x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + m;
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
     __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -1530,7 +1534,8 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
         LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
         LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
-        LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_4,
+                  input_x_local_UB + i0 * m * 2 + 64); // 64 表示元素个数，取到了vreg_x_f32_0的下一行
         LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
@@ -1615,7 +1620,7 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale;
-    blockStride = ubN >> 2 | 0x1;
+    blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
     uint32_t ubN_div_8 = ubN / 8;
@@ -1711,16 +1716,16 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
     __ubuf__ T2 *x_exp_1;
-    x_exp_1 = x_exp + 32;
+    x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + m;
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
     __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -1808,7 +1813,8 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
         LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
         LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
-        LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_4,
+                  input_x_local_UB + i0 * m * 2 + 64); // 64 表示元素个数，取到了vreg_x_f32_0的下一行
         LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
@@ -1939,16 +1945,16 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
     RegTensor<T2> vreg_x_exp_fp8_1, vreg_x_exp_f8_pack_1;
 
     __ubuf__ T2 *x_exp_1;
-    x_exp_1 = x_exp + 32;
+    x_exp_1 = x_exp + 32; // Cast 之后第二个寄存器搬运到UB上的目标地址需偏移32字节
 
     __ubuf__ float *src_ub0 = input_x_local_UB;
     __ubuf__ float *src_ub1 = src_ub0 + m;
     __ubuf__ float *src_ub2 = src_ub0 + m * 2;
     __ubuf__ float *src_ub3 = src_ub0 + m * 3;
     __ubuf__ uint32_t *mask_ub0 = maskUb;
-    __ubuf__ uint32_t *mask_ub1 = maskUb + 16;
-    __ubuf__ uint32_t *mask_ub2 = maskUb + 32;
-    __ubuf__ uint32_t *mask_ub3 = maskUb + 48;
+    __ubuf__ uint32_t *mask_ub1 = maskUb + 16; // 16 * 4 个元素个数(attenMaskUb 的数据类型为uint8，这里是uint32)
+    __ubuf__ uint32_t *mask_ub2 = maskUb + 32; // 32 * 4
+    __ubuf__ uint32_t *mask_ub3 = maskUb + 48; // 48 * 4
 
     Duplicate(max0, minValue);
     Duplicate(max1, minValue);
@@ -2048,7 +2054,8 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
         LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2);
         LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2);
 
-        LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
+        LoadAlign(vreg_x_f32_4,
+                  input_x_local_UB + i0 * m * 2 + 64); // 64 表示元素个数，取到了vreg_x_f32_0的下一行
         LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN_m_m_div_4 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN_m_m_div_2 + i0 * m * 2 + 64);
         LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN_m_m_mul3_div_4 + i0 * m * 2 + 64);
@@ -2135,7 +2142,7 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
     uint32_t blockStride;
     uint32_t repeatStride;
     dScale = scale;
-    blockStride = ubN >> 2 | 0x1;
+    blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
     uint32_t ubN_div_8 = ubN / 8;
