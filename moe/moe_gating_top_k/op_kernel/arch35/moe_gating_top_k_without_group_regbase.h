@@ -355,7 +355,7 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::ComputeExpertScore(i
     Gather(yOutTensor, xNormTensor, expertIdxWithByte.template ReinterpretCast<uint32_t>(),
            static_cast<uint32_t>(0), k_);
 
-    bool needRenorm = (normType_ == 1) || (normType_ == 0 && renorm_ == 1);
+    bool needRenorm = !(normType_ == 0 && renorm_ == 0);
     if (needRenorm) {
         LocalTensor<float> maxValueTensor = calcTmpBuf_.Get<float>();
         LocalTensor<float> tmpTensor = calcTmpBuf_.Get<float>()[BLOCK_BYTES];
