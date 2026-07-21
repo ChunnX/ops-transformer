@@ -16,13 +16,13 @@ This kernel is based on PromptFlashAttentionV3, extending it with a new argument
 > have shown that a proper fix requires a full kernel rewrite; the sibling
 > `attention/block_sparse_attention` kernel handles this better with its
 > bottom-up CATLASS-based design.
-
 > **TODO 2: batch size > 1 is broken.** Only `batch_size=1` (`B=1`) is currently
 > known to produce correct results. Runs with `B>1` produce incorrect outputs.
 > All tests and benchmarks must be run with `B=1` until the multi-batch issue
 > is diagnosed and fixed.
 
-## Quick test and benchmark in python:
+## Quick test and benchmark in python
+
 build the kernel as a custom experimental package, install it, then install our "torch_bsa" torch interface package
 
 ```shell
@@ -46,6 +46,7 @@ pair in `BLOCK_SHAPES` and labels each row with its active `block_shape`. The
 `frame(L,R,T,B)` column shows the per-shape frame as a compact 4-tuple, or `-`
 when no frame applies (sparsity 0 ⇒ every block kept ⇒ frame irrelevant).
 Trimmed sample on Ascend910B2:
+
 ```shell
 ========================================================================================================================
   DTYPE=torch.bfloat16  INPUT_LAYOUT='BNSD'  SABI_SORTED=True  TORCH_REFERENCE='npu_fusion_attention'
@@ -63,6 +64,7 @@ Trimmed sample on Ascend910B2:
       128x512   3   1 118806 118806  128      (8,1,29,1)      0.90             N/A                N/A           17384.59
 ========================================================================================================================
 ```
+
 Rows are trimmed to a few sparsities per shape; the actual sweep emits one row
 per sparsity for each block_shape. Narrow `BLOCK_SHAPES` at the top of
 `benchmark.py` to benchmark a single granularity.
@@ -73,6 +75,7 @@ finer sabi resolution). See [benchmark/README.md](benchmark/README.md) for the
 full table and a per-sparsity PFA-speedup summary.
 
 To invoke our block-sparse prompt flash attention kernel from python, use our provided `torch_bsa` interface. The call is compatible with `torch_npu` conventions:
+
 ```python
 import torch
 import torch_bsa
@@ -120,12 +123,13 @@ The LSE is computed during the same kernel pass as the attention output at no ad
 
 When `softmax_lse_flag=False` the kernel skips the LSE write-out path and returns a zero-element placeholder tensor; the caller does not need to allocate memory for it.
 
-## Example run in C++:
+## Example run in C++
+
 A plain, pure C++, example is provided in examples subdirectory. Run it using:
+
 ```shell
 bash build.sh --experimental --run_example blitz_sparse_attention eager cust --soc=ascend910b --vendor_name=custom
 ```
-
 
 <details>
 <summary>the output should be (click to expand):</summary>
@@ -176,6 +180,7 @@ bash build.sh --experimental --run_example blitz_sparse_attention eager cust --s
 </details>
 
 ## Kernel integration plan
+
 If this block-sparse kernel is of interest, please consider merging it with the official `attention/prompt_flash_attention`. The source is based on `attention/prompt_flash_attention` at git commit `a574b5d71faa7c360934a6c7d1b4aa85e1a49147`.
 
 ## 产品支持情况
