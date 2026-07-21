@@ -12,10 +12,14 @@
 #include <dlfcn.h>
 #include <new>
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <initializer_list>
 #include "securec.h"
+#include "log/log.h"
 #include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
+#include "opdev/format_utils.h"
 #include "opdev/op_dfx.h"
 #include "opdev/op_executor.h"
 #include "opdev/op_log.h"
@@ -34,10 +38,16 @@ extern "C" {
 
 namespace {
 
+constexpr const char *ACLNN_OP_NAME = "aclnnMhcPreGetWorkspaceSize";
 constexpr size_t DIM_NUM_1 = 1UL;
 constexpr size_t DIM_NUM_2 = 2UL;
 constexpr size_t DIM_NUM_3 = 3UL;
 constexpr size_t DIM_NUM_4 = 4UL;
+
+constexpr int64_t DIM_IDX_0 = 0;
+constexpr int64_t DIM_IDX_1 = 1;
+constexpr int64_t DIM_IDX_2 = 2;
+constexpr int64_t DIM_IDX_3 = 3;
 
 constexpr int64_t N_VALID_VALUES[] = {4, 6, 8};
 constexpr int64_t D_ALIGNMENT = 16;
@@ -47,9 +57,69 @@ constexpr int64_t PHI_DIM_OFFSET = 2;
 
 static bool CheckAlphaShape(const aclTensor *alphaTensor);
 static bool ValidateNDParams(int64_t n, int64_t d);
-static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t nD);
-static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n);
-static bool CheckGammaShape(const aclTensor *gammaOptional, int64_t n, int64_t d);
+static bool CheckTensorShape(const aclTensor *tensor, std::initializer_list<int64_t> expectedShape, const char *name);
+
+
+static std::string TensorShapeToString(const aclTensor *tensor)
+{
+    const auto shape = tensor->GetViewShape();
+    std::string result = "[";
+    for (size_t i = 0; i < shape.GetDimNum(); ++i) {
+        result += (i == 0 ? "" : ", ") + std::to_string(shape.GetDim(i));
+    }
+    return result + "]";
+}
+
+static std::string ExpectedShapeToString(std::initializer_list<int64_t> shape)
+{
+    std::string result = "[";
+    size_t index = 0;
+    for (const auto dim : shape) {
+        result += (index++ == 0 ? "" : ", ") + std::to_string(dim);
+    }
+    return result + "]";
+}
+
+static bool CheckRequiredTensor(const aclTensor *tensor, const char *name, const char *reason)
+{
+    if (tensor == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, name, "nullptr", reason);
+        return false;
+    }
+    return true;
+}
+
+static bool CheckNonEmptyTensor(const aclTensor *tensor, const char *name)
+{
+    if (tensor->IsEmpty()) {
+        const std::string actualShape = TensorShapeToString(tensor);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_OP_NAME, name, actualShape.c_str(), "tensor must not be empty");
+        return false;
+    }
+    return true;
+}
+
+static bool CheckTensorRank(const aclTensor *tensor, const char *name, size_t expectedRank)
+{
+    const size_t actualRank = tensor->GetViewShape().GetDimNum();
+    if (actualRank != expectedRank) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(ACLNN_OP_NAME, name, std::to_string(actualRank).c_str(),
+                                     std::to_string(expectedRank).c_str());
+        return false;
+    }
+    return true;
+}
+
+static bool CheckTensorDtype(const aclTensor *tensor, const char *name, DataType expectedDtype)
+{
+    const auto actualDtype = tensor->GetDataType();
+    if (actualDtype != expectedDtype) {
+        OP_LOGE_FOR_INVALID_DTYPE(ACLNN_OP_NAME, name, op::ToString(actualDtype).GetString(),
+                                  op::ToString(expectedDtype).GetString());
+        return false;
+    }
+    return true;
+}
 
 struct MhcParamsBase {
     const aclTensor *x = nullptr;
@@ -130,33 +200,19 @@ private:
 
 static bool CheckNotNull(const MhcParamsBase &params)
 {
-    if (params.x == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "X tensor is nullptr");
-        return false;
-    }
-    if (params.phi == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Phi tensor is nullptr");
-        return false;
-    }
-    if (params.alpha == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Alpha tensor is nullptr");
-        return false;
-    }
-    if (params.bias == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "Bias tensor is nullptr");
-        return false;
-    }
-    if (params.hIn == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "HIn tensor is nullptr");
-        return false;
-    }
-    if (params.hPost == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "HPost tensor is nullptr");
-        return false;
-    }
-    int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
-    if (alphaSize == ALPHA_DIM_SIZE_3 && params.hRes == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_NULLPTR, "HRes tensor is nullptr when alpha size is 3");
+    return CheckRequiredTensor(params.x, "x", "required input tensor must not be nullptr") &&
+           CheckRequiredTensor(params.phi, "phi", "required input tensor must not be nullptr") &&
+           CheckRequiredTensor(params.alpha, "alpha", "required input tensor must not be nullptr") &&
+           CheckRequiredTensor(params.bias, "bias", "required input tensor must not be nullptr") &&
+           CheckRequiredTensor(params.hIn, "hIn", "required output tensor must not be nullptr") &&
+           CheckRequiredTensor(params.hPost, "hPost", "required output tensor must not be nullptr");
+}
+
+static bool CheckRequiredHRes(const MhcParamsBase &params)
+{
+    if (params.alpha->GetViewShape().GetDim(DIM_IDX_0) == ALPHA_DIM_SIZE_3 && params.hRes == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "hRes", "nullptr",
+                                              "output tensor is required when alpha shape is [3]");
         return false;
     }
     return true;
@@ -164,113 +220,167 @@ static bool CheckNotNull(const MhcParamsBase &params)
 
 static bool CheckEmptyTensor(const MhcParamsBase &params)
 {
-    if (params.x->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X tensor is empty");
+    return CheckNonEmptyTensor(params.x, "x") && CheckNonEmptyTensor(params.phi, "phi") &&
+           CheckNonEmptyTensor(params.alpha, "alpha") && CheckNonEmptyTensor(params.bias, "bias");
+}
+
+static bool CheckInputDims(const MhcParamsBase &params)
+{
+    auto xDimNum = params.x->GetViewShape().GetDimNum();
+    if (xDimNum != DIM_NUM_3 && xDimNum != DIM_NUM_4) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(ACLNN_OP_NAME, "x", std::to_string(xDimNum).c_str(), "3 or 4");
         return false;
     }
-    if (params.phi->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor is empty");
+    if (!CheckTensorRank(params.phi, "phi", DIM_NUM_2) || !CheckTensorRank(params.alpha, "alpha", DIM_NUM_1) ||
+        !CheckTensorRank(params.bias, "bias", DIM_NUM_1)) {
         return false;
     }
-    if (params.alpha->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Alpha tensor is empty");
+    return params.gammaOptional == nullptr || CheckTensorRank(params.gammaOptional, "gammaOptional", DIM_NUM_2);
+}
+
+static bool CheckOutputDims(const MhcParamsBase &params)
+{
+    auto xDimNum = params.x->GetViewShape().GetDimNum();
+    size_t outputDimNum = xDimNum == DIM_NUM_4 ? DIM_NUM_3 : DIM_NUM_2;
+    if (!CheckTensorRank(params.hIn, "hIn", outputDimNum) ||
+        !CheckTensorRank(params.hPost, "hPost", outputDimNum)) {
         return false;
     }
-    if (params.bias->IsEmpty()) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor is empty");
+    int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
+    return alphaSize != ALPHA_DIM_SIZE_3 || CheckTensorRank(params.hRes, "hRes", xDimNum);
+}
+
+static bool CheckOptionalOutputGroup(const MhcParamsBase &params)
+{
+    bool hasAnyOptional =
+        params.invRmsOptional != nullptr || params.hMixOptional != nullptr || params.hPreOptional != nullptr;
+    bool hasAllOptional =
+        params.invRmsOptional != nullptr && params.hMixOptional != nullptr && params.hPreOptional != nullptr;
+    if (hasAnyOptional && !hasAllOptional) {
+        const std::string pointerStates = std::string("invRmsOptional=") +
+            (params.invRmsOptional == nullptr ? "nullptr" : "non-null") + ", hMixOptional=" +
+            (params.hMixOptional == nullptr ? "nullptr" : "non-null") + ", hPreOptional=" +
+            (params.hPreOptional == nullptr ? "nullptr" : "non-null");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(ACLNN_OP_NAME, "invRmsOptional, hMixOptional, hPreOptional",
+                                               pointerStates.c_str(),
+                                               "all optional outputs must be nullptr or all must be non-null");
         return false;
     }
     return true;
 }
 
-static bool CheckInputOutDims(const MhcParamsBase &params)
+
+static bool CheckOptionalOutputDims(const MhcParamsBase &params)
 {
+    if (params.invRmsOptional == nullptr) {
+        return true;
+    }
     auto xDimNum = params.x->GetViewShape().GetDimNum();
-    if (xDimNum != DIM_NUM_3 && xDimNum != DIM_NUM_4) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X tensor dim num must be 3 or 4, but got %zu", xDimNum);
+    size_t outputDimNum = xDimNum == DIM_NUM_4 ? DIM_NUM_3 : DIM_NUM_2;
+    size_t invRmsDimNum = xDimNum == DIM_NUM_4 ? DIM_NUM_2 : DIM_NUM_1;
+    return CheckTensorRank(params.invRmsOptional, "invRmsOptional", invRmsDimNum) &&
+           CheckTensorRank(params.hMixOptional, "hMixOptional", outputDimNum) &&
+           CheckTensorRank(params.hPreOptional, "hPreOptional", outputDimNum);
+}
+
+static bool CheckOutputAndOptionalDims(const MhcParamsBase &params)
+{
+    return CheckOutputDims(params) && CheckOptionalOutputGroup(params) && CheckOptionalOutputDims(params);
+}
+
+static void GetXShapeInfo(const MhcParamsBase &params, int64_t &n, int64_t &d, int64_t &nD)
+{
+    auto xShape = params.x->GetViewShape();
+    auto xDimNum = xShape.GetDimNum();
+    n = xDimNum == DIM_NUM_4 ? xShape.GetDim(DIM_IDX_2) : xShape.GetDim(DIM_IDX_1);
+    d = xDimNum == DIM_NUM_4 ? xShape.GetDim(DIM_IDX_3) : xShape.GetDim(DIM_IDX_2);
+    nD = n * d;
+}
+
+static bool CheckParamShapes(const MhcParamsBase &params, int64_t n, int64_t d, int64_t nD,
+                             int64_t expectedParamRows)
+{
+    if (!ValidateNDParams(n, d) || !CheckTensorShape(params.phi, {expectedParamRows, nD}, "phi") ||
+        !CheckTensorShape(params.bias, {expectedParamRows}, "bias")) {
         return false;
     }
+    return params.gammaOptional == nullptr || CheckTensorShape(params.gammaOptional, {n, d}, "gammaOptional");
+}
 
-    auto phiDimNum = params.phi->GetViewShape().GetDimNum();
-    if (phiDimNum != DIM_NUM_2) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor dim num must be 2, but got %zu", phiDimNum);
+static bool CheckOutputShape4D(const MhcParamsBase &params, int64_t n, int64_t d, int64_t expectedPhiRows)
+{
+    auto xShape = params.x->GetViewShape();
+    int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
+    int64_t b = xShape.GetDim(DIM_IDX_0);
+    int64_t s = xShape.GetDim(DIM_IDX_1);
+    if (!CheckTensorShape(params.hIn, {b, s, d}, "hIn") || !CheckTensorShape(params.hPost, {b, s, n}, "hPost")) {
         return false;
     }
-
-    auto alphaDimNum = params.alpha->GetViewShape().GetDimNum();
-    if (alphaDimNum != DIM_NUM_1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Alpha tensor dim num must be 1, but got %zu", alphaDimNum);
+    if (alphaSize == ALPHA_DIM_SIZE_3 && !CheckTensorShape(params.hRes, {b, s, n, n}, "hRes")) {
         return false;
     }
+    if (params.invRmsOptional == nullptr) {
+        return true;
+    }
+    return CheckTensorShape(params.invRmsOptional, {b, s}, "invRmsOptional") &&
+           CheckTensorShape(params.hMixOptional, {b, s, expectedPhiRows}, "hMixOptional") &&
+           CheckTensorShape(params.hPreOptional, {b, s, n}, "hPreOptional");
+}
 
-    auto biasDimNum = params.bias->GetViewShape().GetDimNum();
-    if (biasDimNum != DIM_NUM_1) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim num must be 1, but got %zu", biasDimNum);
+static bool CheckOutputShape3D(const MhcParamsBase &params, int64_t n, int64_t d, int64_t expectedPhiRows)
+{
+    auto xShape = params.x->GetViewShape();
+    int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
+    int64_t t = xShape.GetDim(DIM_IDX_0);
+    if (!CheckTensorShape(params.hIn, {t, d}, "hIn") || !CheckTensorShape(params.hPost, {t, n}, "hPost")) {
         return false;
     }
-
-    if (params.gammaOptional != nullptr) {
-        auto gammaDimNum = params.gammaOptional->GetViewShape().GetDimNum();
-        if (gammaDimNum != DIM_NUM_2) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GammaOptional tensor dim num must be 2, but got %zu", gammaDimNum);
-            return false;
-        }
+    if (alphaSize == ALPHA_DIM_SIZE_3 && !CheckTensorShape(params.hRes, {t, n, n}, "hRes")) {
+        return false;
     }
-
-    return true;
+    if (params.invRmsOptional == nullptr) {
+        return true;
+    }
+    return CheckTensorShape(params.invRmsOptional, {t}, "invRmsOptional") &&
+           CheckTensorShape(params.hMixOptional, {t, expectedPhiRows}, "hMixOptional") &&
+           CheckTensorShape(params.hPreOptional, {t, n}, "hPreOptional");
 }
 
 static bool CheckInputOutShape(const MhcParamsBase &params)
 {
-    auto xShape = params.x->GetViewShape();
-
-    if (!CheckAlphaShape(params.alpha)) {
-        return false;
-    }
-
     int64_t n = 0;
     int64_t d = 0;
     int64_t nD = 0;
-    auto xDimNum = xShape.GetDimNum();
-    if (xDimNum == DIM_NUM_4) {
-        n = xShape.GetDim(2);
-        d = xShape.GetDim(3);
-        nD = n * d;
-    } else if (xDimNum == DIM_NUM_3) {
-        n = xShape.GetDim(1);
-        d = xShape.GetDim(2);
-        nD = n * d;
-    }
-
-    if (!ValidateNDParams(n, d)) {
+    GetXShapeInfo(params, n, d, nD);
+    const int64_t alphaSize = params.alpha->GetViewShape().GetDim(DIM_IDX_0);
+    const int64_t expectedParamRows = alphaSize == ALPHA_DIM_SIZE_2 ? 2 * n : n * n + 2 * n;
+    if (!CheckParamShapes(params, n, d, nD, expectedParamRows)) {
         return false;
     }
-
-    int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
-    int64_t expectedPhiRows = 0;
-    int64_t expectedBiasSize = 0;
-    
-    // dim of phi,bias
-    if (alphaSize == ALPHA_DIM_SIZE_2) {
-        expectedPhiRows = 2 * n;
-        expectedBiasSize = 2 * n;
-    } else {
-        expectedPhiRows = n * n + 2 * n;
-        expectedBiasSize = n * n + 2 * n;
+    if (params.x->GetViewShape().GetDimNum() == DIM_NUM_4) {
+        return CheckOutputShape4D(params, n, d, expectedParamRows);
     }
+    return CheckOutputShape3D(params, n, d, expectedParamRows);
+}
 
-    if (!CheckPhiShape(params.phi, expectedPhiRows, nD)) {
+static bool CheckTensorShape(const aclTensor *tensor, std::initializer_list<int64_t> expectedShape, const char *name)
+{
+    const auto tensorShape = tensor->GetViewShape();
+    const size_t actualRank = tensorShape.GetDimNum();
+    if (actualRank != expectedShape.size()) {
+        OP_LOGE_FOR_INVALID_SHAPEDIM(ACLNN_OP_NAME, name, std::to_string(actualRank).c_str(),
+                                     std::to_string(expectedShape.size()).c_str());
         return false;
     }
-
-    if (!CheckBiasShape(params.bias, expectedBiasSize)) {
-        return false;
+    size_t dimIndex = 0;
+    for (const auto expectedDim : expectedShape) {
+        if (tensorShape.GetDim(dimIndex++) != expectedDim) {
+            const std::string actualShape = TensorShapeToString(tensor);
+            const std::string expectedShapeStr = ExpectedShapeToString(expectedShape);
+            OP_LOGE_FOR_INVALID_SHAPE(ACLNN_OP_NAME, name, actualShape.c_str(), expectedShapeStr.c_str());
+            return false;
+        }
     }
-
-    if (!CheckGammaShape(params.gammaOptional, n, d)) {
-        return false;
-    }
-
     return true;
 }
 
@@ -279,7 +389,9 @@ static bool CheckAlphaShape(const aclTensor *alphaTensor)
     auto alphaShape = alphaTensor->GetViewShape();
     int64_t alphaSize = alphaShape.GetDim(0);
     if (alphaSize != ALPHA_DIM_SIZE_2 && alphaSize != ALPHA_DIM_SIZE_3) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Alpha tensor shape must be (2) or (3), but got (%ld)", alphaSize);
+        const std::string actualShape = TensorShapeToString(alphaTensor);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_OP_NAME, "alpha", actualShape.c_str(),
+                                              "shape must be [2] or [3]");
         return false;
     }
     return true;
@@ -287,11 +399,16 @@ static bool CheckAlphaShape(const aclTensor *alphaTensor)
 
 static bool ValidateNDParams(int64_t n, int64_t d)
 {
-    if (n <= 0 || d <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Invalid X tensor shape: n=%ld, d=%ld", n, d);
+    if (n <= 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "n", std::to_string(n).c_str(),
+                                              "n in x shape must be positive");
         return false;
     }
-
+    if (d <= 0) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "D", std::to_string(d).c_str(),
+                                              "D in x shape must be positive");
+        return false;
+    }
     bool isValidN = false;
     for (size_t i = 0; i < sizeof(N_VALID_VALUES) / sizeof(N_VALID_VALUES[0]); ++i) {
         if (n == N_VALID_VALUES[i]) {
@@ -300,66 +417,22 @@ static bool ValidateNDParams(int64_t n, int64_t d)
         }
     }
     if (!isValidN) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "N must be 4/6/8, but got n=%ld", n);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "n", std::to_string(n).c_str(),
+                                              "n in x shape must be 4, 6 or 8");
         return false;
     }
-
     if (d % D_ALIGNMENT != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "D must be aligned to %u elements, but got d=%ld", D_ALIGNMENT, d);
-        return false;
-    }
-
-    return true;
-}
-
-static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t nD)
-{
-    auto phiShape = phiTensor->GetViewShape();
-    if (phiShape.GetDim(0) != n2Plus2n) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld, but got %ld", n2Plus2n,
-                phiShape.GetDim(0));
-        return false;
-    }
-    if (phiShape.GetDim(1) != nD) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor second dim must be nD=%ld, but got %ld", nD, phiShape.GetDim(1));
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "D", std::to_string(d).c_str(),
+                                              "D in x shape must be aligned to 16 elements");
         return false;
     }
     return true;
 }
 
-static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n)
-{
-    auto biasShape = biasTensor->GetViewShape();
-    if (biasShape.GetDim(0) != n2Plus2n) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld, but got %ld", n2Plus2n,
-                biasShape.GetDim(0));
-        return false;
-    }
-    return true;
-}
 
-static bool CheckGammaShape(const aclTensor *gammaOptional, int64_t n, int64_t d)
-{
-    if (gammaOptional != nullptr) {
-        auto gammaShape = gammaOptional->GetViewShape();
-        if (gammaShape.GetDim(0) != n) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GammaOptional tensor first dim must be n=%ld, but got %ld", n,
-                    gammaShape.GetDim(0));
-            return false;
-        }
-        if (gammaShape.GetDim(1) != d) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GammaOptional tensor second dim must be D=%ld, but got %ld", d,
-                    gammaShape.GetDim(1));
-            return false;
-        }
-    }
-    return true;
-}
-
-static bool CheckDtypeValid(const MhcParamsBase &params)
+static bool CheckInputDtype(const MhcParamsBase &params)
 {
     const std::initializer_list<DataType> X_SUPPORT_DTYPE_LIST = {DataType::DT_BF16, DataType::DT_FLOAT16};
-
     auto xDtype = params.x->GetDataType();
     bool xDtypeValid = false;
     for (const auto &dtype : X_SUPPORT_DTYPE_LIST) {
@@ -369,30 +442,36 @@ static bool CheckDtypeValid(const MhcParamsBase &params)
         }
     }
     if (!xDtypeValid) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X tensor dtype must be BF16 or FP16");
+        OP_LOGE_FOR_INVALID_DTYPE(ACLNN_OP_NAME, "x", op::ToString(xDtype).GetString(), "BFLOAT16 or FLOAT16");
         return false;
     }
+    return CheckTensorDtype(params.phi, "phi", DataType::DT_FLOAT) &&
+           CheckTensorDtype(params.alpha, "alpha", DataType::DT_FLOAT) &&
+           CheckTensorDtype(params.bias, "bias", DataType::DT_FLOAT) &&
+           (params.gammaOptional == nullptr ||
+            CheckTensorDtype(params.gammaOptional, "gammaOptional", DataType::DT_FLOAT));
+}
 
-    if (params.phi->GetDataType() != DataType::DT_FLOAT) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor dtype must be FP32");
-        return false;
-    }
-    if (params.alpha->GetDataType() != DataType::DT_FLOAT) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Alpha tensor dtype must be FP32");
-        return false;
-    }
-    if (params.bias->GetDataType() != DataType::DT_FLOAT) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dtype must be FP32");
-        return false;
-    }
-    if (params.gammaOptional != nullptr) {
-        if (params.gammaOptional->GetDataType() != DataType::DT_FLOAT) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GammaOptional tensor dtype must be FP32");
-            return false;
-        }
-    }
+static bool CheckOutputDtype(const MhcParamsBase &params)
+{
+    return CheckTensorDtype(params.hIn, "hIn", params.x->GetDataType()) &&
+           CheckTensorDtype(params.hPost, "hPost", DataType::DT_FLOAT) &&
+           (params.hRes == nullptr || CheckTensorDtype(params.hRes, "hRes", DataType::DT_FLOAT));
+}
 
-    return true;
+static bool CheckOptionalOutputDtype(const MhcParamsBase &params)
+{
+    if (params.invRmsOptional == nullptr) {
+        return true;
+    }
+    return CheckTensorDtype(params.invRmsOptional, "invRmsOptional", DataType::DT_FLOAT) &&
+           CheckTensorDtype(params.hMixOptional, "hMixOptional", DataType::DT_FLOAT) &&
+           CheckTensorDtype(params.hPreOptional, "hPreOptional", DataType::DT_FLOAT);
+}
+
+static bool CheckDtypeValid(const MhcParamsBase &params)
+{
+    return CheckInputDtype(params) && CheckOutputDtype(params) && CheckOptionalOutputDtype(params);
 }
 
 static bool IsPrivateFormat(ge::Format format)
@@ -405,62 +484,65 @@ static bool IsPrivateFormat(ge::Format format)
     return false;
 }
 
-static bool CheckFormat(const MhcParamsBase &params)
+static bool CheckTensorFormat(const aclTensor *tensor, const char *name)
 {
-    if (IsPrivateFormat(params.x->GetViewFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "X tensor format must be ND");
+    if (IsPrivateFormat(tensor->GetViewFormat())) {
+        OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(ACLNN_OP_NAME, name,
+                                               op::ToString(tensor->GetViewFormat()).GetString(),
+                                               "private format is not supported");
         return false;
     }
-
-    if (IsPrivateFormat(params.phi->GetViewFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor format must be ND");
-        return false;
-    }
-
-    if (IsPrivateFormat(params.alpha->GetViewFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Alpha tensor format must be ND");
-        return false;
-    }
-
-    if (IsPrivateFormat(params.bias->GetViewFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor format must be ND");
-        return false;
-    }
-
-    if (params.gammaOptional != nullptr) {
-        if (IsPrivateFormat(params.gammaOptional->GetViewFormat())) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "GammaOptional tensor format must be ND");
-            return false;
-        }
-    }
-
     return true;
 }
 
+static bool CheckInputFormat(const MhcParamsBase &params)
+{
+    if (!CheckTensorFormat(params.x, "x") || !CheckTensorFormat(params.phi, "phi") ||
+        !CheckTensorFormat(params.alpha, "alpha") || !CheckTensorFormat(params.bias, "bias")) {
+        return false;
+    }
+    return params.gammaOptional == nullptr || CheckTensorFormat(params.gammaOptional, "gammaOptional");
+}
+
+static bool CheckOutputFormat(const MhcParamsBase &params)
+{
+    if (!CheckTensorFormat(params.hIn, "hIn") || !CheckTensorFormat(params.hPost, "hPost")) {
+        return false;
+    }
+    return params.hRes == nullptr || CheckTensorFormat(params.hRes, "hRes");
+}
+
+static bool CheckOptionalOutputFormat(const MhcParamsBase &params)
+{
+    if (params.invRmsOptional == nullptr) {
+        return true;
+    }
+    return CheckTensorFormat(params.invRmsOptional, "invRmsOptional") &&
+           CheckTensorFormat(params.hMixOptional, "hMixOptional") &&
+           CheckTensorFormat(params.hPreOptional, "hPreOptional");
+}
+
+static bool CheckFormat(const MhcParamsBase &params)
+{
+    return CheckInputFormat(params) && CheckOutputFormat(params) && CheckOptionalOutputFormat(params);
+}
 static aclnnStatus CheckParams(const MhcParamsBase &params)
 {
-    // 1. 检查参数是否为空指针、空tensor
     CHECK_RET(CheckNotNull(params), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckEmptyTensor(params), ACLNN_ERR_PARAM_INVALID);
-
-    // 2. 校验输入、输出参数维度
-    CHECK_RET(CheckInputOutDims(params), ACLNN_ERR_PARAM_INVALID);
-
-    // 3. 校验输入、输出shape参数
+    CHECK_RET(CheckInputDims(params), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckAlphaShape(params.alpha), ACLNN_ERR_PARAM_INVALID);
+    CHECK_RET(CheckRequiredHRes(params), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckOutputAndOptionalDims(params), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckInputOutShape(params), ACLNN_ERR_PARAM_INVALID);
-
-    // 4. 检查输入的数据类型是否在支持的数据类型范围之内
     CHECK_RET(CheckDtypeValid(params), ACLNN_ERR_PARAM_INVALID);
-
-    // 5. 检查数据形状是否支持
     CHECK_RET(CheckFormat(params), ACLNN_ERR_PARAM_INVALID);
-
     return ACLNN_SUCCESS;
 }
 
 static aclnnStatus ConvertDataContiguous(MhcParamsBase &params, aclOpExecutor *executor)
 {
-    // 将输入tensor转换为连续格式
+    // Convert input tensors to contiguous tensors.
     params.xContiguous = l0op::Contiguous(params.x, executor);
     CHECK_RET(params.xContiguous != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
@@ -481,57 +563,53 @@ static aclnnStatus ConvertDataContiguous(MhcParamsBase &params, aclOpExecutor *e
     return ACLNN_SUCCESS;
 }
 
+static aclnnStatus CopyRequiredOutputs(const aclTensor *hInOut, const aclTensor *hPostOut, const aclTensor *hResOut,
+                                       MhcParamsBase &params, aclOpExecutor *executor)
+{
+    auto ret0 = l0op::ViewCopy(hInOut, params.hIn, executor);
+    CHECK_RET(ret0 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto ret1 = l0op::ViewCopy(hPostOut, params.hPost, executor);
+    CHECK_RET(ret1 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    if (params.hasResi && params.hRes != nullptr) {
+        auto ret2 = l0op::ViewCopy(hResOut, params.hRes, executor);
+        CHECK_RET(ret2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CopyOptionalOutputs(const aclTensor *invRmsOut, const aclTensor *hMixOut, const aclTensor *hPreOut,
+                                       MhcParamsBase &params, aclOpExecutor *executor)
+{
+    if (params.invRmsOptional == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+    auto ret3 = l0op::ViewCopy(invRmsOut, params.invRmsOptional, executor);
+    CHECK_RET(ret3 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto ret4 = l0op::ViewCopy(hMixOut, params.hMixOptional, executor);
+    CHECK_RET(ret4 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto ret5 = l0op::ViewCopy(hPreOut, params.hPreOptional, executor);
+    CHECK_RET(ret5 != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus mHCPreCommonProcess(MhcParamsBase &params, aclOpExecutor *executor)
 {
     auto ret = CheckParams(params);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
-
     ret = ConvertDataContiguous(params, executor);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     int64_t alphaSize = params.alphaContiguous->GetViewShape().GetDim(0);
     params.hasResi = (alphaSize == ALPHA_DIM_SIZE_3);
-
-    int64_t outFlag =
-        (params.invRmsOptional != nullptr && params.hMixOptional != nullptr && params.hPreOptional != nullptr) ? 1 : 0;
-    auto outParams = l0op::MhcPre(params.xContiguous, params.phiContiguous, params.alphaContiguous,
-                                  params.biasContiguous, params.gammaOptionalContiguous, outFlag, params.normEps,
-                                  params.hcEps, executor);
+    int64_t outFlag = params.invRmsOptional != nullptr ? 1 : 0;
+    auto outParams =
+        l0op::MhcPre(params.xContiguous, params.phiContiguous, params.alphaContiguous, params.biasContiguous,
+                     params.gammaOptionalContiguous, outFlag, params.normEps, params.hcEps, executor);
     CHECK_RET(outParams != std::tuple(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr), ACLNN_ERR_INNER_NULLPTR);
-
-    auto out0 = std::get<0>(outParams);
-    auto ret0 = l0op::ViewCopy(out0, params.hIn, executor);
-    CHECK_RET(ret0 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-    auto out1 = std::get<1>(outParams);
-    auto ret1 = l0op::ViewCopy(out1, params.hPost, executor);
-    CHECK_RET(ret1 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-
-    if (params.hasResi && params.hRes != nullptr) {
-        auto out2 = std::get<2>(outParams);
-        auto ret2 = l0op::ViewCopy(out2, params.hRes, executor);
-        CHECK_RET(ret2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
-    if (params.invRmsOptional != nullptr) {
-        auto out3 = std::get<3>(outParams);
-        auto retView = l0op::ViewCopy(out3, params.invRmsOptional, executor);
-        CHECK_RET(retView != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
-    if (params.hMixOptional != nullptr) {
-        auto out4 = std::get<4>(outParams);
-        auto retView2 = l0op::ViewCopy(out4, params.hMixOptional, executor);
-        CHECK_RET(retView2 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
-    if (params.hPreOptional != nullptr) {
-        auto out5 = std::get<5>(outParams);
-        auto retView3 = l0op::ViewCopy(out5, params.hPreOptional, executor);
-        CHECK_RET(retView3 != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-
-    return ACLNN_SUCCESS;
+    ret = CopyRequiredOutputs(std::get<0>(outParams), std::get<1>(outParams), std::get<2>(outParams), params, executor);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
+    return CopyOptionalOutputs(std::get<3>(outParams), std::get<4>(outParams), std::get<5>(outParams), params,
+                               executor);
 }
 
 aclnnStatus aclnnMhcPreGetWorkspaceSize(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha,
@@ -540,6 +618,16 @@ aclnnStatus aclnnMhcPreGetWorkspaceSize(const aclTensor *x, const aclTensor *phi
                                         aclTensor *invRmsOptional, aclTensor *hMixOptional, aclTensor *hPreOptional,
                                         uint64_t *workspaceSize, aclOpExecutor **executor)
 {
+    if (workspaceSize == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "workspaceSize", "nullptr",
+                                              "output parameter must not be nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
+    if (executor == nullptr) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_OP_NAME, "executor", "nullptr",
+                                              "output parameter must not be nullptr");
+        return ACLNN_ERR_PARAM_NULLPTR;
+    }
     L2_DFX_PHASE_1(aclnnMhcPre, DFX_IN(x, phi, alpha, bias, gammaOptional, normEps, hcEps),
                    DFX_OUT(hIn, hPost, hRes, invRmsOptional, hMixOptional, hPreOptional));
     auto uniqueExecutor = CREATE_EXECUTOR();

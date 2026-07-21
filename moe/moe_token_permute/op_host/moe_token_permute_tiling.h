@@ -20,6 +20,7 @@
 #include "log/log.h"
 #include "op_host/tiling_base.h"
 #include "op_host/tiling_templates_registry.h"
+
 namespace optiling {
 BEGIN_TILING_DATA_DEF(PermuteVBSComputeTilingData)
 TILING_DATA_FIELD_DEF(int64_t, needCoreNum);
@@ -88,7 +89,6 @@ TILING_DATA_FIELD_DEF_STRUCT(PermuteSortOutComputeTilingData, sortOutComputePara
 TILING_DATA_FIELD_DEF_STRUCT(IndexCopyComputeTilingData, indexCopyComputeParamsOp);
 END_TILING_DATA_DEF;
 REGISTER_TILING_DATA_CLASS(MoeTokenPermute, MoeTokenPermuteTilingData)
-struct MoeTokenPermuteCompileInfo {
-};
+struct MoeTokenPermuteCompileInfo {};
 } // namespace optiling
 #endif // MOE_TOKEN_PERMUTE

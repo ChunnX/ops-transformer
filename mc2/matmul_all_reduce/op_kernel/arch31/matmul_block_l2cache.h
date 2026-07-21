@@ -18,13 +18,13 @@
 
 namespace AscendC {
 namespace MC2 {
-class MatmulBlockL2Cache : public MatmulBlock
-{
+class MatmulBlockL2Cache : public MatmulBlock {
 public:
     __aicore__ inline MatmulBlockL2Cache()
-    {}
-    __aicore__ inline void Init(AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg,
-        Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling);
+    {
+    }
+    __aicore__ inline void Init(AscendC::tiling::TCubeTiling &tiling, Mc2Tiling::RCSTiling &cfg,
+                                Mc2Tiling::Mc2L2cacheTilePara &tileL2cacheTiling);
     __aicore__ inline void UpdateBlockIndex();
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
     __aicore__ inline void CalcGMOffset(int32_t mTileIndex = 0, int32_t nTileIndex = 0);
@@ -47,8 +47,8 @@ public:
     uint32_t nCntUse = 0;
 };
 
-__aicore__ inline void MatmulBlockL2Cache::Init(AscendC::tiling::TCubeTiling& tiling, Mc2Tiling::RCSTiling& cfg,
-    Mc2Tiling::Mc2L2cacheTilePara& tileL2cacheTiling)
+__aicore__ inline void MatmulBlockL2Cache::Init(AscendC::tiling::TCubeTiling &tiling, Mc2Tiling::RCSTiling &cfg,
+                                                Mc2Tiling::Mc2L2cacheTilePara &tileL2cacheTiling)
 {
     MatmulBlock::Init(tiling, cfg, tileL2cacheTiling);
     this->tilingL2 = tileL2cacheTiling;
@@ -100,7 +100,7 @@ __aicore__ inline void MatmulBlockL2Cache::UpdateBlockCnt(uint32_t index, int32_
     if (preCoreNum == 0) {
         preCoreNum = tiling.usedCoreNum;
     }
-    int roundCnt = mTileIndex * tilingL2.nTileCntL2 + nTileIndex;  //做完一次tile块计算的次数
+    int roundCnt = mTileIndex * tilingL2.nTileCntL2 + nTileIndex;  // 做完一次tile块计算的次数
     int indexStart = roundCnt * preCoreNum % tiling.usedCoreNum;   // 开始运算时，preCore开始的位置
     int indexEnd = (indexStart + preCoreNum) % tiling.usedCoreNum; // 运算结束后，preCore结束的位置
     // 利用roudCnt来解决尾块负载均衡问题

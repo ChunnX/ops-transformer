@@ -41,40 +41,28 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnMatmulAllReduce)
     TensorDesc x1 = TensorDesc({16, 32}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc x2 = TensorDesc({32, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc bias = TensorDesc({16}, ACL_FLOAT16, ACL_FORMAT_ND);
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 8;
     int64_t streamMode = 1;
     TensorDesc output = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    auto ut_null_x1 = OP_API_UT(
-        aclnnMatmulAllReduce,
-        INPUT(nullptr, x2, bias, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x1 = OP_API_UT(aclnnMatmulAllReduce, INPUT(nullptr, x2, bias, group, reduceOp, commTurn, streamMode),
+                                OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x1.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_x2 = OP_API_UT(
-        aclnnMatmulAllReduce,
-        INPUT(x1, nullptr, bias, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x2 = OP_API_UT(aclnnMatmulAllReduce, INPUT(x1, nullptr, bias, group, reduceOp, commTurn, streamMode),
+                                OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x2.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_bias = OP_API_UT(
-        aclnnMatmulAllReduce,
-        INPUT(x1, x2, nullptr, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_bias =
+        OP_API_UT(aclnnMatmulAllReduce, INPUT(x1, x2, nullptr, group, reduceOp, commTurn, streamMode), OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x2.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_output = OP_API_UT(
-        aclnnMatmulAllReduce,
-        INPUT(x1, x2, bias, group, reduceOp, commTurn, streamMode),
-        OUTPUT(nullptr)
-    );
+    auto ut_null_output =
+        OP_API_UT(aclnnMatmulAllReduce, INPUT(x1, x2, bias, group, reduceOp, commTurn, streamMode), OUTPUT(nullptr));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_output.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 
@@ -86,40 +74,34 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnMatmulAllReduceV2)
     TensorDesc x3 = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc dequantScale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc pertokenScale = {{32}, ACL_FLOAT, ACL_FORMAT_ND};
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    auto ut_null_x1 = OP_API_UT(
-        aclnnQuantMatmulAllReduceV2,
-        INPUT(nullptr, x2, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x1 =
+        OP_API_UT(aclnnQuantMatmulAllReduceV2,
+                  INPUT(nullptr, x2, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
+                  OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x1.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_x2 = OP_API_UT(
-        aclnnQuantMatmulAllReduceV2,
-        INPUT(x1, nullptr, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x2 =
+        OP_API_UT(aclnnQuantMatmulAllReduceV2,
+                  INPUT(x1, nullptr, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
+                  OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x2.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
     auto ut_null_dScale = OP_API_UT(
         aclnnQuantMatmulAllReduceV2,
-        INPUT(x1, x2, bias, x3, nullptr, pertokenScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+        INPUT(x1, x2, bias, x3, nullptr, pertokenScale, group, reduceOp, commTurn, streamMode), OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_dScale.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
     auto ut_null_output = OP_API_UT(
         aclnnQuantMatmulAllReduceV2,
-        INPUT(x1, x2, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(nullptr)
-    );
+        INPUT(x1, x2, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode), OUTPUT(nullptr));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_output.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 
@@ -130,54 +112,43 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduce)
     TensorDesc bias = TensorDesc({16}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc x3 = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc dequantScale = TensorDesc({16}, ACL_UINT64, ACL_FORMAT_ND);
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     TensorDesc output = TensorDesc({16, 16}, ACL_FLOAT16, ACL_FORMAT_ND);
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    auto ut_null_x1 = OP_API_UT(
-        aclnnQuantMatmulAllReduce,
-        INPUT(nullptr, x2, bias, x3, dequantScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x1 =
+        OP_API_UT(aclnnQuantMatmulAllReduce,
+                  INPUT(nullptr, x2, bias, x3, dequantScale, group, reduceOp, commTurn, streamMode), OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x1.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_x2 = OP_API_UT(
-        aclnnQuantMatmulAllReduce,
-        INPUT(x1, nullptr, bias, x3, dequantScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x2 =
+        OP_API_UT(aclnnQuantMatmulAllReduce,
+                  INPUT(x1, nullptr, bias, x3, dequantScale, group, reduceOp, commTurn, streamMode), OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x2.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_bias = OP_API_UT(
-        aclnnQuantMatmulAllReduce,
-        INPUT(x1, x2, nullptr, x3, dequantScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_bias =
+        OP_API_UT(aclnnQuantMatmulAllReduce,
+                  INPUT(x1, x2, nullptr, x3, dequantScale, group, reduceOp, commTurn, streamMode), OUTPUT(output));
     EXPECT_NE(ACLNN_ERR_PARAM_INVALID, ut_null_bias.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_x3 = OP_API_UT(
-        aclnnQuantMatmulAllReduce,
-        INPUT(x1, x2, bias, nullptr, dequantScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x3 =
+        OP_API_UT(aclnnQuantMatmulAllReduce,
+                  INPUT(x1, x2, bias, nullptr, dequantScale, group, reduceOp, commTurn, streamMode), OUTPUT(output));
     EXPECT_NE(ACLNN_ERR_PARAM_INVALID, ut_null_x3.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_dequant = OP_API_UT(
-        aclnnQuantMatmulAllReduce,
-        INPUT(x1, x2, bias, x3, nullptr, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
-    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_dequant.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
+    auto ut_null_dequant =
+        OP_API_UT(aclnnQuantMatmulAllReduce, INPUT(x1, x2, bias, x3, nullptr, group, reduceOp, commTurn, streamMode),
+                  OUTPUT(output));
+    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR,
+              ut_null_dequant.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_output = OP_API_UT(
-        aclnnQuantMatmulAllReduce,
-        INPUT(x1, x2, bias, x3, dequantScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(nullptr)
-    );
+    auto ut_null_output =
+        OP_API_UT(aclnnQuantMatmulAllReduce,
+                  INPUT(x1, x2, bias, x3, dequantScale, group, reduceOp, commTurn, streamMode), OUTPUT(nullptr));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_output.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 
@@ -189,41 +160,35 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV2)
     TensorDesc x3 = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc dequantScale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc pertokenScale = {{32}, ACL_FLOAT, ACL_FORMAT_ND};
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    auto ut_null_x1 = OP_API_UT(
-        aclnnQuantMatmulAllReduceV2,
-        INPUT(nullptr, x2, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x1 =
+        OP_API_UT(aclnnQuantMatmulAllReduceV2,
+                  INPUT(nullptr, x2, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
+                  OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x1.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_x2 = OP_API_UT(
-        aclnnQuantMatmulAllReduceV2,
-        INPUT(x1, nullptr, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x2 =
+        OP_API_UT(aclnnQuantMatmulAllReduceV2,
+                  INPUT(x1, nullptr, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
+                  OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x2.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
     auto ut_null_dScale = OP_API_UT(
         aclnnQuantMatmulAllReduceV2,
-        INPUT(x1, x2, bias, x3, nullptr, pertokenScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+        INPUT(x1, x2, bias, x3, nullptr, pertokenScale, group, reduceOp, commTurn, streamMode), OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_dScale.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
 
     auto ut_null_output = OP_API_UT(
         aclnnQuantMatmulAllReduceV2,
-        INPUT(x1, x2, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(nullptr)
-    );
+        INPUT(x1, x2, bias, x3, dequantScale, pertokenScale, group, reduceOp, commTurn, streamMode), OUTPUT(nullptr));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_output.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 
@@ -237,44 +202,36 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV3)
     TensorDesc pertokenScale = {{32}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc commQuantScale1 = {{128}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc commQuantScale2 = {{128}, ACL_FLOAT16, ACL_FORMAT_ND};
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    auto ut_null_x1 = OP_API_UT(
-        aclnnQuantMatmulAllReduceV3,
-        INPUT(nullptr, x2, bias, x3, dequantScale, pertokenScale,
-              commQuantScale1, commQuantScale2, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x1 = OP_API_UT(aclnnQuantMatmulAllReduceV3,
+                                INPUT(nullptr, x2, bias, x3, dequantScale, pertokenScale, commQuantScale1,
+                                      commQuantScale2, group, reduceOp, commTurn, streamMode),
+                                OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x1.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_x2 = OP_API_UT(
-        aclnnQuantMatmulAllReduceV3,
-        INPUT(x1, nullptr, bias, x3, dequantScale, pertokenScale,
-              commQuantScale1, commQuantScale2, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x2 = OP_API_UT(aclnnQuantMatmulAllReduceV3,
+                                INPUT(x1, nullptr, bias, x3, dequantScale, pertokenScale, commQuantScale1,
+                                      commQuantScale2, group, reduceOp, commTurn, streamMode),
+                                OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x2.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_dScale = OP_API_UT(
-        aclnnQuantMatmulAllReduceV3,
-        INPUT(x1, x2, bias, x3, nullptr, pertokenScale,
-              commQuantScale1, commQuantScale2, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut_null_dScale = OP_API_UT(aclnnQuantMatmulAllReduceV3,
+                                    INPUT(x1, x2, bias, x3, nullptr, pertokenScale, commQuantScale1, commQuantScale2,
+                                          group, reduceOp, commTurn, streamMode),
+                                    OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_dScale.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_output = OP_API_UT(
-        aclnnQuantMatmulAllReduceV3,
-        INPUT(x1, x2, bias, x3, dequantScale, pertokenScale,
-              commQuantScale1, commQuantScale2, group, reduceOp, commTurn, streamMode),
-        OUTPUT(nullptr)
-    );
+    auto ut_null_output = OP_API_UT(aclnnQuantMatmulAllReduceV3,
+                                    INPUT(x1, x2, bias, x3, dequantScale, pertokenScale, commQuantScale1,
+                                          commQuantScale2, group, reduceOp, commTurn, streamMode),
+                                    OUTPUT(nullptr));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_output.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 
@@ -288,55 +245,46 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV4)
     TensorDesc x2Scale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc commQuantScale1 = {{128}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc commQuantScale2 = {{128}, ACL_FLOAT16, ACL_FORMAT_ND};
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     int64_t groupSize = 0;
     int64_t commQuantMode = 0;
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    auto ut_null_x1 = OP_API_UT(
-        aclnnQuantMatmulAllReduceV4,
-        INPUT(nullptr, x2, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2,
-              group, reduceOp, commTurn, streamMode, groupSize, commQuantMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x1 = OP_API_UT(aclnnQuantMatmulAllReduceV4,
+                                INPUT(nullptr, x2, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2, group,
+                                      reduceOp, commTurn, streamMode, groupSize, commQuantMode),
+                                OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x1.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_x2 = OP_API_UT(
-        aclnnQuantMatmulAllReduceV4,
-        INPUT(x1, nullptr, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2,
-              group, reduceOp, commTurn, streamMode, groupSize, commQuantMode),
-        OUTPUT(output)
-    );
+    auto ut_null_x2 = OP_API_UT(aclnnQuantMatmulAllReduceV4,
+                                INPUT(x1, nullptr, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2, group,
+                                      reduceOp, commTurn, streamMode, groupSize, commQuantMode),
+                                OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x2.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_x2Scale = OP_API_UT(
-        aclnnQuantMatmulAllReduceV4,
-        INPUT(x1, x2, bias, x3, x1Scale, nullptr, commQuantScale1, commQuantScale2,
-              group, reduceOp, commTurn, streamMode, groupSize, commQuantMode),
-        OUTPUT(output)
-    );
-    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x2Scale.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
+    auto ut_null_x2Scale = OP_API_UT(aclnnQuantMatmulAllReduceV4,
+                                     INPUT(x1, x2, bias, x3, x1Scale, nullptr, commQuantScale1, commQuantScale2, group,
+                                           reduceOp, commTurn, streamMode, groupSize, commQuantMode),
+                                     OUTPUT(output));
+    EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR,
+              ut_null_x2Scale.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
 
-    auto ut_null_output = OP_API_UT(
-        aclnnQuantMatmulAllReduceV4,
-        INPUT(x1, x2, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2,
-              group, reduceOp, commTurn, streamMode, groupSize, commQuantMode),
-        OUTPUT(nullptr)
-    );
+    auto ut_null_output = OP_API_UT(aclnnQuantMatmulAllReduceV4,
+                                    INPUT(x1, x2, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2, group,
+                                          reduceOp, commTurn, streamMode, groupSize, commQuantMode),
+                                    OUTPUT(nullptr));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_output.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_reduceOp_v4 = OP_API_UT(
-        aclnnQuantMatmulAllReduceV4,
-        INPUT(x1, x2, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2,
-              group, nullptr, commTurn, streamMode, groupSize, commQuantMode),
-        OUTPUT(output)
-    );
+    auto ut_null_reduceOp_v4 = OP_API_UT(aclnnQuantMatmulAllReduceV4,
+                                         INPUT(x1, x2, bias, x3, x1Scale, x2Scale, commQuantScale1, commQuantScale2,
+                                               group, nullptr, commTurn, streamMode, groupSize, commQuantMode),
+                                         OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR,
               ut_null_reduceOp_v4.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
@@ -349,41 +297,37 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, AclnnWeightQuantMatmulAllReduce)
     TensorDesc antiquantScale = TensorDesc({128}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc antiquantOffset = TensorDesc({128}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc x3 = TensorDesc({32, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     int64_t groupSize = 0;
     TensorDesc output = TensorDesc({32, 128}, ACL_FLOAT16, ACL_FORMAT_ND);
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
     auto ut_null_x1 = OP_API_UT(
         aclnnWeightQuantMatmulAllReduce,
         INPUT(nullptr, x2, bias, antiquantScale, antiquantOffset, x3, group, reduceOp, commTurn, streamMode, groupSize),
-        OUTPUT(output)
-    );
+        OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x1.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
     auto ut_null_x2 = OP_API_UT(
         aclnnWeightQuantMatmulAllReduce,
         INPUT(x1, nullptr, bias, antiquantScale, antiquantOffset, x3, group, reduceOp, commTurn, streamMode, groupSize),
-        OUTPUT(output)
-    );
+        OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_x2.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
-    auto ut_null_scale = OP_API_UT(
-        aclnnWeightQuantMatmulAllReduce,
-        INPUT(x1, x2, bias, nullptr, antiquantOffset, x3, group, reduceOp, commTurn, streamMode, groupSize),
-        OUTPUT(output)
-    );
+    auto ut_null_scale =
+        OP_API_UT(aclnnWeightQuantMatmulAllReduce,
+                  INPUT(x1, x2, bias, nullptr, antiquantOffset, x3, group, reduceOp, commTurn, streamMode, groupSize),
+                  OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_scale.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 
     auto ut_null_output = OP_API_UT(
         aclnnWeightQuantMatmulAllReduce,
         INPUT(x1, x2, bias, antiquantScale, antiquantOffset, x3, group, reduceOp, commTurn, streamMode, groupSize),
-        OUTPUT(nullptr)
-    );
+        OUTPUT(nullptr));
     EXPECT_EQ(ACLNN_ERR_PARAM_NULLPTR, ut_null_output.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 
@@ -393,19 +337,17 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV2_Int64De
     TensorDesc x1 = {{16, 32}, ACL_INT8, ACL_FORMAT_ND};
     TensorDesc x2 = {{32, 16}, ACL_INT8, ACL_FORMAT_ND};
     TensorDesc dequantScale = {{16}, ACL_INT64, ACL_FORMAT_ND};
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    auto ut = OP_API_UT(
-        aclnnQuantMatmulAllReduceV2,
-        INPUT(x1, x2, nullptr, nullptr, dequantScale, nullptr, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut = OP_API_UT(aclnnQuantMatmulAllReduceV2,
+                        INPUT(x1, x2, nullptr, nullptr, dequantScale, nullptr, group, reduceOp, commTurn, streamMode),
+                        OUTPUT(output));
     auto ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_NE(ACLNN_ERR_PARAM_INVALID, ret);
 }
@@ -419,20 +361,18 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV3_OnlyCom
     TensorDesc dequantScale = {{128}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc pertokenScale = {{32}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc commQuantScale1 = {{128}, ACL_FLOAT16, ACL_FORMAT_ND};
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    auto ut = OP_API_UT(
-        aclnnQuantMatmulAllReduceV3,
-        INPUT(x1, x2, bias, nullptr, dequantScale, pertokenScale,
-              commQuantScale1, nullptr, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut = OP_API_UT(aclnnQuantMatmulAllReduceV3,
+                        INPUT(x1, x2, bias, nullptr, dequantScale, pertokenScale, commQuantScale1, nullptr, group,
+                              reduceOp, commTurn, streamMode),
+                        OUTPUT(output));
     EXPECT_EQ(ACLNN_ERR_PARAM_INVALID, ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor));
 }
 
@@ -442,20 +382,18 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV3_Int64De
     TensorDesc x1 = {{16, 32}, ACL_INT8, ACL_FORMAT_ND};
     TensorDesc x2 = {{32, 16}, ACL_INT8, ACL_FORMAT_ND};
     TensorDesc dequantScale = {{16}, ACL_INT64, ACL_FORMAT_ND};
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
     auto ut = OP_API_UT(
         aclnnQuantMatmulAllReduceV3,
-        INPUT(x1, x2, nullptr, nullptr, dequantScale, nullptr,
-              nullptr, nullptr, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+        INPUT(x1, x2, nullptr, nullptr, dequantScale, nullptr, nullptr, nullptr, group, reduceOp, commTurn, streamMode),
+        OUTPUT(output));
     auto ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_NE(ACLNN_ERR_PARAM_INVALID, ret);
 }
@@ -544,19 +482,16 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduce_Int64Dequ
     TensorDesc bias = {{16}, ACL_INT32, ACL_FORMAT_ND};
     TensorDesc x3 = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc dequantScale = {{16}, ACL_INT64, ACL_FORMAT_ND};
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     TensorDesc output = {{16, 16}, ACL_FLOAT16, ACL_FORMAT_ND};
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    auto ut = OP_API_UT(
-        aclnnQuantMatmulAllReduce,
-        INPUT(x1, x2, bias, x3, dequantScale, group, reduceOp, commTurn, streamMode),
-        OUTPUT(output)
-    );
+    auto ut = OP_API_UT(aclnnQuantMatmulAllReduce,
+                        INPUT(x1, x2, bias, x3, dequantScale, group, reduceOp, commTurn, streamMode), OUTPUT(output));
     auto ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_NE(ACLNN_ERR_PARAM_INVALID, ret);
 }
@@ -570,22 +505,20 @@ TEST_F(MatmulAllReduceAclnnInputNullPtrTest, aclnnQuantMatmulAllReduceV4_Int64X2
     TensorDesc x3 = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     TensorDesc x1Scale = {{32}, ACL_FLOAT, ACL_FORMAT_ND};
     TensorDesc x2Scale = {{128}, ACL_INT64, ACL_FORMAT_ND};
-    const char* group = "group";
-    const char* reduceOp = "sum";
+    const char *group = "group";
+    const char *reduceOp = "sum";
     int64_t commTurn = 0;
     int64_t streamMode = 1;
     int64_t groupSize = 0;
     int64_t commQuantMode = 0;
     TensorDesc output = {{32, 128}, ACL_FLOAT16, ACL_FORMAT_ND};
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    auto ut = OP_API_UT(
-        aclnnQuantMatmulAllReduceV4,
-        INPUT(x1, x2, bias, x3, x1Scale, x2Scale, nullptr, nullptr,
-              group, reduceOp, commTurn, streamMode, groupSize, commQuantMode),
-        OUTPUT(output)
-    );
+    auto ut = OP_API_UT(aclnnQuantMatmulAllReduceV4,
+                        INPUT(x1, x2, bias, x3, x1Scale, x2Scale, nullptr, nullptr, group, reduceOp, commTurn,
+                              streamMode, groupSize, commQuantMode),
+                        OUTPUT(output));
     auto ret = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_NE(ACLNN_ERR_PARAM_INVALID, ret);
 }

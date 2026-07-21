@@ -49,12 +49,12 @@ constexpr uint32_t CAST_BF16_UB_FACTOR = 6; // 1 bf16 data needs 6 bytes tmpbuff
 constexpr int COMM_MODE_CCU = 0;
 constexpr int COMM_MODE_AICPU = 1;
 
-template<int commMode = COMM_MODE_CCU>
+template <int commMode = COMM_MODE_CCU>
 struct HcclTypeSelector {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU>;
 };
- 	 
-template<>
+
+template <>
 struct HcclTypeSelector<COMM_MODE_AICPU> {
     using type = Hccl<HcclServerType::HCCL_SERVER_TYPE_AICPU>;
 };
@@ -100,16 +100,14 @@ struct HcclCombinOpParam {
     HcclConfig config; // 配置参数
 };
 
-enum class AntiQuantType
-{
+enum class AntiQuantType {
     NONE = 0,
     PER_TENSOR = 1,
     PER_CHANNEL = 2,
     PER_GROUP = 3,
 };
 
-enum class DebugMode
-{
+enum class DebugMode {
     MC2_DEBUG_ONLY_CUBE = 1,
     MC2_DEBUG_ONLY_VECTOR = 2,
     MC2_DEBUG_ONLY_AICPU = 4,
@@ -117,8 +115,7 @@ enum class DebugMode
     MC2_DEBUG_TIME_TAKEN = 16,
 };
 
-enum MC2_BUFFER_TYPE
-{
+enum MC2_BUFFER_TYPE {
     MC2_BUFFER_TYPE_DEFAULT = 0,
     MC2_BUFFER_TYPE_OUTPUT,
     MC2_BUFFER_TYPE_WINDOW_IN,
@@ -136,12 +133,12 @@ __aicore__ inline uint64_t CalcShapeOffset(uint64_t shapeTypeSize, uint64_t shap
 
 #if __CCE_AICORE__ == 200
 using namespace matmul;
-__aicore__ __inline__ GM_ADDR GetTailA(GM_ADDR aGM, AscendC::tiling::TCubeTiling& tiling, uint32_t size)
+__aicore__ __inline__ GM_ADDR GetTailA(GM_ADDR aGM, AscendC::tiling::TCubeTiling &tiling, uint32_t size)
 {
     uint64_t offset = CalcShapeOffset(sizeof(A_DTYPE), tiling.M, tiling.Ka);
     return aGM + offset * size;
 }
-__aicore__ __inline__ GM_ADDR GetTailC(GM_ADDR cGM, AscendC::tiling::TCubeTiling& tiling, uint32_t size)
+__aicore__ __inline__ GM_ADDR GetTailC(GM_ADDR cGM, AscendC::tiling::TCubeTiling &tiling, uint32_t size)
 {
     uint64_t offset = CalcShapeOffset(sizeof(C_DTYPE), tiling.M, tiling.N);
     return cGM + offset * size;
@@ -164,15 +161,13 @@ __aicore__ __inline__ GM_ADDR GetTailC(GM_ADDR cGM, AscendC::tiling::TCubeTiling
 #define MC2_WEIGHT_QUANT
 #endif
 
-#if (                                                                \
-    ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)) && \
-    ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2) || (ORIG_DTYPE_X2 == DT_HIFLOAT8)))
+#if (((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)) &&                                                  \
+     ((ORIG_DTYPE_X2 == DT_FLOAT8_E4M3FN) || (ORIG_DTYPE_X2 == DT_FLOAT8_E5M2) || (ORIG_DTYPE_X2 == DT_HIFLOAT8)))
 #define WEIGHT_F8
 #endif
 
-#if (                                                                \
-    ((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)) && \
-    ((ORIG_DTYPE_X2 == DT_INT8) || (ORIG_DTYPE_X2 == DT_INT4)))
+#if (((ORIG_DTYPE_X1 == DT_FLOAT16) || (ORIG_DTYPE_X1 == DT_BF16)) &&                                                  \
+     ((ORIG_DTYPE_X2 == DT_INT8) || (ORIG_DTYPE_X2 == DT_INT4)))
 #define WEIGHT_W4_W8
 #endif
 
@@ -248,7 +243,7 @@ struct ArnGmAddrs {
 struct MC2TilingHeader {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510)
     Mc2InitTiling mc2InitTiling;
- 	Mc2CcTiling mc2CcTiling;
+    Mc2CcTiling mc2CcTiling;
     Mc2CcTiling mc2CcTilingComm;
 #else
     Mc2Tiling::Mc2Msg msg;
@@ -257,7 +252,7 @@ struct MC2TilingHeader {
 };
 
 struct MC2TileInfo {
-    AscendC::tiling::TCubeTiling* mmTiling;
+    AscendC::tiling::TCubeTiling *mmTiling;
     AscendC::HcclHandle hcclHandleId;
     uint64_t aOffset;
     uint64_t aAddrOffset;
@@ -265,8 +260,7 @@ struct MC2TileInfo {
     uint64_t cAddrOffset;
 };
 
-enum class Mc2CoreType
-{
+enum class Mc2CoreType {
     ON_CUBE_AND_VECTOR = 0,
     ON_VECTOR = 1,
     ON_CUBE = 2,
@@ -278,22 +272,22 @@ enum class Mc2CoreType
 #endif
 
 // for oom check
-__aicore__ inline void OOMInit(__gm__ HcclCombinOpParam* context)
+__aicore__ inline void OOMInit(__gm__ HcclCombinOpParam *context)
 {
 #ifndef __CCE_KT_TEST__
-    AscendC::OOMCheckAddrRange((__gm__ uint8_t*)(context->WorkSpace), context->WorkSpaceSize);
-    AscendC::OOMCheckAddrRange((__gm__ uint8_t*)(context->windowsIn[context->rankId]), context->winSize);
+    AscendC::OOMCheckAddrRange((__gm__ uint8_t *)(context->WorkSpace), context->WorkSpaceSize);
+    AscendC::OOMCheckAddrRange((__gm__ uint8_t *)(context->windowsIn[context->rankId]), context->winSize);
 #endif
 }
 
-__aicore__ inline void CastBFtoFloatOnAiv0Impl(
-    GM_ADDR dst, GM_ADDR src, uint32_t size, TBuf<TPosition::VECCALC>& tmpBuf)
+__aicore__ inline void CastBFtoFloatOnAiv0Impl(GM_ADDR dst, GM_ADDR src, uint32_t size,
+                                               TBuf<TPosition::VECCALC> &tmpBuf)
 {
     // 1. 初始化global tensor
     GlobalTensor<bfloat16_t> gmSrc;
     GlobalTensor<float> gmDst;
-    gmSrc.SetGlobalBuffer((__gm__ bfloat16_t*)(src), size);
-    gmDst.SetGlobalBuffer((__gm__ float*)(dst), size);
+    gmSrc.SetGlobalBuffer((__gm__ bfloat16_t *)(src), size);
+    gmDst.SetGlobalBuffer((__gm__ float *)(dst), size);
 
     // 2. 初始化local tensor
     LocalTensor<bfloat16_t> fullBf16 = tmpBuf.Get<bfloat16_t>();
@@ -322,7 +316,7 @@ __aicore__ inline void CastBFtoFloatOnAiv0Impl(
     DataCopyPad(gmDst, yLocal, cpOutParams);
 }
 
-__aicore__ inline void CastBFtoFloatOnAiv0(GM_ADDR dst, GM_ADDR src, uint32_t size, TBuf<TPosition::VECCALC>& tmpBuf)
+__aicore__ inline void CastBFtoFloatOnAiv0(GM_ADDR dst, GM_ADDR src, uint32_t size, TBuf<TPosition::VECCALC> &tmpBuf)
 {
     if (g_coreType == AIC || GetBlockIdx() != 0) {
         return;
