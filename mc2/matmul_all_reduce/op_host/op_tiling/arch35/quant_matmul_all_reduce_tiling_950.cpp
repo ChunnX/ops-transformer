@@ -1001,9 +1001,7 @@ CutResult QuantMatmulAllReduceTilingA5::GetTilingResult()
         } else {
             kernelType = KernelType::ALL_REDUCE_VIA_TWO_SHOT;
         }
-        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_,
-                                                        kernelType,
-                                                        TopoType::EIGHT_P);
+        MMAllReduceFitBalanceTiling allReduceTilingHccl(args_, kernelType, TopoType::EIGHT_P);
         allReduceTilingHccl.SetIsAlign((isPerBlock_ || (scenario_ == AllReduceScenario::MXFP4) ||
                                         (scenario_ == AllReduceScenario::MXFP8) ||
                                         (param.isInputCommQuantScale == QUANT_MODE_FP8)));

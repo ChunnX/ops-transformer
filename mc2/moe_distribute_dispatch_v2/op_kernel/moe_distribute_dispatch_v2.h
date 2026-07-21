@@ -68,11 +68,10 @@ public:
     using XOutType = ExpandXOutType;
 #endif
     __aicore__ inline MoeDistributeDispatchV2(){};
-    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales,
-                                GM_ADDR xActiveMask, GM_ADDR expertScales, GM_ADDR elasticInfo,
-                                GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
-                                GM_ADDR expandIdxOut, GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut,
-                                GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
+    __aicore__ inline void Init(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+                                GM_ADDR expertScales, GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut,
+                                GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expandScalesOut,
+                                GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
                                 const MoeDistributeDispatchV2TilingData *tilingData);
     __aicore__ inline void Process();
 
@@ -307,9 +306,8 @@ private:
 template <TemplateDispatchV2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init(
     GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales,
-    GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
-    GM_ADDR expandIdxOut, GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut,
-    GM_ADDR workspaceGM, TPipe *pipe,
+    GM_ADDR elasticInfo, GM_ADDR performanceInfo, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut,
+    GM_ADDR expandScalesOut, GM_ADDR expertTokenNumsOut, GM_ADDR sendCountsOut, GM_ADDR workspaceGM, TPipe *pipe,
     const MoeDistributeDispatchV2TilingData *tilingData)
 {
 #if defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510) // A3不支持MX量化，无需使能饱和模式
@@ -517,7 +515,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Init
 
     if (hasExpertScalesFlag_) {
         expandScalesOutGM_ = expandScalesOut;
-        expertScalesGMTensor_.SetGlobalBuffer((__gm__ float*)expertScales);
+        expertScalesGMTensor_.SetGlobalBuffer((__gm__ float *)expertScales);
         tpipe_->InitBuffer(expertScalesBuf_, expertIdsBufSize);
         totalUsedUB_ += expertIdsBufSize;
     }
@@ -1464,14 +1462,14 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateDispatchV2TypeFunc>::Loca
                 xTmpTensorFloat = tripleLocal.template ReinterpretCast<float>();
                 expertScaleInGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(
                     wAddr + tokenCopiedNumThisExpert * hAlignWinSize_ + expertScaleAlign_ * sizeof(float)));
-                expandScalesOutGlobal.SetGlobalBuffer(
-                    (__gm__ float*)(expandScalesOutGM_) + beginIdx + tokenCopiedNumThisExpert);
-                DataCopyExtParams expertScaleCopyInParams{
-                    blockCount, static_cast<uint32_t>(sizeof(float)),
-                    static_cast<uint32_t>(hAlignWinSize_ - sizeof(float)), 0U, 0U};
+                expandScalesOutGlobal.SetGlobalBuffer((__gm__ float *)(expandScalesOutGM_) + beginIdx +
+                                                      tokenCopiedNumThisExpert);
+                DataCopyExtParams expertScaleCopyInParams{blockCount, static_cast<uint32_t>(sizeof(float)),
+                                                          static_cast<uint32_t>(hAlignWinSize_ - sizeof(float)), 0U,
+                                                          0U};
                 DataCopyPadExtParams<float> expertScalePadParams{false, 0U, 0U, 0.0f};
-                DataCopyExtParams expertScaleCopyOutParams{
-                    blockCount, static_cast<uint32_t>(sizeof(float)), 0U, 0U, 0U};
+                DataCopyExtParams expertScaleCopyOutParams{blockCount, static_cast<uint32_t>(sizeof(float)), 0U, 0U,
+                                                           0U};
                 SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
                 DataCopyPad(xTmpTensorFloat, expertScaleInGlobal, expertScaleCopyInParams, expertScalePadParams);
                 SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
