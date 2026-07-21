@@ -104,7 +104,8 @@
     - `layout_qkv="NTD"`，`layout_q_out="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`q_out=[Nq, T, D]`，`q_scale=[Nq, T]`。
   - `cos_sin`第二维必须为`D`，第一维必须覆盖本次调用会访问的RoPE位置。
   - `k_cache`、`v_cache`和`k_scale_cache`支持非连续Tensor，需符合以下约束：
-    - `k_cache`、`v_cache`和`k_scale_cache`均为4维正stride，最后一维stride为1。
+    - `k_cache`和`v_cache`均为4维正stride，最后一维stride为1，head维和token维stride均不小于`D=128`。
+    - `k_scale_cache`为4维正stride，最后一维stride为1。
     - `k_cache`和`v_cache`前三维stride必须一致。
 - 输入值域限制：
   - `query_start_loc`表示当前调用内token的batch前缀和，`query_start_loc[0]`应为0，`query_start_loc[Batch]`应等于`T`。
