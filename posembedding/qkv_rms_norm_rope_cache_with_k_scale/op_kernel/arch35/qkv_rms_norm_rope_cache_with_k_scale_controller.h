@@ -15,7 +15,8 @@
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
-template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT>
+template <uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t ROPE_MODE, uint32_t K_QUANT_MODE,
+          uint32_t Q_QUANT_MODE, bool MROPE_COMPACT_PIPELINE>
 class QkvRmsNormRopeCacheWithKScaleController {
 public:
     __aicore__ inline void Process(const GlobalTensors &tensors,
@@ -28,15 +29,27 @@ public:
         TokenRange tokenRange = {0U, 0U};
         MakeCoreTokenRange(tokenRange, tilingData, cubeIndex);
 
-        QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT, Q_OUT_LAYOUT> basicBlock;
+        QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE,
+                                                MROPE_COMPACT_PIPELINE>
+            basicBlock;
         TileParam tileParam[QKV_K_SCALE_DOUBLE_BUFFER_NUM];
         InitTileParamBuffer(tileParam);
-        basicBlock.Init(tensors, tilingData->totalTokens, tilingData->batch, tilingData->qHeadNum,
-                        tilingData->kvHeadNum, tilingData->headDim, tilingData->blockSize, tilingData->tokenTile,
-                        tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead, tilingData->kvCacheStrideToken,
-                        tilingData->kScaleCacheStrideBlock, tilingData->kScaleCacheStrideHead,
-                        tilingData->kScaleCacheStrideToken, tilingData->epsilon);
-        basicBlock.PrepareBeforeLoop();
+        if constexpr (ROPE_MODE == QKV_K_SCALE_ROPE_MODE_MROPE) {
+            basicBlock.Init(tensors, tilingData->totalTokens, 0U, tilingData->qHeadNum, tilingData->kvHeadNum,
+                            tilingData->headDim, tilingData->blockSize, tilingData->tokenTile,
+                            tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead,
+                            tilingData->kvCacheStrideToken, tilingData->kScaleCacheStrideBlock,
+                            tilingData->kScaleCacheStrideHead, tilingData->kScaleCacheStrideToken, tilingData->epsilon,
+                            tilingData->mropeSectionH, tilingData->mropeSectionW);
+        } else {
+            basicBlock.Init(tensors, tilingData->totalTokens, tilingData->batch, tilingData->qHeadNum,
+                            tilingData->kvHeadNum, tilingData->headDim, tilingData->blockSize, tilingData->tokenTile,
+                            tilingData->kvCacheStrideBlock, tilingData->kvCacheStrideHead,
+                            tilingData->kvCacheStrideToken, tilingData->kScaleCacheStrideBlock,
+                            tilingData->kScaleCacheStrideHead, tilingData->kScaleCacheStrideToken, tilingData->epsilon,
+                            0U, 0U);
+        }
+        basicBlock.PrepareBeforeLoop(tokenRange.begin, tokenRange.end);
         const uint64_t localTileId = ForEachTile(basicBlock, tilingData, tokenRange, tileParam);
         basicBlock.End(tileParam[GetLastProcessId(localTileId)]);
     }
@@ -102,7 +115,10 @@ private:
     }
 
     __aicore__ inline uint64_t
-    ForEachTile(QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT, Q_OUT_LAYOUT> &basicBlock,
+    ForEachTile(
+        QkvRmsNormRopeCacheWithKScaleBasicBlock<QKV_LAYOUT, Q_OUT_LAYOUT, ROPE_MODE, K_QUANT_MODE, Q_QUANT_MODE,
+                                                MROPE_COMPACT_PIPELINE>
+            &basicBlock,
                 const QkvRmsNormRopeCacheWithKScaleTilingData *tilingData, const TokenRange &range,
                 TileParam tileParam[QKV_K_SCALE_DOUBLE_BUFFER_NUM]) const
     {

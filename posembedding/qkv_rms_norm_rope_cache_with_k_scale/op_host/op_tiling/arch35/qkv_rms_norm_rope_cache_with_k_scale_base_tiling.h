@@ -19,10 +19,15 @@
 namespace optiling {
 namespace QkvRmsNormRopeCacheWithKScale {
 
+enum class RopeMode : uint64_t { ROPE = 0, MROPE = 1 };
+enum class KQuantMode : uint64_t { FP8 = 0, INT8 = 1 };
+enum class QQuantMode : uint64_t { PER_TOKEN_PER_HEAD = 0, NO_QUANT = 1 };
+
 struct TensorContractInfo {
     gert::Shape shape;
     gert::Stride stride;
     ge::DataType dtype = ge::DT_UNDEFINED;
+    bool descriptorPresent = false;
     bool shapePresent = false;
     bool stridePresent = false;
 };
@@ -52,6 +57,9 @@ struct ContractInput {
     TensorContractInfo seqLens;
     TensorContractInfo rotation;
     TensorContractInfo vScale;
+    TensorContractInfo mropePosition;
+    TensorContractInfo qOut;
+    TensorContractInfo qScale;
 };
 
 class QkvRmsNormRopeCacheWithKScaleBaseTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
@@ -94,6 +102,8 @@ private:
     ge::graphStatus ValidateHeadNums() const;
     ge::graphStatus ValidateScalarInputs() const;
     ge::graphStatus ValidateDtypes() const;
+    ge::graphStatus ValidateMropeSection() const;
+    ge::graphStatus ValidateOutputContract() const;
     ge::graphStatus ValidateShapeRank(const TensorContractInfo &tensor, const char *tensorName,
                                       uint64_t expectedRank) const;
     ge::graphStatus ValidateShapeInputsForDerivedFields() const;
@@ -117,10 +127,16 @@ private:
     ge::graphStatus ParseHeadNumsAttr();
     ge::graphStatus ParseLayoutQkvAttr();
     ge::graphStatus ParseLayoutQOutAttr();
+    ge::graphStatus ParseQQuantModeAttr();
+    ge::graphStatus ParseQOutDtypeAttr();
+    ge::graphStatus ResolveRopeMode();
+    ge::graphStatus ResolveKQuantMode();
+    ge::graphStatus ValidateQuantModeCombination() const;
     float ParseEpsilonAttr() const;
     ge::graphStatus FillShapeDerivedFields();
     ge::graphStatus FillRequiredTensorInputs();
     void FillOptionalTensorInputs();
+    void FillOutputTensorInfos();
     ge::graphStatus BuildContractInput();
     ge::graphStatus ValidateCompileInfo(const QkvRmsNormRopeCacheWithKScaleCompileInfo &compileInfo) const;
 
@@ -129,6 +145,10 @@ private:
     ContractInput input_;
     QkvRmsNormRopeCacheWithKScaleTilingData tilingData_;
     uint64_t aicNum_ = 0;
+    RopeMode ropeMode_ = RopeMode::ROPE;
+    KQuantMode kQuantMode_ = KQuantMode::FP8;
+    QQuantMode qQuantMode_ = QQuantMode::PER_TOKEN_PER_HEAD;
+    ge::DataType qOutDtypeAttr_ = ge::DT_FLOAT8_E4M3FN;
     float epsilon_ = 1e-6f;
     uint64_t tilingDataSize_ = 0;
 };

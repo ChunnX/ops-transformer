@@ -256,8 +256,9 @@ int main()
     uint64_t workspaceSize = 0;
     aclnnStatus status = aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
         qkv.tensor, qGamma.tensor, kGamma.tensor, cosSin.tensor, slotMapping.tensor, kCache.tensor, vCache.tensor,
-        kScaleCache.tensor, queryStartLoc.tensor, seqLens.tensor, rotation.tensor, vScale.tensor, resource.headNums,
-        layoutQkv, layoutQOut, epsilon, qOut.tensor, qScale.tensor, &workspaceSize, &resource.executor);
+        kScaleCache.tensor, queryStartLoc.tensor, seqLens.tensor, rotation.tensor, vScale.tensor, nullptr,
+        resource.headNums, layoutQkv, layoutQOut, epsilon, nullptr, "PerTokenPerHead", qOut.tensor, qScale.tensor,
+        &workspaceSize, &resource.executor);
     CHECK_RET(status == ACL_SUCCESS,
               LOG_PRINT("aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", status);
               return ReturnAfterCleanup(static_cast<int>(status), resource));
