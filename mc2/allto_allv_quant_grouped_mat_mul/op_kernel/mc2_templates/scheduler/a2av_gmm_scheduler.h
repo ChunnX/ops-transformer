@@ -48,10 +48,9 @@ public:
         // workspace偏移
         uint64_t workspaceOffset = 0;
         // x通信输出区域：isPermuteOut=true时通信结果写到workspace，AIV重排到permuteOut
-        uint64_t commOutLen =
-            Align(CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1),
-                          PACK_FACTOR) * X_TYPE_SIZE,
-                  TENSOR_LIST_SIZE);
+        uint64_t commOutLen = Align(
+            CeilDiv((tilingData_->taskTilingInfo.A) * (tilingData_->taskTilingInfo.H1), PACK_FACTOR) * X_TYPE_SIZE,
+            TENSOR_LIST_SIZE);
         commOutGm_ = workspaceGM + workspaceOffset;
         workspaceOffset += commOutLen;
         permuteOutGm_ = permuteOutOptionalGM;
@@ -61,7 +60,7 @@ public:
         uint64_t hcclCcTilingOffset = offsetof(TilingDataType, hcclA2avTilingInfo) +
                                       offsetof(MC2KernelTemplate::HcclA2avTilingInfo, a2avCcTiling);
         commOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData_->taskTilingInfo, gmmxGM, commOutGm_, commOutGm_,
-            static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
+                    static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
         // scale commOut区域：MX场景scale通信输出
         if constexpr (MX_QUANT_MODE) {
             uint64_t scaleAxis = CeilDiv(tilingData_->taskTilingInfo.H1, SCALE_ALIGNMENT_BLOCK_SIZE) * 2;
@@ -120,8 +119,8 @@ private:
                     commOp.Wait(start);
                 }
                 SyncAll<true>();
-                AscendC::CrossCoreSetFlag<SYNC_MODE_AIV_TO_AIC, PIPE_V>(
-                    SYNC_FLAG_ID_COMM_DONE + SYNC_FLAG_AIV1_OFFSET * GetSubBlockIdx());
+                AscendC::CrossCoreSetFlag<SYNC_MODE_AIV_TO_AIC, PIPE_V>(SYNC_FLAG_ID_COMM_DONE +
+                                                                        SYNC_FLAG_AIV1_OFFSET * GetSubBlockIdx());
                 if (isPermuteOut_) {
                     commOp.PermuteData(start, actualExpertNum, permuteOutGm_);
                 }
@@ -129,8 +128,8 @@ private:
             if ASCEND_IS_AIC {
                 AscendC::CrossCoreWaitFlag<SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(SYNC_FLAG_ID_COMM_DONE);
 #if defined(__NPU_ARCH__) && __NPU_ARCH__ == 3510
-                AscendC::CrossCoreWaitFlag<SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(
-                    SYNC_FLAG_ID_COMM_DONE + SYNC_FLAG_AIV1_OFFSET);
+                AscendC::CrossCoreWaitFlag<SYNC_MODE_AIV_TO_AIC, PIPE_MTE2>(SYNC_FLAG_ID_COMM_DONE +
+                                                                            SYNC_FLAG_AIV1_OFFSET);
 #endif
                 computeOp.Process(start, actualExpertNum);
             }
