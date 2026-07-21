@@ -283,13 +283,12 @@ __aicore__ inline void AttentionmaskDataCopy(LocalTensor<T> &attenMaskUb, Global
 
 template <typename T, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
-                                                      MaskInfo &info, bool isPre, uint32_t mte2ToVEventId)
+                                                      MaskInfo &info, bool isPre = false)
 {
     int32_t s1StartIdx = info.gs1StartIdx % info.s1Size;
     int32_t s1EndIdx = (info.gs1StartIdx + info.gs1dealNum - 1) % info.s1Size + 1;
     uint32_t attenMaskS2Stride = AttentionCommon::Align(info.s2dealNum, 32U) + 32 * info.attenMaskDstStride;
     if (info.gs1dealNum <= info.s1Size) {
-        Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
         if (s1StartIdx + info.gs1dealNum > info.s1Size) {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, info.s1Size, isPre);
             LocalTensor<T> attenMaskSecUb = attenMaskUb[(info.s1Size - s1StartIdx) * attenMaskS2Stride];
@@ -297,7 +296,9 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         } else {
             AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1EndIdx, isPre);
         }
-        Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
+        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
+        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
     } else {
         uint32_t headS1Count = info.s1Size - s1StartIdx;
         uint32_t remainRowCount = info.gs1dealNum - headS1Count;
@@ -305,12 +306,12 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         uint32_t tailS1Size = remainRowCount % info.s1Size;
 
         // 第一块完整的mask
-        Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
         LocalTensor<T> attenMaskSecUb = attenMaskUb[headS1Count * attenMaskS2Stride];
         AttentionmaskDataCopy(attenMaskSecUb, srcGmAddr, info, 0, info.s1Size, isPre);
-        Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
+        event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+        SetFlag<HardEvent::MTE2_V>(enQueEvtID);
+        WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
 
-        Mutex::Lock<PIPE_V>(mte2ToVEventId);
         // head
         DataCopy(attenMaskUb, attenMaskUb[info.s1Size * attenMaskS2Stride], headS1Count * attenMaskS2Stride);
         // mid
@@ -323,14 +324,13 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
             DataCopy(attenMaskUb[(headS1Count + midGCount * info.s1Size) * attenMaskS2Stride], attenMaskSecUb,
                      tailS1Size * attenMaskS2Stride);
         }
-        Mutex::Unlock<PIPE_V>(mte2ToVEventId);
     }
     PipeBarrier<PIPE_V>();
 }
 
 template <typename T, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr,
-                                                      MaskInfo &info, bool isPre, uint32_t mte2ToVEventId)
+                                                      MaskInfo &info, bool isPre = false)
 {
     uint32_t s1StartIdx = info.gs1StartIdx / info.gSize;
     uint32_t s1EndIdx = (info.gs1StartIdx + info.gs1dealNum - 1) / info.gSize;
@@ -345,7 +345,6 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
     uint32_t attenMaskSizeAlign = AttentionCommon::Align(info.s2dealNum, 32U);
     uint32_t attenMaskS2Stride = attenMaskSizeAlign + 32 * info.attenMaskDstStride;
 
-    Mutex::Lock<PIPE_MTE2>(mte2ToVEventId);
     // ub-head
     if (headGSize > 0) {
         AttentionmaskDataCopy(attenMaskUb, srcGmAddr, info, s1StartIdx, s1StartIdx + 1, isPre);
@@ -364,33 +363,33 @@ __aicore__ inline void AttentionmaskCopyInForSgLayout(LocalTensor<T> &attenMaskU
         DataCopyPadExtParams<T> padParams{true, 0, static_cast<uint8_t>(attenMaskSizeAlign - info.s2dealNum), 1U};
         DataCopyPad(attenMaskUb[headGSize * attenMaskS2Stride], srcGmAddr[maskOffset], dataCopyParams, padParams);
     }
-    Mutex::Unlock<PIPE_MTE2>(mte2ToVEventId);
 
-    Mutex::Lock<PIPE_V>(mte2ToVEventId);
+    event_t enQueEvtID = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
+    SetFlag<HardEvent::MTE2_V>(enQueEvtID);
+    WaitFlag<HardEvent::MTE2_V>(enQueEvtID);
+
     MaskUbCopyS1G<T, s2BaseSize>(attenMaskUb, headGSize, info.gSize, tailGSize, midS1Count);
-    Mutex::Unlock<PIPE_V>(mte2ToVEventId);
-    PipeBarrier<PIPE_V>();
 }
 
 template <typename T, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyGS1(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
-                                            bool isPre, uint32_t mte2ToVEventId)
+                                            bool isPre = false)
 {
     if (info.maskFormat == MaskFormat::GS) {
-        AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre, mte2ToVEventId);
+        AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
     } else if (info.maskFormat == MaskFormat::SG) {
-        AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre, mte2ToVEventId);
+        AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
     }
 }
 
 template <typename T, MaskFormat maskFormat, bool isReconstructTemp, uint32_t s2BaseSize>
 __aicore__ inline void AttentionmaskCopyIn(LocalTensor<T> &attenMaskUb, GlobalTensor<T> &srcGmAddr, MaskInfo &info,
-                                           bool isPre, uint32_t mte2ToVEventId)
+                                           bool isPre = false)
 {
     if constexpr (maskFormat == MaskFormat::GS) {
-        AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre, mte2ToVEventId);
+        AttentionmaskCopyInForGsLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
     } else if constexpr (maskFormat == MaskFormat::SG) {
-        AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre, mte2ToVEventId);
+        AttentionmaskCopyInForSgLayout<T, isReconstructTemp, s2BaseSize>(attenMaskUb, srcGmAddr, info, isPre);
     }
 }
 #endif
