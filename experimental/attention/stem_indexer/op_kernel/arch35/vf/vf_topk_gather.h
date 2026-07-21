@@ -784,8 +784,10 @@ __simd_vf__ void FindValueOutputVFImpl(__ubuf__ uint32_t* outputValueBuf, __ubuf
 /**
     输出最终的Idx
  */
-__simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint32_t* tmpIdxBuf,
-                                     __ubuf__ uint32_t* hisIdxBuf, uint32_t topK, uint32_t loopIndex, uint16_t vfLoop)
+__simd_callee__ inline void FindRealIndexProcessRow(__ubuf__ uint32_t* outputIdxBuf,
+                                                    __ubuf__ uint32_t* tmpIdxBuf,
+                                                    __ubuf__ uint32_t* hisIdxBuf,
+                                                    uint32_t topK, uint32_t loopIndex, uint16_t vfLoop)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
@@ -810,6 +812,23 @@ __simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ u
         MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outputIdxBuf + i * 64,
                                                                        outputGatherIdx, pregB32);
     }
+}
+
+__simd_vf__ void FindRealIndexVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ uint32_t* tmpIdxBuf,
+                                      __ubuf__ uint32_t* hisIdxBuf, uint32_t outputIdxStride,
+                                      uint32_t tmpIdxStride, uint32_t hisIdxStride,
+                                      uint32_t rowIdx0, uint32_t rowIdx1, uint32_t rowIdx2, uint32_t rowIdx3,
+                                      uint32_t topK0, uint32_t topK1, uint32_t topK2, uint32_t topK3,
+                                      uint32_t loopIndex, uint16_t vfLoop)
+{
+    FindRealIndexProcessRow(outputIdxBuf, tmpIdxBuf, hisIdxBuf + rowIdx0 * hisIdxStride,
+                            topK0, loopIndex, vfLoop);
+    FindRealIndexProcessRow(outputIdxBuf + outputIdxStride, tmpIdxBuf + tmpIdxStride,
+                            hisIdxBuf + rowIdx1 * hisIdxStride, topK1, loopIndex, vfLoop);
+    FindRealIndexProcessRow(outputIdxBuf + 2U * outputIdxStride, tmpIdxBuf + 2U * tmpIdxStride,
+                            hisIdxBuf + rowIdx2 * hisIdxStride, topK2, loopIndex, vfLoop);
+    FindRealIndexProcessRow(outputIdxBuf + 3U * outputIdxStride, tmpIdxBuf + 3U * tmpIdxStride,
+                            hisIdxBuf + rowIdx3 * hisIdxStride, topK3, loopIndex, vfLoop);
 }
 
 __simd_vf__ void IndicesAddOffsetVF(__ubuf__ uint32_t* indicesOutBuf, uint32_t outputIdxOffset, uint32_t vfLoop)
@@ -926,35 +945,37 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
 }
 
 /**
- * @brief 通过idx_tmp gather出实际的TopKIndex，s2SeqLen > 8K才会执行
- * @param outputIdxLocal 输出Idx 有效:topK * 4B
- * @param outputValueLocal 输出Value topK * 4B(以后需要输出实际value使用)
- * @param inputValueLocal 输入Value validLen * 4B
- * @param tmpIdxLocal 本轮tmpIdx输入 validLen * 4B (0 ~ validLen - 1)
- * @param hisIdxLocal 上一轮实际Idx输入 有效:topK * 4B
- * @param topK topK元素个数
- * @param loopBasicIdx 当前循环需要加上得基准Index
- * @param validLen 有效元素个数
+ * @brief 一次VF处理4行，通过tmpIdx gather出实际的TopK索引
+ * @param outputIdxLocal 4个compact行的输出索引
+ * @param tmpIdxLocal 4个compact行的本轮临时索引
+ * @param hisIdxLocal 上一轮各实际行的全局索引
+ * @param outputIdxStride/tmpIdxStride/hisIdxStride 对应buffer的行步长
+ * @param rowIdx0-rowIdx3 compact行对应的实际行号
+ * @param topK0-topK3 每个compact行的topK元素个数
+ * @param loopBasicIdx 当前循环需要加上的基准Index
  */
 __aicore__ inline void SiTopKGatherVF(const LocalTensor<uint32_t>& outputIdxLocal,
-                                      const LocalTensor<uint32_t>& outputValueLocal,
-                                      const LocalTensor<uint32_t>& inputValueLocal,
-                                      const LocalTensor<uint32_t>& tmpIdxLocal,
-                                      const LocalTensor<uint32_t>& hisIdxLocal,
-                                      uint32_t topK,
-                                      uint32_t loopBasicIdx,
-                                      uint32_t validLen)
+                                     const LocalTensor<uint32_t>& tmpIdxLocal,
+                                     const LocalTensor<uint32_t>& hisIdxLocal,
+                                     uint32_t outputIdxStride, uint32_t tmpIdxStride, uint32_t hisIdxStride,
+                                     uint32_t rowIdx0, uint32_t rowIdx1, uint32_t rowIdx2, uint32_t rowIdx3,
+                                     uint32_t topK0, uint32_t topK1, uint32_t topK2, uint32_t topK3,
+                                     uint32_t loopBasicIdx)
 {
     __ubuf__ uint32_t* outputIdxBuf = (__ubuf__ uint32_t*)outputIdxLocal.GetPhyAddr();
-    __ubuf__ uint32_t* outputValueBuf = (__ubuf__ uint32_t*)outputValueLocal.GetPhyAddr();
-    __ubuf__ uint32_t* inputValueBuf = (__ubuf__ uint32_t*)inputValueLocal.GetPhyAddr();
     __ubuf__ uint32_t* tmpIdxBuf = (__ubuf__ uint32_t*)tmpIdxLocal.GetPhyAddr();
     __ubuf__ uint32_t* hisIdxBuf = (__ubuf__ uint32_t*)hisIdxLocal.GetPhyAddr();
 
-    const uint16_t repeatSize32 = 64;
-    uint16_t topkLoopNum32 = (topK + repeatSize32 - 1) / repeatSize32;
+    uint32_t maxTopK = topK0;
+    maxTopK = topK1 > maxTopK ? topK1 : maxTopK;
+    maxTopK = topK2 > maxTopK ? topK2 : maxTopK;
+    maxTopK = topK3 > maxTopK ? topK3 : maxTopK;
+    uint16_t topkLoopNum32 = (maxTopK + 63U) >> 6U;
 
-    FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf, topK, loopBasicIdx, topkLoopNum32);
+    FindRealIndexVFImpl(outputIdxBuf, tmpIdxBuf, hisIdxBuf,
+                        outputIdxStride, tmpIdxStride, hisIdxStride,
+                        rowIdx0, rowIdx1, rowIdx2, rowIdx3,
+                        topK0, topK1, topK2, topK3, loopBasicIdx, topkLoopNum32);
 }
 
 __aicore__ inline void IndicesAddOffset(const LocalTensor<uint32_t>& indicesOutLocal,
