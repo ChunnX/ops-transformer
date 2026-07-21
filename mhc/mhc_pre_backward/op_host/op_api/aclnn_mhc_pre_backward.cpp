@@ -287,15 +287,6 @@ bool IsAscend910BPlatform()
     return socVersion == SocVersion::ASCEND910B || socVersion == SocVersion::ASCEND910_93;
 }
 
-uint64_t ComputeExpectedFusionSize(uint64_t numsResidual)
-{
-    // A2 (ascend910b): N! + 2N, A3/A5 (ascend950): N^2 + 2N
-    if (IsAscend910BPlatform()) {
-        return Factorial(numsResidual) + 2 * numsResidual;
-    }
-    return numsResidual * numsResidual + 2 * numsResidual;
-}
-
 bool MhcGradCheckBSNDShape(const AclnnMhcPreBackwardParams &params, uint64_t batch, uint64_t sequence, uint64_t dimen,
                            uint64_t numsResidual)
 {
@@ -313,24 +304,30 @@ bool MhcGradCheckBSNDShape(const AclnnMhcPreBackwardParams &params, uint64_t bat
         return false;
     }
 
+    // 从 phi shape 动态读取 fusionSize, 支持 N!+2N 和 N²+2N
+    uint64_t fusionSize = params.phi->GetViewShape().GetDim(0);
+    uint64_t factN = Factorial(numsResidual);  // BSN! 形式的 factN = N!
     auto &gradHResShape = params.gradHRes->GetViewShape();
-    uint64_t expectedFusionSize = ComputeExpectedFusionSize(numsResidual);
     if (gradHResShape.GetDimNum() == 4) {
-        // A5: [B, S, N, N]
+        // [B, S, N, N] (BSNN 形式) - 所有平台都支持, factN = N²
+        if (!CheckShapeDim(gradHResShape, 0, batch, "gradHRes shape must be [B, S, N, N]") ||
+            !CheckShapeDim(gradHResShape, 1, sequence, "gradHRes shape must be [B, S, N, N]") ||
+            !CheckShapeDim(gradHResShape, 2, numsResidual, "gradHRes shape must be [B, S, N, N]") ||
+            !CheckShapeDim(gradHResShape, 3, numsResidual, "gradHRes shape must be [B, S, N, N]")) {
+            return false;
+        }
+    } else if (gradHResShape.GetDimNum() == 3) {
+        // [B, S, N!] (BSN! 形式) - 仅 A2 支持, A5 只支持 BSNN
         if (!CheckShapeDim(gradHResShape, 0, batch, "gradHRes shape must be [B, S, N, N] or [B, S, N!]") ||
-            !CheckShapeDim(gradHResShape, 1, sequence, "gradHRes shape must be [B, S, N, N] or [B, S, N!]") ||
-            !CheckShapeDim(gradHResShape, 2, numsResidual, "gradHRes shape must be [B, S, N, N] or [B, S, N!]") || 
-            !CheckShapeDim(gradHResShape, 3, numsResidual, "gradHRes shape must be [B, S, N, N] or [B, S, N!]")) {
+            !CheckShapeDim(gradHResShape, 1, sequence, "gradHRes shape must be [B, S, N, N] or [B, S, N!]")||
+            !CheckShapeDim(gradHResShape, 2, factN, "gradHRes shape must be [B, S, N, N] or [B, S, N!]")) {
             return false;
         }
     } else {
-        // A2: [B, S, N!]
-        uint64_t factorialN = Factorial(numsResidual);
-        if (!CheckShapeDim(gradHResShape, 0, batch, "gradHRes shape must be [B, S, N, N] or [B, S, N!]") ||
-            !CheckShapeDim(gradHResShape, 1, sequence, "gradHRes shape must be [B, S, N, N] or [B, S, N!]")||
-            !CheckShapeDim(gradHResShape, 2, factorialN, "gradHRes shape must be [B, S, N, N] or [B, S, N!]")) {
-            return false;
-        }
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "gradHRes shape dim num must be 3 (BSN!) or 4 (BSNN), but got %lu",
+                gradHResShape.GetDimNum());
+        return false;
     }
 
     auto &invRmsShape = params.invRms->GetViewShape();
@@ -342,7 +339,7 @@ bool MhcGradCheckBSNDShape(const AclnnMhcPreBackwardParams &params, uint64_t bat
     auto &hMixShape = params.hMix->GetViewShape();
     if (!CheckShapeDim(hMixShape, 0, batch, "hMix shape must be [B, S, fusionSize]") ||
         !CheckShapeDim(hMixShape, 1, sequence, "hMix shape must be [B, S, fusionSize]") ||
-        !CheckShapeDim(hMixShape, 2, expectedFusionSize, "hMix shape must be [B, S, fusionSize]")) {
+        !CheckShapeDim(hMixShape, 2, fusionSize, "hMix shape must be [B, S, fusionSize]")) {
         return false;
     }
 
@@ -394,20 +391,26 @@ bool MhcGradCheckTNDShape(const AclnnMhcPreBackwardParams &params, uint64_t t, u
         return false;
     }
 
+    // 从 phi shape 动态读取 fusionSize, 支持 N!+2N 和 N²+2N
+    uint64_t fusionSize = params.phi->GetViewShape().GetDim(0);
+    uint64_t factN = Factorial(numsResidual);  // BSN! 形式的 factN = N!
     auto &gradHResShape = params.gradHRes->GetViewShape();
-    uint64_t expectedFusionSize = ComputeExpectedFusionSize(numsResidual);
     if (gradHResShape.GetDimNum() == 3) {
-        // A5: [T, N, N]
-        if (!CheckShapeDim(gradHResShape, 0, t, "gradHRes shape must be [T, N, N] or [T, N!]") ||
-            !CheckShapeDim(gradHResShape, 1, numsResidual, "gradHRes shape must be [T, N, N] or [T, N!]") ||
-            !CheckShapeDim(gradHResShape, 2, numsResidual, "gradHRes shape must be [T, N, N] or [T, N!]")) {
+        // [T, N, N] (BSNN 形式) - 所有平台都支持, factN = N²
+        if (!CheckShapeDim(gradHResShape, 0, t, "gradHRes shape must be [T, N, N]") ||
+            !CheckShapeDim(gradHResShape, 1, numsResidual, "gradHRes shape must be [T, N, N]") ||
+            !CheckShapeDim(gradHResShape, 2, numsResidual, "gradHRes shape must be [T, N, N]")) {
             return false;
         }
-    } else {
-        // A2: [T, N!]
-        uint64_t factorialN = Factorial(numsResidual);
+    } else{
+        // [T, N!] (BSN! 形式) - 仅 A2 支持, A5 只支持 BSNN
+        if (!IsAscend910BPlatform()) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                    "gradHRes shape [T, N!] (BSN!) is only supported on A2 platform");
+            return false;
+        }
         if (!CheckShapeDim(gradHResShape, 0, t, "gradHRes shape must be [T, N, N] or [T, N!]") ||
-            !CheckShapeDim(gradHResShape, 1, factorialN, "gradHRes shape must be [T, N, N] or [T, N!]")) {
+            !CheckShapeDim(gradHResShape, 1, factN, "gradHRes shape must be [T, N, N] or [T, N!]")) {
             return false;
         }
     }
@@ -419,7 +422,7 @@ bool MhcGradCheckTNDShape(const AclnnMhcPreBackwardParams &params, uint64_t t, u
     
     auto &hMixShape = params.hMix->GetViewShape();
     if (!CheckShapeDim(hMixShape, 0, t, "hMix shape must be [T, fusionSize]") ||
-        !CheckShapeDim(hMixShape, 1, expectedFusionSize, "hMix shape must be [T, fusionSize]")) {
+        !CheckShapeDim(hMixShape, 1, fusionSize, "hMix shape must be [T, fusionSize]")) {
         return false;
     }
 
@@ -461,15 +464,21 @@ bool MhcGradCheckCommonShape(const AclnnMhcPreBackwardParams &params, uint64_t n
     }
 
     uint64_t nD = numsResidual * dimen;
-    uint64_t expectedFusionSize = ComputeExpectedFusionSize(numsResidual);
 
     auto &phiShape = params.phi->GetViewShape();
-    if (!CheckShapeDim(phiShape, 0, expectedFusionSize,
-                       "phi tensor first dim must be fusionSize (N!+2N for A2, N^2+2N for A5)") ||
-        !CheckShapeDim(phiShape, 1, nD, "phi tensor second dim must be nD")) {
+    uint64_t fusionSize = phiShape.GetDim(0);
+    // 校验 phi 第一维: 必须是 N!+2N 或 N²+2N
+    uint64_t expectedFusionSizeFactN = Factorial(numsResidual) + 2 * numsResidual;  // N!+2N
+    uint64_t expectedFusionSizeNsq = numsResidual * numsResidual + 2 * numsResidual; // N²+2N
+    if (fusionSize != expectedFusionSizeFactN && fusionSize != expectedFusionSizeNsq) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "phi tensor first dim must be N!+2N (%lu) or N^2+2N (%lu), but got %lu",
+                expectedFusionSizeFactN, expectedFusionSizeNsq, fusionSize);
         return false;
     }
-    uint64_t fusionSize = phiShape.GetDim(0);
+    if (!CheckShapeDim(phiShape, 1, nD, "phi tensor second dim must be nD")) {
+        return false;
+    }
 
     // Verify hMix fusionSize matches phi
     auto &hMixShape = params.hMix->GetViewShape();

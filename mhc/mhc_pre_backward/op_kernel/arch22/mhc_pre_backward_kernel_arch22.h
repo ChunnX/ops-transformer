@@ -126,7 +126,7 @@ protected:
     int64_t blkIdx_ = 0, aivNum_ = 0, aicNum_ = 0;
     TPipe *pipe_;
     int64_t batchSize_ = 0, seqLength_ = 0, totalTasks_ = 0, totalTasksAligned_ = 0, BSN = 0;
-    int64_t c_ = 0, n_ = 0, factN_ = 0, fusionSize_ = 0;
+    int64_t c_ = 0, n_ = 0, factN_ = 0, fusionSize_ = 0, isBSNN_ = 0;
     int64_t c0_ = 0, c1_ = 0, cTail_ = 0, c0RepeatTime_ = 0, cTailAlign_ = 0, cTailBlockStride_ = 0, c1Align_ = 0;
     int64_t tileCoreBS_ = 0;
     int64_t ubSize_ = 0;
@@ -213,8 +213,10 @@ private:
         eps_ = tilingData->eps;
         tileCoreBS_ = tilingData->tileSize;
 
-        factN_ = Factorial(n_);
-        fusionSize_ = factN_ + PRE_POST_NUM * n_;
+        // 从 tiling data 获取 fusionSize, 反推 factN (支持 N!+2N 和 N²+2N)
+        fusionSize_ = tilingData->fusionSize;
+        factN_ = fusionSize_ - PRE_POST_NUM * n_;
+        isBSNN_ = tilingData->isBSNN;
 
         c0RepeatTime_ = c0_ / ELEMENTS_SIZE_PER_REPEAT;
         totalTasks_ = batchSize_ * seqLength_;
@@ -424,11 +426,19 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     // --- [公式4] 残差连接反向(H_res) ---
     // 正向: H_res = α_res * H_res_1 + bias_res
     // 反向: H_res_2_grad = H_res_grad (α_res 乘法在后续 scaleLocal_ 中体现)
-    // grad_h_res shape = [B,S,N,N]，A2 展平为 N! 维
+    // grad_h_res 支持 BSNN(B,S,N,N) 和 BSN!(B,S,N!) 两种布局
     gradHResLocal_ = inputGradQueue.AllocTensor<T>();
-    DataCopyPad(gradHResLocal_, gradHResGlobal_[taskOffset * factN_],
-                {static_cast<uint16_t>(1), static_cast<uint32_t>(tileTaskCount * factN_ * sizeof(T)), 0, 0, 0},
-                {false, 0, 0, 0});
+    if (isBSNN_ != 0) {
+        // BSNN: grad_h_res shape = [B,S,N,N], 按 N×N 矩阵加载, 每行 N 元素 pad 到 8 对齐
+        DataCopyPad(gradHResLocal_, gradHResGlobal_[taskOffset * n_ * n_],
+                    {static_cast<uint16_t>(tileTaskCount * n_), static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0},
+                    {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
+    } else {
+        // BSN!: grad_h_res shape = [B,S,N!], 扁平向量加载
+        DataCopyPad(gradHResLocal_, gradHResGlobal_[taskOffset * factN_],
+                    {static_cast<uint16_t>(1), static_cast<uint32_t>(tileTaskCount * factN_ * sizeof(T)), 0, 0, 0},
+                    {false, 0, 0, 0});
+    }
     inputGradQueue.EnQue(gradHResLocal_);
     inputGradQueue.DeQue();
 
@@ -438,7 +448,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     for (int32_t loopIdN = 0; loopIdN < resBlocks; loopIdN += 1) {
         Copy(dhatLocal_[(1 + loopIdN) * ELEMENTS_SIZE_PER_BLOCK],
              gradHResLocal_[loopIdN * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-             {static_cast<uint16_t>(4), static_cast<uint16_t>(resBlocks),
+             {static_cast<uint16_t>(fusionSize_ / ELEMENTS_SIZE_PER_BLOCK), static_cast<uint16_t>(resBlocks),
               static_cast<uint16_t>(fusionSize_), static_cast<uint16_t>(resBlocks * 8)});
     }
 
@@ -488,15 +498,15 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     // --- 重建 sigmoid 输入: α * H_mix * inv_rms + bias ---
     // hat2Scale = α * H_mix  (scaleLocal_ = [α_pre, α_post, α_res, ...], hat2LocalTemp = H_mix)
     // 对应正向: α_pre * H_pre_1, α_post * H_post_1, α_res * H_res_1
-    // 4 blocks: pre(8), post(8), res_block0(8), res_block1(8)
-    Mul(hat2Scale, scaleLocal_, hat2LocalTemp, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-        {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
-    Mul(hat2Scale[8], scaleLocal_[8], hat2LocalTemp[8], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-        {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
-    Mul(hat2Scale[16], scaleLocal_[8], hat2LocalTemp[16], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-        {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
-    Mul(hat2Scale[24], scaleLocal_[8], hat2LocalTemp[24], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-        {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
+    // [适配] 循环处理所有 block: block 0 用 scaleLocal_(pre+post), block 1+ 用 scaleLocal_[8](res)
+    int32_t totalBlocks = static_cast<int32_t>(fusionSize_ / ELEMENTS_SIZE_PER_BLOCK);
+    for (int32_t blk = 0; blk < totalBlocks; blk++) {
+        auto scaleSrc = (blk == 0) ? scaleLocal_ : scaleLocal_[ELEMENTS_SIZE_PER_BLOCK];
+        Mul(hat2Scale[blk * ELEMENTS_SIZE_PER_BLOCK], scaleSrc,
+            hat2LocalTemp[blk * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
+            {static_cast<uint8_t>(totalBlocks), 0, static_cast<uint8_t>(totalBlocks),
+             static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
+    }
     PipeBarrier<PIPE_V>();
     SetFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
     WaitFlag<HardEvent::V_MTE2>(eventIdVToMTE2);
@@ -582,7 +592,7 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     //   post 区段: H_post_2_grad = H_post_grad * 2 * s * (1-s)  (已含 *2)
     //   res 区段:  保持 grad_h_res 不变 (res 无 sigmoid)
     Mul(dhatLocal_, dPrePostTempLocal_, hatLocalTemp, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-        {4, 1, 1, static_cast<uint8_t>(fusionSize_), 8, 8});
+        {static_cast<uint8_t>(fusionSize_ / ELEMENTS_SIZE_PER_BLOCK), 1, 1, static_cast<uint8_t>(fusionSize_), 8, 8});
     PipeBarrier<PIPE_V>();
 
     // if (blkIdx_ == 0) {
@@ -603,7 +613,9 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     Mul(gradRsqrtLocal_, dhatLocal_, hat2Scale, fusionSize_ * tileTaskCount);
     PipeBarrier<PIPE_V>();
     // inv_rms_grad = sum(gradRsqrtLocal_, dim=fusionSize_)
-    WholeReduceSum(rsqrtTempLocal_, gradRsqrtLocal_, fusionSize_, tileTaskCount, 1, 1, 4);
+    // srcRepStride = fusionSize_/8 (datablock 单位), 参考 sinkhorn 算子一次调用
+    WholeReduceSum(rsqrtTempLocal_, gradRsqrtLocal_, fusionSize_, tileTaskCount, 1, 1,
+                   static_cast<int32_t>(fusionSize_ / ELEMENTS_SIZE_PER_BLOCK));
     PipeBarrier<PIPE_V>();
 
     // --- [公式8] RMS归一化梯度计算 ---
@@ -668,14 +680,17 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     // dhat2Local = α * dhatBeforeNormLocal = α * inv_rms * H_2_grad = inv_rms * H_1_grad = H_mix_grad
     // H_mix_grad 将被 AIC 侧 ProcessMatmul1 用于: x_rs_grad = H_mix_grad @ phi
     
-    Mul(dhat2Local, scaleLocal_, dhatBeforeNormLocal, ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-        {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
-    Mul(dhat2Local[8], scaleLocal_[8], dhatBeforeNormLocal[8], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-        {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
-    Mul(dhat2Local[16], scaleLocal_[8], dhatBeforeNormLocal[16], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-        {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
-    Mul(dhat2Local[24], scaleLocal_[8], dhatBeforeNormLocal[24], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-        {4, 0, 4, static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
+    // [适配] 循环处理所有 block: block 0 用 scaleLocal_(pre+post), block 1+ 用 scaleLocal_[8](res)
+    {
+        int32_t totalBlocks = static_cast<int32_t>(fusionSize_ / ELEMENTS_SIZE_PER_BLOCK);
+        for (int32_t blk = 0; blk < totalBlocks; blk++) {
+            auto scaleSrc = (blk == 0) ? scaleLocal_ : scaleLocal_[ELEMENTS_SIZE_PER_BLOCK];
+            Mul(dhat2Local[blk * ELEMENTS_SIZE_PER_BLOCK], scaleSrc,
+                dhatBeforeNormLocal[blk * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
+                {static_cast<uint8_t>(totalBlocks), 0, static_cast<uint8_t>(totalBlocks),
+                 static_cast<uint8_t>(fusionSize_), 0, static_cast<uint8_t>(fusionSize_)});
+        }
+    }
 
     // if (blkIdx_ == 0) {
     //     printf("scaleLocal_ value is \n");
@@ -1024,16 +1039,22 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     auto dBiasLocal = dBiasLocalList_[scalePos_];
     auto dScaleLocal = dBiasLocal[tileCoreBS_ * fusionSize_];
 
-    // α_grad: 将 res 区段的多个 block 归约到 pre block (block 0)
-    // dScaleLocal 布局: [pre(8), post(8), res_block0(8), res_block1(8)]
-    // 先把 res_block1 加到 res_block0，再把 res_block0 加到 post block，最后加到 pre block
-    Add(dScaleLocal[16], dScaleLocal[16], dScaleLocal[24], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-        {4, 4, 4, static_cast<uint8_t>(fusionSize_), static_cast<uint8_t>(fusionSize_), static_cast<uint8_t>(fusionSize_)});
-    PipeBarrier<PIPE_V>();
-    Add(dScaleLocal[8], dScaleLocal[8], dScaleLocal[16], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
-        {4, 4, 4, static_cast<uint8_t>(fusionSize_), static_cast<uint8_t>(fusionSize_), static_cast<uint8_t>(fusionSize_)});
-
-    PipeBarrier<PIPE_V>();
+    // α_grad: 将 res 区段的多个 block 归约到第一个 res block (block 1)
+    // dScaleLocal 布局: [pre+post(8), res_block0(8), res_block1(8), ...]
+    // [适配] 循环从最后一个 res block 向前累加, 支持任意 res block 数
+    {
+        int32_t totalBlocks = static_cast<int32_t>(fusionSize_ / ELEMENTS_SIZE_PER_BLOCK);
+        int32_t resBlocks = static_cast<int32_t>(factN_ / ELEMENTS_SIZE_PER_BLOCK);
+        for (int32_t i = resBlocks - 1; i > 0; i--) {
+            Add(dScaleLocal[(i) * ELEMENTS_SIZE_PER_BLOCK],
+                dScaleLocal[(i) * ELEMENTS_SIZE_PER_BLOCK],
+                dScaleLocal[(1 + i) * ELEMENTS_SIZE_PER_BLOCK], ELEMENTS_SIZE_PER_REPEAT, tileRepeatTimes_,
+                {static_cast<uint8_t>(totalBlocks), static_cast<uint8_t>(totalBlocks),
+                 static_cast<uint8_t>(totalBlocks), static_cast<uint8_t>(fusionSize_),
+                 static_cast<uint8_t>(fusionSize_), static_cast<uint8_t>(fusionSize_)});
+            PipeBarrier<PIPE_V>();
+        }
+    }
 
     // bias_grad / α_grad: 跨 batch*seq 做树形归约 (tileCoreBS_ → 1)
     for (int32_t bsCount = tileCoreBS_ / 2; bsCount > 0; bsCount = bsCount / 2) {

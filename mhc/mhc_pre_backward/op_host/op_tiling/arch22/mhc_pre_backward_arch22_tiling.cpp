@@ -50,6 +50,19 @@ constexpr int64_t ALPHA_SIZE_3 = 3;
 constexpr int64_t DEFAULT_KEY = 0;
 constexpr int64_t DETERMINISTIC_KEY = 1;
 constexpr int64_t ELEMENTS_SIZE_PER_BLOCK = 8;
+
+// 计算 N!
+int64_t Factorial(int64_t n)
+{
+    if (n <= 1) {
+        return 1;
+    }
+    int64_t result = 1;
+    for (int64_t i = 2; i <= n; i++) {
+        result *= i;
+    }
+    return result;
+}
 } // namespace
 
 using namespace ge;
@@ -61,8 +74,24 @@ namespace optiling {
 ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int64_t seqLength, int64_t n, int64_t c)
 {
     auto opName = context->GetNodeName();
-    int64_t factN = Factorial(n);
-    int64_t fusionSize = factN + 2 * n;
+
+    // 从 phi shape 动态读取 fusionSize, 校验为 N!+2N 或 N²+2N
+    auto phiShapePtr = context->GetInputShape(PHI_IDX);
+    OP_CHECK_IF(phiShapePtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, phi shape is nullptr"),
+                return ge::GRAPH_FAILED);
+    auto phiShape = phiShapePtr->GetStorageShape();
+    OP_CHECK_IF(phiShape.GetDimNum() != 2,
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, phi must be 2D, but got %lu dims",
+                                            phiShape.GetDimNum()),
+                return ge::GRAPH_FAILED);
+    int64_t fusionSize = phiShape.GetDim(0);
+    int64_t factNFact = Factorial(n);           // N!
+    int64_t factNNsq = n * n;                    // N²
+    OP_CHECK_IF(fusionSize != factNFact + 2 * n && fusionSize != factNNsq + 2 * n,
+                OPS_REPORT_VECTOR_INNER_ERR(opName,
+                    "ShapeVerify failed, phi dim0=%ld must be N!+2N (%ld) or N^2+2N (%ld)",
+                    fusionSize, factNFact + 2 * n, factNNsq + 2 * n),
+                return ge::GRAPH_FAILED);
 
     auto gradHInShapePtr = context->GetInputShape(GRAD_H_IN_IDX);
     OP_CHECK_IF(gradHInShapePtr == nullptr,
@@ -101,30 +130,39 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradHRes shape is nullptr"),
                 return ge::GRAPH_FAILED);
     auto gradHResShape = gradHResShapePtr->GetStorageShape();
-    OP_CHECK_IF(gradHResShape.GetDimNum() != 3,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradHRes must be 3D (B,S,N!), but got %lu dims",
-                                            gradHResShape.GetDimNum()),
+    // gradHRes 支持 BSNN (4D: B,S,N,N) 和 BSN! (3D: B,S,N!) 两种形式
+    // BSNN: factN = N²; BSN!: factN = N!
+    int64_t expectedFactN = (gradHResShape.GetDimNum() == 4) ? factNNsq : factNFact;
+    OP_CHECK_IF(gradHResShape.GetDimNum() != 3 && gradHResShape.GetDimNum() != 4,
+                OPS_REPORT_VECTOR_INNER_ERR(opName,
+                    "ShapeVerify failed, gradHRes must be 3D (B,S,N!) or 4D (B,S,N,N), but got %lu dims",
+                    gradHResShape.GetDimNum()),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
-                    gradHResShape.GetDim(2) != factN,
-                OPS_REPORT_VECTOR_INNER_ERR(
-                    opName, "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N!=%ld), but got (%ld, %ld, %ld)",
-                    batchSize, seqLength, factN, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
-                    gradHResShape.GetDim(2)),
-                return ge::GRAPH_FAILED);
+    if (gradHResShape.GetDimNum() == 4) {
+        // BSNN: [B, S, N, N]
+        OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
+                        gradHResShape.GetDim(2) != n || gradHResShape.GetDim(3) != n,
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName, "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N=%ld, N=%ld), but got (%ld, %ld, %ld, %ld)",
+                        batchSize, seqLength, n, n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
+                        gradHResShape.GetDim(2), gradHResShape.GetDim(3)),
+                    return ge::GRAPH_FAILED);
+    } else {
+        // BSN!: [B, S, N!]
+        OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
+                        gradHResShape.GetDim(2) != expectedFactN,
+                    OPS_REPORT_VECTOR_INNER_ERR(
+                        opName, "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N!=%ld), but got (%ld, %ld, %ld)",
+                        batchSize, seqLength, expectedFactN, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
+                        gradHResShape.GetDim(2)),
+                    return ge::GRAPH_FAILED);
+    }
 
-    auto phiShapePtr = context->GetInputShape(PHI_IDX);
-    OP_CHECK_IF(phiShapePtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, phi shape is nullptr"),
-                return ge::GRAPH_FAILED);
-    auto phiShape = phiShapePtr->GetStorageShape();
-    OP_CHECK_IF(phiShape.GetDimNum() != 2,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, phi must be 2D, but got %lu dims",
-                                            phiShape.GetDimNum()),
-                return ge::GRAPH_FAILED);
-    OP_CHECK_IF(phiShape.GetDim(0) != fusionSize || phiShape.GetDim(1) != n * c,
+    // phi shape 第0维已在函数开头读取, 这里只校验第1维
+    OP_CHECK_IF(phiShape.GetDim(1) != n * c,
                 OPS_REPORT_VECTOR_INNER_ERR(
-                    opName, "ShapeVerify phi failed, expected (2N+N!=%ld, N*C=%ld), but got (%ld, %ld)", fusionSize,
-                    n * c, phiShape.GetDim(0), phiShape.GetDim(1)),
+                    opName, "ShapeVerify phi failed, expected dim1=N*C=%ld, but got %ld", n * c,
+                    phiShape.GetDim(1)),
                 return ge::GRAPH_FAILED);
 
     auto alphaShapePtr = context->GetInputShape(ALPHA_IDX);
@@ -297,8 +335,13 @@ ge::graphStatus TilingMhcPreBackwardArch22(gert::TilingContext *context)
                 OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "n must be %ld, but got %ld", N_SIZE_4, n),
                 return ge::GRAPH_FAILED);
 
-    int64_t factN = Factorial(n);
-    int64_t fusionSize = factN + 2 * n;
+    // 从 phi shape 动态读取 fusionSize (已在 ShapeVerify 中校验为 N!+2N 或 N²+2N)
+    auto phiShapePtr = context->GetInputShape(PHI_IDX);
+    int64_t fusionSize = phiShapePtr->GetStorageShape().GetDim(0);
+
+    // 从 gradHRes 维度判断布局: 4D=BSNN(B,S,N,N), 3D=BSN!(B,S,N!)
+    auto gradHResShapePtrTiling = context->GetInputShape(GRAD_H_RES_IDX);
+    int64_t isBSNN = (gradHResShapePtrTiling->GetStorageShape().GetDimNum() == 4) ? 1 : 0;
 
     int64_t c0 = 256; // must be VL
     int64_t c1 = c / c0;
@@ -354,6 +397,8 @@ ge::graphStatus TilingMhcPreBackwardArch22(gert::TilingContext *context)
     }
 
     tilingData->n = n;
+    tilingData->fusionSize = fusionSize;
+    tilingData->isBSNN = isBSNN;
     tilingData->batchSize = batchSize;
     tilingData->seqLength = seqLength;
     tilingData->c = c;

@@ -23,6 +23,8 @@ struct MhcPreBackwardArch22TilingData {
     int64_t seqLength = 0;
     int64_t c = 0;
     int64_t n = 0;
+    int64_t fusionSize = 0;  // phi 第0维: factN + 2*N (A2: N!+2N, A3: N²+2N)
+    int64_t isBSNN = 0;      // gradHRes 布局: 1=BSNN(B,S,N,N), 0=BSN!(B,S,N!)
     int64_t c0 = 0;
     int64_t c1 = 0;
     int64_t cTail = 0;
