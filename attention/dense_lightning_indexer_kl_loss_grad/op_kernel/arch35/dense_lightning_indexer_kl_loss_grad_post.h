@@ -27,11 +27,8 @@ public:
                                 TPipe *pipe_in);
     __aicore__ inline void Process();
 
-    constexpr static uint32_t ADDR_ALIGN_SIZE = 512;
     uint32_t REGBASE_POST_BASE = 128 * 128;
-    uint32_t ROPE_DIM = 64;
     uint32_t VALUE_DIM = 128;
-    uint32_t POST_S_BASE = 18;
     TPipe *pipe;
     const optiling::DenseLightningIndexerGradRegBaseTilingData *tilingData;
     TQue<QuePosition::VECIN, 1> inQueuePing;
@@ -78,15 +75,11 @@ __aicore__ inline void DenseLightningIndexerKLLossGradPost<TEMPLATE_ARGS>::Proce
     }
     int64_t beginIdx = vBlockIdx * kPostBlockFactor * VALUE_DIM;
     int64_t endIdx = beginIdx + blockSize;
-    // printf(" doing post !!! kPostBlockFactor : %d kPostBlockTotal : %d kPostBlockTail : %d \n", kPostBlockFactor, kPostBlockTotal, kPostBlockTail);
-    // printf("beginIdx : %d endIdx : %d blockSize : %d \n",beginIdx, endIdx, blockSize);
-
     for (uint64_t pingIdx = beginIdx; pingIdx < endIdx; pingIdx = pingIdx + (REGBASE_POST_BASE << 1)) {
         LocalTensor<float> vecInPing = inQueuePing.AllocTensor<float>();
         uint64_t pongIdx = pingIdx + REGBASE_POST_BASE;
         bool neeedPong = pongIdx < endIdx;
         uint32_t pingSize = neeedPong ? REGBASE_POST_BASE : endIdx - pingIdx;
-        // uint32_t seqPingSize = pingSize / (ROPE_DIM + VALUE_DIM);
         DataCopy(vecInPing, dkWorkspace[pingIdx], (pingSize + 7) >> 3 << 3);
         inQueuePing.EnQue(vecInPing);
         inQueuePing.DeQue<float>();
@@ -99,7 +92,6 @@ __aicore__ inline void DenseLightningIndexerKLLossGradPost<TEMPLATE_ARGS>::Proce
         if (neeedPong) {
             vecInPong = inQueuePong.AllocTensor<float>();
             pongSize = pongIdx + REGBASE_POST_BASE < endIdx ? REGBASE_POST_BASE : endIdx - pongIdx;
-            // seqPongSize = pongSize / (ROPE_DIM + VALUE_DIM);
             DataCopy(vecInPong, dkWorkspace[pongIdx], (pongSize + 7) >> 3 << 3);
         }
         outQueuePing.EnQue(vecOutPing);

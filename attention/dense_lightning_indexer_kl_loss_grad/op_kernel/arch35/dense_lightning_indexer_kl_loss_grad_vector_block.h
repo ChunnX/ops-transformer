@@ -19,9 +19,6 @@
 #include "vf/vf_process_vec0.h"
 #include "vf/vf_process_vec1.h"
 #include "vf/vf_process_vec2.h"
-#include "vf/vf_process_vec4.h"
-#include "vf/vf_process_vec5.h"
-#include "vf/vf_process_vec6.h"
 #include "vf/vf_cast_dup.h"
 #include "vf/vf_reduce_sum.h"
 
@@ -41,10 +38,9 @@ public:
     __aicore__ inline void ProcessVector1(Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm1ResBuf,
         DLIKGradRunInfo &runInfo);
     __aicore__ inline void ProcessSoftmaxReduceSum(DLIKGradRunInfo &runInfo);
-    __aicore__ inline void ProcessVector6(Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm1ResBuf,
+    __aicore__ inline void ProcessVector2(Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm1ResBuf,
         Buffer<BufferType::L1, SyncType::NO_SYNC> &outputBuf, DLIKGradRunInfo &runInfo);
-    __aicore__ inline void ProcessVector7Deter(DLIKGradRunInfo &runInfo);
-    __aicore__ inline void FreeBuf();
+    __aicore__ inline void ProcessVector3Deter(DLIKGradRunInfo &runInfo);
     // gm addr
     GlobalTensor<INPUT_T> keyIndexGm;
     GlobalTensor<T> weightGm;
@@ -107,19 +103,7 @@ private:
     TQue<QuePosition::VECIN, 1> scatterAddInQue[2];
     TQue<QuePosition::VECIN, 1> scatterAddInQue2[2];
     TQue<QuePosition::VECOUT, 1> dKeyOutQue[2];
-
-    LocalTensor<INPUT_T> gatherKeyUb;
-    LocalTensor<INPUT_T> gatherKeyIndexUb;
-
-    LocalTensor<INPUT_T> kvMergUb_;
-    LocalTensor<INPUT_T> mm1AL1Tensor;
 };
-
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::FreeBuf()
-{
-    ReleaseMutexID(mteBufMutexId);
-}
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitParams(const DLIKGradConstInfo &vecConstInfo,
@@ -182,9 +166,6 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(this->softmaxLseQue[0], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32);
     pipe->InitBuffer(this->softmaxLseQue[1], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32);
     pipe->InitBuffer(this->softmaxLseQue[2], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32);
-    mteBufMutexId = AllocMutexID();
-    // gatherKeyUb = gatherTbuf.Get<INPUT_T>();
-    // gatherKeyIndexUb = gatherKeyUb;
     auto dwUb0 = this->dwQue[0].template AllocTensor<T>();
     auto dwUb1 = this->dwQue[1].template AllocTensor<T>();
     auto dwUb2 = this->dwQue[2].template AllocTensor<T>();
@@ -381,12 +362,12 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessSoftmaxReduceSum(DLI
 
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector2(
     Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm1ResBuf,
     Buffer<BufferType::L1, SyncType::NO_SYNC> &outputBuf, 
     DLIKGradRunInfo &runInfo)
 {
-    CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG[runInfo.taskIdMod3]);
+    CrossCoreWaitFlag<2, PIPE_MTE3>(SYNC_V2_TO_C3_FLAG[runInfo.taskIdMod3]);
     auto reduceSumTensor = this->reduceSumOutQue[runInfo.taskIdMod3].template AllocTensor<T>();
     LocalTensor<T> reduceOtherSumTensor = this->reduceSumOtherOutQue[runInfo.taskIdMod3].template AllocTensor<T>();
     LocalTensor<T> reluUb = bmm1ResBuf.template GetTensor<T>();
@@ -394,7 +375,6 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     LocalTensor<T> weightInUb = weightInQue[runInfo.sTaskIdMod3].template AllocTensor<T>();
     LocalTensor<T> lseInUb = softmaxLseQue[runInfo.sTaskIdMod3].template AllocTensor<T>();
     auto dwTensor = this->dwQue[runInfo.sTaskIdMod3].template AllocTensor<T>();
-    // Duplicate(dwTensor, 0.0f, 64);
     auto softmaxReduceSumTensor = softmaxReduceSumOutQue[runInfo.sTaskIdMod3].template AllocTensor<T>();
     LocalTensor<T> attnSoftmaxL1Tensor = this->attnSoftmaxL1Que.template AllocTensor<T>();
     LocalTensor<T> softmaxTensor = attnSoftmaxL1Tensor[runInfo.taskIdMod3 * VEC_SY_BASESIZE];
@@ -418,11 +398,11 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     SetFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     WaitFlag<HardEvent::MTE2_V>(eventIdMte2ToV);
     if (runInfo.isAlign64) {
-        ProcessVec6Vf<T, INPUT_T, true>(reluGradUb, dwTensor,
+        ProcessVec2Vf<T, INPUT_T, true>(reluGradUb, dwTensor,
             softmaxTensor, softmaxReduceSumTensor, weightInUb, reduceSumTensor, reduceOtherSumTensor,
             reluUb, lseInUb, runInfo.kProcessSize, runInfo.nIndexSize, VEC_P_BASESIZE);
     } else {
-        ProcessVec6Vf<T, INPUT_T, false>(reluGradUb, dwTensor,
+        ProcessVec2Vf<T, INPUT_T, false>(reluGradUb, dwTensor,
             softmaxTensor, softmaxReduceSumTensor, weightInUb, reduceSumTensor, reduceOtherSumTensor,
             reluUb, lseInUb, runInfo.kProcessSize, runInfo.nIndexSize, VEC_P_BASESIZE);
     }
@@ -444,7 +424,7 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
     DataCopy(mm3AL1Tensor[constInfo.subBlockIdx * runInfo.firstNIndexSize * BLOCK_SINGLE_LEN], reluGradUb,
         { static_cast<uint16_t>(constInfo.pKBaseSize / BLOCK_SINGLE_LEN), static_cast<uint16_t>(runInfo.nIndexSize),
         0, static_cast<uint16_t>(gRealSizeAlignTo16 - runInfo.nIndexSize) });
-    CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V6_TO_C3_FLAG[runInfo.taskIdMod3]);
+    CrossCoreSetFlag<2, PIPE_MTE3>(SYNC_V2_TO_C3_FLAG[runInfo.taskIdMod3]);
     this->dwQue[runInfo.sTaskIdMod3].template EnQue(dwTensor);
     this->dwQue[runInfo.sTaskIdMod3].template DeQue<T>();
     if (runInfo.isLastBlock) {
@@ -457,7 +437,6 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
         dataCopyParams1.blockLen = runInfo.nIndexSize * sizeof(T);
         dataCopyParams1.srcStride = 0;
         dataCopyParams1.dstStride = 0;
-        // printf("weight offset : %d \n", runInfo.weightOffset);
         DataCopyPad(dWeightGm[runInfo.weightOffset], dwOutTensor, dataCopyParams1);
         this->dwOutQue.template FreeTensor(dwOutTensor);
     }
@@ -473,12 +452,11 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector6(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGradRunInfo &runInfo)
+__aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector3Deter(DLIKGradRunInfo &runInfo)
 {
-    // printf("ProcessVector7Deter : %d \n", runInfo.deterTaskId);
-    CrossCoreSetFlag<0, PIPE_MTE2>(SYNC_C3_TO_V7_DETER_MTE2_FLAG);
-    CrossCoreWaitFlag<0, PIPE_MTE2>(SYNC_C3_TO_V7_DETER_MTE2_FLAG);
-    CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
+    CrossCoreSetFlag<0, PIPE_MTE2>(SYNC_C3_TO_V3_DETER_MTE2_FLAG);
+    CrossCoreWaitFlag<0, PIPE_MTE2>(SYNC_C3_TO_V3_DETER_MTE2_FLAG);
+    CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V3_DETER_SA_FLAG);
     LocalTensor<T> dkTensor = this->dkQue.template AllocTensor<T>();
     int32_t coreNum = GetBlockNum();
     int64_t preBIdx = -1;
@@ -518,15 +496,11 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGra
                     PROCESS_KV_SIZE :
                     currentS2Size - runInfo.s2BlockOffset;
         processSize = Max(processSize, 0);
-        // printf("idx : %d processSize : %d \n", idx, processSize);
         perCoreKSize = CeilDiv(processSize, coreNum);
         int32_t usedCoreNum = CeilDiv(processSize, perCoreKSize);
-        // if (bIdx == 1 ) {
-        //     // printf("idx : %d usedBS1Index : %d accumS2Len : %d runInfo.s2BlockOffset : %d currentS2Size : %d processSize : %d perCoreKSize : %d \n", idx, usedBS1Index, accumS2Len, runInfo.s2BlockOffset, currentS2Size, processSize, perCoreKSize);
-        // }
         if (constInfo.aicIdx >= usedCoreNum) {
-            CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
-            CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
+            CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V3_DETER_SA_FLAG);
+            CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V3_DETER_SA_FLAG);
             continue;
         }
         tailCoreKSize = processSize - (usedCoreNum - 1) * perCoreKSize;
@@ -543,34 +517,29 @@ __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::ProcessVector7Deter(DLIKGra
             vCoreKOffset = coreKOffset + v0RealKSize;
         }
         if (vRealKSize <= 0) {
-            CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
-            CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
+            CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V3_DETER_SA_FLAG);
+            CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V3_DETER_SA_FLAG);
             continue;
         }
-        CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
+        CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V3_DETER_SA_FLAG);
         int64_t mm3GmBaseOffset = idx * PROCESS_KV_SIZE * constInfo.dSizeQueryIndex +
                                 vCoreKOffset * constInfo.dSizeQueryIndex;
         int64_t bmm3Offset = (accumS2Len + runInfo.s2BlockOffset + vCoreKOffset) * constInfo.dSizeQueryIndex;
         GlobalTensor<T> srcGm = mm3DeterResGm[mm3GmBaseOffset];
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3EventId);
-        AscendC::Mutex::Lock<PIPE_MTE2>(mteBufMutexId);
-        // printf("idx : %d vCoreKOffset : %d vRealKSize : %d processSize : %d perCoreKSize : %d \n",idx, vCoreKOffset, vRealKSize, processSize, perCoreKSize);
         DataCopy(dkTensor, srcGm, vRealKSize * constInfo.dSizeQueryIndex);
-        AscendC::Mutex::Unlock<PIPE_MTE2>(mteBufMutexId);
         SetFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
         WaitFlag<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
-        AscendC::Mutex::Lock<PIPE_MTE3>(mteBufMutexId);
         DataCopy(bmm3Res[bmm3Offset], dkTensor, vRealKSize * constInfo.dSizeQueryIndex);
-        AscendC::Mutex::Unlock<PIPE_MTE3>(mteBufMutexId);
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3EventId);
-        CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
+        CrossCoreSetFlag<0, PIPE_MTE3>(SYNC_C3_TO_V3_DETER_SA_FLAG);
     }
     SetAtomicNone();
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3EventId);
     GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE2_MTE3>(mte3WaitMte2EventId);
     GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3EventId);
     this->dkQue.template FreeTensor(dkTensor);
-    CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V7_DETER_SA_FLAG);
+    CrossCoreWaitFlag<0, PIPE_MTE3>(SYNC_C3_TO_V3_DETER_SA_FLAG);
 }
 
 TEMPLATES_DEF
@@ -585,9 +554,9 @@ public:
     __aicore__ inline void ProcessVector1(Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm1ResBuf,
         DLIKGradRunInfo &runInfo){};
     __aicore__ inline void ProcessSoftmaxReduceSum(DLIKGradRunInfo &runInfo);
-    __aicore__ inline void ProcessVector6(Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm1ResBuf,
+    __aicore__ inline void ProcessVector2(Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm1ResBuf,
         Buffer<BufferType::L1, SyncType::NO_SYNC> &outputBuf, DLIKGradRunInfo &runInfo){};
-    __aicore__ inline void ProcessVector7Deter(DLIKGradRunInfo &runInfo){};
+    __aicore__ inline void ProcessVector3Deter(DLIKGradRunInfo &runInfo){};
 };
 } // namespace Dlikg
 #endif

@@ -83,14 +83,6 @@ template <typename T> static auto AlignUp(T num1, T num2) -> T
     return (num1 + num2 - 1) / num2 * num2;
 }
 
-template <typename T> static auto AlignDown(T num1, T num2) -> T
-{
-    if (num2 == 0) {
-        return 0;
-    }
-    return num1 / num2 * num2;
-}
-
 template <typename T> static auto CeilDivision(T num1, T num2) -> T
 {
     if (num2 == 0) {
@@ -105,15 +97,6 @@ template <typename T> static auto CeilDiv(const T n1, const T n2) -> T
         return 0;
     }
     return (n2 != 0) ? (((n1 - 1) / n2) + 1) : n1;
-}
-
-template <typename T> static auto CalcTailSize(T num1, T num2) -> T
-{
-    if (num2 == 0) {
-        return 0;
-    }
-    T mod = num1 % num2;
-    return mod != 0 ? mod : num2;
 }
 
 ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOutShape(gert::Shape &inputshape,
@@ -155,6 +138,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOutPut
     auto weightsShape = context_->GetInputShape(WEIGHT_INPUT_INDEX)->GetStorageShape();
     auto attnSoftmaxL1Shape = context_->GetInputShape(ATTN_SOFTMAX_L1_NORM_INPUT_INDEX)->GetStorageShape();
     auto softmaxLseShape = context_->GetInputShape(SOFTMAX_LSE_INPUT_INDEX)->GetStorageShape();
+
     auto dQueryIndexShape = context_->GetOutputShape(D_QUERY_OUTPUT_INDEX)->GetStorageShape();
     auto dKeyIndexShape = context_->GetOutputShape(D_KEY_OUTPUT_INDEX)->GetStorageShape();
     auto dWeightsShape = context_->GetOutputShape(D_WEIGHTS_OUTPUT_INDEX)->GetStorageShape();
@@ -163,41 +147,56 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::CheckOutPut
     size_t layoutLen = strlen(layoutQuery);
     OP_CHECK_IF(queryIndexShape.GetDimNum() != layoutLen || keyIndexShape.GetDimNum() != layoutLen ||
         attnSoftmaxL1Shape.GetDimNum() != layoutLen,
-        OP_LOGE(opName, "Invalid data, inputdata shapelen [%ld] is not equal to layoutQuery [%s] len[%ld].",
-        queryIndexShape.GetDimNum(), layoutQuery, layoutLen),
+        OP_LOGE(opName, "Invalid data, inputdata q shapelen [%ld] k shapelen [%ld] attnSoftmaxL1Norm shapelen [%ld] "
+        "is not equal to layoutQuery [%s] len[%ld].",
+        queryIndexShape.GetDimNum(), keyIndexShape.GetDimNum(), attnSoftmaxL1Shape.GetDimNum(), layoutQuery, layoutLen),
         return false);
 
-    auto status = CheckOutShape(queryIndexShape, "query", dQueryIndexShape);
-    if (status == ge::GRAPH_FAILED) {
-        return ge::GRAPH_FAILED;
-    }
-    status = CheckOutShape(keyIndexShape, "key", dKeyIndexShape);
-    if (status == ge::GRAPH_FAILED) {
-        return ge::GRAPH_FAILED;
-    }
-    status = CheckOutShape(attnSoftmaxL1Shape, "attn_softmax_l1_norm", softmaxOutShape);
-    if (status == ge::GRAPH_FAILED) {
+    auto qIdxDimNum = queryIndexShape.GetDimNum();
+    if (qIdxDimNum != dQueryIndexShape.GetDimNum() ||
+        queryIndexShape.GetDim(DIM_NUM_0) != dQueryIndexShape.GetDim(DIM_NUM_0) ||
+        queryIndexShape.GetDim(DIM_NUM_1) != dQueryIndexShape.GetDim(DIM_NUM_1) ||
+        (qIdxDimNum > DIM_NUM_2 && queryIndexShape.GetDim(DIM_NUM_2) != dQueryIndexShape.GetDim(DIM_NUM_2)) ||
+        (qIdxDimNum > DIM_NUM_3 && queryIndexShape.GetDim(DIM_NUM_3) != dQueryIndexShape.GetDim(DIM_NUM_3))) {
+        OP_LOGE(context_,
+            "DenseLightningIndexerKLLossGrad Input queryIndex %s is not equal to Output dQueryIndex %s",
+            Ops::Base::ToString(queryIndexShape).c_str(), Ops::Base::ToString(dQueryIndexShape).c_str());
         return ge::GRAPH_FAILED;
     }
 
-    if (layoutQuery[DIM_NUM_0] == 'B' && layoutQuery[DIM_NUM_1] == 'S' && layoutQuery[DIM_NUM_2] == 'N' &&
-        layoutQuery[DIM_NUM_3] == 'D') {
-        if (dWeightsShape.GetDim(DIM_NUM_0) != weightsShape.GetDim(DIM_NUM_0) ||
-            dWeightsShape.GetDim(DIM_NUM_1) != weightsShape.GetDim(DIM_NUM_1) ||
-            dWeightsShape.GetDim(DIM_NUM_2) != weightsShape.GetDim(DIM_NUM_2)) {
-            OP_LOGE(context_, "The input weights shape is [%ld, %ld, %ld], but d_weights got [%ld, %ld, %ld].",
-                weightsShape.GetDim(DIM_NUM_0), weightsShape.GetDim(DIM_NUM_1), weightsShape.GetDim(DIM_NUM_2),
-                dWeightsShape.GetDim(DIM_NUM_0), dWeightsShape.GetDim(DIM_NUM_1), dWeightsShape.GetDim(DIM_NUM_2));
-            return GRAPH_FAILED;
-        }
-    } else if (layoutQuery[DIM_NUM_0] == 'T' && layoutQuery[DIM_NUM_1] == 'N' && layoutQuery[DIM_NUM_2] == 'D') {
-        if (dWeightsShape.GetDim(DIM_NUM_0) != weightsShape.GetDim(DIM_NUM_0) ||
-            dWeightsShape.GetDim(DIM_NUM_1) != weightsShape.GetDim(DIM_NUM_1)) {
-            OP_LOGE(context_, "The input weights shape is [%ld, %ld], but d_weights got [%ld, %ld].",
-                weightsShape.GetDim(DIM_NUM_0), weightsShape.GetDim(DIM_NUM_1), dWeightsShape.GetDim(DIM_NUM_0),
-                dWeightsShape.GetDim(DIM_NUM_1));
-            return GRAPH_FAILED;
-        }
+    auto kIdxDimNum = keyIndexShape.GetDimNum();
+    if (kIdxDimNum != dKeyIndexShape.GetDimNum() ||
+        keyIndexShape.GetDim(DIM_NUM_0) != dKeyIndexShape.GetDim(DIM_NUM_0) ||
+        keyIndexShape.GetDim(DIM_NUM_1) != dKeyIndexShape.GetDim(DIM_NUM_1) ||
+        (kIdxDimNum > DIM_NUM_2 && keyIndexShape.GetDim(DIM_NUM_2) != dKeyIndexShape.GetDim(DIM_NUM_2)) ||
+        (kIdxDimNum > DIM_NUM_3 && keyIndexShape.GetDim(DIM_NUM_3) != dKeyIndexShape.GetDim(DIM_NUM_3))) {
+        OP_LOGE(context_,
+            "DenseLightningIndexerKLLossGrad Input keyIndex %s is not equal to Output dKeyIndex %s",
+            Ops::Base::ToString(keyIndexShape).c_str(), Ops::Base::ToString(dKeyIndexShape).c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    auto wDimNum = weightsShape.GetDimNum();
+    if (wDimNum != dWeightsShape.GetDimNum() ||
+        weightsShape.GetDim(DIM_NUM_0) != dWeightsShape.GetDim(DIM_NUM_0) ||
+        weightsShape.GetDim(DIM_NUM_1) != dWeightsShape.GetDim(DIM_NUM_1) ||
+        (wDimNum > DIM_NUM_2 && weightsShape.GetDim(DIM_NUM_2) != dWeightsShape.GetDim(DIM_NUM_2))) {
+        OP_LOGE(context_,
+            "DenseLightningIndexerKLLossGrad Input weights %s is not equal to Output dWeights %s",
+            Ops::Base::ToString(weightsShape).c_str(), Ops::Base::ToString(dWeightsShape).c_str());
+        return ge::GRAPH_FAILED;
+    }
+
+    auto attnSoftmaxDimNum = attnSoftmaxL1Shape.GetDimNum();
+    if (attnSoftmaxDimNum != softmaxOutShape.GetDimNum() ||
+        attnSoftmaxL1Shape.GetDim(DIM_NUM_0) != softmaxOutShape.GetDim(DIM_NUM_0) ||
+        attnSoftmaxL1Shape.GetDim(DIM_NUM_1) != softmaxOutShape.GetDim(DIM_NUM_1) ||
+        (attnSoftmaxDimNum > DIM_NUM_2 && attnSoftmaxL1Shape.GetDim(DIM_NUM_2) != softmaxOutShape.GetDim(DIM_NUM_2)) ||
+        (attnSoftmaxDimNum > DIM_NUM_3 && attnSoftmaxL1Shape.GetDim(DIM_NUM_3) != softmaxOutShape.GetDim(DIM_NUM_3))) {
+        OP_LOGE(context_,
+            "DenseLightningIndexerKLLossGrad Input attnSoftmaxL1Norm %s is not equal to Output softmaxOut %s",
+            Ops::Base::ToString(attnSoftmaxL1Shape).c_str(), Ops::Base::ToString(softmaxOutShape).c_str());
+        return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -265,16 +264,16 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeAttrs()
     cmpRatio = *cmpRatioPtr;
     deterministic = (context_->GetDeterministic() == 1);
     OP_CHECK_IF(strcmp(layoutQuery, "TND") != 0 && strcmp(layoutQuery, "BSND") != 0,
-        OP_LOGE(opName, "Layout only support TND or BSND, now layout is %s.", layoutQuery), return false);
+        OP_LOGE(opName, "LayoutQ only support TND or BSND, now LayoutQ is %s.", layoutQuery), return false);
     OP_CHECK_IF(strcmp(layoutKey, "TND") != 0 && strcmp(layoutKey, "BSND") != 0,
-        OP_LOGE(opName, "Layout only support TND or BSND, now layout is %s.", layoutKey), return false);
+        OP_LOGE(opName, "LayoutK only support TND or BSND, now LayoutK is %s.", layoutKey), return false);
     OP_CHECK_IF(strcmp(layoutQuery, layoutKey) != 0,
         OP_LOGE(opName,
-        "Layout of Query and Key/Value need to be consistent, but now layoutQuery is %s and layoutKey is %s.",
+        "Layout of Query and Key need to be consistent, but now layoutQuery is %s and layoutKey is %s.",
         layoutQuery, layoutKey),
         return false);
     OP_CHECK_IF((sparseMode != SPARSE_MODE_SIZE_3 && sparseMode != SPARSE_MODE_SIZE_0),
-        OP_LOGE(opName, " The value of sparse_mode is [%ld], but currently only supports mode [0,3].", sparseMode),
+        OP_LOGE(opName, " The value of mask_mode is [%ld], but currently only supports mode [0,3].", sparseMode),
         return false);
     OP_CHECK_IF((cmpRatio < CMP_RATIO_1 || cmpRatio > CMP_RATIO_128),
         OP_LOGE(opName, " The value of cmpRatio is [%ld], but currently only supports ranging from 1 to 128.",
@@ -284,7 +283,7 @@ bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::AnalyzeAttrs()
         OP_LOGE(opName, " cmp_residual_k is required when mask_mode is 3 with cmp_ratio not equal to 1!"),
         return false);
 
-    OP_LOGD(context_, "attrs: layout_query[%s] layout_key[%s] sparse_mode[%ld] cmp_ratio[%ld].", layoutQuery, layoutKey,
+    OP_LOGD(context_, "attrs: layout_query[%s] layout_key[%s] mask_mode[%ld] cmp_ratio[%ld].", layoutQuery, layoutKey,
         sparseMode, cmpRatio);
 
     if (CheckOutPut() == ge::GRAPH_FAILED) {
@@ -610,8 +609,6 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetPlatform
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(opName, "compileInfoPtr is null."), return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
         aicNum = compileInfoPtr->aicNum;
-        // aivNum = 2;
-        // aicNum = 1;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
         aicoreParams_.l1Size = compileInfoPtr->l1Size;
         aicoreParams_.l0cSize = compileInfoPtr->l0cSize;
@@ -620,8 +617,6 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetPlatform
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
         aivNum = ascendcPlatform.GetCoreNumAiv();
         aicNum = ascendcPlatform.GetCoreNumAic();
-        // aivNum = 2;
-        // aicNum = 1;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, aicoreParams_.ubSize);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, aicoreParams_.l1Size);
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
@@ -662,184 +657,6 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetShapeAtt
         bSize, n2Size, gSizeQueryIndex, s1Size, s2Size, dSizeQueryIndex, sparseMode, cmpRatio);
 
     return ge::GRAPH_SUCCESS;
-}
-
-int64_t DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetS2RealSize(int32_t sparseMode, int32_t s1Size,
-                                                                            int32_t s2Size, int32_t s1Idx)
-{
-    int64_t s2RealSize = 0;
-    // sparsemode = 3 的情形
-    if (sparseMode == static_cast<int32_t>(MaskMode::RIGHT_DOWN_CAUSAL)) {
-        s2RealSize = static_cast<int64_t>((s2Size - s1Size) + s1Idx + 1);
-        if (s2RealSize <= 0) {
-            s2RealSize = static_cast<int64_t>(s2Size);
-        }
-    }
-    s2RealSize = AlignUp(s2RealSize, 512L);
-    return std::min(s2RealSize, (int64_t)dlikGradBaseParams_->get_kSize());
-}
-
-bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::InitSparseValidArray(std::vector<int64_t> &sparseValidArray)
-{
-    OP_CHECK_IF(sparseValidArray.size() == 0,
-        OPS_REPORT_VECTOR_INNER_ERR(opName, "Sparse valid array size should be larger than 0."), return false);
-
-    uint32_t sparseMode = dlikGradBaseParams_->get_sparseMode();
-    if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_TND) {
-        return true;
-    } else if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_BSND) {
-        int64_t accum = 0;
-        for (int32_t i = 0; i < bSize; i++) {
-            for (int64_t j = 0; j < s1Size; j++) {
-                int64_t s2RealSize = GetS2RealSize(sparseMode, s1Size, s2Size, j);
-                sparseValidArray[accum] = s2RealSize;
-                accum++;
-            }
-        }
-    }
-
-    return true;
-}
-
-inline bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::InitLoadValue(
-    const std::vector<int64_t> &sparseValidArray, int64_t validAicNum, int64_t totalSize,
-    const std::vector<int64_t> &sparseStartIdx, std::vector<int64_t> &localValue)
-{
-    for (int64_t idx = 0; idx < validAicNum; ++idx) {
-        int64_t start = sparseStartIdx[idx];
-        int64_t end = ((idx + 1) < validAicNum) ? sparseStartIdx[idx + 1] : totalSize;
-        if (start < totalSize) {
-            localValue[idx] = std::accumulate(sparseValidArray.begin() + start, sparseValidArray.begin() + end, 0LL);
-        } else {
-            break;
-        }
-    }
-    return true;
-}
-
-bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::BalanceLoad(const std::vector<int64_t> &sparseValidArray,
-    std::vector<int64_t> &localValue, std::vector<int64_t> &sparseStartIdx)
-{
-    // to avoid buffer overflow, or maybe sometimes we want to only verify single core
-    int64_t validAicNum =
-        std::min(static_cast<int64_t>(dlikGradMultiCoreParams_->get_coreNum()), static_cast<int64_t>(aicNum));
-    int64_t totalSize = dlikGradMultiCoreParams_->get_totalSize();
-    int64_t maxVal = *std::max_element(localValue.begin(), localValue.end());
-    int64_t tmpMaxVal = maxVal;
-
-    // 从前往后遍历
-    for (int64_t idx = 1; idx < validAicNum; ++idx) {
-        int64_t start = sparseStartIdx[idx];
-        if (start < totalSize && start > 0 && ((localValue[idx - 1] + sparseValidArray[start]) < maxVal)) {
-            localValue[idx - 1] += sparseValidArray[start];
-            localValue[idx] -= sparseValidArray[start];
-            sparseStartIdx[idx] += 1;
-        } else if (start == totalSize) {
-            break;
-        }
-    }
-    tmpMaxVal = *std::max_element(localValue.begin(), localValue.end());
-
-    // 从后往前遍历
-    for (int64_t idx = validAicNum - 1; idx > 0; --idx) {
-        int64_t start = sparseStartIdx[idx];
-        if (start == totalSize) {
-            if (sparseStartIdx[idx - 1] == totalSize) {
-                continue;
-            }
-            localValue[idx - 1] -= sparseValidArray[start - 1];
-            localValue[idx] = sparseValidArray[start - 1];
-            sparseStartIdx[idx] -= 1;
-        } else if (start > 0) {
-            if ((localValue[idx] + sparseValidArray[start - 1]) >= tmpMaxVal) {
-                continue;
-            }
-            localValue[idx - 1] -= sparseValidArray[start - 1];
-            localValue[idx] += sparseValidArray[start - 1];
-            sparseStartIdx[idx] -= 1;
-        } else {
-            break;
-        }
-    }
-    tmpMaxVal = *std::max_element(localValue.begin(), localValue.end());
-
-    return (tmpMaxVal >= maxVal) ? false : true;
-}
-
-bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::Balance4DLoad(std::vector<int64_t> &tmpSparseValue,
-    const std::vector<int64_t> sparseValidArray, const int64_t balanceNum)
-{
-    int64_t tmpIndex = 0;
-    tmpSparseValue[tmpIndex] = 0;
-    int64_t sumTmpArray = 0;
-    int64_t sumTmpArrayLast = 0; // 记录上次的总和值
-    for (int64_t idx = 0; idx < sparseValidArray.size(); ++idx) {
-        // 第一次分到最后一块后就没必须计算，剩余的直接分给最后一个核即可
-        if (tmpIndex == static_cast<int64_t>(tmpSparseValue.size()) - 1) {
-            break;
-        }
-
-        sumTmpArrayLast = sumTmpArray;
-        sumTmpArray += sparseValidArray[idx];
-        if (sumTmpArray == balanceNum) {
-            tmpIndex = (tmpIndex + 1 < tmpSparseValue.size()) ? tmpIndex + 1 : tmpSparseValue.size() - 1;
-            tmpSparseValue[tmpIndex] = idx + 1; // 刚好等于均值时核的末尾为idx
-            sumTmpArray = 0;                    // 重新计算总和
-        } else if (sumTmpArray > balanceNum) {
-            tmpIndex = (tmpIndex + 1 < tmpSparseValue.size()) ? tmpIndex + 1 : tmpSparseValue.size() - 1;
-            // 第一次总和大于均值，判断前面一次和当前哪个更接近均值
-            if (balanceNum - sumTmpArrayLast >= sumTmpArray - balanceNum) {
-                // 当前更接近，取当前值
-                tmpSparseValue[tmpIndex] = idx + 1; // 刚好等于均值时核的末尾为idx
-            } else {
-                // 上一次更接近， 取上一次值
-                tmpSparseValue[tmpIndex] = idx; // 刚好等于均值时核的末尾为idx
-                idx--; // 记录的上一个值，重新计算时也需要从上一个值开始计算
-            }
-            sumTmpArray = 0; // 重新计算总和
-        }
-    }
-    return true;
-}
-
-// 负载均衡
-bool DenseLightningIndexerKLLossGradTilingGeneralRegbase::SetSparseStartIdx(
-    const std::vector<int64_t> &sparseValidArray, int64_t maxCoreNum)
-{
-    // to avoid buffer overflow, or maybe sometimes we want to only verify single core
-    int64_t validAicNum = static_cast<int64_t>(dlikGradMultiCoreParams_->get_coreNum());
-    int64_t totalSize = dlikGradMultiCoreParams_->get_totalSize();
-    int64_t *sparseStartIdx = dlikGradMultiCoreParams_->get_bS1Ptr();
-    int64_t splitFactorSize = dlikGradMultiCoreParams_->get_splitFactorSize();
-
-    OP_CHECK_IF(totalSize <= 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "totalSize should be larger than 0."),
-        return false);
-    if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_TND) {
-        return true;
-    } else if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_BSND) {
-        int64_t sparseArraySum =
-            std::accumulate(sparseValidArray.begin(), sparseValidArray.end(), 0LL); // 得到所有BS上的S2的总数量
-        int64_t balanceNum = CeilDivision(sparseArraySum, validAicNum);
-        std::vector<int64_t> tmpSparseValue(validAicNum, 0);
-        Balance4DLoad(tmpSparseValue, sparseValidArray, balanceNum);
-        for (int64_t idx = 0; idx < static_cast<int64_t>(validAicNum); ++idx) {
-            sparseStartIdx[idx] = tmpSparseValue[idx];
-        }
-    }
-
-    for (int64_t idx = 1; idx < static_cast<int64_t>(MAX_CORE_NUM_REGBASE); ++idx) {
-        if (sparseStartIdx[idx] == 0) {
-            sparseStartIdx[idx] = static_cast<int64_t>(sparseValidArray.size()); // 赋值为s1最大值
-        }
-    }
-    return true;
-}
-
-void DenseLightningIndexerKLLossGradTilingGeneralRegbase::SetSparseParamsRegbase(int64_t maxCoreNum)
-{
-    std::vector<int64_t> sparseValidArray(dlikGradMultiCoreParams_->get_totalSize(), 0);
-    InitSparseValidArray(sparseValidArray);
-    SetSparseStartIdx(sparseValidArray, maxCoreNum);
 }
 
 // 计算S1的总个数
@@ -1005,21 +822,10 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoOpTiling(
 {
     context_->SetScheduleMode(1);
     OP_LOGD(context_, "try template[%s]", templateName);
-    // 无多余操作，分核，目前只实现TND场景分核
     int64_t totalSize = CalcTotalSize();
     SetMultiCoreParamsRegbase(totalSize, static_cast<int64_t>(aicNum));
     context_->SetBlockDim(aicNum); // 使用的核数确定
 
-    // std::vector<int64_t> shapeVec = { 1, kSize };
-    // ge::Shape srcShape(shapeVec);
-    // int64_t softmaxTmpBufferSize = BUFFER_SIZE_BYTE_32K; // 需要32KB
-    // if (kSize > BUFFER_SIZE_BYTE_2K) {
-    //     softmaxTmpBufferSize = BUFFER_SIZE_BYTE_33K; // kSize >2048 需要33kB
-    // }
-    // SoftMaxTilingFunc(srcShape, 4, softmaxTmpBufferSize, tilingData->vectorParams.softmaxYTilingData);
-
-    // SetSparseParamsRegbase(static_cast<int64_t>(aicNum));
-    // InitOutputSplit(); // output分核
     auto status = DoCastTiling();
     if (status != ge::GRAPH_SUCCESS) {
         return status;
@@ -1030,24 +836,6 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::DoOpTiling(
 
 ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::PostTiling()
 {
-    OP_LOGI(context_, "====================================== BASE PARAMS ===========================================");
-    OP_LOGI(context_, "dlikGradBaseParams_.bSize = [%ld]", dlikGradBaseParams_->get_bSize());
-    OP_LOGI(context_, "dlikGradBaseParams_.cmpRatio = [%ld]", dlikGradBaseParams_->get_cmpRatio());
-    OP_LOGI(context_, "dlikGradBaseParams_.dSizeQueryIndex = [%ld]", dlikGradBaseParams_->get_dSizeQueryIndex());
-    OP_LOGI(context_, "dlikGradBaseParams_.gSizeQueryIndex = [%ld]", dlikGradBaseParams_->get_gSizeQueryIndex());
-    // OP_LOGI(context_, "dlikGradBaseParams_.kSize = [%ld]", dlikGradBaseParams_->get_kSize());
-    OP_LOGI(context_, "dlikGradBaseParams_.layoutType = [%ld]", dlikGradBaseParams_->get_layoutType());
-    OP_LOGI(context_, "dlikGradBaseParams_.n2Size = [%ld]", dlikGradBaseParams_->get_n2Size());
-    OP_LOGI(context_, "dlikGradBaseParams_.s1Size = [%ld]", dlikGradBaseParams_->get_s1Size());
-    OP_LOGI(context_, "==================================== MULTI CORE PARAMS =======================================");
-    OP_LOGI(context_, "dlikGradMultiCoreParams_.coreNum = [%ld]", dlikGradMultiCoreParams_->get_coreNum());
-    OP_LOGI(context_, "dlikGradMultiCoreParams_.splitFactorSize = [%ld]",
-        dlikGradMultiCoreParams_->get_splitFactorSize());
-    OP_LOGI(context_, "dlikGradMultiCoreParams_.totalSize = [%ld]", dlikGradMultiCoreParams_->get_totalSize());
-    OP_LOGI(context_, "===================================== INIT OUTPUT PARAMS =====================================");
-    DLIKGradInitOutputParamsRegbase *initoutput = &tilingData->initOutputParams;
-    OP_LOGI(context_, "initoutput.singleCoreSize = [%ld]", initoutput->get_singleCoreSize());
-    OP_LOGI(context_, "initoutput.totalOutputSize = [%ld]", initoutput->get_totalOutputSize());
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1097,18 +885,7 @@ ge::graphStatus DenseLightningIndexerKLLossGradTilingGeneralRegbase::GetWorkspac
             dSizeQueryIndex * sizeof(float);
     }
     int64_t bmm3WorkSpace = s2BlockSize * dlikGradBaseParams_->get_n2Size() * dSizeQueryIndex * sizeof(float);
-    // int32_t kSizeAlign128 = (kSize + 127) >> 7 << 7;
     int64_t reduceSumOffset = BLOCK_SIZE * sizeof(float) * 2;
-    // int64_t reluOffset = gSizeQueryIndex * kSizeAlign128 * sizeof(float);
-    // int64_t gatherSYOffset = kSizeAlign128 * dSizeQueryIndex * 2; // 2代表输入D类型大小
-
-    int64_t scatterAddOutSize = 0;
-    // if (tilingKeyLayout == LayoutTypeRegbase::LAYOUT_TND) {
-    //     scatterAddOutSize = accumS2 * dSizeQueryIndex * sizeof(float); // batch
-    // } else {
-    //     scatterAddOutSize = bSize * s2Size * dSizeQueryIndex * sizeof(float); // batch
-    // }
-
     int64_t singlecoreTotalSize = THREE_BUFFER_VALUE * reduceSumOffset;
     int64_t multicoreTotalsize = 0;
     if (deterministic) {

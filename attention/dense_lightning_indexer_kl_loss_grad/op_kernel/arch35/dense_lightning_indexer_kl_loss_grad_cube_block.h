@@ -74,10 +74,10 @@ public:
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm2ResBuf,
         DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo);
-    __aicore__ inline void ComputeMm3(
+    __aicore__ inline void ComputeMmDk(
         Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo);
-    __aicore__ inline void ComputeMm4(Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf,
+    __aicore__ inline void ComputeMmDq(Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf,
         DLIKGradRunInfo &runInfo, DLIKGradConstInfo &constInfo, bool isFixOut);
 
 private:
@@ -228,7 +228,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmSy(
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmDk(
     Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo)
 {
@@ -246,7 +246,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
         true,
         UNITFLAG_DISABLE
     };
-    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG[runInfo.taskIdMod3]);
+    CrossCoreWaitFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V2_TO_C3_FLAG[runInfo.taskIdMod3]);
     for (uint32_t kIdx = 0; kIdx < kLoopTimes; kIdx++) {
         if (kIdx == kLoopTimes - 1) {
             mmParam.singleM = tailLoopKSize;
@@ -297,7 +297,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm3(
 };
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm4(
+__aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMmDq(
     Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
     DLIKGradConstInfo &constInfo, bool isFixOut)
 {
@@ -331,7 +331,7 @@ __aicore__ inline void DlikgBlockCube<TEMPLATE_ARGS>::ComputeMm4(
     mm4L0CBuffer.Set<HardEvent::M_FIX>();
     mm4L0CBuffer.Wait<HardEvent::M_FIX>();
     sYKL1Buffer[runInfo.taskIdMod3].Set<HardEvent::MTE1_MTE2>();
-    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V6_TO_C3_FLAG[runInfo.taskIdMod3]);
+    CrossCoreSetFlag<SYNC_MODE, PIPE_MTE1>(SYNC_V2_TO_C3_FLAG[runInfo.taskIdMod3]);
     if (isFixOut) {
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipe2GmParams;
         fixpipe2GmParams.nSize = dSize;
@@ -364,10 +364,10 @@ public:
     __aicore__ inline void ComputeMmSy(Buffer<BufferType::UB, SyncType::NO_SYNC> &bmm2ResBuf,
         DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo){};
-    __aicore__ inline void ComputeMm3(
+    __aicore__ inline void ComputeMmDk(
         Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf, DLIKGradRunInfo &runInfo,
         DLIKGradConstInfo &constInfo){};
-    __aicore__ inline void ComputeMm4(Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf,
+    __aicore__ inline void ComputeMmDq(Buffer<BufferType::L1, SyncType::NO_SYNC> &reluGradResL1Buf,
         DLIKGradRunInfo &runInfo, DLIKGradConstInfo &constInfo, bool isFixOut){};
 };
 
