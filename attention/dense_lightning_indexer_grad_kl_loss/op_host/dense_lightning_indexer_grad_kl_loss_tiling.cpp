@@ -679,7 +679,12 @@ int64_t DenseLightningIndexerGradKLLossTilingBase::CalcTotalSize() {
 
 void DenseLightningIndexerGradKLLossTilingBase::SetMultiCoreParamsRegbase(int64_t totalSize, int64_t coreNum)
 {
-    int64_t actualUsedCoreNum = std::min({totalSize, coreNum, static_cast<int64_t>(MAX_CORE_NUM)});
+    // Keep this diagnostic cap inside the deterministic path. It reproduces the
+    // A2 launch width on A5 without changing the non-deterministic schedule.
+    constexpr int64_t DETERMINISTIC_A2_EQUIVALENT_CORE_NUM = 20;
+    int64_t availableCoreNum = deterministic ?
+        std::min(coreNum, DETERMINISTIC_A2_EQUIVALENT_CORE_NUM) : coreNum;
+    int64_t actualUsedCoreNum = std::min({totalSize, availableCoreNum, static_cast<int64_t>(MAX_CORE_NUM)});
     dliGradkllossMultiCoreParams_->set_coreNum(static_cast<int32_t>(actualUsedCoreNum));
     dliGradkllossMultiCoreParams_->set_totalSize(totalSize);
     dliGradkllossMultiCoreParams_->set_padTotalSize(padT1Size);
