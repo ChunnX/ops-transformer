@@ -46,6 +46,7 @@ for params in ENABLED_PARAMS:
         "N1": params.get("N1"),
         "N2": params.get("N2"),
         "D": params.get("D"),
+        "K1": params.get("K1", [None]),
         "K": params.get("K", [None]),
         "block_num1": params.get("block_num1", [None]),
         "block_num2": params.get("block_num2", [None]),
@@ -70,6 +71,12 @@ for params in ENABLED_PARAMS:
         "template_run_mode": params.get("template_run_mode"),
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
+        'ori_kv_topk_mode': params.get('ori_kv_topk_mode', ['fullK']),
+        'cmp_kv_topk_mode': params.get('cmp_kv_topk_mode',['fullK']),
+        'ori_sparse_indices_mode': params.get('ori_sparse_indices_mode', ['full']),
+        'cmp_sparse_indices_mode': params.get('cmp_sparse_indices_mode', ['full']),
+        'ori_topk_length': params.get('ori_topk_length', [None]),
+        'cmp_topk_length': params.get('cmp_topk_length', [None]),
     }
 
     param_names = list(param_values.keys())
@@ -78,7 +85,6 @@ for params in ENABLED_PARAMS:
     for combo in itertools.product(*values_lists):
         combination = dict(zip(param_names, combo))
         param_combinations.append(combination)
-
 case_id = 0
 def mqsmla(param_combinations):
     global case_id
