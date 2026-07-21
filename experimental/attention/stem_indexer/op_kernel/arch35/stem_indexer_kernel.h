@@ -326,41 +326,62 @@ template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
 {
     if ASCEND_IS_AIV {
-        if (constInfo.outputLayout == SI_LAYOUT::TND) {
+        // 同一AIC对应的两个AIV共享分核信息，按G轴拆分无效行清理，避免重复写GM。
+        uint32_t aivParity = tmpBlockIdx & 1U;
+        uint32_t gPerAiv = (constInfo.gSize + 1U) >> 1U;
+        uint32_t gStart = aivParity * gPerAiv;
+        uint32_t gEnd = Min(gStart + gPerAiv, constInfo.gSize);
+        if (gStart >= gEnd) {
+            return;
+        }
+        uint32_t gCount = gEnd - gStart;
+
+        if constexpr (Q_LAYOUT_T == SI_LAYOUT::TND) {
             uint32_t tBase = 0;
             if (bIdx > 0) {
                 uint32_t tBaseIdx = (constInfo.batchSupperFlag) ? bIdx : bIdx - 1;
                 tBase = qSeqLensGm.GetValue(tBaseIdx);
             }
             uint32_t s1Count = tempLoopInfo.actS1Size;
-
             for (uint32_t s1Idx = s1Start; s1Idx < s1Count; s1Idx++) {
-                for (uint32_t gIdx = 0; gIdx < constInfo.gSize; gIdx++) {
-                    uint64_t indiceOutOffset =
-                        (((tBase + s1Idx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx) *
-                        constInfo.sparseCount;
-                    uint64_t indiceLenOffset =
-                        ((tBase + s1Idx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx;
-                    GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
-                    AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
-                                              static_cast<int32_t>(SICommon::INVALID_IDX));
-                    vectorService.SetSparseSeqLenZero(indiceLenOffset);
-                }
+                uint64_t indiceLenOffset =
+                    ((static_cast<uint64_t>(tBase) + s1Idx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gStart;
+                uint64_t indiceOutOffset = indiceLenOffset * constInfo.sparseCount;
+                GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
+                GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
+                AscendC::InitGlobalMemory(indiceOut, static_cast<uint64_t>(gCount) * constInfo.sparseCount,
+                                          static_cast<int32_t>(SICommon::INVALID_IDX));
+                AscendC::InitGlobalMemory(indiceLenOut, gCount, static_cast<int32_t>(0));
             }
-        } else if (constInfo.outputLayout == SI_LAYOUT::BNSD) {
-            for (uint32_t s1Idx = s1Start; s1Idx < constInfo.qSeqSize; s1Idx++) {
-                for (uint32_t gIdx = 0; gIdx < constInfo.gSize; gIdx++) {
-                    uint64_t indiceOutOffset =
-                        (((bIdx * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize +
-                         s1Idx) *
-                        constInfo.sparseCount;
-                    uint64_t indiceLenOffset =
-                        ((bIdx * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx) * constInfo.qSeqSize + s1Idx;
-                    GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
-                    AscendC::InitGlobalMemory(indiceOut, constInfo.sparseCount,
-                                              static_cast<int32_t>(SICommon::INVALID_IDX));
-                    vectorService.SetSparseSeqLenZero(indiceLenOffset);
-                }
+        } else if constexpr (Q_LAYOUT_T == SI_LAYOUT::BNSD) {
+            if (s1Start >= constInfo.qSeqSize) {
+                return;
+            }
+            uint32_t clearS1Num = constInfo.qSeqSize - s1Start;
+            if (s1Start == 0U) {
+                uint64_t indiceLenOffset =
+                    ((static_cast<uint64_t>(bIdx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gStart) *
+                    constInfo.qSeqSize;
+                uint64_t clearRowNum = static_cast<uint64_t>(gCount) * constInfo.qSeqSize;
+                uint64_t indiceOutOffset = indiceLenOffset * constInfo.sparseCount;
+                GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
+                GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
+                AscendC::InitGlobalMemory(indiceOut, clearRowNum * constInfo.sparseCount,
+                                          static_cast<int32_t>(SICommon::INVALID_IDX));
+                AscendC::InitGlobalMemory(indiceLenOut, clearRowNum, static_cast<int32_t>(0));
+                return;
+            }
+            for (uint32_t gIdx = gStart; gIdx < gEnd; gIdx++) {
+                uint64_t indiceLenOffset =
+                    ((static_cast<uint64_t>(bIdx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx) *
+                        constInfo.qSeqSize +
+                    s1Start;
+                uint64_t indiceOutOffset = indiceLenOffset * constInfo.sparseCount;
+                GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
+                GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
+                AscendC::InitGlobalMemory(indiceOut, static_cast<uint64_t>(clearS1Num) * constInfo.sparseCount,
+                                          static_cast<int32_t>(SICommon::INVALID_IDX));
+                AscendC::InitGlobalMemory(indiceLenOut, clearS1Num, static_cast<int32_t>(0));
             }
         }
     }
