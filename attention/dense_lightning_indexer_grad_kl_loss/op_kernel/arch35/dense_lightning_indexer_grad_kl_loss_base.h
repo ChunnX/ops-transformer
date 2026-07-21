@@ -658,6 +658,7 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
                             } else {
                                 vectorService.SaveDeterRunInfoInvalid();
                             }
+                            PipeBarrier<PIPE_MTE3>();
                         }
                     }
                     SyncAll<false>();
@@ -684,6 +685,7 @@ __aicore__ inline void DenseLightningIndexerGradKLLossBase<DLIT>::Process()
             if (constInfo.aivIdx % 2 == 0) {
                 if ASCEND_IS_AIV {
                     vectorService.SaveDeterRunInfoInvalid();
+                    PipeBarrier<PIPE_MTE3>();
                 }
             }
             SyncAll<false>();
