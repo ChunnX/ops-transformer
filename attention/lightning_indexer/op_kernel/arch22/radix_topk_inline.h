@@ -100,26 +100,6 @@ __aicore__ inline void InlineRadixTopK(
 
     event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
 
-    // Pre-pass: find global max score for softmax-like normalization
-    // This compresses score range from ±7e7 to [0,1] via exp(score - max)
-    // bf16 at [0,1] has ~0.008 precision, making MM1 non-determinism invisible
-    float globalMax = -1.0e30f;
-    for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
-        uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
-        if (curTileLen == 0) { continue; }
-        DataCopyPad(xLocalFp32, xGm[tileId * tileLen_], DataCopyExtParams{
-            static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * curTileLen), 0, 0, 0},
-            DataCopyPadExtParams<float>{true, 0, 0, 0});
-        SetFlag<HardEvent::MTE2_V>(mte2ToV);
-        WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-        RDX_V_S_SYNC();
-        for (uint32_t i = 0; i < curTileLen; i++) {
-            float v = xLocalFp32.GetValue(i);
-            if (v > globalMax && v < 1.0e29f) { globalMax = v; }
-        }
-        RDX_S_V_SYNC();
-    }
-
     for (int32_t roundId = RDX_ROUNDS - 1; roundId >= 0; roundId--) {
         // ClearHist
         if (roundId == static_cast<int32_t>(RDX_ROUNDS) - 1) {
@@ -166,15 +146,6 @@ __aicore__ inline void InlineRadixTopK(
                 DataCopyPadExtParams<float>{true, 0, 0, 0});
             SetFlag<HardEvent::MTE2_V>(mte2ToV);
             WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-
-            // Normalize: exp(score - globalMax) to compress range to [0,1]
-            // This makes bf16 radix deterministic despite MM1 floating-point non-determinism
-            Mins<float, true>(xLocalFp32, xLocalFp32, (float)1.0e29, curTileLen);
-            PipeBarrier<PIPE_V>();
-            Adds<float, true>(xLocalFp32, xLocalFp32, (float)(-globalMax), curTileLen);
-            PipeBarrier<PIPE_V>();
-            Exp<float, true>(xLocalFp32, xLocalFp32, curTileLen);
-            PipeBarrier<PIPE_V>();
 
             // Cast float -> bf16 into xLocalB16
             Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
@@ -332,12 +303,6 @@ __aicore__ inline void InlineRadixTopK(
             DataCopyPadExtParams<float>{true, 0, 0, 0});
         SetFlag<HardEvent::MTE2_V>(mte2ToV);
         WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-        Mins<float, true>(xLocalFp32, xLocalFp32, (float)1.0e29, curTileLen);
-        PipeBarrier<PIPE_V>();
-        Adds<float, true>(xLocalFp32, xLocalFp32, (float)(-globalMax), curTileLen);
-        PipeBarrier<PIPE_V>();
-        Exp<float, true>(xLocalFp32, xLocalFp32, curTileLen);
-        PipeBarrier<PIPE_V>();
         Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
         PipeBarrier<PIPE_V>();
 
