@@ -9,15 +9,18 @@
  */
 
 /* !
- * \file mhc_pre_sinkhorn_backward_arch35_tiling_base.cpp
+ * \file mhc_pre_sinkhorn_backward_arch35_tiling.cpp
  * \brief
  */
 
 #include "register/op_def_registry.h"
 #include "tiling/tiling_api.h"
 #include "tiling/platform/platform_ascendc.h"
-#include "mhc_pre_sinkhorn_backward_arch35_tiling_base.h"
+#include "mhc_pre_sinkhorn_backward_arch35_tiling.h"
 #include "log/log.h"
+#include "platform/platform_info.h"
+#include "util/math_util.h"
+#include "util/platform_util.h"
 
 using namespace AscendC;
 namespace optiling {
@@ -47,7 +50,16 @@ constexpr uint8_t ITER_COUNT_IDX = 0;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr uint8_t BF16_BYTE_SIZE = 2;
 constexpr int64_t ALPHA_SIZE_3 = 3;
-constexpr int64_t N_SIZE_4 = 4;
+constexpr int64_t ALIGN_32 = 32;
+constexpr int64_t FP32_BYTE_SIZE = 4;
+constexpr uint64_t UB_RESERVE_SIZE = 256;
+constexpr int64_t WS_BUFFER_INTERVAL = 1024;
+
+template <typename T>
+constexpr T AlignUp(T value, T align)
+{
+    return (value + align - 1) / align * align;
+}
 
 using namespace ge;
 using namespace std;
@@ -380,9 +392,6 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::CheckShape(int64_t batchSize
                     n * n + 2 * n, gradBiasShape.GetDimNum(), gradBiasShape.GetDim(0)),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(n != N_SIZE_4, OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, N must be 4, but got %ld", n),
-                return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -393,16 +402,23 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
-    ubSize_ = ubSize_ - 32 * 1024;
+
     auto floatDataType = matmul_tiling::DataType::DT_FLOAT;
-    auto bf16DataType = matmul_tiling::DataType::DT_BF16;
+
+    mm1K_ = n_ * n_ + 2 * n_;
+    mm1M_ = batchSize_ * seqLength_;
+    mm1N_ = n_ * c_;
+
+    mm2K_ = batchSize_ * seqLength_;
+    mm2M_ = n_ * n_ + 2 * n_;
+    mm2N_ = n_ * c_;
 
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
     matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);
 
     mm1Tiling.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm1Tiling.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
-    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, bf16DataType);
+    mm1Tiling.SetCType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, floatDataType);
     mm1Tiling.SetOrgShape(mm1M_, mm1N_, mm1K_);
     mm1Tiling.SetShape(mm1M_, mm1N_, mm1K_);
     mm1Tiling.SetBias(false);
@@ -428,32 +444,90 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
     tilingData->seqLength = seqLength_;
     tilingData->c = c_;
     tilingData->n = n_;
-    tilingData->c0 = c0_;
-    tilingData->c1 = c1_;
-    tilingData->aivNum = coreNumAiv_;
+    tilingData->usedAivNum = usedAivNum_;
     tilingData->skIterCount = skIterCount_;
-    tilingData->tileSize = tile_;
+    tilingData->cLoopDataLen = cLoopDataLen_;
+    tilingData->bsLoopDataLen = bsLoopDataLen_;
+    tilingData->bsTaskCount = bsTaskCount_;
+    tilingData->tailBsTaskCount = tailBsTaskCount_;
+    tilingData->cBlockLoops = cBlockLoops_;
+    tilingData->cBlockTailLoops = cBlockTailLoops_;
+    tilingData->cBlockCount = cBlockCount_;
+    tilingData->cBlockTailCount = cBlockTailCount_;
+    tilingData->cBlockTailTailCount = cBlockTailTailCount_;
+    tilingData->finalUsedAivNum = finalUsedAivNum_;
+    tilingData->eps = hcEps_;
+    tilingData->aicNum = coreNumAic_;
 
     return ge::GRAPH_SUCCESS;
 }
 
 void MhcPreSinkhornBackwardArch35Tiling::DoUbTiling()
 {
-    c0_ = 64;
-    c1_ = c_ / c0_;
-    coreTaskCount_ = (batchSize_ * seqLength_ + coreNumAiv_ - 1) / coreNumAiv_;
-    tile_ = min(coreTaskCount_, (int64_t)64);
-    tileUB_ = (ubSize_ * 0.95 - (n_ * sizeof(float) - DOUBLE_BUFFER * 2 * BF16_BYTE_SIZE) * c_) /
-              ((n_ * n_ * 4 + n_ * 9 + 3) * sizeof(float));
-    tile_ = min(tile_, tileUB_);
+    int64_t totalBs = batchSize_ * seqLength_;
+    bsTaskCount_ = Ops::Base::CeilDiv(totalBs, static_cast<int64_t>(coreNumAiv_));
+    usedAivNum_ = Ops::Base::CeilDiv(totalBs, bsTaskCount_);
+    tailBsTaskCount_ = totalBs - bsTaskCount_ * (usedAivNum_ - 1);
+    cLoopDataLen_ = c_;
+    bsLoopDataLen_ = bsTaskCount_;
+    ubBlock_ = static_cast<int64_t>(Ops::Base::GetUbBlockSize(context_));
+    ubSize_ = ubSize_ - UB_RESERVE_SIZE;
+    auto restSize = static_cast<int64_t>(-1);
 
-    mm1K_ = n_ * n_ + 2 * n_;
-    mm1M_ = tile_ * 2;
-    mm1N_ = n_ * c_;
+    while (restSize <= 0) {
+        int64_t occupy =
+            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +
+            DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(cLoopDataLen_ * BF16_BYTE_SIZE, ubBlock_) +
+            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+            DOUBLE_BUFFER * Ops::Base::CeilAlign(bsLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +
+            DOUBLE_BUFFER * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +
+            DOUBLE_BUFFER * bsLoopDataLen_ * n_ * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_) +
+            Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) + ubBlock_ +
+            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
+            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+            Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
+            Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
+            5 * Ops::Base::CeilAlign(bsLoopDataLen_ * n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+            DOUBLE_BUFFER * 2 * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * FP32_BYTE_SIZE, ubBlock_) +
+            DOUBLE_BUFFER * skIterCount_ * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+            4 * bsLoopDataLen_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_);
 
-    mm2K_ = tile_ * 2;
-    mm2M_ = n_ * n_ + 2 * n_;
-    mm2N_ = n_ * c_;
+        restSize = ubSize_ - occupy;
+        if (restSize <= 0 && bsLoopDataLen_ > 1) {
+            bsLoopDataLen_--;
+        } else if (restSize <= 0 && bsLoopDataLen_ == 1) {
+            cLoopDataLen_--;
+        }
+    }
+
+    // final
+    auto bsncTaskCount = Ops::Base::CeilDiv(totalBs * n_ * c_, static_cast<int64_t>(coreNumAiv_));
+    finalUsedAivNum_ = Ops::Base::CeilDiv(totalBs * n_ * c_, bsncTaskCount);
+    auto tailBsncTaskCount_ = totalBs * n_ * c_ - bsncTaskCount * (finalUsedAivNum_ - 1);
+    cBlockCount_ = bsncTaskCount;
+    cBlockTailCount_ = tailBsncTaskCount_;
+    restSize = static_cast<int64_t>(-1);
+    while (restSize <= 0) {
+        int64_t occupy = 4 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cBlockCount_ * FP32_BYTE_SIZE, ubBlock_) +
+                         DOUBLE_BUFFER * Ops::Base::CeilAlign(usedAivNum_ * FP32_BYTE_SIZE, ubBlock_) +
+                         ubBlock_ +
+                         usedAivNum_ * Ops::Base::CeilAlign(n_ * n_ * FP32_BYTE_SIZE, ubBlock_) +
+                         2 * Ops::Base::CeilAlign((2 * n_ + n_ * n_) * FP32_BYTE_SIZE, ubBlock_) +
+                         2 * DOUBLE_BUFFER * Ops::Base::CeilAlign(cLoopDataLen_ * FP32_BYTE_SIZE, ubBlock_);
+        restSize = ubSize_ - occupy;
+        if (restSize <= 0 && cBlockCount_ > 1) {
+            cBlockCount_--;
+        }
+    }
+    cBlockLoops_ = Ops::Base::CeilDiv(bsncTaskCount, cBlockCount_);
+    cBlockTailLoops_ = Ops::Base::CeilDiv(tailBsncTaskCount_, cBlockCount_);
+    cBlockTailCount_ = bsncTaskCount - cBlockCount_ * (cBlockLoops_ - 1);
+    cBlockTailTailCount_ = tailBsncTaskCount_ - cBlockCount_ * (cBlockTailLoops_ - 1);
 }
 
 ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::DoOpTiling()
@@ -464,13 +538,11 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::DoOpTiling()
 
 uint64_t MhcPreSinkhornBackwardArch35Tiling::GetTilingKey() const
 {
-    bool isDeterministic = false;
-    return GET_TPL_TILING_KEY(isDeterministic);
+    return GET_TPL_TILING_KEY(1);
 }
 
 ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::PostTiling()
 {
-    context_->SetDynUBufSize(ubSize_);
     context_->SetBlockDim(coreNumAic_);
     context_->SetScheduleMode(1);
 
@@ -482,12 +554,17 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetWorkspaceSize()
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
     auto ascendPlatformInfo = platform_ascendc::PlatformAscendC(platformInfo);
-    size_t gradHat2Workspace = batchSize_ * seqLength_ * (n_ * n_ + 2 * n_ + n_ * c_) * sizeof(float);
+    size_t userWorkspaceSize = batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +
+                                3 * usedAivNum_ * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +
+                                (2 * usedAivNum_ * n_ + usedAivNum_ * n_ * n_) * FP32_BYTE_SIZE  + WS_BUFFER_INTERVAL +
+                                batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE * 3  + 3 * WS_BUFFER_INTERVAL +
+                                batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL +
+                                batchSize_ * seqLength_ * (2 * n_ + n_ * n_) * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL;
+
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
-    size_t usrWorkSpaceSize = gradHat2Workspace;
     size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
     OP_CHECK_IF(currentWorkspace == nullptr, OP_LOGE(opName, "fail to GetWorkspaceSizes"), return ge::GRAPH_FAILED);
-    currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
+    currentWorkspace[0] = systemWorkspaceSize + userWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -499,11 +576,19 @@ void MhcPreSinkhornBackwardArch35Tiling::DumpTilingInfo()
     info << "seqLength: " << seqLength_ << std::endl;
     info << "c: " << c_ << std::endl;
     info << "n: " << n_ << std::endl;
-    info << "c0: " << c0_ << std::endl;
-    info << "c1: " << c1_ << std::endl;
     info << "aivNum: " << coreNumAiv_ << std::endl;
+    info << "usedAivNum: " << usedAivNum_ << std::endl;
+    info << "cLoopDataLen: " << cLoopDataLen_ << std::endl;
+    info << "bsLoopDataLen: " << bsLoopDataLen_ << std::endl;
     info << "skIterCount: " << skIterCount_ << std::endl;
-    info << "tileSize: " << tile_ << std::endl;
+    info << "bsTaskCount: " << bsTaskCount_ << std::endl;
+    info << "tailBsTaskCount: " << tailBsTaskCount_ << std::endl;
+    info << "cBlockLoops: " << cBlockLoops_ << std::endl;
+    info << "cBlockTailLoops: " << cBlockTailLoops_ << std::endl;
+    info << "cBlockCount: " << cBlockCount_ << std::endl;
+    info << "cBlockTailCount: " << cBlockTailCount_ << std::endl;
+    info << "cBlockTailTailCount: " << cBlockTailTailCount_ << std::endl;
+    info << "finalUsedAivNum: " << finalUsedAivNum_ << std::endl;
     info << "mm1K: " << mm1K_ << std::endl;
     info << "mm1M: " << mm1M_ << std::endl;
     info << "mm1N: " << mm1N_ << std::endl;
@@ -519,5 +604,5 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-REGISTER_OPS_TILING_TEMPLATE(MhcPreSinkhornBackward, MhcPreSinkhornBackwardArch35Tiling, 10);
+REGISTER_OPS_TILING_TEMPLATE(MhcPreSinkhornBackward, MhcPreSinkhornBackwardArch35Tiling, 0);
 } // namespace optiling
