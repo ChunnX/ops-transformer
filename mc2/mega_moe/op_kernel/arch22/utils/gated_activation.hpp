@@ -15,6 +15,12 @@
 
 namespace Catlass::Epilogue {
 
+enum class GatedActivationMode : uint32_t {
+    SWIGLU = 0,
+    SWIGLU_GPT_OSS = 1,
+    SITU = 2,
+};
+
 // All gated activations used by MegaMoe follow this interface. A new
 // activation only needs to implement Compute; data movement, tiling and
 // quantization remain shared by the epilogues.
@@ -51,6 +57,191 @@ struct SwigluActivation {
         AscendC::PipeBarrier<PIPE_V>();
         AscendC::Mul(output, output, up, dataLength);
         AscendC::PipeBarrier<PIPE_V>();
+    }
+};
+
+// GPT-OSS uses an interleaved gate/up projection and a modified SwiGLU:
+// gate * sigmoid(alpha * gate) * (up + 1). Alpha is intentionally a
+// kernel-side default so the public MegaMoe interface remains unchanged.
+struct GptOssSwigluActivation {
+    static constexpr float DEFAULT_ALPHA = 1.702f;
+
+    CATLASS_DEVICE
+    static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
+                        AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
+                        uint32_t dataLength, float clampLimit, float alpha = DEFAULT_ALPHA)
+    {
+        if (clampLimit > 0.0f) {
+            AscendC::ClampMax(gate, gate, sharedTmpBuffer, clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::ClampMax(up, up, sharedTmpBuffer, clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::ClampMin(up, up, sharedTmpBuffer, -clampLimit, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+
+        AscendC::Adds(up, up, 1.0f, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Muls(output, gate, -alpha, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Exp(output, output, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Adds(output, output, 1.0f, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Div(output, gate, output, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::Mul(output, output, up, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+};
+
+// Kimi K3 SiTU:
+//     beta * tanh(gate / beta) * sigmoid(gate) * up
+// When linearBeta is enabled, up becomes:
+//     linearBeta * tanh(up / linearBeta)
+// gate/up use the regular contiguous half split. MegaMoe keeps beta at its
+// kernel default and reuses activation_clamp as the optional linearBeta so no
+// public attribute or tiling field is added.
+struct SituActivation {
+    static constexpr float DEFAULT_BETA = 1.0f;
+    static constexpr float LINEAR_BETA_DISABLED = 3.402823466e+38F;
+
+    CATLASS_DEVICE
+    static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
+                        AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
+                        uint32_t dataLength, float linearBeta = LINEAR_BETA_DISABLED,
+                        float beta = DEFAULT_BETA)
+    {
+        bool enableLinearBeta = linearBeta > 0.0f && linearBeta < LINEAR_BETA_DISABLED;
+        if (enableLinearBeta) {
+            // output = linearBeta * tanh(up / linearBeta). The original up
+            // tile can then be reused for the sigmoid denominator.
+            AscendC::Muls(up, up, 1.0f / linearBeta, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Tanh(output, up, sharedTmpBuffer, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Muls(output, output, linearBeta, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+
+            AscendC::Muls(up, gate, -1.0f, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Exp(up, up, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Adds(up, up, 1.0f, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Div(output, output, up, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        } else {
+            // output = sigmoid(gate) * up.
+            AscendC::Muls(output, gate, -1.0f, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Exp(output, output, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Adds(output, output, 1.0f, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Div(output, up, output, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+
+        // Tanh requires non-overlapping dst/src/tmp tensors. Reusing up as
+        // dst satisfies that constraint without allocating another UB tile.
+        if (beta != DEFAULT_BETA) {
+            AscendC::Muls(gate, gate, 1.0f / beta, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+        AscendC::Tanh(up, gate, sharedTmpBuffer, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        if (beta != DEFAULT_BETA) {
+            AscendC::Muls(up, up, beta, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+        AscendC::Mul(output, output, up, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+};
+
+// Runtime dispatcher shared by all A2/A3 epilogues. New gated activations can
+// be added here without duplicating data movement, tiling or quantization.
+struct GatedActivation {
+    static constexpr uint32_t PREFERRED_TILE_LENGTH = SwigluActivation::PREFERRED_TILE_LENGTH;
+    static constexpr uint32_t MIN_SHARED_TMP_BYTES = SwigluActivation::MIN_SHARED_TMP_BYTES;
+
+    CATLASS_DEVICE
+    static bool IsInterleaved(uint32_t activationCode)
+    {
+        return activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_GPT_OSS);
+    }
+
+    // Split [gate0, up0, gate1, up1, ...] into two packed branches. GatherMask
+    // patterns 1 and 2 select even and odd indices respectively. uint16_t is
+    // used to preserve both FP16 and BF16 bit patterns.
+    template <class Element>
+    CATLASS_DEVICE static void SplitInterleaved(AscendC::LocalTensor<Element> const &packedInput,
+                                                AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
+                                                uint32_t branchStride, uint32_t dataLength)
+    {
+        auto src = packedInput.template ReinterpretCast<uint16_t>();
+        auto split = sharedTmpBuffer.template ReinterpretCast<uint16_t>();
+        uint64_t evenCount = 0;
+        uint64_t oddCount = 0;
+        AscendC::GatherMask(split, src, static_cast<uint8_t>(1), true, dataLength * 2,
+                            {1, 1, 8, 0}, evenCount);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::GatherMask(split[branchStride], src, static_cast<uint8_t>(2), true, dataLength * 2,
+                            {1, 1, 8, 0}, oddCount);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    template <class Element>
+    CATLASS_DEVICE static void PrepareBranches(AscendC::LocalTensor<float> const &gate,
+                                               AscendC::LocalTensor<float> const &up,
+                                               AscendC::LocalTensor<Element> const &packedInput,
+                                               AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
+                                               uint32_t branchStride, uint32_t dataLength,
+                                               uint32_t activationCode)
+    {
+        if (IsInterleaved(activationCode)) {
+            SplitInterleaved(packedInput, sharedTmpBuffer, branchStride, dataLength);
+            auto split = sharedTmpBuffer.template ReinterpretCast<Element>();
+            AscendC::Cast(gate, split, AscendC::RoundMode::CAST_NONE, dataLength);
+            AscendC::Cast(up, split[branchStride], AscendC::RoundMode::CAST_NONE, dataLength);
+        } else {
+            AscendC::Cast(gate, packedInput, AscendC::RoundMode::CAST_NONE, dataLength);
+            AscendC::Cast(up, packedInput[branchStride], AscendC::RoundMode::CAST_NONE, dataLength);
+        }
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    CATLASS_DEVICE
+    static void SplitInterleavedFp32(AscendC::LocalTensor<float> const &packedInput,
+                                     AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer, uint32_t branchStride,
+                                     uint32_t dataLength)
+    {
+        auto split = sharedTmpBuffer.template ReinterpretCast<float>();
+        uint64_t evenCount = 0;
+        uint64_t oddCount = 0;
+        AscendC::GatherMask(split, packedInput, static_cast<uint8_t>(1), true, dataLength * 2,
+                            {1, 1, 8, 0}, evenCount);
+        AscendC::PipeBarrier<PIPE_V>();
+        AscendC::GatherMask(split[branchStride], packedInput, static_cast<uint8_t>(2), true, dataLength * 2,
+                            {1, 1, 8, 0}, oddCount);
+        AscendC::PipeBarrier<PIPE_V>();
+    }
+
+    CATLASS_DEVICE
+    static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
+                        AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
+                        uint32_t dataLength, float clampLimit, uint32_t activationCode)
+    {
+        if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_GPT_OSS)) {
+            GptOssSwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
+            return;
+        }
+        if (activationCode == static_cast<uint32_t>(GatedActivationMode::SITU)) {
+            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
+            return;
+        }
+        SwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
     }
 };
 
