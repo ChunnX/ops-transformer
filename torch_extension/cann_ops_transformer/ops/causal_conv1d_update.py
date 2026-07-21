@@ -10,7 +10,6 @@
 from typing import Optional
 
 import torch
-import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -22,13 +21,14 @@ class CausalConv1dUpdateOpBuilder(OpBuilder):
 
     def sources(self):
         """Path to C++ source code."""
-        return ['ops/csrc/causal_conv1d_update.cpp']
+        return ["ops/csrc/causal_conv1d_update.cpp"]
 
     def schema(self) -> str:
         """PyTorch operator schema."""
         return (
             "causal_conv1d_update("
             "Tensor x, Tensor conv_state, Tensor weight, "
+            "*, "
             "Tensor? bias=None, "
             "str activation=\"silu\", "
             "Tensor? conv_state_indices=None, "
@@ -43,11 +43,13 @@ class CausalConv1dUpdateOpBuilder(OpBuilder):
 
     def register_meta(self):
         """Register Meta implementation for shape/dtype inference."""
+
         @impl(AS_LIBRARY, self.name, "Meta")
         def causal_conv1d_update_meta(
             x: torch.Tensor,
             conv_state: torch.Tensor,
             weight: torch.Tensor,
+            *,
             bias: Optional[torch.Tensor] = None,
             activation: str = "silu",
             conv_state_indices: Optional[torch.Tensor] = None,
@@ -70,6 +72,7 @@ def _causal_conv1d_update(
     x: torch.Tensor,
     conv_state: torch.Tensor,
     weight: torch.Tensor,
+    *,
     bias: Optional[torch.Tensor] = None,
     activation: str = "silu",
     conv_state_indices: Optional[torch.Tensor] = None,
@@ -82,12 +85,16 @@ def _causal_conv1d_update(
 ) -> torch.Tensor:
     _op_module = _causal_conv1d_update_op_builder.load()
     return _op_module.causal_conv1d_update(
-        x, conv_state, weight, bias,
+        x,
+        conv_state,
+        weight,
+        bias,
         activation,
         conv_state_indices,
         num_accepted_tokens,
         query_start_loc,
-        max_query_len, null_block_id,
+        max_query_len,
+        null_block_id,
         block_idx_last_scheduled_token,
         initial_state_idx,
     )
@@ -97,6 +104,7 @@ def causal_conv1d_update(
     x: torch.Tensor,
     conv_state: torch.Tensor,
     weight: torch.Tensor,
+    *,
     bias: Optional[torch.Tensor] = None,
     activation: str = "silu",
     conv_state_indices: Optional[torch.Tensor] = None,
@@ -135,7 +143,9 @@ def causal_conv1d_update(
         Tensor: 卷积输出 y，shape 与 x 一致，dtype 与 x 一致。
     """
     return _causal_conv1d_update(
-        x, conv_state, weight,
+        x,
+        conv_state,
+        weight,
         bias=bias,
         activation=activation,
         conv_state_indices=conv_state_indices,

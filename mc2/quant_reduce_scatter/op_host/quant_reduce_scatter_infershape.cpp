@@ -24,7 +24,7 @@ namespace ops {
 using namespace ge;
 using Ops::Base::CeilDiv;
 
-static const char* INNER_DEBUG = "MC2: QuantReduceScatter InferShape Debug";
+static const char *INNER_DEBUG = "MC2: QuantReduceScatter InferShape Debug";
 // 原型IR中attr的index
 constexpr size_t OUTPUT_DTYPE_INDEX = 2;
 constexpr size_t WORLD_SIZE_INDEX = 3;
@@ -57,7 +57,7 @@ struct QuantReduceScatterShapeInfo {
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
  * @param shapeInfo: 临时变量存放shape信息
  */
-static ge::graphStatus GetShapeInfo(const gert::InferShapeContext* context, QuantReduceScatterShapeInfo& shapeInfo)
+static ge::graphStatus GetShapeInfo(const gert::InferShapeContext *context, QuantReduceScatterShapeInfo &shapeInfo)
 {
     const auto scales_shape = context->GetInputShape(SCALES_INDEX);
     OPS_CHECK_NULL_WITH_CONTEXT(context, scales_shape);
@@ -86,16 +86,18 @@ static ge::graphStatus GetShapeInfo(const gert::InferShapeContext* context, Quan
  * @param context: 框架根据input，output，attrs等信息生成tiling需要的context
  * @param shapeInfo: 临时变量存放shape信息
  */
-static ge::graphStatus GetRankSize(gert::InferShapeContext* context, QuantReduceScatterShapeInfo& shapeInfo)
+static ge::graphStatus GetRankSize(gert::InferShapeContext *context, QuantReduceScatterShapeInfo &shapeInfo)
 {
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
     // 通过attr获取卡数
     const int *rankSize = attrs->GetAttrPointer<int>(WORLD_SIZE_INDEX);
-    OP_LOGE_IF(rankSize == nullptr, ge::GRAPH_FAILED, context->GetNodeName(), "Get rank_size failed in quant_reduce_scatter");
+    OP_LOGE_IF(rankSize == nullptr, ge::GRAPH_FAILED, context->GetNodeName(),
+               "Get rank_size failed in quant_reduce_scatter");
     OP_TILING_CHECK(std::find(SUPPORT_RANK_SIZE.begin(), SUPPORT_RANK_SIZE.end(), *rankSize) >= SUPPORT_RANK_SIZE.end(),
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "rankSize", std::to_string(*rankSize).c_str(), VectorToString(SUPPORT_RANK_SIZE).c_str()),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "rankSize", std::to_string(*rankSize).c_str(),
+                                              VectorToString(SUPPORT_RANK_SIZE).c_str()),
                     return ge::GRAPH_FAILED);
 
     shapeInfo.rank_num = *rankSize;
@@ -145,12 +147,13 @@ static ge::graphStatus InferShapeQuantReduceScatter(gert::InferShapeContext *con
             output_shape->SetDim(1, shapeInfo.hidden_size);
         }
     } else {
-        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", (std::to_string(shapeInfo.x_dim) + "D").c_str(), "2D or 3D");
+        OP_LOGE_FOR_INVALID_SHAPEDIM(context->GetNodeName(), "x", (std::to_string(shapeInfo.x_dim) + "D").c_str(),
+                                     "2D or 3D");
         ge::GRAPH_FAILED;
     }
 
-    OP_LOGD(INNER_DEBUG, "output after infershape func, shape: [%zu], bs: [%ld], h: [%ld]",
-            shapeInfo.x_dim, shapeInfo.bs, shapeInfo.hidden_size);
+    OP_LOGD(INNER_DEBUG, "output after infershape func, shape: [%zu], bs: [%ld], h: [%ld]", shapeInfo.x_dim,
+            shapeInfo.bs, shapeInfo.hidden_size);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -166,7 +169,7 @@ static ge::graphStatus InferDataTypeQuantReduceScatter(gert::InferDataTypeContex
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-    const int64_t* output_dtype_ptr = attrs->GetInt(OUTPUT_DTYPE_INDEX);
+    const int64_t *output_dtype_ptr = attrs->GetInt(OUTPUT_DTYPE_INDEX);
     const uint64_t output_dtype = (output_dtype_ptr != nullptr ? *output_dtype_ptr : ge::DataType::DT_BF16);
     ge::DataType get_dtype = context->GetOutputDataType(OUTPUT_INDEX);
     if (output_dtype != ge::DataType::DT_BF16) {

@@ -18,7 +18,7 @@
 namespace ops {
 class MoeDistributeDispatchSetup : public OpDef {
 public:
-    explicit MoeDistributeDispatchSetup(const char* name) : OpDef(name)
+    explicit MoeDistributeDispatchSetup(const char *name) : OpDef(name)
     {
         this->Input("context")
             .ParamType(REQUIRED)
@@ -28,7 +28,7 @@ public:
         this->Input("x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16, ge::DT_BF16, ge::DT_BF16,
- 	        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16})
+                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("expert_ids")
@@ -49,16 +49,10 @@ public:
         this->Output("y")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_INT8, ge::DT_FLOAT16, ge::DT_INT8, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN,
- 	        ge::DT_HIFLOAT8, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
+                       ge::DT_HIFLOAT8, ge::DT_FLOAT8_E5M2, ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8})
             .FormatList({ge::FORMAT_ND});
-        this->Output("expand_idx")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
-        this->Output("comm_cmd_info")
-            .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_INT32})
-            .FormatList({ge::FORMAT_ND});
+        this->Output("expand_idx").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
+        this->Output("comm_cmd_info").ParamType(REQUIRED).DataTypeList({ge::DT_INT32}).FormatList({ge::FORMAT_ND});
 
         this->Attr("ep_world_size").AttrType(REQUIRED).Int();
         this->Attr("ep_rank_id").AttrType(REQUIRED).Int();
@@ -90,4 +84,4 @@ public:
 };
 
 OP_ADD(MoeDistributeDispatchSetup);
-}  // namespace ops
+} // namespace ops

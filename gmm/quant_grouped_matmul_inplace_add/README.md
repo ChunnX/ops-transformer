@@ -4,13 +4,12 @@
 
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
-|<term>Ascend 950PR/Ascend 950DT AI处理器</term>|      √     |
+|<term>Ascend 950PR/Ascend 950DT</term>|      √     |
 |<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|      ×     |
 |<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|      ×     |
-
-## 参数说明
-
-  TODO
+|<term>Atlas 200I/500 A2 推理产品</term>|      ×     |
+|<term>Atlas 推理系列产品</term>|      ×     |
+|<term>Atlas 训练系列产品</term>|      ×     |
 
 ## 功能说明
 
@@ -35,6 +34,87 @@
     $$
      y_i=(x1_i\times x2_i) * scale2_i * scale1_i + y_i
     $$
+
+## 参数说明
+
+<table style="undefined;table-layout: fixed;width: 1567px"><colgroup>
+<col style="width: 170px">
+<col style="width: 120px">
+<col style="width: 300px">
+<col style="width: 330px">
+<col style="width: 212px">
+<col style="width: 100px">
+<col style="width: 190px">
+<col style="width: 145px">
+</colgroup>
+<thead>
+  <tr>
+    <th>参数名</th>
+    <th style="white-space: nowrap">输入/输出/属性</th>
+    <th>描述</th>
+    <th>数据类型</th>
+    <th>数据格式</th>
+  </tr>
+</thead>
+<tbody>
+  <tr>
+    <td>x1</td>
+    <td rowspan="1">输入</td>
+    <td>公式中的输入x1，表示输入矩阵（左矩阵）。</td>
+    <td>FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>x2</td>
+    <td rowspan="1">输入</td>
+    <td>公式中的输入x2，表示权重矩阵（右矩阵）。</td>
+    <td>FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>scale1</td>
+    <td rowspan="1">可选输入</td>
+    <td>量化参数中由x1量化引入的缩放因子。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
+    <td>FLOAT32、FLOAT8_E8M0</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>scale2</td>
+    <td rowspan="1">输入</td>
+    <td>量化参数中由x2量化引入的缩放因子。综合约束请参见<a href="#约束说明">约束说明</a>。</td>
+    <td>FLOAT32、FLOAT8_E8M0</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>group_list</td>
+    <td rowspan="1">输入</td>
+    <td>分组轴方向的matmul大小分布，前缀和的分组索引列表。当group_list_type为0时须为非负单调非递减数列，为1时须为非负数列。</td>
+    <td>INT64</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>y</td>
+    <td rowspan="1">输入输出</td>
+    <td>公式中的输入输出y，InplaceAdd的累加器。计算matmul结果后与y相加并写回。</td>
+    <td>FLOAT32</td>
+    <td>ND</td>
+  </tr>
+  <tr>
+    <td>group_list_type</td>
+    <td rowspan="1">属性</td>
+    <td>整数型属性，group_list的解析方式：0表示累积和（cumsum），1表示每组大小（count）。</td>
+    <td>INT64</td>
+    <td>-</td>
+  </tr>
+  <tr>
+    <td>group_size</td>
+    <td rowspan="1">属性</td>
+    <td>整数型属性，m/n/k方向的量化分组大小。</td>
+    <td>INT64</td>
+    <td>-</td>
+  </tr>
+</tbody>
+</table>
 
 ## 约束说明
 
@@ -71,5 +151,4 @@
 
 | 调用方式      | 调用样例                 | 说明                                                         |
 |--------------|-------------------------|--------------------------------------------------------------|
-| aclnn调用 | [test_aclnn_quant_grouped_matmul_inplace_add] | 通过接口方式调用QuantGroupedMatmulInplaceAdd算子。 |
-| 图模式调用 | [test_geir_quant_grouped_matmul_inplace_add]   | 通过构图方式调用QuantGroupedMatmulInplaceAdd算子。 |
+| aclnn调用 | [test_aclnn_quant_grouped_matmul_inplace_add](examples/test_aclnn_quant_grouped_matmul_inplace_add.cpp) | 通过接口方式调用[QuantGroupedMatmulInplaceAdd](docs/aclnnQuantGroupedMatmulInplaceAdd.md)算子。 |

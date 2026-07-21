@@ -39,7 +39,7 @@ struct AllGatherMatmulV2HostUtParamBase {
     std::string comm_mode;
     ge::graphStatus expectResult;
 
-    explicit AllGatherMatmulV2HostUtParamBase(const csv_map& csvMap)
+    explicit AllGatherMatmulV2HostUtParamBase(const csv_map &csvMap)
     {
         this->case_name = ReadMap(csvMap, "case_name");
         this->group = ReadMap(csvMap, "group");
@@ -58,19 +58,19 @@ struct AllGatherMatmulV2HostUtParamBase {
     }
 };
 
-inline std::ostream& operator<<(std::ostream& os, const AllGatherMatmulV2HostUtParamBase& param)
+inline std::ostream &operator<<(std::ostream &os, const AllGatherMatmulV2HostUtParamBase &param)
 {
     return os << param.case_name;
 }
 
-template<typename T>
-inline std::string GetCaseInfoString(const testing::TestParamInfo<T>& info)
+template <typename T>
+inline std::string GetCaseInfoString(const testing::TestParamInfo<T> &info)
 {
     return info.param.case_name;
 }
 
 const gert::TilingContextPara::TensorDescription TD_DEFAULT = {{}, ge::DT_UNDEFINED, ge::FORMAT_NULL};
-struct AllGatherMatmulV2TilingUtParam: public AllGatherMatmulV2HostUtParamBase {
+struct AllGatherMatmulV2TilingUtParam : public AllGatherMatmulV2HostUtParamBase {
     gert::TilingContextPara::TensorDescription x1 = TD_DEFAULT;
     gert::TilingContextPara::TensorDescription x2 = TD_DEFAULT;
     gert::TilingContextPara::TensorDescription bias = TD_DEFAULT;
@@ -86,40 +86,27 @@ struct AllGatherMatmulV2TilingUtParam: public AllGatherMatmulV2HostUtParamBase {
     uint64_t expectTilingKey;
     std::string expectTilingDataHash;
 
-    explicit AllGatherMatmulV2TilingUtParam(const csv_map& csvMap):
-        AllGatherMatmulV2HostUtParamBase(csvMap)
+    explicit AllGatherMatmulV2TilingUtParam(const csv_map &csvMap) : AllGatherMatmulV2HostUtParamBase(csvMap)
     {
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format", x1));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format", x2));
+        this->inputInstance.emplace_back(GetTensorGE(csvMap, "bias_shape", "bias_dtype", "bias_format", bias));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "x1_shape", "x1_dtype", "x1_format",
-                x1));
+            GetTensorGE(csvMap, "x1_scale_shape", "x1_scale_dtype", "x1_scale_format", x1_scale));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "x2_shape", "x2_dtype", "x2_format",
-                x2));
+            GetTensorGE(csvMap, "x2_scale_shape", "x2_scale_dtype", "x2_scale_format", x2_scale));
         this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "bias_shape", "bias_dtype", "bias_format",
-                bias));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "x1_scale_shape", "x1_scale_dtype", "x1_scale_format",
-                x1_scale));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "x2_scale_shape", "x2_scale_dtype", "x2_scale_format",
-                x2_scale));
-        this->inputInstance.emplace_back(
-            GetTensorGE(csvMap, "quant_scale_shape", "quant_scale_dtype", "quant_scale_format",
-                quant_scale));
+            GetTensorGE(csvMap, "quant_scale_shape", "quant_scale_dtype", "quant_scale_format", quant_scale));
         this->outputInstance.emplace_back(
-            GetTensorGE(csvMap, "output_y_shape", "output_y_dtype", "output_y_format",
-                y));
+            GetTensorGE(csvMap, "output_y_shape", "output_y_dtype", "output_y_format", y));
         this->outputInstance.emplace_back(
-            GetTensorGE(csvMap, "gather_out_shape", "gather_out_dtype", "gather_out_format",
-                gather_out));
+            GetTensorGE(csvMap, "gather_out_shape", "gather_out_dtype", "gather_out_format", gather_out));
         this->outputInstance.emplace_back(
-            GetTensorGE(csvMap, "amax_out_shape", "amax_out_dtype", "amax_out_format",
-                amax_out));
+            GetTensorGE(csvMap, "amax_out_shape", "amax_out_dtype", "amax_out_format", amax_out));
         this->soc = ReadMap(csvMap, "soc");
         this->coreNum = stoull(ReadMap(csvMap, "core_num"));
         this->ubsize = stoull(ReadMap(csvMap, "ubsize"));
-        if(this->expectResult == ge::GRAPH_SUCCESS) {
+        if (this->expectResult == ge::GRAPH_SUCCESS) {
             this->expectTilingKey = stoull(ReadMap(csvMap, "expectTilingKey"));
             this->expectTilingDataHash = ReadMap(csvMap, "expectTilingDataHash");
         }

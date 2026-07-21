@@ -774,6 +774,7 @@ def gen_cmp_kv(layout_q, layout_kv, cmp_kv_type, B, S1, S2, T1, T2, T3, N2, D, K
         if cmp_block_table.shape[1] == 0:
             cmp_block_table = None
     elif layout_kv == "TND":
+        T3 = int(T3)
         cmp_block_table = None
         cmp_max_s2 = get_max_adjacent_diff([x // cmp_ratio for x in cu_seqlens_ori_kv])
         cmp_k = (torch.rand((T3, N2, D)) * (data_range_left - data_range_right) + data_range_left).to(cmp_kv_type)
@@ -842,6 +843,14 @@ def gen_data(params, template_mode=None):
     ori_sparse_indices_mode = params.get('ori_sparse_indices_mode')
     cmp_sparse_indices_mode = params.get('cmp_sparse_indices_mode')
     return_softmax_lse = params.get('return_softmax_lse')
+    template_mode = params.get('template_mode')
+
+    B = int(B)
+    S1 = int(S1)
+    S2 = int(S2)
+    N1 = int(N1)
+    N2 = int(N2)
+    D = int(D)
 
     if layout_q == "TND" and T1 == None:
         raise ValueError(f"T1 must be provided when layout_kv is TND")
@@ -927,11 +936,11 @@ def gen_data(params, template_mode=None):
             cmp_ratio = None
             K = None
         elif template_mode == "HCA":
-            cmp_ratio = int(cmp_ratio)
+            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
             K = None
         elif template_mode == "CSA":
-            cmp_ratio = int(cmp_ratio)
-            K = int(K)
+            cmp_ratio = int(cmp_ratio) if cmp_ratio is not None else 1
+            K = int(K) if K is not None else None
     else:
         if K is None or K == ['None']:
             if cmp_ratio is None:
@@ -978,15 +987,16 @@ def gen_data(params, template_mode=None):
     properties = torch.npu.get_device_properties()
     if "Ascend950" in properties.name and layout_kv == "PA_BBND":
         key_stride = 10  # 0轴非连续增加stride
-        bytes_per_token = D + key_stride # 整个非连续的长度
-        blockFusion1 = torch.zeros((block_num1, block_size1 * N2 * bytes_per_token), dtype=ori_kv_type)
+        blocksize_with_stride = block_size1 + key_stride # 整个非连续的长度
+        blockFusion1 = torch.zeros((block_num1, blocksize_with_stride * N2 * D), dtype=ori_kv_type)
         ori_key_flat = ori_k_in_pa_shape.view(block_num1, block_size1 * N2 * D)
         blockFusion1[:, :block_size1 * N2 * D] = ori_key_flat
         blockFusion1 = blockFusion1.npu()
         ori_k_in_pa_shape = blockFusion1[:, :block_size1 * N2 * D].view(block_num1, block_size1, N2, D)
 
         if template_idx != 0:
-            blockFusion2 = torch.zeros((block_num2, block_size2 * N2 * bytes_per_token), dtype=cmp_kv_type)
+            blocksize_with_stride = block_size2 + key_stride
+            blockFusion2 = torch.zeros((block_num2, blocksize_with_stride * N2 * D), dtype=cmp_kv_type)
             cmp_key_flat = cmp_k_in_pa_shape.view(block_num2, block_size2 * N2 * D)
             blockFusion2[:, :block_size2 * N2 * D] = cmp_key_flat
             blockFusion2 = blockFusion2.npu()

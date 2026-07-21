@@ -95,22 +95,21 @@ ge::graphStatus FlashAttnTilingImpl::SetPlatMemoryInfo()
 
 void FlashAttnTilingImpl::InitImplParam()
 {
-    const gert::Tensor *actSeqLenQ = faInfo_->opParamInfo.cuSeqlensQ.tensor;
-    const gert::Tensor *actSeqLenKV = faInfo_->opParamInfo.cuSeqlensKv.tensor;
-    uint32_t actSeqLenQDims = 0;
-    uint32_t actSeqLenKVDims = 0;
-    actSeqLenQDims = (actSeqLenQ != nullptr) ? actSeqLenQ->GetShapeSize() : 0;
-    actSeqLenKVDims = (actSeqLenKV != nullptr) ? actSeqLenKV->GetShapeSize() : 0;
-    cuSeqLenQFlag_ = !((actSeqLenQDims == 0) || (actSeqLenQ == nullptr) || (actSeqLenQ->GetData<int32_t>() == nullptr));
-    cuSeqLenKVFlag_ =
-        !((actSeqLenKVDims == 0) || (actSeqLenKV == nullptr) || (actSeqLenKV->GetData<int32_t>() == nullptr));
+    const gert::Tensor *cuSeqLenQ = faInfo_->opParamInfo.cuSeqlensQ.tensor;
+    const gert::Tensor *cuSeqLenKV = faInfo_->opParamInfo.cuSeqlensKv.tensor;
+    uint32_t cuSeqLenQDims = 0;
+    uint32_t cuSeqLenKVDims = 0;
+    cuSeqLenQDims = (cuSeqLenQ != nullptr) ? cuSeqLenQ->GetShapeSize() : 0;
+    cuSeqLenKVDims = (cuSeqLenKV != nullptr) ? cuSeqLenKV->GetShapeSize() : 0;
+    cuSeqLenQFlag_ = !((cuSeqLenQDims == 0) || (cuSeqLenQ == nullptr));
+    cuSeqLenKVFlag_ = !((cuSeqLenKVDims == 0) || (cuSeqLenKV == nullptr));
 
     const gert::Tensor *seqUsedQ = faInfo_->opParamInfo.sequsedQ.tensor;
     const gert::Tensor *seqUsedKv = faInfo_->opParamInfo.sequsedKv.tensor;
     uint32_t seqUsedQDims = (seqUsedQ != nullptr) ? seqUsedQ->GetShapeSize() : 0;
     uint32_t seqUsedKvDims = (seqUsedKv != nullptr) ? seqUsedKv->GetShapeSize() : 0;
-    seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr) || (seqUsedQ->GetData<int32_t>() == nullptr));
-    seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr) || (seqUsedKv->GetData<int32_t>() == nullptr));
+    seqUsedQFlag_ = !((seqUsedQDims == 0) || (seqUsedQ == nullptr));
+    seqUsedKvFlag_ = !((seqUsedKvDims == 0) || (seqUsedKv == nullptr));
 }
 
 void FlashAttnTilingImpl::SplitPolicy()
@@ -331,6 +330,14 @@ void FlashAttnTilingImpl::SetFATilingData()
     }
     tilingData_.baseTiling.flashAttnPageAttentionParams.maxBlockNumPerBatch = maxBlockNumPerBatch;
     tilingData_.baseTiling.flashAttnBaseParams.needInitOutput = CheckNeedInitOutput();
+
+    // kvcache非连续场景: 从tensor stride取偏移值, 连续时stride值即默认值, 不影响
+    if (faInfo_->hasViewStride) {
+        tilingData_.baseTiling.flashAttnBaseParams.keyBnStride = faInfo_->keyBnStride;
+        tilingData_.baseTiling.flashAttnBaseParams.keyN2Stride = faInfo_->keyN2Stride;
+        tilingData_.baseTiling.flashAttnBaseParams.valueBnStride = faInfo_->valueBnStride;
+        tilingData_.baseTiling.flashAttnBaseParams.valueN2Stride = faInfo_->valueN2Stride;
+    }
 }
 
 bool FlashAttnTilingImpl::CheckNeedInitOutput() const

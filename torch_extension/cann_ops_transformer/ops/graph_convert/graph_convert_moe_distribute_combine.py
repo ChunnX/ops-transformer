@@ -15,39 +15,109 @@ try:
     from torch.library import impl
     from torchair._ge_concrete_graph import ge_apis as ge
     from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair._ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
+    from torchair._ge_concrete_graph.fx2ge_converter import (
+        declare_supported,
+        register_fx_node_ge_converter,
+    )
     from torchair._ge_concrete_graph.supported_declaration import Support
     from typing import Any, Dict, List, Tuple, Union, Callable, Optional
-    from torchair._ge_concrete_graph.ge_ir_pb2 import GraphDef, OpDef, TensorDescriptor, TensorDef
+    from torchair._ge_concrete_graph.ge_ir_pb2 import (
+        GraphDef,
+        OpDef,
+        TensorDescriptor,
+        TensorDef,
+    )
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge._ge_graph import auto_convert_to_tensor
-    from torchair.ge._ge_graph import Tensor, TensorSpec, DataType, TensorType
+    from torchair.ge._ge_graph import DataType, TensorType
     from torchair.ge._ge_graph import compat_as_bytes, compat_as_bytes_list
     from torchair.ge._ge_graph import trans_to_list_list_int, trans_to_list_list_float
     from torchair.ge._ge_graph import get_invalid_desc
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair.ge import attr
+
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
+
     @auto_convert_to_tensor(
-        [False, False, False, False, False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, False, False, False, True, True, True, True, True, True, True, True, True, True])
-    def MoeDistributeCombine(context: Tensor, expand_x: Tensor, expert_ids: Tensor,
-                            assist_info_for_combine: Tensor, ep_send_counts: Tensor,
-                            expert_scales: Tensor, tp_send_counts: Optional[Tensor],
-                            x_active_mask: Optional[Tensor], expand_scales: Optional[Tensor],
-                            shared_expert_x: Optional[Tensor], elastic_info: Optional[Tensor], ori_x: Optional[Tensor],
-                            const_expert_alpha_1: Optional[Tensor], const_expert_alpha_2: Optional[Tensor],
-                            const_expert_v: Optional[Tensor], performance_info: Optional[Tensor], *,
-                            ep_world_size: int, ep_rank_id: int, moe_expert_num: int, ccl_buffer_size: int,
-                            tp_world_size: int = 0, tp_rank_id: int = 0, expert_shard_type: int = 0,
-                            shared_expert_num: int = 1, shared_expert_rank_num: int = 0, global_bs: int = 0,
-                            out_dtype: int = 0, comm_quant_mode: int = 0, group_list_type: int = 0,
-                            comm_alg: str = "", zero_expert_num: int = 0, copy_expert_num: int = 0,
-                            const_expert_num: int = 0, dependencies=[], node_name=None):
+        [
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+        ],
+        [
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+            True,
+        ],
+    )
+    def MoeDistributeCombine(
+        context: Tensor,
+        expand_x: Tensor,
+        expert_ids: Tensor,
+        assist_info_for_combine: Tensor,
+        ep_send_counts: Tensor,
+        expert_scales: Tensor,
+        tp_send_counts: Optional[Tensor],
+        x_active_mask: Optional[Tensor],
+        expand_scales: Optional[Tensor],
+        shared_expert_x: Optional[Tensor],
+        elastic_info: Optional[Tensor],
+        ori_x: Optional[Tensor],
+        const_expert_alpha_1: Optional[Tensor],
+        const_expert_alpha_2: Optional[Tensor],
+        const_expert_v: Optional[Tensor],
+        performance_info: Optional[Tensor],
+        *,
+        ep_world_size: int,
+        ep_rank_id: int,
+        moe_expert_num: int,
+        ccl_buffer_size: int,
+        tp_world_size: int = 0,
+        tp_rank_id: int = 0,
+        expert_shard_type: int = 0,
+        shared_expert_num: int = 1,
+        shared_expert_rank_num: int = 0,
+        global_bs: int = 0,
+        out_dtype: int = 0,
+        comm_quant_mode: int = 0,
+        group_list_type: int = 0,
+        comm_alg: str = "",
+        zero_expert_num: int = 0,
+        copy_expert_num: int = 0,
+        const_expert_num: int = 0,
+        dependencies=[],
+        node_name=None,
+    ):
         """REG_OP(MoeDistributeCombineV3)\n
         .INPUT(context, TensorType({DT_INT32}))\n
         .INPUT(expand_x, TensorType({DT_BF16, DT_FLOAT16, DT_INT32}))\n
@@ -126,7 +196,7 @@ if _TORCHAIR_AVAILABLE:
             op.input_desc.add().CopyFrom(tp_send_counts.desc)
             op.input_desc[-1].name = "tp_send_counts"
         else:
-            op.input.append('')
+            op.input.append("")
             op.input_desc.add().CopyFrom(get_invalid_desc())
             op.input_desc[-1].name = "tp_send_counts"
 
@@ -135,7 +205,7 @@ if _TORCHAIR_AVAILABLE:
             op.input_desc.add().CopyFrom(x_active_mask.desc)
             op.input_desc[-1].name = "x_active_mask"
         else:
-            op.input.append('')
+            op.input.append("")
             op.input_desc.add().CopyFrom(get_invalid_desc())
             op.input_desc[-1].name = "x_active_mask"
 
@@ -144,13 +214,13 @@ if _TORCHAIR_AVAILABLE:
         # input to the torch layer is V2, canndev internalyy selects either the V1 or V2 version
         # of aclnn based on the A2/A3 platform. Therefore, it is necessary to perform a placeholder
         # operation for the parameters that exist in the V1.
-        op.input.append('')
+        op.input.append("")
         op.input_desc.add().CopyFrom(get_invalid_desc())
         op.input_desc[-1].name = "activation_scale"
-        op.input.append('')
+        op.input.append("")
         op.input_desc.add().CopyFrom(get_invalid_desc())
         op.input_desc[-1].name = "weight_scale"
-        op.input.append('')
+        op.input.append("")
         op.input_desc.add().CopyFrom(get_invalid_desc())
         op.input_desc[-1].name = "group_list"
 
@@ -159,7 +229,7 @@ if _TORCHAIR_AVAILABLE:
             op.input_desc.add().CopyFrom(expand_scales.desc)
             op.input_desc[-1].name = "expand_scales"
         else:
-            op.input.append('')
+            op.input.append("")
             op.input_desc.add().CopyFrom(get_invalid_desc())
             op.input_desc[-1].name = "expand_scales"
 
@@ -168,7 +238,7 @@ if _TORCHAIR_AVAILABLE:
             op.input_desc.add().CopyFrom(shared_expert_x.desc)
             op.input_desc[-1].name = "shared_expert_x"
         else:
-            op.input.append('')
+            op.input.append("")
             op.input_desc.add().CopyFrom(get_invalid_desc())
             op.input_desc[-1].name = "shared_expert_x"
 
@@ -177,7 +247,7 @@ if _TORCHAIR_AVAILABLE:
             op.input_desc.add().CopyFrom(elastic_info.desc)
             op.input_desc[-1].name = "elastic_info"
         else:
-            op.input.append('')
+            op.input.append("")
             op.input_desc.add().CopyFrom(get_invalid_desc())
             op.input_desc[-1].name = "elastic_info"
 
@@ -186,7 +256,7 @@ if _TORCHAIR_AVAILABLE:
             op.input_desc.add().CopyFrom(ori_x.desc)
             op.input_desc[-1].name = "ori_x"
         else:
-            op.input.append('')
+            op.input.append("")
             op.input_desc.add().CopyFrom(get_invalid_desc())
             op.input_desc[-1].name = "ori_x"
 
@@ -195,7 +265,7 @@ if _TORCHAIR_AVAILABLE:
             op.input_desc.add().CopyFrom(const_expert_alpha_1.desc)
             op.input_desc[-1].name = "const_expert_alpha_1"
         else:
-            op.input.append('')
+            op.input.append("")
             op.input_desc.add().CopyFrom(get_invalid_desc())
             op.input_desc[-1].name = "const_expert_alpha_1"
 
@@ -204,7 +274,7 @@ if _TORCHAIR_AVAILABLE:
             op.input_desc.add().CopyFrom(const_expert_alpha_2.desc)
             op.input_desc[-1].name = "const_expert_alpha_2"
         else:
-            op.input.append('')
+            op.input.append("")
             op.input_desc.add().CopyFrom(get_invalid_desc())
             op.input_desc[-1].name = "const_expert_alpha_2"
 
@@ -213,7 +283,7 @@ if _TORCHAIR_AVAILABLE:
             op.input_desc.add().CopyFrom(const_expert_v.desc)
             op.input_desc[-1].name = "const_expert_v"
         else:
-            op.input.append('')
+            op.input.append("")
             op.input_desc.add().CopyFrom(get_invalid_desc())
             op.input_desc[-1].name = "const_expert_v"
 
@@ -222,7 +292,7 @@ if _TORCHAIR_AVAILABLE:
             op.input_desc.add().CopyFrom(performance_info.desc)
             op.input_desc[-1].name = "performance_info"
         else:
-            op.input.append('')
+            op.input.append("")
             op.input_desc.add().CopyFrom(get_invalid_desc())
             op.input_desc[-1].name = "performance_info"
 
@@ -253,7 +323,9 @@ if _TORCHAIR_AVAILABLE:
 
         return x
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_moe_distribute_combine.default)
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.npu_moe_distribute_combine.default
+    )
     def convert_npu_moe_distribute_combine(
         context: Tensor,
         expand_x: Tensor,
@@ -287,38 +359,40 @@ if _TORCHAIR_AVAILABLE:
         zero_expert_num: int = 0,
         copy_expert_num: int = 0,
         const_expert_num: int = 0,
-        meta_outputs: TensorSpec = None):
-
-        return MoeDistributeCombine(context=context,
-                                    expand_x=expand_x,
-                                    expert_ids=expert_ids,
-                                    assist_info_for_combine=assist_info_for_combine,
-                                    ep_send_counts=ep_send_counts,
-                                    expert_scales=expert_scales,
-                                    tp_send_counts=tp_send_counts,
-                                    x_active_mask=x_active_mask,
-                                    expand_scales=expand_scales,
-                                    shared_expert_x=shared_expert_x,
-                                    elastic_info=elastic_info,
-                                    ori_x=ori_x,
-                                    const_expert_alpha_1=const_expert_alpha_1,
-                                    const_expert_alpha_2=const_expert_alpha_2,
-                                    const_expert_v=const_expert_v,
-                                    performance_info=performance_info,
-                                    ep_world_size=ep_world_size,
-                                    ep_rank_id=ep_rank_id,
-                                    moe_expert_num=moe_expert_num,
-                                    ccl_buffer_size=ccl_buffer_size,
-                                    tp_world_size=tp_world_size,
-                                    tp_rank_id=tp_rank_id,
-                                    expert_shard_type=expert_shard_type,
-                                    shared_expert_num=shared_expert_num,
-                                    shared_expert_rank_num=shared_expert_rank_num,
-                                    global_bs=global_bs,
-                                    out_dtype=0,
-                                    comm_quant_mode=comm_quant_mode,
-                                    group_list_type=0,
-                                    comm_alg=comm_alg,
-                                    zero_expert_num=zero_expert_num,
-                                    copy_expert_num=copy_expert_num,
-                                    const_expert_num=const_expert_num)
+        meta_outputs: TensorSpec = None,
+    ):
+        return MoeDistributeCombine(
+            context=context,
+            expand_x=expand_x,
+            expert_ids=expert_ids,
+            assist_info_for_combine=assist_info_for_combine,
+            ep_send_counts=ep_send_counts,
+            expert_scales=expert_scales,
+            tp_send_counts=tp_send_counts,
+            x_active_mask=x_active_mask,
+            expand_scales=expand_scales,
+            shared_expert_x=shared_expert_x,
+            elastic_info=elastic_info,
+            ori_x=ori_x,
+            const_expert_alpha_1=const_expert_alpha_1,
+            const_expert_alpha_2=const_expert_alpha_2,
+            const_expert_v=const_expert_v,
+            performance_info=performance_info,
+            ep_world_size=ep_world_size,
+            ep_rank_id=ep_rank_id,
+            moe_expert_num=moe_expert_num,
+            ccl_buffer_size=ccl_buffer_size,
+            tp_world_size=tp_world_size,
+            tp_rank_id=tp_rank_id,
+            expert_shard_type=expert_shard_type,
+            shared_expert_num=shared_expert_num,
+            shared_expert_rank_num=shared_expert_rank_num,
+            global_bs=global_bs,
+            out_dtype=0,
+            comm_quant_mode=comm_quant_mode,
+            group_list_type=0,
+            comm_alg=comm_alg,
+            zero_expert_num=zero_expert_num,
+            copy_expert_num=copy_expert_num,
+            const_expert_num=const_expert_num,
+        )

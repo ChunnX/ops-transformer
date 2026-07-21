@@ -28,30 +28,30 @@ namespace Transformer {
 namespace OpTiling {
 
 template <typename T>
-std::unique_ptr<TilingBaseClass> TILING_CLASS(gert::TilingContext* context)
+std::unique_ptr<TilingBaseClass> TILING_CLASS(gert::TilingContext *context)
 {
     return std::unique_ptr<T>(new (std::nothrow) T(context));
 }
 
-using TilingClassCase = std::unique_ptr<TilingBaseClass> (*)(gert::TilingContext*);
+using TilingClassCase = std::unique_ptr<TilingBaseClass> (*)(gert::TilingContext *);
 
 class TilingCases {
 public:
     explicit TilingCases(std::string op_type) : op_type_(std::move(op_type))
-    {}
+    {
+    }
 
     template <typename T>
     void AddTiling(int32_t priority)
     {
-        OP_CHECK_IF(
-            cases_.find(priority) != cases_.end(), OP_LOGE(op_type_, "There are duplicate registrations."), return);
+        OP_CHECK_IF(cases_.find(priority) != cases_.end(), OP_LOGE(op_type_, "There are duplicate registrations."),
+                    return);
         cases_[priority] = TILING_CLASS<T>;
-        OP_CHECK_IF(
-            cases_[priority] == nullptr,
-            OP_LOGE(op_type_, "Register op tiling func failed, please check the class name."), return);
+        OP_CHECK_IF(cases_[priority] == nullptr,
+                    OP_LOGE(op_type_, "Register op tiling func failed, please check the class name."), return);
     }
 
-    const std::map<int32_t, TilingClassCase>& GetTilingCases()
+    const std::map<int32_t, TilingClassCase> &GetTilingCases()
     {
         return cases_;
     }
@@ -67,16 +67,16 @@ public:
     TilingRegistryArch() = default;
 
 #ifdef ASCENDC_OP_TEST
-    static TilingRegistryArch& GetInstance();
+    static TilingRegistryArch &GetInstance();
 #else
-    static TilingRegistryArch& GetInstance()
+    static TilingRegistryArch &GetInstance()
     {
         static TilingRegistryArch registry_impl_;
         return registry_impl_;
     }
 #endif
 
-    std::shared_ptr<TilingCases> RegisterOp(const std::string& op_type, int32_t arch)
+    std::shared_ptr<TilingCases> RegisterOp(const std::string &op_type, int32_t arch)
     {
         auto soc_iter = registry_map_.find(arch);
         if (soc_iter == registry_map_.end()) {
@@ -90,15 +90,15 @@ public:
         }
 
         OP_CHECK_IF(registry_map_[arch][op_type] == nullptr,
-            OP_LOGE(op_type, "Register tiling func failed, please check the class name."), return nullptr);
+                    OP_LOGE(op_type, "Register tiling func failed, please check the class name."), return nullptr);
         return registry_map_[arch][op_type];
     }
 
-    ge::graphStatus DoTilingImpl(gert::TilingContext* context)
+    ge::graphStatus DoTilingImpl(gert::TilingContext *context)
     {
         int32_t arch = (int32_t)NpuArch::DAV_RESV;
-        const char* op_type = context->GetNodeType();
-        fe::PlatFormInfos* platformInfoPtr = context->GetPlatformInfo();
+        const char *op_type = context->GetNodeType();
+        fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
         if (platformInfoPtr == nullptr) {
             OP_LOGE(op_type, "Do op tiling failed, cannot get platformInfo.");
             return ge::GRAPH_FAILED;
@@ -127,16 +127,16 @@ public:
         return ge::GRAPH_FAILED;
     }
 
-    const std::map<int32_t, TilingClassCase>& GetTilingTemplates(const std::string& op_type, int32_t arch)
+    const std::map<int32_t, TilingClassCase> &GetTilingTemplates(const std::string &op_type, int32_t arch)
     {
         auto soc_iter = registry_map_.find(arch);
         OP_CHECK_IF(soc_iter == registry_map_.end(),
-            OP_LOGE(op_type, "Get op tiling func failed, please check the npu arch %d", arch),
-            return empty_tiling_case_);
+                    OP_LOGE(op_type, "Get op tiling func failed, please check the npu arch %d", arch),
+                    return empty_tiling_case_);
         auto op_iter = soc_iter->second.find(op_type);
-        OP_CHECK_IF(
-            op_iter == soc_iter->second.end(), OP_LOGE(op_type, "Get op tiling func failed, please check the op name."),
-            return empty_tiling_case_);
+        OP_CHECK_IF(op_iter == soc_iter->second.end(),
+                    OP_LOGE(op_type, "Get op tiling func failed, please check the op name."),
+                    return empty_tiling_case_);
         return op_iter->second->GetTilingCases();
     }
 
@@ -148,26 +148,26 @@ private:
 class RegisterArch {
 public:
     explicit RegisterArch(std::string op_type) : op_type_(std::move(op_type))
-    {}
+    {
+    }
 
     template <typename T>
-    RegisterArch& tiling(int32_t priority, int32_t arch)
+    RegisterArch &tiling(int32_t priority, int32_t arch)
     {
         auto tilingCases = TilingRegistryArch::GetInstance().RegisterOp(op_type_, arch);
-        OP_CHECK_IF(
-            tilingCases == nullptr, OP_LOGE(op_type_, "Register op tiling failed, please the op name."), return *this);
+        OP_CHECK_IF(tilingCases == nullptr, OP_LOGE(op_type_, "Register op tiling failed, please the op name."),
+                    return *this);
         tilingCases->AddTiling<T>(priority);
         return *this;
     }
 
     template <typename T>
-    RegisterArch& tiling(int32_t priority, const std::vector<int32_t>& archs)
+    RegisterArch &tiling(int32_t priority, const std::vector<int32_t> &archs)
     {
         for (int32_t arch : archs) {
             auto tilingCases = TilingRegistryArch::GetInstance().RegisterOp(op_type_, arch);
-            OP_CHECK_IF(
-                tilingCases == nullptr, OP_LOGE(op_type_, "Register op tiling failed, please the op name."),
-                return *this);
+            OP_CHECK_IF(tilingCases == nullptr, OP_LOGE(op_type_, "Register op tiling failed, please the op name."),
+                        return *this);
             tilingCases->AddTiling<T>(priority);
         }
         return *this;
@@ -183,16 +183,16 @@ public:
     TilingRegistryNew() = default;
 
 #ifdef ASCENDC_OP_TEST
-    static TilingRegistryNew& GetInstance();
+    static TilingRegistryNew &GetInstance();
 #else
-    static TilingRegistryNew& GetInstance()
+    static TilingRegistryNew &GetInstance()
     {
         static TilingRegistryNew registry_impl_;
         return registry_impl_;
     }
 #endif
 
-    std::shared_ptr<TilingCases> RegisterOp(const std::string& op_type, int32_t soc_version)
+    std::shared_ptr<TilingCases> RegisterOp(const std::string &op_type, int32_t soc_version)
     {
         auto soc_iter = registry_map_.find(soc_version);
         if (soc_iter == registry_map_.end()) {
@@ -205,21 +205,20 @@ public:
             }
         }
 
-        OP_CHECK_IF(
-            registry_map_[soc_version][op_type] == nullptr,
-            OP_LOGE(op_type, "Register tiling func failed, please check the class name."), return nullptr);
+        OP_CHECK_IF(registry_map_[soc_version][op_type] == nullptr,
+                    OP_LOGE(op_type, "Register tiling func failed, please check the class name."), return nullptr);
         return registry_map_[soc_version][op_type];
     }
 
-    ge::graphStatus DoTilingImpl(gert::TilingContext* context)
+    ge::graphStatus DoTilingImpl(gert::TilingContext *context)
     {
         int32_t soc_version = (int32_t)platform_ascendc::SocVersion::RESERVED_VERSION;
-        const char* op_type = context->GetNodeType();
-        fe::PlatFormInfos* platformInfoPtr = context->GetPlatformInfo();
+        const char *op_type = context->GetNodeType();
+        fe::PlatFormInfos *platformInfoPtr = context->GetPlatformInfo();
         if (platformInfoPtr == nullptr) {
-            auto compileInfoPtr = static_cast<const CompileInfoCommon*>(context->GetCompileInfo());
-            OP_CHECK_IF(
-                compileInfoPtr == nullptr, OP_LOGE(op_type, "compileInfoPtr is null."), return ge::GRAPH_FAILED);
+            auto compileInfoPtr = static_cast<const CompileInfoCommon *>(context->GetCompileInfo());
+            OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(op_type, "compileInfoPtr is null."),
+                        return ge::GRAPH_FAILED);
             soc_version = compileInfoPtr->socVersion;
             OP_LOGD(context, "soc version in compileInfo is %d", soc_version);
         } else {
@@ -247,15 +246,15 @@ public:
         return ge::GRAPH_FAILED;
     }
 
-    ge::graphStatus DoTilingImpl(gert::TilingContext* context, const std::vector<int32_t>& priorities)
+    ge::graphStatus DoTilingImpl(gert::TilingContext *context, const std::vector<int32_t> &priorities)
     {
         int32_t soc_version;
-        const char* op_type = context->GetNodeType();
+        const char *op_type = context->GetNodeType();
         auto platformInfoPtr = context->GetPlatformInfo();
         if (platformInfoPtr == nullptr) {
-            auto compileInfoPtr = reinterpret_cast<const CompileInfoCommon*>(context->GetCompileInfo());
-            OP_CHECK_IF(
-                compileInfoPtr == nullptr, OP_LOGE(op_type, "compileInfoPtr is null."), return ge::GRAPH_FAILED);
+            auto compileInfoPtr = reinterpret_cast<const CompileInfoCommon *>(context->GetCompileInfo());
+            OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(op_type, "compileInfoPtr is null."),
+                        return ge::GRAPH_FAILED);
             soc_version = compileInfoPtr->socVersion;
             OP_LOGD(context, "soc version in compileInfo is %d", soc_version);
         } else {
@@ -282,17 +281,16 @@ public:
         return ge::GRAPH_FAILED;
     }
 
-    const std::map<int32_t, TilingClassCase>& GetTilingTemplates(const std::string& op_type, int32_t soc_version)
+    const std::map<int32_t, TilingClassCase> &GetTilingTemplates(const std::string &op_type, int32_t soc_version)
     {
         auto soc_iter = registry_map_.find(soc_version);
-        OP_CHECK_IF(
-            soc_iter == registry_map_.end(),
-            OP_LOGE(op_type, "Get op tiling func failed, please check the soc version %d", soc_version),
-            return empty_tiling_case_);
+        OP_CHECK_IF(soc_iter == registry_map_.end(),
+                    OP_LOGE(op_type, "Get op tiling func failed, please check the soc version %d", soc_version),
+                    return empty_tiling_case_);
         auto op_iter = soc_iter->second.find(op_type);
-        OP_CHECK_IF(
-            op_iter == soc_iter->second.end(), OP_LOGE(op_type, "Get op tiling func failed, please check the op name."),
-            return empty_tiling_case_);
+        OP_CHECK_IF(op_iter == soc_iter->second.end(),
+                    OP_LOGE(op_type, "Get op tiling func failed, please check the op name."),
+                    return empty_tiling_case_);
         return op_iter->second->GetTilingCases();
     }
 
@@ -304,26 +302,26 @@ private:
 class RegisterNew {
 public:
     explicit RegisterNew(std::string op_type) : op_type_(std::move(op_type))
-    {}
+    {
+    }
 
     template <typename T>
-    RegisterNew& tiling(int32_t priority, int32_t soc_version)
+    RegisterNew &tiling(int32_t priority, int32_t soc_version)
     {
         auto tilingCases = TilingRegistryNew::GetInstance().RegisterOp(op_type_, soc_version);
-        OP_CHECK_IF(
-            tilingCases == nullptr, OP_LOGE(op_type_, "Register op tiling failed, please the op name."), return *this);
+        OP_CHECK_IF(tilingCases == nullptr, OP_LOGE(op_type_, "Register op tiling failed, please the op name."),
+                    return *this);
         tilingCases->AddTiling<T>(priority);
         return *this;
     }
 
     template <typename T>
-    RegisterNew& tiling(int32_t priority, const std::vector<int32_t>& soc_versions)
+    RegisterNew &tiling(int32_t priority, const std::vector<int32_t> &soc_versions)
     {
         for (int32_t soc_version : soc_versions) {
             auto tilingCases = TilingRegistryNew::GetInstance().RegisterOp(op_type_, soc_version);
-            OP_CHECK_IF(
-                tilingCases == nullptr, OP_LOGE(op_type_, "Register op tiling failed, please the op name."),
-                return *this);
+            OP_CHECK_IF(tilingCases == nullptr, OP_LOGE(op_type_, "Register op tiling failed, please the op name."),
+                        return *this);
             tilingCases->AddTiling<T>(priority);
         }
         return *this;
@@ -339,29 +337,28 @@ public:
     TilingRegistry() = default;
 
 #ifdef ASCENDC_OP_TEST
-    static TilingRegistry& GetInstance();
+    static TilingRegistry &GetInstance();
 #else
-    static TilingRegistry& GetInstance()
+    static TilingRegistry &GetInstance()
     {
         static TilingRegistry registry_impl_;
         return registry_impl_;
     }
 #endif
 
-    std::shared_ptr<TilingCases> RegisterOp(const std::string& op_type)
+    std::shared_ptr<TilingCases> RegisterOp(const std::string &op_type)
     {
         if (registry_map_.find(op_type) == registry_map_.end()) {
             registry_map_[op_type] = std::shared_ptr<TilingCases>(new (std::nothrow) TilingCases(op_type));
         }
-        OP_CHECK_IF(
-            registry_map_[op_type] == nullptr,
-            OP_LOGE(op_type, "Register tiling func failed, please check the class name."), return nullptr);
+        OP_CHECK_IF(registry_map_[op_type] == nullptr,
+                    OP_LOGE(op_type, "Register tiling func failed, please check the class name."), return nullptr);
         return registry_map_[op_type];
     }
 
-    ge::graphStatus DoTilingImpl(gert::TilingContext* context)
+    ge::graphStatus DoTilingImpl(gert::TilingContext *context)
     {
-        const char* op_type = context->GetNodeType();
+        const char *op_type = context->GetNodeType();
         auto tilingTemplateRegistryMap = GetTilingTemplates(op_type);
         for (auto it = tilingTemplateRegistryMap.begin(); it != tilingTemplateRegistryMap.end(); ++it) {
             auto tilingTemplate = it->second(context);
@@ -378,9 +375,9 @@ public:
         return ge::GRAPH_FAILED;
     }
 
-    ge::graphStatus DoTilingImpl(gert::TilingContext* context, const std::vector<int32_t>& priorities)
+    ge::graphStatus DoTilingImpl(gert::TilingContext *context, const std::vector<int32_t> &priorities)
     {
-        const char* op_type = context->GetNodeType();
+        const char *op_type = context->GetNodeType();
         auto tilingTemplateRegistryMap = GetTilingTemplates(op_type);
         for (auto priorityId : priorities) {
             auto templateFunc = tilingTemplateRegistryMap[priorityId](context);
@@ -401,11 +398,11 @@ public:
         return ge::GRAPH_FAILED;
     }
 
-    const std::map<int32_t, TilingClassCase>& GetTilingTemplates(const std::string& op_type)
+    const std::map<int32_t, TilingClassCase> &GetTilingTemplates(const std::string &op_type)
     {
-        OP_CHECK_IF(
-            registry_map_.find(op_type) == registry_map_.end(),
-            OP_LOGE(op_type, "Get op tiling func failed, please check the op name."), return empty_tiling_case_);
+        OP_CHECK_IF(registry_map_.find(op_type) == registry_map_.end(),
+                    OP_LOGE(op_type, "Get op tiling func failed, please check the op name."),
+                    return empty_tiling_case_);
         return registry_map_[op_type]->GetTilingCases();
     }
 
@@ -417,14 +414,15 @@ private:
 class Register {
 public:
     explicit Register(std::string op_type) : op_type_(std::move(op_type))
-    {}
+    {
+    }
 
     template <typename T>
-    Register& tiling(int32_t priority)
+    Register &tiling(int32_t priority)
     {
         auto tilingCases = TilingRegistry::GetInstance().RegisterOp(op_type_);
-        OP_CHECK_IF(
-            tilingCases == nullptr, OP_LOGE(op_type_, "Register op tiling failed, please the op name."), return *this);
+        OP_CHECK_IF(tilingCases == nullptr, OP_LOGE(op_type_, "Register op tiling failed, please the op name."),
+                    return *this);
         tilingCases->AddTiling<T>(priority);
         return *this;
     }
@@ -438,38 +436,38 @@ private:
 
 // op_type: 算子名称， class_name: 注册的 tiling 类, arch：芯片架构号
 // priority: tiling 类的优先级, 越小表示优先级越高, 即会优先选择这个tiling类
-#define REGISTER_TILING_TEMPLATE_WITH_ARCH(op_type, class_name, archs, priority)    \
-    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;      \
-    static Ops::Transformer::OpTiling::RegisterArch VAR_UNUSED##op_type##class_name##priority_register = \
+#define REGISTER_TILING_TEMPLATE_WITH_ARCH(op_type, class_name, archs, priority)                                       \
+    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;                            \
+    static Ops::Transformer::OpTiling::RegisterArch VAR_UNUSED##op_type##class_name##priority_register =               \
         Ops::Transformer::OpTiling::RegisterArch(#op_type).tiling<class_name>(priority, archs)
 
 // op_type: 算子名称， class_name: 注册的 tiling 类, soc_version：芯片版本号
 // priority: tiling 类的优先级, 越小表示优先级越高, 即会优先选择这个tiling类
-#define REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(op_type, class_name, soc_versions, priority)    \
-    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;      \
-    static Ops::Transformer::OpTiling::RegisterNew VAR_UNUSED##op_type##class_name##priority_register = \
+#define REGISTER_TILING_TEMPLATE_WITH_SOCVERSION(op_type, class_name, soc_versions, priority)                          \
+    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;                            \
+    static Ops::Transformer::OpTiling::RegisterNew VAR_UNUSED##op_type##class_name##priority_register =                \
         Ops::Transformer::OpTiling::RegisterNew(#op_type).tiling<class_name>(priority, soc_versions)
 
 // op_type: 算子名称， class_name: 注册的 tiling 类,
 // priority: tiling 类的优先级, 越小表示优先级越高, 即被选中的概率越大
-#define REGISTER_TILING_TEMPLATE(op_type, class_name, priority)                                \
-    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;      \
-    static Ops::Transformer::OpTiling::Register VAR_UNUSED##op_type_##class_name##priority_register = \
+#define REGISTER_TILING_TEMPLATE(op_type, class_name, priority)                                                        \
+    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;                            \
+    static Ops::Transformer::OpTiling::Register VAR_UNUSED##op_type_##class_name##priority_register =                  \
         Ops::Transformer::OpTiling::Register(op_type).tiling<class_name>(priority)
 
 // op_type: 算子名称， class_name: 注册的 tiling 类,
 // soc_version: soc版本，用于区分不同的soc
 // priority: tiling 类的优先级, 越小表示优先级越高, 即会优先选择这个tiling类
-#define REGISTER_TILING_TEMPLATE_NEW(op_type, class_name, soc_version, priority)                 \
-    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;      \
-    static Ops::Transformer::OpTiling::RegisterNew VAR_UNUSED##op_type##class_name##priority_register = \
+#define REGISTER_TILING_TEMPLATE_NEW(op_type, class_name, soc_version, priority)                                       \
+    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;                            \
+    static Ops::Transformer::OpTiling::RegisterNew VAR_UNUSED##op_type##class_name##priority_register =                \
         Ops::Transformer::OpTiling::RegisterNew(#op_type).tiling<class_name>(priority, soc_version)
 
 // op_type: 算子名称， class_name: 注册的 tiling 类,
 // priority: tiling 类的优先级, 越小表示优先级越高, 即被选中的概率越大
 // 取代 REGISTER_TILING_TEMPLATE , 传入的op_type如果是字符串常量，需要去掉引号
-#define REGISTER_OPS_TILING_TEMPLATE(op_type, class_name, priority)                       \
-    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;      \
-    static Ops::Transformer::OpTiling::Register                                                  \
-        __attribute__((unused)) tiling_##op_type##_##class_name##_##priority##_register = \
+#define REGISTER_OPS_TILING_TEMPLATE(op_type, class_name, priority)                                                    \
+    [[maybe_unused]] uint32_t op_impl_register_template_##op_type##_##class_name##priority;                            \
+    static Ops::Transformer::OpTiling::Register                                                                        \
+        __attribute__((unused)) tiling_##op_type##_##class_name##_##priority##_register =                              \
             Ops::Transformer::OpTiling::Register(#op_type).tiling<class_name>(priority)

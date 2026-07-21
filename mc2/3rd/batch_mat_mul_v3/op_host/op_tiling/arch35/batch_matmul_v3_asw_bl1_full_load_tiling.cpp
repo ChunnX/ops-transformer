@@ -36,18 +36,18 @@ bool Mc2BatchMatMulV3AswBL1FullLoadTiling::IsCapable()
     }
     // get align m,k,n value
     uint64_t c0Size = BLOCK_BYTE_SIZE / args_.aDtypeSize;
-    uint64_t alignMValue = args_.isATrans ? ops::CeilAlign(args_.mValue, c0Size) :
-                                            ops::CeilAlign(args_.mValue, BASIC_BLOCK_SIZE_16);
-    uint64_t alignKaValue = args_.isATrans ? ops::CeilAlign(args_.kValue, BASIC_BLOCK_SIZE_16) :
-                                             ops::CeilAlign(args_.kValue, c0Size);
-    uint64_t alignKbValue = args_.isBTrans ? ops::CeilAlign(args_.kValue, c0Size) :
-                                             ops::CeilAlign(args_.kValue, BASIC_BLOCK_SIZE_16);
-    uint64_t alignNValue = args_.isBTrans ? ops::CeilAlign(args_.nValue, BASIC_BLOCK_SIZE_16) :
-                                            ops::CeilAlign(args_.nValue, c0Size);
+    uint64_t alignMValue =
+        args_.isATrans ? ops::CeilAlign(args_.mValue, c0Size) : ops::CeilAlign(args_.mValue, BASIC_BLOCK_SIZE_16);
+    uint64_t alignKaValue =
+        args_.isATrans ? ops::CeilAlign(args_.kValue, BASIC_BLOCK_SIZE_16) : ops::CeilAlign(args_.kValue, c0Size);
+    uint64_t alignKbValue =
+        args_.isBTrans ? ops::CeilAlign(args_.kValue, c0Size) : ops::CeilAlign(args_.kValue, BASIC_BLOCK_SIZE_16);
+    uint64_t alignNValue =
+        args_.isBTrans ? ops::CeilAlign(args_.nValue, BASIC_BLOCK_SIZE_16) : ops::CeilAlign(args_.nValue, c0Size);
     uint64_t alignMatASize = batchInfo_->batchA * alignMValue * alignKaValue * args_.aDtypeSize;
     uint64_t alignMatBSize = batchInfo_->batchB * alignKbValue * alignNValue * args_.bDtypeSize;
     if (alignMatASize < (compileInfo_.l1Size) * compileInfo_.aicNum &&
-        batchInfo_->batchA < 4UL * compileInfo_.aicNum) {  // each core needs to loop at least 4 batch
+        batchInfo_->batchA < 4UL * compileInfo_.aicNum) { // each core needs to loop at least 4 batch
         return false;
     }
     if (alignMatBSize * NUM_TWO > compileInfo_.l1Size) {
@@ -75,5 +75,5 @@ uint64_t Mc2BatchMatMulV3AswBL1FullLoadTiling::GetTilingKey() const
         .SetFullLoad(Mc2MatMulV3FullLoad::B_FULL_LOAD)
         .GetTilingKey();
 }
-}
-}
+} // namespace Mc2batch_matmul_v3_advanced
+} // namespace optiling

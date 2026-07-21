@@ -18,4 +18,4 @@
 #include "register/tilingdata_base.h"
 #include "tiling/platform/platform_ascendc.h"
 
-#endif  // OPS_BUILT_IN_OP_TILING_RUNTIME_ADD_RMS_NORM_H_
+#endif // OPS_BUILT_IN_OP_TILING_RUNTIME_ADD_RMS_NORM_H_

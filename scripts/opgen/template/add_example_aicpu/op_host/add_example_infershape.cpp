@@ -22,16 +22,16 @@ namespace ops {
 
 static constexpr int64_t IDX_0 = 0;
 
-static ge::graphStatus InferShapeAddExample(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeAddExample(gert::InferShapeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferShapeAddExample for aicpu");
 
     // get input shapes for aicpu example
-    const gert::Shape* xShape = context->GetInputShape(IDX_0);
+    const gert::Shape *xShape = context->GetInputShape(IDX_0);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
 
     // get output shapes for aicpu example
-    gert::Shape* yShape = context->GetOutputShape(IDX_0);
+    gert::Shape *yShape = context->GetOutputShape(IDX_0);
     OP_CHECK_NULL_WITH_CONTEXT(context, yShape);
 
     // 填充输出shape大小(aicpu example)

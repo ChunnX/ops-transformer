@@ -439,21 +439,21 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
         LOG_PRINT("[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, stream = %p, context = %p\n", args.rankId,
         hcomEpName, hcomTpName, args.stream, args.context);
-        
+
         int64_t E = 2 * EP_WORLD_SIZE;
         int64_t C = 2 * TP_WORLD_SIZE;
         int64_t H = 6 * TP_WORLD_SIZE;
         int64_t M = 6 * TP_WORLD_SIZE;
         int64_t xShardType = 1; // 可切换为0，开启gather H轴场景
         int64_t actType = 1;
-        
+
         std::vector<int64_t> xShape;
         std::vector<int64_t> weightShape;
         std::vector<int64_t> biasShape;
         std::vector<int64_t> y1OutShape;
         std::vector<int64_t> y2OutShape;
         std::vector<int64_t> y3OutShape;
-        
+
         if (xShardType == 1) {
             xShape = {E, C / TP_WORLD_SIZE, H};
             weightShape = {E / EP_WORLD_SIZE, H, M / TP_WORLD_SIZE};
@@ -496,7 +496,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
         long long y1OutShapeSize = GetShapeSize(y1OutShape);
         long long y2OutShapeSize = GetShapeSize(y2OutShape);
         long long y3OutShapeSize = GetShapeSize(y3OutShape);
-        
+
         std::vector<int16_t> xHostData(xShapeSize, 1);
         std::vector<int16_t> weightHostData(weightShapeSize, 2);
         std::vector<int16_t> biasHostData(biasShapeSize, 3);

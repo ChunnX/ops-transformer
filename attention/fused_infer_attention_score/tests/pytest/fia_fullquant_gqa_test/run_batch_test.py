@@ -76,7 +76,7 @@ def run_case(module, case):
             print("[INFO] GOLDEN_MODE=False, skip CPU golden.")
 
         print("[INFO] NPU Running...")
-        npu_out = module.npu_fp8_full_quant(
+        npu_out, _ = module.npu_fp8_full_quant(
             q_fp8,
             k_fp8,
             v_fp8,

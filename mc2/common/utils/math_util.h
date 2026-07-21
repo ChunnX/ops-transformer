@@ -20,40 +20,47 @@
 namespace Ops {
 namespace NN {
 class MathUtil {
- public:
-  template <typename T>
-  static T CeilDivision(T num1, T num2) {
-    return Ops::Base::CeilDiv(num1, num2);
-  }
+public:
+    template <typename T>
+    static T CeilDivision(T num1, T num2)
+    {
+        return Ops::Base::CeilDiv(num1, num2);
+    }
 
-  static int64_t CeilDivision(int64_t num1, int32_t num2) {
-    return Ops::Base::CeilDiv(num1, static_cast<int64_t>(num2));
-  }
-  template <typename T>
-  static T Align(T num1, T num2) {
-    return Ops::Base::CeilAlign(num1, num2);
-  }
+    static int64_t CeilDivision(int64_t num1, int32_t num2)
+    {
+        return Ops::Base::CeilDiv(num1, static_cast<int64_t>(num2));
+    }
+    template <typename T>
+    static T Align(T num1, T num2)
+    {
+        return Ops::Base::CeilAlign(num1, num2);
+    }
 };
-}  // namespace NN
-}  // namespace Ops
+} // namespace NN
+} // namespace Ops
 
 namespace ops {
 template <typename T>
-static T CeilAlign(T num1, T num2) {
-  return Ops::Base::CeilAlign(num1, num2);
+static T CeilAlign(T num1, T num2)
+{
+    return Ops::Base::CeilAlign(num1, num2);
 }
 template <typename T>
-static T FloorAlign(T num1, T num2) {
-  return Ops::Base::FloorAlign(num1, num2);
+static T FloorAlign(T num1, T num2)
+{
+    return Ops::Base::FloorAlign(num1, num2);
 }
 template <typename T>
-static T FloorDiv(T num1, T num2) {
-  return Ops::Base::FloorDiv(num1, num2);
+static T FloorDiv(T num1, T num2)
+{
+    return Ops::Base::FloorDiv(num1, num2);
 }
 template <typename T>
-static T CeilDiv(T num1, T num2) {
-  return Ops::Base::CeilDiv(num1, num2);
+static T CeilDiv(T num1, T num2)
+{
+    return Ops::Base::CeilDiv(num1, num2);
 }
-}  // namespace ops
+} // namespace ops
 
-#endif  // OPS_BUILT_IN_OP_TILING_CUBE_UTIL_MATH_UTIL_H_
+#endif // OPS_BUILT_IN_OP_TILING_CUBE_UTIL_MATH_UTIL_H_

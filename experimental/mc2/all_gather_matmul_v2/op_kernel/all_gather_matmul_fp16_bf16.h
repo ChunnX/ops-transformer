@@ -32,22 +32,22 @@ public:
     }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM,
                                 GM_ADDR workspaceGM, GM_ADDR gatherOut,
-                                Mc2Tiling::AllGatherMatmulTilingData* tilingData,
-                                __gm__ void* mc2InitTiling, __gm__ void* mc2CcTiling, TPipe* tPipe);
+                                Mc2Tiling::AllGatherMatmulTilingData *tilingData, __gm__ void *mc2InitTiling,
+                                __gm__ void *mc2CcTiling, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void StartNotify();           // 开始通信
-    __aicore__ inline void EndNotify();             // 结束通信
-    __aicore__ inline void InnerProcessGatherMM();  // 远端
-    __aicore__ inline void InnerProcess();          // 计算本卡、远端数据
+    __aicore__ inline void StartNotify();          // 开始通信
+    __aicore__ inline void EndNotify();            // 结束通信
+    __aicore__ inline void InnerProcessGatherMM(); // 远端
+    __aicore__ inline void InnerProcess();         // 计算本卡、远端数据
     __aicore__ inline void InnerProcessLocalMM();
-    __aicore__ inline void MatmulKernelComputeGather(GM_ADDR aGM, GM_ADDR cGM, Mc2MatMulV3TilingData& tiling,
+    __aicore__ inline void MatmulKernelComputeGather(GM_ADDR aGM, GM_ADDR cGM, Mc2MatMulV3TilingData &tiling,
                                                      uint32_t count, bool isLast, bool isTail);
 
 private:
-    Mc2Tiling::AllGatherMatmulTilingData* tilingData_;
-    TPipe* tPipe_;
+    Mc2Tiling::AllGatherMatmulTilingData *tilingData_;
+    TPipe *tPipe_;
     GM_ADDR aGM_;
     GM_ADDR bGM_;
     GM_ADDR cGM_;
@@ -58,19 +58,19 @@ private:
     uint32_t rankId_;
     AscendC::HcclDataType dataType_;
     bool notifyFlag_{false};
-    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_;         // CCU模式
-    AscendC::HcclHandle hHandles_[MAX_HANDLE];  // 最大支持16个handleID
+    Hccl<HcclServerType::HCCL_SERVER_TYPE_CCU> hccl_; // CCU模式
+    AscendC::HcclHandle hHandles_[MAX_HANDLE];        // 最大支持16个handleID
 };
 
 template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::Init(
     GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR cGM, GM_ADDR contextGM, GM_ADDR workspaceGM, GM_ADDR gatherOut,
-    Mc2Tiling::AllGatherMatmulTilingData* tilingData, __gm__ void* mc2InitTiling,
-     __gm__ void* mc2CcTiling, TPipe* tPipe)
+    Mc2Tiling::AllGatherMatmulTilingData *tilingData, __gm__ void *mc2InitTiling, __gm__ void *mc2CcTiling,
+    TPipe *tPipe)
 {
     // 获取tilingdata数据
     tilingData_ = tilingData;
-    auto&& cfg = tilingData_->param;
+    auto &&cfg = tilingData_->param;
     // 获取 context
     context_ = contextGM;
     // 初始化Hccl类
@@ -85,7 +85,7 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
     bGM_ = bGM;
     cGM_ = cGM;
     biasGM_ = biasGM;
-    rankId_ = ((__gm__ HcclCombinOpParam*)context_)->rankId;
+    rankId_ = ((__gm__ HcclCombinOpParam *)context_)->rankId;
     workspaceGM_ = workspaceGM;
     gatherAddr_ = gatherOut;
 
@@ -104,7 +104,7 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::S
     if (notifyFlag_) {
         GM_ADDR sendBuff;
         GM_ADDR recvBuffer;
-        auto&& cfg = tilingData_->param;
+        auto &&cfg = tilingData_->param;
         using A_T = typename AType::T;
         uint32_t tileCnt = cfg.tileCnt;
         uint32_t tailCnt = cfg.tailCnt;
@@ -119,7 +119,8 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::S
         }
         uint64_t tileSendCount = static_cast<uint64_t>(tilingM) * static_cast<uint64_t>(tilingka);
         uint64_t tailSendCount = static_cast<uint64_t>(tailM) * static_cast<uint64_t>(tilingka);
-        uint64_t stride = (tileSendCount * static_cast<uint64_t>(tileCnt) + tailSendCount * static_cast<uint64_t>(tailCnt));
+        uint64_t stride =
+            (tileSendCount * static_cast<uint64_t>(tileCnt) + tailSendCount * static_cast<uint64_t>(tailCnt));
         uint8_t repeat = 1;
 
         // 处理主块
@@ -183,12 +184,12 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
 template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::InnerProcessLocalMM()
 {
-    auto&& tiling = tilingData_->mc2MmV3LocalTilingData;
+    auto &&tiling = tilingData_->mc2MmV3LocalTilingData;
     if (GetBlockIdx() >= tiling.tCubeTiling.usedCoreNum) {
         return;
     }
 
-    auto&& cfg = tilingData_->param;
+    auto &&cfg = tilingData_->param;
     auto aLocalGM = aGM_;
     auto cLocalGM = cGM_;
 
@@ -206,21 +207,21 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::I
 template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::InnerProcessGatherMM()
 {
-    auto&& cfg = tilingData_->param;
+    auto &&cfg = tilingData_->param;
     // 处理gather主块
     MatmulKernelComputeGather(gatherAddr_, cGM_, tilingData_->mc2MmV3TileTilingData, cfg.tileCnt,
-                                  cfg.tailM ? false : true, false);
+                              cfg.tailM ? false : true, false);
 
     if (cfg.tailM) {
         MatmulKernelComputeGather(gatherAddr_, cGM_, tilingData_->mc2MmV3TailTilingData, cfg.tailCnt, true, true);
-        }
+    }
 }
 
 template <typename AType, typename BType, typename BiasType, typename CType>
 __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::MatmulKernelComputeGather(
-    GM_ADDR aGM, GM_ADDR cGM, Mc2MatMulV3TilingData& tiling, uint32_t count, bool isLast, bool isTail)
+    GM_ADDR aGM, GM_ADDR cGM, Mc2MatMulV3TilingData &tiling, uint32_t count, bool isLast, bool isTail)
 {
-    auto&& cfg = tilingData_->param;
+    auto &&cfg = tilingData_->param;
     cfg.rankID = rankId_;
     uint32_t shift = isTail ? cfg.tileCnt : 0;
     if ((GetBlockIdx() >= tiling.tCubeTiling.usedCoreNum) || (cfg.rankN == 0)) {
@@ -240,6 +241,6 @@ __aicore__ inline void AllGatherMatmulFP16BF16<AType, BType, BiasType, CType>::M
     mmv3.End();
 }
 
-};  // namespace AllGatherMatmulImpl
+}; // namespace AllGatherMatmulImpl
 
-#endif  // ALL_GATHER_MATMUL_FP16_BF16_H
+#endif // ALL_GATHER_MATMUL_FP16_BF16_H

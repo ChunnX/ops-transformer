@@ -44,15 +44,11 @@ public:
     static constexpr uint32_t dBaseSize = CubeBlockType::dBaseSize;
     static constexpr uint32_t dVBaseSize = CubeBlockType::dVBaseSize;
 
-    static constexpr bool USE_DN = CubeBlockType::USE_DN;
-    static constexpr bool BMM2_TOUB = CubeBlockType::BMM2_TOUB;
     static constexpr bool HAS_MASK = VecFaBlockType::HAS_MASK;
-
     static constexpr uint32_t PRELOAD_N = 2; // C1 C1 C1 C2
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PRELOAD_N + 1;
 
     static constexpr bool PAGE_ATTENTION = CubeBlockType::PAGE_ATTENTION;
-    static constexpr bool HAS_ROPE = CubeBlockType::HAS_ROPE;
     static constexpr bool FLASH_DECODE = VecFaBlockType::FLASH_DECODE;
     static constexpr LayOutTypeEnum LAYOUT_Q = CubeBlockType::LAYOUT;
     static constexpr LayOutTypeEnum LAYOUT_KV = CubeBlockType::LAYOUT;
@@ -98,6 +94,8 @@ public:
     int64_t validTaskNum = 0;
     uint64_t actSeqLensKv = 0;
     uint64_t actSeqLensQ = 0;
+    uint64_t cachedS2LoopTimes = 0;
+    uint64_t cachedG1S1LoopTimes = 0;
     uint32_t curS2Start = 0;
     uint32_t curS2End = 0;
     uint32_t prevBIdx = 0;
@@ -113,14 +111,10 @@ public:
     // ==============================fuction=======================================================
     __aicore__ inline FlashAttentionNoQuantGqaKernel()
         : cubeBlock(constInfo), vecFaBlock(constInfo), vecFdBlock(constInfo){};
-    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pse,
+    __aicore__ inline void Init(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                 __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengths,
                                 __gm__ uint8_t *actualSeqLengthsKv, __gm__ uint8_t *blockTable,
-                                __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-                                __gm__ uint8_t *postQuantScale, __gm__ uint8_t *postQuantOffset,
-                                __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix,
-                                __gm__ uint8_t *actualSharedPrefixLen, __gm__ uint8_t *queryRope,
-                                __gm__ uint8_t *keyRope, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
+                                __gm__ uint8_t *queryRope, __gm__ uint8_t *keyRope, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
                                 const NoQuantTilingArch35 *__restrict tiling, TPipe *tPipe)
     {
@@ -130,8 +124,7 @@ public:
         fiaMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)fiaMetaData,
                                       NPU_AIC_CORE_NUM * FA_METADATA_SIZE + NPU_AIV_CORE_NUM * FD_METADATA_SIZE);
 
-        InitConstInfo(queryPaddingSize, kvPaddingSize, actualSharedPrefixLen);
-
+        InitConstInfo();
 
         keyPtr = key;
         valuePtr = value;
@@ -145,14 +138,14 @@ public:
         InitMMResBuf(workspace);
 
         if ASCEND_IS_AIV {
-            vecFaBlock.InitVecBlock(tPipe, pse, actualSeqLengths, actualSeqLengthsKv, postQuantScale, postQuantOffset,
-                attenMask, learnableSink, softmaxLse, attentionOut, workspace);
+            vecFaBlock.InitVecBlock(tPipe, actualSeqLengths, actualSeqLengthsKv,
+                attenMask, softmaxLse, attentionOut, workspace);
             vecFaBlock.ClearOutput();
         }
 
         if ASCEND_IS_AIC {
             cubeBlock.InitCubeBlock(tPipe, &l1BufferManager, query, key, value, blockTable, queryRope, keyRope,
-                actualSeqLengths, actualSeqLengthsKv, keySharedPrefix, valueSharedPrefix, actualSharedPrefixLen);
+                actualSeqLengths, actualSeqLengthsKv);
         }
 
         if constexpr (FLASH_DECODE) {
@@ -160,9 +153,8 @@ public:
                 vecFdBlock.InitParams();
                 vecFdBlock.InitGlobalTensor(this->vecFaBlock.softmaxFDMaxGm, this->vecFaBlock.softmaxFDSumGm,
                                             this->vecFaBlock.accumOutGm, this->vecFaBlock.attentionOutGm,
-                                            this->actualSeqLengthsGmQ, this->actualSeqLengthsGmKv, keyPtr,
-                                            postQuantScale, postQuantOffset);
-                if (constInfo.isSoftmaxLseEnable) {
+                                            this->actualSeqLengthsGmQ, this->actualSeqLengthsGmKv, keyPtr);
+                if (unlikely(constInfo.isSoftmaxLseEnable)) {
                     softmaxLseGm.SetGlobalBuffer((__gm__ float *)softmaxLse);
                     vecFdBlock.InitSoftmaxLseGm(softmaxLseGm);
                 }
@@ -178,28 +170,12 @@ public:
         l1BufferManager.Init(pipe, 524288); // 512 * 1024
         // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
         l1PBuffers.Init(l1BufferManager, mm2LeftSize);
-        if constexpr (BMM2_TOUB) {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
-            bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
-        } else {
-            ubBufferManager.Init(pipe, mm1ResultSize * 2);
-        }
+        ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize * 2);
+        bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
         bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
-
-        // GM Buffer
-        if constexpr (!BMM2_TOUB) {
-            int64_t mm2ResultSize =
-                mBaseSize * constInfo.dBasicBlock; // 使用Cube计算的总大小，Gm上的数据按照实际的dSize存储
-            int64_t prevCoreTotalOffset = constInfo.aicIdx * (PRELOAD_N + 1) * mm2ResultSize; // 3为preload次数
-            // SameB模式下V0和V1调用IterateAll的时候填写的地址相同
-            gmBufferManager.Init(workspace + prevCoreTotalOffset * sizeof(T));
-            bmm2ResGmBuffers.Init(gmBufferManager, mm2ResultSize * sizeof(T));
-            workspace = workspace + constInfo.coreNum * (PRELOAD_N + 1) * mm2ResultSize * sizeof(T);
-        }
     }
 
-    __aicore__ inline void InitConstInfo(__gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-                                         __gm__ uint8_t *actualSharedPrefixLen)
+    __aicore__ inline void InitConstInfo()
     {
         if ASCEND_IS_AIC {
             constInfo.aicIdx = GetBlockIdx();
@@ -225,14 +201,10 @@ public:
         constInfo.s2Size = fiaBaseParams.s2Size;
         constInfo.dSize = fiaBaseParams.dSize;
         constInfo.dSizeV = fiaBaseParams.dSizeV;
-        if constexpr (HAS_ROPE) {
-            constInfo.dSizeRope = fiaBaseParams.dSizeRope;
-        } else {
-            constInfo.dSizeRope = 0;
-        }
+        constInfo.dSizeRope = 0;
         constInfo.actualSeqLenSize = fiaBaseParams.actualSeqLengthsQSize;
         constInfo.actualSeqLenKVSize = fiaBaseParams.actualSeqLengthsKVSize;
-        constInfo.scaleValue = static_cast<float>(fiaBaseParams.scaleValue);
+        constInfo.scaleValue = fiaBaseParams.scaleValue;
         constInfo.coreNum = fiaBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FIA_LAYOUT>(fiaBaseParams.outputLayout);
 
@@ -325,10 +297,8 @@ public:
         if ASCEND_IS_AIV {
             bmm1Buffers.Get().SetCrossCore();
             bmm1Buffers.Get().SetCrossCore();
-            if constexpr (BMM2_TOUB) {
-                bmm2Buffers.Get().SetCrossCore();
-                bmm2Buffers.Get().SetCrossCore();
-            }
+            bmm2Buffers.Get().SetCrossCore();
+            bmm2Buffers.Get().SetCrossCore();
         }
     }
 
@@ -337,10 +307,8 @@ public:
         if ASCEND_IS_AIC {
             bmm1Buffers.Get().WaitCrossCore();
             bmm1Buffers.Get().WaitCrossCore();
-            if constexpr (BMM2_TOUB) {
-                bmm2Buffers.Get().WaitCrossCore();
-                bmm2Buffers.Get().WaitCrossCore();
-            }
+            bmm2Buffers.Get().WaitCrossCore();
+            bmm2Buffers.Get().WaitCrossCore();
         }
     }
 
@@ -417,16 +385,16 @@ public:
             prevBIdx = bIdx;
             actSeqLensKv = kvActSeqLensParser.GetActualSeqLength(bIdx);
             actSeqLensQ = qActSeqLensParser.GetActualSeqLength(bIdx);
+            cachedS2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
+            uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
+            cachedG1S1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
         }
 
         if (constInfo.enableS1OutSplit && accGS1Loops != CalcS1OutTaskIdx()) {
             return TASK_DEAL_MODE::SKIP_S1OUT;
         }
 
-        uint64_t s2LoopTimes = (actSeqLensKv + s2BaseSize - 1) / s2BaseSize;
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
-        if (s2LoopTimes == 0 || gS1LoopTimes == 0) {
+        if (cachedS2LoopTimes == 0 || cachedG1S1LoopTimes == 0) {
             if (gS1Cur == 0 && s2Cur == 0) {
                 return TASK_DEAL_MODE::DEAL_ZERO;
             }
@@ -471,14 +439,8 @@ public:
         fa_base_vector::GetSafeActToken(actSeqLensQ, actSeqLensKv, preTokenLeftUp, nextTokenLeftUp,
                                         constInfo.sparseMode);
 
-        if (constInfo.sparseMode == fa_base_vector::BAND) {
-            preTokenLeftUp = static_cast<int64_t>(actSeqLensQ) - static_cast<int64_t>(actSeqLensKv) + preTokenLeftUp;
-        }
-
-        if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL || constInfo.sparseMode == fa_base_vector::TREE) {
+        if (constInfo.sparseMode == fa_base_vector::RIGHT_DOWN_CAUSAL) {
             nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ);
-        } else if (constInfo.sparseMode == fa_base_vector::BAND) {
-            nextTokenLeftUp = static_cast<int64_t>(actSeqLensKv) - static_cast<int64_t>(actSeqLensQ) + nextTokenLeftUp;
         }
     }
 
@@ -586,11 +548,7 @@ public:
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
-        if constexpr (BMM2_TOUB) {
-            cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo);
-        } else {
-            cubeBlock.IterateBmm2(this->bmm2ResGmBuffers.Get(), this->l1PBuffers, runInfo);
-        }
+        cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1PBuffers, runInfo);
     }
 
     __aicore__ inline void ComputeVec1(RunInfoX &runInfo)
@@ -600,11 +558,7 @@ public:
 
     __aicore__ inline void ComputeVec2(RunInfoX &runInfo)
     {
-        if constexpr (BMM2_TOUB) {
-            this->vecFaBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo);
-        } else {
-            this->vecFaBlock.ProcessVec2(this->bmm2ResGmBuffers.Get(), runInfo);
-        }
+        this->vecFaBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo);
     }
 
     __aicore__ inline void EnableTask(RunInfoX &runInfo)
@@ -669,13 +623,7 @@ public:
         info.isS2SplitCore = false;
         info.faTmpOutWsPos = constInfo.coreFirstTmpOutWsPos;
         info.isLastS2Loop = (s2Cur + 1 == curS2End);
-
-        if constexpr (USE_DN) {
-            info.actMSizeAlign32 = (info.actMSize + 31) >> 5 << 5;
-            info.actVecMSize = info.actMSize <= 16 ? info.actMSize : (info.actMSizeAlign32 >> 1);
-        } else {
-            info.actVecMSize = (info.actMSize + 1) >> 1;
-        }
+        info.actVecMSize = (info.actMSize + 1) >> 1;
         info.vecMbaseIdx = 0;
         if (constInfo.subBlockIdx == 1) {
             info.vecMbaseIdx = info.actVecMSize;
@@ -795,8 +743,7 @@ public:
             return;
         }
 
-        uint64_t gS1Size = actSeqLensQ * constInfo.gSize;
-        uint64_t gS1LoopTimes = (gS1Size + mBaseSize - 1) / mBaseSize;
+        uint64_t gS1LoopTimes = cachedG1S1LoopTimes;
         if (gS1Cur + 1 < gS1LoopTimes) {
             gS1Cur++;
             return;

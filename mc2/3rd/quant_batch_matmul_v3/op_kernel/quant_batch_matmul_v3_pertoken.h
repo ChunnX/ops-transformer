@@ -27,11 +27,13 @@ namespace AscendC {
  * 2.MC2涉及接口的核函数文件（其模板.h文件请根据核函数接口进入）有：
  *  2.1 matmul_all_reduce.cpp
  */
-template <typename xType, typename wType, int fFormat, int wFormat, typename scaleType, typename yType, bool aTrans, bool bTrans,
-          bool isAllAiv = false>
+template <typename xType, typename wType, int fFormat, int wFormat, typename scaleType, typename yType, bool aTrans,
+          bool bTrans, bool isAllAiv = false>
 class BmmDequantPertoken {
 public:
-    __aicore__ inline BmmDequantPertoken() {}
+    __aicore__ inline BmmDequantPertoken()
+    {
+    }
     __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scale, GM_ADDR pertokenScale, GM_ADDR y,
                                 GM_ADDR workSpace, const Mc2QuantBatchMatmulV3TilingData *__restrict tilingData,
                                 TPipe *tPipe)
@@ -114,7 +116,7 @@ public:
 
         uint32_t divideBatchcoreNum = usedCoreNum_ / batchDim;
 
-        uint32_t mCoreIndx = (blockIdx_ % divideBatchcoreNum) % mDim;  // 必须沿着N 轴方向输出
+        uint32_t mCoreIndx = (blockIdx_ % divideBatchcoreNum) % mDim; // 必须沿着N 轴方向输出
         uint32_t nCoreIndx = (blockIdx_ % divideBatchcoreNum) / mDim;
         uint32_t batchCoreIndx = blockIdx_ / divideBatchcoreNum;
 
@@ -238,10 +240,10 @@ protected:
         m_ = tilingData->matmulTiling.M;
         n_ = tilingData->matmulTiling.N;
         k_ = tilingData->matmulTiling.Ka;
-        singleCoreM_ = tilingData->params.realSingleCoreM;    // calcM of each core
-        singleCoreN_ = tilingData->params.realSingleCoreN;    // calcN of each core
-        singleTimeM_ = tilingData->matmulTiling.singleCoreM;  // calcM of each mm iterate
-        singleTimeN_ = tilingData->matmulTiling.singleCoreN;  // calcN of each mm iterate
+        singleCoreM_ = tilingData->params.realSingleCoreM;   // calcM of each core
+        singleCoreN_ = tilingData->params.realSingleCoreN;   // calcN of each core
+        singleTimeM_ = tilingData->matmulTiling.singleCoreM; // calcM of each mm iterate
+        singleTimeN_ = tilingData->matmulTiling.singleCoreN; // calcN of each mm iterate
         singleCoreK_ = tilingData->matmulTiling.singleCoreK;
         usedCoreNum_ = tilingData->matmulTiling.usedCoreNum;
 
@@ -267,15 +269,12 @@ protected:
         } else if constexpr (AMatmulType::format == CubeFormat::NZ) {
             if constexpr (aTrans) {
                 // m1, k1, k0, m0
-                offsetA_ =
-                    DequantBmm::Align(k_, BMM_BLOCK_NUM) * DequantBmm::Align(mOffset, K0_INT8) +
-                    batchAOffset * DequantBmm::Align(k_, BMM_BLOCK_NUM) *
-                        DequantBmm::Align(m_, K0_INT8);
+                offsetA_ = DequantBmm::Align(k_, BMM_BLOCK_NUM) * DequantBmm::Align(mOffset, K0_INT8) +
+                           batchAOffset * DequantBmm::Align(k_, BMM_BLOCK_NUM) * DequantBmm::Align(m_, K0_INT8);
             } else {
                 // k1, m1, m0, k0
                 offsetA_ = DequantBmm::Align(mOffset, BMM_BLOCK_NUM) * K0_INT8 +
-                           batchAOffset * DequantBmm::Align(k_, K0_INT8) *
-                               DequantBmm::Align(m_, BMM_BLOCK_NUM);
+                           batchAOffset * DequantBmm::Align(k_, K0_INT8) * DequantBmm::Align(m_, BMM_BLOCK_NUM);
             }
         }
 
@@ -286,14 +285,11 @@ protected:
             if constexpr (bTrans) {
                 // k1, n1, n0, k0
                 offsetB_ = DequantBmm::Align(nOffset, BMM_BLOCK_NUM) * K0_INT8 +
-                           batchBOffset * DequantBmm::Align(n_, BMM_BLOCK_NUM) *
-                               DequantBmm::Align(k_, K0_INT8);
+                           batchBOffset * DequantBmm::Align(n_, BMM_BLOCK_NUM) * DequantBmm::Align(k_, K0_INT8);
             } else {
                 // n1, k1, k0, n0
-                offsetB_ =
-                    DequantBmm::Align(nOffset, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM) +
-                    batchBOffset * DequantBmm::Align(n_, K0_INT8) *
-                        DequantBmm::Align(k_, BMM_BLOCK_NUM);
+                offsetB_ = DequantBmm::Align(nOffset, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM) +
+                           batchBOffset * DequantBmm::Align(n_, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM);
             }
         }
 
@@ -335,8 +331,7 @@ protected:
                 if constexpr (bTrans) {
                     offsetB_ -= DequantBmm::Align(nOffset, BMM_BLOCK_NUM) * K0_INT8;
                 } else {
-                    offsetB_ -=
-                        DequantBmm::Align(nOffset, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM);
+                    offsetB_ -= DequantBmm::Align(nOffset, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM);
                 }
             }
             offsetBias_ -= nOffset;
@@ -355,8 +350,7 @@ protected:
             if constexpr (bTrans) {
                 offsetB_ += DequantBmm::Align(singleTimeN_, BMM_BLOCK_NUM) * K0_INT8;
             } else {
-                offsetB_ +=
-                    DequantBmm::Align(singleTimeN_, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM);
+                offsetB_ += DequantBmm::Align(singleTimeN_, K0_INT8) * DequantBmm::Align(k_, BMM_BLOCK_NUM);
             }
         }
 
@@ -375,7 +369,7 @@ protected:
         if (hasBias_ != 0 && biasDtype_ == DT_INT32) {
             mm.SetBias(biasGmInt32_[offsetBias_]);
         }
-        mm.template Iterate<false>();  // matmultiling singleTimeM_ * singleTimeN_
+        mm.template Iterate<false>(); // matmultiling singleTimeM_ * singleTimeN_
     }
 
     __aicore__ inline void BiasTensorInit(LocalTensor<float> & /* dstLocalFp32 */, LocalTensor<float> &biasFp32,
@@ -384,11 +378,11 @@ protected:
     {
         biasFp32 = biasFp32Tmp_.Get<float>();
         if (biasDtype_ == DT_BF16) {
-            oriBiasBf16 = vecQueBias_.AllocTensor<bfloat16_t>();  // free in CalBiasAdd
+            oriBiasBf16 = vecQueBias_.AllocTensor<bfloat16_t>(); // free in CalBiasAdd
         } else if (biasDtype_ == DT_FLOAT16) {
-            oriBiasFp16 = vecQueBias_.AllocTensor<half>();  // free in CalBiasAdd
+            oriBiasFp16 = vecQueBias_.AllocTensor<half>(); // free in CalBiasAdd
         } else if (biasDtype_ == DT_FLOAT) {
-            oriBiasFp32 = vecQueBias_.AllocTensor<float>();  // free in CalBiasAdd
+            oriBiasFp32 = vecQueBias_.AllocTensor<float>(); // free in CalBiasAdd
         }
     }
 
@@ -421,8 +415,8 @@ protected:
                                       LocalTensor<bfloat16_t> &oriBiasBf16, LocalTensor<half> &oriBiasFp16,
                                       LocalTensor<float> &oriBiasFp32, uint32_t curAivN, uint32_t curAivM)
     {
-        uint32_t computedAivN = DequantBmm::Align(curAivN, 8U);  // 8: 32B aligned for int32_t
-        uint32_t ubResAlignedN = DequantBmm::Align(curAivN);     // 16: sizeof(yType) is 2, 32B / 2
+        uint32_t computedAivN = DequantBmm::Align(curAivN, 8U); // 8: 32B aligned for int32_t
+        uint32_t ubResAlignedN = DequantBmm::Align(curAivN);    // 16: sizeof(yType) is 2, 32B / 2
         AscendC::PipeBarrier<PIPE_V>();
         if (biasDtype_ == DT_BF16) {
             Cast(biasFp32, oriBiasBf16, RoundMode::CAST_NONE, ubResAlignedN);
@@ -497,8 +491,8 @@ protected:
             scale2UbParams.blockLen = curAivM * sizeof(float);
             uint64_t scaleOffset = offsetPertokenScale_ + mUbLoopIdx * ubCalcM_ + baseMOfffset / n_;
 
-            uint32_t computedAivN = DequantBmm::Align(curAivN, 8U);  // 8: 32B aligned for float
-            uint32_t ubResAlignedN = DequantBmm::Align(curAivN);     // 16: sizeof(yType) is 2, 32B / 2
+            uint32_t computedAivN = DequantBmm::Align(curAivN, 8U); // 8: 32B aligned for float
+            uint32_t ubResAlignedN = DequantBmm::Align(curAivN);    // 16: sizeof(yType) is 2, 32B / 2
             const uint32_t broadCastDst[M_N_TWO_DIMS] = {curAivM, computedAivN};
             const uint32_t broadCastSrc[M_N_TWO_DIMS] = {curAivM, 1};
 
@@ -596,6 +590,6 @@ protected:
         mm.End();
     }
 };
-}  // namespace AscendC
+} // namespace AscendC
 
-#endif  // QUANT_BATCH_MATMUL_V3_PERTOKEN_H
+#endif // QUANT_BATCH_MATMUL_V3_PERTOKEN_H

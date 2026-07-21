@@ -24,25 +24,10 @@
 namespace Catlass::Gemm::Block {
 ////////////////////////////////////////////////////////////////////
 
-template <
-    class L1TileShape_,
-    class L0TileShape_,
-    class AType_,
-    class BType_,
-    class CType_,
-    class BiasType_,
-    class TileCopy_,
-    class TileMmad_>
-struct BlockMmad<
-    MmadAtlasA2MLAPVTp1Spec,
-    L1TileShape_,
-    L0TileShape_,
-    AType_,
-    BType_,
-    CType_,
-    BiasType_,
-    TileCopy_,
-    TileMmad_> {
+template <class L1TileShape_, class L0TileShape_, class AType_, class BType_, class CType_, class BiasType_,
+          class TileCopy_, class TileMmad_>
+struct BlockMmad<MmadAtlasA2MLAPVTp1Spec, L1TileShape_, L0TileShape_, AType_, BType_, CType_, BiasType_, TileCopy_,
+                 TileMmad_> {
 public:
     // Type Aliases
     using DispatchPolicy = MmadAtlasA2MLAPV;
@@ -104,7 +89,9 @@ public:
 
     /// Destructor
     CATLASS_DEVICE
-    ~BlockMmad() {}
+    ~BlockMmad()
+    {
+    }
 
     /// Perform a block-scoped matrix multiply-accumulate
     CATLASS_DEVICE
@@ -214,6 +201,6 @@ protected:
 
 ////////////////////////////////////////////////////////////////////
 
-} // namespace Catlass::Gemm::block
+} // namespace Catlass::Gemm::Block
 
 #endif // CATLASS_GEMM_BLOCK_BLOCK_MMAD_MLA_PV_TP1_SPEC_HPP

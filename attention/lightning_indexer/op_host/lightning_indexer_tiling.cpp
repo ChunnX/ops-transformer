@@ -360,11 +360,13 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
 {
     if (kLayout_ == DataLayout::BnBsND) {
         OP_CHECK_IF(opParamInfo_.blockTable.tensor == nullptr,
-                   OP_LOGE_WITH_INVALID_INPUT(opName_, "block_table"),
-                   return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "block_table",
+                "when layout_key is PA_BSND, input block_table must not be null"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             opParamInfo_.actualSeqLengths.tensor == nullptr,
-            OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_key"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actual_seq_lengths_key",
+                "when layout_key is PA_BSND, input actual_seq_lengths_key must not be null"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(opParamInfo_.blockTable.desc->GetDataType() != ge::DT_INT32,
                     OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "block_table",
@@ -372,7 +374,8 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
                         "The dtype of block_table must be int32"), return ge::GRAPH_FAILED);
     } else if (kLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor == nullptr,
-                   OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_key"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actual_seq_lengths_key",
+                "when layout_key is TND, input actual_seq_lengths_key must not be null"),
                    return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengths.tensor != nullptr &&
@@ -383,7 +386,8 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
                 return ge::GRAPH_FAILED);
     if (qLayout_ == DataLayout::TND) {
         OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor == nullptr,
-                    OP_LOGE_WITH_INVALID_INPUT(opName_, "actual_seq_lengths_query"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "actual_seq_lengths_query",
+                "when layout_query is TND, input actual_seq_lengths_query must not be null"),
                     return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(opParamInfo_.actualSeqLengthsQ.tensor != nullptr &&
@@ -393,7 +397,8 @@ ge::graphStatus LIInfoParser::GetAndCheckOptionalInput()
                     "The dtype of actual_seq_lengths_query must be int32"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(kLayout_ != DataLayout::BnBsND && opParamInfo_.blockTable.tensor != nullptr,
-                   OP_LOGE_WITH_INVALID_INPUT(opName_, "block_table"),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "block_table",
+                "when key layout is not PA_BSND, input block_table must be null"),
                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }

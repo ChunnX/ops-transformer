@@ -45,40 +45,40 @@
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatchGetWorkspaceSize(
-    const aclTensor* x, 
-    const aclTensor* expertIds, 
-    const aclTensor* scales, 
-    const aclTensor* xActiveMask, 
-    const aclTensor* expertScales, 
-    const char*      groupEp, 
-    int64_t          epWorldSize, 
-    int64_t          epRankId, 
-    int64_t          moeExpertNum, 
-    const char*      groupTp, 
-    int64_t          tpWorldSize, 
-    int64_t          tpRankId, 
-    int64_t          expertShardType, 
-    int64_t          sharedExpertNum, 
-    int64_t          sharedExpertRankNum, 
-    int64_t          quantMode, 
-    int64_t          globalBS, 
-    int64_t          expertTokenNumsType, 
-    aclTensor*       expandX, 
-    aclTensor*       dynamicScales, 
-    aclTensor*       expandIdx, 
-    aclTensor*       expertTokenNums, 
-    aclTensor*       epRecvCounts, 
-    aclTensor*       tpRecvCounts, 
-    aclTensor*       expandScales, 
-    uint64_t*        workspaceSize, 
+    const aclTensor* x,
+    const aclTensor* expertIds,
+    const aclTensor* scales,
+    const aclTensor* xActiveMask,
+    const aclTensor* expertScales,
+    const char*      groupEp,
+    int64_t          epWorldSize,
+    int64_t          epRankId,
+    int64_t          moeExpertNum,
+    const char*      groupTp,
+    int64_t          tpWorldSize,
+    int64_t          tpRankId,
+    int64_t          expertShardType,
+    int64_t          sharedExpertNum,
+    int64_t          sharedExpertRankNum,
+    int64_t          quantMode,
+    int64_t          globalBS,
+    int64_t          expertTokenNumsType,
+    aclTensor*       expandX,
+    aclTensor*       dynamicScales,
+    aclTensor*       expandIdx,
+    aclTensor*       expertTokenNums,
+    aclTensor*       epRecvCounts,
+    aclTensor*       tpRecvCounts,
+    aclTensor*       expandScales,
+    uint64_t*        workspaceSize,
     aclOpExecutor**  executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeDistributeDispatch(
-    void            *workspace, 
-    uint64_t        workspaceSize, 
-    aclOpExecutor   *executor, 
+    void            *workspace,
+    uint64_t        workspaceSize,
+    aclOpExecutor   *executor,
     aclrtStream     stream)
 ```
 
@@ -92,7 +92,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
     <col style="width: 300px">
     <col style="width: 330px">
     <col style="width: 212px">
-    <col style="width: 100px"> 
+    <col style="width: 100px">
     <col style="width: 190px">
     <col style="width: 145px">
     </colgroup>
@@ -402,7 +402,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -439,11 +439,11 @@ aclnnStatus aclnnMoeDistributeDispatch(
     </tr>
     </tbody>
     </table>
-​    
+
 ## aclnnMoeDistributeDispatch
 
 - **参数说明：**
-    
+
     <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
     <col style="width: 168px">
     <col style="width: 128px">
@@ -496,8 +496,8 @@ aclnnStatus aclnnMoeDistributeDispatch(
 
 - 参数说明里shape格式说明：
     - `A`：表示本卡可能接收的最大token数量，取值范围如下：
-        - 对于共享专家，要满足`A` = `BS` * `epWorldSize` * `sharedExpertNum` / `sharedExpertRankNum。`
-        - 对于MoE专家，当`globalBS`为0时，要满足`A` >= `BS` * `epWorldSize` * min(`localExpertNum`, `K`)；当`globalBS`非0时，要满足`A` >= `globalBS` * min(`localExpertNum`, `K`)。
+        - 对于共享专家，要满足`A` = `BS` \* `epWorldSize` \* `sharedExpertNum` / `sharedExpertRankNum。`
+        - 对于MoE专家，当`globalBS`为0时，要满足`A` >= `BS` \* `epWorldSize` \* min(`localExpertNum`, `K`)；当`globalBS`非0时，要满足`A` >= `globalBS` \* min(`localExpertNum`, `K`)。
     - `localExpertNum`：表示本卡专家数量。
         - 对于共享专家卡，`localExpertNum` = 1
         - 对于MoE专家卡，`localExpertNum` = `moeExpertNum` / (`epWorldSize` - `sharedExpertRankNum`)`；当前版本不支持TP域通信。
@@ -517,8 +517,8 @@ aclnnStatus aclnnMoeDistributeDispatch(
         - `H`：表示hidden size隐藏层大小，取值范围(0, 7168]，且保证是32的整数倍。
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 256]。
         - `K`：表示选取topK个专家，需满足0 < `K` ≤ moeExpertNum，取值范围为[1, 16]。
-    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2 * (`BS` * `epWorldSize` * min(`localExpertNum`, `K`) * `H` * sizeof(uint16) + 2MB)。
-    - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0可以减少跨机通信数据量，可能提升算子性能。此时，要求`HCCL_BUFFSIZE` >= `moeExpertNum` * `BS` * (`H` * sizeof(dtypeX) + 4 * ((`K` + 7) / 8 * 8) * sizeof(uint32)) + 4MB + 100MB。并且，对于入参`moeExpertNum`，只要求`moeExpertNum` % `epWorldSize` = 0，不要求`moeExpertNum` / `epWorldSize` <= 24，但不支持`scales`特性。
+    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2 \* (`BS` \* `epWorldSize` \* min(`localExpertNum`, `K`) \* `H` \* sizeof(uint16) + 2MB)。
+    - `HCCL_INTRA_PCIE_ENABLE`和`HCCL_INTRA_ROCE_ENABLE`：设置环境变量`HCCL_INTRA_PCIE_ENABLE` = 1和`HCCL_INTRA_ROCE_ENABLE` = 0可以减少跨机通信数据量，可能提升算子性能。此时，要求`HCCL_BUFFSIZE` >= `moeExpertNum` \* `BS` \* (`H` \* sizeof(dtypeX) + 4 \* ((`K` + 7) / 8 \* 8) \* sizeof(uint32)) + 4MB + 100MB。并且，对于入参`moeExpertNum`，只要求`moeExpertNum` % `epWorldSize` = 0，不要求`moeExpertNum` / `epWorldSize` <= 24，但不支持`scales`特性。
     - `epWorldSize`：取值支持16、32、64。
     - `quantMode`相关约束：
         - `quantMode`取值为2时，表示pertoken动态量化场景，`expandX`的数据类型支持`INT8`。
@@ -533,7 +533,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
         - `K`：表示选取topK个专家，需满足0 < `K` ≤ moeExpertNum，取值范围为[1, 8]。
     - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB。
-        - ep通信域内：要求 >= 2且满足1024 ^ 2 * (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` * 2 * (`H` + 128) * (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
+        - ep通信域内：要求 >= 2且满足1024 ^ 2 \* (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` \* 2 \* (`H` + 128) \* (`epWorldSize` \* `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
         - tp通信域内：预留参数，当前版本不支持。
     - `epWorldSize`：取值支持8、16、32、64、128、144、256、288。
     - `quantMode`相关约束：
@@ -548,7 +548,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         - `BS`：表示batch sequence size，即本卡最终输出的token数量，取值范围为[1, 512]。
         - `K`：表示选取topK个专家，取值范围为[1, 8]，且需要满足0 < `K` ≤ moeExpertNum。
     - `epWorldSize`：取值支持2、4、8、16、32、64、128、144、256、288。
-    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 * (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` * 2 * (`H` + 128) * (`epWorldSize` * `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
+    - `HCCL_BUFFSIZE`：调用本算子前需检查`HCCL_BUFFSIZE`环境变量取值是否合理，该环境变量表示单个通信域占用内存大小，单位MB，不配置时默认为200MB，要求 >= 2且满足1024 ^ 2 \* (`HCCL_BUFFSIZE` - 2) / 2 >= `BS` \* 2 \* (`H` + 128) \* (`epWorldSize` \* `localExpertNum` + `K` + 1)，`localExpertNum`需使用MoE专家卡的本卡专家数。
     - `quantMode`相关约束：
         - `quantMode`取值为0时，表示非量化场景，`expandX`的数据类型支持`FLOAT16`、`BFLOAT16`。
             - `expandX`的数据类型为`FLOAT16`、`BFLOAT16`时，输入`scales`必须传入空指针。
@@ -560,17 +560,17 @@ aclnnStatus aclnnMoeDistributeDispatch(
 ## 调用示例
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-  
+
     - 文件准备：
-      
+
         1. 按照下方指导创建rank_table_m2.json文件并修改。
-        
+
         2. 将项目拷贝到两台服务器中，并根据机器的device ip配置rank_table_m2.json文件内容。注意两机rank_table_m2.json文件保持一致。
-        
+
         3. 安装cann包并参考下方指导编译运行。
 
     - 关于rankTable:
-    
+
         1. 开发者可以通过ranktable文件配置参与集合通信的NPU资源信息，详细配置请参考[《集合通信用户指南》](https://hiascend.com/document/redirect/CannCommercialHcclUg)中“通信功能开发>集群信息配置>ranktable文件配置资源信息”。
 
         2. 使用`cat /etc/hccn.conf`或者`for i in seq 0 7; do echo "===================> dev$i, NPU$((i+1))"; hccn_tool -i $i -ip -g; done`查询机器的device ip。然后参考集合通信文档填写json文件。
@@ -588,7 +588,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以两机16卡为例，将两台机器设置为16
         export ENV_DEV_NUM=16
         ```
-    
+
     - 机器数量设置：
         两机16卡场景中，需将参数MACHINE_NUM设置为2，即
 
@@ -597,19 +597,22 @@ aclnnStatus aclnnMoeDistributeDispatch(
         ```
 
         单机16卡场景则无需修改。
-        
+
     - 算子编译执行：
         在所有机器上编译算子，算子编译命令如下，moe_distribute_dispatch和moe_distribute_combine算子都需要编译，这两个算子需要成对执行：
+
         ```bash
         bash build.sh --pkg --soc=ascend910b --ops=moe_distribute_dispatch,moe_distribute_combine
         ```
 
         在所有机器上执行算子示例（两机场景中，需要同时在终端执行算子），执行命令如下：
+
         ```bash
         bash build.sh --run_example --ops=moe_distribute_dispatch eager cust
+        ```
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
-  
+
     - 环境变量配置：
 
         ```bash
@@ -687,7 +690,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
             strides[i] = shape[i + 1] * strides[i + 1];
         }
         *tensor = aclCreateTensor(
-            shape.data(), shape.size(), dataType, strides.data(), 0, 
+            shape.data(), shape.size(), dataType, strides.data(), 0,
             aclFormat::ACL_FORMAT_ND, shape.data(), shape.size(), *deviceAddr
         );
         return 0;
@@ -716,11 +719,11 @@ aclnnStatus aclnnMoeDistributeDispatch(
         if (!rank_table_file && !first_rank_id) {
             sharedExpertNum = 1;
             sharedExpertRankNum = 1;
-        } 
+        }
         if (rank_table_file && !first_rank_id) {
             sharedExpertNum = 1;
             sharedExpertRankNum = 0;
-        } 
+        }
         int64_t moeExpertNum = EP_WORLD_SIZE - sharedExpertRankNum;
         int64_t quantMode = 0;
         int64_t globalBS = BS * EP_WORLD_SIZE;
@@ -734,7 +737,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
             // 共享专家卡
             localExpertNum = 1;
             A = globalBS / sharedExpertRankNum;
-        } else { 
+        } else {
             // Moe专家卡
             localExpertNum = moeExpertNum / (EP_WORLD_SIZE - sharedExpertRankNum);
             A = globalBS * (localExpertNum < K ? localExpertNum : K);
@@ -765,7 +768,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         aclTensor *epRecvCounts = nullptr;
         aclTensor *tpRecvCounts = nullptr;
         aclTensor *expandScales = nullptr;
-        
+
         // 定义当前场景下各变量维度
         std::vector<int64_t> xShape{BS, H};
         std::vector<int64_t> expertIdsShape{BS, K};
@@ -833,7 +836,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         ret = CreateAclTensor(expandScalesHostData, expandScalesShape, &expandScalesDeviceAddr, aclDataType::ACL_FLOAT, &expandScales);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
-        
+
         /* 声明算子执行必需变量 */
         uint64_t dispatchWorkspaceSize = 0;
         aclOpExecutor *dispatchExecutor = nullptr;
@@ -841,14 +844,14 @@ aclnnStatus aclnnMoeDistributeDispatch(
 
         uint64_t combineWorkspaceSize = 0;
         aclOpExecutor *combineExecutor = nullptr;
-        void *combineWorkspaceAddr = nullptr;   
+        void *combineWorkspaceAddr = nullptr;
 
         /* 依次执行dispatch及combine算子 */
         // 调用dispatch算子第一阶段接口
         ret = aclnnMoeDistributeDispatchGetWorkspaceSize(
-            x, expertIds, 
-            (quantMode > 0 ? scales : nullptr), nullptr, 
-            expertScales, 
+            x, expertIds,
+            (quantMode > 0 ? scales : nullptr), nullptr,
+            expertScales,
             hcomEpName, EP_WORLD_SIZE, args.epRankId,
             moeExpertNum, "", 0,
             0, expertShardType, sharedExpertNum,
@@ -900,7 +903,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.combineStream, 10000);
         CHECK_RET(
-            ret == ACL_SUCCESS, 
+            ret == ACL_SUCCESS,
             LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d\n", ret); return ret
         );
 
@@ -919,7 +922,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         if (expertIds != nullptr) {
             aclDestroyTensor(expertIds);
         }
-        if (scales != nullptr) {                
+        if (scales != nullptr) {
             aclDestroyTensor(scales);
         }
         if (expertScales != nullptr) {
@@ -928,13 +931,13 @@ aclnnStatus aclnnMoeDistributeDispatch(
         if (expandX != nullptr) {
             aclDestroyTensor(expandX);
         }
-        if (dynamicScales != nullptr) {  
+        if (dynamicScales != nullptr) {
             aclDestroyTensor(dynamicScales);
         }
         if (expandIdx != nullptr) {
             aclDestroyTensor(expandIdx);
         }
-        if (expertTokenNums != nullptr) {     
+        if (expertTokenNums != nullptr) {
             aclDestroyTensor(expertTokenNums);
         }
         if (epRecvCounts != nullptr) {
@@ -943,7 +946,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         if (tpRecvCounts != nullptr) {
             aclDestroyTensor(tpRecvCounts);
         }
-        if (expandScales != nullptr) {         
+        if (expandScales != nullptr) {
             aclDestroyTensor(expandScales);
         }
         if (xDeviceAddr != nullptr) {
@@ -985,7 +988,7 @@ aclnnStatus aclnnMoeDistributeDispatch(
         aclrtDestroyStream(args.combineStream);
         aclrtDestroyContext(args.context);
         aclrtResetDevice(args.rankId);
-        
+
         return 0;
     }
 

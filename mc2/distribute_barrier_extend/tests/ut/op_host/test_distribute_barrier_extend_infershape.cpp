@@ -31,22 +31,13 @@ TEST_F(DistributeBarrierExtendInfershape, InferShape0)
     gert::StorageShape contextShape = {{1, 2052}, {1, 2052}};
     gert::StorageShape xRefShape = {{32, 7168}, {}};
 
-    gert::InfershapeContextPara infershapeContextPara("DistributeBarrierExtend",
-        {
-            {contextShape, ge::DT_INT32, ge::FORMAT_ND},
-            {xRefShape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
-            {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+    gert::InfershapeContextPara infershapeContextPara(
+        "DistributeBarrierExtend",
+        {{contextShape, ge::DT_INT32, ge::FORMAT_ND}, {xRefShape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("")},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(288)}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{32, 7168}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);

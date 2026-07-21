@@ -31,10 +31,10 @@ namespace matmulReduceScatterV2_util {
 
 #define DEQUANT_ARGS_FUN()                                                                                             \
     uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale,              \
-        __gm__ int32_t *workspace, GM_ADDR peerMem, GM_ADDR output, GM_ADDR biasptr, uint32_t tileM0,                  \
-        uint32_t tileN0, uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount, uint32_t coreIdx,               \
-        uint32_t coreNum, uint32_t rankIdx, uint32_t rankSize, uint32_t calIdx,                                        \
-        Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false
+        __gm__ int32_t *workspace, GM_ADDR peerMem, GM_ADDR output, GM_ADDR biasptr, uint32_t tileM0, uint32_t tileN0, \
+        uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount, uint32_t coreIdx, uint32_t coreNum,              \
+        uint32_t rankIdx, uint32_t rankSize, uint32_t calIdx, Arch::Resource<Arch::AtlasA2> resource,                  \
+        bool needPerChannel = false, bool needPerToken = false
 
 constexpr int32_t MAX_BLOCK_COUNT = 2;
 constexpr int32_t MAX_BLOCK_COUNT_SM = 4;
@@ -102,7 +102,7 @@ __aicore__ inline int32_t CeilDev(int32_t num, int32_t div)
 }
 
 __aicore__ inline void GetSwizzledBlockIdx(int32_t loop_idx, int32_t m_loop, int32_t n_loop, int32_t swizzl_direction,
-                                   int32_t swizzl_count, int64_t &m_idx, int64_t &n_idx)
+                                           int32_t swizzl_count, int64_t &m_idx, int64_t &n_idx)
 {
     uint32_t in_batch_idx = loop_idx % (m_loop * n_loop);
     if (swizzl_direction == 0) { // Zn
@@ -469,8 +469,7 @@ private:
     int32_t m_n_max;
 
 public:
-    __aicore__ explicit CommColumnSplitter(int32_t batchSize, int32_t unitBlocksM, int32_t unitBlocksN,
-                                                   int32_t n_max)
+    __aicore__ explicit CommColumnSplitter(int32_t batchSize, int32_t unitBlocksM, int32_t unitBlocksN, int32_t n_max)
         : m_batchSize(batchSize), m_unitBlocksM(unitBlocksM), m_unitBlocksN(unitBlocksN),
           m_totalUnitBlocks(unitBlocksM * unitBlocksN), m_n_max(n_max)
     {

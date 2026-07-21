@@ -597,6 +597,8 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         </tbody>
     </table>
 
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：暂不支持sequsedQOptional、sequsedOriKvOptional、sequsedCmpKvOptional、oriTopkLengthOptional、cmpTopkLengthOptional、metadataOptional字段。
+
 - **返回值：**
 
   返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -683,7 +685,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 ## 约束说明
 
 - 确定性计算：
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：aclnnSparseFlashMlaGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：aclnnSparseFlashMlaGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
 
     - <term>Ascend 950PR/Ascend 950DT</term>：aclnnSparseFlashMlaGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 - 公共约束
@@ -771,12 +773,12 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 
   - 参数cmpMaskMode的支持情况:
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：cmpMaskMode支持3。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：cmpMaskMode支持3。
     - <term>Ascend 950PR/Ascend 950DT</term>：cmpMaskMode支持0、3。
 
   - 参数oriMaskMode的支持情况:
 
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：oriMaskMode支持4。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：oriMaskMode支持4。
     - <term>Ascend 950PR/Ascend 950DT</term>：oriMaskMode支持0、3、4。
 
 ## 调用示例

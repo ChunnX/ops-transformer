@@ -14,25 +14,14 @@
 #include "../../catlass.hpp"
 namespace Catlass::Gemm::Tile {
 
-template <
-    class ArchTag,
-    class TensorSrc,
-    class TensorDst,
-    class Enable = void
->
+template <class ArchTag, class TensorSrc, class TensorDst, class Enable = void>
 struct TileCopyTla {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported TileCopyTla, can not find the specialization.");
 };
 
 // Extended template for TileCopyTla that supports manually specifying LayoutTagSrc and LayoutTagDst.
 // Users can specialize the copy class by LayoutTagSrc and LayoutTagDst.
-template <
-    class ArchTag,
-    class TensorSrc,
-    class TensorDst,
-    class LayoutTagSrc,
-    class LayoutTagDst
->
+template <class ArchTag, class TensorSrc, class TensorDst, class LayoutTagSrc, class LayoutTagDst>
 struct TileCopyTlaExt {
     static_assert(DEPENDENT_FALSE<ArchTag>, "Unsupported TileCopyTlaExt, can not find the specialization.");
 };
@@ -59,8 +48,7 @@ template <
     /// GemmType type for C matrix operand
     class CType,
     /// GemmType type for Bias operand
-    class BiasType = void
->
+    class BiasType = void>
 struct TileCopy {
     using ElementA = typename AType::Element;
     using ElementB = typename BType::Element;
@@ -69,26 +57,20 @@ struct TileCopy {
 
     using CopyGmToL1A = Gemm::Tile::CopyGmToL1<ArchTag, AType>;
     using CopyGmToL1B = Gemm::Tile::CopyGmToL1<ArchTag, BType>;
-    using CopyL1ToL0A = Gemm::Tile::CopyL1ToL0A<
-        ArchTag, typename helper::L1ATypeSelector<AType>::L1AType>;
-    using CopyL1ToL0B = Gemm::Tile::CopyL1ToL0B<
-        ArchTag, typename helper::L1BTypeSelector<BType>::L1BType>;
+    using CopyL1ToL0A = Gemm::Tile::CopyL1ToL0A<ArchTag, typename helper::L1ATypeSelector<AType>::L1AType>;
+    using CopyL1ToL0B = Gemm::Tile::CopyL1ToL0B<ArchTag, typename helper::L1BTypeSelector<BType>::L1BType>;
     using CopyL0CToGm = Gemm::Tile::CopyL0CToGm<ArchTag, ElementAccumulator, CType>;
     using BiasTypeSelector = helper::L1BiasTypeSelector<BiasType, ElementAccumulator>;
-    using CopyGmToL1Bias = std::conditional_t<std::is_same_v<BiasType, void>,
-        void,
-        Gemm::Tile::CopyGmToL1<ArchTag,
-            typename BiasTypeSelector::GMBiasType,
-            typename BiasTypeSelector::L1BiasType>>;
-    using CopyL1ToBT = std::conditional_t<std::is_same_v<BiasType, void>,
-        void,
-        Gemm::Tile::CopyL1ToBT<ArchTag,
-            typename BiasTypeSelector::L1BiasType,
-            typename BiasTypeSelector::L0BiasType>>;
+    using CopyGmToL1Bias = std::conditional_t<
+        std::is_same_v<BiasType, void>, void,
+        Gemm::Tile::CopyGmToL1<ArchTag, typename BiasTypeSelector::GMBiasType, typename BiasTypeSelector::L1BiasType>>;
+    using CopyL1ToBT = std::conditional_t<
+        std::is_same_v<BiasType, void>, void,
+        Gemm::Tile::CopyL1ToBT<ArchTag, typename BiasTypeSelector::L1BiasType, typename BiasTypeSelector::L0BiasType>>;
 };
 
 ///////////////////////////////////
-/// new add 
+/// new add
 template <
     /// Tag indicating architecture
     class ArchTag,
@@ -99,8 +81,7 @@ template <
     /// GemmType type for C matrix operand
     class CType,
     /// GemmTpe type for Bias operand
-    class BiasType = void
->
+    class BiasType = void>
 struct TileCopyGemm {
     using ElementA = typename AType::Element;
     using ElementB = typename BType::Element;
@@ -112,7 +93,7 @@ struct TileCopyGemm {
     using L0AType = typename Gemm::helper::L1AndL0TypeSelectorGemm<AType, BType>::L0AType;
     using L0BType = typename Gemm::helper::L1AndL0TypeSelectorGemm<AType, BType>::L0BType;
 
-    using CopyGmToL1A = Gemm::Tile::CopyGmToL1<ArchTag, AType, L1AType>;    
+    using CopyGmToL1A = Gemm::Tile::CopyGmToL1<ArchTag, AType, L1AType>;
     using CopyGmToL1B = Gemm::Tile::CopyGmToL1<ArchTag, BType, L1BType>;
     using CopyL1ToL0A = Gemm::Tile::CopyL1ToL0A<ArchTag, L1AType, L0AType>;
     using CopyL1ToL0B = Gemm::Tile::CopyL1ToL0B<ArchTag, L1BType, L0BType>;

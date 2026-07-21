@@ -185,7 +185,7 @@ function build() {
         -DENABLE_AICPU_KERNEL=${ENABLE_AICPU_KERNEL}  \
         -DENABLE_OOM=${ENABLE_OOM} \
         -DASCEND_MODULE_NAME=${ASCEND_MODULE_NAME}
-        
+
     make ${JOB_NUM} prepare_build
 }
 

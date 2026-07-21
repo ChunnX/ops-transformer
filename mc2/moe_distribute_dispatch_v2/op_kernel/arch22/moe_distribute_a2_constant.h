@@ -81,16 +81,13 @@ constexpr static uint64_t ADUMP_DATA_ADDR_START = 768 * 1024UL;
 constexpr static uint64_t ADUMP_STATUS_DISPATCH_ADDR = 0UL;
 constexpr static uint64_t ADUMP_STATUS_COMBINE_ADDR = 64 * 1024UL;
 constexpr static uint64_t ADUMP_DATA_DISPATCH_ADDR_START = ADUMP_DATA_ADDR_START;
-constexpr static uint64_t ADUMP_DATA_COMBINE_ADDR_START = ADUMP_DATA_ADDR_START +
-                                                          ADUMP_DATA_SIZE;
-constexpr static uint64_t BATCH_WRITE_ITEM_OFFSET = ADUMP_DATA_ADDR_START +
-                                                    ADUMP_DATA_SIZE * 2UL;
+constexpr static uint64_t ADUMP_DATA_COMBINE_ADDR_START = ADUMP_DATA_ADDR_START + ADUMP_DATA_SIZE;
+constexpr static uint64_t BATCH_WRITE_ITEM_OFFSET = ADUMP_DATA_ADDR_START + ADUMP_DATA_SIZE * 2UL;
 constexpr static uint64_t ADUMP_WIN_SIZE = 1024 * 1024UL;
-constexpr static uint64_t FULLMESH_BUFFERID_ADDR = ADUMP_WIN_SIZE -
-                                                   WIN_ADDR_ALIGN;
+constexpr static uint64_t FULLMESH_BUFFERID_ADDR = ADUMP_WIN_SIZE - WIN_ADDR_ALIGN;
 constexpr static int32_t DUMP_FLAG_VALUE = 0xFFFFFFFF;
 constexpr static int64_t TIMEOUT = 1000000 * 60 * 1; // 1 mins
-}
+} // namespace Mc2A2Kernel
 
 
 #endif

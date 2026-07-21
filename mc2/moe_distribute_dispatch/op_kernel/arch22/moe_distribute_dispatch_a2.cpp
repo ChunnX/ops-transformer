@@ -25,11 +25,12 @@ using namespace MoeDistributeDispatchA2Impl;
 using namespace Mc2Tiling;
 using namespace AscendC;
 
-template<uint8_t QuantMode, bool ScaleMode, uint8_t FullMesh, uint8_t CommMode, uint8_t ArchTag>
-__global__ __aicore__ void moe_distribute_dispatch(
-    GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask, GM_ADDR expertScales, GM_ADDR expandXOut,
-    GM_ADDR dynamicScalesOut, GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut, GM_ADDR epSendCountsOut,
-    GM_ADDR tpSendCountsOut, GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+template <uint8_t QuantMode, bool ScaleMode, uint8_t FullMesh, uint8_t CommMode, uint8_t ArchTag>
+__global__ __aicore__ void moe_distribute_dispatch(GM_ADDR x, GM_ADDR expertIds, GM_ADDR scales, GM_ADDR xActiveMask,
+                                                   GM_ADDR expertScales, GM_ADDR expandXOut, GM_ADDR dynamicScalesOut,
+                                                   GM_ADDR expandIdxOut, GM_ADDR expertTokenNumsOut,
+                                                   GM_ADDR epSendCountsOut, GM_ADDR tpSendCountsOut,
+                                                   GM_ADDR expandScalesOut, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
     REGISTER_TILING_DEFAULT(MoeDistributeDispatchA2TilingData);
     GET_TILING_DATA_WITH_STRUCT(MoeDistributeDispatchA2TilingData, tilingData, tilingGM);
@@ -45,8 +46,8 @@ __global__ __aicore__ void moe_distribute_dispatch(
         DataplaneMode dataplaneMode = GetDataplaneMode(contextGM0);
         if (dataplaneMode == DataplaneMode::AICPU) {
             MoeDistributeDispatchA2LayeredAicpu<DTYPE_X, DTYPE_EXPAND_X, false, false, false> op;
-            op.Init(x, expertIds, scales, expertScales, expandXOut, dynamicScalesOut, expandIdxOut,
-                    expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, &pipe, tilingGM, contextGM0);
+            op.Init(x, expertIds, scales, expertScales, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut,
+                    epSendCountsOut, expandScalesOut, workspaceGM, &pipe, tilingGM, contextGM0);
             op.Process();
         } else if (dataplaneMode == DataplaneMode::AIV) {
             MoeDistributeDispatchA2Layered<DTYPE_X, DTYPE_EXPAND_X, false, false, false> op;
@@ -66,14 +67,13 @@ __global__ __aicore__ void moe_distribute_dispatch(
         op.Init(x, expertIds, scales, xActiveMask, nullptr, expandXOut, dynamicScalesOut, expandIdxOut,
                 expertTokenNumsOut, epSendCountsOut, workspaceGM, &pipe, tilingGM);
         op.Process();
-    } else if constexpr ((ArchTag == TILINGKEY_TPL_A2) &&
-                        (CommMode == TILINGKEY_TPL_AICPU) && (ScaleMode == false)) {
+    } else if constexpr ((ArchTag == TILINGKEY_TPL_A2) && (CommMode == TILINGKEY_TPL_AICPU) && (ScaleMode == false)) {
         GM_ADDR contextGM0 = AscendC::GetHcclContext<HCCL_GROUP_ID_0>();
         DataplaneMode dataplaneMode = GetDataplaneMode(contextGM0);
         if (dataplaneMode == DataplaneMode::AICPU) {
             MoeDistributeDispatchA2LayeredAicpu<DTYPE_X, DTYPE_EXPAND_X, false, true, false> op;
-            op.Init(x, expertIds, scales, expertScales, expandXOut, dynamicScalesOut, expandIdxOut,
-                    expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, &pipe, tilingGM, contextGM0);
+            op.Init(x, expertIds, scales, expertScales, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut,
+                    epSendCountsOut, expandScalesOut, workspaceGM, &pipe, tilingGM, contextGM0);
             op.Process();
         } else if (dataplaneMode == DataplaneMode::AIV) {
             MoeDistributeDispatchA2Layered<DTYPE_X, DTYPE_EXPAND_X, false, true, false> op;
@@ -86,8 +86,8 @@ __global__ __aicore__ void moe_distribute_dispatch(
         DataplaneMode dataplaneMode = GetDataplaneMode(contextGM0);
         if (dataplaneMode == DataplaneMode::AICPU) {
             MoeDistributeDispatchA2LayeredAicpu<DTYPE_X, DTYPE_EXPAND_X, false, true, true> op;
-            op.Init(x, expertIds, scales, expertScales, expandXOut, dynamicScalesOut, expandIdxOut,
-                    expertTokenNumsOut, epSendCountsOut, expandScalesOut, workspaceGM, &pipe, tilingGM, contextGM0);
+            op.Init(x, expertIds, scales, expertScales, expandXOut, dynamicScalesOut, expandIdxOut, expertTokenNumsOut,
+                    epSendCountsOut, expandScalesOut, workspaceGM, &pipe, tilingGM, contextGM0);
             op.Process();
         } else if (dataplaneMode == DataplaneMode::AIV) {
             MoeDistributeDispatchA2Layered<DTYPE_X, DTYPE_EXPAND_X, false, true, true> op;
