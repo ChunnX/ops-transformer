@@ -46,6 +46,8 @@
     | A8W8-INT | INT8   | INT8         |
     | A8W8-FP  | FLOAT8_E4M3FN、FLOAT8_E5M2 |FLOAT8_E4M3FN、FLOAT8_E5M2 |
     | A8W4-INT | INT8        | INT4            |
+    | A8W4-FP | FLOAT8_E4M3FN        | FLOAT4_E2M1          |
+    | A4W4-FP | FLOAT4_E2M1        | FLOAT4_E2M1            |
 
     - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：不支持上表中A8W8-FP场景。
     - <term>Ascend 950PR/Ascend 950DT</term>：不支持上表中A16W16 、A8W8-INT、A8W4-INT场景。
@@ -503,42 +505,42 @@
   <tr>
    <td>weight1</td>
    <td>输入</td>
-   <td>专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
+   <td>MoE专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数（仅A8W8支持ND）。</td>
    <td>BF16、INT8、INT4、FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
    <td>ND、FRACTAL_NZ</td>
   </tr>
   <tr>
    <td>weight2</td>
    <td>输入</td>
-   <td>专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致。</td>
+   <td>MoE专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致（仅A8W8支持ND）。</td>
    <td>BF16、INT8、INT4、FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
    <td>ND、FRACTAL_NZ</td>
   </tr>
   <tr>
    <td>weight_scales1</td>
    <td>可选输入</td>
-   <td>专家网络第一线性层的权重矩阵的量化缩放因子。</td>
+   <td>MoE专家网络第一线性层的权重矩阵的量化缩放因子。</td>
    <td>FP8_E8M0、UINT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>weight_scales2</td>
    <td>可选输入</td>
-   <td>专家网络第二线性层的权重矩阵的量化缩放因子。</td>
+   <td>MoE专家网络第二线性层的权重矩阵的量化缩放因子。</td>
    <td>FP8_E8M0、UINT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>bias1</td>
    <td>可选输入</td>
-   <td>专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+   <td>MoE专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
    <td>FP32</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>bias2</td>
    <td>可选输入</td>
-   <td>专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+   <td>MoE专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
    <td>FP32</td>
    <td>ND</td>
   </tr>
@@ -580,14 +582,14 @@
   <tr>
    <td>dispatch_quant_mode</td>
    <td>可选属性</td>
-   <td>dispatch通信时量化模式。0表示非量化（A16W16场景），2表示INT8量化（A8W8-INT、A8W4-INT场景），4表示MXFP量化（A8W8-FP场景）。默认值为0。</td>
+   <td>dispatch通信时量化模式。0表示非量化（A16W16场景），2表示INT8量化（A8W8-INT、A8W4-INT场景），4表示MXFP量化（A8W8-FP、A8W4-FP、A4W4-FP场景）。默认值为0。</td>
    <td>INT64</td>
    <td></td>
   </tr>
   <tr>
    <td>dispatch_quant_out_dtype</td>
    <td>可选属性</td>
-   <td>dispatch量化后输出的数据类型。支持1（INT8）、23（FP8_E5M2）、24（FP8_E4M3FN）。默认值为DT_UNDEFINED。</td>
+   <td>dispatch量化后输出的数据类型。支持1（INT8）、23（FP8_E5M2）、24（FP8_E4M3FN）、296（FP4_E2M1）。默认值为DT_UNDEFINED。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -668,6 +670,48 @@
    <td>INT32</td>
    <td>ND</td>
   </tr>
+  <tr>
+   <td>shared_weight1</td>
+   <td>输入</td>
+   <td>共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数（仅A8W8支持ND）。</td>
+   <td>FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
+   <td>ND、FRACTAL_NZ</td>
+  </tr>
+  <tr>
+   <td>shared_weight2</td>
+   <td>输入</td>
+   <td>共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致（仅A8W8支持ND）。</td>
+   <td>FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
+   <td>ND、FRACTAL_NZ</td>
+  </tr>
+  <tr>
+   <td>shared_weight_scales1</td>
+   <td>可选输入</td>
+   <td>共享专家网络第一线性层的权重矩阵的量化缩放因子。</td>
+   <td>FP8_E8M0</td>
+   <td>ND</td>
+  </tr>
+  <tr>
+   <td>shared_weight_scales2</td>
+   <td>可选输入</td>
+   <td>共享专家网络第二线性层的权重矩阵的量化缩放因子。</td>
+   <td>FP8_E8M0</td>
+   <td>ND</td>
+  </tr>
+  <tr>
+   <td>shared_bias1</td>
+   <td>可选输入</td>
+   <td>共享专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+   <td>FP32</td>
+   <td>ND</td>
+  </tr>
+  <tr>
+   <td>shared_bias2</td>
+   <td>可选输入</td>
+   <td>共享专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+   <td>FP32</td>
+   <td>ND</td>
+  </tr>
  </tbody>
 </table>
 
@@ -684,7 +728,7 @@
   - 通信域各节点的驱动版本应当相同。
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机通信域要求交换机组网，不支持双机直连组网。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
-
+  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持UB Memory通信。
 - **参数约束**：
   - **<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>**：
     - 场景配套矩阵：
@@ -696,7 +740,7 @@
       | A8W4-INT | BF16 | INT4(INT32) | INT4(INT32) | UINT64 | UINT64 | FP32 | FP32 | BF16 | 2 | 1（INT8） |
 
   - **<term>Ascend 950PR/Ascend 950DT</term>**：
-    - BS（x.dim0）支持[1, maxBS], maxBS = (8 * (totalUbSize - 48K)) / (topK * (64 + epWorldSize)), 其中totalUbSize为UB总大小，950系列产品该值为256K。
+    - BS（x.dim0）支持[1, maxBS], maxBS = (8 * (totalUbSize - 48K)) / (topK * (64 + epWorldSize)), 其中totalUbSize为UB总大小，950系列产品该值支持到当前环境能申请的最大内存。
     - H（x.dim1）支持1024、2048、3072、4096、5120、6144、7168、8192。
     - topK（topkIds.dim1）支持[1, 16]。
     - expertPerRank（weight1.dim0）范围 [1, 1024]。
@@ -706,7 +750,7 @@
     - maxRecvTokenNum范围 [0, BS × epWorldSize × min(topK, expertPerRank)]。
     - dispatchQuantOutType仅支持23（FLOAT8_E5M2）或24（FLOAT8_E4M3FN）或296（FLOAT4_E2M1）。
     - 当前版本仅支持MXFP量化模式（dispatchQuantMode = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
-    - combineQuantMode必须为0，commAlg必须为空字符串""。
+    - combineQuantMode取值为0、3、4，0表示非量化，3表示MXFP float8_e5m2类型，4表示MXFP float8_e4m3类型commAlg必须为空字符串""。
     - y的数据类型与x相同。
     - weight1的dim1（hiddenDim）必须等于weight2的dim2的二倍，这是因为SwiGLU激活需要将中间维度从hiddenDim减半为hiddenDim/2。
     - expertPerRank = moeExpertNum / epWorldSize，必须为整数且在 [1, 1024] 范围内。
