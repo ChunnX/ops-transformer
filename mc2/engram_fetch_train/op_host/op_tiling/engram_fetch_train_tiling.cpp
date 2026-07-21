@@ -10,12 +10,7 @@
 
 /*!
 * \file engram_fetch_train_tiling.cpp
-* \brief host侧tiling实现 — EngramFetchTrain（训练态前向）
-*        校验 2 input + 6 output（dtype/shape/format）
-*        rankSize 从 sendCountsOut dim0 获取
-*        totalRecv 从 recvLocalEntryOut dim0 获取
-*        workspace: sdispls + rdispls + sortedIndices + tokenIdxInRank
-*                 + recvIndices + localData + recvData + flagScratch + 16MB
+* \brief host侧tiling实现 — EngramFetchTrain
 */
 
 #include <string>

@@ -11,7 +11,6 @@
 /*!
 * \file engram_fetch_grad_tiling_data.h
 * \brief kernel侧tiling data结构 — EngramFetchGrad
-*        hiddenBytes 按 fp32 算（反向 FP32 聚合）
 */
 
 #ifndef ASCENDC_ENGRAM_FETCH_GRAD_TILING_H

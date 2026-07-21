@@ -14,7 +14,6 @@
 */
 
 #include <algorithm>
-#include <cstdio>
 #include "aclnn/aclnn_base.h"
 #include "common/utils/op_mc2_def.h"
 #include "aclnn_kernels/common/op_error_check.h"
