@@ -110,22 +110,6 @@ static inline void NpuStreamWait(aclrtStream waitStream, aclrtStream recordStrea
     TORCH_CHECK(ret == ACL_SUCCESS, "aclrtDestroyEvent failed, ret: ", ret);
 }
 
-static inline void NpuStreamWait(aclrtStream waitStream, aclrtStream recordStream)
-{
-    if (waitStream == recordStream) {
-        return;
-    }
-    aclrtEvent event = nullptr;
-    aclError ret = aclrtCreateEvent(&event);
-    TORCH_CHECK(ret == ACL_SUCCESS, "aclrtCreateEvent failed, ret: ", ret);
-    ret = aclrtRecordEvent(event, recordStream);
-    TORCH_CHECK(ret == ACL_SUCCESS, "aclrtRecordEvent failed, ret: ", ret);
-    ret = aclrtStreamWaitEvent(waitStream, event);
-    TORCH_CHECK(ret == ACL_SUCCESS, "aclrtStreamWaitEvent failed, ret: ", ret);
-    ret = aclrtDestroyEvent(event);
-    TORCH_CHECK(ret == ACL_SUCCESS, "aclrtDestroyEvent failed, ret: ", ret);
-}
-
 // CommContext structure for HCCL communication
 // 推理/训练共用：virtualAddrList + hcommHandle 由 EngramContextBuilder 一次性填充
 // 训练态：virtualAddrList 由 AllocateAndExchangeGm 覆盖为 a2a GM 地址
@@ -711,7 +695,7 @@ private:
     uint32_t rankNumPerServer_ = 2;
 };
 
-// 训练态前向 save-for-backward，随 EngramFetch 返回值输出（不存成员，避免多次 fetch 覆盖）
+// 训练前向 save-for-backward，随 EngramFetch 返回值输出
 struct EngramFetchCtx {
     at::Tensor perm;
     at::Tensor sendCounts;
@@ -721,21 +705,16 @@ struct EngramFetchCtx {
 };
 
 // ElasticBuffer class - unified interface for Engram storage and MoE EP kernels
-// 推理(with_grad=false): RDMA read (one-sided GET), 异步 fetch + wait callable
-// 训练(with_grad=true): all-to-all (桶排序→a2a→gather→a2a→还原), save-for-backward 输出 + EngramFetchGrad
 class ElasticBuffer {
 public:
     ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank = 0,
                   bool withGrad = false);
     ~ElasticBuffer();
 
-    // EngramFetch: 推理/训练共用前向接口
-    // 推理(with_grad=false): RDMA read, 返回 callable 内调 wait（异步）, ctxOut=nullptr
-    // 训练(with_grad=true): all-to-all, 同步返回 fetched, save-for-backward 通过 ctxOut 输出
+    // EngramFetch: 推理/训练共用前向接口  推理(with_grad=false)，训练(with_grad=true)
     void EngramWrite(const at::Tensor &storage);
     std::function<at::Tensor()> EngramFetch(const at::Tensor &indices,
                                             EngramFetchCtx *ctxOut = nullptr);
-    // EngramFetchGrad: 训练反向
     std::tuple<at::Tensor, at::Tensor> EngramFetchGrad(
         const at::Tensor &gradFetched,
         const at::Tensor &perm, const at::Tensor &sendCounts,
@@ -783,16 +762,13 @@ private:
     void EnsureEngramContext();
     void EnsureMoeContext();
 
-    // HCCL 默认 buffer 查询（训练态 a2a 收发缓冲）
-    void UpdateContextTensor();
-
     std::string groupName_;
     int64_t engramNumCpuBytes_;
     int64_t numMaxTokensPerRank_ = 0;
     bool withGrad_ = false;
 
     void *engramHostBufPtr_ = nullptr;
-    void *engramDeviceBufPtr_ = nullptr;          // host-pinned 设备映射地址（推理RDMA read源 / 训练gather源）
+    void *engramDeviceBufPtr_ = nullptr;
     HcclMemHandle engramMemHandle_ = nullptr;
     int64_t commBufferSize_ = 0;             // HCCL 默认 buffer 大小（从 HcclGetHcclBufferFunc 查询，训练 a2a 收发缓冲）
     HcclComm engramHcclComm_ = nullptr;
@@ -909,8 +885,6 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
 }
 
 // EngramFetch - fetch data using stored metadata (inference/training shared)
-// 推理: ACLNN_CMD(aclnnEngramFetch, nullptr×5) → return callable { aclnnEngramFetchWait }（异步）
-// 训练: ACLNN_CMD(aclnnEngramFetch, 5 outputs) → save-for-backward 通过 ctxOut 输出 → return [fetched]()（同步, 无 wait）
 std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices,
                                                        EngramFetchCtx *ctxOut)
 {
@@ -932,15 +906,18 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
     auto fetched =
         at::empty({numTokens, engramHiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
 
-    // 训练态: save-for-backward 通过 ctxOut 输出（局部变量, 不存成员）
+    // 训练: save-for-backward 通过 ctxOut 输出
     if (withGrad_) {
         TORCH_CHECK(commBufferSize_ > 0,
                     "HCCL buffer not queried, engram_write must be called first with with_grad=True");
         TORCH_CHECK(numMaxTokensPerRank_ > 0,
                     "num_max_tokens_per_rank must be > 0 for training mode, got ", numMaxTokensPerRank_);
+        TORCH_CHECK(numMaxTokensPerRank_ >= numTokens,
+                    "num_max_tokens_per_rank must be >= num_tokens, got num_max_tokens_per_rank=",
+                    numMaxTokensPerRank_, ", num_tokens=", numTokens);
 
         uint32_t rankSize = engramCommContext_.rankSize;
-        int64_t maxR = engramNumEntries_ * static_cast<int64_t>(rankSize);
+        int64_t maxR = numMaxTokensPerRank_ * static_cast<int64_t>(rankSize);
         auto intOpts = at::TensorOptions().dtype(at::kInt).device(indices.device());
 
         EngramFetchCtx ctx{
@@ -966,15 +943,9 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
         return [fetched]() { return fetched; };
     }
 
-    // 推理态: 原逻辑不变
-    if (numTokens == 0) {
-        return [=]() { return fetched; };
-    }
-
     engramFetchInProgress_.store(true);
 
-    ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices,
-              engramHiddenSize_, engramNumEntries_, fetched);
+    ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices, engramHiddenSize_, engramNumEntries_, fetched);
 
     auto capturedContext = engramContextTensor_;
     auto fetchFlag = &engramFetchInProgress_;
@@ -985,8 +956,7 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
     };
 }
 
-// EngramFetchGrad - training backward: produce gradUnique (fp32), uniqueLocalEntry (sparse index)
-// GM 已在 write 阶段申请，destroy 时释放
+// EngramFetchGrad - training backward: produce gradUnique, uniqueLocalEntry (sparse index)
 std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
     const at::Tensor &gradFetched,
     const at::Tensor &perm, const at::Tensor &sendCounts,
@@ -1003,10 +973,10 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
     int64_t numTokens = gradFetched.size(0);
     int64_t hidden = gradFetched.size(1);
     uint32_t rankSize = engramCommContext_.rankSize;
-    int64_t maxR = numTokens * static_cast<int64_t>(rankSize);
+    int64_t maxR = numMaxTokensPerRank_ * static_cast<int64_t>(rankSize);
 
     auto gradUnique = at::empty({maxR, hidden},
-        at::TensorOptions().dtype(at::kFloat).device(gradFetched.device()));
+        at::TensorOptions().dtype(gradFetched.dtype()).device(gradFetched.device()));
     auto uniqueLocalEntry = at::empty({maxR},
         at::TensorOptions().dtype(at::kInt).device(gradFetched.device()));
     auto numUnique = at::empty({1},
@@ -1027,14 +997,6 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
 
     engramFetchInProgress_.store(false);
     return {gradUnique, uniqueLocalEntry};
-}
-
-// UpdateContextTensor - refresh engramContextTensor_ with latest engramCommContext_
-void ElasticBuffer::UpdateContextTensor()
-{
-    TORCH_CHECK(!destroyed_, "UpdateContextTensor cannot be called after destroy");
-    at::Tensor hostTensor = at::from_blob(&engramCommContext_, {sizeof(EngramCommContext) / sizeof(int32_t)}, at::kInt);
-    engramContextTensor_.copy_(hostTensor);
 }
 
 // EngramBarrier - cross-rank synchronization
@@ -1102,7 +1064,7 @@ void ElasticBuffer::Destroy()
     destroyed_ = true;
 }
 
-// GetEngramStorageSizeHint - calculate recommended CPU buffer size for Engram storage
+// GetEngramStorageSizeHint - calculate recommended CPU buffer size (static method)
 int64_t ElasticBuffer::GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize, at::ScalarType dtype)
 {
     int64_t dtypeSize = at::elementSize(dtype);

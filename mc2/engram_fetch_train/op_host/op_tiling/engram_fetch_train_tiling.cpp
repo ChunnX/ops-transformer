@@ -10,12 +10,7 @@
 
 /*!
 * \file engram_fetch_train_tiling.cpp
-* \brief host侧tiling实现 — EngramFetchTrain（训练态前向）
-*        校验 2 input + 6 output（dtype/shape/format）
-*        rankSize 从 sendCountsOut dim0 获取
-*        totalRecv 从 recvLocalEntryOut dim0 获取
-*        workspace: sdispls + rdispls + sortedIndices + tokenIdxInRank
-*                 + recvIndices + localData + recvData + flagScratch + 16MB
+* \brief host侧tiling实现 — EngramFetchTrain
 */
 
 #include <string>
@@ -515,25 +510,21 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context,
         OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenBytes=%ld", totalRecv, hiddenBytes),
         return ge::GRAPH_FAILED);
 
-    int64_t wsSdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
-    int64_t wsRdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
+    int64_t wsSdispls = numRanks * static_cast<int64_t>(sizeof(int32_t));
+    int64_t wsRdispls = numRanks * static_cast<int64_t>(sizeof(int32_t));
     int64_t wsSortedIndices = numTokens * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsTokenIdxRank = numTokens * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsRecvIndices = totalRecv * static_cast<int64_t>(sizeof(int32_t));
     int64_t wsLocalData = totalRecv * hiddenBytes;
     int64_t wsRecvData = numTokens * hiddenBytes;
     int64_t wsFlagScratch = 32;
 
-    int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices + wsTokenIdxRank
-                    + wsRecvIndices + wsLocalData + wsRecvData + wsFlagScratch;
+    int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices + wsLocalData + wsRecvData + wsFlagScratch;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 
     workSpaces[0] = static_cast<size_t>(wsTotal);
-    OP_LOGD(nodeName, "training workspace: sdispls=%ld, rdispls=%ld, sortedIndices=%ld, tokenIdxInRank=%ld, "
-            "recvIndices=%ld, localData=%ld, recvData=%ld, flagScratch=%ld, total=%zu",
-            wsSdispls, wsRdispls, wsSortedIndices, wsTokenIdxRank,
-            wsRecvIndices, wsLocalData, wsRecvData, wsFlagScratch, workSpaces[0]);
+    OP_LOGD(nodeName, "training workspace: sdispls=%ld, rdispls=%ld, sortedIndices=%ld,"
+            "localData=%ld, recvData=%ld, flagScratch=%ld, total=%zu",
+            wsSdispls, wsRdispls, wsSortedIndices, wsLocalData, wsRecvData, wsFlagScratch, workSpaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 

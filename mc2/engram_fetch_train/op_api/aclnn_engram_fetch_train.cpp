@@ -10,7 +10,7 @@
 
 /*!
  * \file aclnn_engram_fetch_train.cpp
- * \brief EngramFetchTrain 算子 aclnn 接口实现（训练态前向）
+ * \brief EngramFetchTrain 算子 aclnn 接口实现（训练前向）
  */
 
 #include <algorithm>
