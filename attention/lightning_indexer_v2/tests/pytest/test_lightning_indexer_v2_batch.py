@@ -10,23 +10,19 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import itertools
-import torch
 import result_compare_method
 from batch import lightning_indexer_v2_pt_loadprocess
 import pytest
-import random
 import pandas as pd
 from pathlib import Path
-import numpy as np
-import math
 import os
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+import concurrent
 TEST_INPUT_PATH = "pt_path"
 pt_dir = TEST_INPUT_PATH
-result_path = Path('result.xlsx')  # 或使用传入的result_path
-result_path = Path('result.xlsx')
+result_path = Path("result.xlsx")  # 或使用传入的result_path
+result_path = Path("result.xlsx")
 device_id = 0
 # 支持通过环境变量 LIV2_TESTCASE_PATH 指定单条用例文件，实现进程级隔离执行：
 #   - 设置时：仅运行该条用例（配合 batch_isolated_run.sh 每条用例拉起独立进程）
@@ -40,38 +36,72 @@ run_mode = os.environ.get("LIV2_RUN_MODE", "eager").strip().lower()
 locals()["testcase_files"] = []
 if single_case_path:
     if not os.path.isfile(single_case_path):
-        print(f"错误: 环境变量 LIV2_TESTCASE_PATH 指定的用例文件不存在: {single_case_path}")
+        print(
+            f"错误: 环境变量 LIV2_TESTCASE_PATH 指定的用例文件不存在: {single_case_path}"
+        )
     else:
         print(f"单用例隔离模式, 仅执行: {single_case_path}")
         locals()["testcase_files"].append(single_case_path)
 elif os.path.isdir(pt_dir):
-    pt_files = [f for f in os.listdir(pt_dir) if f.endswith('.pt')]
+    pt_files = [f for f in os.listdir(pt_dir) if f.endswith(".pt")]
     if not pt_files:
         print(f"错误: 目录中没有找到.pt文件: {pt_dir}")
     else:
         print(f"找到 {len(pt_files)} 个测试用例文件")
-        for pt_file in pt_files:  
+        for pt_file in pt_files:
             filepath = os.path.join(pt_dir, pt_file)
             locals()["testcase_files"].append(filepath)
 else:
     print(f"错误: 输出目录不存在: {pt_dir}")
 
-def liv2(testcase_files):   # 初始化参数和tensor
+
+def liv2(testcase_files):  # 初始化参数和tensor
     try:
         if run_mode == "graph":
-            cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params = \
-                lightning_indexer_v2_pt_loadprocess.test_liv2_process_graph(testcase_files, device_id=device_id)
+            (
+                cpu_result,
+                npu_result,
+                topk_value,
+                cpu_topk_value,
+                npu_topk_value,
+                output_idx_offset,
+                params,
+            ) = lightning_indexer_v2_pt_loadprocess.test_liv2_process_graph(
+                testcase_files, device_id=device_id
+            )
         else:
-            cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params = lightning_indexer_v2_pt_loadprocess.test_liv2_process(testcase_files, device_id=device_id)
-        if npu_result != None:
-            result, fulfill_percent = result_compare_method.check_result(cpu_result, npu_result, topk_value, output_idx_offset, params, cpu_topk_value, npu_topk_value)
+            (
+                cpu_result,
+                npu_result,
+                topk_value,
+                cpu_topk_value,
+                npu_topk_value,
+                output_idx_offset,
+                params,
+            ) = lightning_indexer_v2_pt_loadprocess.test_liv2_process(
+                testcase_files, device_id=device_id
+            )
+        if npu_result is not None:
+            result, fulfill_percent = result_compare_method.check_result(
+                cpu_result,
+                npu_result,
+                topk_value,
+                output_idx_offset,
+                params,
+                cpu_topk_value,
+                npu_topk_value,
+            )
         else:
             result = "Failed"
             fulfill_percent = 0
-        
+
         return_value = params[25]
         if return_value:
-            result_return_value, fulfill_precent_return_value = result_compare_method.check_result_return_value(cpu_topk_value, npu_topk_value, params)
+            result_return_value, fulfill_precent_return_value = (
+                result_compare_method.check_result_return_value(
+                    cpu_topk_value, npu_topk_value, params
+                )
+            )
             print(f"result_return_value: {result_return_value}")
             print(f"result_return_value: {fulfill_precent_return_value}")
         else:
@@ -106,25 +136,25 @@ def liv2(testcase_files):   # 初始化参数和tensor
         "output_idx_offset": params[16],
         "layout_q": params[17],
         "layout_k": params[18],
-        "topk":params[19],
-        "mask_mode":params[20],
-        "query_datarange":params[21],
-        "key_datarange":params[22],
-        "weights_datarange":params[23],
-        "cmp_ratio":params[24],
+        "topk": params[19],
+        "mask_mode": params[20],
+        "query_datarange": params[21],
+        "key_datarange": params[22],
+        "weights_datarange": params[23],
+        "cmp_ratio": params[24],
         "return_value": params[25],
-        "max_seqlen_q":params[26],
-        "result":result,
-        "fulfill_percent":fulfill_percent,
+        "max_seqlen_q": params[26],
+        "result": result,
+        "fulfill_percent": fulfill_percent,
         "result_return_value": result_return_value,
-        "fulfill_percent_return_value": fulfill_precent_return_value
+        "fulfill_percent_return_value": fulfill_precent_return_value,
     }
 
     # 检查文件是否存在
     if result_path.exists():
         # 读取现有数据
         df = pd.read_excel(result_path)
-        
+
         # 检查列名是否一致
         if set(df.columns) != set(row_data.keys()):
             print("警告：变量名与Excel列名不匹配！")
@@ -132,29 +162,30 @@ def liv2(testcase_files):   # 初始化参数和tensor
             print(f"变量名: {list(row_data.keys())}")
             print("请检查变量名或Excel文件")
             return False
-        
+
         # 追加新行
         new_df = pd.DataFrame([row_data])
         df = pd.concat([df, new_df], ignore_index=True)
     else:
         # 文件不存在，创建新的DataFrame
         df = pd.DataFrame([row_data])
-    
+
     # 保存到Excel
     df.to_excel(result_path, index=False)
     if result == "NPU ERROR":
         pytest.fail(f"用例执行失败:{Path(testcase_files).stem}")
 
+
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
-def test_liv2(testcase_files):   # 初始化参数和tensor
+def test_liv2(testcase_files):  # 初始化参数和tensor
     if is_isolated_mode:
         # 批量隔离模式：shell 层已通过独立 pytest 进程提供进程隔离，内部使用线程池即可
         with ThreadPoolExecutor(max_workers=1) as executor:
             futures = executor.submit(liv2, testcase_files)
             for future in as_completed([futures]):
                 try:
-                    result = future.result()
+                    future.result()
                 except Exception as e:
                     pytest.fail(f"当前用例线程执行失败：{e}")
     else:
@@ -165,6 +196,6 @@ def test_liv2(testcase_files):   # 初始化参数和tensor
             # 检查退出码
             for future in as_completed([future1]):
                 try:
-                    result = future.result()
+                    future.result()
                 except Exception as e:
                     pytest.fail(f"❌ 当前用例子进程执行失败：{e}")
