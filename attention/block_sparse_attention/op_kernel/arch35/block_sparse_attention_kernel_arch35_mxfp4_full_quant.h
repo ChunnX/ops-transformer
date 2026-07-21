@@ -104,12 +104,12 @@ public:
         gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualSeqLengthsKv);
         AscendC::GlobalTensor<uint8_t> gBlockSparseMask;
         gBlockSparseMask.SetGlobalBuffer((__gm__ uint8_t *)params.blockSparseMask);
-        AscendC::GlobalTensor<float> gQDequantScale;
-        gQDequantScale.SetGlobalBuffer((__gm__ float *)params.qDequantScale);
-        AscendC::GlobalTensor<float> gKDequantScale;
-        gKDequantScale.SetGlobalBuffer((__gm__ float *)params.kDequantScale);
-        AscendC::GlobalTensor<float> gVDequantScale;
-        gVDequantScale.SetGlobalBuffer((__gm__ float *)params.vDequantScale);
+        AscendC::GlobalTensor<uint8_t> gQDequantScale;
+        gQDequantScale.SetGlobalBuffer((__gm__ uint8_t *)params.qDequantScale);
+        AscendC::GlobalTensor<uint8_t> gKDequantScale;
+        gKDequantScale.SetGlobalBuffer((__gm__ uint8_t *)params.kDequantScale);
+        AscendC::GlobalTensor<uint8_t> gVDequantScale;
+        gVDequantScale.SetGlobalBuffer((__gm__ uint8_t *)params.vDequantScale);
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.attentionOut);
         AscendC::GlobalTensor<ElementLse> gLse;
@@ -137,17 +137,16 @@ public:
                 totalRowNumBlockMask, yBlockNumAligned_, avgRowPerSubCore_, preActiveSubCoreNum_);
         }
         AscendC::SyncAll<false>();
-
-        if ASCEND_IS_AIC {
-            coreIdx = AscendC::GetBlockIdx();
-            // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
-            // BlockMmadPV blockMmadPV(resource, mm2L1AddrStart_, mm2L1TileHelper_);
-        } else {
-            coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-            // EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_);
-            // EpilogueRescaleO epilogueRescaleO(resource);
-        }
-
+#ifdef __DAV_CUBE__
+        coreIdx = AscendC::GetBlockIdx();
+        // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
+        BlockMmadPV blockMmadPV(resource);
+#endif
+#ifdef __DAV_VEC__
+        coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+        // EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_);
+        // EpilogueRescaleO epilogueRescaleO(resource);
+#endif
         // runMainLoop
         uint64_t coreTileLoop = 0;
 
@@ -203,6 +202,10 @@ public:
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
                     }
                     ComputeMm2(delay20TileInfo);
+                    // if(coreIdx == 0){
+                        blockMmadPV(gVDequantScale,gV,ubOTmpTensor[0]);
+                    // }
+
                     if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + 16);
@@ -211,6 +214,7 @@ public:
                     if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
                         ComputeVec2(delay20TileInfo);
+                        
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
                     }
                 }
@@ -401,23 +405,62 @@ public:
         AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_OTMP_BUF_STAGES],
         AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
     {
-        // for (uint32_t i = 0; i < pL1BufNum_; i++) {
-        //     l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
-        //         mm2L1AddrStart_ + mm2L1TileM_ * mm2L1TileKLeft_ * sizeof(ElementP) * i);
-        // }
-        // uint32_t rowNumPerSubCore = EpilogueOnlineSoftmax::SM_ROW_MAX_ELEM_NUM;
-        // uint32_t colNumPerSubCore = EpilogueOnlineSoftmax::SM_COL_MAX_ELEM_NUM;
-        // uint32_t rescaleCol = EpilogueRescaleO::RESCALE_COL_MAX_ELEM_NUM;
-        // for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
-        //     ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
-        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * i);
-        //     ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
-        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
-        //         rowNumPerSubCore * rescaleCol * sizeof(ElementOTmp) * i);
-        // }
+        ubOTmpTensor[0] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(0);
     }
 
+    template <uint32_t MM1_SM_MODE, uint32_t MM2_RE_MODE, uint32_t SM_MM2_MODE>
+    __aicore__ inline
+    void InitSyncFlags()
+    {
+#ifdef __DAV_VEC__
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+        // mask2index
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+        // softmax
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
+        // rescale
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+
+        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
+
+        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[0]);
+        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[1]);
+        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
+#endif
+    }
+
+    template <uint32_t MM1_SM_MODE, uint32_t MM2_RE_MODE, uint32_t SM_MM2_MODE>
+    __aicore__ inline
+    void ReleaseSyncFlags()
+    {
+    // 核间
+#ifdef __DAV_CUBE__
+        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
+        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
+        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[0]);
+        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[0] + 16);
+        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[1]);
+        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[1] + 16);
+#endif
+#ifdef __DAV_VEC__
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
+        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
+#endif
+        AscendC::PipeBarrier<PIPE_ALL>();
+    }
 
     // 由 coreTaskId (本核上的 task 序号) 反推 globalTaskId 并填充 TaskInfo
     // 仅在 task 起始 tile (taskTileId == 0) 调用，避免每个 tile 重复计算
