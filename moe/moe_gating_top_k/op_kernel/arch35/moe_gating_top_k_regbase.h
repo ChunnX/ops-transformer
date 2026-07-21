@@ -415,7 +415,7 @@ __aicore__ inline void MoeGatingTopKRegbase<T, U1, U2>::TopKComputeBatch(int64_t
         }
         for (uint16_t r = 0; r < static_cast<uint16_t>(rowCount); r++) {
             MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-                vregValue, vregIdx, sortedAddr + r * expertGroupAlignU32 * 2);
+                vregValue, vregIdx, (__local_mem__ uint32_t *)(sortedAddr + r * expertGroupAlignU32 * 2));
             MicroAPI::DataCopyGather(vregScore, xSigmoidAddr + r * expertGroupAlignU32, vregIdx, pregK);
             if (needNorm) {
                 MicroAPI::ReduceSum(vregSum, vregScore, pregK);
