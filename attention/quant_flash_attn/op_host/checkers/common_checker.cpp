@@ -288,10 +288,10 @@ ge::graphStatus CommonChecker::CheckAxis(const QfaTilingInfo &qfaInfo)
             return ge::GRAPH_FAILED);
     }
 
-    OP_CHECK_IF(qfaInfo.s1Size < 0,
+    OP_CHECK_IF(qfaInfo.s1Size < 0 && qfaInfo.qLayout != QfaLayout::TND,
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qfaInfo.opName, QUERY_NAME.c_str(),
             ToString(qfaInfo.opParamInfo.query.shape->GetStorageShape()).c_str(),
-            "S of query must be greater than or equal to 0"),
+            "When layout of query is not TND, S of query must be greater than or equal to 0"),
         return ge::GRAPH_FAILED);
     OP_CHECK_IF(qfaInfo.s2Size < 0,
         OP_LOGE(qfaInfo.opName,
