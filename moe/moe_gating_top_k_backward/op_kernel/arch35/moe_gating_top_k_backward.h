@@ -84,13 +84,13 @@ __aicore__ inline void MoeGatingTopKBackward<T>::Init(GM_ADDR xNorm, GM_ADDR gra
     gradXGm_.SetGlobalBuffer((__gm__ T *)gradX + tilingData_->perCoreRows * tilingData_->expertCount * blockIdx_);
     pipe_->InitBuffer(gradYQue_, 2, tilingData_->baseRows * AlignBytes(tilingData_->k, tilingData_->gradYDtypeSize));
     pipe_->InitBuffer(indicesQue_, 2,
-                      tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_INT32) + VECTOR_REG_WIDTH);
+                      tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_INT32));
     pipe_->InitBuffer(xQue_, 2, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(outQue_, 1,
                       AlignBytes(tilingData_->baseRows * tilingData_->expertCount, tilingData_->gradYDtypeSize));
     pipe_->InitBuffer(gradNormXBuf_, AlignBytes(tilingData_->baseRows * tilingData_->expertCount, SIZE_OF_FLOAT32));
     pipe_->InitBuffer(wPrimeCache_,
-                      tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32) + VECTOR_REG_WIDTH);
+                      tilingData_->baseRows * AlignBytes(tilingData_->k, SIZE_OF_FLOAT32));
 }
 
 // ── Process ──────────────────────────────────────────────────

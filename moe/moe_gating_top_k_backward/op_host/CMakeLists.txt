@@ -18,7 +18,6 @@ if (BUILD_OPEN_PROJECT)
     if(CONDITION_UNIT STREQUAL "ascend950")
         add_ops_compile_options(
             OP_NAME MoeGatingTopKBackward
-            COMPUTE_UNIT Ascend950PR_9599
             OPTIONS --cce-auto-sync=off
                     -Wno-deprecated-declarations
                     -Werror
