@@ -128,6 +128,8 @@ int main() {
   void* dCmpKvDeviceAddr = nullptr;
   void* dSinksDeviceAddr = nullptr;
   void* metadataDeviceAddr = nullptr;
+  void* oriSoftmaxL1NormDeviceAddr = nullptr;
+  void* cmpSoftmaxL1NormDeviceAddr = nullptr;
 
   aclTensor* q = nullptr;
   aclTensor* oriKv = nullptr;
@@ -145,6 +147,8 @@ int main() {
   aclTensor* dCmpKv = nullptr;
   aclTensor* dSinks = nullptr;
   aclTensor* metadata = nullptr;
+  aclTensor* oriSoftmaxL1Norm = nullptr;
+  aclTensor* cmpSoftmaxL1Norm = nullptr;
 
   std::vector<short> qHostData(1 * 16 * 512, 1.0);
   std::vector<short> oriKvHostData(2048 * 1 * 512, 1.0);
@@ -240,7 +244,7 @@ int main() {
   aclOpExecutor* executor;
   ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, dOut, out, lse, oriKv, cmpKv, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
             nullptr, nullptr, nullptr, cmpResidualKv, nullptr, nullptr, sinks, metadata, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, nullptr, nullptr, 
+            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("SparseFlashMlaGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 
@@ -279,6 +283,8 @@ int main() {
   aclDestroyTensor(dCmpKv);
   aclDestroyTensor(dSinks);
   aclDestroyTensor(metadata);
+  aclDestroyTensor(oriSoftmaxL1Norm);
+  aclDestroyTensor(cmpSoftmaxL1Norm);
 
   // 7. 释放device资源
   aclrtFree(qDeviceAddr);
@@ -297,6 +303,8 @@ int main() {
   aclrtFree(dCmpKvDeviceAddr);
   aclrtFree(dSinksDeviceAddr);
   aclrtFree(metadataDeviceAddr);
+  aclrtFree(oriSoftmaxL1NormDeviceAddr);
+  aclrtFree(cmpSoftmaxL1NormDeviceAddr);
   if (metaWorkspaceSize > 0) {
     aclrtFree(metaWorkspaceAddr);
   }
