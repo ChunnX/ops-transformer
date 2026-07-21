@@ -63,7 +63,7 @@ def compute_metadata(seqused_q, seq_q_cpu, core_num):
 
 def generate_sparse_indices_bsnd(b, gen_s1, gen_s2, k, mask_mode, cmp_ratio, seq_q, seq_k, sparse_mode, has_topk, cmp_residual_k):
     sparse_indices = torch.zeros(b, gen_s1, 1, k, dtype=torch.int32)
-    topk_length = torch.zeros(b, gen_s1, 1, 1, dtype=torch.int32) if has_topk else None
+    topk_length = torch.zeros(b, gen_s1, 1, dtype=torch.int32) if has_topk else None
 
     for b_id in range(b):
         cur_sq = seq_q[b_id].item() if seq_q is not None else gen_s1
@@ -84,12 +84,12 @@ def generate_sparse_indices_bsnd(b, gen_s1, gen_s2, k, mask_mode, cmp_ratio, seq
             if has_topk:
                 if sparse_mode == "random":
                     if limit > 0:
-                        topk_length[b_id, s1_idx, 0, :] = torch.randint(0, limit, (1,), dtype=torch.int32)
+                        topk_length[b_id, s1_idx, 0] = torch.randint(0, limit, (1,), dtype=torch.int32)
                     else:
-                        topk_length[b_id, s1_idx, 0, :] = 0
+                        topk_length[b_id, s1_idx, 0] = 0
                 else:
-                    topk_length[b_id, s1_idx, 0, :] = limit
-                limit = int(topk_length[b_id, s1_idx, 0, 0])
+                    topk_length[b_id, s1_idx, 0] = limit
+                limit = int(topk_length[b_id, s1_idx, 0])
 
             if limit > 0 and actual_sk > 0:
                 sparse_indices[b_id, s1_idx, 0, :limit] = torch.randint(0, actual_sk, (limit,), dtype=torch.int32)
@@ -103,7 +103,7 @@ def generate_sparse_indices_tnd(seq_q_cpu, seq_k_cpu, k, mask_mode, cmp_ratio, s
     cu_q = build_cumsum_offsets(seq_q_cpu).int()
 
     sparse_indices = torch.zeros(T1, 1, k, dtype=torch.int32)
-    topk_length = torch.zeros(T1, dtype=torch.int32) if has_topk else None
+    topk_length = torch.zeros(T1, 1, dtype=torch.int32) if has_topk else None
 
     for b_id in range(B):
         sq_len = seqused_q[b_id].item() if seqused_q is not None else seq_q_cpu[b_id].item()
@@ -125,12 +125,12 @@ def generate_sparse_indices_tnd(seq_q_cpu, seq_k_cpu, k, mask_mode, cmp_ratio, s
             if has_topk:
                 if sparse_mode == "random":
                     if limit > 0:
-                        topk_length[global_idx] = torch.randint(0, limit, (1,), dtype=torch.int32).item()
+                        topk_length[global_idx, 0] = torch.randint(0, limit, (1,), dtype=torch.int32).item()
                     else:
-                        topk_length[global_idx] = 0
+                        topk_length[global_idx, 0] = 0
                 else:
-                    topk_length[global_idx] = limit
-                limit = int(topk_length[global_idx])
+                    topk_length[global_idx, 0] = limit
+                limit = int(topk_length[global_idx, 0])
 
             if limit > 0 and actual_sk > 0:
                 sparse_indices[global_idx, 0, :limit] = torch.randint(0, actual_sk, (limit,), dtype=torch.int32)
@@ -189,7 +189,7 @@ def compute_golden_bsnd(q, k, lse, seqused_q, seqused_k, cmp_residual_k, sparse_
             if sparse_indices is not None:
                 K = sparse_indices.shape[-1]
                 if topk_length is not None:
-                    K = min(int(topk_length[b_id, s1_id, 0, 0]), K)
+                    K = min(int(topk_length[b_id, s1_id, 0]), K)
                 actual_sk = min(actual_sk, K)
                 if actual_sk > 0:
                     key = k[b_id, sparse_indices[b_id, s1_id, 0, :actual_sk], 0, :].float()
@@ -243,7 +243,7 @@ def compute_golden_tnd(q, k, lse, seq_q_cpu, seq_k_cpu, seqused_q, seqused_k, cm
             if sparse_indices is not None:
                 KK = sparse_indices.shape[-1]
                 if topk_length is not None:
-                    KK = min(int(topk_length[global_idx].item()), KK)
+                    KK = min(int(topk_length[global_idx, 0].item()), KK)
                 actual_sk = min(actual_sk, KK)
                 if actual_sk > 0:
                     indices = sparse_indices[global_idx, 0, :actual_sk].long()
@@ -372,6 +372,8 @@ def run_test_case(params):
         seq_q_dev = build_cumsum_offsets(seq_q_cpu).to(device)
         seq_k_dev = build_cumsum_offsets(seq_k_cpu).to(device)
 
+        if topk_length_dev is not None:
+            print(f"topk_length_dev shape: {topk_length_dev.shape}")
         input_md5 = []
         for i in range(10):
             npu_out = cann_ops_transformer.sparse_flash_mla_softmax_l1_norm(
@@ -502,13 +504,13 @@ if __name__ == "__main__":
 
     results = []
     for idx, case in enumerate(test_cases):
-        logging.info("%s", '=' * 60)
-        logging.info(f"Test Case {idx+1}: {case.get('testcase_name', 'N/A')}")
         if not case.get('enable'):
-            logging.info(f"  SKIPPED: {case.get('testcase_name', 'N/A')} (enable=False)")
+            # logging.info(f"  SKIPPED: {case.get('testcase_name', 'N/A')} (enable=False)")
             results.append({"result": "skipped", "max_diff": "", "md5_result": ""})
             continue
         try:
+            logging.info("%s", '=' * 60)
+            logging.info(f"Test Case {idx+1}: {case.get('testcase_name', 'N/A')}")
             res = run_test_case(case)
             results.append(res)
         except Exception as e:
