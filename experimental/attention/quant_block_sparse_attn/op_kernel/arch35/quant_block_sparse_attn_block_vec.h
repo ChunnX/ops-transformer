@@ -414,7 +414,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
     outputBuf.SetCrossCore();
     //-----------------------------------------------------------------
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
-    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
+    if (constInfo.isSoftmaxLseEnable && unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         SoftmaxDataCopyOut(runInfo, constInfo, sumUb, maxUb);
     }
     return;
