@@ -380,8 +380,24 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 }
                 PipeBarrier<PIPE_V>();
             }
+            // Replace +1e30 (MM1 cube L0C uninitialized garbage) with -1e30
+            // so radix (largest=true) excludes it instead of selecting it
+            PipeBarrier<PIPE_V>();
             {
-                // Debug: write float directly to scoreB16Gm (no Cast, no sync)
+                event_t eVS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+                SetFlag<HardEvent::V_S>(eVS);
+                WaitFlag<HardEvent::V_S>(eVS);
+                for (int32_t i = 0; i < s2BaseSize_; i++) {
+                    float v = reduceOutInner.GetValue(i);
+                    if (v > 1.0e29f) {
+                        reduceOutInner.SetValue(i, -1.0e30f);
+                    }
+                }
+                event_t eSV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+                SetFlag<HardEvent::S_V>(eSV);
+                WaitFlag<HardEvent::S_V>(eSV);
+            }
+            {
                 PipeBarrier<PIPE_V>();
                 uint64_t globalS1Idx = static_cast<uint64_t>(cuS1Idx);
                 uint64_t scoreOffset = globalS1Idx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
