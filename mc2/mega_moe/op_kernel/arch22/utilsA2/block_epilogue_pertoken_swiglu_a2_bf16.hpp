@@ -116,11 +116,13 @@ public:
     // is kept for interface compatibility with the unified kernel.
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
-                    AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1,
-                    AscendC::GlobalTensor<ElementD> const &gmD,
-                    AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2, uint32_t epilogueCoreNum = 40,
-                    uint32_t gmmOutPreRowStride = 1, Callback &&callback = Callback{})
+                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1,
+                     AscendC::GlobalTensor<ElementD> const &gmD,
+                     AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2, uint32_t epilogueCoreNum = 40,
+                     float activationClamp = 0.0f, uint32_t activationCode = 0, uint32_t gmmOutPreRowStride = 1,
+                     Callback &&callback = Callback{})
     {
+        activationCode_ = activationCode;
         callback();
         uint32_t blockM = shapeC.row();
         uint32_t branchLength = shapeC.column() / 2;
@@ -147,7 +149,7 @@ public:
                     LoadTile(gmTileC, branchLength, nextOffset, TileLength(branchLength, nextOffset),
                              gmmOutPreRowStride, nextStage);
                 }
-                ComputeLoadedTile(currentStage, tileLength, perTokenScale, true, 0.0f);
+                ComputeLoadedTile(currentStage, tileLength, perTokenScale, true, activationClamp);
                 AccumulateRowAbsMax(currentStage, tileLength);
                 currentStage = nextStage;
             }
@@ -169,7 +171,7 @@ public:
                     LoadTile(gmTileC, branchLength, nextOffset, TileLength(branchLength, nextOffset),
                              gmmOutPreRowStride, nextStage);
                 }
-                ComputeLoadedTile(currentStage, tileLength, perTokenScale, true, 0.0f);
+                ComputeLoadedTile(currentStage, tileLength, perTokenScale, true, activationClamp);
                 QuantizeAndCopyTile(currentStage, gmTileD[tileOffset], tileLength, quantMultiplier);
                 currentStage = nextStage;
             }
@@ -186,9 +188,11 @@ public:
     // Non-quantized BF16/FP16 path.
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
-                    AscendC::GlobalTensor<ElementD> const &gmD, uint32_t epilogueCoreNum = 40,
-                    float activationClamp = 0.0f, uint32_t gmmOutPreRowStride = 1, Callback &&callback = Callback{})
+                     AscendC::GlobalTensor<ElementD> const &gmD, uint32_t epilogueCoreNum = 40,
+                     float activationClamp = 0.0f, uint32_t activationCode = 0, uint32_t gmmOutPreRowStride = 1,
+                     Callback &&callback = Callback{})
     {
+        activationCode_ = activationCode;
         callback();
         uint32_t blockM = shapeC.row();
         uint32_t branchLength = shapeC.column() / 2;
@@ -262,12 +266,18 @@ private:
                   uint32_t tileLength, uint32_t gmRowStride, uint32_t stageId)
     {
         auto &ubC = ubCList[stageId];
-        LayoutC tileLayout{1, tileLength};
-        LayoutC gmTileLayout{1, tileLength, gmRowStride};
-
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
-        copyGmToUbC(ubC, gmTileC[tileOffset], tileLayout, gmTileLayout);
-        copyGmToUbC(ubC[TILE_LENGTH], gmTileC[branchLength + tileOffset], tileLayout, gmTileLayout);
+        if (Activation::IsInterleaved(activationCode_)) {
+            uint32_t interleavedLength = tileLength * 2;
+            LayoutC tileLayout{1, interleavedLength};
+            LayoutC gmTileLayout{1, interleavedLength, gmRowStride};
+            copyGmToUbC(ubC, gmTileC[tileOffset * 2], tileLayout, gmTileLayout);
+        } else {
+            LayoutC tileLayout{1, tileLength};
+            LayoutC gmTileLayout{1, tileLength, gmRowStride};
+            copyGmToUbC(ubC, gmTileC[tileOffset], tileLayout, gmTileLayout);
+            copyGmToUbC(ubC[TILE_LENGTH], gmTileC[branchLength + tileOffset], tileLayout, gmTileLayout);
+        }
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
     }
 
@@ -280,8 +290,7 @@ private:
         auto &ubUp = ubUpFp32List[stageId];
 
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbCMTE2VList[stageId]);
-        AscendC::Cast(ubGate, ubC, AscendC::RoundMode::CAST_NONE, tileLength);
-        AscendC::Cast(ubUp, ubC[TILE_LENGTH], AscendC::RoundMode::CAST_NONE, tileLength);
+        Activation::PrepareBranches(ubGate, ubUp, ubC, sharedTmpBuffer, TILE_LENGTH, tileLength, activationCode_);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbCVMTE2List[stageId]);
 
         if (applyPerTokenScale) {
@@ -292,7 +301,8 @@ private:
             AscendC::Muls(ubUp, ubUp, perTokenScale, tileLength);
             AscendC::PipeBarrier<PIPE_V>();
         }
-        Activation::Compute(ubActivationList[stageId], ubGate, ubUp, sharedTmpBuffer, tileLength, activationClamp);
+        Activation::Compute(ubActivationList[stageId], ubGate, ubUp, sharedTmpBuffer, tileLength, activationClamp,
+                            activationCode_);
     }
 
     CATLASS_DEVICE
@@ -371,6 +381,7 @@ private:
     int32_t eventUbCMTE2VList[UB_STAGES];
     int32_t eventUbDMTE3VList[UB_STAGES];
     int32_t eventUbDVMTE3List[UB_STAGES];
+    uint32_t activationCode_{0};
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;
     CopyUbToGmDequantScale copyUbToGmDequantScale;

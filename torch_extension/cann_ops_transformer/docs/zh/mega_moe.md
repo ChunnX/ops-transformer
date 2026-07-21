@@ -890,7 +890,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation</td>
         <td>str</td>
         <td>可选</td>
-        <td>激活函数类型，默认值为"swiglu"。当前仅支持"swiglu"。</td>
+        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglu_gpt_oss"和"situ"。"swiglu"按前后半区拆分gate/up并计算gate * sigmoid(gate) * up；"swiglu_gpt_oss"按偶奇列拆分gate/up并计算gate * sigmoid(1.702 * gate) * (up + 1)；"situ"按前后半区拆分gate/up，beta固定为1.0，并使用activation_clamp作为可选linear_beta。A5当前仅支持"swiglu"。</td>
         <td>str</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -899,7 +899,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_clamp</td>
         <td>float</td>
         <td>可选</td>
-        <td>激活函数输入的对称截断阈值，将输入张量限制在 [-activation_clamp, activation_clamp] 区间内。None表示不截断，值需≥0。</td>
+        <td>激活函数控制值。对"swiglu"和"swiglu_gpt_oss"，gate分支仅限制上界，up分支限制在[-activation_clamp, activation_clamp]区间内。对"situ"，有限正值作为linear_beta，计算linear_beta * tanh(up / linear_beta)；0或None表示linear_beta=None，up保持不变。值需≥0。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>

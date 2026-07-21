@@ -129,6 +129,7 @@ private:
     uint64_t maxOutputSize_;
     int32_t epWorldSize_;
     int32_t listLen_;
+    uint32_t activationCode_;
     float activationClamp_;
 
     MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
@@ -177,6 +178,7 @@ MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM
         maxOutputSize_ = tilingData.common.maxRecvTokenNum;
         listLen_ = tilingData.common.listLen;
 
+        activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
 
         moeInitRoutingQuantV2TilingData = tilingData.moeInitRoutingQuantV2TilingData;
@@ -195,6 +197,7 @@ MegaMoeA2<MegaMoeFuncA2>::Init(GM_ADDR contextGM, GM_ADDR xGM, GM_ADDR topkIdsGM
         maxOutputSize_ = tilingData.common.maxRecvTokenNum;
         listLen_ = tilingData.common.listLen;
 
+        activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
 
         moeInitRoutingV2TilingData = tilingData.moeInitRoutingV2TilingData;
@@ -352,10 +355,11 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                                                              gmExpertTokenNums_,
                                                                              xActiveMaskGM_,
                                                                              scalesGM_,
-                                                                             moeInitRoutingQuantV2TilingData,
-                                                                             epilogueGranularity,
-                                                                             activationClamp_,
-                                                                             tilingGM_};
+                                                                              moeInitRoutingQuantV2TilingData,
+                                                                              epilogueGranularity,
+                                                                              activationClamp_,
+                                                                              activationCode_,
+                                                                              tilingGM_};
         MatmulKernel kernel(params);
         kernel(params);
     } else if constexpr (isInt8) {
@@ -398,10 +402,11 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                              gmExpertTokenNums_,
                                              xActiveMaskGM_,
                                              scalesGM_,
-                                             moeInitRoutingQuantV2TilingData,
-                                             epilogueGranularity,
-                                             activationClamp_,
-                                             tilingGM_};
+                                              moeInitRoutingQuantV2TilingData,
+                                              epilogueGranularity,
+                                              activationClamp_,
+                                              activationCode_,
+                                              tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);
@@ -444,10 +449,11 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
                                              gmExpertTokenNums_,
                                              xActiveMaskGM_,
                                              scalesGM_,
-                                             moeInitRoutingV2TilingData,
-                                             epilogueGranularity,
-                                             activationClamp_,
-                                             tilingGM_};
+                                              moeInitRoutingV2TilingData,
+                                              epilogueGranularity,
+                                              activationClamp_,
+                                              activationCode_,
+                                              tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);
