@@ -760,7 +760,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             if (returnValueFlag) {
                 WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
                 vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
-                // 无效值刷0
+                // 无效值刷-inf
                 if (validS2Len < topkCount_) {
                     uint64_t mask[1];
                     mask[0] = ~0;
@@ -965,7 +965,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
         }
         if (returnValueFlag) {
             PipeBarrier<PIPE_V>();
-            vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
+            // 可排序键还原为 bf16，并将无效位（score==0，对应 index==-1）刷为 -inf
+            // Convert sortable key to bf16 and flush invalid (score==0, index==-1) positions to -inf
+            vector1::UIntToFloatReturnValueWithInfMask(valueOutLocal_, scoreOutLocal_,
+                                                        topkCountAlign256_, constInfo_.NEG_INF_BFLOAT);
         }
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);

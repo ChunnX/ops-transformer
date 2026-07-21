@@ -56,6 +56,47 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out
     }
 }
 
+// 可排序键还原为 bf16 返回值，并将无效位（score==0）刷为 -inf
+// Convert sortable key back to bf16 return value, flushing -inf at invalid (score==0) positions
+__aicore__ inline void UIntToFloatReturnValueWithInfMask(const LocalTensor<bfloat16_t> &out_,
+                                                          const LocalTensor<uint16_t> &in,
+                                                          const uint32_t topK,
+                                                          const uint16_t negInfBits)
+{
+    auto outBuf = (__local_mem__ bfloat16_t*)out_.GetPhyAddr();
+    auto inBuf = (__local_mem__ uint16_t*)in.GetPhyAddr();
+
+    const uint16_t repeatSize16 = 128;
+    uint16_t topkLoopNum = (topK + repeatSize16 - 1) / repeatSize16;
+
+    __VEC_SCOPE__
+    {
+        AscendC::MicroAPI::RegTensor<uint16_t> regIn;
+        AscendC::MicroAPI::RegTensor<bfloat16_t> regOut;
+        AscendC::MicroAPI::RegTensor<uint16_t> regNegInf;
+        AscendC::MicroAPI::RegTensor<uint16_t> regZero;
+        AscendC::MicroAPI::MaskReg maskAllB16 =
+            AscendC::MicroAPI::CreateMask<bfloat16_t, AscendC::MicroAPI::MaskPattern::ALL>();
+        AscendC::MicroAPI::MaskReg maskInvalid;
+
+        AscendC::MicroAPI::Duplicate(regNegInf, negInfBits, maskAllB16);
+        AscendC::MicroAPI::Duplicate(regZero, (uint16_t)0, maskAllB16);
+
+        liV2Vector1::UIntSortConstCtx<bfloat16_t> uint16Ctx;
+        liV2Vector1::InitUIntSortConstCtx(uint16Ctx, maskAllB16);
+
+        for (uint16_t i = 0; i < topkLoopNum; ++i) {
+            AscendC::MicroAPI::LoadAlign<uint16_t>(regIn, inBuf + i * 128);
+            AscendC::MicroAPI::Compare<uint16_t, CMPMODE::EQ>(maskInvalid, regIn, regZero, maskAllB16);
+            liV2Vector1::UIntToSortableKey<bfloat16_t>(regOut, regIn, uint16Ctx, maskAllB16);
+            AscendC::MicroAPI::Select((AscendC::MicroAPI::RegTensor<uint16_t>&)regOut,
+                                      regNegInf, (AscendC::MicroAPI::RegTensor<uint16_t>&)regOut, maskInvalid);
+            AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                outBuf + i * 128, regOut, maskAllB16);
+        }
+    }
+}
+
 // float in uint16 out
 __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_,   // out    [S2Base]     [128   ]
                                              const LocalTensor<float> &qk_,       // q*k^t  [G, S2Base]  [64 128]

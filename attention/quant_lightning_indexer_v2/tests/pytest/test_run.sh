@@ -43,12 +43,12 @@ run_batch() {
     echo "Sheet 页: $excel_sheet"
     echo "pt  目录: $pt_path"
 
-    echo -e "\n===== 第一步：执行quant_lightning_indexer_v2_pt_save.py ====="
-    python3 $QLIV2_PT_SAVE_SCRIPT "$excel_path" "$pt_path" --sheet "$excel_sheet"
-    if [ $? -ne 0 ]; then
-        echo "quant_lightning_indexer_v2_pt_save.py 执行失败，退出"
-        exit 1
-    fi
+    # echo -e "\n===== 第一步：执行quant_lightning_indexer_v2_pt_save.py ====="
+    # python3 $QLIV2_PT_SAVE_SCRIPT "$excel_path" "$pt_path" --sheet "$excel_sheet"
+    # if [ $? -ne 0 ]; then
+    #     echo "quant_lightning_indexer_v2_pt_save.py 执行失败，退出"
+    #     exit 1
+    # fi
 
     echo -e "\n===== 第二步：替换test_quant_lightning_indexer_v2_batch.py中的路径 ====="
     python3 $REPLACE_PATH_SCRIPT $TEST_QLIV2_BATCH_SCRIPT "$pt_path"

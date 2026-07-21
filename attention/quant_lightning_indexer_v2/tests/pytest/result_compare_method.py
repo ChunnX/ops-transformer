@@ -226,7 +226,15 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
                 cpu_re = abs(cpu_ae / value_bm)
             if npu_re > thres or cpu_re > thres:
                 if return_value_flag:
-                    if not judge_value_by_isclose(cur_npu_output_value, cur_cpu_output_value):
+                    if torch.is_tensor(cur_npu_output_value):
+                        _npu_val = cur_npu_output_value.float().cpu().numpy() if cur_npu_output_value.dtype == torch.bfloat16 else cur_npu_output_value.cpu().numpy()
+                    else:
+                        _npu_val = np.asarray(cur_npu_output_value)
+                    if torch.is_tensor(cur_cpu_output_value):
+                        _cpu_val = cur_cpu_output_value.float().cpu().numpy() if cur_cpu_output_value.dtype == torch.bfloat16 else cur_cpu_output_value.cpu().numpy()
+                    else:
+                        _cpu_val = np.asarray(cur_cpu_output_value)
+                    if not judge_value_by_isclose(_npu_val, _cpu_val):
                         npu_pass = False
                         diff_npu.append(element_npu)
                         diff_cpu.append(element_cpu)
