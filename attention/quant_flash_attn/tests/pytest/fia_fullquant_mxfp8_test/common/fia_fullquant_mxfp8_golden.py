@@ -940,17 +940,8 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
                     cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
                     dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                     block_table, q_n, kv_n, softmax_scale,
-                    layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype,
-                    meta_overrides=None, main_overrides=None):
-    """调用 NPU 双算子 (QFA: quant_flash_attn_metadata + quant_flash_attn)
-
-    异常用例可通过 meta_overrides / main_overrides 覆盖传给算子的关键字参数：
-      - meta_overrides: 覆盖 quant_flash_attn_metadata 的入参 (如 quant_mode/head_dim/num_heads_q)
-      - main_overrides: 覆盖 quant_flash_attn 的入参 (如 quant_mode/metadata/return_softmax_lse)
-    覆盖发生在 layout 相关的 cu_seqlens 门控之后，因此可构造 "非 TND 仍传 cu_seqlens" 等违反
-    默认门控的异常场景；tensor 类型的 override 值需为已就绪的 NPU tensor。
-    不传 overrides 时行为与原实现完全一致。
-    """
+                    layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype):
+    """调用 NPU 双算子 (QFA: quant_flash_attn_metadata + quant_flash_attn)"""
     if not _HAS_NPU:
         raise ImportError("cann_ops_transformer.ops.quant_flash_attn is not available. "
                           "Please check that cann_ops_transformer is installed and all .so are compiled.")
@@ -965,7 +956,7 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
 
     torch.npu.synchronize()
 
-    meta_kwargs = dict(
+    metadata = quant_flash_attn_metadata(
         num_heads_q=q_n, num_heads_kv=kv_n, head_dim=q.shape[-1], quant_mode=1,
         cu_seqlens_q=cu_seqlens_q_t if is_tnd_q else None,
         cu_seqlens_kv=cu_seqlens_kv_t if is_tnd_kv else None,
@@ -975,9 +966,6 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
         layout_q=layout_q, layout_q_descale=layout_q_descale, layout_kv=layout_kv, layout_out=layout_out,
         max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
     )
-    if meta_overrides:
-        meta_kwargs.update(meta_overrides)
-    metadata = quant_flash_attn_metadata(**meta_kwargs)
 
     main_kwargs = dict(
         q=q, k=k, v=v,
@@ -996,8 +984,6 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
         max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
     )
     main_kwargs.update(_get_npu_fa_kwargs())
-    if main_overrides:
-        main_kwargs.update(main_overrides)
     atten_out, lse_out = quant_flash_attn(**main_kwargs)
     torch.npu.synchronize()
     return atten_out, lse_out
@@ -1064,7 +1050,7 @@ def prepare_npu_inputs(q_fp8, k_fp8, v_fp8,
                        block_table_torch=None,
                        qr_bf16=None, kr_bf16=None):
     """准备 NPU 侧入参 (layout 转换 / scale 转换 / mask / rope / block_table)，返回可直接传给
-    _call_npu_fa_op 的入参字典。异常用例可对返回字典做定向篡改后再调用 _call_npu_fa_op。
+    _call_npu_fa_op 的入参字典。
 
     返回字典的 key 与 _call_npu_fa_op 的形参名一一对应：
       q, k, v, q_rope, k_rope, mask,
@@ -1193,7 +1179,6 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
     """调用 NPU 算子，支持 N2TGD layout
 
     正常用例入口：准备入参 → 调用算子 → 输出截断/LSE 处理。
-    异常用例请直接调用 prepare_npu_inputs + _call_npu_fa_op(overrides=...)。
     """
     inputs = prepare_npu_inputs(
         q_fp8, k_fp8, v_fp8,
