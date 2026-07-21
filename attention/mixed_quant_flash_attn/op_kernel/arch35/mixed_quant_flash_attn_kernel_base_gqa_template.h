@@ -797,7 +797,18 @@ public:
 
     __aicore__ inline void FlashDecode(uint32_t sectionIdx)
     {
-        // TODO: 待后续填充实现
+        if (!isFd) {
+            return;
+        }
+        GetFDSectionInfo(sectionIdx);
+        vecFdBlock.InitBuffers(this->pipe, SharedBuffer1, SharedBuffer2, SharedBuffer3);
+        AscendC::ICachePreLoad(2);
+        vecFdBlock.AllocEventID();
+        SyncAll();
+        vecFdBlock.FlashDecode(fdParams_);
+        SyncAll();
+        vecFdBlock.FreeBuffers(SharedBuffer1, SharedBuffer2);
+        vecFdBlock.FreeEventID();
     }
 
     __aicore__ inline void Process()

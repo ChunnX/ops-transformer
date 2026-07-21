@@ -19,6 +19,8 @@
 #include "../utils/mixed_quant_flash_attn_common_def.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
 #include "../utils/attenmask_gs1.h"
+#include "../../../common/op_kernel/vector_common.h"
+
 
 template <inferFaLayOutTypeEnum LAYOUT>
 __aicore__ inline constexpr ActualSeqLensMode GetQActSeqMode()
@@ -50,6 +52,30 @@ __aicore__ inline constexpr UbFormat GetOutUbFormat()
         return UbFormat::S1G;
     } else if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_BNSD) {
         return UbFormat::GS1;
+    }
+}
+
+template <inferFaLayOutTypeEnum LAYOUT>
+__aicore__ inline constexpr GmFormat GetQueryGmFormatMQ()
+{
+    if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_BSND) {
+        return GmFormat::BSNGD;
+    } else if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_BNSD) {
+        return GmFormat::BNGSD;
+    } else if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_TND) {
+        return GmFormat::TNGD;
+    } else {
+        return GmFormat::NGTD;
+    }
+}
+
+template <inferFaLayOutTypeEnum LAYOUT>
+__aicore__ inline constexpr fa_base_vector::UbInputFormat GeInputUbFormatMQ()
+{
+    if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_BSND || LAYOUT == inferFaLayOutTypeEnum::LAYOUT_TND) {
+        return fa_base_vector::UbInputFormat::S1G;
+    } else if constexpr (LAYOUT == inferFaLayOutTypeEnum::LAYOUT_BNSD) {
+        return fa_base_vector::UbInputFormat::GS1;
     }
 }
 
@@ -450,7 +476,7 @@ protected:
     }
     __aicore__ inline void SinkMax(uint32_t startRow, uint32_t dealRowCount)
     {
-        constexpr GmFormat Q_FORMAT = GetQueryGmFormat<layout>();
+        constexpr GmFormat Q_FORMAT = GetQueryGmFormatMQ<layout>();
         int64_t gIdx = 0;
         LocalTensor<T> sinkBrcbBuf = fdSinkValueBuf;
         LocalTensor<T> sinkExpBuf = fdSinkExpBuf;
@@ -489,7 +515,7 @@ protected:
             .nextTokensPerBatch = nextTokensPerBatch,
         };
 
-        fa_base_vector::InvalidRows<UBOUT_T, fa_base_vector::GeInputUbFormat<layout>()> invalidRows;
+        fa_base_vector::InvalidRows<UBOUT_T, GeInputUbFormatMQ<layout>()> invalidRows;
         invalidRows(attenOutUb, params);
     }
 
