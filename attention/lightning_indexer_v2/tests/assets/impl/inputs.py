@@ -12,83 +12,226 @@
 
 """Input customization for LightningIndexer V2 TTK cases."""
 
-import hashlib
-import math
+import importlib.util
+import sys
+from pathlib import Path
 
 import torch
 
 
-def to_list(value):
-    if value is None:
-        return []
-    if torch.is_tensor(value):
-        return [int(x) for x in value.detach().cpu().reshape(-1).tolist()]
-    if isinstance(value, (list, tuple)):
-        return [int(x) for x in value]
-    return [int(value)]
+class LightningIndexerV2InputAdapter:
+    """Translate a TTK case and reuse the pytest input/golden generator."""
+
+    def __init__(self):
+        self.pytest_golden = None
+
+    @staticmethod
+    def load_golden_store():
+        name = "li_v2_ttk_golden"
+        if name in sys.modules:
+            return sys.modules[name]
+        path = Path(__file__).with_name("golden.py")
+        spec = importlib.util.spec_from_file_location(name, path)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        try:
+            spec.loader.exec_module(module)
+        except Exception:
+            sys.modules.pop(name, None)
+            raise
+        return module
+
+    def load_pytest_golden(self):
+        if self.pytest_golden is not None:
+            return self.pytest_golden
+        pytest_dir = Path(__file__).resolve().parents[2] / "pytest"
+        path = pytest_dir / "lightning_indexer_v2_golden.py"
+        name = "li_v2_pytest_golden"
+        inserted = str(pytest_dir) not in sys.path
+        if inserted:
+            sys.path.insert(0, str(pytest_dir))
+        try:
+            if name in sys.modules:
+                module = sys.modules[name]
+            else:
+                spec = importlib.util.spec_from_file_location(name, path)
+                module = importlib.util.module_from_spec(spec)
+                sys.modules[name] = module
+                try:
+                    spec.loader.exec_module(module)
+                except Exception:
+                    sys.modules.pop(name, None)
+                    raise
+            self.pytest_golden = module
+            return module
+        finally:
+            if inserted:
+                sys.path.remove(str(pytest_dir))
+
+    @staticmethod
+    def list_value(kwargs, name):
+        value = kwargs.get(f"{name}_values")
+        if value is None:
+            return None
+        if torch.is_tensor(value):
+            value = value.detach().cpu().reshape(-1).tolist()
+        return [int(item) for item in value]
+
+    @staticmethod
+    def prefix_lengths(value):
+        if not value:
+            return []
+        return [int(value[index + 1]) - int(value[index])
+                for index in range(len(value) - 1)]
+
+    @staticmethod
+    def data_range(input_ranges, index, default=(-1, 1)):
+        if input_ranges and index < len(input_ranges) and input_ranges[index] is not None:
+            return repr(list(input_ranges[index]))
+        return repr(list(default))
+
+    @staticmethod
+    def qk_dtype_name(tensor):
+        if tensor.dtype == torch.float16:
+            return "FP16"
+        if tensor.dtype == torch.bfloat16:
+            return "BF16"
+        raise ValueError(f"unsupported LI_V2 q/k dtype: {tensor.dtype}")
+
+    def geometry(self, q, k, layout_q, layout_k, cu_q, cu_k, seq_q, seq_k):
+        q_lengths = self.prefix_lengths(cu_q) or (seq_q or [])
+        k_lengths = self.prefix_lengths(cu_k) or (seq_k or [])
+        if layout_q == "BSND":
+            batch_size, q_seq, q_head_num, head_dim = [int(item) for item in q.shape]
+            q_t_size = 0
+        elif layout_q == "TND":
+            q_t_size, q_head_num, head_dim = [int(item) for item in q.shape]
+            batch_size = len(q_lengths)
+            q_seq = max(q_lengths, default=q_t_size)
+        else:
+            raise ValueError(f"unsupported LI_V2 query layout: {layout_q}")
+
+        if layout_k == "BSND":
+            _, k_seq, k_head_num, _ = [int(item) for item in k.shape]
+            k_t_size = 0
+            block_size = 0
+            block_num = 0
+        elif layout_k == "TND":
+            k_t_size, k_head_num, _ = [int(item) for item in k.shape]
+            k_seq = max(k_lengths, default=k_t_size)
+            block_size = 0
+            block_num = 0
+        elif layout_k == "PA_BBND":
+            block_num, block_size, k_head_num, _ = [int(item) for item in k.shape]
+            k_seq = max(k_lengths, default=block_size)
+            k_t_size = 0
+        else:
+            raise ValueError(f"unsupported LI_V2 key layout: {layout_k}")
+        return (
+            batch_size, q_seq, k_seq, q_t_size, k_t_size,
+            q_head_num, k_head_num, head_dim, block_size, block_num,
+        )
+
+    def build_case_params(self, q, k, layout_q, layout_k, kwargs):
+        cu_q = self.list_value(kwargs, "cu_seqlens_q")
+        cu_k = self.list_value(kwargs, "cu_seqlens_k")
+        seq_q = self.list_value(kwargs, "seqused_q")
+        seq_k = self.list_value(kwargs, "seqused_k")
+        residual = self.list_value(kwargs, "cmp_residual_k")
+        geometry = self.geometry(q, k, layout_q, layout_k, cu_q, cu_k, seq_q, seq_k)
+        input_ranges = kwargs.get("input_ranges") or ()
+        output_range = kwargs.get("output_idx_offset_range")
+        output_range = None if output_range is None else repr(list(output_range))
+        max_seqlen_q = kwargs.get("max_seqlen_q", -1)
+        max_seqlen_q = -1 if max_seqlen_q is None else int(max_seqlen_q)
+        return geometry + (
+            self.qk_dtype_name(q),
+            cu_q,
+            cu_k,
+            seq_q,
+            seq_k,
+            residual,
+            output_range,
+            layout_q,
+            layout_k,
+            int(kwargs.get("topk", 0)),
+            int(kwargs.get("mask_mode", 0)),
+            self.data_range(input_ranges, 0),
+            self.data_range(input_ranges, 1),
+            self.data_range(input_ranges, 2),
+            int(kwargs.get("cmp_ratio", 1)),
+            int(kwargs.get("return_value", 0)),
+            max_seqlen_q,
+        )
+
+    @staticmethod
+    def copy_tensor(dst, src, name):
+        if dst is None:
+            return
+        if src is None:
+            raise ValueError(f"{name} is present in CSV but pytest generator returned None")
+        src_cpu = src.detach().cpu() if torch.is_tensor(src) else torch.as_tensor(src)
+        if tuple(dst.shape) != tuple(src_cpu.shape):
+            raise ValueError(
+                f"{name} shape mismatch: TTK={tuple(dst.shape)} "
+                f"pytest={tuple(src_cpu.shape)}"
+            )
+        dst.copy_(src_cpu.to(dtype=dst.dtype, device=dst.device))
+
+    @staticmethod
+    def golden_data(data):
+        return {
+            "cpu_result": data["cpu_result"],
+            "topk_value": data["topk_value"],
+            "cpu_topk_value": data["cpu_topk_value"],
+            "output_idx_offset": data.get("output_idx_offset"),
+        }
+
+    def customize(self, q, k, w, cu_seqlens_q, cu_seqlens_k,
+                  seqused_q, seqused_k, cmp_residual_k, block_table,
+                  output_idx_offset, layout_q, layout_k, kwargs):
+        params = self.build_case_params(q, k, layout_q, layout_k, kwargs)
+        golden_store = self.load_golden_store().CASE_DATA
+        golden_store.clear()
+        data = self.load_pytest_golden().generate_liv2_test_data(params)
+        for name, dst, src_name in (
+            ("q", q, "query"),
+            ("k", k, "key"),
+            ("w", w, "weights"),
+            ("cu_seqlens_q", cu_seqlens_q, "cu_seqlens_q"),
+            ("cu_seqlens_k", cu_seqlens_k, "cu_seqlens_k"),
+            ("seqused_q", seqused_q, "seqused_q"),
+            ("seqused_k", seqused_k, "seqused_k"),
+            ("cmp_residual_k", cmp_residual_k, "cmp_residual_k_for_npu"),
+            ("block_table", block_table, "block_table"),
+            ("output_idx_offset", output_idx_offset, "output_idx_offset"),
+        ):
+            self.copy_tensor(dst, data.get(src_name), name)
+        testcase_name = kwargs.get("testcase_name")
+        golden_store.put(testcase_name, self.golden_data(data))
+        return data
 
 
-def fill_tensor_from_value(tensor, value):
-    if tensor is None or value is None or not torch.is_tensor(tensor):
-        return
-    data = torch.tensor(value, dtype=tensor.dtype, device=tensor.device)
-    tensor.copy_(data.reshape(tensor.shape))
-
-
-def fill_random_block_table(block_table, seqused_k, block_size, block_num, seed=0):
-    if block_table is None or not torch.is_tensor(block_table):
-        return
-    actual = to_list(seqused_k)
-    if not actual:
-        return
-    shape = tuple(block_table.shape)
-    used_blocks = [math.ceil(max(x, 0) / max(int(block_size), 1)) for x in actual]
-    required = sum(used_blocks)
-    if required > int(block_num):
-        raise ValueError(f"block_table requires {required} blocks, but block_num is {block_num}")
-    gen = torch.Generator(device="cpu")
-    gen.manual_seed(int(seed or 0))
-    ids = torch.randperm(int(block_num), dtype=torch.int32, generator=gen)
-    table = torch.full(shape, -1, dtype=torch.int32)
-    cursor = 0
-    for b_idx, blocks in enumerate(used_blocks):
-        take = min(blocks, shape[1])
-        table[b_idx, :take] = ids[cursor:cursor + take]
-        cursor += blocks
-    block_table.copy_(table.to(dtype=block_table.dtype, device=block_table.device))
-
-
-def fill_output_offsets(output_idx_offset, value_range, seed=0):
-    if output_idx_offset is None or not torch.is_tensor(output_idx_offset) or value_range is None:
-        return
-    low, high = [int(x) for x in value_range]
-    gen = torch.Generator(device="cpu")
-    gen.manual_seed(int(seed or 0) + 17)
-    values = torch.randint(low, high + 1, output_idx_offset.shape, dtype=torch.int32, generator=gen)
-    output_idx_offset.copy_(values.to(dtype=output_idx_offset.dtype, device=output_idx_offset.device))
+INPUT_ADAPTER = LightningIndexerV2InputAdapter()
 
 
 def generate_li_v2_inputs(q, k, w, *, cu_seqlens_q=None, cu_seqlens_k=None,
                           seqused_q=None, seqused_k=None, cmp_residual_k=None,
-                          block_table=None, output_idx_offset=None, layout_k="BSND",
-                          output_idx_offset_range=None, testcase_name="", **kwargs):
-    """Fill metadata tensors and PA block table for LI V2."""
-    del q, w
-    for name, tensor in (
-        ("cu_seqlens_q", cu_seqlens_q),
-        ("cu_seqlens_k", cu_seqlens_k),
-        ("seqused_q", seqused_q),
-        ("seqused_k", seqused_k),
-        ("cmp_residual_k", cmp_residual_k),
-    ):
-        fill_tensor_from_value(tensor, kwargs.get(f"{name}_values"))
-    seed = int(hashlib.sha256(str(testcase_name).encode("utf-8")).hexdigest()[:8], 16)
-    if layout_k == "PA_BBND":
-        fill_random_block_table(
-            block_table,
-            seqused_k,
-            int(k.shape[1]),
-            int(k.shape[0]),
-            seed=seed,
-        )
-    fill_output_offsets(output_idx_offset, output_idx_offset_range, seed=seed)
+                          block_table=None, output_idx_offset=None,
+                          layout_q="BSND", layout_k="BSND", **kwargs):
+    """Generate the exact pytest inputs and CPU golden for a TTK case."""
+    INPUT_ADAPTER.customize(
+        q,
+        k,
+        w,
+        cu_seqlens_q,
+        cu_seqlens_k,
+        seqused_q,
+        seqused_k,
+        cmp_residual_k,
+        block_table,
+        output_idx_offset,
+        layout_q,
+        layout_k,
+        kwargs,
+    )
