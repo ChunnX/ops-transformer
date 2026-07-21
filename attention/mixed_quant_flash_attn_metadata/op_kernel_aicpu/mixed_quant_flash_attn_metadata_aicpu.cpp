@@ -255,7 +255,7 @@ bool MixedQuantFlashAttnMetadataCpuKernel::ParamsInit()
     param.mBaseSize = mBaseSize_;
     param.s2BaseSize = s2BaseSize_;
     param.costFunc = CalcCost;
-    param.mode = load_balance::BalanceMode::BN1_S1;
+    // param.mode = load_balance::BalanceMode::BN1_S1;
     param.l2Byte = 0U;     // Set sectionNum to 1
     param.fdTolerance = 10;
     param.fdLeastBlock = 3;
