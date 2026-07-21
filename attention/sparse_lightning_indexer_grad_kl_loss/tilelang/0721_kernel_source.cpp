@@ -82,7 +82,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v0_key_ub = ascend_ub.GetWithOffset<half>(16384, 4608);
   auto v0_rope_ub = ascend_ub.GetWithOffset<half>(4096, 37376);
   auto v0_ki_ub = ascend_ub.GetWithOffset<half>(4096, 45568);
-  auto tmp_ub = ascend_ub.GetWithOffset<uint8_t>(65536, 125440);
+  auto tmp_ub = ascend_ub.GetWithOffset<uint8_t>(65536, 124928);
   auto v1_bw_eps = ascend_ub.GetWithOffset<float>(128, 195104);
   auto c2_qi_l1 = ascend_l1.GetWithOffset<half>(8192, 245760);
   auto c1_query_l1 = ascend_l1.GetWithOffset<half>(65536, 0);
@@ -101,7 +101,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v1_p_eps = ascend_ub.GetWithOffset<float>(128, 54784);
   auto v1_p_bmm1 = ascend_ub.GetWithOffset<float>(16384, 55296);
   auto v1_p_tmp = ascend_ub.GetWithOffset<float>(1024, 120832);
-  auto v1_p_out = ascend_ub.GetWithOffset<float>(128, 124928);
+  auto v1_p_out = ascend_ub.GetWithOffset<float>(128, 190464);
   auto v1_sy_weight_half = ascend_ub.GetWithOffset<half>(64, 190976);
   auto v1_sy_weight = ascend_ub.GetWithOffset<float>(64, 191104);
   auto v1_sy_weight_2d = ascend_ub.GetWithOffset<float>(8192, 4608);
@@ -355,15 +355,19 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
                 AscendC::Muls(v1_p_bmm1[0], v1_p_bmm1[0], 4.419417e-02f, 16384);
                 }
                 AscendC::PipeBarrier<PIPE_V>();
-                tl::ascend::brcb<float>(v1_p_tmp[0], v1_p_max[0], 32, 1, 8);
-                AscendC::PipeBarrier<PIPE_V>();
-                tl::ascend::sub_mask<float>(v1_p_bmm1[0], v1_p_bmm1[0], v1_p_tmp[0], 0xFFFFFFFFFFFFFFFF, 0, 256, 1, 1, 0, 16, 16, 1);
+                for (int32_t p_row_chunk = 0; p_row_chunk < 2; ++p_row_chunk) {
+                  tl::ascend::brcb<float>(v1_p_tmp[(p_row_chunk * 512)], v1_p_max[(p_row_chunk * 64)], 16, 1, 8);
+                  AscendC::PipeBarrier<PIPE_V>();
+                  tl::ascend::sub_mask<float>(v1_p_bmm1[(p_row_chunk * 8192)], v1_p_bmm1[(p_row_chunk * 8192)], v1_p_tmp[(p_row_chunk * 512)], 0xFFFFFFFFFFFFFFFF, 0, 128, 1, 1, 0, 16, 16, 1);
+                }
                 AscendC::PipeBarrier<PIPE_V>();
                 AscendC::Exp(v1_p_bmm1[0], v1_p_bmm1[0], 16384);
                 AscendC::PipeBarrier<PIPE_V>();
-                tl::ascend::brcb<float>(v1_p_tmp[0], v1_p_sum[0], 32, 1, 8);
-                AscendC::PipeBarrier<PIPE_V>();
-                tl::ascend::div_mask<float>(v1_p_bmm1[0], v1_p_bmm1[0], v1_p_tmp[0], 0xFFFFFFFFFFFFFFFF, 0, 256, 1, 1, 0, 16, 16, 1);
+                for (int32_t p_row_chunk_1 = 0; p_row_chunk_1 < 2; ++p_row_chunk_1) {
+                  tl::ascend::brcb<float>(v1_p_tmp[(p_row_chunk_1 * 512)], v1_p_sum[(p_row_chunk_1 * 64)], 16, 1, 8);
+                  AscendC::PipeBarrier<PIPE_V>();
+                  tl::ascend::div_mask<float>(v1_p_bmm1[(p_row_chunk_1 * 8192)], v1_p_bmm1[(p_row_chunk_1 * 8192)], v1_p_tmp[(p_row_chunk_1 * 512)], 0xFFFFFFFFFFFFFFFF, 0, 128, 1, 1, 0, 16, 16, 1);
+                }
                 AscendC::PipeBarrier<PIPE_V>();
                 tl::ascend::reduce_sum<float,  128,  128,  0>(v1_p_out[0], v1_p_bmm1[0], tmp_ub[0], true);
                 AscendC::PipeBarrier<PIPE_V>();
@@ -439,8 +443,12 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
                 tl::ascend::copy_ub_to_gm<float, 128>(SoftmaxI[((((pipe_iter * 49152) + (cid * 2048)) + (n_idx_3 * 128)) - 49152)], v1_sy_chunk[0], 2048, 1, 128);
               }
             }
-            AscendC::CrossCoreSetFlag<0x1, PIPE_MTE3>(12);
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(12);
+            AscendC::CrossCoreWaitFlag(13);
+          }
+          if ASCEND_IS_AIC {
             AscendC::CrossCoreWaitFlag(12);
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE2>(13);
           }
           if ASCEND_IS_AIV {
             tl::ascend::Fill<float>(v1_bw_eps[0], 1.000000e-08f, 128);
