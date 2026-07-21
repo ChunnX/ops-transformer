@@ -253,7 +253,8 @@ static bool ShouldUseOptimizedPertokenDynamic(const QuantMatmulDequantParam &par
     }
 
     // Sparse MoE shapes with enough experts and K=2048 benefit from the optimized split-distribution path.
-    if (params.originE >= 8ULL && params.originM <= 640ULL && params.originK == 2048ULL && params.originN >= 768ULL) {
+    // Widened N>=768 -> N>=512 to route the Qwen3.6 gate/up shape (E=256,K=2048,N=512,M<=640) onto 10000005.
+    if (params.originE >= 8ULL && params.originM <= 640ULL && params.originK == 2048ULL && params.originN >= 512ULL) {
         return true;
     }
 
