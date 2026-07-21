@@ -76,11 +76,11 @@ ge::graphStatus InferShapeQuantBlockSparseAttn(gert::InferShapeContext *context)
 
     softmaxLseShape->SetDimNum(2);
     if (layoutQ == "NTD") {
-        softmaxLseShape->SetDim(0, queryShape->GetDim(1)); // T
-        softmaxLseShape->SetDim(1, queryShape->GetDim(0)); // N1
+        softmaxLseShape->SetDim(0, queryShape->GetDim(0)); // N1
+        softmaxLseShape->SetDim(1, queryShape->GetDim(1)); // T
     } else {
-        softmaxLseShape->SetDim(0, queryShape->GetDim(0)); // T
-        softmaxLseShape->SetDim(1, queryShape->GetDim(1)); // N1
+        softmaxLseShape->SetDim(0, queryShape->GetDim(1)); // N1
+        softmaxLseShape->SetDim(1, queryShape->GetDim(0)); // T
     }
     return ge::GRAPH_SUCCESS;
 }
