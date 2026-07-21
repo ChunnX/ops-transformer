@@ -10,7 +10,7 @@
 
 /*!
 * \file engram_fetch_grad_tiling_key.h
-* \brief kernel侧tiling key — EngramFetchGrad（单一模式）
+* \brief kernel侧tiling key
 */
 
 #ifndef ENGRAM_FETCH_GRAD_TILING_KEY_H
