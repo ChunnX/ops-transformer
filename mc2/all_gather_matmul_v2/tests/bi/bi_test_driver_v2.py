@@ -11,38 +11,28 @@
 
 """Batch-invariance test driver V2 for npu_all_gather_quant_mm (AllGatherMatmulV2).
 
-V2 改进点（相对 V1 bi_test_driver.py）：
-  1. Cross-rank BI：各 rank 使用 rank-specific seed 生成**不同** x1 数据，
-     AllGather 后全局输入各 rank 一致，比较 full output byte-exact 一致性。
-     （V1 所有 rank 输入相同，实际测的是确定性而非 BI）
-  2. Row-BI：固定 target_row 数据，变化其他行，比较 target_row 输出是否不变。
-     （V1 用不同 seed 改变了 target_row 本身，测试逻辑错误）
-  3. 覆盖多个 target_row 位置（首行、末行），而非仅 row 0。
-  4. x2_scale 始终 varying（触发 BI 差异的关键条件）。
-  5. Warmup 后加 dist.barrier() 稳定 HCCL state。
+V2 improvements over V1 (bi_test_driver.py):
+  1. Cross-rank BI: each rank uses rank-specific seed for different x1 data,
+     AllGather produces identical global input, compare full output byte-exact.
+  2. Row-BI: fix target_row data across trials, vary only other rows.
+  3. Cover multiple target_row positions (rank 0 rows + non-rank 0 rows).
+  4. x2_scale varies across K-axis (key BI trigger condition).
+  5. Add dist.barrier() after warmup for stable HCCL state.
+  6. Synchronized error handling to prevent collective op deadlocks.
+  7. Exit code accounts for NON_DET results.
 
 Two independent BI dimensions:
-  A) **Cross-rank BI**: 同输入下所有 rank 的 y 输出必须 byte-exact 一致
-     （issue #2872 报告的 LOCAL/GATHER 双路径 divergence）
-  B) **Row-BI (literature BI)**: y[i] = f(x[i], W)，row i 输出只取决于 row i + 共享权重
+  A) **Cross-rank BI**: all ranks must produce byte-exact identical output
+     (issue #2872: LOCAL/GATHER dual-path divergence)
+  B) **Row-BI (literature BI)**: y[i] = f(x[i], W), row i output depends
+     only on row i input + shared weights
 
-Methodology:
-  Cross-rank BI:
-    1. 各 rank 使用 rank-specific seed 生成不同的 x1 数据
-    2. AllGather 后所有 rank 看到相同的全局输入 [x1_r0; x1_r1; ...]
-    3. 每个 rank 独立计算 local output (M_per_rank rows)
-    4. 通过 all_gather 收集所有 rank 的 local output，重建 full Y
-    5. 比较所有 rank 的 full Y 是否 byte-exact 一致
-    6. 多次 trial 验证确定性
-
-  Row-BI:
-    1. 固定 target_row 数据（所有 trial 相同）
-    2. 变化其他行数据（不同 trial 使用不同 seed）
-    3. 比较 target_row 的输出是否不变
-    4. 在多个 target_row 位置测试（首行、末行）
+Output shape: (M_total, N) regardless of gather_output parameter.
+All ranks hold the full output after AllGather + matmul.
 """
 import os
 import sys
+import traceback
 import hashlib
 import torch
 import torch_npu
@@ -62,35 +52,55 @@ def sha_full(t):
     return hashlib.sha256(t.cpu().contiguous().view(torch.uint8).numpy().tobytes()).hexdigest()[:16]
 
 
-def build_scale_varying(shape):
-    bs = torch.empty(shape, dtype=torch.uint8)
-    ndim = len(shape)
-    if ndim == 3:
-        d0, d1, _ = shape
-        for i in range(d0):
-            for j in range(d1):
-                for slot in (0, 1):
-                    bs[i, j, slot] = 0x78 + ((i + j * 2 + slot) % 8)
+def build_x2_scale_varying(n_pack, N):
+    """Build x2_scale with shape (n_pack, N, 2), varying across K-axis blocks."""
+    bs = torch.empty(n_pack, N, 2, dtype=torch.uint8)
+    for p in range(n_pack):
+        for c in range(N):
+            for slot in (0, 1):
+                bs[p, c, slot] = 0x78 + ((p * 2 + slot) % 8)
     return bs
+
+
+def build_x1_scale_varying(M_per_rank, n_pack):
+    """Build x1_scale with shape (M_per_rank, n_pack, 2), varying across M and K."""
+    bs = torch.empty(M_per_rank, n_pack, 2, dtype=torch.uint8)
+    for m in range(M_per_rank):
+        for p in range(n_pack):
+            for slot in (0, 1):
+                bs[m, p, slot] = 0x78 + ((m + p * 2 + slot) % 8)
+    return bs
+
+
+def sync_error(dev, local_error):
+    """Synchronize error state across all ranks via all_reduce.
+    Returns True if ANY rank reported an error.
+    """
+    err_tensor = torch.tensor([1.0 if local_error else 0.0], device=dev)
+    dist.all_reduce(err_tensor)
+    return err_tensor.item() > 0.5
 
 
 def run_op(dev, hcom, ws, M_per_rank, K, N, seed, rank,
            target_row=None, target_row_bytes=None, x1_scale_varying=False):
     """Run npu_all_gather_quant_mm.
 
-    x1: 各 rank 使用 (seed * ws + rank) 生成不同数据，AllGather 后全局输入各 rank 一致。
-    x2: 所有 rank 相同（固定 seed 9000）。
-    x2_scale: 始终 varying（触发 BI 差异的关键条件）。
-    x1_scale: 由 x1_scale_varying 控制。
+    x1: each rank uses (seed * ws + rank) for different data,
+        AllGather produces identical global input across ranks.
+    x2: all ranks identical (fixed seed 9000), shape (K, N).
+    x2_scale: varies across K-axis, shape (n_pack, N, 2).
+    x1_scale: controlled by x1_scale_varying, shape (M_per_rank, n_pack, 2).
+
+    Output shape: (M_total, N) where M_total = M_per_rank * ws.
     """
     n_pack = (K + 63) // 64
 
     g_w = torch.Generator()
     g_w.manual_seed(9000)
-    x2_bytes = torch.randint(0x10, 0x50, (N, K), dtype=torch.uint8, generator=g_w)
-    x2 = x2_bytes.to(dev).reshape(N, K).view(torch.float8_e4m3fn)
-    x2s_bytes = build_scale_varying((N, n_pack, 2))
-    x2s = x2s_bytes.to(dev).reshape(N, n_pack, 2).view(torch.float8_e8m0fnu)
+    x2_bytes = torch.randint(0x10, 0x50, (K, N), dtype=torch.uint8, generator=g_w)
+    x2 = x2_bytes.to(dev).reshape(K, N).view(torch.float8_e4m3fn)
+    x2s_bytes = build_x2_scale_varying(n_pack, N)
+    x2s = x2s_bytes.to(dev).reshape(n_pack, N, 2).view(torch.float8_e8m0fnu)
 
     g_o = torch.Generator()
     g_o.manual_seed(seed * ws + rank)
@@ -100,7 +110,7 @@ def run_op(dev, hcom, ws, M_per_rank, K, N, seed, rank,
     x1 = x1_bytes.to(dev).reshape(M_per_rank, K).view(torch.float8_e4m3fn)
 
     if x1_scale_varying:
-        x1s_bytes = build_scale_varying((M_per_rank, n_pack, 2))
+        x1s_bytes = build_x1_scale_varying(M_per_rank, n_pack)
     else:
         x1s_bytes = torch.full((M_per_rank, n_pack, 2), 0x7F, dtype=torch.uint8)
     x1s = x1s_bytes.to(dev).reshape(M_per_rank, n_pack, 2).view(torch.float8_e8m0fnu)
@@ -126,8 +136,12 @@ def run_op(dev, hcom, ws, M_per_rank, K, N, seed, rank,
     return out
 
 
-def gather_and_compare(y):
-    """All-gather local outputs, compare byte-exact. Returns (all_agree, diff_counts_per_rank)."""
+def safe_gather_and_compare(y, dev):
+    """All-gather outputs from all ranks, compare byte-exact.
+    All ranks participate even if local y is a dummy (error case).
+
+    Returns (all_agree, diff_counts_per_rank).
+    """
     ws = dist.get_world_size()
     all_y = [torch.empty_like(y) for _ in range(ws)]
     dist.all_gather(all_y, y)
@@ -151,18 +165,29 @@ def _xrank_status(trial_agrees, trial_diffs):
 
 
 def run_xrank_bi_test(dev, hcom, ws, M_per_rank, K, N, seed, rank, x1_scale_varying):
-    """Cross-rank BI: 各 rank 不同 x1 -> AllGather 后全局输入相同 -> full output 必须 byte-exact 一致。"""
+    """Cross-rank BI: each rank has different x1 -> AllGather -> same global input
+    -> full output (M_total, N) must be byte-exact identical across all ranks.
+    """
+    M_total = M_per_rank * ws
     full_shas = []
     xrank_agrees = []
     xrank_diffs = []
-    try:
-        for _ in range(N_TRIALS):
+    local_error = False
+    for _ in range(N_TRIALS):
+        try:
             y = run_op(dev, hcom, ws, M_per_rank, K, N, seed, rank, x1_scale_varying=x1_scale_varying)
-            full_shas.append(sha_full(y))
-            agree, diffs = gather_and_compare(y)
-            xrank_agrees.append(agree)
-            xrank_diffs.append(diffs)
-    except Exception:
+        except Exception:
+            if rank == 0:
+                print(f"    [xrank] run_op Exception: {traceback.format_exc()}", flush=True)
+            local_error = True
+            y = torch.zeros(M_total, N, dtype=torch.bfloat16, device=dev)
+
+        full_shas.append(sha_full(y))
+        agree, diffs = safe_gather_and_compare(y, dev)
+        xrank_agrees.append(agree)
+        xrank_diffs.append(diffs)
+
+    if sync_error(dev, local_error):
         return "X_ERROR", full_shas, xrank_diffs
 
     det = len(set(full_shas)) == 1
@@ -172,27 +197,45 @@ def run_xrank_bi_test(dev, hcom, ws, M_per_rank, K, N, seed, rank, x1_scale_vary
 
 
 def run_row_bi_test(dev, hcom, ws, M_per_rank, K, N, seed, rank, target_row, x1_scale_varying):
-    """Row-BI: target_row 固定，其他行变化 -> target_row 输出必须不变。
+    """Row-BI: target_row data is fixed, other rows vary -> target_row output must not change.
 
-    两次 trial 使用不同 seed 生成不同的非 target_row 数据，但 target_row 数据固定。
+    Two trials use different seeds to generate different non-target_row data,
+    but target_row data is overwritten with the same target_row_bytes on the
+    rank that owns that row.
     """
+    M_total = M_per_rank * ws
+    owner_rank = target_row // M_per_rank
+    local_idx = target_row % M_per_rank
+
     g_t = torch.Generator()
     g_t.manual_seed(12345 + target_row)
     target_row_bytes = torch.randint(0x10, 0x50, (K,), dtype=torch.uint8, generator=g_t)
 
     shas = []
-    try:
-        for trial in range(2):
-            trial_seed = seed + (trial + 1) * 10000
+    local_error = False
+    for trial in range(2):
+        trial_seed = seed + (trial + 1) * 10000
+        try:
             y = run_op(dev, hcom, ws, M_per_rank, K, N, trial_seed, rank,
-                       target_row=target_row, target_row_bytes=target_row_bytes,
+                       target_row=local_idx if rank == owner_rank else None,
+                       target_row_bytes=target_row_bytes if rank == owner_rank else None,
                        x1_scale_varying=x1_scale_varying)
-            if target_row >= y.shape[0]:
-                return "SKIP", None
+        except Exception:
+            if rank == 0:
+                print(f"    [row-BI] run_op Exception: {traceback.format_exc()}", flush=True)
+            local_error = True
+            y = torch.zeros(M_total, N, dtype=torch.bfloat16, device=dev)
+
+        if target_row >= y.shape[0]:
+            shas.append(None)
+        else:
             shas.append(sha_row(y, target_row))
-    except Exception:
+
+    if sync_error(dev, local_error):
         return "ERROR", None
 
+    if any(s is None for s in shas):
+        return "SKIP", None
     if len(shas) < 2:
         return "ERROR", None
     if shas[0] == shas[1]:
@@ -214,12 +257,8 @@ def main():
 
     if rank == 0:
         print("  Phase 0: HCCL warm-up...", flush=True)
-    try:
-        for _ in range(N_WARMUP):
-            _ = run_op(dev, hcom, ws, 8, 256, 64, 42, rank)
-    except Exception as e:
-        if rank == 0:
-            print(f"    warmup ERROR (continuing): {str(e)[:100]}", flush=True)
+    for _ in range(N_WARMUP):
+        _ = run_op(dev, hcom, ws, 8, 256, 64, 42, rank)
     dist.barrier()
 
     M_PER_RANKS = [4, 8, 16]
@@ -253,7 +292,10 @@ def main():
                         n_xr_nondet += 1
                         nondet_examples.append((M_per_rank * ws, K, N, xr_st, xr_shas))
 
-                for target_row in [0, M_per_rank - 1]:
+                target_rows = [0, M_per_rank - 1]
+                if M_per_rank > 1 and ws > 1:
+                    target_rows.append(M_per_rank)
+                for target_row in target_rows:
                     row_st, row_shas = run_row_bi_test(
                         dev, hcom, ws, M_per_rank, K, N, base_seed, rank,
                         target_row, x1_var)
@@ -296,7 +338,7 @@ def main():
                 print(f"    M_total={ex[0]} K={ex[1]} N={ex[2]} status={ex[3]} shas={ex[4]}", flush=True)
 
     dist.destroy_process_group()
-    sys.exit(0 if (n_xr_fail == 0 and n_row_fail == 0) else 1)
+    sys.exit(0 if (n_xr_fail == 0 and n_row_fail == 0 and n_xr_nondet == 0 and n_row_nondet == 0) else 1)
 
 
 if __name__ == "__main__":
