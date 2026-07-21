@@ -148,7 +148,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
         runParam.s1RealSize = Min(runParam.qSNumInOneBlock, runParam.actualS1Size - cubeSOuterOffset);
         runParam.mRealSize = runParam.s1RealSize * constInfo.gSize;
         if constexpr (IS_SPLIT_G) {
-            runParam.mRealSize = runParam.mRealSize >> 1;
+            runParam.mRealSize = runParam.s1RealSize * runParam.gSplitSize;
         }
     }
 
@@ -166,7 +166,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
     if (constInfo.subBlockIdx == 1) {
         runParam.halfS1RealSize = runParam.s1RealSize - runParam.halfS1RealSize;
-        runParam.sOuterOffset = cubeSOuterOffset + runParam.halfMRealSize / constInfo.gSize;
+        runParam.sOuterOffset = cubeSOuterOffset + runParam.firstHalfMRealSize / constInfo.gSize;
     } else {
         runParam.sOuterOffset = cubeSOuterOffset;
     }
@@ -192,7 +192,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
                 runParam.goIdx * constInfo.dSizeV;
         }
         if (constInfo.subBlockIdx == 1) {
-            runParam.attentionOutOffset += runParam.halfMRealSize * constInfo.dSizeV;
+            runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
     }
 }
