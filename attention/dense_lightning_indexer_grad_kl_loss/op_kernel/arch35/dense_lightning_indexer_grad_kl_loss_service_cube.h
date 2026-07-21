@@ -811,7 +811,7 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34Deter(const DLIGradKL
             MmadInner(mm3Params, l1aTensor, l1bTensor, l0cTensor, l1PingPongFlag, l0abPingPongFlag, l0abPingPongFlag);
             FixOutAtomicAdd(mm3Params, dstGm, l0cTensor, l0abPingPongFlag);
             if (constInfo.aicIdx == 0 && n1IndexId == 0 && s2InnerIdx == 0) {
-                AscendC::PipeBarrier<AscendC::PIPE_FIX>();
+                AscendC::PipeBarrier<PIPE_FIX>();
                 AscendC::DumpTensor(dstGm, 3600, 64);
             }
             l0abPingPongFlag = (l0abPingPongFlag + 1) & 1;
