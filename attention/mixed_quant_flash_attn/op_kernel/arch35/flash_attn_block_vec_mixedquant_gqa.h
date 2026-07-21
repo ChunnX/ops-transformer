@@ -130,6 +130,23 @@ public:
     static constexpr uint32_t blockBytes = 32;
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0;
 
+    TEventID MQFA_MTE2_V_SCALE_K[2] = {0, 1};
+    TEventID MQFA_V_MTE2_SCALE_K[2] = {0, 1};
+    TEventID MQFA_MTE2_V_KV_K[2] = {2, 3};
+    TEventID MQFA_V_MTE2_KV_K[2] = {2, 3};
+    TEventID MQFA_V_MTE3_K[2] = {0, 1};
+    TEventID MQFA_MTE3_V_K[2] = {0, 1};
+
+    TEventID MQFA_MTE2_V_SCALE_V[2] = {4, 5};
+    TEventID MQFA_V_MTE2_SCALE_V[2] = {4, 5};
+    TEventID MQFA_MTE2_V_KV_V[2] = {6, 7};
+    TEventID MQFA_V_MTE2_KV_V[2] = {6, 7};
+    TEventID MQFA_V_MTE3_V[2] = {2, 3};
+    TEventID MQFA_MTE3_V_V[2] = {2, 3};
+
+    TEventID MQFA_V_MTE3_VEC2[2] = {4, 5};
+    TEventID MQFA_MTE3_V_VEC2[2] = {4, 5};
+
     TBuf<> commonTBuf;
     TBuf<> vselrIndexesBuf[4];
     TQue<QuePosition::VECOUT, 1> stage1OutQue[2];
@@ -206,6 +223,15 @@ public:
             }
             WaitFlag<AscendC::HardEvent::MTE3_V>(initOutputEventId);
             SyncAll();
+        }
+    }
+        __aicore__ inline void UninitAntiquantCrossCore()
+    {
+        if ASCEND_IS_AIV {
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[0]);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[1]);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[2]);
+            CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_VC_L1_EVENT[3]);
         }
     }
 
@@ -293,9 +319,9 @@ public:
         tPipe->InitBuffer(softmaxExpBuf[2], 256);
         tPipe->InitBuffer(maxBrdcst, 1, 2048);
         tPipe->InitBuffer(sumBrdcst, 1, 2048);
-        tPipe->InitBuffer(commonTBuf, 512);       
+        tPipe->InitBuffer(commonTBuf, 512);
         tPipe->InitBuffer(SharedBuffer1[0], 1, stage1OutQueSize);
-        // tPipe->InitBuffer(SharedBuffer1[1], 1, stage2OutQueSize);
+        // tPipe->InitBuffer(SharedBuffer1[1], 1, stage1OutQueSize);
         tPipe->InitBuffer(SharedBuffer3, stage2OutQueSize);
 
         if (constInfo.isSoftmaxLseEnable) {
@@ -452,6 +478,37 @@ public:
 
     __aicore__ inline void AllocEventID()
     {
+        MQFA_MTE2_V_SCALE_K[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+        MQFA_MTE2_V_SCALE_K[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+        MQFA_V_MTE2_SCALE_K[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+        MQFA_V_MTE2_SCALE_K[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+        MQFA_MTE2_V_KV_K[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+        MQFA_MTE2_V_KV_K[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+        MQFA_V_MTE2_KV_K[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+        MQFA_V_MTE2_KV_K[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+        MQFA_V_MTE3_K[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        MQFA_V_MTE3_K[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        MQFA_MTE3_V_K[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+        MQFA_MTE3_V_K[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+
+        MQFA_MTE2_V_SCALE_V[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+        MQFA_MTE2_V_SCALE_V[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+        MQFA_V_MTE2_SCALE_V[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+        MQFA_V_MTE2_SCALE_V[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+        MQFA_MTE2_V_KV_V[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+        MQFA_MTE2_V_KV_V[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>();
+        MQFA_V_MTE2_KV_V[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+        MQFA_V_MTE2_KV_V[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
+        MQFA_V_MTE3_V[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        MQFA_V_MTE3_V[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        MQFA_MTE3_V_V[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+        MQFA_MTE3_V_V[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+
+        MQFA_V_MTE3_VEC2[0] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        MQFA_V_MTE3_VEC2[1] = GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>();
+        MQFA_MTE3_V_VEC2[0] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+        MQFA_MTE3_V_VEC2[1] = GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>();
+
         SetFlag<HardEvent::V_MTE2>(MQFA_V_MTE2_SCALE_K[0]);
         SetFlag<HardEvent::V_MTE2>(MQFA_V_MTE2_SCALE_K[1]);
         SetFlag<HardEvent::V_MTE2>(MQFA_V_MTE2_KV_K[0]);
@@ -490,6 +547,36 @@ public:
         WaitFlag<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[1]);
         WaitFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[0]);
         WaitFlag<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(MQFA_MTE2_V_SCALE_K[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(MQFA_MTE2_V_SCALE_K[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(MQFA_V_MTE2_SCALE_K[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(MQFA_V_MTE2_SCALE_K[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(MQFA_MTE2_V_KV_K[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(MQFA_MTE2_V_KV_K[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(MQFA_V_MTE2_KV_K[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(MQFA_V_MTE2_KV_K[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(MQFA_V_MTE3_K[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(MQFA_V_MTE3_K[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(MQFA_MTE3_V_K[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(MQFA_MTE3_V_K[1]);
+
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(MQFA_MTE2_V_SCALE_V[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(MQFA_MTE2_V_SCALE_V[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(MQFA_V_MTE2_SCALE_V[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(MQFA_V_MTE2_SCALE_V[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(MQFA_MTE2_V_KV_V[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(MQFA_MTE2_V_KV_V[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(MQFA_V_MTE2_KV_V[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE2>(MQFA_V_MTE2_KV_V[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(MQFA_V_MTE3_V[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(MQFA_V_MTE3_V[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(MQFA_MTE3_V_V[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(MQFA_MTE3_V_V[1]);
+
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::V_MTE3>(MQFA_V_MTE3_VEC2[1]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[0]);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_V>(MQFA_MTE3_V_VEC2[1]);
     }
 
     __aicore__ inline void DealZeroActSeqLen(uint32_t bN2Cur)
@@ -519,14 +606,15 @@ public:
     __aicore__ inline void ProcessVec1(MM2_ABUF_T &vec1ResBuf, MM1_DBUF_T &bmm1ResBuf, RunInfoX &runInfo)
     {
 #ifdef SKIP_V1
-        bmm1ResBuf.WaitCrossCore();
-        bmm1ResBuf.SetCrossCore();
-        vec1ResBuf.SetCrossCore();
-        return;
+        // bmm1ResBuf.WaitCrossCore();
+        // bmm1ResBuf.SetCrossCore();
+        // vec1ResBuf.SetCrossCore();
+        // return;
 #endif
         bmm1ResBuf.WaitCrossCore();
         if (unlikely(runInfo.actVecMSize == 0)) {
             bmm1ResBuf.SetCrossCore();
+            vec1ResBuf.WaitCrossCore();
             vec1ResBuf.SetCrossCore();
             return;
         }
@@ -629,6 +717,7 @@ public:
         stage1OutQue[stage1Offset].template EnQue(stage1CastTensor);
         stage1OutQue[stage1Offset].template DeQue<QINPUT_T>();
         LocalTensor<QINPUT_T> vec1L1ResTensor = vec1ResBuf.GetTensor<QINPUT_T>();
+        vec1ResBuf.WaitCrossCore();
         if (likely(runInfo.actVecMSize != 0)) {
             DataCopy(vec1L1ResTensor[constInfo.subBlockIdx * (blockBytes / sizeof(QINPUT_T)) *
                                      (runInfo.actMSize - runInfo.actVecMSize)],
@@ -650,11 +739,11 @@ public:
 
     __aicore__ inline void ProcessVec2(MM1_DBUF_T &bmm2ResBuf, RunInfoX &runInfo)
     {
-#ifdef SKIP_V2
-        bmm2ResBuf.WaitCrossCore();
-        bmm2ResBuf.SetCrossCore();
-        return;
-#endif
+// #ifdef SKIP_V2
+//         bmm2ResBuf.WaitCrossCore();
+//         bmm2ResBuf.SetCrossCore();
+//         return;
+// #endif
         bmm2ResBuf.WaitCrossCore();
         ProcessVec2OnUb(bmm2ResBuf, runInfo);
     }
@@ -906,8 +995,8 @@ public:
                                                 GlobalTensor<QINPUT_T>& deScaleGm,
                                                 RunInfoX &runInfo, uint32_t copyTotalS,
                                                 uint32_t grpNum, uint32_t idx,
-                                                const uint32_t* mte2VScaleId,
-                                                const uint32_t* vMte2ScaleId)
+                                                const TEventID* mte2VScaleId,
+                                                const TEventID* vMte2ScaleId)
     {
         WaitFlag<HardEvent::V_MTE2>(vMte2ScaleId[idx]);
         CopyScalePageAttention(scaleE8M0Ub, deScaleGm, runInfo, copyTotalS, grpNum);
@@ -920,8 +1009,8 @@ public:
 
     __aicore__ inline void CopyKvToUb(LocalTensor<KV_T>& kvInUb, GlobalTensor<KV_T>& kvGm,
                                        RunInfoX &runInfo, uint32_t copyTotalS, uint32_t idx,
-                                       const uint32_t* vMte2KvId,
-                                       const uint32_t* mte2VKvId)
+                                       const TEventID* vMte2KvId,
+                                       const TEventID* mte2VKvId)
     {
         WaitFlag<HardEvent::V_MTE2>(vMte2KvId[idx]);
         CopyKVPageAttention(kvInUb, kvGm, runInfo, copyTotalS);
@@ -932,10 +1021,10 @@ public:
                                         LocalTensor<KV_T>& kvInUb,
                                         LocalTensor<QINPUT_T>& scaleBf16Ub,
                                         uint32_t copyTotalS, uint32_t dSize, uint32_t idx,
-                                        const uint32_t* mte3VId,
-                                        const uint32_t* mte2VKvId,
-                                        const uint32_t* vMte2KvId,
-                                        const uint32_t* vMte3Id)
+                                        const TEventID* mte3VId,
+                                        const TEventID* mte2VKvId,
+                                        const TEventID* vMte2KvId,
+                                        const TEventID* vMte3Id)
     {
         WaitFlag<HardEvent::MTE3_V>(mte3VId[idx]);
         WaitFlag<HardEvent::MTE2_V>(mte2VKvId[idx]);
@@ -951,8 +1040,8 @@ public:
                                            LocalTensor<QINPUT_T>& antiqResUb,
                                            uint32_t copyTotalS, uint32_t s2RealSize,
                                            uint32_t subBlockIdx, uint32_t idx, uint32_t subIdx,
-                                           const uint32_t* vMte3Id,
-                                           const uint32_t* mte3VId)
+                                           const TEventID* vMte3Id,
+                                           const TEventID* mte3VId)
     {
         CrossCoreWaitFlag<MQFA_SYNC_MODE, PIPE_MTE3>(MQFA_CV_L1_EVENT[subIdx]);
         WaitFlag<HardEvent::V_MTE3>(vMte3Id[idx]);

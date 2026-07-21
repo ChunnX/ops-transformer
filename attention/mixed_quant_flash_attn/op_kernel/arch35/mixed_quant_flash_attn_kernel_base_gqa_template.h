@@ -353,11 +353,18 @@ public:
             bmmBuffers.Get().SetCrossCore();
             bmmBuffers.Get().SetCrossCore();
         }
+
+        if ASCEND_IS_AIC {
+            // bmm1Buffers.Get().SetCrossCore();
+            // bmm2Buffers.Get().SetCrossCore();
+            l1PBuffers.Get().SetCrossCore();
+            l1PBuffers.Get().SetCrossCore();
+        }
     }
 
     __aicore__ inline void CrossCoreBufferUnInit()
     {
-        if ASCEND_IS_AIC {
+        if ASCEND_IS_AIV {
             // bmm1Buffers.Get().WaitCrossCore();
             // bmm2Buffers.Get().WaitCrossCore();
             // bmmBuffers.Get().WaitCrossCore();
@@ -661,7 +668,7 @@ public:
 
     __aicore__ inline void ComputeMm2(RunInfoX &runInfo)
     {
-        cubeBlock.IterateBmm2(this->bmmBuffers.Get(), this->l1PBuffers, kvAntiquantRes.Get(), runInfo);
+        cubeBlock.IterateBmm2(this->bmmBuffers.Get(), this->l1PBuffers.Get(), kvAntiquantRes.Get(), runInfo);
     }
 
     __aicore__ inline void AntiquantKey(RunInfoX &runInfo)
@@ -817,9 +824,10 @@ public:
         if (constInfo.aicIdx < constInfo.coreNum) {
             if ASCEND_IS_AIV {
                 vecFaBlock.FreeEventID();
+                vecFaBlock.UninitAntiquantCrossCore();
             } else {
                 cubeBlock.FreeEventID();
-                cubeBlock.UninitAntiquantCrossCore();
+
             }
             CrossCoreBufferUnInit();
         }

@@ -95,22 +95,22 @@ enum class MqfaPaLayoutType : uint32_t {
 static constexpr uint32_t MQFA_CV_L1_EVENT[4] = {5, 6, 7, 8};
 static constexpr uint32_t MQFA_VC_L1_EVENT[4] = {9, 10, 15, 16};
 
-static constexpr uint32_t MQFA_MTE2_V_SCALE_K[2] = {0, 1};
-static constexpr uint32_t MQFA_V_MTE2_SCALE_K[2] = {0, 1};
-static constexpr uint32_t MQFA_MTE2_V_KV_K[2] = {2, 3};
-static constexpr uint32_t MQFA_V_MTE2_KV_K[2] = {2, 3};
-static constexpr uint32_t MQFA_V_MTE3_K[2] = {0, 1};
-static constexpr uint32_t MQFA_MTE3_V_K[2] = {0, 1};
+// static constexpr uint32_t MQFA_MTE2_V_SCALE_K[2] = {0, 1};
+// static constexpr uint32_t MQFA_V_MTE2_SCALE_K[2] = {0, 1};
+// static constexpr uint32_t MQFA_MTE2_V_KV_K[2] = {2, 3};
+// static constexpr uint32_t MQFA_V_MTE2_KV_K[2] = {2, 3};
+// static constexpr uint32_t MQFA_V_MTE3_K[2] = {0, 1};
+// static constexpr uint32_t MQFA_MTE3_V_K[2] = {0, 1};
 
-static constexpr uint32_t MQFA_MTE2_V_SCALE_V[2] = {4, 5};
-static constexpr uint32_t MQFA_V_MTE2_SCALE_V[2] = {4, 5};
-static constexpr uint32_t MQFA_MTE2_V_KV_V[2] = {6, 7};
-static constexpr uint32_t MQFA_V_MTE2_KV_V[2] = {6, 7};
-static constexpr uint32_t MQFA_V_MTE3_V[2] = {2, 3};
-static constexpr uint32_t MQFA_MTE3_V_V[2] = {2, 3};
+// static constexpr uint32_t MQFA_MTE2_V_SCALE_V[2] = {4, 5};
+// static constexpr uint32_t MQFA_V_MTE2_SCALE_V[2] = {4, 5};
+// static constexpr uint32_t MQFA_MTE2_V_KV_V[2] = {6, 7};
+// static constexpr uint32_t MQFA_V_MTE2_KV_V[2] = {6, 7};
+// static constexpr uint32_t MQFA_V_MTE3_V[2] = {2, 3};
+// static constexpr uint32_t MQFA_MTE3_V_V[2] = {2, 3};
 
-static constexpr uint32_t MQFA_V_MTE3_VEC2[2] = {4, 5};
-static constexpr uint32_t MQFA_MTE3_V_VEC2[2] = {4, 5};
+// static constexpr uint32_t MQFA_V_MTE3_VEC2[2] = {4, 5};
+// static constexpr uint32_t MQFA_MTE3_V_VEC2[2] = {4, 5};
 
 static constexpr uint64_t MQFA_SYNC_MODE = 4;
 
