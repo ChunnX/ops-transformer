@@ -16,6 +16,10 @@ namespace optiling {
 // Keep in sync with op_kernel/sparse_attention_score_prefill_tilingkey.h
 constexpr uint64_t SASA_PREFILL_BASE_TILING = 20000;
 constexpr uint64_t SASA_PREFILL_BF16_D128_TILING = 20001;
+// innerPrecise==1: O_partial written/read as bf16 (Phase1 PV fixpipe F322BF16, Phase2
+// regbase-cast bf16->fp32 before combine). Otherwise (e.g. innerPrecise==4) the fp32
+// O_partial path is used byte-for-byte (SASA_PREFILL_BF16_D128_TILING).
+constexpr uint64_t SASA_PREFILL_BF16_D128_INNER_LOW_TILING = 20002;
 
 BEGIN_TILING_DATA_DEF(SparseAttentionScorePrefillTilingData)
 TILING_DATA_FIELD_DEF(uint32_t, batch);

@@ -33,6 +33,16 @@ extern "C" __global__ __aicore__ void sparse_attention_score_prefill(
             actualSeqLengths, actualSeqLengthsKv,
             attentionOut, user, tiling);
 #endif
+        TILING_KEY_IS(SASA_PREFILL_BF16_D128_INNER_LOW_TILING);
+#if TILING_KEY_VAR == SASA_PREFILL_BF16_D128_INNER_LOW_TILING
+        // innerPrecise==1: REDtype(bf16) => PV fixpipe F322BF16 + Phase2 regbase cast
+        // (bf16 O_partial). fp32 path (above) stays byte-identical.
+        SasaPrefillInferIntf<bfloat16_t, bfloat16_t, bfloat16_t>(
+            query, key, value, blockTable,
+            k2qRowPtr, k2qQIndices, k2qSlotIndices,
+            actualSeqLengths, actualSeqLengthsKv,
+            attentionOut, user, tiling);
+#endif
 #endif
     }
 }

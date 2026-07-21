@@ -181,12 +181,15 @@ ge::graphStatus SASAPrefillTiling::CalculateWorkSpace(gert::TilingContext *conte
     uint64_t taskSlots = static_cast<uint64_t>(totalQTokens_) * kvHeads_ * topK_;
 
     // accumOut | softmaxMax | softmaxSum (separate buffers).
-    // O_partial: [totalQ, kvHeads, topK, groupSize, D] fp32.
-    // max/sum:   [totalQ, kvHeads, topK, groupSize] fp32 (compact per slot).
+    // O_partial: [totalQ, kvHeads, topK, groupSize, D] fp32, or bf16 when innerPrecise==1
+    //   (F322BF16 fixpipe + Phase2 regbase cast). max/sum: [totalQ, kvHeads, topK, groupSize]
+    //   fp32 (compact per slot) regardless.
     accumOutSize_ = taskSlots * slotOElems;
     lseStatSize_ = taskSlots * slotStatElems;
-    uint64_t userWorkspaceSize =
-        (accumOutSize_ + lseStatSize_ * 2U) * sizeof(float);
+    // innerPrecise==1 halves the O_partial buffer (bf16=2B vs fp32=4B); lse stats stay fp32.
+    uint64_t accumOutBytes = accumOutSize_ *
+        (innerPrecise_ == 1U ? sizeof(uint16_t) : sizeof(float));
+    uint64_t userWorkspaceSize = accumOutBytes + (lseStatSize_ * 2U) * sizeof(float);
     workSpaceSize_ = libapiSize_ + userWorkspaceSize;
 
     return ge::GRAPH_SUCCESS;
@@ -212,8 +215,13 @@ ge::graphStatus SASAPrefillTiling::FillTilingData(gert::TilingContext *context)
     tilingData_->set_accumOutSize(accumOutSize_);
     tilingData_->set_lseStatSize(lseStatSize_);
     tilingData_->set_workSpaceSize(workSpaceSize_);
-    tilingData_->set_tilingKey(SASA_PREFILL_BF16_D128_TILING);
-    context->SetTilingKey(SASA_PREFILL_BF16_D128_TILING);
+    // innerPrecise==1 selects the bf16 O_partial path (PV fixpipe F322BF16 + Phase2
+    // regbase cast); otherwise the fp32 O_partial path (byte-identical to prior behavior).
+    uint64_t tilingKeyVal = (innerPrecise_ == 1U)
+        ? SASA_PREFILL_BF16_D128_INNER_LOW_TILING
+        : SASA_PREFILL_BF16_D128_TILING;
+    tilingData_->set_tilingKey(tilingKeyVal);
+    context->SetTilingKey(tilingKeyVal);
     return ge::GRAPH_SUCCESS;
 }
 
