@@ -614,9 +614,9 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     CHECK_RET(MakeTensorContiguousToViewShape(processedValueSharedPrefix, "valueSharedPrefix", l0Executor) ==
                   ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(ReshapeTensorToViewShape(processedQueryRope, "queryRope", l0Executor) == ACLNN_SUCCESS,
+    CHECK_RET(MakeTensorContiguousToViewShape(processedQueryRope, "queryRope", l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(ReshapeTensorToViewShape(processedKeyRope, "keyRope", l0Executor) == ACLNN_SUCCESS,
+    CHECK_RET(MakeTensorContiguousToViewShape(processedKeyRope, "keyRope", l0Executor) == ACLNN_SUCCESS,
               ACLNN_ERR_INNER_NULLPTR);
     auto kvProcessRet = ProcessKVForL0Input(
         processedKey, processedValue, processedBlockTable, isFAIRoutingCandidate, l0Executor);
