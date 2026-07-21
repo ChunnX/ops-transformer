@@ -10,7 +10,7 @@
 
 /*!
 * \file engram_fetch_train_tiling_key.h
-* \brief kernel侧tiling key — EngramFetchTrain（单一模式）
+* \brief kernel侧tiling key
 */
 
 #ifndef ENGRAM_FETCH_TRAIN_TILING_KEY_H
