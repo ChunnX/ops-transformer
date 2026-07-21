@@ -572,28 +572,6 @@ def tilelang_grad_kl_loss_single_kernel(
         task, rather than repeating a full-K reduction on every K launch.
         """
         with T.Scope("V"):
-            v1_p_bmm1 = T.alloc_ub((N1, n_block), calc_dtype)
-            v1_p_max = T.alloc_ub(N1, calc_dtype)
-            v1_p_sum = T.alloc_ub(N1, calc_dtype)
-            v1_p_eps = T.alloc_ub(N1, calc_dtype)
-            v1_p_out = T.alloc_ub(n_block, calc_dtype)
-            v1_p_tmp = T.alloc_ub((N1, 8), calc_dtype)
-
-            v1_sy_bmm2 = T.alloc_ub((Nidx1, n_block), calc_dtype)
-            v1_sy_weight_half = T.alloc_ub(Nidx1, input_dtype)
-            v1_sy_weight = T.alloc_ub(Nidx1, calc_dtype)
-            v1_sy_weight_2d = T.alloc_ub((Nidx1, n_block), calc_dtype)
-            v1_sy_reduce = T.alloc_ub(n_block, calc_dtype)
-            v1_sy_all = T.alloc_ub((n_num, n_block), calc_dtype)
-            v1_sy_chunk = T.alloc_ub(n_block, calc_dtype)
-            v1_sy_broadcast = T.alloc_ub((1, n_block), calc_dtype)
-            v1_sy_max = T.alloc_ub((1,), calc_dtype)
-            v1_sy_sum = T.alloc_ub((1,), calc_dtype)
-            v1_sy_tmp_max = T.alloc_ub((1,), calc_dtype)
-            v1_sy_tmp_sum = T.alloc_ub((1,), calc_dtype)
-            v1_sy_eps = T.alloc_ub((1,), calc_dtype)
-            v1_sy_tmp = T.alloc_ub((Nidx1, 8), calc_dtype)
-
             if task_slot == 0:
                 T.wait_cross_flag(C1_TO_V1_P_FLAGS[0])
                 T.wait_cross_flag(C1_TO_V1_SY_FLAGS[0])
@@ -603,6 +581,15 @@ def tilelang_grad_kl_loss_single_kernel(
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 if vector_id == 0:
+                    # P and SY run on different AIVs.  Keep their allocations
+                    # branch-local so the UB planner can reuse the same space.
+                    v1_p_bmm1 = T.alloc_ub((N1, n_block), calc_dtype)
+                    v1_p_max = T.alloc_ub(N1, calc_dtype)
+                    v1_p_sum = T.alloc_ub(N1, calc_dtype)
+                    v1_p_eps = T.alloc_ub(N1, calc_dtype)
+                    v1_p_out = T.alloc_ub(n_block, calc_dtype)
+                    v1_p_tmp = T.alloc_ub((N1, 8), calc_dtype)
+
                     T.copy(SoftmaxMax[bz_task, 0, s1_id, 0:N1], v1_p_max)
                     T.copy(SoftmaxSum[bz_task, 0, s1_id, 0:N1], v1_p_sum)
                     T.set_flag("mte2", "v", 0)
@@ -649,6 +636,21 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
 
                 if vector_id == 1:
+                    v1_sy_bmm2 = T.alloc_ub((Nidx1, n_block), calc_dtype)
+                    v1_sy_weight_half = T.alloc_ub(Nidx1, input_dtype)
+                    v1_sy_weight = T.alloc_ub(Nidx1, calc_dtype)
+                    v1_sy_weight_2d = T.alloc_ub((Nidx1, n_block), calc_dtype)
+                    v1_sy_reduce = T.alloc_ub(n_block, calc_dtype)
+                    v1_sy_all = T.alloc_ub((n_num, n_block), calc_dtype)
+                    v1_sy_chunk = T.alloc_ub(n_block, calc_dtype)
+                    v1_sy_broadcast = T.alloc_ub((1, n_block), calc_dtype)
+                    v1_sy_max = T.alloc_ub((1,), calc_dtype)
+                    v1_sy_sum = T.alloc_ub((1,), calc_dtype)
+                    v1_sy_tmp_max = T.alloc_ub((1,), calc_dtype)
+                    v1_sy_tmp_sum = T.alloc_ub((1,), calc_dtype)
+                    v1_sy_eps = T.alloc_ub((1,), calc_dtype)
+                    v1_sy_tmp = T.alloc_ub((Nidx1, 8), calc_dtype)
+
                     T.copy(Weights[bz_task, s1_id, 0:Nidx1], v1_sy_weight_half)
                     T.set_flag("mte2", "v", 2)
                     T.wait_flag("mte2", "v", 2)
@@ -783,11 +785,9 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_diff_2d = T.alloc_ub((rows_per_aiv, n_block), calc_dtype)
             v1_bw_bmm2 = T.alloc_ub((rows_per_aiv, n_block), calc_dtype)
             v1_bw_mask = T.alloc_ub((rows_per_aiv, n_block), calc_dtype)
-            v1_bw_rg = T.alloc_ub((rows_per_aiv, n_block), calc_dtype)
             v1_bw_rg_half = T.alloc_ub((rows_per_aiv, n_block), input_dtype)
             v1_bw_dw = T.alloc_ub(rows_per_aiv, calc_dtype)
             v1_bw_dw_half = T.alloc_ub(rows_per_aiv, input_dtype)
-            v1_bw_ones = T.alloc_ub((rows_per_aiv, n_block), calc_dtype)
             v1_bw_eps = T.alloc_ub(n_block, calc_dtype)
             v1_bw_log_p = T.alloc_ub(n_block, calc_dtype)
             v1_bw_log_sy = T.alloc_ub(n_block, calc_dtype)
@@ -796,7 +796,6 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_loss_sum = T.alloc_ub((1,), calc_dtype)
             v1_bw_row_tmp = T.alloc_ub((rows_per_aiv, 8), calc_dtype)
 
-            T.tile.fill(v1_bw_ones, 1.0)
             T.tile.fill(v1_bw_eps, 1e-8)
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
@@ -853,19 +852,23 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.exp(v1_bw_mask, v1_bw_mask)
                     T.pipe_barrier("v")
-                    T.tile.sub(v1_bw_mask, v1_bw_ones, v1_bw_mask)
-
-                    T.tile.mul(v1_bw_rg, v1_bw_weight_2d, v1_bw_diff_2d)
+                    T.tile.mul(v1_bw_mask, v1_bw_mask, -1.0)
                     T.pipe_barrier("v")
-                    T.tile.mul(v1_bw_rg, v1_bw_rg, v1_bw_mask)
+                    T.tile.add(v1_bw_mask, v1_bw_mask, 1.0)
 
+                    # dWeight consumes diff_2d first.  Reuse that buffer for
+                    # reluGrad afterwards, preserving (weight * diff) * mask.
                     T.tile.mul(v1_bw_bmm2, v1_bw_bmm2, v1_bw_diff_2d)
                     T.pipe_barrier("v")
                     T.reduce_sum(v1_bw_bmm2, v1_bw_dw, 1)
+                    T.pipe_barrier("v")
+                    T.tile.mul(v1_bw_diff_2d, v1_bw_weight_2d, v1_bw_diff_2d)
+                    T.pipe_barrier("v")
+                    T.tile.mul(v1_bw_diff_2d, v1_bw_diff_2d, v1_bw_mask)
 
                     T.tile.cast(
                         v1_bw_rg_half,
-                        v1_bw_rg,
+                        v1_bw_diff_2d,
                         "CAST_RINT",
                         rows_per_aiv * n_block,
                     )
