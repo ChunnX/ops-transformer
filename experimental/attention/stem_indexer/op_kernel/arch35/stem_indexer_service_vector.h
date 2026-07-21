@@ -421,12 +421,10 @@ __aicore__ inline void SIVector<SIT>::RunTopKBatchRows(
     // padding（各行按自身 s2BlockValidLen 补齐到 trunkLen，非零行结果一致）
     if (isFirstS2InnerLoop) {
         TopkUtils::PadMrgFourRowsFirstS2RangeVF<SCORE_T>(mrgValueLocal_, rowIdx4, topkNum4, s2ValidLen4,
-                                              batchRowNum, mrgRowStride_,
-                                              trunkLen_);
+                                                         mrgRowStride_, trunkLen_);
     } else {
         TopkUtils::PadMrgFourRowsNotFirstS2RangeVF<SCORE_T>(mrgValueLocal_, rowIdx4, topkNum4, s2ValidLen4,
-                                                 batchRowNum,
-                                                 mrgRowStride_, trunkLen_);
+                                                            mrgRowStride_);
     }
 
     uint32_t inputOffset = isFirstS2InnerLoop ? TOPK_ALIGN_SIZE : 0U;
