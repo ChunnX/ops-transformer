@@ -1,16 +1,16 @@
-# FlashAttention 精度测试框架
+# MixedQuantFlashAttn 精度测试框架
 
 ## 一、架构概览
 
 ```
-test_flash_attn.py (入口)
+test_mixed_quant_flash_attn.py (入口)
     │
     ├── case_loader.load_case_modules()        ← test_cases/*.py 加载 + 笛卡尔积展开
     ├── case_loader.normalize_params()         ← 补全默认值、TND/PA/quant 特殊处理
     │
     ▼   逐 case 循环
     ├── orchestrator.run_case()
-    │       ├── data.flash_attn_inputs.generate()   ← 声明式张量生成
+    │       ├── data.mixed_quant_flash_attn_inputs.generate()   ← 声明式张量生成
     │       │
     │       ├── golden.compute()     ← CPU 参考 (tforward / dequant + tforward)
     │       ├── primary.compute()    ← NPU/GPU 后端
@@ -32,8 +32,8 @@ pytests/
 │   │   ├── quant_utils.py       # FP4 E2M1 / FP8 E8M0 解码与反量化 (Golden)
 │   │   ├── gpu.py               # GPU Backend — flash_attn 库封装
 │   │   ├── gpu_impl.py          # GPU 底层实现
-│   │   └── npu.py               # NPU Backend — npu_flash_attn + print_metadata
-│   ├── data.py                  # InputSpec 声明式张量生成 + build_flash_attn_params
+│   │   └── npu.py               # NPU Backend — mixed_quant_flash_attn + print_metadata
+│   ├── data.py                  # InputSpec 声明式张量生成 + build_mixed_quant_flash_attn_params
 │   ├── case_loader.py           # 用例加载、参数规范化、ID 解析
 │   ├── orchestrator.py          # 编排器 — 数据生成→后端计算→精度对比→持久化
 │   └── reporter.py              # Reporter — 终端表格 + CSV
@@ -50,7 +50,7 @@ pytests/
 │   └── precision_visual.py
 ├── tools/
 │   └── xlsx_to_testcase.py     # Excel → test_cases 转换
-├── test_flash_attn.py          # 主入口
+├── test_mixed_quant_flash_attn.py          # 主入口
 └── readme.md
 ```
 
@@ -71,26 +71,26 @@ python -c "import torch, flash_attn, einops; print('GPU OK')"
 
 ```bash
 # 全量精度测试
-python test_flash_attn.py
+python test_mixed_quant_flash_attn.py
 
 # 指定 case
-python test_flash_attn.py --case_id FP4_BNBD_01,TND_05
+python test_mixed_quant_flash_attn.py --case_id BASE_01
 
 # GPU 模式
-python test_flash_attn.py --case_id BASE_01 --use_gpu
+python test_mixed_quant_flash_attn.py --case_id BASE_01 --use_gpu
 
 # 只跑 metadata（打印分核）
-python test_flash_attn.py --case_id TND_05 --meta_only
+python test_mixed_quant_flash_attn.py --case_id TND_05 --meta_only
 
 # 性能采集
-python test_flash_attn.py --case_files performance_redline_train --perf_mode
+python test_mixed_quant_flash_attn.py --case_files performance_redline_train --perf_mode
 
 # 三方对比
-python test_flash_attn.py --case_id BASE_01 --compare_mode --use_gpu
+python test_mixed_quant_flash_attn.py --case_id BASE_01 --compare_mode --use_gpu
 
 # Golden 持久化
-python test_flash_attn.py --save_golden ./golden_dump
-python test_flash_attn.py --load_golden ./golden_dump --case_id BASE_01
+python test_mixed_quant_flash_attn.py --save_golden ./golden_dump
+python test_mixed_quant_flash_attn.py --load_golden ./golden_dump --case_id BASE_01
 ```
 
 ### 常用参数
@@ -241,9 +241,9 @@ quant_mode >= 1 → _dequant_kv_to_tforward   PA 重建 → 解码 → broadcast
 
 ## 九、已知缺口（未实现）
 
-| # | 功能 | 位置 | 现状 | 阻塞原因 |
-|---|------|------|------|----------|
-| 1 | NPU 量化路径 | `core/backends/npu.py` | FP4 用例走 `cpu.py` dequant 能产出正确 golden，但 NPU 侧 `npu_flash_attn()` 接口不接收 `k_descale`/`v_descale` 参数，uint8 KV 直接传入会输出垃圾结果，**端到端 NPU vs CPU 对比无法进行** | 需 `npu_flash_attn` 接口扩展支持 scale 参数 |
-| 2 | GPU 量化路径 | `core/backends/gpu.py` | GPU backend 零量化支持，无 dequant 流水线也无 scale 参数传递，FP4 用例走 GPU 路径无效 | 需 `flash-attn` 库支持量化 KV 参数或自行实现 GPU 反量化 |
+| # | 功能 | 位置 | 现状 |
+|---|------|------|------|
+| 1 | NPU kernel AI Core crash | `op_kernel/mixed_quant_flash_attn.cpp` | 算子 Python 层参数对接已完成，kernel 可正常启动但 AI Core 执行过程中 crash，需 kernel 开发者排查 |
+| 2 | GPU 量化路径 | `core/backends/gpu.py` | GPU backend 零量化支持，无 dequant 流水线也无 scale 参数传递，FP4 用例走 GPU 路径无效 |
 
 > 修复这两项后，FP4 用例才能进入真正的端到端精度对比流程。

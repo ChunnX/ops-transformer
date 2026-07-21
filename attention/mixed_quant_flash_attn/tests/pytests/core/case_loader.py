@@ -1,4 +1,4 @@
-"""用例加载 + 参数规范化。从 test_flash_attn.py 抽取。"""
+"""用例加载 + 参数规范化。从 test_mixed_quant_flash_attn.py 抽取。"""
 
 import itertools
 import importlib

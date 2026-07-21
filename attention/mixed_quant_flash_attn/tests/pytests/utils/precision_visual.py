@@ -10,7 +10,7 @@
 # ======================================================================================================================
 
 """
-FlashAttention 精度可视化工具
+MixedQuantFlashAttn 精度可视化工具
 ==============================
 将 CPU golden 与 NPU 输出逐元素对比，生成热力图 PNG，直观展示哪些位置精度 fail。
 
@@ -31,8 +31,8 @@ FlashAttention 精度可视化工具
         --npu_txt ./dump_output/BASE_01/npu_out.txt \\
         --out_dir ./viz_output --case_name BASE_01
 
-② 由 test_flash_attn.py 通过 --visualize 参数自动调用（内存中直接传 tensor）：
-    python test_flash_attn.py --case_id BASE_01 --visualize
+② 由 test_mixed_quant_flash_attn.py 通过 --visualize 参数自动调用（内存中直接传 tensor）：
+    python test_mixed_quant_flash_attn.py --case_id BASE_01 --visualize
 
 依赖：matplotlib（pip install matplotlib）
 """
@@ -288,14 +288,14 @@ def plot_precision_heatmaps(rel_err: np.ndarray, fail_mask: np.ndarray,
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 对外接口（供 test_flash_attn.py 直接调用）
+# 对外接口（供 test_mixed_quant_flash_attn.py 直接调用）
 # ─────────────────────────────────────────────────────────────────────────────
 
 def visualize_from_tensors(cpu_tensor, npu_tensor, case_name: str, out_dir: str,
                            threshold: float = RATIO_THRESHOLD, max_panels: int = 16):
     """
     从内存 tensor（torch.Tensor 或 np.ndarray, float32）直接生成可视化图。
-    供 test_flash_attn.py 的 --visualize 模式调用。
+    供 test_mixed_quant_flash_attn.py 的 --visualize 模式调用。
     """
     to_np = lambda t: t.detach().cpu().numpy() if hasattr(t, "detach") else np.asarray(t, dtype=np.float32)
     cpu_np = to_np(cpu_tensor).astype(np.float32)
@@ -322,11 +322,11 @@ def visualize_from_txt(cpu_txt: str, npu_txt: str, case_name: str, out_dir: str,
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
-        description="FlashAttention 精度可视化工具",
+        description="MixedQuantFlashAttn 精度可视化工具",
         formatter_class=argparse.RawTextHelpFormatter,
         epilog="""
 示例：
-  # 从 dump 目录读取（配合 test_flash_attn.py --dump_tensors 使用）
+    # 从 dump 目录读取（配合 test_mixed_quant_flash_attn.py --dump_tensors 使用）
   python precision_visual.py --dump_dir ./dump_output --case_id BASE_01,TND_01
 
   # 直接指定 txt 文件

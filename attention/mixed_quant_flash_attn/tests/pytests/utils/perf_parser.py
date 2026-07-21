@@ -8,7 +8,7 @@ from typing import Dict, List, Tuple
 
 
 def parse_op_summary(csv_path: str,
-                     operator_name: str = "FlashAttn") -> List[Tuple[float, float]]:
+                     operator_name: str = "MixedQuantFlashAttn") -> List[Tuple[float, float]]:
     """Return [(start_time_us, duration_us), ...] sorted by start time."""
     with open(csv_path) as f:
         rows = list(csv.DictReader(f))

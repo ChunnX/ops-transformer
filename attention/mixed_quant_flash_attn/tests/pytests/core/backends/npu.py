@@ -1,4 +1,4 @@
-"""NPU 后端 — 按 npu_flash_attn.md 参数组调用，支持 eager / graph 两种模式。"""
+"""NPU 后端 — 直调 mixed_quant_flash_attn (aclnnMixedQuantFlashAttn)。"""
 
 import numpy as np
 import torch
@@ -7,50 +7,10 @@ from typing import Any, Dict
 from .base import Backend
 
 try:
-    from cann_ops_transformer.ops import npu_flash_attn, npu_flash_attn_metadata
+    from cann_ops_transformer.ops import mixed_quant_flash_attn, mixed_quant_flash_attn_metadata
     _HAS_NPU = True
 except ImportError:
     _HAS_NPU = False
-
-try:
-    import torchair
-    from torchair.configs.compiler_config import CompilerConfig
-    _HAS_TORCHAIR = True
-except ImportError:
-    _HAS_TORCHAIR = False
-
-
-class FlashAttnGraphNetwork(torch.nn.Module):
-    """torch.compile 图模式包装器。"""
-
-    def forward(self, q, k, v, block_table, attn_mask, metadata,
-                cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
-                softmax_scale, mask_mode, win_left, win_right,
-                max_seqlen_q, max_seqlen_kv, layout_q, layout_kv, layout_out,
-                return_softmax_lse, deterministic):
-        out, lse_out = npu_flash_attn(
-            q, k, v,
-            block_table=block_table,
-            sinks=None,
-            attn_mask=attn_mask,
-            metadata=metadata,
-            cu_seqlens_q=cu_seqlens_q,
-            cu_seqlens_kv=cu_seqlens_kv,
-            seqused_q=seqused_q,
-            seqused_kv=seqused_kv,
-            softmax_scale=softmax_scale,
-            mask_mode=mask_mode,
-            win_left=win_left,
-            win_right=win_right,
-            max_seqlen_q=max_seqlen_q,
-            max_seqlen_kv=max_seqlen_kv,
-            layout_q=layout_q,
-            layout_kv=layout_kv,
-            layout_out=layout_out,
-            return_softmax_lse=return_softmax_lse,
-            deterministic=deterministic,
-        )
-        return out, lse_out
 
 _AIC_CORE_NUM = 36
 _AIV_CORE_NUM = 72
@@ -132,11 +92,10 @@ class NPUBackend(Backend):
         self._device = torch.device(f"npu:{device_id}")
         self._meta_only = meta_only
         self._graph_mode = graph_mode
-        self._graph_net = None
         if _HAS_NPU:
             torch.npu.set_device(device_id)
-        if graph_mode and not _HAS_TORCHAIR:
-            raise ImportError("graph_mode 需要 torchair，请先安装")
+        if graph_mode:
+            raise NotImplementedError("graph_mode 暂未适配 mixed_quant_flash_attn 新接口")
 
     @property
     def device(self) -> torch.device:
@@ -149,29 +108,15 @@ class NPUBackend(Backend):
         if _HAS_NPU:
             torch.npu.empty_cache()
 
-    def _get_graph_net(self):
-        if self._graph_net is None:
-            torch._dynamo.reset()
-            net = FlashAttnGraphNetwork().npu()
-            config = CompilerConfig()
-            config.mode = "reduce-overhead"
-            config.experimental_config.aclgraph._aclnn_static_shape_kernel = True
-            config.experimental_config.aclgraph._aclnn_static_shape_kernel_build_dir = "./"
-            config.experimental_config.frozen_parameter = True
-            config.experimental_config.tiling_schedule_optimize = True
-            config.experimental_config.topology_sorting_strategy = "StableRDFS"
-            npu_backend = torchair.get_npu_backend(compiler_config=config)
-            self._graph_net = torch.compile(net, fullgraph=False, backend=npu_backend, dynamic=False)
-        return self._graph_net
-
     def compute(self, inputs: Dict[str, torch.Tensor],
                 params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
-        from core.data import build_flash_attn_params
+        from core.data import build_mixed_quant_flash_attn_params, pack_fp4_to_uint8
 
-        meta_kwargs, kernel_kwargs, _ = build_flash_attn_params(
+        meta_kwargs, kernel_kwargs, aux = build_mixed_quant_flash_attn_params(
             params, self._device, inputs)
+        k_descale_raw, v_descale_raw, _ = aux
 
-        metadata = npu_flash_attn_metadata(**meta_kwargs)
+        metadata = mixed_quant_flash_attn_metadata(**meta_kwargs)
 
         if self._meta_only:
             print_metadata(metadata)
@@ -182,31 +127,23 @@ class NPUBackend(Backend):
             dummy_out = torch.zeros(bs, n1, s1, d, dtype=inputs["q"].dtype, device="cpu")
             return {"out": dummy_out, "lse": None}
 
-        if self._graph_mode:
-            net = self._get_graph_net()
-            out, lse = net(
-                inputs["q"], inputs["k"], inputs["v"],
-                kernel_kwargs.get("block_table"),
-                kernel_kwargs.get("attn_mask"),
-                metadata,
-                kernel_kwargs.get("cu_seqlens_q"),
-                kernel_kwargs.get("cu_seqlens_kv"),
-                kernel_kwargs.get("seqused_q"),
-                kernel_kwargs.get("seqused_kv"),
-                kernel_kwargs.get("softmax_scale", 1.0),
-                kernel_kwargs.get("mask_mode", 0),
-                kernel_kwargs.get("win_left", -1),
-                kernel_kwargs.get("win_right", -1),
-                kernel_kwargs.get("max_seqlen_q", -1),
-                kernel_kwargs.get("max_seqlen_kv", -1),
-                kernel_kwargs.get("layout_q", "BNSD"),
-                kernel_kwargs.get("layout_kv", "BNSD"),
-                kernel_kwargs.get("layout_out", "BNSD"),
-                kernel_kwargs.get("return_softmax_lse", 0),
-                0,
-            )
+        quant_mode = params.get("quant_mode", 0)
+        if quant_mode >= 1:
+            k_npu = pack_fp4_to_uint8(inputs["k"])
+            v_npu = pack_fp4_to_uint8(inputs["v"])
+            k_descale = k_descale_raw.view(torch.float8_e8m0fnu) if k_descale_raw is not None else None
+            v_descale = v_descale_raw.view(torch.float8_e8m0fnu) if v_descale_raw is not None else None
         else:
-            out, lse = npu_flash_attn(inputs["q"], inputs["k"], inputs["v"],
-                                      metadata=metadata, **kernel_kwargs)
+            k_npu = inputs["k"]
+            v_npu = inputs["v"]
+            k_descale = k_descale_raw
+            v_descale = v_descale_raw
+
+        out, lse = mixed_quant_flash_attn(
+            inputs["q"], k_npu, v_npu,
+            k_descale, v_descale,
+            metadata=metadata,
+            **kernel_kwargs,
+        )
         torch.npu.synchronize()
         return {"out": out, "lse": lse}
