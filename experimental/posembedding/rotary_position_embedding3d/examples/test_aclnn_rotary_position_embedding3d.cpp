@@ -1,6 +1,8 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <algorithm>
+#include <random>
 #include <chrono>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_rotary_position_embedding3d.h"
@@ -57,21 +59,118 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 
-// CPU 参考：RoPE half 模式
-static void RefRoPE(int64_t batch, int64_t seqLen, int64_t headDim,
-                    const float* x1, const float* x2, float* y)
+// ---- Wan2.2-style 3D RoPE reference ----
+// Three-axis frequency bands (2:1:1 split), position -> (t,i,j) decoding
+
+static void ComputeBandDims3D(int64_t headDim, int64_t& tBand, int64_t& hBand, int64_t& wBand)
 {
+    int64_t bandUnit = headDim / 4;
+    if (bandUnit % 2 != 0) bandUnit -= 1;
+    tBand = bandUnit * 2;
+    hBand = bandUnit;
+    wBand = headDim - tBand - hBand;
+    if (wBand % 2 != 0) { wBand -= 1; tBand += 1; if (tBand % 2 != 0) { tBand -= 1; hBand += 1; } }
+    if (hBand % 2 != 0) { hBand -= 1; tBand += 1; }
+    if (tBand % 2 != 0) { tBand -= 1; hBand += 1; }
+}
+
+static void FactorVideoDims(int64_t seqLen, int64_t& T, int64_t& H, int64_t& W)
+{
+    T = 1; H = 1; W = seqLen;
+    if (seqLen <= 1) return;
+    int64_t maxDim = std::min((int64_t)128, (int64_t)std::sqrt((double)seqLen));
+    for (int64_t w = maxDim; w >= 1; w--) {
+        if (seqLen % w == 0) {
+            int64_t rest = seqLen / w;
+            for (int64_t h = std::min((int64_t)128, (int64_t)std::sqrt((double)rest)); h >= 1; h--) {
+                if (rest % h == 0) {
+                    T = rest / h; H = h; W = w;
+                    return;
+                }
+            }
+        }
+    }
+}
+
+// CPU reference: true 3D spatial RoPE
+// Computes theta tables from freqBase internally, decodes l->(t,i,j)
+static void RefRoPE3D(int64_t batch, int64_t seqLen, int64_t headDim,
+                      const float* x, float* y, float freqBase)
+{
+    int64_t tBand, hBand, wBand;
+    ComputeBandDims3D(headDim, tBand, hBand, wBand);
     int64_t halfD = headDim / 2;
+    int64_t halfTBand = tBand / 2;
+    int64_t halfHBand = hBand / 2;
+    int64_t halfWBand = wBand / 2;
+
+    float rT = std::pow(freqBase, -2.0 / (double)tBand);
+    float rH = std::pow(freqBase, -2.0 / (double)hBand);
+    float rW = std::pow(freqBase, -2.0 / (double)wBand);
+
+    std::vector<float> thetaT(halfTBand), thetaH(halfHBand), thetaW(halfWBand);
+    if (halfTBand > 0) {
+        thetaT[0] = 1.0f;
+        for (int64_t i = 1; i < halfTBand; i++) thetaT[i] = thetaT[i-1] * rT;
+    }
+    if (halfHBand > 0) {
+        thetaH[0] = 1.0f;
+        for (int64_t i = 1; i < halfHBand; i++) thetaH[i] = thetaH[i-1] * rH;
+    }
+    if (halfWBand > 0) {
+        thetaW[0] = 1.0f;
+        for (int64_t i = 1; i < halfWBand; i++) thetaW[i] = thetaW[i-1] * rW;
+    }
+
+    int64_t vidT, vidH, vidW;
+    FactorVideoDims(seqLen, vidT, vidH, vidW);
+    int64_t hw = vidH * vidW;
+    if (hw <= 0) hw = 1;
+    int64_t wv = (vidW <= 0) ? 1 : vidW;
+
     for (int64_t b = 0; b < batch; b++) {
-        for (int64_t s = 0; s < seqLen; s++) {
-            int64_t base = (b * seqLen + s) * headDim;
-            for (int64_t k = 0; k < halfD; k++) {
-                float xl = x1[base + k];
-                float xr = x1[base + halfD + k];
-                float cos = x2[base + k];
-                float sin = x2[base + halfD + k];
-                y[base + k]           = xl * cos - xr * sin;
-                y[base + halfD + k]   = xl * sin + xr * cos;
+        for (int64_t l = 0; l < seqLen; l++) {
+            int64_t base = (b * seqLen + l) * headDim;
+
+            // Decode 1D position -> 3D video coordinates
+            int64_t tCoord = l / hw;
+            int64_t rem = l % hw;
+            int64_t iCoord = rem / wv;
+            int64_t jCoord = rem % wv;
+
+            // T-band rotation (temporal axis)
+            for (int64_t k = 0; k < halfTBand; k++) {
+                float angle = static_cast<float>(tCoord) * thetaT[k];
+                float c = std::cos(angle);
+                float s = std::sin(angle);
+                float xl = x[base + k];
+                float xr = x[base + halfD + k];
+                y[base + k] = xl * c - xr * s;
+                y[base + halfD + k] = xl * s + xr * c;
+            }
+
+            // H-band rotation (height axis)
+            for (int64_t k = 0; k < halfHBand; k++) {
+                float angle = static_cast<float>(iCoord) * thetaH[k];
+                float c = std::cos(angle);
+                float s = std::sin(angle);
+                int64_t offset = halfTBand + k;
+                float xl = x[base + offset];
+                float xr = x[base + halfD + offset];
+                y[base + offset] = xl * c - xr * s;
+                y[base + halfD + offset] = xl * s + xr * c;
+            }
+
+            // W-band rotation (width axis)
+            for (int64_t k = 0; k < halfWBand; k++) {
+                float angle = static_cast<float>(jCoord) * thetaW[k];
+                float c = std::cos(angle);
+                float s = std::sin(angle);
+                int64_t offset = halfTBand + halfHBand + k;
+                float xl = x[base + offset];
+                float xr = x[base + halfD + offset];
+                y[base + offset] = xl * c - xr * s;
+                y[base + halfD + offset] = xl * s + xr * c;
             }
         }
     }
@@ -86,32 +185,86 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim,
     int ret;
 
     std::vector<float> x1Data(total);
+    std::mt19937 rng(42);
+    std::uniform_real_distribution<float> dist(-3.0f, 3.0f);
     for (int64_t i = 0; i < total; i++) {
-        x1Data[i] = std::sin(static_cast<float>(i) * 0.73f) * 2.0f;
+        x1Data[i] = dist(rng);
     }
 
+    // Build pre-computed cos/sin for true 3D RoPE (Wan2.2 style)
+    int64_t tBand, hBand, wBand;
+    ComputeBandDims3D(headDim, tBand, hBand, wBand);
     int64_t halfD = headDim / 2;
-    std::vector<float> x2Data(total);
+    int64_t halfTBand = tBand / 2;
+    int64_t halfHBand = hBand / 2;
+    int64_t halfWBand = wBand / 2;
+    float freqBase = 10000.0f;
+    float rT = std::pow(freqBase, -2.0 / (double)tBand);
+    float rH = std::pow(freqBase, -2.0 / (double)hBand);
+    float rW = std::pow(freqBase, -2.0 / (double)wBand);
+
+    std::vector<float> thetaT(halfTBand), thetaH(halfHBand), thetaW(halfWBand);
+    if (halfTBand > 0) { thetaT[0] = 1.0f; for (int64_t i = 1; i < halfTBand; i++) thetaT[i] = thetaT[i-1] * rT; }
+    if (halfHBand > 0) { thetaH[0] = 1.0f; for (int64_t i = 1; i < halfHBand; i++) thetaH[i] = thetaH[i-1] * rH; }
+    if (halfWBand > 0) { thetaW[0] = 1.0f; for (int64_t i = 1; i < halfWBand; i++) thetaW[i] = thetaW[i-1] * rW; }
+
+    int64_t vidT, vidH, vidW;
+    FactorVideoDims(seqLen, vidT, vidH, vidW);
+    int64_t hw = vidH * vidW;
+    if (hw <= 0) hw = 1;
+    int64_t wv = (vidW <= 0) ? 1 : vidW;
+
+    std::vector<float> x2Data(total, 0.0f);
     for (int64_t b = 0; b < batch; b++) {
-        for (int64_t s = 0; s < seqLen; s++) {
-            int64_t base = (b * seqLen + s) * headDim;
-            float pos = static_cast<float>(s);
-            for (int64_t k = 0; k < halfD; k++) {
-                float theta = pos * std::pow(0.0001f, static_cast<float>(2 * k) / static_cast<float>(headDim));
-                x2Data[base + k]           = std::cos(theta);
-                x2Data[base + halfD + k]   = std::sin(theta);
+        for (int64_t l = 0; l < seqLen; l++) {
+            int64_t base = (b * seqLen + l) * headDim;
+            int64_t tCoord = l / hw;
+            int64_t rem = l % hw;
+            int64_t iCoord = rem / wv;
+            int64_t jCoord = rem % wv;
+            // T-band cos/sin
+            for (int64_t k = 0; k < halfTBand; k++) {
+                float a = static_cast<float>(tCoord) * thetaT[k];
+                x2Data[base + k] = std::cos(a);
+                x2Data[base + halfD + k] = std::sin(a);
+            }
+            // H-band cos/sin
+            for (int64_t k = 0; k < halfHBand; k++) {
+                float a = static_cast<float>(iCoord) * thetaH[k];
+                x2Data[base + halfTBand + k] = std::cos(a);
+                x2Data[base + halfD + halfTBand + k] = std::sin(a);
+            }
+            // W-band cos/sin
+            for (int64_t k = 0; k < halfWBand; k++) {
+                float a = static_cast<float>(jCoord) * thetaW[k];
+                x2Data[base + halfTBand + halfHBand + k] = std::cos(a);
+                x2Data[base + halfD + halfTBand + halfHBand + k] = std::sin(a);
             }
         }
     }
 
     std::vector<float> yRef(total, 0);
-    RefRoPE(batch, seqLen, headDim, x1Data.data(), x2Data.data(), yRef.data());
+    RefRoPE3D(batch, seqLen, headDim, x1Data.data(), yRef.data(), 10000.0f);
 
-    int printN = std::min(4, (int)total);
-    LOG_PRINT("[Test %d] X1[0..%d]: ", testIdx, printN - 1);
-    for (int i = 0; i < printN; i++) LOG_PRINT("%.4f ", x1Data[i]);
-    LOG_PRINT("\n  X2[0..%d]: ", printN - 1);
-    for (int i = 0; i < printN; i++) LOG_PRINT("%.4f ", x2Data[i]);
+    int printN = (int)std::min((int64_t)headDim, total);
+    int64_t printPos = std::min(seqLen - 1, (int64_t)4);
+    for (int64_t pos = 0; pos <= printPos; pos++) {
+        int64_t pb = pos * headDim;
+        LOG_PRINT("[Test %d] X1(pos=%ld)[0..%ld]:\n  ", testIdx, pos, std::min(headDim, (int64_t)16) - 1);
+        for (int i = 0; i < std::min(headDim, (int64_t)16); i++) {
+            LOG_PRINT("%.4f ", x1Data[pb + i]); if ((i+1)%16 == 0) LOG_PRINT("\n  ");
+        }
+        LOG_PRINT("\n");
+    }
+    LOG_PRINT("[Test %d] X2(pos=0..%ld)[0..%ld]:\n  ", testIdx, printPos, std::min(headDim, (int64_t)8) - 1);
+    for (int64_t pos = 0; pos <= printPos; pos++) {
+        int64_t pb = pos * headDim;
+        LOG_PRINT("pos%ld: ", pos);
+        for (int i = 0; i < std::min(headDim, (int64_t)8); i++) {
+            LOG_PRINT("%.4f ", x2Data[pb + i]);
+        }
+        LOG_PRINT("\n  ");
+    }
     LOG_PRINT("\n");
 
     aclTensor* x1 = nullptr; void* x1Dev = nullptr;
@@ -148,10 +301,10 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim,
     for (int64_t i = 0; i < total; i++) {
         if (std::fabs(outData[i] - yRef[i]) > eps) {
             if (allOk) {
-                LOG_PRINT("  y[0..%d]: ", printN - 1);
-                for (int j = 0; j < printN; j++) LOG_PRINT("%.4f ", outData[j]);
-                LOG_PRINT("\n  yRef[0..%d]: ", printN - 1);
-                for (int j = 0; j < printN; j++) LOG_PRINT("%.4f ", yRef[j]);
+                LOG_PRINT("  y[0..%d] (pos0):\n  ", printN - 1);
+                for (int j = 0; j < printN; j++) { LOG_PRINT("%.4f ", outData[j]); if ((j+1)%16 == 0 && j+1 < printN) LOG_PRINT("\n  "); }
+                LOG_PRINT("\n  yRef[0..%d] (pos0):\n  ", printN - 1);
+                for (int j = 0; j < printN; j++) { LOG_PRINT("%.4f ", yRef[j]); if ((j+1)%16 == 0 && j+1 < printN) LOG_PRINT("\n  "); }
                 LOG_PRINT("\n");
                 allOk = false;
             }
@@ -198,15 +351,174 @@ int RunTest(int64_t batch, int64_t seqLen, int64_t headDim,
     } else {
         LOG_PRINT("\n");
     }
-    LOG_PRINT("  y[0..%d]: ", printN - 1);
-    for (int i = 0; i < printN; i++) LOG_PRINT("%.4f ", outData[i]);
-    LOG_PRINT("\n");
+    // Print y for first few positions (first 8 dims each)
+    int64_t showPos = std::min(seqLen - 1, (int64_t)4);
+    for (int64_t pos = 0; pos <= showPos; pos++) {
+        int64_t pb = pos * headDim;
+        LOG_PRINT("  y(pos=%ld)[0..7]: ", pos);
+        for (int i = 0; i < std::min(headDim, (int64_t)8); i++) {
+            LOG_PRINT("%.4f ", outData[pb + i]);
+        }
+        LOG_PRINT("\n");
+    }
 
     aclDestroyTensor(x1); aclrtFree(x1Dev);
     aclDestroyTensor(x2); aclrtFree(x2Dev);
     aclDestroyTensor(out); aclrtFree(outDev);
     if (wsSize > 0) aclrtFree(ws);
     return 0;
+}
+
+// ===== Explicit 3D test with known T/H/W (bypasses FactorVideoDims) =====
+// ===== 3D test using FactorVideoDims (same as kernel tiling) =====
+int RunTest3D(int64_t hintT, int64_t hintH, int64_t hintW, int64_t headDim,
+              int testIdx, aclrtStream stream)
+{
+    int64_t seqLen = hintT * hintH * hintW;
+    int64_t total = seqLen * headDim;
+    std::vector<int64_t> shape = {1, seqLen, headDim};
+    int ret;
+
+    // Match kernel's tiling: FactorVideoDims determines actual T/H/W
+    int64_t actualT, actualH, actualW;
+    FactorVideoDims(seqLen, actualT, actualH, actualW);
+    int64_t hw = actualH * actualW, wv = actualW;
+
+    // Random input data
+    std::vector<float> x1Data(total);
+    std::mt19937 rng(42 + testIdx);
+    std::uniform_real_distribution<float> dist(-3.0f, 3.0f);
+    for (int64_t i = 0; i < total; i++) x1Data[i] = dist(rng);
+
+    // Band dims
+    int64_t tBand, hBand, wBand;
+    ComputeBandDims3D(headDim, tBand, hBand, wBand);
+    int64_t halfD = headDim / 2;
+    int64_t halfTBand = tBand / 2, halfHBand = hBand / 2, halfWBand = wBand / 2;
+    float freqBase = 10000.0f;
+    float rT = std::pow(freqBase, -2.0 / (double)tBand);
+    float rH = std::pow(freqBase, -2.0 / (double)hBand);
+    float rW = std::pow(freqBase, -2.0 / (double)wBand);
+
+    std::vector<float> thetaT(halfTBand), thetaH(halfHBand), thetaW(halfWBand);
+    if (halfTBand > 0) { thetaT[0] = 1.0f; for (int64_t i = 1; i < halfTBand; i++) thetaT[i] = thetaT[i-1] * rT; }
+    if (halfHBand > 0) { thetaH[0] = 1.0f; for (int64_t i = 1; i < halfHBand; i++) thetaH[i] = thetaH[i-1] * rH; }
+    if (halfWBand > 0) { thetaW[0] = 1.0f; for (int64_t i = 1; i < halfWBand; i++) thetaW[i] = thetaW[i-1] * rW; }
+
+    // Build cos/sin using FactorVideoDims-derived (t,i,j) — matches kernel
+    std::vector<float> x2Data(total, 0.0f);
+    for (int64_t l = 0; l < seqLen; l++) {
+        int64_t base = l * headDim;
+        int64_t tCoord = l / hw, rem = l % hw, iCoord = rem / wv, jCoord = rem % wv;
+        for (int64_t k = 0; k < halfTBand; k++) {
+            float a = (float)tCoord * thetaT[k];
+            x2Data[base + k] = cosf(a);
+            x2Data[base + halfD + k] = sinf(a);
+        }
+        for (int64_t k = 0; k < halfHBand; k++) {
+            float a = (float)iCoord * thetaH[k];
+            x2Data[base + halfTBand + k] = cosf(a);
+            x2Data[base + halfD + halfTBand + k] = sinf(a);
+        }
+        for (int64_t k = 0; k < halfWBand; k++) {
+            float a = (float)jCoord * thetaW[k];
+            x2Data[base + halfTBand + halfHBand + k] = cosf(a);
+            x2Data[base + halfD + halfTBand + halfHBand + k] = sinf(a);
+        }
+    }
+
+    // Reference (RefRoPE3D also calls FactorVideoDims internally)
+    std::vector<float> yRef(total, 0);
+    RefRoPE3D(1, seqLen, headDim, x1Data.data(), yRef.data(), freqBase);
+
+    // NPU kernel execution
+    aclTensor *x1=nullptr, *x2=nullptr, *out=nullptr;
+    void *x1Dev=nullptr, *x2Dev=nullptr, *outDev=nullptr;
+    ret = CreateAclTensor(x1Data, shape, &x1Dev, ACL_FLOAT, &x1);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    ret = CreateAclTensor(x2Data, shape, &x2Dev, ACL_FLOAT, &x2);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    std::vector<float> outInit(total, 0);
+    ret = CreateAclTensor(outInit, shape, &outDev, ACL_FLOAT, &out);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+
+    uint64_t wsSize = 0; aclOpExecutor* exec = nullptr;
+    ret = aclnnRotaryPositionEmbedding3dGetWorkspaceSize(x1, x2, out, &wsSize, &exec);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[3DTest %d] GetWorkspaceSize failed. %d\n", testIdx, ret); return ret);
+    void* ws = nullptr;
+    if (wsSize > 0) { aclrtMalloc(&ws, wsSize, ACL_MEM_MALLOC_HUGE_FIRST); }
+    ret = aclnnRotaryPositionEmbedding3d(ws, wsSize, exec, stream);
+    CHECK_RET(ret == ACL_SUCCESS, return ret);
+    aclrtSynchronizeStream(stream);
+
+    std::vector<float> outData(total, 0);
+    aclrtMemcpy(outData.data(), total * sizeof(float), outDev, total * sizeof(float), ACL_MEMCPY_DEVICE_TO_HOST);
+
+    // Full validation
+    const float eps = 1e-4f;
+    bool allOk = true;
+    for (int64_t i = 0; i < total; i++) {
+        if (fabsf(outData[i] - yRef[i]) > eps) {
+            if (allOk) {
+                LOG_PRINT("[3DTest %d] FAIL: first mismatch at idx %ld: exp %.6f got %.6f\n",
+                          testIdx, i, yRef[i], outData[i]);
+                allOk = false;
+            }
+        }
+    }
+
+    // Diagnostics: print positions with actual (t,i,j)
+    LOG_PRINT("[3DTest %d] hint=(T=%ld,H=%ld,W=%ld) actual=(T=%ld,H=%ld,W=%ld) D=%ld:\n  ",
+              testIdx, hintT, hintH, hintW, actualT, actualH, actualW, headDim);
+    int64_t showPos[] = {0, 1, wv, wv+1, hw, hw+1, 2*hw};
+    for (int si = 0; si < 7 && showPos[si] < seqLen; si++) {
+        int64_t l = showPos[si];
+        int64_t t = l/hw, rem = l%hw, i = rem/wv, j = rem%wv;
+        LOG_PRINT("l=%ld(t=%ld,i=%ld,j=%ld):", l, t, i, j);
+        for (int d = 0; d < std::min(headDim, (int64_t)4); d++)
+            LOG_PRINT("%+.2f ", outData[l*headDim + d]);
+        LOG_PRINT("|");
+    }
+    LOG_PRINT("\n");
+
+    // Axis independence: verify X2 (cos/sin) band separation
+    // Same (i,j), diff t -> T-band cos/sin differs, H/W-band cos/sin same
+    if (halfTBand > 0 && 2*hw < seqLen) {
+        int64_t b1 = hw * headDim, b2 = (2*hw) * headDim;
+        bool tBandDiff = false;
+        for (int64_t k = 0; k < halfTBand; k++)
+            if (fabsf(x2Data[b1+k] - x2Data[b2+k]) > 1e-6f) { tBandDiff = true; break; }
+        bool hwSame = true;
+        for (int64_t k = halfTBand; k < halfD; k++)
+            if (fabsf(x2Data[b1+k] - x2Data[b2+k]) > 1e-6f) { hwSame = false; break; }
+        LOG_PRINT("[3DTest %d] Axis: (i=0,j=0) fixed, t=1->2: T-band(cs)%s, H/W-band(cs)%s\n",
+                  testIdx,
+                  tBandDiff ? " DIFFERS OK" : " SAME BUG",
+                  hwSame ? " SAME OK" : " DIFFERS BUG");
+        if (!tBandDiff || !hwSame) allOk = false;
+    }
+    // Same (i,j), diff t -> T-band cos/sin differs, H/W-band cos/sin same
+    if (halfTBand > 0 && 2*hw < seqLen) {
+        int64_t b1 = hw * headDim, b2 = (2*hw) * headDim;
+        bool tBandDiff = false;
+        for (int64_t k = 0; k < halfTBand; k++)
+            if (fabsf(x2Data[b1+k] - x2Data[b2+k]) > 1e-6f) { tBandDiff = true; break; }
+        bool hwSame = true;
+        for (int64_t k = halfTBand; k < halfD; k++)
+            if (fabsf(x2Data[b1+k] - x2Data[b2+k]) > 1e-6f) { hwSame = false; break; }
+        LOG_PRINT("[3DTest %d] Axis: (i=0,j=0) fixed, t=1->2: T-band(cs)%s, H/W-band(cs)%s\n",
+                  testIdx,
+                  tBandDiff ? " DIFFERS OK" : " SAME BUG",
+                  hwSame ? " SAME OK" : " DIFFERS BUG");
+        if (!tBandDiff || !hwSame) allOk = false;
+    }
+
+    LOG_PRINT("[3DTest %d] %s\n", testIdx, allOk ? "PASSED" : "FAILED");
+    aclDestroyTensor(x1); aclrtFree(x1Dev);
+    aclDestroyTensor(x2); aclrtFree(x2Dev);
+    aclDestroyTensor(out); aclrtFree(outDev);
+    if (wsSize > 0) aclrtFree(ws);
+    return allOk ? 0 : -1;
 }
 
 int main()
@@ -249,8 +561,25 @@ int main()
     LOG_PRINT("------------------------------------------\n");
     LOG_PRINT("=== %d/%d tests PASSED, %d FAILED ===\n", passed, numTests, failed);
 
+    // ===== 3D Axis Independence Tests =====
+    LOG_PRINT("\n--- 3D Axis Independence Tests ---\n");
+    struct Case3D { int64_t T, H, W, D; const char* desc; };
+    Case3D axisTests[] = {
+        {2, 4, 4, 128, "(T=2,H=4,W=4,D=128)"},
+        {3, 2, 4, 128, "(T=3,H=2,W=4,D=128)"},
+        {4, 2, 2, 256, "(T=4,H=2,W=2,D=256)"},
+    };
+    int num3d = sizeof(axisTests) / sizeof(axisTests[0]);
+    int passed3d = 0, failed3d = 0;
+    for (int i = 0; i < num3d; i++) {
+        ret = RunTest3D(axisTests[i].T, axisTests[i].H, axisTests[i].W,
+                        axisTests[i].D, i+1, stream);
+        if (ret) failed3d++; else passed3d++;
+    }
+    LOG_PRINT("--- 3D Tests: %d/%d PASSED, %d FAILED ---\n", passed3d, num3d, failed3d);
+
     aclrtDestroyStream(stream);
     aclrtResetDevice(deviceId);
     aclFinalize();
-    return failed ? -1 : 0;
+    return (failed + failed3d) ? -1 : 0;
 }

@@ -77,6 +77,24 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_001)
     ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace,
                 (uint8_t *)(tilingDatafromBin));
 
+    // Verify against golden reference
+    float* z_f32 = (float*)z;
+    size_t numElts = outputZByteSize / sizeof(float);
+    std::vector<float> golden(numElts);
+    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t*)golden.data(), outputZByteSize);
+    bool utPass = true;
+    float maxDiff = 0.0f;
+    for (size_t i = 0; i < numElts; i++) {
+        float diff = fabsf(z_f32[i] - golden[i]);
+        if (diff > maxDiff) maxDiff = diff;
+        if (diff > 5e-2f) {  // relaxed tolerance for half precision
+            if (utPass) std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << golden[i] << " diff " << diff << std::endl;
+            utPass = false;
+        }
+    }
+    std::cout << "  Max diff: " << maxDiff << " " << (utPass ? "PASS" : "FAIL") << std::endl;
+    EXPECT_TRUE(utPass);
+
     AscendC::GmFree(x);
     AscendC::GmFree(cos_sin);
     AscendC::GmFree(z);
@@ -127,6 +145,24 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp16_3d_002)
     ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace,
                 (uint8_t *)(tilingDatafromBin));
 
+    // Verify against golden reference
+    float* z_f32 = (float*)z;
+    size_t numElts = outputZByteSize / sizeof(float);
+    std::vector<float> golden(numElts);
+    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t*)golden.data(), outputZByteSize);
+    bool utPass = true;
+    float maxDiff = 0.0f;
+    for (size_t i = 0; i < numElts; i++) {
+        float diff = fabsf(z_f32[i] - golden[i]);
+        if (diff > maxDiff) maxDiff = diff;
+        if (diff > 5e-2f) {  // relaxed tolerance for half precision
+            if (utPass) std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << golden[i] << " diff " << diff << std::endl;
+            utPass = false;
+        }
+    }
+    std::cout << "  Max diff: " << maxDiff << " " << (utPass ? "PASS" : "FAIL") << std::endl;
+    EXPECT_TRUE(utPass);
+
     AscendC::GmFree(x);
     AscendC::GmFree(cos_sin);
     AscendC::GmFree(z);
@@ -176,6 +212,24 @@ TEST_F(rotary_position_embedding3d_test, test_case_fp32_3d_003)
     };
     ICPU_RUN_KF(rotary_position_embedding3d_wrapper, blockDim, x, cos_sin, z, workspace,
                 (uint8_t *)(tilingDatafromBin));
+
+    // Verify against golden reference
+    float* z_f32 = (float*)z;
+    size_t numElts = outputZByteSize / sizeof(float);
+    std::vector<float> golden(numElts);
+    ReadFile(path + "/rotary_position_embedding3d_data/golden.bin", outputZByteSize, (uint8_t*)golden.data(), outputZByteSize);
+    bool utPass = true;
+    float maxDiff = 0.0f;
+    for (size_t i = 0; i < numElts; i++) {
+        float diff = fabsf(z_f32[i] - golden[i]);
+        if (diff > maxDiff) maxDiff = diff;
+        if (diff > 5e-2f) {  // relaxed tolerance for half precision
+            if (utPass) std::cout << "First mismatch at " << i << ": got " << z_f32[i] << " exp " << golden[i] << " diff " << diff << std::endl;
+            utPass = false;
+        }
+    }
+    std::cout << "  Max diff: " << maxDiff << " " << (utPass ? "PASS" : "FAIL") << std::endl;
+    EXPECT_TRUE(utPass);
 
     AscendC::GmFree(x);
     AscendC::GmFree(cos_sin);
