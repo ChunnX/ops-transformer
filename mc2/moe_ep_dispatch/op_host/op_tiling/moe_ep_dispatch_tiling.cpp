@@ -114,30 +114,6 @@ static uint32_t ApplyDebugNetworkModeOverride(uint32_t networkMode, const char *
     OP_LOGW(nodeName, "Ignore invalid MOE_EP_DEBUG_FORCE_NETWORK_MODE=%s, expected 0/direct or 1/hybrid.", envValue);
     return networkMode;
 }
-constexpr uint64_t HYBRID_ROUTE_WORKSPACE_BYTES = 0UL;
-constexpr uint32_t HYBRID_COUNTER_STRIDE = 2U; // hybrid sendCntPerRank: state + dstRankRecvNum
-
-static uint32_t ApplyDebugNetworkModeOverride(uint32_t networkMode, const char *nodeName)
-{
-    const char *envValue = std::getenv("MOE_EP_DEBUG_FORCE_NETWORK_MODE");
-    if (envValue == nullptr || envValue[0] == '\0') {
-        return networkMode;
-    }
-    if ((std::strcmp(envValue, "0") == 0) || (std::strcmp(envValue, "direct") == 0) ||
-        (std::strcmp(envValue, "DIRECT") == 0)) {
-        OP_LOGI(nodeName, "MOE_EP_DEBUG_FORCE_NETWORK_MODE overrides networkMode from %u to %u.", networkMode,
-                DIRECT_MODE);
-        return DIRECT_MODE;
-    }
-    if ((std::strcmp(envValue, "1") == 0) || (std::strcmp(envValue, "hybrid") == 0) ||
-        (std::strcmp(envValue, "HYBRID") == 0)) {
-        OP_LOGI(nodeName, "MOE_EP_DEBUG_FORCE_NETWORK_MODE overrides networkMode from %u to %u.", networkMode,
-                HYBRID_MODE);
-        return HYBRID_MODE;
-    }
-    OP_LOGW(nodeName, "Ignore invalid MOE_EP_DEBUG_FORCE_NETWORK_MODE=%s, expected 0/direct or 1/hybrid.", envValue);
-    return networkMode;
-}
 
 static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &info)
 {
@@ -172,6 +148,7 @@ static void PrintTilingDataInfo(const char *nodeName, const MoeEpDispatchInfo &i
     OP_LOGD(nodeName, "scaleupFinalRecvDataOffset is %lu.", info.scaleupFinalRecvDataOffset);
     OP_LOGD(nodeName, "scaleoutRecvStatusOffset is %lu.", info.scaleoutRecvStatusOffset);
     OP_LOGD(nodeName, "scaleupRecvStatusOffset is %lu.", info.scaleupRecvStatusOffset);
+    OP_LOGD(nodeName, "scaleoutAckStatusOffset is %lu.", info.scaleoutAckStatusOffset);
     OP_LOGD(nodeName, "combineDataOffset is %lu.", info.combineDataOffset);
     OP_LOGD(nodeName, "totalWinSizeEp is %lu.", info.totalWinSizeEp);
     OP_LOGD(nodeName, "totalUbSize is %lu.", info.totalUbSize);
@@ -581,20 +558,6 @@ static bool CheckOutputTensorDtype(const gert::TilingContext *context, const cha
                     OP_LOGE(nodeName, "debug_out dtype must be DT_UINT8, but got %d.",
                             static_cast<int32_t>(debugOutDesc->GetDataType())),
                     return false);
-    const gert::CompileTimeTensorDesc *routeDescs[] = {routeCountDesc, routeDstScaleoutDesc, routeScaleoutSlotDesc,
-                                                       routeScaleupMaskDesc, routeScaleupSlotDesc};
-    const char *routeNames[] = {"route_count", "route_dst_scaleout", "route_scaleout_slot", "route_scaleup_mask",
-                                "route_scaleup_slot"};
-    for (uint32_t routeIndex = 0; routeIndex < 5U; ++routeIndex) {
-        OP_TILING_CHECK(routeDescs[routeIndex]->GetDataType() != ge::DT_INT32,
-                        OP_LOGE(nodeName, "%s dtype must be DT_INT32, but got %d.", routeNames[routeIndex],
-                                static_cast<int32_t>(routeDescs[routeIndex]->GetDataType())),
-                        return false);
-    }
-    OP_TILING_CHECK(debugOutDesc->GetDataType() != ge::DT_UINT8,
-                    OP_LOGE(nodeName, "debug_out dtype must be DT_UINT8, but got %d.",
-                            static_cast<int32_t>(debugOutDesc->GetDataType())),
-                    return false);
     return true;
 }
 
@@ -943,17 +906,21 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     uint64_t scaleupFinalRecvDataSize;
     uint64_t scaleoutRecvStatusSize;
     uint64_t scaleupRecvStatusSize;
+    uint64_t scaleoutAckStatusSize;
     if (info.networkMode == HYBRID_MODE) {
         scaleoutRecvDataSize = superNodeCount * nmt * static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
         scaleupFinalRecvDataSize = epWorldSize * nmt * static_cast<uint64_t>(info.scaleupSlotAlignedBytes);
         scaleoutRecvStatusSize = AlignUpWin(superNodeCount * nmt * WIN_ADDR_ALIGN);
         scaleupRecvStatusSize = AlignUpWin(epWorldSize * nmt * WIN_ADDR_ALIGN);
+        // 每个远端 server 一个消费确认，避免下一轮覆盖尚未消费的 scaleout payload/status。
+        scaleoutAckStatusSize = AlignUpWin(superNodeCount * WIN_ADDR_ALIGN);
     } else {
         // direct: slot 紧凑步长, 不用 scaleout/recvStatus
         scaleoutRecvDataSize = 0UL;
         scaleupFinalRecvDataSize = epWorldSize * nmt * static_cast<uint64_t>(info.cfg.perSlotBytes);
         scaleoutRecvStatusSize = 0UL;
         scaleupRecvStatusSize = 0UL;
+        scaleoutAckStatusSize = 0UL;
     }
     uint32_t hiddenAlign = (info.cfg.hidden * MAX_OUT_DTYPE_SIZE + UB_ALIGN - 1) / UB_ALIGN * UB_ALIGN;
     uint64_t combineWinDataSize = nmt * topK * AlignUpWin(static_cast<uint64_t>(hiddenAlign + UB_ALIGN));
@@ -962,7 +929,8 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpDis
     info.scaleupFinalRecvDataOffset = info.scaleoutRecvDataOffset + scaleoutRecvDataSize;
     info.scaleoutRecvStatusOffset = info.scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
     info.scaleupRecvStatusOffset = info.scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
-    info.combineDataOffset = info.scaleupRecvStatusOffset + scaleupRecvStatusSize;
+    info.scaleoutAckStatusOffset = info.scaleupRecvStatusOffset + scaleupRecvStatusSize;
+    info.combineDataOffset = info.scaleoutAckStatusOffset + scaleoutAckStatusSize;
 
     uint64_t winNeed = info.combineDataOffset + combineWinDataSize;
     OP_TILING_CHECK(winNeed > maxWindowSize,
