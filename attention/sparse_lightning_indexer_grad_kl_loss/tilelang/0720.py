@@ -253,9 +253,23 @@ def tilelang_grad_kl_loss_single_kernel(
             DQ_L0B = T.alloc_L0B((n_block, k_block), input_dtype)
             DK_L0A = T.alloc_L0A((n_block, Nidx1), input_dtype)
             DK_L0B = T.alloc_L0B((Nidx1, DQueryIndex), input_dtype)
-            # Keep every physical matrix inside one 64 KiB L0C bank.  Event 6
-            # protects bank 0 and event 7 protects bank 1.
+            # Keep C1's two live operand slots disjoint.  The later C2, dQuery,
+            # and dKey phases are fully drained before handing L0A/L0B to the
+            # next phase, so they reuse address zero.  In particular this keeps
+            # dQuery's 64x128 L0B matrix away from the 64 KiB boundary.
             T.annotate_address({
+                C1_L0A_0: 0,
+                C1_L0A_1: 32768,
+                C2_L0A: 0,
+                DQ_L0A: 0,
+                DK_L0A: 0,
+                C1_L0B_0: 0,
+                C1_L0B_1: 16384,
+                C2_L0B: 0,
+                DQ_L0B: 0,
+                DK_L0B: 0,
+                # Keep every physical matrix inside one 64 KiB L0C bank.
+                # Event 6 protects bank 0 and event 7 protects bank 1.
                 C1_L0C: 0,
                 DQ_L0C: 32768,
                 C2_L0C: 65536,
