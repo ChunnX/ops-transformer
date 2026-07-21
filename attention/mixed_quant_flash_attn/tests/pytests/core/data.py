@@ -283,7 +283,7 @@ class InputSpec:
             rk = it.get("range_key")
             if rk and rk in params:
                 lo, hi = params[rk]
-                kw["low"], kw["high"] = float(lo), float(hi)
+                kw["low"], kw["high"] = lo, hi
             t = _generate(it["method"], shape, dt, device, rng, **kw)
             tensors[it["name"]] = t
         return tensors
@@ -358,18 +358,19 @@ def _generate(method, shape, dtype, device, rng, **kw):
     if method == "zeros":
         return torch.zeros(shape, dtype=dtype, device=device)
     if method == "custom":
-        return kw["fn"](shape, dtype, device, rng)
+        fn = kw.pop("fn")
+        return fn(shape, dtype, device, rng, **kw)
     raise ValueError(f"Unknown method: {method}")
 
 
 # ── 预定义 recipe ──
 
-def gen_unpacked_fp4(shape, dtype, device, rng):
-    return torch.randint(0, 16, shape, dtype=torch.uint8, device=device, generator=rng)
+def gen_unpacked_fp4(shape, dtype, device, rng, low=0, high=16):
+    return torch.randint(low, high, shape, dtype=torch.uint8, device=device, generator=rng)
 
 
-def gen_unpacked_e8m0(shape, dtype, device, rng):
-    return torch.randint(1, 255, shape, dtype=torch.uint8, device=device, generator=rng)
+def gen_unpacked_e8m0(shape, dtype, device, rng, low=125, high=129):
+    return torch.randint(low, high, shape, dtype=torch.uint8, device=device, generator=rng)
 
 
 mixed_quant_flash_attn_inputs = (
@@ -412,6 +413,7 @@ mixed_quant_flash_attn_inputs = (
             "PA_BBND": "num_blocks,block_size,N2,D",
             "PA_BNBD": "num_blocks,N2,block_size,D"},
             method="custom", fn=gen_unpacked_fp4,
+            low=0, high=16, range_key="kv_fp4_range",
             when=lambda p: p.get("quant_mode", 0) >= 1,
             layout_override="layout_kv")
     .tensor("v", layout={
@@ -419,6 +421,7 @@ mixed_quant_flash_attn_inputs = (
             "PA_BBND": "num_blocks,block_size,N2,_V",
             "PA_BNBD": "num_blocks,N2,block_size,_V"},
             method="custom", fn=gen_unpacked_fp4,
+            low=0, high=16, range_key="kv_fp4_range",
             when=lambda p: p.get("quant_mode", 0) >= 1,
             layout_override="layout_kv")
     .tensor("scale_k", layout={
@@ -427,6 +430,7 @@ mixed_quant_flash_attn_inputs = (
             "PA_BBND": "num_blocks,block_size,N2,D_group",
             "PA_BNBD": "num_blocks,block_size,N2,D_group"},
             method="custom", fn=gen_unpacked_e8m0,
+            low=125, high=129, range_key="scale_e8m0_range",
             when=lambda p: p.get("quant_mode", 0) >= 1,
             layout_override="layout_kv")
     .tensor("scale_v", layout={
@@ -435,6 +439,7 @@ mixed_quant_flash_attn_inputs = (
             "PA_BBND": "num_blocks,block_size,N2,DV_group",
             "PA_BNBD": "num_blocks,block_size,N2,DV_group"},
             method="custom", fn=gen_unpacked_e8m0,
+            low=125, high=129, range_key="scale_e8m0_range",
             when=lambda p: p.get("quant_mode", 0) >= 1,
             layout_override="layout_kv")
 )

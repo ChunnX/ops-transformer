@@ -114,9 +114,23 @@ def run_case(params: dict,
     print(f"  [primary] {primary.name} 计算...")
     dev_inputs = {k: v.to(primary.device) if isinstance(v, torch.Tensor) else v
                   for k, v in cpu_inputs.items()}
+
+    # Save golden before primary compute (in case primary crashes the device)
+    if golden_dir and case_name:
+        save_golden_case(case_name, cpu_inputs, golden_out, params, golden_dir)
+
     primary_out_raw = primary.compute(dev_inputs, params)
-    primary_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
-                   for k, v in primary_out_raw.items()}
+    try:
+        primary_out = {k: v.cpu() if isinstance(v, torch.Tensor) else v
+                       for k, v in primary_out_raw.items()}
+    except RuntimeError:
+        print(f"  [warn] {primary.name} output unusable (device crash), using zeros for comparison")
+        q_shape = cpu_inputs["q"].shape
+        if out_layout == "TND":
+            zero = torch.zeros(q_shape[0], q_shape[1], q_shape[2], dtype=torch.float32)
+        else:
+            zero = torch.zeros(q_shape[0], q_shape[1], q_shape[2], q_shape[3], dtype=torch.float32)
+        primary_out = {"out": zero, "lse": None}
     del dev_inputs, primary_out_raw
     primary.clear_cache()
 
@@ -212,6 +226,7 @@ def run_case(params: dict,
 
     ret = {"attn": _to_stats(attn_result), "lse": _to_stats(lse_result)}
 
+    # golden already saved before primary compute; save primary output separately
     if golden_dir and case_name:
         save_golden_case(case_name, cpu_inputs, golden_out, params, golden_dir,
                          primary_out=primary_out, primary_name=primary.name)

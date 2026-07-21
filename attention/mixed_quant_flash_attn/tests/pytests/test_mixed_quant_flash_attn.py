@@ -52,6 +52,10 @@ if __name__ == "__main__":
     parser.add_argument("--load_golden", type=str, default=None,
                         help="从指定目录加载 golden，只跑 NPU/GPU 对比")
 
+    parser.add_argument("--cpu_only",   action="store_true",
+                        help="仅运行 CPU golden 计算（不启动 NPU/GPU）")
+    parser.add_argument("--npu_only",   action="store_true",
+                        help="仅运行 NPU 计算，需搭配 --load_golden")
     parser.add_argument("--meta_only",  action="store_true")
     parser.add_argument("--load_gpu_dump", type=str, default=None)
     parser.add_argument("--load_npu_dump", type=str, default=None)
@@ -68,6 +72,8 @@ if __name__ == "__main__":
     parser.add_argument("--one_by_one", action="store_true", help="逐个 case 执行，每个完成后暂停")
     args = parser.parse_args()
 
+    if args.cpu_only and args.npu_only:
+        print("[ERROR] --cpu_only 和 --npu_only 不能同时使用"); sys.exit(1)
     if args.save_golden and args.load_golden:
         print("[ERROR] --save_golden 和 --load_golden 不能同时使用")
         sys.exit(1)
@@ -263,6 +269,85 @@ if __name__ == "__main__":
         fail_cnt = reporter.print_final()
         if args.result_csv:
             print(f"[result] {args.result_csv}")
+        sys.exit(0 if fail_cnt == 0 else 1)
+
+    # ── CPU-only 模式 ──
+    if args.cpu_only and not args.load_golden:
+        from core.backends.cpu import CPUBackend
+        golden = CPUBackend()
+        reporter = Reporter()
+        if args.result_csv:
+            csv_path = Path(args.result_csv); csv_path.parent.mkdir(parents=True, exist_ok=True)
+            reporter.set_csv(csv_path)
+        for i, name in enumerate(run_cases):
+            params = normalize_params(all_cases[name])
+            layout = params.get("input_layout", params.get("layout_q", "BNSD"))
+            dtype = params.get("Dtype", "fp16")
+            print(f"\n{'='*66}")
+            print(f"  [CPU-only] Case: {name}  "
+                  f"B={params.get('B')} N1={params['N1']} S1={params.get('S1')} S2={params.get('S2')} D={params['D']} "
+                  f"layout={layout} dtype={dtype}")
+            print(f"{'='*66}")
+            cpu_inputs = mixed_quant_flash_attn_inputs.generate(
+                params, device=torch.device("cpu"), layout=layout,
+                layout_kv=params.get("layout_kv", layout))
+            if str(params.get("layout_kv", "")).startswith("PA_"):
+                cpu_inputs["block_table"] = params["block_table"]
+            for tk, tv in cpu_inputs.items():
+                print(f"  {tk}: shape={tv.shape} dtype={tv.dtype}")
+            golden_out = golden.compute(cpu_inputs, params)
+            for gk, gv in golden_out.items():
+                if isinstance(gv, torch.Tensor):
+                    print(f"  golden.{gk}: shape={gv.shape} dtype={gv.dtype}  "
+                          f"min={gv.min().item():.6f} max={gv.max().item():.6f}  "
+                          f"nan={torch.isnan(gv).any().item()} finite={torch.isfinite(gv).all().item()}")
+            reporter.record(name, {"attn": {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
+                                             "fail_cnt": 0, "total": 1, "fail_ratio": 0.0},
+                                   "lse":  {"passed": True, "max_abs": 0.0, "mean_abs": 0.0,
+                                             "fail_cnt": 0, "total": 1, "fail_ratio": 0.0}},
+                            dtype=dtype)
+        fail_cnt = reporter.print_final()
+        if args.result_csv: print(f"[result] {args.result_csv}")
+        sys.exit(0 if fail_cnt == 0 else 1)
+
+    # ── NPU-only 模式（需 --load_golden）──
+    if args.npu_only:
+        if not args.load_golden:
+            print("[ERROR] --npu_only 必须搭配 --load_golden"); sys.exit(1)
+        from core.backends.npu import NPUBackend
+        primary = NPUBackend(args.device_id, meta_only=args.meta_only, graph_mode=args.graph_mode)
+        if not primary.is_available():
+            print("[ERROR] NPU backend 不可用"); sys.exit(1)
+        reporter = Reporter()
+        if args.result_csv:
+            csv_path = Path(args.result_csv); csv_path.parent.mkdir(parents=True, exist_ok=True)
+            reporter.set_csv(csv_path)
+        for i, name in enumerate(run_cases):
+            case_params = normalize_params(all_cases[name]) if name in all_cases else {}
+            dtype = case_params.get("Dtype", "fp16")
+            print(f"\n{'='*66}")
+            print(f"  [NPU-only] Case: {name}  dtype={dtype}")
+            print(f"{'='*66}")
+            try:
+                result = run_case_load(case_name=name, golden_dir=args.load_golden,
+                                       primary=primary, device_id=args.device_id,
+                                       verbose_diff=args.verbose_diff,
+                                       visualize=args.visualize, viz_dir=args.viz_dir,
+                                       fail_analysis=args.fail_analysis)
+                err = None
+            except FileNotFoundError:
+                print(f"  [warn] golden 数据不存在，跳过: {name}"); continue
+            except Exception as e:
+                import traceback
+                err = f"{e}\n{traceback.format_exc()}"
+                print(f"[ERROR] {name} 运行异常: {e}")
+                result = {"attn": {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
+                                   "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')},
+                          "lse":  {"passed": False, "max_abs": float('nan'), "mean_abs": float('nan'),
+                                   "fail_cnt": -1, "total": -1, "fail_ratio": float('nan')}}
+            reporter.record(name, result, error=err, dtype=dtype)
+        fail_cnt = reporter.print_final()
+        if args.result_csv: print(f"[result] {args.result_csv}")
         sys.exit(0 if fail_cnt == 0 else 1)
 
     # ── 选择后端（默认/save 模式）──

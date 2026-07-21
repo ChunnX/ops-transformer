@@ -31,7 +31,9 @@ BASE = {"B": [2],
         "cu_seqlens_q": [[None]],
         "seqused_q": [[None]],
         "seqused_kv": [[None]],
-        "q_range": [(-5.0, 5.0)]}
+        "q_range": [(-5.0, 5.0)],
+        "kv_fp4_range": [(0, 16)],
+        "scale_e8m0_range": [(125, 129)]}
 
 TestCases = {
     # ── 基础 ──

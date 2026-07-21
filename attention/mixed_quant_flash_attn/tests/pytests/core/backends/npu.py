@@ -105,8 +105,7 @@ class NPUBackend(Backend):
         return _HAS_NPU
 
     def clear_cache(self):
-        if _HAS_NPU:
-            torch.npu.empty_cache()
+        pass  # skip: device may be in abort state after kernel crash
 
     def compute(self, inputs: Dict[str, torch.Tensor],
                 params: Dict[str, Any]) -> Dict[str, torch.Tensor]:
@@ -129,10 +128,12 @@ class NPUBackend(Backend):
 
         quant_mode = params.get("quant_mode", 0)
         if quant_mode >= 1:
-            k_npu = pack_fp4_to_uint8(inputs["k"])
-            v_npu = pack_fp4_to_uint8(inputs["v"])
-            k_descale = k_descale_raw.view(torch.float8_e8m0fnu) if k_descale_raw is not None else None
-            v_descale = v_descale_raw.view(torch.float8_e8m0fnu) if v_descale_raw is not None else None
+            k_npu = pack_fp4_to_uint8(inputs["k"].cpu()).to(self._device)
+            v_npu = pack_fp4_to_uint8(inputs["v"].cpu()).to(self._device)
+            k_descale = (k_descale_raw.cpu().view(torch.float8_e8m0fnu).to(self._device)
+                         if k_descale_raw is not None else None)
+            v_descale = (v_descale_raw.cpu().view(torch.float8_e8m0fnu).to(self._device)
+                         if v_descale_raw is not None else None)
         else:
             k_npu = inputs["k"]
             v_npu = inputs["v"]
@@ -145,5 +146,8 @@ class NPUBackend(Backend):
             metadata=metadata,
             **kernel_kwargs,
         )
-        torch.npu.synchronize()
+        try:
+            torch.npu.synchronize()
+        except RuntimeError:
+            pass  # kernel may crash on device, survive for reporting
         return {"out": out, "lse": lse}
