@@ -170,6 +170,7 @@ __aicore__ inline void SIVector<SIT>::AllocEventID()
 {
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
+    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
 
 template <typename SIT>
@@ -177,6 +178,7 @@ __aicore__ inline void SIVector<SIT>::FreeEventID()
 {
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 0);
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT + 1);
+    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
 
 template <typename SIT>
@@ -214,6 +216,7 @@ __aicore__ inline void SIVector<SIT>::initS2LenToNeg(uint32_t gS1Idx, uint32_t a
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::SetSparseSeqLenZero(uint64_t indiceLenOffset)
 {
+    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     Duplicate(indiceLenLocal_, 0U, 1);
     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
     WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -225,7 +228,6 @@ __aicore__ inline void SIVector<SIT>::SetSparseSeqLenZero(uint64_t indiceLenOffs
     indiceLenCp.dstStride = 0;
     DataCopyPad(sparseSeqLenGm[indiceLenOffset], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCp);
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
 
 template <typename SIT>
@@ -251,6 +253,9 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
     SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
     WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT + pingpong);
 
+    if (info.isFirstS2InnerLoop) {
+        WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    }
     //CV同步
     CrossCoreWaitFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_CV_EVENT + pingpong);   //V核等C核计算完mm1，mm1Res已搬运到U
 
@@ -312,7 +317,7 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(
     LocalTensor<uint32_t>& indicesOutLocal)
 {
     outputLen = Min(outputLen, MAX_TOPK_COUNT);
-
+    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     Duplicate(indiceLenLocal_, outputLen, 1);
     CreateVecIndex(indicesOutLocal.ReinterpretCast<int32_t>(), 0, outputLen);
     SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -340,22 +345,14 @@ __aicore__ inline void SIVector<SIT>::WriteDirectIndices(
                     indicesOutLocal.ReinterpretCast<int32_t>(), copyOut);
     }
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
 
 template <typename SIT>
 __aicore__ inline void SIVector<SIT>::CopyOutPackedResults(
     const SICommon::RunInfo &info, int64_t curAivGS1Idx, int64_t curAivGS1ProcNum)
 {
-    if (curAivGS1ProcNum <= 0) {
-        return;
-    }
-
     const uint32_t packedOutputLen = MAX_TOPK_COUNT + initialBlocks_ + windowSize_;
     const uint32_t copyLen = Min(packedOutputLen, static_cast<uint32_t>(constInfo_.kSeqSize));
-    if (copyLen == 0U) {
-        return;
-    }
     const uint32_t copyBytes = copyLen * sizeof(int32_t);
     const uint32_t srcRowBytes = mrgRowStride_ * sizeof(SCORE_T);
     const uint32_t srcBlockBytes = ((copyBytes + 31U) / 32U) * 32U;
@@ -398,6 +395,7 @@ __aicore__ inline void SIVector<SIT>::CopyOutPackedResults(
                     packedLenCopyParams);
         localRowStart += segmentRowNum;
     }
+    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
 
 template <typename SIT>
@@ -574,9 +572,6 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         SICommon::CROSS_VC_EVENT + (info.loop % 2));
     if (isLastS2InnerLoop) {
         CopyOutPackedResults(info, curAivGS1Idx, curAivGS1ProcNum);
-        // 等待MTE3完成对mrgValueLocal_的读取，避免下一轮Vec1提前覆盖搬出源数据。
-        SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-        WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     }
 }
 
