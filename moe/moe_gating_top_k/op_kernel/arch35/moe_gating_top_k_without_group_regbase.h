@@ -268,9 +268,10 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1ByMax(int6
         MicroAPI::ReduceMax(valueAndIndexReg, valueAndIndexReg, maskForExpertCount);
         MicroAPI::DataCopy(sortedAddr, valueAndIndexReg, maskForVL2);
 
+        RegTensor<int32_t> valueReg;
         RegTensor<int32_t> indexReg;
         MicroAPI::DataCopy<int32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(
-            (MicroAPI::RegTensor<int32_t> &)valueAndIndexReg, indexReg, sortedAddr);
+            valueReg, indexReg, (__local_mem__ int32_t *)sortedAddr);
         MicroAPI::DataCopyUnAlign(expertIdxAddr, indexReg, u0, static_cast<uint32_t>(k_));
         MicroAPI::DataCopyUnAlignPost(expertIdxAddr, u0, 0);
     }
