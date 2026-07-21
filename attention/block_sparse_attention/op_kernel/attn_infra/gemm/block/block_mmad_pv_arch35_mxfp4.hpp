@@ -257,6 +257,146 @@ public:
         AscendC::DataCopy(l1AScaleTensorB16, scaleAGMB16, nd2nzParams);
     }
 
+    // 稀疏 V 数据 gather：按 gSparseBlockIdx 把稀疏 Y-block 逐段 Nd2Nz 到 L1 整 tile 的对应位置。
+    // 复用 CopyInA1 的 Nd2Nz 参数语义，仅 nValue 改为段长、src/dst 加段偏移。
+    // NZ 布局推导：dstNzNStride=1（每行 32B），故 gather 行 r 的 dst 字节偏移 = r*32；
+    // dstNzC0Stride=s2Align64 保持与整 tile 一致，使 K-block 跨段对齐。
+    // （V 是 fp4，sizeof(fp4x2_e2m1_t)=1，元素偏移即字节偏移。）
+    __aicore__ inline
+    void SparseVBaseTileL1FullLoad(
+        AscendC::GlobalTensor<fp4x2_e2m1_t> gV,         // 已带 batch+head 偏移
+        AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
+        uint32_t gatheredKvSTileIdx, int64_t kvSeqlen,
+        uint32_t kvSBaseTile, uint32_t blockShapeY,
+        uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
+        uint32_t curBaseTileSize, uint32_t embed, uint32_t s2Align64)
+    {
+        uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
+        uint32_t baseTileEndOffset   = baseTileStartOffset + curBaseTileSize;
+        uint32_t gatheredStartOffset = baseTileStartOffset;
+        uint32_t gatheredYBlockIdx   = gatheredStartOffset / blockShapeY;
+        uint32_t yBlockInnerStart    = gatheredStartOffset % blockShapeY;
+        uint32_t oriYBlockIdx   = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
+        uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
+        uint32_t dealtLenAccum  = 0;
+
+        uint16_t aColValue = CeilDivision(embed, 2);   // D/2（fp4x2 元素 = 字节）
+        while (dealtLenAccum < curBaseTileSize && gatheredYBlockIdx < yBlockNumRsvd &&
+               oriYBlockIdx < yBlockNumAval && oriStartOffset < kvSeqlen) {
+            uint32_t curYBlockSize = (oriYBlockIdx == yBlockNumAval - 1)
+                                     ? static_cast<uint32_t>(kvSeqlen - oriYBlockIdx * blockShapeY)
+                                     : blockShapeY;
+            uint32_t gatheredEndOffset = min(gatheredYBlockIdx * blockShapeY + curYBlockSize,
+                                             baseTileEndOffset);
+            uint32_t curDealtLen = gatheredEndOffset - gatheredStartOffset;
+            if (curDealtLen == 0) { break; }
+
+            AscendC::Nd2NzParams p;
+            p.ndNum = 1;
+            p.nValue = curDealtLen;
+            p.dValue = aColValue;
+            p.srcNdMatrixStride = 0;
+            p.srcDValue = aColValue;          // 源行 stride = D/2 字节
+            p.dstNzC0Stride = s2Align64;      // 与整 tile 一致，K-block 跨段对齐
+            p.dstNzNStride = 1;               // 每行 32B
+            p.dstNzMatrixStride = 0;
+            // gV 是 GlobalTensor<fp4x2_e2m1_t>，其索引单位是 fp4 元素（4-bit），gV[i] 内部按 i/2 字节寻址。
+            // 故行 stride 在索引单位下 = embed（每行 D 个 fp4 = D 索引 = D/2 字节）。
+            uint32_t srcByteOff = oriStartOffset * embed;
+            // l1ATensor 是 LocalTensor<fp4x2_e2m1_t>，索引单位同样是 fp4 元素（[i]→字节 i/2，与 gV 一致）。
+            // NZ 每行 32 字节 = 64 fp4 元素，故段落到 gather 行 dealtLenAccum 的 dst 索引 = dealtLenAccum*64。
+            // （单段 dealtAccum=0 时与 *32 同值，不生效；仅多段才考验。）
+            uint32_t dstByteOff = dealtLenAccum * 64;             // NZ 每行 32B=64 fp4 元素
+            AscendC::printf(
+                "[V-GATHER] seg: oriYBlock=%u oriStart=%u curDealtLen=%u dealtAccum=%u "
+                "srcByteOff=%u dstByteOff=%u nVal=%u dVal=%u c0Stride=%u nStride=1\n",
+                (unsigned)oriYBlockIdx, (unsigned)oriStartOffset, (unsigned)curDealtLen,
+                (unsigned)dealtLenAccum, (unsigned)srcByteOff, (unsigned)dstByteOff,
+                (unsigned)curDealtLen, (unsigned)aColValue, (unsigned)s2Align64);
+            AscendC::DataCopy(l1ATensor[0][dstByteOff], gV[srcByteOff], p);
+
+            dealtLenAccum += curDealtLen;
+            gatheredStartOffset += curDealtLen;
+            gatheredYBlockIdx = gatheredStartOffset / blockShapeY;
+            yBlockInnerStart   = gatheredStartOffset % blockShapeY;
+            if (dealtLenAccum < curBaseTileSize) {
+                oriYBlockIdx   = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
+                oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
+            }
+        }
+    }
+
+    // 稀疏 V-scale gather：V-scale GM [BT2//64,N2,D,2]，S2 方向按 64 分组。
+    // 一个 sparse Y-block（blockShapeY 行 V，须为 64 倍数）对应 blockShapeY/64 个连续 scale-group。
+    // B16 视图 Nd2Nz（与 CopyInScaleA1 同语义），段内 scaleRows=ceil(curDealtLen,64)/64 组。
+    // NZ 布局：dstNzNStride=1（每组 32B=16 个 half），故 gather 组 g 的 dst half 偏移 = g*16。
+    __aicore__ inline
+    void SparseVScaleBaseTileL1FullLoad(
+        AscendC::GlobalTensor<uint8_t> gVScale,       // 已带 batch+head 偏移
+        AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
+        uint32_t gatheredKvSTileIdx, int64_t kvSeqlen,
+        uint32_t kvSBaseTile, uint32_t blockShapeY,
+        uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
+        uint32_t curBaseTileSize, uint32_t embed, uint32_t s2Align64)
+    {
+        constexpr uint32_t SCALE_GROUP = 64;
+        uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
+        uint32_t baseTileEndOffset   = baseTileStartOffset + curBaseTileSize;
+        uint32_t gatheredStartOffset = baseTileStartOffset;
+        uint32_t gatheredYBlockIdx   = gatheredStartOffset / blockShapeY;
+        uint32_t yBlockInnerStart    = gatheredStartOffset % blockShapeY;
+        uint32_t oriYBlockIdx   = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
+        uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
+        uint32_t dealtLenAccum  = 0;     // 已 gather 的 V 行数
+
+        uint32_t scaleK = s2Align64 / SCALE_GROUP * 2;   // 与 CopyInScaleA1 一致
+        AscendC::GlobalTensor<half> gVScaleB16;
+        gVScaleB16.SetGlobalBuffer((__gm__ half*)(gVScale.GetPhyAddr()), 0x7FFFFFFFu);
+        auto l1ScaleB16 = l1AScaleTensor[0].ReinterpretCast<half>();
+
+        while (dealtLenAccum < curBaseTileSize && gatheredYBlockIdx < yBlockNumRsvd &&
+               oriYBlockIdx < yBlockNumAval && oriStartOffset < kvSeqlen) {
+            uint32_t curYBlockSize = (oriYBlockIdx == yBlockNumAval - 1)
+                                     ? static_cast<uint32_t>(kvSeqlen - oriYBlockIdx * blockShapeY)
+                                     : blockShapeY;
+            uint32_t gatheredEndOffset = min(gatheredYBlockIdx * blockShapeY + curYBlockSize,
+                                             baseTileEndOffset);
+            uint32_t curDealtLen = gatheredEndOffset - gatheredStartOffset;
+            if (curDealtLen == 0) { break; }
+
+            uint32_t scaleRows = (curDealtLen + SCALE_GROUP - 1) / SCALE_GROUP;  // 组数向上取整
+            AscendC::Nd2NzParams p;
+            p.ndNum = 1;
+            p.nValue = scaleRows;
+            p.dValue = embed;                // D
+            p.srcNdMatrixStride = 0;
+            p.srcDValue = embed;             // 每组 D 个 B16 = 2D 字节
+            p.dstNzC0Stride = scaleK / 2;    // = s2Align64/64，与整 tile 一致
+            p.dstNzNStride = 1;              // 每组 32B
+            p.dstNzMatrixStride = 0;
+            uint32_t srcGroupIdx = oriStartOffset / SCALE_GROUP;
+            uint32_t srcB16Off   = srcGroupIdx * embed;          // B16 单位
+            uint32_t dstGroupIdx = dealtLenAccum / SCALE_GROUP;
+            uint32_t dstB16Off   = dstGroupIdx * 16;             // 每组 32B = 16 个 half
+            AscendC::printf(
+                "[VS-GATHER] seg: oriStart=%u curDealtLen=%u dealtAccum=%u scaleRows=%u "
+                "srcB16Off=%u dstB16Off=%u nVal=%u dVal=%u c0Stride=%u\n",
+                (unsigned)oriStartOffset, (unsigned)curDealtLen, (unsigned)dealtLenAccum,
+                (unsigned)scaleRows, (unsigned)srcB16Off, (unsigned)dstB16Off,
+                (unsigned)scaleRows, (unsigned)embed, (unsigned)(scaleK / 2));
+            AscendC::DataCopy(l1ScaleB16[dstB16Off], gVScaleB16[srcB16Off], p);
+
+            dealtLenAccum += curDealtLen;
+            gatheredStartOffset += curDealtLen;
+            gatheredYBlockIdx = gatheredStartOffset / blockShapeY;
+            yBlockInnerStart   = gatheredStartOffset % blockShapeY;
+            if (dealtLenAccum < curBaseTileSize) {
+                oriYBlockIdx   = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
+                oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
+            }
+        }
+    }
+
     __aicore__ inline void FixpipeMm2(uint32_t s1Align128,uint32_t embedReal,AscendC::LocalTensor<ElementC> ubOTmpTensor)
     {
         AscendC::FixpipeParamsArch3510<AscendC::CO2Layout::ROW_MAJOR> fixpipeParams;
@@ -355,13 +495,19 @@ public:
 
     // template <class TensorB, class TensorC>
     __aicore__ inline
-    void operator()(AscendC::GlobalTensor<uint8_t> gVScale, AscendC::GlobalTensor<fp4x2_e2m1_t> gV, AscendC::LocalTensor<float> ubOTmpTensor)
+    void operator()(
+        AscendC::GlobalTensor<fp4x2_e2m1_t> gV,          // 已带 batch+head 偏移
+        AscendC::GlobalTensor<uint8_t> gVScale,          // 已带 batch+head 偏移
+        AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
+        AscendC::LocalTensor<float> ubOTmpTensor,
+        uint32_t rowNum, uint32_t embed, uint32_t curBaseTileSize,
+        uint32_t gatheredKvSTileIdx, int64_t kvSeqlen,
+        uint32_t kvSBaseTile, uint32_t blockShapeY,
+        uint32_t yBlockNumAval, uint32_t yBlockNumRsvd)
     {
         AscendC::printf("MmadAtlasA5BsaPVMxfp4\n");
 
-        uint32_t embedReal = 128;
-        uint32_t rowNum = 128;
-        uint32_t curBaseTileSize = 224;
+        uint32_t embedReal = embed;
         // 验证阶段只用 0 号 buffer（l1ABufNum/l1BBufNum 未初始化，不能拿来取模）
         uint32_t l1BBufId = 0;              // P (l1BTensor)
         uint32_t l1BEventId = l1BBufId + 3;
@@ -372,9 +518,6 @@ public:
         uint32_t s1Align128 = RoundUp(rowNum, 128);
         
  
-        s1Align128 = RoundUp(rowNum, 128);
-        s2Align64 = RoundUp(curBaseTileSize, 64);
-        s2Align32 = RoundUp(curBaseTileSize, 32);
 
         uint32_t mMmad = embedReal + 16;   // m = D+16（含 rowsum seed 行）
         uint32_t nMmad = s1Align128;           // n = M
@@ -396,11 +539,19 @@ public:
 
         AscendC::PipeBarrier<PIPE_MTE2>();
 
-        CopyInA1(embedReal,curBaseTileSize,s2Align64,gV);
-        CopyInScaleA1(embedReal,s2Align64 / 64 * 2,gVScale);
+        // ===== 稀疏 gather：按 gSparseBlockIdx 把稀疏 V / V-scale 逐段搬到 L1 整 tile =====
+        SparseVBaseTileL1FullLoad(
+            gV, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
+            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embedReal, s2Align64);
+        SparseVScaleBaseTileL1FullLoad(
+            gVScale, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
+            yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embedReal, s2Align64);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
+        // 验证用：gather 后 V 经 LoadVToL0→Mmad 得 L0C = Vᵀ@P。
+        // stub 下 P=fill(0x22)=fp4 1.0、P-scale/V-scale=fill(0x7f)=e8m0 1.0，
+        // 故 L0C[d,m] = Σ_s V[s,d] = (gather 行数) × (V 块值)，可用 desc=123 dump 核对。
 
         uint32_t l0CBufId = 0;
         uint32_t l0CEventId = l0CBufId + 2;
