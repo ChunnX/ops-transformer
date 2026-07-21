@@ -11,8 +11,10 @@ static constexpr uint32_t RDX_BINS = 4;
 static constexpr uint32_t RDX_ROUNDS = 8;
 static constexpr int16_t RDX_XOR = 0x8000;
 
-#define RDX_V_S_SYNC() do { SetFlag<HardEvent::V_S>(EVENT_ID0); WaitFlag<HardEvent::V_S>(EVENT_ID0); } while(0)
-#define RDX_S_V_SYNC() do { SetFlag<HardEvent::S_V>(EVENT_ID0); WaitFlag<HardEvent::S_V>(EVENT_ID0); } while(0)
+#define RDX_V_S_SYNC() do { event_t _e = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S)); \
+    SetFlag<HardEvent::V_S>(_e); WaitFlag<HardEvent::V_S>(_e); } while(0)
+#define RDX_S_V_SYNC() do { event_t _e = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V)); \
+    SetFlag<HardEvent::S_V>(_e); WaitFlag<HardEvent::S_V>(_e); } while(0)
 
 template <typename T = void>
 __aicore__ inline void InlineRadixTopK(
@@ -96,11 +98,27 @@ __aicore__ inline void InlineRadixTopK(
     PipeBarrier<PIPE_V>();
     RDX_V_S_SYNC();
 
-    // Sync before RadixTopK starts: ensure all cores' GM writes are visible
-    SyncAll();
-    PipeBarrier<PIPE_ALL>();
-
     event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
+
+    // Pre-pass: find global max score for softmax-like normalization
+    // This compresses score range from ±7e7 to [0,1] via exp(score - max)
+    // bf16 at [0,1] has ~0.008 precision, making MM1 non-determinism invisible
+    float globalMax = -1.0e30f;
+    for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
+        uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
+        if (curTileLen == 0) { continue; }
+        DataCopyPad(xLocalFp32, xGm[tileId * tileLen_], DataCopyExtParams{
+            static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * curTileLen), 0, 0, 0},
+            DataCopyPadExtParams<float>{true, 0, 0, 0});
+        SetFlag<HardEvent::MTE2_V>(mte2ToV);
+        WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+        RDX_V_S_SYNC();
+        for (uint32_t i = 0; i < curTileLen; i++) {
+            float v = xLocalFp32.GetValue(i);
+            if (v > globalMax && v < 1.0e29f) { globalMax = v; }
+        }
+        RDX_S_V_SYNC();
+    }
 
     for (int32_t roundId = RDX_ROUNDS - 1; roundId >= 0; roundId--) {
         // ClearHist
@@ -149,18 +167,13 @@ __aicore__ inline void InlineRadixTopK(
             SetFlag<HardEvent::MTE2_V>(mte2ToV);
             WaitFlag<HardEvent::MTE2_V>(mte2ToV);
 
-            // Replace +1e30 (invalid MM1 padding) with -inf before Cast(float->bf16)
-            // -inf in bf16 = 0xFF80, TwiddleInB16 -> 0x0000 (smallest), radix excludes it
-            // Use Mins to clamp: valid scores are in [-300, 300] range, +1e30 -> 300
-            // Then bf16(300) negated = -300, which is at boundary but distinguishable from valid scores
-            // Actually, better: use Compares to find +1e30 positions and replace with -inf
-            // But 910B has no Select. Use Mins with a value that becomes 0x0000 after twiddle.
-            // float 1e30 -> bf16 0x7149 -> negated as half is NaN (exp overflow)
-            // float 200 -> bf16 0x43B0 -> negated -200 -> twiddle = 0x???? (small, excluded)
-            // Normalize scores: multiply by 1e-7 to compress range from ±7e7 to ±7
-            // bf16 at ±7e7 has ~524288 precision (useless), at ±7 has ~0.03 (sufficient)
-            // Sort order preserved (same positive scale), +1e30->1e23 still largest (matches Golden)
-            Muls<float, true>(xLocalFp32, xLocalFp32, (float)1.0e-7, curTileLen);
+            // Normalize: exp(score - globalMax) to compress range to [0,1]
+            // This makes bf16 radix deterministic despite MM1 floating-point non-determinism
+            Mins<float, true>(xLocalFp32, xLocalFp32, (float)1.0e29, curTileLen);
+            PipeBarrier<PIPE_V>();
+            Adds<float, true>(xLocalFp32, xLocalFp32, (float)(-globalMax), curTileLen);
+            PipeBarrier<PIPE_V>();
+            Exp<float, true>(xLocalFp32, xLocalFp32, curTileLen);
             PipeBarrier<PIPE_V>();
 
             // Cast float -> bf16 into xLocalB16
@@ -319,7 +332,11 @@ __aicore__ inline void InlineRadixTopK(
             DataCopyPadExtParams<float>{true, 0, 0, 0});
         SetFlag<HardEvent::MTE2_V>(mte2ToV);
         WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-        Muls<float, true>(xLocalFp32, xLocalFp32, (float)1.0e-7, curTileLen);
+        Mins<float, true>(xLocalFp32, xLocalFp32, (float)1.0e29, curTileLen);
+        PipeBarrier<PIPE_V>();
+        Adds<float, true>(xLocalFp32, xLocalFp32, (float)(-globalMax), curTileLen);
+        PipeBarrier<PIPE_V>();
+        Exp<float, true>(xLocalFp32, xLocalFp32, curTileLen);
         PipeBarrier<PIPE_V>();
         Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
         PipeBarrier<PIPE_V>();
@@ -352,10 +369,6 @@ __aicore__ inline void InlineRadixTopK(
     for (uint32_t i = writeOffset; i < kValue; i++) {
         indexGm.SetValue(i, -1);
     }
-
-    // Sync after RadixTopK finishes: ensure all GM writes are complete
-    PipeBarrier<PIPE_ALL>();
-    SyncAll();
 
     GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_V>(mte2ToV);
 }
