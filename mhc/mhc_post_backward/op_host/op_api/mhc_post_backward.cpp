@@ -60,7 +60,15 @@ const std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> MhcPostBackward
 
     // 根据输入x的shape分配输出tensor
     auto gradX = executor->AllocTensor(x->GetViewShape(), x->GetDataType(), x->GetViewFormat());
-    auto gradHres = executor->AllocTensor(hRes->GetViewShape(), hRes->GetDataType(), hRes->GetViewFormat());
+    aclTensor* gradHres = nullptr;
+    if (hRes != nullptr) {
+        gradHres = executor->AllocTensor(hRes->GetViewShape(), hRes->GetDataType(), hRes->GetViewFormat());
+    } else {
+        // hRes 为空时，gradHres shape 从 x 推导: [T,n,D]->[T,n,n] 或 [B,S,n,D]->[B,S,n,n]
+        auto gradHresShape = x->GetViewShape();
+        gradHresShape.SetDim(gradHresShape.GetDimNum() - 1, gradHresShape.GetDim(gradHresShape.GetDimNum() - 2));
+        gradHres = executor->AllocTensor(gradHresShape, op::DataType::DT_FLOAT, x->GetViewFormat());
+    }
     auto gradHout = executor->AllocTensor(hOut->GetViewShape(), hOut->GetDataType(), hOut->GetViewFormat());
     auto gradHpost = executor->AllocTensor(hPost->GetViewShape(), hPost->GetDataType(), hPost->GetViewFormat());
 

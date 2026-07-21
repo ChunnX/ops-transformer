@@ -803,7 +803,7 @@ ge::graphStatus MhcPostBackwardTilingBaseArch35::PostTiling()
 
 uint64_t MhcPostBackwardTilingBaseArch35::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(1);
+    return GET_TPL_TILING_KEY(1, 1);
 }
 
 void MhcPostBackwardTilingBaseArch35::Reset()
@@ -826,5 +826,5 @@ void MhcPostBackwardTilingBaseArch35::Reset()
 }
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MhcPostBackward, MhcPostBackwardTilingBaseArch35,
-                                   static_cast<int32_t>(NpuArch::DAV_3510), 0);
+                                   static_cast<int32_t>(NpuArch::DAV_3510), 10);
 } // namespace optiling
