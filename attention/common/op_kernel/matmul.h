@@ -795,7 +795,7 @@ __aicore__ inline void MatmulK(const LocalTensor<A> &aL1Tensor,
 }
 
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType>
-__aicore__ inline void MatmulK1(
+__aicore__ inline void ManualSyncMatmulK(
     const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, LocalTensor<L0AType> &aL0Tensor,
     LocalTensor<L0BType> &bL0Tensor, const LocalTensor<C> &cL0Tensor, const MMParam &param,
     uint32_t l0ABMToMte1FlagId, uint32_t l0ABMte1ToMFlagId, uint32_t &l0ABBufId)
@@ -853,7 +853,7 @@ __aicore__ inline void MatmulK1(
 }
 
 template <typename A, typename B, typename C, uint32_t baseM, uint32_t baseN, uint32_t baseK, ABLayout AL, ABLayout BL, typename L0AType, typename L0BType>
-__aicore__ inline void MatmulN1(
+__aicore__ inline void ManualSyncMatmulN(
     const LocalTensor<A> &aL1Tensor, const LocalTensor<B> &bL1Tensor, LocalTensor<L0AType> &aL0Tensor,
     LocalTensor<L0BType> &bL0Tensor, const LocalTensor<C> &cL0Tensor, const MMParam &param,
     uint32_t l0ABMToMte1FlagId, uint32_t l0ABMte1ToMFlagId, uint32_t &l0ABBufId)
