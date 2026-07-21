@@ -9,11 +9,7 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 # ----------------------------------------------------------------------------
-__golden__ = {
-    "kernel": {
-        "matmul_reduce_scatter_v2": "matmul_reduce_scatter_v2_golden"
-    }
-}
+__golden__ = {"kernel": {"matmul_reduce_scatter_v2": "matmul_reduce_scatter_v2_golden"}}
 
 import numpy as np
 import torch
@@ -37,24 +33,24 @@ def matmul_reduce_scatter_v2_golden(
     is_amax_out=False,
     y_dtype=0,
     comm_mode="ai_cpu",
-    **kwargs
+    **kwargs,
 ):
-    x1_dtype = kwargs.get('x1_dtype', 'bf16')
-    x2_dtype = kwargs.get('x2_dtype', 'bf16')
-    is_quant = x1_dtype not in ['fp16', 'bf16']
-    is_mxFp = kwargs.get('x1_scale_dtype', '') == 'fp8_e8m0'
-    per_block_flag = kwargs.get('per_block_flag', False)
-    
+    x1_dtype = kwargs.get("x1_dtype", "bf16")
+    x2_dtype = kwargs.get("x2_dtype", "bf16")
+    is_quant = x1_dtype not in ["fp16", "bf16"]
+    is_mxFp = kwargs.get("x1_scale_dtype", "") == "fp8_e8m0"
+    per_block_flag = kwargs.get("per_block_flag", False)
+
     x1 = torch.from_numpy(x1.astype(np.float32))
     x2 = torch.from_numpy(x2.astype(np.float32))
     if bias is not None:
         bias = torch.from_numpy(bias.astype(np.float32))
-    
+
     if is_trans_b:
         x2 = x2.transpose()
         if x2_scale is not None and per_block_flag:
             x2_scale = x2_scale.transpose()
-    
+
     if not is_quant:
         output = torch.matmul(x1, x2)
         if bias is not None:
@@ -64,7 +60,7 @@ def matmul_reduce_scatter_v2_golden(
             x1_scale = torch.from_numpy(x1_scale.astype(np.float32))
         if x2_scale is not None:
             x2_scale = torch.from_numpy(x2_scale.astype(np.float32))
-        
+
         if per_block_flag:
             output = per_block_cpu_compute(group_size, x1, x2, x1_scale, x2_scale)
         elif is_mxFp:
@@ -83,9 +79,11 @@ def matmul_reduce_scatter_v2_golden(
                 x1scale_np = x1_scale.numpy()
                 x2scale_np = x2_scale.numpy()
                 double_scale = scale_generate(x1scale_np * x2scale_np)
-                double_scale_tensor = torch.unsqueeze(torch.from_numpy(double_scale), dim=1).to(torch.float32)
+                double_scale_tensor = torch.unsqueeze(
+                    torch.from_numpy(double_scale), dim=1
+                ).to(torch.float32)
                 output *= double_scale_tensor
-    
+
     output = reduce_scatter_compute(output, rank_size)
     return output.numpy()
 
@@ -99,21 +97,25 @@ def reduce_scatter_compute(output, rank_size):
 
 def per_block_cpu_compute(group_size, x1, x2, x1_scale, x2_scale):
     if x1.dim() != x1_scale.dim():
-        raise ValueError(f"x1.dim() != x1_scale.dim(), x1.dim()={x1.dim()}, x1_scale.dim()={x1_scale.dim()}")
+        raise ValueError(
+            f"x1.dim() != x1_scale.dim(), x1.dim()={x1.dim()}, x1_scale.dim()={x1_scale.dim()}"
+        )
     if x2.dim() != x2_scale.dim():
-        raise ValueError(f"x2.dim() != x2_scale.dim(), x2.dim()={x2.dim()}, x2_scale.dim()={x2_scale.dim()}")
-    
+        raise ValueError(
+            f"x2.dim() != x2_scale.dim(), x2.dim()={x2.dim()}, x2_scale.dim()={x2_scale.dim()}"
+        )
+
     batch_x1 = np.array(x1.shape[:-2]).astype(int).tolist()
     batch_x2 = np.array(x2.shape[:-2]).astype(int).tolist()
     batch_out = fetch_batch_broadcast(batch_x1, batch_x2)
-    
+
     if batch_x1 != batch_out:
         x1 = value_batch_broadcast(x1, batch_out)
         x1_scale = value_batch_broadcast(x1_scale, batch_out)
     if batch_x2 != batch_out:
         x2 = value_batch_broadcast(x2, batch_out)
         x2_scale = value_batch_broadcast(x2_scale, batch_out)
-    
+
     batch_all = 1
     is2dim = True
     if batch_out != []:
@@ -123,14 +125,14 @@ def per_block_cpu_compute(group_size, x1, x2, x1_scale, x2_scale):
         x2 = x2.reshape([batch_all] + list(x2.shape[-2:]))
         x1_scale = x1_scale.reshape([batch_all] + list(x1_scale.shape[-2:]))
         x2_scale = x2_scale.reshape([batch_all] + list(x2_scale.shape[-2:]))
-    
+
     m = x1.shape[-2]
     k = x1.shape[-1]
     n = x2.shape[-1]
     out = torch.zeros(m, n)
     if x2_scale.dim() > 2 or x1_scale.dim() > 2:
         out = torch.zeros(batch_all, m, n)
-    
+
     group_size_m, group_size_n, group_size_k = unpack_group_size(group_size)
     for i in range(batch_all):
         for m_idx in range((m + group_size_m - 1) // group_size_m):
@@ -143,13 +145,25 @@ def per_block_cpu_compute(group_size, x1, x2, x1_scale, x2_scale):
                     k_start = k_idx * group_size_k
                     k_end = min((k_idx + 1) * group_size_k, k)
                     if batch_all == 1 and is2dim:
-                        block_output = torch.matmul(x1[m_start:m_end, k_start:k_end],
-                                                    x2[k_start:k_end, n_start:n_end]) * x1_scale[m_idx, k_idx] * x2_scale[k_idx, n_idx]
+                        block_output = (
+                            torch.matmul(
+                                x1[m_start:m_end, k_start:k_end],
+                                x2[k_start:k_end, n_start:n_end],
+                            )
+                            * x1_scale[m_idx, k_idx]
+                            * x2_scale[k_idx, n_idx]
+                        )
                         out[m_start:m_end, n_start:n_end] += block_output
                     else:
-                        out[i, m_start:m_end, n_start:n_end] += torch.matmul(x1[i, m_start:m_end, k_start:k_end],
-                                                                              x2[i, k_start:k_end, n_start:n_end]) * x1_scale[i, m_idx, k_idx] * x2_scale[i, k_idx, n_idx]
-    
+                        out[i, m_start:m_end, n_start:n_end] += (
+                            torch.matmul(
+                                x1[i, m_start:m_end, k_start:k_end],
+                                x2[i, k_start:k_end, n_start:n_end],
+                            )
+                            * x1_scale[i, m_idx, k_idx]
+                            * x2_scale[i, k_idx, n_idx]
+                        )
+
     if x2_scale.dim() > 2 or x1_scale.dim() > 2:
         out_shape = batch_out
         out_shape.append(m)
@@ -165,23 +179,31 @@ def mxfp_cpu_compute(x1, x2, x1scale, x2scale):
         if array.ndim != 2:
             raise ValueError("[ERROR] array.ndim must be 2")
     if x1.shape[0] != x1scale.shape[0]:
-        raise ValueError(f"x1.shape[0] != x1scale.shape[0], x1.shape[0]={x1.shape[0]}, x1scale.shape[0]={x1scale.shape[0]}")
+        raise ValueError(
+            f"x1.shape[0] != x1scale.shape[0], x1.shape[0]={x1.shape[0]}, x1scale.shape[0]={x1scale.shape[0]}"
+        )
     if x2.shape[1] != x2scale.shape[1]:
-        raise ValueError(f"x2.shape[1] != x2scale.shape[1], x2.shape[1]={x2.shape[1]}, x2scale.shape[1]={x2scale.shape[1]}")
+        raise ValueError(
+            f"x2.shape[1] != x2scale.shape[1], x2.shape[1]={x2.shape[1]}, x2scale.shape[1]={x2scale.shape[1]}"
+        )
     if x1.shape[1] != x2.shape[0]:
-        raise ValueError(f"x1.shape[1] != x2.shape[0], x1.shape[1]={x1.shape[1]}, x2.shape[0]={x2.shape[0]}")
+        raise ValueError(
+            f"x1.shape[1] != x2.shape[0], x1.shape[1]={x1.shape[1]}, x2.shape[0]={x2.shape[0]}"
+        )
     if x1scale.shape[1] != x2scale.shape[0]:
-        raise ValueError(f"x1scale.shape[1] != x2scale.shape[0], x1scale.shape[1]={x1scale.shape[1]}, x2scale.shape[0]={x2scale.shape[0]}")
-    
+        raise ValueError(
+            f"x1scale.shape[1] != x2scale.shape[0], x1scale.shape[1]={x1scale.shape[1]}, x2scale.shape[0]={x2scale.shape[0]}"
+        )
+
     repeated_x1scale = np.repeat(x1scale, 32, axis=-1)
     repeated_x2scale = np.repeat(x2scale, 32, axis=-2)
     x1_pad_length = repeated_x1scale.shape[-1] - x1.shape[-1]
     x2_pad_len = repeated_x2scale.shape[-2] - x2.shape[-2]
     x1_pad_tuple = [(0, 0)] * (len(x1.shape) - 1) + [(0, x1_pad_length)]
     x2_pad_tuple = [(0, 0)] * (len(x2.shape) - 2) + [(0, x2_pad_len)] + [(0, 0)]
-    padded_x1 = np.pad(x1, x1_pad_tuple, mode='constant', constant_values=0)
-    padded_x2 = np.pad(x2, x2_pad_tuple, mode='constant', constant_values=0)
-    
+    padded_x1 = np.pad(x1, x1_pad_tuple, mode="constant", constant_values=0)
+    padded_x2 = np.pad(x2, x2_pad_tuple, mode="constant", constant_values=0)
+
     padded_x1 = torch.from_numpy(padded_x1)
     padded_x2 = torch.from_numpy(padded_x2)
     repeated_x1scale = torch.from_numpy(repeated_x1scale)
@@ -192,7 +214,7 @@ def mxfp_cpu_compute(x1, x2, x1scale, x2scale):
 
 def scale_generate(fp32_deq_scale):
     uint32_deq_scale = np.frombuffer(fp32_deq_scale, np.uint32)
-    uint32_deq_scale &= 0XFFFFE000
+    uint32_deq_scale &= 0xFFFFE000
     fp32_deq_scale = np.frombuffer(uint32_deq_scale, np.float32)
     return fp32_deq_scale
 
@@ -208,16 +230,21 @@ def unpack_group_size(group_size):
 
 def fetch_batch_broadcast(batch_x1, batch_x2):
     import copy
-    batch_out = copy.deepcopy(batch_x1) if len(batch_x1) > len(batch_x2) else copy.deepcopy(batch_x2)
-    
+
+    batch_out = (
+        copy.deepcopy(batch_x1)
+        if len(batch_x1) > len(batch_x2)
+        else copy.deepcopy(batch_x2)
+    )
+
     min_len, max_len = 0, 0
     if batch_x2 != batch_x1 and batch_x1 and batch_x2:
         min_len = min(len(batch_x1), len(batch_x2))
         max_len = max(len(batch_x1), len(batch_x2))
-    
+
     for idx in range(min_len):
         batch_out[-(idx + 1)] = max(batch_x1[-(idx + 1)], batch_x2[-(idx + 1)])
-    
+
     if len(batch_x1) > len(batch_x2):
         for idx in range(min_len, max_len):
             batch_out[-(idx + 1)] = batch_x1[-(idx + 1)]

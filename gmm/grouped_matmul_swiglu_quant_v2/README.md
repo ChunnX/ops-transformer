@@ -440,7 +440,7 @@
       - MX量化、weightND场景下，当输入为fp8数据类型时，需满足N为2对齐；当输入为fp4数据类型时，需满足N为4对齐。
       - MX量化、weightNZ场景下，当输入为fp8数据类型时，需满足N为64对齐；当输入为fp4数据类型时，需满足N为128对齐。
       - MXFP4场景不支持K=2。
-      - MXFP4场景需满足K为偶数；当output的数据类型为FLOAT4_E2M1时，需满足N为大于等于4的偶数。
+      - MXFP4场景需满足K为偶数。
 
   - 确定性计算：
       - aclnnGroupedMatmulSwigluQuantV2默认为确定性实现。

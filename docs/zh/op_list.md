@@ -58,6 +58,16 @@
   </tr>
   <tr>
     <td>attention</td>
+    <td><a href="../../attention/bsa_select_block_mask/README.md">bsa_select_block_mask</a></td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✓</td>
+    <td>✗</td>
+    <td>AI Core</td>
+    <td>BSA（BlockSparseAttention）的前置算子，负责根据 Query 和 Key 的内容动态生成 blockSparseMask，使 BSA 的调用链从"手动提供掩码"变为"根据 Q/K 内容自适应选择稀疏模式"。</td>
+  </tr>
+  <tr>
+    <td>attention</td>
     <td><a href="../../attention/block_sparse_attention_grad/README.md">block_sparse_attention_grad</a></td>
     <td>✓</td>
     <td>✓</td>
@@ -904,7 +914,7 @@
     <td>✓</td>
     <td>✓</td>
     <td>AI Core</td>
-    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合（乘权重再相加）。</td>
+    <td>当存在TP域通信时，先进行ReduceScatterV通信，再进行AlltoAllV通信，最后将接收的数据整合；当不存在TP域通信时，进行AlltoAllV通信，最后将接收的数据整合。expertScales非空时乘权重再相加，为空Tensor时直接相加。</td>
   </tr>
   <tr>
     <td>mc2</td>

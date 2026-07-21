@@ -46,37 +46,37 @@
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
         $$
-    
+
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMatmulReduceScatterV2GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMatmulReduceScatterV2`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(
-    const aclTensor* x1, 
-    const aclTensor* x2, 
-    const aclTensor* bias, 
-    const aclTensor* x1Scale, 
-    const aclTensor* x2Scale, 
-    const aclTensor* quantScale, 
-    int64_t          blockSize, 
-    const char*      group, 
-    const char*      reduceOp, 
-    int64_t          commTurn, 
-    int64_t          streamMode, 
-    int64_t          groupSize, 
-    const char*      commMode, 
-    aclTensor*       output, 
-    aclTensor*       amaxOutOptional, 
-    uint64_t*        workspaceSize, 
+    const aclTensor* x1,
+    const aclTensor* x2,
+    const aclTensor* bias,
+    const aclTensor* x1Scale,
+    const aclTensor* x2Scale,
+    const aclTensor* quantScale,
+    int64_t          blockSize,
+    const char*      group,
+    const char*      reduceOp,
+    int64_t          commTurn,
+    int64_t          streamMode,
+    int64_t          groupSize,
+    const char*      commMode,
+    aclTensor*       output,
+    aclTensor*       amaxOutOptional,
+    uint64_t*        workspaceSize,
     aclOpExecutor**  executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMatmulReduceScatterV2(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -379,10 +379,10 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
 ## 约束说明
 
-- 通信引擎约束：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持commMode为"aiv"。
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持commMode为"aiv"。
-  - <term>Ascend 950PR/Ascend 950DT</term>：当前版本支持输入空字符串、“ai_cpu” 或 “ccu”。
+- 通信约束：
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持commMode为"aiv"，且通信缓冲区大于等于200MB。
+  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持commMode为"aiv"，且通信缓冲区大于等于200MB。
+  - <term>Ascend 950PR/Ascend 950DT</term>：当前版本支持输入、“ai_cpu” 或 “ccu”。
 
 - 确定性计算：
   - `aclnnMatmulReduceScatterV2`默认采用确定性计算实现。
@@ -402,7 +402,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     - 当x1、x2的数据类型为FLOAT4_E2M1时，x1和x2的数据类型必须保持一致（MXFP4量化场景）。
     - mx量化场景下，且x1和x2输入为FLOAT4_E2M1（MXFP4量化）时，k必须是偶数。
     - 支持2、4、8、16、32、64卡；支持CCU通信和AICPU通信，CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
-    - reduceScatter集合通信数据总量不能超过63*256MB，集合通信数据总量计算方式为：m * n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
+    - reduceScatter集合通信数据总量不能超过16*256MB，集合通信数据总量计算方式为：m * n * sizeof(output_dtype)。由于shape不同，算子内部实现可能存在差异，实际支持的总通信量可能略小于该值。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
     - 只支持x2矩阵转置/不转置，x1矩阵仅支持不转置场景。
@@ -668,6 +668,8 @@ aclnnStatus aclnnMatmulReduceScatterV2(
     #include <iostream>
     #include <vector>
     #include <thread>
+    #include <cstdlib>
+    #include <cstring>
     #include "hccl/hccl.h"
     #include "aclnnop/aclnn_matmul_reduce_scatter_v2.h"
 
@@ -684,6 +686,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         } while(0)
 
     constexpr int DEV_NUM = 2;
+    constexpr const char *COMM_MODE = "ccu";
 
     int64_t GetShapeSize(const std::vector<int64_t> &shape)
     {
@@ -785,7 +788,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
         // 调用第一阶段接口
         ret = aclnnMatmulReduceScatterV2GetWorkspaceSize(
-            x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, "sum", commTurn, streamMode, groupSize, "ccu",
+            x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, "sum", commTurn, streamMode, groupSize, COMM_MODE,
             out, amaxOut, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("[ERROR] aclnnMatmulReduceScatterV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
@@ -797,7 +800,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         // 调用第二阶段接口
         ret = aclnnMatmulReduceScatterV2(workspaceAddr, workspaceSize, executor, args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnMatmulReduceScatterV2 failed. ret = %d \n", ret); return ret);
-        //（固定写法）同步等待任务执行结束
+        // （固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);
@@ -861,6 +864,34 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
     int main(int argc, char *argv[])
     {
+        class EnvGuard {
+        public:
+            EnvGuard(const char *key, const char *val, bool enable = true)
+                : key_(enable ? key : nullptr)
+            {
+                if (!enable) return;
+                const char *old = getenv(key);
+                if (old != nullptr) {
+                    strncpy(saved_, old, sizeof(saved_) - 1);
+                }
+                setenv(key, val, 1);
+            }
+            ~EnvGuard()
+            {
+                if (key_ == nullptr) return;
+                if (saved_[0] != '\0') {
+                    setenv(key_, saved_, 1);
+                } else {
+                    unsetenv(key_);
+                }
+            }
+        private:
+            const char *key_;
+            char saved_[256] = {0};
+        };
+
+        EnvGuard envGuard("HCCL_OP_EXPANSION_MODE", "CCU_SCHED", strcmp(COMM_MODE, "ccu") == 0);
+
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
         aclrtStream stream[DEV_NUM];

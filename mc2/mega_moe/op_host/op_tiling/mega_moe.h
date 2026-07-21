@@ -37,6 +37,12 @@ struct MegaMoeConfig {
     uint32_t bias2Index = 9U;
     uint32_t xActiveMaskIndex = 10U;
     uint32_t scalesIndex = 11U;
+    uint32_t sharedWeight1Index = 12U;
+    uint32_t sharedWeight2Index = 13U;
+    uint32_t sharedWeightScales1Index = 14U;
+    uint32_t sharedWeightScales2Index = 15U;
+    uint32_t sharedBias1Index = 16U;
+    uint32_t sharedBias2Index = 17U;
     uint32_t yIndex = 0U;
     uint32_t expertTokenNumsIndex = 1U;
     uint32_t attrMoeExpertNumIndex = 0U;

@@ -86,15 +86,16 @@ static ge::graphStatus CheckAllToAllAxesShapeForAlltoAllMatmul(const gert::Infer
     const auto attrs = context->GetAttrs();
     const auto alltoAllAxesPtr = attrs->GetAttrPointer<gert::ContinuousVector>(INDEX_ATTR_ALLTO_ALL_AXES);
     if (alltoAllAxesPtr != nullptr) {
-        OPS_CHECK((alltoAllAxesPtr->GetSize() != DIM_TWO), OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(),
-                  "alltoAllAxes", std::to_string(alltoAllAxesPtr->GetSize()).c_str(), "2"),
+        OPS_CHECK((alltoAllAxesPtr->GetSize() != DIM_TWO),
+                  OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "alltoAllAxes",
+                                            std::to_string(alltoAllAxesPtr->GetSize()).c_str(), "2"),
                   return ge::GRAPH_FAILED);
         const auto alltoAllAxes = static_cast<const int64_t *>(alltoAllAxesPtr->GetData());
         const std::string axesVal =
             "[" + std::to_string(alltoAllAxes[0]) + ", " + std::to_string(alltoAllAxes[1]) + "]";
         OPS_CHECK((alltoAllAxes[0] != NUM_MINUS_TWO || alltoAllAxes[1] != NUM_MINUS_ONE),
                   OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "alltoAllAxes", axesVal.c_str(),
-                  "The value of alltoAllAxes must be [-2, -1]"),
+                                                        "The value of alltoAllAxes must be [-2, -1]"),
                   return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
@@ -106,18 +107,19 @@ static ge::graphStatus CheckAllToAllAxesShapeForAlltoAllMatmul(const gert::Infer
  * @param context
  * @param shape
  */
-static ge::graphStatus CheckAxisKShapeForAlltoAllMatmul(const gert::InferShapeContext* context,
-                                                        AlltoAllMatmulShapeInfo& shape)
+static ge::graphStatus CheckAxisKShapeForAlltoAllMatmul(const gert::InferShapeContext *context,
+                                                        AlltoAllMatmulShapeInfo &shape)
 {
-    OPS_CHECK(shape.k1 > AXIS_K_UPPER_LIMIT || shape.k2 > AXIS_K_UPPER_LIMIT,
-              OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1 and x2",
-              (std::to_string(shape.k1) + " and " + std::to_string(shape.k2)).c_str(),
-              "The value of axis k must not exceed the upper limit"),
-              return ge::GRAPH_FAILED);
+    OPS_CHECK(
+        shape.k1 > AXIS_K_UPPER_LIMIT || shape.k2 > AXIS_K_UPPER_LIMIT,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "x1 and x2",
+                                              (std::to_string(shape.k1) + " and " + std::to_string(shape.k2)).c_str(),
+                                              "The value of axis k must not exceed the upper limit"),
+        return ge::GRAPH_FAILED);
     if (shape.k1 != shape.k2 / shape.rankNum) {
         OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(context->GetNodeName(), "x1 and x2",
-            (std::to_string(shape.k1) + " and " + std::to_string(shape.k2)).c_str(),
-            "The shape of x1 and x2 must satisfy k1 equals k2 divided by rankSize");
+                                              (std::to_string(shape.k1) + " and " + std::to_string(shape.k2)).c_str(),
+                                              "The shape of x1 and x2 must satisfy k1 equals k2 divided by rankSize");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -170,9 +172,8 @@ static ge::graphStatus CheckRankDimForAlltoAllMatmul(gert::InferShapeContext *co
     const int64_t *rankDim = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_WORLD_SIZE);
     OPS_CHECK(rankDim == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "rank"), return ge::GRAPH_FAILED);
     OP_TILING_CHECK(std::find(SUPPORT_RANK_NUM.begin(), SUPPORT_RANK_NUM.end(), *rankDim) == SUPPORT_RANK_NUM.end(),
-                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "rank",
-                        std::to_string(*rankDim).c_str(),
-                        "should be in " + VectorToString(SUPPORT_RANK_NUM)),
+                    OP_LOGE_FOR_INVALID_VALUE(context->GetNodeName(), "rank", std::to_string(*rankDim).c_str(),
+                                              "should be in " + VectorToString(SUPPORT_RANK_NUM)),
                     return ge::GRAPH_FAILED);
     shape.rankNum = *rankDim;
     return ge::GRAPH_SUCCESS;
@@ -270,15 +271,16 @@ static ge::graphStatus InferDataTypeAlltoAllMatmul(gert::InferDataTypeContext *c
 
     const auto attrs = context->GetAttrs();
     OPS_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t* x1QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X1_QUANT_MODE);
-    const int64_t* x2QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X2_QUANT_MODE);
-    OPS_CHECK(!(*x1QuantMode == 0 && *x2QuantMode == 0)
-               && !(*x1QuantMode == X1_DYN_PERTOKEN_QUANT_NUM && *x2QuantMode == X2_PERCHANNEL_QUANT_NUM)
-               && !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),
-               OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(INNER_DEBUG, "x1QuantMode and x2QuantMode",
-                   (std::to_string(*x1QuantMode) + " and " + std::to_string(*x2QuantMode)).c_str(),
-                   "The value of x1QuantMode and x2QuantMode must be within the supported range."),
-               return ge::GRAPH_FAILED);
+    const int64_t *x1QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X1_QUANT_MODE);
+    const int64_t *x2QuantMode = attrs->GetAttrPointer<int64_t>(INDEX_ATTR_X2_QUANT_MODE);
+    OPS_CHECK(!(*x1QuantMode == 0 && *x2QuantMode == 0) &&
+                  !(*x1QuantMode == X1_DYN_PERTOKEN_QUANT_NUM && *x2QuantMode == X2_PERCHANNEL_QUANT_NUM) &&
+                  !(*x1QuantMode == X1_MXFP8_QUANT_NUM && *x2QuantMode == X2_MXFP8_QUANT_NUM),
+              OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                  INNER_DEBUG, "x1QuantMode and x2QuantMode",
+                  (std::to_string(*x1QuantMode) + " and " + std::to_string(*x2QuantMode)).c_str(),
+                  "The value of x1QuantMode and x2QuantMode must be within the supported range."),
+              return ge::GRAPH_FAILED);
 
     // 初始默认值
     auto yType = ge::DataType::DT_UNDEFINED;

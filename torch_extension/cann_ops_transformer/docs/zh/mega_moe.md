@@ -14,9 +14,8 @@
 - 接口功能：
 
     Mega MoE算子 将 MoE 层的专家 FFN 的完整计算流程及前后数据通信（即 Dispatch + Linear1 + SwiGLU + Linear2 + Combine）融合为单个算子，实现了通信和计算的掩盖。
-    该算子提供了mega_moe、get_mega_moe_ccl_buffer_size与 get_symm_buffer_for_mega_moe等接口，这些接口需配套使用。
+    该算子提供了 mega_moe 与 get_symm_buffer_for_mega_moe等接口，这些接口需配套使用。
 
-    - get_mega_moe_ccl_buffer_size：需与mega_moe配套使用，用于计算mega_moe算子所需的HCCL通信buffer_size大小（单位：MB）。
     - get_symm_buffer_for_mega_moe：需与mega_moe配套使用，用于封装输入参数并创建SymmBuffer结构体，生成`context`、`ep_world_size`和`ccl_buffer_size`等mega_moe算子运行所需信息。
 
 - 计算公式：
@@ -459,12 +458,6 @@
 
 ## 函数原型
 
-- get_mega_moe_ccl_buffer_size：
-
-```python
-get_mega_moe_ccl_buffer_size(ep_world_size, moe_expert_num, num_max_tokens_per_rank, num_topk, hidden, max_recv_token_num=0, dispatch_quant_mode=0, dispatch_quant_out_dtype=None, combine_quant_mode=0, comm_alg="") -> int
-```
-
 - get_symm_buffer_for_mega_moe：
 
 ```python
@@ -478,80 +471,6 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 ```
 
 ## 参数说明
-
-### get_mega_moe_ccl_buffer_size
-
-<table style="undefined;table-layout: fixed; width:840px"><colgroup>
-<col style="width: 160px">
-<col style="width: 120px">
-<col style="width: 80px">
-<col style="width: 480px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数名</th>
-    <th>参数类型</th>
-    <th>可选/必选</th>
-    <th>描述</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>ep_world_size</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>通信域的大小。</td>
-    </tr>
-    <tr>
-        <td>moe_expert_num</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>MoE专家数量。</td>
-    </tr>
-    <tr>
-        <td>num_max_tokens_per_rank</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>每张卡上的token数量。当每个rank的num_tokens不同时，为最大的num_tokens大小。</td>
-    </tr>
-    <tr>
-        <td>num_topk</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>选取topK个专家。</td>
-    </tr>
-    <tr>
-        <td>hidden</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>hidden size隐藏层大小。</td>
-    </tr>
-    <tr>
-        <td>dispatch_quant_mode</td>
-        <td>int</td>
-        <td>可选</td>
-        <td>dispatch通信时量化模式。0表示非量化（A16W16场景），2表示INT8量化（A8W8-INT、A8W4-INT场景），4表示MXFP量化（A8W8-FP、A8W4-FP、A4W4-FP场景）。各产品支持的取值见约束说明。默认值为0。</td>
-    </tr>
-    <tr>
-        <td>dispatch_quant_out_dtype</td>
-        <td>torch.dtype</td>
-        <td>可选</td>
-        <td>dispatch量化后输出的数据类型。支持 torch.int8、torch.float8_e5m2、torch.float8_e4m3fn、torch.float4_e2m1。各产品支持的取值见约束说明。默认值为None。</td>
-    </tr>
-    <tr>
-        <td>combine_quant_mode</td>
-        <td>int</td>
-        <td>可选</td>
-        <td>combine通信时的量化模式。0表示非量化，3表示MXFP float8_e5m2类型，4表示MXFP float8_e4m3类型。各产品支持的取值见约束说明。默认值为0。</td>
-    </tr>
-    <tr>
-        <td>comm_alg</td>
-        <td>str</td>
-        <td>可选</td>
-        <td>暂不支持该参数，使用默认值即可。默认值为""。</td>
-    </tr>
-</tbody>
-</table>
 
 ### get_symm_buffer_for_mega_moe
 
@@ -872,38 +791,6 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 ## 返回值说明
 
-### get_mega_moe_ccl_buffer_size
-
-<table style="undefined;table-layout: fixed; width:1200px"><colgroup>
-<col style="width: 120px">
-<col style="width: 120px">
-<col style="width: 100px">
-<col style="width: 300px">
-<col style="width: 120px">
-<col style="width: 200px">
-</colgroup>
-<thead>
-<tr>
-    <th>参数名</th>
-    <th>参数类型</th>
-    <th>可选/必选</th>
-    <th>描述</th>
-    <th>数据类型</th>
-    <th>维度(shape)</th>
-</tr>
-</thead>
-<tbody>
-    <tr>
-        <td>ccl_buffer_size</td>
-        <td>int</td>
-        <td>必选</td>
-        <td>计算得到的ccl_buffer_size大小，单位为MB。</td>
-        <td>int</td>
-        <td>-</td>
-    </tr>
-</tbody>
-</table>
-
 ### get_symm_buffer_for_mega_moe
 
 <table style="undefined;table-layout: fixed; width:1200px"><colgroup>
@@ -1065,7 +952,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 - **通信域和组网约束**：
     - 仅支持`EP`域，无`TP`域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
     - 所有卡的`ep_world_size`、`ccl_buffer_size`参数取值需保持一致。
-    - 各卡的通信域缓存区大小应当一致，且不能低于 `get_mega_moe_ccl_buffer_size` 计算出的最小值。`ccl_buffer_size` 为 HBM 上分配的 CCL 通信缓冲区**总大小**（Bytes），包含等大小的 **windowIn** 和 **windowOut** 两块空间，校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
+    - 各卡的通信域缓存区大小应当一致。`ccl_buffer_size` 为 HBM 上分配的 CCL 通信缓冲区**总大小**（Bytes），包含等大小的 **windowIn** 和 **windowOut** 两块空间，校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
 
         $$ccl\_buffer\_size\ /\ 2 \ge \mathrm{offsetTokenPerExpert} + \mathrm{offsetTensor} + \mathrm{offsetFlag} + 10\,\mathrm{MB}$$
 
@@ -1110,14 +997,14 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         offsetFlag           = ep_world_size × 512B
         ```
 
-        其中 `ep_world_size` 即通信域大小，$maxExpertPerRank$ 表示每张卡上可能专家数的最大值，$\mathrm{quant}$ 表示是否开启 dispatch 量化（`dispatch_quant_mode = 2`）。预留空间 10 MB 为内部元数据对齐与安全余量。该值即 `get_mega_moe_ccl_buffer_size` 接口的返回值。
+        其中 `ep_world_size` 即通信域大小，$maxExpertPerRank$ 表示每张卡上可能专家数的最大值，$\mathrm{quant}$ 表示是否开启 dispatch 量化（`dispatch_quant_mode = 2`）。预留空间 10 MB 为内部元数据对齐与安全余量。
     - 通信域各节点的驱动版本应当相同。
     - Atlas A2 训练系列产品/Atlas A2 推理系列产品：多机通信域要求交换机组网，不支持双机直连组网。
     - Atlas A3 训练系列产品/Atlas A3 推理系列产品：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
 
 - **参数约束**：
     - **公共约束**：
-        - `moe_expert_num`：取值范围为 `[ep_world_size, 1024]`（get_mega_moe_ccl_buffer_size）或 `[world_size, 1024]`（get_symm_buffer_for_mega_moe），且 `moe_expert_num % ep_world_size == 0`（或 `moe_expert_num % world_size == 0`）。
+        - `moe_expert_num`：取值范围为`[world_size, 1024]`（get_symm_buffer_for_mega_moe），且 `moe_expert_num % ep_world_size == 0`（或 `moe_expert_num % world_size == 0`）。
     - **Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
         - 各卡 `num_tokens` 需保持一致。
         - `ep_world_size`：取值为 `2`、`4`、`8`、`16`、`32`。
@@ -1312,217 +1199,214 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 - 单算子模式调用：
 
-  下面示例将三个接口按调用顺序串联：先用 get_mega_moe_ccl_buffer_size 计算 HCCL 通信 buffer 大小并初始化通信域，再用 get_symm_buffer_for_mega_moe 构造 sym_buffer，最后调用 mega_moe 运行算子。
+  下面示例将两个接口按调用顺序串联：先初始化通信域，再用 get_symm_buffer_for_mega_moe 构造 sym_buffer，最后调用 mega_moe 运行算子。
 
-  ```python
-  import os
-  import torch
-  import torch_npu
-  from torch.multiprocessing import Process, Manager
-  import torch.distributed as dist
-  from torch.distributed import ReduceOp
-  import torch.multiprocessing as mp
-  from cann_ops_transformer.ops import get_mega_moe_ccl_buffer_size, get_symm_buffer_for_mega_moe, mega_moe
-  import torchair
+  - **Ascend 950PR/Ascend 950DT**：
 
-  E = 4
-  num_tokens = 256
-  H = 4096
-  N = 1024
-  topK = 6
-  moe_expert_num = 8
+    ```python
+    import os
+    import torch
+    import torch_npu
+    from torch.multiprocessing import Process, Manager
+    import torch.distributed as dist
+    from torch.distributed import ReduceOp
+    import torch.multiprocessing as mp
+    from cann_ops_transformer.ops import get_symm_buffer_for_mega_moe, mega_moe
+    import torchair
 
-  server_num = 1
-  rank_per_dev = 2
-  world_size = server_num * rank_per_dev
-  ep_ranks_list = [list(range(tp_id, world_size, 1)) for tp_id in range(1)]
-  server_index = 0
+    E = 4
+    num_tokens = 256
+    H = 4096
+    N = 1024
+    topK = 6
+    moe_expert_num = 8
 
-
-  def ceil(a, b):
-      return (a + b - 1) // b
-
-  def set_device(rank):
-      torch_npu.npu.set_device(rank % rank_per_dev)
-      print(f"current device set: {torch_npu.npu.current_device()}")
-
-  def init_hccl_comm(rank, buffer_size):
-      # 创建HCCL通信链路并初始化EP域
-      print(f'[INFO] device_{rank} 创建HCCL通信链路')
-      master_ip = '127.0.0.1'
-      options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
-      options.hccl_config = {"hccl_buffer_size": buffer_size} # 单位：MB，描述windowIn或windowOut的大小
-      dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001', pg_options=options)
-      print(f"device_{rank} init_process_group success")
-
-      print(f"device {rank} 初始化EP域")
-      for ep_ranks in ep_ranks_list:
-          tmp_group = dist.new_group(backend="hccl", ranks=ep_ranks)
-          if rank in ep_ranks:
-              ep_group = tmp_group
-
-      ep_hcomm_info = ep_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
-
-      return ep_hcomm_info, ep_group
-
-  def get_megamoe_kwargs(
-      x, expert_ids, weights1, weights_scales1, weights2, weights_scales2, expert_scales
-  ):
-      x = x.to(torch.bfloat16).npu()
-      expert_ids = expert_ids.to(torch.int32).npu()
-      weights1 = weights1.to(torch.float8_e5m2).npu()
-      weights_scales1 = weights_scales1.to(torch.float8_e8m0fnu).npu()
-      weights2 = weights2.to(torch.float8_e5m2).npu()
-      weights_scales2 = weights_scales2.to(torch.float8_e8m0fnu).npu()
-      expert_scales = expert_scales.to(torch.bfloat16).npu()
-
-      return {
-          'x': x,
-          'topk_ids': expert_ids,
-          'topk_weights': expert_scales,
-          'l1_weights': [weights1],
-          'l1_weights_sf': [weights_scales1],
-          'l2_weights': [weights2],
-          'l2_weights_sf': [weights_scales2],
-      }
-
-  def run_megamoe_npu(
-      queue, rank, x, expert_ids, weights1, weights_scales1, weights2, weights_scales2, expert_scales
-  ):
-      print(f"{os.getpid()=}{rank=}")
-      set_device(rank)
-      print(f'[INFO] device_{rank} 构造megamoe算子输入数据')
-      megamoe_kwargs = get_megamoe_kwargs(
-          x=x,
-          expert_ids=expert_ids,
-          weights1=weights1,
-          weights_scales1=weights_scales1,
-          weights2=weights2,
-          weights_scales2=weights_scales2,
-          expert_scales=expert_scales,
-      )
-      # 步骤1：计算mega_moe算子所需的HCCL通信buffer_size大小（单位：MB），并设置HCCL_BUFFSIZE环境变量
-      buffer_size = get_mega_moe_ccl_buffer_size(
-          world_size, moe_expert_num, num_tokens, topK, H,
-          dispatch_quant_mode=4, dispatch_quant_out_dtype=torch.float8_e5m2
-      )
-      print(f"[INFO] device_{rank} buffer_size is {buffer_size}")
-      ep_hcomm_info, ep_group = init_hccl_comm(rank, buffer_size)
-      # 步骤2：构造distribute_buffer（SymmBuffer结构体）
-      distribute_buffer = get_symm_buffer_for_mega_moe(
-          ep_group, num_experts=moe_expert_num,
-          num_max_tokens_per_rank=0, num_topk=topK,
-          hidden=H, intermediate_hidden=0,
-          dispatch_quant_mode=4, dispatch_quant_out_dtype=torch.float8_e5m2
-      )
-      # 步骤3：运行mega_moe，传入上一步构造的sym_buffer
-      y, expert_token_nums = mega_moe(**megamoe_kwargs, sym_buffer=distribute_buffer)
-
-      torch.npu.synchronize()
-      print(f"[INFO] device_{rank} finish\n")
-      dist.destroy_process_group()
-      print(f'rank {rank} epid {rank} npu finished! \n')
-
-      queue.put([
-          rank,
-          [
-              y.cpu(), expert_token_nums.cpu()
-          ]
-      ])
-
-  def gen_npu(target_func, **server_kwargs):
-      def parse_rank_input(target_func, result_queue, rank, server_kwargs):
-
-          ep_id = rank // 1
-
-          if target_func == run_megamoe_npu:
-              return {
-                  "queue": result_queue,
-                  "rank": rank,
-                  "x": server_kwargs["x_list"][ep_id],
-                  "expert_ids": server_kwargs["expert_ids_list"][ep_id],
-                  "weights1": server_kwargs["weights1_list"][ep_id],
-                  "weights_scales1": server_kwargs["weights_scales1_list"][ep_id],
-                  "weights2": server_kwargs["weights2_list"][ep_id],
-                  "weights_scales2": server_kwargs["weights_scales2_list"][ep_id],
-                  "expert_scales": server_kwargs["expert_scales_list"][ep_id]
-              }
+    server_num = 1
+    rank_per_dev = 2
+    world_size = server_num * rank_per_dev
+    ep_ranks_list = [list(range(tp_id, world_size, 1)) for tp_id in range(1)]
+    server_index = 0
 
 
-      print("single_server scene!!!!!")
-      rank_list = list(range(world_size))
-      print(f"rank list is: {rank_list}")
+    def ceil(a, b):
+        return (a + b - 1) // b
 
-      proc_list = []
-      manager = Manager()
-      result_queue = manager.Queue()
-      mp.set_start_method("forkserver", force=True)
-      for rank in rank_list:
-          rank_kwargs = parse_rank_input(target_func, result_queue, rank, server_kwargs)
-          proc = Process(target=target_func, kwargs=rank_kwargs)
-          proc.start()
-          proc_list.append(proc)
+    def set_device(rank):
+        torch_npu.npu.set_device(rank % rank_per_dev)
+        print(f"current device set: {torch_npu.npu.current_device()}")
+
+    def init_hccl_comm(rank):
+        # 创建HCCL通信链路并初始化EP域
+        print(f'[INFO] device_{rank} 创建HCCL通信链路')
+        master_ip = '127.0.0.1'
+        options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
+        # 使用时hccl_buffer_size的值需根据算子接口文档中给出的通信域缓存区大小的约束进行配置
+        options.hccl_config = {"hccl_buffer_size": 200} # 单位：MB，描述windowIn或windowOut的大小
+        dist.init_process_group(backend="hccl", rank=rank, world_size=world_size, init_method=f'tcp://{master_ip}:50001')
+        print(f"device_{rank} init_process_group success")
+
+        print(f"device {rank} 初始化EP域")
+        for ep_ranks in ep_ranks_list:
+            tmp_group = dist.new_group(backend="hccl", ranks=ep_ranks, pg_options=options.hccl_config)
+            if rank in ep_ranks:
+                ep_group = tmp_group
+
+        ep_hcomm_info = ep_group._get_backend(torch.device("npu")).get_hccl_comm_name(rank)
+
+        return ep_hcomm_info, ep_group
+
+    def get_megamoe_kwargs(
+        x, expert_ids, weights1, weights_scales1, weights2, weights_scales2, expert_scales
+    ):
+        x = x.to(torch.bfloat16).npu()
+        expert_ids = expert_ids.to(torch.int32).npu()
+        weights1 = weights1.to(torch.float8_e5m2).npu()
+        weights_scales1 = weights_scales1.to(torch.float8_e8m0fnu).npu()
+        weights2 = weights2.to(torch.float8_e5m2).npu()
+        weights_scales2 = weights_scales2.to(torch.float8_e8m0fnu).npu()
+        expert_scales = expert_scales.to(torch.bfloat16).npu()
+
+        return {
+            'x': x,
+            'topk_ids': expert_ids,
+            'topk_weights': expert_scales,
+            'l1_weights': [weights1],
+            'l1_weights_sf': [weights_scales1],
+            'l2_weights': [weights2],
+            'l2_weights_sf': [weights_scales2],
+        }
+
+    def run_megamoe_npu(
+        queue, rank, x, expert_ids, weights1, weights_scales1, weights2, weights_scales2, expert_scales
+    ):
+        print(f"{os.getpid()=}{rank=}")
+        set_device(rank)
+        print(f'[INFO] device_{rank} 构造megamoe算子输入数据')
+        megamoe_kwargs = get_megamoe_kwargs(
+            x=x,
+            expert_ids=expert_ids,
+            weights1=weights1,
+            weights_scales1=weights_scales1,
+            weights2=weights2,
+            weights_scales2=weights_scales2,
+            expert_scales=expert_scales,
+        )
+        ep_hcomm_info, ep_group = init_hccl_comm(rank)
+        # 步骤1：构造distribute_buffer（SymmBuffer结构体）
+        distribute_buffer = get_symm_buffer_for_mega_moe(
+            ep_group, num_experts=moe_expert_num,
+            num_max_tokens_per_rank=num_tokens, num_topk=topK,
+            hidden=H, intermediate_hidden=0,
+            dispatch_quant_mode=4, dispatch_quant_out_dtype=torch.float8_e5m2
+        )
+        # 步骤2：运行mega_moe，传入上一步构造的sym_buffer
+        y, expert_token_nums = mega_moe(**megamoe_kwargs, sym_buffer=distribute_buffer)
+
+        torch.npu.synchronize()
+        print(f"[INFO] device_{rank} finish\n")
+        dist.destroy_process_group()
+        print(f'rank {rank} epid {rank} npu finished! \n')
+
+        queue.put([
+            rank,
+            [
+                y.cpu(), expert_token_nums.cpu()
+            ]
+        ])
+
+    def gen_npu(target_func, **server_kwargs):
+        def parse_rank_input(target_func, result_queue, rank, server_kwargs):
+
+            ep_id = rank // 1
+
+            if target_func == run_megamoe_npu:
+                return {
+                    "queue": result_queue,
+                    "rank": rank,
+                    "x": server_kwargs["x_list"][ep_id],
+                    "expert_ids": server_kwargs["expert_ids_list"][ep_id],
+                    "weights1": server_kwargs["weights1_list"][ep_id],
+                    "weights_scales1": server_kwargs["weights_scales1_list"][ep_id],
+                    "weights2": server_kwargs["weights2_list"][ep_id],
+                    "weights_scales2": server_kwargs["weights_scales2_list"][ep_id],
+                    "expert_scales": server_kwargs["expert_scales_list"][ep_id]
+                }
 
 
-      rank_outputs = [None] * rank_per_dev
-      for proc in proc_list:
-          rank_id, rank_output = result_queue.get()
-          local_rank_id = rank_id - server_index * rank_per_dev
-          rank_outputs[local_rank_id] = rank_output
+        print("single_server scene!!!!!")
+        rank_list = list(range(world_size))
+        print(f"rank list is: {rank_list}")
+
+        proc_list = []
+        manager = Manager()
+        result_queue = manager.Queue()
+        mp.set_start_method("forkserver", force=True)
+        for rank in rank_list:
+            rank_kwargs = parse_rank_input(target_func, result_queue, rank, server_kwargs)
+            proc = Process(target=target_func, kwargs=rank_kwargs)
+            proc.start()
+            proc_list.append(proc)
 
 
-      for proc in proc_list:
-          proc.join()
+        rank_outputs = [None] * rank_per_dev
+        for proc in proc_list:
+            rank_id, rank_output = result_queue.get()
+            local_rank_id = rank_id - server_index * rank_per_dev
+            rank_outputs[local_rank_id] = rank_output
 
-      if None in rank_outputs:
-          print("[ERROR] Task failed! Please check the detailed error logs printed by the subprocesses.")
-          exit(1)
 
-      # 将各类输出放入同一个列表中，category_outputs存储各类输出的列表
-      category_outputs = []
-      category_num = len(rank_outputs[0])
-      for category_id in range(category_num):
-          specific_category_output = [rank_output[category_id] for rank_output in rank_outputs]
-          category_outputs.append(specific_category_output)
+        for proc in proc_list:
+            proc.join()
 
-      return category_outputs
+        if None in rank_outputs:
+            print("[ERROR] Task failed! Please check the detailed error logs printed by the subprocesses.")
+            exit(1)
 
-  if __name__ == "__main__":
-      x_shape = [num_tokens, H]
-      expert_idx_shape = [num_tokens, topK]
-      weight_shape = [E, N, H]
-      weight_scale_shape = [E, N, ceil(H, 64), 2]
-      output_shape = [num_tokens, N//2]
-      weight2_shape = [E, H, N//2]
-      weight2_scale_shape = [E, H, ceil(N//2, 64), 2]
-      expert_scales_shape = [num_tokens, topK]
-      # 构造输入
-      x = torch.randn(x_shape, dtype=torch.bfloat16)
-      expert_scales = torch.randn(expert_scales_shape, dtype=torch.bfloat16)
-      expert_ids = torch.stack(
-          [torch.randperm(moe_expert_num)[:topK] for _ in range(num_tokens)]
-      ).to(torch.int32)
-      weight1 = torch.randn(weight_shape, dtype=torch.float32).to(torch.float8_e5m2)
-      weight_scales1 = torch.randint(125, 130, weight_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
-      weight2 = torch.randn(weight2_shape, dtype=torch.float32).to(torch.float8_e5m2)
-      weight_scales2 = torch.randint(125, 130, weight2_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
+        # 将各类输出放入同一个列表中，category_outputs存储各类输出的列表
+        category_outputs = []
+        category_num = len(rank_outputs[0])
+        for category_id in range(category_num):
+            specific_category_output = [rank_output[category_id] for rank_output in rank_outputs]
+            category_outputs.append(specific_category_output)
 
-      golden_x_list = [x.clone() for _ in range(rank_per_dev)]
-      golden_expert_ids_list = [expert_ids.clone() for _ in range(rank_per_dev)]
-      golden_weights1_list = [weight1.clone() for _ in range(rank_per_dev)]
-      golden_weights_scales1_list = [weight_scales1.clone() for _ in range(rank_per_dev)]
-      golden_weights2_list = [weight2.clone() for _ in range(rank_per_dev)]
-      golden_weights_scales2_list = [weight_scales2.clone() for _ in range(rank_per_dev)]
-      golden_expert_scales_list = [expert_scales.clone() for _ in range(rank_per_dev)]
+        return category_outputs
 
-      [y, expert_token_nums] = gen_npu(
-          run_megamoe_npu,
-          x_list=golden_x_list,
-          expert_ids_list=golden_expert_ids_list,
-          weights1_list=golden_weights1_list,
-          weights_scales1_list=golden_weights_scales1_list,
-          weights2_list=golden_weights2_list,
-          weights_scales2_list=golden_weights_scales2_list,
-          expert_scales_list=golden_expert_scales_list,
-      )
-  ```
+    if __name__ == "__main__":
+        x_shape = [num_tokens, H]
+        expert_idx_shape = [num_tokens, topK]
+        weight_shape = [E, N, H]
+        weight_scale_shape = [E, N, ceil(H, 64), 2]
+        output_shape = [num_tokens, N//2]
+        weight2_shape = [E, H, N//2]
+        weight2_scale_shape = [E, H, ceil(N//2, 64), 2]
+        expert_scales_shape = [num_tokens, topK]
+        # 构造输入
+        x = torch.randn(x_shape, dtype=torch.bfloat16)
+        expert_scales = torch.randn(expert_scales_shape, dtype=torch.bfloat16)
+        expert_ids = torch.stack(
+            [torch.randperm(moe_expert_num)[:topK] for _ in range(num_tokens)]
+        ).to(torch.int32)
+        weight1 = torch.randn(weight_shape, dtype=torch.float32).to(torch.float8_e5m2)
+        weight_scales1 = torch.randint(125, 130, weight_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
+        weight2 = torch.randn(weight2_shape, dtype=torch.float32).to(torch.float8_e5m2)
+        weight_scales2 = torch.randint(125, 130, weight2_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
+
+        golden_x_list = [x.clone() for _ in range(rank_per_dev)]
+        golden_expert_ids_list = [expert_ids.clone() for _ in range(rank_per_dev)]
+        golden_weights1_list = [weight1.clone() for _ in range(rank_per_dev)]
+        golden_weights_scales1_list = [weight_scales1.clone() for _ in range(rank_per_dev)]
+        golden_weights2_list = [weight2.clone() for _ in range(rank_per_dev)]
+        golden_weights_scales2_list = [weight_scales2.clone() for _ in range(rank_per_dev)]
+        golden_expert_scales_list = [expert_scales.clone() for _ in range(rank_per_dev)]
+
+        [y, expert_token_nums] = gen_npu(
+            run_megamoe_npu,
+            x_list=golden_x_list,
+            expert_ids_list=golden_expert_ids_list,
+            weights1_list=golden_weights1_list,
+            weights_scales1_list=golden_weights_scales1_list,
+            weights2_list=golden_weights2_list,
+            weights_scales2_list=golden_weights_scales2_list,
+            expert_scales_list=golden_expert_scales_list,
+        )
+    ```

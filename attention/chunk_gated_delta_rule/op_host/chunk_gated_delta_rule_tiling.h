@@ -79,6 +79,7 @@ protected:
     ge::graphStatus AnalyzeShapes();
     ge::graphStatus CheckDerivedDimConstraints();
     ge::graphStatus GetScale();
+    ge::graphStatus GetStrides();
     ge::graphStatus GetOptionalInput();
     ge::graphStatus AnalyzeFormat();
     ge::graphStatus DoMatmulTiling();
@@ -94,6 +95,7 @@ protected:
     ChunkGatedDeltaRuleCompileInfo compileInfo_;
     ChunkGatedDeltaRule::ChunkGatedDeltaRuleTilingData tilingData_;
     ChunkGatedDeltaRuleInfo inputParams_;
+    platform_ascendc::SocVersion socVersion_;
 };
 
 } // namespace optiling
