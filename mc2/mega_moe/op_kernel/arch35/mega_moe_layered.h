@@ -1834,10 +1834,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::CrossRankSyncInW
 }
 
 // ===============================================================
-// SharedExpertCopyInput：将本卡量化后的交错 data+scale 拆分为连续布局
-//   源: quantTokenScalePtr [token: data(256B aligned) | scale] 交错排列
-//   目标: sharedExpertInputDataPtr [bs × h] 连续, sharedExpertInputScalePtr [bs × scaleN] 连续
-//   AIV 执行，在量化完成后、AIC GMM1 开始前调用
+// SharedExpertCopyInput：从原始 bf16 输入量化后写入共享专家专用缓冲区
+//   源: aGmAddr [bs × h] bf16（layered URMA 模式下 quantTokenScalePtr 未填充，需直接从原始输入量化）
+//   目标: sharedExpertInputDataPtr [bs × h] fp8 连续, sharedExpertInputScalePtr [bs × scaleN] 连续
+//   AIV 执行，在 AIC GMM1 开始前调用
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SharedExpertCopyInput()
@@ -1848,38 +1848,75 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::SharedExpertCopy
     int32_t curentNum;
     int32_t curentOffset;
     TilingByCore(m_, curentNum, curentOffset, 1);
+    uint32_t H = k_;
 
     int64_t widthA = k_ / A_ELEMS_PER_BYTE;
     int64_t widthAScale = Ops::Base::CeilDiv(static_cast<int64_t>(k_), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
         MXFP_MULTI_BASE_SIZE;
-    uint32_t copyInNum = Ops::Base::CeilAlign(static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
-        static_cast<int64_t>(ALIGN_32));
 
-    GlobalTensor<ActivationType> srcGlobalTensor;
+    uint32_t xInAddr = ALIGN_512;
+    uint32_t xInSize = Ops::Base::CeilAlign(H, static_cast<uint32_t>(ALIGN_128)) * sizeof(bfloat16_t);
+    LocalTensor<bfloat16_t> xInBuf0 = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAddr, xInSize / sizeof(bfloat16_t));
+    LocalTensor<bfloat16_t> xInBuf1 = LocalTensor<bfloat16_t>(TPosition::VECCALC, xInAddr + xInSize, xInSize / sizeof(bfloat16_t));
+    uint32_t mxTempAddr = xInAddr + xInSize * 2;
+    LocalTensor<uint16_t> mxTempBuf = LocalTensor<uint16_t>(TPosition::VECCALC, mxTempAddr,
+        MX_QUANT_TEMP_UB_BYTES / sizeof(uint16_t));
+    uint32_t xOutAddr = mxTempAddr + MX_QUANT_TEMP_UB_BYTES;
+    uint32_t xOutSize = Ops::Base::CeilAlign(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_,
+        static_cast<uint32_t>(ALIGN_32));
+    LocalTensor<ActivationType> xOutBuf0 = LocalTensor<ActivationType>(TPosition::VECCALC, xOutAddr,
+        xOutSize / sizeof(ActivationType));
+    LocalTensor<ActivationType> xOutBuf1 = LocalTensor<ActivationType>(TPosition::VECCALC, xOutAddr + xOutSize,
+        xOutSize / sizeof(ActivationType));
+
+    GlobalTensor<bfloat16_t> srcGlobalTensor;
     GlobalTensor<ActivationType> dataDstGlobalTensor;
     GlobalTensor<QuantScaleOutType> scaleDstGlobalTensor;
-    srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
-        params_.peermemInfo.quantTokenScalePtr));
     dataDstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType*>(
         params_.workspaceInfo.sharedExpertInputDataPtr));
     scaleDstGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ QuantScaleOutType*>(
         params_.workspaceInfo.sharedExpertInputScalePtr));
+
+    DataCopyParams xCopyInParams = {1U, static_cast<uint16_t>(H * sizeof(bfloat16_t)), 0U, 0U};
+    DataCopyPadParams xCopyInPadParams{true, 0, 0, 0};
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID1);
     for (int32_t index = 0; index < curentNum; index++) {
         int32_t tokenIdx = curentOffset + index;
-        uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIdx) * static_cast<uint64_t>(copyInNum);
         auto event = (index % DOUBLE_BUFFER == 0) ? EVENT_ID0 : EVENT_ID1;
-        auto copyTmpTensor = (index % DOUBLE_BUFFER == 0) ? xOutTensor1_ : xOutTensor2_;
+        auto xInBuf = (index % DOUBLE_BUFFER == 0) ? xInBuf0 : xInBuf1;
+        auto xOutBuf = (index % DOUBLE_BUFFER == 0) ? xOutBuf0 : xOutBuf1;
 
+        srcGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ bfloat16_t*>(
+            params_.aGmAddr + static_cast<uint64_t>(tokenIdx) * H * sizeof(bfloat16_t)));
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(event);
-        DataCopy(copyTmpTensor, srcGlobalTensor[remoteCopyOffset], copyInNum);
-        SetFlag<AscendC::HardEvent::MTE2_MTE3>(event);
-        WaitFlag<AscendC::HardEvent::MTE2_MTE3>(event);
+        DataCopyPad(xInBuf, srcGlobalTensor, xCopyInParams, xCopyInPadParams);
+        SetFlag<AscendC::HardEvent::MTE2_V>(event);
+        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
 
+        __ubuf__ bfloat16_t *srcAddr = reinterpret_cast<__ubuf__ bfloat16_t*>(xInBuf.GetPhyAddr());
+        __ubuf__ uint16_t *maxExpAddr = reinterpret_cast<__ubuf__ uint16_t*>(mxTempBuf.GetPhyAddr());
+        __ubuf__ uint16_t *halfScaleAddr = reinterpret_cast<__ubuf__ uint16_t*>(
+            mxTempBuf[Ops::Base::CeilAlign(mxQuantScaleNumAlignPerToken_, static_cast<uint32_t>(ALIGN_32))].GetPhyAddr());
+        __ubuf__ int8_t *outDataAddr = reinterpret_cast<__ubuf__ int8_t*>(xOutBuf.GetPhyAddr());
+        __ubuf__ uint16_t *mxScaleAddr = reinterpret_cast<__ubuf__ uint16_t*>(
+            xOutBuf[mxQuantTokenAlignBytes_].GetPhyAddr());
+
+        Quant::ComputeMaxExp(srcAddr, maxExpAddr, H);
+        Quant::ComputeScale<QuantOutType>(maxExpAddr, mxScaleAddr, halfScaleAddr, mxQuantScaleNumAlignPerToken_);
+        if constexpr (QuantMode == E2M1_QUANT) {
+            Quant::ComputeFp4Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC,
+                AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, H);
+        } else {
+            Quant::ComputeFp8Data<bfloat16_t, QuantOutType, AscendC::RoundMode::CAST_TRUNC,
+                AscendC::RoundMode::CAST_RINT>(srcAddr, halfScaleAddr, outDataAddr, H);
+        }
+
+        SetFlag<AscendC::HardEvent::V_MTE3>(event);
+        WaitFlag<AscendC::HardEvent::V_MTE3>(event);
         LocalTensor<QuantScaleOutType> bufScale =
-            copyTmpTensor[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
-        DataCopyPad(dataDstGlobalTensor[tokenIdx * widthA], copyTmpTensor,
+            xOutBuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
+        DataCopyPad(dataDstGlobalTensor[tokenIdx * widthA], xOutBuf,
             {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
         DataCopyPad(scaleDstGlobalTensor[tokenIdx * widthAScale], bufScale,
             {1, static_cast<uint16_t>(widthAScale * sizeof(QuantScaleOutType)), 0U, 0U, 0U});
