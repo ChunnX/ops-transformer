@@ -31,8 +31,10 @@ constexpr uint8_t SYNC_V0_TO_C1_SY_FLAG[2][2] = {{4, 5}, {6, 7}};
 // C1 -> V1 P
 constexpr uint8_t SYNC_C1_TO_V1_P_FLAG[2] = {8, 9};
 // C1 -> V1 SY
-constexpr uint8_t SYNC_C1_TO_V1_SY_FLAG[2] = {10, 11};
-constexpr uint8_t SYNC_V1_TO_C2_DW_FLAG[2] = {12, 13};
+constexpr uint8_t SYNC_C1_TO_V1_SY_FLAG[2] = {10, 15};
+// SyncAll<false>() reserves flag IDs 11-14 on Ascend 950.
+// Reuse the completed C1 -> V1 P counters for the reverse V1 -> C2 dependency.
+constexpr uint8_t SYNC_V1_TO_C2_DW_FLAG[2] = {8, 9};
 constexpr uint8_t SYNC_C2_TO_V2_DW_FLAG[2] = {4, 5};
 static constexpr uint8_t SYNC_MODE = 2;
 
