@@ -484,6 +484,19 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::GatherCopyExp
         int64_t currentLoopLastRow = (globalSortIdx + currentLoopRows_ - 1) / k_;
 
         for (int64_t row = currentLoopStartRow; row <= currentLoopLastRow; row++) {
+            bool hasValidOut = false;
+            while (curLoopRow < currentLoopRows_ && globalSortIdx / k_ == row) {
+                if (indicesLocal.GetValue(curLoopRow) >= 0) {
+                    hasValidOut = true;
+                    break;
+                }
+                curLoopRow++;
+                globalSortIdx++;
+            }
+            if (!hasValidOut) {
+                continue;
+            }
+
             SetWaitFlag<HardEvent::S_MTE2>(HardEvent::S_MTE2);
             CopyIn(row, j, loopCols);
             Compute(loopCols, loopScaleCols);
