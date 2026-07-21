@@ -46,16 +46,18 @@ def ceil_div(a: int, b: int) -> int:
 
 
 def _get_aicore_count() -> int:
-    """Read cube core count from NPU device properties. Fallback: 24."""
+    """Read the physical cube-core count from the active NPU."""
     try:
         import torch
         if torch.npu.is_available() and torch.npu.device_count() > 0:
-            props = torch.npu.get_device_properties(0)
+            props = torch.npu.get_device_properties(torch.npu.current_device())
             if hasattr(props, "cube_core_num"):
-                return int(props.cube_core_num)
-    except Exception:
-        pass
-    return 24
+                core_count = int(props.cube_core_num)
+                if core_count > 0:
+                    return core_count
+    except Exception as exc:
+        raise RuntimeError("Failed to query the NPU cube-core count") from exc
+    raise RuntimeError("NPU device properties do not expose a valid cube_core_num")
 
 
 @dataclass
@@ -195,6 +197,8 @@ def tilelang_grad_kl_loss_single_kernel(
     d_num_query_index = DQueryIndex // k_block
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
+    p_row_block = 64 if N1 > 64 and N1 % 64 == 0 else N1
+    p_row_num = N1 // p_row_block
 
     v3_chunks = Nidx1 // 4
     @T.prim_func
@@ -232,7 +236,7 @@ def tilelang_grad_kl_loss_single_kernel(
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
             for task_offset in T.serial(tasks_per_core):
-                task_id = cid * tasks_per_core + task_offset
+                task_id = cid + task_offset * block_num
                 if task_id < total_tasks:
                     bz = task_id // s1_tile_num
                     m = task_id % s1_tile_num
@@ -469,17 +473,20 @@ def tilelang_grad_kl_loss_single_kernel(
                     with T.Scope("V"):
                         T.wait_cross_flag(1)
 
-                        bmm1_ub = T.alloc_ub((N1, n_block), calc_dtype)
+                        # Split P over 64-row groups so block_n=128 stays below
+                        # the uint8 vector-repeat limit (64/8 * 128/8 = 128).
+                        bmm1_ub = T.alloc_ub((p_row_block, n_block), calc_dtype)
                         bmm2_0 = T.alloc_ub((Nidx1, n_block), calc_dtype)
                         bmm2_1 = T.alloc_ub((Nidx1, n_block), calc_dtype)
                         weight_all_ub = T.alloc_ub(Nidx1, calc_dtype)
                         weight_all_half_ub = T.alloc_ub(Nidx1, input_dtype)
                         weight_2d_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
                         p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
+                        p_reduced_part_ub = T.alloc_ub(n_block, calc_dtype)
                         rsy_reduce_db = T.alloc_ub((2, n_block), calc_dtype)
-                        sm_max_ub = T.alloc_ub(G, calc_dtype)
-                        sm_sum_ub = T.alloc_ub(G, calc_dtype)
-                        eps_sm_ub = T.alloc_ub(G, calc_dtype)
+                        sm_max_ub = T.alloc_ub(p_row_block, calc_dtype)
+                        sm_sum_ub = T.alloc_ub(p_row_block, calc_dtype)
+                        eps_sm_ub = T.alloc_ub(p_row_block, calc_dtype)
                         rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                         rsy_bc_ub = T.alloc_ub((1, n_block), calc_dtype)
                         rsy_max_ub = T.alloc_ub((1,), calc_dtype)
@@ -489,44 +496,73 @@ def tilelang_grad_kl_loss_single_kernel(
                         eps_sum_ub = T.alloc_ub((1,), calc_dtype)
                         softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
                         rsy_all_ub = T.alloc_ub((n_num, n_block), calc_dtype)
-                        re_tmp_ub = T.alloc_ub((N1, 8), calc_dtype)
+                        re_tmp_ub = T.alloc_ub((max(p_row_block, Nidx1), 8), calc_dtype)
 
                         for s1_id in T.serial(s1_start, s1_end):
                             if vid == 0:
-                                T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
-                                T.copy(SoftmaxSum[bz, 0, s1_id, 0:G], sm_sum_ub)
-                                T.set_flag("mte2", "v", 4)
-                                T.wait_flag("mte2", "v", 4)
-                                T.tile.abs(sm_sum_ub, sm_sum_ub)
-                                T.tile.fill(eps_sm_ub, 1e-8)
-                                T.pipe_barrier("v")
-                                T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
-
-                                T.set_flag("v", "mte2", 6)
                                 T.set_flag("mte3", "v", 6)
                                 for n_idx_p in T.serial(n_num):
-                                    T.wait_flag("v", "mte2", 6)
-                                    T.copy(
-                                        bmm1Res[bz, s1_id, 0:N1, n_idx_p * n_block:(n_idx_p + 1) * n_block],
-                                        bmm1_ub,
-                                    )
-                                    T.set_flag("mte2", "v", 5)
-                                    T.wait_flag("mte2", "v", 5)
-                                    T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
-
                                     T.wait_flag("mte3", "v", 6)
-                                    T.tile.fill(p_reduced_tmp_ub, 1.0)
-                                    T.pipe_barrier("v")
-                                    T.tile.row_expand_sub_experiment(bmm1_ub, bmm1_ub, sm_max_ub, re_tmp_ub)
-                                    T.pipe_barrier("v")
-                                    T.tile.exp(bmm1_ub, bmm1_ub)
-                                    T.pipe_barrier("v")
-                                    T.tile.row_expand_div_experiment(bmm1_ub, bmm1_ub, sm_sum_ub, re_tmp_ub)
-                                    T.pipe_barrier("v")
-                                    T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
-                                    T.pipe_barrier("v")
+                                    T.tile.fill(p_reduced_tmp_ub, 0.0)
+
+                                    for p_row_idx in T.serial(p_row_num):
+                                        p_row_start = p_row_idx * p_row_block
+                                        T.copy(
+                                            bmm1Res[
+                                                bz,
+                                                s1_id,
+                                                p_row_start:p_row_start + p_row_block,
+                                                n_idx_p * n_block:(n_idx_p + 1) * n_block,
+                                            ],
+                                            bmm1_ub,
+                                        )
+                                        T.copy(
+                                            SoftmaxMax[
+                                                bz,
+                                                0,
+                                                s1_id,
+                                                p_row_start:p_row_start + p_row_block,
+                                            ],
+                                            sm_max_ub,
+                                        )
+                                        T.copy(
+                                            SoftmaxSum[
+                                                bz,
+                                                0,
+                                                s1_id,
+                                                p_row_start:p_row_start + p_row_block,
+                                            ],
+                                            sm_sum_ub,
+                                        )
+                                        T.set_flag("mte2", "v", 5)
+                                        T.wait_flag("mte2", "v", 5)
+
+                                        T.tile.abs(sm_sum_ub, sm_sum_ub)
+                                        T.tile.fill(eps_sm_ub, 1e-8)
+                                        T.pipe_barrier("v")
+                                        T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
+                                        T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
+                                        T.pipe_barrier("v")
+                                        T.tile.row_expand_sub_experiment(
+                                            bmm1_ub, bmm1_ub, sm_max_ub, re_tmp_ub
+                                        )
+                                        T.pipe_barrier("v")
+                                        T.tile.exp(bmm1_ub, bmm1_ub)
+                                        T.pipe_barrier("v")
+                                        T.tile.row_expand_div_experiment(
+                                            bmm1_ub, bmm1_ub, sm_sum_ub, re_tmp_ub
+                                        )
+                                        T.pipe_barrier("v")
+                                        T.reduce_sum(bmm1_ub, p_reduced_part_ub, 0)
+                                        T.pipe_barrier("v")
+                                        T.tile.add(
+                                            p_reduced_tmp_ub,
+                                            p_reduced_tmp_ub,
+                                            p_reduced_part_ub,
+                                        )
+                                        T.pipe_barrier("v")
+
                                     T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
-                                    T.set_flag("v", "mte2", 6)
                                     T.set_flag("v", "mte3", 6)
                                     T.wait_flag("v", "mte3", 6)
                                     T.copy(
@@ -534,7 +570,6 @@ def tilelang_grad_kl_loss_single_kernel(
                                         PReduced[bz, s1_id, n_idx_p * n_block:(n_idx_p + 1) * n_block],
                                     )
                                     T.set_flag("mte3", "v", 6)
-                                T.wait_flag("v", "mte2", 6)
                                 T.wait_flag("mte3", "v", 6)
 
                             if vid == 1:
@@ -1310,18 +1345,20 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_rope = torch.nn.functional.pad(query_rope, (0, pad_len))
             key_rope = torch.nn.functional.pad(key_rope, (0, pad_len))
 
-        # Block size: fit the per-task K tile within vector repeat limits。
-        # 约束：n_block/8 * N1/8 ≤ 255（AscendC sub_mask/div_mask repeat 参数 uint8_t）
-        # K=2048,N1=128 → n_block≤127。整除+16对齐 → 最大可用 n_block=64,n_num=32。
-        # K blocks are no longer launch blocks: each physical block owns one
-        # or more complete (B, S1 tile) tasks and iterates over all K tiles.
+        # Each physical block owns complete (B, S1 tile) tasks. Prefer the
+        # arch22-like 128-wide inner K tile; P is split into 64-row groups so
+        # its generated vector repeat remains within uint8 range.
         core_count = _get_aicore_count()
         total_tasks = B * ceil_div(S1, BLOCK_M)
         launch_core_num = min(total_tasks, core_count)
-        n_num_ws = core_count
-        while K % n_num_ws != 0 or (K // n_num_ws) % GATHER_CHUNK_SIZE != 0:
-            n_num_ws += 1
-        block_n = K // n_num_ws
+        if K % 128 == 0 and N1 % 64 == 0 and G == N1:
+            block_n = 128
+            n_num_ws = K // block_n
+        else:
+            n_num_ws = core_count
+            while K % n_num_ws != 0 or (K // n_num_ws) % GATHER_CHUNK_SIZE != 0:
+                n_num_ws += 1
+            block_n = K // n_num_ws
 
         cache_key = (B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
                      d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
