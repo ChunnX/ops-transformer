@@ -48,8 +48,19 @@ __aicore__ inline void SendMaskCalOneCore(const DispatchPrepareContext &context,
     }
 
     const MoeTopologyContext &topology = context.topology;
+    const int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
+    const int32_t routeBatchCount = bufferConfig.routeBatchCount;
+    const int32_t bufferCount = bufferConfig.bufferCount;
+    const uint32_t bufferBytes = bufferConfig.bufferBytes;
+    const uint32_t expertPerRank = topology.expertPerRank;
+    const uint32_t worldSize = topology.worldSize;
+    const uint32_t rankId = topology.rankId;
+    const uint32_t maskAlignSize = args.maskAlignSize;
+    const uint32_t maskSlotSize = args.maskSlotSize;
+    const uint64_t maskWinOffset = args.maskWinOffset;
+    GM_ADDR *winRankAddr = args.winRankAddr;
     uint64_t sendTotalNum = static_cast<uint64_t>(context.tokenShape.tokenNum) * context.tokenShape.topK;
-    int32_t totalExperts = static_cast<int32_t>(topology.worldSize * topology.expertPerRank);
+    int32_t totalExperts = static_cast<int32_t>(worldSize * expertPerRank);
     int32_t jobIndex = static_cast<int32_t>(thread.jobIndex);
     int32_t totalJobs = static_cast<int32_t>(thread.totalJobs);
     int32_t ownedExpertNum = jobIndex < totalExperts ?
@@ -61,27 +72,27 @@ __aicore__ inline void SendMaskCalOneCore(const DispatchPrepareContext &context,
     GlobalTensor<int32_t> topkIdsGm;
     topkIdsGm.SetGlobalBuffer((__gm__ int32_t *)args.expertIdxGmAddr);
     GlobalTensor<uint8_t> dstMaskGm;
-    int32_t fullSliceBytes = bufferConfig.routeItemsPerBatch / 8;
+    int32_t fullSliceBytes = routeItemsPerBatch / 8;
     DataCopyPadExtParams<int32_t> loadPad{false, 0U, 0U, 0U};
 
     Duplicate<int32_t>(scratch.sendCntAccTensor, 0, ownedExpertNum);
     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID2>();
 
-    for (int32_t bufIdx = 0; bufIdx < bufferConfig.bufferCount; ++bufIdx) {
+    for (int32_t bufIdx = 0; bufIdx < bufferCount; ++bufIdx) {
         SetFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufIdx));
     }
 
     int32_t iter = 0;
-    for (int32_t batchIdx = 0; batchIdx < bufferConfig.routeBatchCount; ++batchIdx) {
-        int32_t batchStart = batchIdx * bufferConfig.routeItemsPerBatch;
-        bool isLastBatch = batchIdx == bufferConfig.routeBatchCount - 1;
-        int32_t validLen = bufferConfig.routeItemsPerBatch;
+    for (int32_t batchIdx = 0; batchIdx < routeBatchCount; ++batchIdx) {
+        int32_t batchStart = batchIdx * routeItemsPerBatch;
+        bool isLastBatch = batchIdx == routeBatchCount - 1;
+        int32_t validLen = routeItemsPerBatch;
         int32_t sliceBytes = fullSliceBytes;
         int32_t pushBytes = sliceBytes;
         if (isLastBatch) {
             validLen = static_cast<int32_t>(sendTotalNum - static_cast<uint64_t>(batchStart));
-            if (batchStart / 8 + sliceBytes > static_cast<int32_t>(args.maskAlignSize)) {
-                sliceBytes = static_cast<int32_t>(args.maskAlignSize) - batchStart / 8;
+            if (batchStart / 8 + sliceBytes > static_cast<int32_t>(maskAlignSize)) {
+                sliceBytes = static_cast<int32_t>(maskAlignSize) - batchStart / 8;
             }
             pushBytes = sliceBytes + static_cast<int32_t>(sizeof(int32_t));
         }
@@ -93,17 +104,17 @@ __aicore__ inline void SendMaskCalOneCore(const DispatchPrepareContext &context,
 
         for (int32_t ownedIdx = 0; ownedIdx < ownedExpertNum; ++ownedIdx, ++iter) {
             int32_t globalExpertId = jobIndex + ownedIdx * totalJobs;
-            int32_t dstRank = globalExpertId / static_cast<int32_t>(topology.expertPerRank);
-            int32_t localExpertId = globalExpertId % static_cast<int32_t>(topology.expertPerRank);
-            int32_t bufferIdx = iter % bufferConfig.bufferCount;
+            int32_t dstRank = globalExpertId / static_cast<int32_t>(expertPerRank);
+            int32_t localExpertId = globalExpertId % static_cast<int32_t>(expertPerRank);
+            int32_t bufferIdx = iter % bufferCount;
             TEventID eventId = static_cast<TEventID>(bufferIdx);
             LocalTensor<uint8_t> maskBuf =
-                scratch.sendMaskTensor[bufferIdx * bufferConfig.bufferBytes];
+                scratch.sendMaskTensor[bufferIdx * bufferBytes];
             LocalTensor<uint32_t> maskBufU32 = maskBuf.template ReinterpretCast<uint32_t>();
 
             WaitFlag<AscendC::HardEvent::MTE3_V>(eventId);
             CompareScalar(maskBuf, scratch.topkIdsTensor, globalExpertId, AscendC::CMPMODE::EQ,
-                bufferConfig.routeItemsPerBatch);
+                routeItemsPerBatch);
             uint64_t batchMatchedRouteCount = 0;
             GatherMask(scratch.sendGatherOutTensor, scratch.topkIdsTensor, maskBufU32, true,
                 static_cast<uint32_t>(validLen), {1, 1, 0, 0}, batchMatchedRouteCount);
@@ -118,17 +129,17 @@ __aicore__ inline void SendMaskCalOneCore(const DispatchPrepareContext &context,
             }
             SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
 
-            uint64_t dstOffset = args.maskWinOffset +
-                static_cast<uint64_t>(localExpertId * static_cast<int32_t>(topology.worldSize) +
-                    static_cast<int32_t>(topology.rankId)) * args.maskSlotSize +
+            uint64_t dstOffset = maskWinOffset +
+                static_cast<uint64_t>(localExpertId * static_cast<int32_t>(worldSize) +
+                    static_cast<int32_t>(rankId)) * maskSlotSize +
                 static_cast<uint64_t>(batchStart / 8);
-            dstMaskGm.SetGlobalBuffer((__gm__ uint8_t *)(args.winRankAddr[dstRank] + dstOffset));
+            dstMaskGm.SetGlobalBuffer((__gm__ uint8_t *)(winRankAddr[dstRank] + dstOffset));
             DataCopyPad(dstMaskGm, maskBuf, {1U, static_cast<uint32_t>(pushBytes), 0U, 0U, 0U});
             SetFlag<AscendC::HardEvent::MTE3_V>(eventId);
         }
     }
 
-    for (int32_t bufIdx = 0; bufIdx < bufferConfig.bufferCount; ++bufIdx) {
+    for (int32_t bufIdx = 0; bufIdx < bufferCount; ++bufIdx) {
         WaitFlag<AscendC::HardEvent::MTE3_V>(static_cast<TEventID>(bufIdx));
     }
 }

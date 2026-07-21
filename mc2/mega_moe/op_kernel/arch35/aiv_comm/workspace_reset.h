@@ -21,7 +21,6 @@ struct ResetWorkspaceArgs {
     int32_t flagNum;
     int32_t gmm2CombineSyncCounterNum;
     int32_t resetBatchElementCount;
-    bool resetCombineCounters;
 };
 
 // Prototype: MegaMoe::ResetGmm2CombineSyncCounters. Clears one logical AIV job's combine counters in batches.
@@ -42,6 +41,7 @@ __aicore__ inline void ResetGmm2CombineSyncCountersOneCore(const AivThreadContex
 }
 
 // Prototype: MegaMoe::ResetFlagList. Clears one logical AIV job's dispatch flags in bounded UB batches.
+template <bool ResetCombineCounters>
 __aicore__ inline void ResetFlagListOneCore(const DispatchPrepareContext &context,
     const ResetWorkspaceArgs &args, LocalTensor<int32_t> &resetTensor)
 {
@@ -64,7 +64,7 @@ __aicore__ inline void ResetFlagListOneCore(const DispatchPrepareContext &contex
             1U, static_cast<uint32_t>(batchCount * sizeof(int32_t)), 0U, 0U, 0U};
         DataCopyPad(flagGm[threadOffset + offset], resetTensor, copyParams);
     }
-    if (args.resetCombineCounters) {
+    if constexpr (ResetCombineCounters) {
         ResetGmm2CombineSyncCountersOneCore(thread, args, resetTensor);
     }
 }

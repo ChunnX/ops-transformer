@@ -47,10 +47,7 @@ struct DispatchGmm1SwigluContext {
     int32_t groupedMatmulMode;
 };
 
-template <typename BlockEpilogue>
 struct DispatchGmm1SwigluArgs {
-    const Params *gmmParams;
-    BlockEpilogue *epilogueOp;
     GM_ADDR *winRankAddr;
     GM_ADDR maskRecvPtr;
     GM_ADDR expertRevTokenNumsPtr;
@@ -63,8 +60,14 @@ struct DispatchGmm1SwigluArgs {
     GM_ADDR weight1ScalePtr;
     GM_ADDR dispatchToGmm1FlagPtr;
     GM_ADDR sendCntFlagPtr;
-    uint32_t *startBlockIdx;
-    int32_t *vecSetSyncCom;
+};
+
+// Mutable scheduling state for one dispatch/GMM1/SwiGLU invocation. Keeping
+// this state at the call site avoids persistent self-references in Args and
+// lets the compiler keep the frequently accessed values in scalar registers.
+struct DispatchGmm1SwigluState {
+    uint32_t startBlockIdx;
+    int32_t vecSetSyncCom;
 };
 
 template <typename ActivationType>
@@ -86,10 +89,10 @@ struct DispatchGmm1SwigluScratch {
 };
 
 // Prototype: MegaMoe::DispatchBuffInit. Builds the bounded-UB scratch layout for dispatch and GMM1.
-template <typename ActivationType, bool EnableA8W4, typename BlockEpilogue>
+template <typename ActivationType, bool EnableA8W4>
 __aicore__ inline void InitDispatchGmm1SwigluBuffers(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
+    const DispatchGmm1SwigluArgs &args,
     DispatchGmm1SwigluScratch<ActivationType> &scratch)
 {
     scratch.expertRevNumsGlobalTensor.SetGlobalBuffer(
@@ -167,65 +170,69 @@ __aicore__ inline void InitDispatchGmm1SwigluBuffers(
 }
 
 // Prototype: MegaMoe::SendCntCal. Reads per-rank counts and publishes one expert count for this block.
-template <typename ActivationType, bool EnableA8W4, typename BlockEpilogue>
+template <typename ActivationType, bool EnableA8W4>
 __aicore__ inline void SendCntCalOneCore(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
+    const DispatchGmm1SwigluArgs &args,
     DispatchGmm1SwigluScratch<ActivationType> &scratch,
     uint32_t localExpertId, uint64_t &sendCnt)
 {
+    const uint32_t worldSize = context.worldSize;
+    const uint32_t countBlockIdx = context.countWorkspace.blockIdx;
+    const uint32_t countBlockNum = context.countWorkspace.blockNum;
+    const uint32_t maskSlotSize = context.maskSlotSize;
     sendCnt = 0;
     GlobalTensor<int32_t> countSrcGlobal;
     countSrcGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
-        args.maskRecvPtr + static_cast<uint64_t>(localExpertId) * context.worldSize * context.maskSlotSize +
+        args.maskRecvPtr + static_cast<uint64_t>(localExpertId) * worldSize * maskSlotSize +
         context.maskAlignSize));
-    DataCopyExtParams countCopyParams{static_cast<uint16_t>(context.worldSize),
+    DataCopyExtParams countCopyParams{static_cast<uint16_t>(worldSize),
         static_cast<uint32_t>(sizeof(int32_t)),
-        static_cast<uint32_t>(context.maskSlotSize - sizeof(int32_t)), 0U, 0U};
+        static_cast<uint32_t>(maskSlotSize - sizeof(int32_t)), 0U, 0U};
     DataCopyPadExtParams<int32_t> countPad{true, 0U, 0U, 0U};
     DataCopyPad(scratch.sendCntTensor, countSrcGlobal, countCopyParams, countPad);
 
     if constexpr (EnableA8W4) {
         if (localExpertId != 0) {
             DataCopyPad(scratch.cumsumInfoTensor, scratch.cumsumInfoGlobalTensor,
-                {1U, static_cast<uint32_t>(context.worldSize * localExpertId * sizeof(int32_t)), 0U, 0U, 0U},
+                {1U, static_cast<uint32_t>(worldSize * localExpertId * sizeof(int32_t)), 0U, 0U, 0U},
                 {true, 0U, 0U, 0U});
         }
     }
     SyncFuncStatic<AscendC::HardEvent::MTE2_S, SYNC_EVENT_ID2>();
     constexpr int32_t countStrideI32 = ALIGN_32 / sizeof(int32_t);
-    for (uint32_t rankIdx = 0; rankIdx < context.worldSize; ++rankIdx) {
+    for (uint32_t rankIdx = 0; rankIdx < worldSize; ++rankIdx) {
         int32_t rankCount = scratch.sendCntTensor.GetValue(rankIdx * countStrideI32);
         sendCnt += static_cast<uint64_t>(rankCount);
         scratch.cumsumRevCntInRank += static_cast<uint64_t>(rankCount);
-        scratch.cumsumInfoTensor.SetValue(localExpertId * context.worldSize + rankIdx,
+        scratch.cumsumInfoTensor.SetValue(localExpertId * worldSize + rankIdx,
             static_cast<int32_t>(scratch.cumsumRevCntInRank));
     }
 
     scratch.expertTokenCntTensor.SetValue(0, sendCnt);
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID2>();
-    uint64_t countOffset = localExpertId * INT32_PER_256B * context.countWorkspace.blockNum +
-        INT32_PER_256B * context.countWorkspace.blockIdx;
+    uint64_t countOffset = localExpertId * INT32_PER_256B * countBlockNum +
+        INT32_PER_256B * countBlockIdx;
     DataCopy<int32_t>(scratch.expertRevNumsGlobalTensor[countOffset],
         scratch.expertTokenCntTensor, INT32_PER_256B);
     if constexpr (EnableA8W4) {
         DataCopyPad(scratch.cumsumInfoGlobalTensor, scratch.cumsumInfoTensor,
-            {1U, static_cast<uint32_t>(context.worldSize * (localExpertId + 1) * sizeof(int32_t)), 0U, 0U, 0U});
+            {1U, static_cast<uint32_t>(worldSize * (localExpertId + 1) * sizeof(int32_t)), 0U, 0U, 0U});
     }
     PipeBarrier<PIPE_ALL>();
 
     __gm__ int32_t *sendCntFlag = reinterpret_cast<__gm__ int32_t *>(
         args.sendCntFlagPtr) +
-        static_cast<uint64_t>(localExpertId) * context.countWorkspace.blockNum * INT_CACHELINE +
-        static_cast<uint64_t>(context.countWorkspace.blockIdx) * INT_CACHELINE;
+        static_cast<uint64_t>(localExpertId) * countBlockNum * INT_CACHELINE +
+        static_cast<uint64_t>(countBlockIdx) * INT_CACHELINE;
     AscendC::AtomicAdd(sendCntFlag, static_cast<int32_t>(1));
 }
 
 // Prototype: MegaMoe::CopyGMToGMPerToken. Copies one dispatch shard and emits its triple metadata.
-template <typename ActivationType, typename QuantScaleType, typename BlockEpilogue>
+template <typename ActivationType, typename QuantScaleType>
 __aicore__ inline void CopyDispatchTokensOneCore(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
+    const DispatchGmm1SwigluArgs &args,
     DispatchGmm1SwigluScratch<ActivationType> &scratch,
     int32_t rowDstOffset, int32_t remoteRankIdx, int32_t copyStartIdx, int32_t copyNum)
 {
@@ -233,14 +240,17 @@ __aicore__ inline void CopyDispatchTokensOneCore(
         return;
     }
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
-    int32_t bufferCount = bufferConfig.bufferCount;
-    uint32_t copyBufferElementCount = bufferConfig.copyBufferBytes / sizeof(ActivationType);
+    const int32_t bufferCount = bufferConfig.bufferCount;
+    const uint32_t copyBufferElementCount = bufferConfig.copyBufferBytes / sizeof(ActivationType);
+    const uint32_t tokenHiddenDim = context.tokenHiddenDim;
+    const int32_t topK = static_cast<int32_t>(context.topK);
+    const uint32_t quantTokenAlignBytes = context.quantTokenAlignBytes;
+    const uint32_t copyInNum = context.quantTokenScaleAlignBytes;
     constexpr uint32_t activationElemsPerByte = Std::IsSame<ActivationType, uint8_t>::value ? 2U : 1U;
-    int64_t widthA = context.tokenHiddenDim / activationElemsPerByte;
+    int64_t widthA = tokenHiddenDim / activationElemsPerByte;
     int64_t widthAScale = Ops::Base::CeilDiv(
-        static_cast<int64_t>(context.tokenHiddenDim), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
+        static_cast<int64_t>(tokenHiddenDim), static_cast<int64_t>(MXFP_DIVISOR_SIZE)) *
         MXFP_MULTI_BASE_SIZE;
-    uint32_t copyInNum = context.quantTokenScaleAlignBytes;
 
     GlobalTensor<ActivationType> remoteRankGlobalTensor;
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
@@ -259,7 +269,7 @@ __aicore__ inline void CopyDispatchTokensOneCore(
     int32_t primeCount = copyNum < bufferCount ? copyNum : bufferCount;
     for (int32_t primeIdx = 0; primeIdx < primeCount; ++primeIdx) {
         int32_t topkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + primeIdx);
-        int32_t tokenIndex = topkIndex / static_cast<int32_t>(context.topK);
+        int32_t tokenIndex = topkIndex / topK;
         uint64_t remoteOffset = static_cast<uint64_t>(tokenIndex) * copyInNum;
         TEventID eventId = static_cast<TEventID>(primeIdx);
         LocalTensor<ActivationType> copyBuffer =
@@ -269,7 +279,7 @@ __aicore__ inline void CopyDispatchTokensOneCore(
         scratch.tripleTensor[primeIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
         scratch.tripleTensor[primeIdx * INT32_PER_256B].SetValue(TOKEN_ID, tokenIndex);
         scratch.tripleTensor[primeIdx * INT32_PER_256B].SetValue(TOPK_INDEX,
-            topkIndex % static_cast<int32_t>(context.topK));
+            topkIndex % topK);
         SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
     }
 
@@ -280,7 +290,7 @@ __aicore__ inline void CopyDispatchTokensOneCore(
         LocalTensor<ActivationType> tokenScaleBuffer =
             scratch.copyTmpTensor[bufferIdx * copyBufferElementCount];
         LocalTensor<QuantScaleType> scaleBuffer = tokenScaleBuffer[
-            context.quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
+            quantTokenAlignBytes].template ReinterpretCast<QuantScaleType>();
         DataCopyPad(tokenRevGlobalTensor[copyIdx * widthA], tokenScaleBuffer,
             {1, static_cast<uint16_t>(widthA * sizeof(ActivationType)), 0U, 0U, 0U});
         DataCopyPad(scaleRevGlobalTensor[copyIdx * widthAScale], scaleBuffer,
@@ -294,7 +304,7 @@ __aicore__ inline void CopyDispatchTokensOneCore(
         int32_t nextIdx = copyIdx + bufferCount;
         if (nextIdx < copyNum) {
             int32_t nextTopkIndex = scratch.validTopkIndexTensor.GetValue(copyStartIdx + nextIdx);
-            int32_t nextTokenIndex = nextTopkIndex / static_cast<int32_t>(context.topK);
+            int32_t nextTokenIndex = nextTopkIndex / topK;
             uint64_t remoteOffset = static_cast<uint64_t>(nextTokenIndex) * copyInNum;
             WaitFlag<AscendC::HardEvent::MTE3_MTE2>(eventId);
             DataCopy(tokenScaleBuffer, remoteRankGlobalTensor[remoteOffset], copyInNum);
@@ -303,7 +313,7 @@ __aicore__ inline void CopyDispatchTokensOneCore(
             scratch.tripleTensor[bufferIdx * INT32_PER_256B].SetValue(RANK_ID, remoteRankIdx);
             scratch.tripleTensor[bufferIdx * INT32_PER_256B].SetValue(TOKEN_ID, nextTokenIndex);
             scratch.tripleTensor[bufferIdx * INT32_PER_256B].SetValue(TOPK_INDEX,
-                nextTopkIndex % static_cast<int32_t>(context.topK));
+                nextTopkIndex % topK);
             SetFlag<AscendC::HardEvent::S_MTE3>(eventId);
         }
     }
@@ -315,40 +325,51 @@ __aicore__ inline void CopyDispatchTokensOneCore(
 }
 
 // Prototype: MegaMoe::TripleInfoCalAndDispatch. Scans route batches and dispatches one block's token shards.
-template <typename ActivationType, typename QuantScaleType, typename BlockEpilogue>
+template <typename ActivationType, typename QuantScaleType>
 __aicore__ inline void DispatchTokensOneCore(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
+    const DispatchGmm1SwigluArgs &args,
     DispatchGmm1SwigluScratch<ActivationType> &scratch,
     uint32_t localExpertId)
 {
     constexpr int32_t gmm1WaveRowCount = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
     const MegaMoeDispatchBufferConfig &bufferConfig = context.bufferConfig;
+    const int32_t routeItemsPerBatch = bufferConfig.routeItemsPerBatch;
+    const int32_t routeBatchCount = bufferConfig.routeBatchCount;
+    const uint32_t worldSize = context.worldSize;
+    const uint32_t blockNumPerRank = context.blockNumPerRank;
+    const uint32_t threadBlockIdx = context.threadBlock.threadBlockIdx;
+    const uint32_t threadBlockNum = context.threadBlock.threadBlockNum;
+    const uint64_t maxOutputSize = context.maxOutputSize;
+    const uint64_t sendTotalNum = context.sendTotalNum;
+    const uint32_t maskAlignSize = context.maskAlignSize;
+    const uint32_t maskSlotSize = context.maskSlotSize;
+    GM_ADDR maskRecvPtr = args.maskRecvPtr;
     int32_t expertGlobalRowBegin = localExpertId == 0 ? 0 :
-        scratch.cumsumInfoTensor.GetValue(localExpertId * context.worldSize - 1);
+        scratch.cumsumInfoTensor.GetValue(localExpertId * worldSize - 1);
     __gm__ int32_t *dispatchToGmm1Flag = reinterpret_cast<__gm__ int32_t *>(
         args.dispatchToGmm1FlagPtr) +
         static_cast<uint64_t>(localExpertId) * context.dispatchFlagSlotsPerExpert;
 
-    for (uint32_t dispatchShardIdx = context.threadBlock.threadBlockIdx;
-        dispatchShardIdx < context.worldSize * context.blockNumPerRank;
-        dispatchShardIdx += context.threadBlock.threadBlockNum) {
-        uint32_t remoteRankIdx = dispatchShardIdx / context.blockNumPerRank;
-        uint32_t rankShardIdx = dispatchShardIdx % context.blockNumPerRank;
+    for (uint32_t dispatchShardIdx = threadBlockIdx;
+        dispatchShardIdx < worldSize * blockNumPerRank;
+        dispatchShardIdx += threadBlockNum) {
+        uint32_t remoteRankIdx = dispatchShardIdx / blockNumPerRank;
+        uint32_t rankShardIdx = dispatchShardIdx % blockNumPerRank;
         uint32_t rankSegmentDstRowBegin = (remoteRankIdx == 0 && localExpertId == 0) ? 0 :
-            scratch.cumsumInfoTensor.GetValue(localExpertId * context.worldSize + remoteRankIdx - 1);
+            scratch.cumsumInfoTensor.GetValue(localExpertId * worldSize + remoteRankIdx - 1);
 
         int32_t coreMatchOrdinalBegin = 0;
         int32_t coreMatchOrdinalEnd = 0;
         int32_t coreDstRowBegin = 0;
-        if (rankSegmentDstRowBegin < context.maxOutputSize) {
+        if (rankSegmentDstRowBegin < maxOutputSize) {
             int32_t rankTokenCount =
-                scratch.cumsumInfoTensor.GetValue(localExpertId * context.worldSize + remoteRankIdx) -
+                scratch.cumsumInfoTensor.GetValue(localExpertId * worldSize + remoteRankIdx) -
                 static_cast<int32_t>(rankSegmentDstRowBegin);
-            int32_t rankDispatchRowCount = rankSegmentDstRowBegin + rankTokenCount > context.maxOutputSize ?
-                static_cast<int32_t>(context.maxOutputSize - rankSegmentDstRowBegin) : rankTokenCount;
+            int32_t rankDispatchRowCount = rankSegmentDstRowBegin + rankTokenCount > maxOutputSize ?
+                static_cast<int32_t>(maxOutputSize - rankSegmentDstRowBegin) : rankTokenCount;
             int32_t rowsPerRankShard = Ops::Base::CeilDiv(
-                rankDispatchRowCount, static_cast<int32_t>(context.blockNumPerRank));
+                rankDispatchRowCount, static_cast<int32_t>(blockNumPerRank));
             int32_t rankShardRowBegin = static_cast<int32_t>(rankShardIdx) * rowsPerRankShard;
             coreDstRowBegin = static_cast<int32_t>(rankSegmentDstRowBegin) + rankShardRowBegin;
             int32_t coreDispatchRowCount =
@@ -365,25 +386,25 @@ __aicore__ inline void DispatchTokensOneCore(
         int32_t matchedRouteCount = 0;
         int32_t dispatchedRowCount = 0;
         for (int32_t batchIdx = 0;
-            batchIdx < bufferConfig.routeBatchCount && matchedRouteCount < coreMatchOrdinalEnd; ++batchIdx) {
-            int32_t batchRouteBegin = batchIdx * bufferConfig.routeItemsPerBatch;
-            bool isLastBatch = batchIdx == bufferConfig.routeBatchCount - 1;
-            int32_t validRouteCount = bufferConfig.routeItemsPerBatch;
-            int32_t maskSliceBytes = bufferConfig.routeItemsPerBatch / 8;
+            batchIdx < routeBatchCount && matchedRouteCount < coreMatchOrdinalEnd; ++batchIdx) {
+            int32_t batchRouteBegin = batchIdx * routeItemsPerBatch;
+            bool isLastBatch = batchIdx == routeBatchCount - 1;
+            int32_t validRouteCount = routeItemsPerBatch;
+            int32_t maskSliceBytes = routeItemsPerBatch / 8;
             if (isLastBatch) {
                 validRouteCount = static_cast<int32_t>(
-                    context.sendTotalNum - static_cast<uint64_t>(batchRouteBegin));
-                if (batchRouteBegin / 8 + maskSliceBytes > static_cast<int32_t>(context.maskAlignSize)) {
-                    maskSliceBytes = static_cast<int32_t>(context.maskAlignSize) - batchRouteBegin / 8;
+                    sendTotalNum - static_cast<uint64_t>(batchRouteBegin));
+                if (batchRouteBegin / 8 + maskSliceBytes > static_cast<int32_t>(maskAlignSize)) {
+                    maskSliceBytes = static_cast<int32_t>(maskAlignSize) - batchRouteBegin / 8;
                 }
             }
             remoteRankMaskGlobal.SetGlobalBuffer(reinterpret_cast<__gm__ uint8_t *>(
-                args.maskRecvPtr +
-                (static_cast<uint64_t>(localExpertId) * context.worldSize + remoteRankIdx) * context.maskSlotSize +
+                maskRecvPtr +
+                (static_cast<uint64_t>(localExpertId) * worldSize + remoteRankIdx) * maskSlotSize +
                 static_cast<uint64_t>(batchRouteBegin / 8)));
             DataCopy(scratch.maskBatchTensor, remoteRankMaskGlobal, static_cast<uint32_t>(maskSliceBytes));
             SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-            CreateVecIndex(scratch.topkIndexTensor, batchRouteBegin, bufferConfig.routeItemsPerBatch);
+            CreateVecIndex(scratch.topkIndexTensor, batchRouteBegin, routeItemsPerBatch);
             uint64_t batchMatchedRouteCount = 0;
             GatherMask(scratch.validTopkIndexTensor, scratch.topkIndexTensor, scratch.maskBatchU32Tensor, true,
                 static_cast<uint32_t>(validRouteCount), {1, 1, 0, 0}, batchMatchedRouteCount);
