@@ -16,7 +16,14 @@ from typing import Optional
 
 import torch
 
-import cann_ops_transformer  # noqa: F401 - registers torch.ops namespace
+_CANN_OPS_LOADED = False
+
+
+def _ensure_cann_ops():
+    global _CANN_OPS_LOADED
+    if not _CANN_OPS_LOADED:
+        import cann_ops_transformer  # noqa: F401 - registers torch.ops namespace
+        _CANN_OPS_LOADED = True
 
 
 class QuantBlockSparseAttnMetadataBuilder:
@@ -48,6 +55,7 @@ class QuantBlockSparseAttnMetadataBuilder:
               block_table=None, softmax_scale=1.0, sparse_q_block_size=128,
               sparse_kv_block_size=128, layout_q="BSND", layout_kv="PA_BNSD",
               mask_mode=3, quant_mode=1):
+        _ensure_cann_ops()
         metadata = torch.ops.cann_ops_transformer.quant_block_sparse_attn_metadata(
             num_heads_q=int(query.shape[2] if query.dim() == 4 else query.shape[1]),
             num_heads_kv=int(key.shape[2] if key.dim() == 4 else key.shape[1]),
@@ -105,6 +113,7 @@ def quant_block_sparse_attn(
     return_softmax_lse: bool = False,
 ):
     """Compute metadata first, then call cann_ops_transformer.quant_block_sparse_attn."""
+    _ensure_cann_ops()
     if metadata is None:
         metadata = QuantBlockSparseAttnMetadataBuilder.build(
             query, key, value, q_descale, k_descale, v_descale, p_scale,
