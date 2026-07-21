@@ -156,7 +156,7 @@ ge::graphStatus FaTilingShape::CheckHasAxis(const FaAxis &axis, const std::strin
     if ((axis == FaAxis::D)) {
         if (HasShapeD()) {
             return ge::GRAPH_SUCCESS;
-        }        
+        }
         std::string reason = "[" + funcName + "] Axis D or (D1, D0) cannot be empty when layout of " +
             name_ + " is " + LayoutToSerialString(layout_);
         OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, name_.c_str(), reason.c_str());
