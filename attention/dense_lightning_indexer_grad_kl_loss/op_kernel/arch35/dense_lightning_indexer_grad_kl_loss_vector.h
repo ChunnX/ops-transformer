@@ -70,11 +70,12 @@ public:
     __aicore__ inline void ProcessVector1(DLIGradKLLossRunInfo &runInfo);
     __aicore__ inline void CastOutWeightGrad(DLIGradKLLossRunInfo &runInfo);
     __aicore__ inline void CastOutQIndexGrad(DLIGradKLLossRunInfo &runInfo);
-    __aicore__ inline void DeterAddKIndexGrad(DLIGradKLLossRunInfo &runInfo);
+    __aicore__ inline void DeterAddKIndexGrad();
     __aicore__ inline void FreeEventID();
     __aicore__ inline void SaveDeterRunInfo(const DLIGradKLLossRunInfo &info);
-    __aicore__ inline void SaveDeterRunInfoInvalid();
-    __aicore__ inline void GetDeterRunInfo(int64_t aicIdx);
+    __aicore__ inline void SaveDeterRunInfoInvalid(int64_t taskId);
+    __aicore__ inline void SaveDeterTaskLoss(const DLIGradKLLossRunInfo &info);
+    __aicore__ inline void GetDeterRunInfo(int64_t aicIdx, int64_t taskId);
 
 private:
     __aicore__ inline void PreloadWeight(DLIGradKLLossRunInfo &runInfo, uint32_t s1InnerIdx, uint32_t curS1InnerSize,
@@ -167,6 +168,7 @@ private:
     // deter 相关
     LocalTensor<int64_t> deterCoreInfoUb_;
     LocalTensor<int64_t> deterCoreInfoUbConsumer_;
+    float deterLossAcc_ = 0.0f;
 
     event_t eventIdMte2ToV4P;
     event_t eventIdVToMte34P;
@@ -752,7 +754,6 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorLoss(DLIGradKLLossRun
 
     SetFlag<HardEvent::MTE2_V>(mte2ToV);
     WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-
     AscendC::Maxs<T>(tmpResultUb_, reduceSumPUb_, MIN_VALUE, calcCount);
     PipeBarrier<PIPE_V>();
     AscendC::Maxs<T>(reduceSumYUb_, reduceSumYUb_, MIN_VALUE, calcCount);
@@ -779,21 +780,24 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorLoss(DLIGradKLLossRun
             PipeBarrier<PIPE_V>();
         }
     }
-
     AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(vToMte3);
     AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(vToMte3);
 
-    AscendC::SetAtomicAdd<float>();
     if constexpr(deterministic) {
-        AscendC::DataCopyPad(lossGmDeterFloat[constInfo.aivIdx], reduceSumResTensor_,
-                    {static_cast<uint32_t>(1), static_cast<uint32_t>(sizeof(float)),
-                    static_cast<uint32_t>(0), static_cast<uint32_t>(0)});
+        // One logical task may contain multiple s1Inner chunks. Accumulate
+        // the chunk results and write the task result once in ProcessVector1.
+        event_t vToScalar =
+            static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+        AscendC::SetFlag<HardEvent::V_S>(vToScalar);
+        AscendC::WaitFlag<HardEvent::V_S>(vToScalar);
+        deterLossAcc_ += reduceSumResTensor_.GetValue(0);
     } else {
+        AscendC::SetAtomicAdd<float>();
         AscendC::DataCopyPad(lossGm, reduceSumResTensor_,
                             {static_cast<uint32_t>(1), static_cast<uint32_t>(sizeof(float)),
                             static_cast<uint32_t>(0), static_cast<uint32_t>(0)});
+        SetAtomicNone();
     }
-    SetAtomicNone();
 
     GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::V_MTE2>(vToMte2);
     GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE2_V>(mte2ToV);
@@ -917,7 +921,15 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::ProcessVector1(DLIGradKLLos
 {
 
     if (runInfo.curS1SizeVec == 0) {
+        if constexpr(deterministic) {
+            deterLossAcc_ = 0.0f;
+            SaveDeterTaskLoss(runInfo);
+        }
         return;
+    }
+
+    if constexpr(deterministic) {
+        deterLossAcc_ = 0.0f;
     }
 
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIdMTE3ToVTmp);
@@ -955,6 +967,36 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::ProcessVector1(DLIGradKLLos
 
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(eventIdMTE3ToVTmp);
     AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID5);
+
+    if constexpr(deterministic) {
+        SaveDeterTaskLoss(runInfo);
+    }
+}
+
+template <typename DLIT>
+__aicore__ inline void DLIKLLossVectorService<DLIT>::SaveDeterTaskLoss(
+    const DLIGradKLLossRunInfo &info)
+{
+    reduceSumResTensor_.SetValue(0, deterLossAcc_);
+    DataCopyExtParams lossCopyParams = {
+        static_cast<uint16_t>(1),
+        static_cast<uint32_t>(sizeof(float)),
+        static_cast<uint32_t>(0),
+        static_cast<uint32_t>(0),
+        static_cast<uint32_t>(0)};
+    event_t scalarToMte3 =
+        static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
+    AscendC::SetFlag<HardEvent::S_MTE3>(scalarToMte3);
+    AscendC::WaitFlag<HardEvent::S_MTE3>(scalarToMte3);
+    AscendC::DataCopyPad(
+        lossGmDeterFloat[
+            (constInfo.aivIdx * constInfo.maxLoopSize + info.taskId) *
+            optiling::DETER_LOSS_TMP_GM_NUM],
+        reduceSumResTensor_, lossCopyParams);
+    event_t mte3ToScalar =
+        static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_S));
+    AscendC::SetFlag<HardEvent::MTE3_S>(mte3ToScalar);
+    AscendC::WaitFlag<HardEvent::MTE3_S>(mte3ToScalar);
 }
 
 template <typename DLIT>
@@ -1038,105 +1080,123 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::CastOutQIndexGrad(DLIGradKL
 }
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVectorService<DLIT>::DeterAddKIndexGrad(DLIGradKLLossRunInfo &runInfo)
+__aicore__ inline void DLIKLLossVectorService<DLIT>::DeterAddKIndexGrad()
 {
-    for (int aicIdx = 0; aicIdx < constInfo.aicNum; aicIdx++) {
-        GetDeterRunInfo(aicIdx);
-        int64_t bIdx = deterCoreInfoUbConsumer_.GetValue(0);
-        int64_t s2StartIdx = deterCoreInfoUbConsumer_.GetValue(1);
-        int64_t curS2Size = deterCoreInfoUbConsumer_.GetValue(2);
-        if (bIdx < 0 || s2StartIdx < 0 || curS2Size <= 0) {
-            continue;
-        }
-        int64_t totalSize = curS2Size * constInfo.n2IndexSize * constInfo.dSizeQueryIndex;
-        int64_t useCoreNum = constInfo.aivNum;
-        int64_t splitLine =  CeilDiv(S2_BASE_STEP, useCoreNum);
-
-        useCoreNum = Min(constInfo.aivNum, CeilDiv(curS2Size, splitLine));
-        if (constInfo.aivIdx >= useCoreNum) {
-            continue;
-        }
-
-        int64_t srcGmOffset = aicIdx * constInfo.dKeyDeterGmLength +
-                            constInfo.aivIdx * splitLine * constInfo.n2IndexSize * constInfo.dSizeQueryIndex;
-        GlobalTensor<T> srcGm = dKeyIndexDeterGmFloat[srcGmOffset];
-
-        int64_t dstGmOffset = s2StartIdx * constInfo.n2IndexSize * constInfo.dSizeQueryIndex +
-                            constInfo.aivIdx * splitLine * constInfo.n2IndexSize * constInfo.dSizeQueryIndex;
-        GlobalTensor<T> dstGm = dKeyIndexGmFloat[dstGmOffset];
-
-        int64_t perCoreS2Line =  Min(splitLine, curS2Size - constInfo.aivIdx * splitLine);
-        if (perCoreS2Line <= 0) {
-            continue;
-        }
-        int64_t onelineSize = constInfo.dSizeQueryIndex * sizeof(float);
-        int64_t linesOneLoop = DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_8K / onelineSize;
-        uint32_t loopTimes = CeilDiv(perCoreS2Line, linesOneLoop);
-        if (constInfo.aivIdx == 0 && aicIdx == 0 && loopTimes > 0) {
-            AscendC::printf("DLI_DETER_AIV aiv=%u aic=%d src=%ld dst=%ld split=%ld lines=%ld\n",
-                            constInfo.aivIdx, aicIdx, srcGmOffset, dstGmOffset, splitLine,
-                            perCoreS2Line);
-        }
-
-        event_t eventId = EVENT_ID0;
-        int32_t pingPongFlag = 0;
-
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
-        for (int64_t loopIdx = 0; loopIdx < loopTimes; loopIdx++) {
-            int64_t dKeyGmOffsetCur = loopIdx * linesOneLoop * constInfo.n2IndexSize * constInfo.dSizeQueryIndex;
-            int64_t processNum = linesOneLoop * constInfo.n2IndexSize * constInfo.dSizeQueryIndex;
-            if (loopIdx == loopTimes - 1) {
-                processNum = (perCoreS2Line - loopIdx * linesOneLoop) * constInfo.n2IndexSize * constInfo.dSizeQueryIndex;
+    // Merge every producer task in a fixed (task, AIC) order.  The old
+    // implementation merged the current local task from every AIC, which is
+    // not a common logical task when TND work is imbalanced.
+    for (int64_t taskId = 0; taskId < constInfo.maxLoopSize; ++taskId) {
+        for (int64_t aicIdx = 0; aicIdx < constInfo.aicNum; ++aicIdx) {
+            GetDeterRunInfo(aicIdx, taskId);
+            int64_t bIdx = deterCoreInfoUbConsumer_.GetValue(0);
+            int64_t s2StartIdx = deterCoreInfoUbConsumer_.GetValue(1);
+            int64_t curS2Size = deterCoreInfoUbConsumer_.GetValue(2);
+            if (bIdx < 0 || s2StartIdx < 0 || curS2Size <= 0) {
+                continue;
             }
-            eventId = pingPongFlag ? EVENT_ID1 : EVENT_ID0;
-            LocalTensor<T> dKeyIndexUbIn = pingPongFlag ? ubInPong_ : ubInPing_;
-
-            WaitFlag<HardEvent::MTE3_MTE2>(eventId);
-            AscendC::DataCopy(dKeyIndexUbIn, srcGm[dKeyGmOffsetCur], processNum);
-            SetFlag<HardEvent::MTE2_MTE3>(eventId);
-
-            WaitFlag<HardEvent::MTE2_MTE3>(eventId);
-            if (constInfo.aivIdx == 0 && aicIdx == 0 && loopIdx == 0) {
-                AscendC::DumpTensor(dKeyIndexUbIn, 3650, 64);
+            int64_t splitLine = CeilDiv(static_cast<int64_t>(S2_BASE_STEP),
+                                        static_cast<int64_t>(constInfo.aivNum));
+            int64_t useCoreNum = Min(static_cast<int64_t>(constInfo.aivNum),
+                                     CeilDiv(curS2Size, splitLine));
+            if (constInfo.aivIdx >= useCoreNum) {
+                continue;
             }
-            AscendC::SetAtomicAdd<T>();
-            AscendC::DataCopy(dstGm[dKeyGmOffsetCur], dKeyIndexUbIn, processNum);
-            SetAtomicNone();
-            SetFlag<HardEvent::MTE3_MTE2>(eventId);
 
-            pingPongFlag = 1 - pingPongFlag;
+            int64_t srcGmOffset = aicIdx * constInfo.maxLoopSize * constInfo.dKeyDeterGmLength +
+                                  taskId * constInfo.dKeyDeterGmLength +
+                                  constInfo.aivIdx * splitLine * constInfo.n2IndexSize *
+                                      constInfo.dSizeQueryIndex;
+            int64_t dstGmOffset = s2StartIdx * constInfo.n2IndexSize * constInfo.dSizeQueryIndex +
+                                  constInfo.aivIdx * splitLine * constInfo.n2IndexSize *
+                                      constInfo.dSizeQueryIndex;
+            int64_t perCoreS2Line = Min(splitLine, curS2Size - constInfo.aivIdx * splitLine);
+            if (perCoreS2Line <= 0) {
+                continue;
+            }
+
+            int64_t onelineSize = constInfo.dSizeQueryIndex * sizeof(float);
+            int64_t linesOneLoop = DLIGradKLLossConstInfo::BUFFER_SIZE_BYTE_8K / onelineSize;
+            uint32_t loopTimes = CeilDiv(perCoreS2Line, linesOneLoop);
+            event_t eventId = EVENT_ID0;
+            int32_t pingPongFlag = 0;
+            SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+            SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
+            for (int64_t loopIdx = 0; loopIdx < loopTimes; ++loopIdx) {
+                eventId = pingPongFlag ? EVENT_ID1 : EVENT_ID0;
+                int64_t lineOffset = loopIdx * linesOneLoop;
+                int64_t processLines = Min(linesOneLoop, perCoreS2Line - lineOffset);
+                int64_t processNum = processLines * constInfo.n2IndexSize * constInfo.dSizeQueryIndex;
+                LocalTensor<T> dKeyIndexUbIn = pingPongFlag ? ubInPong_ : ubInPing_;
+                WaitFlag<HardEvent::MTE3_MTE2>(eventId);
+                DataCopy(dKeyIndexUbIn, dKeyIndexDeterGmFloat[srcGmOffset +
+                    lineOffset * constInfo.n2IndexSize * constInfo.dSizeQueryIndex], processNum);
+                SetFlag<HardEvent::MTE2_MTE3>(eventId);
+                WaitFlag<HardEvent::MTE2_MTE3>(eventId);
+                SetAtomicAdd<T>();
+                DataCopy(dKeyIndexGmFloat[dstGmOffset +
+                    lineOffset * constInfo.n2IndexSize * constInfo.dSizeQueryIndex], dKeyIndexUbIn, processNum);
+                PipeBarrier<PIPE_MTE3>();
+                SetAtomicNone();
+                SetFlag<HardEvent::MTE3_MTE2>(eventId);
+                pingPongFlag = 1 - pingPongFlag;
+            }
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
+            WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
         }
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
     }
 }
 
 template <typename DLIT>
 __aicore__ inline void DLIKLLossVectorService<DLIT>::SaveDeterRunInfo(const DLIGradKLLossRunInfo &info)
 {
+    event_t mte3ToScalar = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_S));
+    AscendC::SetFlag<HardEvent::MTE3_S>(mte3ToScalar);
+    AscendC::WaitFlag<HardEvent::MTE3_S>(mte3ToScalar);
+
     deterCoreInfoUb_.SetValue(0, info.bIdx);
     deterCoreInfoUb_.SetValue(1, info.accumS2Idx);
     deterCoreInfoUb_.SetValue(2, static_cast<int64_t>(info.curS2StepSize));
+    deterCoreInfoUb_.SetValue(3, info.accumS1Idx);
+    deterCoreInfoUb_.SetValue(4, static_cast<int64_t>(info.curS1Size));
+    deterCoreInfoUb_.SetValue(5, static_cast<int64_t>(info.taskId));
 
-    DataCopy(deterCoreInfoGm[constInfo.aicIdx * 16], deterCoreInfoUb_, 4);
+    event_t scalarToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
+    AscendC::SetFlag<HardEvent::S_MTE3>(scalarToMte3);
+    AscendC::WaitFlag<HardEvent::S_MTE3>(scalarToMte3);
+    DataCopy(deterCoreInfoGm[(constInfo.aicIdx * constInfo.maxLoopSize + info.taskId) *
+                                  optiling::DETER_CORE_INFO_TMP_GM_NUM], deterCoreInfoUb_, 8);
+    AscendC::PipeBarrier<PIPE_MTE3>();
 }
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVectorService<DLIT>::SaveDeterRunInfoInvalid()
+__aicore__ inline void DLIKLLossVectorService<DLIT>::SaveDeterRunInfoInvalid(int64_t taskId)
 {
+    event_t mte3ToScalar = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_S));
+    AscendC::SetFlag<HardEvent::MTE3_S>(mte3ToScalar);
+    AscendC::WaitFlag<HardEvent::MTE3_S>(mte3ToScalar);
+
     deterCoreInfoUb_.SetValue(0, DETER_INVALID_RUNINFO_VALUE);
     deterCoreInfoUb_.SetValue(1, DETER_INVALID_RUNINFO_VALUE);
     deterCoreInfoUb_.SetValue(2, DETER_INVALID_RUNINFO_VALUE);
+    deterCoreInfoUb_.SetValue(3, DETER_INVALID_RUNINFO_VALUE);
+    deterCoreInfoUb_.SetValue(4, DETER_INVALID_RUNINFO_VALUE);
+    deterCoreInfoUb_.SetValue(5, DETER_INVALID_RUNINFO_VALUE);
 
-    DataCopy(deterCoreInfoGm[constInfo.aicIdx * 16], deterCoreInfoUb_, (uint32_t)4);
+    event_t scalarToMte3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
+    AscendC::SetFlag<HardEvent::S_MTE3>(scalarToMte3);
+    AscendC::WaitFlag<HardEvent::S_MTE3>(scalarToMte3);
+    DataCopy(deterCoreInfoGm[(constInfo.aicIdx * constInfo.maxLoopSize + taskId) *
+                                  optiling::DETER_CORE_INFO_TMP_GM_NUM], deterCoreInfoUb_, (uint32_t)8);
+    AscendC::PipeBarrier<PIPE_MTE3>();
 }
 
 template <typename DLIT>
-__aicore__ inline void DLIKLLossVectorService<DLIT>::GetDeterRunInfo(int64_t aicIdx)
+__aicore__ inline void DLIKLLossVectorService<DLIT>::GetDeterRunInfo(int64_t aicIdx, int64_t taskId)
 {
     event_t mte2ToS = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_S>());
-    AscendC::DataCopy(deterCoreInfoUbConsumer_, deterCoreInfoGm[aicIdx * 16], (uint32_t)4);
+    AscendC::DataCopy(deterCoreInfoUbConsumer_,
+        deterCoreInfoGm[(aicIdx * constInfo.maxLoopSize + taskId) *
+                        optiling::DETER_CORE_INFO_TMP_GM_NUM], (uint32_t)8);
     AscendC::SetFlag<AscendC::HardEvent::MTE2_S>(mte2ToS);
     AscendC::WaitFlag<AscendC::HardEvent::MTE2_S>(mte2ToS);
     GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE2_S>(mte2ToS);

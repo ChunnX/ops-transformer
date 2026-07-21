@@ -35,6 +35,7 @@ public:
     using OUT_T = typename DLIT::outputT;
     using MM3_OUT_T = T;
     using MM4_OUT_T = T;
+    using INFO_INT_64_T = int64_t;
 
     DLIGradKLLossConstInfo constInfo;
     const optiling::DenseLightningIndexerGradKLLossTilingData *__restrict tilingData;
@@ -46,7 +47,9 @@ public:
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitVector2GM(const GlobalTensor<MM3_OUT_T>& dKeyIndexGmIn,
                                          const GlobalTensor<OUT_T>& dKeyIndexGmOut);
-    __aicore__ inline void InitVector2DeterGM(const GlobalTensor<T>& lossGm, const GlobalTensor<T>& lossDeterGmFloat);
+    __aicore__ inline void InitVector2DeterGM(const GlobalTensor<T>& lossGm,
+        const GlobalTensor<T>& lossDeterGmFloat,
+        const GlobalTensor<INFO_INT_64_T>& deterCoreInfoGm);
     __aicore__ inline void ProcessVectorDk();
     __aicore__ inline void DeterSumLoss();
 
@@ -56,6 +59,7 @@ private:
     GlobalTensor<OUT_T> dKeyIndexGmOut;
     GlobalTensor<T> lossGm;
     GlobalTensor<T> lossDeterGmFloat;
+    GlobalTensor<INFO_INT_64_T> deterCoreInfoGm;
 
     LocalTensor<MM4_OUT_T> ubInFloatPing_;
     LocalTensor<OUT_T> ubOutHalfPing_;
@@ -65,6 +69,7 @@ private:
     // deter 相关
     LocalTensor<T> ubLossIn_;
     LocalTensor<T> ubLossOut_;
+    LocalTensor<INFO_INT_64_T> ubCoreInfo_;
     LocalTensor<uint8_t> tmpUb_;
 
     event_t eventId = EVENT_ID0;
@@ -89,10 +94,12 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2GM(const Global
 
 template <typename DLIT>
 __aicore__ inline void DLIKLLossVector2Service<DLIT>::InitVector2DeterGM(const GlobalTensor<T>& lossGm,
-                                                                        const GlobalTensor<T>& lossDeterGmFloat)
+    const GlobalTensor<T>& lossDeterGmFloat,
+    const GlobalTensor<INFO_INT_64_T>& deterCoreInfoGm)
 {
     this->lossGm = lossGm;
     this->lossDeterGmFloat = lossDeterGmFloat;
+    this->deterCoreInfoGm = deterCoreInfoGm;
 }
 
 template <typename DLIT>
@@ -115,6 +122,7 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::InitBuffers(TPipe *pipe)
     // deter 相关
     ubLossIn_ = ubInFloatPing_;
     ubLossOut_ = ubInFloatPong_;
+    ubCoreInfo_ = ubOutHalfPing_.template ReinterpretCast<INFO_INT_64_T>();
     tmpUb_ =  ubOutHalfPong_.template ReinterpretCast<uint8_t>();
 }
 
@@ -171,45 +179,61 @@ template <typename DLIT>
 __aicore__ inline void DLIKLLossVector2Service<DLIT>::DeterSumLoss()
 {
     if (constInfo.aivIdx == 0) {
-        event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
-        event_t vToMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
-        event_t mte3ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
+        constexpr int64_t LOSS_TASKS_PER_CHUNK = 256;
+        float totalLoss = 0.0f;
+        for (int64_t aicIdx = 0; aicIdx < constInfo.aicNum; ++aicIdx) {
+            for (int64_t taskStart = 0; taskStart < constInfo.maxLoopSize;
+                 taskStart += LOSS_TASKS_PER_CHUNK) {
+                int64_t taskCount =
+                    Min(LOSS_TASKS_PER_CHUNK, constInfo.maxLoopSize - taskStart);
+                int64_t lossCount =
+                    taskCount * optiling::DETER_LOSS_TMP_GM_NUM;
+                int64_t coreInfoCount =
+                    taskCount * optiling::DETER_CORE_INFO_TMP_GM_NUM;
+                int64_t coreInfoOffset =
+                    (aicIdx * constInfo.maxLoopSize + taskStart) *
+                    optiling::DETER_CORE_INFO_TMP_GM_NUM;
+                int64_t lossOffset0 =
+                    (aicIdx * AIC_AIV_RATIO * constInfo.maxLoopSize + taskStart) *
+                    optiling::DETER_LOSS_TMP_GM_NUM;
+                int64_t lossOffset1 =
+                    ((aicIdx * AIC_AIV_RATIO + 1) * constInfo.maxLoopSize + taskStart) *
+                    optiling::DETER_LOSS_TMP_GM_NUM;
+                DataCopy(ubCoreInfo_, deterCoreInfoGm[coreInfoOffset], coreInfoCount);
+                DataCopy(ubLossIn_, lossDeterGmFloat[lossOffset0], lossCount);
+                DataCopy(ubLossOut_, lossDeterGmFloat[lossOffset1], lossCount);
+                event_t mte2ToScalar =
+                    static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
+                SetFlag<HardEvent::MTE2_S>(mte2ToScalar);
+                WaitFlag<HardEvent::MTE2_S>(mte2ToScalar);
+                for (int64_t i = 0; i < taskCount; ++i) {
+                    int64_t infoOffset =
+                        i * optiling::DETER_CORE_INFO_TMP_GM_NUM;
+                    if (ubCoreInfo_.GetValue(infoOffset) < 0) {
+                        continue;
+                    }
+                    int64_t lossOffset =
+                        i * optiling::DETER_LOSS_TMP_GM_NUM;
+                    float lossValue0 = ubLossIn_.GetValue(lossOffset);
+                    float lossValue1 = ubLossOut_.GetValue(lossOffset);
+                    totalLoss += lossValue0;
+                    totalLoss += lossValue1;
+                }
+            }
+        }
 
-        int64_t count = constInfo.aivNum;
-        int64_t countAlign = BlockAlign<T>(count);
-        SumParams sumParams;
-        sumParams.outter = 1;
-        sumParams.n = count;
-        sumParams.inner = countAlign;
-
-        DataCopyParams dataCopyParams;
-        DataCopyPadParams dataCopyPadParams;
-        dataCopyParams.blockCount = 1;
-        dataCopyParams.dstStride = 0;
-        dataCopyParams.srcStride = 0;
-        dataCopyParams.blockLen = count * sizeof(T);
-        dataCopyPadParams.rightPadding = countAlign - count;
-        dataCopyPadParams.paddingValue = 0;
-        DataCopyPad(ubLossIn_, lossDeterGmFloat, dataCopyParams, dataCopyPadParams);
-
-        SetFlag<HardEvent::MTE2_V>(mte2ToV);
-        WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-
-        AscendC::Sum(ubLossOut_, ubLossIn_, tmpUb_, sumParams);
-
-        SetFlag<HardEvent::V_MTE3>(vToMte3);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3);
-
+        ubLossOut_.SetValue(0, totalLoss);
+        event_t scalarToMte3 =
+            static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_MTE3));
+        SetFlag<HardEvent::S_MTE3>(scalarToMte3);
+        WaitFlag<HardEvent::S_MTE3>(scalarToMte3);
         AscendC::DataCopyPad(lossGm, ubLossOut_,
             {static_cast<uint32_t>(1), static_cast<uint32_t>(sizeof(float)),
             static_cast<uint32_t>(0), static_cast<uint32_t>(0)});
 
-        SetFlag<HardEvent::MTE3_V>(mte3ToV);
-        WaitFlag<HardEvent::MTE3_V>(mte3ToV);
-
-        GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE2_V>(mte2ToV);
-        GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::V_MTE3>(vToMte3);
-        GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_V>(mte3ToV);
+        event_t mte3ToScalar = static_cast<event_t>(GetTPipePtr()->FetchEventID<HardEvent::MTE3_S>());
+        SetFlag<HardEvent::MTE3_S>(mte3ToScalar);
+        WaitFlag<HardEvent::MTE3_S>(mte3ToScalar);
     }
 }
 
