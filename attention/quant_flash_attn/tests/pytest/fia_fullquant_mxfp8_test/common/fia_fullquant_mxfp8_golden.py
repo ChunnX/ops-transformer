@@ -48,8 +48,10 @@ logger = logging.getLogger(__name__)
 # ==============================================================================
 # 配置区
 # ==============================================================================
-# GRAPH_PATH: 0=单算子, 3=静态图, 5=动态图, 6=tiling下沉, 7=aclgraph
-GRAPH_PATH = 0
+# GRAPH_PATH: 0=单算子, 7=aclgraph
+# 优先从环境变量读取，支持 GRAPH_PATH=7 python3 -m pytest ...
+import os as _os
+GRAPH_PATH = int(_os.environ.get("GRAPH_PATH", "0"))
 B = 1
 N_q = 1           # query heads
 N_kv = 1           # kv heads
@@ -990,22 +992,50 @@ def _call_npu_fa_op(q, k, v, q_rope, k_rope, mask,
 
 
 class Network(nn.Module):
-    # Network 用于图模式 (GRAPH_PATH=3/5/6/7)，forward 直接调用算子
-    # QFA 不走 GE，图模式在当前接口下不可用
+    """aclgraph 编译目标: forward 只包含两个 torch.library op 调用。
+
+    输入已预处理:
+      - cu_seqlens_q/kv, seqused_q/kv: 由 mxfp8_fa_torch_npu 转好 NPU tensor
+      - q/k/v/deq_*: 已转好 layout 的 NPU tensor
+      - max_seqlen_q/kv: 已计算好的标量
+    """
     def __init__(self):
         super(Network, self).__init__()
 
     def forward(self, q, k, v, q_rope, k_rope, mask,
-                cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
+                cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv,
                 dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                 block_table, q_n, kv_n, softmax_scale,
-                layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype):
-        return _call_npu_fa_op(
-            q, k, v, q_rope, k_rope, mask,
-            cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
-            dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-            block_table, q_n, kv_n, softmax_scale,
-            layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype)
+                layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype,
+                max_seqlen_q, max_seqlen_kv):
+        metadata = quant_flash_attn_metadata(
+            num_heads_q=q_n, num_heads_kv=kv_n, head_dim=q.shape[-1], quant_mode=1,
+            cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv,
+            seqused_q=seqused_q, seqused_kv=seqused_kv,
+            dequant_scale_v=dequant_scale_v,
+            mask_mode=sparse_mode,
+            layout_q=layout_q, layout_q_descale=layout_q_descale, layout_kv=layout_kv, layout_out=layout_out,
+            max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
+        )
+        main_kwargs = dict(
+            q=q, k=k, v=v,
+            q_descale=dequant_scale_q, k_descale=dequant_scale_k, v_descale=dequant_scale_v,
+            quant_mode=1,
+            block_table=block_table,
+            p_scale=p_scale,
+            cu_seqlens_q=cu_seqlens_q,
+            cu_seqlens_kv=cu_seqlens_kv,
+            seqused_q=seqused_q, seqused_kv=seqused_kv,
+            attn_mask=mask,
+            metadata=metadata,
+            softmax_scale=softmax_scale,
+            mask_mode=sparse_mode,
+            layout_q=layout_q, layout_q_descale=layout_q_descale, layout_kv=layout_kv, layout_out=layout_out,
+            max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
+        )
+        main_kwargs.update(_get_npu_fa_kwargs())
+        atten_out, lse_out = quant_flash_attn(**main_kwargs)
+        return atten_out, lse_out
 
 
 def _build_causal_mask():
@@ -1187,8 +1217,9 @@ def npu_mxfp8_fa(q_fp8, k_fp8, v_fp8,
         block_table_torch=block_table_torch,
         qr_bf16=qr_bf16, kr_bf16=kr_bf16)
 
-    logger.info("[NPU] 调用 %s 模式...", "PA" if ENABLE_PA else inputs["layout_q"])
-    atten_out, lse_out = _call_npu_fa_op(**inputs)
+    logger.info("[NPU] 调用 %s 模式 (GRAPH_PATH=%d)...", "PA" if ENABLE_PA else inputs["layout_q"], GRAPH_PATH)
+    # 通过 mxfp8_fa_torch_npu 路由，支持 GRAPH_PATH=7 (aclgraph)
+    atten_out, lse_out = mxfp8_fa_torch_npu(**inputs)
 
     act_seqused_q = _get_seqused_q()
     npu_output = atten_out
@@ -1204,13 +1235,52 @@ def mxfp8_fa_torch_npu(q, k, v, q_rope, k_rope, mask,
                        dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
                        block_table, q_n, kv_n, softmax_scale,
                        layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype):
-    logger.info("[NPU] 调用 QFA 双算子模式...")
-    return _call_npu_fa_op(
-        q, k, v, q_rope, k_rope, mask,
-        cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
-        dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
-        block_table, q_n, kv_n, softmax_scale,
-        layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype)
+    """NPU 调用入口, 支持 GRAPH_PATH=0 (单算子) 和 GRAPH_PATH=7 (aclgraph)"""
+    if GRAPH_PATH == 0:
+        logger.info("[NPU] 调用 QFA 单算子模式...")
+        return _call_npu_fa_op(
+            q, k, v, q_rope, k_rope, mask,
+            cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv, max_seqlen_q, max_seqlen_kv,
+            dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+            block_table, q_n, kv_n, softmax_scale,
+            layout_q, layout_q_descale, layout_kv, layout_out, block_size, sparse_mode, out_dtype)
+
+    # GRAPH_PATH == 7: aclgraph
+    # 预处理: list → NPU tensor (必须在编译区域之外完成)
+    cu_seqlens_q_t = torch.tensor(cu_seqlens_q, dtype=torch.int32).npu() if cu_seqlens_q is not None else None
+    cu_seqlens_kv_t = torch.tensor(cu_seqlens_kv, dtype=torch.int32).npu() if cu_seqlens_kv is not None else None
+    seqused_q_t = torch.tensor(seqused_q, dtype=torch.int32).npu() if seqused_q is not None else None
+    seqused_kv_t = torch.tensor(seqused_kv, dtype=torch.int32).npu() if seqused_kv is not None else None
+
+    npu_mode = Network().to("npu:%s" % int(DEVICE_ID))
+    with torch.no_grad():
+        torch.npu.synchronize()
+
+        # Network.forward 只调 torch.library op，Python 预处理结果通过参数传入
+        fa_args = (q, k, v, q_rope, k_rope, mask,
+                   cu_seqlens_q_t, cu_seqlens_kv_t, seqused_q_t, seqused_kv_t,
+                   dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table,
+                   q_n, kv_n, softmax_scale, layout_q, layout_q_descale, layout_kv, layout_out,
+                   block_size, sparse_mode, out_dtype,
+                   max_seqlen_q, max_seqlen_kv)
+
+        # aclgraph: 直接使用 npugraph_ex backend
+        logger.info("[NPU] 调用 aclgraph (npugraph_ex)...")
+        npu_backend = "npugraph_ex"
+        npu_mode = torch.compile(npu_mode, fullgraph=False, backend=npu_backend, dynamic=False)
+        # mark_static 标记所有 tensor 输入
+        for t in (q, k, v, q_rope, k_rope, mask,
+                  cu_seqlens_q_t, cu_seqlens_kv_t, seqused_q_t, seqused_kv_t,
+                  dequant_scale_q, dequant_scale_k, dequant_scale_v,
+                  p_scale, block_table):
+            if t is not None:
+                torch._dynamo.mark_static(t)
+        atten_out, lse_out = npu_mode(*fa_args)
+
+        atten_out = atten_out.cpu().detach()
+        lse_out = lse_out.cpu().detach()
+        torch.npu.synchronize()
+        return atten_out, lse_out
 
 
 # ==============================================================================
