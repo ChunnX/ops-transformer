@@ -236,10 +236,14 @@ def tilelang_grad_kl_loss_single_kernel(
         LossOut: T.Tensor((B, S1, n_num), calc_dtype),             # 24
     ):
         with T.Kernel(block_num, is_npu=True) as (cid, vid):
-            # Match arch22's two 64 KiB L0C slots. FIX_M event 6 owns slot 0,
-            # and event 7 owns slot 1 for the entire kernel lifetime.
-            L0C_PP0 = T.alloc_L0C((128, 128), calc_dtype)
-            L0C_PP1 = T.alloc_L0C((128, 128), calc_dtype)
+            # Keep each L0C allocation's physical shape equal to its MMA
+            # result.  A sliced (128, 128) L0C keeps the parent shape in the
+            # current Ascend codegen and produces an invalid FIX layout.
+            C1_L0C = T.alloc_L0C((N1, n_block), calc_dtype)
+            C2_L0C = T.alloc_L0C((Nidx1, n_block), calc_dtype)
+            DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
+            DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)
+            # FIX_M event 6 owns C1/dQuery; event 7 owns C2/dKey.
             with T.Scope("C"):
                 T.set_flag("fix", "m", 6)
                 T.set_flag("fix", "m", 7)
@@ -421,9 +425,9 @@ def tilelang_grad_kl_loss_single_kernel(
                                         # Compute current slot
                                         T.wait_flag("mte2", "m", cur)
                                         if cur == 0:
-                                            T.gemm_v0(Q_L1_0, GK_L1_0, L0C_PP0[0:N1, 0:n_block], transpose_B=True, init=(d_idx == 0))
+                                            T.gemm_v0(Q_L1_0, GK_L1_0, C1_L0C, transpose_B=True, init=(d_idx == 0))
                                         if cur == 1:
-                                            T.gemm_v0(Q_L1_1, GK_L1_1, L0C_PP0[0:N1, 0:n_block], transpose_B=True, init=(d_idx == 0))
+                                            T.gemm_v0(Q_L1_1, GK_L1_1, C1_L0C, transpose_B=True, init=(d_idx == 0))
                                         T.set_flag("m", "mte2", cur)
 
                                         # Prefetch next iteration (MTE2 load ∥ cube gemm of current)
@@ -460,7 +464,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                     # M→FIX: copy_l0c waits for all K accumulations done
                                     T.set_flag("m", "fix", 6)
                                     T.wait_flag("m", "fix", 6)
-                                    T.copy(L0C_PP0[0:N1, 0:n_block], bmm1Res[bz_v1, s1_row, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                                    T.copy(C1_L0C, bmm1Res[bz_v1, s1_row, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block])
                                     T.set_flag("fix", "m", 6)
 
                                 QI_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)
@@ -474,14 +478,14 @@ def tilelang_grad_kl_loss_single_kernel(
                                         # RAW: gemm 等 L1 载入
                                         T.set_flag("mte2", "m", 0)
                                         T.wait_flag("mte2", "m", 0)
-                                        T.gemm_v0(QI_L1, GKI_L1, L0C_PP1[0:Nidx1, 0:n_block], transpose_B=True, init=(k_idx == 0))
+                                        T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
                                         # WAR: 下轮载入等 gemm 读完
                                         T.set_flag("m", "mte2", 0)
                                         T.wait_flag("m", "mte2", 0)
                                     # M→FIX
                                     T.set_flag("m", "fix", 7)
                                     T.wait_flag("m", "fix", 7)
-                                    T.copy(L0C_PP1[0:Nidx1, 0:n_block], bmm2Res[bz_v1, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], enable_relu=True)
+                                    T.copy(C2_L0C, bmm2Res[bz_v1, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], enable_relu=True)
                                     T.set_flag("fix", "m", 7)
 
                         # ============================================================
@@ -960,7 +964,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                         T.gemm_v0(
                                             RG_L1,
                                             GKI2_L1,
-                                            L0C_PP0[0:Nidx1, 0:k_block],
+                                            DQ_L0C,
                                             transpose_B=False,
                                             init=(n_idx_k == 0),
                                         )
@@ -969,7 +973,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                     T.set_flag("m", "fix", 6)
                                     T.wait_flag("m", "fix", 6)
                                     T.copy(
-                                        L0C_PP0[0:Nidx1, 0:k_block],
+                                        DQ_L0C,
                                         dQueryIndexAccum[
                                             bz_v1,
                                             s1_row,
@@ -1004,12 +1008,12 @@ def tilelang_grad_kl_loss_single_kernel(
                                     T.set_flag("mte1", "m", 4)
                                     T.wait_flag("mte1", "m", 4)
                                     T.wait_flag("fix", "m", 7)
-                                    T.mma(RG_L0A_dk, QI_L0B_dk, L0C_PP1[0:n_block, 0:DQueryIndex], init=True)
+                                    T.mma(RG_L0A_dk, QI_L0B_dk, DK_L0C, init=True)
                                     T.set_flag("m", "mte1", 4)
                                     T.set_flag("m", "fix", 7)
                                     T.wait_flag("m", "fix", 7)
                                     T.copy(
-                                        L0C_PP1[0:n_block, 0:DQueryIndex],
+                                        DK_L0C,
                                         dk_matmul_partial[
                                             bz_v1,
                                             s1_row,
