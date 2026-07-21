@@ -585,7 +585,7 @@ k_descale/v_descale shape匹配关系表
 >
 > MxFP8场景下，v_descale 在 TND（非PA）场景下，shape 中第一维 KV_T/64 并非简单整数除法，而是各 batch 实际 KV 序列长度按 64 向上取整后的累加和，即 Σ ceil(cu_seqlens_kv[b+1] - cu_seqlens_kv[b], 64)，其中 cu_seqlens_kv 为累积序列长度。因此各 batch 的 KV 序列长度无需严格 64 对齐。
 
-q/k/v/attn_out shape匹配关系表
+<span id="qkv_attn_out_shape匹配关系表"></span>q/k/v/attn_out shape匹配关系表
 <table style="undefined;table-layout: fixed; width:1625px">
     <colgroup>
         <col style="width: 120px">
