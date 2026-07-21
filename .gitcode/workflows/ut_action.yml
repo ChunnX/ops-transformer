@@ -39,7 +39,7 @@ jobs:
           path: ${{ steps.process_checkout.outputs.path }}
       -
         name: redis-cache
-        uses: tanghaoran7/.gitcode/actions/redis-cache@master
+        uses: cann/.gitcode/actions/redis-cache@master
       -
         name: ut_acc
         identifier: ut
