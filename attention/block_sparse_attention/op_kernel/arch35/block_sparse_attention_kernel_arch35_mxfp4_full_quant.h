@@ -144,25 +144,27 @@ public:
         uint32_t coreIdx = AscendC::GetBlockIdx();
         uint32_t coreNum = AscendC::GetBlockNum();
         // set reverse sync flags
-        InitSyncFlags<4, 4, 4>();
-#ifdef __DAV_VEC__
-        EpilogueMask2Idx epilogueMask2Idx(resource);
-        uint32_t totalRowNumBlockMask = batch_ * qHeads_ * xBlockNumAligned_;
-        epilogueMask2Idx(
-            gBlockSparseMask, gSparseIdx, gSparseCount,
-            totalRowNumBlockMask, yBlockNumAligned_, avgRowPerSubCore_, preActiveSubCoreNum_);
-#endif
+        InitSyncFlags();
+        // mask preprocess
+        if ASCEND_IS_AIV {
+            EpilogueMask2Idx epilogueMask2Idx(resource);
+            uint32_t totalRowNumBlockMask = batch_ * qHeads_ * xBlockNumAligned_;
+            epilogueMask2Idx(
+                gBlockSparseMask, gSparseIdx, gSparseCount,
+                totalRowNumBlockMask, yBlockNumAligned_, avgRowPerSubCore_, preActiveSubCoreNum_);
+        }
         AscendC::SyncAll<false>();
-#ifdef __DAV_CUBE__
-        coreIdx = AscendC::GetBlockIdx();
-        // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
-        BlockMmadPV blockMmadPV(resource);
-#endif
-#ifdef __DAV_VEC__
-        coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
-        // EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_);
-        // EpilogueRescaleO epilogueRescaleO(resource);
-#endif
+
+        if ASCEND_IS_AIC {
+            coreIdx = AscendC::GetBlockIdx();
+            // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
+            BlockMmadPV blockMmadPV(resource);
+        } else {
+            coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
+            // EpilogueOnlineSoftmax epilogueOnlineSoftmax(resource, scaleValue_);
+            // EpilogueRescaleO epilogueRescaleO(resource);
+        }
+
         // runMainLoop
         uint64_t coreTileLoop = 0;
 
@@ -246,6 +248,22 @@ public:
                     }
                 }
             }
+            if (coreTileLoop >= DELAY_PSCALE_N && delay3CoreTaskId < coreTaskNum) {
+                // delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) % PRELOAD_TASK_CACHE_SIZE];
+                if (delay3TileInfo.isUpdatePScale) {
+                    if ASCEND_IS_AIC {
+                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
+                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1 + 16);
+                        CopyGMaxL1ToUb(delay3TileInfo);
+                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
+                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB + 16);
+                    } else {
+                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
+                        UpdatePScale(delay3TileInfo);
+                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2);
+                    }
+                }
+            }
             if (coreTaskId < coreTaskNum) {
                 // curTileInfo = tileInfos[coreTileLoop % PRELOAD_TASK_CACHE_SIZE];
                 CreateTileInfo(curTileInfo, coreTileLoop,
@@ -269,33 +287,17 @@ public:
                     }
                 }
             }
-            if (coreTileLoop >= DELAY_PSCALE_N && delay3CoreTaskId < coreTaskNum) {
-                // delay3TileInfo = tileInfos[(coreTileLoop - DELAY_PSCALE_N) % PRELOAD_TASK_CACHE_SIZE];
-                if (delay3TileInfo.isUpdatePScale) {
-                    if ASCEND_IS_AIC {
-                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1);
-                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_UB_TO_L1 + 16);
-                        CopyGMaxL1ToUb(delay3TileInfo);
-                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
-                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE1>(CROSS_CORE_SYNC_GMAX_L1_TO_UB + 16);
-                    } else {
-                        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_GMAX_L1_TO_UB);
-                        UpdatePScale(delay3TileInfo);
-                        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_MTE3>(CROSS_CORE_SYNC_PSCALE_C2);
-                    }
-                }
-            }
 
             // 是否要切换到下一个qs任务, 新的kvs
             if (curTaskTileIdx == curTaskInfo.taskTileNum - 1 && coreTaskId < coreTaskNum) {
                 preTaskTileSum += curTaskInfo.taskTileNum;
                 coreTaskId++;
             }
-            if (coreTileLoop >= 20 && delay20TaskTileIdx == delay20TaskInfo.taskTileNum - 1) {
+            if (coreTileLoop >= PV_RE_DELAY_N && delay20TaskTileIdx == delay20TaskInfo.taskTileNum - 1) {
                 delay20preTaskTileSum += delay20TaskInfo.taskTileNum;
                 delay20CoreTaskId++;
             }
-            if (coreTileLoop >= 3 && delay3TaskTileIdx == delay3TaskInfo.taskTileNum - 1  && delay3CoreTaskId < coreTaskNum) {
+            if (coreTileLoop >= DELAY_PSCALE_N && delay3TaskTileIdx == delay3TaskInfo.taskTileNum - 1  && delay3CoreTaskId < coreTaskNum) {
                 delay3preTaskTileSum += delay3TaskInfo.taskTileNum;
                 delay3CoreTaskId++;
             }
@@ -304,7 +306,7 @@ public:
         }
 
         // release reverse sync flags
-        ReleaseSyncFlags<4, 4, 4>();
+        ReleaseSyncFlags();
     }
 
     __aicore__ inline void ComputeMm1(TileInfo &runInfo)
@@ -411,19 +413,19 @@ public:
     uint64_t CalcCrossMm1Mm2PrefixSumL0ABStages(uint32_t gatheredKvSTileIdx, uint32_t singleMm1L0Stages,
                                                 uint32_t singleMm2L0Stages, uint32_t kvSLoopNum, bool isCurPhaseMm1)
     {
-        uint64_t prefixSumStages;
-        if (isCurPhaseMm1) {
-            prefixSumStages =
-                (gatheredKvSTileIdx <= PRE_LAUNCH) ?
-                    gatheredKvSTileIdx * singleMm1L0Stages :
-                    gatheredKvSTileIdx * singleMm1L0Stages + (gatheredKvSTileIdx - PRE_LAUNCH) * singleMm2L0Stages;
-        } else {
-            prefixSumStages =
-                (gatheredKvSTileIdx < kvSLoopNum - PRE_LAUNCH) ?
-                    (gatheredKvSTileIdx + 1 + PRE_LAUNCH) * singleMm1L0Stages + gatheredKvSTileIdx * singleMm2L0Stages :
-                    kvSLoopNum * singleMm1L0Stages + gatheredKvSTileIdx * singleMm2L0Stages;
-        }
-        return prefixSumStages;
+        // uint64_t prefixSumStages;
+        // if (isCurPhaseMm1) {
+        //     prefixSumStages =
+        //         (gatheredKvSTileIdx <= PRE_LAUNCH) ?
+        //             gatheredKvSTileIdx * singleMm1L0Stages :
+        //             gatheredKvSTileIdx * singleMm1L0Stages + (gatheredKvSTileIdx - PRE_LAUNCH) * singleMm2L0Stages;
+        // } else {
+        //     prefixSumStages =
+        //         (gatheredKvSTileIdx < kvSLoopNum - PRE_LAUNCH) ?
+        //             (gatheredKvSTileIdx + 1 + PRE_LAUNCH) * singleMm1L0Stages + gatheredKvSTileIdx * singleMm2L0Stages :
+        //             kvSLoopNum * singleMm1L0Stages + gatheredKvSTileIdx * singleMm2L0Stages;
+        // }
+        // return prefixSumStages;
     }
 
     __aicore__ inline
@@ -432,62 +434,23 @@ public:
         AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_OTMP_BUF_STAGES],
         AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
     {
-        ubOTmpTensor[0] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(0);
+        // for (uint32_t i = 0; i < pL1BufNum_; i++) {
+        //     l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
+        //         mm2L1AddrStart_ + mm2L1TileM_ * mm2L1TileKLeft_ * sizeof(ElementP) * i);
+        // }
+        // uint32_t rowNumPerSubCore = EpilogueOnlineSoftmax::SM_ROW_MAX_ELEM_NUM;
+        // uint32_t colNumPerSubCore = EpilogueOnlineSoftmax::SM_COL_MAX_ELEM_NUM;
+        // uint32_t rescaleCol = EpilogueRescaleO::RESCALE_COL_MAX_ELEM_NUM;
+        // for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
+        //     ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
+        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * i);
+        //     ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
+        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
+        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
+        //         rowNumPerSubCore * rescaleCol * sizeof(ElementOTmp) * i);
+        // }
     }
 
-    template <uint32_t MM1_SM_MODE, uint32_t MM2_RE_MODE, uint32_t SM_MM2_MODE>
-    __aicore__ inline
-    void InitSyncFlags()
-    {
-#ifdef __DAV_VEC__
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-        // mask2index
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
-        // softmax
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
-        // rescale
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
-
-        AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
-
-        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[0]);
-        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[1]);
-        AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
-#endif
-    }
-
-    template <uint32_t MM1_SM_MODE, uint32_t MM2_RE_MODE, uint32_t SM_MM2_MODE>
-    __aicore__ inline
-    void ReleaseSyncFlags()
-    {
-    // 核间
-#ifdef __DAV_CUBE__
-        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
-        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
-        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[0]);
-        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[0] + 16);
-        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[1]);
-        AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[1] + 16);
-#endif
-#ifdef __DAV_VEC__
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID2);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID3);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID4);
-        AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
-#endif
-        AscendC::PipeBarrier<PIPE_ALL>();
-    }
 
     // 由 coreTaskId (本核上的 task 序号) 反推 globalTaskId 并填充 TaskInfo
     // 仅在 task 起始 tile (taskTileId == 0) 调用，避免每个 tile 重复计算
@@ -644,6 +607,55 @@ public:
             (taskInfo.gatheredKvSeqlen - (taskInfo.taskTileNum - 1) * kvBaseTile_) : kvBaseTile_;
         // PV 稀疏 gather 用：当前 tile 在 task 内 gather 后的 KV base tile 序号
         info.pvGatheredKvSTileIdx = curTaskTileIdx;
+    }
+
+    
+    __aicore__ inline
+    void InitSyncFlags()
+    {
+        if ASCEND_IS_AIC {
+
+        } else {
+            // 核间
+            AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[0]);
+            AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V1_C1[1]);
+            AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
+            // mask2index
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+
+            AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+            AscendC::SetFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
+        }
+    }
+
+    __aicore__ inline
+    void ReleaseSyncFlags()
+    {
+        if ASCEND_IS_AIC {
+            // 核间
+            AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2);
+            AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
+            AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[0]);
+            AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[0] + 16);
+            AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[1]);
+            AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V1_C1[1] + 16);
+        } else {
+            // mask2index
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(EVENT_ID1);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID1);
+            
+            AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID0);
+            AscendC::WaitFlag<AscendC::HardEvent::MTE3_S>(EVENT_ID1);
+
+        }
+        AscendC::PipeBarrier<PIPE_ALL>();
     }
 
 private:
