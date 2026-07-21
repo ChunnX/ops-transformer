@@ -1,19 +1,19 @@
 (fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv --plugin /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/assets --backend npu -o func_result.csv --warmup false --run 1 -t PA_NZ_B1_QS3_KVS320_Nq128_Nkv8_D128_SP3
-2026-07-21 06:14:32,782 [INFO] [3280171 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv 
-2026-07-21 06:14:37,233 [INFO] [3280171 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-21 06:14:37,796 [INFO] [3280171 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-21 06:14:37,859 [INFO] [3280171 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-21 06:14:37,859 [INFO] [3280171 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-21 06:14:37,859 [INFO] [3280171 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-21 06:14:39,003 [INFO] [3280171 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-21 06:14:39,009 [INFO] [3280171 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-21 06:14:39,009 [INFO] [3280171 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-21 06:14:40,148 [INFO] [3280171 MP MT] [instance.py:42]: Device count: 1 
-2026-07-21 06:14:40,148 [INFO] [3280171 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-21 06:14:40,148 [INFO] [3280171 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-21 06:14:40,148 [INFO] [3280171 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv ... 
-2026-07-21 06:14:40,149 [INFO] [3280171 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
-2026-07-21 06:14:40,149 [INFO] [3280171 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+2026-07-21 06:33:37,122 [INFO] [3320509 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv 
+2026-07-21 06:33:41,639 [INFO] [3320509 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-21 06:33:42,233 [INFO] [3320509 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-21 06:33:42,233 [INFO] [3320509 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-21 06:33:42,233 [INFO] [3320509 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-21 06:33:42,233 [INFO] [3320509 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-21 06:33:43,373 [INFO] [3320509 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-21 06:33:43,379 [INFO] [3320509 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-21 06:33:43,379 [INFO] [3320509 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-21 06:33:44,518 [INFO] [3320509 MP MT] [instance.py:42]: Device count: 1 
+2026-07-21 06:33:44,518 [INFO] [3320509 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-21 06:33:44,518 [INFO] [3320509 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-21 06:33:44,518 [INFO] [3320509 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv ... 
+2026-07-21 06:33:44,519 [INFO] [3320509 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-21 06:33:44,519 [INFO] [3320509 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
 ninja: no work to do.
 ninja: no work to do.
 Checking testcase name...
@@ -25,10 +25,10 @@ Preparing Task Executors...
 +-------------------------------------------------------------------------------------------------------+
 | Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
 +-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 3280495 D0P0             UNKNOWN              IDLE     0s  |
+| npu:0                                    | 3320850 D0P0             UNKNOWN              IDLE     0s  |
 +-------------------------------------------------------------------------------------------------------+
-2026-07-21 06:14:46,538 [INFO] [3280495 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-21 06:14:47,259 [INFO] [3280495 PA_NZ_B1_QS3_KVS320_Nq128_Nkv8_D128_SP3 OnWaitingForMemory] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-21 06:33:51,073 [INFO] [3320850 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-21 06:33:51,718 [INFO] [3320850 PA_NZ_B1_QS3_KVS320_Nq128_Nkv8_D128_SP3 OnWaitingForMemory] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
 ninja: no work to do.
 ninja: no work to do.
 
@@ -76,84 +76,77 @@ Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None
 Precision Tolerance: None
 Absolute Precision: (1e-08,)
 Mode: ASCEND_ONBOARD
-PID: 3280495
+PID: 3320850
 Device: 0
 ----------------------------------------------------------------------------------------------------
+
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 13s Rev: 7f1d28b                      |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 3320850 28_Nkv8_D128_SP3 OnEagerProfiling     RUNNING  3s  |
++-------------------------------------------------------------------------------------------------------+
 [WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
 [WRAPPER] graph_path=0, 调用 npu_mxfp8_fa
 [NPU] Q layout: q_layout=N2TGD, G=16
 [NPU TND] q=torch.Size([3, 128, 128])
 [NPU] Q scale layout=N2TGD, shape=torch.Size([8, 3, 16, 2, 2])
-[WRAPPER] NPU 调用失败: index 0 is out of bounds for dimension 0 with size 0
+[NPU PA] kv_layout=PA_NZ
+[NPU PA] k=torch.Size([1, 8, 4, 1024, 32]), v=torch.Size([1, 8, 4, 1024, 32])
+[NPU PA] deq_k=torch.Size([1, 8, 64, 2, 16, 2]), deq_v=torch.Size([1, 8, 8, 16, 16, 2])
+[NPU] prepare PA inputs done.
+[NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+[NPU] 调用 QFA 单算子模式...
+
++--------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 23s Rev: 7f1d28b                       |
++--------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 3320850 28_Nkv8_D128_SP3 OnEagerProfiling     RUNNING  13s  |
++--------------------------------------------------------------------------------------------------------+
+[NPU] output=torch.Size([3, 128, 128])
 get env ASCEND_GLOBAL_LOG_LEVEL = 3
-[2026-07-21 06:14:51] [INFO] [3281658] profiler.py: Start parsing profiling data in sync mode at: /tmp/ttk_npu_prof_1l4o_fn4/aa_3280495_20260721061450318_ascend_pt
-|
-+-------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 13s Rev: 7f1d28b                      |
-+-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 3280495 28_Nkv8_D128_SP3 OnEagerProfiling     RUNNING  3s  |
-+-------------------------------------------------------------------------------------------------------+
-[2026-07-21 06:14:53] [ERROR] [3281658] profiler.py: Failed to get acl to npu flow events. For details, please check the logs at: /tmp/ttk_npu_prof_1l4o_fn4/aa_3280495_20260721061450318_ascend_pt/logs
-[2026-07-21 06:14:53] [INFO] [3281677] profiler.py: CANN profiling data parsed in a total time of 0:00:02.037331
-[2026-07-21 06:14:54] [WARNING] [3281658] profiler.py: Failed to get api data from db.
-[2026-07-21 06:14:54] [WARNING] [3281658] profiler.py: Failed to get task data from db.
-[2026-07-21 06:14:54] [INFO] [3281658] profiler.py: All profiling data parsed in a total time of 0:00:03.508632
-[PA_NZ_B1_QS3_KVS320_Nq128_Nkv8_D128_SP3] Error: index 0 is out of bounds for dimension 0 with size 0
+[2026-07-21 06:34:07] [INFO] [3322246] profiler.py: Start parsing profiling data in sync mode at: /tmp/ttk_npu_prof_wn4t7wjp/aa_3320850_20260721063405119_ascend_pt
+[2026-07-21 06:34:10] [INFO] [3322278] profiler.py: CANN profiling data parsed in a total time of 0:00:03.036106
+[2026-07-21 06:34:11] [WARNING] [3322246] profiler.py: Failed to get api data from db.
+[2026-07-21 06:34:11] [WARNING] [3322246] profiler.py: Failed to get task data from db.
+[2026-07-21 06:34:12] [INFO] [3322246] profiler.py: All profiling data parsed in a total time of 0:00:04.604295
+[INFO] GQA 广播
+[PA_NZ_B1_QS3_KVS320_Nq128_Nkv8_D128_SP3] Golden generation failure
 Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
-    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
-    result_nps, perf = _execute_eager(
-                       ^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 336, in _execute_eager
-    r = resolved(*args, **kwargs)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 135, in npu_qfa_mxfp8
-    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1213, in npu_mxfp8_fa
-    inputs = prepare_npu_inputs(
-             ^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1123, in prepare_npu_inputs
-    k_pa = mxfp8_pa_preprocessing(k_fp8, act_seqused_kv, BLOCK_SIZE, block_table_torch,
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 560, in mxfp8_pa_preprocessing
-    blockid = int(bid_table[blk_idx])
-                  ~~~~~~~~~^^^^^^^^^
-IndexError: index 0 is out of bounds for dimension 0 with size 0
-Profiling process failed for testcase PA_NZ_B1_QS3_KVS320_Nq128_Nkv8_D128_SP3 with pid 3280495, fail reason:
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
-    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
-    result_nps, perf = _execute_eager(
-                       ^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 336, in _execute_eager
-    r = resolved(*args, **kwargs)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 135, in npu_qfa_mxfp8
-    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1213, in npu_mxfp8_fa
-    inputs = prepare_npu_inputs(
-             ^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1123, in prepare_npu_inputs
-    k_pa = mxfp8_pa_preprocessing(k_fp8, act_seqused_kv, BLOCK_SIZE, block_table_torch,
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 560, in mxfp8_pa_preprocessing
-    blockid = int(bid_table[blk_idx])
-                  ~~~~~~~~~^^^^^^^^^
-IndexError: index 0 is out of bounds for dimension 0 with size 0
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 359, in _generate_golden_data
+    golden_nps = generate_golden(
+                 ^^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/golden_generation.py", line 72, in generate_golden
+    return _call_plugin_with_plan(testcase, func, switches, backend)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/golden_generation.py", line 143, in _call_plugin_with_plan
+    result = func(*args, **kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/assets/impl/golden.py", line 121, in cpu_qfa_mxfp8
+    cpu_out, cpu_lse = golden_mod.cpu_mxfp8_golden(
+                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 829, in cpu_mxfp8_golden
+    mask_global = _build_attention_mask(b, Sq, Skv, actual_seq_q, actual_seq_kv, SPARSE_MODE)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 735, in _build_attention_mask
+    k_lens_acl = k_lens_t.view(b, 1, 1, 1)
+                 ^^^^^^^^^^^^^^^^^^^^^^^^^
+RuntimeError: shape '[1, 1, 1, 1]' is invalid for input of size 0
 
-During handling of the above exception, another exception occurred:
+Eager Kernels
+-------------------------------------------------------------------------------------------------------
+Name                                              avg            max           min           # of Calls
+-------------------------------------------------------------------------------------------------------
+aclnnQuantFlashAttnMetadata_QuantFlashAttnMetada..46213.350      91002.186     1424.513      2
+QuantFlashAttn                                    19.055         19.055        19.055        1
+-------------------------------------------------------------------------------------------------------
 
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/tbe_multiprocessing/pool.py", line 202, in intermediate_func
-    function_return = func(*func_args, **func_kwargs)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 219, in profile_process
-    return_struct.precision = str(e)
-    ^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
 
+ ####################################### Eager Result Summary  ######################################## 
+EAGER:       GOLDEN_FAILURE
+  DEVICE: 92445.754 us
+  CPU:    118825.251 us
+STATUS: FAIL
+Golden Shapes: ('GOLDEN_FAILURE',)
+Golden Dtypes: ('GOLDEN_FAILURE',)
+#######################################################################################################
 ttk Profiling complete
