@@ -243,7 +243,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputTotalStemBlockIndex(void)
     int32_t blockFlag = 0;
     int32_t setN = 0;
     curCoreProcessStemBlock_ = Ops::Base::CeilDiv(totalStemBlockNum_, blockNum_);
-    kvUsedCoreNum_ = totalStemBlockNum_ / curCoreProcessStemBlock_;
+    kvUsedCoreNum_ = Ops::Base::CeilDiv(totalStemBlockNum_, curCoreProcessStemBlock_);
     tailCoreProcessStemBlock_ = totalStemBlockNum_ - (kvUsedCoreNum_ - 1) * curCoreProcessStemBlock_;
     if (blockIdx_ < kvUsedCoreNum_) {
         auto startStemBlock = blockIdx_ * curCoreProcessStemBlock_;
