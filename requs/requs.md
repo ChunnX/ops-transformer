@@ -1,14 +1,15 @@
 # SMLA/MQSMLA batch 一致性需求与开发台账
 
-> 最近整理：2026-07-20
+> 最近整理：2026-07-21
 > 第一阶段基线提交：`b680bfbdd test(smla): add phase-one batch consistency framework`
 > 第一阶段二次推进提交：`183beb730 test(smla): advance batch consistency framework phase two`
 > pytest_v2阶段二基线提交：`f9ca0da86 test(smla): integrate dual-op batch consistency pytest v2`
 > 本文用途：归档需求背景、权威资料、需求冲突裁决、实现记录、检视答复和当前状态。具体后续里程碑见
 > `SMLA_batch一致性测试开发计划.md`。
-> 阅读提示：第 6-12 节和“检视意见处理记录（2026-07-19）”保留历史快照；当前权威状态见
-> 原始`# 检视意见二`后追加的“检视意见二处理记录（2026-07-20）”。逐STC/公式/mask冲突见
-> `SMLA_MQSMLA需求冲突与对齐清单.md`。若历史状态与新记录冲突，以2026-07-20记录为准。
+> 阅读提示：第 6-12 节和前两轮“检视意见处理记录”保留历史快照；当前权威状态见原始
+> `# 检视意见三`后追加的“检视意见三处理记录（2026-07-21）”。逐STC/公式/mask冲突见
+> `SMLA_MQSMLA需求冲突与对齐清单.md`；外部框架逐项评估见`data/README.md`。若历史状态与
+> 新记录冲突，以2026-07-21记录为准。
 
 ## 1. 项目背景与最终范围
 
@@ -38,6 +39,7 @@ pytest 框架通过只代表测试侧逻辑可用，普通 level 0 精度通过�
 | 3 | `docs/Milan&TorinoC12_RP3_B050_G项目_STC用例.xlsx` | 验收 case 草案；已知错误必须进入冲突台账，不能反向覆盖主需求 |
 | 4 | `docs/batch一致性测试框架.md`、`docs/会议纪要.md` | 开发侧方法草案和辅助解释，不作为冲突时的最终裁决 |
 | 5 | `docs/SMLA支持batch一致性.md`、`docs/metadata输出结果解析.md` | 设计补充和历史布局参考 |
+| 6 | `data/算子多batch一致验证.md`、示例Excel/脚本 | 外部aclnnfuzz工程实践参考；不决定SMLA语义，不进入正式执行链 |
 
 出现冲突时不静默选择一个说法：`SMLA batch一致性.md` 决定需求目标，算子 README/golden/
 kernel 和 PR 决定可执行语义，STC 与临时框架作为待修订材料。仍不能证明数学输入等价的
@@ -849,3 +851,208 @@ requirement: align_up(ceil (visible_S2/32), 128)
 
 当前`-M 1,2`仍只作为SMLA旧入口迁移兼容并发deprecated warning；正式接口已经是
 `--modes reorder,split,...`或`--profile`，不会等NPU打通后才迁移，也不会继续给数字增加新含义。
+
+# 检视意见三
+
+cannbot模型不止glm-5.2还有deepseek v4和qwen3.7-max，我希望chatgpt能和多方合作沟通商量规划，毕竟别的模型有可能关注到chatgpt没关注到的点，实现的时候chatgpt可以指导其他模型帮你修改一下
+
+做好开发日志记录和文档记录
+
+1. NPU侧算子开发还要继续等
+
+2. 责任田划分我大致理解了，现在ops-transformer_0716/requs/data目录下有另一个开发者基于另一个测试框架做的batch 一致性的一些测试方案和实现，我觉得有一些可取可借鉴的东西，评估一下呢？如果觉得这设计不错就可以采取并实现
+
+## 检视意见三处理记录（2026-07-21）
+
+### 一、直接答复
+
+1. **NPU侧继续等待。** 本轮没有修改SMLA/MQSMLA host、tiling、kernel或已安装custom包，也没有
+   用level0结果替代level3。`RT-1/OP-1/PKG-1/FORMULA-1`状态不变：支持level3的runtime、主算子
+   合入版本、PR floor/需求ceil仍需对应owner处理。
+2. **外部方案有可取之处，但不能原样接入。** 采纳“显式输出关系、执行前预检、分层覆盖、
+   min/mid/max位置诊断”四个思想；不采纳seed重生成、单batch_axis切片、output_seed数字关系键、
+   固定500/200/200数量和原比较脚本。
+3. **已把采纳项实现到pytest_v2主线。** 双算子新增versioned relation manifest v1，继续以
+   `TokenOrigin`为唯一比较身份；`consistency_prepare`真实生成、校验并汇总关系和CPU输入覆盖。
+4. **开发计划已推进但没有虚报完成。** relation schema和自动派生manifest已完成，P3.4从“未
+   实现”推进到“schema/自动artifact完成，STC 001-027 source entries待owner修订”；真实metadata
+   coverage仍等level3。
+
+外部资料和逐项代码审计见`data/README.md`。`data/算子多batch一致验证.md`、
+`data/compare_batch_tensor_by_result.py`和`data/aclnnAdd.xlsx`作为用户提供的原始输入保持不改，
+避免评估过程中反向篡改证据。
+
+### 二、外部方案到底解决什么
+
+外部aclnnfuzz方案通过`tensor_input_seed_info`让某些tensor轴切片由相同seed/range生成，再通过
+`tensor_output_seed_info.output_seed`把“应相同”的输出切片放进同一比较组。这个思路适合
+逐元素、reduce、broadcast等能用普通轴切片描述依赖关系的通用算子。
+
+SMLA/MQSMLA的一致query token却同时依赖Q、KV、有效长度、TND prefix sum、PA table、mask、
+sparse/top-k、cmp residual和MQ量化参数。只给Q或某个KV切片同seed，不能证明attention数学输入
+相同。因此当前“baseline PT -> 同步变换全部相关字段 -> actual-input oracle”的可靠性高于重新
+生成随机切片，不能为了复用外部字段而退回较弱模型。
+
+外部文档的level0/level1/level2还是**用例分类**，不是CANN deterministic level，也不与模式
+1-4一一对应。本项目四模式都是baseline与一个或多个derived的多次完整调用：
+
+| 外部思想 | 本项目裁决 |
+| --- | --- |
+| input seed固定切片 | 不接入；直接复用baseline真实tensor并同步全部语义字段 |
+| output seed标记相等组 | 升级为`baseline_case_id + TokenOrigin spans` |
+| 跨case/单case/边界分层 | 改为mode/layout/mask/visible-S2/source-position coverage inventory |
+| min/mid/max位置 | 作为覆盖诊断，不作为数值PASS |
+| Excel预检 | 正式parser拒绝数字mode，manifest校验origin/scope/oracle/digest |
+| raw binary相等 | 已有tensor原始byte MD5 + 原CPU精度双门禁，不复制numpy脚本 |
+
+### 三、外部实现审计结论
+
+`compare_batch_tensor_by_result.py`不能直接进入生产链，关键证据如下：
+
+1. 文档的input seed info是6元素，脚本两处判断`len==5`后又访问索引5。合法6元素会被静默
+   跳过，5元素才会进入并越界，input格式预检实际上失效；
+2. CSV/Excel attrs、shape、dtype和动态slice多处直接`eval`，存在代码执行风险；
+3. 没有完整检查负index、axis、pre-index数量、重复项、bin byte size以及“同seed必须同
+   range/dtype/slice shape”的文档约束；
+4. output分组键没有operator/relation id，seed复用可能把无关case混组；
+5. 没有TokenOrigin、有效token/padding、LSE、原精度、metadata和两段式调用语义；
+6. 示例Excel只有`test` sheet和8条aclnnAdd数据，不是文档声称的level0/1/2完整用例集。
+
+脚本把fp32/bf16映射成同位宽unsigned读取，在“按原始存储bit比较”前提下并非天然错误；真正
+缺口是没有声明raw-bit契约、endianness/byte-size/FP8校验，也没有数值精度门禁。该判断修正了
+DeepSeek把`float32 -> uint32`本身视为错误的意见。
+
+### 四、本轮实现的数据流
+
+```text
+Excel canonical mode配置
+  -> 原golden生成baseline PT
+  -> mode 1-4派生完整输入 + semantic oracle
+  -> origin-mapped CPU expected scope
+  -> derived PT save/reload + provenance fingerprint + content fingerprint
+  -> TokenOrigin压缩为连续source/target spans
+  -> manifest边界/重复/scope/oracle/span digest预检
+  -> mode/layout/mask/visible-S2/min-mid-max coverage inventory
+  -> CPU-only PASS（不触碰NPU，不声称batch consistency PASS）
+```
+
+每个baseline新增`consistency_relation_manifest.json`；每个算子汇总新增
+`smla_consistency_relation_manifest.json`或`mqsmla_consistency_relation_manifest.json`。
+manifest使用`schema_version=1`和固定`kind`，baseline id绑定去掉临时路径后的输入内容SHA256；
+来源Excel/PT绝对路径仍作为provenance单独保留。这样同一输入换临时目录不会改变身份，而PT内容
+变化会改变baseline id。
+
+TokenOrigin逐token列表会让16K用例artifact膨胀，因此manifest只保存连续span：
+
+```json
+{
+  "target_start": 0,
+  "target_end": 4096,
+  "source_batch": 0,
+  "source_token_start": 0,
+  "source_token_end": 4096
+}
+```
+
+校验器保证target spans从0连续、源/目标宽度相同、源token不重复且不越baseline有效长度，
+`mapped_token_count`与`_consistency_expected_scope.compared_q_lengths`一致。模式4新增但没有origin
+的token仍只记为`unmapped_tokens`，不会被伪装成golden。
+
+### 五、配置预检的变化
+
+Excel的`consistency_modes`现在必须使用`reorder/split/token-split/shape-change`正式名称；数字
+`1,2`直接报配置错误。`split_groups`和`token_split_sizes`复用正式`CaseConfigParser`，不再由
+offline模块维护一份较弱的字符串拆分逻辑；负`mode_batch`、非正`common_tokens`和负
+`derived_extra`也会在生成前拒绝。
+
+这不改变CLI迁移策略：旧SMLA入口的`-M 1,2`仍可deprecated兼容，但新Excel和relation
+manifest不再接受数字别名。
+
+### 六、多模型联合审议与主审裁决
+
+本轮为同一份检视意见、外部三文件、主需求、开发计划和pytest_v2建立三个隔离CANNBot会话：
+
+| 模型 | 关注点 | 有效贡献 |
+| --- | --- | --- |
+| `cannbot/glm-5.2` | 架构复用和最小增量 | 建议只借鉴预检/覆盖，不另起seed框架 |
+| `cannbot/deepseek-v4-pro` | 安全与manifest反审 | 找到`eval`、6/5元素矛盾，建议versioned关系和coverage artifact |
+| `cannbot/qwen3.7-max` | 模式、layout、mask和边界 | 提醒PA容量、cmp residual、TND prefix、S2<32和PT digest绑定 |
+
+CANNBot 1.0.5默认数据库因缺少`replacement_seq`列启动失败。本轮没有删除、迁移或直接修改用户
+数据库；按既有安全约束使用0700隔离`XDG_DATA_HOME`并只复制0600认证文件，三模型均只读。
+模型没有并发写仓库，避免不可追踪的共享工作树覆盖；主审根据它们的建议实现并承担最终裁决。
+
+除前述dtype误读外，主审还纠正：外部`output_seed`只是关系标签，不表示attention输出等于seed
+之和；外部level分类与四模式无一一对应；mode 1也不是“两个预生成case”的专用模式，而是从
+同一baseline派生重排调用。
+
+### 七、文件级开发记录
+
+#### 7.1 双算子镜像核心
+
+| 文件 | 本轮作用/变化 |
+| --- | --- |
+| `batch/consistency/relation_manifest.py` | 新增manifest v1、stable baseline id、origin span压缩/校验、覆盖汇总与多baseline合并 |
+| `batch/consistency/offline.py` | 正式parser预检；baseline/derived provenance和content双指纹；保存per-case relation manifest |
+| `batch/consistency/reporting.py` | 新增不受临时来源路径影响的`input_content_digest` |
+| `test_batch_consistency_unit.py` | 新增canonical Excel、6条relation、coverage、越界origin、digest篡改和路径无关内容指纹回归；镜像门禁纳入新模块 |
+
+#### 7.2 operator-owned文件
+
+| 文件 | 本轮作用/变化 |
+| --- | --- |
+| SMLA `batch/sparse_flash_mla_consistency_prepare.py` | 合并per-case manifests，输出算子级relation/coverage artifact |
+| MQSMLA `batch/mixed_quant_sparse_flash_mla_consistency_prepare.py` | MQ独立完成相同汇总，不借用SMLA wrapper |
+| 两棵`README.md` | 增加manifest职责、输出文件和CPU-only claim边界 |
+
+#### 7.3 需求与计划文档
+
+| 文件 | 本轮作用/变化 |
+| --- | --- |
+| `data/README.md` | 外部三文件逐项评估、缺陷、采纳/拒绝表、多模型结论和后续接口 |
+| `docs/batch一致性测试框架.md` | 在历史大纲后追加relation manifest与真实metadata coverage边界 |
+| `SMLA_batch一致性测试开发计划.md` | 更新P2.13、P3.4/P3.5状态、测试矩阵和STC source manifest路线 |
+| `requs.md` | 保留原检视意见三并追加本处理记录 |
+
+用户新增的`data/`三份原始资料一并纳入版本管理，但原内容不改；新增README明确它们是
+reference-only，防止后续维护者误把有`eval`和预检bug的脚本放进CI。
+
+### 八、当前验证状态
+
+本轮已在加载`/mnt/workspace/gitCode/env.sh`后完成：
+
+- SMLA CPU unit：`26 passed`；
+- MQSMLA CPU unit：`26 passed`；
+- 双算子离线prepare：各1个baseline、6个derived、6条relation，round-trip与manifest
+  precheck均通过；
+- 算子级manifest：四个mode均有relation，`missing_modes=[]`；
+- 输入覆盖缺口被如实保留：SMLA缺TND Q、TND/PA KV和position-sensitive mask；MQSMLA缺
+  TND Q、BSND/TND KV和no-mask。这些是后续workbook待补项，不影响当前小shape关系预检，
+  也没有被标成NPU FAIL；
+- 新增源码ruff、双树字节镜像、compileall、原用例收集、默认opt-in skip和shell语法通过；
+  正式实现及新增说明文档通过`git diff --check`。`data/`三份原始输入按收到时字节保留，
+  其中参考脚本只做内存`compile()`，不进入lint或CI执行；
+- 临时PT/JSON、CANNBot认证和日志均未进入仓库。
+
+真实NPU状态仍为：
+
+```text
+SMLA level-3 metadata + main op: UNSUPPORTED
+MQSMLA level-3 metadata + main op: UNSUPPORTED
+原因：当前runtime只接受deterministic level 0/1/2
+```
+
+### 九、开发计划继续推进顺序
+
+不等NPU，按顺序继续：
+
+1. 用relation manifest v1定义STC source entry状态，但只录入无冲突项；
+2. 由owner修正014/015、018-020、024-027及001-020公共字段，尤其026的B/cu_seqlens冲突；
+3. 为SMLA/MQSMLA各补TND、PA_BBND、RightDown/Band小shape workbook，关闭CPU relation
+   coverage缺口；
+4. MQ process保留LSE且MQ CPU golden生成LSE后，再开启MQ LSE关系和精度门禁；
+5. 等tiling owner裁决PR floor/需求ceil与`S2<32`zero edge。
+
+环境就绪后再做：双算子真实level3 smoke -> eager四模式 -> 真实metadata Level-1/2 matrix ->
+graph -> ACLNN -> N=3/N=125和nightly。relation manifest届时复用同一relation id追加NPU output、
+metadata digest和最终状态，不再重新设计case身份。

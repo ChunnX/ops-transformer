@@ -33,6 +33,7 @@
 | `batch/consistency/metadata_coverage.py` | FA/FD token/core/workspace展开及floor/ceil公式审计 |
 | `batch/consistency/reporting.py` | PT来源、shape/dtype/device/byte/digest/sample输入摘要 |
 | `batch/consistency/offline.py` | origin-mapped expected output与derived PT round-trip |
+| `batch/consistency/relation_manifest.py` | versioned baseline/derived TokenOrigin关系、内容指纹、预检与覆盖清单 |
 | 其余 `batch/consistency/*.py` | case格式、layout、schema、数据模型和命名配置 |
 
 ## 运行
@@ -67,4 +68,6 @@ torch_npu/CANN 在第一条 NPU 操作处拒绝 level 3，真实运行应报告 
 level 0 伪造 PASS。
 
 `consistency_prepare`只输出CPU-only预检状态，不代表NPU一致性通过。模式4没有origin的额外token
-会在报告中记为`unmapped_tokens`，不会冒充完整CPU golden。
+会在报告中记为`unmapped_tokens`，不会冒充完整CPU golden。每个baseline同时输出
+`consistency_relation_manifest.json`，汇总目录输出`smla_consistency_relation_manifest.json`；
+其中的PASS只表示TokenOrigin边界、scope、语义oracle、PT指纹和覆盖清单预检通过。

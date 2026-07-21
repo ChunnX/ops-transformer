@@ -21,7 +21,7 @@ from batch.consistency.adapter import CaseAdapter
 from batch.consistency.compare import compare_pair, tensor_md5
 from batch.consistency.config import CaseConfigParser, ConsistencyMode, ModeRegistry
 from batch.consistency.flow import ConsistencyFlow, DeterministicLevelGuard
-from batch.consistency.model import RunResult
+from batch.consistency.model import ConsistencyCase, RunResult, TokenOrigin
 from batch.consistency.schema import check_invariants, get_q_lengths
 from batch.consistency.transform import (
     ActualInputSemanticOracle,
@@ -35,8 +35,24 @@ from batch.consistency.transform import (
 )
 from batch.consistency.metadata_coverage import CoverageContext, MetadataCoverageAnalyzer, S2Category
 from batch.consistency.metadata_layout import MetadataLayout
-from batch.consistency.offline import mode_options_from_mapping
-from batch.consistency.reporting import attach_provenance, build_input_summary
+from batch.consistency.offline import (
+    build_mode_cases,
+    materialize_expected_output,
+    mode_options_from_mapping,
+)
+from batch.consistency.relation_manifest import (
+    RelationManifestError,
+    build_case_relation,
+    build_relation_manifest,
+    make_baseline_id,
+    validate_relation_manifest,
+)
+from batch.consistency.reporting import (
+    attach_provenance,
+    build_input_summary,
+    input_content_digest,
+    stable_json_digest,
+)
 
 
 def make_case(batch=2, q_length=4, ori_length=8, physical_ori=None, mask_mode=0):
@@ -259,6 +275,113 @@ def test_named_modes_and_explicit_config_parsing():
         "common_tokens": 3,
         "derived_extra": 0,
     }
+    with pytest.raises(ValueError, match="canonical names"):
+        mode_options_from_mapping({"consistency_modes": "1,2"})
+
+
+def test_relation_manifest_prechecks_origins_and_reports_coverage():
+    baseline = make_case(batch=3, q_length=4)
+    baseline_summary = build_input_summary(baseline, role="baseline")
+    fingerprint = input_content_digest(baseline_summary)
+    baseline_id = make_baseline_id(baseline, fingerprint)
+    cases = build_mode_cases(
+        baseline,
+        modes=("reorder", "split", "token-split", "shape-change"),
+        split_groups=[[0], [1, 2]],
+        token_split_sizes=[1, 3],
+        common_tokens=3,
+        derived_extra=2,
+    )
+    relations = []
+    for index, case in enumerate(cases):
+        materialize_expected_output(baseline, case)
+        relations.append(
+            build_case_relation(
+                baseline,
+                baseline_id,
+                case,
+                f"/tmp/derived_{index}.pt",
+                f"fingerprint_{index}",
+            )
+        )
+    manifest = build_relation_manifest(
+        baseline,
+        "/tmp/baseline.pt",
+        fingerprint,
+        "cpu-md5",
+        "/tmp/cases.xlsx",
+        "SMLA",
+        relations,
+    )
+    validate_relation_manifest(manifest)
+    assert manifest["precheck"]["status"] == "PASS"
+    assert manifest["coverage"]["mode_counts"] == {
+        "reorder": 1,
+        "split": 2,
+        "token-split": 2,
+        "shape-change": 1,
+    }
+    assert manifest["coverage"]["missing_modes"] == []
+    assert manifest["coverage"]["source_landmark_hits"]["batch"]["max"] > 0
+    assert all(
+        relation["comparison_identity"]["origin_spans"]
+        for relation in manifest["relations"]
+    )
+
+
+def test_relation_manifest_rejects_out_of_bounds_origin_and_tampering():
+    baseline = make_case(batch=1)
+    invalid = ConsistencyCase(
+        name="invalid",
+        input_data=make_case(batch=1),
+        output_origins=[TokenOrigin(1, 0)],
+        transform_meta={"mode_name": "reorder"},
+    )
+    invalid.input_data["_consistency_expected_scope"] = {"compared_q_lengths": [1]}
+    with pytest.raises(RelationManifestError, match="source_batch"):
+        build_case_relation(baseline, "baseline", invalid, "/tmp/invalid.pt", "digest")
+
+    missing_oracle = ConsistencyCase(
+        name="missing_oracle",
+        input_data=make_case(batch=1),
+        output_origins=[TokenOrigin(0, 0)],
+        transform_meta={"mode_name": "token-split"},
+    )
+    missing_oracle.input_data["_consistency_expected_scope"] = {
+        "compared_q_lengths": [1]
+    }
+    with pytest.raises(RelationManifestError, match="requires a semantic oracle"):
+        build_case_relation(
+            baseline, "baseline", missing_oracle, "/tmp/missing.pt", "digest"
+        )
+
+    case = build_mode_cases(
+        baseline, modes=("token-split",), token_split_sizes=[1, 3]
+    )[0]
+    materialize_expected_output(baseline, case)
+    fingerprint = input_content_digest(build_input_summary(baseline, role="baseline"))
+    baseline_id = make_baseline_id(baseline, fingerprint)
+    relation = build_case_relation(
+        baseline, baseline_id, case, "/tmp/derived.pt", "derived-digest"
+    )
+    manifest = build_relation_manifest(
+        baseline,
+        "/tmp/baseline.pt",
+        fingerprint,
+        "cpu-md5",
+        "/tmp/cases.xlsx",
+        "SMLA",
+        [relation],
+    )
+    manifest["relations"][0]["comparison_identity"]["origin_spans_sha256"] = "tampered"
+    with pytest.raises(RelationManifestError, match="digest mismatch"):
+        validate_relation_manifest(manifest)
+
+    identity = manifest["relations"][0]["comparison_identity"]
+    identity["origin_spans_sha256"] = stable_json_digest(identity["origin_spans"])
+    manifest["relations"][0]["precheck"]["status"] = "FAIL"
+    with pytest.raises(RelationManifestError, match="precheck is not PASS"):
+        validate_relation_manifest(manifest)
 
 
 def test_md5_and_numeric_compare_are_both_reported():
@@ -281,6 +404,12 @@ def test_whitebox_input_summary_contains_source_shapes_values_and_digests(tmp_pa
     assert summary["tensor_inputs"]["seqused_q"]["values"] == [4, 4]
     assert summary["tensor_inputs"]["seqused_q"]["values_complete"]
     assert summary["metadata_input_sha256"]
+
+    same_content = make_case()
+    attach_provenance(same_content, source_pt=str(tmp_path / "other.pt"))
+    other_summary = build_input_summary(same_content, role="baseline", mode="reorder")
+    assert stable_json_digest(summary) != stable_json_digest(other_summary)
+    assert input_content_digest(summary) == input_content_digest(other_summary)
 
 
 def test_pr8737_floor_and_requirement_ceil_formula_are_both_reported():
@@ -389,6 +518,7 @@ def test_dual_operator_consistency_core_is_an_exact_mirror():
         "model.py",
         "offline.py",
         "reporting.py",
+        "relation_manifest.py",
         "schema.py",
         "transform.py",
     }

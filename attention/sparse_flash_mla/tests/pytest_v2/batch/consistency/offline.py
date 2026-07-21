@@ -21,8 +21,19 @@ import torch
 
 from .adapter import CaseAdapter
 from .compare import OriginComparator, TensorDigest
+from .config import CaseConfigParser, ModeRegistry
 from .model import ConsistencyCase
-from .reporting import attach_provenance, build_input_summary, stable_json_digest
+from .relation_manifest import (
+    build_case_relation,
+    build_relation_manifest,
+    make_baseline_id,
+)
+from .reporting import (
+    attach_provenance,
+    build_input_summary,
+    input_content_digest,
+    stable_json_digest,
+)
 from .schema import build_baseline_origins, get_q_lengths, validate_schema
 from .transform import (
     transform_mode1_reorder,
@@ -41,17 +52,20 @@ def mode_options_from_mapping(values: Dict[str, Any]) -> Dict[str, Any]:
     result: Dict[str, Any] = {}
     modes = values.get("consistency_modes")
     if isinstance(modes, str) and modes.strip():
-        result["modes"] = tuple(item.strip() for item in modes.split(",") if item.strip())
+        tokens = tuple(item.strip() for item in modes.split(",") if item.strip())
+        if any(token.isdigit() for token in tokens):
+            raise ValueError("Excel consistency_modes must use canonical names, not numeric aliases")
+        result["modes"] = tuple(
+            mode.value for mode in ModeRegistry.parse(modes, warn_legacy=False)
+        )
     groups = values.get("split_groups")
     if isinstance(groups, str) and groups.strip():
-        result["split_groups"] = [
-            [int(item.strip()) for item in group.split(",") if item.strip()]
-            for group in groups.split(";")
-            if group.strip()
-        ]
+        result["split_groups"] = CaseConfigParser.split_groups(groups)
     sizes = values.get("token_split_sizes")
     if isinstance(sizes, str) and sizes.strip():
-        result["token_split_sizes"] = [int(item.strip()) for item in sizes.split(",")]
+        result["token_split_sizes"] = CaseConfigParser.split_sizes(
+            sizes, "token_split_sizes"
+        )
     for source, target in (
         ("mode_batch", "mode_batch"),
         ("common_tokens", "common_tokens"),
@@ -60,6 +74,12 @@ def mode_options_from_mapping(values: Dict[str, Any]) -> Dict[str, Any]:
         value = values.get(source)
         if value is not None and not (isinstance(value, float) and value != value):
             result[target] = int(value)
+    if result.get("mode_batch", 0) < 0:
+        raise ValueError("mode_batch must be >= 0")
+    if "common_tokens" in result and result["common_tokens"] < 1:
+        raise ValueError("common_tokens must be >= 1")
+    if result.get("derived_extra", 0) < 0:
+        raise ValueError("derived_extra must be >= 0")
     return result
 
 
@@ -193,6 +213,7 @@ def _roundtrip_case(
         transform=case.transform_meta,
     )
     before_fingerprint = stable_json_digest(before_summary)
+    before_content_fingerprint = input_content_digest(before_summary)
     derived_dir = os.path.join(output_dir, "derived")
     os.makedirs(derived_dir, exist_ok=True)
     path = os.path.join(derived_dir, f"{_safe_name(case.name)}.pt")
@@ -208,6 +229,7 @@ def _roundtrip_case(
         transform=case.transform_meta,
     )
     after_fingerprint = stable_json_digest(summary)
+    after_content_fingerprint = input_content_digest(summary)
     return {
         "case": case.name,
         "mode": case.transform_meta.get("mode_name"),
@@ -217,8 +239,12 @@ def _roundtrip_case(
         "cpu_output_md5_after_reload": reloaded_digest,
         "input_fingerprint_before_save": before_fingerprint,
         "input_fingerprint_after_reload": after_fingerprint,
+        "input_content_fingerprint_before_save": before_content_fingerprint,
+        "input_content_fingerprint_after_reload": after_content_fingerprint,
         "pt_roundtrip_equal": (
-            expected_digest == reloaded_digest and before_fingerprint == after_fingerprint
+            expected_digest == reloaded_digest
+            and before_fingerprint == after_fingerprint
+            and before_content_fingerprint == after_content_fingerprint
         ),
         "semantic_oracle": case.transform_meta.get("semantic_oracle"),
         "expected_scope": reloaded.get("_consistency_expected_scope"),
@@ -245,9 +271,15 @@ def prepare_saved_baseline(
     )
     validate_schema(baseline_data)
     baseline_digest = TensorDigest.md5(baseline_data["cpu_output"])
+    baseline_summary = build_input_summary(baseline_data, role="baseline")
+    baseline_fingerprint = stable_json_digest(baseline_summary)
+    baseline_content_fingerprint = input_content_digest(baseline_summary)
+    baseline_id = make_baseline_id(baseline_data, baseline_content_fingerprint)
     cases = build_mode_cases(baseline_data, modes=modes, **mode_options)
-    derived = [
-        _roundtrip_case(
+    derived = []
+    relations = []
+    for case in cases:
+        item = _roundtrip_case(
             baseline_data,
             baseline_path,
             case,
@@ -255,8 +287,31 @@ def prepare_saved_baseline(
             source_excel,
             source_sheet,
         )
-        for case in cases
-    ]
+        derived.append(item)
+        relations.append(
+            build_case_relation(
+                baseline_data,
+                baseline_id,
+                case,
+                item["pt_path"],
+                item["input_content_fingerprint_after_reload"],
+            )
+        )
+
+    relation_manifest = build_relation_manifest(
+        baseline_data,
+        os.path.abspath(baseline_path),
+        baseline_content_fingerprint,
+        baseline_digest,
+        os.path.abspath(source_excel),
+        source_sheet,
+        relations,
+    )
+    os.makedirs(output_dir, exist_ok=True)
+    manifest_path = os.path.join(output_dir, "consistency_relation_manifest.json")
+    with open(manifest_path, "w", encoding="utf-8") as file:
+        json.dump(relation_manifest, file, ensure_ascii=False, indent=2, sort_keys=True)
+
     report = {
         "schema_version": 1,
         "scope": "CPU-only; no NPU result and no batch-consistency PASS claim",
@@ -265,11 +320,19 @@ def prepare_saved_baseline(
         "baseline_pt": os.path.abspath(baseline_path),
         "baseline_schema_valid": True,
         "baseline_cpu_output_md5": baseline_digest,
-        "baseline_input_summary": build_input_summary(baseline_data, role="baseline"),
+        "baseline_input_fingerprint": baseline_fingerprint,
+        "baseline_input_content_fingerprint": baseline_content_fingerprint,
+        "baseline_input_summary": baseline_summary,
         "derived": derived,
-        "pass": bool(derived) and all(item["pt_roundtrip_equal"] for item in derived),
+        "relation_manifest": relation_manifest,
+        "relation_manifest_path": os.path.abspath(manifest_path),
+        "relation_manifest_sha256": stable_json_digest(relation_manifest),
+        "pass": (
+            bool(derived)
+            and all(item["pt_roundtrip_equal"] for item in derived)
+            and relation_manifest["precheck"]["status"] == "PASS"
+        ),
     }
-    os.makedirs(output_dir, exist_ok=True)
     report_path = os.path.join(output_dir, "consistency_prepare_report.json")
     with open(report_path, "w", encoding="utf-8") as file:
         json.dump(report, file, ensure_ascii=False, indent=2, sort_keys=True)

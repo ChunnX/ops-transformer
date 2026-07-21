@@ -221,7 +221,7 @@ NPU level3环境等待不再阻塞以下工作。详细代码和命令见`../lev
 | metadata输入摘要 | 能 | 已完成 | PT来源、shape/dtype/device/byte/digest/sample/小tensor完整值 |
 | metadata算子调用 | 不能完整验收 | 两算子executor已接通 | runtime拒绝level3，状态为`UNSUPPORTED` |
 | 白盒自动分析 | 算法能，真实覆盖不能 | parser/analyzer/公式审计完成 | 真实FA/FD coverage matrix待NPU metadata |
-| S2生成/Level-1 manifest | 能 | 分类器完成，STC manifest未完成 | floor/ceil公式和STC错误需owner裁决 |
+| S2生成/Level-1 manifest | 能 | relation inventory完成，STC source manifest未完成 | floor/ceil公式和STC错误需owner裁决 |
 | 自动场景覆盖 | 部分能 | 暂不修改metadata伪造覆盖 | 后续应生成合法输入，再观察真实metadata |
 | graph/ACLNN | 部分能 | 原graph保留，一致性executor未完成 | 等eager level3先闭环，再做STC 021/023 |
 
@@ -248,3 +248,34 @@ batch一致性比较，零模板也不宣称是完整CPU golden。若未来需�
 2. 不通过手工改metadata伪造白盒PASS；analyzer只读主算子实际消费的metadata。
 3. 不用level0普通精度PASS替代level3一致性PASS。
 4. 不再扩展`-M 1,2`数字含义；正式配置只用命名mode/profile。
+
+# 2026-07-21 外部方案借鉴与 relation manifest
+
+`../data/`中的aclnnfuzz方案不是SMLA/MQSMLA的替代框架。它的seed切片无法表达
+TND prefix sum、PA block table、位置mask、sparse/top-k和量化KV联动；其level0/1/2也是
+用例分类，不是deterministic level。详细逐项审计见`../data/README.md`。
+
+本轮只采纳三个工程思想：显式声明比较关系、执行前预检、min/mid/max与分层覆盖诊断。
+pytest_v2新增`batch/consistency/relation_manifest.py`，`consistency_prepare`会输出version 1 JSON：
+
+```text
+baseline PT + content fingerprint
+  -> derived PT
+  -> compact TokenOrigin spans
+  -> origin边界/重复/scope/oracle/digest预检
+  -> mode/layout/mask/visible-S2/source-landmark coverage inventory
+```
+
+这里的coverage inventory只描述CPU输入和比较关系。真实FA/FD核分配仍必须读取level-3主算子
+实际消费的metadata；二者不能互相替代。
+
+| 能力 | 2026-07-21状态 | 剩余项 |
+| --- | --- | --- |
+| derived relation manifest v1 | 完成，双算子离线各6条relation | 后续在同relation id追加NPU/metadata结果 |
+| canonical Excel配置预检 | 完成，拒绝数字mode并复用正式parser | STC公共字段仍待owner补齐 |
+| 输入关系覆盖清单 | 完成，mode/layout/mask/S2/min-mid-max | 增加TND、PA、RightDown/Band workbook |
+| STC 001-027 source manifest | 仅完成schema基础 | 014/026等冲突修正后逐项录入 |
+| 真实metadata coverage matrix | analyzer算法完成，真实数据阻塞 | 等runtime/operator level3 |
+
+外部脚本不进入正式路径：合法6元素input seed info会被其错误的`len==5`判断跳过，且CSV/Excel
+和动态slice多处使用`eval`。原文件仅作为需求输入保留，不在CI执行。

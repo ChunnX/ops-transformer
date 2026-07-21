@@ -132,6 +132,13 @@ def stable_json_digest(value: Any) -> str:
     return hashlib.sha256(encoded).hexdigest()
 
 
+def input_content_digest(summary: Dict[str, Any]) -> str:
+    """Fingerprint input content without binding the identity to a temporary source path."""
+    content = dict(summary)
+    content.pop("provenance", None)
+    return stable_json_digest(content)
+
+
 def _first_value(values: Iterable[Any], default: int = 0) -> int:
     for value in values:
         return int(value)

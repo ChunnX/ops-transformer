@@ -302,6 +302,10 @@ bash test_run.sh consistency_prepare \
 NPU batch consistency PASS。当前本机 runtime 会在第一次 NPU 操作时拒绝level3，因此真实
 `consistency` 仍预期为 `UNSUPPORTED`。
 
+prepare还会在每个case和算子汇总目录输出`consistency_relation_manifest.json`。它用
+`baseline_case_id + TokenOrigin spans`明确“derived哪个逻辑token对应baseline哪个token”，并
+检查origin边界/重复/scope/oracle/digest。这里的PASS仍是CPU输入关系PASS，不是NPU结果PASS。
+
 ## 10. 最容易混淆的三件事
 
 1. `Token` 不是一个标量，而是某个 batch 的一个 query position，内部还有多个 head 和 D 维向量。
@@ -345,6 +349,7 @@ bn2 = batch * N2 + n2 = 1*2+1 = 3
 | `kernel_metadata_tensor` | NPU实际metadata[1024]的shape/dtype/digest |
 | `transform` | order、group、token range、共同前缀、semantic oracle |
 | `tile_formula_audit` | 每个token的visible ori/cmp、floor/ceil公式和冲突 |
+| `relation_manifest` | baseline内容指纹、derived PT、压缩origin spans、预检与输入关系覆盖 |
 
 Q/KV很大，JSON只保留首尾sample，不把数GB数据复制进报告；digest仍覆盖完整字节。cu/seqused/
 residual等小控制tensor在不超过256项时记录完整值。
@@ -366,6 +371,7 @@ pytest_v2/
         ├── compare/flow              # origin比较与level3编排
         ├── metadata_*                # 1024布局与FA/FD分析
         ├── reporting                 # 原始输入摘要
+        ├── relation_manifest         # baseline/derived关系、预检与覆盖清单
         └── offline                   # derived golden/PT round-trip
 ```
 
@@ -379,3 +385,5 @@ metadata-only probe不属于正式适配，已经从`batch/`删除。
 3. PA中重排batch是否重排整个KV cache？答案：通常不动物理cache，只重排block table行。
 4. 为什么只比较Q bit不够？答案：mask窗口、可见KV、index/top-k/sinks也属于数学输入。
 5. CPU-only prepare通过能否说NPU一致性通过？答案：不能，它只证明输入/golden/PT/transform链。
+6. 外部`output_seed=102`是否表示输出数值应为102？答案：不是，它只是分组标签；本项目使用
+   可追溯的`TokenOrigin(source_batch,source_token)`替代。
