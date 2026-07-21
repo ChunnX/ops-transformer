@@ -972,12 +972,12 @@ def tilelang_grad_kl_loss_single_kernel(
 
                                     # dKey = RG^T @ QI. Wait until Cube has finished reading
                                     # RG_L1 above before MTE1 transposes the same L1 tile.
-                                    T.set_flag("m", "mte1", 10)
-                                    T.wait_flag("m", "mte1", 10)
+                                    T.set_flag("m", "mte1", 4)
+                                    T.wait_flag("m", "mte1", 4)
                                     T.copy(RG_L1, RG_L0A_dk, transpose=True)
                                     T.copy(QI_L1_dk, QI_L0B_dk)
-                                    T.set_flag("mte1", "m", 10)
-                                    T.wait_flag("mte1", "m", 10)
+                                    T.set_flag("mte1", "m", 4)
+                                    T.wait_flag("mte1", "m", 4)
                                     T.wait_flag("fix", "m", 6)
                                     T.mma(RG_L0A_dk, QI_L0B_dk, DK_L0C, init=True)
                                     T.set_flag("m", "fix", 6)
