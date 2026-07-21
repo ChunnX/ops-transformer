@@ -97,7 +97,8 @@ protected:
                                   ActualSeqLensParser<Q_MODE, int32_t>>::type;
 
     using KvSeqParserType =
-        typename std::conditional<(!isPa && (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD)),
+        typename std::conditional<(!isPa && (layout == LayOutTypeEnum::LAYOUT_TND ||
+                                             layout == LayOutTypeEnum::LAYOUT_NTD)),
                                   ActualSeqLensParser<KV_MODE, int32_t, true>,
                                   ActualSeqLensParser<KV_MODE, int32_t>>::type;
 
