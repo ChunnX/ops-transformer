@@ -47,10 +47,7 @@ struct DispatchGmm1SwigluContext {
     int32_t groupedMatmulMode;
 };
 
-template <typename BlockEpilogue>
 struct DispatchGmm1SwigluArgs {
-    const Params *gmmParams;
-    BlockEpilogue *epilogueOp;
     GM_ADDR *winRankAddr;
     GM_ADDR maskRecvPtr;
     GM_ADDR expertRevTokenNumsPtr;
@@ -63,8 +60,14 @@ struct DispatchGmm1SwigluArgs {
     GM_ADDR weight1ScalePtr;
     GM_ADDR dispatchToGmm1FlagPtr;
     GM_ADDR sendCntFlagPtr;
-    uint32_t *startBlockIdx;
-    int32_t *vecSetSyncCom;
+};
+
+// Mutable scheduling state for one dispatch/GMM1/SwiGLU invocation. Keeping
+// this state at the call site avoids persistent self-references in Args and
+// lets the compiler keep the frequently accessed values in scalar registers.
+struct DispatchGmm1SwigluState {
+    uint32_t startBlockIdx;
+    int32_t vecSetSyncCom;
 };
 
 template <typename ActivationType>
@@ -86,10 +89,10 @@ struct DispatchGmm1SwigluScratch {
 };
 
 // Prototype: MegaMoe::DispatchBuffInit. Builds the bounded-UB scratch layout for dispatch and GMM1.
-template <typename ActivationType, bool EnableA8W4, typename BlockEpilogue>
+template <typename ActivationType, bool EnableA8W4>
 __aicore__ inline void InitDispatchGmm1SwigluBuffers(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
+    const DispatchGmm1SwigluArgs &args,
     DispatchGmm1SwigluScratch<ActivationType> &scratch)
 {
     scratch.expertRevNumsGlobalTensor.SetGlobalBuffer(
@@ -167,10 +170,10 @@ __aicore__ inline void InitDispatchGmm1SwigluBuffers(
 }
 
 // Prototype: MegaMoe::SendCntCal. Reads per-rank counts and publishes one expert count for this block.
-template <typename ActivationType, bool EnableA8W4, typename BlockEpilogue>
+template <typename ActivationType, bool EnableA8W4>
 __aicore__ inline void SendCntCalOneCore(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
+    const DispatchGmm1SwigluArgs &args,
     DispatchGmm1SwigluScratch<ActivationType> &scratch,
     uint32_t localExpertId, uint64_t &sendCnt)
 {
@@ -222,10 +225,10 @@ __aicore__ inline void SendCntCalOneCore(
 }
 
 // Prototype: MegaMoe::CopyGMToGMPerToken. Copies one dispatch shard and emits its triple metadata.
-template <typename ActivationType, typename QuantScaleType, typename BlockEpilogue>
+template <typename ActivationType, typename QuantScaleType>
 __aicore__ inline void CopyDispatchTokensOneCore(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
+    const DispatchGmm1SwigluArgs &args,
     DispatchGmm1SwigluScratch<ActivationType> &scratch,
     int32_t rowDstOffset, int32_t remoteRankIdx, int32_t copyStartIdx, int32_t copyNum)
 {
@@ -315,10 +318,10 @@ __aicore__ inline void CopyDispatchTokensOneCore(
 }
 
 // Prototype: MegaMoe::TripleInfoCalAndDispatch. Scans route batches and dispatches one block's token shards.
-template <typename ActivationType, typename QuantScaleType, typename BlockEpilogue>
+template <typename ActivationType, typename QuantScaleType>
 __aicore__ inline void DispatchTokensOneCore(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
+    const DispatchGmm1SwigluArgs &args,
     DispatchGmm1SwigluScratch<ActivationType> &scratch,
     uint32_t localExpertId)
 {

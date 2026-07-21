@@ -24,10 +24,10 @@ __aicore__ inline Gmm1ExpertLoopState CreateGmm1ExpertLoopState(
     return Gmm1ExpertLoopState{shape, 0};
 }
 
-template <typename ActivationType, bool EnableA8W4, typename BlockEpilogue>
+template <typename ActivationType, bool EnableA8W4>
 __aicore__ inline bool UpdateGmm1GroupParams(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
+    const DispatchGmm1SwigluArgs &args,
     DispatchGmm1SwigluScratch<ActivationType> &scratch,
     Gmm1ExpertLoopState &state, uint32_t expertIdx, uint64_t sendCnt)
 {
@@ -69,7 +69,7 @@ template <typename ActivationType, typename WeightType, typename SwigluOutType,
     typename QuantScaleType, bool EnableA8W4, typename BlockEpilogue>
 __aicore__ inline void UpdateGmm1GlobalBuffer(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
+    const DispatchGmm1SwigluArgs &args, BlockEpilogue &epilogueOp,
     GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state, uint32_t expertIdx)
 {
     if constexpr (g_coreType == AIV && !EnableA8W4) {
@@ -109,7 +109,7 @@ __aicore__ inline void UpdateGmm1GlobalBuffer(
             AscendC::Coord<int64_t, int64_t, int64_t, int64_t, int64_t, int64_t> vecBaseOffset{
                 state.rowOffset * n / SWIGLU_N_HALF / cElemsPerByte,
                 state.rowOffset * scaleN, expertOffset, 0L, 0L, 0L};
-            args.epilogueOp->UpdateGlobalAddr(vecBaseOffset);
+            epilogueOp.UpdateGlobalAddr(vecBaseOffset);
         }
     }
     if constexpr (g_coreType == AIC) {
@@ -123,25 +123,27 @@ template <typename QuantOutType, typename WeightType,
     typename SwigluOutType, typename QuantScaleType, bool EnableA8W4, typename BlockEpilogue>
 __aicore__ inline void RunGmm1SwigluStageOneCore(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
-    const GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state)
+    const DispatchGmm1SwigluArgs &args, const Params &gmmParams,
+    BlockEpilogue &epilogueOp,
+    const GMMAddrInfo &gmmAddrInfo, const Gmm1ExpertLoopState &state,
+    DispatchGmm1SwigluState &runtimeState)
 {
     if constexpr (EnableA8W4) {
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<
             QuantOutType, WeightType, bfloat16_t, QuantScaleType, QuantScaleType>(
-            *args.epilogueOp, *args.gmmParams, state.problemShape, gmmAddrInfo,
-            *args.startBlockIdx, *args.vecSetSyncCom, context.threadBlock);
+            epilogueOp, gmmParams, state.problemShape, gmmAddrInfo,
+            runtimeState.startBlockIdx, runtimeState.vecSetSyncCom, context.threadBlock);
     } else if (context.groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
         context.groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
         MegaMoeImpl::GroupMatmulSwigluQuant<
             QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType, true>(
-            *args.epilogueOp, *args.gmmParams, state.problemShape, gmmAddrInfo,
-            *args.startBlockIdx, *args.vecSetSyncCom, context.threadBlock);
+            epilogueOp, gmmParams, state.problemShape, gmmAddrInfo,
+            runtimeState.startBlockIdx, runtimeState.vecSetSyncCom, context.threadBlock);
     } else {
         MegaMoeImpl::GroupMatmulSwigluQuant<
             QuantOutType, SwigluOutType, QuantOutType, bfloat16_t, QuantScaleType, QuantScaleType>(
-            *args.epilogueOp, *args.gmmParams, state.problemShape, gmmAddrInfo,
-            *args.startBlockIdx, *args.vecSetSyncCom, context.threadBlock);
+            epilogueOp, gmmParams, state.problemShape, gmmAddrInfo,
+            runtimeState.startBlockIdx, runtimeState.vecSetSyncCom, context.threadBlock);
     }
 }
 
@@ -152,8 +154,10 @@ template <typename QuantOutType, typename ActivationType, typename WeightType,
     typename SwigluOutType, typename QuantScaleType, bool EnableA8W4, typename BlockEpilogue>
 __aicore__ inline void DispatchGmm1SwigluOneCore(
     const DispatchGmm1SwigluContext &context,
-    const DispatchGmm1SwigluArgs<BlockEpilogue> &args,
-    DispatchGmm1SwigluScratch<ActivationType> &scratch)
+    const DispatchGmm1SwigluArgs &args, const Params &gmmParams,
+    BlockEpilogue &epilogueOp,
+    DispatchGmm1SwigluScratch<ActivationType> &scratch,
+    DispatchGmm1SwigluState &runtimeState)
 {
     if (context.threadBlock.threadBlockNum == 0U ||
         context.threadBlock.threadBlockIdx >= context.threadBlock.threadBlockNum ||
@@ -200,12 +204,13 @@ __aicore__ inline void DispatchGmm1SwigluOneCore(
             continue;
         }
         UpdateGmm1GlobalBuffer<ActivationType, WeightType, SwigluOutType,
-            QuantScaleType, EnableA8W4>(context, args, gmm1AddrInfo, gmm1State, expertIdx);
+            QuantScaleType, EnableA8W4>(
+                context, args, epilogueOp, gmm1AddrInfo, gmm1State, expertIdx);
         RunGmm1SwigluStageOneCore<QuantOutType, WeightType,
             SwigluOutType, QuantScaleType, EnableA8W4>(
-                context, args, gmm1AddrInfo, gmm1State);
+                context, args, gmmParams, epilogueOp, gmm1AddrInfo, gmm1State, runtimeState);
     }
-    EndSync(*args.vecSetSyncCom);
+    EndSync(runtimeState.vecSetSyncCom);
 }
 
 } // namespace MegaMoeImpl
