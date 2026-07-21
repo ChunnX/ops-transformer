@@ -31,7 +31,7 @@ MASTER_PORT = 50029
 
 num_entries_per_rank = 4
 hidden_size = 128
-num_tokens = 6
+num_tokens = 3
 storage_type = torch.bfloat16
 
 
@@ -81,10 +81,10 @@ def train_worker(rank):
 
         # ==================== 创建 ElasticBuffer（with_grad=True）====================
         num_cpu_bytes = ElasticBuffer.get_engram_storage_size_hint(
-            num_entries=num_entries_per_rank, hidden_size=hidden_size, dtype=storage_type)
+            num_entries=num_entries_per_rank, hidden=hidden_size, dtype=storage_type)
 
         buffer = ElasticBuffer(group=group, num_cpu_bytes=num_cpu_bytes,
-                               num_max_tokens_per_rank=num_tokens, with_grad=True)
+                               num_max_tokens_per_rank=num_tokens * 2, with_grad=True)
         print(f"[rank {rank}] ElasticBuffer created (with_grad=True), num_cpu_bytes={num_cpu_bytes}")
 
         # ==================== write ====================
@@ -123,11 +123,11 @@ def train_worker(rank):
 
         grad_unique, unique_local_entry = buffer.engram_fetch_grad(grad_fetched, fetch_ctx)
 
-        print(f"[rank {rank}] backward: grad_unique shape={grad_unique.shape} (fp32)")
+        print(f"[rank {rank}] backward: grad_unique shape={grad_unique.shape}, dtype={grad_unique.dtype}")
         print(f"[rank {rank}] backward: unique_local_entry={unique_local_entry.cpu().tolist()}")
 
         # ==================== 验证反向（累加 grad_fetched） ====================
-        # 对每个 local index，累加所有 rank 中请求该 index 的 token 的 grad_fetched
+        # 对每个 local index，累加所有 rank 中请求该 index 的 token 的 grad_fetched（按 fp32 累加）
         grad_acc = {}  # local_idx -> accumulated grad (fp32, hidden)
         for r in range(WORLD_SIZE):
             for t_idx, global_idx in enumerate(all_indices_list[r]):
@@ -141,9 +141,14 @@ def train_worker(rank):
                     else:
                         grad_acc[local_idx] = grad_val.clone()
 
+        # fp32 累加结果转回输入 dtype，与算子输出对比
+        grad_fetched_dtype = grad_fetched.dtype
+        for local_idx in grad_acc:
+            grad_acc[local_idx] = grad_acc[local_idx].to(grad_fetched_dtype)
+
         print(f"[rank {rank}] backward: grad_acc keys={sorted(grad_acc.keys())}")
 
-        grad_unique_cpu = grad_unique.cpu()
+        grad_unique_cpu = grad_unique.cpu().float()
         unique_le_cpu = unique_local_entry.cpu()
         all_pass = True
         for k in range(len(unique_le_cpu)):
