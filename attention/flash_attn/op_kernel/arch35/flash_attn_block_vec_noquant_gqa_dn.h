@@ -39,7 +39,11 @@
 #include "../../common/vector_common.h"
 #include "../../common/memory_copy_arch35.h"
 #endif
-#include "init_output.h"
+#if __has_include("../../../common/op_kernel/init_output.h")
+#include "../../../common/op_kernel/init_output.h"
+#else
+#include "../../common/init_output.h"
+#endif
 
 using namespace AscendC;
 using namespace FaVectorApi;
