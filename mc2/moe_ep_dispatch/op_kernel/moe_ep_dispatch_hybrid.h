@@ -165,8 +165,7 @@ private:
     __aicore__ inline void WriteFinalReadyStatusToRank(uint32_t srcRankId, uint32_t dstRankId);
     __aicore__ inline uint32_t WaitScaleoutPayloadReady(GM_ADDR statusAddr);
     __aicore__ inline void PollBackoff();
-    __aicore__ inline void CompleteScaleoutFanoutSource(GM_ADDR localScaleoutStatusBase, uint32_t statusOffset,
-                                                        uint32_t srcRankId);
+    __aicore__ inline void ClearScaleoutReceiveStatus(GM_ADDR localScaleoutStatusBase, uint32_t statusOffset);
     __aicore__ inline void WriteScaleoutAckToSource(uint32_t srcRankId);
     __aicore__ inline void WaitScaleoutAcks();
     __aicore__ inline void WriteSlotToLocal(uint32_t dstRankId, uint32_t slot);
@@ -326,6 +325,7 @@ private:
     uint32_t debugFanoutActiveRankCount_{0};
     uint32_t debugFanoutNbiCount_{0};
     uint32_t debugFanoutDrainCount_{0};
+    uint32_t debugScaleoutPayloadNbiCount_{0};
     int64_t actualACnt_{0};
     // AIV0 分阶段性能打点，Process 结束时一次性写入 debug_out。
     uint64_t debugTotalCycles_{0};
@@ -633,6 +633,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
                                           debugScaleoutNotifyDrainCycles_);
     MoeEpDispatchBase::WriteUint64ToDebug(debugOutGMTensor_, MoeEpDispatchBase::DEBUG_OFFSET_SCALEOUT_PAYLOAD_BYTES,
                                           debugScaleoutPayloadBytes_);
+    MoeEpDispatchBase::WriteUint32ToDebug(debugOutGMTensor_,
+                                          MoeEpDispatchBase::DEBUG_OFFSET_SCALEOUT_PAYLOAD_NBI_COUNT,
+                                          debugScaleoutPayloadNbiCount_);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1432,18 +1435,17 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline bool MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::InitScaleupSendRange()
 {
-    uint32_t localStartRankOffset = 0U;
-    uint32_t localEndRankOffset = 0U;
-    SplitToCore(rankSizePerServer_, aivNum_, localStartRankOffset, localEndRankOffset, rankNumPerCore_, true);
-    startRankId_ = serverStartRank_ + localStartRankOffset;
-    endRankId_ = serverStartRank_ + localEndRankOffset;
-    if (startRankId_ >= serverEndRank_ || startRankId_ >= endRankId_) {
+    SplitToCore(epWorldSize_, aivNum_, startRankId_, endRankId_, rankNumPerCore_, true);
+    if (endRankId_ <= serverStartRank_ || startRankId_ >= serverEndRank_) {
         return false;
+    }
+    if (startRankId_ < serverStartRank_) {
+        startRankId_ = serverStartRank_;
     }
     if (endRankId_ > serverEndRank_) {
         endRankId_ = serverEndRank_;
-        rankNumPerCore_ = endRankId_ - startRankId_;
     }
+    rankNumPerCore_ = endRankId_ - startRankId_;
     return true;
 }
 
@@ -1549,6 +1551,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         if (aivId_ == 0U) {
             debugScaleoutPayloadSubmitCycles_ += GetSystemCycle() - payloadSubmitStartCycle;
             debugScaleoutPayloadBytes_ += sendDataSize;
+            debugScaleoutPayloadNbiCount_ += static_cast<uint32_t>(splitCount);
         }
         uint64_t payloadDrainStartCycle = aivId_ == 0U ? GetSystemCycle() : 0UL;
         hcomm_.Drain(commHandle);
@@ -1576,13 +1579,28 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::SendScaleoutPayloadsToProxy()
 {
-    uint32_t remoteScaleoutCount = numScaleoutRanks_ > 0U ? numScaleoutRanks_ - 1U : 0U;
-    uint32_t startRemoteScaleoutOrdinal = 0U;
-    uint32_t endRemoteScaleoutOrdinal = 0U;
-    uint32_t remoteScaleoutNumPerCore = 0U;
-    SplitToCore(remoteScaleoutCount, aivNum_, startRemoteScaleoutOrdinal, endRemoteScaleoutOrdinal,
-                remoteScaleoutNumPerCore, true);
-    if (startRemoteScaleoutOrdinal >= remoteScaleoutCount) {
+    // payload 与 count 复用相同的目标 rank 分核，使同一连接始终由同一个 AIV 使用。
+    uint32_t communicationStartRankId = 0U;
+    uint32_t communicationEndRankId = 0U;
+    uint32_t communicationRankNumPerCore = 0U;
+    SplitToCore(epWorldSize_, aivNum_, communicationStartRankId, communicationEndRankId,
+                communicationRankNumPerCore, true);
+    if (communicationStartRankId >= epWorldSize_) {
+        return;
+    }
+    bool ownsRemoteProxy = false;
+    for (uint32_t dstScaleoutIndex = 0U; dstScaleoutIndex < numScaleoutRanks_; dstScaleoutIndex++) {
+        if (dstScaleoutIndex == currentServerIndex_) {
+            continue;
+        }
+        uint32_t proxyRankId = GetProxyRankId(dstScaleoutIndex);
+        if (proxyRankId >= communicationStartRankId && proxyRankId < communicationEndRankId &&
+            proxyRankId < epWorldSize_) {
+            ownsRemoteProxy = true;
+            break;
+        }
+    }
+    if (!ownsRemoteProxy) {
         return;
     }
 
@@ -1595,12 +1613,13 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
                        scaleoutCounterCnt_, numScaleoutRanks_, aivNum_);
     SyncFunc<AscendC::HardEvent::V_S>();
 
-    for (uint32_t remoteScaleoutOrdinal = startRemoteScaleoutOrdinal;
-         remoteScaleoutOrdinal < endRemoteScaleoutOrdinal; remoteScaleoutOrdinal++) {
-        uint32_t dstScaleoutIndex = remoteScaleoutOrdinal >= currentServerIndex_
-                                      ? remoteScaleoutOrdinal + 1U : remoteScaleoutOrdinal;
+    for (uint32_t dstScaleoutIndex = 0U; dstScaleoutIndex < numScaleoutRanks_; dstScaleoutIndex++) {
+        if (dstScaleoutIndex == currentServerIndex_) {
+            continue;
+        }
         uint32_t proxyRankId = GetProxyRankId(dstScaleoutIndex);
-        if (proxyRankId >= epWorldSize_) {
+        if (proxyRankId < communicationStartRankId || proxyRankId >= communicationEndRankId ||
+            proxyRankId >= epWorldSize_) {
             continue;
         }
 
@@ -1849,8 +1868,8 @@ __aicore__ inline uint32_t MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFu
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
-__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::CompleteScaleoutFanoutSource(
-    GM_ADDR localScaleoutStatusBase, uint32_t statusOffset, uint32_t srcRankId)
+__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::ClearScaleoutReceiveStatus(
+    GM_ADDR localScaleoutStatusBase, uint32_t statusOffset)
 {
     GlobalTensor<int32_t> currentStatusTensor;
     currentStatusTensor.SetGlobalBuffer(
@@ -1858,8 +1877,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     currentStatusTensor.SetValue(0, 0);
     currentStatusTensor.SetValue(1, 0);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(currentStatusTensor);
-    PipeBarrier<PIPE_ALL>(); // status 清零完成后再确认，发送端收到 ack 后才可复用该接收区
-    WriteScaleoutAckToSource(srcRankId);
+    PipeBarrier<PIPE_ALL>(); // status 清零完成后才能由通信核发送 ack
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1869,7 +1887,21 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint32_t startScaleupIndex = 0U;
     uint32_t endScaleupIndex = 0U;
     uint32_t rankNumPerCore = 0U;
-    SplitToCore(rankSizePerServer_, aivNum_, startScaleupIndex, endScaleupIndex, rankNumPerCore, true);
+    uint32_t communicationStartRankId = 0U;
+    uint32_t communicationEndRankId = 0U;
+    SplitToCore(epWorldSize_, aivNum_, communicationStartRankId, communicationEndRankId, rankNumPerCore, true);
+    if (communicationEndRankId > serverStartRank_ && communicationStartRankId < serverEndRank_) {
+        uint32_t serverCommunicationStartRankId = communicationStartRankId;
+        uint32_t serverCommunicationEndRankId = communicationEndRankId;
+        if (serverCommunicationStartRankId < serverStartRank_) {
+            serverCommunicationStartRankId = serverStartRank_;
+        }
+        if (serverCommunicationEndRankId > serverEndRank_) {
+            serverCommunicationEndRankId = serverEndRank_;
+        }
+        startScaleupIndex = serverCommunicationStartRankId - serverStartRank_;
+        endScaleupIndex = serverCommunicationEndRankId - serverStartRank_;
+    }
     uint32_t currentScaleupIndex = GetCurrentScaleupIndex();
     for (uint32_t srcScaleoutIndex = 0U; srcScaleoutIndex < numScaleoutRanks_; srcScaleoutIndex++) {
         if (srcScaleoutIndex == currentServerIndex_) {
@@ -1910,11 +1942,17 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
             debugFanoutSendCycles_ += GetSystemCycle() - fanoutSendStartCycle;
         }
         if (aivId_ == 0U) {
-            CompleteScaleoutFanoutSource(localScaleoutStatusBase, statusOffset, srcRankId);
+            ClearScaleoutReceiveStatus(localScaleoutStatusBase, statusOffset);
+        }
+        SyncAll<true>(); // 控制核清理接收状态后，目标通信核才能发送 ack
+        if (srcRankId >= communicationStartRankId && srcRankId < communicationEndRankId) {
+            WriteScaleoutAckToSource(srcRankId);
+        }
+        SyncAll<true>(); // ack 完成后各核再进入下一 source
+        if (aivId_ == 0U) {
             debugFanoutNbiCount_++;
             debugFanoutDrainCount_++;
         }
-        SyncAll<true>(); // 控制核清理并确认当前 source 后，各核再进入下一轮
     }
 }
 
