@@ -354,6 +354,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::CopyInKVCache(int32_t batchIdx, i
             kScalarLocal.SetValue(i, 0);
         }
     }
+    EventMsg<HardEvent::S_V>();
     kCacheQue_.EnQue(kCacheLocal);
     vCacheQue_.EnQue(vCacheLocal);
 }
@@ -438,6 +439,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVFlat(int64_t headIdx, int
     LocalTensor<fp8_e4m3fn_t> vCacheLocal = vCacheQue_.DeQue<fp8_e4m3fn_t>();
     LocalTensor<float> vNormDownLocal = vNormDownQue_.AllocTensor<float>();
     float vScaleH = vScaleGm_.GetValue(headIdx);
+    EventMsg<HardEvent::S_V>();
     int64_t rowIdsStart = stemBlockIdx * stemBlockSize_;
 
     __local_mem__ fp8_e4m3fn_t *vCacheAddr = (__ubuf__ fp8_e4m3fn_t *)vCacheLocal.GetPhyAddr();
@@ -668,6 +670,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBiasOut(int32_t batchIdx,
     ComputeVMean(numStemBlocks, vBiasOutAddr, vFLatOutAddr); //  保存在vBiasOutAddr第一个位置,vFLatOutAddr保存LogVals
     EventMsg<HardEvent::V_S>();
     float vMean = vBiasOutLocal.GetValue(0);
+    EventMsg<HardEvent::S_V>();
     if (kDownLen > 1) {
         ComputeVStd<true>(numStemBlocks, vBiasOutAddr, vFLatOutAddr, vMean); //  保存在vBiasOutAddr第二个位置
     } else {
@@ -675,6 +678,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBiasOut(int32_t batchIdx,
     }
     EventMsg<HardEvent::V_S>();
     float vSTd = vBiasOutLocal.GetValue(1);
+    EventMsg<HardEvent::S_V>();
     ComputeVBias(numStemBlocks, vBiasOutAddr, vFLatOutAddr, vMean, vSTd);
     vBiasOutQue_.EnQue(vBiasOutLocal);
     vFLatOutQue_.FreeTensor(vFLatOutLocal);
