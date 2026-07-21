@@ -264,8 +264,7 @@ private:
     Range<int64_t> CalcS2TokenRange(uint32_t s1GIdx, const BatchCache &batchCache, bool isCmpKv);
     int64_t OriCalcCost(uint32_t basicM, uint32_t basicS2);
     int64_t CmpCalcCost(uint32_t basicM, uint32_t basicS2);
-    void CalcCostTable(uint32_t s1NormalSize, uint32_t s2NormalSize, uint32_t s1GTailSize, uint32_t oriS2TailSize,
-        uint32_t cmpS2TailSize);
+    void CalcCostTable(uint32_t s1GTailSize, uint32_t oriS2TailSize, uint32_t cmpS2TailSize);
 
     // cache calculation
     void CalcBatchCache(uint32_t bIdx, const SplitContext &splitContext, BatchCache &batchCache);
