@@ -58,7 +58,6 @@ COLUMN_MAP = {
     'seqused_q':           'seqused_q',
     'seqused_kv':          'seqused_kv',
     'cu_seqlens_q':        'cu_seqlens_q',
-    'cu_seqlens_kv':       'cu_seqlens_kv',
     'blockSize':           'block_size',
     'block_table_shape':   '_block_table_shape_',
     'block_table_dtype':   None,
@@ -116,7 +115,7 @@ KEY_ORDER = [
     'mask_mode', 'win_left', 'win_right',
     'winLeft', 'winRight',
     'seqused_q', 'seqused_kv',
-    'cu_seqlens_q', 'cu_seqlens_kv',
+    'cu_seqlens_q',
     'block_table', 'block_size',
     'atten_mask_dtype', 'atten_mask_layout',
     'return_softmax_lse',
@@ -239,13 +238,10 @@ def convert_row(headers, row_values):
         case_dict['layout_kv'] = [layout_val]
         case_dict['layout_out'] = [layout_val]
 
-    # ---- 处理 seqlens_list_q/kv → cu_seqlens_q/kv（逐batch长度→前缀和）----
+    # ---- 处理 seqlens_list_q → cu_seqlens_q（逐batch长度→前缀和）----
     if 'seqlens_list_q' in raw and not is_empty(raw['seqlens_list_q']):
         lengths_q = parse_bracket_list(raw['seqlens_list_q'])
         case_dict['cu_seqlens_q'] = [seqlens_to_prefix_sum(lengths_q)]
-    if 'seqlens_list_kv' in raw and not is_empty(raw['seqlens_list_kv']):
-        lengths_kv = parse_bracket_list(raw['seqlens_list_kv'])
-        case_dict['cu_seqlens_kv'] = [seqlens_to_prefix_sum(lengths_kv)]
 
     for col_name, val in raw.items():
         if col_name not in COLUMN_MAP:
@@ -261,7 +257,7 @@ def convert_row(headers, row_values):
         # 跳过已由上面特殊逻辑处理的字段
         if key in ('layout_q', 'layout_kv', 'layout_out') and key in case_dict:
             continue
-        if key in ('cu_seqlens_q', 'cu_seqlens_kv') and key in case_dict:
+        if key in ('cu_seqlens_q',) and key in case_dict:
             continue
 
         # ---- 整数标量 ----
@@ -295,8 +291,8 @@ def convert_row(headers, row_values):
         elif key in ('seqused_q', 'seqused_kv'):
             case_dict[key] = [parse_int_list(val_str)]
 
-        # ---- cu_seqlens_q / cu_seqlens_kv → [int, ...] ----
-        elif key in ('cu_seqlens_q', 'cu_seqlens_kv'):
+        # ---- cu_seqlens_q → [int, ...] ----
+        elif key in ('cu_seqlens_q',):
             case_dict[key] = [parse_int_list(val_str)]
 
         # ---- 布尔 ----

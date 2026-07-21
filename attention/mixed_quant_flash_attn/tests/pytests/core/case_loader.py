@@ -39,28 +39,21 @@ def normalize_params(raw: dict) -> dict:
     c.setdefault("win_right", 2147483647)
     c.setdefault("mask_mode", 0)
 
-    for key in ("cu_seqlens_q", "cu_seqlens_kv", "seqused_q", "seqused_kv"):
+    for key in ("cu_seqlens_q", "seqused_q", "seqused_kv"):
         if c.get(key) == [None] or c.get(key) is None:
             c.pop(key, None)
 
     if layout_q == "TND":
         c.setdefault("seqused_q", [c["cu_seqlens_q"][i + 1] - c["cu_seqlens_q"][i]
                                    for i in range(len(c["cu_seqlens_q"]) - 1)])
-        if c.get("layout_kv", layout_q) not in ("PA_BBND", "PA_BNBD", "PA_NZ"):
-            c.setdefault("cu_seqlens_kv", list(c["cu_seqlens_q"]))
-            c.setdefault("seqused_kv", [c["cu_seqlens_kv"][i + 1] - c["cu_seqlens_kv"][i]
-                                        for i in range(len(c["cu_seqlens_kv"]) - 1)])
-        else:
-            if "seqused_kv" not in c and "cu_seqlens_kv" in c:
-                cu = c["cu_seqlens_kv"]
-                c["seqused_kv"] = [cu[i + 1] - cu[i] for i in range(len(cu) - 1)]
         c["B"] = 1
 
     layout_kv_val = c.get("layout_kv", layout_q)
     if layout_kv_val in ("PA_BBND", "PA_BNBD", "PA_NZ"):
         c.setdefault("block_size", 128)
         if "seqused_kv" not in c:
-            c["seqused_kv"] = [c.get("S2", c.get("S1"))] * c.get("B", 1)
+            b_for_kv = (len(c["cu_seqlens_q"]) - 1) if layout_q == "TND" else c.get("B", 1)
+            c["seqused_kv"] = [c.get("S2", c.get("S1"))] * b_for_kv
 
         if layout_kv_val == "PA_NZ":
             dtype_str = c.get("Dtype", "fp16")

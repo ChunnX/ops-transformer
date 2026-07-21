@@ -47,7 +47,6 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         return torch.tensor(x, dtype=torch.int32, device=device).contiguous()
 
     cu_q  = _u32(p.get("cu_seqlens_q"))
-    cu_kv = _u32(p.get("cu_seqlens_kv"))
     sq    = _u32(p.get("seqused_q", p.get("actual_seq_qlen")))
     skv   = _u32(p.get("seqused_kv", p.get("actual_seq_kvlen")))
 
@@ -71,8 +70,6 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
             msq = p.get("S1", 1)
         if skv is not None:
             msk = int(skv.max())
-        elif cu_kv is not None:
-            msk = int((cu_kv[1:] - cu_kv[:-1]).max())
         else:
             msk = p.get("S2", p.get("S1", 1))
     else:
@@ -91,7 +88,7 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
 
     # === metadata kwargs ===
     meta_kwargs = dict(
-        cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv,
+        cu_seqlens_q=cu_q,
         seqused_q=sq, seqused_kv=skv,
         num_heads_q=nqh, num_heads_kv=nkh, head_dim=hd,
         batch_size=bs, max_seqlen_q=msq, max_seqlen_kv=msk,
@@ -104,10 +101,10 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
         softmax_scale=scale, mask_mode=mask_mode,
         win_left=wl, win_right=wr,
         block_table=bt, sinks=None, attn_mask=attn_mask,
-        cu_seqlens_q=cu_q, cu_seqlens_kv=cu_kv,
+        cu_seqlens_q=cu_q,
         seqused_q=sq, seqused_kv=skv,
         max_seqlen_q=msq if layout_q == "TND" else -1,
-        max_seqlen_kv=msk if layout_kv == "TND" else -1,
+        max_seqlen_kv=-1,
         layout_q=layout_q, layout_kv=layout_kv, layout_out=layout_out,
         return_softmax_lse=p.get("return_softmax_lse", 0),
     )
@@ -209,8 +206,7 @@ class InputSpec:
                 cu = params.get("cu_seqlens_q")
                 dims.append(cu[-1] if cu else params.get("S1", 1))
             elif token == "total_s2":
-                cu = params.get("cu_seqlens_kv")
-                dims.append(cu[-1] if cu else params.get("S2", params.get("S1", 1)))
+                dims.append(params.get("S2", params.get("S1", 1)))
             elif token == "max_blocks":
                 sv = params.get("seqused_kv", [params.get("S2", 1)])
                 bs = params.get("block_size", 128)

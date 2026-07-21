@@ -29,7 +29,6 @@ BASE = {"B": [2],
         "mask_mode": [0],
         "return_softmax_lse": [0],
         "cu_seqlens_q": [[None]],
-        #"cu_seqlens_kv": [[None]], 参数已没有
         "seqused_q": [[None]],
         "seqused_kv": [[None]],
         "q_range": [(-5.0, 5.0)]}
