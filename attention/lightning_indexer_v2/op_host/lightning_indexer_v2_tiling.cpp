@@ -786,6 +786,16 @@ ge::graphStatus LIV2InfoParser::GetS2Size()
 ge::graphStatus LIV2InfoParser::ValidateInputShapesMatchQtnd()
 {
     // -----------------------check T-------------------
+    OP_CHECK_IF((kLayout_ == DataLayout::PA_BBND) &&
+            ((opParamInfo_.sequsedK.tensor->GetShapeSize() != bSize_) ||
+            (opParamInfo_.blockTable.tensor != nullptr &&
+            opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_)),
+            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "cu_seqlens_q, seqused_k and block_table dim 0",
+                std::to_string(bSize_) + ", " +
+                std::to_string(opParamInfo_.sequsedK.tensor->GetShapeSize()) + " and " +
+                std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
+                "TND case input cu_seqlens_q, seqused_k, block_table dim 0 must be consistent"),
+            return ge::GRAPH_FAILED);
     uint32_t qTsize = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != qTsize) ||
                 (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != qTsize),
