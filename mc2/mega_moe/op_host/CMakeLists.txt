@@ -27,7 +27,6 @@ if (BUILD_OPEN_PROJECT)  # custom
         add_ops_compile_options(
             OP_NAME MegaMoe
             OPTIONS --cce-auto-sync=off
-            OPTIONS -I${OPTENSOR_INCLUDE_ROOT}
         )
     else()
         add_ops_compile_options(
