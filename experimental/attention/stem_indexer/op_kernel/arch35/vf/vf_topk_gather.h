@@ -895,9 +895,9 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
     if (curTopK > maxTopK) {
         maxTopK = curTopK;
     }
-    uint16_t topkLoopNum = (maxTopK + 64 - 1) / 64;
+    uint16_t topkLoopNum = (maxTopK + 63U) >> 6U;
     // tmpIdxOffset 对齐 256，与外部 indicesOutLocal/hisValueLocal 行步长一致
-    uint32_t tmpIdxOffset = ((maxTopK + 256U - 1U) / 256U) * 256U;
+    uint32_t tmpIdxOffset = (maxTopK + 255U) & ~255U;
 
     // find kth-value
     HistogramsFirstVFImpl<uint32_t>(histogramsBuf, inputValueBuf, histogramsLoopNum, flag,

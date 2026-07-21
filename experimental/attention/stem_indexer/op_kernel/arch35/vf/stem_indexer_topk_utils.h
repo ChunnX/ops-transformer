@@ -29,8 +29,8 @@ __simd_callee__ inline void PadMrgRowRangeVFCore(__ubuf__ SCORE_T* rowBuf,
     constexpr uint32_t VF_ELEMS = 256U / sizeof(SCORE_T);
     // Arange only supports signed index tensors; later casts reuse the same lane bits for SCORE_T comparisons.
     using IDX_T = std::conditional_t<std::is_same_v<SCORE_T, uint16_t>, int16_t, int32_t>;
-    const uint32_t blockStart = (padStart / VF_ELEMS) * VF_ELEMS;
-    const uint32_t blockEnd = ((padEnd + VF_ELEMS - 1U) / VF_ELEMS) * VF_ELEMS;
+    const uint32_t blockStart = padStart & ~(VF_ELEMS - 1U);
+    const uint32_t blockEnd = (padEnd + VF_ELEMS - 1U) & ~(VF_ELEMS - 1U);
 
     MicroAPI::MaskReg maskAll = AscendC::MicroAPI::CreateMask<SCORE_T, AscendC::MicroAPI::MaskPattern::ALL>();
     MicroAPI::MaskReg maskGeStart;
@@ -57,7 +57,8 @@ __simd_callee__ inline void PadMrgRowRangeVFCore(__ubuf__ SCORE_T* rowBuf,
 
 __simd_callee__ inline uint32_t PadMrgAlignUp(const uint32_t value, const uint32_t align)
 {
-    return ((value + align - 1U) / align) * align;
+    // 当前调用方的align均为2的幂。
+    return (value + align - 1U) & ~(align - 1U);
 }
 
 template <typename SCORE_T>
@@ -228,7 +229,7 @@ __simd_vf__ inline void PackSparseIndicesU32VFImpl(__ubuf__ uint32_t* outBuf,
     MicroAPI::Duplicate(regInitialBlocks, initialBlocks, maskAll);
     MicroAPI::Duplicate(regTopkEnd, topkEnd, maskAll);
 
-    const uint32_t vfLoop = (packLen + VF_ELEMS - 1U) / VF_ELEMS;
+    const uint32_t vfLoop = (packLen + VF_ELEMS - 1U) >> 6U;
     for (uint32_t loopIdx = 0U; loopIdx < vfLoop; loopIdx++) {
         const uint32_t blockBase = loopIdx * VF_ELEMS;
         // 生成当前64个输出位置，并先将整组初始化为无效索引-1。
