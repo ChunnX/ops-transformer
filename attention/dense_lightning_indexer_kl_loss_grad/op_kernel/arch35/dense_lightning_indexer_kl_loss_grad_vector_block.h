@@ -159,7 +159,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void DlikgBlockVec<TEMPLATE_ARGS>::InitBuffers(TPipe *pipe)
 {
     pipe->InitBuffer(this->attnSoftmaxL1Que, 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32K);
-    pipe->InitBuffer(this->dkQue, 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_32K);
+    pipe->InitBuffer(this->dkQue, 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_64K);
     pipe->InitBuffer(this->reduceSumOutQue[0], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_512);
     pipe->InitBuffer(this->reduceSumOutQue[1], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_512);
     pipe->InitBuffer(this->reduceSumOutQue[2], 1, DLIKGradConstInfo::BUFFER_SIZE_BYTE_512);

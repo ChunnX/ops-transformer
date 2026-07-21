@@ -20,7 +20,7 @@
 using namespace fa_base_matmul;
 
 static constexpr uint32_t VEC_SY_BASESIZE = 128;
-static constexpr uint32_t PROCESS_KV_SIZE = 4096;
+static constexpr uint32_t PROCESS_KV_SIZE = 8192;
 static constexpr uint32_t VEC_P_BASESIZE = 128;
 static constexpr uint32_t ATTN_SOFTMAX_REDUCE_BASESIZE = 8192;
 // task step
@@ -35,7 +35,7 @@ enum class DLISparseMode { DefaultMask = 0, RightDown = 3 };
 
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;
-constexpr uint32_t UB_MAX_SIZE = 128 * 1024;
+constexpr uint32_t UB_MAX_SIZE = 96 * 1024;
 constexpr uint32_t L0C_MAX_SIZE = 256 * 1024;
 constexpr uint32_t MODE_NUM_2 = 2;
 constexpr uint32_t MODE_NUM_3 = 3;
