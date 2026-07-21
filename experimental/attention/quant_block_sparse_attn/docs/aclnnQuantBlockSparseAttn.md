@@ -397,7 +397,7 @@ torch.ops.custom.npu_quant_block_sparse_attn(
 PyTorch 接口返回 `(attention_out, softmax_lse)`：
 
 - `attention_out`：BF16 Tensor，最后一维为 `D_v`。PyTorch 接入层按 TND 语义返回 `(T1,N1,D_v)`；`layout_q="NTD"` 输入不会使输出保持 NTD。
-- `softmax_lse`：FLOAT32 Tensor。`return_softmax_lse=True` 时，PyTorch 接入层返回 `(N1,T1)`；底层 ACLNN host infer shape 为 `(T1,N1)`。`return_softmax_lse=False` 时返回无有效 LSE 的占位 Tensor。
+- `softmax_lse`：FLOAT32 Tensor。`return_softmax_lse=True` 时返回 `(N1,T1)`；`return_softmax_lse=False` 时返回无有效 LSE 的占位 Tensor。
 
 底层 ACLNN 接口返回 `aclnnStatus`。第一段 GetWorkspaceSize 接口完成参数校验，必选输入为空、数据类型不支持、shape 与属性不匹配时返回参数错误。
 

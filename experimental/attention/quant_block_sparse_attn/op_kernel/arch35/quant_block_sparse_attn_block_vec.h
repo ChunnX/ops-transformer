@@ -414,7 +414,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
     outputBuf.SetCrossCore();
     //-----------------------------------------------------------------
     this->stage1OutQue[stage1Offset].template FreeTensor(stage1CastTensor);
-    if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
+    if (constInfo.isSoftmaxLseEnable && unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         SoftmaxDataCopyOut(runInfo, constInfo, sumUb, maxUb);
     }
     return;
@@ -947,11 +947,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxLseCopyOut(LocalTensor
     intriParams1.blockLen = sizeof(float);
     intriParams1.blockCount = runInfo.halfS1RealSize;
     intriParams1.srcStride = 0;
-    if constexpr (layout == BSALayout::TND) {
-        intriParams1.dstStride = constInfo.isGqa ? 0 : sizeof(float) * (constInfo.n2G - 1);
-    } else {
-        intriParams1.dstStride = 0;
-    }
+    intriParams1.dstStride = 0;
     DataCopyPad(this->softmaxLseGm[runInfo.softmaxLseOffset], lseUb, intriParams1);
     softmaxLseQueue.FreeTensor(lseUb);
 }

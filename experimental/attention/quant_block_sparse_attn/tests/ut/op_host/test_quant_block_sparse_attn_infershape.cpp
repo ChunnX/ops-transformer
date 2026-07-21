@@ -116,7 +116,7 @@ TEST_F(QuantBlockSparseAttnInfershape, infershape_ntd_with_lse)
 
     std::vector<std::vector<int64_t>> expectOutputShape = {
         {256, 4, 128},
-        {256, 4},
+        {4, 256},
     };
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
 }
