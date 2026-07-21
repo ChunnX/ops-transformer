@@ -119,7 +119,7 @@ aclnnStatus aclnnLightningIndexerV2(
     <td>不支持空tensor。</td>
     <td>FLOAT</td>
     <td>ND</td>
-    <td><ul><li>layout_q为BSND时，shape为(B,S1,N1)。</li><li>layout_q为TND时，shape为(T1,N1)。</li></ul></td>
+    <td><ul><li>layout_w为BSND时，shape为(B,S1,N1)。</li><li>layout_w为TND时，shape为(T1,N1)。</li></ul></td>
     <td>x</td>
     </tr>
     <tr>
@@ -280,7 +280,7 @@ aclnnStatus aclnnLightningIndexerV2(
   <td>不支持空tensor。</td>
   <td>INT32</td>
   <td>ND</td>
-  <td><ul><li>layout_query为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layout_query为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
+  <td><ul><li>layout_q为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layout_q为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
   <td>x</td>
   </tr>
   <tr>
@@ -290,7 +290,7 @@ aclnnStatus aclnnLightningIndexerV2(
   <td>不支持空tensor。</td>
   <td>INT32</td>
   <td>ND</td>
-  <td><ul><li>layout_query为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layout_query为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
+  <td><ul><li>layout_q为"BSND"时输出shape为[B, S1, N2, topk]。</li><li>layout_q为"TND"时输出shape为[T1, N2, topk]。</li></ul></td>
   <td>x</td>
   </tr>
   <tr>
@@ -373,7 +373,7 @@ aclnnStatus aclnnLightningIndexerV2(
       <tr>
       <td>workspaceSize</td>
       <td>输入</td>
-      <td>在Device侧申请的workspace大小，由第一段接口aclnnQuantLightningIndexerV2GetWorkspaceSize获取。</td>
+      <td>在Device侧申请的workspace大小，由第一段接口aclnnLightningIndexerV2GetWorkspaceSize获取。</td>
       </tr>
       <tr>
       <td>executor</td>
@@ -398,7 +398,7 @@ aclnnStatus aclnnLightningIndexerV2(
   - aclnnLightningIndexerV2默认确定性实现。
 - 参数q的N支持1~64，k的N支持1。
 - headdim支持128。
-- pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，满足block大小32B对齐。
+- pa_kv_cache支持0轴非连续；pa_block_size支持1~1024，满足block大小32 Byte对齐。
 - 参数q、k的数据类型应保持一致。
 - sparse_indices无效部分填-1；sparse_values无效部分填-inf。
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>:
