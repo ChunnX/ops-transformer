@@ -26,6 +26,8 @@ from .schema import get_q_lengths
 SCHEMA_VERSION = 1
 MANIFEST_KIND = "smla_mqsmla_batch_consistency_relation"
 ALLOWED_MODES = ("reorder", "split", "token-split", "shape-change")
+SCENARIO = "same-source-cross-call"
+SUPPLEMENTAL_SCENARIOS = ("independent-cross-case", "single-call-intra-case")
 
 
 class RelationManifestError(ValueError):
@@ -227,6 +229,7 @@ def build_case_relation(
         "case_id": case.name,
         "baseline_case_id": baseline_id,
         "mode": mode,
+        "scenario": SCENARIO,
         "derived_pt": derived_pt,
         "derived_input_content_fingerprint_sha256": derived_input_content_fingerprint,
         "configuration": _relation_config(case.transform_meta),
@@ -342,6 +345,10 @@ def build_relation_manifest(
         "manifest_scope": "single-baseline",
         "operator": CaseAdapter(baseline_data).name,
         "claim_scope": "CPU-only relation precheck; no NPU batch-consistency PASS claim",
+        "scenario_coverage": {
+            "implemented": [SCENARIO],
+            "supplemental_gaps": list(SUPPLEMENTAL_SCENARIOS),
+        },
         "baselines": [
             {
                 "case_id": baseline_id,
@@ -386,6 +393,10 @@ def merge_relation_manifests(manifests: Iterable[Dict[str, Any]]) -> Dict[str, A
         "manifest_scope": "operator-collection",
         "operator": next(iter(operators)),
         "claim_scope": "CPU-only relation precheck; no NPU batch-consistency PASS claim",
+        "scenario_coverage": {
+            "implemented": [SCENARIO],
+            "supplemental_gaps": list(SUPPLEMENTAL_SCENARIOS),
+        },
         "baselines": baselines,
         "relations": relations,
         "coverage": _coverage_summary(relations),
@@ -408,6 +419,11 @@ def validate_relation_manifest(manifest: Dict[str, Any]) -> None:
         )
     if manifest.get("kind") != MANIFEST_KIND:
         raise RelationManifestError(f"Unexpected manifest kind={manifest.get('kind')!r}")
+    scenario_coverage = manifest.get("scenario_coverage") or {}
+    if scenario_coverage.get("implemented") != [SCENARIO]:
+        raise RelationManifestError("Manifest scenario classification is missing or invalid")
+    if scenario_coverage.get("supplemental_gaps") != list(SUPPLEMENTAL_SCENARIOS):
+        raise RelationManifestError("Manifest supplemental scenario gaps are missing or invalid")
     baselines = manifest.get("baselines")
     relations = manifest.get("relations")
     if not isinstance(baselines, list) or not baselines:
@@ -430,6 +446,8 @@ def validate_relation_manifest(manifest: Dict[str, Any]) -> None:
         relation_ids.add(relation_id)
         if relation.get("mode") not in ALLOWED_MODES:
             raise RelationManifestError(f"Unknown relation mode={relation.get('mode')!r}")
+        if relation.get("scenario") != SCENARIO:
+            raise RelationManifestError(f"Relation {relation_id} scenario is invalid")
         relation_precheck = relation.get("precheck") or {}
         if relation_precheck.get("status") != "PASS":
             raise RelationManifestError(f"Relation {relation_id} precheck is not PASS")

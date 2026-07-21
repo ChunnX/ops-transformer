@@ -214,3 +214,22 @@ manifest，检查origin边界/重复、comparison scope、span digest和输入�
 所以当前可以完成第6节的离线预检，真实两段式只能记录 `UNSUPPORTED`。MQSMLA 当前普通 process
 还丢弃主算子返回的 LSE，且 MQ CPU golden不生成 LSE；在这两点补齐前，MQ用例应保持
 `return_softmax_lse=False`，不能把 LSE列入已验收范围。
+
+## 8. versioned在线配置和结果（2026-07-21新增）
+
+正式批跑不再建议在命令行堆叠groups/sizes/common等参数，而是使用：
+
+```bash
+bash test_run.sh consistency \
+  --pt-dir /path/to/baseline_pt \
+  --config-file ../../../../requs/cases/SMLA_MQSMLA_batch一致性执行配置.json \
+  --report-dir ./result/consistency
+```
+
+SMLA入口也接受`-P`作为`--pt-dir`兼容别名。suite文档按每个PT精确匹配和shape校验；
+`--config-file`不能与`--modes/--profile/--seed/--split-groups/--token-split-sizes`等混用。
+
+每次执行会生成独立run目录。逐模式JSON位于`results/`，权威汇总是
+`consistency_result_summary.json`；文本`pytest.log`只用于诊断。当前环境的预期真实结果是
+`UNSUPPORTED`且命令返回2，不是“pytest skip所以PASS”。只有两段均真实运行、比较报告通过且
+requested/observed deterministic level都为3，artifact才允许写`PASS`。

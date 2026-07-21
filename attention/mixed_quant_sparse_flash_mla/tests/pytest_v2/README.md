@@ -103,6 +103,9 @@ golden、PT save/load、process 和 `check_result` 均保留；一致性入口�
 | `batch/consistency/reporting.py` | 原PT来源、shape/dtype/device/byte/digest/sample输入摘要 |
 | `batch/consistency/offline.py` | 模式1-4 derived golden scope与PT round-trip |
 | `batch/consistency/relation_manifest.py` | versioned baseline/derived TokenOrigin关系、内容指纹、预检与覆盖清单 |
+| `batch/consistency/suite_config.py` | versioned per-PT suite配置、精确selector及shape-aware预检 |
+| `batch/consistency/result_artifact.py` | 逐模式结果JSON、level3 PASS门禁、完整性检查与聚合 |
+| `batch/consistency/metadata_stub.py` | CPU-only单核到多核候选规划及默认关闭hook约束 |
 | 其余 `batch/consistency/*.py` | adapter、schema、layout、compare、flow和命名配置 |
 
 ```bash
@@ -122,3 +125,30 @@ runtime/custom包组合后，才能验收FD与主算子一致性。临时metadat
 删除；`consistency_prepare`只验证CPU输入/golden/PT链，不会声称NPU PASS。
 每个baseline和算子汇总目录还会输出relation manifest；其中PASS只代表TokenOrigin边界、scope、
 语义oracle、PT内容指纹及mode/layout/mask/S2覆盖预检通过。
+
+### 正式在线配置与结果
+
+多个模式参数优先写入suite文件，不把一个`3+5`或`4K+12K`配置强套到所有PT：
+
+```bash
+bash test_run.sh consistency \
+  --pt-dir /tmp/mqsmla_pt/baseline \
+  --config-file ../../../../requs/cases/SMLA_MQSMLA_batch一致性执行配置.json \
+  --report-dir ./result/mqsmla_consistency
+```
+
+suite只加载一次，但每个PT分别按operator/case name/PT basename/content SHA256精确匹配，并按
+当前B和有效Q长度校验。`--config-file`不能和`--modes/--profile/--seed/groups/sizes`混用；
+`-M 1,2`只保留在旧CLI转换层。
+
+每次执行创建独立run目录，`results/*.json`对应一个`(operator,PT,mode)`，汇总为
+`consistency_result_summary.json`；`pytest.log`仅用于诊断。只有执行报告通过且requested/observed
+deterministic level均为3，逐模式状态才可写成`PASS`。聚合器还会检查预期artifact数和pytest
+子进程异常，因此skip或退出码0不会被当成NPU通过。完整PASS返回0，真实FAIL返回1，
+`UNSUPPORTED/PARTIAL/INCOMPLETE`等未完成状态返回2。汇总还校验唯一PT数和完整PT/mode矩阵；
+损坏、重复或异算子旧artifact会写入汇总错误项，不能因文件总数刚好相等而通过。
+
+当前模式1-4统一属于`same-source-cross-call`。独立编写PT之间的
+`independent-cross-case`和同一次调用内位置互比`single-call-intra-case`是补充场景，artifact
+会如实列为gap，不把模式1/3改名冒充。metadata stub planner目前只从自然metadata找候选并给出
+拟拆分S2 block区间；FD契约、公式、安装包和level3关闭阻断前不会生成或执行synthetic tensor。

@@ -279,3 +279,42 @@ baseline PT + content fingerprint
 
 外部脚本不进入正式路径：合法6元素input seed info会被其错误的`len==5`判断跳过，且CSV/Excel
 和动态slice多处使用`eval`。原文件仅作为需求输入保留，不在CI执行。
+
+# 2026-07-21 新增：per-case配置、结构化结果与metadata stub
+
+## 配置不再等于“一批PT共用一组常数”
+
+在线正式入口读取versioned suite JSON。一个suite可描述整批测试，但每个PT按operator、case name、
+PT basename或输入内容SHA256精确匹配自己的config，再按当前B/Q长度校验order、groups、token
+sizes和shape-change参数。未命中或重复命中直接`CONFIG_ERROR`。需求中的`3+5`、`4K+12K`和
+`300+100/200`只对满足对应shape的case成立，不作为所有PT的默认常数。
+
+旧`-M 1,2`仅为迁移兼容；正式文件只接受可读mode名。配置文件与旧详细CLI互斥。
+
+## 结果链
+
+```text
+每个PT的四个pytest mode
+  -> 每个(operator,PT,mode)一个schema v1 JSON
+  -> PASS必须同时满足report.pass与requested/observed level=3
+  -> 汇总器校验status、唯一PT/mode矩阵、损坏/重复/异算子artifact和pytest子进程状态
+  -> consistency_result_summary.json
+```
+
+`pytest.log`不再参与PASS统计。`UNSUPPORTED/INVALID_TRANSFORM/NOT_APPLICABLE/CONFIG_ERROR`各自
+保留，避免skip退出0被误报为通过。
+
+## 三种场景分类
+
+- 现有模式1-4：`same-source-cross-call`；
+- 独立编写case之间比较：`independent-cross-case`，待关系source entry和可信用例；
+- 同一次调用内等价位置比较：`single-call-intra-case`，待专用输入和位置关系。
+
+后两项是补充覆盖，不与四模式冲突，也不通过给现有模式改名来宣称完成。
+
+## metadata打桩安全边界
+
+CPU planner可以从自然metadata中找到“一个逻辑FA核完整执行、但S2至少有两个block”的token，
+并输出拟拆成两个非空block区间的计划。executor在metadata op和主算子之间预留默认关闭hook，
+但当前不生成或执行synthetic tensor。只有安装包build id、FD slot/workspace契约、floor/ceil公式、
+level3 runtime和主算子全部对齐后才能激活；synthetic结果必须独立标识，不能计入自然coverage。

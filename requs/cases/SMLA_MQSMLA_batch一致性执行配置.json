@@ -1,0 +1,80 @@
+{
+  "schema_version": 1,
+  "kind": "smla_mqsmla_batch_consistency_suite",
+  "unmatched_case_policy": "error",
+  "defaults": {
+    "seed": 20260716,
+    "randomize": false,
+    "require_complete_partition": true
+  },
+  "cases": [
+    {
+      "id": "offline-smla-b2-s4",
+      "match": {
+        "operator": "smla",
+        "case_name": "offline_smla_b2_s4"
+      },
+      "config": {
+        "modes": [
+          "reorder",
+          "split",
+          "token-split",
+          "shape-change"
+        ],
+        "reorder_order": [
+          1,
+          0
+        ],
+        "split_groups": [
+          [
+            0
+          ],
+          [
+            1
+          ]
+        ],
+        "token_split_sizes": [
+          2,
+          2
+        ],
+        "mode_batch": 0,
+        "common_tokens": 3,
+        "derived_extra": 2
+      }
+    },
+    {
+      "id": "offline-mqsmla-b2-s4",
+      "match": {
+        "operator": "mqsmla",
+        "case_name": "offline_mqsmla_b2_s4"
+      },
+      "config": {
+        "modes": [
+          "reorder",
+          "split",
+          "token-split",
+          "shape-change"
+        ],
+        "reorder_order": [
+          1,
+          0
+        ],
+        "split_groups": [
+          [
+            0
+          ],
+          [
+            1
+          ]
+        ],
+        "token_split_sizes": [
+          2,
+          2
+        ],
+        "mode_batch": 0,
+        "common_tokens": 3,
+        "derived_extra": 0
+      }
+    }
+  ]
+}

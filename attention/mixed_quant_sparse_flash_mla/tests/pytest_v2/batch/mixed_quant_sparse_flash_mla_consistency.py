@@ -13,18 +13,24 @@
 """MQSMLA-specific executor plugged into the ordinary pytest batch flow."""
 
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from .consistency.flow import ConsistencyFlow
 from .consistency.model import RunResult
+from .consistency.metadata_stub import MetadataTransform
 from . import mixed_quant_sparse_flash_mla_process
 
 
 class MixedQuantSparseFlashMlaExecutor:
     """Execute MQ metadata then MQSMLA and retain the consumed metadata."""
 
-    def __init__(self, device_id: int = 0):
+    def __init__(
+        self,
+        device_id: int = 0,
+        metadata_transform: Optional[MetadataTransform] = None,
+    ):
         self.device_id = device_id
+        self.metadata_transform = metadata_transform
 
     def __call__(self, input_data: Dict[str, Any]) -> RunResult:
         captured_metadata = []
@@ -32,6 +38,7 @@ class MixedQuantSparseFlashMlaExecutor:
             input_data,
             device_id=self.device_id,
             metadata_sink=captured_metadata.append,
+            metadata_transform=self.metadata_transform,
         )
         return RunResult(
             output=output,
@@ -39,6 +46,10 @@ class MixedQuantSparseFlashMlaExecutor:
         )
 
 
-def create_consistency_flow() -> ConsistencyFlow:
+def create_consistency_flow(
+    metadata_transform: Optional[MetadataTransform] = None,
+) -> ConsistencyFlow:
     device_id = int(os.environ.get("MQSMLA_DEVICE_ID", "0"))
-    return ConsistencyFlow(MixedQuantSparseFlashMlaExecutor(device_id))
+    return ConsistencyFlow(
+        MixedQuantSparseFlashMlaExecutor(device_id, metadata_transform)
+    )

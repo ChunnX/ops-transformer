@@ -12,6 +12,7 @@
 
 """CPU-only tests for the pytest_v2 consistency data path."""
 
+import json
 from pathlib import Path
 
 import pytest
@@ -35,6 +36,11 @@ from batch.consistency.transform import (
 )
 from batch.consistency.metadata_coverage import CoverageContext, MetadataCoverageAnalyzer, S2Category
 from batch.consistency.metadata_layout import MetadataLayout
+from batch.consistency.metadata_stub import (
+    MetadataStubPlanError,
+    apply_metadata_transform,
+    plan_single_to_multi_core_stub,
+)
 from batch.consistency.offline import (
     build_mode_cases,
     materialize_expected_output,
@@ -47,11 +53,24 @@ from batch.consistency.relation_manifest import (
     make_baseline_id,
     validate_relation_manifest,
 )
+from batch.consistency.result_artifact import (
+    ResultArtifactError,
+    ResultStatus,
+    aggregate_result_artifacts,
+    write_result_artifact,
+)
 from batch.consistency.reporting import (
     attach_provenance,
     build_input_summary,
     input_content_digest,
     stable_json_digest,
+)
+from batch.consistency.suite_config import (
+    CONFIG_KIND,
+    SuiteConfig,
+    SuiteConfigError,
+    resolve_case_values,
+    resolve_runtime_case_config,
 )
 
 
@@ -279,6 +298,289 @@ def test_named_modes_and_explicit_config_parsing():
         mode_options_from_mapping({"consistency_modes": "1,2"})
 
 
+def write_suite_config(tmp_path, document):
+    path = tmp_path / "suite.json"
+    path.write_text(json.dumps(document), encoding="utf-8")
+    return path
+
+
+def test_suite_config_merges_defaults_with_one_exact_case_override(tmp_path):
+    case = make_case(batch=2, q_length=16)
+    path = write_suite_config(
+        tmp_path,
+        {
+            "schema_version": 1,
+            "kind": CONFIG_KIND,
+            "unmatched_case_policy": "error",
+            "defaults": {"profile": "blackbox-basic", "seed": 7},
+            "cases": [
+                {
+                    "id": "unit-token-modes",
+                    "match": {"operator": "smla", "case_name": "unit"},
+                    "config": {
+                        "modes": ["token-split", "shape-change"],
+                        "token_split_sizes": [4, 12],
+                        "common_tokens": 12,
+                        "derived_extra": 8,
+                    },
+                }
+            ],
+        },
+    )
+    resolved = SuiteConfig.load(str(path)).resolve(case, "/tmp/unit.pt")
+    assert resolved.config_id == "unit-token-modes"
+    assert resolved.seed == 7
+    assert resolved.modes == (
+        ConsistencyMode.TOKEN_SPLIT,
+        ConsistencyMode.SHAPE_CHANGE,
+    )
+    assert resolved.token_split_sizes == (4, 12)
+    assert (resolved.common_tokens, resolved.derived_extra) == (12, 8)
+
+
+def test_suite_config_rejects_unmatched_and_ambiguous_cases(tmp_path):
+    base = {
+        "schema_version": 1,
+        "kind": CONFIG_KIND,
+        "defaults": {"modes": ["reorder"]},
+    }
+    unmatched = write_suite_config(
+        tmp_path,
+        {
+            **base,
+            "cases": [
+                {
+                    "id": "other",
+                    "match": {"case_name": "other"},
+                    "config": {},
+                }
+            ],
+        },
+    )
+    with pytest.raises(SuiteConfigError, match="no suite config match"):
+        SuiteConfig.load(str(unmatched)).resolve(make_case(), "/tmp/unit.pt")
+
+    ambiguous = write_suite_config(
+        tmp_path,
+        {
+            **base,
+            "cases": [
+                {"id": "by-op", "match": {"operator": "smla"}, "config": {}},
+                {"id": "by-name", "match": {"case_name": "unit"}, "config": {}},
+            ],
+        },
+    )
+    with pytest.raises(SuiteConfigError, match="matches multiple configs"):
+        SuiteConfig.load(str(ambiguous)).resolve(make_case(), "/tmp/unit.pt")
+
+
+def test_suite_config_rejects_numeric_modes_and_invalid_shape_values():
+    with pytest.raises(SuiteConfigError, match="canonical names"):
+        resolve_case_values(
+            {"modes": ["1", "2"]},
+            make_case(),
+            config_id="bad",
+            source="unit",
+        )
+    with pytest.raises(SuiteConfigError, match="complete partition"):
+        resolve_case_values(
+            {"modes": ["split"], "split_groups": [[0], [1]]},
+            make_case(batch=3),
+            config_id="bad",
+            source="unit",
+        )
+    with pytest.raises(SuiteConfigError, match="outside"):
+        resolve_case_values(
+            {"modes": ["split"], "split_groups": [[0], [3]]},
+            make_case(batch=3),
+            config_id="bad",
+            source="unit",
+        )
+    with pytest.raises(SuiteConfigError, match="sum to 3"):
+        resolve_case_values(
+            {"modes": ["token-split"], "token_split_sizes": [1, 2]},
+            make_case(q_length=4),
+            config_id="bad",
+            source="unit",
+        )
+
+
+def test_suite_config_computes_defaults_for_each_case_shape():
+    first = resolve_case_values(
+        {"modes": ["split", "token-split"]},
+        make_case(batch=8, q_length=16),
+        config_id="first",
+        source="unit",
+    )
+    second = resolve_case_values(
+        {"modes": ["split", "token-split"]},
+        make_case(batch=6, q_length=10),
+        config_id="second",
+        source="unit",
+    )
+    assert first.split_groups == (tuple(range(3)), tuple(range(3, 8)))
+    assert second.split_groups == ((0, 1, 2), (3, 4, 5))
+    assert first.token_split_sizes == (8, 8)
+    assert second.token_split_sizes == (5, 5)
+
+    single = resolve_case_values(
+        {"profile": "blackbox-supported"},
+        make_case(batch=1, q_length=1),
+        config_id="single",
+        source="unit",
+    )
+    assert single.split_groups is None
+    assert single.token_split_sizes is None
+
+
+def test_runtime_config_rejects_file_mixed_with_legacy_environment(tmp_path, monkeypatch):
+    path = write_suite_config(
+        tmp_path,
+        {
+            "schema_version": 1,
+            "kind": CONFIG_KIND,
+            "unmatched_case_policy": "defaults",
+            "defaults": {"modes": ["reorder"]},
+            "cases": [],
+        },
+    )
+    monkeypatch.setenv("UNIT_CONSISTENCY_CONFIG_FILE", str(path))
+    monkeypatch.setenv("UNIT_CONSISTENCY_MODES", "reorder")
+    with pytest.raises(SuiteConfigError, match="cannot be combined"):
+        resolve_runtime_case_config(
+            make_case(), "/tmp/unit.pt", "UNIT_CONSISTENCY"
+        )
+
+
+def test_legacy_numeric_modes_are_normalized_before_formal_validation(monkeypatch):
+    monkeypatch.setenv("LEGACY_CONSISTENCY_MODES", "1,2")
+    with pytest.warns(DeprecationWarning):
+        resolved = resolve_runtime_case_config(
+            make_case(), "/tmp/unit.pt", "LEGACY_CONSISTENCY"
+        )
+    assert resolved.modes == (ConsistencyMode.REORDER, ConsistencyMode.SPLIT)
+    assert resolved.source == "deprecated process-wide CLI/environment"
+
+
+def level3_report(passed=True, observed=3):
+    return {
+        "pass": passed,
+        "deterministic_level": {"requested": 3, "observed": observed},
+    }
+
+
+def test_result_artifact_requires_observed_level3_for_pass(tmp_path):
+    with pytest.raises(ResultArtifactError, match="observed deterministic level 3"):
+        write_result_artifact(
+            str(tmp_path),
+            operator="smla",
+            input_data=make_case(),
+            pt_path="/tmp/unit.pt",
+            mode="reorder",
+            status=ResultStatus.PASS,
+            report=level3_report(observed=2),
+        )
+    assert not list((tmp_path / "results").glob("*.json"))
+
+
+def test_result_artifact_aggregation_uses_json_statuses_only(tmp_path):
+    case = make_case()
+    statuses = {
+        "reorder": (ResultStatus.PASS, level3_report(), None),
+        "split": (ResultStatus.UNSUPPORTED, None, "RUNTIME_LEVEL3_UNSUPPORTED"),
+        "token-split": (ResultStatus.NOT_APPLICABLE, None, "MODE_NOT_SELECTED"),
+        "shape-change": (ResultStatus.NOT_APPLICABLE, None, "MODE_NOT_SELECTED"),
+    }
+    for mode, (status, report, reason_code) in statuses.items():
+        write_result_artifact(
+            str(tmp_path),
+            operator="smla",
+            input_data=case,
+            pt_path="/tmp/unit.pt",
+            mode=mode,
+            status=status,
+            report=report,
+            reason_code=reason_code,
+            reason=reason_code,
+        )
+    summary = aggregate_result_artifacts(
+        str(tmp_path), operator="smla", expected_case_count=1
+    )
+    assert summary["overall_status"] == "PARTIAL"
+    assert summary["status_counts"] == {
+        "PASS": 1,
+        "FAIL": 0,
+        "UNSUPPORTED": 1,
+        "INVALID_TRANSFORM": 0,
+        "NOT_APPLICABLE": 2,
+        "CONFIG_ERROR": 0,
+    }
+    assert summary["missing_artifact_count"] == 0
+    failed_harness = aggregate_result_artifacts(
+        str(tmp_path),
+        operator="smla",
+        expected_case_count=1,
+        execution_failure_count=1,
+    )
+    assert failed_harness["overall_status"] == "FAIL"
+    assert failed_harness["pytest_process_failure_count"] == 1
+
+
+def test_result_artifact_aggregation_detects_missing_mode_records(tmp_path):
+    write_result_artifact(
+        str(tmp_path),
+        operator="smla",
+        input_data=make_case(),
+        pt_path="/tmp/unit.pt",
+        mode="reorder",
+        status=ResultStatus.PASS,
+        report=level3_report(),
+    )
+    summary = aggregate_result_artifacts(
+        str(tmp_path), operator="smla", expected_case_count=1
+    )
+    assert summary["overall_status"] == "INCOMPLETE"
+    assert summary["missing_artifact_count"] == 3
+
+
+def test_result_aggregation_enforces_case_matrix_and_reports_invalid_json(tmp_path):
+    case = make_case()
+    per_case_modes = {
+        "/tmp/first.pt": ("reorder", "split"),
+        "/tmp/second.pt": ("token-split", "shape-change"),
+    }
+    for pt_path, modes in per_case_modes.items():
+        for mode in modes:
+            write_result_artifact(
+                str(tmp_path),
+                operator="smla",
+                input_data=case,
+                pt_path=pt_path,
+                mode=mode,
+                status=ResultStatus.PASS,
+                report=level3_report(),
+            )
+
+    summary = aggregate_result_artifacts(
+        str(tmp_path), operator="smla", expected_case_count=1
+    )
+    assert summary["artifact_count"] == 4
+    assert summary["missing_artifact_count"] == 0
+    assert summary["case_count"] == 2
+    assert summary["unexpected_case_count"] == 1
+    assert summary["overall_status"] == "INCOMPLETE"
+
+    invalid_path = tmp_path / "results" / "invalid.json"
+    invalid_path.write_text("{", encoding="utf-8")
+    summary = aggregate_result_artifacts(
+        str(tmp_path), operator="smla", expected_case_count=1
+    )
+    assert summary["overall_status"] == "FAIL"
+    assert summary["artifact_validation_error_count"] == 1
+    assert summary["artifact_validation_errors"][0]["artifact"] == str(invalid_path)
+    assert (tmp_path / "consistency_result_summary.json").is_file()
+
+
 def test_relation_manifest_prechecks_origins_and_reports_coverage():
     baseline = make_case(batch=3, q_length=4)
     baseline_summary = build_input_summary(baseline, role="baseline")
@@ -322,6 +624,17 @@ def test_relation_manifest_prechecks_origins_and_reports_coverage():
         "shape-change": 1,
     }
     assert manifest["coverage"]["missing_modes"] == []
+    assert manifest["scenario_coverage"] == {
+        "implemented": ["same-source-cross-call"],
+        "supplemental_gaps": [
+            "independent-cross-case",
+            "single-call-intra-case",
+        ],
+    }
+    assert all(
+        relation["scenario"] == "same-source-cross-call"
+        for relation in manifest["relations"]
+    )
     assert manifest["coverage"]["source_landmark_hits"]["batch"]["max"] > 0
     assert all(
         relation["comparison_identity"]["origin_spans"]
@@ -491,6 +804,59 @@ def test_split_g_duplicate_ranges_are_not_false_cross_core():
     assert report["cross_core_token_count"] == 0
 
 
+def test_metadata_stub_planner_finds_candidate_without_mutating_metadata():
+    case = make_case(batch=1, q_length=1, ori_length=256)
+    case["input"]["cmp_kv"] = None
+    natural = metadata_tensor([(0, [1, 0, 0, 0, 1, 0, 0, 0, 2])])
+    before = natural.clone()
+    plan = plan_single_to_multi_core_stub(natural, case)
+    assert plan["status"] == "CANDIDATE_FOUND_BLOCKED"
+    assert plan["candidate_count"] == 1
+    assert plan["candidates"][0]["proposed_two_core_s2_block_ranges"] == [
+        [0, 1],
+        [1, 2],
+    ]
+    assert plan["mutation"] == {
+        "generated": False,
+        "applied": False,
+        "allowed": False,
+        "synthetic_metadata_must_not_count_as_natural_coverage": True,
+    }
+    assert "FD_RECORD_SLOT7_CONTRACT_UNVERIFIED" in plan["activation_blockers"]
+    assert torch.equal(natural, before)
+
+
+def test_metadata_stub_planner_reports_no_candidate_for_one_s2_block():
+    case = make_case(batch=1, q_length=1, ori_length=128)
+    case["input"]["cmp_kv"] = None
+    natural = metadata_tensor([(0, [1, 0, 0, 0, 1, 0, 0, 0, 1])])
+    plan = plan_single_to_multi_core_stub(natural, case)
+    assert plan["status"] == "NO_CANDIDATE"
+    assert plan["candidates"] == []
+
+
+def test_metadata_transform_is_default_off_and_enforces_tensor_contract():
+    natural = torch.arange(8, dtype=torch.int32)
+    assert apply_metadata_transform(natural, {}, None) is natural
+
+    before = natural.clone()
+
+    def transform(cloned, input_data):
+        assert input_data["marker"] == "unit"
+        assert cloned.data_ptr() != natural.data_ptr()
+        cloned[0] = 99
+        return cloned
+
+    transformed = apply_metadata_transform(natural, {"marker": "unit"}, transform)
+    assert torch.equal(natural, before)
+    assert transformed[0].item() == 99
+
+    with pytest.raises(MetadataStubPlanError, match="changed shape"):
+        apply_metadata_transform(natural, {}, lambda metadata, _: metadata[:4])
+    with pytest.raises(MetadataStubPlanError, match="must return a torch.Tensor"):
+        apply_metadata_transform(natural, {}, lambda _metadata, _: None)
+
+
 def test_flow_runs_all_modes_with_original_cpu_golden(bypass_level_guard):
     flow = ConsistencyFlow(FakeExecutor())
     assert flow.run_mode1(make_case(batch=2), order=[1, 0])["pass"]
@@ -515,11 +881,14 @@ def test_dual_operator_consistency_core_is_an_exact_mirror():
         "layouts.py",
         "metadata_coverage.py",
         "metadata_layout.py",
+        "metadata_stub.py",
         "model.py",
         "offline.py",
         "reporting.py",
         "relation_manifest.py",
+        "result_artifact.py",
         "schema.py",
+        "suite_config.py",
         "transform.py",
     }
     mismatched = [

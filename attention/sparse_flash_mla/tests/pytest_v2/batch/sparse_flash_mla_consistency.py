@@ -12,21 +12,26 @@
 
 """SMLA-specific executor plugged into the ordinary pytest batch flow."""
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from .consistency.flow import ConsistencyFlow
 from .consistency.model import RunResult
+from .consistency.metadata_stub import MetadataTransform
 from . import sparse_flash_mla_process
 
 
 class SparseFlashMlaExecutor:
     """Execute metadata then SMLA and retain the exact metadata consumed."""
 
+    def __init__(self, metadata_transform: Optional[MetadataTransform] = None):
+        self.metadata_transform = metadata_transform
+
     def __call__(self, input_data: Dict[str, Any]) -> RunResult:
         captured_metadata = []
         output, softmax_lse = sparse_flash_mla_process.call_npu(
             input_data,
             metadata_sink=captured_metadata.append,
+            metadata_transform=self.metadata_transform,
         )
         return RunResult(
             output=output,
@@ -35,5 +40,7 @@ class SparseFlashMlaExecutor:
         )
 
 
-def create_consistency_flow() -> ConsistencyFlow:
-    return ConsistencyFlow(SparseFlashMlaExecutor())
+def create_consistency_flow(
+    metadata_transform: Optional[MetadataTransform] = None,
+) -> ConsistencyFlow:
+    return ConsistencyFlow(SparseFlashMlaExecutor(metadata_transform))

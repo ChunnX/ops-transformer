@@ -22,6 +22,11 @@ import cann_ops_transformer
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 
+if __package__:
+    from .consistency.metadata_stub import apply_metadata_transform
+else:
+    from consistency.metadata_stub import apply_metadata_transform
+
 class Network(torch.nn.Module):
     def __init__(self):
         super(Network, self).__init__()
@@ -157,7 +162,9 @@ def test_mqsmla_quant_process_graph(test_data, device_id=0):
     torch.npu.synchronize()
     return npu_result, cpu_output
 
-def test_mqsmla_quant_process_ci(test_data, device_id=0, metadata_sink=None):
+def test_mqsmla_quant_process_ci(
+    test_data, device_id=0, metadata_sink=None, metadata_transform=None
+):
     params = test_data['params']
     metadata_input = test_data['metadata_input']
     op_input = test_data['op_input']
@@ -197,6 +204,7 @@ def test_mqsmla_quant_process_ci(test_data, device_id=0, metadata_sink=None):
                                 has_ori_kv = metadata_input['has_ori_kv'],
                                 has_cmp_kv = metadata_input['has_cmp_kv'],
                                 )
+    metadata = apply_metadata_transform(metadata, test_data, metadata_transform)
     torch.npu.synchronize()
     metadata.npu()
     print("mixed_quant_sparse_flash_mla...")
