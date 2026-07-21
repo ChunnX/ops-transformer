@@ -22,6 +22,7 @@ struct StemPrepQTilingData {
     uint32_t R_val;
     uint32_t kflat_dim;
     uint32_t max_Qb;
+    uint32_t total_tokens;
     uint32_t used_core_num;
     uint32_t blocks_per_core_base;
     uint32_t blocks_remainder;
