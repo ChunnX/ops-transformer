@@ -104,12 +104,12 @@ public:
         gActualKvseqlen.SetGlobalBuffer((__gm__ int64_t *)params.actualSeqLengthsKv);
         AscendC::GlobalTensor<uint8_t> gBlockSparseMask;
         gBlockSparseMask.SetGlobalBuffer((__gm__ uint8_t *)params.blockSparseMask);
-        AscendC::GlobalTensor<float> gQDequantScale;
-        gQDequantScale.SetGlobalBuffer((__gm__ float *)params.qDequantScale);
-        AscendC::GlobalTensor<float> gKDequantScale;
-        gKDequantScale.SetGlobalBuffer((__gm__ float *)params.kDequantScale);
-        AscendC::GlobalTensor<float> gVDequantScale;
-        gVDequantScale.SetGlobalBuffer((__gm__ float *)params.vDequantScale);
+        AscendC::GlobalTensor<uint8_t> gQDequantScale;
+        gQDequantScale.SetGlobalBuffer((__gm__ uint8_t *)params.qDequantScale);
+        AscendC::GlobalTensor<uint8_t> gKDequantScale;
+        gKDequantScale.SetGlobalBuffer((__gm__ uint8_t *)params.kDequantScale);
+        AscendC::GlobalTensor<uint8_t> gVDequantScale;
+        gVDequantScale.SetGlobalBuffer((__gm__ uint8_t *)params.vDequantScale);
         AscendC::GlobalTensor<ElementO> gO;
         gO.SetGlobalBuffer((__gm__ ElementO *)params.attentionOut);
         AscendC::GlobalTensor<ElementLse> gLse;
@@ -139,7 +139,7 @@ public:
 #ifdef __DAV_CUBE__
         coreIdx = AscendC::GetBlockIdx();
         // BlockMmadQK blockMmadQK(resource, mm1L1TileHelper_);
-        // BlockMmadPV blockMmadPV(resource, mm2L1AddrStart_, mm2L1TileHelper_);
+        BlockMmadPV blockMmadPV(resource);
 #endif
 #ifdef __DAV_VEC__
         coreIdx = AscendC::GetBlockIdx() / AscendC::GetSubBlockNum();
@@ -201,6 +201,10 @@ public:
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
                     }
                     ComputeMm2(delay20TileInfo);
+                    // if(coreIdx == 0){
+                        blockMmadPV(gVDequantScale,gV,ubOTmpTensor[0]);
+                    // }
+
                     if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2);
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2 + 16);
@@ -209,6 +213,7 @@ public:
                     if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
                         ComputeVec2(delay20TileInfo);
+                        
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
                     }
                 }
@@ -399,21 +404,7 @@ public:
         AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_OTMP_BUF_STAGES],
         AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
     {
-        // for (uint32_t i = 0; i < pL1BufNum_; i++) {
-        //     l1PTensor[i] = resource.l1Buf.template GetBufferByByte<ElementP>(
-        //         mm2L1AddrStart_ + mm2L1TileM_ * mm2L1TileKLeft_ * sizeof(ElementP) * i);
-        // }
-        // uint32_t rowNumPerSubCore = EpilogueOnlineSoftmax::SM_ROW_MAX_ELEM_NUM;
-        // uint32_t colNumPerSubCore = EpilogueOnlineSoftmax::SM_COL_MAX_ELEM_NUM;
-        // uint32_t rescaleCol = EpilogueRescaleO::RESCALE_COL_MAX_ELEM_NUM;
-        // for (uint32_t i = 0; i < UB_S_OTMP_BUF_STAGES; i++) {
-        //     ubSTensor[i] = resource.ubBuf.template GetBufferByByte<ElementS>(
-        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * i);
-        //     ubOTmpTensor[i] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(
-        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
-        //         rowNumPerSubCore * colNumPerSubCore * sizeof(ElementS) * UB_S_OTMP_BUF_STAGES +
-        //         rowNumPerSubCore * rescaleCol * sizeof(ElementOTmp) * i);
-        // }
+        ubOTmpTensor[0] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(0);
     }
 
     template <uint32_t MM1_SM_MODE, uint32_t MM2_RE_MODE, uint32_t SM_MM2_MODE>
