@@ -127,13 +127,11 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetShapeAttrsInfo()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::CheckShape(int64_t batchSize, int64_t seqLength, int64_t n,
-                                                               int64_t c)
+ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::CheckShapeBase(int64_t batchSize, int64_t seqLength, int64_t n,
+                                                                   int64_t c)
 {
     auto opName = context_->GetNodeName();
 
-    OP_CHECK_IF(n > 8, OPS_REPORT_VECTOR_INNER_ERR(opName, "n must bs less than or equal 8, but got %lu ", n),
-                return ge::GRAPH_FAILED);
     auto gradHinShapePtr = context_->GetInputShape(GRAD_HIN_IDX);
     OP_CHECK_IF(gradHinShapePtr == nullptr,
                 OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, gradHin shape is nullptr"),
@@ -177,23 +175,22 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::CheckShape(int64_t batchSize
                                             gradHResDimNum),
                 return ge::GRAPH_FAILED);
     if (gradHResDimNum == 3) {
-        OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
-                        gradHResShape.GetDim(2) != n * n,
-                    OPS_REPORT_VECTOR_INNER_ERR(
-                        opName,
-                        "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N*N=%ld), but got (%ld, %ld, %ld)",
-                        batchSize, seqLength, n * n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
-                        gradHResShape.GetDim(2)),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
+                gradHResShape.GetDim(2) != n * n,
+            OPS_REPORT_VECTOR_INNER_ERR(
+                opName, "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N*N=%ld), but got (%ld, %ld, %ld)",
+                batchSize, seqLength, n * n, gradHResShape.GetDim(0), gradHResShape.GetDim(1), gradHResShape.GetDim(2)),
+            return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
                         gradHResShape.GetDim(2) != n || gradHResShape.GetDim(3) != n,
-                    OPS_REPORT_VECTOR_INNER_ERR(
-                        opName,
-                        "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N=%ld, N=%ld), "
-                        "but got (%ld, %ld, %ld, %ld)",
-                        batchSize, seqLength, n, n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
-                        gradHResShape.GetDim(2), gradHResShape.GetDim(3)),
+                    OPS_REPORT_VECTOR_INNER_ERR(opName,
+                                                "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N=%ld, N=%ld), "
+                                                "but got (%ld, %ld, %ld, %ld)",
+                                                batchSize, seqLength, n, n, gradHResShape.GetDim(0),
+                                                gradHResShape.GetDim(1), gradHResShape.GetDim(2),
+                                                gradHResShape.GetDim(3)),
                     return ge::GRAPH_FAILED);
     }
 
@@ -380,15 +377,21 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::CheckShape(int64_t batchSize
                     n * n + 2 * n, gradBiasShape.GetDimNum(), gradBiasShape.GetDim(0)),
                 return ge::GRAPH_FAILED);
 
-    OP_CHECK_IF(n != N_SIZE_4, OPS_REPORT_VECTOR_INNER_ERR(opName, "ShapeVerify failed, N must be 4, but got %ld", n),
-                return ge::GRAPH_FAILED);
-
     return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::CheckShape(int64_t batchSize, int64_t seqLength, int64_t n,
+                                                               int64_t c)
+{
+    auto opName = context_->GetNodeName();
+    OP_CHECK_IF(n != N_SIZE_4, OPS_REPORT_VECTOR_INNER_ERR(opName, "n must be 4, but got %lu", n),
+                return ge::GRAPH_FAILED);
+    return CheckShapeBase(batchSize, seqLength, n, c);
 }
 
 ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::SetTilingData()
 {
-    MhcPreSinkhornBackwardArch35TilingData* tilingData =
+    MhcPreSinkhornBackwardArch35TilingData *tilingData =
         context_->GetTilingData<MhcPreSinkhornBackwardArch35TilingData>();
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
@@ -485,7 +488,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35Tiling::GetWorkspaceSize()
     size_t gradHat2Workspace = batchSize_ * seqLength_ * (n_ * n_ + 2 * n_ + n_ * c_) * sizeof(float);
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
     size_t usrWorkSpaceSize = gradHat2Workspace;
-    size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
+    size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     OP_CHECK_IF(currentWorkspace == nullptr, OP_LOGE(opName, "fail to GetWorkspaceSizes"), return ge::GRAPH_FAILED);
     currentWorkspace[0] = systemWorkspaceSize + usrWorkSpaceSize;
 
