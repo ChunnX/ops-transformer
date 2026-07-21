@@ -164,7 +164,7 @@ flash_attn(
 | softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算 | float32 | - | - |
 | mask_mode | int | 可选 | 掩码模式 | int32 | - | - |
 | attn_mask | Tensor | 可选 | 掩码矩阵 | int8 | ND | (2048, 2048)
-| win_left | int | 可选 | window左界限 | int8 | - | - |
+| win_left | int | 可选 | window左界限 | int32 | - | - |
 | win_right | int | 可选 | window右界限 | int32 | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - |
 | max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限 | int32 | - | - |
@@ -209,7 +209,7 @@ flash_attn(
 |                      |          k          |      INPUT      | Tensor |
 |                      |         v         |      INPUT      | Tensor |
 |                      |         metadata        |      INPUT(OPTIONAL)      | Tensor |
-|                      |      softmax_scale      | ATTR(OPTIONAL) |   double   |
+|                      |      softmax_scale      | ATTR(OPTIONAL) |   float   |
 |                      |      layout_q      | ATTR(OPTIONAL) |   string   |
 |                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
 |                      |      layout_out      | ATTR(OPTIONAL) |   string   |
@@ -319,6 +319,7 @@ flash_attn(
                 <li>PA_BNBD -> (num_blocks, KV_N, block_size, D)</li>
                 <li>PA_NZ -> (num_blocks, KV_N, D//16, block_size, 16)</li>
                 <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
+                <li>不支持非连续</li>
             </ul>
         </td>
     </tr>
@@ -623,6 +624,7 @@ mask_mode参数解释
                     <li>tensor_type仅支持INT32</li>
                     <li>tensor_shape为(B, max_num_blocks_per_seq)</li>
                     <li>值只能为正整数</li>
+                    <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
                 </ul>
             </td>
             <td>可选参数</td>
