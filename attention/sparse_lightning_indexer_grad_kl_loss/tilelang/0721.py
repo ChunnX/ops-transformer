@@ -828,8 +828,8 @@ def tilelang_grad_kl_loss_single_kernel(
                             g_start:g_start + rows_per_aiv],
                     v1_bw_weight_half,
                 )
-                T.set_flag("mte2", "v", 8)
-                T.wait_flag("mte2", "v", 8)
+                T.set_flag("mte2", "v", 2)
+                T.wait_flag("mte2", "v", 2)
                 T.tile.cast(
                     v1_bw_weight,
                     v1_bw_weight_half,
@@ -863,8 +863,8 @@ def tilelang_grad_kl_loss_single_kernel(
                                 n_idx * n_block:(n_idx + 1) * n_block],
                         v1_bw_bmm2,
                     )
-                    T.set_flag("mte2", "v", 9)
-                    T.wait_flag("mte2", "v", 9)
+                    T.set_flag("mte2", "v", 3)
+                    T.wait_flag("mte2", "v", 3)
 
                     T.tile.sub(v1_bw_diff, v1_bw_sy, v1_bw_p)
                     T.pipe_barrier("v")
@@ -902,8 +902,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         "CAST_RINT",
                         rows_per_aiv,
                     )
-                    T.set_flag("v", "mte3", 8)
-                    T.wait_flag("v", "mte3", 8)
+                    T.set_flag("v", "mte3", 2)
+                    T.wait_flag("v", "mte3", 2)
                     T.copy(
                         v1_bw_rg_half,
                         reluGradRes[bz_task, s1_id,
@@ -930,8 +930,8 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.mul(v1_bw_loss_2d[0, :], v1_bw_loss, 1.0)
                         T.pipe_barrier("v")
                         T.reduce_sum(v1_bw_loss_2d, v1_bw_loss_sum, 1)
-                        T.set_flag("v", "mte3", 9)
-                        T.wait_flag("v", "mte3", 9)
+                        T.set_flag("v", "mte3", 3)
+                        T.wait_flag("v", "mte3", 3)
                         T.copy(
                             v1_bw_loss_sum,
                             LossOut[bz_task, s1_id, n_idx:n_idx + 1],
@@ -1077,44 +1077,44 @@ def tilelang_grad_kl_loss_single_kernel(
 
             g_start_v2 = vector_id * rows_per_aiv
             k_half_v2 = n_block // 2
-            T.set_flag("mte3", "mte2", 8)
-            T.set_flag("mte3", "mte2", 10)
-            T.set_flag("mte3", "mte2", 11)
+            T.set_flag("mte3", "mte2", 5)
+            T.set_flag("mte3", "mte2", 6)
+            T.set_flag("mte3", "mte2", 7)
             for s1_id in T.serial(s1_begin_task, s1_end_task):
-                T.wait_flag("mte3", "mte2", 8)
+                T.wait_flag("mte3", "mte2", 5)
                 T.copy(
                     dQueryIndexAccum[bz_task, s1_id,
                                      g_start_v2:g_start_v2 + rows_per_aiv,
                                      0:DQueryIndex],
                     v2_dq_fp32,
                 )
-                T.set_flag("mte2", "v", 8)
-                T.wait_flag("mte2", "v", 8)
+                T.set_flag("mte2", "v", 5)
+                T.wait_flag("mte2", "v", 5)
                 T.tile.cast(
                     v2_dq_half,
                     v2_dq_fp32,
                     "CAST_RINT",
                     rows_per_aiv * DQueryIndex,
                 )
-                T.set_flag("v", "mte3", 8)
-                T.wait_flag("v", "mte3", 8)
+                T.set_flag("v", "mte3", 5)
+                T.wait_flag("v", "mte3", 5)
                 T.copy(
                     v2_dq_half,
                     dQueryIndex[bz_task, s1_id,
                                 g_start_v2:g_start_v2 + rows_per_aiv,
                                 0:DQueryIndex],
                 )
-                T.set_flag("mte3", "mte2", 8)
+                T.set_flag("mte3", "mte2", 5)
 
                 first_k_start = vector_id * k_half_v2
-                T.wait_flag("mte3", "mte2", 10)
+                T.wait_flag("mte3", "mte2", 6)
                 T.copy(
                     dk_matmul_partial[bz_task, s1_id,
                                       first_k_start:first_k_start + k_half_v2,
                                       0:DQueryIndex],
                     v2_dk_rows_ping,
                 )
-                T.set_flag("mte2", "mte3", 10)
+                T.set_flag("mte2", "mte3", 6)
 
                 for n_idx in T.serial(n_num):
                     k_start_v2 = n_idx * n_block + vector_id * k_half_v2
@@ -1124,7 +1124,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         next_k_start = (
                             (n_idx + 1) * n_block + vector_id * k_half_v2
                         )
-                        T.wait_flag("mte3", "mte2", nxt_v2 + 10)
+                        T.wait_flag("mte3", "mte2", nxt_v2 + 6)
                         if nxt_v2 == 0:
                             T.copy(
                                 dk_matmul_partial[bz_task, s1_id,
@@ -1139,9 +1139,9 @@ def tilelang_grad_kl_loss_single_kernel(
                                                   0:DQueryIndex],
                                 v2_dk_rows_pong,
                             )
-                        T.set_flag("mte2", "mte3", nxt_v2 + 10)
+                        T.set_flag("mte2", "mte3", nxt_v2 + 6)
 
-                    T.wait_flag("mte2", "mte3", cur_v2 + 10)
+                    T.wait_flag("mte2", "mte3", cur_v2 + 6)
                     for row_idx in T.serial(k_half_v2):
                         sparse_idx_v2 = SparseIndices[
                             bz_task, s1_id, 0, k_start_v2 + row_idx
@@ -1161,11 +1161,11 @@ def tilelang_grad_kl_loss_single_kernel(
                                         row_idx:row_idx + 1, 0:DQueryIndex
                                     ],
                                 )
-                    T.set_flag("mte3", "mte2", cur_v2 + 10)
+                    T.set_flag("mte3", "mte2", cur_v2 + 6)
 
-            T.wait_flag("mte3", "mte2", 8)
-            T.wait_flag("mte3", "mte2", 10)
-            T.wait_flag("mte3", "mte2", 11)
+            T.wait_flag("mte3", "mte2", 5)
+            T.wait_flag("mte3", "mte2", 6)
+            T.wait_flag("mte3", "mte2", 7)
 
     @T.prim_func
     def main(
