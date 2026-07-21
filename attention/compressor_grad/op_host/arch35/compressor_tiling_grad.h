@@ -9,12 +9,12 @@
  */
 
 /*!
- * \file compressor_tiling.h
+ * \file compressor_grad_tiling.h
  * \brief
  */
 
-#ifndef COMPRESSOR_TILING_H
-#define COMPRESSOR_TILING_H
+#ifndef COMPRESSOR_GRAD_GRAD_TILING_H
+#define COMPRESSOR_GRAD_GRAD_TILING_H
 
 #include <cstdint>
 #include <string>
@@ -26,8 +26,8 @@
 #include "tiling/tiling_api.h"
 #include "exe_graph/runtime/tiling_context.h"
 #include "register/op_def_registry.h"
-#include "../../op_kernel/arch35/compressor_template_tiling_key.h"
-#include "../../op_kernel/arch35/compressor_tiling_data.h"
+#include "../../op_kernel/arch35/compressor_grad_template_tiling_key.h"
+#include "../../op_kernel/arch35/compressor_grad_tiling_data.h"
 #include "platform/platform_info.h"
 
 #ifdef ASCENDC_OP_TEST
@@ -42,11 +42,14 @@ namespace optiling {
 constexpr uint32_t TOKEN_X_INPUT_INDEX = 0;
 constexpr uint32_t WEIGHT_KV_INPUT_INDEX = 1;
 constexpr uint32_t WEIGHT_WGATE_INPUT_INDEX = 2;
-constexpr uint32_t STATE_CACHE_INPUT_INDEX = 3;
-constexpr uint32_t APE_INPUT_INDEX = 4;
+
+constexpr uint32_t D_CMP_KV_INPUT_INDEX = 3; 
+
+constexpr uint32_t SOFTMAX_SCORE_INPUT_INDEX = 4;
 
 // INPUT(OPTION)
-constexpr uint32_t STATE_BLOCK_TABLE_INPUT_INDEX = 5;
+constexpr uint32_t KV_INPUT_INDEX = 5;
+
 constexpr uint32_t CU_SEQ_LEN_INPUT_INDEX = 6;
 constexpr uint32_t SEQ_USED_INPUT_INDEX = 7;
 constexpr uint32_t START_POS_INPUT_INDEX = 8;
@@ -54,20 +57,25 @@ constexpr uint32_t START_POS_INPUT_INDEX = 8;
 // ATTR
 constexpr uint32_t CMP_RATIO_ATTR_INDEX = 0;
 constexpr uint32_t COFF_ATTR_INDEX = 1;
-constexpr uint32_t CACHE_MODE_ATTR_INDEX = 2;
-constexpr uint32_t STATE_CACHE_STRIDE_DIM0_ATTR_INDEX = 3;
 
 // OUTPUT
-constexpr uint32_t CMP_KV_OUTPUT_INDEX = 0;
+constexpr uint32_t D_X_OUTPUT_INDEX = 0;
+constexpr uint32_t D_WKV_OUTPUT_INDEX = 1;
+constexpr uint32_t D_WGATE_OUTPUT_INDEX = 2;
+constexpr uint32_t D_APE_OUTPUT_INDEX = 3;
 
-constexpr uint32_t COMPRESSOR_DIM_NUM_1 = 1;
-constexpr uint32_t COMPRESSOR_DIM_NUM_2 = 2;
-constexpr uint32_t COMPRESSOR_DIM_NUM_3 = 3;
-constexpr uint32_t COMPRESSOR_DIM_NUM_4 = 4;
-constexpr uint32_t COMPRESSOR_DIM_INDEX_0 = 0;
-constexpr uint32_t COMPRESSOR_DIM_INDEX_1 = 1;
-constexpr uint32_t COMPRESSOR_DIM_INDEX_2 = 2;
-constexpr uint32_t COMPRESSOR_DIM_INDEX_3 = 3;
+// ATTR DEFAULT VALUE
+constexpr uint32_t CMP_RATIO_VALUE = 4;
+constexpr uint32_t COFF_VALUE = 1;
+
+constexpr uint32_t COMPRESSOR_GRAD_DIM_NUM_1 = 1;
+constexpr uint32_t COMPRESSOR_GRAD_DIM_NUM_2 = 2;
+constexpr uint32_t COMPRESSOR_GRAD_DIM_NUM_3 = 3;
+constexpr uint32_t COMPRESSOR_GRAD_DIM_NUM_4 = 4;
+constexpr uint32_t COMPRESSOR_GRAD_DIM_INDEX_0 = 0;
+constexpr uint32_t COMPRESSOR_GRAD_DIM_INDEX_1 = 1;
+constexpr uint32_t COMPRESSOR_GRAD_DIM_INDEX_2 = 2;
+constexpr uint32_t COMPRESSOR_GRAD_DIM_INDEX_3 = 3;
 
 // CONSTRAINTS
 constexpr uint32_t MAX_HIDDEN_SIZE = 10240;
@@ -80,16 +88,18 @@ constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 static const std::string X_NAME = "query";
 static const std::string WKV_NAME = "wkv";
 static const std::string WGATE_NAME = "wgate";
-static const std::string STATE_CACHE_NAME = "state_cache";
-static const std::string APE_NAME = "ape";
-static const std::string STATE_BLOCK_TABLE_NAME = "state_block_table";
+static const std::string D_CMP_KV_NAME = "d_cmp_kv";
+static const std::string SOFTMAX_SCORE_NAME = "softmax_score";
+static const std::string KV_NAME = "kv";
 static const std::string CU_SEQLENS_NAME = "cu_seqlens";
 static const std::string SEQUSED_NAME = "seq_used";
 static const std::string START_POS_NAME = "start_pos";
 static const std::string CMP_RATIO_NAME = "cmp_ratio";
 static const std::string COFF_NAME = "coff";
-static const std::string CACHE_MODE_NAME = "cache_mode";
-static const std::string CMP_KV_NAME = "cmp_kv";
+static const std::string D_X_NAME = "d_x";
+static const std::string D_WKV_NAME = "d_wkv";
+static const std::string D_WGATE_NAME = "d_wgate";
+static const std::string D_APE_NAME = "d_ape";
 
 static std::string DataTypeToSerialString(ge::DataType type);
 
@@ -97,31 +107,37 @@ const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
     {X_NAME,                  {ge::DT_BF16, ge::DT_FLOAT16}},
     {WKV_NAME,                {ge::DT_BF16, ge::DT_FLOAT16}},
     {WGATE_NAME,              {ge::DT_BF16, ge::DT_FLOAT16}},
-    {STATE_CACHE_NAME,        {ge::DT_FLOAT}},
-    {APE_NAME,                {ge::DT_FLOAT}},
-    {STATE_BLOCK_TABLE_NAME,  {ge::DT_INT32}},
+    {D_CMP_KV_NAME,           {ge::DT_BF16, ge::DT_FLOAT16}},
+    {SOFTMAX_SCORE_NAME,      {ge::DT_FLOAT}},
+    {KV_NAME,                 {ge::DT_FLOAT}},
     {CU_SEQLENS_NAME,         {ge::DT_INT32}},
     {SEQUSED_NAME,            {ge::DT_INT32}},
     {START_POS_NAME,          {ge::DT_INT32}},
-    {CMP_KV_NAME,             {ge::DT_BF16, ge::DT_FLOAT16}}
+    {D_X_NAME,                {ge::DT_BF16, ge::DT_FLOAT16}},
+    {D_WKV_NAME,              {ge::DT_BF16, ge::DT_FLOAT16}},
+    {D_WGATE_NAME,            {ge::DT_BF16, ge::DT_FLOAT16}},
+    {D_APE_NAME,              {ge::DT_FLOAT}}
 };
 
 const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
-    {X_NAME,                  {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}},
-    {WKV_NAME,                {COMPRESSOR_DIM_NUM_2}},
-    {WGATE_NAME,              {COMPRESSOR_DIM_NUM_2}},
-    {STATE_CACHE_NAME,        {COMPRESSOR_DIM_NUM_3}},
-    {APE_NAME,                {COMPRESSOR_DIM_NUM_2}},
-    {STATE_BLOCK_TABLE_NAME,  {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_1}},
-    {CU_SEQLENS_NAME,         {COMPRESSOR_DIM_NUM_1}},
-    {SEQUSED_NAME,            {COMPRESSOR_DIM_NUM_1}},
-    {START_POS_NAME,          {COMPRESSOR_DIM_NUM_1}},
-    {CMP_KV_NAME,             {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_3}}
+    {X_NAME,                  {COMPRESSOR_GRAD_DIM_NUM_2, COMPRESSOR_GRAD_DIM_NUM_3}},
+    {WKV_NAME,                {COMPRESSOR_GRAD_DIM_NUM_2}},
+    {WGATE_NAME,              {COMPRESSOR_GRAD_DIM_NUM_2}},
+    {D_CMP_KV_NAME,           {COMPRESSOR_GRAD_DIM_NUM_2, COMPRESSOR_GRAD_DIM_NUM_3}},
+    {SOFTMAX_SCORE_NAME,      {COMPRESSOR_GRAD_DIM_NUM_2, COMPRESSOR_GRAD_DIM_NUM_3}},
+    {KV_NAME,                 {COMPRESSOR_GRAD_DIM_NUM_2, COMPRESSOR_GRAD_DIM_NUM_3}},
+    {CU_SEQLENS_NAME,         {COMPRESSOR_GRAD_DIM_NUM_1}},
+    {SEQUSED_NAME,            {COMPRESSOR_GRAD_DIM_NUM_1}},
+    {START_POS_NAME,          {COMPRESSOR_GRAD_DIM_NUM_1}},
+    {D_X_NAME                 {COMPRESSOR_GRAD_DIM_NUM_2, COMPRESSOR_GRAD_DIM_NUM_3}},
+    {D_WKV_NAME               {COMPRESSOR_GRAD_DIM_NUM_2}},
+    {D_WGATE_NAME             {COMPRESSOR_GRAD_DIM_NUM_2}},
+    {D_APE_NAME               {COMPRESSOR_GRAD_DIM_NUM_2}}
 };
 
 static const std::map<std::string, uint32_t> LAYOUT_DIM_MAP = {
-    {"BSH", COMPRESSOR_DIM_NUM_3},
-    {"TH", COMPRESSOR_DIM_NUM_2},
+    {"BSH", COMPRESSOR_GRAD_DIM_NUM_3},
+    {"TH", COMPRESSOR_GRAD_DIM_NUM_2},
 };
 
 const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
@@ -160,7 +176,7 @@ const std::map<ge::DataType, std::string> DATATYPE_TO_STRING_MAP = {
     {ge::DT_UINT2, "DT_UINT2"}                    // dt_variant type
 };
 
-struct CompressorCompileInfo {
+struct CompressorGradCompileInfo {
     int64_t core_num;
 };
 
@@ -186,8 +202,8 @@ enum class TemplateId:uint8_t {
     FULL_LOAD = 2
 };
 
-CMP_EXTERN_C ge::graphStatus TilingCompressor(gert::TilingContext *context);
-struct CompressorBaseShapeInfo {
+CMP_EXTERN_C ge::graphStatus TilingCompressorGrad(gert::TilingContext *context);
+struct CompressorGradBaseShapeInfo {
     uint32_t bSize = 0; // B
     uint32_t sSize = 0; // S
     uint32_t hSize = 0; // Hidden size
@@ -195,22 +211,16 @@ struct CompressorBaseShapeInfo {
     uint32_t nSize = 0; // N
     uint32_t dSize = 0; // D
     uint32_t coffSize = 0; // Coff: 1 or 2
-    uint32_t csSize = 0; // Compress sequence len
-    uint32_t rSize = 0; // Compress ratio
+    uint32_t csSize = 0; // CompressGrad sequence len
+    uint32_t rSize = 0; // CompressGrad ratio
     uint32_t drSize = 0; // Dr
 };
 
 const std::vector<int> COFF {1, 2};
 const std::vector<int> CMP_RATIO {2, 4, 8, 16, 32, 64, 128};
 const std::vector<uint32_t> HEAD_DIM {128, 512};
-const std::vector<int> CACHE_MODE {1, 2};
 
-enum class CACHE_MODE:uint8_t {
-    CONTINUOUS = 1,
-    CYCLE = 2
-};
-
-struct CompressorContext {
+struct CompressorGradContext {
     const char *opName;
     const char *opType;
     fe::PlatFormInfos *platformInfo;
@@ -218,18 +228,19 @@ struct CompressorContext {
     RequiredParaInfo x;
     RequiredParaInfo wkv;
     RequiredParaInfo wgate;
-    RequiredParaInfo stateCache;
-    RequiredParaInfo ape;
-    OptionalParaInfo stateBlockTable;
+    RequiredParaInfo dCmpKv;
+    RequiredParaInfo softmaxScore;
+    OptionalParaInfo kv;
     OptionalParaInfo cuSeqlens;
     OptionalParaInfo seqUsed;
     OptionalParaInfo startPos;
-    RequiredParaInfo cmpKv;
+    RequiredParaInfo dX;
+    RequiredParaInfo dWkv;
+    RequiredParaInfo dWgate;
+    RequiredParaInfo dApe;
 
     const int *coff;
     const int *cmpRatio;
-    const int *cacheMode;
-    const int *stateCacheStrideDim0;
     TemplateId templateId;
 
     ge::DataType dtype = ge::DT_BF16; 
@@ -240,21 +251,20 @@ struct CompressorContext {
     uint32_t blockDim;
 };
 
-class CompressorTiling {
+class CompressorGradTiling {
 public:
-    explicit CompressorTiling(CompressorContext *context) : context_(context) {}
-    ~CompressorTiling() = default;
+    explicit CompressorGradTiling(CompressorGradContext *context) : context_(context) {}
+    ~CompressorGradTiling() = default;
 
-    static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorContext &compressorContext);
-    ge::graphStatus RunBigKernelTiling(CompressorTilingData* tilingData);
+    static ge::graphStatus ConvertContext(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
+    ge::graphStatus RunBigKernelTiling(CompressorGradTilingData* tilingData);
 
 private:
-    static void ConvertRequiredParams(gert::TilingContext &context, CompressorContext &compressorContext);
+    static void ConvertRequiredParams(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
 
-    static void ConvertOptionalParams(gert::TilingContext &context, CompressorContext &compressorContext);
+    static void ConvertOptionalParams(gert::TilingContext &context, CompressorGradContext &compressorGradContext);
     ge::graphStatus GetNpuInfo();
     ge::graphStatus SetBaseInfo();
-    ge::graphStatus SetPageAttentionInfo();
     ge::graphStatus SetWorkSpaceInfo();
     ge::graphStatus SetScenarioInfo();
     ge::graphStatus SetTemplateId();
@@ -321,12 +331,12 @@ private:
     uint32_t mBaseSize = 0;
     uint32_t dbaseSize = 0;
 
-    CompressorBaseShapeInfo baseShapeInfo_;
-    CompressorContext *context_ = nullptr;
-    CompressorBaseParams *baseParams_ = nullptr;
-    CompressorPageAttentionParams *pageAttentionParams_ = nullptr;
-    CompressorInnerSplitParams *innerSplitParams_ = nullptr;
-    CompressorWorkspaceParams *workspaceParams_ = nullptr;
+    CompressorGradBaseShapeInfo baseShapeInfo_;
+    CompressorGradContext *context_ = nullptr;
+    CompressorGradBaseParams *baseParams_ = nullptr;
+    CompressorGradPageAttentionParams *pageAttentionParams_ = nullptr;
+    CompressorGradInnerSplitParams *innerSplitParams_ = nullptr;
+    CompressorGradWorkspaceParams *workspaceParams_ = nullptr;
 };
 
 } // optiling
