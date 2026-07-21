@@ -18,28 +18,26 @@
 
 namespace optiling {
 
-struct WeightQuantMatmul310TPLParam{
+struct WeightQuantMatmul310TPLParam {
     uint64_t hasAntiquantOffset{65535};
     uint64_t antiQuantType{65535};
     uint64_t transA{65535};
     uint64_t transB{65535};
 };
 
-class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase
-{
-    class WeightQuantTilingTransferHelper : public Mc2WeightQuantBatchMatmulV2WeightNz
-    {
+class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase {
+    class WeightQuantTilingTransferHelper : public Mc2WeightQuantBatchMatmulV2WeightNz {
     public:
-        WeightQuantTilingTransferHelper(
-            WeightQuantMatmulAllReduceTiling310P& weightQuantMatmulAllReduceTiling,
-            Mc2WeightQuantBatchMatmulV2NzTilingData& data)
+        WeightQuantTilingTransferHelper(WeightQuantMatmulAllReduceTiling310P &weightQuantMatmulAllReduceTiling,
+                                        Mc2WeightQuantBatchMatmulV2NzTilingData &data)
             : Mc2WeightQuantBatchMatmulV2WeightNz(weightQuantMatmulAllReduceTiling.context_, &data),
               tilingProcesser_(weightQuantMatmulAllReduceTiling)
-        {}
+        {
+        }
         ge::graphStatus GetShapeAttrsInfo() override
         {
             OP_LOGI(tilingProcesser_.opName_, "Start assemble input params for matmul tiling");
-            auto&& tilingArgs = tilingProcesser_.args_;
+            auto &&tilingArgs = tilingProcesser_.args_;
             inputParams_.opName = tilingProcesser_.opName_;
             inputParams_.transA = tilingArgs.isATrans;
             inputParams_.transB = tilingArgs.isBTrans;
@@ -58,26 +56,22 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase
             PrintTilingInputParam(inputParams_);
             return ge::GRAPH_SUCCESS;
         }
-        void PrintTilingInputParam(Mc2WeightQuantBatchMatmulInfo& weightQuantBatchMatmulInfo)
+        void PrintTilingInputParam(Mc2WeightQuantBatchMatmulInfo &weightQuantBatchMatmulInfo)
         {
-            OP_LOGD(
-                tilingProcesser_.opName_, " transA_ %d transB_ %d, hasBias_ %d, hasAntiQuantOffset_ %d, ",
-                weightQuantBatchMatmulInfo.transA, weightQuantBatchMatmulInfo.transB,
-                weightQuantBatchMatmulInfo.hasBias, weightQuantBatchMatmulInfo.hasAntiQuantOffset);
-            OP_LOGD(
-                tilingProcesser_.opName_, "mSize_ %ld kSize_ %ldnSize_ %ld groupSize_ %ld",
-                weightQuantBatchMatmulInfo.mSize, weightQuantBatchMatmulInfo.kSize, weightQuantBatchMatmulInfo.nSize,
-                weightQuantBatchMatmulInfo.groupSize);
-            OP_LOGD(
-                tilingProcesser_.opName_, "aDtype_ %d bDtype_ %d cDtype_ %d biasDtype_ %d",
-                static_cast<int32_t>(weightQuantBatchMatmulInfo.aDtype),
-                static_cast<int32_t>(weightQuantBatchMatmulInfo.bDtype),
-                static_cast<int32_t>(weightQuantBatchMatmulInfo.cDtype),
-                static_cast<int32_t>(weightQuantBatchMatmulInfo.biasDtype));
-            OP_LOGD(
-                tilingProcesser_.opName_, "antiQuantType_ %d quantType_ %d",
-                static_cast<int32_t>(weightQuantBatchMatmulInfo.antiQuantType),
-                static_cast<int32_t>(weightQuantBatchMatmulInfo.quantType));
+            OP_LOGD(tilingProcesser_.opName_, " transA_ %d transB_ %d, hasBias_ %d, hasAntiQuantOffset_ %d, ",
+                    weightQuantBatchMatmulInfo.transA, weightQuantBatchMatmulInfo.transB,
+                    weightQuantBatchMatmulInfo.hasBias, weightQuantBatchMatmulInfo.hasAntiQuantOffset);
+            OP_LOGD(tilingProcesser_.opName_, "mSize_ %ld kSize_ %ldnSize_ %ld groupSize_ %ld",
+                    weightQuantBatchMatmulInfo.mSize, weightQuantBatchMatmulInfo.kSize,
+                    weightQuantBatchMatmulInfo.nSize, weightQuantBatchMatmulInfo.groupSize);
+            OP_LOGD(tilingProcesser_.opName_, "aDtype_ %d bDtype_ %d cDtype_ %d biasDtype_ %d",
+                    static_cast<int32_t>(weightQuantBatchMatmulInfo.aDtype),
+                    static_cast<int32_t>(weightQuantBatchMatmulInfo.bDtype),
+                    static_cast<int32_t>(weightQuantBatchMatmulInfo.cDtype),
+                    static_cast<int32_t>(weightQuantBatchMatmulInfo.biasDtype));
+            OP_LOGD(tilingProcesser_.opName_, "antiQuantType_ %d quantType_ %d",
+                    static_cast<int32_t>(weightQuantBatchMatmulInfo.antiQuantType),
+                    static_cast<int32_t>(weightQuantBatchMatmulInfo.quantType));
         }
 
         void PrintTilingData(bool debugLevel)
@@ -104,21 +98,19 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase
         void PrintMatMulTiling([[maybe_unused]] int32_t logLevel)
         {
             std::stringstream ss;
-            auto& matmulTiling = tilingData_->matmulTiling;
-            ss << "usedCoreNum " << matmulTiling.usedCoreNum << " M " << matmulTiling.M << " N "
-               << matmulTiling.N << " Ka " << matmulTiling.Ka << " Kb " << matmulTiling.Kb
-               << " singleCoreM " << matmulTiling.singleCoreM << " singleCoreN " << matmulTiling.singleCoreN
-               << " singleCoreK " << matmulTiling.singleCoreK << " baseM " << matmulTiling.baseM
-               << " baseN " << matmulTiling.baseN << " baseK " << matmulTiling.baseK << " depthA1 "
-               << matmulTiling.depthA1 << " depthB1 " << matmulTiling.depthB1 << " stepM "
-               << matmulTiling.stepM << " stepN " << matmulTiling.stepN << " isBias "
-               << matmulTiling.isBias << " transLength " << matmulTiling.transLength << " iterateOrder "
-               << matmulTiling.iterateOrder << " shareMode " << matmulTiling.shareMode << " shareL1Size "
-               << matmulTiling.shareL1Size << " shareL0CSize " << matmulTiling.shareL0CSize
-               << " shareUbSize " << matmulTiling.shareUbSize << " batchM " << matmulTiling.batchM
-               << " batchN " << matmulTiling.batchN << " stepKa " << matmulTiling.stepKa << " stepKb "
-               << matmulTiling.stepKb << " dbL0A " << matmulTiling.dbL0A << " dbL0B "
-               << matmulTiling.dbL0B << " dbL0C " << matmulTiling.dbL0C;
+            auto &matmulTiling = tilingData_->matmulTiling;
+            ss << "usedCoreNum " << matmulTiling.usedCoreNum << " M " << matmulTiling.M << " N " << matmulTiling.N
+               << " Ka " << matmulTiling.Ka << " Kb " << matmulTiling.Kb << " singleCoreM " << matmulTiling.singleCoreM
+               << " singleCoreN " << matmulTiling.singleCoreN << " singleCoreK " << matmulTiling.singleCoreK
+               << " baseM " << matmulTiling.baseM << " baseN " << matmulTiling.baseN << " baseK " << matmulTiling.baseK
+               << " depthA1 " << matmulTiling.depthA1 << " depthB1 " << matmulTiling.depthB1 << " stepM "
+               << matmulTiling.stepM << " stepN " << matmulTiling.stepN << " isBias " << matmulTiling.isBias
+               << " transLength " << matmulTiling.transLength << " iterateOrder " << matmulTiling.iterateOrder
+               << " shareMode " << matmulTiling.shareMode << " shareL1Size " << matmulTiling.shareL1Size
+               << " shareL0CSize " << matmulTiling.shareL0CSize << " shareUbSize " << matmulTiling.shareUbSize
+               << " batchM " << matmulTiling.batchM << " batchN " << matmulTiling.batchN << " stepKa "
+               << matmulTiling.stepKa << " stepKb " << matmulTiling.stepKb << " dbL0A " << matmulTiling.dbL0A
+               << " dbL0B " << matmulTiling.dbL0B << " dbL0C " << matmulTiling.dbL0C;
 
             OPS_LOG_FULL(logLevel, inputParams_.opName, "matmul tiling: %s", ss.str().c_str());
         }
@@ -142,11 +134,13 @@ class WeightQuantMatmulAllReduceTiling310P : public MatmulAllReduceTilingBase
         }
 
     private:
-        WeightQuantMatmulAllReduceTiling310P& tilingProcesser_;
+        WeightQuantMatmulAllReduceTiling310P &tilingProcesser_;
     };
 
 public:
-    explicit WeightQuantMatmulAllReduceTiling310P(gert::TilingContext* context) : MatmulAllReduceTilingBase(context) {}
+    explicit WeightQuantMatmulAllReduceTiling310P(gert::TilingContext *context) : MatmulAllReduceTilingBase(context)
+    {
+    }
 
     ~WeightQuantMatmulAllReduceTiling310P() override = default;
 
@@ -163,13 +157,13 @@ protected:
 
     ge::graphStatus PostTiling() override;
 
-    Mc2Tiling::Mc2Msg& MutableMc2MsgData() override;
+    Mc2Tiling::Mc2Msg &MutableMc2MsgData() override;
 
-    Mc2Tiling::RCSTiling& MutableRCSTilingData() override;
+    Mc2Tiling::RCSTiling &MutableRCSTilingData() override;
 
-    AscendC::tiling::TCubeTiling& MutableTCubeTileTilingData() override;
+    AscendC::tiling::TCubeTiling &MutableTCubeTileTilingData() override;
 
-    AscendC::tiling::TCubeTiling& MutableTCubeTailTilingData() override;
+    AscendC::tiling::TCubeTiling &MutableTCubeTailTilingData() override;
 
     CutResult GetTilingResult() override;
 

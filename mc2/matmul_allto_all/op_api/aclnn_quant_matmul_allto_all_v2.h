@@ -37,7 +37,8 @@ extern "C" {
  * @param [in] x2OffsetOptional: 可选输入，右矩阵的量化偏置，暂不支持。
  * @param [in] group: 通信域名，字符串长度要求（0，128）。
  * @param [in] commMode: 通信引擎参数，用于启动不同的通信引擎。
- * @param [in] alltoAllAxesOptional: 可选输入，AlltoAll和Permute数据交换的方向，支持配置空或[-2,-1]，传入空时默认按[-2,-1]处理。
+ * @param [in] alltoAllAxesOptional:
+ * 可选输入，AlltoAll和Permute数据交换的方向，支持配置空或[-2,-1]，传入空时默认按[-2,-1]处理。
  * @param [in] x1QuantMode: 左矩阵的量化模式，支持以下模式：
  *        - 0：无量化
  *        - 1：PerTensor量化
@@ -72,7 +73,8 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantMatmulAlltoAllV2Get
  * 该接口用于执行分布式训练中的通信和计算流程，需在调用前检查HCCL_BUFFSIZE环境变量配置是否合理。
  *
  * @param [in] workspace: 在Device侧申请的workspace内存地址。
- * @param [in] workspacesize: 在Device侧申请的workspace大小，由第一段接口aclnnQuantMatmulAlltoAllV2GetWorkspaceSize获取。
+ * @param [in] workspacesize:
+ * 在Device侧申请的workspace大小，由第一段接口aclnnQuantMatmulAlltoAllV2GetWorkspaceSize获取。
  * @param [in] executor: op执行器，包含了算子计算流程。
  * @param [in] stream: 指定执行任务的Stream。
  * @return aclnnStatus: 返回状态码

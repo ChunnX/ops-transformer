@@ -29,18 +29,18 @@ struct AllGatherSoc {
 };
 
 class AllGatherMatmulTilingData {
-    public:
-        Mc2InitTiling mc2InitTiling;
-        Mc2CcTiling mc2CcTiling;
-        TCubeTiling tileTiling;
-        TCubeTiling tailTiling;
-        TCubeTiling localTiling;
-        Mc2Tiling::TileL2Tiling tileL2Tiling;
-        Mc2Tiling::TileL2Tiling tailL2Tiling;
-        Mc2Tiling::TileL2Tiling localL2Tiling;
-        Mc2Tiling::RCSTiling param;
-        Mc2Tiling::AllGatherSoc socParam;
+public:
+    Mc2InitTiling mc2InitTiling;
+    Mc2CcTiling mc2CcTiling;
+    TCubeTiling tileTiling;
+    TCubeTiling tailTiling;
+    TCubeTiling localTiling;
+    Mc2Tiling::TileL2Tiling tileL2Tiling;
+    Mc2Tiling::TileL2Tiling tailL2Tiling;
+    Mc2Tiling::TileL2Tiling localL2Tiling;
+    Mc2Tiling::RCSTiling param;
+    Mc2Tiling::AllGatherSoc socParam;
 };
-}
+} // namespace Mc2Tiling
 
 #endif //__ALL_GATHER_MATMUL_TILING_H__

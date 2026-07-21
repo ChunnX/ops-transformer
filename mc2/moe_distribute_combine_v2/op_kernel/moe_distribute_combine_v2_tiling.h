@@ -44,8 +44,8 @@ struct MoeDistributeCombineV2Info {
     bool hasElasticInfo;   // has elasticinfo or not
     bool isPerformance;    // whether performance or not
     bool isMc2Context;
+    bool hasExpertScales;         // has expertScales or not
     bool reserved1;
-    bool reserved2;
     uint64_t totalUbSize;
     uint64_t totalWinSizeEp;
     float armAvgFactor;

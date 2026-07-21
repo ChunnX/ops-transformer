@@ -36,34 +36,21 @@ TEST_F(AllGatherMatmulV2InferShapeTest, Basic)
     gert::StorageShape x2Shape = {{12288, 3904}, {}};
 
     gert::InfershapeContextPara infershapeContextPara(
-        "AllGatherMatmulV2",
-        {
-            {x1Shape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {x2Shape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        "AllGatherMatmulV2", {{x1Shape, ge::DT_FLOAT16, ge::FORMAT_ND}, {x2Shape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{65536, 3904}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -75,34 +62,21 @@ TEST_F(AllGatherMatmulV2InferShapeTest, EmptyTensorFailTest)
     gert::StorageShape x2Shape = {{0, 3904}, {}};
 
     gert::InfershapeContextPara infershapeContextPara(
-        "AllGatherMatmulV2",
-        {
-            {x1Shape, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {x2Shape, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        "AllGatherMatmulV2", {{x1Shape, ge::DT_FLOAT16, ge::FORMAT_ND}, {x2Shape, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
 }
@@ -123,29 +97,20 @@ TEST_F(AllGatherMatmulV2InferShapeTest, Pertensor)
             {{x1ScaleShape}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{x2ScaleShape}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{65536, 3904}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -167,29 +132,20 @@ TEST_F(AllGatherMatmulV2InferShapeTest, Perblock)
             {{x1ScaleShape}, ge::DT_FLOAT, ge::FORMAT_ND},
             {{x2ScaleShape}, ge::DT_FLOAT, ge::FORMAT_ND},
         },
-        {
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-            {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
-            {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT16, ge::FORMAT_ND}},
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+         {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
+         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}});
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{65536, 3904}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);

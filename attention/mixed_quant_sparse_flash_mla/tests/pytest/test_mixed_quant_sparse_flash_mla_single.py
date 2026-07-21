@@ -26,7 +26,7 @@ import multiprocessing as mp
 import concurrent.futures
 import utils
 
-pt_save_path = "qsmla_testcase"
+pt_save_path = "mqsmla_testcase"
 device_id = 0
 save_pt = False
 result_path = Path('result.xlsx')
@@ -80,7 +80,7 @@ for params in ENABLED_PARAMS:
         param_combinations.append(combination)
 
 case_id = 0
-def qsmla(param_combinations):
+def mqsmla(param_combinations):
     global case_id
 
     # 填充None参数的默认值
@@ -108,7 +108,7 @@ def qsmla(param_combinations):
     # 获得cpu结果(真值)和算子结果（测试值）
     npu_error_msg = None
     try:
-        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
+        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
             test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
@@ -142,7 +142,7 @@ testcase_ids = [_gen_testcase_id(p, i) for i, p in enumerate(param_combinations)
 def test_mixed_quant_sparse_flash_mla(param_combinations):
     # 线程池
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
-        futures = executor.submit(qsmla, param_combinations)
+        futures = executor.submit(mqsmla, param_combinations)
         # 等待并获取结果
         for future in concurrent.futures.as_completed([futures]):
             try:

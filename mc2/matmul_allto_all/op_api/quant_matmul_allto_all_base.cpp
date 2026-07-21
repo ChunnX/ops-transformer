@@ -81,22 +81,22 @@ static bool CheckNotEmptyTensor(const aclTensor *x1, const aclTensor *x2, bool t
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     OP_API_CHECK((mVal == ZERO), {
         OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1.dimM",
-                std::to_string(mVal).c_str(), "non-zero");
+                                  std::to_string(mVal).c_str(), "non-zero");
         return false;
     });
     OP_API_CHECK((kVal1 == ZERO), {
         OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1.dimK",
-                std::to_string(kVal1).c_str(), "non-zero");
+                                  std::to_string(kVal1).c_str(), "non-zero");
         return false;
     });
     OP_API_CHECK((kVal2 == ZERO), {
         OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2.dimK",
-                std::to_string(kVal2).c_str(), "non-zero");
+                                  std::to_string(kVal2).c_str(), "non-zero");
         return false;
     });
     OP_API_CHECK((nVal == ZERO), {
         OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2.dimN",
-                std::to_string(nVal).c_str(), "non-zero");
+                                  std::to_string(nVal).c_str(), "non-zero");
         return false;
     });
     return true;
@@ -108,28 +108,30 @@ static bool Check1DScaleShape(const aclTensor *x1, const aclTensor *x2, const ac
 {
     if (x1Scale->GetViewShape().GetDimNum() != ONE_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale",
-            (std::to_string(x1Scale->GetViewShape().GetDimNum()) + "D").c_str(),
-            "The shape of x1Scale must be 1D.");
+                                                 (std::to_string(x1Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+                                                 "The shape of x1Scale must be 1D.");
         return false;
     }
     if (x2Scale->GetViewShape().GetDimNum() != ONE_DIM) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale",
-            (std::to_string(x2Scale->GetViewShape().GetDimNum()) + "D").c_str(),
-            "The shape of x2Scale must be 1D.");
+                                                 (std::to_string(x2Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+                                                 "The shape of x2Scale must be 1D.");
         return false;
     }
     auto mVal = x1->GetViewShape().GetDim(0);
     auto x1ScaleDim = x1Scale->GetViewShape().GetDim(0);
     if (x1ScaleDim != mVal) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale.dim0",
-            std::to_string(x1ScaleDim).c_str(), "The value of x1Scale.dim0 must equal x1 dim0");
+                                              std::to_string(x1ScaleDim).c_str(),
+                                              "The value of x1Scale.dim0 must equal x1 dim0");
         return false;
     }
     auto nVal = transposeX2 ? x2->GetViewShape().GetDim(0) : x2->GetViewShape().GetDim(1);
     auto x2ScaleDim = x2Scale->GetViewShape().GetDim(0);
     if (x2ScaleDim != nVal) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale.dim0",
-            std::to_string(x2ScaleDim).c_str(), "The value of x2Scale.dim0 must equal x2 dimN");
+                                              std::to_string(x2ScaleDim).c_str(),
+                                              "The value of x2Scale.dim0 must equal x2 dimN");
         return false;
     }
     return true;
@@ -141,14 +143,14 @@ static bool Check3DScaleShape(const aclTensor *x1, const aclTensor *x2, const ac
 {
     if (x1Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale",
-            (std::to_string(x1Scale->GetViewShape().GetDimNum()) + "D").c_str(),
-            "The shape of x1Scale must be 3D.");
+                                                 (std::to_string(x1Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+                                                 "The shape of x1Scale must be 3D.");
         return false;
     }
     if (x2Scale->GetViewShape().GetDimNum() != THREE_DIMS) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale",
-            (std::to_string(x2Scale->GetViewShape().GetDimNum()) + "D").c_str(),
-            "The shape of x2Scale must be 3D.");
+                                                 (std::to_string(x2Scale->GetViewShape().GetDimNum()) + "D").c_str(),
+                                                 "The shape of x2Scale must be 3D.");
         return false;
     }
     auto mVal = x1->GetViewShape().GetDim(0);
@@ -160,31 +162,31 @@ static bool Check3DScaleShape(const aclTensor *x1, const aclTensor *x2, const ac
     auto x1ScaleLastDim = x1Scale->GetViewShape().GetDim(2);
     auto x2ScaleLastDim = x2Scale->GetViewShape().GetDim(2);
     if (x1ScaleMVal != mVal) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale.dim0",
-                                        std::to_string(x1ScaleMVal).c_str(),
-                                        ("The value of x1Scale.dim0 must equal x1.dimM " + std::to_string(mVal)).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale.dim0", std::to_string(x1ScaleMVal).c_str(),
+            ("The value of x1Scale.dim0 must equal x1.dimM " + std::to_string(mVal)).c_str());
         return false;
     }
     if (x2ScaleNVal != nVal) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale.dim0",
-                                        std::to_string(x2ScaleNVal).c_str(),
-                                        ("The value of x2Scale.dim0 must equal x2.n-axis " + std::to_string(nVal)).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale.dim0", std::to_string(x2ScaleNVal).c_str(),
+            ("The value of x2Scale.dim0 must equal x2.n-axis " + std::to_string(nVal)).c_str());
         return false;
     }
     if (x1ScaleKVal != x2ScaleKVal) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale.dimK",
-                                        std::to_string(x1ScaleKVal).c_str(),
-                                        ("The value of x1Scale.dimK must equal x2Scale.dimK " + std::to_string(x2ScaleKVal)).c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale.dimK", std::to_string(x1ScaleKVal).c_str(),
+            ("The value of x1Scale.dimK must equal x2Scale.dimK " + std::to_string(x2ScaleKVal)).c_str());
         return false;
     }
     if (x1ScaleLastDim != TWO) {
         OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale.dim2",
-                                        std::to_string(x1ScaleLastDim).c_str(), "2");
+                                  std::to_string(x1ScaleLastDim).c_str(), "2");
         return false;
     }
     if (x2ScaleLastDim != TWO) {
         OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale.dim2",
-                                        std::to_string(x2ScaleLastDim).c_str(), "2");
+                                  std::to_string(x2ScaleLastDim).c_str(), "2");
         return false;
     }
     return true;
@@ -198,8 +200,7 @@ static bool CheckScaleShape(const aclTensor *x1, const aclTensor *x2, const aclT
     if (static_cast<QuantModeType>(x1QuantMode) == QuantModeType::MX_QUANT &&
         static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
         OP_API_CHECK(!transposeX2, {
-            OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "transposeX2",
-                                        "false", "true");
+            OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "transposeX2", "false", "true");
             return false;
         });
         scaleShapeValid = Check3DScaleShape(x1, x2, x1Scale, x2Scale, transposeX2);
@@ -233,8 +234,8 @@ static bool CheckKCBiasDtypesValid(const aclTensor *x1, const aclTensor *x2, con
     if (biasDtype != ge::DT_FLOAT) {
         OP_CHECK_DTYPE_NOT_SAME(y, bias, return false);
     } else if (yDtype != ge::DT_BF16) {
-        OP_LOGE_FOR_INVALID_DTYPE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "y",
-                op::ToString(yDtype).GetString(), "DT_BF16");
+        OP_LOGE_FOR_INVALID_DTYPE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "y", op::ToString(yDtype).GetString(),
+                                  "DT_BF16");
         return false;
     }
     return true;
@@ -261,14 +262,20 @@ static const std::initializer_list<op::DataType> OUTPUT_DTYPE_SUPPORT_LIST_A5 = 
 static bool CheckKCQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
                                       const aclTensor *x2Scale, const aclTensor *biasOptional, const aclTensor *output)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1, X_DTYPE_FP8_SUPPORT_LIST_A5, KC_SCENE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2, X_DTYPE_FP8_SUPPORT_LIST_A5, KC_SCENE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1Scale, SCALE_DTYPE_FP32_SUPPORT_LIST_A5, KC_SCENE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2Scale, SCALE_DTYPE_FP32_SUPPORT_LIST_A5, KC_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1,
+                                             X_DTYPE_FP8_SUPPORT_LIST_A5, KC_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2,
+                                             X_DTYPE_FP8_SUPPORT_LIST_A5, KC_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1Scale,
+                                             SCALE_DTYPE_FP32_SUPPORT_LIST_A5, KC_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2Scale,
+                                             SCALE_DTYPE_FP32_SUPPORT_LIST_A5, KC_SCENE, return false);
     if (biasOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5, KC_SCENE, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", biasOptional,
+                                                 BIAS_DTYPE_SUPPORT_LIST_A5, KC_SCENE, return false);
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", output, OUTPUT_DTYPE_SUPPORT_LIST_A5, KC_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", output,
+                                             OUTPUT_DTYPE_SUPPORT_LIST_A5, KC_SCENE, return false);
     return true;
 }
 
@@ -276,22 +283,30 @@ static bool CheckKCQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, 
 static bool CheckMXQuantDtypesValidA5(const aclTensor *x1, const aclTensor *x2, const aclTensor *x1Scale,
                                       const aclTensor *x2Scale, const aclTensor *biasOptional, const aclTensor *output)
 {
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2, X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1,
+                                             X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2,
+                                             X_DTYPE_FP4ANDFP8_SUPPORT_LIST_A5, MX_SCENE, return false);
     if (x1->GetDataType() != x2->GetDataType() &&
         (x1->GetDataType() == op::DataType::DT_FLOAT4_E2M1 || x2->GetDataType() == op::DataType::DT_FLOAT4_E2M1)) {
-        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize",
-                                        "x1,x2",
-                                        (std::string(op::ToString(x1->GetDataType()).GetString()) + "," + op::ToString(x2->GetDataType()).GetString()).c_str(),
-                                        "The dtypes of x1 and x2 must be the same when one is fp4_e2m1 in mxquant scenario");
+        OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+            "aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1,x2",
+            (std::string(op::ToString(x1->GetDataType()).GetString()) + "," +
+             op::ToString(x2->GetDataType()).GetString())
+                .c_str(),
+            "The dtypes of x1 and x2 must be the same when one is fp4_e2m1 in mxquant scenario");
         return false;
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2Scale, SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x1Scale,
+                                             SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", x2Scale,
+                                             SCALE_DTYPE_FP8_SUPPORT_LIST_A5, MX_SCENE, return false);
     if (biasOptional != nullptr) {
-        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", biasOptional, BIAS_DTYPE_SUPPORT_LIST_A5, MX_SCENE, return false);
+        OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", biasOptional,
+                                                 BIAS_DTYPE_SUPPORT_LIST_A5, MX_SCENE, return false);
     }
-    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", output, OUTPUT_DTYPE_SUPPORT_LIST_A5, MX_SCENE, return false);
+    OP_CHECK_DTYPE_NOT_SUPPORT_WITH_SCENARIO("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", output,
+                                             OUTPUT_DTYPE_SUPPORT_LIST_A5, MX_SCENE, return false);
     return true;
 }
 
@@ -313,10 +328,10 @@ static bool CheckDtypesValid(const aclTensor *x1, const aclTensor *x2, const int
                static_cast<QuantModeType>(x2QuantMode) == QuantModeType::MX_QUANT) {
         isAllDtypesValid = CheckMXQuantDtypesValidA5(x1, x2, x1Scale, x2Scale, biasOptional, output);
     } else {
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize",
-                                        "x1QuantMode,x2QuantMode",
-                                        (std::to_string(x1QuantMode) + "," + std::to_string(x2QuantMode)).c_str(),
-                                        "The values of x1QuantMode and x2QuantMode must match a valid quantization scenario");
+        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+            "aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1QuantMode,x2QuantMode",
+            (std::to_string(x1QuantMode) + "," + std::to_string(x2QuantMode)).c_str(),
+            "The values of x1QuantMode and x2QuantMode must match a valid quantization scenario");
     }
     return isAllDtypesValid;
 }
@@ -328,34 +343,34 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
         OP_LOGE_FOR_INVALID_FORMAT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1",
-                                        op::ToString(x1->GetStorageFormat()).GetString(), "ND");
+                                   op::ToString(x1->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (IsPrivateFormat(x2->GetStorageFormat())) {
         OP_LOGE_FOR_INVALID_FORMAT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2",
-                                        op::ToString(x2->GetStorageFormat()).GetString(), "ND");
+                                   op::ToString(x2->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (biasOptional != nullptr) {
         if (IsPrivateFormat(biasOptional->GetStorageFormat())) {
             OP_LOGE_FOR_INVALID_FORMAT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "biasOptional",
-                                        op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
+                                       op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }
     if (IsPrivateFormat(x1Scale->GetStorageFormat())) {
         OP_LOGE_FOR_INVALID_FORMAT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x1Scale",
-                                        op::ToString(x1Scale->GetStorageFormat()).GetString(), "ND");
+                                   op::ToString(x1Scale->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (IsPrivateFormat(x2Scale->GetStorageFormat())) {
         OP_LOGE_FOR_INVALID_FORMAT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2Scale",
-                                        op::ToString(x2Scale->GetStorageFormat()).GetString(), "ND");
+                                   op::ToString(x2Scale->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
         OP_LOGE_FOR_INVALID_FORMAT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "output",
-                                        op::ToString(output->GetStorageFormat()).GetString(), "ND");
+                                   op::ToString(output->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     return true;
@@ -470,7 +485,7 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         OP_LOGI("The notContiguous is: %d , and transposeX2 is: %d", notContiguous, transposeX2);
         if (notContiguous && transposeX2) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
             OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2",
-                                        "non-contiguous and transposed", "contiguous or not transposed");
+                                      "non-contiguous and transposed", "contiguous or not transposed");
             return ACLNN_ERR_PARAM_INVALID;
         }
         if (notContiguous) {
@@ -486,8 +501,8 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
     } else {
         // 对于 A2 和 A3，非连续则报错
         OP_API_CHECK(!MC2Aclnn::IsTensorContiguous(x2), {
-            OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2",
-                                        "non-contiguous", "contiguous");
+            OP_LOGE_FOR_INVALID_VALUE("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize", "x2", "non-contiguous",
+                                      "contiguous");
             return ACLNN_ERR_PARAM_INVALID;
         });
     }
@@ -523,8 +538,9 @@ aclnnStatus aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize(
         transposeX1, transposeX2, groupSize, str_commMode, out, workspaceSize, executor);
     OP_LOGD("QuantMatmulAlltoAll, aclnnnInnerGetWorkspaceSize ret %d.", ret);
     if (ret != ACLNN_SUCCESS) {
-        OP_LOGE_LIBOPAPI_REPORT("aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize",
-                                "This is an error in launch aicore, aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
+        OP_LOGE_LIBOPAPI_REPORT(
+            "aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize",
+            "This is an error in launch aicore, aclnnQuantMatmulAlltoAllBaseGetWorkspaceSize interface call failed.");
     }
 
     if (ret == ACLNN_SUCCESS && *executor != nullptr) {

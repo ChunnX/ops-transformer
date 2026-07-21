@@ -128,6 +128,8 @@ protected:
     {
         const int32_t dim = this->tilingData_->dim;
         const int32_t seqLen = this->tilingData_->seqLen;
+        const int32_t stateLen = this->tilingData_->stateLen;
+        const int32_t kernelWidth = static_cast<int32_t>(this->tilingData_->kernelWidth);
         const int32_t coBatch = static_cast<int32_t>(this->tilingData_->coBatch);
         const bool hasCacheIndices = this->tilingData_->hasCacheIndices;
         const bool hasInitialStateMode = this->tilingData_->hasInitialStateMode;
@@ -173,10 +175,19 @@ protected:
             const bool hasInit = this->ResolveBatchHasInit(batchIdx * coBatch, hasInitialStateMode);
 
             this->InitRing(cacheIdx, hasInit, curSeqStart, curSeqFlatPos, dimStart, curBaseDim, dim);
-            this->RunSeq(curSeqFlatPos, runLen, dimStart, curBaseDim);
+            {
+                int32_t stStart;
+                if constexpr (kWindowMode == SEQ_PARTITION_MODE_VARLEN) {
+                    stStart = curSeqEnd - stateLen;
+                } else {
+                    stStart = curSeqStart + seqLen - stateLen;
+                }
+                this->RunSeq(curSeqFlatPos, runLen, dimStart, curBaseDim, cacheIdx, stStart, stateLen);
+            }
 
             if (cursor + runLen >= curSeqEnd) {
-                this->WriteBackState(cacheIdx, runLen, dimStart, curBaseDim, dim);
+                const int32_t aliveCount = (kernelWidth - 1 < stateLen) ? (kernelWidth - 1) : stateLen;
+                this->WriteBackState(cacheIdx, runLen, dimStart, curBaseDim, dim, stateLen - aliveCount);
             }
 
             SetEvent<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
@@ -337,7 +348,8 @@ protected:
         return true;
     }
 
-    __aicore__ inline void RunSeq(int32_t start, int32_t len, int32_t dimStart, int32_t baseDim)
+    __aicore__ inline void RunSeq(int32_t start, int32_t len, int32_t dimStart, int32_t baseDim, int32_t cacheIdx,
+                                  int32_t stateStart, int32_t stateLen)
     {
         const int32_t dim = static_cast<int32_t>(this->tilingData_->dim);
         const int32_t kernelWidth = static_cast<int32_t>(this->tilingData_->kernelWidth);
@@ -377,6 +389,23 @@ protected:
             const uint32_t dstGapBatchY = static_cast<uint32_t>(seqLen * dim - baseDim) * sizeof(T);
             DataCopyPad(this->yGm_[outGmBase], outSlotT[0],
                         {static_cast<uint16_t>(coBatch), blockBytes, 0, dstGapBatchY, 0});
+
+            // ---- dead slot state write: ring slot about to be overwritten → convStatesOutGm ----
+            const int32_t deadPaddedIdx = start + idx - kernelWidth + 1;
+            if (deadPaddedIdx >= stateStart) {
+                const int32_t deadSlot = static_cast<int32_t>(idx % (kernelWidth + 1));
+                const int32_t stateOffset = deadPaddedIdx - stateStart;
+                const int64_t stateGmBase = static_cast<int64_t>(cacheIdx) * stateLen * dim +
+                                            static_cast<int64_t>(stateOffset) * dim + dimStart;
+                DataCopyExtParams stateCp;
+                stateCp.blockCount = static_cast<uint16_t>(coBatch);
+                stateCp.blockLen = blockBytes;
+                stateCp.srcStride = 0;
+                stateCp.dstStride = static_cast<uint32_t>(stateLen * dim - baseDim) * sizeof(T);
+                stateCp.rsv = 0;
+                DataCopyPad(this->convStatesOutGm_[stateGmBase], ring[deadSlot * this->dimBufferSize_], stateCp);
+            }
+
             if (idx + 2 < len) {
                 SetFlag<HardEvent::MTE3_V>((idx & 1) ? EVENT_ID1 : EVENT_ID0);
             }

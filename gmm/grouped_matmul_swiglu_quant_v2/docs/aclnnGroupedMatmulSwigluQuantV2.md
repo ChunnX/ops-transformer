@@ -866,7 +866,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantV2(
         - weightScale转置属性需要与weight保持一致。
         - MX量化场景下，当输入为fp8数据类型时，需满足N为2对齐；当输入为fp4数据类型时，需满足N为4对齐。
         - MXFP4场景不支持K=2。
-        - MXFP4场景需满足K为偶数；当output的数据类型为FLOAT4_E2M1时，需满足N为大于等于4的偶数。
+        - MXFP4场景需满足K为偶数。
     
     - Pertoken量化场景下需满足以下约束条件：
         - 数据类型需要满足下表：
