@@ -41,6 +41,8 @@ ENABLE_AICPU=TRUE
 ENABLE_BUILT_CUSTOM=FALSE
 ENABLE_STATIC=FALSE
 ENABLE_EXPERIMENTAL=FALSE
+PACKAGE_TYPE="run"
+PACKAGE_TYPE_SET=FALSE
 KERNEL_TEMPLATE_INPUT=""
 ASCEND_SOC_UNITS="ascend910b"
 SUPPORT_COMPUTE_UNIT_SHORT=("ascend910b" "ascend910_93" "ascend950" "ascend310p" "kirinx90" "kirin9030" "mc62")
@@ -97,6 +99,7 @@ function help_info() {
                 echo "Package Build Options:"
                 echo $dotted_line
                 echo "    --pkg                  Build run package with kernel bin"
+                echo "    --pkg-type=<TYPE>      Specify package type(TYPE options: run/rpm/deb), Default: run"
                 echo "    --jit                  Build run package without kernel bin"
                 echo "    --soc=soc_version      Compile for specified Ascend SoC (comma-separated for multiple)"
                 echo "    --vendor_name=name     Specify custom operator package vendor name"
@@ -115,6 +118,8 @@ function help_info() {
                 echo $dotted_line
                 echo "Examples:"
                 echo "    bash build.sh --pkg --soc=ascend910b --vendor_name=customize -j16 -O3"
+                echo "    bash build.sh --pkg --pkg-type=deb --soc=ascend910b"
+                echo "    bash build.sh --pkg --pkg-type=rpm --soc=ascend910b"
                 echo "    bash build.sh --pkg --ops=add,sub"
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b"
                 echo "    bash build.sh --pkg --experimental --soc=ascend910b --ops=abs --oom"
@@ -335,6 +340,7 @@ function help_info() {
     echo "    --opkernel build binary kernel"
     echo "    --jit build run package without kernel bin"
     echo "    --pkg build run package with kernel bin"
+    echo "    --pkg-type=<TYPE> Specify package type(TYPE options: run/rpm/deb), Default: run"
     echo "    --experimental build experimental version"
     echo "    --opapi_test build and run opapi unit tests"
     echo "    --ophost_test build and run ophost unit tests"
@@ -356,6 +362,14 @@ export BUILD_PATH="${BASE_PATH}/build"
 function log() {
     local current_time=`date +"%Y-%m-%d %H:%M:%S"`
     echo "[$current_time] "$1
+}
+
+check_pkg_type() {
+  local pkg_type="$1"
+  if [[ "$pkg_type" != "run" && "$pkg_type" != "rpm" && "$pkg_type" != "deb" ]]; then
+    echo "[ERROR] --pkg-type only supports run/rpm/deb"
+    exit 1
+  fi
 }
 
 function set_env()
@@ -685,8 +699,62 @@ function build_example()
     return 0
 }
 
+function find_rpm_deb_package() {
+    if [[ "$PACKAGE_TYPE" == "run" ]]; then
+        return 0
+    fi
+
+    find "${BUILD_PATH}" -type f -name "cann-ops-transformer*.${PACKAGE_TYPE}" | sort
+}
+
+function clean_rpm_deb_package() {
+    if [[ "$PACKAGE_TYPE" == "run" ]]; then
+        return 0
+    fi
+
+    local package_files=()
+    while IFS= read -r package_file; do
+        package_files+=("${package_file}")
+    done < <(find_rpm_deb_package)
+
+    if [[ ${#package_files[@]} -eq 0 ]]; then
+        return 0
+    fi
+
+    for package_file in "${package_files[@]}"; do
+        rm -f "${package_file}"
+        echo "[INFO] Removed stale package artifact: ${package_file}"
+    done
+}
+
+function collect_rpm_deb_package() {
+    if [[ "$PACKAGE_TYPE" == "run" ]]; then
+        return 0
+    fi
+
+    local package_files=()
+    while IFS= read -r package_file; do
+        package_files+=("${package_file}")
+    done < <(find_rpm_deb_package)
+
+    if [[ ${#package_files[@]} -eq 0 ]]; then
+        echo "[ERROR] No .${PACKAGE_TYPE} package found in ${BUILD_PATH}"
+        exit 1
+    fi
+
+    if [ ! -d "${BUILD_OUT_DIR}" ]; then
+        mkdir -p "${BUILD_OUT_DIR}"
+    fi
+    for package_file in "${package_files[@]}"; do
+        cp -f "${package_file}" "${BUILD_OUT_DIR}/"
+        echo "[INFO] Package artifact copied to ${BUILD_OUT_DIR}/$(basename "${package_file}")"
+    done
+}
+
 function build_package(){
+    clean_rpm_deb_package
     build package
+    collect_rpm_deb_package
 }
 
 function build_host(){
@@ -1426,6 +1494,13 @@ while [[ $# -gt 0 ]]; do
         BUILD_TYPE=${OPTARG#*=}
         shift
         ;;
+    --pkg-type=*)
+        OPTARG=$1
+        PACKAGE_TYPE=${OPTARG#*=}
+        check_pkg_type "${PACKAGE_TYPE}"
+        PACKAGE_TYPE_SET=TRUE
+        shift
+        ;;
     --version=*)
         OPTARG=$1
         VERSION=${OPTARG#*=}
@@ -1471,6 +1546,26 @@ set_ut_mode
 if [ -n "$KERNEL_TEMPLATE_INPUT" ]; then
     if [[ -z "${ascend_op_name}" || "$ascend_op_name" == *","* ]]; then
         echo "[ERROR] --kernel_template_input must be used with --ops= and can only specify a single operator"
+        exit 1
+    fi
+fi
+
+if [[ "$PACKAGE_TYPE_SET" == "TRUE" && "$ENABLE_BUILD_PKG" != "TRUE" ]]; then
+    echo "[ERROR] --pkg-type can only be used with --pkg"
+    exit 1
+fi
+
+if [[ "$PACKAGE_TYPE" != "run" ]]; then
+    if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
+        echo "[ERROR] --pkg-type=${PACKAGE_TYPE} cannot be used with --static"
+        exit 1
+    fi
+    if [[ "$ENABLE_BUILT_JIT" == "TRUE" ]]; then
+        echo "[ERROR] --pkg-type=${PACKAGE_TYPE} cannot be used with --jit"
+        exit 1
+    fi
+    if [[ "$ENABLE_BUILT_CUSTOM" == "TRUE" || "$ENABLE_EXPERIMENTAL" == "TRUE" ]]; then
+        echo "[ERROR] --pkg-type=${PACKAGE_TYPE} only supports built-in ops-transformer packages; do not use --ops, --vendor_name, or --experimental"
         exit 1
     fi
 fi
@@ -1679,6 +1774,10 @@ fi
 
 if [[ "$ENABLE_STATIC" == "TRUE" ]]; then
     CUSTOM_OPTION="${CUSTOM_OPTION} -DENABLE_STATIC=${ENABLE_STATIC}"
+fi
+
+if [[ "$ENABLE_BUILD_PKG" == "TRUE" ]]; then
+    CUSTOM_OPTION="${CUSTOM_OPTION} -DPACKAGE_TYPE=${PACKAGE_TYPE}"
 fi
 
 if [[ "$ENABLE_AICPU" == "FALSE" ]]; then
