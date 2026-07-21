@@ -91,6 +91,23 @@ public:
             reinterpret_cast<__gm__ BlockSparseAttentionTilingData *>(params.tiling);
         FetchBaseShapeInfo(bsaTilingData);
         CalcOnChipBufTileInfo(bsaTilingData);
+        // KV(V 数据) 与 V-scale 的 stride 预算（PV 稀疏 gather 用）
+        // V 数据 fp4：sizeof(fp4x2_e2m1_t)=1，元素偏移即字节偏移，行 stride = embed_(D 个 fp4)
+        // V-scale E8M0：GM [B,N2,S2//64,D,2]，每 64-S2 行 group 占 D*2 字节
+        if constexpr (kvFormat == Format::TND) {
+            strideKVData_  = static_cast<int64_t>(kvHeads_) * embed_;            // 每 token 跨 kvHead
+            vScaleStrideN_ = static_cast<int64_t>(embed_) * 2;                   // TND head 步长 = D*2 字节
+        } else if constexpr (kvFormat == Format::BNSD) {
+            strideKVDataB_ = static_cast<int64_t>(kvHeads_) * kvSeqlenAligned_ * embed_;
+            strideKVDataN_ = kvSeqlenAligned_ * embed_;
+            vScaleStrideB_ = static_cast<int64_t>(kvHeads_) * CeilDiv(kvSeqlenAligned_, static_cast<int64_t>(64)) * embed_ * 2;
+            vScaleStrideN_ = CeilDiv(kvSeqlenAligned_, static_cast<int64_t>(64)) * embed_ * 2;
+        } else if constexpr (kvFormat == Format::BSND) {
+            strideKVDataB_ = kvSeqlenAligned_ * static_cast<int64_t>(kvHeads_) * embed_;
+            strideKVDataN_ = embed_;
+            vScaleStrideB_ = CeilDiv(kvSeqlenAligned_, static_cast<int64_t>(64)) * static_cast<int64_t>(kvHeads_) * embed_ * 2;
+            vScaleStrideN_ = static_cast<int64_t>(embed_) * 2;
+        }
         // global buffers
         AscendC::GlobalTensor<ElementQ> gQ;
         gQ.SetGlobalBuffer((__gm__ ElementQ *)params.query);
@@ -203,7 +220,18 @@ public:
                     }
                     ComputeMm2(delay20TileInfo);
                     // if(coreIdx == 0){
-                        blockMmadPV(gVDequantScale,gV,ubOTmpTensor[0]);
+                        blockMmadPV(
+                            gV[delay20TaskInfo.gmOffsetV],
+                            gVDequantScale[delay20TaskInfo.gmOffsetVScale],
+                            gSparseIdx[delay20TaskInfo.gmOffsetSparseIdx],
+                            ubOTmpTensor[0],
+                            delay20TaskInfo.qsActBaseTile,   // rowNum = P 行数（Q tile 实际行数）
+                            embed_,
+                            delay20TileInfo.kvsActBaseTile,  // curBaseTileSize
+                            delay20TileInfo.pvGatheredKvSTileIdx,  // gatheredKvSTileIdx
+                            delay20TaskInfo.kvSeqlen,
+                            kvBaseTile_, blockShapeY_,
+                            delay20TaskInfo.yBlockNumAval, delay20TaskInfo.yBlockNumRsvd);
                     // }
 
                     if (delay20TileInfo.isUpdatePScale) {
@@ -484,6 +512,9 @@ public:
         // 反推 taskIdx 所在的 batch
         uint32_t curBatch = 0;
         uint32_t preTotalTaskNum = 0;
+        // TND 下 V 数据 / V-scale 的 batch 累积偏移（BNSD/BSND 由 curBatch 直接算，无需累积）
+        int64_t vBOffset = 0;
+        int64_t vScaleBOffset = 0;
         int64_t qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
         int64_t kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
         uint32_t curQSTileNum = GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_);
@@ -491,6 +522,12 @@ public:
         while (taskIdx >= curTotalTaskNum) {
             ++curBatch;
             preTotalTaskNum = curTotalTaskNum;
+            // TND: 跨 batch 时累加上一 batch 实际长度（此时 kvSeqlen 仍为上一 batch 值）
+            if constexpr (kvFormat == Format::TND) {
+                vBOffset += kvSeqlen * strideKVData_;
+                vScaleBOffset += CeilDiv(kvSeqlen, static_cast<int64_t>(64)) *
+                                 static_cast<int64_t>(kvHeads_) * embed_ * 2;
+            }
             qSeqlen = actSeqAval_ ? gActualQseqlen.GetValue(curBatch) : qSeqlenAligned_;
             kvSeqlen = actSeqAval_ ? gActualKvseqlen.GetValue(curBatch) : kvSeqlenAligned_;
             curQSTileNum = GetCurQSTileNum(qSeqlen, blockShapeX_, qBaseTile_);
@@ -539,6 +576,32 @@ public:
         info.qsBaseTile = qBaseTile_;
         info.kvsBaseTile = kvBaseTile_;
         info.taskTileNum = taskTileNum;
+        // ===== PV 稀疏 gather 所需 =====
+        info.gmOffsetSparseIdx = gmOffsetSparseIdx;  // 本 task sparseIdx 起始
+        info.kvSeqlen          = kvSeqlen;
+        info.yBlockNumAval     = yBlockNumAval;
+        info.yBlockNumRsvd     = yBlockNumRsvd;
+        // V 数据 batch+head 基址（seq 由 gather 的 oriStartOffset 处理，基址只含 batch+head）
+        // V-scale batch+head 基址（字节单位，布局 [B,N2,S2//64,D,2]）
+        if constexpr (kvFormat == Format::TND) {
+            // TND V [T2,N2,D]：head 在 token 内 stride = embed_（≠ strideKVData_，后者是 batch-token 步长 kvHeads_*embed_）
+            info.gmOffsetV      = vBOffset      + kvHeadIdx * embed_;
+            info.gmOffsetVScale = vScaleBOffset + kvHeadIdx * vScaleStrideN_;
+        } else if constexpr (kvFormat == Format::BNSD) {
+            info.gmOffsetV      = static_cast<int64_t>(curBatch) * strideKVDataB_ + kvHeadIdx * strideKVDataN_;
+            info.gmOffsetVScale = static_cast<int64_t>(curBatch) * vScaleStrideB_ + kvHeadIdx * vScaleStrideN_;
+        } else { // BSND
+            info.gmOffsetV      = static_cast<int64_t>(curBatch) * strideKVDataB_ + kvHeadIdx * strideKVDataN_;
+            info.gmOffsetVScale = static_cast<int64_t>(curBatch) * vScaleStrideB_ + kvHeadIdx * vScaleStrideN_;
+        }
+        // [PV-VERIFY] 打印本 task 算出的稀疏 gather 偏移，供测试逐行核对（补丁1/2 验证用）
+        AscendC::printf(
+            "[PV-VERIFY] t=%u b=%u qh=%u kvh=%u xb=%u | gmOffV=%llu gmOffVSc=%llu spIdx=%u kvSeq=%llu yAval=%u yRsvd=%u\n",
+            (unsigned)coreTaskId, (unsigned)info.batchIdx, (unsigned)info.qHeadIdx, (unsigned)info.kvHeadIdx,
+            (unsigned)info.xBlockIdx,
+            (unsigned long long)info.gmOffsetV, (unsigned long long)info.gmOffsetVScale,
+            (unsigned)info.gmOffsetSparseIdx, (unsigned long long)info.kvSeqlen,
+            (unsigned)info.yBlockNumAval, (unsigned)info.yBlockNumRsvd);
     }
 
     // 每个 tile 调用一次，根据 coreTileLoop / curTaskTileIdx / taskInfo 填充 TileInfo
@@ -578,8 +641,10 @@ public:
         info.updateScaleIdx = updateScaleIdx_;
         info.isKvsFirstTilePerCore = (info.curKvsTileLoopIdx % TILE_GROUP_N / 2 == 0);
 
-        info.kvsActBaseTile = info.isLastKvsTile ?
-                (taskInfo.gatheredKvSeqlen - (taskInfo.taskTileNum - 1) * kvBaseTile_) : kvBaseTile_;
+       info.kvsActBaseTile = info.isLastKvsTile ?
+            (taskInfo.gatheredKvSeqlen - (taskInfo.taskTileNum - 1) * kvBaseTile_) : kvBaseTile_;
+        // PV 稀疏 gather 用：当前 tile 在 task 内 gather 后的 KV base tile 序号
+        info.pvGatheredKvSTileIdx = curTaskTileIdx;
     }
 
     
@@ -682,6 +747,14 @@ private:
     uint32_t mm2L1AddrStart_ = 0;
     Gemm::Block::Mm1L1TileHelper mm1L1TileHelper_;
     Gemm::Block::Mm2L1TileHelper mm2L1TileHelper_;
+    // ===== V 数据 / V-scale stride（PV 稀疏 gather 用，operator() 内预算一次）=====
+    // V 数据为 fp4，sizeof(fp4x2_e2m1_t)=1，元素偏移即字节偏移
+    int64_t strideKVData_ = 0;   // TND: 每 token 跨 kvHead 的步长（fp4 元素）
+    int64_t strideKVDataB_ = 0;  // BNSD/BSND: V 数据 batch 步长
+    int64_t strideKVDataN_ = 0;  // BNSD/BSND: V 数据 head 步长
+    // V-scale 为 E8M0(1 字节)，GM 布局 [B,N2,S2//64,D,2]；B16 视图下每 64-S2 行 group 占 D 个 B16 = 2D 字节
+    int64_t vScaleStrideB_ = 0;  // V-scale batch 步长（字节）
+    int64_t vScaleStrideN_ = 0;   // V-scale head 步长（字节）
 
     // ---- CreateTileInfo 持久状态 (跨 tile 保持, 参考 qfa.cpp CalcParams) ----
     uint32_t kvsFirstTileStartVecCore_ = 0; // task 首 tile 时切换 (loop % 2)
