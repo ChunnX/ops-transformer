@@ -237,33 +237,10 @@ void QuantFlashAttnTilingImpl::CalcWorkspaceSize()
     uint32_t mSize = sOuterFactor_ * platformInfo_.cvRatio;
     uint32_t dSize = qfaInfo_->vHeadDim;
     uint32_t dVBasicBlock = 0;
-    if (dSize <= DSIZE_64) {
-        dVBasicBlock = DSIZE_64;
-    } else if (dSize <= DSIZE_128) {
-        dVBasicBlock = DSIZE_128;
-    } else if (dSize <= DSIZE_256) {
-        dVBasicBlock = DSIZE_256;
-    } else if (dSize <= DSIZE_512) {
-        dVBasicBlock = DSIZE_512;
-    }
-
     workspaceSize_ = sysWorkspaceSize;
 
-    int64_t bmm2Bytes = 0;
-    int64_t vec2Bytes = 0;
-    int64_t bmm2ResBlockSize = dVBasicBlock;
-    if (dVBasicBlock > DSIZE_256) {
-        bmm2ResBlockSize = DSIZE_512;
-    }
-    if (dSize > DSIZE_128) {
-        bmm2Bytes = mSize * bmm2ResBlockSize * sizeof(float);
-        if (dVBasicBlock > DSIZE_256) {
-            vec2Bytes = mSize * dVBasicBlock * sizeof(float);
-        }
-    }
-    workspaceSize_ += (bmm2Bytes + vec2Bytes) * PRE_LOAD_NUM_QFA_ARCH35 * numBlocks_;
-
     if (qfaInfo_->pageAttentionFlag) {
+        // 2 bmm, db, ensure alignment of each structure 64B, dcci cacheline needs
         workspaceSize_ += static_cast<uint64_t>(platformInfo_.coreNum) * 2 * 2 * 64;
     }
 
