@@ -346,6 +346,11 @@ private:
     uint64_t debugAckWaitCycles_{0};
     uint64_t debugReadyPollCount_{0};
     uint64_t debugAckPollCount_{0};
+    uint64_t debugScaleoutPayloadSubmitCycles_{0};
+    uint64_t debugScaleoutPayloadDrainCycles_{0};
+    uint64_t debugScaleoutNotifySubmitCycles_{0};
+    uint64_t debugScaleoutNotifyDrainCycles_{0};
+    uint64_t debugScaleoutPayloadBytes_{0};
     uint64_t cntWinStateOffset_{0};
     uint64_t slotWinStateOffset_{0};
     uint64_t winDataOffset_{0};
@@ -614,6 +619,20 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
                                           debugFanoutNbiCount_);
     MoeEpDispatchBase::WriteUint32ToDebug(debugOutGMTensor_, MoeEpDispatchBase::DEBUG_OFFSET_FANOUT_DRAIN_COUNT,
                                           debugFanoutDrainCount_);
+    MoeEpDispatchBase::WriteUint64ToDebug(debugOutGMTensor_,
+                                          MoeEpDispatchBase::DEBUG_OFFSET_SCALEOUT_PAYLOAD_SUBMIT_CYCLES,
+                                          debugScaleoutPayloadSubmitCycles_);
+    MoeEpDispatchBase::WriteUint64ToDebug(debugOutGMTensor_,
+                                          MoeEpDispatchBase::DEBUG_OFFSET_SCALEOUT_PAYLOAD_DRAIN_CYCLES,
+                                          debugScaleoutPayloadDrainCycles_);
+    MoeEpDispatchBase::WriteUint64ToDebug(debugOutGMTensor_,
+                                          MoeEpDispatchBase::DEBUG_OFFSET_SCALEOUT_NOTIFY_SUBMIT_CYCLES,
+                                          debugScaleoutNotifySubmitCycles_);
+    MoeEpDispatchBase::WriteUint64ToDebug(debugOutGMTensor_,
+                                          MoeEpDispatchBase::DEBUG_OFFSET_SCALEOUT_NOTIFY_DRAIN_CYCLES,
+                                          debugScaleoutNotifyDrainCycles_);
+    MoeEpDispatchBase::WriteUint64ToDebug(debugOutGMTensor_, MoeEpDispatchBase::DEBUG_OFFSET_SCALEOUT_PAYLOAD_BYTES,
+                                          debugScaleoutPayloadBytes_);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1514,16 +1533,44 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         GM_ADDR remoteScaleoutAddr =
             GetWinAddrByRankId(mc2Context_, proxyRankId, scaleoutRecvDataOffset_) +
             (static_cast<uint64_t>(currentServerIndex_) * axisMaxBS_) * scaleoutSlotBytes_;
-        MoeEpDispatchBase::WriteRemoteWindowByChunks(hcomm_, commHandle, remoteScaleoutAddr, localScaleoutAddr,
-                                                     sendDataSize);
+        uint64_t payloadSubmitStartCycle = aivId_ == 0U ? GetSystemCycle() : 0UL;
+        uint64_t splitCount =
+            (sendDataSize + MoeEpDispatchBase::DISPATCH_CQE_MAX_WRITE_SIZE - 1UL) /
+            MoeEpDispatchBase::DISPATCH_CQE_MAX_WRITE_SIZE;
+        uint64_t dataBytes = MoeEpDispatchBase::DISPATCH_CQE_MAX_WRITE_SIZE;
+        for (uint64_t splitIndex = 0UL; splitIndex < splitCount; splitIndex++) {
+            if (splitIndex == splitCount - 1UL) {
+                dataBytes = sendDataSize - splitIndex * MoeEpDispatchBase::DISPATCH_CQE_MAX_WRITE_SIZE;
+            }
+            hcomm_.WriteNbi(commHandle, remoteScaleoutAddr, localScaleoutAddr, dataBytes);
+            localScaleoutAddr += dataBytes;
+            remoteScaleoutAddr += dataBytes;
+        }
+        if (aivId_ == 0U) {
+            debugScaleoutPayloadSubmitCycles_ += GetSystemCycle() - payloadSubmitStartCycle;
+            debugScaleoutPayloadBytes_ += sendDataSize;
+        }
+        uint64_t payloadDrainStartCycle = aivId_ == 0U ? GetSystemCycle() : 0UL;
+        hcomm_.Drain(commHandle);
+        if (aivId_ == 0U) {
+            debugScaleoutPayloadDrainCycles_ += GetSystemCycle() - payloadDrainStartCycle;
+        }
     }
 
     GM_ADDR remoteNotifyAddr =
         GetScaleoutStatusAddr(GetWinAddrByRankId(mc2Context_, proxyRankId, scaleoutRecvStatusOffset_),
                               currentServerIndex_);
+    uint64_t notifySubmitStartCycle = aivId_ == 0U ? GetSystemCycle() : 0UL;
     hcomm_.WriteNbi(commHandle, remoteNotifyAddr,
                     scaleoutNotifyWorkspaceAddr_ + dstScaleoutIndex * sizeof(uint64_t), sizeof(uint64_t));
+    if (aivId_ == 0U) {
+        debugScaleoutNotifySubmitCycles_ += GetSystemCycle() - notifySubmitStartCycle;
+    }
+    uint64_t notifyDrainStartCycle = aivId_ == 0U ? GetSystemCycle() : 0UL;
     hcomm_.Drain(commHandle);
+    if (aivId_ == 0U) {
+        debugScaleoutNotifyDrainCycles_ += GetSystemCycle() - notifyDrainStartCycle;
+    }
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
