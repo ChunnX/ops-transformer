@@ -40,6 +40,8 @@ public:
                                               GlobalTensor<int32_t> sparseIndicesGm, GlobalTensor<int32_t> sparseSeqLenGm);
     __aicore__ inline void initS2LenToNeg(uint32_t gS1Idx, uint32_t actMBaseSize, uint32_t actS1Size,
                                           uint64_t indiceOutOffset);
+    __aicore__ inline void ClearPaddingOutput(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start,
+                                              uint32_t actS1Size, uint32_t tBase);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
@@ -51,6 +53,7 @@ protected:
     static constexpr uint32_t VEC1_V_MTE2_EVENT = EVENT_ID0;
     static constexpr uint32_t VEC1_MTE2_V_EVENT = EVENT_ID1;
 
+    static constexpr uint32_t TOPK_MTE3_MTE2_EVENT = EVENT_ID5;
     static constexpr uint32_t TOPK_V_MTE3_EVENT = EVENT_ID6;
     static constexpr uint32_t TOPK_MTE3_V_EVENT = EVENT_ID7;
 
@@ -162,6 +165,64 @@ __aicore__ inline void SIVector<SIT>::InitVecInputTensor(GlobalTensor<float> vBi
     this->vBiasGm = vBiasGm;
     this->sparseIndicesGm = sparseIndicesGm;
     this->sparseSeqLenGm = sparseSeqLenGm;
+}
+
+template <typename SIT>
+__aicore__ inline void SIVector<SIT>::ClearPaddingOutput(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start,
+                                                         uint32_t actS1Size, uint32_t tBase)
+{
+    // 同一AIC对应的两个AIV共享分核信息，按G轴拆分无效行清理，避免重复写GM。
+    uint32_t aivParity = static_cast<uint32_t>(blockId_) & 1U;
+    uint32_t gPerAiv = (constInfo_.gSize + 1U) >> 1U;
+    uint32_t gStart = aivParity * gPerAiv;
+    uint32_t gEnd = Min(gStart + gPerAiv, constInfo_.gSize);
+    if (gStart >= gEnd) {
+        return;
+    }
+    uint32_t gCount = gEnd - gStart;
+
+    if constexpr (SIT::layout == SI_LAYOUT::TND) {
+        for (uint32_t s1Idx = s1Start; s1Idx < actS1Size; s1Idx++) {
+            uint64_t indiceLenOffset =
+                ((static_cast<uint64_t>(tBase) + s1Idx) * constInfo_.kvHeadNum + n2Idx) * constInfo_.gSize + gStart;
+            uint64_t indiceOutOffset = indiceLenOffset * constInfo_.sparseCount;
+            GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
+            GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
+            AscendC::InitGlobalMemory(indiceOut, static_cast<uint64_t>(gCount) * constInfo_.sparseCount,
+                                      static_cast<int32_t>(SICommon::INVALID_IDX));
+            AscendC::InitGlobalMemory(indiceLenOut, gCount, static_cast<int32_t>(0));
+        }
+    } else if constexpr (SIT::layout == SI_LAYOUT::BNSD) {
+        if (s1Start >= constInfo_.qSeqSize) {
+            return;
+        }
+        uint32_t clearS1Num = constInfo_.qSeqSize - s1Start;
+        if (s1Start == 0U) {
+            uint64_t indiceLenOffset =
+                ((static_cast<uint64_t>(bIdx) * constInfo_.kvHeadNum + n2Idx) * constInfo_.gSize + gStart) *
+                constInfo_.qSeqSize;
+            uint64_t clearRowNum = static_cast<uint64_t>(gCount) * constInfo_.qSeqSize;
+            uint64_t indiceOutOffset = indiceLenOffset * constInfo_.sparseCount;
+            GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
+            GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
+            AscendC::InitGlobalMemory(indiceOut, clearRowNum * constInfo_.sparseCount,
+                                      static_cast<int32_t>(SICommon::INVALID_IDX));
+            AscendC::InitGlobalMemory(indiceLenOut, clearRowNum, static_cast<int32_t>(0));
+            return;
+        }
+        for (uint32_t gIdx = gStart; gIdx < gEnd; gIdx++) {
+            uint64_t indiceLenOffset =
+                ((static_cast<uint64_t>(bIdx) * constInfo_.kvHeadNum + n2Idx) * constInfo_.gSize + gIdx) *
+                    constInfo_.qSeqSize +
+                s1Start;
+            uint64_t indiceOutOffset = indiceLenOffset * constInfo_.sparseCount;
+            GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
+            GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
+            AscendC::InitGlobalMemory(indiceOut, static_cast<uint64_t>(clearS1Num) * constInfo_.sparseCount,
+                                      static_cast<int32_t>(SICommon::INVALID_IDX));
+            AscendC::InitGlobalMemory(indiceLenOut, clearS1Num, static_cast<int32_t>(0));
+        }
+    }
 }
 
 template <typename SIT>

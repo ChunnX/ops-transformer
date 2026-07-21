@@ -113,7 +113,7 @@ protected:
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
     __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo);
-    __aicore__ inline void DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start);
+    __aicore__ inline void ClearPaddingOutput(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start);
 };
 
 template <typename SIT>
@@ -323,67 +323,17 @@ __aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, ui
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::DealActSeqLenIsZero(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
+__aicore__ inline void SIPreload<SIT>::ClearPaddingOutput(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
 {
     if ASCEND_IS_AIV {
-        // 同一AIC对应的两个AIV共享分核信息，按G轴拆分无效行清理，避免重复写GM。
-        uint32_t aivParity = tmpBlockIdx & 1U;
-        uint32_t gPerAiv = (constInfo.gSize + 1U) >> 1U;
-        uint32_t gStart = aivParity * gPerAiv;
-        uint32_t gEnd = Min(gStart + gPerAiv, constInfo.gSize);
-        if (gStart >= gEnd) {
-            return;
-        }
-        uint32_t gCount = gEnd - gStart;
-
+        uint32_t tBase = 0U;
         if constexpr (Q_LAYOUT_T == SI_LAYOUT::TND) {
-            uint32_t tBase = 0;
-            if (bIdx > 0) {
-                uint32_t tBaseIdx = (constInfo.batchSupperFlag) ? bIdx : bIdx - 1;
+            if (bIdx > 0U) {
+                uint32_t tBaseIdx = constInfo.batchSupperFlag ? bIdx : bIdx - 1U;
                 tBase = qSeqLensGm.GetValue(tBaseIdx);
             }
-            uint32_t s1Count = tempLoopInfo.actS1Size;
-            for (uint32_t s1Idx = s1Start; s1Idx < s1Count; s1Idx++) {
-                uint64_t indiceLenOffset =
-                    ((static_cast<uint64_t>(tBase) + s1Idx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gStart;
-                uint64_t indiceOutOffset = indiceLenOffset * constInfo.sparseCount;
-                GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
-                GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
-                AscendC::InitGlobalMemory(indiceOut, static_cast<uint64_t>(gCount) * constInfo.sparseCount,
-                                          static_cast<int32_t>(SICommon::INVALID_IDX));
-                AscendC::InitGlobalMemory(indiceLenOut, gCount, static_cast<int32_t>(0));
-            }
-        } else if constexpr (Q_LAYOUT_T == SI_LAYOUT::BNSD) {
-            if (s1Start >= constInfo.qSeqSize) {
-                return;
-            }
-            uint32_t clearS1Num = constInfo.qSeqSize - s1Start;
-            if (s1Start == 0U) {
-                uint64_t indiceLenOffset =
-                    ((static_cast<uint64_t>(bIdx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gStart) *
-                    constInfo.qSeqSize;
-                uint64_t clearRowNum = static_cast<uint64_t>(gCount) * constInfo.qSeqSize;
-                uint64_t indiceOutOffset = indiceLenOffset * constInfo.sparseCount;
-                GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
-                GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
-                AscendC::InitGlobalMemory(indiceOut, clearRowNum * constInfo.sparseCount,
-                                          static_cast<int32_t>(SICommon::INVALID_IDX));
-                AscendC::InitGlobalMemory(indiceLenOut, clearRowNum, static_cast<int32_t>(0));
-                return;
-            }
-            for (uint32_t gIdx = gStart; gIdx < gEnd; gIdx++) {
-                uint64_t indiceLenOffset =
-                    ((static_cast<uint64_t>(bIdx) * constInfo.kvHeadNum + n2Idx) * constInfo.gSize + gIdx) *
-                        constInfo.qSeqSize +
-                    s1Start;
-                uint64_t indiceOutOffset = indiceLenOffset * constInfo.sparseCount;
-                GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
-                GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
-                AscendC::InitGlobalMemory(indiceOut, static_cast<uint64_t>(clearS1Num) * constInfo.sparseCount,
-                                          static_cast<int32_t>(SICommon::INVALID_IDX));
-                AscendC::InitGlobalMemory(indiceLenOut, clearS1Num, static_cast<int32_t>(0));
-            }
         }
+        vectorService.ClearPaddingOutput(bIdx, n2Idx, s1Start, tempLoopInfo.actS1Size, tBase);
     }
 }
 
@@ -601,7 +551,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
     for (uint32_t bN2LoopIdx = splitCoreInfo.bN2Start; bN2LoopIdx <= splitCoreInfo.bN2End; bN2LoopIdx++) {
         CalcGS1LoopParams(bN2LoopIdx);
         if (tempLoopInfo.curActSeqLenIsZero) {
-            DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U);
+            ClearPaddingOutput(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U);
             continue;
         }
 
@@ -621,7 +571,7 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
             splitCoreInfo.s2Start = 0;
         }
         if (tempLoopInfo.needDealActS1LessThanS1) {
-            DealActSeqLenIsZero(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
+            ClearPaddingOutput(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
         }
         splitCoreInfo.gS1Start = 0;
     }
