@@ -17,8 +17,7 @@ using namespace std;
 
 namespace MatmulReduceScatterUT {
 
-class MatmulReduceScatterArch22TilingTest : public testing::Test
-{
+class MatmulReduceScatterArch22TilingTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -33,7 +32,8 @@ protected:
 
 TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test1)
 {
-    struct MatmulReduceScatterCompileInfo {} compileInfo;
+    struct MatmulReduceScatterCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara(
@@ -62,7 +62,8 @@ TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test1)
 
 TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test2)
 {
-    struct MatmulReduceScatterCompileInfo {} compileInfo;
+    struct MatmulReduceScatterCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara(
@@ -91,7 +92,8 @@ TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test2)
 
 TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test3)
 {
-    struct MatmulReduceScatterCompileInfo {} compileInfo;
+    struct MatmulReduceScatterCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara(
@@ -120,7 +122,8 @@ TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test3)
 
 TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test4)
 {
-    struct MatmulReduceScatterCompileInfo {} compileInfo;
+    struct MatmulReduceScatterCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara(
@@ -149,7 +152,8 @@ TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test4)
 
 TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test5)
 {
-    struct MatmulReduceScatterCompileInfo {} compileInfo;
+    struct MatmulReduceScatterCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 24;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara(
@@ -178,7 +182,8 @@ TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test5)
 
 TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test6)
 {
-    struct MatmulReduceScatterCompileInfo {} compileInfo;
+    struct MatmulReduceScatterCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara(
@@ -207,7 +212,8 @@ TEST_F(MatmulReduceScatterArch22TilingTest, Float16Test6)
 
 TEST_F(MatmulReduceScatterArch22TilingTest, Bfloat16)
 {
-    struct MatmulReduceScatterCompileInfo {} compileInfo;
+    struct MatmulReduceScatterCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara(
@@ -536,11 +542,12 @@ TEST_F(MatmulReduceScatterArch22TilingTest, CheckUbOverflowLargeD_FP16)
 
 TEST_F(MatmulReduceScatterArch22TilingTest, IsDeterministic_True_FP16)
 {
-    const char* envValue = getenv("HCCL_DETERMINISTIC");
+    const char *envValue = getenv("HCCL_DETERMINISTIC");
     std::string originalStr = (envValue != nullptr) ? std::string(envValue) : "";
     setenv("HCCL_DETERMINISTIC", "TRUE", 1);
 
-    struct MatmulReduceScatterCompileInfo {} compileInfo;
+    struct MatmulReduceScatterCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara(
@@ -574,11 +581,12 @@ TEST_F(MatmulReduceScatterArch22TilingTest, IsDeterministic_True_FP16)
 
 TEST_F(MatmulReduceScatterArch22TilingTest, IsDeterministic_False_FP16)
 {
-    const char* envValue = getenv("HCCL_DETERMINISTIC");
+    const char *envValue = getenv("HCCL_DETERMINISTIC");
     std::string originalStr = (envValue != nullptr) ? std::string(envValue) : "";
     setenv("HCCL_DETERMINISTIC", "0", 1);
 
-    struct MatmulReduceScatterCompileInfo {} compileInfo;
+    struct MatmulReduceScatterCompileInfo {
+    } compileInfo;
     uint64_t coreNum = 20;
     uint64_t ubSize = 196608;
     gert::TilingContextPara tilingContextPara(
@@ -638,6 +646,36 @@ TEST_F(MatmulReduceScatterArch22TilingTest, MataInterleaveLargeD_FP16)
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
     uint64_t expectTilingKey = 3;
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectTilingKey);
+}
+
+TEST_F(MatmulReduceScatterArch22TilingTest, MNotMultipleOfRank_FP16)
+{
+    // m=8190 不是 rank_size(8) 的整数倍，触发 m % rankDim 校验，预期 GRAPH_FAILED
+    struct MatmulReduceScatterCompileInfo {
+    } compileInfo;
+    uint64_t coreNum = 20;
+    uint64_t ubSize = 196608;
+    gert::TilingContextPara tilingContextPara(
+        "MatmulReduceScatter",
+        {
+            {{{8190, 1536}, {8190, 1536}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{{1536, 12288}, {1536, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+            {{}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {{{8190, 12288}, {8190, 12288}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+        },
+        {
+            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("group")},
+            {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>("sum")},
+            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
+        },
+        &compileInfo, "Ascend910_93", coreNum, ubSize);
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
+    Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, ge::GRAPH_FAILED);
 }
 
 } // namespace MatmulReduceScatterUT

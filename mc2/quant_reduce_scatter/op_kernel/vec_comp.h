@@ -23,24 +23,29 @@ namespace VectorComputeImpl {
 
 using namespace AscendC;
 // 后缀_BYTES 表示单位为字节大小B, _NUM 表示单位为个
-constexpr static uint32_t KG_SCALE_TRANS_NUM = 8U;  // KG量化时， scale 为 fp32, 32B对齐时单次转换32 / 4 = 8个
+constexpr static uint32_t KG_SCALE_TRANS_NUM = 8U; // KG量化时， scale 为 fp32, 32B对齐时单次转换32 / 4 = 8个
 constexpr static uint32_t MX_SCALE_TRANS_NUM = 32U; // MX量化时，scale 为 fp8_e8m0, 32B对齐时单次转换32 / 1 = 32个
-constexpr static uint32_t PER_GROUP_SIZE = 128U;    // KG量化时，128个x数据共有一个scale
-constexpr static uint32_t MX_SIZE = 32U;            // MX量化时，32个x数据共有一个scale
-constexpr static uint32_t TWO_DIMS = 2U;            // 用于scale反量化时boardcast的数组维度
+constexpr static uint32_t PER_GROUP_SIZE = 128U; // KG量化时，128个x数据共有一个scale
+constexpr static uint32_t MX_SIZE = 32U;         // MX量化时，32个x数据共有一个scale
+constexpr static uint32_t TWO_DIMS = 2U;         // 用于scale反量化时boardcast的数组维度
 
 #define TemplateTypeClass typename XType, typename ScalesType, typename OutputType
 #define TemplateType XType, ScalesType, OutputType
 
-template<TemplateTypeClass>
+template <TemplateTypeClass>
 class VectorCompute {
 public:
-    __aicore__ inline VectorCompute() {};
+    __aicore__ inline VectorCompute(){};
     __aicore__ inline void InitBuffer(TPipe *tPipe);
     __aicore__ inline void CastToFloat(LocalTensor<XType> &xTensor, LocalTensor<ScalesType> &scaleTensor);
-    __aicore__ inline void DequantReduceSum(LocalTensor<XType> &xTensor, LocalTensor<ScalesType> &scaleTensor, LocalTensor<float> &sumTensor);
+    __aicore__ inline void DequantReduceSum(LocalTensor<XType> &xTensor, LocalTensor<ScalesType> &scaleTensor,
+                                            LocalTensor<float> &sumTensor);
     __aicore__ inline void SetBlockSize(uint32_t elementsPerBlock);
-    __aicore__ inline void SetScaleNums(uint32_t n) { scaleNumsPerBlock_ = n; }
+    __aicore__ inline void SetScaleNums(uint32_t n)
+    {
+        scaleNumsPerBlock_ = n;
+    }
+
 private:
     uint32_t xNumPerBlock_{0};
     uint32_t scaleNumsPerBlock_{0};
@@ -60,10 +65,10 @@ private:
 template <TemplateTypeClass>
 __aicore__ inline void VectorCompute<TemplateType>::InitBuffer(TPipe *tPipe)
 {
-    tPipe->InitBuffer(brcbBuf_, xNumPerBlock_ * sizeof(float)); // 用于scale BroadCast，动态大小
-    tPipe->InitBuffer(xCastBuf_, xNumPerBlock_ * sizeof(float)); // 用于x Cast 成 fp32, 动态大小
+    tPipe->InitBuffer(brcbBuf_, xNumPerBlock_ * sizeof(float));           // 用于scale BroadCast，动态大小
+    tPipe->InitBuffer(xCastBuf_, xNumPerBlock_ * sizeof(float));          // 用于x Cast 成 fp32, 动态大小
     tPipe->InitBuffer(xCastBf16Buf_, xNumPerBlock_ * sizeof(bfloat16_t)); // 用于 x Cast 成 bf16, 动态大小
-    tPipe->InitBuffer(xCastfp16Buf_, xNumPerBlock_ * sizeof(float16_t)); // 用于 x Cast 成 fp16, 动态大小
+    tPipe->InitBuffer(xCastfp16Buf_, xNumPerBlock_ * sizeof(float16_t));  // 用于 x Cast 成 fp16, 动态大小
 
     if constexpr (AscendC::IsSameType<ScalesType, fp8_e8m0_t>::value) {
         // MX: fp8_e8m0 → bf16 → float
@@ -106,9 +111,8 @@ __aicore__ inline void VectorCompute<TemplateType>::SetBlockSize(uint32_t elemen
  * @note 针对fp8_e8m0缩放因子使用微指令（VF_CALL<CastVf>）进行转换
  */
 template <TemplateTypeClass>
-__aicore__ inline void VectorCompute<TemplateType>::CastToFloat(
-    LocalTensor<XType> &xTensor,
-    LocalTensor<ScalesType> &scaleTensor)
+__aicore__ inline void VectorCompute<TemplateType>::CastToFloat(LocalTensor<XType> &xTensor,
+                                                                LocalTensor<ScalesType> &scaleTensor)
 {
     xCastTemp_ = xCastBuf_.Get<float>();
     scaleCalTensor_ = brcbBuf_.Get<float>();
@@ -116,8 +120,7 @@ __aicore__ inline void VectorCompute<TemplateType>::CastToFloat(
     LocalTensor<float16_t> xTempfp16Tensor = xCastfp16Buf_.Get<float16_t>();
     LocalTensor<float> castLocalScale = castScaleBuf_.Get<float>();
 
-    if constexpr (AscendC::IsSameType<XType, fp4x2_e2m1_t>::value ||
-        AscendC::IsSameType<XType, fp4x2_e1m2_t>::value) {
+    if constexpr (AscendC::IsSameType<XType, fp4x2_e2m1_t>::value || AscendC::IsSameType<XType, fp4x2_e1m2_t>::value) {
         // fp4 -> bf16 -> fp32
         Duplicate<bfloat16_t>(xTempBf16Tensor, (bfloat16_t)0.0, xNumPerBlock_);
         Cast(xTempBf16Tensor, xTensor, RoundMode::CAST_NONE, xNumPerBlock_);
@@ -149,13 +152,13 @@ __aicore__ inline void VectorCompute<TemplateType>::CastToFloat(
         uint32_t totalScaleNum = xNumPerBlock_ / MX_SIZE;
         uint32_t scaleLoopCnt = totalScaleNum / MX_SCALE_TRANS_NUM;
         uint32_t scaleTailNum = totalScaleNum % MX_SCALE_TRANS_NUM;
-        __local_mem__ fp8_e8m0_t* srcPtr = (__local_mem__ fp8_e8m0_t*)scaleTensor.GetPhyAddr();
-        __local_mem__ bfloat16_t* tempBf16ScalePtr = (__local_mem__ bfloat16_t*)tempBf16Scale_.GetPhyAddr();
+        __local_mem__ fp8_e8m0_t *srcPtr = (__local_mem__ fp8_e8m0_t *)scaleTensor.GetPhyAddr();
+        __local_mem__ bfloat16_t *tempBf16ScalePtr = (__local_mem__ bfloat16_t *)tempBf16Scale_.GetPhyAddr();
         for (uint32_t loopIdx = 0; loopIdx < scaleLoopCnt; ++loopIdx) {
             Duplicate<bfloat16_t>(tempBf16Scale_[loopIdx * MX_SCALE_TRANS_NUM], (bfloat16_t)0.0, MX_SCALE_TRANS_NUM);
             PipeBarrier<PIPE_V>();
-            VF_CALL<CastVf>(tempBf16ScalePtr + loopIdx * MX_SCALE_TRANS_NUM,
-                            srcPtr + loopIdx * MX_SCALE_TRANS_NUM, MX_SCALE_TRANS_NUM);
+            VF_CALL<CastVf>(tempBf16ScalePtr + loopIdx * MX_SCALE_TRANS_NUM, srcPtr + loopIdx * MX_SCALE_TRANS_NUM,
+                            MX_SCALE_TRANS_NUM);
             PipeBarrier<PIPE_V>();
         }
         if (scaleTailNum > 0) {
@@ -198,10 +201,9 @@ __aicore__ inline void VectorCompute<TemplateType>::CastToFloat(
  * @note 函数内部包含多次流水线同步（PipeBarrier<PIPE_V>）确保计算顺序
  */
 template <TemplateTypeClass>
-__aicore__ inline void VectorCompute<TemplateType>::DequantReduceSum(
-    LocalTensor<XType> &xTensor,
-    LocalTensor<ScalesType> &scaleTensor,
-    LocalTensor<float> &sumTensor)
+__aicore__ inline void VectorCompute<TemplateType>::DequantReduceSum(LocalTensor<XType> &xTensor,
+                                                                     LocalTensor<ScalesType> &scaleTensor,
+                                                                     LocalTensor<float> &sumTensor)
 {
     // Cast成float计算
     CastToFloat(xTensor, scaleTensor);
@@ -213,5 +215,5 @@ __aicore__ inline void VectorCompute<TemplateType>::DequantReduceSum(
     Add(sumTensor, sumTensor, xCastTemp_, xNumPerBlock_);
     PipeBarrier<PIPE_V>();
 }
-} // VectorComputeImpl
-#endif  // VEC_COMP_H
+} // namespace VectorComputeImpl
+#endif // VEC_COMP_H

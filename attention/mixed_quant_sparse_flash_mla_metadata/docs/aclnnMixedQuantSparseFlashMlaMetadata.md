@@ -6,12 +6,12 @@
 
 | 产品                                                         | 是否支持 |
 | :----------------------------------------------------------- | :------: |
-| Ascend 950PR/Ascend 950DT |      √     |
-| Atlas A3 训练系列产品/Atlas A3 推理系列产品     |    x     |
-| Atlas A2 训练系列产品/Atlas A2 推理系列产品 |    x     |
-| Atlas 200I/500 A2 推理产品                      |    x     |
-| Atlas 推理系列产品                              |    x     |
-| Atlas 训练系列产品                              |    x     |
+| <term>Ascend 950PR/Ascend 950DT</term>                       |     √    |
+| <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>      |    x     |
+| <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>      |    x     |
+| <term>Atlas 200I/500 A2 推理产品</term>                      |    x     |
+| <term>Atlas 推理系列产品</term>                              |    x     |
+| <term>Atlas 训练系列产品</term>                              |    x     |
 
 ## 功能说明
 
@@ -100,90 +100,90 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
       <td>cuSeqlensQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
+      <td><ul><li>支持空Tensor</li><li>layoutQOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cuSeqlensOriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中ori_kv的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cuSeqlensCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv的有效Sequence Length。</td>
-      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>layoutKvOptional为TND场景下必传。</li><li>第一个值为额外值并固定为0。</li><li>shape固定为(B+1, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B+1，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>sequsedQOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中Query实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>sequsedOriKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中ori_kv实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>sequsedCmpKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv实际参与运算的Sequence Length。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cmpResidualKvOptional（aclTensor*）</td>
       <td>输入</td>
       <td>表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmpRatio实现cmp_kv部分的mask和负载计算。</td>
-      <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li></ul></td>
+      <td><ul><li>支持空Tensor。</li><li>cmpRatio不为1，且mask为3场景下必传。</li><li>shape固定为(B, )。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>1维，shape固定为(B，)</td>
+      <td>1维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>oriTopkLengthOptional（aclTensor*）</td>
       <td>输入</td>
       <td>预留参数，当前不生效。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape为(B, S1, N2)或(T1, N2)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B, S1, N2)或(T1, N2)</td>
+      <td>2维、3维</td>
       <td>√</td>
     </tr>
     <tr>
       <td>cmpTopkLengthOptional（aclTensor*）</td>
       <td>输入</td>
       <td>预留参数，当前不生效。</td>
-      <td>支持空Tensor。</td>
+      <td><ul><li>支持空Tensor。</li><li>shape为(B, S1, N2)或(T1, N2)。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
-      <td>(B, S1, N2)或(T1, N2)</td>
+      <td>2维、3维</td>
       <td>√</td>
     </tr>
     <tr>
@@ -502,7 +502,7 @@ aclnnStatus aclnnMixedQuantSparseFlashMlaMetadata(
 ## 约束说明
 
   - aclnnMixedQuantSparseFlashMlaMetadata默认确定性实现。
-
+  - B（Batch）表示输入样本批量大小。
   - Batch取值规则
     - 优先获取sequsedQOptional中的Batch信息。
     - 如果未传入sequsedQOptional，且layoutQOptional为TND和传入了cuSeqlensQOptional，则获取cuSeqlensQOptional中的Batch信息。

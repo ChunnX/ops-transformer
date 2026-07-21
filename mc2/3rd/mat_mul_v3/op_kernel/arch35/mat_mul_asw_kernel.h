@@ -24,19 +24,27 @@ using namespace AscendC;
 using namespace matmul;
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE = Mc2MatmulAswBlock,
-    const MatmulConfig &MM_CFG = MM_CFG_NO_PRELOAD>
+          const MatmulConfig &MM_CFG = MM_CFG_NO_PRELOAD>
 class Mc2MatmulAswKernel {
 public:
-    __aicore__ inline Mc2MatmulAswKernel() {}
+    __aicore__ inline Mc2MatmulAswKernel()
+    {
+    }
     __aicore__ inline void Init(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
-        GM_ADDR workspaceGM, const void *tilingData, TPipe *pipe);
+                                GM_ADDR workspaceGM, const void *tilingData, TPipe *pipe);
     __aicore__ inline void UpdateGlobalTensor(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM,
-        GM_ADDR workspaceGM);
+                                              GM_ADDR workspaceGM);
     __aicore__ inline void UpdateBias(uint64_t kIndex);
     __aicore__ inline void InitInputs(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM);
     __aicore__ inline void Process(uint8_t enAtomic = 0);
-    __aicore__ inline void End() { mm_.End(); }
-    __aicore__ inline const BLOCK_TYPE GetBlock() { return block_; }
+    __aicore__ inline void End()
+    {
+        mm_.End();
+    }
+    __aicore__ inline const BLOCK_TYPE GetBlock()
+    {
+        return block_;
+    }
 
 protected:
     BLOCK_TYPE block_;
@@ -54,9 +62,9 @@ protected:
 
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Init(GM_ADDR aGM,
-    GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR workspaceGM, const void *tilingData,
-    TPipe *pipe)
+__aicore__ inline void Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Init(
+    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM, GM_ADDR offsetWGM, GM_ADDR workspaceGM,
+    const void *tilingData, TPipe *pipe)
 {
     pipe_ = pipe;
     block_.template Init<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE>(tilingData);
@@ -66,15 +74,19 @@ __aicore__ inline void Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLO
 }
 
 template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
-__aicore__ inline void Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::InitInputs(GM_ADDR aGM,
-    GM_ADDR bGM, GM_ADDR cGM, GM_ADDR biasGM)
+__aicore__ inline void
+Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::InitInputs(GM_ADDR aGM, GM_ADDR bGM,
+                                                                                      GM_ADDR cGM, GM_ADDR biasGM)
 {
     aGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ A_T *>(aGM),
-        static_cast<uint64_t>(block_.matmulTilingData_->tCubeTiling.M) * block_.matmulTilingData_->tCubeTiling.Ka);
+                             static_cast<uint64_t>(block_.matmulTilingData_->tCubeTiling.M) *
+                                 block_.matmulTilingData_->tCubeTiling.Ka);
     bGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ B_T *>(bGM),
-        static_cast<uint64_t>(block_.matmulTilingData_->tCubeTiling.Kb) * block_.matmulTilingData_->tCubeTiling.N);
+                             static_cast<uint64_t>(block_.matmulTilingData_->tCubeTiling.Kb) *
+                                 block_.matmulTilingData_->tCubeTiling.N);
     cGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ C_T *>(cGM),
-        static_cast<uint64_t>(block_.matmulTilingData_->tCubeTiling.M) * block_.matmulTilingData_->tCubeTiling.N);
+                             static_cast<uint64_t>(block_.matmulTilingData_->tCubeTiling.M) *
+                                 block_.matmulTilingData_->tCubeTiling.N);
     biasGlobal_.SetGlobalBuffer(reinterpret_cast<__gm__ BiasT *>(biasGM), block_.matmulTilingData_->tCubeTiling.N);
 }
 
@@ -86,9 +98,9 @@ __aicore__ inline void Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLO
     InitInputs(aGM, bGM, cGM, biasGM);
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG>
-__aicore__ inline void Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::UpdateBias(
-    uint64_t kIndex)
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
+__aicore__ inline void
+Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::UpdateBias(uint64_t kIndex)
 {
     if (block_.matmulTilingData_->tCubeTiling.isBias) {
         if (kIndex == block_.params_.splitKRound - 1) {
@@ -99,8 +111,9 @@ __aicore__ inline void Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLO
     }
 }
 
-template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig& MM_CFG>
-__aicore__ inline void Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Process(uint8_t enAtomic)
+template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE, class BLOCK_TYPE, const MatmulConfig &MM_CFG>
+__aicore__ inline void
+Mc2MatmulAswKernel<A_TYPE, B_TYPE, C_TYPE, BIAS_TYPE, BLOCK_TYPE, MM_CFG>::Process(uint8_t enAtomic)
 {
     if ASCEND_IS_AIV {
         return;

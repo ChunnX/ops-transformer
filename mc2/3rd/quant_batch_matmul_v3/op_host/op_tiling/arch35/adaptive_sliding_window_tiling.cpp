@@ -47,10 +47,10 @@ constexpr uint32_t UB_ALIGN_SIZE = 32;
 constexpr uint64_t MTE2_MIN_LOAD_SIZE_V100 = 32768;
 constexpr uint64_t L2_ALIGN_SIZE = 128;
 
-constexpr uint32_t SCALER_FACTOR_MAX=127;
-constexpr uint32_t SCALER_FACTOR_MIN=1;
-constexpr uint32_t SCALER_FACTOR_DEFAULT=1;
-constexpr uint32_t SCALER_FACTOR_B_BIT=8;
+constexpr uint32_t SCALER_FACTOR_MAX = 127;
+constexpr uint32_t SCALER_FACTOR_MIN = 1;
+constexpr uint32_t SCALER_FACTOR_DEFAULT = 1;
+constexpr uint32_t SCALER_FACTOR_B_BIT = 8;
 constexpr uint32_t SCALER_FACTOR_M_BIT = 16;
 constexpr uint32_t SCALER_FACTOR_N_BIT = 24;
 
@@ -60,7 +60,7 @@ constexpr uint64_t BASEK_LIMIT = 4095;
 constexpr uint64_t AFULLLOAD_SINGBLE_CORE_A_SCALER = 2;
 constexpr uint32_t DATA_SIZE_L0C = 4;
 constexpr uint32_t VEC_CORE_GROUP_NUM = 2;
-}
+} // namespace
 
 namespace optiling {
 
@@ -71,9 +71,8 @@ Mc2AdaptiveSlidingWindowTiling::Mc2AdaptiveSlidingWindowTiling(gert::TilingConte
 }
 
 Mc2AdaptiveSlidingWindowTiling::Mc2AdaptiveSlidingWindowTiling(gert::TilingContext *context,
-    DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *out)
-    : Mc2QuantBatchMatmulV3TilingBase(context, true),
-      tilingData_(*out)
+                                                               DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams *out)
+    : Mc2QuantBatchMatmulV3TilingBase(context, true), tilingData_(*out)
 {
     Reset();
     InitCompileInfo();
@@ -96,15 +95,14 @@ void Mc2AdaptiveSlidingWindowTiling::Reset()
 bool Mc2AdaptiveSlidingWindowTiling::CheckDtype() const
 {
     Mc2QuantBatchMatmulV3Checker qmmV3Checker(context_, inputParams_);
-    OP_TILING_CHECK(!qmmV3Checker.CheckDtype(),
-                    OP_LOGE(inputParams_.opName, "CheckDtype fail"), return false);
+    OP_TILING_CHECK(!qmmV3Checker.CheckDtype(), OP_LOGE(inputParams_.opName, "CheckDtype fail"), return false);
     return true;
 }
 
 bool Mc2AdaptiveSlidingWindowTiling::CheckShape(const std::vector<gert::Shape *> &mandatoryShape,
-                                             const gert::StorageShape *biasShape,
-                                             const gert::StorageShape *pertokenShape,
-                                             const std::vector<int64_t> &dimValueOfMKN) const
+                                                const gert::StorageShape *biasShape,
+                                                const gert::StorageShape *pertokenShape,
+                                                const std::vector<int64_t> &dimValueOfMKN) const
 {
     Mc2QuantBatchMatmulV3Checker qmmV3Checker(context_, inputParams_);
     OP_TILING_CHECK(!qmmV3Checker.CheckShape(mandatoryShape, biasShape, pertokenShape, dimValueOfMKN),
@@ -168,19 +166,19 @@ ge::graphStatus Mc2AdaptiveSlidingWindowTiling::DoLibApiTiling()
     tilingData_.matmulTiling.stepKb = basicTiling_.stepKb;
     tilingData_.matmulTiling.isBias = inputParams_.hasBias ? 1 : 0;
     tilingData_.matmulTiling.iterateOrder = basicTiling_.iterateOrder;
-    tilingData_.matmulTiling.dbL0A = 2;  // db switch, 1: off, 2: on
-    tilingData_.matmulTiling.dbL0B = 2;  // db switch, 1: off, 2: on
+    tilingData_.matmulTiling.dbL0A = 2; // db switch, 1: off, 2: on
+    tilingData_.matmulTiling.dbL0B = 2; // db switch, 1: off, 2: on
     tilingData_.matmulTiling.dbL0C = basicTiling_.dbL0c;
     if (inputParams_.isMxPerGroup) {
         tilingData_.matmulTiling.mxTypePara =
             (SCALER_FACTOR_MIN << SCALER_FACTOR_N_BIT) + (SCALER_FACTOR_MIN << SCALER_FACTOR_M_BIT);
         if (basicTiling_.scaleFactorA >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorA <= SCALER_FACTOR_MAX &&
             basicTiling_.scaleFactorB >= SCALER_FACTOR_MIN && basicTiling_.scaleFactorB <= SCALER_FACTOR_MAX) {
-            tilingData_.matmulTiling.mxTypePara += (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) +
-                                                    basicTiling_.scaleFactorA;
+            tilingData_.matmulTiling.mxTypePara +=
+                (basicTiling_.scaleFactorB << SCALER_FACTOR_B_BIT) + basicTiling_.scaleFactorA;
         } else {
-            tilingData_.matmulTiling.mxTypePara += (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) +
-                                                    SCALER_FACTOR_DEFAULT;
+            tilingData_.matmulTiling.mxTypePara +=
+                (SCALER_FACTOR_DEFAULT << SCALER_FACTOR_B_BIT) + SCALER_FACTOR_DEFAULT;
         }
     }
     return ge::GRAPH_SUCCESS;
@@ -227,8 +225,8 @@ uint64_t Mc2AdaptiveSlidingWindowTiling::GetKernelType() const
 
 uint64_t Mc2AdaptiveSlidingWindowTiling::GetTilingKey() const
 {
-    return RecursiveSum(inputParams_.transB, inputParams_.transA, GetBiasMode(), GetKernelType(),
-                        false, false, false, false);
+    return RecursiveSum(inputParams_.transB, inputParams_.transA, GetBiasMode(), GetKernelType(), false, false, false,
+                        false);
 }
 
 ge::graphStatus Mc2AdaptiveSlidingWindowTiling::GetWorkspaceSize()
@@ -240,8 +238,7 @@ ge::graphStatus Mc2AdaptiveSlidingWindowTiling::GetWorkspaceSize()
 ge::graphStatus Mc2AdaptiveSlidingWindowTiling::PostTiling()
 {
     OP_TILING_CHECK(tilingDataSize_ % sizeof(uint64_t) != 0UL,
-                    OP_LOGE(inputParams_.opName, "Tiling data size[%zu] is not aligned to 8.",
-                                          tilingDataSize_),
+                    OP_LOGE(inputParams_.opName, "Tiling data size[%zu] is not aligned to 8.", tilingDataSize_),
                     return ge::GRAPH_FAILED);
     errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity(),
                            reinterpret_cast<void *>(&tilingData_), tilingDataSize_);
@@ -251,7 +248,7 @@ ge::graphStatus Mc2AdaptiveSlidingWindowTiling::PostTiling()
     }
     context_->SetBlockDim(basicTiling_.usedCoreNum);
     context_->GetRawTilingData()->SetDataSize(tilingDataSize_);
-    size_t *workspaces = context_->GetWorkspaceSizes(1);  // set workspace
+    size_t *workspaces = context_->GetWorkspaceSizes(1); // set workspace
     OPS_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
     workspaces[0] = workspaceSize_;
     return ge::GRAPH_SUCCESS;
@@ -283,7 +280,7 @@ ge::graphStatus Mc2AdaptiveSlidingWindowTiling::CalcUbTiling()
 
 bool Mc2AdaptiveSlidingWindowTiling::AnalyseSlidingWinInfo()
 {
-    if (!CalcBasicBlock()){
+    if (!CalcBasicBlock()) {
         OP_LOGE(inputParams_.opName, "inappropriate basicBlock");
         return false;
     }
@@ -327,20 +324,21 @@ bool Mc2AdaptiveSlidingWindowTiling::CalcBasicBlock()
     } else {
         adaptiveWin_.baseM = std::min(inputParams_.mSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_256));
         adaptiveWin_.baseM =
-            !inputParams_.transA
-                ? ops::CeilAlign(adaptiveWin_.baseM, CUBE_BLOCK)
-                : ops::CeilAlign(adaptiveWin_.baseM, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.aDtype));
+            !inputParams_.transA ?
+                ops::CeilAlign(adaptiveWin_.baseM, CUBE_BLOCK) :
+                ops::CeilAlign(adaptiveWin_.baseM, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.aDtype));
         adaptiveWin_.baseN = std::min(inputParams_.nSize, static_cast<uint64_t>(BASIC_BLOCK_SIZE_256));
-        adaptiveWin_.baseN = inputParams_.transB ? ops::CeilAlign(adaptiveWin_.baseN, CUBE_BLOCK)
-                                                : ops::CeilAlign(adaptiveWin_.baseN,
-                                                                GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.bDtype));
+        adaptiveWin_.baseN =
+            inputParams_.transB ?
+                ops::CeilAlign(adaptiveWin_.baseN, CUBE_BLOCK) :
+                ops::CeilAlign(adaptiveWin_.baseN, GetShapeWithDataType(L1_ALIGN_SIZE, inputParams_.bDtype));
         uint64_t baseKDefaultSize =
             static_cast<uint64_t>(GetShapeWithDataType(BASIC_BLOCK_SIZE_128, inputParams_.aDtype));
 
-        adaptiveWin_.baseK = ops::CeilAlign(
-            std::min(baseKDefaultSize, inputParams_.kSize),
-            inputParams_.isMxPerGroup ? MXFP_DIVISOR_SIZE :
-                                        GetShapeWithDataType(CUBE_REDUCE_BLOCK, inputParams_.aDtype));
+        adaptiveWin_.baseK =
+            ops::CeilAlign(std::min(baseKDefaultSize, inputParams_.kSize),
+                           inputParams_.isMxPerGroup ? MXFP_DIVISOR_SIZE :
+                                                       GetShapeWithDataType(CUBE_REDUCE_BLOCK, inputParams_.aDtype));
     }
     bool isSmallBlock =
         ops::CeilDiv(inputParams_.mSize, adaptiveWin_.baseM) * ops::CeilDiv(inputParams_.nSize, adaptiveWin_.baseN) <
@@ -348,9 +346,9 @@ bool Mc2AdaptiveSlidingWindowTiling::CalcBasicBlock()
     if (isSmallBlock && !inputParams_.isPerBlock) {
         AdjustBasicBlock();
         OP_TILING_CHECK(adaptiveWin_.baseM == 0UL || adaptiveWin_.baseN == 0UL || adaptiveWin_.baseK == 0UL,
-                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opName, "input",
-                        std::to_string(adaptiveWin_.baseM).c_str(),
-                        "The value of baseM, baseN and baseK must be greater than 0."),
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                            inputParams_.opName, "input", std::to_string(adaptiveWin_.baseM).c_str(),
+                            "The value of baseM, baseN and baseK must be greater than 0."),
                         return false);
     }
     return true;
@@ -362,9 +360,9 @@ void Mc2AdaptiveSlidingWindowTiling::AdjustBasicBlock()
         inputParams_.transA ? GetShapeWithDataType(L2_ALIGN_SIZE, inputParams_.aDtype) : CUBE_BLOCK;
     uint64_t baseNAlignNum =
         inputParams_.transB ? CUBE_BLOCK : GetShapeWithDataType(L2_ALIGN_SIZE, inputParams_.aDtype);
-    uint64_t baseKAlignNum = (inputParams_.transA && !inputParams_.transB)
-                                 ? GetShapeWithDataType(BASIC_BLOCK_SIZE_32, inputParams_.aDtype)
-                                 : GetShapeWithDataType(L2_ALIGN_SIZE, inputParams_.aDtype);
+    uint64_t baseKAlignNum = (inputParams_.transA && !inputParams_.transB) ?
+                                 GetShapeWithDataType(BASIC_BLOCK_SIZE_32, inputParams_.aDtype) :
+                                 GetShapeWithDataType(L2_ALIGN_SIZE, inputParams_.aDtype);
     if (IsMxBackwardTrans()) {
         baseKAlignNum = GetShapeWithDataType(MXFP_DIVISOR_SIZE, inputParams_.aDtype);
     }
@@ -422,7 +420,8 @@ void Mc2AdaptiveSlidingWindowTiling::AdjustBasicBlock()
 void Mc2AdaptiveSlidingWindowTiling::SetBf16Compat()
 {
     bool isMix = (inputParams_.scaleDtype != ge::DT_UINT64 && inputParams_.scaleDtype != ge::DT_INT64 &&
-                  inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0) && inputParams_.isPerChannel;
+                  inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0) &&
+                 inputParams_.isPerChannel;
     bool isCompat = (inputParams_.scaleDtype != ge::DT_UINT64 && inputParams_.scaleDtype != ge::DT_INT64 &&
                      inputParams_.scaleDtype != ge::DT_FLOAT8_E8M0) &&
                     inputParams_.isPerTensor && inputParams_.aDtype == ge::DT_INT8 && inputParams_.hasBias &&
@@ -491,9 +490,9 @@ void Mc2AdaptiveSlidingWindowTiling::CalL1Tiling()
     basicTiling_.iterateOrder = 0U;
     basicTiling_.dbL0c =
         ((basicTiling_.baseM * basicTiling_.baseN * DATA_SIZE_L0C * DB_SIZE <= aicoreParams_.l0cSize) &&
-         CheckBiasAndScale(basicTiling_.baseN, DB_SIZE))
-            ? DB_SIZE
-            : 1U;
+         CheckBiasAndScale(basicTiling_.baseN, DB_SIZE)) ?
+            DB_SIZE :
+            1U;
     uint64_t singleCoreBiasSize = inputParams_.hasBias ? basicTiling_.baseN * biasDtypeSize : 0UL;
     uint64_t singleCoreScaleSize = inputParams_.isPerChannel ? basicTiling_.baseN * scaleDtypeSize : 0UL;
     uint64_t leftL1Size = totalL1Size - singleCoreBiasSize - singleCoreScaleSize;
@@ -510,8 +509,7 @@ void Mc2AdaptiveSlidingWindowTiling::CalL1TilingDepthAfullload(uint64_t leftL1Si
     basicTiling_.stepKa = ops::CeilDiv(inputParams_.kSize, static_cast<uint64_t>(basicTiling_.baseK));
     basicTiling_.depthA1 = basicTiling_.stepKa;
 
-    uint64_t singleCoreASize =
-        GetSizeWithDataType(basicTiling_.baseM * basicTiling_.singleCoreK, inputParams_.aDtype);
+    uint64_t singleCoreASize = GetSizeWithDataType(basicTiling_.baseM * basicTiling_.singleCoreK, inputParams_.aDtype);
 
     uint64_t leftL1SizeAfterFullA = leftL1Size - ops::CeilAlign(singleCoreASize, L1_ALIGN_SIZE);
 
@@ -544,11 +542,13 @@ void Mc2AdaptiveSlidingWindowTiling::CalL1TilingDepthANotfullload(uint64_t leftL
 
         uint64_t baseScaleASize =
             GetSizeWithDataType(ops::CeilAlign(ops::CeilDiv(static_cast<uint64_t>(basicTiling_.baseK), MX_GROUP_SIZE),
-                                               MXFP_MULTI_BASE_SIZE) * basicTiling_.baseM,
+                                               MXFP_MULTI_BASE_SIZE) *
+                                    basicTiling_.baseM,
                                 inputParams_.perTokenScaleDtype);
         uint64_t baseScaleBSize =
             GetSizeWithDataType(ops::CeilAlign(ops::CeilDiv(static_cast<uint64_t>(basicTiling_.baseK), MX_GROUP_SIZE),
-                                               MXFP_MULTI_BASE_SIZE) * basicTiling_.baseN,
+                                               MXFP_MULTI_BASE_SIZE) *
+                                    basicTiling_.baseN,
                                 inputParams_.scaleDtype);
         uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
         uint64_t depthInit = GetDepthA1B1(leftL1Size, baseL1Size, 1UL);
@@ -596,26 +596,26 @@ void Mc2AdaptiveSlidingWindowTiling::CalStepKs()
     }
     if (inputParams_.isPerBlock) {
         basicTiling_.stepKa =
-            std::min(basicTiling_.stepKa, static_cast<uint32_t>(4));  // 限制stepKa最大为4, 防止issue queue阻塞
+            std::min(basicTiling_.stepKa, static_cast<uint32_t>(4)); // 限制stepKa最大为4, 防止issue queue阻塞
         basicTiling_.stepKb =
-            std::min(basicTiling_.stepKb, static_cast<uint32_t>(4));  // 限制stepKb最大为4, 防止issue queue阻塞
+            std::min(basicTiling_.stepKb, static_cast<uint32_t>(4)); // 限制stepKb最大为4, 防止issue queue阻塞
     }
     basicTiling_.depthA1 = basicTiling_.stepKa * DB_SIZE;
     basicTiling_.depthB1 = basicTiling_.stepKb * DB_SIZE;
 }
 
 void Mc2AdaptiveSlidingWindowTiling::CalScaleFactors(uint64_t baseASize, uint64_t baseBSize, uint64_t baseScaleASize,
-                                                  uint64_t baseScaleBSize, [[maybe_unused]] uint64_t leftL1Size)
+                                                     uint64_t baseScaleBSize, [[maybe_unused]] uint64_t leftL1Size)
 {
     uint64_t biasDtypeSize = ge::GetSizeByDataType(inputParams_.biasDtype);
     uint64_t baseBiasSize = inputParams_.hasBias ? basicTiling_.baseN * biasDtypeSize : 0;
 
     // 计算scaleFactorA, scaleFactorB
     // 来自K轴的约束
-    uint32_t scaleFactorAMax = std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V100 / baseScaleASize),
-                                        SCALER_FACTOR_MAX);
-    uint32_t scaleFactorBMax = std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V100 / baseScaleBSize),
-                                        SCALER_FACTOR_MAX);
+    uint32_t scaleFactorAMax =
+        std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V100 / baseScaleASize), SCALER_FACTOR_MAX);
+    uint32_t scaleFactorBMax =
+        std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V100 / baseScaleBSize), SCALER_FACTOR_MAX);
     uint32_t scaleFactorA = static_cast<uint32_t>(inputParams_.kSize) / (basicTiling_.stepKa * basicTiling_.baseK);
     uint32_t scaleFactorB = static_cast<uint32_t>(inputParams_.kSize) / (basicTiling_.stepKb * basicTiling_.baseK);
     basicTiling_.scaleFactorA = std::max(SCALER_FACTOR_MIN, scaleFactorA);
@@ -624,10 +624,10 @@ void Mc2AdaptiveSlidingWindowTiling::CalScaleFactors(uint64_t baseASize, uint64_
     basicTiling_.scaleFactorB = std::min(scaleFactorBMax, basicTiling_.scaleFactorB);
 
     // 来自L1 size 的约束
-    uint64_t leftL1sie = aicoreParams_.l1Size -
-                         (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize + baseBiasSize);
-    uint32_t scaleInit = static_cast<uint32_t>(leftL1sie /
-        (basicTiling_.depthA1 * baseScaleASize + basicTiling_.depthB1 * baseScaleBSize));
+    uint64_t leftL1sie =
+        aicoreParams_.l1Size - (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize + baseBiasSize);
+    uint32_t scaleInit = static_cast<uint32_t>(
+        leftL1sie / (basicTiling_.depthA1 * baseScaleASize + basicTiling_.depthB1 * baseScaleBSize));
     if (basicTiling_.scaleFactorA <= scaleInit && basicTiling_.scaleFactorB > scaleInit) {
         leftL1sie -= (static_cast<uint64_t>(basicTiling_.scaleFactorA) * basicTiling_.depthA1 * baseScaleASize);
         basicTiling_.scaleFactorB = std::min(static_cast<uint32_t>(leftL1sie / (basicTiling_.depthB1 * baseScaleBSize)),
@@ -660,12 +660,13 @@ uint64_t Mc2AdaptiveSlidingWindowTiling::GetDepthA1B1(uint64_t leftSize, uint64_
                (depthScale * baseKSize) > BASIC_BLOCK_SIZE_512) {
             depthScale -= 1UL;
         }
-        if ((depthScale * baseKSize) % BASIC_BLOCK_SIZE_512 != 0UL && (depthScale * baseKSize) >= BASIC_BLOCK_SIZE_256) {
+        if ((depthScale * baseKSize) % BASIC_BLOCK_SIZE_512 != 0UL &&
+            (depthScale * baseKSize) >= BASIC_BLOCK_SIZE_256) {
             depthScale = BASIC_BLOCK_SIZE_256 / baseKSize;
         }
         depthScale = std::max(depthScale, static_cast<uint64_t>(1));
     } else {
-        constexpr uint64_t index = 2;  // 2: depth的值是2的幂
+        constexpr uint64_t index = 2; // 2: depth的值是2的幂
         depthScale = 1UL;
         while (depthScale * (perDepthSize) < leftSize) {
             depthScale *= index;
@@ -703,9 +704,9 @@ uint64_t Mc2AdaptiveSlidingWindowTiling::GetDepthB1AfullLoad(uint64_t leftSize)
     }
     stepKbBase = stepKbBase * stepKbBaseScale;
 
-    uint64_t refinedStepkb = 2UL;  // stekpb为1时容易使mte1无法并行，因此在不超出l1 空间的情况下设置stepkb最小为2
-    if (stepKbBase == 1UL &&
-        inputParams_.kSize > static_cast<uint64_t>(basicTiling_.baseK) && leftSize > basebSize * refinedStepkb) {
+    uint64_t refinedStepkb = 2UL; // stekpb为1时容易使mte1无法并行，因此在不超出l1 空间的情况下设置stepkb最小为2
+    if (stepKbBase == 1UL && inputParams_.kSize > static_cast<uint64_t>(basicTiling_.baseK) &&
+        leftSize > basebSize * refinedStepkb) {
         stepKbBase = refinedStepkb;
     }
 
@@ -731,7 +732,8 @@ uint64_t Mc2AdaptiveSlidingWindowTiling::GetScaleFactorBAfullLoad(uint64_t leftS
         }
     }
 
-    uint64_t scaleFactorbMaxFromK = inputParams_.kSize / static_cast<uint64_t>(basicTiling_.stepKb * basicTiling_.baseK);
+    uint64_t scaleFactorbMaxFromK =
+        inputParams_.kSize / static_cast<uint64_t>(basicTiling_.stepKb * basicTiling_.baseK);
     scaleFactorbMaxFromK = std::min(static_cast<uint64_t>(SCALER_FACTOR_MAX), scaleFactorbMaxFromK);
     scaleFactorbMaxFromK = std::max(static_cast<uint64_t>(SCALER_FACTOR_MIN), scaleFactorbMaxFromK);
 
@@ -809,7 +811,7 @@ bool Mc2AdaptiveSlidingWindowTiling::IsInValidWeighNzTailSplit(uint64_t splitCnt
 {
     if (inputParams_.bFormat != ge::FORMAT_FRACTAL_NZ ||
         (!isAFullLoad_ && ((isPreSplit && adaptiveWin_.mTail >= adaptiveWin_.nTail) ||
-        (!isPreSplit && adaptiveWin_.mTail < adaptiveWin_.nTail)))) {
+                           (!isPreSplit && adaptiveWin_.mTail < adaptiveWin_.nTail)))) {
         return false;
     }
 
@@ -851,7 +853,7 @@ void Mc2AdaptiveSlidingWindowTiling::CalcTailBasicBlockAfullLoad()
     adaptiveWin_.mTailTile = 1UL;
     uint64_t nTile = 1UL;
     uint64_t nTileValid = 1UL;
-    constexpr uint64_t MIN_BASEN_PER_TILE = 16UL;  // 尾窗口切分后N方向不少于16
+    constexpr uint64_t MIN_BASEN_PER_TILE = 16UL; // 尾窗口切分后N方向不少于16
     if (adaptiveWin_.tailWinBlockCnt != 0UL) {
         while (CalUsedCoreNum(adaptiveWin_.mTailTile, (nTile + 1UL)) <= aicoreParams_.aicNum &&
                adaptiveWin_.baseN / (nTile + 1UL) >= MIN_BASEN_PER_TILE) {
@@ -865,4 +867,4 @@ void Mc2AdaptiveSlidingWindowTiling::CalcTailBasicBlockAfullLoad()
     adaptiveWin_.nTailTile = nTileValid;
 }
 
-}  // namespace optiling
+} // namespace optiling

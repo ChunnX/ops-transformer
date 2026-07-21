@@ -111,14 +111,14 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
 - **参数说明：**
 
     <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
-    <col style="width: 187px">
-    <col style="width: 121px">
-    <col style="width: 287px">
-    <col style="width: 387px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 187px">
-    <col style="width: 146px">
+    <col style="width: 170px">
+    <col style="width: 120px">
+    <col style="width: 300px">
+    <col style="width: 550px">
+    <col style="width: 212px">
+    <col style="width: 100px">
+    <col style="width: 190px">
+    <col style="width: 145px">
     </colgroup>
     <thead>
     <tr>
@@ -295,8 +295,8 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
     <tr>
         <td>kvOutput</td>
         <td>输入</td>
-        <td>表示支持的数据格式。</td>
-        <td>目前仅支持“BSND”。</td>
+        <td>Host侧布尔值。表示是否输出kOut和vOut。</td>
+        <td>为true时输出有效shape的kOut和vOut；为false时kOut和vOut的shape为空。</td>
         <td>BOOL</td>
         <td>-</td>
         <td>-</td>
@@ -311,6 +311,36 @@ aclnnStatus aclnnDequantRopeQuantKvcache(
         <td>-</td>
         <td>-</td>
         <td>-</td>
+    </tr>
+    <tr>
+        <td>qOut</td>
+        <td>输出</td>
+        <td>公式中经旋转位置编码后的q。</td>
+        <td>x为3维时shape为[B, S, Nq, D]，x为2维时shape为[B, Nq, D]。数据类型与cos、sin保持一致。</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>3-4</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>kOut</td>
+        <td>输出</td>
+        <td>公式中经旋转位置编码后的k。</td>
+        <td>kvOutput为true时，x为3维时shape为[B, S, Nkv, D]，x为2维时shape为[B, Nkv, D]；kvOutput为false时shape为空。数据类型与cos、sin保持一致。</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>1-4</td>
+        <td>×</td>
+    </tr>
+    <tr>
+        <td>vOut</td>
+        <td>输出</td>
+        <td>公式中切分得到的v。</td>
+        <td>kvOutput为true时，x为3维时shape为[B, S, Nkv, D]，x为2维时shape为[B, Nkv, D]；kvOutput为false时shape为空。数据类型与cos、sin保持一致。</td>
+        <td>FLOAT16、BFLOAT16</td>
+        <td>ND</td>
+        <td>1-4</td>
+        <td>×</td>
     </tr>
     <tr>
       <td>workspaceSize</td>

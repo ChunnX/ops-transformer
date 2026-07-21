@@ -94,8 +94,8 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/moe/**/op_host/CMakeLists.txt"
         "${CMAKE_CURRENT_SOURCE_DIR}/experimental/posembedding/**/op_host/CMakeLists.txt"
         )
-        if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
-                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
+        if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR
+                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR
                 ASCEND_COMPUTE_UNIT STREQUAL "mc62"))
             file(GLOB MC2_OP_HOST_CMAKE_FILES
             "${CMAKE_CURRENT_SOURCE_DIR}/experimental/mc2/**/op_host/CMakeLists.txt"
@@ -137,8 +137,8 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
             if(ADD_CANNDEV_FFN)
                 List(APPEND CANNDEV_OPS_HOST_CMAKE_FILES ${FFN_CANNDEV_OPS_HOST_CMAKE_FILES})
             endif()
-            if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR 
-                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR 
+            if(NOT (ASCEND_COMPUTE_UNIT STREQUAL "kirinx90" OR
+                ASCEND_COMPUTE_UNIT STREQUAL "kirin9030" OR
                 ASCEND_COMPUTE_UNIT STREQUAL "mc62"))
                 file(GLOB MC2_CANNDEV_OPS_HOST_CMAKE_FILES
                 "${CMAKE_CURRENT_SOURCE_DIR}/mc2/**/op_host/CMakeLists.txt"
@@ -183,7 +183,7 @@ function(op_add_subdirectory OP_LIST OP_DIR_LIST)
             if (NOT EXISTS "${OP_DIR}/tests/CMakeLists.txt")
                 continue()
             endif()
-            
+
             file(READ "${OP_DIR}/tests/CMakeLists.txt" CML_CONTENT)
             if (CML_CONTENT MATCHES "OpsTest_Level2_AddOp")
                 set(UTEST_FRAMEWORK_OLD TRUE CACHE BOOL "UTEST_FRAMEWORK_OLD" FORCE)
@@ -443,10 +443,15 @@ function(add_ops_src_copy)
             get_filename_component(_ROOT_OPS_SRC_DIR    "${SRC_COPY_DST}" DIRECTORY)
             set(OPS_UTILS_INC_KERNEL_DIR ${_ROOT_OPS_SRC_DIR}/ascendc/common)
             set(UTILS_COPY_STAMP "${OPS_UTILS_INC_KERNEL_DIR}/.utils_copy.stamp")
-            file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS 
-                ${OPS_ADV_UTILS_KERNEL_INC}/* 
+            file(GLOB_RECURSE UTILS_FILES CONFIGURE_DEPENDS
+                ${OPS_ADV_UTILS_KERNEL_INC}/*
                 ${OPS_CGMCT}/*
                 ${OPS_GMM_COMMON_KERNEL_INC}/*
+                ${BLAZE}/*
+                ${TENSOR_API}/impl/tensor_api/*
+                ${TENSOR_API}/include/tensor_api/*
+                ${TENSOR_API}/impl/c_api/*
+                ${TENSOR_API}/include/c_api/*
             )
             add_custom_command(OUTPUT ${UTILS_COPY_STAMP}
                 COMMAND ${CMAKE_COMMAND} -E make_directory ${OPS_UTILS_INC_KERNEL_DIR}/regbase
@@ -454,6 +459,11 @@ function(add_ops_src_copy)
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_ADV_UTILS_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_CGMCT} ${OPS_UTILS_INC_KERNEL_DIR}/cgmct
                 COMMAND ${CMAKE_COMMAND} -E copy_directory ${OPS_GMM_COMMON_KERNEL_INC} ${OPS_UTILS_INC_KERNEL_DIR}
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${BLAZE} ${OPS_UTILS_INC_KERNEL_DIR}/blaze
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/impl/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/impl/tensor_api
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/include/tensor_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/include/tensor_api
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/impl/c_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/impl/c_api
+                COMMAND ${CMAKE_COMMAND} -E copy_directory ${TENSOR_API}/include/c_api ${OPS_UTILS_INC_KERNEL_DIR}/tensor_api/include/c_api
                 COMMAND ${CMAKE_COMMAND} -E touch ${UTILS_COPY_STAMP}
                 DEPENDS ${UTILS_FILES}
                 VERBATIM
@@ -506,6 +516,47 @@ function(add_ops_src_copy)
 
 endfunction()
 
+# ------------------------------------------------------------------------------------------------------------
+# enable_pypto_kernel(<op_file>)
+#   Mark an operator whose kernel is written in PyPTO. Call ONCE from the op's op_host/CMakeLists.txt,
+#   and BEFORE add_modules_sources_with_soc(...) (so the tiling logic can read PYPTO_GEN_DIR).
+#   It runs pypto codegen at configure time into a pypto-exclusive dir, exposes PYPTO_GEN_DIR to the
+#   caller scope (for the host tiling -I), and records cache flags consumed by add_bin_compile_target
+#   to install the generated artifacts into the kernel staging dir.
+# ------------------------------------------------------------------------------------------------------------
+function(enable_pypto_kernel op_file)
+    set(_gen ${ASCEND_BINARY_OUT_DIR}/${ASCEND_COMPUTE_UNIT}/${op_file}_pypto_gen)
+    set(_py  ${CMAKE_CURRENT_SOURCE_DIR}/../op_kernel/${op_file}.py)
+
+    if (NOT EXISTS ${_py})
+        message(FATAL_ERROR "enable_pypto_kernel: kernel python file not found: ${_py}")
+    endif ()
+
+    message(STATUS "pypto codegen: ${op_file} -> ${_gen}")
+    execute_process(
+        COMMAND ${HI_PYTHON} ${CMAKE_SOURCE_DIR}/cmake/scripts/pypto_codegen.py
+                --py-file ${_py} --out-dir ${_gen}
+                --op-file ${op_file} --soc ${ASCEND_COMPUTE_UNIT}
+        RESULT_VARIABLE _rc
+    )
+    if (NOT _rc EQUAL 0)
+        message(FATAL_ERROR "pypto codegen failed for ${op_file} (exit ${_rc})")
+    endif ()
+
+    # Re-run configure (hence codegen) when the kernel python source changes.
+    set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS ${_py})
+
+    # Read by add_modules_sources_with_soc (a macro, runs in this caller scope) to add the host tiling -I.
+    set(PYPTO_GEN_DIR ${_gen} PARENT_SCOPE)
+    # Read by add_bin_compile_target (separate scope) to install artifacts into kernel staging.
+    set(${op_file}_pypto_enabled TRUE    CACHE INTERNAL "pypto-enabled kernel ${op_file}")
+    set(${op_file}_pypto_gen_dir ${_gen} CACHE INTERNAL "pypto gen dir for ${op_file}")
+    # Collected by custom_build.cmake and passed to ascendc_impl_build.py as --pypto-ops so those ops get
+    # the pypto wrapper variant (its flash_attention_score() calls pypto_compile_op and locates the DSL
+    # .py next to itself). Keyed by op_file (matches op_desc.op_file).
+    set_property(GLOBAL APPEND PROPERTY PYPTO_ENABLED_OPS ${op_file})
+endfunction()
+
 function(add_bin_compile_target)
     cmake_parse_arguments(BINARY "" "COMPUTE_UNIT" "OP_INFO" ${ARGN})
 
@@ -524,6 +575,8 @@ function(add_bin_compile_target)
     foreach(_op_info ${BINARY_OP_INFO})
         get_filename_component(_op_name "${_op_info}" NAME)
         set(${_op_name}_dir ${_op_info})
+        set(${_op_name}_a2_dir ${_op_info})
+        set(${_op_name}_a3_dir ${_op_info})
         set(${_op_name}_apt_dir ${_op_info})
     endforeach()
 
@@ -597,6 +650,19 @@ function(add_bin_compile_target)
                 endforeach()
             endif ()
 
+            if (${op_file}_pypto_enabled)
+                set(_pypto_install_stamp ${OP_SRC_OUT_DIR}/op_kernel/.pypto_install.done)
+                add_custom_command(OUTPUT ${_pypto_install_stamp}
+                        COMMAND ${CMAKE_COMMAND} -E copy_directory ${${op_file}_pypto_gen_dir} ${OP_SRC_OUT_DIR}/op_kernel
+                        COMMAND ${CMAKE_COMMAND} -E touch ${_pypto_install_stamp}
+                        DEPENDS ${OP_TARGET_NAME}_src_copy
+                        VERBATIM
+                )
+                add_custom_target(${OP_TARGET_NAME}_pypto_install
+                        DEPENDS ${_pypto_install_stamp}
+                )
+            endif ()
+
             set(DYNAMIC_PY_FILE ${OP_SRC_OUT_DIR}/${op_type}.py)
             add_custom_command(OUTPUT ${DYNAMIC_PY_FILE}
                     COMMAND cp -rf ${ASCEND_IMPL_OUT_DIR}/dynamic/${op_file}.py ${DYNAMIC_PY_FILE}
@@ -635,16 +701,15 @@ function(add_bin_compile_target)
         set(_group "1-0")
         if (DEFINED ASCEND_OP_NAME AND NOT "${ASCEND_OP_NAME}" STREQUAL "")
             if (NOT "${ASCEND_OP_NAME}" STREQUAL "all" AND NOT "${ASCEND_OP_NAME}" STREQUAL "ALL")
-                string(REGEX MATCH "^(.*_apt)$" _match_apt ${op_file})
-                if(_match_apt)
-                    #如果以_apt结尾，使用去掉后缀的文件名进行查找
-                    string(REGEX REPLACE "_apt$" "" _op_file_strip_apt ${op_file})
-                    list(FIND ASCEND_OP_NAME ${_op_file_strip_apt} _index)
+                string(REGEX MATCH "^(.+)_(a2|a3|apt)$" _match_suffix ${op_file})
+                if(_match_suffix)
+                    string(REGEX REPLACE "_(a2|a3|apt)$" "" _op_file_strip_suffix ${op_file})
+                    list(FIND ASCEND_OP_NAME ${_op_file_strip_suffix} _index)
                 else()
                     list(FIND ASCEND_OP_NAME ${op_file} _index)
-                    set(_op_file_strip_apt ${op_file})
+                    set(_op_file_strip_suffix ${op_file})
                 endif()
-                if (${op_file} IN_LIST ASCEND_OP_NAME OR ${_op_file_strip_apt} IN_LIST ASCEND_OP_NAME)
+                if (${op_file} IN_LIST ASCEND_OP_NAME OR ${_op_file_strip_suffix} IN_LIST ASCEND_OP_NAME)
                     list(LENGTH ASCEND_OP_NAME _len)
                     math(EXPR _next_index "${_index} + 1")
                     if (${_next_index} LESS ${_len})
@@ -707,6 +772,9 @@ function(add_bin_compile_target)
                 add_dependencies(${OP_TARGET_NAME}_${op_index} optiling_compat generate_ops_info)
             endif ()
             add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_src_copy ${OP_TARGET_NAME}_py_copy ${OP_TARGET_NAME}_mkdir)
+            if (${op_file}_pypto_enabled)
+                add_dependencies(${OP_TARGET_NAME}_${op_index} ${OP_TARGET_NAME}_pypto_install)
+            endif ()
             add_dependencies(${OP_TARGET_NAME}_${op_index} generate_compile_cmd)
             if(TARGET common_src_copy)
                 add_dependencies(${OP_TARGET_NAME}_${op_index} common_src_copy)

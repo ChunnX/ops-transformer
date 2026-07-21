@@ -104,9 +104,9 @@ const std::string &Context::GetTilingResult() const
 
 bool Context::RunTiling(std::string &caseName, bool withSocversion)
 {
-	if (withSocversion) {
-		fprintf(stdout, "RunTiling start and withSocversion param value is true.");
-	}
+    if (withSocversion) {
+        fprintf(stdout, "RunTiling start and withSocversion param value is true.");
+    }
     if (!this->InitTilingJsonStr()) {
         return false;
     }
@@ -161,7 +161,7 @@ bool Context::RunKernelProcess(std::string &caseName)
     /* 调用回调函数, 触发具体算子 Kernel 执行 */
     ICPU_SET_TILING_KEY(tilingKey_);
     bool ret = kernelRunCbf_(kernelMainFunc_, tilingKey_, tilingBlockDim_, inputs_, outputs_, workspacePtr_,
-                        tilingData_.data());
+                             tilingData_.data());
 
 #ifdef TESTS_UT_OPS_TEST_CI_PR // 为便于定位, 仅在PR场景进行重定向
     /* 恢复重定向 */

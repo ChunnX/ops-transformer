@@ -38,7 +38,7 @@ __global__ __aicore__ void matmul_reduce_scatter_v2(GM_ADDR aGM, GM_ADDR bGM, GM
 #define INVOKE_MMREDUCESCATTER_AIV_MODE_OP_IMPL(templateClass, ...)                                                    \
     do {                                                                                                               \
         GET_TILING_DATA_WITH_STRUCT(MatmulReduceScatterV2AivModeTilingData, tilingData, tilingGM);                     \
-        templateClass<DTYPE_X1, DTYPE_X2, DTYPEBIAS, DTYPE_X2_SCALE, DTYPE_Y, __VA_ARGS__> op;                        \
+        templateClass<DTYPE_X1, DTYPE_X2, DTYPEBIAS, DTYPE_X2_SCALE, DTYPE_Y, __VA_ARGS__> op;                         \
         op.Init(aGM, bGM, biasGM, x1ScaleGM, x2ScaleGM, cGM, workspaceGM, tilingGM);                                   \
         op.Process();                                                                                                  \
     } while (0)

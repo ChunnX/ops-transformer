@@ -204,7 +204,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 - **返回值**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+
   第一段接口完成入参校验，出现以下场景时报错：
 
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
@@ -236,7 +236,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 ## aclnnMoeTokenUnpermuteGrad
 
 - **参数说明**
-  
+
   <table>
     <thead>
       <tr><th>参数名</th><th>输入/输出</th><th>描述</th></tr>
@@ -358,7 +358,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
   // 调用aclCreateTensor接口创建aclTensor
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType,
                             strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                            shape.data(), shape.size(), *deviceAddr);
+                            *deviceAddr,0,nullptr);
   return 0;
 }
 
@@ -401,7 +401,7 @@ int main() {
   std::vector<float> probsGradHostData = {0, 0, 0};
 
   ret = CreateAclTensor(permutedTokensHostData, permutedTokensShape,
-                        &permutedTokensDeviceAddr, aclDataType::ACL_BF16,
+                        &permutedTokensDeviceAddr, aclDataType::ACL FLOAT,
                         &permutedTokens);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(unpermutedTokensGradHostData, unpermutedTokensGradShape, &unpermutedTokensGradDeviceAddr,

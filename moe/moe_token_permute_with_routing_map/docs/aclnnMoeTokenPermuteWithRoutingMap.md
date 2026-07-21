@@ -24,19 +24,19 @@
   $$
   expertIndex=arange(tokens\_num).expand(expert\_num,-1)
   $$
-  
+
   $$
   sortedIndicesFirst=expertIndex.masked\_select(routingMap.T)
   $$
-  
+
   $$
   sortedIndicesOut=argsort(sortedIndicesFirst)
   $$
-    
+
   $$
   topK = numOutTokens // tokens\_num
   $$
-  
+
   $$
   outToken = topK * tokens\_num
   $$
@@ -44,7 +44,7 @@
   $$
   permuteTokensOut[sortedIndicesOut[i]]=tokens[i//topK]
   $$
-  
+
   如果probs不是none
 
   $$
@@ -64,7 +64,7 @@
   $$
   sortedIndicesOut = argsort(routingMap.T,dim=-1)[:, :capacity]
   $$
-  
+
   $$
   permutedTokensOut = tokens.index\_select(0, sortedIndicesOut)
   $$
@@ -74,19 +74,19 @@
   $$
   probs\_T\_1D = probsOptional.T.view(-1)
   $$
-  
+
   $$
   indices\_dim0 = arange(expert\_num).view(expert\_num, 1)
   $$
-  
+
   $$
   indices\_dim1 = sortedIndicesOut.view(expert\_num, capacity)
   $$
-  
+
   $$
   indices\_1D = (indices\_dim0 * tokens\_num + indices\_dim1).view(-1)
   $$
-  
+
   $$
   permuteProbsOutOptional = probs\_T\_1D.index\_select(0, indices\_1D)
   $$
@@ -97,23 +97,23 @@
 
 ```cpp
 aclnnStatus aclnnMoeTokenPermuteWithRoutingMapGetWorkspaceSize(
-    const aclTensor  *tokens, 
-    const aclTensor  *routingMap, 
-    const aclTensor  *probsOptional, 
-    int64_t           numOutTokens, 
-    bool              dropAndPad, 
-    aclTensor        *permuteTokensOut, 
-    aclTensor        *permuteProbsOutOptional, 
-    aclTensor        *sortedIndicesOut, 
-    uint64_t         *workspaceSize, 
+    const aclTensor  *tokens,
+    const aclTensor  *routingMap,
+    const aclTensor  *probsOptional,
+    int64_t           numOutTokens,
+    bool              dropAndPad,
+    aclTensor        *permuteTokensOut,
+    aclTensor        *permuteProbsOutOptional,
+    aclTensor        *sortedIndicesOut,
+    uint64_t         *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
-    void            *workspace, 
-    uint64_t         workspaceSize, 
-    aclOpExecutor   *executor, 
+    void            *workspace,
+    uint64_t         workspaceSize,
+    aclOpExecutor   *executor,
     aclrtStream      stream)
 ```
 
@@ -124,10 +124,10 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
   <table style="undefined;table-layout: fixed; width: 1550px"><colgroup>
   <col style="width: 170px">
   <col style="width: 120px">
-  <col style="width: 300px">  
-  <col style="width: 550px">  
-  <col style="width: 212px">  
-  <col style="width: 100px"> 
+  <col style="width: 300px">
+  <col style="width: 550px">
+  <col style="width: 212px">
+  <col style="width: 100px">
   <col style="width: 190px">
   <col style="width: 145px">
   </colgroup>
@@ -250,7 +250,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
   `aclnnStatus`：返回状态码，具体参见 <a href="../../../docs/zh/context/aclnn返回码.md">aclnn返回码</a>。
 
   一段接口完成入参校验，出现以下场景时报错：
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -283,7 +283,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
       <tr>
         <td>ACLNN_ERR_INNER_NULLPTR</td>
         <td>561103</td>
-        <td>topK > 512</td>
+        <td>内部指针为空</td>
       </tr>
     </tbody>
   </table>
@@ -292,7 +292,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
 
 - **参数说明：**
 
-  <table style="undefined;table-layout: fixed; width: 1180px"> 
+  <table style="undefined;table-layout: fixed; width: 1180px">
     <colgroup>
       <col style="width: 250px">
       <col style="width: 130px">
@@ -332,7 +332,7 @@ aclnnStatus aclnnMoeTokenPermuteWithRoutingMap(
 - **返回值：**
 
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-    
+
 ## 约束说明
 
 - 确定性计算：

@@ -27,7 +27,7 @@
 
 **说明**
 - 算子同时维护卷积状态 `conv_state`，用于在增量推理时缓存历史输入，实现高效的状态更新。
-- 模式由输入形状自动推断：x 为 2D 或 3D 且 seq_len == 1 时为 decode / update 模式。
+- 模式由输入形状自动推断：x为3D且seq_len == 1时为decode/update模式；2D变长仅在提供num_accepted_tokens（投机解码）时支持。
 
 ## 函数原型
 
@@ -48,14 +48,14 @@ cann_ops_transformer.causal_conv1d_update(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
-| x | Tensor | 必选 | 输入序列。 | float16、bfloat16 | [batch, 1, dim]（固定batch）或 [cu_seq_len, dim]（变长） |
+| x | Tensor | 必选 | 输入序列。 | float16、bfloat16 | [batch, 1, dim]（固定batch，3D）。2D [cu_seq_len, dim]仅在提供num_accepted_tokens（投机解码）时支持 |
 | conv_state | Tensor | 必选 | 卷积状态缓存，计算后原地更新。 | 同x | [num_cache_lines, state_len, dim]，state_len ≥ kW-1 |
 | weight | Tensor | 必选 | 卷积权重。 | 同x | [kW, dim]，kW∈{2, 3, 4} |
 | bias | Tensor | 可选 | 卷积偏置。默认None表示不使用。 | 同x | [dim] |
 | activation | str | 可选 | 激活函数类型，"silu"或"none"。默认值为"silu"。 | - | - |
 | conv_state_indices | Tensor | 可选 | 缓存索引，指定每个序列对应的缓存状态在conv_state中的索引。默认None使用恒等映射。 | int32 | [batch] |
 | num_accepted_tokens | Tensor | 可选 | 投机解码中每个batch已接受的token数，仅kW=4支持。默认None。 | int32 | [batch] |
-| query_start_loc | Tensor | 可选 | 变长序列起始位置索引。默认None。 | int32 | [batch+1] |
+| query_start_loc | Tensor | 可选 | 变长序列起始位置索引。默认None。提供时，batch大小由query_start_loc.size(0)-1决定，而非由x的shape推导。 | int32 | [batch+1] |
 | max_query_len | int | 可选 | 最大查询长度，-1表示不限制。默认值为-1。 | - | - |
 | null_block_id | int | 可选 | 无效缓存槽位标记ID，conv_state_indices[i]==null_block_id时跳过该序列并输出填零。默认值为0。 | - | - |
 | block_idx_last_scheduled_token | Tensor | 可选 | 最后调度token块索引。 | int32 | [batch] |
@@ -68,13 +68,13 @@ cann_ops_transformer.causal_conv1d_update(
 ## 约束说明
 
 - 该接口仅支持推理场景下使用。
-- 该接口支持单算子模式调用，图模式暂不支持。
+- 该接口支持单算子模式和图模式调用。
 - 不支持非连续Tensor。
 - `weight`的kW仅支持2、3、4。
 - `conv_state`的state_len必须 ≥ kW-1，num_cache_lines必须 ≥ batch（未提供conv_state_indices时）。
 - `query_start_loc`[0]必须为0，`query_start_loc`[-1]必须等于cu_seq_len，值必须非递减。
 - `conv_state_indices`的值∈[0, num_cache_lines)，或等于null_block_id表示跳过该序列。
-- `num_accepted_tokens`仅在kW=4时支持，值∈[0, seq_len]，0表示全为投机token。
+- `num_accepted_tokens`仅在kW=4时支持，值∈[0, state_len - (kW - 1)]，其中state_len为conv_state.shape[1]。0和1均对应offset=0（从conv_state起始位置读取），超出此范围会导致conv_state越界访问。
 - 算子入参与中间计算结果，在对应数据类型（float16/bfloat16）下，数值均不会超出该类型值域范围。
 - 算子输入不支持有±inf和nan的情况。
 
@@ -93,7 +93,7 @@ cann_ops_transformer.causal_conv1d_update(
     D = 512
     kW = 2
 
-    x = torch.randn(B, D, device="npu", dtype=torch.float16)
+    x = torch.randn(B, 1, D, device="npu", dtype=torch.float16)
     weight = torch.randn(kW, D, device="npu", dtype=torch.float16)
     conv_state = torch.zeros(B, kW - 1, D, device="npu", dtype=torch.float16)
 
@@ -103,4 +103,37 @@ cann_ops_transformer.causal_conv1d_update(
     )
     ```
 
-- 图模式调用（暂不支持）
+- 图模式调用
+
+    通过`torch.compile(backend="atc")`或`torchair`自动将算子转换为GE图算子，无需额外配置。
+
+    ```python
+    import torch
+    import torch_npu
+    import torchair
+    from cann_ops_transformer.ops import causal_conv1d_update
+
+    torch_npu.npu.set_device(0)
+
+    B = 4
+    D = 512
+    kW = 2
+
+    class CausalConv1dUpdateModel(torch.nn.Module):
+        def forward(self, x, conv_state, weight):
+            y = causal_conv1d_update(
+                x, conv_state, weight,
+                activation="silu",
+            )
+            return y
+
+    model = CausalConv1dUpdateModel().npu()
+    npu_backend = torchair.get_npu_backend()
+    model = torch.compile(model, backend=npu_backend, dynamic=False)
+
+    x = torch.randn(B, 1, D, device="npu", dtype=torch.float16)
+    weight = torch.randn(kW, D, device="npu", dtype=torch.float16)
+    conv_state = torch.zeros(B, kW - 1, D, device="npu", dtype=torch.float16)
+
+    output = model(x, conv_state, weight)
+    ```

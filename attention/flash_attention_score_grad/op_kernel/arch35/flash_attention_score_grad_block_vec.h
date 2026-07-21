@@ -17,6 +17,7 @@
 #define FLASH_ATTENTION_SCORE_GRAD_BLOCK_VEC_H
  
 #include "flash_attention_score_grad_common.h"
+#include "cube_api/mutex_buffer.h"
 #include "vector_api/cast_softmax_grad.h"
 #include "vector_api/dropout.h"
 #include "vector_api/pse_atten_mask_muls_simple_softmax.h"
@@ -57,7 +58,6 @@ public:
                                             GM_ADDR workspace);
     __aicore__ inline void SetOldDeterFp32Param(FagConstInfo &constInfo);
     __aicore__ inline void InitUbBuffer();
-    __aicore__ inline void InitCubeVecSharedParams(FagCVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, float qScaleDs);
     __aicore__ inline void ProcessVec1(FagConstInfo &constInfo, FagRunInfo &runInfo);
     __aicore__ inline void ProcessVec2(LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
                                        FagRunInfo &runInfo);
@@ -65,39 +65,47 @@ public:
     __aicore__ inline void ProcessVecSink(LocalTensor<CALC_TYPE> &mm1ResTensor,
                                           LocalTensor<CALC_TYPE> &mm2ResTensor,
                                           FagConstInfo &constInfo, FagRunInfo &runInfo);
-    __aicore__ inline void ProcessVec3(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<CALC_TYPE> &mm1ResTensor,
+    __aicore__ inline void ProcessVec3(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
+                                       LocalTensor<CALC_TYPE> &mm1ResTensor, LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                       FagConstInfo &constInfo, FagRunInfo &runInfo, bool isDqNeedDeter = false);
+    __aicore__ inline void ProcessVec4(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
                                        LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
-                                       FagRunInfo &runInfo, bool isDqNeedDeter = false);
-    __aicore__ inline void ProcessVec4(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<CALC_TYPE> &mm2ResTensor,
-                                       FagConstInfo &constInfo, FagRunInfo &runInfo);
- 
+                                       FagRunInfo &runInfo);
+
     template <typename T, bool IS_WRITE_UB, uint8_t MM_IDX>
     __aicore__ inline void ProcessMulsAndCast(typename DqkvResPos<T, IS_WRITE_UB>::PosType inputTensor,
                                               FagConstInfo &constInfo, FagRunInfo &runInfo);
- 
+
     __aicore__ inline void CopyMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo, int64_t taskId);
     template <const bool IS_DQ = false>
     __aicore__ inline void CopyUB2L1(FagRunInfo &runInfo, LocalTensor<INPUT_TYPE> &dstTensor,
                                      LocalTensor<INPUT_TYPE> &srcTensor);
     __aicore__ inline void CopyUB2L1Deter(FagRunInfo &runInfo, LocalTensor<INPUT_TYPE> &dstTensor,
                                           LocalTensor<INPUT_TYPE> &srcTensor);
-    __aicore__ inline void CopyUBToL1Vec3(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<INPUT_TYPE> &vecOutBuffer,
-                                                               FagRunInfo &runInfo, bool isDqNeedDeter);
+    __aicore__ inline void CopyUBToL1Vec3(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
+                                          LocalTensor<INPUT_TYPE> &vecOutBuffer, FagRunInfo &runInfo,
+                                          bool isDqNeedDeter);
     template <const bool IS_DK>
-    __aicore__ inline void ProcessPostDeter(FagConstInfo &constInfo, GlobalTensor<float> dkvWorkSpaceTensor, GlobalTensor<INPUT_TYPE> &dkvGmTensor,
-        int64_t specialHalfS2RealSize, int64_t specialFirstHalfS2RealSize, uint64_t dAlign16, uint64_t dvAlign16, int64_t specialDkGmOffset, int64_t specialDvGmOffset);
-    __aicore__ inline void DeterCompute(LocalTensor<CALC_TYPE> &mm1ResTensor, LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo, 
-                                        bool dqIsNeedDeter[2], bool dkDvIsNeedDeter[2], bool isLastSort, int64_t computeBlockIdx, 
-                                        int64_t remainLoopNum, int16_t *deterPpFlag);
-    __aicore__ inline void DeterComputeDq(FagConstInfo &constInfo, bool isLastSort, int64_t computeBlockIdx, int64_t remainLoopNum, int16_t *deterPpFlag);
-    __aicore__ inline void DeterComputeDkv(LocalTensor<CALC_TYPE> &dkDeterBuf, LocalTensor<CALC_TYPE> &dvDeterBuf, FagConstInfo &constInfo, 
-                                            bool isLastSort, int64_t computeBlockIdx, int64_t remainLoopNum, int16_t *deterPpFlag);
-    __aicore__ inline void DeterComputeDqkv(LocalTensor<CALC_TYPE> &dkDeterBuf, LocalTensor<CALC_TYPE> &dvDeterBuf, FagConstInfo &constInfo,
-                                            bool isLastSort, int64_t computeBlockIdx, int64_t remainLoopNum, int16_t *deterPpFlag);
-    __aicore__ inline void WriteDataToDkv(LocalTensor<CALC_TYPE> &dkDeterBuf, LocalTensor<CALC_TYPE> &dvDeterBuf, 
-                                                                    FagConstInfo &constInfo, uint32_t dkSrcOfs, uint32_t dvSrcOfs);
-    __aicore__ inline void WriteOffsetToGM(FagConstInfo &constInfo, int64_t queryGmOffset, int64_t keyGmOffset, int64_t valueGmOffset,
-                                           int64_t computeBlockIdx, int64_t remainLoopNum);
+    __aicore__ inline void ProcessPostDeter(FagConstInfo &constInfo, GlobalTensor<float> dkvWorkSpaceTensor,
+                                            GlobalTensor<INPUT_TYPE> &dkvGmTensor, int64_t specialHalfS2RealSize,
+                                            int64_t specialFirstHalfS2RealSize, uint64_t dAlign16, uint64_t dvAlign16,
+                                            int64_t specialDkGmOffset, int64_t specialDvGmOffset);
+    __aicore__ inline void DeterCompute(LocalTensor<CALC_TYPE> &mm1ResTensor, LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                        FagConstInfo &constInfo, bool dqIsNeedDeter[2], bool dkDvIsNeedDeter[2],
+                                        bool isLastSort, int64_t computeBlockIdx, int64_t remainLoopNum,
+                                        int16_t *deterPpFlag);
+    __aicore__ inline void DeterComputeDq(FagConstInfo &constInfo, bool isLastSort, int64_t computeBlockIdx,
+                                          int64_t remainLoopNum, int16_t *deterPpFlag);
+    __aicore__ inline void DeterComputeDkv(LocalTensor<CALC_TYPE> &dkDeterBuf, LocalTensor<CALC_TYPE> &dvDeterBuf,
+                                           FagConstInfo &constInfo, bool isLastSort, int64_t computeBlockIdx,
+                                           int64_t remainLoopNum, int16_t *deterPpFlag);
+    __aicore__ inline void DeterComputeDqkv(LocalTensor<CALC_TYPE> &dkDeterBuf, LocalTensor<CALC_TYPE> &dvDeterBuf,
+                                            FagConstInfo &constInfo, bool isLastSort, int64_t computeBlockIdx,
+                                            int64_t remainLoopNum, int16_t *deterPpFlag);
+    __aicore__ inline void WriteDataToDkv(LocalTensor<CALC_TYPE> &dkDeterBuf, LocalTensor<CALC_TYPE> &dvDeterBuf,
+                                          FagConstInfo &constInfo, uint32_t dkSrcOfs, uint32_t dvSrcOfs);
+    __aicore__ inline void WriteOffsetToGM(FagConstInfo &constInfo, int64_t queryGmOffset, int64_t keyGmOffset,
+                                           int64_t valueGmOffset, int64_t computeBlockIdx, int64_t remainLoopNum);
 
     constexpr static bool IS_FP32_INPUT = IsSameType<INPUT_TYPE, float>::value;
     constexpr static uint32_t DETER_OFFSET_UB_SIZE = 1024 * 3;
@@ -260,7 +268,8 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR valu
     }
     if constexpr (IS_DROP) {
         if (tilingData->preTilingData.dropoutIsDivisibleBy8 == 0) {
-            dropMaskWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace + tilingData->postTilingData.dropMaskGmOffset);
+            dropMaskWorkspaceGm.SetGlobalBuffer((__gm__ uint8_t *)workspace +
+                                                tilingData->postTilingData.dropMaskGmOffset);
         }
     }
     if (unlikely(tilingData->s1s2BNGS1S2BaseParams.enablePreSfmg)) {
@@ -270,17 +279,21 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(GM_ADDR valu
     if (unlikely(tilingData->s1s2BNGS1S2BaseParams.sinkOptional)) {
         sinkGm.SetGlobalBuffer((__gm__ float *)sink);
         dsinkGm.SetGlobalBuffer((__gm__ float *)dsink);
-        dsinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dsinkWorkSpaceOffset / sizeof(float));
+        dsinkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                         tilingData->postTilingData.dsinkWorkSpaceOffset / sizeof(float));
     }
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
         deterGm.SetGlobalBuffer((__gm__ float *)workspace +
-            tilingData->baseDeterParam.deterGmOffset / sizeof(CALC_TYPE));
+                                tilingData->baseDeterParam.deterGmOffset / sizeof(CALC_TYPE));
         deterOffsetGm.SetGlobalBuffer((__gm__ int64_t *)workspace +
-            tilingData->baseDeterParam.deterWorkSpaceOffset / sizeof(int64_t));
+                                      tilingData->baseDeterParam.deterWorkSpaceOffset / sizeof(int64_t));
         if constexpr (!IS_FP32_INPUT) {
-            dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
-            dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
-            dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace + tilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
+            dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                          tilingData->postTilingData.dqWorkSpaceOffset / sizeof(float));
+            dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                          tilingData->postTilingData.dkWorkSpaceOffset / sizeof(float));
+            dvWorkSpaceGm.SetGlobalBuffer((__gm__ float *)workspace +
+                                          tilingData->postTilingData.dvWorkSpaceOffset / sizeof(float));
         } else {
             dqWorkSpaceGm.SetGlobalBuffer((__gm__ float *)dq);
             dkWorkSpaceGm.SetGlobalBuffer((__gm__ float *)dk);
@@ -502,13 +515,14 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVecSink(LocalTensor<CA
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyUBToL1Vec3(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
-                                                                LocalTensor<INPUT_TYPE> &vecOutBuffer,
-                                                               FagRunInfo &runInfo, bool isDqNeedDeter)
+__aicore__ inline void
+FAGBlockVec<TEMPLATE_ARGS>::CopyUBToL1Vec3(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
+                                           LocalTensor<INPUT_TYPE> &vecOutBuffer, FagRunInfo &runInfo,
+                                           bool isDqNeedDeter)
 {
     dSOutQue.EnQue(vecOutBuffer);
     dSOutQue.DeQue<INPUT_TYPE>();
- 
+
     // copy ds from ub to l1
     LocalTensor<INPUT_TYPE> dsL1Tensor = dstBuffer.GetTensor<INPUT_TYPE>();
     if constexpr (IS_DETER_OLD(DETER_SPARSE_TYPE)) {
@@ -527,10 +541,10 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::CopyUBToL1Vec3(Buffer<BufferT
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
-                                                               LocalTensor<CALC_TYPE> &mm1ResTensor,
-                                                               LocalTensor<CALC_TYPE> &mm2ResTensor,
-                                                               FagConstInfo &constInfo, FagRunInfo &runInfo, bool isDqNeedDeter)
+__aicore__ inline void
+FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
+                                        LocalTensor<CALC_TYPE> &mm1ResTensor, LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                        FagConstInfo &constInfo, FagRunInfo &runInfo, bool isDqNeedDeter)
 {
     ///////////////////////////////////////////////////////////////
     // VF3: sub + mul
@@ -613,9 +627,10 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec3(Buffer<BufferType
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec4(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
-                                                               LocalTensor<CALC_TYPE> &mm2ResTensor,
-                                                               FagConstInfo &constInfo, FagRunInfo &runInfo)
+__aicore__ inline void
+FAGBlockVec<TEMPLATE_ARGS>::ProcessVec4(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
+                                        LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
+                                        FagRunInfo &runInfo)
 {
     ///////////////////////////////////////////////////////////////
     // VF5: cast + nd2nz
@@ -635,7 +650,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessVec4(Buffer<BufferType
  
     pOutQue.FreeTensor(vecOutBuffer1);
 }
- 
+
 TEMPLATES_DEF_NO_DEFAULT
 template <typename T, bool IS_WRITE_UB, uint8_t MM_IDX>
 __aicore__ inline void
@@ -934,25 +949,6 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::ProcessPostDeter(FagConstInfo
         DataCopyPad(dkvGmTensor[dkvGmOffset], dkvCastTensor, intriParamsOut);
         outQue.FreeTensor(dkvCastTensor);
         dkvGmOffset += loopSize * dSize * constInfo.commonConstInfo.n2G;
-    }
-}
- 
-TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(
-    FagCVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, float qScaleDs)
-{
-    sharedParams.qScaleDs = qScaleDs;
-    /* ssbuf send message */
-    if ASCEND_IS_AIV {  
-        if (subBlockIdx == 0) {
-            auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
-            auto tempTiling = reinterpret_cast<uint32_t *>(&sharedParams);  // 
-            #pragma unroll
-            for (int i = 0; i < sizeof(FagCVSharedParams) / sizeof(uint32_t); ++i, ++tempTilingSSbuf, ++tempTiling) {
-                *tempTilingSSbuf = *tempTiling;
-            }
-            CrossCoreSetFlag<SYNC_MODE, PIPE_S>(15);
-        }
     }
 }
 
@@ -1407,7 +1403,7 @@ __aicore__ inline void FAGBlockVec<TEMPLATE_ARGS>::WriteOffsetToGM(FagConstInfo 
         SetFlag<HardEvent::MTE3_S>(constInfo.deterConstInfo.eventIDMte3ToScalar);
     }
 }
- 
+
 TEMPLATES_DEF
 class FAGBlockVecDummy {
 public:
@@ -1416,8 +1412,7 @@ public:
                                             GM_ADDR attenMask, GM_ADDR softmaxMax, GM_ADDR softmaxSum,
                                             GM_ADDR deqScaleQ, GM_ADDR deqScaleK, GM_ADDR deqScaleV, GM_ADDR deqScaleDy,
                                             GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR dqRope, GM_ADDR dkRope,
-                                            GM_ADDR sink, GM_ADDR dsink,
-                                            GM_ADDR workspace){};
+                                            GM_ADDR sink, GM_ADDR dsink, GM_ADDR workspace){};
     __aicore__ inline void SetVecBlockParams(TPipe *pipe, FagTilingType tilingData, uint32_t vBlockIdx,
                                              uint32_t cBlockIdx, uint32_t vSubBlockIdx, AttenMaskInfo &attenMaskInfo,
                                              PseInfo &pseInfo, DropMaskInfo &dropInfo){};
@@ -1426,34 +1421,39 @@ public:
     __aicore__ inline void ProcessVec2(LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
                                        FagRunInfo &runInfo){};
     __aicore__ inline void CopyDpToTmpBuf(LocalTensor<CALC_TYPE> &mm1ResTensor){};
-    __aicore__ inline void ProcessVecSink(LocalTensor<CALC_TYPE> &mm1ResTensor,
-                                          LocalTensor<CALC_TYPE> &mm2ResTensor,
+    __aicore__ inline void ProcessVecSink(LocalTensor<CALC_TYPE> &mm1ResTensor, LocalTensor<CALC_TYPE> &mm2ResTensor,
                                           FagConstInfo &constInfo, FagRunInfo &runInfo){};
-    __aicore__ inline void ProcessVec3(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<CALC_TYPE> &mm1ResTensor,
+    __aicore__ inline void ProcessVec3(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
+                                       LocalTensor<CALC_TYPE> &mm1ResTensor, LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                       FagConstInfo &constInfo, FagRunInfo &runInfo, bool isDqNeedDeter = false){};
+    __aicore__ inline void ProcessVec4(MutexBuffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer,
                                        LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo,
-                                       FagRunInfo &runInfo, bool isDqNeedDeter = false){};
-    __aicore__ inline void ProcessVec4(Buffer<BufferType::L1, SyncType::NO_SYNC> &dstBuffer, LocalTensor<CALC_TYPE> &mm2ResTensor,
-                                       FagConstInfo &constInfo, FagRunInfo &runInfo){};
+                                       FagRunInfo &runInfo){};
     template <typename T, bool IS_WRITE_UB, uint8_t MM_IDX>
     __aicore__ inline void ProcessMulsAndCast(typename DqkvResPos<T, IS_WRITE_UB>::PosType inputTensor,
                                               FagConstInfo &constInfo, FagRunInfo &runInfo){};
     __aicore__ inline void CopyMaxSum(FagConstInfo &constInfo, FagRunInfo &runInfo, int64_t taskId){};
-    __aicore__ inline void InitCubeVecSharedParams(FagCVSharedParams &sharedParams, int32_t aicIdx, uint8_t subBlockIdx, float qScaleDs){};
     template <const bool IS_DK>
-    __aicore__ inline void ProcessPostDeter(FagConstInfo &constInfo, GlobalTensor<float> dkvWorkSpaceTensor, GlobalTensor<INPUT_TYPE> &dkvGmTensor,
-        int64_t specialHalfS2RealSize, int64_t specialFirstHalfS2RealSize, uint64_t dAlign16, uint64_t dvAlign16, int64_t specialDkGmOffset, int64_t specialDvGmOffset){};
-    __aicore__ inline void DeterCompute(LocalTensor<CALC_TYPE> &mm1ResTensor, LocalTensor<CALC_TYPE> &mm2ResTensor, FagConstInfo &constInfo, 
-                                        bool dqIsNeedDeter[2], bool dkDvIsNeedDeter[2], bool isLastSort, int64_t computeBlockIdx, 
-                                        int64_t remainLoopNum, int16_t *deterPpFlag){};
-    __aicore__ inline void DeterComputeDq(FagConstInfo &constInfo, bool isLastSort, int64_t computeBlockIdx, int64_t remainLoopNum, int16_t *deterPpFlag){};
-    __aicore__ inline void DeterComputeDkv(LocalTensor<CALC_TYPE> &dkDeterBuf, LocalTensor<CALC_TYPE> &dvDeterBuf, FagConstInfo &constInfo, 
-                                            bool isLastSort, int64_t computeBlockIdx, int64_t remainLoopNum, int16_t *deterPpFlag){};
-    __aicore__ inline void DeterComputeDqkv(LocalTensor<CALC_TYPE> &dkDeterBuf, LocalTensor<CALC_TYPE> &dvDeterBuf, FagConstInfo &constInfo, 
-                                            bool isLastSort, int64_t computeBlockIdx, int64_t remainLoopNum, int16_t *deterPpFlag){};
-    __aicore__ inline void WriteOffsetToGM(FagConstInfo &constInfo, int64_t queryGmOffset, int64_t keyGmOffset, int64_t valueGmOffset,
-                                           int64_t computeBlockIdx, int64_t remainLoopNum){};
+    __aicore__ inline void ProcessPostDeter(FagConstInfo &constInfo, GlobalTensor<float> dkvWorkSpaceTensor,
+                                            GlobalTensor<INPUT_TYPE> &dkvGmTensor, int64_t specialHalfS2RealSize,
+                                            int64_t specialFirstHalfS2RealSize, uint64_t dAlign16, uint64_t dvAlign16,
+                                            int64_t specialDkGmOffset, int64_t specialDvGmOffset){};
+    __aicore__ inline void DeterCompute(LocalTensor<CALC_TYPE> &mm1ResTensor, LocalTensor<CALC_TYPE> &mm2ResTensor,
+                                        FagConstInfo &constInfo, bool dqIsNeedDeter[2], bool dkDvIsNeedDeter[2],
+                                        bool isLastSort, int64_t computeBlockIdx, int64_t remainLoopNum,
+                                        int16_t *deterPpFlag){};
+    __aicore__ inline void DeterComputeDq(FagConstInfo &constInfo, bool isLastSort, int64_t computeBlockIdx,
+                                          int64_t remainLoopNum, int16_t *deterPpFlag){};
+    __aicore__ inline void DeterComputeDkv(LocalTensor<CALC_TYPE> &dkDeterBuf, LocalTensor<CALC_TYPE> &dvDeterBuf,
+                                           FagConstInfo &constInfo, bool isLastSort, int64_t computeBlockIdx,
+                                           int64_t remainLoopNum, int16_t *deterPpFlag){};
+    __aicore__ inline void DeterComputeDqkv(LocalTensor<CALC_TYPE> &dkDeterBuf, LocalTensor<CALC_TYPE> &dvDeterBuf,
+                                            FagConstInfo &constInfo, bool isLastSort, int64_t computeBlockIdx,
+                                            int64_t remainLoopNum, int16_t *deterPpFlag){};
+    __aicore__ inline void WriteOffsetToGM(FagConstInfo &constInfo, int64_t queryGmOffset, int64_t keyGmOffset,
+                                           int64_t valueGmOffset, int64_t computeBlockIdx, int64_t remainLoopNum){};
 };
- 
+
 } // namespace FagBaseApi
 
 #endif

@@ -235,21 +235,16 @@ aclnnStatus aclnnInplacePartialRotaryMul(
 - 确定性计算：
   - aclnnInplacePartialRotaryMul默认确定性实现。
 - 不支持非连续。
-- 输入张量xRef最后一维（D）大小不超过1024。
-- interleave模式（rotary_mode = 1）下，xRef最后一维（D）大小必须为2的倍数。
-- interleave模式（rotary_mode = 1）下，partialSlice切片长度（即partialSlice[1] - partialSlice[0]）必须为2的倍数。
-- 输入张量cos、sin最后一维大小必须相同，且必须等于partialSlice的切片长度（即partialSlice[1] - partialSlice[0]）。
-- partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ xRef最后一维（D）大小，sliceLength = sliceEnd - sliceStart >= 0，当sliceEnd和sliceStart相同时，不做旋转位置编码，直接返回。
 - 仅支持interleave模式（rotary_mode = 1）。
 - Inplace执行：输入xRef和输出共享同一个Tensor，计算结果直接写回输入xRef。
-- xRef的shape为BSND。
-- cos/sin的shape必须与xRef满足广播关系，且存在如下约束：
-
-  - <term>Ascend 950PR/Ascend 950DT</term>：
-    cos/sin的shape当前只支持BSND、B1ND、B11D、111D排布。
-
-  - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-    cos/sin的shape当前只支持BS1D、B11D排布。
+- 输入张量xRef的shape为BSND排布。各参数的shape约束可以描述如下：
+  - 输入张量xRef的最后一维（D）大小不超过1024。
+  - interleave模式（rotary_mode = 1）下，xRef最后一维（D）大小必须为2的倍数。partialSlice切片长度（即partialSlice[1] - partialSlice[0]）必须为2的倍数。
+  - 输入张量cos、sin最后一维大小必须相同，且必须等于partialSlice的切片长度（即partialSlice[1] - partialSlice[0]）。
+  - cos/sin的shape必须与xRef满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且存在如下约束：
+    - <term>Ascend 950PR/Ascend 950DT</term>：cos/sin的shape当前只支持BSND、B1ND、B11D、111D排布。
+    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：cos/sin的shape当前只支持BS1D、B11D排布，即要求B轴保持相等。
+  - partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ xRef最后一维（D）大小，sliceLength = sliceEnd - sliceStart >= 0，当sliceEnd和sliceStart相同时，不做旋转位置编码，直接返回。
 
 ## 调用示例
 

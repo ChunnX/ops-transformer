@@ -27,199 +27,175 @@ const int DIM_4 = 4;
 
 constexpr int64_t MQSMLA_METADATA_SIZE = 1024;
 
-at::Tensor mixed_quant_sparse_flash_mla_metadata(
-    int64_t num_heads_q, int64_t num_heads_kv, int64_t head_dim, int64_t quant_mode,
-    const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_ori_kv,
-    const c10::optional<at::Tensor> &cu_seqlens_cmp_kv, const c10::optional<at::Tensor> &seqused_q,
-    const c10::optional<at::Tensor> &seqused_ori_kv, const c10::optional<at::Tensor> &seqused_cmp_kv,
-    const c10::optional<at::Tensor> &cmp_residual_kv, const c10::optional<at::Tensor> &ori_topk_length,
-    const c10::optional<at::Tensor> &cmp_topk_length, int64_t batch_size, int64_t max_seqlen_q,
-    int64_t max_seqlen_ori_kv, int64_t max_seqlen_cmp_kv, int64_t ori_topk, int64_t cmp_topk, int64_t rope_head_dim,
-    int64_t cmp_ratio, int64_t ori_mask_mode, int64_t cmp_mask_mode, int64_t ori_win_left, int64_t ori_win_right,
-    c10::string_view layout_q, c10::string_view layout_kv, bool has_ori_kv, bool has_cmp_kv)
+at::Tensor MixedQuantSparseFlashMlaMetadata(
+    int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
+    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensOriKv,
+    const c10::optional<at::Tensor> &cuSeqlensCmpKv, const c10::optional<at::Tensor> &sequsedQ,
+    const c10::optional<at::Tensor> &sequsedOriKv, const c10::optional<at::Tensor> &sequsedCmpKv,
+    const c10::optional<at::Tensor> &cmpResidualKv, const c10::optional<at::Tensor> &oriTopkLength,
+    const c10::optional<at::Tensor> &cmpTopkLength, int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenOriKv,
+    int64_t maxSeqlenCmpKv, int64_t oriTopk, int64_t cmpTopk, int64_t ropeHeadDim, int64_t cmpRatio,
+    int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight, c10::string_view layoutQ,
+    c10::string_view layoutKv, bool hasOriKv, bool hasCmpKv)
 {
-    at::Device output_device = at::Device(std::string("npu"));
-    if (cu_seqlens_q.has_value()) {
-        output_device = cu_seqlens_q.value().device();
-    } else if (cu_seqlens_ori_kv.has_value()) {
-        output_device = cu_seqlens_ori_kv.value().device();
-    } else if (cu_seqlens_cmp_kv.has_value()) {
-        output_device = cu_seqlens_cmp_kv.value().device();
-    } else if (seqused_q.has_value()) {
-        output_device = seqused_q.value().device();
-    } else if (seqused_ori_kv.has_value()) {
-        output_device = seqused_ori_kv.value().device();
-    } else if (seqused_cmp_kv.has_value()) {
-        output_device = seqused_cmp_kv.value().device();
-    } else if (cmp_residual_kv.has_value()) {
-        output_device = cmp_residual_kv.value().device();
-    } else if (ori_topk_length.has_value()) {
-        output_device = ori_topk_length.value().device();
-    } else if (cmp_topk_length.has_value()) {
-        output_device = cmp_topk_length.value().device();
+    at::Device outputDevice = at::Device(std::string("npu"));
+    if (cuSeqlensQ.has_value()) {
+        outputDevice = cuSeqlensQ.value().device();
+    } else if (cuSeqlensOriKv.has_value()) {
+        outputDevice = cuSeqlensOriKv.value().device();
+    } else if (cuSeqlensCmpKv.has_value()) {
+        outputDevice = cuSeqlensCmpKv.value().device();
+    } else if (sequsedQ.has_value()) {
+        outputDevice = sequsedQ.value().device();
+    } else if (sequsedOriKv.has_value()) {
+        outputDevice = sequsedOriKv.value().device();
+    } else if (sequsedCmpKv.has_value()) {
+        outputDevice = sequsedCmpKv.value().device();
+    } else if (cmpResidualKv.has_value()) {
+        outputDevice = cmpResidualKv.value().device();
+    } else if (oriTopkLength.has_value()) {
+        outputDevice = oriTopkLength.value().device();
+    } else if (cmpTopkLength.has_value()) {
+        outputDevice = cmpTopkLength.value().device();
     }
 
-    at::Tensor output = torch::empty({MQSMLA_METADATA_SIZE}, torch::dtype(torch::kInt32).device(output_device));
-    auto cu_seqlens_q_val = get_valid_tensor(cu_seqlens_q, output_device);
-    auto cu_seqlens_ori_kv_val = get_valid_tensor(cu_seqlens_ori_kv, output_device);
-    auto cu_seqlens_cmp_kv_val = get_valid_tensor(cu_seqlens_cmp_kv, output_device);
-    auto seqused_q_val = get_valid_tensor(seqused_q, output_device);
-    auto seqused_ori_kv_val = get_valid_tensor(seqused_ori_kv, output_device);
-    auto seqused_cmp_kv_val = get_valid_tensor(seqused_cmp_kv, output_device);
-    auto cmp_residual_kv_val = get_valid_tensor(cmp_residual_kv, output_device);
-    auto ori_topk_length_val = get_valid_tensor(ori_topk_length, output_device);
-    auto cmp_topk_length_val = get_valid_tensor(cmp_topk_length, output_device);
+    at::Tensor output = torch::empty({MQSMLA_METADATA_SIZE}, torch::dtype(torch::kInt32).device(outputDevice));
+    auto cuSeqlensQVal = get_valid_tensor(cuSeqlensQ, outputDevice);
+    auto cuSeqlensOriKvVal = get_valid_tensor(cuSeqlensOriKv, outputDevice);
+    auto cuSeqlensCmpKvVal = get_valid_tensor(cuSeqlensCmpKv, outputDevice);
+    auto sequsedQVal = get_valid_tensor(sequsedQ, outputDevice);
+    auto sequsedOriKvVal = get_valid_tensor(sequsedOriKv, outputDevice);
+    auto sequsedCmpKvVal = get_valid_tensor(sequsedCmpKv, outputDevice);
+    auto cmpResidualKvVal = get_valid_tensor(cmpResidualKv, outputDevice);
+    auto oriTopkLengthVal = get_valid_tensor(oriTopkLength, outputDevice);
+    auto cmpTopkLengthVal = get_valid_tensor(cmpTopkLength, outputDevice);
 
     // convert str
-    std::string layout_q_str = std::string(layout_q);
-    std::string layout_kv_str = std::string(layout_kv);
-    char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
-    char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
+    std::string layoutQStr = std::string(layoutQ);
+    std::string layoutKvStr = std::string(layoutKv);
+    char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
+    char *layoutKvPtr = const_cast<char *>(layoutKvStr.c_str());
 
-    ACLNN_CMD(aclnnMixedQuantSparseFlashMlaMetadata, cu_seqlens_q_val, cu_seqlens_ori_kv_val, cu_seqlens_cmp_kv_val,
-              seqused_q_val, seqused_ori_kv_val, seqused_cmp_kv_val, cmp_residual_kv_val, ori_topk_length_val,
-              cmp_topk_length_val, num_heads_q, num_heads_kv, head_dim, quant_mode, batch_size, max_seqlen_q,
-              max_seqlen_ori_kv, max_seqlen_cmp_kv, ori_topk, cmp_topk, rope_head_dim, cmp_ratio, ori_mask_mode,
-              cmp_mask_mode, ori_win_left, ori_win_right, layout_q_ptr, layout_kv_ptr, has_ori_kv, has_cmp_kv,
-              output);
+    ACLNN_CMD(aclnnMixedQuantSparseFlashMlaMetadata, cuSeqlensQVal, cuSeqlensOriKvVal, cuSeqlensCmpKvVal, sequsedQVal,
+              sequsedOriKvVal, sequsedCmpKvVal, cmpResidualKvVal, oriTopkLengthVal, cmpTopkLengthVal, numHeadsQ,
+              numHeadsKv, headDim, quantMode, batchSize, maxSeqlenQ, maxSeqlenOriKv, maxSeqlenCmpKv, oriTopk, cmpTopk,
+              ropeHeadDim, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQPtr, layoutKvPtr,
+              hasOriKv, hasCmpKv, output);
     return output;
 }
 
-std::tuple<at::Tensor, at::Tensor> construct_mixed_quant_sparse_flash_mla_atten_out_tensor(
-    const at::Tensor& q, const at::Tensor& ori_kv, std::string layout_q_str,
-    std::string layout_kv_str, const uint64_t &rope_head_dim, bool return_softmax_lse)
+std::tuple<at::Tensor, at::Tensor>
+ConstructMixedQuantSparseFlashMlaAttenOutTensor(const at::Tensor &q, const at::Tensor &oriKv, std::string layoutQStr,
+                                                std::string layoutKvStr, const uint64_t &ropeHeadDim,
+                                                bool returnSoftmaxLse)
 {
     printf("construct_mixed_quant_sparse_flash_mla_atten_out_tensor 开始\n");
-    TORCH_CHECK(layout_q_str == "BSND" || layout_q_str == "TND",
-                "The layout of query only support BSND and TND, but got ", layout_q_str);
+    TORCH_CHECK(layoutQStr == "BSND" || layoutQStr == "TND", "The layout of query only support BSND and TND, but got ",
+                layoutQStr);
     for (auto i = 0; i < q.sizes().size(); i++) {
-        TORCH_CHECK(q.size(i) > 0, "All values within query's shape should be greater "
-            "than 0, but shape[", i, "] is ", q.size(i));
+        TORCH_CHECK(q.size(i) > 0,
+                    "All values within query's shape should be greater "
+                    "than 0, but shape[",
+                    i, "] is ", q.size(i));
     }
-    at::SmallVector<int64_t, SIZE> atten_out_size;
-    at::SmallVector<int64_t, SIZE> softmax_lse_size;
-    if (layout_q_str == "BSND") {
-        TORCH_CHECK(q.dim() == DIM_4,
-                    "When the layout of query is BSND, the query dimension must be 4, but got ", q.dim());
+    at::SmallVector<int64_t, SIZE> attenOutSize;
+    at::SmallVector<int64_t, SIZE> softmaxLseSize;
+    if (layoutQStr == "BSND") {
+        TORCH_CHECK(q.dim() == DIM_4, "When the layout of query is BSND, the query dimension must be 4, but got ",
+                    q.dim());
         // atten_out_size = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2), q.size(DIM_3) - rope_head_dim};
-        atten_out_size = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2), q.size(DIM_3)};
+        attenOutSize = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2), q.size(DIM_3)};
     } else {
-        TORCH_CHECK(q.dim() == DIM_3,
-                    "When the layout of query is TND, the query dimension must be 3, but got ", q.dim());
+        TORCH_CHECK(q.dim() == DIM_3, "When the layout of query is TND, the query dimension must be 3, but got ",
+                    q.dim());
         // atten_out_size = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2) - rope_head_dim};
-        atten_out_size = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2)};
+        attenOutSize = {q.size(DIM_0), q.size(DIM_1), q.size(DIM_2)};
     }
-    at::Tensor atten_out = at::empty(atten_out_size, q.options().dtype(q.dtype()));
-    at::Tensor softmax_lse;
+    at::Tensor attenOut = at::empty(attenOutSize, q.options().dtype(q.dtype()));
+    at::Tensor softmaxLse;
 
-    if (!atten_out.defined()) {
+    if (!attenOut.defined()) {
         printf("[aclnnMixedQuantSparseFlashMla] atten_out 制作失败\n");
     } else {
         printf("[aclnnMixedQuantSparseFlashMla] atten_out 制作完成\n");
     }
 
-    if (return_softmax_lse) {
-        if (layout_q_str == "BSND") {
+    if (returnSoftmaxLse) {
+        if (layoutQStr == "BSND") {
             // 对齐 Python: [q.shape[0], ori_kv.shape[2], q.shape[1], q.shape[2] // ori_kv.shape[2]]
-            softmax_lse_size = {
-                q.size(DIM_0),
-                ori_kv.size(DIM_2),
-                q.size(DIM_1),
-                q.size(DIM_2) / ori_kv.size(DIM_2)
-            };
+            softmaxLseSize = {q.size(DIM_0), oriKv.size(DIM_2), q.size(DIM_1), q.size(DIM_2) / oriKv.size(DIM_2)};
         } else {
             // 对齐 Python: [ori_kv.shape[1], q.shape[0], q.shape[2] // ori_kv.shape[2]]
-            softmax_lse_size = {
-                ori_kv.size(DIM_1),
-                q.size(DIM_0),
-                q.size(DIM_2) / ori_kv.size(DIM_2)
-            };
+            softmaxLseSize = {oriKv.size(DIM_1), q.size(DIM_0), q.size(DIM_2) / oriKv.size(DIM_2)};
         }
     } else {
         // 不返回时tensor传空
-        softmax_lse_size = {};
+        softmaxLseSize = {};
     }
-    softmax_lse = at::empty(softmax_lse_size, q.options().dtype(torch::kFloat32));
-    if (!softmax_lse.defined()) {
+    softmaxLse = at::empty(softmaxLseSize, q.options().dtype(torch::kFloat32));
+    if (!softmaxLse.defined()) {
         printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 制作失败\n");
     } else {
         printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 制作完成\n");
     }
 
-    return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
+    return std::tuple<at::Tensor, at::Tensor>(attenOut, softmaxLse);
 }
 
-std::tuple<at::Tensor, at::Tensor> mixed_quant_sparse_flash_mla(
-    const at::Tensor &q,
-    const c10::optional<at::Tensor> &ori_kv, const c10::optional<at::Tensor> &cmp_kv,
-    const c10::optional<at::Tensor> &ori_sparse_indices, const c10::optional<at::Tensor> &cmp_sparse_indices,
-    const c10::optional<at::Tensor> &ori_block_table, const c10::optional<at::Tensor> &cmp_block_table,
-    const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_ori_kv,
-    const c10::optional<at::Tensor> &cu_seqlens_cmp_kv, const c10::optional<at::Tensor> &seqused_q,
-    const c10::optional<at::Tensor> &seqused_ori_kv, const c10::optional<at::Tensor> &seqused_cmp_kv,
-    const c10::optional<at::Tensor> &cmp_residual_kv,
-    const c10::optional<at::Tensor> &ori_topk_length, const c10::optional<at::Tensor> &cmp_topk_length,
-    const c10::optional<at::Tensor> &sinks, const c10::optional<at::Tensor> &metadata,
-    int64_t quant_mode, int64_t rope_head_dim,
-    double softmax_scale, int64_t cmp_ratio,
-    int64_t ori_mask_mode, int64_t cmp_mask_mode,
-    int64_t ori_win_left, int64_t ori_win_right,
-    c10::string_view layout_q, c10::string_view layout_kv,
-    int64_t topk_value_mode, bool return_softmax_lse,
-    c10::optional<int64_t> key_dtype, c10::optional<int64_t> value_dtype)
+std::tuple<at::Tensor, at::Tensor> MixedQuantSparseFlashMla(
+    const at::Tensor &q, const c10::optional<at::Tensor> &oriKv, const c10::optional<at::Tensor> &cmpKv,
+    const c10::optional<at::Tensor> &oriSparseIndices, const c10::optional<at::Tensor> &cmpSparseIndices,
+    const c10::optional<at::Tensor> &oriBlockTable, const c10::optional<at::Tensor> &cmpBlockTable,
+    const c10::optional<at::Tensor> &cuSeqlensQ, const c10::optional<at::Tensor> &cuSeqlensOriKv,
+    const c10::optional<at::Tensor> &cuSeqlensCmpKv, const c10::optional<at::Tensor> &sequsedQ,
+    const c10::optional<at::Tensor> &sequsedOriKv, const c10::optional<at::Tensor> &sequsedCmpKv,
+    const c10::optional<at::Tensor> &cmpResidualKv, const c10::optional<at::Tensor> &oriTopkLength,
+    const c10::optional<at::Tensor> &cmpTopkLength, const c10::optional<at::Tensor> &sinks,
+    const c10::optional<at::Tensor> &metadata, int64_t quantMode, int64_t ropeHeadDim, double softmaxScale,
+    int64_t cmpRatio, int64_t oriMaskMode, int64_t cmpMaskMode, int64_t oriWinLeft, int64_t oriWinRight,
+    c10::string_view layoutQ, c10::string_view layoutKv, int64_t topkValueMode, bool returnSoftmaxLse,
+    c10::optional<int64_t> keyDtype, c10::optional<int64_t> valueDtype)
 {
     TORCH_CHECK(q.numel() > 0, "Tensor query is empty.")
 
-    std::string layout_q_str = std::string(layout_q);
-    std::string layout_kv_str = std::string(layout_kv);
-    const at::Tensor& ori_kv_val = *ori_kv;
+    std::string layoutQStr = std::string(layoutQ);
+    std::string layoutKvStr = std::string(layoutKv);
+    const at::Tensor &oriKvVal = *oriKv;
     // convert str
-    char *layout_q_ptr = const_cast<char *>(layout_q_str.c_str());
-    char *layout_kv_ptr = const_cast<char *>(layout_kv_str.c_str());
+    char *layoutQPtr = const_cast<char *>(layoutQStr.c_str());
+    char *layoutKvPtr = const_cast<char *>(layoutKvStr.c_str());
 
     // construct the atten_out tensor
-    std::tuple<at::Tensor, at::Tensor> mixed_quant_sparse_flash_mla_atten_out =
-        op_api::construct_mixed_quant_sparse_flash_mla_atten_out_tensor(
-            q, ori_kv_val, layout_q_str, layout_kv_str, rope_head_dim, return_softmax_lse);
-    at::Tensor atten_out = std::get<0>(mixed_quant_sparse_flash_mla_atten_out);
-    at::Tensor softmax_lse = std::get<1>(mixed_quant_sparse_flash_mla_atten_out);
+    std::tuple<at::Tensor, at::Tensor> mixedQuantSparseFlashMlaAttenOut =
+        op_api::ConstructMixedQuantSparseFlashMlaAttenOutTensor(q, oriKvVal, layoutQStr, layoutKvStr, ropeHeadDim,
+                                                                returnSoftmaxLse);
+    at::Tensor attenOut = std::get<0>(mixedQuantSparseFlashMlaAttenOut);
+    at::Tensor softmaxLse = std::get<1>(mixedQuantSparseFlashMlaAttenOut);
 
-    if (!atten_out.defined()) {
+    if (!attenOut.defined()) {
         printf("[aclnnMixedQuantSparseFlashMla] atten_out is nullptr!!!\n");
     } else {
         printf("[aclnnMixedQuantSparseFlashMla] atten_out 非空\n");
     }
-    if (!softmax_lse.defined()) {
+    if (!softmaxLse.defined()) {
         printf("[aclnnMixedQuantSparseFlashMla] softmax_lse is nullptr!!!\n");
     } else {
         printf("[aclnnMixedQuantSparseFlashMla] softmax_lse 非空\n");
     }
 
-    ACLNN_CMD(aclnnMixedQuantSparseFlashMla, q,
-        ori_kv, cmp_kv,
-        ori_sparse_indices, cmp_sparse_indices,
-        ori_block_table, cmp_block_table,
-        cu_seqlens_q, cu_seqlens_ori_kv,
-        cu_seqlens_cmp_kv, seqused_q,
-        seqused_ori_kv, seqused_cmp_kv,
-        cmp_residual_kv,
-        ori_topk_length, cmp_topk_length,
-        sinks, metadata,
-        quant_mode, rope_head_dim,
-        softmax_scale, cmp_ratio,
-        ori_mask_mode, cmp_mask_mode,
-        ori_win_left, ori_win_right,
-        layout_q_ptr, layout_kv_ptr,
-        topk_value_mode, return_softmax_lse,
-        atten_out, softmax_lse);
+    ACLNN_CMD(aclnnMixedQuantSparseFlashMla, q, oriKv, cmpKv, oriSparseIndices, cmpSparseIndices, oriBlockTable,
+              cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, sequsedOriKv, sequsedCmpKv,
+              cmpResidualKv, oriTopkLength, cmpTopkLength, sinks, metadata, quantMode, ropeHeadDim, softmaxScale,
+              cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight, layoutQPtr, layoutKvPtr, topkValueMode,
+              returnSoftmaxLse, attenOut, softmaxLse);
     printf("ACLNN_CMD end =========== \n");
-    return std::tuple<at::Tensor, at::Tensor>(atten_out, softmax_lse);
+    return std::tuple<at::Tensor, at::Tensor>(attenOut, softmaxLse);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("mixed_quant_sparse_flash_mla_metadata", &mixed_quant_sparse_flash_mla_metadata,
+    m.def("mixed_quant_sparse_flash_mla_metadata", &MixedQuantSparseFlashMlaMetadata,
           "mixed_quant_sparse_flash_mla_metadata");
-    m.def("mixed_quant_sparse_flash_mla", &mixed_quant_sparse_flash_mla, "mixed_quant_sparse_flash_mla");
+    m.def("mixed_quant_sparse_flash_mla", &MixedQuantSparseFlashMla, "mixed_quant_sparse_flash_mla");
 }
 } // namespace op_api

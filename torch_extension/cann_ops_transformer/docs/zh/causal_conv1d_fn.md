@@ -35,7 +35,7 @@
 cann_ops_transformer.causal_conv1d_fn(
     x, weight, bias, conv_states, query_start_loc,
     *,
-    cache_indices=None,     has_initial_state=None,
+    cache_indices=None, has_initial_state=None,
     activation="silu", pad_slot_id=-1, null_block_id=0,
     block_idx_first_scheduled_token=None,
     block_idx_last_scheduled_token=None,
@@ -71,7 +71,7 @@ cann_ops_transformer.causal_conv1d_fn(
 ## 约束说明
 
 - 该接口仅支持推理场景下使用。
-- 该接口支持单算子模式调用，图模式暂不支持。
+- 该接口支持单算子模式和图模式调用。
 - 不支持非连续Tensor。
 - `weight`的kW仅支持2、3、4。
 - `conv_states`的state_len必须 ≥ kW-1，num_cache_lines必须 ≥ batch（未提供cache_indices时）。
@@ -108,4 +108,40 @@ cann_ops_transformer.causal_conv1d_fn(
     )
     ```
 
-- 图模式调用（暂不支持）
+- 图模式调用
+
+    通过`torch.compile(backend="atc")`或`torchair`自动将算子转换为GE图算子，无需额外配置。
+
+    ```python
+    import torch
+    import torch_npu
+    import torchair
+    from cann_ops_transformer.ops import causal_conv1d_fn
+
+    torch_npu.npu.set_device(0)
+
+    B = 2
+    S = 16
+    D = 512
+    kW = 4
+
+    class CausalConv1dFnModel(torch.nn.Module):
+        def forward(self, x, weight, bias, conv_states, query_start_loc):
+            y = causal_conv1d_fn(
+                x, weight, bias, conv_states, query_start_loc,
+                activation="silu",
+            )
+            return y
+
+    model = CausalConv1dFnModel().npu()
+    npu_backend = torchair.get_npu_backend()
+    model = torch.compile(model, backend=npu_backend, dynamic=False)
+
+    x = torch.randn(B, S, D, device="npu", dtype=torch.float16)
+    weight = torch.randn(kW, D, device="npu", dtype=torch.float16)
+    bias = torch.randn(D, device="npu", dtype=torch.float16)
+    conv_states = torch.zeros(B, kW - 1, D, device="npu", dtype=torch.float16)
+    query_start_loc = torch.tensor([0, S, 2 * S], device="npu", dtype=torch.int32)
+
+    output = model(x, weight, bias, conv_states, query_start_loc)
+    ```

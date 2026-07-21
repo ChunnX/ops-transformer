@@ -15,4 +15,4 @@
 #include "../layout/matrix.hpp"
 #include "../layout/vector.hpp"
 
-#endif  // CATLASS_LAYOUT_LAYOUT_HPP
+#endif // CATLASS_LAYOUT_LAYOUT_HPP

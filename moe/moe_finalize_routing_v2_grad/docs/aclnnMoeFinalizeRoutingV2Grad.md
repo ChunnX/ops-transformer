@@ -21,7 +21,7 @@
   $$
   i : 0 \sim R * K - 1
   $$
-  
+
   $$
   j : 0 \sim H
   $$
@@ -43,7 +43,7 @@
   $$
 
   (3) scalesOptional不为空指针， biasOptional不为空指针：
-  
+
   $$
   gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i / K][i \% K]
   $$
@@ -350,7 +350,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_finalize_routing_v2_grad.h"
-#include <iostream>
+#include <cstdio>
 
 #define CHECK_RET(cond, return_expr)                                           \
   do {                                                                         \
@@ -482,7 +482,7 @@ int main() {
                         &gradExpandedX);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(gradScalesHostData, gradScalesShape, &gradScalesDeviceAddr, aclDataType::ACL_FLOAT, &gradScales);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);  
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;

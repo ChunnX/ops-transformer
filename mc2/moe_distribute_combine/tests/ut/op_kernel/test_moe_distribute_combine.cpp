@@ -21,10 +21,12 @@
 
 class MoeDistributeCombineTest : public testing::Test {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
         std::cout << "MoeDistributeCombineTest SetUp\n" << std::endl;
     }
-    static void TearDownTestCase() {
+    static void TearDownTestCase()
+    {
         std::cout << "MoeDistributeCombineTest TearDown\n" << std::endl;
     }
 };
@@ -35,11 +37,11 @@ TEST_F(MoeDistributeCombineTest, MoeDistributeCombineTest1000)
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 0;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
     size_t tilingSize = sizeof(MoeDistributeCombineTilingData);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    MoeDistributeCombineTilingData *tiling_data = reinterpret_cast<MoeDistributeCombineTilingData*>(tiling);
+    MoeDistributeCombineTilingData *tiling_data = reinterpret_cast<MoeDistributeCombineTilingData *>(tiling);
     tiling_data->moeDistributeCombineInfo.epWorldSize = 8;
     tiling_data->moeDistributeCombineInfo.tpWorldSize = 1;
     tiling_data->moeDistributeCombineInfo.epRankId = 0;
@@ -67,43 +69,45 @@ TEST_F(MoeDistributeCombineTest, MoeDistributeCombineTest1000)
     uint8_t *expandScales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *XOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
 
-    auto moeDistributeCombineWarrper = [] (GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
-        GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale,
-        GM_ADDR weightScale, GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-            moe_distribute_combine<false, TILINGKEY_NO_QUANT, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(expandX, expertIds, expandIdx, epSendCount, scales,
-                tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, XOut, workspaceGM, tilingGM);
-        };
-    ICPU_RUN_KF(moeDistributeCombineWarrper, 20, expandX, expertIds, expandIdx, epSendCount, scales, tpSendCount, 
+    auto moeDistributeCombineWarrper = [](GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
+                                          GM_ADDR scales, GM_ADDR tpSendCount, GM_ADDR xActiveMask,
+                                          GM_ADDR activationScale, GM_ADDR weightScale, GM_ADDR groupList,
+                                          GM_ADDR expandScales, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+        moe_distribute_combine<false, TILINGKEY_NO_QUANT, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(
+            expandX, expertIds, expandIdx, epSendCount, scales, tpSendCount, xActiveMask, activationScale, weightScale,
+            groupList, expandScales, XOut, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(moeDistributeCombineWarrper, 20, expandX, expertIds, expandIdx, epSendCount, scales, tpSendCount,
                 xActiveMask, activationScale, weightScale, groupList, expandScales, XOut, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)expandX);
-    AscendC::GmFree((void*)expertIds);
-    AscendC::GmFree((void*)expandIdx);
-    AscendC::GmFree((void*)epSendCount);
-    AscendC::GmFree((void*)tpSendCount);
-    AscendC::GmFree((void*)scales);
-    AscendC::GmFree((void*)xActiveMask);
-    AscendC::GmFree((void*)activationScale);
-    AscendC::GmFree((void*)weightScale);
-    AscendC::GmFree((void*)groupList);
-    AscendC::GmFree((void*)expandScales);
-    AscendC::GmFree((void*)XOut);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)expandX);
+    AscendC::GmFree((void *)expertIds);
+    AscendC::GmFree((void *)expandIdx);
+    AscendC::GmFree((void *)epSendCount);
+    AscendC::GmFree((void *)tpSendCount);
+    AscendC::GmFree((void *)scales);
+    AscendC::GmFree((void *)xActiveMask);
+    AscendC::GmFree((void *)activationScale);
+    AscendC::GmFree((void *)weightScale);
+    AscendC::GmFree((void *)groupList);
+    AscendC::GmFree((void *)expandScales);
+    AscendC::GmFree((void *)XOut);
 }
 
-//A2 TEST
+// A2 TEST
 TEST_F(MoeDistributeCombineTest, MoeDistributeCombineTest2000)
 {
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     size_t sysWorkspaceSize = 16 * 1024 * 1024;
     size_t usrWorkspaceSize = 0;
     size_t allWorkspaceSize = usrWorkspaceSize + sysWorkspaceSize;
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
     size_t tilingSize = sizeof(MoeDistributeCombineTilingData);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
 
-    MoeDistributeCombineA2TilingData *tiling_data = reinterpret_cast<MoeDistributeCombineA2TilingData*>(tiling);
+    MoeDistributeCombineA2TilingData *tiling_data = reinterpret_cast<MoeDistributeCombineA2TilingData *>(tiling);
     tiling_data->moeDistributeCombineInfo.epWorldSize = 8;
     tiling_data->moeDistributeCombineInfo.tpWorldSize = 0;
     tiling_data->moeDistributeCombineInfo.epRankId = 0;
@@ -131,27 +135,29 @@ TEST_F(MoeDistributeCombineTest, MoeDistributeCombineTest2000)
     uint8_t *expandScales = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
     uint8_t *XOut = (uint8_t *)AscendC::GmAlloc(1024 * sizeof(uint16_t));
 
-    auto moeDistributeCombineWarrper = [] (GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx,
-        GM_ADDR epSendCount, GM_ADDR scales, GM_ADDR tpSendCount, GM_ADDR xActiveMask, GM_ADDR activationScale,
-        GM_ADDR weightScale, GM_ADDR groupList, GM_ADDR expandScales, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
-            moe_distribute_combine<false, TILINGKEY_INT8_QUANT, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(expandX, expertIds, expandIdx, epSendCount, scales,
-                tpSendCount, xActiveMask, activationScale, weightScale, groupList, expandScales, XOut, workspaceGM, tilingGM);
-        };
-    ICPU_RUN_KF(moeDistributeCombineWarrper, 20, expandX, expertIds, expandIdx, epSendCount, scales, tpSendCount, 
+    auto moeDistributeCombineWarrper = [](GM_ADDR expandX, GM_ADDR expertIds, GM_ADDR expandIdx, GM_ADDR epSendCount,
+                                          GM_ADDR scales, GM_ADDR tpSendCount, GM_ADDR xActiveMask,
+                                          GM_ADDR activationScale, GM_ADDR weightScale, GM_ADDR groupList,
+                                          GM_ADDR expandScales, GM_ADDR XOut, GM_ADDR workspaceGM, GM_ADDR tilingGM) {
+        moe_distribute_combine<false, TILINGKEY_INT8_QUANT, TILINGKEY_TPL_MTE, TILINGKEY_TPL_A3>(
+            expandX, expertIds, expandIdx, epSendCount, scales, tpSendCount, xActiveMask, activationScale, weightScale,
+            groupList, expandScales, XOut, workspaceGM, tilingGM);
+    };
+    ICPU_RUN_KF(moeDistributeCombineWarrper, 20, expandX, expertIds, expandIdx, epSendCount, scales, tpSendCount,
                 xActiveMask, activationScale, weightScale, groupList, expandScales, XOut, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)expandX);
-    AscendC::GmFree((void*)expertIds);
-    AscendC::GmFree((void*)expandIdx);
-    AscendC::GmFree((void*)epSendCount);
-    AscendC::GmFree((void*)tpSendCount);
-    AscendC::GmFree((void*)scales);
-    AscendC::GmFree((void*)xActiveMask);
-    AscendC::GmFree((void*)activationScale);
-    AscendC::GmFree((void*)weightScale);
-    AscendC::GmFree((void*)groupList);
-    AscendC::GmFree((void*)expandScales);
-    AscendC::GmFree((void*)XOut);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)expandX);
+    AscendC::GmFree((void *)expertIds);
+    AscendC::GmFree((void *)expandIdx);
+    AscendC::GmFree((void *)epSendCount);
+    AscendC::GmFree((void *)tpSendCount);
+    AscendC::GmFree((void *)scales);
+    AscendC::GmFree((void *)xActiveMask);
+    AscendC::GmFree((void *)activationScale);
+    AscendC::GmFree((void *)weightScale);
+    AscendC::GmFree((void *)groupList);
+    AscendC::GmFree((void *)expandScales);
+    AscendC::GmFree((void *)XOut);
 }

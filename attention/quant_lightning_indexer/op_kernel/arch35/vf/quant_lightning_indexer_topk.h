@@ -21,8 +21,8 @@
 #else
 #include "../../../../lightning_indexer/op_kernel/lightning_indexer_common.h"
 #endif
-#if __has_include("../../../../lightning_indexer/arch35/vf/vf_topk_gather.h")
-#include "../../../../lightning_indexer/arch35/vf/vf_topk_gather.h"
+#if __has_include("../../../lightning_indexer/arch35/vf/vf_topk_gather.h")
+#include "../../../lightning_indexer/arch35/vf/vf_topk_gather.h"
 #else
 #include "../../../../lightning_indexer/op_kernel/arch35/vf/vf_topk_gather.h"
 #endif

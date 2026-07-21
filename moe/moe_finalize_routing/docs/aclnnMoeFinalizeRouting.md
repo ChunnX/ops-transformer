@@ -21,7 +21,7 @@
   $$
   expertid=expandedExpertIdx[i,k]
   $$
-    
+
   $$
   out(i,j)=x1_{i,j}+x2Optional_{i,j}+\sum_{k=0}^{K}(scales_{i,k}*(expandedX_{expandedRowIdx_{i+k*num_rows},j}+bias_{expertid,j}))
   $$
@@ -32,23 +32,23 @@
 
 ```Cpp
 aclnnStatus aclnnMoeFinalizeRoutingGetWorkspaceSize(
-  const aclTensor* expandedX, 
-  const aclTensor* x1, 
-  const aclTensor* x2Optional, 
-  const aclTensor* bias, 
-  const aclTensor* scales, 
-  const aclTensor* expandedRowIdx, 
-  const aclTensor* expandedExpertIdx, 
-  const aclTensor* out, 
-  uint64_t*        workspaceSize, 
+  const aclTensor* expandedX,
+  const aclTensor* x1,
+  const aclTensor* x2Optional,
+  const aclTensor* bias,
+  const aclTensor* scales,
+  const aclTensor* expandedRowIdx,
+  const aclTensor* expandedExpertIdx,
+  const aclTensor* out,
+  uint64_t*        workspaceSize,
   aclOpExecutor**  executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnMoeFinalizeRouting(
-  void*          workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor* executor, 
+  void*          workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor* executor,
   aclrtStream    stream)
 ```
 
@@ -270,6 +270,8 @@ aclnnStatus aclnnMoeFinalizeRouting(
 #include "aclnnop/aclnn_moe_finalize_routing.h"
 #include <iostream>
 #include <vector>
+#include <cstdio>
+
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -348,7 +350,7 @@ int main() {
   void* expandedExpertIdxAddr = nullptr;
   void* expandedRowIdxAddr = nullptr;
   void* outDeviceAddr = nullptr;
-  
+
   aclTensor* expandedX = nullptr;
   aclTensor* x1 = nullptr;
   aclTensor* x2Optional = nullptr;
@@ -382,7 +384,7 @@ int main() {
   // 创建scale aclTensor
   ret = CreateAclTensor(scalesHostData, scalesShape, &scalesDeviceAddr, aclDataType::ACL_FLOAT, &scales);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  
+
   // 创建expandedExpertIdx aclTensor
   ret = CreateAclTensor(expandedExpertIdxHostData, expandedExpertIdxShape, &expandedExpertIdxAddr,
                         aclDataType::ACL_INT32, &expandedExpertIdx);

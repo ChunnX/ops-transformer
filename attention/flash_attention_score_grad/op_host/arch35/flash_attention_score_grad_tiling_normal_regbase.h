@@ -26,29 +26,21 @@ namespace fag {
 
 #define TND_TILING_DATA_COMMON_ASSIGN(tilingData)                                                                      \
     do {                                                                                                               \
-        if (tilingData == nullptr) { \
-            OP_LOGE("InitTilingData", "InitTilingData failed."); \
-            return ge::GRAPH_FAILED; \
-        } \
-        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams; \
-        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams; \
-        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList; \
-        preTilingData_ = &tilingData->preTilingData; \
-        postTilingData_ = &tilingData->postTilingData; \
-        tndParam_ = &tilingData->tndParam; \
+        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams;                                                   \
+        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams;                                         \
+        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList;                                               \
+        preTilingData_ = &tilingData->preTilingData;                                                                   \
+        postTilingData_ = &tilingData->postTilingData;                                                                 \
+        tndParam_ = &tilingData->tndParam;                                                                             \
     } while (0)
 
 #define BASE_TILING_DATA_COMMON_ASSIGN(tilingData)                                                                     \
     do {                                                                                                               \
-        if (tilingData == nullptr) { \
-            OP_LOGE("InitTilingData", "InitTilingData failed."); \
-            return ge::GRAPH_FAILED; \
-        } \
-        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams; \
-        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams; \
-        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList; \
-        preTilingData_ = &tilingData->preTilingData; \
-        postTilingData_ = &tilingData->postTilingData; \
+        s1s2BNGS1S2BaseParams_ = &tilingData->s1s2BNGS1S2BaseParams;                                                   \
+        s1s2BNGS1S2SplitCoreParams_ = &tilingData->s1s2BNGS1S2SplitCoreParams;                                         \
+        s1s2BNGS1S2BlockNumList_ = &tilingData->s1s2BNGS1S2BlockNumList;                                               \
+        preTilingData_ = &tilingData->preTilingData;                                                                   \
+        postTilingData_ = &tilingData->postTilingData;                                                                 \
     } while (0)
 
 class FlashAttentionScoreGradTilingNormalRegbase : public TilingBaseClass {

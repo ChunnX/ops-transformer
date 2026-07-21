@@ -20,7 +20,7 @@ import pytest
 import torch
 import time
 import random
- 	 
+
 str_map_dict = {
     'True': True,
     'False': False,
@@ -76,9 +76,19 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 'testcase_name': lambda x: pd.NA if pd.isna(x) else str(x),
                 'T1': to_int_or_na,
                 'T2': to_int_or_na,
-                # 'T3': to_int_or_na,
+                'T3': to_int_or_na,
                 'S1': to_int_or_na,
                 'S2': to_int_or_na,
+                'B': to_int_or_na,
+                'N1': to_int_or_na,
+                'N2': to_int_or_na,
+                'D': to_int_or_na,
+                'K': to_int_or_na,
+                'ori_mask_mode': to_int_or_na,
+                'cmp_mask_mode': to_int_or_na,
+                'ori_win_left': to_int_or_na,
+                'ori_win_right': to_int_or_na,
+                'cmp_ratio': to_int_or_na,
                 'block_size1': to_int_or_na,
                 'block_size2': to_int_or_na,
                 # 'kv_quant_mode': to_int_or_na,
@@ -88,20 +98,31 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         df = df.astype({
             'T1': "Int64",
             'T2': "Int64",
-            # 'T3': "Int64",
+            'T3': "Int64",
             'S1': "Int64",
             'S2': "Int64",
+            'B': "Int64",
+            'N1': "Int64",
+            'N2': "Int64",
+            'D': "Int64",
+            'K': "Int64",
+            'ori_mask_mode': "Int64",
+            'cmp_mask_mode': "Int64",
+            'ori_win_left': "Int64",
+            'ori_win_right': "Int64",
+            'cmp_ratio': "Int64",
             'block_size1': "Int64",
             'block_size2': "Int64",
             # 'kv_quant_mode': "Int64",
         })
         # 处理可能为空的列
         default_None_columns = ["cu_seqlens_ori_kv","cu_seqlens_cmp_kv","T2","T3",
-                                "seqused_ori_kv","seqused_cmp_kv","cmp_residual_kv"]
+                                "seqused_ori_kv","seqused_cmp_kv","cmp_residual_kv",
+                                "q_datarange","ori_kv_datarange","cmp_kv_datarange"]
         for key in default_None_columns:
             if key not in df.columns:
                 df[key] = None
-        
+
         if "actlen_mode" not in df.columns:
             df["actlen_mode"] = 'full'
 
@@ -118,7 +139,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 "layout_q",
                 "layout_kv",
             ]
-            
+
             df["testcase_name"] = df[cols_to_combine].astype(str).agg("_".join, axis=1)
 
         # 定义必需的列名
@@ -136,7 +157,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         test_cases = []
         for _, row in df.iterrows():
             test_cases.append(row.to_dict())
-        
+
         print(test_cases)
 
         return test_cases
@@ -145,7 +166,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         pytest.skip(f"Failed to read Excel file: {e}", allow_module_level=True)
         return None
 
-def save_result(result, fulfill_percent, params, result_path='./result/sas_result.xlsx'):
+def save_result(result, fulfill_percent, params, result_path='./result/smla_result.xlsx'):
     result_path = Path(result_path)
     row_data = {
         **params,
@@ -157,7 +178,7 @@ def save_result(result, fulfill_percent, params, result_path='./result/sas_resul
     if result_path.exists():
         # 读取现有数据
         df = pd.read_excel(result_path)
-        
+
         # 检查列名是否一致
         if set(df.columns) != set(row_data.keys()):
             print("警告：变量名与Excel列名不匹配！")
@@ -165,14 +186,14 @@ def save_result(result, fulfill_percent, params, result_path='./result/sas_resul
             print(f"变量名: {list(row_data.keys())}")
             print("请检查变量名或Excel文件")
             return False
-        
+
         # 追加新行
         new_df = pd.DataFrame([row_data])
         df = pd.concat([df, new_df], ignore_index=True)
     else:
         # 文件不存在，创建新的DataFrame
         df = pd.DataFrame([row_data])
-    
+
     # 保存到Excel
     df.to_excel(result_path, index=False)
 
@@ -187,7 +208,7 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
         list: 参数组合列表
     """
     param_combinations = []
-    
+
     for params in ENABLED_PARAMS:
         # 确保所有参数都存在，缺失的用默认值填充
         param_values = {
@@ -247,7 +268,7 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
         else:
             # 生成参数名和值列表
             values_lists = [param_values[name] for name in param_names]
-    
+
         # 生成所有组合
         for combo in itertools.product(*values_lists):
             combination = dict(zip(param_names, combo))
@@ -257,14 +278,14 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
 def generate_cu_seqlens(seqused: list) -> list:
     """
     根据seqused生成cu_seqlens
-    
+
     参数:
         seqused: 一维list，包含n个元素，表示每个序列的长度
-        
+
     返回:
         cu_seqlens: 一维list，长度为n+1，第一个元素为0，
                     后续每个元素是seqused对应位置及之前元素的累加和
-                    
+
     示例:
         >>> seqused = [2, 2, 2, 2, 2]
         >>> cu_seqlens = generate_cu_seqlens(seqused)
@@ -273,23 +294,23 @@ def generate_cu_seqlens(seqused: list) -> list:
     """
     cu_seqlens = [0]  # 第一个元素总是0
     current_sum = 0
-    
+
     for length in seqused:
         current_sum += length
         cu_seqlens.append(current_sum)
-    
+
     return cu_seqlens
 
 def generate_seqused(cu_seqlens: list) -> list:
     """
     根据cu_seqlens生成seqused
-    
+
     参数:
         cu_seqlens: 一维list，长度为n+1，表示累积序列长度
-        
+
     返回:
         seqused: 一维list，长度为n，表示每个序列的真实长度
-        
+
     示例:
         >>> cu_seqlens = [0, 2, 4, 6, 8, 10]
         >>> generate_seqused(cu_seqlens)
@@ -321,9 +342,9 @@ def fill_random_used_len(SMax, B, qk_equal_len=True, random_seq=False):
 def generate_case_with_default_param(param_combinations):
     case_param = param_combinations.copy()
     case_param.setdefault('testcase_name', "case_" + str(int(time.time() * 1000000)))
-    case_param.update({'q_datarange': ast.literal_eval(param_combinations.get('q_datarange')) if param_combinations.get('q_datarange') is not None else [-10, 10]})
-    case_param.update({'ori_kv_datarange': ast.literal_eval(param_combinations.get('ori_kv_datarange')) if param_combinations.get('ori_kv_datarange') is not None else [-10, 10]})
-    case_param.update({'cmp_kv_datarange': ast.literal_eval(param_combinations.get('cmp_kv_datarange')) if param_combinations.get('cmp_kv_datarange') is not None else [-10, 10]})
+    case_param.update({'q_datarange': ast.literal_eval(param_combinations.get('q_datarange')) if isinstance(param_combinations.get('q_datarange'), str) else (param_combinations.get('q_datarange') if param_combinations.get('q_datarange') is not None else [-10, 10])})
+    case_param.update({'ori_kv_datarange': ast.literal_eval(param_combinations.get('ori_kv_datarange')) if isinstance(param_combinations.get('ori_kv_datarange'), str) else (param_combinations.get('ori_kv_datarange') if param_combinations.get('ori_kv_datarange') is not None else [-10, 10])})
+    case_param.update({'cmp_kv_datarange': ast.literal_eval(param_combinations.get('cmp_kv_datarange')) if isinstance(param_combinations.get('cmp_kv_datarange'), str) else (param_combinations.get('cmp_kv_datarange') if param_combinations.get('cmp_kv_datarange') is not None else [-10, 10])})
 
     # 测试用，数据预填充，TND场景下cu_seqlens如果没有传入，根据T和S自动填充随机值
     # 常用参数提取

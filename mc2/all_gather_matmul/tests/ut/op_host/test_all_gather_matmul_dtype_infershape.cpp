@@ -31,26 +31,28 @@ protected:
 TEST_P(AllGatherMatmulInferDataTypeTest, param)
 {
     auto param = GetParam();
-    std::vector<void*> inputDataTypes;
-    if (param.inputInstance[0] == 1) inputDataTypes.emplace_back(&param.x1);
-    if (param.inputInstance[1] == 1) inputDataTypes.emplace_back(&param.x2);
-    if (param.inputInstance[2] == 1) inputDataTypes.emplace_back(&param.bias);
+    std::vector<void *> inputDataTypes;
+    if (param.inputInstance[0] == 1)
+        inputDataTypes.emplace_back(&param.x1);
+    if (param.inputInstance[1] == 1)
+        inputDataTypes.emplace_back(&param.x2);
+    if (param.inputInstance[2] == 1)
+        inputDataTypes.emplace_back(&param.bias);
 
-    auto contextHolder = gert::InferDataTypeContextFaker()
-        .SetOpType("AllGatherMatmul")
-        .IrInstanceNum(param.inputInstance, param.outputInstance)
-        .InputDataTypes(inputDataTypes)
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeAttrs({
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
-            {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gather_index)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
-            {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_gather_out)}
-        })
-        .Build();
+    auto contextHolder =
+        gert::InferDataTypeContextFaker()
+            .SetOpType("AllGatherMatmul")
+            .IrInstanceNum(param.inputInstance, param.outputInstance)
+            .InputDataTypes(inputDataTypes)
+            .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+            .NodeAttrs({{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
+                        {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
+                        {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
+                        {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gather_index)},
+                        {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
+                        {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
+                        {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_gather_out)}})
+            .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("AllGatherMatmul")->infer_datatype;
@@ -62,10 +64,8 @@ TEST_P(AllGatherMatmulInferDataTypeTest, param)
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    AllGatherMatmul,
-    AllGatherMatmulInferDataTypeTest,
+    AllGatherMatmul, AllGatherMatmulInferDataTypeTest,
     testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulInferDataTypeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    PrintCaseInfoString<AllGatherMatmulInferDataTypeUtParam>
-);
+    PrintCaseInfoString<AllGatherMatmulInferDataTypeUtParam>);
 
 } // namespace AllGatherMatmulUT

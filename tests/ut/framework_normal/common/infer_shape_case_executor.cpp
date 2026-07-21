@@ -28,51 +28,72 @@
         std::unique_ptr<gert::Tensor> curTensor = std::make_unique<gert::Tensor>(                                      \
             infershapeContextPara.inputTensorDesc_[index].shape_,                                                      \
             gert::StorageFormat(infershapeContextPara.inputTensorDesc_[index].format_,                                 \
-             infershapeContextPara.inputTensorDesc_[index].format_,                                                    \
-             gert::ExpandDimsType()),                                                                                  \
-            gert::TensorPlacement::kOnHost,                                                                            \
-            infershapeContextPara.inputTensorDesc_[index].dtype_,                                                      \
+                                infershapeContextPara.inputTensorDesc_[index].format_, gert::ExpandDimsType()),        \
+            gert::TensorPlacement::kOnHost, infershapeContextPara.inputTensorDesc_[index].dtype_,                      \
             infershapeContextPara.inputTensorDesc_[index].isConst_ ?                                                   \
-            infershapeContextPara.inputTensorDesc_[index].constValue_:                                                 \
-            nullptr);                                                                                                  \
+                infershapeContextPara.inputTensorDesc_[index].constValue_ :                                            \
+                nullptr);                                                                                              \
         inputTensors.push_back(curTensor.get());                                                                       \
         inputTensorsKeepAlive.push_back(std::move(curTensor));                                                         \
     }                                                                                                                  \
     for (size_t index = 0; index < outputNum; index++) {                                                               \
-        contextFaker.NodeOutputTd(index,                                                                               \
-                                  infershapeContextPara.outputTensorDesc_[index].dtype_,                               \
+        contextFaker.NodeOutputTd(index, infershapeContextPara.outputTensorDesc_[index].dtype_,                        \
                                   infershapeContextPara.outputTensorDesc_[index].format_,                              \
                                   infershapeContextPara.outputTensorDesc_[index].format_);                             \
     }                                                                                                                  \
     contextFaker.InputTensors(inputTensors);                                                                           \
-    for (auto& attrInfo : infershapeContextPara.attrs_) {                                                              \
+    for (auto &attrInfo : infershapeContextPara.attrs_) {                                                              \
         switch (attrInfo.attr_.type_) {                                                                                \
-            case Ops::Transformer::AnyValue::ValueType::VT_BOOL: {                                                            \
-                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<bool*>(attrInfo.attr_.valuePtr_.get()));       \
-                break;}                                                                                                \
-            case Ops::Transformer::AnyValue::ValueType::VT_INT: {                                                             \
-                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<int64_t*>(attrInfo.attr_.valuePtr_.get()));    \
-                break;}                                                                                                \
-            case Ops::Transformer::AnyValue::ValueType::VT_FLOAT: {                                                           \
-                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<float*>(attrInfo.attr_.valuePtr_.get()));      \
-                break;}                                                                                                \
-            case Ops::Transformer::AnyValue::ValueType::VT_STRING: {                                                          \
-                contextFaker.Attr(attrInfo.attrName_, ge::AscendString(reinterpret_cast<std::string*>(attrInfo.attr_.valuePtr_.get())->c_str()));\
-                break;}                                                                                                \
-            case Ops::Transformer::AnyValue::ValueType::VT_LIST_BOOL: {                                                       \
-                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<std::vector<bool>*>(attrInfo.attr_.valuePtr_.get()));\
-                break;}                                                                                                \
-            case Ops::Transformer::AnyValue::ValueType::VT_LIST_INT: {                                                        \
-                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<std::vector<int64_t>*>(attrInfo.attr_.valuePtr_.get()));\
-                break;}                                                                                                \
-            case Ops::Transformer::AnyValue::ValueType::VT_LIST_LIST_INT: {                                                   \
-                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<std::vector<std::vector<int64_t>>*>(attrInfo.attr_.valuePtr_.get()));\
-                break;}                                                                                                \
-            case Ops::Transformer::AnyValue::ValueType::VT_LIST_FLOAT: {                                                      \
-                contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<std::vector<float>*>(attrInfo.attr_.valuePtr_.get()));\
-                break;}                                                                                                \
+            case Ops::Transformer::AnyValue::ValueType::VT_BOOL:                                                       \
+                {                                                                                                      \
+                    contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<bool *>(attrInfo.attr_.valuePtr_.get()));  \
+                    break;                                                                                             \
+                }                                                                                                      \
+            case Ops::Transformer::AnyValue::ValueType::VT_INT:                                                        \
+                {                                                                                                      \
+                    contextFaker.Attr(attrInfo.attrName_,                                                              \
+                                      *reinterpret_cast<int64_t *>(attrInfo.attr_.valuePtr_.get()));                   \
+                    break;                                                                                             \
+                }                                                                                                      \
+            case Ops::Transformer::AnyValue::ValueType::VT_FLOAT:                                                      \
+                {                                                                                                      \
+                    contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<float *>(attrInfo.attr_.valuePtr_.get())); \
+                    break;                                                                                             \
+                }                                                                                                      \
+            case Ops::Transformer::AnyValue::ValueType::VT_STRING:                                                     \
+                {                                                                                                      \
+                    contextFaker.Attr(                                                                                 \
+                        attrInfo.attrName_,                                                                            \
+                        ge::AscendString(reinterpret_cast<std::string *>(attrInfo.attr_.valuePtr_.get())->c_str()));   \
+                    break;                                                                                             \
+                }                                                                                                      \
+            case Ops::Transformer::AnyValue::ValueType::VT_LIST_BOOL:                                                  \
+                {                                                                                                      \
+                    contextFaker.Attr(attrInfo.attrName_,                                                              \
+                                      *reinterpret_cast<std::vector<bool> *>(attrInfo.attr_.valuePtr_.get()));         \
+                    break;                                                                                             \
+                }                                                                                                      \
+            case Ops::Transformer::AnyValue::ValueType::VT_LIST_INT:                                                   \
+                {                                                                                                      \
+                    contextFaker.Attr(attrInfo.attrName_,                                                              \
+                                      *reinterpret_cast<std::vector<int64_t> *>(attrInfo.attr_.valuePtr_.get()));      \
+                    break;                                                                                             \
+                }                                                                                                      \
+            case Ops::Transformer::AnyValue::ValueType::VT_LIST_LIST_INT:                                              \
+                {                                                                                                      \
+                    contextFaker.Attr(attrInfo.attrName_, *reinterpret_cast<std::vector<std::vector<int64_t>> *>(      \
+                                                              attrInfo.attr_.valuePtr_.get()));                        \
+                    break;                                                                                             \
+                }                                                                                                      \
+            case Ops::Transformer::AnyValue::ValueType::VT_LIST_FLOAT:                                                 \
+                {                                                                                                      \
+                    contextFaker.Attr(attrInfo.attrName_,                                                              \
+                                      *reinterpret_cast<std::vector<float> *>(attrInfo.attr_.valuePtr_.get()));        \
+                    break;                                                                                             \
+                }                                                                                                      \
             default:                                                                                                   \
-                std::cout << "[ERROR]" << __FILE__ << ":" << __LINE__ << "The ValueType " << attrInfo.attr_.type_ << "is not supported!" << std::endl;\
+                std::cout << "[ERROR]" << __FILE__ << ":" << __LINE__ << "The ValueType " << attrInfo.attr_.type_      \
+                          << "is not supported!" << std::endl;                                                         \
         }                                                                                                              \
     }                                                                                                                  \
     auto contextHolder = contextFaker.SetOpType(infershapeContextPara.opName_.c_str()).Build();                        \
@@ -82,7 +103,8 @@
     /* 3. check infershape func */                                                                                     \
     auto infershapeRet = infershapeFunc(contextHolder.GetContext());
 
-static std::vector<int64_t> ToVector(const gert::Shape& shape) {
+static std::vector<int64_t> ToVector(const gert::Shape &shape)
+{
     size_t shapeSize = shape.GetDimNum();
     std::vector<int64_t> shapeVec(shapeSize, 0);
 
@@ -92,9 +114,8 @@ static std::vector<int64_t> ToVector(const gert::Shape& shape) {
     return shapeVec;
 }
 
-void ExecuteTestCase(gert::InfershapeContextPara&             infershapeContextPara, 
-                     ge::graphStatus                          expectResult,
-                     const std::vector<std::vector<int64_t>>& expectOutputShape)
+void ExecuteTestCase(gert::InfershapeContextPara &infershapeContextPara, ge::graphStatus expectResult,
+                     const std::vector<std::vector<int64_t>> &expectOutputShape)
 {
     DO_INFERSHAPE(infershapeContextPara);
 

@@ -1,0 +1,106 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+# -----------------------------------------------------------------------------------------------------------
+# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# CANN Open Software License Agreement Version 2.0 (the "License").
+# Please refer to the License for details. You may not use this file except in compliance with the License.
+# THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+# INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+# See LICENSE in the root of the software repository for the full text of the License.
+# -----------------------------------------------------------------------------------------------------------
+
+import os
+from pathlib import Path
+
+import pandas as pd
+import pytest
+
+pytest.importorskip("torch_npu")
+
+from batch import stem_indexer_pt_loadprocess
+import result_compare_method
+
+
+TEST_INPUT_PATH = os.environ.get("STEM_INDEXER_PT_DIR", "./pt_path")
+PT_DIR = TEST_INPUT_PATH
+RESULT_PATH = Path("result.xlsx")
+MAX_RESULT_DETAIL_LEN = 2048
+RESULT_COLUMNS = ["case_id", "testcase_name", "expected_result", "result", "detail"]
+
+
+def collect_testcase_files(pt_dir):
+    if not os.path.isdir(pt_dir):
+        print(f"StemIndexer pt directory does not exist: {pt_dir}")
+        return []
+    testcase_files = [
+        os.path.join(pt_dir, pt_file)
+        for pt_file in sorted(os.listdir(pt_dir))
+        if pt_file.endswith(".pt")
+    ]
+    print(f"Found {len(testcase_files)} StemIndexer pt testcase files.")
+    return testcase_files
+
+
+TESTCASE_FILES = collect_testcase_files(PT_DIR)
+
+
+def append_result(case, result, detail=""):
+    row_data = {
+        "case_id": case["case_id"],
+        "testcase_name": case["testcase_name"],
+        "expected_result": case["expected_result"],
+        "result": result,
+        "detail": detail,
+    }
+    if RESULT_PATH.exists():
+        df = pd.read_excel(RESULT_PATH)
+        if set(df.columns) != set(RESULT_COLUMNS):
+            print("Warning: result.xlsx columns mismatch, skip appending StemIndexer result.")
+            print(f"Existing columns: {list(df.columns)}")
+            print(f"Expected columns: {RESULT_COLUMNS}")
+            return False
+        df = pd.concat([df, pd.DataFrame([row_data], columns=RESULT_COLUMNS)], ignore_index=True)
+    else:
+        df = pd.DataFrame([row_data], columns=RESULT_COLUMNS)
+    df.to_excel(RESULT_PATH, index=False)
+    return True
+
+
+def format_error_detail(err):
+    detail = f"{type(err).__name__}: {err}"
+    if len(detail) > MAX_RESULT_DETAIL_LEN:
+        return detail[:MAX_RESULT_DETAIL_LEN] + "...[truncated]"
+    return detail
+
+
+def load_case(filepath):
+    return stem_indexer_pt_loadprocess.torch_load_cpu(filepath)["case"]
+
+
+@pytest.mark.ci
+@pytest.mark.parametrize("testcase_file", TESTCASE_FILES)
+def test_stem_indexer_batch(testcase_file):
+    case = load_case(testcase_file)
+    if case["testcase_name"] == "invalid_sparse_indices_shape":
+        pytest.skip("Torch custom op API does not expose output tensor shape injection.")
+
+    if case["expected_result"] == "FAIL":
+        try:
+            with pytest.raises(Exception):
+                stem_indexer_pt_loadprocess.stem_indexer_process(testcase_file, device_id=0)
+        except pytest.fail.Exception as err:
+            append_result(case, "FAIL", format_error_detail(err))
+            raise
+        append_result(case, "PASS", "Expected failure was raised.")
+        return
+
+    try:
+        expected_indices, expected_seq_len, npu_result, case, test_data = stem_indexer_pt_loadprocess.stem_indexer_process(
+            testcase_file, device_id=0, return_test_data=True
+        )
+        result_compare_method.assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, case, test_data)
+        append_result(case, "PASS")
+    except Exception as err:
+        append_result(case, "FAIL", format_error_detail(err))
+        raise

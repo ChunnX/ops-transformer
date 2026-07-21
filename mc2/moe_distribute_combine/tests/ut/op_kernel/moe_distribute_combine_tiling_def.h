@@ -13,17 +13,17 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "../../../../moe_distribute_combine_v2/op_kernel/moe_distribute_combine_tiling.h"
 
-inline void InitMoeDistributeCombineTilingData(uint8_t* tiling, MoeDistributeCombineTilingData* constData)
+inline void InitMoeDistributeCombineTilingData(uint8_t *tiling, MoeDistributeCombineTilingData *constData)
 {
     memcpy(constData, tiling, sizeof(MoeDistributeCombineTilingData));
 }
 
-#define GET_TILING_DATA(tilingData, tilingArg)                                                        \
-    MoeDistributeCombineTilingData tilingData;                                                 \
+#define GET_TILING_DATA(tilingData, tilingArg)                                                                         \
+    MoeDistributeCombineTilingData tilingData;                                                                         \
     InitMoeDistributeCombineTilingData(tilingArg, &tilingData)
 
-#define GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineTilingData, tilingData, tilingArg)       \
-    MoeDistributeCombineTilingData tilingData;                                                 \
+#define GET_TILING_DATA_WITH_STRUCT(MoeDistributeCombineTilingData, tilingData, tilingArg)                             \
+    MoeDistributeCombineTilingData tilingData;                                                                         \
     InitMoeDistributeCombineTilingData(tilingArg, &tilingData)
 
 #endif

@@ -30,7 +30,7 @@ bool Mc2MatMulV3AswBasicApiTiling::IsCapable()
 {
     uint64_t mCore = MathUtil::CeilDivision(args_.mValue, BASIC_BLOCK_SIZE_256);
     uint64_t nCore = MathUtil::CeilDivision(args_.nValue, BASIC_BLOCK_SIZE_256);
-    if (mCore * nCore > compileInfo_.aicNum){
+    if (mCore * nCore > compileInfo_.aicNum) {
         OP_LOGD(args_.opName, "mCnt_[%lu] and nCnt_[%lu] is not enter in Mc2MatMulV3 basic api", mCore, nCore);
         return false;
     }
@@ -57,5 +57,5 @@ uint64_t Mc2MatMulV3AswBasicApiTiling::GetTilingKey() const
         .SetApiLevel(Mc2MatMulV3ApiLevel::BASIC_LEVEL)
         .GetTilingKey();
 }
-} // namespace mc2_matmul_v3
+} // namespace mc2_matmul_v3_advanced
 } // namespace optiling

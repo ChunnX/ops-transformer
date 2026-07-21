@@ -47,55 +47,56 @@ using AscendC::CrossCoreWaitFlag;
 #define SOFTMAX_EXP_BUF_SIZE (SOFTMAX_EXP_BUF_BYTES / sizeof(T))
 #define SOFTMAX_SUM_BUF_SIZE (SOFTMAX_SUM_BUF_BYTES / sizeof(T))
 
-template <typename IFAT> class IncreFlashAttentionAttenPreloadDD {
-struct ExtraInfo {
-    uint32_t loop = 0;
-    uint32_t bIdx = 0;
-    uint32_t gIdx = 0;
-    uint32_t s1Idx = 0;
-    uint32_t n2Idx = 0;
-    uint32_t s2Idx = 0;
-    uint32_t bn2IdxInCurCore = 0;
-    uint32_t curSInnerLoopTimes = 0;
-    uint64_t tensorAOffset = 0;
-    uint64_t tensorBOffset = 0;
-    uint64_t attenOutOffset = 0;
-    uint64_t pseShiftCoreOffset = 0;
-    uint64_t attenMaskOffset = 0;
-    uint64_t antiqKeyParamOffset = 0;
-    uint64_t antiqValueParamOffset = 0;
-    uint64_t antiqKeyParamOffsetPerToken = 0;
-    uint64_t antiqValueParamOffsetPerToken = 0;
-    uint64_t perChannelQuantOffset = 0ULL;
-    uint32_t actualSingleProcessSInnerSize = 0;
-    uint32_t actualSingleProcessSInnerSizeAlign = 0;
-    bool isFirstSInnerLoop = false;
-    bool isChangeBatch = false;
-    uint32_t s2BatchOffset = 0;
-    uint32_t s1Size = 0;
-    uint32_t actS1Size = 0;
-    uint32_t s2Size = 0;
-    uint32_t gSize = 0;
-    uint32_t mSize = 0;
-    uint32_t mSizeV = 0;
-    uint32_t mSizeVStart = 0;
-    uint64_t actSeqLenQ = 0;
-};
+template <typename IFAT>
+class IncreFlashAttentionAttenPreloadDD {
+    struct ExtraInfo {
+        uint32_t loop = 0;
+        uint32_t bIdx = 0;
+        uint32_t gIdx = 0;
+        uint32_t s1Idx = 0;
+        uint32_t n2Idx = 0;
+        uint32_t s2Idx = 0;
+        uint32_t bn2IdxInCurCore = 0;
+        uint32_t curSInnerLoopTimes = 0;
+        uint64_t tensorAOffset = 0;
+        uint64_t tensorBOffset = 0;
+        uint64_t attenOutOffset = 0;
+        uint64_t pseShiftCoreOffset = 0;
+        uint64_t attenMaskOffset = 0;
+        uint64_t antiqKeyParamOffset = 0;
+        uint64_t antiqValueParamOffset = 0;
+        uint64_t antiqKeyParamOffsetPerToken = 0;
+        uint64_t antiqValueParamOffsetPerToken = 0;
+        uint64_t perChannelQuantOffset = 0ULL;
+        uint32_t actualSingleProcessSInnerSize = 0;
+        uint32_t actualSingleProcessSInnerSizeAlign = 0;
+        bool isFirstSInnerLoop = false;
+        bool isChangeBatch = false;
+        uint32_t s2BatchOffset = 0;
+        uint32_t s1Size = 0;
+        uint32_t actS1Size = 0;
+        uint32_t s2Size = 0;
+        uint32_t gSize = 0;
+        uint32_t mSize = 0;
+        uint32_t mSizeV = 0;
+        uint32_t mSizeVStart = 0;
+        uint64_t actSeqLenQ = 0;
+    };
 
-struct TaskContext {
-    uint32_t bidx;
-    uint32_t gidx;
-    uint32_t s1idx;
-    uint32_t s2idx;
-    uint32_t s2loops;
-    uint32_t s2SizeTail;
-    uint32_t s1Size;
-    uint32_t s2Size;
-    uint32_t isFirstLoop;
-    uint32_t nidx;
-    uint64_t actS1Size = 1;
-    uint64_t actSeqLenQ = 0;
-};
+    struct TaskContext {
+        uint32_t bidx;
+        uint32_t gidx;
+        uint32_t s1idx;
+        uint32_t s2idx;
+        uint32_t s2loops;
+        uint32_t s2SizeTail;
+        uint32_t s1Size;
+        uint32_t s2Size;
+        uint32_t isFirstLoop;
+        uint32_t nidx;
+        uint64_t actS1Size = 1;
+        uint64_t actSeqLenQ = 0;
+    };
 
 public:
     __aicore__ inline IncreFlashAttentionAttenPreloadDD(){};
@@ -103,9 +104,9 @@ public:
                                 __gm__ uint8_t *pseShift, __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ,
                                 __gm__ uint8_t *actualSeqLengths, __gm__ uint8_t *blockTable,
                                 __gm__ uint8_t *kvPaddingSize, const IncreFlashAttentionMetaData *__restrict metadata,
-                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse,
-                                __gm__ uint8_t *workspace, const optiling::IncreFlashAttentionTilingData *__restrict tiling,
-                                TPipe *tPipe, bool isPrefix = false);
+                                __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+                                const optiling::IncreFlashAttentionTilingData *__restrict tiling, TPipe *tPipe,
+                                bool isPrefix = false);
     __aicore__ inline void InitQuant(__gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2,
                                      __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2,
                                      __gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
@@ -113,18 +114,18 @@ public:
                                      __gm__ uint8_t *valueAntiquantScale, __gm__ uint8_t *valueAntiquantOffset,
                                      __gm__ uint8_t *workspace);
     __aicore__ inline void InitAntiquant(__gm__ uint8_t *antiquantScale, __gm__ uint8_t *antiquantOffset,
-                                     __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset,
-                                     __gm__ uint8_t *valueAntiquantScale, __gm__ uint8_t *valueAntiquantOffse);
-    __aicore__ inline void InitPostQuant(__gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2,
-                                     __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2);
+                                         __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset,
+                                         __gm__ uint8_t *valueAntiquantScale, __gm__ uint8_t *valueAntiquantOffse);
+    __aicore__ inline void InitPostQuant(__gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1,
+                                         __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
+                                         __gm__ uint8_t *quantOffset2);
     __aicore__ inline void Process();
 
     // 中间计算数据类型为float，高精度模式
     using T = float;
 
     __aicore__ inline void Bmm2ResCopyOut(const ExtraInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t startRow,
-                                                         uint32_t dealRowCount, uint32_t columnCount,
-                                                         uint32_t actualColumnCount);
+                                          uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     using Q_T = typename IFAT::queryType;
     using KV_T = typename IFAT::kvType;
     using OUT_T = typename IFAT::outputType;
@@ -134,8 +135,8 @@ public:
     static constexpr bool FLASH_DECODE = IFAT::flashDecode;
     static constexpr LAYOUT LAYOUT_T = IFAT::layout;
     static constexpr LAYOUT KV_LAYOUT_T = IFAT::kvLayout;
-    static constexpr uint8_t PER_CHANNEL_MODE = 0; // 伪量化: K V per-channel
-    static constexpr uint8_t PER_TOKEN_MODE = 1; // 伪量化: K V per-token
+    static constexpr uint8_t PER_CHANNEL_MODE = 0;       // 伪量化: K V per-channel
+    static constexpr uint8_t PER_TOKEN_MODE = 1;         // 伪量化: K V per-token
     static constexpr uint8_t PER_CHANNEL_TOKEN_MODE = 2; // 伪量化: K per-channel and V per-token
     static constexpr uint8_t ANTIQUANT_MODE = IFAT::antiquantMode;
 
@@ -154,6 +155,7 @@ public:
     using L0C_T = typename AscendC::Conditional<ANTIQUANT, int32_t, T>::type;
 
     uint64_t blockNum = 0;
+
 protected:
     const optiling::IncreFlashAttentionTilingData *__restrict tilingData = nullptr;
     const IncreFlashAttentionMetaData *__restrict metaData_ = nullptr;
@@ -197,8 +199,8 @@ protected:
     GlobalTensor<int64_t> kvPaddingSizeGm;
 
     // queue
-    TBuf<> inputBuf1; // 32K, inque
-    TBuf<> inputBuf2; // 16K, inque
+    TBuf<> inputBuf1;  // 32K, inque
+    TBuf<> inputBuf2;  // 16K, inque
     TBuf<> outputBuf1; // 32K, outque
     TBuf<> outputBuf2; // 8K, outque
     static constexpr uint64_t SYNC_INPUT_BUF1_FLAG = 2;
@@ -228,16 +230,16 @@ protected:
     TBuf<> tmpBuff3; // 2K
 
     // 常驻tbuf
-    TBuf<> vec2ResBuff; // 16k 伪量化场景
-    TBuf<> antiqScaleBuff; // 4K
-    TBuf<> antiqOffsetBuff; // 4K
-    TBuf<> qAmaxBuff; // PRE_LOAD_NUM_DD * (2K + 256B)
-    TBuf<> softmaxResAmaxBuff; // 2K + 256B
-    TBuf<> qRowSumBuff; // 2K + 256B
-    TBuf<> softmaxResRowSumBuff; // 2K + 256B
-    TBuf<> softmaxMaxBuff; // PRE_LOAD_NUM_DD * 2K
-    TBuf<> softmaxExpBuff; // PRE_LOAD_NUM_DD * 2K
-    TBuf<> softmaxSumBuff; // PRE_LOAD_NUM_DD * 2K
+    TBuf<> vec2ResBuff;           // 16k 伪量化场景
+    TBuf<> antiqScaleBuff;        // 4K
+    TBuf<> antiqOffsetBuff;       // 4K
+    TBuf<> qAmaxBuff;             // PRE_LOAD_NUM_DD * (2K + 256B)
+    TBuf<> softmaxResAmaxBuff;    // 2K + 256B
+    TBuf<> qRowSumBuff;           // 2K + 256B
+    TBuf<> softmaxResRowSumBuff;  // 2K + 256B
+    TBuf<> softmaxMaxBuff;        // PRE_LOAD_NUM_DD * 2K
+    TBuf<> softmaxExpBuff;        // PRE_LOAD_NUM_DD * 2K
+    TBuf<> softmaxSumBuff;        // PRE_LOAD_NUM_DD * 2K
     TBuf<> softmaxMaxDefaultBuff; // 2K
     TBuf<> softmaxSumDefaultBuff; // 2K
 
@@ -262,9 +264,9 @@ protected:
     static constexpr float quantScaleC2O2 = 1.0 / (1024 * 254 * 127);
 
     // L1
-    static constexpr uint32_t L1Q_BLOCK_SIZE = 64 * 1024; // 64k
+    static constexpr uint32_t L1Q_BLOCK_SIZE = 64 * 1024;  // 64k
     static constexpr uint32_t L1KP_BLOCK_SIZE = 64 * 1024; // 64k
-    static constexpr uint32_t L1V_BLOCK_SIZE = 64 * 1024; // 64k
+    static constexpr uint32_t L1V_BLOCK_SIZE = 64 * 1024;  // 64k
 
     // L0
     static constexpr uint32_t L0A_PP_SIZE = (32 * 1024);
@@ -452,31 +454,41 @@ protected:
     uint32_t bn2s2LoopTimes = 0;
     __aicore__ inline void InitValueGm(uint32_t bIdx);
     __aicore__ inline void InitKeyGm(uint32_t bIdx);
-    __aicore__ inline void CalcParams(uint32_t loop, ExtraInfo& info, TaskContext &task);
-    __aicore__ inline void ComputeMm1(ExtraInfo& info);
-    __aicore__ inline void ProcessVec1L(ExtraInfo& info);
-    __aicore__ inline void ComputeMm2(ExtraInfo& info);
-    __aicore__ inline void ProcessVec2L(ExtraInfo& info);
-      __aicore__ inline void SetLoopTimes();
-    __aicore__ inline void QueryPreProcessL(ExtraInfo& info);
+    __aicore__ inline void CalcParams(uint32_t loop, ExtraInfo &info, TaskContext &task);
+    __aicore__ inline void ComputeMm1(ExtraInfo &info);
+    __aicore__ inline void ProcessVec1L(ExtraInfo &info);
+    __aicore__ inline void ComputeMm2(ExtraInfo &info);
+    __aicore__ inline void ProcessVec2L(ExtraInfo &info);
+    __aicore__ inline void SetLoopTimes();
+    __aicore__ inline void QueryPreProcessL(ExtraInfo &info);
 
-    __aicore__ inline void CopyInMm1AToL1(LocalTensor<KV_T>& aL1Tensor, ExtraInfo& info);
-    __aicore__ inline void CopyInMm1BToL1(LocalTensor<KV_T>& bL1Tensor, ExtraInfo& info, uint32_t nCopyIdx, uint32_t nCopyRowCount, uint32_t nActCopyRowCount, uint32_t nActCopyRowCountAlign);
-    __aicore__ inline void CopyInMm1BToL1ForPA(LocalTensor<KV_T>& bL1Tensor, uint64_t keyGmBaseOffset, uint32_t copyTotalRowCnt, uint32_t copyStartRowCnt, uint32_t nActCopyRowCount);
-    __aicore__ inline void LoadDataMm1A(ExtraInfo& info, LocalTensor<KV_T>& aL0Tensor, LocalTensor<KV_T>& aL1Tensor);
-    __aicore__ inline void LoadDataMm1B(LocalTensor<KV_T>& bL0Tensor, LocalTensor<KV_T>& bL1Tensor);
+    __aicore__ inline void CopyInMm1AToL1(LocalTensor<KV_T> &aL1Tensor, ExtraInfo &info);
+    __aicore__ inline void CopyInMm1BToL1(LocalTensor<KV_T> &bL1Tensor, ExtraInfo &info, uint32_t nCopyIdx,
+                                          uint32_t nCopyRowCount, uint32_t nActCopyRowCount,
+                                          uint32_t nActCopyRowCountAlign);
+    __aicore__ inline void CopyInMm1BToL1ForPA(LocalTensor<KV_T> &bL1Tensor, uint64_t keyGmBaseOffset,
+                                               uint32_t copyTotalRowCnt, uint32_t copyStartRowCnt,
+                                               uint32_t nActCopyRowCount);
+    __aicore__ inline void LoadDataMm1A(ExtraInfo &info, LocalTensor<KV_T> &aL0Tensor, LocalTensor<KV_T> &aL1Tensor);
+    __aicore__ inline void LoadDataMm1B(LocalTensor<KV_T> &bL0Tensor, LocalTensor<KV_T> &bL1Tensor);
 
-    __aicore__ inline void CopyInMm2AToL1(LocalTensor<KV_T>& aL1Tensor, ExtraInfo& info, uint32_t mCopyIdx, uint32_t mCopyRowCount, uint32_t mActCopyRowCount, uint32_t kCopyIdx, uint32_t kCopyRowCount, uint32_t kActCopyRowCount);
-    __aicore__ inline void CopyInMm2BToL1(LocalTensor<KV_T>& bL1Tensor, ExtraInfo& info, uint32_t kCopyIdx, uint32_t kCopyRowCount, uint32_t kActCopyRowCount);
-    __aicore__ inline void CopyInMm2BToL1ForPA(LocalTensor<KV_T>& bL1Tensor, uint64_t valueGmBaseOffset, uint32_t copyTotalRowCnt, uint32_t copyStartRowCnt, uint32_t kActCopyRowCount);
+    __aicore__ inline void CopyInMm2AToL1(LocalTensor<KV_T> &aL1Tensor, ExtraInfo &info, uint32_t mCopyIdx,
+                                          uint32_t mCopyRowCount, uint32_t mActCopyRowCount, uint32_t kCopyIdx,
+                                          uint32_t kCopyRowCount, uint32_t kActCopyRowCount);
+    __aicore__ inline void CopyInMm2BToL1(LocalTensor<KV_T> &bL1Tensor, ExtraInfo &info, uint32_t kCopyIdx,
+                                          uint32_t kCopyRowCount, uint32_t kActCopyRowCount);
+    __aicore__ inline void CopyInMm2BToL1ForPA(LocalTensor<KV_T> &bL1Tensor, uint64_t valueGmBaseOffset,
+                                               uint32_t copyTotalRowCnt, uint32_t copyStartRowCnt,
+                                               uint32_t kActCopyRowCount);
     __aicore__ inline void LoadDataMm2A(LocalTensor<KV_T> aL0Tensor, LocalTensor<KV_T> aL1Tensor, uint32_t kSize);
-    __aicore__ inline void LoadDataMm2B(LocalTensor<KV_T>& bL0Tensor, LocalTensor<KV_T>& bL1Tensor);
+    __aicore__ inline void LoadDataMm2B(LocalTensor<KV_T> &bL0Tensor, LocalTensor<KV_T> &bL1Tensor);
 
     bool curActSeqLenIsZero = false;
 
-    template <typename T> __aicore__ inline T Align(T num, T rnd)
+    template <typename T>
+    __aicore__ inline T Align(T num, T rnd)
     {
-        return (((rnd) == 0) ? 0 : (((num) + (rnd) - 1) / (rnd) * (rnd)));
+        return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
     }
     __aicore__ inline void InitTilingData();
     __aicore__ inline void InitCalcParams();
@@ -495,7 +507,7 @@ protected:
     __aicore__ inline void CalcSInnerOffsetAndParams(const uint32_t sInnerLoopIdx);
 
     __aicore__ inline void AttenMaskCopyIn(uint64_t offset, uint32_t dealRowCount, uint32_t actualColumnCount);
-    __aicore__ inline void AttenMaskCopyIn(const ExtraInfo& info);
+    __aicore__ inline void AttenMaskCopyIn(const ExtraInfo &info);
 
     __aicore__ inline void CopyAntiquantScale(LocalTensor<T> &castUb, GlobalTensor<Q_T> srcGm, uint64_t offset);
 
@@ -509,21 +521,24 @@ protected:
                                           uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void AbsRowMax(LocalTensor<T> &tmpAMaxRes, LocalTensor<T> &srcUb, LocalTensor<T> tmpAUb,
                                      uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void AntiquantAIterExpand(GlobalTensor<KV_T> dstGm, LocalTensor<half> &tmpA1, LocalTensor<half> &tmpA2,
-                                                uint32_t calcSize, bool isFirst, uint64_t outOffset);
-    __aicore__ inline void AntiquantMatmulPreProcess(ExtraInfo& info, GlobalTensor<KV_T> dstGm, LocalTensor<T> aMaxResUb,
-                                                     LocalTensor<T> srcUb, LocalTensor<T> tmpAFloorUb,
-                                                     uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+    __aicore__ inline void AntiquantAIterExpand(GlobalTensor<KV_T> dstGm, LocalTensor<half> &tmpA1,
+                                                LocalTensor<half> &tmpA2, uint32_t calcSize, bool isFirst,
+                                                uint64_t outOffset);
+    __aicore__ inline void AntiquantMatmulPreProcess(ExtraInfo &info, GlobalTensor<KV_T> dstGm,
+                                                     LocalTensor<T> aMaxResUb, LocalTensor<T> srcUb,
+                                                     LocalTensor<T> tmpAFloorUb, uint32_t startRow,
+                                                     uint32_t dealRowCount, uint32_t columnCount,
                                                      uint32_t actualColumnCount);
-    __aicore__ inline void AntiquantSoftmaxResPreProcess(ExtraInfo& info, GlobalTensor<KV_T> dstGm, LocalTensor<T> srcUb,
-                                                         LocalTensor<T> tmpAFloorUb, uint32_t startRow,
-                                                         uint32_t dealRowCount, uint32_t columnCount,
+    __aicore__ inline void AntiquantSoftmaxResPreProcess(ExtraInfo &info, GlobalTensor<KV_T> dstGm,
+                                                         LocalTensor<T> srcUb, LocalTensor<T> tmpAFloorUb,
+                                                         uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
                                                          uint32_t actualColumnCount);
-    __aicore__ inline void DealQueryPreProcessBaseBlock(ExtraInfo& info, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
-                                                        uint32_t actualColumnCount);
-    __aicore__ inline void DealQueryPreProcessBaseBlockPerToken(ExtraInfo& info, uint32_t startRow, uint32_t dealRowCount,
-                                                                uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void QueryPreProcessInner(ExtraInfo& info);
+    __aicore__ inline void DealQueryPreProcessBaseBlock(ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount,
+                                                        uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void DealQueryPreProcessBaseBlockPerToken(ExtraInfo &info, uint32_t startRow,
+                                                                uint32_t dealRowCount, uint32_t columnCount,
+                                                                uint32_t actualColumnCount);
+    __aicore__ inline void QueryPreProcessInner(ExtraInfo &info);
 
     __aicore__ inline void FlashDecodeCompute();
     __aicore__ inline void SysPrefixSetMMOrgShape();
@@ -532,51 +547,52 @@ protected:
     __aicore__ inline void SysPrefixBmm1Compute(const uint32_t bn2Idx, const uint32_t sInnerLoopIdx);
     __aicore__ inline void SysPrefixBmm2Compute(const uint32_t bn2Idx, const uint32_t sInnerLoopIdx);
 
-    __aicore__ inline void DealBmm1ResBaseBlock(ExtraInfo& info, uint32_t startRow, uint32_t dealRowCount,
+    __aicore__ inline void DealBmm1ResBaseBlock(ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount,
                                                 uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void DealAntiqBmm1ResBaseBlock(ExtraInfo& info, uint32_t startRow,
+    __aicore__ inline void DealAntiqBmm1ResBaseBlock(ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount,
+                                                     uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void DealAntiqBmm1ResBaseBlockPerToken(ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount,
+                                                             uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void AntiquantMatmulResCombine(ExtraInfo &info, LocalTensor<T> bmmResUb,
+                                                     GlobalTensor<MM_OUT_T> srcGm, uint32_t startRow,
                                                      uint32_t dealRowCount, uint32_t columnCount,
                                                      uint32_t actualColumnCount);
-    __aicore__ inline void DealAntiqBmm1ResBaseBlockPerToken(ExtraInfo& info, uint32_t startRow,
-                                                             uint32_t dealRowCount, uint32_t columnCount,
-                                                             uint32_t actualColumnCount);
-    __aicore__ inline void AntiquantMatmulResCombine(ExtraInfo& info, LocalTensor<T> bmmResUb, GlobalTensor<MM_OUT_T> srcGm,
-                                                     uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
-                                                     uint32_t actualColumnCount);
-    __aicore__ inline void AntiquantMatmulResCombineDD(ExtraInfo& info, LocalTensor<T> bmmResUb, GlobalTensor<MM_OUT_T> srcGm,
-                                                     uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
-                                                     uint32_t actualColumnCount, float scaleC);
-    __aicore__ inline void AntiquantMM2ResCombine(const ExtraInfo& info, LocalTensor<MM_OUT_T> bmmResUb, GlobalTensor<MM_OUT_T> srcGm,
-                                                     uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
-                                                     uint32_t actualColumnCount);
-    __aicore__ inline void ProcessVec1Inner(ExtraInfo& info);
+    __aicore__ inline void AntiquantMatmulResCombineDD(ExtraInfo &info, LocalTensor<T> bmmResUb,
+                                                       GlobalTensor<MM_OUT_T> srcGm, uint32_t startRow,
+                                                       uint32_t dealRowCount, uint32_t columnCount,
+                                                       uint32_t actualColumnCount, float scaleC);
+    __aicore__ inline void AntiquantMM2ResCombine(const ExtraInfo &info, LocalTensor<MM_OUT_T> bmmResUb,
+                                                  GlobalTensor<MM_OUT_T> srcGm, uint32_t startRow,
+                                                  uint32_t dealRowCount, uint32_t columnCount,
+                                                  uint32_t actualColumnCount);
+    __aicore__ inline void ProcessVec1Inner(ExtraInfo &info);
     __aicore__ inline void PreProcessVec1(uint32_t sInnerLoopIdx);
 
-    __aicore__ inline void DealBmm2ResBaseBlock(ExtraInfo& info, uint32_t startRow, uint32_t dealRowCount,
+    __aicore__ inline void DealBmm2ResBaseBlock(ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount,
                                                 uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void DealAntiqBmm2ResBaseBlock(ExtraInfo& info, uint32_t startRow,
-                                                     uint32_t dealRowCount, uint32_t columnCount,
-                                                     uint32_t actualColumnCount);
-    __aicore__ inline void DealAntiqBmm2ResBaseBlockPerToken(ExtraInfo& info,  uint32_t startRow,
-                                                             uint32_t dealRowCount, uint32_t columnCount,
-                                                             uint32_t actualColumnCount);
-    __aicore__ inline void ProcessVec2Inner(ExtraInfo& info);
+    __aicore__ inline void DealAntiqBmm2ResBaseBlock(ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount,
+                                                     uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void DealAntiqBmm2ResBaseBlockPerToken(ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount,
+                                                             uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void ProcessVec2Inner(ExtraInfo &info);
 
-    __aicore__ inline void SoftmaxFlashV2Compute(ExtraInfo& info, LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb,
-                                                 uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+    __aicore__ inline void SoftmaxFlashV2Compute(ExtraInfo &info, LocalTensor<T> &mmResUb,
+                                                 LocalTensor<uint8_t> &softmaxTmpUb, uint32_t startRow,
+                                                 uint32_t dealRowCount, uint32_t columnCount,
                                                  uint32_t actualColumnCount);
     __aicore__ inline bool IsSkipAttenMask(const ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount);
-    __aicore__ inline void PseShiftCopyIn(ExtraInfo& info, uint32_t startRow, uint32_t rowCount, uint32_t actualColumnCount);
-    __aicore__ inline void ElewiseCompute(ExtraInfo& info, LocalTensor<T> &mmResUb, TBuf<> &tmpBuf, uint32_t startRow,
+    __aicore__ inline void PseShiftCopyIn(ExtraInfo &info, uint32_t startRow, uint32_t rowCount,
+                                          uint32_t actualColumnCount);
+    __aicore__ inline void ElewiseCompute(ExtraInfo &info, LocalTensor<T> &mmResUb, TBuf<> &tmpBuf, uint32_t startRow,
                                           uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
 
-    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
-                                           uint32_t columnCount, uint32_t actualColumnCount);
-    __aicore__ inline void Bmm2DataCopyOutNcon(const ExtraInfo& info, LocalTensor<OUT_T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
-                                           uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb, uint32_t startRow,
+                                           uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void Bmm2DataCopyOutNcon(const ExtraInfo &info, LocalTensor<OUT_T> &attenOutUb, uint32_t startRow,
+                                               uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
 
-    __aicore__ inline void Bmm2CastAndCopyOut(const ExtraInfo& info, LocalTensor<T> &bmm2ResUb, uint32_t startRow, uint32_t dealRowCount,
-                                              uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void Bmm2CastAndCopyOut(const ExtraInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t startRow,
+                                              uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
 
     template <typename RT>
     __aicore__ inline void DealInvalidRows(const ExtraInfo &info, LocalTensor<RT> &attenOutUb, uint32_t startRow,
@@ -586,15 +602,16 @@ protected:
     __aicore__ inline void CopyLseIn(uint32_t startRow, uint32_t dealRowCount);
     __aicore__ inline void ComputeLogSumExpAndCopyToGm(LocalTensor<T> &softmaxMaxUb, LocalTensor<T> &softmaxSumUb);
     __aicore__ inline void SoftmaxLseCopyOut(LocalTensor<T> &softmaxMaxUb, LocalTensor<T> &softmaxSumUb);
-    __aicore__ inline void Bmm2FDDataCopyOut(const ExtraInfo& info, LocalTensor<T> &bmm2ResUb, uint32_t startRow, uint32_t dealRowCount,
-                                             uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void Bmm2FDDataCopyOut(const ExtraInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t startRow,
+                                             uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void ComputeScaleValue(LocalTensor<T> &lseSum, LocalTensor<T> &lseMax, uint32_t startRow,
                                              uint32_t dealRowCount);
     __aicore__ inline void ReduceFinalRes(LocalTensor<T> &dst, LocalTensor<T> &lseLocal, uint32_t startRow,
                                           uint32_t dealRowCount);
     __aicore__ inline void CopyFinalResOut(LocalTensor<T> &accumOutLocal, uint32_t startRow, uint32_t dealRowCount);
-    __aicore__ inline void PostQuant(uint64_t perChannelQuantOffset, LocalTensor<T> &bmm2ResUb, LocalTensor<int8_t> &bmm2ResUbInt8, uint32_t startRow,
-                                     uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void PostQuant(uint64_t perChannelQuantOffset, LocalTensor<T> &bmm2ResUb,
+                                     LocalTensor<int8_t> &bmm2ResUbInt8, uint32_t startRow, uint32_t dealRowCount,
+                                     uint32_t columnCount, uint32_t actualColumnCount);
     __aicore__ inline void InitAllZeroOutput(uint32_t bIdx, uint32_t n2Idx);
     __aicore__ inline void SysPrefixInitAllZeroOutput();
     __aicore__ inline void InitAllZeroInt8Output(uint32_t bIdx, uint32_t n2Idx);
@@ -603,11 +620,12 @@ protected:
     __aicore__ inline void CopyFixedUbToGm(const GlobalTensor<T> &dst, const LocalTensor<T> &src, size_t size);
     __aicore__ inline void SoftmaxLseOutput(LocalTensor<T> &lse);
 
-    __aicore__ inline void DealKvInt4ColumnOdd(LocalTensor<T> mmResUb, uint32_t dealRowCount,
-        uint32_t columnCount, uint32_t actualColumnCount);
+    __aicore__ inline void DealKvInt4ColumnOdd(LocalTensor<T> mmResUb, uint32_t dealRowCount, uint32_t columnCount,
+                                               uint32_t actualColumnCount);
 };
 
-template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitTilingData()
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitTilingData()
 {
     if (metaData_ != nullptr) {
         singleProcessSInnerSize = metaData_->singleProcessSInnerSize;
@@ -617,8 +635,8 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadD
         formerCoreNum = metaData_->formerCoreNum;
         splitKVNum = metaData_->s2;
         sInnerLoopSize = metaData_->sInnerLoopSize;
-        gSizeSub = metaData_->groupSplitSize; //切块大小Gi
-        s1SizeSub = metaData_->s1SplitSize; //切块大小Si
+        gSizeSub = metaData_->groupSplitSize; // 切块大小Gi
+        s1SizeSub = metaData_->s1SplitSize;   // 切块大小Si
         accumOutSize = metaData_->accumOutSize;
         logSumExpSize = metaData_->logSumExpSize;
     } else {
@@ -629,8 +647,8 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadD
         formerCoreNum = tilingData->increFlashAttentionSingleCoreParams.formerCoreNum;
         splitKVNum = tilingData->splitKVParams.s2;
         sInnerLoopSize = tilingData->splitKVParams.sInnerLoopSize;
-        gSizeSub = tilingData->increFlashAttentionSingleCoreParams.groupSplitSize; //切块大小Gi
-        s1SizeSub = tilingData->increFlashAttentionSingleCoreParams.s1SplitSize; //切块大小Si
+        gSizeSub = tilingData->increFlashAttentionSingleCoreParams.groupSplitSize; // 切块大小Gi
+        s1SizeSub = tilingData->increFlashAttentionSingleCoreParams.s1SplitSize;   // 切块大小Si
         accumOutSize = tilingData->splitKVParams.accumOutSize;
         logSumExpSize = tilingData->splitKVParams.logSumExpSize;
     }
@@ -684,14 +702,15 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadD
     kvCacheBlockSize = tilingData->baseParams.blockSize;
 }
 
-template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitBuffers()
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitBuffers()
 {
     if ASCEND_IS_AIV {
         pipe->InitBuffer(inputBuf1, BUFFER_SIZE_BYTE_32K);
         pipe->InitBuffer(inputBuf2, BUFFER_SIZE_BYTE_16K);
         pipe->InitBuffer(outputBuf1, BUFFER_SIZE_BYTE_16K);
         pipe->InitBuffer(vec2ResBuff, BUFFER_SIZE_BYTE_16K);
-        
+
         pipe->InitBuffer(outputBuf2, BUFFER_SIZE_BYTE_8K);
 
         // tmpBuff
@@ -718,7 +737,6 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadD
         pipe->InitBuffer(softmaxSumDefaultBuff, BUFFER_SIZE_BYTE_512B);
 #endif
     } else {
-
         // L1
         pipe->InitBuffer(tmpBufL1Q, L1Q_BLOCK_SIZE);
         qL1Buffers = tmpBufL1Q.Get<KV_T>();
@@ -740,7 +758,7 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadD
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ,
-    __gm__ uint8_t *actualSeqLengths)
+                                                                                 __gm__ uint8_t *actualSeqLengths)
 {
     actualLenQDims = tilingData->baseParams.actualLenQDims;
     actualLenDims = tilingData->baseParams.actualLenDims;
@@ -752,13 +770,14 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitActualSeqLen
     }
 }
 
-template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitAllZeroInt8Output(uint32_t bIdx, uint32_t n2Idx)
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitAllZeroInt8Output(uint32_t bIdx, uint32_t n2Idx)
 {
 }
 
 template <typename IFAT>
 __aicore__ inline uint64_t IncreFlashAttentionAttenPreloadDD<IFAT>::GetQueryOffSetBySIdx(uint32_t bIdx, uint32_t sIdx,
-    uint32_t n2Idx, uint32_t gIdx)
+                                                                                         uint32_t n2Idx, uint32_t gIdx)
 {
     uint64_t sBase = bIdx * qSeqSize;
     if constexpr (LAYOUT_T == LAYOUT::TND) {
@@ -775,8 +794,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitAllZeroOutpu
         InitAllZeroInt8Output(bIdx, n2Idx);
     } else {
         if constexpr (LAYOUT_T == LAYOUT::BNSD) {
-            uint64_t attenOutOffset = bIdx * kvHeadNum * gSize * qSeqSize * headDim +           //B轴偏移
-                                      n2Idx * gSize * qSeqSize * headDim;     //N2轴偏移
+            uint64_t attenOutOffset = bIdx * kvHeadNum * gSize * qSeqSize * headDim + // B轴偏移
+                                      n2Idx * gSize * qSeqSize * headDim;             // N2轴偏移
             matmul::InitOutput<OUT_T>(attentionOutGm[attenOutOffset], gSize * qSeqSize * headDim, 0);
         } else if constexpr (LAYOUT_T == LAYOUT::BSND || LAYOUT_T == LAYOUT::BSH || LAYOUT_T == LAYOUT::TND) {
             for (int s1Idx = 0; s1Idx < curActualSeqLenQ; s1Idx++) {
@@ -805,7 +824,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::GetTndActualSeqL
     }
 }
 
-template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::GetActualSeqLen(uint32_t bIdx, uint32_t s1Idx)
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::GetActualSeqLen(uint32_t bIdx, uint32_t s1Idx)
 {
     if (actualLenDims == 0) {
         curActualSeqLen = kvSeqSize;
@@ -859,7 +879,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealActSeqLenIsZ
     }
 }
 
-template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::UpdateInnerLoopCond()
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::UpdateInnerLoopCond()
 {
     if (curActualSeqLen == 0) {
         curActSeqLenIsZero = true;
@@ -929,10 +950,9 @@ template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Init(
     __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value, __gm__ uint8_t *pseShift,
     __gm__ uint8_t *attenMask, __gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengths,
-    __gm__ uint8_t *blockTable, __gm__ uint8_t *kvPaddingSize, 
-    const IncreFlashAttentionMetaData *__restrict metaData, __gm__ uint8_t *attentionOut,
-    __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace, const optiling::IncreFlashAttentionTilingData *__restrict tiling,
-    TPipe *tPipe, bool isPrefix)
+    __gm__ uint8_t *blockTable, __gm__ uint8_t *kvPaddingSize, const IncreFlashAttentionMetaData *__restrict metaData,
+    __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
+    const optiling::IncreFlashAttentionTilingData *__restrict tiling, TPipe *tPipe, bool isPrefix)
 {
     if ASCEND_IS_AIV {
         tmpBlockIdx = GetBlockIdx(); // vec:0-47
@@ -996,7 +1016,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Init(
     if constexpr (ANTIQUANT) {
         if constexpr (KVINT4) {
             queryPreProcessResGm.SetGlobalBuffer(
-                (__gm__ KV_T *)(workspace + offset + (aiCoreIdx * dbWorkspaceRatio * bmm2ResUbSize * sizeof(KV_T) >> 1)));
+                (__gm__ KV_T *)(workspace + offset +
+                                (aiCoreIdx * dbWorkspaceRatio * bmm2ResUbSize * sizeof(KV_T) >> 1)));
             offset += (blockNum * dbWorkspaceRatio * bmm2ResUbSize * sizeof(KV_T) >> 1);
         } else {
             queryPreProcessResGm.SetGlobalBuffer(
@@ -1006,7 +1027,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Init(
     }
 
     mm1ResGm.SetGlobalBuffer(
-            (__gm__ MM_OUT_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * mmResUbSize * sizeof(MM_OUT_T)));
+        (__gm__ MM_OUT_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * mmResUbSize * sizeof(MM_OUT_T)));
     offset += blockNum * dbWorkspaceRatio * mmResUbSize * sizeof(MM_OUT_T);
 
     if constexpr (KVINT4) {
@@ -1021,16 +1042,16 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Init(
 
 
     mm2ResGm.SetGlobalBuffer(
-            (__gm__ MM_OUT_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * bmm2ResUbSize * sizeof(MM_OUT_T)));
+        (__gm__ MM_OUT_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * bmm2ResUbSize * sizeof(MM_OUT_T)));
     offset += blockNum * dbWorkspaceRatio * bmm2ResUbSize * sizeof(MM_OUT_T);
 
     if constexpr (ANTIQUANT) {
         vec2ResGm.SetGlobalBuffer(
-                (__gm__ MM_OUT_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio* bmm2ResUbSize * sizeof(MM_OUT_T)));
+            (__gm__ MM_OUT_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * bmm2ResUbSize * sizeof(MM_OUT_T)));
         offset += blockNum * dbWorkspaceRatio * bmm2ResUbSize * sizeof(MM_OUT_T);
     } else {
         vec2ResGm.SetGlobalBuffer(
-                (__gm__ MM_OUT_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio* bmm2ResUbSize * sizeof(T)));
+            (__gm__ MM_OUT_T *)(workspace + offset + aiCoreIdx * dbWorkspaceRatio * bmm2ResUbSize * sizeof(T)));
         offset += blockNum * dbWorkspaceRatio * bmm2ResUbSize * sizeof(MM_OUT_T);
     }
     offset += blockNum * dbWorkspaceRatio * bmm2ResUbSize * sizeof(T);
@@ -1086,7 +1107,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitQuant(
     __gm__ uint8_t *keyAntiquantScale, __gm__ uint8_t *keyAntiquantOffset, __gm__ uint8_t *valueAntiquantScale,
     __gm__ uint8_t *valueAntiquantOffset, __gm__ uint8_t *workspace)
 {
-    InitAntiquant(antiquantScale, antiquantOffset, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale, valueAntiquantOffset);
+    InitAntiquant(antiquantScale, antiquantOffset, keyAntiquantScale, keyAntiquantOffset, valueAntiquantScale,
+                  valueAntiquantOffset);
     InitPostQuant(deqScale1, quantScale1, deqScale2, quantScale2, quantOffset2);
 }
 
@@ -1136,8 +1158,10 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitAntiquant(
     }
 }
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitPostQuant(__gm__ uint8_t *deqScale1,
-    __gm__ uint8_t *quantScale1, __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2, __gm__ uint8_t *quantOffset2)
+__aicore__ inline void
+IncreFlashAttentionAttenPreloadDD<IFAT>::InitPostQuant(__gm__ uint8_t *deqScale1, __gm__ uint8_t *quantScale1,
+                                                       __gm__ uint8_t *deqScale2, __gm__ uint8_t *quantScale2,
+                                                       __gm__ uint8_t *quantOffset2)
 {
     if constexpr (POST_QUANT) {
         if (!isPerChnU8Out && !isOutQuantTypeBf16) {
@@ -1187,26 +1211,28 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitPostQuant(__
     }
 }
 
-template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitCalcParams()
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitCalcParams()
 {
     bn2LoopTimes = 1U;
 }
 
-template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitCalcParamsEach()
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::InitCalcParamsEach()
 {
     if (metaData_ != nullptr) {
         bn2LoopTimes = metaData_->coreSidxEnd[aiCoreIdx + 1] - metaData_->coreSidxEnd[aiCoreIdx];
         beforeBlockSplitBn2Nums = metaData_->coreSidxEnd[aiCoreIdx];
     } else {
-        bn2LoopTimes = tilingData->increFlashAttentionCoreParams.coreSidxEnd[aiCoreIdx + 1] - tilingData->increFlashAttentionCoreParams.coreSidxEnd[aiCoreIdx];
+        bn2LoopTimes = tilingData->increFlashAttentionCoreParams.coreSidxEnd[aiCoreIdx + 1] -
+                       tilingData->increFlashAttentionCoreParams.coreSidxEnd[aiCoreIdx];
         beforeBlockSplitBn2Nums = tilingData->increFlashAttentionCoreParams.coreSidxEnd[aiCoreIdx];
     }
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AttenMaskCopyIn(uint64_t offset,
-                                                                                     uint32_t dealRowCount,
-                                                                                     uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AttenMaskCopyIn(uint64_t offset, uint32_t dealRowCount,
+                                                                                uint32_t actualColumnCount)
 {
     LocalTensor<bool> maskUb = inputBuf1.Get<bool>();
     attenMaskSizeAlign = Align(actualColumnCount, 32U);
@@ -1236,18 +1262,18 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AttenMaskCopyIn(
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AttenMaskCopyIn(const ExtraInfo& info)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AttenMaskCopyIn(const ExtraInfo &info)
 {
-    #define ATTENMASK_STRIDE 2048U
+#define ATTENMASK_STRIDE 2048U
     uint32_t offset;
     {
         int32_t delta =
             info.s1Idx * s1SizeSub - info.s2Idx * singleProcessSInnerSize + info.s2Size - info.actSeqLenQ; // s1idx = 0
         if (delta < 0) {
-            offset = (-delta) < (int32_t)info.s1Size ? (-delta) : info.s1Size; //min (-delta, s1Size)
+            offset = (-delta) < (int32_t)info.s1Size ? (-delta) : info.s1Size; // min (-delta, s1Size)
         } else {
             offset = (delta < (int32_t)singleProcessSInnerSize ? delta : singleProcessSInnerSize) *
-                    ATTENMASK_STRIDE; // min(delta, s2inner)
+                     ATTENMASK_STRIDE; // min(delta, s2inner)
         }
     }
 
@@ -1268,8 +1294,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AttenMaskCopyIn(
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiquantScale(LocalTensor<T> &castUb,
-                                                                                        GlobalTensor<Q_T> srcGm,
-                                                                                        uint64_t offset)
+                                                                                   GlobalTensor<Q_T> srcGm,
+                                                                                   uint64_t offset)
 {
     if (antiquantPerHeadFlag || antiquantPerTensorFlag == 1) {
         if constexpr (AscendC::IsSameType<Q_T, half>::value) {
@@ -1303,8 +1329,10 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiquantSca
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiquantParamsPerTokenHead(
-    GlobalTensor<ANTIQ_PARAMS_T> srcGm, uint64_t offset, uint32_t columnCount) {
+__aicore__ inline void
+IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiquantParamsPerTokenHead(GlobalTensor<ANTIQ_PARAMS_T> srcGm,
+                                                                         uint64_t offset, uint32_t columnCount)
+{
     LocalTensor<ANTIQ_PARAMS_T> dstUb = inputBuf1.Get<ANTIQ_PARAMS_T>();
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
     DataCopy(dstUb, srcGm[offset], columnCount);
@@ -1350,10 +1378,10 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiquantPar
 }
 
 template <typename IFAT>
-__aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiqQuery(LocalTensor<T> &queryCastUb, uint64_t qOffset,
-                                                             uint32_t dealRowCount, uint32_t columnCount,
-                                                             uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiqQuery(LocalTensor<T> &queryCastUb,
+                                                                               uint64_t qOffset, uint32_t dealRowCount,
+                                                                               uint32_t columnCount,
+                                                                               uint32_t actualColumnCount)
 {
     uint32_t qTypeElementSize = BYTE_BLOCK / sizeof(Q_T);
     DataCopyExtParams copyInParams;
@@ -1379,10 +1407,10 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAntiqQuery(LocalTensor<T> &queryCas
 }
 
 template <typename IFAT>
-__aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::AbsRowMax(LocalTensor<T> &tmpAMaxRes, LocalTensor<T> &srcUb,
-                                                        LocalTensor<T> tmpAUb, uint32_t dealRowCount,
-                                                        uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AbsRowMax(LocalTensor<T> &tmpAMaxRes,
+                                                                          LocalTensor<T> &srcUb, LocalTensor<T> tmpAUb,
+                                                                          uint32_t dealRowCount, uint32_t columnCount,
+                                                                          uint32_t actualColumnCount)
 {
     Abs(tmpAUb, srcUb, dealRowCount * columnCount);
     PipeBarrier<PIPE_V>();
@@ -1395,8 +1423,8 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::AbsRowMax(LocalTensor<T> &tmpAMaxRes, L
 template <typename IFAT>
 __aicore__ inline void
 IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantAIterExpand(GlobalTensor<KV_T> dstGm, LocalTensor<half> &tmpA1,
-                                                                   LocalTensor<half> &tmpA2, uint32_t calcSize,
-                                                                   bool isFirst, uint64_t outOffset)
+                                                              LocalTensor<half> &tmpA2, uint32_t calcSize, bool isFirst,
+                                                              uint64_t outOffset)
 {
     if (!isFirst) {
         Sub(tmpA2, tmpA1, tmpA2, calcSize);
@@ -1419,9 +1447,10 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantAIterExpand(GlobalTensor<KV_T>
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMatmulPreProcess(ExtraInfo& info,
-    GlobalTensor<KV_T> dstGm, LocalTensor<T> aMaxResUb, LocalTensor<T> srcUb, LocalTensor<T> tmpAFloorUb,
-    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMatmulPreProcess(
+    ExtraInfo &info, GlobalTensor<KV_T> dstGm, LocalTensor<T> aMaxResUb, LocalTensor<T> srcUb,
+    LocalTensor<T> tmpAFloorUb, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+    uint32_t actualColumnCount)
 {
     uint32_t step = info.mSize * columnCount;
     uint32_t baseOffset = startRow * columnCount;
@@ -1453,13 +1482,14 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMatmulP
     PipeBarrier<PIPE_V>();
 
     for (uint32_t i = 0; i < msdIterNum; i++) {
-        AntiquantAIterExpand(dstGm, srcUbFp16, tmpAFloorUbFp16, calcSize, (i == 0 ? true : false), step * i + baseOffset);
+        AntiquantAIterExpand(dstGm, srcUbFp16, tmpAFloorUbFp16, calcSize, (i == 0 ? true : false),
+                             step * i + baseOffset);
     }
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantSoftmaxResPreProcess(ExtraInfo &info,
-    GlobalTensor<KV_T> dstGm, LocalTensor<T> srcUb, LocalTensor<T> tmpAFloorUb, uint32_t startRow,
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantSoftmaxResPreProcess(
+    ExtraInfo &info, GlobalTensor<KV_T> dstGm, LocalTensor<T> srcUb, LocalTensor<T> tmpAFloorUb, uint32_t startRow,
     uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t step = info.mSize * columnCount;
@@ -1482,13 +1512,14 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantSoftmax
     PipeBarrier<PIPE_V>();
 
     for (uint32_t i = 0; i < msdIterNum; i++) {
-        AntiquantAIterExpand(dstGm, srcUbFp16, tmpAFloorUbFp16, calcSize, (i == 0 ? true : false), step * i + baseOffset);
+        AntiquantAIterExpand(dstGm, srcUbFp16, tmpAFloorUbFp16, calcSize, (i == 0 ? true : false),
+                             step * i + baseOffset);
     }
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProcessBaseBlock(ExtraInfo& info,
-    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProcessBaseBlock(
+    ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t bufferId = info.bn2IdxInCurCore % PRE_LOAD_NUM_DD;
     LocalTensor<T> queryUb = tmpBuff1.Get<T>();
@@ -1507,8 +1538,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProc
                 qOffset = GetQueryOffSetBySIdx(info.bIdx, curS1idx + info.s1Idx * s1SizeSub, info.n2Idx, startGOfffset);
                 if (curS1idx != endS1Idx) {
                     curDealRowCount = (curS1idx + 1) * gSize - curStartRow;
-                }
-                else {
+                } else {
                     curDealRowCount = mSizeVStart + startRow + dealRowCount - curStartRow;
                 }
                 ubOffset = (curStartRow - mSizeVStart) * columnCount;
@@ -1518,13 +1548,11 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProc
                 curStartRow += curDealRowCount;
                 startGOfffset = 0;
             }
-        }
-        else {
+        } else {
             CopyAntiqQuery(queryUb, qOffset, dealRowCount, columnCount, actualColumnCount);
             PipeBarrier<PIPE_V>();
         }
-    }
-    else {
+    } else {
         CopyAntiqQuery(queryUb, qOffset, dealRowCount, columnCount, actualColumnCount);
         PipeBarrier<PIPE_V>();
     }
@@ -1536,13 +1564,13 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProc
     // A pre process
     size_t dstOffset = bufferId * bmm2ResUbSize + mSizeVStart * columnCount;
 
-    AntiquantMatmulPreProcess(info, queryPreProcessResGm[dstOffset], aMaxBmm1Ub[bufferId * Q_AMAX_BUF_SIZE],
-        queryUb, aFloorUb, startRow, dealRowCount, columnCount, actualColumnCount);
+    AntiquantMatmulPreProcess(info, queryPreProcessResGm[dstOffset], aMaxBmm1Ub[bufferId * Q_AMAX_BUF_SIZE], queryUb,
+                              aFloorUb, startRow, dealRowCount, columnCount, actualColumnCount);
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProcessBaseBlockPerToken(ExtraInfo& info,
-    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProcessBaseBlockPerToken(
+    ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t bufferId = info.bn2IdxInCurCore % PRE_LOAD_NUM_DD;
     LocalTensor<T> queryUb = tmpBuff1.Get<T>();
@@ -1558,11 +1586,11 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProc
             uint32_t endS1Idx = (mSizeVStart + startRow + dealRowCount - 1) / info.gSize;
             uint32_t curStartRow = (mSizeVStart + startRow);
             for (uint32_t curS1idx = startS1Idx; curS1idx <= endS1Idx; curS1idx++) {
-                queryOffset = GetQueryOffSetBySIdx(info.bIdx, curS1idx + info.s1Idx * s1SizeSub, info.n2Idx, startGOfffset);
+                queryOffset =
+                    GetQueryOffSetBySIdx(info.bIdx, curS1idx + info.s1Idx * s1SizeSub, info.n2Idx, startGOfffset);
                 if (curS1idx != endS1Idx) {
                     curDealRowCount = (curS1idx + 1) * gSize - curStartRow;
-                }
-                else {
+                } else {
                     curDealRowCount = mSizeVStart + startRow + dealRowCount - curStartRow;
                 }
                 ubOffset = (curStartRow - mSizeVStart) * columnCount;
@@ -1572,13 +1600,11 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProc
                 curStartRow += curDealRowCount;
                 startGOfffset = 0;
             }
-        }
-        else {
+        } else {
             CopyAntiqQuery(queryUb, queryOffset, dealRowCount, columnCount, actualColumnCount);
             PipeBarrier<PIPE_V>();
         }
-    }
-    else {
+    } else {
         CopyAntiqQuery(queryUb, queryOffset, dealRowCount, columnCount, actualColumnCount);
         PipeBarrier<PIPE_V>();
     }
@@ -1586,11 +1612,12 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealQueryPreProc
     // A pre process
     size_t dstOffset = bufferId * bmm2ResUbSize + mSizeVStart * columnCount;
 
-    AntiquantMatmulPreProcess(info, queryPreProcessResGm[dstOffset], aMaxBmm1Ub[bufferId * Q_AMAX_BUF_SIZE],
-        queryUb, aFloorUb, startRow, dealRowCount, columnCount, actualColumnCount);
+    AntiquantMatmulPreProcess(info, queryPreProcessResGm[dstOffset], aMaxBmm1Ub[bufferId * Q_AMAX_BUF_SIZE], queryUb,
+                              aFloorUb, startRow, dealRowCount, columnCount, actualColumnCount);
 }
 
-template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::QueryPreProcessInner(ExtraInfo& info)
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::QueryPreProcessInner(ExtraInfo &info)
 {
     if (!info.isFirstSInnerLoop) {
         return;
@@ -1636,17 +1663,18 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyLseIn(uint32
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF2_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_INPUT_BUF1_FLAG);
     for (uint32_t i = 0; i < actualCombineLoopSize; i++) {
-        DataCopy(lseSum[i * dealRowCountAlign], lseSumFdGm[combineLseOffset + i * combineLoopOffset], dealRowCountAlign);  // 份数offset
-        DataCopy(lseMax[i * dealRowCountAlign], lseMaxFdGm[combineLseOffset + i * combineLoopOffset], dealRowCountAlign);
+        DataCopy(lseSum[i * dealRowCountAlign], lseSumFdGm[combineLseOffset + i * combineLoopOffset],
+                 dealRowCountAlign); // 份数offset
+        DataCopy(lseMax[i * dealRowCountAlign], lseMaxFdGm[combineLseOffset + i * combineLoopOffset],
+                 dealRowCountAlign);
     }
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF2_FLAG);
     SetFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAccumOutIn(uint32_t splitKVIndex,
-                                                                                    uint32_t startRow,
-                                                                                    uint32_t dealRowCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAccumOutIn(uint32_t splitKVIndex, uint32_t startRow,
+                                                                               uint32_t dealRowCount)
 {
     LocalTensor<T> accumOutLocal = inputBuf1.Get<T>();
 
@@ -1672,7 +1700,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyAccumOutIn(u
 template <typename IFAT>
 __aicore__ inline void
 IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeScaleValue(LocalTensor<T> &lseSum, LocalTensor<T> &lseMax,
-                                                                uint32_t startRow, uint32_t dealRowCount)
+                                                           uint32_t startRow, uint32_t dealRowCount)
 {
     LocalTensor<T> lseMaxUb = softmaxMaxUb[0];
     LocalTensor<T> lseSumUb = softmaxSumUb[0];
@@ -1710,9 +1738,9 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeScaleValue(LocalTensor<T> &lseSu
 }
 
 template <typename IFAT>
-__aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::ReduceFinalRes(LocalTensor<T> &dst, LocalTensor<T> &lseLocal,
-                                                             uint32_t startRow, uint32_t dealRowCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ReduceFinalRes(LocalTensor<T> &dst,
+                                                                               LocalTensor<T> &lseLocal,
+                                                                               uint32_t startRow, uint32_t dealRowCount)
 {
     BinaryRepeatParams repeatParams;
     repeatParams.src0RepStride = 1;
@@ -1758,8 +1786,8 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::ReduceFinalRes(LocalTensor<T> &dst, Loc
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyFinalResOut(LocalTensor<T> &accumOutLocal,
-                                                                                     uint32_t startRow,
-                                                                                     uint32_t dealRowCount)
+                                                                                uint32_t startRow,
+                                                                                uint32_t dealRowCount)
 {
     if constexpr (!POST_QUANT) {
         LocalTensor<OUT_T> tmpBmm2ResCastTensor = outputBuf1.Get<OUT_T>();
@@ -1789,7 +1817,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyFinalResOut(
     }
 }
 
-template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CombineSplitKVRes()
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CombineSplitKVRes()
 {
     if (curActualSeqLen != 0) {
         uint32_t gSplitSizeLse = BUFFER_SIZE_BYTE_16K / (BYTE_BLOCK * splitKVNum);
@@ -1824,7 +1853,8 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadD
     }
 }
 
-template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::FlashDecodeCompute()
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::FlashDecodeCompute()
 {
     bIdx = tmpBlockIdx / kvHeadNum;
     n2Idx = tmpBlockIdx % kvHeadNum;
@@ -1854,25 +1884,26 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadD
 template <typename IFAT>
 __aicore__ inline void
 IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeLogSumExpAndCopyToGm(LocalTensor<T> &softmaxSumUb,
-                                                                          LocalTensor<T> &softmaxMaxUb)
+                                                                     LocalTensor<T> &softmaxMaxUb)
 {
     size_t size = mSizeVector * FP32_ONE_BLOCK_SIZE;
     size_t offset = bIdx * kvHeadNum * splitKVNum * gSize * FP32_ONE_BLOCK_SIZE +
-                    n2Idx * splitKVNum * gSize * FP32_ONE_BLOCK_SIZE + 
-                    s2IdxFD * gSize * FP32_ONE_BLOCK_SIZE + mSizeVStart * FP32_ONE_BLOCK_SIZE;
+                    n2Idx * splitKVNum * gSize * FP32_ONE_BLOCK_SIZE + s2IdxFD * gSize * FP32_ONE_BLOCK_SIZE +
+                    mSizeVStart * FP32_ONE_BLOCK_SIZE;
     CopyFixedUbToGm(lseSumFdGm[offset], softmaxSumUb, size);
     CopyFixedUbToGm(lseMaxFdGm[offset], softmaxMaxUb, size);
 }
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::SoftmaxLseCopyOut(LocalTensor<T> &softmaxSumUb,
-                                                                                       LocalTensor<T> &softmaxMaxUb)
+                                                                                  LocalTensor<T> &softmaxMaxUb)
 {
 }
 
 template <typename IFAT>
-__aicore__ inline bool
-IncreFlashAttentionAttenPreloadDD<IFAT>::IsSkipAttenMask(const ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount)
+__aicore__ inline bool IncreFlashAttentionAttenPreloadDD<IFAT>::IsSkipAttenMask(const ExtraInfo &info,
+                                                                                uint32_t startRow,
+                                                                                uint32_t dealRowCount)
 {
     uint32_t actualSeqQ = info.actSeqLenQ;
 
@@ -1901,9 +1932,9 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::IsSkipAttenMask(const ExtraInfo &info, 
 
 template <typename IFAT>
 __aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::ElewiseCompute(ExtraInfo& info, LocalTensor<T> &mmResUb, TBuf<> &tmpBuf, uint32_t startRow,
-                                                             uint32_t dealRowCount, uint32_t columnCount,
-                                                             uint32_t actualColumnCount)
+IncreFlashAttentionAttenPreloadDD<IFAT>::ElewiseCompute(ExtraInfo &info, LocalTensor<T> &mmResUb, TBuf<> &tmpBuf,
+                                                        uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+                                                        uint32_t actualColumnCount)
 {
     if constexpr (!ANTIQUANT) {
         Muls(mmResUb, mmResUb, static_cast<T>(tilingData->baseParams.scaleValue), dealRowCount * columnCount);
@@ -1945,7 +1976,7 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::ElewiseCompute(ExtraInfo& info, LocalTe
                 attenMaskUb = inputBuf1.Get<bool>();
                 LocalTensor<bool> attenMaskUbDst = attenMaskUb[BUFFER_SIZE_BYTE_32K / 2];
 
-                uint32_t headS1Count= 0;
+                uint32_t headS1Count = 0;
                 uint32_t headS1Start = (mSizeVStart + startRow) % info.s1Size;
                 if (headS1Start + dealRowCount > info.s1Size) {
                     headS1Count = info.s1Size - headS1Start;
@@ -1954,19 +1985,20 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::ElewiseCompute(ExtraInfo& info, LocalTe
                 }
                 WaitFlag<AscendC::HardEvent::MTE2_V>(SYNC_INPUT_BUF1_FLAG);
                 // head
-                DataCopy(attenMaskUbDst, attenMaskUb[headS1Start * attenMaskSizeAlign], headS1Count * attenMaskSizeAlign);
+                DataCopy(attenMaskUbDst, attenMaskUb[headS1Start * attenMaskSizeAlign],
+                         headS1Count * attenMaskSizeAlign);
                 // mid
                 uint32_t reminRowCount = dealRowCount - headS1Count;
                 uint32_t midGCount = reminRowCount / info.s1Size;
                 uint32_t tailS1Size = reminRowCount % info.s1Size;
                 for (uint32_t i = 0; i < midGCount; i++) {
-                    DataCopy(attenMaskUbDst[(headS1Count + i * info.s1Size) * attenMaskSizeAlign],
-                        attenMaskUb, info.s1Size * attenMaskSizeAlign);
+                    DataCopy(attenMaskUbDst[(headS1Count + i * info.s1Size) * attenMaskSizeAlign], attenMaskUb,
+                             info.s1Size * attenMaskSizeAlign);
                 }
                 // tail
                 if (tailS1Size > 0) {
-                    DataCopy(attenMaskUbDst[(headS1Count + midGCount * info.s1Size) * attenMaskSizeAlign],
-                        attenMaskUb, tailS1Size * attenMaskSizeAlign);
+                    DataCopy(attenMaskUbDst[(headS1Count + midGCount * info.s1Size) * attenMaskSizeAlign], attenMaskUb,
+                             tailS1Size * attenMaskSizeAlign);
                 }
                 attenMaskUb = attenMaskUbDst;
             } else { // BSH/BSND/TND
@@ -1974,7 +2006,7 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::ElewiseCompute(ExtraInfo& info, LocalTe
                 uint32_t s1EndIdx = (mSizeVStart + startRow + dealRowCount - 1) / info.gSize;
                 uint32_t s1Count = s1EndIdx - s1StartIdx + 1;
 
-                #define ATTENMASK_STRIDE 2048U
+#define ATTENMASK_STRIDE 2048U
 
                 uint32_t offset;
                 uint32_t actualSeqQ = info.actSeqLenQ;
@@ -1984,8 +2016,8 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::ElewiseCompute(ExtraInfo& info, LocalTe
                 if (delta < 0) {
                     offset = (-delta) < (int32_t)s1Count ? (-delta) : s1Count;
                 } else {
-                    offset = (delta < (int32_t)singleProcessSInnerSize ? delta : singleProcessSInnerSize) *
-                            ATTENMASK_STRIDE;
+                    offset =
+                        (delta < (int32_t)singleProcessSInnerSize ? delta : singleProcessSInnerSize) * ATTENMASK_STRIDE;
                 }
 
                 attenMaskSizeAlign = Align(info.actualSingleProcessSInnerSize, 32U);
@@ -2025,7 +2057,7 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::ElewiseCompute(ExtraInfo& info, LocalTe
                 // mid
                 uint32_t reminRowCount = dealRowCount - headGCount;
                 uint32_t midS1Count = reminRowCount / info.gSize;
-                uint32_t tailGSize =  reminRowCount % info.gSize;
+                uint32_t tailGSize = reminRowCount % info.gSize;
                 for (uint32_t midIdx = 0; midIdx < midS1Count; midIdx++) {
                     Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset],
                                          AscendC::MASK_PLACEHOLDER, info.gSize,
@@ -2038,12 +2070,12 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::ElewiseCompute(ExtraInfo& info, LocalTe
                     Copy<int16_t, false>(attenMaskUbDst[dstMaskOffset], mask16[srcMaskBaseOffset],
                                          AscendC::MASK_PLACEHOLDER, tailGSize,
                                          {1, 1, static_cast<uint16_t>(attenMaskSizeAlign / 32), 0});
-                    }
-                    SetMaskNorm();
-                    ResetMask();
-                    attenMaskUb = attenMaskUbDst.template ReinterpretCast<bool>();
                 }
+                SetMaskNorm();
+                ResetMask();
+                attenMaskUb = attenMaskUbDst.template ReinterpretCast<bool>();
             }
+        }
 
         PipeBarrier<PIPE_V>();
 
@@ -2064,9 +2096,9 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::ElewiseCompute(ExtraInfo& info, LocalTe
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::SoftmaxFlashV2Compute(ExtraInfo& info,
-    LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb, uint32_t startRow, uint32_t dealRowCount,
-    uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::SoftmaxFlashV2Compute(
+    ExtraInfo &info, LocalTensor<T> &mmResUb, LocalTensor<uint8_t> &softmaxTmpUb, uint32_t startRow,
+    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
 #ifdef IFA_SOFTMAX_WITHOUT_BRC_PRELOAD
     uint32_t baseOffset = startRow;
@@ -2092,21 +2124,23 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::SoftmaxFlashV2Co
 #ifdef IFA_SOFTMAX_WITHOUT_BRC_PRELOAD
     SoftmaxFlashV2<T, true, true, false, false, IFA_SOFTMAX_FLASHV2_CFG_WITHOUT_BRC>(
         mmResUb, softmaxSumUb[outIdx * SOFTMAX_SUM_BUF_SIZE + baseOffset],
-        softmaxMaxUb[outIdx * SOFTMAX_MAX_BUF_SIZE + baseOffset], mmResUb, softmaxExpUb[outIdx * SOFTMAX_EXP_BUF_SIZE + baseOffset],
-        inSumTensor, inMaxTensor, softmaxTmpUb, newTiling, srcShape);
+        softmaxMaxUb[outIdx * SOFTMAX_MAX_BUF_SIZE + baseOffset], mmResUb,
+        softmaxExpUb[outIdx * SOFTMAX_EXP_BUF_SIZE + baseOffset], inSumTensor, inMaxTensor, softmaxTmpUb, newTiling,
+        srcShape);
 #else
     SoftmaxFlashV2<T, true, true, false, false, IFA_SOFTMAX_FLASHV2_CFG>(
         mmResUb, softmaxSumUb[outIdx * SOFTMAX_SUM_BUF_SIZE + baseOffset],
-        softmaxMaxUb[outIdx * SOFTMAX_MAX_BUF_SIZE + baseOffset], mmResUb, softmaxExpUb[outIdx * SOFTMAX_EXP_BUF_SIZE + baseOffset],
-        inSumTensor, inMaxTensor, softmaxTmpUb, newTiling, srcShape);
+        softmaxMaxUb[outIdx * SOFTMAX_MAX_BUF_SIZE + baseOffset], mmResUb,
+        softmaxExpUb[outIdx * SOFTMAX_EXP_BUF_SIZE + baseOffset], inSumTensor, inMaxTensor, softmaxTmpUb, newTiling,
+        srcShape);
 #endif
 }
 
 template <typename IFAT>
 __aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2FDDataCopyOut(const ExtraInfo& info, LocalTensor<T> &attenOutUb, uint32_t startRow,
-                                                                uint32_t dealRowCount, uint32_t columnCount,
-                                                                uint32_t actualColumnCount)
+IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2FDDataCopyOut(const ExtraInfo &info, LocalTensor<T> &attenOutUb,
+                                                           uint32_t startRow, uint32_t dealRowCount,
+                                                           uint32_t columnCount, uint32_t actualColumnCount)
 {
     DealInvalidRows(info, attenOutUb, startRow, dealRowCount, columnCount, actualColumnCount);
     DataCopyExtParams dataCopyParams;
@@ -2121,31 +2155,35 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2FDDataCopyOut(const ExtraInfo& info
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     size_t base = (bIdx * qHeadNum + n2Idx * gSize) * splitKVNum * headDim;
-    DataCopyPad(accumOutGm[base + s2IdxFD * gSize * actualColumnCount + 
-                           startRow * actualColumnCount + mSizeVStart * actualColumnCount], tmp, dataCopyParams);
+    DataCopyPad(accumOutGm[base + s2IdxFD * gSize * actualColumnCount + startRow * actualColumnCount +
+                           mSizeVStart * actualColumnCount],
+                tmp, dataCopyParams);
     SetFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
 }
 
 template <typename IFAT>
 __aicore__ inline void
 IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2DataCopyOut(uint64_t attenOutOffset, LocalTensor<OUT_T> &attenOutUb,
-    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+                                                         uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+                                                         uint32_t actualColumnCount)
 {
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
     dataCopyParams.blockLen = actualColumnCount * sizeof(OUT_T);
     dataCopyParams.srcStride = (columnCount - actualColumnCount) / (BYTE_BLOCK / sizeof(OUT_T));
     dataCopyParams.dstStride = 0;
-    DataCopyPad(attentionOutGm[attenOutOffset + (mSizeVStart + startRow) * actualColumnCount], attenOutUb, dataCopyParams);
+    DataCopyPad(attentionOutGm[attenOutOffset + (mSizeVStart + startRow) * actualColumnCount], attenOutUb,
+                dataCopyParams);
 }
 
 
 template <typename IFAT>
 __aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2DataCopyOutNcon(const ExtraInfo& info, LocalTensor<OUT_T> &attenOutUb,
-    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2DataCopyOutNcon(const ExtraInfo &info, LocalTensor<OUT_T> &attenOutUb,
+                                                             uint32_t startRow, uint32_t dealRowCount,
+                                                             uint32_t columnCount, uint32_t actualColumnCount)
 {
-    if constexpr (LAYOUT_T ==LAYOUT::BSH || LAYOUT_T ==LAYOUT::BSND || LAYOUT_T ==LAYOUT::TND) {
+    if constexpr (LAYOUT_T == LAYOUT::BSH || LAYOUT_T == LAYOUT::BSND || LAYOUT_T == LAYOUT::TND) {
         uint64_t outOffset = 0;
         if (kvHeadNum != 1 && gOuter == 1) {
             uint32_t startS1Idx = (mSizeVStart + startRow) / info.gSize;
@@ -2155,11 +2193,11 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2DataCopyOutNcon(const ExtraInfo& in
             uint32_t curDealRowCount = 0;
             uint32_t ubOffset = 0;
             for (uint32_t curS1idx = startS1Idx; curS1idx <= endS1Idx; curS1idx++) {
-                outOffset = GetQueryOffSetBySIdx(info.bIdx, curS1idx + info.s1Idx * s1SizeSub, info.n2Idx, startGOfffset);
+                outOffset =
+                    GetQueryOffSetBySIdx(info.bIdx, curS1idx + info.s1Idx * s1SizeSub, info.n2Idx, startGOfffset);
                 if (curS1idx != endS1Idx) {
                     curDealRowCount = (curS1idx + 1) * gSize - curStartRow;
-                }
-                else {
+                } else {
                     curDealRowCount = mSizeVStart + startRow + dealRowCount - curStartRow;
                 }
                 ubOffset = (curStartRow - mSizeVStart) * columnCount;
@@ -2176,10 +2214,9 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2DataCopyOutNcon(const ExtraInfo& in
             }
             return;
         }
-        Bmm2DataCopyOut(info.attenOutOffset, attenOutUb, startRow, dealRowCount,columnCount, actualColumnCount);
-    }
-    else {
-        Bmm2DataCopyOut(info.attenOutOffset, attenOutUb, startRow, dealRowCount,columnCount, actualColumnCount);
+        Bmm2DataCopyOut(info.attenOutOffset, attenOutUb, startRow, dealRowCount, columnCount, actualColumnCount);
+    } else {
+        Bmm2DataCopyOut(info.attenOutOffset, attenOutUb, startRow, dealRowCount, columnCount, actualColumnCount);
     }
 }
 
@@ -2187,8 +2224,8 @@ template <typename IFAT>
 template <typename RT>
 __aicore__ inline void
 IncreFlashAttentionAttenPreloadDD<IFAT>::DealInvalidRows(const ExtraInfo &info, LocalTensor<RT> &attenOutUb,
-                                                          uint32_t startRow, uint32_t dealRowCount,
-                                                          uint32_t columnCount, uint32_t actualColumnCount)
+                                                         uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+                                                         uint32_t actualColumnCount)
 {
     if (!attenMaskFlag || (info.actSeqLenQ <= info.s2Size)) {
         return;
@@ -2232,9 +2269,9 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::DealInvalidRows(const ExtraInfo &info, 
 
 template <typename IFAT>
 __aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2ResCopyOut(const ExtraInfo &info, LocalTensor<T> &bmm2ResUb, uint32_t startRow,
-                                                                 uint32_t dealRowCount, uint32_t columnCount,
-                                                                 uint32_t actualColumnCount)
+IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2ResCopyOut(const ExtraInfo &info, LocalTensor<T> &bmm2ResUb,
+                                                        uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
+                                                        uint32_t actualColumnCount)
 {
     if constexpr (FLASH_DECODE) {
         Bmm2FDDataCopyOut(info, bmm2ResUb, startRow, dealRowCount, columnCount, actualColumnCount);
@@ -2245,9 +2282,9 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2ResCopyOut(const ExtraInfo &info, L
 
 template <typename IFAT>
 __aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2CastAndCopyOut(const ExtraInfo& info, LocalTensor<T> &bmm2ResUb, uint32_t startRow,
-                                                                 uint32_t dealRowCount, uint32_t columnCount,
-                                                                 uint32_t actualColumnCount)
+IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2CastAndCopyOut(const ExtraInfo &info, LocalTensor<T> &bmm2ResUb,
+                                                            uint32_t startRow, uint32_t dealRowCount,
+                                                            uint32_t columnCount, uint32_t actualColumnCount)
 {
     if constexpr (!POST_QUANT) {
         LocalTensor<OUT_T> tmpBmm2ResCastTensor = outputBuf1.Get<OUT_T>();
@@ -2265,7 +2302,8 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2CastAndCopyOut(const ExtraInfo& inf
     } else {
         LocalTensor<OUT_T> bmm2ResUbInt8 = outputBuf1.Get<OUT_T>();
         WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF1_FLAG);
-        PostQuant(info.perChannelQuantOffset, bmm2ResUb, bmm2ResUbInt8, startRow, dealRowCount, columnCount, actualColumnCount);
+        PostQuant(info.perChannelQuantOffset, bmm2ResUb, bmm2ResUbInt8, startRow, dealRowCount, columnCount,
+                  actualColumnCount);
         DealInvalidRows(info, bmm2ResUbInt8, startRow, dealRowCount, columnCount, actualColumnCount);
         SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
         WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
@@ -2275,17 +2313,16 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::Bmm2CastAndCopyOut(const ExtraInfo& inf
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::PseShiftCopyIn(ExtraInfo& info,  uint32_t startRow,
-                                                                                    uint32_t rowCount,
-                                                                                    uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::PseShiftCopyIn(ExtraInfo &info, uint32_t startRow,
+                                                                               uint32_t rowCount,
+                                                                               uint32_t actualColumnCount)
 {
 }
 
 template <typename IFAT>
 __aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::DealBmm1ResBaseBlock(ExtraInfo& info, uint32_t startRow,
-                                                                   uint32_t dealRowCount, uint32_t columnCount,
-                                                                   uint32_t actualColumnCount)
+IncreFlashAttentionAttenPreloadDD<IFAT>::DealBmm1ResBaseBlock(ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount,
+                                                              uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t computeSize = dealRowCount * columnCount;
     LocalTensor<MM_OUT_T> mmResUb = tmpBuff1.Get<MM_OUT_T>();
@@ -2321,17 +2358,16 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::DealBmm1ResBaseBlock(ExtraInfo& info, u
 
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMatmulResCombine(ExtraInfo &info,
-    LocalTensor<T> bmmResUb, GlobalTensor<MM_OUT_T> srcGm,
-    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
-    uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMatmulResCombine(
+    ExtraInfo &info, LocalTensor<T> bmmResUb, GlobalTensor<MM_OUT_T> srcGm, uint32_t startRow, uint32_t dealRowCount,
+    uint32_t columnCount, uint32_t actualColumnCount)
 {
 }
 
 // 由于S在GM上已完成atomatic，此处只需要把数据拷贝出来有fp16转成fp32
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMatmulResCombineDD(ExtraInfo &info,
-    LocalTensor<T> bmmResUb, GlobalTensor<MM_OUT_T> srcGm, uint32_t startRow, uint32_t dealRowCount,
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMatmulResCombineDD(
+    ExtraInfo &info, LocalTensor<T> bmmResUb, GlobalTensor<MM_OUT_T> srcGm, uint32_t startRow, uint32_t dealRowCount,
     uint32_t columnCount, uint32_t actualColumnCount, float scaleC)
 {
     uint32_t baseOffset = startRow * columnCount;
@@ -2350,16 +2386,16 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMatmulR
 }
 
 template <typename IFAT>
-__aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm1ResBaseBlock(ExtraInfo& info, uint32_t startRow,
-                                                                        uint32_t dealRowCount, uint32_t columnCount,
-                                                                        uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm1ResBaseBlock(
+    ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<T> mmResUb = tmpBuff1.Get<T>();
     uint64_t srcGmOffset = (info.loop % PRE_LOAD_NUM_DD) * mmResUbSize + mSizeVStart * columnCount;
-    AntiquantMatmulResCombineDD(info, mmResUb, mm1ResGm[srcGmOffset], startRow, dealRowCount, columnCount, actualColumnCount, scaleC1 * static_cast<T>(tilingData->baseParams.scaleValue));
+    AntiquantMatmulResCombineDD(info, mmResUb, mm1ResGm[srcGmOffset], startRow, dealRowCount, columnCount,
+                                actualColumnCount, scaleC1 * static_cast<T>(tilingData->baseParams.scaleValue));
     PipeBarrier<PIPE_V>();
-    LocalTensor<T> aMax = aMaxBmm1Ub[(info.bn2IdxInCurCore % (PRE_LOAD_NUM_DD)) * Q_AMAX_BUF_SIZE + startRow * BLOCK_ELEMENT_NUM];
+    LocalTensor<T> aMax =
+        aMaxBmm1Ub[(info.bn2IdxInCurCore % (PRE_LOAD_NUM_DD)) * Q_AMAX_BUF_SIZE + startRow * BLOCK_ELEMENT_NUM];
     RowMuls(mmResUb, mmResUb, aMax, dealRowCount, columnCount, actualColumnCount);
     PipeBarrier<PIPE_V>();
 
@@ -2377,15 +2413,17 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm1ResBaseBlock(ExtraInfo& in
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm1ResBaseBlockPerToken(ExtraInfo& info,
-    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm1ResBaseBlockPerToken(
+    ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     LocalTensor<T> mmResUb = tmpBuff1.Get<T>();
     uint64_t srcGmOffset = (info.loop % PRE_LOAD_NUM_DD) * mmResUbSize + mSizeVStart * columnCount;
 
-    AntiquantMatmulResCombineDD(info, mmResUb, mm1ResGm[srcGmOffset], startRow, dealRowCount, columnCount, actualColumnCount, scaleC1 * static_cast<T>(tilingData->baseParams.scaleValue));
+    AntiquantMatmulResCombineDD(info, mmResUb, mm1ResGm[srcGmOffset], startRow, dealRowCount, columnCount,
+                                actualColumnCount, scaleC1 * static_cast<T>(tilingData->baseParams.scaleValue));
     PipeBarrier<PIPE_V>();
-    LocalTensor<T> aMax = aMaxBmm1Ub[(info.bn2IdxInCurCore % (PRE_LOAD_NUM_DD)) * Q_AMAX_BUF_SIZE + startRow * BLOCK_ELEMENT_NUM];
+    LocalTensor<T> aMax =
+        aMaxBmm1Ub[(info.bn2IdxInCurCore % (PRE_LOAD_NUM_DD)) * Q_AMAX_BUF_SIZE + startRow * BLOCK_ELEMENT_NUM];
     RowMuls(mmResUb, mmResUb, aMax, dealRowCount, columnCount, actualColumnCount);
     PipeBarrier<PIPE_V>();
     CopyAntiquantParamsPerToken(keyAntiqScaleGm, info.antiqKeyParamOffsetPerToken, columnCount, actualColumnCount);
@@ -2411,12 +2449,12 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm1Res
     Adds(tmpAFloorUb, mmResUb, (T)0, dealRowCount * columnCount); // mmResUb need to be stored
     PipeBarrier<PIPE_V>();
     size_t dstOffset = (info.loop % PRE_LOAD_NUM_DD) * mmResUbSize + mSizeVStart * columnCount;
-    AntiquantMatmulPreProcess(info, vec1ResGm[dstOffset], aMaxBmm2Ub[(info.loop % PRE_LOAD_NUM_DD)*P_AMAX_BUF_SIZE], mmResUb, tmpAFloorUb,
-        startRow, dealRowCount, columnCount, actualColumnCount);
+    AntiquantMatmulPreProcess(info, vec1ResGm[dstOffset], aMaxBmm2Ub[(info.loop % PRE_LOAD_NUM_DD) * P_AMAX_BUF_SIZE],
+                              mmResUb, tmpAFloorUb, startRow, dealRowCount, columnCount, actualColumnCount);
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec1Inner(ExtraInfo& info)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec1Inner(ExtraInfo &info)
 {
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / info.actualSingleProcessSInnerSizeAlign;
 #ifdef IFA_SOFTMAX_WITHOUT_BRC_PRELOAD
@@ -2440,7 +2478,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec1Inner
                                           info.actualSingleProcessSInnerSize);
             } else if constexpr (ANTIQUANT_PER_TOKEN) {
                 DealAntiqBmm1ResBaseBlockPerToken(info, i * mSplitSize, dealSize,
-                                                  info.actualSingleProcessSInnerSizeAlign, info.actualSingleProcessSInnerSize);
+                                                  info.actualSingleProcessSInnerSizeAlign,
+                                                  info.actualSingleProcessSInnerSize);
             }
         } else {
             DealBmm1ResBaseBlock(info, i * mSplitSize, dealSize, info.actualSingleProcessSInnerSizeAlign,
@@ -2460,9 +2499,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec1Inner
 }
 
 template <typename IFAT>
-__aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2ResBaseBlock(ExtraInfo& info, uint32_t startRow,
-    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2ResBaseBlock(
+    ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
 #ifdef IFA_SOFTMAX_WITHOUT_BRC_PRELOAD
     uint32_t baseOffset = startRow;
@@ -2471,7 +2509,8 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2ResBaseBlock(ExtraInfo& in
 #endif
     uint64_t srcGmOffset = (info.loop % PRE_LOAD_NUM_DD) * bmm2ResUbSize + mSizeVStart * columnCount;
     LocalTensor<half> bmm2ResUb = tmpBuff1.Get<half>();
-    AntiquantMM2ResCombine(info, bmm2ResUb, mm2ResGm[srcGmOffset], startRow, dealRowCount, columnCount, actualColumnCount);
+    AntiquantMM2ResCombine(info, bmm2ResUb, mm2ResGm[srcGmOffset], startRow, dealRowCount, columnCount,
+                           actualColumnCount);
     uint32_t vec2ComputeSize = dealRowCount * columnCount;
 
     size_t batchBase = 0;
@@ -2485,17 +2524,18 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2ResBaseBlock(ExtraInfo& in
         PipeBarrier<PIPE_V>();
         uint32_t idx = info.loop % PRE_LOAD_NUM_DD;
 #ifdef IFA_SOFTMAX_WITHOUT_BRC_PRELOAD
-        //step2: 将softmaxExpUb转换为FP16
+        // step2: 将softmaxExpUb转换为FP16
         LocalTensor<half> tmpSoftmaxFp16 = tmpBuff3.Get<half>();
-        Cast(tmpSoftmaxFp16, softmaxExpUb[idx * SOFTMAX_EXP_BUF_SIZE + baseOffset], AscendC::RoundMode::CAST_ROUND, dealRowCount);
+        Cast(tmpSoftmaxFp16, softmaxExpUb[idx * SOFTMAX_EXP_BUF_SIZE + baseOffset], AscendC::RoundMode::CAST_ROUND,
+             dealRowCount);
         PipeBarrier<PIPE_V>();
         LocalTensor<half> tmpExpBrcbResUb = tmpBuff2.Get<half>();
         Brcb(tmpExpBrcbResUb, tmpSoftmaxFp16, (dealRowCount + 7) / 8, {1, 8});
         // step3: Oi = (Oi - 1)*tmpSoftmaxFp16 + Otmp
         PipeBarrier<PIPE_V>();
         RowMuls(bmm2ResPreUb, bmm2ResPreUb, tmpExpBrcbResUb, dealRowCount, columnCount, actualColumnCount);
-    #else
-        //step2: 将softmaxExpUb转换为FP16
+#else
+        // step2: 将softmaxExpUb转换为FP16
         LocalTensor<T> tmpSoftmaxFp32 = tmpBuff3.Get<T>();
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = dealRowCount;
@@ -2503,13 +2543,13 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2ResBaseBlock(ExtraInfo& in
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = 1;
         DataCopy(tmpSoftmaxFp32, softmaxExpUb[idx * SOFTMAX_EXP_BUF_SIZE + baseOffset], dataCopyParams);
-        DataCopy(tmpSoftmaxFp32[BLOCK_ELEMENT_NUM], softmaxExpUb[idx * SOFTMAX_EXP_BUF_SIZE + baseOffset], dataCopyParams);
+        DataCopy(tmpSoftmaxFp32[BLOCK_ELEMENT_NUM], softmaxExpUb[idx * SOFTMAX_EXP_BUF_SIZE + baseOffset],
+                 dataCopyParams);
         LocalTensor<half> tmpSoftmaxFp16 = tmpBuff3.Get<half>();
         PipeBarrier<PIPE_V>();
         Cast(tmpSoftmaxFp16, tmpSoftmaxFp32, AscendC::RoundMode::CAST_ROUND, dealRowCount * BLOCK_ELEMENT_NUM * 2);
         PipeBarrier<PIPE_V>();
-        RowMuls(bmm2ResPreUb, bmm2ResPreUb, tmpSoftmaxFp16,
-            dealRowCount, columnCount, actualColumnCount);
+        RowMuls(bmm2ResPreUb, bmm2ResPreUb, tmpSoftmaxFp16, dealRowCount, columnCount, actualColumnCount);
 #endif
         PipeBarrier<PIPE_V>();
         Add(bmm2ResUb, bmm2ResUb, bmm2ResPreUb, vec2ComputeSize);
@@ -2529,10 +2569,10 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2ResBaseBlock(ExtraInfo& in
         PipeBarrier<PIPE_V>();
         RowDivs(bmm2ResUbFp32, bmm2ResUbFp32, tmpSumBrcbResUb, dealRowCount, columnCount, actualColumnCount);
 #else
-        RowDivs(bmm2ResUbFp32, bmm2ResUbFp32, softmaxSumUb[idx * SOFTMAX_SUM_BUF_SIZE + baseOffset],
-            dealRowCount, columnCount, actualColumnCount);
+        RowDivs(bmm2ResUbFp32, bmm2ResUbFp32, softmaxSumUb[idx * SOFTMAX_SUM_BUF_SIZE + baseOffset], dealRowCount,
+                columnCount, actualColumnCount);
 #endif
-        
+
         PipeBarrier<PIPE_V>();
 
         if (antiqOffsetExistFlag) {
@@ -2559,25 +2599,23 @@ IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2ResBaseBlock(ExtraInfo& in
 
 template <typename IFAT>
 __aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::DealBmm2ResBaseBlock(ExtraInfo& info, uint32_t startRow,
-                                                                    uint32_t dealRowCount, uint32_t columnCount,
-                                                                    uint32_t actualColumnCount)
+IncreFlashAttentionAttenPreloadDD<IFAT>::DealBmm2ResBaseBlock(ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount,
+                                                              uint32_t columnCount, uint32_t actualColumnCount)
 {
 }
 
 template <typename IFAT>
-__aicore__ inline void
-IncreFlashAttentionAttenPreloadDD<IFAT>::PostQuant(uint64_t perChannelQuantOffset, LocalTensor<T> &bmm2ResUb, LocalTensor<int8_t> &bmm2ResUbInt8,
-                                                        uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount,
-                                                        uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::PostQuant(
+    uint64_t perChannelQuantOffset, LocalTensor<T> &bmm2ResUb, LocalTensor<int8_t> &bmm2ResUbInt8, uint32_t startRow,
+    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     // post quant function
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMM2ResCombine(const ExtraInfo& info,
-    LocalTensor<MM_OUT_T> bmmResUb, GlobalTensor<MM_OUT_T> srcGm, uint32_t startRow, uint32_t dealRowCount,
-    uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMM2ResCombine(
+    const ExtraInfo &info, LocalTensor<MM_OUT_T> bmmResUb, GlobalTensor<MM_OUT_T> srcGm, uint32_t startRow,
+    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
     uint32_t baseOffset = startRow * columnCount;
     uint32_t copySize = dealRowCount * columnCount;
@@ -2591,8 +2629,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::AntiquantMM2ResC
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2ResBaseBlockPerToken(ExtraInfo& info,
-    uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2ResBaseBlockPerToken(
+    ExtraInfo &info, uint32_t startRow, uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
 {
 #ifdef IFA_SOFTMAX_WITHOUT_BRC_PRELOAD
     uint32_t baseOffset = startRow;
@@ -2607,7 +2645,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2Res
     uint32_t vec2ComputeSize = dealRowCount * columnCount;
     size_t batchBase = 0;
     PipeBarrier<PIPE_V>();
-    LocalTensor<T> aRowMax = aMaxBmm2Ub[(info.loop % PRE_LOAD_NUM_DD) * P_AMAX_BUF_SIZE][baseOffset]; //shape [dealRowCount,32B/sizeof(float)]
+    LocalTensor<T> aRowMax = aMaxBmm2Ub[(info.loop % PRE_LOAD_NUM_DD) * P_AMAX_BUF_SIZE]
+                                       [baseOffset]; // shape [dealRowCount,32B/sizeof(float)]
     LocalTensor<T> tmpaRowMaxFp32 = tmpBuff3.Get<T>();
     DataCopyParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
@@ -2631,17 +2670,19 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2Res
         PipeBarrier<PIPE_V>();
         uint32_t loopIdx = info.loop % PRE_LOAD_NUM_DD;
 #ifdef IFA_SOFTMAX_WITHOUT_BRC_PRELOAD
-        //step2: 将softmaxExpUb转换成FP16
+        // step2: 将softmaxExpUb转换成FP16
         LocalTensor<half> tmpSoftmaxFp16 = tmpBuff3.Get<half>();
-        Cast(tmpSoftmaxFp16, softmaxExpUb[loopIdx * SOFTMAX_EXP_BUF_SIZE + baseOffset], AscendC::RoundMode::CAST_ROUND, dealRowCount);
+        Cast(tmpSoftmaxFp16, softmaxExpUb[loopIdx * SOFTMAX_EXP_BUF_SIZE + baseOffset], AscendC::RoundMode::CAST_ROUND,
+             dealRowCount);
         PipeBarrier<PIPE_V>();
         LocalTensor<half> tmpExpBrcbResUb = tmpBuff2.Get<half>();
         Brcb(tmpExpBrcbResUb, tmpSoftmaxFp16, (dealRowCount + 7) / 8, {1, 8});
-        //step3: Oi = (Oi - 1)*tmpSoftmaxFp16 + Otmp
+        // step3: Oi = (Oi - 1)*tmpSoftmaxFp16 + Otmp
         PipeBarrier<PIPE_V>();
-        RowMuls(bmm2ResPreUBPerToken, bmm2ResPreUBPerToken, tmpExpBrcbResUb, dealRowCount, columnCount, actualColumnCount);
+        RowMuls(bmm2ResPreUBPerToken, bmm2ResPreUBPerToken, tmpExpBrcbResUb, dealRowCount, columnCount,
+                actualColumnCount);
 #else
-        //step2: 将softmaxExpUb转换成FP16
+        // step2: 将softmaxExpUb转换成FP16
         LocalTensor<T> tmpSoftmaxFp32 = tmpBuff3.Get<T>();
         DataCopyParams dataCopyParams;
         dataCopyParams.blockCount = dealRowCount;
@@ -2649,12 +2690,14 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2Res
         dataCopyParams.srcStride = 0;
         dataCopyParams.dstStride = 1;
         DataCopy(tmpSoftmaxFp32, softmaxExpUb[loopIdx * SOFTMAX_EXP_BUF_SIZE + baseOffset], dataCopyParams);
-        DataCopy(tmpSoftmaxFp32[BLOCK_ELEMENT_NUM], softmaxExpUb[loopIdx * SOFTMAX_EXP_BUF_SIZE + baseOffset], dataCopyParams);
+        DataCopy(tmpSoftmaxFp32[BLOCK_ELEMENT_NUM], softmaxExpUb[loopIdx * SOFTMAX_EXP_BUF_SIZE + baseOffset],
+                 dataCopyParams);
         LocalTensor<half> tmpSoftmaxFp16 = tmpBuff3.Get<half>();
         PipeBarrier<PIPE_V>();
         Cast(tmpSoftmaxFp16, tmpSoftmaxFp32, AscendC::RoundMode::CAST_ROUND, dealRowCount * BLOCK_ELEMENT_NUM * 2);
         PipeBarrier<PIPE_V>();
-        RowMuls(bmm2ResPreUBPerToken, bmm2ResPreUBPerToken, tmpSoftmaxFp16, dealRowCount, columnCount, actualColumnCount);
+        RowMuls(bmm2ResPreUBPerToken, bmm2ResPreUBPerToken, tmpSoftmaxFp16, dealRowCount, columnCount,
+                actualColumnCount);
 #endif
         PipeBarrier<PIPE_V>();
         Add(bmm2ResUb, bmm2ResUb, bmm2ResPreUBPerToken, vec2ComputeSize);
@@ -2670,12 +2713,14 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2Res
         uint32_t loopIdx = info.loop % PRE_LOAD_NUM_DD;
 #ifdef IFA_SOFTMAX_WITHOUT_BRC_PRELOAD
         LocalTensor<T> tmpSumBrcbResUb = tmpBuff1.Get<T>();
-        Brcb(tmpSumBrcbResUb, softmaxSumUb[loopIdx * SOFTMAX_SUM_BUF_SIZE + baseOffset], (dealRowCount + 7) / 8, {1, 8});
+        Brcb(tmpSumBrcbResUb, softmaxSumUb[loopIdx * SOFTMAX_SUM_BUF_SIZE + baseOffset], (dealRowCount + 7) / 8,
+             {1, 8});
         PipeBarrier<PIPE_V>();
-        RowDivs(bmm2ResUbFp32PerToken, bmm2ResUbFp32PerToken, tmpSumBrcbResUb, dealRowCount, columnCount, actualColumnCount);
+        RowDivs(bmm2ResUbFp32PerToken, bmm2ResUbFp32PerToken, tmpSumBrcbResUb, dealRowCount, columnCount,
+                actualColumnCount);
 #else
         RowDivs(bmm2ResUbFp32PerToken, bmm2ResUbFp32PerToken, softmaxSumUb[loopIdx * SOFTMAX_SUM_BUF_SIZE + baseOffset],
-            dealRowCount, columnCount, actualColumnCount);
+                dealRowCount, columnCount, actualColumnCount);
 #endif
         PipeBarrier<PIPE_V>();
         Muls(bmm2ResUbFp32PerToken, bmm2ResUbFp32PerToken, scaleC2, vec2ComputeSize);
@@ -2689,7 +2734,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealAntiqBmm2Res
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec2Inner(ExtraInfo& info)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec2Inner(ExtraInfo &info)
 {
     uint32_t mSplitSize = BASE_BLOCK_MAX_ELEMENT_NUM / headDimAlign;
     if (mSplitSize > mSizeVector) {
@@ -2714,7 +2759,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec2Inner
     }
 }
 
-template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::QueryPreProcessL(ExtraInfo& info)
+template <typename IFAT>
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::QueryPreProcessL(ExtraInfo &info)
 {
     mSizeVector = info.mSizeV;
     mSizeVStart = info.mSizeVStart;
@@ -2726,7 +2772,9 @@ template <typename IFAT> __aicore__ inline void IncreFlashAttentionAttenPreloadD
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CalcParams(uint32_t loop, ExtraInfo& info, TaskContext &task) {
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CalcParams(uint32_t loop, ExtraInfo &info,
+                                                                           TaskContext &task)
+{
     info.loop = loop;
     info.bIdx = task.bidx;
     info.s1Idx = task.s1idx;
@@ -2798,7 +2846,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CalcParams(uint3
     if constexpr (KVINT4) {
         info.actualSingleProcessSInnerSizeAlign = Align((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)64L);
     } else {
-        info.actualSingleProcessSInnerSizeAlign = Align((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)BYTE_BLOCK);
+        info.actualSingleProcessSInnerSizeAlign =
+            Align((uint32_t)info.actualSingleProcessSInnerSize, (uint32_t)BYTE_BLOCK);
     }
 
     if (antiquantPerTensorFlag == 1) {
@@ -2821,11 +2870,14 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CalcParams(uint3
         sInnerOffsetDataSize += s2IdxFD * sInnerLoopSize;
     }
 
-    info.antiqKeyParamOffsetPerToken = info.bIdx * antiqSeqSize + sInnerOffsetDataSize + kvPaddingBeginOffset;// info.n2Idx * headDim;
+    info.antiqKeyParamOffsetPerToken =
+        info.bIdx * antiqSeqSize + sInnerOffsetDataSize + kvPaddingBeginOffset; // info.n2Idx * headDim;
     info.antiqValueParamOffsetPerToken = info.bIdx * antiqSeqSize + sInnerOffsetDataSize + kvPaddingBeginOffset;
     if (antiquantPerHeadFlag) {
-        info.antiqKeyParamOffsetPerToken = info.bIdx * antiqSeqSize * kvHeadNum + info.n2Idx * antiqSeqSize + sInnerOffsetDataSize + kvPaddingBeginOffset;// info.n2Idx * headDim;
-        info.antiqValueParamOffsetPerToken = info.bIdx * antiqSeqSize * kvHeadNum + info.n2Idx * antiqSeqSize + sInnerOffsetDataSize + kvPaddingBeginOffset;
+        info.antiqKeyParamOffsetPerToken = info.bIdx * antiqSeqSize * kvHeadNum + info.n2Idx * antiqSeqSize +
+                                           sInnerOffsetDataSize + kvPaddingBeginOffset; // info.n2Idx * headDim;
+        info.antiqValueParamOffsetPerToken = info.bIdx * antiqSeqSize * kvHeadNum + info.n2Idx * antiqSeqSize +
+                                             sInnerOffsetDataSize + kvPaddingBeginOffset;
     }
     // out quant
     info.perChannelQuantOffset = info.n2Idx * headDim * gSize;
@@ -2841,7 +2893,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CalcParams(uint3
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec2L(ExtraInfo& info) {
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec2L(ExtraInfo &info)
+{
     mSizeVector = info.mSizeV;
     mSizeVStart = info.mSizeVStart;
     if (mSizeVector == 0) {
@@ -2851,7 +2904,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec2L(Ext
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec1L(ExtraInfo& info)
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec1L(ExtraInfo &info)
 {
     mSizeVector = info.mSizeV;
     mSizeVStart = info.mSizeVStart;
@@ -2863,17 +2916,18 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ProcessVec1L(Ext
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1AToL1(LocalTensor<KV_T>& aL1Tensor, ExtraInfo& info) {
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1AToL1(LocalTensor<KV_T> &aL1Tensor,
+                                                                               ExtraInfo &info)
+{
     uint32_t mmRowCount = msdIterNum * info.mSize;
     uint32_t copyStride = 16 * headDimAlign;
     uint32_t copyIterNum = (mmRowCount + 15) / 16;
-    for(int i = 0; i < copyIterNum; i++) {
+    for (int i = 0; i < copyIterNum; i++) {
         Nd2NzParams mm1Nd2NzParamsForA;
         mm1Nd2NzParamsForA.ndNum = 1; // ND矩阵的个数
-        if(i == copyIterNum - 1) {
+        if (i == copyIterNum - 1) {
             mm1Nd2NzParamsForA.nValue = msdIterNum * info.mSize - i * 16;
-        }
-        else {
+        } else {
             mm1Nd2NzParamsForA.nValue = 16; // 单个ND矩阵的行数, 单位为元素个数  16
         }
         if constexpr (KVINT4) {
@@ -2886,9 +2940,11 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1AToL1(L
         mm1Nd2NzParamsForA.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
         mm1Nd2NzParamsForA.dstNzC0Stride = 16; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数  16
         mm1Nd2NzParamsForA.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移
-        mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移   
+        mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移
         if constexpr (ANTIQUANT) {
-            DataCopy(aL1Tensor[i * copyStride], queryPreProcessResGm[(info.bn2IdxInCurCore % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize + i * copyStride], mm1Nd2NzParamsForA);
+            DataCopy(aL1Tensor[i * copyStride],
+                     queryPreProcessResGm[(info.bn2IdxInCurCore % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize + i * copyStride],
+                     mm1Nd2NzParamsForA);
         } else {
             DataCopy(aL1Tensor, queryGm[info.tensorAOffset], mm1Nd2NzParamsForA);
         }
@@ -2898,9 +2954,10 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1AToL1(L
 
 // nCopyRowCount需要32元素对齐
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1(
-    LocalTensor<KV_T>& bL1Tensor, ExtraInfo& info, uint32_t nCopyIdx, uint32_t nCopyRowCount,
-    uint32_t nActCopyRowCount, uint32_t nActCopyRowCountAlign)
+__aicore__ inline void
+IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1(LocalTensor<KV_T> &bL1Tensor, ExtraInfo &info,
+                                                        uint32_t nCopyIdx, uint32_t nCopyRowCount,
+                                                        uint32_t nActCopyRowCount, uint32_t nActCopyRowCountAlign)
 {
     uint64_t step = headDim;
     if constexpr (KV_LAYOUT_T == LAYOUT::BSH || KV_LAYOUT_T == LAYOUT::BSND) {
@@ -2931,7 +2988,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1(
     uint32_t nTailAlign = nActCopyRowCountAlign - ndNum_tmp * baseN;
 
     Nd2NzParams mm1Nd2NzParamsForB;
-    if (ndNum_tmp != 0){
+    if (ndNum_tmp != 0) {
         mm1Nd2NzParamsForB.nValue = baseN; // 单个ND矩阵的行数, 单位为元素个数   256
         if constexpr (KVINT4) {
             mm1Nd2NzParamsForB.dValue = headDim / 2; // 单个ND矩阵的列数, 单位为元素个数   128
@@ -2940,32 +2997,39 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1(
             mm1Nd2NzParamsForB.dValue = headDim; // 单个ND矩阵的列数, 单位为元素个数   128
             mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
         }
-        mm1Nd2NzParamsForB.dstNzC0Stride = baseN;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数   256
-        mm1Nd2NzParamsForB.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
+        mm1Nd2NzParamsForB.dstNzC0Stride = baseN; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数   256
+        mm1Nd2NzParamsForB.dstNzNStride =
+            1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
 
         if ((KV_LAYOUT_T == LAYOUT::BSH || KV_LAYOUT_T == LAYOUT::BSND) && (baseN * step > 65535)) {
             mm1Nd2NzParamsForB.ndNum = 1;
             mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 256*128
             mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数 256*128
             for (uint32_t i = 0; i < ndNum_tmp; i++) {
-                DataCopy(bL1Tensor[i * baseN * headDimAlign], keyGm[keyGmBaseOffset + i * baseN * step], mm1Nd2NzParamsForB);
+                DataCopy(bL1Tensor[i * baseN * headDimAlign], keyGm[keyGmBaseOffset + i * baseN * step],
+                         mm1Nd2NzParamsForB);
             }
         } else {
             mm1Nd2NzParamsForB.ndNum = ndNum_tmp;
             if constexpr (KVINT4) {
-                mm1Nd2NzParamsForB.srcNdMatrixStride = baseN * step / 2; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 256*128
-                mm1Nd2NzParamsForB.dstNzMatrixStride = baseN * headDimAlign / 2; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数 256*128
+                mm1Nd2NzParamsForB.srcNdMatrixStride =
+                    baseN * step / 2; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 256*128
+                mm1Nd2NzParamsForB.dstNzMatrixStride =
+                    baseN * headDimAlign / 2; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数 256*128
             } else {
-                mm1Nd2NzParamsForB.srcNdMatrixStride = baseN * step; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 256*128
-                mm1Nd2NzParamsForB.dstNzMatrixStride = baseN * headDimAlign; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数 256*128
+                mm1Nd2NzParamsForB.srcNdMatrixStride =
+                    baseN * step; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 256*128
+                mm1Nd2NzParamsForB.dstNzMatrixStride =
+                    baseN * headDimAlign; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数 256*128
             }
             DataCopy(bL1Tensor, keyGm[keyGmBaseOffset], mm1Nd2NzParamsForB);
         }
     }
 
-    if (nTail != 0){
+    if (nTail != 0) {
         mm1Nd2NzParamsForB.ndNum = 1;
-        mm1Nd2NzParamsForB.nValue = nTail; // 单个ND矩阵的行数, 单位为元素个数   actualSingleProcessSInnerSizeAlign为32对齐，nTail已经是32对齐
+        mm1Nd2NzParamsForB.nValue =
+            nTail; // 单个ND矩阵的行数, 单位为元素个数   actualSingleProcessSInnerSizeAlign为32对齐，nTail已经是32对齐
         if constexpr (KVINT4) {
             mm1Nd2NzParamsForB.dValue = headDim / 2; // 单个ND矩阵的列数, 单位为元素个数   128
             mm1Nd2NzParamsForB.srcDValue = step / 2; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
@@ -2974,19 +3038,22 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1(
             mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
         }
         mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 0
-        mm1Nd2NzParamsForB.dstNzC0Stride = nTailAlign;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数 
-        mm1Nd2NzParamsForB.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
+        mm1Nd2NzParamsForB.dstNzC0Stride = nTailAlign; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
+        mm1Nd2NzParamsForB.dstNzNStride =
+            1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数  0
 
         DataCopy(bL1Tensor[ndNum_tmp * baseN * headDimAlign], keyGm[keyGmBaseOffset + ndNum_tmp * baseN * step],
-                 mm1Nd2NzParamsForB);  //需要调整偏移地址，bL1Tensor的偏移， keyGm的偏移
+                 mm1Nd2NzParamsForB); // 需要调整偏移地址，bL1Tensor的偏移， keyGm的偏移
     }
 #endif
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1ForPA(
-    LocalTensor<KV_T>& bL1Tensor, uint64_t keyGmBaseOffset, uint32_t copyTotalRowCnt, uint32_t copyStartRowCnt, uint32_t nActCopyRowCount)
+__aicore__ inline void
+IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1ForPA(LocalTensor<KV_T> &bL1Tensor, uint64_t keyGmBaseOffset,
+                                                             uint32_t copyTotalRowCnt, uint32_t copyStartRowCnt,
+                                                             uint32_t nActCopyRowCount)
 {
     uint32_t baseN = 256 / sizeof(KV_T);
     uint32_t blockElementCnt = 32 / sizeof(KV_T);
@@ -3039,21 +3106,23 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1Fo
             intriParams.srcStride = kvCacheBlockSize - nHead;
 
             uint32_t ndNumFinish = copyStartRowCnt / baseN;
-            DataCopy(bL1Tensor[ndNumFinish * baseN * headDimAlign + copyStartRowCntInBaseN * (32 / sizeof(KV_T))], keyGm[keyGmBaseOffset], intriParams);
+            DataCopy(bL1Tensor[ndNumFinish * baseN * headDimAlign + copyStartRowCntInBaseN * (32 / sizeof(KV_T))],
+                     keyGm[keyGmBaseOffset], intriParams);
             copyTotalRowCnt -= nHead;
         } else {
             mm1Nd2NzParamsForB.ndNum = 1;
-            mm1Nd2NzParamsForB.nValue = nHead; // 单个ND矩阵的行数, 单位为元素个数
-            mm1Nd2NzParamsForB.dValue = headDim; // 单个ND矩阵的列数, 单位为元素个数
+            mm1Nd2NzParamsForB.nValue = nHead;        // 单个ND矩阵的行数, 单位为元素个数
+            mm1Nd2NzParamsForB.dValue = headDim;      // 单个ND矩阵的列数, 单位为元素个数
             mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
             mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数
-            mm1Nd2NzParamsForB.dstNzC0Stride = baseN;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数 
-            mm1Nd2NzParamsForB.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
+            mm1Nd2NzParamsForB.dstNzC0Stride = baseN; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
+            mm1Nd2NzParamsForB.dstNzNStride =
+                1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
             mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数
 
             uint32_t ndNumFinish = copyStartRowCnt / baseN;
-            DataCopy(bL1Tensor[ndNumFinish * baseN * headDimAlign + copyStartRowCntInBaseN * (32 / sizeof(KV_T))], keyGm[keyGmBaseOffset],
-                    mm1Nd2NzParamsForB);
+            DataCopy(bL1Tensor[ndNumFinish * baseN * headDimAlign + copyStartRowCntInBaseN * (32 / sizeof(KV_T))],
+                     keyGm[keyGmBaseOffset], mm1Nd2NzParamsForB);
         }
     }
 
@@ -3067,15 +3136,18 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1Fo
 
             int32_t ndNumFinish = (copyStartRowCnt + nHead) / baseN;
             for (uint32_t i = 0; i < midNdNum; i++) {
-                DataCopy(bL1Tensor[(ndNumFinish + i) * baseN * headDimAlign], keyGm[keyGmBaseOffset + nHead * step + i * baseN * step], intriParams);
+                DataCopy(bL1Tensor[(ndNumFinish + i) * baseN * headDimAlign],
+                         keyGm[keyGmBaseOffset + nHead * step + i * baseN * step], intriParams);
             }
             copyTotalRowCnt -= midNdNum * baseN;
         } else {
-            mm1Nd2NzParamsForB.nValue = baseN; // 单个ND矩阵的行数, 单位为元素个数   256
+            mm1Nd2NzParamsForB.nValue = baseN;   // 单个ND矩阵的行数, 单位为元素个数   256
             mm1Nd2NzParamsForB.dValue = headDim; // 单个ND矩阵的列数, 单位为元素个数   128
             mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
-            mm1Nd2NzParamsForB.dstNzC0Stride = baseN;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数   256
-            mm1Nd2NzParamsForB.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
+            mm1Nd2NzParamsForB.dstNzC0Stride =
+                baseN; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数   256
+            mm1Nd2NzParamsForB.dstNzNStride =
+                1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
 
             int32_t ndNumFinish = (copyStartRowCnt + nHead) / baseN;
             if ((KV_LAYOUT_T == LAYOUT::BSH || KV_LAYOUT_T == LAYOUT::BSND) && (baseN * step > 65535)) {
@@ -3083,14 +3155,18 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1Fo
                 mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 256*128
                 mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数 256*128
                 for (uint32_t i = 0; i < midNdNum; i++) {
-                    DataCopy(bL1Tensor[(ndNumFinish + i) * baseN * headDimAlign], keyGm[keyGmBaseOffset + nHead * step + i * baseN * step], mm1Nd2NzParamsForB);
+                    DataCopy(bL1Tensor[(ndNumFinish + i) * baseN * headDimAlign],
+                             keyGm[keyGmBaseOffset + nHead * step + i * baseN * step], mm1Nd2NzParamsForB);
                 }
             } else {
                 mm1Nd2NzParamsForB.ndNum = midNdNum;
-                mm1Nd2NzParamsForB.srcNdMatrixStride = baseN * step; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 256*128
-                mm1Nd2NzParamsForB.dstNzMatrixStride = baseN * headDimAlign; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数 256*128
+                mm1Nd2NzParamsForB.srcNdMatrixStride =
+                    baseN * step; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 256*128
+                mm1Nd2NzParamsForB.dstNzMatrixStride =
+                    baseN * headDimAlign; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数 256*128
 
-                DataCopy(bL1Tensor[ndNumFinish * baseN * headDimAlign], keyGm[keyGmBaseOffset + nHead * step], mm1Nd2NzParamsForB);
+                DataCopy(bL1Tensor[ndNumFinish * baseN * headDimAlign], keyGm[keyGmBaseOffset + nHead * step],
+                         mm1Nd2NzParamsForB);
             }
         }
     }
@@ -3105,26 +3181,33 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm1BToL1Fo
 
             uint32_t ndNumFinish = (copyStartRowCnt + nHead) / baseN + midNdNum;
             DataCopy(bL1Tensor[ndNumFinish * baseN * headDimAlign + copyStartRowCntInBaseNTail * (32 / sizeof(KV_T))],
-                keyGm[keyGmBaseOffset + (nHead + midNdNum * baseN) * step], intriParams);
+                     keyGm[keyGmBaseOffset + (nHead + midNdNum * baseN) * step], intriParams);
         } else {
             mm1Nd2NzParamsForB.ndNum = 1;
-            mm1Nd2NzParamsForB.nValue = nTail; // 单个ND矩阵的行数, 单位为元素个数   actualSingleProcessSInnerSizeAlign为32对齐，nTail已经是32对齐
-            mm1Nd2NzParamsForB.dValue = headDim; // 单个ND矩阵的列数, 单位为元素个数   128
+            mm1Nd2NzParamsForB.nValue =
+                nTail; // 单个ND矩阵的行数, 单位为元素个数 actualSingleProcessSInnerSizeAlign为32对齐，nTail已经是32对齐
+            mm1Nd2NzParamsForB.dValue = headDim;      // 单个ND矩阵的列数, 单位为元素个数   128
             mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数 0
             mm1Nd2NzParamsForB.srcDValue = step; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数  // 128
-            mm1Nd2NzParamsForB.dstNzC0Stride = dstNzC0StrideTail;// 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数 
-            mm1Nd2NzParamsForB.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
+            mm1Nd2NzParamsForB.dstNzC0Stride =
+                dstNzC0StrideTail; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
+            mm1Nd2NzParamsForB.dstNzNStride =
+                1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移, 单位为Block个数
             mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数  0
 
             int32_t ndNumFinish = (copyStartRowCnt + nHead) / baseN + midNdNum;
-            DataCopy(bL1Tensor[ndNumFinish * baseN * headDimAlign + copyStartRowCntInBaseNTail * (32 / sizeof(KV_T))], keyGm[keyGmBaseOffset + (nHead + midNdNum * baseN) * step],
-                    mm1Nd2NzParamsForB);  //需要调整偏移地址，bL1Tensor的偏移， keyGm的偏移
+            DataCopy(bL1Tensor[ndNumFinish * baseN * headDimAlign + copyStartRowCntInBaseNTail * (32 / sizeof(KV_T))],
+                     keyGm[keyGmBaseOffset + (nHead + midNdNum * baseN) * step],
+                     mm1Nd2NzParamsForB); // 需要调整偏移地址，bL1Tensor的偏移， keyGm的偏移
         }
     }
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::LoadDataMm1A(ExtraInfo& info, LocalTensor<KV_T>& aL0Tensor, LocalTensor<KV_T>& aL1Tensor) {
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::LoadDataMm1A(ExtraInfo &info,
+                                                                             LocalTensor<KV_T> &aL0Tensor,
+                                                                             LocalTensor<KV_T> &aL1Tensor)
+{
     LoadData2DParams loadData2DParams;
     loadData2DParams.startIndex = 0;
     if constexpr (KVINT4) {
@@ -3139,11 +3222,14 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::LoadDataMm1A(Ext
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::LoadDataMm1B(LocalTensor<KV_T>& bL0Tensor, LocalTensor<KV_T>& bL1Tensor) {
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::LoadDataMm1B(LocalTensor<KV_T> &bL0Tensor,
+                                                                             LocalTensor<KV_T> &bL1Tensor)
+{
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(ExtraInfo& info) {
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(ExtraInfo &info)
+{
     LocalTensor<KV_T> aL1Tensor = qL1Buffers[qL1BufIter * L1Q_BLOCK_SIZE / sizeof(KV_T)];
     if (info.s2Idx == 0) {
         WaitFlag<HardEvent::MTE1_MTE2>(L1Q_EVENT0 + qL1BufIter);
@@ -3155,7 +3241,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
     uint32_t nCopyTimes = (info.actualSingleProcessSInnerSize + nCopyRowCount - 1) / nCopyRowCount;
     uint32_t nTailCopyRowCount = info.actualSingleProcessSInnerSize - (nCopyTimes - 1) * nCopyRowCount;
     uint32_t nTailCopyRowCountAlign = info.actualSingleProcessSInnerSizeAlign - (nCopyTimes - 1) * nCopyRowCount;
-    for (uint32_t nCopyIdx = 0, nActCopyRowCount = nCopyRowCount, nActCopyRowCountAlign = nCopyRowCount; nCopyIdx < nCopyTimes; nCopyIdx++) {
+    for (uint32_t nCopyIdx = 0, nActCopyRowCount = nCopyRowCount, nActCopyRowCountAlign = nCopyRowCount;
+         nCopyIdx < nCopyTimes; nCopyIdx++) {
         if (nCopyIdx + 1 == nCopyTimes) {
             nActCopyRowCount = nTailCopyRowCount;
             nActCopyRowCountAlign = nTailCopyRowCountAlign;
@@ -3221,7 +3308,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
             if (i + 1 == mLoopTimes) {
                 actualBaseM = mTail;
             }
-            isHead = (!isOdd && ((!hasTail && (i < (mLoopTimes / 2))) || (i < (mLoopTimes / 2 - 1)))) || (isOdd && (i < (mLoopTimes / 2)));
+            isHead = (!isOdd && ((!hasTail && (i < (mLoopTimes / 2))) || (i < (mLoopTimes / 2 - 1)))) ||
+                     (isOdd && (i < (mLoopTimes / 2)));
             isMid = (!isOdd && hasTail && (i == (mLoopTimes / 2 - 1))) || (isOdd && (i == (mLoopTimes / 2)));
             isTail = (!isOdd && (!hasTail || (i > (mLoopTimes / 2 - 1)))) || (isOdd && (i > (mLoopTimes / 2)));
             LocalTensor<KV_T> aL0Tensor = aL0TensorPingPong[(aL0BufIter % 2) * L0A_PP_SIZE / sizeof(KV_T)];
@@ -3261,9 +3349,10 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
 #ifdef L1_LAYOUT_zN
                 loadData2DParamsForB.repeatTimes = actualBaseN / 16;
                 uint32_t loadLoopTimes = headDimAlign / blockElementCnt;
-                for(uint32_t k = 0; k < loadLoopTimes; k++){
+                for (uint32_t k = 0; k < loadLoopTimes; k++) {
                     LoadData(bL0Tensor[k * actualBaseN * blockElementCnt],
-                        bL1Tensor[(j * baseN + k * nActCopyRowCountAlign) * blockElementCnt], loadData2DParamsForB);
+                             bL1Tensor[(j * baseN + k * nActCopyRowCountAlign) * blockElementCnt],
+                             loadData2DParamsForB);
                 }
 #else
                 loadData2DParamsForB.repeatTimes = (actualBaseN / 16) * (headDimAlign / blockElementCnt);
@@ -3274,7 +3363,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
 
                 MmadParams mmadParams;
                 mmadParams.m = actualBaseM;
-                if (mmadParams.m == 1) {  // m等于1会默认开GEMV模式，且不可关闭GEMV，所以规避当作矩阵计算
+                if (mmadParams.m == 1) { // m等于1会默认开GEMV模式，且不可关闭GEMV，所以规避当作矩阵计算
                     mmadParams.m = 16;
                 }
                 mmadParams.n = actualBaseN; // 无效数据不参与计算
@@ -3307,7 +3396,9 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
                         if (mIter == 1) {
                             SetAtomicAdd<half>();
                         }
-                        Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + i * baseM * info.actualSingleProcessSInnerSizeAlign + nCopyIdx * nCopyRowCount + j * baseN],
+                        Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize +
+                                         i * baseM * info.actualSingleProcessSInnerSizeAlign +
+                                         nCopyIdx * nCopyRowCount + j * baseN],
                                 cL0Tensor[info.mSize * mIter * 16], fixParams);
                         if (mIter == 1) {
                             SetAtomicNone();
@@ -3324,7 +3415,9 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
                     fixParams.ndNum = 1;
                     fixParams.quantPre = QuantMode_t::DEQF16;
                     fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
-                    Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + i * baseM * info.actualSingleProcessSInnerSizeAlign + nCopyIdx * nCopyRowCount + j * baseN],
+                    Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize +
+                                     i * baseM * info.actualSingleProcessSInnerSizeAlign + nCopyIdx * nCopyRowCount +
+                                     j * baseN],
                             cL0Tensor, fixParams);
                     PipeBarrier<PIPE_FIX>();
                 } else if (isTail) {
@@ -3338,7 +3431,9 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
                     fixParams.quantPre = QuantMode_t::DEQF16;
                     fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
                     SetAtomicAdd<half>();
-                    Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + (i * baseM - info.mSize) * info.actualSingleProcessSInnerSizeAlign + nCopyIdx * nCopyRowCount + j * baseN],
+                    Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize +
+                                     (i * baseM - info.mSize) * info.actualSingleProcessSInnerSizeAlign +
+                                     nCopyIdx * nCopyRowCount + j * baseN],
                             cL0Tensor, fixParams);
                     SetAtomicNone();
                     PipeBarrier<PIPE_FIX>();
@@ -3352,14 +3447,18 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
                     fixParams.ndNum = 1;
                     fixParams.quantPre = QuantMode_t::DEQF16;
                     fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
-                    Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + i * baseM * info.actualSingleProcessSInnerSizeAlign + nCopyIdx * nCopyRowCount + j * baseN],
-                                cL0Tensor, fixParams);
+                    Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize +
+                                     i * baseM * info.actualSingleProcessSInnerSizeAlign + nCopyIdx * nCopyRowCount +
+                                     j * baseN],
+                            cL0Tensor, fixParams);
                     PipeBarrier<PIPE_FIX>();
                     tmp = quantScaleC1S2;
                     fixParams.mSize = (i + 1) * baseM - info.mSize;
                     fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
                     SetAtomicAdd<half>();
-                    Fixpipe(mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + nCopyIdx * nCopyRowCount + j * baseN], cL0Tensor[(info.mSize - i * baseM) * 16], fixParams);
+                    Fixpipe(
+                        mm1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + nCopyIdx * nCopyRowCount + j * baseN],
+                        cL0Tensor[(info.mSize - i * baseM) * 16], fixParams);
                     SetAtomicNone();
                     PipeBarrier<PIPE_FIX>();
                 }
@@ -3380,18 +3479,20 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm1(Extra
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2AToL1(LocalTensor<KV_T>& aL1Tensor, ExtraInfo& info, uint32_t mCopyIdx, uint32_t mCopyRowCount, uint32_t mActCopyRowCount, uint32_t kCopyIdx, uint32_t kCopyRowCount, uint32_t kActCopyRowCount) {
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2AToL1(
+    LocalTensor<KV_T> &aL1Tensor, ExtraInfo &info, uint32_t mCopyIdx, uint32_t mCopyRowCount, uint32_t mActCopyRowCount,
+    uint32_t kCopyIdx, uint32_t kCopyRowCount, uint32_t kActCopyRowCount)
+{
     uint32_t mmRowCount = mActCopyRowCount;
     uint32_t copyStrideL1 = 16 * kActCopyRowCount;
     uint32_t copyStrideGm = 16 * info.actualSingleProcessSInnerSizeAlign;
     uint32_t copyIterNum = (mmRowCount + 15) / 16;
-    for(int i = 0; i < copyIterNum; i++){
+    for (int i = 0; i < copyIterNum; i++) {
         Nd2NzParams mm1Nd2NzParamsForA;
         mm1Nd2NzParamsForA.ndNum = 1; // ND矩阵的个数
-        if(i == copyIterNum - 1) {
+        if (i == copyIterNum - 1) {
             mm1Nd2NzParamsForA.nValue = mmRowCount - i * 16;
-        }
-        else {
+        } else {
             mm1Nd2NzParamsForA.nValue = 16; // 单个ND矩阵的行数, 单位为元素个数  16
         }
         mm1Nd2NzParamsForA.dValue = kActCopyRowCount; // 单个ND矩阵的列数, 单位为元素个数
@@ -3399,17 +3500,26 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2AToL1(L
         if constexpr (KVINT4) {
             mm1Nd2NzParamsForA.srcDValue = info.actualSingleProcessSInnerSizeAlign / 2;
         } else {
-            mm1Nd2NzParamsForA.srcDValue = info.actualSingleProcessSInnerSizeAlign; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数
+            mm1Nd2NzParamsForA.srcDValue =
+                info.actualSingleProcessSInnerSizeAlign; // 同一个ND矩阵中相邻行起始地址之间的偏移, 单位为元素个数
         }
         mm1Nd2NzParamsForA.dstNzC0Stride = 16; // 转换为NZ矩阵后，相邻Block起始地址之间的偏移, 单位为Block个数
         mm1Nd2NzParamsForA.dstNzNStride = 1; // 转换为NZ矩阵后，ND中之前相邻两行在NZ矩阵中起始地址之间的偏移
         mm1Nd2NzParamsForA.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移
-        DataCopy(aL1Tensor[i * copyStrideL1], vec1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize + (mCopyIdx * mCopyRowCount) * info.actualSingleProcessSInnerSizeAlign + kCopyIdx * kCopyRowCount + i * copyStrideGm], mm1Nd2NzParamsForA);
+        DataCopy(aL1Tensor[i * copyStrideL1],
+                 vec1ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * mmResUbSize +
+                           (mCopyIdx * mCopyRowCount) * info.actualSingleProcessSInnerSizeAlign +
+                           kCopyIdx * kCopyRowCount + i * copyStrideGm],
+                 mm1Nd2NzParamsForA);
     }
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2BToL1(LocalTensor<KV_T>& bL1Tensor, ExtraInfo& info, uint32_t kCopyIdx, uint32_t kCopyRowCount, uint32_t kActCopyRowCount) {
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2BToL1(LocalTensor<KV_T> &bL1Tensor,
+                                                                               ExtraInfo &info, uint32_t kCopyIdx,
+                                                                               uint32_t kCopyRowCount,
+                                                                               uint32_t kActCopyRowCount)
+{
     uint64_t step = headDim;
     if constexpr (KV_LAYOUT_T == LAYOUT::BSH || KV_LAYOUT_T == LAYOUT::BSND) {
         step = headDim * kvHeadNum;
@@ -3450,14 +3560,15 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2BToL1(L
     }
     mm1Nd2NzParamsForB.dstNzC0Stride = blockK;
     mm1Nd2NzParamsForB.dstNzNStride = 1;
-    if (ndNum_tmp != 0){
+    if (ndNum_tmp != 0) {
         if ((KV_LAYOUT_T == LAYOUT::BSH || KV_LAYOUT_T == LAYOUT::BSND) && (blockK * step > 65535)) {
             mm1Nd2NzParamsForB.ndNum = 1;
             mm1Nd2NzParamsForB.nValue = blockK;
             mm1Nd2NzParamsForB.srcNdMatrixStride = 0;
             mm1Nd2NzParamsForB.dstNzMatrixStride = 0;
             for (uint32_t i = 0; i < ndNum_tmp; i++) {
-                DataCopy(bL1Tensor[i * blockK * headDimAlign], valueGm[valueGmBaseOffset + i * blockK * step], mm1Nd2NzParamsForB);
+                DataCopy(bL1Tensor[i * blockK * headDimAlign], valueGm[valueGmBaseOffset + i * blockK * step],
+                         mm1Nd2NzParamsForB);
             }
         } else {
             mm1Nd2NzParamsForB.ndNum = ndNum_tmp;
@@ -3472,19 +3583,22 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2BToL1(L
             DataCopy(bL1Tensor, valueGm[valueGmBaseOffset], mm1Nd2NzParamsForB);
         }
     }
-    if (kTail != 0){
+    if (kTail != 0) {
         mm1Nd2NzParamsForB.ndNum = 1;
         mm1Nd2NzParamsForB.nValue = kTail;
         mm1Nd2NzParamsForB.srcNdMatrixStride = 0;
         mm1Nd2NzParamsForB.dstNzMatrixStride = 0;
-        DataCopy(bL1Tensor[ndNum_tmp * blockK * headDimAlign], valueGm[valueGmBaseOffset + ndNum_tmp * blockK * step], mm1Nd2NzParamsForB);
+        DataCopy(bL1Tensor[ndNum_tmp * blockK * headDimAlign], valueGm[valueGmBaseOffset + ndNum_tmp * blockK * step],
+                 mm1Nd2NzParamsForB);
     }
 #endif
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2BToL1ForPA(
-    LocalTensor<KV_T>& bL1Tensor, uint64_t valueGmBaseOffset, uint32_t copyTotalRowCnt, uint32_t copyStartRowCnt, uint32_t kActCopyRowCount)
+__aicore__ inline void
+IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2BToL1ForPA(LocalTensor<KV_T> &bL1Tensor, uint64_t valueGmBaseOffset,
+                                                             uint32_t copyTotalRowCnt, uint32_t copyStartRowCnt,
+                                                             uint32_t kActCopyRowCount)
 {
     uint32_t blockK = 32 / sizeof(KV_T); // 单个ND矩阵的行数
     uint32_t blockElementCnt = 32 / sizeof(KV_T);
@@ -3534,16 +3648,17 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2BToL1Fo
             intriParams.srcStride = kvCacheBlockSize - nHead;
 
             uint32_t ndNumFinish = copyStartRowCnt / blockK;
-            DataCopy(bL1Tensor[ndNumFinish * blockK * headDimAlign + copyStartRowCntInABlockK * (32 / sizeof(KV_T))], valueGm[valueGmBaseOffset], intriParams);
+            DataCopy(bL1Tensor[ndNumFinish * blockK * headDimAlign + copyStartRowCntInABlockK * (32 / sizeof(KV_T))],
+                     valueGm[valueGmBaseOffset], intriParams);
         } else {
             mm1Nd2NzParamsForB.ndNum = 1;
-            mm1Nd2NzParamsForB.nValue = nHead; // 单个ND矩阵的行数, 单位为元素个数
+            mm1Nd2NzParamsForB.nValue = nHead;        // 单个ND矩阵的行数, 单位为元素个数
             mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
             mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数
 
             uint32_t ndNumFinish = copyStartRowCnt / blockK;
-            DataCopy(bL1Tensor[ndNumFinish * blockK * headDimAlign + copyStartRowCntInABlockK * (32 / sizeof(KV_T))], valueGm[valueGmBaseOffset],
-                    mm1Nd2NzParamsForB);
+            DataCopy(bL1Tensor[ndNumFinish * blockK * headDimAlign + copyStartRowCntInABlockK * (32 / sizeof(KV_T))],
+                     valueGm[valueGmBaseOffset], mm1Nd2NzParamsForB);
         }
     }
 
@@ -3557,28 +3672,32 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2BToL1Fo
 
             int32_t ndNumFinish = (copyStartRowCnt + nHead) / blockK;
             for (uint32_t i = 0; i < midNdNum; i++) {
-                DataCopy(bL1Tensor[(ndNumFinish + i) * blockK * headDimAlign], valueGm[valueGmBaseOffset + nHead * step + i * blockK * step], intriParams);
+                DataCopy(bL1Tensor[(ndNumFinish + i) * blockK * headDimAlign],
+                         valueGm[valueGmBaseOffset + nHead * step + i * blockK * step], intriParams);
             }
         } else {
             int32_t ndNumFinish = (copyStartRowCnt + nHead) / blockK;
             if ((KV_LAYOUT_T == LAYOUT::BSH || KV_LAYOUT_T == LAYOUT::BSND) && (blockK * step > 65535)) {
                 mm1Nd2NzParamsForB.ndNum = 1;
-                mm1Nd2NzParamsForB.nValue = blockK; // 单个ND矩阵的行数, 单位为元素个数
+                mm1Nd2NzParamsForB.nValue = blockK;       // 单个ND矩阵的行数, 单位为元素个数
                 mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
                 mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数
 
                 for (uint32_t i = 0; i < midNdNum; i++) {
-                    DataCopy(bL1Tensor[(ndNumFinish + i) * blockK * headDimAlign], valueGm[valueGmBaseOffset + nHead * step + i * blockK * step], mm1Nd2NzParamsForB);
+                    DataCopy(bL1Tensor[(ndNumFinish + i) * blockK * headDimAlign],
+                             valueGm[valueGmBaseOffset + nHead * step + i * blockK * step], mm1Nd2NzParamsForB);
                 }
             } else {
                 mm1Nd2NzParamsForB.ndNum = midNdNum;
-                mm1Nd2NzParamsForB.nValue = blockK; // 单个ND矩阵的行数, 单位为元素个数
+                mm1Nd2NzParamsForB.nValue = blockK;                   // 单个ND矩阵的行数, 单位为元素个数
                 mm1Nd2NzParamsForB.srcNdMatrixStride = blockK * step; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
-                mm1Nd2NzParamsForB.dstNzMatrixStride = blockK * headDimAlign; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数
+                mm1Nd2NzParamsForB.dstNzMatrixStride =
+                    blockK * headDimAlign; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数
 
-                DataCopy(bL1Tensor[ndNumFinish * blockK * headDimAlign], valueGm[valueGmBaseOffset + nHead * step], mm1Nd2NzParamsForB);
+                DataCopy(bL1Tensor[ndNumFinish * blockK * headDimAlign], valueGm[valueGmBaseOffset + nHead * step],
+                         mm1Nd2NzParamsForB);
             }
-        } 
+        }
     }
 
     if (nTail != 0) {
@@ -3590,22 +3709,26 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyInMm2BToL1Fo
             intriParams.srcStride = kvCacheBlockSize - nTail;
 
             int32_t ndNumFinish = (copyStartRowCnt + nHead) / blockK + midNdNum;
-            DataCopy(bL1Tensor[ndNumFinish * blockK * headDimAlign + copyStartRowCntInBaseNTail * (32 / sizeof(KV_T))], valueGm[valueGmBaseOffset + (nHead + midNdNum * blockK) * step], intriParams);
+            DataCopy(bL1Tensor[ndNumFinish * blockK * headDimAlign + copyStartRowCntInBaseNTail * (32 / sizeof(KV_T))],
+                     valueGm[valueGmBaseOffset + (nHead + midNdNum * blockK) * step], intriParams);
         } else {
             mm1Nd2NzParamsForB.ndNum = 1;
-            mm1Nd2NzParamsForB.nValue = nTail; // 单个ND矩阵的行数, 单位为元素个数
+            mm1Nd2NzParamsForB.nValue = nTail;        // 单个ND矩阵的行数, 单位为元素个数
             mm1Nd2NzParamsForB.srcNdMatrixStride = 0; // 相邻ND矩阵起始地址之间的偏移, 单位为元素个数
             mm1Nd2NzParamsForB.dstNzMatrixStride = 0; // 两个NZ矩阵，起始地址之间的偏移, 单位为元素个数
 
             int32_t ndNumFinish = (copyStartRowCnt + nHead) / blockK + midNdNum;
-            DataCopy(bL1Tensor[ndNumFinish * blockK * headDimAlign + copyStartRowCntInBaseNTail * (32 / sizeof(KV_T))], valueGm[valueGmBaseOffset + (nHead + midNdNum * blockK) * step],
-                    mm1Nd2NzParamsForB);
+            DataCopy(bL1Tensor[ndNumFinish * blockK * headDimAlign + copyStartRowCntInBaseNTail * (32 / sizeof(KV_T))],
+                     valueGm[valueGmBaseOffset + (nHead + midNdNum * blockK) * step], mm1Nd2NzParamsForB);
         }
     }
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::LoadDataMm2A(LocalTensor<KV_T> aL0Tensor, LocalTensor<KV_T> aL1Tensor, uint32_t kSize) {
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::LoadDataMm2A(LocalTensor<KV_T> aL0Tensor,
+                                                                             LocalTensor<KV_T> aL1Tensor,
+                                                                             uint32_t kSize)
+{
     LoadData2DParams loadData2DParams;
     loadData2DParams.startIndex = 0;
     if constexpr (KVINT4) {
@@ -3620,11 +3743,14 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::LoadDataMm2A(Loc
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::LoadDataMm2B(LocalTensor<KV_T>& bL0Tensor, LocalTensor<KV_T>& bL1Tensor) {
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::LoadDataMm2B(LocalTensor<KV_T> &bL0Tensor,
+                                                                             LocalTensor<KV_T> &bL1Tensor)
+{
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(ExtraInfo& info) {
+__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(ExtraInfo &info)
+{
     constexpr uint32_t mCopyRowCount = P_LOAD_TO_L1_ROW_NUM;
     uint32_t mActRowCount = msdIterNum * info.mSize;
     uint32_t mCopyTimes = (mActRowCount + mCopyRowCount - 1) / mCopyRowCount;
@@ -3641,7 +3767,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
         }
         LocalTensor<L0C_T> cL0Tensor = cL0TensorPingPong[(cL0BufIter % 2) * L0C_PP_SIZE / sizeof(L0C_T)];
         WaitFlag<HardEvent::FIX_M>(L0C_EVENT0 + (cL0BufIter % 2));
-        for (uint32_t kCopyIdx = 0, kActCopyRowCount = kCopyRowCount, kActCopyRowCountAlign = kCopyRowCount; kCopyIdx < kCopyTimes; kCopyIdx++) {
+        for (uint32_t kCopyIdx = 0, kActCopyRowCount = kCopyRowCount, kActCopyRowCountAlign = kCopyRowCount;
+             kCopyIdx < kCopyTimes; kCopyIdx++) {
             if (kCopyIdx + 1 == kCopyTimes) {
                 kActCopyRowCount = kTailCopyRowCount;
                 kActCopyRowCountAlign = kTailCopyRowCountAlign;
@@ -3649,7 +3776,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
             kpL1BufIter++;
             LocalTensor<KV_T> aL1Tensor = kpL1Buffers[(kpL1BufIter % 3) * L1KP_BLOCK_SIZE / sizeof(KV_T)];
             WaitFlag<HardEvent::MTE1_MTE2>(L1KP_EVENT0 + (kpL1BufIter % 3));
-            CopyInMm2AToL1(aL1Tensor, info, mCopyIdx, mCopyRowCount, mActCopyRowCount, kCopyIdx, kCopyRowCount, kActCopyRowCountAlign);
+            CopyInMm2AToL1(aL1Tensor, info, mCopyIdx, mCopyRowCount, mActCopyRowCount, kCopyIdx, kCopyRowCount,
+                           kActCopyRowCountAlign);
             SetFlag<HardEvent::MTE2_MTE1>(L1KP_EVENT0 + (kpL1BufIter % 3));
             WaitFlag<HardEvent::MTE2_MTE1>(L1KP_EVENT0 + (kpL1BufIter % 3));
             LocalTensor<KV_T> bL1Tensor = vL1Buffers[(vL1BufIter % 4) * L1V_BLOCK_SIZE / sizeof(KV_T)];
@@ -3678,12 +3806,14 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
                             if constexpr (KVINT4) {
                                 blockElementCnt = 64;
                             }
-                            valueOffset += (uint64_t)(info.n2Idx * headDim * kvCacheBlockSize) + reaminRowCnt * blockElementCnt;
+                            valueOffset +=
+                                (uint64_t)(info.n2Idx * headDim * kvCacheBlockSize) + reaminRowCnt * blockElementCnt;
                         } else {
                             if constexpr (KV_LAYOUT_T == LAYOUT::BSH || KV_LAYOUT_T == LAYOUT::BSND) {
                                 valueOffset += (uint64_t)(info.n2Idx * headDim) + reaminRowCnt * headDim * kvHeadNum;
                             } else {
-                                valueOffset += (uint64_t)(info.n2Idx * headDim * kvCacheBlockSize) + reaminRowCnt * headDim;
+                                valueOffset +=
+                                    (uint64_t)(info.n2Idx * headDim * kvCacheBlockSize) + reaminRowCnt * headDim;
                             }
                         }
                         CopyInMm2BToL1ForPA(bL1Tensor, valueOffset, kActCopyRowCount, copyFinishRowCnt, copyRowCnt);
@@ -3699,7 +3829,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
                 WaitFlag<HardEvent::MTE2_MTE1>(L1V_EVENT0 + (vL1BufIter % 4));
                 kb = vL1BufIter;
             } else {
-                kb = vL1BufIter - (kCopyTimes-kCopyIdx-1);
+                kb = vL1BufIter - (kCopyTimes - kCopyIdx - 1);
                 bL1Tensor = vL1Buffers[(kb % 4) * L1V_BLOCK_SIZE / sizeof(KV_T)];
             }
             constexpr uint32_t baseK = 128 / sizeof(KV_T);
@@ -3723,10 +3853,10 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
                 uint32_t copyStrideL0 = 16 * actualBaseKAlign;
                 uint32_t copyStrideL1 = 16 * kActCopyRowCountAlign;
                 uint32_t copyIterNum = (mmRowCount + 15) / 16;
-                for(int i = 0; i < copyIterNum; i++){
+                for (int i = 0; i < copyIterNum; i++) {
                     LoadDataMm2A(aL0Tensor[i * copyStrideL0], curAL1Tensor[i * copyStrideL1], actualBaseKAlign);
                 }
-                
+
                 SetFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (aL0BufIter % 2));
                 WaitFlag<HardEvent::MTE1_M>(L0A_EVENT0 + (aL0BufIter % 2));
 
@@ -3742,12 +3872,14 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
                 loadData2DTransposeParamsForB.repeatTimes = actualBaseKAlign / blockElementCnt;
                 loadData2DTransposeParamsForB.dstGap = headDimAlign / 16 - 1;
                 uint32_t loadLoopTimes = headDimAlign / blockElementCnt;
-                for(uint32_t j = 0; j < loadLoopTimes; j++){
+                for (uint32_t j = 0; j < loadLoopTimes; j++) {
                     LoadDataWithTranspose(bL0Tensor[j * blockElementCnt * blockElementCnt],
-                        bL1Tensor[(i * baseK + j * kActCopyRowCountAlign) * blockElementCnt], loadData2DTransposeParamsForB);
+                                          bL1Tensor[(i * baseK + j * kActCopyRowCountAlign) * blockElementCnt],
+                                          loadData2DTransposeParamsForB);
                 }
 #else
-                loadData2DTransposeParamsForB.repeatTimes = (actualBaseKAlign / blockElementCnt) * (headDimAlign / blockElementCnt);
+                loadData2DTransposeParamsForB.repeatTimes =
+                    (actualBaseKAlign / blockElementCnt) * (headDimAlign / blockElementCnt);
                 loadData2DTransposeParamsForB.dstGap = blockElementCnt / 16 - 1;
                 uint32_t l1BaseOffset = baseK * headDimAlign * i;
                 LoadDataWithTranspose(bL0Tensor, bL1Tensor[l1BaseOffset], loadData2DTransposeParamsForB);
@@ -3757,7 +3889,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
 
                 MmadParams mmadParams;
                 mmadParams.m = mActCopyRowCount;
-                if (mmadParams.m == 1) {  // m等于1会默认开GEMV模式，且不可关闭GEMV，所以规避当作矩阵计算
+                if (mmadParams.m == 1) { // m等于1会默认开GEMV模式，且不可关闭GEMV，所以规避当作矩阵计算
                     mmadParams.m = 16;
                 }
                 mmadParams.n = 128;
@@ -3777,7 +3909,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
             if ((mCopyIdx + 1) == mCopyTimes) {
                 SetFlag<HardEvent::MTE1_MTE2>(L1V_EVENT0 + (kb % 4));
             }
-        }         
+        }
         SetFlag<HardEvent::M_FIX>(L0C_EVENT0 + (cL0BufIter % 2));
         WaitFlag<HardEvent::M_FIX>(L0C_EVENT0 + (cL0BufIter % 2));
         if (mCopyTimes == 1) {
@@ -3797,7 +3929,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
                 if (mIter == 1) {
                     SetAtomicAdd<half>();
                 }
-                Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize], cL0Tensor[mIter * fixParams.mSize * 16], fixParams);
+                Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize],
+                        cL0Tensor[mIter * fixParams.mSize * 16], fixParams);
                 if (mIter == 1) {
                     SetAtomicNone();
                 }
@@ -3820,7 +3953,8 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
                 fixParams.mSize = mActCopyRowCount - info.mSize;
                 fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
                 SetAtomicAdd<half>();
-                Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize], cL0Tensor[info.mSize * 16], fixParams);
+                Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize], cL0Tensor[info.mSize * 16],
+                        fixParams);
                 SetAtomicNone();
                 PipeBarrier<PIPE_FIX>();
             } else if (mCopyIdx == 0) {
@@ -3846,7 +3980,9 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::ComputeMm2(Extra
                 fixParams.quantPre = QuantMode_t::DEQF16;
                 fixParams.deqScalar = static_cast<uint64_t>(*reinterpret_cast<int32_t *>(&tmp));
                 SetAtomicAdd<half>();
-                Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize + (mCopyIdx * mCopyRowCount - info.mSize) * headDimAlign], cL0Tensor, fixParams);
+                Fixpipe(mm2ResGm[(info.loop % (PRE_LOAD_NUM_DD)) * bmm2ResUbSize +
+                                 (mCopyIdx * mCopyRowCount - info.mSize) * headDimAlign],
+                        cL0Tensor, fixParams);
                 SetAtomicNone();
                 PipeBarrier<PIPE_FIX>();
             }
@@ -3873,7 +4009,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
 #else
             Duplicate(softmaxMaxDefaultUb, SOFTMAX_MIN_NUM, BUFFER_SIZE_BYTE_512B / sizeof(T));
             Duplicate(softmaxSumDefaultUb, FLOAT_ZERO, BUFFER_SIZE_BYTE_512B / sizeof(T));
-#endif   
+#endif
         } else {
             SetFlag<HardEvent::MTE1_MTE2>(L1Q_EVENT0);
             SetFlag<HardEvent::MTE1_MTE2>(L1KP_EVENT0);
@@ -3883,7 +4019,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
             SetFlag<HardEvent::MTE1_MTE2>(L1V_EVENT1);
             SetFlag<HardEvent::MTE1_MTE2>(L1V_EVENT2);
             SetFlag<HardEvent::MTE1_MTE2>(L1V_EVENT3);
-           
+
             SetFlag<HardEvent::M_MTE1>(L0A_EVENT0);
             SetFlag<HardEvent::M_MTE1>(L0A_EVENT1);
             SetFlag<HardEvent::M_MTE1>(L0B_EVENT0);
@@ -3896,10 +4032,10 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
         ExtraInfo extraInfo[EXTRA_NUM];
         TaskContext taskContext[TASK_NUM];
         uint32_t gloop = 0;
-        uint32_t gtasks = 0; //gtasks记录全局已处理了多少个Task
+        uint32_t gtasks = 0; // gtasks记录全局已处理了多少个Task
         uint32_t gtasksC1V1 = 0;
         uint32_t gtasksC2V2 = 0;
-        uint32_t tasks = 0; //记录每组Task数量（预加载task的数量）
+        uint32_t tasks = 0; // 记录每组Task数量（预加载task的数量）
 
         if constexpr (!FLASH_DECODE) {
             for (uint32_t bn2gIdx = bn2LoopTimes; bn2gIdx > 0; bn2gIdx--) {
@@ -3913,7 +4049,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
                 }
                 bn2LoopTimes--;
             }
-        } 
+        }
 
         for (uint32_t bn2gIdx = 0; bn2gIdx < bn2LoopTimes; bn2gIdx++) {
             GetBN2Gid(bn2gIdx);
@@ -3944,7 +4080,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
                     if (tasks < TASK_NUM && !isLast) {
                         continue;
                     }
-                    //遍历Task任务
+                    // 遍历Task任务
                     for (uint32_t i = 0; i < tasks; i++) {
                         uint32_t loop = gtasks;
                         CalcParams(loop, extraInfo[loop % EXTRA_NUM], taskContext[i]);
@@ -3957,7 +4093,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
                         }
                         gtasks++;
                     }
-                }              
+                }
 
                 for (uint32_t i = 0; i < TASK_NUM; i++) {
                     uint32_t loop = gtasksC1V1;
@@ -3971,7 +4107,7 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
                         }
                         if ASCEND_IS_AIV {
                             CrossCoreWaitFlag(SYNC_C1_V1_FLAG);
-                            ExtraInfo& info = extraInfo[loop % EXTRA_NUM];
+                            ExtraInfo &info = extraInfo[loop % EXTRA_NUM];
                             ProcessVec1L(extraInfo[loop % EXTRA_NUM]);
                             CrossCoreSetFlag<SYNC_MODE2, PIPE_MTE3>(SYNC_V1_C2_FLAG);
                         }
@@ -4036,13 +4172,12 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::Process()
 
 template <typename IFAT>
 __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyFixedUbToGm(const GlobalTensor<T> &dst,
-                                                                                     const LocalTensor<T> &src,
-                                                                                     size_t size)
+                                                                                const LocalTensor<T> &src, size_t size)
 {
     LocalTensor<T> tmp = outputBuf2.Get<T>();
     WaitFlag<AscendC::HardEvent::MTE3_V>(SYNC_OUTPUT_BUF2_FLAG);
 #ifdef IFA_SOFTMAX_WITHOUT_BRC
-    Brcb(tmp, src, (mSizeVector + 7) / 8, {1, 8}); //将m*1数据扩展为m*8匹配后续使用
+    Brcb(tmp, src, (mSizeVector + 7) / 8, {1, 8}); // 将m*1数据扩展为m*8匹配后续使用
 #else
     DataCopy(tmp, src, size);
 #endif
@@ -4053,8 +4188,9 @@ __aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::CopyFixedUbToGm(
 }
 
 template <typename IFAT>
-__aicore__ inline void IncreFlashAttentionAttenPreloadDD<IFAT>::DealKvInt4ColumnOdd(LocalTensor<T> mmResUb,
-    uint32_t dealRowCount, uint32_t columnCount, uint32_t actualColumnCount)
+__aicore__ inline void
+IncreFlashAttentionAttenPreloadDD<IFAT>::DealKvInt4ColumnOdd(LocalTensor<T> mmResUb, uint32_t dealRowCount,
+                                                             uint32_t columnCount, uint32_t actualColumnCount)
 {
     if constexpr (KVINT4) {
         if (actualColumnCount % 2 == 1) {

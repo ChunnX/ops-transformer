@@ -34,50 +34,50 @@ namespace op_api {
  *
  * @return tuple(key_cache_out, value_cache_out, key_scale_cache_out)
  */
-std::tuple<at::Tensor, at::Tensor, at::Tensor> scatter_pa_kv_cache_with_k_scale(const at::Tensor &key,
-    const at::Tensor &value, const at::Tensor &key_cache, const at::Tensor &value_cache, const at::Tensor &slot_mapping,
-    const at::Tensor &key_scale, const at::Tensor &key_scale_cache, std::string cache_layout)
+std::tuple<at::Tensor, at::Tensor, at::Tensor>
+ScatterPaKvCacheWithKScale(const at::Tensor &key, const at::Tensor &value, const at::Tensor &keyCache,
+                           const at::Tensor &valueCache, const at::Tensor &slotMapping, const at::Tensor &keyScale,
+                           const at::Tensor &keyScaleCache, std::string cacheLayout)
 {
     // 检查输入tensor维度
     TORCH_CHECK(key.dim() == 3, "key must be 3D tensor [num_tokens, num_head, k_head_size]");
     TORCH_CHECK(value.dim() == 3, "value must be 3D tensor [num_tokens, num_head, v_head_size]");
-    TORCH_CHECK(key_cache.dim() == 4, "key_cache must be 4D tensor [num_blocks, num_head, block_size, k_head_size]");
-    TORCH_CHECK(value_cache.dim() == 4,
-                "value_cache must be 4D tensor [num_blocks, num_head, block_size, v_head_size]");
-    TORCH_CHECK(slot_mapping.dim() == 1, "slot_mapping must be 1D tensor [num_tokens]");
-    TORCH_CHECK(key_scale.dim() == 2, "key_scale must be 2D tensor [num_tokens, num_head]");
-    TORCH_CHECK(key_scale_cache.dim() == 4, "key_scale_cache must be 4D tensor [num_blocks, num_head, block_size, 1]");
+    TORCH_CHECK(keyCache.dim() == 4, "key_cache must be 4D tensor [num_blocks, num_head, block_size, k_head_size]");
+    TORCH_CHECK(valueCache.dim() == 4, "value_cache must be 4D tensor [num_blocks, num_head, block_size, v_head_size]");
+    TORCH_CHECK(slotMapping.dim() == 1, "slot_mapping must be 1D tensor [num_tokens]");
+    TORCH_CHECK(keyScale.dim() == 2, "key_scale must be 2D tensor [num_tokens, num_head]");
+    TORCH_CHECK(keyScaleCache.dim() == 4, "key_scale_cache must be 4D tensor [num_blocks, num_head, block_size, 1]");
 
     // 检查dtype一致性
     TORCH_CHECK(key.dtype() == value.dtype(), "key and value must have same dtype");
-    TORCH_CHECK(key.dtype() == key_cache.dtype(), "key and key_cache must have same dtype");
-    TORCH_CHECK(key.dtype() == value_cache.dtype(), "key and value_cache must have same dtype");
+    TORCH_CHECK(key.dtype() == keyCache.dtype(), "key and key_cache must have same dtype");
+    TORCH_CHECK(key.dtype() == valueCache.dtype(), "key and value_cache must have same dtype");
     TORCH_CHECK(key.dtype() == at::kFloat8_e5m2 || key.dtype() == at::kFloat8_e4m3fn,
                 "key dtype must be float8_e5m2 or float8_e4m3fn");
-    TORCH_CHECK(key_scale.dtype() == at::kFloat, "key_scale must be float32");
-    TORCH_CHECK(key_scale_cache.dtype() == at::kFloat, "key_scale_cache must be float32");
-    TORCH_CHECK(slot_mapping.dtype() == at::kInt || slot_mapping.dtype() == at::kLong,
+    TORCH_CHECK(keyScale.dtype() == at::kFloat, "key_scale must be float32");
+    TORCH_CHECK(keyScaleCache.dtype() == at::kFloat, "key_scale_cache must be float32");
+    TORCH_CHECK(slotMapping.dtype() == at::kInt || slotMapping.dtype() == at::kLong,
                 "slot_mapping dtype must be int32 or int64");
 
     // 创建输出tensor（与输入cache相同shape和dtype）
-    at::Tensor key_cache_out = key_cache.clone();
-    at::Tensor value_cache_out = value_cache.clone();
-    at::Tensor key_scale_cache_out = key_scale_cache.clone();
+    at::Tensor keyCacheOut = keyCache.clone();
+    at::Tensor valueCacheOut = valueCache.clone();
+    at::Tensor keyScaleCacheOut = keyScaleCache.clone();
 
     // 转换cache_layout为char指针
-    char *cache_layout_ptr = const_cast<char *>(cache_layout.c_str());
+    char *cacheLayoutPtr = const_cast<char *>(cacheLayout.c_str());
 
     // 调用ACLNN算子
-    ACLNN_CMD(aclnnScatterPaKvCacheWithKScale, key, value, key_cache_out, value_cache_out, slot_mapping, key_scale,
-              key_scale_cache_out, cache_layout_ptr);
+    ACLNN_CMD(aclnnScatterPaKvCacheWithKScale, key, value, keyCacheOut, valueCacheOut, slotMapping, keyScale,
+              keyScaleCacheOut, cacheLayoutPtr);
 
-    return std::tuple<at::Tensor, at::Tensor, at::Tensor>(key_cache_out, value_cache_out, key_scale_cache_out);
+    return std::tuple<at::Tensor, at::Tensor, at::Tensor>(keyCacheOut, valueCacheOut, keyScaleCacheOut);
 }
 
 // 绑定C++函数到Python模块
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("scatter_pa_kv_cache_with_k_scale", &scatter_pa_kv_cache_with_k_scale,
+    m.def("scatter_pa_kv_cache_with_k_scale", &ScatterPaKvCacheWithKScale,
           "scatter_pa_kv_cache_with_k_scale operator for torch_npu");
 }
 

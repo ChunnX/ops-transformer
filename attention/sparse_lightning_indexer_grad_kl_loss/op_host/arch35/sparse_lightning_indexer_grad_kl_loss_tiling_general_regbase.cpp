@@ -28,6 +28,7 @@ static const int32_t FRACTAL_NUM = 16L;
 static constexpr size_t WORK_SPACE_RESERVE_SIZE = 16 * 1024 * 1024;
 static constexpr size_t SIZE_1 = 1;
 static constexpr size_t SIZE_128 = 128;
+static constexpr size_t SIZE_256 = 256;
 static const uint64_t DIM_NUM_0 = 0;
 static const uint64_t DIM_NUM_1 = 1;
 static const uint64_t DIM_NUM_2 = 2;
@@ -372,21 +373,9 @@ bool SparseLightningIndexerGradKLLossTilingBaseRegbase::AnalyzeDimLayout(const g
             s2Size = keyShape.GetDim(1);
             n2Size = keyShape.GetDim(2);
             OP_CHECK_IF(
-                bSize < SIZE_1 || bSize > SIZE_128,
-                OP_LOGE(opName, "Inputshape B Size should be range in 1~128, but got %ld.", bSize),
-                return false);
-            OP_CHECK_IF(
                 s1Size > s2Size,
                 OP_LOGE(opName,"Query s1Size(%ld) must be small than Key s2Size(%ld).",
                     s1Size, s2Size),
-                return false);
-            OP_CHECK_IF(
-                s1Size < SIZE_1 ||  s1Size > BUFFER_SIZE_BYTE_8K,
-                OP_LOGE(opName,"Query s1Size should be range in 1~8K, but got %ld.", s1Size),
-                return false);
-            OP_CHECK_IF(
-                s2Size < SIZE_1 || s2Size > BUFFER_SIZE_BYTE_512K,
-                OP_LOGE(opName, "Query s2Size should be range in 1~512K, but got %ld.", s2Size),
                 return false);
             OP_CHECK_IF(n2Size == 0, OPS_REPORT_VECTOR_INNER_ERR(opName, "N2 is zero."), return false);
             gSizeQuery = queryShape.GetDim(2) / n2Size;

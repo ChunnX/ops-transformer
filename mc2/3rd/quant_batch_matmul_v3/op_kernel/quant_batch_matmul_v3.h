@@ -34,21 +34,22 @@ constexpr MatmulConfig BMM_DEQUANT_PRELOAD_CFG =
 constexpr MatmulConfig BMM_DEQUANT_PRELOAD_CFG = GetMDLConfig(false, false, 2);
 #endif
 
-template <typename xType, typename wType, int32_t fFormat, int32_t wFormat, typename biasType, typename scaleType, typename yType,
-          bool aTrans, bool bTrans, const MatmulConfig &BMM_DEQUANT_CFG = BMM_DEQUANT_MDL_CFG>
+template <typename xType, typename wType, int32_t fFormat, int32_t wFormat, typename biasType, typename scaleType,
+          typename yType, bool aTrans, bool bTrans, const MatmulConfig &BMM_DEQUANT_CFG = BMM_DEQUANT_MDL_CFG>
 class BmmDequant {
 public:
     __aicore__ inline BmmDequant(){};
 
-    __aicore__ inline void InitTbuf(TBuf<TPosition::VECCALC> tbuf) {
+    __aicore__ inline void InitTbuf(TBuf<TPosition::VECCALC> tbuf)
+    {
 #if defined(__CCE_AICORE__) && __CCE_AICORE__ == 200
-	mmLocalWorkSpace_ = tbuf;
+        mmLocalWorkSpace_ = tbuf;
 #endif
     }
 
-    __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias,
-                                GM_ADDR scale, GM_ADDR y, GM_ADDR workSpace,
-                                const Mc2QuantBatchMatmulV3TilingData* tilingData, TPipe* tPipe) {
+    __aicore__ inline void Init(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scale, GM_ADDR y, GM_ADDR workSpace,
+                                const Mc2QuantBatchMatmulV3TilingData *tilingData, TPipe *tPipe)
+    {
         InitTilingData(tilingData);
 
         // init global buffer
@@ -66,27 +67,29 @@ public:
 #endif
     }
 
-    __aicore__ inline void UpdateGlobalAddr(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias,
-                                GM_ADDR scale, GM_ADDR y, GM_ADDR workSpace) {
+    __aicore__ inline void UpdateGlobalAddr(GM_ADDR x1, GM_ADDR x2, GM_ADDR bias, GM_ADDR scale, GM_ADDR y,
+                                            GM_ADDR workSpace)
+    {
         if (isPerTensor_) {
-            scaleScalar_ = *((__gm__ scaleType*)scale);
+            scaleScalar_ = *((__gm__ scaleType *)scale);
         }
         // update global buffer
-        xGm_.SetGlobalBuffer((__gm__ xType*)x1);
-        weightGm_.SetGlobalBuffer((__gm__ wType*)x2);
+        xGm_.SetGlobalBuffer((__gm__ xType *)x1);
+        weightGm_.SetGlobalBuffer((__gm__ wType *)x2);
         if (m_ <= baseM_) {
             weightGm_.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
         }
         if (hasBias_ != 0U) {
-            biasGm_.SetGlobalBuffer((__gm__ biasType*)bias);
+            biasGm_.SetGlobalBuffer((__gm__ biasType *)bias);
         }
-        yGm_.SetGlobalBuffer((__gm__ yType*)y);
-        scaleGm_.SetGlobalBuffer((__gm__ scaleType*)scale);
+        yGm_.SetGlobalBuffer((__gm__ yType *)y);
+        scaleGm_.SetGlobalBuffer((__gm__ scaleType *)scale);
     }
 
     /** main logical function
-    */
-    __aicore__ inline void Process(bool enAtomic = false) {
+     */
+    __aicore__ inline void Process(bool enAtomic = false)
+    {
         if ASCEND_IS_AIV {
             return;
         }
@@ -103,7 +106,7 @@ public:
         uint32_t divideBatchcoreNum = logicCoreNum_ / batchDim;
         for (uint32_t logicBlockIdx = blockIdx; logicBlockIdx < logicCoreNum_; logicBlockIdx += usedCoreNum_) {
             uint32_t kCoreIndx = (logicBlockIdx % divideBatchcoreNum) % kDim;
-            uint32_t mCoreIndx = ((logicBlockIdx % divideBatchcoreNum) / kDim) % mDim;  // 必须沿着N 轴方向输出
+            uint32_t mCoreIndx = ((logicBlockIdx % divideBatchcoreNum) / kDim) % mDim; // 必须沿着N 轴方向输出
             uint32_t nCoreIndx = ((logicBlockIdx % divideBatchcoreNum) / kDim) / mDim;
             uint32_t batchCoreIndx = logicBlockIdx / divideBatchcoreNum;
 
@@ -175,7 +178,8 @@ protected:
 
     /** init function for TilingData of mm1 and mm2.
      */
-    __aicore__ inline void InitTilingData(const Mc2QuantBatchMatmulV3TilingData* tilingData) {
+    __aicore__ inline void InitTilingData(const Mc2QuantBatchMatmulV3TilingData *tilingData)
+    {
         hasBias_ = tilingData->matmulTiling.isBias;
         batchA_ = tilingData->params.batchA;
         batchB_ = tilingData->params.batchB;
@@ -194,7 +198,8 @@ protected:
     }
 
     __aicore__ inline void CalcOffset(uint32_t batchIndex, uint32_t batchCoreIndx, uint32_t mCoreIndx,
-                                      uint32_t nCoreIndx, uint32_t kCoreIndx) {
+                                      uint32_t nCoreIndx, uint32_t kCoreIndx)
+    {
         uint64_t batchAOffset = static_cast<uint64_t>((batchCoreIndx * (singleCoreBatch_) + batchIndex) % batchA_);
         uint64_t batchBOffset = static_cast<uint64_t>((batchCoreIndx * (singleCoreBatch_) + batchIndex) % batchB_);
         uint64_t batchCOffset = static_cast<uint64_t>(batchCoreIndx * (singleCoreBatch_) + batchIndex);
@@ -239,8 +244,8 @@ protected:
             offsetC_ = batchCOffset * static_cast<uint64_t>(m_ * n_) + mOffset * n_ + nOffset;
         } else if constexpr (CMatmulType::format == CubeFormat::NZ) {
             offsetC_ = m_ * nOffset + mOffset * BMM_BLOCK_NUM;
-            offsetC_ = batchCOffset * DequantBmm::Align(n_, BMM_BLOCK_NUM) *
-                       DequantBmm::Align(m_, BMM_BLOCK_NUM) + offsetC_;
+            offsetC_ =
+                batchCOffset * DequantBmm::Align(n_, BMM_BLOCK_NUM) * DequantBmm::Align(m_, BMM_BLOCK_NUM) + offsetC_;
         }
 
         offsetBias_ = nOffset;
@@ -252,7 +257,8 @@ protected:
 
     /** mm_ computation function
      */
-    __aicore__ inline void MMCompute(bool enAtomic, uint32_t kCoreIndx) {
+    __aicore__ inline void MMCompute(bool enAtomic, uint32_t kCoreIndx)
+    {
         if constexpr (!IsSameType<yType, int32_t>::value) {
             if (isPerTensor_) {
                 mm_.SetQuantScalar(scaleScalar_);
@@ -269,6 +275,6 @@ protected:
         mm_.End();
     }
 };
-}
+} // namespace AscendC
 
-#endif  // QUANT_BATCH_MATMUL_V3_H
+#endif // QUANT_BATCH_MATMUL_V3_H

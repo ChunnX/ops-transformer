@@ -106,7 +106,7 @@ public:
         m_loop = DivCeil(m, m0);
         n_loop = DivCeil(n, n0);
         k_loop = DivCeil(k, k0);
-        gm_a_pingpong_size = m0 * n * p_value;
+        gm_a_pingpong_size = static_cast<int64_t>(m0) * n * p_value;
     }
 
     template <pipe_t pipe, uint64_t mode>
@@ -187,7 +187,7 @@ public:
         LocalTensor<T> ubTensor = uBuf_.template Get<T>();
         LocalTensor<T> copyTensor0 = ubTensor;
         LocalTensor<T> copyTensor1 = ubTensor[UB_OFFSET];
-        int32_t interm_offset = 0;
+        int64_t interm_offset = 0;
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID0);
         SetFlag<HardEvent::MTE3_MTE2>(EVENT_ID1);
         for (int32_t move_idx = 0; interm_offset < copy_size; ++move_idx) {

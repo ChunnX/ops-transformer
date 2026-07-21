@@ -271,7 +271,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
     <tr>
       <td>kRopeOut</td>
       <td>输出</td>
-      <td>由isOutputKv控制，当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
+      <td>由isOutputKv控制，对应interleaveRope计算公式中的`y`。<br>当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
       <td>shape为4维[Bkv,N,Skv,Dk]。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -281,7 +281,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
     <tr>
       <td>cKvOut</td>
       <td>输出</td>
-      <td>由isOutputKv控制，当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
+      <td>由isOutputKv控制，对应rmsNorm计算公式中的`y`。<br>当isOutputKv为true时，需输出。数据类型与输入kv一致。</td>
       <td>shape为4维[Bkv,N,Skv,Dv]。</td>
       <td>BFLOAT16、FLOAT16</td>
       <td>ND</td>
@@ -401,6 +401,7 @@ aclnnStatus aclnnKvRmsNormRopeCache(
 
 ## 约束说明
 
+  * 本算子默认确定性实现。
   * 参数说明里shape格式说明：
 
       * Bkv为输入kv的batch size，Skv为输入kv的sequence length，大小由用户输入场景决定，无明确限制。
@@ -410,6 +411,8 @@ aclnnStatus aclnnKvRmsNormRopeCache(
       * 关于上述32B对齐的情形，对齐值由cache的数据类型决定。以BlockSize为例，若cache的数据类型为INT8、HIFLOAT8、FLOAT8E5M2、FLOAT8E4M3FN，则需BlockSize%32=0；若cache的数据类型为float16或bfloat16，则需BlockSize%16=0；若kCacheRef与ckvCacheRef参数的dtype不一致，BlockSize需同时满足BlockSize%32=0和BlockSize%16=0。
       * Bcache为输入cache的batch size，Scache为输入cache的sequence length，大小由用户输入场景决定，无明确限制。
       * BlockNum为写入cache的内存块数，大小由用户输入场景决定，无明确限制。
+      * 输入张量均不支持空Tensor。
+      * 所有输入均不支持无效值，包括且不限于：±inf，nan。
 
   * index相关约束：
 

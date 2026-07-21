@@ -11,11 +11,9 @@
 
 __description__ = "CannOpsTransformer"
 __version__ = "1.0.0"
-__package_name__ = 'cann_ops_transformer'
+__package_name__ = "cann_ops_transformer"
 
 import os
-import sys
-from pathlib import Path
 import setuptools
 
 
@@ -26,6 +24,7 @@ def package_files(directory):
             paths.append(os.path.join(path, filename))
     return paths
 
+
 src_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), __package_name__)
 
 setuptools.setup(
@@ -35,6 +34,6 @@ setuptools.setup(
     packages=setuptools.find_packages(),
     include_package_data=True,
     install_package_data=True,
-    package_data={'': package_files(src_path)},
-    zip_safe=False
+    package_data={"": package_files(src_path)},
+    zip_safe=False,
 )

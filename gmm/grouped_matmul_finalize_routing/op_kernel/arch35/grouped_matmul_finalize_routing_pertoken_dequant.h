@@ -113,9 +113,8 @@ __aicore__ inline void grouped_matmul_finalize_routing_pertoken_dequant(
             {x, w, y, bias, group_list}, // BlockMmadParams
             {share_input, y, gmmFinalizeRoutingQuantParams_.sharedInputOffset,
              gmmFinalizeRoutingQuantParams_.sharedInputLen, matmulTiling_.N, gmmFinalizeRoutingQuantParams_.batch,
-             gmmFinalizeRoutingQuantParams_.residualScale}, // prologue params
-            {y, w_scale, x_scale, bias, logit, row_index,
-             matmulTiling_.baseM, matmulTiling_.baseN}, // epilogue params
+             gmmFinalizeRoutingQuantParams_.residualScale},                                          // prologue params
+            {y, w_scale, x_scale, bias, logit, row_index, matmulTiling_.baseM, matmulTiling_.baseN}, // epilogue params
             gmmParams};
         GmmKernel gmm;
         gmm(params);

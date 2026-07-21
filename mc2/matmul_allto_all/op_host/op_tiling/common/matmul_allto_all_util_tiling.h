@@ -11,7 +11,6 @@
 #ifndef MATMUL_ALLTO_ALL_UTIL_TILING_H
 #define MATMUL_ALLTO_ALL_UTIL_TILING_H
 
-#include "mc2_comm_utils.h"
 #include "op_host/op_tiling/mc2_tiling_utils.h"
 #include "../../../../../tests/ut/framework_normal/common/hccl_stub.h"
 
@@ -74,8 +73,8 @@ constexpr size_t ALLTOALLMATMUL_ATTR_COMMON_QUANTDTYPE_INDEX = 8;
 constexpr size_t ALLTOALLMATMUL_ATTR_X1_TRANSPOSE_INDEX = 9;
 constexpr size_t ALLTOALLMATMUL_ATTR_X2_TRANSPOSE_INDEX = 10;
 constexpr size_t ALLTOALLMATMUL_ATTR_GROUP_SIZE_INDEX = 11;
+constexpr size_t ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX = 12;
 constexpr size_t ALLTOALLMATMUL_ATTR_ALLTO_ALL_OUT_FLAG_INDEX = 13;
-constexpr size_t ALLTOALLMATMUL_ATTR_COMM_MODE_INDEX = 12; // AlltoAllMatmul原型修改时再更改该值
 
 // 用来存放MatmulAlltoAll和AllToAllMatmul错位的属性信息的处理，
 // 比如说MatmulAllToAll存放x1转置(ATTR_X1_TRANSPOSE_INDEX)的位置是8，
@@ -130,7 +129,7 @@ struct TilingContextInfo {
 // 封装Tiling过程中推导得到的参数
 struct TilingInferredInfo {
     uint64_t mmResultLen =
-        0UL;                // 存储计算MM的地址大小，仅对于MatmulAlltoAll，因为先执行完Matmul之后需要有空间存放计算地址
+        0UL; // 存储计算MM的地址大小，仅对于MatmulAlltoAll，因为先执行完Matmul之后需要有空间存放计算地址
     uint64_t commLen = 0UL; // 存储通信结果的临时空间，仅对于AlltoAllMatmul，需要有空间存放重排的地址（和kernel侧约定）
     uint64_t permuteLen =
         0UL; // 重排空间大小,对于AlltoAllMatmul来说，当alltoAllout存在时，就有一个额外的alltoall地址传递给kernel侧，不需要额外分配

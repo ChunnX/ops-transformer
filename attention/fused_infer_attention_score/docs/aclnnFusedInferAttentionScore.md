@@ -127,21 +127,21 @@ aclnnStatus aclnnFusedInferAttentionScore(
         <td>key</td>
         <td>输入</td>
         <td>公式中的输入K。</td>
-        <td>key仅支持首轴非连续。</td>
+        <td>-</td>
         <td>FLOAT16、BFLOAT16、INT8</td>
         <td>ND</td>
         <td>3-4</td>
-        <td>√</td>
+        <td>×</td>
       </tr>
       <tr>
         <td>value</td>
         <td>输入</td>
         <td>公式中的输入V。</td>
-        <td>value仅支持首轴非连续。</td>
+        <td>-</td>
         <td>FLOAT16、BFLOAT16、INT8</td>
         <td>ND</td>
         <td>3-4</td>
-        <td>√</td>
+        <td>×</td>
       </tr>
       <tr>
         <td>pseShift</td>
@@ -874,8 +874,6 @@ aclnnStatus aclnnFusedInferAttentionScore(
     - 与attenMask参数一起开启时，需要保证attenMask含义正确，即能够正确地对无效数据进行隐藏。否则将引入精度问题。
   - pseShift功能使用限制如下：
     - pseShift数据类型需与query数据类型保持一致。
-
-- key、value首轴非连续场景约束：仅支持PagedAttention场景，而且满足TND排布，sparseMode为0/3/4，Q_D=K_D=V_D且≤256，非MLA场景，innerPrecise=0的GQA/MQA，或MHA（MHA场景不支持BF16且innerPrecise=1，不支持sparseMode=0且attenMask非空）。key、value为BnBsH格式要求blockSize满足16对齐且≤512；NZ排布要求blockSize=128且D≠64/128。key、value仅第一个维度支持非连续，其他维度必须连续。
 
 ## 调用示例
 
