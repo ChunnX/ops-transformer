@@ -164,9 +164,9 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When has_ori_kv is true, ori_topk should be >= 0, but got %lld", oriTopk);
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) && oriTopk != 0) {
+        if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr) && oriTopk != 0 && hasCmpKv) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "ori_topk is reserved and should only be 0 on %s, but got %lld",
+                    "ori_topk is reserved and should only be 0 on %s when has_cmp_kv is true, but got %lld",
                     SMLA_A2_A3_PLATFORM_LOG.c_str(), oriTopk);
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -194,9 +194,17 @@ aclnnStatus CheckSingleParamSmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t 
                         SMLA_A2_A3_PLATFORM_LOG.c_str(), oriMaskMode);
                 return ACLNN_ERR_PARAM_INVALID;
             }
-            if (oriWinLeft != 127 || oriWinRight != 0) {
+            if (oriTopk == 0 && (oriWinLeft != 127 || oriWinRight != 0)) {
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                        "ori_win_left and ori_win_right should only be 127 and 0 on %s, but got %lld and %lld",
+                        "ori_win_left and ori_win_right should only be 127 and 0 on %s when ori_topk is 0, "
+                        "but got %lld and %lld",
+                        SMLA_A2_A3_PLATFORM_LOG.c_str(), oriWinLeft, oriWinRight);
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+            if (oriTopk != 0 && (oriWinLeft < 0 || oriWinRight < 0)) {
+                OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                        "ori_win_left and ori_win_right should be non-negative on %s when ori_topk is non-zero, "
+                        "but got %lld and %lld",
                         SMLA_A2_A3_PLATFORM_LOG.c_str(), oriWinLeft, oriWinRight);
                 return ACLNN_ERR_PARAM_INVALID;
             }
@@ -471,15 +479,18 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                                  const aclTensor *cuSeqlensCmpKvOptional, const aclTensor *sequsedQOptional,
                                  const aclTensor *sequsedOriKvOptional, const aclTensor *sequsedCmpKvOptional,
                                  const aclTensor *cmpResidualKvOptional, const aclTensor *oriTopkLengthOptional,
-                                 const aclTensor *cmpTopkLengthOptional, int64_t batchSize, const char *layoutQOptional,
-                                 const char *layoutKvOptional, bool hasOriKv, bool hasCmpKv, const char *socVersion,
-                                 const aclTensor *metadata)
+                                 const aclTensor *cmpTopkLengthOptional, int64_t batchSize, int64_t oriTopk,
+                                 const char *layoutQOptional, const char *layoutKvOptional, bool hasOriKv,
+                                 bool hasCmpKv, const char *socVersion, const aclTensor *metadata)
 {
     aclDataType dataType = aclDataType::ACL_DT_UNDEFINED;
     int64_t dimNum = -1;
     if (!(socVersion != nullptr && strstr(socVersion, "Ascend950") != nullptr)) {
-        if (CheckReservedOptionalTensorSmla(oriTopkLengthOptional, "ori_topk_length") != ACLNN_SUCCESS ||
-            CheckReservedOptionalTensorSmla(cmpTopkLengthOptional, "cmp_topk_length") != ACLNN_SUCCESS) {
+        if (oriTopk == 0 &&
+            CheckReservedOptionalTensorSmla(oriTopkLengthOptional, "ori_topk_length") != ACLNN_SUCCESS) {
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (CheckReservedOptionalTensorSmla(cmpTopkLengthOptional, "cmp_topk_length") != ACLNN_SUCCESS) {
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -679,7 +690,6 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when layout_q is TND and seqused_q is passed, the batch_size obtained "
                 "from cu_seqlens_q should be the same as that obtained from seqused_q, but got %lld and %lld",
                 cuSeqlensQBatchSize, queryBatchSize);
-            return ACLNN_ERR_PARAM_INVALID;
         }
     }
     if (hasOriKv) {
@@ -699,7 +709,6 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_ori_kv is true, layout_kv is TND and seqused_ori_kv is "
                     "passed, the batch_size obtained from cu_seqlens_ori_kv should be the same as that obtained from "
                     "seqused_ori_kv, but got %lld and %lld", cuSeqlensOriKvBatchSize, oriKvBatchSize);
-                return ACLNN_ERR_PARAM_INVALID;
             }
         }
     }
@@ -720,7 +729,6 @@ aclnnStatus CheckConsistencySmla(const aclTensor *cuSeqlensQOptional, const aclT
                 OP_LOGE(ACLNN_ERR_PARAM_INVALID, "when has_cmp_kv is true, layout_kv is TND and seqused_cmp_kv is "
                     "passed, the batch_size obtained from cu_seqlens_cmp_kv should be the same as that obtained from "
                     "seqused_cmp_kv, but got %lld and %lld", cuSeqlensCmpKvBatchSize, cmpKvBatchSize);
-                return ACLNN_ERR_PARAM_INVALID;
             }
         }
         // 校验 cmp_residual_kv 元素数
@@ -757,8 +765,8 @@ static aclnnStatus ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTen
                            layoutKvOptional, socVersion, metaData) == ACLNN_SUCCESS &&
         CheckConsistencySmla(cuSeqlensQOptional, cuSeqlensOriKvOptional, cuSeqlensCmpKvOptional, sequsedQOptional,
                              sequsedOriKvOptional, sequsedCmpKvOptional, cmpResidualKvOptional, oriTopkLengthOptional,
-                             cmpTopkLengthOptional, batchSize, layoutQOptional, layoutKvOptional, hasOriKv, hasCmpKv,
-                             socVersion, metaData) == ACLNN_SUCCESS) {
+                             cmpTopkLengthOptional, batchSize, oriTopk, layoutQOptional, layoutKvOptional, hasOriKv,
+                             hasCmpKv, socVersion, metaData) == ACLNN_SUCCESS) {
         return ACLNN_SUCCESS;
     } else {
         return ACLNN_ERR_PARAM_INVALID;

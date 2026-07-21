@@ -1,0 +1,472 @@
+准备运行 单跑 脚本...
+===============================
+参数配置:
+  结果存储至文件 ./result/smla_phase2_dspark.xlsx
+===============================
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-8.3.5, pluggy-1.6.0 -- /data/miniconda3/envs/hey311/bin/python3
+cachedir: .pytest_cache
+rootdir: /data/hey/git/ops-transformer/attention/sparse_flash_mla/tests/pytest
+configfile: pytest.ini
+plugins: anyio-4.14.2
+collecting ... collected 11 items
+
+test_sparse_flash_mla_single.py::test_example[param_combinations0] Using /root/.cache/torch_extensions/py311_cpu as PyTorch extensions root...
+Emitting ninja build file /root/.cache/torch_extensions/py311_cpu/sparse_flash_mla/build.ninja...
+Building extension module sparse_flash_mla...
+Allowing ninja to set a default number of workers... (overridable by setting the environment variable MAX_JOBS=N)
+ninja: no work to do.
+Loading extension module sparse_flash_mla...
+test_data: {'testcase_name': 'dspark_swa_sparse', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 4, 'S2': None, 'T1': 4, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 8, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [1024], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+template_run_mode:  SWA
+用例参数:  {'testcase_name': 'dspark_swa_sparse', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 4, 'S2': None, 'T1': 4, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 8, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [1024], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+sparse_flash_mla_metadata...
+sparse_flash_mla...
+sparse_flash_mla end
+npu_result.size(): torch.Size([4, 64, 512])
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0153 - split_count:131072.0; max_diff_hd:10;
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00000000 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00000001 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00000002 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00000003 	 -1.9765625 	 -1.9765625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00000004 	 -1.9218750 	 -1.9218750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00000005 	 -1.9296875 	 -1.9296875 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00000006 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00000007 	 -1.9531250 	 -1.9531250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00000008 	 -1.9062500 	 -1.9062500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00000009 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00131062 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00131063 	 -1.9062500 	 -1.9062500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00131064 	 -1.9218750 	 -1.9218750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00131065 	 -1.9453125 	 -1.9453125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00131066 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00131067 	 -1.9375000 	 -1.9375000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00131068 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00131069 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00131070 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0049 - 00131071 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:15] [INFO]-result_compare_method.py:0195 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+test_sparse_flash_mla_single.py::test_example[param_combinations1] test_data: {'testcase_name': 'dspark_swa_sparse_basic', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 1, 'S2': None, 'T1': 1, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 4, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 1], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [512], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 127, 'ori_win_right': 0, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+template_run_mode:  SWA
+用例参数:  {'testcase_name': 'dspark_swa_sparse_basic', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 1, 'S2': None, 'T1': 1, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 4, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 1], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [512], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 127, 'ori_win_right': 0, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+sparse_flash_mla_metadata...
+sparse_flash_mla...
+sparse_flash_mla end
+npu_result.size(): torch.Size([1, 64, 512])
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0153 - split_count:32768.0; max_diff_hd:10;
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00000000 	 -1.9765625 	 -1.9765625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00000001 	 -1.8593750 	 -1.8593750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00000002 	 -1.9375000 	 -1.9375000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00000003 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00000004 	 -1.9218750 	 -1.9218750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00000005 	 -1.9375000 	 -1.9375000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00000006 	 -1.9531250 	 -1.9531250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00000007 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00000008 	 -1.8515625 	 -1.8515625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00000009 	 -1.9765625 	 -1.9765625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00032758 	 -2.0625000 	 -2.0625000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00032759 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00032760 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00032761 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00032762 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00032763 	 -1.9453125 	 -1.9453125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00032764 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00032765 	 -2.0781250 	 -2.0781250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00032766 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0049 - 00032767 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:16] [INFO]-result_compare_method.py:0195 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+test_sparse_flash_mla_single.py::test_example[param_combinations2] test_data: {'testcase_name': 'dspark_swa_sparse_right_win_2', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 2, 'S2': None, 'T1': 2, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 4, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 2], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [512], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 128, 'ori_win_right': 1, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+template_run_mode:  SWA
+用例参数:  {'testcase_name': 'dspark_swa_sparse_right_win_2', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 2, 'S2': None, 'T1': 2, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 4, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 2], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [512], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 128, 'ori_win_right': 1, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+sparse_flash_mla_metadata...
+sparse_flash_mla...
+sparse_flash_mla end
+npu_result.size(): torch.Size([2, 64, 512])
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0153 - split_count:65536.0; max_diff_hd:10;
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00000000 	 -1.8281250 	 -1.8281250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00000001 	 -1.9453125 	 -1.9453125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00000002 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00000003 	 -1.9218750 	 -1.9218750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00000004 	 -2.1093750 	 -2.1093750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00000005 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00000006 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00000007 	 -1.8984375 	 -1.8984375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00000008 	 -1.9140625 	 -1.9140625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00000009 	 -1.8828125 	 -1.8828125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00065526 	 -2.0625000 	 -2.0625000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00065527 	 -2.0781250 	 -2.0781250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00065528 	 -2.0625000 	 -2.0625000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00065529 	 -2.1093750 	 -2.1093750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00065530 	 -2.1093750 	 -2.1093750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00065531 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00065532 	 -1.9062500 	 -1.9062500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00065533 	 -1.9765625 	 -1.9765625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00065534 	 -2.0625000 	 -2.0625000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0049 - 00065535 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:18] [INFO]-result_compare_method.py:0195 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+test_sparse_flash_mla_single.py::test_example[param_combinations3] test_data: {'testcase_name': 'dspark_swa_sparse_right_win_8', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 8, 'S2': None, 'T1': 8, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 4, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 8], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [512], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 134, 'ori_win_right': 7, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+template_run_mode:  SWA
+用例参数:  {'testcase_name': 'dspark_swa_sparse_right_win_8', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 8, 'S2': None, 'T1': 8, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 4, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 8], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [512], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 134, 'ori_win_right': 7, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+sparse_flash_mla_metadata...
+sparse_flash_mla...
+sparse_flash_mla end
+npu_result.size(): torch.Size([8, 64, 512])
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0153 - split_count:262144.0; max_diff_hd:10;
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00000000 	 -1.9375000 	 -1.9375000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00000001 	 -2.0781250 	 -2.0781250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00000002 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00000003 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00000004 	 -1.8671875 	 -1.8671875 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00000005 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00000006 	 -1.9062500 	 -1.9062500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00000007 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00000008 	 -1.9218750 	 -1.9218750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00000009 	 -1.9218750 	 -1.9218750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00262134 	 -1.9453125 	 -1.9453125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00262135 	 -1.9062500 	 -1.9062500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00262136 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00262137 	 -1.9453125 	 -1.9453125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00262138 	 -1.9687500 	 -1.9687500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00262139 	 -1.9531250 	 -1.9531250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00262140 	 -1.9140625 	 -1.9140625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00262141 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00262142 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0049 - 00262143 	 -1.9687500 	 -1.9687500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:21] [INFO]-result_compare_method.py:0195 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+test_sparse_flash_mla_single.py::test_example[param_combinations4] test_data: {'testcase_name': 'dspark_swa_sparse_right_win_16', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 16, 'S2': None, 'T1': 16, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 4, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 16], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [512], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 142, 'ori_win_right': 15, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+template_run_mode:  SWA
+用例参数:  {'testcase_name': 'dspark_swa_sparse_right_win_16', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 16, 'S2': None, 'T1': 16, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 4, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 16], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [512], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 142, 'ori_win_right': 15, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+sparse_flash_mla_metadata...
+sparse_flash_mla...
+sparse_flash_mla end
+npu_result.size(): torch.Size([16, 64, 512])
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0153 - split_count:524288.0; max_diff_hd:10;
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00000000 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00000001 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00000002 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00000003 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00000004 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00000005 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00000006 	 -1.9140625 	 -1.9140625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00000007 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00000008 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00000009 	 -1.8281250 	 -1.8281250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00524278 	 -1.9453125 	 -1.9453125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00524279 	 -1.9140625 	 -1.9140625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00524280 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00524281 	 -1.9218750 	 -1.9218750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00524282 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00524283 	 -1.8906250 	 -1.8906250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00524284 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00524285 	 -1.8828125 	 -1.8828125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00524286 	 -1.9687500 	 -1.9687500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0049 - 00524287 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:26] [INFO]-result_compare_method.py:0195 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+test_sparse_flash_mla_single.py::test_example[param_combinations5] test_data: {'testcase_name': 'dspark_swa_sparse_seq_start', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 4, 'S2': None, 'T1': 4, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 1, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [24], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+template_run_mode:  SWA
+用例参数:  {'testcase_name': 'dspark_swa_sparse_seq_start', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 4, 'S2': None, 'T1': 4, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 1, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [24], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+sparse_flash_mla_metadata...
+sparse_flash_mla...
+sparse_flash_mla end
+npu_result.size(): torch.Size([4, 64, 512])
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0153 - split_count:131072.0; max_diff_hd:10;
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00000000 	 -1.9296875 	 -1.9296875 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00000001 	 -1.8125000 	 -1.8125000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00000002 	 -1.7734375 	 -1.7734375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00000003 	 -1.9921875 	 -1.9921875 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00000004 	 -1.9687500 	 -1.9687500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00000005 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00000006 	 -1.9375000 	 -1.9375000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00000007 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00000008 	 -2.0781250 	 -2.0781250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00000009 	 -2.0625000 	 -2.0625000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00131062 	 -1.8281250 	 -1.8281250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00131063 	 -1.8437500 	 -1.8437500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00131064 	 -2.1875000 	 -2.1875000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00131065 	 -1.7343750 	 -1.7343750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00131066 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00131067 	 -1.9765625 	 -1.9765625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00131068 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00131069 	 -1.8437500 	 -1.8437500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00131070 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0049 - 00131071 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:28] [INFO]-result_compare_method.py:0195 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+test_sparse_flash_mla_single.py::test_example[param_combinations6] test_data: {'testcase_name': 'dspark_swa_sparse_pa_boundary', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 16, 'S2': None, 'T1': 16, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 3, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 16], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [300], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 142, 'ori_win_right': 15, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+template_run_mode:  SWA
+用例参数:  {'testcase_name': 'dspark_swa_sparse_pa_boundary', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 16, 'S2': None, 'T1': 16, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 3, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 16], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [300], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 142, 'ori_win_right': 15, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+sparse_flash_mla_metadata...
+sparse_flash_mla...
+sparse_flash_mla end
+npu_result.size(): torch.Size([16, 64, 512])
+[2026/07/23 16:46:33] [INFO]-result_compare_method.py:0153 - split_count:524288.0; max_diff_hd:10;
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00000000 	 -2.1093750 	 -2.1093750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00000001 	 -1.9921875 	 -1.9921875 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00000002 	 -1.9375000 	 -1.9375000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00000003 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00000004 	 -2.0625000 	 -2.0625000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00000005 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00000006 	 -1.9921875 	 -1.9921875 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00000007 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00000008 	 -1.9765625 	 -1.9765625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00000009 	 -2.0625000 	 -2.0625000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00524278 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00524279 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00524280 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00524281 	 -1.9375000 	 -1.9375000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00524282 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00524283 	 -1.9453125 	 -1.9453125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00524284 	 -2.1250000 	 -2.1250000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00524285 	 -1.9375000 	 -1.9375000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00524286 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0049 - 00524287 	 -1.9453125 	 -1.9453125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:34] [INFO]-result_compare_method.py:0195 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+test_sparse_flash_mla_single.py::test_example[param_combinations7] test_data: {'testcase_name': 'dspark_swa_sparse_multi_batch', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 2, 'S1': 4, 'S2': None, 'T1': 8, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 2, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4, 8], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [48, 128], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+template_run_mode:  SWA
+用例参数:  {'testcase_name': 'dspark_swa_sparse_multi_batch', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 2, 'S1': 4, 'S2': None, 'T1': 8, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 2, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4, 8], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [48, 128], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+sparse_flash_mla_metadata...
+sparse_flash_mla...
+sparse_flash_mla end
+npu_result.size(): torch.Size([8, 64, 512])
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0153 - split_count:262144.0; max_diff_hd:10;
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00000000 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00000001 	 -2.0781250 	 -2.0781250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00000002 	 -1.9375000 	 -1.9375000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00000003 	 -1.9531250 	 -1.9531250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00000004 	 -1.9531250 	 -1.9531250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00000005 	 -1.9687500 	 -1.9687500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00000006 	 -2.0937500 	 -2.0937500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00000007 	 -1.8437500 	 -1.8437500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00000008 	 -1.9531250 	 -1.9531250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00000009 	 -1.8125000 	 -1.8125000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00262134 	 -1.8671875 	 -1.8671875 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00262135 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00262136 	 -1.9140625 	 -1.9140625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00262137 	 -1.9375000 	 -1.9375000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00262138 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00262139 	 -1.8984375 	 -1.8984375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00262140 	 -1.9140625 	 -1.9140625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00262141 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00262142 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0049 - 00262143 	 -2.0625000 	 -2.0625000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:36] [INFO]-result_compare_method.py:0195 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+test_sparse_flash_mla_single.py::test_example[param_combinations8] test_data: {'testcase_name': 'dspark_swa_sparse_padding', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 4, 'S2': None, 'T1': 4, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 8, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [1024], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'fullK', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+template_run_mode:  SWA
+用例参数:  {'testcase_name': 'dspark_swa_sparse_padding', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 4, 'S2': None, 'T1': 4, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 8, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [1024], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'fullK', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+sparse_flash_mla_metadata...
+sparse_flash_mla...
+sparse_flash_mla end
+npu_result.size(): torch.Size([4, 64, 512])
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0153 - split_count:131072.0; max_diff_hd:10;
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00000000 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00000001 	 -2.1406250 	 -2.1406250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00000002 	 -1.9062500 	 -1.9062500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00000003 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00000004 	 -2.0625000 	 -2.0625000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00000005 	 -1.9531250 	 -1.9531250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00000006 	 -1.9531250 	 -1.9531250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00000007 	 -1.8671875 	 -1.8671875 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00000008 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00000009 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00131062 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00131063 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00131064 	 -1.8906250 	 -1.8906250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00131065 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00131066 	 -1.9296875 	 -1.9296875 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00131067 	 -1.8906250 	 -1.8906250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00131068 	 -1.8359375 	 -1.8359375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00131069 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00131070 	 -1.9140625 	 -1.9140625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0049 - 00131071 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:38] [INFO]-result_compare_method.py:0195 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+PASSED
+test_sparse_flash_mla_single.py::test_example[param_combinations9] test_data: {'testcase_name': 'dspark_swa_sparse_fp16', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.float16, 'ori_kv_type': torch.float16, 'cmp_kv_type': None, 'B': 1, 'S1': 4, 'S2': None, 'T1': 4, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 8, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [1024], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+template_run_mode:  SWA
+用例参数:  {'testcase_name': 'dspark_swa_sparse_fp16', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.float16, 'ori_kv_type': torch.float16, 'cmp_kv_type': None, 'B': 1, 'S1': 4, 'S2': None, 'T1': 4, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 8, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [1024], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': False}
+sparse_flash_mla_metadata...
+sparse_flash_mla...
+sparse_flash_mla end
+npu_result.size(): torch.Size([4, 64, 512])
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0153 - split_count:131072.0; max_diff_hd:10;
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00000000 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00000001 	 -2.0976562 	 -2.0976562 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00000002 	 -2.0292969 	 -2.0292969 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00000003 	 -1.9121094 	 -1.9121094 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00000004 	 -2.0078125 	 -2.0078125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00000005 	 -1.9765625 	 -1.9765625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00000006 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00000007 	 -1.9765625 	 -1.9765625 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00000008 	 -1.9990234 	 -1.9990234 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00000009 	 -1.8837891 	 -1.8837891 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00131062 	 -1.9541016 	 -1.9541016 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00131063 	 -1.9287109 	 -1.9287109 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00131064 	 -1.9716797 	 -1.9716797 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00131065 	 -1.9501953 	 -1.9501953 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00131066 	 -1.9902344 	 -1.9902344 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00131067 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00131068 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00131069 	 -2.0527344 	 -2.0527344 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00131070 	 -1.9902344 	 -1.9902344 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0049 - 00131071 	 -1.9833984 	 -1.9833984 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:40] [INFO]-result_compare_method.py:0195 - 0.0050    	 0.000025  	 99.50%   	 100.000000%   	 Pass
+PASSED
+test_sparse_flash_mla_single.py::test_example[param_combinations10] test_data: {'testcase_name': 'dspark_swa_sparse_lse', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 4, 'S2': None, 'T1': 4, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 8, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [1024], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': True}
+template_run_mode:  SWA
+用例参数:  {'testcase_name': 'dspark_swa_sparse_lse', 'layout_q': 'TND', 'layout_kv': 'PA_BBND', 'q_type': torch.bfloat16, 'ori_kv_type': torch.bfloat16, 'cmp_kv_type': None, 'B': 1, 'S1': 4, 'S2': None, 'T1': 4, 'T2': None, 'T3': None, 'N1': 64, 'N2': 1, 'D': 512, 'K1': None, 'K': 512, 'block_num1': 8, 'block_num2': 0, 'block_size1': 128, 'block_size2': None, 'seqused_q': None, 'cu_seqlens_q': [0, 4], 'cu_seqlens_ori_kv': None, 'cu_seqlens_cmp_kv': None, 'seqused_ori_kv': [1024], 'seqused_cmp_kv': None, 'cmp_residual_kv': None, 'softmax_scale': 0.04419417, 'cmp_ratio': 1, 'ori_mask_mode': 4, 'cmp_mask_mode': 3, 'ori_win_left': 130, 'ori_win_right': 3, 'ori_kv_topk_mode': 'no', 'cmp_kv_topk_mode': 'full', 'ori_sparse_indices_mode': 'dspark', 'cmp_sparse_indices_mode': 'full', 'actlen_mode': 'full', 'template_mode': None, 'q_datarange': [-1, 1], 'ori_kv_datarange': [-1, 1], 'cmp_kv_datarange': [-1, 1], 'qk_equal_len': False, 'return_softmax_lse': True}
+sparse_flash_mla_metadata...
+sparse_flash_mla...
+sparse_flash_mla end
+npu_result.size(): torch.Size([4, 64, 512])
+[2026/07/23 16:46:41] [INFO]-result_compare_method.py:0153 - split_count:131072.0; max_diff_hd:10;
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000000 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000001 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000002 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000003 	 -1.9375000 	 -1.9375000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000004 	 -2.0625000 	 -2.0625000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000005 	 -2.0156250 	 -2.0156250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000006 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000007 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000008 	 -2.0781250 	 -2.0781250 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000009 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00131062 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00131063 	 -2.0312500 	 -2.0312500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00131064 	 -1.9843750 	 -1.9843750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00131065 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00131066 	 -1.9687500 	 -1.9687500 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00131067 	 -2.0000000 	 -2.0000000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00131068 	 -1.9609375 	 -1.9609375 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00131069 	 -1.9453125 	 -1.9453125 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00131070 	 -2.0468750 	 -2.0468750 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00131071 	 -2.0625000 	 -2.0625000 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0195 - 0.0078    	 0.000100  	 99.50%   	 100.000000%   	 Pass
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0153 - split_count:256.0; max_diff_hd:10;
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0052 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0058 - Loop 	 ExpectOut 	 RealOut 	 FpDiff 	 RateDiff
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0059 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000000 	 5.0966959 	 5.0966959 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000001 	 2.9920456 	 2.9920459 	 0.0000002 	 0.0000001
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000002 	 5.7199593 	 5.7199593 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000003 	 3.7545252 	 3.7545252 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000004 	 4.3986492 	 4.3986492 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000005 	 5.9288912 	 5.9288912 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000006 	 3.3979428 	 3.3979428 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000007 	 3.7229095 	 3.7229095 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000008 	 5.6182666 	 5.6182666 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000009 	 4.5854111 	 4.5854111 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0068 - ...   	   ...   	   ...   	   ...    	   ...
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000246 	 5.1407928 	 5.1407924 	 0.0000005 	 0.0000001
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000247 	 4.6192241 	 4.6192241 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000248 	 4.0758524 	 4.0758524 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000249 	 3.2571721 	 3.2571721 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000250 	 5.0311561 	 5.0311556 	 0.0000005 	 0.0000001
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000251 	 5.0632091 	 5.0632091 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000252 	 4.3841705 	 4.3841705 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000253 	 7.1155262 	 7.1155262 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000254 	 6.0898366 	 6.0898366 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0049 - 00000255 	 4.8031445 	 4.8031445 	 0.0000000 	 0.0000000
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0190 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0192 - Rtol   	 Atol   	 PctThd   	 PctRlt   	 Result
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0193 - ---------------------------------------------------------------------------------------
+[2026/07/23 16:46:42] [INFO]-result_compare_method.py:0195 - 0.0050    	 0.000025  	 99.50%   	 100.000000%   	 Pass
+PASSED
+
+==================================== PASSES ====================================
+=========================== short test summary info ============================
+PASSED test_sparse_flash_mla_single.py::test_example[param_combinations0]
+PASSED test_sparse_flash_mla_single.py::test_example[param_combinations1]
+PASSED test_sparse_flash_mla_single.py::test_example[param_combinations2]
+PASSED test_sparse_flash_mla_single.py::test_example[param_combinations3]
+PASSED test_sparse_flash_mla_single.py::test_example[param_combinations4]
+PASSED test_sparse_flash_mla_single.py::test_example[param_combinations5]
+PASSED test_sparse_flash_mla_single.py::test_example[param_combinations6]
+PASSED test_sparse_flash_mla_single.py::test_example[param_combinations7]
+PASSED test_sparse_flash_mla_single.py::test_example[param_combinations8]
+PASSED test_sparse_flash_mla_single.py::test_example[param_combinations9]
+PASSED test_sparse_flash_mla_single.py::test_example[param_combinations10]
+============================= 11 passed in 54.34s ==============================
+===============================
+所有任务完成

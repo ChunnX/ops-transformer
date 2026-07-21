@@ -39,9 +39,10 @@ public:
                                                GlobalTensor<KV_T> cmpKV, GlobalTensor<MM_OUT_T> mm1ResGm);
     __aicore__ inline void InitMm2GlobalTensor(GlobalTensor<KV_T> vec1ResGm, GlobalTensor<MM_OUT_T> mm2ResGm,
                                                GlobalTensor<OUT_T> attentionOutGm);
-    __aicore__ inline void InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm, // const GlobalTensor<KV_T>& kvMergeGm,
+    __aicore__ inline void InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm,
                                                  GlobalTensor<int32_t> oriBlockTableGm,
-                                                 GlobalTensor<int32_t> cmpBlockTableGm);
+                                                 GlobalTensor<int32_t> cmpBlockTableGm,
+                                                 GlobalTensor<int32_t> oriSparseIndicesGm);
     __aicore__ inline void InitBuffers(TPipe *pipe);
 
     __aicore__ inline void AllocEventID();
@@ -113,6 +114,7 @@ private:
     // block_table
     GlobalTensor<int32_t> oriBlockTableGm;
     GlobalTensor<int32_t> cmpBlockTableGm;
+    GlobalTensor<int32_t> oriSparseIndicesGm;
 
     TBuf<TPosition::A1> bufQPL1;
     TBuf<TPosition::A1> bufKVL1;
@@ -184,11 +186,14 @@ __aicore__ inline void SWACubeBlock<SMLAT>::InitMm2GlobalTensor(GlobalTensor<KV_
 
 template <typename SMLAT>
 __aicore__ inline void
-SWACubeBlock<SMLAT>::InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm, // const GlobalTensor<KV_T>& kvMergeGm,
-                                          GlobalTensor<int32_t> oriBlockTableGm, GlobalTensor<int32_t> cmpBlockTableGm)
+SWACubeBlock<SMLAT>::InitPageAttentionInfo(GlobalTensor<KV_T> oriKvGm,
+                                          GlobalTensor<int32_t> oriBlockTableGm,
+                                          GlobalTensor<int32_t> cmpBlockTableGm,
+                                          GlobalTensor<int32_t> oriSparseIndicesGm)
 {
     this->oriKvGm = oriKvGm;
     this->oriBlockTableGm = oriBlockTableGm;
+    this->oriSparseIndicesGm = oriSparseIndicesGm;
     if constexpr (TEMPLATE_MODE == HCA_TEMPLATE) {
         this->cmpBlockTableGm = cmpBlockTableGm;
     }
@@ -373,7 +378,27 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                     LocalTensor<KV_T> kTensor;
                     uint32_t copyRowCnt = 0;
 
-                    while (copyFinishRowCnt < nL1Size) {
+                    if (constInfo.hasOriSparseIndices) {
+                        Position startPos;
+                        startPos.bIdx = info.bIdx;
+                        startPos.n2Idx = info.n2Idx;
+                        startPos.s2Idx = 0;
+                        startPos.dIdx = kL1 * D_SPLIT_SIZE;
+                        PAShape shape;
+                        shape.blockSize = constInfo.paOriBlockSize;
+                        shape.headNum = constInfo.kvHeadNum;
+                        shape.headDim = constInfo.headDim;
+                        shape.kvStride = constInfo.oriKvStride0;
+                        shape.actHeadDim = D_SPLIT_SIZE;
+                        shape.maxblockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
+                        shape.copyRowNum = nL1Size;
+                        shape.copyRowNumAlign = nL1SizeAlign;
+                        uint64_t sparseIndexBaseOffset =
+                            (info.qTokenOffset * constInfo.kvHeadNum + info.n2Idx) * constInfo.oriSparseIndexWidth;
+                        uint32_t sparseIndexStart = info.s2Idx * constInfo.s2BaseSize + nL1 * N_SPLIT_SIZE;
+                        DataCopyPABySlots<KV_T>(bL1Tensor, oriKvGm, oriSparseIndicesGm, shape, startPos,
+                                                sparseIndexBaseOffset, sparseIndexStart);
+                    } else while (copyFinishRowCnt < nL1Size) {
                         // 由于ori_left的存在， 即使第一块搬运也可能并非是pa_block的零点位
                         copyRowCnt = constInfo.paOriBlockSize - curS2Offset % constInfo.paOriBlockSize;
                         if (copyFinishRowCnt + copyRowCnt > nL1Size) {
@@ -803,7 +828,28 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
                     if constexpr (KV_LAYOUT_T == SMLA_LAYOUT::PA_BBND) {
                         uint64_t curS2Offset = static_cast<uint64_t>(info.s2Idx) * constInfo.s2BaseSize + \
                             info.s2StartPoint + kL1 * K_L0_SPLIT_SIZE;
-                        while (copyFinishRowCnt < kL0Size) {
+                        if (constInfo.hasOriSparseIndices) {
+                            Position startPos;
+                            startPos.bIdx = info.bIdx;
+                            startPos.n2Idx = info.n2Idx;
+                            startPos.s2Idx = 0;
+                            startPos.dIdx = nL1 * N_SPLIT_SIZE;
+                            PAShape shape;
+                            shape.blockSize = constInfo.paOriBlockSize;
+                            shape.headNum = constInfo.kvHeadNum;
+                            shape.headDim = constInfo.headDim;
+                            shape.kvStride = constInfo.oriKvStride0;
+                            shape.actHeadDim = nL1Size;
+                            shape.maxblockNumPerBatch = constInfo.oriMaxBlockNumPerBatch;
+                            shape.copyRowNum = kL0Size;
+                            shape.copyRowNumAlign = kL0SizeAlign;
+                            uint64_t sparseIndexBaseOffset =
+                                (info.qTokenOffset * constInfo.kvHeadNum + info.n2Idx) * constInfo.oriSparseIndexWidth;
+                            uint32_t sparseIndexStart = info.s2Idx * constInfo.s2BaseSize + kL1 * K_L0_SPLIT_SIZE;
+                            subvTensor = bL1Tensor[(kL1 - kOffset) * K_L0_SPLIT_SIZE * N_SPLIT_SIZE];
+                            DataCopyPABySlots<KV_T>(subvTensor, oriKvGm, oriSparseIndicesGm, shape, startPos,
+                                                    sparseIndexBaseOffset, sparseIndexStart);
+                        } else while (copyFinishRowCnt < kL0Size) {
                             copyRowCnt = constInfo.paOriBlockSize - curS2Offset % constInfo.paOriBlockSize;
                             if (copyFinishRowCnt + copyRowCnt > kL0Size) {
                                 copyRowCnt = kL0Size - copyFinishRowCnt;

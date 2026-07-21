@@ -1,0 +1,47 @@
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-8.3.5, pluggy-1.6.0 -- /data/miniconda3/envs/hey311/bin/python3
+cachedir: .pytest_cache
+rootdir: /data/hey/git/ops-transformer/attention/sparse_flash_mla/tests/pytest
+configfile: pytest.ini
+collecting ... collected 1 item
+
+test_sparse_flash_mla_single.py::test_example[param_combinations0] ERROR
+
+==================================== ERRORS ====================================
+_____________ ERROR at setup of test_example[param_combinations0] ______________
+
+    @pytest.fixture(scope="session", autouse=True)
+    def preload_sparse_flash_mla_extension():
+        """JIT-compile sparse_flash_mla once before any case runs."""
+        repo_root = os.path.normpath(
+            os.path.join(os.path.dirname(__file__), "../../../.."))
+        os.environ.setdefault("SMLA_OPS_TRANSFORMER_ROOT", repo_root)
+        torch_ext = os.path.join(repo_root, "torch_extension")
+        if torch_ext not in sys.path:
+            sys.path.insert(0, torch_ext)
+        device_id = int(os.getenv("ASCEND_RT_VISIBLE_DEVICES", "0").split(",")[0])
+>       torch_npu.npu.set_device(device_id)
+
+conftest.py:22: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 
+
+device = 1
+
+    def set_device(device):
+        device_id = _get_device_index(device, optional=True)
+        if device_id >= 0:
+>           torch_npu._C._npu_setDevice(device_id)
+E           RuntimeError: Initialize:build/CMakeFiles/torch_npu.dir/compiler_depend.ts:146 NPU function error: c10_npu::SetDevice(device_id_), error code is 107001
+E           [ERROR] 2026-07-23-16:03:37 (PID:429026, Device:0, RankID:-1) ERR00100 PTA call acl api failed
+E           [Error]: Invalid device ID.
+E                   Check whether the device ID is valid.
+E           [PID: 429026] 2026-07-23-16:03:28.943.197 Invalid_Argument(EE1003): ChgUserDevIdToDeviceId failed because value 1 for parameter userDevId is invalid. Expected value: [0, 1).
+E                   Solution: 1. Check the input parameter range of the function. 2. Check the function invocation relationship.
+E           TraceBack (most recent call last):
+E                   rtSetDevice execution failed, reason=device id error[FUNC:FuncErrorReason][FILE:error_message_manage.cc][LINE:69]
+E                   open device 1 failed, runtime result = 107001.[FUNC:ReportCallError][FILE:log_inner.cpp][LINE:148]
+
+/data/miniconda3/envs/hey311/lib/python3.11/site-packages/torch_npu/npu/utils.py:83: RuntimeError
+=========================== short test summary info ============================
+ERROR test_sparse_flash_mla_single.py::test_example[param_combinations0] - Ru...
+============================== 1 error in 10.62s ===============================
