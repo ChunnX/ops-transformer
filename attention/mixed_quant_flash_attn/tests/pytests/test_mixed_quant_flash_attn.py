@@ -16,8 +16,13 @@ import argparse
 import torch
 from pathlib import Path
 
+_torch_ext = os.path.join(os.path.dirname(__file__), "..", "..", "..", "..", "torch_extension")
+_torch_ext = os.path.abspath(_torch_ext)
+if _torch_ext not in sys.path:
+    sys.path.insert(0, _torch_ext)
+
 # ── 新架构 modules ──
-from core.data import flash_attn_inputs
+from core.data import mixed_quant_flash_attn_inputs
 from core.case_loader import load_case_modules, normalize_params, resolve_case_ids
 from core.orchestrator import run_case, run_case_load
 from core.reporter import Reporter
@@ -28,7 +33,7 @@ _DEFAULT_CASE_FILES = [os.path.splitext(f)[0] for f in os.listdir(
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="FlashAttn 精度测试（新架构）")
+    parser = argparse.ArgumentParser(description="MixedQuantFlashAttn 精度测试（新架构）")
     parser.add_argument("--case_files", type=str, default=",".join(_DEFAULT_CASE_FILES))
     parser.add_argument("--case_id",    type=str,  default="all")
     parser.add_argument("--device_id",  type=int,  default=0)
@@ -58,7 +63,7 @@ if __name__ == "__main__":
     parser.add_argument("--perf_cold_thr", type=int, default=16)
     parser.add_argument("--perf_output", type=str,  default="./perf_output")
     parser.add_argument("--skip_accuracy", action="store_true")
-    parser.add_argument("--result_csv", type=str, default="attention/flash_attn/tests/pytests/result.csv",
+    parser.add_argument("--result_csv", type=str, default="attention/mixed_quant_flash_attn/tests/pytests/result.csv",
                         help="精度结果 CSV 输出路径")
     parser.add_argument("--one_by_one", action="store_true", help="逐个 case 执行，每个完成后暂停")
     args = parser.parse_args()
@@ -103,7 +108,7 @@ if __name__ == "__main__":
         import csv as csv_mod
         with open(str(csv_path)) as f:
             all_rows = list(csv_mod.DictReader(f))
-        flash_rows = [r for r in all_rows if r.get("OP Type") == "FlashAttn"]
+        flash_rows = [r for r in all_rows if r.get("OP Type") == "MixedQuantFlashAttn"]
         fieldnames = list(all_rows[0].keys()) if all_rows else ["Task Start Time(us)", "Task Duration(us)"]
 
         with open(str(csv_path), "w", newline="") as f:
@@ -332,7 +337,7 @@ if __name__ == "__main__":
                 params=params,
                 primary=primary,
                 golden=golden,
-                spec=flash_attn_inputs,
+                spec=mixed_quant_flash_attn_inputs,
                 comparators=comparators if comparators else None,
                 golden_dir=args.save_golden,
                 case_name=name,

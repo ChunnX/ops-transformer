@@ -3,18 +3,18 @@
 # Copyright (c) 2025 Huawei Technologies Co., Ltd.
 # ======================================================================================================================
 """
-将 flash_attn 红线用例 xlsx 表格转换为 test_cases 格式的 Python 文件。
+将 mixed_quant_flash_attn 红线用例 xlsx 表格转换为 test_cases 格式的 Python 文件。
 
 用法:
     python xlsx_to_testcase.py --input <xlsx文件> [--output <py文件>] [--sheet <sheet名>]
 
-生成的 .py 文件包含 TestCases 字典，可直接被 test_flash_attn.py 导入：
-    python test_flash_attn.py --case_files <生成的模块名(不含.py)>
+生成的 .py 文件包含 TestCases 字典，可直接被 test_mixed_quant_flash_attn.py 导入：
+    python test_mixed_quant_flash_attn.py --case_files <生成的模块名(不含.py)>
 
 示例:
-    python xlsx_to_testcase.py -i flash_attn_redline.xlsx
-    python xlsx_to_testcase.py -i flash_attn_redline.xlsx -o redline.py
-    python xlsx_to_testcase.py -i flash_attn_redline.xlsx -s Sheet2
+    python xlsx_to_testcase.py -i mixed_quant_flash_attn_redline.xlsx
+    python xlsx_to_testcase.py -i mixed_quant_flash_attn_redline.xlsx -o redline.py
+    python xlsx_to_testcase.py -i mixed_quant_flash_attn_redline.xlsx -s Sheet2
 
 依赖:
     pip install openpyxl
@@ -426,20 +426,20 @@ def xlsx_to_testcase(input_xlsx, output_py, sheet_name=None):
         print(f"[INFO] 跳过 {skip_count} 行（空行或无效行）")
     mod = os.path.splitext(os.path.basename(output_py))[0]
     print(f"\n[用法] 运行全部用例:")
-    print(f"    python test_flash_attn.py --case_files {mod}")
+    print(f"    python test_mixed_quant_flash_attn.py --case_files {mod}")
     print(f"[用法] 运行单个用例:")
-    print(f"    python test_flash_attn.py --case_files {mod} --case_id <用例名>")
+    print(f"    python test_mixed_quant_flash_attn.py --case_files {mod} --case_id <用例名>")
 
 
 def main():
     p = argparse.ArgumentParser(
-        description='将 flash_attn 红线用例 xlsx 表格转换为 test_cases 格式',
+        description='将 mixed_quant_flash_attn 红线用例 xlsx 表格转换为 test_cases 格式',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 示例:
-  python xlsx_to_testcase.py -i flash_attn_redline.xlsx
-  python xlsx_to_testcase.py -i flash_attn_redline.xlsx -o redline.py
-  python xlsx_to_testcase.py -i flash_attn_redline.xlsx -s Sheet2
+  python xlsx_to_testcase.py -i mixed_quant_flash_attn_redline.xlsx
+  python xlsx_to_testcase.py -i mixed_quant_flash_attn_redline.xlsx -o redline.py
+  python xlsx_to_testcase.py -i mixed_quant_flash_attn_redline.xlsx -s Sheet2
 """)
     p.add_argument('--input',  '-i', required=True,  help='输入 xlsx 文件路径')
     p.add_argument('--output', '-o', default=None,

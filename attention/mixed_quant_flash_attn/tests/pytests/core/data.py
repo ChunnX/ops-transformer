@@ -5,7 +5,7 @@ from typing import Any, Callable, Dict, List, Optional, Tuple
 
 
 # ============================================================
-# 参数组构造 — 按 npu_flash_attn.md 的 6 组参数规范化
+# 参数组构造 — 按 mixed_quant_flash_attn.md 的 6 组参数规范化
 # ============================================================
 
 def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
@@ -110,6 +110,105 @@ def build_flash_attn_params(p: dict, device: torch.device, inputs: dict
     )
 
     return meta_kwargs, kernel_kwargs, layout_out
+
+
+def build_mixed_quant_flash_attn_params(p: dict, device: torch.device, inputs: dict
+                                        ) -> Tuple[dict, dict, dict]:
+    """从 normalized params 构造 mixed_quant_flash_attn 兼容的 metadata / kernel kwargs。
+
+    Returns: (meta_kwargs, kernel_kwargs, out_layout)
+    """
+    layout_q   = p.get("layout_q", p.get("input_layout", "BNSD"))
+    layout_kv  = p.get("layout_kv", layout_q)
+    layout_out = p.get("layout_out", layout_q)
+    d = p["D"]
+
+    scale = p.get("scale", 1 / (d ** 0.5))
+    quant_mode = p.get("quant_mode", 0)
+
+    mask_mode = p.get("mask_mode", 0)
+    wl = wr = -1
+    attn_mask = None
+    if mask_mode == 3:
+        mask = torch.triu(torch.ones(2048, 2048), diagonal=1)
+        attn_mask = mask.to(dtype=torch.int8, device=device)
+    elif mask_mode == 4:
+        mask = torch.triu(torch.ones(2048, 2048), diagonal=1)
+        attn_mask = mask.to(dtype=torch.int8, device=device)
+        wl = p.get("win_left", 2147483647)
+        wr = p.get("win_right", 2147483647)
+    elif mask_mode != 0:
+        wl = p.get("win_left", 2147483647)
+        wr = p.get("win_right", 2147483647)
+
+    def _u32(x):
+        if x is None: return None
+        if torch.is_tensor(x): return x.to(torch.int32, device=device).contiguous()
+        return torch.tensor(x, dtype=torch.int32, device=device).contiguous()
+
+    cu_q  = _u32(p.get("cu_seqlens_q"))
+    sq    = _u32(p.get("seqused_q", p.get("actual_seq_qlen")))
+    skv   = _u32(p.get("seqused_kv", p.get("actual_seq_kvlen")))
+
+    q = inputs["q"]; k = inputs["k"]
+    if layout_q == "BNSD":
+        bs, nqh, msq, hd = q.shape[0], q.shape[1], q.shape[2], q.shape[3]
+        nkh, msk = k.shape[1], k.shape[2]
+    elif layout_q == "BSND":
+        bs, nqh, msq, hd = q.shape[0], q.shape[2], q.shape[1], q.shape[3]
+        nkh, msk = k.shape[2], k.shape[1]
+    elif layout_q == "TND":
+        bs = (cu_q.shape[0] - 1) if cu_q is not None else p.get("B", 1)
+        nqh, hd = q.shape[1], q.shape[2]
+        nkh = k.shape[1]
+        if sq is not None:
+            msq = int(sq.max())
+        elif cu_q is not None:
+            msq = int((cu_q[1:] - cu_q[:-1]).max())
+        else:
+            msq = p.get("S1", 1)
+        if skv is not None:
+            msk = int(skv.max())
+        else:
+            msk = p.get("S2", p.get("S1", 1))
+    else:
+        bs = q.shape[0]; nqh = p["N1"]; nkh = p.get("N2", nqh)
+        hd = d; msq = q.shape[1]; msk = k.shape[1]
+
+    bt = None
+    if layout_kv in ("PA_BBND", "PA_BNBD", "PA_NZ"):
+        bt = inputs.get("block_table")
+        if bt is not None:
+            bt = bt.to(device)
+            nkh = p.get("N2", nqh)
+            hd = d
+            msk = max(skv) if skv is not None else p.get("S2", p.get("S1", 1))
+
+    k_descale = inputs.get("scale_k")
+    v_descale = inputs.get("scale_v")
+
+    meta_kwargs = dict(
+        num_heads_q=nqh, num_heads_kv=nkh, head_dim=hd,
+        quant_mode=quant_mode,
+        cu_seqlens_q=cu_q, seqused_q=sq, seqused_kv=skv,
+        batch_size=bs, max_seqlen_q=msq, max_seqlen_kv=msk,
+        mask_mode=mask_mode, win_left=wl, win_right=wr,
+        layout_q=layout_q, layout_kv=layout_kv, layout_attn_out=layout_out,
+    )
+
+    kernel_kwargs = dict(
+        quant_mode=quant_mode, softmax_scale=scale,
+        mask_mode=mask_mode, win_left=wl, win_right=wr,
+        block_table=bt,
+        cu_seqlens_q=cu_q, seqused_q=sq, seqused_kv=skv,
+        attn_mask=attn_mask,
+        max_seqlen_q=msq if layout_q == "TND" else -1,
+        max_seqlen_kv=-1,
+        layout_q=layout_q, layout_kv=layout_kv, layout_attn_out=layout_out,
+        return_softmax_lse=p.get("return_softmax_lse", 0),
+    )
+
+    return meta_kwargs, kernel_kwargs, (k_descale, v_descale, layout_out)
 
 
 class InputSpec:
@@ -227,6 +326,20 @@ class InputSpec:
         return tuple(dims)
 
 
+# ── fp4 packing ──
+
+def pack_fp4_to_uint8(unpacked: torch.Tensor) -> torch.Tensor:
+    """unpacked fp4 (..., D) uint8 → packed (..., D//2) uint8.
+    每输出字节 = (元素[i+1] << 4) | 元素[i]，低 nibble 在前。
+    """
+    D = unpacked.shape[-1]
+    assert D % 2 == 0, f"D must be even for packing, got {D}"
+    shaped = unpacked.reshape(unpacked.shape[:-1] + (D // 2, 2))
+    low = (shaped[..., 0].to(torch.uint8)) & 0x0F
+    high = (shaped[..., 1].to(torch.uint8)) & 0x0F
+    return (high << 4) | low
+
+
 # ── helpers ──
 
 def _infer_dtype(ds: str) -> torch.dtype:
@@ -259,8 +372,8 @@ def gen_unpacked_e8m0(shape, dtype, device, rng):
     return torch.randint(1, 255, shape, dtype=torch.uint8, device=device, generator=rng)
 
 
-flash_attn_inputs = (
-    InputSpec("flash_attn")
+mixed_quant_flash_attn_inputs = (
+    InputSpec("mixed_quant_flash_attn")
     # q — 按 layout_q 生成
     .tensor("q", layout={"BNSD": "B,N1,S1,D", "BSND": "B,S1,N1,D", "TND": "total_s1,N1,D"},
             method="uniform", low=-5.0, high=5.0, range_key="q_range",

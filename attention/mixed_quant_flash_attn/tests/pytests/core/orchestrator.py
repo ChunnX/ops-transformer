@@ -6,7 +6,7 @@ from typing import List
 
 import torch
 
-from core.data import InputSpec, flash_attn_inputs
+from core.data import InputSpec, mixed_quant_flash_attn_inputs
 from core.backends.base import Backend
 from utils.compare import check_result
 from utils.data import trans_bnsd_to_layout
@@ -78,7 +78,7 @@ def run_case(params: dict,
              viz_dir: str = "./viz_output",
              fail_analysis: bool = False,
              compare_dir: str = None) -> dict:
-    spec = spec or flash_attn_inputs
+    spec = spec or mixed_quant_flash_attn_inputs
     comparators = comparators or []
     layout = params.get("input_layout", params.get("layout_q", "BNSD"))
     out_layout = params.get("layout_out", layout)
@@ -138,7 +138,7 @@ def run_case(params: dict,
             output_dtype = params.get("Dtype", "fp16")
             cmp_params = {
                 "case_name": case_name,
-                "op_name": "flash_attn",
+                "op_name": "mixed_quant_flash_attn",
                 "dtype_output": [output_dtype],
                 "dtype_input": [output_dtype],
                 "red_range": {
