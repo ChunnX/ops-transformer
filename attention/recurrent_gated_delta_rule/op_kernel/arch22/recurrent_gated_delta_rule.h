@@ -192,7 +192,7 @@ private:
             uint32_t alignKGamma = Ceil(realK_, FP32_NUM_PER_BLOCK) * FP32_NUM_PER_BLOCK;
             uint32_t stride = alignKGamma < alignK_ ? 1 : 0;
             DataCopyExtParams gkInParams{static_cast<uint16_t>(seqLen), static_cast<uint32_t>(realK_ * sizeof(float)),
-                                     static_cast<uint32_t>((NV_ - 1) * realK_ * sizeof(float)), stride, 0};
+                                         static_cast<uint32_t>((NV_ - 1) * realK_ * sizeof(float)), stride, 0};
             DataCopyPadExtParams<float> gkPadParams{true, 0, static_cast<uint8_t>(alignKGamma - realK_), 0};
             LocalTensor<float> gamaKLocal = gamaKInQueue_.AllocTensor<float>();
             Duplicate<float>(gamaKLocal, 0, alignK_ * seqLen);
@@ -249,7 +249,7 @@ private:
     }
 
     __aicore__ inline void MatVecMul(const LocalTensor<float> &cubeTensor, const LocalTensor<float> &vecTensor,
-                                          LocalTensor<float> &dstTensor, uint32_t cols, bool isAdd)
+                                     LocalTensor<float> &dstTensor, uint32_t cols, bool isAdd)
     {
         uint8_t repeatStride = alignK_ / FP32_NUM_PER_BLOCK;
         for (uint32_t i = 0; i < alignK_; i += REPEAT_LENTH) {

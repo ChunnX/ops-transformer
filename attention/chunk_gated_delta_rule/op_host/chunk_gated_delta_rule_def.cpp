@@ -18,7 +18,7 @@ BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULA
 namespace ops {
 class ChunkGatedDeltaRule : public OpDef {
 public:
-    explicit ChunkGatedDeltaRule(const char* name) : OpDef(name)
+    explicit ChunkGatedDeltaRule(const char *name) : OpDef(name)
     {
         this->Input("query")
             .ParamType(REQUIRED)
