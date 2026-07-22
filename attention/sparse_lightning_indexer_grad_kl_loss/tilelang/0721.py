@@ -221,7 +221,10 @@ def check_param_valid(
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2, -1],
-    workspace_idx=[10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21],
+    # These workspaces are cached and passed explicitly by the host wrapper.
+    # Marking them as workspace_idx makes the JIT allocate private torch.empty
+    # tensors and silently ignore the caller-provided buffers.
+    workspace_idx=[],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
@@ -287,11 +290,11 @@ def tilelang_grad_kl_loss_single_kernel(
         task_slot,
         vector_id,
     ):
-        """TileLang translation of ProcessVector0 for one task slot.
+        """Gather one task with the same subblock ownership as MergeKv.
 
-        AIV0 owns the P stream (Key + KeyRope); AIV1 owns the SY stream
-        (KeyIndex).  The two streams publish independent V0 -> C1 flags after
-        gathering the complete K range in 1024-row workspace segments.
+        Both AIVs gather all three streams.  Each AIV owns one contiguous half
+        of the current 1024-row K tile, then both publish the same mode-2
+        readiness flags consumed by C1.
         """
         with T.Scope("V"):
             v0_key_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
@@ -320,65 +323,56 @@ def tilelang_grad_kl_loss_single_kernel(
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
                     outer_start = k_outer * S2_WORKSPACE
-                    outer_end = T.min(outer_start + S2_WORKSPACE, K)
-                    gather_chunks = ceil_div(S2_WORKSPACE, GATHER_CHUNK_SIZE)
+                    rows_per_aiv = S2_WORKSPACE // 2
+                    aiv_start = outer_start + vector_id * rows_per_aiv
+                    gather_chunks = rows_per_aiv // GATHER_CHUNK_SIZE
 
                     T.wait_flag("mte3", "mte2", 0)
                     for lane in T.serial(GATHER_CHUNK_SIZE):
-                        k_id = outer_start + lane
+                        k_id = aiv_start + lane
                         sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
-                        if vector_id == 0:
-                            if sparse_idx >= 0:
-                                T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
-                                if d_rope > 0:
-                                    T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
-                            if sparse_idx < 0:
-                                T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
-                                if d_rope > 0:
-                                    T.copy(v0_zero_rope, v0_rope_ub[0, lane, 0:d_rope])
-                        if vector_id == 1:
-                            if sparse_idx >= 0:
-                                T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
-                            if sparse_idx < 0:
-                                T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
+                        if sparse_idx >= 0:
+                            T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
+                            T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
+                            if d_rope > 0:
+                                T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
+                        if sparse_idx < 0:
+                            T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
+                            T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
+                            if d_rope > 0:
+                                T.copy(v0_zero_rope, v0_rope_ub[0, lane, 0:d_rope])
                     T.set_flag("mte2", "mte3", 0)
 
                     for chunk_id in T.serial(gather_chunks):
                         cur = chunk_id % 2
                         nxt = (chunk_id + 1) % 2
                         if chunk_id + 1 < gather_chunks:
-                            next_start = outer_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
+                            next_start = aiv_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
                             T.wait_flag("mte3", "mte2", nxt)
                             for lane in T.serial(GATHER_CHUNK_SIZE):
                                 k_id = next_start + lane
                                 sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
-                                if vector_id == 0:
-                                    if sparse_idx >= 0:
-                                        T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[nxt, lane, 0:DQuery])
-                                        if d_rope > 0:
-                                            T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[nxt, lane, 0:d_rope])
-                                    if sparse_idx < 0:
-                                        T.copy(v0_zero_key, v0_key_ub[nxt, lane, 0:DQuery])
-                                        if d_rope > 0:
-                                            T.copy(v0_zero_rope, v0_rope_ub[nxt, lane, 0:d_rope])
-                                if vector_id == 1:
-                                    if sparse_idx >= 0:
-                                        T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
-                                    if sparse_idx < 0:
-                                        T.copy(v0_zero_ki, v0_ki_ub[nxt, lane, 0:DQueryIndex])
+                                if sparse_idx >= 0:
+                                    T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[nxt, lane, 0:DQuery])
+                                    T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
+                                    if d_rope > 0:
+                                        T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[nxt, lane, 0:d_rope])
+                                if sparse_idx < 0:
+                                    T.copy(v0_zero_key, v0_key_ub[nxt, lane, 0:DQuery])
+                                    T.copy(v0_zero_ki, v0_ki_ub[nxt, lane, 0:DQueryIndex])
+                                    if d_rope > 0:
+                                        T.copy(v0_zero_rope, v0_rope_ub[nxt, lane, 0:d_rope])
                             T.set_flag("mte2", "mte3", nxt)
 
                         T.wait_flag("mte2", "mte3", cur)
-                        cur_start = outer_start + chunk_id * GATHER_CHUNK_SIZE
-                        if vector_id == 0:
-                            T.copy(v0_key_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQuery],
-                                   GatherKey_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQuery])
-                            if d_rope > 0:
-                                T.copy(v0_rope_ub[cur, 0:GATHER_CHUNK_SIZE, 0:d_rope],
-                                       GatherKeyRope_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:d_rope])
-                        if vector_id == 1:
-                            T.copy(v0_ki_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
-                                   GatherKeyIndex_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
+                        cur_start = aiv_start + chunk_id * GATHER_CHUNK_SIZE
+                        T.copy(v0_key_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQuery],
+                               GatherKey_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQuery])
+                        T.copy(v0_ki_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
+                               GatherKeyIndex_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
+                        if d_rope > 0:
+                            T.copy(v0_rope_ub[cur, 0:GATHER_CHUNK_SIZE, 0:d_rope],
+                                   GatherKeyRope_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:d_rope])
                         T.set_flag("mte3", "mte2", cur)
 
                     # A mode-2 AIC wait joins the same flag from both AIVs.
@@ -2581,6 +2575,9 @@ def sparse_lightning_indexer_grad_kl_loss(
             weights = weights.to(input_dtype)
 
         _PROFILE = os.environ.get("SLIG_PROFILE", "0") == "1"
+        _DEBUG_REQUESTED = os.environ.get("SLIG_DEBUG", "0") == "1"
+        _GATHER_SENTINEL = 123.0
+
         if _PROFILE:
             _t_prep_start = torch.npu.Event(enable_timing=True)
             _t_prep_end = torch.npu.Event(enable_timing=True)
@@ -2650,8 +2647,7 @@ def sparse_lightning_indexer_grad_kl_loss(
             d_query_index_accum, d_key_index_accum, \
                 gather_key_ws, gather_key_rope_ws, gather_key_index_ws, \
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws, \
-                dk_matmul_partial, relu_grad_out, loss_partial_ws, \
-                d_query_index_out, d_key_index_out, d_weight_out, loss_out = ws
+                dk_matmul_partial, relu_grad_out, loss_partial_ws = ws
         else:
             gather_key_ws = torch.zeros(B, S1, K, DQuery, dtype=input_dtype, device=query.device)
             gather_key_rope_ws = torch.zeros(B, S1, K, d_rope, dtype=input_dtype, device=query.device)
@@ -2670,24 +2666,21 @@ def sparse_lightning_indexer_grad_kl_loss(
                 B * S2_pad, DQueryIndex,
                 dtype=torch.float32, device=query.device,
             )
-            d_key_index_out = torch.empty(
-                B * S2_pad, DQueryIndex,
-                dtype=input_dtype, device=query.device,
-            )
-            d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
-            d_weight_out = torch.empty(B, S1, Nidx1, dtype=input_dtype, device=query.device)
             relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
             loss_partial_ws = torch.zeros(
                 loss_partial_size, dtype=torch.float32, device=query.device
             )
-            loss_out = torch.empty(1, dtype=torch.float32, device=query.device)
             _workspace_cache[ws_key] = (
                 d_query_index_accum, d_key_index_accum,
                 gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws,
                 dk_matmul_partial, relu_grad_out, loss_partial_ws,
-                d_query_index_out, d_key_index_out, d_weight_out, loss_out,
             )
+
+        if _DEBUG_REQUESTED and not _debug_dump_done:
+            gather_key_ws.fill_(_GATHER_SENTINEL)
+            gather_key_rope_ws.fill_(_GATHER_SENTINEL)
+            gather_key_index_ws.fill_(_GATHER_SENTINEL)
 
         if _PROFILE:
             _t_prep_end.record()
@@ -2704,8 +2697,6 @@ def sparse_lightning_indexer_grad_kl_loss(
             p_reduced_ws, softmax_i_ws,                # 17-18
             dk_matmul_partial, relu_grad_out,           # 19-20
             loss_partial_ws,                           # 21
-            d_query_index_out, d_key_index_out,        # -4, -3
-            d_weight_out, loss_out,                    # -2, -1
         )
         if _PROFILE:
             _t_kernel_end.record()
@@ -2717,10 +2708,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         loss_out = results[3]
 
         # DEBUG: identify the first stage that produces a non-finite value.
-        _DEBUG = (
-            os.environ.get("SLIG_DEBUG", "0") == "1"
-            and not _debug_dump_done
-        )
+        _DEBUG = _DEBUG_REQUESTED and not _debug_dump_done
         if _DEBUG:
             def _debug_tensor(name, tensor):
                 tensor_fp32 = tensor.float()
@@ -2764,6 +2752,13 @@ def sparse_lightning_indexer_grad_kl_loss(
             _debug_tensor("dWeightOut", d_weight)
             _debug_tensor("LossPartial", loss_partial_ws)
             _debug_tensor("LossOut", loss_out)
+
+            print(
+                f"[DEBUG] Gather sentinel remaining: "
+                f"Key={(gather_key_ws == _GATHER_SENTINEL).sum().item()}, "
+                f"Rope={(gather_key_rope_ws == _GATHER_SENTINEL).sum().item()}, "
+                f"KeyIndex={(gather_key_index_ws == _GATHER_SENTINEL).sum().item()}"
+            )
 
             gk_diff = (gather_key_ws.float() - expected_gk.float()).abs()
             gki_diff = (gather_key_index_ws.float() - expected_gki.float()).abs()
