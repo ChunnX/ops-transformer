@@ -21,6 +21,7 @@
 
 #include "adv_api/activation/softmax.h"
 #if __has_include("../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h")
+#include "../../../common/op_kernel/const_def.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
@@ -30,6 +31,7 @@
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 #else
+#include "../../common/const_def.h"
 #include "../../common/arch35/flash_attention_score_common_regbase.h"
 #include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
 #include "../../common/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz_dn.h"
@@ -482,7 +484,7 @@ public:
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = mDealSize;
         dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
-        dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
+        dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (AttentionCommon::BYTE_BLOCK / sizeof(T));
         dataCopyParams.dstStride = 0;
 
         DataCopyPad(accumOutGm[gmOffset], ubVec2Res, dataCopyParams);

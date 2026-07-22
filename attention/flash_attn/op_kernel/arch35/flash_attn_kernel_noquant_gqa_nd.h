@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Copyright (c) 2026 Huawei Technologies Co., Ltd.
  * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
  * CANN Open Software License Agreement Version 2.0 (the "License").
@@ -19,12 +19,13 @@
 #include "adv_api/activation/softmax.h" // SoftmaxConfig / SoftmaxMode，fia_public_define.h 依赖
 #if __has_include("../../../common/op_kernel/fia_public_define.h")
 #include "../../../common/op_kernel/fia_public_define.h"
+#include "../../../common/op_kernel/const_def.h"
 #else
 #include "../../common/fia_public_define.h"
+#include "../../common/const_def.h"
 #endif
 #include "kernel_operator_list_tensor_intf.h" // TensorDesc
 #include "../utils/flash_attn_common_def.h"
-#include "../utils/flash_attn_utils.h"
 
 #include "flash_attn_block_cube_noquant_gqa_nd.h"
 #include "flash_attn_block_vec_noquant_gqa_nd.h"
@@ -512,7 +513,7 @@ public:
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
         info.actSingleLoopS2SizeAlign =
-            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(AttentionCommon::BYTE_BLOCK / sizeof(INPUT_T)));
         if (constInfo.isKvContinuous) {
             info.isChangeBatch = false;
         } else {
