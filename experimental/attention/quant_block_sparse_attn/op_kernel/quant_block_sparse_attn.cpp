@@ -42,12 +42,8 @@ using namespace AscendC;
                        cuSeqlensQ, cuSeqlensKv, seqUsedQ, seqUsedKv, blockTable, \
                        nullptr /* queryPaddingSize */, nullptr /* kvPaddingSize */, \
                        qScale /* deqScaleQ */, kScale /* deqScaleK */, vScale /* deqScaleV */, \
-                       pScale /* pScale */, nullptr /* keySharedPrefix */, \
-                       nullptr /* valueSharedPrefix */, nullptr /* actualSharedPrefixLen */, \
-                       nullptr /* queryRope */, nullptr /* keyRope */, \
-                       nullptr /* learnableSink */, nullptr /* softmaxMax */, \
-                       nullptr /* softmaxSum */, nullptr /* softmaxOut */, \
-                       softmaxLse, attentionOut, user /* workspace */, \
+                       pScale /* pScale */, nullptr /* softmaxMax */, \
+                       nullptr /* softmaxSum */, softmaxLse, attentionOut, user /* workspace */, \
                        tilingData, &tPipe); \
         op.Process(); \
     } while (0)
