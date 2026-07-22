@@ -115,7 +115,6 @@ stages:
     jobs:
       JOB_x86_compile:
         name: x86_compile
-        needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_X86'
@@ -124,7 +123,6 @@ stages:
           package_name: 'cann-ops-transformer_linux-x86_64.run'
       JOB_arm_compile:
         name: arm_compile
-        needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_ARM'
