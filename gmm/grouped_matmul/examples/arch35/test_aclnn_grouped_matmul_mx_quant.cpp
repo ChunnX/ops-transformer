@@ -154,7 +154,7 @@ int aclnnGourpedMatmulTest(int32_t deviceId, aclrtStream &stream)
     std::vector<uint16_t> yHostData(m * n, 0);
     std::vector<int64_t> groupListData = {256, 512};
     std::vector<int8_t> scaleHostData(groupnum * n * k / 64 * 2, 1);
-    std::vector<int8_t> pertokenHostData(m * k / 64 * n * 2, 1);
+    std::vector<int8_t> pertokenHostData(m * k / 64 * 2, 1);
 
     // 创建x aclTensorList
     ret = CreateAclTensorList(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_FLOAT8_E5M2, &x);

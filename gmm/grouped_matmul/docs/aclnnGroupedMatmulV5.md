@@ -72,7 +72,7 @@ $$
 <details>
 <summary>全量化场景</summary>
 
-- **量化场景（静态量化，T-C && T-T量化，无perTokenScaleOptional）：**
+- **量化场景（静态量化，无perTokenScaleOptional）：**
   $$
     y_i=(x_i\times weight_i) * scale_i + offset_i
   $$
@@ -375,7 +375,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 | groupType | 子场景 | shape |
 |:---:|:---|:---|
 | 0/2 | <abbr title="简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数">perchannel</abbr> | `(g, N)` |
-| 0/2 | <abbr title="简称T量化，每个Tensor共用一个相同的量化参数">pertensor</abbr> | `(g, 1)` 或 `(g,)`，输出为 INT8 时不支持Pertensor场景 |
+| 0/2 | <abbr title="简称T量化，每个Tensor共用一个相同的量化参数">pertensor</abbr> | `(g, 1)` 或 `(g,)`，输出为 INT8 时不支持pertensor场景 |
 
 </details>
 
@@ -394,7 +394,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 | 0/2 | HIFLOAT8 | HIFLOAT8 | null | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
 | 0/2 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | null | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
 
-- **scaleOptional shape**（$g$=分组数），推荐在Pertensor场景 shape 使用 `(g,)`，防止与 G-B量化模式混淆：
+- **scaleOptional shape**（$g$=分组数），推荐在pertensor场景 shape 使用 `(g,)`，防止与 G-B量化模式混淆：
 
   | groupType | 子场景 | shape |
   |:---:|:---|:---|
