@@ -90,7 +90,7 @@ public:
 
     __aicore__ inline void Process()
     {
-        if (constInfo.aicIdx >= constInfo.coreNum) {
+        if (constInfo.aicIdx >= constInfo.coreNum || constInfo.aicIdx >= BSA_FA_AIC_CORE_NUM) {
             return;
         }
         CrossCoreBufferInit();
@@ -361,15 +361,6 @@ private:
 
     __aicore__ inline void ProcessMainLoop()
     {
-        // 沿用 FP8 metadata 中的 BN1/S1 分核结果。
-        uint32_t bn1StartIdx = GetBsaAttrMetadata(metadataGm, constInfo.aicIdx, BSA_FA_BN1_START_INDEX);
-        uint32_t bn1EndIdx = GetBsaAttrMetadata(metadataGm, constInfo.aicIdx, BSA_FA_BN1_END_INDEX);
-        uint32_t s1StartIdx = GetBsaAttrMetadata(metadataGm, constInfo.aicIdx, BSA_FA_S1_START_INDEX);
-        uint32_t s1EndIdx = GetBsaAttrMetadata(metadataGm, constInfo.aicIdx, BSA_FA_S1_END_INDEX);
-        if (s1EndIdx != 0U) {
-            ++bn1EndIdx;
-        }
-
         // 三槽环形缓存组织 C1/V1 与延迟 C2/V2。
         MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint64_t loop = 0U;
@@ -380,48 +371,67 @@ private:
             rawSparseBlocksPerTask == 0U ? 1U :
             (rawSparseBlocksPerTask > regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK ?
                  regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK : rawSparseBlocksPerTask);
-        for (uint32_t bn1Idx = bn1StartIdx; bn1Idx < bn1EndIdx; ++bn1Idx) {
-            const uint32_t bIdx = bn1Idx / constInfo.realN2Size;
-            const uint32_t n1Idx = bn1Idx % constInfo.realN2Size;
-            const uint32_t n2Idx = n1Idx / constInfo.gSize;
-            const uint32_t queryTokenBase = GetQTokenBase(bIdx);
-            const uint32_t actualS1Size = GetActualQSeqLen(bIdx);
-            const uint32_t actualS2Size = GetActualKvSeqLen(bIdx);
-            const uint32_t s1LoopStart = GetS1LoopStart(bn1Idx, bn1StartIdx, s1StartIdx);
-            const uint32_t s1LoopEnd = GetS1LoopEnd(bn1Idx, bn1EndIdx, s1EndIdx, actualS1Size);
-            for (uint32_t s1OuterIdx = s1LoopStart; s1OuterIdx < s1LoopEnd; ++s1OuterIdx) {
-                // 当前 query block 的有效 sparse block 数。
-                const int32_t sparseLen =
-                    sparseSeqLenGm.GetValue((static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) *
-                                                constInfo.maxQb +
-                                            s1OuterIdx);
-                if (sparseLen <= 0) {
-                    continue;
-                }
-                // sparseBase 指向 sparseIndices[B,N1,Qb,0]。
-                const uint64_t sparseBase =
-                    (static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) * constInfo.maxQb *
-                        constInfo.maxKb +
-                    static_cast<uint64_t>(s1OuterIdx) * constInfo.maxKb;
-                const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
-                bool hasValidS2Task = false;
-                for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
-                    MxRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
-                    const uint32_t remainSparseBlockCount = static_cast<uint32_t>(sparseLen) - s2LoopIdx;
-                    const uint32_t sparseBlockCount =
-                        remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
-                    FillRunInfo(runInfo, loop, mLoop, bIdx, n1Idx, n2Idx, queryTokenBase, actualS1Size,
-                                actualS2Size, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount, sparseBase,
-                                !hasValidS2Task);
-                    if (runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U) {
-                        ExecuteTask(loop, taskRunInfo);
-                        hasValidS2Task = true;
-                        ++loop;
-                    } else {
-                        runInfo.isValid = false;
+        // metadata 可包含多个 section；每个 section 为当前 AIC 提供一段独立的 BN1/S1 边界。
+        const uint32_t sectionNum = GetBsaSectionNum(metadataGm);
+        for (uint32_t sectionIdx = 0U; sectionIdx < sectionNum; ++sectionIdx) {
+            const BsaFaCoreMetadata coreMetadata = GetBsaCoreMetadata(metadataGm, sectionIdx, constInfo.aicIdx);
+            if (coreMetadata.coreEnable == 0U) {
+                continue;
+            }
+            const uint32_t bn1StartIdx = coreMetadata.bn1StartIdx;
+            uint32_t bn1EndIdx = coreMetadata.bn1EndIdx;
+            const uint32_t s1StartIdx = coreMetadata.s1StartIdx;
+            const uint32_t s1EndIdx = coreMetadata.s1EndIdx;
+            if (s1EndIdx != 0U) {
+                ++bn1EndIdx;
+            }
+            if (bn1EndIdx <= bn1StartIdx) {
+                continue;
+            }
+
+            for (uint32_t bn1Idx = bn1StartIdx; bn1Idx < bn1EndIdx; ++bn1Idx) {
+                const uint32_t bIdx = bn1Idx / constInfo.realN2Size;
+                const uint32_t n1Idx = bn1Idx % constInfo.realN2Size;
+                const uint32_t n2Idx = n1Idx / constInfo.gSize;
+                const uint32_t queryTokenBase = GetQTokenBase(bIdx);
+                const uint32_t actualS1Size = GetActualQSeqLen(bIdx);
+                const uint32_t actualS2Size = GetActualKvSeqLen(bIdx);
+                const uint32_t s1LoopStart = GetS1LoopStart(bn1Idx, bn1StartIdx, s1StartIdx);
+                const uint32_t s1LoopEnd = GetS1LoopEnd(bn1Idx, bn1EndIdx, s1EndIdx, actualS1Size);
+                for (uint32_t s1OuterIdx = s1LoopStart; s1OuterIdx < s1LoopEnd; ++s1OuterIdx) {
+                    // 当前 query block 的有效 sparse block 数。
+                    const int32_t sparseLen =
+                        sparseSeqLenGm.GetValue((static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) *
+                                                    constInfo.maxQb +
+                                                s1OuterIdx);
+                    if (sparseLen <= 0) {
+                        continue;
                     }
+                    // sparseBase 指向 sparseIndices[B,N1,Qb,0]。
+                    const uint64_t sparseBase =
+                        (static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) * constInfo.maxQb *
+                            constInfo.maxKb +
+                        static_cast<uint64_t>(s1OuterIdx) * constInfo.maxKb;
+                    const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
+                    bool hasValidS2Task = false;
+                    for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
+                        MxRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
+                        const uint32_t remainSparseBlockCount = static_cast<uint32_t>(sparseLen) - s2LoopIdx;
+                        const uint32_t sparseBlockCount = remainSparseBlockCount > sparseBlocksPerTask ?
+                                                              sparseBlocksPerTask : remainSparseBlockCount;
+                        FillRunInfo(runInfo, loop, mLoop, bIdx, n1Idx, n2Idx, queryTokenBase, actualS1Size,
+                                    actualS2Size, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount, sparseBase,
+                                    !hasValidS2Task);
+                        if (runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U) {
+                            ExecuteTask(loop, taskRunInfo);
+                            hasValidS2Task = true;
+                            ++loop;
+                        } else {
+                            runInfo.isValid = false;
+                        }
+                    }
+                    ++mLoop;
                 }
-                ++mLoop;
             }
         }
         // 排空尚未执行 C2/V2 的尾部 task。
