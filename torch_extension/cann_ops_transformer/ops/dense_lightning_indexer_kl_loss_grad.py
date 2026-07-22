@@ -84,9 +84,9 @@ class DenseLightningIndexerKLLossGradOpBuilder(OpBuilder):
             seqused_k=None,
             cmp_residual_k=None,
             metadata=None,
-            layout_q="TND",
-            layout_k="TND",
-            mask_mode=3,
+            layout_q="BSND",
+            layout_k="BSND",
+            mask_mode=0,
             cmp_ratio=1,
         ):
             dq = q.new_empty(q.shape, dtype=q.dtype, device="meta")
@@ -205,9 +205,9 @@ def dense_lightning_indexer_kl_loss_grad(
     seqused_k=None,
     cmp_residual_k=None,
     metadata=None,
-    layout_q="TND",
-    layout_k="TND",
-    mask_mode=3,
+    layout_q="BSND",
+    layout_k="BSND",
+    mask_mode=0,
     cmp_ratio=1,
 ):
     return op_module.dense_lightning_indexer_kl_loss_grad(
@@ -257,9 +257,9 @@ if _TORCHAIR_AVAILABLE:
         seqused_k: Optional[Tensor] = None,
         cmp_residual_k: Optional[Tensor] = None,
         metadata: Optional[Tensor] = None,
-        layout_q: str = "TND",
-        layout_k: str = "TND",
-        mask_mode: int = 3,
+        layout_q: str = "BSND",
+        layout_k: str = "BSND",
+        mask_mode: int = 0,
         cmp_ratio: int = 1,
         meta_outputs: TensorSpec = None,
     ):
