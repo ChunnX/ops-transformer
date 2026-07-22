@@ -105,7 +105,7 @@ private:
     __aicore__ inline void DispatchComputeKernel(int32_t localExpertId, uint32_t realComputeCoreNum, int32_t roundTag);
     __aicore__ inline void DispatchComputeToken(GlobalTensor<int32_t> &topkIdsGlobal, int32_t localExpertId,
                                                 uint32_t tokenIdx, uint32_t tokenStart, uint32_t dedupWordsPerServer);
-    __aicore__ inline void DispatchSendKernel(uint32_t senderCoreStart, uint32_t senderCoreNum,
+    __aicore__ inline void DispatchSendKernel(uint32_t senderCoreNum, uint32_t remoteServerNum,
                                               uint32_t realComputeCoreNum, int32_t roundTag);
     __aicore__ inline void DispatchToken(uint32_t targetServerForSender, int32_t slot);
     __aicore__ inline int32_t UpdateDispatchTokenCnt(uint32_t targetServerForSender, int32_t cursor, int32_t endCount);
@@ -925,16 +925,15 @@ __aicore__ inline bool MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSyncWith
 
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void
-MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKernel(uint32_t senderCoreStart, uint32_t senderCoreNum,
+MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKernel(uint32_t senderCoreNum, uint32_t remoteServerNum,
                                                             uint32_t realComputeCoreNum, int32_t roundTag)
 {
     __gm__ int32_t *cursorPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchCursorPtr);
-    uint32_t senderIdx = blockIdx_ - senderCoreStart;
-    for (uint32_t targetServerForSender = senderIdx; targetServerForSender < serverNum_;
-         targetServerForSender += senderCoreNum) {
-        if (targetServerForSender == serverId_) {
-            continue;
-        }
+    uint32_t senderIdx = blockIdx_ - realComputeCoreNum;
+    for (uint32_t remoteServerIdx = senderIdx; remoteServerIdx < remoteServerNum;
+         remoteServerIdx += senderCoreNum) {
+        uint32_t targetServerForSender =
+            (remoteServerIdx < serverId_) ? remoteServerIdx : remoteServerIdx + 1U;
         __gm__ int32_t *countPtr = reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.dispatchL1CommPtr +
                                                                       SendWorkspaceServerOffset(targetServerForSender));
         int32_t cursor = ReadGmByPassDCache(cursorPtr + targetServerForSender);
@@ -971,16 +970,16 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchSendKernel(uint32_t senderCoreS
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchTokenToRmtServer(int32_t localExpertId)
 {
-    uint32_t senderCoreLimit = (serverNum_ < MAX_CORENUM_USE_SEND) ? serverNum_ : MAX_CORENUM_USE_SEND;
-    uint32_t senderCoreNum = (senderCoreLimit < blockNum_) ? senderCoreLimit : blockNum_;
-    uint32_t senderCoreStart = blockNum_ - senderCoreNum;
+    uint32_t remoteServerNum = serverNum_ - 1U;
+    uint32_t senderCoreNum =
+        (remoteServerNum < MAX_CORENUM_USE_SEND) ? remoteServerNum : MAX_CORENUM_USE_SEND;
     uint32_t realComputeCoreNum = blockNum_ - senderCoreNum;
     int32_t roundTag = localExpertId + 1;
 
-    if (blockIdx_ < senderCoreStart) {
+    if (blockIdx_ < realComputeCoreNum) {
         DispatchComputeKernel(localExpertId, realComputeCoreNum, roundTag);
     } else {
-        DispatchSendKernel(senderCoreStart, senderCoreNum, realComputeCoreNum, roundTag);
+        DispatchSendKernel(senderCoreNum, remoteServerNum, realComputeCoreNum, roundTag);
     }
 }
 
