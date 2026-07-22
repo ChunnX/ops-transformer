@@ -1586,7 +1586,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(c
     if (myTokenCount > 0) {
         AscendC::SetCtrlSpr<60, 60>(0);
         int64_t offset = 0;
-        LocalTensor<int32_t> metaInfoTensor = LocalTensor<int32_t>(TPosition::VECIN, offset, myTokenCount * META_INFO_SIZE);
+        LocalTensor<int32_t> metaInfoTensor =
+            LocalTensor<int32_t>(TPosition::VECIN, offset, myTokenCount * META_INFO_SIZE);
         offset += myTokenCount * META_INFO_SIZE * sizeof(int32_t);
         AscendC::GlobalTensor<int32_t> metaInfoGm;
         metaInfoGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(
@@ -2003,8 +2004,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessSharedExp
 {
     sharedEpilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
         params_.workspaceInfo.sharedExpertSwigluScalePtr,
-        nullptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256,
-        params_.tilingData->clampLimit});
+        nullptr, nullptr, nullptr, nullptr,
+        nullptr, params_.tilingData->clampLimit});
 
     GMMAddrInfo sharedGmm1AddrInfo;
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};
