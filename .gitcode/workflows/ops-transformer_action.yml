@@ -495,7 +495,7 @@ post:
       steps:
         - 
           name: query_pipeline
-          uses: tanghaoran7/.gitcode/actions/query-pipeline@master
+          uses: cann/.gitcode/actions/query-pipeline@master
           with:
             owner: ${{ env.org_name }}
             repo: ${{ env.repo_name }}
