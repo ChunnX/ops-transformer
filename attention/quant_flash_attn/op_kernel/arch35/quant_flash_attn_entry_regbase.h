@@ -26,8 +26,8 @@
 #include "kernel_operator.h"
 #endif
 
-#include "../utils/quant_flash_attn_utils.h"
-#include "../utils/quant_flash_attn_common_def.h"
+#include "../../../common/op_kernel/vector_common.h"
+#include "quant_flash_attn_common_def.h"
 #include "quant_flash_attn_kernel_fullquant_mx.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "quant_flash_attn_tiling_data.h"

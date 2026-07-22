@@ -17,8 +17,8 @@
 #define QUANT_FLASH_ATTN_KERNEL_FULLQUANT_MX_H_
 
 #include "../../../common/op_kernel/fia_public_define.h"
-#include "../utils/quant_flash_attn_common_def.h"
-#include "../utils/quant_flash_attn_utils.h"
+#include "quant_flash_attn_common_def.h"
+#include "../../../common/op_kernel/vector_common.h"
 #include "quant_flash_attn_block_cube_fullquant_mx.h"
 #include "quant_flash_attn_block_vec_fullquant_mx.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
@@ -681,7 +681,7 @@ public:
             info.actSingleLoopS2Size = info.actS2Size - s2Cur * s2BaseSize;
         }
         info.actSingleLoopS2SizeAlign =
-            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(FA_BYTE_BLOCK / sizeof(INPUT_T)));
+            AttentionCommon::Align((uint32_t)info.actSingleLoopS2Size, (uint32_t)(BYTE_BLOCK / sizeof(INPUT_T)));
 
         info.isChangeBatch = false;
 

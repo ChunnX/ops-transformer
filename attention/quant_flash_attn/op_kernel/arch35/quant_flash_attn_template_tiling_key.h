@@ -17,7 +17,7 @@
 #define TEMPLATE_TILING_KEY_QUANT_FLASH_ATTN_H_
 
 #include "ascendc/host_api/tiling/template_argument.h"
-#include "../utils/quant_flash_attn_common_def.h"
+#include "quant_flash_attn_common_def.h"
 #include "../../../incre_flash_attention/op_kernel/arch35/incre_flash_attention_tiling_regbase.h"
 #include "quant_flash_attn_tiling_data.h"
 

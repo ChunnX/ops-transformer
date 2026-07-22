@@ -16,7 +16,7 @@
 #define QUANT_FLASH_ATTN_BLOCK_VEC_FULLQUANT_MX_H_
 
 #include "kernel_operator.h"
-#include "../utils/attenmask_gs1.h"
+#include "../../../common/op_kernel/arch35/attenmask_gs1.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
 #include "adv_api/activation/softmax.h"
 #include "../../../common/op_kernel/arch35/vf/vf_mul_sel_softmaxflashv2_cast_nz.h"
@@ -24,7 +24,7 @@
 #include "../../../common/op_kernel/arch35/vf/vf_flashupdate_new.h"
 #include "../../../common/op_kernel/arch35/vf/vf_div_cast.h"
 #include "../../../common/op_kernel/arch35/vf/vf_flash_decode.h"
-#include "../utils/quant_flash_attn_common_def.h"
+#include "quant_flash_attn_common_def.h"
 #include "../../../common/op_kernel/vector_common.h"
 #include "../../../common/op_kernel/memory_copy_arch35.h"
 
@@ -969,7 +969,7 @@ public:
         DataCopyExtParams dataCopyParams;
         dataCopyParams.blockCount = mDealSize;
         dataCopyParams.blockLen = constInfo.dSizeV * sizeof(T);
-        dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (FA_BYTE_BLOCK / sizeof(T));
+        dataCopyParams.srcStride = (dSizeAligned64 - constInfo.dSizeV) / (BYTE_BLOCK / sizeof(T));
         dataCopyParams.dstStride = 0;
         DataCopyPad(accumOutGm[gmOffset], vec2ResUb, dataCopyParams);
     }

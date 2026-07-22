@@ -31,6 +31,8 @@ static constexpr float FLOAT_ZERO = 0;
 static constexpr float FLOAT_MAX = 3.402823466e+38F;
 static constexpr float FLOAT_INF = 3e+99;
 
+static constexpr uint32_t FA_METADATA_HEADER_OFFSET = 16U * sizeof(uint32_t);
+
 #define ASCENDC_TPL_5_BW 5
 #define ASCENDC_TPL_10_BW 10
 #define ASCENDC_TPL_3_BW 3
@@ -152,9 +154,7 @@ struct FDparamsX {
 };
 
 enum class FiaKernelType : uint8_t {
-    NO_QUANT = 0,
-    ANTI_QUANT,
-    FULL_QUANT
+    FULL_QUANT = 2
 };
 
 struct RunInfoX {
