@@ -1060,7 +1060,9 @@ public:
                     xDataCopyParams.blockLen = dv0 * sizeof(T_KV);
                 }
                 for (int i = 0; i < tmpFactor / dv0; i++) {
-                    gmOffset = blockOffset * tilingData_->dv * tilingData_->blockSize + (rowOffset + i * tilingData_->blockSize) * dv0 + this->ubFactor * ubIdx * tilingData_->blockSize;
+                    gmOffset = blockOffset * tilingData_->dv * tilingData_->blockSize +
+                               (rowOffset + i * tilingData_->blockSize) * dv0 +
+                               this->ubFactor * ubIdx * tilingData_->blockSize;
                     int64_t ubOffset = i * dv0;
                     if constexpr (IsSameType<T_V_CACHE, int8_t>::value || IsSameType<T_V_CACHE, hifloat8_t>::value ||
                                   IsSameType<T_V_CACHE, fp8_e5m2_t>::value || IsSameType<T_V_CACHE, fp8_e4m3fn_t>::value) {
@@ -1844,7 +1846,8 @@ public:
         // index 的取值是 cache 的行号/槽位号，越界即写到 cache 之外，故必须同时校验上界
         if (kCacheIdx >= 0 && kCacheIdx < tilingData_->cacheRowLimit) {
             if (tilingData_->cacheMode == NORM_CACHE_MODE) {
-                gmOffset1 = (batchIdx * tilingData_->cacheLength + kCacheIdx) * tilingData_->dk + this->ubFactor * ubIdx / 2;
+                gmOffset1 = (batchIdx * tilingData_->cacheLength + kCacheIdx) * tilingData_->dk +
+                            this->ubFactor * ubIdx / 2;
                 gmOffset2 = gmOffset1 + tilingData_->dk / 2;
                 if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||
                               IsSameType<T_K_CACHE, fp8_e5m2_t>::value || IsSameType<T_K_CACHE, fp8_e4m3fn_t>::value) {
@@ -1936,7 +1939,9 @@ public:
                     xDataCopyParams.blockLen = dk0 * sizeof(T_KV);
                 }
                 for (int i = 0; i < tmpFactor / dk0; i++) {
-                    gmOffset1 = blockOffset * tilingData_->dk * tilingData_->blockSize + (rowOffset + i * tilingData_->blockSize) * dk0 + this->ubFactor * ubIdx * tilingData_->blockSize / 2;
+                    gmOffset1 = blockOffset * tilingData_->dk * tilingData_->blockSize +
+                                (rowOffset + i * tilingData_->blockSize) * dk0 +
+                                this->ubFactor * ubIdx * tilingData_->blockSize / 2;
                     gmOffset2 = gmOffset1 + tilingData_->dk * tilingData_->blockSize / 2;
                     int64_t ubOffset = i * dk0;
                     if constexpr (IsSameType<T_K_CACHE, int8_t>::value || IsSameType<T_K_CACHE, hifloat8_t>::value ||

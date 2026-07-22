@@ -1645,7 +1645,8 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_norm_cache_row_limit_til
         196608);
 
     // Norm: cacheRowLimit == cacheLength (the S axis of k_cache) == 128
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "* * * * * * * * * * * * * * * * * * * * * * * * * 128 * ");
+    ExecuteTestCase(
+        tilingContextPara, ge::GRAPH_SUCCESS, 10000, "* * * * * * * * * * * * * * * * * * * * * * * * * 128 * ");
 }
 
 TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_pa_cache_row_limit_tiling)
@@ -1686,5 +1687,6 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_pa_cache_row_limit_tilin
         196608);
 
     // PA: cacheRowLimit == blockNum * blockSize == 8 * 16 == 128
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 10000, "* * * * * * * * * * * * * * * * * * * * * * * * * 128 * ");
+    ExecuteTestCase(
+        tilingContextPara, ge::GRAPH_SUCCESS, 10000, "* * * * * * * * * * * * * * * * * * * * * * * * * 128 * ");
 }
