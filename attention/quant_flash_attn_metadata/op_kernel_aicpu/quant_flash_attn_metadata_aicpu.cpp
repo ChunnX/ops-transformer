@@ -40,7 +40,7 @@ bool QuantFlashAttnMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     cuSeqlensKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cuSeqlensKv));
     sequsedQ_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedQ));
     sequsedKv_ = ctx.Input(static_cast<uint32_t>(ParamId::sequsedKv));
-    dequantScaleV_ = ctx.Input(static_cast<uint32_t>(ParamId::dequantScaleV));
+    vDescale_ = ctx.Input(static_cast<uint32_t>(ParamId::vDescale));
     metaData_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
     bool requiredAttrs =
@@ -228,12 +228,12 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
     param.fdTolerance = 300;
     param.fdOn = 0;
 
-    // 校验 dequant_scale_v: TND layout 下, dim0 应等于 sum(ceil(seqused_kv[i] / 64))
-    if (dequantScaleV_ != nullptr && dequantScaleV_->GetTensorShape() != nullptr) {
-        const int64_t DEQUANT_SCALE_V_GROUP_SIZE = 64;
+    // 校验 v_descale: TND layout 下, dim0 应等于 sum(ceil(seqused_kv[i] / 64))
+    if (vDescale_ != nullptr && vDescale_->GetTensorShape() != nullptr) {
+        const int64_t V_DESCALE_GROUP_SIZE = 64;
         bool isTndLayout = (layoutKv_ == "TND");
         if (isTndLayout) {
-            int64_t dequantScaleVT = dequantScaleV_->GetTensorShape()->GetDimSize(0) / (numHeadsKv_ * headDim_ * 2);
+            int64_t vDescaleT = vDescale_->GetTensorShape()->GetDimSize(0) / (numHeadsKv_ * headDim_ * 2);
             int64_t expectedT = 0;
             if (baseInfo.isCumulativeKvSeq && batchSize_ > 0 &&
                 static_cast<int64_t>(baseInfo.actualKvSeqSize.size()) >= batchSize_) {
@@ -241,13 +241,13 @@ bool QuantFlashAttnMetadataCpuKernel::ParamsInit()
                 for (int32_t i = 0; i < batchSize_; ++i) {
                     int64_t seqUsed = baseInfo.actualKvSeqSize[i] - prev;
                     prev = baseInfo.actualKvSeqSize[i];
-                    expectedT += (seqUsed + DEQUANT_SCALE_V_GROUP_SIZE - 1) / DEQUANT_SCALE_V_GROUP_SIZE;
+                    expectedT += (seqUsed + V_DESCALE_GROUP_SIZE - 1) / V_DESCALE_GROUP_SIZE;
                 }
             }
-            if (expectedT > 0 && expectedT != dequantScaleVT) {
+            if (expectedT > 0 && expectedT != vDescaleT) {
                 KERNEL_LOG_ERROR(
-                    "dequant_scale_v dim0 should be sum(ceil(seqused_kv[i]/64)) = %ld when layout is TND, but got %ld",
-                    expectedT, dequantScaleVT);
+                    "v_descale dim0 should be sum(ceil(seqused_kv[i]/64)) = %ld when layout is TND, but got %ld",
+                    expectedT, vDescaleT);
                 return false;
             }
         }

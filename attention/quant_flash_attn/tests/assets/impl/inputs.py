@@ -43,7 +43,7 @@ def get_cached_inputs():
 
 
 def generate_qfa_mxfp8_inputs(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
-                               dequant_scale_q: torch.Tensor, dequant_scale_k: torch.Tensor, dequant_scale_v: torch.Tensor,
+                               dequant_scale_q: torch.Tensor, dequant_scale_k: torch.Tensor, v_descale: torch.Tensor,
                                p_scale: torch.Tensor, block_table: torch.Tensor,
                                *,
                                B: int, N_q: int, N_kv: int, D: int,
@@ -95,7 +95,7 @@ def generate_qfa_mxfp8_inputs(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
 
     dequant_scale_q = quant_scale_q
     dequant_scale_k = quant_scale_k
-    dequant_scale_v = quant_scale_v
+    v_descale = quant_scale_v
 
     fp8_max = 448.0
     q_fp8 = golden_mod.mxfp8_per_token_group_quant(q_fp16, quant_scale_q, group_size).clamp(-fp8_max, fp8_max).to(fp8_dtype)
@@ -119,6 +119,6 @@ def generate_qfa_mxfp8_inputs(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
 
     # 缓存到 golden_mod 上(不是本模块,避免 spec.py 重复加载导致缓存丢失)
     golden_mod._cached_mxfp8_inputs = [q_fp8, k_fp8, v_fp8,
-                                       dequant_scale_q, dequant_scale_k, dequant_scale_v,
+                                       dequant_scale_q, dequant_scale_k, v_descale,
                                        p_scale_t, block_table_t]
     # 无返回值(符合 TTK 约定)

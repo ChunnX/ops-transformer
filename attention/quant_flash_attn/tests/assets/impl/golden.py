@@ -68,7 +68,7 @@ def _cu_seqlens_to_actual(cu_seqlens):
 
 
 def cpu_qfa_mxfp8(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
-                   dequant_scale_q: torch.Tensor, dequant_scale_k: torch.Tensor, dequant_scale_v: torch.Tensor,
+                   dequant_scale_q: torch.Tensor, dequant_scale_k: torch.Tensor, v_descale: torch.Tensor,
                    p_scale: torch.Tensor, block_table: torch.Tensor,
                    *,
                    B: int, N_q: int, N_kv: int, D: int,
@@ -88,7 +88,7 @@ def cpu_qfa_mxfp8(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
     # 从 golden_mod 取 customize_inputs 缓存的真实 FP8 数据
     cached = getattr(golden_mod, "_cached_mxfp8_inputs", None)
     if cached is not None:
-        q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table = cached[:8]
+        q, k, v, dequant_scale_q, dequant_scale_k, v_descale, p_scale, block_table = cached[:8]
 
     # cu_seqlens → actual_seq (差分还原)
     actual_seq_q = _cu_seqlens_to_actual(cu_seqlens_q)
@@ -121,7 +121,7 @@ def cpu_qfa_mxfp8(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
 
     cpu_out, cpu_lse = golden_mod.cpu_mxfp8_golden(
         q, k, v,
-        dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+        dequant_scale_q, dequant_scale_k, v_descale, p_scale,
         actual_seq_q, actual_seq_kv,
         softmax_scale=softmax_scale,
     )
