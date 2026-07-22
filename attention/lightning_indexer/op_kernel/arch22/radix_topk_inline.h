@@ -138,13 +138,13 @@ __aicore__ inline void InlineRadixTopK(
         Duplicate<int32_t>(globalHist, 0, RDX_BINS);
         Duplicate<int32_t>(tileHist[tileNumAlign_], 0, tileNumAlign_ * (RDX_BINS - 1));
         PipeBarrier<PIPE_V>();
-        // Single V_S sync for all ClearHist + clear operations
         RDX_V_S_SYNC();
         if (tailTileLen_ != tileLen_) {
             tileHist.SetValue(tileNum_ - 1, static_cast<int32_t>(tailTileLen_));
         }
         globalHistBoundaryNum_ = static_cast<int32_t>((tileNum_ - 1) * tileLen_ + tailTileLen_);
-        globalHist.SetValue(0, globalHistBoundaryNum_);
+        // Initialize scalar globalHist accumulators (avoid per-tile GetValue)
+        int32_t gh[4] = {globalHistBoundaryNum_, 0, 0, 0};
         RDX_S_V_SYNC();
 
         for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
@@ -155,7 +155,6 @@ __aicore__ inline void InlineRadixTopK(
             DataCopy(xLocalFp32, scoreCache[tileId * tileLen_], tileLenAlign_);
 
             // Cast float -> bf16 into xLocalB16 (xBuf back, no overlap with xLocalFp32 in front)
-            // +1e30 garbage already replaced with -1e30 in ProcessVec, no clamp needed
             Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
             PipeBarrier<PIPE_V>();
 
@@ -187,8 +186,6 @@ __aicore__ inline void InlineRadixTopK(
             PipeBarrier<PIPE_V>();
 
             // CalcCumsumHistogram: Cast int16 -> float -> int32, compare int32 (matching math repo)
-            RDX_V_S_SYNC();
-            RDX_S_V_SYNC();
             Cast(xLocalFp32, xLocalInt16Cast, RoundMode::CAST_NONE, curTileLen);
             PipeBarrier<PIPE_V>();
             Cast(xLocalInt32, xLocalFp32, RoundMode::CAST_RINT, curTileLen);
@@ -197,6 +194,7 @@ __aicore__ inline void InlineRadixTopK(
             int32_t cumSumOne = 0;
             uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(int32_t) - 1) /
                 (REPEAT_SIZE / sizeof(int32_t)) * (REPEAT_SIZE / sizeof(int32_t));
+            // Store bin counts in scalar array for both tileHist and globalHist update
             int32_t binCounts[RDX_BINS] = {0, 0, 0, 0};
             for (int16_t binMask = RDX_BINS - 1; binMask > 0; binMask--) {
                 int32_t involvedMaskTemp = static_cast<int32_t>(
@@ -210,15 +208,24 @@ __aicore__ inline void InlineRadixTopK(
                 RDX_V_S_SYNC();
                 cumSumOne += static_cast<int32_t>(rsvdCnt);
                 binCounts[binMask] = cumSumOne;
+                gh[binMask] += cumSumOne;
             }
-            // Single S_V sync for all bin writes
+            // Write tileHist: 3 scalar SetValue (scattered positions, no GetValue needed)
             RDX_S_V_SYNC();
             RDX_V_S_SYNC();
-            for (int16_t binMask = RDX_BINS - 1; binMask > 0; binMask--) {
-                tileHist[binMask * tileNumAlign_].SetValue(tileId, binCounts[binMask]);
-                globalHist.SetValue(binMask, globalHist.GetValue(binMask) + binCounts[binMask]);
-            }
+            tileHist[1 * tileNumAlign_].SetValue(tileId, binCounts[1]);
+            tileHist[2 * tileNumAlign_].SetValue(tileId, binCounts[2]);
+            tileHist[3 * tileNumAlign_].SetValue(tileId, binCounts[3]);
             RDX_S_V_SYNC();
+        }
+
+        // Write globalHist from scalar accumulators (single batch, no per-tile GetValue)
+        RDX_V_S_SYNC();
+        globalHist.SetValue(0, gh[0]);
+        globalHist.SetValue(1, gh[1]);
+        globalHist.SetValue(2, gh[2]);
+        globalHist.SetValue(3, gh[3]);
+        RDX_S_V_SYNC();
         }
 
         // FindBoundaryBin + update globalHistBoundaryNum_ (single V_S/S_V pair)
