@@ -373,8 +373,12 @@ private:
         MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint64_t loop = 0U;
         uint32_t mLoop = 0U;
-        // Host 已约束 sparse block size 为 64 或 128，因此一个 512 tile 固定由 8 或 4 个 block 组成。
-        const uint32_t sparseBlocksPerTask = S2_BASE / constInfo.kvSparseBlockSize;
+        // 当前 64/128 block 分别得到 8/4；上下界只在主循环外判断一次，保留后续 block size 扩展能力。
+        const uint32_t rawSparseBlocksPerTask = S2_BASE / constInfo.kvSparseBlockSize;
+        const uint32_t sparseBlocksPerTask =
+            rawSparseBlocksPerTask == 0U ? 1U :
+            (rawSparseBlocksPerTask > regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK ?
+                 regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK : rawSparseBlocksPerTask);
         for (uint32_t bn1Idx = bn1StartIdx; bn1Idx < bn1EndIdx; ++bn1Idx) {
             const uint32_t bIdx = bn1Idx / constInfo.realN2Size;
             const uint32_t actualS1Size = GetActualQSeqLen(bIdx);
