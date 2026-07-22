@@ -57,6 +57,13 @@ repos:
   # OAT 合规性检查 (Open Source Audit Tool)
   - repo: local
     hooks:
+      - id: classify-rule-duplicates
+        name: Classify Rule Duplicate Check
+        entry: python3 scripts/check_classify_rule_duplicates.py
+        language: python
+        additional_dependencies: [pyyaml]
+        files: ^classify_rule\.yaml$
+        pass_filenames: true
       - id: oat-check
         name: OAT Compliance Check
         entry: bash scripts/oat_check.sh

@@ -7,6 +7,7 @@ pre-commit是一个Git Hooks框架，用于在`git commit`时自动运行代码�
 | Hook | 功能 | 说明 |
 |------|------|------|
 | **clang-format** | C/C++ 代码格式化 | 自动格式化代码，保持风格一致 |
+| **Classify Rule Duplicate Check** | 责任田规则去重 | 检测`classify_rule.yaml`中的重复路径项 |
 | **OAT Check** | 开源合规检查 | 检测许可证头、禁止二进制文件提交 |
 
 ## 环境要求
@@ -81,6 +82,7 @@ pre-commit run
 
 # 运行特定类型检查
 pre-commit run clang-format
+pre-commit run classify-rule-duplicates
 pre-commit run oat-check
 
 # 检查所有文件（不限于暂存区）
@@ -106,7 +108,11 @@ git commit --no-verify -m "emergency fix"
 - **大括号**: 函数定义换行，控制语句同行
 - **指针对齐**: 右对齐(`int *ptr`)
 
-### 2. OAT Compliance Check
+### 2. Classify Rule Duplicate Check
+
+检查`classify_rule.yaml`的所有路径列表，若同一路径出现多次，则输出首次定义与重复定义的位置并阻止提交。
+
+### 3. OAT Compliance Check
 
 OAT (Open Source Audit Tool)检查开源合规性：
 
