@@ -15,12 +15,18 @@
 import argparse
 from collections import Counter, defaultdict
 from enum import Enum
+import hashlib
 import json
 import os
 import re
 import tempfile
 from typing import Any, Dict, Iterable, Optional
 
+from .runtime_capability import (
+    RuntimeCapabilityError,
+    SUPPORTED,
+    validate_runtime_capability_report,
+)
 from .suite_config import ResolvedCaseConfig, case_identity
 
 
@@ -77,6 +83,30 @@ def _deterministic_levels(report: Dict[str, Any]) -> Iterable[Dict[str, Any]]:
             yield from _deterministic_levels(subcase)
 
 
+def _validate_runtime_capability_evidence(evidence: Dict[str, Any]) -> None:
+    if not isinstance(evidence, dict):
+        raise ResultArtifactError("Runtime capability evidence must be an object")
+    source = evidence.get("source_report")
+    if not isinstance(source, dict):
+        raise ResultArtifactError("Runtime capability source report is missing")
+    if not isinstance(source.get("path"), str) or not os.path.isabs(source["path"]):
+        raise ResultArtifactError("Runtime capability source path must be absolute")
+    for field in ("sha256", "probe_sha256"):
+        value = source.get(field) if field == "sha256" else evidence.get(field)
+        if not isinstance(value, str) or not re.fullmatch(r"[0-9a-f]{64}", value):
+            raise ResultArtifactError(f"Runtime capability {field} is not a SHA256 digest")
+    try:
+        probe = evidence.get("probe")
+        validate_runtime_capability_report(probe)
+    except RuntimeCapabilityError as error:
+        raise ResultArtifactError(f"Invalid runtime capability evidence: {error}") from error
+    canonical = json.dumps(
+        probe, ensure_ascii=False, sort_keys=True, separators=(",", ":")
+    ).encode("utf-8")
+    if hashlib.sha256(canonical).hexdigest() != evidence["probe_sha256"]:
+        raise ResultArtifactError("Runtime capability embedded probe digest mismatch")
+
+
 def validate_result_artifact(artifact: Dict[str, Any]) -> None:
     if not isinstance(artifact, dict):
         raise ResultArtifactError("Result artifact root must be an object")
@@ -110,6 +140,9 @@ def validate_result_artifact(artifact: Dict[str, Any]) -> None:
         raise ResultArtifactError("Result operator/mode is incomplete")
     if artifact.get("scenario") != SCENARIO:
         raise ResultArtifactError(f"Unexpected result scenario={artifact.get('scenario')!r}")
+    runtime_capability = artifact.get("runtime_capability")
+    if runtime_capability is not None:
+        _validate_runtime_capability_evidence(runtime_capability)
     report = artifact.get("report")
     if status is not ResultStatus.PASS:
         for field in ("reason_code", "reason"):
@@ -125,6 +158,12 @@ def validate_result_artifact(artifact: Dict[str, Any]) -> None:
             item.get("requested") != 3 or item.get("observed") != 3 for item in levels
         ):
             raise ResultArtifactError("PASS requires observed deterministic level 3")
+        if runtime_capability is None:
+            raise ResultArtifactError("PASS requires runtime capability evidence")
+        if (
+            runtime_capability["probe"]["status"] != SUPPORTED
+        ):
+            raise ResultArtifactError("PASS conflicts with a non-supported runtime capability probe")
 
 
 def write_result_artifact(
@@ -139,6 +178,7 @@ def write_result_artifact(
     report: Optional[Dict[str, Any]] = None,
     reason_code: Optional[str] = None,
     reason: Optional[str] = None,
+    runtime_capability: Optional[Dict[str, Any]] = None,
 ) -> str:
     """Persist one final status for exactly one operator/case/mode tuple."""
     identity = case_identity(input_data, pt_path)
@@ -166,6 +206,7 @@ def write_result_artifact(
         "config": config.to_dict() if config is not None else None,
         "reason_code": reason_code,
         "reason": reason,
+        "runtime_capability": runtime_capability,
         "report": report,
     }
     validate_result_artifact(artifact)
@@ -224,6 +265,7 @@ def aggregate_result_artifacts(
     tuples = set()
     artifacts = []
     records = []
+    runtime_capability_reports: Dict[str, Dict[str, Any]] = {}
     for path, item in candidates:
         case_key = (
             item["operator"],
@@ -255,7 +297,42 @@ def aggregate_result_artifacts(
                 "mode": item["mode"],
                 "status": item["status"],
                 "reason_code": item.get("reason_code"),
+                "runtime_capability_probe_sha256": (
+                    item["runtime_capability"]["probe_sha256"]
+                    if item.get("runtime_capability")
+                    else None
+                ),
                 "artifact": os.path.abspath(path),
+            }
+        )
+        capability = item.get("runtime_capability")
+        if capability:
+            probe_hash = capability["probe_sha256"]
+            runtime_capability_reports[probe_hash] = {
+                "probe_sha256": probe_hash,
+                "source_report": capability["source_report"],
+                "status": capability["probe"]["status"],
+                "reason_code": capability["probe"].get("reason_code"),
+                "failure_stage": capability["probe"].get("failure_stage"),
+                "attempt_count": capability["probe"]["attempt_count_executed"],
+                "restoration_pass": capability["probe"]["restoration_pass"],
+            }
+
+    capability_artifact_count = sum(
+        1 for _, item in artifacts if item.get("runtime_capability") is not None
+    )
+    if capability_artifact_count not in (0, len(artifacts)):
+        validation_errors.append(
+            {
+                "artifact": None,
+                "error": "Runtime capability evidence is missing from part of the result matrix",
+            }
+        )
+    if len(runtime_capability_reports) > 1:
+        validation_errors.append(
+            {
+                "artifact": None,
+                "error": "Result matrix is bound to multiple runtime capability probes",
             }
         )
 
@@ -336,6 +413,9 @@ def aggregate_result_artifacts(
         "artifact_validation_error_count": len(validation_errors),
         "artifact_validation_errors": validation_errors,
         "pytest_process_failure_count": execution_failure_count,
+        "runtime_capability_reports": [
+            runtime_capability_reports[key] for key in sorted(runtime_capability_reports)
+        ],
         "status_counts": {
             status.value: status_counts[status.value] for status in ResultStatus
         },

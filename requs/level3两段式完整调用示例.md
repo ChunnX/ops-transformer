@@ -1,6 +1,6 @@
 # deterministic level 3：用例如何调用 batch 一致性
 
-> 版本：2026-07-20 检视意见二重写版
+> 版本：2026-07-23 检视意见四实机复验版
 > 主线：只讲 `tests/pytest_v2`；旧 pytest/v1 不再承载新功能。
 
 ## 1. 先直接回答：算子参数有没有新增
@@ -32,6 +32,7 @@ Excel row
   -> 原 PT save
   -> pytest_v2 load PT
   -> mode transform 改已有 tensor/length/table/index
+  -> capability probe: set 3 -> readback 3 -> 普通NPU dispatch -> restore
   -> set_deterministic_level(3)                  # 进程状态
   -> metadata_op(本次调用的 shape/length/mask)   # 返回本次 metadata
   -> main_op(同一批 tensor + 同一个 metadata)    # NPU执行FA/FD/规约
@@ -149,6 +150,12 @@ finally:
 4. getter/setter/首次 NPU 操作任何一步拒绝 level3，都归 `UNSUPPORTED`；
 5. 禁止自动退回 level0 后标 batch consistency PASS。
 
+正式批跑会先在独立进程执行一次 capability probe。setter返回且getter读回3只证明Python状态已
+暂存，只有一条普通NPU dispatch也成功，才允许加载算子executor并进入上述metadata+主算子链。
+探针失败时每个模式仍先做纯CPU transform/semantic oracle，避免掩盖`INVALID_TRANSFORM`；随后artifact
+绑定同一份`runtime_capability.json`，不加载executor、不重复下发已知必失败的算子。
+可用`--probe-attempts 10`做异常恢复短压测；这仍不等于算子smoke或精度压测。
+
 实际代码入口：
 
 | 算子 | executor | 原两段式 process |
@@ -205,7 +212,9 @@ manifest，检查origin边界/重复、comparison scope、span digest和输入�
 
 ## 7. 当前环境预期
 
-本机 torch_npu/CANN 在第一条 NPU 操作处拒绝 level3：
+2026-07-23按用户更新后的环境和custom包复验：torch
+`2.10.0+cpu`、torch_npu `2.10.0.post3.dev20260709`、Ascend910_9362、driver 25.5.5。
+setter返回成功且getter读回3，但第一条NPU操作拒绝level3：
 
 ```text
 'torch_npu.npu.set_deterministic_level' currently only supports configuring 0/1/2 !
@@ -215,6 +224,21 @@ manifest，检查origin边界/重复、comparison scope、span digest和输入�
 还丢弃主算子返回的 LSE，且 MQ CPU golden不生成 LSE；在这两点补齐前，MQ用例应保持
 `return_softmax_lse=False`，不能把 LSE列入已验收范围。
 
+连续10次`set 3 -> readback -> NPU dispatch -> restore`结果完全一致：10次均在`npu_smoke`阶段
+返回`LEVEL3_ACCEPTED_BUT_NPU_REJECTED`，10次都从0读回3并成功恢复0。因此当前值得保留的是恢复
+短测和CPU门禁，不应启动四模式长精度/随机压力测试。
+
+`pr_8`的MQ tiling源码当前以`GetDeterministicLevel()==1`或
+`ACL_OPT_DETERMINISTIC==1`开启batch consistency，其pytest也显式设置1；这不能证明需求level3会
+由runtime映射成内部1。当前runtime恰好在dispatch阶段拒绝3，已直接否定“本环境已完成映射”的
+假设。只有支持3的runtime下，tiling日志/打桩观测到实际context值并命中batch-consistency tiling
+key，才能冻结映射契约；禁止用level1结果替代level3验收。
+
+已安装custom OPP全树内容指纹为
+`81730ebc09a01b62ea8639ce2f4977d489218817329fcd954356bd88055c7a5e`（776文件，
+21194488字节），三个关键二进制与`pr_8`工作树中2026-07-23 01:53构建产物逐字节一致；但包内
+`version.info`没有source commit，所以这是强本地关联证据，不是可跨机器验证的commit provenance。
+
 ## 8. versioned在线配置和结果（2026-07-21新增）
 
 正式批跑不再建议在命令行堆叠groups/sizes/common等参数，而是使用：
@@ -223,13 +247,15 @@ manifest，检查origin边界/重复、comparison scope、span digest和输入�
 bash test_run.sh consistency \
   --pt-dir /path/to/baseline_pt \
   --config-file ../../../../requs/cases/SMLA_MQSMLA_batch一致性执行配置.json \
-  --report-dir ./result/consistency
+  --report-dir ./result/consistency \
+  --probe-attempts 1
 ```
 
 SMLA入口也接受`-P`作为`--pt-dir`兼容别名。suite文档按每个PT精确匹配和shape校验；
 `--config-file`不能与`--modes/--profile/--seed/--split-groups/--token-split-sizes`等混用。
 
-每次执行会生成独立run目录。逐模式JSON位于`results/`，权威汇总是
+每次执行会生成独立run目录。`runtime_capability.json`记录失败阶段、每次level恢复、软件/SoC版本、
+custom OPP全树和关键文件SHA256；逐模式JSON位于`results/`并嵌入该证据，权威汇总是
 `consistency_result_summary.json`；文本`pytest.log`只用于诊断。当前环境的预期真实结果是
 `UNSUPPORTED`且命令返回2，不是“pytest skip所以PASS”。只有两段均真实运行、比较报告通过且
 requested/observed deterministic level都为3，artifact才允许写`PASS`。

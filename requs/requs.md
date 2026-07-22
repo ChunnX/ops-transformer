@@ -1294,3 +1294,268 @@ PASS；现有relation validator已经逐relation检查span digest、边界和sco
 
 模型没有写共享工作树。临时CANNBot目录只包含隔离数据库/认证副本和审议日志，认证权限保持
 0600；验证完成后整目录删除，不进入Git。最终实现和安全边界仍由主审依据源码、实测与需求负责。
+
+
+# 检视意见四
+
+cannbot模型不止glm-5.2还有deepseek v4和qwen3.7-max，我希望chatgpt能和多方合作沟通商量规划，毕竟别的模型有可能关注到chatgpt没关注到的点，实现的时候chatgpt可以指导其他模型帮你修改一下
+
+做好开发日志记录和文档记录
+
+1. NPU侧算子开发已基本实现，/mnt/workspace/gitCode/cann/ops-transformer下分支pr_8的最新提交就是，虽然部分场景可能有精度问题，但核心逻辑应该是正确的
+我已编好自定义算子包（关于这个不懂的可以查阅本文档之前的开发日志）并安装在/home/Ascend，使用前配置环境
+```
+source /mnt/workspace/gitCode/env.sh
+source /home/Ascend/vendors/custom_transformer/bin/set_env.bash
+```
+你现在看看能不能设置level3了，能设置了的话，尝试继续推进需求任务，做好相关验证，压测等等问题
+如果相关背景忘记了查阅本文档之前的开发记录和/mnt/workspace/gitCode/cann/ops-transformer_0716/requs/SMLA_batch一致性测试开发计划.md文档
+
+## 检视意见四处理记录（2026-07-23）
+
+### 一、直接答复
+
+1. **现在只能“设置并读回level 3”，还不能在NPU上执行level 3。** 更新环境中
+   `torch_npu.npu.set_deterministic_level(3)`返回成功，getter读回3；但设置后的第一条普通
+   `torch.empty((1,), float32).npu()`在runtime dispatch阶段报
+   `currently only supports configuring 0/1/2`。因此level3 Python状态接口已更新，runtime
+   capability仍未打通，真实SMLA/MQSMLA不能写PASS。
+2. **已经检查`pr_8`最新实现和已安装custom OPP。** 源码HEAD是
+   `48f862782051cdea2516b2227634ab9507825c50`（`almost pass`）。MQ kernel已增加
+   `BATCH_CONSISTENCY` tiling key、跨核/核内workspace和固定规约路径；安装包中的关键kernel
+   source与HEAD逐字节相同，三个关键二进制也与该工作树2026-07-23本地build逐字节相同。
+3. **没有用level 1或level 0替代需求level 3。** `pr_8` tiling当前检查内部值1，不足以证明
+   公共level3会被runtime映射为1；本机runtime反而在dispatch时拒绝3。映射契约仍需runtime和
+   tiling实测证据，不能靠推测关闭。
+4. **已推进验证和有意义的短压测。** 连续10次执行
+   `set3 -> readback3 -> NPU dispatch -> restore0`，10次均稳定在dispatch阶段拒绝，10次均成功
+   恢复0。双算子正式入口各生成4条`UNSUPPORTED` artifact，无缺失、无进程失败、无PASS误报。
+5. **没有启动无意义的长精度压测。** 普通NPU dispatch尚未过门时，四模式、随机shape和百次
+   主算子压力只会重复同一个runtime错误，不能提供算子精度证据。capability通过后才按本节末尾
+   的三级顺序解锁。
+6. **多模型已合作复审，最终裁决仍由主审负责。** GLM-5.2、DeepSeek V4 Pro、Qwen3.7 Max
+   分别做架构、反向审查和测试矩阵检查；模型不直接并发修改共享工作树，避免交叉覆盖。有效建议
+   已落到代码，模型的错误建议已由源码和实测排除。
+
+### 二、更新环境与level3三层事实
+
+| 层次 | 2026-07-23实测 | 裁决 |
+| --- | --- | --- |
+| 状态写入 | setter(3)返回成功 | 只证明Python/C++状态接受暂存值 |
+| 状态读回 | getter返回3 | 只证明requested/observed一致 |
+| NPU dispatch | 第一条普通NPU tensor操作报只支持0/1/2 | runtime capability为`UNSUPPORTED` |
+| 算子metadata/main-op | 未进入 | 不能推断FD、tiling key或主算子精度 |
+| 异常恢复 | 10次均从3恢复0 | 恢复短测通过，不等于level3功能通过 |
+
+环境证据：
+
+- SoC：`Ascend910_9362`，20 cube core、40 vector core；
+- torch：`2.10.0+cpu`；
+- torch_npu：`2.10.0.post3.dev20260709`；
+- driver：`25.5.5`，`ascendhal_version=7.35.23`；
+- CANN安装根：`/home/Ascend/cann-9.2.0`，安装组件`version.info`报告9.1.0、时间戳
+  `20260715_000325483`；
+- custom OPP：`/home/Ascend/vendors/custom_transformer`。
+
+torch_npu Python实现本身只把level传给`torch_npu._C._npu_set_deterministic_level(level)`，并用
+getter读回；它没有在Python setter中完成真实NPU capability检查。这解释了为什么setter/getter
+成功而首个NPU操作才暴露runtime错误。框架现在显式记录这种
+`LEVEL3_ACCEPTED_BUT_NPU_REJECTED`状态，不再把它笼统写成“setter失败”。
+
+### 三、`pr_8`与安装包审计
+
+`/mnt/workspace/gitCode/cann/ops-transformer`保持在`pr_8`，HEAD为`48f862782`。本轮只读审计，未
+修改或提交该仓库；用户已有未跟踪目录`.arts/`保持原样。
+
+#### 3.1 NPU侧模式实现
+
+`pr_8`的MQSMLA实现已经具备以下核心结构：
+
+1. host tiling调用`IsBatchConsistencyEnabled()`，把开关写入tiling key；
+2. kernel template新增`BATCH_CONSISTENCY`布尔维度；
+3. batch-consistency分支为同token的固定分块结果规划核内、跨核及FD workspace；
+4. vector路径分阶段保存partial max/sum/output并按固定顺序combine；
+5. 最终FD/拷出路径消费规约后的结果。
+
+但仍有三个不能跳过的验收点：
+
+- host代码以`GetDeterministicLevel()==1`或`ACL_OPT_DETERMINISTIC==1`启用，测试也显式设置1；
+- kernel中仍有大量`[MQSMLA_DBG]`/`[MQSMLA_DEBUG]`打印，提交名也是`almost pass`；
+- 用户已提示部分场景可能有精度问题，当前runtime又阻止level3真实调用，所以本轮只能认可“核心
+  结构已实现”，不能替算子侧宣布全场景精度验收完成。
+
+#### 3.2 level3与内部值1的映射裁决
+
+当前证据不支持“公共level3必然自动映射为内部1”：
+
+1. 主需求明确公共接口使用3，结果artifact也要求requested/observed均为3；
+2. `pr_8`源码只证明它在值1时开key，没有转换代码证据；
+3. 当前runtime在第一条NPU dispatch处直接拒绝3，说明本环境至少没有一条可工作的3到1链路；
+4. 用level1跑通只能证明level1代码路径，不能证明需求中的batch consistency语义。
+
+关闭`MAP-1`需要：支持level3的runtime接受dispatch；tiling日志或受控打桩记录
+`GetDeterministicLevel()`实际值；tiling key确认命中`BATCH_CONSISTENCY=1`；metadata和主算子均在
+该上下文执行。四项齐全后再决定host条件应判断3、1或runtime定义的映射值。
+
+#### 3.3 安装包身份
+
+新probe对安装树做了稳定内容manifest：相对路径、文件大小和逐文件SHA256共同生成全树指纹。
+本机结果为：
+
+```text
+file_count = 776
+total_bytes = 21194488
+content_manifest_sha256 = 81730ebc09a01b62ea8639ce2f4977d489218817329fcd954356bd88055c7a5e
+```
+
+关键二进制：
+
+| 文件 | SHA256 |
+| --- | --- |
+| `libcust_opmaster_rt2.0.so` | `3ad69362ee08b2eecb7248d068664a1e7c08426dfc82ed8d0b7fb1e667f75507` |
+| `libtransformer_aicpu_kernels.so` | `dad01989062d98774200b1437c4fef8b38eb493522ede8fde103c7e2c3d04ba8` |
+| `libcust_opapi.so` | `ba115cd4a9faaa2c36fe36e80e2ac65122c5c757056aef283d79793e4aa6209a` |
+
+这三个hash与`pr_8`工作树`build/`及CPack staging payload完全相同；staging与安装目录的payload
+diff只多出安装器生成的`bin/`和`scripts/`。build时间戳为`20260723_015357643`，晚于HEAD提交，
+且tracked源码无修改。这是“本机安装包来自当前本地build”的强关联证据。
+
+仍不能把`PKG-1`完全标记为跨机器关闭：安装包`version.info`只有
+`custom_opp_compiler_version=9.1.0`，没有source commit/build id。以后构建应把commit、dirty状态、
+build id和payload manifest写入包内；内容hash可以证明两个payload相同，但不能单独反推出源码commit。
+
+### 四、本轮实现模式与执行状态机
+
+本轮没有修改四种黑盒模式的数学定义；新增的是所有模式共同依赖的runtime门禁：
+
+```text
+一次性 capability probe（shell先生成证据）
+  -> set level 3
+  -> getter必须读回3
+  -> 下发1元素float32普通NPU tensor并synchronize
+  -> finally恢复进入前level并再次读回
+每个PT/mode仍先做config + CPU transform + semantic oracle
+  -> INVALID_TRANSFORM/CONFIG_ERROR: 保留输入侧真实状态
+  -> SUPPORTED: 才懒加载operator executor
+       -> 每个模式执行真实metadata + 主算子 + compare
+  -> UNSUPPORTED: 每个已选择模式绑定同一probe证据，直接写UNSUPPORTED
+  -> ERROR/恢复失败: 写FAIL，聚合器不得降级
+```
+
+普通NPU probe只证明runtime dispatch能力，不是SMLA/MQSMLA smoke。最终PASS仍必须经过：
+
+1. probe为`SUPPORTED`；
+2. 算子自己的metadata op成功；
+3. 主算子消费同一metadata并成功同步；
+4. origin bitwise MD5、CPU precision和metadata integrity全部通过；
+5. 每个执行报告requested/observed level均为3。
+
+这样既解决了setter/getter假阳性，也没有拿普通op替代主算子验收。阻断环境下仍保留所有NPU前
+数学预检，并使用lazy import；MQSMLA不会再为了四个必定跳过的模式提前加载/编译operator executor。
+
+### 五、本轮文件级开发记录
+
+双算子的`batch/consistency/`继续保持逐字镜像，单测包含新文件防漂移。
+
+| 文件 | 本轮职责 |
+| --- | --- |
+| 两棵`batch/consistency/runtime_capability.py` | 新增set/readback/NPU dispatch/restore探针；支持1-100次短测；收集torch、torch_npu、CANN、driver、SoC、custom OPP全树/关键文件hash；原子写JSON |
+| 两棵`batch/consistency/flow.py` | 复用统一runtime拒绝识别；把直接set拒绝与“接受状态后在operator拒绝”分别编码；恢复失败仍为硬错误 |
+| 两棵`batch/consistency/result_artifact.py` | 校验并嵌入capability证据及digest；PASS强制绑定SUPPORTED probe；混用/缺失probe的结果矩阵直接FAIL；汇总输出唯一probe状态/hash |
+| 两个`test_*_batch_consistency.py` | 每模式先做CPU transform/oracle再消费一次性probe；UNSUPPORTED快速落artifact；probe ERROR落FAIL；executor改为通过门禁后lazy import |
+| 两棵`test_run.sh` | 正式在线入口先生成`runtime_capability.json`；新增`--probe-attempts 1..100`；probe退出2继续生成完整逐模式矩阵 |
+| 两棵`test_batch_consistency_unit.py` | 新增延迟拒绝、成功smoke、异常恢复和PASS/probe冲突门禁；镜像清单纳入新模块 |
+| 两棵`README.md` | 记录三级门禁、命令、artifact和短压测语义 |
+| `level3两段式完整调用示例.md` | 补充分层事实、内部值映射、包指纹和更新后的正式调用 |
+| `SMLA_batch一致性测试开发计划.md` | 增加P2.17、MAP-1、实测矩阵和阶段三解锁顺序 |
+| `requs.md` | 保留原检视意见并追加本处理记录、证据、答复和后续计划 |
+
+`-M 1,2`仍只在旧CLI转换层做deprecated兼容；本轮正式入口和文档继续使用命名mode/profile及
+versioned suite config，没有因为runtime阻断退回数字模式。
+
+### 六、验证与压力结果
+
+#### 6.1 CPU和静态门禁
+
+| 项目 | 结果 |
+| --- | --- |
+| SMLA一致性单测 | `44 passed` |
+| MQSMLA一致性单测 | `44 passed` |
+| ruff（本轮Python文件） | 通过 |
+| compileall（本轮Python文件） | 通过 |
+| 两棵`test_run.sh` bash语法 | 通过 |
+| 双树核心镜像 | 通过 |
+
+双算子`consistency_prepare`再次从同一workbook真实执行：各1个baseline、模式1/4各1条relation、
+模式2/3各2条relation，共各6条派生关系；Excel解析、原CPU golden、baseline/derived PT round-trip、
+relation manifest均通过。该结果仍明确是CPU relation PASS，不是NPU PASS。
+
+#### 6.2 level3恢复短压测
+
+10次结果完全一致：
+
+```text
+status=UNSUPPORTED
+reason_code=LEVEL3_ACCEPTED_BUT_NPU_REJECTED
+failure_stage=npu_smoke
+set_call_returned=10/10
+readback_matches(level=3)=10/10
+npu_smoke_passed=0/10
+restore_to_level0=10/10
+```
+
+短压测报告文件SHA256为
+`44712eed8ec594c36438e5632adac057a85d8ddfbed263ce91cb18173a6c9629`。报告只作本轮临时验收，
+关键结论和环境指纹已归档在本节；临时目录在提交前清理，不进入Git。
+
+#### 6.3 双算子正式在线入口
+
+使用versioned suite config和各自离线baseline PT运行：
+
+| 算子 | 逐模式矩阵 | 汇总 | artifact完整性 | 主算子是否执行 |
+| --- | --- | --- | --- | --- |
+| SMLA | 4条`UNSUPPORTED` | `UNSUPPORTED`，退出2 | 4/4，无校验错误 | 否，capability先阻断 |
+| MQSMLA | 4条`UNSUPPORTED` | `UNSUPPORTED`，退出2 | 4/4，无校验错误 | 否，capability先阻断 |
+
+每条artifact的reason均为`LEVEL3_ACCEPTED_BUT_NPU_REJECTED`，并携带probe SHA256、环境版本和
+custom OPP manifest；pytest测试本身虽然是skip，JSON-only聚合器仍返回2，没有把skip误算PASS。
+
+### 七、多模型复审与主审裁决
+
+三个模型通过隔离的CANNBot数据目录只读审议。认证副本权限0600，临时目录权限0700；模型访问
+兄弟仓库会触发CANNBot交互授权，因此主审没有放宽权限，而是先用本机Git只读核实`pr_8`事实，
+再把固定事实交给模型复审。
+
+- GLM-5.2有效指出setter/getter假阳性、内部值1映射无证据、PASS边界和包commit缺口；
+- DeepSeek有效指出失败阶段、runtime/driver/SoC/package字段、restore短测和payload hash需求；
+- Qwen有效确认阻断时应为`UNSUPPORTED`并停止长压测。
+
+主审没有采纳三项不严谨建议：Qwen给出的简单MatMul shape不是SMLA/MQSMLA smoke；GLM建议的
+level0 metadata probe不能放入验收主线；DeepSeek把“设备能力白名单”当唯一UNSUPPORTED判据过于
+理想化，本机已有runtime明确拒绝消息，足以按当前状态模型判`UNSUPPORTED`。模型没有修改共享
+工作树，最终代码、测试和文档由主审完成并验证。
+
+### 八、阶段状态与下一步
+
+| 里程碑 | 当前状态 |
+| --- | --- |
+| P2.17 runtime capability/证据/恢复短测 | 完成 |
+| P3.1 runtime/custom/operator版本对齐 | 部分推进；custom本地关联已证明，runtime仍阻断，包commit字段待补 |
+| P3.2 SMLA eager四模式真实NPU | 等待capability `SUPPORTED` |
+| P3.3 MQSMLA eager四模式真实NPU | 等待capability `SUPPORTED`和MAP-1 |
+| P3.4 STC 001-027 manifest | 仍等待owner修订source data |
+| P3.5 真实metadata覆盖 | 等待P3.1及公式/FD契约 |
+
+环境更新后按以下顺序继续，不能越级：
+
+1. 先运行1次capability probe；若支持，再运行10次恢复/稳定性短测；
+2. 分别固定一个SMLA、MQSMLA最小真实PT，只跑baseline metadata+主算子smoke；
+3. 观测tiling context和key，关闭level3到内部值1的MAP-1；
+4. SMLA按BSND no-mask、位置mask、TND、PA_BBND顺序跑四模式；
+5. MQSMLA按相同顺序增加quant mode/rope head dim/FP8-HIF8边界；
+6. 最小矩阵连续通过后再做N=3/N=125、S2边界、100次同输入、跨进程和nightly随机压力；
+7. 最后推进graph、ACLNN和synthetic metadata，不把任何stub结果计入自然metadata coverage。
+
+当前结论不是“开发失败”，而是测试侧已经把阻断位置精确收敛到runtime dispatch，并建立了不会
+误报PASS的可复现门禁。解除RT-1后，现有入口会自动从快速`UNSUPPORTED`切换到两算子真实
+metadata/main-op执行，无需再改四模式配置接口。
