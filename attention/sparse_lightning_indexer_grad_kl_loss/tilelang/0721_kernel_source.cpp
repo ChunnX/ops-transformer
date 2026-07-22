@@ -128,9 +128,9 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v1_bw_sy_slots = ascend_ub.GetWithOffset<float>(128, 0);
   auto v1_bw_bmm2_slots = ascend_ub.GetWithOffset<float>(4096, 20992);
   auto v1_bw_diff = ascend_ub.GetWithOffset<float>(64, 512);
-  auto v1_bw_diff_2d = ascend_ub.GetWithOffset<float>(2048, 37376);
-  auto v1_bw_mask = ascend_ub.GetWithOffset<float>(2048, 45568);
-  auto v1_bw_rg = ascend_ub.GetWithOffset<float>(2048, 55296);
+  auto v1_bw_diff_2d_slots = ascend_ub.GetWithOffset<float>(4096, 37376);
+  auto v1_bw_mask = ascend_ub.GetWithOffset<float>(2048, 55296);
+  auto v1_bw_rg = ascend_ub.GetWithOffset<float>(2048, 63488);
   auto v1_bw_dw = ascend_ub.GetWithOffset<float>(32, 196224);
   auto v1_bw_rg_half_slots = ascend_ub.GetWithOffset<half>(4096, 37376);
   auto v1_bw_log_p = ascend_ub.GetWithOffset<float>(64, 512);
@@ -498,7 +498,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               }
               AscendC::Sub(v1_bw_diff[0], v1_bw_sy_slots[(bw_col_id * 64)], v1_bw_p_slots[(bw_col_id * 64)], 64);
               AscendC::PipeBarrier<PIPE_V>();
-              tl::ascend::Broadcast<float, 2, 0, false>(v1_bw_diff_2d[0],v1_bw_diff[0],tmp_ub,(uint32_t[]){32, 64}, (uint32_t[]){1, 64});
+              tl::ascend::Broadcast<float, 2, 0, false>(v1_bw_diff_2d_slots[(bw_col_id * 2048)],v1_bw_diff[0],tmp_ub,(uint32_t[]){32, 64}, (uint32_t[]){1, 64});
               {
               AscendC::Muls(v1_bw_mask[0], v1_bw_bmm2_slots[(bw_col_id * 2048)], -1.000000e+04f, 2048);
               }
@@ -509,11 +509,11 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               AscendC::PipeBarrier<PIPE_V>();
               tl::ascend::copy_ub_to_ub<float, float, 2048>(v1_bw_rg[0], v1_bw_weight_2d[0], 32, 64, 64, 32, 64, 64);
               AscendC::PipeBarrier<PIPE_V>();
-              AscendC::Mul(v1_bw_rg[0], v1_bw_rg[0], v1_bw_diff_2d[0], 2048);
+              AscendC::Mul(v1_bw_rg[0], v1_bw_rg[0], v1_bw_diff_2d_slots[(bw_col_id * 2048)], 2048);
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::Mul(v1_bw_rg[0], v1_bw_rg[0], v1_bw_mask[0], 2048);
               AscendC::PipeBarrier<PIPE_V>();
-              AscendC::Mul(v1_bw_bmm2_slots[(bw_col_id * 2048)], v1_bw_bmm2_slots[(bw_col_id * 2048)], v1_bw_diff_2d[0], 2048);
+              AscendC::Mul(v1_bw_bmm2_slots[(bw_col_id * 2048)], v1_bw_bmm2_slots[(bw_col_id * 2048)], v1_bw_diff_2d_slots[(bw_col_id * 2048)], 2048);
               AscendC::PipeBarrier<PIPE_V>();
               tl::ascend::reduce_sum<float,  32,  64,  -1>(v1_bw_dw[0], v1_bw_bmm2_slots[(bw_col_id * 2048)], tmp_ub[0], true);
               AscendC::PipeBarrier<PIPE_V>();
