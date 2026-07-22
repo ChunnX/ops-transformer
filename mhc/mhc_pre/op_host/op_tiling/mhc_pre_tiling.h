@@ -155,6 +155,9 @@ private:
     int64_t tailBsTailRowFactorOfFormerBlock_ = 0;
     int64_t tailBsTailRowFactorOfTailBlock_ = 0;
     int64_t tailBsML1Size_ = 0;
+    bool isFac = false;
+    int64_t nn_fac = false;
+    int64_t nn_pow = false;
     platform_ascendc::SocVersion socVersion_ = platform_ascendc::SocVersion::ASCEND910B;
 };
 

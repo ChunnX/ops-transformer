@@ -46,7 +46,7 @@ extern "C" __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR al
     if (TILING_KEY_IS(0)) {
         // -----------split m--------------
         TPipe pipe;
-        MhcPre::MhcPreStage1<DTYPE_X> op1;
+        MhcPre::MhcPreStage1<DTYPE_X, false> op1;
         op1.cubeCompute_.mm1_.Init(&tilingData->mm1TilingData, &pipe);
         op1.cubeCompute_.mm1_.SetSubBlockIdx(0);
         op1.Init(x, phi, invRms, hMix, userWs, tilingData, &pipe);
@@ -54,11 +54,28 @@ extern "C" __global__ __aicore__ void mhc_pre(GM_ADDR x, GM_ADDR phi, GM_ADDR al
         pipe.Destroy();
 
         TPipe pipeStage2;
-        MhcPre::MhcPreStage2<DTYPE_X> op2;
+        MhcPre::MhcPreStage2<DTYPE_X, false> op2;
         op2.Init(x, alpha, bias, hin, hPost, hRes,
                     hPre, hMix, invRms,
                     userWs, tilingData, &pipeStage2);
         op2.Process(false);
+        pipeStage2.Destroy();
+    } else if (TILING_KEY_IS(10)) {
+        // -----------split m--------------
+        TPipe pipe;
+        MhcPre::MhcPreStage1<DTYPE_X, true> opStage1;
+        opStage1.cubeCompute_.mm1_.Init(&tilingData->mm1TilingData, &pipe);
+        opStage1.cubeCompute_.mm1_.SetSubBlockIdx(0);
+        opStage1.Init(x, phi, invRms, hMix, userWs, tilingData, &pipe);
+        opStage1.Process();
+        pipe.Destroy();
+
+        TPipe pipeStage2;
+        MhcPre::MhcPreStage2<DTYPE_X, true> opStage2;
+        opStage2.Init(x, alpha, bias, hin, hPost, hRes,
+                    hPre, hMix, invRms,
+                    userWs, tilingData, &pipeStage2);
+        opStage2.Process(false);
         pipeStage2.Destroy();
     }
     // #endif

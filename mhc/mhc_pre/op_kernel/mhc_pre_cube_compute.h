@@ -29,8 +29,8 @@ namespace MhcPre {
 
 constexpr MatmulConfig MHC_PRE_GRAD_MM1_CFG = GetMDLConfig(true, false, 0, false, false, false, true);
 
-#define MHC_PRE_CUBE_COMPUTE_TEMPLATE_PARAM template<typename T>
-#define MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS HcCubeCompute<T>
+#define MHC_PRE_CUBE_COMPUTE_TEMPLATE_PARAM template<typename T, bool isFac>
+#define MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS HcCubeCompute<T, isFac>
 
 // 不切K使用的矩阵乘实现
 MHC_PRE_CUBE_COMPUTE_TEMPLATE_PARAM
@@ -73,7 +73,12 @@ __aicore__ inline void MHC_PRE_CUBE_COMPUTE_TEMPLATE_CLASS::Init(const GlobalTen
     c_ = c;
     curBs_ = bs;
 
-    mm1N_= Factorial(n_) + 2 * n_;
+    if constexpr (isFac) {
+        mm1N_= Factorial(n_) + 2 * n_;
+    } else {
+        mm1N_= n_ * n_ + 2 * n_;
+    }
+    
     mm1K_ = n_ * c_;
 }
 

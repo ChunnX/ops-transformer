@@ -131,13 +131,22 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
         d_ = xShape->GetStorageShape().GetDim(3);
     }
 
+    nn_fac = Factorial(hcMult_) + 2 * hcMult_;
+    nn_pow = hcMult_ * hcMult_ + 2 * hcMult_;
+
     auto shapePhi = context_->GetInputShape(1);
     hcMix_ = shapePhi->GetStorageShape().GetDim(0);
+    OP_CHECK_IF(hcMix_ != nn_fac || hcMix_ != nn_pow,
+                    OP_LOGE(context_->GetNodeName(),
+                             "Phi dim 0 should be equal with %ld or %ld, but is %ld", nn_fac, nn_pow, shapePhi->GetStorageShape().GetDim(1)),
+                    return ge::GRAPH_FAILED);
     OP_CHECK_IF(shapePhi->GetStorageShape().GetDim(1) != d_ * hcMult_,
                     OP_LOGE(context_->GetNodeName(),
                              "Phi dim 1 should be equal with d_ * hcMult_  %ld, but is %ld", d_ * hcMult_, shapePhi->GetStorageShape().GetDim(1)),
                     return ge::GRAPH_FAILED);
-
+    if (hcMix_ == nn_fac) {
+        isFac = true;
+    }
     auto shapeAlpha = context_->GetInputShape(2);
     int64_t scaleFirstDim = shapeAlpha->GetStorageShape().GetDim(0);
     OP_CHECK_IF(scaleFirstDim != 3,
@@ -468,7 +477,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
     tilingData_.set_stage1TailNcFactor(tailNcFactor);
 
     int64_t mm1M = bsFactor * 2;
-    int64_t mm1N = Factorial(hcMult_) + 2 * hcMult_;
+    int64_t mm1N = isFac ? nn_fac : nn_pow;
     int64_t mm1K = hcMult_ * d_;
 
     auto platformInfo = context_->GetPlatformInfo();
@@ -502,7 +511,7 @@ ge::graphStatus MhcPreMembaseTiling::CalcStage1Tiling()
         // invRms: bs * sizeof(float)
         int64_t invRmsWsSize = bs_ * sizeof(float);
         // hcBeforeNorm: bs * hcMix * sizeof(float)
-        int64_t hcMix = Factorial(hcMult_) + 2 * hcMult_;
+        int64_t hcMix = isFac ? nn_fac : nn_pow;
         int64_t hcBeforeNormWsSize = bs_ * hcMix * sizeof(float);
         
         workspaceSize_ += invRmsWsSize + hcBeforeNormWsSize;
@@ -522,7 +531,11 @@ ge::graphStatus MhcPreMembaseTiling::GetWorkspaceSize()
 
 ge::graphStatus MhcPreMembaseTiling::PostTiling()
 {
-    context_->SetTilingKey(0); // 0: 切M分支；预留1：切M K分支
+    if (isFac) {
+        context_->SetTilingKey(10);
+    } else {
+        context_->SetTilingKey(0);
+    }
     context_->SetBlockDim(aicCoreNum_);
     size_t* workspaces = context_->GetWorkspaceSizes(1);
     workspaces[0] = workspaceSize_;

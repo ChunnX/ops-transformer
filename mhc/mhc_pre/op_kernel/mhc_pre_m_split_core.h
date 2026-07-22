@@ -22,7 +22,7 @@
 
 namespace MhcPre {
 using namespace AscendC;
-template <typename T>
+template <typename T, bool isFac>
 class MhcPreStage1 {
 public:
     __aicore__ inline MhcPreStage1() {}
@@ -41,6 +41,11 @@ public:
         
         // 计算 workspace 偏移
         int64_t ncSize = tilingData->hcMult * tilingData->d;
+
+        int64_t resSize = tilingData->hcMult * tilingData->hcMultAlign;
+        if constexpr (isFac) {
+            resSize = 24;
+        }
 
         // 计算 Cube Core ID（Vector Core ID / 2）
         if ASCEND_IS_AIV {
@@ -226,7 +231,7 @@ public:
     TQue<QuePosition::VECOUT, NUM_TWO> invRmsQue;   // inv_rms 队列
 
     // Cube Compute
-    HcCubeCompute<float> cubeCompute_;
+    HcCubeCompute<float, isFac> cubeCompute_;
     
     // 标志
     bool needGrad_ = true;
@@ -239,7 +244,7 @@ public:
     static constexpr uint64_t CV_RATIO = 2;
 };
 
-template <typename T>
+template <typename T, bool isFac>
 class MhcPreStage2 {
 public:
     __aicore__ inline MhcPreStage2()
@@ -274,7 +279,6 @@ public:
             int64_t invRmsWsTotalSize = tilingData->bs * sizeof(float) / sizeof(float);
             hcBeforeNormGm.SetGlobalBuffer((__gm__ float *)workspace + xCastWsTotalSize + invRmsWsTotalSize);
         }
-        int64_t resSize = 32;
         // InQue
         int64_t mixesQue01Size =  tilingData->stage2RowFactor * tilingData->hcMultAlign * NUM_TWO * sizeof(float);
         pipe->InitBuffer(mixesQue01, NUM_TWO, mixesQue01Size);
@@ -340,10 +344,13 @@ public:
             int64_t xCastFp32BufSize = curML1Size * CeilAlign(tilingData->cvLoopKSize, MM_CACHE_LINE_BYTES / sizeof(float)) * sizeof(float);
             int64_t workspaceSize1 = (tilingData->cubeCoreNum * DOUBLE_BUFFER * xCastFp32BufSize) / sizeof(float);
             int64_t workspaceSize2 = CeilAlign(stage1UsedCoreNum * tilingData->bs * mmLastAxisSize * sizeof(float), WORKSPACE_ALIGN_SIZE) / sizeof(float);
-            int64_t resSize = 24;
             CopyIn(hcBaseGm, hcBase0Local, 1, tilingData->hcMult);
             CopyIn(hcBaseGm[tilingData->hcMult], hcBase1Local, 1, tilingData->hcMult);
-            CopyIn(hcBaseGm[tilingData->hcMult * NUM_TWO], hcBase2Local, 1, resSize);
+            if constexpr (isFac) {
+                CopyIn(hcBaseGm[tilingData->hcMult * NUM_TWO], hcBase2Local, 1, resSize);
+            } else {
+                CopyIn(hcBaseGm[tilingData->hcMult * NUM_TWO], hcBase2Local, tilingData->hcMult, tilingData->hcMult);
+            }
             event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_V));
             SetFlag<HardEvent::MTE2_V>(eventId);
             WaitFlag<HardEvent::MTE2_V>(eventId);
@@ -436,9 +443,16 @@ public:
                 mixBaseOffset = stage2BlockIdx * curRowOfFormerBlock * tilingData->hcMix +
                                 rowOuterIdx * curStage2RowFactor * tilingData->hcMix;
                 for (int64_t j = 0; j < curRowFactor; ++j) {
-                    CopyIn(hcBeforeNormGm[mixBaseOffset + j * tilingData->hcMix + tilingData->hcMult * NUM_TWO],
+                    if constexpr (isFac) {
+                        CopyIn(hcBeforeNormGm[mixBaseOffset + j * tilingData->hcMix + tilingData->hcMult * NUM_TWO],
                            mixes2Local[j * resSize], 1,
                            resSize);
+                    } else {
+                        CopyIn(hcBeforeNormGm[mixBaseOffset + j * tilingData->hcMix + tilingData->hcMult * NUM_TWO],
+                           mixes2Local[j * tilingData->hcMult * tilingData->hcMultAlign], tilingData->hcMult,
+                           tilingData->hcMult);
+                    }
+                    
                 }
                 mixesQue2.EnQue(mixes2Local);
                 mixes2Local = mixesQue2.DeQue<float>();
@@ -458,10 +472,17 @@ public:
 
                 combFragQue.EnQue(combFragLocal);
                 combFragLocal = combFragQue.DeQue<float>();
-                CopyOut(combFragLocal,
+                if constexpr (isFac) {
+                    CopyOut(combFragLocal,
                         hResGm[stage2BlockIdx * curRowOfFormerBlock * resSize +
                                     rowOuterIdx * curStage2RowFactor * resSize],
                         curRowFactor, resSize);
+                } else {
+                    CopyOut(combFragLocal,
+                        combFragGm[stage2BlockIdx * curRowOfFormerBlock * tilingData->hcMult * tilingData->hcMult +
+                                    rowOuterIdx * curStage2RowFactor * tilingData->hcMult * tilingData->hcMult],
+                        curRowFactor * tilingData->hcMult, tilingData->hcMult);
+                }
                 combFragQue.FreeTensor(combFragLocal);
             }
         }
@@ -538,6 +559,8 @@ private:
 
     LocalTensor<float> reduceLocal2;
     LocalTensor<float> combFragBufLocal;
+
+    int64_t resSize = 0;
 };
 
 } // namespace MhcPre

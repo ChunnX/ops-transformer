@@ -254,25 +254,13 @@ static bool CheckInputOutShape(const MhcParamsBase &params)
     if (!ValidateNDParams(n, d)) {
         return false;
     }
-
     int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
-    int64_t expectedPhiRows = 0;
-    int64_t expectedBiasSize = 0;
-    
-    // dim of phi,bias
-    if (alphaSize == ALPHA_DIM_SIZE_2) {
-        expectedPhiRows = 2 * n;
-        expectedBiasSize = 2 * n;
-    } else {
-        expectedPhiRows = Factorial(n) + 2 * n;
-        expectedBiasSize = Factorial(n) + 2 * n;
-    }
 
-    if (!CheckPhiShape(params.phi, expectedPhiRows, nD)) {
+    if (!(CheckPhiShape(params.phi, n, nD, alphaSize))) {
         return false;
     }
 
-    if (!CheckBiasShape(params.bias, expectedBiasSize)) {
+    if (!CheckBiasShape(params.bias, n, alphaSize)) {
         return false;
     }
 
@@ -321,13 +309,24 @@ static bool ValidateNDParams(int64_t n, int64_t d)
     return true;
 }
 
-static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t nD)
+static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n, int64_t nD, int64_t alphaSize)
 {
     auto phiShape = phiTensor->GetViewShape();
-    if (phiShape.GetDim(0) != n2Plus2n) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld, but got %ld", n2Plus2n,
-                phiShape.GetDim(0));
-        return false;
+    if (alphaSize == ALPHA_DIM_SIZE_2) {
+        int64_t expectedPhiRows = 2 * n;
+        if (phiShape.GetDim(0) != expectedPhiRows) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld, but got %ld", expectedPhiRows,
+                    phiShape.GetDim(0));
+            return false;
+        }
+    } else {
+        int64_t expectedPhiRows_pow = n * n + 2 * n;
+        int64_t expectedPhiRows_factorial = Factorial(n) + 2 * n;
+        if (phiShape.GetDim(0) != expectedPhiRows_pow || phiShape.GetDim(0) != expectedPhiRows_factorial) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld or %ld, but got %ld", expectedPhiRows_pow, expectedPhiRows_factorial,
+                    phiShape.GetDim(0));
+            return false;
+        }
     }
     if (phiShape.GetDim(1) != nD) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor second dim must be nD=%ld, but got %ld", nD, phiShape.GetDim(1));
@@ -336,13 +335,24 @@ static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t 
     return true;
 }
 
-static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n)
+static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n, int64_t alphaSize)
 {
     auto biasShape = biasTensor->GetViewShape();
-    if (biasShape.GetDim(0) != n2Plus2n) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld, but got %ld", n2Plus2n,
+    if (alphaSize == ALPHA_DIM_SIZE_2) {
+        int64_t expectedBiasRows = 2 * n;
+        if (biasShape.GetDim(0) != expectedBiasRows) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld, but got %ld", expectedBiasRows,
                 biasShape.GetDim(0));
-        return false;
+            return false;
+        }
+    } else {
+        int64_t expectedBiasSize_pow = n * n + 2 * n;
+        int64_t expectedBiasSize_factorial = Factorial(n) + 2 * n;
+        if (biasShape.GetDim(0) != expectedBiasSize_pow || biasShape.GetDim(0) != expectedBiasSize_factorial) {
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld or %ld, but got %ld", expectedBiasSize_pow, expectedBiasSize_factorial,
+                    biasShape.GetDim(0));
+            return false;
+        }
     }
     return true;
 }
