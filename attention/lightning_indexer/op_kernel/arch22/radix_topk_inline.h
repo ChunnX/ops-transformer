@@ -48,6 +48,7 @@ __aicore__ inline void InlineRadixTopK(
     TBuf<TPosition::VECCALC> globalHistBuf;
     TBuf<TPosition::VECCALC> tileTopKBuf;
     TBuf<TPosition::VECCALC> tempBuf;
+    TBuf<TPosition::VECCALC> scoreCacheBuf;
 
     pipe->Reset();
     pipe->InitBuffer(xBuf, tileLenAlign_ * sizeof(float) + tileLenAlign_ * sizeof(bfloat16_t) + 64);
@@ -58,6 +59,9 @@ __aicore__ inline void InlineRadixTopK(
     uint32_t cmpMaskSize = (tileLenAlign_ + 7) / 8 * 8;
     uint32_t tileHistSize = tileNumAlign_ * RDX_BINS * sizeof(int32_t);
     pipe->InitBuffer(tempBuf, tileHistSize + cmpMaskSize + 64);
+    // Cache all score data in UB to avoid repeated GM reads (8 rounds + 1 extraction = 9 reads)
+    uint32_t scoreCacheSize = sortLenAlign * sizeof(float);
+    pipe->InitBuffer(scoreCacheBuf, scoreCacheSize + 64);
 
     GlobalTensor<float> xGm;
     xGm.SetGlobalBuffer((__gm__ float *)scoreGmAddr);
@@ -85,6 +89,7 @@ __aicore__ inline void InlineRadixTopK(
 
     LocalTensor<int32_t> globalHist = globalHistBuf.Get<int32_t>();
     LocalTensor<int32_t> tileTopK = tileTopKBuf.Get<int32_t>();
+    LocalTensor<float> scoreCache = scoreCacheBuf.Get<float>();
 
     int16_t involvedMask16_ = 0;
     int16_t andMask16_ = static_cast<int16_t>(0xC000);  // signed: arithmetic shift accumulates
@@ -99,6 +104,13 @@ __aicore__ inline void InlineRadixTopK(
     RDX_V_S_SYNC();
 
     event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
+
+    // One-time load all score data from GM to UB cache
+    DataCopyPad(scoreCache, xGm, DataCopyExtParams{
+        static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * sortLen), 0, 0, 0},
+        DataCopyPadExtParams<float>{true, 0, 0, 0});
+    SetFlag<HardEvent::MTE2_V>(mte2ToV);
+    WaitFlag<HardEvent::MTE2_V>(mte2ToV);
 
     for (int32_t roundId = RDX_ROUNDS - 1; roundId >= 0; roundId--) {
         // ClearHist
@@ -139,12 +151,8 @@ __aicore__ inline void InlineRadixTopK(
             uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
             if (curTileLen == 0) { continue; }
 
-            // CopyIn: float data from GM to xLocalFp32
-            DataCopyPad(xLocalFp32, xGm[tileId * tileLen_], DataCopyExtParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * curTileLen), 0, 0, 0},
-                DataCopyPadExtParams<float>{true, 0, 0, 0});
-            SetFlag<HardEvent::MTE2_V>(mte2ToV);
-            WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+            // CopyIn: float data from UB cache to xLocalFp32
+            DataCopy(xLocalFp32, scoreCache[tileId * tileLen_], tileLenAlign_);
 
             // Cast float -> bf16 into xLocalB16 (xBuf back, no overlap with xLocalFp32 in front)
             // +1e30 garbage already replaced with -1e30 in ProcessVec, no clamp needed
@@ -299,12 +307,8 @@ __aicore__ inline void InlineRadixTopK(
 
         uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
 
-        // CopyIn float data, Cast to bf16 in xLocalB16
-        DataCopyPad(xLocalFp32, xGm[tileId * tileLen_], DataCopyExtParams{
-            static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * curTileLen), 0, 0, 0},
-            DataCopyPadExtParams<float>{true, 0, 0, 0});
-        SetFlag<HardEvent::MTE2_V>(mte2ToV);
-        WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+        // CopyIn float data from UB cache, Cast to bf16
+        DataCopy(xLocalFp32, scoreCache[tileId * tileLen_], tileLenAlign_);
         Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
         PipeBarrier<PIPE_V>();
 
