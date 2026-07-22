@@ -927,7 +927,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
             v1_bw_rg_half_slots = T.alloc_ub(
-                (2, rows_per_aiv, bw_col_block), input_dtype
+                (2, 2, rows_per_aiv, bw_col_block), input_dtype
             )
             v1_bw_dw = T.alloc_ub(rows_per_aiv, calc_dtype)
             v1_bw_dw_accum = T.alloc_ub(rows_per_aiv, calc_dtype)
@@ -1099,7 +1099,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.add(v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw)
 
                         T.tile.cast(
-                            v1_bw_rg_half_slots[current_slot, :, :],
+                            v1_bw_rg_half_slots[current_slot, 0, :, :],
                             v1_bw_rg,
                             "CAST_RINT",
                             rows_per_aiv * bw_col_block,
@@ -1109,7 +1109,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_flag("v", "mte3", current_slot)
                         T.pipe_barrier("mte3")
                         T.copy(
-                            v1_bw_rg_half_slots[current_slot, :, :],
+                            v1_bw_rg_half_slots[current_slot, 0, :, :],
                             reluGradRes[bz_task, s1_id,
                                         g_start:g_start + rows_per_aiv,
                                         bw_col_start:bw_col_end],
