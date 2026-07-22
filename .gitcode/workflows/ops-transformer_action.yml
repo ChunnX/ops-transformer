@@ -233,7 +233,6 @@ stages:
           package_name: 'cann-ops-transformer_experimental_950_linux-x86_64.run'
       JOB_arm_experimental_950_compile:
         name: arm_experimental_compile
-        needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_ARM_experimental'
