@@ -467,7 +467,7 @@ get_symm_buffer_for_mega_moe(group, num_experts, num_max_tokens_per_rank, num_to
 - mega_moe：
 
 ```python
-mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, beta=1.0, linear_beta=None, weight1_type=None, weight2_type=None) -> (Tensor, Tensor)
+mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_weights_sf=None, l2_weights_sf=None, l1_bias=None, l2_bias=None, x_active_mask=None, activation="swiglu", activation_clamp=None, weight1_type=None, weight2_type=None) -> (Tensor, Tensor)
 ```
 
 ## 参数说明
@@ -746,7 +746,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation</td>
         <td>str</td>
         <td>可选</td>
-        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglu_gpt_oss"和"situ"。"swiglu"按前后半区拆分gate/up并计算gate * sigmoid(gate) * up；"swiglu_gpt_oss"按偶奇列拆分gate/up并计算gate * sigmoid(1.702 * gate) * (up + 1)；"situ"按前后半区拆分gate/up并计算beta * tanh(gate / beta) * sigmoid(gate) * up。A5当前仅支持"swiglu"。</td>
+        <td>激活函数类型，默认值为"swiglu"。A2/A3支持"swiglu"、"swiglu_gpt_oss"和"situ"。"swiglu"按前后半区拆分gate/up并计算gate * sigmoid(gate) * up；"swiglu_gpt_oss"按偶奇列拆分gate/up并计算gate * sigmoid(1.702 * gate) * (up + 1)；"situ"按前后半区拆分gate/up，beta固定为1.0，并使用activation_clamp作为可选linear_beta。A5当前仅支持"swiglu"。</td>
         <td>str</td>
         <td>不涉及</td>
         <td>不涉及</td>
@@ -755,25 +755,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>activation_clamp</td>
         <td>float</td>
         <td>可选</td>
-        <td>激活函数截断值。对"swiglu"和"swiglu_gpt_oss"，gate分支仅限制上界，up分支限制在[-activation_clamp, activation_clamp]区间内。"situ"不使用该参数。默认值为None，值需≥0。</td>
-        <td>float</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>beta</td>
-        <td>float</td>
-        <td>可选</td>
-        <td>"situ"门控分支缩放参数，计算beta * tanh(gate / beta)。默认值为1.0，值需为有限正数。</td>
-        <td>float</td>
-        <td>不涉及</td>
-        <td>不涉及</td>
-    </tr>
-    <tr>
-        <td>linear_beta</td>
-        <td>float</td>
-        <td>可选</td>
-        <td>"situ"线性分支缩放参数。设置后up变换为linear_beta * tanh(up / linear_beta)；默认值为None，表示不启用该变换。设置时需为有限正数。</td>
+        <td>激活函数控制值。对"swiglu"和"swiglu_gpt_oss"，gate分支仅限制上界，up分支限制在[-activation_clamp, activation_clamp]区间内。对"situ"，有限正值作为linear_beta，计算linear_beta * tanh(up / linear_beta)；0或None表示linear_beta=None，up保持不变。值需≥0。</td>
         <td>float</td>
         <td>不涉及</td>
         <td>不涉及</td>
