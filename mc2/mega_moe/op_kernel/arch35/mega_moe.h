@@ -1322,7 +1322,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ResetGmm2CombineSyncCou
             int32_t currentBatchElementCount = coreLen - resetElementOffset < resetBatchElementCount_ ?
                                                    coreLen - resetElementOffset :
                                                    resetBatchElementCount_;
-            DataCopy(gmm2CombineSyncCounterGm[coreOffset + resetElementOffset], resetTensor_, currentBatchElementCount);
+            DataCopyExtParams resetCopyParams{1U, static_cast<uint32_t>(currentBatchElementCount * sizeof(int32_t)), 0U,
+                                              0U, 0U};
+            DataCopyPad(gmm2CombineSyncCounterGm[coreOffset + resetElementOffset], resetTensor_, resetCopyParams);
         }
     }
 }
