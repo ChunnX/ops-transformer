@@ -123,9 +123,9 @@ bool FiaTilingNonQuantMla::IsCapable()
     }
 
     // 仅支持KV_N为1
-    if (fiaInfo_->n2Size != 1U) {
-        return false;
-    }
+    // if (fiaInfo_->n2Size != 1U) {
+    //     return false;
+    // }
 
     // 支持的input_layout范围
     std::string layout = fiaInfo_->opParamInfo.layOut;

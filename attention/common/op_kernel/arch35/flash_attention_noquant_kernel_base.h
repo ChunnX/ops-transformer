@@ -235,6 +235,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelBase<ChildClass, CubeBlockType
             }
         }
     }
+    AscendC::printf("tkd flash_attention_noquant_kernel_base.h\n");
     if constexpr (hasAtten) {
         attenMaskInfo.prefixNAddr = prefix;
     }

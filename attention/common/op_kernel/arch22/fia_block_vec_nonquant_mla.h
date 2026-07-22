@@ -160,7 +160,7 @@ protected:
 
     static constexpr T BOOL_ATTEN_MASK_SCALAR_VALUE = -1000000000000.0; // 用于mask为bool类型
     uint32_t negativeIntScalar = *((uint32_t *)&BOOL_ATTEN_MASK_SCALAR_VALUE);
-    static constexpr uint64_t kvHeadNum = 1ULL;
+    // static constexpr uint64_t kvHeadNum = 1ULL;
     static constexpr uint32_t BASE_BLOCK_MAX_ELEMENT_NUM = AttentionCommon::ConstInfo::BUFFER_SIZE_BYTE_32K / sizeof(T); // 32768/4=8096
     static constexpr uint32_t BLOCK_ELEMENT_NUM = AttentionCommon::BYTE_BLOCK / sizeof(T); // 32/4=8
     static constexpr T FLOAT_E_SCALAR = 8388608;
@@ -400,9 +400,9 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ComputeLogSumExpAndCopyToGm
     // 这里的offset计算，后续FD切G改切M时，同步改掉
     uint64_t baseOffset = mSplitInfo.nBufferStartM / 2;
     size_t size = mSplitInfo.vecDealM * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
-    uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx, info.gS1Idx);
-    uint64_t offset = (accumTmpOutNum * kvHeadNum * constInfo.mBaseSize +              // taskoffset
-                       info.tndCoreStartKVSplitPos * kvHeadNum * constInfo.mBaseSize + // 份数offset
+    uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx * constInfo.kvHeadNum + info.n2Idx, info.gS1Idx);
+    uint64_t offset = (accumTmpOutNum * constInfo.mBaseSize +              // taskoffset
+                       info.tndCoreStartKVSplitPos * constInfo.mBaseSize + // 份数offset
                        mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
                       AttentionCommon::FP32_BLOCK_ELEMENT_NUM; // m轴offset
 
@@ -1025,10 +1025,10 @@ FiaBlockVecNonQuantMla<FIAT>::Bmm2FDDataCopyOut(const AttentionCommon::RunInfo &
     DataCopy(tmp, bmm2ResUb, columnCount * dealRowCount);
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
-    uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx, info.gS1Idx);
-    uint64_t offset = accumTmpOutNum * kvHeadNum * constInfo.mBaseSize * headDim +              // taskoffset
-                      info.tndCoreStartKVSplitPos * kvHeadNum * constInfo.mBaseSize * headDim + // 份数offset
-                      wsMStart * actualColumnCount;                                             // m轴offset
+    uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx * constInfo.kvHeadNum + info.n2Idx, info.gS1Idx);
+    uint64_t offset = accumTmpOutNum * constInfo.mBaseSize * headDim +              // taskoffset
+                      info.tndCoreStartKVSplitPos * constInfo.mBaseSize * headDim + // 份数offset
+                      wsMStart * actualColumnCount;                                 // m轴offset
     GlobalTensor<T> dst = accumOutGm[offset];
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
