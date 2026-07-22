@@ -75,7 +75,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   if ASCEND_IS_AIV {
     cid = cid / 2;
   }
-  auto tmp_ub = ascend_ub.GetWithOffset<uint8_t>(65536, 125440);
+  auto tmp_ub = ascend_ub.GetWithOffset<uint8_t>(32768, 125440);
   auto v0_zero_key_fp32 = ascend_ub.GetWithOffset<float>(512, 0);
   auto v0_zero_ki_fp32 = ascend_ub.GetWithOffset<float>(128, 2048);
   auto v0_zero_rope_fp32 = ascend_ub.GetWithOffset<float>(128, 2560);
@@ -100,21 +100,21 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto c1_sy_l0c = ascend_l0c.GetWithOffset<float>(8192, 65536);
   auto v1_p_max = ascend_ub.GetWithOffset<float>(128, 53760);
   auto v1_p_sum = ascend_ub.GetWithOffset<float>(128, 54272);
-  auto v1_p_eps = ascend_ub.GetWithOffset<float>(128, 54784);
+  auto v1_p_partial = ascend_ub.GetWithOffset<float>(128, 54784);
   auto v1_p_bmm1 = ascend_ub.GetWithOffset<float>(16384, 55296);
   auto v1_p_tmp = ascend_ub.GetWithOffset<float>(1024, 120832);
   auto v1_p_out = ascend_ub.GetWithOffset<float>(128, 124928);
-  auto v1_sy_weight_half = ascend_ub.GetWithOffset<half>(64, 190976);
-  auto v1_sy_weight = ascend_ub.GetWithOffset<float>(64, 191104);
-  auto v1_sy_weight_2d = ascend_ub.GetWithOffset<float>(8192, 4608);
+  auto v1_sy_weight_half = ascend_ub.GetWithOffset<half>(64, 158208);
+  auto v1_sy_weight = ascend_ub.GetWithOffset<float>(64, 158336);
+  auto v1_sy_weight_2d = ascend_ub.GetWithOffset<float>(8192, 158592);
   auto v1_sy_tmp = ascend_ub.GetWithOffset<float>(512, 191360);
   auto v1_sy_max = ascend_ub.GetWithOffset<float>(1, 193408);
-  auto v1_sy_all = ascend_ub.GetWithOffset<float>(2048, 37376);
+  auto v1_sy_all = ascend_ub.GetWithOffset<float>(2048, 4608);
   auto v1_sy_broadcast = ascend_ub.GetWithOffset<float>(128, 193952);
   auto v1_sy_sum = ascend_ub.GetWithOffset<float>(1, 194496);
   auto v1_sy_chunk = ascend_ub.GetWithOffset<float>(128, 194528);
   auto v1_sy_eps = ascend_ub.GetWithOffset<float>(1, 195072);
-  auto v1_sy_bmm2 = ascend_ub.GetWithOffset<float>(8192, 54784);
+  auto v1_sy_bmm2 = ascend_ub.GetWithOffset<float>(8192, 4608);
   auto v1_sy_reduce = ascend_ub.GetWithOffset<float>(128, 193440);
   auto v1_sy_tmp_max = ascend_ub.GetWithOffset<float>(1, 194464);
   auto v1_sy_tmp_sum = ascend_ub.GetWithOffset<float>(1, 195040);
@@ -122,16 +122,16 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v1_bw_loss_accum = ascend_ub.GetWithOffset<float>(1, 195744);
   auto v1_bw_weight_half = ascend_ub.GetWithOffset<half>(32, 195776);
   auto v1_bw_weight = ascend_ub.GetWithOffset<float>(32, 195840);
-  auto v1_bw_weight_2d = ascend_ub.GetWithOffset<float>(4096, 37376);
+  auto v1_bw_weight_2d = ascend_ub.GetWithOffset<float>(4096, 4608);
   auto v1_bw_row_tmp = ascend_ub.GetWithOffset<float>(256, 0);
   auto v1_bw_p = ascend_ub.GetWithOffset<float>(128, 0);
   auto v1_bw_sy = ascend_ub.GetWithOffset<float>(128, 512);
-  auto v1_bw_bmm2 = ascend_ub.GetWithOffset<float>(4096, 54784);
+  auto v1_bw_bmm2 = ascend_ub.GetWithOffset<float>(4096, 20992);
   auto v1_bw_diff = ascend_ub.GetWithOffset<float>(128, 1024);
-  auto v1_bw_diff_2d = ascend_ub.GetWithOffset<float>(4096, 71168);
-  auto v1_bw_mask = ascend_ub.GetWithOffset<float>(4096, 87552);
+  auto v1_bw_diff_2d = ascend_ub.GetWithOffset<float>(4096, 37376);
+  auto v1_bw_mask = ascend_ub.GetWithOffset<float>(4096, 55296);
   auto v1_bw_dw = ascend_ub.GetWithOffset<float>(32, 195968);
-  auto v1_bw_rg_half = ascend_ub.GetWithOffset<half>(4096, 54784);
+  auto v1_bw_rg_half = ascend_ub.GetWithOffset<half>(4096, 20992);
   auto v1_bw_log_p = ascend_ub.GetWithOffset<float>(128, 1024);
   auto v1_bw_log_sy = ascend_ub.GetWithOffset<float>(128, 1536);
   auto v1_bw_loss = ascend_ub.GetWithOffset<float>(128, 512);
@@ -325,9 +325,9 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(0);
             AscendC::Abs(v1_p_sum[0], v1_p_sum[0], 128);
-            tl::ascend::Fill<float>(v1_p_eps[0], 1.000000e-08f, 128);
+            tl::ascend::Fill<float>(v1_p_partial[0], 1.000000e-08f, 128);
             AscendC::PipeBarrier<PIPE_V>();
-            AscendC::Max(v1_p_sum[0], v1_p_sum[0], v1_p_eps[0], 128);
+            AscendC::Max(v1_p_sum[0], v1_p_sum[0], v1_p_partial[0], 128);
             for (int32_t n_idx = 0; n_idx < 16; ++n_idx) {
               tl::ascend::copy_gm_to_ub<float, 128, 128>(v1_p_bmm1[0], bmm1Res[((((pipe_iter * 6291456) + (cid * 262144)) + (n_idx * 128)) - 6291456)], 2048, 128, 128, 0.000000e+00f);
               AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(1);
@@ -354,8 +354,14 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
                 }
               }
               AscendC::PipeBarrier<PIPE_V>();
-              tl::ascend::reduce_sum<float,  128,  128,  0>(v1_p_out[0], v1_p_bmm1[0], tmp_ub[0], true);
+              tl::ascend::Fill<float>(v1_p_out[0], 0.000000e+00f, 128);
               AscendC::PipeBarrier<PIPE_V>();
+              for (int32_t p_reduce_chunk = 0; p_reduce_chunk < 2; ++p_reduce_chunk) {
+                tl::ascend::reduce_sum<float,  64,  128,  0>(v1_p_partial[0], v1_p_bmm1[(p_reduce_chunk * 8192)], tmp_ub[0], true);
+                AscendC::PipeBarrier<PIPE_V>();
+                AscendC::Add(v1_p_out[0], v1_p_out[0], v1_p_partial[0], 128);
+                AscendC::PipeBarrier<PIPE_V>();
+              }
               {
               AscendC::Muls(v1_p_out[0], v1_p_out[0], 7.812500e-03f, 128);
               }
