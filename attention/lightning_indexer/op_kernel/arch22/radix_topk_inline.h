@@ -320,7 +320,7 @@ __aicore__ inline void InlineRadixTopK(
 
         int32_t tileOffset = static_cast<int32_t>(tileId * tileLen_);
 
-        // Scalar GT + EQ: read int16 bits, convert to float via bit shift (no AscendC::Cast)
+        // Scalar GT + EQ: read bf16, convert via int16<<16, compare with boundary
         RDX_V_S_SYNC();
         for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
             int16_t bits = xLocalInt16.GetValue(i);
