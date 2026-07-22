@@ -110,7 +110,7 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::Init(GM_ADDR h_res, GM_ADDR
     if constexpr (OUT_FLAG) {
         pipe_.InitBuffer(sumRowQue_, DOUBLE_BUFFER, tilingData_.tUbFactor * nAlign_ * sizeof(float));
     } else {
-        pipe_.InitBuffer(sumRowQue_, DOUBLE_BUFFER, blockDataNum_ * sizeof(float));
+        pipe_.InitBuffer(sumRowQue_, DOUBLE_BUFFER, 0 * sizeof(float));
     }
     loop_ = tilingData_.tNormCoreLoop;
     tailHandelSize_ = tilingData_.tUbFactorTail;    // 尾循环处理的数量
@@ -188,7 +188,6 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CalcSoftmax(int32_t handleN
         MicroAPI::AddrReg sumAddrReg;
         MicroAPI::MaskReg maskRegCalc;
         MicroAPI::MaskReg maskRegCopy;
-        MicroAPI::MaskReg maskRegFresh;
 
         MicroAPI::MaskReg maskReg = MicroAPI::CreateMask<uint32_t>();
         MicroAPI::Duplicate(dupReg1, static_cast<int32_t>(INDEX_BLOCK_LEN));
@@ -202,9 +201,8 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CalcSoftmax(int32_t handleN
 
         for (uint16_t i = 0; i < loopSize; i++) {
             /* 32B按mask处理 */
-            maskRegFresh = MicroAPI::UpdateMask<uint32_t>(handleSize);
+            maskRegCalc = MicroAPI::UpdateMask<uint32_t>(handleSize);
             MicroAPI::LoadAlign(maskRegCalc, maskAddr);
-            MicroAPI::MaskAnd(maskRegCalc, maskRegCalc, maskRegFresh, maskReg);
             /* 32B全部处理 */
             maskRegCopy = MicroAPI::UpdateMask<uint32_t>(copyLen);
 
@@ -274,13 +272,10 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CalcColNorm(int32_t handleN
         MicroAPI::AddrReg sumAddrReg;
         MicroAPI::MaskReg maskRegCalc;
         MicroAPI::MaskReg maskRegCopy;
-        MicroAPI::MaskReg maskRegFresh;
 
-        MicroAPI::MaskReg maskReg = MicroAPI::CreateMask<uint32_t>();
         for (uint16_t i = 0; i < loopSize; i++) {
-            maskRegFresh = MicroAPI::UpdateMask<uint32_t>(handleSize);
+            maskRegCalc = MicroAPI::UpdateMask<uint32_t>(handleSize);
             MicroAPI::LoadAlign(maskRegCalc, maskAddr);
-            MicroAPI::MaskAnd(maskRegCalc, maskRegCalc, maskRegFresh, maskReg);
             maskRegCopy = MicroAPI::UpdateMask<uint32_t>(copyLen);
 
             sumAddrReg = MicroAPI::CreateAddrReg<uint32_t>(i, vflen);
@@ -340,15 +335,13 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::CalcRowNorm(int32_t handleN
         MicroAPI::AddrReg normAddrReg;
         MicroAPI::MaskReg maskRegCalc;
         MicroAPI::MaskReg maskRegCopy;
-        MicroAPI::MaskReg maskRegFresh;
         MicroAPI::MaskReg maskReg;
 
         maskReg = MicroAPI::CreateMask<uint32_t>();
         for (uint16_t i = 0; i < loopSize; i++) {
             auto postUpdateStride = (i == loopSize - 1) ? tailLoopHandleNum : blockCnt;
-            maskRegFresh = MicroAPI::UpdateMask<uint32_t>(handleSize);
+            maskRegCalc = MicroAPI::UpdateMask<uint32_t>(handleSize);
             MicroAPI::LoadAlign(maskRegCalc, maskAddr);
-            MicroAPI::MaskAnd(maskRegCalc, maskRegCalc, maskRegFresh, maskReg);
             maskRegCopy = MicroAPI::UpdateMask<uint32_t>(copyLen);
 
             MicroAPI::Duplicate(sumoutReg, static_cast<float>(0));
@@ -413,7 +406,6 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::ScatterOutFromNorm(int32_t 
 
         MicroAPI::AddrReg normAddrReg;
         MicroAPI::MaskReg maskRegCalc;
-        MicroAPI::MaskReg maskRegFresh;
 
         MicroAPI::MaskReg maskReg = MicroAPI::CreateMask<uint32_t>();
         MicroAPI::Duplicate(dupReg1, INDEX_BLOCK_LEN);
@@ -425,9 +417,8 @@ __aicore__ inline void MhcSinkhornSimd<T, OUT_FLAG>::ScatterOutFromNorm(int32_t 
         MicroAPI::Mul(tmpReg3, tmpReg1, dupReg2, maskReg);
         MicroAPI::Add(indexReg, tmpReg2, tmpReg3, maskReg);
         for (uint16_t i = 0; i < loopSize; i++) {
-            maskRegFresh = MicroAPI::UpdateMask<uint32_t>(handleSize);
+            maskRegCalc = MicroAPI::UpdateMask<uint32_t>(handleSize);
             MicroAPI::LoadAlign(maskRegCalc, maskAddr);
-            MicroAPI::MaskAnd(maskRegCalc, maskRegCalc, maskRegFresh, maskReg);
             for (uint16_t nIdx = 0; nIdx < static_cast<uint16_t>(tilingData_.n); nIdx++) {
                 auto outOfset = outputAddr + (i * blockCnt * nnSize_) + nIdx * tilingData_.n;
                 normAddrReg = MicroAPI::CreateAddrReg<uint32_t>(i, vflen, nIdx, handleLen);
