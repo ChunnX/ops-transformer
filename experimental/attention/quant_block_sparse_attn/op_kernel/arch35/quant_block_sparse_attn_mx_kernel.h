@@ -249,25 +249,26 @@ private:
         }
     }
 
-    __aicore__ inline void FillRunInfo(MxRunInfo &runInfo, uint64_t loop, uint32_t mLoop, uint32_t bn1Idx,
-                                       uint32_t s1OuterIdx, uint32_t s2LoopIdx, uint32_t s2LoopEnd,
-                                       uint32_t sparseBlockCount, uint64_t sparseBase, bool isFirstValidS2Loop)
+    __aicore__ inline void FillRunInfo(MxRunInfo &runInfo, uint64_t loop, uint32_t mLoop, uint32_t bIdx,
+                                       uint32_t n1Idx, uint32_t n2Idx, uint32_t queryTokenBase,
+                                       uint32_t actualS1Size, uint32_t actualS2Size, uint32_t s1OuterIdx,
+                                       uint32_t s2LoopIdx, uint32_t s2LoopEnd, uint32_t sparseBlockCount,
+                                       uint64_t sparseBase, bool isFirstValidS2Loop)
     {
         // 构造一个 512-token logical S2 tile 的运行参数。
         runInfo = {};
         runInfo.loop = static_cast<uint32_t>(loop);
         runInfo.mLoop = mLoop;
         runInfo.isValid = true;
-        runInfo.bIdx = bn1Idx / constInfo.realN2Size;
-        const uint32_t n1Idx = bn1Idx % constInfo.realN2Size;
+        runInfo.bIdx = bIdx;
         runInfo.realN2Idx = n1Idx;
-        runInfo.n2Idx = n1Idx / constInfo.gSize;
+        runInfo.n2Idx = n2Idx;
         // s1OuterIdx 是 sparse Q block 下标。MX 的计算上限仍为 M=128，
         // q_block_size=64 时每个 task 只处理对应的 64 行，避免跨两个 sparse 列表。
         runInfo.s1Idx = s1OuterIdx * constInfo.qSparseBlockSize;
-        runInfo.queryTokenBase = GetQTokenBase(runInfo.bIdx);
-        runInfo.actS1Size = GetActualQSeqLen(runInfo.bIdx);
-        runInfo.actS2Size = GetActualKvSeqLen(runInfo.bIdx);
+        runInfo.queryTokenBase = queryTokenBase;
+        runInfo.actS1Size = actualS1Size;
+        runInfo.actS2Size = actualS2Size;
         runInfo.actMSize = constInfo.qSparseBlockSize;
         if (runInfo.s1Idx + constInfo.qSparseBlockSize > runInfo.actS1Size) {
             runInfo.actMSize = static_cast<uint32_t>(runInfo.actS1Size) - runInfo.s1Idx;
@@ -381,11 +382,14 @@ private:
                  regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK : rawSparseBlocksPerTask);
         for (uint32_t bn1Idx = bn1StartIdx; bn1Idx < bn1EndIdx; ++bn1Idx) {
             const uint32_t bIdx = bn1Idx / constInfo.realN2Size;
+            const uint32_t n1Idx = bn1Idx % constInfo.realN2Size;
+            const uint32_t n2Idx = n1Idx / constInfo.gSize;
+            const uint32_t queryTokenBase = GetQTokenBase(bIdx);
             const uint32_t actualS1Size = GetActualQSeqLen(bIdx);
+            const uint32_t actualS2Size = GetActualKvSeqLen(bIdx);
             const uint32_t s1LoopStart = GetS1LoopStart(bn1Idx, bn1StartIdx, s1StartIdx);
             const uint32_t s1LoopEnd = GetS1LoopEnd(bn1Idx, bn1EndIdx, s1EndIdx, actualS1Size);
             for (uint32_t s1OuterIdx = s1LoopStart; s1OuterIdx < s1LoopEnd; ++s1OuterIdx) {
-                const uint32_t n1Idx = bn1Idx % constInfo.realN2Size;
                 // 当前 query block 的有效 sparse block 数。
                 const int32_t sparseLen =
                     sparseSeqLenGm.GetValue((static_cast<uint64_t>(bIdx) * constInfo.realN2Size + n1Idx) *
@@ -406,8 +410,9 @@ private:
                     const uint32_t remainSparseBlockCount = static_cast<uint32_t>(sparseLen) - s2LoopIdx;
                     const uint32_t sparseBlockCount =
                         remainSparseBlockCount > sparseBlocksPerTask ? sparseBlocksPerTask : remainSparseBlockCount;
-                    FillRunInfo(runInfo, loop, mLoop, bn1Idx, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount,
-                                sparseBase, !hasValidS2Task);
+                    FillRunInfo(runInfo, loop, mLoop, bIdx, n1Idx, n2Idx, queryTokenBase, actualS1Size,
+                                actualS2Size, s1OuterIdx, s2LoopIdx, s2LoopEnd, sparseBlockCount, sparseBase,
+                                !hasValidS2Task);
                     if (runInfo.actSingleLoopS2Size != 0U && runInfo.actMSize != 0U) {
                         ExecuteTask(loop, taskRunInfo);
                         hasValidS2Task = true;
