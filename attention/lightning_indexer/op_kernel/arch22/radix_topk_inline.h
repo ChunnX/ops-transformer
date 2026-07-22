@@ -304,10 +304,15 @@ __aicore__ inline void InlineRadixTopK(
     bfloat16_t boundaryBf16 = *reinterpret_cast<bfloat16_t *>(&boundaryNumber16);
     float boundaryFloat = AscendC::Cast(boundaryBf16);
 
-    // Reuse outValueBuf for vecIndex and gatheredIndex during extraction
+    // Reuse outValueBuf for vecIndex during extraction
     LocalTensor<int32_t> vecIndex = outValueBuf.Get<int32_t>();
-    // outIndexBuf: cmpMaskTensor (uint8_t) at offset 0, outIndexLocal (int32_t) after
-    // They overlap but are used in different phases (compare then gather)
+
+    // Generate sequential index [0, 1, 2, ..., tileLen_-1] once (reused for all tiles)
+    RDX_S_V_SYNC();
+    for (uint32_t i = 0; i < tileLen_; i++) {
+        vecIndex.SetValue(i, static_cast<int32_t>(i));
+    }
+    RDX_S_V_SYNC();
 
     uint32_t writeOffset = 0;
     for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
@@ -322,7 +327,6 @@ __aicore__ inline void InlineRadixTopK(
         DataCopy(xLocalFp32, scoreCache[tileId * tileLen_], tileLenAlign_);
         Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
         PipeBarrier<PIPE_V>();
-        // Cast bf16->float32 (CAST_NONE = zero-extend mantissa, exact bf16 precision)
         Cast(xLocalFp32, xLocalB16, RoundMode::CAST_NONE, curTileLen);
         PipeBarrier<PIPE_V>();
 
@@ -330,19 +334,11 @@ __aicore__ inline void InlineRadixTopK(
         uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(int32_t) - 1) /
             (REPEAT_SIZE / sizeof(int32_t)) * (REPEAT_SIZE / sizeof(int32_t));
 
-        // Generate sequential index [0, 1, 2, ..., curTileLen-1]
-        RDX_S_V_SYNC();
-        for (uint32_t i = 0; i < curTileLen; i++) {
-            vecIndex.SetValue(i, static_cast<int32_t>(i));
-        }
-        RDX_S_V_SYNC();
-
         // GT pass: Compares<float, GT> on bf16-precision float32
         Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, boundaryFloat,
             AscendC::CMPMODE::GT, curTileLenAlign32);
         PipeBarrier<PIPE_V>();
 
-        // GatherMask to extract indices where score > boundary
         uint64_t gtCnt = 0;
         GatherMask(outIndexLocal, vecIndex, cmpMaskTensor.template ReinterpretCast<uint32_t>(),
                    true, curTileLen, {1, 1, 0, 0}, gtCnt);
@@ -350,15 +346,20 @@ __aicore__ inline void InlineRadixTopK(
         RDX_V_S_SYNC();
         uint32_t gtCount = static_cast<uint32_t>(gtCnt);
         if (gtCount > static_cast<uint32_t>(curTileK)) { gtCount = static_cast<uint32_t>(curTileK); }
-        for (uint32_t i = 0; i < gtCount; i++) {
-            indexGm.SetValue(writeOffset, outIndexLocal.GetValue(i) + tileOffset);
-            writeOffset++;
-            curTileK--;
-        }
         RDX_S_V_SYNC();
 
+        // Vectorized: add tileOffset to gathered indices, then CopyOut to GM
+        if (gtCount > 0) {
+            Adds<int32_t>(outIndexLocal, outIndexLocal, tileOffset, gtCount);
+            PipeBarrier<PIPE_V>();
+            DataCopyPad(indexGm[writeOffset], outIndexLocal, DataCopyExtParams{
+                static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * gtCount), 0, 0, 0});
+            writeOffset += gtCount;
+            curTileK -= static_cast<int32_t>(gtCount);
+        }
+
         if (curTileK > 0) {
-            // EQ pass: Compares<float, EQ> on bf16-precision float32
+            // EQ pass
             Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, boundaryFloat,
                 AscendC::CMPMODE::EQ, curTileLenAlign32);
             PipeBarrier<PIPE_V>();
@@ -370,12 +371,16 @@ __aicore__ inline void InlineRadixTopK(
             RDX_V_S_SYNC();
             uint32_t eqCount = static_cast<uint32_t>(eqCnt);
             if (eqCount > static_cast<uint32_t>(curTileK)) { eqCount = static_cast<uint32_t>(curTileK); }
-            for (uint32_t i = 0; i < eqCount; i++) {
-                indexGm.SetValue(writeOffset, outIndexLocal.GetValue(i) + tileOffset);
-                writeOffset++;
-                curTileK--;
-            }
             RDX_S_V_SYNC();
+
+            if (eqCount > 0) {
+                Adds<int32_t>(outIndexLocal, outIndexLocal, tileOffset, eqCount);
+                PipeBarrier<PIPE_V>();
+                DataCopyPad(indexGm[writeOffset], outIndexLocal, DataCopyExtParams{
+                    static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * eqCount), 0, 0, 0});
+                writeOffset += eqCount;
+                curTileK -= static_cast<int32_t>(eqCount);
+            }
         }
     }
 
