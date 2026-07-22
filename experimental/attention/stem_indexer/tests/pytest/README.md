@@ -22,10 +22,11 @@ csv/stem_indexer_cases.csv
 single case直接维护在`ENABLED_PARAMS`中，每条case通过`description`记录覆盖点和设计原因。
 `csv/stem_indexer_cases.csv`保存批量用例信息，作为批量模式生成`.pt`文件的输入。
 
-single和batch模式当前均维护150条正例case，分别从`ENABLED_PARAMS`和CSV读取。
+single和batch模式当前均维护154条正例case，分别从`ENABLED_PARAMS`和CSV读取。
 两种用例源均包含`topk_score_precision`：1表示uint32，2表示uint16，未显式配置时默认1。
 其中`SI_WB_001`～`SI_WB_100`固定使用uint32 TopK score路径；`SI_WB_101`～`SI_WB_150`
 镜像前50条功能场景，固定使用uint16 TopK score路径。
+`SI_WB_001_1`、`SI_WB_001_2`及其uint16镜像`SI_WB_101_1`、`SI_WB_101_2`额外覆盖batch=8的64K/128K等长prefill场景。
 
 ## 当前覆盖点
 
@@ -107,6 +108,13 @@ batch模式流程与QLI保持一致：
 3. pytest逐个读取.pt文件并调用NPU算子。
 4. 与.pt中保存的golden比对。
 5. 生成result.csv记录批量执行结果。
+```
+
+生成`.pt`时也使用`STEM_INDEXER_CASE_ID`只选择指定用例，多个case_id使用逗号分隔：
+
+```bash
+STEM_INDEXER_CASE_ID=SI_WB_001_1,SI_WB_101_1 \
+    python3 batch/stem_indexer_pt_save.py csv/stem_indexer_cases.csv pt_path
 ```
 
 `.pt`文件和`result.csv`是本地生成产物，不需要提交。
