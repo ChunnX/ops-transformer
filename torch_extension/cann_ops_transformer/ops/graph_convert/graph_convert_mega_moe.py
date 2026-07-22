@@ -16,37 +16,86 @@ try:
     from torch.library import impl
     from torchair._ge_concrete_graph import ge_apis as ge
     from torchair.ge._ge_graph import Tensor, TensorSpec
-    from torchair._ge_concrete_graph.fx2ge_converter import declare_supported, register_fx_node_ge_converter
+    from torchair._ge_concrete_graph.fx2ge_converter import (
+        declare_supported,
+        register_fx_node_ge_converter,
+    )
     from torchair._ge_concrete_graph.supported_declaration import Support
     from typing import Any, Dict, List, Tuple, Union, Callable, Optional
-    from torchair._ge_concrete_graph.ge_ir_pb2 import GraphDef, OpDef, TensorDescriptor, TensorDef
+    from torchair._ge_concrete_graph.ge_ir_pb2 import (
+        GraphDef,
+        OpDef,
+        TensorDescriptor,
+        TensorDef,
+    )
     from torchair.ge._ge_graph import get_default_ge_graph, next_unique_name
     from torchair.ge._ge_graph import auto_convert_to_tensor
-    from torchair.ge._ge_graph import Tensor, TensorSpec, DataType, TensorType
+    from torchair.ge._ge_graph import DataType, TensorType
     from torchair.ge._ge_graph import compat_as_bytes, compat_as_bytes_list
     from torchair.ge._ge_graph import trans_to_list_list_int, trans_to_list_list_float
     from torchair.ge._ge_graph import get_invalid_desc
     from torchair._ge_concrete_graph.compat_ir import ge_op, IrDef
     from torchair.ge import attr
+
     _TORCHAIR_AVAILABLE = True
 except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
+
     @auto_convert_to_tensor(
         [False, False, False, False, True, True, True, True, True, True, False, False],
-        [False, False, False, False, False, False, False, False, False, False, True, True])
-    def MegaMoe(context: Tensor, x: Tensor, topk_ids: Tensor, topk_weights: Tensor,
-                weight1: List[Tensor], weight2: List[Tensor],
-                weight_scales1: List[Tensor], weight_scales2: List[Tensor],
-                bias1: List[Tensor], bias2: List[Tensor],
-                x_active_mask: Optional[Tensor], scales: Optional[Tensor], *,
-                moe_expert_num: int, ep_world_size: int, ccl_buffer_size: int,
-                max_recv_token_num: int = 0, dispatch_quant_mode: int = 0,
-                dispatch_quant_out_dtype: int = 28, combine_quant_mode: int = 0, comm_alg: str = "",
-                num_max_tokens_per_rank: int = 0, activation: str = "swiglu",
-                activation_clamp: float = 3.4028234663852886e+38,
-                dependencies=[], node_name=None):
+        [
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            False,
+            True,
+            True,
+        ],
+    )
+    def MegaMoe(
+        context: Tensor,
+        x: Tensor,
+        topk_ids: Tensor,
+        topk_weights: Tensor,
+        weight1: List[Tensor],
+        weight2: List[Tensor],
+        weight_scales1: List[Tensor],
+        weight_scales2: List[Tensor],
+        bias1: List[Tensor],
+        bias2: List[Tensor],
+        x_active_mask: Optional[Tensor],
+        scales: Optional[Tensor],
+        *,
+        moe_expert_num: int,
+        ep_world_size: int,
+        ccl_buffer_size: int,
+        max_recv_token_num: int = 0,
+        dispatch_quant_mode: int = 0,
+        dispatch_quant_out_dtype: int = 28,
+        combine_quant_mode: int = 0,
+        comm_alg: str = "",
+        num_max_tokens_per_rank: int = 0,
+        activation: str = "swiglu",
+        activation_clamp: float = 3.4028234663852886e38,
+        activation_out_dtype: int = 28,
+        transpose_weight1: bool = False,
+        transpose_weight2: bool = False,
+        weight1_interleave: int = 0,
+        topo_type: int = 0,
+        rank_num_per_server: int = 2,
+        beta: float = 1.0,
+        linear_beta: float = 3.4028234663852886e38,
+        dependencies=[],
+        node_name=None,
+    ):
         """REG_OP(MegaMoe)\n
         .INPUT(context, TensorType({DT_INT32}))\n
         .INPUT(x, TensorType({DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8,\n
@@ -76,6 +125,14 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(num_max_tokens_per_rank, Int, 0)\n
         .ATTR(activation, String, "swiglu")\n
         .ATTR(activation_clamp, Float, 3.4028234663852886e+38)\n
+        .ATTR(activation_out_dtype, Int, 28)\n
+        .ATTR(transpose_weight1, Bool, false)\n
+        .ATTR(transpose_weight2, Bool, false)\n
+        .ATTR(weight1_interleave, Int, 0)\n
+        .ATTR(topo_type, Int, 0)\n
+        .ATTR(rank_num_per_server, Int, 2)\n
+        .ATTR(beta, Float, 1.0)\n
+        .ATTR(linear_beta, Float, 3.4028234663852886e+38)\n
         """
         inputs = {
             "context": context,
@@ -103,12 +160,20 @@ if _TORCHAIR_AVAILABLE:
             "comm_alg": attr.Str(comm_alg),
             "num_max_tokens_per_rank": attr.Int(num_max_tokens_per_rank),
             "activation": attr.Str(activation),
-            "activation_clamp": attr.Float(activation_clamp)
+            "activation_clamp": attr.Float(activation_clamp),
+            "activation_out_dtype": attr.Int(activation_out_dtype),
+            "transpose_weight1": attr.Bool(transpose_weight1),
+            "transpose_weight2": attr.Bool(transpose_weight2),
+            "weight1_interleave": attr.Int(weight1_interleave),
+            "topo_type": attr.Int(topo_type),
+            "rank_num_per_server": attr.Int(rank_num_per_server),
+            "beta": attr.Float(beta),
+            "linear_beta": attr.Float(linear_beta),
         }
 
         outputs = [
-        "y",
-        "expert_token_nums",
+            "y",
+            "expert_token_nums",
         ]
 
         return ge_op(
@@ -117,34 +182,52 @@ if _TORCHAIR_AVAILABLE:
             attrs=attrs,
             outputs=outputs,
             dependencies=dependencies,
-            ir=IrDef("MegaMoe") \
-            .input("context", "DT_INT32") \
-            .input("x", "DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, " \
-                "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
-            .input("topk_ids", "DT_INT32") \
-            .input("topk_weights", "DT_FLOAT, DT_BF16") \
-            .dynamic_input("weight1", "DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, " \
-                "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
-            .dynamic_input("weight2", "DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, " \
-                "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2") \
-            .dynamic_input("weight_scales1", "DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64") \
-            .dynamic_input("weight_scales2", "DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64") \
-            .dynamic_input("bias1", "DT_FLOAT") \
-            .dynamic_input("bias2", "DT_FLOAT") \
-            .optional_input("x_active_mask", "DT_INT8") \
-            .required_attr("moe_expert_num", attr.Int) \
-            .required_attr("ep_world_size", attr.Int) \
-            .required_attr("ccl_buffer_size", attr.Int) \
-            .attr("max_recv_token_num", attr.Int(0)) \
-            .attr("dispatch_quant_mode", attr.Int(0)) \
-            .attr("dispatch_quant_out_dtype", attr.Int(28)) \
-            .attr("combine_quant_mode", attr.Int(0)) \
-            .attr("comm_alg", attr.Str("")) \
-            .attr("num_max_tokens_per_rank", attr.Int(0)) \
-            .attr("activation", attr.Str("swiglu")) \
-            .attr("activation_clamp", attr.Float(3.4028234663852886e+38)) \
-            .output("y", "DT_BF16, DT_FLOAT16") \
-            .output("expert_token_nums", "DT_INT32")
+            ir=IrDef("MegaMoe")
+            .input("context", "DT_INT32")
+            .input(
+                "x",
+                "DT_BF16, DT_FLOAT16, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, DT_HIFLOAT8, "
+                "DT_FLOAT4_E2M1, DT_FLOAT4_E1M2",
+            )
+            .input("topk_ids", "DT_INT32")
+            .input("topk_weights", "DT_FLOAT, DT_BF16")
+            .dynamic_input(
+                "weight1",
+                "DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, "
+                "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2",
+            )
+            .dynamic_input(
+                "weight2",
+                "DT_BF16, DT_FLOAT16, DT_INT8, DT_INT4, DT_FLOAT8_E5M2, DT_FLOAT8_E4M3FN, "
+                "DT_HIFLOAT8, DT_FLOAT4_E2M1, DT_FLOAT4_E1M2",
+            )
+            .dynamic_input("weight_scales1", "DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64")
+            .dynamic_input("weight_scales2", "DT_FLOAT, DT_FLOAT8_E8M0, DT_UINT64")
+            .dynamic_input("bias1", "DT_FLOAT")
+            .dynamic_input("bias2", "DT_FLOAT")
+            .optional_input("x_active_mask", "DT_INT8")
+            .optional_input("scales", "DT_FLOAT, DT_FLOAT8_E8M0")
+            .required_attr("moe_expert_num", attr.Int)
+            .required_attr("ep_world_size", attr.Int)
+            .required_attr("ccl_buffer_size", attr.Int)
+            .attr("max_recv_token_num", attr.Int(0))
+            .attr("dispatch_quant_mode", attr.Int(0))
+            .attr("dispatch_quant_out_dtype", attr.Int(28))
+            .attr("combine_quant_mode", attr.Int(0))
+            .attr("comm_alg", attr.Str(""))
+            .attr("num_max_tokens_per_rank", attr.Int(0))
+            .attr("activation", attr.Str("swiglu"))
+            .attr("activation_clamp", attr.Float(3.4028234663852886e38))
+            .attr("activation_out_dtype", attr.Int(28))
+            .attr("transpose_weight1", attr.Bool(False))
+            .attr("transpose_weight2", attr.Bool(False))
+            .attr("weight1_interleave", attr.Int(0))
+            .attr("topo_type", attr.Int(0))
+            .attr("rank_num_per_server", attr.Int(2))
+            .attr("beta", attr.Float(1.0))
+            .attr("linear_beta", attr.Float(3.4028234663852886e38))
+            .output("y", "DT_BF16, DT_FLOAT16")
+            .output("expert_token_nums", "DT_INT32"),
         )
 
     @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.npu_mega_moe.default)
@@ -170,32 +253,50 @@ if _TORCHAIR_AVAILABLE:
         comm_alg: str = "",
         num_max_tokens_per_rank: int = 0,
         activation: str = "swiglu",
-        activation_clamp: float = 3.4028234663852886e+38,
+        activation_clamp: Optional[float] = None,
+        beta: float = 1.0,
+        linear_beta: Optional[float] = None,
         dispatch_quant_out_dtype: int = 28,
         weight1_type: int = 28,
         weight2_type: int = 28,
-        meta_outputs: TensorSpec = None):
-
-        return MegaMoe(context=context,
-                       x=x,
-                       topk_ids=topk_ids,
-                       topk_weights=topk_weights,
-                       weight1=weight1,
-                       weight2=weight2,
-                       weight_scales1=weight_scales1,
-                       weight_scales2=weight_scales2,
-                       bias1=bias1,
-                       bias2=bias2,
-                       x_active_mask=x_active_mask,
-                       moe_expert_num=moe_expert_num,
-                       ep_world_size=ep_world_size,
-                       ccl_buffer_size=ccl_buffer_size,
-                       max_recv_token_num=max_recv_token_num,
-                       dispatch_quant_mode=dispatch_quant_mode,
-                       dispatch_quant_out_dtype=dispatch_quant_out_dtype,
-                       combine_quant_mode=combine_quant_mode,
-                       comm_alg=comm_alg,
-                       num_max_tokens_per_rank=num_max_tokens_per_rank,
-                       activation=activation,
-                       activation_clamp=activation_clamp)
-
+        topo_type: Optional[int] = None,
+        rank_num_per_server: Optional[int] = None,
+        meta_outputs: TensorSpec = None,
+    ):
+        activation_clamp_value = 3.4028234663852886e38 if activation_clamp is None else activation_clamp
+        linear_beta_value = 3.4028234663852886e38 if linear_beta is None else linear_beta
+        topo_type_value = 0 if topo_type is None else topo_type
+        rank_num_per_server_value = 2 if rank_num_per_server is None else rank_num_per_server
+        return MegaMoe(
+            context=context,
+            x=x,
+            topk_ids=topk_ids,
+            topk_weights=topk_weights,
+            weight1=weight1,
+            weight2=weight2,
+            weight_scales1=weight_scales1,
+            weight_scales2=weight_scales2,
+            bias1=bias1,
+            bias2=bias2,
+            x_active_mask=x_active_mask,
+            scales=None,
+            moe_expert_num=moe_expert_num,
+            ep_world_size=ep_world_size,
+            ccl_buffer_size=ccl_buffer_size,
+            max_recv_token_num=max_recv_token_num,
+            dispatch_quant_mode=dispatch_quant_mode,
+            dispatch_quant_out_dtype=dispatch_quant_out_dtype,
+            combine_quant_mode=combine_quant_mode,
+            comm_alg=comm_alg,
+            num_max_tokens_per_rank=num_max_tokens_per_rank,
+            activation=activation,
+            activation_clamp=activation_clamp_value,
+            activation_out_dtype=28,
+            transpose_weight1=False,
+            transpose_weight2=False,
+            weight1_interleave=0,
+            topo_type=topo_type_value,
+            rank_num_per_server=rank_num_per_server_value,
+            beta=beta,
+            linear_beta=linear_beta_value,
+        )

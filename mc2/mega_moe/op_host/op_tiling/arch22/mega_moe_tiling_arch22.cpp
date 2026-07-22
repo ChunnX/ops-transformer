@@ -18,6 +18,7 @@
 #include <map>
 #include <algorithm>
 #include <cfloat>
+#include <cmath>
 
 #include "tiling/tiling_api.h"
 #include "register/tilingdata_base.h"
@@ -53,6 +54,8 @@ constexpr uint32_t ATTR_ACTIVATION_OUT_DTYPE_INDEX = 11;   // 激活函数输出
 constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 12;      // weight1 是否转置
 constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 13;      // weight2 是否转置
 constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 14;     // weight1 交错模式
+constexpr uint32_t ATTR_BETA_INDEX = 17;                   // SiTU gate branch beta
+constexpr uint32_t ATTR_LINEAR_BETA_INDEX = 18;            // SiTU up branch linear beta
 
 constexpr uint32_t ACTIVATION_CODE_SWIGLU = 0;
 constexpr uint32_t ACTIVATION_CODE_SWIGLU_GPT_OSS = 1;
@@ -291,6 +294,25 @@ static ge::graphStatus CheckActivationClampAttr(const float *ptr)
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus CheckBetaAttr(const float *ptr)
+{
+    OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "beta is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(!std::isfinite(*ptr) || *ptr <= 0.0f,
+                    OP_LOGE(K_INNER_DEBUG, "beta is invalid, should be finite and > 0, but got %f.", *ptr),
+                    return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus CheckLinearBetaAttr(const float *ptr)
+{
+    OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "linearBeta is null."), return GRAPH_FAILED);
+    OP_TILING_CHECK(!std::isfinite(*ptr) || *ptr <= 0.0f,
+                    OP_LOGE(K_INNER_DEBUG,
+                            "linear_beta is invalid, should be finite and > 0 when specified, but got %f.", *ptr),
+                    return GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus CheckActivationOutDtypeAttr(const int64_t *ptr)
 {
     OP_TILING_CHECK(ptr == nullptr, OP_LOGE(K_INNER_DEBUG, "activationOutDtypePtr is null."), return GRAPH_FAILED);
@@ -355,6 +377,8 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     auto transposeWeight1Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT1_INDEX);
     auto transposeWeight2Ptr = attrs->GetAttrPointer<bool>(ATTR_TRANSPOSE_WEIGHT2_INDEX);
     auto weight1InterleavePtr = attrs->GetAttrPointer<int64_t>(ATTR_WEIGHT1_INTERLEAVE_INDEX);
+    auto betaPtr = attrs->GetAttrPointer<float>(ATTR_BETA_INDEX);
+    auto linearBetaPtr = attrs->GetAttrPointer<float>(ATTR_LINEAR_BETA_INDEX);
 
     // 1. moe_expert_num
     OP_TILING_CHECK(CheckMoeExpertNumAttr(moeExpertNumPtr) != ge::GRAPH_SUCCESS,
@@ -426,6 +450,14 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
                     OP_LOGE(K_INNER_DEBUG, "CheckWeight1InterleaveAttr failed."), return GRAPH_FAILED);
     info.weight1Interleave = static_cast<uint32_t>(*weight1InterleavePtr);
 
+    // 15. beta/linear_beta (appended after the A5 topology attributes in the common op definition)
+    OP_TILING_CHECK(CheckBetaAttr(betaPtr) != ge::GRAPH_SUCCESS, OP_LOGE(K_INNER_DEBUG, "CheckBetaAttr failed."),
+                    return GRAPH_FAILED);
+    info.beta = *betaPtr;
+    OP_TILING_CHECK(CheckLinearBetaAttr(linearBetaPtr) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(K_INNER_DEBUG, "CheckLinearBetaAttr failed."), return GRAPH_FAILED);
+    info.linearBeta = *linearBetaPtr;
+
     info.worldSize = info.epWorldSize;
 
     OP_LOGD(K_INNER_DEBUG, "moeExpertNum=%u", info.moeExpertNum);
@@ -442,6 +474,8 @@ static ge::graphStatus MegaMoeA2A3CheckAttrAndSetTiling(gert::TilingContext *con
     OP_LOGD(K_INNER_DEBUG, "transposeWeight1=%u", info.isTransposeW1);
     OP_LOGD(K_INNER_DEBUG, "transposeWeight2=%u", info.isTransposeW2);
     OP_LOGD(K_INNER_DEBUG, "weight1Interleave=%u", info.weight1Interleave);
+    OP_LOGD(K_INNER_DEBUG, "beta=%f", info.beta);
+    OP_LOGD(K_INNER_DEBUG, "linearBeta=%f", info.linearBeta);
     OP_LOGD(K_INNER_DEBUG, "worldSize=%u", info.worldSize);
 
     return ge::GRAPH_SUCCESS;
