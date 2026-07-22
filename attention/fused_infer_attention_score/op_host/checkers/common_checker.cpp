@@ -1409,6 +1409,13 @@ ge::graphStatus CommonChecker::CheckKVContiguous(const FiaTilingInfo &fiaInfo) c
     uint32_t valueDimNum = valueShape.GetDimNum();
     int32_t dimIndex = 0;
 
+    OP_CHECK_IF((keyDimNum > 0 && keyShape.GetDim(0) > 1 && fiaInfo.keyStrides != nullptr &&
+                    fiaInfo.keyStrides->GetDimNum() > 0 && fiaInfo.keyStrides->GetStride(0) <= 0) ||
+                    (valueDimNum > 0 && valueShape.GetDim(0) > 1 && fiaInfo.valueStrides != nullptr &&
+                    fiaInfo.valueStrides->GetDimNum() > 0 && fiaInfo.valueStrides->GetStride(0) <= 0),
+                OP_LOGE(fiaInfo.opName, "The key/value cache stride of dimension 0 must be greater than 0."),
+                return ge::GRAPH_FAILED);
+
     if (!fiaInfo.pageAttentionFlag) {
         OP_CHECK_IF((CheckTensorContiguous(keyDimNum, keyShape,
                         fiaInfo.keyStrides, dimIndex) != ge::GRAPH_SUCCESS) ||
@@ -1426,7 +1433,7 @@ ge::graphStatus CommonChecker::CheckKVContiguous(const FiaTilingInfo &fiaInfo) c
                             fiaInfo.keyStrides, dimIndex)) &&
                     (dimIndex != 0)),
                     OP_LOGE(fiaInfo.opName,
-                            "In PA BBND scenarios, key only supports non-contiguous "
+                            "In PA BnBsH scenarios, key only supports non-contiguous "
                             "tensors in dimension 0, "
                             "but the first non-contiguous dimension is index %d.",
                             dimIndex),
@@ -1436,34 +1443,79 @@ ge::graphStatus CommonChecker::CheckKVContiguous(const FiaTilingInfo &fiaInfo) c
                             fiaInfo.valueStrides, dimIndex)) &&
                     (dimIndex != 0)),
                     OP_LOGE(fiaInfo.opName,
-                            "In PA BBND scenarios, value only supports non-contiguous "
+                            "In PA BnBsH scenarios, value only supports non-contiguous "
                             "tensors in dimension 0, "
                             "but the first non-contiguous dimension is index %d.",
                             dimIndex),
                     return ge::GRAPH_FAILED);
     } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD || fiaInfo.kvLayout == FiaLayout::NZ) {
+        const bool supportN2Stride = fiaInfo.npuArch == NpuArch::DAV_3510;
+        OP_CHECK_IF(supportN2Stride &&
+                        ((keyDimNum > 1 && keyShape.GetDim(1) > 1 && fiaInfo.keyStrides != nullptr &&
+                             fiaInfo.keyStrides->GetDimNum() > 1 && fiaInfo.keyStrides->GetStride(1) <= 0) ||
+                         (valueDimNum > 1 && valueShape.GetDim(1) > 1 && fiaInfo.valueStrides != nullptr &&
+                             fiaInfo.valueStrides->GetDimNum() > 1 && fiaInfo.valueStrides->GetStride(1) <= 0)),
+                    OP_LOGE(fiaInfo.opName, "The key/value cache stride of dimension 1 must be greater than 0."),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
                         CheckTensorContiguous(keyDimNum, keyShape,
                             fiaInfo.keyStrides, dimIndex)) &&
-                    (dimIndex != 0 && dimIndex != 1)),
+                    (dimIndex != 0 && (!supportN2Stride || dimIndex != 1))),
                     OP_LOGE(fiaInfo.opName,
                             "In PA BNBD/NZ scenarios, key only supports non-contiguous "
-                            "tensors in dimensions 0 or 1, "
+                            "tensors in dimension 0%s, "
                             "but the first non-contiguous dimension is index %d.",
-                            dimIndex),
+                            supportN2Stride ? " or 1" : "", dimIndex),
                     return ge::GRAPH_FAILED);
         OP_CHECK_IF(((ge::GRAPH_SUCCESS !=
                         CheckTensorContiguous(valueDimNum, valueShape,
                             fiaInfo.valueStrides, dimIndex)) &&
-                    (dimIndex != 0 && dimIndex != 1)),
+                    (dimIndex != 0 && (!supportN2Stride || dimIndex != 1))),
                     OP_LOGE(fiaInfo.opName,
                             "In PA BNBD/NZ scenarios, value only supports non-contiguous "
-                            "tensors in dimensions 0 or 1, "
+                            "tensors in dimension 0%s, "
                             "but the first non-contiguous dimension is index %d.",
-                            dimIndex),
+                            supportN2Stride ? " or 1" : "", dimIndex),
                     return ge::GRAPH_FAILED);
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus CommonChecker::CheckKVFullyContiguous(const FiaTilingInfo &fiaInfo) const
+{
+    if (fiaInfo.isTensorV1 || fiaInfo.kvStorageMode == KvStorageMode::TENSOR_LIST) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    const gert::Shape &keyShape = fiaInfo.opParamInfo.key.shape->GetStorageShape();
+    const gert::Shape &valueShape = fiaInfo.opParamInfo.value.shape->GetStorageShape();
+    int32_t dimIndex = 0;
+    OP_CHECK_IF(CheckTensorContiguous(keyShape.GetDimNum(), keyShape, fiaInfo.keyStrides, dimIndex) !=
+                        ge::GRAPH_SUCCESS ||
+                    CheckTensorContiguous(valueShape.GetDimNum(), valueShape, fiaInfo.valueStrides, dimIndex) !=
+                        ge::GRAPH_SUCCESS,
+                OP_LOGE(fiaInfo.opName,
+                        "Non-contiguous key/value cache is not supported by the selected quantized FIA template."),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus CommonChecker::CheckKVContiguousForQuantMode(const FiaTilingInfo &fiaInfo) const
+{
+    if (enableNonQuant_) {
+        return CheckKVContiguous(fiaInfo);
+    }
+    if (enableFullQuant_) {
+        const bool supportsKvStride =
+            fiaInfo.npuArch == NpuArch::DAV_3510 &&
+            (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT ||
+             fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD);
+        return supportsKvStride ? CheckKVContiguous(fiaInfo) : CheckKVFullyContiguous(fiaInfo);
+    }
+    if (enableAntiQuant_) {
+        return CheckKVFullyContiguous(fiaInfo);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1525,8 +1577,7 @@ ge::graphStatus CommonChecker::CheckMultiParaConsistency(const FiaTilingInfo &fi
         return ge::GRAPH_FAILED;
     }
 
-    if (fiaInfo.socVersion != platform_ascendc::SocVersion::ASCEND910B &&
-        enableNonQuant_ && CheckKVContiguous(fiaInfo) != ge::GRAPH_SUCCESS) {
+    if (CheckKVContiguousForQuantMode(fiaInfo) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

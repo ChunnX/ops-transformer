@@ -224,13 +224,76 @@ ge::graphStatus FiaInfoParser::GetOpName()
 
 ge::graphStatus FiaInfoParser::GetStrides()
 {
-    // 用opbase版本判断，老版本opbase为tensorv1
-    if (context_->InputIsView(KEY_INDEX) == false) {
+    auto isContiguous = [](const gert::Shape &shape, const gert::Stride *strides) {
+        if (strides == nullptr) {
+            return true;
+        }
+        if (strides->GetDimNum() < shape.GetDimNum()) {
+            return false;
+        }
+        uint64_t expectedStride = 1;
+        for (int32_t i = static_cast<int32_t>(shape.GetDimNum()) - 1; i >= 0; --i) {
+            if (shape.GetDim(i) != 1 && strides->GetStride(i) != expectedStride) {
+                return false;
+            }
+            expectedStride *= static_cast<uint64_t>(shape.GetDim(i));
+        }
+        return true;
+    };
+
+    // TensorList kernels still use contiguous address calculation. IgnoreContiguous is enabled only to carry
+    // PageAttention cache strides, so reject TensorList views instead of forwarding unsupported strides.
+    if (kvStorageMode_ == KvStorageMode::TENSOR_LIST) {
+        for (uint32_t i = 0; i < kCache_.size(); ++i) {
+            const gert::Stride *keyStride = context_->GetDynamicInputStride(KEY_INDEX, i);
+            const gert::Stride *valueStride = context_->GetDynamicInputStride(VALUE_INDEX, i);
+            OP_CHECK_IF(!isContiguous(kCache_[i]->GetStorageShape(), keyStride) ||
+                            !isContiguous(vCache_[i]->GetStorageShape(), valueStride),
+                        OPS_REPORT_VECTOR_INNER_ERR(opName_,
+                            "Non-contiguous key/value is not supported in TensorList mode."),
+                        return ge::GRAPH_FAILED);
+        }
         isTensorV1_ = true;
         return ge::GRAPH_SUCCESS;
     }
-    keyStrides_ = context_->GetDynamicInputStride(KEY_INDEX, 0);
-    valueStrides_ = context_->GetDynamicInputStride(VALUE_INDEX, 0);
+
+    // 用opbase版本判断，老版本opbase为tensorv1
+    const bool keyIsView = context_->InputIsView(KEY_INDEX);
+    const bool valueIsView = context_->InputIsView(VALUE_INDEX);
+    if (!keyIsView && !valueIsView) {
+        isTensorV1_ = true;
+        return ge::GRAPH_SUCCESS;
+    }
+
+    auto getContiguousStrides = [](const gert::StorageShape *storageShape, gert::Stride &strides) {
+        const gert::Shape &shape = storageShape->GetStorageShape();
+        strides.SetDimNum(shape.GetDimNum());
+        uint64_t stride = 1;
+        for (int32_t i = static_cast<int32_t>(shape.GetDimNum()) - 1; i >= 0; --i) {
+            strides.SetStride(i, stride);
+            stride *= static_cast<uint64_t>(shape.GetDim(i));
+        }
+    };
+
+    if (keyIsView) {
+        keyStrides_ = context_->GetDynamicInputStride(KEY_INDEX, 0);
+    } else {
+        getContiguousStrides(opParamInfo_.key.shape, keyContiguousStrides_);
+        keyStrides_ = &keyContiguousStrides_;
+    }
+    if (valueIsView) {
+        valueStrides_ = context_->GetDynamicInputStride(VALUE_INDEX, 0);
+    } else {
+        getContiguousStrides(opParamInfo_.value.shape, valueContiguousStrides_);
+        valueStrides_ = &valueContiguousStrides_;
+    }
+    OP_CHECK_IF(keyStrides_ == nullptr || valueStrides_ == nullptr,
+                OPS_REPORT_VECTOR_INNER_ERR(opName_, "Failed to get key/value strides for TensorV2 inputs."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(keyStrides_->GetDimNum() < opParamInfo_.key.shape->GetStorageShape().GetDimNum() ||
+                    valueStrides_->GetDimNum() < opParamInfo_.value.shape->GetStorageShape().GetDimNum(),
+                OPS_REPORT_VECTOR_INNER_ERR(opName_, "The rank of key/value strides is smaller than the input rank."),
+                return ge::GRAPH_FAILED);
     if (opParamInfo_.keyAntiquantScale.tensor != nullptr || opParamInfo_.valueAntiquantScale.tensor != nullptr) {
         kScaleStrides_ = context_->GetInputStride(KEY_ANTIQUANT_SCALE_INDEX);
         vScaleStrides_ = context_->GetInputStride(VALUE_ANTIQUANT_SCALE_INDEX);

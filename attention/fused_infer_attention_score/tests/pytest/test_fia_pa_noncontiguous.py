@@ -12,13 +12,16 @@
 """
 非量化 kvcache 非连续 stride 传递测试
 
-模板分发 (IsCapable → isReconstructTemp):
+模板分发 (arch35 IsCapable → isReconstructTemp):
   新模板 (FiaTilingNonQuantArch35):
     D=128 且无 pse/sink/padding/prefix/后量化, sparseMode=0/3
     支持 ROPE_COMBINE (D=192)
   老模板 (兼容): 其余场景 (D≠128 非MLA, 非PA等)
 
-非连续规格: BnNBsD/NZ: dim0/dim01; BnBsH: dim0; 非PA: 不允许
+非连续规格:
+  arch22: BnNBsD/NZ/BnBsH 仅 dim0
+  arch35: BnNBsD/NZ 支持 dim0/dim01，BnBsH 仅 dim0
+  所有架构的非 PA 场景均不允许非连续 K/V
 """
 
 import logging, math, random
@@ -29,6 +32,13 @@ logger = logging.getLogger(__name__)
 
 DEVICE_ID = 0
 DTYPE = torch.float16
+DEVICE_NAME = torch.npu.get_device_properties().name
+if "Ascend950" in DEVICE_NAME:
+    DEVICE_ARCH = "arch35"
+elif "Ascend910B" in DEVICE_NAME or "Ascend910_93" in DEVICE_NAME:
+    DEVICE_ARCH = "arch22"
+else:
+    DEVICE_ARCH = "unsupported"
 
 
 def _block_table(batch, seqs_kv, bs):
@@ -53,17 +63,18 @@ def _kv_shape(fmt, total_blocks, bs, d, N_kv, B, kv_seq, q_layout, act_kv):
     raise ValueError(fmt)
 
 
-def _make_kv(shape):
-    torch.manual_seed(100); k = torch.randn(*shape, dtype=DTYPE)
-    torch.manual_seed(200); v = torch.randn(*shape, dtype=DTYPE)
+def _make_kv(key_shape, value_shape=None):
+    value_shape = key_shape if value_shape is None else value_shape
+    torch.manual_seed(100); k = torch.randn(*key_shape, dtype=DTYPE)
+    torch.manual_seed(200); v = torch.randn(*value_shape, dtype=DTYPE)
     return k, v
 
 
-def _make_nc(tensor, nc):
+def _make_nc(tensor, nc, padding=1):
     if nc == "none": return tensor
     pad_dim = 1 if nc == "dim0" else 2
     Bv = tensor.shape[pad_dim]
-    shp = list(tensor.shape); shp[pad_dim] = Bv + 1
+    shp = list(tensor.shape); shp[pad_dim] = Bv + padding
     p = torch.zeros(shp, dtype=tensor.dtype, device=tensor.device)
     ws = [slice(None)] * len(tensor.shape); ws[pad_dim] = slice(None, Bv)
     p[tuple(ws)] = tensor
@@ -149,6 +160,8 @@ def _run_one(cfg, expect_pass):
     q_npu=q_bnsd.npu()
 
     kv_shape=_kv_shape(fmt,total_b,bs,d,N_kv,B,kv_seq,ql,act_kv) if pa else _kv_shape("none",total_b,bs,d,N_kv,B,kv_seq,ql,act_kv)
+    value_kv_shape = (_kv_shape(fmt,total_b,bs,dv,N_kv,B,kv_seq,ql,act_kv) if pa else
+                      _kv_shape("none",total_b,bs,dv,N_kv,B,kv_seq,ql,act_kv))
 
     q_rope,k_rope=None,None
     if dr>0:
@@ -166,20 +179,32 @@ def _run_one(cfg, expect_pass):
         else:
             k_rope=torch.randn(B,N_kv,kv_seq,dr,dtype=DTYPE).npu()
 
-    k_ref,v_ref=_make_kv(kv_shape)
+    k_ref,v_ref=_make_kv(kv_shape,value_kv_shape)
     mask_npu = None
     if mask_shape:
         mask_npu = torch.ones(mask_shape, dtype=torch.bool).npu()
     ref_out=_run(q_npu,k_ref.npu(),v_ref.npu(),pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope,d,dr,
                  pre_tok,next_tok,mask_npu,sparse_mode)
 
-    k_nc=_make_nc(k_ref.npu(),nc); v_nc=_make_nc(v_ref.npu(),nc)
+    nc_target=cfg.get("nc_target", "both")
+    k_nc_type=nc if nc_target in ("key", "both") else "none"
+    v_nc_type=nc if nc_target in ("value", "both") else "none"
+    k_nc=_make_nc(k_ref.npu(),k_nc_type,cfg.get("key_padding",1))
+    v_nc=_make_nc(v_ref.npu(),v_nc_type,cfg.get("value_padding",1))
     k_rope_nc=_make_nc(k_rope,nc) if dr>0 and nc!="none" else k_rope
     if nc!="none":
-        cs=_cstrides(k_nc.shape)
-        assert k_nc.stride(0)!=cs[0],f"{cfg['id']}:dim0"
-        if nc=="dim01": assert k_nc.stride(1)!=cs[1],f"{cfg['id']}:dim1"
+        if k_nc_type != "none":
+            cs=_cstrides(k_nc.shape)
+            assert k_nc.stride(0)!=cs[0],f"{cfg['id']}:key-dim0"
+            if nc=="dim01": assert k_nc.stride(1)!=cs[1],f"{cfg['id']}:key-dim1"
+        if v_nc_type != "none":
+            cs=_cstrides(v_nc.shape)
+            assert v_nc.stride(0)!=cs[0],f"{cfg['id']}:value-dim0"
+            if nc=="dim01": assert v_nc.stride(1)!=cs[1],f"{cfg['id']}:value-dim1"
         logger.info(f"  k contig={k_nc.is_contiguous()} stride={k_nc.stride()}")
+        logger.info(f"  v contig={v_nc.is_contiguous()} stride={v_nc.stride()}")
+        if cfg.get("expect_different_stride", False):
+            assert k_nc.stride(0) != v_nc.stride(0), f"{cfg['id']}:same-stride0"
 
     if not expect_pass:
         with pytest.raises(Exception) as ei:
@@ -200,6 +225,11 @@ NEW_NORMAL = [
      "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
     {"id":"NEW-BnNBsD-dim0",   "B":2,"N_q":2,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"TND","nc":"dim0",
      "kv_seq":1536,"bs":256,"q_seq":6,"d":128,"act_q":[3,6]},
+    {"id":"NEW-BnNBsD-key-only-dim0", "B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim0",
+     "nc_target":"key","kv_seq":1024,"bs":256,"q_seq":4,"d":128},
+    {"id":"NEW-BnNBsD-different-stride0", "B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BSND","nc":"dim0",
+     "key_padding":1,"value_padding":3,"expect_different_stride":True,
+     "kv_seq":1024,"bs":256,"q_seq":4,"d":128},
     {"id":"NEW-BnNBsD-dim01",  "B":1,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BSND","nc":"dim01",
      "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
     # BnBsH
@@ -207,6 +237,8 @@ NEW_NORMAL = [
      "kv_seq":2048,"bs":512,"q_seq":4,"d":128},
     {"id":"NEW-BnBsH-dim0",    "B":3,"N_q":6,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"TND","nc":"dim0",
      "kv_seq":2304,"bs":384,"q_seq":4,"d":128,"act_q":[2,4,3]},
+    {"id":"NEW-BnBsH-value-only-dim0", "B":2,"N_q":4,"N_kv":2,"pa":True,"fmt":"BnBsH","ql":"BSND","nc":"dim0",
+     "nc_target":"value","kv_seq":1024,"bs":256,"q_seq":4,"d":128},
     # NZ
     {"id":"NEW-NZ-contig",     "B":1,"N_q":2,"N_kv":1,"pa":True,"fmt":"NZ","ql":"BNSD","nc":"none",
      "kv_seq":2560,"bs":512,"q_seq":4,"d":128},
@@ -276,11 +308,20 @@ OLD_ERROR = [
 ALL_NORMAL = NEW_NORMAL + OLD_NORMAL
 ALL_ERROR  = NEW_ERROR  + OLD_ERROR
 
+
+def _normal_case_should_pass(cfg):
+    # arch22 only consumes dim0 cache stride; arch35 additionally consumes dim1 for BnNBsD/NZ.
+    return not (DEVICE_ARCH == "arch22" and cfg["nc"] == "dim01" and cfg["fmt"] in ("BnNBsD", "NZ"))
+
+
+@pytest.mark.skipif(DEVICE_ARCH == "unsupported", reason=f"unsupported NPU: {DEVICE_NAME}")
 @pytest.mark.parametrize("cfg", ALL_NORMAL, ids=[c["id"] for c in ALL_NORMAL])
 def test_normal(cfg):
     logger.info(f"\n[NORMAL] {cfg['id']}")
-    _run_one(cfg, expect_pass=True)
+    _run_one(cfg, expect_pass=_normal_case_should_pass(cfg))
 
+
+@pytest.mark.skipif(DEVICE_ARCH == "unsupported", reason=f"unsupported NPU: {DEVICE_NAME}")
 @pytest.mark.parametrize("cfg", ALL_ERROR, ids=[c["id"] for c in ALL_ERROR])
 def test_error(cfg):
     logger.info(f"\n[ERROR]  {cfg['id']}")
@@ -292,7 +333,7 @@ if __name__ == '__main__':
     logger.info(f"老模板正例={len(OLD_NORMAL)} 异常={len(OLD_ERROR)}")
     ok = True
     for c in ALL_NORMAL:
-        try: _run_one(c, True); logger.info(f"  PASS")
+        try: _run_one(c, _normal_case_should_pass(c)); logger.info(f"  PASS")
         except Exception as e: logger.info(f"  FAIL: {e}"); ok = False
     for c in ALL_ERROR:
         try: _run_one(c, False); logger.info(f"  PASS")
