@@ -524,6 +524,10 @@ ge::graphStatus LIInfoParser::CheckShapeDim()
 // 非PA_BBND时，所有轴都必须连续
 ge::graphStatus LIInfoParser::CheckKeyContiguous() const
 {
+    if (npuArch_ != NpuArch::DAV_3510) {
+        return ge::GRAPH_SUCCESS; // AutoContiguous
+    }
+
     bool keyNonContiguous = false;
     // PA_BBND: 0轴允许非连续，从1轴开始检查；非PA_BBND: 从0轴开始检查
     // PA_BBND: axis 0 allows non-contiguous, check starts from axis 1
@@ -547,15 +551,9 @@ ge::graphStatus LIInfoParser::CheckKeyContiguous() const
         }
     }
 
-    if (npuArch_ == NpuArch::DAV_3510) {
-        OP_CHECK_IF(keyNonContiguous,
-            OP_LOGE(opName_, "key only support non-continuous keying on the 0-axis."),
-            return ge::GRAPH_FAILED);
-    } else {
-        OP_CHECK_IF(keyNonContiguous,
-            OP_LOGE(opName_, "non-continuous keying is not supported."),
-            return ge::GRAPH_FAILED);
-    }
+    OP_CHECK_IF(keyNonContiguous,
+        OP_LOGE(opName_, "key only support non-continuous keying on the 0-axis."),
+        return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
