@@ -186,7 +186,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
   };
 
   allToAllScaleA_.Init(udmaCtx_, teamBarrier_, commTilingDataScaleA_, baseParams_.scaleAGm, commScaleBuf.Get(),
-    baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()), baseParams_.rankSize * rankDataBytes);
+    baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()), baseParams_.rankSize * baseParams_.rankDataBytes);
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
@@ -250,7 +250,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
   baseParams_.scaleKaSize = CeilDiv(baseParams_.axisKa, Blaze::Gemm::MXFP_DIVISOR_SIZE) * Blaze::Gemm::MXFP_MULTI_BASE_SIZE;
 
   // 计算地址偏移所需的参数
-  baseParams_.rankDataBytes = baseParams_.axisM * baseParams_.axisKa * sizeOf(AType);
+  baseParams_.rankDataBytes = baseParams_.axisM * baseParams_.axisKa * sizeof(AType);
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
