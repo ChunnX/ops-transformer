@@ -132,7 +132,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v1_bw_mask = ascend_ub.GetWithOffset<float>(2048, 55296);
   auto v1_bw_rg = ascend_ub.GetWithOffset<float>(2048, 63488);
   auto v1_bw_dw = ascend_ub.GetWithOffset<float>(32, 196224);
-  auto v1_bw_rg_half_slots = ascend_ub.GetWithOffset<half>(4096, 37376);
+  auto v1_bw_rg_half_slots = ascend_ub.GetWithOffset<half>(8192, 37376);
   auto v1_bw_log_p = ascend_ub.GetWithOffset<float>(64, 512);
   auto v1_bw_log_sy = ascend_ub.GetWithOffset<float>(64, 768);
   auto v1_bw_loss = ascend_ub.GetWithOffset<float>(64, 1024);
@@ -518,12 +518,12 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               tl::ascend::reduce_sum<float,  32,  64,  -1>(v1_bw_dw[0], v1_bw_bmm2_slots[(bw_col_id * 2048)], tmp_ub[0], true);
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::Add(v1_bw_dw_accum[0], v1_bw_dw_accum[0], v1_bw_dw[0], 32);
-              AscendC::Cast(v1_bw_rg_half_slots[(bw_col_id * 2048)], v1_bw_rg[0], AscendC::RoundMode::CAST_RINT, 2048);
+              AscendC::Cast(v1_bw_rg_half_slots[(bw_col_id * 4096)], v1_bw_rg[0], AscendC::RoundMode::CAST_RINT, 2048);
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(bw_col_id);
               AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(bw_col_id);
               AscendC::PipeBarrier<PIPE_MTE3>();
-              tl::ascend::copy_ub_to_gm<half, 64, 32>(reluGradRes[((((((pipe_iter * 3145728) + (cid * 131072)) + (vid * 65536)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 3145728)], v1_bw_rg_half_slots[(bw_col_id * 2048)], 2048, 32, 64);
+              tl::ascend::copy_ub_to_gm<half, 64, 32>(reluGradRes[((((((pipe_iter * 3145728) + (cid * 131072)) + (vid * 65536)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 3145728)], v1_bw_rg_half_slots[(bw_col_id * 4096)], 2048, 32, 64);
               AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(bw_col_id);
               if ((n_idx_4 % 2) == vid) {
                 AscendC::Max(v1_bw_p_slots[(bw_col_id * 64)], v1_bw_p_slots[(bw_col_id * 64)], v1_bw_eps[0], 64);
