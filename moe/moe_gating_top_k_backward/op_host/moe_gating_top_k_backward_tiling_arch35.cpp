@@ -19,8 +19,6 @@
 
 namespace optiling {
 // Attribute constants
-const static int64_t RENORM_TYPE_ONE = 1; // Re-norm before top K
-const static int64_t NORM_TYPE_SOFTMAX = 0;
 const static int64_t NORM_TYPE_SIGMOID = 1;
 
 // Tensor dimensions
@@ -133,8 +131,8 @@ private:
     int64_t expertCount_ = 0;
     int64_t k_ = 0;
     int64_t gradYDtypeSize_ = 0;
-    int64_t renorm_ = RENORM_TYPE_ONE;
-    int64_t normType_ = NORM_TYPE_SOFTMAX;
+    int64_t renorm_ = 0;
+    int64_t normType_ = NORM_TYPE_SIGMOID;
     float routedScalingFactor_ = 1.0f;
     float eps_ = 1e-20f;
 };

@@ -2,7 +2,7 @@
   "op_type": "MoeGatingTopKBackward",
   "op_list": [
     {
-      "bin_filename": "MoeGatingTopKBackward_4708ba7dcda00ec17af8b34b182a02cf",
+      "bin_filename": "MoeGatingTopKBackward_ec5e49a0ae6cde7bb103f8204c5aedef",
       "inputs": [
         {
           "name": "x_norm",
@@ -52,7 +52,7 @@
         {
           "name": "norm_type",
           "dtype": "int",
-          "value": 0
+          "value": 1
         },
         {
           "name": "routed_scaling_factor",
@@ -67,7 +67,7 @@
       ]
     },
     {
-      "bin_filename": "MoeGatingTopKBackward_a06f0921a94fd6904fcdfe16f9e89cd5",
+      "bin_filename": "MoeGatingTopKBackward_9e334206921f8701016ec277b4b448db",
       "inputs": [
         {
           "name": "x_norm",
@@ -117,7 +117,7 @@
         {
           "name": "norm_type",
           "dtype": "int",
-          "value": 0
+          "value": 1
         },
         {
           "name": "routed_scaling_factor",
@@ -132,7 +132,7 @@
       ]
     },
     {
-      "bin_filename": "MoeGatingTopKBackward_f97c3ead22c502eeb923c0d308230cfd",
+      "bin_filename": "MoeGatingTopKBackward_90c019d28d6e3d04a226dd11a12abbfd",
       "inputs": [
         {
           "name": "x_norm",
@@ -182,7 +182,7 @@
         {
           "name": "norm_type",
           "dtype": "int",
-          "value": 0
+          "value": 1
         },
         {
           "name": "routed_scaling_factor",
