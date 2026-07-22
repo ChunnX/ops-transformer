@@ -14,6 +14,7 @@
  */
 
 #include "./arch35/moe_gating_top_k_backward.h"
+#include "./arch35/moe_gating_top_k_backward_struct.h"
 using namespace AscendC;
 using namespace MoeGatingTopKBackwardNs;
 
@@ -27,8 +28,9 @@ extern "C" __global__ __aicore__ void moe_gating_top_k_backward(GM_ADDR xNorm, G
         return;
     }
 
-    GET_TILING_DATA_WITH_STRUCT(MoeGatingTopKBackwardTilingData, tilingData, tiling);
-    const MoeGatingTopKBackwardTilingData *__restrict t = &tilingData;
+    REGISTER_TILING_DEFAULT(MoeGatingTopKBackwardA5TilingData);
+    GET_TILING_DATA_WITH_STRUCT(MoeGatingTopKBackwardA5TilingData, tilingData, tiling);
+    const MoeGatingTopKBackwardA5TilingData *__restrict t = &tilingData;
     TPipe tPipe;
 
     if (TILING_KEY_IS(TILING_KEY_REGBASE)) {

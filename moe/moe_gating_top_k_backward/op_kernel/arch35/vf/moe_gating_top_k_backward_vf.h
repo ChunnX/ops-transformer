@@ -244,11 +244,10 @@ __simd_vf__ void SigmoidRenormBackwardVF(__ubuf__ float *xNormBase, __ubuf__ int
 
             MicroAPI::RegTensor<int32_t> idxReg;
             MicroAPI::RegTensor<uint32_t> idxU32Reg;
-            MicroAPI::RegTensor<float> wPrimeReg, gradYReg;
+            MicroAPI::RegTensor<float> gradYReg;
 
             MicroAPI::LoadAlign(idxReg, idxRow + chunkOffset);
             idxU32Reg = (MicroAPI::RegTensor<uint32_t> &)idxReg;
-            MicroAPI::DataCopyGather(wPrimeReg, xNormRow, idxU32Reg, chunkMask);
             MicroAPI::LoadAlign(gradYReg, gradYRow + chunkOffset);
 
             // Broadcast the row-global invD/beta (lane0) to every lane of this chunk.
