@@ -290,7 +290,7 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<
         GlobalTensor<int32_t> actualSeqQLen;
         actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)actualSeqQlenAddr);
         this->queryGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->gSize, sharedParams->dSize,
-                                            actualSeqQLen, sharedParams->actualSeqLengthsSize);
+                                             actualSeqQLen, sharedParams->seqUsedQlenSize);
     }
 }
 
