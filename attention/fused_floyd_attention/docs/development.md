@@ -52,6 +52,13 @@
 ## 进度安排
 
 1. ATK工具调试方法封装（1.5人天）：ATK工具中使用printf和dumptensor，并封装成skill以供后续agent调试参考，不然每次调试不规范又开始摸索很浪费时间。
+
+    20260722
+    - 测试A3上ATK使用printf和dumptensor功能正常，并封装skill；
+    - 适配A5上能跑通的FFA程序（注释会阻塞部分），用于测试调试功能，适配过程中agent识别A5上matmul高阶api在特定layout和LIMIT_CFG情况下会导致卡死；
+    - 基于封装的skill，测试A5上cannsim使用printf和dumptensor功能正常；
+    - 基于仿真测试的代码，上板测试A5上ATK使用printf和dumptensor，agent定位出ATK 测试时因 LD_LIBRARY_PATH 优先级问题导致加载了 CANN 标准库而非自定义算子库的问题，通过 export LD_PRELOAD=/path/to/libcust_opapi.so 强制加载自定义库解决了 ascend950 SoC 版本验证失败的问题，问题解决后printf和dumptensor功能正常；
+
 2. matmul高阶API适配（3人天）：理解matmul高阶API在A3中的行为，基于mc2的使用示例明确A5可行操作，使用agent对高阶api进行适配，另外得先明确高阶api的tiling运行报错的原因。
 3. 基础API适配（5-9人天）：将高阶API主指令映射到基础API，将高阶API封装的同步关系单独配置，根据主指令映射关系配置API参数。目前感觉比较稳定的方式是分段验证，用单基本块C1V1C2V2分步进行，按每个步骤2天来算，根据V侧高阶API能否直接使用需要4-8天。
 4. STC用例调试（2+人天）：用agent对STC中不通过的用例进行调试，必要情况转回黄区用model根据日志调试。
