@@ -1,140 +1,137 @@
-# Contribution Guide #
+# Contribution Guide
 
-Developers are welcome to experience this project and contribute before contributing to the community. For details, see[cann-community](https://gitcode.com/cann/community)	Understand the Code of Conduct, sign the CLA agreement, and understand the contribution process of the source code repository.
+This project welcomes developers to experience and participate in contributions. Before participating in community contributions, see [cann-community](https://gitcode.com/cann/community) to understand the code of conduct, sign the CLA agreement, and understand the contribution process of the source code repository.
 
-When preparing local code and submitting a PR, developers need to pay attention to the following points:
+Developers need to pay attention to the following points when preparing local code and submitting PRs:
 
-1.  When submitting the PR, please fill in the business background, purpose, and solution of the PR according to the PR template.
-2.  If the modification involves new features, interfaces, configuration parameters, or code process, the solution must be discussed in the Issue first to prevent your code from being rejected. If you are not sure whether this change can be classified as a "simple bug fix", you can also submit an issue for solution discussion.
+1. When submitting a PR, fill in the business background, purpose, and solution of the PR carefully according to the PR template.
+2. If your modification is not a simple bug fix but involves adding new features, new interfaces, new configuration parameters, or modifying code flow, submit an Issue for solution discussion first to avoid your code being rejected. If you are unsure whether your modification can be classified as a "simple bug fix," you can also submit an Issue for solution discussion.
 
-Developers contribute in the following scenarios:
+Developer contribution scenarios mainly include:
 
-## 1. Contribution new operators ##
+## 1. Contributing New Operators
 
 The operator development contribution process is as follows:
 
-![算子开发贡献流程](./docs/zh/figures/算子开发贡献流程.png)	
+<!-- ![Operator Development Contribution Process](./docs/en/figures/算子开发贡献流程.png "Operator Development Contribution Process Diagram") -->
 
-If you want to design and implement new operators based on the NPU, please provide your ideas and design solutions in the Issue. The complete contribution process is as follows:
+If you have a brand-new operator that you want to design and implement based on NPU, welcome to propose your idea and design solution in an Issue. The complete contribution process is as follows:
 
-### 1. Create an issue requirement. ###
+### 1. Create an Issue Requirement
 
-Newly created`Requirement|需求建议`Class Issue, and clarify the design scheme of the new additional operator. Generally, an issue contains the following information:
+Create a `Requirement|Requirement Suggestion` type Issue and describe the design solution for the new operator. The Issue generally needs to include the following content:
 
- *  **Background information**
- *  **Value/Function**
- *  **Design scheme**
+- **Background Information**
+- **Value/Role**
+- **Design Solution**
 
-Please comment on the submitted issue.`/assign @yourself`Claim the task.
+Comment `/assign @yourself` in the submitted Issue to claim the task.
 
-### 2. Requirement review ###
+### 2. Requirement Review
 
-The SIG team will assign the committer to review the issue and provide the modification suggestions. After the modification is complete, set @ in Issue to the committer.
+The Sig group will assign a Committer to review your submitted Issue and provide feedback. After completing the modifications, @ the corresponding Committer in the Issue.
 
-if a request is accept,[SIG members](https://gitcode.com/cann/community/blob/master/CANN/sigs/ops-transformer/README.md)	The appropriate operator classification path will be assigned to you (e.g.`experimental/attention`), please submit the contributed operator to`experimental`Indicates the operator category directory.
+If the requirement is accepted, [sig members](https://gitcode.com/cann/community/blob/master/CANN/sigs/ops-transformer/README.md) will assign an appropriate operator classification path for you (such as `experimental/attention`). Submit the contributed operator to the `experimental` corresponding operator classification directory.
 
-### 3. Submit the PR. ###
+### 3. PR Submission
 
-The following table lists the deliverables of the simplified ecosystem operator.
+The minimum operator deliverables for the ecosystem are as follows:
 
+```text
+${op_class}                                          # Operator classification
+├── ${op_name}                                       # Operator name
+│   ├── ${op_name}.cpp                               # Operator Kernel implementation file
+│   └── tests
+│   │   ├── test_${op_name}.py                       # Operator test file
+│   ├── CMakeLists.txt                               # Operator compilation configuration file
+│   ├── README.md                                    # Operator README document
 ```
-${op_class}                                          #Operator Category
-├── ${op_name}                                       #Operator name
-│   ├── ${op_name}.cpp                               #Kernel implementation file of the operator.
-│   └── tests                                        
-│   │   ├── test_${op_name}.py                       #Operator test file
-│   ├── CMakeLists.txt                               #Operator compilation configuration file
-│   ├── README.md                                    #Operator README Document
-```
 
-Requirements for PR inventory:
+PR submission requirements:
 
- *  Code deliverables: Operator Kernel implementation, operator test files, and development process reference must be provided.[fast_kernel_launch_example](examples/fast_kernel_launch_example/README.md)	.
- *  Document deliverables: The README document is mandatory. Other documents can be provided as required. Document Writing Template and Specifications[Document Contribution Guide](docs/CONTRIBUTING_DOCS.md)	.
- *  Compliance Check:
-    
-     *  Whether the code complies with the[C++ Programming Specifications](https://gitcode.com/cann/community/blob/master/contributor/coding-standards/C++%20Coding%20standards.md)	"
-     *  Check whether the code is compiled successfully.
-     *  Check whether the Markdown document syntax complies with the specifications.
- *  Contribution Directory: Submit the contribution to the specified directory according to the comments of the SIG members.`experimental/${op_class}`For details, see the rules for storing existing operator files.
- *  PR submission: approved`git`Submit the PR of the target branch and check whether the PR title is clear and whether the PR description is standard. (Specify the change content and reason, and whether the change is associated with the corresponding issue.) 2. Whether the CLA is signed.
+- Code deliverables: Provide the operator Kernel implementation and operator test file. For the development process, refer to [fast_kernel_launch_example](examples/fast_kernel_launch_example/README_en.md).
+- Document deliverables: The operator README document is required, and other documents can be provided as needed. For document writing templates and specifications, refer to the [Document Contribution Guide](docs/CONTRIBUTING_DOCS_en.md).
+- Compliance check:
+  - Whether the code conforms to the [C++ Coding Standards](https://gitcode.com/cann/community/blob/master/contributor/coding-standards/C++%20Coding%20standards.md)
+  - Whether the code compiles successfully
+  - Whether the Markdown document syntax conforms to specifications
+- Contribution directory: Submit to the specified directory `experimental/${op_class}` according to the sig member's opinion. Refer to the existing operator file placement rules.
+- PR submission: Submit the target branch PR through `git` commands. Check whether the PR title is clear, whether the PR description is standard (specify the change content and reason, whether it is associated with the corresponding Issue), and whether the CLA is signed.
 
-If you want to contribute project standard operators whose deliverables are richer than ecosystem operators, including Kernel and Tiling implementation, see.[Appendixes](#appendixes)	.
+If you want to contribute project standard operators, the deliverables are more comprehensive than ecosystem operators, including Kernel, Tiling implementation, and so on. For contribution guidance, refer to [Appendix](#appendix).
 
-### 4. CI access control ###
+### 4. CI Gate
 
-Through the comments`compile`The command triggers the open source warehouse access control and modifies the open source warehouse access control based on the CI test result. Currently, the CI access control includes the following check items:
+Trigger the open-source repository gate by commenting the `compile` command, and make modifications based on the CI detection results. Currently, the CI gate includes the following check items:
 
- *  Code compilation
- *  Static check (If the code check is incorrectly reported, submit it to the SIG members for shielding.)
- *  UT test
- *  Smoke test
+- Code compilation
+- Static check (if codecheck false positives are involved, submit them to sig members for shielding)
+- UT testing
+- Smoke testing
 
-After the access control is passed, click @ Assigned Committer in the associated issue.
+After the gate passes, @ the assigned Committer in the associated Issue.
 
-### 5. Committer review ###
+### 5. Committer Review
 
-The committer will provide review comments after the review. Modify the committer based on the comments. After the review is complete, @ the assigned committer.
+The Committer will provide review feedback after the review. Modify according to the feedback, and then @ the assigned Committer after completion.
 
-### 6. Integrate the maintainer. ###
+### 6. Maintainer Merge
 
-Mark the committer after the committer passes the review.`/lgtm`Label. Maintainer will conduct a final review within 1 day and will label after confirming that there are no problems`/approve`Labels are incorporated into the PR.
+After the Committer review passes, mark the `/lgtm` label. The Maintainer will conduct the final review within 1 day. After confirming no issues, mark the `/approve` label and merge the PR.
 
-## 2. Operator bug fixing ##
+## 2. Operator Bug Fix
 
-If you find some operator bugs in this project and want to fix them, you are welcome to create an issue for feedback and tracking.
+If you find certain operator bugs in this project and want to fix them, welcome to create a new Issue for feedback and tracking.
 
-You can follow the[Submit Issue/Handle Issue Task](https://gitcode.com/cann/community#提交Issue处理Issue任务)	Guide New`Bug-Report|缺陷反馈`Class Issue describes the bug, and then assigns the issue to you by entering "/assign" or "/assign @yourself" in the comment box.
+Follow the [Submit Issue/Process Issue Task](https://gitcode.com/cann/community#提交Issue处理Issue任务) guide to create a `Bug-Report|Bug Feedback` type Issue to describe the bug, then enter "/assign" or "/assign @yourself" in the comment box to assign the Issue to yourself for processing.
 
-## 3. Operator optimization ##
+## 3. Operator Optimization
 
-If you want to enhance the generalization or optimize the performance of some operators in this project, you are welcome to contribute to the operator optimization.
+If you have ideas for generalization enhancement or performance optimization for certain operator implementations in this project and want to implement these optimization points, welcome to contribute operator optimizations.
 
-You can follow the[Submit issue/handle issue task](https://gitcode.com/cann/community#提交Issue处理Issue任务)	Guide New`Requirement|需求建议`Class Issue describes the optimization points and provides your design scheme. Then enter "/assign" or "/assign @yourself" in the comment box to assign the issue to you for tracking optimization.
+Follow the [Submit Issue/Process Issue Task](https://gitcode.com/cann/community#提交Issue处理Issue任务) guide to create a `Requirement|Requirement Suggestion` type Issue to describe the optimization points and provide your design solution, then enter "/assign" or "/assign @yourself" in the comment box to assign the Issue to yourself for tracking optimization.
 
-## 4. Document error correction ##
+## 4. Document Correction
 
-If you find errors in the operator document, create an issue to provide feedback and fix the errors. For details, see.[Document Contribution Guide](docs/CONTRIBUTING_DOCS.md)	.
+If you find certain operator document description errors in this project, welcome to create a new Issue for feedback and correction. For document specifications, refer to the [Document Contribution Guide](docs/CONTRIBUTING_DOCS_en.md).
 
-You can follow the[Submit Issue/Handle Issue Task](https://gitcode.com/cann/community#提交Issue处理Issue任务)	Guide New`Documentation|文档反馈`Class Issue indicates the problem with the corresponding document, and then assigns the issue to you by typing "/assign" or "/assign @yourself" in the comment box to correct the corresponding document description.
+Follow the [Submit Issue/Process Issue Task](https://gitcode.com/cann/community#提交Issue处理Issue任务) guide to create a `Documentation|Document Feedback` type Issue to point out the corresponding document problem, then enter "/assign" or "/assign @yourself" in the comment box to assign the Issue to yourself to correct the corresponding document description.
 
-## 5. Help resolve others' issues. ##
+## 5. Help Resolve Others' Issues
 
-If you have a solution to the problem encountered by others in the community, you are welcome to comment on the issue to help others solve the problem and pain points and jointly optimize the usability.
+If you have appropriate solutions for issues encountered by others in the community, welcome to comment and discuss in the Issue to help others solve problems and pain points, and jointly improve usability.
 
-If the code of the corresponding issue needs to be modified, you can enter /assign or /assign @yourself in the Issue comment box to assign the issue to you and track and solve the problem.
+If the corresponding Issue requires code modification, enter "/assign" or "/assign @yourself" in the Issue comment box to assign the Issue to yourself for tracking and assisting in solving the problem.
 
-## Appendixes ##
+## Appendix
 
 The project standard operator deliverables are as follows:
 
-```
-${op_class}                                          #Operator Category
-├── ${op_name}                                       #Operator name
-│   ├── op_host                                      #Operator definition and Tiling implementation
-│   │   ├── ${op_name}_def.cpp                       #Operator definition file
-│   │   ├── ${op_name}_tiling.cpp                    #Implementation file of the Tiling operator
+```text
+${op_class}                                          # Operator classification
+├── ${op_name}                                       # Operator name
+│   ├── op_host                                      # Operator definition, Tiling-related implementation
+│   │   ├── ${op_name}_def.cpp                       # Operator definition file
+│   │   ├── ${op_name}_tiling.cpp                    # Operator Tiling implementation file
 │   │   └── CMakeLists.txt
-│   ├── op_kernel                                    #Operator Kernel Directory
-│   │   ├── ${op_name}.cpp                           #Kernel entry file, which contains the main function and scheduling logic.
-│   │   ├── ${op_name}.h                             #Kernel implementation file, which defines the kernel header file, including the function description, structure definition, and logic implementation.
-│   │   ├── ${op_name}_tiling_data.h                 #TilingData file, which stores configuration information about the Tiling policy.
-│   │   └── ${op_name}_tiling_key.h                  #TilingKey file, which defines the key of the Tiling policy and identifies different division modes.
-│   ├── CMakeLists.txt                               #Operator compilation configuration file. Retain the original file.
-│   └── README.md                                    #Operator Description Document
-│   └── tests                                        #Operator test file
-│   │   ├── ut                                       #Operator UT test file
+│   ├── op_kernel                                    # Operator Kernel directory
+│   │   ├── ${op_name}.cpp                           # Kernel entry file, including main function and scheduling logic
+│   │   ├── ${op_name}.h                             # Kernel implementation file, defining Kernel header file, including function description, structure definition, logic implementation
+│   │   ├── ${op_name}_tiling_data.h                 # TilingData file, storing Tiling strategy-related configuration information
+│   │   └── ${op_name}_tiling_key.h                  # TilingKey file, defining the key of the Tiling strategy, identifying different partitioning methods
+│   ├── CMakeLists.txt                               # Operator compilation configuration file, keep the original file
+│   └── README.md                                    # Operator description document
+│   └── tests                                        # Operator test file
+│   │   ├── ut                                       # Operator UT test file
 ```
 
-Requirements for PR inventory:
+PR submission requirements:
 
- *  Code deliverables: Tiling implementation of the op_host operator, Kernel implementation of the op_kernel operator, and UT test file of the operator must be provided. For details about the development process, see.[Operator Development Guide](docs/zh/develop/aicore_develop_guide.md)	.
- *  Document deliverables: The README document is mandatory. Other documents can be provided as required. For details about the document writing template and specifications, see.[Document Contribution Guide](docs/CONTRIBUTING_DOCS.md)	.
- *  Compliance Check:
-    
-     *  Whether the code complies with the[C++ Programming Specifications](https://gitcode.com/cann/community/blob/master/contributor/coding-standards/C++%20Coding%20standards.md)	Check whether the standard operator basic programming specifications are complied with.
-     *  Check whether the code is compiled successfully.
-     *  Check whether the syntax of the Markdown document complies with the specifications.
- *  Contribution Directory: Submit the contribution to the specified directory according to the comments of the SIG members.`experimental/${op_class}`. For details, see the rules for storing existing operator files.
- *  PR submission: approved`git`Submit the PR of the target branch. Check whether the PR title is clear and whether the PR description is standard. (Specify the change content and reason, and whether the change is associated with the corresponding issue.) 2. Whether the CLA is signed.
-
+- Code deliverables: Provide op_host operator Tiling implementation, op_kernel operator Kernel implementation, and operator UT test file. For the development process, refer to the [Operator Development Guide](docs/en/develop/aicore_develop_guide.md).
+- Document deliverables: The operator README document is required, and other documents can be provided as needed. For document writing templates and specifications, refer to the [Document Contribution Guide](docs/CONTRIBUTING_DOCS_en.md).
+- Compliance check:
+  - Whether the code conforms to the [C++ Coding Standards](https://gitcode.com/cann/community/blob/master/contributor/coding-standards/C++%20Coding%20standards.md) and whether it conforms to the standard operator basic programming specifications
+  - Whether the code compiles successfully
+  - Whether the Markdown document syntax conforms to specifications
+- Contribution directory: Submit to the specified directory `experimental/${op_class}` according to the sig member's opinion. Refer to the existing operator file placement rules.
+- PR submission: Submit the target branch PR through `git` commands. Check whether the PR title is clear, whether the PR description is standard (specify the change content and reason, whether it is associated with the corresponding Issue), and whether the CLA is signed.

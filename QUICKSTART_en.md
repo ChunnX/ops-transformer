@@ -1,200 +1,207 @@
-# Quick Start: Based on the ops-transformer Repository #
+# Quick Start: Based on the ops-transformer Repository
 
-## Instructions for use ##
+## Usage Notice
 
-This guide is designed to help you get started quickly with CANN and`ops-transformer`The operator repository provides simplified software installation, compilation, and running guidance based on the WebIDE or Docker environment. Note that the WebIDE or Docker environment provides the latest version of CANN software package by default, which is CANN 8.5.0.
+This guide helps you quickly get started with CANN and the `ops-transformer` operator repository, providing simplified software installation and compilation/execution guidance **based on WebIDE or Docker environments**. Note that WebIDE or Docker environments provide the **latest commercially released CANN software package** by default, which is currently CANN 8.5.0.
 
-> **Note: If you manually install the CANN package or experience the latest capabilities of the master branch, you can skip the quick start and obtain detailed tutorials by referring to the following guide. This tutorial provides various operation methods in different scenarios to meet diverse service requirements.**
-> 
-> 1.  [Environment Deployment Guide](./docs/zh/context/quick_install.md)	\: provides guidance for setting up the environment in different scenarios, including Docker installation and manual installation of the CANN software package.
-> 2.  [Compilation and Execution Operator Guide](./docs/zh/invocation/quick_op_invocation.md)	\: provides guidelines for compiling and verifying operator packages in different scenarios, for example, offline compilation. This guide provides an in-depth understanding of compilation parameters and invoking methods.
-> 3.  [Operator Development Guide](./docs/zh/develop/aicore_develop_guide.md)	\: This section describes how to customize standard operator development guides, including creating operator projects and implementing Tiling and Kernel.
-> 4.  [Commissioning and Optimization Guide](./docs/zh/debug/op_debug_prof.md)	\: Systematic debugging skills and performance optimization methods in different scenarios.
+> **Note**: If you are manually installing the CANN package or experiencing the latest capabilities of the master branch or other scenarios, you can skip this quick start and refer to the guides below for detailed tutorials. These tutorials provide rich operation methods for different scenarios to meet diverse business requirements.
+>
+> 1. [Environment Deployment Guide](./docs/en/context/quick_install.md): Environment setup guidance for different scenarios, including Docker installation, manual CANN software package installation, and so on.
+> 2. [Compile and Execute Operator Guide](./docs/en/invocation/quick_op_invocation.md): Operator package compilation and verification guidance for different scenarios, such as offline compilation, in-depth understanding of compilation parameters and invocation methods.
+> 3. [Operator Development Guide](./docs/en/develop/aicore_develop_guide.md): Guide for custom development of standard operators, learning to create operator projects from scratch and implement Tiling and Kernel.
+> 4. [Debugging and Tuning Guide](./docs/en/debug/op_debug_prof.md): Systematic debugging techniques and performance optimization methods for different scenarios.
 
-The following figure shows the basic process of operator development and contribution. You are welcome and encouraged to contribute operators in the community to enrich the project ecosystem.
+The basic flow of operator development and contribution is shown in the figure below. You are welcome and encouraged to contribute operators to the community to jointly enrich the project ecosystem.
 
-![算子开发贡献流程](./docs/zh/figures/算子开发贡献流程.png)	
+<!-- ![Operator Development Contribution Process](./docs/en/figures/算子开发贡献流程.png "Operator Development Contribution Process Diagram") -->
 
-To help you quickly understand the entire operator development process, the AddExample operator is used as the practice object. The source file is stored in`ops-transformer/examples/add_example`and perform the following steps:
+To help you quickly understand the full process of operator development, we will use the **AddExample** operator as the practice object. Its source files are located in `ops-transformer/examples/add_example`. The specific operation steps are as follows:
 
-1.  **[Environment installation](#1-environment-installation-either)**	\: Set up the operator development and running environment.
-2.  **[Compilation and deployment](#2-compilation-and-deployment)**	\: Compile and install the custom operator package to quickly invoke operators.
-3.  **[Operator development](#3-operator-development)**	\: Modify the existing operator kernel to experience the complete closed-loop development, compilation, and verification.
-4.  **[Operator commissioning](#4-operator-commissioning)**	\: Have a good command of operator printing and performance collection methods.
-5.  **[Operator Verification](#5-operator-verification)**	\: Learn how to modify the example operator example to verify the function correctness of the operator under different inputs.
+1. **[Environment Installation](#1-environment-installation-choose-one)**: Set up the operator development and runtime environment.
+2. **[Compile and Deploy](#2-compile-and-deploy)**: Compile the custom operator package and deploy the installation to quickly invoke operators.
+3. **[Operator Development](#3-operator-development)**: Modify the existing operator Kernel to experience the complete loop of development, compilation, and verification.
+4. **[Operator Debugging](#4-operator-debugging)**: Learn operator printing and performance data collection methods.
+5. **[Operator Verification](#5-operator-verification)**: Learn how to modify operator example samples to verify the functional correctness of operators under different inputs.
 
-## 1. Environment installation (either) ##
+## 1. Environment Installation (Choose One)
 
-### 1. Environment-free scenario: WebIDE development ###
+### 1. No Environment Scenario: WebIDE Development
 
-For users without any environment, you can directly use the WebIDE development platform, that is, the operator one-stop development platform. The platform provides an online Ascend environment that can run directly. The required software packages are installed in the environment and do not need to be manually installed. For more information about the development platform, see.[LINK](https://gitcode.com/org/cann/discussions/54)	.
+For users without an environment, use the WebIDE development platform directly, which is the "**One-stop Operator Development Platform**". This platform provides an online directly runnable Ascend environment with essential software packages already installed, requiring no manual installation. For more information about the development platform, refer to [LINK](https://gitcode.com/opdevtools/plugin_release).
 
-1.  Go to the ops-transformer open source project and click`云开发`button to log in to the system using an authenticated HUAWEI CLOUD account. If you have not registered or authenticated, register and authenticate the user as prompted.
-    
-    <img src="docs/zh/figures/cloudIDE.png"alt=" cloud platform "width="750px" height="90px">
-2.  Create and start the cloud development environment as prompted, and click`连接>WebIDE`Enter the one-stop operator development platform. By default, open source project resources are stored in the`/mnt/workspace`Under the directory.
-    
-    <img src="docs/zh/figures/webIDE.png"alt=" cloud platform "width="1000px" height="150px">
-3.  Check whether the environment is complete.
-    
-    In the terminal window of the cloud platform, run the following commands to check whether the environment and driver are normal:
-    
-     *  **Checking the NPU**
-        
-        Run the following command. If the driver information is displayed, the mounting is successful.
-        
-        ```
+1. Enter the ops-transformer open-source project, click the "`Cloud Development`" button, and log in with a certified Huawei Cloud account. If not registered or certified, follow the page prompts to register and certify.
+
+   <!-- <img src="docs/en/figures/cloudIDE.png" alt="Cloud Platform" width="750px" height="90px"> -->
+
+2. Follow the page prompts to create and start a cloud development environment. Click "`Connect > WebIDE`" to enter the one-stop operator development platform. The open-source project resources are in the `/mnt/workspace` directory by default.
+
+    <!-- <img src="docs/en/figures/webIDE.png" alt="Cloud Platform" width="1000px" height="150px"> -->
+
+3. Check whether the environment is complete.
+
+    In the cloud platform terminal window, execute the following commands to verify the environment and driver status.
+
+    - **Check NPU Device**
+
+        Execute the following command. If driver-related information is returned, the device has been successfully mounted.
+
+        ```bash
         npu-smi info
         ```
-     *  **Check the CANN version.**
-        
-        Run the following command to check the version information about CANN Toolkit:
-        
-        ```
+
+    - **Check CANN Version**
+
+        Execute the following command to view the CANN Toolkit version information.
+
+        ```bash
         cat /home/developer/Ascend/ascend-toolkit/latest/opp/version.info
         ```
 
-### 2. Scenario with environment: Docker installation ###
+### 2. Existing Environment Scenario: Docker Installation
 
-#### Prerequisite ####
+#### Prerequisites
 
- *  **Docker environment: Atlas A2 (910B) is used as an example. In the environment, the Docker engine (version 1.11.2 or later) has been installed on the host machine.**
- *  **Driver and firmware: The Ascend NPU has been installed on the host machine.**[Driver and firmware](https://www.hiascend.com/hardware/firmware-drivers/community?product=1&model=30&cann=8.0.RC3.alpha002&driver=1.0.26.alpha)	Ascend HDK 24.1.0 or later. For details about the installation guide, see the[CANN Software Installation Guide](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850alpha002/softwareinst/instg/instg_0005.html?Mode=PmIns&OS=openEuler&Software=cannToolKit)	".
-    
-    > **Note: Use the**`npu-smi info`Check the driver and firmware versions.
+* **Docker Environment**: Using Atlas A2 product (910B) as an example, the host machine has already installed the Docker engine (version 1.11.2 or higher).
 
-#### Downloading an Image ####
+* **Driver and Firmware**: The host machine has already installed the Ascend NPU [driver and firmware](https://www.hiascend.com/hardware/firmware-drivers/community?product=1&model=30&cann=8.0.RC3.alpha002&driver=1.0.26.alpha) Ascend HDK version 24.1.0 or higher. For installation guidance, refer to the [CANN Software Installation Guide](https://www.hiascend.com/document/detail/en/canncommercial/latest/softwareinst/instg/instg_0107.html?Mode=PmIns&InstallType=netyum&OS=openEuler).
 
-Pull the pre-integrated CANN software package and`ops-transformer`Specifies the image on which the depends.
+    > **Note**: Use `npu-smi info` to check the corresponding driver and firmware version.
 
-1.  Log in to the host machine as the root user.
-2.  Run the following command (select a value based on the host machine architecture):
-    
-     *  ARM architecture:
-        
-        ```
+#### Download Image
+
+Pull the image that has pre-integrated the CANN software package and the dependencies required by `ops-transformer`.
+
+1. Log in to the host machine as the root user.
+2. Execute the pull command (select based on your host machine architecture):
+
+    * ARM architecture:
+
+        ```bash
         docker pull --platform=arm64 swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:8.5.0-910b-ubuntu22.04-py3.10-ops
         ```
-     *  x86 architecture:
-        
-        ```
+
+    * X86 architecture:
+
+        ```bash
         docker pull --platform=amd64 swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:8.5.0-910b-ubuntu22.04-py3.10-ops
         ```
 
-> **Note: Under normal network speed, the image download takes about 5 to 10 minutes.**
+> **Note**: Under normal network speed, image download time is approximately 5-10 minutes.
 
-#### Docker running ####
+#### Docker Run
 
-Run the following command to run Docker:
+Run Docker using the following command:
 
-```
+```bash
 docker run --name cann_container --device /dev/davinci0 --device /dev/davinci_manager --device /dev/devmm_svm --device /dev/hisi_hdc -v /usr/local/dcmi:/usr/local/dcmi -v /usr/local/bin/npu-smi:/usr/local/bin/npu-smi -v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/ -v /usr/local/Ascend/driver/version.info:/usr/local/Ascend/driver/version.info -v /etc/ascend_install.info:/etc/ascend_install.info -it swr.cn-south-1.myhuaweicloud.com/ascendhub/cann:8.5.0-910b-ubuntu22.04-py3.10-ops bash
 ```
 
-The following table lists the parameters that you need to pay attention to:
+The following are parameter descriptions that users need to pay attention to:
 
-| Parameters                                                           | Description                                                                                                                 | Precautions                                                                                                                                                                                                                                                                          |
-| -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `--name cann_container`                                              | Specify a name for a container for easy management.                                                                         | Customizable.                                                                                                                                                                                                                                                                        |
-| `--device /dev/davinci0`                                             | Core: Map the NPU device card of the host machine to the container. You can specify multiple NPU device cards to be mapped. | The following must be adjusted according to the actual situation:`davinci0`Corresponds to NPU card 0 in the system. Run the command on the host machine first.`npu-smi info`command, based on the device number displayed in the output (e.g.`NPU 0`,`NPU 1`) to modify this number. |
-| `-v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/` | Key mounting: Map the NPU driver library of the host machine to the container.                                              | -                                                                                                                                                                                                                                                                                    |
+| Parameter | Description | Precautions |
+| :--- | :--- | :--- |
+| `--name cann_container` | Specify a name for the container for easy management. | Can be customized. |
+| `--device /dev/davinci0` | Core: Map the host machine NPU device card to the container. Multiple NPU device cards can be specified for mapping. | Must be adjusted according to actual conditions: `davinci0` corresponds to the 0th NPU card in the system. Execute the `npu-smi info` command on the host machine first, and modify this number based on the device number shown in the output (such as `NPU 0`, `NPU 1`).|
+| `-v /usr/local/Ascend/driver/lib64/:/usr/local/Ascend/driver/lib64/` | Key mount: Map the host machine NPU driver library to the container. | - |
 
-#### Check the environment. ####
+#### Check Environment
 
-After entering the container, check whether the environment and driver are normal.
+After entering the container, verify the environment and driver status.
 
- *  **Checking the NPU**
-    
-    Run the following command. If the driver information is displayed, the driver has been mounted successfully.
-    
-    ```
+- **Check NPU Device**
+
+    Execute the following command. If driver-related information is returned, the device has been successfully mounted.
+
+    ```bash
     npu-smi info
     ```
- *  **Check the CANN version.**
-    
-    Run the following command to check the version information about the CANN Toolkit:
-    
-    ```
+
+- **Check CANN Version**
+
+    Execute the following command to view the CANN Toolkit version information.
+
+    ```bash
     cat /usr/local/Ascend/ascend-toolkit/latest/opp/version.info
     ```
 
-You already have an "out-of-the-box" operator development environment. Next, you need to verify the complete tool chain from the source code to the executable operators in this environment.
+You now have an "out-of-the-box" operator development environment. Next, verify the complete toolchain from source code to runnable operators in this environment.
 
-## 2. Compilation and deployment ##
+## 2. Compile and Deploy
 
-This phase aims to quickly experience the standard project process and verify whether the environment can successfully compile, package, install, and run operator source code.
+The purpose of this stage is to **quickly experience the project standard process** and verify whether the environment can successfully perform operator source code compilation, packaging, installation, and running.
 
-### 1. Obtain the project source code. ###
+### 1. Obtain Project Source Code
 
-1.  Obtain the project source code.
-    
-    By default, the Docker or WebIDE environment provides the latest commercial source code. To obtain the source code of other versions, run the following command to download the source code. Replace $\{tag_version\} with the target branch tag name. For details about the mapping between branch tags and CANN versions, see.[Release warehouse](https://gitcode.com/cann/release-management)	.
-    
-    ```
+1. Obtain the project source code.
+
+    Docker or WebIDE environments provide the latest commercially released version source code by default. If you need to obtain other version source code, download it through the following command. Replace `${tag_version}` with the target branch tag name. The correspondence between branch tags and CANN versions can be found in the [release repository](https://gitcode.com/cann/release-management).
+
+    ```bash
     git clone -b ${tag_version} https://gitcode.com/cann/ops-transformer.git
     ```
-    
-    If"`fatal: destination path 'ops-transformer' already exists and is not an empty directory.`"The project source code already exists. To update the project code, run the following command:`git pull`Orders.
-2.  Run the following command to go to the root directory of the project and distinguish Docker and WebIDE scenarios:
-    
-     *  Docker scenario:
-        
-        ```
-        cd ops-transformer
-        ```
-     *  Web IDE scenario:
-        
-        ```
-        cd /mnt/workspace/ops-transformer
-        ```
 
-### 2. Compile the AddExample operator. ###
+    If "`fatal: destination path 'ops-transformer' already exists and is not an empty directory.`" appears, the project source code already exists. Use the `git pull` command to refresh the project code.
 
-Go to the root directory of the project and compile the specified operator. The common compilation command format is as follows:`bash build.sh --pkg --soc=<芯片版本> --ops=<算子名>`.
+2. Enter the project root directory using the following command. Distinguish between Docker and WebIDE scenarios.
+    - Docker scenario:
 
-For example, run the following command to compile the AddExample operator:
+      ```bash
+      cd ops-transformer
+      ```
 
-```
+    - WebIDE scenario:
+
+      ```bash
+      cd /mnt/workspace/ops-transformer
+      ```
+
+### 2. Compile the AddExample Operator
+
+Enter the project root directory and compile the specified operator. The general compilation command format: `bash build.sh --pkg --soc=<chip version> --ops=<operator name>`.
+
+Using the AddExample operator as an example, the compilation command is as follows:
+
+```bash
 bash build.sh --pkg --soc=ascend910b --ops=add_example -j16
 ```
 
-If the following information is displayed, the compilation is successful:
+If the following message appears, the compilation is successful.
 
-```
+```bash
 Self-extractable archive "cann-ops-transformer-custom-linux.${arch}.run" successfully created.
 ```
 
-After the compilation is successful, the run package is stored in the build_out directory of the project root directory.
+After successful compilation, the run package is stored in the build_out directory under the project root directory.
 
-### 3. Install the AddExample operator package. ###
+### 3. Install the AddExample Operator Package
 
-```
+```bash
 ./build_out/cann-ops-transformer-*linux*.run
 ```
 
-`AddExample`Installed in`${ASCEND_HOME_PATH}/opp/vendors`In the path,`${ASCEND_HOME_PATH}`Indicates the installation directory of the CANN software.
+`AddExample` is installed in the `${ASCEND_HOME_PATH}/opp/vendors` path. `${ASCEND_HOME_PATH}` represents the CANN software installation directory.
 
-### 4. Configure environment variables. ###
+### 4. Configure Environment Variables
 
-Add the path of the custom operator package to the environment variable to ensure that the path can be found during running.
+Add the custom operator package path to the environment variables to ensure it can be found at runtime.
 
-```
+```bash
 export LD_LIBRARY_PATH=${ASCEND_HOME_PATH}/opp/vendors/custom_transformer/op_api/lib:${LD_LIBRARY_PATH}
 ```
 
-### 5. Quick verification: Run the operator sample. ###
+### 5. Quick Verification: Run Operator Sample
 
-The common running command format is as follows:`bash build.sh --run_example <算子名> <运行模式> <包模式>`.
+The general run command format: `bash build.sh --run_example <operator name> <run mode> <package mode>`.
 
-Take AddExample as an example. This section provides a simple operator example.`add_example/examples/test_aclnn_add_example.cpp`. Run this sample to verify the operator functions.
+Using AddExample as an example, it provides a simple operator sample `add_example/examples/test_aclnn_add_example.cpp`. Run this sample to verify whether the operator function is normal.
 
-```
+```bash
 bash build.sh --run_example add_example eager cust --vendor_name=custom
 ```
 
-Expected output: Print the operator.`AddExample`The addition result in indicates that the operator has been successfully deployed and executed.
+Expected output: Print the addition calculation result of the `AddExample` operator, indicating that the operator has been successfully deployed and correctly executed.
 
-```
+```text
 add_example first input[0] is: 1.000000, second input[0] is: 1.000000, result[0] is: 2.000000
 add_example first input[1] is: 1.000000, second input[1] is: 1.000000, result[1] is: 2.000000
 add_example first input[2] is: 1.000000, second input[2] is: 1.000000, result[2] is: 2.000000
@@ -206,22 +213,22 @@ add_example first input[7] is: 1.000000, second input[7] is: 1.000000, result[7]
 ...
 ```
 
-## 3. Operator development ##
+## 3. Operator Development
 
-This phase attempts to modify the kernel function code for the AddExample operator that has been successfully executed.
+The purpose of this stage is to try **modifying the kernel function code** of the successfully running AddExample operator.
 
-### 1. The kernel implementation is modified. ###
+### 1. Modify Kernel Implementation
 
-Open the core kernel implementation file of the AddExample operator.`ops-transformer/examples/add_example/op_kernel/add_example.h`Change the Add operation in the operator to the Mul operation.
+Open the core Kernel implementation file of the AddExample operator `ops-transformer/examples/add_example/op_kernel/add_example.h`, and try changing the Add operation in the operator to a Mul operation:
 
-```
+```cpp
 __aicore__ inline void AddExample<T>::Compute(int32_t progress)
 {
     AscendC::LocalTensor<T> xLocal = inputQueueX.DeQue<T>();
     AscendC::LocalTensor<T> yLocal = inputQueueY.DeQue<T>();
     AscendC::LocalTensor<T> zLocal = outputQueueZ.AllocTensor<T>();
-    //= = = Replace Add with Mul here ===
-    //AscendC::Add(zLocal, xLocal, yLocal, tileLength_);
+    // === Replace Add with Mul here ===
+    // AscendC::Add(zLocal, xLocal, yLocal, tileLength_);
     AscendC::Mul(zLocal, xLocal, yLocal, tileLength_);
     outputQueueZ.EnQue<T>(zLocal);
     inputQueueX.FreeTensor(xLocal);
@@ -229,28 +236,32 @@ __aicore__ inline void AddExample<T>::Compute(int32_t progress)
 }
 ```
 
-### 2. Compilation and Verification ###
+### 2. Compile and Verify
 
-repeats[Compilation and deployment](#2-compilation-and-deployment)	Steps 2 through 5 in the section:
+Repeat steps 2 through 5 in the [Compile and Deploy](#2-compile-and-deploy) section:
 
-1.  **Recompiling: Go back to the root directory of the project and run the following compilation command:**
-    
-    ```
+1. **Recompile**:
+    Return to the project root directory first. The compilation command is as follows:
+
+    ```bash
     bash build.sh --pkg --soc=ascend910b --ops=add_example -j16
     ```
-2.  **Reinstall:**
-    
-    ```
+
+2. **Reinstall**:
+
+    ```bash
     ./build_out/cann-ops-transformer-*linux*.run
     ```
-3.  **Revalidation:**
-    
-    ```
+
+3. **Reverify**:
+
+    ```bash
     bash build.sh --run_example add_example eager cust --vendor_name=custom
     ```
-4.  **Success flag: The output result becomes the multiplication result.**
-    
-    ```
+
+4. **Success Indicator**: The output result changes to multiplication results.
+
+    ```text
     add_example first input[0] is: 1.000000, second input[0] is: 1.000000, result[0] is: 1.000000
     add_example first input[1] is: 1.000000, second input[1] is: 1.000000, result[1] is: 1.000000
     add_example first input[2] is: 1.000000, second input[2] is: 1.000000, result[2] is: 1.000000
@@ -262,99 +273,102 @@ repeats[Compilation and deployment](#2-compilation-and-deployment)	Steps 2 throu
     ...
     ```
 
-## 4. Operator commissioning ##
+## 4. Operator Debugging
 
-In this phase, AddExample is used as an example to describe how to print and collect operator performance data for subsequent fault analysis and location.
+This stage uses AddExample as an example to add printing in the operator and collect operator performance data for subsequent problem analysis and positioning.
 
-### 1. Print ###
+### 1. Printing
 
-If the operator fails to be executed or the precision is abnormal, print information for fault analysis and location.
+If the operator encounters execution failure, precision anomalies, or other issues, add printing for problem analysis and positioning.
 
-Please, please, at`examples/add_example/op_kernel/add_example.h`Modify the code in.
+Modify the code in `examples/add_example/op_kernel/add_example.h`.
 
- *  **printf**
-    
-    This interface can print Scalar data, such as integer, character, and Boolean data. For details, see.[Ascend C API](https://hiascend.com/document/redirect/CannCommunityAscendCApi)	Operator Commissioning API > printf in.
-    
-    ```
-    blockLength_ = (tilingData->totalLength + AscendC::GetBlockNum() - 1) / AscendC::GetBlockNum();
-    tileNum_ = tilingData->tileNum;
-    tileLength_ = ((blockLength_ + tileNum_ - 1) / tileNum_ / BUFFER_NUM) ?
-          ((blockLength_ + tileNum_ - 1) / tileNum_ / BUFFER_NUM) : 1;
-    //Displays the block length calculated by the current core.
-    AscendC::PRINTF("Tiling blockLength is %llu\n", blockLength_);
-    ```
- *  **DumpTensor**
-    
-    This API supports dump and specifying the content of a Tensor and printing customized additional information, such as the current line number. For details, see.[Ascend C API](https://hiascend.com/document/redirect/CannCommunityAscendCApi)	Operator Commissioning API > DumpTensor in.
-    
-    ```
-    AscendC::LocalTensor<T> zLocal = outputQueueZ.DeQue<T>();
-    //Print zLocal Tensor information.
-    DumpTensor(zLocal, 0, 128);
-    ```
+* **printf**
 
-### 2. Performance data collection ###
+  This interface supports printing Scalar type data, such as integers, characters, Boolean, and so on. For detailed introduction, refer to [Ascend C API](https://www.hiascend.com/document/detail/en/canncommercial/latest/API/appdevgapi/aclcppdevg_03_0005.html) in "Operator Debugging API > printf".
+  
+  ```c++
+  blockLength_ = (tilingData->totalLength + AscendC::GetBlockNum() - 1) / AscendC::GetBlockNum();
+  tileNum_ = tilingData->tileNum;
+  tileLength_ = ((blockLength_ + tileNum_ - 1) / tileNum_ / BUFFER_NUM) ?
+        ((blockLength_ + tileNum_ - 1) / tileNum_ / BUFFER_NUM) : 1;
+  // Print the current core calculation Block length
+  AscendC::PRINTF("Tiling blockLength is %llu\n", blockLength_);
+  ```
 
-If the operator function is verified correctly, you can`msprof`The tool collects operator performance data.
+* **DumpTensor**
 
- *  **Generate executable file**
-    
-    Invoke the example example of the AddExample operator to generate the executable file test_aclnn_add_example. This file is stored in the project.`ops-transformer/build`The catalog.
-    
-    ```
+  This interface supports dumping the content of a specified Tensor, and also supports printing custom additional information, such as the current line number. For detailed introduction, refer to [Ascend C API](https://www.hiascend.com/document/detail/en/canncommercial/latest/API/appdevgapi/aclcppdevg_03_0005.html) in "Operator Debugging API > DumpTensor".
+  
+  ```c++
+  AscendC::LocalTensor<T> zLocal = outputQueueZ.DeQue<T>();
+  // Print zLocal Tensor information
+  DumpTensor(zLocal, 0, 128);
+  ```
+
+### 2. Performance Data Collection
+
+After the operator function verification is correct, collect operator performance data through the `msprof` tool.
+
+- **Generate Executable File**
+
+    Invoke the AddExample operator example sample to generate the executable file (test_aclnn_add_example), which is located in the project `ops-transformer/build` directory.
+
+    ```bash
     bash build.sh --run_example add_example eager cust --vendor_name=custom
     ```
- *  **Collecting Performance Data**
-    
-    Go to the directory for storing the executable file of the AddExample operator.`ops-transformer/build/`. Run the following command:
-    
-    ```
+
+- **Collect Performance Data**
+
+    Enter the AddExample operator executable file directory `ops-transformer/build/`, and execute the following command:
+
+    ```bash
     msprof --application="./test_aclnn_add_example"
     ```
 
-The collection result is displayed in the project.`ops-transformer/build/`Directory. After the msprof command is executed, performance data result files are automatically parsed and exported. For details, see.[msprof](https://www.hiascend.com/document/detail/zh/mindstudio/82RC1/T&ITools/Profiling/atlasprofiling_16_0110.html#ZH-CN_TOPIC_0000002504160251)	.
+The collection results are in the project `ops-transformer/build/` directory. After the msprof command execution is completed, it will automatically parse and export the performance data result files. For detailed content, refer to [msprof](https://www.hiascend.com/document/detail/en/mindstudio/latest/TITools/msProf/docs/en/getting_started/quick_start.md).
 
-## 5. Operator verification ##
+## 5. Operator Verification
 
-In this phase, the input data in the example example of the AddExample operator is modified to verify the function correctness of the operator in multiple scenarios.
+This stage modifies the input data in the AddExample operator example sample to verify the functional correctness of the operator in multiple scenarios.
 
-### 1. Modify the test input. ###
+### 1. Modify Test Input
 
-Find and Edit`AddExample`of the`ops-transformer/examples/add_example/examples/test_aclnn_add_example.cpp`to modify the shape and value of the input tensor.
+Find and edit the `AddExample` `ops-transformer/examples/add_example/examples/test_aclnn_add_example.cpp`, and modify the input tensor shape and values.
 
-**Modify input/output data: Modify the input and output shape information, initialize data, and construct the corresponding input and output tensors.**
+**Modify Input/Output Data**: Modify the shape information of inputs and outputs, as well as the initialization data, to construct the corresponding input and output tensors.
 
-```
+```c++
 int main() {
-    //... initialization code...
+    // ... Initialization code ...
     
-    //= = = 1 Modify the input of selfX = = =
-    //Before the modification: shape = {32, 4, 4, 4}, all values are 1.
-    //After the modification: Change the input shape to {8, 8, 8, 8} and fill in different test data.
+    // === 1. Modify selfX input ===
+    // Before modification: shape = {32, 4, 4, 4}, all values are 1
+    // After modification: Change input shape to {8, 8, 8, 8}, and fill with different test data
     std::vector<int64_t> selfXShape = {8, 8, 8, 8};
-    std::vector<float> selfXHostData(4096); //4096 = 8 * 8 * 8 * 8
-    //You can use loops to populate more discerning data, such as ascending sequences.
+    std::vector<float> selfXHostData(4096); // 4096 = 8 * 8 * 8 * 8
+    // Use a loop to fill more distinguishable data, such as an incremental sequence
     for (int i = 0; i < 4096; ++i) {
-        selfXHostData[i] = static_cast<float>(i % 10); //Fill the cyclic value of 0 - 9
+        selfXHostData[i] = static_cast<float>(i % 10); // Fill with cyclic values 0-9
     }
-    //= = = 2 Refer to selfX. Modify the input of selfY and selfZ in the same way. = = =
+    // === 2. Similarly modify selfY and selfZ inputs following the selfX pattern ===
     
-    //...follow-up code...
+    // ... Subsequent execution code ...
 }
 ```
 
-### 2. Recompile and verify. ###
+### 2. Recompile and Verify
 
-1.  Only the example test code is modified. Therefore, the operator package does not need to be recompiled.
-2.  Run the following command again:
-    
-    ```
+1. Since only the example test code was modified, there is no need to recompile the operator package.
+
+2. Re-execute the verification command:
+
+    ```bash
     bash build.sh --run_example add_example eager cust --vendor_name=custom
     ```
-3.  Check whether the operator output meets the expectation.
 
-## 6. Development Contribution ##
+3. Observe whether the operator output results meet expectations.
 
-After experiencing the preceding operations, you have basically completed the development of an operator. You can contribute the operator to this project.`experimental`Directory. For the contribution process, see.[Contribution Guide](CONTRIBUTING.md)	. If you have any questions, please contact the customer through the Issue method.
+## 6. Development Contribution
 
+After experiencing the above operations, you have basically completed an operator development. You can contribute the operator to the `experimental` directory of this project. For the contribution process, refer to the [Contribution Guide](CONTRIBUTING_en.md). Any questions during the process can be consulted through Issues.

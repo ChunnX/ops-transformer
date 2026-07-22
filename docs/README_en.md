@@ -1,47 +1,46 @@
-# Project Documentation #
+# Project Documentation
 
-## Content Description ##
+## Directory Description
 
 The key directory structure is as follows:
 
-```
-├── context                            #Public directory, which stores documents such as basic concepts, project directory introduction, and build parameter description.
-│   ├── dir_structure.md    
-│   ├── build.md               
+```text
+├── context                            # Common directory, storing documents including basic concepts, project directory introduction, build parameter description, and so on
+│   ├── dir_structure.md
+│   ├── build.md
 │   └── ...
-├── debug                              #Operator debugging and optimization document directory
+├── debug                              # Operator debugging and tuning document directory
 │   ├── op_debug_prof.md
 │   ├── ...
-├── develop                            #Operator Development Document Directory
+├── develop                            # Operator development document directory
 │   ├── aicore_develop_guide.md
 │   ├── ...
-├── figures                            #Picture Catalog
-├── invocation                         #Operator Invoking Document Directory (including aclnn invoking and graph mode invoking)
-│   ├──op_invocation.md
+├── figures                            # Image directory
+├── invocation                         # Operator invocation document directory (including aclnn invocation, graph mode invocation, and so on)
+│   ├── op_invocation.md
 │   ├── ...
-├── op_api_list.md                     #Full Operator Interface List (aclnn)
-├── op_list.md                         #Full operator list
+├── op_api_list.md                     # Full operator interface list (aclnn)
+├── op_list.md                         # Full operator list
 └── README.md
 ```
 
-## Document Description ##
+## Document Description
 
-The following table lists all project documents. Obtain the documents as required.
+The full project documents are as follows. Obtain the corresponding content as needed.
 
-| Document                                                          | Description                                                                                                                                                                          |
-| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| [Operator List](zh/op_list.md)	                                   | This section describes all operators involved in the project.                                                                                                                        |
-| [ACLN list](zh/op_api_list.md)	                                   | This section describes all operator APIs contained in the project. You can use these APIs to directly adjust operators.                                                              |
-| [Environment Deployment](zh/context/quick_install.md)	            | This section describes how to set up the basic environment, including how to obtain and install software packages and third-party dependencies in different scenarios.               |
-| [Operator Invoking](zh/invocation/quick_op_invocation.md)	        | This section describes how to compile source code and execute operators, including operator package compilation, operator sample execution, and UT execution in different scenarios. |
-| [Operator development](zh/develop/aicore_develop_guide.md)	       | This section describes how to develop new operators based on the project, including operator prototype definition, Tiling implementation, and Kernel implementation.                 |
-| [Operator Invoking Mode](zh/invocation/op_invocation.md)	         | This section describes multiple operator invoking modes and invoking processes, such as aclnn invoking and graph mode invoking.                                                      |
-| [Operator debugging and optimization](zh/debug/op_debug_prof.md)	 | This section describes common operator debugging and optimization methods.                                                                                                           |
+| Document | Description |
+| ------------------------------------------------ | ------------------------------------------------------------ |
+| [Operator List](en/op_list.md) | Introduces the list of all operators included in the project. |
+| [aclnn List](en/op_api_list.md) | Introduces all operator APIs included in the project. Operators can be directly invoked through this API. |
+| [Environment Deployment](en/context/quick_install.md) | Introduces the basic environment setup process, including the acquisition and installation of software packages and third-party dependencies for different scenarios. |
+| [Operator Invocation](en/invocation/quick_op_invocation.md) | Introduces how to compile source code and execute operators, including operator package compilation, operator sample execution, UT execution, and so on for different scenarios. |
+| [Operator Development](en/develop/aicore_develop_guide.md) | Introduces how to develop new operators based on this project, including operator prototype definition, Tiling implementation, Kernel implementation, and so on. |
+| [Operator Invocation Methods](en/invocation/op_invocation.md) | Introduces multiple operator invocation methods and invocation processes, such as aclnn invocation, graph mode invocation, and so on. |
+| [Operator Debugging and Tuning](en/debug/op_debug_prof.md) | Introduces common operator debugging and tuning methods. |
 
-## Appendixes ##
+## Appendix
 
-| Document                                            | Description                                                                                                                             |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
-| [Basic Operator Concepts](zh/context/基本概念.md)	      | This section describes basic concepts and terms related to the operator field, such as quantization/sparse, data type, and data format. |
-| [Build parameter description](zh/context/build.md)	 | This section describes the functions and parameters of the build.sh script.                                                             |
-
+| Document | Description |
+| ----------------------------------- | ------------------------------------------------------------ |
+| [Operator Basic Concepts](en/context/basic_concepts.md) | Introduces basic concepts and terminology related to the operator domain, such as quantization/sparse, data types, data formats, and so on. |
+| [build Parameter Description](en/context/build.md) | Introduces the functionality and parameter meanings of the build.sh script in this project. |
