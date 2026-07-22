@@ -115,7 +115,7 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
     }
 
     int64_t kvLenAlign = CeilAlign(static_cast<int64_t>(maxKvLen), stemBlocks_);
-    maxKvBlockSize_ = kvLenAlign / stemBlocks_;
+    maxKb_ = kvLenAlign / stemBlocks_;
 
     GetTensorInfo(kcacheShape_, kCacheStride_, 0);
     GetTensorInfo(vcacheShape_, vCacheStride_, 1);
@@ -130,8 +130,8 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
 
     const gert::StorageShape *kvIndicesShape = context_->GetInputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvIndicesShape);
+    maxKvBlockSize_ = kvIndicesShape->GetStorageShape().GetDim(1);
     const gert::StorageShape *kFlatOutShape = context_->GetOutputShape(0);
-    maxKb_ = kFlatOutShape->GetStorageShape().GetDim(0);
     kflatDim_ = kFlatOutShape->GetStorageShape().GetDim(3);
 
     return ge::GRAPH_SUCCESS;
