@@ -1,0 +1,13 @@
+__pycache__/
+*.py[cod]
+.coverage
+htmlcov/
+
+golden_cache/
+Profiling_Result_train_*/
+csv_result/
+data/
+
+*.log
+.claude/
+.opencode/
