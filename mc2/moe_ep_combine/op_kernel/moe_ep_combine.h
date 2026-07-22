@@ -34,6 +34,11 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
+#if __has_include("../../common/utils/mc2_kernel_timing.h")
+#include "../../common/utils/mc2_kernel_timing.h"
+#else
+#include "../common/utils/mc2_kernel_timing.h"
+#endif
 
 #include "moe_ep_combine_base.h"
 #include "moe_ep_combine_tiling.h"
@@ -73,6 +78,15 @@ public:
     __aicore__ inline void Process();
 
 private:
+    enum TimingSlot : int32_t {
+        TIMING_SEND_TOKEN = 0,
+        TIMING_SET_STATUS = 1,
+        TIMING_TOKEN_WRITE_NBI = 2,
+        TIMING_STATUS_DRAIN_BEFORE = 3,
+        TIMING_STATUS_WRITE_NBI = 4,
+        TIMING_STATUS_DRAIN_AFTER = 5,
+    };
+
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &tokenPerAivNum);
     __aicore__ inline void SendToken(GM_ADDR localWorkspaceAddr, GM_ADDR remoteRankWinAddr, uint32_t tokenIndex,
@@ -193,6 +207,7 @@ private:
     GM_ADDR localUrmaWorkspace_{nullptr}; // 工作空间的GM地址
     GM_ADDR maskCalcWorkspaceGM_{nullptr};
     uint32_t aivId_{0};
+    Mc2Kernel::KernelTiming kernelTiming_;
 };
 
 template <TemplateMoeEpCombineTypeClass>
@@ -243,6 +258,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     recvSrcMetadataGm_.SetGlobalBuffer((__gm__ int32_t *)recvSrcMetadata);
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t *)numRecvPerExpert);
     combinedXGm_.SetGlobalBuffer((__gm__ XType *)combinedX);
+    kernelTiming_.Init(combinedX);
 
     // 计算actualA_的大小
     for (int i = 0; i < localmoeNum_; i++) {
@@ -317,7 +333,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendToken(GM_
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     PipeBarrier<PIPE_MTE3>(); // 是否需要这个流水
     if (dstRankId != rankId_) {
+        kernelTiming_.StartTiming(TIMING_TOKEN_WRITE_NBI);
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankWinAddr, localWorkspaceAddr, XTypeAlign32Size_);
+        kernelTiming_.StopTiming(TIMING_TOKEN_WRITE_NBI);
     }
 }
 
@@ -339,9 +357,17 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStatus(GM_
     DataCopy<float>(outStateTensor, statusTensor, 8UL);
     PipeBarrier<PIPE_MTE3>();
     if (dstRankId != rankId_) {
+        kernelTiming_.StartTiming(TIMING_STATUS_DRAIN_BEFORE);
         hcomm_.Drain(GetCommHandle(dstRankId));
+        kernelTiming_.StopTiming(TIMING_STATUS_DRAIN_BEFORE);
+
+        kernelTiming_.StartTiming(TIMING_STATUS_WRITE_NBI);
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
+        kernelTiming_.StopTiming(TIMING_STATUS_WRITE_NBI);
+
+        kernelTiming_.StartTiming(TIMING_STATUS_DRAIN_AFTER);
         hcomm_.Drain(GetCommHandle(dstRankId));
+        kernelTiming_.StopTiming(TIMING_STATUS_DRAIN_AFTER);
     }
 }
 
@@ -366,14 +392,18 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             uint64_t slotOffset = (static_cast<uint64_t>(src_token_idx) * topK_ + src_topK_idx) * perSlotBytes_;
             GM_ADDR localRankWorkSpaceAddr = GetLocalWorkspaceDataAddr(src_rank, workspaceStateSize_) + slotOffset;
             GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) + slotOffset;
+            kernelTiming_.StartTiming(TIMING_SEND_TOKEN);
             SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);
+            kernelTiming_.StopTiming(TIMING_SEND_TOKEN);
             PipeBarrier<PIPE_MTE3>();
             GM_ADDR localRankStateAddr =
                 GetLocalWorkspaceStateAddr(src_rank) + (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
             GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
                                           (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
 
+            kernelTiming_.StartTiming(TIMING_SET_STATUS);
             SetStatus(localRankStateAddr, remoteRankStateAddr, tokenIndex, src_rank);
+            kernelTiming_.StopTiming(TIMING_SET_STATUS);
         }
     }
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
@@ -521,6 +551,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
     PipeBarrier<PIPE_ALL>(); // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
     RecvPhaseReduce();
+    constexpr uint64_t timingBytesPerCore = Mc2Kernel::KernelTiming::MAX_SLOTS * 2UL * sizeof(uint64_t);
+    uint64_t combinedXBytes = static_cast<uint64_t>(numTokens_) * axisH_ * sizeof(XType);
+    if (combinedXBytes >= static_cast<uint64_t>(aivNum_) * timingBytesPerCore) {
+        kernelTiming_.WriteTimingToOutput(GetBlockIdx());
+    }
 }
 
 } // namespace MoeEpCombineImpl
