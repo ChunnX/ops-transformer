@@ -274,11 +274,10 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
-                if (d_idx == 0) {
-                  AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
-                }
+                AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
                 tl::ascend::mma<half, float, 128, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (d_idx == 0), 128);
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
+                AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
               }
               AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
               tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_query_rope_l1[0], QueryRope[(((pipe_iter * 393216) + (cid * 16384)) - 393216)], 128, 128, 128, true);
@@ -291,6 +290,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
               AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
               AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
+              AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
               tl::ascend::mma<half, float, 128, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (bool)0, 128);
               AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
               AscendC::SetFlag<AscendC::HardEvent::M_FIX>(0);
@@ -575,11 +575,12 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             tl::ascend::copy_l0c_to_gm<float, float, layout::RowMajor, 128, 128, 0>(dk_matmul_partial[((((pipe_iter * 6291456) + (cid * 262144)) + (n_idx_5 * 16384)) - 6291456)], c2_dk_l0c[0], 128, 128, 128);
             AscendC::SetFlag<AscendC::HardEvent::FIX_M>(2);
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(3);
-            if (n_idx_5 == 0) {
-              AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(3);
-            }
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(3);
             tl::ascend::mma<half, float, 64, 128>(c2_dq_rg_l0a[0],c2_dq_gki_l0b[0],c2_dq_l0c[0], (n_idx_5 == 0), 128);
             AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(3);
+            if (n_idx_5 < 15) {
+              AscendC::SetFlag<AscendC::HardEvent::FIX_M>(3);
+            }
           }
           AscendC::SetFlag<AscendC::HardEvent::M_FIX>(3);
           AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(3);
