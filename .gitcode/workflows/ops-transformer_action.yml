@@ -19,7 +19,7 @@ on:
     keyword: '^(?:\/)?compile*'
 
 env:
-  org_name: "opencann"
+  org_name: ${{ vars.ORG_NAME }}
   repo_name: "ops-transformer"
   MERGE_ID: ${{ atomgit.event.pull_request.number }}
   TARGET_BRANCH: ${{ atomgit.base_ref }}
@@ -32,7 +32,6 @@ stages:
     jobs:
       JOB_image:
         name: image
-        needs: []
         steps:
           - name: revise_image
             identifier: revise_image
