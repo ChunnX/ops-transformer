@@ -58,7 +58,6 @@ public:
                   "MX vector currently only supports TND query and PA_BNSD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MX vector currently only supports S1=128, S2=512, D=128 and DV=128");
-    static_assert(USE_DN, "MXFullQuantMode vector currently only implements the DN VF path");
     static constexpr uint32_t DB = 2U;
     static constexpr uint32_t PRELOAD_N = 2U;
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
@@ -119,14 +118,16 @@ public:
                 // DN mask UB：[256,64]，按 sparse segment 拼接。
                 tPipe_->InitBuffer(attenMaskInQue_, 1, ATTEN_MASK_UB_SIZE);
             }
-            // DN VF lane 重排索引。
-            tPipe_->InitBuffer(vselrIndexesBuf_[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)],
-                               DN_VSELR_INDEX_SIZE);
-            LocalTensor<uint8_t> vselrIndexesTensor =
-                vselrIndexesBuf_[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
-            for (uint32_t i = 0U; i < DN_VSELR_GROUP_NUM; ++i) {
-                for (uint32_t j = 0U; j < DN_VSELR_GROUP_SIZE; ++j) {
-                    vselrIndexesTensor.SetValue(i * DN_VSELR_GROUP_SIZE + j, i + (j << 2));
+            // DN VF lane 重排索引；保留 USE_DN 分支，便于后续补充非 DN 索引表。
+            if constexpr (USE_DN) {
+                tPipe_->InitBuffer(vselrIndexesBuf_[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)],
+                                   DN_VSELR_INDEX_SIZE);
+                LocalTensor<uint8_t> vselrIndexesTensor =
+                    vselrIndexesBuf_[static_cast<uint32_t>(VselrIndexEnum::DN_INDEX)].template Get<uint8_t>();
+                for (uint32_t i = 0U; i < DN_VSELR_GROUP_NUM; ++i) {
+                    for (uint32_t j = 0U; j < DN_VSELR_GROUP_SIZE; ++j) {
+                        vselrIndexesTensor.SetValue(i * DN_VSELR_GROUP_SIZE + j, i + (j << 2));
+                    }
                 }
             }
 
@@ -221,20 +222,27 @@ public:
         // }
         constexpr float descaleQK = 1.0f;
         // Q/K scale 已在 C1 随路消费，因此 descaleQK=1。
-        // isUpdate 表示是否合并上一 logical S2 tile，不表示 subLoop 0/1。
-        const bool hasPreviousS2Loop = !runInfo.isFirstS2Loop;
-        if (unlikely(!hasPreviousS2Loop)) {
-            FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, false, HAS_ATTEN, S2_SPLIT>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
-                ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2U,
-                s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+        if constexpr (USE_DN) {
+            // isUpdate 表示是否合并上一 logical S2 tile，不表示 subLoop 0/1。
+            const bool hasPreviousS2Loop = !runInfo.isFirstS2Loop;
+            if (unlikely(!hasPreviousS2Loop)) {
+                FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, false, HAS_ATTEN, S2_SPLIT>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb,
+                    pScaleSubLoopTensor, ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6,
+                    runInfo.actSingleLoopS2SizeAlign / 2U, s2CalcSize, static_cast<MM_T>(constInfo.scaleValue),
+                    descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F, preLoopMaxUb, preLoopSumUb,
+                    firstLoopSumUb, subLoop);
+            } else {
+                FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, true, HAS_ATTEN, S2_SPLIT>(
+                    stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb,
+                    pScaleSubLoopTensor, ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6,
+                    runInfo.actSingleLoopS2SizeAlign / 2U, s2CalcSize, static_cast<MM_T>(constInfo.scaleValue),
+                    descaleQK, pScaleValue_, negativeFloatScalar_, 0.0F, preLoopMaxUb, preLoopSumUb,
+                    firstLoopSumUb, subLoop);
+            }
         } else {
-            FaVectorApi::ProcessVec1VfDnMxfp8<MM_T, INPUT_T, true, HAS_ATTEN, S2_SPLIT>(
-                stage1CastTensor, sumUb, maxUb, mmRes, expUb, vselrIndexesBuf_, attenMaskUb, pScaleSubLoopTensor,
-                ((runInfo.actMSizeAlign32 >> 1U) + 63U) >> 6 << 6, runInfo.actSingleLoopS2SizeAlign / 2U,
-                s2CalcSize, static_cast<MM_T>(constInfo.scaleValue), descaleQK, pScaleValue_, negativeFloatScalar_,
-                0.0F, preLoopMaxUb, preLoopSumUb, firstLoopSumUb, subLoop);
+            static_assert(USE_DN, "MXFullQuantMode vector currently implements DN VF only; "
+                                  "use_dn=false is reserved for future extension");
         }
         // zyhPrint
         // if (runInfo.actVecMSize != 0U && runInfo.loop == 0U && runInfo.mLoop == 0U) {

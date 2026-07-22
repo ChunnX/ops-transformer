@@ -54,7 +54,6 @@ public:
                   "MX cube currently only supports TND query and PA_BNSD KV");
     static_assert(M_BASE == 128U && S2_BASE == 512U && D_BASE == 128U && DV_BASE == 128U,
                   "MX cube currently only supports S1=128, S2=512, D=128 and DV=128");
-    static_assert(USE_DN, "MXFullQuantMode cube currently only implements the DN copy/load path");
     // 每 32 个 fp8 数据元素对应一个 e8m0 scale。
     static constexpr uint32_t MX_SCALE_GROUP = 32U;
     // V scale 为 [blockNum,N,blockSize/64,DV,2]。
@@ -82,6 +81,9 @@ public:
     __aicore__ inline void InitBuffers()
     {
         if ASCEND_IS_AIC {
+            static_assert(USE_DN,
+                          "MXFullQuantMode cube currently implements DN copy/load path; "
+                          "use_dn is kept for future non-DN extension");
             // data 与 scale 连续存放，LoadData 在 L1->L0 时完成随路反量化。
             constexpr uint32_t qSize = M_BASE * D_BASE * sizeof(INPUT_T);
             constexpr uint32_t qScaleSize = M_BASE * D_BASE / MX_SCALE_GROUP * sizeof(SCALE_T);
