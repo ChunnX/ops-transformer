@@ -76,45 +76,45 @@ $$
 
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5GetWorkspaceSize(
-	const aclTensor   *query, 
-	const aclTensor   *queryRope, 
-	const aclTensor   *keyIn, 
-	const aclTensor   *keyInRope, 
-	const aclTensor   *value, 
-	const aclTensor   *dy, 
-	const aclTensor   *pseShiftOptional, 
-	const aclTensor   *dropMaskOptional, 
-	const aclTensor   *paddingMaskOptional, 
-	const aclTensor   *attenMaskOptional, 
-	const aclTensor   *softmaxMaxOptional, 
-	const aclTensor   *softmaxSumOptional, 
-	const aclTensor   *softmaxInOptional, 
-	const aclTensor   *attentionInOptional, 
-	const aclTensor   *sinkInOptional, 
-	const aclIntArray *prefixOptional, 
-	const aclIntArray *actualSeqQLenOptional, 
-	const aclIntArray *actualSeqKvLenOptional, 
-	const aclIntArray *qStartIdxOptional, 
-	const aclIntArray *kvStartIdxOptional, 
-	double             scaleValue, 
-	double             keepProb, 
-	int64_t            preTokens, 
-	int64_t            nextTokens, 
-	int64_t            headNum, 
-	char              *inputLayout, 
-	int64_t            innerPrecise, 
-	int64_t            sparseMode, 
-	int64_t            pseType, 
-	char              *softmaxInLayout, 
-	const aclTensor   *dqOut, 
-	const aclTensor   *dqRopeOut, 
-	const aclTensor   *dkOut, 
-	const aclTensor   *dkRopeOut, 
-	const aclTensor   *dvOut, 
-	const aclTensor   *dpseOut, 
-	const aclTensor   *dsinkOut, 
-	uint64_t          *workspaceSize, 
-	aclOpExecutor    **executor);
+  const aclTensor   *query, 
+  const aclTensor   *queryRope, 
+  const aclTensor   *keyIn, 
+  const aclTensor   *keyInRope, 
+  const aclTensor   *value, 
+  const aclTensor   *dy, 
+  const aclTensor   *pseShiftOptional, 
+  const aclTensor   *dropMaskOptional, 
+  const aclTensor   *paddingMaskOptional, 
+  const aclTensor   *attenMaskOptional, 
+  const aclTensor   *softmaxMaxOptional, 
+  const aclTensor   *softmaxSumOptional, 
+  const aclTensor   *softmaxInOptional, 
+  const aclTensor   *attentionInOptional, 
+  const aclTensor   *sinkInOptional, 
+  const aclIntArray *prefixOptional, 
+  const aclIntArray *actualSeqQLenOptional, 
+  const aclIntArray *actualSeqKvLenOptional, 
+  const aclIntArray *qStartIdxOptional, 
+  const aclIntArray *kvStartIdxOptional, 
+  double             scaleValue, 
+  double             keepProb, 
+  int64_t            preTokens, 
+  int64_t            nextTokens, 
+  int64_t            headNum, 
+  char              *inputLayout, 
+  int64_t            innerPrecise, 
+  int64_t            sparseMode, 
+  int64_t            pseType, 
+  char              *softmaxInLayout, 
+  const aclTensor   *dqOut, 
+  const aclTensor   *dqRopeOut, 
+  const aclTensor   *dkOut, 
+  const aclTensor   *dkRopeOut, 
+  const aclTensor   *dvOut, 
+  const aclTensor   *dpseOut, 
+  const aclTensor   *dsinkOut, 
+  uint64_t          *workspaceSize, 
+  aclOpExecutor    **executor);
 ```
 
 ```c++
@@ -666,7 +666,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV5(
 - pseShiftOptional：如果Sq大于1024且每个batch的Sq与Skv等长且是sparseMode为0、2、3的下三角掩码场景，可开启alibi位置编码压缩，此时只需要输入原始PSE最后1024行，实现内存优化，即alibi_compress = ori_pse[:, :, -1024:, :]，具体如下：
   - 参数每个batch不相同时，shape为BNHSkv(H=1024)。
   - 每个batch相同时，shape为1NHSkv(H=1024)。
-  - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N * Sq_i * Skv_i，整段PSE总长度pseTotalLen为sum_i(N * Sq_i * Skv_i)。
+  - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为$N * Sq_i * Skv_i$，整段PSE总长度pseTotalLen为$sum_i(N * Sq_i * Skv_i)$。
   - 如果pseType为2或3的时候，数据类型需为FLOAT32,对应shape支持范围是[B,N]或[N]。
   - 如果不开启该参数，pseShiftOptional需要传入nullptr，pseType需要传入1。
 - pseType各个取值含义

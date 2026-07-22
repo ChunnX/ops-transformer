@@ -614,7 +614,6 @@ aclnnStatus aclnnMlaProlog(
         <col style="width: 625px">
         <col style="width: 360px">
         </colgroup>
-<table>
   <thead>
     <tr>
       <th>字段名</th>
@@ -700,6 +699,7 @@ aclnnStatus aclnnMlaProlog(
   <summary><a id="specialConstraint"></a>特殊约束</summary>
 
   - weight_dq，weight_uq_qr，weight_dkv_kr在不转置的情况下各个维度的表示：（k, n）。
+
   </details>
 
   <details>
@@ -735,7 +735,6 @@ aclnnStatus aclnnMlaProlog(
   </table>
   </details>
 
-  <details>
   <summary><a id="SupportScenes"></a>不同量化场景参数的dtype与shape约束</summary>
 
 - 在不同量化场景下，参数的dtype和shape组合需要满足如下条件：
@@ -958,8 +957,6 @@ aclnnStatus aclnnMlaProlog(
     </tr>
   </table>
   </div>
-  </details>
-
 
 ## 调用示例
 

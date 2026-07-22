@@ -86,7 +86,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
     <tr>
       <td>cuSeqLensQOptional</td>
       <td>输入</td>
-      <td>表示不同batch中query的累积sequence length。</br>TND场景下必传，并可通过该入参shape推导batch。</br>第一个值固定为0。</td>
+      <td>表示不同batch中query的累积sequence length。<br>TND场景下必传，并可通过该入参shape推导batch。<br>第一个值固定为0。</td>
       <td>支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -96,7 +96,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
     <tr>
       <td>cuSeqLensKOptional</td>
       <td>输入</td>
-      <td>表示不同batch中key的累积sequence length。</br>TND场景下必传。</br>第一个值固定为0。</td>
+      <td>表示不同batch中key的累积sequence length。<br>TND场景下必传。<br>第一个值固定为0。</td>
       <td>支持空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -227,7 +227,7 @@ aclnnStatus aclnnSparseLightningIndexerKLLossGradMetadata(
       <td>maskMode</td>
       <td>输入</td>
       <td>表示sparse mask模式。</td>
-      <td>0: No mask</br>3: Causal</td>
+      <td>0: No mask<br>3: Causal</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>

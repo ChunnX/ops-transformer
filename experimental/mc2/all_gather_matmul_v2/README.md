@@ -27,7 +27,7 @@ cmake --version | head -1
 which bisheng
 # 预期返回bisheng的绝对路径
 
-# 检查PyTorch及torch_npu
+# 检查PyTorch及TorchNPU
 python3 -c "import torch;import torch_npu; a = torch.randn(3, 4).npu(); print(a + a);"
 # 输出如下类似信息说明安装成功
 # tensor([[-0.6066,  6.3385,  0.0379,  3.3356],
@@ -72,7 +72,7 @@ python test.py
 > 1. `ASCEND_HOME_PATH`环境变量已正确设置
 > 2. Bisheng编译器已安装并可用
 > 3. CMake版本为3.16或更高
-> 4. torch及torch_npu已安装并可用
+> 4. torch及TorchNPU已安装并可用
 
 ## 💻 实战示例：AllGatherMatmul优化
 

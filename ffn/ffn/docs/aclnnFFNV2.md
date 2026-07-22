@@ -25,11 +25,13 @@
     $$
     y=activation(x * W1 + b1) * W2 + b2
     $$
+
   - **量化场景：**
 
     $$
     y=((activation((x * W1 + b1) * deqScale1) * scale + offset) * W2 + b2) * deqScale2
     $$
+    
   - **伪量化场景：**
 
     $$

@@ -378,3 +378,4 @@
     - qNoRopeDim：表示Q矩阵中无旋转编码部分的维度，取值范围：16~256，为16的倍数
 - rope模式约束
     - mla_preprocess算子中的Rotary Embedding（RoPE）操作采用half模式，暂不支持interleave模式
+    

@@ -19,21 +19,23 @@
 
 - **计算公式**：稀疏块大小：$blockShapeX \times blockShapeY$，selectIdx指定稀疏模式
 
-  $$
-  attentionOut = Softmax(scale \cdot query \cdot key_{sparse}^T + atten\_mask) \cdot value_{sparse}
-  $$
+    $$
+    attentionOut = Softmax(scale \cdot query \cdot key_{sparse}^T + atten\_mask) \cdot value_{sparse}
+    $$
 
-  BlockSparseAttentionV2输入query、key、value的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。
-  - B：表示输入样本批量大小（Batch）
-  - T：B和S合轴紧密排列的长度（Total tokens）
-  - S：表示输入样本序列长度（Seq-Length）
-  - H：表示隐藏层的大小（Head-Size）
-  - N：表示多头数（Head-Num）
-  - D：表示隐藏层最小的单元尺寸，需满足D=H/N（Head-Dim）
+    BlockSparseAttentionV2输入query、key、value的数据排布格式支持从多种维度排布解读，可通过qInputLayout和kvInputLayout传入。
 
-  当前支持的布局：
-  - qInputLayout: "TND" "BNSD" "BSND"
-  - kvInputLayout: "TND" "BNSD" "BSND"
+    - B：表示输入样本批量大小（Batch）
+    - T：B和S合轴紧密排列的长度（Total tokens）
+    - S：表示输入样本序列长度（Seq-Length）
+    - H：表示隐藏层的大小（Head-Size）
+    - N：表示多头数（Head-Num）
+    - D：表示隐藏层最小的单元尺寸，需满足D=H/N（Head-Dim）
+
+    当前支持的布局：
+    
+    - qInputLayout: "TND" "BNSD" "BSND"
+    - kvInputLayout: "TND" "BNSD" "BSND"
 
 - **FP8特性说明（仅<term>Ascend 950PR/Ascend 950DT</term>支持）**：
   

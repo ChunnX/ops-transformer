@@ -98,7 +98,7 @@ pytests/
 
 | 依赖 | 说明 |
 |------|------|
-| `torch_npu` | PyTorch NPU扩展 |
+| `TorchNPU` | PyTorch NPU扩展 |
 | `cann_ops_transformer` | 提供`flash_attn`和`flash_attn_metadata` |
 
 ### GPU模式(可选)

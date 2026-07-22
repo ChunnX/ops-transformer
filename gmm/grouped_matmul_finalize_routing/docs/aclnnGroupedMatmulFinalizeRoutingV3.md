@@ -28,6 +28,7 @@
     $$
     y_i=(x_i\times weight_i) * scale_i * perTokenScale_i
     $$
+
   - 2.路由专家与专家输出分配：
 
     对于每个token j，执行路由与输出专家分配：
@@ -38,11 +39,13 @@
     $$
 
     其中 $i(j)$ 是token j被分配到的专家索引。$y_{i(j)}[ j - start_{i(j)}]$是该token在对应专家下的计算结果。
+
   - 3.共享专家输出融合：
 
     $$
     y [rowIndex[i],:] = y[rowIndex[i],:] + sharedInputWeight \times sharedInput[j, :]
     $$
+    
   - 4.共享专家输出融合：最终输出结果是所有专家输出与共享专家输出，按照rowIndex所有进行合并的结果，计算过程如下：
 
     $$

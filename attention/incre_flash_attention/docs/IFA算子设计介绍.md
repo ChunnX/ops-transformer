@@ -39,18 +39,18 @@
 1. C+V模板：对应文件名incre_flash_attention_split_Bbn2s2_Us2.h, IFA基础模板，支持绝大多数输入场景,计算时同时开启VectorCore和CubeCore, matmul计算放在CubeCore执行; matmul计算为调用AscendC提供的高阶API;
 2. All-Vector模板：对应文件名incre_flash_attention_allvec_new.h,对C+V模板的补充，主流程与C+V模板基本一致, matmul计算由vector实现,降低Cube启动和CV通信开销,对于部分输入类型有更好的性能表现；支持场景：
 
-- <term>Atlas推理系列加速卡产品</term>：全部使用该模板。
+    - <term>Atlas推理系列加速卡产品</term>：全部使用该模板。
 
-- <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：非PA,非GQA,且Q、KV 、Output类型全部为FP16 。
+    - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：非PA,非GQA,且Q、KV 、Output类型全部为FP16 。
 
 3. matmul基础API模板: 对应文件名incre_flash_attention_preload.h,为了优化性能，基于C+V模板使用AscendC提供的matmul基础API对matmul部分重写。在C+V模板的基础上主要做了如下改动：
 
-- 切换编程视角。C+V模板使用基于VEC的编程视角， 1个VEC需要处理1次matmul的全部计算结果；本模板使用基于CUBE的编程视角, 1次matmul的计算结果会被切分为2份, 2个VEC分别处理1份。
+    - 切换编程视角。C+V模板使用基于VEC的编程视角， 1个VEC需要处理1次matmul的全部计算结果；本模板使用基于CUBE的编程视角, 1次matmul的计算结果会被切分为2份, 2个VEC分别处理1份。
 
-- 优化CUBE和VEC之间的核间流水优化。C+V模板使用顺序流水，本模板使用N-Buffer流水；所谓N-Buffer流水,是指连续执行N次某个计算阶段之后再连续N次下一个计算阶段。
+    - 优化CUBE和VEC之间的核间流水优化。C+V模板使用顺序流水，本模板使用N-Buffer流水；所谓N-Buffer流水,是指连续执行N次某个计算阶段之后再连续N次下一个计算阶段。
 
-- 优化CUBE核内的流水。将CUBE核内的Buffer资源在FA的两个matmul计算之间统一调度，使得CUBE核内的搬运和计算流水更加紧凑,从而提升性能。
-本模板支持范围参考Tiling中的EnableCubeViewMM函数。
+    - 优化CUBE核内的流水。将CUBE核内的Buffer资源在FA的两个matmul计算之间统一调度，使得CUBE核内的搬运和计算流水更加紧凑,从而提升性能。
+    本模板支持范围参考Tiling中的EnableCubeViewMM函数。
 
 4. 伪量化MSD DD模板：对应文件为incre_flash_attention_preload_dd.h,基于incre_flash_attention_preload.h开发，用于伪量化MTP场景,优化了MSD算法；该模板基于incre_flash_attention_preload.h开发；当前仅支持FIA算子调用, IFA算子不会调用到这个模板。
 
@@ -71,7 +71,7 @@ c. AIC和AIV之间处理的数据量要符合其对应的算力，避免AIC或AI
 
 IFA算子包含B、N2(key和value的N)、G(query_N/kv_N)、S1(query的S)、S2(key和value的S)共5个轴，  S1轴固定为1,不参与切分。G轴只在Vector计算时切块,  BN2S2切分逻辑如下：
 
-- 核间：数据外切是为了最大限度的利用多个Core并行工作，通常先按照BN2分核,即将BN2个SD块分配到多个核上,每个核计算一定数量的SD块,当BN2小于阈值时（0.4 * 总核数）,需再对S2轴进行外切（SplitKV份）,总块数为BN2 * SplitKv,每个核分配一定数量的子块,当所有子块计算完成后,再进行规约,即FlashDecode流程。
+- 核间：数据外切是为了最大限度的利用多个Core并行工作，通常先按照BN2分核,即将BN2个SD块分配到多个核上,每个核计算一定数量的SD块,当BN2小于阈值时（0.4 * 总核数）,需再对S2轴进行外切（SplitKV份）,总块数为$BN2 * SplitKv$,每个核分配一定数量的子块,当所有子块计算完成后,再进行规约,即FlashDecode流程。
 
 - 核内：由于单core缓存有限，需根据设定的缓存大小,对S2轴或KV子块的S2轴进行切分,此即FlashAttention过程。
 
@@ -151,7 +151,7 @@ A矩阵为FP16/BF16类型，  B矩阵为int8类型。
 IFA场景下， A矩阵较小,可以通过变换A矩阵来适配B矩阵,基本流程：
 
 1. 矩阵A进入Vector展开成多行，每行An均用int8格式存储;
-2. 将这些An打包成新的矩阵AA计算CC = AA * B （按int8 * int8 = int32来计算）;
+2. 将这些An打包成新的矩阵AA计算$CC = AA * B （按int8 * int8 = int32来计算）$;
 3. 对MatMul结果CC进行Reduce操作得到C。
 
 #### PageAttention

@@ -72,7 +72,7 @@ still holds for 128×512 (and 128×256 is within ~10% of it while keeping a 2×
 finer sabi resolution). See [benchmark/README.md](benchmark/README.md) for the
 full table and a per-sparsity PFA-speedup summary.
 
-To invoke our block-sparse prompt flash attention kernel from python, use our provided `torch_bsa` interface. The call is compatible with `torch_npu` conventions:
+To invoke our block-sparse prompt flash attention kernel from python, use our provided `torch_bsa` interface. The call is compatible with `TorchNPU` conventions:
 ```python
 import torch
 import torch_bsa
