@@ -245,11 +245,13 @@ public:
         // bBaseOffset += n * k
         if constexpr (formatB == CubeFormat::NZ) {
             if (transB) {
-                Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
-                                              CeilDiv(k, WEIGHT_TILE_K_LARGE) * CeilDiv(n, WEIGHT_TILE_N_SMALL) * WEIGHT_TILE_CAPACITY;
+                Get<IDX_B_OFFSETS>(baseOffset_) =
+                    Get<IDX_B_OFFSETS>(baseOffset_) +
+                    CeilDiv(k, WEIGHT_TILE_K_LARGE) * CeilDiv(n, WEIGHT_TILE_N_SMALL) * WEIGHT_TILE_CAPACITY;
             } else {
-                Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) +
-                                              CeilDiv(n, WEIGHT_TILE_N_LARGE) * CeilDiv(k, WEIGHT_TILE_K_SMALL) * WEIGHT_TILE_CAPACITY;
+                Get<IDX_B_OFFSETS>(baseOffset_) =
+                    Get<IDX_B_OFFSETS>(baseOffset_) +
+                    CeilDiv(n, WEIGHT_TILE_N_LARGE) * CeilDiv(k, WEIGHT_TILE_K_SMALL) * WEIGHT_TILE_CAPACITY;
             }
         } else {
             Get<IDX_B_OFFSETS>(baseOffset_) = Get<IDX_B_OFFSETS>(baseOffset_) + n * k;

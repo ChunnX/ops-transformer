@@ -29,14 +29,14 @@ using WeightQuantBatchMatmulV2::Arch35::BasicBlockOffsetParam;
 using WeightQuantBatchMatmulV2::Arch35::CeilDivide;
 using WeightQuantBatchMatmulV2::Arch35::DOUBLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::GetKBUnit;
+using WeightQuantBatchMatmulV2::Arch35::GMMFRWeightQuantVcvBasicBlock;
 using WeightQuantBatchMatmulV2::Arch35::IsMxA8W4;
+using WeightQuantBatchMatmulV2::Arch35::K_ALIGNMENT64;
 using WeightQuantBatchMatmulV2::Arch35::QUADRUPLE_BUFFER_NUM;
 using WeightQuantBatchMatmulV2::Arch35::QuantType;
 using WeightQuantBatchMatmulV2::Arch35::SCALE_FACTOR_B_BIT;
 using WeightQuantBatchMatmulV2::Arch35::VecAntiQuantConfig;
-using WeightQuantBatchMatmulV2::Arch35::GMMFRWeightQuantVcvBasicBlock;
 using WeightQuantBatchMatmulV2::Arch35::WqmmConfig;
-using WeightQuantBatchMatmulV2::Arch35::K_ALIGNMENT64;
 using GMMFRTiling = GMMFinalizeRoutingArch35Tiling::GMMFinalizeRoutingWeightQuantTilingData;
 
 namespace GROUPED_MATMUL_FINALIZE_ROUTING {

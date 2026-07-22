@@ -27,33 +27,34 @@ constexpr uint64_t ONE_KILO = 1024;
 constexpr double UNBALANCE_RATIO = 1.5;
 
 class MMPlusReduceScatter : public OneCalcOneCommBase {
-    public:
-        bool deterministicSoc910B_ = false; // 通信是否使用local reduce确定性算法
-        // Constructor
-        explicit MMPlusReduceScatter(const mc2tiling::TilingArgs& args, uint32_t inputRankDim,
-            KernelType inputKernelType, SocVersion inputSocVersion = SocVersion::SOC910_B,
-            bool deterministicFlag = false, bool isAicpuComm = false)  // 是否AICPU通信模式，AICPU时触发M轴切分封顶至AICPU_M_TILE_CAP
-            : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion),
-            deterministicSoc910B_(deterministicFlag),
-            isAicpuComm_(isAicpuComm)
-        {
-            commPerf_.SetCommShapeLen(clusterInfo_.nValue);
-            commPerf_.SetCommDTypeSize(clusterInfo_.outMatrixCDtypeSize);
-            if (deterministicSoc910B_) { // 通信拟合适配确定性算法
-                commPerf_.SetLocalReduceFactor();
-            }
-            rankTileNum_ = commPerf_.GetRankTileNum();
-            tilingM_.SetMinLenByMax(commPerf_.GetLinearThresholdLen());
-            tilingM_.SetMinLenByMax(matmulPerf_.GetLinearThresholdLen(rankTileNum_));
+public:
+    bool deterministicSoc910B_ = false; // 通信是否使用local reduce确定性算法
+    // Constructor
+    explicit MMPlusReduceScatter(
+        const mc2tiling::TilingArgs &args, uint32_t inputRankDim, KernelType inputKernelType,
+        SocVersion inputSocVersion = SocVersion::SOC910_B, bool deterministicFlag = false,
+        bool isAicpuComm = false) // 是否AICPU通信模式，AICPU时触发M轴切分封顶至AICPU_M_TILE_CAP
+        : OneCalcOneCommBase(args, inputRankDim, inputKernelType, inputSocVersion),
+          deterministicSoc910B_(deterministicFlag), isAicpuComm_(isAicpuComm)
+    {
+        commPerf_.SetCommShapeLen(clusterInfo_.nValue);
+        commPerf_.SetCommDTypeSize(clusterInfo_.outMatrixCDtypeSize);
+        if (deterministicSoc910B_) { // 通信拟合适配确定性算法
+            commPerf_.SetLocalReduceFactor();
         }
+        rankTileNum_ = commPerf_.GetRankTileNum();
+        tilingM_.SetMinLenByMax(commPerf_.GetLinearThresholdLen());
+        tilingM_.SetMinLenByMax(matmulPerf_.GetLinearThresholdLen(rankTileNum_));
+    }
 
-        void EstimateKernelTime() override;
-        void SelectTilingMethod() override;
-    private:
-        void SetCommTimeFactorForA5();
-        void SetCommTimeFactorForOther();
-        void SetCommTimeFactor();
-        bool isAicpuComm_ = false;
+    void EstimateKernelTime() override;
+    void SelectTilingMethod() override;
+
+private:
+    void SetCommTimeFactorForA5();
+    void SetCommTimeFactorForOther();
+    void SetCommTimeFactor();
+    bool isAicpuComm_ = false;
 };
 
 

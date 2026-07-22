@@ -49,23 +49,22 @@ __aicore__ inline void CopySingleMatrixNDToNZ(LocalTensor<T> l1Tensor, const Glo
             IsSameType<T, int4b_t>::value ? 64 : AttentionCommon::BYTE_BLOCK / sizeof(T);
         uint64_t l1Offset = 0;
         uint64_t gmOffset = 0;
+        nd2nzPara.dstNzC0Stride = dstNzC0Stride;
+        nd2nzPara.dstNzNStride = 1;
+        nd2nzPara.srcNdMatrixStride = 0;
+        nd2nzPara.dstNzMatrixStride = 0;
+        nd2nzPara.ndNum = 1;
+        nd2nzPara.nValue = 1;
+        if constexpr (IsSameType<T, int4b_t>::value) {
+            constexpr uint32_t HALF_SIZE_DIVISOR = 2;
+            nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
+            nd2nzPara.srcDValue = dValue / HALF_SIZE_DIVISOR;
+        } else {
+            nd2nzPara.dValue = dValue;
+            nd2nzPara.srcDValue = dValue;
+        }
         for (uint32_t i = 0; i < nValue; i++) {
-            nd2nzPara.ndNum = 1;
-            nd2nzPara.nValue = 1;
-            if constexpr (IsSameType<T, int4b_t>::value) {
-                constexpr uint32_t HALF_SIZE_DIVISOR = 2;
-                nd2nzPara.dValue = dValue / HALF_SIZE_DIVISOR;
-                nd2nzPara.srcDValue = dValue / HALF_SIZE_DIVISOR;
-            } else {
-                nd2nzPara.dValue = dValue;
-                nd2nzPara.srcDValue = dValue;
-            }
-            nd2nzPara.dstNzC0Stride = dstNzC0Stride;
-            nd2nzPara.dstNzNStride = 1;
-            nd2nzPara.srcNdMatrixStride = 0;
-            nd2nzPara.dstNzMatrixStride = 0;
             DataCopy(l1Tensor[l1Offset], gmTensor[gmOffset], nd2nzPara);
-
             gmOffset += srcDValue;
             l1Offset += BLOCK_ELEMENT_CNT;
         }

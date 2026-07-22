@@ -61,6 +61,7 @@ __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<float> &out_,
 template<typename W_T>
 __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint32_t> &out, // out    [S2Base]     [128   ] 2
                                              const LocalTensor<float> &qk, // q*k^t  [G, S2Base]  [64 128] 2
+                                             const uint32_t qkVLStride,
                                              const LocalTensor<W_T> &weight, // w      [G]          [64    ] 1
                                              const int gSize) // G 64
 {
@@ -69,7 +70,6 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint32_t> &out, /
     constexpr uint32_t VL = 64; // vector length
 
     auto qk0 = (__local_mem__ float*)qk.GetPhyAddr();
-    auto qk1 = qk0 + VL;
     auto out0 = (__local_mem__ uint32_t*)out.GetPhyAddr();
     auto out1 = out0 + VL;
 
@@ -97,7 +97,7 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint32_t> &out, /
         for (uint16_t i = (uint16_t)(0); i < (uint16_t)(gSize); ++i) {
             AscendC::MicroAPI::Duplicate(brcGatherIndex, i);
             AscendC::MicroAPI::LoadAlign<float>(regQK[0], qk0 + 128 * i);
-            AscendC::MicroAPI::LoadAlign<float>(regQK[1], qk1 + 128 * i);
+            AscendC::MicroAPI::LoadAlign<float>(regQK[1], qk0 + 128 * i + qkVLStride);
             AscendC::MicroAPI::Gather(regwBrc, regW, brcGatherIndex);
 
             AscendC::MicroAPI::Relu(regQK[0], regQK[0], maskAll);

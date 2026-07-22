@@ -30,8 +30,10 @@ namespace ge {
       float8_e5m2, float8_e4m3fn or float4_e2m1; the format supports ND.
 * @li gmm_x_scale: A matrix Tensor. The type support float32 or float8_e8m0. The format supports ND.
 * @li gmm_weight_scale: A matrix Tensor. The type support float32 or float8_e8m0. The format supports ND.
-* @li send_counts_tensor: A tensor of shape [e * ep]. The data type of elements supports int32 or int64; the format supports ND.
-* @li recv_counts_tensor: A tensor of shape [e * ep]. The data type of elements supports int32 or int64; the format supports ND.
+* @li send_counts_tensor: A tensor of shape [e * ep]. The data type of elements supports int32 or int64; the format
+supports ND.
+* @li recv_counts_tensor: A tensor of shape [e * ep]. The data type of elements supports int32 or int64; the format
+supports ND.
 * Data type of elements is int64. Format: ND.
 * @li mm_x: A matrix tensor of shape [BS, H2]. The data type of elements supports
       float16, bfloat16, hifloat8, float8_e5m2, float8_e4m3fn or float4_e2m1; the format supports ND.
@@ -67,47 +69,48 @@ namespace ge {
 * @li comm_mode: A String value. Indicating communication type. Default: ai_cpu.
 
 * @par Outputs:
-* @li y: A matrix tensor of shape [BSK, N1] containing result of grouped matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
-* @li mm_y_optional: A matrix tensor of shape [BS, N2] containing result of matmul. The data type of elements supports float16 or bfloat16; the format supports ND.
+* @li y: A matrix tensor of shape [BSK, N1] containing result of grouped matmul. The data type of elements supports
+float16 or bfloat16; the format supports ND.
+* @li mm_y_optional: A matrix tensor of shape [BS, N2] containing result of matmul. The data type of elements supports
+float16 or bfloat16; the format supports ND.
 */
 
 REG_OP(QuantGroupedMatMulAlltoAllv)
-      .INPUT(gmm_x, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1}))
-      .INPUT(gmm_weight, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8,
-            DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1}))
-      .INPUT(gmm_x_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
-      .INPUT(gmm_weight_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
-      .OPTIONAL_INPUT(send_counts_tensor, TensorType({DT_INT32, DT_INT64}))
-      .OPTIONAL_INPUT(recv_counts_tensor, TensorType({DT_INT32, DT_INT64}))
-      .OPTIONAL_INPUT(mm_x, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8,
-            DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1}))
-      .OPTIONAL_INPUT(mm_weight, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8,
-            DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1}))
-      .OPTIONAL_INPUT(mm_x_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
-      .OPTIONAL_INPUT(mm_weight_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
-      .OPTIONAL_INPUT(comm_quant_scale, TensorType({DT_FLOAT}))
-      .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16}))
-      .OUTPUT(mm_y, TensorType({DT_FLOAT16, DT_BF16}))
-      .REQUIRED_ATTR(group, String)
-      .REQUIRED_ATTR(ep_world_size, Int)
-      .REQUIRED_ATTR(send_counts, ListInt)
-      .REQUIRED_ATTR(recv_counts, ListInt)
-      .REQUIRED_ATTR(gmm_x_quant_mode, Int)
-      .REQUIRED_ATTR(gmm_weight_quant_mode, Int)
-      .ATTR(trans_gmm_weight, Bool, false)
-      .ATTR(trans_mm_weight, Bool, false)
-      .ATTR(mm_x_quant_mode, Int, 0)
-      .ATTR(mm_weight_quant_mode, Int, 0)
-      .ATTR(comm_quant_mode, Int, 0)
-      .ATTR(group_size, Int, 0)
-      .ATTR(y_dtype, Int, DT_UNDEFINED)
-      .ATTR(mm_dtype, Int, DT_UNDEFINED)
-      .ATTR(comm_quant_dtype, Int, 0)
-      .ATTR(comm_mode, String, "ai_cpu")
-      .OP_END_FACTORY_REG(QuantGroupedMatMulAlltoAllv)
+    .INPUT(gmm_x, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1}))
+    .INPUT(gmm_weight, TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1}))
+    .INPUT(gmm_x_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+    .INPUT(gmm_weight_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+    .OPTIONAL_INPUT(send_counts_tensor, TensorType({DT_INT32, DT_INT64}))
+    .OPTIONAL_INPUT(recv_counts_tensor, TensorType({DT_INT32, DT_INT64}))
+    .OPTIONAL_INPUT(mm_x,
+                    TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1}))
+    .OPTIONAL_INPUT(mm_weight,
+                    TensorType({DT_FLOAT16, DT_BF16, DT_HIFLOAT8, DT_FLOAT8_E4M3FN, DT_FLOAT8_E5M2, DT_FLOAT4_E2M1}))
+    .OPTIONAL_INPUT(mm_x_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+    .OPTIONAL_INPUT(mm_weight_scale, TensorType({DT_FLOAT, DT_FLOAT8_E8M0}))
+    .OPTIONAL_INPUT(comm_quant_scale, TensorType({DT_FLOAT}))
+    .OUTPUT(y, TensorType({DT_FLOAT16, DT_BF16}))
+    .OUTPUT(mm_y, TensorType({DT_FLOAT16, DT_BF16}))
+    .REQUIRED_ATTR(group, String)
+    .REQUIRED_ATTR(ep_world_size, Int)
+    .REQUIRED_ATTR(send_counts, ListInt)
+    .REQUIRED_ATTR(recv_counts, ListInt)
+    .REQUIRED_ATTR(gmm_x_quant_mode, Int)
+    .REQUIRED_ATTR(gmm_weight_quant_mode, Int)
+    .ATTR(trans_gmm_weight, Bool, false)
+    .ATTR(trans_mm_weight, Bool, false)
+    .ATTR(mm_x_quant_mode, Int, 0)
+    .ATTR(mm_weight_quant_mode, Int, 0)
+    .ATTR(comm_quant_mode, Int, 0)
+    .ATTR(group_size, Int, 0)
+    .ATTR(y_dtype, Int, DT_UNDEFINED)
+    .ATTR(mm_dtype, Int, DT_UNDEFINED)
+    .ATTR(comm_quant_dtype, Int, 0)
+    .ATTR(comm_mode, String, "ai_cpu")
+    .OP_END_FACTORY_REG(QuantGroupedMatMulAlltoAllv)
 
 
-}  // namespace ge
+} // namespace ge
 
 
-#endif  // GROUPED_MAT_MUL_ALLTO_ALLV_PROTO_H_
+#endif // GROUPED_MAT_MUL_ALLTO_ALLV_PROTO_H_

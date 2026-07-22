@@ -15,6 +15,7 @@ import itertools
 # 定义测试参数组合
 TEST_PARAMS = {
     "Testcase0": {
+        "_name": ["Testcase0"],
         "B": [1],
         "seqlen": [64],
         "nk": [4],
@@ -26,8 +27,10 @@ TEST_PARAMS = {
         "state_data_type": [torch.bfloat16],
         "has_g": [True],
         "is_contiguous": [True],
+        "pt_path": [""],
     },
     "Testcase1": {
+        "_name": ["Testcase1"],
         "B": [1],
         "seqlen": [16384],
         "nk": [4],

@@ -31,28 +31,42 @@
 namespace Mc2Tiling {
 // 引用3rd目录中的定义
 using namespace optiling::Mc2GroupedMatmulTiling::GmmConstant;
-using optiling::Mc2GroupedMatmulTiling::QuantMode;
 using optiling::Mc2GroupedMatmulTiling::Mc2GroupedQbmmTiling;
+using optiling::Mc2GroupedMatmulTiling::QuantMode;
 
 namespace Mc2GroupedMatmul {
 class QuantGroupedMatmulAllToAllvAdapter : public Mc2GroupedQbmmTiling {
 public:
     explicit QuantGroupedMatmulAllToAllvAdapter(gert::TilingContext *context) : Mc2GroupedQbmmTiling(context) {};
-    
+
     ~QuantGroupedMatmulAllToAllvAdapter() override = default;
 
-    const Mc2GroupedMatmulTilingData::GMMQuantTilingData& GetGmmQuantTilingAdapterData() const { return tilingData_; }
+    const Mc2GroupedMatmulTilingData::GMMQuantTilingData &GetGmmQuantTilingAdapterData() const
+    {
+        return tilingData_;
+    }
     // Input validation methods - skipped (validated outside class)
-    bool AnalyzeAttrs() override { return true; }
-    bool AnalyzeDtype() override { return true; }
-    bool AnalyzeInputs() override { return true; }
-    void Reset() override {}
+    bool AnalyzeAttrs() override
+    {
+        return true;
+    }
+    bool AnalyzeDtype() override
+    {
+        return true;
+    }
+    bool AnalyzeInputs() override
+    {
+        return true;
+    }
+    void Reset() override
+    {
+    }
 
     ge::graphStatus Process();
-    ge::graphStatus SetCommonInputParams(const QuantGmmAlltoAllvParamsInfo& params);
-    ge::graphStatus SetGroupExpertInputParameters(const QuantGmmAlltoAllvParamsInfo& params,
-        uint64_t gmmX, uint64_t expertNum = 1);
-    ge::graphStatus SetSharedExpertInputParameters(const QuantGmmAlltoAllvParamsInfo& params);
+    ge::graphStatus SetCommonInputParams(const QuantGmmAlltoAllvParamsInfo &params);
+    ge::graphStatus SetGroupExpertInputParameters(const QuantGmmAlltoAllvParamsInfo &params, uint64_t gmmX,
+                                                  uint64_t expertNum = 1);
+    ge::graphStatus SetSharedExpertInputParameters(const QuantGmmAlltoAllvParamsInfo &params);
 };
 
 } // namespace Mc2GroupedMatmul
