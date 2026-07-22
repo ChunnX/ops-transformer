@@ -345,7 +345,7 @@ stages:
         if: env.TARGET_BRANCH == 'master'
         runs-on: [dedicate-hosted, x64, small]
         container:
-          image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ jobs.JOB_image.outputs.API_Check }}
+          image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ jobs.JOB_image.outputs.codecheck }}
       JOB_ut:
         name: ut_test
         uses: .gitcode/workflows/ut_action.yml
@@ -404,7 +404,7 @@ stages:
         if: env.TARGET_BRANCH == 'master'
         runs-on: [dedicate-hosted, x64, large]
         container:
-          image: swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu24.04_x86:lv6_v1.1073
+          image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ jobs.JOB_image.outputs.UT_Test }}
     pre:
     - type: auto
     fail-fast: true
