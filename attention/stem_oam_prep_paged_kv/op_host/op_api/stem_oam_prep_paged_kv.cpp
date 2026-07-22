@@ -33,15 +33,10 @@ std::tuple<const aclTensor*, const aclTensor*> StemOamPrepPagedKv(
     L0_DFX(StemOamPrepPagedKv, kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale, lambdaMag,
            cacheLayout, kvBlockSize, stemBlockSize, stemStride);
 
-    Shape outShapeShape{18};
-    auto outShapes = executor->AllocTensor(outShapeShape, DataType::DT_INT64, Format::FORMAT_ND);
-
     auto ret = ADD_TO_LAUNCHER_LIST_AICORE(StemOamPrepPagedKv,
         OP_INPUT(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale),
         OP_ATTR(lambdaMag, cacheLayout, kvBlockSize, stemBlockSize, stemStride),
-        OP_OUTPUT(kFlat, vBias),
-        OP_OUTSHAPE({outShapes, 0}),
-        OP_OUTSHAPE({outShapes, 1}));
+        OP_OUTPUT(kFlat, vBias));
 
     auto kNullResult = std::tuple<const aclTensor*, const aclTensor*>{nullptr, nullptr};
     OP_CHECK(ret == ACLNN_SUCCESS,
