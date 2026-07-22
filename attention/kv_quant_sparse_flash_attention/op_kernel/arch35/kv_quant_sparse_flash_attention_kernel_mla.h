@@ -83,7 +83,7 @@ private:
 
     const KvQuantSparseFlashAttentionTilingDataMla *__restrict tilingData;
     static constexpr uint64_t SYNC_MODE = 4;
-    static constexpr uint32_t PRELOAD_NUM = 2;
+    static constexpr uint32_t PRELOAD_NUM = 3;
     /* 核间通道 */
     BufferManager<BufferType::UB> ubBufferManager;
     BuffersPolicyDB<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> bmm1Buffers;
@@ -155,9 +155,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     }
     vecBlock.CleanOutput(attentionOut, constInfo);
     /* cube侧不依赖sharedParams的scalar前置 */
-    InitMMResBuf(workspace);
     if ASCEND_IS_AIC {
-        cubeBlock.InitCubeBlock(pipe, &l1BufferManager, query);
         /* wait kfc message */
         CrossCoreWaitFlag<SYNC_MODE, PIPE_S>(15);
         auto tempTilingSSbuf = reinterpret_cast<__ssbuf__ uint32_t*>(0); // 从ssbuf的0地址开始拷贝
@@ -171,6 +169,14 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     this->InitGlobalBuffer(query, key, value, sparseIndices, blockTable, actualSeqLengthsQ, actualSeqLengths,
         workspace, tiling, tPipe); // gm设置
     this->InitCalcParamsEach();
+    if ASCEND_IS_AIV {
+        if constexpr (IS_VEC_S2PHYADDR) {
+            this->vecBlock.GetKVPhyAddr(aicIdx < usedCoreNum, constInfo.bN2Start, constInfo.bN2End,
+                constInfo.gS1Start, constInfo.gS1End,
+                actualSeqQlenAddr, actualSeqKvlenAddr, workspace, constInfo);
+        }
+    }
+    InitMMResBuf(workspace);
     this->InitLocalBuffer();
 }
 
@@ -325,7 +331,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     }
 
     vecBlock.InitGlobalBuffer(key, value, sparseIndices, blockTable);
-    cubeBlock.InitCubeInput(actualSeqLengthsQ, constInfo);
+    cubeBlock.InitGlobalBuffer(query, actualSeqLengthsQ, constInfo);
 }
 
 
@@ -334,7 +340,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     __gm__ uint8_t *workspace)
 {
     uint32_t mm1RightSize = constInfo.s2BaseSize * 576 * sizeof(Q_T);
-    l1BufferManager.Init(pipe, 524288); // 512 * 1024
+    l1BufferManager.Init(pipe, 440 * 1024); // L1总计512k, 72k留给l1Q, 440k用于l1RightBuffers交叉核
     l1RightBuffers.Init(l1BufferManager, mm1RightSize);
     l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID);
     crossCoreSyncBufId++;
@@ -348,6 +354,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         l1RightBuffers.Get().SetCrossCore();
         l1RightBuffers.Get().SetCrossCore();
     }
+
     uint32_t mm1ResultSize = constInfo.s1BaseSize / CV_RATIO * constInfo.s2BaseSize * sizeof(T);
     uint32_t mm2ResultSize = constInfo.s1BaseSize / CV_RATIO * 512 * sizeof(T);
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
@@ -370,23 +377,27 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         bmm2Buffers.Get().SetCrossCore();
     }
 
+    uint32_t v0ResSize = constInfo.s2BaseSize * 576U * sizeof(Q_T);
+    int64_t totalOffset = 0;
     if constexpr (IS_SPLIT_G) {
-        uint32_t v0ResSize = constInfo.s2BaseSize * 576U * sizeof(Q_T);
-        int64_t totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
-        gmBufferManager.Init(workspace + totalOffset);
-        v0ResGmBuffers.Init(gmBufferManager, v0ResSize);
-        v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
-        crossCoreSyncBufId++;
-        v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
-        crossCoreSyncBufId++;
-        v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
-        crossCoreSyncBufId++;
+        totalOffset = v0ResSize * 3 * (aicIdx >> 1U);
+    } else {
+        totalOffset = v0ResSize * 3 * aicIdx;
     }
+    gmBufferManager.Init(workspace + totalOffset);
+    v0ResGmBuffers.Init(gmBufferManager, v0ResSize);
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId);
+    crossCoreSyncBufId++;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::InitLocalBuffer()
 {
+    cubeBlock.InitLocalBuffer(pipe);
     vecBlock.InitLocalBuffer(pipe, constInfo);
 }
 
@@ -472,20 +483,20 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     if (this->sharedParams.needInit) {
         SyncAll<false>();
     }
-
     ProcessMainLoop();
 }
 
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
+    int64_t maxS2LoopCnt = this->maxS2LoopCnt;
     bool hasLoad = aicIdx < usedCoreNum;
     if (!hasLoad) {
-        if ASCEND_IS_AIV {
+        if ASCEND_IS_AIC {
             if constexpr (IS_SPLIT_G) {
                 for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
-                    CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
-                    CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
+                    CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE2>(15);
+                    CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE2>(15);
                 }
             }
         }
@@ -497,31 +508,27 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     uint32_t qsfaActS1Size = GetBalanceActualSeqLengths(actualSeqLengthsQGm, bIdx);
     uint32_t gS1max = qsfaActS1Size;
     if (constInfo.gS1End + 1 < gS1max) {
-        /* constInfo.gS1End != gS1max时，gS1End需要往后加一格, bN2End不变 */
         constInfo.gS1End = constInfo.gS1End + 1;
-    } else { 
-        /* constInfo.gS1End == gS1max，bN2End需要往后加一格，bN2End变为0，以代表末尾 */
+    } else {
         constInfo.bN2End = constInfo.bN2End + 1;
         constInfo.gS1End = 0;
     }
 
-    // 分核信息
     uint32_t qsfaBN2StartIdx = constInfo.bN2Start;
     uint32_t bN2EndIdx = constInfo.bN2End;
     uint32_t gS1StartIdx = constInfo.gS1Start;
     uint32_t nextGs1Idx = constInfo.gS1End;
-    uint32_t s2StartIdx = 0;
-    uint32_t s2EndIdx = 0;
-
-    uint32_t s2LoopLimit = 0;
     if (nextGs1Idx != 0) {
         bN2EndIdx++;
     }
 
-    RunInfo runInfo[3];
-    RunParamStr runParam;
+    uint32_t s2LoopLimit = 0;
     int64_t taskId = 0;
+    bool isFirstLoop = true;
     bool notLast = true;
+    bool notLastTwoLoop = true;
+    RunInfo runInfo[4];
+    RunParamStr runParam;
     int64_t multiCoreInnerIdx = 1;
     for (int64_t qsfaBnIdx = qsfaBN2StartIdx; qsfaBnIdx < bN2EndIdx; qsfaBnIdx++) {
         bool lastBN = (qsfaBnIdx == bN2EndIdx - 1);
@@ -533,29 +540,33 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
 
         int64_t gS1LoopEnd = lastBN ? (runParam.gs1LoopEndIdx + PRELOAD_NUM) : runParam.gs1LoopEndIdx;
         for (int64_t gS1Index = runParam.gs1LoopStartIdx; gS1Index < gS1LoopEnd; gS1Index++) {
-            bool notLastTwoLoop = true;
+            bool notLastThreeLoop = true;
             if (lastBN) {
                 int32_t qsfaExtraGS1 = gS1Index - runParam.gs1LoopEndIdx;
                 switch (qsfaExtraGS1) {
                     case 0:
-                        notLastTwoLoop = false;
+                        notLastThreeLoop = false;
                         break;
                     case 1:
                         notLastTwoLoop = false;
+                        notLastThreeLoop = false;
+                        break;
+                    case 2:
                         notLast = false;
+                        notLastTwoLoop = false;
+                        notLastThreeLoop = false;
                         break;
                     default:
                         break;
                 }
             }
 
-            if (notLastTwoLoop) {
+            if (notLastThreeLoop) {
                 this->ComputeAxisIdxByBnAndGs1(qsfaBnIdx, gS1Index, runParam);
                 bool s1NoNeedCalc = ComputeParamS1<TEMPLATE_INTF_ARGS>(
                     runParam, this->constInfo, gS1Index, this->actualSeqQlenAddr);
                 bool s2NoNeedCalc =
                     ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo);
-                // s1和s2有任意一个不需要算, 则continue, 如果是当前核最后一次循环，则补充计算taskIdx+2的部分
                 if (s1NoNeedCalc || s2NoNeedCalc) {
                     continue;
                 }
@@ -568,42 +579,55 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
             }
 
             for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                if (notLastTwoLoop) {
-                    RunInfo &runInfo1 = runInfo[taskId % 3];
+                if (notLastThreeLoop) {
+                    RunInfo &runInfo1 = runInfo[taskId % 4];
                     this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx);
-                    if ASCEND_IS_AIC {
-                        this->cubeBlock.IterateBmm1(this->bmm1Buffers.Get(), this->l1RightBuffers.Get(),
-                        this->v0ResGmBuffers.Get(), runInfo1, this->constInfo);
-                    } else {
-                        this->vecBlock.ProcessVec0(this->l1RightBuffers.Get(), this->v0ResGmBuffers.Get(),
-                        runInfo1, this->constInfo);
+                }
+                if ASCEND_IS_AIV {
+                    if (notLastThreeLoop) {
+                        RunInfo &runInfo1 = runInfo[taskId % 4];
+                        this->vecBlock.ProcessVec0(
+                            this->v0ResGmBuffers.Get(runInfo1.taskIdMod3), runInfo1, this->constInfo);
+                    }
+                    if (taskId > 1 && notLast) {
+                        auto &runInfo2 = runInfo[(taskId + 2) % 4];
+                        this->vecBlock.ProcessVec1(this->l1RightBuffers.GetReused(), this->bmm1Buffers.Get(), runInfo2,
+                            this->constInfo);
+                    }
+                    if (taskId > 2) {
+                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
+                        this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), runInfo3, this->constInfo);
                     }
                 } else {
-                    if ASCEND_IS_AIV {
+                    if (taskId > 0 && notLastTwoLoop) {
+                        RunInfo &runInfo1 = runInfo[(taskId + 3) % 4];
+                        this->cubeBlock.IterateLoadQK(
+                            this->l1RightBuffers.Get(runInfo1.taskIdMod3),
+                            this->v0ResGmBuffers.Get(runInfo1.taskIdMod3),
+                            runInfo1, this->constInfo, isFirstLoop);
+                        isFirstLoop = false;
+                    } else {
                         if constexpr (IS_SPLIT_G) {
-                            if (maxS2LoopCnt > 0) {
+                            if (taskId > 0 && maxS2LoopCnt > 0) {
                                 maxS2LoopCnt--;
-                                CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
-                                CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
+                                CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE2>(15);
+                                CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE2>(15);
                             }
                         }
                     }
-                }
-                if (taskId > 0 && notLast) {
-                    auto &runInfo2 = runInfo[(taskId + 2) % 3];
-                    if ASCEND_IS_AIV {
-                        this->vecBlock.ProcessVec1(this->l1RightBuffers.GetReused(), this->bmm1Buffers.Get(), runInfo2,
-                            this->constInfo);
-                    } else {
-                        RunInfo &runInfo2 = runInfo[(taskId + 2) % 3];
-                        this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1RightBuffers, this->l1RightBuffers.GetReused(), runInfo2,
-                            this->constInfo);
+                    if (taskId > 1 && notLast) {
+                        auto &runInfo2 = runInfo[(taskId + 2) % 4];
+                        RunInfo &runInfoNext = runInfo[(taskId + 3) % 4];
+                        this->cubeBlock.IterateBmm1(
+                            this->bmm1Buffers.Get(),
+                            this->l1RightBuffers.Get(runInfo2.taskIdMod3),
+                            this->v0ResGmBuffers.Get(runInfo2.taskIdMod3),
+                            notLastTwoLoop, runInfoNext, runInfo2, this->constInfo);
                     }
-                }
-                if (taskId > 1) {
-                    if ASCEND_IS_AIV {
-                        RunInfo &qsfaRunInfo3 = runInfo[(taskId + 1) % 3];
-                        this->vecBlock.ProcessVec2(this->bmm2Buffers.Get(), qsfaRunInfo3, this->constInfo);
+                    if (taskId > 2) {
+                        RunInfo &runInfo3 = runInfo[(taskId + 1) % 4];
+                        this->cubeBlock.IterateBmm2(this->bmm2Buffers.Get(), this->l1RightBuffers,
+                            this->l1RightBuffers.Get(runInfo3.taskIdMod3), runInfo3, this->constInfo);
                     }
                 }
                 ++taskId;
@@ -613,11 +637,13 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         gS1StartIdx = 0;
     }
 
-    if ASCEND_IS_AIV {
+    if (maxS2LoopCnt > 0) {
         if constexpr (IS_SPLIT_G) {
-            for (int64_t qsfaLoopCnt = 0; qsfaLoopCnt < maxS2LoopCnt; qsfaLoopCnt++) {
-                CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
-                CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE3>(15);
+            if ASCEND_IS_AIC {
+                for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
+                    CrossCoreSetFlag<QSFA_SYNC_MODE0, PIPE_MTE2>(15);
+                    CrossCoreWaitFlag<QSFA_SYNC_MODE0, PIPE_MTE2>(15);
+                }
             }
         }
     }
