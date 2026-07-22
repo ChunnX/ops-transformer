@@ -30,11 +30,11 @@
 #include <cstdlib>
 #include "utils.h"
 #include "apace/tiling/quant_matmul_mx_tiling_swat.h"
+#include "apace/kernel/quant_matmul_all_to_all/matmul_all_to_all_tiling_data.h"
 #include "apace/kernel/quant_matmul_all_to_all/mx_matmul_all_to_all_hcomm_impl.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
 #include "comm_channel_builder.h"
 
-using CommContext = ::CommContext;
 using CommUdmaContext = Apace::AivComm::CommUdmaContext;
 using CommUbmemContext = Apace::AivComm::CommUbmemContext;
 
