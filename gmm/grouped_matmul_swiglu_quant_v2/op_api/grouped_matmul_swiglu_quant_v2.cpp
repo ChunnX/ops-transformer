@@ -8,7 +8,6 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <iostream>
 #include "opdev/op_log.h"
 #include "opdev/op_dfx.h"
 #include "opdev/make_op_executor.h"
@@ -54,28 +53,12 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
     int64_t weightScaleDimNum = static_cast<int64_t>(weightScaleShape.GetDimNum());
     int64_t n = weightScaleShape.GetDim(weightScaleDimNum - 1);
     int64_t nAfterHalve = static_cast<int64_t>(n / 2);
-    std::cout << "*** GMMSQV2 POST7302 L0_COMMON_OUTPUT_SHAPE quantMode=" << quantMode
-              << ", dequantMode=" << dequantMode
-              << ", transposeWeight=" << transposeWeight
-              << ", weightScaleShape=" << op::ToString(weightScaleShape).GetString()
-              << ", n=" << n
-              << ", internalOutputShape=[" << m << ", " << nAfterHalve << "]"
-              << std::endl;
     gert::Shape outShape({m, nAfterHalve});
     gert::Shape scaleOutShape({m});
     auto out = executor->AllocTensor(outShape, DataType::DT_INT8, ge::FORMAT_ND);
     auto scaleOut = executor->AllocTensor(scaleOutShape, DataType::DT_FLOAT, ge::FORMAT_ND);
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         bool isMxWeightNzMultiTensor = IsMxWeightNzMultiTensor(weight);
-        std::cout << "*** GMMSQV2 POST7302 L0_ENTRY quantMode=" << quantMode
-                  << ", dequantMode=" << dequantMode
-                  << ", transposeWeight=" << transposeWeight
-                  << ", isMxWeightNzMultiTensor=" << isMxWeightNzMultiTensor
-                  << ", xShape=" << op::ToString(x->GetViewShape()).GetString()
-                  << ", weightShape=" << op::ToString((*weight)[0]->GetViewShape()).GetString()
-                  << ", weightFormat=" << op::ToString((*weight)[0]->GetStorageFormat()).GetString()
-                  << ", weightScaleShape=" << op::ToString((*weightScale)[0]->GetViewShape()).GetString()
-                  << std::endl;
         if (quantMode == QUANT_MODE_PERTOKEN) {
             // A8W4/A4W4 weightScale is [E, N] for per-channel and [E, KGroup, N] for per-group.
             // WeightNZ may set transposeWeight, but weightScale remains ND and its last dimension is always N.
@@ -89,10 +72,6 @@ const std::tuple<aclTensor *, aclTensor *> GroupedMatmulSwigluQuantV2(const aclT
         }
         nAfterHalve = static_cast<int64_t>(n / 2); // outShape需要为[M, N / 2]
         gert::Shape outShapeV2({m, nAfterHalve});
-        std::cout << "*** GMMSQV2 POST7302 L0_SELECTED m=" << m
-                  << ", n=" << n
-                  << ", internalOutputShape=[" << m << ", " << nAfterHalve << "]"
-                  << std::endl;
         gert::Shape scaleOutShapeV2;
         // 当quantMode等于2时，out_scale 的形状为三维
         if (quantMode == 2) {
