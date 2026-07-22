@@ -300,8 +300,10 @@ private:
     uint32_t kAlignSize_{0};
     uint32_t axisKAlign_{0};
     uint32_t scaleoutMaskWordCount_{0};
-    uint32_t routeScaleupSlotBytes_{0};  // routeScaleupSlot UB 缓存大小 = axisKAlign * rankSizePerServer * 4 对齐
-    uint32_t routeScaleupMaskBytes_{0};  // routeScaleupMask UB 缓存大小 = axisKAlign * maskWordCount * 4 对齐
+    uint32_t routeScaleupSlotEntryElements_{0}; // routeScaleupSlot 每个 route 表项的 32B 对齐 stride
+    uint32_t routeScaleupMaskEntryElements_{0}; // routeScaleupMask 每个 route 表项的 32B 对齐 stride
+    uint32_t routeScaleupSlotBytes_{0};          // routeScaleupSlot 对齐后的 UB 缓存大小
+    uint32_t routeScaleupMaskBytes_{0};          // routeScaleupMask 对齐后的 UB 缓存大小
     uint32_t numScaleoutRanksAlign_{0};  // scaleout rank 数对齐到 UB_ALIGN
     uint32_t perGroupSizeAlign_{0};      // 每组 token 数 * axisK * sizeof(int16_t) 对齐到 256
     uint32_t perGroupTokenNum_{0};       // 每组 token 数
@@ -364,8 +366,8 @@ private:
     DataCopyParams xCopyParams_;      // SendPhase 复制单 token x payload
     DataCopyParams scalesCopyParams_; // SendPhase 复制 fp8 scales payload
     DataCopyExtParams routeCopyParams_;
-    DataCopyExtParams maskCopyParams_;
-    DataCopyExtParams slotCopyParams_;
+    DataCopyExtParams routeMaskTableCopyParams_;
+    DataCopyExtParams routeSlotTableCopyParams_;
     DataCopyPadParams padParams_;
 };
 
@@ -446,8 +448,12 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     kAlignSize_ = Ceil(axisK_ * TOPK_INFO_SIZE, UB_ALIGN) * UB_ALIGN;
     axisKAlign_ = kAlignSize_ / TOPK_INFO_SIZE;
     scaleoutMaskWordCount_ = info.scaleoutMaskWordCount;
-    routeScaleupSlotBytes_ = Ceil(axisKAlign_ * rankSizePerServer_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
-    routeScaleupMaskBytes_ = Ceil(axisKAlign_ * scaleoutMaskWordCount_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
+    routeScaleupSlotEntryElements_ =
+        Ceil(rankSizePerServer_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN / sizeof(int32_t);
+    routeScaleupMaskEntryElements_ =
+        Ceil(scaleoutMaskWordCount_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN / sizeof(int32_t);
+    routeScaleupSlotBytes_ = axisKAlign_ * routeScaleupSlotEntryElements_ * sizeof(int32_t);
+    routeScaleupMaskBytes_ = axisKAlign_ * routeScaleupMaskEntryElements_ * sizeof(int32_t);
     numScaleoutRanksAlign_ = Ceil(numScaleoutRanks_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN / sizeof(int32_t);
     metaOffset_ = hAlignSize_;
     epWorldSizeAlign_ = Ceil(epWorldSize_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN;
@@ -520,8 +526,11 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     xCopyParams_ = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     scalesCopyParams_ = {1U, static_cast<uint16_t>(scalesBytes_), 0U, 0U};
     routeCopyParams_ = {1U, static_cast<uint32_t>(axisK_ * sizeof(int32_t)), 0U, 0U, 0U};
-    maskCopyParams_ = {1U, static_cast<uint32_t>(axisK_ * scaleoutMaskWordCount_ * sizeof(int32_t)), 0U, 0U, 0U};
-    slotCopyParams_ = {1U, static_cast<uint32_t>(axisK_ * rankSizePerServer_ * sizeof(int32_t)), 0U, 0U, 0U};
+    // 每个 route entry 单独搬运，UB 侧按 32B 步进，GM 中的 handle 仍保持紧凑格式。
+    routeMaskTableCopyParams_ = {
+        static_cast<uint16_t>(axisK_), static_cast<uint32_t>(scaleoutMaskWordCount_ * sizeof(int32_t)), 0U, 0U, 0U};
+    routeSlotTableCopyParams_ = {
+        static_cast<uint16_t>(axisK_), static_cast<uint32_t>(rankSizePerServer_ * sizeof(int32_t)), 0U, 0U, 0U};
     padParams_ = {true, 0, 0, 0};
 }
 
@@ -1157,6 +1166,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 {
     // 预聚合前面所有核的 scaleup counter，得到本核起始 slot 偏移，避免循环内 AtomicAdd
     Duplicate<int32_t>(slotIdxPerRankTensor_, 0, epWorldSize_);
+    SyncFunc<AscendC::HardEvent::MTE3_MTE2>(); // 各核 counter 写入完成后再由 MTE2 读取前缀
     ReduceCounterPrefix(scaleupCounterGMTensor_, slotIdxPerRankTensor_, counterAlign512_, counterCnt_, epWorldSize_);
 
     // scaleout slot 起始偏移预聚合后存在 slotIdxPerRankTensor_ 后半段
@@ -1203,7 +1213,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     uint32_t routeEntryIndex, uint32_t dstScaleupIndex, uint32_t scaleupSlot)
 {
     // 用 bitmask 标记 scaleup 目标，UB 本地操作
-    uint32_t maskBase = routeEntryIndex * scaleoutMaskWordCount_;
+    uint32_t maskBase = routeEntryIndex * routeScaleupMaskEntryElements_;
     uint32_t maskWordIndex = dstScaleupIndex / 32U;
     uint32_t maskBitIndex = dstScaleupIndex % 32U;
     uint32_t routeMaskOffset = maskBase + maskWordIndex;
@@ -1211,7 +1221,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     currentMask |= (1U << maskBitIndex);
     routeScaleupMaskTensor_.SetValue(routeMaskOffset, static_cast<int32_t>(currentMask));
 
-    uint32_t routeSlotOffset = routeEntryIndex * rankSizePerServer_ + dstScaleupIndex;
+    uint32_t routeSlotOffset = routeEntryIndex * routeScaleupSlotEntryElements_ + dstScaleupIndex;
     routeScaleupSlotTensor_.SetValue(routeSlotOffset, static_cast<int32_t>(scaleupSlot));
 }
 
@@ -1230,12 +1240,10 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     DataCopyPad(routeCountGMTensor_[tokenId], routeCountTensor_, routeCountCopyParams);
     DataCopyPad(routeDstScaleoutGMTensor_[tokenId * axisK_], routeScaleoutIndexTensor_, routeCopyParams_);
     DataCopyPad(routeScaleoutSlotGMTensor_[tokenId * axisK_], routeScaleoutSlotTensor_, routeCopyParams_);
-
     DataCopyPad(routeScaleupMaskGMTensor_[tokenId * axisK_ * scaleoutMaskWordCount_], routeScaleupMaskTensor_,
-                maskCopyParams_);
-
+                routeMaskTableCopyParams_);
     DataCopyPad(routeScaleupSlotGMTensor_[tokenId * axisK_ * rankSizePerServer_], routeScaleupSlotTensor_,
-                slotCopyParams_);
+                routeSlotTableCopyParams_);
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1257,10 +1265,9 @@ MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::CopyCachedRouteForToke
                 routeCopyPadParams);
 
     DataCopyPad(routeScaleupMaskTensor_, cachedRouteScaleupMaskGMTensor_[tokenId * axisK_ * scaleoutMaskWordCount_],
-                maskCopyParams_, routeCopyPadParams);
-
+                routeMaskTableCopyParams_, routeCopyPadParams);
     DataCopyPad(routeScaleupSlotTensor_, cachedRouteScaleupSlotGMTensor_[tokenId * axisK_ * rankSizePerServer_],
-                slotCopyParams_, routeCopyPadParams);
+                routeSlotTableCopyParams_, routeCopyPadParams);
 
     SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
     SyncFunc<AscendC::HardEvent::S_MTE3>();
@@ -1269,9 +1276,9 @@ MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::CopyCachedRouteForToke
     DataCopyPad(routeDstScaleoutGMTensor_[tokenId * axisK_], routeScaleoutIndexTensor_, routeCopyParams_);
     DataCopyPad(routeScaleoutSlotGMTensor_[tokenId * axisK_], routeScaleoutSlotTensor_, routeCopyParams_);
     DataCopyPad(routeScaleupMaskGMTensor_[tokenId * axisK_ * scaleoutMaskWordCount_], routeScaleupMaskTensor_,
-                maskCopyParams_);
+                routeMaskTableCopyParams_);
     DataCopyPad(routeScaleupSlotGMTensor_[tokenId * axisK_ * rankSizePerServer_], routeScaleupSlotTensor_,
-                slotCopyParams_);
+                routeSlotTableCopyParams_);
     return routeEntryCount;
 }
 
@@ -1396,10 +1403,10 @@ MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::WriteScaleoutPayloadFr
 
         GlobalTensor<int32_t> scaleoutRouteTensor;
         scaleoutRouteTensor.SetGlobalBuffer((__gm__ int32_t *)(scaleoutSlotAddr + perSlotBytes_));
-        DataCopyPad(scaleoutRouteTensor, routeScaleupMaskTensor_[routeEntryIndex * scaleoutMaskWordCount_],
+        DataCopyPad(scaleoutRouteTensor, routeScaleupMaskTensor_[routeEntryIndex * routeScaleupMaskEntryElements_],
                     routeMaskCopyParams);
         DataCopyPad(scaleoutRouteTensor[scaleoutMaskWordCount_],
-                    routeScaleupSlotTensor_[routeEntryIndex * rankSizePerServer_], routeSlotCopyParams);
+                    routeScaleupSlotTensor_[routeEntryIndex * routeScaleupSlotEntryElements_], routeSlotCopyParams);
     }
 }
 
@@ -2012,9 +2019,9 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     routeScaleoutSlotTensor_ =
         numRecvPerRankBuf_.GetWithOffset<int32_t>(axisKAlign_, routeScaleoutSlotOffset);
     routeScaleupMaskTensor_ = numRecvPerRankBuf_.GetWithOffset<int32_t>(
-        axisKAlign_ * scaleoutMaskWordCount_, routeScaleupMaskOffset);
+        axisKAlign_ * routeScaleupMaskEntryElements_, routeScaleupMaskOffset);
     routeScaleupSlotTensor_ = numRecvPerRankBuf_.GetWithOffset<int32_t>(
-        axisKAlign_ * rankSizePerServer_, routeScaleupSlotOffset);
+        axisKAlign_ * routeScaleupSlotEntryElements_, routeScaleupSlotOffset);
     countRouteScaleoutHitTensor_ = numRecvPerRankBuf_.GetWithOffset<int32_t>(
         numScaleoutRanksAlign_, routeScaleoutStateOffset);
     sendRouteIndexByScaleoutTensor_ = numRecvPerRankBuf_.GetWithOffset<int32_t>(
@@ -2061,8 +2068,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     if constexpr (!IsCached) {
         Duplicate<int32_t>(routeScaleoutIndexTensor_, -1, axisKAlign_);
         Duplicate<int32_t>(routeScaleoutSlotTensor_, -1, axisKAlign_);
-        Duplicate<int32_t>(routeScaleupMaskTensor_, 0, axisKAlign_ * scaleoutMaskWordCount_);
-        Duplicate<int32_t>(routeScaleupSlotTensor_, -1, axisKAlign_ * rankSizePerServer_);
+        Duplicate<int32_t>(routeScaleupMaskTensor_, 0, axisKAlign_ * routeScaleupMaskEntryElements_);
+        Duplicate<int32_t>(routeScaleupSlotTensor_, -1, axisKAlign_ * routeScaleupSlotEntryElements_);
         Duplicate<int32_t>(sendRouteIndexByScaleoutTensor_, -1, numScaleoutRanksAlign_);
     }
 }
