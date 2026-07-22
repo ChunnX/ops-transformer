@@ -213,7 +213,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见 [aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见 [aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一阶段接口完成入参校验，出现以下场景时报错。
 
@@ -281,7 +281,7 @@ aclnnStatus aclnnGroupedMatmulV5(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见 [aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见 [aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ---
 
@@ -521,8 +521,8 @@ aclnnGroupedMatmulV5默认确定性实现。
 - x/weight中每组 Tensor的最后一维 < 65536。
   - $x_i$ 最后一维：x不转置时为K轴，x转置时为M轴。
   - $weight_i$ 最后一维：weight不转置时为N轴，weight转置时为K轴。
-- x/weight转置时对应Tensor必须 [非连续](../../../docs/zh/context/非连续的Tensor.md)。
-- weight为 [FRACTAL_NZ](../../../docs/zh/context/数据格式.md) 格式时，shape 须满足 NZ格式要求。
+- x/weight转置时对应Tensor必须 [非连续](../../../docs/zh/context/non_contiguous_tensor.md)。
+- weight为 [FRACTAL_NZ](../../../docs/zh/context/data_format.md) 格式时，shape 须满足 NZ格式要求。
 - perTokenScaleOptional：通常仅1维，长度与 x的M一致。仅支持 x/weight/out均为单Tensor 场景。
 - groupListOptional：out中 TensorList长度为1时，groupList约束输出数据有效范围，未指定部分不参与更新。
 - groupListType：
@@ -761,7 +761,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 ## 调用示例
 
-以下表格提供各场景下的示例代码文件链接，请参考文件中的注释了解对应场景说明。编译与运行请参考 [编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+以下表格提供各场景下的示例代码文件链接，请参考文件中的注释了解对应场景说明。编译与运行请参考 [编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 | 场景 | 产品型号 | 示例文件 | 说明 |
 |------|:---:|------|------|
