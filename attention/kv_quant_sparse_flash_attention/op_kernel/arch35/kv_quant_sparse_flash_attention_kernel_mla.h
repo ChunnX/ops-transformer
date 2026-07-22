@@ -103,7 +103,7 @@ private:
 
     /* workspace 空间 */
     BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
-    
+
     /* 核Index信息 */
     int32_t aicIdx;
 
@@ -454,6 +454,10 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
         constInfo.maxBlockNumPerBatch = sharedParams.maxBlockNumPerBatch;
     }
 
+    if ASCEND_IS_AIV {
+        constInfo.keyStride0 = this->tilingData->baseParams.keyStride0;
+    }
+
     InitUniqueConstInfo();
 }
 
@@ -499,7 +503,7 @@ __aicore__ inline void KvQuantSparseFlashAttentionMla<CubeBlockType, VecBlockTyp
     if (constInfo.gS1End + 1 < gS1max) {
         /* constInfo.gS1End != gS1max时，gS1End需要往后加一格, bN2End不变 */
         constInfo.gS1End = constInfo.gS1End + 1;
-    } else { 
+    } else {
         /* constInfo.gS1End == gS1max，bN2End需要往后加一格，bN2End变为0，以代表末尾 */
         constInfo.bN2End = constInfo.bN2End + 1;
         constInfo.gS1End = 0;

@@ -139,7 +139,7 @@ TEST_PARAMS = {
 ENABLED_PARAMS = [
     TEST_PARAMS["bsnd_basic"],
     TEST_PARAMS["bsnd_multi_batch"],
-    TEST_PARAMS["pa_bsnd"], 
+    TEST_PARAMS["pa_bsnd"],
     TEST_PARAMS["tnd_basic"],
     TEST_PARAMS["tnd_pa_multi_batch"],
 ]

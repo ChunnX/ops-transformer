@@ -167,6 +167,7 @@ TILING_DATA_FIELD_DEF(uint32_t, sparseBlockCount)
 TILING_DATA_FIELD_DEF(int64_t, dSizeVInput)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsNull)
 TILING_DATA_FIELD_DEF(uint32_t, isActualLenDimsKVNull)
+TILING_DATA_FIELD_DEF(int64_t, keyStride0)  // PA mode non-contiguous stride
 END_TILING_DATA_DEF
 
 REGISTER_TILING_DATA_CLASS(KvQuantSparseFlashAttentionBaseParamsMlaOp, KvQuantSparseFlashAttentionBaseParamsMla)
@@ -288,6 +289,8 @@ struct QSFATilingInfo {
 
     uint64_t l2CacheSize = 0;
     int64_t dSizeVInput = 0;
+
+    int64_t keyStride0 = 0; // PA mode non-contiguous stride on 0-axis
 };
 
 // ---------------算子Tiling类---------------
@@ -552,6 +555,7 @@ public:
     void GenerateInfo(QSFATilingInfo &qsfaInfo);
     void FillTilingInfoAttrsAndLayouts(QSFATilingInfo &qsfaInfo);
     ge::graphStatus Parse(QSFATilingInfo &qsfaInfo);
+    ge::graphStatus CheckContiguous() const;
 
     const gert::TilingContext *context_ = nullptr;
 
@@ -603,6 +607,8 @@ public:
     gert::Shape keyShape_{};
     gert::Shape valueShape_{};
     gert::Shape sparseIndicesShape_{};
+
+    std::vector<uint32_t> keyStridesVec_;
 };
 } // namespace optiling
 #endif // KV_QUANT_SPARSE_FLASH_ATTENTION_TILING_H
