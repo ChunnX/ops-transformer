@@ -826,30 +826,40 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                 ((opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
                 (opParamInfo_.blockTable.tensor != nullptr &&
                 opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_)),
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
-                "actual_seq_lengths_query, actual_seq_lengths_key, block_table",
-                std::to_string(bSize_) + " , " +
-                std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()) + " , " +
-                std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
-                "TND case input actual_seq_lengths_query, actual_seq_lengths_key, block_table dim 0 must be same"),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query actual_seq_lengths_key and block_table",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
+                Ops::Base::ToString(opParamInfo_.actualSeqLengthsK.tensor->GetStorageShape()) + " and "
+                Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()),
+                "TND case input actual_seq_lengths_query, actual_seq_lengths_key, block_table dim 0 are " +
+                std::to_string(bSize_) + ", " +
+                std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()) + ", " +
+                std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)) +
+                " respectively, they must be same"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(((kLayout_ != DataLayout::PA_BSND) &&
                    opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_),
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "actual_seq_lengths_query, actual_seq_lengths_key",
-                std::to_string(bSize_) + " , " +
-                std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()),
-                "TND case input actual_seq_lengths_query, actual_seq_lengths_key must be same"),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and actual_seq_lengths_key",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
+                Ops::Base::ToString(opParamInfo_.actualSeqLengthsK.tensor->GetStorageShape()),
+                "TND case input actual_seq_lengths_query, actual_seq_lengths_key are " +
+                std::to_string(bSize_) + ", " +
+                std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()) +
+                " respectively, they must be same"),
             return ge::GRAPH_FAILED);
         // -----------------------check T-------------------
         uint32_t qTsize = opParamInfo_.query.shape->GetStorageShape().GetDim(0);
         OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != qTsize) ||
                        (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != qTsize),
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query, weights, sparse_indices",
-                        std::to_string(qTsize) + " , " +
-                        std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + " , " +
-                        std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
-                        "TND case input query, weights, sparse_indices dim 0 must be same"),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query, weights and sparse_indices",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
+                Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + " and "
+                Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
+                "TND case input query, weights, sparse_indices dim 0 are " +
+                std::to_string(qTsize) + ", " +
+                std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + ", " +
+                std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)) +
+                " respectively, they must be same"),
+            return ge::GRAPH_FAILED);
         tSize_ = qTsize;
     } else {
         // -----------------------check BatchSize-------------------
@@ -860,80 +870,99 @@ ge::graphStatus QLIInfoParser::ValidateInputShapesMatch()
                     opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_) ||
                     (opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
                     (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != bSize_)),
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
-                "query, weight,  actual_seq_lengths_key, block_table, sparse_indices",
-                std::to_string(bSize_) + " , " +
-                std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + " , " +
-                std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()) + " , " +
-                std::to_string(opParamInfo_.blockTable.tensor->GetShapeSize()) + " , " +
-                std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
-                "BSND case input query, weight, actual_seq_lengths_key, "
-                "block_table, sparse_indices dim 0 must be same"),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_,
+                "query, weights, actual_seq_lengths_key, block_table and sparse_indices",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
+                Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + ", " +
+                Ops::Base::ToString(opParamInfo_.actualSeqLengthsK.tensor->GetStorageShape()) + ", " +
+                Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()) + " and "
+                Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
+                "BSND case input query, weight, actual_seq_lengths_key, block_table, sparse_indices dim 0 are " +
+                std::to_string(bSize_) + ", " +
+                std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + ", " +
+                std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()) + ", " +
+                std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)) + ", " +
+                std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)) +
+                " respectively, they must be same"),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF((kLayout_ != DataLayout::PA_BSND) &&
                     ((opParamInfo_.weights.shape->GetStorageShape().GetDim(0) != bSize_) ||
                     (opParamInfo_.actualSeqLengthsK.tensor != nullptr &&
                     opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize() != bSize_) ||
                     (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0) != bSize_)),
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
-                "query, weight,  actual_seq_lengths_key, sparse_indices",
-                std::to_string(bSize_) + " , " +
-                std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + " , " +
-                std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()) + " , " +
-                std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)),
-                "BSND case input query, weight, actual_seq_lengths_key, "
-                "block_table, sparse_indices dim 0 must be same"),
-                   return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_,
+                "query, weights, actual_seq_lengths_key, and sparse_indices",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
+                Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + ", " +
+                Ops::Base::ToString(opParamInfo_.actualSeqLengthsK.tensor->GetStorageShape()) + " and "
+                Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
+                "BSND case input query, weight, actual_seq_lengths_key, block_table, sparse_indices dim 0 are " +
+                std::to_string(bSize_) + ", " +
+                std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(0)) + ", " +
+                std::to_string(opParamInfo_.actualSeqLengthsK.tensor->GetShapeSize()) + ", " +
+                std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(0)) +
+                " respectively, they must be same"),
+            return ge::GRAPH_FAILED);
         OP_CHECK_IF(
             (opParamInfo_.actualSeqLengthsQ.tensor != nullptr) &&
                 (opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize() != bSize_),
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query, actual_seq_lengths_query",
-                        std::to_string(bSize_) + " , " +
-                        std::to_string(opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize()),
-                        "BSND case input query, actual_seq_lengths_query dim 0 must be same"),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and actual_seq_lengths_query",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
+                Ops::Base::ToString(opParamInfo_.actualSeqLengthsQ.tensor->GetStorageShape()),
+                "BSND case input query, actual_seq_lengths_query dim 0 are " +
+                std::to_string(bSize_) + ", " +
+                std::to_string(opParamInfo_.actualSeqLengthsQ.tensor->GetShapeSize()) +
+                " respectively, they must be same"),
+            return ge::GRAPH_FAILED);
         // -----------------------check S1-------------------
         OP_CHECK_IF(
             (opParamInfo_.weights.shape->GetStorageShape().GetDim(1) != s1Size_) ||
                 (opParamInfo_.attenOut.shape->GetStorageShape().GetDim(1) != s1Size_),
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query, weight, sparse_indices",
-                        std::to_string(s1Size_) + " , " +
-                        std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(1)) + " , " +
-                        std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(1)),
-                        "BSND case input query, weight, sparse_indices dim 1 must be same"),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query, weights and sparse_indices",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
+                Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()) + " and "
+                Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
+                "BSND case input query, weight, sparse_indices dim 1 are " +
+                std::to_string(s1Size_) + ", " +
+                std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(1)) + ", " +
+                std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(1)) +
+                " respectively, they must be same"),
+            return ge::GRAPH_FAILED);
         queryWeightsN1Dim = DIM_IDX_TWO;
         outN2Dim = DIM_IDX_TWO;
         tSize_ = bSize_ * s1Size_;
     }
     // -----------------------check N1-------------------
     OP_CHECK_IF((opParamInfo_.weights.shape->GetStorageShape().GetDim(queryWeightsN1Dim) != n1Size_),
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query, weight",
-                    std::to_string(n1Size_) + " , " +
-                    std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(queryWeightsN1Dim)),
-                    "input query, weight shape dim N1 must be same"),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and weights",
+                    Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and "
+                    Ops::Base::ToString(opParamInfo_.weights.shape->GetStorageShape()),
+                    "input query, weight shape dim N1 are " +
+                    std::to_string(n1Size_) + ", " +
+                    std::to_string(opParamInfo_.weights.shape->GetStorageShape().GetDim(1)) +
+                    " respectively, they must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check D-------------------
     OP_CHECK_IF(
         ((kLayout_ != DataLayout::TND && opParamInfo_.key.shape->GetShape().GetDim(DIM_IDX_THREE) != headDim_)
         || (kLayout_ == DataLayout::TND && opParamInfo_.key.shape->GetShape().GetDim(DIM_IDX_TWO) != headDim_)),
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query, key",
-                    std::to_string(headDim_) + " , " +
-                    std::to_string(opParamInfo_.key.shape->GetShape().GetDim(DIM_IDX_TWO)),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
+                    Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and "
+                    Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()),
                     "input query, key shape last dim must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check N2-------------------
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim) != n2Size_),
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query, sparse_indices",
-                    std::to_string(n2Size_) + " , " +
-                    std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim)),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and sparse_indices",
+                    Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and "
+                    Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()),
                     "input query and output sparse_indices shape n2 dim must be same"),
                 return ge::GRAPH_FAILED);
     // -----------------------check sparse_count-------------------
     OP_CHECK_IF((opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1) != *opParamInfo_.sparseCount),
-                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "sparse_indices, sparse_count",
-                    std::to_string(*opParamInfo_.sparseCount) + " , " +
-                    std::to_string(opParamInfo_.attenOut.shape->GetStorageShape().GetDim(outN2Dim + 1)),
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "sparse_indices and sparse_count",
+                    Ops::Base::ToString(opParamInfo_.attenOut.shape->GetStorageShape()) + " and "
+                    std::to_string(*opParamInfo_.sparseCount),
                     "output sparse_indices and attr sparse_count last dim must be same"),
                return ge::GRAPH_FAILED);
 
@@ -961,22 +990,24 @@ ge::graphStatus QLIInfoParser::CheckScaleShape()
         uint32_t dimValueQueryScale = opParamInfo_.query_dequant_scale.shape->GetStorageShape().GetDim(i);
         uint32_t dimValueQuery = opParamInfo_.query.shape->GetStorageShape().GetDim(i);
         OP_CHECK_IF(dimValueQueryScale != dimValueQuery,
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "query_dequant_scale, query",
-                        std::to_string(dimValueQueryScale) + " , " +
-                        std::to_string(dimValueQuery),
-                        "The shape dim " + std::to_string(i) + " of query_dequant_scale and query should be same"),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and query_dequant_scale",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and "
+                Ops::Base::ToString(opParamInfo_.query_dequant_scale.shape->GetStorageShape()),
+                "query_dequant_scale's shape[" + i + "] " + std::to_string(dimValueQueryScale) +
+                " and query's shape[" + i + "] " + std::to_string(dimValueQuery) + " is not same"),
+            return ge::GRAPH_FAILED);
     }
     // check k scale
     for (uint32_t i = 0; i < (kShapeDim - 1); i++) {
         uint32_t dimValueKeyScale = opParamInfo_.key_dequant_scale.shape->GetShape().GetDim(i);
         uint32_t dimValueKey = opParamInfo_.key.shape->GetShape().GetDim(i);
         OP_CHECK_IF(dimValueKeyScale != dimValueKey,
-                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "key_dequant_scale, key",
-                        std::to_string(dimValueKeyScale) + " , " +
-                        std::to_string(dimValueKey),
-                        "The shape dim " + std::to_string(i) + " of key_dequant_scale and key should be same"),
-                    return ge::GRAPH_FAILED);
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "key and key_dequant_scale",
+                Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()) + " and "
+                Ops::Base::ToString(opParamInfo_.key_dequant_scale.shape->GetStorageShape()),
+                "key_dequant_scale's shape[" + i + "] " + std::to_string(dimValueKeyScale) +
+                " and key's shape[" + i + "] " + std::to_string(dimValueKey) + " is not same"),
+            return ge::GRAPH_FAILED);
     }
 
     return ge::GRAPH_SUCCESS;
