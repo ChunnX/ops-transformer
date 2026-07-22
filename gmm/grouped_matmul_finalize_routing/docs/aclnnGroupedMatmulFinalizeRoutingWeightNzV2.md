@@ -436,8 +436,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
   - 公共约束
     - groupList：当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
     - x2的e取值范围[1, 1024]。
-    - sharedInput的bsdp必须小于等于outputBS，n和x2的n一致。
-    - sharedInputOffset + sharedInput的bsdp <= outputBS。
+    - sharedInput的n和x2的n一致。
 
   - 全量化场景支持的数据类型为：
 
