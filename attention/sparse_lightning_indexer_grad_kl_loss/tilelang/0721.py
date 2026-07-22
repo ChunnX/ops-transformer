@@ -272,10 +272,15 @@ def tilelang_grad_kl_loss_single_kernel(
     dkey_finalize_batch = 16
     dkey_finalize_total_batches = dkey_output_rows // dkey_finalize_batch
     loss_reduce_chunk = 128
-    loss_valid_size = task_count * 2
-    loss_partial_size = ceil_div(loss_valid_size, loss_reduce_chunk) * loss_reduce_chunk
-    loss_full_chunk_count = loss_valid_size // loss_reduce_chunk
-    loss_tail_size = loss_valid_size % loss_reduce_chunk
+    # DataCopyPad is block based.  Give every scalar partial its own aligned
+    # 32-byte GM slot and make the finalizer consume only complete 128-value
+    # chunks; short region copies lower incorrectly on the current backend.
+    loss_partial_stride = 8
+    loss_partial_span = task_count * 2 * loss_partial_stride
+    loss_partial_size = ceil_div(
+        loss_partial_span, loss_reduce_chunk
+    ) * loss_reduce_chunk
+    loss_full_chunk_count = loss_partial_size // loss_reduce_chunk
 
     @T.macro
     def vector0_gather_task(
@@ -1004,6 +1009,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.mul(v1_bw_diff_2d, v1_bw_weight_2d, v1_bw_diff_2d)
                     T.pipe_barrier("v")
                     T.tile.mul(v1_bw_diff_2d, v1_bw_diff_2d, v1_bw_mask)
+                    T.pipe_barrier("v")
 
                     T.tile.cast(
                         v1_bw_rg_half,
@@ -1062,8 +1068,12 @@ def tilelang_grad_kl_loss_single_kernel(
                 )
                 T.copy(
                     v1_bw_loss_accum,
-                    LossPartial[(bz_task * S1 + s1_id) * 2 + vector_id:
-                                (bz_task * S1 + s1_id) * 2 + vector_id + 1],
+                    LossPartial[
+                        ((bz_task * S1 + s1_id) * 2 + vector_id)
+                        * loss_partial_stride:
+                        ((bz_task * S1 + s1_id) * 2 + vector_id)
+                        * loss_partial_stride + 1
+                    ],
                 )
                 T.set_flag("mte3", "v", 3)
 
@@ -1489,7 +1499,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.fill(v2_loss_total, 0.0)
                     for loss_chunk_id in T.serial(loss_full_chunk_count):
                         loss_chunk_start = loss_chunk_id * loss_reduce_chunk
-                        T.tile.fill(v2_loss_chunk, 0.0)
                         T.set_flag("v", "mte2", 4)
                         T.wait_flag("v", "mte2", 4)
                         T.copy(
@@ -1497,30 +1506,6 @@ def tilelang_grad_kl_loss_single_kernel(
                                 loss_chunk_start:loss_chunk_start + loss_reduce_chunk
                             ],
                             v2_loss_chunk[0, :],
-                        )
-                        T.set_flag("mte2", "v", 4)
-                        T.wait_flag("mte2", "v", 4)
-                        T.reduce_sum(
-                            v2_loss_chunk,
-                            v2_loss_chunk_sum,
-                            1,
-                        )
-                        T.pipe_barrier("v")
-                        T.tile.add(
-                            v2_loss_total,
-                            v2_loss_total,
-                            v2_loss_chunk_sum,
-                        )
-                    if loss_tail_size > 0:
-                        loss_tail_start = loss_full_chunk_count * loss_reduce_chunk
-                        T.tile.fill(v2_loss_chunk, 0.0)
-                        T.set_flag("v", "mte2", 4)
-                        T.wait_flag("v", "mte2", 4)
-                        T.copy(
-                            LossPartial[
-                                loss_tail_start:loss_tail_start + loss_tail_size
-                            ],
-                            v2_loss_chunk[0, 0:loss_tail_size],
                         )
                         T.set_flag("mte2", "v", 4)
                         T.wait_flag("mte2", "v", 4)
@@ -2692,7 +2677,10 @@ def sparse_lightning_indexer_grad_kl_loss(
         block_n = N_SPLIT
         n_num_ws = K // block_n
         v2_k_padded = K
-        loss_partial_size = ceil_div(B * S1 * 2, 128) * 128
+        loss_partial_stride = 8
+        loss_partial_size = ceil_div(
+            B * S1 * 2 * loss_partial_stride, 128
+        ) * 128
 
         cache_key = (
             B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2,
@@ -2872,6 +2860,9 @@ def sparse_lightning_indexer_grad_kl_loss(
                 debug_p_safe
                 * (torch.log(debug_p_safe) - torch.log(debug_softmax_i_safe))
             ).sum()
+            debug_loss_partials = loss_partial_ws[
+                :B * S1 * 2 * loss_partial_stride:loss_partial_stride
+            ]
             p_reduced_diff = (p_reduced_ws.float() - debug_p_reduced).abs()
             softmax_i_diff = (softmax_i_ws.float() - debug_softmax_i).abs()
             relu_grad_diff = (relu_grad_out.float() - debug_relu_grad).abs()
@@ -2911,6 +2902,11 @@ def sparse_lightning_indexer_grad_kl_loss(
                 f"mean_diff={softmax_i_diff.mean().item():.6e}"
             )
             print(
+                f"[DEBUG] bmm2Res ReLU check: "
+                f"negative={(bmm2_res_ws < 0).sum().item()}, "
+                f"min={bmm2_res_ws.min().item():.6e}"
+            )
+            print(
                 f"[DEBUG] reluGradRes vs host formula: "
                 f"max_diff={relu_grad_diff.max().item():.6e}, "
                 f"mean_diff={relu_grad_diff.mean().item():.6e}"
@@ -2919,6 +2915,11 @@ def sparse_lightning_indexer_grad_kl_loss(
                 f"[DEBUG] dWeightOut vs host formula: "
                 f"max_diff={d_weight_diff.max().item():.6e}, "
                 f"mean_diff={d_weight_diff.mean().item():.6e}"
+            )
+            print(
+                f"[DEBUG] aligned LossPartial sum vs host formula: "
+                f"partial_sum={debug_loss_partials.sum().item():.6e}, "
+                f"abs_diff={(debug_loss_partials.sum() - debug_loss).abs().item():.6e}"
             )
             print(
                 f"[DEBUG] LossOut vs host formula: "
