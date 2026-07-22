@@ -20,6 +20,8 @@
 #include "opdev/tensor_view_utils.h"
 #include "acl/acl.h"
 
+#include <cstdio>
+
 using namespace op;
 
 #ifdef __cplusplus
@@ -384,19 +386,6 @@ aclnnStatus ReshapeTensorToViewShape(const aclTensor *&tensor, const char *name,
     return ACLNN_SUCCESS;
 }
 
-aclnnStatus MakeTensorContiguousToViewShape(const aclTensor *&tensor, const char *name, aclOpExecutor *executor)
-{
-    if (tensor == nullptr) {
-        return ACLNN_SUCCESS;
-    }
-    tensor = l0op::Contiguous(tensor, executor);
-    if (tensor == nullptr) {
-        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try make %s contiguous failed.", name);
-        return ACLNN_ERR_INNER_NULLPTR;
-    }
-    return ReshapeTensorToViewShape(tensor, name, executor);
-}
-
 aclnnStatus ReshapeTensorListToViewShape(const aclTensorList *&tensorList, const char *name, aclOpExecutor *executor)
 {
     if (tensorList == nullptr) {
@@ -600,24 +589,46 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *processedKeyRope = keyRopeOptional;
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    CHECK_RET(MakeTensorContiguousToViewShape(processedQuery, "query", l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(MakeTensorContiguousToViewShape(processedPseShift, "pseShift", l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(MakeTensorContiguousToViewShape(processedAttenMask, "attenMask", l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(MakeTensorContiguousToViewShape(processedBlockTable, "blockTable", l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(MakeTensorContiguousToViewShape(processedKeySharedPrefix, "keySharedPrefix", l0Executor) ==
-                  ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(MakeTensorContiguousToViewShape(processedValueSharedPrefix, "valueSharedPrefix", l0Executor) ==
-                  ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(MakeTensorContiguousToViewShape(processedQueryRope, "queryRope", l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
-    CHECK_RET(MakeTensorContiguousToViewShape(processedKeyRope, "keyRope", l0Executor) == ACLNN_SUCCESS,
-              ACLNN_ERR_INNER_NULLPTR);
+    if (processedQuery != nullptr) {
+        std::printf("processedQuery is not nullptr.\n");
+        processedQuery = l0op::Contiguous(processedQuery, l0Executor);
+        CHECK_RET(processedQuery != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (processedPseShift != nullptr) {
+        std::printf("processedPseShift is not nullptr.\n");
+        processedPseShift = l0op::Contiguous(processedPseShift, l0Executor);
+        CHECK_RET(processedPseShift != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (processedAttenMask != nullptr) {
+        std::printf("processedAttenMask is not nullptr.\n");
+        processedAttenMask = l0op::Contiguous(processedAttenMask, l0Executor);
+        CHECK_RET(processedAttenMask != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (processedBlockTable != nullptr) {
+        std::printf("processedBlockTable is not nullptr.\n");
+        processedBlockTable = l0op::Contiguous(processedBlockTable, l0Executor);
+        CHECK_RET(processedBlockTable != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (processedKeySharedPrefix != nullptr) {
+        std::printf("processedKeySharedPrefix is not nullptr.\n");
+        processedKeySharedPrefix = l0op::Contiguous(processedKeySharedPrefix, l0Executor);
+        CHECK_RET(processedKeySharedPrefix != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (processedValueSharedPrefix != nullptr) {
+        std::printf("processedValueSharedPrefix is not nullptr.\n");
+        processedValueSharedPrefix = l0op::Contiguous(processedValueSharedPrefix, l0Executor);
+        CHECK_RET(processedValueSharedPrefix != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (processedQueryRope != nullptr) {
+        std::printf("processedQueryRope is not nullptr.\n");
+        processedQueryRope = l0op::Contiguous(processedQueryRope, l0Executor);
+        CHECK_RET(processedQueryRope != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
+    if (processedKeyRope != nullptr) {
+        std::printf("processedKeyRope is not nullptr.\n");
+        processedKeyRope = l0op::Contiguous(processedKeyRope, l0Executor);
+        CHECK_RET(processedKeyRope != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    }
     auto kvProcessRet = ProcessKVForL0Input(
         processedKey, processedValue, processedBlockTable, isFAIRoutingCandidate, l0Executor);
     CHECK_RET(kvProcessRet == ACLNN_SUCCESS, kvProcessRet);
