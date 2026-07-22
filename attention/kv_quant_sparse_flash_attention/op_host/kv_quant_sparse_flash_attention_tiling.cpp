@@ -242,6 +242,7 @@ ge::graphStatus QSFAMlaTiling::GetPlatformInfo()
     libapiSize_ = qsfaAscendcPlatform.GetLibApiWorkSpaceSize();
     aivNum_ = qsfaAscendcPlatform.GetCoreNumAiv();
     aicNum_ = qsfaAscendcPlatform.GetCoreNumAic();
+    npuArch_ = qsfaAscendcPlatform.GetCurNpuArch();
 
     OP_CHECK_IF(aicNum_ == 0 || aivNum_ == 0,
         OPS_REPORT_VECTOR_INNER_ERR(qsfaInfo_->opName, "num of core obtained is 0."), return GRAPH_FAILED);
@@ -259,7 +260,9 @@ void QSFAMlaTiling::GenTilingKey()
     }
 
     tilingKey_ = GET_TPL_TILING_KEY(0U, pageAttention, layoutQuery, layoutKV, \
-        perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE, static_cast<uint32_t>(qsfaInfo_->gSize > 64)); // G大于64时核间切G
+        perfMode_ == QSFAPerfMode::V_TEMPLATE_MODE, \
+        static_cast<uint32_t>(qsfaInfo_->gSize > 64), \
+        static_cast<uint32_t>(vectorizeFlag_)); // G大于64时核间切G, IS_VEC_S2PHYADDR
     
     OP_LOGI(qsfaInfo_->opName, "QSFA tilingKey_: %lu.", tilingKey_);
 }
@@ -436,6 +439,11 @@ void QSFAMlaTiling::GetWorkspaceSize()
             workspaceSize_ += (S2_BASE_SIZE * D_SIZE * GetTypeSize(qsfaInfo_->inputQType) \
                 * TRIPLE_BUFFER_NUM * (aicNum >> 1));
         }
+        if (vectorizeFlag_) { // IS_VEC_S2PHYADDR 物理地址表
+            uint32_t totalBS1 = (qsfaInfo_->qLayout == QSFALayout::TND) ?
+                qsfaInfo_->s1Size : (qsfaInfo_->bSize * qsfaInfo_->s1Size);
+            workspaceSize_ += (totalBS1 * qsfaInfo_->sparseBlockCount * sizeof(int64_t));
+        }
     } else {
         uint32_t mmResElemSize = 4;         // 4:fp32
         uint32_t vec1ResElemSize = 2;       // 2:fp16/bf16
@@ -487,6 +495,22 @@ ge::graphStatus QSFAMlaTiling::DoOpTiling(QSFATilingInfo *qsfaInfo)
     Split();
     FillTiling();
     CalcBlockDim();
+
+    // 计算物理地址向量化条件
+    if (npuArch_ == NpuArch::DAV_3510) {
+        constexpr uint32_t UB_SIZE = 248 * 1024; // UB大小共256KB,预留8k
+        uint32_t blocksizeFlag = static_cast<uint32_t>((qsfaInfo_->blockSize &
+            (qsfaInfo_->blockSize - 1)) == 0); // blockSize是否为2的幂次
+        uint32_t vectorizeUbSize = qsfaInfo_->maxBlockNumPerBatch * sizeof(int32_t) +
+            qsfaInfo_->sparseBlockCount * sizeof(int32_t) +
+            qsfaInfo_->sparseBlockCount * sizeof(int64_t); // 物理地址计算向量化所需ub大小
+        vectorizeFlag_ = static_cast<uint32_t>(
+            (vectorizeUbSize <= UB_SIZE) &&
+            blocksizeFlag);
+    } else {
+        vectorizeFlag_ = false;
+    }
+
     GetWorkspaceSize();
     GenTilingKey();
 
