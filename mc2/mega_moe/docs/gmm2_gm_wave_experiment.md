@@ -122,17 +122,17 @@ bash build.sh --pkg --soc=ascend950 --ops=mega_moe -j16 -O3
 主要编译开关：
 
 ```text
-MEGA_MOE_GMM2_READY_MODE=0       per-expert
-MEGA_MOE_GMM2_READY_MODE=1       per-batch（默认）
+MEGA_MOE_GMM2_READY_MODE=0       per-expert（默认）
+MEGA_MOE_GMM2_READY_MODE=1       per-batch
 MEGA_MOE_GMM2_GM_READY_SMOKE_TEST=1  最小 scalar GM 地址 smoke
 MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG=1  默认关闭的内部时间戳
-MEGA_MOE_WEIGHT1_INTERLEAVED=1   GMM1/SwiGLU 双 UB slot interleave（默认）
+MEGA_MOE_WEIGHT1_INTERLEAVED=1   GMM1/SwiGLU 双 UB slot interleave（默认关闭）
 ```
 
 `MEGA_MOE_WEIGHT1_INTERLEAVED=1` 不只是调度开关：kernel 会按参考分支
 `codex/0715-prefetch-next-batch-dispatch-ab` 的契约，把 weight1 和 weight1 MX scale
 解释为匹配的 `[gate, up]` tile-interleaved 布局。上板时必须同步启用 runner/权重准备侧的
-interleave；普通连续 gate/up 权重需要显式设置 `MEGA_MOE_WEIGHT1_INTERLEAVED=0`。
+interleave；默认的 `MEGA_MOE_WEIGHT1_INTERLEAVED=0` 使用普通连续 gate/up 权重。
 
 默认最优版本不需要额外编译选项：
 
