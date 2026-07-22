@@ -342,7 +342,7 @@ __aicore__ inline void InlineRadixTopK(
     // Prefetch first tile for extraction
     DataCopy(xBufPing.Get<float>(), scoreCache[0], tileLenAlign_);
     SetFlag<HardEvent::MTE2_V>(mte2ToV);
-    pingPongFlag = true;
+    bool ppFlag = true;
 
     for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
         RDX_V_S_SYNC();
@@ -352,22 +352,22 @@ __aicore__ inline void InlineRadixTopK(
             // Still need to consume the MTE2 event for this tile
             if (tileId < tileNum_ - 1) {
                 // Prefetch next tile, skip current
-                TBuf<TPosition::VECCALC>& nextBuf = pingPongFlag ? xBufPong : xBufPing;
+                TBuf<TPosition::VECCALC>& nextBuf = ppFlag ? xBufPong : xBufPing;
                 DataCopy(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
             }
             WaitFlag<HardEvent::MTE2_V>(mte2ToV);
             if (tileId < tileNum_ - 1) {
                 SetFlag<HardEvent::MTE2_V>(mte2ToV);
             }
-            pingPongFlag = !pingPongFlag;
+            ppFlag = !ppFlag;
             continue;
         }
 
         uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
 
         // Select current and next buffer
-        TBuf<TPosition::VECCALC>& curBuf = pingPongFlag ? xBufPing : xBufPong;
-        TBuf<TPosition::VECCALC>& nextBuf = pingPongFlag ? xBufPong : xBufPing;
+        TBuf<TPosition::VECCALC>& curBuf = ppFlag ? xBufPing : xBufPong;
+        TBuf<TPosition::VECCALC>& nextBuf = ppFlag ? xBufPong : xBufPing;
 
         // Prefetch next tile
         if (tileId < tileNum_ - 1) {
@@ -449,7 +449,7 @@ __aicore__ inline void InlineRadixTopK(
         if (tileId < tileNum_ - 1) {
             SetFlag<HardEvent::MTE2_V>(mte2ToV);
         }
-        pingPongFlag = !pingPongFlag;
+        ppFlag = !ppFlag;
     }
 
     for (uint32_t i = writeOffset; i < kValue; i++) {
