@@ -48,6 +48,7 @@ private:
     uint32_t aivId_{0};
     uint32_t rankId_{0};
     uint32_t numRanks_{0};
+    uint32_t channelsPerRank_{1};
     AscendC::TBuf<> hcommBuf_;
     AscendC::Hcomm<AscendC::COMM_PROTOCOL_UBC_CTP> hcomm_;
 };
@@ -61,6 +62,10 @@ __aicore__ inline void EngramFetchWaitArch35::Init(GM_ADDR commContext, GM_ADDR 
     ctxPtr_ = (__gm__ EngramCommContext *)commContext;
     rankId_ = ctxPtr_->rankId;
     numRanks_ = ctxPtr_->rankSize;
+    channelsPerRank_ = ctxPtr_->channelsPerRank;
+    if (channelsPerRank_ == 0) {
+        channelsPerRank_ = 1;
+    }
 
     tpipe_->InitBuffer(hcommBuf_, Mc2Kernel::HCOMM_INIT_SIZE);
     AscendC::LocalTensor<uint8_t> hcommTensor = hcommBuf_.Get<uint8_t>();
@@ -71,12 +76,14 @@ __aicore__ inline void EngramFetchWaitArch35::Process()
 {
     if ASCEND_IS_AIV {
         uint32_t totalBlocks = AscendC::GetBlockNum();
-        for (uint32_t channelIdx = aivId_; channelIdx < numRanks_; channelIdx += totalBlocks) {
-            if (channelIdx == rankId_) {
+        uint32_t totalChannels = numRanks_ * channelsPerRank_;
+        for (uint32_t chIdx = aivId_; chIdx < totalChannels; chIdx += totalBlocks) {
+            uint32_t rank = chIdx / channelsPerRank_;
+            if (rank == rankId_) {
                 continue;
             }
-            int32_t ret = hcomm_.Drain(ctxPtr_->hcommHandle[channelIdx]);
-            ascendc_assert(ret == 0, "Urma drain failed, ret=%d, channelIdx=%u", ret, channelIdx);
+            int32_t ret = hcomm_.Drain(ctxPtr_->hcommHandle[chIdx]);
+            ascendc_assert(ret == 0, "Urma drain failed, ret=%d, chIdx=%u", ret, chIdx);
         }
     }
 }

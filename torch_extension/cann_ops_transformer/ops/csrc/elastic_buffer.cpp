@@ -16,9 +16,7 @@
 #include <torch/extension.h>
 #include <pybind11/stl.h>
 #include <pybind11/pybind11.h>
-#include <pybind11/functional.h>
 #include <chrono>
-#include <functional>
 #include <stdexcept>
 #include <string>
 #include <tuple>
@@ -115,6 +113,7 @@ struct EngramCommContext {
     uint32_t rankSize = 0;
     uint64_t virtualAddrList[HCCL_MAX_RANK_SIZE] = {};
     uint64_t hcommHandle[HCCL_MAX_RANK_SIZE] = {};
+    uint32_t channelsPerRank = 1;
 };
 
 struct MoeCommContext {
@@ -257,10 +256,12 @@ private:
     }
 
     static void BuildChannelDescs(const HcclComm &commHandle, uint32_t srcRankId, uint32_t rankDim,
-                                  HcclMemHandle &memHandle, std::vector<HcclChannelDesc> &channelDesc)
+                                  uint32_t channelsPerRank, HcclMemHandle &memHandle,
+                                  std::vector<HcclChannelDesc> &channelDesc)
     {
         channelDesc.clear();
-        channelDesc.reserve(rankDim > 0 ? rankDim - 1 : 0);
+        uint32_t totalChannels = (rankDim - 1) * channelsPerRank;
+        channelDesc.reserve(totalChannels);
 
         uint32_t *netLayers = nullptr;
         uint32_t netLayerNum = 0;
@@ -281,21 +282,23 @@ private:
                     const int p = static_cast<int>(linkList[i].linkAttr.linkProtocol);
                     if (p != COMM_PROTOCOL_UBC_CTP_VALUE && p != COMM_PROTOCOL_UBC_TP_VALUE)
                         continue;
-                    HcclChannelDesc desc;
-                    HcclResult initRet = HcclChannelDescInit(&desc, 1);
-                    TORCH_CHECK(initRet == HCCL_SUCCESS, "HcclChannelDescInit failed, ret=", initRet);
-                    desc.remoteRank = peer;
-                    desc.channelProtocol = linkList[i].linkAttr.linkProtocol;
-                    desc.localEndpoint.protocol = linkList[i].srcEndpointDesc.protocol;
-                    desc.localEndpoint.commAddr = linkList[i].srcEndpointDesc.commAddr;
-                    desc.localEndpoint.loc = linkList[i].srcEndpointDesc.loc;
-                    desc.remoteEndpoint.protocol = linkList[i].dstEndpointDesc.protocol;
-                    desc.remoteEndpoint.commAddr = linkList[i].dstEndpointDesc.commAddr;
-                    desc.remoteEndpoint.loc = linkList[i].dstEndpointDesc.loc;
-                    desc.notifyNum = 3;
-                    desc.memHandles = &memHandle;
-                    desc.memHandleNum = 1;
-                    channelDesc.push_back(desc);
+                    for (uint32_t ch = 0; ch < channelsPerRank; ++ch) {
+                        HcclChannelDesc desc;
+                        HcclResult initRet = HcclChannelDescInit(&desc, 1);
+                        TORCH_CHECK(initRet == HCCL_SUCCESS, "HcclChannelDescInit failed, ret=", initRet);
+                        desc.remoteRank = peer;
+                        desc.channelProtocol = linkList[i].linkAttr.linkProtocol;
+                        desc.localEndpoint.protocol = linkList[i].srcEndpointDesc.protocol;
+                        desc.localEndpoint.commAddr = linkList[i].srcEndpointDesc.commAddr;
+                        desc.localEndpoint.loc = linkList[i].srcEndpointDesc.loc;
+                        desc.remoteEndpoint.protocol = linkList[i].dstEndpointDesc.protocol;
+                        desc.remoteEndpoint.commAddr = linkList[i].dstEndpointDesc.commAddr;
+                        desc.remoteEndpoint.loc = linkList[i].dstEndpointDesc.loc;
+                        desc.notifyNum = 3;
+                        desc.memHandles = &memHandle;
+                        desc.memHandleNum = 1;
+                        channelDesc.push_back(desc);
+                    }
                     found = true;
                 }
             }
@@ -304,14 +307,20 @@ private:
     }
 
     static void GetHcclCommChannel(const HcclComm &commHandle, uint32_t rankDim, uint32_t srcRankId,
-                                   HcclMemHandle &memHandle, ChannelHandle *channels)
+                                   uint32_t channelsPerRank, HcclMemHandle &memHandle, ChannelHandle *channels)
     {
         std::vector<HcclChannelDesc> descs;
         ChannelHandle channelBuf[HCCL_MAX_RANK_SIZE] = {};
-        BuildChannelDescs(commHandle, srcRankId, rankDim, memHandle, descs);
+        BuildChannelDescs(commHandle, srcRankId, rankDim, channelsPerRank, memHandle, descs);
         AcquireChannels(commHandle, CommEngine::COMM_ENGINE_AIV, descs, channelBuf);
-        for (size_t i = 0; i < descs.size(); ++i) {
-            channels[descs[i].remoteRank] = channelBuf[i];
+        uint32_t descIdx = 0;
+        for (uint32_t peer = 0; peer < rankDim; ++peer) {
+            if (peer == srcRankId)
+                continue;
+            for (uint32_t ch = 0; ch < channelsPerRank; ++ch) {
+                channels[peer * channelsPerRank + ch] = channelBuf[descIdx];
+                descIdx++;
+            }
         }
     }
 
@@ -319,13 +328,25 @@ private:
                                     const std::string &targetTag)
     {
         uint32_t rankId = resources.context.rankId;
+        constexpr uint32_t handleArraySize = 72U;
+        resources.context.channelsPerRank = (handleArraySize + resources.context.rankSize - 1U) /
+                                            resources.context.rankSize;
+        if (resources.context.channelsPerRank == 0U) {
+            resources.context.channelsPerRank = 1U;
+        }
+        uint32_t channelsPerRank = resources.context.channelsPerRank;
+
         ChannelHandle handlesByRank[HCCL_MAX_RANK_SIZE] = {};
-        GetHcclCommChannel(commHandle, resources.context.rankSize, rankId, resources.memHandle, handlesByRank);
+        GetHcclCommChannel(commHandle, resources.context.rankSize, rankId, channelsPerRank, resources.memHandle,
+                           handlesByRank);
 
         for (uint32_t peer = 0; peer < resources.context.rankSize; ++peer) {
             if (peer == rankId)
                 continue;
-            resources.context.hcommHandle[peer] = handlesByRank[peer];
+            for (uint32_t ch = 0; ch < channelsPerRank; ++ch) {
+                resources.context.hcommHandle[peer * channelsPerRank + ch] =
+                    handlesByRank[peer * channelsPerRank + ch];
+            }
         }
 
         resources.context.virtualAddrList[rankId] = reinterpret_cast<uint64_t>(resources.deviceBufPtr);
@@ -336,9 +357,9 @@ private:
             uint32_t memNum = 0;
             CommMem *remoteMems = nullptr;
             char **memTags = nullptr;
-            auto hcclRet =
-                HcclChannelGetRemoteMemsFunc(commHandle, resources.context.hcommHandle[i], &memNum, &remoteMems,
-                                             &memTags);
+            auto hcclRet = HcclChannelGetRemoteMemsFunc(commHandle,
+                                                        resources.context.hcommHandle[i * channelsPerRank], &memNum,
+                                                        &remoteMems, &memTags);
             TORCH_CHECK(hcclRet == HCCL_SUCCESS, "HcclChannelGetRemoteMems(peer=", i, ") failed, ret=", hcclRet);
             // 取自己注册的buffer作为通信buffer
             bool hasTargetMem = false;
@@ -658,7 +679,6 @@ public:
     ~ElasticBuffer();
 
     void EngramWrite(const at::Tensor &storage);
-    std::function<at::Tensor()> EngramFetch(const at::Tensor &indices);
     void EngramBarrier(bool useCommStream = true, bool withCpuSync = false);
     void Destroy();
 
@@ -666,6 +686,12 @@ public:
     {
         return reinterpret_cast<int64_t>(engramHostBufPtr_);
     }
+
+    const at::Tensor &GetContextTensor() const { return engramContextTensor_; }
+
+    static at::Tensor EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
+                                  int64_t numEntries, int64_t dtypeEnum);
+    static at::Tensor EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched);
 
     static int64_t GetEngramStorageSizeHint(int64_t numEntries, int64_t hiddenSize,
                                             at::ScalarType dtype = at::kBFloat16);
@@ -718,16 +744,18 @@ private:
     int64_t engramNumEntries_ = 0;
     at::ScalarType engramDtype_ = at::kBFloat16;
 
-    bool destroyed_ = false;
-    bool engramWriteCalled_ = false;
-    std::atomic<bool> engramFetchInProgress_{false};
+    static inline bool destroyed_ = false;
+    static inline bool engramWriteCalled_ = false;
+    static inline std::atomic<bool> engramFetchInProgress_{false};
     aclrtStream commStream_ = nullptr;
 };
 
 // Constructor
 ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes)
-    : groupName_(groupName), engramNumCpuBytes_(numCpuBytes), destroyed_(false), engramWriteCalled_(false)
+    : groupName_(groupName), engramNumCpuBytes_(numCpuBytes)
 {
+    destroyed_ = false;
+    engramWriteCalled_ = false;
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
 }
@@ -815,36 +843,35 @@ void ElasticBuffer::EngramWrite(const at::Tensor &storage)
     engramWriteCalled_ = true;
 }
 
-// EngramFetch - fetch data using stored metadata
-std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices)
+// EngramFetch - stateless static method for torch CustomOp registration (graph-mode compatible).
+at::Tensor ElasticBuffer::EngramFetch(const at::Tensor &context, const at::Tensor &indices, int64_t hiddenSize,
+                                      int64_t numEntries, int64_t dtypeEnum)
 {
     TORCH_CHECK(!destroyed_, "engram_fetch cannot be called after destroy, please create a new ElasticBuffer instance");
     TORCH_CHECK(engramWriteCalled_, "engram_fetch must be called after at least one engram_write");
     TORCH_CHECK(!engramFetchInProgress_.load(),
                 "Cannot call engram_fetch while previous fetch callback is pending, "
                 "please invoke the callback function returned by the previous engram_fetch first");
-
+    auto dtype = static_cast<at::ScalarType>(dtypeEnum);
     int64_t numTokens = indices.size(0);
-    if (numTokens == 0 || engramNumCpuBytes_ == 0) {
-        auto emptyTensor =
-            at::empty({numTokens, engramHiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
-        return [=]() { return emptyTensor; };
-    }
-
-    engramFetchInProgress_.store(true);
-
-    auto fetched =
-        at::empty({numTokens, engramHiddenSize_}, at::TensorOptions().dtype(engramDtype_).device(indices.device()));
-
-    ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices, engramHiddenSize_, engramNumEntries_, fetched);
-
-    auto capturedContext = engramContextTensor_;
-    auto fetchFlag = &engramFetchInProgress_;
-    return [capturedContext, fetched, fetchFlag]() {
-        ACLNN_CMD(aclnnEngramFetchWait, capturedContext, fetched);
-        fetchFlag->store(false);
+    auto fetched = at::empty({numTokens, hiddenSize}, at::TensorOptions().dtype(dtype).device(indices.device()));
+    if (numTokens == 0) {
         return fetched;
-    };
+    }
+    engramFetchInProgress_.store(true);
+    ACLNN_CMD(aclnnEngramFetch, context, indices, hiddenSize, numEntries, fetched);
+    return fetched;
+}
+
+// EngramFetchWait - stateless static method for torch CustomOp registration.
+at::Tensor ElasticBuffer::EngramFetchWait(const at::Tensor &context, const at::Tensor &fetched)
+{
+    if (fetched.size(0) == 0) {
+        return fetched;
+    }
+    ACLNN_CMD(aclnnEngramFetchWait, context, fetched);
+    engramFetchInProgress_.store(false);
+    return fetched;
 }
 
 // EngramBarrier - cross-rank synchronization
@@ -907,6 +934,7 @@ void ElasticBuffer::Destroy()
     moeContextTensor_ = at::Tensor();
 
     destroyed_ = true;
+    engramFetchInProgress_.store(false);
 }
 
 // GetEngramStorageSizeHint - calculate recommended CPU buffer size (static method)
@@ -1118,11 +1146,16 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
         .def(pybind11::init<const std::string &, int64_t>(), pybind11::arg("groupName"),
              pybind11::arg("numCpuBytes"))
         .def("engram_write", &Mc2Api::ElasticBuffer::EngramWrite, pybind11::arg("storage").noconvert())
-        .def("engram_fetch", &Mc2Api::ElasticBuffer::EngramFetch, pybind11::arg("indices").noconvert())
+        .def_static("engram_fetch", &Mc2Api::ElasticBuffer::EngramFetch, pybind11::arg("context"),
+                    pybind11::arg("indices"), pybind11::arg("hidden_size"), pybind11::arg("num_entries"),
+                    pybind11::arg("dtype"))
+        .def_static("engram_fetch_wait", &Mc2Api::ElasticBuffer::EngramFetchWait, pybind11::arg("context"),
+                    pybind11::arg("fetched"))
         .def("engram_barrier", &Mc2Api::ElasticBuffer::EngramBarrier, pybind11::arg("useCommStream") = true,
              pybind11::arg("withCpuSync") = false)
         .def("destroy", &Mc2Api::ElasticBuffer::Destroy)
         .def("get_host_buf_ptr", &Mc2Api::ElasticBuffer::GetHostBufPtr)
+        .def("get_context_tensor", &Mc2Api::ElasticBuffer::GetContextTensor)
         .def("moe_ep_dispatch", &Mc2Api::ElasticBuffer::MoeEpDispatch)
         .def("moe_ep_dispatch_epilogue", &Mc2Api::ElasticBuffer::MoeEpDispatchEpilogue)
         .def("moe_ep_combine", &Mc2Api::ElasticBuffer::MoeEpCombine)

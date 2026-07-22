@@ -23,7 +23,7 @@
 #endif
 
 namespace Mc2Kernel {
-constexpr uint32_t MAX_QP_SIZE = 1024U;
+constexpr uint32_t HCCL_MAX_RANK_SIZE = 1024U;
 constexpr uint32_t UB_ALIGN = 32U;
 constexpr uint32_t TILE_BYTES = 32U * 1024U;
 constexpr uint32_t HCOMM_INIT_SIZE = 512U;
@@ -36,8 +36,9 @@ constexpr uint32_t RELAY_BUFFER_NUM = 2U;
 struct EngramCommContext {
     uint32_t rankId;
     uint32_t rankSize;
-    uint64_t commBuffer[MAX_QP_SIZE];
-    uint64_t hcommHandle[MAX_QP_SIZE];
+    uint64_t commBuffer[HCCL_MAX_RANK_SIZE];
+    uint64_t hcommHandle[HCCL_MAX_RANK_SIZE];
+    uint32_t channelsPerRank;
 };
 
 } // namespace Mc2Kernel
