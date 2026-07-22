@@ -313,18 +313,19 @@ __aicore__ inline void InlineRadixTopK(
 
         uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
 
-        // CopyIn float data from UB cache, Cast to bf16
+        // CopyIn from UB cache, Cast to bf16
         DataCopy(xLocalFp32, scoreCache[tileId * tileLen_], tileLenAlign_);
         Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
         PipeBarrier<PIPE_V>();
 
         int32_t tileOffset = static_cast<int32_t>(tileId * tileLen_);
 
-        // Scalar GT + EQ: read each bf16 score, compare with boundary (select largest)
+        // Scalar GT + EQ: read int16 bits, convert to float via bit shift (no AscendC::Cast)
         RDX_V_S_SYNC();
         for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
-            bfloat16_t score = xLocalB16.GetValue(i);
-            float scoreFloat = AscendC::Cast(score);
+            int16_t bits = xLocalInt16.GetValue(i);
+            int32_t floatBits = static_cast<int32_t>(bits) << 16;
+            float scoreFloat = *reinterpret_cast<float *>(&floatBits);
             if (scoreFloat > boundaryFloat) {
                 indexGm.SetValue(writeOffset, static_cast<int32_t>(i) + tileOffset);
                 writeOffset++;
@@ -332,8 +333,9 @@ __aicore__ inline void InlineRadixTopK(
             }
         }
         for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
-            bfloat16_t score = xLocalB16.GetValue(i);
-            float scoreFloat = AscendC::Cast(score);
+            int16_t bits = xLocalInt16.GetValue(i);
+            int32_t floatBits = static_cast<int32_t>(bits) << 16;
+            float scoreFloat = *reinterpret_cast<float *>(&floatBits);
             if (scoreFloat == boundaryFloat) {
                 indexGm.SetValue(writeOffset, static_cast<int32_t>(i) + tileOffset);
                 writeOffset++;
