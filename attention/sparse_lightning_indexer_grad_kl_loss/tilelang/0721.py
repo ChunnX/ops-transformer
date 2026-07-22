@@ -900,7 +900,7 @@ def tilelang_grad_kl_loss_single_kernel(
         with T.Scope("V"):
             v1_bw_weight_half = T.alloc_ub(rows_per_aiv, input_dtype)
             v1_bw_weight = T.alloc_ub(rows_per_aiv, calc_dtype)
-            v1_bw_weight_2d = T.alloc_ub((rows_per_aiv, n_block), calc_dtype)
+            v1_bw_ones = T.alloc_ub((rows_per_aiv, n_block), calc_dtype)
             v1_bw_p = T.alloc_ub(n_block, calc_dtype)
             v1_bw_sy = T.alloc_ub(n_block, calc_dtype)
             v1_bw_diff = T.alloc_ub(n_block, calc_dtype)
@@ -942,24 +942,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     rows_per_aiv,
                 )
 
-                T.tile.fill(v1_bw_weight_2d, 1.0)
+                T.tile.fill(v1_bw_ones, 1.0)
                 T.pipe_barrier("v")
-                for bw_col_chunk in T.serial(p_col_chunk_count):
-                    bw_col_start = bw_col_chunk * p_cols_per_chunk
-                    T.tile.row_expand_mul_experiment(
-                        v1_bw_weight_2d[
-                            0:rows_per_aiv,
-                            bw_col_start:bw_col_start + p_cols_per_chunk,
-                        ],
-                        v1_bw_weight_2d[
-                            0:rows_per_aiv,
-                            bw_col_start:bw_col_start + p_cols_per_chunk,
-                        ],
-                        v1_bw_weight,
-                        v1_bw_row_tmp,
-                    )
-                # row_tmp aliases the P input region.  Publish MTE2 ownership
-                # only after row-expand has consumed the temporary buffer.
+                # Seed ownership for the first P/SY/BMM2 refill.
                 T.set_flag("v", "mte2", 3)
 
                 for n_idx in T.serial(n_num):
@@ -995,9 +980,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.exp(v1_bw_mask, v1_bw_mask)
                     T.pipe_barrier("v")
-                    T.tile.mul(v1_bw_mask, v1_bw_mask, -1.0)
+                    T.tile.sub(v1_bw_mask, v1_bw_ones, v1_bw_mask)
                     T.pipe_barrier("v")
-                    T.tile.add(v1_bw_mask, v1_bw_mask, 1.0)
 
                     # dWeight consumes diff_2d first.  Reuse that buffer for
                     # reluGrad afterwards, preserving (weight * diff) * mask.
@@ -1006,8 +990,25 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.reduce_sum(v1_bw_bmm2, v1_bw_dw, 1)
                     T.pipe_barrier("v")
                     T.tile.add(v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw)
-                    T.tile.mul(v1_bw_diff_2d, v1_bw_weight_2d, v1_bw_diff_2d)
-                    T.pipe_barrier("v")
+
+                    # Expand the AIV-owned weights directly into the current
+                    # diff tile.  A barrier after every 64-column row-expand
+                    # protects its BRCB scratch before the next chunk reuses it.
+                    for bw_col_chunk in T.serial(p_col_chunk_count):
+                        bw_col_start = bw_col_chunk * p_cols_per_chunk
+                        T.tile.row_expand_mul_experiment(
+                            v1_bw_diff_2d[
+                                0:rows_per_aiv,
+                                bw_col_start:bw_col_start + p_cols_per_chunk,
+                            ],
+                            v1_bw_diff_2d[
+                                0:rows_per_aiv,
+                                bw_col_start:bw_col_start + p_cols_per_chunk,
+                            ],
+                            v1_bw_weight,
+                            v1_bw_row_tmp,
+                        )
+                        T.pipe_barrier("v")
                     T.tile.mul(v1_bw_diff_2d, v1_bw_diff_2d, v1_bw_mask)
                     T.pipe_barrier("v")
 
