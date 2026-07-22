@@ -115,6 +115,7 @@ struct WorkspaceInfo {
     GM_ADDR gmm1MmadResPtr;
     GM_ADDR gmm2MmadResPtr;
     GM_ADDR gmm2CombineSyncCounterPtr;
+    GM_ADDR gmm1TileStatusPtr; // GMM1 tile 就绪状态位区（仅 prefetch 软同步分配）
 
     GM_ADDR maskSlotPtr;          // urma发送mask临时GM
     GM_ADDR dispatchL1CommPtr;    // dispatch L1 communication workspace
@@ -210,6 +211,16 @@ struct WorkspaceInfo {
             int64_t stridePerExpert = Ops::Base::CeilAlign(
                 static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE * SIZE_INT_32, ALIGN_128);
             workspaceSize += stridePerExpert * tilingData->expertPerRank;
+        }
+
+        // GMM1 tile 状态位区（仅 prefetch 路径分配，用于 AIC→AIV0 软同步）
+        gmm1TileStatusPtr = nullptr;
+        if (tilingData->topkWeightsPrefetch == 1) {
+            gmm1TileStatusPtr = base + workspaceSize;
+            // 每个 expert 一段 maxTilesPerExpert 个 int32，末尾额外 1 个 allDone slot
+            int64_t statusSlots = static_cast<int64_t>(tilingData->expertPerRank) * tilingData->maxTilesPerExpert + 1;
+            int64_t statusBytes = SIZE_INT_32 * statusSlots;
+            workspaceSize += Ops::Base::CeilAlign(statusBytes, ALIGN_512);
         }
 
         if (tilingData->topoType == TOPO_TYPE_URMA) {

@@ -108,7 +108,8 @@ private:
     __aicore__ inline void QuantProcessInRank();
     __aicore__ inline void LoadTopkWeightsToUb(const LocalTensor<ActivationType>& xOutTensor,
         int32_t curentOffset, int32_t index, TEventID event);
-    __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
+    __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
+                                                       uint32_t expertIdx);
     __aicore__ inline void GroupMatmulWithCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
                                                   uint32_t expertIdx);
 
@@ -1570,14 +1571,15 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::CrossRankSyncInWorldSiz
 // ===============================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo,
-                                                                                    const ExpertLoopState &state)
+                                                                                     const ExpertLoopState &state,
+                                                                                     uint32_t expertIdx)
 {
     if constexpr (ENABLE_A8W4) {
         MegaMoeImpl::GroupMatmulSwigluQuantA8W4<QuantOutType, Weight1Type, bfloat16_t, QuantScaleOutType,
                                                 QuantScaleOutType, GMM1_TILE_M, MegaMoeImpl::L1_TILE_M_128,
                                                 TopkWeightsPrefetch>(
             epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-            state.expertBeforeCnt);
+            state.expertBeforeCnt, expertIdx);
     } else {
         if (params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ ||
             params_.tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
@@ -1586,14 +1588,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::GroupMatmulWithSwigluQu
                                                 QuantScaleOutType, QuantScaleOutType, true, GMM1_TILE_M,
                                                 MegaMoeImpl::L1_TILE_M_128, TopkWeightsPrefetch>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt);
+                state.expertBeforeCnt, expertIdx);
         } else {
             // Generic: fp8/fp4 activation × fp8/fp4 weight in ND format (includes A4W4 ND)
             MegaMoeImpl::GroupMatmulSwigluQuant<QuantOutType, SwigluQuantOutType, QuantOutType, bfloat16_t,
                                                 QuantScaleOutType, QuantScaleOutType, false, GMM1_TILE_M,
                                                 MegaMoeImpl::L1_TILE_M_128, TopkWeightsPrefetch>(
                 epilogueOp_, params_, state.problemShape, gmmAddrInfo, startBlockIdx_, vecSetSyncCom_,
-                state.expertBeforeCnt);
+                state.expertBeforeCnt, expertIdx);
         }
     }
 }
@@ -1697,9 +1699,34 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
             continue;
         }
         UpdateGlobalBuffer<AddrUpdateMode::GMM1>(gmm1AddrInfo, gmm1State);
-        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State);
+        GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, static_cast<uint32_t>(localExpertId));
     }
-    EndSync(vecSetSyncCom_);
+    // prefetch 路径：epilogue 完成所有 expert 后写 allDone，AIC 轮询后继续
+    // 非 prefetch 路径：沿用 EndSync 硬同步
+    // A8W4 的 epilogue 在 AIV1 执行，generic 在 AIV0 执行
+    if constexpr (TopkWeightsPrefetch) {
+        if constexpr (g_coreType == AIV) {
+            constexpr uint32_t epilogueSubIdx = ENABLE_A8W4 ? 1 : 0;
+            if (subBlockIdx_ == epilogueSubIdx) {
+                int32_t allDoneTag = static_cast<int32_t>(expertPerRank_ + 1);
+                __gm__ int32_t *allDoneAddr =
+                    reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm1TileStatusPtr) +
+                    static_cast<int64_t>(expertPerRank_) * params_.tilingData->maxTilesPerExpert;
+                AscendC::WriteGmByPassDCache(allDoneAddr, allDoneTag);
+            }
+        } else { // AIC
+            int32_t allDoneTag = static_cast<int32_t>(expertPerRank_ + 1);
+            __gm__ int32_t *allDoneAddr =
+                reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.gmm1TileStatusPtr) +
+                static_cast<int64_t>(expertPerRank_) * params_.tilingData->maxTilesPerExpert;
+            while (AscendC::ReadGmByPassDCache(allDoneAddr) != allDoneTag) {
+                int64_t st = AscendC::GetSystemCycle();
+                while (AscendC::GetSystemCycle() - st < 100) {}
+            }
+        }
+    } else {
+        EndSync(vecSetSyncCom_);
+    }
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
             ExpertTokenNumCopyOut(); // 本卡专家接受的tokenCnt总数搬出
