@@ -26,6 +26,12 @@ bool StemPrepKvTiling::IsCapable()
     return true;
 }
 
+template <typename T>
+inline T CeilAlign(T num, T rnd)
+{
+    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
+}
+
 ge::graphStatus StemPrepKvTiling::ContinuousStridesCompute(gert::Shape &shape, gert::Stride &stride, size_t idx)
 {
     auto xStorageShape = context_->GetInputShape(idx);
@@ -98,6 +104,19 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensShape);
     batchSize_ = kvSeqLensShape->GetStorageShape().GetDim(0);
 
+    auto kvSeqLensTensor = context_->GetInputTensor(3);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kvSeqLensTensor);
+    int32_t maxKvLen = 0;
+    for (int32_t i = 0; i < batchSize_; i++) {
+        int32_t kvSeqLen = kvSeqLensTensor->GetData<int32_t>()[i];
+        if (kvSeqLen > maxKvLen) {
+            maxKvLen = kvSeqLen;
+        }
+    }
+
+    int64_t kvLenAlign = CeilAlign(static_cast<int64_t>(maxKvLen), stemBlocks_);
+    maxKvBlockSize_ = kvLenAlign / stemBlocks_;
+
     GetTensorInfo(kcacheShape_, kCacheStride_, 0);
     GetTensorInfo(vcacheShape_, vCacheStride_, 1);
     GetTensorInfo(kScaleCacheShape_, kScaleCacheStride_, 4);
@@ -111,7 +130,6 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
 
     const gert::StorageShape *kvIndicesShape = context_->GetInputShape(2);
     OP_CHECK_NULL_WITH_CONTEXT(context_, kvIndicesShape);
-    maxKvBlockSize_ = kvIndicesShape->GetStorageShape().GetDim(1);
     const gert::StorageShape *kFlatOutShape = context_->GetOutputShape(0);
     maxKb_ = kFlatOutShape->GetStorageShape().GetDim(0);
     kflatDim_ = kFlatOutShape->GetStorageShape().GetDim(3);
