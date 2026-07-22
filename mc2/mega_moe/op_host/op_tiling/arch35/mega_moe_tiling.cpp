@@ -484,6 +484,15 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
 
+    // GMM1 tile 状态位区每 expert 的 tile 上限（prefetch 软同步用）
+    // outputN = hiddenDim / SWIGLU_N_HALF(2)，tileM=L1_TILE_M_256(256)，tileN=L1_TILE_N(256)
+    // INT_CACHELINE=16：每 expert 的状态位按 16 对齐，与 kernel 侧 dispatchFlagSlotsPerExpert 一致
+    int64_t outputN = static_cast<int64_t>(tilingData->hiddenDim) / 2;
+    int64_t maxTilesM = ops::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(256));
+    int64_t maxTilesN = ops::CeilDiv(outputN, static_cast<int64_t>(256));
+    tilingData->maxTilesPerExpert = static_cast<uint32_t>(
+        ops::CeilAlign(maxTilesM * maxTilesN, static_cast<int64_t>(16)));
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -507,6 +516,11 @@ static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingD
         ops::CeilAlign(tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
     uint32_t quantScaleBytes = (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
     uint32_t copyBufferBytes = ops::CeilAlign(quantTokenBytes + quantScaleBytes, static_cast<uint32_t>(ALIGN_32));
+    if (tilingData->topkWeightsPrefetch == 1) {
+        uint32_t weightBytes = ops::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
+                                              static_cast<uint32_t>(ALIGN_32));
+        copyBufferBytes = ops::CeilAlign(copyBufferBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
+    }
     bufferConfig.copyBufferBytes = copyBufferBytes;
 
     // fixedBufferBytes 包含 expertTokenCntTensor_、cumsumInfoTensor_、sendCntTensor_ 和 expertTokenNumsOutTensor_。
@@ -713,7 +727,8 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
         CalcDispatchBufferConfig(tilingData, activationElementsPerByte, availableUbBytes);
 
     int64_t maxWavesPerExpert =
-        (static_cast<int64_t>(tilingData->maxOutputSize) + DISPATCH_WAVE_TILE_M - 1) / DISPATCH_WAVE_TILE_M;
+        (static_cast<int64_t>(tilingData->maxOutputSize) + static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256) - 1) /
+        static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256);
     int64_t dispatchFlagSlotsPerExpert = (maxWavesPerExpert + INT_CACHELINE - 1) / INT_CACHELINE * INT_CACHELINE;
     uint64_t totalFlagElementCount =
         static_cast<uint64_t>(tilingData->expertPerRank) *
