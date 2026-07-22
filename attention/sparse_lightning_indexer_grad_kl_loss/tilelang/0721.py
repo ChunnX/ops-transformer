@@ -276,6 +276,16 @@ def tilelang_grad_kl_loss_single_kernel(
     dkey_clear_total_batches = dkey_output_rows // dkey_clear_batch
     dkey_finalize_batch = 16
     dkey_finalize_total_batches = dkey_output_rows // dkey_finalize_batch
+    # dQuery is owned by one task core and has no sparse destination.  Split
+    # its rows into contiguous AIV halves so the final cast uses aligned DMA
+    # batches instead of 32 independent one-row transfers per AIV.
+    dquery_finalize_batch = 16
+    assert rows_per_aiv % dquery_finalize_batch == 0, (
+        "dQuery AIV ownership must be divisible by the final cast batch"
+    )
+    dquery_finalize_batches_per_aiv = (
+        rows_per_aiv // dquery_finalize_batch
+    )
     loss_reduce_chunk = 128
     # DataCopyPad is block based.  Give every scalar partial its own aligned
     # 32-byte GM slot and make the finalizer consume only complete 128-value
@@ -1451,8 +1461,12 @@ def tilelang_grad_kl_loss_single_kernel(
     ):
         """Distribute output casts and reduce all per-AIV loss partials."""
         with T.Scope("V"):
-            v2_finalize_dq_fp32 = T.alloc_ub((1, DQueryIndex), calc_dtype)
-            v2_finalize_dq_half = T.alloc_ub((1, DQueryIndex), input_dtype)
+            v2_finalize_dq_fp32 = T.alloc_ub(
+                (dquery_finalize_batch, DQueryIndex), calc_dtype
+            )
+            v2_finalize_dq_half = T.alloc_ub(
+                (dquery_finalize_batch, DQueryIndex), input_dtype
+            )
             v2_finalize_dk_fp32 = T.alloc_ub(
                 (2, dkey_finalize_batch, DQueryIndex), calc_dtype
             )
@@ -1462,22 +1476,27 @@ def tilelang_grad_kl_loss_single_kernel(
             T.set_flag("v", "mte2", 4)
             T.set_flag("mte3", "v", 7)
 
-            # Only the AIV that owns the task casts dQuery.  Distributing this
-            # tiny output over every core would introduce unnecessary scalar
-            # work and event setup on otherwise scatter-focused cores.
+            # The task-owning core casts dQuery.  AIVs receive contiguous row
+            # ranges, allowing each transfer and cast to use 16 full rows.
             for dq_task_iter in T.serial(tasks_per_core):
                 dq_task = dq_task_iter * launch_core_num + core_id
                 if dq_task < task_count:
                     dq_bz = dq_task // S1
                     dq_s1 = dq_task % S1
-                    for dq_group_local in T.serial(Nidx1 // 2):
-                        dq_group = dq_group_local * 2 + vector_id
+                    dq_aiv_row_start = vector_id * rows_per_aiv
+                    for dq_batch_id in T.serial(
+                        dquery_finalize_batches_per_aiv
+                    ):
+                        dq_row_start = (
+                            dq_aiv_row_start
+                            + dq_batch_id * dquery_finalize_batch
+                        )
                         T.wait_flag("v", "mte2", 4)
                         T.copy(
                             dQueryIndexAccum[
                                 dq_bz,
                                 dq_s1,
-                                dq_group:dq_group + 1,
+                                dq_row_start:dq_row_start + dquery_finalize_batch,
                                 0:DQueryIndex,
                             ],
                             v2_finalize_dq_fp32,
@@ -1489,7 +1508,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             v2_finalize_dq_half,
                             v2_finalize_dq_fp32,
                             "CAST_RINT",
-                            DQueryIndex,
+                            dquery_finalize_batch * DQueryIndex,
                         )
                         T.set_flag("v", "mte2", 4)
                         T.set_flag("v", "mte3", 5)
@@ -1499,7 +1518,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             dQueryIndexOut[
                                 dq_bz,
                                 dq_s1,
-                                dq_group:dq_group + 1,
+                                dq_row_start:dq_row_start + dquery_finalize_batch,
                                 0:DQueryIndex,
                             ],
                         )
