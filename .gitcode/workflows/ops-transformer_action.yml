@@ -28,7 +28,7 @@ env:
 
 stages:
   stage1:
-    name: image
+    name: PreBuild
     jobs:
       JOB_image:
         name: image
