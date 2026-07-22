@@ -294,13 +294,11 @@ class ElasticBuffer:
             scaleout_recv_status_size = (
                 scaleout_rank_count * num_max_tokens_per_rank * win_addr_align
             )
-            scaleout_ack_status_size = scaleout_rank_count * win_addr_align
             return (
                 scaleout_recv_data_size
                 + scaleup_recv_data_size
                 + scaleout_recv_status_size
                 + scaleup_recv_status_size
-                + scaleout_ack_status_size
             )
 
         if debug_rank_num_per_server is None:

@@ -65,7 +65,7 @@ constexpr uint32_t PER_GROUP_SIZE = 50 * 1024U; // 计算count 50KB per group
 constexpr uint32_t CORE_NUM_RATIO = 2U;         // 计算count perrank/perexpert 核数比例
 constexpr uint32_t EXPERT_NUM_PER_GROUP = 256U; // GetExpertFreq 单次最多256个bin
 constexpr uint8_t BUFFER_NUM = 2;
-constexpr int64_t STATUS_POLL_BACKOFF_CYCLES = 100; // ready/ack 未就绪时的轮询退避周期
+constexpr int64_t STATUS_POLL_BACKOFF_CYCLES = 100; // ready 未就绪时的轮询退避周期
 
 template <TemplateMoeEpDispatchHybridTypeClass>
 class MoeEpDispatchHybrid {
@@ -166,8 +166,6 @@ private:
     __aicore__ inline uint32_t WaitScaleoutPayloadReady(GM_ADDR statusAddr);
     __aicore__ inline void PollBackoff();
     __aicore__ inline void ClearScaleoutReceiveStatus(GM_ADDR localScaleoutStatusBase, uint32_t statusOffset);
-    __aicore__ inline void WriteScaleoutAckToSource(uint32_t srcRankId);
-    __aicore__ inline void WaitScaleoutAcks();
     __aicore__ inline void WriteSlotToLocal(uint32_t dstRankId, uint32_t slot);
     __aicore__ inline void WriteToRemoteWindow();
     __aicore__ inline void InitSendPhaseBuffers();
@@ -345,9 +343,7 @@ private:
     uint64_t debugReadyWaitCycles_{0};
     uint64_t debugFanoutStageCycles_{0};
     uint64_t debugFanoutSendCycles_{0};
-    uint64_t debugAckWaitCycles_{0};
     uint64_t debugReadyPollCount_{0};
-    uint64_t debugAckPollCount_{0};
     uint64_t debugScaleoutPayloadSubmitCycles_{0};
     uint64_t debugScaleoutPayloadDrainCycles_{0};
     uint64_t debugScaleoutNotifySubmitCycles_{0};
@@ -358,7 +354,6 @@ private:
     uint64_t winDataOffset_{0};
     uint64_t scaleoutRecvDataOffset_{0};
     uint64_t scaleoutRecvStatusOffset_{0};
-    uint64_t scaleoutAckStatusOffset_{0};
 
     DataCopyParams statusCopyParams_;
     DataCopyParams clearStatusCopyParams_;
@@ -424,7 +419,6 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     winDataOffset_ = info.winDataOffset;
     scaleoutRecvDataOffset_ = info.scaleoutRecvDataOffset;
     scaleoutRecvStatusOffset_ = info.scaleoutRecvStatusOffset;
-    scaleoutAckStatusOffset_ = info.scaleoutAckStatusOffset;
     hostPinnedCounterAddrGM_ = (GM_ADDR)info.hostPinnedCounterAddr;
     moeExpertNum_ = moeExpertNumPerRank_ * epWorldSize_;
 
@@ -611,12 +605,8 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
                                           debugFanoutStageCycles_);
     MoeEpDispatchBase::WriteUint64ToDebug(debugOutGMTensor_, MoeEpDispatchBase::DEBUG_OFFSET_FANOUT_SEND_CYCLES,
                                           debugFanoutSendCycles_);
-    MoeEpDispatchBase::WriteUint64ToDebug(debugOutGMTensor_, MoeEpDispatchBase::DEBUG_OFFSET_ACK_WAIT_CYCLES,
-                                          debugAckWaitCycles_);
     MoeEpDispatchBase::WriteUint64ToDebug(debugOutGMTensor_, MoeEpDispatchBase::DEBUG_OFFSET_READY_POLL_COUNT,
                                           debugReadyPollCount_);
-    MoeEpDispatchBase::WriteUint64ToDebug(debugOutGMTensor_, MoeEpDispatchBase::DEBUG_OFFSET_ACK_POLL_COUNT,
-                                          debugAckPollCount_);
     MoeEpDispatchBase::WriteUint32ToDebug(debugOutGMTensor_, MoeEpDispatchBase::DEBUG_OFFSET_SCALEOUT_SLOT_COUNT,
                                           debugScaleoutSlotCount_);
     MoeEpDispatchBase::WriteUint32ToDebug(debugOutGMTensor_, MoeEpDispatchBase::DEBUG_OFFSET_FANOUT_PAYLOAD_COUNT,
@@ -1836,25 +1826,6 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
-__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::WriteScaleoutAckToSource(
-    uint32_t srcRankId)
-{
-    GM_ADDR ackAddr = GetWinAddrByRankId(mc2Context_, srcRankId, scaleoutAckStatusOffset_) +
-                      static_cast<uint64_t>(currentServerIndex_) * WIN_ADDR_ALIGN;
-    if (srcRankId == epRankId_) {
-        GlobalTensor<uint64_t> ackTensor;
-        ackTensor.SetGlobalBuffer((__gm__ uint64_t *)ackAddr);
-        ackTensor.SetValue(0, 1UL);
-        DataCacheCleanAndInvalid<uint64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(ackTensor);
-        return;
-    }
-
-    uint64_t commHandle = GetCommHandle(mc2Context_, epRankId_, srcRankId);
-    hcomm_.WriteNbi(commHandle, ackAddr, readyStatusWorkspaceAddr_, sizeof(uint64_t));
-    hcomm_.Drain(commHandle);
-}
-
-template <TemplateMoeEpDispatchHybridTypeClass>
 __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::PollBackoff()
 {
     int64_t backoffStartCycle = GetSystemCycle();
@@ -1884,7 +1855,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     currentStatusTensor.SetValue(0, 0);
     currentStatusTensor.SetValue(1, 0);
     DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(currentStatusTensor);
-    PipeBarrier<PIPE_ALL>(); // status 清零完成后才能由通信核发送 ack
+    PipeBarrier<PIPE_ALL>(); // status 清零完成后才能结束本轮或处理下一 source
 }
 
 template <TemplateMoeEpDispatchHybridTypeClass>
@@ -1951,53 +1922,6 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
         if (aivId_ == 0U) {
             ClearScaleoutReceiveStatus(localScaleoutStatusBase, statusOffset);
         }
-        SyncAll<true>(); // 控制核清理接收状态后，目标通信核才能发送 ack
-        if (srcRankId >= communicationStartRankId && srcRankId < communicationEndRankId) {
-            WriteScaleoutAckToSource(srcRankId);
-        }
-        SyncAll<true>(); // ack 完成后各核再进入下一 source
-        if (aivId_ == 0U) {
-            debugFanoutNbiCount_++;
-            debugFanoutDrainCount_++;
-        }
-    }
-}
-
-template <TemplateMoeEpDispatchHybridTypeClass>
-__aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>::WaitScaleoutAcks()
-{
-    uint32_t remoteScaleoutCount = numScaleoutRanks_ > 0U ? numScaleoutRanks_ - 1U : 0U;
-    uint32_t startRemoteScaleoutOrdinal = 0U;
-    uint32_t endRemoteScaleoutOrdinal = 0U;
-    uint32_t remoteScaleoutNumPerCore = 0U;
-    SplitToCore(remoteScaleoutCount, aivNum_, startRemoteScaleoutOrdinal, endRemoteScaleoutOrdinal,
-                remoteScaleoutNumPerCore, true);
-    if (startRemoteScaleoutOrdinal >= remoteScaleoutCount) {
-        return;
-    }
-
-    GM_ADDR localAckBase = GetWinAddrByRankId(mc2Context_, epRankId_, scaleoutAckStatusOffset_);
-    for (uint32_t remoteScaleoutOrdinal = startRemoteScaleoutOrdinal;
-         remoteScaleoutOrdinal < endRemoteScaleoutOrdinal; remoteScaleoutOrdinal++) {
-        uint32_t dstScaleoutIndex = remoteScaleoutOrdinal >= currentServerIndex_
-                                      ? remoteScaleoutOrdinal + 1U : remoteScaleoutOrdinal;
-        uint32_t proxyRankId = GetProxyRankId(dstScaleoutIndex);
-        if (proxyRankId >= epWorldSize_) {
-            continue;
-        }
-
-        GM_ADDR currentAckAddr = localAckBase + static_cast<uint64_t>(dstScaleoutIndex) * WIN_ADDR_ALIGN;
-        __gm__ int32_t *ackValueAddr = (__gm__ int32_t *)currentAckAddr;
-        while (ReadGmByPassDCache(ackValueAddr) != 1) {
-            if (aivId_ == 0U) {
-                debugAckPollCount_++;
-            }
-            PollBackoff();
-        }
-        GlobalTensor<int32_t> currentAckTensor;
-        currentAckTensor.SetGlobalBuffer(ackValueAddr);
-        currentAckTensor.SetValue(0, 0);
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(currentAckTensor);
     }
 }
 
@@ -2230,10 +2154,7 @@ __aicore__ inline void MoeEpDispatchHybrid<TemplateMoeEpDispatchHybridTypeFunc>:
     }
     FanoutReceivedScaleoutPayloads();
 
-    uint64_t ackWaitStartCycle = aivId_ == 0U ? GetSystemCycle() : 0UL;
-    WaitScaleoutAcks();
     if (aivId_ == 0U) {
-        debugAckWaitCycles_ = GetSystemCycle() - ackWaitStartCycle;
         debugTransferCycles_ = GetSystemCycle() - transferStartCycle;
     }
 }

@@ -362,27 +362,23 @@ static ge::graphStatus CheckWinSize(const gert::TilingContext *context, MoeEpCom
     uint64_t scaleupFinalRecvDataSize;
     uint64_t scaleoutRecvStatusSize;
     uint64_t scaleupRecvStatusSize;
-    uint64_t scaleoutAckStatusSize;
     if (info.networkMode == HYBRID_MODE) {
         scaleoutRecvDataSize =
             superNodeCount * maxTokenCount * static_cast<uint64_t>(info.scaleoutSlotAlignedBytes);
         scaleupFinalRecvDataSize = epWorldSize * maxTokenCount * dispatchSlotAlignedBytes;
         scaleoutRecvStatusSize = AlignUpWin(superNodeCount * maxTokenCount * COMM_ALIGN);
         scaleupRecvStatusSize = AlignUpWin(epWorldSize * maxTokenCount * COMM_ALIGN);
-        scaleoutAckStatusSize = AlignUpWin(superNodeCount * COMM_ALIGN);
     } else {
         scaleoutRecvDataSize = 0UL;
         scaleupFinalRecvDataSize = epWorldSize * maxTokenCount * dispatchSlotAlignedBytes;
         scaleoutRecvStatusSize = 0UL;
         scaleupRecvStatusSize = 0UL;
-        scaleoutAckStatusSize = 0UL;
     }
     uint64_t scaleoutRecvDataOffset = dispatchWinStateSize + combineWinStateSize;
     uint64_t scaleupFinalRecvDataOffset = scaleoutRecvDataOffset + scaleoutRecvDataSize;
     uint64_t scaleoutRecvStatusOffset = scaleupFinalRecvDataOffset + scaleupFinalRecvDataSize;
     uint64_t scaleupRecvStatusOffset = scaleoutRecvStatusOffset + scaleoutRecvStatusSize;
-    uint64_t scaleoutAckStatusOffset = scaleupRecvStatusOffset + scaleupRecvStatusSize;
-    uint64_t combineDataOffset = scaleoutAckStatusOffset + scaleoutAckStatusSize;
+    uint64_t combineDataOffset = scaleupRecvStatusOffset + scaleupRecvStatusSize;
 
     uint64_t winNeedTotal = combineDataOffset + perWinDataNeed;
     OP_TILING_CHECK(winNeedTotal > maxWindowSize,
