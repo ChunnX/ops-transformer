@@ -18,7 +18,6 @@ using namespace at_npu::native;
 // npu tensor max size
 const int SIZE = 8;
 const int64_t DIM_THREE = 3;
-const int64_t DIM_FOUR = 4;
 const int64_t DIM_FIVE = 5;
 const int64_t FP32_BYTES = 4;
 const int64_t BSA_MXFP8_FULL_QUANT_MODE = 2;
@@ -26,19 +25,16 @@ const int64_t BSA_MXFP8_SCALE_GROUP_SIZE = 64;
 const int64_t BSA_MXFP8_SCALE_LAST_DIM = 2;
 
 // 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
-//   - attention_out: BF16，BSND 保持原布局，NTD 转为 TND
-//   - softmax_lse:   FLOAT32，BSND 为 (B,N1,S1)，FP8 token layout 为 (N1,T)，MXFP8 为 (T,N1)
+//   - attention_out: BF16，TND 保持原布局，NTD 转为 TND
+//   - softmax_lse:   FLOAT32，FP8 为 (N1,T)，MXFP8 为 (T,N1)
 std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor &query, const at::Tensor &value,
                                                                 c10::string_view layout_q, int64_t quant_mode,
                                                                 bool return_softmax_lse)
 {
     const std::string layout_q_str(layout_q);
-    const bool is_bsnd = query.dim() == DIM_FOUR && layout_q_str == "BSND";
-    const bool is_token_layout =
-        query.dim() == DIM_THREE && (layout_q_str == "TND" || layout_q_str == "NTD");
-    TORCH_CHECK(is_bsnd || is_token_layout,
-                "query should be 4D for BSND or 3D for TND/NTD, but got layout_q=", layout_q_str,
-                " and query dim=", query.dim(), ".");
+    TORCH_CHECK(query.dim() == DIM_THREE, "query should be 3D for layout_q TND/NTD, but got ", query.dim(), "D.");
+    TORCH_CHECK(layout_q_str == "TND" || layout_q_str == "NTD", "layout_q should be TND or NTD, but got ",
+                layout_q_str);
     TORCH_CHECK(quant_mode != BSA_MXFP8_FULL_QUANT_MODE || layout_q_str == "TND",
                 "quant_mode=2 MXFP8 full-quant only supports layout_q TND, but got ", layout_q_str, ".");
     for (auto i = 0; i < query.sizes().size(); i++) {
@@ -48,26 +44,16 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
                     i, "] is ", query.size(i));
     }
 
-    at::SmallVector<int64_t, SIZE> atten_out_size;
+    const bool is_ntd = layout_q_str == "NTD";
+    int64_t t_size = is_ntd ? query.size(1) : query.size(0);
+    int64_t n1_size = is_ntd ? query.size(0) : query.size(1);
+    int64_t d_size = query.size(2);
+    at::SmallVector<int64_t, SIZE> atten_out_size = {t_size, n1_size, d_size};
     at::SmallVector<int64_t, SIZE> softmax_lse_size;
-    int64_t d_size = query.size(query.dim() - 1);
-    if (is_token_layout) {
-        const bool is_ntd = layout_q_str == "NTD";
-        int64_t t_size = is_ntd ? query.size(1) : query.size(0);
-        int64_t n1_size = is_ntd ? query.size(0) : query.size(1);
-        atten_out_size = {t_size, n1_size, d_size};
-        if (quant_mode == BSA_MXFP8_FULL_QUANT_MODE) {
-            softmax_lse_size = {t_size, n1_size};
-        } else {
-            softmax_lse_size = {n1_size, t_size};
-        }
+    if (quant_mode == BSA_MXFP8_FULL_QUANT_MODE) {
+        softmax_lse_size = {t_size, n1_size};
     } else {
-        // BSND -> (B, S1, N1, D)
-        int64_t b_size = query.size(0);
-        int64_t s1_size = query.size(1);
-        int64_t n1_size = query.size(2);
-        atten_out_size = {b_size, s1_size, n1_size, d_size};
-        softmax_lse_size = {b_size, n1_size, s1_size};
+        softmax_lse_size = {n1_size, t_size};
     }
     if (!return_softmax_lse) {
         softmax_lse_size = {};
