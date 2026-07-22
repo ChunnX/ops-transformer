@@ -408,3 +408,22 @@ stages:
     pre:
     - type: auto
     fail-fast: true
+
+post:
+  jobs: 
+    job_post: 
+      name: Test_finish
+      steps:
+        - 
+          name: query_pipeline
+          uses: tanghaoran7/.gitcode/actions/query-pipeline@master
+          with:
+            owner: ${{ env.org_name }}
+            repo: ${{ env.repo_name }}
+            run_id: ${{atomgit. workflow_run_id}}
+            token: ${{ secrets.GIT_TOKEN }}
+            pr_number: ${{ env.MERGE_ID }}
+            apply_label: ${{ vars.APPLY_LABEL }}
+      runs-on: [dedicate-hosted, x64, small]
+      container:
+        image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ jobs.JOB_image.outputs.codecheck }}
