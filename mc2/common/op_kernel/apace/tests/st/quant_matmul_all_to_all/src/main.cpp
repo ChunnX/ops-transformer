@@ -140,7 +140,7 @@ int RunMatmulAllToAll(int rankNum, int rankId, int m, int k, int n,
   commTd.splitAxisTileCnt  = static_cast<uint64_t>(tileCnt);
   commTd.splitAxisTailSize = static_cast<uint64_t>(tailSize);
   commTd.splitAxisTailCnt  = static_cast<uint64_t>(tailCnt);
-  commTd.nonSplitAxisSize  = static_cast<uint64_t>(k);
+  commTd.nonSplitAxisSize  = static_cast<uint64_t>(np);
   uint64_t maxTileM = static_cast<uint64_t>(tileSize);
   if (static_cast<uint64_t>(tailSize) > maxTileM) { maxTileM = static_cast<uint64_t>(tailSize); }
   tilingData.alltoallTilingData.bufferSize = isPingPong ? PING_PONG_BUF_NUM : static_cast<uint32_t>(tileCnt + tailCnt);

@@ -128,7 +128,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Al
     SyncAll<true>();
     if (GetBlockIdx() < rankSize_) {
       allToAll_.Commit();
-      allToAll_.Wait();
+      allToAll_.Wait(true);
     }
     if (base.bufferCount < base.totalTileCnt && tid < base.totalTileCnt - base.bufferCount) {
       CrossCoreSetFlag<0x2, PIPE_MTE3>(tid);
