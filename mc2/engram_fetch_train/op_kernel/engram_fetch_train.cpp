@@ -37,8 +37,8 @@ using namespace Mc2Kernel;
 
 template<uint32_t EngramFetchTrainMode>
 __global__ __aicore__ void engram_fetch_train(
-    GM_ADDR commContext, GM_ADDR indices, GM_ADDR fetched,
-    GM_ADDR permOut, GM_ADDR sendCountsOut,
+    GM_ADDR commContext, GM_ADDR indices, GM_ADDR localStorageAddr,
+    GM_ADDR fetched, GM_ADDR permOut, GM_ADDR sendCountsOut,
     GM_ADDR recvCountsOut, GM_ADDR recvLocalEntryOut,
     GM_ADDR numRecvOut,
     GM_ADDR workspaceGM, GM_ADDR tilingGM)

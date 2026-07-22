@@ -26,11 +26,13 @@
 using namespace op;
 
 static bool CheckNotNull(const aclTensor *commContext, const aclTensor *indices,
+                         const aclTensor *localStorageAddr,
                          aclTensor *fetched, aclTensor *permOut, aclTensor *sendCountsOut,
                          aclTensor *recvCountsOut, aclTensor *recvLocalEntryOut, aclTensor *numRecvOut)
 {
     OP_CHECK_NULL(commContext, return false);
     OP_CHECK_NULL(indices, return false);
+    OP_CHECK_NULL(localStorageAddr, return false);
     OP_CHECK_NULL(fetched, return false);
     OP_CHECK_NULL(permOut, return false);
     OP_CHECK_NULL(sendCountsOut, return false);
@@ -41,10 +43,11 @@ static bool CheckNotNull(const aclTensor *commContext, const aclTensor *indices,
 }
 
 static aclnnStatus CheckParams(const aclTensor *commContext, const aclTensor *indices,
+                               const aclTensor *localStorageAddr,
                                aclTensor *fetched, aclTensor *permOut, aclTensor *sendCountsOut,
                                aclTensor *recvCountsOut, aclTensor *recvLocalEntryOut, aclTensor *numRecvOut)
 {
-    CHECK_RET(CheckNotNull(commContext, indices, fetched, permOut, sendCountsOut,
+    CHECK_RET(CheckNotNull(commContext, indices, localStorageAddr, fetched, permOut, sendCountsOut,
                            recvCountsOut, recvLocalEntryOut, numRecvOut),
               ACLNN_ERR_PARAM_NULLPTR);
     return ACLNN_SUCCESS;
@@ -56,20 +59,28 @@ extern "C" {
 
 aclnnStatus aclnnEngramFetchTrainGetWorkspaceSize(
     const aclTensor *commContext, const aclTensor *indices,
+    const aclTensor *localStorageAddr,
     aclTensor *fetched, aclTensor *permOut, aclTensor *sendCountsOut,
     aclTensor *recvCountsOut, aclTensor *recvLocalEntryOut, aclTensor *numRecvOut,
-    int32_t hiddenSize, int64_t numEntriesPerRank, int64_t localStorageAddr,
+    int32_t hiddenSize, int64_t numEntriesPerRank,
     int64_t numMaxTokensPerRank, int64_t commBufferSize,
     uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    auto retParam = CheckParams(commContext, indices, fetched, permOut, sendCountsOut,
+    auto retParam = CheckParams(commContext, indices, localStorageAddr, fetched, permOut, sendCountsOut,
                                 recvCountsOut, recvLocalEntryOut, numRecvOut);
     CHECK_RET(retParam == ACLNN_SUCCESS, retParam);
+    printf("[EngramAclnn] aclnnEngramFetchTrainGetWorkspaceSize: hiddenSize=%d, numEntriesPerRank=%ld, "
+           "numMaxTokensPerRank=%ld, commBufferSize=%ld\n",
+           hiddenSize, numEntriesPerRank, numMaxTokensPerRank, commBufferSize);
+    fflush(stdout);
     aclnnStatus ret = aclnnInnerEngramFetchTrainGetWorkspaceSize(
-        commContext, indices,
-        hiddenSize, numEntriesPerRank, localStorageAddr, numMaxTokensPerRank, commBufferSize,
+        commContext, indices, localStorageAddr,
+        hiddenSize, numEntriesPerRank, numMaxTokensPerRank, commBufferSize,
         fetched, permOut, sendCountsOut, recvCountsOut, recvLocalEntryOut, numRecvOut,
         workspaceSize, executor);
+    printf("[EngramAclnn] aclnnEngramFetchTrainGetWorkspaceSize done: ret=%d, workspaceSize=%lu\n",
+           ret, workspaceSize ? *workspaceSize : 0);
+    fflush(stdout);
     return ret;
 }
 

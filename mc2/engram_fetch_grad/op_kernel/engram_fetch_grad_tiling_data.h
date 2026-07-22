@@ -22,11 +22,13 @@ struct EngramFetchGradTilingData {
     int64_t numTokens;             // gradFetched / perm dim0
     int32_t numEntriesPerRank;     // 每 rank entry 数
     int64_t hiddenDim;             // hidden 维度（从 gradFetched dim1 获取）
-    int64_t hiddenBytes;           // hiddenDim * sizeof(float)（fp32 聚合）
+    int64_t hiddenBytes;           // hiddenDim * sizeof(inputDtype)（a2a 交换 stride）
     uint32_t aivNum;               // AIV 核数
     uint64_t ubSize;               // UB 空间
     uint32_t rankSize;             // 通信域 rank 数（从 sendCounts dim0 获取）
     int64_t totalRecv;             // recvLocalEntry dim0（a2a 接收上界）
-    int64_t commBufferSize;        // a2a GM 收发缓冲大小（即 epHcclBuffer 200MB）
+    int64_t commBufferSize;        // a2a GM 收发缓冲大小（即 commBuffer 200MB）
+    int32_t inputDtype;            // gradFetched 的 dtype（ge::DataType）
+    int32_t outputDtype;           // gradUniqueOut 的 dtype（ge::DataType）
 };
 #endif
