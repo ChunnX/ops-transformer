@@ -202,10 +202,10 @@ aclnnStatus aclnnGroupedMatmulV5(
   | workspaceSize（uint64_t *） | 输出 | 返回需要在 Device侧申请的 workspace大小（字节） | - | - | - | - | - |
   | executor（aclOpExecutor **） | 输出 | 返回 op执行器，包含了算子计算流程 | - | - | - | - | - |
 
-  - **<term>Ascend 950PR/Ascend 950DT</term>**：
+  - <term>Ascend 950PR/Ascend 950DT</term>：
     - 上表数据类型列中的角标 <span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span> 代表该系列不支持的数据类型
     - 输入参数 x、weight均不支持INT16 类型，且 x不支持INT4 类型
-  - **<term>Atlas A3/A2 系列产品</term>**：
+  - <term>Atlas A3/A2 系列产品</term>：
     - 上表数据类型列中的角标 <span title="Atlas A3/A2 不支持"><sup>2</sup></span> 代表该系列不支持的数据类型
     - 不支持FLOAT8_E5M2、FLOAT8_E4M3FN、HIFLOAT8、FLOAT8_E8M0类型
     - 输入参数 biasOptional不支持BFLOAT16
@@ -307,6 +307,19 @@ aclnnGroupedMatmulV5默认确定性实现。
   - 非量化/伪量化仅支持 0。
   - 全量化下 x/weight=INT8且 out=BFLOAT16/FLOAT16、静态 T-C或动态 K-C、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
 - 输入参数 x、weight，输出参数 out在非量化场景支持最多 1024个Tensor，在伪量化支持最多 128个Tensor，在全量化场景最多支持 1个Tensor。
+
+#### groupType 支持场景
+
+> x、weight、y 输入为 aclTensorList。"单" = 单元素TensorList，"多" = 多元素TensorList。
+
+| groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
+|:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
+| -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | 非量化 x/out 2维，伪量化 x 2~6维；weight 2维；仅非量化/伪量化；仅 ND进ND出 |
+| 0 | 单 | 单 | 单 | 2/3 | 必须传 | x不转置；weight可转置 | weight 3维 `(g,N,K)` 或 `(g,K,N)`；x/out 2维；bias 2维 `(g,N)`；最多 1024 组；仅 ND进ND出 |
+| 0 | 单 | 多 | 单 | 2/3 | 必须传（长度 ≤1024） | x不转置；weight可转置（统一） | x/weight/y 2维；weight N轴相等；仅 ND进ND出；仅非量化 |
+| 0 | 多 | 多 | 单 | 2 | 可选 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N轴相等；仅 ND进ND出；仅非量化 |
+| 2 | 单 | 单 | 单 | 2/3 | 必须传 | x必须转置；weight不转置 | x/weight 2维 `(K,M)`/`(K,N)`；y 3维 `(g,M,N)`；bias传空；仅 ND进ND出；仅非量化/量化 |
+| 2 | 单 | 多 | 多 | 0/1 | 可选 | x必须转置；weight不转置 | x/weight/y 2维 `(M,N)`；weight最大 128 组；不支持 bias；仅 ND进ND出；仅非量化 |
 
 #### 场景速查表
 
@@ -501,19 +514,6 @@ aclnnGroupedMatmulV5默认确定性实现。
 </details>
 
 
-#### groupType 支持场景
-
-> x、weight、y 输入为 aclTensorList。"单" = 单元素TensorList，"多" = 多元素TensorList。
-
-| groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
-|:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
-| -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | 非量化 x/out 2维，伪量化 x 2~6维；weight 2维；仅非量化/伪量化；仅 ND进ND出 |
-| 0 | 单 | 单 | 单 | 2/3 | 必须传 | x不转置；weight可转置 | weight 3维 `(g,N,K)` 或 `(g,K,N)`；x/out 2维；bias 2维 `(g,N)`；最多 1024 组；仅 ND进ND出 |
-| 0 | 单 | 多 | 单 | 2/3 | 必须传（长度 ≤1024） | x不转置；weight可转置（统一） | x/weight/y 2维；weight N轴相等；仅 ND进ND出；仅非量化 |
-| 0 | 多 | 多 | 单 | 2 | 可选 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N轴相等；仅 ND进ND出；仅非量化 |
-| 2 | 单 | 单 | 单 | 2/3 | 必须传 | x必须转置；weight不转置 | x/weight 2维 `(K,M)`/`(K,N)`；y 3维 `(g,M,N)`；bias传空；仅 ND进ND出；仅非量化/量化 |
-| 2 | 单 | 多 | 多 | 0/1 | 可选 | x必须转置；weight不转置 | x/weight/y 2维 `(M,N)`；weight最大 128 组；不支持 bias；仅 ND进ND出；仅非量化 |
-
 ### Atlas A3/A2 系列产品
 
 #### 平台约束
@@ -536,6 +536,23 @@ aclnnGroupedMatmulV5默认确定性实现。
   - `[2]`：允许额外 workspace 上限（-1=不限），适用场景：A8W8 定轴算法优化。
 - actType：仅 A8W8（x、weight 为 INT8）且输出为 FLOAT16/BFLOAT16时支持激活函数类型 0/1/2/4/5（3 不支持）；其余场景仅支持 0。
 - 输入参数 x、weight，输出参数 out支持最多 128个Tensor。
+
+#### groupType 支持场景
+
+> x、weight、y 输入为 aclTensorList。"单" = 单元素TensorList，"多" = 多元素TensorList。
+
+各量化类型支持的 groupType 速览：
+- A16W8、A16W4：仅支持 groupType=-1、0。
+- A8W8、A8W4、A4W4：仅支持 groupType=0，且 x 为单 tensor。
+
+| groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
+|:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
+| -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | x 2-6维（维度一致），weight 2维，y 同 x |
+| 0 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 1024 组 | x不转置；weight可转置（A8W4/A4W4 不可） | weight 3维，x/y 2维 |
+| 0 | 单 | 多 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 128 组 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N 轴相等 |
+| 0 | 多 | 多 | 单 | 2/3 | 可选；若传则 groupListType=0 差值 = x 第一维、groupListType=1 数值 = x 第一维、groupListType=2 第二列 = x 第一维；最大 128 组 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N 轴相等 |
+| 2 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第二维；groupListType=1 总和 ≤ x 第二维；groupListType=2 第二列总和 ≤ x 第二维；最大 1024 组 | x必须转置；weight不转置 | x/weight 2维，y 3维；bias传空 |
+| 2 | 单 | 多 | 多 | 0/1 | 必须传空 | x必须转置；weight不转置 | x/weight/y 2维；weight最大 128 组；原始 shape 各 weight 第一维之和 ≤ x 第一维；bias传空 |
 
 #### 场景速查表
 
@@ -739,23 +756,6 @@ aclnnGroupedMatmulV5默认确定性实现。
     | 伪量化pergroup | weight多 | $[G_i, N_i]$|
 
 </details>
-
-#### groupType 支持场景
-
-> x、weight、y 输入为 aclTensorList。"单" = 单元素TensorList，"多" = 多元素TensorList。
-
-各量化类型支持的 groupType 速览：
-- A16W8、A16W4：仅支持 groupType=-1、0。
-- A8W8、A8W4、A4W4：仅支持 groupType=0，且 x 为单 tensor。
-
-| groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
-|:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
-| -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | x 2-6维（维度一致），weight 2维，y 同 x |
-| 0 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 1024 组 | x不转置；weight可转置（A8W4/A4W4 不可） | weight 3维，x/y 2维 |
-| 0 | 单 | 多 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 128 组 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N 轴相等 |
-| 0 | 多 | 多 | 单 | 2/3 | 可选；若传则 groupListType=0 差值 = x 第一维、groupListType=1 数值 = x 第一维、groupListType=2 第二列 = x 第一维；最大 128 组 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N 轴相等 |
-| 2 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第二维；groupListType=1 总和 ≤ x 第二维；groupListType=2 第二列总和 ≤ x 第二维；最大 1024 组 | x必须转置；weight不转置 | x/weight 2维，y 3维；bias传空 |
-| 2 | 单 | 多 | 多 | 0/1 | 必须传空 | x必须转置；weight不转置 | x/weight/y 2维；weight最大 128 组；原始 shape 各 weight 第一维之和 ≤ x 第一维；bias传空 |
 
 ---
 
