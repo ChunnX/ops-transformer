@@ -19,20 +19,17 @@ const int DIM_TWO = 2;
 std::tuple<at::Tensor, at::Tensor>
 NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIds, const at::Tensor &topkWeights,
            const std::vector<at::Tensor> &weight1, const std::vector<at::Tensor> &weight2, int64_t moeExpertNum,
-           int64_t epWorldSize, int64_t cclBufferSize,
-           const c10::optional<std::vector<at::Tensor>> &weightScales1,
+           int64_t epWorldSize, int64_t cclBufferSize, const c10::optional<std::vector<at::Tensor>> &weightScales1,
            const c10::optional<std::vector<at::Tensor>> &weightScales2,
            const c10::optional<std::vector<at::Tensor>> &bias1, const c10::optional<std::vector<at::Tensor>> &bias2,
-           const c10::optional<at::Tensor> &xActiveMask,
-           const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
+           const c10::optional<at::Tensor> &xActiveMask, const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
            const c10::optional<std::vector<at::Tensor>> &sharedWeight2,
            const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
            const c10::optional<std::vector<at::Tensor>> &sharedWeightScales2,
            const c10::optional<std::vector<at::Tensor>> &sharedBias1,
-           const c10::optional<std::vector<at::Tensor>> &sharedBias2,
-           int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
-           int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank, std::string activation,
-           c10::optional<float> activationClamp, c10::optional<int64_t> dispatchQuantOutDtype,
+           const c10::optional<std::vector<at::Tensor>> &sharedBias2, int64_t maxRecvTokenNum,
+           int64_t dispatchQuantMode, int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank,
+           std::string activation, c10::optional<float> activationClamp, c10::optional<int64_t> dispatchQuantOutDtype,
            c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType,
            c10::optional<int64_t> rankNumPerServer, int64_t topkWeightsType)
 {
@@ -128,12 +125,10 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     TensorListWrapper sharedBias2Wrapper = {sharedBias2Ref, aclDataType::ACL_FLOAT};
 
     ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
-              weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask,
-              sharedWeight1Wrapper, sharedWeight2Wrapper, sharedWeightScales1Wrapper,
-              sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
-              moeExpertNum, epWorldSize, cclBufferSize,
-              maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType, combineQuantMode, commAlgPtr,
-              numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue,
+              weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper,
+              sharedWeightScales1Wrapper, sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
+              moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType,
+              combineQuantMode, commAlgPtr, numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue,
               rankNumPerServerValue, topkWeightsType, y, expertTokenNums);
 
     return std::tie(y, expertTokenNums);
