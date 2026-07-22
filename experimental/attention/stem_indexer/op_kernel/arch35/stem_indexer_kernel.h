@@ -492,8 +492,8 @@ template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::Process()
 {
     if (isUsedCoreEqZero) {
-        // 没有计算任务，直接清理输出
-        ProcessInvalid();
+        // 输出已由全部AIV在SIVector::InitBuffers中完成初始化。
+        // ProcessInvalid();
         return;
     }
 
@@ -540,8 +540,9 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
 
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
-        CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 0);
-        CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 1);
+        // Cube首轮启动令牌已在SIVector::InitBuffers中提前设置，用于和全量输出初始化并行。
+        // CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 0);
+        // CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 1);
     } else {
         matmulService.AllocEventID();
     }
@@ -551,7 +552,8 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
     for (uint32_t bN2LoopIdx = splitCoreInfo.bN2Start; bN2LoopIdx <= splitCoreInfo.bN2End; bN2LoopIdx++) {
         CalcGS1LoopParams(bN2LoopIdx);
         if (tempLoopInfo.curActSeqLenIsZero) {
-            ClearPaddingOutput(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U);
+            // 输出已全量初始化，无需再次写-1和0。
+            // ClearPaddingOutput(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U);
             continue;
         }
 
@@ -571,7 +573,8 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
             splitCoreInfo.s2Start = 0;
         }
         if (tempLoopInfo.needDealActS1LessThanS1) {
-            ClearPaddingOutput(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
+            // 输出已全量初始化，无需再次清理Q轴padding。
+            // ClearPaddingOutput(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
         }
         splitCoreInfo.gS1Start = 0;
     }
@@ -593,8 +596,9 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
         matmulService.ComputeMm1(runInfo);
     } else {
         if (runInfo.isFirstS2InnerLoop) {
-            vectorService.initS2LenToNeg(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
-                                         runInfo.indiceOutOffset);
+            // sparseIndices已全量初始化为-1。
+            // vectorService.initS2LenToNeg(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
+            //                              runInfo.indiceOutOffset);
         }
         vectorService.ProcessVec1(runInfo);
         vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);

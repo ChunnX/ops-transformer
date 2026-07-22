@@ -63,9 +63,12 @@ protected:
     static constexpr uint32_t TOPK_ALIGN_SIZE = 256;
     static constexpr uint32_t TOPK_ROW_BATCH = 4;
     static constexpr uint32_t INDICE_LEN_ROW_STRIDE = 8U;
+    static constexpr uint32_t OUTPUT_INIT_ALIGN_ELEMS = 512U / sizeof(int32_t);
     static constexpr int32_t K_SMALL_SEQ_MAX = 56;
     static constexpr int32_t K_MEDIUM_SEQ_MAX = 160;
 private:
+    __aicore__ inline void CleanOutput();
+    __aicore__ inline void InitOutputSingleCore(GlobalTensor<int32_t> &outputGm, uint64_t totalSize, int32_t value);
     __aicore__ inline uint32_t CalcDynamicTopkCount(uint32_t s1Idx, int32_t kbOffset, int32_t numPromptK);
     __aicore__ inline void WriteDirectIndices(uint32_t outputLen, uint64_t baseLenOffset,
                                               uint64_t baseOutOffset, uint32_t curAivGSize,
@@ -141,6 +144,39 @@ __aicore__ inline void SIVector<SIT>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(indiceLenBuf_, ((constInfo_.mBaseSize + 1U) >> 1U) *
                                         INDICE_LEN_ROW_STRIDE * sizeof(uint32_t));
     indiceLenLocal_ = indiceLenBuf_.Get<uint32_t>();
+
+    // 提前释放Cube首轮MM1，使全量输出初始化与Cube并行。
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 0U);
+    CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 1U);
+    CleanOutput();
+}
+
+template <typename SIT>
+__aicore__ inline void SIVector<SIT>::CleanOutput()
+{
+    uint64_t totalIndiceSize = constInfo_.batchSize * constInfo_.qHeadNum * constInfo_.qSeqSize *
+                               constInfo_.sparseCount;
+    InitOutputSingleCore(sparseIndicesGm, totalIndiceSize, static_cast<int32_t>(SICommon::INVALID_IDX));
+    SyncAll();
+    uint64_t totalLenSize = constInfo_.batchSize * constInfo_.qHeadNum * constInfo_.qSeqSize;
+    InitOutputSingleCore(sparseSeqLenGm, totalLenSize, static_cast<int32_t>(0));
+    SyncAll();
+}
+
+template <typename SIT>
+__aicore__ inline void SIVector<SIT>::InitOutputSingleCore(GlobalTensor<int32_t> &outputGm,
+                                                            uint64_t totalSize, int32_t value)
+{
+    uint64_t aivCoreNum = static_cast<uint64_t>(GetBlockNum()) * GetTaskRation();
+    uint64_t coreIdx = static_cast<uint64_t>(blockId_);
+    uint64_t singleCoreSize = SICommon::Align(
+        (totalSize + aivCoreNum - 1U) / aivCoreNum,
+        static_cast<uint64_t>(OUTPUT_INIT_ALIGN_ELEMS));
+    uint64_t offset = coreIdx * singleCoreSize;
+    if (offset < totalSize) {
+        uint64_t initSize = Min(singleCoreSize, totalSize - offset);
+        InitOutput<int32_t>(outputGm[offset], initSize, value);
+    }
 }
 
 template <typename SIT>
@@ -674,7 +710,8 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         uint64_t indiceLenOffset = qFlatBase;
         uint64_t indiceOutOffset = qFlatBase * constInfo_.kSeqSize;
 
-        initS2LenToNeg(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
+        // sparseIndices已在InitBuffers中全量初始化为-1。
+        // initS2LenToNeg(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
 
         LocalTensor<uint32_t> indicesOutLocal =
             resMm1Local_[0].ReinterpretCast<uint32_t>()[SIKernel::SITopk<SCORE_T>::REUSE_INDICES_OUT_OFFSET];
