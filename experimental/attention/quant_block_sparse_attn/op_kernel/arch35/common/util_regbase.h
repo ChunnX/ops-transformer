@@ -270,13 +270,13 @@ struct RunInfo {
     uint32_t maxKb;                                                                                                    \
     /* 推理新增 */                                                                                                     \
     bool isRowInvalid;          /* 是否使能行无效 */                                                                   \
-    bool isActualLenDimsNull;   /* 判断是否有actualseq */                                                              \
-    bool isActualLenDimsKVNull; /* 判断是否有actualseq_kv */                                                           \
+    bool isSeqUsedQlenNull;   /* 判断是否有actualseq */                                                              \
+    bool isSeqUsedKvlenNull; /* 判断是否有actualseq_kv */                                                           \
     bool isGqa;                                                                                                        \
     bool isPfaGS1Merge; /* 判断是否为PFA GS1合轴 */                                                                    \
                                                                                                                        \
-    uint32_t actualSeqLenSize;   /* 用户输入的actualseq的长度 */                                                       \
-    uint32_t actualSeqLenKVSize; /* 用户输入的actualseq_kv的长度 */                                                    \
+    uint32_t seqUsedQlenSize;   /* 用户输入的actualseq的长度 */                                                       \
+    uint32_t seqUsedKvlenSize; /* 用户输入的actualseq_kv的长度 */                                                    \
     uint32_t isKvContinuous;     /* 是否为tensorlist */                                                                \
     /* service mm1 mm2 pageAttention */                                                                                \
     uint32_t blockTableDim2;                                                                                           \
@@ -352,28 +352,19 @@ struct CVSharedParams<false> {
     uint32_t isPfaGS1Merge            : 1;
     uint32_t isKvContinuous           : 1;
     uint32_t isRowInvalid             : 1;
-    uint32_t isActualSeqLengthsNull   : 1;
-    uint32_t isActualSeqLengthsKVNull : 1;
+    uint32_t isSeqUsedQlenNull   : 1;
+    uint32_t isSeqUsedKvlenNull : 1;
     uint32_t needInit                 : 1;
     uint32_t isPostQuantPerChnl       : 1;
     uint32_t isPostQuantBF16          : 1;
     uint32_t headNumRatio             : 20;
 
     uint32_t transposeLayout;
-    uint32_t actualSeqLengthsSize;
-    uint32_t actualSeqLengthsKVSize;
+    uint32_t seqUsedQlenSize;
+    uint32_t seqUsedKvlenSize;
 
     uint32_t bnStartIdx;
     uint32_t bnEndIdx;
-
-    uint32_t queryRightPaddingSize;
-    uint32_t kvRightPaddingSize;
-
-    // prefix
-    bool isActualSharedPrefixLenNull;
-    int64_t kvPrefixSize;
-
-    int64_t totalSize;
 };
 template <>
 struct CVSharedParams<true> {
@@ -383,36 +374,26 @@ struct CVSharedParams<true> {
     uint32_t isPfaGS1Merge            : 1;
     uint32_t isKvContinuous           : 1;
     uint32_t isRowInvalid             : 1;
-    uint32_t isActualSeqLengthsNull   : 1;
-    uint32_t isActualSeqLengthsKVNull : 1;
+    uint32_t isSeqUsedQlenNull   : 1;
+    uint32_t isSeqUsedKvlenNull : 1;
     uint32_t needInit                 : 1;
     uint32_t isPostQuantPerChnl       : 1;
     uint32_t isPostQuantBF16          : 1;
     uint32_t headNumRatio             : 20;
 
     uint32_t transposeLayout;
-    uint32_t actualSeqLengthsSize;
-    uint32_t actualSeqLengthsKVSize;
+    uint32_t seqUsedQlenSize;
+    uint32_t seqUsedKvlenSize;
 
     uint32_t bnStartIdx;
     uint32_t bnEndIdx;
 
-    uint32_t queryRightPaddingSize;
-    uint32_t kvRightPaddingSize;
-
-    int32_t blockSize;
     int32_t qSparseBlockSize;
     int32_t kvSparseBlockSize;
     int32_t blockTableDim2;
     int32_t paBlockNumSum;
     uint32_t paLayoutType;
     uint32_t paBlockStride;
-
-    // prefix
-    bool isActualSharedPrefixLenNull;
-    int64_t kvPrefixSize;
-
-    int64_t totalSize;
 };
 } // namespace regbaseutil
 
