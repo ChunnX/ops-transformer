@@ -50,7 +50,7 @@ graph LR
 |------|----------|
 | 非量化 | 左矩阵和右矩阵均为浮点类型直接计算 |
 | 全量化 | 左矩阵和右矩阵均为低精度计算，通过scale还原，详见[《量化介绍》](../../docs/zh/context/量化介绍.md) |
-| 伪量化 | 一般是指对权重矩阵进行量化的模式，包括perchannel量化模式 |
+| 伪量化 | 对右矩阵权重进行量化，包括perchannel量化模式 |
 | pertensor | 简称T量化，每个Tensor共用一个相同的量化参数 |
 | perchannel | 简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数 |
 | pertoken | 简称K量化，量化对象是左矩阵，每个token分别使用独立的量化参数 |
@@ -126,9 +126,6 @@ $$
 
 ### 公共约束
 
-- x/weight 中每组Tensor的最后一维 < 65536。
-  - $x_i$ 最后一维：x不转置时为 K轴，x 转置时为 M轴。
-  - $weight_i$ 最后一维：weight不转置时为 N轴，weight转置时为 K轴。
 - x/weight转置时对应 Tensor必须 [非连续](../../docs/zh/context/非连续的Tensor.md)。
 - weight为 [FRACTAL_NZ](../../docs/zh/context/数据格式.md) 格式时，shape 须满足 NZ格式要求。
 - perTokenScaleOptional：通常仅1维，长度与 x的M一致。仅支持 x/weight/out均为单Tensor场景。
