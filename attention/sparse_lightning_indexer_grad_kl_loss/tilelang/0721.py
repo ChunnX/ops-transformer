@@ -918,7 +918,6 @@ def tilelang_grad_kl_loss_single_kernel(
             T.tile.fill(v1_bw_eps, 1e-8)
             T.set_flag("mte3", "v", 2)
             T.set_flag("mte3", "v", 3)
-            T.set_flag("v", "mte2", 3)
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 g_start = vector_id * rows_per_aiv
@@ -954,9 +953,15 @@ def tilelang_grad_kl_loss_single_kernel(
                         v1_bw_weight,
                         v1_bw_row_tmp,
                     )
+                # row_tmp aliases the P input region.  Publish MTE2 ownership
+                # only after row-expand has consumed the temporary buffer.
+                T.set_flag("v", "mte2", 3)
 
                 for n_idx in T.serial(n_num):
                     T.wait_flag("v", "mte2", 3)
+                    # bmm2 and the previous reluGrad half output share one
+                    # physical UB region; MTE3 must release it before refill.
+                    T.wait_flag("mte3", "v", 2)
                     T.copy(
                         PReduced[bz_task, s1_id,
                                  n_idx * n_block:(n_idx + 1) * n_block],
@@ -1000,7 +1005,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.mul(v1_bw_diff_2d, v1_bw_diff_2d, v1_bw_mask)
 
-                    T.wait_flag("mte3", "v", 2)
                     T.tile.cast(
                         v1_bw_rg_half,
                         v1_bw_diff_2d,
@@ -1040,6 +1044,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
                     T.set_flag("v", "mte2", 3)
 
+                T.wait_flag("v", "mte2", 3)
                 T.pipe_barrier("v")
                 T.wait_flag("mte3", "v", 3)
                 T.tile.cast(
@@ -1062,7 +1067,6 @@ def tilelang_grad_kl_loss_single_kernel(
                 )
                 T.set_flag("mte3", "v", 3)
 
-            T.wait_flag("v", "mte2", 3)
             T.wait_flag("mte3", "v", 2)
             T.wait_flag("mte3", "v", 3)
             if task_slot == 0:
@@ -2853,14 +2857,26 @@ def sparse_lightning_indexer_grad_kl_loss(
                 bmm2_res_ws.float() * weights.float().unsqueeze(-1)
             ).sum(dim=2)
             debug_softmax_i = torch.softmax(debug_reduce_sum_y, dim=-1)
+            debug_diff = debug_softmax_i - debug_p_reduced
             debug_relu_grad = (
                 weights.float().unsqueeze(-1)
-                * (debug_softmax_i - debug_p_reduced).unsqueeze(2)
+                * debug_diff.unsqueeze(2)
                 * (bmm2_res_ws.float() > 0).float()
             )
+            debug_d_weight = (
+                bmm2_res_ws.float() * debug_diff.unsqueeze(2)
+            ).sum(dim=-1)
+            debug_p_safe = debug_p_reduced.clamp_min(1e-8)
+            debug_softmax_i_safe = debug_softmax_i.clamp_min(1e-8)
+            debug_loss = (
+                debug_p_safe
+                * (torch.log(debug_p_safe) - torch.log(debug_softmax_i_safe))
+            ).sum()
             p_reduced_diff = (p_reduced_ws.float() - debug_p_reduced).abs()
             softmax_i_diff = (softmax_i_ws.float() - debug_softmax_i).abs()
             relu_grad_diff = (relu_grad_out.float() - debug_relu_grad).abs()
+            d_weight_diff = (d_weight.float() - debug_d_weight).abs()
+            loss_diff = (loss_out.float().reshape(-1)[0] - debug_loss).abs()
             p_max_diff = (
                 debug_scaled_bmm1.amax(dim=-1) - debug_softmax_max
             ).abs()
@@ -2898,6 +2914,15 @@ def sparse_lightning_indexer_grad_kl_loss(
                 f"[DEBUG] reluGradRes vs host formula: "
                 f"max_diff={relu_grad_diff.max().item():.6e}, "
                 f"mean_diff={relu_grad_diff.mean().item():.6e}"
+            )
+            print(
+                f"[DEBUG] dWeightOut vs host formula: "
+                f"max_diff={d_weight_diff.max().item():.6e}, "
+                f"mean_diff={d_weight_diff.mean().item():.6e}"
+            )
+            print(
+                f"[DEBUG] LossOut vs host formula: "
+                f"abs_diff={loss_diff.item():.6e}"
             )
             _debug_dump_done = True
 
