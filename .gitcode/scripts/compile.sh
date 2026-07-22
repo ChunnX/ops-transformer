@@ -11,7 +11,6 @@
 set +e
 
 REPOSITORY_NAME="ops-transformer"
-export REPOSITORY_NAME
 echo $(grep -E "^VERSION_ID=" /etc/os-release | cut -d'"' -f2)
 export PATH=/opt/buildtools/python-3.10.2/bin:$PATH
 if [[ "${task_name}" == *ubuntu24* ]]; then
@@ -30,7 +29,6 @@ fi
 
 if [ -z "${OS_TYPE}" ]; then
     OS_TYPE=$(uname -m)
-    export OS_TYPE
 fi
 
 if [ -f /home/jenkins/Ascend/cann/bin/setenv.bash ]; then
