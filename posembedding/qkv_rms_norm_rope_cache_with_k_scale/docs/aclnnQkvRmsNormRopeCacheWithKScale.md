@@ -13,7 +13,7 @@
 
 ## 功能说明
 
-- 接口功能：`aclnnQkvRmsNormRopeCacheWithKScale`面向大语言模型推理中的PagedAttention KV Cache更新场景。接口从融合输入`qkv`中拆分Q、K、V分量，对Q/K执行RMSNorm、RoPE和共享`rotationOptional`矩阵乘，随后将Q/K动态量化为FP8 E4M3FN；Q分支输出`qOut`和`qScale`，K分支按`slotMapping`写入`kCacheRef`和`kScaleCacheRef`。V分支按`vScaleOptional`缩放后量化为FP8 E4M3FN，并按`slotMapping`写入`vCacheRef`。
+- 接口功能：`aclnnQkvRmsNormRopeCacheWithKScale`面向大语言模型推理中的PagedAttention KV Cache更新场景。接口从融合输入`qkv`中拆分Q、K、V分量，对Q/K执行RMSNorm、RoPE和共享`rotationOptional`矩阵乘。RoPE场景将Q/K动态量化为FP8 E4M3FN，输出`qOut`和`qScaleOptional`并将K写入FP8 `kCacheRef`；M-RoPE场景输出BF16 `qOut`且不返回`qScaleOptional`，将K动态量化为INT8并写入INT8 `kCacheRef`。两个场景均将K scale写入`kScaleCacheRef`，并将V按`vScaleOptional`缩放后量化为FP8 E4M3FN写入`vCacheRef`。
 
 - 计算公式：
 
@@ -41,16 +41,74 @@
   y_{rope} = concat(y_{low} * cos - y_{high} * sin,\ y_{high} * cos + y_{low} * sin)
   $$
 
+  M-RoPE场景公式如下。令
+  \(C=\mathrm{cosSin}\)、\(P=\mathrm{mropePosition}\)、\(D_{\mathrm{half}}=D/2\)，并定义
+
+  $$
+  \iota(\mathrm T)=0,\qquad \iota(\mathrm H)=1,\qquad \iota(\mathrm W)=2.
+  $$
+
+  对token \(u\)、轴 \(a\in\{\mathrm T,\mathrm H,\mathrm W\}\) 和列 \(d\)，定义三路原始位置编码。
+  `mropePosition` 的逻辑shape为 \([T,3]\)，每一行对应一个token，三列依次对应T、H、W轴。
+
+  $$
+  R_{a,u,d}=C_{P_{u,\iota(a)},d},\qquad 0\leq u<T,\quad 0\leq d<D.
+  $$
+
+  将 `mropeSection=[t,h,w]` 记为
+  \(\boldsymbol{s}=(s_{\mathrm T},s_{\mathrm H},s_{\mathrm W})=(t,h,w)\)。
+  其中 \(s_{\mathrm T}\) 只参与取值域校验，不参与 lane 选源。对
+  \(0\leq\ell<D_{\mathrm{half}}\)，定义
+
+  $$
+  r(\ell)=\left\lfloor\frac{\ell}{3}\right\rfloor,\qquad
+  \rho(\ell)=\ell\bmod 3,
+  $$
+
+  $$
+  \sigma(\ell)=
+  \begin{cases}
+  \mathrm H, & \rho(\ell)=1\ \land\ r(\ell)<s_{\mathrm H},\\
+  \mathrm W, & \rho(\ell)=2\ \land\ r(\ell)<s_{\mathrm W},\\
+  \mathrm T, & \text{其他情况}.
+  \end{cases}
+  $$
+
+  有效 cos/sin 为
+
+  $$
+  \widehat c_{u,\ell}=R_{\sigma(\ell),u,\ell},\qquad
+  \widehat s_{u,\ell}=R_{\sigma(\ell),u,D_{\mathrm{half}}+\ell}.
+  $$
+
+  将 \(\widehat c\)、\(\widehat s\) 代入 Q/K 的 RoPE 旋转公式，输出维度保持为
+  \(D\)，不拼接为 \(3D\)。
+
   Q/K共享`rotationOptional`矩阵：
 
   $$
   q_{rot} = q_{rope} @ rotationOptional,\quad k_{rot} = k_{rope} @ rotationOptional
   $$
 
-  Q/K按每个token和head做动态量化，FP8 E4M3FN最大有限值使用`FP8_E4M3FN_MAX`，该值为448：
+  RoPE场景的Q/K按每个token和head做动态量化，FP8 E4M3FN最大有限值使用`FP8_E4M3FN_MAX`，该值为448：
 
   $$
   scale = max(abs(x)) / FP8\_E4M3FN\_MAX,\quad x_{fp8} = cast(x / scale)
+  $$
+
+  M-RoPE场景的Q输出为BF16且没有`qScaleOptional`：
+
+  $$
+  qOut=\operatorname{RNE}_{\mathrm{BF16}}\!\left(q_{rot}\right),\qquad qScaleOptional=\varnothing.
+  $$
+
+  M-RoPE场景的K输出按每个token和head量化为INT8。对token \(u\)、head \(n\) 和通道 \(d\)，
+
+  $$
+  k_{scale}(u,n)=\frac{\displaystyle\max_{0\leq d<D}|k_{rot}(u,n,d)|}{127},
+  \qquad
+  k_{int8}(u,n,d)=\operatorname{sat}_{[-127,127]}
+  \!\left(\operatorname{rint}\!\left(\frac{k_{rot}(u,n,d)}{k_{scale}(u,n)}\right)\right).
   $$
 
   V分支按`vScaleOptional`缩放后量化：
@@ -66,7 +124,12 @@
   $$
 
   $$
-  kCacheRef[blockId, nk, blockOffset, :] = k_{fp8}[t, nk, :]
+  kCacheRef[blockId, nk, blockOffset, :] = k_{quant}[t, nk, :],
+  \qquad
+  k_{quant}=\begin{cases}
+  k_{fp8}, & \text{RoPE场景},\\
+  k_{int8}, & \text{M-RoPE场景}.
+  \end{cases}
   $$
 
   $$
@@ -91,16 +154,19 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
     aclTensor         *kCacheRef,
     aclTensor         *vCacheRef,
     aclTensor         *kScaleCacheRef,
-    const aclTensor   *queryStartLoc,
-    const aclTensor   *seqLens,
+    const aclTensor   *queryStartLocOptional,
+    const aclTensor   *seqLensOptional,
     const aclTensor   *rotationOptional,
     const aclTensor   *vScaleOptional,
+    const aclTensor   *mropePositionOptional,
     const aclIntArray *headNums,
     const char        *layoutQkv,
     const char        *layoutQOut,
     float              epsilon,
+    const aclIntArray *mropeSectionOptional,
+    const char        *qQuantMode,
     aclTensor         *qOut,
-    aclTensor         *qScale,
+    aclTensor         *qScaleOptional,
     uint64_t          *workspaceSize,
     aclOpExecutor    **executor);
 ```
@@ -194,8 +260,8 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td style="white-space: nowrap">kCacheRef（aclTensor*）</td>
       <td>输出</td>
       <td>KCache写回Tensor，对应公式中的<code>kCacheRef</code>。</td>
-      <td><ul><li>不支持空指针或空Tensor。</li><li>接口基于传入Tensor原地更新。</li><li>支持非连续Tensor，需满足“约束说明”中的stride限制。</li></ul></td>
-      <td>FLOAT8_E4M3FN</td>
+      <td><ul><li>不支持空指针或空Tensor。</li><li>接口基于传入Tensor原地更新。</li><li>RoPE场景为FLOAT8_E4M3FN，M-RoPE场景为INT8。</li><li>支持非连续Tensor，需满足“约束说明”中的stride限制。</li></ul></td>
+      <td>FLOAT8_E4M3FN、INT8</td>
       <td>ND</td>
       <td><code>[BlockNum,Nk,BlockSize,D]</code></td>
       <td>√</td>
@@ -221,20 +287,20 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td>√</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap">queryStartLoc（const aclTensor*）</td>
-      <td>输入</td>
+      <td style="white-space: nowrap">queryStartLocOptional（const aclTensor*）</td>
+      <td>可选输入</td>
       <td>当前调用内各batch token数的前缀和，对应公式中的<code>queryStartLoc</code>。</td>
-      <td><ul><li>不支持空指针或空Tensor。</li><li>长度需大于等于2。</li><li><code>queryStartLoc[0]</code>应为0，<code>queryStartLoc[Batch]</code>应为<code>T</code>。</li></ul></td>
+      <td><ul><li>RoPE场景不支持空指针或空Tensor，M-RoPE场景必须为空指针。</li><li>长度需大于等于2。</li><li><code>queryStartLocOptional[0]</code>应为0，<code>queryStartLocOptional[Batch]</code>应为<code>T</code>。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td><code>[Batch+1]</code></td>
       <td>×</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap">seqLens（const aclTensor*）</td>
-      <td>输入</td>
+      <td style="white-space: nowrap">seqLensOptional（const aclTensor*）</td>
+      <td>可选输入</td>
       <td>每个batch追加本次token后的实际序列长度，对应公式中的<code>seqLens</code>。</td>
-      <td><ul><li>不支持空指针或空Tensor。</li><li>长度需等于<code>queryStartLoc.shape[0]-1</code>。</li></ul></td>
+      <td><ul><li>RoPE场景不支持空指针或空Tensor，M-RoPE场景必须为空指针。</li><li>长度需等于<code>queryStartLocOptional.shape[0]-1</code>。</li></ul></td>
       <td>INT32</td>
       <td>ND</td>
       <td><code>[Batch]</code></td>
@@ -261,6 +327,16 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td>×</td>
     </tr>
     <tr>
+      <td style="white-space: nowrap">mropePositionOptional（const aclTensor*）</td>
+      <td>可选输入</td>
+      <td>M-RoPE场景的T/H/W三路位置索引。每个token占一行，三列依次为T、H、W。</td>
+      <td><ul><li>必须与<code>mropeSectionOptional</code>同时为空或同时传入。</li><li>RoPE场景必须为空指针。</li></ul></td>
+      <td>INT32</td>
+      <td>ND</td>
+      <td><code>[T,3]</code></td>
+      <td>×</td>
+    </tr>
+    <tr>
       <td style="white-space: nowrap">headNums（const aclIntArray*）</td>
       <td>输入</td>
       <td>Q/K/V头数数组，依次映射为公式中的<code>Nq</code>、<code>Nk</code>、<code>Nv</code>。</td>
@@ -283,7 +359,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     <tr>
       <td style="white-space: nowrap">layoutQOut（const char*）</td>
       <td>输入</td>
-      <td><code>qOut</code>和<code>qScale</code>的N/T轴布局标识。</td>
+      <td><code>qOut</code>和<code>qScaleOptional</code>的N/T轴布局标识。</td>
       <td><ul><li>默认值为<code>"NTD"</code>。</li><li>传入空指针或空字符串时按默认值处理。</li><li>大小写敏感，仅支持<code>"TND"</code>和<code>"NTD"</code>。</li><li>当前不支持<code>layoutQkv="NTD"</code>、<code>layoutQOut="TND"</code>。</li></ul></td>
       <td>-</td>
       <td>-</td>
@@ -301,20 +377,40 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td>-</td>
     </tr>
     <tr>
+      <td style="white-space: nowrap">mropeSectionOptional（const aclIntArray*）</td>
+      <td>可选输入</td>
+      <td>M-RoPE场景的T/H/W lane容量参数，语义顺序为<code>(T,H,W)</code>，按<code>[t,h,w]</code>传入。</td>
+      <td><ul><li>必须与<code>mropePositionOptional</code>同时为空或同时传入。</li><li>RoPE场景必须为空指针。</li></ul></td>
+      <td>INT64</td>
+      <td>-</td>
+      <td>长度为3（<code>[t,h,w]</code>）</td>
+      <td>-</td>
+    </tr>
+    <tr>
+      <td style="white-space: nowrap">qQuantMode（const char*）</td>
+      <td>输入</td>
+      <td>Q分支量化模式。</td>
+      <td><ul><li>传入空指针或空字符串时按默认值<code>"PerTokenPerHead"</code>处理。</li><li>RoPE场景必须为<code>"PerTokenPerHead"</code>，M-RoPE场景必须为<code>"NoQuant"</code>。</li></ul></td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+      <td>-</td>
+    </tr>
+    <tr>
       <td style="white-space: nowrap">qOut（aclTensor*）</td>
       <td>输出</td>
-      <td>Q分支FP8 E4M3FN量化输出，对应Q分支动态量化公式中的<code>x_{fp8}</code>。</td>
-      <td><ul><li>不支持空指针或空Tensor。</li></ul></td>
-      <td>FLOAT8_E4M3FN</td>
+      <td>Q分支输出。RoPE场景对应Q分支动态量化公式中的<code>x_{fp8}</code>，M-RoPE场景输出未量化结果。</td>
+      <td><ul><li>不支持空指针或空Tensor。</li><li>接口直接读取<code>qOut</code>的数据类型，不单独传入dtype属性。</li><li>RoPE场景必须为FLOAT8_E4M3FN，M-RoPE场景必须为BFLOAT16。</li></ul></td>
+      <td>FLOAT8_E4M3FN、BFLOAT16</td>
       <td>ND</td>
       <td><code>[T,Nq,D]</code>或<code>[Nq,T,D]</code></td>
       <td>×</td>
     </tr>
     <tr>
-      <td style="white-space: nowrap">qScale（aclTensor*）</td>
-      <td>输出</td>
+      <td style="white-space: nowrap">qScaleOptional（aclTensor*）</td>
+      <td>可选输出</td>
       <td>Q分支每个token/head对应的动态量化scale，对应Q分支动态量化公式中的<code>scale</code>。</td>
-      <td><ul><li>不支持空指针或空Tensor。</li></ul></td>
+      <td><ul><li>RoPE场景不支持空指针或空Tensor。</li><li>M-RoPE场景必须为空指针，不返回Q分支scale。</li></ul></td>
       <td>FLOAT</td>
       <td>ND</td>
       <td><code>[T,Nq]</code>或<code>[Nq,T]</code></td>
@@ -364,11 +460,11 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     <tr>
       <td style="white-space: nowrap">ACLNN_ERR_PARAM_NULLPTR</td>
       <td style="white-space: nowrap">161001</td>
-      <td><code>qkv</code>、<code>qGamma</code>、<code>kGamma</code>、<code>cosSin</code>、<code>slotMapping</code>、<code>kCacheRef</code>、<code>vCacheRef</code>、<code>kScaleCacheRef</code>、<code>queryStartLoc</code>、<code>seqLens</code>、<code>rotationOptional</code>、<code>vScaleOptional</code>、<code>headNums</code>、<code>qOut</code>、<code>qScale</code>、<code>workspaceSize</code>或<code>executor</code>为空指针。</td>
+      <td><code>qkv</code>、<code>qGamma</code>、<code>kGamma</code>、<code>cosSin</code>、<code>slotMapping</code>、<code>kCacheRef</code>、<code>vCacheRef</code>、<code>kScaleCacheRef</code>、<code>rotationOptional</code>、<code>vScaleOptional</code>、<code>headNums</code>、<code>qOut</code>、<code>workspaceSize</code>或<code>executor</code>为空指针；或RoPE场景下<code>queryStartLocOptional</code>、<code>seqLensOptional</code>或<code>qScaleOptional</code>为空指针。</td>
     </tr>
     <tr>
-      <td rowspan="5" style="white-space: nowrap">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="5" style="white-space: nowrap">161002</td>
+      <td rowspan="6" style="white-space: nowrap">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="6" style="white-space: nowrap">161002</td>
       <td>Tensor为空Tensor。</td>
     </tr>
     <tr>
@@ -382,6 +478,9 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     </tr>
     <tr>
       <td><code>kCacheRef</code>、<code>vCacheRef</code>或<code>kScaleCacheRef</code>非连续Tensor的stride不满足约束。</td>
+    </tr>
+    <tr>
+      <td><code>mropePositionOptional</code>与<code>mropeSectionOptional</code>未同时为空或同时传入，或位置参数、<code>qQuantMode</code>、<code>qOut</code> dtype、<code>qScaleOptional</code>的组合与所选场景不匹配。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap">ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
@@ -442,15 +541,16 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
 
 - 确定性说明：aclnnQkvRmsNormRopeCacheWithKScale默认确定性实现。
 - 输入shape限制：
-  - 当前实现仅支持`D=128`。
-  - `layoutQkv`控制`qkv`的N/T轴布局，默认值为`"TND"`；`layoutQOut`控制`qOut`和`qScale`的N/T轴布局，默认值为`"NTD"`：
-    - `layoutQkv="TND"`，`layoutQOut="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[T, Nq, D]`，`qScale=[T, Nq]`。
-    - `layoutQkv="TND"`，`layoutQOut="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[Nq, T, D]`，`qScale=[Nq, T]`。
-    - `layoutQkv="NTD"`，`layoutQOut="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`qOut=[Nq, T, D]`，`qScale=[Nq, T]`。
+  - 仅支持`D=128`。
+  - `layoutQkv`控制`qkv`的N/T轴布局，默认值为`"TND"`；`layoutQOut`控制`qOut`和`qScaleOptional`的N/T轴布局，默认值为`"NTD"`：
+    - `layoutQkv="TND"`，`layoutQOut="TND"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[T, Nq, D]`，`qScaleOptional=[T, Nq]`。
+    - `layoutQkv="TND"`，`layoutQOut="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[Nq, T, D]`，`qScaleOptional=[Nq, T]`。
+    - `layoutQkv="NTD"`，`layoutQOut="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`qOut=[Nq, T, D]`，`qScaleOptional=[Nq, T]`。
   - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`的`BlockNum`和`BlockSize`必须一致。
   - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`均为4维正stride，最后一维stride为1；`kCacheRef`和`vCacheRef`前三维stride必须一致。
+  - M-RoPE的`mropePositionOptional`逻辑shape固定为`[T,3]`，位置索引按`P[u,0]`、`P[u,1]`、`P[u,2]`分别读取token `u`的T/H/W坐标。
 - 输入值域限制：
-  - `seqLens[b]`必须满足`seqLens[b] >= queryStartLoc[b+1] - queryStartLoc[b]`。若`seqLens[b]`小于该batch本次调用的token数，行为未定义。
+  - `seqLensOptional[b]`必须满足`seqLensOptional[b] >= queryStartLocOptional[b+1] - queryStartLocOptional[b]`。若`seqLensOptional[b]`小于该batch本次调用的token数，行为未定义。
   - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
 
 ## 调用示例
@@ -708,8 +808,9 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       uint64_t workspaceSize = 0;
       aclnnStatus status = aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
           qkv.tensor, qGamma.tensor, kGamma.tensor, cosSin.tensor, slotMapping.tensor, kCache.tensor, vCache.tensor,
-          kScaleCache.tensor, queryStartLoc.tensor, seqLens.tensor, rotation.tensor, vScale.tensor, resource.headNums,
-          layoutQkv, layoutQOut, epsilon, qOut.tensor, qScale.tensor, &workspaceSize, &resource.executor);
+          kScaleCache.tensor, queryStartLoc.tensor, seqLens.tensor, rotation.tensor, vScale.tensor, nullptr,
+          resource.headNums, layoutQkv, layoutQOut, epsilon, nullptr, "PerTokenPerHead", qOut.tensor, qScale.tensor,
+          &workspaceSize, &resource.executor);
       CHECK_RET(status == ACL_SUCCESS,
                 LOG_PRINT("aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize failed. ERROR: %d\n", status);
                 return ReturnAfterCleanup(static_cast<int>(status), resource));
