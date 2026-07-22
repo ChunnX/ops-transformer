@@ -262,7 +262,7 @@ def extract_combine_kernel_timing(
     out_dir: Optional[Path] = None,
     cycles_per_us: int = COMBINE_TIMING_CYCLES_PER_US,
 ) -> torch.Tensor:
-    """Export cumulative MoeEpCombine timing stored at the start of combined_x."""
+    """Export accumulated MoeEpCombine timing for every active send core."""
     timing_slots = 16
     timing_bytes = num_cores * timing_slots * 2 * 8
     available_bytes = output_tensor.numel() * output_tensor.element_size()
@@ -368,6 +368,31 @@ def extract_combine_kernel_timing(
         writer.writeheader()
         writer.writerows(flow_rows)
 
+    per_core_total_rows = []
+    for core, stage_durations in enumerate(flow_durations_by_core):
+        per_core_total_rows.append(
+            {
+                "core": core,
+                "send_token_total_us": int(timing[core, 0, 1].item()) / cycles_per_us,
+                "set_status_total_us": int(timing[core, 1, 1].item()) / cycles_per_us,
+                "token_prepare_and_copy_us": stage_durations[0],
+                "token_write_nbi_us": stage_durations[1],
+                "status_prepare_and_copy_us": stage_durations[2],
+                "status_drain_before_us": stage_durations[3],
+                "status_write_nbi_us": stage_durations[4],
+                "status_drain_after_us": stage_durations[5],
+                "communication_total_us": sum(
+                    stage_durations[index] for index in (1, 3, 4, 5)
+                ),
+                "drain_total_us": stage_durations[3] + stage_durations[5],
+            }
+        )
+    per_core_total_path = rank_dir / f"combine_timing_rank_{rank}_per_core_totals.csv"
+    with per_core_total_path.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=per_core_total_rows[0].keys())
+        writer.writeheader()
+        writer.writerows(per_core_total_rows)
+
     flow_summary_rows = []
     for stage_index, stage_name in enumerate(COMBINE_FLOW_STAGES):
         stage_durations = [durations[stage_index] for durations in flow_durations_by_core]
@@ -472,6 +497,65 @@ def extract_combine_kernel_timing(
         flow_ax.grid(axis="x", alpha=0.25)
         fig.tight_layout()
         fig.savefig(rank_dir / f"combine_timing_rank_{rank}_send_flow.png", dpi=150)
+        plt.close(fig)
+
+        # The boxes contain totals accumulated over every token handled by a
+        # core. Arrows show the dependency order repeated for each token; they
+        # are deliberately not presented as one wall-clock event timeline.
+        dependency_colors = plt.cm.Set2.colors
+        fig, dependency_ax = plt.subplots(figsize=(24, max(8, num_cores * 1.35)))
+        box_width = 0.82
+        box_height = 0.62
+        for core in range(num_cores):
+            y_position = num_cores - 1 - core
+            for stage_index, stage_name in enumerate(COMBINE_FLOW_STAGES):
+                duration_us = flow_durations_by_core[core][stage_index]
+                dependency_ax.add_patch(
+                    plt.Rectangle(
+                        (stage_index - box_width / 2, y_position - box_height / 2),
+                        box_width,
+                        box_height,
+                        facecolor=dependency_colors[stage_index % len(dependency_colors)],
+                        edgecolor="#333333",
+                        linewidth=0.8,
+                        alpha=0.9,
+                    )
+                )
+                short_name = stage_name.replace("_and_copy", "").replace("_", "\n")
+                dependency_ax.text(
+                    stage_index,
+                    y_position,
+                    f"{short_name}\nTOTAL {duration_us:.3f} us",
+                    ha="center",
+                    va="center",
+                    fontsize=7,
+                )
+            for stage_index in range(len(COMBINE_FLOW_STAGES) - 1):
+                dependency_ax.annotate(
+                    "",
+                    xy=(stage_index + 1 - box_width / 2, y_position),
+                    xytext=(stage_index + box_width / 2, y_position),
+                    arrowprops={"arrowstyle": "->", "color": "#555555", "lw": 1.0},
+                )
+
+        dependency_ax.set_xlim(-0.65, len(COMBINE_FLOW_STAGES) - 0.35)
+        dependency_ax.set_ylim(-0.7, num_cores - 0.1)
+        dependency_ax.set_yticks(list(range(num_cores)))
+        dependency_ax.set_yticklabels(
+            [f"core_{core}" for core in reversed(range(num_cores))]
+        )
+        dependency_ax.set_xticks([])
+        dependency_ax.set_title(
+            f"MoeEpCombine per-core accumulated stage totals - rank {rank}\n"
+            "arrows show the dependency order repeated for each token"
+        )
+        for spine_name in ("top", "right", "bottom"):
+            dependency_ax.spines[spine_name].set_visible(False)
+        fig.tight_layout()
+        fig.savefig(
+            rank_dir / f"combine_timing_rank_{rank}_accumulated_dependencies.png",
+            dpi=180,
+        )
         plt.close(fig)
     except Exception as error:
         print(f"[TIMING] rank {rank}: skipped timing chart: {error}")
