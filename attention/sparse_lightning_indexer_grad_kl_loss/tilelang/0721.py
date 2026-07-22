@@ -793,11 +793,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte3", "v", 1)
 
             T.set_cross_flag("MTE3", V1_PAIR_FLAG, 1)
-            T.call_extern(
-                "handle",
-                "AscendC::CrossCoreWaitFlag<0x1, PIPE_MTE2>",
-                V1_PAIR_FLAG,
-            )
+            T.wait_cross_flag(V1_PAIR_FLAG)
 
     @T.macro
     def vector1_backward_task(
@@ -1221,98 +1217,46 @@ def tilelang_grad_kl_loss_single_kernel(
                             sparse_idx1 = SparseIndices[
                                 bz_task, s1_task, 0, k_idx + 1
                             ]
-                            # The helper maps to one two-block atomic DataCopyPad;
-                            # realdstN is the destination-row distance in elements.
                             if sparse_idx0 >= 0:
-                                if sparse_idx1 > sparse_idx0:
-                                    if current_slot == 0:
-                                        T.call_extern(
-                                            "handle",
-                                            "tl::ascend::atomic_add_ub_to_gm<float, 128, 2>",
-                                            dKeyIndexAccum[
-                                                bz_task * S2 + sparse_idx0, 0
-                                            ],
-                                            v2_dk_batch_ping[row_idx, 0],
-                                            (sparse_idx1 - sparse_idx0)
-                                            * DQueryIndex,
-                                            2,
-                                            DQueryIndex,
-                                        )
-                                    else:
-                                        T.call_extern(
-                                            "handle",
-                                            "tl::ascend::atomic_add_ub_to_gm<float, 128, 2>",
-                                            dKeyIndexAccum[
-                                                bz_task * S2 + sparse_idx0, 0
-                                            ],
-                                            v2_dk_batch_pong[row_idx, 0],
-                                            (sparse_idx1 - sparse_idx0)
-                                            * DQueryIndex,
-                                            2,
-                                            DQueryIndex,
-                                        )
+                                if current_slot == 0:
+                                    T.tile.atomic_add(
+                                        dKeyIndexAccum[
+                                            bz_task * S2 + sparse_idx0, 0
+                                        ],
+                                        v2_dk_batch_ping[
+                                            row_idx:row_idx + 1, 0:DQueryIndex
+                                        ],
+                                    )
                                 else:
-                                    if current_slot == 0:
-                                        T.tile.atomic_add(
-                                            dKeyIndexAccum[
-                                                bz_task * S2 + sparse_idx0, 0
-                                            ],
-                                            v2_dk_batch_ping[
-                                                row_idx:row_idx + 1, 0:DQueryIndex
-                                            ],
-                                        )
-                                    else:
-                                        T.tile.atomic_add(
-                                            dKeyIndexAccum[
-                                                bz_task * S2 + sparse_idx0, 0
-                                            ],
-                                            v2_dk_batch_pong[
-                                                row_idx:row_idx + 1, 0:DQueryIndex
-                                            ],
-                                        )
-                                    if sparse_idx1 >= 0:
-                                        if current_slot == 0:
-                                            T.tile.atomic_add(
-                                                dKeyIndexAccum[
-                                                    bz_task * S2 + sparse_idx1, 0
-                                                ],
-                                                v2_dk_batch_ping[
-                                                    row_idx + 1:row_idx + 2,
-                                                    0:DQueryIndex,
-                                                ],
-                                            )
-                                        else:
-                                            T.tile.atomic_add(
-                                                dKeyIndexAccum[
-                                                    bz_task * S2 + sparse_idx1, 0
-                                                ],
-                                                v2_dk_batch_pong[
-                                                    row_idx + 1:row_idx + 2,
-                                                    0:DQueryIndex,
-                                                ],
-                                            )
-                            else:
-                                if sparse_idx1 >= 0:
-                                    if current_slot == 0:
-                                        T.tile.atomic_add(
-                                            dKeyIndexAccum[
-                                                bz_task * S2 + sparse_idx1, 0
-                                            ],
-                                            v2_dk_batch_ping[
-                                                row_idx + 1:row_idx + 2,
-                                                0:DQueryIndex,
-                                            ],
-                                        )
-                                    else:
-                                        T.tile.atomic_add(
-                                            dKeyIndexAccum[
-                                                bz_task * S2 + sparse_idx1, 0
-                                            ],
-                                            v2_dk_batch_pong[
-                                                row_idx + 1:row_idx + 2,
-                                                0:DQueryIndex,
-                                            ],
-                                        )
+                                    T.tile.atomic_add(
+                                        dKeyIndexAccum[
+                                            bz_task * S2 + sparse_idx0, 0
+                                        ],
+                                        v2_dk_batch_pong[
+                                            row_idx:row_idx + 1, 0:DQueryIndex
+                                        ],
+                                    )
+                            if sparse_idx1 >= 0:
+                                if current_slot == 0:
+                                    T.tile.atomic_add(
+                                        dKeyIndexAccum[
+                                            bz_task * S2 + sparse_idx1, 0
+                                        ],
+                                        v2_dk_batch_ping[
+                                            row_idx + 1:row_idx + 2,
+                                            0:DQueryIndex,
+                                        ],
+                                    )
+                                else:
+                                    T.tile.atomic_add(
+                                        dKeyIndexAccum[
+                                            bz_task * S2 + sparse_idx1, 0
+                                        ],
+                                        v2_dk_batch_pong[
+                                            row_idx + 1:row_idx + 2,
+                                            0:DQueryIndex,
+                                        ],
+                                    )
                         T.set_flag("mte3", "mte2", current_slot + 6)
 
             T.wait_flag("mte3", "mte2", 6)
