@@ -189,6 +189,7 @@ __aicore__ inline void InlineRadixTopK(
             int32_t cumSumOne = 0;
             uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(int32_t) - 1) /
                 (REPEAT_SIZE / sizeof(int32_t)) * (REPEAT_SIZE / sizeof(int32_t));
+            int32_t binCounts[RDX_BINS] = {0, 0, 0, 0};
             for (int16_t binMask = RDX_BINS - 1; binMask > 0; binMask--) {
                 int32_t involvedMaskTemp = static_cast<int32_t>(
                     involvedMask16_ | static_cast<int16_t>(binMask << (roundId * RDX_BITS)));
@@ -200,11 +201,16 @@ __aicore__ inline void InlineRadixTopK(
                            true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
                 RDX_V_S_SYNC();
                 cumSumOne += static_cast<int32_t>(rsvdCnt);
-
-                tileHist[binMask * tileNumAlign_].SetValue(tileId, cumSumOne);
-                globalHist.SetValue(binMask, globalHist.GetValue(binMask) + cumSumOne);
-                RDX_S_V_SYNC();
+                binCounts[binMask] = cumSumOne;
             }
+            // Single S_V sync for all bin writes
+            RDX_S_V_SYNC();
+            RDX_V_S_SYNC();
+            for (int16_t binMask = RDX_BINS - 1; binMask > 0; binMask--) {
+                tileHist[binMask * tileNumAlign_].SetValue(tileId, binCounts[binMask]);
+                globalHist.SetValue(binMask, globalHist.GetValue(binMask) + binCounts[binMask]);
+            }
+            RDX_S_V_SYNC();
         }
 
         // FindBoundaryBin + update globalHistBoundaryNum_ (single V_S/S_V pair)
