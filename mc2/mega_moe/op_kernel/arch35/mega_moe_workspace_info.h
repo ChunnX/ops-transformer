@@ -208,16 +208,9 @@ struct WorkspaceInfo {
         if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
             // Token group completion counters
             gmm2CombineSyncCounterPtr = base + workspaceSize;
-            if (tilingData->topoType == TOPO_TYPE_URMA) {
-                // Layered 保留旧的 per-expert/per-physical-core counter 布局。
-                int64_t counterBytesPerExpert = Ops::Base::CeilAlign(
-                    static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE * SIZE_INT_32, ALIGN_128);
-                workspaceSize += counterBytesPerExpert * tilingData->expertPerRank;
-            } else {
-                int64_t combineCounterBytes = static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
-                                              tilingData->moeExpertPerRank * INT_CACHELINE * SIZE_INT_32;
-                workspaceSize += Ops::Base::CeilAlign(combineCounterBytes, static_cast<int64_t>(ALIGN_128));
-            }
+            int64_t combineCounterBytes = static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
+                                          tilingData->moeExpertPerRank * INT_CACHELINE * SIZE_INT_32;
+            workspaceSize += Ops::Base::CeilAlign(combineCounterBytes, static_cast<int64_t>(ALIGN_128));
         }
 
         if (tilingData->topoType == TOPO_TYPE_URMA) {

@@ -178,7 +178,7 @@ struct MegaMoeTilingData {
     int64_t topoType;
     uint32_t sharedExpertNum; // 独立 dense 路径的共享专家数，不进入 topK/SendMask expert id 空间
 
-    // 每个 routed MoE expert 固定预留的 GMM2 -> Combine 同步 slot 数；legacy URMA 不消费该字段。
+    // 每个 routed MoE expert 固定预留的 GMM2 -> Combine 同步 slot 数。
     uint64_t combineSyncSlotCountPerExpert;
 
     // Dispatch 的分核不改变 UB 布局，所有 AIV core 共用一套配置；对应 kernel DispatchBuffInit。
