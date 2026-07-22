@@ -112,16 +112,6 @@ __aicore__ inline void InlineRadixTopK(
     SetFlag<HardEvent::MTE2_V>(mte2ToV);
     WaitFlag<HardEvent::MTE2_V>(mte2ToV);
 
-    // Replace +1e30 (MM1 garbage) with -1e30 in UB cache (single pass over sortLen)
-    RDX_V_S_SYNC();
-    for (uint32_t i = 0; i < sortLen; i++) {
-        float v = scoreCache.GetValue(i);
-        if (v > 1.0e29f) {
-            scoreCache.SetValue(i, -1.0e30f);
-        }
-    }
-    RDX_S_V_SYNC();
-
     for (int32_t roundId = RDX_ROUNDS - 1; roundId >= 0; roundId--) {
         // ClearHist
         if (roundId == static_cast<int32_t>(RDX_ROUNDS) - 1) {
