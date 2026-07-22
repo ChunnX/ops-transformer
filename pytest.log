@@ -1,0 +1,36 @@
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# python3 -m pytest test_fia_fullquant_mxfp8_func_rdv.py -v -k "PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3" -s
+===================================================================================== test session starts =====================================================================================
+platform linux -- Python 3.11.15, pytest-9.1.1, pluggy-1.6.0 -- /root/miniconda3/envs/fzx_py311/bin/python3
+cachedir: .pytest_cache
+rootdir: /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test
+configfile: pytest.ini
+collected 151 items / 150 deselected / 1 selected                                                                                                                                             
+
+test_fia_fullquant_mxfp8_func_rdv.py::test_fia_fullquant_mxfp8[PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3] [INFO] max_sq=0, max_skv=64
+[INFO] q_fp16=torch.Size([1, 1, 0, 128]), k_fp16=torch.Size([1, 1, 64, 128]), v_fp16=torch.Size([1, 1, 64, 128])
+[INFO] V scale Sg=2, 是否奇数=False
+[CACHE] save input → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3_input.pt
+[CPU Golden] TILES_Q=0, TILES_KV=1, Sq=0, Skv=64
+[CPU Golden] output=torch.Size([1, 1, 0, 128])
+[CACHE] save CPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3_cpu_output.pt
+[NPU] Q layout auto: G=1, S1=0, G*S1=0, q_layout=N2TGD
+[NPU TND] q=torch.Size([0, 1, 128])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 0, 1, 2, 2])
+[NPU PA] kv_layout=BnNBsD
+[NPU PA] k=torch.Size([1, 1, 512, 128]), v=torch.Size([1, 1, 512, 128])
+[NPU PA] deq_k=torch.Size([1, 1, 512, 2, 2]), deq_v=torch.Size([1, 1, 8, 128, 2])
+[NPU] 调用 PA 模式...
+[NPU] 调用单算子模式...
+[NPU] output=torch.Size([0, 1, 128])
+[CACHE] save NPU output → /home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test/common/golden_cache/PA_BnNBsD_B1_QS0_KVS64_Nq1_Nkv1_D128_SP3_npu_output.pt
+The npu_output is [],and it is same as bm_output, the result of data_compare is "Pass"
+PASSED
+
+====================================================================================== warnings summary =======================================================================================
+../../../../../../../../../../root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/jit/_script.py:365: 14 warnings
+  /root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/torch/jit/_script.py:365: DeprecationWarning: `torch.jit.script_method` is deprecated. Please switch to `torch.compile` or `torch.export`.
+    warnings.warn(
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+======================================================================= 1 passed, 150 deselected, 14 warnings in 18.86s =======================================================================
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/code/ops-transformer/attention/fused_infer_attention_score/tests/pytest/fia_fullquant_mxfp8_test# cd 
