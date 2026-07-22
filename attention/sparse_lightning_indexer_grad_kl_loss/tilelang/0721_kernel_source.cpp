@@ -107,14 +107,13 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v1_sy_weight_half = ascend_ub.GetWithOffset<half>(64, 158208);
   auto v1_sy_weight = ascend_ub.GetWithOffset<float>(64, 158336);
   auto v1_sy_weight_2d = ascend_ub.GetWithOffset<float>(8192, 158592);
-  auto v1_sy_tmp = ascend_ub.GetWithOffset<float>(512, 191360);
   auto v1_sy_max = ascend_ub.GetWithOffset<float>(1, 193408);
-  auto v1_sy_all = ascend_ub.GetWithOffset<float>(2048, 4608);
+  auto v1_sy_storage = ascend_ub.GetWithOffset<float>(10240, 4608);
   auto v1_sy_broadcast = ascend_ub.GetWithOffset<float>(128, 193952);
   auto v1_sy_sum = ascend_ub.GetWithOffset<float>(1, 194496);
   auto v1_sy_chunk = ascend_ub.GetWithOffset<float>(128, 194528);
   auto v1_sy_eps = ascend_ub.GetWithOffset<float>(1, 195072);
-  auto v1_sy_bmm2 = ascend_ub.GetWithOffset<float>(8192, 4608);
+  auto v1_sy_tmp = ascend_ub.GetWithOffset<float>(512, 191360);
   auto v1_sy_reduce = ascend_ub.GetWithOffset<float>(128, 193440);
   auto v1_sy_tmp_max = ascend_ub.GetWithOffset<float>(1, 194464);
   auto v1_sy_tmp_sum = ascend_ub.GetWithOffset<float>(1, 195040);
@@ -381,18 +380,20 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             AscendC::Cast(v1_sy_weight[0], v1_sy_weight_half[0], AscendC::RoundMode::CAST_NONE, 64);
             tl::ascend::Fill<float>(v1_sy_weight_2d[0], 1.000000e+00f, 8192);
             AscendC::PipeBarrier<PIPE_V>();
-            tl::ascend::brcb<float>(v1_sy_tmp[0], v1_sy_weight[0], 16, 1, 8);
-            AscendC::PipeBarrier<PIPE_V>();
-            tl::ascend::mul_mask<float>(v1_sy_weight_2d[0], v1_sy_weight_2d[0], v1_sy_tmp[0], 0xFFFFFFFFFFFFFFFF, 0, 128, 1, 1, 0, 16, 16, 1);
+            for (int32_t sy_col_chunk = 0; sy_col_chunk < 2; ++sy_col_chunk) {
+              tl::ascend::brcb<float>(v1_sy_tmp[0], v1_sy_weight[0], 8, 1, 8);
+              AscendC::PipeBarrier<PIPE_V>();
+              tl::ascend::mul_mask<float>(v1_sy_weight_2d[(sy_col_chunk * 64)], v1_sy_weight_2d[(sy_col_chunk * 64)], v1_sy_tmp[0], 0xFFFFFFFFFFFFFFFF, 0, 64, 1, 1, 0, 16, 16, 1);
+            }
             tl::ascend::Fill<float>(v1_sy_max[0], -CUDART_INF_F, 1);
             for (int32_t n_idx_1 = 0; n_idx_1 < 16; ++n_idx_1) {
-              tl::ascend::copy_gm_to_ub<float, 128, 64>(v1_sy_bmm2[0], bmm2Res[((((pipe_iter * 3145728) + (cid * 131072)) + (n_idx_1 * 128)) - 3145728)], 2048, 64, 128, 0.000000e+00f);
+              tl::ascend::copy_gm_to_ub<float, 128, 64>(v1_sy_storage[0], bmm2Res[((((pipe_iter * 3145728) + (cid * 131072)) + (n_idx_1 * 128)) - 3145728)], 2048, 64, 128, 0.000000e+00f);
               AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(3);
               AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(3);
-              AscendC::Mul(v1_sy_bmm2[0], v1_sy_bmm2[0], v1_sy_weight_2d[0], 8192);
+              AscendC::Mul(v1_sy_storage[0], v1_sy_storage[0], v1_sy_weight_2d[0], 8192);
               AscendC::PipeBarrier<PIPE_V>();
-              tl::ascend::reduce_sum<float,  64,  128,  0>(v1_sy_reduce[0], v1_sy_bmm2[0], tmp_ub[0], true);
-              tl::ascend::copy_ub_to_ub<float, float, 128>(v1_sy_all[(n_idx_1 * 128)], v1_sy_reduce[0], 1, 128, 128, 1, 128, 128);
+              tl::ascend::reduce_sum<float,  64,  128,  0>(v1_sy_reduce[0], v1_sy_storage[0], tmp_ub[0], true);
+              tl::ascend::copy_ub_to_ub<float, float, 128>(v1_sy_storage[((n_idx_1 * 128) + 8192)], v1_sy_reduce[0], 1, 128, 128, 1, 128, 128);
               AscendC::PipeBarrier<PIPE_V>();
               {
               AscendC::Muls(v1_sy_broadcast[0], v1_sy_reduce[0], 1.000000e+00f, 128);
@@ -404,7 +405,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             }
             tl::ascend::Fill<float>(v1_sy_sum[0], 0.000000e+00f, 1);
             for (int32_t n_idx_2 = 0; n_idx_2 < 16; ++n_idx_2) {
-              tl::ascend::copy_ub_to_ub<float, float, 128>(v1_sy_chunk[0], v1_sy_all[(n_idx_2 * 128)], 1, 128, 128, 1, 128, 128);
+              tl::ascend::copy_ub_to_ub<float, float, 128>(v1_sy_chunk[0], v1_sy_storage[((n_idx_2 * 128) + 8192)], 1, 128, 128, 1, 128, 128);
               tl::ascend::Broadcast<float, 2, 1, false>(v1_sy_broadcast[0],v1_sy_max[0],tmp_ub,(uint32_t[]){1, 128}, (uint32_t[]){1, 1});
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::Sub(v1_sy_chunk[0], v1_sy_chunk[0], v1_sy_broadcast[0], 128);
@@ -423,7 +424,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Max(v1_sy_sum[0], v1_sy_sum[0], v1_sy_eps[0], 1);
             for (int32_t n_idx_3 = 0; n_idx_3 < 16; ++n_idx_3) {
-              tl::ascend::copy_ub_to_ub<float, float, 128>(v1_sy_chunk[0], v1_sy_all[(n_idx_3 * 128)], 1, 128, 128, 1, 128, 128);
+              tl::ascend::copy_ub_to_ub<float, float, 128>(v1_sy_chunk[0], v1_sy_storage[((n_idx_3 * 128) + 8192)], 1, 128, 128, 1, 128, 128);
               tl::ascend::Broadcast<float, 2, 1, false>(v1_sy_broadcast[0],v1_sy_max[0],tmp_ub,(uint32_t[]){1, 128}, (uint32_t[]){1, 1});
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::Sub(v1_sy_chunk[0], v1_sy_chunk[0], v1_sy_broadcast[0], 128);
@@ -460,9 +461,11 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           AscendC::Cast(v1_bw_weight[0], v1_bw_weight_half[0], AscendC::RoundMode::CAST_NONE, 32);
           tl::ascend::Fill<float>(v1_bw_weight_2d[0], 1.000000e+00f, 4096);
           AscendC::PipeBarrier<PIPE_V>();
-          tl::ascend::brcb<float>(v1_bw_row_tmp[0], v1_bw_weight[0], 8, 1, 8);
-          AscendC::PipeBarrier<PIPE_V>();
-          tl::ascend::mul_mask<float>(v1_bw_weight_2d[0], v1_bw_weight_2d[0], v1_bw_row_tmp[0], 0xFFFFFFFFFFFFFFFF, 0, 64, 1, 1, 0, 16, 16, 1);
+          for (int32_t bw_col_chunk = 0; bw_col_chunk < 2; ++bw_col_chunk) {
+            tl::ascend::brcb<float>(v1_bw_row_tmp[0], v1_bw_weight[0], 4, 1, 8);
+            AscendC::PipeBarrier<PIPE_V>();
+            tl::ascend::mul_mask<float>(v1_bw_weight_2d[(bw_col_chunk * 64)], v1_bw_weight_2d[(bw_col_chunk * 64)], v1_bw_row_tmp[0], 0xFFFFFFFFFFFFFFFF, 0, 32, 1, 1, 0, 16, 16, 1);
+          }
           for (int32_t n_idx_4 = 0; n_idx_4 < 16; ++n_idx_4) {
             tl::ascend::copy_gm_to_ub<float, 128>(v1_bw_p[0], PReduced[((((pipe_iter * 49152) + (cid * 2048)) + (n_idx_4 * 128)) - 49152)], 2048, 1, 128, 0.000000e+00f);
             tl::ascend::copy_gm_to_ub<float, 128>(v1_bw_sy[0], SoftmaxI[((((pipe_iter * 49152) + (cid * 2048)) + (n_idx_4 * 128)) - 49152)], 2048, 1, 128, 0.000000e+00f);
