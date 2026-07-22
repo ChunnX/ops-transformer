@@ -20,8 +20,6 @@
 #include "opdev/tensor_view_utils.h"
 #include "acl/acl.h"
 
-#include <cstdio>
-
 using namespace op;
 
 #ifdef __cplusplus
