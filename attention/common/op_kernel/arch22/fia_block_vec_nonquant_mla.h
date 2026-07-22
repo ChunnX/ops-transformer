@@ -401,8 +401,8 @@ __aicore__ inline void FiaBlockVecNonQuantMla<FIAT>::ComputeLogSumExpAndCopyToGm
     uint64_t baseOffset = mSplitInfo.nBufferStartM / 2;
     size_t size = mSplitInfo.vecDealM * AttentionCommon::FP32_BLOCK_ELEMENT_NUM;
     uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx * constInfo.kvHeadNum + info.n2Idx, info.gS1Idx);
-    uint64_t offset = (accumTmpOutNum * constInfo.kvHeadNum * constInfo.mBaseSize +              // taskoffset
-                       info.tndCoreStartKVSplitPos * constInfo.kvHeadNum * constInfo.mBaseSize + // 份数offset
+    uint64_t offset = (accumTmpOutNum * constInfo.mBaseSize +              // taskoffset
+                       info.tndCoreStartKVSplitPos * constInfo.mBaseSize + // 份数offset
                        mSplitInfo.nBufferStartM + mSplitInfo.vecStartM) *
                       AttentionCommon::FP32_BLOCK_ELEMENT_NUM; // m轴offset
 
@@ -1026,9 +1026,9 @@ FiaBlockVecNonQuantMla<FIAT>::Bmm2FDDataCopyOut(const AttentionCommon::RunInfo &
     SetFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     WaitFlag<AscendC::HardEvent::V_MTE3>(SYNC_OUTPUT_BUF1_FLAG);
     uint64_t accumTmpOutNum = CalcAccumOffset(info.bIdx * constInfo.kvHeadNum + info.n2Idx, info.gS1Idx);
-    uint64_t offset = accumTmpOutNum * constInfo.kvHeadNum * constInfo.mBaseSize * headDim +              // taskoffset
-                      info.tndCoreStartKVSplitPos * constInfo.kvHeadNum * constInfo.mBaseSize * headDim + // 份数offset
-                      wsMStart * actualColumnCount;                                             // m轴offset
+    uint64_t offset = accumTmpOutNum * constInfo.mBaseSize * headDim +              // taskoffset
+                      info.tndCoreStartKVSplitPos * constInfo.mBaseSize * headDim + // 份数offset
+                      wsMStart * actualColumnCount;                                 // m轴offset
     GlobalTensor<T> dst = accumOutGm[offset];
     DataCopyExtParams dataCopyParams;
     dataCopyParams.blockCount = dealRowCount;
