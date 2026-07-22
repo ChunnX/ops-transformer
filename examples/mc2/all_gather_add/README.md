@@ -202,7 +202,7 @@
         [ERROR] HcclCommInit failed. ret = 4
         ```
 
-      此时需要设置[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/canncommercial/82RC1/maintenref/envvar/envref_07_0028.html)环境变量来指定实际执行算子的昇腾AI处理器：
+      此时需要设置[ASCEND_RT_VISIBLE_DEVICES](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/maintenref/envvar/envref_07_0028.html)环境变量来指定实际执行算子的昇腾AI处理器：
       
         ```bash
         # 查看各Device运行情况

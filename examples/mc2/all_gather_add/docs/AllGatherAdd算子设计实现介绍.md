@@ -6,7 +6,7 @@
 
 ### 1.1 算子逻辑
 
-AllGatherAdd算子实现了[AllGather](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0873.html)通信和[Add](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0035.html)加法的融合。
+AllGatherAdd算子实现了[AllGather](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0873.html)通信和[Add](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0035.html)加法的融合。
 
 算子逻辑为：对通信域内所有卡的操作数a做AllGather通信，得到通信结果gather_out，即Add计算的第一个操作数，然后将gather_out和另一个输入b做Add运算得到输出c。
 
@@ -38,9 +38,9 @@ AllGatherAdd算子实现了[AllGather](https://www.hiascend.com/document/detail/
 
 | 接口 | 描述 | 参考连接 |
 |--|--------------------------------------------------------------------------|--|
-| AllGather | 算子涉及AllGather通信，需要使用Hccl高阶API来实现AllGather通信。 |https://www.hiascend.com/document/detail/zh/canncommercial/850/commlib/hcclug/hcclug_000001.html  |
-| DataCopy | 算子涉及Add被加数和加数在外部存储和内部存储间的数据搬运，需要使用DataCopy来实现数据搬运。 | https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0103.html  |
-| Add | 计算过程涉及Add矢量计算操作，需要使用Add基础算术API实现加法计算。| https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0035.html |
+| AllGather | 算子涉及AllGather通信，需要使用Hccl高阶API来实现AllGather通信。 |https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/commlib/hcclug/hcclug_000001.html  |
+| DataCopy | 算子涉及Add被加数和加数在外部存储和内部存储间的数据搬运，需要使用DataCopy来实现数据搬运。 | https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0103.html  |
+| Add | 计算过程涉及Add矢量计算操作，需要使用Add基础算术API实现加法计算。| https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0035.html |
 
 ### 1.5 算子规格
 
@@ -137,7 +137,7 @@ AllGatherAdd算子的数据在卡间进行AllGather通信，在卡内进行Add�
 
 **AllGatherAdd算子计算过程示意**：（通信切分轮次为2时）
 
-1. AI Core将要执行的通信信息写入Global Memory中的消息区，实现任务下发。消息区是特定地址的Global Memory，AI Core和AI CPU通过向其写入和轮询读取来实现消息在两者间的传递，这些操作统一封装于[Hccl](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0869.html)高阶API中。
+1. AI Core将要执行的通信信息写入Global Memory中的消息区，实现任务下发。消息区是特定地址的Global Memory，AI Core和AI CPU通过向其写入和轮询读取来实现消息在两者间的传递，这些操作统一封装于[Hccl](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0869.html)高阶API中。
 2. AI CPU从消息区读取到所有通信任务信息，开始基于HCCS（华为缓存一致性系统，用于CPU/NPU之间的高速互联）链路执行第一轮AllGather集合通信任务。下图为第一轮AllGather通信示意图。
 
 ![AllGatherAdd第一轮通信示意图.png](figures/AllGatherAdd第一轮通信示意图.png)
@@ -214,14 +214,14 @@ OP_ADD(AllGatherAdd);
 - 通信切分策略：每轮通信数据块的大小，对通算融合算子的性能有较大影响。本样例为了向通算融合算子的初次使用者清晰展示通信计算掩盖的流程，将通信切分为两轮进行，第二轮通信和前一轮通信结果的Add计算进行掩盖。具体场景中如何切分使得性能最优，请参考[《Ascend C最佳实践》](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_map_10_0002.html)中的优秀实践：[MC²算子性能调优案例](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_best_practices_10_0043.html)。
 - Add多核切分: 根据当前核数(rank_size = 2)，对输入shape的Y轴进行多核切分，得到单核内shape的大小。
 
-本样例中计算数据量为x2的数据量，即480 * 256 * sizeof (float16) = 480 * 256 *（2 bytes/1024） KB = 240KB。当AIV核数为48时，单核计算量为5KB，当AIV核数为40时，单核计算量为6KB，两种情况均小于最大可分配Unified Buffer（AIV的[统一缓冲区](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0008.html)，向量和标量计算的输入和输出）大小192KB，进行Add计算时需要均分给三个操作数，因此每个操作数有64KB最大可用片上UB（开启[Double Buffer](https://www.hiascend.com/document/detail/zh/canncommercial/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0090.html)时最大可用32KB），因此不需要核内切分。
+本样例中计算数据量为x2的数据量，即480 * 256 * sizeof (float16) = 480 * 256 *（2 bytes/1024） KB = 240KB。当AIV核数为48时，单核计算量为5KB，当AIV核数为40时，单核计算量为6KB，两种情况均小于最大可分配Unified Buffer（AIV的[统一缓冲区](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/850/opdevg/Ascendcopdevg/atlas_ascendc_10_0008.html)，向量和标量计算的输入和输出）大小192KB，进行Add计算时需要均分给三个操作数，因此每个操作数有64KB最大可用片上UB（开启[Double Buffer](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/opdevg/Ascendcopdevg/atlas_ascendc_10_0090.html)时最大可用32KB），因此不需要核内切分。
 
 下面给出本样例Tiling实现关键步骤：
 
 - **定义AllGatherAdd算子的Tiling结构体**：
 
     通信和Add计算融合得到的通算融合算子的Tiling结构体如下两个部分：
-    - [Hccl高阶API的Tiling结构体](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_10048.html)。定义Mc2InitTiling和Mc2CcTiling参数。Mc2InitTiling参数用于初始化通信任务配置，必须定义为算子Tiling结构体的第一个参数。Mc2CcTiling为具体每个通信任务的参数配置，由于AllGatherAdd算子中只有AllGather一个通信任务，因此仅需定义一个Mc2CcTiling参数。
+    - [Hccl高阶API的Tiling结构体](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_10048.html)。定义Mc2InitTiling和Mc2CcTiling参数。Mc2InitTiling参数用于初始化通信任务配置，必须定义为算子Tiling结构体的第一个参数。Mc2CcTiling为具体每个通信任务的参数配置，由于AllGatherAdd算子中只有AllGather一个通信任务，因此仅需定义一个Mc2CcTiling参数。
     - AllGatherAdd算子额外需要的自定义信息。
     AllGatherAdd算子的完整Tiling结构体定义如下：
 
@@ -254,7 +254,7 @@ OP_ADD(AllGatherAdd);
     AllGatherAddTilingData* tilingData = context->GetTilingData<AllGatherAddTilingData>();
     ```
 
-    context为[TilingContext](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/basicdataapi/atlasopapi_07_00555.html)的对象指针，该指针由[all_gather_add_tiling.cpp](../op_host/op_tiling/all_gather_add_tiling.cpp)文件的Tiling入口函数AllGatherAddTilingFunc传入，用于保存算子Tiling计算的上下文。在AllGatherAdd算子的Tiling实现中，通过该上下文context获取计算Tiling所需要的输入输出shape、输入属性等参数，然后将Tiling结果（例如TilingKey、TilingData）保存至上下文中，供后续算子执行时使用。
+    context为[TilingContext](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/basicdataapi/atlasopapi_07_00555.html)的对象指针，该指针由[all_gather_add_tiling.cpp](../op_host/op_tiling/all_gather_add_tiling.cpp)文件的Tiling入口函数AllGatherAddTilingFunc传入，用于保存算子Tiling计算的上下文。在AllGatherAdd算子的Tiling实现中，通过该上下文context获取计算Tiling所需要的输入输出shape、输入属性等参数，然后将Tiling结果（例如TilingKey、TilingData）保存至上下文中，供后续算子执行时使用。
 
 - **设置算子自定义的Tiling结构体参数**：
     
@@ -271,7 +271,7 @@ OP_ADD(AllGatherAdd);
 
 - **设置Hccl高阶API Tiling结构体**：
 
-    根据通信任务类型、算法配置等，创建一个Mc2CcTilingConfig类对象，通过向[GetTiling](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_10037.html)方法传入算子Tiling结构体中mc2InitTiling和mc2CcTiling成员的引用，完成需要传递给Kernel侧的Mc2InitTiling参数和Mc2CcTiling参数的获取。Hccl高阶API Tiling结构体的具体使用方法详见[Hccl Tiling](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0887.html)使用说明。
+    根据通信任务类型、算法配置等，创建一个Mc2CcTilingConfig类对象，通过向[GetTiling](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_10037.html)方法传入算子Tiling结构体中mc2InitTiling和mc2CcTiling成员的引用，完成需要传递给Kernel侧的Mc2InitTiling参数和Mc2CcTiling参数的获取。Hccl高阶API Tiling结构体的具体使用方法详见[Hccl Tiling](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0887.html)使用说明。
 
     ```cpp
     // 设置hccl高阶API Tiling结构体
@@ -301,7 +301,7 @@ extern "C" __global__ __aicore__ void all_gather_add(GM_ADDR aGM, GM_ADDR bGM, G
 ```
 
 - Add计算依赖AIV核，因此算子逻辑仅运行于AIV核中。
-    通过KERNEL_TYPE_MIX_AIV_1_0宏[设置kernel类型](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0218.html)，AIC、AIV混合场景下，控制算子执行时仅启动AI Core上的Vector核。
+    通过KERNEL_TYPE_MIX_AIV_1_0宏[设置kernel类型](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0218.html)，AIC、AIV混合场景下，控制算子执行时仅启动AI Core上的Vector核。
 
     ```cpp
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIV_1_0);
@@ -393,7 +393,7 @@ extern "C" __global__ __aicore__ void all_gather_add(GM_ADDR aGM, GM_ADDR bGM, G
 
     ![Add计算分核示意图.png](figures/Add计算分核示意图.png)
 
-    如上图所示，假设当前在AIV-26核进行第一次Add计算，根据Process()函数逻辑，当i = 0时，CalcAddGmAddr函数第一次触发执行，根据[hccl.wait()](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_0878.html)接口说明，此时第一轮通信已经完成，第二轮通信开始，因此CalcAddGmAddr函数中计算本核需要处理数据的起始地址偏移时，首先偏移i * 单次通信数据长度的距离，如图commOffset；每次Add操作对上一轮通信的结果进行计算，由于通信分多轮进行，每张卡的相邻数据块在gatherOutGM中起始地址存在偏移（即strideCount），因此需要根据卡数和当前核的index计算当前核被分到处理哪个rank的通信数据，如图，总共40个AIV核被均分给两个rank，则AIV-26被分到处理来自rank1的数据，blockOffset如图；计算出当前核处理的rank后，最终偏移需要再加上在此rank数据上的偏移，即6 * 每个核处理的数据个数。
+    如上图所示，假设当前在AIV-26核进行第一次Add计算，根据Process()函数逻辑，当i = 0时，CalcAddGmAddr函数第一次触发执行，根据[hccl.wait()](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_0878.html)接口说明，此时第一轮通信已经完成，第二轮通信开始，因此CalcAddGmAddr函数中计算本核需要处理数据的起始地址偏移时，首先偏移i * 单次通信数据长度的距离，如图commOffset；每次Add操作对上一轮通信的结果进行计算，由于通信分多轮进行，每张卡的相邻数据块在gatherOutGM中起始地址存在偏移（即strideCount），因此需要根据卡数和当前核的index计算当前核被分到处理哪个rank的通信数据，如图，总共40个AIV核被均分给两个rank，则AIV-26被分到处理来自rank1的数据，blockOffset如图；计算出当前核处理的rank后，最终偏移需要再加上在此rank数据上的偏移，即6 * 每个核处理的数据个数。
     CalcAddGmAddr函数实现如下：
 
     ```cpp
@@ -408,7 +408,7 @@ extern "C" __global__ __aicore__ void all_gather_add(GM_ADDR aGM, GM_ADDR bGM, G
     }
     ```
 
-    每个核完成数据地址的计算之后，就可以遵循[典型算子的编程范式](https://www.hiascend.com/document/detail/zh/canncommercial/850/opdevg/Ascendcopdevg/atlas_ascendc_10_00033.html)，CopyIn（从GM将数据搬到片上Local Memo）->Compute（调用Add算术API完成计算）->CopyOut（从Local Memo将计算结果搬出到GM），完成AllGatherAdd算子的全部计算。每个核内的Add计算内存示意图：
+    每个核完成数据地址的计算之后，就可以遵循[典型算子的编程范式](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/opdevg/Ascendcopdevg/atlas_ascendc_10_00033.html)，CopyIn（从GM将数据搬到片上Local Memo）->Compute（调用Add算术API完成计算）->CopyOut（从Local Memo将计算结果搬出到GM），完成AllGatherAdd算子的全部计算。每个核内的Add计算内存示意图：
 
     ![Add计算内存搬运示意图.png](figures/Add计算内存搬运示意图.png)
 
@@ -453,7 +453,7 @@ https://gitcode.com/cann/ops-transformer/blob/master/examples/mc2/all_gather_add
 
   ```
 
-- 在调用aclnnInnerAllGatherAdd函数执行算子计算时，MC2算子需要设置[HcclServerType](https://www.hiascend.com/document/detail/zh/canncommercial/850/API/ascendcopapi/atlasascendc_api_07_00149.html)，同时对接口返回值记录日志：
+- 在调用aclnnInnerAllGatherAdd函数执行算子计算时，MC2算子需要设置[HcclServerType](https://www.hiascend.com/document/detail/zh/CANNCommunityEdition/900/API/ascendcopapi/atlasascendc_api_07_00149.html)，同时对接口返回值记录日志：
 
     ```cpp
     aclnnStatus aclnnAllGatherAdd(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
