@@ -234,7 +234,6 @@ ge::graphStatus StemOamPrepVarlenQTiling::ValidateInputShapes()
     auto qShape = context_->GetInputShape(INPUT_Q);
     auto qSeqLensShape = context_->GetInputShape(INPUT_QSEQLENS);
     auto cuSeqLensQShape = context_->GetInputShape(INPUT_CUSEQLENS);
-
     if (qShape == nullptr || qSeqLensShape == nullptr || cuSeqLensQShape == nullptr) {
         OP_LOGE_WITH_INVALID_INPUT(opName_, "q/qSeqLens/cuSeqLensQ");
         return ge::GRAPH_FAILED;
@@ -261,7 +260,6 @@ ge::graphStatus StemOamPrepVarlenQTiling::ValidateInputShapes()
 
     batch_ = qSeqLensShape->GetStorageShape().GetDim(0);
     int64_t cuSeqLensSize = cuSeqLensQShape->GetStorageShape().GetDim(0);
-
     if (cuSeqLensSize != batch_ + 1) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "cuSeqLensQ",
             std::to_string(cuSeqLensSize).c_str(),
