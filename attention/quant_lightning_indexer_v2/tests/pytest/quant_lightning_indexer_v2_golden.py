@@ -1167,7 +1167,8 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
                     for i_n in range(k_head_num):
                         key_dequant_scale_block[cur_block_id, :, i_n] = key_dequant_scale_expand[i_batch, i_n,block_start_pos:block_start_pos+block_size]
         # kv_cache 0轴非连续：将key和key_dequant_scale融合到blockFusion (ref v1 commit keyStride0)
-        if quant_mode != 4 and DISCONTINUOUS_KEYS:
+        properties = torch.npu.get_device_properties()
+        if quant_mode != 4 and "Ascend950" in properties.name:
             bytes_per_token = head_dim + key_dequant_scale_block.element_size() // key.element_size()
             blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype)
             key_flat = key.view(block_num, block_size * k_head_num * head_dim)
@@ -1283,6 +1284,11 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         torch.npu.synchronize()
         npu_topk_value, _ = npu_topk_value.sort(dim=-1, descending=True)
         return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
+
+
+def generate_qliv2_test_data(params, split_s1=DEFAULT_SPLIT_S1, s1size=DEFAULT_S1SIZE):
+    """Generate QLI_V2 inputs and CPU golden without executing metadata or the main op."""
+    return qliv2_output_single(params, is_batch=True, split_s1=split_s1, s1size=s1size)
     
 
 def fp32_ta_round_to_hif8(fraction32_int, hif8_bits_num, exponent):
