@@ -1394,7 +1394,8 @@ def run_combine_npu(
 
         torch_npu.npu.synchronize()
         timing_output = feature_main(combined_x).clone()
-        extract_combine_kernel_timing(timing_output, aiv_core_num, rank)
+        send_timing_core_num = min(world_size, aiv_core_num)
+        extract_combine_kernel_timing(timing_output, send_timing_core_num, rank)
         dist.destroy_process_group()
         queue.put([
             rank,
@@ -1486,7 +1487,8 @@ def run_continue_npu(
 
         torch_npu.npu.synchronize()
         timing_output = feature_main(combined_x).clone()
-        extract_combine_kernel_timing(timing_output, aiv_core_num, rank)
+        send_timing_core_num = min(world_size, aiv_core_num)
+        extract_combine_kernel_timing(timing_output, send_timing_core_num, rank)
         dist.destroy_process_group()
         queue.put([
             rank,
