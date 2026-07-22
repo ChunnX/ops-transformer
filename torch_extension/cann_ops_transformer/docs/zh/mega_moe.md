@@ -998,7 +998,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
     - **Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品**：
         - 各卡 `num_tokens` 需保持一致。
-        - `ep_world_size`：仅支持 2、4、8、16、32。
+        - `ep_world_size`：仅支持 2、4、8、16、32、64。
         - `num_experts_per_rank`：取值范围 $[1,\ 128]$，且 `num_experts_per_rank = num_experts / ep_world_size`。
         - `num_max_tokens_per_rank`：取值范围 $[1,\ 4096]$。
         - `max_recv_token_num` 需大于0，输入0表示自动计算，公式为 `num_tokens × ep_world_size × min(num_topk, num_experts_per_rank)`。

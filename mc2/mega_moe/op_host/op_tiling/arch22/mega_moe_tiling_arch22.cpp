@@ -97,7 +97,7 @@ namespace MegaMoeA2A3Tiling {
     // 属性范围限制
     constexpr int64_t MIN_MOE_EXPERT_NUM = 1;
     constexpr int64_t MAX_MOE_EXPERT_NUM = 1024;
-    constexpr int64_t VALID_EP_WORLD_SIZE[] = {2, 4, 8, 16, 32};
+    constexpr int64_t VALID_EP_WORLD_SIZE[] = {2, 4, 8, 16, 32, 64};
 
     constexpr uint32_t TWO_DIMS = 2U;
     constexpr uint32_t ONE_DIM = 1U;
@@ -175,7 +175,7 @@ static ge::graphStatus CheckEpWorldSizeAttr(const int64_t *ptr)
                                         std::end(VALID_EP_WORLD_SIZE),
                                         *ptr) != std::end(VALID_EP_WORLD_SIZE);
     OP_TILING_CHECK(!isValidEpWorldSize,
-        OP_LOGE(K_INNER_DEBUG, "epWorldSize should be one of {2, 4, 8, 16, 32, 64, 128}, but got %ld.",
+        OP_LOGE(K_INNER_DEBUG, "epWorldSize should be one of {2, 4, 8, 16, 32, 64}, but got %ld.",
             *ptr), return GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
