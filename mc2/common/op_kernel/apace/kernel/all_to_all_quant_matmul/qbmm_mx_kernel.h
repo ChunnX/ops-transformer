@@ -8,9 +8,7 @@
 #endif
 
 #include "blaze/gemm/utils/common_utils.h"
-// #include "../utils/kernel_utils/tuple_utils.h"
 #include "include/tensor_api/tensor.h"
-
 #include "blaze/gemm/block/block_mmad_qbmm_mx.h"
 #include "blaze/gemm/block/block_scheduler_qbmm.h"
 
@@ -70,9 +68,9 @@ public:
     transB, Te::FrameLayoutFormat<Te::ScaleBDNLayoutPtn, Std::Int<SCALE_C0>>,
     Te::FrameLayoutFormat<Te::ScaleBNDLayoutPtn, Std::Int<SCALE_C0>>>;
   /**
-  * @brief 算子模式：NORMAL (常规), LOCAL (仅本地计算), REMOTE (仅远程同步数据后的计算),
+   * @brief 算子模式：NORMAL (常规), LOCAL (仅本地计算), REMOTE (仅远程同步数据后的计算),
   *                 DEFERRED_SYNC (per-tile 本地先算驻留 L0C → wait_flag → 远程累加 → 单次 fixpipe)
-  */
+   */
   enum class MatmulMode : uint32_t {
     NORMAL = 0,
     LOCAL = 1,
@@ -106,7 +104,7 @@ public:
     uint32_t localMatmul; // 1 means local matmul
     uint32_t splitKNum;
     MatmulMode matmulMode; // 1: LOCAL, 2: REMOTE, 3: DEFERRED_SYNC
-    uint32_t mLoopIdx;     // DEFERRED_SYNC 模式下用于 CrossCoreWaitFlag 的 idx
+    uint32_t headTileSize;
   };
 
   /**
@@ -133,6 +131,7 @@ private:
   __aicore__ inline void ResetGmAddr(const Params &params);
   __aicore__ inline void ProcessSingleBatch(const Params &params, BlockScheduler& bs,
                         uint64_t restBatch, bool isTailRound);
+  __aicore__ inline uint32_t CalcDependTileIdx(int64_t mPos, uint32_t headTileSize, uint32_t totalTiles) const;
 
   template <typename TensorB, typename TensorScaleB, typename TensorC>
   __aicore__ inline void SetL2Cache(
@@ -279,6 +278,17 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
 }
 
 QBMM_MX_KERNEL_CLASS_TEM_PARAMS
+__aicore__ inline uint32_t QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::CalcDependTileIdx(
+    int64_t mPos, uint32_t headTileSize, uint32_t totalTiles) const
+{
+    uint32_t tileIdx = static_cast<uint32_t>(mPos / headTileSize);
+    if (tileIdx >= totalTiles) {
+        tileIdx = totalTiles - 1;
+    }
+    return tileIdx;
+}
+
+QBMM_MX_KERNEL_CLASS_TEM_PARAMS
 __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::ProcessSingleBatch(
   const Params &params, BlockScheduler& bs, uint64_t restBatch, bool isTailRound)
 {
@@ -294,7 +304,7 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
     MXFP_MULTI_BASE_SIZE;
 
   // 构建各 Tensor 的全局布局
-  auto layoutA = MakeLayoutA{}(rankSize * Te::Get<MNK_M>(params.problemShape), Te::Get<MNK_K>(params.problemShape));
+  auto layoutA = MakeLayoutA{}(rankSize * params.localParams.originalM, Te::Get<MNK_K>(params.problemShape));
   auto layoutALocal = MakeLayoutA{}(rankSize * oriM, Te::Get<MNK_K>(params.problemShape));
   auto layoutScaleA = MakeLayoutScaleA{}(rankSize * oriM, scaleKLen);
 
@@ -333,9 +343,8 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
   int64_t mPos = 0L;
   int64_t nPos = 0L;
   constexpr int64_t kPos = 0L;
-  // DEFERRED_SYNC 模式下，wait_flag 在第一个 block 的 self-mmud 之后只调用一次。
-  // CrossCoreSetFlag/WaitFlag 是 1:1 配对（基于 NotifyEvent/WaitEvent），不能多次 Wait 同一 flagId。
-  bool firstBlockWaited = false;
+  uint32_t totalTiles = (oriM + params.localParams.headTileSize - 1) / params.localParams.headTileSize;
+  uint32_t waitedMask = 0U;
   // 遍历当前块的调度任务
   while (bs.GetTileIdx(blockIdx)) {
     BlockShape singleShape =
@@ -368,6 +377,8 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
       mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape, 0);
     } else if (deferredSync) {
       // DEFERRED_SYNC 模式：
+      int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
+      uint32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
       // Phase 1: 本 rank 的 local A × 本 rank 的 B 段 → L0C（reset，remoteRankCnt=0）
       //          此处读 GM 的 localAGmAddr_，不依赖通信，可与 AIV 的 UDMA put 并行。
       auto selfMPos = rankId * oriM + mPos;
@@ -383,11 +394,10 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
       mmadOp_(gmBlockA_self, gmBlockB_self, gmBlockScaleA_self, gmBlockScaleB_self,
               gmBlockBias, gmBlockC, singleShape, 0);
 
-      // Phase 2: 在第一个 block 处插入 wait_flag（PIPE_MTE2 阻塞后续 shmem 读，
-      //          但 self rank 的 MTE2 已 queue 完，self MMAD 可与 wait 并行）
-      if (!firstBlockWaited) {
-        CrossCoreWaitFlag<0x2, PIPE_MTE2>(params.localParams.mLoopIdx);
-        firstBlockWaited = true;
+      // Phase 2: 在 self rank mmad 之后 wait，阻塞后续 shmem 读（去重：同一 tile 只 wait 一次）
+      if ((waitedMask & (1U << dependTileIdx)) == 0U) {
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(dependTileIdx);
+        waitedMask |= (1U << dependTileIdx);
       }
 
       // Phase 3: 遍历其它 rank，在 L0C 上累加（最后一个 rank 触发 fixpipe）
@@ -395,9 +405,8 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
       for (uint64_t rank = 0; rank < rankSize; rank++) {
         if (rank == rankId) continue;
         auto actualMPos = rank * oriM + mPos;
-        auto actualCommMPos = rank * Get<MNK_M>(params.problemShape) + mPos;
         auto gmBlockA_remote =
-          gmA.Slice(AscendC::Te::MakeCoord(actualCommMPos, kPos),
+          gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
             AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
         auto gmBlockScaleA_remote = gmScaleA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
             AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
@@ -412,12 +421,18 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
     } else {
       // REMOTE 模式：低精度模式下遍历除本 Rank 外的所有其他卡发送过来的数据
       auto remoteRankCnt = 0UL;
+      int64_t blockM = Te::Get<IDX_M_TILEIDX>(singleShape);
+      uint32_t dependTileIdx = CalcDependTileIdx(mPos + blockM - 1, params.localParams.headTileSize, totalTiles);
+        // 等待当前 block 依赖的通信 tile 完成（去重：同一 tile 只 wait 一次）
+      if ((waitedMask & (1U << dependTileIdx)) == 0U) {
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(dependTileIdx);
+        waitedMask |= (1U << dependTileIdx);
+      }
       for (uint64_t rank = 0; rank < rankSize; rank++) {
         auto actualMPos = rank * oriM + mPos;
-        auto actualCommMPos = rank * Get<MNK_M>(params.problemShape) + mPos;
         // 从通信buffer上切片
         auto gmBlockA =
-          gmA.Slice(AscendC::Te::MakeCoord(actualCommMPos, kPos),
+          gmA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
             AscendC::Te::MakeShape(Get<MNK_M>(singleShape), Get<MNK_K>(params.problemShape)));
         auto gmBlockScaleA = gmScaleA.Slice(AscendC::Te::MakeCoord(actualMPos, kPos),
             AscendC::Te::MakeShape(Get<MNK_M>(singleShape), scaleKLen));
@@ -441,6 +456,14 @@ __aicore__ inline void QuantMatmulMxKernelSwat<QBMM_MX_KERNEL_FUNC_TEM_PARAMS>::
         // L0C上累加
         mmadOp_(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, gmBlockBias, gmBlockC, singleShape, remoteRankCnt);
         remoteRankCnt++;
+      }
+    }
+  }
+  if (!localFirst) {
+    for (uint32_t t = 0; t < totalTiles; ++t) {
+      if ((waitedMask & (1U << t)) == 0U) {
+        CrossCoreWaitFlag<0x2, PIPE_MTE2>(t);
+        waitedMask |= (1U << t);
       }
     }
   }
