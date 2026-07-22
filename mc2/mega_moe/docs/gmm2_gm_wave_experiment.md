@@ -124,6 +124,7 @@ bash build.sh --pkg --soc=ascend950 --ops=mega_moe -j16 -O3
 ```text
 MEGA_MOE_GMM2_READY_MODE=0       per-expert（默认）
 MEGA_MOE_GMM2_READY_MODE=1       per-batch
+MEGA_MOE_MERGE_SMALL_TAIL_WAVE=1 小于半个正常 wave 的尾块并入上一波（默认）
 MEGA_MOE_GMM2_GM_READY_SMOKE_TEST=1  最小 scalar GM 地址 smoke
 MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG=1  默认关闭的内部时间戳
 MEGA_MOE_WEIGHT1_INTERLEAVED=1   GMM1/SwiGLU 双 UB slot interleave（默认关闭）
