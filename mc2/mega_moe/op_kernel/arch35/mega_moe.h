@@ -112,11 +112,6 @@ private:
                                           uint32_t expertIdx);
     __aicore__ inline void CrossRankSyncInWorldSize();
     __aicore__ inline void ExpertTokenNumCopyOut();
-    // 用 trailing return type：类外定义时 ActivationType 是类内 using，需先进入 MegaMoe<...>:: 作用域才可见
-    __aicore__ inline auto DispatchCopyTmpTensor(int32_t bufferIdx) -> LocalTensor<ActivationType>;
-    // 取 token 并装载元信息：MTE2 从远程 win 取该 token，S 侧组装 triple(rank/token/topk)，分别 set MTE2_MTE3 /
-    // S_MTE3。 IsBufferReuse 为编译期常量：首窗填槽实例(<false>)不生成复用 WaitFlag，稳态实例(<true>)才等该槽上一轮
-    // MTE3 释放。
     template <bool IsBufferReuse>
     __aicore__ inline void FetchTokenNLoadMetaInfo(int32_t bufferIdx, int32_t topkIndex, int32_t remoteRankIdx,
                                                    GlobalTensor<ActivationType> &remoteRankGlobalTensor,
@@ -399,7 +394,7 @@ MegaMoe<TemplateMegaMoeTypeFunc>::DispatchBuffInit()
         LocalTensor<int32_t>(TPosition::VECCALC, topkIndexTensorAddr, topkIndexTensorSize / sizeof(int32_t));
     // route batch tensor 后依次放置 copyTmp ring、expert token count 输出和 32B triple ring。
     // Tensor用处：TripleInfoCalAndDispatch 中的动态 dispatch ring，配合 EVENT_ID0..EVENT_ID(bufferCount-1) 做软流水；
-    // 只记基址：槽视图在热路径由 DispatchCopyTmpTensor(base + bufferIdx*mxQuantTokenScaleAlignBytes_) 现场构造，
+    // 只记基址：槽视图在热路径由 base + bufferIdx * mxQuantTokenScaleAlignBytes_ 现场构造，
     // Tensor大小：bufferConfig.bufferCount 块(主线自适应 UB 预算给出的 2~6)，每块 mxQuantTokenScaleAlignBytes_；
     // 该值即 Init() 算好的 CeilAlign(token+scale, 32)，与 host CalcDispatchBufferConfig 的 copyBufferBytes 恒相等，
     // 且已向上对齐到 32B，故连续 ring 中每个 copyTmp 槽位的起始地址都保持 32B 对齐。
@@ -448,9 +443,9 @@ MegaMoe<TemplateMegaMoeTypeFunc>::SendAndQuantBuffInit()
         (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert_) +
          static_cast<uint64_t>(INT_CACHELINE) * static_cast<uint64_t>(aicNum_));
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        uint64_t combineCounterElementCount = params_.tilingData->combineSyncSlotCountPerExpert * moeExpertPerRank_ *
-                                              static_cast<uint64_t>(INT_CACHELINE);
-        totalFlagInt32 = totalFlagInt32 > combineCounterElementCount ? totalFlagInt32 : combineCounterElementCount;
+        uint64_t combineSyncSlotElementCount = params_.tilingData->combineSyncSlotCountPerExpert * moeExpertPerRank_ *
+                                               static_cast<uint64_t>(INT_CACHELINE);
+        totalFlagInt32 = totalFlagInt32 > combineSyncSlotElementCount ? totalFlagInt32 : combineSyncSlotElementCount;
     }
     uint32_t resetElementCountPerCore = Ops::Base::CeilDiv(totalFlagInt32, static_cast<uint64_t>(blockAivNum_));
     resetBatchElementCount_ = resetElementCountPerCore < static_cast<uint32_t>(DISPATCH_RESET_BATCH) ?
@@ -827,19 +822,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::SendCntCal(int32_t loca
 }
 
 // ============================================================================
-// DispatchCopyTmpTensor：由 UB 基址 + 槽偏移现场构造该槽的 buffer 视图。
-//   热路径上取代 LocalTensor 数组索引，避免寄存器压力下 spill 到 GM。
-// ============================================================================
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline auto
-MegaMoe<TemplateMegaMoeTypeFunc>::DispatchCopyTmpTensor(int32_t bufferIdx) -> LocalTensor<ActivationType>
-{
-    return LocalTensor<ActivationType>(
-        TPosition::VECCALC, copyTmpBaseAddr_ + static_cast<uint32_t>(bufferIdx) * mxQuantTokenScaleAlignBytes_,
-        mxQuantTokenScaleAlignBytes_ / sizeof(ActivationType));
-}
-
-// ============================================================================
 // FetchTokenNLoadMetaInfo：取 token 并装载元信息——MTE2 从远程 win 取该 token，S 侧组装 triple(rank/token/topk)，
 //   分别 set MTE2_MTE3 / S_MTE3 供 MTE3 侧消费。
 //   IsBufferReuse 为编译期常量：首窗填槽实例(<false>)不生成任何复用 WaitFlag；稳态实例(<true>)才在覆盖前等该槽
@@ -853,7 +835,9 @@ MegaMoe<TemplateMegaMoeTypeFunc>::FetchTokenNLoadMetaInfo(int32_t bufferIdx, int
                                                           uint32_t copyInNum)
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx); // buffer 0~5 直接对应 EVENT_ID0~EVENT_ID5
-    LocalTensor<ActivationType> copyTmpTensor = DispatchCopyTmpTensor(bufferIdx);
+    LocalTensor<ActivationType> copyTmpTensor = LocalTensor<ActivationType>(
+        TPosition::VECCALC, copyTmpBaseAddr_ + static_cast<uint32_t>(bufferIdx) * mxQuantTokenScaleAlignBytes_,
+        mxQuantTokenScaleAlignBytes_ / sizeof(ActivationType));
     int32_t tokenIndex = topkIndex / topK_;
     uint64_t remoteCopyOffset = static_cast<uint64_t>(tokenIndex) * static_cast<uint64_t>(copyInNum);
     if constexpr (IsBufferReuse) {
@@ -882,7 +866,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::DispatchCopyMte3(
 {
     TEventID eventId = static_cast<TEventID>(bufferIdx); // buffer 0~5 直接对应 EVENT_ID0~EVENT_ID5
     WaitFlag<AscendC::HardEvent::MTE2_MTE3>(eventId);
-    LocalTensor<ActivationType> tokenScalebuf = DispatchCopyTmpTensor(bufferIdx);
+    LocalTensor<ActivationType> tokenScalebuf = LocalTensor<ActivationType>(
+        TPosition::VECCALC, copyTmpBaseAddr_ + static_cast<uint32_t>(bufferIdx) * mxQuantTokenScaleAlignBytes_,
+        mxQuantTokenScaleAlignBytes_ / sizeof(ActivationType));
     LocalTensor<QuantScaleOutType> bufScale =
         tokenScalebuf[mxQuantTokenAlignBytes_].template ReinterpretCast<QuantScaleOutType>();
     DataCopyPad(tokenRevGlobalTensor[dstIdx * revTokenElemCnt_], tokenScalebuf,
@@ -1356,12 +1342,8 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(const GM
                                                                         const ExpertLoopState &gmm2State,
                                                                         uint32_t expertIdx)
 {
-    // combineNTilesPerGroup_ 和 combineQuantTokenSizeBytes_ 只依赖 k_，已在 InitCombineBuffers 中计算。
-    uint32_t mExpert = Get<M_VALUE>(gmm2State.problemShape);
-    uint32_t tokenGroupsThisExpert = MegaMoeImpl::GetTokenGroupCount(mExpert);
-    if (tokenGroupsThisExpert == 0) {
-        return;
-    }
+    uint32_t expertTokenCount = Get<M_VALUE>(gmm2State.problemShape);
+    uint32_t tokenGroupsThisExpert = Ops::Base::CeilDiv(expertTokenCount, COMBINE_TOKEN_GROUP_SIZE);
 
     // generic 路径的每个 AIV 都是 logical core；A8W4/A4W4 仅 subBlockIdx=1 参与并按物理核对映射。
     uint32_t logicalCoreId = aivCoreIdx_;
@@ -1394,8 +1376,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(const GM
         }
 
         uint32_t groupTokenStart = groupIndex * COMBINE_TOKEN_GROUP_SIZE;
-        uint32_t groupTokenCount =
-            COMBINE_TOKEN_GROUP_SIZE < mExpert - groupTokenStart ? COMBINE_TOKEN_GROUP_SIZE : mExpert - groupTokenStart;
+        uint32_t groupTokenCount = COMBINE_TOKEN_GROUP_SIZE < expertTokenCount - groupTokenStart ?
+                                       COMBINE_TOKEN_GROUP_SIZE :
+                                       expertTokenCount - groupTokenStart;
         uint32_t tokensPerCore = Ops::Base::CeilDiv(groupTokenCount, coresAssignedToGroup);
         uint32_t tokenOffsetWithinGroup = coreIndexWithinGroup * tokensPerCore;
         // tail group 的 token 可能少于协作核数，部分核不分配 token。

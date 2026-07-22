@@ -690,6 +690,7 @@ static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilin
     if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
         tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+        // A8W4/A4W4 每两个 AIV 配对，只有 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
         logicalCoreCount /= 2U;
     }
     // 同一 token 的 topK expert id 不重复，因此单 expert 从每张卡最多接收 bs 个 token。

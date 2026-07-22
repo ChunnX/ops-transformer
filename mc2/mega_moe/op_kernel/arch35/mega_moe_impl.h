@@ -34,12 +34,21 @@
 
 namespace MegaMoeImpl {
 using BlockScheduler = typename Blaze::Gemm::Block::BlockSchedulerSwizzle<3, 1>; // 3: SwizzleOffset
-static_assert(COMBINE_TOKEN_GROUP_SIZE == L1_TILE_M_256, "Combine sync group size must match the GMM2 row tile size");
 
-// Producer 和 consumer 共用同一 group 数公式，避免 GMM2 tile 与 Combine 消费粒度不一致。
-__aicore__ inline uint32_t GetTokenGroupCount(uint32_t expertTokenCount)
+struct GroupSyncSlotLayout {
+    uint32_t baseSlotCountPerGroup; // 每个 group 固定分配的 slot 数。
+    uint32_t extraSlotGroupCount;   // 前 extraSlotGroupCount 个 group 各多分配一个 slot。
+};
+
+/*
+ * group 少于逻辑核时，将逻辑核 slot 尽量均匀地分给各 group；
+ * group 多于逻辑核时，每个 group 获得一个独立 slot。
+ */
+__aicore__ inline GroupSyncSlotLayout CalcGroupSyncSlotLayout(uint32_t expertTokenCount, uint32_t logicalCoreCount)
 {
-    return Ops::Base::CeilDiv(expertTokenCount, COMBINE_TOKEN_GROUP_SIZE);
+    uint32_t groupCount = Ops::Base::CeilDiv(expertTokenCount, COMBINE_TOKEN_GROUP_SIZE);
+    uint32_t totalSyncSlotCount = groupCount > logicalCoreCount ? groupCount : logicalCoreCount;
+    return {totalSyncSlotCount / groupCount, totalSyncSlotCount % groupCount};
 }
 
 // 每个同步 slot 独占 INT_CACHELINE 个 int32_t（64B），避免不同 flag 共享 cacheline 产生读写竞争。
@@ -75,29 +84,18 @@ __aicore__ inline void ComputeCoreGrouping(uint32_t coreId, uint32_t numGroups, 
 }
 
 /*
- * 计算固定 expert stride 模型下，一个 token group 对应的连续同步 slot 区间。
- * 前置条件：groupCount > 0 且 groupIndex < groupCount。
- *
- * totalSyncSlotCount 取 groupCount 和 logicalCoreCount 的较大值：
- * - group 较少时，将所有 logical core slot 尽量均匀地分给各 group；
- * - group 较多时，总 slot 数等于 group 数，每个 group 获得一个独立 slot。
- *
- * 均分时每个 group 先获得 baseSlotCountPerGroup 个 slot，余数依次分给前
- * extraSlotGroupCount 个 group。firstSyncSlot 等于前面 group 的基础 slot 总数，
- * 加上已分给前面 group 的额外 slot 数。
- *
+ * 获取一个 token group 对应的连续同步 slot 区间。每组的基础 slot 数和余数分配
+ * 在 expert 的 tile loop 外计算，这里只计算当前 group 的起点和长度。
  */
-__aicore__ inline void ComputeCombineSyncSlotRange(uint32_t groupIndex, uint32_t groupCount, uint32_t logicalCoreCount,
-                                                   uint32_t &firstSyncSlot, uint32_t &syncSlotCount)
+__aicore__ inline void GetGroupSyncSlotRange(uint32_t groupIndex, const GroupSyncSlotLayout &slotLayout,
+                                             uint32_t &firstSyncSlot, uint32_t &syncSlotCount)
 {
-    uint32_t totalSyncSlotCount = groupCount > logicalCoreCount ? groupCount : logicalCoreCount;
-    uint32_t baseSlotCountPerGroup = totalSyncSlotCount / groupCount;
-    uint32_t extraSlotGroupCount = totalSyncSlotCount % groupCount;
-    syncSlotCount = baseSlotCountPerGroup + (groupIndex < extraSlotGroupCount ? 1U : 0U);
+    syncSlotCount = slotLayout.baseSlotCountPerGroup + (groupIndex < slotLayout.extraSlotGroupCount ? 1U : 0U);
 
     // 已被分配的基础槽位 + 已被分配的额外槽位 = 前面 group 的总槽位数
-    uint32_t precedingExtraSlotCount = groupIndex < extraSlotGroupCount ? groupIndex : extraSlotGroupCount;
-    firstSyncSlot = groupIndex * baseSlotCountPerGroup + precedingExtraSlotCount;
+    uint32_t precedingExtraSlotCount =
+        groupIndex < slotLayout.extraSlotGroupCount ? groupIndex : slotLayout.extraSlotGroupCount;
+    firstSyncSlot = groupIndex * slotLayout.baseSlotCountPerGroup + precedingExtraSlotCount;
 }
 
 /*
@@ -134,20 +132,18 @@ __aicore__ inline void ComputeCombineGroupsForCore(uint32_t logicalCoreId, uint3
 }
 
 // 根据当前 token group 的 slot range 通知所有 Combine 消费核。
-template <bool OnlyAivSubBlockOneParticipates = false>
-__aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOffset, uint32_t expertTokenCount,
-                                                              uint32_t blockAivNum, __gm__ int32_t *expertCounterBase)
+__aicore__ inline void NotifyCombineConsumersOfTileCompletion(uint32_t rowTileOffset,
+                                                              const GroupSyncSlotLayout &slotLayout,
+                                                              __gm__ int32_t *expertCounterBase)
 {
     AscendC::SetFlag<AscendC::HardEvent::FIX_S>(0);
     AscendC::WaitFlag<AscendC::HardEvent::FIX_S>(0);
 
-    // Specialized 路径仅 subBlockIdx=1 参与，但 counter 始终使用 logical core slot，不映射回 physical ID。
-    uint32_t logicalCoreCount = OnlyAivSubBlockOneParticipates ? blockAivNum / 2U : blockAivNum;
-    uint32_t tokenGroupCount = GetTokenGroupCount(expertTokenCount);
     uint32_t tokenGroupIndex = rowTileOffset / COMBINE_TOKEN_GROUP_SIZE;
     uint32_t firstSyncSlot = 0;
     uint32_t syncSlotCount = 0;
-    ComputeCombineSyncSlotRange(tokenGroupIndex, tokenGroupCount, logicalCoreCount, firstSyncSlot, syncSlotCount);
+    // 找到负责消费当前 token group 的 logical-core slot 区间，逐 slot 通知该 GMM2 tile 已写回。
+    GetGroupSyncSlotRange(tokenGroupIndex, slotLayout, firstSyncSlot, syncSlotCount);
 
     for (uint32_t syncSlot = firstSyncSlot; syncSlot < firstSyncSlot + syncSlotCount; ++syncSlot) {
         AscendC::AtomicAdd(GetCombineSyncCounterAddress(expertCounterBase, syncSlot), int32_t(1));
@@ -370,6 +366,11 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
 
     const auto &config = workSet.config;
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
+    GroupSyncSlotLayout groupSyncSlotLayout{};
+    if constexpr (!Policy::IS_GMM1 && CombineQuantMode != COMBINE_NO_QUANT && !IsShared) {
+        uint32_t logicalCoreCount = config.blockNum * 2U;
+        groupSyncSlotLayout = CalcGroupSyncSlotLayout(config.m, logicalCoreCount);
+    }
 
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = workSet.scheduler.GetBlockCoord(loopIdx);
@@ -447,7 +448,7 @@ __aicore__ inline void AicComputeGeneric(BlockMmad &blockMmad, WorkSet &workSet,
                                           Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
                 blockMmad(gmBlockA, gmBlockB, gmBlockScaleA, gmBlockScaleB, workSet.gmBias, gmBlockC, singleShape);
                 if constexpr (CombineQuantMode != COMBINE_NO_QUANT && !IsShared) {
-                    NotifyCombineConsumersOfTileCompletion(mLoc, config.m, config.blockNum * 2,
+                    NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout,
                                                            workSet.gmmAddrInfo.gmm2CombineSyncCounter);
                 }
             }
@@ -684,6 +685,12 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                                       const Config &config, uint32_t startLoopIdx, uint32_t tileNum)
 {
     uint32_t lastWaveWaited = static_cast<uint32_t>(-1);
+    GroupSyncSlotLayout groupSyncSlotLayout{};
+    if constexpr (!Policy::IS_GMM1 && CombineQuantMode != COMBINE_NO_QUANT && !IsShared) {
+        // Specialized 路径每两个 AIV 只有 subBlockIdx=1 参与 Combine，逻辑核数等于 blockNum。
+        uint32_t logicalCoreCount = config.blockNum;
+        groupSyncSlotLayout = CalcGroupSyncSlotLayout(config.m, logicalCoreCount);
+    }
     for (uint32_t loopIdx = startLoopIdx; loopIdx < tileNum; loopIdx += config.blockNum) {
         auto blockCoord = scheduler.GetBlockCoord(loopIdx);
         auto actualShape = scheduler.GetBlockShape(blockCoord);
@@ -723,8 +730,7 @@ __aicore__ inline void AicComputeA8W4(BlockMmad &blockMmad, Scheduler &scheduler
                                                 Te::MakeShape(Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape)));
             blockMmad(gmBlockA, gmBlockScaleA, gmBlockScaleB, tensorBlockGm);
             if constexpr (CombineQuantMode != COMBINE_NO_QUANT && !IsShared) {
-                NotifyCombineConsumersOfTileCompletion<true>(mLoc, config.m, config.blockNum * 2,
-                                                             gmmAddrInfo.gmm2CombineSyncCounter);
+                NotifyCombineConsumersOfTileCompletion(mLoc, groupSyncSlotLayout, gmmAddrInfo.gmm2CombineSyncCounter);
             }
         }
         constexpr bool hasAiv1GmEpilogue = Policy::IS_GMM1 || (CombineQuantMode == COMBINE_NO_QUANT && !IsShared);
