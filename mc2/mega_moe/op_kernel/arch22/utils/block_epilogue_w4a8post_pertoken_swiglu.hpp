@@ -11,6 +11,8 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8POST_PER_TOKEN_SWIGLU_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_W4A8POST_PER_TOKEN_SWIGLU_HPP
 
+#include <limits>
+
 #include "../template_linear_algebra_v2/catlass.hpp"
 #include "../template_linear_algebra_v2/arch/resource.hpp"
 #include "../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
@@ -168,12 +170,15 @@ public:
                      uint32_t MOffset, AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
                      uint32_t expertPerRank, uint32_t EP, int32_t rank, int32_t listLen,
                      Arch::Resource<ArchTag> const &resource, uint32_t epilogueCoreNum = 40,
-                     float activationClamp = 0.0f, uint32_t activationCode = 0, uint32_t gmmOutPreRowStride = 1,
+                     float activationClamp = 0.0f, uint32_t activationCode = 0, float beta = 1.0f,
+                     float linearBeta = std::numeric_limits<float>::max(), uint32_t gmmOutPreRowStride = 1,
                      Callback &&callback = Callback{})
     {
         (void)rank;
         (void)resource;
         activationCode_ = activationCode;
+        beta_ = beta;
+        linearBeta_ = linearBeta;
         callback();
         uint32_t blockM = shapeC.row();
         uint32_t branchLength = shapeC.column() / 2;
@@ -440,7 +445,7 @@ private:
         AscendC::Muls(ubUpFp32, ubUpFp32, perTokenScale, tileLength);
         AscendC::PipeBarrier<PIPE_V>();
         Activation::Compute(ubActivation, ubGateFp32, ubUpFp32, sharedTmpBuffer, tileLength, activationClamp,
-                            activationCode_);
+                            activationCode_, beta_, linearBeta_);
     }
 
     CATLASS_DEVICE
@@ -546,6 +551,8 @@ private:
     int32_t eventxLowMTE3VList[UB_STAGES];
     int32_t eventxLowVMTE3List[UB_STAGES];
     uint32_t activationCode_{0};
+    float beta_{1.0f};
+    float linearBeta_{std::numeric_limits<float>::max()};
     size_t ubOffset{0};
 
     CopyGmToUbC copyGmToUbC;

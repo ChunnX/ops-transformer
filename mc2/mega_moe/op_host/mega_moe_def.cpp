@@ -177,6 +177,9 @@ public:
         this->Attr("rank_num_per_server").AttrType(OPTIONAL).Int(2); // 最少2个rank
         this->Attr("topk_weights_type").AttrType(OPTIONAL).Int(0);
 
+        this->Attr("beta").AttrType(OPTIONAL).Float(1.0f);
+        this->Attr("linear_beta").AttrType(OPTIONAL).Float(std::numeric_limits<float>::max());
+
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)

@@ -131,6 +131,8 @@ private:
     int32_t listLen_;
     uint32_t activationCode_;
     float activationClamp_;
+    float beta_;
+    float linearBeta_;
 
     MoeInitRoutingQuantV2TilingData moeInitRoutingQuantV2TilingData;
     MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
@@ -180,6 +182,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
 
         activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
+        beta_ = tilingData.common.beta;
+        linearBeta_ = tilingData.common.linearBeta;
 
         moeInitRoutingQuantV2TilingData = tilingData.moeInitRoutingQuantV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -198,6 +202,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Init(GM_ADDR contextGM, GM_ADDR xGM
 
         activationCode_ = tilingData.common.activationCode;
         activationClamp_ = tilingData.common.activationClamp;
+        beta_ = tilingData.common.beta;
+        linearBeta_ = tilingData.common.linearBeta;
 
         moeInitRoutingV2TilingData = tilingData.moeInitRoutingV2TilingData;
         initRoutingQuantTilingKey = tilingData.common.initRoutingQuantTilingKey;
@@ -363,6 +369,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                epilogueGranularity,
                                                activationClamp_,
                                                activationCode_,
+                                               beta_,
+                                               linearBeta_,
                                                tilingGM_};
     } else {
         params = typename MatmulKernel::Params{problemShape,
@@ -403,6 +411,8 @@ __aicore__ inline void MegaMoe<MegaMoeFunc>::Process()
                                                epilogueGranularity,
                                                activationClamp_,
                                                activationCode_,
+                                               beta_,
+                                               linearBeta_,
                                                tilingGM_};
     }
 
