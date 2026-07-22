@@ -265,29 +265,35 @@ stages:
           image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_ARM_experimental_ubuntu24 }}
           arch: 'arm64'
           package_name: 'cann-ops-transformer_experimental_950_linux-aarch64_ubuntu24.run' 
-      # JOB_mobile_station_compile:
-      #   name: mobile_station_compile
-      #   needs: []
-      #   uses: .gitcode/workflows/compile_action.yml
-      #   with:
-      #     task_name: 'Compile_Ascend_X86_mobile_station'
-      #     ge_st_rt2: 'kirinx90'
-      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_mobile_station }}
-      #     arch: 'x64'
-      #     package_name: 'kiri.tar.gz'
-      # JOB_mobile_station_compile_ubuntu24:
-      #   name: mobile_station_compile_ubuntu24
-      #   needs: []
-      #   uses: .gitcode/workflows/compile_action.yml
-      #   with:
-      #     task_name: 'Compile_Ascend_X86_mobile_station_ubuntu24'
-      #     ge_st_rt2: 'kirinx90'
-      #     image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_mobile_station_ubuntu24 }}
-      #     arch: 'x64'
-      #     package_name: 'kiri.tar.gz'
+      JOB_mobile_station_compile:
+        name: mobile_station_compile
+        uses: .gitcode/workflows/compile_action.yml
+        with:
+          task_name: 'Compile_Ascend_X86_mobile_station'
+          ge_st_rt2: 'kirinx90'
+          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_mobile_station }}
+          arch: 'x64'
+          package_name: 'cann-ops-transformer-kirix90_linux-x86_64.run'
+      JOB_mobile_station_compile_ubuntu24:
+        name: mobile_station_compile_ubuntu24
+        uses: .gitcode/workflows/compile_action.yml
+        with:
+          task_name: 'Compile_Ascend_X86_mobile_station_ubuntu24'
+          ge_st_rt2: 'kirinx90'
+          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_mobile_station_ubuntu24 }}
+          arch: 'x64'
+          package_name: 'cann-ops-transformer-kirix90_linux-x86_64_ubuntu24.run'
+      JOB_mobile_station_compile_9030_ubuntu24:
+        name: mobile_station_compile_9030_ubuntu24
+        uses: .gitcode/workflows/compile_action.yml
+        with:
+          task_name: 'Compile_Ascend_X86_mobile_station_9030_ubuntu24'
+          ge_st_rt2: 'kirin9030'
+          image_version: ${{ jobs.JOB_image.outputs.Compile_Ascend_X86_mobile_station_ubuntu24 }}
+          arch: 'x64'
+          package_name: 'cann-ops-transformer-kirin9030_linux-x86_64_ubuntu24.run'
       JOB_codecheck:
         name: codecheck
-        needs: []
         uses: .gitcode/workflows/codecheck_action.yml
         with:
           precommit_image_version: ${{ jobs.JOB_image.outputs.precommit }}
@@ -346,7 +352,6 @@ stages:
           image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ jobs.JOB_image.outputs.API_Check }}
       JOB_ut:
         name: ut_test
-        needs: []
         uses: .gitcode/workflows/ut_action.yml
         with:
           image_version: ${{ jobs.JOB_image.outputs.UT_Test }}
