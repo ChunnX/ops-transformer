@@ -19,7 +19,7 @@
  #include "flash_attention_score_grad_tiling_data_regbase.h"
  
  // kernel通过宏定义隔离dtype编译tilingkey，降低耗时。tiling侧没有相关宏
- #ifndef ORIG_DTYPE_QUERY
+ #ifndef uint8_t
  #define ORIG_DTYPE_QUERY (-1)
  #endif
  
