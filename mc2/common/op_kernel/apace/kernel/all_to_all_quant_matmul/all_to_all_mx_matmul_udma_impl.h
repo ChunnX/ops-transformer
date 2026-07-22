@@ -105,9 +105,6 @@ private:
   CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier, CommAddrLayout::DEFAULT> allToAllA_;
   CollectiveComm<
     CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier, CommAddrLayout::CONTIGUOUS> allToAllScaleA_;
-  TBuf<TPosition::VECCALC> commBuf_;
-  TBuf<TPosition::VECCALC> commScaleBuf_;
-  TBuf<TPosition::VECCALC> barrierBuf_;
   TeamBarrier teamBarrier_;
 
   struct BaseParams {
