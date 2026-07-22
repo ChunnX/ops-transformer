@@ -221,7 +221,7 @@ public:
             DataCopyPad(qBlockLocal, qGm, copyParams,
                         DataCopyPadParams{false, 0, 0, 0});
         }
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID0); // 看看是否有必要
+        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
         qBlockBuf.EnQue(qBlockLocal);
     }
 
