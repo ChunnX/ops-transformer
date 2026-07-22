@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# Copyright (c) 2024 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -66,7 +66,7 @@ class QuantBlockSparseAttnMetadataBuilder:
             seqused_kv=seqused_kv,
             batch_size=cls.batch_size(query, layout_q, cu_seqlens_q, seqused_q),
             max_seqlen_q=cls.max_seq(cu_seqlens_q, seqused_q, int(query.shape[1] if query.dim() == 4 else query.shape[0])),
-            max_seqlen_kv=cls.max_seq(cu_seqlens_kv, seqused_kv, 0),
+            max_seqlen_kv=cls.max_seq(cu_seqlens_kv, seqused_kv, int(query.shape[1] if query.dim() == 4 else query.shape[0])),
             layout_q=layout_q,
             layout_kv=layout_kv,
             softmax_scale=float(softmax_scale),
