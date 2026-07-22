@@ -171,6 +171,11 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::ParamsCheck()
                          cmpResidualKey_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
     }
+    if (cmpRatio_ > 1 && maskMode_ == static_cast<int64_t>(DliSparseMode::RIGHT_DOWN_CAUSAL) &&
+        !IsTensorValid(cmpResidualKey_)) {
+        KERNEL_LOG_ERROR("cmp_residual_k must be provided when mask_mode=3 and cmp_ratio>1.");
+        return false;
+    }
     return true;
 }
 

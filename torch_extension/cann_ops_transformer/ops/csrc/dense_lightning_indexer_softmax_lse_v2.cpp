@@ -64,6 +64,11 @@ at::Tensor dense_lightning_indexer_softmax_lse_v2_metadata(
                 "num_heads_q should be divisible by num_heads_k, but got nq=", num_heads_q, " nk=", num_heads_k);
     TORCH_CHECK((cmp_ratio >= 1 && cmp_ratio <= 128),
                 "cmp_ratio should be in [1, 128], current is: ", cmp_ratio);
+    TORCH_CHECK((mask_mode == 0 || mask_mode == 3),
+                "mask_mode only supports 0 or 3, current is: ", mask_mode);
+    TORCH_CHECK(!((mask_mode == 3 && cmp_ratio > 1) &&
+                  (!cmp_residual_k.has_value() || !cmp_residual_k.value().defined())),
+                "cmp_residual_k must be provided when mask_mode=3 and cmp_ratio>1.");
 
     at::Tensor output{nullptr};
     {

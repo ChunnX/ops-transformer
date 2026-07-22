@@ -131,5 +131,11 @@ expect_fail("cmp_residual_k 长度不等于 batch_size", lambda: torch.ops.cann_
     layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1,
 ))
 
+expect_fail("mask_mode=3 且 cmp_ratio>1 缺少 cmp_residual_k", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+    num_heads_q=8, num_heads_k=4, head_dim=128,
+    batch_size=2, max_seqlen_q=128, max_seqlen_k=128,
+    layout_q="BSND", layout_k="BSND", mask_mode=3, cmp_ratio=4,
+))
+
 print()
 print("All tests passed!")
