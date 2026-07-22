@@ -56,13 +56,6 @@ else
 fi
 command -v python3 >/dev/null || { echo "ERROR: python3 不可用"; exit 1; }
 
-# ---- rank table ----
-if [ "$RANK_NUM" -eq 2 ]; then RT="${ST_DIR}/rank_table_2p.json";
-elif [ "$RANK_NUM" -eq 4 ]; then RT="${ST_DIR}/rank_table_4p.json";
-else echo "ERROR: 仅支持 2/4 ranks"; exit 1; fi
-export RANK_TABLE_FILE="$RT"
-echo "[env] RANK_TABLE_FILE=$RT"
-
 cd "$SCRIPT_DIR"
 rm -rf input output
 
