@@ -120,19 +120,18 @@ __aicore__ inline void InlineRadixTopK(
                 DataCopy(tileHist, tileHist[boundaryBin * tileNumAlign_], tileNumAlign_);
             }
             PipeBarrier<PIPE_V>();
-            RDX_V_S_SYNC();
-            if (tailTileLen_ != tileLen_) {
-                tileHist.SetValue(tileNum_ - 1, static_cast<int32_t>(tailTileLen_));
-            }
-            globalHistBoundaryNum_ = static_cast<int32_t>((tileNum_ - 1) * tileLen_ + tailTileLen_);
-            RDX_S_V_SYNC();
         }
 
         // Vectorized clear: globalHist and tileHist[1..BINS-1]
         Duplicate<int32_t>(globalHist, 0, RDX_BINS);
         Duplicate<int32_t>(tileHist[tileNumAlign_], 0, tileNumAlign_ * (RDX_BINS - 1));
         PipeBarrier<PIPE_V>();
+        // Single V_S sync for all ClearHist + clear operations
         RDX_V_S_SYNC();
+        if (tailTileLen_ != tileLen_) {
+            tileHist.SetValue(tileNum_ - 1, static_cast<int32_t>(tailTileLen_));
+        }
+        globalHistBoundaryNum_ = static_cast<int32_t>((tileNum_ - 1) * tileLen_ + tailTileLen_);
         globalHist.SetValue(0, globalHistBoundaryNum_);
         RDX_S_V_SYNC();
 
@@ -208,7 +207,7 @@ __aicore__ inline void InlineRadixTopK(
             }
         }
 
-        // FindBoundaryBin
+        // FindBoundaryBin + update globalHistBoundaryNum_ (single V_S/S_V pair)
         RDX_V_S_SYNC();
         boundaryBin = -1;
         boundaryBinPrev = -1;
@@ -222,22 +221,18 @@ __aicore__ inline void InlineRadixTopK(
 
         involvedMask16_ = involvedMask16_ |
             (static_cast<int16_t>(boundaryBin) << (roundId * RDX_BITS));
-        RDX_S_V_SYNC();
 
-        // Update globalHistBoundaryNum_ for next round's ClearHist
-        RDX_V_S_SYNC();
         globalHistBoundaryNum_ = globalHist.GetValue(boundaryBin);
         if (boundaryBin < static_cast<int32_t>(RDX_BINS) - 1) {
             globalHistBoundaryNum_ -= globalHist.GetValue(boundaryBinPrev);
         }
-        RDX_S_V_SYNC();
 
-        // AddTileHistToTileTopK (vectorized: tileTopK += tileHist[bin])
-        RDX_V_S_SYNC();
         int32_t globalHistBoundary = globalHist.GetValue(boundaryBin);
         int32_t globalHistBoundaryPrev = (boundaryBinPrev < static_cast<int32_t>(RDX_BINS))
                                          ? globalHist.GetValue(boundaryBinPrev) : 0;
         RDX_S_V_SYNC();
+
+        // AddTileHistToTileTopK (vectorized: tileTopK += tileHist[bin])
         if (globalHistBoundary == remainK_) {
             Add<int32_t>(tileTopK, tileTopK, tileHist[boundaryBin * tileNumAlign_], tileNumAlign_);
             PipeBarrier<PIPE_V>();
@@ -247,7 +242,6 @@ __aicore__ inline void InlineRadixTopK(
             PipeBarrier<PIPE_V>();
             totalDefinitelyInTopK_ += globalHistBoundaryPrev;
         }
-        RDX_V_S_SYNC();
 
         remainK_ = static_cast<int32_t>(kValue) - totalDefinitelyInTopK_;
 
