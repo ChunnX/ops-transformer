@@ -42,7 +42,8 @@ __aicore__ inline void InlineRadixTopK(
     if (tailTileLen_ == 0) { tailTileLen_ = tileLen_; }
     uint32_t tileNumAlign_ = (tileNum_ + 7) / 8 * 8;
 
-    TBuf<TPosition::VECCALC> xBuf;
+    TBuf<TPosition::VECCALC> xBufPing;
+    TBuf<TPosition::VECCALC> xBufPong;
     TBuf<TPosition::VECCALC> outValueBuf;
     TBuf<TPosition::VECCALC> outIndexBuf;
     TBuf<TPosition::VECCALC> globalHistBuf;
@@ -51,7 +52,9 @@ __aicore__ inline void InlineRadixTopK(
     TBuf<TPosition::VECCALC> scoreCacheBuf;
 
     pipe->Reset();
-    pipe->InitBuffer(xBuf, tileLenAlign_ * sizeof(float) + tileLenAlign_ * sizeof(bfloat16_t) + 64);
+    uint32_t xBufSize = tileLenAlign_ * sizeof(float) + tileLenAlign_ * sizeof(bfloat16_t) + 64;
+    pipe->InitBuffer(xBufPing, xBufSize);
+    pipe->InitBuffer(xBufPong, xBufSize);
     pipe->InitBuffer(outValueBuf, tileLenAlign_ * sizeof(float) + 64);
     pipe->InitBuffer(outIndexBuf, tileLenAlign_ * sizeof(int32_t) + 64);
     pipe->InitBuffer(globalHistBuf, RDX_BINS * sizeof(int32_t) + 64);
@@ -68,14 +71,7 @@ __aicore__ inline void InlineRadixTopK(
     GlobalTensor<int32_t> indexGm;
     indexGm.SetGlobalBuffer((__gm__ int32_t *)indicesGmAddr);
 
-    // xBuf: float at offset 0, bf16 at offset tileLenAlign_*2 (bfloat16 elements) = tileLenAlign_*4 bytes
-    LocalTensor<float> xLocalFp32 = xBuf.Get<float>();
-    LocalTensor<int32_t> xLocalInt32 = xLocalFp32.template ReinterpretCast<int32_t>();
-    LocalTensor<bfloat16_t> xLocalB16Base = xBuf.Get<bfloat16_t>();
-    LocalTensor<bfloat16_t> xLocalB16 = xLocalB16Base[tileLenAlign_ * 2];  // byte offset = tileLenAlign_*4
-    LocalTensor<int16_t> xLocalInt16 = xLocalB16.template ReinterpretCast<int16_t>();
-
-    // outValueBuf: signMask, mask, tempHalf — separate from xBuf
+    // outValueBuf: signMask, mask, tempHalf
     LocalTensor<int16_t> signMaskTensor = outValueBuf.Get<int16_t>();
     LocalTensor<int32_t> maskTensor = outValueBuf.Get<int32_t>();
     LocalTensor<half> tempHalf = outValueBuf.Get<half>();
@@ -147,12 +143,34 @@ __aicore__ inline void InlineRadixTopK(
         int32_t gh[4] = {globalHistBoundaryNum_, 0, 0, 0};
         RDX_S_V_SYNC();
 
+        // Ping-Pong tile loop: overlap UB→UB DataCopy with V computation
+        // Prefetch first tile to xBufPing
+        DataCopy(xBufPing.Get<float>(), scoreCache[0], tileLenAlign_);
+        SetFlag<HardEvent::MTE2_V>(mte2ToV);
+        bool pingPongFlag = true;
+
         for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
             uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
             if (curTileLen == 0) { continue; }
 
-            // CopyIn: float data from UB cache to xLocalFp32
-            DataCopy(xLocalFp32, scoreCache[tileId * tileLen_], tileLenAlign_);
+            // Select current and next buffer
+            TBuf<TPosition::VECCALC>& curBuf = pingPongFlag ? xBufPing : xBufPong;
+            TBuf<TPosition::VECCALC>& nextBuf = pingPongFlag ? xBufPong : xBufPing;
+
+            // Prefetch next tile (overlap with current tile's V computation)
+            if (tileId < tileNum_ - 1) {
+                DataCopy(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
+            }
+
+            // Wait for current tile data ready
+            WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+
+            // Get LocalTensor from current buffer
+            LocalTensor<float> xLocalFp32 = curBuf.Get<float>();
+            LocalTensor<int32_t> xLocalInt32 = xLocalFp32.template ReinterpretCast<int32_t>();
+            LocalTensor<bfloat16_t> xLocalB16Base = curBuf.Get<bfloat16_t>();
+            LocalTensor<bfloat16_t> xLocalB16 = xLocalB16Base[tileLenAlign_ * 2];
+            LocalTensor<int16_t> xLocalInt16 = xLocalB16.template ReinterpretCast<int16_t>();
 
             // Cast float -> bf16 into xLocalB16 (xBuf back, no overlap with xLocalFp32 in front)
             Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
@@ -217,6 +235,12 @@ __aicore__ inline void InlineRadixTopK(
             tileHist[2 * tileNumAlign_].SetValue(tileId, binCounts[2]);
             tileHist[3 * tileNumAlign_].SetValue(tileId, binCounts[3]);
             RDX_S_V_SYNC();
+
+            // Signal next tile data ready, flip ping-pong flag
+            if (tileId < tileNum_ - 1) {
+                SetFlag<HardEvent::MTE2_V>(mte2ToV);
+            }
+            pingPongFlag = !pingPongFlag;
         }
 
         // Write globalHist from scalar accumulators (single batch, no per-tile GetValue)
@@ -315,16 +339,50 @@ __aicore__ inline void InlineRadixTopK(
     RDX_S_V_SYNC();
 
     uint32_t writeOffset = 0;
+    // Prefetch first tile for extraction
+    DataCopy(xBufPing.Get<float>(), scoreCache[0], tileLenAlign_);
+    SetFlag<HardEvent::MTE2_V>(mte2ToV);
+    pingPongFlag = true;
+
     for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
         RDX_V_S_SYNC();
         int32_t curTileK = tileTopK.GetValue(tileId);
         RDX_S_V_SYNC();
-        if (curTileK <= 0) { continue; }
+        if (curTileK <= 0) {
+            // Still need to consume the MTE2 event for this tile
+            if (tileId < tileNum_ - 1) {
+                // Prefetch next tile, skip current
+                TBuf<TPosition::VECCALC>& nextBuf = pingPongFlag ? xBufPong : xBufPing;
+                DataCopy(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
+            }
+            WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+            if (tileId < tileNum_ - 1) {
+                SetFlag<HardEvent::MTE2_V>(mte2ToV);
+            }
+            pingPongFlag = !pingPongFlag;
+            continue;
+        }
 
         uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
 
-        // CopyIn from UB cache, Cast float->bf16->float (bf16 precision)
-        DataCopy(xLocalFp32, scoreCache[tileId * tileLen_], tileLenAlign_);
+        // Select current and next buffer
+        TBuf<TPosition::VECCALC>& curBuf = pingPongFlag ? xBufPing : xBufPong;
+        TBuf<TPosition::VECCALC>& nextBuf = pingPongFlag ? xBufPong : xBufPing;
+
+        // Prefetch next tile
+        if (tileId < tileNum_ - 1) {
+            DataCopy(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
+        }
+
+        // Wait for current tile data ready
+        WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+
+        // Get LocalTensor from current buffer
+        LocalTensor<float> xLocalFp32 = curBuf.Get<float>();
+        LocalTensor<bfloat16_t> xLocalB16Base = curBuf.Get<bfloat16_t>();
+        LocalTensor<bfloat16_t> xLocalB16 = xLocalB16Base[tileLenAlign_ * 2];
+
+        // Cast float->bf16->float (bf16 precision)
         Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
         PipeBarrier<PIPE_V>();
         Cast(xLocalFp32, xLocalB16, RoundMode::CAST_NONE, curTileLen);
@@ -386,6 +444,12 @@ __aicore__ inline void InlineRadixTopK(
                 curTileK -= static_cast<int32_t>(eqCount);
             }
         }
+
+        // Signal next tile data ready, flip ping-pong flag
+        if (tileId < tileNum_ - 1) {
+            SetFlag<HardEvent::MTE2_V>(mte2ToV);
+        }
+        pingPongFlag = !pingPongFlag;
     }
 
     for (uint32_t i = writeOffset; i < kValue; i++) {
