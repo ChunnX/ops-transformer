@@ -121,8 +121,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v1_bw_loss_accum = ascend_ub.GetWithOffset<float>(1, 195744);
   auto v1_bw_weight_half = ascend_ub.GetWithOffset<half>(32, 195776);
   auto v1_bw_weight = ascend_ub.GetWithOffset<float>(32, 195840);
-  auto v1_bw_weight_2d = ascend_ub.GetWithOffset<float>(4096, 4608);
-  auto v1_bw_row_tmp = ascend_ub.GetWithOffset<float>(256, 0);
+  auto v1_bw_ones = ascend_ub.GetWithOffset<float>(4096, 4608);
   auto v1_bw_p = ascend_ub.GetWithOffset<float>(128, 0);
   auto v1_bw_sy = ascend_ub.GetWithOffset<float>(128, 512);
   auto v1_bw_bmm2 = ascend_ub.GetWithOffset<float>(4096, 20992);
@@ -130,6 +129,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v1_bw_diff_2d = ascend_ub.GetWithOffset<float>(4096, 37376);
   auto v1_bw_mask = ascend_ub.GetWithOffset<float>(4096, 55296);
   auto v1_bw_dw = ascend_ub.GetWithOffset<float>(32, 195968);
+  auto v1_bw_row_tmp = ascend_ub.GetWithOffset<float>(256, 1024);
   auto v1_bw_rg_half = ascend_ub.GetWithOffset<half>(4096, 20992);
   auto v1_bw_log_p = ascend_ub.GetWithOffset<float>(128, 1024);
   auto v1_bw_log_sy = ascend_ub.GetWithOffset<float>(128, 1536);
@@ -467,13 +467,8 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(2);
           AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(2);
           AscendC::Cast(v1_bw_weight[0], v1_bw_weight_half[0], AscendC::RoundMode::CAST_NONE, 32);
-          tl::ascend::Fill<float>(v1_bw_weight_2d[0], 1.000000e+00f, 4096);
+          tl::ascend::Fill<float>(v1_bw_ones[0], 1.000000e+00f, 4096);
           AscendC::PipeBarrier<PIPE_V>();
-          for (int32_t bw_col_chunk = 0; bw_col_chunk < 2; ++bw_col_chunk) {
-            tl::ascend::brcb<float>(v1_bw_row_tmp[0], v1_bw_weight[0], 4, 1, 8);
-            AscendC::PipeBarrier<PIPE_V>();
-            tl::ascend::mul_mask<float>(v1_bw_weight_2d[(bw_col_chunk * 64)], v1_bw_weight_2d[(bw_col_chunk * 64)], v1_bw_row_tmp[0], 0xFFFFFFFFFFFFFFFF, 0, 32, 1, 1, 0, 16, 16, 1);
-          }
           AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(3);
           for (int32_t n_idx_4 = 0; n_idx_4 < 16; ++n_idx_4) {
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(3);
@@ -492,20 +487,19 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Exp(v1_bw_mask[0], v1_bw_mask[0], 4096);
             AscendC::PipeBarrier<PIPE_V>();
-            {
-            AscendC::Muls(v1_bw_mask[0], v1_bw_mask[0], -1.000000e+00f, 4096);
-            }
+            AscendC::Sub(v1_bw_mask[0], v1_bw_ones[0], v1_bw_mask[0], 4096);
             AscendC::PipeBarrier<PIPE_V>();
-            {
-            AscendC::Adds(v1_bw_mask[0], v1_bw_mask[0], 1.000000e+00f, 4096);
-            }
             AscendC::Mul(v1_bw_bmm2[0], v1_bw_bmm2[0], v1_bw_diff_2d[0], 4096);
             AscendC::PipeBarrier<PIPE_V>();
             tl::ascend::reduce_sum<float,  32,  128,  -1>(v1_bw_dw[0], v1_bw_bmm2[0], tmp_ub[0], true);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Add(v1_bw_dw_accum[0], v1_bw_dw_accum[0], v1_bw_dw[0], 32);
-            AscendC::Mul(v1_bw_diff_2d[0], v1_bw_weight_2d[0], v1_bw_diff_2d[0], 4096);
-            AscendC::PipeBarrier<PIPE_V>();
+            for (int32_t bw_col_chunk = 0; bw_col_chunk < 2; ++bw_col_chunk) {
+              tl::ascend::brcb<float>(v1_bw_row_tmp[0], v1_bw_weight[0], 4, 1, 8);
+              AscendC::PipeBarrier<PIPE_V>();
+              tl::ascend::mul_mask<float>(v1_bw_diff_2d[(bw_col_chunk * 64)], v1_bw_diff_2d[(bw_col_chunk * 64)], v1_bw_row_tmp[0], 0xFFFFFFFFFFFFFFFF, 0, 32, 1, 1, 0, 16, 16, 1);
+              AscendC::PipeBarrier<PIPE_V>();
+            }
             AscendC::Mul(v1_bw_diff_2d[0], v1_bw_diff_2d[0], v1_bw_mask[0], 4096);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Cast(v1_bw_rg_half[0], v1_bw_diff_2d[0], AscendC::RoundMode::CAST_RINT, 4096);
