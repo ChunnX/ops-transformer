@@ -175,17 +175,13 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     const bool hasProjectionWork = constInfo.projectionBatchSize > 0;
     const bool isXCacheUpdateOnly = isExistXCache_ && !hasProjectionWork && constInfo.xCacheUpdateBatchSize > 0;
     if ASCEND_IS_AIV {
-        if (isExistXCache_) {
+        if (isXCacheUpdateOnly) {
             blockVec_.InitParams(constInfo, tools_);
             blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
                             cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
-            if (hasProjectionWork) {
-                blockVec_.InitBuffers(pipe_);
-            } else if (isXCacheUpdateOnly) {
-                // UpdateXCache still needs InitParams/Init for constInfo and GM tensor bindings,
-                // but only this small buffer is used when no projection work remains.
-                blockVec_.InitXCacheUpdateBuffers(pipe_);
-            }
+            // UpdateXCache still needs InitParams/Init for constInfo and GM tensor bindings,
+            // but only this small buffer is used when no projection work remains.
+            blockVec_.InitXCacheUpdateBuffers(pipe_);
         }
     }
 
@@ -211,12 +207,14 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         blockCube_.InitBuffers(pipe_);
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
     } else {
-        if (!isExistXCache_) {
-            blockVec_.InitParams(constInfo, tools_);
-            blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
-                            cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
-            blockVec_.InitBuffers(pipe_);
-        }
+        // Projection must copy the finalized split/workspace fields into BlockVec.
+        // The x-cache path used to initialize BlockVec before CalcSplitCoreInfo(),
+        // SplitK(), and InitWorkspace(), leaving fields such as kBaseNum, dbSize,
+        // and mm1KvResSize stale while Cube used the updated values.
+        blockVec_.InitParams(constInfo, tools_);
+        blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
+                        cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
+        blockVec_.InitBuffers(pipe_);
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm, vec1ResGm, vec2InputGm);
     }
 }
