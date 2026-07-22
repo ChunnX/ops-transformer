@@ -365,6 +365,8 @@ private:
     uint32_t headDimAlign_ = 0;
     uint32_t mBaseSize_ = 128;
     uint32_t mFdBaseSize_ = 8;
+    bool vectorizeFlag_ = false;
+    NpuArch npuArch_ = NpuArch::DAV_2201;
 
     QSFATilingInfo *qsfaInfo_ = nullptr;
 };
