@@ -119,14 +119,11 @@ private:
     GM_ADDR cGm{};
 
     uint32_t rankId{0};
-    uint32_t headTileCnt{0}; // 长块数量
-    uint32_t tailTileCnt{0}; // 短块数量
     int32_t  commTurn{0};     // 总流水步数
     uint32_t rankSize{0};    // 卡数
     uint64_t axisM{0};     // M 轴总大小
     uint64_t axisKa{0};    // K 轴大小
     uint64_t headMSize{0};   // 长块 M 大小
-    uint64_t tailMSize{0};   // 短块 M 大小
     uint64_t scaleKaSize{0};   // Scale 的 K 轴字节长度
     uint64_t rankDataBytes{0};
   } baseParams_;
@@ -238,9 +235,6 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
   const allToAllMatmulTilingData *tilingData)
 {
   baseParams_.headMSize = tilingData->commTilingData.splitAxisTileSize;
-  baseParams_.tailMSize = tilingData->commTilingData.splitAxisTailSize;
-  baseParams_.headTileCnt = tilingData->commTilingData.splitAxisTileCnt;
-  baseParams_.tailTileCnt = tilingData->commTilingData.splitAxisTailCnt;
   baseParams_.commTurn = tilingData->commTilingData.splitAxisTileCnt
                       + tilingData->commTilingData.splitAxisTailCnt;
 
@@ -316,7 +310,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 } // namespace Apace
 
 [[bisheng::core_ratio(1, 1)]]
-__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E4M3_Hcomm(
+__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E4M3_Udma(
                           __gm__ Apace::AivComm::CommContext *hcommCtx,
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
@@ -330,7 +324,7 @@ __global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E4M3_H
 }
 
 [[bisheng::core_ratio(1, 1)]]
-__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE5M2E5M2_Hcomm(
+__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE5M2E5M2_Udma(
                           __gm__ Apace::AivComm::CommContext *hcommCtx,
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
@@ -344,7 +338,7 @@ __global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE5M2E5M2_H
 }
 
 [[bisheng::core_ratio(1, 1)]]
-__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E5M2_Hcomm(
+__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E5M2_Udma(
                           __gm__ Apace::AivComm::CommContext *hcommCtx,
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
@@ -358,7 +352,7 @@ __global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E5M2_H
 }
 
 [[bisheng::core_ratio(1, 1)]]
-__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE5M2E4M3_Hcomm(
+__global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE5M2E4M3_Udma(
                           __gm__ Apace::AivComm::CommContext *hcommCtx,
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
