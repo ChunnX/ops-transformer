@@ -49,10 +49,14 @@ constexpr uint32_t ATTR_COMM_ALG_INDEX = 7;                // 通信算法配置
 constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK_INDEX = 8; // 每个 rank 的最大 token 数(bs数量)
 constexpr uint32_t ATTR_ACTIVATION_INDEX = 9;              // 激活函数类型（如 "swiglu"）
 constexpr uint32_t ATTR_ACTIVATION_CLAMP_INDEX = 10;       // 激活函数 clamp 值
-constexpr uint32_t ATTR_ACTIVATION_OUT_DTYPE_INDEX = 11;   // 激活函数输出数据类型
-constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 12;      // weight1 是否转置
-constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 13;      // weight2 是否转置
-constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 14;     // weight1 交错模式
+constexpr uint32_t ATTR_ACTIVATION_CLAMP_MODE_INDEX = 11;  // 激活函数 clamp 模式（0=前clamp, 1=后clamp）
+constexpr uint32_t ATTR_ACTIVATION_ALPHA_INDEX = 12;       // 激活函数 alpha 参数
+constexpr uint32_t ATTR_ACTIVATION_BETA_INDEX = 13;        // 激活函数 beta 参数
+constexpr uint32_t ATTR_ACTIVATION_LINEAR_BETA_INDEX = 14; // 激活函数 linear_beta 参数
+constexpr uint32_t ATTR_ACTIVATION_OUT_DTYPE_INDEX = 15;   // 激活函数输出数据类型
+constexpr uint32_t ATTR_TRANSPOSE_WEIGHT1_INDEX = 16;      // weight1 是否转置
+constexpr uint32_t ATTR_TRANSPOSE_WEIGHT2_INDEX = 17;      // weight2 是否转置
+constexpr uint32_t ATTR_WEIGHT1_INTERLEAVE_INDEX = 18;     // weight1 交错模式
 
 // 输入 tensor 索引
 constexpr uint32_t CONTEXT_INDEX = 0;        // context，shape = [?]

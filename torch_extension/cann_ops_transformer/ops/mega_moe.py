@@ -36,7 +36,9 @@ class _MegaMoeOpBuilder(OpBuilder):
             "int max_recv_token_num=0, " \
             "int dispatch_quant_mode=0, int combine_quant_mode=0, " \
             "str comm_alg=\"\", int num_max_tokens_per_rank=0, str activation=\"swiglu\", " \
-            "float? activation_clamp=None, " \
+            "float? activation_clamp=None, int? activation_clamp_mode=None, " \
+            "float? activation_alpha=None, float? activation_beta=None, " \
+            "float? activation_linear_beta=None, " \
             "int? dispatch_quant_out_dtype=None,  " \
             "int? weight1_type=None, int? weight2_type=None, int? topo_type=None, " \
             "int? rank_num_per_server=None) -> (Tensor, Tensor)"
@@ -53,6 +55,8 @@ class _MegaMoeOpBuilder(OpBuilder):
                               max_recv_token_num=0, dispatch_quant_mode=0,
                               combine_quant_mode=0, comm_alg="",
                               num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
+                              activation_clamp_mode=None,
+                              activation_alpha=None, activation_beta=None, activation_linear_beta=None,
                               dispatch_quant_out_dtype=None,
                               weight1_type=None, weight2_type=None, topo_type=None, rank_num_per_server=None):
             torch._check(
@@ -81,8 +85,10 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   max_recv_token_num=0, dispatch_quant_mode=0,
                   combine_quant_mode=0, comm_alg="",
                   num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
+                  activation_clamp_mode=None,
+                  activation_alpha=None, activation_beta=None, activation_linear_beta=None,
                   dispatch_quant_out_dtype=None,
-                   weight1_type=None, weight2_type=None, topo_type=None, rank_num_per_server=None):
+                  weight1_type=None, weight2_type=None, topo_type=None, rank_num_per_server=None):
     _op_module = _mega_moe_op_builder.load()
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
@@ -90,7 +96,9 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
         shared_weight1, shared_weight2, shared_weight_scales1, shared_weight_scales2,
         shared_bias1, shared_bias2,
         max_recv_token_num, dispatch_quant_mode, combine_quant_mode, comm_alg,
-        num_max_tokens_per_rank, activation, activation_clamp, dispatch_quant_out_dtype,
+        num_max_tokens_per_rank, activation, activation_clamp,
+        activation_clamp_mode, activation_alpha, activation_beta, activation_linear_beta,
+        dispatch_quant_out_dtype,
         weight1_type, weight2_type, topo_type, rank_num_per_server)
 
 
@@ -250,6 +258,10 @@ def mega_moe(
     x_active_mask: Optional[torch.Tensor] = None,
     activation: str = "swiglu",
     activation_clamp: Optional[float] = None,
+    activation_clamp_mode: Optional[int] = None,
+    activation_alpha: Optional[float] = None,
+    activation_beta: Optional[float] = None,
+    activation_linear_beta: Optional[float] = None,
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
     shared_l1_weights: Optional[List[torch.Tensor]] = None,
@@ -287,6 +299,10 @@ def mega_moe(
         num_max_tokens_per_rank=sym_buffer.num_max_tokens_per_rank,
         activation=activation,
         activation_clamp=activation_clamp,
+        activation_clamp_mode=activation_clamp_mode,
+        activation_alpha=activation_alpha,
+        activation_beta=activation_beta,
+        activation_linear_beta=activation_linear_beta,
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         weight1_type=weight1_type,
         weight2_type=weight2_type,
