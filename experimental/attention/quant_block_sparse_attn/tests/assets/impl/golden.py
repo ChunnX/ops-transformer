@@ -1,7 +1,7 @@
 #!/usr/bin/python
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
-# Copyright (c) 2026 Huawei Technologies Co., Ltd.
+# Copyright (c) 2024 Huawei Technologies Co., Ltd.
 # This program is free software, you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
 # Please refer to the License for details. You may not use this file except in compliance with the License.
@@ -68,7 +68,9 @@ def infer_geometry(query, key, layout_q, cu_seqlens_q, cu_seqlens_kv, seqused_q,
         q_lengths = to_list(seqused_q) or [S1] * B
     else:
         T, N1, D = [int(x) for x in query.shape]
-        N2 = key.shape[1] if key.dim() == 4 else key.shape[1]
+        # PA layout: key shape is (num_blocks, N2, block_size, D)
+        # TND layout: key shape is (total_tokens, N2, D)
+        N2 = key.shape[1]
         q_lengths = to_list(seqused_q) or lengths_from_prefix(cu_seqlens_q)
         B = len(q_lengths)
         S1 = max(q_lengths) if q_lengths else T
@@ -76,10 +78,14 @@ def infer_geometry(query, key, layout_q, cu_seqlens_q, cu_seqlens_kv, seqused_q,
     kv_lengths = to_list(seqused_kv) or lengths_from_prefix(cu_seqlens_kv)
     if not kv_lengths:
         if key.dim() == 4:
-            S2 = key.shape[0] * key.shape[1] // N2 if key.dim() == 4 else 0
+            # PA layout: (num_blocks, N2, block_size, D) -> total_kv_len = num_blocks * block_size
+            num_blocks = key.shape[0]
+            block_size = key.shape[2]
+            S2 = num_blocks * block_size
         else:
-            S2 = 0
-        kv_lengths = [S2] * B
+            # TND layout: (total_tokens, N2, D)
+            S2 = key.shape[0]
+        kv_lengths = [S2] * B if B > 0 else [S2]
 
     return B, S1, N1, N2, D, q_lengths, kv_lengths
 
@@ -160,4 +166,5 @@ def cpu_quant_block_sparse_attn(query, key, value, q_descale, k_descale, v_desca
     if not return_softmax_lse:
         softmax_lse = torch.empty(0, dtype=torch.float32)
 
-    return attention_out, softmax_lse
+    # TTK spec requires golden to return a list (one element per output)
+    return [attention_out, softmax_lse]
