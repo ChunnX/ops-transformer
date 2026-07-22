@@ -67,7 +67,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseFlashMlaGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashMlaGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSparseFlashMlaGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashMlaGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnSparseFlashMlaGradGetWorkspaceSize(
@@ -124,9 +124,9 @@ aclnnStatus aclnnSparseFlashMlaGrad(
         <colgroup>
             <col style="width: 220px">
             <col style="width: 120px">
-            <col style="width: 200px">  
-            <col style="width: 400px">  
-            <col style="width: 212px">  
+            <col style="width: 200px">
+            <col style="width: 400px">
+            <col style="width: 212px">
             <col style="width: 100px">
             <col style="width: 290px">
             <col style="width: 145px">
@@ -542,7 +542,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>dCmpKvOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示cmpKvOptional的梯度。</td>
@@ -555,7 +555,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>dSinksOutOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示sinksOptional的梯度。</td>
@@ -568,7 +568,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>oriSoftmaxL1NormOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示query与oriKvOptional计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
@@ -581,7 +581,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
             </td>
             <td>√</td>
         </tr>
-        <tr>  
+        <tr>
             <td>cmpSoftmaxL1NormOptional（aclTensor*）</td>
             <td>输出</td>
             <td>表示query与cmpKvOptional计算得出的softmax L1Norm结果，公式为reduceG(softmax)/G。</td>
@@ -601,7 +601,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -680,7 +680,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -783,7 +783,7 @@ aclnnStatus aclnnSparseFlashMlaGrad(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -1017,7 +1017,7 @@ int main() {
   aclOpExecutor* executor;
   ret = aclnnSparseFlashMlaGradGetWorkspaceSize(q, dOut, out, lse, oriKv, cmpKv, nullptr, nullptr, cuSeqQLen, cuSeqOriKvLen, cuSeqCmpKvLen,
             nullptr, nullptr, nullptr, cmpResidualKv, nullptr, nullptr, sinks, metadata, scaleValue, cmpRatio, oriMaskMode, cmpMaskMode, oriWinLeft, oriWinRight,
-            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm, 
+            layoutQ, layoutKv, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm,
             &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("SparseFlashMlaGradGetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
 

@@ -56,7 +56,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionUnpaddingScoreGradV4”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFlashAttentionUnpaddingScoreGradV4”接口执行计算。
 
 ```c++
 aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4GetWorkspaceSize(
@@ -430,7 +430,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1202px"><colgroup>
@@ -502,7 +502,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -528,12 +528,12 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
   - 每个batch相同时，shape为1NHSkv(H=1024)。
   - TND场景下，每个batch段内部仍按[N, Sq_i, Skv_i]生成，但存储与传参时统一flatten。若第i个batch段的真实query长度为Sq_i、真实key/value长度为Skv_i，则该段PSE元素个数为N * Sq_i * Skv_i，整段PSE总长度pseTotalLen为sum_i(N * Sq_i * Skv_i)。
   - 如不使用该参数可传入nullptr。
-- sparseMode的约束如下: 
+- sparseMode的约束如下:
   - 当所有的attenMaskOptional的shape小于2048且相同的时候，建议使用default模式，来减少内存使用量；
   - 配置为1、2、3时，用户配置的preTokens、nextTokens不会生效；
   - 配置为0、4时，须保证attenMaskOptional与preTokens、nextTokens的范围一致。
   - 用户不特意指定时建议传入0。
-  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode参数说明.md)。
+  - sparse不同模式的详细说明请参见[sparse模式说明](../../../docs/zh/context/sparse_mode_introduction.md)。
   - 配置为7时，不支持可选输入pseShiftOptional。
 - 部分场景下，如果计算量过大可能会导致算子执行超时（aicore error类型报错，errorStr为：timeout or trap error），此时建议做轴切分处理，注：这里的计算量会受B、S、N、D等参数的影响，值越大计算量越大。
 - prefixOptional稀疏计算仅支持压缩场景，sparseMode=6，当Sq > Skv时，prefix的N值取值范围\[0, Skv\]，当Sq <= Skv时，prefix的N值取值范围\[Skv-Sq, Skv\]。
@@ -544,7 +544,7 @@ aclnnStatus aclnnFlashAttentionUnpaddingScoreGradV4(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>

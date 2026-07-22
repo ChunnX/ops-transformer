@@ -22,11 +22,11 @@
 - 计算公式：
 
     **TopK模式：**
-    
+
     **Step 1: 归一化**
-    
+
     根据normType对输入x做归一化：
-    
+
     $$
     normOut =
     \begin{cases}
@@ -35,72 +35,72 @@
         \sqrt{\text{Softplus}(x)},     & normType = 2\quad \text{(仅Ascend 950PR/Ascend 950DT支持)}
     \end{cases}
     $$
-    
+
     **Step 2: 加偏置**
-    
+
     若bias不为空，加偏置得到用于选择的值：
-    
+
     $$
     normValue = normOut + bias
     $$
-    
+
     否则 $normValue = normOut$。
-    
+
     **Step 3: 分组筛选**（仅groupCount > 1 时执行）
-    
+
     将normValue按groupCount分组，根据groupSelectMode计算每组得分：
-    
+
     $$
     groupedValue = Reshape(normValue,\ [batch,\ groupCount,\ -1])
     $$
-    
+
     $$
     groupScore = \begin{cases}
       ReduceMax(groupedValue,\ dim=-1), & groupSelectMode = 0 \\
       ReduceSum(TopK(groupedValue,\ k=2,\ dim=-1),\ dim=-1), & groupSelectMode = 1
     \end{cases}
     $$
-    
+
     选取得分最高的kGroup个组，将未选中组的对应位置置为 $-\infty$：
-    
+
     $$
     groupIdx = TopK(groupScore,\ k=kGroup).indices
     $$
-    
+
     $$
     normValue = Mask(groupedValue,\ groupIdx,\ fillValue=-\infty)
     $$
-    
+
     **Step 4: Top-K专家选择**
-    
+
     对normValue取Top-K得到专家索引，这里只需要expertIdxOut：
-    
+
     $$
     y, expertIdxOut = TopK(normValue[groupIdx, :],\ k=k)
     $$
-    
+
     **Step 5: Renorm与缩放**
-    
+
     根据expertIdxOut从normOut中取出对应的k个专家得分：
-    
+
     $$
     gathered = normOut[\text{expertIdxOut}]
     $$
-    
+
     normType=1 or normType=2 时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm：
-    
+
     $$
     if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
     $$
-    
+
     $$
     \quad yOut = \frac{gathered}{ReduceSum(normOut,\ dim=-1) + eps}
     $$
-    
+
     否则 $yOut = gathered$
-    
+
     最终输出：
-    
+
     $$
     yOut = yOut \times routedScalingFactor
     $$
@@ -127,37 +127,37 @@
     $$
 
     **Step 2: Hash索引查找**
-    
+
     根据inputIds从tid2eid映射表获取专家索引：
-    
+
     $$
     expertIdxOut = tid2eid[inputIds, :]
     $$
-    
+
     其中tid2eid的shape为[numKeys, k]，inputIds的shape为[batch]，每个inputIds值对应一行k个专家索引。
-    
+
     **Step 3: Gather与缩放**
-    
+
     根据expertIdxOut从normOut中取出对应的k个专家得分：
-    
+
     $$
     gathered = normOut[expertIdxOut]
     $$
-    
+
     normType=1 or normType=2 时做归一化；normType=0 时，renorm参数生效，renorm=1 时做renorm：
-    
+
     $$
     if\ (normType = 1\ or\ normType = 2)\ or\ (normType = 0\ and\ renorm = 1):
     $$
-    
+
     $$
     \quad yOut = \frac{gathered}{ReduceSum(gathered) + eps}
     $$
-    
+
     否则 $yOut = gathered$
-    
+
     最终输出：
-    
+
     $$
     yOut = yOut \times routedScalingFactor
     $$
@@ -407,7 +407,7 @@ aclnnStatus aclnnMoeGatingTopKV2(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -493,7 +493,7 @@ aclnnStatus aclnnMoeGatingTopKV2(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -522,7 +522,7 @@ aclnnStatus aclnnMoeGatingTopKV2(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include "acl/acl.h"
