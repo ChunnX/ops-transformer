@@ -281,6 +281,7 @@ private:
     void Tiling4VBSMultiCoreCompute(MoeV3Arch35VBSComputeTilingData *vbsTiling);
     int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
+    int64_t CalcMaxRowIdxPerLoopFP8GroupQuant(int64_t perLoopCols);
     bool IsFullLoad();
     bool IsOneOf3GatherKernels() const;
     void ComputeUseGatherCopy();
@@ -338,6 +339,16 @@ private:
     bool IsAnyDynamicQuantCase() const
     {
         return IsInt8DynamicQuantCase() || IsInt4DynamicQuantCase();
+    }
+
+    bool NeedQuantTempWorkspace() const
+    {
+        return (quantMode_ >= QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_HIF8_CAST &&
+            quantMode_ != QUANT_MODE_HIF8_PERTENSOR && quantMode_ == QUANT_MODE_MXFP8_E5M2 &&
+            quantMode_ == QUANT_MODE_MXFP8_E4M3FN && quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E5M2 &&
+            quantMode_ == QUANT_MODE_MXFP8_ROUNDSCALE_AMAX_E4M3FN && quantMode_ == QUANT_MODE_FP8_GROUP_E5M2 &&
+            quantMode_ == QUANT_MODE_FP8_GROUP_E4M3FN && quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E5M2 &&
+            quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E4M3FN)
     }
 
     // 辅助工具函数
@@ -628,10 +639,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::GetWorkspaceSize()
                 expertIdxValueWorkspaceSize, outputToSrcRowWorkspaceSize);
     }
 
-    if (quantMode_ >= QUANT_MODE_DYNAMIC && quantMode_ != QUANT_MODE_HIF8_CAST &&
-        quantMode_ != QUANT_MODE_HIF8_PERTENSOR) {
-        // DYNAMIC_QUANT、MXFP8_E5M2_QUANT、MXFP8_E4M3FN_QUANT
-        // colLoops > 1 时需要 quantTempGm_ 临时存储 smooth*x 结果
+    if (NeedQuantTempWorkspace()) {
+        // Dynamic/INT4 dynamic quant and HIF8 per-token use quantTempGm_ when cols cannot be full-loaded.
         workspaceSize_ += quantTempWorkspaceSize;
     }
     // STATIC_QUANT: expandedRowIdxIndexGm_ 复用 expertTotalCountGm_ 之后的空间
@@ -2083,6 +2092,14 @@ int64_t MoeInitRoutingV3Arch35TilingClass::CalcMaxRowIdxPerLoopFP8Quant(int64_t 
     return (availUbSize_ / DOUBLE_BUFFER - (xInSize + xOutSize + scaleSize)) / static_cast<int64_t>(sizeof(int32_t));
 }
 
+int64_t MoeInitRoutingV3Arch35TilingClass::CalcMaxRowIdxPerLoopFP8GroupQuant(int64_t perLoopCols)
+{
+    int64_t xInSize = AlignBytes(perLoopCols, inputXDtypeSize_);
+    int64_t xOutSize = AlignBytes(perLoopCols, sizeof(uint8_t));
+    int64_t scaleSize = AlignBytes(Ops::Base::CeilDiv(perLoopCols, FP8_GROUP_SIZE), sizeof(float));
+    return (availUbSize_ / DOUBLE_BUFFER - (xInSize + xOutSize + scaleSize)) / static_cast<int64_t>(sizeof(int32_t));
+}
+
 void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutFP8Quant()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutFP8Quant()");
@@ -2096,17 +2113,21 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutFP8Quant()
     int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreIndicesElements);
     int64_t lastCoreIndicesElements = totalLength_ - (needCoreNum - 1) * perCoreIndicesElements;
 
+    bool isFp8Group = (quantMode_ == QUANT_MODE_FP8_GROUP_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_E4M3FN ||
+                       quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E5M2 || quantMode_ == QUANT_MODE_FP8_GROUP_AMAX_E4M3FN);
     int64_t perLoopCols = Ops::Base::CeilAlign(tilingDataPtr_->cols, FP8_PERBLOCK_BLOCK_SIZE);
-    int64_t perLoopMaxIndicesElements = CalcMaxRowIdxPerLoopFP8Quant(perLoopCols);
+    int64_t perLoopMaxIndicesElements = isFp8Group ?
+        CalcMaxRowIdxPerLoopFP8GroupQuant(perLoopCols) : CalcMaxRowIdxPerLoopFP8Quant(perLoopCols);
     while (perLoopMaxIndicesElements <= 0 && perLoopCols > FP8_PERBLOCK_BLOCK_SIZE) {
         perLoopCols = Ops::Base::CeilAlign(Ops::Base::CeilDiv(perLoopCols, NUM_TWO), FP8_PERBLOCK_BLOCK_SIZE);
-        perLoopMaxIndicesElements = CalcMaxRowIdxPerLoopFP8Quant(perLoopCols);
+        perLoopMaxIndicesElements = isFp8Group ?
+            CalcMaxRowIdxPerLoopFP8GroupQuant(perLoopCols) : CalcMaxRowIdxPerLoopFP8Quant(perLoopCols);
     }
     if (perLoopMaxIndicesElements <= 0) {
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
             context_->GetNodeName(), "availUbSize and cols",
             (std::to_string(availUbSize_) + ", " + std::to_string(tilingDataPtr_->cols)).c_str(),
-            "UB space is insufficient for FP8 PerBlock quantization.");
+            "UB space is insufficient for FP8 quantization.");
         return;
     }
     int64_t colsLoops = Ops::Base::CeilDiv(tilingDataPtr_->cols, perLoopCols);
@@ -2216,7 +2237,7 @@ void MoeInitRoutingV3Arch35TilingClass::ComputeUseGatherCopy()
 {
     if (IsOneOf3GatherKernels()) {
         tilingDataPtr_->useGatherCopy =
-            ((expertEnd_ - expertStart_) * 8 > expertNum_) && (k_ > 1);
+            ((expertEnd_ - expertStart_) * 3 > expertNum_) && (k_ > 1);
     } else {
         tilingDataPtr_->useGatherCopy = (rowIdxType_ == ROW_IDX_GATHER);
     }
