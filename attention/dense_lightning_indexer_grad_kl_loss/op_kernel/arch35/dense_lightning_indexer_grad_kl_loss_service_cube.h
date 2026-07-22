@@ -801,7 +801,6 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34Deter(const DLIGradKL
             LocalTensor<MM12_OUT_T> l0cTensor = cL0TensorPingPong[l0abPingPongFlag & 1];
 
             uint32_t dKeyGmOffset = constInfo.dKeyDeterGmOffset +
-                                    info.taskId * constInfo.dKeyDeterGmLength +
                                     s2InnerIdx * constInfo.s2BaseBlk * constInfo.n2IndexSize * constInfo.dSizeQueryIndex +
                                     n2IndexId * constInfo.dSizeQueryIndex;
             auto dstGm = dKeyIndexDeterGmFloat[dKeyGmOffset];

@@ -966,13 +966,10 @@ ge::graphStatus DenseLightningIndexerGradKLLossTilingBase::GetWorkspaceSize()
     if (deterministic) {
         uint64_t coreNum = dliGradkllossMultiCoreParams_->get_coreNum();
         dKeyIndexDeterGmSize =
-            coreNum * dliGradkllossBaseParams_->get_maxLoopSize() *
-            S2_BASE_STEP * n2IndexSize * dSizeQueryIndex * sizeof(float);
+            coreNum * S2_BASE_STEP * n2IndexSize * dSizeQueryIndex * sizeof(float);
         lossDeterGmSize =
-            coreNum * AIC_AIV_RATIO * dliGradkllossBaseParams_->get_maxLoopSize() *
-            optiling::DETER_LOSS_TMP_GM_NUM * sizeof(float);
-        coreRuninfoDeterGmSize = coreNum * dliGradkllossBaseParams_->get_maxLoopSize() *
-            DETER_CORE_INFO_TMP_GM_NUM * sizeof(int64_t);
+            coreNum * AIC_AIV_RATIO * optiling::DETER_LOSS_TMP_GM_NUM * sizeof(float);
+        coreRuninfoDeterGmSize = coreNum * DETER_CORE_INFO_TMP_GM_NUM * sizeof(int64_t);
     }
 
     uint64_t singlecoreTotalSize =
