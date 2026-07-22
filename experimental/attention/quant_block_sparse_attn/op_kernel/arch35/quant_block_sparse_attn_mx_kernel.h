@@ -82,10 +82,10 @@ public:
         seqUsedQGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedQ);
         seqUsedKvGm.SetGlobalBuffer((__gm__ int32_t *)seqUsedKv);
         InitConstInfo();
-        InitAttenMaskInfo();
         InitMMResBuf();
         cubeBlock.Init(pipe, &l1BufferManager, queryPtr, keyPtr, valuePtr, blockTable, qScale, kScale, vScale);
-        vecBlock.Init(pipe, pScale, softmaxLse, attentionOut, attenMask, attenMaskInfo);
+        vecBlock.Init(pipe, pScale, softmaxLse, attentionOut, attenMask,
+                      tilingData->attenMaskParams.attenMaskS2Size);
     }
 
     __aicore__ inline void Process()
@@ -117,26 +117,19 @@ private:
         }
 
         const auto &baseParams = tilingData->baseParams;
-        const auto &attenMaskParams = tilingData->attenMaskParams;
         const auto &pageAttentionParams = tilingData->pageAttentionParams;
         const auto &sparseParams = tilingData->sparseParams;
         const auto &scaleParams = tilingData->scaleParams;
 
-        constInfo.t1Size = baseParams.t1Size;
         constInfo.n2Size = baseParams.n2Size;
         constInfo.gSize = baseParams.gSize;
-        constInfo.n1Size = baseParams.n2Size * baseParams.gSize;
-        constInfo.realN2Size = constInfo.n1Size;
-        constInfo.realGSize = 1U;
-        constInfo.s1Size = baseParams.s1Size;
-        constInfo.s2Size = baseParams.s2Size;
+        constInfo.realN2Size = baseParams.n2Size * baseParams.gSize;
         constInfo.dSize = baseParams.dSize;
         constInfo.dSizeV = baseParams.dSizeV;
         constInfo.scaleValue = baseParams.scaleValue;
         constInfo.isSoftmaxLseEnable = baseParams.isSoftMaxLseEnable != 0U;
         constInfo.isActualLenDimsNull = baseParams.isActualSeqLengthsNull != 0U;
         constInfo.isActualLenDimsKVNull = baseParams.isActualSeqLengthsKVNull != 0U;
-        constInfo.isRowInvalidOpen = attenMaskParams.isRowInvalidOpen != 0U;
         constInfo.coreNum = baseParams.coreNum;
         constInfo.n2GD = constInfo.realN2Size * constInfo.dSize;
         constInfo.attentionOutStride = (constInfo.realN2Size - 1U) * constInfo.dSizeV * sizeof(bfloat16_t);
@@ -158,25 +151,6 @@ private:
         constInfo.qScaleN1D = constInfo.realN2Size * constInfo.queryScaleDSize * constInfo.scaleLastDim;
         constInfo.kScaleN2D = static_cast<uint32_t>(baseParams.kScaleStrides.n2Stride);
         constInfo.valueScaleN2D = static_cast<uint32_t>(baseParams.vScaleStrides.n2Stride);
-    }
-
-    __aicore__ inline void InitAttenMaskInfo()
-    {
-        if constexpr (HAS_ATTEN) {
-            // mask_mode=3 使用 FP8 DN 的 right-down causal offset。
-            const auto &attenMaskParams = tilingData->attenMaskParams;
-            attenMaskInfo.preTokens = attenMaskParams.preTokens;
-            attenMaskInfo.nextTokens = attenMaskParams.nextTokens;
-            attenMaskInfo.compressMode = attenMaskParams.attenMaskCompressMode;
-            attenMaskInfo.attenMaskShapeType = attenMaskBS1S2;
-            attenMaskInfo.attenMaskS1Size = attenMaskParams.attenMaskS1Size;
-            attenMaskInfo.attenMaskS2Size = attenMaskParams.attenMaskS2Size;
-            attenMaskInfo.bandIndex = 0;
-            attenMaskInfo.prefixNAddr = nullptr;
-            attenMaskInfo.attenMaskOffsetPre = 0;
-            attenMaskInfo.computeMode = regbaseutil::AttenMaskComputeMode::NORMAL_MODE;
-            attenMaskInfo.attenMaskS1Offset = 0;
-        }
     }
 
     __aicore__ inline void InitMMResBuf()
@@ -248,17 +222,6 @@ private:
         return loopEnd;
     }
 
-    __aicore__ inline uint32_t GetSparseBlocksPerTask() const
-    {
-        // 一个 512 tile 由 4 个 128 block 或 8 个 64 block 拼成。
-        const uint32_t blockCount = S2_BASE / constInfo.kvSparseBlockSize;
-        if (blockCount == 0U) {
-            return 1U;
-        }
-        return blockCount > regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK ?
-            regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK : blockCount;
-    }
-
     __aicore__ inline bool ShouldMoveSparseBlockBack(int64_t previousBlockIdx, int64_t currentBlockIdx) const
     {
         // 有效 block 升序，无效 block 放末尾。
@@ -296,13 +259,11 @@ private:
         runInfo.mLoop = mLoop;
         runInfo.isValid = true;
         runInfo.bIdx = bn1Idx / constInfo.realN2Size;
-        runInfo.n1Idx = bn1Idx % constInfo.realN2Size;
-        runInfo.realN2Idx = runInfo.n1Idx;
-        runInfo.n2Idx = runInfo.n1Idx / constInfo.gSize;
-        runInfo.gIdx = runInfo.n1Idx % constInfo.gSize;
+        const uint32_t n1Idx = bn1Idx % constInfo.realN2Size;
+        runInfo.realN2Idx = n1Idx;
+        runInfo.n2Idx = n1Idx / constInfo.gSize;
         // s1OuterIdx 是 sparse Q block 下标。MX 的计算上限仍为 M=128，
         // q_block_size=64 时每个 task 只处理对应的 64 行，避免跨两个 sparse 列表。
-        runInfo.gS1Idx = s1OuterIdx * constInfo.qSparseBlockSize;
         runInfo.s1Idx = s1OuterIdx * constInfo.qSparseBlockSize;
         runInfo.queryTokenBase = GetQTokenBase(runInfo.bIdx);
         runInfo.actS1Size = GetActualQSeqLen(runInfo.bIdx);
@@ -318,14 +279,7 @@ private:
             runInfo.vecMbaseIdx = runInfo.actVecMSize;
             runInfo.actVecMSize = runInfo.actMSize - runInfo.actVecMSize;
         }
-        runInfo.sparseBase = sparseBase;
-        runInfo.actSparseLen =
-            sparseSeqLenGm.GetValue((static_cast<uint64_t>(runInfo.bIdx) * constInfo.realN2Size + runInfo.n1Idx) *
-                                        constInfo.maxQb +
-                                    s1OuterIdx);
-        runInfo.sparseBlockStartIdx = s2LoopIdx;
-        runInfo.sparseBlockCount = sparseBlockCount > regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK ?
-            regbasemx::BSA_MX_MAX_SPARSE_BLOCK_PER_TASK : sparseBlockCount;
+        runInfo.sparseBlockCount = sparseBlockCount;
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             runInfo.sparseBlockIdx[i] = sparseIndicesGm.GetValue(sparseBase + s2LoopIdx + i);
         }
@@ -419,6 +373,8 @@ private:
         MxRunInfo taskRunInfo[PRELOAD_TASK_CACHE_SIZE] = {};
         uint64_t loop = 0U;
         uint32_t mLoop = 0U;
+        // Host 已约束 sparse block size 为 64 或 128，因此一个 512 tile 固定由 8 或 4 个 block 组成。
+        const uint32_t sparseBlocksPerTask = S2_BASE / constInfo.kvSparseBlockSize;
         for (uint32_t bn1Idx = bn1StartIdx; bn1Idx < bn1EndIdx; ++bn1Idx) {
             const uint32_t bIdx = bn1Idx / constInfo.realN2Size;
             const uint32_t actualS1Size = GetActualQSeqLen(bIdx);
@@ -440,7 +396,6 @@ private:
                         constInfo.maxKb +
                     static_cast<uint64_t>(s1OuterIdx) * constInfo.maxKb;
                 const uint32_t s2LoopEnd = static_cast<uint32_t>(sparseLen - 1);
-                const uint32_t sparseBlocksPerTask = GetSparseBlocksPerTask();
                 bool hasValidS2Task = false;
                 for (uint32_t s2LoopIdx = 0U; s2LoopIdx <= s2LoopEnd; s2LoopIdx += sparseBlocksPerTask) {
                     MxRunInfo &runInfo = taskRunInfo[loop % PRELOAD_TASK_CACHE_SIZE];
@@ -470,7 +425,6 @@ private:
     TPipe *pipe = nullptr;
     const QuantBlockSparseAttnMxTilingData *__restrict tilingData = nullptr;
     regbasemx::MxConstInfo constInfo;
-    regbaseutil::AttenMaskInfo attenMaskInfo;
     __gm__ uint8_t *queryPtr = nullptr;
     __gm__ uint8_t *keyPtr = nullptr;
     __gm__ uint8_t *valuePtr = nullptr;
