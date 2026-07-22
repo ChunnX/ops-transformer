@@ -63,11 +63,6 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
-        this->Output("cmp_ratio")
-            .ParamType(REQUIRED)
-            .DataType({ge::DT_BF16, ge::DT_FLOAT16})
-            .FormatList({ge::FORMAT_ND});
-            .AutoContiguous();  
         this->Output("d_x")
             .ParamType(REQUIRED)
             .DataType({ge::DT_BF16, ge::DT_FLOAT16})
@@ -95,8 +90,6 @@ public:
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn");   // set value of aclnn support
-        this->AICore().AddConfig("ascend910b", aicore_config);
-        this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend950", aicore_config);
     }
 };

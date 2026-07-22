@@ -82,6 +82,8 @@ constexpr uint32_t MAX_HIDDEN_SIZE = 10240;
 constexpr uint32_t MIN_HIDDEN_SIZE = 1024;
 constexpr uint32_t ALIGN_FACTOR_HIDDEN_SIZE = 512;
 constexpr uint32_t MIN_BLOCK_SIZE = 1;
+constexpr uint32_t MIN_CMP_RATIO = 1;
+constexpr uint32_t MAX_CMP_RATIO = 1;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
@@ -217,7 +219,6 @@ struct CompressorGradBaseShapeInfo {
 };
 
 const std::vector<int> COFF {1, 2};
-const std::vector<int> CMP_RATIO {2, 4, 8, 16, 32, 64, 128};
 const std::vector<uint32_t> HEAD_DIM {128, 512};
 
 struct CompressorGradContext {
@@ -276,11 +277,11 @@ private:
     ge::graphStatus CheckFeatureValueSupport(const T *featureValue, const std::vector<T> &expectFeatureValList,
                                              const std::string &name) const;
     template <typename T>
-    ge::graphStatus CheckAttrValueSupport(const T *attrValue, const std::vector<T> &expectAttrValList,
+    ge::graphStatus CheckAttrValueSupportInterval(const T *attrValue, const std::vector<T> &expectAttrValList,
                                           const std::string &name) const;
     
     template <typename T>
-    ge::graphStatus CheckAttrValueSupport(const T *attrValue, const std::vector<T> &expectAttrValList,
+    ge::graphStatus CheckAttrValueSupportList(const T *attrValue, const T minVal, const T maxVal,
                                           const std::string &name) const;
     template <typename T>
     void LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue, const std::string &name,

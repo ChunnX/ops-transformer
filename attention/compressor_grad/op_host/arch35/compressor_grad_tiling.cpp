@@ -407,7 +407,7 @@ ge::graphStatus CompressorGradTiling::CheckAttrValueSupportInterVal(const T *att
 }
 
 template <typename T>
-ge::graphStatus CompressorGradTiling::CheckAttrValueSupportEnum(const T *attrValue, const std::vector<T> &expectAttrValList,
+ge::graphStatus CompressorGradTiling::CheckAttrValueSupportList(const T *attrValue, const std::vector<T> &expectAttrValList,
                                                         const std::string &name) const
 {
     if (attrValue == nullptr) {
@@ -577,12 +577,6 @@ ge::graphStatus CompressorGradTiling::CheckSingleParaSoftmaxScore() const
     return ge::GRAPH_SUCCESS;
 }
 
-static const std::string CMP_RATIO_NAME = "cmp_ratio";
-static const std::string COFF_NAME = "coff";
-static const std::string D_X_NAME = "d_x";
-static const std::string D_WKV_NAME = "d_wkv";
-static const std::string D_WGATE_NAME = "d_wgate";
-static const std::string D_APE_NAME = "d_ape";
 
 ge::graphStatus CompressorGradTiling::CheckSingleParaKV() const
 {
@@ -679,7 +673,7 @@ ge::graphStatus CompressorGradTiling::CheckSingleParaDApe() const
 
 ge::graphStatus CompressorGradTiling::CheckSingleParaCmpRatio()const
 {
-    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->cmpRatio, CMP_RATIO, CMP_RATIO_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckAttrValueSupportInterVal(context_->cmpRatio, MIN_CMP_RATIO, MAX_CMP_RATIO, CMP_RATIO_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -687,7 +681,7 @@ ge::graphStatus CompressorGradTiling::CheckSingleParaCmpRatio()const
 
 ge::graphStatus CompressorGradTiling::CheckSingleParaCoff() const
 {
-    if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->coff, COFF, COFF_NAME)) {
+    if (ge::GRAPH_SUCCESS != CheckAttrValueSupportList(context_->coff, COFF, COFF_NAME)) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -884,7 +878,10 @@ ge::graphStatus CompressorGradTiling::CheckDtypeConsistency() const
 {
     if (CheckDtypeConsistencyX(context_->wkv.desc, WKV_NAME) != ge::GRAPH_SUCCESS ||
         CheckDtypeConsistencyX(context_->wgate.desc, WGATE_NAME) != ge::GRAPH_SUCCESS ||
-        CheckDtypeConsistencyX(context_->cmpKv.desc, CMP_KV_NAME) != ge::GRAPH_SUCCESS) {
+        CheckDtypeConsistencyX(context_->dCmpKv.desc, D_CMP_KV_NAME) != ge::GRAPH_SUCCESS ||
+        CheckDtypeConsistencyX(context_->dx.desc, D_X_NAME) != ge::GRAPH_SUCCESS ||
+        CheckDtypeConsistencyX(context_->dWkv.desc, D_WKV_NAME) != ge::GRAPH_SUCCESS ||
+        CheckDtypeConsistencyX(context_->dWgate.desc, D_WGATE_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
@@ -893,9 +890,24 @@ ge::graphStatus CompressorGradTiling::CheckDtypeConsistency() const
 ge::graphStatus CompressorGradTiling::CheckDimNumConsistency() const
 {
     auto xDimNum = context_->x.shape->GetStorageShape().GetDimNum();
-    OP_CHECK_IF(xDimNum != context_->cmpKv.shape->GetStorageShape().GetDimNum(),
-                OP_LOGE(context_->opName, "cmpKv dim num should be equal to x: %lu, but got %zu", xDimNum,
-                        context_->cmpKv.shape->GetStorageShape().GetDimNum()),
+    OP_CHECK_IF(xDimNum != context_->dX.shape->GetStorageShape().GetDimNum(),
+                OP_LOGE(context_->opName, "dX dim num should be equal to x: %lu, but got %zu", xDimNum,
+                        context_->dX.shape->GetStorageShape().GetDimNum()),
+                return ge::GRAPH_FAILED);
+    
+    OP_CHECK_IF(xDimNum != context_->dCmpKv.shape->GetStorageShape().GetDimNum(),
+                OP_LOGE(context_->opName, "dCmpKv dim num should be equal to x: %lu, but got %zu", xDimNum,
+                        context_->dCmpKv.shape->GetStorageShape().GetDimNum()),
+                return ge::GRAPH_FAILED);
+    
+    OP_CHECK_IF(xDimNum != context_->softmaxScore.shape->GetStorageShape().GetDimNum() - 1,
+                OP_LOGE(context_->opName, "softmaxScore dim num should be x dim + 1: %lu, but got %zu", xDimNum + 1,
+                        context_->softmaxScore.shape->GetStorageShape().GetDimNum()),
+                return ge::GRAPH_FAILED);
+    
+    OP_CHECK_IF(xDimNum != context_->kv.shape->GetStorageShape().GetDimNum() - 1,
+                OP_LOGE(context_->opName, "kv dim num should be x dim + 1: %lu, but got %zu", xDimNum + 1,
+                        context_->kv.shape->GetStorageShape().GetDimNum()),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
