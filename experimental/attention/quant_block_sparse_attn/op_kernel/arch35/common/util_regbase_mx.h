@@ -37,11 +37,8 @@ struct MxRunInfo {
     uint32_t bIdx = 0U;
     // KV head index。
     uint32_t n2Idx = 0U;
-    uint32_t gS1Idx = 0U;
-    uint32_t gIdx = 0U;
     uint32_t s1Idx = 0U;
     uint32_t realN2Idx = 0U;
-    uint32_t n1Idx = 0U;
 
     // 实际序列长度及两个 AIV 的 M 轴切分。
     uint64_t actS1Size = 1U;
@@ -56,9 +53,6 @@ struct MxRunInfo {
     uint32_t actSingleLoopS2SizeAlign = 0U;
 
     // Sparse block 索引与拼接信息，单 task 最多 8 个 block。
-    uint64_t sparseBase = 0U;
-    int32_t actSparseLen = 0;
-    uint32_t sparseBlockStartIdx = 0U;
     uint32_t sparseBlockCount = 0U;
     // 有效 block id 升序，负 index 在末尾。
     int64_t sparseBlockIdx[BSA_MX_MAX_SPARSE_BLOCK_PER_TASK] = {};
@@ -78,16 +72,11 @@ struct MxRunInfo {
 
 // 基础 shape 与 TND stride；scale/data offset 默认以元素为单位。
 struct MxBaseConstInfo {
-    uint64_t t1Size = 0U;
     uint32_t dSize = 0U;
     uint32_t dSizeV = 0U;
     uint32_t gSize = 0U;
     uint32_t n2Size = 0U;
-    uint32_t n1Size = 0U;
-    uint32_t realGSize = 0U;
     uint32_t realN2Size = 0U;
-    uint64_t s1Size = 0U;
-    uint64_t s2Size = 0U;
     uint32_t coreNum = 0U;
     uint32_t aicIdx = 0U;
     uint32_t aivIdx = 0U;
@@ -129,8 +118,6 @@ struct MxFeatureConstInfo {
     bool isSoftmaxLseEnable = false;
     bool isActualLenDimsNull = false;
     bool isActualLenDimsKVNull = false;
-    // mask 后整行无有效 key 时，V2 写回前将对应 attention output 清零。
-    bool isRowInvalidOpen = false;
 };
 
 struct MxConstInfo : MxBaseConstInfo,
