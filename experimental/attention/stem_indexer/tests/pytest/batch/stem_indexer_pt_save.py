@@ -68,6 +68,11 @@ REQUIRED_COLUMNS = [
     "special_setting",
 ]
 
+# 支持通过环境变量 STEM_INDEXER_CASE_ID 指定只生成特定 case_id（逗号分隔多个）
+# 例: STEM_INDEXER_CASE_ID=SI_WB_001_1,SI_WB_101_1 python3 batch/stem_indexer_pt_save.py ...
+_FILTER_IDS_RAW = os.environ.get("STEM_INDEXER_CASE_ID", "").strip()
+_FILTER_IDS = {item.strip() for item in _FILTER_IDS_RAW.split(",") if item.strip()}
+
 
 def parse_bool(value):
     if isinstance(value, bool):
@@ -141,6 +146,18 @@ def load_csv_test_cases(path_pattern):
                 continue
             test_cases.append(row_to_case(row))
     return test_cases
+
+
+def select_test_cases(test_cases):
+    if not _FILTER_IDS:
+        return test_cases
+
+    filtered = [case for case in test_cases if case.get("case_id") in _FILTER_IDS]
+    print(
+        f"Filter by STEM_INDEXER_CASE_ID={_FILTER_IDS_RAW}: "
+        f"{len(filtered)}/{len(test_cases)} matched."
+    )
+    return filtered
 
 
 def to_cpu_tensor(tensor):
@@ -217,6 +234,7 @@ def main():
 
     torch_npu.npu.set_device(args.device_id)
     test_cases = load_csv_test_cases(args.csv_path)
+    test_cases = select_test_cases(test_cases)
     save_test_cases(test_cases, args.pt_output_dir)
 
 
