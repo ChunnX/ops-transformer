@@ -75,8 +75,8 @@ struct PeermemInfo {
             uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
             uint32_t tokenBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
             if (tilingData->topkWeightsPrefetch == 1) {
-                uint32_t weightBytes = Ops::Base::CeilAlign(
-                    static_cast<uint32_t>(tilingData->topK * sizeof(float)), static_cast<uint32_t>(ALIGN_32));
+                uint32_t weightBytes = Ops::Base::CeilAlign(static_cast<uint32_t>(tilingData->topK * sizeof(float)),
+                                                            static_cast<uint32_t>(ALIGN_32));
                 tokenBytes = Ops::Base::CeilAlign(tokenBytes + weightBytes, static_cast<uint32_t>(ALIGN_32));
             }
             offset += Ops::Base::CeilAlign(
