@@ -32,8 +32,8 @@ C1_TO_V1_P_FLAGS = (4, 5)
 C1_TO_V1_SY_FLAGS = (6, 7)
 V1_TO_C2_FLAGS = (8, 9)
 # TileLang-Ascend cannot emit the mode-1 AIV-pair wait used by the official
-# kernel on A3.  Relay both AIV completion signals through their paired AIC.
-V1_PSY_TO_AIC_FLAGS = (10, 11)
+# kernel on A3.  Mode-2 aggregates the same flag from both AIVs at their AIC.
+V1_PSY_TO_AIC_FLAG = 10
 V1_PSY_RELAY_FLAG = 12
 
 DQUERY = 512
@@ -377,19 +377,15 @@ def tilelang_grad_kl_loss_single_kernel(
                                    GatherKeyIndex_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
                         T.set_flag("mte3", "mte2", cur)
 
-                    # Publish each 1024-row workspace segment as soon
-                    # as its MTE3 drains complete; C1 consumes the matching
-                    # parity slot while V0 gathers the next segment.
-                    if vector_id == 0:
-                        if k_outer % 2 == 0:
-                            T.set_cross_flag("MTE3", V0_TO_C1_P_FLAGS[0])
-                        else:
-                            T.set_cross_flag("MTE3", V0_TO_C1_P_FLAGS[1])
-                    if vector_id == 1:
-                        if k_outer % 2 == 0:
-                            T.set_cross_flag("MTE3", V0_TO_C1_SY_FLAGS[0])
-                        else:
-                            T.set_cross_flag("MTE3", V0_TO_C1_SY_FLAGS[1])
+                    # A mode-2 AIC wait joins the same flag from both AIVs.
+                    # Publish both readiness flags after each AIV finishes its
+                    # half, so C1 cannot observe either workspace prematurely.
+                    if k_outer % 2 == 0:
+                        T.set_cross_flag("MTE3", V0_TO_C1_P_FLAGS[0])
+                        T.set_cross_flag("MTE3", V0_TO_C1_SY_FLAGS[0])
+                    else:
+                        T.set_cross_flag("MTE3", V0_TO_C1_P_FLAGS[1])
+                        T.set_cross_flag("MTE3", V0_TO_C1_SY_FLAGS[1])
 
             T.wait_flag("mte3", "mte2", 0)
             T.wait_flag("mte3", "mte2", 1)
@@ -794,17 +790,13 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     T.wait_flag("mte3", "v", 1)
 
-            if vector_id == 0:
-                T.set_cross_flag("MTE3", V1_PSY_TO_AIC_FLAGS[0])
-            if vector_id == 1:
-                T.set_cross_flag("MTE3", V1_PSY_TO_AIC_FLAGS[1])
+            T.set_cross_flag("MTE3", V1_PSY_TO_AIC_FLAG)
             T.wait_cross_flag(V1_PSY_RELAY_FLAG)
 
     @T.macro
     def relay_vector1_psy():
         with T.Scope("C"):
-            T.wait_cross_flag(V1_PSY_TO_AIC_FLAGS[0])
-            T.wait_cross_flag(V1_PSY_TO_AIC_FLAGS[1])
+            T.wait_cross_flag(V1_PSY_TO_AIC_FLAG)
             T.set_cross_flag("FIX", V1_PSY_RELAY_FLAG)
 
     @T.macro
@@ -1109,9 +1101,9 @@ def tilelang_grad_kl_loss_single_kernel(
             aiv_id = core_id * 2 + vector_id
             clear_base_batches = dkey_clear_total_batches // total_aiv_num
             clear_tail_aivs = dkey_clear_total_batches % total_aiv_num
-            clear_batch_count = clear_base_batches
-            if aiv_id < clear_tail_aivs:
-                clear_batch_count = clear_batch_count + 1
+            clear_batch_count = clear_base_batches + T.if_then_else(
+                aiv_id < clear_tail_aivs, 1, 0
+            )
             clear_batch_start = (
                 aiv_id * clear_base_batches + T.min(aiv_id, clear_tail_aivs)
             )
@@ -1149,19 +1141,21 @@ def tilelang_grad_kl_loss_single_kernel(
             v2_dk_batch_pong = T.alloc_ub(
                 (v2_scatter_batch, DQueryIndex), calc_dtype
             )
-            core_batch_count = v2_base_batches_per_core
-            if core_id < v2_tail_batch_cores:
-                core_batch_count = core_batch_count + 1
+            core_batch_count = v2_base_batches_per_core + T.if_then_else(
+                core_id < v2_tail_batch_cores, 1, 0
+            )
             core_batch_start = (
                 core_id * v2_base_batches_per_core
                 + T.min(core_id, v2_tail_batch_cores)
             )
-            vector_batch_count = (
-                core_batch_count + 1 - vector_id
-            ) // 2
-            vector_batch_start = (
-                core_batch_start
-                + vector_id * ((core_batch_count + 1) // 2)
+            first_vector_batches = (core_batch_count + 1) // 2
+            vector_batch_count = T.if_then_else(
+                vector_id == 0,
+                first_vector_batches,
+                core_batch_count - first_vector_batches,
+            )
+            vector_batch_start = core_batch_start + T.if_then_else(
+                vector_id == 0, 0, first_vector_batches
             )
             aiv_k_start = vector_batch_start * v2_scatter_batch
 
@@ -1347,9 +1341,9 @@ def tilelang_grad_kl_loss_single_kernel(
             aiv_id = core_id * 2 + vector_id
             finalize_base_batches = dkey_finalize_total_batches // total_aiv_num
             finalize_tail_aivs = dkey_finalize_total_batches % total_aiv_num
-            finalize_batch_count = finalize_base_batches
-            if aiv_id < finalize_tail_aivs:
-                finalize_batch_count = finalize_batch_count + 1
+            finalize_batch_count = finalize_base_batches + T.if_then_else(
+                aiv_id < finalize_tail_aivs, 1, 0
+            )
             finalize_batch_start = (
                 aiv_id * finalize_base_batches
                 + T.min(aiv_id, finalize_tail_aivs)
