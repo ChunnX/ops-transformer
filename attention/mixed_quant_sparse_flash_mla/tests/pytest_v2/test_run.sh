@@ -39,6 +39,7 @@ CONSISTENCY_CONFIG_FILE=""
 CONSISTENCY_REPORT_ROOT="./result/mqsmla_consistency"
 CONSISTENCY_DETAIL_SET=0
 CONSISTENCY_SELECTOR_SET=0
+CONSISTENCY_PROBE_ATTEMPTS=1
 
 # ====================== 执行区 ======================
 
@@ -179,6 +180,11 @@ PY
             return 1
         fi
     fi
+    if ! [[ "$CONSISTENCY_PROBE_ATTEMPTS" =~ ^[0-9]+$ ]] || \
+        [ "$CONSISTENCY_PROBE_ATTEMPTS" -lt 1 ] || [ "$CONSISTENCY_PROBE_ATTEMPTS" -gt 100 ]; then
+        echo "错误: --probe-attempts 必须是1到100的整数，当前值: $CONSISTENCY_PROBE_ATTEMPTS"
+        return 1
+    fi
 
     local case_files=()
     local pt_file
@@ -227,8 +233,25 @@ PY
         fi
     fi
 
-    echo "共 $total 条用例；结构化结果目录: $run_dir"
     local process_failures=0
+    local capability_report="$run_dir/runtime_capability.json"
+    export MQSMLA_CONSISTENCY_CAPABILITY_REPORT="$capability_report"
+    echo "共 $total 条用例；结构化结果目录: $run_dir"
+    echo "先执行level 3真实NPU调度探针（$CONSISTENCY_PROBE_ATTEMPTS 次）" | tee -a "$pytest_log"
+    local probe_status
+    if python3 -m batch.consistency.runtime_capability \
+        --output "$capability_report" \
+        --device-id "$DEVICE_ID" \
+        --attempts "$CONSISTENCY_PROBE_ATTEMPTS" 2>&1 | tee -a "$pytest_log"
+    then
+        probe_status=0
+    else
+        probe_status=${PIPESTATUS[0]}
+    fi
+    if [ "$probe_status" -ne 0 ] && [ "$probe_status" -ne 2 ]; then
+        process_failures=$((process_failures + 1))
+    fi
+
     local index=0
     local case_file
     for case_file in "${case_files[@]}"; do
@@ -257,6 +280,7 @@ PY
     fi
     echo "权威汇总: $run_dir/consistency_result_summary.json"
     echo "逐模式结果: $run_dir/results"
+    echo "运行时能力证据: $capability_report"
     echo "pytest文本日志（仅诊断）: $pytest_log"
     return "$aggregate_status"
 }
@@ -291,6 +315,7 @@ show_help() {
     echo "  --pt-dir <目录>     指定pt文件保存/读取目录（默认: mqsmla_testcase）"
     echo "  --result <路径>     指定结果保存路径（默认: ./mqsmla_result.xlsx）"
     echo "  --report-dir <目录> consistency结构化结果根目录；prepare为JSON目录"
+    echo "  --probe-attempts <n> level 3真实NPU调度前置探针次数（1-100，默认1）"
     echo "  --device-id <id>    指定NPU设备ID（默认: 0）"
     echo "  --mode <0|1>        批跑模式: 0=全量批跑(默认), 1=按表格中case批跑"
     echo "  --keep-pt           执行完成后保留pt文件（默认清理，仅batch命令）"
@@ -343,7 +368,7 @@ shift
 if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND" = "batch_exec_graph" ] || [ "$COMMAND" = "batch" ] || [ "$COMMAND" = "consistency" ] || [ "$COMMAND" = "consistency_prepare" ]; then
     while [ $# -gt 0 ]; do
         case "$1" in
-            --excel|--sheet|--pt-dir|--result|--report-dir|--device-id|--mode|--modes|-M|--profile|--config-file|--split-groups|--token-split-sizes|--mode3-batch|--common-tokens|--derived-extra|--seed)
+            --excel|--sheet|--pt-dir|--result|--report-dir|--device-id|--mode|--modes|-M|--profile|--config-file|--split-groups|--token-split-sizes|--mode3-batch|--common-tokens|--derived-extra|--seed|--probe-attempts)
                 if [ $# -lt 2 ] || [ -z "$2" ]; then
                     echo "错误：$1 需要参数值"
                     exit 1
@@ -471,6 +496,14 @@ if [ "$COMMAND" = "batch_save" ] || [ "$COMMAND" = "batch_exec" ] || [ "$COMMAND
                 if [ "$COMMAND" = "consistency" ]; then
                     CONSISTENCY_DETAIL_SET=1
                 fi
+                shift 2
+                ;;
+            --probe-attempts)
+                if [ "$COMMAND" != "consistency" ]; then
+                    echo "错误：--probe-attempts 仅适用于 consistency 命令"
+                    exit 1
+                fi
+                CONSISTENCY_PROBE_ATTEMPTS="$2"
                 shift 2
                 ;;
             --randomize)

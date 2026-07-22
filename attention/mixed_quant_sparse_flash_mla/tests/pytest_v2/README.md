@@ -105,6 +105,7 @@ golden、PT save/load、process 和 `check_result` 均保留；一致性入口�
 | `batch/consistency/relation_manifest.py` | versioned baseline/derived TokenOrigin关系、内容指纹、预检与覆盖清单 |
 | `batch/consistency/suite_config.py` | versioned per-PT suite配置、精确selector及shape-aware预检 |
 | `batch/consistency/result_artifact.py` | 逐模式结果JSON、level3 PASS门禁、完整性检查与聚合 |
+| `batch/consistency/runtime_capability.py` | level3可执行探针、异常恢复短压测及runtime/custom OPP内容指纹 |
 | `batch/consistency/metadata_stub.py` | CPU-only单核到多核候选规划及默认关闭hook约束 |
 | 其余 `batch/consistency/*.py` | adapter、schema、layout、compare、flow和命名配置 |
 
@@ -134,7 +135,8 @@ runtime/custom包组合后，才能验收FD与主算子一致性。临时metadat
 bash test_run.sh consistency \
   --pt-dir /tmp/mqsmla_pt/baseline \
   --config-file ../../../../requs/cases/SMLA_MQSMLA_batch一致性执行配置.json \
-  --report-dir ./result/mqsmla_consistency
+  --report-dir ./result/mqsmla_consistency \
+  --probe-attempts 1
 ```
 
 suite只加载一次，但每个PT分别按operator/case name/PT basename/content SHA256精确匹配，并按
@@ -142,7 +144,11 @@ suite只加载一次，但每个PT分别按operator/case name/PT basename/conten
 `-M 1,2`只保留在旧CLI转换层。
 
 每次执行创建独立run目录，`results/*.json`对应一个`(operator,PT,mode)`，汇总为
-`consistency_result_summary.json`；`pytest.log`仅用于诊断。只有执行报告通过且requested/observed
+`consistency_result_summary.json`，并先写`runtime_capability.json`。探针执行
+`set 3 -> readback -> 普通NPU dispatch -> restore`，不能以setter/getter成功替代可执行性；
+`--probe-attempts 10`可做异常恢复短压测。探针失败时各模式仍完成纯CPU transform/semantic
+oracle预检，但不导入MQ executor，再绑定同一能力证据写`UNSUPPORTED`；因此不会掩盖
+`INVALID_TRANSFORM`。`pytest.log`仅用于诊断。只有探针通过、真实metadata+主算子执行报告通过且requested/observed
 deterministic level均为3，逐模式状态才可写成`PASS`。聚合器还会检查预期artifact数和pytest
 子进程异常，因此skip或退出码0不会被当成NPU通过。完整PASS返回0，真实FAIL返回1，
 `UNSUPPORTED/PARTIAL/INCOMPLETE`等未完成状态返回2。汇总还校验唯一PT数和完整PT/mode矩阵；

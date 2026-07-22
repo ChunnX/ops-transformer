@@ -29,6 +29,7 @@ from .transform import (
 from .metadata_coverage import CoverageContext, MetadataCoverageAnalyzer
 from .metadata_layout import MetadataLayout
 from .reporting import build_input_summary, summarize_tensor
+from .runtime_capability import is_level3_runtime_rejection
 
 
 class DeterministicLevelError(RuntimeError):
@@ -37,6 +38,17 @@ class DeterministicLevelError(RuntimeError):
 
 class BatchConsistencyUnsupportedError(RuntimeError):
     """Raised when the installed runtime rejects deterministic level 3."""
+
+    def __init__(
+        self,
+        message: str,
+        *,
+        reason_code: str = "RUNTIME_LEVEL3_UNSUPPORTED",
+        failure_stage: str = "operator_execution",
+    ):
+        super().__init__(message)
+        self.reason_code = reason_code
+        self.failure_stage = failure_stage
 
 
 class DeterministicLevelGuard:
@@ -66,8 +78,7 @@ class DeterministicLevelGuard:
 
     @staticmethod
     def is_runtime_rejection(error: BaseException) -> bool:
-        message = str(error).lower()
-        return "set_deterministic_level" in message and "only supports configuring 0/1/2" in message
+        return is_level3_runtime_rejection(error)
 
     def __enter__(self) -> "DeterministicLevelGuard":
         self.previous_level = self.current_level()
@@ -77,7 +88,9 @@ class DeterministicLevelGuard:
             self._restore()
             if self.is_runtime_rejection(error):
                 raise BatchConsistencyUnsupportedError(
-                    "The installed torch_npu/CANN runtime rejects deterministic level 3."
+                    "The installed torch_npu/CANN runtime rejects deterministic level 3.",
+                    reason_code="LEVEL3_SET_REJECTED",
+                    failure_stage="set_level",
                 ) from error
             raise
         self.observed_level = self.current_level()
@@ -99,7 +112,9 @@ class DeterministicLevelGuard:
             ) from restore_error
         if error is not None and self.is_runtime_rejection(error):
             raise BatchConsistencyUnsupportedError(
-                "The installed runtime rejected level 3 on the first NPU operation."
+                "The installed runtime accepted level 3 state but rejected operator execution.",
+                reason_code="LEVEL3_ACCEPTED_BUT_OPERATOR_REJECTED",
+                failure_stage="operator_execution",
             ) from error
         return False
 

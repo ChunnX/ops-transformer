@@ -12,8 +12,9 @@
 
 """Opt-in SMLA consistency tests with per-PT config and structured results."""
 
+from functools import lru_cache
 import os
-from typing import Callable, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import pytest
 import torch
@@ -27,14 +28,24 @@ from batch.consistency.result_artifact import (
     ResultStatus,
     write_result_artifact,
 )
+from batch.consistency.runtime_capability import (
+    ERROR as CAPABILITY_ERROR,
+    UNSUPPORTED as CAPABILITY_UNSUPPORTED,
+    load_runtime_capability_evidence,
+)
 from batch.consistency.schema import get_q_lengths
 from batch.consistency.suite_config import (
     ResolvedCaseConfig,
     SuiteConfigError,
     resolve_runtime_case_config,
 )
-from batch.consistency.transform import InvalidTransformError
-from batch.sparse_flash_mla_consistency import create_consistency_flow
+from batch.consistency.transform import (
+    InvalidTransformError,
+    transform_mode1_reorder,
+    transform_mode2_split,
+    transform_mode3_token_partition,
+    transform_mode4_shape_change,
+)
 
 
 OPERATOR = "smla"
@@ -48,6 +59,7 @@ class ConsistencyTestConfig:
     report_dir = os.path.abspath(
         os.environ.get("SMLA_CONSISTENCY_REPORT_DIR", "./result/smla_consistency")
     )
+    capability_report = os.environ.get("SMLA_CONSISTENCY_CAPABILITY_REPORT", "").strip()
 
     @classmethod
     def collect_pt_files(cls) -> List[str]:
@@ -83,6 +95,19 @@ pytestmark = [
 ]
 
 
+@lru_cache(maxsize=1)
+def runtime_capability() -> Optional[Dict]:
+    if not ConsistencyTestConfig.capability_report:
+        return None
+    return load_runtime_capability_evidence(ConsistencyTestConfig.capability_report)
+
+
+def create_flow():
+    from batch.sparse_flash_mla_consistency import create_consistency_flow
+
+    return create_consistency_flow()
+
+
 def load_smla_case(path: str) -> Dict:
     data = torch.load(path, map_location="cpu")
     attach_provenance(data, source_pt=path)
@@ -111,6 +136,7 @@ def record_result(
         report=report,
         reason_code=reason_code,
         reason=reason,
+        runtime_capability=runtime_capability(),
     )
 
 
@@ -190,8 +216,56 @@ def execute_mode(
     path: str,
     mode: ConsistencyMode,
     config: ResolvedCaseConfig,
+    precheck: Callable[[], Any],
     run: Callable[[], Dict],
 ) -> None:
+    try:
+        precheck()
+    except InvalidTransformError as error:
+        skip_with_result(
+            data,
+            path,
+            mode,
+            ResultStatus.INVALID_TRANSFORM,
+            "SEMANTIC_TRANSFORM_REJECTED",
+            str(error),
+            config,
+        )
+    except Exception as error:
+        record_result(
+            data,
+            path,
+            mode,
+            ResultStatus.FAIL,
+            config=config,
+            reason_code="PRECHECK_EXCEPTION",
+            reason=f"{type(error).__name__}: {error}",
+        )
+        raise
+    capability = runtime_capability()
+    if capability is not None:
+        probe = capability["probe"]
+        if probe["status"] == CAPABILITY_UNSUPPORTED:
+            skip_with_result(
+                data,
+                path,
+                mode,
+                ResultStatus.UNSUPPORTED,
+                probe["reason_code"],
+                probe["reason"],
+                config,
+            )
+        if probe["status"] == CAPABILITY_ERROR:
+            record_result(
+                data,
+                path,
+                mode,
+                ResultStatus.FAIL,
+                config=config,
+                reason_code=probe["reason_code"],
+                reason=probe["reason"],
+            )
+            pytest.fail(f"FAIL: runtime capability probe failed: {probe['reason']}")
     try:
         ConsistencyTestConfig.set_device()
         report = run()
@@ -211,7 +285,7 @@ def execute_mode(
             path,
             mode,
             ResultStatus.UNSUPPORTED,
-            "RUNTIME_LEVEL3_UNSUPPORTED",
+            error.reason_code,
             str(error),
             config,
         )
@@ -284,7 +358,8 @@ def test_mode1_reorder(testcase_file):
         testcase_file,
         mode,
         config,
-        lambda: create_consistency_flow().run_mode1(
+        lambda: transform_mode1_reorder(data, order=order, seed=config.seed),
+        lambda: create_flow().run_mode1(
             data, order=order, seed=config.seed
         ),
     )
@@ -312,7 +387,8 @@ def test_mode2_split(testcase_file):
         testcase_file,
         mode,
         config,
-        lambda: create_consistency_flow().run_mode2(data, groups),
+        lambda: transform_mode2_split(data, groups=groups),
+        lambda: create_flow().run_mode2(data, groups),
     )
 
 
@@ -340,7 +416,10 @@ def test_mode3_token_split(testcase_file):
         testcase_file,
         mode,
         config,
-        lambda: create_consistency_flow().run_mode3(
+        lambda: transform_mode3_token_partition(
+            data, config.mode_batch, config.token_split_sizes
+        ),
+        lambda: create_flow().run_mode3(
             data, config.mode_batch, config.token_split_sizes
         ),
     )
@@ -374,7 +453,13 @@ def test_mode4_shape_change(testcase_file):
         testcase_file,
         mode,
         config,
-        lambda: create_consistency_flow().run_mode4(
+        lambda: transform_mode4_shape_change(
+            data,
+            config.mode_batch,
+            config.common_tokens,
+            config.derived_extra,
+        ),
+        lambda: create_flow().run_mode4(
             data,
             config.mode_batch,
             config.common_tokens,

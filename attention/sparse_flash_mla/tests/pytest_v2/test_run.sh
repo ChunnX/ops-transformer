@@ -49,6 +49,7 @@ show_help() {
     -P           pt文件读取地址（默认 ./data）
     --config-file  versioned JSON配置（正式入口；按PT精确匹配并按shape校验）
     --report-dir   结构化结果根目录（每次执行自动创建独立子目录）
+    --probe-attempts level 3真实NPU调度前置探针次数（1-100，默认1）
     --modes      命名模式列表（显式模式优先）
     --profile    命名模式组合（默认 blackbox-basic）
     -M           数字模式兼容别名（例如 1,2，已废弃）
@@ -602,10 +603,11 @@ run_script_consistency() {
     local mode_batch="0"
     local common_tokens=""
     local derived_extra=""
+    local probe_attempts="1"
 
     while [[ $# -gt 0 ]]; do
         case "$1" in
-            -P|--pt-dir|--config-file|--report-dir|-M|--modes|--profile|--seed|--split-groups|--token-split-sizes|--mode3-batch|--common-tokens|--derived-extra)
+            -P|--pt-dir|--config-file|--report-dir|-M|--modes|--profile|--seed|--split-groups|--token-split-sizes|--mode3-batch|--common-tokens|--derived-extra|--probe-attempts)
                 if [ $# -lt 2 ] || [ -z "$2" ]; then
                     echo "错误: $1 参数需要值"
                     return 1
@@ -637,6 +639,7 @@ run_script_consistency() {
             --mode3-batch) mode_batch="$2"; detail_set="1"; shift 2 ;;
             --common-tokens) common_tokens="$2"; detail_set="1"; shift 2 ;;
             --derived-extra) derived_extra="$2"; detail_set="1"; shift 2 ;;
+            --probe-attempts) probe_attempts="$2"; shift 2 ;;
             -h|--help) show_help; return 0 ;;
             *) echo "错误: consistency 未知参数 '$1'"; return 1 ;;
         esac
@@ -648,6 +651,10 @@ run_script_consistency() {
     fi
     if [ ! -d "$pt_dir" ]; then
         echo "错误: 用例目录不存在: $pt_dir"
+        return 1
+    fi
+    if ! [[ "$probe_attempts" =~ ^[0-9]+$ ]] || [ "$probe_attempts" -lt 1 ] || [ "$probe_attempts" -gt 100 ]; then
+        echo "错误: --probe-attempts 必须是1到100的整数，当前值: $probe_attempts"
         return 1
     fi
     if [ -n "$config_file" ]; then
@@ -719,8 +726,20 @@ PY
         export SMLA_CONSISTENCY_DERIVED_EXTRA_TOKENS="$derived_extra"
     fi
 
-    echo "共 $total 条用例；结构化结果目录: $run_dir"
     local process_failures=0
+    local capability_report="$run_dir/runtime_capability.json"
+    export SMLA_CONSISTENCY_CAPABILITY_REPORT="$capability_report"
+    echo "共 $total 条用例；结构化结果目录: $run_dir"
+    echo "先执行level 3真实NPU调度探针（$probe_attempts 次）" | tee -a "$pytest_log"
+    python3 -m batch.consistency.runtime_capability \
+        --output "$capability_report" \
+        --device-id "${SMLA_DEVICE_ID:-0}" \
+        --attempts "$probe_attempts" 2>&1 | tee -a "$pytest_log"
+    local probe_status=${PIPESTATUS[0]}
+    if [ "$probe_status" -ne 0 ] && [ "$probe_status" -ne 2 ]; then
+        process_failures=$((process_failures + 1))
+    fi
+
     local index=0
     local case_file
     for case_file in "${case_files[@]}"; do
@@ -742,6 +761,7 @@ PY
     local aggregate_status=${PIPESTATUS[0]}
     echo "权威汇总: $run_dir/consistency_result_summary.json"
     echo "逐模式结果: $run_dir/results"
+    echo "运行时能力证据: $capability_report"
     echo "pytest文本日志（仅诊断）: $pytest_log"
     return "$aggregate_status"
 }

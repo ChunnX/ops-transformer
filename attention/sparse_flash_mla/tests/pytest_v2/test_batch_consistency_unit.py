@@ -59,6 +59,12 @@ from batch.consistency.result_artifact import (
     aggregate_result_artifacts,
     write_result_artifact,
 )
+from batch.consistency.runtime_capability import (
+    KIND as CAPABILITY_KIND,
+    SCHEMA_VERSION as CAPABILITY_SCHEMA_VERSION,
+    RuntimeCapabilityProbe,
+    load_runtime_capability_evidence,
+)
 from batch.consistency.reporting import (
     attach_provenance,
     build_input_summary,
@@ -469,6 +475,85 @@ def level3_report(passed=True, observed=3):
     }
 
 
+class FakeNpuState:
+    def __init__(self):
+        self.level = 0
+
+    def set_deterministic_level(self, level):
+        self.level = level
+
+    def _get_deterministic_level(self):
+        return self.level
+
+
+def test_runtime_capability_probe_detects_delayed_rejection_and_restores_level():
+    npu = FakeNpuState()
+
+    def reject_smoke():
+        raise RuntimeError(
+            "torch_npu.npu.set_deterministic_level currently only supports configuring 0/1/2"
+        )
+
+    attempt = RuntimeCapabilityProbe(npu=npu, smoke=reject_smoke).run_attempt()
+    assert attempt["status"] == "UNSUPPORTED"
+    assert attempt["failure_stage"] == "npu_smoke"
+    assert attempt["reason_code"] == "LEVEL3_ACCEPTED_BUT_NPU_REJECTED"
+    assert attempt["set_call_returned"] and attempt["readback_matches"]
+    assert not attempt["npu_smoke_passed"]
+    assert attempt["levels"] == {"before": 0, "observed": 3, "restored": 0}
+    assert attempt["restoration"]["status"] == "PASS"
+    assert npu.level == 0
+
+
+def test_runtime_capability_probe_requires_real_smoke_success():
+    npu = FakeNpuState()
+    attempt = RuntimeCapabilityProbe(
+        npu=npu,
+        smoke=lambda: {"op": "fake-test-smoke"},
+    ).run_attempt()
+    assert attempt["status"] == "SUPPORTED"
+    assert attempt["npu_smoke_passed"]
+    assert attempt["restoration"]["status"] == "PASS"
+    assert npu.level == 0
+
+
+def capability_evidence(tmp_path, status, marker="default"):
+    supported = status == "SUPPORTED"
+    report = {
+        "schema_version": CAPABILITY_SCHEMA_VERSION,
+        "kind": CAPABILITY_KIND,
+        "claim_scope": "unit",
+        "requested_level": 3,
+        "status": status,
+        "failure_stage": None if supported else "npu_smoke",
+        "reason_code": None if supported else "LEVEL3_ACCEPTED_BUT_NPU_REJECTED",
+        "reason": None if supported else "unit rejection",
+        "attempt_count_requested": 1,
+        "attempt_count_executed": 1,
+        "restoration_pass": True,
+        "device_init": {"status": "PASS", "device_id": 0},
+        "attempts": [
+            {
+                "status": status,
+                "readback_matches": True,
+                "npu_smoke_passed": supported,
+            }
+        ],
+        "environment": {"marker": marker},
+    }
+    path = tmp_path / f"runtime_capability_{status.lower()}_{marker}.json"
+    path.write_text(json.dumps(report), encoding="utf-8")
+    return load_runtime_capability_evidence(str(path))
+
+
+def supported_capability_evidence(tmp_path):
+    return capability_evidence(tmp_path, "SUPPORTED")
+
+
+def unsupported_capability_evidence(tmp_path):
+    return capability_evidence(tmp_path, "UNSUPPORTED")
+
+
 def test_result_artifact_requires_observed_level3_for_pass(tmp_path):
     with pytest.raises(ResultArtifactError, match="observed deterministic level 3"):
         write_result_artifact(
@@ -479,12 +564,41 @@ def test_result_artifact_requires_observed_level3_for_pass(tmp_path):
             mode="reorder",
             status=ResultStatus.PASS,
             report=level3_report(observed=2),
+            runtime_capability=supported_capability_evidence(tmp_path),
         )
     assert not list((tmp_path / "results").glob("*.json"))
 
 
+def test_result_artifact_rejects_pass_conflicting_with_capability_probe(tmp_path):
+    with pytest.raises(ResultArtifactError, match="non-supported runtime capability"):
+        write_result_artifact(
+            str(tmp_path),
+            operator="smla",
+            input_data=make_case(),
+            pt_path="/tmp/unit.pt",
+            mode="reorder",
+            status=ResultStatus.PASS,
+            report=level3_report(),
+            runtime_capability=unsupported_capability_evidence(tmp_path),
+        )
+
+
+def test_result_artifact_requires_capability_evidence_for_pass(tmp_path):
+    with pytest.raises(ResultArtifactError, match="requires runtime capability evidence"):
+        write_result_artifact(
+            str(tmp_path),
+            operator="smla",
+            input_data=make_case(),
+            pt_path="/tmp/unit.pt",
+            mode="reorder",
+            status=ResultStatus.PASS,
+            report=level3_report(),
+        )
+
+
 def test_result_artifact_aggregation_uses_json_statuses_only(tmp_path):
     case = make_case()
+    capability = supported_capability_evidence(tmp_path)
     statuses = {
         "reorder": (ResultStatus.PASS, level3_report(), None),
         "split": (ResultStatus.UNSUPPORTED, None, "RUNTIME_LEVEL3_UNSUPPORTED"),
@@ -502,6 +616,7 @@ def test_result_artifact_aggregation_uses_json_statuses_only(tmp_path):
             report=report,
             reason_code=reason_code,
             reason=reason_code,
+            runtime_capability=capability,
         )
     summary = aggregate_result_artifacts(
         str(tmp_path), operator="smla", expected_case_count=1
@@ -535,6 +650,7 @@ def test_result_artifact_aggregation_detects_missing_mode_records(tmp_path):
         mode="reorder",
         status=ResultStatus.PASS,
         report=level3_report(),
+        runtime_capability=supported_capability_evidence(tmp_path),
     )
     summary = aggregate_result_artifacts(
         str(tmp_path), operator="smla", expected_case_count=1
@@ -543,8 +659,38 @@ def test_result_artifact_aggregation_detects_missing_mode_records(tmp_path):
     assert summary["missing_artifact_count"] == 3
 
 
+def test_result_aggregation_rejects_mixed_or_partial_capability_evidence(tmp_path):
+    case = make_case()
+    first = capability_evidence(tmp_path, "SUPPORTED", "first")
+    second = capability_evidence(tmp_path, "SUPPORTED", "second")
+    for mode, capability in (
+        ("reorder", first),
+        ("split", second),
+        ("token-split", None),
+    ):
+        write_result_artifact(
+            str(tmp_path),
+            operator="smla",
+            input_data=case,
+            pt_path="/tmp/unit.pt",
+            mode=mode,
+            status=ResultStatus.UNSUPPORTED,
+            reason_code="UNIT_UNSUPPORTED",
+            reason="unit",
+            runtime_capability=capability,
+        )
+    summary = aggregate_result_artifacts(str(tmp_path), operator="smla")
+    errors = {item["error"] for item in summary["artifact_validation_errors"]}
+    assert summary["overall_status"] == "FAIL"
+    assert errors == {
+        "Runtime capability evidence is missing from part of the result matrix",
+        "Result matrix is bound to multiple runtime capability probes",
+    }
+
+
 def test_result_aggregation_enforces_case_matrix_and_reports_invalid_json(tmp_path):
     case = make_case()
+    capability = supported_capability_evidence(tmp_path)
     per_case_modes = {
         "/tmp/first.pt": ("reorder", "split"),
         "/tmp/second.pt": ("token-split", "shape-change"),
@@ -559,6 +705,7 @@ def test_result_aggregation_enforces_case_matrix_and_reports_invalid_json(tmp_pa
                 mode=mode,
                 status=ResultStatus.PASS,
                 report=level3_report(),
+                runtime_capability=capability,
             )
 
     summary = aggregate_result_artifacts(
@@ -887,6 +1034,7 @@ def test_dual_operator_consistency_core_is_an_exact_mirror():
         "reporting.py",
         "relation_manifest.py",
         "result_artifact.py",
+        "runtime_capability.py",
         "schema.py",
         "suite_config.py",
         "transform.py",
