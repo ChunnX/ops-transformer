@@ -17,9 +17,9 @@
  * - 异常场景: dtype 不匹配、维度错误、attr 非法值
  *
  * EngramFetchGrad 输入输出规格:
- *   input:  commContext(0), gradFetched(1), perm(2), sendCounts(3), recvCounts(4), recvLocalEntry(5)
+ *   input:  commContext(0), gradFetched(1), perm(2), sendCounts(3), recvCounts(4), recvLocalEntry(5), numRecv(6)
  *   output: gradUniqueOut(0), uniqueLocalEntryOut(1), numUniqueOut(2)
- *   attr:   hidden_size, num_entries_per_rank
+ *   attr:   num_entries_per_rank, comm_buffer_size
  */
 
 #include <iostream>
@@ -46,8 +46,8 @@ struct EngramFetchGradTestParam {
     ge::DataType gradUniqueDtype;
     std::initializer_list<int64_t> uniqueLocalEntryShape;
     std::initializer_list<int64_t> numUniqueShape;
-    int64_t hiddenSize;
     int64_t numEntriesPerRank;
+    int64_t commBufferSize;
     std::string socVersion;
     ge::graphStatus status;
     uint64_t expectTilingKey;
@@ -65,16 +65,16 @@ static EngramFetchGradTestParam g_testCases[] = {
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
-     {16, 512}, ge::DT_FLOAT, {16}, {1},
-     512, 4, "3510",
+     {16, 512}, ge::DT_BF16, {16}, {1},
+     4, 4194304, "3510",
      ge::GRAPH_SUCCESS, 0UL, "", {}},
 
     {"success_fp16_basic",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_FLOAT16, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
-     {16, 512}, ge::DT_FLOAT, {16}, {1},
-     512, 4, "3510",
+     {16, 512}, ge::DT_FLOAT16, {16}, {1},
+     4, 4194304, "3510",
      ge::GRAPH_SUCCESS, 0UL, "", {}},
 
     {"success_fp32_basic",
@@ -82,103 +82,103 @@ static EngramFetchGradTestParam g_testCases[] = {
      {8, 512}, ge::DT_FLOAT, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
      {16, 512}, ge::DT_FLOAT, {16}, {1},
-     512, 4, "3510",
+     4, 4194304, "3510",
      ge::GRAPH_SUCCESS, 0UL, "", {}},
 
     {"success_large_tokens",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {128, 256}, ge::DT_BF16, ge::FORMAT_ND,
      {128}, {2}, {2}, {256},
-     {256, 256}, ge::DT_FLOAT, {256}, {1},
-     256, 100, "3510",
+     {256, 256}, ge::DT_BF16, {256}, {1},
+     100, 4194304, "3510",
      ge::GRAPH_SUCCESS, 0UL, "", {}},
 
     {"success_single_token",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {1, 512}, ge::DT_BF16, ge::FORMAT_ND,
      {1}, {2}, {2}, {2},
-     {2, 512}, ge::DT_FLOAT, {2}, {1},
-     512, 4, "3510",
+     {2, 512}, ge::DT_BF16, {2}, {1},
+     4, 4194304, "3510",
      ge::GRAPH_SUCCESS, 0UL, "", {}},
 
     {"fail_gradFetched_dtype_int32",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_INT32, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
-     {16, 512}, ge::DT_FLOAT, {16}, {1},
-     512, 4, "3510",
+     {16, 512}, ge::DT_INT32, {16}, {1},
+     4, 4194304, "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 
-    {"fail_gradUnique_dtype_bf16",
+    {"fail_gradUnique_dtype_int32",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
-     {16, 512}, ge::DT_BF16, {16}, {1},
-     512, 4, "3510",
+     {16, 512}, ge::DT_INT32, {16}, {1},
+     4, 4194304, "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 
     {"fail_perm_dtype_float",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
-     {16, 512}, ge::DT_FLOAT, {16}, {1},
-     512, 4, "3510",
+     {16, 512}, ge::DT_BF16, {16}, {1},
+     4, 4194304, "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 
     {"fail_gradFetched_1d",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {4096}, ge::DT_BF16, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
-     {16, 512}, ge::DT_FLOAT, {16}, {1},
-     512, 4, "3510",
+     {16, 512}, ge::DT_BF16, {16}, {1},
+     4, 4194304, "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 
     {"fail_perm_dim0_mismatch",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      {16}, {2}, {2}, {16},
-     {16, 512}, ge::DT_FLOAT, {16}, {1},
-     512, 4, "3510",
+     {16, 512}, ge::DT_BF16, {16}, {1},
+     4, 4194304, "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 
     {"fail_numUnique_dim0_not_1",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
-     {16, 512}, ge::DT_FLOAT, {16}, {2},
-     512, 4, "3510",
+     {16, 512}, ge::DT_BF16, {16}, {2},
+     4, 4194304, "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 
     {"fail_hidden_size_zero",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
-     {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
+     {8, 0}, ge::DT_BF16, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
-     {16, 512}, ge::DT_FLOAT, {16}, {1},
-     0, 4, "3510",
+     {16, 0}, ge::DT_BF16, {16}, {1},
+     4, 4194304, "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 
     {"fail_hidden_size_not_aligned",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 100}, ge::DT_BF16, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
-     {16, 100}, ge::DT_FLOAT, {16}, {1},
-     100, 4, "3510",
+     {16, 100}, ge::DT_BF16, {16}, {1},
+     4, 4194304, "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 
     {"fail_num_entries_negative",
      {6146}, ge::DT_INT32, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
-     {16, 512}, ge::DT_FLOAT, {16}, {1},
-     512, -1, "3510",
+     {16, 512}, ge::DT_BF16, {16}, {1},
+     -1, 4194304, "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 
     {"fail_commContext_dtype_bf16",
      {6146}, ge::DT_BF16, ge::FORMAT_ND,
      {8, 512}, ge::DT_BF16, ge::FORMAT_ND,
      {8}, {2}, {2}, {16},
-     {16, 512}, ge::DT_FLOAT, {16}, {1},
-     512, 4, "3510",
+     {16, 512}, ge::DT_BF16, {16}, {1},
+     4, 4194304, "3510",
      ge::GRAPH_FAILED, 0UL, "", {}},
 };
 
@@ -210,24 +210,25 @@ static gert::TilingContextPara BuildTilingContextPara(const EngramFetchGradTestP
     gert::StorageShape uniqueLocalEntryShape = {param.uniqueLocalEntryShape, param.uniqueLocalEntryShape};
     gert::StorageShape numUniqueShape = {param.numUniqueShape, param.numUniqueShape};
 
-    // 6 inputs: commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry
+    // 7 inputs: commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv
     std::vector<gert::TilingContextPara::TensorDescription> inputTensorDesc_(
         {{commContextShape, param.commContextDtype, param.commContextFormat},
          {gradFetchedShape, param.gradFetchedDtype, param.gradFetchedFormat},
          {permShape, ge::DT_INT32, ge::FORMAT_ND},
          {sendCountsShape, ge::DT_INT32, ge::FORMAT_ND},
          {recvCountsShape, ge::DT_INT32, ge::FORMAT_ND},
-         {recvLocalEntryShape, ge::DT_INT32, ge::FORMAT_ND}});
+         {recvLocalEntryShape, ge::DT_INT32, ge::FORMAT_ND},
+         {numUniqueShape, ge::DT_INT32, ge::FORMAT_ND}});
 
-    // 3 outputs: gradUniqueOut (fp32), uniqueLocalEntryOut (int32), numUniqueOut (int32)
+    // 3 outputs: gradUniqueOut (same dtype as gradFetched), uniqueLocalEntryOut (int32), numUniqueOut (int32)
     std::vector<gert::TilingContextPara::TensorDescription> outputTensorDesc_(
         {{gradUniqueShape, param.gradUniqueDtype, ge::FORMAT_ND},
          {uniqueLocalEntryShape, ge::DT_INT32, ge::FORMAT_ND},
          {numUniqueShape, ge::DT_INT32, ge::FORMAT_ND}});
 
     std::vector<gert::TilingContextPara::OpAttr> attrs_(
-        {{"hidden_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.hiddenSize)},
-         {"num_entries_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.numEntriesPerRank)}});
+        {{"num_entries_per_rank", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.numEntriesPerRank)},
+         {"comm_buffer_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.commBufferSize)}});
 
     return gert::TilingContextPara(OP_NAME, inputTensorDesc_, outputTensorDesc_, attrs_, &compileInfo,
                                    param.socVersion);

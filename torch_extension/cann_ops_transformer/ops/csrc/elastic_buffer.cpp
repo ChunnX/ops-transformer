@@ -774,6 +774,7 @@ private:
     HcclComm engramHcclComm_ = nullptr;
     EngramCommContext engramCommContext_;
     at::Tensor engramContextTensor_; // Cached Engram context tensor
+    at::Tensor localStorageAddrTensor_; // int64 scalar tensor, stores deviceBufPtr_ address
     bool engramContextInitialized_ = false;
 
     at::Tensor moeContextTensor_;
@@ -827,6 +828,9 @@ void ElasticBuffer::EnsureEngramContext()
     engramCommContext_ = resources.context;
     engramContextTensor_ = resources.contextTensor;
     commBufferSize_ = resources.commBufferSize;
+    int64_t addrValue = reinterpret_cast<int64_t>(engramDeviceBufPtr_);
+    auto hostAddrTensor = at::full({1}, addrValue, at::TensorOptions().dtype(at::kLong));
+    localStorageAddrTensor_ = hostAddrTensor.to(c10::DeviceType::PrivateUse1);
     engramContextInitialized_ = true;
 }
 
@@ -929,11 +933,11 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
         if (numTokens > 0) {
             engramFetchInProgress_.store(true);
-            int64_t localStorageAddr = reinterpret_cast<int64_t>(engramDeviceBufPtr_);
             ACLNN_CMD(aclnnEngramFetchTrain, engramContextTensor_, indices,
+                      localStorageAddrTensor_,
                       fetched,
                       ctx.perm, ctx.sendCounts, ctx.recvCounts, ctx.recvLocalEntry, ctx.numRecv,
-                      engramHiddenSize_, engramNumEntries_, localStorageAddr,
+                      engramHiddenSize_, engramNumEntries_,
                       numMaxTokensPerRank_, commBufferSize_);
             engramFetchInProgress_.store(false);
         }
@@ -1059,6 +1063,7 @@ void ElasticBuffer::Destroy()
     engramContextInitialized_ = false;
     moeContextInitialized_ = false;
     engramContextTensor_ = at::Tensor();
+    localStorageAddrTensor_ = at::Tensor();
     moeContextTensor_ = at::Tensor();
 
     destroyed_ = true;

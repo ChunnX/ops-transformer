@@ -29,6 +29,7 @@ using namespace ge;
 namespace MC2Tiling {
 constexpr uint32_t IN_COMM_CONTEXT = 0U;
 constexpr uint32_t IN_INDICES = 1U;
+constexpr uint32_t IN_LOCAL_STORAGE_ADDR = 2U;
 constexpr uint32_t OUT_FETCHED = 0U;
 constexpr uint32_t OUT_PERM = 1U;
 constexpr uint32_t OUT_SEND_COUNTS = 2U;
@@ -38,9 +39,8 @@ constexpr uint32_t OUT_NUM_RECV = 5U;
 
 constexpr uint32_t ATTR_HIDDEN_SIZE = 0U;
 constexpr uint32_t ATTR_NUM_ENTRIES_PER_RANK = 1U;
-constexpr uint32_t ATTR_LOCAL_STORAGE_ADDR = 2U;
-constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK = 3U;
-constexpr uint32_t ATTR_COMM_BUFFER_SIZE = 4U;
+constexpr uint32_t ATTR_NUM_MAX_TOKENS_PER_RANK = 2U;
+constexpr uint32_t ATTR_COMM_BUFFER_SIZE = 3U;
 
 constexpr uint32_t DIM_ONE = 1U;
 constexpr uint32_t DIM_TWO = 2U;
@@ -48,6 +48,7 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 
 constexpr int32_t HIDDEN_SIZE_ALIGN = 128;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
+constexpr int64_t UB_ALIGN = 32;
 
 static const std::vector<ge::DataType> OUTPUT_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT};
 
@@ -81,7 +82,6 @@ static void PrintEngramFetchTrainTilingData(const EngramFetchTrainTilingData *ti
     OP_LOGD(nodeName, "rankSize is %u", tilingData->rankSize);
     OP_LOGD(nodeName, "numMaxTokensPerRank is %ld", tilingData->numMaxTokensPerRank);
     OP_LOGD(nodeName, "totalRecv is %ld", tilingData->totalRecv);
-    OP_LOGD(nodeName, "localStorageAddr is %ld", tilingData->localStorageAddr);
     OP_LOGD(nodeName, "commBufferSize is %ld", tilingData->commBufferSize);
 }
 
@@ -89,6 +89,7 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
 {
     auto commContextDesc = context->GetInputDesc(IN_COMM_CONTEXT);
     auto indicesDesc = context->GetInputDesc(IN_INDICES);
+    auto localStorageAddrDesc = context->GetInputDesc(IN_LOCAL_STORAGE_ADDR);
     auto fetchedDesc = context->GetOutputDesc(OUT_FETCHED);
     auto permOutDesc = context->GetOutputDesc(OUT_PERM);
     auto sendCountsOutDesc = context->GetOutputDesc(OUT_SEND_COUNTS);
@@ -98,6 +99,7 @@ static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
 
     OP_CHECK_NULL_WITH_CONTEXT(context, commContextDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, indicesDesc);
+    OP_CHECK_NULL_WITH_CONTEXT(context, localStorageAddrDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, fetchedDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, permOutDesc);
     OP_CHECK_NULL_WITH_CONTEXT(context, sendCountsOutDesc);
@@ -124,6 +126,13 @@ static ge::graphStatus CheckTensorDataType(const gert::TilingContext *context)
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "indices",
             Ops::Base::ToString(indicesDesc->GetDataType()).c_str(),
             "The dtype of indices must be DT_INT32."),
+        return ge::GRAPH_FAILED);
+
+    auto localStorageAddrDesc = context->GetInputDesc(IN_LOCAL_STORAGE_ADDR);
+    OP_TILING_CHECK(localStorageAddrDesc->GetDataType() != ge::DT_INT64,
+        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(nodeName, "localStorageAddr",
+            Ops::Base::ToString(localStorageAddrDesc->GetDataType()).c_str(),
+            "The dtype of localStorageAddr must be DT_INT64."),
         return ge::GRAPH_FAILED);
 
     auto fetchedDesc = context->GetOutputDesc(OUT_FETCHED);
@@ -204,6 +213,20 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
             (std::string("dim0=") + std::to_string(numTokens)).c_str(), ">= 0"),
         return ge::GRAPH_FAILED);
 
+    const gert::StorageShape *localStorageAddrShape = context->GetInputShape(IN_LOCAL_STORAGE_ADDR);
+    OP_TILING_CHECK(localStorageAddrShape == nullptr,
+        OP_LOGE_WITH_INVALID_INPUT(nodeName, "localStorageAddr"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(localStorageAddrShape->GetStorageShape().GetDimNum() != DIM_ONE,
+        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "localStorageAddr",
+            (std::to_string(localStorageAddrShape->GetStorageShape().GetDimNum()) + "D").c_str(),
+            "The shape dim of localStorageAddr must be 1D."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(localStorageAddrShape->GetStorageShape().GetDim(0) != 1,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "localStorageAddr",
+            (std::string("dim0=") + std::to_string(localStorageAddrShape->GetStorageShape().GetDim(0))).c_str(),
+            "1"),
+        return ge::GRAPH_FAILED);
+
     const gert::StorageShape *fetchedShape = context->GetOutputShape(OUT_FETCHED);
     OP_TILING_CHECK(fetchedShape == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "fetched"), return ge::GRAPH_FAILED);
@@ -240,6 +263,10 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
             (std::to_string(sendCountsOutShape->GetStorageShape().GetDimNum()) + "D").c_str(),
             "The shape dim of sendCountsOut must be 1D."),
         return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sendCountsOutShape->GetStorageShape().GetDim(0) <= 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "sendCountsOut",
+            (std::string("dim0=") + std::to_string(sendCountsOutShape->GetStorageShape().GetDim(0))).c_str(), "> 0"),
+        return ge::GRAPH_FAILED);
     rankSize = static_cast<uint32_t>(sendCountsOutShape->GetStorageShape().GetDim(0));
 
     const gert::StorageShape *recvCountsOutShape = context->GetOutputShape(OUT_RECV_COUNTS);
@@ -258,6 +285,10 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "recvLocalEntryOut",
             (std::to_string(recvLocalEntryOutShape->GetStorageShape().GetDimNum()) + "D").c_str(),
             "The shape dim of recvLocalEntryOut must be 1D."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvLocalEntryOutShape->GetStorageShape().GetDim(0) < 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "recvLocalEntryOut",
+            (std::string("dim0=") + std::to_string(recvLocalEntryOutShape->GetStorageShape().GetDim(0))).c_str(), ">= 0"),
         return ge::GRAPH_FAILED);
     totalRecv = recvLocalEntryOutShape->GetStorageShape().GetDim(0);
 
@@ -294,6 +325,13 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
     OP_TILING_CHECK(indicesFormat != ge::FORMAT_ND,
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "indices",
             Ops::Base::ToString(indicesFormat).c_str(), "ND"),
+        return ge::GRAPH_FAILED);
+
+    auto localStorageAddrDesc = context->GetInputDesc(IN_LOCAL_STORAGE_ADDR);
+    ge::Format localStorageAddrFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(localStorageAddrDesc->GetStorageFormat()));
+    OP_TILING_CHECK(localStorageAddrFormat != ge::FORMAT_ND,
+        OP_LOGE_FOR_INVALID_FORMAT(nodeName, "localStorageAddr",
+            Ops::Base::ToString(localStorageAddrFormat).c_str(), "ND"),
         return ge::GRAPH_FAILED);
 
     auto fetchedDesc = context->GetOutputDesc(OUT_FETCHED);
@@ -386,14 +424,6 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
             std::to_string(*numEntriesPerRankPtr).c_str(), "[0, INT32_MAX]"),
         return ge::GRAPH_FAILED);
 
-    auto localStorageAddrPtr = attrs->GetAttrPointer<int64_t>(ATTR_LOCAL_STORAGE_ADDR);
-    OP_TILING_CHECK(localStorageAddrPtr == nullptr,
-        OP_LOGE_WITH_INVALID_INPUT(nodeName, "local_storage_addr"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*localStorageAddrPtr <= 0,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "local_storage_addr",
-            std::to_string(*localStorageAddrPtr).c_str(), "> 0"),
-        return ge::GRAPH_FAILED);
-
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_MAX_TOKENS_PER_RANK);
     OP_TILING_CHECK(numMaxTokensPerRankPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "num_max_tokens_per_rank"), return ge::GRAPH_FAILED);
@@ -466,19 +496,15 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchTr
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_MAX_TOKENS_PER_RANK);
     tilingData.numMaxTokensPerRank = *numMaxTokensPerRankPtr;
 
-    auto localStorageAddrPtr = attrs->GetAttrPointer<int64_t>(ATTR_LOCAL_STORAGE_ADDR);
-    tilingData.localStorageAddr = *localStorageAddrPtr;
-
     auto commBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_BUFFER_SIZE);
     tilingData.commBufferSize = *commBufferSizePtr;
 
     OP_LOGD(nodeName, "SetTilingData: numTokens=%ld, hiddenDim=%ld, numEntriesPerRank=%d, hiddenBytes=%ld, "
-            "ubSize=%lu, rankSize=%u, numMaxTokensPerRank=%ld, totalRecv=%ld, localStorageAddr=%ld, "
-            "commBufferSize=%ld",
+            "ubSize=%lu, rankSize=%u, numMaxTokensPerRank=%ld, totalRecv=%ld, commBufferSize=%ld",
             tilingData.numTokens, tilingData.hiddenDim,
             tilingData.numEntriesPerRank, tilingData.hiddenBytes, tilingData.ubSize,
             tilingData.rankSize, tilingData.numMaxTokensPerRank, tilingData.totalRecv,
-            tilingData.localStorageAddr, tilingData.commBufferSize);
+            tilingData.commBufferSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -510,21 +536,24 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context,
         OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenBytes=%ld", totalRecv, hiddenBytes),
         return ge::GRAPH_FAILED);
 
-    int64_t wsSdispls = numRanks * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsRdispls = numRanks * static_cast<int64_t>(sizeof(int32_t));
+    int64_t wsSdispls = numRanks * UB_ALIGN;
+    int64_t wsRdispls = numRanks * UB_ALIGN;
     int64_t wsSortedIndices = numTokens * static_cast<int64_t>(sizeof(int32_t));
     int64_t wsLocalData = totalRecv * hiddenBytes;
     int64_t wsRecvData = numTokens * hiddenBytes;
+    int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
     int64_t wsFlagScratch = 32;
 
-    int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices + wsLocalData + wsRecvData + wsFlagScratch;
+    int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices
+                    + wsLocalData + wsRecvData + wsCounterScratch + wsFlagScratch;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 
     workSpaces[0] = static_cast<size_t>(wsTotal);
-    OP_LOGD(nodeName, "training workspace: sdispls=%ld, rdispls=%ld, sortedIndices=%ld,"
-            "localData=%ld, recvData=%ld, flagScratch=%ld, total=%zu",
-            wsSdispls, wsRdispls, wsSortedIndices, wsLocalData, wsRecvData, wsFlagScratch, workSpaces[0]);
+    OP_LOGD(nodeName, "training workspace: sdispls=%ld, rdispls=%ld, sortedIndices=%ld, "
+            "localData=%ld, recvData=%ld, counterScratch=%ld, flagScratch=%ld, total=%zu",
+            wsSdispls, wsRdispls, wsSortedIndices,
+            wsLocalData, wsRecvData, wsCounterScratch, wsFlagScratch, workSpaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 

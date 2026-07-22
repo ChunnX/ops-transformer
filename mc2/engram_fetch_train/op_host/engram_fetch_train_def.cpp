@@ -30,6 +30,11 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
+        this->Input("localStorageAddr")
+            .ParamType(REQUIRED)
+            .DataTypeList({ge::DT_INT64})
+            .FormatList({ge::FORMAT_ND});
+
         this->Output("fetched")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})
@@ -62,7 +67,6 @@ public:
 
         this->Attr("hidden_size").AttrType(REQUIRED).Int();
         this->Attr("num_entries_per_rank").AttrType(REQUIRED).Int();
-        this->Attr("local_storage_addr").AttrType(REQUIRED).Int();
         this->Attr("num_max_tokens_per_rank").AttrType(REQUIRED).Int();
         this->Attr("comm_buffer_size").AttrType(REQUIRED).Int();
 
