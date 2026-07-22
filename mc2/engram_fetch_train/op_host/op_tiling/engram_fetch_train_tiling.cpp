@@ -382,9 +382,9 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context)
     auto numEntriesPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ENTRIES_PER_RANK);
     OP_TILING_CHECK(numEntriesPerRankPtr == nullptr,
         OP_LOGE_WITH_INVALID_INPUT(nodeName, "num_entries_per_rank"), return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(*numEntriesPerRankPtr < 0 || *numEntriesPerRankPtr > INT32_MAX,
+    OP_TILING_CHECK(*numEntriesPerRankPtr <= 0 || *numEntriesPerRankPtr > INT32_MAX,
         OP_LOGE_FOR_INVALID_VALUE(nodeName, "num_entries_per_rank",
-            std::to_string(*numEntriesPerRankPtr).c_str(), "[0, INT32_MAX]"),
+            std::to_string(*numEntriesPerRankPtr).c_str(), "(0, INT32_MAX]"),
         return ge::GRAPH_FAILED);
 
     auto localStorageAddrPtr = attrs->GetAttrPointer<int64_t>(ATTR_LOCAL_STORAGE_ADDR);
@@ -507,14 +507,17 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context,
     OP_TILING_CHECK(numTokens > 0 && hiddenBytes > INT64_MAX / numTokens,
         OP_LOGE(nodeName, "workspace overflow: numTokens=%ld, hiddenBytes=%ld", numTokens, hiddenBytes),
         return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(totalRecv > 0 && hiddenBytes > INT64_MAX / totalRecv,
-        OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenBytes=%ld", totalRecv, hiddenBytes),
+
+    // localData 区用 maxTokensPerRank * rankSize 作为上界（与 kernel 一致）
+    int64_t totalRecvUpperBound = tilingData.numMaxTokensPerRank * numRanks;
+    OP_TILING_CHECK(totalRecvUpperBound > 0 && hiddenBytes > INT64_MAX / totalRecvUpperBound,
+        OP_LOGE(nodeName, "workspace overflow: totalRecvUpperBound=%ld, hiddenBytes=%ld", totalRecvUpperBound, hiddenBytes),
         return ge::GRAPH_FAILED);
 
-    int64_t wsSdispls = numRanks * UB_ALIGN;
-    int64_t wsRdispls = numRanks * UB_ALIGN;
+    int64_t wsSdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);
+    int64_t wsRdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);
     int64_t wsSortedIndices = numTokens * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsLocalData = totalRecv * hiddenBytes;
+    int64_t wsLocalData = totalRecvUpperBound * hiddenBytes;
     int64_t wsRecvData = numTokens * hiddenBytes;
     int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
     int64_t wsFlagScratch = 32;
