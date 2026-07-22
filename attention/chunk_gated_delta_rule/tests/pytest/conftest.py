@@ -6,9 +6,9 @@ _RESULT_ROWS = []
 
 
 def _get_model_name():
-    if os.environ.get('USE_GRAPH', 'false').lower() == 'true':
-        return 'aclgraph'
-    return 'torch直调'
+    if os.environ.get("USE_GRAPH", "false").lower() == "true":
+        return "aclgraph"
+    return "torch直调"
 
 
 @pytest.hookimpl(hookwrapper=True)
@@ -16,61 +16,74 @@ def pytest_runtest_makereport(item, call):
     outcome = yield
     report = outcome.get_result()
 
-    if report.when != 'call':
+    if report.when != "call":
         return
 
-    params = item.funcargs.get('param_combinations', {})
+    params = item.funcargs.get("param_combinations", {})
 
     if report.passed:
-        status = 'PASSED'
+        status = "PASSED"
     elif report.failed:
-        status = 'FAILED'
+        status = "FAILED"
     elif report.skipped:
-        status = 'SKIPPED'
+        status = "SKIPPED"
     else:
-        status = 'UNKNOWN'
+        status = "UNKNOWN"
 
-    error = ''
-    if status in ('FAILED', 'ERROR') and report.longrepr:
-        error = str(report.longreprtext).replace('\n', ' | ')[:2000]
+    error = ""
+    if status in ("FAILED", "ERROR") and report.longrepr:
+        error = str(report.longreprtext).replace("\n", " | ")[:2000]
 
     row = {
-        'test_name': params.get('_name', ''),
-        'model': _get_model_name(),
-        'status': status,
-        'B': params.get('B', ''),
-        'seqlen': params.get('seqlen', ''),
-        'nk': params.get('nk', ''),
-        'nv': params.get('nv', ''),
-        'dk': params.get('dk', ''),
-        'dv': params.get('dv', ''),
-        'chunk_size': params.get('chunk_size', ''),
-        'data_type': str(params.get('data_type', '')),
-        'state_data_type': str(params.get('state_data_type', '')),
-        'has_g': params.get('has_g', ''),
-        'is_continue': params.get('is_contiguous', ''),
-        'errmsg': error,
-        'durations': '',
+        "test_name": params.get("_name", ""),
+        "model": _get_model_name(),
+        "status": status,
+        "B": params.get("B", ""),
+        "seqlen": params.get("seqlen", ""),
+        "nk": params.get("nk", ""),
+        "nv": params.get("nv", ""),
+        "dk": params.get("dk", ""),
+        "dv": params.get("dv", ""),
+        "chunk_size": params.get("chunk_size", ""),
+        "data_type": str(params.get("data_type", "")),
+        "state_data_type": str(params.get("state_data_type", "")),
+        "has_g": params.get("has_g", ""),
+        "is_continue": params.get("is_contiguous", ""),
+        "errmsg": error,
+        "durations": "",
     }
     _RESULT_ROWS.append(row)
 
 
 def pytest_sessionfinish(session, exitstatus):
-    csv_file = os.environ.get('CSV_FILE', '')
+    csv_file = os.environ.get("CSV_FILE", "")
     if not csv_file or not _RESULT_ROWS:
         return
 
     fields = [
-        'test_name', 'model', 'status', 'B', 'seqlen', 'nk', 'nv', 'dk', 'dv',
-        'chunk_size', 'data_type', 'state_data_type', 'has_g', 'is_continue',
-        'errmsg', 'durations',
+        "test_name",
+        "model",
+        "status",
+        "B",
+        "seqlen",
+        "nk",
+        "nv",
+        "dk",
+        "dv",
+        "chunk_size",
+        "data_type",
+        "state_data_type",
+        "has_g",
+        "is_continue",
+        "errmsg",
+        "durations",
     ]
-    with open(csv_file, 'w', newline='', encoding='utf-8-sig') as f:
+    with open(csv_file, "w", newline="", encoding="utf-8-sig") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
         writer.writerows(_RESULT_ROWS)
 
     total = len(_RESULT_ROWS)
-    passed = sum(1 for r in _RESULT_ROWS if r['status'] == 'PASSED')
-    failed = sum(1 for r in _RESULT_ROWS if r['status'] in ('FAILED', 'ERROR'))
-    print(f'\nCSV 已生成: {csv_file} (共{total}条, 通过{passed}, 失败{failed})')
+    passed = sum(1 for r in _RESULT_ROWS if r["status"] == "PASSED")
+    failed = sum(1 for r in _RESULT_ROWS if r["status"] in ("FAILED", "ERROR"))
+    print(f"\nCSV 已生成: {csv_file} (共{total}条, 通过{passed}, 失败{failed})")

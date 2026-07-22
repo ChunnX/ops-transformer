@@ -8,17 +8,37 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-import torch
-import torch_npu
 
 from chunk_gated_delta_rule_main import run_chunk_gated_delta_rule_eager
 
 
 def run_precision_test(params, pt_path=""):
     # 解包参数
-    B, seqlen, nk, nv, dk, dv, chunk_size, data_type, state_data_type, has_g, is_contiguous = params
+    (
+        B,
+        seqlen,
+        nk,
+        nv,
+        dk,
+        dv,
+        chunk_size,
+        data_type,
+        state_data_type,
+        has_g,
+        is_contiguous,
+    ) = params
     print(f"params = {params}")
-    run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=chunk_size,
-                                     data_type=data_type, state_data_type=state_data_type,
-                                     has_g=has_g, is_contiguous=is_contiguous,
-                                     pt_path=pt_path)
+    run_chunk_gated_delta_rule_eager(
+        B,
+        seqlen,
+        nk,
+        nv,
+        dk,
+        dv,
+        chunk_size=chunk_size,
+        data_type=data_type,
+        state_data_type=state_data_type,
+        has_g=has_g,
+        is_contiguous=is_contiguous,
+        pt_path=pt_path,
+    )
