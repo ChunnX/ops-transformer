@@ -288,7 +288,6 @@ __aicore__ inline void InlineRadixTopK(
     // ExtractBoundaryNumber (inverse twiddle for int16)
     int16_t boundaryNumber16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
     bfloat16_t boundaryBf16 = *reinterpret_cast<bfloat16_t *>(&boundaryNumber16);
-    float boundaryFloat = AscendC::Cast(boundaryBf16);
 
     // Vectorized extraction: use Compares to find GT/EQ positions, then GatherMask to collect indices
     // Prepare index tensor: 0,1,2,...,tileLen-1 per tile (reused across tiles)
@@ -324,8 +323,7 @@ __aicore__ inline void InlineRadixTopK(
             (REPEAT_SIZE / sizeof(int32_t)) * (REPEAT_SIZE / sizeof(int32_t));
 
         // GT pass: find indices where score > boundary
-        // Use Compares<float> since 910B3 doesn't support Compares<bfloat16_t>
-        Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, boundaryFloat,
+        Compares<bfloat16_t, uint8_t>(cmpMaskTensor, xLocalB16, boundaryBf16,
             AscendC::CMPMODE::GT, curTileLenAlign32);
         PipeBarrier<PIPE_V>();
         uint64_t gtCnt = 0;
@@ -343,7 +341,7 @@ __aicore__ inline void InlineRadixTopK(
 
         if (curTileK > 0) {
             // EQ pass: find indices where score == boundary
-            Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, boundaryFloat,
+            Compares<bfloat16_t, uint8_t>(cmpMaskTensor, xLocalB16, boundaryBf16,
                 AscendC::CMPMODE::EQ, curTileLenAlign32);
             PipeBarrier<PIPE_V>();
             uint64_t eqCnt = 0;
