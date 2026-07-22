@@ -85,6 +85,10 @@ if _TORCHAIR_AVAILABLE:
         num_max_tokens_per_rank: int = 0,
         activation: str = "swiglu",
         activation_clamp: float = 3.4028234663852886e38,
+        activation_clamp_mode: int = 0,
+        activation_alpha: float = 1.0,
+        activation_beta: float = 1.0,
+        activation_linear_beta: float = 0.0,
         dependencies=[],
         node_name=None,
     ):
@@ -117,6 +121,10 @@ if _TORCHAIR_AVAILABLE:
         .ATTR(num_max_tokens_per_rank, Int, 0)\n
         .ATTR(activation, String, "swiglu")\n
         .ATTR(activation_clamp, Float, 3.4028234663852886e+38)\n
+        .ATTR(activation_clamp_mode, Int, 0)\n
+        .ATTR(activation_alpha, Float, 1.0)\n
+        .ATTR(activation_beta, Float, 1.0)\n
+        .ATTR(activation_linear_beta, Float, 0.0)\n
         """
         inputs = {
             "context": context,
@@ -145,6 +153,10 @@ if _TORCHAIR_AVAILABLE:
             "num_max_tokens_per_rank": attr.Int(num_max_tokens_per_rank),
             "activation": attr.Str(activation),
             "activation_clamp": attr.Float(activation_clamp),
+            "activation_clamp_mode": attr.Int(activation_clamp_mode),
+            "activation_alpha": attr.Float(activation_alpha),
+            "activation_beta": attr.Float(activation_beta),
+            "activation_linear_beta": attr.Float(activation_linear_beta),
         }
 
         outputs = [
@@ -193,6 +205,10 @@ if _TORCHAIR_AVAILABLE:
             .attr("num_max_tokens_per_rank", attr.Int(0))
             .attr("activation", attr.Str("swiglu"))
             .attr("activation_clamp", attr.Float(3.4028234663852886e38))
+            .attr("activation_clamp_mode", attr.Int(0))
+            .attr("activation_alpha", attr.Float(1.0))
+            .attr("activation_beta", attr.Float(1.0))
+            .attr("activation_linear_beta", attr.Float(0.0))
             .output("y", "DT_BF16, DT_FLOAT16")
             .output("expert_token_nums", "DT_INT32"),
         )
@@ -221,6 +237,10 @@ if _TORCHAIR_AVAILABLE:
         num_max_tokens_per_rank: int = 0,
         activation: str = "swiglu",
         activation_clamp: float = 3.4028234663852886e38,
+        activation_clamp_mode: int = 0,
+        activation_alpha: float = 1.0,
+        activation_beta: float = 1.0,
+        activation_linear_beta: float = 0.0,
         dispatch_quant_out_dtype: int = 28,
         weight1_type: int = 28,
         weight2_type: int = 28,
@@ -249,4 +269,8 @@ if _TORCHAIR_AVAILABLE:
             num_max_tokens_per_rank=num_max_tokens_per_rank,
             activation=activation,
             activation_clamp=activation_clamp,
+            activation_clamp_mode=activation_clamp_mode,
+            activation_alpha=activation_alpha,
+            activation_beta=activation_beta,
+            activation_linear_beta=activation_linear_beta,
         )
