@@ -28,7 +28,7 @@ on:
 
 jobs:
   JOB_compile:
-    name: compile
+    name: Compile
     needs: []
     steps:
       -

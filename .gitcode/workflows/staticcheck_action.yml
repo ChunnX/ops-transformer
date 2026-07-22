@@ -12,7 +12,7 @@ on:
 
 jobs:
   JOB_staticcheck:
-    name: staticcheck
+    name: CodeCheck_staticcheck
     steps:
       -
         name: Checkout

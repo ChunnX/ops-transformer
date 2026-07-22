@@ -1,4 +1,4 @@
-name: ops-transformer_action
+name: PR-pipeline_ops-transformer
 
 concurrency:
   max: 5
@@ -32,7 +32,7 @@ stages:
     name: PreBuild
     jobs:
       JOB_image:
-        name: image
+        name: Test_image
         steps:
           - name: revise_image
             identifier: revise_image
@@ -48,7 +48,7 @@ stages:
         if: "${{ default() }}"
         runs-on: ["codearts-hosted", "ubuntu-latest", "x64", "large"]
       JOB_pr:
-        name: get_pr_files
+        name: Test_get-pr
         needs: []
         steps:
           -
@@ -84,7 +84,7 @@ stages:
         runs-on:
         - default
       JOB_shell:
-        name: get_shell_files
+        name: Test_get-shell
         needs: []
         steps:
           -
@@ -115,7 +115,7 @@ stages:
     name: compile
     jobs:
       JOB_x86_compile:
-        name: x86_compile
+        name: Compile_x86
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_X86'
@@ -123,7 +123,7 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer_linux-x86_64.run'
       JOB_arm_compile:
-        name: arm_compile
+        name: Compile_arm
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_ARM'
@@ -131,7 +131,7 @@ stages:
           arch: 'arm64'
           package_name: 'cann-ops-transformer_linux-aarch64.run'
       JOB_experimental_compile:
-        name: experimental_compile
+        name: Compile_experimental_x86
         needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -141,7 +141,7 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer_experimental_linux-x86_64.run'
       JOB_arm_experimental_compile:
-        name: arm_experimental_compile
+        name: Compile_experimental_arm
         needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -151,7 +151,7 @@ stages:
           arch: 'arm64'
           package_name: 'cann-ops-transformer_experimental_linux-aarch64.run'
       JOB_Pre_Compile:
-        name: Pre_Compile
+        name: Compile_pre
         needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -160,7 +160,7 @@ stages:
           arch: 'arm64'
           spec: 'xlarge'
       JOB_x86_compile_ubuntu24:
-        name: x86_compile_ubuntu24
+        name: Compile_x86_ubuntu24
         needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -169,7 +169,7 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer_linux-x86_64_ubuntu24.run'
       JOB_arm_compile_ubuntu24:
-        name: arm_compile_ubuntu24
+        name: Compile_arm_ubuntu24
         needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -178,7 +178,7 @@ stages:
           arch: 'arm64'
           package_name: 'cann-ops-transformer_linux-aarch64_ubuntu24.run'
       JOB_experimental_compile_ubuntu24:
-        name: experimental_compile_ubuntu24
+        name: Compile_experimental_x86_ubuntu24
         needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -188,7 +188,7 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer_experimental_linux-x86_64_ubuntu24.run'
       JOB_arm_experimental_compile_ubuntu24:
-        name: arm_experimental_compile_ubuntu24
+        name: Compile_experimental_arm_ubuntu24
         needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -198,7 +198,7 @@ stages:
           arch: 'arm64'
           package_name: 'cann-ops-transformer_experimental_linux-aarch64_ubuntu24.run'
       JOB_monitor_910b_compile:
-        name: monitor_compile
+        name: Compile_monitor_910b
         needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -207,7 +207,7 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer-monitor-910b_linux-x86_64.run'
       JOB_monitor_910c_compile:
-        name: monitor_910c_compile
+        name: Compile_monitor_910c
         needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -216,7 +216,7 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer-monitor-910c_linux-x86_64.run'
       JOB_monitor_950_compile:
-        name: monitor_950_compile
+        name: Compile_monitor_950
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'monitor_950'
@@ -224,7 +224,7 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer-monitor-950_linux-x86_64.run'
       JOB_experimental_950_compile:
-        name: experimental_950_compile
+        name: Compile_experimental_950_x86
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_X86_experimental'
@@ -233,7 +233,7 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer_experimental_950_linux-x86_64.run'
       JOB_arm_experimental_950_compile:
-        name: arm_experimental_compile
+        name: Compile_experimental_950_arm
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_ARM_experimental'
@@ -242,7 +242,7 @@ stages:
           arch: 'arm64'
           package_name: 'cann-ops-transformer_experimental_950_linux-aarch64.run'
       JOB_experimental_950_compile_ubuntu24:
-        name: experimental_950_compile_ubuntu24
+        name: Compile_experimental_950_x86_ubuntu24
         needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -252,7 +252,7 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer_experimental_950_linux-x86_64_ubuntu24.run'
       JOB_arm_experimental_950_compile_ubuntu24:
-        name: arm_experimental_compile_ubuntu24
+        name: Compile_experimental_950_arm_ubuntu24
         needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
@@ -262,7 +262,7 @@ stages:
           arch: 'arm64'
           package_name: 'cann-ops-transformer_experimental_950_linux-aarch64_ubuntu24.run' 
       JOB_mobile_station_compile:
-        name: mobile_station_compile
+        name: Compile_kirinx90
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_X86_mobile_station'
@@ -271,7 +271,7 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer-kirix90_linux-x86_64.run'
       JOB_mobile_station_compile_ubuntu24:
-        name: mobile_station_compile_ubuntu24
+        name: Compile_kirinx90_ubuntu24
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_X86_mobile_station_ubuntu24'
@@ -280,7 +280,7 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer-kirix90_linux-x86_64_ubuntu24.run'
       JOB_mobile_station_compile_9030_ubuntu24:
-        name: mobile_station_compile_9030_ubuntu24
+        name: Compile_kirin9030_ubuntu24
         uses: .gitcode/workflows/compile_action.yml
         if: env.TARGET_BRANCH == 'master'
         with:
@@ -290,37 +290,37 @@ stages:
           arch: 'x64'
           package_name: 'cann-ops-transformer-kirin9030_linux-x86_64_ubuntu24.run'
       JOB_codecheck:
-        name: codecheck
+        name: CodeCheck
         uses: .gitcode/workflows/codecheck_action.yml
         with:
           precommit_image_version: ${{ jobs.JOB_image.outputs.precommit }}
           codecheck_image_version: ${{ jobs.JOB_image.outputs.codecheck }}
       JOB_staticcheck_markdown:
-        name: staticcheck_markdown
+        name: CodeCheck_staticcheck_markdown
         uses: .gitcode/workflows/staticcheck_action.yml
         with:
           check_type: 'markdown'
           image_version: ${{ jobs.JOB_image.outputs.staticcheck }}
       JOB_staticcheck_codespell_check:
-        name: staticcheck_codespell_check
+        name: CodeCheck_staticcheck_codespell
         uses: .gitcode/workflows/staticcheck_action.yml
         with:
           check_type: 'codespell_check'
           image_version: ${{ jobs.JOB_image.outputs.staticcheck }}
       JOB_staticcheck_tag_closed_check:
-        name: staticcheck_tag_closed_check
+        name: CodeCheck_staticcheck_tag_closed
         uses: .gitcode/workflows/staticcheck_action.yml
         with:
           check_type: 'tag_closed_check'
           image_version: ${{ jobs.JOB_image.outputs.staticcheck }}
       JOB_staticcheck_resource_existence_check:
-        name: staticcheck_resource_existence_check
+        name: CodeCheck_staticcheck_resource_existence
         uses: .gitcode/workflows/staticcheck_action.yml
         with:
           check_type: 'resource_existence_check'
           image_version: ${{ jobs.JOB_image.outputs.staticcheck }}
       JOB_staticcheck_link_validity_check:
-        name: staticcheck_link_validity_check
+        name: CodeCheck_staticcheck_link_validity
         uses: .gitcode/workflows/staticcheck_action.yml
         with:
           check_type: 'link_validity_check'
@@ -332,7 +332,7 @@ stages:
     name: ut
     jobs:
       JOB_api_check:
-        name: api_check
+        name: API_Check
         steps:
           -
             name: api-check
@@ -348,7 +348,7 @@ stages:
         container:
           image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ jobs.JOB_image.outputs.codecheck }}
       JOB_ut:
-        name: ut_test
+        name: UT_ops-transformer
         uses: .gitcode/workflows/ut_action.yml
         with:
           image_version: ${{ jobs.JOB_image.outputs.UT_Test }}
@@ -438,7 +438,7 @@ stages:
     name: ut_report
     jobs:
       JOB_ut_report:
-        name: ut_report
+        name: UT_report
         steps:
           -
             name: Checkout
