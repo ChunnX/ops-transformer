@@ -497,9 +497,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::Sub(v1_bw_mask[0], v1_bw_ones[0], v1_bw_mask[0], 2048);
               AscendC::PipeBarrier<PIPE_V>();
-              for (int32_t bw_row = 0; bw_row < 32; ++bw_row) {
-                tl::ascend::copy_ub_to_ub<float, float, 64>(v1_bw_rg[(bw_row * 64)], v1_bw_weight_2d[(bw_row * 64)], 1, 64, 64, 1, 64, 64);
-              }
+              tl::ascend::copy_ub_to_ub<float, float, 2048>(v1_bw_rg[0], v1_bw_weight_2d[0], 32, 64, 64, 32, 64, 64);
               AscendC::PipeBarrier<PIPE_V>();
               AscendC::Mul(v1_bw_rg[0], v1_bw_rg[0], v1_bw_diff_2d[0], 2048);
               AscendC::PipeBarrier<PIPE_V>();
