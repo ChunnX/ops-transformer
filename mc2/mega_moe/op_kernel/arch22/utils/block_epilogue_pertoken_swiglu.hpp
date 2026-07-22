@@ -11,6 +11,8 @@
 #ifndef CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_HPP
 #define CATLASS_EPILOGUE_BLOCK_EPILOGUE_PER_TOKEN_SWIGLU_HPP
 
+#include <limits>
+
 #include "../template_linear_algebra_v2/catlass.hpp"
 #include "../template_linear_algebra_v2/arch/resource.hpp"
 #include "../template_linear_algebra_v2/epilogue/dispatch_policy.hpp"
@@ -148,11 +150,14 @@ public:
                      AscendC::GlobalTensor<ElementD> const &gmD,
                      AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2,
                      Arch::Resource<ArchTag> const &resource, uint32_t epilogueCoreNum = 40,
-                     float activationClamp = 0.0f, uint32_t activationCode = 0, uint32_t gmmOutPreRowStride = 1,
+                     float activationClamp = 0.0f, uint32_t activationCode = 0, float beta = 1.0f,
+                     float linearBeta = std::numeric_limits<float>::max(), uint32_t gmmOutPreRowStride = 1,
                      Callback &&callback = Callback{})
     {
         (void)resource;
         activationCode_ = activationCode;
+        beta_ = beta;
+        linearBeta_ = linearBeta;
         callback();
         uint32_t blockM = shapeC.row();
         uint32_t branchLength = shapeC.column() / 2;
@@ -232,10 +237,13 @@ public:
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
                      AscendC::GlobalTensor<ElementD> const &gmD, Arch::Resource<ArchTag> const &resource,
                      uint32_t epilogueCoreNum = 40, float activationClamp = 0.0f, uint32_t activationCode = 0,
+                     float beta = 1.0f, float linearBeta = std::numeric_limits<float>::max(),
                      uint32_t gmmOutPreRowStride = 1, Callback &&callback = Callback{})
     {
         (void)resource;
         activationCode_ = activationCode;
+        beta_ = beta;
+        linearBeta_ = linearBeta;
         callback();
         uint32_t blockM = shapeC.row();
         uint32_t branchLength = shapeC.column() / 2;
@@ -374,7 +382,7 @@ private:
             AscendC::PipeBarrier<PIPE_V>();
         }
         Activation::Compute(ubActivationList[stageId], ubGate, ubUp, sharedTmpBuffer, tileLength, activationClamp,
-                            activationCode_);
+                            activationCode_, beta_, linearBeta_);
     }
 
     CATLASS_DEVICE
@@ -454,6 +462,8 @@ private:
     int32_t eventUbDMTE3VList[UB_STAGES];
     int32_t eventUbDVMTE3List[UB_STAGES];
     uint32_t activationCode_{0};
+    float beta_{1.0f};
+    float linearBeta_{std::numeric_limits<float>::max()};
     size_t ubOffset{0};
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;
