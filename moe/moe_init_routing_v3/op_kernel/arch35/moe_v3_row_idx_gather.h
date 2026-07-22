@@ -33,7 +33,6 @@ private:
     GlobalTensor<int32_t> expandedRowIdxGm_;
     GlobalTensor<int32_t> sortedExpertIndicesGm_;
     GlobalTensor<int32_t> gatherRowIdxGm_;
-    GlobalTensor<int32_t> gatherRowIdxInitGm_;
     GlobalTensor<int32_t> expertTotalCountGm_;
 
     TPipe *pipe_;
@@ -44,7 +43,6 @@ private:
     const MoeV3Arch35ExpertTokensCountTilingData *expertTokensCountTilingData_;
     int64_t blockIdx_;
     int64_t needCoreNum_;
-    int64_t totalNeedCoreNum_ = 0;
     int64_t perCoreElements_;
     int64_t curCoreElements_ = 0;
     int64_t actualExpertNum_ = 0;
@@ -78,7 +76,6 @@ __aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR worksp
     expertTokensCountTilingData_ = &(tilingData->expertTokensCountTilingDataOp);
     blockIdx_ = GetBlockIdx();
     needCoreNum_ = expertTokensCountTilingData_->needCoreNum;
-    totalNeedCoreNum_ = needCoreNum_;
     perCoreElements_ = expertTokensCountTilingData_->perCoreElements;
     actualExpertNum_ = tilingData->actualExpertNum;
     rowIdxType_ = tilingData->rowIdxType;
@@ -123,8 +120,6 @@ __aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR worksp
     if (useGatherCopy_ && rowIdxType_) {
         sortedExpertIndicesGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + totalLength, totalLength);
         gatherRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + totalLength, totalLength);
-        gatherRowIdxInitGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + totalLength + blockIdx_ * perCoreElements_,
-                                            curCoreElements_);
     } else {
         sortedExpertIndicesGm_.SetGlobalBuffer((__gm__ int32_t *)workspace + totalLength + blockIdx_ * perCoreElements,
                                                actualExpertNum_);
@@ -136,14 +131,6 @@ __aicore__ inline void RowIdxGather::Init(GM_ADDR expandedRowIdx, GM_ADDR worksp
 
 __aicore__ inline void RowIdxGather::Process()
 {
-    if (useGatherCopy_ && rowIdxType_) {
-        if (blockIdx_ < totalNeedCoreNum_) {
-            InitGlobalMemory(gatherRowIdxInitGm_, curCoreElements_, static_cast<int32_t>(-1));
-            SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
-            SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
-        }
-        SyncAll();
-    }
     if (blockIdx_ < needCoreNum_) {
         int64_t elements = (blockIdx_ == needCoreNum_ - 1 ? lastCoreElements : perCoreElements);
         __gm__ int32_t *sortedExpertIndicesGmAddr = (__gm__ int32_t *)sortedExpertIndicesGm_.GetPhyAddr();

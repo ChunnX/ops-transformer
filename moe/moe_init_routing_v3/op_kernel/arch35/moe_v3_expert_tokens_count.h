@@ -75,6 +75,7 @@ private:
     int64_t coreNum_ = 0;
     int64_t dropPadMode_ = 0;
     int64_t needExpertTotalCount_ = 0;
+    int64_t useGatherCopy_ = 0;
     int32_t finalExpertId_ = -1;
     int32_t expertTokenValue_ = 0;
 };
@@ -128,6 +129,7 @@ __aicore__ inline void ExpertTokensCount::InitBasicParams(const MoeInitRoutingV3
     expertTokensNumType_ = tilingData->expertTokensNumType;
     coreNum_ = tilingData->coreNum;
     dropPadMode_ = tilingData->dropPadMode;
+    useGatherCopy_ = tilingData->useGatherCopy;
     needExpertTotalCount_ = static_cast<int64_t>(dropPadMode_ != DROP_PAD_MODE);
 
     if (blockIdx_ == needCoreNum_ - 1) {
@@ -175,6 +177,15 @@ __aicore__ inline void ExpertTokensCount::Init(GM_ADDR expandedRowIdx, GM_ADDR e
     expandedRowIdxGm_.SetGlobalBuffer((__gm__ int32_t *)expandedRowIdx + blockIdx_ * perCoreElements_);
     if ((tilingData->rowIdxType == GATHER) && (blockIdx_ < needCoreNum_)) {
         InitGlobalMemory(expandedRowIdxGm_, curCoreElements_, -1);
+        SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
+        SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
+    }
+    if (useGatherCopy_ && tilingData->rowIdxType && (blockIdx_ < needCoreNum_)) {
+        int64_t totalLength = Align(tilingData->n * tilingData->k, sizeof(int32_t));
+        GlobalTensor<int32_t> gatherRowIdxInitGm;
+        gatherRowIdxInitGm.SetGlobalBuffer((__gm__ int32_t *)workspace + totalLength + blockIdx_ * perCoreElements_,
+                                           curCoreElements_);
+        InitGlobalMemory(gatherRowIdxInitGm, curCoreElements_, static_cast<int32_t>(-1));
         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
         SetWaitFlag<HardEvent::MTE3_S>(HardEvent::MTE3_S);
     }
