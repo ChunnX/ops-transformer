@@ -19,9 +19,21 @@ static constexpr int64_t OUTPUT_Q_FLAT = 0;
 static constexpr int64_t ATTR_STEM_BLOCK_SIZE = 0;
 static constexpr int64_t ATTR_STEM_STRIDE = 1;
 
+static constexpr int64_t QFLAT_DIM_BATCH = 0;
+static constexpr int64_t QFLAT_DIM_HEADS = 1;
+static constexpr int64_t QFLAT_DIM_MAX_QB = 2;
+static constexpr int64_t QFLAT_DIM_KFLAT = 3;
+static constexpr int64_t QFLAT_RANK = 4;
+static constexpr int64_t DYNAMIC_DIM = -1;
+
 static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext* context)
 {
     auto attrs = context->GetAttrs();
+    const int64_t *stemBlockSizePtr = attrs->GetInt(ATTR_STEM_BLOCK_SIZE);
+    if (stemBlockSizePtr == nullptr) {
+        return ge::GRAPH_FAILED;
+    }
+    int64_t stemBlockSize = *stemBlockSizePtr;
     const int64_t *stemStridePtr = attrs->GetInt(ATTR_STEM_STRIDE);
     if (stemStridePtr == nullptr) {
         return ge::GRAPH_FAILED;
@@ -45,11 +57,11 @@ static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext* 
     if (qFlatShape == nullptr) {
         return ge::GRAPH_FAILED;
     }
-    qFlatShape->SetDimNum(4);
-    qFlatShape->SetDim(0, batch);
-    qFlatShape->SetDim(1, H_q);
-    qFlatShape->SetDim(2, -1);
-    qFlatShape->SetDim(3, kflat_dim);
+    qFlatShape->SetDimNum(QFLAT_RANK);
+    qFlatShape->SetDim(QFLAT_DIM_BATCH, batch);
+    qFlatShape->SetDim(QFLAT_DIM_HEADS, H_q);
+    qFlatShape->SetDim(QFLAT_DIM_MAX_QB, DYNAMIC_DIM);
+    qFlatShape->SetDim(QFLAT_DIM_KFLAT, kflat_dim);
 
     return ge::GRAPH_SUCCESS;
 }

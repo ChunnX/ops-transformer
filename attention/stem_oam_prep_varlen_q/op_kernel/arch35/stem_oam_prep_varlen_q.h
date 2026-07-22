@@ -55,7 +55,7 @@
 #define STEM_OAM_PREP_VARLEN_Q_REGBASE_H
 
 #include "kernel_operator.h"
-#include "stem_oam_prep_varlen_q_tilingdata.h"
+#include "stem_oam_prep_varlen_q_tiling_data.h"
 
 using namespace AscendC;
 
@@ -144,7 +144,7 @@ public:
         R = tiling->rVal;
         kflatDim = tiling->kflatDim;
         totalTokens = tiling->totalTokens;
-        ppNum = tiling->ubFactor > 1 ? 2 : 1;
+        ppNum = tiling->ubFactor > 1 ? DOUBLE_BUFFER_DEPTH : 1;
 
         InitTaskRange(tiling->blocksPerCoreBase,
                       tiling->blocksRemainder);

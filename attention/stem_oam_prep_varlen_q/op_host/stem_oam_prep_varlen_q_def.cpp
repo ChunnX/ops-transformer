@@ -11,6 +11,10 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
+
+static constexpr int64_t STEM_BLOCK_SIZE_DEFAULT = 128;
+static constexpr int64_t STEM_STRIDE_DEFAULT = 16;
+
 class StemOamPrepVarlenQ : public OpDef {
  public:
   explicit StemOamPrepVarlenQ(const char* name) : OpDef(name) {
@@ -30,7 +34,8 @@ class StemOamPrepVarlenQ : public OpDef {
         .ParamType(REQUIRED)
         .DataType({ge::DT_INT64})
         .Format({ge::FORMAT_ND})
-        .AutoContiguous();
+        .AutoContiguous()
+        .ValueDepend(REQUIRED);
     this->Input("qScale")
         .ParamType(OPTIONAL)
         .DataType({ge::DT_FLOAT})
@@ -55,7 +60,7 @@ class StemOamPrepVarlenQ : public OpDef {
         .DynamicShapeSupportFlag(true)
         .NeedCheckSupportFlag(false)
         .PrecisionReduceFlag(true)
-        .ExtendCfgInfo("opFile.value", "stem_oam_prep_varlen_q")
+        .ExtendCfgInfo("opFile.value", "stem_oam_prep_varlen_q");
     this->AICore().AddConfig("ascend950", aicore_config);
   }
 };
