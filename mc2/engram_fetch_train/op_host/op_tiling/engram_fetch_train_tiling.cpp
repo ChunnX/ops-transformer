@@ -511,8 +511,8 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context,
         OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenBytes=%ld", totalRecv, hiddenBytes),
         return ge::GRAPH_FAILED);
 
-    int64_t wsSdispls = numRanks * UB_ALIGN;
-    int64_t wsRdispls = numRanks * UB_ALIGN;
+    int64_t wsSdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
+    int64_t wsRdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
     int64_t wsSortedIndices = numTokens * static_cast<int64_t>(sizeof(int32_t));
     int64_t wsLocalData = totalRecv * hiddenBytes;
     int64_t wsRecvData = numTokens * hiddenBytes;

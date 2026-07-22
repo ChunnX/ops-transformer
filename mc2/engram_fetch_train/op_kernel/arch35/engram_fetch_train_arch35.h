@@ -170,8 +170,8 @@ private:
     // 布局: sdispls | rdispls | sortedIndices | localData | recvData | counterScratch | flagScratch
     GM_ADDR sendCountsGM_{0};      // [numRanks] int32 — 桶排序后各 rank 的发送计数（32B spaced，直接写输出 tensor）
     GM_ADDR recvCountsGM_{0};      // [numRanks] int32 — SendCountPhase 输出（紧凑）
-    GM_ADDR sdisplsGM_{0};         // [numRanks] int64 — send 前缀和（Step 0 本地计算，紧凑）
-    GM_ADDR rdisplsGM_{0};         // [numRanks] int64 — recv 前缀和（Step 1 接收后计算，紧凑）
+    GM_ADDR     sdisplsGM_{0};         // [numRanks] int64 — send 前缀和（紧凑布局）
+    GM_ADDR rdisplsGM_{0};         // [numRanks] int64 — recv 前缀和（紧凑布局）
     GM_ADDR sortedIndicesGM_{0};   // [numTokens] int32 — 按 rank 分组排序的 indices
     GM_ADDR tokenIdxInRankGM_{0};  // [numTokens] uint32 — 原始位置记录（全局位置）
     GM_ADDR recvIndicesGM_{0};     // [totalRecvUB] int32 — 接收到的 indices（有重复）
@@ -337,10 +337,10 @@ __aicore__ inline void EngramFetchTrainArch35::Init(
 
     // workspace 只保留 sdispls/rdispls/sortedIndices/localData/recvData/counterScratch/flagScratch
     uint64_t wsOffset = 0;
-    sdisplsGM_ = workspaceGM_ + wsOffset;                             // [numRanks] int64, 32B spaced
-    wsOffset += numRanks_ * UB_ALIGN;
-    rdisplsGM_ = workspaceGM_ + wsOffset;                             // [numRanks] int64, 32B spaced
-    wsOffset += numRanks_ * UB_ALIGN;
+    sdisplsGM_ = workspaceGM_ + wsOffset;                             // [numRanks] int64, 紧凑
+    wsOffset += numRanks_ * sizeof(int64_t);
+    rdisplsGM_ = workspaceGM_ + wsOffset;                             // [numRanks] int64, 紧凑
+    wsOffset += numRanks_ * sizeof(int64_t);
     sortedIndicesGM_ = workspaceGM_ + wsOffset;                       // [numTokens] int32
     wsOffset += static_cast<uint64_t>(numTokens_) * sizeof(int32_t);
     int64_t totalRecvUpperBound = static_cast<int64_t>(maxTokensPerRank_) * static_cast<int64_t>(numRanks_);
@@ -365,7 +365,7 @@ __aicore__ inline void EngramFetchTrainArch35::Init(
     // statusBuf_ 用于 WaitAllStatusFlags (DataCopy 读 numRanks×32B) 和 ClearStatusFlags
     uint32_t statusBufSize = Ceil(numRanks_ * STATE_OFFSET, UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(statusBuf_, statusBufSize);
-    // tempBuf_ 用于 ReduceSum 输出等，至少 32B
+    // tempBuf_ 用于 sdispls/rdispls（紧凑布局）
     uint32_t tempBufSize = Ceil(numRanks_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(tempBuf_, tempBufSize);
     printf("[engram_fetch_train] Init: counts/status/temp buf done, countsBufSize=%u, statusBufSize=%u\n",
@@ -570,6 +570,10 @@ __aicore__ inline void EngramFetchTrainArch35::SendCountPhase()
         GM_ADDR localFlagBase = (GM_ADDR)ctxPtr_->commBuffer[rankId_] + countFlagOffset_;
         WaitAllStatusFlags(localFlagBase, numRanks_);
 
+        // 在 UB 中积累 recvCounts 和 rdispls，循环结束后批量写出
+        LocalTensor<int32_t> recvCountsUb = rankCountsBuf_.Get<int32_t>();
+        LocalTensor<int64_t> rdisplsUb = tempBuf_.Get<int64_t>();
+
         int64_t rSum = 0;
         for (uint32_t r = 0; r < numRanks_; r++) {
             GM_ADDR countAddr = (GM_ADDR)ctxPtr_->commBuffer[rankId_] + sendCountOffset_ + r * STATE_OFFSET;
@@ -578,23 +582,28 @@ __aicore__ inline void EngramFetchTrainArch35::SendCountPhase()
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(countGM);
             int32_t recvCount = countGM.GetValue(0);
 
-            // 写 recvCounts[r]
-            GM_ADDR recvSlot = recvCountsGM_ + r * sizeof(int32_t);
-            GlobalTensor<int32_t> recvSlotGM;
-            recvSlotGM.SetGlobalBuffer((__gm__ int32_t *)recvSlot);
-            recvSlotGM.SetValue(0, recvCount);
-            DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(recvSlotGM);
-
-            // 写 rdispls[r]
-            GM_ADDR rDisplSlot = rdisplsGM_ + r * UB_ALIGN;
-            GlobalTensor<int64_t> rDisplSlotGM;
-            rDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)rDisplSlot);
-            rDisplSlotGM.SetValue(0, rSum);
-            DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rDisplSlotGM);
+            recvCountsUb.SetValue(r, recvCount);
+            rdisplsUb.SetValue(r, rSum);
 
             printf("[engram_fetch_train] SendCountPhase recvCounts[%u]=%d, rdispls=%ld\n", r, recvCount, rSum);
             rSum += static_cast<int64_t>(recvCount);
         }
+
+        // 批量写出 recvCounts（紧凑布局）
+        EngramFetchTrainSyncFunc<HardEvent::S_MTE3>();
+        GlobalTensor<int32_t> recvCountsOutGM;
+        recvCountsOutGM.SetGlobalBuffer((__gm__ int32_t *)recvCountsGM_);
+        DataCopyParams recvParams = {1U, static_cast<uint16_t>(numRanks_ * sizeof(int32_t)), 0U, 0U};
+        DataCopyPad(recvCountsOutGM, recvCountsUb, recvParams);
+        EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
+
+        // 批量写出 rdispls（紧凑布局）
+        EngramFetchTrainSyncFunc<HardEvent::S_MTE3>();
+        GlobalTensor<int64_t> rdisplsOutGM;
+        rdisplsOutGM.SetGlobalBuffer((__gm__ int64_t *)rdisplsGM_);
+        DataCopyParams rdisplParams = {1U, static_cast<uint16_t>(numRanks_ * sizeof(int64_t)), 0U, 0U};
+        DataCopyPad(rdisplsOutGM, rdisplsUb, rdisplParams);
+        EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
 
         ClearStatusFlags(localFlagBase);
     }
@@ -661,7 +670,7 @@ __aicore__ inline void EngramFetchTrainArch35::ExchangeIndices()
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sSlotGM);
             int32_t sendCount = sSlotGM.GetValue(0);
 
-            GM_ADDR sDisplSlot = sdisplsGM_ + dstRank * UB_ALIGN;
+            GM_ADDR sDisplSlot = sdisplsGM_ + dstRank * sizeof(int64_t);
             GlobalTensor<int64_t> sDisplSlotGM;
             sDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)sDisplSlot);
             DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sDisplSlotGM);
@@ -674,7 +683,7 @@ __aicore__ inline void EngramFetchTrainArch35::ExchangeIndices()
                 // 本地：直接 DataCopy 到 recvIndicesGM
                 if (sendCount > 0) {
                     // 读 rdispls[rankId] 确定写入位置
-                    GM_ADDR rDisplSlot = rdisplsGM_ + rankId_ * UB_ALIGN;
+                    GM_ADDR rDisplSlot = rdisplsGM_ + rankId_ * sizeof(int64_t);
                     GlobalTensor<int64_t> rDisplSlotGM;
                     rDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)rDisplSlot);
                     DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rDisplSlotGM);
@@ -772,7 +781,7 @@ __aicore__ inline void EngramFetchTrainArch35::ExchangeIndices()
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rSlotGM);
             int32_t recvCount = rSlotGM.GetValue(0);
 
-            GM_ADDR rDisplSlot = rdisplsGM_ + srcRank * UB_ALIGN;
+            GM_ADDR rDisplSlot = rdisplsGM_ + srcRank * sizeof(int64_t);
             GlobalTensor<int64_t> rDisplSlotGM;
             rDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)rDisplSlot);
             DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rDisplSlotGM);
@@ -865,7 +874,7 @@ __aicore__ inline void EngramFetchTrainArch35::ExchangeToken()
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rSlotGM);
             int32_t sendCount = rSlotGM.GetValue(0);
 
-            GM_ADDR rDisplSlot = rdisplsGM_ + dstRank * UB_ALIGN;
+            GM_ADDR rDisplSlot = rdisplsGM_ + dstRank * sizeof(int64_t);
             GlobalTensor<int64_t> rDisplSlotGM;
             rDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)rDisplSlot);
             DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(rDisplSlotGM);
@@ -878,7 +887,7 @@ __aicore__ inline void EngramFetchTrainArch35::ExchangeToken()
                 // 本地：直接 DataCopy 到 recvDataGM
                 if (sendCount > 0) {
                     // counts 互换：接收用 sdispls
-                    GM_ADDR sDisplSlot = sdisplsGM_ + rankId_ * UB_ALIGN;
+                    GM_ADDR sDisplSlot = sdisplsGM_ + rankId_ * sizeof(int64_t);
                     GlobalTensor<int64_t> sDisplSlotGM;
                     sDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)sDisplSlot);
                     DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sDisplSlotGM);
@@ -972,7 +981,7 @@ __aicore__ inline void EngramFetchTrainArch35::ExchangeToken()
             DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sSlotGM);
             int32_t recvCount = sSlotGM.GetValue(0);
 
-            GM_ADDR sDisplSlot = sdisplsGM_ + srcRank * UB_ALIGN;
+            GM_ADDR sDisplSlot = sdisplsGM_ + srcRank * sizeof(int64_t);
             GlobalTensor<int64_t> sDisplSlotGM;
             sDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)sDisplSlot);
             DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sDisplSlotGM);
@@ -1051,11 +1060,39 @@ __aicore__ inline void EngramFetchTrainArch35::ReorderAndSaveCtx()
 
     // --- 重排：按 tokenIdxInRank 将 recvData 恢复到 fetched 原始位置 ---
     // recvData[i] → fetched[tokenIdxInRank[i]]
-    for (int64_t i = static_cast<int64_t>(aivId_); i < numTokens_; i += static_cast<int64_t>(totalBlocks_)) {
-        uint32_t originalIdx = tokenIdxInRankGM.GetValue(static_cast<uint32_t>(i));
-        GM_ADDR src = recvDataGM_ + static_cast<uint64_t>(i) * static_cast<uint64_t>(hiddenBytes_);
-        GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(originalIdx) * static_cast<uint64_t>(hiddenBytes_);
-        LocalCopySlice(dst, src, static_cast<uint64_t>(hiddenBytes_));
+    // 多核连续分块 [start, end)，分批搬 UB 读 tokenIdxInRank
+    int64_t totalPerCore = (numTokens_ + static_cast<int64_t>(totalBlocks_) - 1) / static_cast<int64_t>(totalBlocks_);
+    int64_t start = static_cast<int64_t>(aivId_) * totalPerCore;
+    int64_t end = start + totalPerCore;
+    if (end > numTokens_) { end = numTokens_; }
+
+    LocalTensor<uint32_t> tokenIdxUb = tokenIdxInRankBuf_.Get<uint32_t>();
+    uint32_t tokenIdxBufCap = indicesBatchSize_;  // tokenIdxInRankBuf_ 容量（与 indicesBuf_ 同大小）
+
+    int64_t cur = start;
+    while (cur < end) {
+        int64_t batchLen = end - cur;
+        if (batchLen > static_cast<int64_t>(tokenIdxBufCap)) {
+            batchLen = static_cast<int64_t>(tokenIdxBufCap);
+        }
+        // 批量搬 tokenIdxInRank[cur ~ cur+batchLen) 到 UB
+        GlobalTensor<uint32_t> tokenIdxBatchGM;
+        tokenIdxBatchGM.SetGlobalBuffer((__gm__ uint32_t *)tokenIdxInRankGM_);
+        DataCopyExtParams cpParams{1U, static_cast<uint32_t>(batchLen) * static_cast<uint32_t>(sizeof(uint32_t)),
+                                   0U, 0U, 0U};
+        DataCopyPadExtParams<uint32_t> cpPad{false, 0, 0, 0};
+        DataCopyPad(tokenIdxUb, tokenIdxBatchGM[static_cast<uint32_t>(cur)], cpParams, cpPad);
+        EngramFetchTrainSyncFunc<HardEvent::MTE2_S>();
+
+        // 从 UB 读 originalIdx，做 reorder
+        for (int64_t j = 0; j < batchLen; j++) {
+            uint32_t originalIdx = tokenIdxUb.GetValue(static_cast<uint32_t>(j));
+            int64_t gmIdx = cur + j;
+            GM_ADDR src = recvDataGM_ + static_cast<uint64_t>(gmIdx) * static_cast<uint64_t>(hiddenBytes_);
+            GM_ADDR dst = fetchedGM_ + static_cast<uint64_t>(originalIdx) * static_cast<uint64_t>(hiddenBytes_);
+            LocalCopySlice(dst, src, static_cast<uint64_t>(hiddenBytes_));
+        }
+        cur += batchLen;
     }
 
     SyncAll<true>();
@@ -1066,7 +1103,7 @@ __aicore__ inline void EngramFetchTrainArch35::ReorderAndSaveCtx()
         LocalTensor<int32_t> tmp32 = indicesBuf_.Get<int32_t>();
 
         // numRecvOut: totalRecv = rdispls[last] + recvCounts[last]
-        GM_ADDR lastRDisplSlot = rdisplsGM_ + (numRanks_ - 1) * UB_ALIGN;
+        GM_ADDR lastRDisplSlot = rdisplsGM_ + (numRanks_ - 1) * sizeof(int64_t);
         GlobalTensor<int64_t> lastRDisplSlotGM;
         lastRDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)lastRDisplSlot);
         DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(lastRDisplSlotGM);
@@ -1097,7 +1134,7 @@ __aicore__ inline void EngramFetchTrainArch35::LocalReadTable()
     recvIndicesGM.SetGlobalBuffer((__gm__ int32_t *)recvIndicesGM_);
 
     // 读最后一个 rank 的 rdispls 和 recvCounts 算 totalRecv
-    GM_ADDR lastRDisplSlot = rdisplsGM_ + (numRanks_ - 1) * UB_ALIGN;
+    GM_ADDR lastRDisplSlot = rdisplsGM_ + (numRanks_ - 1) * sizeof(int64_t);
     GlobalTensor<int64_t> lastRDisplSlotGM;
     lastRDisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)lastRDisplSlot);
     DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(lastRDisplSlotGM);
@@ -1109,14 +1146,41 @@ __aicore__ inline void EngramFetchTrainArch35::LocalReadTable()
     printf("[engram_fetch_train] LocalReadTable: rankId=%u, totalRecv=%ld, aivId=%u\n",
            rankId_, totalRecv, aivId_);
 
-    // 多核并行：每个核处理一部分 recvIndices
-    for (int64_t i = static_cast<int64_t>(aivId_); i < totalRecv; i += static_cast<int64_t>(totalBlocks_)) {
-        int32_t globalIdx = recvIndicesGM.GetValue(static_cast<uint32_t>(i));
-        uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - rankId_ * numEntriesPerRank_;
-        GM_ADDR src = (GM_ADDR)localStorageAddr_
-                      + static_cast<uint64_t>(localEntryIdx) * static_cast<uint64_t>(hiddenBytes_);
-        GM_ADDR dst = localDataGM_ + static_cast<uint64_t>(i) * static_cast<uint64_t>(hiddenBytes_);
-        LocalCopySlice(dst, src, static_cast<uint64_t>(hiddenBytes_));
+    // 多核并行：每个核处理连续分块 [start, end)，分批搬 UB 读 index
+    int64_t totalPerCore = (totalRecv + static_cast<int64_t>(totalBlocks_) - 1) / static_cast<int64_t>(totalBlocks_);
+    int64_t start = static_cast<int64_t>(aivId_) * totalPerCore;
+    int64_t end = start + totalPerCore;
+    if (end > totalRecv) { end = totalRecv; }
+
+    LocalTensor<int32_t> indicesUb = indicesBuf_.Get<int32_t>();
+    uint32_t indicesBufCap = indicesBatchSize_;  // indicesBuf_ 容量（元素个数）
+
+    int64_t cur = start;
+    while (cur < end) {
+        int64_t batchLen = end - cur;
+        if (batchLen > static_cast<int64_t>(indicesBufCap)) {
+            batchLen = static_cast<int64_t>(indicesBufCap);
+        }
+        // 批量搬 recvIndices[cur ~ cur+batchLen) 到 UB
+        GlobalTensor<int32_t> recvIndicesBatchGM;
+        recvIndicesBatchGM.SetGlobalBuffer((__gm__ int32_t *)recvIndicesGM_);
+        DataCopyExtParams cpParams{1U, static_cast<uint32_t>(batchLen) * static_cast<uint32_t>(sizeof(int32_t)),
+                                   0U, 0U, 0U};
+        DataCopyPadExtParams<int32_t> cpPad{false, 0, 0, 0};
+        DataCopyPad(indicesUb, recvIndicesBatchGM[static_cast<uint32_t>(cur)], cpParams, cpPad);
+        EngramFetchTrainSyncFunc<HardEvent::MTE2_S>();
+
+        // 从 UB 读 index，做 gather
+        for (int64_t j = 0; j < batchLen; j++) {
+            int32_t globalIdx = indicesUb.GetValue(static_cast<uint32_t>(j));
+            uint32_t localEntryIdx = static_cast<uint32_t>(globalIdx) - rankId_ * numEntriesPerRank_;
+            int64_t gmIdx = cur + j;
+            GM_ADDR src = (GM_ADDR)localStorageAddr_
+                          + static_cast<uint64_t>(localEntryIdx) * static_cast<uint64_t>(hiddenBytes_);
+            GM_ADDR dst = localDataGM_ + static_cast<uint64_t>(gmIdx) * static_cast<uint64_t>(hiddenBytes_);
+            LocalCopySlice(dst, src, static_cast<uint64_t>(hiddenBytes_));
+        }
+        cur += batchLen;
     }
 
     SyncAll<true>();
@@ -1311,17 +1375,23 @@ __aicore__ inline void EngramFetchTrainArch35::Process()
             DataCopyPad(countsLocal, sendCountsGM, cpParams, cpPad);
             EngramFetchTrainSyncFunc<HardEvent::MTE2_S>();
 
+            // 在 UB 中积累 sdispls，循环结束后批量写出
+            LocalTensor<int64_t> sdisplsUb = tempBuf_.Get<int64_t>();
+
             int64_t sdisplsAccum = 0;
             for (uint32_t r = 0; r < numRanks_; r++) {
                 int32_t sCount = countsLocal.GetValue(r * UB_ALIGN / sizeof(int32_t));
-
-                GlobalTensor<int64_t> sdisplsGM;
-                sdisplsGM.SetGlobalBuffer((__gm__ int64_t *)sdisplsGM_);
-                sdisplsGM.SetValue(r * UB_ALIGN / sizeof(int64_t), sdisplsAccum);
-                DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sdisplsGM);
-
+                sdisplsUb.SetValue(r, sdisplsAccum);
                 sdisplsAccum += static_cast<int64_t>(sCount);
             }
+
+            // 批量写出 sdispls（紧凑布局）
+            EngramFetchTrainSyncFunc<HardEvent::S_MTE3>();
+            GlobalTensor<int64_t> sdisplsOutGM;
+            sdisplsOutGM.SetGlobalBuffer((__gm__ int64_t *)sdisplsGM_);
+            DataCopyParams sdisplParams = {1U, static_cast<uint16_t>(numRanks_ * sizeof(int64_t)), 0U, 0U};
+            DataCopyPad(sdisplsOutGM, sdisplsUb, sdisplParams);
+            EngramFetchTrainSyncFunc<HardEvent::MTE3_S>();
         }
         SyncAll<true>();
 
@@ -1339,7 +1409,7 @@ __aicore__ inline void EngramFetchTrainArch35::Process()
             Duplicate<int32_t>(divisor, numEntriesPerRank_, compareCntMax);
 
             for (uint32_t ownerRank = aivId_; ownerRank < numRanks_; ownerRank += totalBlocks_) {
-                GM_ADDR sdisplSlot = sdisplsGM_ + ownerRank * UB_ALIGN;
+                GM_ADDR sdisplSlot = sdisplsGM_ + ownerRank * sizeof(int64_t);
                 GlobalTensor<int64_t> sdisplSlotGM;
                 sdisplSlotGM.SetGlobalBuffer((__gm__ int64_t *)sdisplSlot);
                 DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(sdisplSlotGM);
@@ -1421,7 +1491,9 @@ __aicore__ inline void EngramFetchTrainArch35::Process()
                 int32_t sc = sSlotGM.GetValue(0);
                 printf("[engram_fetch_train] === step0 result: sendCounts[%u]=%d ===\n", r, sc);
             }
-            for (int64_t i = 0; i < numTokens_; i++) {
+            // 仅打印前 min(numTokens_, 10) 个，避免大量 GM GetValue
+            int64_t printCnt = (numTokens_ < 10) ? numTokens_ : 10;
+            for (int64_t i = 0; i < printCnt; i++) {
                 printf("[engram_fetch_train] === step0 result: sortedIndices[%ld]=%d, tokenIdxInRank[%ld]=%u ===\n",
                        i, sortedIndicesGM.GetValue(static_cast<uint32_t>(i)),
                        i, tokenIdxInRankGM.GetValue(static_cast<uint32_t>(i)));
