@@ -46,7 +46,7 @@ public:
     __aicore__ inline StemOamPrepPagedKvSimd() = default;
     __aicore__ inline void Process(void);
     __aicore__ inline void Init(GM_ADDR kCache, GM_ADDR vCache, GM_ADDR kvIndices, GM_ADDR kvSeqLens,
-                                GM_ADDR kScaleCache, GM_ADDR vScale, GM_ADDR kFlat, GM_ADDR vBias, GM_ADDR shapeOut,
+                                GM_ADDR kScaleCache, GM_ADDR vScale, GM_ADDR kFlat, GM_ADDR vBias,
                                 GM_ADDR workspace, const StemOamPrepPagedKvTilingData *tilingData, TPipe *pipe);
 
 private:
@@ -88,7 +88,6 @@ private:
     GlobalTensor<int32_t> kvSeqLensGm_;
     GlobalTensor<float> kScaleCacheGm_;
     GlobalTensor<float> vScaleGm_;
-    GlobalTensor<uint64_t> outShapeGm_;
 
     GlobalTensor<bfloat16_t> kFlatGm_;
     GlobalTensor<float> vBiasGm_;
@@ -148,7 +147,6 @@ __aicore__ inline void StemOamPrepPagedKvSimd::Init(GM_ADDR kCache, GM_ADDR vCac
     vScaleGm_.SetGlobalBuffer((__gm__ float *)vScale);
     kFlatGm_.SetGlobalBuffer((__gm__ bfloat16_t *)kFlat);
     vBiasGm_.SetGlobalBuffer((__gm__ float *)vBias);
-    outShapeGm_.SetGlobalBuffer((__gm__ uint64_t *)shapeOut);
 
     vFlatOutWs_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(workspace));
     pipe_ = pipe;
