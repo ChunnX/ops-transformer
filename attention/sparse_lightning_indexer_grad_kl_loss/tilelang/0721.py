@@ -41,6 +41,7 @@ DQUERY_INDEX = 128
 
 _kernel_cache = {}
 _workspace_cache = {}
+_debug_dump_done = False
 
 
 def _clear_caches():
@@ -469,10 +470,11 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte1", "mte2", 0)
                             T.set_flag("mte1", "m", 0)
                             T.wait_flag("mte1", "m", 0)
-                            if d_idx == 0:
-                                T.wait_flag("fix", "m", 0)
+                            T.wait_flag("fix", "m", 0)
                             T.mma(c1_q_l0a, c1_key_l0b, c1_p_l0c, init=(d_idx == 0))
                             T.set_flag("m", "mte1", 0)
+                            if d_idx + 1 < d_num_query or d_num_rope > 0:
+                                T.set_flag("fix", "m", 0)
 
                         for rope_idx in T.serial(d_num_rope):
                             T.wait_flag("mte1", "mte2", 0)
@@ -499,6 +501,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte1", "mte2", 0)
                             T.set_flag("mte1", "m", 0)
                             T.wait_flag("mte1", "m", 0)
+                            T.wait_flag("fix", "m", 0)
                             T.mma(
                                 c1_q_l0a,
                                 c1_key_l0b,
@@ -506,6 +509,8 @@ def tilelang_grad_kl_loss_single_kernel(
                                 init=False,
                             )
                             T.set_flag("m", "mte1", 0)
+                            if rope_idx + 1 < d_num_rope:
+                                T.set_flag("fix", "m", 0)
 
                         T.set_flag("m", "fix", 0)
                         T.wait_flag("m", "fix", 0)
@@ -553,10 +558,11 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte1", "mte2", 1)
                             T.set_flag("mte1", "m", 1)
                             T.wait_flag("mte1", "m", 1)
-                            if d_idx == 0:
-                                T.wait_flag("fix", "m", 1)
+                            T.wait_flag("fix", "m", 1)
                             T.mma(c1_qi_l0a, c1_ki_l0b, c1_sy_l0c, init=(d_idx == 0))
                             T.set_flag("m", "mte1", 1)
+                            if d_idx + 1 < d_num_query_index:
+                                T.set_flag("fix", "m", 1)
                         T.set_flag("m", "fix", 1)
                         T.wait_flag("m", "fix", 1)
                         T.copy(
@@ -1075,10 +1081,11 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("fix", "m", 2)
 
                     T.wait_flag("mte1", "m", 3)
-                    if n_idx == 0:
-                        T.wait_flag("fix", "m", 3)
+                    T.wait_flag("fix", "m", 3)
                     T.mma(c2_dq_rg_l0a, c2_dq_gki_l0b, c2_dq_l0c, init=(n_idx == 0))
                     T.set_flag("m", "mte1", 3)
+                    if n_idx + 1 < n_num:
+                        T.set_flag("fix", "m", 3)
 
                 T.set_flag("m", "fix", 3)
                 T.wait_flag("m", "fix", 3)
@@ -2514,6 +2521,8 @@ def sparse_lightning_indexer_grad_kl_loss(
     layout_query: str = "BSND",
     sparse_mode: int = 3,
 ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
+    global _debug_dump_done
+
     tiling = check_param_valid(
         query, key, query_index, key_index, weights, sparse_indices,
         softmax_max, softmax_sum,
@@ -2704,19 +2713,63 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_weight = results[2]
         loss_out = results[3]
 
-        # DEBUG: compare kernel-gathered KeyIndex vs host-gathered KeyIndex
-        _DEBUG = os.environ.get("SLIG_DEBUG", "0") == "1"
+        # DEBUG: identify the first stage that produces a non-finite value.
+        _DEBUG = (
+            os.environ.get("SLIG_DEBUG", "0") == "1"
+            and not _debug_dump_done
+        )
         if _DEBUG:
-            # Compute expected gather on host for comparison
-            _, expected_gki, _ = _preprocess_gather(
+            def _debug_tensor(name, tensor):
+                tensor_fp32 = tensor.float()
+                nan_count = torch.isnan(tensor_fp32).sum().item()
+                inf_count = torch.isinf(tensor_fp32).sum().item()
+                finite_tensor = torch.nan_to_num(
+                    tensor_fp32, nan=0.0, posinf=0.0, neginf=0.0
+                )
+                print(
+                    f"[DEBUG] {name}: shape={tuple(tensor.shape)}, "
+                    f"nan={nan_count}, inf={inf_count}, "
+                    f"finite_abs_max={finite_tensor.abs().max().item():.6e}"
+                )
+
+            expected_gk, expected_gki, expected_gkr = _preprocess_gather(
                 key, key_index, key_rope, sparse_indices,
                 B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, query.dtype,
             )
+            _debug_tensor("GatherKey_ws", gather_key_ws)
+            _debug_tensor("GatherKeyRope_ws", gather_key_rope_ws)
+            _debug_tensor("GatherKeyIndex_ws", gather_key_index_ws)
+            _debug_tensor("bmm1Res", bmm1_res_ws)
+            _debug_tensor("bmm2Res", bmm2_res_ws)
+            _debug_tensor("PReduced", p_reduced_ws)
+            _debug_tensor("SoftmaxI", softmax_i_ws)
+            _debug_tensor("reluGradRes", relu_grad_out)
+            _debug_tensor("dk_matmul_partial", dk_matmul_partial)
+            _debug_tensor("dQueryIndexAccum", d_query_index_accum)
+            _debug_tensor("dKeyIndexAccum", d_key_index_accum)
+            _debug_tensor("dWeightOut", d_weight)
+            _debug_tensor("LossPartial", loss_partial_ws)
+            _debug_tensor("LossOut", loss_out)
+
+            gk_diff = (gather_key_ws.float() - expected_gk.float()).abs()
             gki_diff = (gather_key_index_ws.float() - expected_gki.float()).abs()
-            print(f"[DEBUG] GatherKeyIndex_ws vs host_gather: max_diff={gki_diff.max().item():.6e}, mean_diff={gki_diff.mean().item():.6e}")
-            # Also check dQueryIndexAccum before cast
-            print(f"[DEBUG] dQueryIndexAccum: max={d_query_index_accum.max().item():.6e}, min={d_query_index_accum.min().item():.6e}, has_nan={torch.isnan(d_query_index_accum).any().item()}, has_inf={torch.isinf(d_query_index_accum).any().item()}")
-            print(f"[DEBUG] dKeyIndex(output #-3): max={d_key_index_flat.abs().max().item():.6e}, nonzero_rows={ (d_key_index_flat.abs().sum(-1) > 0).sum().item() }")
+            gkr_diff = (gather_key_rope_ws.float() - expected_gkr.float()).abs()
+            print(
+                f"[DEBUG] GatherKey_ws vs host_gather: "
+                f"max_diff={gk_diff.max().item():.6e}, "
+                f"mean_diff={gk_diff.mean().item():.6e}"
+            )
+            print(
+                f"[DEBUG] GatherKeyIndex_ws vs host_gather: "
+                f"max_diff={gki_diff.max().item():.6e}, "
+                f"mean_diff={gki_diff.mean().item():.6e}"
+            )
+            print(
+                f"[DEBUG] GatherKeyRope_ws vs host_gather: "
+                f"max_diff={gkr_diff.max().item():.6e}, "
+                f"mean_diff={gkr_diff.mean().item():.6e}"
+            )
+            _debug_dump_done = True
 
         if weights_orig_dtype == torch.float32:
             d_weight = d_weight.float()
