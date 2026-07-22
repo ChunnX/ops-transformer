@@ -622,12 +622,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.copy(SoftmaxSum[bz_task, 0, s1_id, 0:N1], v1_p_sum)
                     T.set_flag("mte2", "v", 0)
                     T.set_flag("mte3", "v", 0)
+                    T.set_flag("v", "mte2", 1)
                     T.wait_flag("mte2", "v", 0)
                     T.tile.abs(v1_p_sum, v1_p_sum)
                     T.tile.fill(v1_p_partial[0:N1], 1e-8)
                     T.pipe_barrier("v")
                     T.tile.max(v1_p_sum, v1_p_sum, v1_p_partial[0:N1])
                     for n_idx in T.serial(n_num):
+                        T.wait_flag("v", "mte2", 1)
                         T.copy(
                             bmm1Res[bz_task, s1_id, 0:N1,
                                     n_idx * n_block:(n_idx + 1) * n_block],
@@ -691,6 +693,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         # 128x128 axis-0 reduction corrupts the result.  Match
                         # the official N-loop structure and accumulate two
                         # partial reductions in UB.
+                        T.wait_flag("mte3", "v", 0)
                         T.tile.fill(v1_p_out, 0.0)
                         T.pipe_barrier("v")
                         for p_reduce_chunk in T.serial(p_row_chunk_count):
@@ -710,8 +713,8 @@ def tilelang_grad_kl_loss_single_kernel(
                                 v1_p_partial[0:n_block],
                             )
                             T.pipe_barrier("v")
+                        T.set_flag("v", "mte2", 1)
                         T.tile.mul(v1_p_out, v1_p_out, 1.0 / N1)
-                        T.wait_flag("mte3", "v", 0)
                         T.set_flag("v", "mte3", 0)
                         T.wait_flag("v", "mte3", 0)
                         T.copy(
@@ -721,6 +724,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
                         T.set_flag("mte3", "v", 0)
 
+                    T.wait_flag("v", "mte2", 1)
                     T.wait_flag("mte3", "v", 0)
 
                 if vector_id == 1:
@@ -775,7 +779,9 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_sy_tmp,
                         )
                     T.tile.fill(v1_sy_max, -T.infinity(calc_dtype))
+                    T.set_flag("v", "mte2", 3)
                     for n_idx in T.serial(n_num):
+                        T.wait_flag("v", "mte2", 3)
                         T.copy(
                             bmm2Res[bz_task, s1_id, 0:Nidx1,
                                     n_idx * n_block:(n_idx + 1) * n_block],
@@ -804,7 +810,9 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.reduce_max(v1_sy_broadcast, v1_sy_tmp_max, 1)
                         T.pipe_barrier("v")
                         T.tile.max(v1_sy_max, v1_sy_max, v1_sy_tmp_max)
+                        T.set_flag("v", "mte2", 3)
 
+                    T.wait_flag("v", "mte2", 3)
                     T.tile.fill(v1_sy_sum, 0.0)
                     for n_idx in T.serial(n_num):
                         T.copy(
@@ -827,6 +835,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.max(v1_sy_sum, v1_sy_sum, v1_sy_eps)
                     for n_idx in T.serial(n_num):
+                        T.wait_flag("mte3", "v", 1)
                         T.copy(
                             v1_sy_storage[Nidx1 + n_idx, 0:n_block],
                             v1_sy_chunk,
@@ -840,7 +849,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.broadcast(v1_sy_broadcast, v1_sy_sum)
                         T.pipe_barrier("v")
                         T.tile.div(v1_sy_chunk, v1_sy_chunk, v1_sy_broadcast[0, :])
-                        T.wait_flag("mte3", "v", 1)
                         T.set_flag("v", "mte3", 1)
                         T.wait_flag("v", "mte3", 1)
                         T.copy(
@@ -910,6 +918,7 @@ def tilelang_grad_kl_loss_single_kernel(
             T.tile.fill(v1_bw_eps, 1e-8)
             T.set_flag("mte3", "v", 2)
             T.set_flag("mte3", "v", 3)
+            T.set_flag("v", "mte2", 3)
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 g_start = vector_id * rows_per_aiv
@@ -947,6 +956,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     )
 
                 for n_idx in T.serial(n_num):
+                    T.wait_flag("v", "mte2", 3)
                     T.copy(
                         PReduced[bz_task, s1_id,
                                  n_idx * n_block:(n_idx + 1) * n_block],
@@ -990,6 +1000,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.mul(v1_bw_diff_2d, v1_bw_diff_2d, v1_bw_mask)
 
+                    T.wait_flag("mte3", "v", 2)
                     T.tile.cast(
                         v1_bw_rg_half,
                         v1_bw_diff_2d,
@@ -997,7 +1008,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         rows_per_aiv * n_block,
                     )
                     T.pipe_barrier("v")
-                    T.wait_flag("mte3", "v", 2)
                     T.set_flag("v", "mte3", 2)
                     T.wait_flag("v", "mte3", 2)
                     T.copy(
@@ -1028,6 +1038,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_bw_loss_accum,
                             v1_bw_loss_sum,
                         )
+                    T.set_flag("v", "mte2", 3)
 
                 T.pipe_barrier("v")
                 T.wait_flag("mte3", "v", 3)
@@ -1051,6 +1062,7 @@ def tilelang_grad_kl_loss_single_kernel(
                 )
                 T.set_flag("mte3", "v", 3)
 
+            T.wait_flag("v", "mte2", 3)
             T.wait_flag("mte3", "v", 2)
             T.wait_flag("mte3", "v", 3)
             if task_slot == 0:
@@ -2837,7 +2849,18 @@ def sparse_lightning_indexer_grad_kl_loss(
                 torch.exp(debug_scaled_bmm1 - debug_softmax_max.unsqueeze(-1))
                 / debug_softmax_sum.unsqueeze(-1)
             ).mean(dim=2)
+            debug_reduce_sum_y = (
+                bmm2_res_ws.float() * weights.float().unsqueeze(-1)
+            ).sum(dim=2)
+            debug_softmax_i = torch.softmax(debug_reduce_sum_y, dim=-1)
+            debug_relu_grad = (
+                weights.float().unsqueeze(-1)
+                * (debug_softmax_i - debug_p_reduced).unsqueeze(2)
+                * (bmm2_res_ws.float() > 0).float()
+            )
             p_reduced_diff = (p_reduced_ws.float() - debug_p_reduced).abs()
+            softmax_i_diff = (softmax_i_ws.float() - debug_softmax_i).abs()
+            relu_grad_diff = (relu_grad_out.float() - debug_relu_grad).abs()
             p_max_diff = (
                 debug_scaled_bmm1.amax(dim=-1) - debug_softmax_max
             ).abs()
@@ -2865,6 +2888,16 @@ def sparse_lightning_indexer_grad_kl_loss(
                 f"[DEBUG] PReduced vs host formula: "
                 f"max_diff={p_reduced_diff.max().item():.6e}, "
                 f"mean_diff={p_reduced_diff.mean().item():.6e}"
+            )
+            print(
+                f"[DEBUG] SoftmaxI vs host formula: "
+                f"max_diff={softmax_i_diff.max().item():.6e}, "
+                f"mean_diff={softmax_i_diff.mean().item():.6e}"
+            )
+            print(
+                f"[DEBUG] reluGradRes vs host formula: "
+                f"max_diff={relu_grad_diff.max().item():.6e}, "
+                f"mean_diff={relu_grad_diff.mean().item():.6e}"
             )
             _debug_dump_done = True
 
