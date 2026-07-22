@@ -11,7 +11,6 @@
 set +e
 
 REPOSITORY_NAME="ops-transformer"
-export REPOSITORY_NAME
 sudo update-alternatives --set gcc /usr/bin/gcc-14
 export PATH=/opt/buildtools/python-3.10.2/bin:$PATH
 gcc --version
