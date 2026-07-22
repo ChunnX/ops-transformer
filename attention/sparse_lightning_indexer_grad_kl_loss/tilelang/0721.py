@@ -724,12 +724,17 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("mte3", "v", 0)
 
                 if vector_id == 1:
-                    v1_sy_bmm2 = T.alloc_ub((Nidx1, n_block), calc_dtype)
+                    # Keep the current BMM2 tile and the loop-carried ReduceSumY
+                    # history in one physical allocation.  Separate allocations
+                    # were incorrectly coalesced by the UB planner even though
+                    # the history remains live across every K-block iteration.
+                    v1_sy_storage = T.alloc_ub(
+                        (Nidx1 + n_num, n_block), calc_dtype
+                    )
                     v1_sy_weight_half = T.alloc_ub(Nidx1, input_dtype)
                     v1_sy_weight = T.alloc_ub(Nidx1, calc_dtype)
                     v1_sy_weight_2d = T.alloc_ub((Nidx1, n_block), calc_dtype)
                     v1_sy_reduce = T.alloc_ub(n_block, calc_dtype)
-                    v1_sy_all = T.alloc_ub((n_num, n_block), calc_dtype)
                     v1_sy_chunk = T.alloc_ub(n_block, calc_dtype)
                     v1_sy_broadcast = T.alloc_ub((1, n_block), calc_dtype)
                     v1_sy_max = T.alloc_ub((1,), calc_dtype)
@@ -751,29 +756,48 @@ def tilelang_grad_kl_loss_single_kernel(
                     )
                     T.tile.fill(v1_sy_weight_2d, 1.0)
                     T.pipe_barrier("v")
-                    T.tile.row_expand_mul_experiment(
-                        v1_sy_weight_2d,
-                        v1_sy_weight_2d,
-                        v1_sy_weight,
-                        v1_sy_tmp,
-                    )
+                    # The AscendC row-expand lowering interprets every 64
+                    # FP32 elements as one row.  Split a 128-column tile so
+                    # BRCB reads exactly Nidx1 scalars and mul_mask stays
+                    # within the physical rows.
+                    for sy_col_chunk in T.serial(p_col_chunk_count):
+                        sy_col_start = sy_col_chunk * p_cols_per_chunk
+                        T.tile.row_expand_mul_experiment(
+                            v1_sy_weight_2d[
+                                0:Nidx1,
+                                sy_col_start:sy_col_start + p_cols_per_chunk,
+                            ],
+                            v1_sy_weight_2d[
+                                0:Nidx1,
+                                sy_col_start:sy_col_start + p_cols_per_chunk,
+                            ],
+                            v1_sy_weight,
+                            v1_sy_tmp,
+                        )
                     T.tile.fill(v1_sy_max, -T.infinity(calc_dtype))
                     for n_idx in T.serial(n_num):
                         T.copy(
                             bmm2Res[bz_task, s1_id, 0:Nidx1,
                                     n_idx * n_block:(n_idx + 1) * n_block],
-                            v1_sy_bmm2,
+                            v1_sy_storage[0:Nidx1, 0:n_block],
                         )
                         T.set_flag("mte2", "v", 3)
                         T.wait_flag("mte2", "v", 3)
                         T.tile.mul(
-                            v1_sy_bmm2,
-                            v1_sy_bmm2,
+                            v1_sy_storage[0:Nidx1, 0:n_block],
+                            v1_sy_storage[0:Nidx1, 0:n_block],
                             v1_sy_weight_2d,
                         )
                         T.pipe_barrier("v")
-                        T.reduce_sum(v1_sy_bmm2, v1_sy_reduce, 0)
-                        T.copy(v1_sy_reduce, v1_sy_all[n_idx, :])
+                        T.reduce_sum(
+                            v1_sy_storage[0:Nidx1, 0:n_block],
+                            v1_sy_reduce,
+                            0,
+                        )
+                        T.copy(
+                            v1_sy_reduce,
+                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                        )
                         T.pipe_barrier("v")
                         T.tile.mul(v1_sy_broadcast[0, :], v1_sy_reduce, 1.0)
                         T.pipe_barrier("v")
@@ -783,7 +807,10 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     T.tile.fill(v1_sy_sum, 0.0)
                     for n_idx in T.serial(n_num):
-                        T.copy(v1_sy_all[n_idx, :], v1_sy_chunk)
+                        T.copy(
+                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                            v1_sy_chunk,
+                        )
                         T.tile.broadcast(v1_sy_broadcast, v1_sy_max)
                         T.pipe_barrier("v")
                         T.tile.sub(v1_sy_chunk, v1_sy_chunk, v1_sy_broadcast[0, :])
@@ -800,7 +827,10 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.pipe_barrier("v")
                     T.tile.max(v1_sy_sum, v1_sy_sum, v1_sy_eps)
                     for n_idx in T.serial(n_num):
-                        T.copy(v1_sy_all[n_idx, :], v1_sy_chunk)
+                        T.copy(
+                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                            v1_sy_chunk,
+                        )
                         T.tile.broadcast(v1_sy_broadcast, v1_sy_max)
                         T.pipe_barrier("v")
                         T.tile.sub(v1_sy_chunk, v1_sy_chunk, v1_sy_broadcast[0, :])
@@ -901,12 +931,20 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 T.tile.fill(v1_bw_weight_2d, 1.0)
                 T.pipe_barrier("v")
-                T.tile.row_expand_mul_experiment(
-                    v1_bw_weight_2d,
-                    v1_bw_weight_2d,
-                    v1_bw_weight,
-                    v1_bw_row_tmp,
-                )
+                for bw_col_chunk in T.serial(p_col_chunk_count):
+                    bw_col_start = bw_col_chunk * p_cols_per_chunk
+                    T.tile.row_expand_mul_experiment(
+                        v1_bw_weight_2d[
+                            0:rows_per_aiv,
+                            bw_col_start:bw_col_start + p_cols_per_chunk,
+                        ],
+                        v1_bw_weight_2d[
+                            0:rows_per_aiv,
+                            bw_col_start:bw_col_start + p_cols_per_chunk,
+                        ],
+                        v1_bw_weight,
+                        v1_bw_row_tmp,
+                    )
 
                 for n_idx in T.serial(n_num):
                     T.copy(
