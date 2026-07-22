@@ -380,27 +380,9 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 }
                 PipeBarrier<PIPE_V>();
             }
-            // Replace +1e30 (MM1 cube L0C uninitialized garbage) with -1e30
-            // so radix (largest=true) excludes it instead of selecting it
-            PipeBarrier<PIPE_V>();
-            {
-                event_t eVS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-                SetFlag<HardEvent::V_S>(eVS);
-                WaitFlag<HardEvent::V_S>(eVS);
-                for (int32_t i = 0; i < s2BaseSize_; i++) {
-                    float v = reduceOutInner.GetValue(i);
-                    if (v > 1.0e29f) {
-                        reduceOutInner.SetValue(i, -1.0e30f);
-                    }
-                }
-                event_t eSV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-                SetFlag<HardEvent::S_V>(eSV);
-                WaitFlag<HardEvent::S_V>(eSV);
-            }
             {
                 PipeBarrier<PIPE_V>();
                 // Use indiceOutOffset/sparseCount + cuS1Idx as row index to match ProcessRadixTopK's batchId
-                // (cuS1Idx alone is 0,1,2 for every batch when s1BaseSize > qSeqSize, causing overwrites)
                 uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
                 uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
                 AscendC::DataCopyParams dcParams;
@@ -409,11 +391,6 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 dcParams.srcStride = 0;
                 dcParams.dstStride = 0;
                 DataCopyPad(scoreB16Gm[scoreOffset], reduceOutInner, dcParams);
-                // Sync MTE3->V: ensure DataCopyPad finishes reading reduceOutInner
-                // before next innerS1Idx's DoReduce overwrites it
-                event_t eMTE3V = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_V));
-                SetFlag<HardEvent::MTE3_V>(eMTE3V);
-                WaitFlag<HardEvent::MTE3_V>(eMTE3V);
             }
             } // end if radixCuS2Len > 0
             } else {
