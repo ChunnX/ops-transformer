@@ -44,5 +44,6 @@ static ge::graphStatus TilingPrepare4StemOamPrepPagedKv(gert::TilingParseContext
 
 IMPL_OP_OPTILING(StemOamPrepPagedKv)
     .Tiling(Tiling4StemOamPrepPagedKv)
-    .TilingParse<StemOamPrepPagedKvCompileInfo>(TilingPrepare4StemOamPrepPagedKv);
+    .TilingParse<StemOamPrepPagedKvCompileInfo>(TilingPrepare4StemOamPrepPagedKv)
+    .TilingInputsDataDependency({3});
 } // namespace optiling
