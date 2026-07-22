@@ -23,7 +23,7 @@ import math
 import os
 import concurrent.futures
 
-TEST_INPUT_PATH = "pt_path"
+TEST_INPUT_PATH = "/home/z00947698/code07/ops-transformer_0605/attention/quant_lightning_indexer_v2/tests/pytest/pt_path"
 pt_dir = TEST_INPUT_PATH
 result_path = Path('result.xlsx')
 device_id = 0
