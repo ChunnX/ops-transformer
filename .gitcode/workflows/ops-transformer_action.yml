@@ -157,7 +157,7 @@ stages:
           task_name: 'Pre_Compile'
           image_version: ${{ jobs.JOB_image.outputs.Pre_Compile }}
           arch: 'arm64'
-          spec: '2xlarge'
+          spec: 'xlarge'
       JOB_x86_compile_ubuntu24:
         name: x86_compile_ubuntu24
         needs: []
