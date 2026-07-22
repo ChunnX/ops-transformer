@@ -42,6 +42,8 @@ public:
                                           uint64_t indiceOutOffset);
     __aicore__ inline void ClearPaddingOutput(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start,
                                               uint32_t actS1Size, uint32_t tBase);
+    __aicore__ inline void SetSparseSeqLenZero(uint64_t indiceLenOffset, uint32_t blockCount,
+                                               uint32_t rowsPerBlock, uint32_t dstStride);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
@@ -187,15 +189,16 @@ __aicore__ inline void SIVector<SIT>::ClearPaddingOutput(uint32_t bIdx, uint32_t
                 ((static_cast<uint64_t>(tBase) + s1Idx) * constInfo_.kvHeadNum + n2Idx) * constInfo_.gSize + gStart;
             uint64_t indiceOutOffset = indiceLenOffset * constInfo_.sparseCount;
             GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
-            GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
             AscendC::InitGlobalMemory(indiceOut, static_cast<uint64_t>(gCount) * constInfo_.sparseCount,
                                       static_cast<int32_t>(SICommon::INVALID_IDX));
-            AscendC::InitGlobalMemory(indiceLenOut, gCount, static_cast<int32_t>(0));
+            SetSparseSeqLenZero(indiceLenOffset, 1U, gCount, 0U);
         }
     } else if constexpr (SIT::layout == SI_LAYOUT::BNSD) {
         if (s1Start >= constInfo_.qSeqSize) {
             return;
         }
+        uint32_t indiceLenLocalCapacity =
+            ((constInfo_.mBaseSize + 1U) >> 1U) * INDICE_LEN_ROW_STRIDE;
         uint32_t clearS1Num = constInfo_.qSeqSize - s1Start;
         if (s1Start == 0U) {
             uint64_t indiceLenOffset =
@@ -204,10 +207,16 @@ __aicore__ inline void SIVector<SIT>::ClearPaddingOutput(uint32_t bIdx, uint32_t
             uint64_t clearRowNum = static_cast<uint64_t>(gCount) * constInfo_.qSeqSize;
             uint64_t indiceOutOffset = indiceLenOffset * constInfo_.sparseCount;
             GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
-            GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
             AscendC::InitGlobalMemory(indiceOut, clearRowNum * constInfo_.sparseCount,
                                       static_cast<int32_t>(SICommon::INVALID_IDX));
-            AscendC::InitGlobalMemory(indiceLenOut, clearRowNum, static_cast<int32_t>(0));
+            uint64_t rowOffset = 0U;
+            while (rowOffset < clearRowNum) {
+                uint64_t remainRows = clearRowNum - rowOffset;
+                uint32_t rowsPerBlock = remainRows > indiceLenLocalCapacity ?
+                                            indiceLenLocalCapacity : static_cast<uint32_t>(remainRows);
+                SetSparseSeqLenZero(indiceLenOffset + rowOffset, 1U, rowsPerBlock, 0U);
+                rowOffset += rowsPerBlock;
+            }
             return;
         }
         for (uint32_t gIdx = gStart; gIdx < gEnd; gIdx++) {
@@ -217,12 +226,48 @@ __aicore__ inline void SIVector<SIT>::ClearPaddingOutput(uint32_t bIdx, uint32_t
                 s1Start;
             uint64_t indiceOutOffset = indiceLenOffset * constInfo_.sparseCount;
             GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceOutOffset];
-            GlobalTensor<int32_t> indiceLenOut = sparseSeqLenGm[indiceLenOffset];
             AscendC::InitGlobalMemory(indiceOut, static_cast<uint64_t>(clearS1Num) * constInfo_.sparseCount,
                                       static_cast<int32_t>(SICommon::INVALID_IDX));
-            AscendC::InitGlobalMemory(indiceLenOut, clearS1Num, static_cast<int32_t>(0));
+        }
+
+        // 每个G对应一段连续S1，使用MTE3二维搬运同时清理多个G；仅按UB容量切分S1。
+        uint32_t localBlockCount = (constInfo_.mBaseSize + 1U) >> 1U;
+        uint32_t maxRowsPerBlock = (localBlockCount / gCount) * INDICE_LEN_ROW_STRIDE;
+        uint32_t s1Offset = 0U;
+        uint64_t indiceLenOffset =
+            ((static_cast<uint64_t>(bIdx) * constInfo_.kvHeadNum + n2Idx) * constInfo_.gSize + gStart) *
+                constInfo_.qSeqSize +
+            s1Start;
+        while (s1Offset < clearS1Num) {
+            uint32_t rowsPerBlock = Min(clearS1Num - s1Offset, maxRowsPerBlock);
+            uint32_t dstStride = (constInfo_.qSeqSize - rowsPerBlock) * sizeof(uint32_t);
+            SetSparseSeqLenZero(indiceLenOffset + s1Offset, gCount, rowsPerBlock, dstStride);
+            s1Offset += rowsPerBlock;
         }
     }
+}
+
+template <typename SIT>
+__aicore__ inline void SIVector<SIT>::SetSparseSeqLenZero(uint64_t indiceLenOffset, uint32_t blockCount,
+                                                          uint32_t rowsPerBlock, uint32_t dstStride)
+{
+    constexpr uint32_t dataBlockSize = INDICE_LEN_ROW_STRIDE * sizeof(uint32_t);
+    uint32_t blockLen = rowsPerBlock * sizeof(uint32_t);
+    uint32_t srcBlockSize = ((blockLen + dataBlockSize - 1U) / dataBlockSize) * dataBlockSize;
+    uint32_t localZeroCount = blockCount * srcBlockSize / sizeof(uint32_t);
+
+    WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+    Duplicate(indiceLenLocal_, 0U, localZeroCount);
+    SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+    WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+
+    AscendC::DataCopyParams indiceLenCp;
+    indiceLenCp.blockCount = static_cast<uint16_t>(blockCount);
+    indiceLenCp.blockLen = static_cast<uint16_t>(blockLen);
+    indiceLenCp.srcStride = 0;
+    indiceLenCp.dstStride = dstStride;
+    DataCopyPad(sparseSeqLenGm[indiceLenOffset], indiceLenLocal_.ReinterpretCast<int32_t>(), indiceLenCp);
+    SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
 }
 
 template <typename SIT>
