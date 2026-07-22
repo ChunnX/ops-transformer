@@ -286,6 +286,7 @@ stages:
       JOB_mobile_station_compile_9030_ubuntu24:
         name: mobile_station_compile_9030_ubuntu24
         uses: .gitcode/workflows/compile_action.yml
+        if: env.TARGET_BRANCH == 'master'
         with:
           task_name: 'Compile_Ascend_X86_mobile_station_9030_ubuntu24'
           ge_st_rt2: 'kirin9030'
