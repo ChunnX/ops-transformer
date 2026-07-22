@@ -226,7 +226,6 @@ __aicore__ inline void InlineRadixTopK(
         globalHist.SetValue(2, gh[2]);
         globalHist.SetValue(3, gh[3]);
         RDX_S_V_SYNC();
-        }
 
         // FindBoundaryBin + update globalHistBoundaryNum_ (single V_S/S_V pair)
         RDX_V_S_SYNC();
