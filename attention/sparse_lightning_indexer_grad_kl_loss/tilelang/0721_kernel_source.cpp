@@ -507,6 +507,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             AscendC::Mul(v1_bw_diff_2d[0], v1_bw_weight_2d[0], v1_bw_diff_2d[0], 4096);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::Mul(v1_bw_diff_2d[0], v1_bw_diff_2d[0], v1_bw_mask[0], 4096);
+            AscendC::PipeBarrier<PIPE_V>();
             AscendC::Cast(v1_bw_rg_half[0], v1_bw_diff_2d[0], AscendC::RoundMode::CAST_RINT, 4096);
             AscendC::PipeBarrier<PIPE_V>();
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(2);
@@ -540,7 +541,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(3);
           AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(3);
           tl::ascend::copy_ub_to_gm<half, 32>(dWeightOut[((((pipe_iter * 1536) + (cid * 64)) + (vid * 32)) - 1536)], v1_bw_dw_half[0], 64, 1, 32);
-          tl::ascend::copy_ub_to_gm<float, 1>(LossPartial[((((pipe_iter * 48) + (cid * 2)) + vid) - 48)], v1_bw_loss_accum[0], 128, 1, 1);
+          tl::ascend::copy_ub_to_gm<float, 1>(LossPartial[((((pipe_iter * 384) + (cid * 16)) + (vid * 8)) - 384)], v1_bw_loss_accum[0], 128, 1, ((1 < (((512 - (vid * 8)) - (cid * 16)) - (pipe_iter * 384))) ? 1 : (((512 - (vid * 8)) - (cid * 16)) - (pipe_iter * 384))));
           AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(3);
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(2);
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(3);
@@ -831,10 +832,9 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
     if (cid == 0) {
       if (vid == 0) {
         tl::ascend::Fill<float>(v2_loss_total[0], 0.000000e+00f, 1);
-        tl::ascend::Fill<float>(v2_loss_chunk[0], 0.000000e+00f, 128);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(4);
         AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(4);
-        tl::ascend::copy_gm_to_ub<float, 2, 1>(v2_loss_chunk[0], LossPartial[0], 128, 1, 2, 0.000000e+00f);
+        tl::ascend::copy_gm_to_ub<float, 128, 1>(v2_loss_chunk[0], LossPartial[0], 128, 1, 128, 0.000000e+00f);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(4);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(4);
         tl::ascend::reduce_sum<float,  1,  128,  -1>(v2_loss_chunk_sum[0], v2_loss_chunk[0], tmp_ub[0], true);
