@@ -16,22 +16,25 @@
 #include <iostream>
 #include <vector>
 #include <thread>
+#include <cstdlib>
+#include <cstring>
 #include "hccl/hccl.h"
 #include "aclnnop/aclnn_all_gather_matmul_v2.h"
 
-#define CHECK_RET(cond, return_expr) \
-    do {                             \
-        if (!(cond)) {               \
-            return_expr;             \
-        }                            \
+#define CHECK_RET(cond, return_expr)                                                                                   \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            return_expr;                                                                                               \
+        }                                                                                                              \
     } while (0)
 
-#define LOG_PRINT(message, ...)         \
-    do {                                \
-        printf(message, ##__VA_ARGS__); \
-    } while(0)
+#define LOG_PRINT(message, ...)                                                                                        \
+    do {                                                                                                               \
+        printf(message, ##__VA_ARGS__);                                                                                \
+    } while (0)
 
 constexpr int DEV_NUM = 2;
+constexpr const char *COMM_MODE = "ccu";
 
 int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
@@ -42,9 +45,9 @@ int64_t GetShapeSize(const std::vector<int64_t> &shape)
     return shape_size;
 }
 
-template<typename T>
+template <typename T>
 int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
-    aclDataType dataType, aclTensor **tensor)
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -53,10 +56,10 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtMemcpy failed. ret: %d\n", ret); return ret);
     std::vector<int64_t> strides(shape.size(), 1);
     for (int64_t i = shape.size() - 2; i >= 0; i--) {
-        strides[i] = shape[i +1] * strides[i + 1];
+        strides[i] = shape[i + 1] * strides[i + 1];
     }
     *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-        shape.data(), shape.size(), *deviceAddr);
+                              shape.data(), shape.size(), *deviceAddr);
     return 0;
 }
 
@@ -74,8 +77,8 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     char hcomName[128] = {0};
     ret = HcclGetCommName(args.hcclComm, hcomName);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetCommName failed. ret: %d\n", ret); return -1);
-    LOG_PRINT("[INFO] rank = %d, hcomName = %s, stream = %p, context = %p\n", args.rankId, hcomName,
-        args.stream, args.context);
+    LOG_PRINT("[INFO] rank = %d, hcomName = %s, stream = %p, context = %p\n", args.rankId, hcomName, args.stream,
+              args.context);
     std::vector<int64_t> x1Shape = {32, 256};
     std::vector<int64_t> x2Shape = {256, 128};
     std::vector<int64_t> x1ScaleShape = {1};
@@ -135,16 +138,16 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     CHECK_RET(ret == ACL_SUCCESS, return ret);
     ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
-    ret = CreateAclTensor(gatherOutHostData, gatherOutShape, &gatherOutDeviceAddr,
-                          aclDataType::ACL_FLOAT8_E4M3FN, &gatherOut);
+    ret = CreateAclTensor(gatherOutHostData, gatherOutShape, &gatherOutDeviceAddr, aclDataType::ACL_FLOAT8_E4M3FN,
+                          &gatherOut);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
 
     // 调用第一阶段接口
-    ret = aclnnAllGatherMatmulV2GetWorkspaceSize(
-        x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName, gatherIndex, commTurn, streamMode, groupSize, "ccu",
-        out, gatherOut, amax, &workspaceSize, &executor);
-    CHECK_RET(ret == ACL_SUCCESS,
-        LOG_PRINT("[ERROR] aclnnAllGatherMatmulV2GetWorkspaceSize failed. ret = %d \n", ret); return ret);
+    ret = aclnnAllGatherMatmulV2GetWorkspaceSize(x1, x2, bias, x1Scale, x2Scale, quantScale, blockSize, hcomName,
+                                                 gatherIndex, commTurn, streamMode, groupSize, COMM_MODE, out, gatherOut,
+                                                 amax, &workspaceSize, &executor);
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclnnAllGatherMatmulV2GetWorkspaceSize failed. ret = %d \n", ret);
+              return ret);
     // 根据第一阶段接口计算出的workspaceSize申请device内存
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -156,7 +159,7 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
     // （固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
-        return ret);
+              return ret);
     LOG_PRINT("[INFO] device_%d aclnnAllGatherMatmulV2 execute successfully.\n", args.rankId);
     // 释放device资源，需要根据具体API的接口定义修改
     if (x1 != nullptr) {
@@ -223,6 +226,34 @@ int LaunchOneThreadAllGatherMmV2(Args &args)
 
 int main(int argc, char *argv[])
 {
+    class EnvGuard {
+    public:
+        EnvGuard(const char *key, const char *val, bool enable = true)
+            : key_(enable ? key : nullptr)
+        {
+            if (!enable) return;
+            const char *old = getenv(key);
+            if (old != nullptr) {
+                strncpy(saved_, old, sizeof(saved_) - 1);
+            }
+            setenv(key, val, 1);
+        }
+        ~EnvGuard()
+        {
+            if (key_ == nullptr) return;
+            if (saved_[0] != '\0') {
+                setenv(key_, saved_, 1);
+            } else {
+                unsetenv(key_);
+            }
+        }
+    private:
+        const char *key_;
+        char saved_[256] = {0};
+    };
+
+    EnvGuard envGuard("HCCL_OP_EXPANSION_MODE", "CCU_SCHED", strcmp(COMM_MODE, "ccu") == 0);
+
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
     aclrtStream stream[DEV_NUM];
@@ -252,7 +283,7 @@ int main(int argc, char *argv[])
         args[rankId].hcclComm = comms[rankId];
         args[rankId].context = context[rankId];
         args[rankId].stream = stream[rankId];
-        threads[rankId].reset(new(std::nothrow) std::thread(&LaunchOneThreadAllGatherMmV2, std::ref(args[rankId])));
+        threads[rankId].reset(new (std::nothrow) std::thread(&LaunchOneThreadAllGatherMmV2, std::ref(args[rankId])));
     }
     for (uint32_t rankId = 0; rankId < DEV_NUM; rankId++) {
         threads[rankId]->join();

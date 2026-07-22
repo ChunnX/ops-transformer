@@ -429,13 +429,16 @@ aclnnStatus aclnnMoeDistributeCombineSetup(
     export FIRST_RANK_ID=<设备的起始rank_id>
     ## ENV_DEV_NUM说明：根据当前机器的卡数设置该变量，以两机16卡为例，将两台机器设置为16
     export ENV_DEV_NUM=16
+    ```
 
 - 机器数量设置：
 
     两机16卡场景中，需将参数MACHINE_NUM设置为2，即
+
     ```Cpp
     const uint32_t MACHINE_NUM = 2;
     ```
+
     单机16卡场景则无需修改。
 
 - Ascend 950DT：

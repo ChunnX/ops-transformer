@@ -336,7 +336,7 @@
         </tr>
         <tr>
             <td>K</td>
-            <td>512、1024、2048、4096、8192</td>
+            <td>512、1024、2048</td>
             <td>top-k大小。</td>
         </tr>
         <tr>
@@ -378,7 +378,7 @@
         </tr>
         <tr>
             <td>sparseIndices</td>
-            <td>K=512/1024/2048/4096/8192</td>
+            <td>K=512/1024/2048</td>
         </tr>
         <tr>
             <td>attnSoftmaxL1Norm</td>

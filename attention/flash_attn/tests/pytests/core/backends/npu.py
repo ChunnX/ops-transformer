@@ -28,7 +28,7 @@ class FlashAttnGraphNetwork(torch.nn.Module):
                 softmax_scale, mask_mode, win_left, win_right,
                 max_seqlen_q, max_seqlen_kv, layout_q, layout_kv, layout_out,
                 return_softmax_lse):
-        out, lse_out = flash_attn(
+        out, lse_out = torch.ops.cann_ops_transformer.flash_attn(
             q, k, v,
             block_table=block_table,
             sinks=None,

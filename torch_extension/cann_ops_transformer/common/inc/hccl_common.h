@@ -70,6 +70,10 @@ using _HcclEngineCtxCreate = HcclResult (*)(HcclComm, const char*, CommEngine, u
 using _HcclEngineCtxGet = HcclResult (*)(HcclComm, const char*, CommEngine, void**, uint64_t*);
 // 拷贝context
 using _HcclEngineCtxCopy = HcclResult (*)(HcclComm, CommEngine, const char*, void*, uint64_t, uint64_t);
+// 注册内存到通信域
+using _HcclCommMemReg = HcclResult (*)(HcclComm, const char *, const CommMem *, HcclMemHandle *);
+// 通过channel获取远端注册的内存
+using _HcclChannelGetRemoteMems = HcclResult (*)(HcclComm, ChannelHandle, uint32_t *, CommMem **, char ***);
 
 static _HcclKfcAllocOpArgs HcclKfcAllocOpArgsFunc = nullptr;
 static _HcclKfcOpArgsSetAlgConfig HcclKfcOpArgsSetAlgConfigFunc = nullptr;
@@ -93,6 +97,8 @@ static _HcclChannelGetHcclBuffer HcclChannelGetHcclBufferFunc = nullptr;
 static _HcclEngineCtxCreate HcclEngineCtxCreateFunc = nullptr;
 static _HcclEngineCtxGet HcclEngineCtxGetFunc = nullptr;
 static _HcclEngineCtxCopy HcclEngineCtxCopyFunc = nullptr;
+static _HcclCommMemReg HcclCommMemRegFunc = nullptr;
+static _HcclChannelGetRemoteMems HcclChannelGetRemoteMemsFunc = nullptr;
 
 inline const char *GetHcclLibName(void)
 {
@@ -193,6 +199,11 @@ inline void InitHcclEngineCtxFunctions()
     TORCH_CHECK(HcclGetRankIdFunc != nullptr, "getFuncHcclGetRankId failed.");
     HcclGetRankSizeFunc = GetHcclFwkFuncAddr<_HcclGetRankSize>("HcclGetRankSize"); // 获取通信域大小
     TORCH_CHECK(HcclGetRankSizeFunc != nullptr, "getFuncHcclGetRankSize failed.");
+    HcclCommMemRegFunc = GetHcclFwkFuncAddr<_HcclCommMemReg>("HcclCommMemReg");
+    TORCH_CHECK(HcclCommMemRegFunc != nullptr, "getHcclCommMemReg failed.");
+    HcclChannelGetRemoteMemsFunc =
+        GetHcclFwkFuncAddr<_HcclChannelGetRemoteMems>("HcclChannelGetRemoteMems");
+    TORCH_CHECK(HcclChannelGetRemoteMemsFunc != nullptr, "getHcclChannelGetRemoteMems failed.");
 }
 
 #endif // CANN_OPS_TRANSFORMER_HCCL_COMMON_H

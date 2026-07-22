@@ -229,6 +229,9 @@ public:
     uint64_t l2CacheSize = 0;
     std::vector<gert::StorageShape *> kCache = {};
     std::vector<gert::StorageShape *> vCache = {};
+    std::vector<gert::Stride *> kStrideCache = {};
+    std::vector<gert::Stride *> vStrideCache = {};
+
     std::vector<int32_t> qSize = {};
     std::vector<int32_t> kvSize = {};
     // 增加strides参数和tensorv1的标志位

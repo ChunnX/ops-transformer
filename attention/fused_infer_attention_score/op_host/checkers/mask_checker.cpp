@@ -35,7 +35,7 @@ ge::graphStatus MaskChecker::CheckDtypeAndFormat(const FiaTilingInfo &fiaInfo) c
     // AttentionMask data type must be int8/uint8/bool, and data format must be ND/NCHW/NHWC/NCDHW.
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(fiaInfo.opParamInfo.attenMask.desc, ATTEN_MASK_NAME)) {
         OP_LOGE_FOR_INVALID_DTYPE(fiaInfo.opName, "atten_mask",
-            ToString(fiaInfo.opParamInfo.attenMask.desc->GetDataType()).c_str(), "int8, uint8 or bool");
+            ToString(fiaInfo.opParamInfo.attenMask.desc->GetDataType()).c_str(), "INT8, UINT8 or BOOL");
         return ge::GRAPH_FAILED;
     }
     if (ge::GRAPH_SUCCESS != CheckFormatSupport(fiaInfo.opParamInfo.attenMask.desc, ATTEN_MASK_NAME)) {
@@ -98,14 +98,14 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
         if (fiaInfo.inputQType == ge::DT_FLOAT8_E4M3FN || fiaInfo.inputQType == ge::DT_HIFLOAT8 ||
             fiaInfo.inputQType == ge::DT_INT8) {
             if (fiaInfo.attenMaskFlag && fiaInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN) {
-                std::string reasonMsg = "In MLA FullQuant Scenario, when the datatype of query is "
+                std::string reasonMsg = "In MLA FullQuant Scenario, when the dtype of query is "
                     "FLOAT8_E4M3FN, HIFLOAT8, or INT8, and attenMask is not empty, sparseMode must be 3";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
                     std::to_string(fiaInfo.sparseMode).c_str(), reasonMsg.c_str());
                 return ge::GRAPH_FAILED;
             }
             if (!fiaInfo.attenMaskFlag && (fiaInfo.sparseMode != SPARSE_MODE_NO_MASK)) {
-                std::string reasonMsg = "In MLA FullQuant Scenario, when the datatype of query is "
+                std::string reasonMsg = "In MLA FullQuant Scenario, when the dtype of query is "
                     "FLOAT8_E4M3FN, HIFLOAT8, or INT8, and attenMask is empty, sparseMode must be 0";
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
                     std::to_string(fiaInfo.sparseMode).c_str(), reasonMsg.c_str());
@@ -126,7 +126,7 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
             std::find(layoutSupportList.begin(), layoutSupportList.end(), layout) == layoutSupportList.end()) {
             if (fiaInfo.s1Size == 1U) {
                 if (fiaInfo.sparseMode != SPARSE_MODE_NO_MASK) {
-                    std::string reasonMsg = "In MLA FullQuant Scenario, sparseMode must be 0, when the datatype of "
+                    std::string reasonMsg = "In MLA FullQuant Scenario, sparseMode must be 0, when the dtype of "
                         "query is INT8, inputLayout is not TND or TND_NTD and the S axis of query = 1";
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
                         std::to_string(fiaInfo.sparseMode).c_str(), reasonMsg.c_str());
@@ -137,7 +137,7 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
                     const gert::Tensor *maskTensor = fiaInfo.opParamInfo.attenMask.tensor;
                     std::string shapeStr =
                         (maskTensor != nullptr) ? ToStringRaw(maskTensor->GetStorageShape()) : "null";
-                    std::string reasonMsg = "In MLA FullQuant Scenario, attenMask must be empty, when the datatype of "
+                    std::string reasonMsg = "In MLA FullQuant Scenario, attenMask must be empty, when the dtype of "
                         "query is INT8, inputLayout is not TND or TND_NTD and the S axis of query = 1";
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask",
                         shapeStr.c_str(), reasonMsg.c_str());
@@ -146,7 +146,7 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
             } else {
                 // 当qs大于1时，仅支持传入sparsemode=3，且传入mask
                 if (fiaInfo.sparseMode != SPARSE_MODE_RIGHT_DOWN) {
-                    std::string reasonMsg = "In MLA FullQuant Scenario, sparseMode must be 3, when the datatype of "
+                    std::string reasonMsg = "In MLA FullQuant Scenario, sparseMode must be 3, when the dtype of "
                         "query is INT8, inputLayout is not TND or TND_NTD and the S axis of query > 1";
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "sparse_mode",
                         std::to_string(fiaInfo.sparseMode).c_str(), reasonMsg.c_str());
@@ -159,7 +159,7 @@ ge::graphStatus MaskChecker::CheckFullQuantIFAMLA(const FiaTilingInfo &fiaInfo)
                         (maskTensor != nullptr) ? ToStringRaw(maskTensor->GetStorageShape()) : "null";
 
                     std::string reasonMsg = "In MLA FullQuant Scenario, attenMask cannot be empty, when "
-                        "the datatype of query is INT8, inputLayout is not TND or TND_NTD and the S axis of query > 1";
+                        "the dtype of query is INT8, inputLayout is not TND or TND_NTD and the S axis of query > 1";
                     OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(fiaInfo.opName, "atten_mask",
                         shapeStr.c_str(), reasonMsg.c_str());
                     return ge::GRAPH_FAILED;
@@ -237,7 +237,7 @@ ge::graphStatus MaskChecker::CheckFeatureSparseMode(const FiaTilingInfo &fiaInfo
 
         if (fiaInfo.outputType == ge::DT_INT8) {
             std::string reasonMsg = "In " + QuantModeToSerialString(fiaInfo.quantMode) +" scenario,"
-                " when sparse is " + std::to_string(sparseMode) + ", the datatype of attentionOut cannot be int8";
+                " when sparse is " + std::to_string(sparseMode) + ", the dtype of attentionOut cannot be INT8";
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(fiaInfo.opName, "attention_out",
                 ToString(fiaInfo.outputType).c_str(), reasonMsg.c_str());
             return ge::GRAPH_FAILED;
@@ -285,7 +285,7 @@ ge::graphStatus MaskChecker::CheckPretokenAndNexttoken(const FiaTilingInfo &fiaI
          ((fiaInfo.preToken < 0) || fiaInfo.nextToken < 0)),
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(fiaInfo.opName, "pre_tokens and next_tokens",
             (std::to_string(fiaInfo.preToken) + " and " + std::to_string(fiaInfo.nextToken)).c_str(),
-            "When the datatype of attention_out is int8 and sparse_mode is 4, "
+            "When the dtype of attention_out is INT8 and sparse_mode is 4, "
             "preTokens and nextTokens cannot be negative"),
         return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;

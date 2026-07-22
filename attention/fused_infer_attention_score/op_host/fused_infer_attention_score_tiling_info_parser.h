@@ -50,7 +50,7 @@ public:
     ge::graphStatus GetAttrParaInfo();
     ge::graphStatus GetKvCache();
     ge::graphStatus GetTensorListCache(uint32_t index, const std::string &name,
-                                       std::vector<gert::StorageShape *> &cache);
+                                       std::vector<gert::StorageShape *> &cache, std::vector<gert::Stride *> &strides);
     ge::graphStatus GetOpParaInfo();
 
     ge::graphStatus GetEmptyTensorFlag();
@@ -173,6 +173,8 @@ public:
     uint64_t l2CacheSize_ = 0;
     std::vector<gert::StorageShape *> kCache_ = {};
     std::vector<gert::StorageShape *> vCache_ = {};
+    std::vector<gert::Stride *> kStrideCache_ = {};
+    std::vector<gert::Stride *> vStrideCache_ = {};
     std::vector<int32_t> qSize_ = {};
     std::vector<int32_t> kvSize_ = {};
 

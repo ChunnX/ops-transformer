@@ -48,6 +48,7 @@ private:
 
     int64_t GetMaxBlockNumPerBatch(const FiaTilingInfo &fiaInfo) const;
     ge::graphStatus CheckMaskShape(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckPseShape(const FiaTilingInfo &fiaInfo);
 
     ge::graphStatus CheckBlockTableShape(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckBlockSizeSupport(const FiaTilingInfo &fiaInfo);

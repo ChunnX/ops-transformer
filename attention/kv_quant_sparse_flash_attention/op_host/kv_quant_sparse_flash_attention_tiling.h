@@ -508,6 +508,8 @@ public:
     ~QSFAInfoParser() = default;
 
     ge::graphStatus CheckRequiredInOutExistence() const;
+    ge::graphStatus CheckTensorShapes() const;
+    ge::graphStatus CheckTensorDescriptions() const;
     ge::graphStatus CheckRequiredAttrExistence() const;
     ge::graphStatus CheckRequiredParaExistence() const;
 

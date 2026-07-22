@@ -232,11 +232,11 @@ ge::graphStatus FiaInfoParser::GetStrides()
     keyStrides_ = context_->GetDynamicInputStride(KEY_INDEX, 0);
     valueStrides_ = context_->GetDynamicInputStride(VALUE_INDEX, 0);
     if (opParamInfo_.keyAntiquantScale.tensor != nullptr || opParamInfo_.valueAntiquantScale.tensor != nullptr) {
-        kScaleStrides_ = context_->GetInputStride(KEY_ANTIQUANT_SCALE_INDEX);
-        vScaleStrides_ = context_->GetInputStride(VALUE_ANTIQUANT_SCALE_INDEX);
+        kScaleStrides_ = context_->GetOptionalInputStride(KEY_ANTIQUANT_SCALE_INDEX);
+        vScaleStrides_ = context_->GetOptionalInputStride(VALUE_ANTIQUANT_SCALE_INDEX);
     }
     if (opParamInfo_.keyRope.desc != nullptr) {
-        kRopeStrides_ = context_->GetInputStride(KEY_ROPE_INDEX);
+        kRopeStrides_ = context_->GetOptionalInputStride(KEY_ROPE_INDEX);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -499,12 +499,14 @@ void FiaInfoParser::GetPreNextToken()
 }
 
 ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::string &name,
-                                                  std::vector<gert::StorageShape *> &cache)
+                                                  std::vector<gert::StorageShape *> &cache,
+                                                  std::vector<gert::Stride *> &strides)
 {
     cache.clear();
     uint32_t bIdx = 0;
     while ((context_->GetDynamicInputShape(index, bIdx)) != nullptr) {
         cache.push_back(const_cast<gert::StorageShape *>(context_->GetDynamicInputShape(index, bIdx)));
+        strides.push_back(const_cast<gert::Stride *>(context_->GetDynamicInputStride(index, bIdx)));
         bIdx++;
     }
     if (bIdx == 0) {
@@ -512,15 +514,16 @@ ge::graphStatus FiaInfoParser::GetTensorListCache(uint32_t index, const std::str
         return ge::GRAPH_FAILED;
     }
     cache.resize(bIdx);
+    strides.resize(bIdx);
     return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FiaInfoParser::GetKvCache()
 {
-    if (GetTensorListCache(KEY_INDEX, KEY_NAME, kCache_) != ge::GRAPH_SUCCESS) {
+    if (GetTensorListCache(KEY_INDEX, KEY_NAME, kCache_, kStrideCache_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    if (GetTensorListCache(VALUE_INDEX, VALUE_NAME, vCache_) != ge::GRAPH_SUCCESS) {
+    if (GetTensorListCache(VALUE_INDEX, VALUE_NAME, vCache_, vStrideCache_) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -1491,6 +1494,9 @@ void FiaInfoParser::GenerateInfo(FiaTilingInfo &fiaInfo)
 
     fiaInfo.kCache = kCache_;
     fiaInfo.vCache = vCache_;
+    fiaInfo.kStrideCache = kStrideCache_;
+    fiaInfo.vStrideCache = vStrideCache_;
+
     fiaInfo.qSize = qSize_;
     fiaInfo.kvSize = kvSize_;
 

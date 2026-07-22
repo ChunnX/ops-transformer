@@ -36,16 +36,12 @@
 #include "moe_init_routing_v2/moe_init_routing_v2.hpp"
 #include "unpermute/moe_token_unpermute.h"
 #include "utils/get_tensor_addr.hpp"
+#include "mega_moe_exception_dump_policy.h"
 
 namespace Catlass::Gemm::Kernel {
 
 using namespace AscendC;
 using namespace Mc2Tiling;
-
-// Flag 同步 magic 值（精确匹配，避免上一轮残留误判）。
-// 三处同步（SendTokensV3 / RecvTokensV3 / V2 allgather）统一使用该值，需配合
-// ResetTokenPerExpert 每轮清零 flag 区，确保上一轮残留不会撞上本值。
-constexpr int32_t FLAG_VALUE_MAGIC = 123456789;   // 0x075BCD15
 
 template <class BlockMmad_, class BlockScheduler_, class ElementGroupList_,
           class BlockEpilogue1_, class BlockEpilogue2_>
@@ -119,6 +115,7 @@ public:
         uint32_t epilogueGranularity{0};
         float swigluLimit;
         GM_ADDR contextGM{nullptr};
+        GM_ADDR tilingGM{nullptr};
         MoeInitRoutingV2TilingData moeInitRoutingV2TilingData;
 
         CATLASS_HOST_DEVICE Params() {}
@@ -136,11 +133,12 @@ public:
                GM_ADDR ptrXActiveMask_, GM_ADDR ptrScales_,
                MoeInitRoutingV2TilingData moeInitRoutingV2TilingData_,
                uint32_t epilogueGranularity_ = 0,
-               float swigluLimit_ = std::numeric_limits<float>::infinity())
+               float swigluLimit_ = std::numeric_limits<float>::infinity(), GM_ADDR tilingGM_ = nullptr)
             : problemShape(problemShape_), EP(EP_), listLen(listLen_),
               expertPerRank(expertPerRank_), maxOutputSize(maxOutputSize_), topK(topK_),
               initRoutingQuantTilingKey(initRoutingQuantTilingKey_), epilogueCoreNum(epilogueCoreNum_),
               epilogueGranularity(epilogueGranularity_), swigluLimit(swigluLimit_), contextGM(contextGM_),
+              tilingGM(tilingGM_),
               ptrA(reinterpret_cast<__gm__ ElementABefore *>(ptrA_)),
               layoutA(layoutA_), layoutA2(layoutA2_),
               ptrB1(reinterpret_cast<__gm__ ElementB *>(ptrB1_)), layoutB1(layoutB1_),
@@ -217,6 +215,10 @@ private:
     {
         auto tmpContext = reinterpret_cast<__gm__ Mc2Aclnn::Mc2MoeContext *>(params.contextGM);
         shmem.initShmem(tmpContext);
+        if ASCEND_IS_AIV {
+            GM_ADDR dumpBase = shmem();
+            exceptionDump_.Init(dumpBase, params.tilingGM);
+        }
         qp_info_ = reinterpret_cast<__gm__ HcclAiRMAInfo *>(
             reinterpret_cast<__gm__ HcclA2CombineOpParam *>(shmem.WinContext_)->aiRMAInfo);
         const int32_t rank = RuntimeRank(params);
@@ -761,21 +763,6 @@ private:
         }
     }
 
-    CATLASS_DEVICE
-    void InitArithProgress(Params const &params)
-    {
-        AscendC::LocalTensor<float> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<float>(0);
-        AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(EVENT_ID0);
-        AscendC::Duplicate(tmpBuffer1, 0.0f, (params.EP + 1) * FLAGSTRIDE);
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(EVENT_ID0);
-
-        AscendC::GlobalTensor<float> flagGlobalBase;
-        flagGlobalBase.SetGlobalBuffer(workspaceInfo.ptrSoftFlagBase);
-        AscendC::DataCopy(flagGlobalBase, tmpBuffer1, (params.EP + 1) * FLAGSTRIDE);
-    }
-
     // ============================================================
     // V2 allgather：把本 rank 的 localTokenPerExpert (winOut) 广播到所有 rank 的
     // tokenPerExpert (winIn) 中对应槽，再计算 preSumBeforeRank{ForDispatch,ForCombine}。
@@ -1011,48 +998,6 @@ private:
     }
 
     CATLASS_DEVICE
-    void UpdateAicFlags(const Params &params)
-    {
-        float flagBase = 1.0f * params.expertPerRank;
-        __gm__ float* aicFinishPtr = workspaceInfo.ptrSoftFlagBase + params.EP * FLAGSTRIDE;
-        float flag = 0.0f;
-        float lastflag = -1.0f;
-        AscendC::LocalTensor<float> tmpBuffer1 = resource.ubBuf.template GetBufferByByte<float>(0);
-        __gm__ float* flagPtr = workspaceInfo.ptrSoftFlagBase;
-        AscendC::GlobalTensor<float> flagGM;
-        flagGM.SetGlobalBuffer(flagPtr);
-        int32_t flagBufferSize = max(4, params.EP) * FLAGSTRIDE;
-        AscendC::LocalTensor<float> dstValueBuffer = resource.ubBuf.template GetBufferByByte<float>(flagBufferSize);
-        AscendC::LocalTensor<float> sharedTmpBuffer = resource.ubBuf.template GetBufferByByte<float>((flagBufferSize + 64));
-        uint64_t mask[1] = {0};
-        uint32_t repeatNum = (flagBufferSize / (4 * FLAGSTRIDE));
-        for (int32_t i = 0; i < 4; i ++) {
-            if (i < params.EP) {
-                mask[0] |= 1ull * (1ull << (i * 16));
-            }
-        }
-        AscendC::SetFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
-        AscendC::WaitFlag<AscendC::HardEvent::S_V>(EVENT_ID0);
-        while (flag < flagBase) {
-            flag = flagBase;
-            AscendC::DataCopy(tmpBuffer1, flagGM, params.EP * FLAGSTRIDE);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(EVENT_ID0);
-
-            AscendC::ReduceMin<float>(dstValueBuffer, tmpBuffer1, sharedTmpBuffer, mask, repeatNum, 8, false);
-
-            AscendC::SetFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-            AscendC::WaitFlag<AscendC::HardEvent::V_S>(EVENT_ID0);
-            flag = min(flag, dstValueBuffer.GetValue(0));
-            if (flag > lastflag) {
-                *aicFinishPtr = flag;
-                gm_dcci(aicFinishPtr);
-                lastflag = flag;
-            }
-        }
-    }
-
-    CATLASS_DEVICE
     void CombineSetFlag()
     {
         AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
@@ -1107,12 +1052,19 @@ private:
     {
         const int32_t rank = RuntimeRank(params);
         icache_preload(8);
+        exceptionDump_.Dump(shmem() + peermemInfo.offsetPeerTokenPerExpert,
+                            static_cast<size_t>(AlignUp(params.EP * params.expertPerRank, ALIGN_128)) *
+                            params.expertPerRank *
+                            static_cast<uint32_t>(shmem.RankSize()) * sizeof(int32_t));
+        shmem.DumpSyncRegions(exceptionDump_);
         int64_t localTokenPerExpertOffset = peermemInfo.offsetPeerTokenPerExpert + tokenPerExpertLayout(rank, 0, 0) * sizeof(int32_t);
         GM_ADDR localTokenPerExpert = shmem.windowsOutAddr() + localTokenPerExpertOffset;     // Place the entire communication matrix in peermem
         uint32_t expandedRowIdxOffset = AlignUp(params.problemShape.m(), 256) * params.topK * sizeof(int32_t);
 
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::APPLY_XACTIVE_MASK);
         ApplyXActiveMask(params);
 
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::MOE_INIT_ROUTING);
         moe_init_routing_v2<ElementA>(reinterpret_cast<GM_ADDR> (params.ptrA),
         params.expertIdx, shmem.windowsOutAddr() + peermemInfo.offsetWinOutA,
         workspaceInfo.expandedRowIdx, localTokenPerExpert, params.expertTokensBeforeCapacity,
@@ -1120,9 +1072,11 @@ private:
         &params.moeInitRoutingV2TilingData, params.initRoutingQuantTilingKey);
 
         AscendC::SyncAll<true>();
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::ALLGATHER_TOKEN_PER_EXPERT);
         CrossRankSyncAndlocalTokenPerExpertAllGatherAndGetSumPreRankV2(params, localTokenPerExpertOffset);
 
         if (coreIdx == 0) {
+            exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CUMSUM_TOKEN_PER_EXPERT);
             GetCumsumForMMAIV(tokenPerExpert, cumsumMM, params.expertPerRank, params.EP);
         }
 
@@ -1139,11 +1093,12 @@ private:
 
         // prevGroupSum1:   本 core 所处理的 dstEpIdx 在 peer mem 中已接收的 token 基准偏移
         // prevGroupSum2:   rank 的 peer mem 中已接收 token 的基准偏移（所有 core 共享）
-        uint32_t prevGroupSum1Arr[MAX_RANK_SIZE] = {0};
+        uint32_t prevGroupSum1Arr[MAX_RANK_PER_CORE] = {0};
         uint32_t dequantSum1 = 0;
         uint32_t dequantSum2 = 0;
         uint32_t prevGroupSum2 = 0;
         icache_preload(8);
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::DISPATCH);
         for (int32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             // rank 本轮专家组接收的 token 总数（所有 source rank 之和）
             uint32_t currentRankM = static_cast<uint32_t>(
@@ -1250,6 +1205,7 @@ private:
         uint32_t n = params.problemShape.n();
         BlockEpilogue1 blockEpilogue1(resource, n);
 
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::SWIGLU);
         // Synchronous wait: SwiGLU waits for GMM1 [1]
         AscendC::CrossCoreWaitFlag<0x2>(SYNCFLAGC2V);
         AscendC::SyncAll<true>();
@@ -1288,17 +1244,17 @@ private:
             AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNCFLAGV2C);
         }
         blockEpilogue1.Finalize();
-
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::COMBINE);
         CombineSetFlag();
 
         CombineV2(params, blockEpilogue2);
 
         AscendC::SyncAll<true>();
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::RESET_TOKEN_PER_EXPERT);
 
-#ifndef __CROSSRANKSYNCANDALLGATHERV1__
         ResetTokenPerExpert(params, params.EP * paddedExpertNumAligned);
         AscendC::SyncAll<true>();
-#endif
+        exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::CROSS_RANK_SYNC);
         {
             // 3 * UB_ALIGN scratch: payload + rdma doorbell + rdma head.
             // UB at offset 0 is unused at this point in the kernel.
@@ -1309,6 +1265,7 @@ private:
         // KernelMoeTokenUnpermute uses get_block_num() (= AIC tile count), not full AIV count.
         // Use coreNum/2 for tiling and run only on one subblock to match blockIdx/blockNum semantics.
         if (get_subblockid() == 1) {
+            exceptionDump_.UpdateStage(MC2MegaMoeAdump::Stage::UNPERMUTE);
             MoeTokenUnpermuteTilingData tilingData;
             MoeTokenUnpermuteTiling(params.problemShape.m() * params.topK, n2, params.topK, tilingData, coreNum / 2);
             KernelMoeTokenUnpermute<ElementD2, int32_t, float, true> kernelMoeTokenUnpermuteOp;
@@ -1331,13 +1288,11 @@ private:
 
         uint32_t n2 = params.problemShape.k();
         uint32_t k2 = params.problemShape.n() / 2;
-#ifdef HCCL_COMM
         AscendC::LocalTensor<uint64_t> rdmaUbLocal = resource.ubBuf.template GetBufferByByte<uint64_t>(128 * 1024);
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead = resource.ubBuf.template GetBufferByByte<uint32_t>(128 * 1024 + UB_ALIGN);
         AscendC::GlobalTensor<ElementD2> gmLocalWindowsOut;
         gmLocalWindowsOut.SetGlobalBuffer(reinterpret_cast<__gm__ ElementD2*>(
             shmem.windowsOutAddr() + peermemInfo.offsetWinOutD));
-#endif
         icache_preload(8);
         for (uint32_t groupIdx = 0; groupIdx < params.expertPerRank; ++groupIdx) {
             uint32_t currentExpertM = cumsumMM(tokenPerExpertLayout(params.EP - 1, rank, groupIdx));
@@ -1381,7 +1336,6 @@ private:
                     m_offset += m0;
                 }
             }
-#ifdef HCCL_COMM
             AscendC::SyncAll<true>();
             int32_t preSumRankInExpert = 0;
             for (int32_t dstEpIdx = 0; dstEpIdx < params.EP; ++dstEpIdx) {
@@ -1424,7 +1378,6 @@ private:
                     rdmaUbLocal,
                     rdmaUbLocalHead);
             }
-#endif
             preSrcExpertSum += currentExpertM;
             startCoreIdx = (startCoreIdx + coreLoops) % aicCoreNum;
         }
@@ -1509,28 +1462,33 @@ private:
             const int64_t bs = params.problemShape.m();
             const int64_t topK = params.topK;
 
-            // Dispatch Flag: EP×E×64B
-            int64_t flagSize = EP * E * 64;
+            // Dispatch Flag: EP×MAX_EXPERTS_PER_RANK(128)×64B
+            // E 取最大值 128，使 flag 区域位置固定，与实际 expertPerRank 无关
+            int64_t flagSize = EP * MAX_EXPERTS_PER_RANK * 64;
             // Allgather Flag: EP×64B
             int64_t allgatherFlagSize = EP * 64;
 
             // AAfterDispatchSize: dispatch 接收数据区（BF16，无 perTokenScale），原始token
             int64_t AAfterDispatchSize = M * h * sizeof(int16_t);
-            // DAfterCombineSize: combine 接收数据区（BF16），FFN过后的数据
-            int64_t DAfterCombineSize = bs * topK * h * sizeof(int16_t);
 
-            // 从前向后布局 (winIn)
+            // 布局：RESERVED → A → D → (空闲) → TPE → allgatherFlag → flag → [CrossRankSync tail]
+            int64_t usableEnd = static_cast<int64_t>(shmem.SegmentSize()) -
+            static_cast<int64_t>(shmem.TailReservedSize());
+            // TPE size: EP × paddedExpertNumAligned × sizeof(int32_t)
+            // （与 ResetTokenPerExpert 中 num 一致）
+            int64_t tpeSize = EP * AlignUp(EP * MAX_EXPERTS_PER_RANK + 1, ALIGN_128) *
+            static_cast<int64_t>(sizeof(int32_t));
+
+            // winIn == winOut：A/D 从前向后；flag/allgatherFlag/TPE 从后往前
             offsetA = RESERVED_SPACE_SIZE;
             offsetD = offsetA + AAfterDispatchSize;
-            offsetAllgatherFlag = offsetD + DAfterCombineSize;
-            offsetFlag = offsetAllgatherFlag + allgatherFlagSize;
-            offsetPeerTokenPerExpert = offsetFlag + flagSize;
+            offsetFlag = usableEnd - flagSize;
+            offsetAllgatherFlag = offsetFlag - allgatherFlagSize;
+            offsetPeerTokenPerExpert = offsetAllgatherFlag - tpeSize;
 
-            // WinOut: 纯从前向后布局，A/D 各占独立偏移
+            // WinOut: A/D 从前向后布局（winIn == winOut，flag/TPE offset 复用 winIn）
             // ABeforeDispatchSize: dispatch 发送数据区（BF16，无 perTokenScale），原始token
             int64_t ABeforeDispatchSize = bs * topK * h * sizeof(int16_t);
-            // 还有一块DBeforeCombineSize: combine 发送数据区（BF16，无 perTokenScale），FFN过后的数据。
-            // 此处因为 winIn和winOut空间刚好互换，所以flag的偏移可以复用
             offsetWinOutA = RESERVED_SPACE_SIZE;
             offsetWinOutD = offsetWinOutA + ABeforeDispatchSize;
         }
@@ -1565,6 +1523,10 @@ private:
     HcclShmem<true> shmem;
 
     __gm__ HcclAiRMAInfo* qp_info_ = nullptr;
+
+    // ExceptionDump引擎：记录执行阶段时间戳，并提供Dump接口由host侧dump指定GM地址内容。
+    static constexpr bool kRoutingIsQuant = false;
+    MC2MegaMoeAdump::ExceptionDumpEngine<kRoutingIsQuant, ArchTag> exceptionDump_;
 };
 } // namespace Catlass::Gemm::Kernel
 

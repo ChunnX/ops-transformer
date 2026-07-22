@@ -239,8 +239,8 @@ bool SparseLightningIndexerKLLossGradTilingBase::AnalyzeLayout()
                     softmaxShape.GetDim(softmaxShape.GetDimNum() - 1) != kSize,
                 OP_LOGE(opName, "sparse_indices/attn_softmax_l1_norm N2/K shape mismatch."),
                 return false);
-    OP_CHECK_IF(kSize > BUFFER_SIZE_BYTE_8K || (kSize != 512 && kSize % BUFFER_SIZE_BYTE_1K != 0),
-                OP_LOGE(opName, "K(%d) should be <=8192 and be 512 or an integer multiple of 1024.", kSize),
+    OP_CHECK_IF(kSize > BUFFER_SIZE_BYTE_2K || (kSize != 512 && kSize % BUFFER_SIZE_BYTE_1K != 0),
+                OP_LOGE(opName, "K(%d) should be <=2048 and be 512 or an integer multiple of 1024.", kSize),
                 return false);
     topkSize = static_cast<TopKRange>(kSize);
     return true;
