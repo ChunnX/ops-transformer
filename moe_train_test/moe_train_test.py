@@ -392,9 +392,9 @@ def extract_combine_kernel_timing(
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        inclusive_durations_ms = [
+        inclusive_durations_us = [
             [
-                int(timing[core, slot, 1].item()) / cycles_per_us / 1000.0
+                int(timing[core, slot, 1].item()) / cycles_per_us
                 for core in range(num_cores)
             ]
             for slot in range(len(COMBINE_TIMING_SLOTS))
@@ -406,13 +406,13 @@ def extract_combine_kernel_timing(
             offset = (slot - (len(COMBINE_TIMING_SLOTS) - 1) / 2) * bar_height
             ax.barh(
                 [core + offset for core in core_positions],
-                inclusive_durations_ms[slot],
+                inclusive_durations_us[slot],
                 height=bar_height,
                 label=name,
             )
         ax.set_yticks(core_positions)
         ax.set_yticklabels([f"core_{core}" for core in range(num_cores)], fontsize=7)
-        ax.set_xlabel("accumulated time (ms)")
+        ax.set_xlabel("accumulated time (us)")
         ax.set_title(f"MoeEpCombine cumulative kernel timing - rank {rank}")
         ax.invert_yaxis()
         ax.legend(fontsize=7)
@@ -430,19 +430,19 @@ def extract_combine_kernel_timing(
         summary_width = 0.35
         summary_ax.bar(
             [position - summary_width / 2 for position in stage_positions],
-            [row["avg_us"] / 1000.0 for row in flow_summary_rows],
+            [row["avg_us"] for row in flow_summary_rows],
             width=summary_width,
             label="average",
         )
         summary_ax.bar(
             [position + summary_width / 2 for position in stage_positions],
-            [row["max_us"] / 1000.0 for row in flow_summary_rows],
+            [row["max_us"] for row in flow_summary_rows],
             width=summary_width,
             label="maximum",
         )
         summary_ax.set_xticks(stage_positions)
         summary_ax.set_xticklabels(COMBINE_FLOW_STAGES, rotation=15, ha="right")
-        summary_ax.set_ylabel("duration (ms)")
+        summary_ax.set_ylabel("duration (us)")
         summary_ax.set_title(f"MoeEpCombine accumulated send-flow summary - rank {rank}")
         summary_ax.legend()
         summary_ax.grid(axis="y", alpha=0.25)
@@ -450,9 +450,7 @@ def extract_combine_kernel_timing(
         colors = plt.cm.Set2.colors
         left = [0.0] * num_cores
         for stage_index, stage_name in enumerate(COMBINE_FLOW_STAGES):
-            stage_durations = [
-                durations[stage_index] / 1000.0 for durations in flow_durations_by_core
-            ]
+            stage_durations = [durations[stage_index] for durations in flow_durations_by_core]
             flow_ax.barh(
                 core_positions,
                 stage_durations,
@@ -464,9 +462,11 @@ def extract_combine_kernel_timing(
             left = [offset + duration for offset, duration in zip(left, stage_durations)]
         flow_ax.set_yticks(core_positions)
         flow_ax.set_yticklabels([f"core_{core}" for core in core_positions], fontsize=7)
-        flow_ax.set_xlabel("accumulated logical time (ms)")
+        flow_ax.set_xlabel("accumulated logical time (us)")
         flow_ax.set_ylabel("AIV core")
-        flow_ax.set_title("Per-core accumulated send flow (exclusive components)")
+        flow_ax.set_title(
+            "Per-core accumulated logical breakdown (exclusive components, not wall-clock timeline)"
+        )
         flow_ax.invert_yaxis()
         flow_ax.legend(fontsize=7, ncol=3)
         flow_ax.grid(axis="x", alpha=0.25)
