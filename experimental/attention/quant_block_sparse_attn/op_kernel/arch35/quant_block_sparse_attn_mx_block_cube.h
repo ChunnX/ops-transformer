@@ -272,6 +272,33 @@ private:
         const uint32_t tileEnd = tileStart + s2CalcSize;
         const uint32_t copyRowNumAlign = AlignUp32(s2CalcSize);
         constexpr uint32_t blockElementCnt = 32U / sizeof(INPUT_T);
+
+        Position startPos;
+        startPos.bIdx = runInfo.bIdx;
+        startPos.n2Idx = runInfo.n2Idx;
+        startPos.dIdx = 0U;
+
+        PAShape keyShape;
+        keyShape.blockSize = constInfo.kvSparseBlockSize;
+        keyShape.headNum = constInfo.n2Size;
+        keyShape.headDim = constInfo.dSize;
+        keyShape.actHeadDim = constInfo.dSize;
+        keyShape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
+        keyShape.copyRowNumAlign = copyRowNumAlign;
+        keyShape.pageStride = constInfo.paBlockStride;
+        keyShape.rowStride = constInfo.dSize;
+
+        // KScale GM 为 [physicalBlock,kvHeads,blockSize,D/64,2]，单行使用 DN2NZ。
+        PAShape keyScaleShape;
+        keyScaleShape.blockSize = constInfo.kvSparseBlockSize;
+        keyScaleShape.headNum = constInfo.n2Size;
+        keyScaleShape.headDim = constInfo.keyScaleDSize * constInfo.scaleLastDim;
+        keyScaleShape.actHeadDim = keyScaleShape.headDim;
+        keyScaleShape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
+        keyScaleShape.copyRowNumAlign = copyRowNumAlign;
+        keyScaleShape.pageStride = constInfo.n2Size * constInfo.kScaleN2D;
+        keyScaleShape.rowStride = keyScaleShape.headDim;
+
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
             const uint32_t blockStart = runInfo.sparseBlockTileOffset[i];
@@ -285,37 +312,13 @@ private:
             const uint32_t copyStartInBlock = overlapStart - blockStart;
             const uint32_t copyRowNum = overlapEnd - overlapStart;
 
-            Position startPos;
-            startPos.bIdx = runInfo.bIdx;
-            startPos.n2Idx = runInfo.n2Idx;
             startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlockTokenOffset[i]) + copyStartInBlock;
-            startPos.dIdx = 0U;
-
-            PAShape keyShape;
-            keyShape.blockSize = constInfo.kvSparseBlockSize;
-            keyShape.headNum = constInfo.n2Size;
-            keyShape.headDim = constInfo.dSize;
-            keyShape.actHeadDim = constInfo.dSize;
-            keyShape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
             keyShape.copyRowNum = copyRowNum;
-            keyShape.copyRowNumAlign = copyRowNumAlign;
-            keyShape.pageStride = constInfo.paBlockStride;
-            keyShape.rowStride = constInfo.dSize;
             LocalTensor<INPUT_T> keyBlockDstTensor =
                 keyDstTensor[(overlapStart - tileStart) * blockElementCnt];
             GmCopyInToL1PA<INPUT_T>(keyBlockDstTensor, keyGm_, blockTableGm_, KVLAYOUT::BNBD, keyShape, startPos);
 
-            // KScale GM 为 [physicalBlock,kvHeads,blockSize,D/64,2]，单行使用 DN2NZ。
-            PAShape keyScaleShape;
-            keyScaleShape.blockSize = constInfo.kvSparseBlockSize;
-            keyScaleShape.headNum = constInfo.n2Size;
-            keyScaleShape.headDim = constInfo.keyScaleDSize * constInfo.scaleLastDim;
-            keyScaleShape.actHeadDim = keyScaleShape.headDim;
-            keyScaleShape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
             keyScaleShape.copyRowNum = copyRowNum;
-            keyScaleShape.copyRowNumAlign = copyRowNumAlign;
-            keyScaleShape.pageStride = constInfo.n2Size * constInfo.kScaleN2D;
-            keyScaleShape.rowStride = keyScaleShape.headDim;
             LocalTensor<SCALE_T> keyScaleBlockDstTensor =
                 keyScaleDstTensor[(overlapStart - tileStart) * keyScaleShape.actHeadDim];
             MxGmFlatScaleCopyInToL1PAForDN<SCALE_T>(keyScaleBlockDstTensor, kScaleGm_, blockTableGm_,
@@ -330,6 +333,22 @@ private:
         const uint32_t tileStart = kIdx * S2_SPLIT;
         const uint32_t tileEnd = tileStart + realK;
         constexpr uint32_t blockElementCnt = 32U / sizeof(INPUT_T);
+
+        Position startPos;
+        startPos.bIdx = runInfo.bIdx;
+        startPos.n2Idx = runInfo.n2Idx;
+        startPos.dIdx = 0U;
+
+        PAShape valueShape;
+        valueShape.blockSize = constInfo.kvSparseBlockSize;
+        valueShape.headNum = constInfo.n2Size;
+        valueShape.headDim = constInfo.dSizeV;
+        valueShape.actHeadDim = constInfo.dSizeV;
+        valueShape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
+        valueShape.copyRowNumAlign = AlignUp64(realK);
+        valueShape.pageStride = constInfo.paBlockStride;
+        valueShape.rowStride = constInfo.dSizeV;
+
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
             const uint32_t blockStart = runInfo.sparseBlockTileOffset[i];
@@ -343,24 +362,10 @@ private:
             const uint32_t copyStartInBlock = overlapStart - blockStart;
             const uint32_t copyRowNum = overlapEnd - overlapStart;
 
-            Position startPos;
-            startPos.bIdx = runInfo.bIdx;
-            startPos.n2Idx = runInfo.n2Idx;
             startPos.s2Offset = static_cast<uint32_t>(runInfo.sparseBlockTokenOffset[i]) + copyStartInBlock;
-            startPos.dIdx = 0U;
-
-            PAShape shape;
-            shape.blockSize = constInfo.kvSparseBlockSize;
-            shape.headNum = constInfo.n2Size;
-            shape.headDim = constInfo.dSizeV;
-            shape.actHeadDim = constInfo.dSizeV;
-            shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
-            shape.copyRowNum = copyRowNum;
-            shape.copyRowNumAlign = AlignUp64(realK);
-            shape.pageStride = constInfo.paBlockStride;
-            shape.rowStride = constInfo.dSizeV;
+            valueShape.copyRowNum = copyRowNum;
             LocalTensor<INPUT_T> valueDstTensor = dstTensor[(overlapStart - tileStart) * blockElementCnt];
-            GmCopyInToL1PA<INPUT_T>(valueDstTensor, valueGm_, blockTableGm_, KVLAYOUT::BNBD, shape, startPos);
+            GmCopyInToL1PA<INPUT_T>(valueDstTensor, valueGm_, blockTableGm_, KVLAYOUT::BNBD, valueShape, startPos);
         }
     }
 
@@ -374,6 +379,22 @@ private:
         const uint32_t scaleBlockSize = constInfo.kvSparseBlockSize / MX_TOKEN_GROUP;
         constexpr uint32_t blockElementCnt = 32U / sizeof(SCALE_T);
         uint32_t copiedGroupCount = 0U;
+
+        Position startPos;
+        startPos.bIdx = runInfo.bIdx;
+        startPos.n2Idx = runInfo.n2Idx;
+        startPos.dIdx = 0U;
+
+        PAShape valueScaleShape;
+        valueScaleShape.blockSize = scaleBlockSize;
+        valueScaleShape.headNum = constInfo.n2Size;
+        valueScaleShape.headDim = constInfo.valueScaleDSize;
+        valueScaleShape.actHeadDim = constInfo.valueScaleDSize;
+        valueScaleShape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
+        valueScaleShape.copyRowNumAlign = totalGroupCount;
+        valueScaleShape.pageStride = constInfo.n2Size * constInfo.valueScaleN2D;
+        valueScaleShape.rowStride = valueScaleShape.headDim;
+
         for (uint32_t i = 0U; i < runInfo.sparseBlockCount; ++i) {
             const uint32_t blockRealSize = runInfo.sparseBlockRealSize[i];
             const uint32_t blockStart = runInfo.sparseBlockTileOffset[i];
@@ -390,25 +411,12 @@ private:
             const uint32_t groupEndInBlock = (copyStartInBlock + copyRowNum + MX_TOKEN_GROUP - 1U) / MX_TOKEN_GROUP;
             const uint32_t copyGroupNum = groupEndInBlock - groupStartInBlock;
 
-            Position startPos;
-            startPos.bIdx = runInfo.bIdx;
-            startPos.n2Idx = runInfo.n2Idx;
             startPos.s2Offset =
                 static_cast<uint32_t>(runInfo.sparseBlockIdx[i]) * scaleBlockSize + groupStartInBlock;
-            startPos.dIdx = 0U;
-
-            PAShape shape;
-            shape.blockSize = scaleBlockSize;
-            shape.headNum = constInfo.n2Size;
-            shape.headDim = constInfo.valueScaleDSize;
-            shape.actHeadDim = constInfo.valueScaleDSize;
-            shape.maxblockNumPerBatch = constInfo.maxBlockNumPerBatch;
-            shape.copyRowNum = copyGroupNum;
-            shape.copyRowNumAlign = totalGroupCount;
-            shape.pageStride = constInfo.n2Size * constInfo.valueScaleN2D;
-            shape.rowStride = shape.headDim;
+            valueScaleShape.copyRowNum = copyGroupNum;
             LocalTensor<SCALE_T> valueScaleDstTensor = dstTensor[copiedGroupCount * blockElementCnt];
-            MxGmFlatScaleCopyInToL1PAForND<SCALE_T>(valueScaleDstTensor, vScaleGm_, blockTableGm_, shape, startPos);
+            MxGmFlatScaleCopyInToL1PAForND<SCALE_T>(valueScaleDstTensor, vScaleGm_, blockTableGm_, valueScaleShape,
+                                                     startPos);
             copiedGroupCount += copyGroupNum;
         }
     }
