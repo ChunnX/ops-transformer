@@ -137,7 +137,7 @@ private:
 
 __aicore__ inline void StemOamPrepPagedKvSimd::Init(GM_ADDR kCache, GM_ADDR vCache, GM_ADDR kvIndices,
                                                     GM_ADDR kvSeqLens, GM_ADDR kScaleCache, GM_ADDR vScale,
-                                                    GM_ADDR kFlat, GM_ADDR vBias, GM_ADDR shapeOut, GM_ADDR workspace,
+                                                    GM_ADDR kFlat, GM_ADDR vBias, GM_ADDR workspace,
                                                     const StemOamPrepPagedKvTilingData *tilingData, TPipe *pipe)
 {
     kCacheGm_.SetGlobalBuffer((__gm__ fp8_e4m3fn_t *)kCache);
