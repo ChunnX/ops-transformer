@@ -278,6 +278,10 @@ private:
     template <typename T>
     ge::graphStatus CheckAttrValueSupport(const T *attrValue, const std::vector<T> &expectAttrValList,
                                           const std::string &name) const;
+    
+    template <typename T>
+    ge::graphStatus CheckAttrValueSupport(const T *attrValue, const std::vector<T> &expectAttrValList,
+                                          const std::string &name) const;
     template <typename T>
     void LogErrorNumberSupport(const std::vector<T> &expectNumberList, const T &actualValue, const std::string &name,
                                const std::string subName) const;
