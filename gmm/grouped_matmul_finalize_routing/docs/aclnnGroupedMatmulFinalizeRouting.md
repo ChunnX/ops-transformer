@@ -118,36 +118,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional</td>
-      <td>输入</td>
-      <td>非对称量化的偏移量。</td>
-      <td>-</td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td>shape支持三维，维度为(e, 1, n)，e、n和w的e、n一致</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>antiquantScaleOptional</td>
-      <td>输入</td>
-      <td>伪量化的缩放因子。</td>
-      <td>目前暂未启用</td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td></td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>antiquantOffsetOptional</td>
-      <td>输入</td>
-      <td>伪量化的偏移量。</td>
-      <td>目前暂未启用</td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td></td>
-      <td>-</td>
-    </tr>
-    <tr>
       <td>pertokenScaleOptional</td>
       <td>输入</td>
       <td>矩阵计算的反量化参数。</td>
@@ -316,13 +286,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
     <tr>
       <td rowspan="8">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="8">161002</td>
-      <td>x、w、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional、sharedInputWeight、sharedInputOffset、transposeX、transposeW、或y的数据类型或数据格式不在支持的范围内。</td>
+      <td>x、w、scaleOptional、biasOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional、sharedInputWeight、sharedInputOffset、transposeX、transposeW、或y的数据类型或数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>x、w、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或y的shape不满足校验条件。</td>
+      <td>x、w、scaleOptional、biasOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或y的shape不满足校验条件。</td>
     </tr>
     <tr>
-      <td>x、w、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或y的shape是空tensor。</td>
+      <td>x、w、scaleOptional、biasOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或y的shape是空tensor。</td>
     </tr>
     <tr>
       <td>dtype、sharedInputOffset、transposeX、transposeW、groupListType的取值范围不满足条件。</td>

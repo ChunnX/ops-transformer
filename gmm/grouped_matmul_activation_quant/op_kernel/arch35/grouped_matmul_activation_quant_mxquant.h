@@ -32,8 +32,8 @@ constexpr int64_t DEFAULT_PROBLEM_SHAPE_VALUE = 1;
 namespace GroupedMatmulActivationQuant {
 template <typename layoutA, typename layoutB>
 __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
-                                          GM_ADDR groupList, GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace,
-                                          GM_ADDR tiling)
+                                            GM_ADDR groupList, GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace,
+                                            GM_ADDR tiling)
 {
     GET_TILING_DATA_WITH_STRUCT(GMMActivationQuantTilingDataParams, tilingData, tiling);
     const auto &gmmActivationQuantParams_ = tilingData.gmmActivationQuantParams;
@@ -51,8 +51,7 @@ __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR w
     using BiasType = float;
     using BlockScheduler = GroupedMatmulAswtWithTailSplitScheduler;
     using C1Type = MmadCType;
-    using BlockEpilogue =
-        Block::BlockEpilogueActivationQuant<L0TileShape, CType, C1Type, ScaleType, ScaleType, true>;
+    using BlockEpilogue = Block::BlockEpilogueActivationQuant<L0TileShape, CType, C1Type, ScaleType, ScaleType, true>;
     using ProblemShape = MatmulShape;
     using BlockMmadPolicy = MatmulWithScale<AscendC::Shape<_0, _0, _0, _0>, 0>;
     using BlockMmad = Block::BlockMmadMx<BlockMmadPolicy, L1TileShape, L0TileShape, AType, LayoutA, BType, LayoutB,
@@ -76,15 +75,15 @@ __aicore__ inline void GmmActivationMxQuant(GM_ADDR x, GM_ADDR weight, GM_ADDR w
                         mmTilingData_.dbL0C,
                         static_cast<int8_t>(GroupedMatmul::GMM_SPLIT_M),
                         gmmActivationQuantParams_.groupListType};
-    Params params = {
-        {DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE,
-         DEFAULT_PROBLEM_SHAPE_VALUE},
-        {x, weight, weightScale, xScale, nullptr, nullptr, groupList},
-        {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
-         static_cast<uint32_t>(mmTilingData_.baseN), static_cast<uint32_t>(gmmActivationQuantParams_.roundMode),
-         static_cast<uint32_t>(gmmActivationQuantParams_.scaleAlg), gmmActivationQuantParams_.dstTypeMax,
-         static_cast<uint32_t>(gmmActivationQuantParams_.activationType)},
-        gmmParams};
+    Params params = {{DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE, DEFAULT_PROBLEM_SHAPE_VALUE,
+                      DEFAULT_PROBLEM_SHAPE_VALUE},
+                     {x, weight, weightScale, xScale, nullptr, nullptr, groupList},
+                     {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
+                      static_cast<uint32_t>(mmTilingData_.baseN),
+                      static_cast<uint32_t>(gmmActivationQuantParams_.roundMode),
+                      static_cast<uint32_t>(gmmActivationQuantParams_.scaleAlg), gmmActivationQuantParams_.dstTypeMax,
+                      static_cast<uint32_t>(gmmActivationQuantParams_.activationType)},
+                     gmmParams};
     QGmmKernel op;
     op(params);
 }

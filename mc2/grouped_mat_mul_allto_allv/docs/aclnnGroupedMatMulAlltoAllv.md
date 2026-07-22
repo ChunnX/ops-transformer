@@ -43,7 +43,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllvGetWorkspaceSize(
     const aclTensor*   gmmWeight,
     const aclTensor*   sendCountsTensorOptional,
     const aclTensor*   recvCountsTensorOptional,
-    const aclTensor*   mmXOptional,            
+    const aclTensor*   mmXOptional,
     const aclTensor*   mmWeightOptional,
     const char*        group,
     int64_t            epWorldSize,
@@ -330,8 +330,8 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
 - 确定性计算：
   - aclnnGroupedMatMulAlltoAllv默认确定性实现。
 - 通信引擎约束：
-  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AICPU通信。
-  - Ascend 950DT：支持CCU通信。
+  - Atlas A3 训练系列产品/Atlas A3 推理系列产品：支持AI_CPU通信。
+  - Ascend 950DT：支持AI_CPU通信。
 
 - 参数说明里shape使用的变量：
   - BSK：本卡接收的token数，是recvCounts参数累加之和，取值范围(0, 52428800)。
@@ -538,7 +538,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
                 return ret);
         //（固定写法）同步等待任务执行结束
         ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
-        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); 
+        CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
                 return ret);
         // 释放device资源，需要根据具体API的接口定义修改
         if (args.rankId == 0) {
@@ -591,7 +591,7 @@ aclnnStatus aclnnGroupedMatMulAlltoAllv(
         return 0;
     }
 
-    int main(int argc, char *argv[]) 
+    int main(int argc, char *argv[])
     {
         int ret = aclInit(nullptr);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);

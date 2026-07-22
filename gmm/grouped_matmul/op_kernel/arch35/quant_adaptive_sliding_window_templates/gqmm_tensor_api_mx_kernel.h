@@ -48,7 +48,7 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
     using BlockMmadPolicy = Blaze::Gemm::GroupedMatmulWithScaleMx<0>;
     using QgmmBlockMmad = Blaze::Gemm::Block::BlockMmad<BlockMmadPolicy, AType, LayoutA, BType, LayoutB, YType, LayoutC,
                                                         BiasType, LayoutC>;
-    using BlockEpilogue = Blaze::Gemm::Block::BlockEpilogueEmpty;
+    using BlockEpilogue = Blaze::Epilogue::Block::BlockEpilogueEmpty;
     using BlockScheduler = Blaze::Gemm::Block::BlockSchedulerGmmSwatWithTailSplit;
     using QgmmKernel = Blaze::Gemm::Kernel::GemmUniversal<ProblemShape, QgmmBlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename QgmmKernel::Params;
@@ -80,10 +80,10 @@ __aicore__ inline void GmmTensorApiMxKernel(GM_ADDR x, GM_ADDR weight, GM_ADDR b
                                reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<BiasType>(0, bias)) :
                                nullptr;
     GM_ADDR perTokenScaleDataAddr = perTokenScale;
-    GM_ADDR scaleDataAddr = gmmBaseParamsIn->singleW == 1
-                                ? reinterpret_cast<GM_ADDR>(
-                                      GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale))
-                                : scale;
+    GM_ADDR scaleDataAddr =
+        gmmBaseParamsIn->singleW == 1 ?
+            reinterpret_cast<GM_ADDR>(GROUPED_MATMUL::GetTensorAddr<AscendC::fp8_e8m0_t>(0, scale)) :
+            scale;
     GM_ADDR groupListDataAddr = groupList;
 
     Params params = {{gmmParams.m, gmmParams.n, gmmParams.k, static_cast<int64_t>(1)},

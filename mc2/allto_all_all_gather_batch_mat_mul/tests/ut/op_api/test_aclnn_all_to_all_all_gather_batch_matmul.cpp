@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 #include <float.h>
 
 #include <array>
@@ -23,7 +23,7 @@
 using namespace op;
 using namespace std;
 
-namespace AlltoAllAllGatherBatchMatmul{
+namespace AlltoAllAllGatherBatchMatmul {
 class L2AllToAllAllGatherBatchMatmulTest : public testing::Test {
 protected:
     static void SetUpTestCase()
@@ -48,12 +48,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulXshar
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 0, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 0, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -67,12 +67,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulXshar
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -86,12 +86,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulXshar
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 5, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 5, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -104,12 +104,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulY2Out
     TensorDesc biasOptional = TensorDesc({2, 1, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 4),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 4),
                         OUTPUT(y1OutDesc, nullptr, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -123,12 +123,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulY3Out
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 0),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 0),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -142,12 +142,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulEpGro
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
-                        OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
+    auto ut =
+        OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                  INPUT(x, weight, biasOptional, "", "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+                  OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
@@ -161,12 +161,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulTpGro
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        nullptr, 2, 2, 1, 1),
-                        OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
+    auto ut = OP_API_UT(
+        aclnnAlltoAllAllGatherBatchMatMul,
+        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group", nullptr, 2, 2, 1, 1),
+        OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
 }
@@ -180,12 +180,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, testAllToAllAllGatherBatchMatmulWeigh
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -199,12 +199,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulHInva
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -218,12 +218,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulEInva
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -237,12 +237,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulK0)
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 0}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -256,12 +256,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulActty
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 8),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 8),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -275,12 +275,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulEpwor
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 3, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 3, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -294,12 +294,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulTpwor
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 7, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 7, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -313,12 +313,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulBiasS
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -332,12 +332,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulTrans
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -351,12 +351,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulMTp65
     TensorDesc y1OutDesc = TensorDesc({2, 4, 65536}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 65536}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -370,12 +370,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulC0)
     TensorDesc y1OutDesc = TensorDesc({2, 0, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 0, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 0, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -388,12 +388,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulY1And
     TensorDesc y1OutDesc = TensorDesc({3, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -406,12 +406,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulY1And
     TensorDesc y1OutDesc = TensorDesc({2, 4, 3}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -424,12 +424,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulY1And
     TensorDesc y1OutDesc = TensorDesc({2, 5, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 1, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -442,12 +442,12 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulXshar
     TensorDesc y1OutDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 0, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 0, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
@@ -460,13 +460,13 @@ TEST_F(L2AllToAllAllGatherBatchMatmulTest, TestAllToAllAllGatherBatchMatmulXshar
     TensorDesc y1OutDesc = TensorDesc({2, 5, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y2OutOptionalDesc = TensorDesc({2, 4, 6}, ACL_FLOAT16, ACL_FORMAT_ND);
     TensorDesc y3OutOptionalDesc = TensorDesc({2, 4, 2}, ACL_FLOAT16, ACL_FORMAT_ND);
-    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul, INPUT(x, weight, biasOptional, 
-                        "test_all_to_all_all_gather_batch_matmul_ep_group",
-                        "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 0, 1),
+    auto ut = OP_API_UT(aclnnAlltoAllAllGatherBatchMatMul,
+                        INPUT(x, weight, biasOptional, "test_all_to_all_all_gather_batch_matmul_ep_group",
+                              "test_all_to_all_all_gather_batch_matmul_tp_group", 2, 2, 0, 1),
                         OUTPUT(y1OutDesc, y2OutOptionalDesc, y3OutOptionalDesc));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
-} // AlltoAllAllGatherBatchMatmul
+} // namespace AlltoAllAllGatherBatchMatmul

@@ -51,6 +51,7 @@ TILING_DATA_FIELD_DEF(uint32_t, needInit)
 TILING_DATA_FIELD_DEF(uint32_t, slidingFlag)
 TILING_DATA_FIELD_DEF(uint32_t, l2CacheOffFlag)
 TILING_DATA_FIELD_DEF(uint32_t, isLegacyIfa)
+TILING_DATA_FIELD_DEF(bool, isEmptyBatchOverHalf)   // 临时变量，用于检查是否超过一半的batch为空batch
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionBaseParamsOp, FusedInferAttentionBaseParams)
 

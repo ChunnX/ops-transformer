@@ -80,8 +80,8 @@ struct KFCMsgBody {
     HcclAicpuOpParam msgRcvArea[mc2tiling::AC_MAX_AIV][mc2tiling::AC_MSG_CNT];
 };
 
-static uint64_t GMMGetSizePlatForm(
-    const platform_ascendc::CoreMemType memType, platform_ascendc::PlatformAscendC ascendcPlatform)
+static uint64_t GMMGetSizePlatForm(const platform_ascendc::CoreMemType memType,
+                                   platform_ascendc::PlatformAscendC ascendcPlatform)
 {
     uint64_t size = 0;
     ascendcPlatform.GetCoreMemSize(memType, size);
@@ -101,10 +101,11 @@ struct PlatFormMemSize {
           l0CSize(GMMGetSizePlatForm(platform_ascendc::CoreMemType::L0_C, ascendcPlatform)),
           l0ASize(GMMGetSizePlatForm(platform_ascendc::CoreMemType::L0_A, ascendcPlatform)),
           l0BSize(GMMGetSizePlatForm(platform_ascendc::CoreMemType::L0_B, ascendcPlatform))
-    {}
+    {
+    }
 };
 
-static void PrintTilingData(optiling::Mc2Msg& msg)
+static void PrintTilingData(optiling::Mc2Msg &msg)
 {
     OP_LOGD("GMMAllReduce", " aicpuTiling.sendOff %lu.", msg.get_sendOff());
     OP_LOGD("GMMAllReduce", " aicpuTiling.recvOff %lu.", msg.get_recvOff());
@@ -140,7 +141,7 @@ static void PrintTilingData(optiling::Mc2Msg& msg)
     OP_LOGD("GMMAllReduce", " aicpuTiling.preparePosition %u", msg.get_preparePosition());
 }
 
-static void PrintTilingData(optiling::GMMAllReduceCoreTiling& msg)
+static void PrintTilingData(optiling::GMMAllReduceCoreTiling &msg)
 {
     OP_LOGD("GMMAllReduce", " aicoreTiling.notifyOff %u.", msg.get_notifyOff());
     OP_LOGD("GMMAllReduce", " aicoreTiling.baseParams.groupNum %u.", msg.baseParams.get_groupNum());
@@ -172,25 +173,24 @@ static void PrintTilingData(optiling::GMMAllReduceCoreTiling& msg)
     OP_LOGD("GMMAllReduce", " aicoreTiling.mmTilingData.dbL0C %u.", msg.mmTilingData.get_dbL0C());
 }
 
-class GMMAllReduceTiling
-{
+class GMMAllReduceTiling {
 public:
     GMMAllReduceTilingData tilingData;
     mc2tiling::TilingArgs args_;
 
-    ge::graphStatus Init(const gert::TilingContext* context);
-    ge::graphStatus RunFusionKernelTiling(gert::TilingContext* context);
+    ge::graphStatus Init(const gert::TilingContext *context);
+    ge::graphStatus RunFusionKernelTiling(gert::TilingContext *context);
 
 protected:
-    ge::graphStatus CalMMTiling(const gert::TilingContext* context);
-    ge::graphStatus GMMAllReduceSetMMTiling(const gert::TilingContext* context, matmul_tiling::DataType matmulDtype);
+    ge::graphStatus CalMMTiling(const gert::TilingContext *context);
+    ge::graphStatus GMMAllReduceSetMMTiling(const gert::TilingContext *context, matmul_tiling::DataType matmulDtype);
     ge::graphStatus DoAllReduceTiling();
-    ge::graphStatus DoAiCoreTiling(const gert::TilingContext* context);
+    ge::graphStatus DoAiCoreTiling(const gert::TilingContext *context);
     ge::graphStatus SetBaseParams();
     inline void SetArgsValue(uint32_t i);
-    ge::graphStatus InitForLoop(const gert::TilingContext* context, uint32_t& groupNum);
-    inline void SetMsgValue(Mc2Msg& msg) const;
-    void CalculateMMTiling(CoreTilingInfo& coreTilingInfo) const;
+    ge::graphStatus InitForLoop(const gert::TilingContext *context, uint32_t &groupNum);
+    inline void SetMsgValue(Mc2Msg &msg) const;
+    void CalculateMMTiling(CoreTilingInfo &coreTilingInfo) const;
 
 private:
     int32_t mList[MAX_TENSOR_CONT] = {0};
@@ -213,15 +213,15 @@ private:
     ge::DataType biasDType;
     uint8_t hcclDataType;  // data type in hccl
     int64_t splitItem_;    // attr
-    const char* group_;    // attr
-    const char* reduceOp_; // attr
+    const char *group_;    // attr
+    const char *reduceOp_; // attr
     int64_t commTurn_;     // communication turn num
     uint32_t rankSize_;
     uint32_t libApiWorkSpaceSize_;
-    const char* opName;
+    const char *opName;
 };
 
-ge::graphStatus GMMAllReduceTiling::InitForLoop(const gert::TilingContext* context, uint32_t& groupNum)
+ge::graphStatus GMMAllReduceTiling::InitForLoop(const gert::TilingContext *context, uint32_t &groupNum)
 {
     // Get shape, dtype information, and the total number of data.
     int64_t maxMKN = 0;
@@ -248,25 +248,23 @@ ge::graphStatus GMMAllReduceTiling::InitForLoop(const gert::TilingContext* conte
         if (mmDType == ge::DT_UNDEFINED) { // if is first loop
             auto inputDescPtr0 = context->GetInputDesc(0);
             auto inputDescPtr1 = context->GetInputDesc(1);
-            OP_TILING_CHECK(
-                inputDescPtr0 == nullptr || inputDescPtr1 == nullptr,
-                OP_LOGE_WITH_INVALID_INPUT(opName, "inputDescPtr"), return ge::GRAPH_FAILED);
+            OP_TILING_CHECK(inputDescPtr0 == nullptr || inputDescPtr1 == nullptr,
+                            OP_LOGE_WITH_INVALID_INPUT(opName, "inputDescPtr"), return ge::GRAPH_FAILED);
             mmDType = inputDescPtr0->GetDataType();     // save x dtype
             weightDtype = inputDescPtr1->GetDataType(); // save weight dtype
             mmDataTypeSize = GetSizeByDataType(mmDType);
             OP_TILING_CHECK(
-            mmDataTypeSize == 0,
-            OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName, "mmDType",
-                TypeUtils::DataTypeToAscendString(mmDType).GetString(), "get size is 0"),
-            return ge::GRAPH_FAILED);
+                mmDataTypeSize == 0,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
+                    opName, "mmDType", TypeUtils::DataTypeToAscendString(mmDType).GetString(), "get size is 0"),
+                return ge::GRAPH_FAILED);
             uint32_t numInOneBlk = std::max<uint32_t>(1, ONE_BLK_SIZE / mmDataTypeSize);
             maxMKN = INT_MAX / numInOneBlk * numInOneBlk;
         }
-        OP_TILING_CHECK(
-            bs > maxMKN || xShape.GetDim(xDimNum - 1) > maxMKN || wShape.GetDim(1) > maxMKN,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "shape dimension", std::to_string(maxMKN).c_str(),
-                "32B-aligned m, n or k axis is out of int32 range"),
-            return ge::GRAPH_FAILED);
+        OP_TILING_CHECK(bs > maxMKN || xShape.GetDim(xDimNum - 1) > maxMKN || wShape.GetDim(1) > maxMKN,
+                        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "shape dimension", std::to_string(maxMKN).c_str(),
+                                                              "32B-aligned m, n or k axis is out of int32 range"),
+                        return ge::GRAPH_FAILED);
         mList[i] = static_cast<int32_t>(bs);                         // m axis of x
         kList[i] = static_cast<int32_t>(xShape.GetDim(xDimNum - 1)); // x shape is [m, k], k index is xDimNum - 1
         nList[i] = static_cast<int32_t>(wShape.GetDim(1));           // w shape is [k, n], n index is 1
@@ -279,14 +277,14 @@ ge::graphStatus GMMAllReduceTiling::InitForLoop(const gert::TilingContext* conte
     } else {
         hcclDataType = static_cast<uint8_t>(mc2tiling::HcclDataType::HCCL_DATA_TYPE_FP16);
     }
-    OP_TILING_CHECK(
-        groupNum > MAX_TENSOR_CONT,
-        OP_LOGE_FOR_INVALID_VALUE(opName, "groupNum", std::to_string(groupNum).c_str(), std::to_string(MAX_TENSOR_CONT).c_str()),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(groupNum > MAX_TENSOR_CONT,
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "groupNum", std::to_string(groupNum).c_str(),
+                                              std::to_string(MAX_TENSOR_CONT).c_str()),
+                    return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GMMAllReduceTiling::Init(const gert::TilingContext* context)
+ge::graphStatus GMMAllReduceTiling::Init(const gert::TilingContext *context)
 {
     opName = context->GetNodeName();
     uint32_t groupNum = 0;          // 0: init value
@@ -295,18 +293,16 @@ ge::graphStatus GMMAllReduceTiling::Init(const gert::TilingContext* context)
     maxK = 0;                       // init maxK
     mmDType = ge::DT_UNDEFINED;     // init mmDType
     weightDtype = ge::DT_UNDEFINED; // init weightDtype
-    OP_TILING_CHECK(
-        InitForLoop(context, groupNum) != ge::GRAPH_SUCCESS,
-        OP_LOGE(opName, "InitForLoop failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(InitForLoop(context, groupNum) != ge::GRAPH_SUCCESS, OP_LOGE(opName, "InitForLoop failed."),
+                    return ge::GRAPH_FAILED);
     auto biasPtr = context->GetDynamicInputTensor(BIAS_INDEX, 0); // 0: 获取tensorList中第一个tensor
     isBias = biasPtr != nullptr && biasPtr->GetStorageShape().GetDimNum() != 0;
     tilingData.aicoreTiling.baseParams.set_mList(mList);
     tilingData.aicoreTiling.baseParams.set_kList(kList);
     tilingData.aicoreTiling.baseParams.set_nList(nList);
     tilingData.aicoreTiling.baseParams.set_groupNum(groupNum);
-    OP_LOGD(
-        opName, "groupNum is %u, isBias is %d, maxM is %d, maxK is %d, maxN is %d.", groupNum, static_cast<int>(isBias),
-        maxM, maxK, maxN);
+    OP_LOGD(opName, "groupNum is %u, isBias is %d, maxM is %d, maxK is %d, maxN is %d.", groupNum,
+            static_cast<int>(isBias), maxM, maxK, maxN);
 
     uint32_t index = 0; // 0: start from 0
     splitItem_ = *context->GetAttrs()->GetAttrPointer<int64_t>(index++);
@@ -317,13 +313,12 @@ ge::graphStatus GMMAllReduceTiling::Init(const gert::TilingContext* context)
         commTurn_ = COMM_TILE;
     } // set default value
     rankSize_ = mc2tiling::MatmulFormulaicTiling::GetRankSize(group_);
-    OP_LOGD(
-        opName, "splitItem is %ld, group is %s, rankSize_=%u, reduceOp_ is %s, commTurn is %ld.", splitItem_, group_,
-        rankSize_, reduceOp_, commTurn_);
+    OP_LOGD(opName, "splitItem is %ld, group is %s, rankSize_=%u, reduceOp_ is %s, commTurn is %ld.", splitItem_,
+            group_, rankSize_, reduceOp_, commTurn_);
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GMMAllReduceTiling::RunFusionKernelTiling(gert::TilingContext* context)
+ge::graphStatus GMMAllReduceTiling::RunFusionKernelTiling(gert::TilingContext *context)
 {
     OP_LOGD(opName, "begin RunFusionKernelTiling.");
     auto platformInfo = context->GetPlatformInfo();
@@ -348,9 +343,10 @@ ge::graphStatus GMMAllReduceTiling::RunFusionKernelTiling(gert::TilingContext* c
             PLATFORM_SIZE.l0CSize, PLATFORM_SIZE.l0ASize, PLATFORM_SIZE.l0BSize),
         return ge::GRAPH_FAILED);
     bool rankSizeSupported = (rankSize_ == 1 || rankSize_ == 2 || rankSize_ == 4 || rankSize_ == 8);
-    OP_TILING_CHECK(
-        !rankSizeSupported, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "rankSize", std::to_string(rankSize_).c_str(), "The value of rankSize must be 1, 2, 4 or 8"),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!rankSizeSupported,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "rankSize", std::to_string(rankSize_).c_str(),
+                                                          "The value of rankSize must be 1, 2, 4 or 8"),
+                    return ge::GRAPH_FAILED);
 
     ubSize_ = PLATFORM_SIZE.ubSize;
     args_.cmdType = mc2tiling::AicpuComType::HCCL_CMD_ALLREDUCE; // all reduce
@@ -369,18 +365,16 @@ ge::graphStatus GMMAllReduceTiling::RunFusionKernelTiling(gert::TilingContext* c
     args_.usedCoreNum = AIC_NUM; // cube num
 
     // aicore tiling
-    OP_TILING_CHECK(
-        DoAiCoreTiling(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE(opName, "GMM_All_Reduce DoAiCoreTiling failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(DoAiCoreTiling(context) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName, "GMM_All_Reduce DoAiCoreTiling failed."), return ge::GRAPH_FAILED);
 
     context->SetBlockDim(ascendcPlatform.CalcTschBlockDim(CORE_NUM, AIC_NUM, AIV_NUM));
     // aicpu tiling
-    OP_TILING_CHECK(
-        DoAllReduceTiling() != ge::GRAPH_SUCCESS,
-        OP_LOGE(opName, "GMM_All_Reduce DoAllReduceTiling failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(DoAllReduceTiling() != ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName, "GMM_All_Reduce DoAllReduceTiling failed."), return ge::GRAPH_FAILED);
 
     // set workspsces
-    size_t* workspaces = context->GetWorkspaceSizes(1); // 1: fixed value
+    size_t *workspaces = context->GetWorkspaceSizes(1); // 1: fixed value
     workspaces[0] = SYS_WORKSPACE_SIZE;                 // 0: fixed value
     context->SetTilingKey(TILING_KEY);                  // set tilingkey
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
@@ -399,7 +393,7 @@ inline void GMMAllReduceTiling::SetArgsValue(uint32_t i)
     args_.orgNValue = nList[i];
 }
 
-inline void GMMAllReduceTiling::SetMsgValue(Mc2Msg& msg) const
+inline void GMMAllReduceTiling::SetMsgValue(Mc2Msg &msg) const
 {
     msg.set_debugMode(mc2tiling::Mc2TilingUtils::GetDebugMode());
     msg.set_commType(static_cast<uint8_t>(mc2tiling::AicpuComType::HCCL_CMD_ALLREDUCE));
@@ -415,7 +409,7 @@ inline void GMMAllReduceTiling::SetMsgValue(Mc2Msg& msg) const
     msg.set_preparePosition(0);
 }
 
-void GMMAllReduceTiling::CalculateMMTiling(CoreTilingInfo& coreTilingInfo) const
+void GMMAllReduceTiling::CalculateMMTiling(CoreTilingInfo &coreTilingInfo) const
 {
     coreTilingInfo.lambdaN = Ceil(uint32_t(args_.orgNValue), args_.usedCoreNum * uint32_t(baseN_));
     coreTilingInfo.singleN = coreTilingInfo.lambdaN * baseN_;
@@ -430,13 +424,12 @@ void GMMAllReduceTiling::CalculateMMTiling(CoreTilingInfo& coreTilingInfo) const
         std::max<uint32_t>(1, args_.orgMValue / (coreTilingInfo.singleM * coreTilingInfo.splitM));
     coreTilingInfo.tailTurnNum =
         (coreTilingInfo.tileTurnNum * coreTilingInfo.singleM * coreTilingInfo.splitM < args_.orgMValue);
-    OP_LOGI(
-        opName,
-        "m = %lu, n = %lu, baseM_ = %u, baseK_ = %u, baseN_ = %u, tileTurnNum = %u, tailTurnNum = %u,"
-        "splitM = %u, lambdaM = %u, singleM = %u, numBlocksN = %u, lambdaN = %u, singleN = %u",
-        args_.orgMValue, args_.orgNValue, baseM_, baseK_, baseN_, coreTilingInfo.tileTurnNum,
-        coreTilingInfo.tailTurnNum, coreTilingInfo.splitM, coreTilingInfo.lambdaM, coreTilingInfo.singleM, numBlocksN,
-        coreTilingInfo.lambdaN, coreTilingInfo.singleN);
+    OP_LOGI(opName,
+            "m = %lu, n = %lu, baseM_ = %u, baseK_ = %u, baseN_ = %u, tileTurnNum = %u, tailTurnNum = %u,"
+            "splitM = %u, lambdaM = %u, singleM = %u, numBlocksN = %u, lambdaN = %u, singleN = %u",
+            args_.orgMValue, args_.orgNValue, baseM_, baseK_, baseN_, coreTilingInfo.tileTurnNum,
+            coreTilingInfo.tailTurnNum, coreTilingInfo.splitM, coreTilingInfo.lambdaM, coreTilingInfo.singleM,
+            numBlocksN, coreTilingInfo.lambdaN, coreTilingInfo.singleN);
 }
 
 ge::graphStatus GMMAllReduceTiling::DoAllReduceTiling()
@@ -446,13 +439,13 @@ ge::graphStatus GMMAllReduceTiling::DoAllReduceTiling()
     tilingData.aicpuTiling.set_groupNum(groupNum);
     tilingData.aicpuTiling.set_groupTilingMagicNum(GMM_ALL_REDUCE_FLAG);
 
-    uint8_t* argsU8 = tilingData.aicpuTiling.get_msg();
+    uint8_t *argsU8 = tilingData.aicpuTiling.get_msg();
     Mc2Msg msg(argsU8);
     size_t dataSize = msg.GetDataSize(); // Mc2Msg size
-    OP_TILING_CHECK(
-        dataSize != MC2_MSG_SIZE,
-        OP_LOGE_FOR_INVALID_VALUE(opName, "dataSize", std::to_string(dataSize).c_str(), std::to_string(MC2_MSG_SIZE).c_str()),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(dataSize != MC2_MSG_SIZE,
+                    OP_LOGE_FOR_INVALID_VALUE(opName, "dataSize", std::to_string(dataSize).c_str(),
+                                              std::to_string(MC2_MSG_SIZE).c_str()),
+                    return ge::GRAPH_FAILED);
     CoreTilingInfo coreTilingInfo;
     for (uint32_t i = 0; i < groupNum; ++i) {
         OP_LOGD(opName, "Start for loop in DoAllReduceTiling. i = %u.", i);
@@ -497,24 +490,21 @@ ge::graphStatus GMMAllReduceTiling::DoAllReduceTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GMMAllReduceTiling::DoAiCoreTiling(const gert::TilingContext* context)
+ge::graphStatus GMMAllReduceTiling::DoAiCoreTiling(const gert::TilingContext *context)
 {
     OP_LOGD(opName, "begin DoAiCoreTiling.");
 
     // GMMAllReduceBaseParams baseParams
-    OP_TILING_CHECK(
-        SetBaseParams() != ge::GRAPH_SUCCESS,
-        OP_LOGE(opName, "GMM_All_Reduce SetBaseParams failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(SetBaseParams() != ge::GRAPH_SUCCESS, OP_LOGE(opName, "GMM_All_Reduce SetBaseParams failed."),
+                    return ge::GRAPH_FAILED);
 
     // TCubeTiling mmTilingData
-    OP_TILING_CHECK(
-        CalMMTiling(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE(opName, "GMM_All_Reduce CalMMTiling failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CalMMTiling(context) != ge::GRAPH_SUCCESS, OP_LOGE(opName, "GMM_All_Reduce CalMMTiling failed."),
+                    return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(
-        GMMAllReduceSetMMTiling(context, static_cast<matmul_tiling::DataType>(mmDType)) != ge::GRAPH_SUCCESS,
-        OP_LOGE(opName, "GMM_All_Reduce GMMAllReduceSetMMTiling failed."),
-        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(GMMAllReduceSetMMTiling(context, static_cast<matmul_tiling::DataType>(mmDType)) !=
+                        ge::GRAPH_SUCCESS,
+                    OP_LOGE(opName, "GMM_All_Reduce GMMAllReduceSetMMTiling failed."), return ge::GRAPH_FAILED);
 
     tilingData.aicoreTiling.set_notifyOff(sizeof(KFCMsgBody)); // used in kernel function
     uint32_t debugMode = mc2tiling::Mc2TilingUtils::GetDebugMode();
@@ -537,7 +527,7 @@ ge::graphStatus GMMAllReduceTiling::SetBaseParams()
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GMMAllReduceTiling::CalMMTiling(const gert::TilingContext* context)
+ge::graphStatus GMMAllReduceTiling::CalMMTiling(const gert::TilingContext *context)
 {
     OP_LOGD(opName, "begin CalMMTlingData.");
 
@@ -566,8 +556,10 @@ ge::graphStatus GMMAllReduceTiling::CalMMTiling(const gert::TilingContext* conte
     if (baseK_ > maxK) {
         baseK_ = std::min<int32_t>(baseK_, SixteenAlign(maxK, true));
     }
-    OP_TILING_CHECK(
-        baseK_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseK_", std::to_string(baseK_).c_str(), "The value of baseK_ cannot be 0"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(baseK_ == 0,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseK_", std::to_string(baseK_).c_str(),
+                                                          "The value of baseK_ cannot be 0"),
+                    return ge::GRAPH_FAILED);
     // 基于使能double buffer的L0A内存和L0B内存计算baseM(cube)
     uint32_t maxBaseM = PLATFORM_SIZE.l0CSize / (baseN_ * sizeof(float));
     baseM_ = std::min<uint32_t>((PLATFORM_SIZE.l0ASize / DOUBLE_BUFFER_L0A_L0B) / (baseK_ * mmDataTypeSize), maxBaseM);
@@ -575,15 +567,17 @@ ge::graphStatus GMMAllReduceTiling::CalMMTiling(const gert::TilingContext* conte
     if (baseM_ > maxM) {
         baseM_ = SixteenAlign(maxM, true);
     }
-    OP_TILING_CHECK(
-        baseM_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseM_", std::to_string(baseM_).c_str(), "The value of baseM_ cannot be 0"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(baseM_ == 0,
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName, "baseM_", std::to_string(baseM_).c_str(),
+                                                          "The value of baseM_ cannot be 0"),
+                    return ge::GRAPH_FAILED);
     OP_LOGD(opName, "end CalMMTlingData");
 
     return ge::GRAPH_SUCCESS;
 }
 
-ge::graphStatus GMMAllReduceTiling::GMMAllReduceSetMMTiling(
-    const gert::TilingContext* context, matmul_tiling::DataType matmulDtype)
+ge::graphStatus GMMAllReduceTiling::GMMAllReduceSetMMTiling(const gert::TilingContext *context,
+                                                            matmul_tiling::DataType matmulDtype)
 {
     OP_LOGD(opName, "Begin GMMAllReduceSetMMTiling.");
 
@@ -594,8 +588,8 @@ ge::graphStatus GMMAllReduceTiling::GMMAllReduceSetMMTiling(
     matmul_tiling::MatmulApiTiling mm;
     mm.SetAType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmulDtype, false);
     mm.SetBType(matmul_tiling::TPosition::GM, matmul_tiling::CubeFormat::ND, matmulDtype, false);
-    mm.SetCType(
-        matmul_tiling::TPosition::VECCALC, matmul_tiling::CubeFormat::ND_ALIGN, matmul_tiling::DataType::DT_FLOAT16);
+    mm.SetCType(matmul_tiling::TPosition::VECCALC, matmul_tiling::CubeFormat::ND_ALIGN,
+                matmul_tiling::DataType::DT_FLOAT16);
     mm.SetBias(isBias);
     if (isBias) {
         mm.SetBiasType(
@@ -606,9 +600,8 @@ ge::graphStatus GMMAllReduceTiling::GMMAllReduceSetMMTiling(
     mm.SetShape(maxM, baseN_, maxK);
     mm.SetFixSplit(std::min(baseM_, maxM), baseN_);
     mm.SetBufferSpace(PLATFORM_SIZE.l1Size, PLATFORM_SIZE.l0CSize, ubSize_);
-    OP_TILING_CHECK(
-        mm.GetTiling(tilingData.aicoreTiling.mmTilingData) == -1,
-        OP_LOGE(context->GetNodeName(), "matmul getTiling failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(mm.GetTiling(tilingData.aicoreTiling.mmTilingData) == -1,
+                    OP_LOGE(context->GetNodeName(), "matmul getTiling failed."), return ge::GRAPH_FAILED);
     // 计算开启dublebuffer之后搬运至L1是所需的参数
     uint32_t mmStepKa = (BEST_L1_PARTB >> 1) / (baseM_ * baseK_ * mmDataTypeSize);
     uint32_t mmStepKb = (BEST_L1_PARTA >> 1) / (baseN_ * baseK_ * mmDataTypeSize);
@@ -642,19 +635,17 @@ ge::graphStatus GMMAllReduceTiling::GMMAllReduceSetMMTiling(
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus TilingGMMAllReduce(gert::TilingContext* context)
+static ge::graphStatus TilingGMMAllReduce(gert::TilingContext *context)
 {
     GMMAllReduceTiling tiling;
-    OP_TILING_CHECK(
-        tiling.Init(context) != ge::GRAPH_SUCCESS,
-        OP_LOGE(context->GetNodeName(), "GMM tiling init failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(tiling.Init(context) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context->GetNodeName(), "GMM tiling init failed."), return ge::GRAPH_FAILED);
     return tiling.RunFusionKernelTiling(context);
 }
 
-struct GMMAllReduceCompileInfo {
-};
+struct GMMAllReduceCompileInfo {};
 
-static ge::graphStatus TilingPrepareForGMMAllReduce(gert::TilingParseContext* context)
+static ge::graphStatus TilingPrepareForGMMAllReduce(gert::TilingParseContext *context)
 {
     auto compileInfo = context->GetCompiledInfo<GMMAllReduceCompileInfo>();
     OP_CHECK_NULL_WITH_CONTEXT(context, compileInfo);

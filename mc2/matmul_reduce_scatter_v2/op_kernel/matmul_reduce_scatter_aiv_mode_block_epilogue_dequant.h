@@ -27,34 +27,12 @@
 
 namespace Catlass::Epilogue::Block {
 
-template <
-    class ArchTag_,
-    class CType_,
-    class ScaleType_,
-    class PerTokenScaleType_,
-    class BiasType_,
-    class DType_,
-    class TileRowBroadcastMul_,
-    class TileRowBroadcastAdd_,
-    class TileBroadcastOneBlk_,
-    class TileOneBlkColumnBroadcastMul_,
-    class TileCopy_,
-    class EpilogueTileSwizzle_
->
-class BlockEpilogue <
-    ArchTag_,
-    CType_,
-    ScaleType_,
-    PerTokenScaleType_,
-    BiasType_,
-    DType_,
-    TileRowBroadcastMul_,
-    TileRowBroadcastAdd_,
-    TileBroadcastOneBlk_,
-    TileOneBlkColumnBroadcastMul_,
-    TileCopy_,
-    EpilogueTileSwizzle_
-> {
+template <class ArchTag_, class CType_, class ScaleType_, class PerTokenScaleType_, class BiasType_, class DType_,
+          class TileRowBroadcastMul_, class TileRowBroadcastAdd_, class TileBroadcastOneBlk_,
+          class TileOneBlkColumnBroadcastMul_, class TileCopy_, class EpilogueTileSwizzle_>
+class BlockEpilogue<ArchTag_, CType_, ScaleType_, PerTokenScaleType_, BiasType_, DType_, TileRowBroadcastMul_,
+                    TileRowBroadcastAdd_, TileBroadcastOneBlk_, TileOneBlkColumnBroadcastMul_, TileCopy_,
+                    EpilogueTileSwizzle_> {
 public:
     static constexpr uint32_t UB_STAGES = 2;
 
@@ -72,16 +50,14 @@ public:
     using LayoutD = typename DType_::Layout;
 
     // Check data infos
-    static_assert(
-        std::is_same_v<ElementC, int32_t> && (std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>) &&
-            std::is_same_v<ElementScale, float> && std::is_same_v<ElementPerTokenScale, float>,
-        "The element type template parameters of BlockEpilogue are wrong"
-    );
-    static_assert(
-        std::is_same_v<LayoutC, layout::RowMajor> && std::is_same_v<LayoutScale, layout::VectorLayout> &&
-            std::is_same_v<LayoutPerTokenScale, layout::VectorLayout> && std::is_same_v<LayoutD, layout::RowMajor>,
-        "The layout template parameters of BlockEpilogue are wrong"
-    );
+    static_assert(std::is_same_v<ElementC, int32_t> &&
+                      (std::is_same_v<ElementD, half> || std::is_same_v<ElementD, bfloat16_t>) &&
+                      std::is_same_v<ElementScale, float> && std::is_same_v<ElementPerTokenScale, float>,
+                  "The element type template parameters of BlockEpilogue are wrong");
+    static_assert(std::is_same_v<LayoutC, layout::RowMajor> && std::is_same_v<LayoutScale, layout::VectorLayout> &&
+                      std::is_same_v<LayoutPerTokenScale, layout::VectorLayout> &&
+                      std::is_same_v<LayoutD, layout::RowMajor>,
+                  "The layout template parameters of BlockEpilogue are wrong");
 
     // Tile compute ops
     using TileRowBroadcastMul = TileRowBroadcastMul_;
@@ -101,20 +77,16 @@ public:
 
     using TileShape = typename TileRowBroadcastMul::TileShape;
 
-    static_assert(
-        TileShape::ROW == TileBroadcastOneBlk::COMPUTE_LENGTH &&
-        std::is_same_v<TileShape, typename TileOneBlkColumnBroadcastMul::TileShape>,
-        "TileShape must be consistent for all tile compute ops"
-    );
+    static_assert(TileShape::ROW == TileBroadcastOneBlk::COMPUTE_LENGTH &&
+                      std::is_same_v<TileShape, typename TileOneBlkColumnBroadcastMul::TileShape>,
+                  "TileShape must be consistent for all tile compute ops");
 
-    static_assert(
-        (UB_STAGES * (TileShape::COUNT * sizeof(ElementC) + TileShape::COLUMN * sizeof(ElementScale) +
-         TileShape::ROW * sizeof(ElementPerTokenScale) + TileShape::COLUMN * sizeof(ElementBias) +
-         TileShape::COUNT * sizeof(ElementD)) +
-         (TileShape::COUNT + TileShape::COUNT) * sizeof(float) + TileShape::ROW * BYTE_PER_BLK)
-        <= ArchTag::UB_SIZE,
-        "TileShape is too large to fit in UB"
-    );
+    static_assert((UB_STAGES * (TileShape::COUNT * sizeof(ElementC) + TileShape::COLUMN * sizeof(ElementScale) +
+                                TileShape::ROW * sizeof(ElementPerTokenScale) +
+                                TileShape::COLUMN * sizeof(ElementBias) + TileShape::COUNT * sizeof(ElementD)) +
+                   (TileShape::COUNT + TileShape::COUNT) * sizeof(float) + TileShape::ROW * BYTE_PER_BLK) <=
+                      ArchTag::UB_SIZE,
+                  "TileShape is too large to fit in UB");
 
     CATLASS_DEVICE
     BlockEpilogue(Arch::Resource<ArchTag> const &resource)
@@ -148,7 +120,7 @@ public:
         ubCFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
         ubOffset += TileShape::COUNT * sizeof(float);
         if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
-            AscendC::IsSameType<ElementBias, half>::value) {
+                      AscendC::IsSameType<ElementBias, half>::value) {
             ubBiasFp32 = resource.ubBuf.template GetBufferByByte<float>(ubOffset);
             ubOffset += TileShape::COLUMN * sizeof(float);
         }
@@ -182,11 +154,10 @@ public:
 
     // perChannel、perToken
     CATLASS_DEVICE
-    void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
-                     __gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
-                     __gm__ ElementBias *ptrBias, LayoutBias layoutBias,
-                     __gm__ ElementC *ptrC, LayoutC layoutC, __gm__ ElementD *ptrD, LayoutD layoutD,
-                     GemmCoord problemShape)
+    void operator()(__gm__ ElementScale *ptrScale, LayoutScale layoutScale,
+                    __gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
+                    __gm__ ElementBias *ptrBias, LayoutBias layoutBias, __gm__ ElementC *ptrC, LayoutC layoutC,
+                    __gm__ ElementD *ptrD, LayoutD layoutD, GemmCoord problemShape)
     {
         // Calculate the offset of the current block
         MatrixCoord actualBlockShape = problemShape.GetCoordMN();
@@ -243,12 +214,12 @@ public:
             auto layoutGmTilePerTokenScale = layoutPerTokenScale.GetTileLayout(perTokenScaleTileShape);
 
             auto &ubPerTokenScale = ubPerTokenScaleList[ubListId];
-            auto layoutUbPerTokenScale = LayoutScale::template MakeLayoutInUb<ElementPerTokenScale>(
-                perTokenScaleTileShape);
+            auto layoutUbPerTokenScale =
+                LayoutScale::template MakeLayoutInUb<ElementPerTokenScale>(perTokenScaleTileShape);
 
             // 把 perTokenScale 从GM拷贝到UB
             copyGmToUbPerTokenScale(ubPerTokenScale, gmTilePerTokenScale, layoutUbPerTokenScale,
-                layoutGmTilePerTokenScale);
+                                    layoutGmTilePerTokenScale);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
             // 只有当bias不为nullptr时，才处理bias相关操作
             if (ptrBias != nullptr) {
@@ -267,7 +238,7 @@ public:
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
 
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
-                    AscendC::IsSameType<ElementBias, half>::value) {
+                              AscendC::IsSameType<ElementBias, half>::value) {
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
                     AscendC::Cast(ubBiasFp32, ubBias, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
@@ -294,7 +265,7 @@ public:
             // 只有当bias不为nullptr时，才执行bias加法
             if (ptrBias != nullptr) {
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
-                    AscendC::IsSameType<ElementBias, half>::value) {
+                              AscendC::IsSameType<ElementBias, half>::value) {
                     tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBiasFp32);
                 } else {
                     auto &ubBias = ubBiasList[ubListId];
@@ -328,9 +299,9 @@ public:
 
     // perChannel
     CATLASS_DEVICE
-    void operator() (__gm__ ElementScale *ptrScale, LayoutScale layoutScale, __gm__ ElementBias *ptrBias,
-                     LayoutBias layoutBias, __gm__ ElementC *ptrC, LayoutC layoutC, __gm__ ElementD *ptrD,
-                     LayoutD layoutD, GemmCoord problemShape)
+    void operator()(__gm__ ElementScale *ptrScale, LayoutScale layoutScale, __gm__ ElementBias *ptrBias,
+                    LayoutBias layoutBias, __gm__ ElementC *ptrC, LayoutC layoutC, __gm__ ElementD *ptrD,
+                    LayoutD layoutD, GemmCoord problemShape)
     {
         // Calculate the offset of the current block
         MatrixCoord actualBlockShape = problemShape.GetCoordMN();
@@ -349,8 +320,7 @@ public:
         uint32_t subblockNumDequant = AscendC::GetSubBlockNum();
 
         InitFlag();
-        for (uint32_t loopIdxDequant = subblockIdxDequant;
-             loopIdxDequant < tileLoopsDequant;
+        for (uint32_t loopIdxDequant = subblockIdxDequant; loopIdxDequant < tileLoopsDequant;
              loopIdxDequant += subblockNumDequant) {
             auto tileCoordDequant = epilogueTileSwizzleDequant.GetTileCoord(loopIdxDequant);
             auto actualTileShapeDequant = epilogueTileSwizzleDequant.GetActualTileShape(tileCoordDequant);
@@ -398,7 +368,7 @@ public:
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
 
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
-                    AscendC::IsSameType<ElementBias, half>::value) {
+                              AscendC::IsSameType<ElementBias, half>::value) {
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
                     AscendC::Cast(ubBiasFp32, ubBiasLocalTensor, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
@@ -422,7 +392,7 @@ public:
             // 只有当bias不为nullptr时，才执行bias加法
             if (ptrBias != nullptr) {
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
-                    AscendC::IsSameType<ElementBias, half>::value) {
+                              AscendC::IsSameType<ElementBias, half>::value) {
                     tileRowBroadcastAdd(ubBiasAdd, ubMul, ubBiasFp32);
                 } else {
                     auto &ubBias = ubBiasList[ubListId];
@@ -455,10 +425,9 @@ public:
 
     // perToken
     CATLASS_DEVICE
-    void operator() (__gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
-                     __gm__ ElementBias *ptrBias, LayoutBias layoutBias,
-                     __gm__ ElementD *ptrIn, LayoutD layoutIn, __gm__ ElementD *ptrOut, LayoutD layoutOut,
-                     GemmCoord problemShape)
+    void operator()(__gm__ ElementPerTokenScale *ptrPerTokenScale, LayoutPerTokenScale layoutPerTokenScale,
+                    __gm__ ElementBias *ptrBias, LayoutBias layoutBias, __gm__ ElementD *ptrIn, LayoutD layoutIn,
+                    __gm__ ElementD *ptrOut, LayoutD layoutOut, GemmCoord problemShape)
     {
         // Calculate the offset of the current block
         MatrixCoord actualBlockShape = problemShape.GetCoordMN();
@@ -480,8 +449,7 @@ public:
         uint32_t subblockNumPerToken = AscendC::GetSubBlockNum();
 
         InitFlag();
-        for (uint32_t loopIdxPerToken = subblockIdxPerToken;
-             loopIdxPerToken < tileLoopsPerToken;
+        for (uint32_t loopIdxPerToken = subblockIdxPerToken; loopIdxPerToken < tileLoopsPerToken;
              loopIdxPerToken += subblockNumPerToken) {
             auto tileCoordPerToken = epilogueTileSwizzlePerToken.GetTileCoord(loopIdxPerToken);
             auto actualTileShapePerToken = epilogueTileSwizzlePerToken.GetActualTileShape(tileCoordPerToken);
@@ -507,12 +475,12 @@ public:
             auto layoutGmTilePerTokenScale = layoutPerTokenScale.GetTileLayout(perTokenScaleTileShape);
 
             auto &ubPerTokenScale = ubPerTokenScaleList[ubListId];
-            auto layoutUbPerTokenScale = LayoutScale::template MakeLayoutInUb<ElementPerTokenScale>(
-                perTokenScaleTileShape);
+            auto layoutUbPerTokenScale =
+                LayoutScale::template MakeLayoutInUb<ElementPerTokenScale>(perTokenScaleTileShape);
 
             // 把 perTokenScale 从GM拷贝到UB
             copyGmToUbPerTokenScale(ubPerTokenScale, gmTilePerTokenScale, layoutUbPerTokenScale,
-                layoutGmTilePerTokenScale);
+                                    layoutGmTilePerTokenScale);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbPerTokenScaleMTE2VList[ubListId]);
 
             // 只有当bias不为nullptr时，才处理bias相关操作
@@ -533,7 +501,7 @@ public:
                 AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
 
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
-                    AscendC::IsSameType<ElementBias, half>::value) {
+                              AscendC::IsSameType<ElementBias, half>::value) {
                     AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventUbBiasMTE2VList[ubListId]);
                     AscendC::Cast(ubBiasFp32, localTensorUbBias, AscendC::RoundMode::CAST_NONE, TileShape::COLUMN);
                     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventUbBiasVMTE2List[ubListId]);
@@ -560,7 +528,7 @@ public:
             // 只有当bias不为nullptr时，才执行bias加法
             if (ptrBias != nullptr) {
                 if constexpr (AscendC::IsSameType<ElementBias, bfloat16_t>::value ||
-                    AscendC::IsSameType<ElementBias, half>::value) {
+                              AscendC::IsSameType<ElementBias, half>::value) {
                     tileRowBroadcastAdd(ubBiasAdd, ubPerTokenMul, ubBiasFp32);
                 } else {
                     auto &ubBias = ubBiasList[ubListId];
@@ -628,6 +596,6 @@ private:
     AscendC::GlobalTensor<ElementD> gmD;
     AscendC::GlobalTensor<ElementBias> gmBias;
 };
-}  // namespace Catlass::Epilogue::Block
+} // namespace Catlass::Epilogue::Block
 
-#endif  // MATMUL_REDUCE_SCATTER_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H
+#endif // MATMUL_REDUCE_SCATTER_AIV_MODE_BLOCK_EPILOGUE_DEQUANT_H

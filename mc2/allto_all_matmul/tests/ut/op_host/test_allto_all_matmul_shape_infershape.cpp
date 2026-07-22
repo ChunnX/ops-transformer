@@ -31,45 +31,41 @@ TEST_P(InferShapeTest, param)
 {
     auto param = GetParam();
     std::vector<gert::InfershapeContextPara::TensorDescription> inputTensorDesc;
-    if (param.inputInstance[0] == 1) inputTensorDesc.emplace_back(param.x1);
-    if (param.inputInstance[1] == 1) inputTensorDesc.emplace_back(param.x2);
+    if (param.inputInstance[0] == 1)
+        inputTensorDesc.emplace_back(param.x1);
+    if (param.inputInstance[1] == 1)
+        inputTensorDesc.emplace_back(param.x2);
 
     gert::InfershapeContextPara inferShapeContextPara(
-        "AlltoAllMatmul",
-        inputTensorDesc,
+        "AlltoAllMatmul", inputTensorDesc,
         {
             param.y,
-            param.y  // alltoallout output (same as y placeholder)
+            param.y // alltoallout output (same as y placeholder)
         },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
-            {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.world_size)},
-            {"all2all_axes", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(param.all2all_axes)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.y_dtype))},
-            {"x1_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.x1_quant_mode)},
-            {"x2_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.x2_quant_mode)},
-            {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_quant_mode)},
-            {"x1_quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.x1_quant_dtype))},
-            {"comm_quant_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.comm_quant_dtype))},
-            {"transpose_x1", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transpose_x1)},
-            {"transpose_x2", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transpose_x2)},
-            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
-            {"alltoall_out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(param.alltoall_out_flag)}
-        },
-        param.inputInstance, param.outputInstance
-    );
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
+         {"world_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.world_size)},
+         {"all2all_axes", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(param.all2all_axes)},
+         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.y_dtype))},
+         {"x1_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.x1_quant_mode)},
+         {"x2_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.x2_quant_mode)},
+         {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_quant_mode)},
+         {"x1_quant_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.x1_quant_dtype))},
+         {"comm_quant_dtype",
+          Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(param.comm_quant_dtype))},
+         {"transpose_x1", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transpose_x1)},
+         {"transpose_x2", Ops::Transformer::AnyValue::CreateFrom<bool>(param.transpose_x2)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
+         {"alltoall_out_flag", Ops::Transformer::AnyValue::CreateFrom<bool>(param.alltoall_out_flag)}},
+        param.inputInstance, param.outputInstance);
 
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"world_size", param.world_size}
-    };
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"world_size", param.world_size}};
     Mc2ExecuteTestCase(inferShapeContextPara, hcomTopologyMockValues, param.expectResult, param.expectOutputShape);
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    AlltoAllMatmul,
-    InferShapeTest,
+    AlltoAllMatmul, InferShapeTest,
     testing::ValuesIn(GetCasesFromCsv<AlltoAllMatmulInferShapeUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    PrintCaseInfoString<AlltoAllMatmulInferShapeUtParam>
-);
+    PrintCaseInfoString<AlltoAllMatmulInferShapeUtParam>);
 
 } // namespace AlltoAllMatmulUT

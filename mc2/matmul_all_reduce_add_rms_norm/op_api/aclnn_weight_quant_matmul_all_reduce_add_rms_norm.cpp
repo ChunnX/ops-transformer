@@ -33,17 +33,15 @@ extern "C" {
 #endif
 
 aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* antiquantScale,
-    const aclTensor* antiquantOffset, const aclTensor* residual, const aclTensor* gamma, double epsilon,
-    const char* group, const char* reduceOp, int64_t commTurn, int64_t streamMode, int64_t antiquantGroupSize,
-    const aclTensor* y, const aclTensor* normOut, uint64_t* workspaceSize, aclOpExecutor** executor)
+    const aclTensor *x1, const aclTensor *x2, const aclTensor *bias, const aclTensor *antiquantScale,
+    const aclTensor *antiquantOffset, const aclTensor *residual, const aclTensor *gamma, double epsilon,
+    const char *group, const char *reduceOp, int64_t commTurn, int64_t streamMode, int64_t antiquantGroupSize,
+    const aclTensor *y, const aclTensor *normOut, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
-    DEPRECATED_MM_ARN_API_WARN_ONCE(
-        "aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
-        "aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
-        "December 2026",
-        "aclnnWeightQuantMatmulAllReduceGetWorkspaceSize",
-        "aclnnAddRmsNormGetWorkspaceSize");
+    DEPRECATED_MM_ARN_API_WARN_ONCE("aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize",
+                                    "aclnnInplaceWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize", "December 2026",
+                                    "aclnnWeightQuantMatmulAllReduceGetWorkspaceSize",
+                                    "aclnnAddRmsNormGetWorkspaceSize");
     CHECK_RET(ArnCheckNotNull(x1, x2, residual, gamma), ACLNN_ERR_PARAM_NULLPTR);
     OP_CHECK_NULL(antiquantScale, return ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(ArnCheckShape(x1, x2, residual), ACLNN_ERR_PARAM_INVALID);
@@ -55,7 +53,8 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
         int64_t kValue = x1->GetViewShape().GetDim(x1->GetViewShape().GetDimNum() - 1);
         OP_LOGD("WeightQuantMatmulAllReduceAddRmsNorm, kValue: %ld.", kValue);
         if (kValue == 0) {
-            OP_LOGE_FOR_INVALID_VALUE("aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1 k-dim", "0", "non-zero");
+            OP_LOGE_FOR_INVALID_VALUE("aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize", "x1 k-dim", "0",
+                                      "non-zero");
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 固定写法，创建OpExecutor
@@ -74,15 +73,12 @@ aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
     return ret;
 }
 
-aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream)
+aclnnStatus aclnnWeightQuantMatmulAllReduceAddRmsNorm(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                                      const aclrtStream stream)
 {
-    DEPRECATED_MM_ARN_API_WARN_ONCE(
-        "aclnnWeightQuantMatmulAllReduceAddRmsNorm",
-        "aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm",
-        "December 2026",
-        "aclnnWeightQuantMatmulAllReduce",
-        "aclnnAddRmsNorm");
+    DEPRECATED_MM_ARN_API_WARN_ONCE("aclnnWeightQuantMatmulAllReduceAddRmsNorm",
+                                    "aclnnInplaceWeightQuantMatmulAllReduceAddRmsNorm", "December 2026",
+                                    "aclnnWeightQuantMatmulAllReduce", "aclnnAddRmsNorm");
     if (workspace == nullptr || workspaceSize == 0UL) {
         OP_LOGD("Skip the api for empty tensor, workspace addr %p, size %lu.", workspace, workspaceSize);
         return ACLNN_SUCCESS;
