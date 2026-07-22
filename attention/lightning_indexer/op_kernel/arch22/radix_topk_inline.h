@@ -288,7 +288,12 @@ __aicore__ inline void InlineRadixTopK(
     // ExtractBoundaryNumber (inverse twiddle for int16)
     int16_t boundaryNumber16 = involvedMask16_ ^ ((~(involvedMask16_ >> 15)) | 0x8000);
     bfloat16_t boundaryBf16 = *reinterpret_cast<bfloat16_t *>(&boundaryNumber16);
-    float boundaryFloat = AscendC::Cast(boundaryBf16);
+
+    // Vectorized extraction: use Compares to find GT/EQ positions, then GatherMask to collect indices
+    // Prepare index tensor: 0,1,2,...,tileLen-1 per tile (reused across tiles)
+    LocalTensor<int32_t> idxTensor = outIndexBuf.Get<int32_t>();
+    LocalTensor<int32_t> gtIndices = outValueBuf.Get<int32_t>();
+    LocalTensor<int32_t> eqIndices = outValueBuf.Get<int32_t>();
 
     uint32_t writeOffset = 0;
     for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
@@ -310,27 +315,47 @@ __aicore__ inline void InlineRadixTopK(
 
         int32_t tileOffset = static_cast<int32_t>(tileId * tileLen_);
 
-        // Scalar GT + EQ: read each bf16 score, compare with boundary (select largest)
+        // Generate sequential indices 0..curTileLen-1
+        ArithProgression<int32_t>(idxTensor, 0, 1, curTileLen);
+        PipeBarrier<PIPE_V>();
+
+        uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(int32_t) - 1) /
+            (REPEAT_SIZE / sizeof(int32_t)) * (REPEAT_SIZE / sizeof(int32_t));
+
+        // GT pass: find indices where score > boundary
+        Compares<bfloat16_t, uint8_t>(cmpMaskTensor, xLocalB16, boundaryBf16,
+            AscendC::CMPMODE::GT, curTileLenAlign32);
+        PipeBarrier<PIPE_V>();
+        uint64_t gtCnt = 0;
+        GatherMask(gtIndices, idxTensor, cmpMaskTensor.template ReinterpretCast<uint16_t>(),
+                   true, curTileLen, {1, 1, 0, 0}, gtCnt);
         RDX_V_S_SYNC();
-        for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
-            bfloat16_t score = xLocalB16.GetValue(i);
-            float scoreFloat = AscendC::Cast(score);
-            if (scoreFloat > boundaryFloat) {
-                indexGm.SetValue(writeOffset, static_cast<int32_t>(i) + tileOffset);
-                writeOffset++;
-                curTileK--;
-            }
-        }
-        for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
-            bfloat16_t score = xLocalB16.GetValue(i);
-            float scoreFloat = AscendC::Cast(score);
-            if (scoreFloat == boundaryFloat) {
-                indexGm.SetValue(writeOffset, static_cast<int32_t>(i) + tileOffset);
-                writeOffset++;
-                curTileK--;
-            }
+        uint32_t gtCount = static_cast<uint32_t>(gtCnt);
+        // Write GT indices to GM
+        for (uint32_t i = 0; i < gtCount && writeOffset < kValue; i++) {
+            indexGm.SetValue(writeOffset, gtIndices.GetValue(i) + tileOffset);
+            writeOffset++;
+            curTileK--;
         }
         RDX_S_V_SYNC();
+
+        if (curTileK > 0) {
+            // EQ pass: find indices where score == boundary
+            Compares<bfloat16_t, uint8_t>(cmpMaskTensor, xLocalB16, boundaryBf16,
+                AscendC::CMPMODE::EQ, curTileLenAlign32);
+            PipeBarrier<PIPE_V>();
+            uint64_t eqCnt = 0;
+            GatherMask(eqIndices, idxTensor, cmpMaskTensor.template ReinterpretCast<uint16_t>(),
+                       true, curTileLen, {1, 1, 0, 0}, eqCnt);
+            RDX_V_S_SYNC();
+            uint32_t eqCount = static_cast<uint32_t>(eqCnt);
+            for (uint32_t i = 0; i < eqCount && curTileK > 0 && writeOffset < kValue; i++) {
+                indexGm.SetValue(writeOffset, eqIndices.GetValue(i) + tileOffset);
+                writeOffset++;
+                curTileK--;
+            }
+            RDX_S_V_SYNC();
+        }
     }
 
     for (uint32_t i = writeOffset; i < kValue; i++) {
