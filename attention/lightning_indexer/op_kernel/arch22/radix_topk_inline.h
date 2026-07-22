@@ -352,6 +352,9 @@ __aicore__ inline void InlineRadixTopK(
         if (gtCount > 0) {
             Adds<int32_t>(outIndexLocal, outIndexLocal, tileOffset, gtCount);
             PipeBarrier<PIPE_V>();
+            event_t eVMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+            SetFlag<HardEvent::V_MTE3>(eVMTE3);
+            WaitFlag<HardEvent::V_MTE3>(eVMTE3);
             DataCopyPad(indexGm[writeOffset], outIndexLocal, DataCopyExtParams{
                 static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * gtCount), 0, 0, 0});
             writeOffset += gtCount;
@@ -376,6 +379,9 @@ __aicore__ inline void InlineRadixTopK(
             if (eqCount > 0) {
                 Adds<int32_t>(outIndexLocal, outIndexLocal, tileOffset, eqCount);
                 PipeBarrier<PIPE_V>();
+                event_t eVMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+                SetFlag<HardEvent::V_MTE3>(eVMTE3);
+                WaitFlag<HardEvent::V_MTE3>(eVMTE3);
                 DataCopyPad(indexGm[writeOffset], outIndexLocal, DataCopyExtParams{
                     static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * eqCount), 0, 0, 0});
                 writeOffset += eqCount;
