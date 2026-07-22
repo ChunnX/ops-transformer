@@ -2003,8 +2003,8 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessSharedExp
 {
     sharedEpilogueOp_.Init({params_.workspaceInfo.sharedExpertSwigluDataPtr,
         params_.workspaceInfo.sharedExpertSwigluScalePtr,
-        nullptr, nullptr, nullptr, nullptr, ALIGN_256, ALIGN_256,
-        params_.tilingData->clampLimit});
+        nullptr, nullptr, nullptr, nullptr,
+        nullptr, params_.tilingData->clampLimit});
 
     GMMAddrInfo sharedGmm1AddrInfo;
     ExpertLoopState sharedGmm1State{initShape, initOffset, 0};
