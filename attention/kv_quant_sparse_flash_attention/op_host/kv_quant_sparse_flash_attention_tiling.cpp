@@ -663,7 +663,7 @@ void QSFATilingCheck::LogErrorLayoutSupport(const std::vector<QSFALayout> &expec
     }
     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, name.c_str(),
         QSFALayoutToSerialString(actualLayout).c_str(),
-            "Tensor " + name + " only supports layout " + qsfaOssLayout.str());
+        "Tensor " + name + " only supports layout " + qsfaOssLayout.str());
 }
 
 ge::graphStatus QSFATilingCheck::CheckLayoutSupport(const QSFALayout &actualLayout, const std::string &name) const
@@ -982,7 +982,7 @@ ge::graphStatus QSFATilingCheck::CheckKVShape()
         return CheckKVShapeForPageAttention();
     }
 
-    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kvStorageMode_",
+    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kvStorageMode",
         std::to_string(static_cast<int32_t>(kvStorageMode_)).c_str(),
         "storage mode of key and value must be BATCH_CONTINUOUS or PAGE_ATTENTION");
     return ge::GRAPH_FAILED;
@@ -1116,29 +1116,35 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShape() const
 ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSizes() const
 {
     OP_CHECK_IF(bSize_ <= 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "batch_size", std::to_string(bSize_).c_str(),
-            "batch_size should be greater than 0"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
+            Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+            "batch_size should be greater than 0, but got " + std::to_string(bSize_)),
         return ge::GRAPH_FAILED);
         
     OP_CHECK_IF(qTSize_ <= 0 && (qLayout_ == QSFALayout::TND),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "T_size of query", std::to_string(qTSize_).c_str(),
-            "T_size of query should be greater than 0"),
-            return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
+            Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+            "T_size of query should be greater than 0, but got " + std::to_string(qTSize_)),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n1Size_ <= 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "q_head_num", std::to_string(n1Size_).c_str(),
-            "q_head_num should be greater than 0"),
-            return ge::GRAPH_FAILED);
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
+            Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+            "q_head_num should be greater than 0, but got " + std::to_string(n1Size_)),
+        return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n2Size_ != 1,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "kv_head_num", std::to_string(n2Size_).c_str(),
-            "kv_head_num should be 1"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+            "kv_head_num should be 1, but got " + std::to_string(n2Size_)),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(n1Size_ % n2Size_ != 0,
-        OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "q_head_num and kv_head_num",
-            std::to_string(n1Size_) + " and " + std::to_string(n2Size_),
-            "q_head_num must be divisible by kv_head_num"),
+        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and key",
+            Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+            "q_head_num(" + std::to_string(n1Size_) +
+            ") must be divisible by kv_head_num(" + std::to_string(n2Size_) + ")"),
         return ge::GRAPH_FAILED);
 
     if (isA5_) {
@@ -1163,33 +1169,35 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantShapeSparseAndHeadDim()
     if (isA5_) {
         if (inputKvType_ == ge::DT_HIFLOAT8) {
             OP_CHECK_IF(sparseBlockCount_ != 2048,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse block count",
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockCount",
                     std::to_string(sparseBlockCount_).c_str(),
                     "when key and value dtype use hifloat8, sparse block count must be 2048"),
                 return ge::GRAPH_FAILED);
         }
         OP_CHECK_IF(sparseBlockSize_ != 1,
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse block size",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
                 std::to_string(sparseBlockSize_).c_str(), "sparse block size must be 1"),
             return ge::GRAPH_FAILED);
     } else {
         std::vector<uint32_t> sparseBlockSizeSupportList = {1, 2, 4, 8, 16};
         OP_CHECK_IF(std::find(sparseBlockSizeSupportList.begin(), sparseBlockSizeSupportList.end(),
             sparseBlockSize_) == sparseBlockSizeSupportList.end(),
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparse block size",
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "sparseBlockSize",
                 std::to_string(sparseBlockSize_).c_str(),
                 "group num should be in 1, 2, 4, 8, 16"),
             return ge::GRAPH_FAILED);
     }
 
     OP_CHECK_IF(qHeadDim_ != 576, // 576:当前不泛化
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "q_head_dim",
-            std::to_string(qHeadDim_).c_str(), "q_head_dim only support 576"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query",
+            Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()).c_str(),
+            "q_head_dim only support 576, but got " + std::to_string(qHeadDim_)),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(kHeadDim_ != 656, // 656:当前不泛化
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "k_head_dim",
-            std::to_string(kHeadDim_).c_str(), "k_head_dim only support 656"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+            "k_head_dim only support 656, but got " + std::to_string(kHeadDim_)),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1274,13 +1282,14 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantAttr() const
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(tileSize_ != 128, // 128:当前不泛化
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "tile_size",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "tileSize",
             std::to_string(tileSize_).c_str(), "tile_size should be 128"),
         return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(ropeHeadDim_ != 64, // 64:当前不泛化
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "rope",
-            std::to_string(ropeHeadDim_).c_str(), "rope_head_dim should be 64"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "ropeHeadDim",
+            Ops::Base::ToString(opParamInfo_.ropeHeadDim.shape->GetStorageShape()).c_str(),
+            "rope_head_dim should be 64, but got " + std::to_string(ropeHeadDim_)),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -1293,21 +1302,25 @@ ge::graphStatus QSFATilingCheck::CheckFeatureMlaAntiquantPa() const
     }
 
     OP_CHECK_IF(blockSize_ <= 0 || blockSize_ > static_cast<int32_t>(MAX_BLOCK_SIZE),
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_size", std::to_string(blockSize_).c_str(),
-            "when page attention is enabled, block_size should be in range (0, " +
-            std::to_string(MAX_BLOCK_SIZE) + "]"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+            "when page attention is enabled, block_size(" + std::to_string(blockSize_) +
+            ") should be in range (0, " + std::to_string(MAX_BLOCK_SIZE) + "]"),
         return ge::GRAPH_FAILED);
     
     OP_CHECK_IF(blockSize_ % 16 > 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_size", std::to_string(blockSize_).c_str(),
-            "when page attention is enabled, block_size should be 16-aligned"),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+            "when page attention is enabled, block_size(" + std::to_string(blockSize_) +
+            ") should be 16-aligned"),
         return ge::GRAPH_FAILED);
     
     OP_CHECK_IF(blockSize_ % sparseBlockSize_ > 0,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "block_size", std::to_string(blockSize_).c_str(),
-            "when page attention is enabled, "
-            "block_size must be divided by sparse_block_size, but now the remainder is " +
-            std::to_string(blockSize_ % sparseBlockSize_)),
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key",
+            Ops::Base::ToString(opParamInfo_.key.shape->GetStorageShape()).c_str(),
+            "when page attention is enabled, block_size(" + std::to_string(blockSize_) +
+            ") must be divided by sparse_block_size(" + std::to_string(sparseBlockSize_) +
+            "), but now the remainder is " + std::to_string(blockSize_ % sparseBlockSize_) ),
         return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
