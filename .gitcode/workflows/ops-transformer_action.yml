@@ -499,7 +499,7 @@ post:
           with:
             owner: ${{ env.org_name }}
             repo: ${{ env.repo_name }}
-            run_id: ${{atomgit. workflow_run_id}}
+            run_id: ${{ atomgit.workflow_run_id }}
             token: ${{ secrets.GIT_TOKEN }}
             pr_number: ${{ env.MERGE_ID }}
             apply_label: ${{ vars.APPLY_LABEL }}
