@@ -102,15 +102,35 @@ private:
     __aicore__ inline void CalTokenSendExpertCnt(uint32_t dstExpertId, int32_t calCnt, int32_t &curExpertCnt);
     __aicore__ inline void SyncCntOnCore(LocalTensor<float> &gatherMaskOutTensor,
         LocalTensor<uint32_t> &gatherTmpTensor, LocalTensor<float> &statusSumOutTensor);
-    __aicore__ inline GM_ADDR GetWindAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
+    __aicore__ inline void RecordExecutionPosition(uint32_t runPos)
+    {
+        selfDataStatusGMTensor_.SetValue(OPOSITION_POS, runPos);
+        DataCacheCleanAndInvalid<uint32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+            selfDataStatusGMTensor_[OPOSITION_POS]);
+    }
+
+    __aicore__ inline GM_ADDR GetWindAddrByRankId(uint8_t ctxIdx, const int32_t rankId, uint32_t enterPos)
     {
         uint32_t curRankId = ((ctxIdx == COMM_EP_IDX) ? epRankIdOriginal_ : tpRankId_);
+        uint32_t worldSize = ((ctxIdx == COMM_EP_IDX) ? epWorldSizeOriginal_ : tpWorldSize_);
         uint64_t winDataSizeOffset = (ctxIdx == COMM_EP_IDX)? winDataSizeOffsetEp_ : winDataSizeOffsetTp_;
-        if (curRankId == rankId) {
-            return (GM_ADDR)(winContext_[ctxIdx]->localWindowsIn) + winDataSizeOffset;
+        RecordExecutionPosition(enterPos);
+        bool isRankValid = rankId >= 0 && static_cast<uint32_t>(rankId) < worldSize;
+        if (unlikely(!isRankValid)) {
+            RecordExecutionPosition(200U);
         }
-        return (GM_ADDR)(((HcclRankRelationResV2*)(winContext_[ctxIdx]->remoteRes[rankId].nextDevicePtr))->windowsIn)
-                         + winDataSizeOffset;
+        assert(isRankValid, "invalid GetWind rank: ctxIdx=%u, rankId=%d, worldSize=%u\n",
+               static_cast<uint32_t>(ctxIdx), rankId, worldSize);
+        if (curRankId == rankId) {
+            GM_ADDR windAddr = (GM_ADDR)(winContext_[ctxIdx]->localWindowsIn) + winDataSizeOffset;
+            RecordExecutionPosition(enterPos + 1U);
+            return windAddr;
+        }
+        GM_ADDR windAddr =
+            (GM_ADDR)(((HcclRankRelationResV2*)(winContext_[ctxIdx]->remoteRes[rankId].nextDevicePtr))->windowsIn) +
+            winDataSizeOffset;
+        RecordExecutionPosition(enterPos + 2U);
+        return windAddr;
     }
 
     __aicore__ inline GM_ADDR GetWindStateAddrByRankId(uint8_t ctxIdx, const int32_t rankId)
@@ -340,10 +360,35 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::Init(
     TBuf<> dataStateBuf;
     tpipe_->InitBuffer(dataStateBuf, UB_ALIGN);
     dataState_ = InitWinState(selfDataStatusGMTensor_, winContext_[0], epRankIdOriginal_, moeExpertNum_, epWorldSizeOriginal_, globalBS_, dataStateBuf);
+    RecordExecutionPosition(1U);
+    bool isDataStateValid = dataState_ <= 1U;
+    if (unlikely(!isDataStateValid)) {
+        RecordExecutionPosition(200U);
+    }
+    assert(isDataStateValid, "invalid dataState=%u, expected 0 or 1\n", dataState_);
+    uint64_t minimumGlobalBS = static_cast<uint64_t>(axisBS_) * static_cast<uint64_t>(epWorldSizeOriginal_);
+    bool isGlobalBSValid = epWorldSizeOriginal_ > 0U && static_cast<uint64_t>(globalBS_) >= minimumGlobalBS;
+    if (unlikely(!isGlobalBSValid)) {
+        RecordExecutionPosition(200U);
+    }
+    assert(isGlobalBSValid, "invalid globalBS=%u, localBS=%u, epWorldSize=%u\n",
+           globalBS_, axisBS_, epWorldSizeOriginal_);
+    bool isOriginalRankValid =
+        epRankIdOriginal_ >= 0 && static_cast<uint32_t>(epRankIdOriginal_) < epWorldSizeOriginal_;
+    if (unlikely(!isOriginalRankValid)) {
+        RecordExecutionPosition(200U);
+    }
+    assert(isOriginalRankValid, "invalid original epRankId=%d, epWorldSize=%u\n",
+           epRankIdOriginal_, epWorldSizeOriginal_);
     elasticInfoGMTensor_.SetGlobalBuffer((__gm__ int32_t*)(elasticInfo));
     if (hasElasticInfoFlag_) {
         InitElasticInfo(false);
     }
+    bool isRankValid = epRankId_ >= 0 && static_cast<uint32_t>(epRankId_) < epWorldSize_;
+    if (unlikely(!isRankValid)) {
+        RecordExecutionPosition(200U);
+    }
+    assert(isRankValid, "invalid epRankId=%d, epWorldSize=%u\n", epRankId_, epWorldSize_);
 
     if (epRankId_ < sharedExpertRankNum_) {
         isShareExpertRankFlag_ = true;
@@ -422,7 +467,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::Init(
     statusSpaceGm_ = GetWindStateAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     for (int tempepRankId = 0; tempepRankId < epWorldSize_; tempepRankId++) {
-        OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(GetWindAddrByRankId(COMM_EP_IDX, tempepRankId)),
+        OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(GetWindAddrByRankId(COMM_EP_IDX, tempepRankId, 101U)),
                                           totalWinSizeEp_);
         OOMCheckAddrRange<float>((__gm__ float*)(GetWindStateAddrByRankId(COMM_EP_IDX, tempepRankId)), STATE_SIZE);
     }
@@ -440,7 +485,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::Init(
     winDataSizeOffsetTp_ = dataState_ * (totalWinSizeTp_ / 2)
                          + tilingData->moeDistributeDispatchV2Info.a * hSizeAlignCombine;
     
-    windowGM_ = GetWindAddrByRankId(COMM_EP_IDX, epRankIdOriginal_);
+    windowGM_ = GetWindAddrByRankId(COMM_EP_IDX, epRankIdOriginal_, 104U);
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
     GlobalTensor<ExpandXOutType> winDouble;
     winDouble.SetL2CacheHint(CacheMode::CACHE_MODE_DISABLE);
@@ -450,14 +495,14 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::Init(
     if constexpr (IsNeedAllgather) {
 #if defined(ASCENDC_OOM) && ASCENDC_OOM == 1
         for (int temptpRankId = 0; temptpRankId < tpWorldSize_; temptpRankId++) {
-            OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(GetWindAddrByRankId(COMM_TP_IDX, temptpRankId)),
+            OOMCheckAddrRange<ExpandXOutType>((__gm__ ExpandXOutType*)(GetWindAddrByRankId(COMM_TP_IDX, temptpRankId, 107U)),
                                             totalWinSizeTp_);
             OOMCheckAddrRange<int32_t>((__gm__ int32_t*)(GetWindStateAddrByRankId(COMM_TP_IDX, temptpRankId)), STATE_SIZE);
         }
 #endif
-        tpLocalWindowGM_ = GetWindAddrByRankId(COMM_TP_IDX, tpRankId_);
+        tpLocalWindowGM_ = GetWindAddrByRankId(COMM_TP_IDX, tpRankId_, 110U);
         tpLocalStatusWindowGM_ = GetWindStateAddrByRankId(COMM_TP_IDX, tpRankId_);
-        tpWindowGM_ = GetWindAddrByRankId(COMM_TP_IDX, tpGatherRankId_);
+        tpWindowGM_ = GetWindAddrByRankId(COMM_TP_IDX, tpGatherRankId_, 113U);
         tpStatusWindowGM_ = GetWindStateAddrByRankId(COMM_TP_IDX, tpGatherRankId_);
     }
     windowInstatusFp32Tensor_.SetGlobalBuffer((__gm__ float*)(statusSpaceGm_));
@@ -595,7 +640,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::SendToShare
             toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
         }
         dstWinGMTensor.SetGlobalBuffer(
-            (__gm__ ExpandXOutType*)(GetWindAddrByRankId(COMM_EP_IDX, toRankId) + expertPerSizeOnWin_ * epRankId_));
+            (__gm__ ExpandXOutType*)(GetWindAddrByRankId(COMM_EP_IDX, toRankId, 116U) + expertPerSizeOnWin_ * epRankId_));
         uint32_t srcTokenIndex = tokenIndex;
         if (isExpertMaskFlag_) {
             srcTokenIndex = validBsIndexTensor_.GetValue(tokenIndex);
@@ -675,6 +720,12 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::SendToMoeEx
         int32_t curExpertCnt = 0;
         topKIndex = expertIdx % axisK_;
         dstExpertId = expertIdsTensor_(index);
+        bool isTopKIdValid = dstExpertId < 384U;
+        if (unlikely(!isTopKIdValid)) {
+            RecordExecutionPosition(200U);
+        }
+        assert(isTopKIdValid, "invalid topKId=%u at index=%d, limit=%u\n",
+               dstExpertId, index, 384U);
         if ((tokenIndex > 0) && (index > 0)) {
             SyncFunc<AscendC::HardEvent::S_V>();
             CalTokenSendExpertCnt(dstExpertId, index, curExpertCnt);
@@ -685,7 +736,7 @@ __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::SendToMoeEx
             toRankId = elasticInfoTensor_.GetValue(ELASTIC_INFO_OFFSET + epWorldSizeOriginal_ + toRankId);
         }
 
-        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(COMM_EP_IDX, toRankId) +
+        GM_ADDR rankGM = (__gm__ uint8_t*)(GetWindAddrByRankId(COMM_EP_IDX, toRankId, 119U) +
                                            (expertPerSizeOnWin_ *
                                             (epRankId_ * moeExpertNumPerRank_ + dstExpertId % moeExpertNumPerRank_)) +
                                            hAlignWinSize_ * curExpertCnt); // 计算地址偏移
@@ -1471,15 +1522,23 @@ template <TemplateMC2TypeClass>
 __aicore__ inline void MoeDistributeDispatchV2<TemplateMC2TypeFunc>::Process()
 {
     if ASCEND_IS_AIV { // 全aiv处理
+        RecordExecutionPosition(10U);
         AlltoAllDispatch();
+        RecordExecutionPosition(20U);
         SetStatus();
+        RecordExecutionPosition(30U);
         WaitDispatch();
+        RecordExecutionPosition(40U);
         LocalWindowCopy();
         if constexpr (IsNeedAllgather) {
+            RecordExecutionPosition(50U);
             AllGatherSetStatusAndWait();
+            RecordExecutionPosition(60U);
             AllgatherProcessOut();
         }
+        RecordExecutionPosition(70U);
         UpdateTokenNumsOut();
+        RecordExecutionPosition(2U);
     }
 }
 
