@@ -165,7 +165,7 @@
 
 - **执行算子样例**
 
-    - 本示例算子目前仅支持基于单算子API执行方式调用算子，即[两段式aclnn接口](../../../docs/zh/context/两段式接口.md)调用，本示例的aclnn接口定义在[op_api](../all_gather_add/op_host/op_api)路径下。
+    - 本示例算子目前仅支持基于单算子API执行方式调用算子，即[两段式aclnn接口](../../../docs/zh/context/two_phase_api.md)调用，本示例的aclnn接口定义在[op_api](../all_gather_add/op_host/op_api)路径下。
 
       如需执行该样例算子，需按以下步骤操作：
 

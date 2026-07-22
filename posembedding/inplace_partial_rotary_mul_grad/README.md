@@ -173,7 +173,7 @@
 - 输入dy当前只支持BSND排布，输入cos/sin的shape必须与dy满足B/S/N维度的广播关系（如BSND、111D、1SND、B1ND、BS1D、11ND、B11D、1S1D等）。各参数的shape约束可以描述如下：
   - 输入张量dy的最后一维大小D必须小于等于1024。
   - 输入张量cos、sin的最后一维大小必须等于partial_slice的切片长度（即partial_slice[1] - partial_slice[0]）。
-  - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dy满足[broadcast关系](../../docs/zh/context/broadcast关系.md)，且广播后的B、S、N必须等于dy的B、S、N。
+  - 输入张量cos和sin的shape必须完全相同，cos和sin的B、S、N维度需要与dy满足[broadcast关系](../../docs/zh/context/broadcast_relationship.md)，且广播后的B、S、N必须等于dy的B、S、N。
   - half、interleave和interleave-half模式下，partial_slice切片长度（即partial_slice[1] - partial_slice[0]）必须能被2整除。
   - quarter模式下，partial_slice切片长度（即partial_slice[1] - partial_slice[0]）必须能被4整除。
   - 输入张量cos和sin的数据类型必须相同。

@@ -22,7 +22,7 @@
   P_{cmp}= Softmax(scale * query · key^T) \\
   attentionOut = P_{cmp} · value\\
   P_{slc}[j] = \sum\limits_{m=0}^{l'/d -1} \sum\limits_{n = 0}^{l/d -1} P_{cmp} [l'/d * j -m - n]\\
-  P_{slc'} = \sum\limits_{g=1}^{G}  P_{slc} ^g,\quad 
+  P_{slc'} = \sum\limits_{g=1}^{G}  P_{slc} ^g,\quad
   \text{其中 } G = \text{GroupSize（分组大小），即：} G = \frac{\text{numHeads}}{\text{numKeyValueHeads}} \\
   topkIndices = topk(P_{slc'})\\
   $$
@@ -31,7 +31,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnNsaCompressAttentionInferGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaCompressAttentionInfer”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnNsaCompressAttentionInferGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnNsaCompressAttentionInfer”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnNsaCompressAttentionInferGetWorkspaceSize(
@@ -73,7 +73,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
 ## aclnnNsaCompressAttentionInferGetWorkspaceSize
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1567px">
   <colgroup>
     <col style="width: 170px">  <!-- 参数名 -->
@@ -357,10 +357,10 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <table style="undefined;table-layout: fixed; width: 1150px">
   <colgroup>
   <col style="width: 285px">
@@ -395,7 +395,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
 ## aclnnNsaCompressAttentionInfer
 
 - **参数说明**
-  
+
   <table style="undefined;table-layout: fixed; width: 1150px"><colgroup>
   <col style="width: 168px">
   <col style="width: 128px">
@@ -433,13 +433,13 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnNsaCompressAttentionInfer默认确定性实现。
-  
+
 * 参数query仅支持TND、BSND输入。T是B和S合轴紧密排列的数据（每个batch的actualQSeqLenOptional）、B（batch）表示输入样本批量大小、S（qSeqlen）表示输入样本序列长度、N（numHeads）表示多头数、D（headDimsQK）表示隐藏层最小的单元尺寸。
 
 * 压缩前的kvSeqlen的上限可以表示为：actualSelKvSeqLenCeil=(actualCmpKvSeqLenOptional-1)*compressBlockStride+compressBlockSize，需要满足actualSelKvSeqLenCeil/selectBlockSize<=4096，且需要满足selectBlockCount<=actualSelKvSeqLenCeil/selectBlockSize。如果actualSelKvSeqLenOptional不满足actualCmpKvSeqLenOptional=(actualSelKvSeqLenOptional-compressBlockSize)/compressBlockStride+1，或者actualCmpKvSeqLenOptional的长度和blockTableOptional的batch维度不同，则会默认进入单token推理场景。
@@ -447,7 +447,7 @@ aclnnStatus aclnnNsaCompressAttentionInfer(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
