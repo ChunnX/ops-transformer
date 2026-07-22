@@ -383,6 +383,7 @@ private:
     CompressorPageAttentionParams *pageAttentionParams_ = nullptr;
     CompressorInnerSplitParams *innerSplitParams_ = nullptr;
     CompressorWorkspaceParams *workspaceParams_ = nullptr;
+    CompressorGroupedDecodeParams *groupedDecodeParams_ = nullptr;
 };
 
 } // optiling
