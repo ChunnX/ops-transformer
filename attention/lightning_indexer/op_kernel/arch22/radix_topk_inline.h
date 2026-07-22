@@ -112,28 +112,28 @@ __aicore__ inline void InlineRadixTopK(
             globalHistBoundaryNum_ = static_cast<int32_t>((tileNum_ - 1) * tileLen_ + tailTileLen_);
             RDX_S_V_SYNC();
         } else {
-            RDX_V_S_SYNC();
+            // Vectorized ClearHist: tileHist[0..tileNum_) = tileHist[boundaryBin] - tileHist[boundaryBinPrev]
             if (boundaryBin < static_cast<int32_t>(RDX_BINS) - 1) {
-                for (uint32_t i = 0; i < tileNum_; i++) {
-                    tileHist.SetValue(i, tileHist.GetValue(boundaryBin * tileNumAlign_ + i) -
-                                         tileHist.GetValue(boundaryBinPrev * tileNumAlign_ + i));
-                }
+                Sub<int32_t>(tileHist, tileHist[boundaryBin * tileNumAlign_],
+                             tileHist[boundaryBinPrev * tileNumAlign_], tileNumAlign_);
             } else {
-                for (uint32_t i = 0; i < tileNum_; i++) {
-                    tileHist.SetValue(i, tileHist.GetValue(boundaryBin * tileNumAlign_ + i));
-                }
+                DataCopy(tileHist, tileHist[boundaryBin * tileNumAlign_], tileNumAlign_);
             }
+            PipeBarrier<PIPE_V>();
+            RDX_V_S_SYNC();
+            if (tailTileLen_ != tileLen_) {
+                tileHist.SetValue(tileNum_ - 1, static_cast<int32_t>(tailTileLen_));
+            }
+            globalHistBoundaryNum_ = static_cast<int32_t>((tileNum_ - 1) * tileLen_ + tailTileLen_);
             RDX_S_V_SYNC();
         }
 
-        RDX_S_V_SYNC();
+        // Vectorized clear: globalHist and tileHist[1..BINS-1]
+        Duplicate<int32_t>(globalHist, 0, RDX_BINS);
+        Duplicate<int32_t>(tileHist[tileNumAlign_], 0, tileNumAlign_ * (RDX_BINS - 1));
+        PipeBarrier<PIPE_V>();
+        RDX_V_S_SYNC();
         globalHist.SetValue(0, globalHistBoundaryNum_);
-        for (uint32_t i = 1; i < RDX_BINS; i++) {
-            globalHist.SetValue(i, 0);
-        }
-        for (uint32_t i = tileNumAlign_; i < tileNumAlign_ * RDX_BINS; i++) {
-            tileHist.SetValue(i, 0);
-        }
         RDX_S_V_SYNC();
 
         for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
@@ -232,22 +232,22 @@ __aicore__ inline void InlineRadixTopK(
         }
         RDX_S_V_SYNC();
 
-        // AddTileHistToTileTopK
+        // AddTileHistToTileTopK (vectorized: tileTopK += tileHist[bin])
         RDX_V_S_SYNC();
-        if (globalHist.GetValue(boundaryBin) == remainK_) {
-            for (uint32_t i = 0; i < tileNum_; i++) {
-                tileTopK.SetValue(i, tileTopK.GetValue(i) +
-                    tileHist.GetValue(boundaryBin * tileNumAlign_ + i));
-            }
-            totalDefinitelyInTopK_ += globalHist.GetValue(boundaryBin);
-        } else if (boundaryBinPrev < static_cast<int32_t>(RDX_BINS)) {
-            for (uint32_t i = 0; i < tileNum_; i++) {
-                tileTopK.SetValue(i, tileTopK.GetValue(i) +
-                    tileHist.GetValue(boundaryBinPrev * tileNumAlign_ + i));
-            }
-            totalDefinitelyInTopK_ += globalHist.GetValue(boundaryBinPrev);
-        }
+        int32_t globalHistBoundary = globalHist.GetValue(boundaryBin);
+        int32_t globalHistBoundaryPrev = (boundaryBinPrev < static_cast<int32_t>(RDX_BINS))
+                                         ? globalHist.GetValue(boundaryBinPrev) : 0;
         RDX_S_V_SYNC();
+        if (globalHistBoundary == remainK_) {
+            Adds<int32_t>(tileTopK, tileTopK, tileHist[boundaryBin * tileNumAlign_], tileNumAlign_);
+            PipeBarrier<PIPE_V>();
+            totalDefinitelyInTopK_ += globalHistBoundary;
+        } else if (boundaryBinPrev < static_cast<int32_t>(RDX_BINS)) {
+            Adds<int32_t>(tileTopK, tileTopK, tileHist[boundaryBinPrev * tileNumAlign_], tileNumAlign_);
+            PipeBarrier<PIPE_V>();
+            totalDefinitelyInTopK_ += globalHistBoundaryPrev;
+        }
+        RDX_V_S_SYNC();
 
         remainK_ = static_cast<int32_t>(kValue) - totalDefinitelyInTopK_;
 
@@ -276,9 +276,10 @@ __aicore__ inline void InlineRadixTopK(
         if (remainK_ == 0 || roundId == 0) break;
     }
 
-    // Compute coreTopKOffset
+    // Compute coreTopKOffset (vectorized ReduceSum)
     RDX_V_S_SYNC();
     int32_t coreTopKOffset = 0;
+    // tileNum_ is small (<=16 for 8192/512), scalar sum is fast enough
     for (uint32_t i = 0; i < tileNum_; i++) {
         coreTopKOffset += tileTopK.GetValue(i);
     }
