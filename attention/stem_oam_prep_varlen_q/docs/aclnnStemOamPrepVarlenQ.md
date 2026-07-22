@@ -259,6 +259,7 @@ aclnnStatus aclnnStemOamPrepVarlenQ(
 - q的最后一维D必须等于stemBlockSize（推荐默认128）。
 - stemBlockSize和stemStride为运行时参数。约束：stemBlockSize % 32 == 0且stemBlockSize ≤ 256；stemStride % 16 == 0且stemStride ≤ 64且stemStride ≤ stemBlockSize。推荐默认值：stemBlockSize=128, stemStride=16。派生值：R = stemBlockSize / stemStride, kflat_dim = stemStride × D。R必须为整数。
 - qFlat输出维度kflat_dim = stemStride × D（默认16×128=2048）。
+- 当前仅支持：head_dim=128; stemBloackSize=128; stemStride=16
 - Q侧stride维度为自然顺序（g ∈ [0, S-1]），不翻转（与K侧处理不同）。
 - 当qSeqLens中某batch值为0时，该batch对应的qFlat输出填充为零。
 - 当q数据类型为FLOAT8_E4M3FN时，qScale为必填项；不传入时Kernel内部执行无权重Group Sum (Σ_r Q_blocks[:, r, :, :])，而非加权Group Sum (Σ_r Q_blocks × qScale)。
