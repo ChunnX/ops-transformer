@@ -256,7 +256,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 
     // 重构UB内存
     // 当前master默认非interleaved，保留完整256x256空间；interleaved预留按half tile + pingpong偏移使用。
-    constexpr uint32_t MAX_SINGLE_MN_ALIAS = IsInterleaved_ ? MAX_SINGLE_MN / MegaMoeImpl::SWIGLU_N_HALF : MAX_SINGLE_MN;
+    constexpr uint32_t MAX_SINGLE_MN_ALIAS =
+        IsInterleaved_ ? MAX_SINGLE_MN / MegaMoeImpl::SWIGLU_N_HALF : MAX_SINGLE_MN;
     constexpr uint32_t gluResOffset = 0;
     gluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, gluResOffset, MAX_SINGLE_MN_ALIAS);
     constexpr uint32_t quantOutputOffset = gluResOffset + MAX_SINGLE_MN_ALIAS * sizeof(bfloat16_t);

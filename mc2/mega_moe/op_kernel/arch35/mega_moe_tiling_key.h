@@ -42,7 +42,7 @@ ASCENDC_TPL_ARGS_DECL(MegaMoe,
                       ASCENDC_TPL_UINT_DECL(TILINGKEY_COMM_MODE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
                                             TILINGKEY_TPL_MTE, TILINGKEY_TPL_URMA),
                       ASCENDC_TPL_BOOL_DECL(TILINGKEY_TOPK_WEIGHTS_TYPE, TOPK_WEIGHTS_TYPE_DISABLED,
-                                            TOPK_WEIGHTS_TYPE_ENABLED), );
+                                            TOPK_WEIGHTS_TYPE_ENABLED),);
 
 ASCENDC_TPL_SEL(
     ASCENDC_TPL_ARGS_SEL(
