@@ -175,6 +175,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockCubeNoquantMla<TEMPLATE_ARGS>::IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
     RunInfo<isInfer>& runInfo, RunParamStr<isInfer>& runParam, bool isLast, ConstInfo<isInfer, hasRope>& constInfo)
 {
+    AscendC::printf("tkd flash_attention_block_cube_noquant_mla.h\n");
     Buffer<BufferType::L1> mm1A;
     Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> mm1B;
     // 左矩阵复用 ,s2的第一次循环加载左矩阵

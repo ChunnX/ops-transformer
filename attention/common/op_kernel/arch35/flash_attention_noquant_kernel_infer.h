@@ -159,6 +159,7 @@ __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockT
 template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void FlashAttentionNoQuantKernelInfer<CubeBlockType, VecBlockType>::ProcessMainLoop()
 {
+    AscendC::printf("tkd flash_attention_noquant_kernel_infer.h\n");
     int32_t actualCoreNums = this->sharedParams.coreNum;
     if constexpr (isFd) {
         actualCoreNums = this->sharedParams.bSize * this->constInfo.n2Size *

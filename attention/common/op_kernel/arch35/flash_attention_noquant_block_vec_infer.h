@@ -274,6 +274,7 @@ __aicore__ inline void FANoQuantBlockVecInfer<TEMPLATE_ARGS>::InitGlobalBuffer(
     __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
     ConstInfo<isInfer, hasRope> &constInfo)
 {
+    AscendC::printf("tkd flash_attention_noquant_block_vec_infer.h\n");
     BaseClass::InitCommonGlobalBuffer(pse, deqScaleQ, deqScaleK, deqScaleV, pScale, postQuantScale, prefix, attenMask, learnableSink, workspace, constInfo);
     if constexpr (isFd) {
         workspace -= singleCoreOffset * preloadTimes * (aicIdx + 1);             // 让当前的workspace地址回到基地址, workspace偏移了totalOffset + mm2Offset * 3 + ve2offset * 3

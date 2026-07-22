@@ -302,6 +302,7 @@ __aicore__ inline void FANoQuantBlockCube<TEMPLATE_ARGS>::InitCubeInput(
     AttenMaskInfo *attenMaskInfo, __gm__ int64_t *actualSeqQlenAddr, __gm__ int64_t *actualSeqKvlenAddr,
     __gm__ uint8_t *keySharedPrefix, __gm__ uint8_t *valueSharedPrefix, __gm__ uint8_t *actualSharedPrefixLen)
 {
+    AscendC::printf("tkd flash_attention_noquant_block_cube.h\n");
     if ASCEND_IS_AIC {
         if constexpr (isInfer) {
             if (sharedParams->fromFused) {

@@ -2036,6 +2036,7 @@ __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::Bmm2DataCopyOu
 TEMPLATES_DEF_BASE_NO_DEFAULT
 __aicore__ inline void FANoQuantBlockVecBase<TEMPLATE_BASE_ARGS>::SoftmaxInitBuffer()
 {
+    AscendC::printf("tkd flash_attention_noquant_block_vec_base.h\n");
     tPipe->InitBuffer(softmaxSumBuf[0], 256); // [64, 1]
     tPipe->InitBuffer(softmaxSumBuf[1], 256); // [64, 1]
     tPipe->InitBuffer(softmaxSumBuf[2], 256); // [64, 1]
