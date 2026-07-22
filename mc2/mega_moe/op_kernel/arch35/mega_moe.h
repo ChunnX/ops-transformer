@@ -52,6 +52,16 @@ using namespace AscendC;
 #error "MEGA_MOE_BREAK_FIXED_CORE_RESONANCE must be 0 or 1"
 #endif
 
+// Merge a final tail containing strictly less than half of a normal wave into
+// its predecessor.  For example, 5+5+5+1 becomes 5+5+6.  This keeps the
+// regular 256x256 GMM tiles while removing a severely underfilled final wave.
+#ifndef MEGA_MOE_MERGE_SMALL_TAIL_WAVE
+#define MEGA_MOE_MERGE_SMALL_TAIL_WAVE 1
+#endif
+#if MEGA_MOE_MERGE_SMALL_TAIL_WAVE != 0 && MEGA_MOE_MERGE_SMALL_TAIL_WAVE != 1
+#error "MEGA_MOE_MERGE_SMALL_TAIL_WAVE must be 0 or 1"
+#endif
+
 #define MEGA_MOE_GMM2_READY_PER_EXPERT 0
 #define MEGA_MOE_GMM2_READY_PER_BATCH 1
 #ifndef MEGA_MOE_GMM2_READY_MODE
@@ -2581,10 +2591,19 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
     bool traceGmm1B1ReadyRecorded = false;
 #endif
+#if MEGA_MOE_MERGE_SMALL_TAIL_WAVE != 0
+    const uint32_t smallTailMergeBegin = MegaMoeImpl::GetSmallTailMergeBegin(
+        moeExpertPerRank_, expertsPerWave, MEGA_MOE_MAX_EXPERTS_PER_BATCH);
+    uint32_t batchEnd = 0U;
+    for (uint32_t batchBegin = 0; batchBegin < moeExpertPerRank_; batchBegin = batchEnd, ++batchIdx) {
+        batchEnd = MegaMoeImpl::GetWaveEnd(
+            batchBegin, moeExpertPerRank_, expertsPerWave, smallTailMergeBegin);
+#else
     for (uint32_t batchBegin = 0; batchBegin < moeExpertPerRank_; batchBegin += expertsPerWave, ++batchIdx) {
         uint32_t batchEnd = batchBegin + expertsPerWave < moeExpertPerRank_ ?
                                 batchBegin + expertsPerWave :
                                 moeExpertPerRank_;
+#endif
 #if MEGA_MOE_BREAK_FIXED_CORE_RESONANCE != 0
         const uint32_t waveBeginCursor = startBlockIdx_;
 #endif
@@ -2659,9 +2678,14 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
 
         // Full next-wave prefetch is complete before this AIV1 can enter
         // Combine(B).  Existing dispatch helpers drain their own six buffers.
+#if MEGA_MOE_MERGE_SMALL_TAIL_WAVE != 0
+        uint32_t nextBatchEnd = MegaMoeImpl::GetWaveEnd(
+            batchEnd, moeExpertPerRank_, expertsPerWave, smallTailMergeBegin);
+#else
         uint32_t nextBatchEnd = batchEnd + expertsPerWave < moeExpertPerRank_ ?
                                     batchEnd + expertsPerWave :
                                     moeExpertPerRank_;
+#endif
         if constexpr (g_coreType == AIV) {
             if (subBlockIdx_ == 1) {
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
