@@ -79,15 +79,15 @@ cann_ops_transformer.dense_lightning_indexer_softmax_lse(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
-| q | Tensor | 必选 | 公式中的输入 $Q_{index}$。不支持空 tensor。数据格式为 ND。 | bfloat16、float16 | layout_q 为 BSND 时 shape 为 (B,S1,N1,D)；layout_q 为 TND 时 shape 为 (T1,N1,D) |
-| k | Tensor | 必选 | 公式中的输入 $K_{index}$。不支持空 tensor。数据格式为 ND。 | bfloat16、float16 | layout_k 为 BSND 时 shape 为 (B,S2,N2,D)；layout_k 为 TND 时 shape 为 (T2,N2,D) |
-| w | Tensor | 必选 | 公式中的加权系数 $W$。不支持空 tensor。数据格式为 ND。 | float32 | layout_q 为 BSND 时 shape 为 (B,S1,N1)；layout_q 为 TND 时 shape 为 (T1,N1) |
+| q | Tensor | 必选 | 公式中的输入 $Q_{index}$。数据格式为 ND。 | bfloat16、float16 | layout_q 为 BSND 时 shape 为 (B,S1,N1,D)；layout_q 为 TND 时 shape 为 (T1,N1,D) |
+| k | Tensor | 必选 | 公式中的输入 $K_{index}$。数据格式为 ND。 | bfloat16、float16 | layout_k 为 BSND 时 shape 为 (B,S2,N2,D)；layout_k 为 TND 时 shape 为 (T2,N2,D) |
+| w | Tensor | 必选 | 公式中的加权系数 $W$。数据格式为 ND。 | float32 | layout_q 为 BSND 时 shape 为 (B,S1,N1)；layout_q 为 TND 时 shape 为 (T1,N1) |
 | cu_seqlens_q | Tensor | 可选 | 当前 Batch 及前序 Batch 中 q 的有效 token 数的累加和。仅 layout_q 为 TND 场景下必传，第一个值固定为 0。数据格式为 ND。 | int32 | (B+1,) |
 | cu_seqlens_k | Tensor | 可选 | 当前 Batch 及前序 Batch 中 k 的有效 token 数的累加和。仅 layout_k 为 TND 场景下必传，第一个值固定为 0。数据格式为 ND。 | int32 | (B+1,) |
 | seqused_q | Tensor | 可选 | 不同 Batch 中 q 的实际使用长度。数据格式为 ND。 | int32 | (B,) |
 | seqused_k | Tensor | 可选 | 不同 Batch 中 k 的实际使用长度。数据格式为 ND。 | int32 | (B,) |
 | cmp_residual_k | Tensor | 可选 | 表示 k 压缩前 token 数量除以 cmp_ratio 的余数。需在 mask_mode=3 且 cmp_ratio≠1 时传入。数据格式为 ND。 | int32 | (B,) |
-| metadata | Tensor | 可选 | 算子分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。不支持空 tensor。数据格式为 ND。 | int32 | (1024,) |
+| metadata | Tensor | 可选 | 算子分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。数据格式为 ND。 | int32 | (1024,) |
 | layout_q | str | 可选 | 用于标识输入 q 的数据排布格式，支持 BSND、TND，默认值为 BSND。 | string | - |
 | layout_k | str | 可选 | 用于标识输入 k 的数据排布格式，支持 BSND、TND，默认值为 BSND。layout_q 与 layout_k 必须一致。 | string | - |
 | mask_mode | int | 可选 | 表示 mask 的模式，0 代表 defaultMask 模式，3 代表 rightDownCausal 模式，默认值为 0。 | int32 | - |
@@ -97,7 +97,7 @@ cann_ops_transformer.dense_lightning_indexer_softmax_lse(
 
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
-| softmax_lse | Tensor | 必选 | Softmax Log-Sum-Exp 计算结果。不支持空 tensor。数据格式为 ND。 | float32 | layout_q 为 BSND 时 shape 为 (B,N2,S1)；layout_q 为 TND 时 shape 为 (N2,T1) |
+| softmax_lse | Tensor | 必选 | Softmax Log-Sum-Exp 计算结果。数据格式为 ND。 | float32 | layout_q 为 BSND 时 shape 为 (B,N2,S1)；layout_q 为 TND 时 shape 为 (N2,T1) |
 
 ## 约束说明
 
