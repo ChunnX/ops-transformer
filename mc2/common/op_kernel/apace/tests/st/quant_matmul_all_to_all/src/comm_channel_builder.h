@@ -23,8 +23,8 @@
 #include "hccl/hccl_res.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
 
-constexpr uint8_t COMM_ENGINE_AIV = 4;
-constexpr uint32_t CHANNEL_NOTIFY_NUM = 3U;
+constexpr uint8_t BUILDER_COMM_ENGINE_AIV = 4;
+constexpr uint32_t BUILDER_CHANNEL_NOTIFY_NUM = 3U;
 
 #define ASC_CHECK(call) do { if (!(call)) { return false; } } while(0)
 
@@ -213,7 +213,7 @@ private:
         HcclChannelDescInit(&channelDesc, 1);
         channelDesc.remoteRank = peer;
         channelDesc.channelProtocol = protocol;
-        channelDesc.notifyNum = CHANNEL_NOTIFY_NUM;
+        channelDesc.notifyNum = BUILDER_CHANNEL_NOTIFY_NUM;
         if (memHandle != nullptr) {
             channelDesc.memHandles = &memHandle;
             channelDesc.memHandleNum = 1;
@@ -232,7 +232,7 @@ private:
             return false;
         }
 
-        if (HcclChannelAcquire(comm_, static_cast<CommEngine>(COMM_ENGINE_AIV), &channelDesc, 1, &channel) !=
+        if (HcclChannelAcquire(comm_, static_cast<CommEngine>(BUILDER_COMM_ENGINE_AIV), &channelDesc, 1, &channel) !=
             ::HCCL_SUCCESS || channel == 0) {
             return false;
         }

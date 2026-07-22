@@ -100,9 +100,9 @@ public:
   using BlockMmad =
     Blaze::Gemm::Block::BlockMmad<DispatchPolicy, AType, LayoutA, BType, LayoutB, CType, LayoutC, BiasType, LayoutBias>;
 
-  static constexpr bool weightNz = BlockMmad::weightNz;
-  static constexpr bool transA = BlockMmad::transA;
-  static constexpr bool transB = BlockMmad::transB;
+  static constexpr bool weightNz = BlockMmad::WEIGHT_NZ;
+  static constexpr bool transA = BlockMmad::TRANS_A;
+  static constexpr bool transB = BlockMmad::TRANS_B;
   static constexpr int64_t C0_SIZE = Blaze::Gemm::IsFp4<AType>() ? Blaze::Gemm::C0_SIZE_B4 : Blaze::Gemm::C0_SIZE_B8;
   static constexpr int64_t kCacheLineAlignMask = Blaze::Gemm::IsFp4<AType>() ? 0xff : 0x7f;
 
