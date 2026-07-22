@@ -133,8 +133,8 @@ private:
                      Params& out, MatmulMode matmulMode);
   
   __aicore__ inline void RunAllToAll();  // AIV 通信任务
-  __aicore__ inline void LocalMatmulProcess(); // AIC 本地计算任务
-  __aicore__ inline void MatmulProcess();    // AIC 远程计算任务
+  __aicore__ inline void RunLocalMatmul(); // AIC 本地计算任务
+  __aicore__ inline void RunMatmul();    // AIC 远程计算任务
 
 };
 
@@ -192,9 +192,9 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 
   if ASCEND_IS_AIC {
     if (tilingData_->localMatmul == 1) {
-      LocalMatmulProcess(); // AIC local计算前置
+      RunLocalMatmul(); // AIC local计算前置
     }
-    MatmulProcess();    // AIC 通信块计算（带同步等待）
+    RunMatmul();    // AIC 通信块计算（带同步等待）
   }
 }
 
@@ -250,7 +250,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 {
   ProblemShape problemShape{mmTile->m, mmTile->n, mmTile->k, 1UL};
   BlockMmadParams mmadParams;
-  // mLoopIdx 由 MatmulProcess 在 per-tile 循环中更新（DEFERRED_SYNC 模式下 kernel 内部要用）
+  // mLoopIdx 由 RunMatmul 在 per-tile 循环中更新（DEFERRED_SYNC 模式下 kernel 内部要用）
   LocalParams localParams{baseParams_.rankId, baseParams_.rankSize, baseParams_.axisM, baseParams_.aGm,
     baseParams_.scaleAGm, tilingData_->localMatmul, 1UL, matmulMode, static_cast<uint32_t>(baseParams_.headMSize)};
   L1Params l1Params{static_cast<uint64_t>(mmTile->stepK) * mmTile->baseK, mmTile->scaleKL1,
@@ -281,7 +281,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA, TransB>::LocalMatmulProcess()
+__aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA, TransB>::RunLocalMatmul()
 {
   Params localParams;
   SetupParams(&tilingData_->tileQbmmTilingData, localParams, MatmulMode::LOCAL);
@@ -291,7 +291,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 }
 
 template<typename AType, typename BType, typename CType, bool TransA, bool TransB>
-__aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA, TransB>::MatmulProcess()
+__aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA, TransB>::RunMatmul()
 {
   Params params;
   MatmulMode mode = (tilingData_->localMatmul == 2) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
