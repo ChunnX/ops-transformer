@@ -461,7 +461,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
         }
         if ASCEND_IS_AIV {
           tl::ascend::Fill<float>(v1_bw_eps[0], 1.000000e-08f, 64);
-          AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(2);
+          AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(2);
           AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(3);
           tl::ascend::Fill<float>(v1_bw_dw_accum[0], 0.000000e+00f, 32);
           tl::ascend::Fill<float>(v1_bw_loss_accum[0], 0.000000e+00f, 1);
@@ -480,7 +480,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           for (int32_t n_idx_4 = 0; n_idx_4 < 16; ++n_idx_4) {
             for (int32_t bw_col_id = 0; bw_col_id < 2; ++bw_col_id) {
               AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(3);
-              AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(2);
+              AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(2);
               tl::ascend::copy_gm_to_ub<float, 64>(v1_bw_p[0], PReduced[(((((pipe_iter * 49152) + (cid * 2048)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 49152)], 2048, 1, 64, 0.000000e+00f);
               tl::ascend::copy_gm_to_ub<float, 64>(v1_bw_sy[0], SoftmaxI[(((((pipe_iter * 49152) + (cid * 2048)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 49152)], 2048, 1, 64, 0.000000e+00f);
               tl::ascend::copy_gm_to_ub<float, 64, 32>(v1_bw_bmm2[0], bmm2Res[((((((pipe_iter * 3145728) + (cid * 131072)) + (vid * 65536)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 3145728)], 2048, 32, 64, 0.000000e+00f);
@@ -516,7 +516,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(2);
               AscendC::PipeBarrier<PIPE_MTE3>();
               tl::ascend::copy_ub_to_gm<half, 64, 32>(reluGradRes[((((((pipe_iter * 3145728) + (cid * 131072)) + (vid * 65536)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 3145728)], v1_bw_rg_half[0], 2048, 32, 64);
-              AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(2);
+              AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(2);
               if ((n_idx_4 % 2) == vid) {
                 AscendC::Max(v1_bw_p[0], v1_bw_p[0], v1_bw_eps[0], 64);
                 AscendC::Max(v1_bw_sy[0], v1_bw_sy[0], v1_bw_eps[0], 64);
@@ -547,7 +547,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           tl::ascend::copy_ub_to_gm<half, 32>(dWeightOut[((((pipe_iter * 1536) + (cid * 64)) + (vid * 32)) - 1536)], v1_bw_dw_half[0], 64, 1, 32);
           tl::ascend::copy_ub_to_gm<float, 1>(LossPartial[((((pipe_iter * 384) + (cid * 16)) + (vid * 8)) - 384)], v1_bw_loss_accum[0], 128, 1, ((1 < (((512 - (vid * 8)) - (cid * 16)) - (pipe_iter * 384))) ? 1 : (((512 - (vid * 8)) - (cid * 16)) - (pipe_iter * 384))));
           AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(3);
-          AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(2);
+          AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(2);
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(3);
           AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(8);
         }
