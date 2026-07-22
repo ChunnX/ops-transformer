@@ -61,9 +61,9 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
     aclrtStream    stream);
 ```
 
-## aclnnDenseLightningIndexerSoftmaxLse
+## aclnnDenseLightningIndexerSoftmaxLseGetWorkspaceSize
 
-- **参数说明:**
+- **参数说明：**
   
     <table style="undefined;table-layout: fixed; width: 1550px">
     <colgroup>
@@ -246,7 +246,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
      <tr>
       <td>ACLNN_ERR_PARAM_INVALID</td>
       <td>161002</td>
-      <td>queryIndex、keyIndex、weights等输入变量的数据类型和数据格式不在支持的范围内。</td>
+      <td>queryIndex、keyIndex、weight等输入变量的数据类型和数据格式不在支持的范围内。</td>
      </tr>
      <tr>
       <td>ACLNN_ERR_INNER_TILING_ERROR</td>
@@ -303,7 +303,7 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLse(
 
   - 参数queryIndex、keyIndex的数据类型应保持一致。
 
-  - 参数weights不为float32时，参数queryIndex、keyIndex、weights的数据类型应保持一致。
+  - 参数weight不为float32时，参数queryIndex、keyIndex、weight的数据类型应保持一致。
 
   - 确定性计算：
     aclnnDenseLightningIndexerSoftmaxLse默认确定性实现。
