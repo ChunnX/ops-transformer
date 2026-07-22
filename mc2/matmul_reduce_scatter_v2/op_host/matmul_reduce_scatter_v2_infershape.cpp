@@ -22,14 +22,13 @@ using namespace ge;
 namespace ops {
 const size_t Y_DTYPE = 9;
 
-static ge::graphStatus InferShapeMatmulReduceScatterV2(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeMatmulReduceScatterV2(gert::InferShapeContext *context)
 {
-    OP_LOGE_IF(
-        InferMatmulReduceScatterCommon(context) != GRAPH_SUCCESS, GRAPH_FAILED, context->GetNodeName(),
-        "infer shape excute failed.");
-    const bool* isAmaxOut = context->GetAttrs()->GetAttrPointer<bool>(RS_IS_AMAX_OUT);
+    OP_LOGE_IF(InferMatmulReduceScatterCommon(context) != GRAPH_SUCCESS, GRAPH_FAILED, context->GetNodeName(),
+               "infer shape excute failed.");
+    const bool *isAmaxOut = context->GetAttrs()->GetAttrPointer<bool>(RS_IS_AMAX_OUT);
     OPS_CHECK_NULL_WITH_CONTEXT(context, isAmaxOut);
-    gert::Shape* amaxOutShape = context->GetOutputShape(1);
+    gert::Shape *amaxOutShape = context->GetOutputShape(1);
     OPS_CHECK_NULL_WITH_CONTEXT(context, amaxOutShape);
     if (*isAmaxOut) {
         amaxOutShape->SetDimNum(1);
@@ -41,7 +40,7 @@ static ge::graphStatus InferShapeMatmulReduceScatterV2(gert::InferShapeContext* 
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeMatmulReduceScatterV2(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataTypeMatmulReduceScatterV2(gert::InferDataTypeContext *context)
 {
     // 如果是bf16/fp16 输入和输出保持一致，如果是fp8 则使用y_dtype
     auto d_type = ge::DataType::DT_FLOAT;

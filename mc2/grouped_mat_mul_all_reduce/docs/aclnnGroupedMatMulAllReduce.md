@@ -532,7 +532,7 @@ int CreateAclTensor(std::vector<int64_t>& shape,  std::string& name, std::string
     if (shape[1] % g_ndev != 0) {
       printf("[ERROR] X_k cannot be divided by ndev!\n");
       return -1;
-    } 
+    }
     shape[1] /= g_ndev;
     axis = 1;
     byteBlock = shape[1] * dataTypeSize;
@@ -540,11 +540,11 @@ int CreateAclTensor(std::vector<int64_t>& shape,  std::string& name, std::string
     if (shape[0] % g_ndev != 0) {
       printf("[ERROR] Weight_k cannot be divided by ndev!\n");
       return -1;
-    } 
+    }
     shape[0] /= g_ndev;
     axis = 0;
     byteBlock = shape[0] * dataTypeSize;
-  } 
+  }
   auto size = GetShapeSize(shape) * dataTypeSize;
   // 调用aclrtMalloc申请Device侧内存
   auto ret = aclrtMalloc(&deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
@@ -555,7 +555,7 @@ int CreateAclTensor(std::vector<int64_t>& shape,  std::string& name, std::string
   if (int_array) {
     tensor = (void*)aclCreateIntArray((int64_t*)hostData, size / sizeof(int64_t));
     delete[] hostData;
-    return 0; 
+    return 0;
   }
   ret = aclrtMemcpy(deviceAddr, size, hostData, size, ACL_MEMCPY_HOST_TO_DEVICE);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); return ret);
@@ -660,7 +660,7 @@ int callMatmulAndAicpu(HcclComm hcclComm, void **inputs, void **outputs, int* in
     int64_t split_item = 0;
     inputs[3] = nullptr;
     int64_t comm_turn = 0;
-    
+
     auto aclnnRet = aclnnGroupedMatMulAllReduceGetWorkspaceSize(
         (aclTensorList*)inputs[0], (aclTensorList*)inputs[1], (aclTensorList*)inputs[2], (aclIntArray*)inputs[3], split_item,  hcom_name, "sum", comm_turn, 1, (aclTensorList*)outputs[0], &workspaceSize, &executor);
     CHECK_RET(aclnnRet == ACL_SUCCESS,
@@ -718,7 +718,7 @@ int launchOneThread(Args &args, TensorsInfo& config)
     int checkErr = 0;
     ACL_CHECK(aclrtSetDevice(args.logicDeviceId));
     ACL_CHECK(aclrtSetCurrentContext(args.resources.context));
-    
+
     constexpr int input_num = 4;
     void* inputs[input_num];
     int input_type[input_num];
@@ -803,7 +803,7 @@ int launchMultiThread(Args &input_args, int32_t *devices, HcclComm *comms, Resou
     x1_json.shape = vector<int64_t>{1024,256};
     config.x_array.push_back(x0_json);
     config.x_array.push_back(x1_json);
-    
+
     TensorInfo w0_json;
     w0_json.name = "weight0";
     w0_json.dtype = "float16";
@@ -829,15 +829,15 @@ int launchMultiThread(Args &input_args, int32_t *devices, HcclComm *comms, Resou
     b1_json.shape = vector<int64_t>{1024};
     config.b_array.push_back(b0_json);
     config.b_array.push_back(b1_json);
-    
-    
+
+
     TensorInfo group_list_json;
     group_list_json.name = "group_list";
     group_list_json.dtype = "int64";
     group_list_json.data_file = "";
     group_list_json.shape = vector<int64_t>{};
     config.grouplist_array.push_back(group_list_json);
-    
+
     TensorInfo y0_json;
     y0_json.name = "y0";
     y0_json.dtype = "float16";

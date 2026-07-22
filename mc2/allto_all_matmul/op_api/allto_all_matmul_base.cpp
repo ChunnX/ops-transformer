@@ -95,7 +95,8 @@ static bool CheckAllDtypesValid(const aclTensor *x1, const aclTensor *x2, const 
     if (biasOptional != nullptr) {
         if (biasOptional->GetDataType() != op::DataType::DT_FLOAT && biasOptional->GetDataType() != x1->GetDataType()) {
             OP_LOGE_WITH_INVALID_INPUT_DTYPE("aclnnMatmulAlltoAll", "bias",
-                op::ToString(biasOptional->GetDataType()).GetString(), "x1Dtype or float32");
+                                             op::ToString(biasOptional->GetDataType()).GetString(),
+                                             "x1Dtype or float32");
             return false;
         }
     }
@@ -112,31 +113,31 @@ static bool CheckFormat(const aclTensor *x1, const aclTensor *x2, const aclTenso
 {
     // 输入格式不支持私有格式
     if (IsPrivateFormat(x1->GetStorageFormat())) {
-        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "x1",
-            op::ToString(x1->GetStorageFormat()).GetString(), "ND");
+        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "x1", op::ToString(x1->GetStorageFormat()).GetString(),
+                                          "ND");
         return false;
     }
     if (IsPrivateFormat(x2->GetStorageFormat())) {
-        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "x2",
-            op::ToString(x2->GetStorageFormat()).GetString(), "ND");
+        OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "x2", op::ToString(x2->GetStorageFormat()).GetString(),
+                                          "ND");
         return false;
     }
     if (biasOptional != nullptr) {
         if (IsPrivateFormat(biasOptional->GetStorageFormat())) {
             OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "bias",
-                op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
+                                              op::ToString(biasOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
         OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "output",
-            op::ToString(output->GetStorageFormat()).GetString(), "ND");
+                                          op::ToString(output->GetStorageFormat()).GetString(), "ND");
         return false;
     }
     if (alltoAllOutOptional != nullptr) {
         if (IsPrivateFormat(alltoAllOutOptional->GetStorageFormat())) {
             OP_LOGE_WITH_INVALID_INPUT_FORMAT("aclnnAlltoAllMatmul", "alltoAllOut",
-                op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString(), "ND");
+                                              op::ToString(alltoAllOutOptional->GetStorageFormat()).GetString(), "ND");
             return false;
         }
     }
@@ -299,7 +300,7 @@ extern "C" aclnnStatus aclnnAlltoAllMatmulBaseGetWorkspaceSize(
     auto transX2 = x2;                                                   // 复制一个x2
     if (GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) { // 只有当非连续时，才会涉及到转连续等情况
         bool notContiguous =
-            IsTransposeLastTwoDims(x2);     // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
+            IsTransposeLastTwoDims(x2); // notContiguous标识x2是否是非连续的，通常在pytorch经过.t()会导致x2非连续
         if (notContiguous && transposeX2) { // 当非连续和转置同时生效时，判断为错误用法，直接报错
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "x2 not contiguous, and set x2 transpose, it is error!");
             return ACLNN_ERR_PARAM_INVALID;

@@ -56,9 +56,9 @@ namespace ge {
  * end-start), (1, S, 1, end-start) or (B, 1, 1, end-start).
  * @li Let the value of "partial_slice" be [start, end]. "start" must be in range [0, D], "end" must be in range
  * ["start", D]. In half, interleave and interleave-half mode, ("end" - "start") must be a multiple of 2. In quarter
- * mode, ("end" - "start") must be a multiple of 4. If "start" equals "end", the operator performs no
- * effective computation and returns directly.
+ * mode, ("end" - "start") must be a multiple of 4. The case where "start" equals "end" is not supported.
  */
+
 REG_OP(InplacePartialRotaryMulGrad)
     .INPUT(dy, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))
     .INPUT(cos, TensorType({DT_FLOAT16, DT_FLOAT, DT_BFLOAT16}))

@@ -19,4 +19,4 @@
 #include "../../../mat_mul_v3/op_host/op_tiling/matmul_v3_tiling.h"
 #include "../../op_kernel/batch_mat_mul_v3_tiling_data.h"
 
-#endif  // __OP_HOST_BATCH_MAT_MUL_V3_TILING_H__
+#endif // __OP_HOST_BATCH_MAT_MUL_V3_TILING_H__

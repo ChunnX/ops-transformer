@@ -39,10 +39,10 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF(__ubuf__ T2 * e
     RegTensor<half> vreg_max_tmp_unroll;  // 一个分形后8行，一共一次处理16行
 
     RegTensor<half> vreg_in_max;
-    RegTensor<half> vreg_src_max;
     RegTensor<half> vreg_max_new;
     RegTensor<half> vreg_max;
     RegTensor<half> vreg_max_2;
+    RegTensor<half> vreg_src_max;
 
     RegTensor<float> vreg_exp_0_1;
     RegTensor<float> vreg_exp_1_1;
@@ -145,8 +145,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF(__ubuf__ T2 * e
             ExpSub<float, half, RegLayout::ZERO>(vreg_exp_0_2, vreg_src_x_2, vreg_max_2, preg_all_float);
             ExpSub<float, half, RegLayout::ONE>(vreg_exp_2_2, vreg_src_x_2, vreg_max_2, preg_all_float);
             ExpSub<float, half, RegLayout::ZERO>(vreg_exp_1_2, vreg_src_x_unroll_2, vreg_max_2, preg_all_float);
-            ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_2, vreg_src_x_unroll_2, vreg_max_2, preg_all_float);
-
+            ExpSub<float, half, RegLayout::ONE>(vreg_exp_3_2, vreg_src_x_unroll_2,
+                                                vreg_max_2, preg_all_float);
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_0_1, preg_all_float);
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_2_1, preg_all_float);
             Add(vreg_exp_sum_1, vreg_exp_sum_1, vreg_exp_1_1, preg_all_float);
@@ -155,7 +155,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl512GqaFullquantVF(__ubuf__ T2 * e
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_2_2, preg_all_float);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_1_2, preg_all_float);
             Add(vreg_exp_sum_2, vreg_exp_sum_2, vreg_exp_3_2, preg_all_float);
-            Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1, vreg_exp_0_1, preg_all_float);  // Cast
+            Cast<T2, float, castTraitZero>(vreg_exp_0_f8_1, vreg_exp_0_1,
+                                           preg_all_float);  // Cast
             Cast<T2, float, castTraitTwo>(vreg_exp_2_f8_1, vreg_exp_2_1, preg_all_float);
             Cast<T2, float, castTraitOne>(vreg_exp_1_f8_1, vreg_exp_1_1, preg_all_float);
             Cast<T2, float, castTraitThree>(vreg_exp_3_f8_1, vreg_exp_3_1, preg_all_float);

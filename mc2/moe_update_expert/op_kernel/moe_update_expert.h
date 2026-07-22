@@ -42,15 +42,15 @@ using namespace AscendC;
 #define UPDATE_EXPERT_ARGS DataType, ScalesDataType, EnablePruning
 
 template <UPDATE_EXPERT_DECLARE>
-class MoeUpdateExpert
-{
+class MoeUpdateExpert {
 public:
     __aicore__ inline MoeUpdateExpert()
-    {}
-    __aicore__ inline void Init(
-        GM_ADDR expertIdsGM, GM_ADDR eplbTableGM, GM_ADDR expertScalesGM, GM_ADDR pruningThresholdGM,
-        GM_ADDR activeMaskGM, GM_ADDR balancedExpertIdsOutGM, GM_ADDR balancedActiveMaskOutGM, GM_ADDR workspaceGM,
-        const MoeUpdateExpertTilingData* tilingData, TPipe* tPipe);
+    {
+    }
+    __aicore__ inline void Init(GM_ADDR expertIdsGM, GM_ADDR eplbTableGM, GM_ADDR expertScalesGM,
+                                GM_ADDR pruningThresholdGM, GM_ADDR activeMaskGM, GM_ADDR balancedExpertIdsOutGM,
+                                GM_ADDR balancedActiveMaskOutGM, GM_ADDR workspaceGM,
+                                const MoeUpdateExpertTilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void ProcessPruning(int32_t tokenStart, int32_t tokenEnd);
 
@@ -58,8 +58,8 @@ private:
     __aicore__ inline void CalculateUnroll(int32_t start, int32_t computeLen);
     __aicore__ inline void Calculate(int32_t start, int32_t end, int32_t computeLen);
     __aicore__ inline void CalculateUnrollRest(int32_t start, int32_t loopNum, int32_t restNum);
-    __aicore__ inline void GetCoreRange(
-        int32_t coreIndex, int32_t coreNum, int32_t totalData, int32_t& start, int32_t& end);
+    __aicore__ inline void GetCoreRange(int32_t coreIndex, int32_t coreNum, int32_t totalData, int32_t &start,
+                                        int32_t &end);
     __aicore__ inline void InitPruning();
     __aicore__ inline void ProcessEachTokenPruning(int32_t tokenIdx);
 
@@ -95,7 +95,7 @@ private:
     TBuf<> localAllFalseMaskUint8Buf_;
     TBuf<> localCompareResultBuf_;
 
-    TPipe* tPipe_{nullptr};
+    TPipe *tPipe_{nullptr};
     TBuf<> buffer_;
     LocalTensor<DataType> outTensor_;
     LocalTensor<float> localScalesFp32_;
@@ -120,10 +120,12 @@ private:
 };
 
 template <UPDATE_EXPERT_DECLARE>
-__aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::Init(
-    GM_ADDR expertIdsGM, GM_ADDR eplbTableGM, GM_ADDR expertScalesGM, GM_ADDR pruningThresholdGM, GM_ADDR activeMaskGM,
-    GM_ADDR balancedExpertIdsOutGM, GM_ADDR balancedActiveMaskOutGM, GM_ADDR workspaceGM,
-    const MoeUpdateExpertTilingData* tilingData, TPipe* tPipe)
+__aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::Init(GM_ADDR expertIdsGM, GM_ADDR eplbTableGM,
+                                                                 GM_ADDR expertScalesGM, GM_ADDR pruningThresholdGM,
+                                                                 GM_ADDR activeMaskGM, GM_ADDR balancedExpertIdsOutGM,
+                                                                 GM_ADDR balancedActiveMaskOutGM, GM_ADDR workspaceGM,
+                                                                 const MoeUpdateExpertTilingData *tilingData,
+                                                                 TPipe *tPipe)
 {
     tPipe_ = tPipe;
 
@@ -142,9 +144,9 @@ __aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::Init(
         worldSize_ = tilingData->worldSize;
     }
 
-    expertIdsTensor_.SetGlobalBuffer((__gm__ DataType*)expertIdsGM_);
-    balancedExpertIdsTensor_.SetGlobalBuffer((__gm__ DataType*)balancedExpertIdsOutGM_);
-    eplbTableTensor_.SetGlobalBuffer((__gm__ int32_t*)eplbTableGM_);
+    expertIdsTensor_.SetGlobalBuffer((__gm__ DataType *)expertIdsGM_);
+    balancedExpertIdsTensor_.SetGlobalBuffer((__gm__ DataType *)balancedExpertIdsOutGM_);
+    eplbTableTensor_.SetGlobalBuffer((__gm__ int32_t *)eplbTableGM_);
 
     // 剪枝相关张量初始化
     if constexpr (EnablePruning) {
@@ -165,14 +167,14 @@ __aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::Init(
         isActiveMask_ = bool(tilingData->isActiveMask);
         if (isActiveMask_ == 1) {
             activeMaskGM_ = activeMaskGM;
-            activeMaskInTensor_.SetGlobalBuffer((__gm__ uint8_t*)activeMaskGM_);
+            activeMaskInTensor_.SetGlobalBuffer((__gm__ uint8_t *)activeMaskGM_);
         }
         expertScalesGM_ = expertScalesGM;
         pruningThresholdGM_ = pruningThresholdGM;
         balancedActiveMaskOutGM_ = balancedActiveMaskOutGM;
-        expertScalesTensor_.SetGlobalBuffer((__gm__ ScalesDataType*)expertScalesGM_);
-        preTuningThresholdTensor_.SetGlobalBuffer((__gm__ float*)pruningThresholdGM_);
-        balancedActiveMaskTensor_.SetGlobalBuffer((__gm__ bool*)balancedActiveMaskOutGM_);
+        expertScalesTensor_.SetGlobalBuffer((__gm__ ScalesDataType *)expertScalesGM_);
+        preTuningThresholdTensor_.SetGlobalBuffer((__gm__ float *)pruningThresholdGM_);
+        balancedActiveMaskTensor_.SetGlobalBuffer((__gm__ bool *)balancedActiveMaskOutGM_);
     }
 }
 
@@ -209,8 +211,8 @@ __aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::Calculate(int32_t st
 }
 
 template <UPDATE_EXPERT_DECLARE>
-__aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::CalculateUnrollRest(
-    int32_t start, int32_t loopNum, int32_t restNum)
+__aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::CalculateUnrollRest(int32_t start, int32_t loopNum,
+                                                                                int32_t restNum)
 {
     SyncFunc<AscendC::HardEvent::MTE3_S>();
     DataCacheCleanAndInvalid<DataType, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
@@ -315,9 +317,8 @@ __aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::ProcessEachTokenPrun
 {
     LocalTensor<ScalesDataType> localScales = expertScalesQueue_.AllocTensor<ScalesDataType>();
     DataCopyPadExtParams<ScalesDataType> padParamsScalesDataType{false, 0, 0, 0};
-    DataCopyPad(
-        localScales, expertScalesTensor_[tokenIdx * k_],
-        {1, static_cast<uint32_t>(k_ * sizeof(ScalesDataType)), 0, 0, 0}, padParamsScalesDataType);
+    DataCopyPad(localScales, expertScalesTensor_[tokenIdx * k_],
+                {1, static_cast<uint32_t>(k_ * sizeof(ScalesDataType)), 0, 0, 0}, padParamsScalesDataType);
     expertScalesQueue_.EnQue(localScales);
     localScales = expertScalesQueue_.DeQue<ScalesDataType>();
     if constexpr (!std::is_same_v<ScalesDataType, float>) {
@@ -344,9 +345,8 @@ __aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::ProcessEachTokenPrun
     // === 生成最终激活掩码 ===
     Duplicate<half>(localActiveMask_, 1, k_);
     PipeBarrier<PIPE_V>();
-    Select(
-        localSelectedActiveMaskHalf_, localCompareResult_, localActiveMask_, static_cast<half>(0),
-        SELMODE::VSEL_TENSOR_SCALAR_MODE, k_);
+    Select(localSelectedActiveMaskHalf_, localCompareResult_, localActiveMask_, static_cast<half>(0),
+           SELMODE::VSEL_TENSOR_SCALAR_MODE, k_);
     PipeBarrier<PIPE_V>();
     LocalTensor<uint8_t> localresultMaskUint8 = resultMaskUint8Queue_.AllocTensor<uint8_t>();
     Cast(localresultMaskUint8, localSelectedActiveMaskHalf_, RoundMode::CAST_NONE, k_);
@@ -354,9 +354,8 @@ __aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::ProcessEachTokenPrun
     localresultMaskUint8 = resultMaskUint8Queue_.DeQue<uint8_t>();
     LocalTensor<bool> localSelectedActiveMaskBool = localresultMaskUint8.template ReinterpretCast<bool>();
     // === 保存结果 ===
-    DataCopyPad(
-        balancedActiveMaskTensor_[tokenIdx * k_], localSelectedActiveMaskBool,
-        {1, static_cast<uint32_t>(k_ * sizeof(bool)), 0, 0, 0});
+    DataCopyPad(balancedActiveMaskTensor_[tokenIdx * k_], localSelectedActiveMaskBool,
+                {1, static_cast<uint32_t>(k_ * sizeof(bool)), 0, 0, 0});
     resultMaskUint8Queue_.FreeTensor(localresultMaskUint8);
 }
 
@@ -367,13 +366,11 @@ __aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::ProcessPruning(int32
     DataCopyPadExtParams<float> padParamsFloat{false, 0, 0, 0};
     DataCopyPadExtParams<uint8_t> padParamsUint8{false, 0, 0, 0};
     // 预加载专家阈值（所有token共享）
-    DataCopyPad(
-        localThresholds_, preTuningThresholdTensor_, {1, static_cast<uint32_t>(k_ * sizeof(float)), 0, 0, 0},
-        padParamsFloat);
+    DataCopyPad(localThresholds_, preTuningThresholdTensor_, {1, static_cast<uint32_t>(k_ * sizeof(float)), 0, 0, 0},
+                padParamsFloat);
     if (isActiveMask_ == 1) {
-        DataCopyPad(
-            localOriginActiveMask_, activeMaskInTensor_[tokenStart],
-            {1, static_cast<uint32_t>((tokenEnd - tokenStart) * sizeof(uint8_t)), 0, 0, 0}, padParamsUint8);
+        DataCopyPad(localOriginActiveMask_, activeMaskInTensor_[tokenStart],
+                    {1, static_cast<uint32_t>((tokenEnd - tokenStart) * sizeof(uint8_t)), 0, 0, 0}, padParamsUint8);
     }
 
     Duplicate<half>(localActiveMask_, 0, k_);
@@ -393,9 +390,8 @@ __aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::ProcessPruning(int32
         // 如果token不激活，直接设置全false掩码
         if (!active) {
             SyncFunc<AscendC::HardEvent::V_MTE3>();
-            DataCopyPad(
-                balancedActiveMaskTensor_[tokenIdx * k_], localAllFalseMaskBool,
-                {1, static_cast<uint32_t>(k_ * sizeof(bool)), 0, 0, 0});
+            DataCopyPad(balancedActiveMaskTensor_[tokenIdx * k_], localAllFalseMaskBool,
+                        {1, static_cast<uint32_t>(k_ * sizeof(bool)), 0, 0, 0});
             continue;
         }
 
@@ -404,8 +400,9 @@ __aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::ProcessPruning(int32
 }
 
 template <UPDATE_EXPERT_DECLARE>
-__aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::GetCoreRange(
-    int32_t coreIndex, int32_t coreNum, int32_t totalData, int32_t& start, int32_t& end)
+__aicore__ inline void MoeUpdateExpert<UPDATE_EXPERT_ARGS>::GetCoreRange(int32_t coreIndex, int32_t coreNum,
+                                                                         int32_t totalData, int32_t &start,
+                                                                         int32_t &end)
 {
     int32_t perCore = totalData / coreNum;
     int32_t remainder = totalData % coreNum;

@@ -99,6 +99,6 @@ __aicore__ inline uint32_t GetMixedMaxProcRows(uint32_t calBuffSize)
     ubDenom *= DOUBLE_BUFFER;
     return curUbSize / ubDenom;
 }
-} // MATMUL_ALL_REDUCE_DYNAMIC_QUANT_PERTILE_UTILS_H
+} // namespace AscendC
 
 #endif

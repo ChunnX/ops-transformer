@@ -37,8 +37,6 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
     int32_t actualS1Size = 0;
     int32_t actualS2OriSize = 0;
     int32_t actualS2CmpSize = 0;
-    int32_t actualSeqMin = 1;
-    int32_t actualSeqKVMin = 1;
     int32_t bIdx = runParam.boIdx;
     if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
         actualS1Size = (!hasActualSeqQlen) ? (cuSeqlensQGm.GetValue(bIdx + 1) - cuSeqlensQGm.GetValue(bIdx)) :
@@ -58,8 +56,7 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
                 actualS2OriSize = cuSeqlensOriKvGm.GetValue(bIdx + 1) - cuSeqlensOriKvGm.GetValue(bIdx);
             }
         } else {
-            actualS2OriSize = (constInfo.actualLenDimsOriKV == actualSeqKVMin) ?
-                actualSeqOriKvlenGm.GetValue(0) : actualSeqOriKvlenGm.GetValue(bIdx);
+            actualS2OriSize = actualSeqOriKvlenGm.GetValue(bIdx);
         }
     }
 
@@ -73,9 +70,11 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
                 actualS2CmpSize = actualS2OriSize / constInfo.cmpRatio;
             }
         } else {
-            actualS2CmpSize = (!hasActualSeqCmpKvlen) ? (actualS2OriSize / constInfo.cmpRatio) :
-                (constInfo.actualLenDimsCmpKV == actualSeqKVMin) ?
-                 actualSeqCmpKvlenGm.GetValue(0) : actualSeqCmpKvlenGm.GetValue(bIdx);
+            if (!hasActualSeqCmpKvlen) {
+                actualS2CmpSize = actualS2OriSize / constInfo.cmpRatio;
+            } else {
+                actualS2CmpSize = actualSeqCmpKvlenGm.GetValue(bIdx);
+            }
         }
     }
     runParam.cmpSparseBlockCount = constInfo.cmpSparseBlockCount;
@@ -114,7 +113,7 @@ __aicore__ inline void ComputeParamBatch(RunParamStr& runParam, const ConstInfo 
 
 TEMPLATE_INTF
 __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo &constInfo, bool lastBN,
-    int64_t nextGs1Idx, int64_t gS1StartIdx)
+    int64_t nextGs1Idx, int64_t gS1StartIdx, int64_t s2EndIdx = 0)
 {
     runParam.qSNumInOneBlock = 1;
     runParam.gs1LoopStartIdx = gS1StartIdx;
@@ -137,7 +136,8 @@ __aicore__ inline void ComputeS1LoopInfo(RunParamStr& runParam, const ConstInfo 
     if (!lastBN) {
         runParam.gs1LoopEndIdx = gs1LoopEndIdx;
     } else { // 最后一个bn, 从数组下一个元素取值
-        runParam.gs1LoopEndIdx = nextGs1Idx == 0 ? gs1LoopEndIdx : nextGs1Idx;
+        uint32_t actualNextGs1Idx = s2EndIdx == 0 ? nextGs1Idx : nextGs1Idx + 1;
+        runParam.gs1LoopEndIdx = (nextGs1Idx == 0 && s2EndIdx == 0) ? gs1LoopEndIdx : actualNextGs1Idx;
     }
 
     if (runParam.gs1LoopStartIdx > runParam.gs1LoopEndIdx) {
@@ -157,7 +157,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
         runParam.s1RealSize = Min(runParam.qSNumInOneBlock, runParam.actualS1Size - cubeSOuterOffset);
         runParam.mRealSize = runParam.s1RealSize * constInfo.gSize;
         if constexpr (IS_SPLIT_G) {
-            runParam.mRealSize = runParam.mRealSize >> 1;
+            runParam.mRealSize = runParam.s1RealSize * runParam.gSplitSize;
         }
     }
 
@@ -175,7 +175,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
     if (constInfo.subBlockIdx == 1) {
         runParam.halfS1RealSize = runParam.s1RealSize - runParam.halfS1RealSize;
-        runParam.sOuterOffset = cubeSOuterOffset + runParam.halfMRealSize / constInfo.gSize;
+        runParam.sOuterOffset = cubeSOuterOffset + runParam.firstHalfMRealSize / constInfo.gSize;
     } else {
         runParam.sOuterOffset = cubeSOuterOffset;
     }
@@ -201,7 +201,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
                 runParam.goIdx * constInfo.dSizeV;
         }
         if (constInfo.subBlockIdx == 1) {
-            runParam.attentionOutOffset += runParam.halfMRealSize * constInfo.dSizeV;
+            runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
         if (constInfo.returnSoftmaxLse) {
             if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
@@ -214,9 +214,8 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
                     runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
                     runParam.sOuterOffset * constInfo.gSize;
             }
-            uint32_t aicIdx = constInfo.aivIdx >> 1U;
-            if (IS_SPLIT_G && aicIdx % 2U != 0) {
-                runParam.softmaxLseOffset += 64; // splitG时，需要偏移64
+            if (IS_SPLIT_G) {
+                runParam.softmaxLseOffset += runParam.goIdx;
             }
             if (constInfo.subBlockIdx == 1) {
                 runParam.softmaxLseOffset += runParam.firstHalfMRealSize;
@@ -272,6 +271,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
         runParam.oriKvLoopEndIdx = 0;
         runParam.cmpKvLoopEndIdx = 0;
         runParam.s2LoopEndIdx = 0;
+        runParam.s2CmpLineStartIdx = 0;
         return true;
     }
     uint32_t s2BaseSize = constInfo.s2BaseSize;
@@ -283,6 +283,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
     runParam.oriKvLoopEndIdx = (runParam.s2OriLineEndIdx - runParam.s2OriLineStartIdx + s2BaseSize - 1) / s2BaseSize;
 
     if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        runParam.s2CmpLineStartIdx = 0;
         runParam.s2CmpLineEndIdx = ClipSInnerTokenCube<TEMPLATE_INTF_ARGS>(
             (runParam.cubeSOuterOffset + runParam.s1RealSize + runParam.nextTokensPerBatchCmp) / constInfo.cmpRatio,
             0, runParam.actualS2CmpSize);
@@ -296,6 +297,7 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
         }
     } else {
         runParam.cmpKvLoopEndIdx = 0;
+        runParam.s2CmpLineStartIdx = 0;
         runParam.s2CmpLineEndIdx = 0;
     }
     runParam.oriKvLoopEndIdx = (runParam.s2OriLineEndIdx - runParam.s2OriLineStartIdx + s2BaseSize - 1) / s2BaseSize;
@@ -318,10 +320,8 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.softmaxLseOffset = runParam.softmaxLseOffset;
     runInfo.qSNumInOneBlock = runParam.qSNumInOneBlock;
     runInfo.oriKvLoopEndIdx = runParam.oriKvLoopEndIdx;
-    if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
-        runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
-        runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
-    }
+    runInfo.cmpKvLoopEndIdx = runParam.cmpKvLoopEndIdx;
+    runInfo.isCmp = runInfo.s2LoopCount >= runInfo.oriKvLoopEndIdx;
     runInfo.oriSparseBlockCount = runParam.oriSparseBlockCount;
     runInfo.cmpSparseBlockCount = runParam.cmpSparseBlockCount;
 }

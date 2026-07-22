@@ -64,10 +64,10 @@ aclnnStatus aclnnQuantAllReduce(
     <table style="undefined;table-layout: fixed; width: 1556px"><colgroup>
     <col style="width: 161px">
     <col style="width: 141px">
-    <col style="width: 245px">  
-    <col style="width: 408px">  
-    <col style="width: 191px">  
-    <col style="width: 120px"> 
+    <col style="width: 245px">
+    <col style="width: 408px">
+    <col style="width: 191px">
+    <col style="width: 120px">
     <col style="width: 145px">
     <col style="width: 145px">
       </colgroup>
@@ -158,7 +158,7 @@ aclnnStatus aclnnQuantAllReduce(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -230,7 +230,7 @@ aclnnStatus aclnnQuantAllReduce(
         <td>指定执行任务的Stream。</td>
     </tr>
     </tbody></table>
-    
+
 - **返回值**
 
     返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
@@ -436,7 +436,7 @@ aclnnStatus aclnnQuantAllReduce(
         HcclComm comms[DEV_NUM];
         ret = HcclCommInitAll(DEV_NUM, devices, comms);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed. ret = %d \n", ret); return ret);
-        
+
         Args args[DEV_NUM];
         // 启动多线程
         std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);

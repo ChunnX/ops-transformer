@@ -31,14 +31,16 @@
 #include "../mm_allreduce_add_rms_norm_910_general.h"
 #endif
 
-namespace MatmulAllReduceAddRmsNormImpl {}
+namespace MatmulAllReduceAddRmsNormImpl {
+}
 
 using namespace AscendC;
 using namespace MatmulAllReduceAddRmsNormImpl;
 
-extern "C" __global__ __aicore__ void matmul_all_reduce_add_rms_norm(
-    GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR residualGM, GM_ADDR gammaGM, GM_ADDR antiquantScaleGM,
-    GM_ADDR antiquantOffsetGM, GM_ADDR dequantGM, GM_ADDR yGM, GM_ADDR normOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
+extern "C" __global__ __aicore__ void
+matmul_all_reduce_add_rms_norm(GM_ADDR aGM, GM_ADDR bGM, GM_ADDR biasGM, GM_ADDR residualGM, GM_ADDR gammaGM,
+                               GM_ADDR antiquantScaleGM, GM_ADDR antiquantOffsetGM, GM_ADDR dequantGM, GM_ADDR yGM,
+                               GM_ADDR normOutGM, GM_ADDR workspaceGM, GM_ADDR tilingGM)
 {
 #ifdef __CCE_KT_TEST__
     REGISTER_TILING_DEFAULT(Mc2Tiling::MatmulAllReduceAddRmsNormTilingData);
@@ -69,19 +71,19 @@ extern "C" __global__ __aicore__ void matmul_all_reduce_add_rms_norm(
                                   Mc2Tiling::WeightQuantMatmulAllReduceAddRmsNormTilingData);
 #if defined(MC2_QUANT_FP16)
     if (TILING_KEY_IS(8UL)) {
-        INVOKE_MC2_ARN_QUANT_910_OP_IMPL(
-            BmmDequant, Mc2CoreType::ON_CUBE_AND_VECTOR, REG_NO_MM_OBJ, int32_t, uint64_t, DTYPE_Y, false, false);
+        INVOKE_MC2_ARN_QUANT_910_OP_IMPL(BmmDequant, Mc2CoreType::ON_CUBE_AND_VECTOR, REG_NO_MM_OBJ, int32_t, uint64_t,
+                                         DTYPE_Y, false, false);
     } else if (TILING_KEY_IS(4104UL)) {
-        INVOKE_MC2_ARN_QUANT_910_OP_IMPL(
-            BmmDequant, Mc2CoreType::ON_CUBE_AND_VECTOR, REG_NO_MM_OBJ, int32_t, uint64_t, DTYPE_Y, false, true);
+        INVOKE_MC2_ARN_QUANT_910_OP_IMPL(BmmDequant, Mc2CoreType::ON_CUBE_AND_VECTOR, REG_NO_MM_OBJ, int32_t, uint64_t,
+                                         DTYPE_Y, false, true);
     }
 #elif defined(MC2_QUANT_BF16)
     if (TILING_KEY_IS(8UL)) {
-        INVOKE_MC2_ARN_QUANT_910_OP_IMPL(
-            BmmDequantBf16, Mc2CoreType::ON_VECTOR, REG_MM_OBJ_FOR_ARN, DTYPE_Y, DTYPE_Y, false, false, true);
+        INVOKE_MC2_ARN_QUANT_910_OP_IMPL(BmmDequantBf16, Mc2CoreType::ON_VECTOR, REG_MM_OBJ_FOR_ARN, DTYPE_Y, DTYPE_Y,
+                                         false, false, true);
     } else if (TILING_KEY_IS(4104UL)) {
-        INVOKE_MC2_ARN_QUANT_910_OP_IMPL(
-            BmmDequantBf16, Mc2CoreType::ON_VECTOR, REG_MM_OBJ_FOR_ARN, DTYPE_Y, DTYPE_Y, false, true, true);
+        INVOKE_MC2_ARN_QUANT_910_OP_IMPL(BmmDequantBf16, Mc2CoreType::ON_VECTOR, REG_MM_OBJ_FOR_ARN, DTYPE_Y, DTYPE_Y,
+                                         false, true, true);
     }
 #elif defined(MC2_WEIGHT_QUANT)
     if (TILING_KEY_IS(2293772UL)) {

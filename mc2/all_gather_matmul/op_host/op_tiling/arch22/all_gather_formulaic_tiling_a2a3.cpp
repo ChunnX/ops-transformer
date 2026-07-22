@@ -14,7 +14,7 @@
  */
 #include "all_gather_formulaic_tiling_a2a3.h"
 
- void AllGatherPlusMMA2A3::SetCommTimeFactor()
+void AllGatherPlusMMA2A3::SetCommTimeFactor()
 {
     // 通算并行时通信有膨胀，大K大N场景膨胀明显，做特殊处理
     bool medianMFlag = (clusterInfo_.mValue > SMALL_M) && (clusterInfo_.mValue <= MEDIAN_M);
@@ -36,14 +36,14 @@
     }
     commPerf_.ChangeCommTimeFactorByDivision(commGrowRatio); // 1.15x time of factor
     if (clusterInfo_.socType == SocVersion::SOC910_93) {
-        commPerf_.ChangeCommTimeFactorByDivision(0.6);   // 0.6x time of factor
+        commPerf_.ChangeCommTimeFactorByDivision(0.6); // 0.6x time of factor
     }
 }
 
 bool AllGatherPlusMMA2A3::GetAllowMoreCuts(bool smallMFlag)
 {
     bool allowMoreCuts = (!tilingM_.cutRes.shortTileAtBack && smallMFlag) ||
-        (strongTpBound_ && clusterInfo_.socType == SocVersion::SOC910_B);
+                         (strongTpBound_ && clusterInfo_.socType == SocVersion::SOC910_B);
 
     return allowMoreCuts;
 }

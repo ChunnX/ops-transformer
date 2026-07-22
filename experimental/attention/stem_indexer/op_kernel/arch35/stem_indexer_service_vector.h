@@ -361,19 +361,19 @@ __aicore__ inline uint32_t SIVector<SIT>::CalcDynamicTopkCount(
     int32_t s1Pos = (int32_t)s1Idx + kbOffset;
     int32_t decayLen = numPromptK - kStart;
 
-    // 边界条件：s1Pos < kStart 或 decayLen < 1 时，直接返回 kStart
-    if (s1Pos < kStart || decayLen < 1) {
+    // 边界条件：s1Pos < kStart 或 decayLen <= 1 时，直接返回 kStart
+    if (s1Pos < kStart || decayLen <= 1) {
         return (uint32_t)kStart;
     }
 
-    // 计算 k_end
-    int32_t k_end = (int32_t)(kStart * alpha_);
+    // 计算 kEnd
+    int32_t kEnd = (int32_t)(kStart * alpha_);
 
     // 计算插值系数 t
     float t = (float)(s1Pos - kStart) / (float)(decayLen - 1);
 
     // 计算 dynamicTopkCount
-    uint32_t dynamicTopkCount = (uint32_t)((float)kStart + t * (float)(k_end - kStart));
+    uint32_t dynamicTopkCount = (uint32_t)((float)kStart + t * (float)(kEnd - kStart));
 
     // 限制范围：下限为 1，上限为 kStart
     dynamicTopkCount =

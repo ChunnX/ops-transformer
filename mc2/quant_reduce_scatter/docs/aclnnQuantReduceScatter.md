@@ -4,7 +4,7 @@
 
 | 产品                                                                            | 是否支持 |
 | :------------------------------------------------------------------------------ | :------: |
-| <term>Ascend 950DT</term>                                                | √       | 
+| <term>Ascend 950DT</term>                                                | √       |
 | <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>                        | ×       |
 | <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term> | ×       |
 | <term>Atlas 200I/500 A2 推理产品</term>                                         | ×       |
@@ -31,7 +31,7 @@
     $$
 
     其中的Reduce计算是将来自不同rank的数据进行reduce计算。
-    
+
 ## 函数原型
 
 该算子分为两段式接口，必须先调用“aclnnQuantReduceScatterGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantReduceScatter”接口执行计算。
@@ -39,19 +39,19 @@
 ```cpp
 aclnnStatus aclnnQuantReduceScatterGetWorkspaceSize(
     const aclTensor *x,
-    const aclTensor *scales, 
-    const char      *group, 
+    const aclTensor *scales,
+    const char      *group,
     const char      *reduceOp,
-    aclTensor       *output, 
-    uint64_t        *workspaceSize, 
+    aclTensor       *output,
+    uint64_t        *workspaceSize,
     aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnQuantReduceScatter(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     const aclrtStream stream)
 ```
 
@@ -62,10 +62,10 @@ aclnnStatus aclnnQuantReduceScatter(
     <table style="undefined;table-layout: fixed; width: 1556px"><colgroup>
     <col style="width: 161px">
     <col style="width: 141px">
-    <col style="width: 245px">  
-    <col style="width: 408px">  
-    <col style="width: 191px">  
-    <col style="width: 120px"> 
+    <col style="width: 245px">
+    <col style="width: 408px">
+    <col style="width: 191px">
+    <col style="width: 120px">
     <col style="width: 145px">
     <col style="width: 145px">
     </colgroup>
@@ -157,7 +157,7 @@ aclnnStatus aclnnQuantReduceScatter(
 
 - **返回值**
 
-    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。  
+    aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -261,7 +261,7 @@ aclnnStatus aclnnQuantReduceScatter(
     #include <cstring>
     #include "hccl/hccl.h"
     #include "aclnnop/aclnn_quant_reduce_scatter.h"
-    
+
     #define CHECK_RET(cond, return_expr) \
         do {                             \
             if (!(cond)) {               \
@@ -399,7 +399,7 @@ aclnnStatus aclnnQuantReduceScatter(
         ret = aclrtDestroyStream(args.stream);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtDestroyStream failed. ret = %d \n", ret);
                 return ret);
-        
+
         ret = HcclCommDestroy(args.hcclComm);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommDestroy failed. ret = %d \n", ret);
                 return ret);
@@ -436,7 +436,7 @@ aclnnStatus aclnnQuantReduceScatter(
         HcclComm comms[DEV_NUM];
         ret = HcclCommInitAll(DEV_NUM, devices, comms);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclCommInitAll failed. ret = %d \n", ret); return ret);
-        
+
         Args args[DEV_NUM];
         // 启动多线程
         std::vector<std::unique_ptr<std::thread>> threads(DEV_NUM);

@@ -700,14 +700,14 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::CopySinkFDIn(uint32_t splitSize, uint64_t sinkOffset)
 {
     LocalTensor<INPUT_T> sinkUbBf16 = sinkQue.AllocTensor<INPUT_T>();
-    DataCopyExtParams CopyParams;
-    CopyParams.blockCount = 1; // 进行一次连续拷贝
-    CopyParams.blockLen = splitSize * sizeof(INPUT_T); // 实际需要拷贝的字节数
-    CopyParams.srcStride = 0; // 源地址连续
-    CopyParams.dstStride = 0; // 目的地址连续
+    DataCopyExtParams copyParams;
+    copyParams.blockCount = 1; // 进行一次连续拷贝
+    copyParams.blockLen = splitSize * sizeof(INPUT_T); // 实际需要拷贝的字节数
+    copyParams.srcStride = 0; // 源地址连续
+    copyParams.dstStride = 0; // 目的地址连续
 
     DataCopyPadExtParams<INPUT_T> sinkCopyPadParams{};
-    DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], CopyParams, sinkCopyPadParams);
+    DataCopyPad(sinkUbBf16, this->sinkGm[sinkOffset], copyParams, sinkCopyPadParams);
     sinkQue.EnQue(sinkUbBf16);
 }
 
@@ -868,12 +868,12 @@ __aicore__ inline void FABlockVecInferMlaFullquant<TEMPLATE_ARGS>::ReduceFDDataC
     uint64_t attenOutOffset, LocalTensor<OUTPUT_T> &attenOutUb, uint32_t startRow, uint32_t dealRowCount,
     uint32_t columnCount, uint32_t actualColumnCount)
 {
-    DataCopyExtParams CopyParams;
-    CopyParams.blockCount = dealRowCount;
-    CopyParams.blockLen = actualColumnCount * sizeof(OUTPUT_T);
-    CopyParams.srcStride = (columnCount - actualColumnCount) / (FA_BYTE_BLOCK / sizeof(OUTPUT_T));
-    CopyParams.dstStride = 0;
-    DataCopyPad(this->attentionOutGm[attenOutOffset + startRow * actualColumnCount], attenOutUb, CopyParams);
+    DataCopyExtParams copyParams;
+    copyParams.blockCount = dealRowCount;
+    copyParams.blockLen = actualColumnCount * sizeof(OUTPUT_T);
+    copyParams.srcStride = (columnCount - actualColumnCount) / (FA_BYTE_BLOCK / sizeof(OUTPUT_T));
+    copyParams.dstStride = 0;
+    DataCopyPad(this->attentionOutGm[attenOutOffset + startRow * actualColumnCount], attenOutUb, copyParams);
 }
 
 TEMPLATES_DEF_NO_DEFAULT

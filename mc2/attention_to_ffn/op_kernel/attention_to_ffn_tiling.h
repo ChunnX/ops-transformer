@@ -24,11 +24,11 @@ struct AttentionToFFNInfo {
     uint32_t H;
     uint32_t K;
     uint32_t L;
-    uint32_t expertNum;                // 所有专家数
-    uint32_t moeExpertNum;          // 路由专家数
-    uint32_t sharedExpertNum;       // 共享专家
+    uint32_t expertNum;       // 所有专家数
+    uint32_t moeExpertNum;    // 路由专家数
+    uint32_t sharedExpertNum; // 共享专家
     uint32_t HS;
-    uint32_t expRankTableM;            // expert_rank_table 中最大支持冗余度
+    uint32_t expRankTableM; // expert_rank_table 中最大支持冗余度
     uint32_t microBatchNum;
     uint32_t attentionWorkerNum;
     uint32_t infoTableLastDimNum;

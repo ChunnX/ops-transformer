@@ -22,8 +22,8 @@
 
 #include "kernel/fa_kernel.h"
 
-using optiling::NoQuantTilingArch35;
 using optiling::FlashAttnTilingData;
+using optiling::NoQuantTilingArch35;
 
 __aicore__ inline void CopyTiling(FlashAttnTilingData *tilingData, __gm__ uint8_t *tilingGM)
 {
@@ -46,11 +46,11 @@ __aicore__ inline void CopyTiling(FlashAttnTilingData *tilingData, __gm__ uint8_
 }
 
 template <bool hasAttnMask = false, bool isCombine = false,
-    fa_kernel::config::S1TemplateType s1TemplateType = fa_kernel::config::S1TemplateType::Aligned128,
-    fa_kernel::config::S2TemplateType s2TemplateType = fa_kernel::config::S2TemplateType::Aligned128>
+          fa_kernel::config::S1TemplateType s1TemplateType = fa_kernel::config::S1TemplateType::Aligned128,
+          fa_kernel::config::S2TemplateType s2TemplateType = fa_kernel::config::S2TemplateType::Aligned128>
 inline __aicore__ void FaKernelInterface(__gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
-    __gm__ uint8_t *attnMask, __gm__ uint8_t *attentionOut,
-    __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
+                                         __gm__ uint8_t *attnMask, __gm__ uint8_t *attentionOut,
+                                         __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
 {
     FlashAttnTilingData tilingDataTemp;
     if (tiling != nullptr) {
@@ -65,54 +65,45 @@ inline __aicore__ void FaKernelInterface(__gm__ uint8_t *query, __gm__ uint8_t *
     constexpr auto INPUT_LAYOUT = fa_kernel::layout::LayOutTypeEnum::LAYOUT_BSH;
     constexpr auto OUTPUT_LAYOUT = fa_kernel::layout::LayOutTypeEnum::LAYOUT_BSH;
 
-    using CubeBlockType = BaseApi::FABlockCube<
-        bfloat16_t, float, INPUT_LAYOUT,
-        s1TemplateType, s2TemplateType,
-        fa_kernel::config::DTemplateType::Aligned128,
-        fa_kernel::config::DTemplateType::Aligned128>;
+    using CubeBlockType = BaseApi::FABlockCube<bfloat16_t, float, INPUT_LAYOUT, s1TemplateType, s2TemplateType,
+                                               fa_kernel::config::DTemplateType::Aligned128,
+                                               fa_kernel::config::DTemplateType::Aligned128>;
 
-    using CubeBlockDummyType = BaseApi::FABlockCubeDummy<
-        bfloat16_t, float, INPUT_LAYOUT,
-        s1TemplateType, s2TemplateType,
-        fa_kernel::config::DTemplateType::Aligned128,
-        fa_kernel::config::DTemplateType::Aligned128>;
+    using CubeBlockDummyType = BaseApi::FABlockCubeDummy<bfloat16_t, float, INPUT_LAYOUT, s1TemplateType,
+                                                         s2TemplateType, fa_kernel::config::DTemplateType::Aligned128,
+                                                         fa_kernel::config::DTemplateType::Aligned128>;
 
-    using VecFaBlockType = BaseApi::FABlockVec<
-        bfloat16_t, float, bfloat16_t, INPUT_LAYOUT, OUTPUT_LAYOUT,
-        s1TemplateType, s2TemplateType,
-        fa_kernel::config::DTemplateType::Aligned128,
-        fa_kernel::config::DTemplateType::Aligned128,
-        hasAttnMask, isCombine>;
+    using VecFaBlockType =
+        BaseApi::FABlockVec<bfloat16_t, float, bfloat16_t, INPUT_LAYOUT, OUTPUT_LAYOUT, s1TemplateType, s2TemplateType,
+                            fa_kernel::config::DTemplateType::Aligned128, fa_kernel::config::DTemplateType::Aligned128,
+                            hasAttnMask, isCombine>;
 
-    using VecFaBlockDummyType = BaseApi::FABlockVecDummy<
-        bfloat16_t, float, bfloat16_t, INPUT_LAYOUT, OUTPUT_LAYOUT,
-        s1TemplateType, s2TemplateType,
-        fa_kernel::config::DTemplateType::Aligned128,
-        fa_kernel::config::DTemplateType::Aligned128,
-        hasAttnMask, isCombine>;
+    using VecFaBlockDummyType =
+        BaseApi::FABlockVecDummy<bfloat16_t, float, bfloat16_t, INPUT_LAYOUT, OUTPUT_LAYOUT, s1TemplateType,
+                                 s2TemplateType, fa_kernel::config::DTemplateType::Aligned128,
+                                 fa_kernel::config::DTemplateType::Aligned128, hasAttnMask, isCombine>;
 
-    using VecCombineBlockType = BaseApi::FaBlockVecCombine<
-        bfloat16_t, float, bfloat16_t, INPUT_LAYOUT, OUTPUT_LAYOUT,
-        s1TemplateType, s2TemplateType,
-        fa_kernel::config::DTemplateType::Aligned128,
-        fa_kernel::config::DTemplateType::Aligned128,
-        hasAttnMask>;
+    using VecCombineBlockType =
+        BaseApi::FaBlockVecCombine<bfloat16_t, float, bfloat16_t, INPUT_LAYOUT, OUTPUT_LAYOUT, s1TemplateType,
+                                   s2TemplateType, fa_kernel::config::DTemplateType::Aligned128,
+                                   fa_kernel::config::DTemplateType::Aligned128, hasAttnMask>;
 
-    using VecCombineBlockDummyType = BaseApi::FaBlockVecCombineDummy<
-        bfloat16_t, float, bfloat16_t, INPUT_LAYOUT, OUTPUT_LAYOUT,
-        s1TemplateType, s2TemplateType,
-        fa_kernel::config::DTemplateType::Aligned128,
-        fa_kernel::config::DTemplateType::Aligned128,
-        hasAttnMask>;
+    using VecCombineBlockDummyType =
+        BaseApi::FaBlockVecCombineDummy<bfloat16_t, float, bfloat16_t, INPUT_LAYOUT, OUTPUT_LAYOUT, s1TemplateType,
+                                        s2TemplateType, fa_kernel::config::DTemplateType::Aligned128,
+                                        fa_kernel::config::DTemplateType::Aligned128, hasAttnMask>;
 
     __gm__ uint8_t *nullPtr = nullptr;
-    using RealCubeBlock = typename std::conditional<g_coreType == AscendC::AIC, CubeBlockType, CubeBlockDummyType>::type;
-    using RealVecFaBlock = typename std::conditional<g_coreType == AscendC::AIC, VecFaBlockDummyType, VecFaBlockType>::type;
-    using RealVecCombineBlock = typename std::conditional<g_coreType == AscendC::AIV, VecCombineBlockType, VecCombineBlockDummyType>::type;
+    using RealCubeBlock =
+        typename std::conditional<g_coreType == AscendC::AIC, CubeBlockType, CubeBlockDummyType>::type;
+    using RealVecFaBlock =
+        typename std::conditional<g_coreType == AscendC::AIC, VecFaBlockDummyType, VecFaBlockType>::type;
+    using RealVecCombineBlock =
+        typename std::conditional<g_coreType == AscendC::AIV, VecCombineBlockType, VecCombineBlockDummyType>::type;
     BaseApi::FlashAttentionKernel<RealCubeBlock, RealVecFaBlock, RealVecCombineBlock> op;
     op.Init(query, key, value, attnMask, nullPtr, nullPtr, attentionOut, workspace, faMetaData,
             &tilingDataTemp.baseTiling, &tPipe);
     op.Process();
 }
 
-#endif  // FA_KERNEL_INTERFACE_H
+#endif // FA_KERNEL_INTERFACE_H

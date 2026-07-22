@@ -15,8 +15,7 @@
 #include "infer_datatype_context_faker.h"
 
 namespace MoeDistributeCombineV2 {
-class MoeDistributeCombineV2Infershape : public testing::Test{
-};
+class MoeDistributeCombineV2Infershape : public testing::Test {};
 
 // infer shape with bias, success
 TEST_F(MoeDistributeCombineV2Infershape, InferShape0)
@@ -28,7 +27,8 @@ TEST_F(MoeDistributeCombineV2Infershape, InferShape0)
     gert::StorageShape tpSendCountsShape = {{1}, {}};
     gert::StorageShape expertScalesShape = {{32, 8}, {}};
 
-    gert::InfershapeContextPara infershapeContextPara("MoeDistributeCombineV2",
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeDistributeCombineV2",
         {
             {expandXShape, ge::DT_FLOAT16, ge::FORMAT_ND},
             {expertIdsShape, ge::DT_INT32, ge::FORMAT_ND},
@@ -55,11 +55,8 @@ TEST_F(MoeDistributeCombineV2Infershape, InferShape0)
             {"out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"comm_quant_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"group_list_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-        }
-    );
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", 8}
-    };
+        });
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expertOutputShape = {{32, 7168}};
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expertOutputShape);
@@ -76,11 +73,11 @@ TEST_F(MoeDistributeCombineV2Infershape, InferDtype0)
     ge::DataType expertScalesType = ge::DT_FLOAT;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-                    .NodeIoNum(6, 1)
-                    .InputDataTypes({&expandXType, &expertIdsType, &expandIdxType,
-                                    &epSendCountsType, &tpSendCountsType, &expertScalesType})
-                    .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-                    .Build();
+                             .NodeIoNum(6, 1)
+                             .InputDataTypes({&expandXType, &expertIdsType, &expandIdxType, &epSendCountsType,
+                                              &tpSendCountsType, &expertScalesType})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
     auto inferDtypeFunc = spaceRegistry->GetOpImpl("MoeDistributeCombineV2")->infer_datatype;
@@ -88,4 +85,4 @@ TEST_F(MoeDistributeCombineV2Infershape, InferDtype0)
 
     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), ge::DT_FLOAT16);
 }
-}
+} // namespace MoeDistributeCombineV2

@@ -83,6 +83,13 @@ aclnnStatus CausalConv1dUpdateCommonProcess(const aclTensor *x, const aclTensor 
     CHECK_COND(ParseActivationStr(activation) >= 0, ACLNN_ERR_PARAM_INVALID, "Invalid activation: %s",
                activation ? activation : "null");
 
+    if (numAcceptedTokensOptional == nullptr) {
+        auto xViewShape = x->GetViewShape();
+        CHECK_COND(xViewShape.GetDimNum() == 3, ACLNN_ERR_PARAM_INVALID,
+                   "aclnnCausalConv1dUpdate requires 3D x [B, L, D] when numAcceptedTokens is not provided, got %zuD.",
+                   xViewShape.GetDimNum());
+    }
+
     bool ok =
         l0op::CausalConv1d(xFinal, weight, convStatesFinal, biasOptional, queryStartLocOptional, cacheIndicesOptional,
                            nullptr, numAcceptedTokensOptional, activation, nullBlockId, y, uniqueExecutor.get());

@@ -25,7 +25,7 @@ namespace ops::adv::tests::utils {
 
 class ContextIntf {
 public:
-    static constexpr uint64_t kWorkspaceMaxSize = std::uint64_t(2) * std::uint64_t(1024 * 1024 * 1024);  // 2GB
+    static constexpr uint64_t kWorkspaceMaxSize = std::uint64_t(2) * std::uint64_t(1024 * 1024 * 1024); // 2GB
 
     /**
      * Kernel 运行前设置 TensorData 回调函数

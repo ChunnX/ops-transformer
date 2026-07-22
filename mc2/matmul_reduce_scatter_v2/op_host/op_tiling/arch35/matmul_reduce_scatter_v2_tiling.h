@@ -54,9 +54,11 @@ protected:
     {
         return matmulReduceScatterV2TilingData_->mC2Mmv3TailTilingData;
     }
+
 private:
     Mc2Tiling::MatmulReduceScatterV2TilingData matmulReduceScatterV2TilingDataSelf_;
-    Mc2Tiling::MatmulReduceScatterV2TilingData *matmulReduceScatterV2TilingData_; // 用于存储matmulReduceScatter算子的tiling结果
+    Mc2Tiling::MatmulReduceScatterV2TilingData
+        *matmulReduceScatterV2TilingData_; // 用于存储matmulReduceScatter算子的tiling结果
     Mc2MatMulV3Args mmV3Args_;
     Mc2MatmulV3CompileInfo compileInfo_;
 };

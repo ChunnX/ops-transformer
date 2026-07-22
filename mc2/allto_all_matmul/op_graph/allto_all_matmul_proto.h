@@ -84,6 +84,6 @@ REG_OP(AlltoAllMatmul)
     .ATTR(comm_mode, String, "ai_cpu")
     .ATTR(alltoall_out_flag, Bool, true)
     .OP_END_FACTORY_REG(AlltoAllMatmul)
-}  // namespace ge
+} // namespace ge
 
-#endif  // ALLTO_ALL_MATMUL_PROTO_H
+#endif // ALLTO_ALL_MATMUL_PROTO_H

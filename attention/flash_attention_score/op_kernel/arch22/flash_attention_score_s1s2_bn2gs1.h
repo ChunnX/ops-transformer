@@ -2221,6 +2221,7 @@ FlashAttentionScoreS1s2Bn2gs1<implMode, layOutType, hasPse, hasAtten, hasDrop, I
                     dataCopyParams.dstStride = 1;
                     Duplicate<T>(stage2BufTensor[dAlign8], 0, blockSize, extraInfo.vec2S1RealSize, 0,
                                  this->d2SizeAlign16 * sizeof(T) / blockBytes);
+                    AscendC::PipeBarrier<PIPE_V>();
                 }
                 DataCopyPad(stage2BufTensor, this->mm2Res[extraInfo.taskIdMod2][mm2ResOffset], dataCopyParams,
                             dataCopyPadParams);

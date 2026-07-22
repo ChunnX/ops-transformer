@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file mul.h
-* \brief
-*/
+ * \file mul.h
+ * \brief
+ */
 
 #ifndef OP_API_INC_LEVEL0_MUL_H_
 #define OP_API_INC_LEVEL0_MUL_H_

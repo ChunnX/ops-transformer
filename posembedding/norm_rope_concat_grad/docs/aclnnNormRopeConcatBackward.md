@@ -267,7 +267,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddQueryWeight</td>
+          <td>normAddedQueryWeight</td>
           <td>可选输入</td>
           <td>正向encoderQuery进行归一化操作的权重值，对应公式中的γ。</td>
           <td>当文本Query、Key进行带仿射LayerNorm归一化操作时传入，数据类型与参数gradQueryOutput保持一致。</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddQueryMean</td>
+          <td>normAddedQueryMean</td>
           <td>可选输入</td>
           <td>正向encoderQuery进行归一化操作时输出的均值，对应公式中的μ。</td>
           <td>当文本Query、Key进行归一化操作时传入。</td>
@@ -287,7 +287,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddQueryRstd</td>
+          <td>normAddedQueryRstd</td>
           <td>可选输入</td>
           <td>正向encoderQuery进行归一化操作时输出的方差相关项，对应公式中的rstd。</td>
           <td>当文本Query、Key进行归一化操作时传入。</td>
@@ -297,7 +297,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddKeyWeight</td>
+          <td>normAddedKeyWeight</td>
           <td>可选输入</td>
           <td>正向encoderKey进行归一化操作的权重值，对应公式中的γ。</td>
           <td>当文本Query、Key进行带仿射LayerNorm归一化操作时传入，数据类型与参数gradQueryOutput保持一致。</td>
@@ -307,7 +307,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddKeyMean</td>
+          <td>normAddedKeyMean</td>
           <td>可选输入</td>
           <td>正向encoderKey进行归一化操作时输出的均值，对应公式中的μ。</td>
           <td>当文本Query、Key进行归一化操作时传入。</td>
@@ -317,7 +317,7 @@ aclnnStatus aclnnNormRopeConcatBackward(
           <td>√</td>
       </tr>
       <tr>
-          <td>normAddKeyRstd</td>
+          <td>normAddedKeyRstd</td>
           <td>可选输入</td>
           <td>正向encoderKey进行归一化操作时输出的方差相关项，对应公式中的rstd。</td>
           <td>当文本Query、Key进行归一化操作时传入。</td>

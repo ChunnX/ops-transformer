@@ -18,7 +18,7 @@ namespace ops {
 class AlltoAllMatmul : public OpDef {
 public:
     explicit AlltoAllMatmul(const char *name) : OpDef(name)
-{
+    {
         this->Input("x1")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16,       ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,
