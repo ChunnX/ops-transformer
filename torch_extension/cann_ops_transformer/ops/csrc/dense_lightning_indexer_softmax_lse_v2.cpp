@@ -59,13 +59,18 @@ at::Tensor dense_lightning_indexer_softmax_lse_v2_metadata(
 {
     TORCH_CHECK((num_heads_q > 0), "The num_heads_q should be greater than 0, current is: ", num_heads_q);
     TORCH_CHECK((num_heads_k > 0), "The num_heads_k should be greater than 0, current is: ", num_heads_k);
-    TORCH_CHECK((head_dim > 0), "The head_dim should be greater than 0, current is: ", head_dim);
+    TORCH_CHECK((head_dim == 128), "head_dim only supports 128, current is: ", head_dim);
+    TORCH_CHECK((num_heads_q >= 1 && num_heads_q <= 128),
+                "num_heads_q should be in [1, 128], current is: ", num_heads_q);
+    TORCH_CHECK((num_heads_k == 1), "num_heads_k only supports 1, current is: ", num_heads_k);
     TORCH_CHECK((num_heads_q % num_heads_k == 0),
                 "num_heads_q should be divisible by num_heads_k, but got nq=", num_heads_q, " nk=", num_heads_k);
     TORCH_CHECK((cmp_ratio >= 1 && cmp_ratio <= 128),
                 "cmp_ratio should be in [1, 128], current is: ", cmp_ratio);
     TORCH_CHECK((mask_mode == 0 || mask_mode == 3),
                 "mask_mode only supports 0 or 3, current is: ", mask_mode);
+    TORCH_CHECK((layout_q == layout_k),
+                "layout_q and layout_k must be the same, but got layout_q=", layout_q, " layout_k=", layout_k);
     TORCH_CHECK(!((mask_mode == 3 && cmp_ratio > 1) &&
                   (!cmp_residual_k.has_value() || !cmp_residual_k.value().defined())),
                 "cmp_residual_k must be provided when mask_mode=3 and cmp_ratio>1.");
