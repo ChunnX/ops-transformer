@@ -21,6 +21,10 @@ on:
         required: false
         type: string
         default: ''
+      spec:
+        required: false
+        type: string
+        default: 'xlarge'
 
 jobs:
   JOB_compile:
@@ -107,6 +111,6 @@ jobs:
     runs-on:
       - dedicate-hosted
       - ${{ inputs.arch }}
-      - xlarge
+      - ${{ inputs.spec }}
     container:
       image: swr.cn-north-4.myhuaweicloud.com/ci_cann/${{ inputs.image_version }}
