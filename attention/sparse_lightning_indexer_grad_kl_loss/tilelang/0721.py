@@ -1645,20 +1645,22 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.copy(GK_L1_0, GK_L0B_0, transpose=True)
                             T.set_flag("mte1", "m", 2)
                             T.wait_flag("mte1", "m", 2)
-                            if d_idx == 0:
-                                T.wait_flag("fix", "m", 4)
+                            T.wait_flag("fix", "m", 4)
                             T.mma(Q_L0A_0, GK_L0B_0, C_L0C, init=(d_idx == 0))
                             T.set_flag("m", "mte1", 2)
+                            if d_idx + 1 < d_num_total:
+                                T.set_flag("fix", "m", 4)
                         if cur == 1:
                             T.wait_flag("m", "mte1", 3)
                             T.copy(Q_L1_1, Q_L0A_1)
                             T.copy(GK_L1_1, GK_L0B_1, transpose=True)
                             T.set_flag("mte1", "m", 3)
                             T.wait_flag("mte1", "m", 3)
-                            if d_idx == 0:
-                                T.wait_flag("fix", "m", 4)
+                            T.wait_flag("fix", "m", 4)
                             T.mma(Q_L0A_1, GK_L0B_1, C_L0C, init=(d_idx == 0))
                             T.set_flag("m", "mte1", 3)
+                            if d_idx + 1 < d_num_total:
+                                T.set_flag("fix", "m", 4)
                         T.set_flag("m", "mte2", cur)
 
                         # Prefetch next iteration (MTE2 load ∥ cube gemm of current)
@@ -1723,10 +1725,11 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.copy(GKI_L1, GKI_L0B, transpose=True)
                         T.set_flag("mte1", "m", 5)
                         T.wait_flag("mte1", "m", 5)
-                        if k_idx == 0:
-                            T.wait_flag("fix", "m", 5)
+                        T.wait_flag("fix", "m", 5)
                         T.mma(QI_L0A, GKI_L0B, C2_L0C, init=(k_idx == 0))
                         T.set_flag("m", "mte1", 5)
+                        if k_idx + 1 < d_num_query_index:
+                            T.set_flag("fix", "m", 5)
                         # WAR: 下轮载入等 gemm 读完
                         T.set_flag("m", "mte2", 0)
                         T.wait_flag("m", "mte2", 0)
@@ -2736,6 +2739,17 @@ def sparse_lightning_indexer_grad_kl_loss(
                 key, key_index, key_rope, sparse_indices,
                 B, S1, S2_pad, N2, Nidx2, K, DQuery, DQueryIndex, d_rope_orig, query.dtype,
             )
+            if d_rope_orig > 0 and d_rope > d_rope_orig:
+                expected_gkr = torch.nn.functional.pad(
+                    expected_gkr, (0, d_rope - d_rope_orig)
+                )
+            _debug_tensor("Key", key)
+            _debug_tensor("Query", query)
+            _debug_tensor("QueryIndex", query_index)
+            _debug_tensor("KeyIndex", key_index)
+            _debug_tensor("Weights", weights)
+            _debug_tensor("SoftmaxMax", softmax_max)
+            _debug_tensor("SoftmaxSum", softmax_sum)
             _debug_tensor("GatherKey_ws", gather_key_ws)
             _debug_tensor("GatherKeyRope_ws", gather_key_rope_ws)
             _debug_tensor("GatherKeyIndex_ws", gather_key_index_ws)
