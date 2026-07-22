@@ -104,74 +104,6 @@ struct GptOssSwigluActivation {
 struct SituActivation {
     static constexpr float DEFAULT_BETA = 1.0f;
     static constexpr float LINEAR_BETA_DISABLED = 3.402823466e+38F;
-    static constexpr uint32_t UB_BLOCK_BYTES = 32;
-    static constexpr float POLY_RANGE_SQUARE = 0.25f;
-    static_assert(2 * SwigluActivation::PREFERRED_TILE_LENGTH * sizeof(float) +
-                          SwigluActivation::PREFERRED_TILE_LENGTH <=
-                      SwigluActivation::MIN_SHARED_TMP_BYTES,
-                  "SiTU small-input compensation exceeds the shared temporary buffer");
-
-    // The default AscendC Tanh path evaluates an exponential subtraction.
-    // For small |x| this loses significant digits, which become visible after
-    // multiplying by a large beta. Compensate |x| <= 0.5 with the degree-11
-    // Taylor polynomial and keep the intrinsic result outside that interval.
-    CATLASS_DEVICE
-    static void ComputeScaledTanh(AscendC::LocalTensor<float> const &output,
-                                  AscendC::LocalTensor<float> const &input,
-                                  AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer, uint32_t dataLength,
-                                  float scale)
-    {
-        AscendC::Muls(input, input, 1.0f / scale, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Tanh(output, input, sharedTmpBuffer, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-
-        uint32_t alignedDataLength =
-            (dataLength * sizeof(float) + UB_BLOCK_BYTES - 1) / UB_BLOCK_BYTES * UB_BLOCK_BYTES / sizeof(float);
-        auto square = sharedTmpBuffer.template ReinterpretCast<float>();
-        auto polynomial = square[alignedDataLength];
-        auto smallInputMask = sharedTmpBuffer[2 * alignedDataLength * sizeof(float)];
-
-        AscendC::Mul(square, input, input, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Duplicate(polynomial, -1382.0f / 155925.0f, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Mul(polynomial, polynomial, square, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Adds(polynomial, polynomial, 62.0f / 2835.0f, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Mul(polynomial, polynomial, square, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Adds(polynomial, polynomial, -17.0f / 315.0f, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Mul(polynomial, polynomial, square, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Adds(polynomial, polynomial, 2.0f / 15.0f, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Mul(polynomial, polynomial, square, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Adds(polynomial, polynomial, -1.0f / 3.0f, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Mul(polynomial, polynomial, square, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Adds(polynomial, polynomial, 1.0f, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Mul(polynomial, polynomial, input, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-
-        // Apply only the small-input correction so the intrinsic Tanh keeps
-        // its saturation behavior for larger values.
-        AscendC::Sub(polynomial, polynomial, output, dataLength);
-        AscendC::CompareScalar(smallInputMask, square, POLY_RANGE_SQUARE, AscendC::CMPMODE::LE, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Select(polynomial, smallInputMask, polynomial, 0.0f,
-                        AscendC::SELMODE::VSEL_TENSOR_SCALAR_MODE, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Add(output, output, polynomial, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-        AscendC::Muls(output, output, scale, dataLength);
-        AscendC::PipeBarrier<PIPE_V>();
-    }
 
     CATLASS_DEVICE
     static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
@@ -183,7 +115,12 @@ struct SituActivation {
         if (enableLinearBeta) {
             // output = linearBeta * tanh(up / linearBeta). The original up
             // tile can then be reused for the sigmoid denominator.
-            ComputeScaledTanh(output, up, sharedTmpBuffer, dataLength, linearBeta);
+            AscendC::Muls(up, up, 1.0f / linearBeta, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Tanh(output, up, sharedTmpBuffer, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+            AscendC::Muls(output, output, linearBeta, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
 
             AscendC::Muls(up, gate, -1.0f, dataLength);
             AscendC::PipeBarrier<PIPE_V>();
@@ -208,9 +145,13 @@ struct SituActivation {
         // Tanh requires non-overlapping dst/src/tmp tensors. Reusing up as
         // dst satisfies that constraint without allocating another UB tile.
         if (beta != DEFAULT_BETA) {
-            ComputeScaledTanh(up, gate, sharedTmpBuffer, dataLength, beta);
-        } else {
-            AscendC::Tanh(up, gate, sharedTmpBuffer, dataLength);
+            AscendC::Muls(gate, gate, 1.0f / beta, dataLength);
+            AscendC::PipeBarrier<PIPE_V>();
+        }
+        AscendC::Tanh(up, gate, sharedTmpBuffer, dataLength);
+        AscendC::PipeBarrier<PIPE_V>();
+        if (beta != DEFAULT_BETA) {
+            AscendC::Muls(up, up, beta, dataLength);
             AscendC::PipeBarrier<PIPE_V>();
         }
         AscendC::Mul(output, output, up, dataLength);
