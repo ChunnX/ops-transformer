@@ -43,6 +43,12 @@
 #else
 #include "../common/CopyInL1.h"
 #endif
+#if __has_include("../../../sparse_flash_mla/op_kernel/arch35/common/buffer_policy_sfa.h")
+#include "../../../sparse_flash_mla/op_kernel/arch35/common/buffer_policy_sfa.h"
+#else
+#include "../../sparse_flash_mla/arch35/common/buffer_policy_sfa.h"
+#endif
+
 
 using matmul::MatmulType;
 using namespace AscendC;
@@ -108,7 +114,7 @@ private:
     // mm2左矩阵P
     BufferManager<BufferType::L1> l1BufferManager;
     BuffersPolicyDB<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1PBuffers;
-    BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1RightBuffers;
+    BuffersPolicy3buffSFA<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> l1RightBuffers;
     /* GM信息 */
     GlobalTensor<uint32_t> metadataGm;
     GlobalTensor<int32_t> cuSeqlensQGm;
@@ -125,7 +131,7 @@ private:
     bool hasActualSeqOriKvlen = false;
     bool hasActualSeqCmpKvlen = false;
     /* workspace 空间 */
-    BuffersPolicy3buff<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
+    BuffersPolicy3buffSFA<BufferType::GM, SyncType::CROSS_CORE_SYNC_BACKWARD> v0ResGmBuffers;
     /* 核Index信息 */
     int32_t aicIdx;
     /* 分核信息 */
