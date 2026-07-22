@@ -172,48 +172,44 @@ template <typename DLIT>
 __aicore__ inline void DLIKLLossVector2Service<DLIT>::DeterSumLoss()
 {
     if (constInfo.aivIdx == 0) {
-        event_t mte2ToV =
-            static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
-        event_t vToMte3 =
-            static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
-        event_t mte3ToV =
-            static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
-
-        int64_t count = constInfo.aivNum;
-        int64_t countAlign = BlockAlign<T>(count);
-        SumParams sumParams;
-        sumParams.outter = 1;
-        sumParams.n = count;
-        sumParams.inner = countAlign;
-
         DataCopyParams dataCopyParams;
         DataCopyPadParams dataCopyPadParams;
         dataCopyParams.blockCount = 1;
         dataCopyParams.dstStride = 0;
         dataCopyParams.srcStride = 0;
-        dataCopyParams.blockLen = count * sizeof(T);
-        dataCopyPadParams.rightPadding = countAlign - count;
+        dataCopyParams.blockLen = sizeof(T);
+        dataCopyPadParams.rightPadding = 0;
         dataCopyPadParams.paddingValue = 0;
-        DataCopyPad(ubLossIn_, lossDeterGmFloat, dataCopyParams, dataCopyPadParams);
+        event_t mte2ToScalar =
+            static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_S>());
+        float totalLoss = 0.0f;
+        for (int64_t i = 0; i < constInfo.aivNum; ++i) {
+            DataCopyPad(
+                ubLossIn_,
+                lossDeterGmFloat[i * optiling::DETER_LOSS_TMP_GM_NUM],
+                dataCopyParams,
+                dataCopyPadParams);
+            SetFlag<HardEvent::MTE2_S>(mte2ToScalar);
+            WaitFlag<HardEvent::MTE2_S>(mte2ToScalar);
+            totalLoss += ubLossIn_.GetValue(0);
+        }
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE2_S>(mte2ToScalar);
 
-        SetFlag<HardEvent::MTE2_V>(mte2ToV);
-        WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-
-        AscendC::Sum(ubLossOut_, ubLossIn_, tmpUb_, sumParams);
-
-        SetFlag<HardEvent::V_MTE3>(vToMte3);
-        WaitFlag<HardEvent::V_MTE3>(vToMte3);
-
+        ubLossOut_.SetValue(0, totalLoss);
+        event_t scalarToMte3 =
+            static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::S_MTE3>());
+        SetFlag<HardEvent::S_MTE3>(scalarToMte3);
+        WaitFlag<HardEvent::S_MTE3>(scalarToMte3);
         AscendC::DataCopyPad(lossGm, ubLossOut_,
             {static_cast<uint32_t>(1), static_cast<uint32_t>(sizeof(float)),
             static_cast<uint32_t>(0), static_cast<uint32_t>(0)});
 
-        SetFlag<HardEvent::MTE3_V>(mte3ToV);
-        WaitFlag<HardEvent::MTE3_V>(mte3ToV);
-
-        GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE2_V>(mte2ToV);
-        GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::V_MTE3>(vToMte3);
-        GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_V>(mte3ToV);
+        event_t mte3ToScalar =
+            static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_S>());
+        SetFlag<HardEvent::MTE3_S>(mte3ToScalar);
+        WaitFlag<HardEvent::MTE3_S>(mte3ToScalar);
+        GetTPipePtr()->ReleaseEventID<HardEvent::S_MTE3>(scalarToMte3);
+        GetTPipePtr()->ReleaseEventID<HardEvent::MTE3_S>(mte3ToScalar);
     }
 }
 
