@@ -62,3 +62,7 @@ OpForge `eval_20260719_205421` 的 18/18 correctness gate，active-window geomea
 
 本次不声明固定表之外的动态 head、`D=128`、`textLength=256`、任意 batch/sequence/window 支持。范围外
 metadata 会显式失败，不 fallback。
+
+BF16 路径已满足一次外部 STA kernel launch，但并非设备内全程保持 BF16：Q/K 保持 BF16，V tile 因当前
+CATLASS PV lowering 限制在同一 kernel 内 staging 为 half，dense PV 后通过 fp32 修正并直接写回 BF16。
+该边界不增加独立 Cast kernel，也不使用 framework、CPU、vendor whole-op 或其他后端 fallback。

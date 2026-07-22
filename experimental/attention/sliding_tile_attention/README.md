@@ -41,7 +41,9 @@ attentionOut = softmax((Q @ K^T) / sqrt(D), masked_by_sliding_tile_window) @ V
 
 L2 入口完成固定 case 校验和 window 规范化；L0 只登记一次 `SlidingTileAttentionFai` launcher；设备端以一个
 MIX kernel 完成 QK、online softmax、PV、BF16 修正及输出写回。BF16 路径已移除旧的外部
-`Cast(Q/K/V) + FAI + Cast(O)` 多 kernel 链，必要的数据转换由同一次 STA kernel launch 内部拥有。
+`Cast(Q/K/V) + FAI + Cast(O)` 多 kernel 链。当前 CATLASS PV 路径不提供所需的混合 BF16-V lowering，
+因此 V tile 在同一次 STA kernel launch 内 staging 为 half 完成 dense PV，再由 fp32 修正并直接写回 BF16；
+该内部表示转换不是独立 Cast 算子，也不经过 framework、CPU 或 vendor whole-op fallback。
 
 ## 编译
 
