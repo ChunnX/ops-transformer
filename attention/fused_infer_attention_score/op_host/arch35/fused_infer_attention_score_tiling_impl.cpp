@@ -369,7 +369,11 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::AdjustSinnerAndSouter(gert::
 
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         sOuterFactor_ = SOUTER_64;
-        sInnerFactor_ = SINNER_512;
+        if (fiaInfo.qkHeadDim == DSIZE_256) {
+            sInnerFactor_ = SINNER_256;
+        } else {
+            sInnerFactor_ = SINNER_512;
+        }
     }
 
     OP_LOGI(fiaInfo.opName, "Souter:%u SInner:%u softmaxSOuterFactor %u", sOuterFactor_, sInnerFactor_,
@@ -1238,7 +1242,11 @@ void FusedInferAttentionScoreTilingImpl::ApplySinnerSouterOverrides(const FiaTil
     }
     if (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
         sOuterFactor_ = SOUTER_64;
-        sInnerFactor_ = SINNER_512;
+        if (fiaInfo.qkHeadDim == DSIZE_256) {
+            sInnerFactor_ = SINNER_256;
+        } else {
+            sInnerFactor_ = SINNER_512;
+        }
     }
 }
 
@@ -1335,6 +1343,7 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingIn
         {false, SOUTER_64, SINNER_256, DSIZE_64, DSIZE_128, Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128},
         {false, SOUTER_128, SINNER_512, DSIZE_64, DSIZE_64, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64},
         {false, SOUTER_128, SINNER_512, DSIZE_128, DSIZE_128, Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128},
+        {false, SOUTER_128, SINNER_256, DSIZE_256, DSIZE_256, Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256},
     };
 
     for (const auto &rule : configRules) {
@@ -1526,8 +1535,9 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetWorkspaceNormal(const Fia
     uint32_t calcTypeSize = sizeof(float);
     if ((!dnFlag_ && dSize > DSIZE_128) || (dnFlag_ && dSize > DSIZE_192)) {
         bmm2Bytes = s1BasicBlock * bmm2ResBlockSize * calcTypeSize;
+        vec2Bytes = s1BasicBlock * bmm2ResBlockSize * calcTypeSize;
         if (dVBasicBlock > DSIZE_256) {
-            vec2Bytes = s1BasicBlock * dVBasicBlock * calcTypeSize;
+            vec2Bytes += s1BasicBlock * dVBasicBlock * calcTypeSize;
         }
     }
     curWorkspaceSize = (bmm2Bytes + vec2Bytes) * 3 * platformInfo_.coreNum + // 3: perload 2次 需要2+1
