@@ -792,7 +792,7 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     T.wait_flag("mte3", "v", 1)
 
-            T.set_cross_flag("MTE3", V1_PAIR_FLAG, 1)
+            T.set_cross_flag("MTE3", V1_PAIR_FLAG)
             T.wait_cross_flag(V1_PAIR_FLAG)
 
     @T.macro
