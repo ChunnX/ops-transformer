@@ -442,6 +442,12 @@ void FiaTilingNonQuantMla::FillTilingBaseParams()
     tilingData_.baseParams.set_usedCoreNum(usedCoreNum_);
     tilingData_.baseParams.set_softmaxLseFlag(fiaInfo_->softmaxLseFlag ? 1 : 0);
     tilingData_.baseParams.set_isEmptyBatchOverHalf(false);
+    tilingData_.kvStrideParams.set_keyBnStride(0);
+    tilingData_.kvStrideParams.set_valueBnStride(0);
+    if (fiaInfo_->pageAttentionFlag && fiaInfo_->hasViewStride) {
+        tilingData_.kvStrideParams.set_keyBnStride(fiaInfo_->keyBnStride);
+        tilingData_.kvStrideParams.set_valueBnStride(fiaInfo_->valueBnStride);
+    }
 }
 
 void FiaTilingNonQuantMla::FillTilingPageAttenParams()

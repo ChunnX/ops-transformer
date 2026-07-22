@@ -37,8 +37,8 @@ struct PAShape{
     uint32_t actHeadDim; // 实际拷贝col大小，考虑到N切块 s*d， 对应d
     uint32_t copyRowNum;
     uint32_t copyRowNumAlign;
-    uint32_t pageStride = 0;
-    uint32_t n2Stride = 0;
+    uint64_t pageStride = 0;
+    uint64_t n2Stride = 0;
 };
 
 struct Position{

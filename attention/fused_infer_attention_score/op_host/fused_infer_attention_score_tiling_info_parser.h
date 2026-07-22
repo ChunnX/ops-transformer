@@ -69,7 +69,7 @@ public:
     void GetQuantMode();
     ge::graphStatus GetKvLayout();
     void GetKvIsContiguous();
-    void GetKvStrideValues();
+    ge::graphStatus GetKvStrideValues();
     void SetFiaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FiaLayout layout,
                                     int64_t &maxActualSeqLen);
@@ -143,7 +143,12 @@ public:
     // 增加strides参数，预计5个，k/v/krope/kscale/vscale
     const gert::Stride *keyStrides_ = nullptr;
     const gert::Stride *valueStrides_ = nullptr;
+    gert::Stride keyContiguousStrides_;
+    gert::Stride valueContiguousStrides_;
+    gert::Stride keyRopeContiguousStrides_;
     const gert::Stride *kRopeStrides_ = nullptr;
+    gert::Stride keyScaleContiguousStrides_;
+    gert::Stride valueScaleContiguousStrides_;
     const gert::Stride *kScaleStrides_ = nullptr;
     const gert::Stride *vScaleStrides_ = nullptr;
     bool hasViewStride_ = true;

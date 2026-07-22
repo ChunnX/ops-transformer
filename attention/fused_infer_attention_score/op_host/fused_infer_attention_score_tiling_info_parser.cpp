@@ -37,6 +37,10 @@ ge::graphStatus CheckTensorContiguousLocal(const uint32_t &tensorDimNum, const g
     if (strides == nullptr || strides->GetDimNum() == 0) {
         return ge::GRAPH_SUCCESS;
     }
+    if (strides->GetDimNum() < tensorDimNum) {
+        index = static_cast<int32_t>(tensorDimNum);
+        return ge::GRAPH_FAILED;
+    }
     if (tensorDimNum == 0 || tensorDimNum == 1) {
         return ge::GRAPH_SUCCESS;
     }
@@ -51,6 +55,60 @@ ge::graphStatus CheckTensorContiguousLocal(const uint32_t &tensorDimNum, const g
         preStride *= inputShape.GetDim(index);
     }
     return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus ValidateStrideLocal(const char *opName, const char *tensorName, const gert::Shape &inputShape,
+    const gert::Stride *strides)
+{
+    OP_CHECK_IF(strides == nullptr,
+        OP_LOGE(opName, "Failed to get stride metadata for view input %s.", tensorName),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(strides->GetDimNum() < inputShape.GetDimNum(),
+        OP_LOGE(opName, "The stride rank of %s is %zu, which is smaller than its input rank %zu.", tensorName,
+            static_cast<size_t>(strides->GetDimNum()), static_cast<size_t>(inputShape.GetDimNum())),
+        return ge::GRAPH_FAILED);
+    for (uint32_t dim = 0; dim < inputShape.GetDimNum(); ++dim) {
+        OP_CHECK_IF(inputShape.GetDim(dim) > 1 && strides->GetStride(dim) <= 0,
+            OP_LOGE(opName, "The stride of %s at non-singleton dimension %u must be greater than 0.", tensorName,
+                dim),
+            return ge::GRAPH_FAILED);
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+void BuildContiguousStride(const gert::Shape &shape, gert::Stride &strides)
+{
+    strides.SetDimNum(shape.GetDimNum());
+    uint64_t stride = 1;
+    for (int32_t dim = static_cast<int32_t>(shape.GetDimNum()) - 1; dim >= 0; --dim) {
+        strides.SetStride(dim, stride);
+        stride *= static_cast<uint64_t>(shape.GetDim(dim));
+    }
+}
+
+ge::graphStatus ValidateForwardedStrideRankLocal(const char *opName, const char *tensorName,
+    const gert::Stride *strides, uint32_t requiredRank)
+{
+    OP_CHECK_IF(strides == nullptr || strides->GetDimNum() < requiredRank,
+        OP_LOGE(opName, "The stride rank of %s must be at least %u for the selected PA layout.", tensorName,
+            requiredRank),
+        return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
+bool HasUsableStride(const gert::Stride *stride)
+{
+    return stride != nullptr && stride->GetDimNum() > 0;
+}
+
+bool HasStrideMetadata(const std::vector<gert::Stride *> &strides)
+{
+    for (const gert::Stride *stride : strides) {
+        if (HasUsableStride(stride)) {
+            return true;
+        }
+    }
+    return false;
 }
 } // namespace
 
@@ -249,19 +307,121 @@ ge::graphStatus FiaInfoParser::GetOpName()
 
 ge::graphStatus FiaInfoParser::GetStrides()
 {
-    // 用opbase版本判断，老版本opbase为tensorv1
-    if (context_->InputIsView(KEY_INDEX) == false) {
-        hasViewStride_ = false;
-        return ge::GRAPH_SUCCESS;
+    const bool hasKeyRope = opParamInfo_.keyRope.desc != nullptr && opParamInfo_.keyRope.tensor != nullptr;
+    const bool hasKeyScale = opParamInfo_.keyAntiquantScale.tensor != nullptr;
+    const bool hasValueScale = opParamInfo_.valueAntiquantScale.tensor != nullptr;
+    // InputIsView uses flattened actual-input indices in some CANN releases. IR and actual indices are aligned
+    // only when each dynamic K/V list has one tensor, which includes the target PageAttention cache scenario.
+    const bool hasSingleKvTensor = kCache_.size() == 1 && vCache_.size() == 1;
+    const bool keyIsView = hasSingleKvTensor && context_->InputIsView(KEY_INDEX);
+    const bool valueIsView = hasSingleKvTensor && context_->InputIsView(VALUE_INDEX);
+    const bool keyRopeIsView = hasSingleKvTensor && hasKeyRope && context_->InputIsView(KEY_ROPE_INDEX);
+    const bool keyScaleIsView =
+        hasSingleKvTensor && hasKeyScale && context_->InputIsView(KEY_ANTIQUANT_SCALE_INDEX);
+    const bool valueScaleIsView =
+        hasSingleKvTensor && hasValueScale && context_->InputIsView(VALUE_ANTIQUANT_SCALE_INDEX);
+    if (hasKeyRope) {
+        kRopeStrides_ = context_->GetInputStride(KEY_ROPE_INDEX);
     }
-    keyStrides_ = context_->GetDynamicInputStride(KEY_INDEX, 0);
-    valueStrides_ = context_->GetDynamicInputStride(VALUE_INDEX, 0);
-    if (opParamInfo_.keyAntiquantScale.tensor != nullptr || opParamInfo_.valueAntiquantScale.tensor != nullptr) {
+    if (hasKeyScale) {
         kScaleStrides_ = context_->GetInputStride(KEY_ANTIQUANT_SCALE_INDEX);
+    }
+    if (hasValueScale) {
         vScaleStrides_ = context_->GetInputStride(VALUE_ANTIQUANT_SCALE_INDEX);
     }
-    if (opParamInfo_.keyRope.desc != nullptr) {
-        kRopeStrides_ = context_->GetInputStride(KEY_ROPE_INDEX);
+    if (!HasUsableStride(kRopeStrides_)) {
+        kRopeStrides_ = nullptr;
+    }
+    if (!HasUsableStride(kScaleStrides_)) {
+        kScaleStrides_ = nullptr;
+    }
+    if (!HasUsableStride(vScaleStrides_)) {
+        vScaleStrides_ = nullptr;
+    }
+
+    // A reported view without usable stride metadata cannot be addressed safely. This also protects graph-mode
+    // callers that bypass the ACLNN TensorV2 compatibility gate.
+    OP_CHECK_IF(keyIsView && !HasStrideMetadata(kStrideCache_),
+        OP_LOGE(opName_, "Failed to get stride metadata for view input key."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valueIsView && !HasStrideMetadata(vStrideCache_),
+        OP_LOGE(opName_, "Failed to get stride metadata for view input value."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(keyRopeIsView && kRopeStrides_ == nullptr,
+        OP_LOGE(opName_, "Failed to get stride metadata for view input keyRope."), return ge::GRAPH_FAILED);
+    OP_CHECK_IF(keyScaleIsView && kScaleStrides_ == nullptr,
+        OP_LOGE(opName_, "Failed to get stride metadata for view input keyAntiquantScale."),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(valueScaleIsView && vScaleStrides_ == nullptr,
+        OP_LOGE(opName_, "Failed to get stride metadata for view input valueAntiquantScale."),
+        return ge::GRAPH_FAILED);
+
+    hasViewStride_ = HasStrideMetadata(kStrideCache_) || HasStrideMetadata(vStrideCache_) ||
+        kRopeStrides_ != nullptr || kScaleStrides_ != nullptr || vScaleStrides_ != nullptr;
+    if (!hasViewStride_) {
+        return ge::GRAPH_SUCCESS;
+    }
+
+    if (HasUsableStride(kStrideCache_[0])) {
+        keyStrides_ = kStrideCache_[0];
+    } else {
+        BuildContiguousStride(opParamInfo_.key.shape->GetStorageShape(), keyContiguousStrides_);
+        keyStrides_ = &keyContiguousStrides_;
+    }
+    if (HasUsableStride(vStrideCache_[0])) {
+        valueStrides_ = vStrideCache_[0];
+    } else {
+        BuildContiguousStride(opParamInfo_.value.shape->GetStorageShape(), valueContiguousStrides_);
+        valueStrides_ = &valueContiguousStrides_;
+    }
+    if (ValidateStrideLocal(opName_, "key", opParamInfo_.key.shape->GetStorageShape(), keyStrides_) !=
+            ge::GRAPH_SUCCESS ||
+        ValidateStrideLocal(opName_, "value", opParamInfo_.value.shape->GetStorageShape(), valueStrides_) !=
+            ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    for (size_t index = 0; index < kStrideCache_.size(); ++index) {
+        if (HasUsableStride(kStrideCache_[index]) &&
+            ValidateStrideLocal(opName_, "key", kCache_[index]->GetStorageShape(), kStrideCache_[index]) !=
+                ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    for (size_t index = 0; index < vStrideCache_.size(); ++index) {
+        if (HasUsableStride(vStrideCache_[index]) &&
+            ValidateStrideLocal(opName_, "value", vCache_[index]->GetStorageShape(), vStrideCache_[index]) !=
+                ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (hasKeyScale) {
+        if (kScaleStrides_ == nullptr) {
+            BuildContiguousStride(opParamInfo_.keyAntiquantScale.tensor->GetStorageShape(), keyScaleContiguousStrides_);
+            kScaleStrides_ = &keyScaleContiguousStrides_;
+        }
+        if (ValidateStrideLocal(opName_, "keyAntiquantScale",
+                opParamInfo_.keyAntiquantScale.tensor->GetStorageShape(), kScaleStrides_) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (hasValueScale) {
+        if (vScaleStrides_ == nullptr) {
+            BuildContiguousStride(
+                opParamInfo_.valueAntiquantScale.tensor->GetStorageShape(), valueScaleContiguousStrides_);
+            vScaleStrides_ = &valueScaleContiguousStrides_;
+        }
+        if (ValidateStrideLocal(opName_, "valueAntiquantScale",
+                opParamInfo_.valueAntiquantScale.tensor->GetStorageShape(), vScaleStrides_) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+    }
+    if (hasKeyRope) {
+        if (kRopeStrides_ == nullptr) {
+            BuildContiguousStride(opParamInfo_.keyRope.tensor->GetStorageShape(), keyRopeContiguousStrides_);
+            kRopeStrides_ = &keyRopeContiguousStrides_;
+        }
+        if (ValidateStrideLocal(opName_, "keyRope", opParamInfo_.keyRope.tensor->GetStorageShape(),
+                kRopeStrides_) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -269,7 +429,7 @@ ge::graphStatus FiaInfoParser::GetStrides()
 void FiaInfoParser::GetKvIsContiguous()
 {
     if (!hasViewStride_) {
-        return ;
+        return;
     }
     for (size_t i = 0; i < kStrideCache_.size(); ++i) {
         int32_t dim = 0;
@@ -297,10 +457,17 @@ void FiaInfoParser::GetKvIsContiguous()
     }
 }
 
-void FiaInfoParser::GetKvStrideValues()
+ge::graphStatus FiaInfoParser::GetKvStrideValues()
 {
-    if (!hasViewStride_) {
-        return;
+    if (!hasViewStride_ || kvStorageMode_ != KvStorageMode::PAGE_ATTENTION) {
+        return ge::GRAPH_SUCCESS;
+    }
+    const uint32_t requiredRank = kvLayout_ == FiaLayout::BnBsH ? 1U : 2U;
+    if (ValidateForwardedStrideRankLocal(opName_, "key", keyStrides_, requiredRank) != ge::GRAPH_SUCCESS ||
+        ValidateForwardedStrideRankLocal(opName_, "value", valueStrides_, requiredRank) != ge::GRAPH_SUCCESS ||
+        (kRopeStrides_ != nullptr &&
+         ValidateForwardedStrideRankLocal(opName_, "keyRope", kRopeStrides_, requiredRank) != ge::GRAPH_SUCCESS)) {
+        return ge::GRAPH_FAILED;
     }
     if (kvLayout_ == FiaLayout::BnBsH) {
         if (keyStrides_ != nullptr) {
@@ -326,6 +493,7 @@ void FiaInfoParser::GetKvStrideValues()
             kRopeN2Stride_ = kRopeStrides_->GetStride(1);
         }
     }
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus FiaInfoParser::GetNpuInfo()
@@ -1680,7 +1848,9 @@ ge::graphStatus FiaInfoParser::Parse(FiaTilingInfo &fiaInfo)
     if (ge::GRAPH_SUCCESS != GetQueryAndOutLayout() || ge::GRAPH_SUCCESS != GetKvLayout()) {
         return ge::GRAPH_FAILED;
     }
-    GetKvStrideValues();
+    if (ge::GRAPH_SUCCESS != GetKvStrideValues()) {
+        return ge::GRAPH_FAILED;
+    }
     if (ge::GRAPH_SUCCESS != GetEmptyTensorFlag()) {
         return ge::GRAPH_FAILED;
     }
