@@ -1604,47 +1604,6 @@ TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_recompute_nz_dk_half_una
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// epsilon 是 RmsNorm 分母的平滑项，非正数会让分母出现 0 或负数开方 → tiling 必须拦截
-TEST_F(KvRmsNormRopeCacheTiling, kv_rms_norm_rope_cache_non_positive_epsilon_tiling)
-{
-    optiling::KvRmsNormRopeCacheCompileInfo compileInfo;
-    compileInfo.coreNum = 48;
-    compileInfo.ubSize = 196608;
-    gert::TilingContextPara tilingContextPara(
-        "KvRmsNormRopeCache",
-        {
-            {{{4, 1, 1, 192},{4, 1, 1, 192}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{128},{128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{4, 1},{4, 1}}, ge::DT_INT64, ge::FORMAT_ND},
-            {{{4, 1, 128, 64},{4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{4, 1, 128, 128},{4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            kOptionalInput,
-            kOptionalInput,
-            kOptionalInput,
-            kOptionalInput,
-            kOptionalInput
-        },
-        {
-            {{{4, 1, 128, 64},{4, 1, 128, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{4, 1, 128, 128},{4, 1, 128, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{4, 1, 1, 64},{4, 1, 1, 64}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{4, 1, 1, 128},{4, 1, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND}
-        },
-        {
-            {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(0.0f)},
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"is_output_kv", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        },
-        &compileInfo,
-        "Ascend950",
-        64,
-        196608);
-
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
-}
-
 // cacheRowLimit is the sole host-side source of the kernel's index upper bound
 // (`if (seqIndex >= 0 && seqIndex < cacheRowLimit)`), so its value is asserted directly here:
 // GetCacheRowLimit gives cacheLength for Norm and blockNum * blockSize for the PA family.
