@@ -212,17 +212,23 @@ def build_pt_payload(case):
 def save_test_cases(test_cases, output_dir):
     os.makedirs(output_dir, exist_ok=True)
     saved_count = 0
+    skipped_count = 0
     for case in test_cases:
         try:
-            payload = build_pt_payload(case)
             output_path = os.path.join(output_dir, f"{sanitize_case_name(case)}.pt")
+            if os.path.exists(output_path):
+                skipped_count += 1
+                print(f"Skipped existing StemIndexer testcase pt: {output_path}")
+                continue
+            print(f"Generating StemIndexer testcase pt for {case.get('case_id', '<unknown>')}: {output_path}")
+            payload = build_pt_payload(case)
             torch.save(payload, output_path)
             saved_count += 1
             print(f"Saved StemIndexer testcase pt: {output_path}")
         except Exception as err:
             print(f"[FAILED] Generate pt for {case.get('case_id', '<unknown>')}: {err}")
             raise
-    print(f"Saved {saved_count} StemIndexer testcase pt files.")
+    print(f"Saved {saved_count}, skipped {skipped_count} existing StemIndexer testcase pt files.")
 
 
 def main():
