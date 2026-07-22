@@ -132,7 +132,6 @@ stages:
           package_name: 'cann-ops-transformer_linux-aarch64.run'
       JOB_experimental_compile:
         name: Compile_experimental_x86
-        needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_X86_experimental'
