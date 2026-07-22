@@ -51,7 +51,6 @@ jobs:
             ${{ env.obs_path }}/pr_filelist_mod.txt
             ${{ env.obs_path }}/update_file_detail.txt
             ${{ env.obs_path }}/compile.sh
-            ${{ env.obs_path }}/update_image.sh
           path: ${{ steps.process_checkout.outputs.path }}
       -
         name: compile_acc
