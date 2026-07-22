@@ -111,8 +111,8 @@ static constexpr AscendC::MicroAPI::CastTrait CAST_32_TO_83 = {
     template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_,       \
               bool IsTensorList_, uint32_t TileM, uint32_t TileN, bool TopkWeightsPrefetch, bool IsInterleaved_>
 #define BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS                                                                       \
-    DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_, TileM, TileN, TopkWeightsPrefetch,  \
-    IsInterleaved_
+    DataTypeOut_, DataTypeIn_, DataTypeX2Scale_, DataTypeX1Scale_, IsTensorList_, TileM, TileN, TopkWeightsPrefetch,   \
+        IsInterleaved_
 
 template <typename DataTypeOut_, typename DataTypeIn_, typename DataTypeX2Scale_, typename DataTypeX1Scale_,
           bool IsTensorList_, uint32_t TileM = 256, uint32_t TileN = 256, bool TopkWeightsPrefetch = false,
@@ -243,7 +243,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     yScaleGmAddr_ = params.yScaleGmAddr;
     groupFlagListGmBaseAddr_ = params.groupFlagListGmAddr;
     clampLimit_ = params.clampLimit;
-    metaInfoGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float*>(params.metaInfoGmAddr));
+    metaInfoGm_.SetGlobalBuffer(reinterpret_cast<__gm__ float *>(params.metaInfoGmAddr));
     if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e4m3fn_t>::value) {
         fpEmax_ = FP8_E4M3_MAX_EXP;
     } else if constexpr (AscendC::IsSameType<DataTypeOut, fp8_e5m2_t>::value) {
@@ -256,7 +256,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 
     // 重构UB内存
     // 当前master默认非interleaved，保留完整256x256空间；interleaved预留按half tile + pingpong偏移使用。
-    constexpr uint32_t MAX_SINGLE_MN_ALIAS = IsInterleaved_ ? MAX_SINGLE_MN / MegaMoeImpl::SWIGLU_N_HALF : MAX_SINGLE_MN;
+    constexpr uint32_t MAX_SINGLE_MN_ALIAS =
+        IsInterleaved_ ? MAX_SINGLE_MN / MegaMoeImpl::SWIGLU_N_HALF : MAX_SINGLE_MN;
     constexpr uint32_t gluResOffset = 0;
     gluRes_ = AscendC::LocalTensor<bfloat16_t>(AscendC::TPosition::VECCALC, gluResOffset, MAX_SINGLE_MN_ALIAS);
     constexpr uint32_t quantOutputOffset = gluResOffset + MAX_SINGLE_MN_ALIAS * sizeof(bfloat16_t);
@@ -274,8 +275,7 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     // weight UB: 放在 VECIN 区之后的安全区域，仅 mode=1 分配
     if constexpr (TopkWeightsPrefetch) {
         constexpr uint32_t vecinEnd = MAX_SINGLE_MN * sizeof(DataTypeIn) * 2U;
-        weightUb_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECCALC, vecinEnd,
-                                                MAX_TILE_M * INT32_PER_256B);
+        weightUb_ = AscendC::LocalTensor<float>(AscendC::TPosition::VECCALC, vecinEnd, MAX_TILE_M * INT32_PER_256B);
     }
 }
 
@@ -287,8 +287,8 @@ BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::UpdateGlob
         quantOutputGlobal_.SetGlobalBuffer((__gm__ int8_t *)yGmAddr_ + Get<Y_IDX>(baseOffset));
         quantScaleGlobal_.SetGlobalBuffer((__gm__ int8_t *)yScaleGmAddr_ + Get<Y_SCALE_IDX>(baseOffset));
         if (groupFlagListGmBaseAddr_ != nullptr) {
-            groupFlagListGmAddr_ = (__gm__ int32_t *)groupFlagListGmBaseAddr_ +
-                Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
+            groupFlagListGmAddr_ =
+                (__gm__ int32_t *)groupFlagListGmBaseAddr_ + Get<GROUP_FLAG_IDX>(baseOffset) * INT_CACHELINE;
         } else {
             groupFlagListGmAddr_ = nullptr;
         }
@@ -597,9 +597,9 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
     bfloat16_t numZero = 0;
 
     // 权重已在 AivGmm1PostGeneric 中预加载到 weightUb_，直接取地址
-    __ubuf__ float* weightUbAddr = nullptr;
+    __ubuf__ float *weightUbAddr = nullptr;
     if constexpr (TopkWeightsPrefetch) {
-        weightUbAddr = (__ubuf__ float*)weightUb_.GetPhyAddr();
+        weightUbAddr = (__ubuf__ float *)weightUb_.GetPhyAddr();
     }
 
     // swiglu
@@ -717,10 +717,8 @@ __aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LO
 }
 
 BLOCK_EPILOGUE_SWIGLU_QUANT_CLASS_LOCAL_PARAMS
-__aicore__ inline void
-BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluForMX(uint16_t mSize,
-                                                                                      uint16_t pingpongIdx,
-                                                                                      uint64_t mLoc)
+__aicore__ inline void BlockEpilogueSwigluMxQuant<BLOCK_EPILOGUE_DEQUANT_FUNC_LOCAL_PARAMS>::VFDoSwigluForMX(
+    uint16_t mSize, uint16_t pingpongIdx, uint64_t mLoc)
 {
     constexpr uint32_t pongElemOf_DataTypeIn = MAX_SINGLE_MN;
     constexpr uint32_t pongElemOf_bf16 = MAX_SINGLE_MN * sizeof(DataTypeIn) / sizeof(bfloat16_t);
