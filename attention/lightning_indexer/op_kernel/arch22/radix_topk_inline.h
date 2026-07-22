@@ -304,6 +304,11 @@ __aicore__ inline void InlineRadixTopK(
     bfloat16_t boundaryBf16 = *reinterpret_cast<bfloat16_t *>(&boundaryNumber16);
     float boundaryFloat = AscendC::Cast(boundaryBf16);
 
+    // Reuse outValueBuf for vecIndex and gatheredIndex during extraction
+    LocalTensor<int32_t> vecIndex = outValueBuf.Get<int32_t>();
+    // outIndexBuf: cmpMaskTensor (uint8_t) at offset 0, outIndexLocal (int32_t) after
+    // They overlap but are used in different phases (compare then gather)
+
     uint32_t writeOffset = 0;
     for (uint32_t tileId = 0; tileId < tileNum_; tileId++) {
         RDX_V_S_SYNC();
@@ -313,36 +318,65 @@ __aicore__ inline void InlineRadixTopK(
 
         uint32_t curTileLen = (tileId == tileNum_ - 1) ? tailTileLen_ : tileLen_;
 
-        // CopyIn from UB cache, Cast to bf16
+        // CopyIn from UB cache, Cast float->bf16->float (bf16 precision)
         DataCopy(xLocalFp32, scoreCache[tileId * tileLen_], tileLenAlign_);
         Cast(xLocalB16, xLocalFp32, RoundMode::CAST_ROUND, curTileLen);
         PipeBarrier<PIPE_V>();
+        // Cast bf16->float32 (CAST_NONE = zero-extend mantissa, exact bf16 precision)
+        Cast(xLocalFp32, xLocalB16, RoundMode::CAST_NONE, curTileLen);
+        PipeBarrier<PIPE_V>();
 
         int32_t tileOffset = static_cast<int32_t>(tileId * tileLen_);
+        uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(int32_t) - 1) /
+            (REPEAT_SIZE / sizeof(int32_t)) * (REPEAT_SIZE / sizeof(int32_t));
 
-        // Scalar GT + EQ: read bf16, convert via int16<<16, compare with boundary
-        RDX_V_S_SYNC();
-        for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
-            int16_t bits = xLocalInt16.GetValue(i);
-            int32_t floatBits = static_cast<int32_t>(bits) << 16;
-            float scoreFloat = *reinterpret_cast<float *>(&floatBits);
-            if (scoreFloat > boundaryFloat) {
-                indexGm.SetValue(writeOffset, static_cast<int32_t>(i) + tileOffset);
-                writeOffset++;
-                curTileK--;
-            }
-        }
-        for (uint32_t i = 0; i < curTileLen && curTileK > 0; i++) {
-            int16_t bits = xLocalInt16.GetValue(i);
-            int32_t floatBits = static_cast<int32_t>(bits) << 16;
-            float scoreFloat = *reinterpret_cast<float *>(&floatBits);
-            if (scoreFloat == boundaryFloat) {
-                indexGm.SetValue(writeOffset, static_cast<int32_t>(i) + tileOffset);
-                writeOffset++;
-                curTileK--;
-            }
+        // Generate sequential index [0, 1, 2, ..., curTileLen-1]
+        RDX_S_V_SYNC();
+        for (uint32_t i = 0; i < curTileLen; i++) {
+            vecIndex.SetValue(i, static_cast<int32_t>(i));
         }
         RDX_S_V_SYNC();
+
+        // GT pass: Compares<float, GT> on bf16-precision float32
+        Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, boundaryFloat,
+            AscendC::CMPMODE::GT, curTileLenAlign32);
+        PipeBarrier<PIPE_V>();
+
+        // GatherMask to extract indices where score > boundary
+        uint64_t gtCnt = 0;
+        GatherMask(outIndexLocal, vecIndex, cmpMaskTensor.template ReinterpretCast<uint32_t>(),
+                   true, curTileLen, {1, 1, 0, 0}, gtCnt);
+        PipeBarrier<PIPE_V>();
+        RDX_V_S_SYNC();
+        uint32_t gtCount = static_cast<uint32_t>(gtCnt);
+        if (gtCount > static_cast<uint32_t>(curTileK)) { gtCount = static_cast<uint32_t>(curTileK); }
+        for (uint32_t i = 0; i < gtCount; i++) {
+            indexGm.SetValue(writeOffset, outIndexLocal.GetValue(i) + tileOffset);
+            writeOffset++;
+            curTileK--;
+        }
+        RDX_S_V_SYNC();
+
+        if (curTileK > 0) {
+            // EQ pass: Compares<float, EQ> on bf16-precision float32
+            Compares<float, uint8_t>(cmpMaskTensor, xLocalFp32, boundaryFloat,
+                AscendC::CMPMODE::EQ, curTileLenAlign32);
+            PipeBarrier<PIPE_V>();
+
+            uint64_t eqCnt = 0;
+            GatherMask(outIndexLocal, vecIndex, cmpMaskTensor.template ReinterpretCast<uint32_t>(),
+                       true, curTileLen, {1, 1, 0, 0}, eqCnt);
+            PipeBarrier<PIPE_V>();
+            RDX_V_S_SYNC();
+            uint32_t eqCount = static_cast<uint32_t>(eqCnt);
+            if (eqCount > static_cast<uint32_t>(curTileK)) { eqCount = static_cast<uint32_t>(curTileK); }
+            for (uint32_t i = 0; i < eqCount; i++) {
+                indexGm.SetValue(writeOffset, outIndexLocal.GetValue(i) + tileOffset);
+                writeOffset++;
+                curTileK--;
+            }
+            RDX_S_V_SYNC();
+        }
     }
 
     for (uint32_t i = writeOffset; i < kValue; i++) {
