@@ -460,8 +460,18 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             }
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(1);
           }
-          AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(12);
+          if (vid == 0) {
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(10);
+          }
+          if (vid == 1) {
+            AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(11);
+          }
           AscendC::CrossCoreWaitFlag(12);
+        }
+        if ASCEND_IS_AIC {
+          AscendC::CrossCoreWaitFlag(10);
+          AscendC::CrossCoreWaitFlag(11);
+          AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(12);
         }
         if ASCEND_IS_AIV {
           tl::ascend::Fill<float>(v1_bw_eps[0], 1.000000e-08f, 128);
