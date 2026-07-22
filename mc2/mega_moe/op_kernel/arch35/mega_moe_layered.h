@@ -1095,7 +1095,6 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffset
                           MXFP_MULTI_BASE_SIZE; // 输出 token-scale 长度,紧密排列
     uint32_t copyInNum = Ops::Base::CeilAlign(static_cast<int64_t>(mxQuantTokenAlignBytes_ + mxQuantScaleAlignBytes_),
                                               static_cast<int64_t>(ALIGN_32)); // 输入 token-scale 拼接,非紧密排列
-    GlobalTensor<ActivationType> remoteRankGlobalTensor;
     GlobalTensor<ActivationType> tokenRevGlobalTensor;
     GlobalTensor<QuantScaleOutType> scaleRevGlobalTensor;
     tokenRevGlobalTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ActivationType *>(
@@ -1189,7 +1188,6 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffset
                                  widthAScale * sizeof(QuantScaleOutType));
         }
         hcomm_.Drain(GetUrmaCommHandle(mc2Context_, relayRank, rankId_));
-        PipeBarrier<PIPE_ALL>();
     }
     // Phase 3: triple 三元组搬出
     SyncFuncStatic<AscendC::HardEvent::S_MTE3, SYNC_EVENT_ID3>();
