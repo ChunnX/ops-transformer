@@ -696,20 +696,27 @@ ge::graphStatus LIInfoParser::ValidateInputShapesMatchQtnd()
     if (kLayout_ == DataLayout::TND) {
         OP_CHECK_IF(
         (opParamInfo_.actualSeqLengths.tensor->GetShapeSize() != bSize_),
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_, "actual_seq_lengths_query, actual_seq_lengths_key",
-                std::to_string(bSize_) + " , " + std::to_string(opParamInfo_.actualSeqLengths.tensor->GetShapeSize()),
-                "TND case input actual_seq_lengths_query, actual_seq_lengths_key must be same"),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query and actual_seq_lengths_key",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + " and " +
+                Ops::Base::ToString(opParamInfo_.actualSeqLengths.tensor->GetStorageShape()),
+                "TND case input actual_seq_lengths_query, actual_seq_lengths_key are " +
+                std::to_string(bSize_) + ", " +
+                std::to_string(opParamInfo_.actualSeqLengths.tensor->GetShapeSize()) +
+                " respectively, they must be same"),
             return ge::GRAPH_FAILED);
     } else { // kLayout_ PA_BSND
         OP_CHECK_IF(
         (opParamInfo_.actualSeqLengths.tensor->GetShapeSize() != bSize_) ||
                 (opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0) != bSize_),
-            OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(opName_,
-                "actual_seq_lengths_query, actual_seq_lengths_key, block_table",
-                std::to_string(bSize_) + " , " +
-                std::to_string(opParamInfo_.actualSeqLengths.tensor->GetShapeSize()) + " , " +
-                std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)),
-                "TND case input actual_seq_lengths_query, actual_seq_lengths_key, block_table dim 0 must be same"),
+            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query, actual_seq_lengths_key and block_table",
+                Ops::Base::ToString(opParamInfo_.query.shape->GetStorageShape()) + ", " +
+                Ops::Base::ToString(opParamInfo_.actualSeqLengths.tensor->GetStorageShape()) + " and "
+                Ops::Base::ToString(opParamInfo_.blockTable.tensor->GetStorageShape()),
+                "TND case input actual_seq_lengths_query, actual_seq_lengths_key, block_table dim 0 are " +
+                std::to_string(bSize_) + ", " +
+                std::to_string(opParamInfo_.actualSeqLengths.tensor->GetShapeSize()) + ", " +
+                std::to_string(opParamInfo_.blockTable.tensor->GetStorageShape().GetDim(0)) +
+                " respectively, they must be same"),
             return ge::GRAPH_FAILED);
     }
     // -----------------------check T-------------------
