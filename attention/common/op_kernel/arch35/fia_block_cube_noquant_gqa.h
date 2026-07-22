@@ -206,9 +206,11 @@ public:
         __gm__ uint8_t *value_ = (__gm__ uint8_t *)valueListTensorDesc.GetDataPtr<__gm__ uint8_t>(0);
 
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
-                        constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_, constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
+                     constInfo.n2Size, constInfo.blockSize, constInfo.dSize, keyGm, key_,
+                     constInfo.keyStrides.bnStride, constInfo.keyStrides.n2Stride);
         InitKVBuffer(constInfo.bSize, constInfo.s2Size, actualSeqLengthsGm, constInfo.actualSeqLenKVSize,
-                        constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_, constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
+                     constInfo.n2Size, constInfo.blockSize, constInfo.dSizeV, valueGm, value_,
+                     constInfo.valueStrides.bnStride, constInfo.valueStrides.n2Stride);
     }
 
     __aicore__ inline void InitQBuffer(uint32_t batchSize, uint32_t n2Size, uint32_t gSize, uint32_t qSeqSize,
