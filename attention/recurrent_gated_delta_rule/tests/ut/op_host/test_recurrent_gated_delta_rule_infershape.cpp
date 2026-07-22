@@ -21,8 +21,7 @@
 #include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-class RecurrentGatedDeltaRuleTest : public testing::Test
-{
+class RecurrentGatedDeltaRuleTest : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -48,7 +47,7 @@ TEST_F(RecurrentGatedDeltaRuleTest, Test0)
     gert::StorageShape queryShape = {{t, nk, dk}, {t, nk, dk}};
     gert::StorageShape keyShape = {{t, nk, dk}, {t, nk, dk}};
     gert::StorageShape valueShape = {{t, nv, dv}, {t, nv, dv}};
-    gert::StorageShape betaShape = {{t,nv}, {t,nv}};
+    gert::StorageShape betaShape = {{t, nv}, {t, nv}};
     gert::StorageShape stateShape = {{sBlockNum, nv, dv, dk}, {sBlockNum, nv, dv, dk}};
     gert::StorageShape seqLengthsShape = {{b}, {b}};
     gert::StorageShape ssmStateIndicesShape = {{t}, {t}};
@@ -56,7 +55,8 @@ TEST_F(RecurrentGatedDeltaRuleTest, Test0)
     gert::StorageShape gkShape = {{}, {}};
     gert::StorageShape accTokensShape = {{b}, {b}};
 
-    gert::InfershapeContextPara infershapeContextPara("RecurrentGatedDeltaRule", 
+    gert::InfershapeContextPara infershapeContextPara(
+        "RecurrentGatedDeltaRule",
         {
             {queryShape, ge::DT_BF16, ge::FORMAT_ND},
             {keyShape, ge::DT_BF16, ge::FORMAT_ND},
@@ -73,8 +73,7 @@ TEST_F(RecurrentGatedDeltaRuleTest, Test0)
         },
         {
             {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-        }
-    );
+        });
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{t, nv, dv}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -95,21 +94,22 @@ TEST_F(RecurrentGatedDeltaRuleTest, InferDataType_BF16)
     ge::DataType outDtype = ge::DT_BF16;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .SetOpType("RecurrentGatedDeltaRule")
-        .NodeIoNum(8, 2)
-        .NodeInputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(1, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(2, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(3, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(4, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(5, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(6, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .InputDataTypes({&bf16Dtype, &bf16Dtype, &bf16Dtype, &bf16Dtype, &bf16Dtype, &int32Dtype, &int32Dtype, &floatDtype})
-        .OutputDataTypes({&outDtype, &outDtype})
-        .Build();
+                             .SetOpType("RecurrentGatedDeltaRule")
+                             .NodeIoNum(8, 2)
+                             .NodeInputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(1, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(2, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(3, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(4, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(5, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(6, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .InputDataTypes({&bf16Dtype, &bf16Dtype, &bf16Dtype, &bf16Dtype, &bf16Dtype, &int32Dtype,
+                                              &int32Dtype, &floatDtype})
+                             .OutputDataTypes({&outDtype, &outDtype})
+                             .Build();
 
     auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
     ASSERT_NE(context, nullptr);
@@ -133,21 +133,22 @@ TEST_F(RecurrentGatedDeltaRuleTest, InferDataType_FLOAT)
     ge::DataType outDtype = ge::DT_BF16;
 
     auto contextHolder = gert::InferDataTypeContextFaker()
-        .SetOpType("RecurrentGatedDeltaRule")
-        .NodeIoNum(8, 2)
-        .NodeInputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(1, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(2, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(3, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(4, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(5, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(6, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-        .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-        .InputDataTypes({&bf16Dtype, &bf16Dtype, &bf16Dtype, &bf16Dtype, &floatDtype, &int32Dtype, &int32Dtype, &floatDtype})
-        .OutputDataTypes({&outDtype, &floatDtype})
-        .Build();
+                             .SetOpType("RecurrentGatedDeltaRule")
+                             .NodeIoNum(8, 2)
+                             .NodeInputTd(0, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(1, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(2, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(3, ge::DT_BF16, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(4, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(5, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(6, ge::DT_INT32, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeInputTd(7, ge::DT_FLOAT, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .InputDataTypes({&bf16Dtype, &bf16Dtype, &bf16Dtype, &bf16Dtype, &floatDtype, &int32Dtype,
+                                              &int32Dtype, &floatDtype})
+                             .OutputDataTypes({&outDtype, &floatDtype})
+                             .Build();
 
     auto context = contextHolder.GetContext<gert::InferDataTypeContext>();
     ASSERT_NE(context, nullptr);
@@ -174,7 +175,8 @@ TEST_F(RecurrentGatedDeltaRuleTest, InvalidStateDim)
     gert::StorageShape ssmStateIndicesShape = {{t}, {t}};
     gert::StorageShape gShape = {{t, nv}, {t, nv}};
 
-    gert::InfershapeContextPara infershapeContextPara("RecurrentGatedDeltaRule",
+    gert::InfershapeContextPara infershapeContextPara(
+        "RecurrentGatedDeltaRule",
         {
             {queryShape, ge::DT_BF16, ge::FORMAT_ND},
             {keyShape, ge::DT_BF16, ge::FORMAT_ND},
@@ -191,8 +193,7 @@ TEST_F(RecurrentGatedDeltaRuleTest, InvalidStateDim)
         },
         {
             {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-        }
-    );
+        });
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED);
 }
