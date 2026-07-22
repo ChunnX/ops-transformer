@@ -316,6 +316,13 @@ cann_ops_transformer.ops.flash_attn(
                 <li>PA_BNBD -> (num_blocks, KV_N, block_size, D)</li>
                 <li>PA_NZ -> (num_blocks, KV_N, D//16, block_size, 16)</li>
                 <li>1024 >= block_size >= 16，block_size % 16 == 0</li>
+                <li>非连续Tensor约束：
+                    <ul>
+                        <li>BNSD/BSND/TND：k/v必须连续，传入非连续Tensor会报错</li>
+                        <li>PA_BBND：仅dim0支持非连续</li>
+                        <li>PA_BNBD/PA_NZ：dim0或dim1支持非连续</li>
+                    </ul>
+                </li>
             </ul>
         </td>
     </tr>
