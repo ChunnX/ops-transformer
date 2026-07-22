@@ -273,8 +273,7 @@ template <typename AType, typename BType, typename CType, bool LocalDelay>
 __aicore__ inline void QuantBatchMatmulKernel<AType, BType, CType, LocalDelay>::MatmulProcess()
 {
   uint32_t remoteBatchSize = LocalDelay ? base_.rankSize - 1 : base_.rankSize;
-  uint32_t firstRemoteRank = (base_.rankSize == 2) ? ((base_.rankId > 0) ? 0 : 1) : 0;
-  uint32_t remoteBatchRankOffset = LocalDelay ? firstRemoteRank : 0;
+  uint32_t remoteBatchRankOffset = 0;
   Params param;
   SetupParams(tilingData_->tileQbmmTilingData, remoteBatchSize, remoteBatchRankOffset,
         base_.maxTileM, false, param);
@@ -297,11 +296,6 @@ __aicore__ inline void QuantBatchMatmulKernel<AType, BType, CType, LocalDelay>::
     }
     uint32_t bufIdx = tid % base_.bufferCount;
     GM_ADDR cCur = base_.selfWinAddr + bufIdx * base_.bufferSlotBytes;
-    if constexpr (LocalDelay) {
-      if (base_.rankSize == 2) {
-        cCur += firstRemoteRank * base_.tileChunkBytes;
-      }
-    }
     param.mmadParams.aGmAddr = aCur;
     param.mmadParams.scaleAGmAddr = aScaleCur;
     param.mmadParams.cGmAddr = cCur;
