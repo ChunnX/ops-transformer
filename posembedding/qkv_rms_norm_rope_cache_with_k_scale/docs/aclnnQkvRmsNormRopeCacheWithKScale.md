@@ -380,7 +380,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td style="white-space: nowrap">mropeSectionOptional（const aclIntArray*）</td>
       <td>可选输入</td>
       <td>M-RoPE场景的T/H/W lane容量参数，语义顺序为<code>(T,H,W)</code>，按<code>[t,h,w]</code>传入。</td>
-      <td><ul><li>必须与<code>mropePositionOptional</code>同时为空或同时传入。</li><li>RoPE场景必须为空指针。</li></ul></td>
+      <td><ul><li>必须与<code>mropePositionOptional</code>同时为空或同时传入。</li><li>RoPE场景必须为空指针。</li><li>M-RoPE场景下三项分别满足<code>[0,22]</code>、<code>[0,21]</code>、<code>[0,21]</code>，且三项之和不超过<code>D/2=64</code>。</li></ul></td>
       <td>INT64</td>
       <td>-</td>
       <td>长度为3（<code>[t,h,w]</code>）</td>
@@ -480,7 +480,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td><code>kCacheRef</code>、<code>vCacheRef</code>或<code>kScaleCacheRef</code>非连续Tensor的stride不满足约束。</td>
     </tr>
     <tr>
-      <td><code>mropePositionOptional</code>与<code>mropeSectionOptional</code>未同时为空或同时传入，或位置参数、<code>qQuantMode</code>、<code>qOut</code> dtype、<code>qScaleOptional</code>的组合与所选场景不匹配。</td>
+      <td><code>mropePositionOptional</code>与<code>mropeSectionOptional</code>未同时为空或同时传入，<code>mropeSectionOptional</code>长度/单项值域/三项总和不满足约束，或位置参数、<code>qQuantMode</code>、<code>qOut</code> dtype、<code>qScaleOptional</code>的组合与所选场景不匹配。</td>
     </tr>
     <tr>
       <td style="white-space: nowrap">ACLNN_ERR_INNER_CREATE_EXECUTOR</td>
@@ -551,6 +551,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
   - M-RoPE的`mropePositionOptional`逻辑shape固定为`[T,3]`，位置索引按`P[u,0]`、`P[u,1]`、`P[u,2]`分别读取token `u`的T/H/W坐标。
 - 输入值域限制：
   - `seqLensOptional[b]`必须满足`seqLensOptional[b] >= queryStartLocOptional[b+1] - queryStartLocOptional[b]`。若`seqLensOptional[b]`小于该batch本次调用的token数，行为未定义。
+  - M-RoPE场景下`mropeSectionOptional=[t,h,w]`的长度必须为3，三项分别满足`0 <= value <= [22,21,21]`，并且`t+h+w <= D/2=64`。
   - 资源边界约束：`Nq+Nk <= 128`，`Nq+Nk+Nv <= 160`，`Nv <= 80`，`ceil_align(Nq,16)+ceil_align(Nk,16) <= 256`。
 
 ## 调用示例

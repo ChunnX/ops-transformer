@@ -443,6 +443,58 @@ TEST_P(qkv_rms_norm_rope_cache_with_k_scale_csv_test, csvDrivenCase)
 INSTANTIATE_TEST_SUITE_P(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_CSV, qkv_rms_norm_rope_cache_with_k_scale_csv_test,
                          testing::ValuesIn(GetCases()), MakeParamName);
 
+aclnnStatus RunMropeSectionScene(const vector<int64_t> &section)
+{
+    TensorDesc qkv = MakeTensorDesc({5, 1, 128}, ACL_BF16);
+    TensorDesc mropePosition = MakeTensorDesc({5, 3}, ACL_INT32);
+    TensorDesc qOut = MakeTensorDesc({5, 1, 128}, ACL_BF16, false);
+    IntArrayDesc mropeSection(section);
+
+    auto ut = OP_API_UT(
+        aclnnQkvRmsNormRopeCacheWithKScale,
+        INPUT(qkv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+              mropePosition, nullptr, "TND", "TND", 1e-6f, mropeSection, "NoQuant"),
+        OUTPUT(qOut, nullptr));
+    uint64_t workspaceSize = 0;
+    return ut.TestGetWorkspaceSize(&workspaceSize);
+}
+
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeSectionWrongLength)
+{
+    const vector<vector<int64_t>> invalidSections = {{}, {22, 21}, {22, 21, 21, 0}};
+    for (const auto &section : invalidSections) {
+        EXPECT_EQ(RunMropeSectionScene(section), ACLNN_ERR_PARAM_INVALID);
+    }
+}
+
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsNegativeMropeSectionValue)
+{
+    const vector<vector<int64_t>> invalidSections = {{-1, 0, 0}, {0, -1, 0}, {0, 0, -1}};
+    for (const auto &section : invalidSections) {
+        EXPECT_EQ(RunMropeSectionScene(section), ACLNN_ERR_PARAM_INVALID);
+    }
+}
+
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeSectionSumGreaterThanHalfD)
+{
+    EXPECT_EQ(RunMropeSectionScene({22, 21, 22}), ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeSectionAxisUpperBound)
+{
+    // Keep each sum at or below 64 so the per-axis checks are reached independently.
+    const vector<vector<int64_t>> invalidSections = {{23, 20, 20}, {20, 22, 20}, {20, 20, 22}};
+    for (const auto &section : invalidSections) {
+        EXPECT_EQ(RunMropeSectionScene(section), ACLNN_ERR_PARAM_INVALID);
+    }
+}
+
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, routesMropeSectionBoundaryToUnsupportedScene)
+{
+    // The maximum values sum to D/2=64 and pass section validation before the controlled unsupported return.
+    EXPECT_EQ(RunMropeSectionScene({22, 21, 21}), ACLNN_ERR_PARAM_INVALID);
+}
+
 TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropePositionSectionMismatch)
 {
     TensorDesc queryStartLoc = MakeTensorDesc({1}, ACL_INT32);

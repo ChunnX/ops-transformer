@@ -65,6 +65,9 @@ static constexpr const char *DEFAULT_Q_OUT_LAYOUT = "NTD";
 static constexpr const char *DEFAULT_Q_QUANT_MODE = "PerTokenPerHead";
 static constexpr const char *MROPE_Q_QUANT_MODE = "NoQuant";
 static constexpr const char *ACLNN_NAME = "aclnnQkvRmsNormRopeCacheWithKScale";
+static constexpr uint64_t MROPE_SECTION_SIZE = 3;
+static constexpr int64_t MROPE_HALF_HEAD_DIM = 64;
+static constexpr int64_t MROPE_SECTION_CAPS[MROPE_SECTION_SIZE] = {22, 21, 21};
 
 static const char *GetLayoutQkvOrDefault(const char *layout)
 {
@@ -135,6 +138,51 @@ static aclnnStatus CheckMropePositionShape(const aclTensor *qkv, const aclTensor
     return ACLNN_SUCCESS;
 }
 
+static aclnnStatus CheckMropeSection(const aclIntArray *mropeSectionOptional)
+{
+    const uint64_t sectionSize = mropeSectionOptional->Size();
+    if (sectionSize != MROPE_SECTION_SIZE) {
+        const std::string incorrectSize = std::to_string(sectionSize);
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional", incorrectSize.c_str(),
+                                              "mropeSectionOptional must contain exactly 3 values [t, h, w]");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    int64_t sectionSum = 0;
+    for (uint64_t i = 0; i < MROPE_SECTION_SIZE; ++i) {
+        const int64_t value = (*mropeSectionOptional)[i];
+        if (value < 0) {
+            const std::string incorrectValue = std::to_string(value);
+            const std::string reason = "mropeSectionOptional[" + std::to_string(i) + "] must be non-negative";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional", incorrectValue.c_str(),
+                                                  reason.c_str());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        // Compare against the remaining budget so the sum check cannot overflow int64_t.
+        if (value > MROPE_HALF_HEAD_DIM - sectionSum) {
+            const std::string incorrectValues = mropeSectionOptional->ToString().GetString();
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                ACLNN_NAME, "mropeSectionOptional", incorrectValues.c_str(),
+                "the sum of mropeSectionOptional values must be less than or equal to D/2 (64)");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        sectionSum += value;
+    }
+
+    for (uint64_t i = 0; i < MROPE_SECTION_SIZE; ++i) {
+        const int64_t value = (*mropeSectionOptional)[i];
+        if (value > MROPE_SECTION_CAPS[i]) {
+            const std::string incorrectValue = std::to_string(value);
+            const std::string reason = "mropeSectionOptional[" + std::to_string(i) + "] must be in [0, " +
+                                       std::to_string(MROPE_SECTION_CAPS[i]) + "]";
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional", incorrectValue.c_str(),
+                                                  reason.c_str());
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+    }
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus CheckSceneParams(const aclTensor *qkv, const aclTensor *queryStartLocOptional,
                                     const aclTensor *seqLensOptional,
                                     const aclTensor *mropePositionOptional,
@@ -158,6 +206,10 @@ static aclnnStatus CheckSceneParams(const aclTensor *qkv, const aclTensor *query
         aclnnStatus mropePositionCheck = CheckMropePositionShape(qkv, mropePositionOptional, layoutQkv);
         if (mropePositionCheck != ACLNN_SUCCESS) {
             return mropePositionCheck;
+        }
+        aclnnStatus mropeSectionCheck = CheckMropeSection(mropeSectionOptional);
+        if (mropeSectionCheck != ACLNN_SUCCESS) {
+            return mropeSectionCheck;
         }
         if (queryStartLocOptional != nullptr || seqLensOptional != nullptr) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(

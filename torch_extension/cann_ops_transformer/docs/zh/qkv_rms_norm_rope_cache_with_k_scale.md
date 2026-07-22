@@ -59,10 +59,10 @@
 
 - M-RoPE场景的cos/sin交织与量化：
 
-  令 \(C=\mathrm{cos\_sin}\)、\(P=\mathrm{mrope\_position}\)、\(D_{\mathrm{half}}=D/2\)，并定义
-  \(\iota(\mathrm T)=0,\ \iota(\mathrm H)=1,\ \iota(\mathrm W)=2\)。
-  对token \(u\)、轴 \(a\in\{\mathrm T,\mathrm H,\mathrm W\}\) 和列 \(d\)，三路原始位置编码定义如下。
-  `mrope_position` 的逻辑shape为 \([T,3]\)，每一行对应一个token，三列依次对应T、H、W轴。
+  令 $C=\mathrm{cos\_sin}$、$P=\mathrm{mrope\_position}$、$D_{\mathrm{half}}=D/2$，并定义
+  $\iota(\mathrm T)=0,\ \iota(\mathrm H)=1,\ \iota(\mathrm W)=2$。
+  对token $u$、轴 $a\in\{\mathrm T,\mathrm H,\mathrm W\}$ 和列 $d$，三路原始位置编码定义如下。
+  `mrope_position` 的逻辑shape为 $[T,3]$，每一行对应一个token，三列依次对应T、H、W轴。
 
   $$
   R_{a,u,d}=C_{P_{u,\iota(a)},d},\qquad 0\leq u<T,\quad 0\leq d<D.
@@ -70,9 +70,9 @@
 
   因此，`mrope_position` 的三列分别提供 T、H、W 三路位置，每一行对应一个token，而不是先拼接三份输出。
   将 `mrope_section=[t,h,w]` 记为
-  \(\boldsymbol{s}=(s_{\mathrm T},s_{\mathrm H},s_{\mathrm W})=(t,h,w)\)；
-  其中 \(s_{\mathrm T}\) 只参与取值域校验，不参与 lane 选源。对
-  \(0\leq\ell<D_{\mathrm{half}}\)，定义
+  $\boldsymbol{s}=(s_{\mathrm T},s_{\mathrm H},s_{\mathrm W})=(t,h,w)$；
+  其中 $s_{\mathrm T}$ 只参与取值域校验，不参与 lane 选源。对
+  $0\leq\ell<D_{\mathrm{half}}$，定义
 
   $$
   r(\ell)=\left\lfloor\frac{\ell}{3}\right\rfloor,\qquad
@@ -96,8 +96,8 @@
   $$
 
   其中未被 H/W 覆盖的 lane 回退到同一列的 T 路；将
-  \(\widehat c\) 和 \(\widehat s\) 代入前述 RoPE 旋转公式即可。输出维度仍为
-  \(D\)，不会扩展为 \(3D\)。
+  $\widehat c$ 和 $\widehat s$ 代入前述 RoPE 旋转公式即可。输出维度仍为
+  $D$，不会扩展为 $3D$。
 
   Q分支不量化，直接输出BF16且不创建`q_scale`：
 
@@ -105,7 +105,7 @@
   q_{out}=\operatorname{RNE}_{\mathrm{BF16}}\!\left(q_{rot}\right),\qquad q_{scale}=\varnothing.
   $$
 
-  K分支按每个token和head使用INT8最大值127做动态量化。对token \(u\)、head \(n\) 和通道 \(d\)，
+  K分支按每个token和head使用INT8最大值127做动态量化。对token $u$、head $n$ 和通道 $d$，
 
   $$
   k_{scale}(u,n)=\frac{\displaystyle\max_{0\leq d<D}|k_{rot}(u,n,d)|}{127},
@@ -207,7 +207,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
 | layout_q_out | Optional[str] | 可选 | `q_out`和存在时的`q_scale`的N/T轴布局标识，默认值为`"NTD"`；传入`None`或空字符串时按默认值处理。大小写敏感，仅支持`"TND"`和`"NTD"`。 | str | - |
 | epsilon | float | 可选 | RMSNorm防除零参数，默认值为`1e-6`。 | float | - |
 | mrope_position | Optional[Tensor] | 可选（接口级） | M-RoPE唯一位置源。每行记录一个token，三列依次记录T/H/W三路`cos_sin`行下标；RoPE场景必须为`None`。公开参数名仅为`mrope_position`，不支持旧草案名`position`。 | torch.int32 | `[T,3]` |
-| mrope_section | Optional[List[int]] | 可选（接口级） | M-RoPE的T/H/W lane容量参数`[t,h,w]`；RoPE场景必须为`None`。该参数是ListInt属性，不是int32 Tensor；公开参数名仅为`mrope_section`，不支持旧草案名`msection`。 | int | 长度为3 |
+| mrope_section | Optional[List[int]] | 可选（接口级） | M-RoPE的T/H/W lane容量参数`[t,h,w]`；D128下三项分别位于`[0,22]`、`[0,21]`、`[0,21]`，且总和不超过64。RoPE场景必须为`None`。该参数是ListInt属性，不是int32 Tensor；公开参数名仅为`mrope_section`，不支持旧草案名`msection`。 | int | 长度为3 |
 | q_quant_mode | str | 可选 | Q分支量化模式，默认值为`"PerTokenPerHead"`。大小写敏感，仅支持`"PerTokenPerHead"`和`"NoQuant"`。 | str | - |
 | q_out_dtype | torch.dtype | 可选 | `q_out`的数据类型，默认值为`torch.float8_e4m3fn`。Torch层仅将`None`归一化为默认值、要求该参数为`torch.dtype`并据此构造`q_out`；ACLNN直接读取输出Tensor的数据类型，并校验支持范围及其与场景的匹配关系。完整合同支持`torch.float8_e4m3fn`和`torch.bfloat16`。 | torch.dtype | - |
 
@@ -250,7 +250,7 @@ cann_ops_transformer.qkv_rms_norm_rope_cache_with_k_scale(
 - Torch extension不执行上表的完整合同校验。为安全构造和传递输出Tensor，Torch层只要求`head_nums[0]`和`qkv`前三维可读、layout能够解释输出轴、`q_out_dtype`为`torch.dtype`，并检查有值的Optional Tensor不是undefined；`mrope_position`或`mrope_section`任一存在时即构造M-RoPE候选返回结构。其他Tensor shape/dtype、属性值域和场景相关性均交由ACLNN校验。
 - 算子不提供独立`scene`参数。ACLNN根据四个可选参数的实际presence识别场景：`query_start_loc`与`seq_lens`只存在一个、`mrope_position`与`mrope_section`只存在一个、两组位置源同时存在或同时缺失均非法。零元素Tensor或空List仍视为已提供，并由ACLNN按shape或长度非法处理。
 - 仅支持`D=128`，且`Nv`必须等于`Nk`。
-- M-RoPE下令`HALF_D=D/2=64`，`mrope_section=[t,h,w]`三项分别满足`0 <= value <= [22,21,21]`。容量上限的一般形式为`(T,H,W)=[ceil(HALF_D/3),floor((HALF_D+1)/3),floor(HALF_D/3)]`。第0项`t`虽需满足`[0,22]`，但其数值不参与交织公式、场景判断或T轴采集范围；T/H/W三路始终全部采集。三项之间没有和值约束。
+- M-RoPE下令`HALF_D=D/2=64`，`mrope_section=[t,h,w]`三项分别满足`0 <= value <= [22,21,21]`，并且`t+h+w <= HALF_D`。容量上限的一般形式为`(T,H,W)=[ceil(HALF_D/3),floor((HALF_D+1)/3),floor(HALF_D/3)]`。第0项`t`虽需满足`[0,22]`且参与总和校验，但其数值不参与交织公式、场景判断或T轴采集范围；T/H/W三路始终全部采集。D128下总和上限为64。
 - M-RoPE中cos和sin分别应用`mrope_section`，两者使用相同的half内lane规则；不得把`mrope_section`当作整行连续分段，也不得把结果扩为`3D`。
 - `mrope_position`三路下标可以不同、非单调或重复，但每个值必须满足`0 <= value < MaxSeqLen`。
 - `mrope_position`的逻辑shape固定为`[T,3]`，每行对应一个token，按`P[u,0]`、`P[u,1]`、`P[u,2]`分别读取T/H/W位置。
