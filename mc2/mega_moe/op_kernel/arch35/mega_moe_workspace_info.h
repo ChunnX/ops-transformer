@@ -122,6 +122,7 @@ struct WorkspaceInfo {
     GM_ADDR sharedExpertInputScalePtr{nullptr};
     GM_ADDR sharedExpertSwigluDataPtr{nullptr};
     GM_ADDR sharedExpertSwigluScalePtr{nullptr};
+    GM_ADDR gmm1TileStatusPtr{nullptr}; // GMM1 tile 就绪状态位区（仅 prefetch 软同步分配）
 
     GM_ADDR maskSlotPtr{nullptr}; // urma发送mask临时GM
     GM_ADDR dispatchL1CommPtr{nullptr}; // dispatch L1 communication workspace
@@ -218,6 +219,16 @@ struct WorkspaceInfo {
             workspaceSize += stridePerExpert * tilingData->expertPerRank;
         }
 
+        // GMM1 tile 状态位区（仅 prefetch 路径分配，用于 AIC→AIV0 软同步）
+        gmm1TileStatusPtr = nullptr;
+        if (tilingData->topkWeightsPrefetch == 1) {
+            gmm1TileStatusPtr = base + workspaceSize;
+            // 每个 expert 一段 maxTilesPerExpert 个 int32，末尾额外 1 个 allDone slot
+            int64_t statusSlots = static_cast<int64_t>(tilingData->expertPerRank) * tilingData->maxTilesPerExpert + 1;
+            int64_t statusBytes = SIZE_INT_32 * statusSlots;
+            workspaceSize += Ops::Base::CeilAlign(statusBytes, ALIGN_512);
+        }
+
         if (tilingData->topoType == TOPO_TYPE_URMA) {
             maskSlotPtr = base + workspaceSize;
             int64_t sendTotalNum = static_cast<int64_t>(tilingData->bs) * tilingData->topK;
@@ -298,13 +309,13 @@ struct WorkspaceInfo {
             // sharedExpertSwigluData: SwiGLU quant output [sharedExpertNum × bs × hiddenDim/2] fp8
             sharedExpertSwigluDataPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim / SWIGLU_N_HALF,
+                SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim / MegaMoeImpl::SWIGLU_N_HALF,
                 ALIGN_512);
             // sharedExpertSwigluScale: SwiGLU scale [sharedExpertNum × bs × hiddenDim/2/32]
             sharedExpertSwigluScalePtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
                 SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim /
-                    SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
+                    MegaMoeImpl::SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
                 ALIGN_512);
         }
     }
