@@ -239,11 +239,11 @@ __aicore__ inline void InlineRadixTopK(
                                          ? globalHist.GetValue(boundaryBinPrev) : 0;
         RDX_S_V_SYNC();
         if (globalHistBoundary == remainK_) {
-            Adds<int32_t>(tileTopK, tileTopK, tileHist[boundaryBin * tileNumAlign_], tileNumAlign_);
+            Add<int32_t>(tileTopK, tileTopK, tileHist[boundaryBin * tileNumAlign_], tileNumAlign_);
             PipeBarrier<PIPE_V>();
             totalDefinitelyInTopK_ += globalHistBoundary;
         } else if (boundaryBinPrev < static_cast<int32_t>(RDX_BINS)) {
-            Adds<int32_t>(tileTopK, tileTopK, tileHist[boundaryBinPrev * tileNumAlign_], tileNumAlign_);
+            Add<int32_t>(tileTopK, tileTopK, tileHist[boundaryBinPrev * tileNumAlign_], tileNumAlign_);
             PipeBarrier<PIPE_V>();
             totalDefinitelyInTopK_ += globalHistBoundaryPrev;
         }
