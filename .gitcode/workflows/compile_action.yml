@@ -68,7 +68,7 @@ jobs:
           AC_SERVER_IP: ${{ vars.AC_SERVER_IP }}
       -
         name: rename_package
-        if: ${{ inputs.package_name != '' }}
+        if: ${{ inputs.task_name != "Pre_Compile" }}
         run: |
           cd ${{ steps.process_checkout.outputs.path }}/build_out
           for f in *.run; do
@@ -81,6 +81,7 @@ jobs:
       - 
         name: api-check
         identifier: api-check
+        if: ${{ inputs.task_name == "Compile_Ascend_X86_ubuntu24" }}
         uses: cann/.gitcode/actions/api-check@master
         with:
           org_name: ${{ env.org_name }}
@@ -92,6 +93,7 @@ jobs:
           target_branch: ${{ env.TARGET_BRANCH }}
       -
         name: verify_package
+        if: ${{ inputs.task_name != "Pre_Compile" }}
         uses: cann/.gitcode/actions/verify-package@master
         with:
           workspace: ${{ steps.process_checkout.outputs.path }}
