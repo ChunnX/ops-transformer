@@ -81,7 +81,6 @@ MegaMoeTilingData MakeMteGenericNoQuantTiling()
     tiling.combineQuantMode = COMBINE_NO_QUANT;
     tiling.groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     tiling.topoType = TOPO_TYPE_MTE;
-    tiling.ubSize = 256U * 1024U;
     return tiling;
 }
 } // namespace
