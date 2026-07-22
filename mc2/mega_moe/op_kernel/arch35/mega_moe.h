@@ -40,6 +40,18 @@ using namespace AscendC;
 #define MEGA_MOE_GMM2_GM_READY_SMOKE_TEST 0
 #endif
 
+// Break a fixed physical-core role resonance without changing the existing
+// within-wave rolling schedule.  When GMM1 has a non-zero owner remainder but
+// GMM2 advances the shared cursor exactly back to the wave entry, start the
+// next wave at GMM1's actual end cursor.  The cursors already contain the
+// runtime expert-token distribution and the selected GMM scheduler geometry.
+#ifndef MEGA_MOE_BREAK_FIXED_CORE_RESONANCE
+#define MEGA_MOE_BREAK_FIXED_CORE_RESONANCE 1
+#endif
+#if MEGA_MOE_BREAK_FIXED_CORE_RESONANCE != 0 && MEGA_MOE_BREAK_FIXED_CORE_RESONANCE != 1
+#error "MEGA_MOE_BREAK_FIXED_CORE_RESONANCE must be 0 or 1"
+#endif
+
 #define MEGA_MOE_GMM2_READY_PER_EXPERT 0
 #define MEGA_MOE_GMM2_READY_PER_BATCH 1
 #ifndef MEGA_MOE_GMM2_READY_MODE
@@ -2579,6 +2591,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
         uint32_t batchEnd = batchBegin + expertsPerWave < moeExpertPerRank_ ?
                                 batchBegin + expertsPerWave :
                                 moeExpertPerRank_;
+#if MEGA_MOE_BREAK_FIXED_CORE_RESONANCE != 0
+        const uint32_t waveBeginCursor = startBlockIdx_;
+#endif
 
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
         if (batchIdx == 1U) {
@@ -2630,6 +2645,9 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
 #endif
             GroupMatmulWithSwigluQuant(gmm1AddrInfo, gmm1State, expertIdx, vecSetSyncCom);
         }
+#if MEGA_MOE_BREAK_FIXED_CORE_RESONANCE != 0
+        const uint32_t gmm1EndCursor = startBlockIdx_;
+#endif
 
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
         if (batchIdx == 1U) {
@@ -2691,6 +2709,20 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
         if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
             PublishGmm2NoQuantReady(batchIdx);
         }
+#if MEGA_MOE_BREAK_FIXED_CORE_RESONANCE != 0
+        // All core types consume the same real/virtual GMM tile rotations.  If
+        // the full wave returned to its entry cursor while GMM1 itself did
+        // not, GMM2 cancelled GMM1's owner remainder and would pin both stage
+        // roles to the same physical core groups in the next wave.  Rotating
+        // to GMM1's end preserves the GMM1->GMM2 mapping inside this wave and
+        // changes only the owner phase of a following wave.
+        const bool hasNextWave = batchEnd < moeExpertPerRank_;
+        const bool fixedRoleResonance =
+            startBlockIdx_ == waveBeginCursor && gmm1EndCursor != waveBeginCursor;
+        if (hasNextWave && fixedRoleResonance) {
+            startBlockIdx_ = gmm1EndCursor;
+        }
+#endif
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
         if constexpr (g_coreType == AIC) {
             if (batchIdx == 0U && blockIdx_ == 0U) {
@@ -2705,7 +2737,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
             if (subBlockIdx_ == 1) {
                 if constexpr (MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY != 0 &&
                               MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
-                    if (batchEnd != expertPerRank_) {
+                    if (batchEnd != moeExpertPerRank_) {
                         // Preserve the original control dependency so AIV1
                         // cannot run ahead of this wave's completed GMM2.
                         WaitGmm2NoQuantReady(batchIdx);
@@ -2829,7 +2861,7 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessGmm2GmWaves(
     if constexpr (g_coreType == AIV) {
         if (subBlockIdx_ == 1) {
 #if MEGA_MOE_GMM2_WAVE_TIMELINE_DIAG != 0
-            if (expertPerRank_ >= 16U) {
+            if (moeExpertPerRank_ >= 16U) {
                 if (aivCoreIdx_ / 2U == 0U) {
                     WriteGmm2WaveTimelineMetadata(expertsPerWave);
                 }
