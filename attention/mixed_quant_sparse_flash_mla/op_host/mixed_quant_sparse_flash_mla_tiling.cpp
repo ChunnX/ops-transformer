@@ -322,7 +322,6 @@ ge::graphStatus MQSMLAInfoParser::GetActualSeqLenQSize(uint32_t &size)
             return ge::GRAPH_FAILED;
         }
         size = static_cast<uint32_t>(shapeSize - 1);
-        return ge::GRAPH_SUCCESS;
     }
     return ge::GRAPH_SUCCESS;
 }

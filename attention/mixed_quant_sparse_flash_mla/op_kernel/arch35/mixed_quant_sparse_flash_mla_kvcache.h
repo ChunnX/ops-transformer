@@ -277,20 +277,22 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index,
 
     if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
         uint64_t actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runParam.boIdx);
-        runParam.oriSparseBlockCount = constInfo.hasOriTopkLength
-            ? Min(oriTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx), constInfo.oriSparseBlockCount)
-            : constInfo.oriSparseBlockCount;
-        runParam.cmpSparseBlockCount = constInfo.hasCmpTopkLength
-            ? Min(cmpTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx), constInfo.cmpSparseBlockCount)
-            : constInfo.cmpSparseBlockCount;
+        runParam.oriSparseBlockCount = constInfo.hasOriTopkLength ?
+            Min(oriTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx),
+                constInfo.oriSparseBlockCount) :
+            constInfo.oriSparseBlockCount;
+        runParam.cmpSparseBlockCount = constInfo.hasCmpTopkLength ?
+            Min(cmpTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx),
+                constInfo.cmpSparseBlockCount) :
+            constInfo.cmpSparseBlockCount;
     } else {
         uint64_t bsndTopkIdx = runParam.boIdx * constInfo.s1Size + runParam.s1oIdx;
-        runParam.oriSparseBlockCount = constInfo.hasOriTopkLength
-            ? Min(oriTopkLengthGm.GetValue(bsndTopkIdx), constInfo.oriSparseBlockCount)
-            : constInfo.oriSparseBlockCount;
-        runParam.cmpSparseBlockCount = constInfo.hasCmpTopkLength
-            ? Min(cmpTopkLengthGm.GetValue(bsndTopkIdx), constInfo.cmpSparseBlockCount)
-            : constInfo.cmpSparseBlockCount;
+        runParam.oriSparseBlockCount = constInfo.hasOriTopkLength ?
+            Min(oriTopkLengthGm.GetValue(bsndTopkIdx), constInfo.oriSparseBlockCount) :
+            constInfo.oriSparseBlockCount;
+        runParam.cmpSparseBlockCount = constInfo.hasCmpTopkLength ?
+            Min(cmpTopkLengthGm.GetValue(bsndTopkIdx), constInfo.cmpSparseBlockCount) :
+            constInfo.cmpSparseBlockCount;
     }
 
     // orikv
@@ -345,7 +347,6 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.preTokensPerBatch = runParam.preTokensPerBatch;
     runInfo.nextTokensPerBatchOri = runParam.nextTokensPerBatchOri;
     runInfo.actualS1Size = runParam.actualS1Size;
-    runInfo.actualS2OriSize = runParam.actualS2OriSize;
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
         TEMPLATE_MODE != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         runInfo.actualS2CmpSize = runParam.actualS2CmpSize;
