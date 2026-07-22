@@ -137,5 +137,50 @@ expect_fail("mask_mode=3 且 cmp_ratio>1 缺少 cmp_residual_k", lambda: torch.o
     layout_q="BSND", layout_k="BSND", mask_mode=3, cmp_ratio=4,
 ))
 
+expect_fail("layout_q 与 layout_k 不一致", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+    num_heads_q=8, num_heads_k=1, head_dim=128,
+    batch_size=2, max_seqlen_q=128, max_seqlen_k=128,
+    layout_q="BSND", layout_k="TND", mask_mode=0, cmp_ratio=1,
+))
+
+expect_fail("head_dim 不为 128", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+    num_heads_q=8, num_heads_k=1, head_dim=64,
+    batch_size=2, max_seqlen_q=128, max_seqlen_k=128,
+    layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1,
+))
+
+expect_fail("num_heads_k 不为 1", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+    num_heads_q=8, num_heads_k=2, head_dim=128,
+    batch_size=2, max_seqlen_q=128, max_seqlen_k=128,
+    layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1,
+))
+
+expect_fail("num_heads_q 超出 128", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+    num_heads_q=129, num_heads_k=1, head_dim=128,
+    batch_size=2, max_seqlen_q=128, max_seqlen_k=128,
+    layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1,
+))
+
+expect_fail("cmp_residual_k 值不小于 cmp_ratio", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+    num_heads_q=8, num_heads_k=1, head_dim=128,
+    cmp_residual_k=torch.tensor([2, 5], dtype=torch.int32).npu(),
+    batch_size=2, max_seqlen_q=128, max_seqlen_k=128,
+    layout_q="BSND", layout_k="BSND", mask_mode=3, cmp_ratio=4,
+))
+
+expect_fail("seqused_q 值大于 max_seqlen_q", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+    num_heads_q=8, num_heads_k=1, head_dim=128,
+    seqused_q=torch.tensor([128, 200], dtype=torch.int32).npu(),
+    batch_size=2, max_seqlen_q=128, max_seqlen_k=128,
+    layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1,
+))
+
+expect_fail("seqused_k 值大于 max_seqlen_k", lambda: torch.ops.cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
+    num_heads_q=8, num_heads_k=1, head_dim=128,
+    seqused_k=torch.tensor([128, 200], dtype=torch.int32).npu(),
+    batch_size=2, max_seqlen_q=128, max_seqlen_k=128,
+    layout_q="BSND", layout_k="BSND", mask_mode=0, cmp_ratio=1,
+))
+
 print()
 print("All tests passed!")

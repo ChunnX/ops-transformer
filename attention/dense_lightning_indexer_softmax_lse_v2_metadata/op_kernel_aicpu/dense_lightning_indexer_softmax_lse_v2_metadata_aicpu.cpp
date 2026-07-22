@@ -107,9 +107,21 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::ParamsCheck()
                          numHeadsQ_, numHeadsK_, headDim_);
         return false;
     }
-    if (numHeadsQ_ % numHeadsK_ != 0) {
-        KERNEL_LOG_ERROR("num_heads_q must be divisible by num_heads_k, but got nq=%ld nk=%ld",
-                         numHeadsQ_, numHeadsK_);
+    if (headDim_ != 128) {
+        KERNEL_LOG_ERROR("head_dim only supports 128, but got %ld", headDim_);
+        return false;
+    }
+    if (numHeadsQ_ < 1 || numHeadsQ_ > 128) {
+        KERNEL_LOG_ERROR("num_heads_q must be in [1, 128], but got %ld", numHeadsQ_);
+        return false;
+    }
+    if (numHeadsK_ != 1) {
+        KERNEL_LOG_ERROR("num_heads_k only supports 1, but got %ld", numHeadsK_);
+        return false;
+    }
+    if (layout_ != layoutK_) {
+        KERNEL_LOG_ERROR("layout_q and layout_k must be the same, but got layout_q=%s layout_k=%s",
+                         layout_.c_str(), layoutK_.c_str());
         return false;
     }
     if (bSize_ <= 0) {
@@ -176,9 +188,49 @@ bool DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel::ParamsCheck()
         KERNEL_LOG_ERROR("cmp_residual_k must be provided when mask_mode=3 and cmp_ratio>1.");
         return false;
     }
+    if (IsTensorValid(cmpResidualKey_)) {
+        auto *data = reinterpret_cast<const int32_t *>(cmpResidualKey_->GetData());
+        for (int64_t i = 0; i < bSize_; ++i) {
+            if (static_cast<int64_t>(data[i]) >= cmpRatio_) {
+                KERNEL_LOG_ERROR("cmp_residual_k[%ld] must be less than cmp_ratio(%ld), but got %d.",
+                                 i, cmpRatio_, data[i]);
+                return false;
+            }
+        }
+    }
+    if (IsTensorValid(seqUsedQuery_)) {
+        auto *data = reinterpret_cast<const int32_t *>(seqUsedQuery_->GetData());
+        for (int64_t i = 0; i < bSize_; ++i) {
+            int64_t actualS1 = s1Size_;
+            if (layoutType_ == DliLayout::TND && IsTensorValid(cuSeqLensQuery_)) {
+                auto *cuData = reinterpret_cast<const int32_t *>(cuSeqLensQuery_->GetData());
+                actualS1 = static_cast<int64_t>(cuData[i + 1]) - static_cast<int64_t>(cuData[i]);
+            }
+            if (static_cast<int64_t>(data[i]) > actualS1) {
+                KERNEL_LOG_ERROR("seqused_q[%ld] must be <= actual seqlen_q(%ld), but got %d.",
+                                 i, actualS1, data[i]);
+                return false;
+            }
+        }
+    }
+    if (IsTensorValid(seqUsedKey_)) {
+        auto *data = reinterpret_cast<const int32_t *>(seqUsedKey_->GetData());
+        for (int64_t i = 0; i < bSize_; ++i) {
+            int64_t actualS2 = s2Size_;
+            if (layoutType_ == DliLayout::TND && IsTensorValid(cuSeqLensKey_)) {
+                auto *cuData = reinterpret_cast<const int32_t *>(cuSeqLensKey_->GetData());
+                actualS2 = static_cast<int64_t>(cuData[i + 1]) - static_cast<int64_t>(cuData[i]);
+            }
+            if (static_cast<int64_t>(data[i]) > actualS2) {
+                KERNEL_LOG_ERROR("seqused_k[%ld] must be <= actual seqlen_k(%ld), but got %d.",
+                                 i, actualS2, data[i]);
+                return false;
+            }
+        }
+    }
     return true;
 }
 
-static const char *kernelType = "DenseLightningIndexerSoftmaxLseV2Metadata";
-REGISTER_CPU_KERNEL(kernelType, DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel);
+static const char *kernelTypeDenseLiV2 = "DenseLightningIndexerSoftmaxLseV2Metadata";
+REGISTER_CPU_KERNEL(kernelTypeDenseLiV2, DenseLightningIndexerSoftmaxLseV2MetadataCpuKernel);
 } // namespace aicpu
