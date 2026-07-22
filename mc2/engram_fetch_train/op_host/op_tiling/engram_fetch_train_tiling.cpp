@@ -48,6 +48,7 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 
 constexpr int32_t HIDDEN_SIZE_ALIGN = 128;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
+constexpr int64_t UB_ALIGN = 32;
 
 static const std::vector<ge::DataType> OUTPUT_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT};
 
@@ -240,6 +241,10 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
             (std::to_string(sendCountsOutShape->GetStorageShape().GetDimNum()) + "D").c_str(),
             "The shape dim of sendCountsOut must be 1D."),
         return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sendCountsOutShape->GetStorageShape().GetDim(0) <= 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "sendCountsOut",
+            (std::string("dim0=") + std::to_string(sendCountsOutShape->GetStorageShape().GetDim(0))).c_str(), "> 0"),
+        return ge::GRAPH_FAILED);
     rankSize = static_cast<uint32_t>(sendCountsOutShape->GetStorageShape().GetDim(0));
 
     const gert::StorageShape *recvCountsOutShape = context->GetOutputShape(OUT_RECV_COUNTS);
@@ -258,6 +263,10 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "recvLocalEntryOut",
             (std::to_string(recvLocalEntryOutShape->GetStorageShape().GetDimNum()) + "D").c_str(),
             "The shape dim of recvLocalEntryOut must be 1D."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvLocalEntryOutShape->GetStorageShape().GetDim(0) < 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "recvLocalEntryOut",
+            (std::string("dim0=") + std::to_string(recvLocalEntryOutShape->GetStorageShape().GetDim(0))).c_str(), ">= 0"),
         return ge::GRAPH_FAILED);
     totalRecv = recvLocalEntryOutShape->GetStorageShape().GetDim(0);
 
@@ -510,21 +519,24 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context,
         OP_LOGE(nodeName, "workspace overflow: totalRecv=%ld, hiddenBytes=%ld", totalRecv, hiddenBytes),
         return ge::GRAPH_FAILED);
 
-    int64_t wsSdispls = numRanks * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsRdispls = numRanks * static_cast<int64_t>(sizeof(int32_t));
+    int64_t wsSdispls = numRanks * UB_ALIGN;
+    int64_t wsRdispls = numRanks * UB_ALIGN;
     int64_t wsSortedIndices = numTokens * static_cast<int64_t>(sizeof(int32_t));
     int64_t wsLocalData = totalRecv * hiddenBytes;
     int64_t wsRecvData = numTokens * hiddenBytes;
+    int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
     int64_t wsFlagScratch = 32;
 
-    int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices + wsLocalData + wsRecvData + wsFlagScratch;
+    int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices
+                    + wsLocalData + wsRecvData + wsCounterScratch + wsFlagScratch;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 
     workSpaces[0] = static_cast<size_t>(wsTotal);
-    OP_LOGD(nodeName, "training workspace: sdispls=%ld, rdispls=%ld, sortedIndices=%ld,"
-            "localData=%ld, recvData=%ld, flagScratch=%ld, total=%zu",
-            wsSdispls, wsRdispls, wsSortedIndices, wsLocalData, wsRecvData, wsFlagScratch, workSpaces[0]);
+    OP_LOGD(nodeName, "training workspace: sdispls=%ld, rdispls=%ld, sortedIndices=%ld, "
+            "localData=%ld, recvData=%ld, counterScratch=%ld, flagScratch=%ld, total=%zu",
+            wsSdispls, wsRdispls, wsSortedIndices,
+            wsLocalData, wsRecvData, wsCounterScratch, wsFlagScratch, workSpaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 

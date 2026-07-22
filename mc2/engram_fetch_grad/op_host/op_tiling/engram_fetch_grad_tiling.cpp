@@ -15,8 +15,8 @@
 *        hiddenBytes 按 fp32 计算（反向 FP32 聚合）
 *        rankSize 从 sendCounts dim0 获取
 *        totalRecv 从 recvLocalEntry dim0 获取
-*        workspace: sendCounts + recvCounts + sendPrefixSum + recvPrefixSum
-*                 + gradSorted + recvGrad + uniqueEntry + gradAccum + 16MB
+*        workspace: gradSorted + recvGrad + sdispls + rdispls
+*                 + counterScratch + flagScratch + 16MB
 */
 
 #include <string>
@@ -53,6 +53,7 @@ constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 
 constexpr int32_t HIDDEN_SIZE_ALIGN = 128;
 constexpr int64_t BUFFER_ALIGNMENT = 2 * 1024 * 1024;
+constexpr int64_t UB_ALIGN = 32;
 
 static const std::vector<ge::DataType> GRAD_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT};
 
@@ -85,6 +86,8 @@ static void PrintEngramFetchGradTilingData(const EngramFetchGradTilingData *tili
     OP_LOGD(nodeName, "rankSize is %u", tilingData->rankSize);
     OP_LOGD(nodeName, "totalRecv is %ld", tilingData->totalRecv);
     OP_LOGD(nodeName, "commBufferSize is %ld", tilingData->commBufferSize);
+    OP_LOGD(nodeName, "inputDtype is %d", tilingData->inputDtype);
+    OP_LOGD(nodeName, "outputDtype is %d", tilingData->outputDtype);
 }
 
 static ge::graphStatus CheckTensorPtrNullptr(const gert::TilingContext *context)
@@ -257,6 +260,10 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
             (std::to_string(sendCountsShape->GetStorageShape().GetDimNum()) + "D").c_str(),
             "The shape dim of sendCounts must be 1D."),
         return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(sendCountsShape->GetStorageShape().GetDim(0) <= 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "sendCounts",
+            (std::string("dim0=") + std::to_string(sendCountsShape->GetStorageShape().GetDim(0))).c_str(), "> 0"),
+        return ge::GRAPH_FAILED);
     rankSize = static_cast<uint32_t>(sendCountsShape->GetStorageShape().GetDim(0));
 
     // recvCounts: 1D (W,)
@@ -277,6 +284,10 @@ static ge::graphStatus CheckTensorDim(const gert::TilingContext *context, int64_
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(nodeName, "recvLocalEntry",
             (std::to_string(recvLocalEntryShape->GetStorageShape().GetDimNum()) + "D").c_str(),
             "The shape dim of recvLocalEntry must be 1D."),
+        return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(recvLocalEntryShape->GetStorageShape().GetDim(0) < 0,
+        OP_LOGE_FOR_INVALID_VALUE(nodeName, "recvLocalEntry",
+            (std::string("dim0=") + std::to_string(recvLocalEntryShape->GetStorageShape().GetDim(0))).c_str(), ">= 0"),
         return ge::GRAPH_FAILED);
     totalRecv = recvLocalEntryShape->GetStorageShape().GetDim(0);
 
@@ -483,14 +494,19 @@ static ge::graphStatus SetTilingData(gert::TilingContext *context, EngramFetchGr
     auto numEntriesPerRankPtr = attrs->GetAttrPointer<int64_t>(ATTR_NUM_ENTRIES_PER_RANK);
     tilingData.numEntriesPerRank = static_cast<int32_t>(*numEntriesPerRankPtr);
 
-    // hiddenBytes 按输出 dtype 算（kernel 内部 fp32 累加后转回输出 dtype）
-    auto gradUniqueDesc = context->GetOutputDesc(OUT_GRAD_UNIQUE);
-    int64_t bytesPerElem = ge::GetSizeByDataType(gradUniqueDesc->GetDataType());
+    // hiddenBytes 按输入 dtype（gradFetched）算，作为 a2a 交换 stride
+    auto gradFetchedDesc = context->GetInputDesc(IN_GRAD_FETCHED);
+    ge::DataType inputDtype = gradFetchedDesc->GetDataType();
+    int64_t bytesPerElem = ge::GetSizeByDataType(inputDtype);
     OP_TILING_CHECK(tilingData.hiddenDim > INT64_MAX / bytesPerElem,
         OP_LOGE(nodeName, "hiddenBytes overflow: hiddenDim=%ld * bytesPerElem=%ld exceeds INT64_MAX",
             tilingData.hiddenDim, bytesPerElem),
         return ge::GRAPH_FAILED);
     tilingData.hiddenBytes = tilingData.hiddenDim * bytesPerElem;
+    tilingData.inputDtype = static_cast<int32_t>(inputDtype);
+
+    auto gradUniqueDesc = context->GetOutputDesc(OUT_GRAD_UNIQUE);
+    tilingData.outputDtype = static_cast<int32_t>(gradUniqueDesc->GetDataType());
 
     auto commBufferSizePtr = attrs->GetAttrPointer<int64_t>(ATTR_COMM_BUFFER_SIZE);
     tilingData.commBufferSize = *commBufferSizePtr;
@@ -540,22 +556,21 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context,
 
     int64_t wsGradSorted = numTokens * hiddenBytes;
     int64_t wsRecvGrad = totalRecv * hiddenBytes;
-    int64_t wsSdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
-    int64_t wsRdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
-    int64_t wsTokenIdxInRank = numTokens * static_cast<int64_t>(sizeof(int32_t));
-    int64_t wsRecvIndices = totalRecv * static_cast<int64_t>(sizeof(int32_t));
+    int64_t wsSdispls = numRanks * UB_ALIGN;
+    int64_t wsRdispls = numRanks * UB_ALIGN;
+    int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
     int64_t wsFlagScratch = 32;
 
     int64_t wsTotal = wsGradSorted + wsRecvGrad + wsSdispls + wsRdispls
-                    + wsTokenIdxInRank + wsRecvIndices + wsFlagScratch;
+                    + wsCounterScratch + wsFlagScratch;
     wsTotal = AlignTo(wsTotal, BUFFER_ALIGNMENT);
     wsTotal += SYSTEM_NEED_WORKSPACE;
 
     workSpaces[0] = static_cast<size_t>(wsTotal);
     OP_LOGD(nodeName, "backward workspace: gradSorted=%ld, recvGrad=%ld, sdispls=%ld, rdispls=%ld, "
-            "tokenIdxInRank=%ld, recvIndices=%ld, flagScratch=%ld, total=%zu",
+            "counterScratch=%ld, flagScratch=%ld, total=%zu",
             wsGradSorted, wsRecvGrad, wsSdispls, wsRdispls,
-            wsTokenIdxInRank, wsRecvIndices, wsFlagScratch, workSpaces[0]);
+            wsCounterScratch, wsFlagScratch, workSpaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 
