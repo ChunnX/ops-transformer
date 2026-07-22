@@ -298,15 +298,15 @@ __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitGmTensor(CVSharedParams<
         GlobalTensor<int32_t> actualSeqQLen;
         actualSeqQLen.SetGlobalBuffer((__gm__ int32_t *)actualSeqQlenAddr);
         this->queryGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->gSize, sharedParams->dSize,
-                                            actualSeqQLen, sharedParams->actualSeqLengthsSize);
+                                             actualSeqQLen, sharedParams->seqUsedQlenSize);
     }
     // cube侧 KV地址访存  需要适配算子需求重新实现
     GlobalTensor<int32_t> actualSeqKVLen;
     actualSeqKVLen.SetGlobalBuffer((__gm__ int32_t *)actualSeqKvlenAddr);
     this->keyGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSize, actualSeqKVLen,
-                                      sharedParams->actualSeqLengthsKVSize);
+                                      sharedParams->seqUsedKvlenSize);
     this->valueGm.offsetCalculator.Init(sharedParams->n2Size, sharedParams->dSizeV, actualSeqKVLen,
-                                        sharedParams->actualSeqLengthsKVSize);
+                                        sharedParams->seqUsedKvlenSize);
 }
 
 TEMPLATES_DEF_NO_DEFAULT

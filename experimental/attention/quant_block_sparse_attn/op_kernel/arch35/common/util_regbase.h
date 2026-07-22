@@ -90,12 +90,12 @@ enum class SparseType : uint8_t {
     uint32_t firstHalfS1RealSize;                                                                                      \
     int64_t tensorQOffset;      /* query的offset souter层确定 */                                                       \
     int64_t attentionOutOffset; /* attentionOut的offset souter层确定 */                                                \
-    int64_t actualS1Size;       /* Q的actualSeqLength */                                                               \
-    int64_t actualS2Size;       /* KV的actualSeqLength */                                                              \
+    int64_t actualS1Size;       /* Q的seqUsedQlen */                                                               \
+    int64_t actualS2Size;       /* KV的seqUsedKvlen */                                                              \
     uint64_t b1SSAttenMaskOffset;                                                                                      \
     uint64_t b1SSOffsetAlign16;                                                                                        \
-    int64_t qRopeNBGOffset; /* QueryRope 的 offset */                                                                  \
-    int64_t kRopeNBGOffset; /* G方向上,不同g的KeyRope的offset */
+    int64_t qRopeNBGOffset; /* qRope 的 offset */                                                                  \
+    int64_t kRopeNBGOffset; /* kRope 的 offset */
 
 
 struct RunParamStr { // 分核与切块需要使用到参数
@@ -270,13 +270,13 @@ struct RunInfo {
     uint32_t maxKb;                                                                                                    \
     /* 推理新增 */                                                                                                     \
     bool isRowInvalid;          /* 是否使能行无效 */                                                                   \
-    bool isSeqUsedQlenNull;   /* 判断是否有actualseq */                                                              \
-    bool isSeqUsedKvlenNull; /* 判断是否有actualseq_kv */                                                           \
+    bool isSeqUsedQlenNull;   /* 判断是否有 seqUsedQlen */                                                              \
+    bool isSeqUsedKvlenNull; /* 判断是否有 seqUsedKvlen */                                                           \
     bool isGqa;                                                                                                        \
     bool isPfaGS1Merge; /* 判断是否为PFA GS1合轴 */                                                                    \
                                                                                                                        \
-    uint32_t seqUsedQlenSize;   /* 用户输入的actualseq的长度 */                                                       \
-    uint32_t seqUsedKvlenSize; /* 用户输入的actualseq_kv的长度 */                                                    \
+    uint32_t seqUsedQlenSize;   /* seqUsedQlen 的长度 */                                                       \
+    uint32_t seqUsedKvlenSize; /* seqUsedKvlen 的长度 */                                                    \
     uint32_t isKvContinuous;     /* 是否为tensorlist */                                                                \
     /* service mm1 mm2 pageAttention */                                                                                \
     uint32_t blockTableDim2;                                                                                           \
