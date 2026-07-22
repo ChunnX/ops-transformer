@@ -104,10 +104,10 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_attenMaskShapeType(2);
     inputParams.set_attenMaskCompressMode(compatMaskMode);
     inputParams.set_attenMaskS2Size(2048);
-    inputParams.set_isActualSeqLengthsNull(info.opParamInfo.cuSeqlensQ.tensor == nullptr ? 1 : 0);
-    inputParams.set_isActualSeqLengthsKVNull(info.opParamInfo.cuSeqlensKV.tensor == nullptr ? 1 : 0);
-    inputParams.set_actualSeqLengthsSize(info.bSize);
-    inputParams.set_actualSeqLengthsKVSize(info.bSize);
+    inputParams.set_isSeqUsedQlenNull(info.opParamInfo.cuSeqlensQ.tensor == nullptr ? 1 : 0);
+    inputParams.set_isSeqUsedKvlenNull(info.opParamInfo.cuSeqlensKv.tensor == nullptr ? 1 : 0);
+    inputParams.set_seqUsedQlenSize(info.bSize);
+    inputParams.set_seqUsedKvlenSize(info.bSize);
     inputParams.set_isKvContinuous(1); // 稀疏算子固定设为 1
     inputParams.set_fromFused(0);      // 融合算子标记，稀疏算子固定设为 0
     inputParams.set_isGqa(info.isGqa ? 1 : 0);
