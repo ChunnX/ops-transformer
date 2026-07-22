@@ -613,7 +613,8 @@ def tilelang_grad_kl_loss_single_kernel(
                     v1_p_bmm1 = T.alloc_ub((N1, n_block), calc_dtype)
                     v1_p_max = T.alloc_ub(N1, calc_dtype)
                     v1_p_sum = T.alloc_ub(N1, calc_dtype)
-                    v1_p_eps = T.alloc_ub(N1, calc_dtype)
+                    # Reused after sum clamping as the 64-row partial reduce.
+                    v1_p_partial = T.alloc_ub(max(N1, n_block), calc_dtype)
                     v1_p_out = T.alloc_ub(n_block, calc_dtype)
                     v1_p_tmp = T.alloc_ub((N1, 8), calc_dtype)
 
@@ -623,9 +624,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("mte3", "v", 0)
                     T.wait_flag("mte2", "v", 0)
                     T.tile.abs(v1_p_sum, v1_p_sum)
-                    T.tile.fill(v1_p_eps, 1e-8)
+                    T.tile.fill(v1_p_partial[0:N1], 1e-8)
                     T.pipe_barrier("v")
-                    T.tile.max(v1_p_sum, v1_p_sum, v1_p_eps)
+                    T.tile.max(v1_p_sum, v1_p_sum, v1_p_partial[0:N1])
                     for n_idx in T.serial(n_num):
                         T.copy(
                             bmm1Res[bz_task, s1_id, 0:N1,
@@ -685,8 +686,30 @@ def tilelang_grad_kl_loss_single_kernel(
                                     ],
                                 )
                         T.pipe_barrier("v")
-                        T.reduce_sum(v1_p_bmm1, v1_p_out, 0)
+                        # The Ascend fast path used here is stable for
+                        # 64x128 -> 128 (also used by VectorSy), while a single
+                        # 128x128 axis-0 reduction corrupts the result.  Match
+                        # the official N-loop structure and accumulate two
+                        # partial reductions in UB.
+                        T.tile.fill(v1_p_out, 0.0)
                         T.pipe_barrier("v")
+                        for p_reduce_chunk in T.serial(p_row_chunk_count):
+                            p_reduce_start = p_reduce_chunk * p_rows_per_chunk
+                            T.reduce_sum(
+                                v1_p_bmm1[
+                                    p_reduce_start:p_reduce_start + p_rows_per_chunk,
+                                    0:n_block,
+                                ],
+                                v1_p_partial[0:n_block],
+                                0,
+                            )
+                            T.pipe_barrier("v")
+                            T.tile.add(
+                                v1_p_out,
+                                v1_p_out,
+                                v1_p_partial[0:n_block],
+                            )
+                            T.pipe_barrier("v")
                         T.tile.mul(v1_p_out, v1_p_out, 1.0 / N1)
                         T.wait_flag("mte3", "v", 0)
                         T.set_flag("v", "mte3", 0)
@@ -2769,6 +2792,17 @@ def sparse_lightning_indexer_grad_kl_loss(
             gk_diff = (gather_key_ws.float() - expected_gk.float()).abs()
             gki_diff = (gather_key_index_ws.float() - expected_gki.float()).abs()
             gkr_diff = (gather_key_rope_ws.float() - expected_gkr.float()).abs()
+            debug_softmax_max = softmax_max[:, 0, :, :].float()
+            debug_softmax_sum = softmax_sum[:, 0, :, :].float().abs().clamp_min(1e-8)
+            debug_scaled_bmm1 = bmm1_res_ws.float() * scale_value
+            debug_p_reduced = (
+                torch.exp(debug_scaled_bmm1 - debug_softmax_max.unsqueeze(-1))
+                / debug_softmax_sum.unsqueeze(-1)
+            ).mean(dim=2)
+            p_reduced_diff = (p_reduced_ws.float() - debug_p_reduced).abs()
+            p_max_diff = (
+                debug_scaled_bmm1.amax(dim=-1) - debug_softmax_max
+            ).abs()
             print(
                 f"[DEBUG] GatherKey_ws vs host_gather: "
                 f"max_diff={gk_diff.max().item():.6e}, "
@@ -2783,6 +2817,16 @@ def sparse_lightning_indexer_grad_kl_loss(
                 f"[DEBUG] GatherKeyRope_ws vs host_gather: "
                 f"max_diff={gkr_diff.max().item():.6e}, "
                 f"mean_diff={gkr_diff.mean().item():.6e}"
+            )
+            print(
+                f"[DEBUG] scaled bmm1 row max vs SoftmaxMax: "
+                f"max_diff={p_max_diff.max().item():.6e}, "
+                f"mean_diff={p_max_diff.mean().item():.6e}"
+            )
+            print(
+                f"[DEBUG] PReduced vs host formula: "
+                f"max_diff={p_reduced_diff.max().item():.6e}, "
+                f"mean_diff={p_reduced_diff.mean().item():.6e}"
             )
             _debug_dump_done = True
 
