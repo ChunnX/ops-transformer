@@ -189,8 +189,8 @@ void QuantBlockSparseAttnTiling::PrintAllTilingData()
     OP_LOGD(kOpName, "layoutType:%u", inputParams.get_layoutType());
     OP_LOGD(kOpName, "attenMaskCompressMode:%u", inputParams.get_attenMaskCompressMode());
     OP_LOGD(kOpName, "attenMaskS2Size:%u", inputParams.get_attenMaskS2Size());
-    OP_LOGD(kOpName, "isActualSeqLengthsNull:%u", inputParams.get_isActualSeqLengthsNull());
-    OP_LOGD(kOpName, "isActualSeqLengthsKVNull:%u", inputParams.get_isActualSeqLengthsKVNull());
+    OP_LOGD(kOpName, "isSeqUsedQlenNull:%u", inputParams.get_isSeqUsedQlenNull());
+    OP_LOGD(kOpName, "isSeqUsedKvlenNull:%u", inputParams.get_isSeqUsedKvlenNull());
     OP_LOGD(kOpName, "isKvContinuous:%u", inputParams.get_isKvContinuous());
     OP_LOGD(kOpName, "isGqa:%u", inputParams.get_isGqa());
     OP_LOGD(kOpName, "isSoftMaxLseEnable:%u", inputParams.get_isSoftMaxLseEnable());

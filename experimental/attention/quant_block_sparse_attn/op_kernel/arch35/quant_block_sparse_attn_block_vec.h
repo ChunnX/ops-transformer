@@ -776,10 +776,10 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSha
     sharedParams.isGqa = inputParamsRegbase.isGqa;
     sharedParams.isPfaGS1Merge = (inputParamsRegbase.isGqa && sharedParams.s1Size > 1);
     sharedParams.isKvContinuous = inputParamsRegbase.isKvContinuous;
-    sharedParams.actualSeqLengthsSize = inputParamsRegbase.actualSeqLengthsSize;
-    sharedParams.actualSeqLengthsKVSize = inputParamsRegbase.actualSeqLengthsKVSize;
-    sharedParams.isActualSeqLengthsNull = inputParamsRegbase.isActualSeqLengthsNull;
-    sharedParams.isActualSeqLengthsKVNull = inputParamsRegbase.isActualSeqLengthsKVNull;
+    sharedParams.seqUsedQlenSize = inputParamsRegbase.seqUsedQlenSize;
+    sharedParams.seqUsedKvlenSize = inputParamsRegbase.seqUsedKvlenSize;
+    sharedParams.isSeqUsedQlenNull = inputParamsRegbase.isSeqUsedQlenNull;
+    sharedParams.isSeqUsedKvlenNull = inputParamsRegbase.isSeqUsedKvlenNull;
     if constexpr (isPa) {
         auto &paParams = this->tilingData->paParams;
         sharedParams.attenMaskS1Size = paParams.attenMaskS1Size;
