@@ -1121,12 +1121,11 @@ static aclnnStatus CheckA8W4AsymQuantParamsRelationship(const gmm::GroupedMatmul
                "Constraint:[shape should be (%ld, 1, %ld)].",
                opName, "scale", scaleShape.GetDim(0), scaleShape.GetDim(1), scaleShape.GetDim(WEIGHT_DIM_A8W4 - 1), e,
                n);
-    CHECK_COND(perTokenScaleDim == BIAS_DIM_A8W4 && perTokenScaleShape.GetDim(0) == m &&
-                   perTokenScaleShape.GetDim(BIAS_DIM_A8W4 - 1) == 1,
+    CHECK_COND(perTokenScaleDim == 1 && perTokenScaleShape.GetDim(0) == m,
                ACLNN_ERR_PARAM_INVALID,
-               "In op [%s], when A8W4 asymmetric quant, the shape of [%s] is not supported, got [(%ld, %ld)]. "
-               "Constraint:[shape should be (%ld, 1)].",
-               opName, "perTokenScale", perTokenScaleShape.GetDim(0), perTokenScaleShape.GetDim(1), m);
+               "In op [%s], when A8W4 asymmetric quant, the shape of [%s] is not supported. "
+               "Constraint:[shape should be (%ld)].",
+               opName, "perTokenScale", m);
     return ACLNN_SUCCESS;
 }
 static aclnnStatus CheckA8W4AsymQuantParams(const gmm::GroupedMatmulParams &gmmParams, const char *opName)
@@ -1523,6 +1522,19 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
     CHECK_COND(Check310PlatformForFunction(gmmParams, weightDtype, isNoActivation, opName) == ACLNN_SUCCESS,
                ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, ASCEND310P scenario check failed.", opName,
                GetGmmScenarioName(gmmParams.xDtype, weightDtype));
+    const bool isA8W4V5 = gmmParams.apiVersion == gmm::GMMApiVersion::V5 &&
+                          gmmParams.xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4 &&
+                          gmmParams.scaleOptional != nullptr && gmmParams.scaleOptional->Size() == 1 &&
+                          (*gmmParams.scaleOptional)[0] != nullptr &&
+                          (*gmmParams.scaleOptional)[0]->GetDataType() == DataType::DT_UINT64;
+    if (isA8W4V5) {
+        // V5 A8W4 is a dedicated path on DAV3510 and must be checked before the legacy
+        // quant/weight-quant classification below.
+        LogUnsupportedQuantActivationWarning(gmmParams, weightDtype, opName);
+        CHECK_COND(CheckA8W4QuantParams(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                   "In op [%s], when A8W4 weight quant, parameter check failed.", opName);
+        return ACLNN_SUCCESS;
+    }
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510) {
         if (IsQuant(gmmParams.xDtype, weightDtype)) {
             CHECK_COND(isNoActivation || CheckIsEnabledActive(gmmParams), ACLNN_ERR_PARAM_INVALID,
@@ -1546,7 +1558,6 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
         }
     }
     if (gmmParams.xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT4) {
-        // A8W4量化kernel未实现actType激活分支，先提示用户但保持兼容不拦截。
         LogUnsupportedQuantActivationWarning(gmmParams, weightDtype, opName);
         CHECK_COND(CheckA8W4QuantParams(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                    "In op [%s], when A8W4 weight quant, parameter check failed.", opName);

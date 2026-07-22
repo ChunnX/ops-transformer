@@ -14,6 +14,7 @@ if (UT_TEST_ALL OR OP_KERNEL_UT)
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/grouped_matmul_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/arch35/grouped_no_quant_matmul_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/arch35/grouped_quant_matmul_tiling.cpp
+        ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.cpp
         ${CMAKE_CURRENT_SOURCE_DIR}/../../../op_host/op_tiling/arch35/grouped_weight_quant_batch_matmul_tiling.cpp
         )
     # 使用AddOpTestCase
@@ -22,4 +23,15 @@ if (UT_TEST_ALL OR OP_KERNEL_UT)
     # param3：自定义编译选项，一般填写测试的一种典型数据类型组合，不需要则传入空字符串，例如："-DDTYPE_X=float"，多个使用空格分隔，例如："-DDTYPE_X=float -DDTYPE_Y=float"
     # param4：该算子依赖的所有tiling源码文件
     AddOpTestCase(grouped_matmul "ascend910B1" "-DDTYPE_X=half -DDTYPE_WEIGHT=half -DDTYPE_BIAS=half -DDTYPE_SCALE=uint64_t -DDTYPE_Y=half -DORIG_DTYPE_X=DT_FLOAT16 -DORIG_DTYPE_WEIGHT=DT_FLOAT16 -DORIG_DTYPE_Y=DT_FLOAT16" "${grouped_matmul_tiling_files}")
+    if (TARGET grouped_matmul_Ascend910B1_tiling_tmp)
+        target_include_directories(grouped_matmul_Ascend910B1_tiling_tmp PRIVATE
+            ${PROJECT_SOURCE_DIR})
+        target_sources(grouped_matmul_Ascend910B1_tiling_tmp PRIVATE
+            $<TARGET_OBJECTS:opbase_util_objs>)
+    endif()
+endif()
+
+list(FIND ARCH_DIRECTORY "arch35" grouped_matmul_arch35_index)
+if (NOT grouped_matmul_arch35_index EQUAL -1)
+    add_subdirectory(arch35)
 endif()

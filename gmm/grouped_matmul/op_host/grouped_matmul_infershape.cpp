@@ -1473,8 +1473,34 @@ static graphStatus IsDavidQuantGMMByShape(T context) {
     return (GetSizeByDataType(xDtype) == 1 && GetSizeByDataType(weightDtype) == 1) ? GRAPH_SUCCESS : GRAPH_FAILED;
 }
 
+static bool IsA8W4V5ByShape(const gert::InferShapeContext* context)
+{
+    auto xDesc = context->GetDynamicInputDesc(GMM_INDEX_IN_X, 0);
+    auto weightDesc = context->GetDynamicInputDesc(GMM_INDEX_IN_WEIGHT, 0);
+    auto scaleDesc = context->GetDynamicInputDesc(GMM_INDEX_IN_SCALE, 0);
+    return xDesc != nullptr && weightDesc != nullptr && scaleDesc != nullptr &&
+           xDesc->GetDataType() == DT_INT8 && weightDesc->GetDataType() == DT_INT4 &&
+           scaleDesc->GetDataType() == DT_UINT64;
+}
+
+static graphStatus InferShape4A8W4V5(gert::InferShapeContext* context)
+{
+    const gert::Shape* xShape = context->GetDynamicInputShape(GMM_INDEX_IN_X, 0);
+    const gert::Shape* weightShape = context->GetDynamicInputShape(GMM_INDEX_IN_WEIGHT, 0);
+    OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
+    OP_CHECK_NULL_WITH_CONTEXT(context, weightShape);
+    OP_CHECK_IF(xShape->GetDimNum() != 2 || weightShape->GetDimNum() != 3,
+                OP_LOGE(context->GetNodeName(), "V5 A8W4 requires x rank 2 and weight rank 3."),
+                return GRAPH_FAILED);
+    return UpdateShapeY(context, GMM_INDEX_OUT_Y,
+                        {xShape->GetDim(0), weightShape->GetDim(weightShape->GetDimNum() - 1)});
+}
+
 static ge::graphStatus InferShape4GroupedMatmul(gert::InferShapeContext* context) {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
+    if (IsA8W4V5ByShape(context)) {
+        return InferShape4A8W4V5(context);
+    }
     fe::PlatformInfo platformInfo;
     fe::OptionalInfo optionalInfo;
     auto ret = fe::PlatformInfoManager::Instance().GetPlatformInfoWithOutSocVersion(platformInfo, optionalInfo);
