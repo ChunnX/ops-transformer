@@ -32,15 +32,14 @@ using namespace MegaMoeImpl;
 #endif
 
 #ifndef MEGA_MOE_WEIGHT1_INTERLEAVED
-#define MEGA_MOE_WEIGHT1_INTERLEAVED 1
+#define MEGA_MOE_WEIGHT1_INTERLEAVED 0
 #endif
 #if MEGA_MOE_WEIGHT1_INTERLEAVED != 0 && MEGA_MOE_WEIGHT1_INTERLEAVED != 1
 #error "MEGA_MOE_WEIGHT1_INTERLEAVED must be 0 or 1"
 #endif
 
-// The optimized MTE path defaults to the matching [gate, up] tile-interleaved
-// weight1 and MX-scale layout.  Compatibility builds can still override this
-// to 0 for the conventional contiguous gate/up layout.
+// Use the conventional contiguous gate/up weight1 and MX-scale layout by
+// default. Builds that provide an interleaved weight can override this to 1.
 static constexpr bool WEIGHT1_INTERLEAVED = MEGA_MOE_WEIGHT1_INTERLEAVED != 0;
 
 template <uint8_t DispatchQuantMode, uint8_t DispatchQuantOutType, uint8_t CombineQuantOutType, uint8_t CommModeType,
