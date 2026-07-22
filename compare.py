@@ -22,8 +22,39 @@ _TESTS_DIR = os.path.join(_ASSETS_DIR, "..", "pytest", "fia_fullquant_mxfp8_test
 if _TESTS_DIR not in sys.path:
     sys.path.insert(0, _TESTS_DIR)
 from common import result_compare_method
+from common import fia_fullquant_mxfp8_golden as golden_mod
 
 logger = logging.getLogger(__name__)
+
+
+def _resolve_csv_tolerance(idx):
+    """从 golden_mod 读 csv 注入的 precision_tolerances / absolute_precision。
+
+    ttk 框架不把 testcase 对象直接传给 custom compare, golden 插件在调用前把
+    csv 的 precision_tolerances / absolute_precision 暂存到 golden_mod 上。
+    返回 (rtol, atol); csv 省略时返回 (None, None) 由 check_result 用默认值
+    (与 spec.py tolerance dict 一致: fp16 0.005/0.000025, bf16 0.0078125/0.0001)。
+
+    precision_tolerances 格式: tuple of (rtol, atol) per output, 如 ((0.0078125, 0.0001),)
+    absolute_precision 格式: float 或 tuple of float per output
+    """
+    pt = getattr(golden_mod, "_csv_precision_tolerances", None)
+    ap = getattr(golden_mod, "_csv_absolute_precision", None)
+    rtol = None
+    atol = None
+    if pt and idx < len(pt):
+        pair = pt[idx]
+        if pair is not None and len(pair) >= 2:
+            rtol = float(pair[0])
+            # atol 优先取 precision_tolerances 的第二个元素, 缺省回退 absolute_precision
+            atol = float(pair[1])
+    if atol is None and ap is not None:
+        if isinstance(ap, (tuple, list)):
+            if idx < len(ap) and ap[idx] is not None:
+                atol = float(ap[idx])
+        else:
+            atol = float(ap)
+    return rtol, atol
 
 
 def _to_torch(x):
@@ -93,7 +124,10 @@ def compare(*outputs, **kwargs):
         label = "atten" if idx == 0 else f"out{idx}"
         npu_torch = _to_torch(npu_out)
         golden_torch = _to_torch(golden_out)
-        result, fulfill_percent, max_error = result_compare_method.check_result(golden_torch, npu_torch)
+        rtol, atol = _resolve_csv_tolerance(idx)
+        logger.info("[COMPARE] %s: csv rtol=%s atol=%s", label, rtol, atol)
+        result, fulfill_percent, max_error = result_compare_method.check_result(
+            golden_torch, npu_torch, rtol=rtol, atol=atol)
         is_pass = (result == "Pass")
         if not is_pass:
             all_pass = False
