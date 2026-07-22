@@ -41,7 +41,7 @@
   - aclnnQuantMatmulAllReduceAddRmsNorm：需新建两个输出张量normOut和张量y对象存储计算结果。
   - aclnnInplaceQuantMatmulAllReduceAddRmsNorm：需新建一个输出张量normOut，在非Inplace场景中新建的输出张量y存储的结果直接存储到输入张量residual的内存中。
 
-- 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnInplaceQuantMatmulAllReduceAddRmsNorm”接口执行计算。
+- 每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnInplaceQuantMatmulAllReduceAddRmsNorm”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
@@ -239,7 +239,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一阶段接口完成入参校验，出现以下场景报错：
     <table style="undefined;table-layout: fixed; width: 1030px"><colgroup>
@@ -312,7 +312,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -333,7 +333,7 @@ aclnnStatus aclnnInplaceQuantMatmulAllReduceAddRmsNorm(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

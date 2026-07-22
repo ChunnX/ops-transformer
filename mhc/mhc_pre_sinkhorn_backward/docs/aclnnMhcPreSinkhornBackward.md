@@ -15,12 +15,12 @@
 
 - **接口功能**：MhcPreSinkhornBackward是MhcPreSinkhorn的反向算子。计算对应的梯度反向传播。
 
-- **计算公式**：  
+- **计算公式**：
 
     - **第一部分计算H_res_grad**：设当前梯度为 $\mathbf{grad}_{\text{curr}} = \mathbf{gradHRes}$（`gradHRes`为输入参数，即正向输出`h_res`的梯度），共进行 $\mathbf{num\_iters}$（Sinkhorn迭代次数，对应`sk_iter_count`，当前仅支持20）次迭代。
-    
+
         - **前 $\mathbf{num\_iters} - 1$ 次迭代**：对迭代编号 $i = \mathbf{num\_iters} - 1, \mathbf{num\_iters} - 2, \dots, 1$，依次执行，其中 $\mathbf{sumOut}$（对应输入参数`sumOut`）为Sinkhorn变换正向计算保存的中间sum结果，$\mathbf{normOut}$（对应输入参数`normOut`）为Sinkhorn变换正向计算保存的中间norm结果，$\mathbf{dotProd}_k$ 为第 $k$ 次点积计算结果（中间变量）：
-        
+
           $$
           \begin{aligned}
               \mathbf{dotProd}_{2i+1} &= \sum_{\dim=-2,\text{keepdim}=\text{True}} \left( \mathbf{grad}_{\text{curr}} \cdot \mathbf{normOut}_{2i+1} \right) \\
@@ -32,7 +32,7 @@
               \mathbf{grad}_{\text{curr}} &\gets \frac{\mathbf{grad}_{\text{curr}} - \mathbf{dotProd}_{2i}}{\mathbf{sumOut}_{2i}}, \\
           \end{aligned}
           $$
-        
+
         - **最后一次迭代**：
 
           $$
@@ -46,40 +46,40 @@
               \mathbf{HResGrad} &\gets \left( \mathbf{grad}_{\text{curr}} - \mathbf{dotProd}_{0} \right) \cdot \mathbf{normOut}_{0}, \\
           \end{aligned}
           $$
-    
+
     - **输入**：$\mathbf{gradHin} \in [B, S, C]$（`gradHin`为输入参数，即输出`h_in`的梯度）
-    
+
     - **输出组合梯度计算**：
-    
+
         - **正向计算公式**：其中 $\mathbf{x}$ 为输入参数（前向输入x），$\mathbf{hPre}$ 为输入参数（前向保存的中间结果h_pre），$N$ 为输入Tensor中N维度的大小（当前仅支持4）。
-        
+
         $$
         \mathbf{HIn} = \sum_{i=1}^{N} \mathbf{x}[B, S, i, :] \cdot \mathbf{hPre}[B, S, i]
         $$
-        
+
         - **反向计算公式**：
-        
+
         $$
         \begin{aligned}
         \mathbf{HPreGrad} &= \text{Reduce}\left(\mathbf{gradHin}.\text{unsqueeze}(-2) \odot \mathbf{x}, \text{dim}=-1\right) \quad ([B,S,N]) \\
         \mathbf{xGradVec3} &= \mathbf{gradHin} \times \mathbf{hPre} \quad ([B,S,N,C])
         \end{aligned}
         $$
-    
+
     - **门控激活层梯度计算**：
-    
+
         - **Sigmoid门控反向（H_pre）**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{hPre} = \text{Sigmoid}(\mathbf{alphaPre} \cdot \mathbf{hPre1} + \mathbf{biasPre}) + \mathbf{hcEps}
             $$
-            
+
             其中 $\mathbf{alphaPre}$ 为输入参数`alpha`的第一个元素（对应H_pre的缩放系数），$\mathbf{biasPre}$ 为输入参数`bias`的前N个元素，$\mathbf{hcEps}$ 为输入参数`hcEps`（数值稳定性参数）。
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{s} &= \mathbf{hPre} - \mathbf{hcEps} \\
@@ -89,19 +89,19 @@
             \mathbf{biasPreGrad} &= \sum_{b,s}^{B,S} \mathbf{HPre2Grad} \quad ([N])
             \end{aligned}
             $$
-        
+
         - **Sigmoid门控反向（H_post）**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{hPost} = \text{Sigmoid}(\mathbf{alphaPost} \cdot \mathbf{hPost1} + \mathbf{biasPost}) \times 2
             $$
-            
+
             其中 $\mathbf{alphaPost}$ 为输入参数`alpha`的第二个元素，$\mathbf{biasPost}$ 为输入参数`bias`的中间N个元素。
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{HPost2Grad} &= \mathbf{gradHPost} \odot \left(\mathbf{hPost} \cdot \left(1 - \frac{\mathbf{hPost}}{2}\right)\right) \\
@@ -110,21 +110,21 @@
             \mathbf{biasPostGrad} &= \sum_{b,s}^{B,S} \mathbf{HPost2Grad} \quad ([N])
             \end{aligned}
             $$
-            
+
             其中 $\mathbf{gradHPost}$ 为输入参数（输出`h_post`的梯度）。
-        
+
         - **残差连接反向（H_res）**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{hRes} = \mathbf{alphaRes} \cdot \mathbf{hRes1} + \mathbf{biasRes}
             $$
-            
+
             其中 $\mathbf{alphaRes}$ 为输入参数`alpha`的第三个元素，$\mathbf{biasRes}$ 为输入参数`bias`的后 $N^2$ 个元素。
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{HRes2Grad} &= \mathbf{HResGrad} \cdot \mathbf{alphaRes} \quad ([B,S,N,N]) \\
@@ -133,21 +133,21 @@
             \mathbf{HRes1Grad} &= \text{Reshape}(\mathbf{HRes2Grad}) \quad ([B,S,N^2])
             \end{aligned}
             $$
-    
+
     - **RMS归一化融合反向**：
-    
+
         - **RMSNorm Fusion反向**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{hMixTmp} = \mathbf{hMix} \cdot \mathbf{invRms}
             $$
-            
+
             其中 $\mathbf{hMix}$ 为线性投影层输出，$\mathbf{invRms}$ 为输入参数（前向保存的中间结果inv_rms）。
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{hMixTmpGrad} &= \text{Concat}(\mathbf{HPre1Grad}, \mathbf{HPost1Grad}, \mathbf{HRes1Grad}) \quad ([B,S,2N+N^2]) \\
@@ -155,25 +155,25 @@
             \mathbf{invRmsGrad} &= \sum_{\text{last\_dim}} \left(\mathbf{hMixTmpGrad} \cdot \mathbf{hMix}\right) \quad ([B,S,1])
             \end{aligned}
             $$
-    
+
     - **线性投影层梯度计算**：
-    
+
         - **矩阵乘法反向**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{hMix} = \mathbf{xRs} @ \mathbf{phi}^T
             $$
-            
+
             $$
             \mathbf{xRs} = \mathbf{x} \cdot \mathbf{gamma}
             $$
-            
+
             其中 $\mathbf{phi}$ 为输入参数（前向参数phi），$\mathbf{gamma}$ 为RMS归一化的缩放参数（由输入 $\mathbf{x}$ 计算得到）。
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{xRsGrad} &= \mathbf{hMixGrad} @ \mathbf{phi} \quad ([B,S,N \cdot C]) \\
@@ -182,36 +182,36 @@
             \mathbf{phiGrad} &= \mathbf{G}^T @ \mathbf{X} \quad ([2N+N^2, N \cdot C])
             \end{aligned}
             $$
-        
+
         - **特征缩放反向**：
-        
+
           - 正向公式：
-            
+
             $$
             \mathbf{xRs} = \mathbf{x} \cdot \mathbf{gamma}
             $$
-          
+
           - 反向计算：
-            
+
             $$
             \begin{aligned}
             \mathbf{xGradMm} &= \mathbf{xRsGrad} \cdot \mathbf{gamma} \\
             \mathbf{gammaGrad} &= \sum_{b=1}^{B}\sum_{s=1}^{S} (\mathbf{x} \cdot \mathbf{xRsGrad}) \quad ([N,C])
             \end{aligned}
             $$
-    
+
     - **RMS归一化梯度计算**：
-    
+
       - 正向公式：
-        
+
         $$
         \mathbf{invRms} = \frac{1}{\sqrt{\frac{1}{n}\sum_{i=1}^{n}\mathbf{x}_i^2 + \mathbf{eps}}}, \quad其中\ n = N \times C
         $$
-        
+
         其中 $\mathbf{eps}$ 为RMS归一化的数值稳定性参数。
-      
+
       - 反向计算：
-        
+
         $$
         \begin{aligned}
         \mathbf{xRsGradInv} &= - \left(\frac{\mathbf{invRmsGrad} \cdot \mathbf{invRms}^3}{N \times C}\right) \cdot \mathbf{xRs} \\
@@ -220,9 +220,9 @@
         \mathbf{xGrad} &= \mathbf{xGradVec3} + \mathbf{xGradVec1}
         \end{aligned}
         $$
-    
+
     - **符号说明**：
-    
+
       | 符号 | 含义 |
       |------|------|
       | $\mathbf{grad}_{\text{curr}}$ | 当前梯度（迭代中间变量） |
@@ -248,7 +248,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMhcPreSinkhornBackwardGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMhcPreSinkhornBackward`执行实际计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnMhcPreSinkhornBackwardGetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMhcPreSinkhornBackward`执行实际计算。
 
 ```cpp
 aclnnStatus aclnnMhcPreSinkhornBackwardGetWorkspaceSize(
@@ -289,10 +289,10 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
     <colgroup>
     <col style="width: 265px">
     <col style="width: 120px">
-    <col style="width: 223px">  
-    <col style="width: 391px">  
-    <col style="width: 181px">  
-    <col style="width: 111px"> 
+    <col style="width: 223px">
+    <col style="width: 391px">
+    <col style="width: 181px">
+    <col style="width: 111px">
     <col style="width: 126px">
     <col style="width: 145px">
         </colgroup>
@@ -503,7 +503,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -586,7 +586,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -604,7 +604,7 @@ aclnnStatus aclnnMhcPreSinkhornBackward(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>
