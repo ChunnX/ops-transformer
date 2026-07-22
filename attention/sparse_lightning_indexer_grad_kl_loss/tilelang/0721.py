@@ -266,7 +266,10 @@ def tilelang_grad_kl_loss_single_kernel(
     dkey_finalize_batch = 16
     dkey_finalize_total_batches = dkey_output_rows // dkey_finalize_batch
     loss_reduce_chunk = 128
-    loss_partial_size = ceil_div(task_count * 2, loss_reduce_chunk) * loss_reduce_chunk
+    loss_valid_size = task_count * 2
+    loss_partial_size = ceil_div(loss_valid_size, loss_reduce_chunk) * loss_reduce_chunk
+    loss_full_chunk_count = loss_valid_size // loss_reduce_chunk
+    loss_tail_size = loss_valid_size % loss_reduce_chunk
 
     @T.macro
     def vector0_gather_task(
@@ -407,8 +410,8 @@ def tilelang_grad_kl_loss_single_kernel(
     ):
         """Compute P and SY with explicit L1/L0/MMA/FIX ownership."""
         with T.Scope("C"):
-            c1_query_l1 = T.alloc_L1((N1, DQuery), input_dtype)
-            c1_query_rope_l1 = T.alloc_L1((N1, max(d_rope, 16)), input_dtype)
+            c1_query_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_rope_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
             c1_key_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
             c1_q_l0a = T.alloc_L0A((N1, K_SPLIT), input_dtype)
             c1_key_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
@@ -427,20 +430,12 @@ def tilelang_grad_kl_loss_single_kernel(
             T.set_flag("fix", "m", 1)
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
-                T.copy(Query[bz_task, s1_id, 0:N1, 0:DQuery], c1_query_l1)
-                if d_rope > 0:
-                    T.copy(
-                        QueryRope[bz_task, s1_id, 0:N1, 0:d_rope],
-                        c1_query_rope_l1[0:N1, 0:d_rope],
-                    )
-                T.set_flag("mte2", "mte1", 4)
                 T.copy(
                     QueryIndex[bz_task, s1_id, 0:Nidx1, 0:DQueryIndex],
                     c1_qi_l1,
                 )
                 T.set_flag("mte2", "mte1", 5)
 
-                T.wait_flag("mte2", "mte1", 4)
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
                     if k_outer % 2 == 0:
                         T.wait_cross_flag(V0_TO_C1_P_FLAGS[0])
@@ -452,6 +447,15 @@ def tilelang_grad_kl_loss_single_kernel(
                         for d_idx in T.serial(d_num_query):
                             T.wait_flag("mte1", "mte2", 0)
                             T.copy(
+                                Query[
+                                    bz_task,
+                                    s1_id,
+                                    0:N1,
+                                    d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT,
+                                ],
+                                c1_query_l1,
+                            )
+                            T.copy(
                                 GatherKey_ws[bz_task, s1_id,
                                              k_start:k_start + N_SPLIT,
                                              d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT],
@@ -460,11 +464,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "mte1", 0)
                             T.wait_flag("m", "mte1", 0)
                             T.wait_flag("mte2", "mte1", 0)
-                            T.copy(
-                                c1_query_l1[0:N1,
-                                            d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT],
-                                c1_q_l0a,
-                            )
+                            T.copy(c1_query_l1, c1_q_l0a)
                             T.copy(c1_key_l1, c1_key_l0b, transpose=True)
                             T.set_flag("mte1", "mte2", 0)
                             T.set_flag("mte1", "m", 0)
@@ -477,6 +477,15 @@ def tilelang_grad_kl_loss_single_kernel(
                         for rope_idx in T.serial(d_num_rope):
                             T.wait_flag("mte1", "mte2", 0)
                             T.copy(
+                                QueryRope[
+                                    bz_task,
+                                    s1_id,
+                                    0:N1,
+                                    rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT,
+                                ],
+                                c1_query_rope_l1,
+                            )
+                            T.copy(
                                 GatherKeyRope_ws[bz_task, s1_id,
                                                  k_start:k_start + N_SPLIT,
                                                  rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT],
@@ -485,13 +494,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "mte1", 0)
                             T.wait_flag("m", "mte1", 0)
                             T.wait_flag("mte2", "mte1", 0)
-                            T.copy(
-                                c1_query_rope_l1[
-                                    0:N1,
-                                    rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT,
-                                ],
-                                c1_q_l0a,
-                            )
+                            T.copy(c1_query_rope_l1, c1_q_l0a)
                             T.copy(c1_key_l1, c1_key_l0b, transpose=True)
                             T.set_flag("mte1", "mte2", 0)
                             T.set_flag("mte1", "m", 0)
@@ -1149,13 +1152,12 @@ def tilelang_grad_kl_loss_single_kernel(
                 + T.min(core_id, v2_tail_batch_cores)
             )
             first_vector_batches = (core_batch_count + 1) // 2
-            vector_batch_count = T.if_then_else(
-                vector_id == 0,
-                first_vector_batches,
-                core_batch_count - first_vector_batches,
+            vector_batch_count = (
+                first_vector_batches
+                - vector_id * (2 * first_vector_batches - core_batch_count)
             )
-            vector_batch_start = core_batch_start + T.if_then_else(
-                vector_id == 0, 0, first_vector_batches
+            vector_batch_start = (
+                core_batch_start + vector_id * first_vector_batches
             )
             aiv_k_start = vector_batch_start * v2_scatter_batch
 
@@ -1401,15 +1403,14 @@ def tilelang_grad_kl_loss_single_kernel(
                     v2_loss_chunk_sum = T.alloc_ub((1,), calc_dtype)
                     v2_loss_total = T.alloc_ub((1,), calc_dtype)
                     T.tile.fill(v2_loss_total, 0.0)
-                    T.set_flag("v", "mte2", 4)
-                    for loss_chunk_id in T.serial(
-                        loss_partial_size // loss_reduce_chunk
-                    ):
+                    for loss_chunk_id in T.serial(loss_full_chunk_count):
+                        loss_chunk_start = loss_chunk_id * loss_reduce_chunk
+                        T.tile.fill(v2_loss_chunk, 0.0)
+                        T.set_flag("v", "mte2", 4)
                         T.wait_flag("v", "mte2", 4)
                         T.copy(
                             LossPartial[
-                                loss_chunk_id * loss_reduce_chunk:
-                                (loss_chunk_id + 1) * loss_reduce_chunk
+                                loss_chunk_start:loss_chunk_start + loss_reduce_chunk
                             ],
                             v2_loss_chunk[0, :],
                         )
@@ -1420,14 +1421,36 @@ def tilelang_grad_kl_loss_single_kernel(
                             v2_loss_chunk_sum,
                             1,
                         )
-                        T.set_flag("v", "mte2", 4)
                         T.pipe_barrier("v")
                         T.tile.add(
                             v2_loss_total,
                             v2_loss_total,
                             v2_loss_chunk_sum,
                         )
-                    T.wait_flag("v", "mte2", 4)
+                    if loss_tail_size > 0:
+                        loss_tail_start = loss_full_chunk_count * loss_reduce_chunk
+                        T.tile.fill(v2_loss_chunk, 0.0)
+                        T.set_flag("v", "mte2", 4)
+                        T.wait_flag("v", "mte2", 4)
+                        T.copy(
+                            LossPartial[
+                                loss_tail_start:loss_tail_start + loss_tail_size
+                            ],
+                            v2_loss_chunk[0, 0:loss_tail_size],
+                        )
+                        T.set_flag("mte2", "v", 4)
+                        T.wait_flag("mte2", "v", 4)
+                        T.reduce_sum(
+                            v2_loss_chunk,
+                            v2_loss_chunk_sum,
+                            1,
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.add(
+                            v2_loss_total,
+                            v2_loss_total,
+                            v2_loss_chunk_sum,
+                        )
                     T.set_flag("v", "mte3", 4)
                     T.wait_flag("v", "mte3", 4)
                     T.copy(v2_loss_total, LossOut[0:1])
