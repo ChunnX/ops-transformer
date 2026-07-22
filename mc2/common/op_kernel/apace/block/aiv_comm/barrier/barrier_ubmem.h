@@ -23,7 +23,8 @@ using namespace AscendC;
 
 constexpr uint32_t UB_SIZE = 64;
 constexpr uint32_t SYNC_SLOT_PEER_CORE = 8;
-constexpr uint32_t BARRIER_FLAG_SIZE = 8;
+constexpr uint32_t BARRIER_FLAG_SIZE = 32;
+constexpr uint32_t BARRIER_FLAG_ELEMS = BARRIER_FLAG_SIZE / sizeof(int32_t);
 
 static __aicore__ inline uint32_t GetCoreSyncPoolOffset(uint32_t totalJobs) {
     return BARRIER_FLAG_SIZE + totalJobs * SYNC_SLOT_PEER_CORE * BARRIER_FLAG_SIZE;
@@ -50,15 +51,6 @@ private:
     uint32_t totalJobs_;
     uint32_t jobIndex_;
     int32_t count_;
-    __aicore__ inline void FlushCacheLine(__gm__ uint8_t* addr)
-    {
-        AscendC::GlobalTensor<uint8_t> global;
-        global.SetGlobalBuffer(addr);
-        __asm__ __volatile__("");
-        AscendC::DataCacheCleanAndInvalid<
-            uint8_t, AscendC::CacheLine::SINGLE_CACHE_LINE, AscendC::DcciDst::CACHELINE_OUT>(global);
-        __asm__ __volatile__("");
-    }
 
     __aicore__ inline void BarrierCrossDevice();
 };
@@ -81,24 +73,30 @@ __aicore__ inline void TeamBarrier::Execute()
 
         __gm__ int32_t* teamSyncCounter = (__gm__ int32_t*)(ctx_->commBufferAddrs[ctx_->rankId]
             + BARRIER_FLAG_SIZE + jobIndex_ * BARRIER_FLAG_SIZE);
-        count_ = (*teamSyncCounter) + 1;
 
-        BarrierCrossDevice();
-
+        auto copyGM2UB = Te::MakeCopy(Te::CopyGM2UB{});
         auto copyUB2GM = Te::MakeCopy(Te::CopyUB2GM{});
         auto ubTmp = Te::MakeTensor(
             Te::MakeMemPtr<Te::Location::UB, int32_t>(reinterpret_cast<uint64_t>(syncBuf_)),
-            Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, 1));
+            Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, BARRIER_FLAG_ELEMS));
         auto teamSyncGmTensor = Te::MakeTensor(
             Te::MakeMemPtr<Te::Location::GM>((__gm__ int32_t*)(teamSyncCounter)),
-            Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, 1));
+            Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, BARRIER_FLAG_ELEMS));
+
+        SetFlag<HardEvent::S_MTE2>(1);
+        WaitFlag<HardEvent::S_MTE2>(1);
+        Te::Copy(copyGM2UB, ubTmp, teamSyncGmTensor);
+        SetFlag<HardEvent::MTE2_S>(1);
+        WaitFlag<HardEvent::MTE2_S>(1);
+        count_ = ubTmp[Te::MakeCoord(0, 0)] + 1;
+        BarrierCrossDevice();
+
         ubTmp[Te::MakeCoord(0, 0)] = count_;
-        SetFlag<HardEvent::V_MTE3>(1);
-        WaitFlag<HardEvent::V_MTE3>(1);
+        SetFlag<HardEvent::S_MTE3>(1);
+        WaitFlag<HardEvent::S_MTE3>(1);
         Te::Copy(copyUB2GM, teamSyncGmTensor, ubTmp);
         SetFlag<HardEvent::MTE3_S>(1);
         WaitFlag<HardEvent::MTE3_S>(1);
-
     }
 }
 
@@ -109,16 +107,17 @@ __aicore__ inline void TeamBarrier::BarrierCrossDevice()
     int32_t step = totalJobs_ < nranks ? (int32_t)totalJobs_ : (int32_t)nranks;
     auto localFlag = (__gm__ int32_t*)(ctx_->commBufferAddrs[ctx_->rankId]);
 
+    auto copyGM2UB = Te::MakeCopy(Te::CopyGM2UB{});
     auto copyUB2GM = Te::MakeCopy(Te::CopyUB2GM{});
     auto ubTmp = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::UB, int32_t>(reinterpret_cast<uint64_t>(syncBuf_)),
-        Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, 1));
-    ubTmp[Te::MakeCoord(0, 0)] = count_;
-    SetFlag<HardEvent::V_MTE3>(1);
-    WaitFlag<HardEvent::V_MTE3>(1);
+        Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, BARRIER_FLAG_ELEMS));
     auto gmFlag = Te::MakeTensor(
         Te::MakeMemPtr<Te::Location::GM>((__gm__ int32_t*)(localFlag)),
-        Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, 1));
+        Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, BARRIER_FLAG_ELEMS));
+    ubTmp[Te::MakeCoord(0, 0)] = count_;
+    SetFlag<HardEvent::S_MTE3>(1);
+    WaitFlag<HardEvent::S_MTE3>(1);
     Te::Copy(copyUB2GM, gmFlag, ubTmp);
     SetFlag<HardEvent::MTE3_S>(1);
     WaitFlag<HardEvent::MTE3_S>(1);
@@ -128,9 +127,16 @@ __aicore__ inline void TeamBarrier::BarrierCrossDevice()
             continue;
         }
         __gm__ int32_t* remotePtr = (__gm__ int32_t*)(ctx_->commBufferAddrs[i]);
+        auto gmRemote = Te::MakeTensor(
+            Te::MakeMemPtr<Te::Location::GM>(remotePtr),
+            Te::FrameLayoutFormat<Te::NDExtLayoutPtn, Te::LayoutTraitDefault<int32_t>>{}(1, BARRIER_FLAG_ELEMS));
         do {
-            FlushCacheLine((__gm__ uint8_t*)remotePtr);
-            if (*remotePtr >= count_) {
+            SetFlag<HardEvent::S_MTE2>(1);
+            WaitFlag<HardEvent::S_MTE2>(1);
+            Te::Copy(copyGM2UB, ubTmp, gmRemote);
+            SetFlag<HardEvent::MTE2_S>(1);
+            WaitFlag<HardEvent::MTE2_S>(1);
+            if (ubTmp[Te::MakeCoord(0, 0)] >= count_) {
                 break;
             }
         } while (true);
