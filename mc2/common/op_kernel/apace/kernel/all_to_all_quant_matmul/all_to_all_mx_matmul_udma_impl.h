@@ -304,17 +304,13 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 {
   Params params;
   MatmulMode mode = (tilingData_->localMatmul == 2) ? MatmulMode::DEFERRED_SYNC : MatmulMode::REMOTE;
-  for (uint32_t mLoopIdx = 0; mLoopIdx < baseParams_.commTurn; ++mLoopIdx) {
-    SetupParams(&tilingData_->tileQbmmTilingData, params, mode);
-
-    params.mmadParams.aGmAddr = baseParams_.selfWinAddr;
-    params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.rankSize * baseParams_.rankDataBytes;
-    params.mmadParams.cGmAddr = baseParams_.cGm;
-    params.localParams.localAGmAddr = baseParams_.aGm;
-    params.localParams.localScaleAGmAddr = baseParams_.scaleAGm;
-
-    quantMatmulKernelImpl_(params);
-  }
+  SetupParams(&tilingData_->tileQbmmTilingData, params, mode);
+  params.mmadParams.aGmAddr = baseParams_.selfWinAddr;
+  params.mmadParams.scaleAGmAddr = baseParams_.selfWinAddr + baseParams_.rankSize * baseParams_.rankDataBytes;
+  params.mmadParams.cGmAddr = baseParams_.cGm;
+  params.localParams.localAGmAddr = baseParams_.aGm;
+  params.localParams.localScaleAGmAddr = baseParams_.scaleAGm;
+  quantMatmulKernelImpl_(params);
 }
 
 } // namespace Apace
