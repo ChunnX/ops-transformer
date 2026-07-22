@@ -82,6 +82,8 @@ else
         if [ "${GIT_TARGET_BRANCH}" = "master" ]; then
             wget -nv https://kiri-obs.obs.cn-north-4.myhuaweicloud.com/Cann%20Large%20Model%20Foundation%208.5.0.beta005/cann-bisheng-compiler_9.0.0_linux-x86_64.run
             chmod +x *.run
+            wget -nv https://kiri-obs.obs.cn-north-4.myhuaweicloud.com/Cann%20Large%20Model%20Foundation%208.5.0.beta005/cann-bisheng-compiler_9.0.0_linux-x86_64.run || { echo "::error::wget failed"; exit 1; }
+            chmod +x *.run
             sudo -u jenkins ./cann-bisheng-compiler*.run --full --quiet --install-path=/home/jenkins/Ascend
             LOG_DO bash build.sh --pkg --soc=kirinx90,kirin9030 --cann_3rd_lib_path=${ASCEND_3RD_LIB_PATH} -j16
             DP_ASSERT_EQUAL "$?" "0" "Build ${REPOSITORY_NAME}"
