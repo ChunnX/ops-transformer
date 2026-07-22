@@ -314,7 +314,7 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
     uint32_t s1GPrevBaseNum = actualSeqQPrev;
     constInfo.bN2Start = bN2EndPrev;
     constInfo.gS1Start = s1GEndPrev;
-    
+
     constInfo.s2Start = 0;
     if (s1GEndPrev >= s1GPrevBaseNum - 1) { // 上个核把S1G处理完了
         constInfo.gS1Start = 0;
@@ -459,6 +459,10 @@ __aicore__ inline void SparseFlashAttentionKernelMla<CubeBlockType, VecBlockType
         constInfo.softmaxScale = sharedParams.softmaxScale;
         constInfo.blockSize = sharedParams.blockSize;
         constInfo.maxBlockNumPerBatch = sharedParams.maxBlockNumPerBatch;
+    }
+
+    if ASCEND_IS_AIV {
+        constInfo.keyStride0 = this->tilingData->baseParams.keyStride0;
     }
 
     InitUniqueConstInfo();

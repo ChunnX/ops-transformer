@@ -233,9 +233,10 @@ int64_t SFAVectorService<TEMPLATE_ARGS>::GetkeyOffset(
     if constexpr (isPa) {
         int64_t blkTableIdx = s2Idx / blockSize;
         int64_t blkTableOffset = s2Idx % blockSize;
+        int64_t paBlockStride = (constInfo.keyStride0 > 0) ? constInfo.keyStride0 :
+            static_cast<int64_t>(blockSize);
         realkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) *
-            static_cast<int64_t>(blockSize) +
-            blkTableOffset; // BlockNum, BlockSize, N(1), D
+            paBlockStride + blkTableOffset; // BlockNum, BlockSize, N(1), D
     } else {
         if constexpr (LAYOUT_T == SFA_LAYOUT::BSND) {
             realkeyOffset = (runInfo.boIdx * constInfo.s2Size + s2Idx); // BSN(1)D

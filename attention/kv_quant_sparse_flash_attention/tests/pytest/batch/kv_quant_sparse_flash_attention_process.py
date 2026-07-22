@@ -67,7 +67,7 @@ def call_npu_eager(torch_tensor_dict, params):
     )
 
 
-def call_npu(input_tensor_dict, params):    
+def call_npu(input_tensor_dict, params):
     torch_npu.npu.set_device(0)
     torch_tensor_dict = _load_inputs_to_npu(input_tensor_dict)
     npu_result = call_npu_eager(torch_tensor_dict, params)
