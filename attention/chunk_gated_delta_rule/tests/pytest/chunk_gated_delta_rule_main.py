@@ -23,6 +23,9 @@ import argparse
 
 _USE_GRAPH = os.environ.get('USE_GRAPH', 'false').lower() in ('true', '1', 'yes')
 _ENABLE_PROF = os.environ.get('ENABLE_PROF', 'false').lower() in ('true', '1', 'yes')
+_SAVE_PT = os.environ.get('SAVE_PT', 'false').lower() in ('true', '1', 'yes')
+_LOAD_PT = os.environ.get('LOAD_PT', 'false').lower() in ('true', '1', 'yes')
+_LOAD_PT_FILE = os.environ.get('LOAD_PT_FILE', '')
 
 if _USE_GRAPH:
     import torchair
@@ -239,39 +242,125 @@ def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
     state_npu = state_npu.to(torch.float32)
     return o_npu, state_npu
 
+def _pt_filename(B, seqlen, nk, nv, dk, dv, chunk_size, data_type,
+                 state_data_type, has_g, is_contiguous):
+    sl_str = '-'.join(str(x) for x in seqlen) if isinstance(seqlen, (list, tuple)) else str(seqlen)
+    return (f"input_B{B}_S{sl_str}_nk{nk}_nv{nv}_dk{dk}_dv{dv}_cs{chunk_size}"
+            f"_{str(data_type).replace('torch.', '')}"
+            f"_{str(state_data_type).replace('torch.', '')}"
+            f"_g{int(has_g)}_contig{int(is_contiguous)}.pt")
+
+
+def _save_input_pt(q, k, v, g, beta, scale, initial_state, actual_seq_lengths,
+                   B, seqlen, nk, nv, dk, dv, chunk_size, data_type,
+                   state_data_type, has_g, is_contiguous):
+    save_dir = os.path.join('output', 'pt')
+    os.makedirs(save_dir, exist_ok=True)
+    fname = _pt_filename(B, seqlen, nk, nv, dk, dv, chunk_size, data_type,
+                         state_data_type, has_g, is_contiguous)
+    fpath = os.path.join(save_dir, fname)
+    data = {
+        'q': q.cpu(), 'k': k.cpu(), 'v': v.cpu(),
+        'beta': beta.cpu(), 'scale': scale,
+        'initial_state': initial_state.cpu(),
+        'actual_seq_lengths': actual_seq_lengths.cpu(),
+        'g': None if g is None else g.cpu(),
+        'meta': {'B': B, 'seqlen': seqlen, 'nk': nk, 'nv': nv, 'dk': dk, 'dv': dv,
+                 'chunk_size': chunk_size, 'data_type': data_type,
+                 'state_data_type': state_data_type, 'has_g': has_g,
+                 'is_contiguous': is_contiguous},
+    }
+    torch.save(data, fpath)
+    print(f"[SAVE_PT] saved input data to {fpath}")
+
+
+def _load_input_pt(B, seqlen, nk, nv, dk, dv, chunk_size, data_type,
+                   state_data_type, has_g, is_contiguous, pt_path=""):
+    if _LOAD_PT_FILE:
+        fpath = _LOAD_PT_FILE
+    elif pt_path:
+        fpath = pt_path
+    else:
+        load_dir = os.path.join('output', 'pt')
+        fname = _pt_filename(B, seqlen, nk, nv, dk, dv, chunk_size, data_type,
+                             state_data_type, has_g, is_contiguous)
+        fpath = os.path.join(load_dir, fname)
+    if not os.path.exists(fpath):
+        raise FileNotFoundError(f"[LOAD_PT] pt file not found: {fpath}")
+    data = torch.load(fpath, map_location='cpu')
+    dev = f"npu:{DEVICE_ID}"
+    loaded = {
+        'q': data['q'].to(dev),
+        'k': data['k'].to(dev),
+        'v': data['v'].to(dev),
+        'beta': data['beta'].to(dev),
+        'scale': data['scale'],
+        'initial_state': data['initial_state'].to(dev),
+        'actual_seq_lengths': data['actual_seq_lengths'].to(dev),
+        'g': None if data['g'] is None else data['g'].to(dev),
+    }
+    print(f"[LOAD_PT] loaded input data from {fpath}")
+    return loaded
+
+
 def run_chunk_gated_delta_rule_eager(B, seqlen, nk, nv, dk, dv, chunk_size=64,
                                      data_type=torch.bfloat16,
                                      state_data_type=torch.bfloat16,
                                      has_g=True,
-                                     is_contiguous=True):
+                                     is_contiguous=True,
+                                     pt_path=""):
     torch_npu.npu.set_device(int(DEVICE_ID))
     # ======================== gen input data start =============================
-    if isinstance(seqlen, (list, tuple)):
-        seqlen_list = list(seqlen)
-        B = len(seqlen_list)
-        T = sum(seqlen_list)
+    if _LOAD_PT:
+        loaded = _load_input_pt(B, seqlen, nk, nv, dk, dv, chunk_size,
+                                data_type, state_data_type, has_g, is_contiguous,
+                                pt_path=pt_path)
+        q = loaded['q']
+        k = loaded['k']
+        v = loaded['v']
+        g = loaded['g']
+        beta = loaded['beta']
+        scale = loaded['scale']
+        initial_state = loaded['initial_state']
+        actual_seq_lengths = loaded['actual_seq_lengths']
+        B = initial_state.shape[0]
+        T = q.shape[0]
     else:
-        seqlen_list = [seqlen] * B
-        T = B * seqlen
-    q = torch.rand((T, nk, dk), dtype=data_type, device="npu:%s" % DEVICE_ID)
-    k = torch.rand((T, nk, dk), dtype=data_type, device="npu:%s" % DEVICE_ID)
-    v = torch.rand((T, nv, dv), dtype=data_type, device="npu:%s" % DEVICE_ID)
-    if has_g:
-        g = torch.rand((T, nv), dtype=torch.float32, device="npu:%s" % DEVICE_ID) * -1.0
-    else:
-        g = None
-    beta = torch.rand((T, nv), dtype=data_type, device="npu:%s" % DEVICE_ID)
-    q = torch.nn.functional.normalize(q, p=2, dim=-1)
-    k = torch.nn.functional.normalize(k, p=2, dim=-1)
-    scale = 1 / (dk ** 0.5)
-    initial_state = torch.rand((B, nv, dv, dk), dtype=state_data_type, device="npu:%s" % DEVICE_ID)
-    if not is_contiguous:
-        state_pad = torch.zeros((B, nv, dv + 1, dk), dtype=state_data_type, device="npu:%s" % DEVICE_ID)
-        state_pad[:, :, :dv, :] = initial_state
-        initial_state = state_pad[:, :, :dv, :]
-    print(f"initial_state: is_contiguous={initial_state.is_contiguous()}, stride={initial_state.stride()}")
-    actual_seq_lengths = torch.tensor(seqlen_list, dtype=torch.int32, device="npu:%s" % DEVICE_ID)
+        if isinstance(seqlen, (list, tuple)):
+            seqlen_list = list(seqlen)
+            B = len(seqlen_list)
+            T = sum(seqlen_list)
+        else:
+            seqlen_list = [seqlen] * B
+            T = B * seqlen
+        q = torch.rand((T, nk, dk), dtype=data_type, device="npu:%s" % DEVICE_ID)
+        k = torch.rand((T, nk, dk), dtype=data_type, device="npu:%s" % DEVICE_ID)
+        v = torch.rand((T, nv, dv), dtype=data_type, device="npu:%s" % DEVICE_ID)
+        if has_g:
+            g = torch.rand((T, nv), dtype=torch.float32, device="npu:%s" % DEVICE_ID) * -1.0
+        else:
+            g = None
+        beta = torch.rand((T, nv), dtype=data_type, device="npu:%s" % DEVICE_ID)
+        q = torch.nn.functional.normalize(q, p=2, dim=-1)
+        k = torch.nn.functional.normalize(k, p=2, dim=-1)
+        scale = 1 / (dk ** 0.5)
+        initial_state = torch.rand((B, nv, dv, dk), dtype=state_data_type, device="npu:%s" % DEVICE_ID)
+        if not is_contiguous:
+            state_pad = torch.zeros((B, nv, dv + 1, dk), dtype=state_data_type, device="npu:%s" % DEVICE_ID)
+            state_pad[:, :, :dv, :] = initial_state
+            initial_state = state_pad[:, :, :dv, :]
+        actual_seq_lengths = torch.tensor(seqlen_list, dtype=torch.int32, device="npu:%s" % DEVICE_ID)
     # ======================== gen input data finish =============================
+    print(f"initial_state: is_contiguous={initial_state.is_contiguous()}, stride={initial_state.stride()}")
+
+    if _SAVE_PT:
+        _save_input_pt(q=q, k=k, v=v, g=g, beta=beta, scale=scale,
+                        initial_state=initial_state,
+                        actual_seq_lengths=actual_seq_lengths,
+                        B=B, seqlen=seqlen, nk=nk, nv=nv, dk=dk, dv=dv,
+                        chunk_size=chunk_size, data_type=data_type,
+                        state_data_type=state_data_type,
+                        has_g=has_g, is_contiguous=is_contiguous)
 
     if _ENABLE_PROF:
         cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths)
@@ -313,5 +402,6 @@ def run_precision_test(inputs):
         data_type=inputs['data_type'],
         state_data_type=inputs.get('state_data_type', torch.bfloat16),
         has_g=inputs.get('has_g', True),
-        is_contiguous=inputs.get('is_contiguous', True)
+        is_contiguous=inputs.get('is_contiguous', True),
+        pt_path=inputs.get('pt_path', '')
     )
