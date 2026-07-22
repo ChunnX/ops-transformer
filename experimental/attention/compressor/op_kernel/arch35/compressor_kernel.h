@@ -151,11 +151,11 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     } else {
         constInfo.aiCoreIdx = GetBlockIdx();
     }
-    InitTilingData();
     isExistXCache_ = (xCache != nullptr);
+    InitTilingData();
     // init tools
     tools_.toolParams_.seqSize = tilingData_->baseParams.seqSize;
-    tools_.toolParams_.xCacheReadSize = tilingData_->baseParams.xCacheReadSize;
+    tools_.toolParams_.xCacheReadSize = isExistXCache_ ? constInfo.xCacheReadSize : 0;
     tools_.toolParams_.cmpRatio = tilingData_->baseParams.cmpRatio;
     tools_.Init(startPos, seqUsed, cuSeqlens);
 
@@ -225,8 +225,9 @@ template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
     constInfo.cmpRatio = tilingData_->baseParams.cmpRatio;
     constInfo.projectionBatchSize = tilingData_->baseParams.batchSize;
-    constInfo.xCacheUpdateBatchSize = tilingData_->baseParams.xCacheUpdateBatchSize;
-    constInfo.xCacheReadSize = tilingData_->baseParams.xCacheReadSize;
+    constInfo.xCacheUpdateBatchSize =
+        isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheUpdateBatchSize : 0;
+    constInfo.xCacheReadSize = isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheReadSize : 0;
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
     constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;
     constInfo.kBaseSize = tilingData_->baseParams.hiddenSize;
@@ -237,7 +238,7 @@ __aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
     constInfo.ropeHeadDim = tilingData_->baseParams.ropeHeadDim;
     constInfo.normEps = tilingData_->baseParams.normEps;
     constInfo.stateCacheStrideDim0 = tilingData_->baseParams.stateCacheStrideDim0;
-    constInfo.xCacheSize = tilingData_->baseParams.xCacheSize;
+    constInfo.xCacheSize = isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheSize : 0;
     constInfo.reciprocalD = tilingData_->baseParams.reciprocalD;
     constInfo.usedCoreNum = tilingData_->baseParams.usedCoreNum;
     
