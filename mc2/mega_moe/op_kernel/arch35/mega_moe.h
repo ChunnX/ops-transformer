@@ -55,19 +55,18 @@ using namespace AscendC;
 #define MEGA_MOE_GMM2_READY_PER_EXPERT 0
 #define MEGA_MOE_GMM2_READY_PER_BATCH 1
 #ifndef MEGA_MOE_GMM2_READY_MODE
-#define MEGA_MOE_GMM2_READY_MODE MEGA_MOE_GMM2_READY_PER_BATCH
+#define MEGA_MOE_GMM2_READY_MODE MEGA_MOE_GMM2_READY_PER_EXPERT
 #endif
 #if MEGA_MOE_GMM2_READY_MODE != MEGA_MOE_GMM2_READY_PER_EXPERT && \
     MEGA_MOE_GMM2_READY_MODE != MEGA_MOE_GMM2_READY_PER_BATCH
 #error "MEGA_MOE_GMM2_READY_MODE must be PER_EXPERT(0) or PER_BATCH(1)"
 #endif
 
-// Performance experiment: retain the final wave's full combine tail, but
-// skip combine work in earlier PER_BATCH waves after preserving their GMM2
-// ready dependency.  This is default-on so the requested A/B needs no extra
-// compiler option.
+// Optional performance experiment: retain the final wave's full combine tail,
+// but skip combine work in earlier PER_BATCH waves after preserving their GMM2
+// ready dependency.  Production/default measurements execute every wave.
 #ifndef MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY
-#define MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY 1
+#define MEGA_MOE_GMM2_FINAL_BATCH_COMBINE_ONLY 0
 #endif
 
 // Default-off NPU timeline diagnostic for the 16-local-expert target.  When
