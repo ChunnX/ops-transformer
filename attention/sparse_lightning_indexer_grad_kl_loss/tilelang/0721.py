@@ -914,8 +914,8 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_p_slots = T.alloc_ub((2, bw_col_block), calc_dtype)
             v1_bw_sy_slots = T.alloc_ub((2, bw_col_block), calc_dtype)
             v1_bw_diff = T.alloc_ub(bw_col_block, calc_dtype)
-            v1_bw_diff_2d = T.alloc_ub(
-                (rows_per_aiv, bw_col_block), calc_dtype
+            v1_bw_diff_2d_slots = T.alloc_ub(
+                (2, rows_per_aiv, bw_col_block), calc_dtype
             )
             v1_bw_bmm2_slots = T.alloc_ub(
                 (2, rows_per_aiv, bw_col_block), calc_dtype
@@ -1053,7 +1053,10 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_bw_p_slots[current_slot, :],
                         )
                         T.pipe_barrier("v")
-                        T.tile.broadcast(v1_bw_diff_2d, v1_bw_diff)
+                        T.tile.broadcast(
+                            v1_bw_diff_2d_slots[current_slot, :, :],
+                            v1_bw_diff,
+                        )
 
                         # mask ~= (bmm2 > 0), evaluated from the post-ReLU C1
                         # result using the precision-proven approximation.
@@ -1070,7 +1073,11 @@ def tilelang_grad_kl_loss_single_kernel(
 
                         T.copy(v1_bw_weight_2d, v1_bw_rg)
                         T.pipe_barrier("v")
-                        T.tile.mul(v1_bw_rg, v1_bw_rg, v1_bw_diff_2d)
+                        T.tile.mul(
+                            v1_bw_rg,
+                            v1_bw_rg,
+                            v1_bw_diff_2d_slots[current_slot, :, :],
+                        )
                         T.pipe_barrier("v")
                         T.tile.mul(v1_bw_rg, v1_bw_rg, v1_bw_mask)
                         T.pipe_barrier("v")
@@ -1080,7 +1087,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.mul(
                             v1_bw_bmm2_slots[current_slot, :, :],
                             v1_bw_bmm2_slots[current_slot, :, :],
-                            v1_bw_diff_2d,
+                            v1_bw_diff_2d_slots[current_slot, :, :],
                         )
                         T.pipe_barrier("v")
                         T.reduce_sum(
