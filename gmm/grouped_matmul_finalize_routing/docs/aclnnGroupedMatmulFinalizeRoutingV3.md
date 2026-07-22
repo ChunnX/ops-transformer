@@ -361,6 +361,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingV3(
     - perTokenScaleOptional支持FLOAT8_E8M0。shape支持三维，维度为(m,Ceil(k/64),2)。
     - x1、x2、scaleOptional、pertokenScaleOptional、groupListOptional、logitOptional、rowIndexOptional是必选参数，biasOptional，sharedInputOptional是可选参数。目前暂不支持offsetOptional参数。所有参数均不支持空tensor。
     - out的第一维batch、sharedInputOffset必须大于等于0，且小于等于m。
+    - 当sharedInputOptional不为空时，其第一维长度为shareInputLen。sharedInputOffset、shareInputLen以及两者之和均需小于等于out的第一维batch。
     - x1支持M为0的空Tensor。
     - x2支持N为0的空Tensor。
 
