@@ -27,6 +27,7 @@ TEST_PARAMS = {
         "state_data_type": [torch.bfloat16],
         "has_g": [True],
         "is_contiguous": [True],
+        "pt_path": [""],
     },
     "Testcase1": {
         "_name": ["Testcase1"],
