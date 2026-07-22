@@ -63,13 +63,18 @@ std::string ConvertContainerToStringV3(const C &container, Func func = ElemToStr
         return "[]";
     }
     std::stringstream ss;
-    bool isFirst = true;
+    const size_t total = container.size();
+    size_t idx = 0;
     for (const auto &elem : container) {
-        if (!isFirst) {
-            ss << ", ";
+        if (idx > 0) {
+            if (idx == total - 1) {
+                ss << " or ";
+            } else {
+                ss << ", ";
+            }
         }
         ss << func(elem);
-        isFirst = false;
+        ++idx;
     }
     return ss.str();
 }
@@ -325,7 +330,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckDtileSize() const
             if (*(context_.kvQuantMode) == static_cast<int>(KV_QUANT_MODE::PER_TILE)) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     context_.opName, "dtileSize", std::to_string(baseShapeInfo_.dtileSize),
-                    "when kvQuantMode is PER_TILE, dtileSize allows only " + std::to_string(supportedDtileSize));
+                    "when kvQuantMode is pertoken-pergroup, dtileSize allows only " + std::to_string(supportedDtileSize));
             } else {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
                     context_.opName, "dtileSize", std::to_string(baseShapeInfo_.dtileSize),
@@ -958,7 +963,7 @@ void MlaPrologTilingCheck::CheckRepoMode(bool isPertile, ge::graphStatus &isCorr
 {
     auto expectedCkvkr = isPertile ? CKVKR_REPO_MODE::COMBINE : CKVKR_REPO_MODE::DIVIDE;
     auto expectedQuantScale = isPertile ? QUANT_SCALE_REPO_MODE::COMBINE : QUANT_SCALE_REPO_MODE::DIVIDE;
-    std::string desc = isPertile ? "pertile" : "non-pertile";
+    std::string desc = isPertile ? "pertoken-pergroup" : "non-pertoken-pergroup";
     std::string name = isPertile ? "COMBINE" : "DIVIDE";
 
     if (*(context_.ckvkrRepoMode) != static_cast<int>(expectedCkvkr)) {
@@ -1242,7 +1247,7 @@ ge::graphStatus MlaPrologTilingCheck::CheckCacheMode() const
         (std::strncmp(context_.cacheMode, CACHE_MODE_PA_BLK_NZ, CACHE_MODE_LEN) == 0)) {
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
             context_.opName, "cacheMode", std::string(context_.cacheMode),
-            "When pertile quant mode, cacheMode cannot be {PA_NZ, PA_BLK_BSND, PA_BLK_NZ}");
+            "When pertoken-pergroup quant mode, cacheMode cannot be {PA_NZ, PA_BLK_BSND, PA_BLK_NZ}");
         return ge::GRAPH_FAILED;
     }
 
