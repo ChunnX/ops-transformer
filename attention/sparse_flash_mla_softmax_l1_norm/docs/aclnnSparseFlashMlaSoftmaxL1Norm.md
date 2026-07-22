@@ -14,34 +14,30 @@
 
 ## 功能说明
 
--   **接口功能**：计算`SparseFlashMla`注意力的Softmax L1Norm结果，支持Sliding Window Attention、Compressed Attention以及Sparse Compressed Attention场景。该接口为`aclnnSparseFlashMlaGrad`反向算子的配套正向接口，输出可用于反向梯度计算。
+-   **接口功能**：计算`SparseFlashMla`注意力的Softmax L1Norm结果，支持Compressed Attention以及Sparse Compressed Attention场景。该接口为`aclnnDenseLightningIndexerKLLossGrad`反向算子的配套接口，输出可用于反向梯度计算。调用过程中，需先调用`aclnnSparseFlashMlaSoftmaxL1NormMetadata`接口完成负载均衡计算，再调用`aclnnSparseFlashMlaSoftmaxL1Norm`接口完成算子计算过程。
+    - `aclnnSparseFlashMlaSoftmaxL1NormMetadata`接口：根据主算子的shape、layout、mask等信息，采用strided方式将任务均衡切分到可用AIC核上，输出metadata供主算子使用。
+    - `aclnnSparseFlashMlaSoftmaxL1Norm`接口：根据metadata中的分核信息，对Q和K计算Softmax L1Norm。
 
 -   **计算公式**：
 
-    阶段一：根据不同cmp_ratio场景，对输入key进行选择
+    阶段一：根据是否为sparse场景，对输入key进行选择
 
-    * 当cmp_ratio = 1 (SWA)：
-
-    $$
-    selectedKv\text{ }=\text{ }key
-    $$
-
-    * 当cmp_ratio = 4 (SCFA)：
+    * 当为sparse时：
 
     $$
-    selectedKv\text{ }=concat(key, \text{ }Gather \left( cmpkv,topkIndices \left[ i \left]  \left)) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
+    selectedKv\text{ }=\text{ }Gather \left( K, sparseIndices \left[ i \left]  \left) ,\text{ }0\text{ } < =i < \text{ }selectBlockCount\right. \right. \right. \right.
     $$
 
-    * else (CFA)：
+    * else：
 
     $$
-    selectedKv\text{ }=concat(key, \text{ }cmpkv)
+    selectedKv\text{ }=\text{ }K
     $$
 
     阶段二：计算P（SimpleSoftmax）
 
     $$
-    P = SimpleSoftmax(Mask(Q \text{ }@\text{ } selectedKv^{{T}} \cdot \text{ } scale), lse)
+    P = SimpleSoftmax(Mask(Q \text{ }@\text{ } selectedKv^{{T}} \cdot \text{ } scale), lse)
     $$
 
     阶段三：计算Softmax L1Norm

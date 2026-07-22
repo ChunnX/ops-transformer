@@ -550,8 +550,8 @@ def sparse_flash_mla_softmax_l1_norm(
             )
             tensor_softmax_l1_norm_init = pl.make_tensor(
                 softmax_l1_norm,
-                [tiling.t1 * tiling.k_length,],
-                [1,],
+                [1, tiling.t1 * tiling.k_length],
+                [tiling.t1 * tiling.k_length, 1],
                 dtype=pl.DT_FP32,
             )
         else:
@@ -563,8 +563,8 @@ def sparse_flash_mla_softmax_l1_norm(
             )
             tensor_softmax_l1_norm_init = pl.make_tensor(
                 softmax_l1_norm,
-                [tiling.t1 * 1 * tiling.max_seqlen_k,],
-                [1,],
+                [1, tiling.t1 * 1 * tiling.max_seqlen_k],
+                [tiling.t1 * 1 * tiling.max_seqlen_k, 1],
                 dtype=pl.DT_FP32,
             )
     else:
@@ -607,8 +607,8 @@ def sparse_flash_mla_softmax_l1_norm(
             )
             tensor_softmax_l1_norm_init = pl.make_tensor(
                 softmax_l1_norm,
-                [tiling.b * tiling.sq * tiling.k_length],
-                [1,],
+                [1, tiling.b * tiling.sq * tiling.k_length],
+                [tiling.b * tiling.sq * tiling.k_length, 1],
                 dtype=pl.DT_FP32,
             )
         else:
@@ -620,8 +620,8 @@ def sparse_flash_mla_softmax_l1_norm(
             )
             tensor_softmax_l1_norm_init = pl.make_tensor(
                 softmax_l1_norm,
-                [tiling.b * tiling.sq * tiling.sk],
-                [1,],
+                [1, tiling.b * tiling.sq * tiling.sk],
+                [tiling.b * tiling.sq * tiling.sk, 1],
                 dtype=pl.DT_FP32,
             )
     tensor_cu_seqlens_q = pl.make_tensor(
@@ -767,9 +767,9 @@ def sparse_flash_mla_softmax_l1_norm(
             if init_offset + INIT_PER_LOOP_NUM > init_end_offset:
                 init_num = init_end_offset - init_offset
             pl.set_validshape(init_ub_dst_slot, [1, init_num])
-            pl.store(tensor_softmax_l1_norm_init, init_ub_dst_slot, [1, init_offset])
+            pl.store(tensor_softmax_l1_norm_init, init_ub_dst_slot, [0, init_offset])
 
-        pl.sync_all(core_type=pl.SyncCoreType.AIV_ONLY)
+        pl.system.sync_all(core_type=pl.SyncCoreType.AIV_ONLY)
     # init output end
     
     _pl_sync_id = 0

@@ -477,6 +477,45 @@ static ge::graphStatus ValidateSparseInfo(gert::TilingContext* context,
     return ge::GRAPH_SUCCESS;
 }
 
+static ge::graphStatus GetPlatformInfo(gert::TilingContext* context, const string& opName, AiCoreParams aicoreParams_)
+{
+    auto platformInfoPtr = context->GetPlatformInfo();
+    uint64_t l2CacheSize;
+    if (platformInfoPtr == nullptr) {
+        auto compileInfoPtr = reinterpret_cast<const SparseFlashMlaSoftmaxL1NormCompileInfo *>(context->GetCompileInfo());
+        OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "compile_info is null."),
+                    return ge::GRAPH_FAILED);
+        aicoreParams_.numBlocks = compileInfoPtr->aivNum;
+        aicoreParams_.aicNum = compileInfoPtr->aicNum;
+        aicoreParams_.ubSize = compileInfoPtr->ubSize;
+        aicoreParams_.l1Size = compileInfoPtr->l1Size;
+        aicoreParams_.l0aSize = compileInfoPtr->l0aSize;
+        aicoreParams_.l0bSize = compileInfoPtr->l0bSize;
+        aicoreParams_.l0cSize = compileInfoPtr->l0cSize;
+        l2CacheSize = compileInfoPtr->l2CacheSize;
+    } else {
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+        aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
+        aicoreParams_.aicNum = ascendcPlatform.GetCoreNumAic();
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, aicoreParams_.ubSize);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, aicoreParams_.l1Size);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, aicoreParams_.l0aSize);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, aicoreParams_.l0bSize);
+        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
+    }
+
+    OP_CHECK_IF((aicoreParams_.numBlocks == 0) || (aicoreParams_.aicNum == 0),
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
+                                            aicoreParams_.numBlocks, aicoreParams_.aicNum),
+                return ge::GRAPH_FAILED);
+
+    OP_CHECK_IF(aicoreParams_.ubSize <= 0 || l2CacheSize <= 0,
+                OPS_REPORT_VECTOR_INNER_ERR(opName, "ubSize or l2CacheSize is invalid."), return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext* context)
 {
     auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
@@ -565,6 +604,10 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
     } else {
         tilingData->init_total_num = info.bSize * info.sqSize * (has_topk_length ? kLength : info.skSize);
     }
+    AiCoreParams aicoreParams_;
+    if (GetPlatformInfo(context, opName, aicoreParams_) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
     int64_t perCoreNum = tilingData->init_total_num / static_cast<int64_t>(aicoreParams_.numBlocks);
     tilingData->init_per_core_num = AlignData(perCoreNum, 8 * 1024);
 
@@ -582,45 +625,6 @@ static ge::graphStatus SparseFlashMlaSoftmaxL1NormTilingFunc(gert::TilingContext
 
     OP_LOGI(context->GetNodeName(), "SparseFlashMlaSoftmaxL1Norm tiling2 completed: blockDim=%u, B=%lld, Sq=%lld, Sk=%lld, G=%lld, D=%lld, t1=%lld, t2=%lld, max_seqlen_k=%lld, k_length=%lld, cmp_ratio=%lld, isTnd=%d, isSparse=%d.",
             blockDim, info.bSize, info.sqSize, info.skSize, info.gSize, info.dSize, info.t1, info.t2, maxSeqlenK, kLength, cmpRatio, isTnd, isSparse);
-
-    return ge::GRAPH_SUCCESS;
-}
-
-static ge::graphStatus TilingParseForSparseFlashMlaSoftmaxL1Norm::GetPlatformInfo()
-{
-    auto platformInfoPtr = context_->GetPlatformInfo();
-    uint64_t l2CacheSize;
-    if (platformInfoPtr == nullptr) {
-        auto compileInfoPtr = reinterpret_cast<const SparseFlashMlaSoftmaxL1NormCompileInfo *>(context_->GetCompileInfo());
-        OP_CHECK_IF(compileInfoPtr == nullptr, OPS_REPORT_VECTOR_INNER_ERR(opName, "compile_info is null."),
-                    return ge::GRAPH_FAILED);
-        aicoreParams_.numBlocks = compileInfoPtr->aivNum;
-        aicoreParams_.aicNum = compileInfoPtr->aicNum;
-        aicoreParams_.ubSize = compileInfoPtr->ubSize;
-        aicoreParams_.l1Size = compileInfoPtr->l1Size;
-        aicoreParams_.l0aSize = compileInfoPtr->l0aSize;
-        aicoreParams_.l0bSize = compileInfoPtr->l0bSize;
-        aicoreParams_.l0cSize = compileInfoPtr->l0cSize;
-        l2CacheSize = compileInfoPtr->l2CacheSize;
-    } else {
-        auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
-        aicoreParams_.numBlocks = ascendcPlatform.GetCoreNumAiv();
-        aicoreParams_.aicNum = ascendcPlatform.GetCoreNumAic();
-        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, aicoreParams_.ubSize);
-        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L1, aicoreParams_.l1Size);
-        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize);
-        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_A, aicoreParams_.l0aSize);
-        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_B, aicoreParams_.l0bSize);
-        ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L0_C, aicoreParams_.l0cSize);
-    }
-
-    OP_CHECK_IF((aicoreParams_.numBlocks == 0) || (aicoreParams_.aicNum == 0),
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "num of coreNum(aivNum) is %lu, num of aicNum is %lu.",
-                                            aicoreParams_.numBlocks, aicoreParams_.aicNum),
-                return ge::GRAPH_FAILED);
-
-    OP_CHECK_IF(aicoreParams_.ubSize <= 0 || l2CacheSize <= 0,
-                OPS_REPORT_VECTOR_INNER_ERR(opName, "ubSize or l2CacheSize is invalid."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
