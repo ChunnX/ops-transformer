@@ -31,8 +31,10 @@ V0_TO_C1_SY_FLAGS = (2, 3)
 C1_TO_V1_P_FLAGS = (4, 5)
 C1_TO_V1_SY_FLAGS = (6, 7)
 V1_TO_C2_FLAGS = (8, 9)
-# Pair the two AIVs directly, matching the official mode-1 rendezvous.
-V1_PAIR_FLAG = 12
+# TileLang-Ascend cannot emit the mode-1 AIV-pair wait used by the official
+# kernel on A3.  Relay both AIV completion signals through their paired AIC.
+V1_PSY_TO_AIC_FLAGS = (10, 11)
+V1_PSY_RELAY_FLAG = 12
 
 DQUERY = 512
 DQUERY_INDEX = 128
@@ -792,8 +794,18 @@ def tilelang_grad_kl_loss_single_kernel(
 
                     T.wait_flag("mte3", "v", 1)
 
-            T.set_cross_flag("MTE3", V1_PAIR_FLAG)
-            T.wait_cross_flag(V1_PAIR_FLAG)
+            if vector_id == 0:
+                T.set_cross_flag("MTE3", V1_PSY_TO_AIC_FLAGS[0])
+            if vector_id == 1:
+                T.set_cross_flag("MTE3", V1_PSY_TO_AIC_FLAGS[1])
+            T.wait_cross_flag(V1_PSY_RELAY_FLAG)
+
+    @T.macro
+    def relay_vector1_psy():
+        with T.Scope("C"):
+            T.wait_cross_flag(V1_PSY_TO_AIC_FLAGS[0])
+            T.wait_cross_flag(V1_PSY_TO_AIC_FLAGS[1])
+            T.set_cross_flag("FIX", V1_PSY_RELAY_FLAG)
 
     @T.macro
     def vector1_backward_task(
@@ -2312,6 +2324,7 @@ def tilelang_grad_kl_loss_single_kernel(
                                 task_prev_slot,
                                 vid,
                             )
+                            relay_vector1_psy()
                             vector1_backward_task(
                                 Weights,
                                 bmm2Res,
