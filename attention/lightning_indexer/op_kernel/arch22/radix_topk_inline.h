@@ -350,13 +350,12 @@ __aicore__ inline void InlineRadixTopK(
 
         // Vectorized: add tileOffset to gathered indices, then CopyOut to GM
         if (gtCount > 0) {
-            Adds<int32_t>(outIndexLocal, outIndexLocal, tileOffset, gtCount);
-            PipeBarrier<PIPE_V>();
-            event_t eVMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-            SetFlag<HardEvent::V_MTE3>(eVMTE3);
-            WaitFlag<HardEvent::V_MTE3>(eVMTE3);
-            DataCopyPad(indexGm[writeOffset], outIndexLocal, DataCopyExtParams{
-                static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * gtCount), 0, 0, 0});
+            RDX_S_V_SYNC();
+            for (uint32_t i = 0; i < gtCount; i++) {
+                int32_t idx = outIndexLocal.GetValue(i) + tileOffset;
+                indexGm.SetValue(writeOffset + i, idx);
+            }
+            RDX_V_S_SYNC();
             writeOffset += gtCount;
             curTileK -= static_cast<int32_t>(gtCount);
         }
@@ -377,13 +376,12 @@ __aicore__ inline void InlineRadixTopK(
             RDX_S_V_SYNC();
 
             if (eqCount > 0) {
-                Adds<int32_t>(outIndexLocal, outIndexLocal, tileOffset, eqCount);
-                PipeBarrier<PIPE_V>();
-                event_t eVMTE3 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
-                SetFlag<HardEvent::V_MTE3>(eVMTE3);
-                WaitFlag<HardEvent::V_MTE3>(eVMTE3);
-                DataCopyPad(indexGm[writeOffset], outIndexLocal, DataCopyExtParams{
-                    static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(int32_t) * eqCount), 0, 0, 0});
+                RDX_S_V_SYNC();
+                for (uint32_t i = 0; i < eqCount; i++) {
+                    int32_t idx = outIndexLocal.GetValue(i) + tileOffset;
+                    indexGm.SetValue(writeOffset + i, idx);
+                }
+                RDX_V_S_SYNC();
                 writeOffset += eqCount;
                 curTileK -= static_cast<int32_t>(eqCount);
             }
