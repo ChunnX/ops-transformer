@@ -455,6 +455,124 @@
     - $\mathrm{DQ}_{\text{MX}}(\cdot)$：MX 逐组反量化操作，在 matmul 内部隐式执行。
     </details>
 
+    <details>
+    <summary> A8W4-FP 量化场景</summary>
+
+    第一阶段（Token 选择、量化与 Dispatch）：
+
+    对本 rank 的输入 Token $X \in \mathbb{R}^{B\times H}$，根据 `topkIds` 得到每个专家 $e$ 对应的 Token 下标集合 $T_e$，并将选中的 BF16 Token 按 32 个元素一组量化为 MXFP8 E4M3：
+
+    $$
+    \hat{X}_e,\;S_{X,e}
+    = \mathrm{Q}_{\mathrm{MX}}\!\left(X[T_e]\right),
+    $$
+
+    其中，$\hat{X}_e$ 的数据类型为 `FLOAT8_E4M3FN`，$S_{X,e}$ 的数据类型为 `FLOAT8_E8M0`。随后将量化后的 Token 及其缩放因子发送到专家所在 rank。
+
+    第一层和第二层专家权重 $W_{1,e}$、$W_{2,e}$ 均为 MXFP4 E2M1 数据，缩放因子为 E8M0。A8W4 kernel 在矩阵乘 Prologue 中处理 FP4 权重，送入矩阵乘的逻辑数据流为 FP8 激活乘 FP4 权重。
+
+    第二阶段（GMM1、SwiGLU 与再次量化）：
+
+    对专家 $e$ 收到的 Token，第一层分组矩阵乘和 SwiGLU 计算为：
+
+    $$
+    Z_x = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{1,e}^{(x)},S_{1,e}^{(x)}\right),
+    $$
+
+    $$
+    Z_y = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{1,e}^{(y)},S_{1,e}^{(y)}\right),
+    $$
+
+    $$
+    U_e = Z_x \odot \sigma(Z_x) \odot Z_y.
+    $$
+
+    SwiGLU 输出继续按 32 个元素一组量化为 MXFP8 E4M3，供第二层矩阵乘使用：
+
+    $$
+    \hat{U}_e,\;S_{U,e}
+    = \mathrm{Q}_{\mathrm{MX}}\!\left(U_e\right).
+    $$
+
+    第三阶段（GMM2）：
+
+    第二层矩阵乘仍为 A8W4，即 FP8 E4M3 激活乘 FP4 E2M1 权重：
+
+    $$
+    O_e = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{U}_e,S_{U,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{2,e},S_{2,e}\right).
+    $$
+
+    第四阶段（Combine 与加权合并）：
+
+    将各专家输出送回原 rank，并根据 `topkWeights` 做加权合并：
+
+    $$
+    Y[i] = \sum_{k=0}^{K-1} W[i,k] \cdot O[\pi(i,k)],
+    $$
+
+    最终输出 $Y$ 的数据类型为 BF16。A8W4-FP 的主要数据类型流为：`BF16 -> MXFP8 E4M3 -> A8W4 GMM1 -> MXFP8 E4M3 -> A8W4 GMM2 -> BF16`。
+    </details>
+
+    <details>
+    <summary> A4W4-FP 量化场景</summary>
+
+    第一阶段（Token 选择、量化与 Dispatch）：
+
+    对每个专家 $e$ 对应的 Token 集合 $T_e$，将选中的 BF16 Token 按 32 个元素一组量化为 MXFP4 E2M1：
+
+    $$
+    \hat{X}_e,\;S_{X,e}
+    = \mathrm{Q}_{\mathrm{MX}}\!\left(X[T_e]\right),
+    $$
+
+    其中，$\hat{X}_e$ 的数据类型为 `FLOAT4_E2M1`，$S_{X,e}$ 的数据类型为 `FLOAT8_E8M0`。第一层和第二层专家权重 $W_{1,e}$、$W_{2,e}$ 也均为 MXFP4 E2M1，权重缩放因子为 E8M0。
+
+    第二阶段（A4W4 GMM1、SwiGLU 与输出类型提升）：
+
+    第一层分组矩阵乘为 A4W4：
+
+    $$
+    Z_x = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{1,e}^{(x)},S_{1,e}^{(x)}\right),
+    $$
+
+    $$
+    Z_y = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{1,e}^{(y)},S_{1,e}^{(y)}\right),
+    $$
+
+    $$
+    U_e = Z_x \odot \sigma(Z_x) \odot Z_y.
+    $$
+
+    这里不能继续把 SwiGLU 输出量化为 FP4。kernel 在 `QuantMode == E2M1_QUANT` 时，将 `SwigluQuantOutType` 指定为 `fp8_e4m3fn_t`，因此输出会提升为 MXFP8 E4M3：
+
+    $$
+    \hat{U}_e,\;S_{U,e}
+    = \mathrm{Q}_{\mathrm{MX}}\!\left(U_e\right).
+    $$
+
+    第三阶段（A8W4 GMM2）：
+
+    由于 SwiGLU 量化输出为 FP8 E4M3，而第二层权重仍为 FP4 E2M1，因此第二层矩阵乘实际为 A8W4，而不是 A4W4：
+
+    $$
+    O_e = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{U}_e,S_{U,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{2,e},S_{2,e}\right).
+    $$
+
+    第四阶段（Combine 与加权合并）：
+
+    $$
+    Y[i] = \sum_{k=0}^{K-1} W[i,k] \cdot O[\pi(i,k)],
+    $$
+
+    最终输出 $Y$ 的数据类型为 BF16。A4W4-FP 的完整数据类型流为：`BF16 -> MXFP4 E2M1 -> A4W4 GMM1 -> MXFP8 E4M3 -> A8W4 GMM2 -> BF16`。其中所有 MX 缩放因子的类型均为 `FLOAT8_E8M0`，量化粒度均为 32 个连续元素。
+    </details>
+
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1392px"> <colgroup>
