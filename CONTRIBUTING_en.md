@@ -89,13 +89,13 @@ Follow the [Submit Issue/Process Issue Task](https://gitcode.com/cann/community#
 
 If you have ideas for generalization enhancement or performance optimization for certain operator implementations in this project and want to implement these optimization points, welcome to contribute operator optimizations.
 
-Follow the [Submit Issue/Process Issue Task](https://gitcode.com/cann/community#提交Issue处理Issue任务) guide to create a `Requirement|Requirement Suggestion` type Issue to describe the optimization points and provide your design solution, then enter "/assign" or "/assign @yourself" in the comment box to assign the Issue to yourself for tracking optimization.
+Follow the [Submit Issue/Process Issue Task](https://gitcode.com/cann/community) guide to create a `Requirement|Requirement Suggestion` type Issue to describe the optimization points and provide your design solution, then enter "/assign" or "/assign @yourself" in the comment box to assign the Issue to yourself for tracking optimization.
 
 ## 4. Document Correction
 
 If you find certain operator document description errors in this project, welcome to create a new Issue for feedback and correction. For document specifications, refer to the [Document Contribution Guide](docs/CONTRIBUTING_DOCS_en.md).
 
-Follow the [Submit Issue/Process Issue Task](https://gitcode.com/cann/community#提交Issue处理Issue任务) guide to create a `Documentation|Document Feedback` type Issue to point out the corresponding document problem, then enter "/assign" or "/assign @yourself" in the comment box to assign the Issue to yourself to correct the corresponding document description.
+Follow the [Submit Issue/Process Issue Task](https://gitcode.com/cann/community) guide to create a `Documentation|Document Feedback` type Issue to point out the corresponding document problem, then enter "/assign" or "/assign @yourself" in the comment box to assign the Issue to yourself to correct the corresponding document description.
 
 ## 5. Help Resolve Others' Issues
 
