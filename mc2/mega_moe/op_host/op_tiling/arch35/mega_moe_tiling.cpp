@@ -484,6 +484,15 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
 
+    // GMM1 tile 状态位区每 expert 的 tile 上限（prefetch 软同步用）
+    // outputN = hiddenDim / SWIGLU_N_HALF(2)，tileM=L1_TILE_M_256(256)，tileN=L1_TILE_N(256)
+    // INT_CACHELINE=16：每 expert 的状态位按 16 对齐，与 kernel 侧 dispatchFlagSlotsPerExpert 一致
+    int64_t outputN = static_cast<int64_t>(tilingData->hiddenDim) / 2;
+    int64_t maxTilesM = ops::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(256));
+    int64_t maxTilesN = ops::CeilDiv(outputN, static_cast<int64_t>(256));
+    tilingData->maxTilesPerExpert = static_cast<uint32_t>(
+        ops::CeilAlign(maxTilesM * maxTilesN, static_cast<int64_t>(16)));
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -713,7 +722,8 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
         CalcDispatchBufferConfig(tilingData, activationElementsPerByte, availableUbBytes);
 
     int64_t maxWavesPerExpert =
-        (static_cast<int64_t>(tilingData->maxOutputSize) + DISPATCH_WAVE_TILE_M - 1) / DISPATCH_WAVE_TILE_M;
+        (static_cast<int64_t>(tilingData->maxOutputSize) + static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256) - 1) /
+        static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256);
     int64_t dispatchFlagSlotsPerExpert = (maxWavesPerExpert + INT_CACHELINE - 1) / INT_CACHELINE * INT_CACHELINE;
     uint64_t totalFlagElementCount =
         static_cast<uint64_t>(tilingData->expertPerRank) *
