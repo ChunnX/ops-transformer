@@ -27,13 +27,13 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseFlashAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttention”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSparseFlashAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttention”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
     const aclTensor     *query,
     const aclTensor     *key,
-    const aclTensor     *value, 
+    const aclTensor     *value,
     const aclTensor     *sparseIndices,
     const aclTensor     *blockTable,
     const aclTensor     *actualSeqLengthsQuery,
@@ -58,9 +58,9 @@ aclnnStatus aclnnSparseFlashAttentionGetWorkspaceSize(
 
 ```Cpp
 aclnnStatus aclnnSparseFlashAttention(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     const aclrtStream stream)
 ```
 
@@ -68,7 +68,7 @@ aclnnStatus aclnnSparseFlashAttention(
 
 - **参数说明：**
 
-  > [!NOTE]  
+  > [!NOTE]
   >
   >- query、key、value参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
   >- Q\_S和S1表示query shape中的S，KV\_S和S2表示key shape中的S，Q\_N和N1表示num\_query\_heads，KV\_N和N2表示num\_key\_value\_heads，T1表示query shape中的T，T2表示key shape中的输入样本序列长度的累加和。
@@ -427,10 +427,10 @@ aclnnStatus aclnnSparseFlashAttention(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口会完成入参校验，出现以下场景时报错：
-  
+
     <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
     <col style="width: 319px">
     <col style="width: 144px">
@@ -496,7 +496,7 @@ aclnnStatus aclnnSparseFlashAttention(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -519,7 +519,7 @@ aclnnStatus aclnnSparseFlashAttention(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 /**
@@ -555,7 +555,7 @@ namespace {
   do {                              \
     (void)printf(message, ##__VA_ARGS__); \
   } while (0)
- 
+
 int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   int64_t shapeSize = 1;
   for (auto i : shape) {
@@ -567,17 +567,17 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
 int Init(int32_t deviceId, aclrtStream* stream) {
   auto ret = aclInit(nullptr);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclInit failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
     return ret;
   }
   ret = aclrtSetDevice(deviceId);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret);
     return ret;
   }
   ret = aclrtCreateStream(stream);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);
     return ret;
   }
   return 0;
@@ -589,21 +589,21 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
   auto size = GetShapeSize(shape) * sizeof(T);
   auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
   if (!CHECK_RET(ret == ACL_SUCCESS)) {
-    LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); 
+    LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
     return ret;
   }
 
   ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-    LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+  if (!CHECK_RET(ret == ACL_SUCCESS)) {
+    LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
     return ret;
   }
- 
+
   std::vector<int64_t> strides(shape.size(), 1);
   for (int64_t i = shape.size() - 2; i >= 0; i--) {
     strides[i] = shape[i + 1] * strides[i + 1];
   }
- 
+
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                             shape.data(), shape.size(), *deviceAddr);
   return 0;
@@ -628,7 +628,7 @@ struct TensorResources {
     aclTensor* softmaxMaxTensor = nullptr;
     aclTensor* softmaxSumTensor = nullptr;
     aclTensor* queryRopeTensor = nullptr;
-    aclTensor* keyRopeTensor = nullptr; 
+    aclTensor* keyRopeTensor = nullptr;
 };
 
 int InitializeTensors(TensorResources& resources) {
@@ -663,63 +663,63 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<float> keyRopeHostData(keyRopeShapeSize, 1);
 
     // Create query aclTensor.
-    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr, 
+    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
                              aclDataType::ACL_FLOAT16, &resources.queryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     // Create key aclTensor.
-    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr, 
+    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.keyTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     // Create value aclTensor.
-    ret = CreateAclTensor(valueHostData, valueShape, &resources.valueDeviceAddr, 
+    ret = CreateAclTensor(valueHostData, valueShape, &resources.valueDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.valueTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     // Create sparseIndices aclTensor.
-    ret = CreateAclTensor(sparseIndicesHostData, sparseIndicesShape, &resources.sparseIndicesDeviceAddr, 
+    ret = CreateAclTensor(sparseIndicesHostData, sparseIndicesShape, &resources.sparseIndicesDeviceAddr,
                          aclDataType::ACL_INT32, &resources.sparseIndicesTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     // Create queryRope aclTensor.
-    ret = CreateAclTensor(queryRopeHostData, queryRopeShape, &resources.queryRopeDeviceAddr, 
+    ret = CreateAclTensor(queryRopeHostData, queryRopeShape, &resources.queryRopeDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.queryRopeTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     // Create keyRope aclTensor.
-    ret = CreateAclTensor(keyRopeHostData, keyRopeShape, &resources.keyRopeDeviceAddr, 
+    ret = CreateAclTensor(keyRopeHostData, keyRopeShape, &resources.keyRopeDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.keyRopeTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     // Create attention_out aclTensor.
-    ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &resources.attentionOutDeviceAddr, 
+    ret = CreateAclTensor(attentionOutHostData, attentionOutShape, &resources.attentionOutDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.attentionOutTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     // Create softmax_max aclTensor.
-    ret = CreateAclTensor(softmaxMaxHostData, softmaxMaxShape, &resources.softmaxMaxDeviceAddr, 
+    ret = CreateAclTensor(softmaxMaxHostData, softmaxMaxShape, &resources.softmaxMaxDeviceAddr,
                          aclDataType::ACL_FLOAT, &resources.softmaxMaxTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     // Create softmax_sum aclTensor.
-    ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &resources.softmaxSumDeviceAddr, 
+    ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &resources.softmaxSumDeviceAddr,
                          aclDataType::ACL_FLOAT, &resources.softmaxSumTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
@@ -728,7 +728,7 @@ int InitializeTensors(TensorResources& resources) {
     return ACL_SUCCESS;
 }
 
-int ExecuteSparseFlashAttention(TensorResources& resources, aclrtStream stream, 
+int ExecuteSparseFlashAttention(TensorResources& resources, aclrtStream stream,
                               void** workspaceAddr, uint64_t* workspaceSize) {
     int64_t d = 2;
     double scaleValue = 1 / sqrt(d);
@@ -794,7 +794,7 @@ int PrintOutResult(std::vector<int64_t> &shape, void** deviceAddr) {
   return ACL_SUCCESS;
 }
 
-void CleanupResources(TensorResources& resources, void* workspaceAddr, 
+void CleanupResources(TensorResources& resources, void* workspaceAddr,
                      aclrtStream stream, int32_t deviceId) {
     if (resources.queryTensor) {
       aclDestroyTensor(resources.queryTensor);
@@ -848,7 +848,7 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
     if (resources.queryRopeDeviceAddr) {
       aclrtFree(resources.queryRopeDeviceAddr);
     }
-    
+
     if (resources.keyRopeDeviceAddr) {
       aclrtFree(resources.keyRopeDeviceAddr);
     }
@@ -859,7 +859,7 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
     if (stream) {
       aclrtDestroyStream(stream);
     }
-    
+
     aclrtResetDevice(deviceId);
     aclFinalize();
 }
@@ -875,7 +875,7 @@ int main() {
     uint64_t workspaceSize = 0;
     std::vector<int64_t> attentionOutShape = {1, 2, 1, 16};
     std::vector<int64_t> softmaxMaxShape = {1, 2, 1, 16};
-    std::vector<int64_t> softmaxSumShape = {1, 2, 1, 16}; 
+    std::vector<int64_t> softmaxSumShape = {1, 2, 1, 16};
     int ret = ACL_SUCCESS;
 
     // 1. Initialize device and stream

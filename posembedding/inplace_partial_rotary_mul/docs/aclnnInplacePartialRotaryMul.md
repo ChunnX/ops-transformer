@@ -40,7 +40,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnInplacePartialRotaryMulGetWorkspaceSize"接口获取入参并根据流程计算所需workspace大小，再调用"aclnnInplacePartialRotaryMul"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnInplacePartialRotaryMulGetWorkspaceSize"接口获取入参并根据流程计算所需workspace大小，再调用"aclnnInplacePartialRotaryMul"接口执行计算。
 
 ```c++
 aclnnStatus aclnnInplacePartialRotaryMulGetWorkspaceSize(
@@ -163,7 +163,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
   <table>
@@ -228,7 +228,7 @@ aclnnStatus aclnnInplacePartialRotaryMul(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -241,14 +241,14 @@ aclnnStatus aclnnInplacePartialRotaryMul(
   - 输入张量xRef的最后一维（D）大小不超过1024。
   - interleave模式（rotary_mode = 1）下，xRef最后一维（D）大小必须为2的倍数。partialSlice切片长度（即partialSlice[1] - partialSlice[0]）必须为2的倍数。
   - 输入张量cos、sin最后一维大小必须相同，且必须等于partialSlice的切片长度（即partialSlice[1] - partialSlice[0]）。
-  - cos/sin的shape必须与xRef满足[broadcast关系](../../../docs/zh/context/broadcast关系.md)，且存在如下约束：
+  - cos/sin的shape必须与xRef满足[broadcast关系](../../../docs/zh/context/broadcast_relationship.md)，且存在如下约束：
     - <term>Ascend 950PR/Ascend 950DT</term>：cos/sin的shape当前只支持BSND、B1ND、B11D、111D排布。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：cos/sin的shape当前只支持BS1D、B11D排布，即要求B轴保持相等。
   - partialSlice约束：sliceStart ≥ 0，sliceEnd ≥ 0，sliceEnd ≤ xRef最后一维（D）大小，sliceLength = sliceEnd - sliceStart >= 0，当sliceEnd和sliceStart相同时，不做旋转位置编码，直接返回。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
