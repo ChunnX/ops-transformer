@@ -237,6 +237,8 @@ def tilelang_grad_kl_loss_single_kernel(
     k_block = BLOCK_K
     p_rows_per_chunk = min(N1, 64)
     p_row_chunk_count = ceil_div(N1, p_rows_per_chunk)
+    p_cols_per_chunk = min(n_block, 64)
+    p_col_chunk_count = ceil_div(n_block, p_cols_per_chunk)
     s1_tile_num = ceil_div(S1, s1_block)
     n_num = K // n_block
     block_num = B * s1_tile_num * n_num
@@ -639,45 +641,49 @@ def tilelang_grad_kl_loss_single_kernel(
                         # most 64 rows per row-expand instruction.
                         for p_row_chunk in T.serial(p_row_chunk_count):
                             p_row_start = p_row_chunk * p_rows_per_chunk
-                            T.tile.row_expand_sub_experiment(
-                                v1_p_bmm1[
-                                    p_row_start:p_row_start + p_rows_per_chunk,
-                                    0:n_block,
-                                ],
-                                v1_p_bmm1[
-                                    p_row_start:p_row_start + p_rows_per_chunk,
-                                    0:n_block,
-                                ],
-                                v1_p_max[
-                                    p_row_start:p_row_start + p_rows_per_chunk
-                                ],
-                                v1_p_tmp[
-                                    p_row_start:p_row_start + p_rows_per_chunk,
-                                    0:8,
-                                ],
-                            )
+                            for p_col_chunk in T.serial(p_col_chunk_count):
+                                p_col_start = p_col_chunk * p_cols_per_chunk
+                                T.tile.row_expand_sub_experiment(
+                                    v1_p_bmm1[
+                                        p_row_start:p_row_start + p_rows_per_chunk,
+                                        p_col_start:p_col_start + p_cols_per_chunk,
+                                    ],
+                                    v1_p_bmm1[
+                                        p_row_start:p_row_start + p_rows_per_chunk,
+                                        p_col_start:p_col_start + p_cols_per_chunk,
+                                    ],
+                                    v1_p_max[
+                                        p_row_start:p_row_start + p_rows_per_chunk
+                                    ],
+                                    v1_p_tmp[
+                                        p_row_start:p_row_start + p_rows_per_chunk,
+                                        0:8,
+                                    ],
+                                )
                         T.pipe_barrier("v")
                         T.tile.exp(v1_p_bmm1, v1_p_bmm1)
                         T.pipe_barrier("v")
                         for p_row_chunk in T.serial(p_row_chunk_count):
                             p_row_start = p_row_chunk * p_rows_per_chunk
-                            T.tile.row_expand_div_experiment(
-                                v1_p_bmm1[
-                                    p_row_start:p_row_start + p_rows_per_chunk,
-                                    0:n_block,
-                                ],
-                                v1_p_bmm1[
-                                    p_row_start:p_row_start + p_rows_per_chunk,
-                                    0:n_block,
-                                ],
-                                v1_p_sum[
-                                    p_row_start:p_row_start + p_rows_per_chunk
-                                ],
-                                v1_p_tmp[
-                                    p_row_start:p_row_start + p_rows_per_chunk,
-                                    0:8,
-                                ],
-                            )
+                            for p_col_chunk in T.serial(p_col_chunk_count):
+                                p_col_start = p_col_chunk * p_cols_per_chunk
+                                T.tile.row_expand_div_experiment(
+                                    v1_p_bmm1[
+                                        p_row_start:p_row_start + p_rows_per_chunk,
+                                        p_col_start:p_col_start + p_cols_per_chunk,
+                                    ],
+                                    v1_p_bmm1[
+                                        p_row_start:p_row_start + p_rows_per_chunk,
+                                        p_col_start:p_col_start + p_cols_per_chunk,
+                                    ],
+                                    v1_p_sum[
+                                        p_row_start:p_row_start + p_rows_per_chunk
+                                    ],
+                                    v1_p_tmp[
+                                        p_row_start:p_row_start + p_rows_per_chunk,
+                                        0:8,
+                                    ],
+                                )
                         T.pipe_barrier("v")
                         T.reduce_sum(v1_p_bmm1, v1_p_out, 0)
                         T.pipe_barrier("v")
