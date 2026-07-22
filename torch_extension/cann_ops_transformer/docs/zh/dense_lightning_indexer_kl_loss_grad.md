@@ -192,7 +192,6 @@ dense_lightning_indexer_kl_loss_grad(
 - `mask_mode` 当前支持 `0` 和 `3`。
 - `cmp_ratio` 取值范围为 `[1, 128]`。
 - 压缩 key 且 `mask_mode=3` 时，压缩前 key 长度通过 `compressed_k_len * cmp_ratio + cmp_residual_k[b]` 计算。CP 切分场景中，每个 CP shard 单独调用时，`q` 传入当前 shard 的 query 长度，`k` 传入该 shard 对应的压缩后 key 前缀长度，并按该公式传入对应的 `cmp_residual_k`。
-- **确定性计算**：默认非确定性计算，支持通过 `aclrtCtxSetSysParamOpt` 开启确定性计算。
 - **规格约束**：
 
     | 规格项 | 规格 | 规格说明 |
@@ -208,12 +207,11 @@ dense_lightning_indexer_kl_loss_grad(
 
 ## 确定性计算
 
-- 默认支持确定性计算
+- 默认不支持确定性计算，可通过PyTorch开关（torch.use_deterministic_algorithms）支持。
 
 ## 调用示例
 
-### TND 单 batch，压缩 key 场景
-
+- 单算子模式调用：
 ```python
 import torch
 import torch_npu
