@@ -252,6 +252,8 @@ COMBINE_FLOW_STAGES = (
     "status_write_nbi",
     "status_drain_after",
 )
+COMBINE_CORE_ASSIGNMENT_SLOT = 6
+COMBINE_PROCESSED_TOKEN_COUNT_SLOT = 7
 COMBINE_TIMING_CYCLES_PER_US = 1000  # Ascend 950
 
 
@@ -286,6 +288,28 @@ def extract_combine_kernel_timing(
         .view(torch.uint64)
         .reshape(num_cores, timing_slots, 2)
     )
+
+    core_assignment_rows = []
+    for core in range(num_cores):
+        assigned_rank_begin = int(timing[core, COMBINE_CORE_ASSIGNMENT_SLOT, 0].item())
+        assigned_rank_end = int(timing[core, COMBINE_CORE_ASSIGNMENT_SLOT, 1].item())
+        processed_token_count = int(
+            timing[core, COMBINE_PROCESSED_TOKEN_COUNT_SLOT, 0].item()
+        )
+        core_assignment_rows.append(
+            {
+                "core": core,
+                "assigned_rank_begin": assigned_rank_begin,
+                "assigned_rank_end": assigned_rank_end,
+                "processed_token_count": processed_token_count,
+                "has_send_data": int(processed_token_count > 0),
+            }
+        )
+    assignment_path = rank_dir / f"combine_timing_rank_{rank}_core_assignment.csv"
+    with assignment_path.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=core_assignment_rows[0].keys())
+        writer.writeheader()
+        writer.writerows(core_assignment_rows)
 
     raw_path = rank_dir / f"combine_timing_rank_{rank}_raw.csv"
     with raw_path.open("w", newline="", encoding="utf-8") as csv_file:
@@ -373,6 +397,9 @@ def extract_combine_kernel_timing(
         per_core_total_rows.append(
             {
                 "core": core,
+                "assigned_rank_begin": core_assignment_rows[core]["assigned_rank_begin"],
+                "assigned_rank_end": core_assignment_rows[core]["assigned_rank_end"],
+                "processed_token_count": core_assignment_rows[core]["processed_token_count"],
                 "send_token_total_us": int(timing[core, 0, 1].item()) / cycles_per_us,
                 "set_status_total_us": int(timing[core, 1, 1].item()) / cycles_per_us,
                 "token_prepare_and_copy_us": stage_durations[0],
@@ -427,6 +454,11 @@ def extract_combine_kernel_timing(
         fig, ax = plt.subplots(figsize=(14, max(5, num_cores * 0.3)))
         bar_height = 0.12
         core_positions = list(range(num_cores))
+        core_labels = [
+            f"core_{row['core']} rank[{row['assigned_rank_begin']},{row['assigned_rank_end']}) "
+            f"tokens={row['processed_token_count']}"
+            for row in core_assignment_rows
+        ]
         for slot, name in enumerate(COMBINE_TIMING_SLOTS):
             offset = (slot - (len(COMBINE_TIMING_SLOTS) - 1) / 2) * bar_height
             ax.barh(
@@ -436,7 +468,7 @@ def extract_combine_kernel_timing(
                 label=name,
             )
         ax.set_yticks(core_positions)
-        ax.set_yticklabels([f"core_{core}" for core in range(num_cores)], fontsize=7)
+        ax.set_yticklabels(core_labels, fontsize=7)
         ax.set_xlabel("accumulated time (us)")
         ax.set_title(f"MoeEpCombine cumulative kernel timing - rank {rank}")
         ax.invert_yaxis()
@@ -486,7 +518,7 @@ def extract_combine_kernel_timing(
             )
             left = [offset + duration for offset, duration in zip(left, stage_durations)]
         flow_ax.set_yticks(core_positions)
-        flow_ax.set_yticklabels([f"core_{core}" for core in core_positions], fontsize=7)
+        flow_ax.set_yticklabels(core_labels, fontsize=7)
         flow_ax.set_xlabel("accumulated logical time (us)")
         flow_ax.set_ylabel("AIV core")
         flow_ax.set_title(
@@ -541,9 +573,7 @@ def extract_combine_kernel_timing(
         dependency_ax.set_xlim(-0.65, len(COMBINE_FLOW_STAGES) - 0.35)
         dependency_ax.set_ylim(-0.7, num_cores - 0.1)
         dependency_ax.set_yticks(list(range(num_cores)))
-        dependency_ax.set_yticklabels(
-            [f"core_{core}" for core in reversed(range(num_cores))]
-        )
+        dependency_ax.set_yticklabels(list(reversed(core_labels)))
         dependency_ax.set_xticks([])
         dependency_ax.set_title(
             f"MoeEpCombine per-core accumulated stage totals - rank {rank}\n"
@@ -564,6 +594,13 @@ def extract_combine_kernel_timing(
     print(
         f"[TIMING] rank {rank}: send-flow hotspot={flow_hotspot['stage']}, "
         f"max={flow_hotspot['max_us']:.3f} us on core {flow_hotspot['slowest_core']}"
+    )
+    active_send_cores = [
+        row["core"] for row in core_assignment_rows if row["processed_token_count"] > 0
+    ]
+    print(
+        f"[TIMING] rank {rank}: active send cores={active_send_cores}; "
+        f"see {assignment_path.name} for assigned ranks and token counts"
     )
     print(f"[TIMING] rank {rank}: combine timing saved to {rank_dir}")
     return timing
