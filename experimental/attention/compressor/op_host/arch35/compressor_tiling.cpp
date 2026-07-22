@@ -218,7 +218,9 @@ ge::graphStatus CompressorTiling::SetTemplateId()
     }
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         // 设置高性能模板
-        if (context_->layout == LayoutType::LAYOUT_BSH && context_->seqUsed.desc == nullptr &&
+        // Keep legacy BSH decode on the full-load template even when seq_used is
+        // provided. Only grouped decode needs the normal template to compose x_cache.
+        if (context_->layout == LayoutType::LAYOUT_BSH && context_->xCache.desc == nullptr &&
             baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
             context_->templateId = TemplateId::FULL_LOAD;
         }
