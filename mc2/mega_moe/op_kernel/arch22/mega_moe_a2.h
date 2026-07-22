@@ -104,6 +104,7 @@ private:
     GM_ADDR yGM_;
     GM_ADDR gmExpertTokenNums_;
     GM_ADDR workspaceGM_;
+    GM_ADDR tilingGM_{nullptr};
 
     GM_ADDR moeInitRoutingQuantV2Scale = nullptr;
     GM_ADDR moeInitRoutingQuantV2Offset = nullptr;
@@ -158,6 +159,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Init(
     yGM_ = yGM;
     gmExpertTokenNums_ = expertTokenNumsGM;
     workspaceGM_ = workspaceGM;
+    tilingGM_ = tilingGM;
 
     if constexpr (kRoutingIsQuant) {
         auto tiling = (__gm__ MegaMoeTilingDataQuant *)tilingGM;
@@ -311,7 +313,11 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
 
     using BlockScheduler = typename Gemm::Block::GemmIdentityBlockSwizzle<9, 1>;
     using ElementGroupList = int64_t;
-    LayoutA layoutA1{static_cast<uint32_t>(m), static_cast<uint32_t>(k)};
+    // W4A8 reuses this workspace for GMM1 input and SwiGLU/GMM2 input. Pad only
+    // the GMM1 token slot; SwiGLU/GMM2 keeps its native packed k2 layout.
+    uint32_t layoutA1RowStride =
+        isW4A8 ? static_cast<uint32_t>(k > k2 ? k : k2) : static_cast<uint32_t>(k);
+    LayoutA layoutA1{static_cast<uint32_t>(m), static_cast<uint32_t>(k), layoutA1RowStride};
     LayoutA layoutA2{static_cast<uint32_t>(m), static_cast<uint32_t>(k2)};
     layout::VectorLayout layoutScale1{static_cast<uint32_t>(n)};
     layout::VectorLayout layoutScale2{static_cast<uint32_t>(n2)};
@@ -344,7 +350,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
             expertTokensBeforeCapacity, topkWeightsGM_,
             workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
             moeInitRoutingQuantV2TilingData,
-            epilogueGranularity, activationClamp};
+            epilogueGranularity, activationClamp, tilingGM_};
         MatmulKernel kernel(params);
         kernel(params);
     }
@@ -369,7 +375,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
             expertTokensBeforeCapacity, topkWeightsGM_,
             workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
             moeInitRoutingQuantV2TilingData,
-            epilogueGranularity, activationClamp};
+            epilogueGranularity, activationClamp, tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);
@@ -393,7 +399,7 @@ __aicore__ inline void MegaMoeA2<MegaMoeFuncA2>::Process()
             expertTokensBeforeCapacity, topkWeightsGM_,
             workspaceGM_, gmExpertTokenNums_, xActiveMaskGM_, scalesGM_,
             moeInitRoutingV2TilingData,
-            epilogueGranularity, activationClamp};
+            epilogueGranularity, activationClamp, tilingGM_};
 
         MatmulKernel kernel(params);
         kernel(params);

@@ -15,12 +15,21 @@
 #ifndef FLASH_ATTEN_BLOCK_CUBE_NOQUANT_GQA_H_
 #define FLASH_ATTEN_BLOCK_CUBE_NOQUANT_GQA_H_
 
+#if __has_include("../../../common/op_kernel/offset_calculator.h")
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"
-#include "../../../common/op_kernel/FixpipeOut.h"         // PFA_CFG_ROW_MAJOR_UB
-#include "../../../common/op_kernel/memory_copy_arch35.h" // SeqLenFromTensorList
+#include "../../../common/op_kernel/FixpipeOut.h"
+#include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#else
+#include "../../common/offset_calculator.h"
+#include "../../common/matmul.h"
+#include "../../common/FixpipeOut.h"
+#include "../../common/memory_copy_arch35.h"
+#include "../../common/arch35/infer_flash_attention_comm.h"
+#include "../../common/arch35/flash_attention_score_common_regbase.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
@@ -217,6 +226,15 @@ public:
                                         BuffersPolicyDB<BufferType::L1>>;
     };
 
+    /* ============确定L0C的类型============= */
+    template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
+    struct L0CBuffSel {
+        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
+                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
+                                        BuffersPolicy4buff<BufferType::L0C>,
+                                        BuffersPolicyDB<BufferType::L0C>>;
+    };
+
     /* ============确定L0A的类型============= */
     struct L0ABuffSel {
         using Type = BuffersPolicyDB<BufferType::L0A>;
@@ -227,15 +245,6 @@ public:
         using Type = std::conditional_t<(s2BaseSize == 256 && dBaseSize > 128),
                                         BuffersPolicySingleBuffer<BufferType::L0B>,
                                         BuffersPolicyDB<BufferType::L0B>>;
-    };
-
-    /* ============确定L0C的类型============= */
-    template <uint32_t mBaseSize, uint32_t s2BaseSize, uint32_t dVBaseSize>
-    struct L0CBuffSel {
-        using Type = std::conditional_t<(mBaseSize * s2BaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4 &&
-                                         mBaseSize * dVBaseSize * FLOAT_BYTES <= (L0C_SIZE * KB_TO_BYTES) / NUM_4),
-                                        BuffersPolicy4buff<BufferType::L0C>,
-                                        BuffersPolicyDB<BufferType::L0C>>;
     };
 
     static constexpr uint32_t mBaseSize = (uint32_t)s1TemplateType;

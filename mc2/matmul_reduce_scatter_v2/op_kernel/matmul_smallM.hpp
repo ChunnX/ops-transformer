@@ -225,7 +225,8 @@ public:
                     }
                     GemmCoord comm_blockLocCoord_ = GetBlockLocCoord(comm_blockIdxCoord_);
                     MatrixCoord offsetC_comm_{comm_blockLocCoord_.m(), comm_blockLocCoord_.n()};
-                    gmOffsetC_ = L1TileShape::N * n_st * params.problemShape.m() + layoutTmp.GetOffset(offsetC_comm_);
+                    gmOffsetC_ = static_cast<int64_t>(L1TileShape::N) * n_st * params.problemShape.m() +
+                                 layoutTmp.GetOffset(offsetC_comm_);
                 } else {
                     // 当前切片属于下下一次通信的范围，放入n_ed~n_nxt_ed的通信矩阵切块中。
                     nCommBlock = n_nxt_ed - n_ed;
@@ -239,7 +240,8 @@ public:
                     }
                     GemmCoord comm_blockLocCoord_ = GetBlockLocCoord(comm_blockIdxCoord_);
                     MatrixCoord offsetC_comm_{comm_blockLocCoord_.m(), comm_blockLocCoord_.n()};
-                    gmOffsetC_ = L1TileShape::N * n_ed * params.problemShape.m() + layoutTmp.GetOffset(offsetC_comm_);
+                    gmOffsetC_ = static_cast<int64_t>(L1TileShape::N) * n_ed * params.problemShape.m() +
+                                 layoutTmp.GetOffset(offsetC_comm_);
                 }
 
                 bool isFirstBlock = loopIdx == block_id;
@@ -334,9 +336,9 @@ public:
                     }
                     GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
                     MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
-                    smallMGmOffsetC = L1TileShape::N * smallMNSt *
-                        params.problemShape.m() +
-                        layout_tmp.GetOffset(offsetC_comm);
+                    smallMGmOffsetC = static_cast<int64_t>(L1TileShape::N) * smallMNSt *
+                                          params.problemShape.m() +
+                                      layout_tmp.GetOffset(offsetC_comm);
                 } else {
                     // 当前切片属于下下一次通信的范围，放入n_ed~n_nxt_ed的通信矩阵切块中。
                     n_comm_block = smallMNxtEd - smallMNEd;
@@ -350,9 +352,9 @@ public:
                     }
                     GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
                     MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
-                    smallMGmOffsetC = L1TileShape::N * smallMNEd *
-                        params.problemShape.m() +
-                        layout_tmp.GetOffset(offsetC_comm);
+                    smallMGmOffsetC = static_cast<int64_t>(L1TileShape::N) * smallMNEd *
+                                          params.problemShape.m() +
+                                      layout_tmp.GetOffset(offsetC_comm);
                 }
 
                 if constexpr (HasBias) {

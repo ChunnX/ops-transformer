@@ -496,6 +496,7 @@ void FiaTilingNonQuant::FillTilingBaseParams()
     l2CacheOffFlag_ = GetL2CacheOffFlag();
     tilingData_.baseParams.set_l2CacheOffFlag(l2CacheOffFlag_);
     tilingData_.baseParams.set_isLegacyIfa(fiaInfo_->isLegacyIfa);
+    tilingData_.baseParams.set_isEmptyBatchOverHalf(GetIsEmptyBatchOverHalf());
 }
  
 void FiaTilingNonQuant::FillTilingPageAttenParams()
@@ -697,6 +698,40 @@ bool FiaTilingNonQuant::IsExistRowInvalid(const BaseInfo &baseInfo) const
         }
     }
     return false;
+}
+
+bool FiaTilingNonQuant::GetIsEmptyBatchOverHalf() const
+{
+    if (fiaInfo_->inputLayout != TilingKeyLayout::TND && fiaInfo_->inputLayout != TilingKeyLayout::NTD) {
+        return false;
+    }
+
+    std::vector<uint8_t> emptyBatchs(fiaInfo_->bSize, 0);
+    if (fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor != nullptr) {
+        const int64_t *s1Ptr = fiaInfo_->opParamInfo.actualSeqLengthsQ.tensor->GetData<int64_t>();
+        for (uint32_t i = 0; i < fiaInfo_->bSize; ++i) {
+            int64_t s1Size = (i == 0) ? s1Ptr[i] : s1Ptr[i] - s1Ptr[i - 1];
+            if (s1Size == 0) {
+                emptyBatchs[i] = 1;
+            }
+        }
+    }
+
+    if (fiaInfo_->opParamInfo.actualSeqLengths.tensor != nullptr) {
+        const int64_t *s2Ptr = fiaInfo_->opParamInfo.actualSeqLengths.tensor->GetData<int64_t>();
+        for (uint32_t i = 0; i < fiaInfo_->bSize; ++i) {
+            int64_t s2Size = (i == 0) ? s2Ptr[i] : s2Ptr[i] - s2Ptr[i - 1];
+            if (s2Size == 0) {
+                emptyBatchs[i] = 1;
+            }
+        }
+    }
+
+    uint32_t cnt = 0;
+    for (uint32_t i = 0; i < fiaInfo_->bSize; ++i) {
+        cnt += emptyBatchs[i];
+    }
+    return cnt >= (fiaInfo_->bSize / 2U);
 }
 
 ge::graphStatus FiaTilingNonQuant::DoOpTiling()

@@ -38,8 +38,6 @@ if (BUILD_OPEN_PROJECT)  # custom
             OPTIONS --cce-auto-sync=on
             OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/op_kernel
             OPTIONS -I${CMAKE_SOURCE_DIR}/mc2/common/inc/kernel
-            OPTIONS -I${CMAKE_CURRENT_SOURCE_DIR}/../../3rd
-            OPTIONS -DHCCL_COMM
         )
     endif()
 

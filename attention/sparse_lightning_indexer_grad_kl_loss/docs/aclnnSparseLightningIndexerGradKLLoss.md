@@ -611,6 +611,7 @@ aclnnStatus aclnnSparseLightningIndexerGradKLLoss(
 
     <term>Ascend 950PR/Ascend 950DT</term>：N1额外支持48，Nidx1额外支持24，二者仅允许(48,24)组合，禁止其余数值配对。
 
+    <term>Ascend 950PR/Ascend 950DT</term>：B、S1、S2均支持泛化。
 ## 调用示例
 
 调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
@@ -713,7 +714,7 @@ int main() {
 
   std::vector<int64_t> dQIndexShape = {1,32,128};
   std::vector<int64_t> dKIndexShape = {1,1,128};
-  std::vector<int64_t> dWeightShape = {1,1,32};
+  std::vector<int64_t> dWeightShape = {1,32};
   std::vector<int64_t> lossShape = {1};
 
   void* qDeviceAddr = nullptr;

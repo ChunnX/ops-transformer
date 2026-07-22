@@ -29,7 +29,6 @@
 #include "../../../../common/op_kernel/moe_distribute_base.h"
 
 #define FORCE_INLINE_AICORE inline __attribute__((always_inline)) __aicore__
-constexpr int32_t MAX_RANK_SIZE = 32;
 constexpr int32_t SHMEM_MEM = 700 * MB_SIZE;
 
 constexpr uint16_t SEND_SYNC_EVENT_ID = 9;
@@ -37,12 +36,6 @@ constexpr uint16_t RECV_SYNC_EVENT_ID = 10;
 
 constexpr uint32_t SELF_STATE_OFFSET = 256 * 1024;
 constexpr uint32_t STATE_OFFSET = 512;
-
-FORCE_INLINE_AICORE void AicSyncAll()
-{
-    AscendC::CrossCoreSetFlag<0x0, PIPE_FIX>(8);
-    AscendC::CrossCoreWaitFlag<0x0>(8);
-}
 
 template <typename T>
 FORCE_INLINE_AICORE void gm_store(__gm__ T *addr, T val)
@@ -69,7 +62,7 @@ FORCE_INLINE_AICORE void gm_dcci(__gm__ T *addr)
     __asm__ __volatile__("");
 }
 
-FORCE_INLINE_AICORE int32_t gm_signal_wait_until_eq_for_barrier(__gm__ int32_t *sig_addr, int32_t cmp_val)
+FORCE_INLINE_AICORE int64_t gm_signal_wait_until_eq_for_barrier(__gm__ int64_t *sig_addr, int64_t cmp_val)
 {
     do {
         gm_dcci((__gm__ uint8_t *)sig_addr);
@@ -101,7 +94,6 @@ FORCE_INLINE_AICORE void gm_signal_wait_until_ne(__gm__ int32_t *sig_addr, int32
     return;
 }
 
-#ifdef HCCL_COMM
 FORCE_INLINE_AICORE void AIVRDMAPostSend(
     GM_ADDR srcDmaAddr,
     GM_ADDR destDmaAddr,
@@ -191,12 +183,10 @@ FORCE_INLINE_AICORE void AIVRDMAPostSend(
     AscendC::DataCopyPad(HeadGlobalTensor, ubLocalHead, copyParamsHead);
     AscendC::PipeBarrier<PIPE_ALL>();
 }
-#endif
 
 template <bool IS_A2>
 class HcclShmem {
 public:
-#ifdef HCCL_COMM    // HCCL needs to initialize the HCCL context
     std::conditional_t<IS_A2, __gm__ HcclA2CombineOpParam *,
                       __gm__ HcclOpResParam *> WinContext_{nullptr};
     AscendC::LocalTensor<int32_t> ub;
@@ -220,26 +210,10 @@ public:
         m_segmentSize = WinContext_->winSize;
         m_tailReservedSize = m_rankSize * STATE_OFFSET;
     }
-#else
-    FORCE_INLINE_AICORE
-    HcclShmem()
-    {
-        m_segmentSize = SHMEM_MEM;
-    }
-    FORCE_INLINE_AICORE
-    void initShmem(GM_ADDR symmetricPtr_, size_t rank, size_t rankSize)
-    {
-        symmetricPtr = symmetricPtr_;
-        m_rank = rank;
-        m_rankSize = rankSize;
-        m_tailReservedSize = rankSize * STATE_OFFSET;
-    }
-#endif
 
     FORCE_INLINE_AICORE
     GM_ADDR operator()() const
     { // No parameters: return pointer to local peermem
-#ifdef HCCL_COMM
         if constexpr (IS_A2) {
             if (WinContext_->multiFlag == 0U) {
                 return (GM_ADDR)(WinContext_->windowsIn[WinContext_->rankId]);
@@ -249,15 +223,11 @@ public:
         } else {
             return (GM_ADDR)(WinContext_->localWindowsIn);
         }
-#else
-        return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, m_rank));
-#endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR operator()(int32_t index) const
     { // With index parameter: return pointer to the base address of remote peermem
-#ifdef HCCL_COMM
         if constexpr (IS_A2) {
             if (WinContext_->multiFlag == 0U) {
                 return (GM_ADDR)(WinContext_->windowsIn[index]);
@@ -273,15 +243,11 @@ public:
                                  WinContext_->localWindowsIn :
                                  ((HcclRankRelationResV2 *)(WinContext_->remoteRes[index].nextDevicePtr))->windowsIn);
         }
-#else
-        return reinterpret_cast<GM_ADDR>(shmem_ptr(symmetricPtr, index));
-#endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR operator()(int64_t offset, int32_t rankId) const
     {
-#ifdef HCCL_COMM
         if (offset < 0 || offset >= m_segmentSize) {
             return nullptr;
         }
@@ -303,9 +269,6 @@ public:
                                  WinContext_->localWindowsIn :
                                  ((HcclRankRelationResV2 *)(WinContext_->remoteRes[rankId].nextDevicePtr))->windowsIn) + offset;
         }
-#else
-        return reinterpret_cast<GM_ADDR>(shmem_ptr((symmetricPtr + offset), rankId));
-#endif
     }
 
     // A2-only helpers: return windowsOut addresses.
@@ -313,7 +276,6 @@ public:
     FORCE_INLINE_AICORE
     GM_ADDR windowsOutAddr() const
     {
-#ifdef HCCL_COMM
         if constexpr (IS_A2) {
             if (WinContext_->multiFlag == 0U) {
                 return (GM_ADDR)(WinContext_->windowsOut[WinContext_->rankId]);
@@ -323,15 +285,11 @@ public:
         } else {
             return nullptr;
         }
-#else
-        return nullptr;
-#endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR windowsOutAddr(int32_t rankId) const
     {
-#ifdef HCCL_COMM
         if constexpr (IS_A2) {
             if (WinContext_->multiFlag == 0U) {
                 return (GM_ADDR)(WinContext_->windowsOut[rankId]);
@@ -345,15 +303,11 @@ public:
         } else {
             return nullptr;
         }
-#else
-        return nullptr;
-#endif
     }
 
     FORCE_INLINE_AICORE
     GM_ADDR windowsOutAddr(int64_t offset, int32_t rankId) const
     {
-#ifdef HCCL_COMM
         if constexpr (IS_A2) {
             if (WinContext_->multiFlag == 0U) {
                 return (GM_ADDR)(WinContext_->windowsOut[rankId] + offset);
@@ -367,9 +321,6 @@ public:
         } else {
             return nullptr;
         }
-#else
-        return nullptr;
-#endif
     }
 
     FORCE_INLINE_AICORE
@@ -404,17 +355,17 @@ public:
     FORCE_INLINE_AICORE
     void CrossRankSync()
     {
-        uint64_t flag_offset = ((m_segmentSize - m_tailReservedSize)) / sizeof(int32_t);
-        __gm__ int32_t *sync_counter = (__gm__ int32_t *)(*this)() + flag_offset;
-        __gm__ int32_t *sync_base = (__gm__ int32_t *)(*this)() + flag_offset + m_rankSize * 16;
-        int count = gm_load(sync_base) + 1;
+        uint64_t flag_offset = ((m_segmentSize - m_tailReservedSize)) / sizeof(int64_t);
+        __gm__ int64_t *sync_counter = (__gm__ int64_t *)(*this)() + flag_offset;
+        __gm__ int64_t *sync_base = (__gm__ int64_t *)(*this)() + flag_offset + m_rankSize * 8;
+        int64_t count = gm_load(sync_base) + 1;
         int vec_id = AscendC::GetBlockIdx();
         int vec_size = AscendC::GetBlockNum() * AscendC::GetTaskRation();
         for (int i = vec_id; i < m_rankSize; i += vec_size) {
-            __gm__ int32_t *sync_remote = (__gm__ int32_t *)((*this)(i)) + flag_offset + m_rank * 16;
+            __gm__ int64_t *sync_remote = (__gm__ int64_t *)((*this)(i)) + flag_offset + m_rank * 8;
             gm_store(sync_remote, count);
             gm_dcci((__gm__ uint8_t *)sync_remote);
-            auto sync_check = sync_counter + i * 16;
+            auto sync_check = sync_counter + i * 8;
             gm_signal_wait_until_eq_for_barrier(sync_check, count);
         }
 
@@ -435,16 +386,15 @@ public:
     // duration of this call (matches how CrossRankSyncV2Set lays out its scratch).
     FORCE_INLINE_AICORE
     void CrossRankSync(AscendC::LocalTensor<int32_t> ctrBuffer) {
-        uint64_t flag_offset_i32   = ((m_segmentSize - m_tailReservedSize)) / sizeof(int32_t);
+        uint64_t flag_offset_i64   = ((m_segmentSize - m_tailReservedSize)) / sizeof(int64_t);
         uint64_t flag_offset_bytes = ((m_segmentSize - m_tailReservedSize));
-        __gm__ int32_t* sync_counter = (__gm__ int32_t*)(*this)() + flag_offset_i32;
-        __gm__ int32_t* sync_base    = (__gm__ int32_t*)(*this)() + flag_offset_i32 + m_rankSize * 16;
+        __gm__ int64_t* sync_counter = (__gm__ int64_t*)(*this)() + flag_offset_i64;
+        __gm__ int64_t* sync_base    = (__gm__ int64_t*)(*this)() + flag_offset_i64 + m_rankSize * 8;
         gm_dcci((__gm__ uint8_t*)sync_base);
-        int count = gm_load(sync_base) + 1;
+        int64_t count = gm_load(sync_base) + 1;
         int vec_id = AscendC::GetBlockIdx();
         int vec_size = AscendC::GetBlockNum() * AscendC::GetTaskRation();
 
-#ifdef HCCL_COMM
         AscendC::LocalTensor<uint64_t> rdmaUbLocal;
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead;
         AscendC::GlobalTensor<int32_t> gmCrossServerPayload;
@@ -453,7 +403,7 @@ public:
             rdmaUbLocalHead = ctrBuffer[2 * UB_ALIGN / sizeof(int32_t)].template ReinterpretCast<uint32_t>();
             gmCrossServerPayload.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(
                 windowsOutAddr() + flag_offset_bytes
-                + static_cast<uint64_t>(m_rank) * 16 * sizeof(int32_t)));
+                + static_cast<uint64_t>(m_rank) * 8 * sizeof(int64_t)));
             // Only this core's stride may include cross-server targets; skip UB→GM staging if none.
             bool needRdmaStage = false;
             int32_t const localServerId = m_rank / SERVER_RANK_SIZE_A2;
@@ -464,27 +414,25 @@ public:
                 }
             }
             if (needRdmaStage) {
-                ctrBuffer.SetValue(0, count);
+                ctrBuffer.template ReinterpretCast<int64_t>().SetValue(0, count);
                 AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
                 AscendC::DataCopy(gmCrossServerPayload, ctrBuffer, 8);
                 AscendC::PipeBarrier<PIPE_ALL>();
             }
         } else {
-            ctrBuffer.SetValue(0, count);
+            ctrBuffer.template ReinterpretCast<int64_t>().SetValue(0, count);
             AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         }
-#endif
 
         // Phase 1: post every outbound write. RDMA is async, so we must finish
         // posting all WQEs before any local poll (otherwise an intra-server peer
         // may already have arrived while our own cross-server WQEs are still
         // sitting unposted, and the producer side never makes forward progress).
         for (int i = vec_id; i < m_rankSize; i += vec_size) {
-            __gm__ int32_t* sync_remote =
-                (__gm__ int32_t*)((*this)(i)) + flag_offset_i32 + m_rank * 16;
-#ifdef HCCL_COMM
+            __gm__ int64_t* sync_remote =
+                (__gm__ int64_t*)((*this)(i)) + flag_offset_i64 + m_rank * 8;
             if constexpr (IS_A2) {
                 int32_t localServerId = m_rank / SERVER_RANK_SIZE_A2;
                 int32_t dstServerId   = i / SERVER_RANK_SIZE_A2;
@@ -493,14 +441,13 @@ public:
                         (GM_ADDR)gmCrossServerPayload.GetPhyAddr(),
                         (GM_ADDR)sync_remote,
                         static_cast<uint64_t>(i),
-                        8 * sizeof(int32_t),
+                        4 * sizeof(int64_t),
                         reinterpret_cast<__gm__ HcclAiRMAInfo*>(WinContext_->aiRMAInfo),
                         rdmaUbLocal,
                         rdmaUbLocalHead);
                     continue;
                 }
             }
-#endif
             gm_store(sync_remote, count);
             gm_dcci((__gm__ uint8_t*)sync_remote);
         }
@@ -508,9 +455,9 @@ public:
         // Phase 2: wait for the same set of source ranks to land their count in
         // our local sync slots. Works uniformly for intra-server (gm_store) and
         // inter-server (RDMA) producers because both ultimately materialize the
-        // same int32 at sync_counter[i*16].
+        // same int64 at sync_counter[i*8].
         for (int i = vec_id; i < m_rankSize; i += vec_size) {
-            auto sync_check = sync_counter + i * 16;
+            auto sync_check = sync_counter + i * 8;
             gm_signal_wait_until_eq_for_barrier(sync_check, count);
         }
 
@@ -564,18 +511,15 @@ public:
         ctrBuffer.SetValue(0, epStateValue_);
         AscendC::SetFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
         AscendC::WaitFlag<AscendC::HardEvent::S_MTE3>(EVENT_ID0);
-#ifdef HCCL_COMM
         AscendC::LocalTensor<uint64_t> rdmaUbLocal;
         AscendC::LocalTensor<uint32_t> rdmaUbLocalHead;
         if constexpr (IS_A2) {
             rdmaUbLocal = ctrBuffer[UB_ALIGN / sizeof(int32_t)].template ReinterpretCast<uint64_t>();
             rdmaUbLocalHead = ctrBuffer[2 * UB_ALIGN / sizeof(int32_t)].template ReinterpretCast<uint32_t>();
         }
-#endif
         for (uint32_t dstEpIdx = vec_id; dstEpIdx < m_rankSize; dstEpIdx += vec_size) {
             AscendC::GlobalTensor<int32_t> gmDstStates;
             gmDstStates.SetGlobalBuffer((__gm__ int32_t*)((*this)(flag_offset, dstEpIdx)));
-#ifdef HCCL_COMM
             if constexpr (IS_A2) {
                 int32_t localServerId = m_rank / SERVER_RANK_SIZE_A2;
                 int32_t dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
@@ -596,7 +540,6 @@ public:
                     continue;
                 }
             }
-#endif
             AscendC::DataCopy(gmDstStates, ctrBuffer, 8);
         }
         AscendC::CrossCoreWaitFlag(RECV_SYNC_EVENT_ID);
@@ -665,6 +608,63 @@ public:
 
         // unpermute
         AscendC::CrossCoreWaitFlag(SEND_SYNC_EVENT_ID);
+    }
+
+    FORCE_INLINE_AICORE
+    __gm__ int32_t *SyncBaseAddr()
+    {
+        uint64_t flag_offset = (m_segmentSize - MB_SIZE) / sizeof(int32_t);
+        return (__gm__ int32_t *)(*this)() + flag_offset + 2048;
+    }
+
+    // 将全卡同步函数实际操作的本地 peermem 内存区域通过 exceptionDump 进行 dump。
+    // 使用带 stride 的 Dump 跳过空洞，避免 dump 整个 1MB。
+    //
+    // 布局参考（相对 flag_offset = m_segmentSize - MB_SIZE）：
+    //   CrossRankSync（本 rank peermem 收到所有 rank 的 counter，按 world_size 存）：
+    //     - sync_counter[rank][16] int32_t（每 rank 64B，仅 [0]4B 被读写）
+    //     - sync_base: 1 个 int32_t（位于偏移 2048*4=8192B 处）
+    //   CrossRankSyncV2（per-rank status 按 world_size 存，selfStatus 按本 rank AIV 核数存）：
+    //     - InitStatusTargetSum 写 selfStatus[GetBlockIdx() * UB_ALIGN]（4B，UB_ALIGN=32）
+    //     - CrossRankSyncV2Set 写 per-rank status[m_rank*STATE_OFFSET]（32B）到其他 rank
+    //     - CrossRankSyncV2Wait 读 per-rank status[startRankId*STATE_OFFSET]（4B，stride 64B）
+    //
+    // 模板参数 ExceptionDumpT 需提供：
+    //   void Dump(GM_ADDR dumpAddr, size_t blockCount, size_t blockLen, size_t srcStride)
+    template <typename ExceptionDumpT>
+    FORCE_INLINE_AICORE
+    void DumpSyncRegions(ExceptionDumpT &exceptionDump)
+    {
+        uint64_t flagOffsetBytes = m_segmentSize - m_tailReservedSize;
+        GM_ADDR base = (*this)() + flagOffsetBytes;
+
+        // Region 0: CrossRankSync sync_counter[rank]，数据类型 int64_t
+        // 访问模式：[rank*64B, rank*64B+8B)，共 m_rankSize 个 block，stride=64B
+        exceptionDump.Dump(base,
+                           static_cast<size_t>(m_rankSize),
+                           sizeof(int64_t),
+                           64U);
+
+        // Region 1: CrossRankSync sync_base，单 int64_t
+        // 地址 = base + m_rankSize * 64（sync_counter 之后紧接着 sync_base）
+        exceptionDump.Dump(base + static_cast<uint64_t>(m_rankSize) * 64U,
+                           sizeof(int64_t));
+
+        // Region 2: CrossRankSyncV2 per-rank status，每 rank 32B（V2Set 写 8 int32_t）
+        // 访问模式：[rank*512B, rank*512B+32B)，共 m_rankSize 个 block，stride=STATE_OFFSET
+        exceptionDump.Dump(base,
+                           static_cast<size_t>(m_rankSize),
+                           UB_ALIGN,
+                           static_cast<size_t>(STATE_OFFSET));
+
+        // Region 3: CrossRankSyncV2 selfStatus，本 rank 各 AIV 核的 init 状态
+        // InitStatusTargetSum 用 GetBlockIdx() 索引，范围 [0, get_block_num())
+        // selfStatusTensor[coreIdx * UB_ALIGN] 中 UB_ALIGN 是 int32_t 元素索引，
+        // 实际字节间距 = UB_ALIGN * sizeof(int32_t) = 128B
+        exceptionDump.Dump(base + SELF_STATE_OFFSET,
+                           static_cast<size_t>(GetBlockNum()),
+                           sizeof(int32_t),
+                           static_cast<size_t>(UB_ALIGN * sizeof(int32_t)));
     }
 
 private:

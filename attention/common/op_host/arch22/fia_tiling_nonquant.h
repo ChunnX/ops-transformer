@@ -76,7 +76,7 @@ private:
     void GetSafeActToken(SparseMode mode, int64_t actSeqLensQ, int64_t actSeqLensKv,
                          int64_t &safePreToken, int64_t &safeNextToken) const;
     bool IsExistRowInvalid(const BaseInfo &baseInfo) const;
-
+    bool GetIsEmptyBatchOverHalf() const;       // 临时操作，用于检查是否超过一半的batch为空batch
     bool splitKVFlag_ = false;
 
     uint32_t coreNum_ = 0;

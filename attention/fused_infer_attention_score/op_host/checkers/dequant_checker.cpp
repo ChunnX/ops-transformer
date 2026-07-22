@@ -2427,6 +2427,19 @@ ge::graphStatus DequantChecker::CheckScaleShapeForAntiquant(const FiaTilingInfo 
     uint32_t headDim = fiaInfo.qkHeadDim;
     uint32_t batchSize = fiaInfo.bSize;
     uint64_t seqLength = fiaInfo.s2Size;
+    int32_t dimIndex = 0;
+    
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(keyAntiquantScaleTensorDimNum,
+                keyAntiquantScaleTensorShape, fiaInfo.kScaleStrides, dimIndex))),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key_antiquant_scale",
+            "In antiquant scenario, key_antiquant_scale not support non-contiguous"),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(((ge::GRAPH_SUCCESS != CheckTensorContiguous(valueAntiquantScaleTensorDimNum,
+                valueAntiquantScaleTensorShape, fiaInfo.vScaleStrides, dimIndex))),
+        OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value_antiquant_scale",
+            "In antiquant scenario, value_antiquant_scale not support non-contiguous"),
+        return ge::GRAPH_FAILED);
+    
     if (keyAntiquantMode == PER_CHANNEL_MODE && valueAntiquantMode == PER_CHANNEL_MODE) {
         if (ge::GRAPH_SUCCESS != CheckKScaleShapeForPerChannelPerTensorMode(fiaInfo)) {
             return ge::GRAPH_FAILED;

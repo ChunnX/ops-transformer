@@ -158,22 +158,22 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<
 
     tilePadDataCnt_ = tilePadM_ * tilingData_->tilematmulTiling.matmulTiling.N; // 一个MM头块的数据个数
     tailPadDataCnt_ = tailPadM_ * tilingData_->tailmatmulTiling.matmulTiling.N; // 一个MM尾块的数据个数
-    const int64_t tempBufOffsetTilePad = tilePadDataCnt_ * sizeof(int8_t); // 偏移计算
-    const int64_t tempBufOffsetTailPad = tailPadDataCnt_ * sizeof(int8_t);
-    const int64_t tempBufOffsetTilePadSingle = tempBufOffsetTilePad / rankNum;
-    const int64_t tempBufOffsetTailPadSingle = tempBufOffsetTailPad / rankNum;
+    const int64_t offsetTilePad = tilePadDataCnt_ * sizeof(int8_t); // 偏移计算
+    const int64_t offsetTailPad  = tailPadDataCnt_ * sizeof(int8_t);
+    const int64_t offsetTilePadPerRank = offsetTilePad / rankNum;
+    const int64_t offsetTailPadPerRank = offsetTailPad  / rankNum;
 
     for (uint32_t i = 0U; i < mc2Tiling.tileCnt; ++i) { // 头块偏移
-        const int64_t indexOffsetTile = i * tempBufOffsetTilePad;
-        const int64_t indexGatherOffsetTile = tempBufOffsetTilePadSingle * hccl_.GetRankId();
+        const int64_t indexOffsetTile = i * offsetTilePad;
+        const int64_t indexGatherOffsetTile = offsetTilePadPerRank * hccl_.GetRankId();
         all2allSendGM_[i] = all2allInGM_ + indexOffsetTile;
         all2allRecvGM_[i] = all2allOutGM_ + indexOffsetTile;
         allGatherSendGM_[i] = all2allOutGM_ + indexOffsetTile + indexGatherOffsetTile;
         allGatherRecvGM_[i] = allGatherOutGM_ + indexOffsetTile;
     }
     for (uint32_t i = 0U; i < mc2Tiling.tailCnt; ++i) { // 尾块偏移
-        const int64_t indexOffsetTail = mc2Tiling.tileCnt * tempBufOffsetTilePad + i * tempBufOffsetTailPad;
-        const int64_t indexGatherOffsetTail = tempBufOffsetTailPadSingle * hccl_.GetRankId();
+        const int64_t indexOffsetTail = mc2Tiling.tileCnt * offsetTilePad + i * offsetTailPad ;
+        const int64_t indexGatherOffsetTail = offsetTailPadPerRank * hccl_.GetRankId();
         all2allSendGM_[mc2Tiling.tileCnt + i] = all2allInGM_ + indexOffsetTail;
         all2allRecvGM_[mc2Tiling.tileCnt + i] = all2allOutGM_ + indexOffsetTail;
         allGatherSendGM_[mc2Tiling.tileCnt + i] = all2allOutGM_ + indexOffsetTail + indexGatherOffsetTail;
@@ -309,8 +309,8 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
             padM = tailPadM_;
             lastN = tilingData_->tailmatmulTiling.matmulTiling.N;
         }
-        MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_, commQuantScale2GM_,
-                                            padM, lastN, tPipe_, hccl_);
+        MatmulAllReduceQuantReduceSumInt8<YType, commMode>(all2allOutGM_, commQuantScale1GM_,
+            commQuantScale2GM_, padM, lastN, tPipe_, hccl_);
         SyncAll();
         if (notifyFlag_) {
             hccl_.Commit(allGatherHandleId_[all2allWaitIdx_]);
@@ -328,16 +328,14 @@ __aicore__ inline void MatmulAllReduceQuantPertokenCommInt8<xType, WType, YType,
             }
             SyncAll();
             if (i < mc2Tiling.tileCnt) {
-                MatmulAllReduceDequantPerchannelCommInt8<YType>(
-                    allGatherOutGM_, commQuantScale2GM_, outGM_, tPipe_, tilingData_->tilematmulTiling.matmulTiling.N,
-                    tilingData_->tilematmulTiling.matmulTiling.M);
+                MatmulAllReduceDequantPerchannelCommInt8<YType>(allGatherOutGM_, commQuantScale2GM_, outGM_, tPipe_,
+                    tilingData_->tilematmulTiling.matmulTiling.N, tilingData_->tilematmulTiling.matmulTiling.M);
                 allGatherOutGM_ += tilePadDataCnt_ * sizeof(int8_t);
                 outGM_ += outGmTileOff;
                 SyncAll();
             } else {
-                MatmulAllReduceDequantPerchannelCommInt8<YType>(
-                    allGatherOutGM_, commQuantScale2GM_, outGM_, tPipe_, tilingData_->tailmatmulTiling.matmulTiling.N,
-                    tilingData_->tailmatmulTiling.matmulTiling.M);
+                MatmulAllReduceDequantPerchannelCommInt8<YType>(allGatherOutGM_, commQuantScale2GM_, outGM_, tPipe_,
+                    tilingData_->tailmatmulTiling.matmulTiling.N, tilingData_->tailmatmulTiling.matmulTiling.M);
                 allGatherOutGM_ += tailPadDataCnt_ * sizeof(int8_t);
                 outGM_ += outGmTailOff;
                 SyncAll();

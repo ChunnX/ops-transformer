@@ -43,8 +43,8 @@ ge::graphStatus ActualSeqLenChecker::CheckActualSeqLenQDim(const FiaTilingInfo &
         // 若不存在actualSeqLengthsQ，则放弃后续校验
         return ge::GRAPH_SUCCESS;
     }
-    uint32_t actualSeqLengthsQDimNum = actualSeqLengthsQTensor->GetShapeSize();
     uint32_t batchSize = fiaInfo.bSize;
+    uint32_t actualSeqLengthsQDimNum = actualSeqLengthsQTensor->GetShapeSize();
     FiaLayout qLayout = fiaInfo.qLayout;
     if (qLayout == FiaLayout::TND || qLayout == FiaLayout::NTD) {
         // query的layout为TND/NTD时，actualSeqLengthsQ的长度为query的batch值

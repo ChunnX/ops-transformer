@@ -328,15 +328,11 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
     int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
     if (numMaxTokensPerRank != 0) {
-        OP_TILING_CHECK(numMaxTokensPerRank < 0 || bs * epWorldSize > numMaxTokensPerRank ||
-                        numMaxTokensPerRank % epWorldSize != 0,
-            OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank",
-                std::to_string(numMaxTokensPerRank).c_str(),
-                (std::string("should be 0 or maxBs * EP and mod(numMaxTokensPerRank, EP(") +
-                 std::to_string(epWorldSize) + ")) == 0").c_str()),
+        OP_TILING_CHECK(bs != numMaxTokensPerRank,
+            OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
+                                      (std::string("should be 0 or Bs, Bs is ") + std::to_string(bs).c_str())),
             return ge::GRAPH_FAILED);
     }
-
     return ge::GRAPH_SUCCESS;
 }
 
