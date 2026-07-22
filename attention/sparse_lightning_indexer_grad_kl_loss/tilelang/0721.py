@@ -1115,6 +1115,8 @@ def tilelang_grad_kl_loss_single_kernel(
                                         bw_col_start:bw_col_end],
                         )
                         T.set_flag("mte3", "mte2", current_slot)
+                        T.set_flag("mte3", "v", current_slot)
+                        T.wait_flag("mte3", "v", current_slot)
 
                         # Match VectorLoss: split outer K tiles across the AIV
                         # pair, while the owner consumes both physical subtiles.
