@@ -71,6 +71,9 @@ struct MegaMoeA2A3TilingData {
     uint32_t weight1Interleave;
 
     uint64_t initRoutingQuantTilingKey;
+
+    float beta;
+    float linearBeta;
 };
 
 struct MegaMoeTilingDataQuant {

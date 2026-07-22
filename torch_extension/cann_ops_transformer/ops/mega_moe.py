@@ -33,7 +33,7 @@ class _MegaMoeOpBuilder(OpBuilder):
             "Tensor? x_active_mask=None, int max_recv_token_num=0, "
             "int dispatch_quant_mode=0, int combine_quant_mode=0, "
             'str comm_alg="", int num_max_tokens_per_rank=0, str activation="swiglu", '
-            "float? activation_clamp=None, "
+            "float? activation_clamp=None, float beta=1.0, float? linear_beta=None, "
             "int? dispatch_quant_out_dtype=None,  "
             "int? weight1_type=None, int? weight2_type=None, int? topo_type=None, "
             "int? rank_num_per_server=None) -> (Tensor, Tensor)"
@@ -63,6 +63,8 @@ class _MegaMoeOpBuilder(OpBuilder):
             num_max_tokens_per_rank=0,
             activation="swiglu",
             activation_clamp=None,
+            beta=1.0,
+            linear_beta=None,
             dispatch_quant_out_dtype=None,
             weight1_type=None,
             weight2_type=None,
@@ -108,6 +110,8 @@ def _npu_mega_moe(
     num_max_tokens_per_rank=0,
     activation="swiglu",
     activation_clamp=None,
+    beta=1.0,
+    linear_beta=None,
     dispatch_quant_out_dtype=None,
     weight1_type=None,
     weight2_type=None,
@@ -136,6 +140,8 @@ def _npu_mega_moe(
         num_max_tokens_per_rank,
         activation,
         activation_clamp,
+        beta,
+        linear_beta,
         dispatch_quant_out_dtype,
         weight1_type,
         weight2_type,
@@ -283,6 +289,8 @@ def mega_moe(
     x_active_mask: Optional[torch.Tensor] = None,
     activation: str = "swiglu",
     activation_clamp: Optional[float] = None,
+    beta: float = 1.0,
+    linear_beta: Optional[float] = None,
     weight1_type: Optional[int] = None,
     weight2_type: Optional[int] = None,
 ):
@@ -308,6 +316,8 @@ def mega_moe(
         num_max_tokens_per_rank=sym_buffer.num_max_tokens_per_rank,
         activation=activation,
         activation_clamp=activation_clamp,
+        beta=beta,
+        linear_beta=linear_beta,
         dispatch_quant_out_dtype=sym_buffer.dispatch_quant_out_dtype,
         weight1_type=weight1_type,
         weight2_type=weight2_type,

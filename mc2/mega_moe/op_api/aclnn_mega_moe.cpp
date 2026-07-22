@@ -9,6 +9,8 @@
  */
 
 #include <algorithm>
+#include <cmath>
+#include <limits>
 #include <vector>
 #include "common/utils/op_mc2.h"
 #include "common/utils/op_mc2_def.h"
@@ -84,9 +86,9 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList *weightScales2Optional, const aclTensorList *bias1Optional, const aclTensorList *bias2Optional,
     const aclTensor *xActiveMaskOptional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
-    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, int64_t topoType,
-    int64_t rankNumPerServer, aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize,
-    aclOpExecutor **executor)
+    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, float beta,
+    float linearBeta, int64_t topoType, int64_t rankNumPerServer, aclTensor *yOut, aclTensor *expertTokenNumsOut,
+    uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     OP_LOGD("aclnn_mega_moe WorkspaceSize start");
 
@@ -103,6 +105,10 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     CHECK_COND(epWorldSize > 0, ACLNN_ERR_PARAM_INVALID, "epWorldSize must be > 0, got %ld.", epWorldSize);
     CHECK_COND(maxRecvTokenNum >= 0, ACLNN_ERR_PARAM_INVALID, "maxRecvTokenNum must be >= 0, got %ld.",
                maxRecvTokenNum);
+    CHECK_COND(std::isfinite(beta) && beta > 0.0f, ACLNN_ERR_PARAM_INVALID,
+               "beta must be finite and > 0, got %f.", beta);
+    CHECK_COND(linearBeta == std::numeric_limits<float>::max() || (std::isfinite(linearBeta) && linearBeta > 0.0f),
+               ACLNN_ERR_PARAM_INVALID, "linearBeta must be finite and > 0 when specified, got %f.", linearBeta);
 
     // 确保 executor 已创建，以便调用 CreateEmptyTensor
     if (*executor == nullptr) {
@@ -133,7 +139,7 @@ aclnnStatus aclnnMegaMoeGetWorkspaceSize(
         bias2Optional, xActiveMaskOptional, nullptr, moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum,
         dispatchQuantMode, dispatchQuantOutDtype, combineQuantMode, const_cast<char *>(commAlg), 0,
         const_cast<char *>(activation), activationClamp, ge::DT_UNDEFINED, false, false, 0, topoType, rankNumPerServer,
-        yOut, expertTokenNumsOut, workspaceSize, executor);
+        beta, linearBeta, yOut, expertTokenNumsOut, workspaceSize, executor);
 
     return getWorkspaceSizesRes;
 }

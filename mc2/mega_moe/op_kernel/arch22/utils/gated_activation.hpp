@@ -99,9 +99,8 @@ struct GptOssSwigluActivation {
 //     beta * tanh(gate / beta) * sigmoid(gate) * up
 // When linearBeta is enabled, up becomes:
 //     linearBeta * tanh(up / linearBeta)
-// gate/up use the regular contiguous half split. MegaMoe keeps beta at its
-// kernel default and reuses activation_clamp as the optional linearBeta so no
-// public attribute or tiling field is added.
+// gate/up use the regular contiguous half split. beta and linearBeta are
+// independent operator attributes; activation_clamp is not used by SiTU.
 struct SituActivation {
     static constexpr float DEFAULT_BETA = 1.0f;
     static constexpr float LINEAR_BETA_DISABLED = 3.402823466e+38F;
@@ -231,14 +230,16 @@ struct GatedActivation {
     CATLASS_DEVICE
     static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
                         AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
-                        uint32_t dataLength, float clampLimit, uint32_t activationCode)
+                        uint32_t dataLength, float clampLimit, uint32_t activationCode,
+                        float beta = SituActivation::DEFAULT_BETA,
+                        float linearBeta = SituActivation::LINEAR_BETA_DISABLED)
     {
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_GPT_OSS)) {
             GptOssSwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
             return;
         }
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SITU)) {
-            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
+            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, linearBeta, beta);
             return;
         }
         SwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
