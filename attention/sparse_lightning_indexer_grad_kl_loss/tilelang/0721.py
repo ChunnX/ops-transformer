@@ -979,26 +979,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     v1_bw_row_tmp,
                 )
                 T.pipe_barrier("v")
-                # Prime slot 0.  Subsequent iterations prefetch their next
-                # slot while Vector computes the current slot.
-                T.wait_flag("v", "mte2", 0)
-                T.wait_flag("mte3", "mte2", 0)
-                T.copy(
-                    PReduced[bz_task, s1_id, 0:bw_col_block],
-                    v1_bw_p_slots[0, :],
-                )
-                T.copy(
-                    SoftmaxI[bz_task, s1_id, 0:bw_col_block],
-                    v1_bw_sy_slots[0, :],
-                )
-                T.copy(
-                    bmm2Res[bz_task, s1_id,
-                            g_start:g_start + rows_per_aiv,
-                            0:bw_col_block],
-                    v1_bw_bmm2_slots[0, :, :],
-                )
-                T.set_flag("mte2", "v", 0)
-
                 for n_idx in T.serial(n_num):
                     for bw_col_id in T.serial(bw_col_count):
                         tile_id = n_idx * bw_col_count + bw_col_id
@@ -1008,44 +988,32 @@ def tilelang_grad_kl_loss_single_kernel(
                         )
                         bw_col_end = bw_col_start + bw_col_block
 
+                        # Diagnostic schedule: preserve the two-slot physical
+                        # layout but serialize each GM-to-UB handoff.  This
+                        # isolates the MTE2/V prefetch protocol from all
+                        # backward math and output ownership.
+                        T.wait_flag("v", "mte2", current_slot)
+                        T.wait_flag("mte3", "mte2", current_slot)
+                        T.copy(
+                            PReduced[bz_task, s1_id,
+                                     bw_col_start:bw_col_end],
+                            v1_bw_p_slots[current_slot, :],
+                        )
+                        T.copy(
+                            SoftmaxI[bz_task, s1_id,
+                                     bw_col_start:bw_col_end],
+                            v1_bw_sy_slots[current_slot, :],
+                        )
+                        T.copy(
+                            bmm2Res[
+                                bz_task, s1_id,
+                                g_start:g_start + rows_per_aiv,
+                                bw_col_start:bw_col_end,
+                            ],
+                            v1_bw_bmm2_slots[current_slot, :, :],
+                        )
+                        T.set_flag("mte2", "v", current_slot)
                         T.wait_flag("mte2", "v", current_slot)
-
-                        next_tile_id = tile_id + 1
-                        if next_tile_id < n_num * bw_col_count:
-                            next_slot = next_tile_id % 2
-                            next_n_idx = next_tile_id // bw_col_count
-                            next_bw_col_id = next_tile_id % bw_col_count
-                            next_col_start = (
-                                next_n_idx * n_block
-                                + next_bw_col_id * bw_col_block
-                            )
-                            next_col_end = next_col_start + bw_col_block
-
-                            # P/SY are still read by the loss path, while
-                            # BMM2 aliases the FP16 output consumed by MTE3.
-                            # Both owners must return slot next_slot before
-                            # MTE2 refills it.
-                            T.wait_flag("v", "mte2", next_slot)
-                            T.wait_flag("mte3", "mte2", next_slot)
-                            T.copy(
-                                PReduced[bz_task, s1_id,
-                                         next_col_start:next_col_end],
-                                v1_bw_p_slots[next_slot, :],
-                            )
-                            T.copy(
-                                SoftmaxI[bz_task, s1_id,
-                                         next_col_start:next_col_end],
-                                v1_bw_sy_slots[next_slot, :],
-                            )
-                            T.copy(
-                                bmm2Res[
-                                    bz_task, s1_id,
-                                    g_start:g_start + rows_per_aiv,
-                                    next_col_start:next_col_end,
-                                ],
-                                v1_bw_bmm2_slots[next_slot, :, :],
-                            )
-                            T.set_flag("mte2", "v", next_slot)
 
                         T.tile.sub(
                             v1_bw_diff,
