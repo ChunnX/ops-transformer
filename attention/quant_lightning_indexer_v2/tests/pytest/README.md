@@ -60,7 +60,7 @@
 
 ## 架构说明
 
-- **纯 CPU 生成入口**：`generate_qliv2_test_data` 只生成输入和 CPU golden，不调用 metadata 或主算子
+- **数据生成入口**：`generate_qliv2_test_data` 复用原有 batch 数据链生成输入和 CPU golden，不调用 metadata 或主算子；参数准备仍可查询设备信息
 - **single 模式**：直接执行配置用例；指定 `--save-pt` 时保存并执行同一份实际输入，避免二次随机生成
 - **batch 模式**：`-P` 是唯一 PT 目录；有 `-E` 时先生成再执行，无 `-E` 时直接执行已有 PT
 - **batch_exec 模式**：按 Excel 的 `Testcase_Name` 筛选已有 PT，仅执行 NPU 和精度对比

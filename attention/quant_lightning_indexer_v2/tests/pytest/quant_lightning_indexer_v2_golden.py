@@ -1287,7 +1287,7 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
 
 
 def generate_qliv2_test_data(params, split_s1=DEFAULT_SPLIT_S1, s1size=DEFAULT_S1SIZE):
-    """Generate QLI_V2 inputs and CPU golden without executing metadata or the NPU op."""
+    """Generate QLI_V2 inputs and CPU golden without executing metadata or the main op."""
     return qliv2_output_single(params, is_batch=True, split_s1=split_s1, s1size=s1size)
     
 
