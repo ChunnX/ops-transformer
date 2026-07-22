@@ -349,6 +349,7 @@ int main() {
   void* rowOutAddr = nullptr;
 
   aclTensor* input = nullptr;
+  aclTensor* finished = nullptr;
   aclTensor* out = nullptr;
   aclTensor* expertIdOut = nullptr;
   aclTensor* rowOut = nullptr;

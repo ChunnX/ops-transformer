@@ -65,18 +65,49 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
     OP_TILING_CHECK(tilingData == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "tilingData"), return);
 
     OP_LOGD(nodeName, "========== MegaMoeTilingData ==========");
+    OP_LOGD(nodeName, "shape: bs=%u, h=%u, hiddenDim=%u, topK=%u, maxOutputSize=%u", tilingData->bs, tilingData->h,
+            tilingData->hiddenDim, tilingData->topK, tilingData->maxOutputSize);
+    OP_LOGD(nodeName,
+            "topology: expertPerRank=%u, moeExpertPerRank=%u, sharedExpertNum=%u, epWorldSize=%u, aicNum=%u, "
+            "blockAivNum=%u, blockNumPerEP=%u, topoType=%ld",
+            tilingData->expertPerRank, tilingData->moeExpertPerRank, tilingData->sharedExpertNum,
+            tilingData->epWorldSize, tilingData->aicNum, tilingData->blockAivNum, tilingData->blockNumPerEP,
+            tilingData->topoType);
+    OP_LOGD(nodeName, "mode: groupedMatmulMode=%u, combineQuantMode=%ld, clampLimit=%f",
+            static_cast<uint32_t>(tilingData->groupedMatmulMode), tilingData->combineQuantMode, tilingData->clampLimit);
 
-    OP_LOGD(nodeName, "BS is %u", tilingData->bs);
-    OP_LOGD(nodeName, "H is %u", tilingData->h);
-    OP_LOGD(nodeName, "hiddenDim is %u", tilingData->hiddenDim);
+    const auto &dispatchConfig = tilingData->dispatchBufferConfig;
+    OP_LOGD(nodeName, "dispatch: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, copyBufferBytes=%u",
+            dispatchConfig.routeItemsPerBatch, dispatchConfig.routeBatchCount, dispatchConfig.bufferCount,
+            dispatchConfig.copyBufferBytes);
 
-    OP_LOGD(nodeName, "topK is %u", tilingData->topK);
-    OP_LOGD(nodeName, "aicNum is %u", tilingData->aicNum);
-    OP_LOGD(nodeName, "expertPerRank is %u", tilingData->expertPerRank);
+    const auto &sendMaskConfigWithExtraExpert = tilingData->sendMaskConfigForCoreWithExtraExpert;
+    const auto &sendMaskConfigWithoutExtraExpert = tilingData->sendMaskConfigForCoreWithoutExtraExpert;
+    OP_LOGD(nodeName, "sendMask: coreCountWithExtraExpert=%u", tilingData->sendMaskCoreCountWithExtraExpert);
+    OP_LOGD(nodeName,
+            "sendMaskWithExtraExpert: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, bufferBytes=%u",
+            sendMaskConfigWithExtraExpert.routeItemsPerBatch, sendMaskConfigWithExtraExpert.routeBatchCount,
+            sendMaskConfigWithExtraExpert.bufferCount, sendMaskConfigWithExtraExpert.bufferBytes);
+    OP_LOGD(nodeName,
+            "sendMaskWithoutExtraExpert: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, bufferBytes=%u",
+            sendMaskConfigWithoutExtraExpert.routeItemsPerBatch, sendMaskConfigWithoutExtraExpert.routeBatchCount,
+            sendMaskConfigWithoutExtraExpert.bufferCount, sendMaskConfigWithoutExtraExpert.bufferBytes);
 
-    OP_LOGD(nodeName, "epWorldSize is %u", tilingData->epWorldSize);
-    OP_LOGD(nodeName, "maxOutputSize is %u", tilingData->maxOutputSize);
-    OP_LOGD(nodeName, "clampLimit is %f", tilingData->clampLimit);
+    const auto &unpermuteFullChunkConfig = tilingData->unpermuteConfigForFullTokenChunk;
+    const auto &unpermuteTailChunkConfig = tilingData->unpermuteConfigForTailTokenChunk;
+    OP_LOGD(nodeName, "unpermute: fullTokenChunkCoreCount=%u", tilingData->unpermuteFullTokenChunkCoreCount);
+    OP_LOGD(nodeName,
+            "unpermuteFullChunk: tokensPerBatch=%d, inputBufferCount=%d, bf16SlotElements=%u, fp32SlotElements=%u, "
+            "weightBufferBytes=%u, conversionBufferBytes=%u",
+            unpermuteFullChunkConfig.tokensPerBatch, unpermuteFullChunkConfig.inputBufferCount,
+            unpermuteFullChunkConfig.bf16SlotElementCount, unpermuteFullChunkConfig.fp32SlotElementCount,
+            unpermuteFullChunkConfig.topKWeightsBufferBytes, unpermuteFullChunkConfig.topKWeightsConversionBufferBytes);
+    OP_LOGD(nodeName,
+            "unpermuteTailChunk: tokensPerBatch=%d, inputBufferCount=%d, bf16SlotElements=%u, fp32SlotElements=%u, "
+            "weightBufferBytes=%u, conversionBufferBytes=%u",
+            unpermuteTailChunkConfig.tokensPerBatch, unpermuteTailChunkConfig.inputBufferCount,
+            unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
+            unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -262,11 +293,11 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
                     return ge::GRAPH_FAILED);
 
     int64_t moeExpertPerRank = moeExpertNum / epWorldSize;
-    OP_TILING_CHECK(expertPerRank < moeExpertPerRank,
-        OP_LOGE_FOR_INVALID_VALUE(nodeName, "expertPerRank",
-            std::to_string(expertPerRank).c_str(),
-            (std::string("should >= moeExpertNum/epWorldSize = ") +
-             std::to_string(moeExpertPerRank)).c_str()),
+    OP_TILING_CHECK(
+        expertPerRank < moeExpertPerRank,
+        OP_LOGE_FOR_INVALID_VALUE(
+            nodeName, "expertPerRank", std::to_string(expertPerRank).c_str(),
+            (std::string("should >= moeExpertNum/epWorldSize = ") + std::to_string(moeExpertPerRank)).c_str()),
         return ge::GRAPH_FAILED);
 
     // maskRecv Size
@@ -296,9 +327,9 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     int64_t maxRecvTokenNum = static_cast<int64_t>(*maxRecvTokenNumPtr);
     OP_TILING_CHECK(maxRecvTokenNum < 0 || maxRecvTokenNum > bs * epWorldSize * std::min(topK, expertPerRank),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "maxRecvTokenNum", std::to_string(maxRecvTokenNum).c_str(),
-                                            (std::string("should in [0, ") +
-                                            std::to_string(bs * epWorldSize * std::min(topK, expertPerRank)) + "]")
-                                                .c_str()),
+                                              (std::string("should in [0, ") +
+                                               std::to_string(bs * epWorldSize * std::min(topK, expertPerRank)) + "]")
+                                                  .c_str()),
                     return ge::GRAPH_FAILED);
 
     auto dispatchQuantModePtr = attrs->GetAttrPointer<int64_t>((config.attrDispatchQuantModeIndex));
@@ -358,7 +389,8 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     auto numMaxTokensPerRankPtr = attrs->GetAttrPointer<int64_t>((config.attrNumMaxTokensPerRankIndex));
     int64_t numMaxTokensPerRank = static_cast<int64_t>(*numMaxTokensPerRankPtr);
     if (numMaxTokensPerRank != 0) {
-        OP_TILING_CHECK(bs != numMaxTokensPerRank,
+        OP_TILING_CHECK(
+            bs != numMaxTokensPerRank,
             OP_LOGE_FOR_INVALID_VALUE(nodeName, "numMaxTokensPerRank", std::to_string(numMaxTokensPerRank).c_str(),
                                       (std::string("should be 0 or Bs, Bs is ") + std::to_string(bs).c_str())),
             return ge::GRAPH_FAILED);
@@ -370,15 +402,13 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
         sharedExpertNum = sharedWeight1StorageShape->GetStorageShape().GetDim(0);
     }
     OP_TILING_CHECK(sharedExpertNum > NUM_FOUR,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum",
-                        std::to_string(sharedExpertNum).c_str(),
-                        "only support 0-4"),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "sharedExpertNum", std::to_string(sharedExpertNum).c_str(),
+                                              "only support 0-4"),
                     return ge::GRAPH_FAILED);
     auto topoTypePtr = attrs->GetAttrPointer<int64_t>((config.attrTopoTypeIndex));
     OP_TILING_CHECK(sharedExpertNum > 0 && *topoTypePtr == TOPO_TYPE_URMA,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "topoType",
-                        std::to_string(*topoTypePtr).c_str(),
-                        "shared expert only support MTE topo type"),
+                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "topoType", std::to_string(*topoTypePtr).c_str(),
+                                              "shared expert only support MTE topo type"),
                     return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
@@ -436,6 +466,309 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
 
+    return ge::GRAPH_SUCCESS;
+}
+
+static MegaMoeDispatchBufferConfig CalcDispatchBufferConfig(const MegaMoeTilingData *tilingData,
+                                                            uint32_t activationElementsPerByte,
+                                                            uint32_t availableUbBytes)
+{
+    MegaMoeDispatchBufferConfig bufferConfig{};
+    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
+    uint64_t alignedTotalRouteItems =
+        (sendTotalNum + static_cast<uint64_t>(ALIGN_256) - 1U) / static_cast<uint64_t>(ALIGN_256) * ALIGN_256;
+
+    // Stage 1：使用基准 batch 确定 dispatch ring 深度。
+    bufferConfig.routeItemsPerBatch =
+        static_cast<int32_t>(std::min(alignedTotalRouteItems, static_cast<uint64_t>(BASE_RECV_ROUTE_ITEMS_PER_BATCH)));
+    bufferConfig.routeBatchCount =
+        static_cast<int32_t>((sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) / bufferConfig.routeItemsPerBatch);
+
+    // copyBufferBytes 是每个 dispatch slot 中量化 token 和 scale 的拷贝区大小。
+    uint32_t quantTokenBytes =
+        ops::CeilAlign(tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
+    uint32_t quantScaleBytes = (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
+    uint32_t copyBufferBytes = ops::CeilAlign(quantTokenBytes + quantScaleBytes, static_cast<uint32_t>(ALIGN_32));
+    bufferConfig.copyBufferBytes = copyBufferBytes;
+
+    // fixedBufferBytes 包含 expertTokenCntTensor_、cumsumInfoTensor_、sendCntTensor_ 和 expertTokenNumsOutTensor_。
+    uint32_t fixedBufferBytes =
+        static_cast<uint32_t>(ALIGN_32) +
+        static_cast<uint32_t>(
+            ops::CeilAlign(static_cast<uint64_t>(tilingData->epWorldSize) * tilingData->expertPerRank * sizeof(int32_t),
+                           static_cast<uint64_t>(ALIGN_32))) +
+        tilingData->epWorldSize * static_cast<uint32_t>(ALIGN_32) +
+        static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(tilingData->expertPerRank) * sizeof(int32_t),
+                                             static_cast<uint64_t>(ALIGN_32)));
+    uint32_t maskBufferBytes = static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8);
+    // routeIndexBufferBytes 是单个 int32 route index tensor 的大小。
+    uint32_t routeIndexBufferBytes =
+        static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
+    // bytesWithoutDispatchSlots 包含固定 tensor、maskBatchTensor_、topkIndexTensor_ 和
+    // validTopkIndexTensor_（此二者等大）。
+    uint32_t bytesWithoutDispatchSlots = fixedBufferBytes + maskBufferBytes + 2U * routeIndexBufferBytes;
+    // dispatchSlotBytes 表示一个 ring slot：一份 token/scale copy buffer 加一条 32B triple。
+    uint32_t dispatchSlotBytes = copyBufferBytes + static_cast<uint32_t>(ALIGN_32);
+    // dispatchSlotBudgetBytes 是扣除非 ring tensor 后可用于分配 ring slot 的 UB。
+    uint32_t dispatchSlotBudgetBytes =
+        availableUbBytes > bytesWithoutDispatchSlots ? availableUbBytes - bytesWithoutDispatchSlots : 0U;
+    bufferConfig.bufferCount = static_cast<int32_t>(dispatchSlotBudgetBytes / dispatchSlotBytes);
+    bufferConfig.bufferCount = std::min(bufferConfig.bufferCount, MAX_DISPATCH_BUFFER_COUNT);
+    bufferConfig.bufferCount = std::max(bufferConfig.bufferCount, MIN_DISPATCH_BUFFER_COUNT);
+
+    // Stage 2：固定 ring 深度，用剩余 UB 扩大 route batch。
+    if (static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) < sendTotalNum) {
+        // fixedBytesWithDispatchSlots 包含固定 tensor 和已选中的 dispatch slot。
+        uint32_t fixedBytesWithDispatchSlots =
+            fixedBufferBytes + static_cast<uint32_t>(bufferConfig.bufferCount) * dispatchSlotBytes;
+        // routeItemBudgetBytes 是 maskBatchTensor_ 和两个 route index tensor 可使用的 UB。
+        uint32_t routeItemBudgetBytes =
+            availableUbBytes > fixedBytesWithDispatchSlots ? availableUbBytes - fixedBytesWithDispatchSlots : 0U;
+        // maskBatchTensor_ 占 1bit，topkIndexTensor_ 和 validTopkIndexTensor_ 各占一个 int32：
+        // bytesPerItem = 1/8 + 4 + 4 = 65/8B，因此 maxItems = budgetBytes * 8 / 65。
+        uint32_t expandedRouteItems = routeItemBudgetBytes * 8U / 65U;
+        expandedRouteItems = expandedRouteItems / static_cast<uint32_t>(ALIGN_256) * ALIGN_256;
+        expandedRouteItems =
+            static_cast<uint32_t>(std::min(static_cast<uint64_t>(expandedRouteItems), alignedTotalRouteItems));
+        if (expandedRouteItems > static_cast<uint32_t>(bufferConfig.routeItemsPerBatch)) {
+            bufferConfig.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
+            bufferConfig.routeBatchCount = static_cast<int32_t>((sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) /
+                                                                bufferConfig.routeItemsPerBatch);
+        }
+    }
+    return bufferConfig;
+}
+
+static MegaMoeSendMaskBufferConfig CalcSendMaskBufferConfig(const MegaMoeTilingData *tilingData,
+                                                            uint32_t fixedBufferBytes, uint32_t ownedExpertCount,
+                                                            uint32_t availableUbBytes)
+{
+    MegaMoeSendMaskBufferConfig bufferConfig{};
+    uint64_t sendTotalNum = static_cast<uint64_t>(tilingData->bs) * tilingData->topK;
+    uint64_t alignedTotalRouteItems =
+        (sendTotalNum + static_cast<uint64_t>(ALIGN_256) - 1U) / static_cast<uint64_t>(ALIGN_256) * ALIGN_256;
+
+    // Stage 1：使用基准 batch 确定 mask push ring 深度。
+    bufferConfig.routeItemsPerBatch =
+        static_cast<int32_t>(std::min(alignedTotalRouteItems, static_cast<uint64_t>(BASE_SEND_ROUTE_ITEMS_PER_BATCH)));
+    bufferConfig.routeBatchCount =
+        static_cast<int32_t>((sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) / bufferConfig.routeItemsPerBatch);
+    bufferConfig.bufferBytes =
+        static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8) + static_cast<uint32_t>(ALIGN_32);
+
+    // routeIndexBufferBytes 是单个 int32 route tensor 的大小。
+    uint32_t routeIndexBufferBytes =
+        static_cast<uint32_t>(bufferConfig.routeItemsPerBatch) * static_cast<uint32_t>(sizeof(int32_t));
+    // bytesWithoutMaskBuffers 包含固定 tensor、topkIdsTensor_ 和 sendGatherOutTensor_。
+    uint32_t bytesWithoutMaskBuffers = fixedBufferBytes + 2U * routeIndexBufferBytes;
+    // maskBufferBudgetBytes 是扣除非 ring tensor 后可用于分配 mask slot 的 UB。
+    uint32_t maskBufferBudgetBytes =
+        availableUbBytes > bytesWithoutMaskBuffers ? availableUbBytes - bytesWithoutMaskBuffers : 0U;
+    bufferConfig.bufferCount = static_cast<int32_t>(maskBufferBudgetBytes / bufferConfig.bufferBytes);
+    bufferConfig.bufferCount = std::min(bufferConfig.bufferCount, MAX_SEND_MASK_BUFFER_COUNT);
+
+    // maskPushCount 是当前 core 实际执行的 mask push 次数，更多 slot 不会增加流水重叠。
+    uint64_t maskPushCount = static_cast<uint64_t>(bufferConfig.routeBatchCount) * ownedExpertCount;
+    if (maskPushCount > 0U && static_cast<uint64_t>(bufferConfig.bufferCount) > maskPushCount) {
+        bufferConfig.bufferCount = static_cast<int32_t>(maskPushCount);
+    }
+    bufferConfig.bufferCount = std::max(bufferConfig.bufferCount, MIN_SEND_MASK_BUFFER_COUNT);
+
+    // Stage 2：固定 ring 深度，用剩余 UB 扩大 route batch。
+    if (static_cast<uint64_t>(bufferConfig.routeItemsPerBatch) < sendTotalNum) {
+        // fixedBytesWithMaskCount 包含固定 tensor 和所有 slot 的 32B count 尾部。
+        uint32_t fixedBytesWithMaskCount =
+            fixedBufferBytes + static_cast<uint32_t>(bufferConfig.bufferCount) * static_cast<uint32_t>(ALIGN_32);
+        // routeItemBudgetBytes 是两个 route tensor 和所有 slot 的 mask 可使用的 UB。
+        uint32_t routeItemBudgetBytes =
+            availableUbBytes > fixedBytesWithMaskCount ? availableUbBytes - fixedBytesWithMaskCount : 0U;
+        // topkIdsTensor_ 和 sendGatherOutTensor_ 各占一个 int32，N 个 sendMask slot 各占 1bit：
+        // bytesPerItem = 4 + 4 + N/8 = (64 + N)/8B。
+        uint32_t expandedRouteItems =
+            routeItemBudgetBytes * 8U / (64U + static_cast<uint32_t>(bufferConfig.bufferCount));
+        expandedRouteItems = expandedRouteItems / static_cast<uint32_t>(ALIGN_256) * ALIGN_256;
+        expandedRouteItems =
+            static_cast<uint32_t>(std::min(static_cast<uint64_t>(expandedRouteItems), alignedTotalRouteItems));
+        if (expandedRouteItems > static_cast<uint32_t>(bufferConfig.routeItemsPerBatch)) {
+            bufferConfig.routeItemsPerBatch = static_cast<int32_t>(expandedRouteItems);
+            bufferConfig.routeBatchCount = static_cast<int32_t>((sendTotalNum + bufferConfig.routeItemsPerBatch - 1U) /
+                                                                bufferConfig.routeItemsPerBatch);
+            bufferConfig.bufferBytes =
+                static_cast<uint32_t>(bufferConfig.routeItemsPerBatch / 8) + static_cast<uint32_t>(ALIGN_32);
+        }
+    }
+    return bufferConfig;
+}
+
+static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilingData *tilingData,
+                                                              uint32_t coreTokenCount,
+                                                              uint32_t topKWeightsConversionElementBytes,
+                                                              uint32_t availableUbBytes)
+{
+    MegaMoeUnpermuteBufferConfig bufferConfig{};
+    if (coreTokenCount == 0U) {
+        return bufferConfig;
+    }
+
+    uint32_t bf16SlotBytes = static_cast<uint32_t>(
+        ops::CeilAlign(static_cast<uint64_t>(tilingData->h) * sizeof(uint16_t), static_cast<uint64_t>(ALIGN_32)));
+    uint32_t fp32SlotBytes = static_cast<uint32_t>(
+        ops::CeilAlign(static_cast<uint64_t>(tilingData->h) * sizeof(float), static_cast<uint64_t>(ALIGN_32)));
+    // dataSlotBytes 是同一 token 的 BF16 搬入区和 FP32 计算区之和。
+    uint32_t dataSlotBytes = bf16SlotBytes + fp32SlotBytes;
+    bufferConfig.bf16SlotElementCount = bf16SlotBytes / sizeof(uint16_t);
+    bufferConfig.fp32SlotElementCount = fp32SlotBytes / sizeof(float);
+
+    // scaleBytes 是 combine quant 使用的 BF16/FP32 scale 展开区大小。
+    uint32_t scaleBytes = 0U;
+    if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+        uint32_t scaleElementCount = (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
+        scaleBytes = static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(scaleElementCount) * sizeof(uint16_t) *
+                                                              DEQUANT_BF16_SCALE_EXPANSION,
+                                                          static_cast<uint64_t>(ALIGN_32))) +
+                     static_cast<uint32_t>(ops::CeilAlign(static_cast<uint64_t>(scaleElementCount) * sizeof(float) *
+                                                              DEQUANT_FP32_SCALE_EXPANSION,
+                                                          static_cast<uint64_t>(ALIGN_32)));
+    }
+
+    // Stage 1：构造基准 weight batch，再选择输入 ring 深度。
+    uint32_t baseTokensPerBatch = UNPERMUTE_WEIGHT_ITEMS_PER_BATCH / tilingData->topK;
+    bufferConfig.tokensPerBatch = static_cast<int32_t>(std::min(baseTokensPerBatch, coreTokenCount));
+    uint32_t weightElementCount = static_cast<uint32_t>(bufferConfig.tokensPerBatch) * tilingData->topK;
+    bufferConfig.topKWeightsBufferBytes = static_cast<uint32_t>(
+        ops::CeilAlign(static_cast<uint64_t>(weightElementCount) * sizeof(float), static_cast<uint64_t>(ALIGN_32)));
+    if (topKWeightsConversionElementBytes > 0U) {
+        bufferConfig.topKWeightsConversionBufferBytes = static_cast<uint32_t>(
+            ops::CeilAlign(static_cast<uint64_t>(weightElementCount) * topKWeightsConversionElementBytes,
+                           static_cast<uint64_t>(ALIGN_32)));
+    }
+
+    // bytesBeforeInputBuffers 包含 weight、scale 和一个累加/输出 data slot。
+    uint32_t bytesBeforeInputBuffers = bufferConfig.topKWeightsBufferBytes +
+                                       bufferConfig.topKWeightsConversionBufferBytes + scaleBytes + dataSlotBytes;
+    uint32_t inputBufferBudgetBytes =
+        availableUbBytes > bytesBeforeInputBuffers ? availableUbBytes - bytesBeforeInputBuffers : 0U;
+    bufferConfig.inputBufferCount = static_cast<int32_t>(inputBufferBudgetBytes / dataSlotBytes);
+    bufferConfig.inputBufferCount = std::min(bufferConfig.inputBufferCount, MAX_UNPERMUTE_INPUT_BUFFER_COUNT);
+    int32_t accumulationItemCount =
+        bufferConfig.tokensPerBatch * static_cast<int32_t>(tilingData->topK + tilingData->sharedExpertNum);
+    bufferConfig.inputBufferCount = std::min(bufferConfig.inputBufferCount, accumulationItemCount);
+    bufferConfig.inputBufferCount = std::max(bufferConfig.inputBufferCount, MIN_UNPERMUTE_INPUT_BUFFER_COUNT);
+
+    // Stage 2：固定 ring 深度，用剩余 UB 扩大 weight batch。
+    if (baseTokensPerBatch < coreTokenCount) {
+        // fixedBytes 包含 scale、一个累加/输出 slot 和已经选中的所有输入 slot。
+        uint32_t fixedBytes = scaleBytes + (static_cast<uint32_t>(bufferConfig.inputBufferCount) + 1U) * dataSlotBytes;
+        // weightBudgetBytes 是 FP32 weight 及可选转换中转区可使用的 UB。
+        uint32_t weightBudgetBytes = availableUbBytes - fixedBytes - UNPERMUTE_WEIGHT_ALIGNMENT_RESERVE_BYTES;
+        uint32_t weightBytesPerToken =
+            tilingData->topK * (static_cast<uint32_t>(sizeof(float)) + topKWeightsConversionElementBytes);
+        uint32_t expandedTokensPerBatch = std::min(weightBudgetBytes / weightBytesPerToken, coreTokenCount);
+        if (expandedTokensPerBatch > static_cast<uint32_t>(bufferConfig.tokensPerBatch)) {
+            bufferConfig.tokensPerBatch = static_cast<int32_t>(expandedTokensPerBatch);
+            weightElementCount = expandedTokensPerBatch * tilingData->topK;
+            bufferConfig.topKWeightsBufferBytes = static_cast<uint32_t>(ops::CeilAlign(
+                static_cast<uint64_t>(weightElementCount) * sizeof(float), static_cast<uint64_t>(ALIGN_32)));
+            if (topKWeightsConversionElementBytes > 0U) {
+                bufferConfig.topKWeightsConversionBufferBytes = static_cast<uint32_t>(
+                    ops::CeilAlign(static_cast<uint64_t>(weightElementCount) * topKWeightsConversionElementBytes,
+                                   static_cast<uint64_t>(ALIGN_32)));
+            }
+        }
+    }
+    return bufferConfig;
+}
+
+static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *context, MegaMoeConfig &config,
+                                                MegaMoeTilingData *tilingData, uint32_t availableUbBytes)
+{
+    const char *nodeName = context->GetNodeName();
+    auto topKWeightsDesc = context->GetInputDesc(config.topkWeightsIndex);
+    OP_TILING_CHECK(topKWeightsDesc == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "topkWeights"),
+                    return ge::GRAPH_FAILED);
+
+    uint32_t activationElementsPerByte =
+        GetOpQuantModeByAttrDispatchOutType(context, config) == DISPATCH_QUANT_OUT_DTYPE_E2M1 ? 2U : 1U;
+    // DispatchBuffInit 的 UB 布局不依赖 AIV 分核结果，所有 AIV core 使用同一套 dispatch 配置。
+    // 若 kernel 后续按 core 拆分 DispatchBuffInit 的 tensor 或改变 copyTmp slot 布局，需同步调整此处。
+    tilingData->dispatchBufferConfig =
+        CalcDispatchBufferConfig(tilingData, activationElementsPerByte, availableUbBytes);
+
+    int64_t maxWavesPerExpert =
+        (static_cast<int64_t>(tilingData->maxOutputSize) + DISPATCH_WAVE_TILE_M - 1) / DISPATCH_WAVE_TILE_M;
+    int64_t dispatchFlagSlotsPerExpert = (maxWavesPerExpert + INT_CACHELINE - 1) / INT_CACHELINE * INT_CACHELINE;
+    uint64_t totalFlagElementCount =
+        static_cast<uint64_t>(tilingData->expertPerRank) *
+        (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert) +
+         static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
+    if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+        uint64_t combineFlagElementCount = static_cast<uint64_t>(tilingData->expertPerRank) * tilingData->blockAivNum *
+                                           static_cast<uint64_t>(INT_CACHELINE);
+        totalFlagElementCount = std::max(totalFlagElementCount, combineFlagElementCount);
+    }
+    uint32_t resetElementCountPerCore =
+        static_cast<uint32_t>((totalFlagElementCount + tilingData->blockAivNum - 1U) / tilingData->blockAivNum);
+    uint32_t resetBatchElementCount = std::min(resetElementCountPerCore, static_cast<uint32_t>(DISPATCH_RESET_BATCH));
+    uint32_t resetTensorBytes =
+        ops::CeilAlign(resetBatchElementCount, static_cast<uint32_t>(INT32_PER_256B)) * sizeof(int32_t);
+    uint32_t quantTokenBytes =
+        ops::CeilAlign(tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
+    uint32_t quantOutputBufferBytes = quantTokenBytes + (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
+    uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
+    // sendCntAccTensor_ 按本卡 weight 容量分配，与 kernel 地址布局一致；实际 mask push 次数按 routed MoE
+    // expert 数计算，不包含共享专家和未参与路由的预留 weight。
+    uint32_t maxExpertCountPerCore =
+        (tilingData->epWorldSize * tilingData->expertPerRank + tilingData->blockAivNum - 1U) / tilingData->blockAivNum;
+    uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
+        static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
+    // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
+    uint32_t sendMaskFixedBufferBytes = resetTensorBytes + 2U * 1024U + 2U * quantOutputBufferBytes +
+                                        2U * quantInputBufferBytes + sendCountAccumulatorBytes;
+
+    /*
+     * 与 kernel SendMaskCal 的 expert 遍历一一对应：
+     *   globalExpertId = aivCoreIdx + ownedIdx * blockAivNum。
+     * totalExpertCount 除以 blockAivNum 后，前 remainder 个 AIV core 各多处理一个 expert，其余 core
+     * 处理 quotient 个 expert，因此这里只需预计算两套配置。
+     *
+     * 若修改 SendMaskCal 的 expert 分核方式、ownedExpertCount 或 maskPushCount 计算，必须同步更新
+     * 这里的两类 core 划分和 kernel 配置选择条件。
+     */
+    // SendMaskCal 只遍历 routed MoE 专家；expertPerRank 是本卡 weight 容量，可能包含未参与路由的预留项。
+    uint32_t totalExpertCount = tilingData->epWorldSize * tilingData->moeExpertPerRank;
+    uint32_t expertCountPerCoreWithoutExtraExpert = totalExpertCount / tilingData->blockAivNum;
+    tilingData->sendMaskCoreCountWithExtraExpert = totalExpertCount % tilingData->blockAivNum;
+    uint32_t expertCountPerCoreWithExtraExpert = expertCountPerCoreWithoutExtraExpert + 1U;
+    tilingData->sendMaskConfigForCoreWithExtraExpert = CalcSendMaskBufferConfig(
+        tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithExtraExpert, availableUbBytes);
+    tilingData->sendMaskConfigForCoreWithoutExtraExpert = CalcSendMaskBufferConfig(
+        tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithoutExtraExpert, availableUbBytes);
+
+    /*
+     * 与 kernel Unpermute 开头的 TilingByCore(m_, ..., align=1) 一一对应。TilingByCore 使用：
+     *   fullTokenChunkSize = ceil(bs / blockAivNum)
+     * 为连续 core 分配等长完整 chunk，最后一个活跃 core 可能只处理 tail，后续 core 的 coreLen 为 0
+     * 并在读取配置前返回。因此 host 只需预计算“完整 chunk”和“tail chunk”两套配置，并记录完整
+     * chunk 对应的 core 数作为 kernel 选择边界。
+     *
+     * 若修改 TilingByCore、Unpermute 的 align 参数或分核方式，必须同步更新下面的 chunk 推导以及
+     * kernel 中 UnpermuteBuffInit 的配置选择条件。
+     */
+    ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
+    // FP32 可直接搬入计算 buffer；其他已支持类型按实际元素大小预留转换中转区。
+    uint32_t topKWeightsConversionElementBytes =
+        topKWeightsDataType == ge::DT_FLOAT ? 0U : static_cast<uint32_t>(ge::GetSizeByDataType(topKWeightsDataType));
+    uint32_t fullTokenChunkSize = (tilingData->bs + tilingData->blockAivNum - 1U) / tilingData->blockAivNum;
+    uint32_t activeCoreCount = (tilingData->bs + fullTokenChunkSize - 1U) / fullTokenChunkSize;
+    uint32_t tailTokenChunkSize = tilingData->bs - (activeCoreCount - 1U) * fullTokenChunkSize;
+    bool tailIsFullTokenChunk = tailTokenChunkSize == fullTokenChunkSize;
+    tilingData->unpermuteFullTokenChunkCoreCount = tailIsFullTokenChunk ? activeCoreCount : activeCoreCount - 1U;
+    tilingData->unpermuteConfigForFullTokenChunk =
+        CalcUnpermuteBufferConfig(tilingData, fullTokenChunkSize, topKWeightsConversionElementBytes, availableUbBytes);
+    tilingData->unpermuteConfigForTailTokenChunk =
+        tailIsFullTokenChunk ? MegaMoeUnpermuteBufferConfig{} :
+                               CalcUnpermuteBufferConfig(tilingData, tailTokenChunkSize,
+                                                         topKWeightsConversionElementBytes, availableUbBytes);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -576,63 +909,65 @@ static ge::graphStatus CheckWeightTensorDim(const gert::TilingContext *context, 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckSharedWeightShape(const gert::StorageShape *sharedShape,
-    const gert::StorageShape *refShape, const char *sharedName, const char *refName,
-    const char *nodeName)
+static ge::graphStatus CheckSharedWeightShape(const gert::StorageShape *sharedShape, const gert::StorageShape *refShape,
+                                              const char *sharedName, const char *refName, const char *nodeName)
 {
-    OP_TILING_CHECK(sharedShape->GetStorageShape().GetDimNum() != THREE_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, sharedName,
-                        (std::to_string(sharedShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        sharedShape->GetStorageShape().GetDimNum() != THREE_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, sharedName,
+                                     (std::to_string(sharedShape->GetStorageShape().GetDimNum()) + "D").c_str(), "3D"),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(1) != refShape->GetStorageShape().GetDim(1),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim1").c_str(),
-                        std::to_string(sharedShape->GetStorageShape().GetDim(1)).c_str(),
-                        (std::string("must be equal to ") + refName + " dim1").c_str()),
+                                              std::to_string(sharedShape->GetStorageShape().GetDim(1)).c_str(),
+                                              (std::string("must be equal to ") + refName + " dim1").c_str()),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(2) != refShape->GetStorageShape().GetDim(2),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim2").c_str(),
-                        std::to_string(sharedShape->GetStorageShape().GetDim(2)).c_str(),
-                        (std::string("must be equal to ") + refName + " dim2").c_str()),
+                                              std::to_string(sharedShape->GetStorageShape().GetDim(2)).c_str(),
+                                              (std::string("must be equal to ") + refName + " dim2").c_str()),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus CheckSharedWeightScalesInput(const gert::TilingContext *context,
-    uint32_t sharedIdx, uint32_t refIdx, const char *sharedName, const char *refName,
-    int64_t sharedExpertNum, const char *nodeName)
+static ge::graphStatus CheckSharedWeightScalesInput(const gert::TilingContext *context, uint32_t sharedIdx,
+                                                    uint32_t refIdx, const char *sharedName, const char *refName,
+                                                    int64_t sharedExpertNum, const char *nodeName)
 {
     auto sharedDesc = context->GetDynamicInputDesc(sharedIdx, 0);
     auto refDesc = context->GetDynamicInputDesc(refIdx, 0);
     OP_TILING_CHECK(sharedDesc->GetDataType() != refDesc->GetDataType(),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dtype").c_str(),
-                        std::to_string(sharedDesc->GetDataType()).c_str(),
-                        (std::string("must be same as ") + refName).c_str()),
+                                              std::to_string(sharedDesc->GetDataType()).c_str(),
+                                              (std::string("must be same as ") + refName).c_str()),
                     return ge::GRAPH_FAILED);
     auto sharedShape = context->GetDynamicInputShape(sharedIdx, 0);
     auto refShape = context->GetDynamicInputShape(refIdx, 0);
     OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(0) != sharedExpertNum,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim0").c_str(),
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        nodeName, (std::string(sharedName) + " dim0").c_str(),
                         std::to_string(sharedShape->GetStorageShape().GetDim(0)).c_str(),
                         (std::string("must be equal to sharedExpertNum = ") + std::to_string(sharedExpertNum)).c_str()),
                     return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(sharedShape->GetStorageShape().GetDimNum() != FOUR_DIMS,
-                    OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, sharedName,
-                        (std::to_string(sharedShape->GetStorageShape().GetDimNum()) + "D").c_str(), "4D"),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(
+        sharedShape->GetStorageShape().GetDimNum() != FOUR_DIMS,
+        OP_LOGE_FOR_INVALID_SHAPEDIM(nodeName, sharedName,
+                                     (std::to_string(sharedShape->GetStorageShape().GetDimNum()) + "D").c_str(), "4D"),
+        return ge::GRAPH_FAILED);
     OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(1) != refShape->GetStorageShape().GetDim(1),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim1").c_str(),
-                        std::to_string(sharedShape->GetStorageShape().GetDim(1)).c_str(),
-                        (std::string("must be equal to ") + refName + " dim1").c_str()),
+                                              std::to_string(sharedShape->GetStorageShape().GetDim(1)).c_str(),
+                                              (std::string("must be equal to ") + refName + " dim1").c_str()),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(2) != refShape->GetStorageShape().GetDim(2),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim2").c_str(),
-                        std::to_string(sharedShape->GetStorageShape().GetDim(2)).c_str(),
-                        (std::string("must be equal to ") + refName + " dim2").c_str()),
+                                              std::to_string(sharedShape->GetStorageShape().GetDim(2)).c_str(),
+                                              (std::string("must be equal to ") + refName + " dim2").c_str()),
                     return ge::GRAPH_FAILED);
     OP_TILING_CHECK(sharedShape->GetStorageShape().GetDim(3) != refShape->GetStorageShape().GetDim(3),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, (std::string(sharedName) + " dim3").c_str(),
-                        std::to_string(sharedShape->GetStorageShape().GetDim(3)).c_str(),
-                        (std::string("must be equal to ") + refName + " dim3").c_str()),
+                                              std::to_string(sharedShape->GetStorageShape().GetDim(3)).c_str(),
+                                              (std::string("must be equal to ") + refName + " dim3").c_str()),
                     return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -654,11 +989,11 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     OP_TILING_CHECK(sharedWeight1Desc->GetDataType() != weightOneDesc->GetDataType(),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "shared_weight1 dtype",
-                        std::to_string(sharedWeight1Desc->GetDataType()).c_str(),
-                        "must be same as weight1"),
+                                              std::to_string(sharedWeight1Desc->GetDataType()).c_str(),
+                                              "must be same as weight1"),
                     return ge::GRAPH_FAILED);
-    if (CheckSharedWeightShape(sharedWeight1Shape, weightOneStorageShape,
-        "shared_weight1", "weight1", nodeName) != ge::GRAPH_SUCCESS) {
+    if (CheckSharedWeightShape(sharedWeight1Shape, weightOneStorageShape, "shared_weight1", "weight1", nodeName) !=
+        ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -666,31 +1001,30 @@ static ge::graphStatus CheckSharedExpertInputs(const gert::TilingContext *contex
     auto weightTwoDesc = context->GetDynamicInputDesc(config.weight2Index, 0);
     OP_TILING_CHECK(sharedWeight2Desc->GetDataType() != weightTwoDesc->GetDataType(),
                     OP_LOGE_FOR_INVALID_VALUE(nodeName, "shared_weight2 dtype",
-                        std::to_string(sharedWeight2Desc->GetDataType()).c_str(),
-                        "must be same as weight2"),
+                                              std::to_string(sharedWeight2Desc->GetDataType()).c_str(),
+                                              "must be same as weight2"),
                     return ge::GRAPH_FAILED);
     auto weightTwoStorageShape = context->GetDynamicInputShape(config.weight2Index, 0);
     auto sharedWeight2Shape = context->GetDynamicInputShape(config.sharedWeight2Index, 0);
     OP_TILING_CHECK(sharedWeight2Shape->GetStorageShape().GetDim(0) != sharedExpertNum,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "shared_weight2 dim0",
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        nodeName, "shared_weight2 dim0",
                         std::to_string(sharedWeight2Shape->GetStorageShape().GetDim(0)).c_str(),
                         (std::string("must be equal to sharedExpertNum = ") + std::to_string(sharedExpertNum)).c_str()),
                     return ge::GRAPH_FAILED);
-    if (CheckSharedWeightShape(sharedWeight2Shape, weightTwoStorageShape,
-        "shared_weight2", "weight2", nodeName) != ge::GRAPH_SUCCESS) {
+    if (CheckSharedWeightShape(sharedWeight2Shape, weightTwoStorageShape, "shared_weight2", "weight2", nodeName) !=
+        ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
-    OP_TILING_CHECK(CheckSharedWeightScalesInput(context, config.sharedWeightScales1Index,
-                        config.weightScales1Index, "shared_weight_scales1", "weight_scales1",
-                        sharedExpertNum, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check shared_weight_scales1 failed."),
-                    return ge::GRAPH_FAILED);
-    OP_TILING_CHECK(CheckSharedWeightScalesInput(context, config.sharedWeightScales2Index,
-                        config.weightScales2Index, "shared_weight_scales2", "weight_scales2",
-                        sharedExpertNum, nodeName) != ge::GRAPH_SUCCESS,
-                    OP_LOGE(nodeName, "check shared_weight_scales2 failed."),
-                    return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckSharedWeightScalesInput(context, config.sharedWeightScales1Index, config.weightScales1Index,
+                                                 "shared_weight_scales1", "weight_scales1", sharedExpertNum,
+                                                 nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check shared_weight_scales1 failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(CheckSharedWeightScalesInput(context, config.sharedWeightScales2Index, config.weightScales2Index,
+                                                 "shared_weight_scales2", "weight_scales2", sharedExpertNum,
+                                                 nodeName) != ge::GRAPH_SUCCESS,
+                    OP_LOGE(nodeName, "check shared_weight_scales2 failed."), return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -746,11 +1080,13 @@ static ge::graphStatus CheckOutputTensorDim(const gert::TilingContext *context, 
                     return ge::GRAPH_FAILED);
     int64_t moeExpertPerRank = static_cast<int64_t>(*moeExpertNumPtr) / static_cast<int64_t>(*epWorldSizePtr);
     OP_TILING_CHECK(expertTokenNumsDim0 != moeExpertPerRank,
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(nodeName, "expertTokenNums",
-            (std::string("dim0=") + std::to_string(expertTokenNumsDim0)).c_str(),
-            (std::string("The shape [dim0] of expertTokenNums must be equal to moeExpertPerRank(")
-            + std::to_string(moeExpertPerRank) + ").").c_str()),
-        return ge::GRAPH_FAILED);
+                    OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                        nodeName, "expertTokenNums",
+                        (std::string("dim0=") + std::to_string(expertTokenNumsDim0)).c_str(),
+                        (std::string("The shape [dim0] of expertTokenNums must be equal to moeExpertPerRank(") +
+                         std::to_string(moeExpertPerRank) + ").")
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
 
     return ge::GRAPH_SUCCESS;
 }
@@ -1168,12 +1504,6 @@ static ge::graphStatus SetInputParam(const gert::TilingContext *context, MegaMoe
     tilingData->topK = static_cast<uint32_t>(topK);
     tilingData->expertPerRank = static_cast<uint32_t>(expertPerRank);
 
-    // UB 大小由平台查询, prefill 模板动态算 route batch 用
-    uint64_t ubSize = 0U;
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSize);
-    tilingData->ubSize = static_cast<uint32_t>(ubSize);
-
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1227,6 +1557,9 @@ ge::graphStatus MegaMoeTilingFuncImplPublic(gert::TilingContext *context, MegaMo
     // Attr check & set
     OP_TILING_CHECK(CheckAttrAndSetTilingData(context, config, tilingData, aicNum) == ge::GRAPH_FAILED,
                     OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(SetAdaptiveBufferConfigs(context, config, tilingData, static_cast<uint32_t>(ubSize)) ==
+                        ge::GRAPH_FAILED,
+                    OP_LOGE(nodeName, "Setting adaptive buffer configs failed."), return ge::GRAPH_FAILED);
 
     // Cal TilingKey
     uint64_t tilingKey = CalTilingKey(context, config, tilingData, nodeName);

@@ -87,8 +87,10 @@ __aicore__ inline void ComputeGroupRange(uint32_t groupIdx, uint32_t numGroups, 
 // =================================================================================================
 // counterPtr 内存布局: 每个 expert 一段, 每段 blockAivNum 个 slot, 每个 slot = INT_CACHELINE int32
 //   expert:  [slot_0][slot_1][slot_2]...[slot_n]
-// IsA8W4=false (A8W8/A4W4): 所有 blockAivNum 个核参与, 逻辑索引 = 物理 ID
-// IsA8W4=true  (A8W4):    仅 sub=1 的核参与, 逻辑索引 i 映射为物理 ID = i*2+1
+// IsA8W4=false (仅 A8W8 的 GMM2): 所有 blockAivNum 个核参与, 逻辑索引 = 物理 ID
+// IsA8W4=true  (A8W4 及 A4W4 的 GMM2): 仅 sub=1 的核参与, 逻辑索引 i 映射为物理 ID = i*2+1
+//   注: A4W4 的 GMM2 走 A8W4 配对路径(mega_moe.h GroupMatmul2CombineA8W4),
+// 故 combine-notify 用 <true>; "A8W8/A4W4" 仅指 matmul-flavor 轴(GMM1), 不适用于此归类。
 template <bool IsA8W4 = false>
 __aicore__ inline void NotifyCombineTileComplete(uint32_t mLoc, uint32_t m, uint32_t tileM, uint32_t blockAivNum,
                                                  uint32_t groupIdx, __gm__ int32_t *counterPtr)
@@ -332,6 +334,14 @@ __aicore__ inline void AicComputeGeneric(
         uint32_t nLoc = Get<N_VALUE>(blockCoord);
         uint32_t kLoc = Get<K_VALUE>(blockCoord);
 
+        // Slice 只算数据视图不触发搬运)，前移到 sync/wait 之前统一组织：
+        // 先定位本 tile 的数据视图 → 再等上游就绪 → 再算。
+        auto gmBlockA = workSet.gmA.Slice(Te::MakeCoord(mLoc, kLoc),
+                                          Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
+        auto gmBlockScaleA = workSet.gmScaleA.Slice(
+            Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
+            Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
+
         if constexpr (Policy::IS_GMM1) {
             uint32_t waveIdx = mLoc / L1_TILE_M_256;
             if (waveIdx != lastWaveWaited) {
@@ -352,11 +362,6 @@ __aicore__ inline void AicComputeGeneric(
             }
         }
 
-        auto gmBlockA = workSet.gmA.Slice(Te::MakeCoord(mLoc, kLoc),
-                                          Te::MakeShape(Get<M_VALUE>(actualShape), Get<K_VALUE>(actualShape)));
-        auto gmBlockScaleA = workSet.gmScaleA.Slice(
-            Te::MakeCoord(mLoc, kLoc / MXFP_SCALE_GROUP_NUM),
-            Te::MakeShape(Get<M_VALUE>(actualShape), CeilDiv(Get<K_VALUE>(actualShape), MXFP_SCALE_GROUP_NUM)));
         typename BlockMmad::BlockShape singleShape{Get<M_VALUE>(actualShape), Get<N_VALUE>(actualShape),
                                                    Get<K_VALUE>(actualShape), 0};
 

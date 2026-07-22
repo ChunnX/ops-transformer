@@ -40,10 +40,21 @@ class ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, false> {
 public:
     __aicore__ inline ActualSeqLensParser() = default;
 
+    // actualSeqLengthsGm:[3, 6, 8], 长度是batch_size, batch_size=3
+    // actualLenDims表示actualSeqLengthsGm的长度, 上面的例子中actualLenDims=3
+    // TBase(bIdx) = (bIdx == 0) ? 0 : actualSeqLengthsGm[bIdx - 1]
+    // ActualSeqLength(bIdx) = actualSeqLengthsGm[bIdx] - ((bIdx == 0) ? 0 : actualSeqLengthsGm[bIdx - 1])
+    // TSize = actualSeqLengthsGm[actualLenDims - 1]
     __aicore__ inline void Init(GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenDims,
                                 uint64_t defaultVal = 0)
     {
         this->actualSeqLengthsGm = actualSeqLengthsGm;
+        this->actualLenDims = actualLenDims;
+    }
+
+    __aicore__ inline void Init(__gm__ uint8_t *gmAddr, uint32_t actualLenDims)
+    {
+        this->actualSeqLengthsGm.SetGlobalBuffer((__gm__ ACTLEN_T *)gmAddr, actualLenDims);
         this->actualLenDims = actualLenDims;
     }
 
@@ -75,18 +86,75 @@ public:
         return (actualSeqLengthsGm.GetValue(bIdx) - actualSeqLengthsGm.GetValue(bIdx - 1));
     }
 
-    __aicore__ inline uint64_t GetFullActualSeqLength(uint32_t bIdx) const
-    {
-        return GetActualSeqLength(bIdx);
-    }
-
     __aicore__ inline uint64_t GetTSize() const
     {
         return actualSeqLengthsGm.GetValue(actualLenDims - 1);
     }
+
+    __aicore__ inline uint32_t GetActualLenDims() const 
+    {
+        return actualLenDims;
+    }
 private:
     GlobalTensor<ACTLEN_T> actualSeqLengthsGm;
     uint32_t actualLenDims;
+};
+
+template <typename ACTLEN_T>
+class ActualSeqLensParser<ActualSeqLensMode::ACCUM, ACTLEN_T, true> {
+public:
+    __aicore__ inline ActualSeqLensParser() = default;
+
+    // actualSeqLengthsGm:[0, 3, 6, 8], 长度是batch_size+1, batch_size=3
+    // actualLenDims表示actualSeqLengthsGm的长度, 上面的例子中actualLenDims=4
+    // TBase(bIdx) = actualSeqLengthsGm[bIdx]
+    // ActualSeqLength(bIdx) = actualSeqLengthsGm[bIdx + 1] - actualSeqLengthsGm[bIdx]
+    // TSize = actualSeqLengthsGm[actualLenDims - 1]
+    __aicore__ inline void Init(GlobalTensor<ACTLEN_T> cuSeqLensGm, uint32_t actualLenDims,
+                                uint64_t defaultVal = 0)
+    {
+        this->cuSeqLensGm = cuSeqLensGm;
+        this->actualLenDims = actualLenDims;
+        this->seqUsedDims = 0;
+    }
+
+    __aicore__ inline void Init(__gm__ uint8_t *cuSeqLensGmAddr, uint32_t actualLenDims,
+        __gm__ uint8_t *seqUsedGmAddr = nullptr, uint32_t seqUsedDims = 0)
+    {
+        this->cuSeqLensGm.SetGlobalBuffer((__gm__ ACTLEN_T *)cuSeqLensGmAddr, actualLenDims);
+        this->seqUsedGm.SetGlobalBuffer((__gm__ ACTLEN_T *)seqUsedGmAddr, seqUsedDims);
+        this->actualLenDims = actualLenDims;
+        this->seqUsedDims = seqUsedDims;
+    }
+
+    __aicore__ inline uint64_t GetTBase(uint32_t bIdx) const
+    {
+        return cuSeqLensGm.GetValue(bIdx);
+    }
+
+    __aicore__ inline uint64_t GetActualSeqLength(uint32_t bIdx) const
+    {
+        if (seqUsedDims == 0) {
+            return (cuSeqLensGm.GetValue(bIdx + 1) - cuSeqLensGm.GetValue(bIdx));
+        } else {
+            return seqUsedGm.GetValue(bIdx);
+        }
+    }
+
+    __aicore__ inline uint64_t GetTSize() const
+    {
+        return cuSeqLensGm.GetValue(actualLenDims - 1);
+    }
+
+    __aicore__ inline uint32_t GetActualLenDims() const 
+    {
+        return actualLenDims;
+    }
+private:
+    GlobalTensor<ACTLEN_T> seqUsedGm;
+    GlobalTensor<ACTLEN_T> cuSeqLensGm;
+    uint32_t actualLenDims;
+    uint32_t seqUsedDims;
 };
 
 template <typename ACTLEN_T>
@@ -97,6 +165,13 @@ public:
     __aicore__ inline void Init(GlobalTensor<ACTLEN_T> actualSeqLengthsGm, uint32_t actualLenDims, uint64_t defaultVal)
     {
         this->actualSeqLengthsGm = actualSeqLengthsGm;
+        this->actualLenDims = actualLenDims;
+        this->defaultVal = defaultVal;
+    }
+
+    __aicore__ inline void Init(__gm__ uint8_t *gmAddr, uint32_t actualLenDims, uint64_t defaultVal)
+    {
+        this->actualSeqLengthsGm.SetGlobalBuffer((__gm__ ACTLEN_T *)gmAddr, actualLenDims);
         this->actualLenDims = actualLenDims;
         this->defaultVal = defaultVal;
     }
@@ -133,6 +208,12 @@ public:
         this->maxblockNumPerBatch = maxblockNumPerBatch;
     }
 
+    __aicore__ inline void Init(__gm__ uint8_t *blockTableGmAddr, uint32_t maxblockNumPerBatch)
+    {
+        this->blockTableGm.SetGlobalBuffer((__gm__ int32_t *)blockTableGmAddr);
+        this->maxblockNumPerBatch = maxblockNumPerBatch;
+    }
+
     __aicore__ inline int32_t GetBlockIdx(uint32_t bIdx, uint32_t blockIdxInBatch) const
     {
         return blockTableGm.GetValue(bIdx * maxblockNumPerBatch + blockIdxInBatch);
@@ -140,50 +221,6 @@ public:
 private:
     GlobalTensor<int32_t> blockTableGm;
     uint32_t maxblockNumPerBatch;
-};
-
-// ----------------------------------------------WITH_ZERO_HEAD=true--------------------------------
-template <ActualSeqLensMode MODE, typename ACTLEN_T>
-class ActualSeqLensParser<MODE, ACTLEN_T, true> {
-public:
-    __aicore__ inline ActualSeqLensParser() = default;
-
-    __aicore__ inline void Init(GlobalTensor<ACTLEN_T> cuSeqLensGm, GlobalTensor<ACTLEN_T> seqUsedGM,
-                                uint32_t cuSeqLensSize, uint32_t seqUsedSize, uint64_t defaultVal = 0)
-    {
-        this->cuSeqLensGm = cuSeqLensGm;
-        this->seqUsedGM = seqUsedGM;
-        this->cuSeqLensSize = cuSeqLensSize;
-        this->seqUsedSize = seqUsedSize;
-    }
-
-    __aicore__ inline uint64_t GetTBase(uint32_t bIdx) const
-    {
-        return cuSeqLensGm.GetValue(bIdx);
-    }
-
-    __aicore__ inline uint64_t GetActualSeqLength(uint32_t bIdx) const
-    {
-        if (seqUsedSize == 0) {
-            return cuSeqLensGm.GetValue(bIdx + 1) - cuSeqLensGm.GetValue(bIdx);
-        }
-        return seqUsedGM.GetValue(bIdx);
-    }
-
-    __aicore__ inline uint64_t GetFullActualSeqLength(uint32_t bIdx) const
-    {
-        return cuSeqLensGm.GetValue(bIdx + 1) - cuSeqLensGm.GetValue(bIdx);
-    }
-
-    __aicore__ inline uint64_t GetTSize() const
-    {
-        return cuSeqLensGm.GetValue(cuSeqLensSize);
-    }
-private:
-    GlobalTensor<ACTLEN_T> cuSeqLensGm;
-    GlobalTensor<ACTLEN_T> seqUsedGM;
-    uint32_t cuSeqLensSize;
-    uint32_t seqUsedSize;
 };
 
 #endif

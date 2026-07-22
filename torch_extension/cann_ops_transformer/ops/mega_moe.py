@@ -68,7 +68,6 @@ class _MegaMoeOpBuilder(OpBuilder):
 
 
 _mega_moe_op_builder = _MegaMoeOpBuilder()
-_op_module = _mega_moe_op_builder.load()
 
 
 @impl(AS_LIBRARY, _mega_moe_op_builder.name, "PrivateUse1")
@@ -84,6 +83,7 @@ def _npu_mega_moe(context, x, topk_ids, topk_weights, weight1, weight2,
                   num_max_tokens_per_rank=0, activation="swiglu", activation_clamp=None,
                   dispatch_quant_out_dtype=None,
                    weight1_type=None, weight2_type=None, topo_type=None, rank_num_per_server=None):
+    _op_module = _mega_moe_op_builder.load()
     return _op_module.npu_mega_moe(
         context, x, topk_ids, topk_weights, weight1, weight2, moe_expert_num, ep_world_size,
         ccl_buffer_size, weight_scales1, weight_scales2, bias1, bias2, x_active_mask,
@@ -116,14 +116,27 @@ class SymmBuffer:
             self.rank_id, init_comm=False
         )
         self.ep_world_size = torch.distributed.get_world_size(group)
+        required_ccl_buffer_size = _get_mega_moe_ccl_buffer_size(
+            self.ep_world_size,
+            num_experts,
+            num_max_tokens_per_rank,
+            num_topk,
+            hidden,
+            max_recv_token_num,
+            dispatch_quant_mode,
+            dispatch_quant_out_dtype,
+            combine_quant_mode,
+            comm_alg,
+        )
         self._ctx_manager = CommContextManager(
             self.group_name,
             self.ep_world_size,
             backend={
                 "Ascend910B": "kfc",
                 "Ascend910_93": "kfc",
-                "Ascend950": "channel",
+                "Ascend950": "channel"
             },
+            customCclBufferSize=required_ccl_buffer_size,
         )
         self.context = self._ctx_manager.create_context()
         self.ccl_buffer_size = self._ctx_manager.ccl_buffer_size
@@ -139,6 +152,9 @@ class SymmBuffer:
         self.comm_alg = comm_alg
         self.topo_type = self._ctx_manager.topo_type
         self.rank_num_per_server = self._ctx_manager.rank_num_per_server
+
+    def destroy(self):
+        self._ctx_manager.destroy() 
 
 
 _TORCH_DTYPE_TO_INT = {  # torch枚举
@@ -174,6 +190,7 @@ def _get_mega_moe_ccl_buffer_size(
     combine_quant_mode: int = 0,
     comm_alg: str = "",
 ) -> int:
+    _op_module = _mega_moe_op_builder.load()
     quant_dtype_int = _dtype_to_int(dispatch_quant_out_dtype)  # 将torch.dtype转换为int
     return _op_module.get_mega_moe_ccl_buffer_size(
         ep_world_size,

@@ -792,7 +792,7 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
     if cmp_ratio == 1 or mask_mode == 0:
         cmp_residual_k_for_npu = None
     else:
-        cmp_residual_k_for_npu = torch.tensor(cmp_residual_k).to(torch.int32).npu()
+        cmp_residual_k_for_npu = torch.tensor(cmp_residual_k).to(torch.int32)
 
     if cu_seqlens_q is not None:
         cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
@@ -878,7 +878,7 @@ def liv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s1
             blockFusion = torch.zeros((block_num, block_size * k_head_num * bytes_per_token), dtype=qk_dtype) 
             key_flat = key.view(block_num, block_size * k_head_num * head_dim) 
             blockFusion[:, :block_size * k_head_num * head_dim] = key_flat 
-            blockFusion = blockFusion.npu() 
+            blockFusion = blockFusion
             key = blockFusion[:, :block_size * k_head_num * head_dim].view(block_num, block_size, k_head_num, head_dim)
         cpu_result, topk_value, cpu_topk_value = test_liv2.forward(query, key_bnsd, weights, cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k, block_table, output_idx_offset)
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32)

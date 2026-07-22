@@ -23,7 +23,7 @@ import math
 import os
 import multiprocessing as mp
 from concurrent.futures import ProcessPoolExecutor, as_completed
-
+import concurrent
 TEST_INPUT_PATH = "pt_path"
 pt_dir = TEST_INPUT_PATH
 result_path = Path('result.xlsx')  # 或使用传入的result_path
@@ -32,19 +32,19 @@ device_id = 0
 # 支持通过环境变量 LIV2_TESTCASE_PATH 指定单条用例文件，实现进程级隔离执行：
 #   - 设置时：仅运行该条用例（配合 batch_isolated_run.sh 每条用例拉起独立进程）
 #   - 未设置：回退为原有行为，一次性加载目录下全部用例
-_single_case_path = os.environ.get("LIV2_TESTCASE_PATH", "").strip()
+single_case_path = os.environ.get("LIV2_TESTCASE_PATH", "").strip()
 # flag：是否处于批量隔离模式（由 batch_isolated_run.sh 设置 LIV2_TESTCASE_PATH 触发）
-_is_isolated_mode = bool(_single_case_path)
+is_isolated_mode = bool(single_case_path)
 # flag：运行模式 eager / graph（通过环境变量 LIV2_RUN_MODE 或命令行参数设置，默认 eager）
-_run_mode = os.environ.get("LIV2_RUN_MODE", "eager").strip().lower()
+run_mode = os.environ.get("LIV2_RUN_MODE", "eager").strip().lower()
 # 生成所有的组合，并转换为字典列表
 locals()["testcase_files"] = []
-if _single_case_path:
-    if not os.path.isfile(_single_case_path):
-        print(f"错误: 环境变量 LIV2_TESTCASE_PATH 指定的用例文件不存在: {_single_case_path}")
+if single_case_path:
+    if not os.path.isfile(single_case_path):
+        print(f"错误: 环境变量 LIV2_TESTCASE_PATH 指定的用例文件不存在: {single_case_path}")
     else:
-        print(f"单用例隔离模式, 仅执行: {_single_case_path}")
-        locals()["testcase_files"].append(_single_case_path)
+        print(f"单用例隔离模式, 仅执行: {single_case_path}")
+        locals()["testcase_files"].append(single_case_path)
 elif os.path.isdir(pt_dir):
     pt_files = [f for f in os.listdir(pt_dir) if f.endswith('.pt')]
     if not pt_files:
@@ -59,7 +59,7 @@ else:
 
 def liv2(testcase_files):   # 初始化参数和tensor
     try:
-        if _run_mode == "graph":
+        if run_mode == "graph":
             cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value, output_idx_offset, params = \
                 lightning_indexer_v2_pt_loadprocess.test_liv2_process_graph(testcase_files, device_id=device_id)
         else:
@@ -149,7 +149,7 @@ def liv2(testcase_files):   # 初始化参数和tensor
 @pytest.mark.ci
 @pytest.mark.parametrize("testcase_files", locals()["testcase_files"])
 def test_liv2(testcase_files):   # 初始化参数和tensor
-    if _is_isolated_mode:
+    if is_isolated_mode:
         # 批量隔离模式：shell 层已通过独立 pytest 进程提供进程隔离，内部使用线程池即可
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
             futures = executor.submit(liv2, testcase_files)

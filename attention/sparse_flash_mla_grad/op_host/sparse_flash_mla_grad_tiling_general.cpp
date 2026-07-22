@@ -398,7 +398,6 @@ ge::graphStatus SparseFlashMlaGradBasicTiling::GetBaseShapeInfo()
     OP_CHECK_IF(seqUsedCmpKvTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "seqUsedCmpKv should be nullptr now."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(oriTopkLenTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "oriTopkLength should be nullptr now."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(cmpTopkLenTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "cmpTopkLength should be nullptr now."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(metadataTensor != nullptr, OP_LOGE("SparseFlashMlaGrad", "metadata should be nullptr now."), return ge::GRAPH_FAILED);
 
     // -------------- attrs ----------------
     const char *inputLayoutQ = context_->GetAttrs()->GetAttrPointer<char>(static_cast<size_t>(AttrIndex::LAYOUT_Q));
