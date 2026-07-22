@@ -16,7 +16,7 @@
 #define SPARSE_FLASH_MLA_SOFTMAX_L1_NORM_METADATA_AICPU_ARCH35_H
 
 #include "../sparse_flash_mla_softmax_l1_norm_metadata_aicpu.h"
-#include "../../../sparse_flash_mla_softmax_l1_norm/op_kernel/sparse_flash_mla_softmax_l1_norm_metadata.h"
+#include "../../op_kernel/sparse_flash_mla_softmax_l1_norm_metadata.h"
 
 #include <algorithm>
 

@@ -17,7 +17,7 @@
 
   **该算子不建议单独使用，建议与aclnnSparseFlashMlaSoftmaxL1Norm算子配合使用，形成完整的工作流。**
     1. 接收主算子的shape信息，包括batchSize、maxSeqLenQ、maxSeqLenK、numHeadsQ、numHeadsK、headDim、topk、layout和mask信息。
-    2. 根据layout和可选输入seqUsedQOptional计算参与负载均衡的seq总数，采用strided方式将任务均衡切分到可用AIC核上。
+    2. 根据layout和可选输入seqUsedQ计算参与负载均衡的seq总数，采用strided方式将任务均衡切分到可用AIC核上。
     3. 输出metadata后，后续作为aclnnSparseFlashMlaSoftmaxL1Norm算子的metadataOptional输入使用。
 
 ## 函数原型
@@ -26,12 +26,12 @@
 
 ``` cpp
 aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadataGetWorkspaceSize(
-    const aclTensor *cuSeqLensQOptional,
-    const aclTensor *cuSeqLensKOptional,
-    const aclTensor *seqUsedQOptional,
-    const aclTensor *seqUsedKOptional,
-    const aclTensor *cmpResidualKOptional,
-    const aclTensor *topkLengthOptional,
+    const aclTensor *cuSeqLensQ,
+    const aclTensor *cuSeqLensK,
+    const aclTensor *seqUsedQ,
+    const aclTensor *seqUsedK,
+    const aclTensor *cmpResidualK,
+    const aclTensor *topkLength,
     int64_t batchSize,
     int64_t maxSeqLenQ,
     int64_t maxSeqLenK,
@@ -85,7 +85,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
     </tr></thead>
   <tbody>
     <tr>
-      <td>cuSeqLensQOptional</td>
+      <td>cuSeqLensQ</td>
       <td>输入</td>
       <td>表示不同batch中query的累积sequence length。</br>TND场景下必传，并可通过该入参shape推导batch。</br>第一个值固定为0。</td>
       <td>支持空Tensor。</td>
@@ -95,7 +95,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
       <td>x</td>
     </tr>
     <tr>
-      <td>cuSeqLensKOptional</td>
+      <td>cuSeqLensK</td>
       <td>输入</td>
       <td>表示不同batch中key的累积sequence length。</br>TND场景下必传。</br>第一个值固定为0。</td>
       <td>支持空Tensor。</td>
@@ -105,7 +105,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
       <td>x</td>
     </tr>
     <tr>
-      <td>seqUsedQOptional</td>
+      <td>seqUsedQ</td>
       <td>输入</td>
       <td>表示不同batch中query实际参与运算的sequence length。</td>
       <td>支持空Tensor。当该入参存在时，seq总数按每个batch实际用到的seq累加计算。</td>
@@ -115,7 +115,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
       <td>x</td>
     </tr>
     <tr>
-      <td>seqUsedKOptional</td>
+      <td>seqUsedK</td>
       <td>输入</td>
       <td>预留接口参数，表示不同batch中key实际参与运算的sequence length。</td>
       <td>支持空Tensor。当前kernel路径暂不使用。</td>
@@ -125,7 +125,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
       <td>x</td>
     </tr>
     <tr>
-      <td>cmpResidualKOptional</td>
+      <td>cmpResidualK</td>
       <td>输入</td>
       <td>预留接口参数，表示不同batch中key的sequence length与cmpRatio相关的残差。</td>
       <td>支持空Tensor。当前kernel路径暂不使用。</td>
@@ -135,7 +135,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
       <td>x</td>
     </tr>
     <tr>
-      <td>topkLengthOptional</td>
+      <td>topkLength</td>
       <td>输入</td>
       <td>表示每行query对应的key实际可选的topk长度。</td>
       <td>支持空Tensor。maskMode=0且存在稀疏索引时需要传，且必须为准确值。</td>
@@ -148,7 +148,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
       <td>batchSize</td>
       <td>输入</td>
       <td>表示batch数量。</td>
-      <td>支持非负数。TND场景可填0，并通过cuSeqLensQOptional推导。</td>
+      <td>支持非负数。TND场景可填0，并通过cuSeqLensQ推导。</td>
       <td>INT64</td>
       <td>-</td>
       <td>-</td>
@@ -341,8 +341,8 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
   - BSND场景
     - 必传batchSize、maxSeqLenQ和maxSeqLenK参数，以获取shape信息。
   - TND场景
-    - 必传cuSeqLensQOptional和cuSeqLensKOptional参数，以获取正确shape信息。
-    - 当batchSize为0时，通过cuSeqLensQOptional的shape推导batch。
+    - 必传cuSeqLensQ和cuSeqLensK参数，以获取正确shape信息。
+    - 当batchSize为0时，通过cuSeqLensQ的shape推导batch。
 
 <details>
 <summary><a id="Mask"></a>Mask</summary>
@@ -378,10 +378,10 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
 
   - Batch取值规则
     - 如果batchSize大于0，优先使用batchSize。
-    - 如果batchSize小于等于0，且layoutQ为TND，则通过cuSeqLensQOptional的shape推导batch。
+    - 如果batchSize小于等于0，且layoutQ为TND，则通过cuSeqLensQ的shape推导batch。
     - 如果batchSize小于等于0，且layoutQ为BSND，则报错。
   - Seqlen取值规则
-    - TND场景下，通过cuSeqLensQOptional和cuSeqLensKOptional计算每个batch的实际q/k长度。
+    - TND场景下，通过cuSeqLensQ和cuSeqLensK计算每个batch的实际q/k长度。
     - BSND场景下，通过maxSeqLenQ和maxSeqLenK获取q/k长度。
   - layout约束
     - layoutQ必须为BSND或TND。
@@ -417,7 +417,7 @@ aclnnStatus aclnnSparseFlashMlaSoftmaxL1NormMetadata(
         <tr>
         <td>totalNum</td>
         <td>0</td>
-        <td>参与负载均衡的seq总数。TND场景为各batch的seqQ累加值；BSND场景为B*S；当seqUsedQOptional存在时，按每个batch实际用到的seq累加。</td>
+        <td>参与负载均衡的seq总数。TND场景为各batch的seqQ累加值；BSND场景为B*S；当seqUsedQ存在时，按每个batch实际用到的seq累加。</td>
         </tr>
         <tr>
         <td>formerCoreProcessNum</td>
@@ -514,12 +514,12 @@ struct ArgScenario {
 };
 
 struct ArgContext {
-    Tensor cuSeqLensQOptional {};
-    Tensor cuSeqLensKOptional {};
-    Tensor seqUsedQOptional {};
-    Tensor seqUsedKOptional {};
-    Tensor cmpResidualKOptional {};
-    Tensor topkLengthOptional {};
+    Tensor cuSeqLensQ {};
+    Tensor cuSeqLensK {};
+    Tensor seqUsedQ {};
+    Tensor seqUsedK {};
+    Tensor cmpResidualK {};
+    Tensor topkLength {};
     Tensor metadata {};
     int64_t batchSize { 0 };
     int64_t maxSeqLenQ { 0 };
@@ -604,12 +604,12 @@ void DestroyTensor(Tensor &tensor)
 void DestroyArgs(ArgContext &context)
 {
     DestroyTensor(context.metadata);
-    DestroyTensor(context.cuSeqLensQOptional);
-    DestroyTensor(context.cuSeqLensKOptional);
-    DestroyTensor(context.seqUsedQOptional);
-    DestroyTensor(context.seqUsedKOptional);
-    DestroyTensor(context.cmpResidualKOptional);
-    DestroyTensor(context.topkLengthOptional);
+    DestroyTensor(context.cuSeqLensQ);
+    DestroyTensor(context.cuSeqLensK);
+    DestroyTensor(context.seqUsedQ);
+    DestroyTensor(context.seqUsedK);
+    DestroyTensor(context.cmpResidualK);
+    DestroyTensor(context.topkLength);
 
     if (context.layoutQ != nullptr) {
         free(context.layoutQ);
@@ -638,12 +638,12 @@ aclnnStatus CreateArgs(const ArgScenario &scenario, ArgContext &context)
     CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create metadata failed. Error: %d", ret);
 
     if (scenario.hasCuSeq) {
-        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqLensQOptional);
-        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqLensQOptional failed. Error: %d", ret);
-        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqLensKOptional);
-        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqLensKOptional failed. Error: %d", ret);
-        SetInt32TensorData(context.cuSeqLensQOptional, { 0, static_cast<int32_t>(context.maxSeqLenQ) });
-        SetInt32TensorData(context.cuSeqLensKOptional, { 0, static_cast<int32_t>(context.maxSeqLenK) });
+        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqLensQ);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqLensQ failed. Error: %d", ret);
+        ret = CreateTensor(aclDataType::ACL_INT32, { batchSize + 1 }, context.cuSeqLensK);
+        CHECK_LOG_RET(ret == ACL_SUCCESS, ret, "Create cuSeqLensK failed. Error: %d", ret);
+        SetInt32TensorData(context.cuSeqLensQ, { 0, static_cast<int32_t>(context.maxSeqLenQ) });
+        SetInt32TensorData(context.cuSeqLensK, { 0, static_cast<int32_t>(context.maxSeqLenK) });
         context.batchSize = 0;
     } else {
         context.batchSize = batchSize;
@@ -680,8 +680,8 @@ int main() {
     aclOpExecutor *executor = nullptr;
     void *workspaceAddr = nullptr;
     ret = aclnnSparseFlashMlaSoftmaxL1NormMetadataGetWorkspaceSize(
-        context.cuSeqLensQOptional.data, context.cuSeqLensKOptional.data, context.seqUsedQOptional.data,
-        context.seqUsedKOptional.data, context.cmpResidualKOptional.data, context.topkLengthOptional.data,
+        context.cuSeqLensQ.data, context.cuSeqLensK.data, context.seqUsedQ.data,
+        context.seqUsedK.data, context.cmpResidualK.data, context.topkLength.data,
         context.batchSize, context.maxSeqLenQ, context.maxSeqLenK, context.numHeadsQ, context.numHeadsK,
         context.headDim, context.topk, context.cmpRatio, context.maskMode, context.layoutQ, context.layoutK,
         context.metadata.data, &workspaceSize, &executor);

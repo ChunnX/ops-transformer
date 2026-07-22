@@ -13,7 +13,7 @@
  * \brief
  */
 #include "register/op_impl_registry.h"
-#include "../../sparse_flash_mla_softmax_l1_norm/op_kernel/sparse_flash_mla_softmax_l1_norm_metadata.h"
+#include "../op_kernel/sparse_flash_mla_softmax_l1_norm_metadata.h"
 
 using namespace ge;
 
