@@ -55,11 +55,11 @@ private:
 
     __aicore__ inline void DoWait(uint32_t targetRankId)
     {
-        this->barrier_.Execute();
         if (targetRankId == this->udmaCtx_->rankId) {
             return;
         }
         this->comm_.Drain(this->udmaCtx_->channelHandles[targetRankId]);
+        this->barrier_.Execute();
     }
 
     __aicore__ inline void DoFinalize() {}

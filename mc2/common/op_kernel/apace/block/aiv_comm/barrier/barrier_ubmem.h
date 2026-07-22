@@ -60,8 +60,6 @@ private:
         __asm__ __volatile__("");
     }
 
-    __aicore__ inline void BarrierCrossCore();
-
     __aicore__ inline void BarrierCrossDevice();
 };
 
@@ -85,9 +83,6 @@ __aicore__ inline void TeamBarrier::Execute()
             + BARRIER_FLAG_SIZE + jobIndex_ * BARRIER_FLAG_SIZE);
         count_ = (*teamSyncCounter) + 1;
 
-        BarrierCrossCore();
-        SetFlag<HardEvent::S_V>(1);
-        WaitFlag<HardEvent::S_V>(1);
         BarrierCrossDevice();
 
         auto copyUB2GM = Te::MakeCopy(Te::CopyUB2GM{});
@@ -104,29 +99,6 @@ __aicore__ inline void TeamBarrier::Execute()
         SetFlag<HardEvent::MTE3_S>(1);
         WaitFlag<HardEvent::MTE3_S>(1);
 
-    }
-}
-
-__aicore__ inline void TeamBarrier::BarrierCrossCore()
-{
-    auto coreSyncPool = (__gm__ uint64_t*)(ctx_->commBufferAddrs[ctx_->rankId] + GetCoreSyncPoolOffset(totalJobs_));
-    uint32_t shift = 1;
-    uint32_t offset = 0;
-
-    while (shift < totalJobs_) {
-        uint32_t next = (jobIndex_ + shift) % totalJobs_;
-        __gm__ uint64_t* dst = (__gm__ uint64_t*)(coreSyncPool + next * SYNC_SLOT_PEER_CORE + offset);
-        *dst = count_;
-        FlushCacheLine((__gm__ uint8_t*)dst);
-        __gm__ uint64_t* src = (__gm__ uint64_t*)(coreSyncPool + jobIndex_ * SYNC_SLOT_PEER_CORE + offset);
-        do {
-            if (*src == count_) {
-                break;
-            }
-        } while (true);
-
-        shift *= 2;
-        offset++;
     }
 }
 
