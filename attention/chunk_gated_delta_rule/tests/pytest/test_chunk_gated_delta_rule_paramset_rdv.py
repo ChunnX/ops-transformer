@@ -124,6 +124,7 @@ def _convert_cases(cases):
             "state_data_type": [state_dtype],
             "has_g": [has_g],
             "is_contiguous": [is_contiguous],
+            "pt_path": [""],
         })
     return result
 
@@ -132,3 +133,13 @@ GROUP_REDLINE = _convert_cases(_expand(A5_REDLINE_CASES))
 GROUP_STC = _convert_cases(_expand(A5_STC_CASES))
 
 ENABLED_PARAMS_RDV = GROUP_REDLINE + GROUP_STC
+
+# 如需为特定用例指定 pt 路径，在此按用例名注入，例如:
+# _PT_PATH_MAP = {
+#     "ARC-001": "output/pt/xxx.pt",
+#     "ASC-025-NC": "output/pt/yyy.pt",
+# }
+# for _params in ENABLED_PARAMS_RDV:
+#     _n = _params["_name"][0]
+#     if _n in _PT_PATH_MAP:
+#         _params["pt_path"] = [_PT_PATH_MAP[_n]]
