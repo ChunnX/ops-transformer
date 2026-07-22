@@ -16,11 +16,7 @@
 #include <netinet/in.h>
 #include <arpa/inet.h>
 
-#if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
-#else
-#include "kernel_operator.h"
-#endif
 #include "acl/acl.h"
 #include "hccl/hccl.h"
 #include "hccl/hccl_comm.h"
@@ -30,10 +26,10 @@
 #include <cstdlib>
 #include "utils.h"
 #include "apace/tiling/quant_matmul_mx_tiling_swat.h"
-#include "apace/kernel/quant_matmul_all_to_all/matmul_all_to_all_tiling_data.h"
 #include "apace/kernel/quant_matmul_all_to_all/mx_matmul_all_to_all_hcomm_impl.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
 #include "comm_channel_builder.h"
+#include "root_info_exchanger.h"
 
 using CommUdmaContext = Apace::AivComm::CommUdmaContext;
 using CommUbmemContext = Apace::AivComm::CommUbmemContext;
@@ -105,129 +101,6 @@ void ParseAllToAllArgs(int argc, char *argv[], int *m, int *k, int *n, int *rank
   }
 }
 
-static bool ParseEndpoint(const std::string &endpoint, std::string &ip, uint16_t &port)
-{
-  const std::string prefix = "tcp://";
-  if (endpoint.find(prefix) != 0) { return false; }
-  std::string addr = endpoint.substr(prefix.size());
-  auto colonPos = addr.rfind(':');
-  if (colonPos == std::string::npos) { return false; }
-  ip = addr.substr(0, colonPos);
-  port = static_cast<uint16_t>(atoi(addr.substr(colonPos + 1).c_str()));
-  return !ip.empty() && port > 0;
-}
-
-static int32_t SendAll(int32_t sock, const void *buf, size_t len)
-{
-  size_t sent = 0;
-  while (sent < len) {
-    ssize_t n = send(sock, static_cast<const char *>(buf) + sent, len - sent, 0);
-    if (n <= 0) { return -1; }
-    sent += static_cast<size_t>(n);
-  }
-  return 0;
-}
-
-static int32_t RecvAll(int32_t sock, void *buf, size_t len)
-{
-  size_t received = 0;
-  while (received < len) {
-    ssize_t n = recv(sock, static_cast<char *>(buf) + received, len - received, 0);
-    if (n <= 0) { return -1; }
-    received += static_cast<size_t>(n);
-  }
-  return 0;
-}
-
-static int32_t ExchangeRootInfo(uint32_t rank, uint32_t rankNum,
-                                const std::vector<int32_t> &socks, HcclRootInfo *rootInfo)
-{
-  if (rank == 0) {
-    HCCL_CHECK(HcclGetRootInfo(rootInfo));
-    for (uint32_t i = 1; i < rankNum; i++) {
-      if (SendAll(socks[i - 1], rootInfo, sizeof(HcclRootInfo)) != 0) { return -1; }
-    }
-  } else {
-    if (RecvAll(socks[0], rootInfo, sizeof(HcclRootInfo)) != 0) { return -1; }
-  }
-  return 0;
-}
-
-static int32_t TcpBarrier(uint32_t rank, uint32_t rankNum, const std::vector<int32_t> &socks)
-{
-  int32_t flag = 1;
-  if (rank == 0) {
-    for (uint32_t i = 1; i < rankNum; i++) {
-      int32_t recvFlag = 0;
-      if (RecvAll(socks[i - 1], &recvFlag, sizeof(recvFlag)) != 0) { return -1; }
-    }
-    for (uint32_t i = 1; i < rankNum; i++) {
-      if (SendAll(socks[i - 1], &flag, sizeof(flag)) != 0) { return -1; }
-    }
-  } else {
-    if (SendAll(socks[0], &flag, sizeof(flag)) != 0) { return -1; }
-    int32_t recvFlag = 0;
-    if (RecvAll(socks[0], &recvFlag, sizeof(recvFlag)) != 0) { return -1; }
-  }
-  return 0;
-}
-
-static int32_t ConnectPeers(uint32_t rank, uint32_t rankNum,
-                             const std::string &ip, uint16_t port,
-                             std::vector<int32_t> &socks)
-{
-  if (rank == 0) {
-    int32_t listenSock = socket(AF_INET, SOCK_STREAM, 0);
-    if (listenSock < 0) { return -1; }
-    int32_t opt = 1;
-    setsockopt(listenSock, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt));
-    struct sockaddr_in addr = {};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
-    if (bind(listenSock, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) < 0 ||
-        listen(listenSock, static_cast<int>(rankNum)) < 0) {
-      close(listenSock);
-      return -1;
-    }
-    socks.resize(rankNum - 1, -1);
-    for (uint32_t i = 0; i < rankNum - 1; i++) {
-      socks[i] = accept(listenSock, nullptr, nullptr);
-      if (socks[i] < 0) {
-        close(listenSock);
-        return -1;
-      }
-    }
-    close(listenSock);
-  } else {
-    socks.resize(1, -1);
-    int32_t sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (sock < 0) { return -1; }
-    struct sockaddr_in addr = {};
-    addr.sin_family = AF_INET;
-    addr.sin_port = htons(port);
-    inet_pton(AF_INET, ip.c_str(), &addr.sin_addr);
-    for (int32_t retry = 0; retry < 100; retry++) {
-      if (connect(sock, reinterpret_cast<struct sockaddr *>(&addr), sizeof(addr)) == 0) {
-        socks[0] = sock;
-        return 0;
-      }
-      usleep(100000);
-    }
-    close(sock);
-    return -1;
-  }
-  return 0;
-}
-
-static void CloseSocks(std::vector<int32_t> &socks)
-{
-  for (int32_t sock : socks) {
-    if (sock >= 0) { close(sock); }
-  }
-  socks.clear();
-}
-
 template <bool LocalDelay>
 int LaunchKernel(uint32_t usedCoreNum, aclrtStream stream,
          CommContext *hcommCtx,
@@ -286,25 +159,12 @@ int RunMatmulAllToAll(int rankNum, int rankId, int m, int k, int n,
   aclrtStream stream = nullptr;
   ACL_CHECK(aclrtCreateStream(&stream));
 
-  std::string ip;
-  uint16_t port = 0;
-  if (!ParseEndpoint(ipport, ip, port)) {
-    ERROR_LOG("invalid endpoint: %s", ipport);
-    return -1;
-  }
-  std::vector<int32_t> socks;
-  if (ConnectPeers(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), ip, port, socks) != 0) {
-    ERROR_LOG("rank %d connect peers failed", rankId);
-    return -1;
-  }
-
+  RootInfoExchanger exchanger(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), ipport);
   HcclRootInfo rootInfo;
-  if (ExchangeRootInfo(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), socks, &rootInfo) != 0) {
+  if (!exchanger.Exchange(rootInfo)) {
     ERROR_LOG("rank %d exchange rootInfo failed", rankId);
-    CloseSocks(socks);
     return -1;
   }
-  TcpBarrier(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), socks);
 
   HcclCommConfig config;
   HcclCommConfigInit(&config);
@@ -314,7 +174,6 @@ int RunMatmulAllToAll(int rankNum, int rankId, int m, int k, int n,
                                         static_cast<uint32_t>(rankId), &config, &comm));
   if (comm == nullptr) {
     ERROR_LOG("rank %d HcclCommInitRootInfoConfig failed", rankId);
-    CloseSocks(socks);
     return -1;
   }
 
@@ -334,7 +193,6 @@ int RunMatmulAllToAll(int rankNum, int rankId, int m, int k, int n,
       ChannelMode::URMA, false, shmemBufBytes, "shareBuf",
       udmaCtx->channelHandles, udmaCtx->commBufferAddrs)) {
     ERROR_LOG("rank %d AllocRegAndBuildChannels shareBuf failed", rankId);
-    CloseSocks(socks);
     return -1;
   }
 
@@ -342,12 +200,11 @@ int RunMatmulAllToAll(int rankNum, int rankId, int m, int k, int n,
       ChannelMode::UBMEM, false, SYNC_BUF_SIZE, "syncBuf",
       nullptr, ubmemCtx->commBufferAddrs)) {
     ERROR_LOG("rank %d AllocRegAndBuildChannels syncBuf failed", rankId);
-    CloseSocks(socks);
     return -1;
   }
 
-  TcpBarrier(static_cast<uint32_t>(rankId), static_cast<uint32_t>(rankNum), socks);
-  CloseSocks(socks);
+  exchanger.Barrier();
+  exchanger.Close();
 
   CommContext *devContext = nullptr;
   ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&devContext), sizeof(CommContext),
