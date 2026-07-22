@@ -1,0 +1,1518 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MegaMoe AIC 热点核与跨 Wave Cursor 修复演示</title>
+  <style>
+    :root {
+      --ink: #172033;
+      --muted: #65708a;
+      --line: #dbe2ee;
+      --panel: #ffffff;
+      --page: #f3f6fb;
+      --navy: #101b35;
+      --navy-2: #1b2d52;
+      --g1: #f97316;
+      --g1-soft: #ffedd5;
+      --g2: #0284c7;
+      --g2-soft: #e0f2fe;
+      --fix: #059669;
+      --fix-soft: #d1fae5;
+      --warn: #b45309;
+      --warn-soft: #fef3c7;
+      --bad: #be123c;
+      --bad-soft: #ffe4e6;
+      --shadow: 0 16px 42px rgba(23, 32, 51, 0.08);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 0%, rgba(2, 132, 199, 0.09), transparent 28rem),
+        radial-gradient(circle at 93% 7%, rgba(249, 115, 22, 0.08), transparent 26rem),
+        var(--page);
+      font-family: Inter, "PingFang SC", "Microsoft YaHei", system-ui, -apple-system, sans-serif;
+      line-height: 1.55;
+    }
+
+    header {
+      color: #fff;
+      background: linear-gradient(125deg, var(--navy), var(--navy-2));
+      border-bottom: 4px solid #29446f;
+    }
+
+    .header-inner,
+    main {
+      width: min(1480px, calc(100% - 36px));
+      margin: 0 auto;
+    }
+
+    .header-inner {
+      padding: 34px 0 30px;
+    }
+
+    .eyebrow {
+      margin-bottom: 8px;
+      color: #91d5ff;
+      font-size: 12px;
+      font-weight: 800;
+      letter-spacing: 0.13em;
+      text-transform: uppercase;
+    }
+
+    h1 {
+      margin: 0;
+      max-width: 980px;
+      font-size: clamp(27px, 4vw, 46px);
+      line-height: 1.16;
+      letter-spacing: -0.025em;
+    }
+
+    .subtitle {
+      max-width: 1060px;
+      margin: 15px 0 0;
+      color: #cbd7ea;
+      font-size: 15px;
+    }
+
+    main {
+      padding: 24px 0 52px;
+    }
+
+    .panel {
+      margin-bottom: 18px;
+      padding: 22px;
+      overflow: hidden;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 16px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel h2 {
+      margin: 0 0 5px;
+      font-size: 20px;
+      letter-spacing: -0.01em;
+    }
+
+    .panel-lead {
+      margin: 0 0 18px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .callout {
+      margin-bottom: 18px;
+      padding: 14px 16px;
+      color: #4b3410;
+      background: var(--warn-soft);
+      border: 1px solid #f4d58d;
+      border-left: 5px solid #d97706;
+      border-radius: 11px;
+    }
+
+    .callout strong {
+      color: #7c2d12;
+    }
+
+    .preset-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+
+    button {
+      padding: 8px 12px;
+      color: #263653;
+      background: #f7f9fd;
+      border: 1px solid #cbd5e1;
+      border-radius: 9px;
+      font: inherit;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+    }
+
+    button:hover {
+      color: #0f4c81;
+      background: #eef6ff;
+      border-color: #7db8e0;
+    }
+
+    button.active {
+      color: #fff;
+      background: #245c93;
+      border-color: #245c93;
+    }
+
+    .control-grid {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(150px, 1fr));
+      gap: 13px;
+    }
+
+    label.control {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: 5px;
+      color: #46536c;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    input,
+    select,
+    textarea {
+      width: 100%;
+      min-height: 39px;
+      padding: 8px 10px;
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+      outline: none;
+      font: inherit;
+      font-size: 13px;
+    }
+
+    input:focus,
+    select:focus,
+    textarea:focus {
+      border-color: #3886bd;
+      box-shadow: 0 0 0 3px rgba(56, 134, 189, 0.12);
+    }
+
+    textarea {
+      min-height: 78px;
+      resize: vertical;
+    }
+
+    .wide {
+      grid-column: span 2;
+    }
+
+    .check-control {
+      justify-content: flex-end;
+    }
+
+    .check-line {
+      display: flex;
+      min-height: 39px;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 10px;
+      background: #f8fafc;
+      border: 1px solid #cbd5e1;
+      border-radius: 8px;
+    }
+
+    .check-line input {
+      width: 17px;
+      min-height: 17px;
+      margin: 0;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+
+    .formula-line {
+      margin-top: 14px;
+      padding: 10px 12px;
+      color: #334155;
+      background: #f8fafc;
+      border: 1px dashed #cbd5e1;
+      border-radius: 9px;
+      font-family: "SFMono-Regular", Consolas, monospace;
+      font-size: 12px;
+    }
+
+    .error {
+      display: none;
+      margin-top: 12px;
+      padding: 9px 12px;
+      color: #9f1239;
+      background: var(--bad-soft);
+      border: 1px solid #fda4af;
+      border-radius: 8px;
+      font-size: 13px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(150px, 1fr));
+      gap: 12px;
+      margin-bottom: 18px;
+    }
+
+    .metric {
+      min-height: 106px;
+      padding: 15px;
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 13px;
+      box-shadow: 0 9px 24px rgba(23, 32, 51, 0.055);
+    }
+
+    .metric .label {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .metric .value {
+      margin-top: 5px;
+      color: #172c4f;
+      font-size: 25px;
+      font-weight: 850;
+      line-height: 1.15;
+    }
+
+    .metric .detail {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .metric.good .value {
+      color: var(--fix);
+    }
+
+    .metric.bad .value {
+      color: var(--bad);
+    }
+
+    .takeaway {
+      padding: 15px 17px;
+      background: linear-gradient(90deg, #eef7ff, #f7fbff);
+      border: 1px solid #b9d9f0;
+      border-radius: 12px;
+      font-size: 14px;
+    }
+
+    .takeaway strong {
+      color: #124b75;
+    }
+
+    .selector-row {
+      display: grid;
+      grid-template-columns: auto minmax(180px, 520px) auto;
+      align-items: center;
+      gap: 12px;
+      margin: 10px 0 18px;
+      color: var(--muted);
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .selector-row input {
+      padding: 0;
+    }
+
+    .flow-compare {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .flow-card {
+      min-width: 0;
+      padding: 16px;
+      background: #fbfcfe;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    .flow-card.old {
+      border-top: 4px solid #94a3b8;
+    }
+
+    .flow-card.fixed {
+      border-top: 4px solid var(--fix);
+    }
+
+    .flow-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: 13px;
+      font-size: 15px;
+      font-weight: 800;
+    }
+
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 3px 8px;
+      color: #475569;
+      background: #eef2f7;
+      border-radius: 999px;
+      font-size: 10px;
+      font-weight: 800;
+    }
+
+    .tag.fix {
+      color: #065f46;
+      background: var(--fix-soft);
+    }
+
+    .flow {
+      display: flex;
+      min-width: 650px;
+      align-items: stretch;
+      gap: 7px;
+    }
+
+    .flow-scroll {
+      padding-bottom: 5px;
+      overflow-x: auto;
+    }
+
+    .node {
+      display: flex;
+      min-width: 110px;
+      min-height: 72px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 8px 10px;
+      text-align: center;
+      background: #fff;
+      border: 1px solid #cbd5e1;
+      border-radius: 9px;
+    }
+
+    .node.g1 {
+      background: var(--g1-soft);
+      border-color: #fdba74;
+    }
+
+    .node.g2 {
+      background: var(--g2-soft);
+      border-color: #7dd3fc;
+    }
+
+    .node.next {
+      background: #ecfdf5;
+      border-color: #6ee7b7;
+    }
+
+    .node .top {
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .node .big {
+      margin-top: 3px;
+      font-size: 19px;
+      font-weight: 850;
+    }
+
+    .arrow {
+      display: flex;
+      align-items: center;
+      color: #94a3b8;
+      font-size: 20px;
+      font-weight: 900;
+    }
+
+    .decision {
+      margin-top: 12px;
+      padding: 9px 11px;
+      color: #475569;
+      background: #fff;
+      border: 1px dashed #cbd5e1;
+      border-radius: 8px;
+      font-size: 12px;
+    }
+
+    .decision.hit {
+      color: #065f46;
+      background: var(--fix-soft);
+      border-color: #6ee7b7;
+    }
+
+    .legend {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 14px;
+      margin: 10px 0 13px;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .legend span {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .swatch {
+      width: 23px;
+      height: 14px;
+      border: 1px solid rgba(0, 0, 0, 0.08);
+      border-radius: 3px;
+    }
+
+    .swatch.g1 {
+      background: var(--g1);
+    }
+
+    .swatch.g2 {
+      background: var(--g2);
+    }
+
+    .swatch.split {
+      background: linear-gradient(to bottom, var(--g1) 0 50%, var(--g2) 50% 100%);
+    }
+
+    .swatch.begin {
+      background: #fff;
+      border-left: 4px solid #e11d48;
+    }
+
+    .maps {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+    }
+
+    .map-card {
+      min-width: 0;
+      padding: 13px;
+      background: #fbfcfe;
+      border: 1px solid var(--line);
+      border-radius: 11px;
+    }
+
+    .map-card h3 {
+      margin: 0 0 9px;
+      font-size: 14px;
+    }
+
+    .map-scroll {
+      padding-bottom: 7px;
+      overflow-x: auto;
+    }
+
+    .heat-grid {
+      display: grid;
+      align-items: stretch;
+      gap: 2px;
+    }
+
+    .heat-label,
+    .core-head {
+      display: flex;
+      min-height: 22px;
+      align-items: center;
+      justify-content: center;
+      color: #64748b;
+      font-size: 9px;
+      font-weight: 800;
+    }
+
+    .heat-label {
+      justify-content: flex-start;
+      padding-left: 4px;
+      white-space: nowrap;
+    }
+
+    .wave-cell {
+      position: relative;
+      min-width: 20px;
+      height: 26px;
+      overflow: hidden;
+      background: #f1f5f9;
+      border: 1px solid #e2e8f0;
+      border-radius: 3px;
+    }
+
+    .wave-cell .half {
+      display: block;
+      width: 100%;
+      height: 50%;
+      opacity: 0.10;
+    }
+
+    .wave-cell .half.g1 {
+      background: var(--g1);
+    }
+
+    .wave-cell .half.g2 {
+      background: var(--g2);
+    }
+
+    .wave-cell .half.extra {
+      opacity: 0.92;
+    }
+
+    .wave-cell.begin {
+      border-left: 3px solid #e11d48;
+    }
+
+    .wave-cell.g2-begin {
+      border-bottom: 3px solid #0369a1;
+    }
+
+    .wave-cell.selected {
+      outline: 2px solid #111827;
+      outline-offset: 0;
+    }
+
+    .load-title {
+      margin: 14px 0 7px;
+      color: #475569;
+      font-size: 11px;
+      font-weight: 800;
+    }
+
+    .load-grid {
+      display: grid;
+      gap: 3px;
+    }
+
+    .load-cell {
+      display: flex;
+      min-width: 35px;
+      min-height: 45px;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: #172033;
+      border: 1px solid rgba(100, 116, 139, 0.22);
+      border-radius: 5px;
+      font-size: 9px;
+    }
+
+    .load-cell strong {
+      font-size: 11px;
+    }
+
+    .map-caption {
+      margin: 9px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .explain-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 15px;
+    }
+
+    .explain-box {
+      padding: 16px;
+      border: 1px solid var(--line);
+      border-radius: 12px;
+    }
+
+    .explain-box.good {
+      background: #f2fbf7;
+      border-color: #a7e4cd;
+    }
+
+    .explain-box.warn {
+      background: #fffaf0;
+      border-color: #efd59e;
+    }
+
+    .explain-box h3 {
+      margin: 0 0 8px;
+      font-size: 15px;
+    }
+
+    .explain-box ul,
+    .trap-grid {
+      margin: 0;
+      padding-left: 19px;
+      color: #43506a;
+      font-size: 13px;
+    }
+
+    .explain-box li,
+    .trap-grid li {
+      margin: 7px 0;
+    }
+
+    pre {
+      margin: 13px 0 0;
+      padding: 14px;
+      overflow-x: auto;
+      color: #d9e7ff;
+      background: #111b31;
+      border-radius: 10px;
+      font: 12px/1.55 "SFMono-Regular", Consolas, monospace;
+    }
+
+    code {
+      font-family: "SFMono-Regular", Consolas, monospace;
+    }
+
+    .trap-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px 28px;
+      padding-left: 20px;
+    }
+
+    .footer-note {
+      margin: 18px 0 0;
+      color: var(--muted);
+      font-size: 11px;
+      text-align: right;
+    }
+
+    @media (max-width: 1050px) {
+      .control-grid,
+      .summary-grid {
+        grid-template-columns: repeat(2, minmax(150px, 1fr));
+      }
+
+      .flow-compare,
+      .maps,
+      .explain-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 640px) {
+      .header-inner,
+      main {
+        width: min(100% - 20px, 1480px);
+      }
+
+      .panel {
+        padding: 16px;
+        border-radius: 12px;
+      }
+
+      .control-grid,
+      .summary-grid,
+      .trap-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .wide {
+        grid-column: span 1;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="header-inner">
+      <div class="eyebrow">MegaMoe · AIC rolling scheduler audit</div>
+      <h1>热点核为何跨 wave 固定，以及当前 cursor 修复如何打散它</h1>
+      <p class="subtitle">
+        这是 owner-level 调度模型：严格复现 startBlockIdx 的模 36 推进和当前 exact-resonance 条件，
+        用来观察每个 stage 的“余数 tile”落在哪些 AIC 上。它不是 cycle-accurate 性能 trace。
+      </p>
+    </div>
+  </header>
+
+  <main>
+    <section class="panel">
+      <h2>输入与预设</h2>
+      <p class="panel-lead">
+        默认例子故意构造 GMM1=60 tiles、GMM2=120 tiles：两段合计正好回到 wave 起点，
+        但 GMM1 自己有 24 个余数 tile。
+      </p>
+
+      <div class="callout">
+        <strong>最容易误判的一点：</strong>
+        exact-resonance 例子里，每颗核每个 wave 的“总 tile 数”甚至可以完全一样；
+        热点来自 GMM1/GMM2 的额外任务角色固定，而两类 tile 的真实耗时、依赖等待和访存代价并不相同。
+      </div>
+
+      <div class="preset-row">
+        <button type="button" data-preset="exact">典型 exact resonance</button>
+        <button type="button" data-preset="slow">陷阱：每 wave 只漂 1 核</button>
+        <button type="button" data-preset="counter">陷阱：不均匀 wave 反例</button>
+        <button type="button" data-preset="tail">5+5+5+1 尾块</button>
+        <button type="button" data-preset="balanced">无余数基线</button>
+      </div>
+
+      <div class="control-grid">
+        <label class="control">
+          输入模式
+          <select id="mode">
+            <option value="shape">由 shape 推 tile 数</option>
+            <option value="manual">直接输入每 wave task 数</option>
+          </select>
+        </label>
+
+        <label class="control">
+          AIC 数
+          <input id="cores" type="number" min="2" max="72" step="1" value="36">
+        </label>
+
+        <label class="control">
+          GMM1 tile 相对成本
+          <input id="g1Cost" type="number" min="0.05" max="20" step="0.05" value="1.4">
+        </label>
+
+        <label class="control">
+          GMM2 tile 相对成本
+          <input id="g2Cost" type="number" min="0.05" max="20" step="0.05" value="1">
+        </label>
+
+        <label class="control shape-input wide">
+          每个 wave 的专家数（逗号分隔）
+          <input id="waveExperts" type="text" value="5,5,5,5,5,5,5,5,5">
+        </label>
+
+        <label class="control shape-input">
+          每专家 M（token 行）
+          <input id="mRows" type="number" min="1" max="65536" step="1" value="512">
+        </label>
+
+        <label class="control shape-input">
+          H（GMM2 N）
+          <input id="hDim" type="number" min="1" max="65536" step="1" value="3072">
+        </label>
+
+        <label class="control shape-input">
+          GMM1 的 2N
+          <input id="twoN" type="number" min="2" max="65536" step="2" value="3072">
+        </label>
+
+        <label class="control shape-input check-control">
+          GMM1 scheduler 布局
+          <span class="check-line">
+            <input id="interleave" type="checkbox">
+            <span>interleave（当前默认关闭）</span>
+          </span>
+        </label>
+
+        <label class="control manual-input wide hidden">
+          每 wave 的 GMM1/GMM2 task 对
+          <textarea id="manualTasks">60/120, 60/120, 60/120</textarea>
+        </label>
+      </div>
+
+      <div id="formula" class="formula-line"></div>
+      <div id="error" class="error"></div>
+    </section>
+
+    <section>
+      <div id="summary" class="summary-grid"></div>
+      <div id="takeaway" class="takeaway"></div>
+    </section>
+
+    <section class="panel">
+      <h2>Cursor 推进：修复只改下一 wave 的起点</h2>
+      <p class="panel-lead">
+        当前 wave 内 GMM1 和 GMM2 的 owner 完全不变；补丁在 GMM2 全部结束并 publish ready 后，
+        才可能把下一 wave 的起点从 S2 改为 S1。
+      </p>
+
+      <div class="selector-row">
+        <span>观察 wave</span>
+        <input id="waveSlider" type="range" min="0" max="8" step="1" value="0">
+        <span id="waveLabel">W0</span>
+      </div>
+
+      <div class="flow-compare">
+        <div class="flow-card old">
+          <div class="flow-title">
+            <span>修复前</span>
+            <span class="tag">自然 rolling cursor</span>
+          </div>
+          <div id="oldFlow"></div>
+        </div>
+
+        <div class="flow-card fixed">
+          <div class="flow-title">
+            <span>当前实现</span>
+            <span class="tag fix">MEGA_MOE_BREAK_FIXED_CORE_RESONANCE=1</span>
+          </div>
+          <div id="fixedFlow"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>逐 wave 余数 tile owner 图</h2>
+      <p class="panel-lead">
+        每格代表一颗物理 AIC。上半橙色表示该核比 GMM1 的平均整轮多拿 1 tile；
+        下半蓝色表示该核比 GMM2 的平均整轮多拿 1 tile。
+      </p>
+
+      <div class="legend">
+        <span><i class="swatch g1"></i>GMM1 余数 owner</span>
+        <span><i class="swatch g2"></i>GMM2 余数 owner</span>
+        <span><i class="swatch split"></i>同核同时命中两段余数</span>
+        <span><i class="swatch begin"></i>wave begin cursor</span>
+        <span>蓝色下边线：GMM2 begin cursor</span>
+      </div>
+
+      <div class="maps">
+        <div class="map-card">
+          <h3>修复前：角色可能固定在同一批核</h3>
+          <div id="oldMap"></div>
+        </div>
+        <div class="map-card">
+          <h3>当前实现：exact resonance 时旋转下一 wave</h3>
+          <div id="fixedMap"></div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <h2>当前代码实际做了什么</h2>
+      <div class="explain-grid">
+        <div class="explain-box good">
+          <h3>它解决的范围</h3>
+          <ul>
+            <li>检测整 wave 的自然结束 cursor 是否精确回到 wave 起点。</li>
+            <li>同时要求 GMM1 自己有非零余数，排除 GMM1 已经完全均分的情况。</li>
+            <li>命中时使用 GMM1 end cursor 作为下一 wave 起点，让较重 stage 的余数 owner 跨 wave 轮转。</li>
+            <li>只发生在仍有下一 wave 时；最后一波不做无意义改写。</li>
+          </ul>
+        </div>
+
+        <div class="explain-box warn">
+          <h3>安全边界</h3>
+          <ul>
+            <li>不改变当前 wave 的 tile、地址、同步或 ready 粒度。</li>
+            <li>AIC、AIV0、AIV1 各自维护本地 cursor，但必须用相同 tileNum 做完全一致的虚拟推进。</li>
+            <li>当前逻辑仅位于 direct-GM rebuild 的 ProcessGmm2GmWaves 路径，不覆盖 legacy/layered 调度。</li>
+            <li>收益假设是“重复 stage 角色”确实主导关键路径，仍需宏开关 A/B 上板证明。</li>
+          </ul>
+        </div>
+      </div>
+
+      <pre>gmm1End = (waveBegin + gmm1Tiles) % aicNum
+gmm2End = (gmm1End + gmm2Tiles) % aicNum
+
+fixedRoleResonance =
+    (gmm2End == waveBegin) &amp;&amp;
+    (gmm1End != waveBegin)
+
+nextWaveBegin = fixedRoleResonance ? gmm1End : gmm2End</pre>
+    </section>
+
+    <section class="panel">
+      <h2>需要警惕的陷阱</h2>
+      <ol class="trap-grid">
+        <li>
+          <strong>只抓 exact resonance。</strong>
+          若整 wave 每次只前移 1 核，角色在有限 wave 内仍高度重叠，但当前条件不会触发。点击“每 wave 只漂 1 核”可见。
+        </li>
+        <li>
+          <strong>tile 数不等于耗时。</strong>
+          GMM1/GMM2 的 K、访存、等待和尾 tile 成本不同；上面的成本权重只是观察假设，不是硬件测量。
+        </li>
+        <li>
+          <strong>不均匀 token 可能天然抵消，也可能反向。</strong>
+          某个 exact wave 的强制旋转，可能破坏后续不规则 wave 原本更好的自然去相关；“不均匀 wave 反例”展示一个合成反例。
+        </li>
+        <li>
+          <strong>均衡需要足够多 wave。</strong>
+          固定步长 r1 只访问 C/gcd(C,r1) 个 phase；通常一整个周期后才完全均摊，短序列仍可能偏斜。
+        </li>
+        <li>
+          <strong>最后一波不会被修。</strong>
+          hasNextWave=false 是合理的，因为没有下一 wave；所以 5+5+5+1 的尾块不均衡仍需单独的 tail tiling 方案。
+        </li>
+        <li>
+          <strong>慢核与 locality 不在模型内。</strong>
+          轮转可能把额外任务交给物理慢核，也会改变每核访问的 tile 区域；平均更均匀不保证单次 latency 必然更低。
+        </li>
+        <li>
+          <strong>interleave 会改变 GMM1 tileNum。</strong>
+          开关变化后是否命中 exact resonance 也会变化；当前默认关闭，比较时必须固定权重布局和编译宏。
+        </li>
+        <li>
+          <strong>cursor lockstep 是正确性前提。</strong>
+          未来若某种 dtype/空专家分支让 AIC 与 AIV 的 startBlockIdx 推进不一致，可能造成 epilogue 配对错误甚至等待挂死。
+        </li>
+      </ol>
+    </section>
+
+    <section class="panel">
+      <h2>建议怎样验证</h2>
+      <div class="explain-grid">
+        <div class="explain-box">
+          <h3>必须做的 A/B</h3>
+          <ul>
+            <li>同一编译、同一权重布局，只切换 MEGA_MOE_BREAK_FIXED_CORE_RESONANCE=0/1。</li>
+            <li>分别测：exact、多 wave；shift=1 的 near resonance；随机不均匀 M；5+5+5+1 尾波。</li>
+            <li>至少看 P50/P90 和多次方差，不能只看一个最优点。</li>
+          </ul>
+        </div>
+        <div class="explain-box">
+          <h3>最有判别力的 trace</h3>
+          <ul>
+            <li>每 wave 记录 waveBegin、gmm1End、gmm2End，先确认实际命中次数。</li>
+            <li>按 AIC 记录 GMM1/GMM2 首尾，观察 stage 尾部是否从固定核组轮转。</li>
+            <li>同时记录算子总耗时；热点图变均匀但总耗时不变，说明瓶颈不在 AIC 余数 owner。</li>
+          </ul>
+        </div>
+      </div>
+      <p class="footer-note">
+        Shape 模式复现 generic A8W8/A4W4 direct-GM 路径的 256×256 scheduler；其他路径请用“直接输入 task 数”。
+      </p>
+    </section>
+  </main>
+
+  <script>
+    (function () {
+      "use strict";
+
+      function byId(id) {
+        return document.getElementById(id);
+      }
+
+      function ceilDiv(a, b) {
+        return Math.floor((a + b - 1) / b);
+      }
+
+      function gcd(a, b) {
+        while (b !== 0) {
+          var t = a % b;
+          a = b;
+          b = t;
+        }
+        return a;
+      }
+
+      function parsePositiveInt(value, name, min, max) {
+        var n = Number(value);
+        if (!Number.isInteger(n) || n < min || n > max) {
+          throw new Error(name + " 必须是 [" + min + ", " + max + "] 内的整数");
+        }
+        return n;
+      }
+
+      function parsePositiveFloat(value, name) {
+        var n = Number(value);
+        if (!Number.isFinite(n) || n <= 0) {
+          throw new Error(name + " 必须大于 0");
+        }
+        return n;
+      }
+
+      function parseList(value, name) {
+        var items = value.split(/[\s,，]+/).filter(Boolean).map(Number);
+        if (items.length === 0 || items.some(function (n) { return !Number.isInteger(n) || n <= 0; })) {
+          throw new Error(name + " 需要填写正整数列表");
+        }
+        if (items.length > 64) {
+          throw new Error("最多展示 64 个 wave");
+        }
+        return items;
+      }
+
+      function parseManualTasks(value) {
+        var result = [];
+        var pattern = /(\d+)\s*\/\s*(\d+)/g;
+        var match;
+        while ((match = pattern.exec(value)) !== null) {
+          result.push({ g1: Number(match[1]), g2: Number(match[2]), experts: null });
+        }
+        if (result.length === 0) {
+          throw new Error("手工模式格式示例：60/120, 60/121");
+        }
+        if (result.length > 64) {
+          throw new Error("最多展示 64 个 wave");
+        }
+        return result;
+      }
+
+      function buildTasks() {
+        var mode = byId("mode").value;
+        var cores = parsePositiveInt(byId("cores").value, "AIC 数", 2, 72);
+        var g1Cost = parsePositiveFloat(byId("g1Cost").value, "GMM1 成本");
+        var g2Cost = parsePositiveFloat(byId("g2Cost").value, "GMM2 成本");
+        var tasks;
+        var formula;
+
+        if (mode === "manual") {
+          tasks = parseManualTasks(byId("manualTasks").value);
+          formula = "手工 task 模式：每对数字直接作为该 wave 的 GMM1/GMM2 scheduler tileNum。";
+        } else {
+          var experts = parseList(byId("waveExperts").value, "wave 专家数");
+          var m = parsePositiveInt(byId("mRows").value, "M", 1, 65536);
+          var h = parsePositiveInt(byId("hDim").value, "H", 1, 65536);
+          var twoN = parsePositiveInt(byId("twoN").value, "2N", 2, 65536);
+          var interleave = byId("interleave").checked;
+          var mTiles = ceilDiv(m, 256);
+          var schedulerN = interleave ? twoN : Math.floor(twoN / 2);
+          var g1TilesPerExpert = mTiles * ceilDiv(schedulerN, 256);
+          var g2TilesPerExpert = mTiles * ceilDiv(h, 256);
+          tasks = experts.map(function (e) {
+            return {
+              g1: e * g1TilesPerExpert,
+              g2: e * g2TilesPerExpert,
+              experts: e
+            };
+          });
+          formula =
+            "M tiles=" + mTiles +
+            "；GMM1/expert=" + g1TilesPerExpert +
+            "（schedulerN=" + schedulerN + "）" +
+            "；GMM2/expert=" + g2TilesPerExpert +
+            "；每 wave 再乘专家数。";
+        }
+
+        return {
+          mode: mode,
+          cores: cores,
+          g1Cost: g1Cost,
+          g2Cost: g2Cost,
+          tasks: tasks,
+          formula: formula
+        };
+      }
+
+      function stage(start, total, cores) {
+        var base = Math.floor(total / cores);
+        var remainder = total % cores;
+        var counts = new Array(cores).fill(base);
+        var extra = new Array(cores).fill(false);
+        for (var i = 0; i < remainder; i += 1) {
+          var owner = (start + i) % cores;
+          counts[owner] += 1;
+          extra[owner] = true;
+        }
+        return {
+          start: start,
+          end: (start + total) % cores,
+          total: total,
+          base: base,
+          remainder: remainder,
+          counts: counts,
+          extra: extra
+        };
+      }
+
+      function simulate(config, repairEnabled) {
+        var cursor = 0;
+        var cumulativeG1 = new Array(config.cores).fill(0);
+        var cumulativeG2 = new Array(config.cores).fill(0);
+        var cumulativeLoad = new Array(config.cores).fill(0);
+        var waves = [];
+
+        config.tasks.forEach(function (task, waveIdx) {
+          var begin = cursor;
+          var g1 = stage(begin, task.g1, config.cores);
+          var g2 = stage(g1.end, task.g2, config.cores);
+          var naturalNext = g2.end;
+          var hasNext = waveIdx + 1 < config.tasks.length;
+          var trigger = hasNext && naturalNext === begin && g1.end !== begin;
+          var repaired = repairEnabled && trigger;
+          var next = repaired ? g1.end : naturalNext;
+
+          for (var core = 0; core < config.cores; core += 1) {
+            cumulativeG1[core] += g1.counts[core];
+            cumulativeG2[core] += g2.counts[core];
+            cumulativeLoad[core] +=
+              g1.counts[core] * config.g1Cost + g2.counts[core] * config.g2Cost;
+          }
+
+          waves.push({
+            index: waveIdx,
+            begin: begin,
+            g1: g1,
+            g2: g2,
+            naturalNext: naturalNext,
+            next: next,
+            trigger: trigger,
+            repaired: repaired,
+            experts: task.experts
+          });
+          cursor = next;
+        });
+
+        return {
+          waves: waves,
+          cumulativeG1: cumulativeG1,
+          cumulativeG2: cumulativeG2,
+          cumulativeLoad: cumulativeLoad
+        };
+      }
+
+      function spread(values) {
+        return Math.max.apply(null, values) - Math.min.apply(null, values);
+      }
+
+      function uniqueBegins(simulation) {
+        return new Set(simulation.waves.map(function (w) { return w.begin; })).size;
+      }
+
+      function formatNumber(n) {
+        if (Math.abs(n - Math.round(n)) < 1e-9) {
+          return String(Math.round(n));
+        }
+        return n.toFixed(2);
+      }
+
+      function metric(label, value, detail, kind) {
+        return (
+          '<div class="metric ' + (kind || "") + '">' +
+            '<div class="label">' + label + '</div>' +
+            '<div class="value">' + value + '</div>' +
+            '<div class="detail">' + detail + '</div>' +
+          '</div>'
+        );
+      }
+
+      function renderSummary(config, oldSim, fixedSim) {
+        var triggers = fixedSim.waves.filter(function (w) { return w.repaired; }).length;
+        var oldSpread = spread(oldSim.cumulativeLoad);
+        var fixedSpread = spread(fixedSim.cumulativeLoad);
+        var gain = oldSpread - fixedSpread;
+        var gainKind = gain > 1e-9 ? "good" : (gain < -1e-9 ? "bad" : "");
+        var gainText = gain > 1e-9 ? "下降 " + formatNumber(gain) :
+          (gain < -1e-9 ? "上升 " + formatNumber(-gain) : "不变");
+
+        byId("summary").innerHTML =
+          metric("当前条件命中", triggers + " / " + config.tasks.length,
+            "末 wave 的 exact resonance 不改 cursor", triggers > 0 ? "good" : "") +
+          metric("修复前 begin phase", uniqueBegins(oldSim) + " 个",
+            oldSim.waves.map(function (w) { return w.begin; }).join(" → ")) +
+          metric("修复后 begin phase", uniqueBegins(fixedSim) + " 个",
+            fixedSim.waves.map(function (w) { return w.begin; }).join(" → "), triggers > 0 ? "good" : "") +
+          metric("修复前累计负载差", formatNumber(oldSpread),
+            "max(core load) - min(core load)") +
+          metric("修复后负载差", formatNumber(fixedSpread),
+            "相对修复前" + gainText, gainKind);
+
+        var text;
+        if (gain > 1e-9) {
+          text = "<strong>这个输入符合补丁目标：</strong> exact resonance 让 stage 角色固定；" +
+            "改用 GMM1 end cursor 后，累计加权负载差从 " + formatNumber(oldSpread) +
+            " 降到 " + formatNumber(fixedSpread) + "。";
+        } else if (gain < -1e-9) {
+          text = "<strong>这是一个需要警惕的反例：</strong> owner-level 合成指标在修复后反而更差。" +
+            "说明不均匀 wave 下，单波 exact 条件不是全局最优判据，必须保留宏 A/B。";
+        } else if (triggers === 0) {
+          text = "<strong>当前修复没有介入：</strong> 没有同时满足 S2=S0 且 S1≠S0。" +
+            "如果图上仍有热点，它属于 near resonance、尾块或其他瓶颈。";
+        } else {
+          text = "<strong>修复确实触发，但这个指标不变：</strong> 可能是 GMM1/GMM2 成本相同、" +
+            "wave 数不足或任务模式天然抵消。需要真实 timestamp 判断关键路径。";
+        }
+        byId("takeaway").innerHTML = text;
+      }
+
+      function node(kind, top, big) {
+        return (
+          '<div class="node ' + kind + '">' +
+            '<span class="top">' + top + '</span>' +
+            '<span class="big">' + big + '</span>' +
+          '</div>'
+        );
+      }
+
+      function renderFlow(targetId, wave, isFixed) {
+        var triggerText;
+        var decisionClass = "decision";
+        if (wave.trigger) {
+          if (isFixed && wave.repaired) {
+            triggerText =
+              "命中：S2 = S0 且 S1 ≠ S0；下一 wave 从自然 S2=" + wave.naturalNext +
+              " 改为 GMM1 end S1=" + wave.next + "。";
+            decisionClass += " hit";
+          } else {
+            triggerText =
+              "这里会发生固定角色：S2 回到 S0=" + wave.begin +
+              "；旧逻辑下一 wave 仍从 " + wave.next + " 开始。";
+          }
+        } else {
+          triggerText =
+            "不触发：自然结束 S2=" + wave.naturalNext +
+            "，下一 wave 从 " + wave.next + " 开始。";
+        }
+
+        var html =
+          '<div class="flow-scroll"><div class="flow">' +
+            node("", "wave begin", "S0=" + wave.begin) +
+            '<div class="arrow">→</div>' +
+            node("g1", "GMM1 +" + wave.g1.total + " tiles", "S1=" + wave.g1.end) +
+            '<div class="arrow">→</div>' +
+            node("g2", "GMM2 +" + wave.g2.total + " tiles", "S2=" + wave.naturalNext) +
+            '<div class="arrow">→</div>' +
+            node("next", "next wave begin", "S=" + wave.next) +
+          '</div></div>' +
+          '<div class="' + decisionClass + '">' + triggerText + '</div>';
+        byId(targetId).innerHTML = html;
+      }
+
+      function heatColor(value, min, max) {
+        if (max <= min + 1e-12) {
+          return "hsl(156 54% 86%)";
+        }
+        var ratio = (value - min) / (max - min);
+        var hue = 48 - ratio * 44;
+        var light = 92 - ratio * 42;
+        return "hsl(" + hue.toFixed(1) + " 88% " + light.toFixed(1) + "%)";
+      }
+
+      function renderMap(targetId, simulation, config, selectedWave) {
+        var target = byId(targetId);
+        target.innerHTML = "";
+
+        var scroll = document.createElement("div");
+        scroll.className = "map-scroll";
+        var grid = document.createElement("div");
+        grid.className = "heat-grid";
+        grid.style.gridTemplateColumns =
+          "76px repeat(" + config.cores + ", minmax(20px, 1fr))";
+        grid.style.minWidth = (76 + config.cores * 22) + "px";
+
+        var blank = document.createElement("div");
+        blank.className = "core-head";
+        blank.textContent = "wave/core";
+        grid.appendChild(blank);
+        for (var core = 0; core < config.cores; core += 1) {
+          var head = document.createElement("div");
+          head.className = "core-head";
+          head.textContent = core;
+          grid.appendChild(head);
+        }
+
+        simulation.waves.forEach(function (wave) {
+          var label = document.createElement("div");
+          label.className = "heat-label";
+          label.textContent = "W" + wave.index + " · S" + wave.begin;
+          label.title =
+            "GMM1=" + wave.g1.total + ", GMM2=" + wave.g2.total +
+            ", natural next=" + wave.naturalNext + ", chosen next=" + wave.next;
+          grid.appendChild(label);
+
+          for (var i = 0; i < config.cores; i += 1) {
+            var cell = document.createElement("div");
+            cell.className = "wave-cell";
+            if (i === wave.begin) {
+              cell.classList.add("begin");
+            }
+            if (i === wave.g1.end) {
+              cell.classList.add("g2-begin");
+            }
+            if (wave.index === selectedWave) {
+              cell.classList.add("selected");
+            }
+            var g1Half = document.createElement("span");
+            g1Half.className = "half g1" + (wave.g1.extra[i] ? " extra" : "");
+            var g2Half = document.createElement("span");
+            g2Half.className = "half g2" + (wave.g2.extra[i] ? " extra" : "");
+            cell.appendChild(g1Half);
+            cell.appendChild(g2Half);
+            cell.title =
+              "W" + wave.index + " / AIC" + i +
+              "\nGMM1 tiles=" + wave.g1.counts[i] +
+              (wave.g1.extra[i] ? "（余数 owner）" : "") +
+              "\nGMM2 tiles=" + wave.g2.counts[i] +
+              (wave.g2.extra[i] ? "（余数 owner）" : "") +
+              "\n加权 load=" +
+              formatNumber(wave.g1.counts[i] * config.g1Cost + wave.g2.counts[i] * config.g2Cost);
+            grid.appendChild(cell);
+          }
+        });
+
+        scroll.appendChild(grid);
+        target.appendChild(scroll);
+
+        var loadTitle = document.createElement("div");
+        loadTitle.className = "load-title";
+        loadTitle.textContent = "所有 wave 累计加权负载（悬停查看 GMM1/GMM2 tile 数）";
+        target.appendChild(loadTitle);
+
+        var loadScroll = document.createElement("div");
+        loadScroll.className = "map-scroll";
+        var loads = document.createElement("div");
+        loads.className = "load-grid";
+        loads.style.gridTemplateColumns =
+          "repeat(" + config.cores + ", minmax(35px, 1fr))";
+        loads.style.minWidth = (config.cores * 38) + "px";
+        var minLoad = Math.min.apply(null, simulation.cumulativeLoad);
+        var maxLoad = Math.max.apply(null, simulation.cumulativeLoad);
+        simulation.cumulativeLoad.forEach(function (value, i) {
+          var load = document.createElement("div");
+          load.className = "load-cell";
+          load.style.background = heatColor(value, minLoad, maxLoad);
+          if (Math.abs(value - maxLoad) < 1e-9 && maxLoad > minLoad) {
+            load.style.borderColor = "#be123c";
+            load.style.borderWidth = "2px";
+          }
+          load.innerHTML = "<span>AIC" + i + "</span><strong>" + formatNumber(value) + "</strong>";
+          load.title =
+            "AIC" + i +
+            "\n累计 GMM1 tiles=" + simulation.cumulativeG1[i] +
+            "\n累计 GMM2 tiles=" + simulation.cumulativeG2[i] +
+            "\n加权 load=" + formatNumber(value);
+          loads.appendChild(load);
+        });
+        loadScroll.appendChild(loads);
+        target.appendChild(loadScroll);
+
+        var caption = document.createElement("p");
+        caption.className = "map-caption";
+        caption.textContent =
+          "累计差=" + formatNumber(spread(simulation.cumulativeLoad)) +
+          "；begin phases=" +
+          simulation.waves.map(function (w) { return w.begin; }).join(" → ");
+        target.appendChild(caption);
+      }
+
+      var currentConfig = null;
+      var currentOld = null;
+      var currentFixed = null;
+
+      function updateModeVisibility() {
+        var manual = byId("mode").value === "manual";
+        document.querySelectorAll(".shape-input").forEach(function (el) {
+          el.classList.toggle("hidden", manual);
+        });
+        document.querySelectorAll(".manual-input").forEach(function (el) {
+          el.classList.toggle("hidden", !manual);
+        });
+      }
+
+      function renderSelectedWave() {
+        if (!currentConfig) {
+          return;
+        }
+        var selected = Number(byId("waveSlider").value);
+        selected = Math.max(0, Math.min(selected, currentConfig.tasks.length - 1));
+        byId("waveSlider").value = String(selected);
+        byId("waveLabel").textContent = "W" + selected;
+        renderFlow("oldFlow", currentOld.waves[selected], false);
+        renderFlow("fixedFlow", currentFixed.waves[selected], true);
+        renderMap("oldMap", currentOld, currentConfig, selected);
+        renderMap("fixedMap", currentFixed, currentConfig, selected);
+      }
+
+      function render() {
+        updateModeVisibility();
+        try {
+          var config = buildTasks();
+          var oldSim = simulate(config, false);
+          var fixedSim = simulate(config, true);
+          currentConfig = config;
+          currentOld = oldSim;
+          currentFixed = fixedSim;
+
+          byId("error").style.display = "none";
+          byId("formula").textContent = config.formula;
+          byId("waveSlider").max = String(config.tasks.length - 1);
+          if (Number(byId("waveSlider").value) >= config.tasks.length) {
+            byId("waveSlider").value = "0";
+          }
+          renderSummary(config, oldSim, fixedSim);
+          renderSelectedWave();
+        } catch (error) {
+          byId("error").textContent = error.message;
+          byId("error").style.display = "block";
+        }
+      }
+
+      var presets = {
+        exact: {
+          mode: "shape",
+          cores: 36,
+          g1Cost: 1.4,
+          g2Cost: 1,
+          experts: "5,5,5,5,5,5,5,5,5",
+          m: 512,
+          h: 3072,
+          twoN: 3072,
+          interleave: false
+        },
+        slow: {
+          mode: "manual",
+          cores: 36,
+          g1Cost: 1.4,
+          g2Cost: 1,
+          tasks: "60/121, 60/121, 60/121, 60/121, 60/121, 60/121, 60/121, 60/121, 60/121, 60/121, 60/121, 60/121"
+        },
+        counter: {
+          mode: "manual",
+          cores: 36,
+          g1Cost: 1.4,
+          g2Cost: 1,
+          tasks: "60/120, 55/77, 38/107, 65/79, 37/81"
+        },
+        tail: {
+          mode: "shape",
+          cores: 36,
+          g1Cost: 1.4,
+          g2Cost: 1,
+          experts: "5,5,5,1",
+          m: 512,
+          h: 3072,
+          twoN: 3072,
+          interleave: false
+        },
+        balanced: {
+          mode: "manual",
+          cores: 36,
+          g1Cost: 1.4,
+          g2Cost: 1,
+          tasks: "72/108, 72/108, 72/108, 72/108, 72/108"
+        }
+      };
+
+      function applyPreset(name) {
+        var p = presets[name];
+        byId("mode").value = p.mode;
+        byId("cores").value = p.cores;
+        byId("g1Cost").value = p.g1Cost;
+        byId("g2Cost").value = p.g2Cost;
+        if (p.mode === "shape") {
+          byId("waveExperts").value = p.experts;
+          byId("mRows").value = p.m;
+          byId("hDim").value = p.h;
+          byId("twoN").value = p.twoN;
+          byId("interleave").checked = p.interleave;
+        } else {
+          byId("manualTasks").value = p.tasks;
+        }
+        byId("waveSlider").value = "0";
+        document.querySelectorAll("[data-preset]").forEach(function (button) {
+          button.classList.toggle("active", button.getAttribute("data-preset") === name);
+        });
+        render();
+      }
+
+      document.querySelectorAll("input, select, textarea").forEach(function (control) {
+        control.addEventListener("input", function () {
+          document.querySelectorAll("[data-preset]").forEach(function (button) {
+            button.classList.remove("active");
+          });
+          if (control.id === "waveSlider") {
+            renderSelectedWave();
+          } else {
+            render();
+          }
+        });
+        control.addEventListener("change", function () {
+          if (control.id !== "waveSlider") {
+            render();
+          }
+        });
+      });
+
+      document.querySelectorAll("[data-preset]").forEach(function (button) {
+        button.addEventListener("click", function () {
+          applyPreset(button.getAttribute("data-preset"));
+        });
+      });
+
+      applyPreset("exact");
+    }());
+  </script>
+</body>
+</html>
