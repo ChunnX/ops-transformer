@@ -75,7 +75,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   if ASCEND_IS_AIV {
     cid = cid / 2;
   }
-  auto tmp_ub = ascend_ub.GetWithOffset<uint8_t>(65536, 124928);
+  auto tmp_ub = ascend_ub.GetWithOffset<uint8_t>(65536, 125440);
   auto v0_zero_key_fp32 = ascend_ub.GetWithOffset<float>(512, 0);
   auto v0_zero_ki_fp32 = ascend_ub.GetWithOffset<float>(128, 2048);
   auto v0_zero_rope_fp32 = ascend_ub.GetWithOffset<float>(128, 2560);
@@ -103,7 +103,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v1_p_eps = ascend_ub.GetWithOffset<float>(128, 54784);
   auto v1_p_bmm1 = ascend_ub.GetWithOffset<float>(16384, 55296);
   auto v1_p_tmp = ascend_ub.GetWithOffset<float>(1024, 120832);
-  auto v1_p_out = ascend_ub.GetWithOffset<float>(128, 190464);
+  auto v1_p_out = ascend_ub.GetWithOffset<float>(128, 124928);
   auto v1_sy_weight_half = ascend_ub.GetWithOffset<half>(64, 190976);
   auto v1_sy_weight = ascend_ub.GetWithOffset<float>(64, 191104);
   auto v1_sy_weight_2d = ascend_ub.GetWithOffset<float>(8192, 4608);
@@ -460,7 +460,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             }
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(1);
           }
-          AscendC::CrossCoreSetFlag<0x1, PIPE_MTE3>(12);
+          AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(12);
           AscendC::CrossCoreWaitFlag(12);
         }
         if ASCEND_IS_AIV {
