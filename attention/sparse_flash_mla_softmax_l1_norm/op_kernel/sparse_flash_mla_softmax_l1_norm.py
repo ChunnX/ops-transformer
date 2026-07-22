@@ -99,6 +99,8 @@ class OpTiling:
     max_seqlen_k: int
     k_length: int
     cmp_ratio: int
+    init_per_core_num: int
+    init_total_num: int
     softmax_scale: float
     has_seqused_q: bool
     has_seqused_k: bool
@@ -546,11 +548,23 @@ def sparse_flash_mla_softmax_l1_norm(
                 [1, 1],
                 dtype=pl.DT_INT32,
             )
+            tensor_softmax_l1_norm_init = pl.make_tensor(
+                softmax_l1_norm,
+                [tiling.t1 * tiling.k_length,],
+                [1,],
+                dtype=pl.DT_FP32,
+            )
         else:
             tensor_softmax_l1_norm = pl.make_tensor(
                 softmax_l1_norm,
                 [tiling.t1, 1, tiling.max_seqlen_k],
                 [tiling.max_seqlen_k, tiling.max_seqlen_k, 1],
+                dtype=pl.DT_FP32,
+            )
+            tensor_softmax_l1_norm_init = pl.make_tensor(
+                softmax_l1_norm,
+                [tiling.t1 * 1 * tiling.max_seqlen_k,],
+                [1,],
                 dtype=pl.DT_FP32,
             )
     else:
@@ -591,11 +605,23 @@ def sparse_flash_mla_softmax_l1_norm(
                 [tiling.sq, 1, 1],
                 dtype=pl.DT_INT32,
             )
+            tensor_softmax_l1_norm_init = pl.make_tensor(
+                softmax_l1_norm,
+                [tiling.b * tiling.sq * tiling.k_length],
+                [1,],
+                dtype=pl.DT_FP32,
+            )
         else:
             tensor_softmax_l1_norm = pl.make_tensor(
                 softmax_l1_norm,
                 [tiling.b, tiling.sq, 1, tiling.sk],
                 [tiling.sq * tiling.sk, tiling.sk, tiling.sk, 1],
+                dtype=pl.DT_FP32,
+            )
+            tensor_softmax_l1_norm_init = pl.make_tensor(
+                softmax_l1_norm,
+                [tiling.b * tiling.sq * tiling.sk],
+                [1,],
                 dtype=pl.DT_FP32,
             )
     tensor_cu_seqlens_q = pl.make_tensor(
@@ -720,6 +746,32 @@ def sparse_flash_mla_softmax_l1_norm(
         if IS_SPARSE == 1:
             pl.system.set_cross_core(pipe=pl.PipeType.MTE1, event_id=GATHER_READY_BARKWARD_IDS[0])
             pl.system.set_cross_core(pipe=pl.PipeType.MTE1, event_id=GATHER_READY_BARKWARD_IDS[1])
+    
+    # init output start
+    init_start_offset = tiling.init_per_core_num * (core_id * 2 + sub_id)
+    init_end_offset = init_start_offset + tiling.init_per_core_num
+    init_end_offset = tiling.init_total_num if init_end_offset > tiling.init_total_num else init_end_offset
+    INIT_PER_LOOP_NUM = 8 * 1024
+    init_num = INIT_PER_LOOP_NUM
+    with pl.section_vector():
+        # vec
+        init_src_tile_type = pl.TileType(shape=[1, INIT_PER_LOOP_NUM], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], pad=pl.TilePad.zero)
+        init_dst_tile_type = pl.TileType(shape=[1, INIT_PER_LOOP_NUM], dtype=pl.DT_FP32, target_memory=pl.MemorySpace.Vec, valid_shape=[-1, -1], pad=pl.TilePad.zero)
+        init_ub_src = pl.make_tile_group(type=init_src_tile_type, addrs=VA1, mutex_ids=[2,])
+        init_ub_dst = pl.make_tile_group(type=init_dst_tile_type, addrs=VA1, mutex_ids=[3,])
+        init_ub_src_slot = init_ub_src.current()
+        init_ub_dst_slot = init_ub_dst.current()
+        pl.set_validshape(init_ub_src_slot, [0, 0])
+        pl.fillpad(init_ub_dst_slot, init_ub_src_slot)
+        for init_offset in pl.range(init_start_offset, init_end_offset, INIT_PER_LOOP_NUM):
+            if init_offset + INIT_PER_LOOP_NUM > init_end_offset:
+                init_num = init_end_offset - init_offset
+            pl.set_validshape(init_ub_dst_slot, [1, init_num])
+            pl.store(tensor_softmax_l1_norm_init, init_ub_dst_slot, [1, init_offset])
+
+        pl.sync_all(core_type=pl.SyncCoreType.AIV_ONLY)
+    # init output end
+    
     _pl_sync_id = 0
     for used_t1_index in pl.range(core_id, sq_tiles, num_cores):
         get_seq_length(tensor_seqused_q, tensor_cu_seqlens_q, tensor_cu_seqlens_k, constInfo, runInfo, used_t1_index)

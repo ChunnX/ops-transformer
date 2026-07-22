@@ -34,6 +34,8 @@ TILING_DATA_FIELD_DEF(int64_t, t2)
 TILING_DATA_FIELD_DEF(int64_t, max_seqlen_k)
 TILING_DATA_FIELD_DEF(int64_t, k_length)
 TILING_DATA_FIELD_DEF(int64_t, cmp_ratio)
+TILING_DATA_FIELD_DEF(int64_t, init_per_core_num)
+TILING_DATA_FIELD_DEF(int64_t, init_total_num)
 TILING_DATA_FIELD_DEF(float, softmax_scale)
 TILING_DATA_FIELD_DEF(bool, has_seqused_q)
 TILING_DATA_FIELD_DEF(bool, has_seqused_k)
@@ -41,7 +43,17 @@ TILING_DATA_FIELD_DEF(bool, has_topk_length)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(SparseFlashMlaSoftmaxL1Norm, SmlaSoftmaxL1NormTilingData)
 
-struct SparseFlashMlaSoftmaxL1NormCompileInfo {};
+struct SparseFlashMlaSoftmaxL1NormCompileInfo {
+    uint32_t aivNum;
+    uint32_t aicNum;
+    uint64_t ubSize;
+    uint64_t l1Size;
+    uint64_t l0aSize;
+    uint64_t l0bSize;
+    uint64_t l0cSize;
+    uint64_t l2CacheSize;
+    int64_t coreNum;
+};
 
 } // namespace optiling
 
