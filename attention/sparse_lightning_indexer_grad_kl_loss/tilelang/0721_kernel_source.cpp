@@ -525,6 +525,8 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               AscendC::PipeBarrier<PIPE_MTE3>();
               tl::ascend::copy_ub_to_gm<half, 64, 32>(reluGradRes[((((((pipe_iter * 3145728) + (cid * 131072)) + (vid * 65536)) + (n_idx_4 * 128)) + (bw_col_id * 64)) - 3145728)], v1_bw_rg_half_slots[(bw_col_id * 4096)], 2048, 32, 64);
               AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(bw_col_id);
+              AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(bw_col_id);
+              AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(bw_col_id);
               if ((n_idx_4 % 2) == vid) {
                 AscendC::Max(v1_bw_p_slots[(bw_col_id * 64)], v1_bw_p_slots[(bw_col_id * 64)], v1_bw_eps[0], 64);
                 AscendC::Max(v1_bw_sy_slots[(bw_col_id * 64)], v1_bw_sy_slots[(bw_col_id * 64)], v1_bw_eps[0], 64);
