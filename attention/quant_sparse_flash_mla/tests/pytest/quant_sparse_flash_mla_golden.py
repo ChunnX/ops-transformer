@@ -272,7 +272,7 @@ class GeneralizedSFAQuant:
         s2_sparse = list()
         cur_cmp_act_kv = math.floor(cur_act_kv / self.cmp_ratio)
         threshold = 0
-        if self.cmp_mask_mode == 3:
+        if self.cmp_mask_mode == 3 or self.cmp_mask_mode == 0:
             threshold = math.floor((cur_act_kv - cur_act_q + i_S1 + 1) / self.cmp_ratio)
         valid_count = min(self.K, math.ceil(threshold / sparse_block_size))
         for i_valid in range(valid_count):
@@ -303,7 +303,7 @@ class GeneralizedSFAQuant:
 
     def mask_cmp_kv(self, k_tensor, i_B, i_N2, i_S1, cur_act_kv, cur_act_q):
         threshold = 0
-        if self.cmp_mask_mode == 3:
+        if self.cmp_mask_mode == 3 or self.cmp_mask_mode == 0:
             threshold = (cur_act_kv - cur_act_q + i_S1 + 1) // self.cmp_ratio
         empty_flag = True
         k_sparse = []
@@ -497,13 +497,13 @@ def gen_cmp_sparse_indices_bsnd(cmp_ratio, B, S1, N2, K, cmp_restored_len, sequs
         cur_act_q = seqused_q[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(S1):
-                if cmp_mask_mode == 3:
+                if cmp_mask_mode == 3 or cmp_mask_mode == 0:
                     cur_valid_s2_max = math.floor(
                         (cur_restored - cur_act_q + i_S1 + 1) / cmp_ratio
                     )
                 else:
                     raise ValueError(
-                        f"cmp_mask_mode only support 3, which is {cmp_mask_mode}"
+                        f"cmp_mask_mode only support 0 and 3, which is {cmp_mask_mode}"
                     )
 
                 valid_blocks_max = max(0, cur_valid_s2_max)
@@ -525,10 +525,13 @@ def gen_cmp_sparse_indices_tnd(
         cur_restored = cmp_restored_len[i_B]
         for i_N2 in range(N2):
             for i_S1 in range(cur_act_q):
-                if cmp_mask_mode == 3:
-                    # causal mask计算：原始KV空间中的可见长度转换为压缩block数量
+                if cmp_mask_mode == 3 or cmp_mask_mode == 0:
                     cur_valid_s2_max = math.floor(
                         (cur_restored - cur_act_q + i_S1 + 1) / cmp_ratio
+                    )
+                else:
+                    raise ValueError(
+                        f"cmp_mask_mode only support 0 and 3, which is {cmp_mask_mode}"
                     )
 
                 valid_blocks_max = max(0, cur_valid_s2_max)
