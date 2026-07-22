@@ -547,7 +547,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     - `layoutQkv="TND"`，`layoutQOut="NTD"`：`qkv=[T, Nq+Nk+Nv, D]`，`qOut=[Nq, T, D]`，`qScaleOptional=[Nq, T]`。
     - `layoutQkv="NTD"`，`layoutQOut="NTD"`：`qkv=[Nq+Nk+Nv, T, D]`，`qOut=[Nq, T, D]`，`qScaleOptional=[Nq, T]`。
   - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`的`BlockNum`和`BlockSize`必须一致。
-  - `kCacheRef`、`vCacheRef`和`kScaleCacheRef`均为4维正stride，最后一维stride为1；`kCacheRef`和`vCacheRef`前三维stride必须一致。
+  - `kCacheRef`和`vCacheRef`均为4维正stride，最后一维stride为1，head维和token维stride均不小于`D=128`；`kScaleCacheRef`为4维正stride且最后一维stride为1；`kCacheRef`和`vCacheRef`前三维stride必须一致。
   - M-RoPE的`mropePositionOptional`逻辑shape固定为`[T,3]`，位置索引按`P[u,0]`、`P[u,1]`、`P[u,2]`分别读取token `u`的T/H/W坐标。
 - 输入值域限制：
   - `seqLensOptional[b]`必须满足`seqLensOptional[b] >= queryStartLocOptional[b+1] - queryStartLocOptional[b]`。若`seqLensOptional[b]`小于该batch本次调用的token数，行为未定义。

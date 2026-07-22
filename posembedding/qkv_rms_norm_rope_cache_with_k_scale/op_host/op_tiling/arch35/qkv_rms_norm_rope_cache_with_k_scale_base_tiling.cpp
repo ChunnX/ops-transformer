@@ -432,25 +432,26 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateStrides() const
     const gert::Stride &kStride = input_.kCache.stride;
     const gert::Stride &vStride = input_.vCache.stride;
     const gert::Stride &kScaleStride = input_.kScaleCache.stride;
+    const int64_t headDim = static_cast<int64_t>(input_.headDim);
     OP_CHECK_IF(!input_.kCache.stridePresent || kStride.GetDimNum() != 4 || kStride.GetStride(0) <= 0 ||
-                    kStride.GetStride(1) <= 0 || kStride.GetStride(2) <= 0 || kStride.GetStride(3) != 1,
+                    kStride.GetStride(1) < headDim || kStride.GetStride(2) < headDim || kStride.GetStride(3) != 1,
                 OP_LOGE_FOR_INVALID_STRIDE(opName_, "kCache",
                                            (std::to_string(GetStrideDimOrZero(input_.kCache.stride, 0)) + ", " +
                                             std::to_string(GetStrideDimOrZero(input_.kCache.stride, 1)) + ", " +
                                             std::to_string(GetStrideDimOrZero(input_.kCache.stride, 2)) + ", " +
                                             std::to_string(GetStrideDimOrZero(input_.kCache.stride, 3)))
                                                .c_str(),
-                                           "positive 4D stride and stride[3]=1"),
+                                           "positive block stride, stride[1]/stride[2] >= headDim, and stride[3]=1"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!input_.vCache.stridePresent || vStride.GetDimNum() != 4 || vStride.GetStride(0) <= 0 ||
-                    vStride.GetStride(1) <= 0 || vStride.GetStride(2) <= 0 || vStride.GetStride(3) != 1,
+                    vStride.GetStride(1) < headDim || vStride.GetStride(2) < headDim || vStride.GetStride(3) != 1,
                 OP_LOGE_FOR_INVALID_STRIDE(opName_, "vCache",
                                            (std::to_string(GetStrideDimOrZero(input_.vCache.stride, 0)) + ", " +
                                             std::to_string(GetStrideDimOrZero(input_.vCache.stride, 1)) + ", " +
                                             std::to_string(GetStrideDimOrZero(input_.vCache.stride, 2)) + ", " +
                                             std::to_string(GetStrideDimOrZero(input_.vCache.stride, 3)))
                                                .c_str(),
-                                           "positive 4D stride and stride[3]=1"),
+                                           "positive block stride, stride[1]/stride[2] >= headDim, and stride[3]=1"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(kStride.GetStride(0) != vStride.GetStride(0) || kStride.GetStride(1) != vStride.GetStride(1) ||
                     kStride.GetStride(2) != vStride.GetStride(2),
