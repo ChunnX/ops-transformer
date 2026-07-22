@@ -43,7 +43,7 @@ def load_input(case_name, cache_dir=None):
     data = torch.load(path, weights_only=False)
     logger.info("[CACHE] load input ← %s", path)
     return (data["q_fp8"], data["k_fp8"], data["v_fp8"],
-            data["dequant_scale_q"], data["dequant_scale_k"], data["dequant_scale_v"],
+            data["dequant_scale_q"], data["dequant_scale_k"], data["v_descale"],
             data["p_scale"], data.get("qr_bf16"), data.get("kr_bf16"),
             data.get("block_table_torch"))
 
@@ -90,13 +90,13 @@ def has_npu_output(case_name, cache_dir=None):
     return os.path.exists(_path(case_name, "npu_output", cache_dir))
 
 
-def build_input_dict(q_fp8, k_fp8, v_fp8, dequant_scale_q, dequant_scale_k, dequant_scale_v,
+def build_input_dict(q_fp8, k_fp8, v_fp8, dequant_scale_q, dequant_scale_k, v_descale,
                      p_scale, qr_bf16, kr_bf16, block_table_torch):
     return {
         "q_fp8": q_fp8, "k_fp8": k_fp8, "v_fp8": v_fp8,
         "dequant_scale_q": dequant_scale_q,
         "dequant_scale_k": dequant_scale_k,
-        "dequant_scale_v": dequant_scale_v,
+        "v_descale": v_descale,
         "p_scale": p_scale,
         "qr_bf16": qr_bf16, "kr_bf16": kr_bf16,
         "block_table_torch": block_table_torch,

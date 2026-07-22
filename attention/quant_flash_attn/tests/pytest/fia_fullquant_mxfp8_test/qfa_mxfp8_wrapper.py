@@ -35,7 +35,7 @@ def _apply_golden_globals(params):
 
 
 def npu_qfa_mxfp8(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
-                   dequant_scale_q: torch.Tensor, dequant_scale_k: torch.Tensor, dequant_scale_v: torch.Tensor,
+                   dequant_scale_q: torch.Tensor, dequant_scale_k: torch.Tensor, v_descale: torch.Tensor,
                    p_scale: torch.Tensor, block_table: torch.Tensor,
                    *,
                    B: int, N_q: int, N_kv: int, D: int,
@@ -68,7 +68,7 @@ def npu_qfa_mxfp8(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
     # 从 golden_mod 取 customize_inputs 缓存的真实 FP8 数据
     cached = getattr(golden_mod, "_cached_mxfp8_inputs", None)
     if cached is not None:
-        q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table = cached[:8]
+        q, k, v, dequant_scale_q, dequant_scale_k, v_descale, p_scale, block_table = cached[:8]
         logger.info("[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据")
     else:
         logger.warning("[WRAPPER] customize_inputs 缓存为空,使用 TTK 传入的占位 tensor(可能出错)")
@@ -106,7 +106,7 @@ def npu_qfa_mxfp8(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
     try:
         atten_out, lse_out = golden_mod.npu_mxfp8_fa(
             q, k, v,
-            dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale,
+            dequant_scale_q, dequant_scale_k, v_descale, p_scale,
             cu_seqlens_q_list, cu_seqlens_kv_list,
             list(seqused_q) if seqused_q is not None else None,
             list(seqused_kv) if seqused_kv is not None else None,

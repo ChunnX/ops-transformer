@@ -66,20 +66,23 @@ cann_ops_transformer.ops.quant_flash_attn_metadata(
     num_heads_q,
     num_heads_kv,
     head_dim,
+    quant_mode,
     *,
     cu_seqlens_q=None,
     cu_seqlens_kv=None,
     seqused_q=None,
     seqused_kv=None,
+    v_descale=None,
     batch_size=None,
-    max_seqlen_q=None,
-    max_seqlen_kv=None,
-    mask_mode=None,
-    win_left=None,
-    win_right=None,
-    layout_q=None,
-    layout_kv=None,
-    layout_out=None
+    max_seqlen_q=-1,
+    max_seqlen_kv=-1,
+    mask_mode=0,
+    win_left=-1,
+    win_right=-1,
+    layout_q="BSND",
+    layout_q_descale="BSND",
+    layout_kv="BSND",
+    layout_out="BSND"
 ) -> Tensor
 ```
 
@@ -109,6 +112,7 @@ cann_ops_transformer.ops.quant_flash_attn(
     max_seqlen_q=-1,
     max_seqlen_kv=-1,
     layout_q="BSND",
+    layout_q_descale="BSND",
     layout_kv="BSND",
     layout_out="BSND",
     return_softmax_lse=False
@@ -143,10 +147,12 @@ cann_ops_transformer.ops.quant_flash_attn(
 | num_heads_q | int | 必选 | Query head数 | int32 | - | - | - |
 | num_heads_kv | int | 必选 | Key/Value head数 | int32 | - | - | - |
 | head_dim | int | 必选 | 每个注意力头的维度 | int32 | - | - | - |
+| quant_mode | int | 必选 | 量化模式，1表示MxFP8，2表示HiF8，3表示MxFP4 | int32 | - | - | - |
 | cu_seqlens_q | Tensor | 可选 | Q的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | ✓ |
 | cu_seqlens_kv | Tensor | 可选 | KV的累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | ✓ |
 | seqused_q | Tensor | 可选 | q的指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | ✓ |
 | seqused_kv | Tensor | 可选 | kv的指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | ✓ |
+| v_descale | Tensor | 可选 | v的反量化scale，TND layout下用于校验 | float8_e8m0/float32 | ND | - | ✓ |
 | batch_size | int | 可选 | batch大小。若未传入，则从cu_seqlens_q或seqused_q推导。默认值为None | int32 | - | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - | - |
 | max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限 | int32 | - | - | - |
@@ -154,6 +160,7 @@ cann_ops_transformer.ops.quant_flash_attn(
 | win_left | int | 可选 | window左界限 | int32 | - | - | - |
 | win_right | int | 可选 | window右界限 | int32 | - | - | - |
 | layout_q | string | 可选 | 定义输入q张量的布局格式 | string | - | - | - |
+| layout_q_descale | string | 可选 | 定义输入q_descale张量的布局格式 | string | - | - | - |
 | layout_kv | string | 可选 | 定义输入k和v张量的布局格式 | string | - | - | - |
 | layout_out | string | 可选 | 定义输出张量的布局格式 | string | - | - | - |
 
@@ -184,6 +191,7 @@ cann_ops_transformer.ops.quant_flash_attn(
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限，MxFP8场景下为必选且必须大于等于0，其他场景仅支持-1 | int32 | - | - | - |
 | max_seqlen_kv | int | 可选 | 指定键k和值v序列的长度上限 | int32 | - | - | - |
 | layout_q | string | 可选 | 定义输入q张量的布局格式 | string | - | - | - |
+| layout_q_descale | string | 可选 | 定义输入q_descale张量的布局格式 | string | - | - | - |
 | layout_kv | string | 可选 | 定义输入k和v张量的布局格式 | string | - | - | - |
 | layout_out | string | 可选 | 定义输出张量的布局格式 | string | - | - | - |
 | return_softmax_lse | bool | 可选 | 是否需要获取softmax的LSE结果 | BOOL | - | - | - |
@@ -224,6 +232,7 @@ cann_ops_transformer.ops.quant_flash_attn(
 |                      |         metadata        |      INPUT(OPTIONAL)      | Tensor |
 |                      |      softmax_scale      | ATTR(OPTIONAL) |   double   |
 |                      |      layout_q      | ATTR(OPTIONAL) |   string   |
+|                      |      layout_q_descale      | ATTR(OPTIONAL) |   string   |
 |                      |      layout_kv      | ATTR(OPTIONAL) |   string   |
 |                      |      layout_out      | ATTR(OPTIONAL) |   string   |
 |                      |     attn_out     |     OUTPUT     |   Tensor   |
@@ -323,7 +332,11 @@ cann_ops_transformer.ops.quant_flash_attn(
     <tr>
         <td>layout_q</td>
         <td>支持BSND/TND/BNSD</td>
-        <td rowspan="3">可选属性，默认值为BSND</td>
+        <td rowspan="4">可选属性，默认值为BSND</td>
+    </tr>
+    <tr>
+        <td>layout_q_descale</td>
+        <td>支持BSND/TND/BNSD/N2TGD</td>
     </tr>
     <tr>
         <td>layout_kv</td>
@@ -989,8 +1002,10 @@ mask_mode参数解释
         Q_N,
         KV_N,
         D,
+        quant_mode=1,
         cu_seqlens_q=cu_seqlens_q,
         cu_seqlens_kv=cu_seqlens_kv,
+        v_descale=v_descale,
         batch_size=B,
         max_seqlen_q=Q_S,
         max_seqlen_kv=KV_S,
@@ -998,6 +1013,7 @@ mask_mode参数解释
         win_left=-1,
         win_right=-1,
         layout_q="TND",
+        layout_q_descale="TND",
         layout_kv="TND",
         layout_out="TND",
     )
@@ -1014,6 +1030,7 @@ mask_mode参数解释
         win_left=-1,
         win_right=-1,
         layout_q="TND",
+        layout_q_descale="TND",
         layout_kv="TND",
         layout_out="TND",
         return_softmax_lse=False,
@@ -1062,7 +1079,9 @@ mask_mode参数解释
 
     # 累计序列长度（带前导0）
     cu_seqlens_q = torch.tensor([0, Q_S, Q_S * 2], dtype=torch.int32, device="npu")
-    cu_seqlens_kv = torch.tensor([0, KV_S, KV_S * 2], dtype=torch.int32, device="npu")
+
+    # PA场景下seqused_kv必选
+    seqused_kv = torch.tensor([KV_S, KV_S], dtype=torch.int32, device="npu")
 
     # attn_mask (causal, 2048*2048)
     attn_mask = torch.tril(torch.ones(2048, 2048, dtype=torch.int8, device="npu"))
@@ -1071,8 +1090,10 @@ mask_mode参数解释
         Q_N,
         KV_N,
         D,
+        quant_mode=1,
         cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=cu_seqlens_kv,
+        seqused_kv=seqused_kv,
+        v_descale=v_descale,
         batch_size=B,
         max_seqlen_q=Q_S,
         max_seqlen_kv=KV_S,
@@ -1080,7 +1101,8 @@ mask_mode参数解释
         win_left=-1,
         win_right=-1,
         layout_q="TND",
-        layout_kv="TND",
+        layout_q_descale="TND",
+        layout_kv="PA_BNBD",
         layout_out="TND",
     )
 
@@ -1090,7 +1112,7 @@ mask_mode参数解释
         quant_mode=1,
         block_table=block_table,
         cu_seqlens_q=cu_seqlens_q,
-        cu_seqlens_kv=cu_seqlens_kv,
+        seqused_kv=seqused_kv,
         metadata=metadata,
         softmax_scale=1.0 / (D ** 0.5),
         mask_mode=3,
@@ -1098,7 +1120,8 @@ mask_mode参数解释
         win_left=-1,
         win_right=-1,
         layout_q="TND",
-        layout_kv="TND",
+        layout_q_descale="TND",
+        layout_kv="PA_BNBD",
         layout_out="TND",
         return_softmax_lse=False,
     )
