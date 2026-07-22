@@ -326,6 +326,10 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
     tilingData_.set_vScaleType(vScaleType_);
     tilingData_.set_vOffsetType(vOffsetType_);
     tilingData_.set_cacheMode(currentCacheMode_);
+    OP_CHECK_IF(
+        !GetCacheRowLimit(cacheRowLimit_), OP_LOGE(context_->GetNodeName(), "get cache row limit failed."),
+        return ge::GRAPH_FAILED);
+    tilingData_.set_cacheRowLimit(cacheRowLimit_);
     int64_t kScaleOffsetUbSize = kScaleType_ > 0 ? K_SCALE_OFFSET_UB_NUM * halfDkAlign * sizeof(float) : 0;
     int64_t vScaleOffsetUbSize = vScaleType_ > 0 ? V_SCALE_OFFSET_UB_NUM * dvAlign * sizeof(float) : 0;
     int64_t gammaUbSize = dvAlign * kvDtypeSize_;
@@ -348,7 +352,8 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseFullLoadTiling::DoOpTiling()
         if (isOutputKv_) {
             vOutUbsize = dvB8Align * kvDtypeSize_ + dvB8Align * sizeof(int8_t);
         } else {
-            vOutUbsize = dvB8Align * kvDtypeSize_ + dvB8Align * sizeof(int8_t);
+            // 不输出 c_kv 时 kernel 直接把 outQueue 整块当量化区用（无 T_KV 中间区），只需 1B/元素
+            vOutUbsize = dvB8Align * sizeof(int8_t);
         }
     } else {
         vOutUbsize = dvAlign * kvDtypeSize_;
