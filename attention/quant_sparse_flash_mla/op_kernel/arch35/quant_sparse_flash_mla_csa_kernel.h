@@ -96,6 +96,8 @@ private:
     const QuantSparseFlashMlaTilingData *__restrict tilingData;
     static constexpr uint64_t SYNC_MODE = 4;
     static constexpr uint32_t PRELOAD_NUM = 3;
+
+    uint32_t crossCoreSyncBufId = 0;
     /* 核间通道 */
     BufferManager<BufferType::GM> v0ResGmBufferManager;
 
@@ -344,14 +346,31 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
     l1BufferManager.Init(pipe, 416 * 1024); // L1P+L1Right总计416k, 其余96k给L1Q使用
     // 保存p结果的L1内存必须放在第一个L1 policy上，保证和vec申请的地址相同
     l1PBuffers.Init(l1BufferManager, mm2LeftSize);
+    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID); // 0
+    crossCoreSyncBufId++;
+    l1PBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID); // 1
+    crossCoreSyncBufId++;
+
     l1RightBuffers.Init(l1BufferManager, mm1RightSize);
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID); // 2
+    crossCoreSyncBufId++;
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID); // 3
+    crossCoreSyncBufId++;
+    l1RightBuffers.Get().SetCrossCoreID(crossCoreSyncBufId, INVALID_CROSS_CORE_EVENT_ID); // 4
+    crossCoreSyncBufId++;
 
     ubBufferManager.Init(pipe, mm1ResultSize * 2 + mm2ResultSize);
     bmm2Buffers.Init(ubBufferManager, mm2ResultSize);
+    bmm2Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId); // 5
+    crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm2Buffers.Get().SetCrossCore();
     }
     bmm1Buffers.Init(ubBufferManager, mm1ResultSize);
+    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId); // 6
+    crossCoreSyncBufId++;
+    bmm1Buffers.Get().SetCrossCoreID(crossCoreSyncBufId, crossCoreSyncBufId); // 7
+    crossCoreSyncBufId++;
     if ASCEND_IS_AIV {
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
@@ -365,10 +384,12 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Init
     }
     v0ResGmBufferManager.Init(workspace + totalOffset);
     v0ResGmBuffers.Init(v0ResGmBufferManager, v0ResSize);
-    // IterateQK 和 IterateBmm2 并行， 手动赋值避免EventId冲突
-    v0ResGmBuffers.Get(0).SetCrossCoreID(fa_base_matmul::INVALID_CROSS_CORE_EVENT_ID, 3);
-    v0ResGmBuffers.Get(1).SetCrossCoreID(fa_base_matmul::INVALID_CROSS_CORE_EVENT_ID, 4);
-    v0ResGmBuffers.Get(2).SetCrossCoreID(fa_base_matmul::INVALID_CROSS_CORE_EVENT_ID, 5);
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId); // 8
+    crossCoreSyncBufId++;
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId); // 9
+    crossCoreSyncBufId++;
+    v0ResGmBuffers.Get().SetCrossCoreID(INVALID_CROSS_CORE_EVENT_ID, crossCoreSyncBufId); // 10
+    crossCoreSyncBufId++;
 }
 
 template <typename CubeBlockType, typename VecBlockType>
@@ -435,8 +456,8 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
         if ASCEND_IS_AIC {
             if constexpr (IS_SPLIT_G) {
                 for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
-                    CrossCoreSetFlag<0, PIPE_MTE2>(10);
-                    CrossCoreWaitFlag<0, PIPE_MTE2>(10);
+                    CrossCoreSetFlag<0, PIPE_MTE2>(15);
+                    CrossCoreWaitFlag<0, PIPE_MTE2>(15);
                 }
             }
         }
@@ -532,8 +553,8 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
                         if constexpr (IS_SPLIT_G) {
                             if (taskId > 0 && maxS2LoopCnt > 0) {
                                 maxS2LoopCnt--;
-                                CrossCoreSetFlag<0, PIPE_MTE2>(10);
-                                CrossCoreWaitFlag<0, PIPE_MTE2>(10);
+                                CrossCoreSetFlag<0, PIPE_MTE2>(15);
+                                CrossCoreWaitFlag<0, PIPE_MTE2>(15);
                             }
                         }
                     }
@@ -560,8 +581,8 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Proc
     if ASCEND_IS_AIC {
         if constexpr (IS_SPLIT_G) {
             for (int64_t loopCnt = 0; loopCnt < maxS2LoopCnt; loopCnt++) {
-                CrossCoreSetFlag<0, PIPE_MTE2>(10);
-                CrossCoreWaitFlag<0, PIPE_MTE2>(10);
+                CrossCoreSetFlag<0, PIPE_MTE2>(15);
+                CrossCoreWaitFlag<0, PIPE_MTE2>(15);
             }
         }
     }

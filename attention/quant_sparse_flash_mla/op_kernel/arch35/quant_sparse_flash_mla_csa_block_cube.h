@@ -107,14 +107,11 @@ private:
     FaGmTensor<Q_T, Q_FORMAT, int32_t, Q_WITH_ZERO_HEAD> queryGm;
 
     /* =====================运行时变量==================== */
-    uint32_t l0ABBufId = 0;
     uint32_t l0CBufId = 0;
     uint32_t l1QBufId = 0;
     uint32_t l1KLoadBufId = 0;
     uint32_t l1KMatmul1BufId = 0;
     uint32_t l1KMatmul2BufId = 0;
-    uint32_t l0ABMToMte1FlagId = 3; // {0, 1}, 用于L0AB
-    uint32_t l0ABMte1ToMFlagId = 3; // {0, 1}, 用于L0AB
     uint32_t l0CFixToMFlagId = 0; // {0, 1}, 用于L0C
     uint32_t l0CMToFixFlagId = 0; // {0, 1}, 用于L0C
     uint32_t l1QMte1ToMte2FlagId = 0; // {0, 1, 2}, 用于l1Q
@@ -122,15 +119,17 @@ private:
     uint32_t l1KMte1ToMte2FlagId = 3; // {3, 4, 5}, 用于l1K
     uint32_t l1KMte2ToMte1FlagId = 3; // {3, 4, 5}, 用于l1K
     /* =====================LocalBuffer变量==================== */
+
+    BufferManager<BufferType::L0A> l0aBufferManager;
+    BufferManager<BufferType::L0B> l0bBufferManager;
+
+    BuffersPolicyDB<BufferType::L0A> mmL0ABuffers;
+    BuffersPolicyDB<BufferType::L0B> mmL0BBuffers;
+    
     TBuf<TPosition::A1> l1QBuffers;
-    TBuf<TPosition::A2> mmL0ABuffers;
-    TBuf<TPosition::A2> mmL0ABuffersBmm2;
-    TBuf<TPosition::B2> mmL0BBuffers;
-    TBuf<TPosition::CO1> mmL0CBuffers;
     LocalTensor<Q_T> l1QTensor;
-    LocalTensor<Q_T> mmL0ATensor;
-    LocalTensor<Q_T> mmL0ATensorBmm2;
-    LocalTensor<Q_T> mmL0BTensor;
+
+    TBuf<TPosition::CO1> mmL0CBuffers;
     LocalTensor<T> mmL0CTensor;
 };
 
@@ -160,16 +159,15 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitLocalBuffer(BufferManage
     tPipe->InitBuffer(l1QBuffers, BUFFER_SIZE_96K);
     l1QTensor = l1QBuffers.Get<Q_T>();
 
-    tPipe->InitBuffer(mmL0ABuffers, BUFFER_SIZE_32K);
-    tPipe->InitBuffer(mmL0ABuffersBmm2, BUFFER_SIZE_16K);
-    tPipe->InitBuffer(mmL0BBuffers, BUFFER_SIZE_64K);
+    l0aBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
+    l0bBufferManager.Init(tPipe, L0AB_SHARED_SIZE_64K);
+
+    mmL0ABuffers.Init(l0aBufferManager, BUFFER_SIZE_16K); // db类型，填入数值是总大小的一半
+    mmL0BBuffers.Init(l0bBufferManager, BUFFER_SIZE_32K);
+
     tPipe->InitBuffer(mmL0CBuffers, BUFFER_SIZE_256K);
-    mmL0ATensor = mmL0ABuffers.Get<Q_T>();
-    mmL0ATensorBmm2 = mmL0ABuffersBmm2.Get<Q_T>();
-    mmL0BTensor = mmL0BBuffers.Get<Q_T>();
     mmL0CTensor = mmL0CBuffers.Get<T>();
-    SetFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId); // {0, 1}, 用于L0AB
-    SetFlag<HardEvent::M_MTE1>(l0ABMToMte1FlagId + 1);
+
     SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId); // {0, 1}, 用于L0C
     SetFlag<HardEvent::FIX_M>(l0CFixToMFlagId + 1);
     SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId); // {0, 1, 2}, 用于l1Q
@@ -246,8 +244,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateLoadQK(
     LocalTensor<Q_T> dst = inputRightBuf.GetTensor<Q_T>();
     v0ResGm.WaitCrossCore();
     if constexpr (IS_SPLIT_G) {
-        CrossCoreSetFlag<0, PIPE_MTE2>(10);
-        CrossCoreWaitFlag<0, PIPE_MTE2>(10);
+        CrossCoreSetFlag<0, PIPE_MTE2>(15);
+        CrossCoreWaitFlag<0, PIPE_MTE2>(15);
     }
     GlobalTensor<Q_T> v0ResGmTensor = v0ResGm.template GetTensor<Q_T>();
     DataCopy(dst, v0ResGmTensor, Align32Func(runInfo.s2RealSize) * constInfo.dSize);
@@ -278,11 +276,11 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     }
     
     // m,n不切，k切256，mm1B直接用tensor的数据
-    ManualSyncMatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
-        l1QTensor[curL1QBufId * BUFFER_SIZE_16K],
-        inputRightBuf.GetTensor<Q_T>(),
-        mmL0ATensor, mmL0BTensor, mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
-        param, l0ABMToMte1FlagId, l0ABMte1ToMFlagId, l0ABBufId);
+    MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(  // m,n不切，k切128
+        l1QTensor[curL1QBufId * BUFFER_SIZE_16K], inputRightBuf.GetTensor<Q_T>(), // mm1B直接用tensor的数据
+        mmL0ABuffers, mmL0BBuffers,
+        mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
+        param);
 
     curL1QBufId = (curL1QBufId + 1) % 3;
     if (unlikely(runInfo.s2LoopCount == 0)) {
@@ -292,11 +290,12 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm1CSA(
     param.isOutKFisrt = false;
 
     // m,n不切，k切256, mm1B直接用tensor的数据
-    ManualSyncMatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
-        l1QTensor[curL1QBufId * BUFFER_SIZE_16K],
+    MatmulK<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(  // m,n不切，k切128
+        l1QTensor[curL1QBufId * BUFFER_SIZE_16K], // mm1B直接用tensor的数据
         inputRightBuf.GetTensor<Q_T>()[(constInfo.dSize >> 1) * Align32Func(runInfo.s2RealSize)],
-        mmL0ATensor, mmL0BTensor, mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
-        param, l0ABMToMte1FlagId, l0ABMte1ToMFlagId, l0ABBufId);
+        mmL0ABuffers, mmL0BBuffers,
+        mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
+        param);
 
     if (unlikely(runInfo.s2LoopCount == runInfo.s2LoopLimit)) {
         SetFlag<HardEvent::MTE1_MTE2>(l1QMte1ToMte2FlagId + l1QBufId);
@@ -349,11 +348,13 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2CSA(
                      0,    // isLeftTranspose
                      0     // isRightTranspose
                      };
-    ManualSyncMatmulN<Q_T, Q_T, T, s1BaseSize, dBaseMatmulSize, s2BaseSize, ABLayout::MK, ABLayout::KN>(
+    MatmulN<Q_T, Q_T, T, s1BaseSize, s2BaseSize, dBaseMatmulSize, ABLayout::MK, ABLayout::KN>(
         l1PBuffer.GetTensor<Q_T>(),
         inputRightBuf.GetTensor<Q_T>(),
-        mmL0ATensorBmm2, mmL0BTensor, mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
-        param, l0ABMToMte1FlagId, l0ABMte1ToMFlagId, l0ABBufId);
+        mmL0ABuffers,
+        mmL0BBuffers,
+        mmL0CTensor[BUFFER_SIZE_32K * l0CBufId],
+        param);
 
     SetFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
     WaitFlag<HardEvent::M_FIX>(l0CMToFixFlagId + l0CBufId);
