@@ -31,7 +31,7 @@ This chapter uses the co-located development and runtime environment scenario as
       attention\_out=Dropout(Softmax(Mask(scale*(query*key^T) + pse),atten\_mask),keep\_prob)*value
       $$
 
-  You can obtain the calling sample code from the [aclnnFlashAttentionScore](../../../attention/flash_attention_score/docs/aclnnFlashAttentionScore.md) document and name the code file "**test\_flash_attention_score.cpp**".
+  You can obtain the calling sample code from the [aclnnFlashAttentionScore](../../../attention/flash_attention_score/docs/aclnnFlashAttentionScore_en.md) document and name the code file "**test\_flash_attention_score.cpp**".
 
 - **CMakeLists File**
 
