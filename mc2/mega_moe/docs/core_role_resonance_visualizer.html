@@ -738,7 +738,7 @@
         <button type="button" data-preset="exact">典型 exact resonance</button>
         <button type="button" data-preset="slow">陷阱：每 wave 只漂 1 核</button>
         <button type="button" data-preset="counter">陷阱：不均匀 wave 反例</button>
-        <button type="button" data-preset="tail">5+5+5+1 尾块</button>
+        <button type="button" data-preset="tail">默认小尾合并：5+5+6</button>
         <button type="button" data-preset="balanced">无余数基线</button>
       </div>
 
@@ -922,8 +922,9 @@ nextWaveBegin = fixedRoleResonance ? gmm1End : gmm2End</pre>
           固定步长 r1 只访问 C/gcd(C,r1) 个 phase；通常一整个周期后才完全均摊，短序列仍可能偏斜。
         </li>
         <li>
-          <strong>最后一波不会被修。</strong>
-          hasNextWave=false 是合理的，因为没有下一 wave；所以 5+5+5+1 的尾块不均衡仍需单独的 tail tiling 方案。
+          <strong>最后一波不会被 cursor 修复。</strong>
+          hasNextWave=false 是合理的；默认 small-tail 策略会把 5+5+5+1 改成 5+5+6，但最后 6 专家的
+          terminal Combine 和 wave 内余数仍需独立评估。
         </li>
         <li>
           <strong>慢核与 locality 不在模型内。</strong>
@@ -947,7 +948,7 @@ nextWaveBegin = fixedRoleResonance ? gmm1End : gmm2End</pre>
           <h3>必须做的 A/B</h3>
           <ul>
             <li>同一编译、同一权重布局，只切换 MEGA_MOE_BREAK_FIXED_CORE_RESONANCE=0/1。</li>
-            <li>分别测：exact、多 wave；shift=1 的 near resonance；随机不均匀 M；5+5+5+1 尾波。</li>
+            <li>分别测：exact、多 wave；shift=1 的 near resonance；随机不均匀 M；5+5+5+1 与 5+5+6 A/B。</li>
             <li>至少看 P50/P90 和多次方差，不能只看一个最优点。</li>
           </ul>
         </div>
@@ -1450,7 +1451,7 @@ nextWaveBegin = fixedRoleResonance ? gmm1End : gmm2End</pre>
           cores: 36,
           g1Cost: 1.4,
           g2Cost: 1,
-          experts: "5,5,5,1",
+          experts: "5,5,6",
           m: 512,
           h: 3072,
           twoN: 3072,

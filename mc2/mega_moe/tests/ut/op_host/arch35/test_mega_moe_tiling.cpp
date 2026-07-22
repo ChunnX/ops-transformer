@@ -241,6 +241,32 @@ TEST_F(MegaMoeArch35TilingTest, ExpertsPerBatchUsesTileWorkAndAicCount)
     EXPECT_EQ(optiling::MegaMoeBatchTiling::CalcExpertsPerBatch(512U, 8U, 16U, 8192U, 4096U, 36U), 3U);
 }
 
+TEST_F(MegaMoeArch35TilingTest, SmallTailWaveMergeBoundaries)
+{
+    constexpr uint32_t maxExpertsPerWave = MEGA_MOE_MAX_EXPERTS_PER_BATCH;
+
+    // Strictly smaller than half: 5+5+5+1 -> 5+5+6.
+    uint32_t mergeBegin = MegaMoeImpl::GetSmallTailMergeBegin(16U, 5U, maxExpertsPerWave);
+    EXPECT_EQ(mergeBegin, 10U);
+    EXPECT_EQ(MegaMoeImpl::GetWaveEnd(0U, 16U, 5U, mergeBegin), 5U);
+    EXPECT_EQ(MegaMoeImpl::GetWaveEnd(5U, 16U, 5U, mergeBegin), 10U);
+    EXPECT_EQ(MegaMoeImpl::GetWaveEnd(10U, 16U, 5U, mergeBegin), 16U);
+
+    // A two-expert tail also merges, while three/four experts remain their
+    // own useful overlap wave.
+    EXPECT_EQ(MegaMoeImpl::GetSmallTailMergeBegin(17U, 5U, maxExpertsPerWave), 10U);
+    EXPECT_EQ(MegaMoeImpl::GetSmallTailMergeBegin(18U, 5U, maxExpertsPerWave), 18U);
+    EXPECT_EQ(MegaMoeImpl::GetSmallTailMergeBegin(19U, 5U, maxExpertsPerWave), 19U);
+    uint32_t noMergeBegin = MegaMoeImpl::GetSmallTailMergeBegin(18U, 5U, maxExpertsPerWave);
+    EXPECT_EQ(MegaMoeImpl::GetWaveEnd(10U, 18U, 5U, noMergeBegin), 15U);
+    EXPECT_EQ(MegaMoeImpl::GetWaveEnd(15U, 18U, 5U, noMergeBegin), 18U);
+
+    // No-tail and capacity-limited candidates retain the regular partition.
+    EXPECT_EQ(MegaMoeImpl::GetSmallTailMergeBegin(15U, 5U, maxExpertsPerWave), 15U);
+    EXPECT_EQ(MegaMoeImpl::GetSmallTailMergeBegin(20U, 9U, 10U), 20U);
+    EXPECT_EQ(MegaMoeImpl::GetWaveEnd(0U, 16U, 0U, 16U), 16U);
+}
+
 TEST_F(MegaMoeArch35TilingTest, H4096_BS128_FP8E4M3FN)
 {
     struct MegaMoeCompileInfo {
