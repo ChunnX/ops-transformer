@@ -393,6 +393,7 @@ void SFAMlaTiling::FillTilingBaseParamsMla()
     tilingData_.baseParams.set_returnSoftmaxLse(sfaInfo_->returnSoftmaxLse);
     tilingData_.baseParams.set_isActualLenDimsNull(sfaInfo_->actualQSeqLenFlag ? 0U : 1U);
     tilingData_.baseParams.set_isActualLenDimsKVNull(sfaInfo_->actualSeqLenFlag ? 0U : 1U);
+    tilingData_.baseParams.set_keyStride0(sfaInfo_->keyStride0);
 }
 
 // for flash decode
@@ -1837,6 +1838,14 @@ ge::graphStatus SFAInfoParser::GetAttrParaInfo()
     opParamInfo_.nextTokens = attrs->GetAttrPointer<int64_t>(NEXT_TOKENS_ATTR_INDEX);
     opParamInfo_.attentionMode = attrs->GetAttrPointer<int64_t>(ATTENTION_MODE_ATTR_INDEX);
     opParamInfo_.returnSoftmaxLse = attrs->GetAttrPointer<bool>(RETURN_SOFTMAX_LSE_ATTR_INDEX);
+
+    auto keyStrides = context_->GetDynamicInputStride(KEY_INPUT_INDEX, 0);
+    if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
+        for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
+            keyStridesVec_.push_back(keyStrides->GetStride(i));
+        }
+    }
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -2127,6 +2136,48 @@ ge::graphStatus SFAInfoParser::GetActualseqInfo()
     return ge::GRAPH_SUCCESS;
 }
 
+// 非连续校验：通过shape计算expected stride进行校验
+// PA_BSND时，只允许0轴非连续，其余轴必须连续
+// 非PA_BSND时，所有轴都必须连续
+ge::graphStatus SFAInfoParser::CheckContiguous() const
+{
+    bool keyNonContiguous = false;
+    size_t checkStartIdx = (kvLayout_ == SFALayout::PA_BSND) ? 1 : 0;
+
+    if (!keyStridesVec_.empty() && keyShape_.GetDimNum() > 0) {
+        std::vector<uint64_t> keyExpectedStrides;
+        if (kvLayout_ == SFALayout::PA_BSND || kvLayout_ == SFALayout::BSND) {
+            uint64_t dim1 = static_cast<uint64_t>(keyShape_.GetDim(1));
+            uint64_t dim2 = static_cast<uint64_t>(keyShape_.GetDim(2));
+            uint64_t dim3 = static_cast<uint64_t>(keyShape_.GetDim(3));
+            keyExpectedStrides = {dim1 * dim2 * dim3, dim2 * dim3, dim3, 1};
+        } else if (kvLayout_ == SFALayout::TND) {
+            uint64_t dim1 = static_cast<uint64_t>(keyShape_.GetDim(1));
+            uint64_t dim2 = static_cast<uint64_t>(keyShape_.GetDim(2));
+            keyExpectedStrides = {dim1 * dim2, dim2, 1};
+        }
+        OP_CHECK_IF(keyStridesVec_.size() != keyExpectedStrides.size(),
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key strideVec size",
+                std::to_string(keyStridesVec_.size()).c_str(),
+                "not match kvLayout expect len" + std::to_string(keyExpectedStrides.size())),
+                return ge::GRAPH_FAILED);
+        for (size_t i = checkStartIdx; i < keyExpectedStrides.size(); ++i) {
+            if (i < keyStridesVec_.size() && keyStridesVec_[i] != keyExpectedStrides[i]) {
+                keyNonContiguous = true;
+                break;
+            }
+        }
+    }
+
+    OP_CHECK_IF(keyNonContiguous,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "keyNonContiguous",
+            std::string(keyNonContiguous ? "true" : "false"),
+            "key only support non-continuous keying on the 0-axis"),
+            return ge::GRAPH_FAILED);
+
+    return ge::GRAPH_SUCCESS;
+}
+
 void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
 {
     sfaInfo.opName = opName_;
@@ -2164,6 +2215,9 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.blockSize = blockSize_;
     sfaInfo.blockTypeSize = sizeof(float);
     sfaInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
+
+    sfaInfo.keyStride0 = !keyStridesVec_.empty() ?
+        static_cast<int64_t>(keyStridesVec_[0]) / (static_cast<int64_t>(n2Size_) * static_cast<int64_t>(qkHeadDim_)) : 0;
 
     FillTilingInfoAttrsAndLayouts(sfaInfo);
 }
@@ -2222,6 +2276,10 @@ ge::graphStatus SFAInfoParser::Parse(SFATilingInfo &sfaInfo)
     }
 
     if (ge::GRAPH_SUCCESS != GetActualseqInfo()) {
+        return ge::GRAPH_FAILED;
+    }
+
+    if (ge::GRAPH_SUCCESS != CheckContiguous()) {
         return ge::GRAPH_FAILED;
     }
 
