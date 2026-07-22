@@ -22,6 +22,7 @@
 #include "tiling/tiling_api.h"
 
 namespace optiling {
+namespace smlasoftmaxl1norm {
 
 BEGIN_TILING_DATA_DEF(SmlaSoftmaxL1NormTilingData)
 TILING_DATA_FIELD_DEF(int64_t, b)
@@ -55,6 +56,16 @@ struct SparseFlashMlaSoftmaxL1NormCompileInfo {
     int64_t coreNum;
 };
 
+struct AiCoreParams {
+    uint64_t ubSize = 0;
+    uint64_t numBlocks = 0;
+    uint64_t aicNum = 0;
+    uint64_t l1Size = 0;
+    uint64_t l0aSize = 0;
+    uint64_t l0bSize = 0;
+    uint64_t l0cSize = 0;
+};
+} // namespace smlasoftmaxl1norm
 } // namespace optiling
 
 #endif // SPARSE_FLASH_MLA_SOFTMAX_L1_NORM_TILING_H_

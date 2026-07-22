@@ -22,6 +22,7 @@ using namespace ge;
 using namespace std;
 
 namespace optiling {
+namespace smlasoftmaxl1norm {
 
 constexpr int64_t QUERY_IDX = 0;
 constexpr int64_t KEY_IDX = 1;
@@ -637,4 +638,5 @@ static ge::graphStatus TilingParseForSparseFlashMlaSoftmaxL1Norm([[maybe_unused]
 IMPL_OP_OPTILING(SparseFlashMlaSoftmaxL1Norm)
     .Tiling(SparseFlashMlaSoftmaxL1NormTilingFunc)
     .TilingParse<SparseFlashMlaSoftmaxL1NormCompileInfo>(TilingParseForSparseFlashMlaSoftmaxL1Norm);
+} // namespace smlasoftmaxl1norm
 } // namespace optiling
