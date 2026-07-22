@@ -145,8 +145,8 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_pseAlibiBaseS2(0);
     inputParams.set_deqScaleFlag(1);
     inputParams.set_deqScale2Flag(1);
-    inputParams.set_isSeqUsedQlenNull(info.opParamInfo.seqUsedQ.tensor == nullptr ? 1 : 0);
-    inputParams.set_isSeqUsedKvlenNull(info.opParamInfo.seqUsedKV.tensor == nullptr ? 1 : 0);
+    inputParams.set_isSeqUsedQlenNull(info.opParamInfo.cuSeqlensQ.tensor == nullptr ? 1 : 0);
+    inputParams.set_isSeqUsedKvlenNull(info.opParamInfo.cuSeqlensKv.tensor == nullptr ? 1 : 0);
     inputParams.set_seqUsedQlenSize(info.bSize);
     inputParams.set_seqUsedKvlenSize(info.bSize);
     inputParams.set_isKvContinuous(1);
