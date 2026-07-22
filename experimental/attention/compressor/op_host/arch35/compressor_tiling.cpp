@@ -141,15 +141,15 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
         baseParams_->seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
         // With x_cache present, one decode token plus cached history is computed as
         // a full compression window.  Without x_cache, keep the original BSH seq size.
-        baseParams_->xCacheReadSize = hasXCache ? static_cast<uint32_t>(*context_->cmpRatio) : 0;
+        groupedDecodeParams_->xCacheReadSize = hasXCache ? static_cast<uint32_t>(*context_->cmpRatio) : 0;
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_2);
-        computeSeqSize = hasXCache ? baseParams_->xCacheReadSize : baseParams_->seqSize;
+        computeSeqSize = hasXCache ? groupedDecodeParams_->xCacheReadSize : baseParams_->seqSize;
         baseParams_->tokenSize = baseParams_->batchSize * computeSeqSize;
         baseParams_->cgSize = context_->ropeSin.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
     } else {
         baseParams_->batchSize = context_->cuSeqlens.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) - 1;
         baseParams_->seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
-        baseParams_->xCacheReadSize = 0;
+        groupedDecodeParams_->xCacheReadSize = 0;
         baseParams_->tokenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
         computeSeqSize = baseParams_->tokenSize;
@@ -166,12 +166,13 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
         (computeSeqSize + baseParams_->cmpRatio - 1) / baseParams_->cmpRatio; // number of token after compress
     coff = static_cast<uint8_t>(*context_->coff);
     baseParams_->stateCacheStrideDim0 = static_cast<uint64_t>(*context_->stateCacheStrideDim0);
-    baseParams_->xCacheSize = context_->xCache.desc == nullptr ? 0 :
+    groupedDecodeParams_->xCacheSize = context_->xCache.desc == nullptr ? 0 :
         context_->xCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
     bool xCacheUpdate = context_->xCacheUpdate == nullptr || *context_->xCacheUpdate;
     // Only HCA/update calls write current x into the ring cache.  Read-only KV/LI
     // calls still pass x_cache for grouped-window reads but leave update batch size 0.
-    baseParams_->xCacheUpdateBatchSize = (context_->xCache.desc != nullptr && xCacheUpdate) ? baseParams_->batchSize : 0;
+    groupedDecodeParams_->xCacheUpdateBatchSize =
+        (context_->xCache.desc != nullptr && xCacheUpdate) ? baseParams_->batchSize : 0;
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
     baseParams_->usedCoreNum = aicNum_;
     OP_LOGI(context_->opName, "[TILING] bSize:%u  tSize:%u cmpRatio:%u coff:%u, stateCacheStrideDim0:%u",
@@ -334,6 +335,7 @@ ge::graphStatus CompressorTiling::RunBigKernelTiling(CompressorTilingData *tilin
     this->pageAttentionParams_ = &tilingData->pageAttentionParams;
     this->innerSplitParams_ = &tilingData->innerSplitParams;
     this->workspaceParams_ = &tilingData->workspaceParams;
+    this->groupedDecodeParams_ = &tilingData->groupedDecodeParams;
     using StatusFunction = std::function<ge::graphStatus()>;
     std::vector<StatusFunction> requiredTilingFuncs {
         std::bind(&CompressorTiling::GetNpuInfo, this),
