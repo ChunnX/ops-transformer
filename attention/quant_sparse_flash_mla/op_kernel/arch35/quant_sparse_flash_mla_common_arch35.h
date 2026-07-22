@@ -21,7 +21,8 @@
 constexpr uint64_t BLOCK_BYTE = 32;
 constexpr uint32_t NEGATIVE_MIN_VAULE_FP32 = 0xFF7FFFFF;
 
-constexpr uint32_t BUFFER_SIZE_8K = 8192; // 8192表示8 * 1024
+constexpr uint32_t L0AB_SHARED_SIZE_64K = 65536; // 65536表示64*1024
+constexpr uint32_t L0C_SHARED_SIZE_256K = 262144; // 262144表示256 * 1024
 
 constexpr uint32_t BUFFER_SIZE_16K = 16384; // 16384表示16 * 1024
 constexpr uint32_t BUFFER_SIZE_32K = 32768; // 32768表示32 * 1024
