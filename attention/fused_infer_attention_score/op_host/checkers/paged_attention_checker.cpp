@@ -647,67 +647,82 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
 
 ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTilingInfo &fiaInfo)
 {
-    if (!fiaInfo.hasViewStride) {
-        return ge::GRAPH_SUCCESS;
-    }
-    
-    int32_t keyDim = fiaInfo.keyNonContigDim;
-    int32_t valueDim = fiaInfo.valueNonContigDim;
-    int32_t keyRopeDim = fiaInfo.keyRopeNonContigDim;
-
-    if (enableAntiQuant_ || fiaInfo.fullQuantMode == FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT) {
-        OP_CHECK_IF(keyDim != -1,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
-                ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous key tensors, "
-                "but the first non-contiguous dimension is index " + std::to_string(keyDim) + ".").c_str()),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(valueDim != -1,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
-                ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous value tensors, "
-                "but the first non-contiguous dimension is index " + std::to_string(valueDim) + ".").c_str()),
-            return ge::GRAPH_FAILED);
-        OP_CHECK_IF(keyRopeDim != -1,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
-                ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous keyRope tensors, "
-                "but the first non-contiguous dimension is index " + std::to_string(keyRopeDim) + ".").c_str()),
-            return ge::GRAPH_FAILED);
+    const int32_t keyDim = fiaInfo.keyNonContigDim;
+    const int32_t valueDim = fiaInfo.valueNonContigDim;
+    const int32_t keyRopeDim = fiaInfo.keyRopeNonContigDim;
+    const bool hasNonContiguousInput = keyDim != -1 || valueDim != -1 || keyRopeDim != -1;
+    if (!fiaInfo.hasViewStride && !hasNonContiguousInput) {
         return ge::GRAPH_SUCCESS;
     }
 
+    const bool isArch22 = fiaInfo.npuArch == NpuArch::DAV_2201;
+    const bool isArch35 = fiaInfo.npuArch == NpuArch::DAV_3510;
+    const bool isSupportedFullQuant = enableFullQuant_ && isArch35 &&
+        (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT ||
+         fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD);
+    const bool supportsKvStride = (enableNonQuant_ && (isArch22 || isArch35)) || isSupportedFullQuant;
+
+    auto CheckFullyContiguous = [&fiaInfo](const char *inputName, int32_t nonContiguousDim) {
+        OP_CHECK_IF(nonContiguousDim != -1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, inputName,
+                ("The selected FIA template does not support non-contiguous " + std::string(inputName) +
+                 " tensors, but the first non-contiguous dimension is index " +
+                 std::to_string(nonContiguousDim) + ".").c_str()),
+            return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    };
+
+    if (!supportsKvStride) {
+        if (CheckFullyContiguous("key", keyDim) != ge::GRAPH_SUCCESS ||
+            CheckFullyContiguous("value", valueDim) != ge::GRAPH_SUCCESS ||
+            CheckFullyContiguous("keyRope", keyRopeDim) != ge::GRAPH_SUCCESS) {
+            return ge::GRAPH_FAILED;
+        }
+        return ge::GRAPH_SUCCESS;
+    }
+
+    // arch22 kernels only receive K/V dim-0 strides; keyRope stride is not forwarded on this path.
+    if (isArch22 && CheckFullyContiguous("keyRope", keyRopeDim) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+
+    int32_t maxSupportedDim = -1;
     if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
-        OP_CHECK_IF(keyDim > 0,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
-                ("In PA BBND scenarios, key only supports non-contiguous tensors in dimension 0, "
-                "but the first non-contiguous dimension is index " + std::to_string(keyDim) + ".").c_str()),
-        return ge::GRAPH_FAILED);
-        OP_CHECK_IF(valueDim > 0,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
-                ("In PA BBND scenarios, value only supports non-contiguous tensors in dimension 0, "
-                "but the first non-contiguous dimension is index " + std::to_string(valueDim) + ".").c_str()),
-        return ge::GRAPH_FAILED);
-        OP_CHECK_IF(keyRopeDim > 0,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
-                ("In PA BBND scenarios, keyRope only supports non-contiguous tensors in dimension 0, "
-                "but the first non-contiguous dimension is index " + std::to_string(keyRopeDim) + ".").c_str()),
-        return ge::GRAPH_FAILED);
+        maxSupportedDim = 0;
     } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD || fiaInfo.kvLayout == FiaLayout::NZ) {
-        OP_CHECK_IF(keyDim > 1,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
-                ("In PA BNBD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, "
-                "but the first non-contiguous dimension is index " + std::to_string(keyDim) + ".").c_str()),
-        return ge::GRAPH_FAILED);
-        OP_CHECK_IF(valueDim > 1,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
-                ("In PA BNBD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, "
-                "but the first non-contiguous dimension is index " + std::to_string(valueDim) + ".").c_str()),
-        return ge::GRAPH_FAILED);
-        OP_CHECK_IF(keyRopeDim > 1,
-            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
-                ("In PA BNBD/NZ scenarios, keyRope only supports non-contiguous tensors in dimensions 0 or 1, "
-                "but the first non-contiguous dimension is index " + std::to_string(keyRopeDim) + ".").c_str()),
-        return ge::GRAPH_FAILED);
+        maxSupportedDim = isArch35 ? 1 : 0;
     }
 
+    auto CheckSupportedDim = [&fiaInfo, maxSupportedDim](const char *inputName, int32_t nonContiguousDim) {
+        OP_CHECK_IF(nonContiguousDim > maxSupportedDim,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, inputName,
+                ("In this PA layout and architecture, " + std::string(inputName) +
+                 " supports non-contiguous dimensions only up to index " + std::to_string(maxSupportedDim) +
+                 ", but the first non-contiguous dimension is index " + std::to_string(nonContiguousDim) + ".")
+                    .c_str()),
+            return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    };
+    if (CheckSupportedDim("key", keyDim) != ge::GRAPH_SUCCESS ||
+        CheckSupportedDim("value", valueDim) != ge::GRAPH_SUCCESS ||
+        (isArch35 && CheckSupportedDim("keyRope", keyRopeDim) != ge::GRAPH_SUCCESS)) {
+        return ge::GRAPH_FAILED;
+    }
+
+    auto CheckForwardedStride = [&fiaInfo](const char *inputName, int32_t nonContiguousDim, uint64_t bnStride,
+                                           uint64_t n2Stride) {
+        OP_CHECK_IF((nonContiguousDim == 0 && bnStride == 0) || (nonContiguousDim == 1 && n2Stride == 0),
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, inputName,
+                "The stride of a supported non-contiguous cache dimension must be greater than 0"),
+            return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    };
+    if (CheckForwardedStride("key", keyDim, fiaInfo.keyBnStride, fiaInfo.keyN2Stride) != ge::GRAPH_SUCCESS ||
+        CheckForwardedStride("value", valueDim, fiaInfo.valueBnStride, fiaInfo.valueN2Stride) != ge::GRAPH_SUCCESS ||
+        (isArch35 && CheckForwardedStride("keyRope", keyRopeDim, fiaInfo.kRopeBnStride,
+                         fiaInfo.kRopeN2Stride) != ge::GRAPH_SUCCESS)) {
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -852,6 +867,11 @@ ge::graphStatus PagedAttentionChecker::CheckMultiParaConsistency(const FiaTiling
         OP_CHECK_IF(fiaInfo.valueNonContigDim != -1,
             OP_LOGE(fiaInfo.opName,
                     "In non-PA scenarios, value tensors must be contiguous."),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(fiaInfo.keyRopeNonContigDim != -1,
+            OP_LOGE(fiaInfo.opName,
+                    "In non-PA scenarios, keyRope tensors must be contiguous."),
             return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
