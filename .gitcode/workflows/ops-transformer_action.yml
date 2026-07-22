@@ -216,7 +216,6 @@ stages:
           package_name: 'cann-ops-transformer-monitor-910c_linux-x86_64.run'
       JOB_monitor_950_compile:
         name: monitor_950_compile
-        needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'monitor_950'
@@ -225,7 +224,6 @@ stages:
           package_name: 'cann-ops-transformer-monitor-950_linux-x86_64.run'
       JOB_experimental_950_compile:
         name: experimental_950_compile
-        needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_X86_experimental'
