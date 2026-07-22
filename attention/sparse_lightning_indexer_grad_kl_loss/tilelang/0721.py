@@ -1023,11 +1023,7 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.sub(v1_bw_mask, v1_bw_ones, v1_bw_mask)
                         T.pipe_barrier("v")
 
-                        for bw_row in T.serial(rows_per_aiv):
-                            T.copy(
-                                v1_bw_weight_2d[bw_row, 0:bw_col_block],
-                                v1_bw_rg[bw_row, 0:bw_col_block],
-                            )
+                        T.copy(v1_bw_weight_2d, v1_bw_rg)
                         T.pipe_barrier("v")
                         T.tile.mul(v1_bw_rg, v1_bw_rg, v1_bw_diff_2d)
                         T.pipe_barrier("v")
