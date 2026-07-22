@@ -24,6 +24,7 @@
 #include "platform/platform_infos_def.h"
 #include "platform/platform_ascendc.h"
 #include "moe_gating_top_k_backward_tiling.h"
+#include "../op_kernel/arch35/moe_gating_top_k_backward_struct.h"
 #include "op_host/tiling_util.h"
 
 namespace optiling {
@@ -60,8 +61,6 @@ private:
     const gert::Shape *outputGradXShape_ = nullptr;
 
     ge::DataType gradYDtype_;
-
-    MoeGatingTopKBackwardTilingData tilingData_;
 
     int64_t needCoreNum_ = 0;
     int64_t perCoreRows_ = 0;

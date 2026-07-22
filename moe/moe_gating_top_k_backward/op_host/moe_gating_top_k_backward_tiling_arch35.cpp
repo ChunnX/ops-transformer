@@ -105,23 +105,6 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::DoOpTiling()
         return ret;
     }
 
-    tilingData_.set_needCoreNum(needCoreNum_);
-    tilingData_.set_perCoreRows(perCoreRows_);
-    tilingData_.set_lastCoreRows(lastCoreRows_);
-    tilingData_.set_baseRows(baseRows_);
-    tilingData_.set_perLoopTimes(perLoopTimes_);
-    tilingData_.set_perTailRows(perTailRows_);
-    tilingData_.set_lastLoopTimes(lastLoopTimes_);
-    tilingData_.set_lastTailRows(lastTailRows_);
-    tilingData_.set_tokenCount(tokenCount_);
-    tilingData_.set_expertCount(expertCount_);
-    tilingData_.set_k(k_);
-    tilingData_.set_gradYDtypeSize(gradYDtypeSize_);
-    tilingData_.set_renorm(renorm_);
-    tilingData_.set_normType(normType_);
-    tilingData_.set_routedScalingFactor(routedScalingFactor_);
-    tilingData_.set_eps(eps_);
-
     DumpTiling();
     return ge::GRAPH_SUCCESS;
 }
@@ -144,12 +127,35 @@ ge::graphStatus MoeGatingTopKBackwardTilingRegbase::GetWorkspaceSize()
 
 ge::graphStatus MoeGatingTopKBackwardTilingRegbase::PostTiling()
 {
-    context_->SetBlockDim(tilingData_.get_needCoreNum());
+    context_->SetBlockDim(static_cast<uint32_t>(needCoreNum_));
     size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = workspaceSize_;
-    tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(),
-                             context_->GetRawTilingData()->GetCapacity());
-    context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());
+
+    MoeGatingTopKBackwardA5TilingData td;
+    td.needCoreNum = needCoreNum_;
+    td.perCoreRows = perCoreRows_;
+    td.baseRows = baseRows_;
+    td.perLoopTimes = perLoopTimes_;
+    td.perTailRows = perTailRows_;
+    td.lastLoopTimes = lastLoopTimes_;
+    td.lastTailRows = lastTailRows_;
+    td.expertCount = expertCount_;
+    td.k = k_;
+    td.gradYDtypeSize = gradYDtypeSize_;
+    td.renorm = renorm_;
+    td.normType = normType_;
+    td.routedScalingFactor = routedScalingFactor_;
+    td.eps = eps_;
+
+    auto tilingDataSize = sizeof(MoeGatingTopKBackwardA5TilingData);
+    errno_t ret = memcpy_s(context_->GetRawTilingData()->GetData(),
+                           context_->GetRawTilingData()->GetCapacity(),
+                           reinterpret_cast<void *>(&td), tilingDataSize);
+    if (ret != EOK) {
+        OP_LOGE(context_->GetNodeName(), "memcpy_s failed, ret=%d", ret);
+        return ge::GRAPH_FAILED;
+    }
+    context_->GetRawTilingData()->SetDataSize(tilingDataSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -379,13 +385,11 @@ void MoeGatingTopKBackwardTilingRegbase::DumpTiling()
     OP_LOGD(context_, "numBlocks:  %ld", aicoreParams_.numBlocks);
     OP_LOGD(context_, "needCoreNum:  %ld", needCoreNum_);
     OP_LOGD(context_, "perCoreRows:  %ld", perCoreRows_);
-    OP_LOGD(context_, "lastCoreRows:  %ld", lastCoreRows_);
     OP_LOGD(context_, "baseRows:  %ld", baseRows_);
     OP_LOGD(context_, "perLoopTimes:  %ld", perLoopTimes_);
     OP_LOGD(context_, "perTailRows:  %ld", perTailRows_);
     OP_LOGD(context_, "lastLoopTimes:  %ld", lastLoopTimes_);
     OP_LOGD(context_, "lastTailRows:  %ld", lastTailRows_);
-    OP_LOGD(context_, "tokenCount:  %ld", tokenCount_);
     OP_LOGD(context_, "expertCount:  %ld", expertCount_);
     OP_LOGD(context_, "k:  %ld", k_);
     OP_LOGD(context_, "gradYDtypeSize:  %ld", gradYDtypeSize_);

@@ -20,13 +20,11 @@
 struct MoeGatingTopKBackwardA5TilingData {
     int64_t needCoreNum;
     int64_t perCoreRows;
-    int64_t lastCoreRows;
     int64_t baseRows;
     int64_t perLoopTimes;
     int64_t perTailRows;
     int64_t lastLoopTimes;
     int64_t lastTailRows;
-    int64_t tokenCount;
     int64_t expertCount;
     int64_t k;
     int64_t gradYDtypeSize;

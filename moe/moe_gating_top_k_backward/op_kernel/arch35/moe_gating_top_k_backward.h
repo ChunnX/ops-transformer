@@ -19,6 +19,7 @@
 #include "common.h"
 #include "kernel_operator.h"
 #include "op_kernel/load_store_utils.h"
+#include "moe_gating_top_k_backward_struct.h"
 #include "vf/moe_gating_top_k_backward_vf.h"
 
 namespace MoeGatingTopKBackwardNs {
@@ -30,7 +31,7 @@ class MoeGatingTopKBackward {
 public:
     __aicore__ inline MoeGatingTopKBackward() {};
     __aicore__ inline void Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx, GM_ADDR gradX,
-                                const MoeGatingTopKBackwardTilingData *tilingData, TPipe *tPipe);
+                                const MoeGatingTopKBackwardA5TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
 private:
@@ -59,12 +60,12 @@ private:
 
     int64_t blockIdx_ = 0, loopTimes_ = 0, tailRows_ = 0, curRows_ = 0;
     int64_t elementCountPerLoop_ = 0, curRowsByKAlign_ = 0, kAlign_ = 0, kAlign16_ = 0;
-    const MoeGatingTopKBackwardTilingData *tilingData_;
+    const MoeGatingTopKBackwardA5TilingData *tilingData_;
 };
 
 template <typename T>
 __aicore__ inline void MoeGatingTopKBackward<T>::Init(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx, GM_ADDR gradX,
-                                                       const MoeGatingTopKBackwardTilingData *tilingData, TPipe *tPipe)
+                                                       const MoeGatingTopKBackwardA5TilingData *tilingData, TPipe *tPipe)
 {
     tilingData_ = tilingData;
     pipe_ = tPipe;
