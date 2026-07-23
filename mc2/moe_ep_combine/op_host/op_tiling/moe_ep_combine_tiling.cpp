@@ -286,7 +286,7 @@ static ge::graphStatus MoeEpCombineTilingFunc(gert::TilingContext *context)
     info.localWsSizeStatusPerRank = perWinStateNeed;
     uint64_t maskCalcWorkspaceSize = aivNum * (((static_cast<uint64_t>(info.cfg.numMaxTokensPerRank)
                                     + aivNum - 1UL) / aivNum
-                                    * static_cast<uint64_t>(info.cfg.topK) * 2
+                                    * static_cast<uint64_t>(info.cfg.topK)
                                     + MASK_ALIGN - 1UL) / MASK_ALIGN * MASK_ALIGN);
     uint64_t stashBytes = static_cast<uint64_t>(info.cfg.epWorldSize) * (perWinDataNeed + perWinStateNeed);
     workSpaces[0] = SYSTEM_NEED_WORKSPACE + stashBytes + maskCalcWorkspaceSize;

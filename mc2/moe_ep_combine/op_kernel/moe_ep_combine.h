@@ -439,7 +439,7 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::MaskAlign()
 {
     // 扩展后的二维mask通过GM对齐内轴元素个数
-    uint32_t calcCntSize = Ceil(tPerCore_ * topK_ * sizeof(bool), ALIGNED_LEN_256) * ALIGNED_LEN_256;
+    uint32_t calcCntSize = Ceil((numTokens_ + aivNum_ - 1UL) / aivNum_ * topK_ * sizeof(bool), ALIGNED_LEN_256) * ALIGNED_LEN_256;
     GlobalTensor<bool> MaskGMTensor;
     maskCalcWorkspaceGM_ = maskCalcWorkspaceGM_ + aivId_ * calcCntSize;
     MaskGMTensor.SetGlobalBuffer((__gm__ bool*)maskCalcWorkspaceGM_);
