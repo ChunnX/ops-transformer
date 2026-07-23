@@ -439,7 +439,6 @@ class GeneralizedSFAQuant:
         else:
             return tensor
 
-<<<<<<< master
     def lse_trans_bnsd_to_target_layout(self, tensor, layout, act_seq=None):
         if layout in ["BSND"]: #B N S G
             return tensor
@@ -464,12 +463,9 @@ class GeneralizedSFAQuant:
         else:
             return tensor
 
-    def forward(self, q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, return_softmax_lse):
-=======
     def forward(self, q, ori_k_bnsd, cmp_k_bnsd, ori_sparse_indices, cmp_sparse_indices,
         cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks,
         ori_topk_length, cmp_topk_length):
->>>>>>> master
         print("cpu执行中...")
         print(f"template_run_mode = {self.template_run_mode}")
 
@@ -485,10 +481,6 @@ class GeneralizedSFAQuant:
             cmp_sparse_indices_bnsd, cmp_sparse_indices_bnsd_shape = self.trans_shape_to_bnsd(cmp_sparse_indices,
                                                                     cmp_sparse_indices.shape, self.layout_q, cu_seqlens_q, self.seqused_q)
 
-<<<<<<< master
-        attn_out, softmax_lse = self.calculate_by_bnsd(q_bnsd, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices_bnsd, cu_seqlens_q,
-                                         seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, return_softmax_lse)
-=======
         ori_topk_length_bnsd = None
         if self.template_run_mode in ("ORI_SPARSE", "ORI_CMP_SPARSE") and ori_topk_length is not None:
             ori_topk_length_bnsd, _ = self.trans_topk_length_shape_to_bnsd(ori_topk_length,
@@ -499,11 +491,10 @@ class GeneralizedSFAQuant:
             cmp_topk_length_bnsd, _ = self.trans_topk_length_shape_to_bnsd(cmp_topk_length,
                                                                         cmp_topk_length.shape, self.layout_q, cu_seqlens_q, self.seqused_q)
 
-        attn_out = self.calculate_by_bnsd(q_bnsd, ori_k_bnsd, cmp_k_bnsd,
+        attn_out, softmax_lse = self.calculate_by_bnsd(q_bnsd, ori_k_bnsd, cmp_k_bnsd,
                                         ori_sparse_indices_bnsd, cmp_sparse_indices_bnsd,
                                         cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks,
                                         ori_topk_length_bnsd, cmp_topk_length_bnsd)
->>>>>>> master
 
         attn_out = self.trans_bnsd_to_target_layout(attn_out, self.layout_q, cu_seqlens_q, self.seqused_q)
         if return_softmax_lse:
@@ -1522,17 +1513,12 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     test_qsmla = GeneralizedSFAQuant(layout_q, layout_kv, q_type, ori_kv_type, cmp_kv_type, B, S1, T1, N1, N2, D, K,
         block_num1, block_num2, block_size1, block_size2, cu_seqlens_q, seqused_q, seqused_ori_kv, seqused_cmp_kv,
         cu_seqlens_ori_kv, cu_seqlens_cmp_kv, cmp_residual_kv, softmax_scale, cmp_ratio,
-<<<<<<< master
-        ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, quant_mode, tile_size, rope_head_dim, template_run_mode)
-    cpu_result, cpu_lse = test_qsmla.forward(q, ori_k_bnsd, cmp_k_bnsd, cmp_sparse_indices, cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks, return_softmax_lse)
-=======
         ori_mask_mode, cmp_mask_mode, ori_win_left, ori_win_right, quant_mode, tile_size, rope_head_dim,
         ori_topk_length, cmp_topk_length, template_run_mode)
-    cpu_result = test_qsmla.forward(q, ori_k_bnsd, cmp_k_bnsd, ori_sparse_indices, cmp_sparse_indices,
+    cpu_result, cpu_lse = test_qsmla.forward(q, ori_k_bnsd, cmp_k_bnsd, ori_sparse_indices, cmp_sparse_indices,
         cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks,
         ori_topk_length, cmp_topk_length)
 
->>>>>>> master
     print("mode:%s\n",template_run_mode)
 
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
