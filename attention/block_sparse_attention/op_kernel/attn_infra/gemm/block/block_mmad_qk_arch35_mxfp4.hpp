@@ -24,34 +24,6 @@
 #include "../../../tla/tensor.hpp"
 
 namespace NpuArch::Gemm::Block {
-
-struct Mm1L1TileHelper {
-    uint32_t mm1L1TileM;
-    uint32_t mm1L1TileN;
-    uint32_t mm1L1TileKLeft;
-    uint32_t mm1L1TileKRight;
-    uint32_t qL1BufNum;
-    uint32_t kL1BufNum;
-
-    __aicore__ inline
-    Mm1L1TileHelper() {}
-
-    __aicore__ inline
-    Mm1L1TileHelper(
-        uint32_t m,
-        uint32_t n,
-        uint32_t kl,
-        uint32_t kr,
-        uint32_t pbn,
-        uint32_t vbn) :
-        mm1L1TileM(m),
-        mm1L1TileN(n),
-        mm1L1TileKLeft(kl),
-        mm1L1TileKRight(kr),
-        qL1BufNum(pbn),
-        kL1BufNum(vbn) {}
-};
-
 template <
     class L1TileShape_,
     class L0TileShape_,
@@ -84,8 +56,6 @@ public:
 
     using CopyL1ToL0A = typename TileCopy::CopyL1ToL0A;
     using CopyL1ToL0B = typename TileCopy::CopyL1ToL0B;
-
-    using ElementAccumulator = typename TileCopy::ElementAccumulator;
 
     using LayoutTagL1A = typename TileCopy::LayoutTagL1A;
     using LayoutTagL1B = typename TileCopy::LayoutTagL1B;
