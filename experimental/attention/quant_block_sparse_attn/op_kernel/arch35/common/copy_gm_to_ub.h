@@ -36,6 +36,7 @@ private:
                                      const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo,
                                      const ConstInfo &constInfo)
     {
+        (void)blockTableTensor;
         int64_t byteOffset1 = 0;
         int64_t byteOffset2 = 0;
         if constexpr (GM_FORMAT == BSALayout::PA_BNSD) {
@@ -48,17 +49,17 @@ private:
             dataCopyParams.dstStride = 0;
             DataCopyPadExtParams<T> dataCopyPadParams{};
             if (runInfo.sparseBlkIdx1 >= 0) {
-                GetPaKScaleOffset(byteOffset1, runInfo.sparseBlkIdx1, blockTableTensor, runInfo, constInfo);
+                GetPaKScaleOffset(byteOffset1, runInfo.phyBlkNumIdx1, runInfo, constInfo);
                 DataCopyPad(dstTensor, srcTensor[byteOffset1], dataCopyParams, dataCopyPadParams);
             }
             if (runInfo.sparseBlkIdx2 >= 0 && runInfo.s2SparseBlk2RealSize > 0) {
-                GetPaKScaleOffset(byteOffset2, runInfo.sparseBlkIdx2, blockTableTensor, runInfo, constInfo);
+                GetPaKScaleOffset(byteOffset2, runInfo.phyBlkNumIdx2, runInfo, constInfo);
                 DataCopyPad(dstTensor[constInfo.kvSparseBlockSize], srcTensor[byteOffset2], dataCopyParams,
                             dataCopyPadParams);
             }
         } else if constexpr (GM_FORMAT == BSALayout::PA_BSND) {
-            GetPaKScaleOffset(byteOffset1, runInfo.sparseBlkIdx1, blockTableTensor, runInfo, constInfo);
-            GetPaKScaleOffset(byteOffset2, runInfo.sparseBlkIdx2, blockTableTensor, runInfo, constInfo);
+            GetPaKScaleOffset(byteOffset1, runInfo.phyBlkNumIdx1, runInfo, constInfo);
+            GetPaKScaleOffset(byteOffset2, runInfo.phyBlkNumIdx2, runInfo, constInfo);
             DataCopyExtParams dataCopyParams;
             dataCopyParams.blockCount = 128;
             dataCopyParams.blockLen = sizeof(float);
@@ -69,12 +70,10 @@ private:
             DataCopyPad(dstTensor[128], srcTensor[byteOffset2], dataCopyParams, dataCopyPadParams);
         }
     }
-    __aicore__ inline void GetPaKScaleOffset(int64_t &byteOffset, const int64_t sparseBlkIdx,
-                                             const GlobalTensor<int32_t> &blockTableTensor, const RunInfo &runInfo,
+    __aicore__ inline void GetPaKScaleOffset(int64_t &byteOffset, const int64_t physicalBlock,
+                                             const RunInfo &runInfo,
                                              const ConstInfo &constInfo)
     {
-        int64_t blockTableOffset = runInfo.boIdx * constInfo.blockTableDim2 + sparseBlkIdx;
-        int64_t physicalBlock = blockTableTensor.GetValue(blockTableOffset);
         byteOffset = physicalBlock * (constInfo.paBlockStride / sizeof(float)) +
                      runInfo.n2oIdx * constInfo.kvSparseBlockSize;
     }
