@@ -933,8 +933,13 @@ def tilelang_grad_kl_loss_single_kernel(
                 # 64xD batches, and separate ping-pong ownership for the
                 # MTE2 input and MTE3 output buffers.
                 dk_batch_rows = 64
-                dk_fp32_db = T.alloc_ub((2, dk_batch_rows, DQueryIndex), calc_dtype)
-                dk_out_db = T.alloc_ub((2, dk_batch_rows, DQueryIndex), input_dtype)
+                # PTO requires each cast operand to be backed by one continuous
+                # physical buffer.  Keep ping/pong as independent 2D allocations
+                # instead of slicing a [2, rows, D] parent allocation.
+                dk_fp32_ping_ub = T.alloc_ub((dk_batch_rows, DQueryIndex), calc_dtype)
+                dk_fp32_pong_ub = T.alloc_ub((dk_batch_rows, DQueryIndex), calc_dtype)
+                dk_out_ping_ub = T.alloc_ub((dk_batch_rows, DQueryIndex), input_dtype)
+                dk_out_pong_ub = T.alloc_ub((dk_batch_rows, DQueryIndex), input_dtype)
                 dk_item_count = B * S2 * Nidx2
                 dk_rows_per_aiv = ceil_div(dk_item_count, total_aiv_num)
                 dk_start = T.min(aiv_id * dk_rows_per_aiv, dk_item_count)
@@ -956,12 +961,12 @@ def tilelang_grad_kl_loss_single_kernel(
                         if dk_slot == 0:
                             T.copy(
                                 dKeyIndex[dk_row:dk_row + dk_count, 0:DQueryIndex],
-                                dk_fp32_db[0, 0:dk_count, 0:DQueryIndex],
+                                dk_fp32_ping_ub[0:dk_count, 0:DQueryIndex],
                             )
                         if dk_slot == 1:
                             T.copy(
                                 dKeyIndex[dk_row:dk_row + dk_count, 0:DQueryIndex],
-                                dk_fp32_db[1, 0:dk_count, 0:DQueryIndex],
+                                dk_fp32_pong_ub[0:dk_count, 0:DQueryIndex],
                             )
                         T.set_flag("mte2", "v", dk_slot + 5)
                         T.wait_flag("mte2", "v", dk_slot + 5)
@@ -969,15 +974,15 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_flag("mte3", "v", dk_slot + 5)
                         if dk_slot == 0:
                             T.tile.cast(
-                                dk_out_db[0, 0:dk_count, 0:DQueryIndex],
-                                dk_fp32_db[0, 0:dk_count, 0:DQueryIndex],
+                                dk_out_ping_ub[0:dk_count, 0:DQueryIndex],
+                                dk_fp32_ping_ub[0:dk_count, 0:DQueryIndex],
                                 "CAST_RINT",
                                 dk_count * DQueryIndex,
                             )
                         if dk_slot == 1:
                             T.tile.cast(
-                                dk_out_db[1, 0:dk_count, 0:DQueryIndex],
-                                dk_fp32_db[1, 0:dk_count, 0:DQueryIndex],
+                                dk_out_pong_ub[0:dk_count, 0:DQueryIndex],
+                                dk_fp32_pong_ub[0:dk_count, 0:DQueryIndex],
                                 "CAST_RINT",
                                 dk_count * DQueryIndex,
                             )
@@ -986,12 +991,12 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_flag("v", "mte3", dk_slot + 5)
                         if dk_slot == 0:
                             T.copy(
-                                dk_out_db[0, 0:dk_count, 0:DQueryIndex],
+                                dk_out_ping_ub[0:dk_count, 0:DQueryIndex],
                                 dKeyIndexOut[dk_row:dk_row + dk_count, 0:DQueryIndex],
                             )
                         if dk_slot == 1:
                             T.copy(
-                                dk_out_db[1, 0:dk_count, 0:DQueryIndex],
+                                dk_out_pong_ub[0:dk_count, 0:DQueryIndex],
                                 dKeyIndexOut[dk_row:dk_row + dk_count, 0:DQueryIndex],
                             )
                         T.set_flag("mte3", "v", dk_slot + 5)

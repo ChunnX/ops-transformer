@@ -18,8 +18,8 @@ sparse_lightning_indexer_grad_kl_loss = mod.sparse_lightning_indexer_grad_kl_los
 # Clear all caches to avoid stale compiled kernels
 mod._clear_caches()
 
-WARMUP_ITERS = 3
-BENCH_ITERS = 5
+WARMUP_ITERS = 5
+BENCH_ITERS = 10
 
 CASE_CONFIG = {
     "B": 1, "S1": 1, "S2": 2048, "N1": 128, "N2": 1,
