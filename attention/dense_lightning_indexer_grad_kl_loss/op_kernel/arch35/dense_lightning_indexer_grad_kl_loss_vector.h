@@ -25,6 +25,7 @@
 #include "dense_lightning_indexer_grad_kl_loss_tiling_data.h"
 #include "vf/dense_lightning_indexer_grad_kl_loss_cast_vf.h"
 #include "vf/dense_lightning_indexer_grad_kl_loss_loss_vf.h"
+#include "vf/dense_lightning_indexer_grad_kl_loss_p_vf.h"
 
 using namespace AscendC;
 using AscendC::CrossCoreSetFlag;
@@ -540,10 +541,6 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorP(DLIGradKLLossRunInf
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4P);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4P);
 
-        AscendC::Muls(mm1ResUb_, mm1ResUb_, constInfo.scaleValue, processNumPerHead);
-        PipeBarrier<PIPE_V>();
-
-        // simple softmax
         uint32_t softmaxGmOffset = runInfo.softmaxTensorOffset + s1InnerIdx * S1_VEC_SIZE_8
                                    + n1Idx * constInfo.softmaxHeadOffset;
         DataCopyExtParams softmaxCopyParams = {static_cast<uint16_t>(1),
@@ -555,30 +552,18 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorP(DLIGradKLLossRunInf
         AscendC::DataCopyPad(softmaxSumUb_, softmaxSumGm[softmaxGmOffset], softmaxCopyParams, padParams);
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4P);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4P);
-        AscendC::Brcb(softmaxMaxBrdUb_, softmaxMaxUb_, S1_VEC_SIZE_8 / FLOAT_DATA_BLOCK_NUM, {1, 8});
-        AscendC::Brcb(softmaxSumBrdUb_, softmaxSumUb_, S1_VEC_SIZE_8 / FLOAT_DATA_BLOCK_NUM, {1, 8});
-        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24Sm);
-        PipeBarrier<PIPE_V>();
-        SoftMaxTiling simpleSoftMaxTilingInfo = tilingData->vectorParams.simpleSoftmaxPTilingData;
-        AscendC::SimpleSoftMax<T>(mm1ResUb_,
-                                  softmaxSumBrdUb_,
-                                  softmaxMaxBrdUb_,
-                                  mm1ResUb_,
-                                  softmaxTmpUb_,
-                                  simpleSoftMaxTilingInfo,
-                                  {static_cast<uint32_t>(curS1InnerSize),
-                                   static_cast<uint32_t>(runInfo.curS2StepSizeAlign8),
-                                   static_cast<uint32_t>(curS1InnerSize),
-                                   static_cast<uint32_t>(runInfo.curS2StepSize)});
-        PipeBarrier<PIPE_V>();
-
         if (n1Idx == 0) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(eventIdMte3ToV4P);
-            AscendC::DataCopy(pReduceUb_, mm1ResUb_, processNumPerHead);
+            DenseDliGradKLLossArch35::ComputePHead<true>(
+                pReduceUb_, mm1ResUb_, softmaxMaxUb_, softmaxSumUb_, constInfo.scaleValue,
+                curS1InnerSize, runInfo.curS2StepSizeAlign8);
         } else {
-            AscendC::Add(pReduceUb_, pReduceUb_, mm1ResUb_, processNumPerHead);
+            DenseDliGradKLLossArch35::ComputePHead<false>(
+                pReduceUb_, mm1ResUb_, softmaxMaxUb_, softmaxSumUb_, constInfo.scaleValue,
+                curS1InnerSize, runInfo.curS2StepSizeAlign8);
         }
 
+        AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24Sm);
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24P);
     }
 
