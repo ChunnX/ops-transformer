@@ -594,11 +594,6 @@ ge::graphStatus ScatterPaKvCacheMembaseTiling::GetShapeAttrsInfo()
         params_.vStride = strides->GetData()[1];
         params_.kOffset = offsets->GetData()[0];
         params_.vOffset = offsets->GetData()[1];
-        if (params_.kStride <= 0 || params_.vStride <= 0) {
-            OP_LOGE(context_, "strides should be greater than 0, but got kStride=%ld, vStride=%ld.",
-                    params_.kStride, params_.vStride);
-            return ge::GRAPH_FAILED;
-        }
     }
     return ge::GRAPH_SUCCESS;
 }
