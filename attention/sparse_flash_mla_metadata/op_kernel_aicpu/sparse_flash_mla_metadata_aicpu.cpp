@@ -45,6 +45,8 @@ bool SparseFlashMlaMetadataCpuKernel::Prepare(CpuKernelContext &ctx)
     cmpResidualKv_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpResidualKv));
     oriTopkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::oriTopkLength));
     cmpTopkLength_ = ctx.Input(static_cast<uint32_t>(ParamId::cmpTopkLength));
+    hasOriTopkLength_ = (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr &&
+                         oriTopkLength_->NumElements() > 0);
     // output
     metadata_ = ctx.Output(static_cast<uint32_t>(ParamId::metaData));
 
@@ -367,7 +369,11 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
         isSparseCmpKv_ = true;
     }
     if (validSocVersion == ValidSocVersion::ASCEND910) {
-        mBaseSize_ = isSparseCmpKv_ ? groupSize_ : (256U / groupSize_) * groupSize_;
+        if (isSparseOriKv_ && !isSparseCmpKv_) {
+            mBaseSize_ = groupSize_;
+        } else {
+            mBaseSize_ = isSparseCmpKv_ ? groupSize_ : (256U / groupSize_) * groupSize_;
+        }
         s2BaseSize_ = 512U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
         if (groupSize_ > 64U) {
@@ -419,13 +425,49 @@ uint32_t SparseFlashMlaMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1
 
 uint32_t SparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t bsStride)
 {
-    // 尝试使用 oriTopkLength_
     if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
         const int32_t *oriTopkPtr = static_cast<const int32_t*>(oriTopkLength_->GetData());
         return static_cast<uint32_t>(oriTopkPtr[bsStride]);
     }
-    // 如果不是 DEFAULT_MASK，使用 oriTopK_
     return static_cast<uint32_t>(oriTopK_);
+}
+
+uint32_t SparseFlashMlaMetadataCpuKernel::ReadOriTopkLengthAtRow(uint32_t bIdx, uint32_t s1Idx) const
+{
+    if (!hasOriTopkLength_) {
+        return static_cast<uint32_t>(oriTopK_);
+    }
+    const int32_t *topkLenPtr = static_cast<const int32_t *>(oriTopkLength_->GetData());
+    if (layoutQ_ == "TND") {
+        uint32_t tIdx = s1Idx;
+        if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+            const int32_t *cuPtr = static_cast<const int32_t *>(cuSeqlensQ_->GetData());
+            tIdx = static_cast<uint32_t>(cuPtr[bIdx]) + s1Idx;
+        } else {
+            tIdx = bIdx * static_cast<uint32_t>(maxSeqlenQ_) + s1Idx;
+        }
+        return static_cast<uint32_t>(topkLenPtr[tIdx * static_cast<uint32_t>(numHeadsKv_)]);
+    }
+    return static_cast<uint32_t>(
+        topkLenPtr[(static_cast<uint64_t>(bIdx) * static_cast<uint64_t>(maxSeqlenQ_) + s1Idx) *
+                   static_cast<uint64_t>(numHeadsKv_)]);
+}
+
+uint32_t SparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t s1GIdx, const BatchCache &batchCache)
+{
+    if (!hasOriTopkLength_) {
+        return static_cast<uint32_t>(oriTopK_);
+    }
+    int64_t s1GFirstToken = static_cast<int64_t>(s1GIdx) * static_cast<int64_t>(mBaseSize_);
+    int64_t s1GLastToken = std::min(s1GFirstToken + static_cast<int64_t>(mBaseSize_),
+                                    static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(groupSize_)) - 1;
+    int64_t s1First = s1GFirstToken / static_cast<int64_t>(groupSize_);
+    int64_t s1Last = s1GLastToken / static_cast<int64_t>(groupSize_);
+    uint32_t maxLen = 0U;
+    for (int64_t s1Idx = s1First; s1Idx <= s1Last; ++s1Idx) {
+        maxLen = std::max(maxLen, ReadOriTopkLengthAtRow(batchCache.bIdx, static_cast<uint32_t>(s1Idx)));
+    }
+    return std::min(maxLen, static_cast<uint32_t>(oriTopK_));
 }
 
 uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpTopkLength(uint32_t bsStride)
@@ -643,6 +685,13 @@ Range<int64_t> SparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx
         if (batchCache.s1Size == 0U || batchCache.oriS2Size == 0U) {
             return std::make_pair(0, 0);
         }
+        if (isSparseOriKv_ && !hasCmpKv_) {
+            uint32_t oriTopkSize = GetOriTopkLength(s1GIdx, batchCache);
+            if (oriTopkSize == 0U) {
+                return std::make_pair(0, 0);
+            }
+            return std::make_pair(0, static_cast<int64_t>(oriTopkSize) - 1);
+        }
     } else {
         if (batchCache.s1Size == 0U || batchCache.cmpRevertS2Size == 0U) {
             return std::make_pair(0, 0);
@@ -793,9 +842,9 @@ void SparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(const Range<int64_t> &or
             static_cast<int64_t>(batchCache.oriS2Size - 1U));
         oriS2LastToken = Clip(oriS2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.oriS2Size - 1U));
         // oriS2LastToken 与 topk 取最小
-        uint32_t s1Idx = GetS1Idx(batchCache.s1Size, s1GCache.s1GIdx);
-        uint32_t bsStride = GetBsStride(s1GCache.bIdx, s1Idx);
-        uint32_t oriTopkSize = GetOriTopkLength(bsStride);
+        uint32_t oriTopkSize = isSparseOriKv_ ?
+            GetOriTopkLength(s1GCache.s1GIdx, batchCache) :
+            GetOriTopkLength(GetBsStride(s1GCache.bIdx, GetS1Idx(batchCache.s1Size, s1GCache.s1GIdx)));
         uint32_t actOriS2Size = isSparseOriKv_ ?
             std::min(static_cast<uint32_t>(oriS2LastToken - oriS2FirstToken + 1), oriTopkSize) :
             static_cast<uint32_t>(oriS2LastToken - oriS2FirstToken + 1);
@@ -1270,29 +1319,16 @@ void SparseFlashMlaMetadataCpuKernel::SplitFD(SplitResult &splitRes)
     for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
         totalFDLoad += splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i];
     }
-    // 计算当前最大冗余vec核数
-    uint32_t emptyVectorNum = aivCoreNum_ - splitRes.numOfFdHead;
     // 计算每个核处理的load
     uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_; // 向上取整，避免核负载为0
     uint32_t curCoreIndex = 0;
     for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
-        // 冗余vec核数为0，此时规约任务无法进行更小的切分，只能1个vec核计算1个规约任务
-        if (emptyVectorNum == 0U) {
-            splitRes.fdRes.fdIdx[curCoreIndex] = i;
-            splitRes.fdRes.fdMStart[curCoreIndex] = 0U;
-            splitRes.fdRes.fdMNum[curCoreIndex] = splitRes.fdRes.fdMSize[i];
-            curCoreIndex++;
-            continue;
-        }
         // 计算当前归约任务所用核数，向下取整，避免使用核数超出总核数
         uint32_t curFDVectorNum = splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i] / averageLoad;
         curFDVectorNum = std::max(1U, curFDVectorNum);
         // 计算当前归约任务每个核的行数，向上取整，避免行数为0
         uint32_t curAveMSize = (splitRes.fdRes.fdMSize[i] + curFDVectorNum - 1U) / curFDVectorNum;
         curFDVectorNum = (splitRes.fdRes.fdMSize[i] + curAveMSize -1U)/ curAveMSize;
-        // 需要使用的vec核数与当前剩余可用vec核数取最小
-        curFDVectorNum = std::min(curFDVectorNum, emptyVectorNum + 1U); // 1: Fd任务自身带一个核
-        // FD负载分配
         for (uint32_t vid = 0; vid < curFDVectorNum; vid++) {
             splitRes.fdRes.fdIdx[curCoreIndex] = i;
             splitRes.fdRes.fdMStart[curCoreIndex] = vid * curAveMSize;
@@ -1300,8 +1336,6 @@ void SparseFlashMlaMetadataCpuKernel::SplitFD(SplitResult &splitRes)
                 (vid < curFDVectorNum - 1) ? curAveMSize : (splitRes.fdRes.fdMSize[i] - vid * curAveMSize);
             curCoreIndex++;
         }
-        // 更新冗余vec核数
-        emptyVectorNum -= (curFDVectorNum - 1U); // 1: 空余核不包含FD自身的核，要-1
     }
     splitRes.fdRes.fdUsedVecNum = curCoreIndex;
 }

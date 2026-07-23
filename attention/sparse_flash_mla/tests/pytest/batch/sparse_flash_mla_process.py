@@ -14,6 +14,8 @@ import math
 import numpy as np
 import os
 import sys
+import importlib.util
+import types
 import pytest
 import random
 import torch
@@ -21,13 +23,31 @@ import torch_npu
 import torchair
 from torchair.configs.compiler_config import CompilerConfig
 
-# Register sparse_flash_mla and sparse_flash_mla_metadata via PTA
+# 按需加载 sparse_flash_mla，避免 cann_ops_transformer.ops.__init__ 拉全量算子 JIT
 TORCH_EXT_PATH = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)),
-                                                 '../../../../torch_extension'))
+                                                 '../../../../../torch_extension'))
 if TORCH_EXT_PATH not in sys.path:
     sys.path.insert(0, TORCH_EXT_PATH)
-from cann_ops_transformer.ops import sparse_flash_mla as _smla_registration  # noqa: F401
-from cann_ops_transformer.ops import sparse_flash_mla_metadata as _metadata_registration  # noqa: F401
+
+
+def _ensure_smla_ops_registered():
+    if "cann_ops_transformer.ops.sparse_flash_mla" in sys.modules:
+        return
+    pkg = types.ModuleType("cann_ops_transformer")
+    pkg.__path__ = [os.path.join(TORCH_EXT_PATH, "cann_ops_transformer")]
+    pkg.__file__ = os.path.join(TORCH_EXT_PATH, "cann_ops_transformer", "__init__.py")
+    sys.modules.setdefault("cann_ops_transformer", pkg)
+    op_builder_pkg = types.ModuleType("cann_ops_transformer.op_builder")
+    op_builder_pkg.__path__ = [os.path.join(TORCH_EXT_PATH, "cann_ops_transformer", "op_builder")]
+    sys.modules.setdefault("cann_ops_transformer.op_builder", op_builder_pkg)
+    mod_path = os.path.join(TORCH_EXT_PATH, "cann_ops_transformer", "ops", "sparse_flash_mla.py")
+    spec = importlib.util.spec_from_file_location("cann_ops_transformer.ops.sparse_flash_mla", mod_path)
+    mod = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = mod
+    spec.loader.exec_module(mod)
+
+
+_ensure_smla_ops_registered()
 
 class Network(torch.nn.Module):
     def __init__(self):
@@ -116,8 +136,12 @@ def call_npu(input_data):
     ori_sparse_indices = tensor_input['ori_sparse_indices']
     cmp_sparse_indices = tensor_input['cmp_sparse_indices']
     cmp_block_table = tensor_input['cmp_block_table']
-    ori_topk_length = None
-    cmp_topk_length = None
+    ori_topk_length = metadata_input.get('ori_topk_length')
+    cmp_topk_length = metadata_input.get('cmp_topk_length')
+    if ori_topk_length is not None:
+        ori_topk_length = ori_topk_length.npu()
+    if cmp_topk_length is not None:
+        cmp_topk_length = cmp_topk_length.npu()
     return_softmax_lse = params.get('return_softmax_lse')
 
     # 将需要上NPU的tensor搬到NPU
