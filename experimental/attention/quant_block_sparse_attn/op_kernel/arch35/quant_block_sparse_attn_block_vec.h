@@ -83,9 +83,8 @@ public:
     }
     __aicore__ inline void InitCommonGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
                                                   __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-                                                  __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
-                                                  __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
-                                                  ConstInfo &constInfo);
+                                                  __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable,
+                                                  __gm__ uint8_t *&workspace, ConstInfo &constInfo);
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
@@ -100,12 +99,9 @@ public:
                                                    uint8_t subBlockIdx);
     __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, ConstInfo &constInfo);
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
-                                            __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *prefix,
+                                            __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
                                             __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable,
-                                            __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-                                            __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-                                            __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
-                                            ConstInfo &constInfo);
+                                            __gm__ uint8_t *&workspace, ConstInfo &constInfo);
     __aicore__ inline void InitUniqueLocalBuffer(ConstInfo &constInfo);
     __aicore__ inline void GenerateDropoutMask(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<uint8_t> &dropMaskUb)
     {
@@ -206,8 +202,7 @@ private:
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCommonGlobalBuffer(
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-    __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
-    ConstInfo &constInfo)
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace, ConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
         deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
@@ -859,12 +854,9 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *s
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
     __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-    __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
-    __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace,
-    uint64_t singleCoreOffset, uint32_t aicIdx, ConstInfo &constInfo)
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace, ConstInfo &constInfo)
 {
-    InitCommonGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, prefix, attenMask, blockTable, workspace,
-                           constInfo);
+    InitCommonGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, attenMask, blockTable, workspace, constInfo);
 }
 
 
@@ -959,12 +951,9 @@ public:
                                         CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
                                         AttenMaskInfo &attenMaskInfo) {};
     __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
-                                            __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *prefix,
+                                            __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
                                             __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable,
-                                            __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-                                            __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-                                            __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
-                                            ConstInfo &constInfo)
+                                            __gm__ uint8_t *&workspace, ConstInfo &constInfo)
     {
     }
 

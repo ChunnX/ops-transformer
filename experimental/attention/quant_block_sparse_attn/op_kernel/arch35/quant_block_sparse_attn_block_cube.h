@@ -120,8 +120,7 @@ public:
                                          __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value, CVSharedParams<isPa> *sharedParams,
-                                         AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr,
-                                         __gm__ int32_t *actualSeqKvlenAddr);
+                                         AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output, RunInfo &runInfo,
                                        ConstInfo &constInfo);
 
@@ -212,8 +211,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
                                                                   CVSharedParams<isPa> *sharedParams,
                                                                   AttenMaskInfo *attenMaskInfo,
-                                                                  __gm__ int32_t *actualSeqQlenAddr,
-                                                                  __gm__ int32_t *actualSeqKvlenAddr)
+                                                                  __gm__ int32_t *actualSeqQlenAddr)
 {
     if ASCEND_IS_AIC {
         if (sharedParams->fromFused) {
@@ -748,8 +746,7 @@ public:
     {
     }
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value, CVSharedParams<isPa> *sharedParams,
-                                         AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr,
-                                         __gm__ int32_t *actualSeqKvlenAddr)
+                                         AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr)
     {
     }
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,

@@ -25,7 +25,7 @@ using namespace AscendC;
 //   - 按 g_coreType 选择实/Dummy 的 Cube/Vec block（AIC 跑真 Cube + Dummy Vec，AIV 跑 Dummy Cube + 真 Vec）
 //   - 实例化 QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>
 //   - GET_TILING_DATA -> InitBaseAPI -> Process()
-// __VA_ARGS__ 为 block 模板参数（严格对齐 CUBE_BLOCK_TRAITS 字段顺序，共 17 个）。
+// __VA_ARGS__ 为 block 模板参数（严格对齐 CUBE_BLOCK_TRAITS 字段顺序）。
 
 #define BSA_OP_IMPL(...) \
     do { \
@@ -39,16 +39,9 @@ using namespace AscendC;
         GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnTilingData, tilingDataIn, tiling); \
         const QuantBlockSparseAttnTilingData *__restrict tilingData = &tilingDataIn; \
         op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, \
-                       cuSeqlensQ, cuSeqlensKv, seqUsedQ, seqUsedKv, blockTable, \
-                       nullptr /* queryPaddingSize */, nullptr /* kvPaddingSize */, \
+                       cuSeqlensQ, cuSeqlensKv, blockTable, \
                        qScale /* deqScaleQ */, kScale /* deqScaleK */, vScale /* deqScaleV */, \
-                       pScale /* pScale */, nullptr /* keySharedPrefix */, \
-                       nullptr /* valueSharedPrefix */, nullptr /* actualSharedPrefixLen */, \
-                       nullptr /* queryRope */, nullptr /* keyRope */, \
-                       nullptr /* learnableSink */, nullptr /* softmaxMax */, \
-                       nullptr /* softmaxSum */, nullptr /* softmaxOut */, \
-                       softmaxLse, attentionOut, user /* workspace */, \
-                       tilingData, &tPipe); \
+                       pScale /* pScale */, softmaxLse, attentionOut, user /* workspace */, tilingData, &tPipe); \
         op.Process(); \
     } while (0)
 
@@ -65,6 +58,8 @@ __global__ __aicore__ void quant_block_sparse_attn(
 
     // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；当前主逻辑仍通过 tilingData 读取运行期字段。
     (void)RETURN_SOFTMAX_LSE;
+    (void)seqUsedQ;
+    (void)seqUsedKv;
 
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
