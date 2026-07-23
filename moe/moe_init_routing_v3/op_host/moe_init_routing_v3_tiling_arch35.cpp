@@ -1992,15 +1992,19 @@ int64_t MoeInitRoutingV3Arch35TilingClass::CalcMaxRowIdxPerLoopMxQuant(int64_t p
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CalcMaxRowIdxPerLoopMxQuant(...)");
 
+    int64_t vfXElemNum = REG_SIZE / inputXDtypeSize_ * NUM_TWO;
+    int64_t vfScaleElemNum = REG_SIZE / inputXDtypeSize_;
+    int64_t perLoopColsVfAlign = Ops::Base::CeilAlign(perLoopCols, vfXElemNum);
+    int64_t perLoopScaleColsVfAlign =
+        Ops::Base::CeilAlign(perLoopCols / MX_QUANT_BLOCK_SIZE, vfScaleElemNum);
     // 输入x[cols]所占大小：cols*sizeof(dtypeX)+cols*sizeof(Byte)
-    int64_t xInSize = AlignBytes(perLoopCols, inputXDtypeSize_) + AlignBytes(perLoopCols, sizeof(int8_t));
+    int64_t xInSize = AlignBytes(perLoopColsVfAlign, inputXDtypeSize_) +
+                      AlignBytes(perLoopColsVfAlign, sizeof(int8_t));
     // 输出scale[cols]所占大小：scaleCols*sizeof(dtypeX)*2+scaleCols*sizeof(Byte)
-    int64_t scaleSize = 2 * AlignBytes(perLoopCols / MX_QUANT_BLOCK_SIZE, inputXDtypeSize_) +
-                        AlignBytes(perLoopCols / MX_QUANT_BLOCK_SIZE, sizeof(int8_t));
-    // 输出xOut[cols]所占大小：
-    int64_t xOutSize = Align(perLoopCols / 4, sizeof(int8_t)) * 4;
+    int64_t scaleSize = 2 * AlignBytes(perLoopScaleColsVfAlign, inputXDtypeSize_) +
+                        AlignBytes(perLoopScaleColsVfAlign, sizeof(int8_t));
     // 返回的是(availUbSize-每行输入x、输出scale、输出xOut所占的大小)/sizeof(int32)，应该是留给sortedRowIdx元素的数目
-    return (availUbSize_ / 2 - (xInSize + scaleSize + xOutSize)) / static_cast<int64_t>(sizeof(int32_t));
+    return (availUbSize_ / 2 - (xInSize + scaleSize)) / static_cast<int64_t>(sizeof(int32_t));
 }
 
 void MoeInitRoutingV3Arch35TilingClass::SetIndicesLoopParams4GatherOut(
