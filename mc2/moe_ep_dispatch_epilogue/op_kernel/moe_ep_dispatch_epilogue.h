@@ -49,6 +49,7 @@ static constexpr uint32_t META_SLOT_IDX_OFFSET = 3U;
 static constexpr uint32_t HIT_ROW_OFFSET = 0U;
 static constexpr uint32_t HIT_TOPK_OFFSET = 1U;
 static constexpr uint32_t HIT_ENTRY_SIZE = 2U;
+static constexpr uint32_t CACHED_META_TILE = 8192U;
 
 template <typename XType, typename ScalesType, uint32_t IsCached, bool HasTopkWeights>
 class MoeEpDispatchEpilogue {
@@ -546,8 +547,9 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     }
 
     uint32_t ubMetaBytes = Ceil(metaBytes_, UB_ALIGN) * UB_ALIGN;
-    uint32_t ubStageWeightsBytes = Ceil((uint32_t)(cnt * sizeof(float)), UB_ALIGN) * UB_ALIGN;
-    uint32_t ubStageMetaBytes = Ceil((uint32_t)(cnt * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
+    uint32_t ubStageWeightsBytes = Ceil((uint32_t)(CACHED_META_TILE * sizeof(float)), UB_ALIGN) * UB_ALIGN;
+    uint32_t ubStageMetaBytes =
+        Ceil((uint32_t)(CACHED_META_TILE * RECV_META_FIELDS * sizeof(int32_t)), UB_ALIGN) * UB_ALIGN;
     tpipe_->InitBuffer(ubMetaBuf_, ubMetaBytes);
     tpipe_->InitBuffer(ubStageWeightsBuf_, ubStageWeightsBytes);
     tpipe_->InitBuffer(ubStageMetaBuf_, ubStageMetaBytes);
@@ -555,70 +557,83 @@ __aicore__ inline void MoeEpDispatchEpilogue<XType, ScalesType, IsCached, HasTop
     ubStageWeights_ = ubStageWeightsBuf_.Get<float>();
     ubStageMeta_ = ubStageMetaBuf_.Get<int32_t>();
 
-    DataCopyExtParams metaInParams{1U, static_cast<uint32_t>(cnt * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
     DataCopyPadExtParams<int32_t> metaPadParams{false, 0, 0, 0};
-    DataCopyPad(ubStageMeta_, cachedRecvSrcMetadataGm_[(int64_t)startId * RECV_META_FIELDS], metaInParams,
-                metaPadParams);
-    SyncFunc<AscendC::HardEvent::MTE2_S>();
+    DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
+    DataCopyPadParams tokenPadParams{false, 0, 0, 0};
 
-    for (uint32_t i = 0; i < cnt; ++i) {
-        uint32_t metaBase = i * RECV_META_FIELDS;
-        int32_t srcRankId = ubStageMeta_.GetValue(metaBase + META_SRC_RANK_OFFSET);
-        int32_t srcTopkIdx = ubStageMeta_.GetValue(metaBase + META_TOPK_IDX_OFFSET);
-        int32_t slotIdx = ubStageMeta_.GetValue(metaBase + META_SLOT_IDX_OFFSET);
+    uint32_t processed = 0;
+    while (processed < cnt) {
+        uint32_t tileCnt = (cnt - processed > CACHED_META_TILE) ? CACHED_META_TILE : (cnt - processed);
+        uint32_t tileStartGlobal = startId + processed;
 
-        GM_ADDR slotAddr = localWinAddr_ + (int64_t)srcRankId * numMaxTokensPerRank_ * perSlotBytes_ +
-                           (int64_t)slotIdx * perSlotBytes_;
+        DataCopyExtParams metaInParams{
+            1U, static_cast<uint32_t>(tileCnt * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPad(ubStageMeta_, cachedRecvSrcMetadataGm_[(int64_t)tileStartGlobal * RECV_META_FIELDS],
+                    metaInParams, metaPadParams);
+        SyncFunc<AscendC::HardEvent::MTE2_S>();
 
-        GlobalTensor<XType> srcTokenTensor;
-        srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(slotAddr), axisH_);
-        DataCopyParams tokenCopyParams{1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
-        DataCopyPadParams tokenPadParams{false, 0, 0, 0};
-        LocalTensor<XType> tokenTensor = tokenQueue_.AllocTensor<XType>();
-        DataCopyPad(tokenTensor, srcTokenTensor, tokenCopyParams, tokenPadParams);
+        for (uint32_t i = 0; i < tileCnt; ++i) {
+            uint32_t metaBase = i * RECV_META_FIELDS;
+            int32_t srcRankId = ubStageMeta_.GetValue(metaBase + META_SRC_RANK_OFFSET);
+            int32_t srcTopkIdx = ubStageMeta_.GetValue(metaBase + META_TOPK_IDX_OFFSET);
+            int32_t slotIdx = ubStageMeta_.GetValue(metaBase + META_SLOT_IDX_OFFSET);
 
-        if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-            GlobalTensor<ScalesType> srcScalesTensor;
-            srcScalesTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ScalesType *>(slotAddr + scalesOffset_),
-                                            scalesElems_);
-            DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
-            DataCopyPadParams scalesPadParams{false, 0, 0, 0};
-            DataCopyPad(tokenTensor[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
-                        srcScalesTensor, scalesCopyParams, scalesPadParams);
+            GM_ADDR slotAddr = localWinAddr_ + (int64_t)srcRankId * numMaxTokensPerRank_ * perSlotBytes_ +
+                               (int64_t)slotIdx * perSlotBytes_;
+
+            GlobalTensor<XType> srcTokenTensor;
+            srcTokenTensor.SetGlobalBuffer(reinterpret_cast<__gm__ XType *>(slotAddr), axisH_);
+            LocalTensor<XType> tokenTensor = tokenQueue_.AllocTensor<XType>();
+            DataCopyPad(tokenTensor, srcTokenTensor, tokenCopyParams, tokenPadParams);
+
+            if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
+                GlobalTensor<ScalesType> srcScalesTensor;
+                srcScalesTensor.SetGlobalBuffer(reinterpret_cast<__gm__ ScalesType *>(slotAddr + scalesOffset_),
+                                                scalesElems_);
+                DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
+                DataCopyPadParams scalesPadParams{false, 0, 0, 0};
+                DataCopyPad(tokenTensor[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
+                            srcScalesTensor, scalesCopyParams, scalesPadParams);
+            }
+
+            if constexpr (HasTopkWeights) {
+                GlobalTensor<int32_t> srcMetaGm;
+                srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(slotAddr + metaOffset_));
+                DataCopyExtParams slotMetaParams{1U, metaBytes_, 0U, 0U, 0U};
+                DataCopyPad(ubMeta_, srcMetaGm, slotMetaParams, metaPadParams);
+                SyncFunc<AscendC::HardEvent::MTE2_S>();
+                float weight = ubMeta_.ReinterpretCast<float>().GetValue(axisKAlign_ + srcTopkIdx);
+                ubStageWeights_.SetValue(i, weight);
+                SyncFunc<AscendC::HardEvent::S_MTE2>();
+            }
+
+            tokenQueue_.EnQue(tokenTensor);
+            LocalTensor<XType> tokenOut = tokenQueue_.DeQue<XType>();
+            uint32_t globalRow = tileStartGlobal + i;
+            DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], tokenOut, tokenCopyParams);
+            if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
+                DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
+                DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_],
+                            tokenOut[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
+                            scalesCopyParams);
+            }
+            tokenQueue_.FreeTensor(tokenOut);
         }
 
         if constexpr (HasTopkWeights) {
-            GlobalTensor<int32_t> srcMetaGm;
-            srcMetaGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(slotAddr + metaOffset_));
-            DataCopyExtParams slotMetaParams{1U, metaBytes_, 0U, 0U, 0U};
-            DataCopyPad(ubMeta_, srcMetaGm, slotMetaParams, metaPadParams);
-            SyncFunc<AscendC::HardEvent::MTE2_S>();
-            float weight = ubMeta_.ReinterpretCast<float>().GetValue(axisKAlign_ + srcTopkIdx);
-            ubStageWeights_.SetValue(i, weight);
-            SyncFunc<AscendC::HardEvent::S_MTE2>();
+            SyncFunc<AscendC::HardEvent::S_MTE3>();
+            DataCopyExtParams weightOutParams{
+                1U, static_cast<uint32_t>(tileCnt * sizeof(float)), 0U, 0U, 0U};
+            DataCopyPad(recvTopkWeightsGm_[tileStartGlobal], ubStageWeights_, weightOutParams);
         }
+        SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
+        DataCopyExtParams metaOutParams{
+            1U, static_cast<uint32_t>(tileCnt * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
+        DataCopyPad(recvSrcMetadataGm_[(int64_t)tileStartGlobal * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
+        SyncFunc<AscendC::HardEvent::MTE3_MTE2>();
 
-        tokenQueue_.EnQue(tokenTensor);
-        LocalTensor<XType> tokenOut = tokenQueue_.DeQue<XType>();
-        uint32_t globalRow = startId + i;
-        DataCopyPad(recvXGm_[(int64_t)globalRow * axisH_], tokenOut, tokenCopyParams);
-        if constexpr (Std::IsSame<XType, fp8_e5m2_t>::value || Std::IsSame<XType, fp8_e4m3fn_t>::value) {
-            DataCopyParams scalesCopyParams{1U, static_cast<uint16_t>(scalesElems_ * sizeof(ScalesType)), 0U, 0U};
-            DataCopyPad(recvScalesGm_[(int64_t)globalRow * scalesElems_],
-                        tokenOut[scalesOffset_ / sizeof(XType)].template ReinterpretCast<ScalesType>(),
-                        scalesCopyParams);
-        }
-        tokenQueue_.FreeTensor(tokenOut);
+        processed += tileCnt;
     }
-
-    if constexpr (HasTopkWeights) {
-        SyncFunc<AscendC::HardEvent::S_MTE3>();
-        DataCopyExtParams weightOutParams{1U, static_cast<uint32_t>(cnt * sizeof(float)), 0U, 0U, 0U};
-        DataCopyPad(recvTopkWeightsGm_[startId], ubStageWeights_, weightOutParams);
-    }
-    SyncFunc<AscendC::HardEvent::MTE2_MTE3>();
-    DataCopyExtParams metaOutParams{1U, static_cast<uint32_t>(cnt * RECV_META_FIELDS * sizeof(int32_t)), 0U, 0U, 0U};
-    DataCopyPad(recvSrcMetadataGm_[(int64_t)startId * RECV_META_FIELDS], ubStageMeta_, metaOutParams);
 }
 
 } // namespace MoeEpDispatchEpilogueImpl
