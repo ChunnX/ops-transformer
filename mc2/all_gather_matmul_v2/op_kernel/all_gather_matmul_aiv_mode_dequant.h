@@ -38,13 +38,13 @@
         pValue, swizzlDirect, swizzlCount, blockSt, blockSize, blockStInWorkspace, blockSizeInWorkspace, blockIdx,     \
         coreNum, worldSize, resource, needPerChannel, needPerToken, isInt4Type
 
-#define DEQUANT_ARGS_FUN() \
-    uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale, \
-    __gm__ int32_t *workspace, GM_ADDR output,                                                            \
-    uint32_t tileM0, uint32_t tileN0, uint32_t pValue, uint32_t swizzlDirect, uint32_t swizzlCount,       \
-    int64_t blockSt, int64_t blockSize, int64_t blockStInWorkspace, int64_t blockSizeInWorkspace,         \
-    uint32_t blockIdx, uint32_t coreNum, uint32_t worldSize, Arch::Resource<Arch::AtlasA2> resource,      \
-    bool needPerChannel = false, bool needPerToken = false, bool isInt4Type = false
+#define DEQUANT_ARGS_FUN()                                                                                             \
+    uint32_t rowNum, uint32_t colNum, __gm__ float32_t *perChannelScale, __gm__ float32_t *perTokenScale,              \
+        __gm__ int32_t *workspace, GM_ADDR output, uint32_t tileM0, uint32_t tileN0, uint32_t pValue,                  \
+        uint32_t swizzlDirect, uint32_t swizzlCount, int64_t blockSt, int64_t blockSize, int64_t blockStInWorkspace,   \
+        int64_t blockSizeInWorkspace, uint32_t blockIdx, uint32_t coreNum, uint32_t worldSize,                         \
+        Arch::Resource<Arch::AtlasA2> resource, bool needPerChannel = false, bool needPerToken = false,                \
+                                                     bool isInt4Type = false
 
 template <typename OutputType>
 class DequantRunner {
