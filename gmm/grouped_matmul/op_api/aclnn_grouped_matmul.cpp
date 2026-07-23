@@ -38,6 +38,7 @@
 
 #include "grouped_matmul_util.h"
 #include "grouped_matmul_950_checker.h"
+#include "grouped_matmul_a8w4_compatible_950_checker.h"
 #include "grouped_matmul_weight_quant_950_checker.h"
 #include "grouped_matmul_no_quant_950_checker.h"
 
@@ -194,6 +195,35 @@ bool IsQuant(const DataType &xDtype, const DataType &weightDtype)
 bool IsWeightQuant(const DataType &xDtype, const DataType &weightDtype)
 {
     return ge::GetSizeByDataType(xDtype) != ge::GetSizeByDataType(weightDtype);
+}
+
+bool IsEffectivelyNullTensorList(const aclTensorList *tensorList)
+{
+    if (tensorList == nullptr || tensorList->Size() == 0 || (*tensorList)[0] == nullptr) {
+        return true;
+    }
+    if (tensorList->Size() != 1) {
+        return false;
+    }
+    const auto shape = (*tensorList)[0]->GetViewShape();
+    return shape.GetDimNum() == 1 && shape.GetDim(0) == 0;
+}
+
+bool IsA8W4CompatibleDAV3510Inputs(const aclTensorList *x, const aclTensorList *weight,
+                                   const aclTensorList *antiquantScaleOptional)
+{
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() != NpuArch::DAV_3510 || x == nullptr || x->Size() == 0 ||
+        (*x)[0] == nullptr || weight == nullptr || weight->Size() == 0 || (*weight)[0] == nullptr) {
+        return false;
+    }
+    return (*x)[0]->GetDataType() == DataType::DT_INT8 &&
+           (*weight)[0]->GetDataType() == DataType::DT_INT4 &&
+           IsEffectivelyNullTensorList(antiquantScaleOptional);
+}
+
+bool IsA8W4CompatibleDAV3510(const gmm::GroupedMatmulParams &gmmParams)
+{
+    return IsA8W4CompatibleDAV3510Inputs(gmmParams.x, gmmParams.weight, gmmParams.antiquantScaleOptional);
 }
 
 const char *GetGmmScenarioName(const DataType &xDtype, const DataType &weightDtype)
@@ -1571,6 +1601,10 @@ static aclnnStatus CheckFunctionParams(const gmm::GroupedMatmulParams &gmmParams
                        gmmParams.activeType);
             return gmm::AclnnGroupedMatmulDAV3510Checker<aclTensorList>(gmmParams).CheckGroupedMatmulDAV3510();
         } else if (IsWeightQuant(gmmParams.xDtype, weightDtype)) {
+            if (IsA8W4CompatibleDAV3510(gmmParams)) {
+                return gmm::AclnnGroupedMatmulA8W4CompatibleDAV3510Checker(gmmParams)
+                    .CheckGroupedMatmulA8W4CompatibleDAV3510();
+            }
             CHECK_COND(isNoActivation, ACLNN_ERR_PARAM_INVALID,
                        "Activation is not supported in weight quant mode now."
                        " activeType[%ld] is not supported.",
@@ -2193,6 +2227,9 @@ static aclnnStatus CheckParamDifferentGroupType(const gmm::GroupedMatmulParams &
     }
 
     DataType weightDtype = (*gmmParams.weight)[0]->GetDataType();
+    if (IsA8W4CompatibleDAV3510(gmmParams)) {
+        return ACLNN_SUCCESS;
+    }
     if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
         IsWeightQuant(gmmParams.xDtype, weightDtype)) {
         // 伪量化场景DAV_3510除了单单单/单多单的GroupList，其他校验在AclnnGroupedMatmulWeightQuantDAV3510Checker均已完成，下方校验跳过
@@ -2293,6 +2330,34 @@ static aclnnStatus CheckParam(const gmm::GroupedMatmulParams &gmmParams, const c
     return ACLNN_SUCCESS;
 }
 
+static void ApplyA8W4CompatibleOptionalPolicy(gmm::GroupedMatmulParams &gmmParams, int64_t quantGroupSize)
+{
+    if (!IsA8W4CompatibleDAV3510(gmmParams)) {
+        return;
+    }
+    if (gmmParams.biasOptional != nullptr) {
+        OP_LOGW("A5_A8W4_COMPATIBLE_BIAS_IGNORED: shape-valid bias is ignored by A5 A8W4 Compatible.");
+        gmmParams.biasOptional = nullptr;
+    }
+    if (gmmParams.tuningConfigOptional != nullptr && gmmParams.tuningConfigOptional->Size() > 0) {
+        OP_LOGW("A5_A8W4_COMPATIBLE_TUNING_CONFIG_IGNORED: tuningConfig is ignored by A5 A8W4 Compatible.");
+        gmmParams.tuningConfigOptional = nullptr;
+    }
+    if (quantGroupSize != 0) {
+        OP_LOGW("A5_A8W4_COMPATIBLE_QUANT_GROUP_SIZE_IGNORED: quantGroupSize is ignored; Q is the grouping source.");
+    }
+    if (gmmParams.activeType != GMMActType::GMM_ACT_TYPE_NONE) {
+        OP_LOGW("A5_A8W4_COMPATIBLE_ACT_TYPE_IGNORED: actType[%ld] is normalized to no activation.",
+                gmmParams.activeType);
+        gmmParams.activeType = GMMActType::GMM_ACT_TYPE_NONE;
+    }
+    if (gmmParams.groupListType != 1) {
+        OP_LOGW("A5_A8W4_COMPATIBLE_GROUP_LIST_TYPE_NORMALIZED: groupListType[%ld] uses count semantics.",
+                gmmParams.groupListType);
+        gmmParams.groupListType = 1;
+    }
+}
+
 static void CheckOptionalTensorListEmpty(const aclTensorList *&tensorList)
 {
     if (tensorList != nullptr) {
@@ -2320,7 +2385,9 @@ static void ResetEmptyTensor(gmm::GroupedMatmulParams &gmmParams)
     CheckOptionalTensorListEmpty(gmmParams.offsetOptional);
     CheckOptionalTensorListEmpty(gmmParams.antiquantScaleOptional);
     CheckOptionalTensorListEmpty(gmmParams.antiquantOffsetOptional);
-    CheckOptionalTensorListEmpty(gmmParams.perTokenScaleOptional);
+    if (!IsA8W4CompatibleDAV3510(gmmParams)) {
+        CheckOptionalTensorListEmpty(gmmParams.perTokenScaleOptional);
+    }
     CheckOptionalTensorListEmpty(gmmParams.activationInputOptional);
     CheckOptionalTensorListEmpty(gmmParams.activationQuantScaleOptional);
     CheckOptionalTensorListEmpty(gmmParams.activationQuantOffsetOptional);
@@ -3012,7 +3079,7 @@ static aclnnStatus aclnnGroupedMatmulGetWorkspaceSizeCommon(
     int64_t splitItem, int64_t groupType, int64_t groupListType, int64_t actType, aclIntArray *tuningConfigOptional,
     gmm::GMMApiVersion apiVersion, const aclTensorList *y, const aclTensorList *activationFeatureOutOptional,
     const aclTensorList *dynQuantScaleOutOptional, uint64_t *workspaceSize, aclOpExecutor **executor,
-    const char *opName)
+    const char *opName, int64_t quantGroupSize = 0)
 {
     DataType xDtype = DataType::DT_UNDEFINED;
     for (size_t i = 0; i < x->Size(); ++i) {
@@ -3064,6 +3131,14 @@ static aclnnStatus aclnnGroupedMatmulGetWorkspaceSizeCommon(
     }
     ResetEmptyTensor(gmmParams); // make empty tensor/tensorList nullptr
     CHECK_RET(CheckParam(gmmParams, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
+    ApplyA8W4CompatibleOptionalPolicy(gmmParams, quantGroupSize);
+    if (IsA8W4CompatibleDAV3510(gmmParams) && (*gmmParams.x)[0]->GetViewShape().GetDim(0) == 0) {
+        auto uniqueExecutor = CREATE_EXECUTOR();
+        CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
+        *workspaceSize = 0;
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_SUCCESS;
+    }
     gmmParams.splitItem = CorrectSplitItem(x, y, splitItem);
 
     aclnnStatus ret = GetGMMResultByL0Api(gmmParams, workspaceSize, executor, opName);
@@ -3074,7 +3149,7 @@ static aclnnStatus aclnnGroupedMatmulGetWorkspaceSizeCommon(
 
 aclnnStatus CheckCommonParam(const aclTensorList *x, const aclTensorList *weight, const aclTensor *groupListOptional,
                              int64_t splitItem, int64_t groupType, int64_t groupListType, int64_t actType,
-                             const aclTensorList *out, const char *opName)
+                             const aclTensorList *out, const char *opName, bool isA8W4Compatible = false)
 {
     auto npuArch = op::GetCurrentPlatformInfo().GetCurNpuArch();
     bool is310P = npuArch == NpuArch::DAV_2002;
@@ -3086,7 +3161,8 @@ aclnnStatus CheckCommonParam(const aclTensorList *x, const aclTensorList *weight
     CHECK_COND(PreCheckGroupType(splitItem, groupType, opName) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], [%s] check failed, got [%ld].", opName, "groupType", groupType);
     // sparse group list shape [e, 2]
-    size_t validGroupTensorDimNum = (groupListType == gmm::GROUP_LIST_SPARSE_M) ? 2UL : 1UL;
+    size_t validGroupTensorDimNum =
+        (groupListType == gmm::GROUP_LIST_SPARSE_M && !isA8W4Compatible) ? 2UL : 1UL;
     CHECK_COND(groupListOptional == nullptr || groupListOptional->GetViewShape().GetDimNum() == validGroupTensorDimNum,
                ACLNN_ERR_PARAM_INVALID,
                "In op [%s], the shape of [%s] is not supported, got [dim num %zu]. Constraint:[dim num should be %zu "
@@ -3164,16 +3240,16 @@ aclnnStatus aclnnGroupedMatmulWeightNzGetWorkspaceSize(
     // aclnnGroupedMatmulWeightNz dont support split K dim.
     CHECK_COND(groupType != gmm::SPLIT_K, ACLNN_ERR_PARAM_INVALID,
                "In op [%s], when groupType == 2(split-K), [%s] is not supported.", opName, "weight NZ");
+    const bool isA8W4Compatible = IsA8W4CompatibleDAV3510Inputs(x, weight, antiquantScaleOptional);
     CHECK_COND(CheckCommonParam(x, weight, groupListOptional, splitItem, groupType, groupListType, actType, out,
-                                opName) == ACLNN_SUCCESS,
+                                opName, isA8W4Compatible) == ACLNN_SUCCESS,
                ACLNN_ERR_PARAM_INVALID, "In op [%s], required inputs do not meet the requirement.", opName);
-    (void)quantGroupSize;
     return aclnnGroupedMatmulGetWorkspaceSizeCommon(
         x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
         perTokenScaleOptional, nullptr, groupListOptional, activationInputOptional, activationQuantScaleOptional,
         activationQuantOffsetOptional, splitItem, groupType, groupListType, actType, tuningConfigOptional,
         gmm::GMMApiVersion::WeightNz, out, activationFeatureOutOptional, dynQuantScaleOutOptional, workspaceSize,
-        executor, opName);
+        executor, opName, quantGroupSize);
 }
 
 aclnnStatus aclnnGroupedMatmulV5GetWorkspaceSize(
@@ -3211,8 +3287,9 @@ aclnnStatus aclnnGroupedMatmulV5GetWorkspaceSize(
             UnpackB32ToB4(x, "x", true);
         }
     }
+    const bool isA8W4Compatible = IsA8W4CompatibleDAV3510Inputs(x, weight, antiquantScaleOptional);
     CHECK_COND(CheckCommonParam(x, weight, groupListOptional, splitItem, groupType, groupListType, actType, out,
-                                opName) == ACLNN_SUCCESS,
+                                opName, isA8W4Compatible) == ACLNN_SUCCESS,
                ACLNN_ERR_PARAM_INVALID, "In op [%s], required inputs do not meet the requirement.", opName);
     return aclnnGroupedMatmulGetWorkspaceSizeCommon(
         x, weight, biasOptional, scaleOptional, offsetOptional, antiquantScaleOptional, antiquantOffsetOptional,
