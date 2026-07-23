@@ -441,14 +441,14 @@
     Y[i] = \sum_{k=0}^{K-1} W[i,\, k] \cdot O[\pi(i,\, k)]
     $$
 
-    说明：对每个 Token $i$，根据排序后的路由索引 $\pi(i,k)$ 从聚合后的专家结果中取出对应行，按 `topkWeights` 中的权重逐元素加权累加，得到最终输出 $Y$。
+    说明：对每个 Token $i$，根据排序后的路由索引 $\pi(i,k)$ 从聚合后的专家结果中取出对应行，按 `topk_weights` 中的权重逐元素加权累加，得到最终输出 $Y$。
 
-    其中，$X$ 表示参数 `x`，$W$ 表示参数 `topkWeights`，$W_1$ 表示参数 `weight1`，$W_2$ 表示参数 `weight2`，$Y$ 表示参数 `y`，$E_{\text{local}}$ 表示 `local_moe_expert_num = moeExpertNum / epWorldSize`（每个 Rank 的路由 MoE 专家数），$K$ 表示 `topkIds` 的第二维度（top-K 值，取值 6 或 8）。
+    其中，$X$ 表示参数 `x`，$W$ 表示参数 `topk_weights`，$W_1$ 表示参数 `l1_weights`，$W_2$ 表示参数 `l2_weights`，$Y$ 表示参数 `y`，$E_{\text{local}}$ 表示 `local_moe_expert_num = moeExpertNum / epWorldSize`（每个 Rank 的路由 MoE 专家数），$K$ 表示 `topkIds` 的第二维度。
 
     局部变量说明：
     - $\mathcal{T}_e$：被路由到专家 $e$ 的 Token 索引集合，由 `topkIds` 排序后确定。
     - $\hat{X}_e,\ S_{X,e}$：专家 $e$ 的量化输入及其 MX 缩放因子，第一阶段中间结果。
-    - $W_{1,e}^{(x)}$、$W_{1,e}^{(y)}$：$W_1$ 对应专家 $e$ 的前 $N/2$ 列和后 $N/2$ 列子矩阵，由 `weight1` 按 SwiGLU 拆分推导。
+    - $W_{1,e}^{(x)}$、$W_{1,e}^{(y)}$：$W_1$ 对应专家 $e$ 的前 $N/2$ 列和后 $N/2$ 列子矩阵，由 `l1_weights` 按 SwiGLU 拆分推导。
     - $S_{1,e}^{(x)}$、$S_{1,e}^{(y)}$：$W_{1,e}^{(x)}$ 和 $W_{1,e}^{(y)}$ 对应的 MX 缩放因子，从 `weightScales1` 按维度截取。
     - $S_{2,e}$：$W_{2,e}$ 对应的 MX 缩放因子，来自参数 `weightScales2`。
     - $Z_e^{(x)},\ Z_e^{(y)}$：GMM1 的两路矩阵乘法输出（Swish 分支和门控分支），中间结果。
@@ -512,7 +512,7 @@
 
     第四阶段（Combine 与加权合并）：
 
-    将各专家输出送回原 rank，并根据 `topkWeights` 做加权合并：
+    将各专家输出送回原 rank，并根据 `topk_weights` 做加权合并：
 
     $$
     Y[i] = \sum_{k=0}^{K-1} W[i,k] \cdot O[\pi(i,k)],
@@ -736,7 +736,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td rowspan="6">l1_weights</td>
         <td rowspan="6">list[Tensor]</td>
         <td rowspan="6">必选</td>
-        <td rowspan="6">MoE专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。路由 MoE 专家数为 `local_moe_expert_num`；与共享专家合并后的权重第一维为 `num_experts_per_rank`。</td>
+        <td rowspan="6">MoE专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。单卡MoE 专家数为 `local_moe_expert_num`。</td>
         <td>BFLOAT16<sup>2</sup></td>
         <td>ND</td>
         <td>(hidden, 2 × intermediate_hidden)</td>
@@ -770,7 +770,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td rowspan="6">l2_weights</td>
         <td rowspan="6">list[Tensor]</td>
         <td rowspan="6">必选</td>
-        <td rowspan="6">MoE专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。路由 MoE 专家数为 `local_moe_expert_num`；与共享专家合并后的权重第一维为 `num_experts_per_rank`。</td>
+        <td rowspan="6">MoE专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。单卡 MoE 专家数为 `local_moe_expert_num`。</td>
         <td>BFLOAT16<sup>2</sup></td>
         <td>ND</td>
         <td>(intermediate_hidden, hidden)</td>
@@ -1100,7 +1100,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
             <td>l1_weights</td>
             <td>num_experts_per_rank（BFLOAT16/INT8/INT4场景）或1（FLOAT8_E5M2/FLOAT8_E4M3FN/FLOAT4_E2M1场景）</td>
             <td>否（BFLOAT16/INT8/INT4场景）/是（FLOAT8_E5M2/FLOAT8_E4M3FN/FLOAT4_E2M1场景）</td>
-            <td>不支持/td>
+            <td>不支持/<td>
         </tr>
         <tr>
             <td>l2_weights</td>
@@ -1153,7 +1153,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         $$ccl\_buffer\_size\ /\ 2 \ge \mathrm{offsetTokenPerExpert} + \mathrm{offsetTensor} + \mathrm{offsetFlag} + 10\,\mathrm{MB}$$
         - Ascend 950PR/Ascend 950DT校验时以单个空间 `ccl_buffer_size ` 为准，需满足：
 
-        $$ccl\_buffer\_size = \mathrm{peermemDataOffset} + \mathrm{maskRecvSize} + \mathrm{quantTokenScaleSize} + \mathrm{combineOut}$$
+        $$ccl\_buffer\_size \ge \mathrm{peermemDataOffset} + \mathrm{maskRecvSize} + \mathrm{quantTokenScaleSize} + \mathrm{combineOut}$$
         **Atlas A2 训练系列产品/Atlas A2 推理系列产品：**
 
         ```
@@ -1310,7 +1310,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         - num_tokens（x.dim0）范围 [1, maxBs], maxBs = (8 * (totalUbSize - 48 * 1024)) / (num_topk * (64 + ep_world_size)), 其中totalUbSize为UB总大小，950系列产品该值为256K。
         - hidden（x.dim1）仅支持1024、2048、3072、4096、5120、6144、7168、8192。
         - num_topk（topk_ids.dim1）支持[1, 32]。
-        - num_experts_per_rank（weight1.dim0）范围 [1, 1024]。
+        - num_experts_per_rank 范围 [1, 1024]。
         - intermediate_hidden（weight1.dim1）仅支持1024、2048、3072、4096、7168。
         - ep_world_size范围 [2, 1024]。
         - num_experts范围 [ep_world_size, 2048]，且num_experts % ep_world_size == 0。
@@ -1324,10 +1324,9 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         - weight1的dim1（intermediate_hidden）必须等于weight2的dim2的二倍，这是因为SwiGLU激活需要将中间维度从intermediate_hidden减半为intermediate_hidden/2。
         - weight_scales1和weight_scales2不可为空指针。
         - local_moe_expert_num = num_experts / ep_world_size；启用共享专家时，shared_expert_num_per_rank = shared_l1_weights.dim0；num_experts_per_rank = shared_expert_num_per_rank + local_moe_expert_num，未启用共享专家时 shared_expert_num_per_rank = 0。
-        - weight_scales1和weight_scales2不可为空指针。
 
         - **MXFP量化场景约束**：
-            - weight1 shape为(local_moe_expert_num, intermediate_hidden, hidden)，weight2 shape为(local_moe_expert_num, hidden, intermediate_hidden / 2)。
+            - l1_weights shape为(local_moe_expert_num, intermediate_hidden, hidden)，weight2 shape为(local_moe_expert_num, hidden, intermediate_hidden / 2)。
             - weightScales1 shape为(local_moe_expert_num, intermediate_hidden, CeilDiv(hidden, 64), 2)，CeilDiv(hidden, 64) = ⌈hidden / 64⌉ = ⌊(hidden + 63) / 64⌋。
             - weightScales2 shape为(local_moe_expert_num, hidden, CeilDiv(intermediate_hidden / 2, 64), 2)，CeilDiv(intermediate_hidden / 2, 64) = ⌈(intermediate_hidden / 2) / 64⌉ = ⌊(intermediate_hidden / 2 + 63) / 64⌋。
             - shared_l1_weights shape为(shared_expert_num_per_rank, intermediate_hidden, hidden)，shared_l2_weights shape为(shared_expert_num_per_rank, hidden, intermediate_hidden / 2)。
@@ -1382,8 +1381,8 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
                 <tr>
                 <td><strong>A8W4-FP</strong></td>
                 <td>BFLOAT16</td>
-                <td>FLOAT8_E2M1</td>
-                <td>FLOAT8_E2M1</td>
+                <td>FLOAT8_E4M3</td>
+                <td>FLOAT4_E2M1</td>
                 <td>FLOAT8_E8M0</td>
                 <td>FLOAT8_E8M0</td>
                 <td>–</td>
@@ -1395,8 +1394,8 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
                 <tr>
                 <td><strong>A4W4-FP</strong></td>
                 <td>BFLOAT16</td>
-                <td>FLOAT8_E2M1</td>
-                <td>FLOAT8_E2M1</td>
+                <td>FLOAT4_E2M1</td>
+                <td>FLOAT4_E2M1</td>
                 <td>FLOAT8_E8M0</td>
                 <td>FLOAT8_E8M0</td>
                 <td>–</td>
@@ -1608,16 +1607,16 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         expert_ids = torch.stack(
             [torch.randperm(num_experts)[:topK] for _ in range(num_tokens)]
         ).to(torch.int32)
-        weight1 = torch.randn(weight_shape, dtype=torch.float32).to(torch.float8_e5m2)
+        l1_weights = torch.randn(weight_shape, dtype=torch.float32).to(torch.float8_e5m2)
         weight_scales1 = torch.randint(125, 130, weight_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
-        weight2 = torch.randn(weight2_shape, dtype=torch.float32).to(torch.float8_e5m2)
+        l2_weights = torch.randn(weight2_shape, dtype=torch.float32).to(torch.float8_e5m2)
         weight_scales2 = torch.randint(125, 130, weight2_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
 
         golden_x_list = [x.clone() for _ in range(rank_per_dev)]
         golden_expert_ids_list = [expert_ids.clone() for _ in range(rank_per_dev)]
-        golden_weights1_list = [weight1.clone() for _ in range(rank_per_dev)]
+        golden_weights1_list = [l1_weights.clone() for _ in range(rank_per_dev)]
         golden_weights_scales1_list = [weight_scales1.clone() for _ in range(rank_per_dev)]
-        golden_weights2_list = [weight2.clone() for _ in range(rank_per_dev)]
+        golden_weights2_list = [l2_weights.clone() for _ in range(rank_per_dev)]
         golden_weights_scales2_list = [weight_scales2.clone() for _ in range(rank_per_dev)]
         golden_expert_scales_list = [expert_scales.clone() for _ in range(rank_per_dev)]
 
