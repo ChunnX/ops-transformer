@@ -101,9 +101,9 @@ private:
   // ---------------- 通信相关组件与参数 ----------------
   __gm__ CommUbmemContext* syncBuffer_{};
   __gm__ CommUdmaContext* udmaCtx_{};
-  CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier, CommAddrLayout::DEFAULT> allToAllA_;
+  CollectiveComm<CommCollectiveOp::AllToAll, CommMode::PUT, AType, TeamBarrier> allToAllA_;
   CollectiveComm<
-    CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier, CommAddrLayout::CONTIGUOUS> allToAllScaleA_;
+    CommCollectiveOp::AllToAll, CommMode::PUT, TypeScaleA, TeamBarrier> allToAllScaleA_;
   TeamBarrier teamBarrier_;
 
   struct BaseParams {
@@ -174,11 +174,10 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
     baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()));
 
   uint64_t scaleKLen = baseParams_.scaleKaSize / sizeof(TypeScaleA);
-  CommTilingData commTilingDataScaleA_ = {
-    baseParams_.axisM, 1, 0, 0, scaleKLen
-  };
-
-  allToAllScaleA_.Init(udmaCtx_, teamBarrier_, commTilingDataScaleA_, baseParams_.scaleAGm, commScaleBuf.Get(),
+  CommTilingData commTilingDataScaleA = tilingData->commTilingData;
+  commTilingDataScaleA.nonSplitAxisSize = scaleKLen;
+  
+  allToAllScaleA_.Init(udmaCtx_, teamBarrier_, commTilingDataScaleA, baseParams_.scaleAGm, commScaleBuf.Get(),
     baseParams_.rankSize, static_cast<uint32_t>(GetBlockIdx()), baseParams_.rankSize * baseParams_.rankDataBytes);
 }
 
@@ -206,10 +205,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 {
   for (uint32_t tid = 0; tid < baseParams_.commTurn; ++tid) {
     if (AscendC::GetBlockIdx() < baseParams_.rankSize) {
-      if (tid == 0) {
-        allToAllScaleA_.Commit(); // scale一次通信。
-        allToAllScaleA_.Wait();
-      }
+      allToAllScaleA_.Commit();
       allToAllA_.Commit();
       allToAllA_.Wait();
     }
@@ -307,7 +303,7 @@ __aicore__ inline void AllToAllQuantMatmulHcommImpl<AType, BType, CType, TransA,
 
 [[bisheng::core_ratio(1, 1)]]
 __global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E4M3_Udma(
-                          __gm__ Apace::AivComm::CommContext *hcommCtx,
+                          __gm__ CommContext *hcommCtx,
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
                            GM_ADDR cGM,
@@ -321,7 +317,7 @@ __global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E4M3_U
 
 [[bisheng::core_ratio(1, 1)]]
 __global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE5M2E5M2_Udma(
-                          __gm__ Apace::AivComm::CommContext *hcommCtx,
+                          __gm__ CommContext *hcommCtx,
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
                            GM_ADDR cGM,
@@ -335,7 +331,7 @@ __global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE5M2E5M2_U
 
 [[bisheng::core_ratio(1, 1)]]
 __global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E5M2_Udma(
-                          __gm__ Apace::AivComm::CommContext *hcommCtx,
+                          __gm__ CommContext *hcommCtx,
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
                            GM_ADDR cGM,
@@ -349,7 +345,7 @@ __global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE4M3E5M2_U
 
 [[bisheng::core_ratio(1, 1)]]
 __global__ __aicore__ __schedmode__(1) void  AllToAllQuantMatmulKernelE5M2E4M3_Udma(
-                          __gm__ Apace::AivComm::CommContext *hcommCtx,
+                          __gm__ CommContext *hcommCtx,
                            GM_ADDR aGM, GM_ADDR scaleAGM,
                            GM_ADDR bGM, GM_ADDR scaleBGM,
                            GM_ADDR cGM,
