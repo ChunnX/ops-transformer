@@ -939,7 +939,6 @@ def kv_concat_pa_preprocessing(input_tensor_dict, fa_param, params):
         key_stride = 10  # 0轴非连续增加stride
         block_num = params.get("block_num", blockTableShape[0])
         kv_dim = k_cache_concat.shape[-1]
-        # key_cache / value_cache 非连续处理
         blocksize_with_stride = blockSize + key_stride
         blockFusion = torch.zeros((block_num, blocksize_with_stride * kv_dim), dtype=k_cache_concat.dtype)
         base_flat = k_cache_concat.reshape(block_num, blockSize * kv_dim)

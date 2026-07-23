@@ -617,7 +617,7 @@ public:
     gert::Shape keyRopeShape_{};
     gert::Shape sparseIndicesShape_{};
 
-    std::vector<uint32_t> keyStridesVec_;
+    std::vector<uint32_t> keyStrides_;
 };
 } // namespace optiling
 #endif // SPARSE_FLASH_ATTENTION_TILING_H

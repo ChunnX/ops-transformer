@@ -210,7 +210,6 @@ struct RunInfo {
     uint32_t maxBlockNumPerBatch; \
     uint32_t sparseBlockSize; \
     float softmaxScale; \
-    /* nonContiguous */ \
     int64_t keyStride0
 
 #define CV_SHARED_PARAMS \

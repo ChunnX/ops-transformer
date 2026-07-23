@@ -608,7 +608,7 @@ public:
     gert::Shape valueShape_{};
     gert::Shape sparseIndicesShape_{};
 
-    std::vector<uint32_t> keyStridesVec_;
+    std::vector<uint32_t> keyStrides_;
 };
 } // namespace optiling
 #endif // KV_QUANT_SPARSE_FLASH_ATTENTION_TILING_H

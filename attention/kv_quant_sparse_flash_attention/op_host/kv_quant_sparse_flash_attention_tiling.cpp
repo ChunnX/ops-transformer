@@ -1625,7 +1625,7 @@ ge::graphStatus QSFAInfoParser::GetAttrParaInfo()
     auto keyStrides = context_->GetDynamicInputStride(KEY_INPUT_INDEX, 0);
     if (keyStrides != nullptr && keyStrides->GetDimNum() > 0) {
         for (size_t i = 0; i < keyStrides->GetDimNum(); i++) {
-            keyStridesVec_.push_back(keyStrides->GetStride(i));
+            keyStrides_.push_back(keyStrides->GetStride(i));
         }
     }
 
@@ -1908,13 +1908,13 @@ ge::graphStatus QSFAInfoParser::GetActualseqInfo()
 // 非PA_BSND时，所有轴都必须连续
 ge::graphStatus QSFAInfoParser::CheckContiguous() const
 {
-    if (npuArch_ != NpuArch::DAV_3510) {
+    if (!isA5_) {
         return ge::GRAPH_SUCCESS;
     }
 
     bool keyNonContiguous = false;
     size_t checkStartIdx = (kvLayout_ == QSFALayout::PA_BSND) ? 1 : 0;
-    if (!keyStridesVec_.empty() && keyShape_.GetDimNum() > 0) {
+    if (!keyStrides_.empty() && keyShape_.GetDimNum() > 0) {
         std::vector<uint64_t> keyExpectedStrides;
         if (kvLayout_ == QSFALayout::PA_BSND || kvLayout_ == QSFALayout::BSND) {
             uint64_t dim1 = static_cast<uint64_t>(keyShape_.GetDim(1));
@@ -1926,13 +1926,13 @@ ge::graphStatus QSFAInfoParser::CheckContiguous() const
             uint64_t dim2 = static_cast<uint64_t>(keyShape_.GetDim(2));
             keyExpectedStrides = {dim1 * dim2, dim2, 1};
         }
-        OP_CHECK_IF(keyStridesVec_.size() != keyExpectedStrides.size(),
+        OP_CHECK_IF(keyStrides_.size() != keyExpectedStrides.size(),
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(opName_, "key strideVec size",
-                std::to_string(keyStridesVec_.size()).c_str(),
+                std::to_string(keyStrides_.size()).c_str(),
                 "not match kvLayout expect len" + std::to_string(keyExpectedStrides.size())),
                 return ge::GRAPH_FAILED);
         for (size_t i = checkStartIdx; i < keyExpectedStrides.size(); ++i) {
-            if (i < keyStridesVec_.size() && keyStridesVec_[i] != keyExpectedStrides[i]) {
+            if (i < keyStrides_.size() && keyStrides_[i] != keyExpectedStrides[i]) {
                 keyNonContiguous = true;
                 break;
             }
@@ -2005,8 +2005,8 @@ void QSFAInfoParser::GenerateInfo(QSFATilingInfo &qsfaInfo)
     qsfaInfo.blockTypeSize =  sizeof(float);
     qsfaInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
-    qsfaInfo.keyStride0 = !keyStridesVec_.empty() ?
-        static_cast<int64_t>(keyStridesVec_[0]) : 0;
+    qsfaInfo.keyStride0 = !keyStrides_.empty() ?
+        static_cast<int64_t>(keyStrides_[0]) : 0;
 
     FillTilingInfoAttrsAndLayouts(qsfaInfo);
 }
