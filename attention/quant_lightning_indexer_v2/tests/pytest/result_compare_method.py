@@ -146,13 +146,22 @@ def judge_value_by_isclose(real_data, data_compe):
     rtol = 0.005
     pct_thd = 0.005
     diff_thd = 0.005
+    is_bfloat16 = str(real_data.dtype) in ('bfloat16', 'torch.bfloat16')
+    if isinstance(real_data, torch.Tensor):
+        real_data = real_data.detach().cpu().float().numpy()
+    else:
+        real_data = np.asarray(real_data)
+    if isinstance(data_compe, torch.Tensor):
+        data_compe = data_compe.detach().cpu().float().numpy()
+    else:
+        data_compe = np.asarray(data_compe)
     start = 0
     end = real_data.size - 1
     if end < start:
         end = start
     split_count = int(end - start + 1) if end != start else 1
 
-    if str(real_data.dtype) == 'bfloat16':
+    if is_bfloat16:
         atol = 0.0001
         diff_result = np.isclose(real_data.astype(np.float32), data_compe.astype(np.float32), rtol=rtol, atol=atol,
                                  equal_nan=True)
@@ -471,9 +480,9 @@ def check_result_return_value(expect, result, params, expect_indices=None, resul
                               topk_value=None, output_idx_offset=None):
     batch_size, q_seq, k_seq, q_t_size, k_t_size, q_head_num, k_head_num, head_dim, block_size, \
     block_num, qk_dtype, weight_dtype, dequant_dtype, actual_seq_dtype, cu_seqlens_q, cu_seqlens_k, seqused_q, \
-    seqused_k, cmp_residual_k, output_idx_offset, quant_mode, layout_query, layout_key, sparse_count, \
+    seqused_k, cmp_residual_k, max_seqlen_q, quant_mode, layout_query, layout_key, sparse_count, \
     sparse_mode, query_datarange, key_datarange, weights_datarange, q_scale_datarange, \
-    k_scale_datarange, cmp_ratio, return_value, output_idx_offset = params
+    k_scale_datarange, cmp_ratio, return_value, _ = params
 
     if isinstance(cu_seqlens_q, int):
         cu_seqlens_q = [cu_seqlens_q]
