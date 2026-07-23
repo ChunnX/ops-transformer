@@ -557,6 +557,8 @@ __aicore__ inline void LightningIndexerV2ServiceVector<LIT>::ProcessTopK(const L
             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(),
                                     (int32_t)(zero + outputIdxOffset), validS2Len);
             if (returnValueFlag) {
+                SetFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
+                WaitFlag<HardEvent::V_MTE2>(V_MTE2_EVENT1);
                 copyInParams.blockLen = LIV2Common::Align(validS2Len, (int32_t)32) * sizeof(uint32_t);
                 AscendC::DataCopyPad(scoreOutLocal_,
                             scoreGm[vecOffset * LIV2Common::Align(
