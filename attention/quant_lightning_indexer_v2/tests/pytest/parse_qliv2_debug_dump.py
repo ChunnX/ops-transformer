@@ -42,7 +42,7 @@ def parse_dump_records(path):
         chunk_end = matches[index + 1].start() if index + 1 < len(matches) else len(text)
         chunk = text[match.end():chunk_end]
         left = chunk.find("[")
-        right = chunk.rfind("]")
+        right = chunk.find("]", left + 1)
         if left < 0 or right <= left:
             continue
         payload = re.sub(r"[\[\],]", " ", chunk[left:right + 1])
