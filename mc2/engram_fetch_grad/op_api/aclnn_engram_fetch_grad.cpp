@@ -83,7 +83,7 @@ aclnnStatus aclnnEngramFetchGradGetWorkspaceSize(
 }
 
 aclnnStatus aclnnEngramFetchGrad(void *workspace, uint64_t workspaceSize,
-                                      aclOpExecutor *executor, aclrtStream stream)
+                                  aclOpExecutor *executor, aclrtStream stream)
 {
     aclnnStatus ret = aclnnInnerEngramFetchGrad(workspace, workspaceSize, executor, stream);
     return ret;
