@@ -60,7 +60,7 @@ DP_ASSERT_EQUAL()
 }
 
 LOG_HEAD "Build ${REPOSITORY_NAME}."
-cd "${WORKSPACE}/" || exit
+cd "${WORKSPACE}/" || exit 1
 
 if [[ "${task_name}" =~ Compile_Ascend_X86_ubuntu24 ]]; then
     sed -i "1i set(CMAKE_EXPORT_COMPILE_COMMANDS ON)" "CMakeLists.txt"
