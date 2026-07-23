@@ -10,7 +10,7 @@
 
 /*!
  * \file mhc_sinkhorn_tiling.cpp
- * \brief mhc_sinkhorn_tiling
+ * \brief mhc_sinkhorn_tiling -
  */
 
 #include <vector>
