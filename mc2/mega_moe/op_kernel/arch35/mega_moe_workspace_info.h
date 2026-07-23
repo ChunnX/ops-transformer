@@ -127,13 +127,13 @@ struct WorkspaceInfo {
     GM_ADDR sharedExpertSwigluDataPtr{nullptr};
     GM_ADDR sharedExpertSwigluScalePtr{nullptr};
 
-    GM_ADDR maskSlotPtr{nullptr}; // urma发送mask临时GM
-    GM_ADDR dispatchL1CommPtr{nullptr}; // dispatch L1 communication workspace
-    GM_ADDR dispatchCursorPtr{nullptr}; // dispatch cnt for each expert
-    GM_ADDR dispatchDonePtr{nullptr}; // dispatch done
-    GM_ADDR dispatchL2CommPtr{nullptr}; // dispatch l2 communication workspace
+    GM_ADDR maskSlotPtr{nullptr};          // urma发送mask临时GM
+    GM_ADDR dispatchL1CommPtr{nullptr};    // dispatch L1 communication workspace
+    GM_ADDR dispatchCursorPtr{nullptr};    // dispatch cnt for each expert
+    GM_ADDR dispatchDonePtr{nullptr};      // dispatch done
+    GM_ADDR dispatchL2CommPtr{nullptr};    // dispatch l2 communication workspace
     GM_ADDR combineCommNotifyPtr{nullptr}; // 合并发送通知临时GM
-    GM_ADDR combineCommDataPtr{nullptr}; // combine communication workspace
+    GM_ADDR combineCommDataPtr{nullptr};   // combine communication workspace
 
     int64_t workspaceSize;
     HOST_DEVICE WorkspaceInfo() = default;
@@ -208,10 +208,9 @@ struct WorkspaceInfo {
         if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
             // Token group completion counters
             gmm2CombineSyncCounterPtr = base + workspaceSize;
-            // 紧密排布：每个 expert 分配 blockAivNum 个 slot
-            int64_t stridePerExpert = Ops::Base::CeilAlign(
-                static_cast<int64_t>(tilingData->blockAivNum) * INT_CACHELINE * SIZE_INT_32, ALIGN_128);
-            workspaceSize += stridePerExpert * tilingData->expertPerRank;
+            int64_t combineCounterBytes = static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
+                                          tilingData->moeExpertPerRank * INT_CACHELINE * SIZE_INT_32;
+            workspaceSize += Ops::Base::CeilAlign(combineCounterBytes, static_cast<int64_t>(ALIGN_128));
         }
 
         if (tilingData->topoType == TOPO_TYPE_URMA) {
@@ -279,29 +278,27 @@ struct WorkspaceInfo {
             // sharedExpertGmm1Out: GMM1 output for shared experts [sharedExpertNum × bs × hiddenDim]
             sharedExpertGmm1OutPtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(
-                SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim,
-                ALIGN_512);
+                SIZE_BF_16 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim, ALIGN_512);
             // sharedExpertInputData: GMM1 input data [bs × h]
             sharedExpertInputDataPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->bs * tilingData->h, ALIGN_512);
+            workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->h, ALIGN_512);
             // sharedExpertInputScale: GMM1 input scale [bs × CeilDiv(h,32)*2]
             sharedExpertInputScalePtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->bs * Ops::Base::CeilDiv(static_cast<uint32_t>(tilingData->h),
-                    static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) * MXFP_MULTI_BASE_SIZE,
-                ALIGN_512);
+            workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs *
+                                                      Ops::Base::CeilDiv(static_cast<uint32_t>(tilingData->h),
+                                                                         static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM)) *
+                                                      MXFP_MULTI_BASE_SIZE,
+                                                  ALIGN_512);
             // sharedExpertSwigluData: SwiGLU quant output [sharedExpertNum × bs × hiddenDim/2] fp8
             sharedExpertSwigluDataPtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim / SWIGLU_N_HALF,
-                ALIGN_512);
+            workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum *
+                                                      tilingData->hiddenDim / SWIGLU_N_HALF,
+                                                  ALIGN_512);
             // sharedExpertSwigluScale: SwiGLU scale [sharedExpertNum × bs × hiddenDim/2/32]
             sharedExpertSwigluScalePtr = base + workspaceSize;
-            workspaceSize += Ops::Base::CeilAlign(
-                SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum * tilingData->hiddenDim /
-                    SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
-                ALIGN_512);
+            workspaceSize += Ops::Base::CeilAlign(SIZE_INT_8 * tilingData->bs * tilingData->sharedExpertNum *
+                                                      tilingData->hiddenDim / SWIGLU_N_HALF / MXFP_SCALE_GROUP_NUM,
+                                                  ALIGN_512);
         }
     }
 };

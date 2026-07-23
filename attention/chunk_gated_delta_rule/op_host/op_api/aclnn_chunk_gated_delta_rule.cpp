@@ -53,7 +53,8 @@ struct ChunkGatedDeltaRuleParams {
 
 // 校验相关：支持的数据类型
 static const std::initializer_list<op::DataType> QKV_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
-static const std::initializer_list<op::DataType> STATE_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16, op::DataType::DT_FLOAT};
+static const std::initializer_list<op::DataType> STATE_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16,
+                                                                            op::DataType::DT_FLOAT};
 static const std::initializer_list<op::DataType> BETA_TYPE_SUPPORT_LIST = {op::DataType::DT_BF16};
 static const std::initializer_list<op::DataType> SEQ_LENS_TYPE_SUPPORT_LIST = {op::DataType::DT_INT32};
 static const std::initializer_list<op::DataType> G_TYPE_SUPPORT_LIST = {op::DataType::DT_FLOAT};
@@ -167,26 +168,22 @@ aclnnStatus aclnnChunkGatedDeltaRuleGetWorkspaceSize(const aclTensor *query, con
     ret = aclGetViewStrides(initialState, &stateStrideDims, &stateStrideDimsNum);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     CHECK_RET(stateShapeDimsNum == INITIAL_STATE_DIMS_NUM && stateStrideDimsNum == INITIAL_STATE_DIMS_NUM,
-        ACLNN_ERR_INNER_CREATE_EXECUTOR);
+              ACLNN_ERR_INNER_CREATE_EXECUTOR);
     auto initialState_ = initialState;
 
     const char *socName = aclrtGetSocName();
     CHECK_RET(socName != nullptr, ACLNN_ERR_INNER_NULLPTR);
     bool isAscend950 = std::strstr(socName, "Ascend950") != nullptr;
-    if (isAscend950 &&
-        stateStrideDims[stateStrideDimsNum - 1] == 1 &&
+    if (isAscend950 && stateStrideDims[stateStrideDimsNum - 1] == 1 &&
         stateStrideDims[stateStrideDimsNum - 2] == stateShapeDims[stateShapeDimsNum - 1]) {
-        initialState_ = uniqueExecutor.get()->CreateView(
-            initialState,
-            initialState->GetViewShape(),
-            initialState->GetStorageShape(),
-            initialState->GetViewStrides(),
-            initialState->GetViewOffset());
+        initialState_ = uniqueExecutor.get()->CreateView(initialState, initialState->GetViewShape(),
+                                                         initialState->GetStorageShape(),
+                                                         initialState->GetViewStrides(), initialState->GetViewOffset());
     } else {
         initialState_ = l0op::Contiguous(initialState, uniqueExecutor.get());
     }
     CHECK_RET(initialState_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    
+
     auto actualSeqLengths_ = l0op::Contiguous(actualSeqLengths, uniqueExecutor.get());
     CHECK_RET(actualSeqLengths_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
     // gOptional 为可选输入，非空时才做 contiguous

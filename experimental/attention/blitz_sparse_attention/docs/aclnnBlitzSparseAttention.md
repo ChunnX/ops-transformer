@@ -31,7 +31,7 @@
 
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnBlitzSparseAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnBlitzSparseAttention”接口执行计算。
+算子执行接口为[两段式接口](../../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnBlitzSparseAttentionGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnBlitzSparseAttention”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnBlitzSparseAttentionGetWorkspaceSize(
@@ -75,17 +75,17 @@ aclnnStatus aclnnBlitzSparseAttention(
 ## aclnnBlitzSparseAttentionGetWorkspaceSize
 
 - **参数说明**
-  
+
     <div style="overflow-x: auto;">
-    <table style="table-layout: fixed; width: 1567px"><colgroup> 
-     <col style="width: 180px"> 
-     <col style="width: 120px"> 
-     <col style="width: 300px"> 
-     <col style="width: 330px"> 
-     <col style="width: 252px"> 
-     <col style="width: 100px">  
-     <col style="width: 140px">  
-     <col style="width: 145px">  
+    <table style="table-layout: fixed; width: 1567px"><colgroup>
+     <col style="width: 180px">
+     <col style="width: 120px">
+     <col style="width: 300px">
+     <col style="width: 330px">
+     <col style="width: 252px">
+     <col style="width: 100px">
+     <col style="width: 140px">
+     <col style="width: 145px">
      </colgroup>
     <thead>
       <tr>
@@ -161,7 +161,7 @@ aclnnStatus aclnnBlitzSparseAttention(
         <td>ND</td>
         <td>4</td>
         <td>×</td>
-      </tr>      
+      </tr>
       <tr>
         <td>actualSeqLengths</td>
         <td>输入</td>
@@ -354,12 +354,12 @@ aclnnStatus aclnnBlitzSparseAttention(
       </tr>
     </tbody></table>
     </div>
-    
+
 - **返回值**
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
-  
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
-  
+
     <div style="overflow-x: auto;">
     <table style="table-layout: fixed; width: 1030px"><colgroup>
     <col style="width: 250px">
@@ -435,7 +435,7 @@ aclnnStatus aclnnBlitzSparseAttention(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -448,7 +448,7 @@ aclnnStatus aclnnBlitzSparseAttention(
 - query，key，value输入，功能使用限制如下：
 
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：
-  
+
     - 支持B轴小于等于65536（64k），输入类型包含INT8时D轴非32对齐或输入类型为FLOAT16或BFLOAT16时D轴非16对齐时，B轴仅支持到128。
 
     - 支持N轴小于等于256。
@@ -507,7 +507,7 @@ aclnnStatus aclnnBlitzSparseAttention(
       </table>
 
     - 支持D轴小于等于512。inputLayout为BSH或者BSND时，要求N*D小于65535。
-    
+
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>： TND场景下query，key，value输入的综合限制：
       - T小于等于65536。
       - N等于8/16/32/64/128，且Q_N、K_N、V_N相等。
@@ -515,11 +515,11 @@ aclnnStatus aclnnBlitzSparseAttention(
       - 数据类型仅支持BFLOAT16。
       - sparse模式仅支持sparse=0且不传mask，或sparse=3且传入mask。
       - 当sparse=3时，要求每个batch单独的actualSeqLengths < actualSeqLengthsKv。
-      
+
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：数据类型支持FLOAT16、BFLOAT16、INT8。
-  
+
 - pseShift功能使用限制如下：
-  
+
   - 输入shape类型需为（B, N, Q_S, KV_S）或（1, N, Q_S, KV_S），其中Q_S为query的shape中的S，KV_S为key和value的shape中的S。
   - Q_S需大于等于query的S长度，KV_S需大于等于key的S长度。
   - 对于pseShift的KV_S为非32对齐的场景，建议padding到32字节来提高性能，多余部分的填充值不做要求。如不使用该功能时可传入nullptr。
@@ -527,50 +527,50 @@ aclnnStatus aclnnBlitzSparseAttention(
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：数据类型支持FLOAT16、BFLOAT16，且在pseShift为FLOAT16类型时，要求此时的query为FLOAT16或INT8类型，而在pseShift为BFLOAT16类型时，要求此时的query为BFLOAT16类型。在query、key、value为FLOAT16且pseShift存在的情况下，默认走高精度模式，对应的限制继承自高精度模式的限制。
 
 - attenMask功能使用限制如下：
-  
+
   - 对于attenMask的KV_S为非32对齐的场景，建议padding到32对齐来提高性能，多余部分填充成1。
   - 通常建议shape输入Q_S, KV_S; B, Q_S, KV_S; 1, Q_S, KV_S; B, 1, Q_S, KV_S; 1, 1, Q_S, KV_S，其中Q_S为query的shape中的S，KV_S为key和value的shape中的S。
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：数据类型支持BOOL、INT8和UINT8。
 
 - actualSeqLengths，actualSeqLengthsKv输入，功能使用限制如下：
-  
+
   - 对于actualSeqLengths，如果不指定序列长度，可以传入nullptr，这表示有效序列长度与query的shape中的S长度相同。需要注意的是，该参数中每个batch的有效序列长度不应超过query中对应batch的序列长度。
   - 对于actualSeqLengthsKv，如果不指定序列长度，可以传入nullptr，这表示有效序列长度与key/value的shape中的S长度相同。需要注意的是，该参数中每个batch的有效序列长度不应超过key/value中对应batch的序列长度。
   - 关于seqlen的传入长度有以下规则：当传入长度为1时，所有Batch将使用相同的seqlen；当传入长度大于或等于Batch数量时，将取seqlen的前Batch个数值；其他长度的传入将不被支持。
   - 当query的inputLayout为TND时，该入参必须传入，且以该入参元素的数量作为Batch值。该入参中每个元素的值表示当前Batch与之前所有Batch的Sequence Length和，因此后一个元素的值必须大于等于前一个元素的值，且不能出现负值。
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：数据类型支持INT64，支持TND格式。
-  
+
 - deqScale1，deqScale2输入，功能使用限制如下：
-  
+
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：数据类型支持UINT64、FLOAT32。
-  
+
 - quantScale1输入，功能使用限制如下：
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：数据类型支持FLOAT32。
-  
+
 - quantScale2，quantOffset2输入，功能使用限制如下：
-  
+
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：数据类型支持FLOAT32和BFLOAT16。
-  
+
 - preTokens输入，功能使用限制如下：
-  
+
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：数据类型支持INT64。
-  
+
 - nextTokens输入，功能使用限制如下：
-  
+
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：数据类型支持INT64。
-  
+
 - inputLayout输入，功能使用限制如下：
-  
+
   - 当前支持BSH、BSND、BNSD、BNSD_BSND（输入为BNSD时，输出格式为BSND）。用户不特意指定时建议传入"BSH"。
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：除了上述格式，还支持TND（不支持pse、全量化、后量化）。
-  
+
 - numKeyValueHeads输入，功能使用限制如下：
-  
+
   - 需要满足numHeads整除numKeyValueHeads，numHeads与numKeyValueHeads的比值不能大于64，且在BSND、BNSD、BNSD_BSND场景下，需要与shape中的key/value的N轴shape值相同，否则报错。
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：数据类型支持INT64。
-  
+
 - sparseMode输入，功能使用限制如下：
-  
+
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：
     - sparseMode为0时，代表defaultMask模式，如果attenmask未传入则不做mask操作，忽略preTokens和nextTokens（内部赋值为INT_MAX）；如果传入，则需要传入完整的attenmask矩阵（S1 * S2），表示preTokens和nextTokens之间的部分需要计算。
     - sparseMode为1时，代表allMask，必须传入完整的attenmask矩阵（S1 * S2）。
@@ -579,9 +579,9 @@ aclnnStatus aclnnBlitzSparseAttention(
     - sparseMode为4时，代表band模式的mask，需要传入优化后的attenmask矩阵（2048*2048）。
     - sparseMode为5、6、7、8时，分别代表prefix、global、dilated、block_local，**均暂不支持**。用户不特意指定时建议传入0。
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：当inputLayout为TND时，sparseMode仅支持取值0、3。
-  
+
 - innerPrecise输入，功能使用限制如下：
-  
+
   - 一共4种模式：0、1、2、3。一共两位bit位，第0位（bit0）表示高精度或者高性能选择，第1位（bit1）表示是否做行无效修正。
     <table style="table-layout: fixed; width: 600px"><colgroup>
     <col style="width: 200px">
@@ -616,18 +616,18 @@ aclnnStatus aclnnBlitzSparseAttention(
     </tr>
     </tbody>
     </table>
-  
+
   - Q_S>1时，sparse_mode为0或1，并传入用户自定义mask的情况下，建议开启行无效。
-  
+
   - BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLOAT16和INT8均生效。当前0、1为保留配置值，当计算过程中“参与计算的mask部分”存在某整行全为1的情况时，精度可能会有损失。此时可以尝试将该参数配置为2或3来开启行无效功能以提升精度，但是该配置会导致性能下降。如果算子可判断出存在无效行场景，会自动开启无效行计算，例如sparse_mode为3，Sq > Skv场景。
-  
+
 - attentionOut输出，功能使用限制如下：
-  
+
   - 当inputLayout为BNSD_BSND时，输入query的shape是BNSD，输出shape为BSND；其余情况该入参的shape需要与入参query的shape保持一致。
   - <term>Atlas A2 训练系列产品/Atlas 800I A2 推理产品/A200I A2 Box异构组件</term>：数据类型支持FLOAT16、BFLOAT16、INT8。
-  
+
 - int8量化相关入参数量与输入、输出数据格式的综合限制：
-  
+
   - 输入为INT8，输出为INT8的场景：入参deqScale1、quantScale1、deqScale2、quantScale2需要同时存在，quantOffset2可选，不传时默认为0。
   - 输入为INT8，输出为FLOAT16的场景：入参deqScale1、quantScale1、deqScale2需要同时存在，若存在入参quantOffset2或quantScale2（即不为nullptr），则报错并返回。
   - 输入为FLOAT16或BFLOAT16，输出为INT8的场景：入参quantScale2需存在，quantOffset2可选，不传时默认为0，若存在入参deqScale1或quantScale1或deqScale2（即不为nullptr），则报错并返回。
@@ -672,7 +672,7 @@ aclnnStatus aclnnBlitzSparseAttention(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -682,18 +682,18 @@ aclnnStatus aclnnBlitzSparseAttention(
 #include "acl/acl.h"
 #include "aclnnop/aclnn_blitz_sparse_attention.h"
 #include "securec.h"
- 
+
 using namespace std;
 
 namespace {
- 
+
 #define CHECK_RET(cond) ((cond) ? true :(false))
- 
+
 #define LOG_PRINT(message, ...)     \
   do {                              \
     (void)printf(message, ##__VA_ARGS__); \
   } while (0)
- 
+
 int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   int64_t shapeSize = 1;
   for (auto i : shape) {
@@ -701,47 +701,47 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape) {
   }
   return shapeSize;
 }
- 
+
 int Init(int32_t deviceId, aclrtStream* stream) {
   auto ret = aclInit(nullptr);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-    LOG_PRINT("aclInit failed. ERROR: %d\n", ret); 
+  if (!CHECK_RET(ret == ACL_SUCCESS)) {
+    LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
     return ret;
   }
   ret = aclrtSetDevice(deviceId);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-    LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); 
+  if (!CHECK_RET(ret == ACL_SUCCESS)) {
+    LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret);
     return ret;
   }
   ret = aclrtCreateStream(stream);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-    LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); 
+  if (!CHECK_RET(ret == ACL_SUCCESS)) {
+    LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);
     return ret;
   }
   return 0;
 }
- 
+
 template <typename T>
 int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
                     aclDataType dataType, aclTensor** tensor) {
   auto size = GetShapeSize(shape) * sizeof(T);
   auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-    LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); 
+  if (!CHECK_RET(ret == ACL_SUCCESS)) {
+    LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
     return ret;
   }
-  
+
   ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
-  if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-    LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+  if (!CHECK_RET(ret == ACL_SUCCESS)) {
+    LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
     return ret;
   }
- 
+
   std::vector<int64_t> strides(shape.size(), 1);
   for (int64_t i = shape.size() - 2; i >= 0; i--) {
     strides[i] = shape[i + 1] * strides[i + 1];
   }
- 
+
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType, strides.data(), 0, aclFormat::ACL_FORMAT_ND,
                             shape.data(), shape.size(), *deviceAddr);
   return 0;
@@ -767,57 +767,57 @@ int InitializeTensors(TensorResources& resources) {
     std::vector<int64_t> valueShape = {1, 2, 2, 16};
     std::vector<int64_t> attenShape = {1, 1, 1, 2};
     std::vector<int64_t> outShape = {1, 2, 1, 16};
-    
+
     int64_t queryShapeSize = GetShapeSize(queryShape);
     int64_t keyShapeSize = GetShapeSize(keyShape);
     int64_t valueShapeSize = GetShapeSize(valueShape);
     int64_t attenShapeSize = GetShapeSize(attenShape);
     int64_t outShapeSize = GetShapeSize(outShape);
-    
+
     std::vector<float> queryHostData(queryShapeSize, 1);
     std::vector<float> keyHostData(keyShapeSize, 1);
     std::vector<float> valueHostData(valueShapeSize, 1);
     std::vector<float> attenHostData(attenShapeSize, 1);
     std::vector<float> outHostData(outShapeSize, 1);
 
-    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr, 
+    int ret = CreateAclTensor(queryHostData, queryShape, &resources.queryDeviceAddr,
                              aclDataType::ACL_FLOAT16, &resources.queryTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr, 
+    ret = CreateAclTensor(keyHostData, keyShape, &resources.keyDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.keyTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(valueHostData, valueShape, &resources.valueDeviceAddr, 
+    ret = CreateAclTensor(valueHostData, valueShape, &resources.valueDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.valueTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(attenHostData, attenShape, &resources.attenDeviceAddr, 
+    ret = CreateAclTensor(attenHostData, attenShape, &resources.attenDeviceAddr,
                          aclDataType::ACL_BOOL, &resources.attenTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
-    ret = CreateAclTensor(outHostData, outShape, &resources.outDeviceAddr, 
+    ret = CreateAclTensor(outHostData, outShape, &resources.outDeviceAddr,
                          aclDataType::ACL_FLOAT16, &resources.outTensor);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
       return ret;
     }
 
     std::vector<int64_t> actualSeqlenVector = {2};
-    resources.actualSeqLengths = aclCreateIntArray(actualSeqlenVector.data(), 
+    resources.actualSeqLengths = aclCreateIntArray(actualSeqlenVector.data(),
                                                   actualSeqlenVector.size());
 
     return ACL_SUCCESS;
 }
 
-int ExecuteBlitzSparseAttention(TensorResources& resources, aclrtStream stream, 
+int ExecuteBlitzSparseAttention(TensorResources& resources, aclrtStream stream,
                                void** workspaceAddr, uint64_t* workspaceSize) {
     int64_t numHeads = 2;
     int64_t numKeyValueHeads = numHeads;
@@ -826,19 +826,19 @@ int ExecuteBlitzSparseAttention(TensorResources& resources, aclrtStream stream,
     int64_t nextTokens = 65535;
     int64_t sparseMode = 0;
     int64_t innerPrecise = 1;
-    
+
     constexpr const char LAYER_OUT_STR[] = "BNSD";
-    constexpr size_t LAYER_OUT_LEN = sizeof(LAYER_OUT_STR);  
+    constexpr size_t LAYER_OUT_LEN = sizeof(LAYER_OUT_STR);
     char layerOut[LAYER_OUT_LEN];
     memcpy(layerOut, LAYER_OUT_STR, LAYER_OUT_LEN);
 
     aclOpExecutor* executor;
     int ret = aclnnBlitzSparseAttentionGetWorkspaceSize(
-        resources.queryTensor, resources.keyTensor, resources.valueTensor, 
-        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, 
-        numHeads, scaleValue, preTokens, nextTokens, layerOut, numKeyValueHeads, 
+        resources.queryTensor, resources.keyTensor, resources.valueTensor,
+        nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        numHeads, scaleValue, preTokens, nextTokens, layerOut, numKeyValueHeads,
         sparseMode, innerPrecise, resources.outTensor, workspaceSize, &executor);
-        
+
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("aclnnBlitzSparseAttentionGetWorkspaceSize failed. ERROR: %d\n", ret);
         return ret;
@@ -864,23 +864,23 @@ int ExecuteBlitzSparseAttention(TensorResources& resources, aclrtStream stream,
 int ProcessResults(TensorResources& resources, const std::vector<int64_t>& outShape) {
     auto size = GetShapeSize(outShape);
     std::vector<double> resultData(size, 0);
-    
-    int ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), 
-                         resources.outDeviceAddr, size * sizeof(resultData[0]), 
+
+    int ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
+                         resources.outDeviceAddr, size * sizeof(resultData[0]),
                          ACL_MEMCPY_DEVICE_TO_HOST);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
         LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
-    
+
     for (int64_t i = 0; i < size; i++) {
         LOG_PRINT("result[%ld] is: %f\n", i, resultData[i]);
     }
-    
+
     return ACL_SUCCESS;
 }
 
-void CleanupResources(TensorResources& resources, void* workspaceAddr, 
+void CleanupResources(TensorResources& resources, void* workspaceAddr,
                      aclrtStream stream, int32_t deviceId) {
     if (resources.queryTensor) {
       aclDestroyTensor(resources.queryTensor);
@@ -900,7 +900,7 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
     if (resources.actualSeqLengths) {
       aclDestroyIntArray(resources.actualSeqLengths);
     }
-    
+
     if (resources.queryDeviceAddr) {
       aclrtFree(resources.queryDeviceAddr);
     }
@@ -916,20 +916,20 @@ void CleanupResources(TensorResources& resources, void* workspaceAddr,
     if (resources.outDeviceAddr) {
       aclrtFree(resources.outDeviceAddr);
     }
-    
+
     if (workspaceAddr) {
       aclrtFree(workspaceAddr);
     }
     if (stream) {
       aclrtDestroyStream(stream);
     }
-    
+
     aclrtResetDevice(deviceId);
     aclFinalize();
 }
 
 } // namespace
- 
+
 int main() {
     int32_t deviceId = 0;
     aclrtStream stream = nullptr;

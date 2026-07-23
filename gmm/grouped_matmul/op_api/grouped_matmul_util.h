@@ -132,11 +132,11 @@ const std::initializer_list<op::DataType> DTYPE_SUPPORT_LIST = {DataType::DT_FLO
 
 bool IsTransposeLastTwoDims(const aclTensor *tensor);
 bool IsTransposeForMxShape(const aclTensor *tensor);
-void CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorListForPertoken(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                            aclOpExecutor *executor);
-void CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                                aclOpExecutor *executor);
-void CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                 aclOpExecutor *executor);
 std::string dTypeToString(const ge::DataType &dtype);
 } // namespace gmm

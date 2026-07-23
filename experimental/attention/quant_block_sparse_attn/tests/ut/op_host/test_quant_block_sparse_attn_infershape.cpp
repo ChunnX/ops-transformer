@@ -116,7 +116,7 @@ TEST_F(QuantBlockSparseAttnInfershape, infershape_ntd_with_lse)
 
     std::vector<std::vector<int64_t>> expectOutputShape = {
         {256, 4, 128},
-        {256, 4},
+        {4, 256},
     };
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -170,11 +170,7 @@ TEST_F(QuantBlockSparseAttnInfershape, infershape_bsnd_4d_with_lse)
                                      },
                                      MakeOutputs(), MakeAttrs("BSND", true));
 
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {4, 256, 4, 128},
-        {4, 4, 256},
-    };
-    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expectOutputShape);
+    ExecuteTestCase(para, ge::GRAPH_FAILED);
 }
 
 TEST_F(QuantBlockSparseAttnInfershape, infershape_inferdatatype_non_bf16)

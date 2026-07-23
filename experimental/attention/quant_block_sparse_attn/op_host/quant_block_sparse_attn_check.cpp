@@ -29,14 +29,14 @@ QuantBlockSparseAttnCheck::QuantBlockSparseAttnCheck(const QuantBlockSparseAttnT
 
 ge::graphStatus QuantBlockSparseAttnCheck::CheckDtype() const
 {
-    if (tilingInfo_.qDtype != ge::DT_FLOAT8_E4M3FN && tilingInfo_.qDtype != ge::DT_HIFLOAT8) {
+    if (tilingInfo_.qDtype != ge::DT_FLOAT8_E4M3FN) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "query", std::to_string(static_cast<int>(tilingInfo_.qDtype)),
-                                  "FLOAT8_E4M3FN or HIFLOAT8");
+                                  "FLOAT8_E4M3FN");
         return ge::GRAPH_FAILED;
     }
-    if (tilingInfo_.kvDtype != ge::DT_FLOAT8_E4M3FN && tilingInfo_.kvDtype != ge::DT_HIFLOAT8) {
+    if (tilingInfo_.kvDtype != ge::DT_FLOAT8_E4M3FN) {
         OP_LOGE_FOR_INVALID_DTYPE(kOpName, "key/value", std::to_string(static_cast<int>(tilingInfo_.kvDtype)),
-                                  "FLOAT8_E4M3FN or HIFLOAT8");
+                                  "FLOAT8_E4M3FN");
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
