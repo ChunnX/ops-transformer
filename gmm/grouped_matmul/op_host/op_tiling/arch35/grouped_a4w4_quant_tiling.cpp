@@ -59,6 +59,7 @@ void GroupedA4W4QuantTiling::Reset()
 {
     a4w4Tiling_ = A4W4BasicTiling{};
     int8WeightWs_ = 0;
+    int8XWs_ = 0;
     mmOutWs_ = 0;
 }
 
@@ -430,7 +431,9 @@ ge::graphStatus GroupedA4W4QuantTiling::DoLibApiTiling()
 
 ge::graphStatus GroupedA4W4QuantTiling::CalWorkspaceA4W4()
 {
+    // int4->int8 预转换：weight 与 x 均落 workspace（体积翻倍 int4 0.5B -> int8 1B）
     int8WeightWs_ = static_cast<uint64_t>(a4w4Tiling_.groupNum) * a4w4Tiling_.k * a4w4Tiling_.n * sizeof(int8_t);
+    int8XWs_ = static_cast<uint64_t>(a4w4Tiling_.m) * a4w4Tiling_.k * sizeof(int8_t);  // m=totalM (single x)
     mmOutWs_ = static_cast<uint64_t>(A4W4_MMOUT_PIPELINE) * a4w4Tiling_.baseM * a4w4Tiling_.baseN *
                a4w4Tiling_.usedCoreNum * sizeof(uint16_t);
     return ge::GRAPH_SUCCESS;
@@ -443,9 +446,10 @@ ge::graphStatus GroupedA4W4QuantTiling::GetWorkspaceSize()
                 return ge::GRAPH_FAILED);
     size_t *workspaces = context_->GetWorkspaceSizes(1);
     OP_CHECK_NULL_WITH_CONTEXT(context_, workspaces);
-    workspaces[0] = SYS_WORKSPACE_SIZE + int8WeightWs_ + mmOutWs_;
-    OP_LOGI(context_->GetNodeName(), "A4W4 workspace: int8Weight=%lu mmOut=%lu total=%lu",
-            int8WeightWs_, mmOutWs_, workspaces[0]);
+    // 布局: [sys 16MB][int8WeightWs][int8XWs][mmOutWs]
+    workspaces[0] = SYS_WORKSPACE_SIZE + int8WeightWs_ + int8XWs_ + mmOutWs_;
+    OP_LOGI(context_->GetNodeName(), "A4W4 workspace: int8Weight=%lu int8X=%lu mmOut=%lu total=%lu",
+            int8WeightWs_, int8XWs_, mmOutWs_, workspaces[0]);
     return ge::GRAPH_SUCCESS;
 }
 
