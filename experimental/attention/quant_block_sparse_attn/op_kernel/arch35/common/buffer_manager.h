@@ -30,6 +30,7 @@ namespace fa_base_matmul {
 template<BufferType bufferType>
 class BufferManager {
     using TensorType = std::conditional_t<bufferType == BufferType::GM, GlobalTensor<uint8_t>, LocalTensor<uint8_t>>;
+    using OffsetType = std::conditional_t<bufferType == BufferType::GM, uint64_t, uint32_t>;
 public:
     __aicore__ inline void Init(TPipe *pipe, uint32_t size) {
         static_assert(bufferType != BufferType::GM, "GM should use workspace.");
@@ -54,7 +55,7 @@ public:
     __aicore__ inline void FreeBuffer(Buffer<bufferType, syncType> &buffer){
     }
 private:
-    uint32_t offset_ = 0;
+    OffsetType offset_ = 0;
     TensorType mem_;
 };
 }

@@ -32,7 +32,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnQuantFlashAttentionScoreGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantFlashAttentionScore”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnQuantFlashAttentionScoreGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnQuantFlashAttentionScore”接口执行计算。
 
 ```c++
 aclnnStatus aclnnQuantFlashAttentionScoreGetWorkspaceSize(
@@ -60,9 +60,9 @@ aclnnStatus aclnnQuantFlashAttentionScoreGetWorkspaceSize(
 
 ```c++
 aclnnStatus aclnnQuantFlashAttentionScore(
-  void             *workspace, 
-  uint64_t          workspaceSize, 
-  aclOpExecutor    *executor, 
+  void             *workspace,
+  uint64_t          workspaceSize,
+  aclOpExecutor    *executor,
   const aclrtStream stream)
 ```
 
@@ -287,7 +287,7 @@ aclnnStatus aclnnQuantFlashAttentionScore(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -358,7 +358,7 @@ aclnnStatus aclnnQuantFlashAttentionScore(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -405,7 +405,7 @@ aclnnStatus aclnnQuantFlashAttentionScore(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```C++
 #include <iostream>
@@ -540,7 +540,7 @@ int main() {
   aclTensor* softmaxMax = nullptr;
   aclTensor* softmaxSum = nullptr;
   aclTensor* softmaxOut = nullptr;
- 
+
   std::vector<uint8_t> qHostData(q_size, 1.0);
   std::vector<uint8_t> kHostData(kv_size, 1.0);
   std::vector<uint8_t> vHostData(kv_size, 1.0);
@@ -572,7 +572,7 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(softmaxSumHostData, softmaxSumShape, &softmaxSumDeviceAddr, aclDataType::ACL_FLOAT, &softmaxSum);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
- 
+
   double scaleValue = 0.088388;
   int64_t preTokens = 65536;
   int64_t nextTokens = 65536;

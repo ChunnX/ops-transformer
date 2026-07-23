@@ -4,7 +4,7 @@
 
 本算子为MoeDistributeDispatchV2 算子的Kernel直调实现，采用 <<<>>> 调用方式直接启动Ascend C Kernel。
 
-关于Dispatch算子的核心功能、计算公式及通信原理，详见 [aclnnMoeDistributeDispatchV3](../../../../../../mc2/moe_distribute_dispatch_v2/docs/aclnnMoeDistributeDispatchV3.md)。
+关于Dispatch算子的核心功能、计算公式及通信原理，详见 [aclnnMoeDistributeDispatchV3文档介绍。
 
 
 ## 产品支持情况

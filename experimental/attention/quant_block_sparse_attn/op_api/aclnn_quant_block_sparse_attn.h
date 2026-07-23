@@ -22,7 +22,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnQuantBlockSparseAttnGetW
     const aclTensor *kDescale, const aclTensor *vDescale, const aclTensor *pScale, const aclTensor *cuSeqlensQOptional,
     const aclTensor *cuSeqlensKvOptional, const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
     const aclTensor *sparseIndices, const aclTensor *sparseSeqLen, const aclTensor *blockTableOptional,
-    const aclTensor *attenMask, const aclTensor *metadataOptional, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
+    const aclTensor *attenMaskOptional, const aclTensor *metadataOptional, int64_t maxSeqlenQ, int64_t maxSeqlenKv,
     double softmaxScale, int64_t sparseQBlockSize, int64_t sparseKvBlockSize, int64_t paBlockStride, char *layoutKv,
     char *layoutQ, char *layoutSparseIndices, char *layoutOut, int64_t quantMode, int64_t maskMode,
     bool returnSoftmaxLse, const aclTensor *attentionOut, const aclTensor *softmaxLse, uint64_t *workspaceSize,

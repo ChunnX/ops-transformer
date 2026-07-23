@@ -75,6 +75,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             tilingData->topoType);
     OP_LOGD(nodeName, "mode: groupedMatmulMode=%u, combineQuantMode=%ld, clampLimit=%f",
             static_cast<uint32_t>(tilingData->groupedMatmulMode), tilingData->combineQuantMode, tilingData->clampLimit);
+    OP_LOGD(nodeName, "combineSync: slotCountPerExpert=%lu", tilingData->combineSyncSlotCountPerExpert);
 
     const auto &dispatchConfig = tilingData->dispatchBufferConfig;
     OP_LOGD(nodeName, "dispatch: routeItemsPerBatch=%d, routeBatchCount=%d, bufferCount=%d, copyBufferBytes=%u",
@@ -679,6 +680,27 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
     return bufferConfig;
 }
 
+static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilingData)
+{
+    if (tilingData->combineQuantMode == COMBINE_NO_QUANT || tilingData->moeExpertPerRank == 0U) {
+        return 0U;
+    }
+
+    uint64_t logicalCoreCount = tilingData->blockAivNum;
+    if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
+        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
+        tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ) {
+        // A8W4/A4W4 每两个 AIV 配对，只有 subBlockIdx=1 参与 Combine，因此逻辑核数是物理 AIV 数的一半。
+        logicalCoreCount /= 2U;
+    }
+    // 同一 token 的 topK expert id 不重复，因此单 expert 从每张卡最多接收 bs 个 token。
+    uint64_t maxTokenCountForOneExpert = static_cast<uint64_t>(tilingData->bs) * tilingData->epWorldSize;
+    uint64_t maxTokenGroupCountForOneExpert =
+        ops::CeilDiv(maxTokenCountForOneExpert, static_cast<uint64_t>(COMBINE_TOKEN_GROUP_SIZE));
+    // Workspace 在路由结果产生前分配，因此每个本卡 MoE expert 都按独立最坏情况预留 slot。
+    return std::max(maxTokenGroupCountForOneExpert, logicalCoreCount);
+}
+
 static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *context, MegaMoeConfig &config,
                                                 MegaMoeTilingData *tilingData, uint32_t availableUbBytes)
 {
@@ -694,31 +716,33 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     tilingData->dispatchBufferConfig =
         CalcDispatchBufferConfig(tilingData, activationElementsPerByte, availableUbBytes);
 
+    tilingData->combineSyncSlotCountPerExpert = CalcCombineSyncSlotCountPerExpert(tilingData);
+
     int64_t maxWavesPerExpert =
-        (static_cast<int64_t>(tilingData->maxOutputSize) + DISPATCH_WAVE_TILE_M - 1) / DISPATCH_WAVE_TILE_M;
-    int64_t dispatchFlagSlotsPerExpert = (maxWavesPerExpert + INT_CACHELINE - 1) / INT_CACHELINE * INT_CACHELINE;
+        ops::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(DISPATCH_WAVE_TILE_M));
+    int64_t dispatchFlagSlotsPerExpert = ops::CeilAlign(maxWavesPerExpert, static_cast<int64_t>(INT_CACHELINE));
     uint64_t totalFlagElementCount =
         static_cast<uint64_t>(tilingData->expertPerRank) *
         (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert) +
          static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
     if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-        uint64_t combineFlagElementCount = static_cast<uint64_t>(tilingData->expertPerRank) * tilingData->blockAivNum *
+        uint64_t combineFlagElementCount = tilingData->combineSyncSlotCountPerExpert * tilingData->moeExpertPerRank *
                                            static_cast<uint64_t>(INT_CACHELINE);
         totalFlagElementCount = std::max(totalFlagElementCount, combineFlagElementCount);
     }
     uint32_t resetElementCountPerCore =
-        static_cast<uint32_t>((totalFlagElementCount + tilingData->blockAivNum - 1U) / tilingData->blockAivNum);
+        static_cast<uint32_t>(ops::CeilDiv(totalFlagElementCount, static_cast<uint64_t>(tilingData->blockAivNum)));
     uint32_t resetBatchElementCount = std::min(resetElementCountPerCore, static_cast<uint32_t>(DISPATCH_RESET_BATCH));
     uint32_t resetTensorBytes =
         ops::CeilAlign(resetBatchElementCount, static_cast<uint32_t>(INT32_PER_256B)) * sizeof(int32_t);
     uint32_t quantTokenBytes =
         ops::CeilAlign(tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
-    uint32_t quantOutputBufferBytes = quantTokenBytes + (tilingData->h + ALIGN_32 - 1U) / ALIGN_32;
+    uint32_t quantOutputBufferBytes = quantTokenBytes + ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
     // sendCntAccTensor_ 按本卡 weight 容量分配，与 kernel 地址布局一致；实际 mask push 次数按 routed MoE
     // expert 数计算，不包含共享专家和未参与路由的预留 weight。
     uint32_t maxExpertCountPerCore =
-        (tilingData->epWorldSize * tilingData->expertPerRank + tilingData->blockAivNum - 1U) / tilingData->blockAivNum;
+        ops::CeilDiv(tilingData->epWorldSize * tilingData->expertPerRank, tilingData->blockAivNum);
     uint32_t sendCountAccumulatorBytes = static_cast<uint32_t>(ops::CeilAlign(
         static_cast<uint64_t>(maxExpertCountPerCore) * sizeof(int32_t), static_cast<uint64_t>(ALIGN_32)));
     // mxTempTensor_ 占 2KB，xOutTensor_ 和 xInTensor_ 各使用双 buffer。
@@ -758,8 +782,8 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     // FP32 可直接搬入计算 buffer；其他已支持类型按实际元素大小预留转换中转区。
     uint32_t topKWeightsConversionElementBytes =
         topKWeightsDataType == ge::DT_FLOAT ? 0U : static_cast<uint32_t>(ge::GetSizeByDataType(topKWeightsDataType));
-    uint32_t fullTokenChunkSize = (tilingData->bs + tilingData->blockAivNum - 1U) / tilingData->blockAivNum;
-    uint32_t activeCoreCount = (tilingData->bs + fullTokenChunkSize - 1U) / fullTokenChunkSize;
+    uint32_t fullTokenChunkSize = ops::CeilDiv(tilingData->bs, tilingData->blockAivNum);
+    uint32_t activeCoreCount = ops::CeilDiv(tilingData->bs, fullTokenChunkSize);
     uint32_t tailTokenChunkSize = tilingData->bs - (activeCoreCount - 1U) * fullTokenChunkSize;
     bool tailIsFullTokenChunk = tailTokenChunkSize == fullTokenChunkSize;
     tilingData->unpermuteFullTokenChunkCoreCount = tailIsFullTokenChunk ? activeCoreCount : activeCoreCount - 1U;

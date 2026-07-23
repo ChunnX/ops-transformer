@@ -41,334 +41,334 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFFNV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFNV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFFNV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnFFNV2”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnFFNV2GetWorkspaceSize(
-  const aclTensor*   x, 
-  const aclTensor*   weight1, 
-  const aclTensor*   weight2, 
-  const aclIntArray* expertTokens, 
-  const aclTensor*   bias1, 
-  const aclTensor*   bias2, 
-  const aclTensor*   scale, 
-  const aclTensor*   offset, 
+  const aclTensor*   x,
+  const aclTensor*   weight1,
+  const aclTensor*   weight2,
+  const aclIntArray* expertTokens,
+  const aclTensor*   bias1,
+  const aclTensor*   bias2,
+  const aclTensor*   scale,
+  const aclTensor*   offset,
   const aclTensor*   deqScale1,
-  const aclTensor*   deqScale2, 
-  const aclTensor*   antiquantScale1, 
-  const aclTensor*   antiquantScale2, 
-  const aclTensor*   antiquantOffset1, 
-  const aclTensor*   antiquantOffset2, 
-  const char*        activation, 
-  int64_t            innerPrecise, 
-  bool               tokensIndexFlag, 
-  const aclTensor*   y, 
-  uint64_t*          workspaceSize, 
+  const aclTensor*   deqScale2,
+  const aclTensor*   antiquantScale1,
+  const aclTensor*   antiquantScale2,
+  const aclTensor*   antiquantOffset1,
+  const aclTensor*   antiquantOffset2,
+  const char*        activation,
+  int64_t            innerPrecise,
+  bool               tokensIndexFlag,
+  const aclTensor*   y,
+  uint64_t*          workspaceSize,
   aclOpExecutor**    executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnFFNV2(
-  void*          workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor* executor, 
+  void*          workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor* executor,
   aclrtStream    stream)
 ```
 
 ## aclnnFFNV2GetWorkspaceSize
 
-参数说明中涉及到的公共变量说明：  
-M表示token个数，对应transform中的BS（B：Batch，表示输入样本批量大小。  
-S：Seq-Length，表示输入样本序列长度）。  
-K1表示第一个matmul的输入通道数，对应transform中的H（Head-Size，表示隐藏层的大小）。  
-N1表示第一个matmul的输出通道数。  
-K2表示第二个matmul的输入通道数。  
-N2表示第二个matmul的输出通道数，对应transform中的H。  
-<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：E表示有专家场景的专家数；G表示伪量化per-group场景下，antiquantOffset、antiquantScale的组数。  
+参数说明中涉及到的公共变量说明：
+M表示token个数，对应transform中的BS（B：Batch，表示输入样本批量大小。
+S：Seq-Length，表示输入样本序列长度）。
+K1表示第一个matmul的输入通道数，对应transform中的H（Head-Size，表示隐藏层的大小）。
+N1表示第一个matmul的输出通道数。
+K2表示第二个matmul的输入通道数。
+N2表示第二个matmul的输出通道数，对应transform中的H。
+<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：E表示有专家场景的专家数；G表示伪量化per-group场景下，antiquantOffset、antiquantScale的组数。
 
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1640px">
-  <colgroup> <!--工具调整列宽时，所列宽总和最大不要超过1550--> 
-  <col style="width: 180px"> <!-- 参数名：自行调整列宽，原则：不能换行展示--> 
-  <col style="width: 120px"> <!-- 输入/输出：固定列宽--> 
-  <col style="width: 280px"> <!-- 描述列宽：自行调整列宽--> 
-  <col style="width: 290px"> <!-- 使用说明列宽：自行调整列宽--> 
-  <col style="width: 290px"> <!-- 数据类型列宽：自行调整列宽--> 
-  <col style="width: 120px"> <!--数据格式：自行调整列宽--> 
-  <col style="width: 320px"> <!-- 维度(shape)：自行调整列宽，内容较少时可以适当缩小列宽--> 
-  <col style="width: 140px"> <!--非连续Tensor：自行调整列宽，必须不要修改这个数值--> 
-  </colgroup> 
-  <thead> 
-  <tr> 
-  <th>参数名</th> 
-  <th>输入/输出</th> 
-  <th>描述</th> 
-  <th>使用说明</th> 
-  <th>数据类型</th> 
-  <th>数据格式</th> 
-  <th>维度(shape)</th> 
-  <th>非连续Tensor</th> 
+  <colgroup> <!--工具调整列宽时，所列宽总和最大不要超过1550-->
+  <col style="width: 180px"> <!-- 参数名：自行调整列宽，原则：不能换行展示-->
+  <col style="width: 120px"> <!-- 输入/输出：固定列宽-->
+  <col style="width: 280px"> <!-- 描述列宽：自行调整列宽-->
+  <col style="width: 290px"> <!-- 使用说明列宽：自行调整列宽-->
+  <col style="width: 290px"> <!-- 数据类型列宽：自行调整列宽-->
+  <col style="width: 120px"> <!--数据格式：自行调整列宽-->
+  <col style="width: 320px"> <!-- 维度(shape)：自行调整列宽，内容较少时可以适当缩小列宽-->
+  <col style="width: 140px"> <!--非连续Tensor：自行调整列宽，必须不要修改这个数值-->
+  </colgroup>
+  <thead>
+  <tr>
+  <th>参数名</th>
+  <th>输入/输出</th>
+  <th>描述</th>
+  <th>使用说明</th>
+  <th>数据类型</th>
+  <th>数据格式</th>
+  <th>维度(shape)</th>
+  <th>非连续Tensor</th>
   </tr>
-  </thead> 
-  <tbody> 
-  <tr> 
-  <td>x（aclTensor*）</td> 
-  <td>输入</td> 
-  <td>计算输入，公式中的输入x。</td> 
-  <td>-</td> 
+  </thead>
+  <tbody>
+  <tr>
+  <td>x（aclTensor*）</td>
+  <td>输入</td>
+  <td>计算输入，公式中的输入x。</td>
+  <td>-</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16、INT8</li>
   <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
-  </td> 
-  <td>ND</td> 
+  </td>
+  <td>ND</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持输入的维度最少是2维[M, K1]，最多是8维。</li>
   <li><term>Atlas 推理系列加速卡产品</term>：支持输入的维度是2维[M, K1]。</li>
   </ul>
-  </td> 
-  <td>√</td> 
-  </tr> 
-  <tr> 
-  <td>weight1（aclTensor*）</td> 
-  <td>输入</td> 
-  <td>专家的权重数据，公式中的W1。</td> 
-  <td>-</td> 
+  </td>
+  <td>√</td>
+  </tr>
+  <tr>
+  <td>weight1（aclTensor*）</td>
+  <td>输入</td>
+  <td>专家的权重数据，公式中的W1。</td>
+  <td>-</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16、INT8、INT4</li>
   <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
-  </td> 
-  <td>ND</td> 
+  </td>
+  <td>ND</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：有专家[E, K1, N1]；无专家[K1, N1]</li>
   <li><term>Atlas 推理系列加速卡产品</term>：[K1, N1]</li>
   </ul>
-  </td> 
-  <td>√</td> 
-  </tr> 
-  <tr> 
-  <td>weight2（aclTensor*）</td> 
-  <td>输入</td> 
-  <td>专家的权重数据，公式中的W2。</td> 
-  <td>-</td> 
+  </td>
+  <td>√</td>
+  </tr>
+  <tr>
+  <td>weight2（aclTensor*）</td>
+  <td>输入</td>
+  <td>专家的权重数据，公式中的W2。</td>
+  <td>-</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16、INT8、INT4</li>
   <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
-  </td> 
-  <td>ND</td> 
+  </td>
+  <td>ND</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：有专家[E, K2, N2]；无专家[K2, N2]</li>
   <li><term>Atlas 推理系列加速卡产品</term>：[K2, N2]</li>
   </ul>
-  </td> 
-  <td>√</td> 
-  </tr> 
-  <tr> 
-  <td>expertTokens（aclIntArray*）</td> 
-  <td>可选输入</td> 
-  <td>各专家的token数。</td> 
-  <td>-</td> 
-  <td>INT64</td> 
-  <td>ND</td> 
+  </td>
+  <td>√</td>
+  </tr>
+  <tr>
+  <td>expertTokens（aclIntArray*）</td>
+  <td>可选输入</td>
+  <td>各专家的token数。</td>
+  <td>-</td>
+  <td>INT64</td>
+  <td>ND</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：若不为空时可支持的最大长度为256个。</li>
   <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
-  </td> 
-  <td>-</td> 
-  </tr> 
-  <tr> 
-  <td>bias1（aclTensor*）</td> 
-  <td>可选输入</td> 
-  <td>权重数据修正值，公式中的b1。</td> 
-  <td><term>Atlas 推理系列加速卡产品</term>：支持输入的维度是1维。</td> 
+  </td>
+  <td>-</td>
+  </tr>
+  <tr>
+  <td>bias1（aclTensor*）</td>
+  <td>可选输入</td>
+  <td>权重数据修正值，公式中的b1。</td>
+  <td><term>Atlas 推理系列加速卡产品</term>：支持输入的维度是1维。</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、FLOAT32、INT32</li>
   <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
-  </td> 
-  <td>ND</td> 
+  </td>
+  <td>ND</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：有专家[E, N1]；无专家[N1]</li>
   <li><term>Atlas 推理系列加速卡产品</term>：[N1]</li>
   </ul>
-  </td> 
-  <td>-</td> 
-  </tr> 
-  <tr> 
-  <td>bias2（aclTensor*）</td> 
-  <td>可选输入</td> 
-  <td>权重数据修正值，公式中的b2。</td> 
-  <td><term>Atlas 推理系列加速卡产品</term>：支持输入的维度是1维。</td> 
+  </td>
+  <td>-</td>
+  </tr>
+  <tr>
+  <td>bias2（aclTensor*）</td>
+  <td>可选输入</td>
+  <td>权重数据修正值，公式中的b2。</td>
+  <td><term>Atlas 推理系列加速卡产品</term>：支持输入的维度是1维。</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、FLOAT32、INT32</li>
   <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
-  </td> 
-  <td>ND</td> 
+  </td>
+  <td>ND</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：有专家[E, N2]；无专家[N2]</li>
   <li><term>Atlas 推理系列加速卡产品</term>：[N2]</li>
   </ul>
-  </td> 
-  <td>-</td> 
-  </tr> 
-  <tr> 
-  <td>scale（aclTensor*）</td> 
-  <td>可选输入</td> 
-  <td>量化参数，量化缩放系数。</td> 
-  <td>-</td> 
+  </td>
+  <td>-</td>
+  </tr>
+  <tr>
+  <td>scale（aclTensor*）</td>
+  <td>可选输入</td>
+  <td>量化参数，量化缩放系数。</td>
+  <td>-</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT32</li>
   <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
-  </td> 
-  <td>ND</td> 
-  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：<ul><li>per-tensor下输入在有/无专家时均为一维向量，输入元素个数在有/无专家时分别为[E]/[1]；</li><li>per-channel下输入在有/无专家时为二维向量/一维向量，输入元素个数在有/无专家时分别为[E, N1]/[N1]</li></ul></td> 
-  <td>√</td> 
-  </tr> 
-  <tr> 
-  <td>offset（aclTensor*）</td> 
-  <td>可选输入</td> 
-  <td>量化参数，量化偏移量。</td> 
-  <td>-</td> 
-  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT32</td> 
-  <td>ND</td> 
+  </td>
+  <td>ND</td>
+  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：<ul><li>per-tensor下输入在有/无专家时均为一维向量，输入元素个数在有/无专家时分别为[E]/[1]；</li><li>per-channel下输入在有/无专家时为二维向量/一维向量，输入元素个数在有/无专家时分别为[E, N1]/[N1]</li></ul></td>
+  <td>√</td>
+  </tr>
+  <tr>
+  <td>offset（aclTensor*）</td>
+  <td>可选输入</td>
+  <td>量化参数，量化偏移量。</td>
+  <td>-</td>
+  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT32</td>
+  <td>ND</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：一维向量，输入元素个数在有/无专家时分别为[E]/[1]</li>
   <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
-  </td> 
-  <td>-</td> 
-  </tr> 
-  <tr> 
-  <td>deqScale1（aclTensor*）</td> 
-  <td>可选输入</td> 
-  <td>量化参数，第一个matmul的反量化缩放系数。</td> 
-  <td>-</td> 
+  </td>
+  <td>-</td>
+  </tr>
+  <tr>
+  <td>deqScale1（aclTensor*）</td>
+  <td>可选输入</td>
+  <td>量化参数，第一个matmul的反量化缩放系数。</td>
+  <td>-</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：UINT64、INT64、FLOAT32、BFLOAT16</li>
   <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
-  </td> 
-  <td>ND</td> 
-  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：输入在有/无专家时分别为[E, N1]/[N1]</td> 
-  <td>-</td> 
-  </tr> 
-  <tr> 
-  <td>deqScale2（aclTensor*）</td> 
-  <td>可选输入</td> 
-  <td>量化参数，第二个matmul的反量化缩放系数。</td> 
-  <td>-</td> 
+  </td>
+  <td>ND</td>
+  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：输入在有/无专家时分别为[E, N1]/[N1]</td>
+  <td>-</td>
+  </tr>
+  <tr>
+  <td>deqScale2（aclTensor*）</td>
+  <td>可选输入</td>
+  <td>量化参数，第二个matmul的反量化缩放系数。</td>
+  <td>-</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：UINT64、INT64、FLOAT32、BFLOAT16</li>
   <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
-  </td> 
-  <td>ND</td> 
-  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：输入在有/无专家时分别为[E, N2]/[N2]</td> 
-  <td>-</td> 
-  </tr> 
-  <tr> 
-  <td>antiquantScale1（aclTensor*）</td> 
-  <td>可选输入</td> 
-  <td>伪量化参数，第一个matmul的缩放系数。</td> 
-  <td>-</td> 
+  </td>
+  <td>ND</td>
+  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：输入在有/无专家时分别为[E, N2]/[N2]</td>
+  <td>-</td>
+  </tr>
+  <tr>
+  <td>antiquantScale1（aclTensor*）</td>
+  <td>可选输入</td>
+  <td>伪量化参数，第一个matmul的缩放系数。</td>
+  <td>-</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16</li>
   <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
-  </td> 
-  <td>ND</td> 
+  </td>
+  <td>ND</td>
   <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：<ul><li>per-channel下输入在有/无专家时分别为[E, N1]/[N1]。</li><li>per-group下输入在有/无专家时分别为[E, G, N1]/[G, N1]</li></ul>
-  </td> 
-  <td>√</td> 
-  </tr> 
-  <tr> 
-  <td>antiquantScale2（aclTensor*）</td> 
-  <td>可选输入</td> 
-  <td>伪量化参数，第二个matmul的缩放系数。</td> 
-  <td>-</td> 
-  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16</td> 
-  <td>ND</td> 
+  </td>
+  <td>√</td>
+  </tr>
+  <tr>
+  <td>antiquantScale2（aclTensor*）</td>
+  <td>可选输入</td>
+  <td>伪量化参数，第二个matmul的缩放系数。</td>
+  <td>-</td>
+  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16</td>
+  <td>ND</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：per-channel下输入在有/无专家时分别为[E, N2]/[N2]，per-group下输入在有/无专家时分别为[E, G, N2]/[G, N2]</li>
   <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
-  </td> 
-  <td>√</td> 
-  </tr> 
-  <tr> 
-  <td>antiquantOffset1（aclTensor*）</td> 
-  <td>可选输入</td> 
-  <td>伪量化参数，第一个matmul的偏移量。</td> 
-  <td>-</td> 
+  </td>
+  <td>√</td>
+  </tr>
+  <tr>
+  <td>antiquantOffset1（aclTensor*）</td>
+  <td>可选输入</td>
+  <td>伪量化参数，第一个matmul的偏移量。</td>
+  <td>-</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16</li>
   <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
-  </td> 
-  <td>ND</td> 
+  </td>
+  <td>ND</td>
   <td>
   <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：<ul><li>per-channel下输入在有/无专家时分别为[E, N1]/[N1]。</li><li>per-group下输入在有/无专家时分别为[E, G, N1]/[G, N1]</li></ul>
-  </td> 
-  <td>√</td> 
-  </tr> 
-  <tr> 
-  <td>antiquantOffset2（aclTensor*）</td> 
-  <td>可选输入</td> 
-  <td>伪量化参数，第二个matmul的偏移量。</td> 
-  <td>-</td> 
+  </td>
+  <td>√</td>
+  </tr>
+  <tr>
+  <td>antiquantOffset2（aclTensor*）</td>
+  <td>可选输入</td>
+  <td>伪量化参数，第二个matmul的偏移量。</td>
+  <td>-</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16</li>
   <li><term>Atlas 推理系列加速卡产品</term>：只支持传空指针。</li>
   </ul>
-  </td> 
-  <td>ND</td> 
-  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：<ul><li>per-channel下输入在有/无专家时分别为[E, N2]/[N2]。</li><li>per-group下输入在有/无专家时分别为[E, G, N2]/[G, N2]</li></ul></td> 
-  <td>√</td> 
-  </tr> 
-  <tr> 
-  <td>activation（char*）</td> 
-  <td>输入</td> 
-  <td>代表使用的激活函数，公式中的activation。</td> 
+  </td>
+  <td>ND</td>
+  <td><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：<ul><li>per-channel下输入在有/无专家时分别为[E, N2]/[N2]。</li><li>per-group下输入在有/无专家时分别为[E, G, N2]/[G, N2]</li></ul></td>
+  <td>√</td>
+  </tr>
+  <tr>
+  <td>activation（char*）</td>
+  <td>输入</td>
+  <td>代表使用的激活函数，公式中的activation。</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：当前支持fastgelu/gelu/relu/silu以及geglu/swiglu/reglu。</li>
   <li><term>Atlas 推理系列加速卡产品</term>：当前支持fastgelu/gelu/relu/silu。</li>
   </ul>
-  </td> 
-  <td>-</td> 
-  <td>-</td> 
-  <td>-</td> 
-  <td>-</td> 
-  </tr> 
-  <tr> 
-  <td>innerPrecise（int64_t）</td> 
-  <td>可选输入</td> 
-  <td>表示高精度或者高性能选择。</td> 
+  </td>
+  <td>-</td>
+  <td>-</td>
+  <td>-</td>
+  <td>-</td>
+  </tr>
+  <tr>
+  <td>innerPrecise（int64_t）</td>
+  <td>可选输入</td>
+  <td>表示高精度或者高性能选择。</td>
   <td>
   <ul>
   <li>innerPrecise为0时，代表开启高精度模式，非量化场景下必选参数都为FLOAT16时，算子内部激活层输入输出都采用FLOAT32数据类型计算。</li>
@@ -376,68 +376,68 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：该参数仅在非量化场景下必选参数都为FLOAT16时生效，其余场景不区分高精度和高性能。</li>
   <li><term>Atlas 推理系列加速卡产品</term>：只支持传1。</li>
   </ul>
-  </td> 
-  <td>INT64</td> 
-  <td>-</td> 
-  <td>-</td> 
-  <td>-</td> 
-  </tr> 
-  <tr> 
-  <td>tokensIndexFlag（bool）</td> 
-  <td>可选输入</td> 
-  <td>指示expertTokens是否为索引值。</td> 
+  </td>
+  <td>INT64</td>
+  <td>-</td>
+  <td>-</td>
+  <td>-</td>
+  </tr>
+  <tr>
+  <td>tokensIndexFlag（bool）</td>
+  <td>可选输入</td>
+  <td>指示expertTokens是否为索引值。</td>
   <td>
   <ul>
   <li>tokensIndexFlag为true时，表示expertTokens为索引值。</li>
   <li>tokensIndexFlag为false时，表示expertTokens为各专家的token数。</li>
   </ul>
-  </td> 
-  <td>BOOL</td> 
-  <td>-</td> 
-  <td>-</td> 
-  <td>-</td> 
-  </tr> 
-  <tr> 
-  <td>y（aclTensor*）</td> 
-  <td>输出</td> 
-  <td>公式中的输出y。</td> 
-  <td>输出维度与x一致。</td> 
+  </td>
+  <td>BOOL</td>
+  <td>-</td>
+  <td>-</td>
+  <td>-</td>
+  </tr>
+  <tr>
+  <td>y（aclTensor*）</td>
+  <td>输出</td>
+  <td>公式中的输出y。</td>
+  <td>输出维度与x一致。</td>
   <td>
   <ul>
   <li><term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：FLOAT16、BFLOAT16</li>
   <li><term>Atlas 推理系列加速卡产品</term>：FLOAT16</li>
   </ul>
-  </td> 
-  <td>ND</td> 
-  <td>与x一致</td> 
-  <td>√</td> 
-  </tr> 
-  <tr> 
-  <td>workspaceSize（uint64_t*）</td> 
-  <td>出参</td> 
-  <td>返回用户需要在Device侧申请的workspace大小。</td> 
-  <td>-</td> 
-  <td>-</td> 
-  <td>-</td> 
-  <td>-</td> 
-  <td>-</td> 
-  </tr> 
-  <tr> 
-  <td>executor (aclOpExecutor**)</td> 
-  <td>出参</td> 
-  <td>返回op执行器，包含了算子计算流程。</td> 
-  <td>-</td> 
-  <td>-</td> 
-  <td>-</td> 
-  <td>-</td> 
-  <td>-</td> 
-  </tr> 
+  </td>
+  <td>ND</td>
+  <td>与x一致</td>
+  <td>√</td>
+  </tr>
+  <tr>
+  <td>workspaceSize（uint64_t*）</td>
+  <td>出参</td>
+  <td>返回用户需要在Device侧申请的workspace大小。</td>
+  <td>-</td>
+  <td>-</td>
+  <td>-</td>
+  <td>-</td>
+  <td>-</td>
+  </tr>
+  <tr>
+  <td>executor (aclOpExecutor**)</td>
+  <td>出参</td>
+  <td>返回op执行器，包含了算子计算流程。</td>
+  <td>-</td>
+  <td>-</td>
+  <td>-</td>
+  <td>-</td>
+  <td>-</td>
+  </tr>
   </tbody>
   </table>
-  
+
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，若出现以下错误码，则对应原因为：
 
@@ -507,7 +507,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -541,7 +541,7 @@ N2表示第二个matmul的输出通道数，对应transform中的H。
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>

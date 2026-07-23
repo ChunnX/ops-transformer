@@ -39,7 +39,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockTableDtype(const FiaTilingInfo 
     const gert::CompileTimeTensorDesc *blockTableDesc = fiaInfo.opParamInfo.blockTable.desc;
     OP_CHECK_IF(blockTableDesc->GetDataType() != ge::DT_INT32,
         OP_LOGE(fiaInfo.opName,
-                "When page attention enable, blockTable datatype only support INT32."),
+                "When page attention enable, blockTable dtype only support INT32."),
             return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -597,7 +597,7 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeAntiquant(const FiaTilingIn
             "In antiquant scenario, when page attention is enabled, block_size must be a multiple of " +
             std::to_string(blockSizeAlign) + " and in range of [" +
             std::to_string(blockSizeAlign) + ", " + std::to_string(BLOCK_SIZE_MAX) +
-            "] if kvCache datatype is " + DataTypeToSerialString(fiaInfo.inputKvType);
+            "] if kvCache dtype is " + DataTypeToSerialString(fiaInfo.inputKvType);
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(fiaInfo.opName, "block_size",
             std::to_string(fiaInfo.blockSize).c_str(), reasonMsg.c_str());
         return ge::GRAPH_FAILED;
@@ -644,6 +644,73 @@ ge::graphStatus PagedAttentionChecker::CheckBlockSizeSupport(const FiaTilingInfo
     }
     return ge::GRAPH_SUCCESS;
 }
+
+ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTilingInfo &fiaInfo)
+{
+    if (!fiaInfo.hasViewStride) {
+        return ge::GRAPH_SUCCESS;
+    }
+    
+    int32_t keyDim = fiaInfo.keyNonContigDim;
+    int32_t valueDim = fiaInfo.valueNonContigDim;
+    int32_t keyRopeDim = fiaInfo.keyRopeNonContigDim;
+
+    if (enableAntiQuant_ || fiaInfo.fullQuantMode == FiaFullQuantMode::Q_PER_TOKEN_HEAD_KV_PER_TENSOR_FULL_QUANT) {
+        OP_CHECK_IF(keyDim != -1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous key tensors, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyDim) + ".").c_str()),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(valueDim != -1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous value tensors, "
+                "but the first non-contiguous dimension is index " + std::to_string(valueDim) + ".").c_str()),
+            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(keyRopeDim != -1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
+                ("In anti-quant or mla fullquant scenarios, PA does not support non-contiguous keyRope tensors, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyRopeDim) + ".").c_str()),
+            return ge::GRAPH_FAILED);
+        return ge::GRAPH_SUCCESS;
+    }
+
+    if (fiaInfo.kvLayout == FiaLayout::BnBsH) {
+        OP_CHECK_IF(keyDim > 0,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                ("In PA BBND scenarios, key only supports non-contiguous tensors in dimension 0, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+        OP_CHECK_IF(valueDim > 0,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                ("In PA BBND scenarios, value only supports non-contiguous tensors in dimension 0, "
+                "but the first non-contiguous dimension is index " + std::to_string(valueDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+        OP_CHECK_IF(keyRopeDim > 0,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
+                ("In PA BBND scenarios, keyRope only supports non-contiguous tensors in dimension 0, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyRopeDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+    } else if (fiaInfo.kvLayout == FiaLayout::BnNBsD || fiaInfo.kvLayout == FiaLayout::NZ) {
+        OP_CHECK_IF(keyDim > 1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "key",
+                ("In PA BNBD/NZ scenarios, key only supports non-contiguous tensors in dimensions 0 or 1, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+        OP_CHECK_IF(valueDim > 1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "value",
+                ("In PA BNBD/NZ scenarios, value only supports non-contiguous tensors in dimensions 0 or 1, "
+                "but the first non-contiguous dimension is index " + std::to_string(valueDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+        OP_CHECK_IF(keyRopeDim > 1,
+            OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(fiaInfo.opName, "keyRope",
+                ("In PA BNBD/NZ scenarios, keyRope only supports non-contiguous tensors in dimensions 0 or 1, "
+                "but the first non-contiguous dimension is index " + std::to_string(keyRopeDim) + ".").c_str()),
+        return ge::GRAPH_FAILED);
+    }
+
+    return ge::GRAPH_SUCCESS;
+}
+
 
 ge::graphStatus PagedAttentionChecker::CheckKVLayout(const FiaTilingInfo &fiaInfo) const
 {
@@ -705,7 +772,7 @@ ge::graphStatus PagedAttentionChecker::CheckFeatureQueryS(const FiaTilingInfo &f
             (keyAntiquantMode == PER_CHANNEL_MODE || keyAntiquantMode == PER_TOKEN_MODE) &&
                 fiaInfo.inputKvType == ge::DT_INT8,
             OP_LOGE(fiaInfo.opName,
-                "In keyAntiquant/valueAntiquant split mode and data type of key/value is int8 scenario, if "
+                "In keyAntiquant/valueAntiquant split mode and data type of key/value is INT8 scenario, if "
                 "keyAntiquantMode/valueAntiquantMode is 0 or 1, page attention is not supported!"),
                 return ge::GRAPH_FAILED);
     }
@@ -777,10 +844,21 @@ ge::graphStatus PagedAttentionChecker::CheckCrossFeature(const FiaTilingInfo &fi
 ge::graphStatus PagedAttentionChecker::CheckMultiParaConsistency(const FiaTilingInfo &fiaInfo)
 {
     if (fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION) {
+        OP_CHECK_IF(fiaInfo.keyNonContigDim != -1,
+            OP_LOGE(fiaInfo.opName,
+                    "In non-PA scenarios, key tensors must be contiguous."),
+            return ge::GRAPH_FAILED);
+
+        OP_CHECK_IF(fiaInfo.valueNonContigDim != -1,
+            OP_LOGE(fiaInfo.opName,
+                    "In non-PA scenarios, value tensors must be contiguous."),
+            return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
+    // PA 场景
     if (ge::GRAPH_SUCCESS != CheckBlockSizeSupport(fiaInfo) ||
-        ge::GRAPH_SUCCESS != CheckBlockTableShape(fiaInfo)) {
+        ge::GRAPH_SUCCESS != CheckBlockTableShape(fiaInfo) ||
+        ge::GRAPH_SUCCESS != CheckNonContiguousSupport(fiaInfo)) {
             return ge::GRAPH_FAILED;
     }
 
