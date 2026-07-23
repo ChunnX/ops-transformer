@@ -91,7 +91,7 @@ enum class CACHE_MODE : std::uint8_t {
 };
 
 enum class QUANT_MODE : std::uint8_t {
-    HIF8_XPERTENSOR_WPERCHANNEL = static_cast<std::uint8_t>(1)
+    A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL = static_cast<std::uint8_t>(1)
 };
 
 enum class TEMPLATE_ID : uint8_t {

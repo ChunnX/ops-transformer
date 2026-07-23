@@ -235,7 +235,7 @@ __aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::Init(
     if (isExistStartPos_) {
         startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
     }
-    if constexpr (COMP::quantMode == QUANT_MODE::HIF8_XPERTENSOR_WPERCHANNEL) {
+    if constexpr (COMP::quantMode == QUANT_MODE::A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL) {
         xDescaleGm_.SetGlobalBuffer((__gm__ T *)xDescale);
         xDescale_ = xDescaleGm_(0);
         wKvDescaleGm_.SetGlobalBuffer((__gm__ T *)wKvDescale);
@@ -258,7 +258,7 @@ __aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::InitBuffers(TPi
     pipe->InitBuffer(apeBuf, BUFFER_SIZE_BYTE_16K);
     xWKvDescaleUb = wKvDescaleBuf.Get<T>();
     xWGateDescaleUb = wGateDescaleBuf.Get<T>();
-    if constexpr (COMP::quantMode == QUANT_MODE::HIF8_XPERTENSOR_WPERCHANNEL) {
+    if constexpr (COMP::quantMode == QUANT_MODE::A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL) {
         LocalTensor<T> wDescale = inputQue3.AllocTensor<T>();
         DataCopy(wDescale, wKvDescaleGm_, coff_ * constInfo_.headDim);
         DataCopy(wDescale[BUFFER_SIZE_BYTE_8K / sizeof(T)], wGateDescaleGm_, coff_ * constInfo_.headDim);
@@ -578,7 +578,7 @@ __aicore__ inline void QuantCompressorBlockVectorFullLoad<COMP>::Dequant(const L
                                                                          const LocalTensor<float> &descale,
                                                                          uint32_t row, uint32_t col, uint32_t actualCol)
 {
-    if constexpr (COMP::quantMode == QUANT_MODE::HIF8_XPERTENSOR_WPERCHANNEL) {
+    if constexpr (COMP::quantMode == QUANT_MODE::A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL) {
         if constexpr (IS_SINGLE) {
             DequantVF<COFF::DISABLE>(dstLocal, dstLocal, descale, row, col, constInfo_.headDim, actualCol);
         } else {
