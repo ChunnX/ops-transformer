@@ -128,7 +128,7 @@ static void SetCommArgs(aclOpExecutor **executor, const bool is910B, const bool 
             type = CommType::CCU;
         }
         void *args = reinterpret_cast<void *>(static_cast<uint64_t>(type));
-        NnopbaseSetUserHandle(executor, args);
+        NnopbaseSetUserHandle(*executor, args);
     }
 #endif
 
