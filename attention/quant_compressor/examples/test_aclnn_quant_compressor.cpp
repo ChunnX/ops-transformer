@@ -38,6 +38,21 @@
 
 namespace {
 
+template <typename To, typename From>
+inline To BitCopy(const From& src)
+{
+    static_assert(sizeof(To) == sizeof(From), "size mismatch");
+    To dst;
+    std::memcpy(&dst, &src, sizeof(To));
+    return dst;
+}
+
+inline float Bf16ToFloat(uint16_t h)
+{
+    uint32_t x = static_cast<uint32_t>(h) << 16;
+    return BitCopy<float>(x);
+}
+
 int64_t GetShapeSize(const std::vector<int64_t>& shape)
 {
     int64_t shapeSize = 1;
@@ -89,12 +104,12 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
 void PrintBf16Result(const std::vector<int64_t>& shape, void** deviceAddr)
 {
     auto size = GetShapeSize(shape);
-    std::vector<__bf16> resultData(size, 0);
+    std::vector<uint16_t> resultData(size, 0);
     auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
                            *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
     for (int64_t i = 0; i < size && i < 10; i++) {
-        LOG_PRINT("cmp_kv[%ld] is: %f\n", i, __bfloat162float(resultData[i]));
+        LOG_PRINT("cmp_kv[%ld] is: %f\n", i, Bf16ToFloat(resultData[i]));
     }
 }
 
@@ -161,7 +176,7 @@ int main()
         stateBlockTableHostData.push_back(static_cast<int32_t>(i + 1));
     }
     std::vector<int32_t> startPosHostData(B, 0);
-    std::vector<int16_t> cmpKvHostData(cmpKvSize, 0);
+    std::vector<uint16_t> cmpKvHostData(cmpKvSize, 0);
 
     // 4. 创建 aclTensor
     void* xDeviceAddr = nullptr;
