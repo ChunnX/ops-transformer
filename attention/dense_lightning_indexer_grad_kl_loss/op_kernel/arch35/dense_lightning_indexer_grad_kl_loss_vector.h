@@ -24,6 +24,7 @@
 #include "dense_lightning_indexer_grad_kl_loss_common.h"
 #include "dense_lightning_indexer_grad_kl_loss_tiling_data.h"
 #include "vf/dense_lightning_indexer_grad_kl_loss_cast_vf.h"
+#include "vf/dense_lightning_indexer_grad_kl_loss_loss_vf.h"
 
 using namespace AscendC;
 using AscendC::CrossCoreSetFlag;
@@ -745,7 +746,6 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorLoss(DLIGradKLLossRun
     event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
     event_t vToMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
     event_t mte3ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
-    const float MIN_VALUE = 1e-8;
     SumParams sumParams;
     sumParams.outter = 1;
     sumParams.inner = runInfo.curS2StepSizeAlign8;
@@ -756,18 +756,8 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorLoss(DLIGradKLLossRun
 
     SetFlag<HardEvent::MTE2_V>(mte2ToV);
     WaitFlag<HardEvent::MTE2_V>(mte2ToV);
-    AscendC::Maxs<T>(tmpResultUb_, reduceSumPUb_, MIN_VALUE, calcCount);
-    PipeBarrier<PIPE_V>();
-    AscendC::Maxs<T>(reduceSumYUb_, reduceSumYUb_, MIN_VALUE, calcCount);
-    PipeBarrier<PIPE_V>();
-
-    AscendC::Log(tmpResultUb_, tmpResultUb_, calcCount);
-    AscendC::Log(reduceSumYUb_, reduceSumYUb_, calcCount);
-    PipeBarrier<PIPE_V>();
-
-    AscendC::Sub(reduceSumYUb_, tmpResultUb_, reduceSumYUb_, calcCount);
-    PipeBarrier<PIPE_V>();
-    AscendC::Mul(reduceSumYUb_, reduceSumYUb_, reduceSumPUb_, calcCount);
+    DenseDliGradKLLossArch35::ComputeLossElementwise(
+        reduceSumYUb_, reduceSumPUb_, reduceSumYUb_, calcCount);
     PipeBarrier<PIPE_V>();
 
     for (int64_t rowIdx = 0; rowIdx < runInfo.curS1InnerSizeV1V2; rowIdx++) {
