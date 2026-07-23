@@ -757,17 +757,17 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <tr>
         <td>FLOAT8_E5M2<sup>1</sup></td>
         <td>ND</td>
-        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+        <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)</td>
     </tr>
     <tr>
         <td>FLOAT8_E4M3FN<sup>1</sup></td>
         <td>ND</td>
-        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+        <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)</td>
     </tr>
     <tr>
         <td>FLOAT4_E2M1<sup>1</sup></td>
         <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
-        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
+        <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)</td>
     </tr>
     <tr>
         <td rowspan="6">l2_weights</td>
@@ -791,17 +791,17 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <tr>
         <td>FLOAT8_E5M2<sup>1</sup></td>
         <td>ND</td>
-        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+        <td>(shared_expert_num_per_rank, hidden, intermediate_hidden)</td>
     </tr>
     <tr>
         <td>FLOAT8_E4M3FN<sup>1</sup></td>
         <td>ND</td>
-        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+        <td>(shared_expert_num_per_rank, hidden, intermediate_hidden)</td>
     </tr>
     <tr>
         <td>FLOAT4_E2M1<sup>1</sup></td>
         <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
-        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
+        <td>(shared_expert_num_per_rank, hidden, intermediate_hidden)</td>
     </tr>
     <tr>
         <td>sym_buffer</td>
@@ -824,7 +824,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <tr>
         <td>FLOAT8_E8M0<sup>1</sup></td>
         <td>ND</td>
-        <td>(num_experts_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)</td>
+        <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)</td>
     </tr>
     <tr>
         <td rowspan="2">l2_weights_sf</td>
@@ -838,7 +838,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     <tr>
         <td>FLOAT8_E8M0<sup>1</sup></td>
         <td>ND</td>
-        <td>(num_experts_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)</td>
+        <td>(shared_expert_num_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)</td>
     </tr>
     <tr>
         <td>l1_bias<sup>2</sup></td>
@@ -904,75 +904,75 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         <td>不涉及</td>
     </tr>
     <tr>
-        <td rowspan="3">shared_l1_weights</td>
+        <td rowspan="3">shared_l1_weights<sup>1</sup></td>
         <td rowspan="3">list[Tensor]</td>
-        <td rowspan="3">必选</td>
-        <td rowspan="3">共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。第一维为 `shared_expert_num_per_rank`。</td>
-        <td>FLOAT8_E5M2<sup>1</sup></td>
+        <td rowspan="3">可选</td>
+        <td rowspan="3">共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
+        <td>FLOAT8_E5M2</td>
         <td>ND</td>
-        <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)</td>
+        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
     </tr>
     <tr>
-        <td>FLOAT8_E4M3FN<sup>1</sup></td>
+        <td>FLOAT8_E4M3FN</td>
         <td>ND</td>
-        <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)</td>
+        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
     </tr>
     <tr>
-        <td>FLOAT4_E2M1<sup>1</sup></td>
+        <td>FLOAT4_E2M1</td>
         <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
-        <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, hidden)</td>
+        <td>(num_experts_per_rank, 2 × intermediate_hidden, hidden)</td>
     </tr>
     <tr>
-        <td rowspan="3">shared_l2_weights</td>
+        <td rowspan="3">shared_l2_weights<sup>1</sup></td>
         <td rowspan="3">list[Tensor]</td>
-        <td rowspan="3">必选</td>
-        <td rowspan="3">共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。第一维为 `shared_expert_num_per_rank`。</td>
-        <td>FLOAT8_E5M2<sup>1</sup></td>
+        <td rowspan="3">可选</td>
+        <td rowspan="3">共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与l1_weights一致。</td>
+        <td>FLOAT8_E5M2</td>
         <td>ND</td>
-        <td>(shared_expert_num_per_rank, hidden, intermediate_hidden)</td>
+        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
     </tr>
     <tr>
-        <td>FLOAT8_E4M3FN<sup>1</sup></td>
+        <td>FLOAT8_E4M3FN</td>
         <td>ND</td>
-        <td>(shared_expert_num_per_rank, hidden, intermediate_hidden)</td>
+        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
     </tr>
     <tr>
-        <td>FLOAT4_E2M1<sup>1</sup></td>
+        <td>FLOAT4_E2M1</td>
         <td>FRACTAL_NZ/FORMAT_FRACTAL_NZ_C0_32</td>
-        <td>(shared_expert_num_per_rank, hidden, intermediate_hidden)</td>
+        <td>(num_experts_per_rank, hidden, intermediate_hidden)</td>
     </tr>
     <tr>
-        <td>shared_l1_weights_sf</td>
+        <td>shared_l1_weights_sf<sup>1</sup></td>
         <td>list[Tensor]</td>
         <td>可选</td>
         <td>共享专家网络第一线性层的权重矩阵的量化缩放因子。</td>
-        <td>FLOAT8_E8M0<sup>1</sup></td>
+        <td>FLOAT8_E8M0</td>
         <td>ND</td>
-        <td>(shared_expert_num_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)</td>
+        <td>(num_experts_per_rank, 2 × intermediate_hidden, CeilDiv(hidden, 64), 2)</td>
     </tr>
     <tr>
-        <td>shared_l2_weights_sf</td>
+        <td>shared_l2_weights_sf<sup>1</sup></td>
         <td>list[Tensor]</td>
         <td>可选</td>
         <td>共享专家网络第二线性层的权重矩阵的量化缩放因子。</td>
-        <td>FLOAT8_E8M0<sup>1</sup></td>
+        <td>FLOAT8_E8M0</td>
         <td>ND</td>
-        <td>(shared_expert_num_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)</td>
+        <td>(num_experts_per_rank, hidden, CeilDiv(intermediate_hidden, 64), 2)</td>
     </tr>
     <tr>
-        <td>shared_l1_bias<sup>2</sup></td>
+        <td>shared_l1_bias<sup>1，2</sup></td>
         <td>list[Tensor]</td>
         <td>可选</td>
-        <td>共享专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+        <td>共享专家网络第一线性层的偏置，暂不支持。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>(2 × intermediate_hidden, )</td>
     </tr>
     <tr>
-        <td>shared_l2_bias<sup>2</sup></td>
+        <td>shared_l2_bias<sup>1，2</sup></td>
         <td>list[Tensor]</td>
         <td>可选</td>
-        <td>共享专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
+        <td>共享专家网络第二线性层的偏置，暂不支持。</td>
         <td>FLOAT32</td>
         <td>ND</td>
         <td>(hidden, )</td>
