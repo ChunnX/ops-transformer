@@ -27,7 +27,7 @@
 
 using namespace op;
 using namespace std;
- 
+
 namespace MoeDistributeCombineV2 {
 namespace {
 constexpr int64_t EP_WORLD_SIZE = 288;
@@ -72,6 +72,12 @@ aclnnStatus CallBaseGetWorkspaceSize(const char *groupTp, const char *commAlg)
 
 TEST(MoeDistributeCombineV2BaseCoverageTest, TestBaseGetWorkspaceSize950Ccu)
 {
+    // Keep EXPECT_EXIT so child-process init of const static is910B/is950 in
+    // moe_distribute_combine_v2_base.cpp does not poison later 910B suites.
+    // Default "fast" style uses fork(), which is unsafe with Ascend/runtime
+    // threads and can SIGSEGV on CI (x86). "threadsafe" re-executes the binary.
+    auto oldDeathTestStyle = testing::GTEST_FLAG(death_test_style);
+    testing::GTEST_FLAG(death_test_style) = "threadsafe";
     EXPECT_EXIT(
         {
             op::SetPlatformNpuArch(NpuArch::DAV_3510);
@@ -79,6 +85,7 @@ TEST(MoeDistributeCombineV2BaseCoverageTest, TestBaseGetWorkspaceSize950Ccu)
             std::exit(0);
         },
         testing::ExitedWithCode(0), "");
+    testing::GTEST_FLAG(death_test_style) = oldDeathTestStyle;
 }
 
 TEST(MoeDistributeCombineV2BaseCoverageTest, TestBaseGetWorkspaceSizeNon910B)
