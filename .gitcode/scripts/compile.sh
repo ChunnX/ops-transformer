@@ -31,6 +31,12 @@ if [ -z "${OS_TYPE}" ]; then
     OS_TYPE=$(uname -m)
 fi
 
+if [ "${GE_ST_RT2}X" != "kirinx90X" ];then
+    whoami
+    ls -ld /home/jenkins/Ascend/cann-9.0.0
+    su - jenkins -c "sh /home/jenkins/Ascend/cann/share/info/ops_transformer/script/uninstall.sh"
+fi
+
 if [ -f /home/jenkins/Ascend/cann/bin/setenv.bash ]; then
     source /home/jenkins/Ascend/cann/bin/setenv.bash
 fi
