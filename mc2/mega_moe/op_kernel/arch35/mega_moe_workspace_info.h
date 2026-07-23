@@ -25,6 +25,22 @@
 #endif
 #include "mega_moe_impl_base.h"
 
+// GMM2 direct-GM readiness A/B modes.  Keep the selection in this common
+// host/device header so workspace sizing and kernel addressing cannot drift.
+#define MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC 0
+#define MEGA_MOE_GMM2_FANIN_PRIVATE_COMPACT 1
+#define MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED 2
+#define MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE 3
+#ifndef MEGA_MOE_GMM2_FANIN_MODE
+#define MEGA_MOE_GMM2_FANIN_MODE MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
+#endif
+#if MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_SHARED_ATOMIC && \
+    MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_PRIVATE_COMPACT && \
+    MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED && \
+    MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
+#error "invalid MEGA_MOE_GMM2_FANIN_MODE"
+#endif
+
 namespace {
 constexpr uint64_t M_VALUE = 0UL;
 constexpr uint64_t N_VALUE = 1UL;
@@ -120,6 +136,8 @@ struct WorkspaceInfo {
     GM_ADDR gmm1MmadResPtr{nullptr};
     GM_ADDR gmm2MmadResPtr{nullptr};
     GM_ADDR gmm2CombineSyncCounterPtr{nullptr};
+    GM_ADDR gmm2NoQuantReadyPtr{nullptr};
+    GM_ADDR gmm2NoQuantReleasePtr{nullptr};
     GM_ADDR sharedExpertResultPtr{nullptr};
     GM_ADDR sharedExpertGmm1OutPtr{nullptr};
     GM_ADDR sharedExpertInputDataPtr{nullptr};
@@ -163,16 +181,26 @@ struct WorkspaceInfo {
         tripleInfoPtr = base + workspaceSize;
         workspaceSize += Ops::Base::CeilAlign(tilingData->maxOutputSize * ALIGN_32, ALIGN_512);
 
-        flagSwiGluToGmm2Ptr = base + workspaceSize;
-        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * INT_CACHELINE;
+        bool isGenericGmm = tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ;
+        bool useMteNoQuantGmm2Gm =
+            tilingData->topoType == TOPO_TYPE_MTE && isGenericGmm && tilingData->combineQuantMode == COMBINE_NO_QUANT;
 
-        flagDispatchToGmm1Ptr = base + workspaceSize;
-        // wave-grain dispatch flag: per expert allocate one slot per wave (L1_TILE_M=256 rows),
-        // aligned up to INT_CACHELINE so each expert's slot block stays cache-line clean.
+        flagSwiGluToGmm2Ptr = base + workspaceSize;
         int64_t maxWavesPerExpert =
             Ops::Base::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), DISPATCH_WAVE_TILE_M);
+        int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
+        // Only the wave pipeline can consume SwiGLU at 256-row granularity.
+        // Legacy and layered paths retain one cache-line slot per expert.
+        int64_t swigluFlagSlotsPerExpert =
+            useMteNoQuantGmm2Gm ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
+        workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * swigluFlagSlotsPerExpert;
+
+        flagDispatchToGmm1Ptr = base + workspaceSize;
         int64_t dispatchFlagSlotsPerExpert =
-            Ops::Base::CeilAlign(maxWavesPerExpert, static_cast<int64_t>(INT_CACHELINE));
+            useMteNoQuantGmm2Gm ?
+                waveFlagSlotsPerExpert :
+                Ops::Base::CeilAlign(maxWavesPerExpert, static_cast<int64_t>(INT_CACHELINE));
         workspaceSize += SIZE_INT_32 * tilingData->expertPerRank * dispatchFlagSlotsPerExpert;
 
         // 每(expert, aiCore)单独占一个cache_line
@@ -199,14 +227,52 @@ struct WorkspaceInfo {
         if (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4 ||
             tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A4W4_NZ ||
-            tilingData->combineQuantMode != COMBINE_NO_QUANT) {
+            tilingData->combineQuantMode != COMBINE_NO_QUANT || useMteNoQuantGmm2Gm) {
+            if (useMteNoQuantGmm2Gm) {
+                workspaceSize = Ops::Base::CeilAlign(workspaceSize, static_cast<int64_t>(ALIGN_512));
+            }
             gmm2MmadResPtr = base + workspaceSize;
-            workspaceSize += SIZE_BF_16 * tilingData->maxOutputSize * tilingData->h;
+            // The MTE no-quant path gives every routed row a unique [H] BF16
+            // region for the complete kernel lifetime.  It is not a batch or
+            // ring slot, so AIC never needs a consumer ACK before advancing.
+            int64_t gmm2OutputBytes = static_cast<int64_t>(SIZE_BF_16) *
+                                      static_cast<int64_t>(tilingData->maxOutputSize) *
+                                      static_cast<int64_t>(tilingData->h);
+            workspaceSize += useMteNoQuantGmm2Gm ?
+                                 Ops::Base::CeilAlign(gmm2OutputBytes, static_cast<int64_t>(ALIGN_512)) :
+                                 gmm2OutputBytes;
+        }
+
+        if (useMteNoQuantGmm2Gm) {
+            gmm2NoQuantReadyPtr = base + workspaceSize;
+            // slotIdx is expertIdx in PER_EXPERT mode and batchIdx in
+            // PER_BATCH mode.  The all-AIV reduction keeps each AIC arrival
+            // on its own INT_CACHELINE-sized 64B cache line.
+            int64_t readyStrideBytes = static_cast<int64_t>(INT_CACHELINE) * static_cast<int64_t>(SIZE_INT_32);
+#if MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED
+            readyStrideBytes *= static_cast<int64_t>(tilingData->aicNum);
+#elif MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
+            readyStrideBytes = static_cast<int64_t>(tilingData->aicNum) * static_cast<int64_t>(INT_CACHELINE) *
+                               static_cast<int64_t>(SIZE_INT_32);
+#endif
+            int64_t readyBytes = static_cast<int64_t>(tilingData->expertPerRank) * readyStrideBytes;
+            workspaceSize += Ops::Base::CeilAlign(readyBytes, static_cast<int64_t>(ALIGN_512));
+
+#if MEGA_MOE_GMM2_FANIN_MODE != MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE
+            // One private 64B release line for every (slot, logical AIV1).
+            // The coordinator publishes the whole slot with one MTE3 copy.
+            gmm2NoQuantReleasePtr = base + workspaceSize;
+            int64_t releaseBytes = static_cast<int64_t>(tilingData->expertPerRank) *
+                                   static_cast<int64_t>(tilingData->aicNum) * static_cast<int64_t>(INT_CACHELINE) *
+                                   static_cast<int64_t>(SIZE_INT_32);
+            workspaceSize += Ops::Base::CeilAlign(releaseBytes, static_cast<int64_t>(ALIGN_512));
+#endif
         }
 
         // Combine-quant-only workspace buffers
         if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
-            // Token group completion counters
+            // Token group completion counters; every independently polled
+            // counter occupies one 64B cache-line slot.
             gmm2CombineSyncCounterPtr = base + workspaceSize;
             int64_t combineCounterBytes = static_cast<int64_t>(tilingData->combineSyncSlotCountPerExpert) *
                                           tilingData->moeExpertPerRank * INT_CACHELINE * SIZE_INT_32;

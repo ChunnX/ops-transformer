@@ -31,6 +31,7 @@
 #include "../../../op_kernel/arch35/mega_moe_tiling.h"
 #include "../../../op_kernel/arch35/mega_moe_tiling_key.h"
 #include "../../../op_kernel/arch35/mega_moe_workspace_info.h"
+#include "mega_moe_batch_tiling.h"
 
 using namespace Mc2Tiling;
 using namespace AscendC;
@@ -109,6 +110,7 @@ void PrintMegaMoeTilingData(const MegaMoeTilingData *tilingData, const char *nod
             unpermuteTailChunkConfig.tokensPerBatch, unpermuteTailChunkConfig.inputBufferCount,
             unpermuteTailChunkConfig.bf16SlotElementCount, unpermuteTailChunkConfig.fp32SlotElementCount,
             unpermuteTailChunkConfig.topKWeightsBufferBytes, unpermuteTailChunkConfig.topKWeightsConversionBufferBytes);
+    OP_LOGD(nodeName, "expertsPerBatch is %u", tilingData->expertsPerBatch);
 }
 
 void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
@@ -122,6 +124,10 @@ void PrintWorkspaceInfo(const struct WorkspaceInfo *info, const char *nodeName)
     OP_LOGD(nodeName, "flagSwiGluToGmm2Ptr:        %ld\n", info->flagSwiGluToGmm2Ptr);
     OP_LOGD(nodeName, "flagDispatchToGmm1Ptr:      %ld\n", info->flagDispatchToGmm1Ptr);
     OP_LOGD(nodeName, "flagSendCntCalToUpdParamsPtr:      %ld\n", info->flagSendCntCalToUpdParamsPtr);
+    OP_LOGD(nodeName, "gmm2MmadResPtr:             %ld\n", info->gmm2MmadResPtr);
+    OP_LOGD(nodeName, "gmm2NoQuantReadyPtr:        %ld\n", info->gmm2NoQuantReadyPtr);
+    OP_LOGD(nodeName, "gmm2NoQuantReleasePtr:      %ld\n", info->gmm2NoQuantReleasePtr);
+    OP_LOGD(nodeName, "workspaceSize:              %ld\n", info->workspaceSize);
 }
 
 void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
@@ -467,6 +473,9 @@ static ge::graphStatus SetAttrParams(const gert::TilingContext *context, MegaMoe
         tilingData->groupedMatmulMode = GROUPED_MATMUL_MODE_GENERAL;
     }
 
+    tilingData->expertsPerBatch = MegaMoeBatchTiling::CalcExpertsPerBatch(
+        tilingData->bs, tilingData->topK, tilingData->moeExpertPerRank, tilingData->hiddenDim, tilingData->h, aicNum);
+
     return ge::GRAPH_SUCCESS;
 }
 
@@ -720,10 +729,20 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
 
     int64_t maxWavesPerExpert =
         ops::CeilDiv(static_cast<int64_t>(tilingData->maxOutputSize), static_cast<int64_t>(DISPATCH_WAVE_TILE_M));
-    int64_t dispatchFlagSlotsPerExpert = ops::CeilAlign(maxWavesPerExpert, static_cast<int64_t>(INT_CACHELINE));
+    bool useWavePipeline = tilingData->topoType == TOPO_TYPE_MTE &&
+                           (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) &&
+                           tilingData->combineQuantMode == COMBINE_NO_QUANT;
+    int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
+    int64_t dispatchFlagSlotsPerExpert =
+        useWavePipeline ?
+            waveFlagSlotsPerExpert :
+            ops::CeilAlign(maxWavesPerExpert, static_cast<int64_t>(INT_CACHELINE));
+    int64_t swigluFlagSlotsPerExpert =
+        useWavePipeline ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
     uint64_t totalFlagElementCount =
         static_cast<uint64_t>(tilingData->expertPerRank) *
-        (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert) +
+        (static_cast<uint64_t>(swigluFlagSlotsPerExpert) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert) +
          static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
     if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
         uint64_t combineFlagElementCount = tilingData->combineSyncSlotCountPerExpert * tilingData->moeExpertPerRank *
@@ -737,7 +756,9 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
         ops::CeilAlign(resetBatchElementCount, static_cast<uint32_t>(INT32_PER_256B)) * sizeof(int32_t);
     uint32_t quantTokenBytes =
         ops::CeilAlign(tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
-    uint32_t quantOutputBufferBytes = quantTokenBytes + ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+    uint32_t quantScaleBytes = ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+    uint32_t quantOutputBufferBytes =
+        ops::CeilAlign(quantTokenBytes + quantScaleBytes, static_cast<uint32_t>(ALIGN_32));
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
     // sendCntAccTensor_ 按本卡 weight 容量分配，与 kernel 地址布局一致；实际 mask push 次数按 routed MoE
     // expert 数计算，不包含共享专家和未参与路由的预留 weight。
@@ -1480,10 +1501,17 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
             nodeName, "H", std::to_string(xDim1).c_str(),
             (std::string("should in [") + std::to_string(H_BASE) + ", " + std::to_string(MAX_H) + "]").c_str()),
         return ge::GRAPH_FAILED);
-    // 检查 H 是否 1024 的倍数
-    OP_TILING_CHECK(xDim1 % H_BASE != 0,
-                    OP_LOGE_FOR_INVALID_VALUE(nodeName, "H", std::to_string(xDim1).c_str(),
-                                              (std::string("multiple of ") + std::to_string(H_BASE)).c_str()),
+    auto attrs = context->GetAttrs();
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>(config.attrDispatchQuantOutDtypeIndex);
+    uint32_t activationElementsPerByte =
+        *dispatchQuantOutDtypePtr == static_cast<int64_t>(ge::DT_FLOAT4_E2M1) ? 2U : 1U;
+    int64_t hiddenAlignment = UB_BLOCK_SIZE * static_cast<int64_t>(activationElementsPerByte);
+    OP_TILING_CHECK(xDim1 % hiddenAlignment != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        nodeName, "H", std::to_string(xDim1).c_str(),
+                        (std::string("should make the quantized hidden data 32-byte aligned; expected a multiple of ") +
+                         std::to_string(hiddenAlignment))
+                            .c_str()),
                     return ge::GRAPH_FAILED);
 
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
