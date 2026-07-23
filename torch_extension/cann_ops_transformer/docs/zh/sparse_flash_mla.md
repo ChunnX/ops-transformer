@@ -239,6 +239,48 @@ cann_ops_transformer.sparse_flash_mla(
 
 ### 参数组约束
 
+下表按“单参数校验、存在性拦截、一致性拦截、特性交叉拦截”说明参数要求。对于Tensor中的具体数值，Tiling阶段无法读取或完整校验的部分以“用户保证”标记；此类约束未满足时可能不会在接口入口报错，但会导致未定义行为。
+
+#### 前置元数据接口参数组
+
+`sparse_flash_mla_metadata`与`sparse_flash_mla`中参与任务切分的参数必须成对传入且值完全一致。特别是布局、长度、压缩率、TopK长度、Mask模式、窗口和KV存在性标志不一致时，应拦截调用。
+
+| 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
+| :--- | :--- | :--- | :--- | :--- |
+| num_heads_q | int；取值为1、2、4、8、16、32、64、128。 | 必选。 | 必须与q的N1维一致。 | 与`num_heads_kv`满足N1/N2为正整数；950PR/950DT不支持取1。 |
+| num_heads_kv | int；仅支持1。 | 必选。 | 必须与`ori_kv`、`cmp_kv`的N2维一致。 | 与`num_heads_q`、`softmax_lse`的分组维度一致。 |
+| head_dim | int；仅支持512。 | 必选。 | 必须与q、`ori_kv`、`cmp_kv`的D维一致。 | 不满足时拦截；不允许依赖自动推导。 |
+| batch_size | int；必须大于0。 | BSND场景必传。 | 必须与BSND布局下q和KV的B维一致。 | TND场景由`cu_seqlens_q`长度推导时，仍须与所有长度类Tensor一致。 |
+| max_seqlen_q | int；必须大于0。 | TND场景必传。 | 必须等于q各Batch实际长度的最大值。 | 与`cu_seqlens_q`及q的T1维一致。 |
+| max_seqlen_ori_kv | int；必须大于0。 | `ori_kv`为TND布局时必传。 | 必须等于`ori_kv`各Batch实际长度的最大值。 | 与`cu_seqlens_ori_kv`及T2一致。 |
+| max_seqlen_cmp_kv | int；必须大于0。 | `cmp_kv`为TND布局时必传。 | 必须等于`cmp_kv`各Batch实际长度的最大值。 | 与`cu_seqlens_cmp_kv`及T3一致。 |
+| ori_topk | int；当前仅支持0。 | 可选，默认0。 | 必须与`ori_sparse_indices`和`ori_topk_length`的传入状态一致。 | 当前不支持`ori_sparse_indices`非空，因此必须为0。 |
+| cmp_topk | int；取值为0或压缩KV的TopK长度。 | CSA场景必传且非0；其他场景为0。 | 必须等于`cmp_sparse_indices`最后一维K。 | A2/A3仅支持0、512、1024。 |
+| cmp_ratio | int；范围1~128。 | 可选，默认1。 | 必须与主接口、`cmp_residual_kv`和`cmp_kv`压缩关系一致。 | SWA固定1；A2/A3中CSA仅支持4、HCA仅支持128。 |
+| ori_mask_mode | int；接口定义支持0、3、4。 | 可选。 | 必须与主接口一致。 | 当前规格仅支持4；与`ori_win_left=127`、`ori_win_right=0`组合使用。 |
+| cmp_mask_mode | int；接口定义支持0、3。 | 可选。 | 必须与主接口一致。 | SWA为0；CSA/HCA为3。 |
+| ori_win_left | int；接口定义为-1或非负数。 | 可选。 | 必须与主接口一致。 | 当前规格仅支持127，且仅作用于`ori_kv`侧。 |
+| ori_win_right | int；接口定义为-1或非负数。 | 可选。 | 必须与主接口一致。 | 当前规格仅支持0，且仅作用于`ori_kv`侧。 |
+| layout_q | string；仅支持`BSND`、`TND`。 | 可选，默认`BSND`。 | 必须与q的维度、主接口和长度类Tensor一致。 | 仅支持与`layout_kv`组合为`BSND`/`BSND`、`TND`/`TND`、`BSND`/`PA_BBND`或`TND`/`PA_BBND`。 |
+| layout_kv | string；仅支持`BSND`、`TND`、`PA_BBND`。 | 可选，默认`BSND`。 | 必须与`ori_kv`、`cmp_kv`的维度和主接口一致。 | 非PA场景必须与`layout_q`相同；PA场景要求Block Table和`seqused_ori_kv`。 |
+| has_ori_kv | bool。 | 必选，与主接口实际传入状态一致。 | 必须等价于`ori_kv is not None`。 | 三种已支持场景均要求为True。 |
+| has_cmp_kv | bool。 | 必选，与主接口实际传入状态一致。 | 必须等价于`cmp_kv is not None`。 | SWA为False；CSA/HCA为True。 |
+| metadata（输出） | Tensor；`int32`、ND、shape为(1024,)。 | 必然输出。 | 必须作为同一组参数下主接口的`metadata`输入。 | 不允许复用由不同布局、长度或模式参数生成的metadata。 |
+
+长度与可选Tensor校验：
+
+| 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
+| :--- | :--- | :--- | :--- | :--- |
+| cu_seqlens_q | `int32`、ND、shape为(B+1,)；首元素为0，单调非递减，末元素为T1。 | `layout_q="TND"`时必传；其他布局不传。 | 必须与q的T1、B和`max_seqlen_q`一致。 | Tensor值由用户保证。 |
+| cu_seqlens_ori_kv | `int32`、ND、shape为(B+1,)；首元素为0，单调非递减，末元素为T2。 | `layout_kv="TND"`且传入`ori_kv`时必传；其他布局不传。 | 必须与`ori_kv`的T2、B和`max_seqlen_ori_kv`一致。 | Tensor值由用户保证。 |
+| cu_seqlens_cmp_kv | `int32`、ND、shape为(B+1,)；首元素为0，单调非递减，末元素为T3。 | `layout_kv="TND"`且传入`cmp_kv`时必传；其他布局不传。 | 必须与`cmp_kv`的T3、B和`max_seqlen_cmp_kv`一致。 | Tensor值由用户保证。 |
+| seqused_q | `int32`、ND、shape为(B,)；每项非负且不超过对应q长度。 | 可选。 | B必须与q一致。 | Paged Attention不依赖此参数。Tensor值由用户保证。 |
+| seqused_ori_kv | `int32`、ND、shape为(B,)；每项非负且不超过对应`ori_kv`长度。 | PA场景必传；其他场景可选。 | B必须与`ori_kv`和Block Table一致。 | PA场景决定每个序列的有效KV前缀。Tensor值由用户保证。 |
+| seqused_cmp_kv | `int32`、ND、shape为(B,)；每项非负且不超过对应`cmp_kv`长度。 | 可选。 | B必须与`cmp_kv`一致。 | 显式传入时覆盖cmp侧逻辑有效长度。Tensor值由用户保证。 |
+| cmp_residual_kv | `int32`、ND、shape为(B,)；每项满足`0 <= value < cmp_ratio`。 | CSA/HCA必传；SWA不传。 | 必须同时传给元数据接口和主接口。 | 满足`cmp_len * cmp_ratio + residual = ori_len_for_cmp_mask`。Tensor值由用户保证。 |
+| ori_topk_length | `int32`、ND。 | 必须为空。 | 与`ori_topk=0`、`ori_sparse_indices=None`一致。 | 当前传入非空Tensor应拦截。 |
+| cmp_topk_length | `int32`、ND。 | 必须为空。 | 与`cmp_topk`和`cmp_sparse_indices`的状态一致。 | 当前传入非空Tensor应拦截。 |
+
 #### 公共参数组
 
 - `q`、`ori_kv`、`cmp_kv`的数据类型必须一致，且仅支持`float16`和`bfloat16`。
@@ -248,6 +290,26 @@ cann_ops_transformer.sparse_flash_mla(
 - `metadata`必须为1024个`int32`元素；`topk_value_mode`仅支持1。`ori_sparse_indices`、`ori_topk_length`和`cmp_topk_length`当前不支持传入非空Tensor。
 - `ori_kv`和`cmp_kv`允许存在行间padding类非连续内存，接口会通过aclNN获取stride信息并传递给底层算子。
 
+| 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
+| :--- | :--- | :--- | :--- | :--- |
+| q | `float16`或`bfloat16`；`BSND`为(B, S1, N1, D)，`TND`为(T1, N1, D)；任一轴为0时拦截。 | 必传。 | N1、D、B/T1必须与metadata、KV和长度参数一致。 | D必须为512，N1/N2必须为正整数；布局必须符合下表。 |
+| ori_kv | 与q相同的数据类型；`BSND`为(B, S2, N2, D)，`TND`为(T2, N2, D)，`PA_BBND`为(num_blocks, block_size, N2, D)。 | 已支持的SWA、CSA、HCA场景均必传。 | B/T2、N2、D必须与q、metadata和长度参数一致。 | PA场景必须有`ori_block_table`和`seqused_ori_kv`；block_size满足产品规格。 |
+| cmp_kv | 与q相同的数据类型；`BSND`为(B, S3, N2, D)，`TND`为(T3, N2, D)，`PA_BBND`为(num_blocks, block_size, N2, D)。 | SWA必须不传；CSA/HCA必传。 | B/T3、N2、D必须与q、metadata、压缩率和长度参数一致。 | CSA要求`cmp_sparse_indices`；HCA禁止传该索引；PA场景要求`cmp_block_table`。 |
+| metadata | `int32`、ND、shape为(1024,)。 | 必传；缺失应拦截。 | 必须是使用本次调用布局、序列长度、模式、窗口、压缩率和KV存在性生成的结果。 | 与前置接口不一致或复用其他输入生成的metadata应拦截。 |
+| softmax_scale | float，必须为有限值。 | 可选，默认1.0。 | 应与用户期望的缩放策略一致。 | 不参与metadata生成；常用设置为`1.0 / sqrt(D)`。 |
+| layout_q | 仅支持`BSND`、`TND`。 | 可选，默认`BSND`。 | 必须与q的rank和`cu_seqlens_q`传入状态一致。 | 见布局匹配关系表。 |
+| layout_kv | 仅支持`BSND`、`TND`、`PA_BBND`。 | 可选，默认`BSND`。 | 必须与所有非空KV的rank和对应长度/Block Table参数一致。 | 见布局匹配关系表。 |
+| attention_out（输出） | 数据类型、rank和shape均与q一致。 | 必然输出。 | 与q一一对应。 | q为空或shape非法时应在输出构造前拦截。 |
+
+布局匹配关系表：
+
+| layout_q | layout_kv | q/kv维度 | softmax_lse维度（使能时） |
+| :--- | :--- | :--- | :--- |
+| `BSND` | `BSND` | q：(B, S1, N1, D)<br>KV：(B, Sx, N2, D) | (B, N2, S1, N1/N2) |
+| `TND` | `TND` | q：(T1, N1, D)<br>KV：(Tx, N2, D) | (N2, T1, N1/N2) |
+| `BSND` | `PA_BBND` | q：(B, S1, N1, D)<br>KV：(num_blocks, block_size, N2, D) | (B, N2, S1, N1/N2) |
+| `TND` | `PA_BBND` | q：(T1, N1, D)<br>KV：(num_blocks, block_size, N2, D) | (N2, T1, N1/N2) |
+
 #### 计算模式参数组
 
 | 场景 | 必选输入与属性 | 不允许或固定的输入与属性 |
@@ -256,6 +318,15 @@ cann_ops_transformer.sparse_flash_mla(
 | CSA | 传入`ori_kv`、`cmp_kv`、`cmp_sparse_indices`和`cmp_residual_kv`；`cmp_mask_mode=3`且`cmp_topk`为非0。 | - |
 | HCA | 传入`ori_kv`、`cmp_kv`和`cmp_residual_kv`；`cmp_mask_mode=3`。 | 不传`cmp_sparse_indices`；`cmp_topk=0`。 |
 
+| 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
+| :--- | :--- | :--- | :--- | :--- |
+| ori_sparse_indices | `int32`、ND。 | 必须不传。 | 与`ori_topk=0`和`ori_topk_length=None`一致。 | 当前版本传入非空Tensor应拦截。 |
+| cmp_sparse_indices | `int32`、ND；`BSND`为(B, S1, N2, K)，`TND`为(T1, N2, K)；值必须为-1或有效的cmp token索引。 | 仅CSA必传；SWA/HCA必须不传。 | B/T1、N2必须与q一致，K必须与`cmp_topk`一致。 | A2/A3下K仅支持512或1024；无效位置填-1。索引具体取值由用户保证。 |
+| ori_topk_length | `int32`、ND。 | 必须不传。 | 与`ori_sparse_indices=None`和`ori_topk=0`一致。 | 当前版本传入非空Tensor应拦截。 |
+| cmp_topk_length | `int32`、ND。 | 必须不传。 | 与`cmp_sparse_indices`和`cmp_topk`的状态一致。 | 当前版本传入非空Tensor应拦截。 |
+| cmp_ratio | int，范围1~128。 | 可选，默认1。 | 必须同时与metadata、`cmp_kv`长度和`cmp_residual_kv`一致。 | SWA为1；CSA为4、HCA为128（A2/A3）。 |
+| topk_value_mode | int；仅支持1。 | 可选，默认1。 | 必须与`cmp_sparse_indices`的索引取值约定一致。 | 不参与metadata生成；取非1值应拦截。 |
+
 #### SeqLengths和Mask参数组
 
 - `cu_seqlens_q`、`cu_seqlens_ori_kv`和`cu_seqlens_cmp_kv`必须为当前Batch与前序Batch有效token数的累加值，第一个元素为0，后一个元素不得小于前一个元素。
@@ -263,10 +334,42 @@ cann_ops_transformer.sparse_flash_mla(
 - `cmp_residual_kv[i]`必须小于`cmp_ratio`；CSA和HCA场景下，其长度必须等于Batch大小。
 - `ori_mask_mode`及`cmp_mask_mode`的详细含义请参见[sparse_mode参数说明](../../../../docs/zh/context/sparse_mode_introduction.md)。当前规格中`ori_mask_mode`仅支持4，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
 
+| 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
+| :--- | :--- | :--- | :--- | :--- |
+| cu_seqlens_q | `int32`、ND、shape为(B+1,)；首元素为0、单调非递减、末元素为T1。 | `layout_q="TND"`时必传；其他布局必须不传。 | 与q的T1、B、`max_seqlen_q`和metadata一致。 | 具体长度值由用户保证。 |
+| cu_seqlens_ori_kv | `int32`、ND、shape为(B+1,)；首元素为0、单调非递减、末元素为T2。 | `layout_kv="TND"`且`ori_kv`非空时必传；其他布局必须不传。 | 与`ori_kv`的T2、B、`max_seqlen_ori_kv`和metadata一致。 | 具体长度值由用户保证。 |
+| cu_seqlens_cmp_kv | `int32`、ND、shape为(B+1,)；首元素为0、单调非递减、末元素为T3。 | `layout_kv="TND"`且`cmp_kv`非空时必传；其他布局必须不传。 | 与`cmp_kv`的T3、B、`max_seqlen_cmp_kv`和metadata一致。 | 具体长度值由用户保证。 |
+| seqused_q | `int32`、ND、shape为(B,)；每项非负且不超过对应q长度。 | 可选。 | B必须与q、metadata一致。 | Tensor具体值由用户保证。 |
+| seqused_ori_kv | `int32`、ND、shape为(B,)；每项非负且不超过对应`ori_kv`长度。 | PA场景必传；其他场景可选。 | B必须与`ori_kv`、`ori_block_table`和metadata一致。 | PA场景用于确定有效KV前缀。 |
+| seqused_cmp_kv | `int32`、ND、shape为(B,)；每项非负且不超过对应`cmp_kv`长度。 | 可选。 | B必须与`cmp_kv`和metadata一致。 | 显式传入时覆盖cmp侧逻辑有效长度。 |
+| cmp_residual_kv | `int32`、ND、shape为(B,)；每项范围[0, cmp_ratio)。 | CSA/HCA必传；SWA必须不传。 | 必须与metadata、`cmp_ratio`和`cmp_kv`长度一致。 | 恢复长度必须满足`cmp_len * cmp_ratio + residual = ori_len_for_cmp_mask`。 |
+| ori_mask_mode | int；接口定义支持0、3、4。 | 可选。 | 必须与metadata一致。 | 当前规格只支持4。 |
+| cmp_mask_mode | int；接口定义支持0、3。 | 可选。 | 必须与metadata一致。 | SWA为0；CSA/HCA为3。 |
+| ori_win_left | int；接口定义为-1或非负数。 | 可选。 | 必须与metadata一致。 | 当前规格只支持127。 |
+| ori_win_right | int；接口定义为-1或非负数。 | 可选。 | 必须与metadata一致。 | 当前规格只支持0。 |
+
 #### Paged Attention参数组
 
 - `layout_kv="PA_BBND"`时，必须传入`seqused_ori_kv`和`ori_block_table`；传入`cmp_kv`时，还必须传入`cmp_block_table`。
 - PageAttention的`block_size`支持1~1024。对于<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>和<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>，`block_size`必须为16的倍数且不超过1024。
+
+| 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
+| :--- | :--- | :--- | :--- | :--- |
+| ori_block_table | `int32`、ND、shape为(B, max_num_blocks_per_seq)；表项必须为有效的Block索引。 | `layout_kv="PA_BBND"`时必传；其他布局必须不传。 | B必须与q、`ori_kv`、`seqused_ori_kv`和metadata一致。 | 必须同时传入`seqused_ori_kv`；Block Table具体索引由用户保证。 |
+| cmp_block_table | `int32`、ND、shape为(B, max_num_blocks_per_seq)；表项必须为有效的Block索引。 | `layout_kv="PA_BBND"`且`cmp_kv`非空时必传；其他情况必须不传。 | B必须与q、`cmp_kv`、`seqused_cmp_kv`（若传入）和metadata一致。 | 仅CSA/HCA的PA场景允许传入；Block Table具体索引由用户保证。 |
+
+#### Sinks参数组
+
+| 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
+| :--- | :--- | :--- | :--- | :--- |
+| sinks | `float32`、ND、shape为(N1,)。 | 可选。 | 长度必须等于q的N1。 | 不参与metadata生成；除N1匹配外无额外组合约束。 |
+
+#### SoftmaxLSE参数组
+
+| 参数 | 单参数校验 | 存在性拦截 | 一致性拦截 | 特性交叉拦截 |
+| :--- | :--- | :--- | :--- | :--- |
+| return_softmax_lse | bool；仅支持True、False。 | 可选，默认False。 | 与`softmax_lse`输出shape一致。 | 为True时至少需要传入一个KV（已支持场景均满足）；为False时仅返回float32标量占位Tensor。 |
+| softmax_lse（输出） | `float32`、ND；BSND为(B, N2, S1, N1/N2)，TND为(N2, T1, N1/N2)。 | `return_softmax_lse=True`时返回有效结果。 | N2、S1/T1和N1/N2必须与q、KV一致。 | `return_softmax_lse=False`时为float32标量占位Tensor，不应读取为有效LSE。 |
 
 #### 产品型号和稀疏规格
 
