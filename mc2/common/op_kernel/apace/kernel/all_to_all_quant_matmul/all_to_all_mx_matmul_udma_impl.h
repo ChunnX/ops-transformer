@@ -24,7 +24,6 @@ namespace Apace {
 
 using namespace AscendC;
 using namespace Blaze::Gemm;
-using Apace::Utils::CommTilingData;
 using AscendC::Te::Get;
 using namespace Apace::AivComm;
 
