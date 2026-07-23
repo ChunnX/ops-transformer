@@ -673,8 +673,9 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTiling()
 
     if (isAFp8 && isBFp8 && isMxQuant && inputParams_.bFormat == ge::FORMAT_ND && !hasBias &&
         inputParams_.nSize % MXFP8_ND_N_ALIGN_TENSORAPI == 0 && inputParams_.mSize >= MXFP8_ND_M_LOWER_TENSORAPI) {
-        kernel_level_ = 1UL; // GMM_SWIGLU_QUANT_KERNEL_TYPE，确认切换tensorApi
+        kernelType_ = 1UL; // GMM_SWIGLU_QUANT_KERNEL_TYPE，确认切换tensorApi
     }
+    OP_LOGD(context_->GetNodeName(), "===========yangtao0723================= kernelType_ value is %ld ======.", kernelType_);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -690,18 +691,32 @@ int64_t GroupedMatmulSwigluQuantV2Tiling950::LogQuantParams()
     return 0;
 }
 
+// ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalL1Tiling()
+// {
+//     InitCommonL1TilingFields();
+//     uint64_t leftL1Size = 0;
+//     OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
+//                 OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed"), return ge::GRAPH_FAILED);
+//     return CalL1Depth(leftL1Size);
+// }
+
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
 {
-    if (kernel_level_) {
+    if (kernelType_) {
         GroupedQmmTiling::CalBasicBlock();
         OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
                     OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
+        OP_LOGD(context_->GetNodeName(),
+                "===========yangtao0723================= baseM %ld ====== baseN %ld ====== baseK %ld ======.",
+                basicTiling_.baseM, basicTiling_.baseM, basicTiling_.baseM);
         if (inputParams_.mSize >= 256 && inputParams_.nSize >= 256 && inputParams_.kSize >= 128) {
             basicTiling_.baseM = 256;
             basicTiling_.baseN = 128;
             basicTiling_.baseK = 128;
         }
-        OP_LOGD(context_->GetNodeName(), "===========yangtao0723================= kernel_level_ value is %ld ======.", kernel_level_);
+        OP_LOGD(context_->GetNodeName(),
+                "===========yangtao0723================= baseM %ld ====== baseN %ld ====== baseK %ld ======.",
+                basicTiling_.baseM, basicTiling_.baseM, basicTiling_.baseM);
     } else {
         CalBasicBlock();
         auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));

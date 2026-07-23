@@ -28,6 +28,7 @@ public:
         Ops::Transformer::OpTiling::TilingBaseClass::Reset(context);
         Reset();
     }
+    ge::graphStatus CalL1Tiling();
 
 protected:
     bool IsCapable() override;
@@ -40,7 +41,6 @@ protected:
     // 7、保存Tiling数据
     ge::graphStatus PostTiling() override;
     virtual void Reset();
-    ge::graphStatus CalL1Tiling();
 
 private:
     ge::graphStatus CalL1Depth(uint64_t leftL1Size);
