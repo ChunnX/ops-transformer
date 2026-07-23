@@ -297,7 +297,9 @@ private:
     uint32_t s1BaseSize_ = 4;
     uint32_t s2BaseSize_ = 128;
     bool isS1G_ = true;
-    
+    uint32_t maxS2Size_ = 0;
+    uint32_t fdToleranceRatio = 5U;
+
 private:
     enum class ParamId : uint32_t {
         // input

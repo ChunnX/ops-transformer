@@ -29,8 +29,9 @@ BASE_CONFIG = {
     "gamma_datarange": [[-1, 0]],
     "gamma_k_datarange": [[-1, 0]],
     "beta_datarange": [[0, 1]],
-    "state_datarange": [[-10, 10]]
+    "state_datarange": [[-10, 10]],
 }
+
 
 def generate_test_cases(batch_sizes, mtps, dk, dv, **kwargs):
     config = BASE_CONFIG.copy()
@@ -58,10 +59,11 @@ def generate_test_cases(batch_sizes, mtps, dk, dv, **kwargs):
             "gamma_datarange": config["gamma_datarange"],
             "gamma_k_datarange": config["gamma_k_datarange"],
             "beta_datarange": config["beta_datarange"],
-            "state_datarange": config["state_datarange"]
+            "state_datarange": config["state_datarange"],
         }
         for bs, mtp in itertools.product(batch_sizes, mtps)
     ]
+
 
 SPECIAL_CASES = [
     {
@@ -86,7 +88,7 @@ SPECIAL_CASES = [
         "gamma_datarange": [[-1, 0]],
         "gamma_k_datarange": [[-1, 0]],
         "beta_datarange": [[0, 1]],
-        "state_datarange": [[-10, 10]]
+        "state_datarange": [[-10, 10]],
     },
     {
         "batch_size": [1],
@@ -110,32 +112,21 @@ SPECIAL_CASES = [
         "gamma_datarange": [[-1, 0]],
         "gamma_k_datarange": [[-1, 0]],
         "beta_datarange": [[0, 1]],
-        "state_datarange": [[-10, 10]]
-    }
+        "state_datarange": [[-10, 10]],
+    },
 ]
 
 GROUP_1 = SPECIAL_CASES
 
 GROUP_2 = generate_test_cases(
-    batch_sizes=[1, 2, 4, 8, 16, 32, 64],
-    mtps=[1, 2],
-    dk=4,
-    dv=8
+    batch_sizes=[1, 2, 4, 8, 16, 32, 64], mtps=[1, 2], dk=4, dv=8
 )
 
 GROUP_3 = generate_test_cases(
-    batch_sizes=[1, 2, 4, 8, 16, 32, 64],
-    mtps=[1, 2],
-    dk=16,
-    dv=32
+    batch_sizes=[1, 2, 4, 8, 16, 32, 64], mtps=[1, 2], dk=16, dv=32
 )
 
-GROUP_4 = generate_test_cases(
-    batch_sizes=[2, 4, 8, 16, 32],
-    mtps=[1],
-    dk=8,
-    dv=16
-)
+GROUP_4 = generate_test_cases(batch_sizes=[2, 4, 8, 16, 32], mtps=[1], dk=8, dv=16)
 
 GROUP_5 = [
     {
@@ -160,7 +151,7 @@ GROUP_5 = [
         "gamma_datarange": [[-1, 0]],
         "gamma_k_datarange": [[-1, 0]],
         "beta_datarange": [[0, 1]],
-        "state_datarange": [[-10, 10]]
+        "state_datarange": [[-10, 10]],
     }
 ]
 
@@ -187,7 +178,7 @@ GROUP_6 = [
         "gamma_datarange": [[-1, 0]],
         "gamma_k_datarange": [[-1, 0]],
         "beta_datarange": [[0, 1]],
-        "state_datarange": [[-10, 10]]
+        "state_datarange": [[-10, 10]],
     }
 ]
 

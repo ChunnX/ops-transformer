@@ -133,6 +133,9 @@ constexpr int32_t BASE_SEND_ROUTE_ITEMS_PER_BATCH = 12288;
  */
 constexpr int32_t DISPATCH_RESET_BATCH = 2048;
 
+// GMM2 M 方向的一个 tile 对应一个 combine token group；同步 slot 的粒度必须与该 tile 保持一致。
+constexpr uint32_t COMBINE_TOKEN_GROUP_SIZE = 256U;
+
 // Adaptive buffer configs written by host tiling and consumed by the kernel.
 struct MegaMoeUnpermuteBufferConfig {
     int32_t tokensPerBatch;
@@ -174,6 +177,9 @@ struct MegaMoeTilingData {
     uint8_t groupedMatmulMode;
     int64_t topoType;
     uint32_t sharedExpertNum; // 独立 dense 路径的共享专家数，不进入 topK/SendMask expert id 空间
+
+    // 每个 routed MoE expert 固定预留的 GMM2 -> Combine 同步 slot 数。
+    uint64_t combineSyncSlotCountPerExpert;
 
     // Dispatch 的分核不改变 UB 布局，所有 AIV core 共用一套配置；对应 kernel DispatchBuffInit。
     MegaMoeDispatchBufferConfig dispatchBufferConfig;

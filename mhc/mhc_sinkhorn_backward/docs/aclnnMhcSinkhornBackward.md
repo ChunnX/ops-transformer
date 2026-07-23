@@ -45,22 +45,22 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMhcSinkhornBackwardGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMhcSinkhornBackward”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMhcSinkhornBackwardGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMhcSinkhornBackward”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMhcSinkhornBackwardGetWorkspaceSize(
-    const aclTensor* gradOutput, 
-    const aclTensor* normOut, 
-    const aclTensor* sumOut, 
-    aclTensor*       out, 
-    uint64_t*        workspaceSize, 
+    const aclTensor* gradOutput,
+    const aclTensor* normOut,
+    const aclTensor* sumOut,
+    aclTensor*       out,
+    uint64_t*        workspaceSize,
     aclOpExecutor**  executor)
 ```
 
 ```c++
 aclnnStatus aclnnMhcSinkhornBackward(
-    void*          workspace, 
-    uint64_t       workspaceSize, 
+    void*          workspace,
+    uint64_t       workspaceSize,
     aclOpExecutor* executor,
     aclrtStream    stream)
 ```
@@ -79,8 +79,8 @@ aclnnStatus aclnnMhcSinkhornBackward(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一阶段接口完成入参校验，出现以下场景时报错。
 
   <table>
@@ -118,16 +118,16 @@ aclnnStatus aclnnMhcSinkhornBackward(
 
 - **返回值：**
 
-  返回`aclnnStatus`状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回`aclnnStatus`状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - **确定性计算：**
-  
+
   aclnnMhcSinkhornBackward默认确定性实现。
 
 - **规格约束：**
-  
+
   - num_iters：取值范围1~100，超出则报参数无效。
   - n：输入矩阵最后两维尺寸，仅支持4、6或8。
   - align_n：固定为8，是n按FP32块大小32字节对齐后的值。
@@ -135,7 +135,7 @@ aclnnStatus aclnnMhcSinkhornBackward(
 
 ## 调用示例
 
-  示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+  示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```c++
   #include <iostream>
@@ -181,8 +181,8 @@ aclnnStatus aclnnMhcSinkhornBackward(
         device_addr, size * sizeof(float),
         ACL_MEMCPY_DEVICE_TO_HOST
     );
-    CHECK_RET(ret == ACL_SUCCESS, 
-              LOG_PRINT("Memcpy device to host failed, error: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("Memcpy device to host failed, error: %d\n", ret);
               return);
 
     // 打印前10个元素
@@ -197,32 +197,32 @@ aclnnStatus aclnnMhcSinkhornBackward(
   int InitAcl(int32_t device_id, aclrtContext& context, aclrtStream& stream) {
     // 1. 初始化ACL
     aclError ret = aclInit(nullptr);
-    CHECK_RET(ret == ACL_SUCCESS, 
-              LOG_PRINT("aclInit failed, error: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclInit failed, error: %d\n", ret);
               return -1);
 
     // 2. 设置Device
     ret = aclrtSetDevice(device_id);
-    CHECK_RET(ret == ACL_SUCCESS, 
-              LOG_PRINT("aclrtSetDevice failed, error: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclrtSetDevice failed, error: %d\n", ret);
               return -1);
 
     // 3. 创建Context
     ret = aclrtCreateContext(&context, device_id);
-    CHECK_RET(ret == ACL_SUCCESS, 
-              LOG_PRINT("aclrtCreateContext failed, error: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclrtCreateContext failed, error: %d\n", ret);
               return -1);
 
     // 4. 设置当前Context
     ret = aclrtSetCurrentContext(context);
-    CHECK_RET(ret == ACL_SUCCESS, 
-              LOG_PRINT("aclrtSetCurrentContext failed, error: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclrtSetCurrentContext failed, error: %d\n", ret);
               return -1);
 
     // 5. 创建Stream
     ret = aclrtCreateStream(&stream);
-    CHECK_RET(ret == ACL_SUCCESS, 
-              LOG_PRINT("aclrtCreateStream failed, error: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclrtCreateStream failed, error: %d\n", ret);
               return -1);
 
     return 0;
@@ -239,8 +239,8 @@ aclnnStatus aclnnMhcSinkhornBackward(
 
     // 2. 申请Device侧内存
     aclError ret = aclrtMalloc(&device_addr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, 
-              LOG_PRINT("aclrtMalloc failed, error: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclrtMalloc failed, error: %d\n", ret);
               return -1);
 
     // 3. Host -> Device数据拷贝
@@ -249,8 +249,8 @@ aclnnStatus aclnnMhcSinkhornBackward(
         host_data.data(), size,
         ACL_MEMCPY_HOST_TO_DEVICE
     );
-    CHECK_RET(ret == ACL_SUCCESS, 
-              LOG_PRINT("aclrtMemcpy failed, error: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclrtMemcpy failed, error: %d\n", ret);
               return -1);
 
     // 4. 计算Tensor的strides（连续Tensor）
@@ -266,8 +266,8 @@ aclnnStatus aclnnMhcSinkhornBackward(
         ACL_FORMAT_ND, shape.data(), shape.size(),
         device_addr
     );
-    CHECK_RET(tensor != nullptr, 
-              LOG_PRINT("aclCreateTensor failed\n"); 
+    CHECK_RET(tensor != nullptr,
+              LOG_PRINT("aclCreateTensor failed\n");
               return -1);
 
     return 0;
@@ -279,10 +279,10 @@ aclnnStatus aclnnMhcSinkhornBackward(
       void*& device_addr,
       aclTensor*& tensor) {
     int64_t size = GetShapeSize(shape) * sizeof(float);
-    
+
     aclError ret = aclrtMalloc(&device_addr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    CHECK_RET(ret == ACL_SUCCESS, 
-              LOG_PRINT("aclrtMalloc output failed, error: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclrtMalloc output failed, error: %d\n", ret);
               return -1);
 
     std::vector<int64_t> strides(shape.size(), 1);
@@ -296,8 +296,8 @@ aclnnStatus aclnnMhcSinkhornBackward(
         ACL_FORMAT_ND, shape.data(), shape.size(),
         device_addr
     );
-    CHECK_RET(tensor != nullptr, 
-              LOG_PRINT("aclCreateTensor output failed\n"); 
+    CHECK_RET(tensor != nullptr,
+              LOG_PRINT("aclCreateTensor output failed\n");
               return -1);
 
     return 0;
@@ -310,8 +310,8 @@ aclnnStatus aclnnMhcSinkhornBackward(
     aclrtStream stream = nullptr;
 
     int ret = InitAcl(device_id, context, stream);
-    CHECK_RET(ret == 0, 
-              LOG_PRINT("InitAcl failed, error: %d\n", ret); 
+    CHECK_RET(ret == 0,
+              LOG_PRINT("InitAcl failed, error: %d\n", ret);
               return -1);
 
     LOG_PRINT("ACL environment initialized successfully!\n");
@@ -322,12 +322,12 @@ aclnnStatus aclnnMhcSinkhornBackward(
     int64_t T = 128;       // total length
     int64_t N = 4;         // n size (N x N矩阵)
     int64_t num_iters = 20; // Sinkhorn迭代次数
-    
+
     // 计算对齐后的N大小（对齐到8）
     int64_t align_unit = 8;
     int64_t n_align_size = CeilAlign(N, align_unit);
-    
-    LOG_PRINT("Parameters: T=%lld, N=%lld, num_iters=%lld, n_align_size=%lld\n", 
+
+    LOG_PRINT("Parameters: T=%lld, N=%lld, num_iters=%lld, n_align_size=%lld\n",
               T, N, num_iters, n_align_size);
 
     // ========== 3. 构造输入/输出张量 ==========
@@ -397,8 +397,8 @@ aclnnStatus aclnnMhcSinkhornBackward(
         &workspace_size,
         &executor
     );
-    CHECK_RET(aclnn_ret == ACL_SUCCESS, 
-              LOG_PRINT("aclnnMhcSinkhornBackwardGetWorkspaceSize failed, error: %d\n", aclnn_ret); 
+    CHECK_RET(aclnn_ret == ACL_SUCCESS,
+              LOG_PRINT("aclnnMhcSinkhornBackwardGetWorkspaceSize failed, error: %d\n", aclnn_ret);
               return -1);
 
     LOG_PRINT("Workspace size: %lu bytes\n", workspace_size);
@@ -407,8 +407,8 @@ aclnnStatus aclnnMhcSinkhornBackward(
     void* workspace_addr = nullptr;
     if (workspace_size > 0) {
       ret = aclrtMalloc(&workspace_addr, workspace_size, ACL_MEM_MALLOC_HUGE_FIRST);
-      CHECK_RET(ret == ACL_SUCCESS, 
-                LOG_PRINT("aclrtMalloc workspace failed, error: %d\n", ret); 
+      CHECK_RET(ret == ACL_SUCCESS,
+                LOG_PRINT("aclrtMalloc workspace failed, error: %d\n", ret);
                 return -1);
     }
 
@@ -419,14 +419,14 @@ aclnnStatus aclnnMhcSinkhornBackward(
         executor,
         stream
     );
-    CHECK_RET(aclnn_ret == ACL_SUCCESS, 
-              LOG_PRINT("aclnnMhcSinkhornBackward failed, error: %d\n", aclnn_ret); 
+    CHECK_RET(aclnn_ret == ACL_SUCCESS,
+              LOG_PRINT("aclnnMhcSinkhornBackward failed, error: %d\n", aclnn_ret);
               return -1);
 
     // ========== 7. 同步Stream ==========
     ret = aclrtSynchronizeStream(stream);
-    CHECK_RET(ret == ACL_SUCCESS, 
-              LOG_PRINT("aclrtSynchronizeStream failed, error: %d\n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS,
+              LOG_PRINT("aclrtSynchronizeStream failed, error: %d\n", ret);
               return -1);
 
     LOG_PRINT("MhcSinkhornBackward compute success!\n");

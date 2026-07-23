@@ -124,6 +124,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
     MaskReg preg_ori_tail_n1 = UpdateMask<T>(pltOriTailN1);
 
     MaskReg preg_compare1, preg_compare2, preg_compare3, preg_compare4;
+    MaskReg preg_compare_max;
     MaskReg preg1;
     MaskReg preg2 = CreateMask<int8_t, MaskPattern::ALLF>();
     MaskReg preg3, preg4, preg5, preg6;
@@ -268,6 +269,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop0(
         Muls(vreg_src_max, vreg_src_max, INV_LN2, preg_all_float);
         Truncate<T, RoundMode::CAST_CEIL>(vreg_src_max, vreg_src_max, preg_all_float);
         Muls(vreg_src_max, vreg_src_max, LN2, preg_all_float);
+        Compare<float, CMPMODE::LE>(preg_compare_max, vreg_src_max, vreg_min, preg_all_float);
+        Select(vreg_src_max, vreg_min, vreg_src_max, preg_compare_max);
         StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_src_max,
                                                                      ureg_max, 1);
     }
@@ -518,6 +521,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
     MaskReg preg_compare2;
     MaskReg preg_compare3;
     MaskReg preg_compare4;
+    MaskReg preg_compare_max;
     // pScale
     RegTensor<float> vreg_p_scale;
     RegTensor<float> vreg_ln_p_scale;
@@ -653,6 +657,8 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl256Mxfp8FullquantVFSubloop1(
         Muls(vreg_src_max, vreg_src_max, INV_LN2, preg_all);
         Truncate<T, RoundMode::CAST_CEIL>(vreg_src_max, vreg_src_max, preg_all);
         Muls(vreg_src_max, vreg_src_max, LN2, preg_all);
+        Compare<float, CMPMODE::LE>(preg_compare_max, vreg_src_max, vreg_min, preg_all);
+        Select(vreg_src_max, vreg_min, vreg_src_max, preg_compare_max);
         StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb),
                                                                      vreg_src_max, ureg_max, 1);
     }
