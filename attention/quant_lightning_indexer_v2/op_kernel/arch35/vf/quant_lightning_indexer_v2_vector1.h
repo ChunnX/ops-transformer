@@ -748,12 +748,11 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor(
     __ubuf__ float* qk = (__ubuf__ float*)qk_.GetPhyAddr();
     if (gSize % 2 == 0) {
         MulWeightAndReduceSumPerTensorGSizeEvenVF(out, qk, qkVLStride, weight, kScaleValue, qScaleValue,
-                                     (uint16_t)gSize);
+                                                  (uint16_t)gSize);
     } else {
         MulWeightAndReduceSumPerTensorGSizeOddVF(out, qk, qkVLStride, weight, kScaleValue, qScaleValue,
-                                     (uint16_t)gSize);
+                                                 (uint16_t)gSize);
     }
-    
 }
 
 // 计算S1=2
