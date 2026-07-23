@@ -135,6 +135,7 @@ TEST_PARAMS = {
         "ori_sparse_indices_mode": ["full"], # full random
         "ori_topk_length": [None],
         "cmp_topk_length": [None],
+        "return_softmax_lse":[True],
     },
 
     "ori_cmp_sparse_decode": {
