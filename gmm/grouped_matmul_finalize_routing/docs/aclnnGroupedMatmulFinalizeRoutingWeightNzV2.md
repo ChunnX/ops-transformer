@@ -323,6 +323,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
     - rowIndex在x1以及x2数据类型为INT8时，数据类型支持INT64、INT32；在x1以及x2数据类型为FLOAT8_E4M3FN、HIFLOAT8或MxA8W4量化模式时，数据类型仅支持INT64。
     - x1、x2、scale、groupList、logit、rowIndex是必选参数，pertokenScaleOptional、sharedInput、bias是可选参数。MxA8W4场景下pertokenScaleOptional为必选参数。目前暂不支持offsetOptional参数，必须为nullptr。
     - out的第一维batch、sharedInputOffset必须大于等于0，且小于等于m。
+    - 当sharedInput不为空时，其第一维长度为shareInputLen。sharedInputOffset、shareInputLen以及两者之和均需小于等于out的第一维batch。
 
 - **返回值**
 
@@ -435,8 +436,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRoutingWeightNzV2(
   - 公共约束
     - groupList：当groupListType为0时，groupList必须为非负单调非递减数列；当groupListType为1时，groupList必须为非负数列。
     - x2的e取值范围[1, 1024]。
-    - sharedInput的bsdp必须小于等于outputBS，n和x2的n一致。
-    - sharedInputOffset + sharedInput的bsdp <= outputBS。
+    - sharedInput的n和x2的n一致。
 
   - 全量化场景支持的数据类型为：
 

@@ -71,7 +71,7 @@ for params in ENABLED_PARAMS:
         "cmp_mask_mode": params.get("cmp_mask_mode", [None]),
         "ori_win_left": params.get("ori_win_left"),
         "ori_win_right": params.get("ori_win_right"),
-        "qkv_quant_mode": params.get("qkv_quant_mode"),
+        "quant_mode": params.get("quant_mode"),
         "template_run_mode": params.get("template_run_mode"),
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
