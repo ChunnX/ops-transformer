@@ -221,7 +221,7 @@ def quant_block_sparse_attn(
             cu_seqlens_q, cu_seqlens_kv, block_table,
             max_seqlen_q, max_seqlen_kv, layout_q, sparse_kv_block_size)
 
-    if metadata is None:
+    if metadata is None or metadata.numel() < 584:
         metadata = QuantBlockSparseAttnMetadataBuilder.build(
             query, key, value, q_descale, k_descale, v_descale, p_scale,
             sparse_indices, sparse_seq_len, atten_mask,
