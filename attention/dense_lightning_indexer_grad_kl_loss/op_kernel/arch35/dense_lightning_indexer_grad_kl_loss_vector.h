@@ -23,6 +23,7 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "dense_lightning_indexer_grad_kl_loss_common.h"
 #include "dense_lightning_indexer_grad_kl_loss_tiling_data.h"
+#include "vf/dense_lightning_indexer_grad_kl_loss_cast_vf.h"
 
 using namespace AscendC;
 using AscendC::CrossCoreSetFlag;
@@ -979,7 +980,7 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::CastOutWeightGrad(DLIGradKL
         SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
 
-        Cast(ubOutPing_, ubInPing_, RoundMode::CAST_ROUND, dWeightCount);
+        DenseDliGradKLLossArch35::CastFp32ToOut<W_T>(ubOutPing_, ubInPing_, dWeightCount);
         SetFlag<HardEvent::V_MTE3>(EVENT_ID0);
         WaitFlag<HardEvent::V_MTE3>(EVENT_ID0);
 
@@ -1024,7 +1025,7 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::CastOutQIndexGrad(DLIGradKL
         SetFlag<HardEvent::MTE2_V>(eventId);
         WaitFlag<HardEvent::MTE2_V>(eventId);
 
-        Cast(dQueryIndexUbOut, dQueryIndexUbIn, RoundMode::CAST_ROUND, dqCount);
+        DenseDliGradKLLossArch35::CastFp32ToOut<OUT_T>(dQueryIndexUbOut, dQueryIndexUbIn, dqCount);
         SetFlag<HardEvent::V_MTE3>(eventId);
         WaitFlag<HardEvent::V_MTE3>(eventId);
 

@@ -23,6 +23,7 @@
 #include "lib/matrix/matmul/tiling.h"
 #include "dense_lightning_indexer_grad_kl_loss_common.h"
 #include "dense_lightning_indexer_grad_kl_loss_tiling_data.h"
+#include "vf/dense_lightning_indexer_grad_kl_loss_cast_vf.h"
 
 using AscendC::CrossCoreSetFlag;
 using AscendC::CrossCoreWaitFlag;
@@ -154,7 +155,7 @@ __aicore__ inline void DLIKLLossVector2Service<DLIT>::ProcessVectorDk()
         SetFlag<HardEvent::MTE2_V>(eventId);
 
         WaitFlag<HardEvent::MTE2_V>(eventId);
-        Cast(dKeyIndexUbOut, dKeyIndexUbIn, RoundMode::CAST_ROUND, processNumPad);
+        DenseDliGradKLLossArch35::CastFp32ToOut<OUT_T>(dKeyIndexUbOut, dKeyIndexUbIn, processNumPad);
         SetFlag<HardEvent::V_MTE3>(eventId);
 
         WaitFlag<HardEvent::V_MTE3>(eventId);
