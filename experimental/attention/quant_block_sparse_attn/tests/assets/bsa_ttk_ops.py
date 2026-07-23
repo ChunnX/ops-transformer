@@ -13,18 +13,23 @@
 """TTK metadata-first adapter for the installed quant_block_sparse_attn API."""
 
 import math
+import sys
+from pathlib import Path
 from typing import Optional
 
 import torch
 
-_CANN_OPS_LOADED = False
+_CUSTOM_OPS_LOADED = False
 
 
 def _ensure_cann_ops():
-    global _CANN_OPS_LOADED
-    if not _CANN_OPS_LOADED:
-        import cann_ops_transformer  # noqa: F401 - registers torch.ops namespace
-        _CANN_OPS_LOADED = True
+    global _CUSTOM_OPS_LOADED
+    if not _CUSTOM_OPS_LOADED:
+        pytest_dir = str(Path(__file__).resolve().parents[1] / "pytest")
+        if pytest_dir not in sys.path:
+            sys.path.insert(0, pytest_dir)
+        import custom_ops  # noqa: F401 - loads .so + registers torch.ops.custom namespace
+        _CUSTOM_OPS_LOADED = True
 
 
 _FP32_BYTES = 4
@@ -150,7 +155,7 @@ class QuantBlockSparseAttnMetadataBuilder:
             q_fallback = int(query.shape[0])
         num_heads_kv = int(key.shape[1])
         kv_fallback = int(key.shape[0] * key.shape[2]) if key.dim() == 4 else int(key.shape[0])
-        metadata = torch.ops.cann_ops_transformer.quant_block_sparse_attn_metadata(
+        metadata = torch.ops.custom.npu_quant_block_sparse_attn_metadata(
             sparse_seq_len,
             num_heads_q,
             num_heads_kv,
@@ -232,7 +237,7 @@ def quant_block_sparse_attn(
             mask_mode=mask_mode, quant_mode=quant_mode,
             max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
         )
-    return torch.ops.cann_ops_transformer.quant_block_sparse_attn(
+    return torch.ops.custom.npu_quant_block_sparse_attn(
         query, key, value, q_descale, k_descale, v_descale, p_scale,
         sparse_indices, sparse_seq_len, atten_mask,
         cu_seqlens_q=cu_seqlens_q, cu_seqlens_kv=cu_seqlens_kv,
