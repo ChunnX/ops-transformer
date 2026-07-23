@@ -407,18 +407,21 @@ def tilelang_grad_kl_loss_single_kernel(
             T.wait_flag("mte3", "mte2", 1)
 
     @T.macro
-    def cube1_p_task(
+    def cube1_task(
         Query,
         QueryRope,
+        QueryIndex,
         GatherKey_ws,
         GatherKeyRope_ws,
+        GatherKeyIndex_ws,
         bmm1Res,
+        bmm2Res,
         bz_task,
         s1_begin_task,
         s1_end_task,
         task_slot,
     ):
-        """Compute P with explicit L1/L0/MMA/FIX ownership."""
+        """Compute P and SY with explicit L1/L0/MMA/FIX ownership."""
         with T.Scope("C"):
             # Query is invariant across all K tiles of this task. Keep each
             # K_SPLIT slice in a physically exact L1 allocation: a slice of a
@@ -435,9 +438,18 @@ def tilelang_grad_kl_loss_single_kernel(
             c1_q_l0a = T.alloc_L0A((N1, K_SPLIT), input_dtype)
             c1_key_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
             c1_p_l0c = T.alloc_L0C((N1, N_SPLIT), calc_dtype)
+            c1_qi_l1 = T.alloc_L1((Nidx1, K_SPLIT), input_dtype)
+            c1_ki_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
+            c1_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
+            c1_ki_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
+            c1_sy_l0c = T.alloc_L0C((Nidx1, N_SPLIT), calc_dtype)
+
             T.set_flag("mte1", "mte2", 0)
             T.set_flag("m", "mte1", 0)
             T.set_flag("fix", "m", 0)
+            T.set_flag("mte1", "mte2", 1)
+            T.set_flag("m", "mte1", 1)
+            T.set_flag("fix", "m", 1)
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 T.copy(
@@ -465,6 +477,12 @@ def tilelang_grad_kl_loss_single_kernel(
                 # The existing C1 tile event IDs remain owned by Key traffic.
                 T.set_flag("mte2", "mte1", 4)
                 T.wait_flag("mte2", "mte1", 4)
+
+                T.copy(
+                    QueryIndex[bz_task, s1_id, 0:Nidx1, 0:DQueryIndex],
+                    c1_qi_l1,
+                )
+                T.set_flag("mte2", "mte1", 5)
 
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
                     if k_outer % 2 == 0:
@@ -595,34 +613,6 @@ def tilelang_grad_kl_loss_single_kernel(
                 else:
                     T.set_cross_flag("FIX", C1_TO_V1_P_FLAGS[1])
 
-    @T.macro
-    def cube1_sy_task(
-        QueryIndex,
-        GatherKeyIndex_ws,
-        bmm2Res,
-        bz_task,
-        s1_begin_task,
-        s1_end_task,
-        task_slot,
-    ):
-        """Compute SY after P so its L1/L0 storage has an independent lifetime."""
-        with T.Scope("C"):
-            c1_qi_l1 = T.alloc_L1((Nidx1, K_SPLIT), input_dtype)
-            c1_ki_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
-            c1_qi_l0a = T.alloc_L0A((Nidx1, K_SPLIT), input_dtype)
-            c1_ki_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
-            c1_sy_l0c = T.alloc_L0C((Nidx1, N_SPLIT), calc_dtype)
-
-            T.set_flag("mte1", "mte2", 1)
-            T.set_flag("m", "mte1", 1)
-            T.set_flag("fix", "m", 1)
-
-            for s1_id in T.serial(s1_begin_task, s1_end_task):
-                T.copy(
-                    QueryIndex[bz_task, s1_id, 0:Nidx1, 0:DQueryIndex],
-                    c1_qi_l1,
-                )
-                T.set_flag("mte2", "mte1", 5)
                 T.wait_flag("mte2", "mte1", 5)
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
                     if k_outer % 2 == 0:
@@ -2546,20 +2536,14 @@ def tilelang_grad_kl_loss_single_kernel(
                             bz_prev = task_prev // S1
                             s1_prev = task_prev % S1
                             task_prev_slot = task_prev_iter % 2
-                            cube1_p_task(
+                            cube1_task(
                                 Query,
                                 QueryRope,
+                                QueryIndex,
                                 GatherKey_ws,
                                 GatherKeyRope_ws,
-                                bmm1Res,
-                                bz_prev,
-                                s1_prev,
-                                s1_prev + 1,
-                                task_prev_slot,
-                            )
-                            cube1_sy_task(
-                                QueryIndex,
                                 GatherKeyIndex_ws,
+                                bmm1Res,
                                 bmm2Res,
                                 bz_prev,
                                 s1_prev,
