@@ -956,8 +956,12 @@ def tilelang_grad_kl_loss_single_kernel(
                 # This avoids a strided GM->UB column DMA for each output.
                 dw_partial_ub = T.alloc_ub((n_num, Nidx1), calc_dtype)
                 dw_sum_ub = T.alloc_ub(Nidx1, calc_dtype)
-                if weight_output_dtype != calc_dtype:
-                    dw_out_ub = T.alloc_ub(Nidx1, weight_output_dtype)
+                # Allocate outside the static dtype branch.  TileLang's
+                # parser validates names before it folds that branch.
+                dw_out_ub = T.alloc_ub(Nidx1, weight_output_dtype)
+                final_loss_chunk_ub = T.alloc_ub((1, 128), calc_dtype)
+                final_loss_chunk_sum_ub = T.alloc_ub((1,), calc_dtype)
+                final_loss_total_ub = T.alloc_ub((1,), calc_dtype)
                 dw_item_count = B * S1
                 dw_iters_per_aiv = ceil_div(dw_item_count, total_aiv_num)
                 T.set_flag("mte3", "mte2", 2)
@@ -986,9 +990,6 @@ def tilelang_grad_kl_loss_single_kernel(
                 # LossPartial is zero-filled and stores one scalar every 32 B.
                 if cid == 0:
                     if vid == 0:
-                        final_loss_chunk_ub = T.alloc_ub((1, 128), calc_dtype)
-                        final_loss_chunk_sum_ub = T.alloc_ub((1,), calc_dtype)
-                        final_loss_total_ub = T.alloc_ub((1,), calc_dtype)
                         T.tile.fill(final_loss_total_ub, 0.0)
                         T.set_flag("v", "mte2", 3)
                         for loss_chunk_id in T.serial(loss_partial_size // 128):
