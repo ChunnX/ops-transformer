@@ -148,6 +148,7 @@ constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 9;
 constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 10;
 
 // Dim Index
+constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
 constexpr uint32_t DIM_IDX_THREE = 3;
