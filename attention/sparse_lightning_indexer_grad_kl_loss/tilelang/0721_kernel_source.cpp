@@ -482,8 +482,6 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           tl::ascend::Fill<float>(v1_bw_eps[0], 1.000000e-08f, 64);
           AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(0);
           AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(1);
-          AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(0);
-          AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(1);
           AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(3);
           tl::ascend::Fill<float>(v1_bw_dw_accum[0], 0.000000e+00f, 32);
           tl::ascend::Fill<float>(v1_bw_loss_accum[0], 0.000000e+00f, 1);
@@ -512,6 +510,9 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(((bw_tile_id + 1) % 2));
             }
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>((bw_tile_id % 2));
+            if (0 < bw_tile_id) {
+              AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(((bw_tile_id + 1) % 2));
+            }
             AscendC::Sub(v1_bw_diff[0], v1_bw_sy_db[((bw_tile_id % 2) * 64)], v1_bw_p_db[((bw_tile_id % 2) * 64)], 64);
             AscendC::PipeBarrier<PIPE_V>();
             tl::ascend::Broadcast<float, 2, 0, false>(v1_bw_diff_2d[0],v1_bw_diff[0],tmp_ub,(uint32_t[]){32, 64}, (uint32_t[]){1, 64});
@@ -536,7 +537,6 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             AscendC::Add(v1_bw_dw_accum[0], v1_bw_dw_accum[0], v1_bw_dw[0], 32);
             AscendC::Cast(v1_bw_rg_half_db[((bw_tile_id % 2) * 2048)], v1_bw_rg[0], AscendC::RoundMode::CAST_RINT, 2048);
             AscendC::PipeBarrier<PIPE_V>();
-            AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>((bw_tile_id % 2));
             AscendC::SetFlag<AscendC::HardEvent::V_MTE3>((bw_tile_id % 2));
             AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>((bw_tile_id % 2));
             AscendC::PipeBarrier<PIPE_MTE3>();
@@ -564,7 +564,6 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           }
           AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(0);
           AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(1);
-          AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(0);
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(1);
           AscendC::PipeBarrier<PIPE_V>();
           AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(3);
