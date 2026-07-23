@@ -19,17 +19,17 @@ class SparseFlashMlaSoftmaxL1Norm : public OpDef {
 public:
     explicit SparseFlashMlaSoftmaxL1Norm(const char* name) : OpDef(name)
     {
-        this->Input("query")
+        this->Input("q")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("key")
+        this->Input("k")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
-        this->Input("lse")
+        this->Input("softmax_lse")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
@@ -78,7 +78,7 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Attr("scale_value").AttrType(OPTIONAL).Float(1.0);
+        this->Attr("softmax_scale").AttrType(OPTIONAL).Float(1.0);
         this->Attr("max_seqlen_k").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);

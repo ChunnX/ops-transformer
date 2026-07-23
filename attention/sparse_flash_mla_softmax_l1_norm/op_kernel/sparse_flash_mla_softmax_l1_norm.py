@@ -509,7 +509,6 @@ def sparse_flash_mla_softmax_l1_norm(
     workspace: pl.Ptr[pl.DT_UINT8],
     tiling: OpTiling,
 ):
-    # pl.printf("SPARSE_MODE: %d, IS_TND: %d, IS_SPARSE: %d\n", SPARSE_MODE, IS_TND, IS_SPARSE)
     if IS_TND == 1:
         tensor_q = pl.make_tensor(
             query,
