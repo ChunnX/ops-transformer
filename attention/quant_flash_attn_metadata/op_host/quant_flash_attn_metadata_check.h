@@ -68,7 +68,7 @@ private:
 inline aclnnStatus
 QuantFlashAttnMetadataCheck::ParamsCheck(const aclTensor *cuSeqlensQOptional, const aclTensor *cuSeqlensKvOptional,
                                          const aclTensor *sequsedQOptional, const aclTensor *sequsedKvOptional,
-                                           const aclTensor *vDescaleOptional, int64_t batchSize,
+                                         const aclTensor *vDescaleOptional, int64_t batchSize,
                                          int64_t maxSeqlenQ, int64_t maxSeqlenKv, int64_t numHeadsQ,
                                          int64_t numHeadsKv, int64_t headDim, int64_t quantMode,
                                          int64_t maskMode, int64_t winLeft, int64_t winRight,

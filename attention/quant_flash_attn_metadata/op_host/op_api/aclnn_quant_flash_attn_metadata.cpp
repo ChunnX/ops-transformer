@@ -43,7 +43,7 @@ aclnnStatus aclnnQuantFlashAttnMetadataGetWorkspaceSize(
 {
     L2_DFX_PHASE_1(aclnnQuantFlashAttnMetadata,
                    DFX_IN(cuSeqlensQOptional, cuSeqlensKvOptional, sequsedQOptional, sequsedKvOptional,
-                           vDescaleOptional, batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim,
+                          vDescaleOptional, batchSize, maxSeqlenQ, maxSeqlenKv, numHeadsQ, numHeadsKv, headDim,
                           quantMode, maskMode, winLeft, winRight, layoutQ, layoutQDescale, layoutKv, layoutOut),
                    DFX_OUT(metaData));
 
