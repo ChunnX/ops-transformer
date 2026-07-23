@@ -13,8 +13,10 @@ from typing import Callable, Optional, Tuple, Union
 
 import torch
 import torch.distributed as dist
+from torch import _check as _torch_check
 
 from cann_ops_transformer.op_builder.builder import OpBuilder
+
 
 @dataclass
 class EngramFetchCtx:
@@ -22,16 +24,17 @@ class EngramFetchCtx:
 
     Attributes:
         perm: (T,) int32 — 桶排列序索引, pos反向步骤①按此重排 grad
-        sendCounts: (W,) int32 — 每 rank 发送的 index 数，反向 a2a 的 send 量
-        recvCounts: (W,) int32 — 每 rank 接收的 index 数，反向 a2a 的 recv 量
-        recvLocalEntry: (R_max,) int32 — 收到的 local entry,反向步骤③ scatter-add 按此聚合
-        numRecv: (1,) int32 — 实际接收行数 R(前 numRecv 个有效)
+        send_counts: (W,) int32 — 每 rank 发送的 index 数，反向 a2a 的 send 量
+        recv_counts: (W,) int32 — 每 rank 接收的 index 数，反向 a2a 的 recv 量
+        recv_local_entry: (R_max,) int32 — 收到的 local entry,反向步骤③ scatter-add 按此聚合
+        num_recv: (1,) int32 — 实际接收行数 R(前 num_recv 个有效)
     """
     perm: torch.Tensor
-    sendCounts: torch.Tensor
-    recvCounts: torch.Tensor
-    recvLocalEntry: torch.Tensor
-    numRecv: torch.Tensor
+    send_counts: torch.Tensor
+    recv_counts: torch.Tensor
+    recv_local_entry: torch.Tensor
+    num_recv: torch.Tensor
+
 
 class ElasticBufferOpBuilder(OpBuilder):
     """OpBuilder for ElasticBuffer operations"""
@@ -145,7 +148,7 @@ class ElasticBuffer:
         if not with_grad:
             moe_arg_names = ("num_max_tokens_per_rank", "hidden", "num_topk")
             missing_args = [name for name, val in zip(moe_arg_names, moe_args) if val is None]
-            torch._check(
+            _torch_check(
                 len(missing_args) == 0 or len(missing_args) == len(moe_args),
                 lambda: (
                     "num_max_tokens_per_rank, hidden and num_topk "
@@ -361,13 +364,13 @@ class ElasticBuffer:
                 grad_unique (K, H) fp32 — 累加后的稀疏梯度，喂优化器。
                 unique_local_entry (K,) int32 — 1D sparse index。
         """
-        torch._check(grad_fetched.device.type == torch.device("npu").type,
+        _torch_check(grad_fetched.device.type == torch.device("npu").type,
                      lambda: f"grad_fetched must be on NPU, got device: {grad_fetched.device}")
-        torch._check(grad_fetched.dim() == 2,
+        _torch_check(grad_fetched.dim() == 2,
                      lambda: f"grad_fetched must be 2D, got dimensions: {grad_fetched.dim()}")
         return self._runtime.engram_fetch_grad(
-            grad_fetched, fetch_ctx.perm, fetch_ctx.sendCounts,
-            fetch_ctx.recvCounts, fetch_ctx.recvLocalEntry, fetch_ctx.numRecv)
+            grad_fetched, fetch_ctx.perm, fetch_ctx.send_counts,
+            fetch_ctx.recv_counts, fetch_ctx.recv_local_entry, fetch_ctx.num_recv)
 
     def dispatch(
         self,
