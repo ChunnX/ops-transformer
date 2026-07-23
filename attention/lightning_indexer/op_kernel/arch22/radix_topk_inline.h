@@ -16,6 +16,12 @@ static constexpr int16_t RDX_XOR = 0x8000;
 #define RDX_S_V_SYNC() do { event_t _e = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V)); \
     SetFlag<HardEvent::S_V>(_e); WaitFlag<HardEvent::S_V>(_e); } while(0)
 
+#define RDX_UB2UB(dst, src, count) do { \
+    uint32_t _c = (count); \
+    DataCopy(dst, src, _c > 2048 ? 2048 : _c); \
+    if (_c > 2048) { DataCopy(dst[2048], src[2048], _c - 2048); } \
+} while(0)
+
 template <typename T = void>
 __aicore__ inline void InlineRadixTopK(
     TPipe *pipe,
@@ -145,7 +151,7 @@ __aicore__ inline void InlineRadixTopK(
 
         // Ping-Pong tile loop: overlap UB→UB DataCopy with V computation
         // Prefetch first tile to xBufPing
-        DataCopy(xBufPing.Get<float>(), scoreCache[0], tileLenAlign_);
+        RDX_UB2UB(xBufPing.Get<float>(), scoreCache[0], tileLenAlign_);
         SetFlag<HardEvent::MTE2_V>(mte2ToV);
         bool pingPongFlag = true;
 
@@ -159,7 +165,7 @@ __aicore__ inline void InlineRadixTopK(
 
             // Prefetch next tile (overlap with current tile's V computation)
             if (tileId < tileNum_ - 1) {
-                DataCopy(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
+                RDX_UB2UB(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
             }
 
             // Wait for current tile data ready
@@ -331,7 +337,7 @@ __aicore__ inline void InlineRadixTopK(
     bool mte3Pending = false;
 
     uint32_t writeOffset = 0;
-    DataCopy(xBufPing.Get<float>(), scoreCache[0], tileLenAlign_);
+    RDX_UB2UB(xBufPing.Get<float>(), scoreCache[0], tileLenAlign_);
     SetFlag<HardEvent::MTE2_V>(mte2ToV);
     bool ppFlag = true;
 
@@ -342,7 +348,7 @@ __aicore__ inline void InlineRadixTopK(
         if (curTileK <= 0) {
             if (tileId < tileNum_ - 1) {
                 TBuf<TPosition::VECCALC>& nextBuf = ppFlag ? xBufPong : xBufPing;
-                DataCopy(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
+                RDX_UB2UB(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
             }
             WaitFlag<HardEvent::MTE2_V>(mte2ToV);
             if (tileId < tileNum_ - 1) {
@@ -361,7 +367,7 @@ __aicore__ inline void InlineRadixTopK(
         TBuf<TPosition::VECCALC>& curBuf = ppFlag ? xBufPing : xBufPong;
         TBuf<TPosition::VECCALC>& nextBuf = ppFlag ? xBufPong : xBufPing;
         if (tileId < tileNum_ - 1) {
-            DataCopy(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
+            RDX_UB2UB(nextBuf.Get<float>(), scoreCache[(tileId + 1) * tileLen_], tileLenAlign_);
         }
         WaitFlag<HardEvent::MTE2_V>(mte2ToV);
 
