@@ -87,8 +87,6 @@ BlockSparseAttentionGrad输入dout、query、key、value, attentionOut的数据�
 - <term>Atlas A2 训练产品</term>、<term>Atlas A3 训练产品</term>:
 不支持"BSND"。
 
-</ul>
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnBlockSparseAttentionGradGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnBlockSparseAttentionGrad"接口执行计算。
