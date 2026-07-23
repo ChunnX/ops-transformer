@@ -35,6 +35,10 @@ V1_TO_C2_FLAGS = (8, 9)
 # kernel on A3.  Mode-2 aggregates the same flag from both AIVs at their AIC.
 V1_PSY_TO_AIC_FLAG = 10
 V1_PSY_RELAY_FLAG = 12
+# Match the official deterministic C2 -> V2 hand-off.  Flag 10 is reused only
+# after relay_vector1_psy has consumed its earlier V1 publication, so the two
+# lifetimes cannot overlap within one task.
+C2_TO_V2_FLAGS = (10, 11)
 
 DQUERY = 512
 DQUERY_INDEX = 128
@@ -265,15 +269,12 @@ def tilelang_grad_kl_loss_single_kernel(
     # 16 rows * 128 fp32 values * 4 bytes = 8 KiB per slot.
     v2_scatter_batch = 16
     v2_total_batches = K // v2_scatter_batch
-    v2_base_batches_per_core = v2_total_batches // launch_core_num
-    v2_tail_batch_cores = v2_total_batches % launch_core_num
+    v2_first_vector_batches = (v2_total_batches + 1) // 2
     v2_k_padded = K
     dkey_output_rows = B * S2
     assert dkey_output_rows % 32 == 0, (
         "The padded dKey output must preserve 32-row DMA alignment"
     )
-    dkey_clear_batch = 32
-    dkey_clear_total_batches = dkey_output_rows // dkey_clear_batch
     dkey_finalize_batch = 16
     dkey_finalize_total_batches = dkey_output_rows // dkey_finalize_batch
     loss_reduce_chunk = 128
@@ -1289,179 +1290,146 @@ def tilelang_grad_kl_loss_single_kernel(
             T.wait_flag("fix", "m", 2)
             T.wait_flag("m", "mte1", 3)
             T.wait_flag("fix", "m", 3)
+            if task_slot == 0:
+                T.set_cross_flag("FIX", C2_TO_V2_FLAGS[0])
+            else:
+                T.set_cross_flag("FIX", C2_TO_V2_FLAGS[1])
 
     @T.macro
-    def clear_dkey_accumulator(dKeyIndexAccum, core_id, vector_id):
-        """Clear the FP32 scatter target across all AIVs inside the kernel."""
-        with T.Scope("V"):
-            v2_zero_batch = T.alloc_ub(
-                (dkey_clear_batch, DQueryIndex), calc_dtype
-            )
-            aiv_id = core_id * 2 + vector_id
-            clear_base_batches = dkey_clear_total_batches // total_aiv_num
-            clear_tail_aivs = dkey_clear_total_batches % total_aiv_num
-            clear_batch_count = clear_base_batches + T.if_then_else(
-                aiv_id < clear_tail_aivs, 1, 0
-            )
-            clear_batch_start = (
-                aiv_id * clear_base_batches + T.min(aiv_id, clear_tail_aivs)
-            )
-
-            T.tile.fill(v2_zero_batch, 0.0)
-            T.set_flag("v", "mte3", 5)
-            T.wait_flag("v", "mte3", 5)
-            for clear_iter in T.serial(clear_batch_count):
-                clear_row = (
-                    clear_batch_start + clear_iter
-                ) * dkey_clear_batch
-                T.copy(
-                    v2_zero_batch,
-                    dKeyIndexAccum[
-                        clear_row:clear_row + dkey_clear_batch,
-                        0:DQueryIndex,
-                    ],
-                )
-            T.set_flag("mte3", "v", 5)
-            T.wait_flag("mte3", "v", 5)
-
-    @T.macro
-    def vector2_scatter_all_tasks(
+    def vector2_scatter_task(
         SparseIndices,
         dk_matmul_partial,
-        dKeyIndexAccum,
-        core_id,
+        dKeyScatterPing,
+        dKeyScatterPong,
+        bz_task,
+        s1_begin_task,
+        s1_end_task,
+        task_id,
+        task_slot,
         vector_id,
     ):
-        """Batch GM-to-UB and ping-pong scatter over every task using all cores."""
+        """Consume the current task's C2 output in the V2 scatter stage."""
         with T.Scope("V"):
+            if task_slot == 0:
+                T.wait_cross_flag(C2_TO_V2_FLAGS[0])
+            else:
+                T.wait_cross_flag(C2_TO_V2_FLAGS[1])
+
             v2_dk_batch_ping = T.alloc_ub(
                 (v2_scatter_batch, DQueryIndex), calc_dtype
             )
             v2_dk_batch_pong = T.alloc_ub(
                 (v2_scatter_batch, DQueryIndex), calc_dtype
             )
-            core_batch_count = v2_base_batches_per_core + T.if_then_else(
-                core_id < v2_tail_batch_cores, 1, 0
-            )
-            core_batch_start = (
-                core_id * v2_base_batches_per_core
-                + T.min(core_id, v2_tail_batch_cores)
-            )
-            first_vector_batches = (core_batch_count + 1) // 2
             vector_batch_count = (
-                first_vector_batches
-                - vector_id * (2 * first_vector_batches - core_batch_count)
+                v2_first_vector_batches
+                - vector_id * (2 * v2_first_vector_batches - v2_total_batches)
             )
-            vector_batch_start = (
-                core_batch_start + vector_id * first_vector_batches
-            )
-            aiv_k_start = vector_batch_start * v2_scatter_batch
+            aiv_k_start = vector_id * v2_first_vector_batches * v2_scatter_batch
 
             T.set_flag("mte3", "mte2", 6)
             T.set_flag("mte3", "mte2", 7)
-            for task_id in T.serial(task_count):
-                bz_task = task_id // S1
-                s1_task = task_id % S1
+            for s1_id in T.serial(s1_begin_task, s1_end_task):
+                T.wait_flag("mte3", "mte2", 6)
+                T.copy(
+                    dk_matmul_partial[
+                        bz_task,
+                        s1_id,
+                        aiv_k_start:aiv_k_start + v2_scatter_batch,
+                        0:DQueryIndex,
+                    ],
+                    v2_dk_batch_ping,
+                )
+                T.set_flag("mte2", "mte3", 6)
 
-                if vector_batch_count > 0:
-                    T.wait_flag("mte3", "mte2", 6)
-                    T.copy(
-                        dk_matmul_partial[
-                            bz_task,
-                            s1_task,
-                            aiv_k_start:aiv_k_start + v2_scatter_batch,
-                            0:DQueryIndex,
-                        ],
-                        v2_dk_batch_ping,
-                    )
-                    T.set_flag("mte2", "mte3", 6)
-
-                    for batch_id in T.serial(vector_batch_count):
-                        current_slot = batch_id % 2
-                        next_slot = (batch_id + 1) % 2
-                        if batch_id + 1 < vector_batch_count:
-                            next_k_start = (
-                                aiv_k_start
-                                + (batch_id + 1) * v2_scatter_batch
+                for batch_id in T.serial(vector_batch_count):
+                    current_slot = batch_id % 2
+                    next_slot = (batch_id + 1) % 2
+                    if batch_id + 1 < vector_batch_count:
+                        next_k_start = (
+                            aiv_k_start
+                            + (batch_id + 1) * v2_scatter_batch
+                        )
+                        T.wait_flag("mte3", "mte2", next_slot + 6)
+                        if next_slot == 0:
+                            T.copy(
+                                dk_matmul_partial[
+                                    bz_task,
+                                    s1_id,
+                                    next_k_start:next_k_start + v2_scatter_batch,
+                                    0:DQueryIndex,
+                                ],
+                                v2_dk_batch_ping,
                             )
-                            T.wait_flag("mte3", "mte2", next_slot + 6)
-                            if next_slot == 0:
-                                T.copy(
-                                    dk_matmul_partial[
-                                        bz_task,
-                                        s1_task,
-                                        next_k_start:next_k_start + v2_scatter_batch,
-                                        0:DQueryIndex,
-                                    ],
-                                    v2_dk_batch_ping,
-                                )
+                        else:
+                            T.copy(
+                                dk_matmul_partial[
+                                    bz_task,
+                                    s1_id,
+                                    next_k_start:next_k_start + v2_scatter_batch,
+                                    0:DQueryIndex,
+                                ],
+                                v2_dk_batch_pong,
+                            )
+                        T.set_flag("mte2", "mte3", next_slot + 6)
+
+                    T.wait_flag("mte2", "mte3", current_slot + 6)
+                    for pair_idx in T.serial(v2_scatter_batch // 2):
+                        row_idx = pair_idx * 2
+                        k_idx = (
+                            aiv_k_start
+                            + batch_id * v2_scatter_batch
+                            + row_idx
+                        )
+                        sparse_idx0 = SparseIndices[bz_task, s1_id, 0, k_idx]
+                        sparse_idx1 = SparseIndices[bz_task, s1_id, 0, k_idx + 1]
+                        if sparse_idx0 >= 0:
+                            if task_id % 2 == 0:
+                                if current_slot == 0:
+                                    T.tile.atomic_add(
+                                        dKeyScatterPing[bz_task * S2 + sparse_idx0, 0],
+                                        v2_dk_batch_ping[row_idx:row_idx + 1, 0:DQueryIndex],
+                                    )
+                                else:
+                                    T.tile.atomic_add(
+                                        dKeyScatterPing[bz_task * S2 + sparse_idx0, 0],
+                                        v2_dk_batch_pong[row_idx:row_idx + 1, 0:DQueryIndex],
+                                    )
                             else:
-                                T.copy(
-                                    dk_matmul_partial[
-                                        bz_task,
-                                        s1_task,
-                                        next_k_start:next_k_start + v2_scatter_batch,
-                                        0:DQueryIndex,
-                                    ],
-                                    v2_dk_batch_pong,
-                                )
-                            T.set_flag("mte2", "mte3", next_slot + 6)
-
-                        T.wait_flag("mte2", "mte3", current_slot + 6)
-                        for pair_idx in T.serial(v2_scatter_batch // 2):
-                            row_idx = pair_idx * 2
-                            k_idx = (
-                                aiv_k_start
-                                + batch_id * v2_scatter_batch
-                                + row_idx
-                            )
-                            sparse_idx0 = SparseIndices[
-                                bz_task, s1_task, 0, k_idx
-                            ]
-                            sparse_idx1 = SparseIndices[
-                                bz_task, s1_task, 0, k_idx + 1
-                            ]
-                            if sparse_idx0 >= 0:
                                 if current_slot == 0:
                                     T.tile.atomic_add(
-                                        dKeyIndexAccum[
-                                            bz_task * S2 + sparse_idx0, 0
-                                        ],
-                                        v2_dk_batch_ping[
-                                            row_idx:row_idx + 1, 0:DQueryIndex
-                                        ],
+                                        dKeyScatterPong[bz_task * S2 + sparse_idx0, 0],
+                                        v2_dk_batch_ping[row_idx:row_idx + 1, 0:DQueryIndex],
                                     )
                                 else:
                                     T.tile.atomic_add(
-                                        dKeyIndexAccum[
-                                            bz_task * S2 + sparse_idx0, 0
-                                        ],
-                                        v2_dk_batch_pong[
-                                            row_idx:row_idx + 1, 0:DQueryIndex
-                                        ],
+                                        dKeyScatterPong[bz_task * S2 + sparse_idx0, 0],
+                                        v2_dk_batch_pong[row_idx:row_idx + 1, 0:DQueryIndex],
                                     )
-                            if sparse_idx1 >= 0:
+                        if sparse_idx1 >= 0:
+                            if task_id % 2 == 0:
                                 if current_slot == 0:
                                     T.tile.atomic_add(
-                                        dKeyIndexAccum[
-                                            bz_task * S2 + sparse_idx1, 0
-                                        ],
-                                        v2_dk_batch_ping[
-                                            row_idx + 1:row_idx + 2,
-                                            0:DQueryIndex,
-                                        ],
+                                        dKeyScatterPing[bz_task * S2 + sparse_idx1, 0],
+                                        v2_dk_batch_ping[row_idx + 1:row_idx + 2, 0:DQueryIndex],
                                     )
                                 else:
                                     T.tile.atomic_add(
-                                        dKeyIndexAccum[
-                                            bz_task * S2 + sparse_idx1, 0
-                                        ],
-                                        v2_dk_batch_pong[
-                                            row_idx + 1:row_idx + 2,
-                                            0:DQueryIndex,
-                                        ],
+                                        dKeyScatterPing[bz_task * S2 + sparse_idx1, 0],
+                                        v2_dk_batch_pong[row_idx + 1:row_idx + 2, 0:DQueryIndex],
                                     )
-                        T.set_flag("mte3", "mte2", current_slot + 6)
+                            else:
+                                if current_slot == 0:
+                                    T.tile.atomic_add(
+                                        dKeyScatterPong[bz_task * S2 + sparse_idx1, 0],
+                                        v2_dk_batch_ping[row_idx + 1:row_idx + 2, 0:DQueryIndex],
+                                    )
+                                else:
+                                    T.tile.atomic_add(
+                                        dKeyScatterPong[bz_task * S2 + sparse_idx1, 0],
+                                        v2_dk_batch_pong[row_idx + 1:row_idx + 2, 0:DQueryIndex],
+                                    )
+                    T.set_flag("mte3", "mte2", current_slot + 6)
 
             T.wait_flag("mte3", "mte2", 6)
             T.wait_flag("mte3", "mte2", 7)
@@ -1469,7 +1437,8 @@ def tilelang_grad_kl_loss_single_kernel(
     @T.macro
     def finalize_vector_outputs(
         dQueryIndexAccum,
-        dKeyIndexAccum,
+        dKeyScatterPing,
+        dKeyScatterPong,
         dQueryIndexOut,
         dKeyIndexOut,
         LossPartial,
@@ -1481,7 +1450,10 @@ def tilelang_grad_kl_loss_single_kernel(
         with T.Scope("V"):
             v2_finalize_dq_fp32 = T.alloc_ub((1, DQueryIndex), calc_dtype)
             v2_finalize_dq_half = T.alloc_ub((1, DQueryIndex), input_dtype)
-            v2_finalize_dk_fp32 = T.alloc_ub(
+            v2_finalize_dk_ping_fp32 = T.alloc_ub(
+                (2, dkey_finalize_batch, DQueryIndex), calc_dtype
+            )
+            v2_finalize_dk_pong_fp32 = T.alloc_ub(
                 (2, dkey_finalize_batch, DQueryIndex), calc_dtype
             )
             v2_finalize_dk_half = T.alloc_ub(
@@ -1559,18 +1531,31 @@ def tilelang_grad_kl_loss_single_kernel(
 
                 T.wait_flag("v", "mte2", finalize_slot + 5)
                 T.copy(
-                    dKeyIndexAccum[
+                    dKeyScatterPing[
                         finalize_row:finalize_row + dkey_finalize_batch,
                         0:DQueryIndex,
                     ],
-                    v2_finalize_dk_fp32[finalize_slot, :, :],
+                    v2_finalize_dk_ping_fp32[finalize_slot, :, :],
+                )
+                T.copy(
+                    dKeyScatterPong[
+                        finalize_row:finalize_row + dkey_finalize_batch,
+                        0:DQueryIndex,
+                    ],
+                    v2_finalize_dk_pong_fp32[finalize_slot, :, :],
                 )
                 T.set_flag("mte2", "v", finalize_slot + 5)
                 T.wait_flag("mte2", "v", finalize_slot + 5)
                 T.wait_flag("mte3", "v", finalize_slot + 5)
+                T.tile.add(
+                    v2_finalize_dk_ping_fp32[finalize_slot, :, :],
+                    v2_finalize_dk_ping_fp32[finalize_slot, :, :],
+                    v2_finalize_dk_pong_fp32[finalize_slot, :, :],
+                )
+                T.pipe_barrier("v")
                 T.tile.cast(
                     v2_finalize_dk_half[finalize_slot, :, :],
-                    v2_finalize_dk_fp32[finalize_slot, :, :],
+                    v2_finalize_dk_ping_fp32[finalize_slot, :, :],
                     "CAST_RINT",
                     dkey_finalize_batch * DQueryIndex,
                 )
@@ -2438,9 +2423,10 @@ def tilelang_grad_kl_loss_single_kernel(
         Weights: T.Tensor((B, S1, Nidx1), input_dtype),
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),
-        # Workspaces: 10-21
+        # Workspaces: 10-22
         dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype),
-        dKeyIndexAccum: T.Tensor((dkey_output_rows, DQueryIndex), calc_dtype),
+        dKeyScatterPing: T.Tensor((dkey_output_rows, DQueryIndex), calc_dtype),
+        dKeyScatterPong: T.Tensor((dkey_output_rows, DQueryIndex), calc_dtype),
         GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),
         GatherKeyRope_ws: T.Tensor((B, S1, K, d_rope), input_dtype),
         GatherKeyIndex_ws: T.Tensor((B, S1, K, DQueryIndex), input_dtype),
@@ -2541,24 +2527,26 @@ def tilelang_grad_kl_loss_single_kernel(
                                 s1_prev + 1,
                                 task_prev_slot,
                             )
+                            vector2_scatter_task(
+                                SparseIndices,
+                                dk_matmul_partial,
+                                dKeyScatterPing,
+                                dKeyScatterPong,
+                                bz_prev,
+                                s1_prev,
+                                s1_prev + 1,
+                                task_prev,
+                                task_prev_slot,
+                                vid,
+                            )
 
-            # All task owners must finish C2 before the all-core deterministic
-            # scatter phase starts.  This mirrors the official transition to
-            # ProcessDeterVector2 and also lets idle task cores participate.
-            T.sync_all()
-            clear_dkey_accumulator(dKeyIndexAccum, cid, vid)
-            T.sync_all()
-            vector2_scatter_all_tasks(
-                SparseIndices,
-                dk_matmul_partial,
-                dKeyIndexAccum,
-                cid,
-                vid,
-            )
+            # The task-local V2 atomic scatters are now complete.  This is the
+            # sole global dependency before the distributed add/cast stage.
             T.sync_all()
             finalize_vector_outputs(
                 dQueryIndexAccum,
-                dKeyIndexAccum,
+                dKeyScatterPing,
+                dKeyScatterPong,
                 dQueryIndex,
                 dKeyIndexOut,
                 LossPartial,
@@ -2817,7 +2805,7 @@ def sparse_lightning_indexer_grad_kl_loss(
         )
         if ws_key in _workspace_cache:
             ws = _workspace_cache[ws_key]
-            d_query_index_accum, d_key_index_accum, \
+            d_query_index_accum, d_key_scatter_ping, d_key_scatter_pong, \
                 gather_key_ws, gather_key_rope_ws, gather_key_index_ws, \
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws, \
                 dk_matmul_partial, relu_grad_out, loss_partial_ws = ws
@@ -2830,12 +2818,17 @@ def sparse_lightning_indexer_grad_kl_loss(
             p_reduced_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
             softmax_i_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
             d_query_index_accum = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
-            # dKeyIndex 融合：matmul 中间结果(workspace) + fp32 累加器输出
+            # Deterministic V2 scatters alternating tasks into independent
+            # FP32 workspaces; the final V2 stage adds them before CAST_RINT.
             dk_matmul_partial = torch.zeros(
                 B, S1, v2_k_padded, DQueryIndex,
                 dtype=torch.float32, device=query.device,
             )
-            d_key_index_accum = torch.empty(
+            d_key_scatter_ping = torch.zeros(
+                B * S2_pad, DQueryIndex,
+                dtype=torch.float32, device=query.device,
+            )
+            d_key_scatter_pong = torch.zeros(
                 B * S2_pad, DQueryIndex,
                 dtype=torch.float32, device=query.device,
             )
@@ -2844,7 +2837,7 @@ def sparse_lightning_indexer_grad_kl_loss(
                 loss_partial_size, dtype=torch.float32, device=query.device
             )
             _workspace_cache[ws_key] = (
-                d_query_index_accum, d_key_index_accum,
+                d_query_index_accum, d_key_scatter_ping, d_key_scatter_pong,
                 gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, softmax_i_ws,
                 dk_matmul_partial, relu_grad_out, loss_partial_ws,
@@ -2855,6 +2848,11 @@ def sparse_lightning_indexer_grad_kl_loss(
             gather_key_rope_ws.fill_(_GATHER_SENTINEL)
             gather_key_index_ws.fill_(_GATHER_SENTINEL)
 
+        # Atomic destinations are cached across invocations.  Reset them on
+        # the caller stream, replacing the removed in-kernel clear + SyncAll.
+        d_key_scatter_ping.zero_()
+        d_key_scatter_pong.zero_()
+
         if _PROFILE:
             _t_prep_end.record()
             _t_kernel_start.record()
@@ -2864,12 +2862,12 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_index, key_index,                    # 5-6
             weights, softmax_max, softmax_sum,         # 7-9
             d_query_index_accum,                       # 10 workspace
-            d_key_index_accum,                         # 11 workspace
-            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 12-14
-            bmm1_res_ws, bmm2_res_ws,                  # 15-16
-            p_reduced_ws, softmax_i_ws,                # 17-18
-            dk_matmul_partial, relu_grad_out,           # 19-20
-            loss_partial_ws,                           # 21
+            d_key_scatter_ping, d_key_scatter_pong,    # 11-12 workspaces
+            gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 13-15
+            bmm1_res_ws, bmm2_res_ws,                  # 16-17
+            p_reduced_ws, softmax_i_ws,                # 18-19
+            dk_matmul_partial, relu_grad_out,           # 20-21
+            loss_partial_ws,                           # 22
         )
         if _PROFILE:
             _t_kernel_end.record()
@@ -2921,7 +2919,8 @@ def sparse_lightning_indexer_grad_kl_loss(
             _debug_tensor("reluGradRes", relu_grad_out)
             _debug_tensor("dk_matmul_partial", dk_matmul_partial)
             _debug_tensor("dQueryIndexAccum", d_query_index_accum)
-            _debug_tensor("dKeyIndexAccum", d_key_index_accum)
+            _debug_tensor("dKeyScatterPing", d_key_scatter_ping)
+            _debug_tensor("dKeyScatterPong", d_key_scatter_pong)
             _debug_tensor("dWeightOut", d_weight)
             _debug_tensor("LossPartial", loss_partial_ws)
             _debug_tensor("LossOut", loss_out)
