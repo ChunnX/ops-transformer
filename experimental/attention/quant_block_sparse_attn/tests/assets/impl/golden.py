@@ -13,6 +13,8 @@
 """CPU golden adapter for quant_block_sparse_attn TTK cases."""
 
 import importlib.util
+import math
+import random
 import sys
 from pathlib import Path
 
@@ -61,33 +63,63 @@ def lengths_from_prefix(value):
     return [vals[i + 1] - vals[i] for i in range(len(vals) - 1)] if len(vals) > 1 else []
 
 
-def infer_geometry(query, key, layout_q, cu_seqlens_q, cu_seqlens_kv, seqused_q, seqused_kv):
+def infer_geometry(query, key, sparse_indices, layout_q, cu_seqlens_q, cu_seqlens_kv,
+                   seqused_q, seqused_kv, max_seqlen_q=0, max_seqlen_kv=0):
+    D = int(query.shape[-1])
+    N2 = int(key.shape[1]) if key.dim() >= 2 else 1
+
     if layout_q == "BSND":
-        B, S1, N1, D = [int(x) for x in query.shape]
-        N2 = key.shape[2] if key.dim() == 4 else key.shape[1]
+        B, S1, N1 = int(query.shape[0]), int(query.shape[1]), int(query.shape[2])
         q_lengths = to_list(seqused_q) or [S1] * B
     else:
-        T, N1, D = [int(x) for x in query.shape]
-        # PA layout: key shape is (num_blocks, N2, block_size, D)
-        # TND layout: key shape is (total_tokens, N2, D)
-        N2 = key.shape[1]
-        q_lengths = to_list(seqused_q) or lengths_from_prefix(cu_seqlens_q)
-        B = len(q_lengths)
+        T, N1 = int(query.shape[0]), int(query.shape[1])
+        B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
+        q_lengths = to_list(seqused_q) or lengths_from_prefix(cu_seqlens_q) or [T] * B
         S1 = max(q_lengths) if q_lengths else T
 
     kv_lengths = to_list(seqused_kv) or lengths_from_prefix(cu_seqlens_kv)
     if not kv_lengths:
-        if key.dim() == 4:
-            # PA layout: (num_blocks, N2, block_size, D) -> total_kv_len = num_blocks * block_size
-            num_blocks = key.shape[0]
-            block_size = key.shape[2]
+        if max_seqlen_kv > 0:
+            S2 = max_seqlen_kv
+        elif key.dim() == 4:
+            num_blocks = int(key.shape[0])
+            block_size = int(key.shape[2])
             S2 = num_blocks * block_size
         else:
-            # TND layout: (total_tokens, N2, D)
-            S2 = key.shape[0]
+            S2 = int(key.shape[0])
         kv_lengths = [S2] * B if B > 0 else [S2]
 
     return B, S1, N1, N2, D, q_lengths, kv_lengths
+
+
+def _auto_block_table(B, S2, block_size, pattern="sequential", seed=0):
+    num_blocks_per_batch = math.ceil(S2 / block_size)
+    block_table = torch.empty((B, num_blocks_per_batch), dtype=torch.int32)
+    rng = random.Random(seed)
+    for batch_idx in range(B):
+        ids = list(range(batch_idx * num_blocks_per_batch, (batch_idx + 1) * num_blocks_per_batch))
+        if pattern == "reverse":
+            ids.reverse()
+        elif pattern == "random":
+            rng.shuffle(ids)
+        block_table[batch_idx] = torch.tensor(ids, dtype=torch.int32)
+    return block_table
+
+
+def _pa_to_dense(pa_tensor, block_table, B, S2, dim_perm, block_size):
+    num_dims = pa_tensor.dim()
+    dense = torch.zeros((B, S2) + pa_tensor.shape[2:], dtype=pa_tensor.dtype)
+    for b in range(B):
+        for logical_block in range(block_table.shape[1]):
+            physical = int(block_table[b, logical_block].item())
+            start = logical_block * block_size
+            end = min(start + block_size, S2)
+            token_count = end - start
+            if token_count <= 0:
+                continue
+            src = pa_tensor[physical, :, :token_count]
+            dense[b, start:end] = src.permute(*dim_perm)
+    return dense
 
 
 def cpu_quant_block_sparse_attn(query, key, value, q_descale, k_descale, v_descale, p_scale,
@@ -118,16 +150,22 @@ def cpu_quant_block_sparse_attn(query, key, value, q_descale, k_descale, v_desca
     block_table_cpu = to_cpu(block_table) if block_table is not None else None
 
     B, S1, N1, N2, D, q_lengths, kv_lengths = infer_geometry(
-        q_cpu, key_cpu, layout_q, cu_seqlens_q_cpu, cu_seqlens_kv_cpu, seqused_q_cpu, seqused_kv_cpu)
+        q_cpu, key_cpu, sparse_indices_cpu, layout_q, cu_seqlens_q_cpu, cu_seqlens_kv_cpu,
+        seqused_q_cpu, seqused_kv_cpu, max_seqlen_q, max_seqlen_kv)
 
     sparse_q_block_size = int(sparse_q_block_size)
     sparse_kv_block_size = int(sparse_kv_block_size)
     max_seqlen_q = int(max_seqlen_q) if max_seqlen_q > 0 else S1
     max_seqlen_kv = int(max_seqlen_kv) if max_seqlen_kv > 0 else max(kv_lengths) if kv_lengths else S1
+    S2 = max(kv_lengths) if kv_lengths else max_seqlen_kv
 
     if key_cpu.dim() == 4:
-        dense_key = key_cpu.permute(0, 2, 1, 3).contiguous()
-        dense_value = value_cpu.permute(0, 2, 1, 3).contiguous()
+        if block_table_cpu is None:
+            bt_pattern = kwargs.get("block_table_pattern", "sequential")
+            bt_seed = kwargs.get("seed", 0)
+            block_table_cpu = _auto_block_table(B, S2, sparse_kv_block_size, bt_pattern, bt_seed)
+        dense_key = _pa_to_dense(key_cpu, block_table_cpu, B, S2, (1, 0, 2), sparse_kv_block_size)
+        dense_value = _pa_to_dense(value_cpu, block_table_cpu, B, S2, (1, 0, 2), sparse_kv_block_size)
         cu_seqlens_q_inp = None
         cu_seqlens_kv_inp = None
     else:
@@ -136,17 +174,17 @@ def cpu_quant_block_sparse_attn(query, key, value, q_descale, k_descale, v_desca
         cu_seqlens_q_inp = cu_seqlens_q_cpu
         cu_seqlens_kv_inp = cu_seqlens_kv_cpu
 
-    if k_descale_cpu.dim() == 1:
+    if k_descale_cpu.dim() == 3 and key_cpu.dim() == 4:
+        k_scale = _pa_to_dense(k_descale_cpu, block_table_cpu, B, S2, (1, 0), sparse_kv_block_size)
+    elif k_descale_cpu.dim() == 1:
         k_scale = k_descale_cpu.unsqueeze(0).expand(B, -1, N2).contiguous()
-    elif k_descale_cpu.dim() == 3:
-        k_scale = k_descale_cpu
     else:
         k_scale = k_descale_cpu
 
     v_scale = v_descale_cpu if v_descale_cpu.dim() == 1 else v_descale_cpu.view(-1)
 
     case = {
-        "B": B, "S1": S1, "S2": max(kv_lengths) if kv_lengths else S1,
+        "B": B, "S1": S1, "S2": S2,
         "N1": N1, "N2": N2, "D": D,
         "layout_q": layout_q,
         "softmax_scale": float(softmax_scale),
@@ -163,8 +201,6 @@ def cpu_quant_block_sparse_attn(query, key, value, q_descale, k_descale, v_desca
         cu_seqlens_q_inp, cu_seqlens_kv_inp,
         q_lengths, kv_lengths)
 
-    if not return_softmax_lse:
-        softmax_lse = torch.empty(0, dtype=torch.float32)
-
-    # TTK spec requires golden to return a list (one element per output)
-    return [attention_out, softmax_lse]
+    if return_softmax_lse:
+        return [attention_out, softmax_lse]
+    return [attention_out]

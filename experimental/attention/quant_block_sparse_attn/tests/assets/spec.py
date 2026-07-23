@@ -49,10 +49,11 @@ class QuantBlockSparseAttnSpec:
 
     @staticmethod
     def customize_inputs(*args, **kwargs):
-        return _load_impl_module("inputs").generate_bsa_inputs(*args, **kwargs)
+        return _load_impl_module("inputs").customize_inputs(*args, **kwargs)
 
     tolerance = {
         "bfloat16": {"standard": "stat_rel_err"},
+        "float32": {"standard": "stat_rel_err"},
     }
 
     @staticmethod

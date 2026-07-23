@@ -13,6 +13,7 @@
 """Compare helpers for quant_block_sparse_attn TestSpec adapters."""
 
 import numpy as np
+import torch
 
 _BF16_RTOL = 0.01
 _BF16_ATOL = 0.001
@@ -22,7 +23,7 @@ _FAIL_RATIO_LIMIT = 0.05
 def as_numpy(value):
     if hasattr(value, "detach"):
         value = value.detach().cpu()
-        if "bfloat16" in str(value.dtype):
+        if value.dtype == torch.bfloat16:
             value = value.float()
         value = value.numpy()
     return np.asarray(value)
