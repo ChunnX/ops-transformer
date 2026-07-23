@@ -65,7 +65,7 @@ std::string QLIV2DataTypeToSerialString(ge::DataType type)
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("QLIV2DataTypeToSerialString", "datatype %d not support", type);
+        OP_LOGE("QuantLightningIndexerV2", "datatype %d not support", type);
         return "UNDEFINED";
     }
 }
@@ -659,7 +659,7 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckOptionalInput()
                     std::to_string(opParamInfo_.cuSeqLensK.tensor->GetStorageShape().GetShapeSize()),
                     "when layout_q is TND and layout_k is TND, "
                     "input cu_seqlens_q'shape must equal cu_seqlens_k's shape"),
-                    return ge::GRAPH_FAILED);
+                return ge::GRAPH_FAILED);
         }
         OP_CHECK_IF(opParamInfo_.cuSeqLensQ.desc->GetDataType() != ge::DT_INT32,
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "cu_seqlens_q",
