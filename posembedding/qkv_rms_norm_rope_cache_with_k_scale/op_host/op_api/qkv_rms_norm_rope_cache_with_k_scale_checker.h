@@ -26,6 +26,12 @@ namespace QkvRmsNormRopeCacheWithKScaleCheck {
 
 constexpr float DEFAULT_EPSILON = 1e-6f;
 
+enum class QQuantMode : uint8_t {
+    PER_TOKEN_PER_HEAD = 0,
+    NO_QUANT = 1,
+    INVALID = 2,
+};
+
 inline bool CheckType(op::DataType dtype, const std::vector<op::DataType> &supportList)
 {
     for (const auto &supported : supportList) {
@@ -58,9 +64,7 @@ struct QkvRmsNormRopeCacheWithKScaleParams {
     const char *layoutQOut{nullptr};
     float epsilon{DEFAULT_EPSILON};
     const aclIntArray *mropeSectionOptional{nullptr};
-    // Effective mode resolved once by the ACLNN entry point.
-    const char *qQuantMode{nullptr};
-    int64_t qOutDtype{static_cast<int64_t>(op::DataType::DT_FLOAT8_E4M3FN)};
+    QQuantMode qQuantMode{QQuantMode::INVALID};
     // Outputs
     aclTensor *qOut{nullptr};
     aclTensor *qScale{nullptr};
@@ -105,9 +109,6 @@ public:
     static constexpr const char *QKV_LAYOUT_TND = "TND";
     static constexpr const char *DEFAULT_QKV_LAYOUT = QKV_LAYOUT_TND;
     static constexpr const char *DEFAULT_Q_OUT_LAYOUT = QKV_LAYOUT_NTD;
-    static constexpr const char *ROPE_Q_QUANT_MODE = "PerTokenPerHead";
-    static constexpr const char *MROPE_Q_QUANT_MODE = "NoQuant";
-
     // Dtype support lists
     inline static const std::vector<op::DataType> QKV_TYPE_LIST = {op::DataType::DT_BF16};
     inline static const std::vector<op::DataType> GAMMA_TYPE_LIST = {op::DataType::DT_FLOAT};
@@ -128,15 +129,19 @@ public:
     aclnnStatus CheckParams(const QkvRmsNormRopeCacheWithKScaleParams &p)
     {
         params_ = p;
-        aclnnStatus ret = DetermineScene();
+        aclnnStatus ret = CheckNotNull();
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
+        ret = DetermineScene();
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
+        ret = CheckSceneNotNull();
         if (ret != ACLNN_SUCCESS) {
             return ret;
         }
         ret = scene_ == SceneType::MROPE ? CheckMropeSceneParams() : CheckRopeSceneParams();
-        if (ret != ACLNN_SUCCESS) {
-            return ret;
-        }
-        ret = CheckNotNull();
         if (ret != ACLNN_SUCCESS) {
             return ret;
         }
@@ -182,17 +187,25 @@ private:
 
     aclnnStatus CheckRopeSceneParams() const
     {
-        if (params_.qQuantMode == nullptr || std::strcmp(params_.qQuantMode, ROPE_Q_QUANT_MODE) != 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                ACLNN_NAME, "qQuantMode", params_.qQuantMode == nullptr ? "nullptr" : params_.qQuantMode,
-                "the RoPE scene requires PerTokenPerHead");
+        if (params_.qQuantMode != QQuantMode::PER_TOKEN_PER_HEAD) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qQuantMode", "invalid mode",
+                                                  "the RoPE scene requires PerTokenPerHead");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        return ACLNN_SUCCESS;
+        return CheckDtypeSupported("kCacheRef", params_.kCache, CACHE_TYPE_LIST);
     }
 
     aclnnStatus CheckMropeSceneParams() const
     {
+        if (params_.qQuantMode != QQuantMode::NO_QUANT) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qQuantMode", "invalid mode",
+                                                  "the M-RoPE scene requires NoQuant");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        aclnnStatus kCacheRet = CheckDtypeSupported("kCacheRef", params_.kCache, MROPE_K_CACHE_TYPE_LIST);
+        if (kCacheRet != ACLNN_SUCCESS) {
+            return kCacheRet;
+        }
         aclnnStatus positionRet = CheckMropePositionShape();
         if (positionRet != ACLNN_SUCCESS) {
             return positionRet;
@@ -207,11 +220,9 @@ private:
                 "both parameters must be nullptr in the M-RoPE scene");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (params_.qScale != nullptr || params_.qQuantMode == nullptr ||
-            std::strcmp(params_.qQuantMode, MROPE_Q_QUANT_MODE) != 0) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                ACLNN_NAME, "qQuantMode/qScaleOptional", "invalid combination",
-                "the M-RoPE scene requires NoQuant and a nullptr qScaleOptional");
+        if (params_.qScale != nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qScaleOptional", "not nullptr",
+                                                  "qScaleOptional must be nullptr in the M-RoPE scene");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -369,7 +380,7 @@ private:
         return ACLNN_SUCCESS;
     }
 
-    // 1. Null pointer check
+    // 1. Common null pointer check
     aclnnStatus CheckNotNull()
     {
         const PointerNullRule commonRules[] = {
@@ -394,17 +405,23 @@ private:
                 return ACLNN_ERR_PARAM_NULLPTR;
             }
         }
-        if (!IsMropeScene()) {
-            const PointerNullRule ropeRules[] = {
-                {"queryStartLoc", params_.queryStartLoc, "queryStartLoc can not be nullptr"},
-                {"seqLens", params_.seqLens, "seqLens can not be nullptr"},
-                {"qScale", params_.qScale, "qScale can not be nullptr"},
-            };
-            for (const auto &rule : ropeRules) {
-                if (rule.ptr == nullptr) {
-                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, rule.paramName, "nullptr", rule.reason);
-                    return ACLNN_ERR_PARAM_NULLPTR;
-                }
+        return ACLNN_SUCCESS;
+    }
+
+    aclnnStatus CheckSceneNotNull() const
+    {
+        if (IsMropeScene()) {
+            return ACLNN_SUCCESS;
+        }
+        const PointerNullRule ropeRules[] = {
+            {"queryStartLoc", params_.queryStartLoc, "queryStartLoc can not be nullptr"},
+            {"seqLens", params_.seqLens, "seqLens can not be nullptr"},
+            {"qScale", params_.qScale, "qScale can not be nullptr"},
+        };
+        for (const auto &rule : ropeRules) {
+            if (rule.ptr == nullptr) {
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, rule.paramName, "nullptr", rule.reason);
+                return ACLNN_ERR_PARAM_NULLPTR;
             }
         }
         return ACLNN_SUCCESS;
@@ -420,7 +437,6 @@ private:
             {"kGamma", params_.kGamma, &GAMMA_TYPE_LIST},
             {"cosSin", params_.cosSin, &COS_SIN_TYPE_LIST},
             {"slotMapping", params_.slotMapping, &SLOT_MAPPING_TYPE_LIST},
-            {"kCacheRef", params_.kCache, isMrope ? &MROPE_K_CACHE_TYPE_LIST : &CACHE_TYPE_LIST},
             {"vCacheRef", params_.vCache, &CACHE_TYPE_LIST},
             {"kScaleCacheRef", params_.kScaleCache, &K_SCALE_CACHE_TYPE_LIST},
             {"rotationOptional", params_.rotationOptional, &ROTATION_TYPE_LIST},

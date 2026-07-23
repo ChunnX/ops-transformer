@@ -42,6 +42,7 @@ constexpr uint64_t QKV_LAYOUT_ATTR_INDEX = 1;
 constexpr uint64_t Q_OUT_LAYOUT_ATTR_INDEX = 2;
 constexpr uint64_t EPSILON_ATTR_INDEX = 3;
 constexpr uint64_t MROPE_SECTION_ATTR_INDEX = 4;
+constexpr uint64_t Q_QUANT_MODE_ATTR_INDEX = 5;
 
 constexpr float DEFAULT_EPSILON = 1e-6f;
 constexpr int32_t TILING_TEMPLATE_PRIORITY = 1000;
@@ -50,7 +51,17 @@ constexpr uint64_t RESERVED_WORKSPACE_SIZE = 16ULL * 1024ULL * 1024ULL;
 constexpr uint64_t TOKEN_TILE_PER_AIV_CAP = 4;
 constexpr const char *QKV_LAYOUT_NTD = "NTD";
 constexpr const char *QKV_LAYOUT_TND = "TND";
+constexpr const char *Q_QUANT_MODE_PER_TOKEN_PER_HEAD = "PerTokenPerHead";
+constexpr const char *Q_QUANT_MODE_NO_QUANT = "NoQuant";
 constexpr const char *DEFAULT_OP_NAME = "QkvRmsNormRopeCacheWithKScale";
+
+static_assert(static_cast<uint64_t>(RopeMode::ROPE) == QKV_K_SCALE_ROPE_MODE_ROPE);
+static_assert(static_cast<uint64_t>(RopeMode::MROPE) == QKV_K_SCALE_ROPE_MODE_MROPE);
+static_assert(static_cast<uint64_t>(KQuantMode::FP8) == QKV_K_SCALE_K_QUANT_MODE_FP8);
+static_assert(static_cast<uint64_t>(KQuantMode::INT8) == QKV_K_SCALE_K_QUANT_MODE_INT8);
+static_assert(static_cast<uint64_t>(QQuantMode::PER_TOKEN_PER_HEAD) ==
+              QKV_K_SCALE_Q_QUANT_MODE_PER_TOKEN_PER_HEAD);
+static_assert(static_cast<uint64_t>(QQuantMode::NO_QUANT) == QKV_K_SCALE_Q_QUANT_MODE_NO_QUANT);
 
 const char *CacheTensorName(uint64_t index)
 {
@@ -108,6 +119,8 @@ const char *DtypeName(ge::DataType dtype)
             return "float";
         case ge::DT_INT32:
             return "int32";
+        case ge::DT_INT8:
+            return "int8";
         case ge::DT_FLOAT8_E4M3FN:
             return "float8_e4m3fn";
         case ge::DT_UNDEFINED:
@@ -115,6 +128,11 @@ const char *DtypeName(ge::DataType dtype)
         default:
             return "unknown";
     }
+}
+
+const char *QQuantModeName(QQuantMode mode)
+{
+    return mode == QQuantMode::PER_TOKEN_PER_HEAD ? Q_QUANT_MODE_PER_TOKEN_PER_HEAD : Q_QUANT_MODE_NO_QUANT;
 }
 
 const char *LayoutName(uint64_t layout)
@@ -205,7 +223,6 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateDtypes() const
         {"slotMapping", &input_.slotMapping, ge::DT_INT32},
         {"queryStartLoc", &input_.queryStartLoc, ge::DT_INT32},
         {"seqLens", &input_.seqLens, ge::DT_INT32},
-        {"kCache", &input_.kCache, ge::DT_FLOAT8_E4M3FN},
         {"vCache", &input_.vCache, ge::DT_FLOAT8_E4M3FN},
         {"kScaleCache", &input_.kScaleCache, ge::DT_FLOAT},
         {"rotation", &input_.rotation, ge::DT_BF16},
@@ -952,6 +969,62 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseLayoutQOutAttr()
     return ge::GRAPH_FAILED;
 }
 
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseQQuantModeAttr()
+{
+    const auto attrs = context_->GetAttrs();
+    if (attrs == nullptr || static_cast<uint64_t>(attrs->GetAttrNum()) <= Q_QUANT_MODE_ATTR_INDEX) {
+        qQuantMode_ = QQuantMode::PER_TOKEN_PER_HEAD;
+        return ge::GRAPH_SUCCESS;
+    }
+    const char *qQuantMode = attrs->GetStr(Q_QUANT_MODE_ATTR_INDEX);
+    if (qQuantMode == nullptr || qQuantMode[0] == '\0' ||
+        std::strcmp(qQuantMode, Q_QUANT_MODE_PER_TOKEN_PER_HEAD) == 0) {
+        qQuantMode_ = QQuantMode::PER_TOKEN_PER_HEAD;
+        return ge::GRAPH_SUCCESS;
+    }
+    if (std::strcmp(qQuantMode, Q_QUANT_MODE_NO_QUANT) == 0) {
+        qQuantMode_ = QQuantMode::NO_QUANT;
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_LOGE_FOR_INVALID_VALUE(opName_, "q_quant_mode", qQuantMode, "PerTokenPerHead or NoQuant");
+    return ge::GRAPH_FAILED;
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ResolveKQuantMode()
+{
+    const auto kCacheDesc = context_->GetInputDesc(K_CACHE_INDEX);
+    OP_CHECK_IF(kCacheDesc == nullptr, OP_LOGE(context_, "kCache input desc is nullptr."), return ge::GRAPH_FAILED);
+    input_.kCache.dtype = kCacheDesc->GetDataType();
+    if (input_.kCache.dtype == ge::DT_FLOAT8_E4M3FN) {
+        kQuantMode_ = KQuantMode::FP8;
+        return ge::GRAPH_SUCCESS;
+    }
+    if (input_.kCache.dtype == ge::DT_INT8) {
+        kQuantMode_ = KQuantMode::INT8;
+        return ge::GRAPH_SUCCESS;
+    }
+    OP_LOGE_FOR_INVALID_DTYPE(opName_, "kCache", DtypeName(input_.kCache.dtype), "float8_e4m3fn or int8");
+    return ge::GRAPH_FAILED;
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ValidateQuantModeCombination() const
+{
+    const bool isRope = ropeMode_ == RopeMode::ROPE;
+    const QQuantMode expectedQQuantMode =
+        isRope ? QQuantMode::PER_TOKEN_PER_HEAD : QQuantMode::NO_QUANT;
+    const KQuantMode expectedKQuantMode = isRope ? KQuantMode::FP8 : KQuantMode::INT8;
+    OP_CHECK_IF(qQuantMode_ != expectedQQuantMode,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    opName_, "q_quant_mode", QQuantModeName(qQuantMode_),
+                    isRope ? "RoPE requires PerTokenPerHead" : "M-RoPE requires NoQuant"),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(kQuantMode_ != expectedKQuantMode,
+                OP_LOGE_FOR_INVALID_DTYPE(opName_, "kCache", DtypeName(input_.kCache.dtype),
+                                          isRope ? "float8_e4m3fn" : "int8"),
+                return ge::GRAPH_FAILED);
+    return ge::GRAPH_SUCCESS;
+}
+
 float QkvRmsNormRopeCacheWithKScaleBaseTiling::ParseEpsilonAttr() const
 {
     auto attrs = context_->GetAttrs();
@@ -1031,7 +1104,14 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillOptionalTensorInputs()
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractInput()
 {
-    OP_CHECK_IF(ResolveScene() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to resolve operator scene."),
+    OP_CHECK_IF(ResolveRopeMode() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to resolve RoPE mode."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ResolveKQuantMode() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to resolve K quant mode."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ParseQQuantModeAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to parse q_quant_mode attr."),
+                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(ValidateQuantModeCombination() != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_, "unsupported RoPE and quantization mode combination."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(ParseHeadNumsAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to parse head_nums attr."),
                 return ge::GRAPH_FAILED);
@@ -1040,7 +1120,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractInput()
     OP_CHECK_IF(ParseLayoutQOutAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to parse layout_q_out attr."),
                 return ge::GRAPH_FAILED);
 
-    if (sceneMode_ == QKV_K_SCALE_SCENE_MROPE_BF16_Q_INT8_K) {
+    if (ropeMode_ == RopeMode::MROPE) {
         OP_CHECK_IF(input_.layoutQkv != QKV_K_SCALE_LAYOUT_TND || input_.layoutQOut != QKV_K_SCALE_LAYOUT_TND,
                     OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
                         opName_, "layout_qkv, layout_q_out", (std::string(LayoutName(input_.layoutQkv)) + ", " +
@@ -1126,7 +1206,9 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::Reset()
     input_ = {};
     tilingData_ = {};
     aicNum_ = 0;
-    sceneMode_ = QKV_K_SCALE_SCENE_ROPE_FP8_QK;
+    ropeMode_ = RopeMode::ROPE;
+    kQuantMode_ = KQuantMode::FP8;
+    qQuantMode_ = QQuantMode::PER_TOKEN_PER_HEAD;
     epsilon_ = DEFAULT_EPSILON;
     tilingDataSize_ = 0;
     numBlocks_ = 0;
@@ -1144,7 +1226,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetShapeAttrsInfo()
     OP_CHECK_IF(BuildContractInput() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "failed to build QkvRmsNormRopeCacheWithKScale contract input."),
                 return ge::GRAPH_FAILED);
-    if (sceneMode_ != QKV_K_SCALE_SCENE_MROPE_BF16_Q_INT8_K) {
+    if (ropeMode_ != RopeMode::MROPE) {
         OP_CHECK_IF(ValidateParsedInput() != ge::GRAPH_SUCCESS,
                     OP_LOGE(context_, "invalid QkvRmsNormRopeCacheWithKScale contract input."),
                     return ge::GRAPH_FAILED);
@@ -1165,7 +1247,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetPlatformInfo()
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::DoOpTiling()
 {
-    if (sceneMode_ == QKV_K_SCALE_SCENE_MROPE_BF16_Q_INT8_K) {
+    if (ropeMode_ == RopeMode::MROPE) {
         tilingData_ = {};
         numBlocks_ = 1;
         return ge::GRAPH_SUCCESS;
@@ -1185,10 +1267,11 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::DoLibApiTiling()
 uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128, input_.layoutQkv,
-                              input_.layoutQOut, sceneMode_);
+                              input_.layoutQOut, static_cast<uint64_t>(ropeMode_),
+                              static_cast<uint64_t>(kQuantMode_), static_cast<uint64_t>(qQuantMode_));
 }
 
-ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ResolveScene()
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ResolveRopeMode()
 {
     const auto queryStartLoc = context_->GetOptionalInputDesc(QUERY_START_LOC_INDEX);
     const auto seqLens = context_->GetOptionalInputDesc(SEQ_LENS_INDEX);
@@ -1211,7 +1294,7 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ResolveScene()
                     opName_, "query_start_loc/seq_lens/mrope_position/mrope_section", "inconsistent presence",
                     "RoPE requires query_start_loc and seq_lens; M-RoPE requires mrope_position and mrope_section"),
                 return ge::GRAPH_FAILED);
-    sceneMode_ = isMrope ? QKV_K_SCALE_SCENE_MROPE_BF16_Q_INT8_K : QKV_K_SCALE_SCENE_ROPE_FP8_QK;
+    ropeMode_ = isMrope ? RopeMode::MROPE : RopeMode::ROPE;
     return ge::GRAPH_SUCCESS;
 }
 

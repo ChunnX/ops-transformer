@@ -21,7 +21,8 @@ using QkvRmsNormRopeCacheWithKScale::GlobalTensors;
 using QkvRmsNormRopeCacheWithKScale::QkvRmsNormRopeCacheWithKScaleController;
 using QkvRmsNormRopeCacheWithKScaleKernelTiling::QkvRmsNormRopeCacheWithKScaleTilingData;
 
-template <uint32_t HEAD_DIM, uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t SCENE_MODE>
+template <uint32_t HEAD_DIM, uint32_t QKV_LAYOUT, uint32_t Q_OUT_LAYOUT, uint32_t ROPE_MODE, uint32_t K_QUANT_MODE,
+          uint32_t Q_QUANT_MODE>
 __global__ __aicore__ void
 qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gamma, GM_ADDR cos_sin,
                                      GM_ADDR slot_mapping, GM_ADDR k_cache_in, GM_ADDR v_cache_in,
@@ -35,7 +36,7 @@ qkv_rms_norm_rope_cache_with_k_scale(GM_ADDR qkv, GM_ADDR q_gamma, GM_ADDR k_gam
     // placeholder scene intentionally performs no data access.
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(QkvRmsNormRopeCacheWithKScaleTilingData);
-    if constexpr (SCENE_MODE == QKV_K_SCALE_SCENE_MROPE_BF16_Q_INT8_K) {
+    if constexpr (ROPE_MODE == QKV_K_SCALE_ROPE_MODE_MROPE) {
         // M-RoPE is currently an end-to-end placeholder; the MIX task exits
         // before touching any input, output, or tiling data.
         return;
