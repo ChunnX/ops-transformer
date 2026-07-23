@@ -199,10 +199,10 @@ aclnnStatus CheckSingleParamQsmla(int64_t batchSize, int64_t maxSeqlenQ, int64_t
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验切g模板核数
-    if (numHeadsQ == 128) {
+    if (numHeadsQ / numHeadsKv > 64) {
         if (aicCoreNum == 1 || aivCoreNum == 1) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When num_heads_q is 128, AIC num and AIV num should not be 1, "
-                "but got %u and %u", aicCoreNum, aivCoreNum);
+            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "When num_heads_q / num_heads_kv is greater than 64, "
+                "AIC num and AIV num should not be 1, but got %u and %u", aicCoreNum, aivCoreNum);
             return ACLNN_ERR_PARAM_INVALID;
         }
     }

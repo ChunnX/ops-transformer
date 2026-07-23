@@ -129,7 +129,8 @@ void QSMLATilingCheck::Init()
     oriBlockSize_ = qsmlaInfo_.oriBlockSize;
     cmpBlockSize_ = qsmlaInfo_.cmpBlockSize;
 
-    sparseBlockCount_ = qsmlaInfo_.sparseBlockCount;
+    oriSparseBlockCount_ = qsmlaInfo_.oriSparseBlockCount;
+    cmpSparseBlockCount_ = qsmlaInfo_.cmpSparseBlockCount;
     sparseBlockSize_ = qsmlaInfo_.sparseBlockSize;
 
     cmpRatio_ = qsmlaInfo_.cmpRatio;
@@ -146,9 +147,17 @@ void QSMLATilingCheck::Init()
     outputType_ = qsmlaInfo_.outputType;
 
     if (opParamInfo_.cmpKv.tensor == nullptr) {
-        perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
+        if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
+            perfMode_ = QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE;
+        } else {
+            perfMode_ = QSMLATemplateMode::SWA_TEMPLATE_MODE;
+        }
     } else if (opParamInfo_.cmpSparseIndices.tensor != nullptr) {
-        perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
+        if (opParamInfo_.oriSparseIndices.tensor != nullptr) {
+            perfMode_ = QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE;
+        } else {
+            perfMode_ = QSMLATemplateMode::CSA_TEMPLATE_MODE;
+        }
     } else {
         perfMode_ = QSMLATemplateMode::HCA_TEMPLATE_MODE;
     }

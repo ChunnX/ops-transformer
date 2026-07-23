@@ -287,7 +287,7 @@ bool QuantSparseFlashMlaMetadataCpuKernel::ParamsInit()
     }
     ValidSocVersion validSocVersion = ProcessSocVersion();
     if (validSocVersion == ValidSocVersion::ASCEND950) {
-        if (numHeadsQ_ == 128) {
+        if (groupSize_ > 64U) {
             isSplitG_ = true;
             aicCoreNum_ /= 2;
         }

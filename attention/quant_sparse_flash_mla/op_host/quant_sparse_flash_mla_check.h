@@ -85,7 +85,9 @@ enum class QSMLAAxis : uint32_t {
 enum class QSMLATemplateMode : uint32_t {
     SWA_TEMPLATE_MODE = 0,
     HCA_TEMPLATE_MODE = 1,
-    CSA_TEMPLATE_MODE = 2
+    CSA_TEMPLATE_MODE = 2,
+    ORI_SPARSE_TEMPLATE_MODE = 3,
+    ORI_CMP_SPARSE_TEMPLATE_MODE = 4
 };
 
 enum class KvStorageMode : uint32_t {
@@ -259,6 +261,7 @@ struct QSMLAParaInfo {
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
     const int64_t *topkValueMode = nullptr;
+    const bool *returnSoftmaxLse = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -303,7 +306,9 @@ public:
     int64_t oriWinLeft = 0;
     int64_t oriWinRight = 0;
     int64_t sparseBlockSize = 0;
-    int64_t sparseBlockCount = 0;
+    int64_t oriSparseBlockCount = 0;
+    int64_t cmpSparseBlockCount = 0;
+    bool returnSoftmaxLse = false;
     // Mask
     int32_t sparseMode = 0;
     // Others Flag
@@ -396,7 +401,8 @@ public:
     uint32_t qTSize_ = 0;
     uint32_t qkHeadDim_ = 0;
     int64_t sparseBlockSize_ = 0;
-    int64_t sparseBlockCount_ = 0;
+    int64_t oriSparseBlockCount_ = 0;
+    int64_t cmpSparseBlockCount_ = 0;
     uint32_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
     uint32_t dSizeQ_ = 0;
@@ -431,6 +437,7 @@ public:
     gert::Shape qShape_{};
     gert::Shape oriKvShape_{};
     gert::Shape cmpKvShape_{};
+    gert::Shape oriSparseIndicesShape_{};
     gert::Shape cmpSparseIndicesShape_{};
 };
 
@@ -475,6 +482,7 @@ private:
     ge::graphStatus CheckSingleParaSparseMode() const;
     ge::graphStatus CheckSingleParaSparseBlockSize() const;
     ge::graphStatus CheckSingleParaOriSparseIndices() const;
+    ge::graphStatus CheckSingleParaOriSparseIndices() const;
     ge::graphStatus CheckSingleParaCmpSparseIndices() const;
     ge::graphStatus CheckSingleParaCmpResidualKv() const;
     ge::graphStatus CheckSingleParaBlockTable() const;
@@ -500,6 +508,8 @@ private:
     ge::graphStatus CheckSWAExistence();
     ge::graphStatus CheckHCAExistence();
     ge::graphStatus CheckCSAExistence();
+    ge::graphStatus CheckOriSparseExistence();
+    ge::graphStatus CheckOriCmpSparseExistence();
     ge::graphStatus CheckUnrequiredParaExistence() const;
 
     ge::graphStatus CheckKVShapeForBatchContinuous();

@@ -150,6 +150,7 @@ ge::graphStatus QSMLAInfoParser::GetAttrParaInfo()
     opParamInfo_.layoutQ = attrs->GetStr(ATTR_LAYOUT_Q_INDEX);
     opParamInfo_.layoutKv = attrs->GetStr(ATTR_LAYOUT_KV_INDEX);
     opParamInfo_.topkValueMode = attrs->GetAttrPointer<int64_t>(ATTR_TOPK_VALUE_MODE_INDEX);
+    opParamInfo_.returnSoftmaxLse = attrs->GetAttrPointer<bool>(ATTR_RETURN_SOFTMAX_LSE_INDEX);
 
     OP_LOGI(context_->GetNodeName(), "GetAttrParaInfo end");
 
@@ -538,6 +539,7 @@ void QSMLAInfoParser::GenerateInfo(QSMLATilingInfo &qsmlaInfo)
     qsmlaInfo.topkValueMode = *opParamInfo_.topkValueMode;
     qsmlaInfo.oriWinLeft = *opParamInfo_.oriWinLeft;
     qsmlaInfo.oriWinRight = *opParamInfo_.oriWinRight;
+    qsmlaInfo.returnSoftmaxLse = (opParamInfo_.returnSoftmaxLse != nullptr) ? *opParamInfo_.returnSoftmaxLse : false;
 
     qsmlaInfo.qLayout = qLayout_;
     qsmlaInfo.kvLayout = kvLayout_;
@@ -674,6 +676,7 @@ ge::graphStatus QuantSparseFlashMlaTiling::DoOpTiling(QSMLATilingInfo *tilingInf
     tilingData_.baseParams.set_sparseBlockSize(tilingInfo->sparseBlockSize);
     tilingData_.baseParams.set_dSize(tilingInfo->dSize);
     tilingData_.baseParams.set_dSizeVInput(tilingInfo->dSizeVInput);
+    tilingData_.baseParams.set_returnSoftmaxLse(static_cast<uint32_t>(tilingInfo->returnSoftmaxLse));
 
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());

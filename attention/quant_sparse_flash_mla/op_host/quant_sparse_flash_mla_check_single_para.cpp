@@ -311,7 +311,9 @@ ge::graphStatus QSMLATilingCheck::CheckSingleParaSparseBlockSize() const
 
 ge::graphStatus QSMLATilingCheck::CheckSingleParaCmpResidualKv() const
 {
-    OP_CHECK_IF(perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE && opParamInfo_.cmpResidualKv.tensor == nullptr,
+    OP_CHECK_IF(perfMode_ != QSMLATemplateMode::SWA_TEMPLATE_MODE &&
+                perfMode_ != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
+                opParamInfo_.cmpResidualKv.tensor == nullptr,
                 OP_LOGE(opName_, "cmp_residual_kv is required in CSA and HCA mode "), return ge::GRAPH_FAILED);
 
     if (opParamInfo_.cmpResidualKv.tensor != nullptr) {
