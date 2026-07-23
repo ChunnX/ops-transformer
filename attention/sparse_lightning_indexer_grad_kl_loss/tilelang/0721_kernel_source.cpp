@@ -6,7 +6,7 @@ using uint = unsigned int;
 using uchar = unsigned char;
 using ushort = unsigned short;
 
-extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndices_handle,  GM_ADDR Query_handle,  GM_ADDR QueryRope_handle,  GM_ADDR Key_handle,  GM_ADDR KeyRope_handle,  GM_ADDR QueryIndex_handle,  GM_ADDR KeyIndex_handle,  GM_ADDR Weights_handle,  GM_ADDR SoftmaxMax_handle,  GM_ADDR SoftmaxSum_handle,  GM_ADDR dQueryIndexAccum_handle,  GM_ADDR dKeyScatterPing_handle,  GM_ADDR dKeyScatterPong_handle,  GM_ADDR GatherKey_ws_handle,  GM_ADDR GatherKeyRope_ws_handle,  GM_ADDR GatherKeyIndex_ws_handle,  GM_ADDR bmm1Res_handle,  GM_ADDR bmm2Res_handle,  GM_ADDR PReduced_handle,  GM_ADDR SoftmaxI_handle,  GM_ADDR dk_matmul_partial_handle,  GM_ADDR reluGradRes_handle,  GM_ADDR LossPartial_handle,  GM_ADDR dQueryIndex_handle,  GM_ADDR dKeyIndexOut_handle,  GM_ADDR dWeightOut_handle,  GM_ADDR LossOut_handle, uint64_t fftsAddr) {
+extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndices_handle,  GM_ADDR Query_handle,  GM_ADDR QueryRope_handle,  GM_ADDR Key_handle,  GM_ADDR KeyRope_handle,  GM_ADDR QueryIndex_handle,  GM_ADDR KeyIndex_handle,  GM_ADDR Weights_handle,  GM_ADDR SoftmaxMax_handle,  GM_ADDR SoftmaxSum_handle,  GM_ADDR dQueryIndexAccum_handle,  GM_ADDR dKeyIndexAccum_handle,  GM_ADDR GatherKey_ws_handle,  GM_ADDR GatherKeyRope_ws_handle,  GM_ADDR GatherKeyIndex_ws_handle,  GM_ADDR bmm1Res_handle,  GM_ADDR bmm2Res_handle,  GM_ADDR PReduced_handle,  GM_ADDR SoftmaxI_handle,  GM_ADDR dk_matmul_partial_handle,  GM_ADDR reluGradRes_handle,  GM_ADDR LossPartial_handle,  GM_ADDR dQueryIndex_handle,  GM_ADDR dKeyIndexOut_handle,  GM_ADDR dWeightOut_handle,  GM_ADDR LossOut_handle, uint64_t fftsAddr) {
   KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
   AscendC::TPipe pipe;
 
@@ -32,10 +32,8 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   SoftmaxSum.SetGlobalBuffer((__gm__ float*)SoftmaxSum_handle);
   AscendC::GlobalTensor<float> dQueryIndexAccum;
   dQueryIndexAccum.SetGlobalBuffer((__gm__ float*)dQueryIndexAccum_handle);
-  AscendC::GlobalTensor<float> dKeyScatterPing;
-  dKeyScatterPing.SetGlobalBuffer((__gm__ float*)dKeyScatterPing_handle);
-  AscendC::GlobalTensor<float> dKeyScatterPong;
-  dKeyScatterPong.SetGlobalBuffer((__gm__ float*)dKeyScatterPong_handle);
+  AscendC::GlobalTensor<float> dKeyIndexAccum;
+  dKeyIndexAccum.SetGlobalBuffer((__gm__ float*)dKeyIndexAccum_handle);
   AscendC::GlobalTensor<half> GatherKey_ws;
   GatherKey_ws.SetGlobalBuffer((__gm__ half*)GatherKey_ws_handle);
   AscendC::GlobalTensor<half> GatherKeyRope_ws;
@@ -152,16 +150,16 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto c2_dq_rg_l0a = ascend_l0a.GetWithOffset<half>(8192, 0);
   auto c2_dq_gki_l0b = ascend_l0b.GetWithOffset<half>(16384, 16384);
   auto c2_dk_l0c = ascend_l0c.GetWithOffset<float>(16384, 0);
-  auto v2_dk_batch_ping = ascend_ub.GetWithOffset<float>(2048, 20992);
-  auto v2_dk_batch_pong = ascend_ub.GetWithOffset<float>(2048, 29184);
-  auto v2_finalize_dq_fp32 = ascend_ub.GetWithOffset<float>(128, 0);
-  auto v2_finalize_dq_half = ascend_ub.GetWithOffset<half>(128, 512);
-  auto v2_finalize_dk_ping_fp32 = ascend_ub.GetWithOffset<float>(4096, 29184);
-  auto v2_finalize_dk_pong_fp32 = ascend_ub.GetWithOffset<float>(4096, 55296);
-  auto v2_finalize_dk_half = ascend_ub.GetWithOffset<half>(4096, 45568);
-  auto v2_loss_total = ascend_ub.GetWithOffset<float>(1, 0);
-  auto v2_loss_chunk = ascend_ub.GetWithOffset<float>(128, 32);
-  auto v2_loss_chunk_sum = ascend_ub.GetWithOffset<float>(1, 544);
+  auto v2_zero_batch = ascend_ub.GetWithOffset<float>(4096, 0);
+  auto v2_dk_batch_ping = ascend_ub.GetWithOffset<float>(2048, 16384);
+  auto v2_dk_batch_pong = ascend_ub.GetWithOffset<float>(2048, 24576);
+  auto v2_finalize_dq_fp32 = ascend_ub.GetWithOffset<float>(128, 32768);
+  auto v2_finalize_dq_half = ascend_ub.GetWithOffset<half>(128, 33280);
+  auto v2_finalize_dk_fp32 = ascend_ub.GetWithOffset<float>(4096, 32768);
+  auto v2_finalize_dk_half = ascend_ub.GetWithOffset<half>(4096, 49152);
+  auto v2_loss_total = ascend_ub.GetWithOffset<float>(1, 24576);
+  auto v2_loss_chunk = ascend_ub.GetWithOffset<float>(128, 24608);
+  auto v2_loss_chunk_sum = ascend_ub.GetWithOffset<float>(1, 25120);
   auto vid = AscendC::GetSubBlockIdx();
   for (int32_t pipe_iter = 0; pipe_iter < 2; ++pipe_iter) {
     if (pipe_iter < 1) {
@@ -255,10 +253,10 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               AscendC::CrossCoreWaitFlag(1);
             }
             for (int32_t k_inner = 0; k_inner < 8; ++k_inner) {
+              AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+              tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_key_l1[0], GatherKey_ws[(((((pipe_iter * 25165824) + (cid * 1048576)) + (k_outer_1 * 524288)) + (k_inner * 65536)) - 25165824)], 512, 128, 128, true);
+              AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
               for (int32_t d_idx = 0; d_idx < 4; ++d_idx) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
-                tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_key_l1[0], GatherKey_ws[((((((pipe_iter * 25165824) + (cid * 1048576)) + (k_outer_1 * 524288)) + (k_inner * 65536)) + (d_idx * 128)) - 25165824)], 512, 128, 128, true);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
                 if (d_idx == 0) {
@@ -276,15 +274,22 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
                 tl::ascend::copy_l1_to_l0b<half, 128, 128, true>(c1_key_l0b[0], c1_key_l1[0], 128, 128);
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
                 AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
+                if (d_idx < 3) {
+                  AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+                  tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_key_l1[0], GatherKey_ws[((((((pipe_iter * 25165824) + (cid * 1048576)) + (k_outer_1 * 524288)) + (k_inner * 65536)) + (d_idx * 128)) - 25165696)], 512, 128, 128, true);
+                  AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+                }
+                if (d_idx == 3) {
+                  AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+                  tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_key_l1[0], GatherKeyRope_ws[(((((pipe_iter * 6291456) + (cid * 262144)) + (k_outer_1 * 131072)) + (k_inner * 16384)) - 6291456)], 128, 128, 128, true);
+                  AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+                }
                 AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
                 tl::ascend::mma<half, float, 128, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (d_idx == 0), 128);
                 AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
                 AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
               }
-              AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
-              tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_key_l1[0], GatherKeyRope_ws[(((((pipe_iter * 6291456) + (cid * 262144)) + (k_outer_1 * 131072)) + (k_inner * 16384)) - 6291456)], 128, 128, 128, true);
-              AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
               AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
               AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
               tl::ascend::copy_l1_to_l0a<half, 128, 128, false>(c1_q_l0a[0], c1_query_rope_cache_l1[0], 128, 128);
@@ -620,51 +625,189 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(2);
           AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(3);
           AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(3);
-          AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(10);
-        }
-        if ASCEND_IS_AIV {
-          AscendC::CrossCoreWaitFlag(10);
-          AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(6);
-          AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(7);
-          AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(6);
-          tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[((((pipe_iter * 6291456) + (cid * 262144)) + (vid * 131072)) - 6291456)], 128, 16, 128, 0.000000e+00f);
-          AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(6);
-          for (int32_t batch_id = 0; batch_id < 64; ++batch_id) {
-            if (batch_id < 63) {
-              AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>((((batch_id + 1) % 2) + 6));
-              if (((batch_id + 1) % 2) == 0) {
-                tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[(((((pipe_iter * 6291456) + (cid * 262144)) + (vid * 131072)) + (batch_id * 2048)) - 6289408)], 128, 16, 128, 0.000000e+00f);
-              } else {
-                tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_pong[0], dk_matmul_partial[(((((pipe_iter * 6291456) + (cid * 262144)) + (vid * 131072)) + (batch_id * 2048)) - 6289408)], 128, 16, 128, 0.000000e+00f);
-              }
-              AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>((((batch_id + 1) % 2) + 6));
-            }
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(((batch_id % 2) + 6));
-            for (int32_t pair_idx = 0; pair_idx < 8; ++pair_idx) {
-              int32_t sparse_idx0 = SparseIndices.GetValue(((((((pipe_iter * 49152) + (cid * 2048)) + (vid * 1024)) + (batch_id * 16)) + (pair_idx * 2)) - 49152));
-              int32_t sparse_idx1 = SparseIndices.GetValue(((((((pipe_iter * 49152) + (cid * 2048)) + (vid * 1024)) + (batch_id * 16)) + (pair_idx * 2)) - 49151));
-              if (0 <= sparse_idx0) {
-                if ((batch_id % 2) == 0) {
-                  tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyScatterPing[((((pipe_iter * 6291456) + (cid * 262144)) + (sparse_idx0 * 128)) - 6291456)], v2_dk_batch_ping[(pair_idx * 256)], 262144, ((-51199 <= (((0 - sparse_idx0) - (cid * 2048)) - (pipe_iter * 49152))) ? 1 : 0), 128);
-                } else {
-                  tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyScatterPing[((((pipe_iter * 6291456) + (cid * 262144)) + (sparse_idx0 * 128)) - 6291456)], v2_dk_batch_pong[(pair_idx * 256)], 262144, ((-51199 <= (((0 - sparse_idx0) - (cid * 2048)) - (pipe_iter * 49152))) ? 1 : 0), 128);
-                }
-              }
-              if (0 <= sparse_idx1) {
-                if ((batch_id % 2) == 0) {
-                  tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyScatterPing[((((pipe_iter * 6291456) + (cid * 262144)) + (sparse_idx1 * 128)) - 6291456)], v2_dk_batch_ping[((pair_idx * 256) + 128)], 262144, ((-51199 <= (((0 - sparse_idx1) - (cid * 2048)) - (pipe_iter * 49152))) ? 1 : 0), 128);
-                } else {
-                  tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyScatterPing[((((pipe_iter * 6291456) + (cid * 262144)) + (sparse_idx1 * 128)) - 6291456)], v2_dk_batch_pong[((pair_idx * 256) + 128)], 262144, ((-51199 <= (((0 - sparse_idx1) - (cid * 2048)) - (pipe_iter * 49152))) ? 1 : 0), 128);
-                }
-              }
-            }
-            AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(((batch_id % 2) + 6));
-          }
-          AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(6);
-          AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(7);
         }
       }
     }
+  }
+  AscendC::SyncAll<false>();
+  if ASCEND_IS_AIV {
+    tl::ascend::Fill<float>(v2_zero_batch[0], 0.000000e+00f, 4096);
+    AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(5);
+    AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(5);
+    int32_t condval;
+    if ((cid < 8)) {
+      condval = 1;
+    } else {
+      condval = 0;
+    }
+    for (int32_t clear_iter = 0; clear_iter < (condval + 1); ++clear_iter) {
+      tl::ascend::copy_ub_to_gm<float, 128, 32>(dKeyIndexAccum[((((cid * 8192) + ((((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16) * 4096)) + (vid * 4096)) + (clear_iter * 4096))], v2_zero_batch[0], 128, ((1 <= ((((64 - (((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16)) - vid) - clear_iter) - (cid * 2))) ? 32 : ((((((cid * 2) + (((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16)) + vid) + clear_iter) < 64) ? ((((2048 - ((((cid * 2) + vid) < 16 ? ((cid * 2) + vid) : 16) * 32)) - (vid * 32)) - (clear_iter * 32)) - (cid * 64)) : 0)), 128);
+    }
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(5);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(5);
+  }
+  AscendC::SyncAll<false>();
+  if ASCEND_IS_AIV {
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(6);
+    AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(7);
+    int32_t condval_1;
+    if ((cid < 8)) {
+      condval_1 = 1;
+    } else {
+      condval_1 = 0;
+    }
+    int32_t condval_2;
+    if ((cid < 8)) {
+      condval_2 = 1;
+    } else {
+      condval_2 = 0;
+    }
+    if (-3 < ((condval_1 / 2) - (vid * (1 - (condval_2 % 2))))) {
+      AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(6);
+      int32_t condval_3;
+      if ((cid < 8)) {
+        condval_3 = 1;
+      } else {
+        condval_3 = 0;
+      }
+      int32_t condval_4;
+      if ((cid < 8)) {
+        condval_4 = 1;
+      } else {
+        condval_4 = 0;
+      }
+      int32_t condval_5;
+      if ((cid < 8)) {
+        condval_5 = 1;
+      } else {
+        condval_5 = 0;
+      }
+      int32_t condval_6;
+      if ((cid < 8)) {
+        condval_6 = 1;
+      } else {
+        condval_6 = 0;
+      }
+      tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[(((cid * 10240) + ((cid < 8 ? cid : 8) * 2048)) + ((vid * ((condval_3 / 2) + 3)) * 2048))], 128, ((1 <= (((128 - (cid < 8 ? cid : 8)) - (vid * ((condval_4 / 2) + 3))) - (cid * 5))) ? 16 : (((((cid * 5) + (cid < 8 ? cid : 8)) + (vid * ((condval_5 / 2) + 3))) < 128) ? (((2048 - ((cid < 8 ? cid : 8) * 16)) - ((vid * ((condval_6 / 2) + 3)) * 16)) - (cid * 80)) : 0)), 128, 0.000000e+00f);
+      AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(6);
+      int32_t condval_7;
+      if ((cid < 8)) {
+        condval_7 = 1;
+      } else {
+        condval_7 = 0;
+      }
+      int32_t condval_8;
+      if ((cid < 8)) {
+        condval_8 = 1;
+      } else {
+        condval_8 = 0;
+      }
+      for (int32_t batch_id = 0; batch_id < (((condval_7 / 2) + 3) - (vid * (1 - (condval_8 % 2)))); ++batch_id) {
+        int32_t condval_9;
+        if ((cid < 8)) {
+          condval_9 = 1;
+        } else {
+          condval_9 = 0;
+        }
+        int32_t condval_10;
+        if ((cid < 8)) {
+          condval_10 = 1;
+        } else {
+          condval_10 = 0;
+        }
+        if (batch_id < (((condval_9 / 2) + 2) - (vid * (1 - (condval_10 % 2))))) {
+          AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>((((batch_id + 1) % 2) + 6));
+          if (((batch_id + 1) % 2) == 0) {
+            int32_t condval_11;
+            if ((cid < 8)) {
+              condval_11 = 1;
+            } else {
+              condval_11 = 0;
+            }
+            int32_t condval_12;
+            if ((cid < 8)) {
+              condval_12 = 1;
+            } else {
+              condval_12 = 0;
+            }
+            int32_t condval_13;
+            if ((cid < 8)) {
+              condval_13 = 1;
+            } else {
+              condval_13 = 0;
+            }
+            int32_t condval_14;
+            if ((cid < 8)) {
+              condval_14 = 1;
+            } else {
+              condval_14 = 0;
+            }
+            tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_ping[0], dk_matmul_partial[(((((cid * 10240) + (batch_id * 2048)) + ((cid < 8 ? cid : 8) * 2048)) + ((vid * ((condval_11 / 2) + 3)) * 2048)) + 2048)], 128, ((1 <= ((((127 - batch_id) - (cid < 8 ? cid : 8)) - (vid * ((condval_12 / 2) + 3))) - (cid * 5))) ? 16 : ((((((cid * 5) + (cid < 8 ? cid : 8)) + batch_id) + (vid * ((condval_13 / 2) + 3))) < 127) ? ((((2032 - (batch_id * 16)) - ((cid < 8 ? cid : 8) * 16)) - ((vid * ((condval_14 / 2) + 3)) * 16)) - (cid * 80)) : 0)), 128, 0.000000e+00f);
+          } else {
+            int32_t condval_15;
+            if ((cid < 8)) {
+              condval_15 = 1;
+            } else {
+              condval_15 = 0;
+            }
+            int32_t condval_16;
+            if ((cid < 8)) {
+              condval_16 = 1;
+            } else {
+              condval_16 = 0;
+            }
+            int32_t condval_17;
+            if ((cid < 8)) {
+              condval_17 = 1;
+            } else {
+              condval_17 = 0;
+            }
+            int32_t condval_18;
+            if ((cid < 8)) {
+              condval_18 = 1;
+            } else {
+              condval_18 = 0;
+            }
+            tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_dk_batch_pong[0], dk_matmul_partial[(((((cid * 10240) + (batch_id * 2048)) + ((cid < 8 ? cid : 8) * 2048)) + ((vid * ((condval_15 / 2) + 3)) * 2048)) + 2048)], 128, ((1 <= ((((127 - batch_id) - (cid < 8 ? cid : 8)) - (vid * ((condval_16 / 2) + 3))) - (cid * 5))) ? 16 : ((((((cid * 5) + (cid < 8 ? cid : 8)) + batch_id) + (vid * ((condval_17 / 2) + 3))) < 127) ? ((((2032 - (batch_id * 16)) - ((cid < 8 ? cid : 8) * 16)) - ((vid * ((condval_18 / 2) + 3)) * 16)) - (cid * 80)) : 0)), 128, 0.000000e+00f);
+          }
+          AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>((((batch_id + 1) % 2) + 6));
+        }
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(((batch_id % 2) + 6));
+        for (int32_t pair_idx = 0; pair_idx < 8; ++pair_idx) {
+          int64_t condval_19;
+          if ((((int64_t)cid) < (int64_t)8)) {
+            condval_19 = (int64_t)1;
+          } else {
+            condval_19 = (int64_t)0;
+          }
+          int32_t sparse_idx0 = SparseIndices.GetValue((((((((int64_t)cid) * (int64_t)80) + (((int64_t)batch_id) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)8 ? ((int64_t)cid) : (int64_t)8) * (int64_t)16)) + ((((int64_t)vid) * ((condval_19 / (int64_t)2) + (int64_t)3)) * (int64_t)16)) + (((int64_t)pair_idx) * (int64_t)2)));
+          int64_t condval_20;
+          if ((((int64_t)cid) < (int64_t)8)) {
+            condval_20 = (int64_t)1;
+          } else {
+            condval_20 = (int64_t)0;
+          }
+          int32_t sparse_idx1 = SparseIndices.GetValue(((((((((int64_t)cid) * (int64_t)80) + (((int64_t)batch_id) * (int64_t)16)) + ((((int64_t)cid) < (int64_t)8 ? ((int64_t)cid) : (int64_t)8) * (int64_t)16)) + ((((int64_t)vid) * ((condval_20 / (int64_t)2) + (int64_t)3)) * (int64_t)16)) + (((int64_t)pair_idx) * (int64_t)2)) + (int64_t)1));
+          if (0 <= sparse_idx0) {
+            if ((batch_id % 2) == 0) {
+              tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0 * 128)], v2_dk_batch_ping[(pair_idx * 256)], 262144, ((sparse_idx0 <= 2047) ? 1 : 0), 128);
+            } else {
+              tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx0 * 128)], v2_dk_batch_pong[(pair_idx * 256)], 262144, ((sparse_idx0 <= 2047) ? 1 : 0), 128);
+            }
+          }
+          if (0 <= sparse_idx1) {
+            if ((batch_id % 2) == 0) {
+              tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1 * 128)], v2_dk_batch_ping[((pair_idx * 256) + 128)], 262144, ((sparse_idx1 <= 2047) ? 1 : 0), 128);
+            } else {
+              tl::ascend::atomic_add_ub_to_gm<float, 128, 1>(dKeyIndexAccum[(sparse_idx1 * 128)], v2_dk_batch_pong[((pair_idx * 256) + 128)], 262144, ((sparse_idx1 <= 2047) ? 1 : 0), 128);
+            }
+          }
+        }
+        AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(((batch_id % 2) + 6));
+      }
+    }
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(6);
+    AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(7);
   }
   AscendC::SyncAll<false>();
   if ASCEND_IS_AIV {
@@ -691,22 +834,19 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
     AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(6);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(5);
     AscendC::SetFlag<AscendC::HardEvent::MTE3_V>(6);
-    int32_t condval;
+    int32_t condval_21;
     if ((cid < 16)) {
-      condval = 1;
+      condval_21 = 1;
     } else {
-      condval = 0;
+      condval_21 = 0;
     }
-    for (int32_t finalize_iter = 0; finalize_iter < (condval + 2); ++finalize_iter) {
+    for (int32_t finalize_iter = 0; finalize_iter < (condval_21 + 2); ++finalize_iter) {
       AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(((finalize_iter % 2) + 5));
-      tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_finalize_dk_ping_fp32[((finalize_iter % 2) * 2048)], dKeyScatterPing[((((cid * 8192) + (vid * 4096)) + ((((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32) * 2048)) + (finalize_iter * 2048))], 128, ((1 <= ((((128 - (((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32)) - finalize_iter) - (vid * 2)) - (cid * 4))) ? 16 : ((((((cid * 4) + (vid * 2)) + (((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32)) + finalize_iter) < 128) ? ((((2048 - ((((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32) * 16)) - (finalize_iter * 16)) - (vid * 32)) - (cid * 64)) : 0)), 128, 0.000000e+00f);
-      tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_finalize_dk_pong_fp32[((finalize_iter % 2) * 2048)], dKeyScatterPong[((((cid * 8192) + (vid * 4096)) + ((((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32) * 2048)) + (finalize_iter * 2048))], 128, ((1 <= ((((128 - (((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32)) - finalize_iter) - (vid * 2)) - (cid * 4))) ? 16 : ((((((cid * 4) + (vid * 2)) + (((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32)) + finalize_iter) < 128) ? ((((2048 - ((((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32) * 16)) - (finalize_iter * 16)) - (vid * 32)) - (cid * 64)) : 0)), 128, 0.000000e+00f);
+      tl::ascend::copy_gm_to_ub<float, 128, 16>(v2_finalize_dk_fp32[((finalize_iter % 2) * 2048)], dKeyIndexAccum[((((cid * 8192) + (vid * 4096)) + ((((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32) * 2048)) + (finalize_iter * 2048))], 128, ((1 <= ((((128 - (((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32)) - finalize_iter) - (vid * 2)) - (cid * 4))) ? 16 : ((((((cid * 4) + (vid * 2)) + (((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32)) + finalize_iter) < 128) ? ((((2048 - ((((cid * 2) + vid) < 32 ? ((cid * 2) + vid) : 32) * 16)) - (finalize_iter * 16)) - (vid * 32)) - (cid * 64)) : 0)), 128, 0.000000e+00f);
       AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(((finalize_iter % 2) + 5));
       AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(((finalize_iter % 2) + 5));
       AscendC::WaitFlag<AscendC::HardEvent::MTE3_V>(((finalize_iter % 2) + 5));
-      AscendC::Add(v2_finalize_dk_ping_fp32[((finalize_iter % 2) * 2048)], v2_finalize_dk_ping_fp32[((finalize_iter % 2) * 2048)], v2_finalize_dk_pong_fp32[((finalize_iter % 2) * 2048)], 2048);
-      AscendC::PipeBarrier<PIPE_V>();
-      AscendC::Cast(v2_finalize_dk_half[((finalize_iter % 2) * 2048)], v2_finalize_dk_ping_fp32[((finalize_iter % 2) * 2048)], AscendC::RoundMode::CAST_RINT, 2048);
+      AscendC::Cast(v2_finalize_dk_half[((finalize_iter % 2) * 2048)], v2_finalize_dk_fp32[((finalize_iter % 2) * 2048)], AscendC::RoundMode::CAST_RINT, 2048);
       AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(((finalize_iter % 2) + 5));
       AscendC::SetFlag<AscendC::HardEvent::V_MTE3>(((finalize_iter % 2) + 5));
       AscendC::WaitFlag<AscendC::HardEvent::V_MTE3>(((finalize_iter % 2) + 5));
@@ -741,10 +881,10 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
 void main_pipeline_kernel_tiling() {
 }
 
-extern "C" void call(uint8_t* SparseIndices_handle, uint8_t* Query_handle, uint8_t* QueryRope_handle, uint8_t* Key_handle, uint8_t* KeyRope_handle, uint8_t* QueryIndex_handle, uint8_t* KeyIndex_handle, uint8_t* Weights_handle, uint8_t* SoftmaxMax_handle, uint8_t* SoftmaxSum_handle, uint8_t* dQueryIndexAccum_handle, uint8_t* dKeyScatterPing_handle, uint8_t* dKeyScatterPong_handle, uint8_t* GatherKey_ws_handle, uint8_t* GatherKeyRope_ws_handle, uint8_t* GatherKeyIndex_ws_handle, uint8_t* bmm1Res_handle, uint8_t* bmm2Res_handle, uint8_t* PReduced_handle, uint8_t* SoftmaxI_handle, uint8_t* dk_matmul_partial_handle, uint8_t* reluGradRes_handle, uint8_t* LossPartial_handle, uint8_t* dQueryIndex_handle, uint8_t* dKeyIndexOut_handle, uint8_t* dWeightOut_handle, uint8_t* LossOut_handle, aclrtStream stream) {
+extern "C" void call(uint8_t* SparseIndices_handle, uint8_t* Query_handle, uint8_t* QueryRope_handle, uint8_t* Key_handle, uint8_t* KeyRope_handle, uint8_t* QueryIndex_handle, uint8_t* KeyIndex_handle, uint8_t* Weights_handle, uint8_t* SoftmaxMax_handle, uint8_t* SoftmaxSum_handle, uint8_t* dQueryIndexAccum_handle, uint8_t* dKeyIndexAccum_handle, uint8_t* GatherKey_ws_handle, uint8_t* GatherKeyRope_ws_handle, uint8_t* GatherKeyIndex_ws_handle, uint8_t* bmm1Res_handle, uint8_t* bmm2Res_handle, uint8_t* PReduced_handle, uint8_t* SoftmaxI_handle, uint8_t* dk_matmul_partial_handle, uint8_t* reluGradRes_handle, uint8_t* LossPartial_handle, uint8_t* dQueryIndex_handle, uint8_t* dKeyIndexOut_handle, uint8_t* dWeightOut_handle, uint8_t* LossOut_handle, aclrtStream stream) {
   uint32_t fftsLen{0};
   uint64_t fftsAddr{0};
   rtGetC2cCtrlAddr(&fftsAddr, &fftsLen);
   main_pipeline_kernel_tiling();
-  main_pipeline_kernel<<<24, nullptr, stream>>>(SparseIndices_handle, Query_handle, QueryRope_handle, Key_handle, KeyRope_handle, QueryIndex_handle, KeyIndex_handle, Weights_handle, SoftmaxMax_handle, SoftmaxSum_handle, dQueryIndexAccum_handle, dKeyScatterPing_handle, dKeyScatterPong_handle, GatherKey_ws_handle, GatherKeyRope_ws_handle, GatherKeyIndex_ws_handle, bmm1Res_handle, bmm2Res_handle, PReduced_handle, SoftmaxI_handle, dk_matmul_partial_handle, reluGradRes_handle, LossPartial_handle, dQueryIndex_handle, dKeyIndexOut_handle, dWeightOut_handle, LossOut_handle, fftsAddr);
+  main_pipeline_kernel<<<24, nullptr, stream>>>(SparseIndices_handle, Query_handle, QueryRope_handle, Key_handle, KeyRope_handle, QueryIndex_handle, KeyIndex_handle, Weights_handle, SoftmaxMax_handle, SoftmaxSum_handle, dQueryIndexAccum_handle, dKeyIndexAccum_handle, GatherKey_ws_handle, GatherKeyRope_ws_handle, GatherKeyIndex_ws_handle, bmm1Res_handle, bmm2Res_handle, PReduced_handle, SoftmaxI_handle, dk_matmul_partial_handle, reluGradRes_handle, LossPartial_handle, dQueryIndex_handle, dKeyIndexOut_handle, dWeightOut_handle, LossOut_handle, fftsAddr);
 }
