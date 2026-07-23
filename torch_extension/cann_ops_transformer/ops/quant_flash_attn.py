@@ -47,7 +47,8 @@ class QuantFlashAttnOpBuilder(OpBuilder):
             "Tensor? seqused_kv=None, Tensor? v_descale=None, "
             "int? batch_size=None, int? max_seqlen_q=-1, int? max_seqlen_kv=-1, "
             "int? mask_mode=0, int? win_left=-1, int? win_right=-1, "
-            "str? layout_q=\"BSND\", str? layout_q_descale=\"BSND\", str? layout_kv=\"BSND\", str? layout_out=\"BSND\") -> Tensor",
+            "str? layout_q=\"BSND\", str? layout_q_descale=\"BSND\", "
+            "str? layout_kv=\"BSND\", str? layout_out=\"BSND\") -> Tensor"
 
             "quant_flash_attn(Tensor q, Tensor k, Tensor v, "
             "Tensor q_descale, Tensor k_descale, Tensor v_descale, int quant_mode, "
