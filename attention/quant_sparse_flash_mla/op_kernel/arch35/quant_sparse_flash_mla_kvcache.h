@@ -84,13 +84,25 @@ __aicore__ inline void GetSingleCoreParam(RunParamStr& runParam, const ConstInfo
         runParam.nextTokensPerBatchCmp = (int64_t)runParam.actualS2CmpSize * constInfo.cmpRatio +
             runParam.cmpResidual - runParam.actualS1Size;
     }
-    runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
-    if (constInfo.oriWinLeft == -1) {
+
+    if (constInfo.oriMaskMode == 3) {
+        runParam.nextTokensPerBatchOri = runParam.actualS2OriSize - runParam.actualS1Size;
         runParam.preTokensPerBatch = runParam.actualS1Size;
-    } else {
-        runParam.preTokensPerBatch = -(runParam.actualS2OriSize - runParam.actualS1Size - constInfo.oriWinLeft);
+    } else if (constInfo.oriMaskMode == 4) {
+        const int64_t casualOffset = runParam.actualS2OriSize - runParam.actualS1Size;
+
+        runParam.preTokensPerBatch = (constInfo.oriWinLeft == -1) ?
+            runParam.actualS1Size : constInfo.oriWinLeft - casualOffset;
+
+        runParam.nextTokensPerBatchOri = (constInfo.oriWinRight == -1) ?
+            runParam.actualS2OriSize : casualOffset + constInfo.oriWinRight;
+
+        runParam.preTokensPerBatch =
+            Min(runParam.preTokensPerBatch, static_cast<int64_t>(runParam.actualS1Size));
+    } else if (constInfo.oriMaskMode == 0) {
+        runParam.nextTokensPerBatchOri = runParam.actualS2OriSize;
+        runParam.preTokensPerBatch = runParam.actualS1Size;
     }
-    runParam.preTokensPerBatch = Min(runParam.preTokensPerBatch, runParam.actualS1Size);
 }
 
 TEMPLATE_INTF
