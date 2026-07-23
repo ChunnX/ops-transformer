@@ -59,7 +59,9 @@ struct FiaPlatFormInfo {
 
 class FiaTilingFullQuantMxArch35 : public FiaTilingBase {
 public:
-    explicit FiaTilingFullQuantMxArch35(gert::TilingContext *context) : FiaTilingBase(context) {}
+    explicit FiaTilingFullQuantMxArch35(gert::TilingContext *context) : FiaTilingBase(context)
+    {
+    }
     ~FiaTilingFullQuantMxArch35() override = default;
 
 protected:
