@@ -61,8 +61,7 @@ struct SwigluActivation {
 };
 
 // GPT-OSS uses an interleaved gate/up projection and a modified SwiGLU:
-// gate * sigmoid(alpha * gate) * (up + 1). Alpha is intentionally a
-// kernel-side default so the public MegaMoe interface remains unchanged.
+// gate * sigmoid(alpha * gate) * (up + 1).
 struct GptOssSwigluActivation {
     static constexpr float DEFAULT_ALPHA = 1.702f;
 
@@ -99,8 +98,8 @@ struct GptOssSwigluActivation {
 //     beta * tanh(gate / beta) * sigmoid(gate) * up
 // When linearBeta is enabled, up becomes:
 //     linearBeta * tanh(up / linearBeta)
-// gate/up use the regular contiguous half split. beta and linearBeta are
-// independent operator attributes; activation_clamp is not used by SiTU.
+// gate/up use the regular contiguous half split. The generic activationAlpha
+// operator attribute carries linearBeta for SiTU; activation_clamp is unused.
 struct SituActivation {
     static constexpr float DEFAULT_BETA = 1.0f;
     static constexpr float LINEAR_BETA_DISABLED = 3.402823466e+38F;
@@ -231,15 +230,16 @@ struct GatedActivation {
     static void Compute(AscendC::LocalTensor<float> const &output, AscendC::LocalTensor<float> const &gate,
                         AscendC::LocalTensor<float> const &up, AscendC::LocalTensor<uint8_t> const &sharedTmpBuffer,
                         uint32_t dataLength, float clampLimit, uint32_t activationCode,
-                        float beta = SituActivation::DEFAULT_BETA,
-                        float linearBeta = SituActivation::LINEAR_BETA_DISABLED)
+                        float activationAlpha = GptOssSwigluActivation::DEFAULT_ALPHA,
+                        float activationBeta = SituActivation::DEFAULT_BETA)
     {
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SWIGLU_GPT_OSS)) {
-            GptOssSwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);
+            GptOssSwigluActivation::Compute(
+                output, gate, up, sharedTmpBuffer, dataLength, clampLimit, activationAlpha);
             return;
         }
         if (activationCode == static_cast<uint32_t>(GatedActivationMode::SITU)) {
-            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, linearBeta, beta);
+            SituActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, activationAlpha, activationBeta);
             return;
         }
         SwigluActivation::Compute(output, gate, up, sharedTmpBuffer, dataLength, clampLimit);

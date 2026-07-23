@@ -79,9 +79,9 @@ ACLNN_API aclnnStatus aclnnMegaMoeGetWorkspaceSize(
     const aclTensorList *sharedWeightScales2Optional, const aclTensorList *sharedBias1Optional,
     const aclTensorList *sharedBias2Optional, int64_t moeExpertNum, int64_t epWorldSize, int64_t cclBufferSize,
     int64_t maxRecvTokenNum, int64_t dispatchQuantMode, int64_t dispatchQuantOutDtype, int64_t combineQuantMode,
-    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp, int64_t topoType,
-    int64_t rankNumPerServer, aclTensor *yOut, aclTensor *expertTokenNumsOut, uint64_t *workspaceSize,
-    aclOpExecutor **executor);
+    const char *commAlg, int64_t numMaxTokensPerRank, const char *activation, float activationClamp,
+    float activationAlpha, float activationBeta, int64_t topoType, int64_t rankNumPerServer, aclTensor *yOut,
+    aclTensor *expertTokenNumsOut, uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnMegaMoe的第二段接口，用于执行计算。
