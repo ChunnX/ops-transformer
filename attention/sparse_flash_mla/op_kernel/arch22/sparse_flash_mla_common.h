@@ -179,6 +179,7 @@ __aicore__ inline void DataCopyPA(LocalTensor<T> &dstTensor,  // l1
 template <typename T>
 __aicore__ inline void DataCopyPABySlots(LocalTensor<T> &dstTensor,
                                          GlobalTensor<T> &srcTensor,
+                                         GlobalTensor<int32_t> &blockTableGm,
                                          GlobalTensor<int32_t> &sparseIndicesGm,
                                          const PAShape &shape,
                                          const Position &startPos,
@@ -186,16 +187,18 @@ __aicore__ inline void DataCopyPABySlots(LocalTensor<T> &dstTensor,
                                          uint32_t sparseIndexStart)
 {
     uint32_t blockElementCnt = 32 / sizeof(T);
+    uint64_t blockTableBaseOffset = startPos.bIdx * shape.maxblockNumPerBatch;
     for (uint32_t row = 0; row < shape.copyRowNum; ++row) {
-        int32_t slotId = sparseIndicesGm.GetValue(sparseIndexBaseOffset + sparseIndexStart + row);
-        if (slotId < 0) {
+        int32_t logicalIdx = sparseIndicesGm.GetValue(sparseIndexBaseOffset + sparseIndexStart + row);
+        if (logicalIdx < 0) {
             continue;
         }
-        uint64_t blockId = static_cast<uint64_t>(slotId) / shape.blockSize;
-        uint64_t blockOffset = static_cast<uint64_t>(slotId) % shape.blockSize;
-        uint64_t offset = blockId * shape.kvStride;
+        uint64_t blockTableIdx = static_cast<uint64_t>(logicalIdx) / shape.blockSize;
+        uint64_t inBlockIdx = static_cast<uint64_t>(logicalIdx) % shape.blockSize;
+        uint64_t idInBlockTable = blockTableGm.GetValue(blockTableBaseOffset + blockTableIdx);
+        uint64_t offset = idInBlockTable * shape.kvStride;
         offset += static_cast<uint64_t>(startPos.n2Idx * shape.headDim * shape.blockSize) +
-                  blockOffset * shape.headDim + startPos.dIdx;
+                  inBlockIdx * shape.headDim + startPos.dIdx;
 
         LocalTensor<T> tmpDstTensor = dstTensor[row * blockElementCnt];
         GlobalTensor<T> tmpSrcTensor = srcTensor[offset];
@@ -352,6 +355,7 @@ struct ConstInfo {
     int64_t sparseBlockSize = 0;
     uint32_t sparseBlockCount = 0;
     bool hasOriSparseIndices = false;
+    bool hasOriTopkLength = false;
     uint32_t oriSparseIndexWidth = 0;
 
     // cmp attr

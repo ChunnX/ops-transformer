@@ -565,6 +565,7 @@ visible = range(max(seq_start, draft_start - window_size), draft_end + 1)
 4. metadata 若只按 `K_ori` 上界分配，短序列或 `-1` 较多时会有无效计算，性能可能不理想。
 5. PA_BBND 下 block table 非连续会增加 gather 随机访存，需评估 L1/UB 排布和 DataCopy 粒度。
 6. 如果后续 DSpark engine 支持跨请求重排或非尾部拼接，单靠 `cu_seqlens` 推导 q 位置不够，需要 wrapper 传入明确的 visible indices；本设计通过 `ori_sparse_indices` 可以覆盖该情况。
+7. **遗留（性能）**：arch22 SWA ori sparse 路径在 `GetOriSparseActualSeqLen()`（扫描 `-1`）与 `DataCopyPABySlots()`（按 K tile 循环 `GetValue` 读 indices）中逐元素 GM 读 index，会打断 MTE/计算流水。后续应改为批量搬 index 到 UB/L1 再 gather，或绑定 `ori_topk_length` 避免扫描；本阶段先保证 logical 语义与精度，性能优化单列。
 
 ## 14. 结论
 

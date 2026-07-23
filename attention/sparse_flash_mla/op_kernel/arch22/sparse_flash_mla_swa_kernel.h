@@ -87,7 +87,8 @@ public:
                                 __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t* cuSeqlensKV,
                                 __gm__ uint8_t *cuSeqlensCmpKV, __gm__ uint8_t *seqUsedQ,
                                 __gm__ uint8_t *seqUsedKV, __gm__ uint8_t *seqUsedCmpKV,
-                                __gm__ uint8_t *cmpResidualKV, __gm__ uint8_t *sinks,
+                                __gm__ uint8_t *cmpResidualKV, __gm__ uint8_t *oriTopkLength,
+                                __gm__ uint8_t *cmpTopkLength, __gm__ uint8_t *sinks,
                                 __gm__ uint8_t *metadata, __gm__ uint8_t *attentionOut,
                                 __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
                                 const SparseFlashMlaTilingData *__restrict tiling, __gm__ uint8_t *gmTiling,
@@ -154,6 +155,7 @@ private:
     GlobalTensor<int32_t> oriBlockTableGm;
     GlobalTensor<int32_t> cmpBlockTableGm;
     GlobalTensor<int32_t> oriSparseIndicesGm;
+    GlobalTensor<int32_t> oriTopkLengthGm;
 
     GlobalTensor<int32_t> actualSeqLengthsQGm;
     GlobalTensor<int32_t> actualSeqLengthsKVGm;
@@ -459,12 +461,17 @@ __aicore__ inline uint32_t SparseFlashMlaSwa<SMLAT>::GetOriSparseActualSeqLen()
         return 0;
     }
     uint64_t qTokenOffset = tempLoopInfo.actualSeqQPrefixSum + tempLoopInfo.s1StartIdx;
-    uint64_t sparseIndexBaseOffset =
-        (qTokenOffset * constInfo.kvHeadNum + tempLoopInfo.n2Idx) * constInfo.oriSparseIndexWidth;
-    uint32_t maxSparseLen = Min(static_cast<uint64_t>(constInfo.oriSparseIndexWidth),
-                                static_cast<uint64_t>(tempLoopInfo.actOriS2Size));
+    uint64_t topkLenOffset = qTokenOffset * constInfo.kvHeadNum + tempLoopInfo.n2Idx;
+    if (constInfo.hasOriTopkLength) {
+        int32_t topkLen = oriTopkLengthGm.GetValue(topkLenOffset);
+        if (topkLen <= 0) {
+            return 0;
+        }
+        return Min(static_cast<uint32_t>(topkLen), constInfo.oriSparseIndexWidth);
+    }
+    uint64_t sparseIndexBaseOffset = topkLenOffset * constInfo.oriSparseIndexWidth;
     uint32_t sparseLen = 0;
-    for (; sparseLen < maxSparseLen; ++sparseLen) {
+    for (; sparseLen < constInfo.oriSparseIndexWidth; ++sparseLen) {
         if (oriSparseIndicesGm.GetValue(sparseIndexBaseOffset + sparseLen) < 0) {
             break;
         }
@@ -510,7 +517,8 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::Init(
     __gm__ uint8_t *cmpSparseIndices, __gm__ uint8_t *oriBlockTable, __gm__ uint8_t *cmpBlockTable,
     __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensKV, __gm__ uint8_t *cuSeqlensCmpKV,
     __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKV, __gm__ uint8_t *seqUsedCmpKV,
-    __gm__ uint8_t *cmpResidualKV, __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
+    __gm__ uint8_t *cmpResidualKV, __gm__ uint8_t *oriTopkLength, __gm__ uint8_t *cmpTopkLength,
+    __gm__ uint8_t *sinks, __gm__ uint8_t *metadata,
     __gm__ uint8_t *attentionOut, __gm__ uint8_t *softmaxLse, __gm__ uint8_t *workspace,
     const SparseFlashMlaTilingData *__restrict tiling, __gm__ uint8_t *gmTiling, TPipe *tPipe)
 {
@@ -526,6 +534,11 @@ __aicore__ inline void SparseFlashMlaSwa<SMLAT>::Init(
     tilingData = tiling;
 
     InitTilingData();
+    constInfo.hasOriTopkLength = (oriTopkLength != nullptr);
+    if (constInfo.hasOriTopkLength) {
+        oriTopkLengthGm.SetGlobalBuffer((__gm__ int32_t *)oriTopkLength);
+    }
+    (void)cmpTopkLength;
     if (KV_LAYOUT_T == SMLA_LAYOUT::TND && LAYOUT_T == SMLA_LAYOUT::TND) {
         InitActualSeqLen(cuSeqlensQ, cuSeqlensKV, cuSeqlensCmpKV);
     } else if (KV_LAYOUT_T == SMLA_LAYOUT::TND) {

@@ -396,8 +396,8 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm1(const RunInfo &info, cons
                         uint64_t sparseIndexBaseOffset =
                             (info.qTokenOffset * constInfo.kvHeadNum + info.n2Idx) * constInfo.oriSparseIndexWidth;
                         uint32_t sparseIndexStart = info.s2Idx * constInfo.s2BaseSize + nL1 * N_SPLIT_SIZE;
-                        DataCopyPABySlots<KV_T>(bL1Tensor, oriKvGm, oriSparseIndicesGm, shape, startPos,
-                                                sparseIndexBaseOffset, sparseIndexStart);
+                        DataCopyPABySlots<KV_T>(bL1Tensor, oriKvGm, oriBlockTableGm, oriSparseIndicesGm, shape,
+                                                startPos, sparseIndexBaseOffset, sparseIndexStart);
                     } else while (copyFinishRowCnt < nL1Size) {
                         // 由于ori_left的存在， 即使第一块搬运也可能并非是pa_block的零点位
                         copyRowCnt = constInfo.paOriBlockSize - curS2Offset % constInfo.paOriBlockSize;
@@ -847,8 +847,8 @@ __aicore__ inline void SWACubeBlock<SMLAT>::ComputeMm2(const RunInfo &info, cons
                                 (info.qTokenOffset * constInfo.kvHeadNum + info.n2Idx) * constInfo.oriSparseIndexWidth;
                             uint32_t sparseIndexStart = info.s2Idx * constInfo.s2BaseSize + kL1 * K_L0_SPLIT_SIZE;
                             subvTensor = bL1Tensor[(kL1 - kOffset) * K_L0_SPLIT_SIZE * N_SPLIT_SIZE];
-                            DataCopyPABySlots<KV_T>(subvTensor, oriKvGm, oriSparseIndicesGm, shape, startPos,
-                                                    sparseIndexBaseOffset, sparseIndexStart);
+                            DataCopyPABySlots<KV_T>(subvTensor, oriKvGm, oriBlockTableGm, oriSparseIndicesGm, shape,
+                                                    startPos, sparseIndexBaseOffset, sparseIndexStart);
                         } else while (copyFinishRowCnt < kL0Size) {
                             copyRowCnt = constInfo.paOriBlockSize - curS2Offset % constInfo.paOriBlockSize;
                             if (copyFinishRowCnt + copyRowCnt > kL0Size) {
