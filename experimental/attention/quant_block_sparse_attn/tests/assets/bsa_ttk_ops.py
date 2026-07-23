@@ -105,23 +105,23 @@ class QuantBlockSparseAttnMetadataBuilder:
                          (query.shape[1] if layout_q == "NTD" else query.shape[0]))
         kv_fallback = int(key.shape[0] * key.shape[2]) if key.dim() == 4 else int(key.shape[0])
         metadata = torch.ops.cann_ops_transformer.quant_block_sparse_attn_metadata(
-            num_heads_q=int(query.shape[2] if query.dim() == 4 else query.shape[1]),
-            num_heads_kv=int(key.shape[2] if key.dim() == 4 else key.shape[1]),
-            head_dim=int(query.shape[-1]),
+            sparse_seq_len,
+            int(query.shape[2] if query.dim() == 4 else query.shape[1]),
+            int(key.shape[2] if key.dim() == 4 else key.shape[1]),
+            int(query.shape[-1]),
             cu_seqlens_q=cu_seqlens_q,
             cu_seqlens_kv=cu_seqlens_kv,
             seqused_q=seqused_q,
             seqused_kv=seqused_kv,
             batch_size=cls.batch_size(query, layout_q, cu_seqlens_q, seqused_q, sparse_indices),
+            sparse_block_size_q=int(sparse_q_block_size),
+            sparse_block_size_k=int(sparse_kv_block_size),
+            quant_mode=int(quant_mode),
+            mask_mode=int(mask_mode),
             max_seqlen_q=cls.max_seq(cu_seqlens_q, seqused_q, max_seqlen_q or q_fallback),
             max_seqlen_kv=cls.max_seq(cu_seqlens_kv, seqused_kv, max_seqlen_kv or kv_fallback),
             layout_q=layout_q,
             layout_kv=layout_kv,
-            softmax_scale=float(softmax_scale),
-            sparse_q_block_size=int(sparse_q_block_size),
-            sparse_kv_block_size=int(sparse_kv_block_size),
-            quant_mode=int(quant_mode),
-            mask_mode=int(mask_mode),
         )
         if hasattr(metadata, "to") and metadata.device != query.device:
             metadata = metadata.to(query.device)
