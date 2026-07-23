@@ -72,7 +72,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnCompressorGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnCompressor”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnCompressorGetWorkspaceSize”接口获取入参并根据流程计算所需workspace大小，再调用“aclnnCompressor”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnCompressorGetWorkspaceSize(
