@@ -12,3 +12,4 @@ if (BUILD_OPS_RTY_KERNEL)
 else()
     add_modules_sources(OPTYPE common ACLNNTYPE no_need_aclnn)
 endif()
+

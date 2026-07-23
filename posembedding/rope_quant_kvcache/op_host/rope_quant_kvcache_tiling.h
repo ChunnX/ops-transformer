@@ -32,6 +32,7 @@ TILING_DATA_FIELD_DEF(uint64_t, vHiddenSize);
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(RopeQuantKvcache, RopeQuantKvcacheTilingData)
-struct RopeQuantKvcacheCompileInfo {};
+struct RopeQuantKvcacheCompileInfo {
+};
 } // namespace optiling
 #endif

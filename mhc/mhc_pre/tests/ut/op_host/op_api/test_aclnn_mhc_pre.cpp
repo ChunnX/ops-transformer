@@ -114,21 +114,9 @@ aclnnStatus RunMhcPreNoOptional(TensorDesc &x, TensorDesc &phi, TensorDesc &alph
     return ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
 }
 
-enum class RequiredTensor {
-    X,
-    Phi,
-    Alpha,
-    Bias,
-    HIn,
-    HPost,
-    HRes
-};
+enum class RequiredTensor { X, Phi, Alpha, Bias, HIn, HPost, HRes };
 
-enum class RequiredPointer {
-    None,
-    WorkspaceSize,
-    Executor
-};
+enum class RequiredPointer { None, WorkspaceSize, Executor };
 
 aclnnStatus RunMhcPreMissingRequired(MhcPreTensors &tensors, RequiredTensor missing)
 {
@@ -148,8 +136,9 @@ aclnnStatus RunMhcPreMissingRequired(MhcPreTensors &tensors, RequiredTensor miss
     return aclnnMhcPreGetWorkspaceSize(
         getRequired(RequiredTensor::X, x.get()), getRequired(RequiredTensor::Phi, phi.get()),
         getRequired(RequiredTensor::Alpha, alpha.get()), getRequired(RequiredTensor::Bias, bias.get()), gamma.get(),
-        NORM_EPS, HC_EPS, getRequired(RequiredTensor::HIn, hIn.get()), getRequired(RequiredTensor::HPost, hPost.get()),
-        getRequired(RequiredTensor::HRes, hRes.get()), nullptr, nullptr, nullptr, &workspaceSize, &executor);
+        NORM_EPS, HC_EPS, getRequired(RequiredTensor::HIn, hIn.get()),
+        getRequired(RequiredTensor::HPost, hPost.get()), getRequired(RequiredTensor::HRes, hRes.get()), nullptr,
+        nullptr, nullptr, &workspaceSize, &executor);
 }
 
 aclnnStatus RunMhcPreMissingRequiredPointer(MhcPreTensors &tensors, RequiredPointer missing)
@@ -207,17 +196,17 @@ TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_valid_4d_fp16_with_optional_outputs)
 TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_missing_required_tensor_cases)
 {
     const std::vector<std::pair<const char *, RequiredTensor>> cases = {
-        {"missing_x", RequiredTensor::X},         {"missing_phi", RequiredTensor::Phi},
-        {"missing_alpha", RequiredTensor::Alpha}, {"missing_bias", RequiredTensor::Bias},
-        {"missing_hin", RequiredTensor::HIn},     {"missing_hpost", RequiredTensor::HPost},
+        {"missing_x", RequiredTensor::X},           {"missing_phi", RequiredTensor::Phi},
+        {"missing_alpha", RequiredTensor::Alpha},   {"missing_bias", RequiredTensor::Bias},
+        {"missing_hin", RequiredTensor::HIn},       {"missing_hpost", RequiredTensor::HPost},
         {"missing_hres", RequiredTensor::HRes},
     };
     for (const auto &[name, missing] : cases) {
         auto tensors = MakeValidTensors();
         const auto actual = RunMhcPreMissingRequired(tensors, missing);
         const auto result = actual == ACLNN_ERR_PARAM_NULLPTR ? "PASS" : "FAIL";
-        cout << "[" << result << "] case=" << name << ", expected=" << ACLNN_ERR_PARAM_NULLPTR << ", actual=" << actual
-             << endl;
+        cout << "[" << result << "] case=" << name << ", expected=" << ACLNN_ERR_PARAM_NULLPTR
+             << ", actual=" << actual << endl;
         EXPECT_EQ(actual, ACLNN_ERR_PARAM_NULLPTR) << name;
     }
 }
@@ -235,8 +224,8 @@ TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_missing_required_pointer_cases)
         auto tensors = MakeValidTensors();
         const auto actual = RunMhcPreMissingRequiredPointer(tensors, missing);
         const auto result = actual == ACLNN_ERR_PARAM_NULLPTR ? "PASS" : "FAIL";
-        cout << "[" << result << "] case=" << name << ", expected=" << ACLNN_ERR_PARAM_NULLPTR << ", actual=" << actual
-             << endl;
+        cout << "[" << result << "] case=" << name << ", expected=" << ACLNN_ERR_PARAM_NULLPTR
+             << ", actual=" << actual << endl;
         EXPECT_EQ(actual, ACLNN_ERR_PARAM_NULLPTR) << name;
     }
 }
@@ -244,74 +233,108 @@ TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_missing_required_pointer_cases)
 TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_dtype_shape_cases)
 {
     std::vector<InvalidCase> cases = {
-        {"invalid_x_dtype_float32", "x dtype is float32",
-         [](MhcPreTensors &t) { t.x = MakeTensor({B, S, N, D}, ACL_FLOAT, -1, 1); }},
-        {"invalid_x_shape_rank2", "x shape rank is 2D, expected 3D or 4D",
-         [](MhcPreTensors &t) { t.x = MakeTensor({B, D}, ACL_FLOAT16, -1, 1); }},
-        {"invalid_x_shape_value_n3", "x shape value has n=N-1",
-         [](MhcPreTensors &t) { t.x = MakeTensor({B, S, N - 1, D}, ACL_FLOAT16, -1, 1); }},
-        {"invalid_phi_dtype_float16", "phi dtype is float16",
-         [](MhcPreTensors &t) { t.phi = MakeTensor({PHI_ROWS, ND}, ACL_FLOAT16, -1, 1); }},
-        {"invalid_phi_shape_rank1", "phi shape rank is 1D, expected 2D",
-         [](MhcPreTensors &t) { t.phi = MakeTensor({ND}, ACL_FLOAT, -1, 1); }},
-        {"invalid_phi_shape_value_first_dim", "phi first dim is PHI_ROWS-1",
-         [](MhcPreTensors &t) { t.phi = MakeTensor({PHI_ROWS - 1, ND}, ACL_FLOAT, -1, 1); }},
-        {"invalid_alpha_dtype_float16", "alpha dtype is float16",
-         [](MhcPreTensors &t) { t.alpha = MakeTensor({3}, ACL_FLOAT16, 0.5, 1.5); }},
-        {"invalid_alpha_shape_rank0", "alpha shape rank is 0D, expected 1D",
-         [](MhcPreTensors &t) { t.alpha = MakeTensor({}, ACL_FLOAT, 0.5, 1.5); }},
-        {"invalid_alpha_shape_rank2", "alpha shape rank is 2D, expected 1D",
-         [](MhcPreTensors &t) { t.alpha = MakeTensor({1, 3}, ACL_FLOAT, 0.5, 1.5); }},
-        {"invalid_alpha_shape_value_len4", "alpha shape value is [4], expected [3]",
-         [](MhcPreTensors &t) { t.alpha = MakeTensor({4}, ACL_FLOAT, 0.5, 1.5); }},
-        {"invalid_bias_dtype_float16", "bias dtype is float16",
-         [](MhcPreTensors &t) { t.bias = MakeTensor({PHI_ROWS}, ACL_FLOAT16, -1, 1); }},
-        {"invalid_bias_shape_rank2", "bias shape rank is 2D, expected 1D",
-         [](MhcPreTensors &t) { t.bias = MakeTensor({1, PHI_ROWS}, ACL_FLOAT, -1, 1); }},
-        {"invalid_bias_shape_value_len23", "bias shape value is PHI_ROWS-1",
-         [](MhcPreTensors &t) { t.bias = MakeTensor({PHI_ROWS - 1}, ACL_FLOAT, -1, 1); }},
-        {"invalid_gamma_dtype_float16", "gamma dtype is float16",
-         [](MhcPreTensors &t) { t.gamma = MakeTensor({N, D}, ACL_FLOAT16, -1, 1); }},
-        {"invalid_gamma_shape_rank1", "gamma shape rank is 1D, expected 2D",
-         [](MhcPreTensors &t) { t.gamma = MakeTensor({D}, ACL_FLOAT, -1, 1); }},
-        {"invalid_gamma_shape_value_last_dim", "gamma last dim is D+1",
-         [](MhcPreTensors &t) { t.gamma = MakeTensor({N, D + 1}, ACL_FLOAT, -1, 1); }},
-        {"invalid_hin_dtype_float32", "hIn dtype is float32",
-         [](MhcPreTensors &t) { t.hIn = MakeTensor({B, S, D}, ACL_FLOAT, 0, 0); }},
-        {"invalid_hin_shape_rank1", "hIn shape rank is 1D, expected 3D",
-         [](MhcPreTensors &t) { t.hIn = MakeTensor({D}, ACL_FLOAT16, 0, 0); }},
-        {"invalid_hin_shape_value_last_dim", "hIn last dim is D+1",
-         [](MhcPreTensors &t) { t.hIn = MakeTensor({B, S, D + 1}, ACL_FLOAT16, 0, 0); }},
-        {"invalid_hpost_dtype_float16", "hPost dtype is float16",
-         [](MhcPreTensors &t) { t.hPost = MakeTensor({B, S, N}, ACL_FLOAT16, 0, 0); }},
-        {"invalid_hpost_shape_rank1", "hPost shape rank is 1D, expected 3D",
-         [](MhcPreTensors &t) { t.hPost = MakeTensor({N}, ACL_FLOAT, 0, 0); }},
-        {"invalid_hpost_shape_value_last_dim", "hPost last dim is N+1",
-         [](MhcPreTensors &t) { t.hPost = MakeTensor({B, S, N + 1}, ACL_FLOAT, 0, 0); }},
-        {"invalid_hres_dtype_float16", "hRes dtype is float16",
-         [](MhcPreTensors &t) { t.hRes = MakeTensor({B, S, N, N}, ACL_FLOAT16, 0, 0); }},
-        {"invalid_hres_shape_rank2", "hRes shape rank is 2D, expected 4D",
-         [](MhcPreTensors &t) { t.hRes = MakeTensor({N, N}, ACL_FLOAT, 0, 0); }},
-        {"invalid_hres_shape_value_last_dim", "hRes last dim is N+1",
-         [](MhcPreTensors &t) { t.hRes = MakeTensor({B, S, N, N + 1}, ACL_FLOAT, 0, 0); }},
-        {"invalid_invrms_dtype_float16", "invRms dtype is float16",
-         [](MhcPreTensors &t) { t.invRms = MakeTensor({B, S}, ACL_FLOAT16, 0, 0); }},
-        {"invalid_invrms_shape_rank3", "invRms shape rank is 3D, expected 2D",
-         [](MhcPreTensors &t) { t.invRms = MakeTensor({B, S, 1}, ACL_FLOAT, 0, 0); }},
-        {"invalid_invrms_shape_value_len", "invRms second dim is S+1",
-         [](MhcPreTensors &t) { t.invRms = MakeTensor({B, S + 1}, ACL_FLOAT, 0, 0); }},
-        {"invalid_hmix_dtype_float16", "hMix dtype is float16",
-         [](MhcPreTensors &t) { t.hMix = MakeTensor({B, S, PHI_ROWS}, ACL_FLOAT16, 0, 0); }},
-        {"invalid_hmix_shape_rank1", "hMix shape rank is 1D, expected 3D",
-         [](MhcPreTensors &t) { t.hMix = MakeTensor({PHI_ROWS}, ACL_FLOAT, 0, 0); }},
-        {"invalid_hmix_shape_value_last_dim", "hMix last dim is PHI_ROWS+1",
-         [](MhcPreTensors &t) { t.hMix = MakeTensor({B, S, PHI_ROWS + 1}, ACL_FLOAT, 0, 0); }},
-        {"invalid_hpre_dtype_float16", "hPre dtype is float16",
-         [](MhcPreTensors &t) { t.hPre = MakeTensor({B, S, N}, ACL_FLOAT16, 0, 0); }},
-        {"invalid_hpre_shape_rank1", "hPre shape rank is 1D, expected 3D",
-         [](MhcPreTensors &t) { t.hPre = MakeTensor({N}, ACL_FLOAT, 0, 0); }},
-        {"invalid_hpre_shape_value_last_dim", "hPre last dim is N+1",
-         [](MhcPreTensors &t) { t.hPre = MakeTensor({B, S, N + 1}, ACL_FLOAT, 0, 0); }},
+        {"invalid_x_dtype_float32", "x dtype is float32", [](MhcPreTensors &t) {
+             t.x = MakeTensor({B, S, N, D}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_x_shape_rank2", "x shape rank is 2D, expected 3D or 4D", [](MhcPreTensors &t) {
+             t.x = MakeTensor({B, D}, ACL_FLOAT16, -1, 1);
+         }},
+        {"invalid_x_shape_value_n3", "x shape value has n=N-1", [](MhcPreTensors &t) {
+             t.x = MakeTensor({B, S, N - 1, D}, ACL_FLOAT16, -1, 1);
+         }},
+        {"invalid_phi_dtype_float16", "phi dtype is float16", [](MhcPreTensors &t) {
+             t.phi = MakeTensor({PHI_ROWS, ND}, ACL_FLOAT16, -1, 1);
+         }},
+        {"invalid_phi_shape_rank1", "phi shape rank is 1D, expected 2D", [](MhcPreTensors &t) {
+             t.phi = MakeTensor({ND}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_phi_shape_value_first_dim", "phi first dim is PHI_ROWS-1", [](MhcPreTensors &t) {
+             t.phi = MakeTensor({PHI_ROWS - 1, ND}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_alpha_dtype_float16", "alpha dtype is float16", [](MhcPreTensors &t) {
+             t.alpha = MakeTensor({3}, ACL_FLOAT16, 0.5, 1.5);
+         }},
+        {"invalid_alpha_shape_rank0", "alpha shape rank is 0D, expected 1D", [](MhcPreTensors &t) {
+             t.alpha = MakeTensor({}, ACL_FLOAT, 0.5, 1.5);
+         }},
+        {"invalid_alpha_shape_rank2", "alpha shape rank is 2D, expected 1D", [](MhcPreTensors &t) {
+             t.alpha = MakeTensor({1, 3}, ACL_FLOAT, 0.5, 1.5);
+         }},
+        {"invalid_alpha_shape_value_len4", "alpha shape value is [4], expected [3]", [](MhcPreTensors &t) {
+             t.alpha = MakeTensor({4}, ACL_FLOAT, 0.5, 1.5);
+         }},
+        {"invalid_bias_dtype_float16", "bias dtype is float16", [](MhcPreTensors &t) {
+             t.bias = MakeTensor({PHI_ROWS}, ACL_FLOAT16, -1, 1);
+         }},
+        {"invalid_bias_shape_rank2", "bias shape rank is 2D, expected 1D", [](MhcPreTensors &t) {
+             t.bias = MakeTensor({1, PHI_ROWS}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_bias_shape_value_len23", "bias shape value is PHI_ROWS-1", [](MhcPreTensors &t) {
+             t.bias = MakeTensor({PHI_ROWS - 1}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_gamma_dtype_float16", "gamma dtype is float16", [](MhcPreTensors &t) {
+             t.gamma = MakeTensor({N, D}, ACL_FLOAT16, -1, 1);
+         }},
+        {"invalid_gamma_shape_rank1", "gamma shape rank is 1D, expected 2D", [](MhcPreTensors &t) {
+             t.gamma = MakeTensor({D}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_gamma_shape_value_last_dim", "gamma last dim is D+1", [](MhcPreTensors &t) {
+             t.gamma = MakeTensor({N, D + 1}, ACL_FLOAT, -1, 1);
+         }},
+        {"invalid_hin_dtype_float32", "hIn dtype is float32", [](MhcPreTensors &t) {
+             t.hIn = MakeTensor({B, S, D}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hin_shape_rank1", "hIn shape rank is 1D, expected 3D", [](MhcPreTensors &t) {
+             t.hIn = MakeTensor({D}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hin_shape_value_last_dim", "hIn last dim is D+1", [](MhcPreTensors &t) {
+             t.hIn = MakeTensor({B, S, D + 1}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hpost_dtype_float16", "hPost dtype is float16", [](MhcPreTensors &t) {
+             t.hPost = MakeTensor({B, S, N}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hpost_shape_rank1", "hPost shape rank is 1D, expected 3D", [](MhcPreTensors &t) {
+             t.hPost = MakeTensor({N}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hpost_shape_value_last_dim", "hPost last dim is N+1", [](MhcPreTensors &t) {
+             t.hPost = MakeTensor({B, S, N + 1}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hres_dtype_float16", "hRes dtype is float16", [](MhcPreTensors &t) {
+             t.hRes = MakeTensor({B, S, N, N}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hres_shape_rank2", "hRes shape rank is 2D, expected 4D", [](MhcPreTensors &t) {
+             t.hRes = MakeTensor({N, N}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hres_shape_value_last_dim", "hRes last dim is N+1", [](MhcPreTensors &t) {
+             t.hRes = MakeTensor({B, S, N, N + 1}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_invrms_dtype_float16", "invRms dtype is float16", [](MhcPreTensors &t) {
+             t.invRms = MakeTensor({B, S}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_invrms_shape_rank3", "invRms shape rank is 3D, expected 2D", [](MhcPreTensors &t) {
+             t.invRms = MakeTensor({B, S, 1}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_invrms_shape_value_len", "invRms second dim is S+1", [](MhcPreTensors &t) {
+             t.invRms = MakeTensor({B, S + 1}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hmix_dtype_float16", "hMix dtype is float16", [](MhcPreTensors &t) {
+             t.hMix = MakeTensor({B, S, PHI_ROWS}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hmix_shape_rank1", "hMix shape rank is 1D, expected 3D", [](MhcPreTensors &t) {
+             t.hMix = MakeTensor({PHI_ROWS}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hmix_shape_value_last_dim", "hMix last dim is PHI_ROWS+1", [](MhcPreTensors &t) {
+             t.hMix = MakeTensor({B, S, PHI_ROWS + 1}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hpre_dtype_float16", "hPre dtype is float16", [](MhcPreTensors &t) {
+             t.hPre = MakeTensor({B, S, N}, ACL_FLOAT16, 0, 0);
+         }},
+        {"invalid_hpre_shape_rank1", "hPre shape rank is 1D, expected 3D", [](MhcPreTensors &t) {
+             t.hPre = MakeTensor({N}, ACL_FLOAT, 0, 0);
+         }},
+        {"invalid_hpre_shape_value_last_dim", "hPre last dim is N+1", [](MhcPreTensors &t) {
+             t.hPre = MakeTensor({B, S, N + 1}, ACL_FLOAT, 0, 0);
+         }},
     };
 
     for (const auto &invalidCase : cases) {
@@ -330,7 +353,7 @@ TEST_F(MhcPreOpapiUt, aclnn_mhc_pre_invalid_partial_optional_outputs)
 {
     auto tensors = MakeValidTensors();
 
-    EXPECT_EQ(RunMhcPrePartialOptional(*tensors.x, *tensors.phi, *tensors.alpha, *tensors.bias, *tensors.gamma,
-                                       *tensors.hIn, *tensors.hPost, *tensors.hRes, *tensors.invRms),
+    EXPECT_EQ(RunMhcPrePartialOptional(*tensors.x, *tensors.phi, *tensors.alpha, *tensors.bias, *tensors.gamma, *tensors.hIn,
+                                       *tensors.hPost, *tensors.hRes, *tensors.invRms),
               ACLNN_ERR_PARAM_INVALID);
 }

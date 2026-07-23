@@ -27,10 +27,18 @@
 
 using namespace AscendC;
 using namespace MoeInitRoutingQuantV2;
-extern "C" __global__ __aicore__ void
-moe_init_routing_quant_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR offset, GM_ADDR expandedX,
-                          GM_ADDR expandedRowIdx, GM_ADDR expertTokensCountOrCumsum, GM_ADDR expertTokensBeforeCapacity,
-                          GM_ADDR dynamicQuantScale, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void moe_init_routing_quant_v2(
+    GM_ADDR x,
+    GM_ADDR expertIdx,
+    GM_ADDR scale,
+    GM_ADDR offset,
+    GM_ADDR expandedX,
+    GM_ADDR expandedRowIdx,
+    GM_ADDR expertTokensCountOrCumsum,
+    GM_ADDR expertTokensBeforeCapacity,
+    GM_ADDR dynamicQuantScale,
+    GM_ADDR workspace,
+    GM_ADDR tiling)
 {
     if (g_coreType == AIC) {
         return;
@@ -53,15 +61,15 @@ moe_init_routing_quant_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR o
     if (TILING_KEY_IS(10000) || TILING_KEY_IS(10100) || TILING_KEY_IS(11000) || TILING_KEY_IS(11100)) {
         TPipe sortPipe;
         MoeV2SortOneCore op;
-        op.Init<MoeInitRoutingQuantV2TilingData>(expertIdx, expertTokensCountOrCumsum, expertTokensBeforeCapacity,
-                                                 userWS, t, &sortPipe);
+        op.Init<MoeInitRoutingQuantV2TilingData>(
+            expertIdx, expertTokensCountOrCumsum, expertTokensBeforeCapacity, userWS, t, &sortPipe);
         op.Process();
         sortPipe.Destroy();
     } else if (TILING_KEY_IS(10010) || TILING_KEY_IS(10110) || TILING_KEY_IS(11010) || TILING_KEY_IS(11110)) {
         TPipe sortPipe;
         MoeV2SortMultiCore op;
-        op.Init<MoeInitRoutingQuantV2TilingData>(expertIdx, expertTokensCountOrCumsum, expertTokensBeforeCapacity,
-                                                 userWS, t, &sortPipe);
+        op.Init<MoeInitRoutingQuantV2TilingData>(
+            expertIdx, expertTokensCountOrCumsum, expertTokensBeforeCapacity, userWS, t, &sortPipe);
         op.Process();
         sortPipe.Destroy();
     }
@@ -71,25 +79,25 @@ moe_init_routing_quant_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR o
             if (histWithRegBase) {
                 TPipe expertTokenRegOutPipe;
                 MoeV2ExpertTokenOutRegBase expertTokenRegOutOp;
-                expertTokenRegOutOp.Init<MoeInitRoutingQuantV2TilingData>(expertTokensCountOrCumsum,
-                                                                          expertTokensBeforeCapacity, expandedRowIdx,
-                                                                          userWS, t, &expertTokenRegOutPipe);
+                expertTokenRegOutOp.Init<MoeInitRoutingQuantV2TilingData>(
+                    expertTokensCountOrCumsum, expertTokensBeforeCapacity, expandedRowIdx, userWS, t,
+                    &expertTokenRegOutPipe);
                 expertTokenRegOutOp.Process();
                 expertTokenRegOutPipe.Destroy();
 
                 TPipe expertTokenOutPipe;
                 MoeV2ExpertTokenOutSimt expertTokenOutOpSimt;
-                expertTokenOutOpSimt.Init<MoeInitRoutingQuantV2TilingData>(expertTokensCountOrCumsum,
-                                                                           expertTokensBeforeCapacity, expandedRowIdx,
-                                                                           userWS, t, &expertTokenOutPipe);
+                expertTokenOutOpSimt.Init<MoeInitRoutingQuantV2TilingData>(
+                    expertTokensCountOrCumsum, expertTokensBeforeCapacity, expandedRowIdx, userWS, t,
+                    &expertTokenOutPipe);
                 expertTokenOutOpSimt.Process<false>();
                 expertTokenOutPipe.Destroy();
             } else {
                 TPipe expertTokenOutPipe;
                 MoeV2ExpertTokenOutSimt expertTokenOutOpSimt;
-                expertTokenOutOpSimt.Init<MoeInitRoutingQuantV2TilingData>(expertTokensCountOrCumsum,
-                                                                           expertTokensBeforeCapacity, expandedRowIdx,
-                                                                           userWS, t, &expertTokenOutPipe);
+                expertTokenOutOpSimt.Init<MoeInitRoutingQuantV2TilingData>(
+                    expertTokensCountOrCumsum, expertTokensBeforeCapacity, expandedRowIdx, userWS, t,
+                    &expertTokenOutPipe);
                 expertTokenOutOpSimt.Process<true>();
                 expertTokenOutPipe.Destroy();
             }
@@ -102,9 +110,9 @@ moe_init_routing_quant_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR o
         if (histWithRegBase) {
             TPipe expertTokenRegOutPipe;
             MoeV2ExpertTokenOutRegBase expertTokenRegOutOp;
-            expertTokenRegOutOp.Init<MoeInitRoutingQuantV2TilingData>(expertTokensCountOrCumsum,
-                                                                      expertTokensBeforeCapacity, expandedRowIdx,
-                                                                      userWS, t, &expertTokenRegOutPipe);
+            expertTokenRegOutOp.Init<MoeInitRoutingQuantV2TilingData>(
+                expertTokensCountOrCumsum, expertTokensBeforeCapacity, expandedRowIdx, userWS, t,
+                &expertTokenRegOutPipe);
             expertTokenRegOutOp.Process();
             expertTokenRegOutPipe.Destroy();
 
@@ -137,15 +145,15 @@ moe_init_routing_quant_v2(GM_ADDR x, GM_ADDR expertIdx, GM_ADDR scale, GM_ADDR o
     } else if (TILING_KEY_IS(11000) || TILING_KEY_IS(11010)) {
         TPipe gatherPipe;
         MoeV2GatherDynamicQuantDropless<DTYPE_X> gatherDynamicQuantDroplessOp;
-        gatherDynamicQuantDroplessOp.Init(x, scale, expandedRowIdx, expandedX, dynamicQuantScale, userWS, t,
-                                          &gatherPipe);
+        gatherDynamicQuantDroplessOp.Init(
+            x, scale, expandedRowIdx, expandedX, dynamicQuantScale, userWS, t, &gatherPipe);
         gatherDynamicQuantDroplessOp.Process();
         gatherPipe.Destroy();
     } else if (TILING_KEY_IS(11100) || TILING_KEY_IS(11110)) {
         TPipe gatherPipe;
         MoeV2GatherDynamicQuantDroppad<DTYPE_X> gatherDynamicQuantDroppadOp;
-        gatherDynamicQuantDroppadOp.Init(x, scale, expandedRowIdx, expandedX, dynamicQuantScale, userWS, t,
-                                         &gatherPipe);
+        gatherDynamicQuantDroppadOp.Init(
+            x, scale, expandedRowIdx, expandedX, dynamicQuantScale, userWS, t, &gatherPipe);
         gatherDynamicQuantDroppadOp.Process();
         gatherPipe.Destroy();
     }

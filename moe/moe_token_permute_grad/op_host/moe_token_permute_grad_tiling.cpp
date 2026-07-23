@@ -130,11 +130,11 @@ static inline void Init(gert::TilingContext *context, const int64_t topK, MoeTok
         param.input.tokensNum = safeDiv(param.input.totalLength, param.input.topK);
     }
     size_t sysWorkspaceSize = ascendPlaform.GetLibApiWorkSpaceSize();
-    size_t *workspaces = context->GetWorkspaceSizes(1);
+    size_t* workspaces = context->GetWorkspaceSizes(1);
 
     size_t UserWorkspaceSize = 0;
 
-    workspaces[0] = sysWorkspaceSize + UserWorkspaceSize;
+    workspaces[0] = sysWorkspaceSize + UserWorkspaceSize;    
 }
 
 static void SetCoreNum(MoeTokenUnpermuteParam &param)

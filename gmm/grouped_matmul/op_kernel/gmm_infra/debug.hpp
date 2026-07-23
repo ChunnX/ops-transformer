@@ -52,7 +52,9 @@ inline void rtCheck(int status, LogFuncType logFunc = [](const char *logStrPtr) 
 }
 
 namespace Adx {
-void AdumpPrintWorkSpace(const void *dumpBufferAddr, const size_t dumpBufferSize, aclrtStream stream,
+void AdumpPrintWorkSpace(const void *dumpBufferAddr,
+                         const size_t dumpBufferSize,
+                         aclrtStream stream,
                          const char *opType);
 } // namespace Adx
 

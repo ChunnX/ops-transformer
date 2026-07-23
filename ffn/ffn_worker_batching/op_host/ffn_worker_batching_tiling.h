@@ -40,11 +40,13 @@ END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(FfnWorkerBatching, FfnWorkerBatchingTilingData)
 
-struct FfnWorkerBatchingCompileInfo {};
+struct FfnWorkerBatchingCompileInfo {
+};
 
-class FfnWorkerBatchingTiling {
+class FfnWorkerBatchingTiling
+{
 public:
-    explicit FfnWorkerBatchingTiling(gert::TilingContext *context) : context_(context) {};
+    explicit FfnWorkerBatchingTiling(gert::TilingContext* context) : context_(context){};
     ge::graphStatus RunFfnWorkerBatchingTiling();
 
 private:
@@ -68,4 +70,4 @@ private:
 };
 
 } // namespace optiling
-#endif // OP_HOST_FFN_WORKER_BATCHING_TILING_H
+#endif  // OP_HOST_FFN_WORKER_BATCHING_TILING_H

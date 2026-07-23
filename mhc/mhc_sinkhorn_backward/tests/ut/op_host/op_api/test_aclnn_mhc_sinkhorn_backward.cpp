@@ -40,7 +40,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_basic_4d_fp32)
     auto sumOut = TensorDesc({20480}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({1, 128, 4, 4}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -53,7 +57,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_basic_3d_fp32)
     auto sumOut = TensorDesc({245760}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({1024, 6, 6}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -66,7 +74,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_empty_tensor)
     auto sumOut = TensorDesc({0}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({0, 4, 4}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -81,7 +93,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_invalid_dtype_gra
     auto sumOut = TensorDesc({327680}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({12, 64, 8, 8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -95,7 +111,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_invalid_dtype_nor
     auto sumOut = TensorDesc({327680}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({12, 64, 8, 8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -109,7 +129,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_invalid_dtype_sum
     auto sumOut = TensorDesc({327680}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto out = TensorDesc({12, 64, 8, 8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -123,7 +147,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_invalid_dtype_out
     auto sumOut = TensorDesc({327680}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({12, 64, 8, 8}, ACL_FLOAT16, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -137,7 +165,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_output_shape_mism
     auto sumOut = TensorDesc({122880}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({2, 16, 4, 4}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -150,7 +182,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_n8_4d)
     auto sumOut = TensorDesc({163840}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({4, 256, 8, 8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -163,7 +199,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_n6_3d)
     auto sumOut = TensorDesc({245760}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({512, 6, 6}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -176,7 +216,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_n4_4d)
     auto sumOut = TensorDesc({81920}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({2, 256, 4, 4}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -189,7 +233,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_n4_3d)
     auto sumOut = TensorDesc({81920}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({512, 4, 4}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -202,7 +250,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_large_batch)
     auto sumOut = TensorDesc({163840}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({4, 256, 4, 4}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -215,7 +267,11 @@ TEST_F(MhcSinkhornBackwardOpapiUt, aclnn_mhc_sinkhorn_backward_large_t)
     auto sumOut = TensorDesc({1638400}, ACL_FLOAT, ACL_FORMAT_ND);
     auto out = TensorDesc({4096, 8, 8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMhcSinkhornBackward, INPUT(gradOutput, normOut, sumOut), OUTPUT(out));
+    auto ut = OP_API_UT(
+        aclnnMhcSinkhornBackward,
+        INPUT(gradOutput, normOut, sumOut),
+        OUTPUT(out)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);

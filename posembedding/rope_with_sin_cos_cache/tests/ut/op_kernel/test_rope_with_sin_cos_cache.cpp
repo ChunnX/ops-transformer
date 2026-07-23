@@ -22,11 +22,12 @@
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void rope_with_sin_cos_cache(GM_ADDR positions, GM_ADDR queryIn, GM_ADDR keyIn,
-                                                              GM_ADDR cosSinCache, GM_ADDR queryOut, GM_ADDR keyOut,
-                                                              GM_ADDR workspace, GM_ADDR tiling);
+extern "C" __global__ __aicore__ void rope_with_sin_cos_cache(
+    GM_ADDR positions, GM_ADDR queryIn, GM_ADDR keyIn, GM_ADDR cosSinCache, GM_ADDR queryOut, GM_ADDR keyOut,
+    GM_ADDR workspace, GM_ADDR tiling);
 
-class rope_with_sin_cos_cache_test : public testing::Test {
+class rope_with_sin_cos_cache_test : public testing::Test
+{
 protected:
     static void SetUpTestCase()
     {
@@ -40,8 +41,9 @@ protected:
 
 TEST_F(rope_with_sin_cos_cache_test, test_case_bf16)
 {
-    system("cp -rf "
-           "../../../../../posembedding/rope_with_sin_cos_cache/tests/ut/op_kernel/rope_with_sin_cos_cache_data ./");
+    system(
+        "cp -rf "
+        "../../../../../posembedding/rope_with_sin_cos_cache/tests/ut/op_kernel/rope_with_sin_cos_cache_data ./");
     system("chmod -R 755 ./rope_with_sin_cos_cache_data/");
     system("cd ./rope_with_sin_cos_cache_data/ && python3 gen_data.py '48' '2' '4' '128' '128' 'bf16' ");
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
@@ -60,18 +62,18 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_bf16)
 
     size_t tilingSize = sizeof(RopeWithSinCosCacheTilingData);
 
-    uint8_t *position = (uint8_t *)AscendC::GmAlloc(positionSize);
-    uint8_t *query = (uint8_t *)AscendC::GmAlloc(querySize);
-    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
-    uint8_t *cosSinCache = (uint8_t *)AscendC::GmAlloc(cosSinCacheSize);
-    uint8_t *queryOut = (uint8_t *)AscendC::GmAlloc(queryOutSize);
-    uint8_t *keyOut = (uint8_t *)AscendC::GmAlloc(keyOutSize);
+    uint8_t* position = (uint8_t*)AscendC::GmAlloc(positionSize);
+    uint8_t* query = (uint8_t*)AscendC::GmAlloc(querySize);
+    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
+    uint8_t* cosSinCache = (uint8_t*)AscendC::GmAlloc(cosSinCacheSize);
+    uint8_t* queryOut = (uint8_t*)AscendC::GmAlloc(queryOutSize);
+    uint8_t* keyOut = (uint8_t*)AscendC::GmAlloc(keyOutSize);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
     uint32_t blockDim = 48;
 
-    RopeWithSinCosCacheTilingData *tilingData = reinterpret_cast<RopeWithSinCosCacheTilingData *>(tiling);
+    RopeWithSinCosCacheTilingData* tilingData = reinterpret_cast<RopeWithSinCosCacheTilingData*>(tiling);
     tilingData->core_num_use = 48;
     tilingData->num_tokens = 48;
     tilingData->num_q_heads = 2;
@@ -103,8 +105,8 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_bf16)
     ReadFile("./rope_with_sin_cos_cache_data/output_keyOut.bin", keyOutSize, keyOut, keyOutSize);
 
     ICPU_SET_TILING_KEY(20);
-    ICPU_RUN_KF(rope_with_sin_cos_cache, blockDim, position, query, key, cosSinCache, queryOut, keyOut, workspace,
-                tiling);
+    ICPU_RUN_KF(
+        rope_with_sin_cos_cache, blockDim, position, query, key, cosSinCache, queryOut, keyOut, workspace, tiling);
 
     AscendC::GmFree(position);
     AscendC::GmFree(query);
@@ -118,8 +120,9 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_bf16)
 
 TEST_F(rope_with_sin_cos_cache_test, test_case_fp32)
 {
-    system("cp -rf "
-           "../../../../../posembedding/rope_with_sin_cos_cache/tests/ut/op_kernel/rope_with_sin_cos_cache_data ./");
+    system(
+        "cp -rf "
+        "../../../../../posembedding/rope_with_sin_cos_cache/tests/ut/op_kernel/rope_with_sin_cos_cache_data ./");
     system("chmod -R 755 ./rope_with_sin_cos_cache_data/");
     system("cd ./rope_with_sin_cos_cache_data/ && python3 gen_data.py '48' '2' '4' '128' '128' 'fp32' ");
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
@@ -138,18 +141,18 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_fp32)
 
     size_t tilingSize = sizeof(RopeWithSinCosCacheTilingData);
 
-    uint8_t *position = (uint8_t *)AscendC::GmAlloc(positionSize);
-    uint8_t *query = (uint8_t *)AscendC::GmAlloc(querySize);
-    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
-    uint8_t *cosSinCache = (uint8_t *)AscendC::GmAlloc(cosSinCacheSize);
-    uint8_t *queryOut = (uint8_t *)AscendC::GmAlloc(queryOutSize);
-    uint8_t *keyOut = (uint8_t *)AscendC::GmAlloc(keyOutSize);
+    uint8_t* position = (uint8_t*)AscendC::GmAlloc(positionSize);
+    uint8_t* query = (uint8_t*)AscendC::GmAlloc(querySize);
+    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
+    uint8_t* cosSinCache = (uint8_t*)AscendC::GmAlloc(cosSinCacheSize);
+    uint8_t* queryOut = (uint8_t*)AscendC::GmAlloc(queryOutSize);
+    uint8_t* keyOut = (uint8_t*)AscendC::GmAlloc(keyOutSize);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
     uint32_t blockDim = 48;
 
-    RopeWithSinCosCacheTilingData *tilingData = reinterpret_cast<RopeWithSinCosCacheTilingData *>(tiling);
+    RopeWithSinCosCacheTilingData* tilingData = reinterpret_cast<RopeWithSinCosCacheTilingData*>(tiling);
     tilingData->core_num_use = 48;
     tilingData->num_tokens = 48;
     tilingData->num_q_heads = 2;
@@ -181,8 +184,8 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_fp32)
     ReadFile("./rope_with_sin_cos_cache_data/output_keyOut.bin", keyOutSize, keyOut, keyOutSize);
 
     ICPU_SET_TILING_KEY(22);
-    ICPU_RUN_KF(rope_with_sin_cos_cache, blockDim, position, query, key, cosSinCache, queryOut, keyOut, workspace,
-                tiling);
+    ICPU_RUN_KF(
+        rope_with_sin_cos_cache, blockDim, position, query, key, cosSinCache, queryOut, keyOut, workspace, tiling);
 
     AscendC::GmFree(position);
     AscendC::GmFree(query);
@@ -196,8 +199,9 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_fp32)
 
 TEST_F(rope_with_sin_cos_cache_test, test_case_fp16)
 {
-    system("cp -rf "
-           "../../../../../posembedding/rope_with_sin_cos_cache/tests/ut/op_kernel/rope_with_sin_cos_cache_data ./");
+    system(
+        "cp -rf "
+        "../../../../../posembedding/rope_with_sin_cos_cache/tests/ut/op_kernel/rope_with_sin_cos_cache_data ./");
     system("chmod -R 755 ./rope_with_sin_cos_cache_data/");
     system("cd ./rope_with_sin_cos_cache_data/ && python3 gen_data.py '48' '2' '4' '128' '128' 'fp16' ");
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
@@ -216,18 +220,18 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_fp16)
 
     size_t tilingSize = sizeof(RopeWithSinCosCacheTilingData);
 
-    uint8_t *position = (uint8_t *)AscendC::GmAlloc(positionSize);
-    uint8_t *query = (uint8_t *)AscendC::GmAlloc(querySize);
-    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
-    uint8_t *cosSinCache = (uint8_t *)AscendC::GmAlloc(cosSinCacheSize);
-    uint8_t *queryOut = (uint8_t *)AscendC::GmAlloc(queryOutSize);
-    uint8_t *keyOut = (uint8_t *)AscendC::GmAlloc(keyOutSize);
+    uint8_t* position = (uint8_t*)AscendC::GmAlloc(positionSize);
+    uint8_t* query = (uint8_t*)AscendC::GmAlloc(querySize);
+    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
+    uint8_t* cosSinCache = (uint8_t*)AscendC::GmAlloc(cosSinCacheSize);
+    uint8_t* queryOut = (uint8_t*)AscendC::GmAlloc(queryOutSize);
+    uint8_t* keyOut = (uint8_t*)AscendC::GmAlloc(keyOutSize);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
     uint32_t blockDim = 48;
 
-    RopeWithSinCosCacheTilingData *tilingData = reinterpret_cast<RopeWithSinCosCacheTilingData *>(tiling);
+    RopeWithSinCosCacheTilingData* tilingData = reinterpret_cast<RopeWithSinCosCacheTilingData*>(tiling);
     tilingData->core_num_use = 48;
     tilingData->num_tokens = 48;
     tilingData->num_q_heads = 2;
@@ -259,8 +263,8 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_fp16)
     ReadFile("./rope_with_sin_cos_cache_data/output_keyOut.bin", keyOutSize, keyOut, keyOutSize);
 
     ICPU_SET_TILING_KEY(21);
-    ICPU_RUN_KF(rope_with_sin_cos_cache, blockDim, position, query, key, cosSinCache, queryOut, keyOut, workspace,
-                tiling);
+    ICPU_RUN_KF(
+        rope_with_sin_cos_cache, blockDim, position, query, key, cosSinCache, queryOut, keyOut, workspace, tiling);
 
     AscendC::GmFree(position);
     AscendC::GmFree(query);
@@ -274,8 +278,9 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_fp16)
 
 TEST_F(rope_with_sin_cos_cache_test, test_case_fp32_2)
 {
-    system("cp -rf "
-           "../../../../../posembedding/rope_with_sin_cos_cache/tests/ut/op_kernel/rope_with_sin_cos_cache_data ./");
+    system(
+        "cp -rf "
+        "../../../../../posembedding/rope_with_sin_cos_cache/tests/ut/op_kernel/rope_with_sin_cos_cache_data ./");
     system("chmod -R 755 ./rope_with_sin_cos_cache_data/");
     system("cd ./rope_with_sin_cos_cache_data/ && python3 gen_data.py '48' '2' '4' '128' '128' 'fp32' ");
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
@@ -294,18 +299,18 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_fp32_2)
 
     size_t tilingSize = sizeof(RopeWithSinCosCacheTilingData);
 
-    uint8_t *position = (uint8_t *)AscendC::GmAlloc(positionSize);
-    uint8_t *query = (uint8_t *)AscendC::GmAlloc(querySize);
-    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
-    uint8_t *cosSinCache = (uint8_t *)AscendC::GmAlloc(cosSinCacheSize);
-    uint8_t *queryOut = (uint8_t *)AscendC::GmAlloc(queryOutSize);
-    uint8_t *keyOut = (uint8_t *)AscendC::GmAlloc(keyOutSize);
+    uint8_t* position = (uint8_t*)AscendC::GmAlloc(positionSize);
+    uint8_t* query = (uint8_t*)AscendC::GmAlloc(querySize);
+    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
+    uint8_t* cosSinCache = (uint8_t*)AscendC::GmAlloc(cosSinCacheSize);
+    uint8_t* queryOut = (uint8_t*)AscendC::GmAlloc(queryOutSize);
+    uint8_t* keyOut = (uint8_t*)AscendC::GmAlloc(keyOutSize);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
     uint32_t blockDim = 48;
 
-    RopeWithSinCosCacheTilingData *tilingData = reinterpret_cast<RopeWithSinCosCacheTilingData *>(tiling);
+    RopeWithSinCosCacheTilingData* tilingData = reinterpret_cast<RopeWithSinCosCacheTilingData*>(tiling);
     tilingData->core_num_use = 48;
     tilingData->num_tokens = 48;
     tilingData->num_q_heads = 2;
@@ -337,8 +342,8 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_fp32_2)
     ReadFile("./rope_with_sin_cos_cache_data/output_keyOut.bin", keyOutSize, keyOut, keyOutSize);
 
     ICPU_SET_TILING_KEY(22);
-    ICPU_RUN_KF(rope_with_sin_cos_cache, blockDim, position, query, key, cosSinCache, queryOut, keyOut, workspace,
-                tiling);
+    ICPU_RUN_KF(
+        rope_with_sin_cos_cache, blockDim, position, query, key, cosSinCache, queryOut, keyOut, workspace, tiling);
 
     AscendC::GmFree(position);
     AscendC::GmFree(query);
@@ -352,8 +357,9 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_fp32_2)
 
 TEST_F(rope_with_sin_cos_cache_test, test_case_v2_fp32)
 {
-    system("cp -rf "
-           "../../../../../posembedding/rope_with_sin_cos_cache/tests/ut/op_kernel/rope_with_sin_cos_cache_data ./");
+    system(
+        "cp -rf "
+        "../../../../../posembedding/rope_with_sin_cos_cache/tests/ut/op_kernel/rope_with_sin_cos_cache_data ./");
     system("chmod -R 755 ./rope_with_sin_cos_cache_data/");
     system("cd ./rope_with_sin_cos_cache_data/ && python3 gen_data.py '48' '2' '4' '128' '128' 'fp32' ");
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
@@ -372,18 +378,18 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_v2_fp32)
 
     size_t tilingSize = sizeof(RopeWithSinCosCacheTilingData);
 
-    uint8_t *position = (uint8_t *)AscendC::GmAlloc(positionSize);
-    uint8_t *query = (uint8_t *)AscendC::GmAlloc(querySize);
-    uint8_t *key = (uint8_t *)AscendC::GmAlloc(keySize);
-    uint8_t *cosSinCache = (uint8_t *)AscendC::GmAlloc(cosSinCacheSize);
-    uint8_t *queryOut = (uint8_t *)AscendC::GmAlloc(queryOutSize);
-    uint8_t *keyOut = (uint8_t *)AscendC::GmAlloc(keyOutSize);
+    uint8_t* position = (uint8_t*)AscendC::GmAlloc(positionSize);
+    uint8_t* query = (uint8_t*)AscendC::GmAlloc(querySize);
+    uint8_t* key = (uint8_t*)AscendC::GmAlloc(keySize);
+    uint8_t* cosSinCache = (uint8_t*)AscendC::GmAlloc(cosSinCacheSize);
+    uint8_t* queryOut = (uint8_t*)AscendC::GmAlloc(queryOutSize);
+    uint8_t* keyOut = (uint8_t*)AscendC::GmAlloc(keyOutSize);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(1024 * 1024 * 1024);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(1024 * 1024 * 1024);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
     uint32_t blockDim = 48;
 
-    RopeWithSinCosCacheTilingData *tilingData = reinterpret_cast<RopeWithSinCosCacheTilingData *>(tiling);
+    RopeWithSinCosCacheTilingData* tilingData = reinterpret_cast<RopeWithSinCosCacheTilingData*>(tiling);
     tilingData->core_num_use = 48;
     tilingData->num_tokens = 48;
     tilingData->num_q_heads = 2;
@@ -416,8 +422,8 @@ TEST_F(rope_with_sin_cos_cache_test, test_case_v2_fp32)
     ReadFile("./rope_with_sin_cos_cache_data/output_keyOut.bin", keyOutSize, keyOut, keyOutSize);
 
     ICPU_SET_TILING_KEY(22);
-    ICPU_RUN_KF(rope_with_sin_cos_cache, blockDim, position, query, key, cosSinCache, queryOut, keyOut, workspace,
-                tiling);
+    ICPU_RUN_KF(
+        rope_with_sin_cos_cache, blockDim, position, query, key, cosSinCache, queryOut, keyOut, workspace, tiling);
 
     AscendC::GmFree(position);
     AscendC::GmFree(query);

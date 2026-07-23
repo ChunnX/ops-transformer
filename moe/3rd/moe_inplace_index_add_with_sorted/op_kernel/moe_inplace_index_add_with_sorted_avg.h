@@ -20,10 +20,11 @@
 using namespace AscendC;
 
 template <typename T>
-class MoeInplaceIndexAddWithSortedAvg {
+class MoeInplaceIndexAddWithSortedAvg
+{
 public:
     __aicore__ inline MoeInplaceIndexAddWithSortedAvg(
-        TPipe *pipeIn, const MoeInplaceIndexAddWithSortedTilingData *__restrict tilingData)
+        TPipe* pipeIn, const MoeInplaceIndexAddWithSortedTilingData* __restrict tilingData)
     {
         pipe = pipeIn;
         coreId = GetBlockIdx();
@@ -53,14 +54,14 @@ public:
 
     __aicore__ inline void Init(GM_ADDR var, GM_ADDR value, GM_ADDR sorted_indices, GM_ADDR pos, GM_ADDR alpha)
     {
-        inputGmAvg.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(var), inputCountAvg);
-        valueGmAvg.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(value), updatesCountAvg);
+        inputGmAvg.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(var), inputCountAvg);
+        valueGmAvg.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(value), updatesCountAvg);
         if (enableAlpha == 1) {
-            alphaGmAvg.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(alpha), 1);
+            alphaGmAvg.SetGlobalBuffer(reinterpret_cast<__gm__ T*>(alpha), 1);
             alphaDataAvg = alphaGmAvg.GetValue(0);
         }
-        indicesGmAvg.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(sorted_indices), indicesCountAvg);
-        posGmAvg.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(pos), indicesCountAvg);
+        indicesGmAvg.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(sorted_indices), indicesCountAvg);
+        posGmAvg.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t*>(pos), indicesCountAvg);
 
         pipe->InitBuffer(inQueueValueAvg, BUFFER_NUM, maxSize * sizeof(T));
         pipe->InitBuffer(inQueueIndex, 1, NUM_TWO * INDEX_UB_NUM * sizeof(int32_t));
@@ -86,8 +87,8 @@ private:
             indexLocal = inQueueIndex.AllocTensor<int32_t>();
             int64_t indexOffset = coreId * eachIndexCountAvg + idxRound * eachUBIndexCountAvg;
             DataCopyPadExtParams<int32_t> tPadParams = {false, 0, 0, static_cast<int32_t>(0)};
-            DataCopyExtParams updatesExtParams = {(uint16_t)1,
-                                                  static_cast<uint32_t>(currentEachIndex * sizeof(int32_t)), 0, 0, 0};
+            DataCopyExtParams updatesExtParams = {
+                (uint16_t)1, static_cast<uint32_t>(currentEachIndex * sizeof(int32_t)), 0, 0, 0};
             DataCopyPad(indexLocal, indicesGmAvg[indexOffset], updatesExtParams, tPadParams);
             DataCopyPad(indexLocal[INDEX_UB_NUM], posGmAvg[indexOffset], updatesExtParams, tPadParams);
             event_t eventIDMTE2ToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE2_S));
@@ -152,7 +153,7 @@ private:
     }
 
 private:
-    TPipe *pipe;
+    TPipe* pipe;
     GlobalTensor<T> inputGmAvg;
     GlobalTensor<T> valueGmAvg;
     GlobalTensor<T> alphaGmAvg;

@@ -86,5 +86,7 @@ struct MoeTokenPermuteWithEpTilingData {
 };
 
 
-#define GET_TILING_DATA(tilingData, tilingPointer) MoeTokenPermuteWithEpTilingData tilingData;
+#define GET_TILING_DATA(tilingData, tilingPointer) \
+    MoeTokenPermuteWithEpTilingData tilingData;
 #endif
+

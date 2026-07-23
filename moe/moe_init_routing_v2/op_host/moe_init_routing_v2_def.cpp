@@ -97,7 +97,8 @@ public:
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
             .DynamicShapeSupportFlag(true);
-        this->AICore().AddConfig("ascend310p", config310P);
+        this->AICore()
+            .AddConfig("ascend310p", config310P);
 
         OpAICoreConfig regbaseConfig;
         regbaseConfig.Input("x")

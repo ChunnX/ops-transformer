@@ -73,13 +73,13 @@ TEST_F(moe_init_routing_v3_test, test_case_8)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
-    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 78 2880 4 946 float32 -1 141 0 946 0 1 1 [873,889] 1 "
-           "1"); // float16
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 78 2880 4 946 float32 -1 141 0 946 0 1 1 [873,889] 1 1"); // float16
     system("cd ./moe_init_routing_v3_data/ && python3 gen_tiling.py case7");
 
     char *path_ = get_current_dir_name();
@@ -93,11 +93,10 @@ TEST_F(moe_init_routing_v3_test, test_case_8)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, nullptr, nullptr, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -143,13 +142,13 @@ TEST_F(moe_init_routing_v3_test, test_case_9)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
-    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 97 2880 4 734 float32 -1 734 0 313 0 1 1 [0,734] 1 "
-           "1"); // float16
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 97 2880 4 734 float32 -1 734 0 313 0 1 1 [0,734] 1 1"); // float16
     system("cd ./moe_init_routing_v3_data/ && python3 gen_tiling.py case8");
 
     char *path_ = get_current_dir_name();
@@ -163,11 +162,10 @@ TEST_F(moe_init_routing_v3_test, test_case_9)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, scale, nullptr, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -213,13 +211,13 @@ TEST_F(moe_init_routing_v3_test, test_case_10)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
-    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 94 2880 4 958 float32 -1 199 0 958 0 0 1 [554,650] 0 "
-           "1"); // float16
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 94 2880 4 958 float32 -1 199 0 958 0 0 1 [554,650] 0 1"); // float16
     system("cd ./moe_init_routing_v3_data/ && python3 gen_tiling.py case9");
 
     char *path_ = get_current_dir_name();
@@ -233,11 +231,10 @@ TEST_F(moe_init_routing_v3_test, test_case_10)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, scale, nullptr, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -272,9 +269,8 @@ TEST_F(moe_init_routing_v3_test, test_case_11)
     size_t expandedRowIdx_FileSize = num_rows * k * sizeof(int32_t);
     size_t expertTokensCumsum_FileSize = expert_num * sizeof(int64_t);
     size_t expandedScale_FileSize = expert_num * expertCapacity * sizeof(float);
-    size_t workspace_FileSize =
-        static_cast<size_t>(num_rows * k * 24 + blockDim * 32 * 2 + num_rows * k * 4 + expert_num * 4 + 32 +
-                            blockDim * cols * 4 + 16 * 1024 * 1024 + blockDim * 2); // droppad是否影响
+    size_t workspace_FileSize = static_cast<size_t>(num_rows * k * 24 + blockDim * 32 * 2 + num_rows * k * 4 +
+                                                    expert_num * 4 + 32 + blockDim * cols * 4 + 16 * 1024 * 1024 + blockDim * 2); // droppad是否影响
     size_t tiling_FileSize = sizeof(MoeInitRoutingV3TilingData);
 
     uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
@@ -287,13 +283,13 @@ TEST_F(moe_init_routing_v3_test, test_case_11)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
-    system(
-        "cd ./moe_init_routing_v3_data/ && python3 gen_data.py 89 2880 8 256 float32 -1 712 13 256 1 1 1 [0,256] 0 1");
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 89 2880 8 256 float32 -1 712 13 256 1 1 1 [0,256] 0 1");
     system("cd ./moe_init_routing_v3_data/ && python3 gen_tiling.py case10");
 
     char *path_ = get_current_dir_name();
@@ -307,11 +303,10 @@ TEST_F(moe_init_routing_v3_test, test_case_11)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, nullptr, nullptr, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -344,9 +339,8 @@ TEST_F(moe_init_routing_v3_test, test_case_13)
     size_t expandedRowIdx_FileSize = num_rows * k * sizeof(int32_t);
     size_t expertTokensCumsum_FileSize = expert_num * sizeof(int64_t);
     size_t expandedScale_FileSize = expert_num * expertCapacity * sizeof(float);
-    size_t workspace_FileSize =
-        static_cast<size_t>(num_rows * k * 24 + blockDim * 32 * 2 + num_rows * k * 4 + expert_num * 4 + 32 +
-                            blockDim * cols * 4 + 16 * 1024 * 1024 + blockDim * 2);
+    size_t workspace_FileSize = static_cast<size_t>(num_rows * k * 24 + blockDim * 32 * 2 + num_rows * k * 4 +
+                                                    expert_num * 4 + 32 + blockDim * cols * 4 + 16 * 1024 * 1024 + blockDim * 2); 
     size_t tiling_FileSize = sizeof(MoeInitRoutingV3TilingData);
 
     uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
@@ -359,13 +353,13 @@ TEST_F(moe_init_routing_v3_test, test_case_13)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
-    system(
-        "cd ./moe_init_routing_v3_data/ && python3 gen_data.py 55 2880 8 256 float32 1 440 8 256 1 1 1 [0,256] 0 2"); // float16
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 55 2880 8 256 float32 1 440 8 256 1 1 1 [0,256] 0 2"); // float16
     system("cd ./moe_init_routing_v3_data/ && python3 gen_tiling.py case12");
 
     char *path_ = get_current_dir_name();
@@ -379,11 +373,10 @@ TEST_F(moe_init_routing_v3_test, test_case_13)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, scale, nullptr, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -417,9 +410,8 @@ TEST_F(moe_init_routing_v3_test, test_case_15)
     size_t expandedRowIdx_FileSize = num_rows * k * sizeof(int32_t);
     size_t expertTokensCumsum_FileSize = expert_num * sizeof(int64_t);
     size_t expandedScale_FileSize = num_rows * expertCapacity * sizeof(float);
-    size_t workspace_FileSize =
-        static_cast<size_t>(num_rows * k * 24 + blockDim * 32 * 2 + num_rows * k * 4 + expert_num * 4 + 32 +
-                            blockDim * cols * 4 + 16 * 1024 * 1024 + blockDim * 2);
+    size_t workspace_FileSize = static_cast<size_t>(num_rows * k * 24 + blockDim * 32 * 2 + num_rows * k * 4 +
+                                                    expert_num * 4 + 32 + blockDim * cols * 4 + 16 * 1024 * 1024 + blockDim * 2);
     size_t tiling_FileSize = sizeof(MoeInitRoutingV3TilingData);
 
     uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
@@ -433,13 +425,13 @@ TEST_F(moe_init_routing_v3_test, test_case_15)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
-    system(
-        "cd ./moe_init_routing_v3_data/ && python3 gen_data.py 76 2880 8 256 float32 0 608 9 256 1 1 1 [0,256] 0 1"); // float16
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 76 2880 8 256 float32 0 608 9 256 1 1 1 [0,256] 0 1"); // float16
     system("cd ./moe_init_routing_v3_data/ && python3 gen_tiling.py case14");
 
     char *path_ = get_current_dir_name();
@@ -454,11 +446,10 @@ TEST_F(moe_init_routing_v3_test, test_case_15)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, scale, offset, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -508,9 +499,10 @@ TEST_F(moe_init_routing_v3_test, test_case_31)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
     system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 479 2880 5 38 float32 0 1662 0 38 0 0 0 [10,15] 0 1");
@@ -528,11 +520,10 @@ TEST_F(moe_init_routing_v3_test, test_case_31)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, scale, offset, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -579,13 +570,13 @@ TEST_F(moe_init_routing_v3_test, test_case_39)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
-    system(
-        "cd ./moe_init_routing_v3_data/ && python3 gen_data.py 61 3403 5 256 float32 1 238 0 256 0 1 1 [170,171] 1 1");
+    system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 61 3403 5 256 float32 1 238 0 256 0 1 1 [170,171] 1 1");
     system("cd ./moe_init_routing_v3_data/ && python3 gen_tiling.py case38");
 
     char *path_ = get_current_dir_name();
@@ -599,11 +590,10 @@ TEST_F(moe_init_routing_v3_test, test_case_39)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, scale, nullptr, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -651,9 +641,10 @@ TEST_F(moe_init_routing_v3_test, test_case_40)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
     system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 69 3541 8 256 float32 1 445 0 256 0 1 1 [12,15] 0 2");
@@ -670,11 +661,10 @@ TEST_F(moe_init_routing_v3_test, test_case_40)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, scale, nullptr, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -720,9 +710,10 @@ TEST_F(moe_init_routing_v3_test, test_case_41)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
     system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 28 773 4 256 float32 1 72 0 256 0 1 0 [26,44] 0 0");
@@ -738,11 +729,10 @@ TEST_F(moe_init_routing_v3_test, test_case_41)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, nullptr, nullptr, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -788,9 +778,10 @@ TEST_F(moe_init_routing_v3_test, test_case_42)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
     system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 28 773 4 256 float32 1 72 0 256 0 1 0 [0,256] 0 0");
@@ -806,11 +797,10 @@ TEST_F(moe_init_routing_v3_test, test_case_42)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, nullptr, nullptr, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -857,9 +847,10 @@ TEST_F(moe_init_routing_v3_test, test_case_43)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
     system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 69 3541 8 256 float32 1 445 0 256 0 1 1 [0,256] 0 2");
@@ -876,11 +867,10 @@ TEST_F(moe_init_routing_v3_test, test_case_43)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, scale, nullptr, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);
@@ -928,9 +918,10 @@ TEST_F(moe_init_routing_v3_test, test_case_44)
     uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
     uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
-    system("cp -r "
-           "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
-           "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
+    system(
+        "cp -r "
+        "../../../../../moe/moe_init_routing_v3/tests/ut/op_kernel/"
+        "moe_init_routing_v3_data ./ && chmod -R 755 ./moe_init_routing_v3_data/");
     system("ls -lh ./moe_init_routing_v3_data/");
     system("cd ./moe_init_routing_v3_data/ && rm -rf ./*bin");
     system("cd ./moe_init_routing_v3_data/ && python3 gen_data.py 61 3403 5 256 float32 1 238 0 256 0 1 1 [0,256] 1 1");
@@ -947,11 +938,10 @@ TEST_F(moe_init_routing_v3_test, test_case_44)
     ICPU_SET_TILING_KEY(tilingKey);
     ICPU_RUN_KF(moe_init_routing_v3, blockDim, x, expertIdx, scale, nullptr, expandedX, expandedRowIdx,
                 expertTokensCountOrCumsum, expandedScale, workspace, tiling);
-
+            
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_x.bin", expandedX, expandedX_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_row_idx.bin", expandedRowIdx, expandedRowIdx_FileSize);
-    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum,
-              expertTokensCumsum_FileSize);
+    WriteFile(path + "/moe_init_routing_v3_data/output_expert_tokens_count.bin", expertTokensCountOrCumsum, expertTokensCumsum_FileSize);
     WriteFile(path + "/moe_init_routing_v3_data/output_expanded_scale.bin", expandedScale, expandedScale_FileSize);
 
     AscendC::GmFree((void *)x);

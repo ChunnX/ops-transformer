@@ -33,10 +33,11 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND});
         this->Input("weight")
             .ParamType(DYNAMIC)
-            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT,   ge::DT_INT8,
-                       ge::DT_INT8,    ge::DT_INT8, ge::DT_INT8, ge::DT_INT4, ge::DT_INT4, ge::DT_FLOAT16, ge::DT_BF16,
-                       ge::DT_INT8,    ge::DT_INT8, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4,    ge::DT_INT4,
-                       ge::DT_INT4,    ge::DT_INT4, ge::DT_INT4, ge::DT_INT8, ge::DT_INT8})
+            .DataType({ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_FLOAT,
+                       ge::DT_INT8,    ge::DT_INT8, ge::DT_INT8, ge::DT_INT8, ge::DT_INT4, ge::DT_INT4,
+                       ge::DT_FLOAT16, ge::DT_BF16, ge::DT_INT8, ge::DT_INT8, ge::DT_INT4, ge::DT_INT4,
+                       ge::DT_INT4,    ge::DT_INT4, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4, ge::DT_INT4,
+                       ge::DT_INT8,    ge::DT_INT8})
             .Format({ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND, ge::FORMAT_FRACTAL_NZ,
                      ge::FORMAT_ND,         ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND, ge::FORMAT_ND,
@@ -167,16 +168,46 @@ public:
         this->AICore().AddConfig("ascend910_93", aicore_config);
 
         OpAICoreConfig config310P;
-        config310P.Input("x").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
-        config310P.Input("weight").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_FRACTAL_NZ});
-        config310P.Input("bias").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
-        config310P.Input("scale").ParamType(DYNAMIC).DataType({ge::DT_UINT64}).Format({ge::FORMAT_ND});
-        config310P.Input("offset").ParamType(DYNAMIC).DataType({ge::DT_FLOAT}).Format({ge::FORMAT_ND});
-        config310P.Input("antiquant_scale").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
-        config310P.Input("antiquant_offset").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
-        config310P.Input("group_list").ParamType(OPTIONAL).DataType({ge::DT_INT64}).Format({ge::FORMAT_ND});
-        config310P.Input("per_token_scale").ParamType(OPTIONAL).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
-        config310P.Output("y").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
+        config310P.Input("x")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config310P.Input("weight")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_FRACTAL_NZ});
+        config310P.Input("bias")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config310P.Input("scale")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_UINT64})
+            .Format({ge::FORMAT_ND});
+        config310P.Input("offset")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND});
+        config310P.Input("antiquant_scale")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config310P.Input("antiquant_offset")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config310P.Input("group_list")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND});
+        config310P.Input("per_token_scale")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config310P.Output("y")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
         config310P.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
@@ -193,45 +224,48 @@ public:
         OpAICoreConfig config950;
         config950.Input("x")
             .ParamType(DYNAMIC)
-            .DataType({ge::DT_BF16,          ge::DT_BF16,          ge::DT_FLOAT16,       ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,
-                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_INT8,          ge::DT_INT8,
-                       ge::DT_FLOAT16,       ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,
-                       ge::DT_FLOAT16,       ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,
-                       ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
-                       ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
-                       ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
-                       ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
-                       ge::DT_INT8,          ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,
-                       ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,
-                       ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,      ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT16,       ge::DT_FLOAT16,
-                       ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,          ge::DT_BF16,
-                       ge::DT_BF16,          ge::DT_BF16,          ge::DT_BF16,          ge::DT_FLOAT16,
-                       ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,          ge::DT_BF16,
-                       ge::DT_BF16,          ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,
-                       ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,          ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_INT8,          ge::DT_INT8,          ge::DT_FLOAT16,
-                       ge::DT_BF16,          ge::DT_BF16,          ge::DT_FLOAT16,       ge::DT_BF16,
-                       ge::DT_BF16,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
-                       ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
-                       ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
-                       ge::DT_INT8,          ge::DT_INT8,          ge::DT_FLOAT,         ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
-                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
-                       ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,
-                       ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT16,       ge::DT_BF16})
+            .DataType({
+                ge::DT_BF16,          ge::DT_BF16,          ge::DT_FLOAT16,       ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_INT8,          ge::DT_INT8,
+                ge::DT_FLOAT16,       ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,
+                ge::DT_FLOAT16,       ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,
+                ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
+                ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
+                ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
+                ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
+                ge::DT_INT8,          ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,
+                ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,
+                ge::DT_HIFLOAT8,      ge::DT_HIFLOAT8,      ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,   ge::DT_FLOAT8_E5M2,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT16,       ge::DT_FLOAT16,
+                ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,          ge::DT_BF16,
+                ge::DT_BF16,          ge::DT_BF16,          ge::DT_BF16,          ge::DT_FLOAT16,
+                ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,          ge::DT_BF16,
+                ge::DT_BF16,          ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,
+                ge::DT_FLOAT16,       ge::DT_BF16,          ge::DT_BF16,          ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_INT8,          ge::DT_INT8,          ge::DT_FLOAT16,
+                ge::DT_BF16,          ge::DT_BF16,          ge::DT_FLOAT16,       ge::DT_BF16,
+                ge::DT_BF16,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
+                ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
+                ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
+                ge::DT_INT8,          ge::DT_INT8,          ge::DT_FLOAT,         ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+                ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
+                ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,
+                ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,
+                ge::DT_FLOAT16,       ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
@@ -257,7 +291,8 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND});
         config950.Input("weight")
             .ParamType(DYNAMIC)
             .DataType({ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_FLOAT8_E5M2,
@@ -295,194 +330,99 @@ public:
                        ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
                        ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,          ge::DT_INT8,
                        ge::DT_INT8,          ge::DT_INT8,          ge::DT_FLOAT,         ge::DT_FLOAT8_E4M3FN,
-                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
-                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,
-                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E1M2,
-                       ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_INT4,          ge::DT_INT4})
-            .Format({ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
+                       ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN,
+                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
+                       ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,
+                       ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,   ge::DT_FLOAT4_E2M1,
+                       ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,   ge::DT_FLOAT4_E1M2,
+                       ge::DT_INT4,          ge::DT_INT4})
+            .Format({ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,
+                     ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,
+                     ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,
+                     ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_ND,
                      ge::FORMAT_ND,
                      ge::FORMAT_ND,
                      ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ_C0_16,
-                     ge::FORMAT_FRACTAL_NZ_C0_16,
-                     ge::FORMAT_FRACTAL_NZ_C0_16,
-                     ge::FORMAT_FRACTAL_NZ_C0_2,
-                     ge::FORMAT_FRACTAL_NZ_C0_2,
-                     ge::FORMAT_FRACTAL_NZ_C0_2,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ_C0_32,
-                     ge::FORMAT_FRACTAL_NZ_C0_32,
-                     ge::FORMAT_FRACTAL_NZ_C0_4,
-                     ge::FORMAT_FRACTAL_NZ_C0_4,
-                     ge::FORMAT_FRACTAL_NZ_C0_4,
-                     ge::FORMAT_FRACTAL_NZ_C0_4,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_FRACTAL_NZ,
-                     ge::FORMAT_ND,
-                     ge::FORMAT_ND});
+                     ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ_C0_16, ge::FORMAT_FRACTAL_NZ_C0_16,
+                     ge::FORMAT_FRACTAL_NZ_C0_16, ge::FORMAT_FRACTAL_NZ_C0_2,  ge::FORMAT_FRACTAL_NZ_C0_2,  ge::FORMAT_FRACTAL_NZ_C0_2,
+                     ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ,       ge::FORMAT_FRACTAL_NZ_C0_32, ge::FORMAT_FRACTAL_NZ_C0_32,
+                     ge::FORMAT_FRACTAL_NZ_C0_4,  ge::FORMAT_FRACTAL_NZ_C0_4,  ge::FORMAT_FRACTAL_NZ_C0_4,  ge::FORMAT_FRACTAL_NZ_C0_4,
+                     ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,               ge::FORMAT_ND,
+                     ge::FORMAT_ND,         ge::FORMAT_ND,         ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_ND,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ, ge::FORMAT_FRACTAL_NZ,
+                     ge::FORMAT_ND,         ge::FORMAT_ND});
         config950.Input("bias")
             .ParamType(DYNAMIC)
-            .DataType({ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_BF16,
-                       ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_INT32,   ge::DT_INT32,
-                       ge::DT_INT32,   ge::DT_INT32,   ge::DT_INT32,   ge::DT_INT32,   ge::DT_BF16,    ge::DT_BF16,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_INT32,   ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_INT32,
-                       ge::DT_INT32,   ge::DT_INT32,   ge::DT_INT32,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,
-                       ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16,
-                       ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16,
-                       ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_INT32,
-                       ge::DT_INT32,   ge::DT_INT32,   ge::DT_INT32,   ge::DT_INT32,   ge::DT_INT32,   ge::DT_INT32,
-                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_FLOAT})
+            .DataType({ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,
+                       ge::DT_FLOAT,
+                       ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_BF16,    ge::DT_INT32,   ge::DT_INT32,   ge::DT_INT32,
+                       ge::DT_INT32,   ge::DT_INT32,   ge::DT_INT32,   ge::DT_BF16,    
+                       ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_INT32,
+                       ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_INT32,   ge::DT_INT32,
+                       ge::DT_INT32,   ge::DT_INT32,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16,
+                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,
+                       ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    
+                       ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,
+                       ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_FLOAT16,
+                       ge::DT_BF16,    ge::DT_FLOAT,   ge::DT_INT32,   ge::DT_INT32,
+                       ge::DT_INT32,   ge::DT_INT32,   ge::DT_INT32,   ge::DT_INT32,
+                       ge::DT_INT32,   ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
@@ -508,42 +448,45 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND});
         config950.Input("scale")
             .ParamType(DYNAMIC)
             .DataType(
                 {ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                 ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT,       ge::DT_FLOAT,
+                 ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
+                 ge::DT_FLOAT8_E8M0, 
+                 ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_UINT64,
                  ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,
+                 ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_INT64,       ge::DT_UINT64,
+                 ge::DT_INT64,       ge::DT_BF16,        ge::DT_FLOAT,       ge::DT_BF16,        ge::DT_FLOAT,
+                 ge::DT_BF16,        ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
+                 ge::DT_UINT64,      ge::DT_INT64,       ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,
+                 ge::DT_INT64,       ge::DT_UINT64,      ge::DT_INT64,       ge::DT_UINT64,      ge::DT_INT64,
+                 ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_INT64,       ge::DT_INT64,
+                 ge::DT_INT64,       ge::DT_INT64,       ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,
+                 ge::DT_UINT64,      ge::DT_INT64,       ge::DT_INT64,       ge::DT_INT64,       ge::DT_INT64,
                  ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_INT64,
-                 ge::DT_UINT64,      ge::DT_INT64,       ge::DT_BF16,        ge::DT_FLOAT,       ge::DT_BF16,
-                 ge::DT_FLOAT,       ge::DT_BF16,        ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
-                 ge::DT_FLOAT,       ge::DT_UINT64,      ge::DT_INT64,       ge::DT_UINT64,      ge::DT_UINT64,
-                 ge::DT_UINT64,      ge::DT_INT64,       ge::DT_UINT64,      ge::DT_INT64,       ge::DT_UINT64,
-                 ge::DT_INT64,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_INT64,
                  ge::DT_INT64,       ge::DT_INT64,       ge::DT_INT64,       ge::DT_UINT64,      ge::DT_UINT64,
-                 ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_INT64,       ge::DT_INT64,       ge::DT_INT64,
-                 ge::DT_INT64,       ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,
-                 ge::DT_INT64,       ge::DT_INT64,       ge::DT_INT64,       ge::DT_INT64,       ge::DT_UINT64,
-                 ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_FLOAT,       ge::DT_FLOAT,
+                 ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
                  ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
-                 ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,
+                 ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_UINT64,
                  ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,
                  ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,
                  ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,
                  ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,
                  ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,
-                 ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_UINT64,
+                 ge::DT_UINT64,      ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_UINT64,      ge::DT_UINT64,
                  ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,      ge::DT_UINT64,
-                 ge::DT_UINT64,      ge::DT_INT64,       ge::DT_UINT64,      ge::DT_INT64,       ge::DT_BF16,
-                 ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_BF16,        ge::DT_FLOAT,       ge::DT_BF16,
-                 ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_UINT64,      ge::DT_FLOAT8_E8M0,
+                 ge::DT_INT64,       ge::DT_UINT64,      ge::DT_INT64,       ge::DT_BF16,        ge::DT_FLOAT,
+                 ge::DT_FLOAT,       ge::DT_BF16,        ge::DT_FLOAT,       ge::DT_BF16,        ge::DT_FLOAT,
+                 ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_UINT64,      ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                 ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_UINT64,
-                 ge::DT_UINT64})
+                 ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
+                 ge::DT_UINT64,      ge::DT_UINT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
@@ -569,7 +512,8 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND});
         config950.Input("offset")
             .ParamType(DYNAMIC)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT, ge::DT_FLOAT,
@@ -620,7 +564,8 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND});
         config950.Input("antiquant_scale")
             .ParamType(DYNAMIC)
             .DataType(
@@ -654,8 +599,8 @@ public:
                  ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,
                  ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,
                  ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,
-                 ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,
-                 ge::DT_BF16})
+                 ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,     ge::DT_FLOAT16,
+                 ge::DT_FLOAT16,     ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
@@ -681,7 +626,8 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND});
         config950.Input("antiquant_offset")
             .ParamType(DYNAMIC)
             .DataType({ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
@@ -709,7 +655,8 @@ public:
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
                        ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
-                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16})
+                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
+                       ge::DT_FLOAT16,   ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
@@ -735,7 +682,8 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND});
         config950.Input("group_list")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64,
@@ -758,8 +706,9 @@ public:
                        ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64,
                        ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64,
                        ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64,
-                       ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64,
-                       ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64,
+                       ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64,
+                       ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64, ge::DT_INT64,
+                       ge::DT_INT64, ge::DT_INT64,
                        ge::DT_INT64, ge::DT_INT64})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
@@ -786,7 +735,8 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND});
         config950.Input("per_token_scale")
             .ParamType(OPTIONAL)
             .DataType(
@@ -820,8 +770,8 @@ public:
                  ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT,       ge::DT_FLOAT8_E8M0,
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
                  ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
-                 ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT,
-                 ge::DT_FLOAT})
+                 ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0, ge::DT_FLOAT8_E8M0,
+                 ge::DT_FLOAT,       ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
@@ -847,35 +797,39 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND});
         config950.Output("y")
             .ParamType(DYNAMIC)
             .DataType({ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
                        ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT,
-                       ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,
-                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_BF16,
+                       ge::DT_FLOAT16, ge::DT_FLOAT,
+                       ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16,
+                       ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,
+                       ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
+                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16,
+                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,    ge::DT_INT8,    ge::DT_INT32,   ge::DT_INT32,
+                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
+                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16,
+                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
+                       ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
+                       ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,
+                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
                        ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
-                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_INT8,
-                       ge::DT_INT8,    ge::DT_INT32,   ge::DT_INT32,   ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16,
-                       ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT,
-                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
-                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16,
-                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16,
-                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,   ge::DT_FLOAT,
-                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
-                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,
-                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,
-                       ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16,
-                       ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16,
-                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16,
-                       ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16,
-                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16,
+                       ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
+                       ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,
+                       ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,
+                       ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16,
+                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,
+                       ge::DT_BF16,    ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_BF16,    ge::DT_BF16,    ge::DT_BF16,
+                       ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16,
                        ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16,
                        ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16,
-                       ge::DT_FLOAT,   ge::DT_BF16,    ge::DT_FLOAT16, ge::DT_FLOAT,   ge::DT_FLOAT16, ge::DT_BF16})
+                       ge::DT_FLOAT,
+                       ge::DT_FLOAT16, ge::DT_BF16})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
@@ -901,7 +855,8 @@ public:
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
                      ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
-                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND});
+                     ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND, ge::FORMAT_ND,
+                     ge::FORMAT_ND, ge::FORMAT_ND});
         config950.DynamicCompileStaticFlag(true)
             .DynamicFormatFlag(true)
             .DynamicRankSupportFlag(true)
@@ -911,7 +866,7 @@ public:
             .ExtendCfgInfo("prebuildPattern.value", "Opaque")
             .ExtendCfgInfo("coreType.value", "AiCore")
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("opFile.value", "grouped_matmul_apt");
+            .ExtendCfgInfo("opFile.value","grouped_matmul_apt");
         this->AICore().AddConfig("ascend950", config950);
 
         OpAICoreConfig config_kirin = GetKirinCoreConfig();
@@ -929,16 +884,46 @@ private:
             .DynamicShapeSupportFlag(true)
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true);
-        config_kirin.Input("x").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
-        config_kirin.Input("weight").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_FRACTAL_NZ});
-        config_kirin.Input("bias").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
-        config_kirin.Input("scale").ParamType(DYNAMIC).DataType({ge::DT_UINT64}).Format({ge::FORMAT_ND});
-        config_kirin.Input("offset").ParamType(DYNAMIC).DataType({ge::DT_FLOAT}).Format({ge::FORMAT_ND});
-        config_kirin.Input("antiquant_scale").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
-        config_kirin.Input("antiquant_offset").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
-        config_kirin.Input("group_list").ParamType(OPTIONAL).DataType({ge::DT_INT64}).Format({ge::FORMAT_ND});
-        config_kirin.Input("per_token_scale").ParamType(OPTIONAL).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
-        config_kirin.Output("y").ParamType(DYNAMIC).DataType({ge::DT_FLOAT16}).Format({ge::FORMAT_ND});
+        config_kirin.Input("x")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("weight")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_FRACTAL_NZ});
+        config_kirin.Input("bias")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("scale")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_UINT64})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("offset")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("antiquant_scale")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("antiquant_offset")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("group_list")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_INT64})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Input("per_token_scale")
+            .ParamType(OPTIONAL)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
+        config_kirin.Output("y")
+            .ParamType(DYNAMIC)
+            .DataType({ge::DT_FLOAT16})
+            .Format({ge::FORMAT_ND});
         return config_kirin;
     }
 };

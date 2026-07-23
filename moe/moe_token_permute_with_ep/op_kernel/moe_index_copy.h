@@ -21,28 +21,32 @@ namespace MoeTokenPermuteWithEp {
 using namespace AscendC;
 
 template <typename T, typename probsT, bool ifNumOutTokens>
-class MoeindexCopyOp {
+class MoeindexCopyOp
+{
 public:
     __aicore__ inline MoeindexCopyOp(){};
-    __aicore__ inline void Init(GM_ADDR src, GM_ADDR srcProbs, GM_ADDR indices, GM_ADDR dst, GM_ADDR dstProbs,
-                                const MoeTokenPermuteWithEpTilingData *tilingData, TPipe *tPipe);
+    __aicore__ inline void Init(
+        GM_ADDR src, GM_ADDR srcProbs, GM_ADDR indices, GM_ADDR dst, GM_ADDR dstProbs,
+        const MoeTokenPermuteWithEpTilingData* tilingData, TPipe* tPipe);
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void CopyIn(int64_t Offset, DataCopyExtParams &dataCopyExtParams,
-                                  DataCopyPadExtParams<T> &dataCopyPadExtParams);
-    __aicore__ inline void CopyOut(int64_t innerLoop, int64_t outTokenNum, DataCopyExtParams &dataCopyExtParams,
-                                   DataCopyPadExtParams<T> &dataCopyPadExtParams);
-    __aicore__ inline void CopyInIndices(int64_t progress, DataCopyExtParams &dataCopyExtParams,
-                                         DataCopyPadExtParams<int32_t> &dataCopyPadExtParams);
-    __aicore__ inline void CopyInProbs(int64_t Offset, DataCopyExtParams &dataCopyExtParams,
-                                       DataCopyPadExtParams<probsT> &dataCopyPadExtParams);
-    __aicore__ inline void CopyOutProbs(int64_t innerLoop, int64_t outTokenNum, DataCopyExtParams &dataCopyExtParams,
-                                        DataCopyPadExtParams<probsT> &dataCopyPadExtParams);
+    __aicore__ inline void CopyIn(
+        int64_t Offset, DataCopyExtParams& dataCopyExtParams, DataCopyPadExtParams<T>& dataCopyPadExtParams);
+    __aicore__ inline void CopyOut(
+        int64_t innerLoop, int64_t outTokenNum, DataCopyExtParams& dataCopyExtParams,
+        DataCopyPadExtParams<T>& dataCopyPadExtParams);
+    __aicore__ inline void CopyInIndices(
+        int64_t progress, DataCopyExtParams& dataCopyExtParams, DataCopyPadExtParams<int32_t>& dataCopyPadExtParams);
+    __aicore__ inline void CopyInProbs(
+        int64_t Offset, DataCopyExtParams& dataCopyExtParams, DataCopyPadExtParams<probsT>& dataCopyPadExtParams);
+    __aicore__ inline void CopyOutProbs(
+        int64_t innerLoop, int64_t outTokenNum, DataCopyExtParams& dataCopyExtParams,
+        DataCopyPadExtParams<probsT>& dataCopyPadExtParams);
     __aicore__ inline void SyncAll();
 
 private:
-    TPipe *pipe;
+    TPipe* pipe;
     TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> copyInQueue;
     TQueBind<TPosition::VECIN, TPosition::VECOUT, 1> copyProbsInQueue;
     TQue<QuePosition::VECOUT, 1> indicesBuffer;
@@ -59,7 +63,7 @@ private:
     GlobalTensor<int32_t> indicesGm;
     LocalTensor<int32_t> indicesLocal;
 
-    const IndexMixCopyComputeTilingData *indexCopyTilingData;
+    const IndexMixCopyComputeTilingData* indexCopyTilingData;
 
     event_t indicesMte2ToS;
     event_t indicesSToMte2;
@@ -114,9 +118,8 @@ private:
 };
 
 template <typename T, typename probsT, bool ifNumOutTokens>
-__aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyIn(int64_t Offset,
-                                                                         DataCopyExtParams &dataCopyExtParams,
-                                                                         DataCopyPadExtParams<T> &dataCopyPadExtParams)
+__aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyIn(
+    int64_t Offset, DataCopyExtParams& dataCopyExtParams, DataCopyPadExtParams<T>& dataCopyPadExtParams)
 {
     LocalTensor<T> inLocal = copyInQueue.AllocTensor<T>();
     DataCopyPad(inLocal, srcGm[Offset], dataCopyExtParams, dataCopyPadExtParams);
@@ -124,9 +127,8 @@ __aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyIn(int64_t
 }
 
 template <typename T, typename probsT, bool ifNumOutTokens>
-__aicore__ inline void
-MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyInProbs(int64_t progress, DataCopyExtParams &dataCopyExtParams,
-                                                       DataCopyPadExtParams<probsT> &dataCopyPadExtParams)
+__aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyInProbs(
+    int64_t progress, DataCopyExtParams& dataCopyExtParams, DataCopyPadExtParams<probsT>& dataCopyPadExtParams)
 {
     probsLocal = copyProbsInQueue.AllocTensor<probsT>();
     if (srcProbsGm.GetPhyAddr() == nullptr) {
@@ -138,18 +140,17 @@ MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyInProbs(int64_t progress, DataCop
 }
 
 template <typename T, typename probsT, bool ifNumOutTokens>
-__aicore__ inline void
-MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyInIndices(int64_t progress, DataCopyExtParams &dataCopyExtParams,
-                                                         DataCopyPadExtParams<int32_t> &dataCopyPadExtParams)
+__aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyInIndices(
+    int64_t progress, DataCopyExtParams& dataCopyExtParams, DataCopyPadExtParams<int32_t>& dataCopyPadExtParams)
 {
     indicesLocal = indicesBuffer.AllocTensor<int32_t>();
     DataCopyPad(indicesLocal, indicesGm[progress * onceIndicesNums], dataCopyExtParams, dataCopyPadExtParams);
 }
 
 template <typename T, typename probsT, bool ifNumOutTokens>
-__aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyOut(int64_t innerLoop, int64_t outTokenNum,
-                                                                          DataCopyExtParams &dataCopyExtParams,
-                                                                          DataCopyPadExtParams<T> &dataCopyPadExtParams)
+__aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyOut(
+    int64_t innerLoop, int64_t outTokenNum, DataCopyExtParams& dataCopyExtParams,
+    DataCopyPadExtParams<T>& dataCopyPadExtParams)
 {
     LocalTensor<T> inLocal = copyInQueue.DeQue<T>();
     int64_t offset = innerLoop * onceUbIndicesCols;
@@ -161,8 +162,8 @@ __aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyOut(int64_
                     DataCopyPad(dstGm[(indicesValue - start) * cols], inLocal[tokensId * colsAlign], dataCopyExtParams);
                 }
             } else {
-                DataCopyPad(dstGm[indicesLocal.GetValue(offset) * cols], inLocal[tokensId * colsAlign],
-                            dataCopyExtParams);
+                DataCopyPad(
+                    dstGm[indicesLocal.GetValue(offset) * cols], inLocal[tokensId * colsAlign], dataCopyExtParams);
             }
             offset++;
         }
@@ -171,10 +172,9 @@ __aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyOut(int64_
 }
 
 template <typename T, typename probsT, bool ifNumOutTokens>
-__aicore__ inline void
-MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyOutProbs(int64_t innerLoop, int64_t outTokenNum,
-                                                        DataCopyExtParams &dataCopyExtParams,
-                                                        DataCopyPadExtParams<probsT> &dataCopyPadExtParams)
+__aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::CopyOutProbs(
+    int64_t innerLoop, int64_t outTokenNum, DataCopyExtParams& dataCopyExtParams,
+    DataCopyPadExtParams<probsT>& dataCopyPadExtParams)
 {
     if (srcProbsGm.GetPhyAddr() == nullptr) {
         return;
@@ -217,10 +217,9 @@ __aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::SyncAll()
 }
 
 template <typename T, typename probsT, bool ifNumOutTokens>
-__aicore__ inline void
-MoeindexCopyOp<T, probsT, ifNumOutTokens>::Init(GM_ADDR src, GM_ADDR srcProbs, GM_ADDR indices, GM_ADDR dst,
-                                                GM_ADDR dstProbs, const MoeTokenPermuteWithEpTilingData *tilingData,
-                                                TPipe *tPipe)
+__aicore__ inline void MoeindexCopyOp<T, probsT, ifNumOutTokens>::Init(
+    GM_ADDR src, GM_ADDR srcProbs, GM_ADDR indices, GM_ADDR dst, GM_ADDR dstProbs,
+    const MoeTokenPermuteWithEpTilingData* tilingData, TPipe* tPipe)
 {
     int64_t blockNum = GetBlockNum();
     this->pipe = tPipe;
@@ -275,15 +274,15 @@ MoeindexCopyOp<T, probsT, ifNumOutTokens>::Init(GM_ADDR src, GM_ADDR srcProbs, G
     onceUbIndicesCols = this->onceUbTokenNums * topK;
     onceUbProbsCols = onceUbIndicesCols;
 
-    srcGm.SetGlobalBuffer((__gm__ T *)src + srcoffset, this->coreCalcNum * cols);
-    indicesGm.SetGlobalBuffer((__gm__ int32_t *)indices + indicesoffset, this->coreCalcNum * topK);
-    dstGm.SetGlobalBuffer((__gm__ T *)dst, this->numOutTokens * cols);
+    srcGm.SetGlobalBuffer((__gm__ T*)src + srcoffset, this->coreCalcNum * cols);
+    indicesGm.SetGlobalBuffer((__gm__ int32_t*)indices + indicesoffset, this->coreCalcNum * topK);
+    dstGm.SetGlobalBuffer((__gm__ T*)dst, this->numOutTokens * cols);
     if (srcProbs != nullptr) {
-        srcProbsGm.SetGlobalBuffer((__gm__ probsT *)srcProbs + probsoffset, this->coreCalcNum * topK);
+        srcProbsGm.SetGlobalBuffer((__gm__ probsT*)srcProbs + probsoffset, this->coreCalcNum * topK);
     } else {
         srcProbsGm.SetGlobalBuffer(nullptr);
     }
-    dstProbsGm.SetGlobalBuffer((__gm__ probsT *)dstProbs, this->numOutTokens);
+    dstProbsGm.SetGlobalBuffer((__gm__ probsT*)dstProbs, this->numOutTokens);
     pipe->InitBuffer(copyInQueue, 2, this->indexCopyTilingData->tokenUB);
     pipe->InitBuffer(indicesBuffer, 1, this->indexCopyTilingData->indicesUB);
     pipe->InitBuffer(copyProbsInQueue, 1, this->indexCopyTilingData->probsUB);

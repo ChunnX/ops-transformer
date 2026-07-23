@@ -122,8 +122,7 @@ __aicore__ inline T AlignUp(T a, T base)
     return (a + base - 1) / base * base;
 }
 
-template <typename T>
-__aicore__ inline T AlignDown(T a, T base)
+template <typename T> __aicore__ inline T AlignDown(T a, T base)
 {
     if (unlikely(base == 0)) {
         return a;

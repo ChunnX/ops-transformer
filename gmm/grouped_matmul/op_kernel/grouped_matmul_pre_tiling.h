@@ -17,7 +17,7 @@
 
 #include "kernel_operator.h"
 
-namespace GROUPED_MATMUL {
+namespace GROUPED_MATMUL{
 using namespace AscendC;
 
 constexpr int32_t BASE_M_ALIGN_UP = 16;
@@ -30,9 +30,8 @@ constexpr uint32_t GROUP_LIST_SPARSE_M = 2U;
 class GMMPreTilingProcess {
 public:
     __aicore__ inline GMMPreTilingProcess(){};
-    __aicore__ inline void Init(GM_ADDR groupList, GMMBaseParams &tilingData, TCubeTiling &mmTilingData, TPipe *pipe);
-    __aicore__ inline void Process(GMMBaseParams &tilingData, TCubeTiling &mmTilingData);
-
+    __aicore__ inline void Init(GM_ADDR groupList, GMMBaseParams& tilingData, TCubeTiling &mmTilingData , TPipe *pipe);
+    __aicore__ inline void Process(GMMBaseParams& tilingData,TCubeTiling &mmTilingData);
 private:
     __aicore__ inline void GetTokensPerGroup();
     __aicore__ inline void FullLoadA(const int32_t baseM, TCubeTiling &mmTilingData);
@@ -55,12 +54,11 @@ private:
     int64_t isPreTiling = 0;
 };
 
-__aicore__ inline void GMMPreTilingProcess::GetTokensPerGroup()
-{
-    if (groupListType == 0) {
+__aicore__ inline void GMMPreTilingProcess::GetTokensPerGroup() {
+    if(groupListType == 0) {
         totalTokenNum = static_cast<int32_t>(groupListGm.GetValue(groupNum - 1));
     } else {
-        for (int i = 0; i < groupNum; i++) {
+        for(int i = 0; i < groupNum; i++) {
             totalTokenNum += static_cast<int32_t>(groupListGm.GetValue(i));
         }
     }
@@ -68,9 +66,7 @@ __aicore__ inline void GMMPreTilingProcess::GetTokensPerGroup()
     return;
 }
 
-__aicore__ inline void GMMPreTilingProcess::Init(GM_ADDR groupList, GMMBaseParams &tilingData,
-                                                 TCubeTiling &mmTilingData, TPipe *pipe)
-{
+__aicore__ inline void GMMPreTilingProcess::Init(GM_ADDR groupList, GMMBaseParams& tilingData, TCubeTiling& mmTilingData , TPipe *pipe) {
 #if ORIG_DTYPE_X != DT_INT8 || ORIG_DTYPE_WEIGHT != DT_INT8
     return;
 #else
@@ -92,8 +88,7 @@ __aicore__ inline void GMMPreTilingProcess::Init(GM_ADDR groupList, GMMBaseParam
 #endif
 }
 
-__aicore__ inline void GMMPreTilingProcess::Process(GMMBaseParams &tilingData, TCubeTiling &mmTilingData)
-{
+__aicore__ inline void GMMPreTilingProcess::Process(GMMBaseParams& tilingData, TCubeTiling& mmTilingData) {
 #if ORIG_DTYPE_X != DT_INT8 || ORIG_DTYPE_WEIGHT != DT_INT8
     return;
 #else
@@ -115,14 +110,14 @@ __aicore__ inline void GMMPreTilingProcess::Process(GMMBaseParams &tilingData, T
     int64_t taskNum = static_cast<int64_t>(mDim) * nDim * static_cast<int64_t>(groupNum);
     int64_t taskNumPerCore = Ceil(taskNum, static_cast<int64_t>(coreNum));
     int32_t newBaseM = AlignUp(Ceil(tokenPerGroup, mDim), BASE_M_ALIGN_UP);
-    if (newBaseM < BASE_M_ALIGN_UP) {
+    if(newBaseM < BASE_M_ALIGN_UP) {
         return;
     } else {
         mmTilingData.baseM = newBaseM < baseM ? newBaseM : baseM;
     }
 
     // modify singleN
-    if (taskNumPerCore >= 2 && n > baseN) { // 2 : taskNum < coreNum, singleN remains unchanged.
+    if(taskNumPerCore >= 2 && n > baseN) { // 2 : taskNum < coreNum, singleN remains unchanged.
         int32_t curNDim = 0;
         int64_t curTaskNum = 0;
         bool isModifySingleN = false;
@@ -154,8 +149,7 @@ __aicore__ inline void GMMPreTilingProcess::Process(GMMBaseParams &tilingData, T
 #endif
 }
 
-__aicore__ inline void GMMPreTilingProcess::FullLoadA(const int32_t curBaseM, TCubeTiling &mmTilingData)
-{
+__aicore__ inline void GMMPreTilingProcess::FullLoadA(const int32_t curBaseM, TCubeTiling &mmTilingData) {
     int32_t A1FullLoadSize = curBaseM * AlignUp(k, baseK) + baseN * baseK * depthB1;
     if (A1FullLoadSize < L1_SIZE) {
         mmTilingData.stepKa = Ceil(k, baseK);
@@ -163,5 +157,5 @@ __aicore__ inline void GMMPreTilingProcess::FullLoadA(const int32_t curBaseM, TC
     }
 }
 
-} // namespace GROUPED_MATMUL
+} // GROUPED_MATMUL
 #endif // ASCENDC_GROUPED_MATMUL_PRE_TILING_H

@@ -28,11 +28,12 @@
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void moe_token_unpermute_with_ep(GM_ADDR permuted_tokens, GM_ADDR sorted_indices,
-                                                                  GM_ADDR probs, GM_ADDR unpermuted_tokens,
-                                                                  GM_ADDR workspace, GM_ADDR tiling);
+extern "C" __global__ __aicore__ void moe_token_unpermute_with_ep(
+    GM_ADDR permuted_tokens, GM_ADDR sorted_indices, GM_ADDR probs, GM_ADDR unpermuted_tokens, GM_ADDR workspace,
+    GM_ADDR tiling);
 
-class moe_token_unpermute_with_ep_test : public testing::Test {
+class moe_token_unpermute_with_ep_test : public testing::Test
+{
 protected:
     static void SetUpTestCase()
     {
@@ -53,30 +54,30 @@ TEST_F(moe_token_unpermute_with_ep_test, test_prob_none_bf16)
     size_t unpermutedTokensByteSize = 90 * 1024 * sizeof(bfloat16_t);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
-    uint8_t *probs = (uint8_t *)AscendC::GmAlloc(probsByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* probs = (uint8_t*)AscendC::GmAlloc(probsByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 48;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(0);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, nullptr, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, nullptr, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);
@@ -96,30 +97,30 @@ TEST_F(moe_token_unpermute_with_ep_test, test_bf16)
     size_t unpermutedTokensByteSize = 6144 * 5120 * sizeof(bfloat16_t);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
-    uint8_t *probs = (uint8_t *)AscendC::GmAlloc(probsByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* probs = (uint8_t*)AscendC::GmAlloc(probsByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 48;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(1);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);
@@ -139,30 +140,30 @@ TEST_F(moe_token_unpermute_with_ep_test, test_prob_none_fp16)
     size_t unpermutedTokensByteSize = 72 * 5120 * sizeof(half);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
-    uint8_t *probs = (uint8_t *)AscendC::GmAlloc(probsByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* probs = (uint8_t*)AscendC::GmAlloc(probsByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 48;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(2);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, nullptr, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, nullptr, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);
@@ -182,30 +183,30 @@ TEST_F(moe_token_unpermute_with_ep_test, test_fp16)
     size_t unpermutedTokensByteSize = 32 * 5122 * sizeof(half);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
-    uint8_t *probs = (uint8_t *)AscendC::GmAlloc(probsByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* probs = (uint8_t*)AscendC::GmAlloc(probsByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 48;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(3);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);
@@ -224,29 +225,29 @@ TEST_F(moe_token_unpermute_with_ep_test, test_prob_none_fp32)
     size_t unpermutedTokensByteSize = 32 * 5120 * sizeof(float);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 32;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(4);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, nullptr, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, nullptr, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);
@@ -265,30 +266,30 @@ TEST_F(moe_token_unpermute_with_ep_test, test_fp32)
     size_t unpermutedTokensByteSize = 32 * 5120 * sizeof(float);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
-    uint8_t *probs = (uint8_t *)AscendC::GmAlloc(probsByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* probs = (uint8_t*)AscendC::GmAlloc(probsByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 48;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(5);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);
@@ -308,30 +309,30 @@ TEST_F(moe_token_unpermute_with_ep_test, test_mix_bf16_fp16)
     size_t unpermutedTokensByteSize = 32 * 5120 * sizeof(bfloat16_t);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
-    uint8_t *probs = (uint8_t *)AscendC::GmAlloc(probsByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* probs = (uint8_t*)AscendC::GmAlloc(probsByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 48;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(17);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);
@@ -351,30 +352,30 @@ TEST_F(moe_token_unpermute_with_ep_test, test_mix_bf16_fp32)
     size_t unpermutedTokensByteSize = 32 * 5120 * sizeof(bfloat16_t);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
-    uint8_t *probs = (uint8_t *)AscendC::GmAlloc(probsByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* probs = (uint8_t*)AscendC::GmAlloc(probsByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 48;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(25);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);
@@ -394,30 +395,30 @@ TEST_F(moe_token_unpermute_with_ep_test, test_mix_fp16_bf16)
     size_t unpermutedTokensByteSize = 32 * 5120 * sizeof(half);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
-    uint8_t *probs = (uint8_t *)AscendC::GmAlloc(probsByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* probs = (uint8_t*)AscendC::GmAlloc(probsByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 48;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(11);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);
@@ -437,30 +438,30 @@ TEST_F(moe_token_unpermute_with_ep_test, test_mix_fp16_fp32)
     size_t unpermutedTokensByteSize = 32 * 5120 * sizeof(half);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
-    uint8_t *probs = (uint8_t *)AscendC::GmAlloc(probsByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* probs = (uint8_t*)AscendC::GmAlloc(probsByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 48;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(27);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);
@@ -480,30 +481,30 @@ TEST_F(moe_token_unpermute_with_ep_test, test_mix_fp32_bf16)
     size_t unpermutedTokensByteSize = 32 * 5120 * sizeof(float);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
-    uint8_t *probs = (uint8_t *)AscendC::GmAlloc(probsByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* probs = (uint8_t*)AscendC::GmAlloc(probsByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 48;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(13);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);
@@ -523,30 +524,30 @@ TEST_F(moe_token_unpermute_with_ep_test, test_mix_fp32_fp16)
     size_t unpermutedTokensByteSize = 32 * 5120 * sizeof(float);
     size_t tilingDataSize = sizeof(MoeTokenUnpermuteWithEpTilingData);
 
-    uint8_t *permuted_tokens = (uint8_t *)AscendC::GmAlloc(permutedTokensByteSize + 32);
-    uint8_t *sorted_indices = (uint8_t *)AscendC::GmAlloc(sortedIndicesByteSize + 32);
-    uint8_t *probs = (uint8_t *)AscendC::GmAlloc(probsByteSize + 32);
+    uint8_t* permuted_tokens = (uint8_t*)AscendC::GmAlloc(permutedTokensByteSize + 32);
+    uint8_t* sorted_indices = (uint8_t*)AscendC::GmAlloc(sortedIndicesByteSize + 32);
+    uint8_t* probs = (uint8_t*)AscendC::GmAlloc(probsByteSize + 32);
 
-    uint8_t *unpermuted_tokens = (uint8_t *)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
+    uint8_t* unpermuted_tokens = (uint8_t*)AscendC::GmAlloc(unpermutedTokensByteSize + 32);
 
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataSize + 32);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024 + 32);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataSize + 32);
     uint32_t blockDim = 48;
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->buffer_num = 1;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->hidden_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->tokens_splited_length = 512;
-    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling)->top_k = 5;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->buffer_num = 1;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->hidden_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->tokens_splited_length = 512;
+    reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling)->top_k = 5;
 
-    MoeTokenUnpermuteWithEpTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeTokenUnpermuteWithEpTilingData *>(tiling);
+    MoeTokenUnpermuteWithEpTilingData* tilingDatafromBin = reinterpret_cast<MoeTokenUnpermuteWithEpTilingData*>(tiling);
 
     ICPU_SET_TILING_KEY(21);
-    ICPU_RUN_KF(moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens,
-                workspace, (uint8_t *)tilingDatafromBin);
+    ICPU_RUN_KF(
+        moe_token_unpermute_with_ep, blockDim, permuted_tokens, sorted_indices, probs, unpermuted_tokens, workspace,
+        (uint8_t*)tilingDatafromBin);
 
     AscendC::GmFree(permuted_tokens);
     AscendC::GmFree(sorted_indices);

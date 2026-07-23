@@ -27,9 +27,8 @@
 using namespace std;
 
 extern "C" __global__ __aicore__ void moe_re_routing(GM_ADDR tokens, GM_ADDR expertTokensNumPerRank,
-                                                     GM_ADDR perTokenScales, GM_ADDR permuteTokens,
-                                                     GM_ADDR permutePerTokenScales, GM_ADDR permuteTokenIdx,
-                                                     GM_ADDR expertTokenNum, GM_ADDR workspace, GM_ADDR tiling);
+    GM_ADDR perTokenScales, GM_ADDR permuteTokens, GM_ADDR permutePerTokenScales, GM_ADDR permuteTokenIdx,
+    GM_ADDR expertTokenNum, GM_ADDR workspace, GM_ADDR tiling);
 
 class moe_re_routing_test : public testing::Test {
 protected:
@@ -80,8 +79,17 @@ TEST_F(moe_re_routing_test, test_case_0001)
     tilingDatafromBin->hasScale = 1;
 
     ICPU_SET_TILING_KEY(100000);
-    ICPU_RUN_KF(moe_re_routing, blockDim, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens,
-                permutePerTokenScales, permuteTokenIdx, expertTokenNum, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(moe_re_routing,
+        blockDim,
+        tokens,
+        expertTokenNumPerRank,
+        perTokenScales,
+        permuteTokens,
+        permutePerTokenScales,
+        permuteTokenIdx,
+        expertTokenNum,
+        workspace,
+        (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(tokens);
     AscendC::GmFree(expertTokenNumPerRank);
@@ -132,11 +140,29 @@ TEST_F(moe_re_routing_test, test_case_0002)
     tilingDatafromBin->hasScale = 1;
 
     ICPU_SET_TILING_KEY(100100);
-    ICPU_RUN_KF(moe_re_routing, blockDim, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens,
-                permutePerTokenScales, permuteTokenIdx, expertTokenNum, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(moe_re_routing,
+        blockDim,
+        tokens,
+        expertTokenNumPerRank,
+        perTokenScales,
+        permuteTokens,
+        permutePerTokenScales,
+        permuteTokenIdx,
+        expertTokenNum,
+        workspace,
+        (uint8_t *)(tilingDatafromBin));
     ICPU_SET_TILING_KEY(100200);
-    ICPU_RUN_KF(moe_re_routing, blockDim, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens,
-                permutePerTokenScales, permuteTokenIdx, expertTokenNum, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(moe_re_routing,
+        blockDim,
+        tokens,
+        expertTokenNumPerRank,
+        perTokenScales,
+        permuteTokens,
+        permutePerTokenScales,
+        permuteTokenIdx,
+        expertTokenNum,
+        workspace,
+        (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(tokens);
     AscendC::GmFree(expertTokenNumPerRank);
@@ -187,8 +213,17 @@ TEST_F(moe_re_routing_test, test_case_0003)
     tilingDatafromBin->hasScale = 1;
 
     ICPU_SET_TILING_KEY(100010);
-    ICPU_RUN_KF(moe_re_routing, blockDim, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens,
-                permutePerTokenScales, permuteTokenIdx, expertTokenNum, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(moe_re_routing,
+        blockDim,
+        tokens,
+        expertTokenNumPerRank,
+        perTokenScales,
+        permuteTokens,
+        permutePerTokenScales,
+        permuteTokenIdx,
+        expertTokenNum,
+        workspace,
+        (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(tokens);
     AscendC::GmFree(expertTokenNumPerRank);
@@ -239,11 +274,29 @@ TEST_F(moe_re_routing_test, test_case_0004)
     tilingDatafromBin->hasScale = 1;
 
     ICPU_SET_TILING_KEY(100110);
-    ICPU_RUN_KF(moe_re_routing, blockDim, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens,
-                permutePerTokenScales, permuteTokenIdx, expertTokenNum, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(moe_re_routing,
+        blockDim,
+        tokens,
+        expertTokenNumPerRank,
+        perTokenScales,
+        permuteTokens,
+        permutePerTokenScales,
+        permuteTokenIdx,
+        expertTokenNum,
+        workspace,
+        (uint8_t *)(tilingDatafromBin));
     ICPU_SET_TILING_KEY(100210);
-    ICPU_RUN_KF(moe_re_routing, blockDim, tokens, expertTokenNumPerRank, perTokenScales, permuteTokens,
-                permutePerTokenScales, permuteTokenIdx, expertTokenNum, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(moe_re_routing,
+        blockDim,
+        tokens,
+        expertTokenNumPerRank,
+        perTokenScales,
+        permuteTokens,
+        permutePerTokenScales,
+        permuteTokenIdx,
+        expertTokenNum,
+        workspace,
+        (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(tokens);
     AscendC::GmFree(expertTokenNumPerRank);

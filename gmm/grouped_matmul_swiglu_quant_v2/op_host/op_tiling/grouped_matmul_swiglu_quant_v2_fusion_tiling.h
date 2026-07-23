@@ -24,8 +24,7 @@ namespace GroupedMatmulSwigluQuantV2Tiling {
 
 class GroupedMatmulSwigluQuantV2FusionTiling : public GroupedMatmulSwigluQuantV2Tiling {
 public:
-    explicit GroupedMatmulSwigluQuantV2FusionTiling(gert::TilingContext *context)
-        : GroupedMatmulSwigluQuantV2Tiling(context) {};
+    explicit GroupedMatmulSwigluQuantV2FusionTiling(gert::TilingContext* context) : GroupedMatmulSwigluQuantV2Tiling(context) {};
 
     ~GroupedMatmulSwigluQuantV2FusionTiling() override = default;
 
@@ -40,7 +39,6 @@ protected:
     ge::graphStatus ParseInputAndAttr();
     void FillTilingData() override;
     void PrintTilingData() override;
-
 private:
     GMMSwigluQuantV2TilingFusionData tilingData_;
     uint64_t workspaceSize_;
@@ -56,6 +54,6 @@ private:
     int8_t isSingleTensor_;
 };
 
-} // namespace GroupedMatmulSwigluQuantV2Tiling
-} // namespace optiling
+}
+}
 #endif // __OP_HOST_OP_TILING_GROUPED_MATMUL_SWIGLU_QUANT_V2_FUSION_TILING_H__

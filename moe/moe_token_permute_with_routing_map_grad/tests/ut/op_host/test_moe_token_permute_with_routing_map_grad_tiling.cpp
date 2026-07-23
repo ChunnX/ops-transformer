@@ -79,7 +79,8 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_fp32)
                                                 {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}}},
                                               &compileInfo);
     int64_t expectTilingKey = 1000; // tilngkey
-    string expectTilingData = "0 0 0 0 0 0 0 0 0 0 0 0 2 512 512 16 16 ";
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 2 512 512 16 16 "; 
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -107,7 +108,8 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_fp16)
                                                 {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}}},
                                               &compileInfo);
     int64_t expectTilingKey = 1000; // tilngkey
-    string expectTilingData = "0 0 0 0 0 0 0 0 0 0 0 0 2 512 512 16 16 ";
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 2 512 512 16 16 "; 
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -135,7 +137,8 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_bf16)
                                                 {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}}},
                                               &compileInfo);
     int64_t expectTilingKey = 1000; // tilngkey
-    string expectTilingData = "0 0 0 0 0 0 0 0 0 0 0 0 2 512 512 16 16 ";
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 2 512 512 16 16 "; 
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -163,7 +166,8 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_bf16_mix)
                                                 {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
                                               &compileInfo);
     int64_t expectTilingKey = 0; // tilngkey
-    string expectTilingData = "7168 2 1024 7168 1 0 8 0 8 1 0 4 0 0 0 0 0 ";
+    string expectTilingData =
+        "7168 2 1024 7168 1 0 8 0 8 1 0 4 0 0 0 0 0 "; 
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024}; // workspace
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }
@@ -175,22 +179,21 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_non_pad_fp32)
     int64_t topk = 2;
     int64_t hidden = 64;
     int64_t numOutTokens = tokenNum * topk;
-    gert::TilingContextPara tilingContextPara(
-        "MoeTokenPermuteWithRoutingMapGrad",
-        {
-            {{{numOutTokens, hidden}, {numOutTokens, hidden}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {{{tokenNum, hidden}, {tokenNum, hidden}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topk)},
-          {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
-          {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
-        &compileInfo);
+    gert::TilingContextPara tilingContextPara("MoeTokenPermuteWithRoutingMapGrad",
+                                              {
+                                                  {{{numOutTokens, hidden}, {numOutTokens, hidden}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{tokenNum, hidden}, {tokenNum, hidden}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topk)},
+                                                {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
+                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
+                                              &compileInfo);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0);
 }
 
@@ -201,22 +204,21 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_non_pad_fp16)
     int64_t topk = 2;
     int64_t hidden = 64;
     int64_t numOutTokens = tokenNum * topk;
-    gert::TilingContextPara tilingContextPara(
-        "MoeTokenPermuteWithRoutingMapGrad",
-        {
-            {{{numOutTokens, hidden}, {numOutTokens, hidden}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {
-            {{{tokenNum, hidden}, {tokenNum, hidden}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topk)},
-          {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
-          {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
-        &compileInfo);
+    gert::TilingContextPara tilingContextPara("MoeTokenPermuteWithRoutingMapGrad",
+                                              {
+                                                  {{{numOutTokens, hidden}, {numOutTokens, hidden}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{tokenNum, hidden}, {tokenNum, hidden}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topk)},
+                                                {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
+                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
+                                              &compileInfo);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0);
 }
 
@@ -227,22 +229,21 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_non_pad_small_tokens
     int64_t topk = 2;
     int64_t hidden = 128;
     int64_t numOutTokens = tokenNum * topk;
-    gert::TilingContextPara tilingContextPara(
-        "MoeTokenPermuteWithRoutingMapGrad",
-        {
-            {{{numOutTokens, hidden}, {numOutTokens, hidden}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_BOOL, ge::FORMAT_ND},
-        },
-        {
-            {{{tokenNum, hidden}, {tokenNum, hidden}}, ge::DT_BF16, ge::FORMAT_ND},
-            {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topk)},
-          {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
-          {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
-        &compileInfo);
+    gert::TilingContextPara tilingContextPara("MoeTokenPermuteWithRoutingMapGrad",
+                                              {
+                                                  {{{numOutTokens, hidden}, {numOutTokens, hidden}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_BOOL, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{tokenNum, hidden}, {tokenNum, hidden}}, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topk)},
+                                                {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
+                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
+                                              &compileInfo);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0);
 }
 
@@ -253,22 +254,21 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_non_pad_long_hidden)
     int64_t topk = 2;
     int64_t hidden = 32768;
     int64_t numOutTokens = tokenNum * topk;
-    gert::TilingContextPara tilingContextPara(
-        "MoeTokenPermuteWithRoutingMapGrad",
-        {
-            {{{numOutTokens, hidden}, {numOutTokens, hidden}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {{{tokenNum, hidden}, {tokenNum, hidden}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topk)},
-          {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
-          {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
-        &compileInfo);
+    gert::TilingContextPara tilingContextPara("MoeTokenPermuteWithRoutingMapGrad",
+                                              {
+                                                  {{{numOutTokens, hidden}, {numOutTokens, hidden}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{tokenNum, hidden}, {tokenNum, hidden}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topk)},
+                                                {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
+                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
+                                              &compileInfo);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0);
 }
 
@@ -279,22 +279,24 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_non_pad_small_ub)
     int64_t topk = 4;
     int64_t hidden = 8192;
     int64_t numOutTokens = tokenNum * topk;
-    gert::TilingContextPara tilingContextPara(
-        "MoeTokenPermuteWithRoutingMapGrad",
-        {
-            {{{numOutTokens, hidden}, {numOutTokens, hidden}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {
-            {{{tokenNum, hidden}, {tokenNum, hidden}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topk)},
-          {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
-          {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
-        &compileInfo, "Ascend910B", 64, 8192);
+    gert::TilingContextPara tilingContextPara("MoeTokenPermuteWithRoutingMapGrad",
+                                              {
+                                                  {{{numOutTokens, hidden}, {numOutTokens, hidden}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{numOutTokens}, {numOutTokens}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{tokenNum, hidden}, {tokenNum, hidden}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                                  {{{tokenNum, topk}, {tokenNum, topk}}, ge::DT_FLOAT16, ge::FORMAT_ND},
+                                              },
+                                              {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(topk)},
+                                                {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
+                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)}}},
+                                              &compileInfo,
+                                              "Ascend910B",
+                                              64,
+                                              8192);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 0);
 }
 
@@ -325,22 +327,21 @@ TEST_F(MoeTokenPermuteWithRoutingMapGradTiling, test_tiling_drop_pad_single_core
     int64_t numExperts = 4;
     int64_t tokenNum = 8;
     int64_t capacity = 2;
-    gert::TilingContextPara tilingContextPara(
-        "MoeTokenPermuteWithRoutingMapGrad",
-        {
-            {{{numExperts * capacity, 64}, {numExperts * capacity, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{numExperts * capacity}, {numExperts * capacity}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{numExperts * capacity}, {numExperts * capacity}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{numExperts, tokenNum}, {numExperts, tokenNum}}, ge::DT_INT8, ge::FORMAT_ND},
-        },
-        {
-            {{{tokenNum, 64}, {tokenNum, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
-            {{{tokenNum, numExperts}, {tokenNum, numExperts}}, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numExperts)},
-          {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
-          {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}}},
-        &compileInfo);
+    gert::TilingContextPara tilingContextPara("MoeTokenPermuteWithRoutingMapGrad",
+                                              {
+                                                  {{{numExperts * capacity, 64}, {numExperts * capacity, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{numExperts * capacity}, {numExperts * capacity}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{numExperts * capacity}, {numExperts * capacity}}, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {{{numExperts, tokenNum}, {numExperts, tokenNum}}, ge::DT_INT8, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {{{tokenNum, 64}, {tokenNum, 64}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {{{tokenNum, numExperts}, {tokenNum, numExperts}}, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {{{"num_expert", Ops::Transformer::AnyValue::CreateFrom<int64_t>(numExperts)},
+                                                {"tokens_num", Ops::Transformer::AnyValue::CreateFrom<int64_t>(tokenNum)},
+                                                {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(true)}}},
+                                              &compileInfo);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, 1000);
 }
 

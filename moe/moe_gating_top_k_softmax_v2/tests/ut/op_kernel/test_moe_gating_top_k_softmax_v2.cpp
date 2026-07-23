@@ -8,24 +8,25 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 
-#include <array>
-#include <vector>
-#include <iostream>
-#include <string>
-#include <cstdint>
-#include "gtest/gtest.h"
-#include "tikicpulib.h"
-#include "data_utils.h"
-#include "tiling_case_executor.h"
+ #include <array>
+ #include <vector>
+ #include <iostream>
+ #include <string>
+ #include <cstdint>
+ #include "gtest/gtest.h"
+ #include "tikicpulib.h"
+ #include "data_utils.h"
+ #include "tiling_case_executor.h"
 #include "moe_gating_top_k_softmax_v2_tiling.h"
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void moe_gating_top_k_softmax_v2(GM_ADDR gating, GM_ADDR finished, GM_ADDR out,
-                                                                  GM_ADDR indicesOut, GM_ADDR softmaxOut,
-                                                                  GM_ADDR workspace, GM_ADDR tiling);
+extern "C" __global__ __aicore__ void moe_gating_top_k_softmax_v2(
+    GM_ADDR gating, GM_ADDR finished, GM_ADDR out, GM_ADDR indicesOut, GM_ADDR softmaxOut, GM_ADDR workspace,
+    GM_ADDR tiling);
 
-class moe_gating_top_k_softmax_v2_test : public testing::Test {
+class moe_gating_top_k_softmax_v2_test : public testing::Test
+{
 protected:
     static void SetUpTestCase()
     {
@@ -46,20 +47,20 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_float32)
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2EKFullLoadTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
 
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2EKFullLoadTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2EKFullLoadTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2EKFullLoadTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2EKFullLoadTilingData*>(tiling);
 
     SoftMaxTiling SoftMaxTilingData;
     TopkTiling TopkTilingData;
@@ -138,8 +139,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_float32)
     tilingDatafromBin->tailBlockTailTopkTilingData = TopkTilingData;
 
     ICPU_SET_TILING_KEY(101010);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, finished, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, finished, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -160,19 +162,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_float16)
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2EKFullLoadTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2EKFullLoadTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2EKFullLoadTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2EKFullLoadTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2EKFullLoadTilingData*>(tiling);
 
     SoftMaxTiling SoftMaxTilingData;
     TopkTiling TopkTilingData;
@@ -251,8 +253,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_float16)
     tilingDatafromBin->tailBlockTailTopkTilingData = TopkTilingData;
 
     ICPU_SET_TILING_KEY(101020);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, finished, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, finished, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -273,19 +276,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_bfloat16)
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2EKFullLoadTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2EKFullLoadTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2EKFullLoadTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2EKFullLoadTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2EKFullLoadTilingData*>(tiling);
 
     SoftMaxTiling SoftMaxTilingData;
     TopkTiling TopkTilingData;
@@ -364,8 +367,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_bfloat16)
     tilingDatafromBin->tailBlockTailTopkTilingData = TopkTilingData;
 
     ICPU_SET_TILING_KEY(101030);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, finished, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, finished, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -386,19 +390,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_bfloat16_big_col_num_ren
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 72;
@@ -419,8 +423,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_bfloat16_big_col_num_ren
     tilingDatafromBin->bufferElemSize = 288;
 
     ICPU_SET_TILING_KEY(103023);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -441,19 +446,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float16_big_col_num_reno
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 72;
@@ -474,8 +479,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float16_big_col_num_reno
     tilingDatafromBin->bufferElemSize = 288;
 
     ICPU_SET_TILING_KEY(103033);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -496,19 +502,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float_big_col_num_renorm
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 72;
@@ -529,8 +535,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float_big_col_num_renorm
     tilingDatafromBin->bufferElemSize = 288;
 
     ICPU_SET_TILING_KEY(103013);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -551,19 +558,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_bfloat16_big_col_num_non
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 72;
@@ -584,8 +591,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_bfloat16_big_col_num_non
     tilingDatafromBin->bufferElemSize = 288;
 
     ICPU_SET_TILING_KEY(103133);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -606,19 +614,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float16_big_col_num_non_
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 72;
@@ -639,8 +647,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float16_big_col_num_non_
     tilingDatafromBin->bufferElemSize = 288;
 
     ICPU_SET_TILING_KEY(103133);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -661,19 +670,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float_big_col_num_non_re
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 72;
@@ -694,8 +703,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float_big_col_num_non_re
     tilingDatafromBin->bufferElemSize = 288;
 
     ICPU_SET_TILING_KEY(103113);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -716,19 +726,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_bfloat16_middle_col_num_
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 64;
@@ -749,8 +759,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_bfloat16_middle_col_num_
     tilingDatafromBin->bufferElemSize = 192;
 
     ICPU_SET_TILING_KEY(103132);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -771,19 +782,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float16_middle_col_num_r
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 64;
@@ -803,8 +814,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float16_middle_col_num_r
     tilingDatafromBin->topKIndicesMask = 170;
     tilingDatafromBin->bufferElemSize = 192;
     ICPU_SET_TILING_KEY(103122);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -825,19 +837,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float_middle_col_num_ren
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 64;
@@ -858,8 +870,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float_middle_col_num_ren
     tilingDatafromBin->bufferElemSize = 192;
 
     ICPU_SET_TILING_KEY(103112);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -880,19 +893,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_bfloat16_middle_col_num_
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 64;
@@ -913,8 +926,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_bfloat16_middle_col_num_
     tilingDatafromBin->bufferElemSize = 192;
 
     ICPU_SET_TILING_KEY(103032);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -935,19 +949,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float16_middle_col_num_n
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 64;
@@ -968,8 +982,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float16_middle_col_num_n
     tilingDatafromBin->bufferElemSize = 192;
 
     ICPU_SET_TILING_KEY(103022);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);
@@ -990,19 +1005,19 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float_middle_col_num_non
     size_t tiling_data_size = sizeof(MoeGatingTopKSoftmaxV2PerfTilingData);
     uint32_t blockDim = 24;
 
-    uint8_t *x = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *finished = (uint8_t *)AscendC::GmAlloc(finishedByteSize);
-    uint8_t *y = (uint8_t *)AscendC::GmAlloc(outputByteSize);
-    uint8_t *expert_idx = (uint8_t *)AscendC::GmAlloc(outputByteSize1);
-    uint8_t *softmax_out = (uint8_t *)AscendC::GmAlloc(inputByteSize);
-    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 2);
-    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
+    uint8_t* x = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* finished = (uint8_t*)AscendC::GmAlloc(finishedByteSize);
+    uint8_t* y = (uint8_t*)AscendC::GmAlloc(outputByteSize);
+    uint8_t* expert_idx = (uint8_t*)AscendC::GmAlloc(outputByteSize1);
+    uint8_t* softmax_out = (uint8_t*)AscendC::GmAlloc(inputByteSize);
+    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 2);
+    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    char *path_ = get_current_dir_name();
+    char* path_ = get_current_dir_name();
     string path(path_);
 
-    MoeGatingTopKSoftmaxV2PerfTilingData *tilingDatafromBin =
-        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData *>(tiling);
+    MoeGatingTopKSoftmaxV2PerfTilingData* tilingDatafromBin =
+        reinterpret_cast<MoeGatingTopKSoftmaxV2PerfTilingData*>(tiling);
 
     tilingDatafromBin->row = 96;
     tilingDatafromBin->col = 64;
@@ -1023,8 +1038,9 @@ TEST_F(moe_gating_top_k_softmax_v2_test, test_case_perf_float_middle_col_num_non
     tilingDatafromBin->bufferElemSize = 192;
 
     ICPU_SET_TILING_KEY(103012);
-    ICPU_RUN_KF(moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
-                (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(
+        moe_gating_top_k_softmax_v2, blockDim, x, nullptr, y, expert_idx, softmax_out, workspace,
+        (uint8_t*)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(finished);

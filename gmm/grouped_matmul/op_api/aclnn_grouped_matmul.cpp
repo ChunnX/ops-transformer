@@ -2634,9 +2634,9 @@ static aclnnStatus SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulPara
         std::vector<aclTensor *> scaleTensorList;
         if ((*params.scaleOptional)[0] != nullptr &&
             (*params.scaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0) {
-            CHECK_RET(
-                gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList, executorPtr),
-                ACLNN_ERR_INNER_NULLPTR);
+            CHECK_RET(gmm::CreateContiguousTensorListForMXTypeMScale(params.scaleOptional, scaleTensorList,
+                                                                     executorPtr),
+                      ACLNN_ERR_INNER_NULLPTR);
             params.scaleOptional = executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
             CHECK_RET(params.scaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
         } else if (isPerTileQuantMode) {
@@ -2669,86 +2669,83 @@ static aclnnStatus SetTransposedScaleTensorListContiguous(gmm::GroupedMatmulPara
 
 static aclnnStatus SetTransposedTensorListContiguous(gmm::GroupedMatmulParams &params, aclOpExecutor *executorPtr)
 {
-    bool isPerTileQuantMode = IsPerTileQuantMode(params);
-    DataType weightDtype = (*params.weight)[0]->GetDataType();
-    if (params.transposeX) {
-        std::vector<aclTensor *> xTensorList;
-        CHECK_RET(gmm::CreateContiguousTensorList(params.x, xTensorList, executorPtr), ACLNN_ERR_INNER_NULLPTR);
-        params.x = executorPtr->AllocTensorList(xTensorList.data(), xTensorList.size());
-        CHECK_RET(params.x != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        if (params.perTokenScaleOptional != nullptr &&
-            ((*params.perTokenScaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0 || isPerTileQuantMode)) {
-            std::vector<aclTensor *> perTokenScaleTensorList;
-            if (isPerTileQuantMode) {
-                CHECK_RET(
-                    gmm::CreateContiguousTensorList(params.perTokenScaleOptional, perTokenScaleTensorList, executorPtr),
+  bool isPerTileQuantMode = IsPerTileQuantMode(params);
+  DataType weightDtype = (*params.weight)[0]->GetDataType();
+  if (params.transposeX) {
+    std::vector<aclTensor*> xTensorList;
+    CHECK_RET(gmm::CreateContiguousTensorList(params.x, xTensorList, executorPtr), ACLNN_ERR_INNER_NULLPTR);
+    params.x = executorPtr->AllocTensorList(xTensorList.data(), xTensorList.size());
+    CHECK_RET(params.x != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    if (params.perTokenScaleOptional != nullptr &&
+        ((*params.perTokenScaleOptional)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0 || isPerTileQuantMode)) {
+      std::vector<aclTensor*> perTokenScaleTensorList;
+      if (isPerTileQuantMode) {
+          CHECK_RET(gmm::CreateContiguousTensorList(params.perTokenScaleOptional, perTokenScaleTensorList, executorPtr),
                     ACLNN_ERR_INNER_NULLPTR);
-            } else {
-                CHECK_RET(gmm::CreateContiguousTensorListForPertoken(params.perTokenScaleOptional,
-                                                                     perTokenScaleTensorList, executorPtr),
-                          ACLNN_ERR_INNER_NULLPTR);
-            }
-            params.perTokenScaleOptional =
-                executorPtr->AllocTensorList(perTokenScaleTensorList.data(), perTokenScaleTensorList.size());
-            CHECK_RET(params.perTokenScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        }
+      } else {
+          CHECK_RET(gmm::CreateContiguousTensorListForPertoken(params.perTokenScaleOptional, perTokenScaleTensorList,
+                                                               executorPtr),
+                    ACLNN_ERR_INNER_NULLPTR);
+      }
+      params.perTokenScaleOptional = executorPtr->AllocTensorList(perTokenScaleTensorList.data(), perTokenScaleTensorList.size());
+      CHECK_RET(params.perTokenScaleOptional != nullptr, ACLNN_ERR_INNER_NULLPTR);
     }
-    if (params.transposeWeight) {
-        std::vector<aclTensor *> weightTensorList;
-        std::vector<op::Shape> nZShapes;
+  }
+  if (params.transposeWeight) {
+    std::vector<aclTensor *> weightTensorList;
+    std::vector<op::Shape> nZShapes;
+    for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
+        nZShapes.push_back((*params.weight)[idx]->GetStorageShape());
+    }
+    CHECK_RET(gmm::CreateContiguousTensorList(params.weight, weightTensorList, executorPtr), ACLNN_ERR_INNER_NULLPTR);
+    params.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
+    CHECK_RET(params.weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+        ((IsQuant(params.xDtype, weightDtype) &&
+          (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
+         (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(params.xDtype, weightDtype)))) {
         for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
-            nZShapes.push_back((*params.weight)[idx]->GetStorageShape());
+            (*params.weight)[idx]->SetStorageShape(nZShapes[idx]);
         }
-        CHECK_RET(gmm::CreateContiguousTensorList(params.weight, weightTensorList, executorPtr),
-                  ACLNN_ERR_INNER_NULLPTR);
-        params.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
-        CHECK_RET(params.weight != nullptr, ACLNN_ERR_INNER_NULLPTR);
-        if (op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-            ((IsQuant(params.xDtype, weightDtype) &&
-              (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
-             (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(params.xDtype, weightDtype)))) {
-            for (uint64_t idx = 0; idx < (*params.weight).Size(); idx++) {
-                (*params.weight)[idx]->SetStorageShape(nZShapes[idx]);
-            }
-        }
-        CHECK_RET(SetTransposedScaleTensorListContiguous(params, executorPtr, isPerTileQuantMode) == ACLNN_SUCCESS,
-                  ACLNN_ERR_INNER_NULLPTR);
     }
+    CHECK_RET(SetTransposedScaleTensorListContiguous(params, executorPtr, isPerTileQuantMode) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+  }
     return ACLNN_SUCCESS;
 }
 
 static aclnnStatus ParamsDataContiguous(gmm::GroupedMatmulParams &params, aclOpExecutor *executorPtr)
 {
-    CHECK_COND(DataContiguous(params.x, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Contiguous x failed."); // make x contiguous
-    DataType xDtype = (*params.x)[0]->GetDataType();
-    DataType weightDtype = (*params.weight)[0]->GetDataType();
-    if (!(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
-          ((IsQuant(xDtype, weightDtype) && (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
-           (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype))))) {
-        CHECK_COND(DataContiguous(params.weight, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-                   "Contiguous weight failed."); // make w contiguous
-    }
-    CHECK_COND(DataContiguous(params.biasOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Contiguous biasOptional failed.");
-    CHECK_COND(DataContiguous(params.scaleOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Contiguous scaleOptional failed.");
-    CHECK_COND(DataContiguous(params.offsetOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Contiguous offsetOptional failed.");
-    CHECK_COND(DataContiguous(params.antiquantScaleOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Contiguous antiquantScaleOptional failed.");
-    if (params.antiquantOffsetOptional != nullptr) {
-        CHECK_COND(DataContiguous(params.antiquantOffsetOptional, executorPtr) == ACLNN_SUCCESS,
-                   ACLNN_ERR_PARAM_INVALID, "Contiguous antiquantOffsetOptional failed.");
-    }
-    CHECK_COND(DataContiguous(params.perTokenScaleOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
-               "Contiguous perTokenScaleOptional failed.");
-    if (params.groupTensorOptional != nullptr) {
-        params.groupTensorOptional = l0op::Contiguous(params.groupTensorOptional, executorPtr);
-        CHECK_COND(params.groupTensorOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
-                   "Contiguous groupTensorOptional failed.");
-    }
-    return ACLNN_SUCCESS;
+  CHECK_COND(DataContiguous(params.x, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "Contiguous x failed.");  // make x contiguous
+  DataType xDtype = (*params.x)[0]->GetDataType();
+  DataType weightDtype = (*params.weight)[0]->GetDataType();
+  if (!(op::GetCurrentPlatformInfo().GetCurNpuArch() == NpuArch::DAV_3510 &&
+        ((IsQuant(xDtype, weightDtype) && (*params.weight)[0]->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ) ||
+         (params.apiVersion == gmm::GMMApiVersion::WeightNz && IsWeightQuant(xDtype, weightDtype))))) {
+      CHECK_COND(DataContiguous(params.weight, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+                 "Contiguous weight failed.");  // make w contiguous
+  }
+  CHECK_COND(DataContiguous(params.biasOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "Contiguous biasOptional failed.");
+  CHECK_COND(DataContiguous(params.scaleOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "Contiguous scaleOptional failed.");
+  CHECK_COND(DataContiguous(params.offsetOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "Contiguous offsetOptional failed.");
+  CHECK_COND(DataContiguous(params.antiquantScaleOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "Contiguous antiquantScaleOptional failed.");
+  if (params.antiquantOffsetOptional != nullptr) {
+    CHECK_COND(DataContiguous(params.antiquantOffsetOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+              "Contiguous antiquantOffsetOptional failed.");
+  }
+  CHECK_COND(DataContiguous(params.perTokenScaleOptional, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID,
+             "Contiguous perTokenScaleOptional failed.");
+  if (params.groupTensorOptional != nullptr) {
+    params.groupTensorOptional = l0op::Contiguous(params.groupTensorOptional, executorPtr);
+    CHECK_COND(params.groupTensorOptional != nullptr, ACLNN_ERR_PARAM_INVALID,
+               "Contiguous groupTensorOptional failed.");
+  }
+  return ACLNN_SUCCESS;
 }
 
 static aclnnStatus CheckWeightQuantGMMWeightNz(DataType x1Dtype, DataType weightDtype, DataType yDtype,

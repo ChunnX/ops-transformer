@@ -20,7 +20,8 @@
 namespace MoeInitRoutingQuantV2 {
 using namespace AscendC;
 
-class MoeV2SortBase {
+class MoeV2SortBase
+{
 public:
     __aicore__ inline MoeV2SortBase(){};
 
@@ -28,7 +29,7 @@ protected:
     __aicore__ inline void SyncAll();
 
 protected:
-    TPipe *pipe;
+    TPipe* pipe;
     TQue<QuePosition::VECIN, 1> sortDataCopyInQueue;
     TQue<QuePosition::VECOUT, 1> sortDataCopyOutQueue;
     TBuf<TPosition::VECCALC> tempBuffer;

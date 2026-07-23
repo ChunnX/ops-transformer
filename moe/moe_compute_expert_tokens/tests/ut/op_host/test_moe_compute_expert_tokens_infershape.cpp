@@ -14,7 +14,8 @@
 #include "infer_shape_case_executor.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-class MoeComputeExpertTokensProto : public testing::Test {
+class MoeComputeExpertTokensProto : public testing::Test
+{
 protected:
     static void SetUpTestCase()
     {

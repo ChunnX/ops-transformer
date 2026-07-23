@@ -19,15 +19,14 @@
 
 namespace fe {
 class ArpeTmFusionPass : public PatternFusionBasePass {
-protected:
-    vector<FusionPattern *> DefinePatterns() override;
-    Status Fusion(ge::ComputeGraph &graph, Mapping &mapping, vector<ge::NodePtr> &newNodes) override;
-
-private:
-    Status FusionProcess(ge::NodePtr arpeNode, int idx, ge::ComputeGraph &graph);
-    Status RemoveTensorMoveNode(ge::NodePtr arpeNode, ge::NodePtr fusedNode, ge::ComputeGraph &graph);
-    const string FUSED_OP_TYPE = "ArpeTmFusionPass";
+ protected:
+  vector<FusionPattern*> DefinePatterns() override;
+  Status Fusion(ge::ComputeGraph& graph, Mapping& mapping, vector<ge::NodePtr>& newNodes) override;
+ private:
+  Status FusionProcess(ge::NodePtr arpeNode, int idx, ge::ComputeGraph& graph);
+  Status RemoveTensorMoveNode(ge::NodePtr arpeNode, ge::NodePtr fusedNode, ge::ComputeGraph& graph);
+  const string FUSED_OP_TYPE = "ArpeTmFusionPass";
 };
-} // namespace fe
+}  // namespace fe
 
-#endif // OPS_BUILT_IN_FUSION_PASS_GRAPH_FUSION_AI_CORE_ArpeTmFUSION_PASS_H_
+#endif  // OPS_BUILT_IN_FUSION_PASS_GRAPH_FUSION_AI_CORE_ArpeTmFUSION_PASS_H_

@@ -13,22 +13,21 @@
 namespace domi {
 using NodeProto = ge::onnx::NodeProto;
 
-static Status ParseParamsMoeFinalizeRoutingV2(const Message *op_src, ge::Operator &op_dest)
-{
-    const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
-    if (node == nullptr) {
-        OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic op_src to NodeProto failed.");
-        return FAILED;
-    }
+static Status ParseParamsMoeFinalizeRoutingV2(const Message *op_src, ge::Operator &op_dest) {
+  const NodeProto *node = dynamic_cast<const NodeProto *>(op_src);
+  if (node == nullptr) {
+    OP_LOGE(GetOpName(op_dest).c_str(), "Dynamic op_src to NodeProto failed.");
+    return FAILED;
+  }
 
-    int drop_pad_mode = 0;
-    for (auto attr : node->attribute()) {
-        if (attr.name() == "drop_pad_mode" && attr.type() == ge::onnx::AttributeProto::INT) {
-            drop_pad_mode = attr.i();
-        }
+  int drop_pad_mode = 0;
+  for (auto attr : node->attribute()) {
+    if (attr.name() == "drop_pad_mode" && attr.type() == ge::onnx::AttributeProto::INT) {
+      drop_pad_mode = attr.i();
     }
-    op_dest.SetAttr("drop_pad_mode", drop_pad_mode);
-    return SUCCESS;
+  }
+  op_dest.SetAttr("drop_pad_mode", drop_pad_mode);
+  return SUCCESS;
 }
 
 // register npu_moe_finalize_routing op info to GE
@@ -45,4 +44,4 @@ REGISTER_CUSTOM_OP("MoeFinalizeRoutingV2")
                    ge::AscendString("ai.onnx::18::NPUMoeFinalizeRoutingV2")})
     .ParseParamsFn(ParseParamsMoeFinalizeRoutingV2)
     .ImplyType(ImplyType::TVM);
-} // namespace domi
+} // namespace V2domi

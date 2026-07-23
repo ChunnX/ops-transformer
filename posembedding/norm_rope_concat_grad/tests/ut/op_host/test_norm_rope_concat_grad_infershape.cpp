@@ -80,21 +80,8 @@ TEST_F(NormRopeConcatGradInfershape, NormRopeConcatGrad_infer_shape_bf16)
             {"rope_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"concat_order", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         });
-
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 4, 32, 64},
-                                                           {2, 8, 32, 64},
-                                                           {2, 8, 32, 64},
-                                                           {2, 16, 32, 64},
-                                                           {2, 32, 32, 64},
-                                                           {2, 32, 32, 64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64}};
+        
+    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 4, 32, 64}, {2, 8, 32, 64}, {2, 8, 32, 64}, {2, 16, 32, 64}, {2, 32, 32, 64}, {2, 32, 32, 64}, {64}, {64}, {64}, {64}, {64}, {64}, {64}, {64}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -151,21 +138,8 @@ TEST_F(NormRopeConcatGradInfershape, NormRopeConcatGrad_infer_shape_fp16)
             {"rope_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"concat_order", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         });
-
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 4, 32, 64},
-                                                           {2, 8, 32, 64},
-                                                           {2, 8, 32, 64},
-                                                           {2, 16, 32, 64},
-                                                           {2, 32, 32, 64},
-                                                           {2, 32, 32, 64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64}};
+        
+    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 4, 32, 64}, {2, 8, 32, 64}, {2, 8, 32, 64}, {2, 16, 32, 64}, {2, 32, 32, 64}, {2, 32, 32, 64}, {64}, {64}, {64}, {64}, {64}, {64}, {64}, {64}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
@@ -223,19 +197,6 @@ TEST_F(NormRopeConcatGradInfershape, NormRopeConcatGrad_infer_shape_fp32)
             {"concat_order", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         });
 
-    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 4, 32, 64},
-                                                           {2, 8, 32, 64},
-                                                           {2, 8, 32, 64},
-                                                           {2, 16, 32, 64},
-                                                           {2, 32, 32, 64},
-                                                           {2, 32, 32, 64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64},
-                                                           {64}};
+    std::vector<std::vector<int64_t>> expectOutputShape = {{2, 4, 32, 64}, {2, 8, 32, 64}, {2, 8, 32, 64}, {2, 16, 32, 64}, {2, 32, 32, 64}, {2, 32, 32, 64}, {64}, {64}, {64}, {64}, {64}, {64}, {64}, {64}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }

@@ -105,5 +105,6 @@ struct MoeTokenPermuteWithRoutingMapTilingData {
     MaskedSelectRMTilingData maskedSelectParamsOp;
 };
 
-#define GET_TILING_DATA(tilingData, tilingPointer) MoeTokenPermuteWithRoutingMapTilingData tilingData;
+#define GET_TILING_DATA(tilingData, tilingPointer)      \
+    MoeTokenPermuteWithRoutingMapTilingData tilingData;
 #endif

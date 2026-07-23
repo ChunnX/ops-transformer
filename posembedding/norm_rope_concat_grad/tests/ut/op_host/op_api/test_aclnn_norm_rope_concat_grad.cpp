@@ -22,7 +22,8 @@
 using namespace std;
 using namespace op;
 
-class l2_norm_rope_concat_grad_test : public testing::Test {
+class l2_norm_rope_concat_grad_test : public testing::Test
+{
 protected:
     static void SetUpTestCase()
     {
@@ -48,21 +49,13 @@ TEST_F(l2_norm_rope_concat_grad_test, Ascend910B_case_1)
     uint64_t headNum = 32;
     uint64_t headDim = 64;
 
-    auto gradQueryOutput =
-        TensorDesc({batchSize * headNum * (querySeq + encoderQuerySeq) * headDim}, ACL_FLOAT, ACL_FORMAT_ND)
-            .ValueRange(0, 20);
-    auto gradKeyOutput =
-        TensorDesc({batchSize * headNum * (keySeq + encoderKeySeq) * headDim}, ACL_FLOAT, ACL_FORMAT_ND)
-            .ValueRange(0, 20);
-    auto gradValueOutput =
-        TensorDesc({batchSize * headNum * (valueSeq + encoderValueSeq) * headDim}, ACL_FLOAT, ACL_FORMAT_ND)
-            .ValueRange(0, 20);
+    auto gradQueryOutput = TensorDesc({batchSize * headNum * (querySeq + encoderQuerySeq) * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto gradKeyOutput = TensorDesc({batchSize * headNum * (keySeq + encoderKeySeq) * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto gradValueOutput = TensorDesc({batchSize * headNum * (valueSeq + encoderValueSeq) * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto query = TensorDesc({batchSize * querySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto key = TensorDesc({batchSize * keySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto encoderQuery =
-        TensorDesc({batchSize * encoderQuerySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto encoderKey =
-        TensorDesc({batchSize * encoderKeySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto encoderQuery = TensorDesc({batchSize * encoderQuerySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto encoderKey = TensorDesc({batchSize * encoderKeySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normQueryWeight = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normQueryMean = TensorDesc({batchSize * querySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normQueryRstd = TensorDesc({batchSize * querySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
@@ -70,26 +63,19 @@ TEST_F(l2_norm_rope_concat_grad_test, Ascend910B_case_1)
     auto normKeyMean = TensorDesc({batchSize * keySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normKeyRstd = TensorDesc({batchSize * keySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normAddedQueryWeight = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto normAddedQueryMean =
-        TensorDesc({batchSize * encoderQuerySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto normAddedQueryRstd =
-        TensorDesc({batchSize * encoderQuerySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto normAddedQueryMean = TensorDesc({batchSize * encoderQuerySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto normAddedQueryRstd = TensorDesc({batchSize * encoderQuerySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normAddedKeyWeight = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto normAddedKeyMean =
-        TensorDesc({batchSize * encoderKeySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto normAddedKeyRstd =
-        TensorDesc({batchSize * encoderKeySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto normAddedKeyMean = TensorDesc({batchSize * encoderKeySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto normAddedKeyRstd = TensorDesc({batchSize * encoderKeySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto ropeSin = TensorDesc({ropeSeq * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto ropeCos = TensorDesc({ropeSeq * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradQuery = TensorDesc({batchSize * querySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradKey = TensorDesc({batchSize * keySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradValue = TensorDesc({batchSize * valueSeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto gradEncoderQuery =
-        TensorDesc({batchSize * encoderQuerySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto gradEncoderKey =
-        TensorDesc({batchSize * encoderKeySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto gradEncoderValue =
-        TensorDesc({batchSize * encoderValueSeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto gradEncoderQuery = TensorDesc({batchSize * encoderQuerySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto gradEncoderKey = TensorDesc({batchSize * encoderKeySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto gradEncoderValue = TensorDesc({batchSize * encoderValueSeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradNormQueryWeight = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradNormQueryBias = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradNormKeyWeight = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
@@ -105,14 +91,12 @@ TEST_F(l2_norm_rope_concat_grad_test, Ascend910B_case_1)
     int64_t concatOrder = 0;
 
     auto ut = OP_API_UT(
-        aclnnNormRopeConcatBackward,
-        INPUT(nullptr, gradKeyOutput, gradValueOutput, query, key, encoderQuery, encoderKey, normQueryWeight,
-              normQueryMean, normQueryRstd, normKeyWeight, normKeyMean, normKeyRstd, normAddedQueryWeight,
-              normAddedQueryMean, normAddedQueryRstd, normAddedKeyWeight, normAddedKeyMean, normAddedKeyRstd, ropeSin,
-              ropeCos, normType, normAddedType, ropeType, concatOrder),
-        OUTPUT(gradQuery, gradKey, gradValue, gradEncoderQuery, gradEncoderKey, gradEncoderValue, gradNormQueryWeight,
-               gradNormQueryBias, gradNormKeyWeight, gradNormKeyBias, gradNormAddedQueryWeight, gradNormAddedQueryBias,
-               gradNormAddedKeyWeight, gradNormAddedKeyBias));
+    aclnnNormRopeConcatBackward,
+    INPUT(nullptr, gradKeyOutput, gradValueOutput, query, key, encoderQuery, encoderKey, normQueryWeight, normQueryMean, 
+        normQueryRstd, normKeyWeight, normKeyMean, normKeyRstd, normAddedQueryWeight, normAddedQueryMean, normAddedQueryRstd, normAddedKeyWeight, 
+        normAddedKeyMean, normAddedKeyRstd, ropeSin, ropeCos, normType, normAddedType, ropeType, concatOrder),
+    OUTPUT(gradQuery, gradKey, gradValue, gradEncoderQuery, gradEncoderKey, gradEncoderValue, gradNormQueryWeight, gradNormQueryBias, 
+            gradNormKeyWeight, gradNormKeyBias, gradNormAddedQueryWeight, gradNormAddedQueryBias, gradNormAddedKeyWeight, gradNormAddedKeyBias));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
@@ -132,21 +116,13 @@ TEST_F(l2_norm_rope_concat_grad_test, Ascend910B_case_2)
     uint64_t headNum = 32;
     uint64_t headDim = 64;
 
-    auto gradQueryOutput =
-        TensorDesc({batchSize * headNum * (querySeq + encoderQuerySeq) * headDim}, ACL_INT32, ACL_FORMAT_ND)
-            .ValueRange(0, 20);
-    auto gradKeyOutput =
-        TensorDesc({batchSize * headNum * (keySeq + encoderKeySeq) * headDim}, ACL_FLOAT, ACL_FORMAT_ND)
-            .ValueRange(0, 20);
-    auto gradValueOutput =
-        TensorDesc({batchSize * headNum * (valueSeq + encoderValueSeq) * headDim}, ACL_FLOAT, ACL_FORMAT_ND)
-            .ValueRange(0, 20);
+    auto gradQueryOutput = TensorDesc({batchSize * headNum * (querySeq + encoderQuerySeq) * headDim}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto gradKeyOutput = TensorDesc({batchSize * headNum * (keySeq + encoderKeySeq) * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto gradValueOutput = TensorDesc({batchSize * headNum * (valueSeq + encoderValueSeq) * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto query = TensorDesc({batchSize * querySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto key = TensorDesc({batchSize * keySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto encoderQuery =
-        TensorDesc({batchSize * encoderQuerySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto encoderKey =
-        TensorDesc({batchSize * encoderKeySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto encoderQuery = TensorDesc({batchSize * encoderQuerySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto encoderKey = TensorDesc({batchSize * encoderKeySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normQueryWeight = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normQueryMean = TensorDesc({batchSize * querySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normQueryRstd = TensorDesc({batchSize * querySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
@@ -154,26 +130,19 @@ TEST_F(l2_norm_rope_concat_grad_test, Ascend910B_case_2)
     auto normKeyMean = TensorDesc({batchSize * keySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normKeyRstd = TensorDesc({batchSize * keySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normAddedQueryWeight = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto normAddedQueryMean =
-        TensorDesc({batchSize * encoderQuerySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto normAddedQueryRstd =
-        TensorDesc({batchSize * encoderQuerySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto normAddedQueryMean = TensorDesc({batchSize * encoderQuerySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto normAddedQueryRstd = TensorDesc({batchSize * encoderQuerySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto normAddedKeyWeight = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto normAddedKeyMean =
-        TensorDesc({batchSize * encoderKeySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto normAddedKeyRstd =
-        TensorDesc({batchSize * encoderKeySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto normAddedKeyMean = TensorDesc({batchSize * encoderKeySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto normAddedKeyRstd = TensorDesc({batchSize * encoderKeySeq * headNum * 1}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto ropeSin = TensorDesc({ropeSeq * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto ropeCos = TensorDesc({ropeSeq * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradQuery = TensorDesc({batchSize * querySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradKey = TensorDesc({batchSize * keySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradValue = TensorDesc({batchSize * valueSeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto gradEncoderQuery =
-        TensorDesc({batchSize * encoderQuerySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto gradEncoderKey =
-        TensorDesc({batchSize * encoderKeySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
-    auto gradEncoderValue =
-        TensorDesc({batchSize * encoderValueSeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto gradEncoderQuery = TensorDesc({batchSize * encoderQuerySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto gradEncoderKey = TensorDesc({batchSize * encoderKeySeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
+    auto gradEncoderValue = TensorDesc({batchSize * encoderValueSeq * headNum * headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradNormQueryWeight = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradNormQueryBias = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
     auto gradNormKeyWeight = TensorDesc({headDim}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
@@ -189,14 +158,12 @@ TEST_F(l2_norm_rope_concat_grad_test, Ascend910B_case_2)
     int64_t concatOrder = 0;
 
     auto ut = OP_API_UT(
-        aclnnNormRopeConcatBackward,
-        INPUT(gradQueryOutput, gradKeyOutput, gradValueOutput, query, key, encoderQuery, encoderKey, normQueryWeight,
-              normQueryMean, normQueryRstd, normKeyWeight, normKeyMean, normKeyRstd, normAddedQueryWeight,
-              normAddedQueryMean, normAddedQueryRstd, normAddedKeyWeight, normAddedKeyMean, normAddedKeyRstd, ropeSin,
-              ropeCos, normType, normAddedType, ropeType, concatOrder),
-        OUTPUT(gradQuery, gradKey, gradValue, gradEncoderQuery, gradEncoderKey, gradEncoderValue, gradNormQueryWeight,
-               gradNormQueryBias, gradNormKeyWeight, gradNormKeyBias, gradNormAddedQueryWeight, gradNormAddedQueryBias,
-               gradNormAddedKeyWeight, gradNormAddedKeyBias));
+    aclnnNormRopeConcatBackward,
+    INPUT(gradQueryOutput, gradKeyOutput, gradValueOutput, query, key, encoderQuery, encoderKey, normQueryWeight, normQueryMean, 
+        normQueryRstd, normKeyWeight, normKeyMean, normKeyRstd, normAddedQueryWeight, normAddedQueryMean, normAddedQueryRstd, normAddedKeyWeight, 
+        normAddedKeyMean, normAddedKeyRstd, ropeSin, ropeCos, normType, normAddedType, ropeType, concatOrder),
+    OUTPUT(gradQuery, gradKey, gradValue, gradEncoderQuery, gradEncoderKey, gradEncoderValue, gradNormQueryWeight, gradNormQueryBias, 
+            gradNormKeyWeight, gradNormKeyBias, gradNormAddedQueryWeight, gradNormAddedQueryBias, gradNormAddedKeyWeight, gradNormAddedKeyBias));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);

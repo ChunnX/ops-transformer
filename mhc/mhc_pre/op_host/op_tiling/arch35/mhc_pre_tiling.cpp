@@ -136,7 +136,7 @@ ge::graphStatus MhcPreBaseTiling::GetInputShape()
     auto alphaShape = alphaTensor->GetStorageShape();
     OP_CHECK_IF(alphaShape.GetDimNum() != 1,
                 OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "alpha",
-                                             std::to_string(alphaShape.GetDimNum()).c_str(), "1"),
+                                              std::to_string(alphaShape.GetDimNum()).c_str(), "1"),
                 return ge::GRAPH_FAILED);
     int64_t alphaSize = alphaShape.GetDim(0);
     OP_CHECK_IF(alphaSize != 2 && alphaSize != 3,
@@ -331,14 +331,16 @@ ge::graphStatus MhcPreBaseTiling::CheckBsndOutputShape(uint64_t b, uint64_t s, u
     OP_CHECK_IF(outInvRmsShape->GetDimNum() != DIM_NUM_2 || outInvRmsShape->GetDim(DIM_0) != b ||
                     outInvRmsShape->GetDim(DIM_1) != s,
                 OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "invRms",
-                                          Ops::Base::ToString(*outInvRmsShape).c_str(), ShapeToString({b, s}).c_str()),
+                                          Ops::Base::ToString(*outInvRmsShape).c_str(),
+                                          ShapeToString({b, s}).c_str()),
                 return ge::GRAPH_FAILED);
 
     auto outMmresShapePtr = context_->GetOutputShape(OUT_MM_RES_INDEX);
     auto outMmresShape = &outMmresShapePtr->GetStorageShape();
     OP_CHECK_IF(outMmresShape->GetDimNum() != DIM_NUM_3 || outMmresShape->GetDim(DIM_0) != b ||
                     outMmresShape->GetDim(DIM_1) != s || outMmresShape->GetDim(DIM_2) != matN_,
-                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hMix", Ops::Base::ToString(*outMmresShape).c_str(),
+                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hMix",
+                                          Ops::Base::ToString(*outMmresShape).c_str(),
                                           ShapeToString({b, s, matN_}).c_str()),
                 return ge::GRAPH_FAILED);
 
@@ -356,11 +358,11 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
 {
     auto outHinShapePtr = context_->GetOutputShape(OUT_H_IN_INDEX);
     auto outHinShape = &outHinShapePtr->GetStorageShape();
-    OP_CHECK_IF(outHinShape->GetDimNum() != DIM_NUM_2 || outHinShape->GetDim(DIM_0) != t ||
-                    outHinShape->GetDim(DIM_1) != d,
-                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hIn", Ops::Base::ToString(*outHinShape).c_str(),
-                                          ShapeToString({t, d}).c_str()),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        outHinShape->GetDimNum() != DIM_NUM_2 || outHinShape->GetDim(DIM_0) != t || outHinShape->GetDim(DIM_1) != d,
+        OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hIn", Ops::Base::ToString(*outHinShape).c_str(),
+                                  ShapeToString({t, d}).c_str()),
+        return ge::GRAPH_FAILED);
 
     auto outHpostShapePtr = context_->GetOutputShape(OUT_H_POST_INDEX);
     auto outHpostShape = &outHpostShapePtr->GetStorageShape();
@@ -392,7 +394,8 @@ ge::graphStatus MhcPreBaseTiling::CheckTndOutputShape(uint64_t t, uint64_t n, ui
     auto outMmresShape = &outMmresShapePtr->GetStorageShape();
     OP_CHECK_IF(outMmresShape->GetDimNum() != DIM_NUM_2 || outMmresShape->GetDim(DIM_0) != t ||
                     outMmresShape->GetDim(DIM_1) != matN_,
-                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hMix", Ops::Base::ToString(*outMmresShape).c_str(),
+                OP_LOGE_FOR_INVALID_SHAPE(context_->GetNodeName(), "hMix",
+                                          Ops::Base::ToString(*outMmresShape).c_str(),
                                           ShapeToString({t, matN_}).c_str()),
                 return ge::GRAPH_FAILED);
 
@@ -688,7 +691,8 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
     mm_.SetShape(matM_, matN_, matK_);
     mm_.SetOrgShape(matM_, matN_, matK_);
     if (mm_.GetTiling(tilingData_.matmulTiling) == -1) {
-        OP_LOGE_WITHOUT_REPORT(context_->GetNodeName(), "Matmul tiling generation failed, totalLength=%lu, matM=%lu",
+        OP_LOGE_WITHOUT_REPORT(context_->GetNodeName(),
+                               "Matmul tiling generation failed, totalLength=%lu, matM=%lu",
                                totalLength_, matM_);
         return ge::GRAPH_FAILED;
     }
@@ -718,16 +722,17 @@ ge::graphStatus MhcPreBaseTiling::CheckUbBufferSize()
     }
 
     if (hasGamma_) {
-        size_t gammaBufferLength =
-            (tilingMode_ == TilingMode::SPLIT_BS) ? SPLIT_BS_GAMMA_BUFFER_LENGTH : SPLIT_ND_GAMMA_BUFFER_LENGTH;
+        size_t gammaBufferLength = (tilingMode_ == TilingMode::SPLIT_BS) ? SPLIT_BS_GAMMA_BUFFER_LENGTH
+                                                                         : SPLIT_ND_GAMMA_BUFFER_LENGTH;
         dynamicBufferSize += gammaBufferLength * floatSize;
     }
 
     size_t totalUbRequired = fixedBufferSize + dynamicBufferSize;
     if (totalUbRequired > ubSize_) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context_->GetNodeName(), "required UB size", std::to_string(totalUbRequired).c_str(),
-            ("must not exceed available UB size " + std::to_string(ubSize_) + " bytes").c_str());
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "required UB size",
+                                              std::to_string(totalUbRequired).c_str(),
+                                              ("must not exceed available UB size " +
+                                               std::to_string(ubSize_) + " bytes").c_str());
         return ge::GRAPH_FAILED;
     }
 
@@ -783,11 +788,12 @@ uint64_t MhcPreBaseTiling::GetTilingKey() const
 
 ge::graphStatus MhcPreBaseTiling::PostTiling()
 {
-    OP_CHECK_IF(tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "tilingData size",
-                                                      std::to_string(tilingData_.GetDataSize()).c_str(),
-                                                      "size must be aligned to 8 bytes"),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        tilingData_.GetDataSize() % sizeof(uint64_t) != 0,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "tilingData size",
+                                              std::to_string(tilingData_.GetDataSize()).c_str(),
+                                              "size must be aligned to 8 bytes"),
+        return ge::GRAPH_FAILED);
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData());
     tilingData_.SaveToBuffer(context_->GetRawTilingData()->GetData(), context_->GetRawTilingData()->GetCapacity());
     context_->GetRawTilingData()->SetDataSize(tilingData_.GetDataSize());

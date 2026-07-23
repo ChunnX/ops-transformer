@@ -41,7 +41,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_basic_4d_fp16)
     auto tensorHPost = TensorDesc({1, 128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -55,7 +59,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_basic_4d_bf16)
     auto tensorHPost = TensorDesc({2, 64, 8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-2, 2);
     auto tensorOut = TensorDesc({2, 64, 8, 512}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-2, 2);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -69,7 +77,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_basic_3d_fp16)
     auto tensorHPost = TensorDesc({512, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({512, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -83,7 +95,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_basic_3d_bf16)
     auto tensorHPost = TensorDesc({256, 8}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-2, 2);
     auto tensorOut = TensorDesc({256, 8, 512}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-2, 2);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -97,7 +113,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_empty_tensor_4d_dim0)
     auto tensorHPost = TensorDesc({0, 128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({0, 128, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -112,7 +132,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_empty_tensor_4d_dim1)
     auto tensorHPost = TensorDesc({1, 0, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 0, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -127,7 +151,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_empty_tensor_3d_dim0)
     auto tensorHPost = TensorDesc({0, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({0, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACL_SUCCESS);
@@ -142,7 +170,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_empty_null_x)
     auto tensorHPost = TensorDesc({1, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
@@ -156,7 +188,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_empty_null_hRes)
     auto tensorHPost = TensorDesc({1, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
@@ -170,7 +206,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_empty_null_out)
     auto tensorHPost = TensorDesc({1, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = nullptr;
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_NULLPTR);
@@ -184,7 +224,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_invalid_dtype_hRes)
     auto tensorHPost = TensorDesc({1, 128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -198,7 +242,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_invalid_dtype_hOut)
     auto tensorHPost = TensorDesc({1, 128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -212,7 +260,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_invalid_dtype_out)
     auto tensorHPost = TensorDesc({1, 128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 128, 16, 1024}, ACL_BF16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -226,7 +278,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_invalid_dtype_x)
     auto tensorHPost = TensorDesc({1, 128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -240,7 +296,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_invalid_shape_hRes_dim0)
     auto tensorHPost = TensorDesc({1, 128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -254,7 +314,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_invalid_shape_hRes_nxn)
     auto tensorHPost = TensorDesc({1, 128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -268,7 +332,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_invalid_shape_hOut_dim2)
     auto tensorHPost = TensorDesc({1, 128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -282,7 +350,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_invalid_dim_2d)
     auto tensorHPost = TensorDesc({128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({128, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -296,7 +368,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_invalid_dim_5d)
     auto tensorHPost = TensorDesc({1, 128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
@@ -310,7 +386,11 @@ TEST_F(MhcPostOpapiUt, aclnn_mhc_post_invalid_format_x)
     auto tensorHPost = TensorDesc({1, 128, 16}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(-1, 1);
     auto tensorOut = TensorDesc({1, 128, 16, 1024}, ACL_FLOAT16, ACL_FORMAT_ND).ValueRange(-1, 1);
 
-    auto ut = OP_API_UT(aclnnMhcPost, INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost), OUTPUT(tensorOut));
+    auto ut = OP_API_UT(
+        aclnnMhcPost,
+        INPUT(tensorX, tensorHRes, tensorHOut, tensorHPost),
+        OUTPUT(tensorOut)
+    );
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);

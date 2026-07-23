@@ -316,8 +316,8 @@ template <typename T, typename U, bool CLAMP_AMAX = false>
 class MoeGatherOutMxfp8Quant {
 public:
     __aicore__ inline MoeGatherOutMxfp8Quant(){};
-    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR workspace, GM_ADDR expandedRowIdxAddr,
-                                GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
+    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR workspace,
+                                GM_ADDR expandedRowIdxAddr, GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
                                 const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
 
@@ -351,8 +351,7 @@ private:
     int64_t blockIdx_;
     int64_t cols_;
     int64_t validScaleCols_; // 一个token实际有意义的scale有多少个元素（列）
-    int64_t
-        scaleCols_; // 一个token的scale有多少个元素（列），即CeilAlign(CeliDiv(h,32),2)，在actualScaleCols_为奇数时，scaleCols_=validScaleCols_+1
+    int64_t scaleCols_; // 一个token的scale有多少个元素（列），即CeilAlign(CeliDiv(h,32),2)，在actualScaleCols_为奇数时，scaleCols_=validScaleCols_+1
     int64_t n_;
     int64_t k_;
     int64_t perCoreRow_;
@@ -386,9 +385,10 @@ private:
 };
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Init(
-    GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR workspace, GM_ADDR expandedRowIdxAddr, GM_ADDR expandedXAddr,
-    GM_ADDR expandedScaleAddr, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr,
+                                                          GM_ADDR workspace, GM_ADDR expandedRowIdxAddr,
+                                                          GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
+                                                          const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
 #if (__NPU_ARCH__ == 3510)
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(0);
@@ -419,9 +419,8 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Init(
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void
-MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR workspace,
-                                                           const MoeInitRoutingV3Arch35TilingData *tilingData)
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR workspace,
+    const MoeInitRoutingV3Arch35TilingData *tilingData)
 {
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
     cols_ = tilingData->cols;
@@ -438,7 +437,8 @@ MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR workspace,
                                         1);
     int64_t scanRowCount = n_ * k_;
     if (rowIdxType_ == SCATTER) {
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expertTotalCountGm_);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
+            expertTotalCountGm_);
         scanRowCount = expertTotalCountGm_.GetValue(0);
     }
     perCoreRow_ = Ceil(scanRowCount, tilingData->coreNum);
@@ -570,8 +570,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::GatherCopyExpan
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::CopyIn(int64_t srcIdx, int64_t colIdx,
-                                                                        int64_t loopCols)
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::CopyIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols)
 {
     LocalTensor<T> inLocal = xInQueue_.AllocTensor<T>();
     DataCopyExtParams copyInParam = {1, static_cast<uint32_t>(loopCols * sizeof(T)), 0, 0, 0};
@@ -590,8 +589,7 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::CopyIn(int64_t 
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Compute(uint32_t xElemNum, uint32_t scaleElemNum,
-                                                                         uint32_t validScaleElemNum)
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Compute(uint32_t xElemNum, uint32_t scaleElemNum, uint32_t validScaleElemNum)
 {
     // deque input
     LocalTensor<T> xLocal = xInQueue_.DeQue<T>();
@@ -626,8 +624,8 @@ __aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::Compute(uint32_
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::CopyOut(int64_t dstIdx, int64_t colIdx,
-                                                                         int64_t loopCols, int64_t loopScaleCols)
+__aicore__ inline void MoeGatherOutMxfp8Quant<T, U, CLAMP_AMAX>::CopyOut(int64_t dstIdx, int64_t colIdx, int64_t loopCols,
+                                                             int64_t loopScaleCols)
 {
     LocalTensor<uint8_t> mxScaleLocal = mxScaleOutQueue_.DeQue<uint8_t>();
     LocalTensor<uint8_t> outLocal = xQuantOutQueue_.DeQue<uint8_t>();
