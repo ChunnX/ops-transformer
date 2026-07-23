@@ -34,6 +34,7 @@ using ops::ut::Trim;
 
 constexpr size_t kLegacyCsvColumnCount = 54;
 constexpr size_t kCsvColumnCount = 61;
+constexpr size_t kExtendedCsvColumnCount = 65;
 constexpr int64_t kDefaultT = 128;
 constexpr int64_t kDefaultNq = 16;
 constexpr int64_t kDefaultNk = 2;
@@ -98,7 +99,20 @@ struct QkvRmsNormRopeCacheWithKScaleCase {
         TensorDesc qOut = MakeTensorDesc(ParseDims(qOutShape), ParseDtype(qOutDtype), false);
         TensorDesc qScale = MakeTensorDesc(ParseDims(qScaleShape), ParseDtype(qScaleDtype), false);
         IntArrayDesc headNums(ParseI64List(headNumsValue));
-
+        const bool hasQScaleValue = ParseBool(hasQScale);
+        const bool hasQueryStartLocValue = ParseBool(hasQueryStartLoc);
+        const bool hasSeqLensValue = ParseBool(hasSeqLens);
+        // Scene selection is derived from the attributes themselves: an empty position shape or section means null.
+        const bool mropePositionProvided = !Trim(mropePositionShape).empty() && mropePositionShape != "NONE";
+        const bool mropeSectionProvided = !Trim(mropeSectionValue).empty();
+        TensorDesc mropePosition = MakeTensorDesc(
+            mropePositionProvided ? ParseDims(mropePositionShape) : vector<int64_t>{1, 3},
+            mropePositionProvided ? ParseDtype(mropePositionDtype) : ACL_INT32);
+        const vector<int64_t> mropeSectionValues = mropeSectionValue == "<empty>" ? vector<int64_t>{}
+                                                                                  : ParseI64List(mropeSectionValue);
+        IntArrayDesc mropeSection(mropeSectionValues);
+        const string qQuantModeStorage = qQuantMode == "<empty>" ? "" : qQuantMode;
+        const char *qQuantModeArg = qQuantMode == "<null>" ? nullptr : qQuantModeStorage.c_str();
         uint64_t workspaceSize = 0;
         aclnnStatus ret = ACLNN_SUCCESS;
         const bool hasHeadNumsValue = ParseBool(hasHeadNums);
@@ -108,136 +122,196 @@ struct QkvRmsNormRopeCacheWithKScaleCase {
         const string layoutQOutStorage = layoutQOut == "<empty>" ? "" : layoutQOut;
         const char *layoutQkvArg = hasLayoutQkvValue ? layoutQkvStorage.c_str() : nullptr;
         const char *layoutQOutArg = hasLayoutQOutValue ? layoutQOutStorage.c_str() : nullptr;
-
-        if (!ParseBool(hasQkv)) {
-            auto ut =
-                OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                          INPUT(nullptr, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                epsilon, nullptr, "PerTokenPerHead"),
-                          OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasQGamma)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, nullptr, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasKGamma)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, nullptr, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasCosSin)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, nullptr, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasSlotMapping)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, nullptr, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasKCache)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, nullptr, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasVCache)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, nullptr, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasKScaleCache)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, nullptr, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasQueryStartLoc)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, nullptr,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasSeqLens)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      nullptr, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasOptionalRotation)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, nullptr, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasOptionalVScale)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, nullptr, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!hasHeadNumsValue) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, nullptr, layoutQkvArg,
-                                      layoutQOutArg, epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!hasLayoutQkvValue) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, nullptr, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!hasLayoutQOutValue) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, nullptr,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasQOut)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(nullptr, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
-        } else if (!ParseBool(hasQScale)) {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, nullptr));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+        if (mropePositionProvided || mropeSectionProvided) {
+            // The M-RoPE contract keeps all common tensors and qOut mandatory; only scene-specific optionals vary.
+            ASSERT_TRUE(ParseBool(hasQkv) && ParseBool(hasQGamma) && ParseBool(hasKGamma) && ParseBool(hasCosSin) &&
+                         ParseBool(hasSlotMapping) && ParseBool(hasKCache) && ParseBool(hasVCache) &&
+                         ParseBool(hasKScaleCache) && ParseBool(hasOptionalRotation) && ParseBool(hasOptionalVScale) &&
+                         ParseBool(hasHeadNums) && ParseBool(hasQOut))
+                << "M-RoPE CSV rows must provide all common tensors and qOut";
+            auto invokeMrope = [&](auto mropePositionArg, auto queryArg, auto seqArg) {
+                if (mropeSectionProvided) {
+                    if (hasQScaleValue) {
+                        auto ut = OP_API_UT(
+                            aclnnQkvRmsNormRopeCacheWithKScale,
+                            INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryArg,
+                                  seqArg, rotationOptional, vScaleOptional, mropePositionArg, headNums, layoutQkvArg,
+                                  layoutQOutArg, epsilon, mropeSection, qQuantModeArg),
+                            OUTPUT(qOut, qScale));
+                        return ut.TestGetWorkspaceSize(&workspaceSize);
+                    }
+                    auto ut = OP_API_UT(
+                        aclnnQkvRmsNormRopeCacheWithKScale,
+                        INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryArg,
+                              seqArg, rotationOptional, vScaleOptional, mropePositionArg, headNums, layoutQkvArg,
+                              layoutQOutArg, epsilon, mropeSection, qQuantModeArg),
+                        OUTPUT(qOut, nullptr));
+                    return ut.TestGetWorkspaceSize(&workspaceSize);
+                }
+                if (hasQScaleValue) {
+                    auto ut = OP_API_UT(
+                        aclnnQkvRmsNormRopeCacheWithKScale,
+                        INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryArg, seqArg,
+                              rotationOptional, vScaleOptional, mropePositionArg, headNums, layoutQkvArg, layoutQOutArg,
+                              epsilon, nullptr, qQuantModeArg),
+                        OUTPUT(qOut, qScale));
+                    return ut.TestGetWorkspaceSize(&workspaceSize);
+                }
+                auto ut = OP_API_UT(
+                    aclnnQkvRmsNormRopeCacheWithKScale,
+                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryArg, seqArg,
+                          rotationOptional, vScaleOptional, mropePositionArg, headNums, layoutQkvArg, layoutQOutArg,
+                          epsilon, nullptr, qQuantModeArg),
+                    OUTPUT(qOut, nullptr));
+                return ut.TestGetWorkspaceSize(&workspaceSize);
+            };
+            const auto runWithPosition = [&](auto positionArg) {
+                if (hasQueryStartLocValue && hasSeqLensValue) {
+                    return invokeMrope(positionArg, queryStartLoc, seqLens);
+                }
+                if (hasQueryStartLocValue) {
+                    return invokeMrope(positionArg, queryStartLoc, nullptr);
+                }
+                if (hasSeqLensValue) {
+                    return invokeMrope(positionArg, nullptr, seqLens);
+                }
+                return invokeMrope(positionArg, nullptr, nullptr);
+            };
+            if (mropePositionProvided) {
+                ret = runWithPosition(mropePosition);
+            } else {
+                ret = runWithPosition(nullptr);
+            }
         } else {
-            auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
-                                INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
-                                      seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
-                                      epsilon, nullptr, "PerTokenPerHead"),
-                                OUTPUT(qOut, qScale));
-            ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            if (!ParseBool(hasQkv)) {
+                auto ut =
+                    OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                              INPUT(nullptr, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                    seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                    epsilon, nullptr, qQuantModeArg),
+                              OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasQGamma)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, nullptr, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasKGamma)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, nullptr, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasCosSin)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, nullptr, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasSlotMapping)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, nullptr, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasKCache)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, nullptr, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasVCache)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, nullptr, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasKScaleCache)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, nullptr, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasQueryStartLoc)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, nullptr,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasSeqLens)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          nullptr, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasOptionalRotation)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, nullptr, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasOptionalVScale)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, nullptr, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!hasHeadNumsValue) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, nullptr, layoutQkvArg,
+                                          layoutQOutArg, epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!hasLayoutQkvValue) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, nullptr, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!hasLayoutQOutValue) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, nullptr,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasQOut)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(nullptr, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else if (!ParseBool(hasQScale)) {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, nullptr));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            } else {
+                auto ut = OP_API_UT(aclnnQkvRmsNormRopeCacheWithKScale,
+                                    INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc,
+                                          seqLens, rotationOptional, vScaleOptional, nullptr, headNums, layoutQkvArg, layoutQOutArg,
+                                          epsilon, nullptr, qQuantModeArg),
+                                    OUTPUT(qOut, qScale));
+                ret = ut.TestGetWorkspaceSize(&workspaceSize);
+            }
         }
-
         if (ParseBool(checkRet)) {
             EXPECT_EQ(ret, ParseStatus(expectRet)) << "caseName=" << caseName;
         }
@@ -302,6 +376,10 @@ struct QkvRmsNormRopeCacheWithKScaleCase {
     string qScaleShape;
     string qScaleDtype;
     string hasQScale;
+    string mropePositionShape;
+    string mropePositionDtype;
+    string mropeSectionValue;
+    string qQuantMode;
     string expectRet;
     string checkRet;
 };
@@ -327,7 +405,8 @@ vector<QkvRmsNormRopeCacheWithKScaleCase> LoadCases(const string &csvFilePath)
             continue;
         }
         const bool legacyCsv = cols.size() == kLegacyCsvColumnCount;
-        if (cols.size() != kCsvColumnCount && !legacyCsv) {
+        const bool extendedCsv = cols.size() == kExtendedCsvColumnCount;
+        if (cols.size() != kCsvColumnCount && !legacyCsv && !extendedCsv) {
             ADD_FAILURE() << "Bad csv row column count in " << csvFilePath << ": " << trimmedLine;
             continue;
         }
@@ -408,6 +487,16 @@ vector<QkvRmsNormRopeCacheWithKScaleCase> LoadCases(const string &csvFilePath)
             c.qScaleShape = Trim(cols[i++]);
             c.qScaleDtype = Trim(cols[i++]);
             c.hasQScale = Trim(cols[i++]);
+            c.mropePositionShape.clear();
+            c.mropePositionDtype = "INT32";
+            c.mropeSectionValue.clear();
+            c.qQuantMode = "PerTokenPerHead";
+            if (extendedCsv) {
+                c.mropePositionShape = Trim(cols[i++]);
+                c.mropePositionDtype = Trim(cols[i++]);
+                c.mropeSectionValue = Trim(cols[i++]);
+                c.qQuantMode = Trim(cols[i++]);
+            }
             c.expectRet = Trim(cols[i++]);
             c.checkRet = Trim(cols[i++]);
             cases.emplace_back(c);
@@ -443,279 +532,4 @@ TEST_P(qkv_rms_norm_rope_cache_with_k_scale_csv_test, csvDrivenCase)
 INSTANTIATE_TEST_SUITE_P(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_CSV, qkv_rms_norm_rope_cache_with_k_scale_csv_test,
                          testing::ValuesIn(GetCases()), MakeParamName);
 
-aclnnStatus RunCompleteRopeScene(const char *qQuantMode,
-                                 aclDataType qOutDtype = ACL_FLOAT8_E4M3FN)
-{
-    TensorDesc qkv = MakeTensorDesc({5, 3, 128}, ACL_BF16);
-    TensorDesc qGamma = MakeTensorDesc({128}, ACL_FLOAT);
-    TensorDesc kGamma = MakeTensorDesc({128}, ACL_FLOAT);
-    TensorDesc cosSin = MakeTensorDesc({128, 128}, ACL_FLOAT);
-    TensorDesc slotMapping = MakeTensorDesc({5}, ACL_INT32);
-    TensorDesc kCache = MakeTensorDesc({1, 1, 8, 128}, ACL_FLOAT8_E4M3FN);
-    TensorDesc vCache = MakeTensorDesc({1, 1, 8, 128}, ACL_FLOAT8_E4M3FN);
-    TensorDesc kScaleCache = MakeTensorDesc({1, 1, 8, 1}, ACL_FLOAT);
-    TensorDesc queryStartLoc = MakeTensorDesc({2}, ACL_INT32);
-    TensorDesc seqLens = MakeTensorDesc({1}, ACL_INT32);
-    TensorDesc rotation = MakeTensorDesc({128, 128}, ACL_BF16);
-    TensorDesc vScale = MakeTensorDesc({1}, ACL_FLOAT);
-    TensorDesc qOut = MakeTensorDesc({5, 1, 128}, qOutDtype, false);
-    TensorDesc qScale = MakeTensorDesc({5, 1}, ACL_FLOAT, false);
-    IntArrayDesc headNums(vector<int64_t>{1, 1, 1});
-
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc, seqLens,
-              rotation, vScale, nullptr, headNums, "TND", "TND", 1e-6f, nullptr, qQuantMode),
-        OUTPUT(qOut, qScale));
-    uint64_t workspaceSize = 0;
-    return ut.TestGetWorkspaceSize(&workspaceSize);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, acceptsRopeDefaultQQuantMode)
-{
-    EXPECT_EQ(RunCompleteRopeScene(nullptr), ACLNN_SUCCESS);
-    EXPECT_EQ(RunCompleteRopeScene(""), ACLNN_SUCCESS);
-}
-
-aclnnStatus RunCompleteMropeScene(const vector<int64_t> &section, const char *layoutQkv = "TND",
-                                  const char *layoutQOut = "TND", aclDataType kCacheDtype = ACL_INT8,
-                                  aclDataType qOutDtype = ACL_BF16, const char *qQuantMode = "NoQuant",
-                                  bool hasQScale = false)
-{
-    TensorDesc qkv = MakeTensorDesc({5, 3, 128}, ACL_BF16);
-    TensorDesc qGamma = MakeTensorDesc({128}, ACL_FLOAT);
-    TensorDesc kGamma = MakeTensorDesc({128}, ACL_FLOAT);
-    TensorDesc cosSin = MakeTensorDesc({128, 128}, ACL_FLOAT);
-    TensorDesc slotMapping = MakeTensorDesc({5}, ACL_INT32);
-    TensorDesc kCache = MakeTensorDesc({1, 1, 8, 128}, kCacheDtype);
-    TensorDesc vCache = MakeTensorDesc({1, 1, 8, 128}, ACL_FLOAT8_E4M3FN);
-    TensorDesc kScaleCache = MakeTensorDesc({1, 1, 8, 1}, ACL_FLOAT);
-    TensorDesc rotation = MakeTensorDesc({128, 128}, ACL_BF16);
-    TensorDesc vScale = MakeTensorDesc({1}, ACL_FLOAT);
-    TensorDesc mropePosition = MakeTensorDesc({5, 3}, ACL_INT32);
-    TensorDesc qOut = MakeTensorDesc({5, 1, 128}, qOutDtype, false);
-    TensorDesc qScale = MakeTensorDesc({5, 1}, ACL_FLOAT, false);
-    IntArrayDesc headNums(vector<int64_t>{1, 1, 1});
-    IntArrayDesc mropeSection(section);
-
-    uint64_t workspaceSize = 0;
-    if (hasQScale) {
-        auto ut = OP_API_UT(
-            aclnnQkvRmsNormRopeCacheWithKScale,
-            INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, nullptr, nullptr,
-                  rotation, vScale, mropePosition, headNums, layoutQkv, layoutQOut, 1e-6f, mropeSection, qQuantMode),
-            OUTPUT(qOut, qScale));
-        return ut.TestGetWorkspaceSize(&workspaceSize);
-    }
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, nullptr, nullptr, rotation,
-              vScale, mropePosition, headNums, layoutQkv, layoutQOut, 1e-6f, mropeSection, qQuantMode),
-        OUTPUT(qOut, nullptr));
-    return ut.TestGetWorkspaceSize(&workspaceSize);
-}
-
-aclnnStatus RunMropeSectionScene(const vector<int64_t> &section)
-{
-    return RunCompleteMropeScene(section);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeSectionWrongLength)
-{
-    const vector<vector<int64_t>> invalidSections = {{}, {22, 21}, {22, 21, 21, 0}};
-    for (const auto &section : invalidSections) {
-        EXPECT_EQ(RunMropeSectionScene(section), ACLNN_ERR_PARAM_INVALID);
-    }
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsNegativeMropeSectionValue)
-{
-    const vector<vector<int64_t>> invalidSections = {{-1, 0, 0}, {0, -1, 0}, {0, 0, -1}};
-    for (const auto &section : invalidSections) {
-        EXPECT_EQ(RunMropeSectionScene(section), ACLNN_ERR_PARAM_INVALID);
-    }
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeSectionSumGreaterThanHalfD)
-{
-    EXPECT_EQ(RunMropeSectionScene({22, 21, 22}), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeSectionAxisUpperBound)
-{
-    // Keep each sum at or below 64 so the per-axis checks are reached independently.
-    const vector<vector<int64_t>> invalidSections = {{23, 20, 20}, {20, 22, 20}, {20, 20, 22}};
-    for (const auto &section : invalidSections) {
-        EXPECT_EQ(RunMropeSectionScene(section), ACLNN_ERR_PARAM_INVALID);
-    }
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, acceptsMropeSectionBoundary)
-{
-    EXPECT_EQ(RunMropeSectionScene({22, 21, 21}), ACLNN_SUCCESS);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropePositionSectionMismatch)
-{
-    TensorDesc queryStartLoc = MakeTensorDesc({1}, ACL_INT32);
-    TensorDesc seqLens = MakeTensorDesc({1}, ACL_INT32);
-    TensorDesc mropePosition = MakeTensorDesc({1, 3}, ACL_INT32);
-
-    // Scene validation runs before the regular tensor checker, so only scene arguments are needed here.
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, queryStartLoc, seqLens, nullptr,
-              nullptr, mropePosition, nullptr, "TND", "NTD", 1e-6f, nullptr, "PerTokenPerHead"),
-        OUTPUT(nullptr, nullptr));
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropePositionAxisMajorShape)
-{
-    TensorDesc qkv = MakeTensorDesc({5, 1, 128}, ACL_BF16);
-    TensorDesc mropePosition = MakeTensorDesc({3, 5}, ACL_INT32);
-    TensorDesc qOut = MakeTensorDesc({5, 1, 128}, ACL_BF16, false);
-    IntArrayDesc mropeSection(vector<int64_t>{22, 12, 10});
-
-    // M-RoPE positions are token-major: [T, 3], with T/H/W in the columns.
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(qkv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-              nullptr, mropePosition, nullptr, "TND", "TND", 1e-6f, mropeSection, "NoQuant"),
-        OUTPUT(qOut, nullptr));
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropePositionTokenCountMismatch)
-{
-    TensorDesc qkv = MakeTensorDesc({5, 1, 128}, ACL_BF16);
-    TensorDesc mropePosition = MakeTensorDesc({4, 3}, ACL_INT32);
-    TensorDesc qOut = MakeTensorDesc({5, 1, 128}, ACL_BF16, false);
-    IntArrayDesc mropeSection(vector<int64_t>{22, 12, 10});
-
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(qkv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-              nullptr, mropePosition, nullptr, "TND", "TND", 1e-6f, mropeSection, "NoQuant"),
-        OUTPUT(qOut, nullptr));
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropePositionTokenCountMismatchForNtdQkv)
-{
-    TensorDesc qkv = MakeTensorDesc({1, 5, 128}, ACL_BF16);
-    TensorDesc mropePosition = MakeTensorDesc({4, 3}, ACL_INT32);
-    TensorDesc qOut = MakeTensorDesc({1, 5, 128}, ACL_BF16, false);
-    IntArrayDesc mropeSection(vector<int64_t>{22, 12, 10});
-
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(qkv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-              nullptr, mropePosition, nullptr, "NTD", "NTD", 1e-6f, mropeSection, "NoQuant"),
-        OUTPUT(qOut, nullptr));
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, acceptsTokenMajorMropePosition)
-{
-    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}), ACLNN_SUCCESS);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeWithRopePositionSource)
-{
-    TensorDesc queryStartLoc = MakeTensorDesc({2}, ACL_INT32);
-    TensorDesc seqLens = MakeTensorDesc({1}, ACL_INT32);
-    TensorDesc mropePosition = MakeTensorDesc({1, 3}, ACL_INT32);
-    IntArrayDesc mropeSection(vector<int64_t>{22, 12, 10});
-    TensorDesc qOut = MakeTensorDesc({1, 1, 128}, ACL_BF16, false);
-
-    // A valid M-RoPE pair must not be combined with the RoPE position source.
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, queryStartLoc, seqLens, nullptr,
-              nullptr, mropePosition, nullptr, "TND", "NTD", 1e-6f, mropeSection, "NoQuant"),
-        OUTPUT(qOut, nullptr));
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeWithQueryStartLoc)
-{
-    TensorDesc queryStartLoc = MakeTensorDesc({2}, ACL_INT32);
-    TensorDesc mropePosition = MakeTensorDesc({1, 3}, ACL_INT32);
-    IntArrayDesc mropeSection(vector<int64_t>{22, 12, 10});
-    TensorDesc qOut = MakeTensorDesc({1, 1, 128}, ACL_BF16, false);
-
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, queryStartLoc, nullptr, nullptr,
-              nullptr, mropePosition, nullptr, "TND", "NTD", 1e-6f, mropeSection, "NoQuant"),
-        OUTPUT(qOut, nullptr));
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeWithSeqLens)
-{
-    TensorDesc seqLens = MakeTensorDesc({1}, ACL_INT32);
-    TensorDesc mropePosition = MakeTensorDesc({1, 3}, ACL_INT32);
-    IntArrayDesc mropeSection(vector<int64_t>{22, 12, 10});
-    TensorDesc qOut = MakeTensorDesc({1, 1, 128}, ACL_BF16, false);
-
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, seqLens, nullptr,
-              nullptr, mropePosition, nullptr, "TND", "NTD", 1e-6f, mropeSection, "NoQuant"),
-        OUTPUT(qOut, nullptr));
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsUnsupportedMropeLayouts)
-{
-    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "NTD", "NTD"), ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "NTD"), ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeKCacheDtype)
-{
-    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_FLOAT8_E4M3FN),
-              ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeQOutDtype)
-{
-    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_INT8, ACL_FLOAT8_E4M3FN),
-              ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeQScale)
-{
-    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_INT8, ACL_BF16, "NoQuant", true),
-              ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeQQuantMode)
-{
-    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_INT8, ACL_BF16, "PerTokenPerHead"),
-              ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeDefaultQQuantMode)
-{
-    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_INT8, ACL_BF16, nullptr),
-              ACLNN_ERR_PARAM_INVALID);
-    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_INT8, ACL_BF16, ""),
-              ACLNN_ERR_PARAM_INVALID);
-}
-
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsRopeDtypeReadFromQOut)
-{
-    // RoPE requires FP8; ACLNN reads the effective dtype from qOut itself.
-    EXPECT_EQ(RunCompleteRopeScene("PerTokenPerHead", ACL_BF16), ACLNN_ERR_PARAM_INVALID);
-}
 } // namespace
