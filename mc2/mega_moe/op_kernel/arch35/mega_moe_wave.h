@@ -275,8 +275,8 @@ private:
     static constexpr uint32_t GMM2_READY_RELEASE_UB_ADDR = 160U * 1024U;
     static constexpr uint32_t GMM2_READY_SCAN_UB_ADDR = 184U * 1024U;
     static constexpr uint32_t GMM2_READY_MAX_SCAN_BYTES =
-        MAX_AICORE_NUM * MEGA_MOE_GMM2_READY_CORE_STRIDE * sizeof(int32_t) > ALIGN_512 ?
-            MAX_AICORE_NUM * MEGA_MOE_GMM2_READY_CORE_STRIDE * sizeof(int32_t) :
+        MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) > ALIGN_512 ?
+            MAX_AICORE_NUM * INT_CACHELINE * sizeof(int32_t) :
             ALIGN_512;
     static constexpr uint32_t GMM2_READY_PARTIAL_UB_ADDR =
         GMM2_READY_SCAN_UB_ADDR +
@@ -1566,10 +1566,7 @@ __aicore__ inline uint64_t MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::Gmm2NoQuant
     if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_PRIVATE_STRIDED) {
         return static_cast<uint64_t>(blockNum_) * static_cast<uint64_t>(INT_CACHELINE);
     } else if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE) {
-        constexpr uint64_t INT32_PER_64B = 64U / sizeof(int32_t);
-        uint64_t readyElements =
-            static_cast<uint64_t>(blockNum_) * static_cast<uint64_t>(MEGA_MOE_GMM2_READY_CORE_STRIDE);
-        return (readyElements + INT32_PER_64B - 1U) / INT32_PER_64B * INT32_PER_64B;
+        return static_cast<uint64_t>(blockNum_) * static_cast<uint64_t>(INT_CACHELINE);
     }
     return static_cast<uint64_t>(INT_CACHELINE);
 }
@@ -1656,8 +1653,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::PublishGmm2NoQu
             AscendC::WriteGmByPassDCache(readyBase + slotOffset + blockIdx_, int32_t(1));
         } else if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE) {
             AscendC::WriteGmByPassDCache(
-                readyBase + slotOffset +
-                    static_cast<uint64_t>(blockIdx_) * MEGA_MOE_GMM2_READY_CORE_STRIDE,
+                readyBase + slotOffset + static_cast<uint64_t>(blockIdx_) * INT_CACHELINE,
                 int32_t(1));
         } else {
             AscendC::WriteGmByPassDCache(
@@ -1688,7 +1684,7 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::WaitGmm2NoQuant
         if constexpr (MEGA_MOE_GMM2_FANIN_MODE == MEGA_MOE_GMM2_FANIN_ALL_AIV_REDUCE) {
             constexpr uint32_t INT32_PER_DATABLOCK = ALIGN_32 / sizeof(int32_t);
             constexpr uint32_t INT32_PER_REPEAT = 256U / sizeof(int32_t);
-            uint32_t readyElements = blockNum_ * static_cast<uint32_t>(MEGA_MOE_GMM2_READY_CORE_STRIDE);
+            uint32_t readyElements = blockNum_ * static_cast<uint32_t>(INT_CACHELINE);
             uint32_t copyElements =
                 (readyElements + INT32_PER_DATABLOCK - 1U) / INT32_PER_DATABLOCK * INT32_PER_DATABLOCK;
             uint32_t fullRepeats = readyElements / INT32_PER_REPEAT;
