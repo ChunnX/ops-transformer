@@ -540,8 +540,8 @@ ge::graphStatus CausalConv1dTiling::ParseInitialStateMode(bool isFnMode)
         return ge::GRAPH_SUCCESS;
     }
     OP_CHECK_IF(!isFnMode,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "run_mode", "1 (decode/update)",
-                                                      "initial_state_mode only supported in run_mode=0 (prefill)"),
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "initial_state_mode", "provided",
+                                                      "only supported in prefill mode"),
                 return ge::GRAPH_FAILED);
     auto initStShape = EnsureNotScalar(initStStorageShape);
     OP_CHECK_IF(initStShape.GetDimNum() != 1,
@@ -580,11 +580,10 @@ ge::graphStatus CausalConv1dTiling::ParseNumAcceptedTokens(bool isFnMode)
     if (!inputInfo_.hasNumAcceptedTokens) {
         return ge::GRAPH_SUCCESS;
     }
-    OP_CHECK_IF(
-        isFnMode,
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "run_mode", "0 (prefill)",
-                                              "num_accepted_tokens only supported in run_mode=1 (decode/update)"),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(isFnMode,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "num_accepted_tokens", "provided",
+                                                      "only supported in decode/update mode"),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(inputInfo_.kernelWidth != 4,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "kernel_width",
                                                       std::to_string(inputInfo_.kernelWidth).c_str(),
@@ -841,17 +840,7 @@ bool CausalConv1dTiling::InferIsFnMode()
         return false;
     }
 
-    // Has query_start_loc — infer mode from shape relationship
-    // prefill varlen: x is (cu_seqlen, dim), cu_seqlen > batch (multiple tokens per segment)
-    // update varlen: x is (batch, dim), cu_seqlen == batch (one token per segment)
-    int64_t qslSize = qslShape.GetDim(0);
-    int64_t xFirstDim = xShape.GetDim(0);
-    int64_t batch = qslSize - 1;
-
-    if (xFirstDim > batch) {
-        return true; // prefill varlen
-    }
-    return false; // update varlen
+    return true; // 2D + query_start_loc => FN_VARLEN (Update uses 3D with seqLen=1)
 }
 
 // ============================================================

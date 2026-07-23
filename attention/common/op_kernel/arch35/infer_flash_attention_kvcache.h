@@ -658,12 +658,12 @@ __aicore__ inline void CalcAIVSoftmaxLseOffset(RunParamStr<isInfer>& runParam,
         }
     } else {
         if (constInfo.isGqa && constInfo.s1Size > 1) {
-            if constexpr (layout == LayOutTypeEnum::LAYOUT_BSH || layout == LayOutTypeEnum::LAYOUT_TND) {
+            if constexpr (layout == LayOutTypeEnum::LAYOUT_TND || layout == LayOutTypeEnum::LAYOUT_NTD) {
                 runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.queryLeftPaddingSize * constInfo.n2G +
                     runParam.sOuterOffset / constInfo.gSize * constInfo.n2G + runParam.n2oIdx * constInfo.gSize;
             } else {
                 runParam.softmaxLseOffset = softmaxLseSeqOffset +
-                    runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset;
+                    runParam.n2oIdx * constInfo.gSize * actualSeqLen + runParam.sOuterOffset / constInfo.gSize;
             }
         } else if (constInfo.isGqa) {
             runParam.softmaxLseOffset = softmaxLseSeqOffset + runParam.n2oIdx * constInfo.gSize * actualSeqLen +

@@ -32,6 +32,7 @@ static constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
 static constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
 static constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
 static constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
+static constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
 // FP32的0值和极大值
 static constexpr float FLOAT_ZERO = 0;
 static constexpr float FLOAT_MAX = 3.402823466e+38F;
@@ -237,6 +238,9 @@ static constexpr ConfigParams ConfigValue[] = {
 #define false 0
 #define true 1
 
+#define OFFSET_OF_MEMBER(TYPE, MEMBER)  ((uint64_t) &((TYPE *)0)->MEMBER)
+#define SIZE_OF_MEMBER(TYPE, MEMBER)  sizeof(((TYPE *)0)->MEMBER)
+
 // kernel stream related struct
 struct FDparamsX {
     uint32_t fdCoreEnable;
@@ -338,12 +342,18 @@ struct CommonConstInfo {
     /* 输出shape */
     FA_LAYOUT outputLayout;
     bool needInitOutput;
+    bool enableFlashDecode;
 };
 
 struct PAConstInfo {
     uint32_t blockSize;
     uint32_t maxBlockNumPerBatch;
     uint32_t paLayoutType;
+    /* kvcache非连续场景的strides, 0表示连续 */
+    uint64_t keyBnStride = 0;
+    uint64_t keyN2Stride = 0;
+    uint64_t valueBnStride = 0;
+    uint64_t valueN2Stride = 0;
 };
 
 struct LseConstInfo {

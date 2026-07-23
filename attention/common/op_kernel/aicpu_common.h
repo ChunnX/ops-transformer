@@ -16,6 +16,8 @@
 #ifndef AICPU_COMMON_H
 #define AICPU_COMMON_H
 
+#include <cstdint>
+#include <vector>
 #include "cpu_context.h"
 
 namespace aicpu {
@@ -90,6 +92,43 @@ namespace aicpu {
         if (attr != nullptr) {
             value = attr->GetBool();
         }
+    }
+
+    inline std::vector<int64_t> GetTensorDataAsInt64(Tensor *tensor, size_t size)
+    {
+        std::vector<int64_t> result(size, 0);
+        if (tensor == nullptr || tensor->GetData() == nullptr || size == 0) {
+            return result;
+        }
+        void *data = tensor->GetData();
+        switch (tensor->GetDataType()) {
+            case DT_INT32:
+                std::transform(static_cast<int32_t*>(data), static_cast<int32_t*>(data) + size, result.begin(),
+                    [](int32_t v) { return static_cast<int64_t>(v); });
+                break;
+            case DT_INT64:
+                std::copy(static_cast<int64_t*>(data), static_cast<int64_t*>(data) + size, result.begin());
+                break;
+            case DT_INT16:
+                std::transform(static_cast<int16_t*>(data), static_cast<int16_t*>(data) + size, result.begin(),
+                    [](int16_t v) { return static_cast<int64_t>(v); });
+                break;
+            case DT_UINT32:
+                std::transform(static_cast<uint32_t*>(data), static_cast<uint32_t*>(data) + size, result.begin(),
+                    [](uint32_t v) { return static_cast<int64_t>(v); });
+                break;
+            case DT_UINT64:
+                std::transform(static_cast<uint64_t*>(data), static_cast<uint64_t*>(data) + size,
+                    result.begin(), [](uint64_t v) { return static_cast<int64_t>(v); });
+                break;
+            case DT_UINT16:
+                std::transform(static_cast<uint16_t*>(data), static_cast<uint16_t*>(data) + size, result.begin(),
+                    [](uint16_t v) { return static_cast<int64_t>(v); });
+                break;
+            default:
+                break;
+        }
+        return result;
     }
 }
 

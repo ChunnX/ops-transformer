@@ -29,7 +29,7 @@ using MmadAtlasA2Async = MmadBase<Arch::AtlasA2, true>;
 
 // Now ENABLE_UNIT_FLAG_ must be false when intput element is int8
 template <bool ENABLE_UNIT_FLAG_ = false>
-struct MmadAtlasA2Pingpong : public MmadAtlasA2  {
+struct MmadAtlasA2Pingpong : public MmadAtlasA2 {
     static constexpr uint32_t STAGES = 2;
     static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
 };
@@ -88,9 +88,9 @@ struct MmadAtlasA2MLAPVTp1Spec : public MmadAtlasA2 {
 };
 
 template <uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_, uint32_t L0B_STAGES_,
-    uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
+          uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
 struct MmadAtlasA2PreloadAsync : public MmadAtlasA2Async {
-    static constexpr uint32_t PRELOAD_STAGES = PRELOAD_STAGES_;  // Stages of emitting load instruction in advance
+    static constexpr uint32_t PRELOAD_STAGES = PRELOAD_STAGES_; // Stages of emitting load instruction in advance
     static constexpr uint32_t L1_STAGES = L1_STAGES_;
     static constexpr uint32_t L0A_STAGES = L0A_STAGES_;
     static constexpr uint32_t L0B_STAGES = L0B_STAGES_;
@@ -100,33 +100,17 @@ struct MmadAtlasA2PreloadAsync : public MmadAtlasA2Async {
 };
 
 template <uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_, uint32_t L0B_STAGES_,
-    uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
-struct MmadAtlasA2PreloadAsyncWithCallback :
-    public MmadAtlasA2PreloadAsync<
-        PRELOAD_STAGES_,
-        L1_STAGES_,
-        L0A_STAGES_,
-        L0B_STAGES_,
-        L0C_STAGES_,
-        ENABLE_UNIT_FLAG_,
-        ENABLE_SHUFFLE_K_
-    > {
-};
+          uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
+struct MmadAtlasA2PreloadAsyncWithCallback
+    : public MmadAtlasA2PreloadAsync<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                     ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_> {};
 
 
 template <uint32_t PRELOAD_STAGES_, uint32_t L1_STAGES_, uint32_t L0A_STAGES_, uint32_t L0B_STAGES_,
-    uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
-struct MmadAtlasA2W4A4MatmulPerTokenPerChannelDequant :
-    public MmadAtlasA2PreloadAsyncWithCallback<
-        PRELOAD_STAGES_,
-        L1_STAGES_,
-        L0A_STAGES_,
-        L0B_STAGES_,
-        L0C_STAGES_,
-        ENABLE_UNIT_FLAG_,
-        ENABLE_SHUFFLE_K_
-    > {
-};
+          uint32_t L0C_STAGES_, bool ENABLE_UNIT_FLAG_, bool ENABLE_SHUFFLE_K_>
+struct MmadAtlasA2W4A4MatmulPerTokenPerChannelDequant
+    : public MmadAtlasA2PreloadAsyncWithCallback<PRELOAD_STAGES_, L1_STAGES_, L0A_STAGES_, L0B_STAGES_, L0C_STAGES_,
+                                                 ENABLE_UNIT_FLAG_, ENABLE_SHUFFLE_K_> {};
 ////////////////////
 // new add
 template <bool ENABLE_UNIT_FLAG_ = false, bool ENABLE_SHUFFLE_K_ = false, bool ENABLE_ABBA_ = false>
@@ -143,42 +127,41 @@ struct GemvAtlasA2 : public MmadAtlasA2 {
 ////////////////////
 
 template <bool ENABLE_UNIT_FLAG_ = false>
-struct MmadAtlasA2PingpongBias : public MmadAtlasA2  {
+struct MmadAtlasA2PingpongBias : public MmadAtlasA2 {
     static constexpr uint32_t STAGES = 2;
     static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
 };
 
 template <bool PAGED_CACHE_FLAG_ = false, bool ENABLE_UNIT_FLAG_ = false>
-struct MmadAtlasA2FAIQK : public MmadAtlasA2{
-    static constexpr uint32_t STAGES = 2;
-    static constexpr bool PAGED_CACHE_FLAG = PAGED_CACHE_FLAG_;
-    static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
-
-};
-
-template <bool PAGED_CACHE_FLAG_ = false, bool ENABLE_UNIT_FLAG_ = false>
-struct MmadAtlasA2FAIPV : public MmadAtlasA2{
+struct MmadAtlasA2FAIQK : public MmadAtlasA2 {
     static constexpr uint32_t STAGES = 2;
     static constexpr bool PAGED_CACHE_FLAG = PAGED_CACHE_FLAG_;
     static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
 };
 
 template <bool PAGED_CACHE_FLAG_ = false, bool ENABLE_UNIT_FLAG_ = false>
-struct MmadAtlasA2FAITailQK : public MmadAtlasA2{
+struct MmadAtlasA2FAIPV : public MmadAtlasA2 {
     static constexpr uint32_t STAGES = 2;
     static constexpr bool PAGED_CACHE_FLAG = PAGED_CACHE_FLAG_;
     static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
 };
 
 template <bool PAGED_CACHE_FLAG_ = false, bool ENABLE_UNIT_FLAG_ = false>
-struct MmadAtlasA2FAITailPV : public MmadAtlasA2{
+struct MmadAtlasA2FAITailQK : public MmadAtlasA2 {
+    static constexpr uint32_t STAGES = 2;
+    static constexpr bool PAGED_CACHE_FLAG = PAGED_CACHE_FLAG_;
+    static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
+};
+
+template <bool PAGED_CACHE_FLAG_ = false, bool ENABLE_UNIT_FLAG_ = false>
+struct MmadAtlasA2FAITailPV : public MmadAtlasA2 {
     static constexpr uint32_t STAGES = 2;
     static constexpr bool PAGED_CACHE_FLAG = PAGED_CACHE_FLAG_;
     static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
 };
 
 template <bool ENABLE_UNIT_FLAG_ = false>
-struct MmadAtlasA2FullLoadA : public MmadAtlasA2  {
+struct MmadAtlasA2FullLoadA : public MmadAtlasA2 {
     static constexpr uint32_t STAGES = 2;
     static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
 };
@@ -298,6 +281,6 @@ struct MmadFAITailPV : public MmadBase<ArchTag_, false> {
     static constexpr bool ENABLE_UNIT_FLAG = ENABLE_UNIT_FLAG_;
 };
 
-}  // namespace Catlass::Gemm
+} // namespace Catlass::Gemm
 
-#endif  // CATLASS_GEMM_DISPATCH_POLICY_HPP
+#endif // CATLASS_GEMM_DISPATCH_POLICY_HPP

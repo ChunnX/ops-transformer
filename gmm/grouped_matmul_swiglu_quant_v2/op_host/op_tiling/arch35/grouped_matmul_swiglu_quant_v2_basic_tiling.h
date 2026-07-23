@@ -73,13 +73,16 @@ private:
     bool IsFp8(ge::DataType dtype) const;
     bool IsFp4Input() const;
     bool IsFp8Input();
+    bool IsMXFp8Input() const;
     bool IsMxFp4WeightNz() const;
+    bool IsMxFp8WeightNz() const;
+    bool IsMxWeightNzMultiTensor(const gert::Shape &wShape) const;
     bool CheckMxFp4WeightNzShape(const gert::Shape &xShape, const gert::Shape &wShape) const;
     ge::graphStatus CalWeightNzL1Tiling();
     ge::graphStatus CalWeightNzL1Depth(uint64_t leftL1Size);
     uint64_t GetWeightNzDepthWithHighBW(uint64_t mnL1) const;
     void ModifyWeightNzDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize,
-                                            uint64_t baseScaleABSize);
+                                       uint64_t baseScaleABSize);
     ge::graphStatus CalWeightNzScaleFactors();
     // add for pertoken quant mode
     bool AnalyzeAttrsPertoken();
@@ -91,7 +94,13 @@ private:
     bool CheckCoreNum() const override;
     bool CheckWeightNdDtype();
     bool CheckQuantDtypeByFormat(ge::DataType quantDtype, ge::Format weightFormat);
+    bool ValidateAttrsCommon();
+    bool LoadDescsAndDtypes();
+    bool CheckWeightNzDtype(const gert::Shape &xShape, const gert::Shape &wShape, ge::Format weightFormat);
+    bool ValidateDtypeAndQuantParams(const gert::Shape &xShape, const gert::Shape &wShape,
+                                     const gert::Shape &wScaleShape, const gert::Shape &xScaleShape);
     GMMSwigluQuantTilingDataParams tilingData_;
+    bool isMxWeightNzMultiTensor_ = false;
 
     const std::vector<ge::DataType> quantDtypeSupportList = {ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2,
                                                              ge::DT_FLOAT4_E2M1};

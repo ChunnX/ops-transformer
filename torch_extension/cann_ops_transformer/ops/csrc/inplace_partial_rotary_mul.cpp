@@ -19,29 +19,24 @@
 namespace op_api {
 
 static const std::unordered_map<std::string, int64_t> mode_map = {
-    {"half", 0},
-    {"interleave", 1},
-    {"quarter", 2},
-    {"interleave-half", 3}
-};
+    {"half", 0}, {"interleave", 1}, {"quarter", 2}, {"interleave-half", 3}};
 
-void inplace_partial_rotary_mul(at::Tensor &x, const at::Tensor &r1,
-    const at::Tensor &r2, std::string rotary_mode,
-    c10::IntArrayRef partial_slice)
+void InplacePartialRotaryMul(at::Tensor &x, const at::Tensor &r1, const at::Tensor &r2, std::string rotaryMode,
+                             c10::IntArrayRef partialSlice)
 {
     TORCH_CHECK(x.dim() == 4, "Input tensor x's dim num should be 4, actual ", x.dim(), ".");
-    auto it = mode_map.find(rotary_mode);
+    auto it = mode_map.find(rotaryMode);
     TORCH_CHECK(it != mode_map.end(),
-        "rotary_mode must be one of 'half', 'interleave', 'quarter', 'interleave-half', got '", rotary_mode, "'.");
-    TORCH_CHECK(rotary_mode == "interleave",
-        "rotary_mode only supports 'interleave', got '", rotary_mode, "'.");
-    int64_t mode_int = it->second;
+                "rotary_mode must be one of 'half', 'interleave', 'quarter', 'interleave-half', got '", rotaryMode,
+                "'.");
+    TORCH_CHECK(rotaryMode == "interleave", "rotary_mode only supports 'interleave', got '", rotaryMode, "'.");
+    int64_t modeInt = it->second;
 
-    ACLNN_CMD(aclnnInplacePartialRotaryMul, x, r1, r2, mode_int, partial_slice);
+    ACLNN_CMD(aclnnInplacePartialRotaryMul, x, r1, r2, modeInt, partialSlice);
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("inplace_partial_rotary_mul", &inplace_partial_rotary_mul, "inplace_partial_rotary_mul");
+    m.def("inplace_partial_rotary_mul", &InplacePartialRotaryMul, "inplace_partial_rotary_mul");
 }
 } // namespace op_api

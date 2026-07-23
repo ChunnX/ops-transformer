@@ -21,22 +21,21 @@ using namespace op;
 extern "C" {
 #endif
 
-aclnnStatus aclnnDistributeBarrierV2GetWorkspaceSize(const aclTensor* xRef, const aclTensor* timeOut,
-                                                     const aclTensor* elasticInfo, const char* group,
-                                                     int64_t worldSize, uint64_t* workspaceSize,
-                                                     aclOpExecutor** executor) {
+aclnnStatus aclnnDistributeBarrierV2GetWorkspaceSize(const aclTensor *xRef, const aclTensor *timeOut,
+                                                     const aclTensor *elasticInfo, const char *group, int64_t worldSize,
+                                                     uint64_t *workspaceSize, aclOpExecutor **executor)
+{
     OP_LOGD("aclnn_barrier v2 WorkspaceSize start");
-    aclnnStatus ret = aclnnDistributeBarrierGetWorkspaceSizeBase(xRef, timeOut, elasticInfo,
-                                                                 group, worldSize, workspaceSize, executor);
+    aclnnStatus ret = aclnnDistributeBarrierGetWorkspaceSizeBase(xRef, timeOut, elasticInfo, group, worldSize,
+                                                                 workspaceSize, executor);
     return ret;
 }
 
-aclnnStatus aclnnDistributeBarrierV2(void* workspace, uint64_t workspaceSize,
-                                     aclOpExecutor* executor,
-                                     aclrtStream stream) {
+aclnnStatus aclnnDistributeBarrierV2(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                     aclrtStream stream)
+{
     OP_LOGD("aclnn_barrier v2 start");
-    return aclnnDistributeBarrierBase(workspace, workspaceSize, executor,
-                                      stream);
+    return aclnnDistributeBarrierBase(workspace, workspaceSize, executor, stream);
 }
 
 #ifdef __cplusplus

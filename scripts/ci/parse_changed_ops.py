@@ -13,6 +13,7 @@ import sys
 import re
 import logging
 from pathlib import Path
+
 NEW_OPS_PATH = [
     "mc2",
     "attention",
@@ -29,19 +30,19 @@ class OperatorChangeInfo:
 
 
 BlackList = {
-        "fused_infer_attention_score",
-        "moe_distribute_combine_shmem",
-        "moe_distribute_dispatch_shmem",
-        "rope_matrix",
-        "quant_sals_indexer",
-        "quant_sals_indexer_metadata",
-        "sparse_flash_attention_antiquant",
-        "sparse_flash_attention_antiquant_metadata"
-    }
+    "fused_infer_attention_score",
+    "moe_distribute_combine_shmem",
+    "moe_distribute_dispatch_shmem",
+    "rope_matrix",
+    "quant_sals_indexer",
+    "quant_sals_indexer_metadata",
+    "sparse_flash_attention_antiquant",
+    "sparse_flash_attention_antiquant_metadata",
+}
 
 
 def extract_operator_name(file_path, is_experimental):
-    path_parts = file_path.lstrip('/').split('/')
+    path_parts = file_path.lstrip("/").split("/")
     domain, operator_name = _get_domain_and_op(path_parts, is_experimental)
     if domain is None:
         return ""
@@ -75,7 +76,7 @@ def _should_return_default(domain, operator_name, path_parts, is_experimental):
         return True
 
     # 检查是否是 common 或 experimental 路径不存在
-    exp_path = f'experimental/{domain}/{operator_name}'
+    exp_path = f"experimental/{domain}/{operator_name}"
     if operator_name == "common" or not os.path.exists(exp_path):
         return True
 
@@ -92,7 +93,7 @@ def _should_return_default(domain, operator_name, path_parts, is_experimental):
 
 def _get_default_name(domain):
     """根据域返回默认名称（目前只有 attention 特殊处理）"""
-    if domain == 'attention':
+    if domain == "attention":
         return "nsa_compress_attention_infer"
     return ""
 
@@ -103,6 +104,7 @@ def get_operator_info_from_ci(changed_file_info_from_ci, is_experimental):
     :param changed_file_info_from_ci: git diff result file from ci
     :return: None or OperatorChangeInfo
     """
+
     def is_skippable_file(line):
         ext = os.path.splitext(line)[-1].lower()
         return ext in (".md",)
@@ -121,9 +123,11 @@ def get_operator_info_from_ci(changed_file_info_from_ci, is_experimental):
 
     or_file_path = os.path.realpath(changed_file_info_from_ci)
     if not os.path.exists(or_file_path):
-        logging.error("[ERROR] change file is not exist, can not get file change info in this pull request.")
+        logging.error(
+            "[ERROR] change file is not exist, can not get file change info in this pull request."
+        )
         return None
-        
+
     with open(or_file_path) as or_f:
         lines = or_f.readlines()
         changed_operators = set()
@@ -132,7 +136,9 @@ def get_operator_info_from_ci(changed_file_info_from_ci, is_experimental):
         for line in lines:
             process_line(line, changed_operators, operator_file_map)
 
-    return OperatorChangeInfo(changed_operators=list(changed_operators), operator_file_map=operator_file_map)
+    return OperatorChangeInfo(
+        changed_operators=list(changed_operators), operator_file_map=operator_file_map
+    )
 
 
 def find_def_cpp_files(operators, operator_file_map, is_experimental):
@@ -148,19 +154,19 @@ def find_def_cpp_files(operators, operator_file_map, is_experimental):
         if op_name not in operator_file_map:
             continue
         for file_path in operator_file_map[op_name]:
-            path_parts = file_path.lstrip('/').split('/')
+            path_parts = file_path.lstrip("/").split("/")
             domain, _ = _get_domain_and_op(path_parts, is_experimental)
             if domain is None:
                 continue
-            
+
             if is_experimental == "TRUE":
                 search_dir = f"experimental/{domain}/{op_name}"
             else:
                 search_dir = f"{domain}/{op_name}"
-            
+
             if not os.path.exists(search_dir):
                 continue
-            
+
             for root, dirs, files in os.walk(search_dir):
                 for f in files:
                     if f.endswith("def.cpp"):
@@ -180,7 +186,7 @@ def check_soc_registered(def_cpp_file, soc):
     :return: True if SOC is registered, False otherwise
     """
     try:
-        with open(def_cpp_file, 'r', encoding='utf-8') as f:
+        with open(def_cpp_file, "r", encoding="utf-8") as f:
             content = f.read()
             pattern = rf'this->AICore\(\)\.AddConfig\(["\']?{soc}["\']?'
             if re.search(pattern, content):
@@ -200,12 +206,14 @@ def filter_operators_by_def_and_soc(operators, op_to_def_files, soc):
     """
     filtered_operators = []
     valid_def_files = []
-    
+
     for op_name in operators:
         if op_name not in op_to_def_files or not op_to_def_files[op_name]:
-            logging.info(f"[INFO] Operator '{op_name}' has no def.cpp file, filtered out.")
+            logging.info(
+                f"[INFO] Operator '{op_name}' has no def.cpp file, filtered out."
+            )
             continue
-        
+
         has_valid_def = False
         for def_file in op_to_def_files[op_name]:
             if check_soc_registered(def_file, soc):
@@ -213,43 +221,51 @@ def filter_operators_by_def_and_soc(operators, op_to_def_files, soc):
                 if def_file not in valid_def_files:
                     valid_def_files.append(def_file)
                 break
-        
+
         if has_valid_def:
             filtered_operators.append(op_name)
         else:
-            logging.info(f"[INFO] Operator '{op_name}' has no def.cpp with SOC '{soc}' registered, filtered out.")
-    
+            logging.info(
+                f"[INFO] Operator '{op_name}' has no def.cpp with SOC '{soc}' registered, filtered out."
+            )
+
     return filtered_operators, valid_def_files
 
 
 def get_change_ops_list(changed_file_info_from_ci, is_experimental, soc):
-    ops_change_info = get_operator_info_from_ci(changed_file_info_from_ci, is_experimental)
+    ops_change_info = get_operator_info_from_ci(
+        changed_file_info_from_ci, is_experimental
+    )
     if not ops_change_info:
         logging.info("[INFO] not found ops change info, run all c++.")
         return None
 
-    op_to_def_files = find_def_cpp_files(ops_change_info.changed_operators,
-                                         ops_change_info.operator_file_map,
-                                         is_experimental)
-    
-    filtered_operators, valid_def_files = filter_operators_by_def_and_soc(
+    op_to_def_files = find_def_cpp_files(
         ops_change_info.changed_operators,
-        op_to_def_files,
-        soc
+        ops_change_info.operator_file_map,
+        is_experimental,
     )
-    
+
+    filtered_operators, valid_def_files = filter_operators_by_def_and_soc(
+        ops_change_info.changed_operators, op_to_def_files, soc
+    )
+
     if not filtered_operators:
         if soc == "ascend950":
             filtered_operators = ["all_gather_matmul_v2"]
-            logging.info("[INFO] No operators found for ascend950, using default: all_gather_matmul_v2")
+            logging.info(
+                "[INFO] No operators found for ascend950, using default: all_gather_matmul_v2"
+            )
         elif soc == "ascend910b":
             filtered_operators = ["nsa_compress_attention_infer"]
-            logging.info("[INFO] No operators found for ascend910b, using default: nsa_compress_attention_infer")
-    
+            logging.info(
+                "[INFO] No operators found for ascend910b, using default: nsa_compress_attention_infer"
+            )
+
     return ";".join(filtered_operators)
 
 
-if __name__ == '__main__':
-    soc = sys.argv[3] if len(sys.argv) > 3 else ''
+if __name__ == "__main__":
+    soc = sys.argv[3] if len(sys.argv) > 3 else ""
     ops_str = get_change_ops_list(sys.argv[1], sys.argv[2], soc)
     print(ops_str)

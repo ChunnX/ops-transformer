@@ -24,67 +24,63 @@ const int DIM_TWO = 2;
 /**
  * @brief Warpper for moe_distribute_combine
  */
-at::Tensor npu_moe_distribute_combine(const at::Tensor &context, const at::Tensor &expand_x,
-                                         const at::Tensor &expert_ids,
-                                         const at::Tensor &assist_info_for_combine,
-                                         const at::Tensor &ep_send_counts, const at::Tensor &expert_scales,
-                                         int64_t ep_world_size, int64_t ep_rank_id,
-                                         int64_t moe_expert_num, int64_t ccl_buffer_size,
-                                         const c10::optional<at::Tensor> &tp_send_counts,
-                                         const c10::optional<at::Tensor> &x_active_mask,
-                                         const c10::optional<at::Tensor> &expand_scales,
-                                         const c10::optional<at::Tensor> &shared_expert_x,
-                                         const c10::optional<at::Tensor> &elastic_info,
-                                         const c10::optional<at::Tensor> &ori_x,
-                                         const c10::optional<at::Tensor> &const_expert_alpha_1,
-                                         const c10::optional<at::Tensor> &const_expert_alpha_2,
-                                         const c10::optional<at::Tensor> &const_expert_v,
-                                         const c10::optional<at::Tensor> &performance_info,
-                                         int64_t tp_world_size, int64_t tp_rank_id,
-                                         int64_t expert_shard_type, int64_t shared_expert_num, int64_t shared_expert_rank_num,
-                                         int64_t global_bs, int64_t comm_quant_mode,
-                                         std::string comm_alg, int64_t zero_expert_num, int64_t copy_expert_num, int64_t const_expert_num)
+at::Tensor
+NpuMoeDistributeCombine(const at::Tensor &context, const at::Tensor &expandX, const at::Tensor &expertIds,
+                        const at::Tensor &assistInfoForCombine, const at::Tensor &epSendCounts,
+                        const at::Tensor &expertScales, int64_t epWorldSize, int64_t epRankId, int64_t moeExpertNum,
+                        int64_t cclBufferSize, const c10::optional<at::Tensor> &tpSendCounts,
+                        const c10::optional<at::Tensor> &xActiveMask, const c10::optional<at::Tensor> &expandScales,
+                        const c10::optional<at::Tensor> &sharedExpertX, const c10::optional<at::Tensor> &elasticInfo,
+                        const c10::optional<at::Tensor> &oriX, const c10::optional<at::Tensor> &constExpertAlpha1,
+                        const c10::optional<at::Tensor> &constExpertAlpha2,
+                        const c10::optional<at::Tensor> &constExpertV, const c10::optional<at::Tensor> &performanceInfo,
+                        int64_t tpWorldSize, int64_t tpRankId, int64_t expertShardType, int64_t sharedExpertNum,
+                        int64_t sharedExpertRankNum, int64_t globalBs, int64_t commQuantMode, std::string commAlg,
+                        int64_t zeroExpertNum, int64_t copyExpertNum, int64_t constExpertNum)
 {
-    TORCH_CHECK((expand_x.dim() == DIM_TWO) && (expert_ids.dim() == DIM_TWO), "The x and expert_ids should be 2D");
-    TORCH_CHECK((expand_x.scalar_type() == at::kBFloat16) || (expand_x.scalar_type() == at::kHalf) || (expand_x.scalar_type() == at::kInt),
-                "dtype of expand_x should be BFloat16, Float16 or Int, but got " + std::string(c10::toString(expand_x.scalar_type())));
-    TORCH_CHECK(expert_ids.scalar_type() == at::kInt,
-                "dtype of expert_ids should be Int, but got " + std::string(c10::toString(expert_ids.scalar_type())));
-    auto expand_x_size = expand_x.sizes();
-    auto expert_ids_size = expert_ids.sizes();
+    TORCH_CHECK((expandX.dim() == DIM_TWO) && (expertIds.dim() == DIM_TWO), "The x and expert_ids should be 2D");
+    TORCH_CHECK((expandX.scalar_type() == at::kBFloat16) || (expandX.scalar_type() == at::kHalf) ||
+                    (expandX.scalar_type() == at::kInt),
+                "dtype of expand_x should be BFloat16, Float16 or Int, but got " +
+                    std::string(c10::toString(expandX.scalar_type())));
+    TORCH_CHECK(expertIds.scalar_type() == at::kInt,
+                "dtype of expert_ids should be Int, but got " + std::string(c10::toString(expertIds.scalar_type())));
+    auto expandXSize = expandX.sizes();
+    auto expertIdsSize = expertIds.sizes();
 
-    int64_t bs = expert_ids_size[0];
-    int64_t h = expand_x_size[1];
-    int64_t global_bs_real = (global_bs == 0) ? (bs * ep_world_size) : global_bs;
+    int64_t bs = expertIdsSize[0];
+    int64_t h = expandXSize[1];
+    int64_t globalBsReal = (globalBs == 0) ? (bs * epWorldSize) : globalBs;
 
     at::Tensor output;
     {
-        auto localDevice = c10::Device(expand_x.device());
+        auto localDevice = c10::Device(expandX.device());
         const c10::OptionalDeviceGuard deviceGuard(localDevice);
-        if (expand_x.scalar_type() != at::kInt) {
-            output = at::empty({bs, h}, expand_x.options().dtype(expand_x.scalar_type()));
+        if (expandX.scalar_type() != at::kInt) {
+            output = at::empty({bs, h}, expandX.options().dtype(expandX.scalar_type()));
         } else {
-            output = at::empty({bs, h}, expand_x.options().dtype(at::kBFloat16));
+            output = at::empty({bs, h}, expandX.options().dtype(at::kBFloat16));
         }
     }
     c10::optional<at::Tensor> nulltensor = c10::nullopt;
-    int64_t out_dtype = 0;
-    int64_t group_list_type = 0;
+    int64_t outDtype = 0;
+    int64_t groupListType = 0;
 
-    std::string comm_alg_str = std::string(comm_alg);
-    char *comm_alg_ptr = const_cast<char *>(comm_alg_str.c_str());
+    std::string commAlgStr = std::string(commAlg);
+    char *commAlgPtr = const_cast<char *>(commAlgStr.c_str());
 
-    ACLNN_CMD(aclnnMoeDistributeCombineV5, context, expand_x, expert_ids, assist_info_for_combine, ep_send_counts, expert_scales, tp_send_counts, x_active_mask,
-              nulltensor, nulltensor, nulltensor, expand_scales, shared_expert_x, elastic_info, ori_x, const_expert_alpha_1, const_expert_alpha_2, const_expert_v,
-              performance_info, ep_world_size, ep_rank_id, moe_expert_num, ccl_buffer_size, tp_world_size, tp_rank_id,
-              expert_shard_type, shared_expert_num, shared_expert_rank_num, global_bs_real, out_dtype, comm_quant_mode, group_list_type,
-              comm_alg_ptr, zero_expert_num, copy_expert_num, const_expert_num, output);
+    ACLNN_CMD(aclnnMoeDistributeCombineV5, context, expandX, expertIds, assistInfoForCombine, epSendCounts,
+              expertScales, tpSendCounts, xActiveMask, nulltensor, nulltensor, nulltensor, expandScales, sharedExpertX,
+              elasticInfo, oriX, constExpertAlpha1, constExpertAlpha2, constExpertV, performanceInfo, epWorldSize,
+              epRankId, moeExpertNum, cclBufferSize, tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+              sharedExpertRankNum, globalBsReal, outDtype, commQuantMode, groupListType, commAlgPtr, zeroExpertNum,
+              copyExpertNum, constExpertNum, output);
 
     return output;
 }
 // Bind the C++ function to Python module
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("npu_moe_distribute_combine", &npu_moe_distribute_combine, "moe_distribute_combine");
+    m.def("npu_moe_distribute_combine", &NpuMoeDistributeCombine, "moe_distribute_combine");
 }
-} // op_api
+} // namespace op_api

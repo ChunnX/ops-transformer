@@ -1,0 +1,108 @@
+# StemIndexer算子pytest测试框架
+
+## 功能说明
+
+基于pytest测试框架，实现StemIndexer算子的功能验证：
+
+- CPU侧：按StemIndexer设计方案实现golden。
+- NPU侧：先通过`torch.ops.custom.npu_stem_indexer_metadata`生成分核信息，再通过
+  `torch.ops.custom.npu_stem_indexer`获取实际结果（接口位于
+  `experimental/attention/stem_indexer/torch_ops_extension`，由 `custom_ops.py` 加载注册）。
+- 结果比对：比较`sparse_seq_len`，并只比较`sparse_indices`中`sparse_seq_len`范围内的有效前缀；尾部未定义区域不校验。
+
+## 用例来源
+
+白盒用例方案：
+
+```text
+test_stem_indexer_paramset.py
+excel/stem_indexer_cases.xlsx
+```
+
+case直接维护在`ENABLED_PARAMS`中，每条case前用注释记录覆盖点和设计原因。
+`excel/stem_indexer_cases.xlsx`记录同一批case，作为批量模式生成`.pt`文件的输入。
+
+当前共有100条正例case，其中single模式直接读取`ENABLED_PARAMS`，batch模式按QLI风格读取Excel并生成`.pt`文件。
+
+## 当前覆盖点
+
+- q/kv尾块，以及batch内`q_seq_lens=0`、`kv_seq_lens=0`、二者同时为0的空序列边界。
+- `initial_blocks=4`与`window_size=4`在不同`s2Valid`下的完全重叠、部分交集、无交集、短序列裁剪。
+- causal与non-causal路径。
+- TPD `alpha`无衰减、普通衰减、强衰减。
+- 动态TopK预算的small/medium/large prompt block分支。
+- S2方向`baseN=256`整块和尾块。
+- M方向`baseM=96`整块和尾块。
+- GQA组合：`q_heads`为32/64，`kv_heads`为2/4/8，覆盖6种合法组合。
+- 多batch变长、prefill/decode混合、单token decode，batch覆盖1到19、23到31、37、39等非2次幂和较大batch场景。
+- 长序列量级覆盖：`kv_seq_lens`和`num_prompt_tokens`覆盖32K/64K/128K/256K/1M token基准线；`q_seq_lens`以保留query chunk、decode和尾块覆盖目的为主，仅在张量规模可控的case中放大，同时保留小于32K的短序列、尾块和短路场景。
+- OAM `vbias`影响选块、`scoreScale=1/64`路径。
+- `num_prompt_tokens`不能整除`stem_block_size`。
+- 动态TopK small/medium/large分段边界：55/56/159/160 blocks。
+- `curS2Len == initial + dynamicTopK + window`和刚越过该边界的短路2路径。
+
+## Metadata说明
+
+`metadata`是StemIndexer主算子的前置输入，pytest正例和普通单case脚本都会先调用
+`stem_indexer_metadata`生成`int32[2048]`的metadata，再传给`stem_indexer`。
+当前case表只保留可运行并可与golden比对的正例。
+
+当前StemIndexer主算子使用BNSD布局，`q_seq_lens`和`kv_seq_lens`按batch实际长度传入，
+`num_prompt_tokens`按batch传入动态TopK预算基准长度，正例中保持`num_prompt_tokens >= kv_seq_lens`。
+测试用例不再单独维护额外token长度辅助字段；
+`qflat`、`kflat`的shape由`q_seq_lens`、`kv_seq_lens`的最大值推导。
+
+## 文件结构
+
+```text
+test_run.sh                         # 执行脚本
+test_stem_indexer_paramset.py        # single用例参数表
+stem_indexer_golden.py               # CPU侧golden实现
+result_compare_method.py             # sparse输出比较
+test_stem_indexer_single.py          # single主执行入口
+test_stem_indexer_batch.py           # batch主执行入口
+test_npu_stem_indexer.py             # 参考LI写法的普通单case脚本
+pytest.ini                           # pytest标记
+excel/stem_indexer_cases.xlsx        # batch用例表
+batch/stem_indexer_pt_save.py        # 读取Excel并生成pt
+batch/stem_indexer_pt_loadprocess.py # 读取pt并调用算子
+batch/replace_path.py                # 替换batch pytest中的pt路径
+```
+
+## 使用方法
+
+在当前pytest目录执行：
+
+```bash
+bash test_run.sh single
+```
+
+批量测试：
+
+```bash
+bash test_run.sh batch
+```
+
+复跑已生成的`.pt`文件：
+
+```bash
+python3 -m pytest test_stem_indexer_batch.py
+```
+
+batch模式流程与QLI保持一致：
+
+```text
+1. 读取excel/stem_indexer_cases.xlsx。
+2. 生成每条case的.pt文件，保存输入、metadata和CPU golden。
+3. pytest逐个读取.pt文件并调用NPU算子。
+4. 与.pt中保存的golden比对。
+5. 生成result.xlsx记录批量执行结果。
+```
+
+`.pt`文件和`result.xlsx`是本地生成产物，不需要提交。
+
+普通单case脚本可直接执行：
+
+```bash
+python3 test_npu_stem_indexer.py
+```

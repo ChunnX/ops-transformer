@@ -37,29 +37,77 @@ public:
 
 public:
     // isPerChnOut
-    void set_isPerChnOut(uint32_t value) { isPerChnOut = value; }
-    uint32_t get_isPerChnOut() const { return isPerChnOut; }
+    void set_isPerChnOut(uint32_t value)
+    {
+        isPerChnOut = value;
+    }
+    uint32_t get_isPerChnOut() const
+    {
+        return isPerChnOut;
+    }
     // isOutQuantTypeBf16
-    void set_isOutQuantTypeBf16(uint32_t value) { isOutQuantTypeBf16 = value; }
-    uint32_t get_isOutQuantTypeBf16() const { return isOutQuantTypeBf16; }
+    void set_isOutQuantTypeBf16(uint32_t value)
+    {
+        isOutQuantTypeBf16 = value;
+    }
+    uint32_t get_isOutQuantTypeBf16() const
+    {
+        return isOutQuantTypeBf16;
+    }
     // singleCoreSize
-    void set_singleCoreSize(uint32_t value) { singleCoreSize = value; }
-    uint32_t get_singleCoreSize() const { return singleCoreSize; }
+    void set_singleCoreSize(uint32_t value)
+    {
+        singleCoreSize = value;
+    }
+    uint32_t get_singleCoreSize() const
+    {
+        return singleCoreSize;
+    }
     // singleCoreLseSize
-    void set_singleCoreLseSize(uint32_t value) { singleCoreLseSize = value; }
-    uint32_t get_singleCoreLseSize() const { return singleCoreLseSize; }
+    void set_singleCoreLseSize(uint32_t value)
+    {
+        singleCoreLseSize = value;
+    }
+    uint32_t get_singleCoreLseSize() const
+    {
+        return singleCoreLseSize;
+    }
     // totalOutputSize
-    void set_totalOutputSize(int64_t value) { totalOutputSize = value; }
-    int64_t get_totalOutputSize() const { return totalOutputSize; }
+    void set_totalOutputSize(int64_t value)
+    {
+        totalOutputSize = value;
+    }
+    int64_t get_totalOutputSize() const
+    {
+        return totalOutputSize;
+    }
     // totalLseOutputSize
-    void set_totalLseOutputSize(int64_t value) { totalLseOutputSize = value; }
-    int64_t get_totalLseOutputSize() const { return totalLseOutputSize; }
+    void set_totalLseOutputSize(int64_t value)
+    {
+        totalLseOutputSize = value;
+    }
+    int64_t get_totalLseOutputSize() const
+    {
+        return totalLseOutputSize;
+    }
     // needInit
-    void set_needInit(uint32_t value) { needInit = value; }
-    uint32_t get_needInit() const { return needInit; }
+    void set_needInit(uint32_t value)
+    {
+        needInit = value;
+    }
+    uint32_t get_needInit() const
+    {
+        return needInit;
+    }
     // isBSNDOut
-    void set_isBSNDOut(uint32_t value) { isBSNDOut = value; }
-    uint32_t get_isBSNDOut() const { return isBSNDOut; }
+    void set_isBSNDOut(uint32_t value)
+    {
+        isBSNDOut = value;
+    }
+    uint32_t get_isBSNDOut() const
+    {
+        return isBSNDOut;
+    }
 };
 
 
@@ -110,131 +158,383 @@ public:
 
 public:
     // batchSize
-    void set_batchSize(uint32_t value) { batchSize = value; }
-    uint32_t get_batchSize() const { return batchSize; }
+    void set_batchSize(uint32_t value)
+    {
+        batchSize = value;
+    }
+    uint32_t get_batchSize() const
+    {
+        return batchSize;
+    }
     // seqSize
-    void set_seqSize(uint32_t value) { seqSize = value; }
-    uint32_t get_seqSize() const { return seqSize; }
+    void set_seqSize(uint32_t value)
+    {
+        seqSize = value;
+    }
+    uint32_t get_seqSize() const
+    {
+        return seqSize;
+    }
     // qSeqSize
-    void set_qSeqSize(uint32_t value) { qSeqSize = value; }
-    uint32_t get_qSeqSize() const { return qSeqSize; }
+    void set_qSeqSize(uint32_t value)
+    {
+        qSeqSize = value;
+    }
+    uint32_t get_qSeqSize() const
+    {
+        return qSeqSize;
+    }
     // headSize
-    void set_headSize(uint32_t value) { headSize = value; }
-    uint32_t get_headSize() const { return headSize; }
+    void set_headSize(uint32_t value)
+    {
+        headSize = value;
+    }
+    uint32_t get_headSize() const
+    {
+        return headSize;
+    }
     // headSizeV
-    void set_headSizeV(uint32_t value) { headSizeV = value; }
-    uint32_t get_headSizeV() const { return headSizeV; }
+    void set_headSizeV(uint32_t value)
+    {
+        headSizeV = value;
+    }
+    uint32_t get_headSizeV() const
+    {
+        return headSizeV;
+    }
     // blockSize
-    void set_blockSize(uint32_t value) { blockSize = value; }
-    uint32_t get_blockSize() const { return blockSize; }
+    void set_blockSize(uint32_t value)
+    {
+        blockSize = value;
+    }
+    uint32_t get_blockSize() const
+    {
+        return blockSize;
+    }
     // maxBlockNumPerBatch
-    void set_maxBlockNumPerBatch(uint32_t value) { maxBlockNumPerBatch = value; }
-    uint32_t get_maxBlockNumPerBatch() const { return maxBlockNumPerBatch; }
+    void set_maxBlockNumPerBatch(uint32_t value)
+    {
+        maxBlockNumPerBatch = value;
+    }
+    uint32_t get_maxBlockNumPerBatch() const
+    {
+        return maxBlockNumPerBatch;
+    }
     // maxBlockNumPerSeq
-    void set_maxBlockNumPerSeq(uint32_t value) { maxBlockNumPerSeq = value; }
-    uint32_t get_maxBlockNumPerSeq() const { return maxBlockNumPerSeq; }
+    void set_maxBlockNumPerSeq(uint32_t value)
+    {
+        maxBlockNumPerSeq = value;
+    }
+    uint32_t get_maxBlockNumPerSeq() const
+    {
+        return maxBlockNumPerSeq;
+    }
     // scaleValue
-    void set_scaleValue(float value) { scaleValue = value; }
-    float get_scaleValue() const { return scaleValue; }
+    void set_scaleValue(float value)
+    {
+        scaleValue = value;
+    }
+    float get_scaleValue() const
+    {
+        return scaleValue;
+    }
     // kvHeadNum
-    void set_kvHeadNum(uint32_t value) { kvHeadNum = value; }
-    uint32_t get_kvHeadNum() const { return kvHeadNum; }
+    void set_kvHeadNum(uint32_t value)
+    {
+        kvHeadNum = value;
+    }
+    uint32_t get_kvHeadNum() const
+    {
+        return kvHeadNum;
+    }
     // headNumRatio
-    void set_headNumRatio(uint32_t value) { headNumRatio = value; }
-    uint32_t get_headNumRatio() const { return headNumRatio; }
+    void set_headNumRatio(uint32_t value)
+    {
+        headNumRatio = value;
+    }
+    uint32_t get_headNumRatio() const
+    {
+        return headNumRatio;
+    }
     // qHeadNum
-    void set_qHeadNum(uint32_t value) { qHeadNum = value; }
-    uint32_t get_qHeadNum() const { return qHeadNum; }
+    void set_qHeadNum(uint32_t value)
+    {
+        qHeadNum = value;
+    }
+    uint32_t get_qHeadNum() const
+    {
+        return qHeadNum;
+    }
     // nNumOfQInOneGroup
-    void set_nNumOfQInOneGroup(uint32_t value) { nNumOfQInOneGroup = value; }
-    uint32_t get_nNumOfQInOneGroup() const { return nNumOfQInOneGroup; }
+    void set_nNumOfQInOneGroup(uint32_t value)
+    {
+        nNumOfQInOneGroup = value;
+    }
+    uint32_t get_nNumOfQInOneGroup() const
+    {
+        return nNumOfQInOneGroup;
+    }
     // batchContinuousFlag
-    void set_batchContinuousFlag(uint32_t value) { batchContinuousFlag = value; }
-    uint32_t get_batchContinuousFlag() const { return batchContinuousFlag; }
+    void set_batchContinuousFlag(uint32_t value)
+    {
+        batchContinuousFlag = value;
+    }
+    uint32_t get_batchContinuousFlag() const
+    {
+        return batchContinuousFlag;
+    }
     // pseShiftFlag
-    void set_pseShiftFlag(uint32_t value) { pseShiftFlag = value; }
-    uint32_t get_pseShiftFlag() const { return pseShiftFlag; }
+    void set_pseShiftFlag(uint32_t value)
+    {
+        pseShiftFlag = value;
+    }
+    uint32_t get_pseShiftFlag() const
+    {
+        return pseShiftFlag;
+    }
     // pseShiftB
-    void set_pseShiftB(uint32_t value) { pseShiftB = value; }
-    uint32_t get_pseShiftB() const { return pseShiftB; }
+    void set_pseShiftB(uint32_t value)
+    {
+        pseShiftB = value;
+    }
+    uint32_t get_pseShiftB() const
+    {
+        return pseShiftB;
+    }
     // pseShiftS
-    void set_pseShiftS(uint32_t value) { pseShiftS = value; }
-    uint32_t get_pseShiftS() const { return pseShiftS; }
+    void set_pseShiftS(uint32_t value)
+    {
+        pseShiftS = value;
+    }
+    uint32_t get_pseShiftS() const
+    {
+        return pseShiftS;
+    }
     // pseShiftS0
-    void set_pseShiftS0(uint32_t value) { pseShiftS0 = value; }
-    uint32_t get_pseShiftS0() const { return pseShiftS0; }
+    void set_pseShiftS0(uint32_t value)
+    {
+        pseShiftS0 = value;
+    }
+    uint32_t get_pseShiftS0() const
+    {
+        return pseShiftS0;
+    }
     // selectWithByteMaskTmpMinSize
-    void set_selectWithByteMaskTmpMinSize(uint32_t value) { selectWithByteMaskTmpMinSize = value; }
-    uint32_t get_selectWithByteMaskTmpMinSize() const { return selectWithByteMaskTmpMinSize; }
+    void set_selectWithByteMaskTmpMinSize(uint32_t value)
+    {
+        selectWithByteMaskTmpMinSize = value;
+    }
+    uint32_t get_selectWithByteMaskTmpMinSize() const
+    {
+        return selectWithByteMaskTmpMinSize;
+    }
     // actualLenQDims
-    void set_actualLenQDims(uint32_t value) { actualLenQDims = value; }
-    uint32_t get_actualLenQDims() const { return actualLenQDims; }
+    void set_actualLenQDims(uint32_t value)
+    {
+        actualLenQDims = value;
+    }
+    uint32_t get_actualLenQDims() const
+    {
+        return actualLenQDims;
+    }
     // actualLenDims
-    void set_actualLenDims(uint32_t value) { actualLenDims = value; }
-    uint32_t get_actualLenDims() const { return actualLenDims; }
+    void set_actualLenDims(uint32_t value)
+    {
+        actualLenDims = value;
+    }
+    uint32_t get_actualLenDims() const
+    {
+        return actualLenDims;
+    }
     // qPaddingFlag
-    void set_qPaddingFlag(uint32_t value) { qPaddingFlag = value; }
-    uint32_t get_qPaddingFlag() const { return qPaddingFlag; }
+    void set_qPaddingFlag(uint32_t value)
+    {
+        qPaddingFlag = value;
+    }
+    uint32_t get_qPaddingFlag() const
+    {
+        return qPaddingFlag;
+    }
     // kvPaddingFlag
-    void set_kvPaddingFlag(uint32_t value) { kvPaddingFlag = value; }
-    uint32_t get_kvPaddingFlag() const { return kvPaddingFlag; }
+    void set_kvPaddingFlag(uint32_t value)
+    {
+        kvPaddingFlag = value;
+    }
+    uint32_t get_kvPaddingFlag() const
+    {
+        return kvPaddingFlag;
+    }
     // msdIterNum
-    void set_msdIterNum(uint32_t value) { msdIterNum = value; }
-    uint32_t get_msdIterNum() const { return msdIterNum; }
+    void set_msdIterNum(uint32_t value)
+    {
+        msdIterNum = value;
+    }
+    uint32_t get_msdIterNum() const
+    {
+        return msdIterNum;
+    }
     // l2CacheOffFlag
-    void set_l2CacheOffFlag(uint32_t value) { l2CacheOffFlag = value; }
-    uint32_t get_l2CacheOffFlag() const { return l2CacheOffFlag; }
+    void set_l2CacheOffFlag(uint32_t value)
+    {
+        l2CacheOffFlag = value;
+    }
+    uint32_t get_l2CacheOffFlag() const
+    {
+        return l2CacheOffFlag;
+    }
     // antiquantPerTensorFlag
-    void set_antiquantPerTensorFlag(uint32_t value) { antiquantPerTensorFlag = value; }
-    uint32_t get_antiquantPerTensorFlag() const { return antiquantPerTensorFlag; }
+    void set_antiquantPerTensorFlag(uint32_t value)
+    {
+        antiquantPerTensorFlag = value;
+    }
+    uint32_t get_antiquantPerTensorFlag() const
+    {
+        return antiquantPerTensorFlag;
+    }
     // antiquantPerHeadFlag
-    void set_antiquantPerHeadFlag(uint32_t value) { antiquantPerHeadFlag = value; }
-    uint32_t get_antiquantPerHeadFlag() const { return antiquantPerHeadFlag; }
+    void set_antiquantPerHeadFlag(uint32_t value)
+    {
+        antiquantPerHeadFlag = value;
+    }
+    uint32_t get_antiquantPerHeadFlag() const
+    {
+        return antiquantPerHeadFlag;
+    }
     // antiquantParamsInPagedAttentionFlag
-    void set_antiquantParamsInPagedAttentionFlag(uint32_t value) { antiquantParamsInPagedAttentionFlag = value; }
-    uint32_t get_antiquantParamsInPagedAttentionFlag() const { return antiquantParamsInPagedAttentionFlag; }
+    void set_antiquantParamsInPagedAttentionFlag(uint32_t value)
+    {
+        antiquantParamsInPagedAttentionFlag = value;
+    }
+    uint32_t get_antiquantParamsInPagedAttentionFlag() const
+    {
+        return antiquantParamsInPagedAttentionFlag;
+    }
     // attenMaskFlag
-    void set_attenMaskFlag(uint32_t value) { attenMaskFlag = value; }
-    uint32_t get_attenMaskFlag() const { return attenMaskFlag; }
+    void set_attenMaskFlag(uint32_t value)
+    {
+        attenMaskFlag = value;
+    }
+    uint32_t get_attenMaskFlag() const
+    {
+        return attenMaskFlag;
+    }
     // attenMaskBatch
-    void set_attenMaskBatch(uint32_t value) { attenMaskBatch = value; }
-    uint32_t get_attenMaskBatch() const { return attenMaskBatch; }
+    void set_attenMaskBatch(uint32_t value)
+    {
+        attenMaskBatch = value;
+    }
+    uint32_t get_attenMaskBatch() const
+    {
+        return attenMaskBatch;
+    }
     // attenMaskQSize
-    void set_attenMaskQSize(uint32_t value) { attenMaskQSize = value; }
-    uint32_t get_attenMaskQSize() const { return attenMaskQSize; }
+    void set_attenMaskQSize(uint32_t value)
+    {
+        attenMaskQSize = value;
+    }
+    uint32_t get_attenMaskQSize() const
+    {
+        return attenMaskQSize;
+    }
     // attenMaskSize
-    void set_attenMaskSize(uint32_t value) { attenMaskSize = value; }
-    uint32_t get_attenMaskSize() const { return attenMaskSize; }
+    void set_attenMaskSize(uint32_t value)
+    {
+        attenMaskSize = value;
+    }
+    uint32_t get_attenMaskSize() const
+    {
+        return attenMaskSize;
+    }
     // softmaxLseFlag
-    void set_softmaxLseFlag(uint32_t value) { softmaxLseFlag = value; }
-    uint32_t get_softmaxLseFlag() const { return softmaxLseFlag; }
+    void set_softmaxLseFlag(uint32_t value)
+    {
+        softmaxLseFlag = value;
+    }
+    uint32_t get_softmaxLseFlag() const
+    {
+        return softmaxLseFlag;
+    }
     // totalBlockNum
-    void set_totalBlockNum(uint32_t value) { totalBlockNum = value; }
-    uint32_t get_totalBlockNum() const { return totalBlockNum; }
+    void set_totalBlockNum(uint32_t value)
+    {
+        totalBlockNum = value;
+    }
+    uint32_t get_totalBlockNum() const
+    {
+        return totalBlockNum;
+    }
     // paKvShapeType
-    void set_paKvShapeType(uint32_t value) { paKvShapeType = value; }
-    uint32_t get_paKvShapeType() const { return paKvShapeType; }
+    void set_paKvShapeType(uint32_t value)
+    {
+        paKvShapeType = value;
+    }
+    uint32_t get_paKvShapeType() const
+    {
+        return paKvShapeType;
+    }
     // antiqSeqSize
-    void set_antiqSeqSize(uint32_t value) { antiqSeqSize = value; }
-    uint32_t get_antiqSeqSize() const { return antiqSeqSize; }
+    void set_antiqSeqSize(uint32_t value)
+    {
+        antiqSeqSize = value;
+    }
+    uint32_t get_antiqSeqSize() const
+    {
+        return antiqSeqSize;
+    }
     // preToken
-    void set_preToken(int32_t value) { preToken = value; }
-    int32_t get_preToken() const { return preToken; }
+    void set_preToken(int32_t value)
+    {
+        preToken = value;
+    }
+    int32_t get_preToken() const
+    {
+        return preToken;
+    }
     // nextToken
-    void set_nextToken(int32_t value) { nextToken = value; }
-    int32_t get_nextToken() const { return nextToken; }
+    void set_nextToken(int32_t value)
+    {
+        nextToken = value;
+    }
+    int32_t get_nextToken() const
+    {
+        return nextToken;
+    }
     // isRowInvalid
-    void set_isRowInvalid(uint32_t value) { isRowInvalid = value; }
-    uint32_t get_isRowInvalid() const { return isRowInvalid; }
+    void set_isRowInvalid(uint32_t value)
+    {
+        isRowInvalid = value;
+    }
+    uint32_t get_isRowInvalid() const
+    {
+        return isRowInvalid;
+    }
     // sparseMode
-    void set_sparseMode(uint32_t value) { sparseMode = value; }
-    uint32_t get_sparseMode() const { return sparseMode; }
+    void set_sparseMode(uint32_t value)
+    {
+        sparseMode = value;
+    }
+    uint32_t get_sparseMode() const
+    {
+        return sparseMode;
+    }
     // slidingFlag
-    void set_slidingFlag(uint32_t value) { slidingFlag = value; }
-    uint32_t get_slidingFlag() const { return slidingFlag; }
+    void set_slidingFlag(uint32_t value)
+    {
+        slidingFlag = value;
+    }
+    uint32_t get_slidingFlag() const
+    {
+        return slidingFlag;
+    }
     // windowSize
-    void set_windowSize(int64_t value) { windowSize = value; }
-    int64_t get_windowSize() const { return windowSize; }
+    void set_windowSize(int64_t value)
+    {
+        windowSize = value;
+    }
+    int64_t get_windowSize() const
+    {
+        return windowSize;
+    }
 };
 
 
@@ -245,9 +545,18 @@ public:
     uint32_t coreSposStartRegbase[66];
 
 public:
-    uint32_t *get_coreSidxEnd() { return coreSidxEnd; }
-    uint32_t *get_coreSidxEndRegbase() { return coreSidxEndRegbase; }
-    uint32_t *get_coreSposStartRegbase() { return coreSposStartRegbase; }
+    uint32_t *get_coreSidxEnd()
+    {
+        return coreSidxEnd;
+    }
+    uint32_t *get_coreSidxEndRegbase()
+    {
+        return coreSidxEndRegbase;
+    }
+    uint32_t *get_coreSposStartRegbase()
+    {
+        return coreSposStartRegbase;
+    }
 };
 
 class IncreFlashAttentionSplitCoreParams {
@@ -268,37 +577,103 @@ public:
 
 public:
     // headSplit
-    void set_headSplit(uint32_t value) { headSplit = value; }
-    uint32_t get_headSplit() const { return headSplit; }
+    void set_headSplit(uint32_t value)
+    {
+        headSplit = value;
+    }
+    uint32_t get_headSplit() const
+    {
+        return headSplit;
+    }
     // maskHeadStride
-    void set_maskHeadStride(uint32_t value) { maskHeadStride = value; }
-    uint32_t get_maskHeadStride() const { return maskHeadStride; }
+    void set_maskHeadStride(uint32_t value)
+    {
+        maskHeadStride = value;
+    }
+    uint32_t get_maskHeadStride() const
+    {
+        return maskHeadStride;
+    }
     // maskBatchStride
-    void set_maskBatchStride(uint32_t value) { maskBatchStride = value; }
-    uint32_t get_maskBatchStride() const { return maskBatchStride; }
+    void set_maskBatchStride(uint32_t value)
+    {
+        maskBatchStride = value;
+    }
+    uint32_t get_maskBatchStride() const
+    {
+        return maskBatchStride;
+    }
     // qTokens
-    void set_qTokens(uint32_t value) { qTokens = value; }
-    uint32_t get_qTokens() const { return qTokens; }
+    void set_qTokens(uint32_t value)
+    {
+        qTokens = value;
+    }
+    uint32_t get_qTokens() const
+    {
+        return qTokens;
+    }
     // isTriu
-    void set_isTriu(uint32_t value) { isTriu = value; }
-    uint32_t get_isTriu() const { return isTriu; }
+    void set_isTriu(uint32_t value)
+    {
+        isTriu = value;
+    }
+    uint32_t get_isTriu() const
+    {
+        return isTriu;
+    }
     // maxSeqlen
-    void set_maxSeqlen(uint32_t value) { maxSeqlen = value; }
-    uint32_t get_maxSeqlen() const { return maxSeqlen; }
+    void set_maxSeqlen(uint32_t value)
+    {
+        maxSeqlen = value;
+    }
+    uint32_t get_maxSeqlen() const
+    {
+        return maxSeqlen;
+    }
     // totalQBlockNum
-    void set_totalQBlockNum(uint32_t value) { totalQBlockNum = value; }
-    uint32_t get_totalQBlockNum() const { return totalQBlockNum; }
+    void set_totalQBlockNum(uint32_t value)
+    {
+        totalQBlockNum = value;
+    }
+    uint32_t get_totalQBlockNum() const
+    {
+        return totalQBlockNum;
+    }
     // seqStepQ
-    void set_seqStepQ(uint32_t value) { seqStepQ = value; }
-    uint32_t get_seqStepQ() const { return seqStepQ; }
+    void set_seqStepQ(uint32_t value)
+    {
+        seqStepQ = value;
+    }
+    uint32_t get_seqStepQ() const
+    {
+        return seqStepQ;
+    }
     // seqStepKv
-    void set_seqStepKv(uint32_t value) { seqStepKv = value; }
-    uint32_t get_seqStepKv() const { return seqStepKv; }
+    void set_seqStepKv(uint32_t value)
+    {
+        seqStepKv = value;
+    }
+    uint32_t get_seqStepKv() const
+    {
+        return seqStepKv;
+    }
 
-    const uint32_t* get_startBlk() const { return startBlk; }
-    const uint32_t* get_endBlk() const { return endBlk; }
-    const uint32_t* get_startBatch() const { return startBatch; }
-    const uint32_t* get_endBatch() const { return endBatch; }
+    const uint32_t *get_startBlk() const
+    {
+        return startBlk;
+    }
+    const uint32_t *get_endBlk() const
+    {
+        return endBlk;
+    }
+    const uint32_t *get_startBatch() const
+    {
+        return startBatch;
+    }
+    const uint32_t *get_endBatch() const
+    {
+        return endBatch;
+    }
 };
 
 class IncreFlashAttentionSingleCoreParams {
@@ -315,32 +690,86 @@ public:
 
 public:
     // sInnerLoopTimes
-    void set_sInnerLoopTimes(uint32_t value) { sInnerLoopTimes = value; }
-    uint32_t get_sInnerLoopTimes() const { return sInnerLoopTimes; }
+    void set_sInnerLoopTimes(uint32_t value)
+    {
+        sInnerLoopTimes = value;
+    }
+    uint32_t get_sInnerLoopTimes() const
+    {
+        return sInnerLoopTimes;
+    }
     // singleProcessSInnerSize
-    void set_singleProcessSInnerSize(uint32_t value) { singleProcessSInnerSize = value; }
-    uint32_t get_singleProcessSInnerSize() const { return singleProcessSInnerSize; }
+    void set_singleProcessSInnerSize(uint32_t value)
+    {
+        singleProcessSInnerSize = value;
+    }
+    uint32_t get_singleProcessSInnerSize() const
+    {
+        return singleProcessSInnerSize;
+    }
     // singleProcessSInnerSizeTail
-    void set_singleProcessSInnerSizeTail(uint32_t value) { singleProcessSInnerSizeTail = value; }
-    uint32_t get_singleProcessSInnerSizeTail() const { return singleProcessSInnerSizeTail; }
+    void set_singleProcessSInnerSizeTail(uint32_t value)
+    {
+        singleProcessSInnerSizeTail = value;
+    }
+    uint32_t get_singleProcessSInnerSizeTail() const
+    {
+        return singleProcessSInnerSizeTail;
+    }
     // usedCoreNum
-    void set_usedCoreNum(uint32_t value) { usedCoreNum = value; }
-    uint32_t get_usedCoreNum() const { return usedCoreNum; }
+    void set_usedCoreNum(uint32_t value)
+    {
+        usedCoreNum = value;
+    }
+    uint32_t get_usedCoreNum() const
+    {
+        return usedCoreNum;
+    }
     // formerCoreNum
-    void set_formerCoreNum(uint32_t value) { formerCoreNum = value; }
-    uint32_t get_formerCoreNum() const { return formerCoreNum; }
+    void set_formerCoreNum(uint32_t value)
+    {
+        formerCoreNum = value;
+    }
+    uint32_t get_formerCoreNum() const
+    {
+        return formerCoreNum;
+    }
     // blockSplitBn2Range
-    void set_blockSplitBn2Range(uint32_t value) { blockSplitBn2Range = value; }
-    uint32_t get_blockSplitBn2Range() const { return blockSplitBn2Range; }
+    void set_blockSplitBn2Range(uint32_t value)
+    {
+        blockSplitBn2Range = value;
+    }
+    uint32_t get_blockSplitBn2Range() const
+    {
+        return blockSplitBn2Range;
+    }
     // tailSplitedBatchRange
-    void set_tailSplitedBatchRange(uint32_t value) { tailSplitedBatchRange = value; }
-    uint32_t get_tailSplitedBatchRange() const { return tailSplitedBatchRange; }
+    void set_tailSplitedBatchRange(uint32_t value)
+    {
+        tailSplitedBatchRange = value;
+    }
+    uint32_t get_tailSplitedBatchRange() const
+    {
+        return tailSplitedBatchRange;
+    }
     // groupSplitSize
-    void set_groupSplitSize(uint32_t value) { groupSplitSize = value; }
-    uint32_t get_groupSplitSize() const { return groupSplitSize; }
+    void set_groupSplitSize(uint32_t value)
+    {
+        groupSplitSize = value;
+    }
+    uint32_t get_groupSplitSize() const
+    {
+        return groupSplitSize;
+    }
     // s1SplitSize
-    void set_s1SplitSize(uint32_t value) { s1SplitSize = value; }
-    uint32_t get_s1SplitSize() const { return s1SplitSize; }
+    void set_s1SplitSize(uint32_t value)
+    {
+        s1SplitSize = value;
+    }
+    uint32_t get_s1SplitSize() const
+    {
+        return s1SplitSize;
+    }
 };
 
 
@@ -351,11 +780,23 @@ public:
 
 public:
     // mmResUbSize
-    void set_mmResUbSize(uint32_t value) { mmResUbSize = value; }
-    uint32_t get_mmResUbSize() const { return mmResUbSize; }
+    void set_mmResUbSize(uint32_t value)
+    {
+        mmResUbSize = value;
+    }
+    uint32_t get_mmResUbSize() const
+    {
+        return mmResUbSize;
+    }
     // bmm2ResUbSize
-    void set_bmm2ResUbSize(uint32_t value) { bmm2ResUbSize = value; }
-    uint32_t get_bmm2ResUbSize() const { return bmm2ResUbSize; }
+    void set_bmm2ResUbSize(uint32_t value)
+    {
+        bmm2ResUbSize = value;
+    }
+    uint32_t get_bmm2ResUbSize() const
+    {
+        return bmm2ResUbSize;
+    }
 };
 
 class IncreFlashAttentionSplitKVParams {
@@ -367,86 +808,164 @@ public:
 
 public:
     // s2
-    void set_s2(uint32_t value) { s2 = value; }
-    uint32_t get_s2() const { return s2; }
+    void set_s2(uint32_t value)
+    {
+        s2 = value;
+    }
+    uint32_t get_s2() const
+    {
+        return s2;
+    }
     // sInnerLoopSize
-    void set_sInnerLoopSize(uint32_t value) { sInnerLoopSize = value; }
-    uint32_t get_sInnerLoopSize() const { return sInnerLoopSize; }
+    void set_sInnerLoopSize(uint32_t value)
+    {
+        sInnerLoopSize = value;
+    }
+    uint32_t get_sInnerLoopSize() const
+    {
+        return sInnerLoopSize;
+    }
     // accumOutSize
-    void set_accumOutSize(uint32_t value) { accumOutSize = value; }
-    uint32_t get_accumOutSize() const { return accumOutSize; }
+    void set_accumOutSize(uint32_t value)
+    {
+        accumOutSize = value;
+    }
+    uint32_t get_accumOutSize() const
+    {
+        return accumOutSize;
+    }
     // logSumExpSize
-    void set_logSumExpSize(uint32_t value) { logSumExpSize = value; }
-    uint32_t get_logSumExpSize() const { return logSumExpSize; }
+    void set_logSumExpSize(uint32_t value)
+    {
+        logSumExpSize = value;
+    }
+    uint32_t get_logSumExpSize() const
+    {
+        return logSumExpSize;
+    }
 };
 
 class IncreFlashAttentionTilingData {
-public:    
-    IncreFlashAttentionBaseParams baseParams; 
-    IncreFlashAttentionSplitKVParams splitKVParams;             
-    IncreFlashAttentionCoreParams increFlashAttentionCoreParams;                      
-    IncreFlashAttentionSingleCoreParams increFlashAttentionSingleCoreParams;               
-    IncreFlashAttentionSingleCoreTensorSize increFlashAttentionSingleCoreTensorSize;               
-    IncreFlashAttentionInitOutputParams outputParams;                                    
+public:
+    IncreFlashAttentionBaseParams baseParams;
+    IncreFlashAttentionSplitKVParams splitKVParams;
+    IncreFlashAttentionCoreParams increFlashAttentionCoreParams;
+    IncreFlashAttentionSingleCoreParams increFlashAttentionSingleCoreParams;
+    IncreFlashAttentionSingleCoreTensorSize increFlashAttentionSingleCoreTensorSize;
+    IncreFlashAttentionInitOutputParams outputParams;
 };
 
 class IncreFlashAttentionTilingDataPrefix {
 public:
-    IncreFlashAttentionTilingData base; 
-    uint64_t prefixAttenOutOffset;     
-    uint64_t userPromptAttenOutOffset; 
-    uint64_t tmpLseOffset;             
-    uint64_t prefixLen;                      
-    uint32_t formerCoreNum;               
-    uint32_t blockSplitBn2Range;          
-    uint32_t tailSplitedBatchRange;       
-    uint32_t usedCoreNum;                  
-    uint32_t batchSizeQ;                      
+    IncreFlashAttentionTilingData base;
+    uint64_t prefixAttenOutOffset;
+    uint64_t userPromptAttenOutOffset;
+    uint64_t tmpLseOffset;
+    uint64_t prefixLen;
+    uint32_t formerCoreNum;
+    uint32_t blockSplitBn2Range;
+    uint32_t tailSplitedBatchRange;
+    uint32_t usedCoreNum;
+    uint32_t batchSizeQ;
 
 public:
     // prefixAttenOutOffset
-    void set_prefixAttenOutOffset(uint64_t value) { prefixAttenOutOffset = value; }
-    uint64_t get_prefixAttenOutOffset() const { return prefixAttenOutOffset; }
+    void set_prefixAttenOutOffset(uint64_t value)
+    {
+        prefixAttenOutOffset = value;
+    }
+    uint64_t get_prefixAttenOutOffset() const
+    {
+        return prefixAttenOutOffset;
+    }
     // userPromptAttenOutOffset
-    void set_userPromptAttenOutOffset(uint64_t value) { userPromptAttenOutOffset = value; }
-    uint64_t get_userPromptAttenOutOffset() const { return userPromptAttenOutOffset; }
+    void set_userPromptAttenOutOffset(uint64_t value)
+    {
+        userPromptAttenOutOffset = value;
+    }
+    uint64_t get_userPromptAttenOutOffset() const
+    {
+        return userPromptAttenOutOffset;
+    }
     // tmpLseOffset
-    void set_tmpLseOffset(uint64_t value) { tmpLseOffset = value; }
-    uint64_t get_tmpLseOffset() const { return tmpLseOffset; }
+    void set_tmpLseOffset(uint64_t value)
+    {
+        tmpLseOffset = value;
+    }
+    uint64_t get_tmpLseOffset() const
+    {
+        return tmpLseOffset;
+    }
     // prefixLen
-    void set_prefixLen(uint64_t value) { prefixLen = value; }
-    uint64_t get_prefixLen() const { return prefixLen; }
+    void set_prefixLen(uint64_t value)
+    {
+        prefixLen = value;
+    }
+    uint64_t get_prefixLen() const
+    {
+        return prefixLen;
+    }
     // formerCoreNum
-    void set_formerCoreNum(uint32_t value) { formerCoreNum = value; }
-    uint32_t get_formerCoreNum() const { return formerCoreNum; }
+    void set_formerCoreNum(uint32_t value)
+    {
+        formerCoreNum = value;
+    }
+    uint32_t get_formerCoreNum() const
+    {
+        return formerCoreNum;
+    }
     // blockSplitBn2Range
-    void set_blockSplitBn2Range(uint32_t value) { blockSplitBn2Range = value; }
-    uint32_t get_blockSplitBn2Range() const { return blockSplitBn2Range; }
+    void set_blockSplitBn2Range(uint32_t value)
+    {
+        blockSplitBn2Range = value;
+    }
+    uint32_t get_blockSplitBn2Range() const
+    {
+        return blockSplitBn2Range;
+    }
     // tailSplitedBatchRange
-    void set_tailSplitedBatchRange(uint32_t value) { tailSplitedBatchRange = value; }
-    uint32_t get_tailSplitedBatchRange() const { return tailSplitedBatchRange; }
+    void set_tailSplitedBatchRange(uint32_t value)
+    {
+        tailSplitedBatchRange = value;
+    }
+    uint32_t get_tailSplitedBatchRange() const
+    {
+        return tailSplitedBatchRange;
+    }
     // usedCoreNum
-    void set_usedCoreNum(uint32_t value) { usedCoreNum = value; }
-    uint32_t get_usedCoreNum() const { return usedCoreNum; }
+    void set_usedCoreNum(uint32_t value)
+    {
+        usedCoreNum = value;
+    }
+    uint32_t get_usedCoreNum() const
+    {
+        return usedCoreNum;
+    }
     // batchSizeQ
-    void set_batchSizeQ(uint32_t value) { batchSizeQ = value; }
-    uint32_t get_batchSizeQ() const { return batchSizeQ; }
+    void set_batchSizeQ(uint32_t value)
+    {
+        batchSizeQ = value;
+    }
+    uint32_t get_batchSizeQ() const
+    {
+        return batchSizeQ;
+    }
 };
 
 class IncreFlashAttentionTilingDataV2 {
 public:
-    IncreFlashAttentionTilingData tilingBase;                                      
+    IncreFlashAttentionTilingData tilingBase;
 };
 
 class IncreFlashAttentionTilingAtbDataV2 {
 public:
-    IncreFlashAttentionBaseParams tilingBase; 
-    IncreFlashAttentionSplitCoreParams tilingPerCore;                                      
+    IncreFlashAttentionBaseParams tilingBase;
+    IncreFlashAttentionSplitCoreParams tilingPerCore;
 };
 
 class IncreFlashAttentionEmptyInputTilingData {
 public:
-    IncreFlashAttentionInitOutputParams outputParams;                                    
+    IncreFlashAttentionInitOutputParams outputParams;
 };
 
 } // namespace optiling

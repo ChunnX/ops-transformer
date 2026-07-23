@@ -150,7 +150,7 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     OP_CHECK_COMM_INPUT(workspaceSize, executor);
     L2_DFX_PHASE_1(aclnnMoeFinalizeRoutingV2,
         DFX_IN(expandedX, expandedRowIdx, x1Optional, x2Optional, biasOptional,
-            scalesOptional, expertIdxOptional, dropPadMode),
+               scalesOptional, expertIdxOptional, dropPadMode),
                    DFX_OUT(out));
 
     auto uniqueExecutor = CREATE_EXECUTOR();
@@ -208,7 +208,8 @@ ACLNN_API aclnnStatus aclnnMoeFinalizeRoutingV2GetWorkspaceSize(
     auto out_ = l0op::MoeFinalizeRoutingV2(expandedXContiguous, expandedRowIdxContiguous, x1Contiguous,
                                            x2Contiguous, biasContiguous, scalesContiguous,
                                            expertIdxContiguous, nullptr, nullptr, nullptr, nullptr,
-                                           dropPadMode, nullptr, nullptr, nullptr, out, uniqueExecutor.get());
+                                           dropPadMode, nullptr, nullptr, nullptr,
+                                           1, out, uniqueExecutor.get());
     CHECK_RET(out_ != nullptr, ACLNN_ERR_INNER_NULLPTR);
 
     // copyout结果，如果出参out是非连续Tensor，需要把计算完的连续Tensor转非连续

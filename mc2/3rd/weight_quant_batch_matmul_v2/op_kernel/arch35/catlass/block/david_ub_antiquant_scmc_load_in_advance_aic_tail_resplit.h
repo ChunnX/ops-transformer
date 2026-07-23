@@ -32,31 +32,27 @@ using AscendC::Std::get;
 
 namespace Mc2WeightQuantBatchMatmulV2::Arch35::Catlass {
 
-template <
-    TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = false, LayoutMode LAYOUT = LayoutMode::NONE,
-    bool IBSHARE = false>
+template <TPosition POSITION, CubeFormat FORMAT, typename TYPE, bool ISTRANS = false,
+          LayoutMode LAYOUT = LayoutMode::NONE, bool IBSHARE = false>
 struct MatmulL1GmType : matmul::MatmulType<POSITION, FORMAT, TYPE, ISTRANS, LAYOUT, IBSHARE> {
     constexpr static TPosition srcPos = TPosition::GM;
 };
 
-template <
-    int Stages, typename TileShapeUb, typename TileShapeReg, int32_t SubBlockNum, uint8_t StageWeightIn,
-    uint8_t StageVfOut, int32_t Kub_, typename KernelSchedule, typename TileShapeL1, typename TileShapeL0,
-    typename DtypeA, typename StrideA, typename DtypeB, typename StrideBOptionalTuple, typename DtypeBias,
-    typename StrideBiasGm, typename DtypeC, typename StrideC>
-struct BlockMmad<
-    MainloopDavidWqbmmUbAntiquantScmc<
-        Stages, TileShapeUb, TileShapeReg, AscendC::AIC, SubBlockNum, StageWeightIn, StageVfOut, Kub_, KernelSchedule>,
-    TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB, StrideBOptionalTuple, DtypeBias, StrideBiasGm, DtypeC, StrideC>
-    : public DavidUbAntiquantScmc<
-          Stages, TileShapeUb, TileShapeReg, AscendC::AIC, SubBlockNum, StageWeightIn, StageVfOut, Kub_, KernelSchedule,
-          TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB, StrideBOptionalTuple, DtypeBias, StrideBiasGm, DtypeC,
-          StrideC> {
+template <int Stages, typename TileShapeUb, typename TileShapeReg, int32_t SubBlockNum, uint8_t StageWeightIn,
+          uint8_t StageVfOut, int32_t Kub_, typename KernelSchedule, typename TileShapeL1, typename TileShapeL0,
+          typename DtypeA, typename StrideA, typename DtypeB, typename StrideBOptionalTuple, typename DtypeBias,
+          typename StrideBiasGm, typename DtypeC, typename StrideC>
+struct BlockMmad<MainloopDavidWqbmmUbAntiquantScmc<Stages, TileShapeUb, TileShapeReg, AscendC::AIC, SubBlockNum,
+                                                   StageWeightIn, StageVfOut, Kub_, KernelSchedule>,
+                 TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB, StrideBOptionalTuple, DtypeBias, StrideBiasGm,
+                 DtypeC, StrideC>
+    : public DavidUbAntiquantScmc<Stages, TileShapeUb, TileShapeReg, AscendC::AIC, SubBlockNum, StageWeightIn,
+                                  StageVfOut, Kub_, KernelSchedule, TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB,
+                                  StrideBOptionalTuple, DtypeBias, StrideBiasGm, DtypeC, StrideC> {
 public:
-    using Base = DavidUbAntiquantScmc<
-        Stages, TileShapeUb, TileShapeReg, AscendC::AIC, SubBlockNum, StageWeightIn, StageVfOut, Kub_, KernelSchedule,
-        TileShapeL1, TileShapeL0, DtypeA, StrideA, DtypeB, StrideBOptionalTuple, DtypeBias, StrideBiasGm, DtypeC,
-        StrideC>;
+    using Base = DavidUbAntiquantScmc<Stages, TileShapeUb, TileShapeReg, AscendC::AIC, SubBlockNum, StageWeightIn,
+                                      StageVfOut, Kub_, KernelSchedule, TileShapeL1, TileShapeL0, DtypeA, StrideA,
+                                      DtypeB, StrideBOptionalTuple, DtypeBias, StrideBiasGm, DtypeC, StrideC>;
     using Arguments = typename Base::Arguments;
     using NonVoidStrideBias = typename Base::NonVoidStrideBias;
 
@@ -88,9 +84,9 @@ private:
 
 public:
     struct Params {
-        __gm__ DtypeA* aGmAddr = nullptr;
-        __gm__ DtypeC* cGmAddr = nullptr;
-        __gm__ DtypeBias* biasGmAddr = nullptr;
+        __gm__ DtypeA *aGmAddr = nullptr;
+        __gm__ DtypeC *cGmAddr = nullptr;
+        __gm__ DtypeBias *biasGmAddr = nullptr;
 
         TileShapeL1 tileShapeL1;
 
@@ -122,24 +118,24 @@ public:
         bool fullloadBias;
     };
 
-    using PipelineTuple = AscendC::Std::tuple<
-        PipelineStageSingleCoreCopyInAdvance<Hardware::GM, Hardware::L1, Stages>, /*x*/
-        PipelineStageSingleCoreCopyInAdvance<Hardware::GM, Hardware::L1, Stages> /*bias*/>;
-    using PipelineStateTuple = AscendC::Std::tuple<
-        PipelineState<Stages>, /*x gm2l1 Load*/
-        PipelineState<Stages>, /*x gm2l1 compute*/
-        PipelineState<Stages>, /*w aiv2aic*/
-        PipelineState<Stages>, /*bias gm2l1 Load*/
-        PipelineState<Stages> /*bias gm2l1 compute*/>;
+    using PipelineTuple =
+        AscendC::Std::tuple<PipelineStageSingleCoreCopyInAdvance<Hardware::GM, Hardware::L1, Stages>, /*x*/
+                            PipelineStageSingleCoreCopyInAdvance<Hardware::GM, Hardware::L1, Stages> /*bias*/>;
+    using PipelineStateTuple = AscendC::Std::tuple<PipelineState<Stages>, /*x gm2l1 Load*/
+                                                   PipelineState<Stages>, /*x gm2l1 compute*/
+                                                   PipelineState<Stages>, /*w aiv2aic*/
+                                                   PipelineState<Stages>, /*bias gm2l1 Load*/
+                                                   PipelineState<Stages> /*bias gm2l1 compute*/>;
     using PipelineStateAiv2Aic = typename AscendC::Std::tuple_element<Stages, PipelineStateTuple>::type;
     using PipelineAiv2Aic = PipelineStageMixCore<PIPE_MTE3, PIPE_MTE1, SubBlockNum>;
 
 public:
     DEVICE BlockMmad()
-    {}
+    {
+    }
 
     template <class ProblemShape, typename TilingData>
-    DEVICE static Params GetParams(ProblemShape const& problemShape, Arguments const& args, TilingData const& tiling)
+    DEVICE static Params GetParams(ProblemShape const &problemShape, Arguments const &args, TilingData const &tiling)
     {
         decltype(auto) sizeM = get<0>(problemShape);
         decltype(auto) sizeN = get<1>(problemShape);
@@ -158,23 +154,21 @@ public:
             .tileShapeL1 = AscendC::Std::make_tuple(mL1, nL1, kaL1, kbL1),
 
             .strideXGm = args.strideA,
-            .strideXL1 = Base::isTransA ? /*m1,k1,k0,m0*/ AscendC::Std::make_tuple(
-                                              kaL1 * 16U, _256{}, _16{}, _1{},
-                                              static_cast<uint32_t>(
-                                                  256 * 1024 / sizeof(DtypeA) - nL1 * kbL1 -
-                                                  (tiling.hasBias ? 4 * 1024 / sizeof(DtypeA) : 0))) :
-                                          /*k1,m1,m0,k0*/
-                                          AscendC::Std::make_tuple(
-                                 mL1 * 16U, _256{}, _16{}, _1{},
-                                 static_cast<uint32_t>(
-                                     256 * 1024 / sizeof(DtypeA) - nL1 * kbL1 -
-                                     (tiling.hasBias ? 4 * 1024 / sizeof(DtypeA) : 0))),
+            .strideXL1 =
+                Base::isTransA ? /*m1,k1,k0,m0*/ AscendC::Std::make_tuple(
+                                     kaL1 * 16U, _256{}, _16{}, _1{},
+                                     static_cast<uint32_t>(256 * 1024 / sizeof(DtypeA) - nL1 * kbL1 -
+                                                           (tiling.hasBias ? 4 * 1024 / sizeof(DtypeA) : 0))) :
+                                 /*k1,m1,m0,k0*/
+                                 AscendC::Std::make_tuple(mL1 * 16U, _256{}, _16{}, _1{},
+                                                          static_cast<uint32_t>(256 * 1024 / sizeof(DtypeA) - nL1 * kbL1 -
+                                                                                (tiling.hasBias ? 4 * 1024 / sizeof(DtypeA) : 0))),
             .strideBiasGm = args.strideBias,
             // w0 bias0(4KB) x0 | x1 bias1(4KB) w1 quantScale(8KB,目前不支持)
             .strideBiasL1 = tiling.hasBias ?
                                 AscendC::Std::make_tuple(
-                                    _1{}, static_cast<uint32_t>(
-                                              (508 * 1024 - 2 * nL1 * kbL1 * sizeof(DtypeA)) / sizeof(DtypeBias))) :
+                                    _1{}, static_cast<uint32_t>((508 * 1024 - 2 * nL1 * kbL1 * sizeof(DtypeA)) /
+                                                                sizeof(DtypeBias))) :
                                 AscendC::Std::make_tuple(_1{}, 0U),
             .strideWL1 = AscendC::Std::make_tuple(static_cast<uint32_t>(512 * 1024U / 2 - nL1 * kbL1)),
             .strideC = args.strideC,
@@ -197,11 +191,12 @@ public:
     }
 
     template <class ProblemShape>
-    DEVICE static Params GetParams(ProblemShape const& problemShape, Arguments const& args)
-    {}
+    DEVICE static Params GetParams(ProblemShape const &problemShape, Arguments const &args)
+    {
+    }
 
     template <class ProblemShape>
-    DEVICE auto Init(ProblemShape const& problemShape, Params const& params)
+    DEVICE auto Init(ProblemShape const &problemShape, Params const &params)
     {
         tensorXGm_.SetGlobalBuffer(params.aGmAddr);
         tensorCGm_.SetGlobalBuffer(params.cGmAddr);
@@ -238,9 +233,8 @@ public:
 
     // 辅助函数：处理X数据加载
     template <typename ProblemShape, typename Iterators, typename Params>
-    DEVICE void HandleXLoad(
-        ProblemShape const& problemShape, PipelineTuple const& pipelines, PipelineStateTuple& states,
-        Params const& params, Iterators& iters)
+    DEVICE void HandleXLoad(ProblemShape const &problemShape, PipelineTuple const &pipelines,
+                            PipelineStateTuple &states, Params const &params, Iterators &iters)
     {
         decltype(auto) sizeM = get<0>(problemShape);
         decltype(auto) sizeK = get<2>(problemShape);
@@ -250,32 +244,29 @@ public:
         decltype(auto) pipelineStateXLoad = get<0>(states);
 
         pipelineXGm2L1.ProducerWait(pipelineStateXLoad);
-        CopyXGm2L1(
-            crd2idx(params.strideXGm, *iterMLoad, *iterKaLoad_),
-            crd2idx(params.strideXL1, _0{}, _0{}, _0{}, _0{}, pipelineStateXLoad.index()), sizeM, sizeK,
-            iterMLoad.Size(), iterKaLoad_.Size(), get<0>(params.tileShapeL1), get<2>(params.tileShapeL1));
+        CopyXGm2L1(crd2idx(params.strideXGm, *iterMLoad, *iterKaLoad_),
+                   crd2idx(params.strideXL1, _0{}, _0{}, _0{}, _0{}, pipelineStateXLoad.index()), sizeM, sizeK,
+                   iterMLoad.Size(), iterKaLoad_.Size(), get<0>(params.tileShapeL1), get<2>(params.tileShapeL1));
         pipelineXGm2L1.ProducerRelease(pipelineStateXLoad);
         ++pipelineStateXLoad;
     }
 
     // 辅助函数：处理Bias数据加载
     template <typename Params, typename Iterators, typename PipelineTuple, typename PipelineStateTuple>
-    DEVICE void HandleBiasLoad(
-        Params const& params, Iterators& iters, PipelineTuple const& pipelines, PipelineStateTuple& states)
+    DEVICE void HandleBiasLoad(Params const &params, Iterators &iters, PipelineTuple const &pipelines,
+                               PipelineStateTuple &states)
     {
         decltype(auto) iterNBiasLoad = get<3>(iters);
         decltype(auto) pipelineStateBiasLoad = get<3>(states);
 
-        CopyBiasGm2L1(
-            crd2idx(params.strideBiasGm, *iterNBiasLoad),
-            crd2idx(params.strideBiasL1, _0{}, pipelineStateBiasLoad.index()), iterNBiasLoad.Size());
+        CopyBiasGm2L1(crd2idx(params.strideBiasGm, *iterNBiasLoad),
+                      crd2idx(params.strideBiasL1, _0{}, pipelineStateBiasLoad.index()), iterNBiasLoad.Size());
     }
 
     // 重构后的LoadInAdvance函数
     template <typename ProblemShape, typename Iterators>
-    DEVICE void LoadInAdvance(
-        ProblemShape const& problemShape, PipelineTuple const& pipelines, PipelineStateTuple& states,
-        Params const& params, Iterators& iters)
+    DEVICE void LoadInAdvance(ProblemShape const &problemShape, PipelineTuple const &pipelines,
+                              PipelineStateTuple &states, Params const &params, Iterators &iters)
     {
         HandleXLoad(problemShape, pipelines, states, params, iters);
         decltype(auto) pipelineBiasGm2L1 = get<1>(pipelines);
@@ -303,8 +294,8 @@ public:
 
     // 辅助函数：处理计算阶段的Bias加载
     template <typename Params, typename Iterators, typename PipelineTuple, typename PipelineStateTuple>
-    DEVICE void ProcessBiasLoad(
-        Params const& params, Iterators& itersLoad, PipelineTuple const& pipelines, PipelineStateTuple& states)
+    DEVICE void ProcessBiasLoad(Params const &params, Iterators &itersLoad, PipelineTuple const &pipelines,
+                                PipelineStateTuple &states)
     {
         decltype(auto) iterMBiasLoad = get<2>(itersLoad);
         if (iterMBiasLoad.End())
@@ -314,18 +305,16 @@ public:
         decltype(auto) iterNBiasLoad = get<3>(itersLoad);
         decltype(auto) pipelineStateBiasLoad = get<3>(states);
 
-        CopyBiasGm2L1(
-            crd2idx(params.strideBiasGm, *iterNBiasLoad),
-            crd2idx(params.strideBiasL1, _0{}, pipelineStateBiasLoad.index()), iterNBiasLoad.Size());
+        CopyBiasGm2L1(crd2idx(params.strideBiasGm, *iterNBiasLoad),
+                      crd2idx(params.strideBiasL1, _0{}, pipelineStateBiasLoad.index()), iterNBiasLoad.Size());
         UpdateNMIterators(iterMBiasLoad, iterNBiasLoad);
     }
 
     // 辅助函数：处理计算阶段的X加载
-    template <
-        typename ProblemShape, typename Iterators, typename PipelineTuple, typename PipelineStateTuple, typename Params>
-    DEVICE void ProcessXLoad(
-        ProblemShape const& problemShape, Iterators& itersLoad, PipelineTuple const& pipelines,
-        PipelineStateTuple& states, Params const& params)
+    template <typename ProblemShape, typename Iterators, typename PipelineTuple, typename PipelineStateTuple,
+              typename Params>
+    DEVICE void ProcessXLoad(ProblemShape const &problemShape, Iterators &itersLoad, PipelineTuple const &pipelines,
+                             PipelineStateTuple &states, Params const &params)
     {
         decltype(auto) iterMLoad = get<0>(itersLoad);
         decltype(auto) iterNLoad = get<1>(itersLoad);
@@ -337,18 +326,16 @@ public:
         decltype(auto) pipelineXGm2L1 = get<0>(pipelines);
         decltype(auto) pipelineStateXLoad = get<0>(states);
 
-        CopyXGm2L1(
-            crd2idx(params.strideXGm, *iterMLoad, *iterKaLoad_),
-            crd2idx(params.strideXL1, _0{}, _0{}, _0{}, _0{}, pipelineStateXLoad.index()), sizeM, sizeK,
-            iterMLoad.Size(), iterKaLoad_.Size(), get<0>(params.tileShapeL1), get<2>(params.tileShapeL1));
+        CopyXGm2L1(crd2idx(params.strideXGm, *iterMLoad, *iterKaLoad_),
+                   crd2idx(params.strideXL1, _0{}, _0{}, _0{}, _0{}, pipelineStateXLoad.index()), sizeM, sizeK,
+                   iterMLoad.Size(), iterKaLoad_.Size(), get<0>(params.tileShapeL1), get<2>(params.tileShapeL1));
         UpdateKNMIterators(iterMLoad, iterNLoad);
     }
 
     // 重构后的Process函数
     template <typename ProblemShape, typename Iterators>
-    DEVICE void Process(
-        ProblemShape const& problemShape, PipelineTuple const& pipelines, PipelineStateTuple& states,
-        Params const& params, Iterators& itersLoad, Iterators const& itersCompute)
+    DEVICE void Process(ProblemShape const &problemShape, PipelineTuple const &pipelines, PipelineStateTuple &states,
+                        Params const &params, Iterators &itersLoad, Iterators const &itersCompute)
     {
         decltype(auto) sizeM = get<0>(problemShape);
         decltype(auto) sizeN = get<1>(problemShape);
@@ -377,18 +364,16 @@ public:
             ++pipelineStateXLoad;
 
             pipelineXGm2L1.ConsumerWait(get<1>(states));
-            for (ContinuousIterator<uint32_t> iterKb(
-                     0, iterKaCompute.Size(), get<3>(params.tileShapeL1), *iterKaCompute);
+            for (ContinuousIterator<uint32_t> iterKb(0, iterKaCompute.Size(), get<3>(params.tileShapeL1),
+                                                     *iterKaCompute);
                  !iterKb.End(); ++iterKb) {
-                Mmad(
-                    crd2idx(
-                        params.strideXL1, CeilDiv(*iterKb - *iterKaCompute, 16UL), _0{}, _0{}, _0{},
-                        params.fullloadA ? 0 : get<1>(states).index()),
-                    crd2idx(params.strideWL1, get<2>(states).index()),
-                    crd2idx(params.strideBiasL1, _0{}, params.fullloadBias ? 0 : get<4>(states).index()),
-                    get<0>(itersCompute).Size(), get<1>(itersCompute).Size(), kaL1, iterKaCompute.Size(), iterKb.Size(),
-                    *iterKb != 0, sizeN, get<2>(states), params.hasBias, get<0>(params.tileShapeL1),
-                    get<2>(params.tileShapeL1));
+                Mmad(crd2idx(params.strideXL1, CeilDiv(*iterKb - *iterKaCompute, 16UL), _0{}, _0{}, _0{},
+                             params.fullloadA ? 0 : get<1>(states).index()),
+                     crd2idx(params.strideWL1, get<2>(states).index()),
+                     crd2idx(params.strideBiasL1, _0{}, params.fullloadBias ? 0 : get<4>(states).index()),
+                     get<0>(itersCompute).Size(), get<1>(itersCompute).Size(), kaL1, iterKaCompute.Size(),
+                     iterKb.Size(), *iterKb != 0, sizeN, get<2>(states), params.hasBias, get<0>(params.tileShapeL1),
+                     get<2>(params.tileShapeL1));
             }
             pipelineXGm2L1.ConsumerRelease(get<1>(states));
             ++get<1>(states);
@@ -398,7 +383,7 @@ public:
         CopyL0c2GM(crd2idx(params.strideC, *get<0>(itersCompute), *get<1>(itersCompute)));
     }
 
-    DEVICE void ClearPipeline(PipelineTuple const& pipelines, PipelineStateTuple& states)
+    DEVICE void ClearPipeline(PipelineTuple const &pipelines, PipelineStateTuple &states)
     {
         decltype(auto) pipelineXGm2L1 = get<0>(pipelines);
         decltype(auto) pipelineBiasGm2L1 = get<1>(pipelines);
@@ -413,9 +398,8 @@ public:
     }
 
 private:
-    DEVICE void CopyXGm2L1(
-        uint64_t offsetGm, uint64_t offsetL1, uint64_t m, uint64_t k, uint64_t tileSizeM, uint64_t tileSizeK,
-        uint32_t dstSizeM, uint32_t dstSizeK)
+    DEVICE void CopyXGm2L1(uint64_t offsetGm, uint64_t offsetL1, uint64_t m, uint64_t k, uint64_t tileSizeM,
+                           uint64_t tileSizeK, uint32_t dstSizeM, uint32_t dstSizeK)
     {
         if constexpr (Base::isTransB) {
             CopyGmToL1IntervalDataCopy(tensorXL1_[offsetL1], tensorXGm_[offsetGm], tileSizeK, tileSizeM, dstSizeK, m);
@@ -426,18 +410,17 @@ private:
 
     DEVICE void CopyBiasGm2L1(uint64_t offsetGm, uint64_t offsetL1, uint64_t tileSizeN)
     {
-        CopyGmToL1(
-            tensorBiasL1_[offsetL1], tensorBiasGm_[offsetGm], CeilAlign(tileSizeN, static_cast<uint64_t>(BLOCK_CUBE)));
+        CopyGmToL1(tensorBiasL1_[offsetL1], tensorBiasGm_[offsetGm],
+                   CeilAlign(tileSizeN, static_cast<uint64_t>(BLOCK_CUBE)));
     }
 
-    DEVICE void Mmad(
-        uint64_t offsetXL1, uint64_t offsetWL1, uint64_t offsetBiasL1, uint64_t tileSizeM, uint64_t tileSizeN,
-        uint64_t tileSizeKa, uint64_t realTileSizeKa, uint64_t realTileSizeKb, bool enPartialSum, uint64_t sizeN,
-        PipelineStateAiv2Aic& pipelineStateAiv2Aic, bool hasBias, uint64_t strideM, uint64_t strideKa)
+    DEVICE void Mmad(uint64_t offsetXL1, uint64_t offsetWL1, uint64_t offsetBiasL1, uint64_t tileSizeM,
+                     uint64_t tileSizeN, uint64_t tileSizeKa, uint64_t realTileSizeKa, uint64_t realTileSizeKb,
+                     bool enPartialSum, uint64_t sizeN, PipelineStateAiv2Aic &pipelineStateAiv2Aic, bool hasBias,
+                     uint64_t strideM, uint64_t strideKa)
     {
-        mmObj_.SetOrgShape(
-            strideM, CeilAlign(tileSizeN, static_cast<uint64_t>(BLOCK_CUBE)), strideKa,
-            CeilAlign(realTileSizeKb, static_cast<uint64_t>(BLOCK_CUBE)), sizeN);
+        mmObj_.SetOrgShape(strideM, CeilAlign(tileSizeN, static_cast<uint64_t>(BLOCK_CUBE)), strideKa,
+                           CeilAlign(realTileSizeKb, static_cast<uint64_t>(BLOCK_CUBE)), sizeN);
 
         mmObj_.SetTensorA(tensorXL1_[offsetXL1], Base::isTransA);
         mmObj_.SetTensorB(tensorWL1_[offsetWL1], Base::isTransB);
@@ -459,8 +442,9 @@ private:
         mmObj_.GetTensorC(tensorCGm_[offsetYGm]);
     }
 
-    template<typename IterM, typename IterN>
-    DEVICE void UpdateKNMIterators(IterM &iterMLoad, IterN &iterNLoad) {
+    template <typename IterM, typename IterN>
+    DEVICE void UpdateKNMIterators(IterM &iterMLoad, IterN &iterNLoad)
+    {
         ++iterKaLoad_;
         if (iterKaLoad_.End()) {
             iterKaLoad_.Reset();
@@ -472,8 +456,9 @@ private:
         }
     }
 
-    template<typename IterM, typename IterN>
-    DEVICE void UpdateNMIterators(IterM &iterMLoad, IterN &iterNLoad) {
+    template <typename IterM, typename IterN>
+    DEVICE void UpdateNMIterators(IterM &iterMLoad, IterN &iterNLoad)
+    {
         ++iterNLoad;
         if (iterNLoad.End()) {
             iterNLoad.Reset();

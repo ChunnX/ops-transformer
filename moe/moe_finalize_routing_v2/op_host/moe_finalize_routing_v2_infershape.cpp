@@ -29,6 +29,10 @@ static constexpr size_t INDEX_OUT = 0;
 static constexpr size_t SHAPE_SIZE = 2;
 static constexpr size_t INPUT_NUM = 7;
 static constexpr size_t ATTR_DROP_PAD_MODE = 0;
+static constexpr size_t ATTR_ZERO_EXPERT_RANGE_IDX = 1;
+static constexpr size_t ATTR_COPY_EXPERT_RANGE_IDX = 2;
+static constexpr size_t ATTR_CONSTANT_EXPERT_RANGE_IDX = 3;
+static constexpr size_t ATTR_K = 4;
 static constexpr int64_t VALUE_MODE_0 = 0;
 static constexpr int64_t VALUE_MODE_1 = 1;
 static constexpr int64_t VALUE_MODE_2 = 2;
@@ -294,7 +298,7 @@ static ge::graphStatus CheckCrossInputConsistency(const gert::InferShapeContext*
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext* context)
+static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext* context, int64_t k)
 {
     auto outShape = context->GetOutputShape(INDEX_OUT);
     outShape->SetDimNum(0);
@@ -304,6 +308,8 @@ static ge::graphStatus MoeCopyShapeInput2OutputWithIdx(gert::InferShapeContext* 
     int64_t valueDim0 = expandedSrcToDstRowInputShape->GetDim(0);
     if (scalesInputShape != nullptr) {
         valueDim0 = scalesInputShape->GetDim(0);
+    } else if (k > 0) {
+        valueDim0 = valueDim0 / k;
     }
     outShape->AppendDim(valueDim0);
     outShape->AppendDim(expandedXInputShape->GetDim(expandedXInputShape->GetDimNum() - 1));
@@ -361,6 +367,23 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
     if (ret != ge::GRAPH_SUCCESS || earlyReturn) {
         return ret;
     }
+    
+    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(ATTR_K);
+    OP_CHECK_NULL_WITH_CONTEXT(context, kPtr);
+    int64_t k = *kPtr;
+    if (scalesInputShape != nullptr && !IsUnknownRank(scalesInputShape)) {
+        int64_t scalesDim1 = scalesInputShape->GetDim(1);
+        // k > 1 means user explicitly specified k, need to verify consistency with scales dim1
+        if (*kPtr > 1) {
+            OP_CHECK_IF(
+                scalesDim1 != UNKNOWN_DIM_VALUE_ && *kPtr != scalesDim1,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "k",
+                    std::to_string(*kPtr).c_str(), "k must equal scales dim1"),
+                return ge::GRAPH_FAILED);
+        }
+        k = scalesDim1;
+    }
+
     ret = CheckOptionalInputShape(context, INDEX_IN_EXPERT_IDX, "expert_idx", outShape, &expertIdxShape, earlyReturn);
     if (ret != ge::GRAPH_SUCCESS || earlyReturn) {
         return ret;
@@ -374,7 +397,7 @@ static ge::graphStatus Infershape4MoeFinalizeRoutingV2(gert::InferShapeContext* 
             "Infershape4MoeFinalizeRoutingV2 failed!"), return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(
-        MoeCopyShapeInput2OutputWithIdx(context) != ge::GRAPH_SUCCESS,
+        MoeCopyShapeInput2OutputWithIdx(context, k) != ge::GRAPH_SUCCESS,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "infershape", "GRAPH_FAILED",
             "Infershape4MoeFinalizeRoutingV2 failed!"), return ge::GRAPH_FAILED);
 

@@ -47,16 +47,11 @@ private:
     ge::graphStatus CheckExistenceActualSeqLenKv(const FiaTilingInfo &fiaInfo);
 
     // feature
-    ge::graphStatus CheckFeatureAlibi(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckFeatureIFAMLA(const FiaTilingInfo &fiaInfo);
 
     // multipara
     ge::graphStatus CheckActualSeqLenQTNDLastData(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckActualSeqLenKvTNDLastData(const FiaTilingInfo &fiaInfo);
-
-    // general
-    int64_t GetActualSeqLengthsQData(const FiaTilingInfo &fiaInfo, uint32_t bIdx);
-    int64_t GetActualSeqLengthsKvData(const FiaTilingInfo &fiaInfo, uint32_t bIdx);
 };
 
 } // namespace optiling

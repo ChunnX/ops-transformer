@@ -47,15 +47,16 @@ extern "C" {
  * @return aclnnStatus: 返回状态码
  */
 __attribute__((deprecated("aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize is scheduled to "
-                    "be deprecated in a post-December 2026 version update. "
-                    "Please migrate to aclnnQuantMatmulAllReduceV2GetWorkspaceSize and "
-                    "aclnnAddRmsNormGetWorkspaceSize. We apologize for any inconvenience caused "
-                    "and appreciate your timely migration to the other interface.")))
-ACLNN_API aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
-    const aclTensor* x1, const aclTensor* x2, const aclTensor* bias, const aclTensor* dequantScale,
-    const aclTensor* residual, const aclTensor* gamma, double epsilon, const char* group, const char* reduceOp,
-    int64_t commTurn, int64_t streamMode, const aclTensor* y, const aclTensor* normOut, uint64_t* workspaceSize,
-    aclOpExecutor** executor);
+                          "be deprecated in a post-December 2026 version update. "
+                          "Please migrate to aclnnQuantMatmulAllReduceV2GetWorkspaceSize and "
+                          "aclnnAddRmsNormGetWorkspaceSize. We apologize for any inconvenience caused "
+                          "and appreciate your timely migration to the other interface."))) ACLNN_API aclnnStatus
+aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(const aclTensor *x1, const aclTensor *x2, const aclTensor *bias,
+                                                    const aclTensor *dequantScale, const aclTensor *residual,
+                                                    const aclTensor *gamma, double epsilon, const char *group,
+                                                    const char *reduceOp, int64_t commTurn, int64_t streamMode,
+                                                    const aclTensor *y, const aclTensor *normOut,
+                                                    uint64_t *workspaceSize, aclOpExecutor **executor);
 
 /**
  * @brief aclnnQuantMatmulAllReduceAddRmsNorm的第二段接口，用于执行计算。
@@ -67,12 +68,12 @@ ACLNN_API aclnnStatus aclnnQuantMatmulAllReduceAddRmsNormGetWorkspaceSize(
  * @return aclnnStatus: 返回状态码
  */
 __attribute__((deprecated("aclnnQuantMatmulAllReduceAddRmsNorm is scheduled to be deprecated "
-                    "in a post-December 2026 version update. "
-                    "Please migrate to aclnnQuantMatmulAllReduceV2 and aclnnAddRmsNorm. "
-                    "We apologize for any inconvenience caused and appreciate "
-                    "your timely migration to the other interface.")))
-ACLNN_API aclnnStatus aclnnQuantMatmulAllReduceAddRmsNorm(
-    void* workspace, uint64_t workspaceSize, aclOpExecutor* executor, const aclrtStream stream);
+                          "in a post-December 2026 version update. "
+                          "Please migrate to aclnnQuantMatmulAllReduceV2 and aclnnAddRmsNorm. "
+                          "We apologize for any inconvenience caused and appreciate "
+                          "your timely migration to the other interface."))) ACLNN_API aclnnStatus
+aclnnQuantMatmulAllReduceAddRmsNorm(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
+                                    const aclrtStream stream);
 
 #ifdef __cplusplus
 }

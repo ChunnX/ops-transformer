@@ -246,8 +246,8 @@ __aicore__ inline void FlashAttentionScoreAntiquantKernel<AntiquantCubeBlockType
             constInfo.mm1RopeKb = constInfo.n2DR;
         }
 
-        constInfo.mm1Ka = constInfo.n2GD;
         constInfo.mm1Kb = constInfo.n2D;
+        constInfo.mm1Ka = constInfo.n2GD;
         constInfo.mm2Kb = constInfo.n2Dv;
         if constexpr (isInfer) {
             if (inputParamsRegbase.isGqa) {

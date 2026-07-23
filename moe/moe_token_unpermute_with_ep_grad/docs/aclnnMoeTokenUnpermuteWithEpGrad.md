@@ -17,37 +17,36 @@
 
 - 接口功能：aclnnMoeTokenUnpermuteWithEp的反向传播。
 - 计算公式：
-
   - probs非None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$：
     - 首先计算unpermutedTokens：
       - 当rangeOptional[0] <= sortedIndices[i] < rangeOptional[1]时：
-      
+
         $$
         unpermutedTokens[i] = permutedTokensOptional[sortedIndices[i]-rangeOptional[0]]
         $$
 
       - 否则：
-        
+
         $$
         unpermutedTokens[i] = 0
         $$
-    
+
     - 接着计算：
 
       $$
       unpermutedTokens = unpermutedTokens.reshape(-1, topkNum, hiddenSize)
       $$
-      
+
       $$
       unpermutedTokens = unpermutedTokensGrad.unsqueeze(1) * unpermutedTokens
       $$
-      
+
       $$
       probsGrad = \sum_{k=0}^{topkNum}(unpermutedTokens_{i,j,k})
       $$
-    
+
     - 最后，当rangeOptional[0] <= sortedIndices[i] < rangeOptional[1]时：
-      
+
       $$
       permutedTokensGradOut[sortedIndices[i]] = ((unpermutedTokensGrad.unsqueeze(1) * probs.unsqueeze(-1)).reshape(-1, hiddenSize))[i]
       $$
@@ -55,14 +54,14 @@
   - probs为None计算公式如下，其中$i \in {0, 1, 2, ..., num\_tokens - 1}$：
 
     - 当rangeOptional[0] <= sortedIndices[i] < rangeOptional[1]时：
-    
+
     $$
     permutedTokensGradOut[sortedIndices[i]-rangeOptional[0]] = unpermutedTokensGrad[i]
     $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithEpGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteWithEpGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteWithEpGradGetWorkspaceSize(
@@ -239,10 +238,10 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
-  
+
   <table style="undefined;table-layout: fixed; width: 1155px"><colgroup>
   <col style="width: 320px">
   <col style="width: 140px">
@@ -319,8 +318,8 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
   </table>
 
 - **返回值**
-  
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -329,7 +328,7 @@ aclnnStatus aclnnMoeTokenUnpermuteWithEpGrad(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>

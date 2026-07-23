@@ -156,8 +156,7 @@ __aicore__ inline void AntiQuantS8S4NzKnGroupVf(Int4NzParams<xType, wType, antiQ
                 MicroAPI::Cast<xType, half, CAST_F16_TO_S8_TRAIT>(weightS8Vreg, weightF16Vreg, maskAll);
 
                 AddrReg weightHighBitPhyAddrReg = MicroAPI::CreateAddrReg<xType>(
-                    loopN1Idx, int4NzParams.loopN1DstStride,
-                    loopGroupIdx, int4NzParams.groupDstStride,
+                    loopN1Idx, int4NzParams.loopN1DstStride, loopGroupIdx, int4NzParams.groupDstStride,
                     loopGroupInnerIdx, int4NzParams.innerDstStride);
                 MicroAPI::DataCopy<xType, MicroAPI::StoreDist::DIST_PACK_B16>(
                     int4NzParams.weightHighBitPhyAddr, weightS8Vreg, weightHighBitPhyAddrReg, maskAll);
@@ -165,5 +164,5 @@ __aicore__ inline void AntiQuantS8S4NzKnGroupVf(Int4NzParams<xType, wType, antiQ
         }
     }
 }
-}  // namespace WeightQuantBatchMatmulV2::Arch35
-#endif  // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_VF_NZ_H
+} // namespace WeightQuantBatchMatmulV2::Arch35
+#endif // GROUPED_MATMUL_WEIGHT_QUANT_BASIC_BLOCK_VF_NZ_H

@@ -21,6 +21,7 @@
 #include "kernel_tiling/kernel_tiling.h"
 #include "mhc_pre_utils.h"
 #include "mhc_pre_kernel_base.h"
+#include "mhc_pre_tiling_key.h"
 
 namespace MhcPre {
 
@@ -34,7 +35,7 @@ static constexpr uint64_t SYNC_C2V1 = 0x3;
 static constexpr uint32_t DEFAULT_CHUNK_SIZE = 64;
 static constexpr uint32_t DEFAULT_V1_CHUNK_D_SIZE = 5120;
 
-template <class T, class P>
+template <class T, class P, int8_t HAS_RESI>
 class MhcPreKernelSplitBS : public MhcPreKernelBase<T, P> {
 public:
     using Base = MhcPreKernelBase<T, P>;
@@ -99,8 +100,11 @@ public:
     using Base::kHalfSplitDivisor;
     using Base::ND_LENGTH;
     using Base::PARALLEL_NUM;
+    using Base::hasResi_;
     using Base::V0_BASE_T;
     using Base::V1_BASE_T;
+
+    static constexpr int8_t kHasResi = HAS_RESI;
 
     __aicore__ inline MhcPreKernelSplitBS(MT &matmul) : Base(matmul) {}
     __aicore__ inline void Init(InitParams initParams);
@@ -115,8 +119,8 @@ public:
     __aicore__ inline void AIV1Prologue(uint64_t offsetT, uint64_t lenT, uint64_t singleCoreOffset);
 };
 
-template <class T, class P>
-__aicore__ inline void MhcPreKernelSplitBS<T, P>::Init(InitParams initParams)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::Init(InitParams initParams)
 {
     this->BindGlobalTensors(initParams);
     this->InitFromTilingData(initParams.tilingData);
@@ -132,8 +136,8 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::Init(InitParams initParams)
     }
 }
 
-template <class T, class P>
-__aicore__ inline void MhcPreKernelSplitBS<T, P>::InitHMixBuffer(InitParams initParams)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::InitHMixBuffer(InitParams initParams)
 {
     if (outFlag_) {
         hMixGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_mix));
@@ -144,8 +148,8 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::InitHMixBuffer(InitParams init
     }
 }
 
-template <class T, class P>
-__aicore__ inline void MhcPreKernelSplitBS<T, P>::InitUbBuffers()
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::InitUbBuffers()
 {
     if ASCEND_IS_NOT_AIV {
         return;
@@ -171,7 +175,9 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::InitUbBuffers()
 
     preOffsetBuf_ = tmpBuff_.template GetWithOffset<uint32_t>(uint32_t(mnConfig_.n * V1_BASE_T), 0);
     postOffsetBuf_ = preOffsetBuf_[N_ * V1_BASE_T];
-    resOffsetBuf_ = postOffsetBuf_[N_ * V1_BASE_T];
+    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
+        resOffsetBuf_ = postOffsetBuf_[N_ * V1_BASE_T];
+    }
     uint64_t buffOffset = 0;
 
     buffOffset = mnConfig_.n * V1_BASE_T * sizeof(uint32_t) + (curSingleT_ / 2) * sizeof(uint32_t);
@@ -182,8 +188,8 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::InitUbBuffers()
     buffOffset += V1_BASE_T * N_ * sizeof(P);
 }
 
-template <class T, class P>
-__aicore__ inline void MhcPreKernelSplitBS<T, P>::Process()
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::Process()
 {
     uint32_t tBlockNum = Ceil(totalLength_, chunkTSize_);
 
@@ -232,8 +238,8 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::Process()
     }
 }
 
-template <class T, class P>
-__aicore__ inline void MhcPreKernelSplitBS<T, P>::InitBlockParams(uint64_t curblock, uint32_t tBlockNum)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::InitBlockParams(uint64_t curblock, uint32_t tBlockNum)
 {
     globalOffsetM_ = curblock * chunkTSize_;
     curSingleT_ = chunkTSize_;
@@ -246,8 +252,8 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::InitBlockParams(uint64_t curbl
     }
 }
 
-template <class T, class P>
-__aicore__ inline void MhcPreKernelSplitBS<T, P>::AICProcess(uint32_t offsetNd, uint32_t outOffset)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AICProcess(uint32_t offsetNd, uint32_t outOffset)
 {
     if (offsetNd + mnConfig_.singleCoreK > mnConfig_.k) {
         mnConfig_.curSingleCoreK = mnConfig_.k - offsetNd;
@@ -264,8 +270,8 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::AICProcess(uint32_t offsetNd, 
     cubeCount_++;
 }
 
-template <class T, class P>
-__aicore__ inline void MhcPreKernelSplitBS<T, P>::V0Prologue(uint32_t curNdLen, uint32_t offsetNd)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::V0Prologue(uint32_t curNdLen, uint32_t offsetNd)
 {
     for (uint32_t offsetM = vectorOffset_.offsetMStart; offsetM < vectorOffset_.offsetMEnd; offsetM += V0_BASE_T) {
         uint32_t curMLen = V0_BASE_T;
@@ -312,8 +318,8 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::V0Prologue(uint32_t curNdLen, 
     }
 }
 
-template <class T, class P>
-__aicore__ inline void MhcPreKernelSplitBS<T, P>::V0PostProcess(uint32_t curblock, uint32_t tBlockNum)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::V0PostProcess(uint32_t curblock, uint32_t tBlockNum)
 {
     if (vectorOffset_.singleCoreM == 0) {
         return;
@@ -324,8 +330,8 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::V0PostProcess(uint32_t curbloc
     this->DataCopyOutInvRmsUb(vectorOffset_.singleCoreM, vectorOffset_.offsetMStart);
 }
 
-template <class T, class P>
-__aicore__ inline void MhcPreKernelSplitBS<T, P>::AIV1Process(uint64_t curBlock, uint64_t tBlockNum)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AIV1Process(uint64_t curBlock, uint64_t tBlockNum)
 {
     AscendC::CrossCoreWaitFlag(SYNC_C2V1);
     if (vectorOffset_.singleCoreM <= 0) {
@@ -348,12 +354,16 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::AIV1Process(uint64_t curBlock,
     }
 }
 
-template <class T, class P>
-__aicore__ inline void MhcPreKernelSplitBS<T, P>::AIV1Prologue(uint64_t offsetT, uint64_t lenT, uint64_t singleCoreOffset)
+template <class T, class P, int8_t HAS_RESI>
+__aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AIV1Prologue(
+    uint64_t offsetT, uint64_t lenT, uint64_t singleCoreOffset)
 {
     uint64_t offset = globalOffsetM_ + offsetT;
     uint64_t HMixOffset = 0;
-    LocalTensor<P> hResOutLocal = outQueue_.template AllocTensor<P>();
+    LocalTensor<P> hResOutLocal;
+    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
+        hResOutLocal = outQueue_.template AllocTensor<P>();
+    }
     if (outFlag_) {
         HMixOffset = (globalOffsetM_ + offsetT) * mnConfig_.n;
     } else {
@@ -369,7 +379,6 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::AIV1Prologue(uint64_t offsetT,
     __ubuf__ P *alphaInPtr = (__ubuf__ P *)alphaInUb_.GetPhyAddr();
     __ubuf__ P *hPreBuffPtr = (__ubuf__ P *)hPreBuff_.GetPhyAddr();
     __ubuf__ P *hPostBuffPtr = (__ubuf__ P *)hPostBuff_.GetPhyAddr();
-    __ubuf__ P *hResOutLocalPtr = (__ubuf__ P *)hResOutLocal.GetPhyAddr();
 
     __VEC_SCOPE__
     {
@@ -388,11 +397,13 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::AIV1Prologue(uint64_t offsetT,
                 uint32_t maskOffset = tIdx * mnConfig_.n + vfBlockIdx * eleNumPerVf_;
                 uint32_t alphaOffset = vfBlockIdx * eleNumPerVf_;
                 uint32_t biasOffset = vfBlockIdx * eleNumPerVf_;
+                uint32_t curOffset =
+                    MhcPreUtils::Min(mnConfig_.n - vfBlockIdx * eleNumPerVf_, static_cast<uint64_t>(eleNumPerVf_));
                 MicroAPI::MaskReg curMask = MicroAPI::UpdateMask<P>(curLen);
 
-                MicroAPI::LoadAlign<P>(matmulResReg, matmulPtr + maskOffset);
-                MicroAPI::LoadAlign<P>(biasInReg, biasInPtr + biasOffset);
-                MicroAPI::LoadAlign<P>(alphaInReg, alphaInPtr + alphaOffset);
+                MicroAPI::Load<P>(matmulResReg, matmulPtr + maskOffset);
+                MicroAPI::Load<P>(biasInReg, biasInPtr + biasOffset);
+                MicroAPI::Load<P>(alphaInReg, alphaInPtr + alphaOffset);
 
                 MicroAPI::Duplicate(invRmsBroadReg, invRmsReg, curMask);
                 MicroAPI::Mul(matmulResReg, matmulResReg, invRmsBroadReg, curMask);
@@ -401,25 +412,31 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P>::AIV1Prologue(uint64_t offsetT,
 
                 MicroAPI::Add(matmulResReg, matmulResReg, biasInReg, curMask);
 
-                MicroAPI::StoreAlign<P>(matmulPtr + maskOffset, matmulResReg, curMask);
+                MicroAPI::Store<P>(matmulPtr + maskOffset, matmulResReg, curOffset);
             }
         }
     }
 
     Gather(hPreBuff_, matmulRes_, preOffsetBuf_, uint32_t(0), lenT * N_);
     Gather(hPostBuff_, matmulRes_, postOffsetBuf_, uint32_t(0), lenT * N_);
-    Gather(hResOutLocal, matmulRes_, resOffsetBuf_, uint32_t(0), lenT * N_ * N_);
-    PipeBarrier<PIPE_V>();
 
-    outQueue_.EnQue(hResOutLocal);
-    hResOutLocal = outQueue_.template DeQue<P>();
-    DataCopyExtParams copyParams;
-    copyParams.blockCount = static_cast<uint16_t>(1);
-    copyParams.blockLen = uint32_t(lenT * N_ * N_ * sizeof(P));
-    copyParams.srcStride = uint32_t(0);
-    copyParams.dstStride = uint32_t(0);
-    DataCopyPad(hResGm_[offset * N_ * N_], hResOutLocal, copyParams);
-    outQueue_.FreeTensor(hResOutLocal);
+    if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
+        Gather(hResOutLocal, matmulRes_, resOffsetBuf_, uint32_t(0), lenT * N_ * N_);
+        PipeBarrier<PIPE_V>();
+
+        outQueue_.EnQue(hResOutLocal);
+        hResOutLocal = outQueue_.template DeQue<P>();
+        DataCopyExtParams copyParams;
+        copyParams.blockCount = static_cast<uint16_t>(1);
+        copyParams.blockLen = uint32_t(lenT * N_ * N_ * sizeof(P));
+        copyParams.srcStride = uint32_t(0);
+        copyParams.dstStride = uint32_t(0);
+        DataCopyPad(hResGm_[offset * N_ * N_], hResOutLocal, copyParams);
+        outQueue_.FreeTensor(hResOutLocal);
+    } else {
+        PipeBarrier<PIPE_V>();
+    }
+
     xInQueue_.FreeTensor(matmulRes_);
 }
 

@@ -70,12 +70,12 @@ TEST_F(L2AclnnMoeDistributeDispatchV3V4Test, TestAclnnMoeDistributeDispatchV3Get
     TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV3,
-                        INPUT(x, expertIds, scales, xActiveMask, expertScales, elasticInfo, "test_moe_distribute_dispatch_ep",
-                              epWorldSize, epRankId, moeExpertNum, "", tpWorldSize, tpRankId,
-                              expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType,
-                              "test", 0, 0, 0),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV3,
+        INPUT(x, expertIds, scales, xActiveMask, expertScales, elasticInfo, "test_moe_distribute_dispatch_ep",
+              epWorldSize, epRankId, moeExpertNum, "", tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
+              shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test", 0, 0, 0),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -84,7 +84,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV3V4Test, TestAclnnMoeDistributeDispatchV3Get
     // 覆盖 Execute 入口分支（UT 桩无真实 workspace，仅验证不崩溃）
     aclnnStatus execRet = aclnnMoeDistributeDispatchV3(nullptr, workspaceSize, executor, nullptr);
     EXPECT_THAT(execRet, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
-                                       testing::Eq(ACLNN_ERR_PARAM_INVALID)));
+                                        testing::Eq(ACLNN_ERR_PARAM_INVALID)));
 }
 
 TEST_F(L2AclnnMoeDistributeDispatchV3V4Test, TestAclnnMoeDistributeDispatchV4GetWorkspaceSize)
@@ -117,12 +117,13 @@ TEST_F(L2AclnnMoeDistributeDispatchV3V4Test, TestAclnnMoeDistributeDispatchV4Get
     TensorDesc tpRecvCounts = TensorDesc({0}, ACL_INT32, ACL_FORMAT_ND);
     TensorDesc expandScales = TensorDesc({8}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeDistributeDispatchV4,
-                        INPUT(x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                              "test_moe_distribute_dispatch_ep", epWorldSize, epRankId, moeExpertNum,
-                              "", tpWorldSize, tpRankId, expertShardType, sharedExpertNum,
-                              shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test", 0, 0, 0),
-                        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
+    auto ut = OP_API_UT(
+        aclnnMoeDistributeDispatchV4,
+        INPUT(x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
+              "test_moe_distribute_dispatch_ep", epWorldSize, epRankId, moeExpertNum, "", tpWorldSize, tpRankId,
+              expertShardType, sharedExpertNum, shareExpertRankNum, quantMode, globalBs, expertTokenNumsType, "test", 0,
+              0, 0),
+        OUTPUT(expandX, dynamicScales, expandIdx, expertTokensNums, epRecvCounts, tpRecvCounts, expandScales));
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
@@ -131,7 +132,7 @@ TEST_F(L2AclnnMoeDistributeDispatchV3V4Test, TestAclnnMoeDistributeDispatchV4Get
     // 覆盖 Execute 入口分支（UT 桩无真实 workspace，仅验证不崩溃）
     aclnnStatus execRet = aclnnMoeDistributeDispatchV4(nullptr, workspaceSize, executor, nullptr);
     EXPECT_THAT(execRet, testing::AnyOf(testing::Eq(ACLNN_SUCCESS), testing::Eq(ACLNN_ERR_PARAM_NULLPTR),
-                                         testing::Eq(ACLNN_ERR_PARAM_INVALID)));
+                                        testing::Eq(ACLNN_ERR_PARAM_INVALID)));
 }
 
 } // namespace MoeDistributeDispatchV3V4

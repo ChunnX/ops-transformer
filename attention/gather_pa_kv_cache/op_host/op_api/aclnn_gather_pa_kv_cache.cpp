@@ -120,15 +120,6 @@ static aclnnStatus CheckDtypeValid(
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    bool isPaNz = (cacheModeOptional != nullptr && strcmp(cacheModeOptional, "PA_NZ") == 0);
-    if (!isPaNz && keyCacheDtype != valueCacheDtype) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "The data type of keyCache[%s] and valueCache[%s] are not equal when cacheMode is not PA_NZ.",
-                op::ToString(DataType(keyCacheDtype)).GetString(),
-                op::ToString(DataType(valueCacheDtype)).GetString());
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
     auto blockTablesDtype = blockTables->GetDataType();
     auto seqLensDtype = seqLens->GetDataType();
     if (blockTablesDtype != seqLensDtype) {

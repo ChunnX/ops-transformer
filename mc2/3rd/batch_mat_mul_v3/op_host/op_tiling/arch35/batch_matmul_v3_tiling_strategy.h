@@ -38,7 +38,7 @@ const static std::map<NpuArch, std::vector<int32_t>> BatchMatMulV3PrioritiesMap 
     {NpuArch::DAV_3510,
      {strategy::ITER_BATCH_BASICAPI, strategy::ITER_BATCH, strategy::AL1_FULL_LOAD, strategy::BL1_FULL_LOAD_BASIC,
       strategy::BL1_FULL_LOAD, strategy::ASW_BASIC, strategy::BASE}},
-    {NpuArch::DAV_RESV, {strategy::ITER_BATCH, strategy::BASE}}, //supportMmadS8S4平台
+    {NpuArch::DAV_RESV, {strategy::ITER_BATCH, strategy::BASE}}, // supportMmadS8S4平台
 };
 
 inline std::vector<int32_t> GetBatchMatMulV3Priorities(NpuArch npuArch)
@@ -49,8 +49,8 @@ inline std::vector<int32_t> GetBatchMatMulV3Priorities(NpuArch npuArch)
     }
     return priorities;
 };
-}
-}
-}
+} // namespace strategy
+} // namespace Mc2batch_matmul_v3_advanced
+} // namespace optiling
 
 #endif // __OP_HOST_BATCH_MATMUL_V3_STRATEGY_H__

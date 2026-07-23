@@ -18,5 +18,5 @@
 
 该算子支持的平台为ascend910_93，默认构建环境为ascend910b，在ascend910_93构建环境下构建，请先执行命令：
 ```sh
-export NPU_ARCH=ascend910_93
+export NPU_SOC_VERSION=ascend910_93
 ```

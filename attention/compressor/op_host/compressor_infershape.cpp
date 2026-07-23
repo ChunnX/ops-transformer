@@ -127,10 +127,6 @@ ge::graphStatus SetCompressorShapeDim(const CompressorProtoShapeParam &shapePara
     OP_CHECK_NULL_WITH_CONTEXT(context, cmpKvShape);
     auto attr = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attr);
-    const int64_t *cmpRatioPtr = attr->GetAttrPointer<int64_t>(CMP_RATIO_ATTR_INDEX);
-    int64_t cmpRatio = (cmpRatioPtr != nullptr) ? *cmpRatioPtr : CMP_RATIO_VALUE;
-    const int64_t *coffPtr = attr->GetAttrPointer<int64_t>(COFF_ATTR_INDEX);
-    int64_t coff = (coffPtr != nullptr) ? *coffPtr : COFF_VALUE;
     // Set output shape
     if (!shapeParam.isBsMerge) {
         cmpKvShape->SetDimNum(DIM_NUM_3);                   // (B, Sr, H)
@@ -148,7 +144,7 @@ ge::graphStatus SetCompressorShapeDim(const CompressorProtoShapeParam &shapePara
 
 ge::graphStatus InferDataTypeCompressor(gert::InferDataTypeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("Compressor", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "Context is nullptr."),
                return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), "Enter Compressor inferDataType impl.");
 
@@ -159,16 +155,18 @@ ge::graphStatus InferDataTypeCompressor(gert::InferDataTypeContext* context)
 
 ge::graphStatus InferShapeCompressor(gert::InferShapeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("Compressor", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "Context is nullptr."),
                return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), "Enter Compressor infershape impl.");
 
     CompressorProtoShapeParam shapeParam {};
     auto apiRet = GetCompressorShapeDim(context, shapeParam);
-    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), "Context get input shape failed", return ge::GRAPH_FAILED);
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS),  OP_LOGE(context->GetNodeName(), "Context get input shape failed"),
+        return ge::GRAPH_FAILED);
 
     apiRet = SetCompressorShapeDim(shapeParam, context);
-    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), "Context set output shape failed", return ge::GRAPH_FAILED);
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), OP_LOGE(context->GetNodeName(), "Context set output shape failed"),
+        return ge::GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
 }

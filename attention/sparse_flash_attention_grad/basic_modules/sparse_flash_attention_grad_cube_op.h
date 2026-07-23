@@ -274,6 +274,7 @@ private:
     int64_t selectedBlockSizeDrope;
     int64_t selectedBlockSizeDtotal;
     int64_t selectedS2;
+    bool enableOptimizedScatter{false};
     int32_t selectedCntOffset;
     int32_t processBS1ByCore;
     uint32_t usedCoreNum;
@@ -298,6 +299,7 @@ __aicore__ inline void CubeOp<SFAGT>::Init(GM_ADDR query, GM_ADDR key, GM_ADDR v
     dimDTotal = HAS_ROPE ? dimDqk + dimRope : dimDqk;
     selectedBlockCount = tilingData->opInfo.selectedBlockCount;
     selectedBlockSize = tilingData->opInfo.selectedBlockSize;
+    enableOptimizedScatter = tilingData->opInfo.enableOptimizedScatter;
     selectedS2 = selectedBlockCount * selectedBlockSize;
     dimGAlign = AlignTo<int64_t>(dimG, SIZE_16);
     mm12WorkspaceLen = tilingData->opInfo.mm12WorkspaceLen;
@@ -400,9 +402,10 @@ __aicore__ inline void CubeOp<SFAGT>::InitGMBuffer(GM_ADDR query, GM_ADDR key, G
     usedWorkspaceLen += dqWorkspaceLen + dkWorkspaceLen + dvWorkspaceLen;
 
     // scatter add
+    uint64_t scatterBufferNum = enableOptimizedScatter ? SCATTER_BUFFER_NUM : PING_PONG_BUFFER;
     int64_t mm4ResAddr = usedWorkspaceLen / sizeof(float);
-    int64_t mm5ResAddr = mm4ResAddr + MAX_CORE_NUM * selectedBlockCount * selectedBlockSizeDtotal * SCATTER_BUFFER_NUM;
-    usedWorkspaceLen += MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * (dimDTotal + dimDv) * SCATTER_BUFFER_NUM * sizeof(float);
+    int64_t mm5ResAddr = mm4ResAddr + MAX_CORE_NUM * selectedBlockCount * selectedBlockSizeDtotal * scatterBufferNum;
+    usedWorkspaceLen += MAX_CORE_NUM * selectedBlockCount * selectedBlockSize * (dimDTotal + dimDv) * scatterBufferNum * sizeof(float);
 
     mm1WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm1Addr);
     mm2WorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm2Addr);

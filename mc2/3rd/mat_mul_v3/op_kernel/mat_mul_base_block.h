@@ -69,7 +69,9 @@ struct BaseBlockArgs {
 
 class Mc2MatmulBaseBlock {
 public:
-    __aicore__ inline Mc2MatmulBaseBlock() {}
+    __aicore__ inline Mc2MatmulBaseBlock()
+    {
+    }
     template <class A_TYPE, class B_TYPE, class C_TYPE, class BIAS_TYPE>
     __aicore__ inline void Init(const void *tilingData);
     __aicore__ inline void UpdateBlockCnt(uint64_t mTileIndex, uint64_t nTileIndex);
@@ -107,12 +109,10 @@ __aicore__ inline void Mc2MatmulBaseBlock::Init(const void *tilingData)
     params_.nTotalCnt =
         (static_cast<uint64_t>(matmulTilingData_->matmulTiling.N) + matmulTilingData_->matmulTiling.singleCoreN - 1) /
         matmulTilingData_->matmulTiling.singleCoreN; // 总的n方向base块个数
-    params_.nBaseTail =
-        static_cast<uint64_t>(matmulTilingData_->matmulTiling.N) - (params_.nTotalCnt - 1) *
-        matmulTilingData_->matmulTiling.singleCoreN; // n方向上的base尾块
-    params_.mBaseTail =
-        static_cast<uint64_t>(matmulTilingData_->matmulTiling.M) - (params_.mTotalCnt - 1) *
-        matmulTilingData_->matmulTiling.singleCoreM; // m方向上的base尾块
+    params_.nBaseTail = static_cast<uint64_t>(matmulTilingData_->matmulTiling.N) -
+                        (params_.nTotalCnt - 1) * matmulTilingData_->matmulTiling.singleCoreN; // n方向上的base尾块
+    params_.mBaseTail = static_cast<uint64_t>(matmulTilingData_->matmulTiling.M) -
+                        (params_.mTotalCnt - 1) * matmulTilingData_->matmulTiling.singleCoreM; // m方向上的base尾块
     params_.singleCoreM = 0;
     params_.singleCoreN = 0;
     params_.blockIdxStart = 0;
@@ -131,7 +131,7 @@ __aicore__ inline void Mc2MatmulBaseBlock::Init(const void *tilingData)
     params_.mCntTail = params_.mTotalCnt - (params_.mTileCntL2 - 1) * params_.mCnt; // M方向上mTile尾块里的base块的个数
     params_.nCntTail = params_.nTotalCnt - (params_.nTileCntL2 - 1) * params_.nCnt; // M方向上nTile尾块里的base块的个数
     params_.round = (params_.totalTileCnt + matmulTilingData_->matmulTiling.usedCoreNum - 1) /
-        matmulTilingData_->matmulTiling.usedCoreNum;
+                    matmulTilingData_->matmulTiling.usedCoreNum;
     params_.realRound = 0;
     params_.preCoreNum = params_.totalTileCnt % matmulTilingData_->matmulTiling.usedCoreNum;
     params_.mCntUse = params_.mCnt;
@@ -149,12 +149,12 @@ __aicore__ inline void Mc2MatmulBaseBlock::Init(const void *tilingData)
     params_.alignedKbSize = MMV3DivCeil(matmulTilingData_->matmulTiling.Kb, ALIGNED_H) * ALIGNED_H;
     // A B矩阵都是对齐矩阵
     if (params_.isTransposeA) {
-      params_.alignedOriM = MMV3DivCeil(matmulTilingData_->matmulTiling.M, params_.c0Size) * params_.c0Size;
-      params_.alignedKaSize = MMV3DivCeil(matmulTilingData_->matmulTiling.Ka, ALIGNED_H) * ALIGNED_H;
+        params_.alignedOriM = MMV3DivCeil(matmulTilingData_->matmulTiling.M, params_.c0Size) * params_.c0Size;
+        params_.alignedKaSize = MMV3DivCeil(matmulTilingData_->matmulTiling.Ka, ALIGNED_H) * ALIGNED_H;
     }
     if (params_.isTransposeB) {
-      params_.alignedOriN = MMV3DivCeil(matmulTilingData_->matmulTiling.N, ALIGNED_H) * ALIGNED_H;
-      params_.alignedKbSize = MMV3DivCeil(matmulTilingData_->matmulTiling.Kb, params_.c0Size) * params_.c0Size;
+        params_.alignedOriN = MMV3DivCeil(matmulTilingData_->matmulTiling.N, ALIGNED_H) * ALIGNED_H;
+        params_.alignedKbSize = MMV3DivCeil(matmulTilingData_->matmulTiling.Kb, params_.c0Size) * params_.c0Size;
     }
 }
 
@@ -190,8 +190,9 @@ __aicore__ inline void Mc2MatmulBaseBlock::UpdateBlockCnt(uint64_t mTileIndex, u
 
 __aicore__ inline void Mc2MatmulBaseBlock::UpdateBasicIndex(const uint64_t roundIdx)
 {
-    uint64_t newBlockIdx = (GetCurrentBlockIdx() + matmulTilingData_->matmulTiling.usedCoreNum - params_.blockIdxStart) %
-        matmulTilingData_->matmulTiling.usedCoreNum +
+    uint64_t newBlockIdx =
+        (GetCurrentBlockIdx() + matmulTilingData_->matmulTiling.usedCoreNum - params_.blockIdxStart) %
+            matmulTilingData_->matmulTiling.usedCoreNum +
         roundIdx * matmulTilingData_->matmulTiling.usedCoreNum;
     uint64_t mIdx = newBlockIdx % params_.mCntUse;
     uint64_t nIdx = 0;
@@ -212,7 +213,7 @@ __aicore__ inline void Mc2MatmulBaseBlock::InitBlockIndex(uint64_t index)
         indexInit_ = true;
     }
     params_.blockIdxEnd = (params_.blockIdxStart + params_.preCoreNum) %
-        matmulTilingData_->matmulTiling.usedCoreNum; // 结束运算时，尾核的索引
+                          matmulTilingData_->matmulTiling.usedCoreNum; // 结束运算时，尾核的索引
     uint64_t indexStart = params_.blockIdxStart;
     uint64_t indexEnd = params_.blockIdxEnd;
 
@@ -227,7 +228,7 @@ __aicore__ inline void Mc2MatmulBaseBlock::InitBlockIndex(uint64_t index)
             params_.realRound = params_.round;
         } else {
             params_.index = (indexStart * (params_.round - 1) + params_.preCoreNum * params_.round +
-                (GetCurrentBlockIdx() - indexEnd) * (params_.round - 1));
+                             (GetCurrentBlockIdx() - indexEnd) * (params_.round - 1));
             params_.realRound = params_.round - 1;
         }
         if (params_.rowOrder == COL_FIRST) {
@@ -244,7 +245,7 @@ __aicore__ inline void Mc2MatmulBaseBlock::InitBlockIndex(uint64_t index)
             params_.realRound = params_.round - 1;
         } else {
             params_.index = (indexEnd * params_.round + (indexStart - indexEnd) * (params_.round - 1) +
-                (GetCurrentBlockIdx() - indexStart) * params_.round);
+                             (GetCurrentBlockIdx() - indexStart) * params_.round);
             params_.realRound = params_.round;
         }
         if (params_.rowOrder == COL_FIRST) {
@@ -289,43 +290,45 @@ __aicore__ inline void Mc2MatmulBaseBlock::CalcGMOffset(uint64_t mTileIndex, uin
         if (params_.isTransposeA) {
             offset_.offsetA = mCntIndex * matmulTilingData_->matmulTiling.singleCoreM + params_.mTileAddrOffset;
         } else {
-            offset_.offsetA = mCntIndex * matmulTilingData_->matmulTiling.singleCoreM *
-                matmulTilingData_->matmulTiling.Ka + params_.mTileAddrOffset * matmulTilingData_->matmulTiling.Ka;
+            offset_.offsetA =
+                mCntIndex * matmulTilingData_->matmulTiling.singleCoreM * matmulTilingData_->matmulTiling.Ka +
+                params_.mTileAddrOffset * matmulTilingData_->matmulTiling.Ka;
         }
     } else if constexpr (A_TYPE::format == CubeFormat::NZ) {
         if (params_.isTransposeA) {
             offset_.offsetA = mCntIndex * matmulTilingData_->matmulTiling.singleCoreM * params_.alignedKaSize +
-                params_.mTileAddrOffset * params_.alignedKaSize;
+                              params_.mTileAddrOffset * params_.alignedKaSize;
         } else {
             offset_.offsetA = mCntIndex * matmulTilingData_->matmulTiling.singleCoreM * params_.c0Size +
-                params_.mTileAddrOffset * params_.c0Size;
+                              params_.mTileAddrOffset * params_.c0Size;
         }
     }
     if constexpr (B_TYPE::format == CubeFormat::ND) {
         if (params_.isTransposeB) {
-            offset_.offsetB = nCntIndex * matmulTilingData_->matmulTiling.singleCoreN *
-                matmulTilingData_->matmulTiling.Kb + params_.nTileAddrOffset * matmulTilingData_->matmulTiling.Kb;
+            offset_.offsetB =
+                nCntIndex * matmulTilingData_->matmulTiling.singleCoreN * matmulTilingData_->matmulTiling.Kb +
+                params_.nTileAddrOffset * matmulTilingData_->matmulTiling.Kb;
         } else {
             offset_.offsetB = nCntIndex * matmulTilingData_->matmulTiling.singleCoreN + params_.nTileAddrOffset;
         }
     } else if constexpr (B_TYPE::format == CubeFormat::NZ) {
         if (params_.isTransposeB) {
             offset_.offsetB = nCntIndex * matmulTilingData_->matmulTiling.singleCoreN * params_.c0Size +
-                params_.nTileAddrOffset * params_.c0Size;
+                              params_.nTileAddrOffset * params_.c0Size;
         } else {
             offset_.offsetB = nCntIndex * matmulTilingData_->matmulTiling.singleCoreN * params_.alignedKbSize +
-                params_.nTileAddrOffset * params_.alignedKbSize;
+                              params_.nTileAddrOffset * params_.alignedKbSize;
         }
     }
     if constexpr (C_TYPE::format == CubeFormat::ND) {
         offset_.offsetC = (nCntIndex * matmulTilingData_->matmulTiling.singleCoreN +
-            mCntIndex * matmulTilingData_->matmulTiling.singleCoreM * matmulTilingData_->matmulTiling.N +
-            (params_.mTileAddrOffset * matmulTilingData_->matmulTiling.N + params_.nTileAddrOffset));
+                           mCntIndex * matmulTilingData_->matmulTiling.singleCoreM * matmulTilingData_->matmulTiling.N +
+                           (params_.mTileAddrOffset * matmulTilingData_->matmulTiling.N + params_.nTileAddrOffset));
     } else {
-        offset_.offsetC = (nCntIndex * matmulTilingData_->matmulTiling.singleCoreN * matmulTilingData_->matmulTiling.M +
-            mCntIndex * matmulTilingData_->matmulTiling.singleCoreM * params_.c0Size +
-            (params_.mTileAddrOffset * params_.c0Size +
-            params_.nTileAddrOffset * matmulTilingData_->matmulTiling.M));
+        offset_.offsetC =
+            (nCntIndex * matmulTilingData_->matmulTiling.singleCoreN * matmulTilingData_->matmulTiling.M +
+             mCntIndex * matmulTilingData_->matmulTiling.singleCoreM * params_.c0Size +
+             (params_.mTileAddrOffset * params_.c0Size + params_.nTileAddrOffset * matmulTilingData_->matmulTiling.M));
     }
     if (matmulTilingData_->matmulTiling.isBias) {
         offset_.offsetBias = nCntIndex * matmulTilingData_->matmulTiling.singleCoreN + params_.nTileAddrOffset;

@@ -14,12 +14,10 @@
  */
 #include "register/op_def_registry.h"
 
-namespace ops
-{
-class GroupedMatMulAlltoAllv : public OpDef
-{
+namespace ops {
+class GroupedMatMulAlltoAllv : public OpDef {
 public:
-    explicit GroupedMatMulAlltoAllv(const char* name) : OpDef(name)
+    explicit GroupedMatMulAlltoAllv(const char *name) : OpDef(name)
     {
         this->Input("gmm_x")
             .ParamType(REQUIRED)
@@ -75,7 +73,7 @@ public:
         this->Attr("recv_counts").AttrType(REQUIRED).ListInt();
         this->Attr("trans_gmm_weight").AttrType(OPTIONAL).Bool(false);
         this->Attr("trans_mm_weight").AttrType(OPTIONAL).Bool(false);
-        this->Attr("comm_mode").AttrType(OPTIONAL).String("");
+        this->Attr("comm_mode").AttrType(OPTIONAL).String("ai_cpu");
 
         OpAICoreConfig aicore_config;
         aicore_config.DynamicCompileStaticFlag(true)
@@ -85,7 +83,7 @@ public:
             .NeedCheckSupportFlag(false)
             .PrecisionReduceFlag(true)
             .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
-            .ExtendCfgInfo("jitCompile.flag", "static_false")  // 动态shape,复用二进制,后续图支持后修改
+            .ExtendCfgInfo("jitCompile.flag", "static_false") // 动态shape,复用二进制,后续图支持后修改
             .ExtendCfgInfo("multiKernelSupportDynamicGraph.value", "multi_kernel");
         this->AICore().AddConfig("ascend910_93", aicore_config);
         this->AICore().AddConfig("ascend950", aicore_config);
@@ -94,4 +92,4 @@ public:
 };
 
 OP_ADD(GroupedMatMulAlltoAllv);
-}  // namespace ops
+} // namespace ops

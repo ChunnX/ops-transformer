@@ -35,8 +35,9 @@ extern "C" {
  * @return aclnnStatus: 返回状态码
  */
 ACLNN_API aclnnStatus aclnnAllGatherAddGetWorkspaceSize(const aclTensor *a, const aclTensor *b, char *group,
-                                                        int64_t rankSize, const aclTensor *cOut, const aclTensor *gatherOutOut,
-                                                        uint64_t *workspaceSize, aclOpExecutor **executor);
+                                                        int64_t rankSize, const aclTensor *cOut,
+                                                        const aclTensor *gatherOutOut, uint64_t *workspaceSize,
+                                                        aclOpExecutor **executor);
 
 /**
  * @brief aclnnAllGatherAdd的第二段接口，用于执行计算。
@@ -46,11 +47,11 @@ ACLNN_API aclnnStatus aclnnAllGatherAddGetWorkspaceSize(const aclTensor *a, cons
  * @param [in] stream: acl stream流。
  * @return aclnnStatus: 返回状态码
  */
-ACLNN_API aclnnStatus aclnnAllGatherAdd(void* workspace, uint64_t workspaceSize, aclOpExecutor* executor,
+ACLNN_API aclnnStatus aclnnAllGatherAdd(void *workspace, uint64_t workspaceSize, aclOpExecutor *executor,
                                         aclrtStream stream);
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // OP_API_INC_ALL_GATHER_ADD
+#endif // OP_API_INC_ALL_GATHER_ADD

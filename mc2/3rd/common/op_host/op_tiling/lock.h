@@ -24,7 +24,9 @@ namespace Transformer {
 namespace Optiling {
 class RWLock {
 public:
-    RWLock() : _status(0), _waiting_readers(0), _waiting_writers(0) {}
+    RWLock() : _status(0), _waiting_readers(0), _waiting_writers(0)
+    {
+    }
     ~RWLock() = default;
     RWLock(const RWLock &) = delete;
     RWLock(RWLock &&) = delete;
@@ -47,7 +49,7 @@ private:
     std::condition_variable _read_cv;
     std::condition_variable _write_cv;
 };
-} // namespace optiling
+} // namespace Optiling
 } // namespace Transformer
 } // namespace Ops
 #endif // CANN_OPS_BUILT_IN_LOCK_H_

@@ -39,12 +39,12 @@ enum class GmFormat {
     PA_BnNBsD = 10,
     PA_NZ = 11,
     NGD = 12, // post_quant
-    ND = 13, //antiquant no PA
+    ND = 13,  // antiquant no PA
     BS2 = 14,
     BNS2 = 15,
-    PA_BnBs = 16, //antiquant PA
+    PA_BnBs = 16, // antiquant PA
     PA_BnNBs = 17,
-    BN2GS1S2 = 18, //PSE_GmFormat
+    BN2GS1S2 = 18, // PSE_GmFormat
     SBNGD = 19,
     SBND = 20,
     NTGD = 21,
@@ -144,12 +144,12 @@ __aicore__ inline void InitOffset(OffsetInfoT &info, uint32_t b, uint32_t n2, ui
 }
 
 template <typename OffsetInfoT>
-__aicore__ inline uint64_t GetOffset(const OffsetInfoT &info,
-    uint32_t bIdx, uint32_t n2Idx, uint32_t aIdx, uint32_t cIdx, uint32_t dIdx)
+__aicore__ inline uint64_t GetOffset(const OffsetInfoT &info, uint32_t bIdx, uint32_t n2Idx, uint32_t aIdx,
+                                     uint32_t cIdx, uint32_t dIdx)
 {
     if constexpr (std::is_same_v<OffsetInfoT, BsngdOffsetInfo>) {
-        return bIdx * info.strideB + n2Idx * info.strideN2 + aIdx * info.strideG +
-               cIdx * info.strideS1 + dIdx * info.strideD;
+        return bIdx * info.strideB + n2Idx * info.strideN2 + aIdx * info.strideG + cIdx * info.strideS1 +
+               dIdx * info.strideD;
     } else {
         return bIdx * info.strideB + n2Idx * info.strideN2 + aIdx * info.strideS2 + cIdx * info.strideD;
     }

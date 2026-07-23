@@ -224,7 +224,7 @@ struct UBAllocPolicy<true> {
     static constexpr int32_t v1TmpUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_8K;          // V计算专用
     static constexpr int32_t reluGradUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_4K;       // V -> MTE3
     static constexpr int32_t weightUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_512;        // V计算专用
-    static constexpr int32_t weightInUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_256;        // V计算专用
+    static constexpr int32_t weightInUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_512;        // V计算专用
     static constexpr int32_t dwUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_4K;             // V -> MTE3
     static constexpr int32_t maskUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_256;          // V计算专用
     static constexpr int32_t scatterAddUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_16K;    // ScatterAdd专用
@@ -241,7 +241,7 @@ struct UBAllocPolicy<false> {
     static constexpr int32_t v1TmpUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_8K;          // V计算专用
     static constexpr int32_t reluGradUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_4K;       // V -> MTE3
     static constexpr int32_t weightUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_512;        // MTE2 -> V
-    static constexpr int32_t weightInUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_256;        // MTE2 -> V
+    static constexpr int32_t weightInUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_512;        // MTE2 -> V
     static constexpr int32_t dwUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_4K;             // V -> MTE3
     static constexpr int32_t maskUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_256;          // V计算专用
     static constexpr int32_t scatterAddUbSize = SLIKLLossGradConstInfo::BUFFER_SIZE_BYTE_16K;     // ScatterAdd专用

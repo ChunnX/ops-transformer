@@ -598,7 +598,7 @@ ge::graphStatus MhcPostTilingRegBaseArch35::PostTiling()
 
 uint64_t MhcPostTilingRegBaseArch35::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(0, 1);
+    return GET_TPL_TILING_KEY(0, 1, 1);
 }
 
 REGISTER_TILING_TEMPLATE_WITH_ARCH(MhcPost, MhcPostTilingRegBaseArch35,
