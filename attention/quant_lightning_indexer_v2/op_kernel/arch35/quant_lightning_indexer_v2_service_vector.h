@@ -37,6 +37,8 @@ public:
 
     using QK_T = typename QLIV2T::queryKeyType;
     using SCORE_T = typename QLIV2T::scoreType;
+    using W_T = typename QLIV2T::weightType;
+    using SCALE_T = typename QLIV2T::scaleType;
 
     __aicore__ inline QLIV2Vector() {};
     __aicore__ inline void ProcessVec1(const QLIV2Common::RunInfo &info);
@@ -61,11 +63,11 @@ public:
 
 protected:
     GlobalTensor<SCORE_T> scoreGm;
-    GlobalTensor<float> weightsGm;
+    GlobalTensor<W_T> weightsGm;
     GlobalTensor<SCORE_T> ldScoreGm;
     GlobalTensor<int32_t> ldIndexGm;
-    GlobalTensor<float> qScaleGm;
-    GlobalTensor<float> kScaleGm;
+    GlobalTensor<SCALE_T> qScaleGm;
+    GlobalTensor<SCALE_T> kScaleGm;
     GlobalTensor<int32_t> indiceOutGm;
     GlobalTensor<bfloat16_t> valueOutGm;
     GlobalTensor<int32_t> blockTableGm;
@@ -98,16 +100,16 @@ private:
     LocalTensor<QK_T> resMm1UB_;
     // tmp buff for weight
     TBuf<TPosition::VECCALC> weightBuf_;
-    LocalTensor<float> weightUB_;
+    LocalTensor<W_T> weightUB_;
     // tmp buff for weight cast float
     TBuf<TPosition::VECCALC> weightTempBuf_;
     LocalTensor<float> weightTempUB_;
     // tmp buff for kScale
     TBuf<TPosition::VECCALC> kScaleBuf_;
-    LocalTensor<float> kScaleUB_;
+    LocalTensor<SCALE_T> kScaleUB_;
     // tmp buff for qScale
     TBuf<TPosition::VECCALC> qScaleBuf_;
-    LocalTensor<float> qScaleUB_;
+    LocalTensor<SCALE_T> qScaleUB_;
     // tmp buff for out
     TBuf<TPosition::VECCALC> outBuf_;
     LocalTensor<SCORE_T> vec1OutUB_;
@@ -154,8 +156,8 @@ private:
     uint32_t topkCount_ = 0;
     uint32_t topkCountAlign256_ = 0; // topkCount对齐到256(直方图需要)，支持topk泛化
     uint32_t topkCountAlign16_ = 0; // LD读取到UB，需要满足32B对齐
-    float globalQScale_ = 1.0f;     // quantMode=4时全局query scale
-    float globalKScale_ = 1.0f;     // quantMode=4时全局key scale
+    SCALE_T globalQScale_ = 1.0f;     // quantMode=4时全局query scale
+    SCALE_T globalKScale_ = 1.0f;     // quantMode=4时全局key scale
     uint32_t trunkLen_ = 0;
     bool returnValueFlag = false;
 
@@ -169,21 +171,21 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
     // 大小：2(开dB) 2 * 64 * 128 * 4 = 128KB
     pipe->InitBuffer(resMm1Buf_,
-        2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));
-    resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
+        2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(float));
+    resMm1UB_ = resMm1Buf_.Get<float>(); // qk
     // 大小：2(开dB) * 2 * 64 * 2 = 0.5KB
     pipe->InitBuffer(weightBuf_,
         2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
-    weightUB_ = weightBuf_.Get<float>(); // weight
+    weightUB_ = weightBuf_.Get<W_T>(); // weight
     pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
-    weightTempUB_ = weightTempBuf_.Get<float>();
+    weightTempUB_ = weightTempBuf_.Get<W_T>();
     // 大小：2(开dB) * 128 * 4 = 1KB
-    pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(float));
-    kScaleUB_ = kScaleBuf_.Get<float>(); // kScale
+    pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(SCALE_T));
+    kScaleUB_ = kScaleBuf_.Get<SCALE_T>(); // kScale
     // 大小：2(开dB) * 2 * 64 * 4 = 1KB
     pipe->InitBuffer(qScaleBuf_,
         2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
-    qScaleUB_ = qScaleBuf_.Get<float>(); // qScale
+    qScaleUB_ = qScaleBuf_.Get<SCALE_T>(); // qScale
     // 大小：2(开dB) * 2 * 128 * 4 = 2KB
     pipe->InitBuffer(outBuf_,
         2 * CeilDiv(s1BaseSize_, 2) * s2BaseSize_ * sizeof(SCORE_T));
@@ -254,8 +256,8 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitParams(const struct QLIV2Common:
 
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(GlobalTensor<float> weightsGm,
-                                                               GlobalTensor<float> qScaleGm,
-                                                               GlobalTensor<float> kScaleGm,
+                                                               GlobalTensor<SCALE_T> qScaleGm,
+                                                               GlobalTensor<SCALE_T> kScaleGm,
                                                                GlobalTensor<int32_t> indiceOutGm,
                                                                GlobalTensor<int32_t> blockTableGm,
                                                                GlobalTensor<bfloat16_t> valueOutGm,
@@ -362,11 +364,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::DoTndPadding(const QLIV2Common::RunI
 }
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunInfo &runInfo,
-    LocalTensor<float> &kScaleUB,
+    LocalTensor<SCALE_T> &kScaleUB,
                                                     int64_t batchId, int64_t startS2, int64_t getLen)
 {
     // startS2一定能整除kCacheBlockSize_
-    AscendC::DataCopyPadExtParams<float> padParams{false, 0, 0, 0};
+    AscendC::DataCopyPadExtParams<SCALE_T> padParams{false, 0, 0, 0};
     AscendC::DataCopyExtParams copyInParams;
     if constexpr (PAGE_ATTENTION) {
         int32_t startBlockTableIdx = startS2 / kCacheBlockSize_;
@@ -380,7 +382,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunIn
         if (startBlockTableOffset > 0) {
             int32_t firstPartLen =
                 kCacheBlockSize_ - startBlockTableOffset > getLen ? getLen : kCacheBlockSize_ - startBlockTableOffset;
-            copyInParams.blockLen = firstPartLen * sizeof(float);
+            copyInParams.blockLen = firstPartLen * sizeof(SCALE_T);
             int32_t blockId = blockTableGm.GetValue(blockTableBatchOffset + startBlockTableIdx);
             SetFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
             WaitFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
@@ -392,10 +394,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunIn
             resUbBaseOffset = firstPartLen;
         }
         int32_t getLoopNum = CeilDiv(getLen, kCacheBlockSize_);
-        copyInParams.blockLen = kCacheBlockSize_ * sizeof(float);
+        copyInParams.blockLen = kCacheBlockSize_ * sizeof(SCALE_T);
         for (int32_t i = 0; i < getLoopNum; i++) {
             if (i == getLoopNum - 1) {
-                copyInParams.blockLen = (getLen - i * kCacheBlockSize_) * sizeof(float);
+                copyInParams.blockLen = (getLen - i * kCacheBlockSize_) * sizeof(SCALE_T);
             }
             int32_t blockId = blockTableGm.GetValue(blockTableBatchOffset + startBlockTableIdx + i);
             SetFlag<HardEvent::S_MTE2>(KSCALE_S_MTE2_EVENT);
@@ -407,7 +409,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::GetKeyScale(const QLIV2Common::RunIn
         }
     } else {
         copyInParams.blockCount = 1;
-        copyInParams.blockLen = getLen * sizeof(float);
+        copyInParams.blockLen = getLen * sizeof(SCALE_T);
         copyInParams.srcStride = 0;
         copyInParams.dstStride = 0;
         copyInParams.rsv = 0;
@@ -442,19 +444,19 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
         // weightsGm --> weightUB_
         int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
-        DataCopyPadExtParams<float> padWeightsParams{false, 0, 0, 0};
+        DataCopyPadExtParams<W_T> padWeightsParams{false, 0, 0, 0};
         DataCopyExtParams qwDataCopyExtParams;
         qwDataCopyExtParams.blockCount = curAivS1ProcNum;
-        qwDataCopyExtParams.blockLen = gSize_ * sizeof(float);
+        qwDataCopyExtParams.blockLen = gSize_ * sizeof(W_T);
         qwDataCopyExtParams.srcStride = 0;
         qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qwDataCopyExtParams.blockLen) / 32;
-        DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))],
+        DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
         if (constInfo_.quantMode != 4) {
             // qScaleGm  -->  qScaleUB_
             DataCopyPadExtParams<float> padQScaleParams{false, 0, 0, 0};
-            DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))],
+            DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(W_T))],
                         qScaleGm[weightGmOffset], qwDataCopyExtParams, padQScaleParams);
         }
 

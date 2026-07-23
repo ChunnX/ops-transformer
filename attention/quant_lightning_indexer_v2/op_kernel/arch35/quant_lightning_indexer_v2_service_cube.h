@@ -99,7 +99,7 @@ protected:
     LocalTensor<K_T> keyL0_;
 
     TBuf<TPosition::CO1> bufL0C_;
-    LocalTensor<float> cL0_;
+    LocalTensor<QK_T> cL0_;
 
     TBuf<TPosition::VECCALC> bufUB_;
     LocalTensor<QK_T> mm1ResUB_;
@@ -454,7 +454,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
-    if constexpr (std::is_same_v<QK_T, float>) {
+    if constexpr (std::is_same_v<QK_T, float> || std::is_same_v<QK_T, int32_t>) {
         // s1gL0RealSize：2*gSize(128)对齐, 最大256
         // s2L0RealSize <= S2_BASIC_BLOCK_L0, 未约束
         uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 32B对齐
@@ -482,9 +482,9 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
             fixpipeParams.params.dstNdStride =
                 constInfo_.s2BaseSize * constInfo_.mBaseSize / 2; // s2BasicBlock_ * M_BASE_SIZE / 2
         }
-        Fixpipe<QK_T, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
+        Fixpipe<float, float, QLIV2_CFG_ROW_MAJOR_UB>(mm1ResUB_[(runInfo.loop % 2) * constInfo_.s2BaseSize / 2],
         // 未考虑s1gGmOffset和s2GmOffset，将matmul结果从L0C搬运到UB
-            cL0_[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
+            cL0_.template ReinterpretCast<float>()[(l0BufIdx_ % L0_BUF_NUM) * L0C_BUFFER_OFFSET],
             fixpipeParams);
     } else {
         // nSize * sizeof(QT) <= 256B, 小于一个UB bank大小(VL)
