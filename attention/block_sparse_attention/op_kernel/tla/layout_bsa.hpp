@@ -280,8 +280,8 @@ template <class Element, class Layout>
 struct iszN<Element, Layout,
     std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>, std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 &&
         rank_v<decltype(shape<1>(Layout{}))> == 2>> {
-    static constexpr uint32_t ELE_NUM_PER_C0 = NpuArch::BYTE_PER_C0 / sizeof(Element);
-    static constexpr uint32_t ELE_NUM_PER_FRACTAL = NpuArch::BYTE_PER_FRACTAL / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = NpuArch::BytesToBits(NpuArch::BYTE_PER_C0) / NpuArch::SizeOfBits<Element>::value;
+    static constexpr uint32_t ELE_NUM_PER_FRACTAL = NpuArch::BytesToBits(NpuArch::BYTE_PER_FRACTAL) / NpuArch::SizeOfBits<Element>::value;
     static bool const value = (shape<0, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL &&
                                shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 &&
                                stride<1, 0>(Layout{}) == 1 &&
@@ -297,8 +297,8 @@ template <class Element, class Layout>
 struct iszZ<Element, Layout,
     std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>, std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 &&
         rank_v<decltype(shape<1>(Layout{}))> == 2>> {
-    static constexpr uint32_t ELE_NUM_PER_C0 = NpuArch::BYTE_PER_C0 / sizeof(Element);
-    static constexpr uint32_t ELE_NUM_PER_FRACTAL = NpuArch::BYTE_PER_FRACTAL / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = NpuArch::BytesToBits(NpuArch::BYTE_PER_C0) / NpuArch::SizeOfBits<Element>::value;
+    static constexpr uint32_t ELE_NUM_PER_FRACTAL = NpuArch::BytesToBits(NpuArch::BYTE_PER_FRACTAL) / NpuArch::SizeOfBits<Element>::value;
     static bool const value = (shape<0, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL &&
                                shape<1, 0>(Layout{}) == ELE_NUM_PER_C0 &&
                                stride<1, 0>(Layout{}) == 1 &&
@@ -314,8 +314,8 @@ template <class Element, class Layout>
 struct isnZ<Element, Layout,
     std::enable_if_t<Layout::depth == 2 && Layout::rank == 2>, std::enable_if_t<rank_v<decltype(shape<0>(Layout{}))> == 2 &&
         rank_v<decltype(shape<1>(Layout{}))> == 2>> {
-    static constexpr uint32_t ELE_NUM_PER_C0 = NpuArch::BYTE_PER_C0 / sizeof(Element);
-    static constexpr uint32_t ELE_NUM_PER_FRACTAL = NpuArch::BYTE_PER_FRACTAL / sizeof(Element);
+    static constexpr uint32_t ELE_NUM_PER_C0 = NpuArch::BytesToBits(NpuArch::BYTE_PER_C0) / NpuArch::SizeOfBits<Element>::value;
+    static constexpr uint32_t ELE_NUM_PER_FRACTAL = NpuArch::BytesToBits(NpuArch::BYTE_PER_FRACTAL) / NpuArch::SizeOfBits<Element>::value;
     static bool const value = (shape<0, 0>(Layout{}) == ELE_NUM_PER_C0 &&
                                shape<1, 0>(Layout{}) == NpuArch::C0_NUM_PER_FRACTAL &&
                                stride<0, 0>(Layout{}) == 1 &&
@@ -443,8 +443,8 @@ auto MakeLayout(T const& rows, U const& cols)
         "Unsupported LayoutTag for MakeLayoutFromTag, only support NpuArch::layout::RowMajor or"
         "NpuArch::layout::ColumnMajor or NpuArch::layout::zN or NpuArch::layout::nZ or NpuArch::layout::zZ");
 
-    constexpr uint32_t ELE_NUM_PER_C0 = NpuArch::BYTE_PER_C0 / sizeof(Element);
-    constexpr uint32_t ELE_NUM_PER_FRACTAL = NpuArch::BYTE_PER_FRACTAL / sizeof(Element);
+    constexpr uint32_t ELE_NUM_PER_C0 = NpuArch::BytesToBits(NpuArch::BYTE_PER_C0) / NpuArch::SizeOfBits<Element>::value;
+    constexpr uint32_t ELE_NUM_PER_FRACTAL = NpuArch::BytesToBits(NpuArch::BYTE_PER_FRACTAL) / NpuArch::SizeOfBits<Element>::value;
 
     if constexpr (std::is_same_v<LayoutTag, NpuArch::layout::VectorLayout>) {
         return MakeLayout(MakeShape(cols), MakeStride(Int<1>{}));
