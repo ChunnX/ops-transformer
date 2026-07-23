@@ -1327,9 +1327,9 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         - weight_scales1和weight_scales2不可为空指针。
 
         - **MXFP量化场景约束**：
-            - weight1 shape为(num_experts_per_rank, intermediate_hidden, hidden)，weight2 shape为(num_experts_per_rank, hidden, intermediate_hidden / 2)；其中路由 MoE 专家的有效第一维为 local_moe_expert_num，共享专家权重单独使用 shared_expert_num_per_rank。
-            - weightScales1 shape为(num_experts_per_rank, intermediate_hidden, CeilDiv(hidden, 64), 2)，其中路由 MoE 专家的有效第一维为 local_moe_expert_num，CeilDiv(hidden, 64) = ⌈hidden / 64⌉ = ⌊(hidden + 63) / 64⌋。
-            - weightScales2 shape为(num_experts_per_rank, hidden, CeilDiv(intermediate_hidden / 2, 64), 2)，其中路由 MoE 专家的有效第一维为 local_moe_expert_num，CeilDiv(intermediate_hidden / 2, 64) = ⌈(intermediate_hidden / 2) / 64⌉ = ⌊(intermediate_hidden / 2 + 63) / 64⌋。
+            - weight1 shape为(local_moe_expert_num, intermediate_hidden, hidden)，weight2 shape为(local_moe_expert_num, hidden, intermediate_hidden / 2)。
+            - weightScales1 shape为(local_moe_expert_num, intermediate_hidden, CeilDiv(hidden, 64), 2)，CeilDiv(hidden, 64) = ⌈hidden / 64⌉ = ⌊(hidden + 63) / 64⌋。
+            - weightScales2 shape为(local_moe_expert_num, hidden, CeilDiv(intermediate_hidden / 2, 64), 2)，CeilDiv(intermediate_hidden / 2, 64) = ⌈(intermediate_hidden / 2) / 64⌉ = ⌊(intermediate_hidden / 2 + 63) / 64⌋。
             - shared_l1_weights shape为(shared_expert_num_per_rank, intermediate_hidden, hidden)，shared_l2_weights shape为(shared_expert_num_per_rank, hidden, intermediate_hidden / 2)。
             - shared_l1_weights_sf shape为(shared_expert_num_per_rank, intermediate_hidden, CeilDiv(hidden, 64), 2)，shared_l2_weights_sf shape为(shared_expert_num_per_rank, hidden, CeilDiv(intermediate_hidden / 2, 64), 2)。
             - weightScales1的dim3和weightScales2的dim3必须等于2。
