@@ -256,7 +256,8 @@ private:
                                        uint64_t sparseBase, bool isFirstValidS2Loop)
     {
         // 构造一个 512-token logical S2 tile 的运行参数。
-        runInfo = {};
+        // 仅清零必要的字段
+        runInfo.actSingleLoopS2Size = 0U;
         runInfo.loop = static_cast<uint32_t>(loop);
         runInfo.mLoop = mLoop;
         runInfo.isValid = true;
@@ -300,6 +301,7 @@ private:
             }
             runInfo.sparseBlockTokenOffset[i] = sparseTokenOffset;
             runInfo.sparseBlockRealSize[i] = sparseBlockRealSize;
+            runInfo.sparseBlockPartialMask[i] = false;
             if constexpr (HAS_ATTEN) {
                 if (sparseBlockRealSize != 0U) {
                     const int64_t causalDelta = static_cast<int64_t>(runInfo.actS2Size) -
