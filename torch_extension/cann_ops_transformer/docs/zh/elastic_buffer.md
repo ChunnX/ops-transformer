@@ -95,10 +95,10 @@ class ElasticBuffer:
 | 属性 | 类型 | shape | 说明 |
 |------|------|-------|------|
 | `perm` | `Tensor` | `(T,)` int32 | 桶排列序索引（原始位置 → 桶排位置），反向按此重排梯度 |
-| `sendCounts` | `Tensor` | `(W,)` int32 | 每 rank 发送的 index 数量 |
-| `recvCounts` | `Tensor` | `(W,)` int32 | 每 rank 接收的 index 数量 |
-| `recvLocalEntry` | `Tensor` | `(R_max,)` int32 | 接收到的 local entry 索引，反向按此 scatter-add |
-| `numRecv` | `Tensor` | `(1,)` int32 | 实际接收行数 R |
+| `send_counts` | `Tensor` | `(W,)` int32 | 每 rank 发送的 index 数量 |
+| `recv_counts` | `Tensor` | `(W,)` int32 | 每 rank 接收的 index 数量 |
+| `recv_local_entry` | `Tensor` | `(R_max,)` int32 | 接收到的 local entry 索引，反向按此 scatter-add |
+| `num_recv` | `Tensor` | `(1,)` int32 | 实际接收行数 R |
 
 ## 成员函数说明
 
@@ -221,7 +221,7 @@ ElasticBuffer.barrier(use_comm_stream=True, with_cpu_sync=False) -> None
 **输入参数**：
 
 - **grad_fetched** (`Tensor`)：必选参数，前向 `fetched` 的梯度，NPU tensor，shape 为 `(num_tokens, hidden_size)`，数据类型支持 `bfloat16`、`float16`、`float32`，数据格式为 $ND$。
-- **fetch_ctx** (`EngramFetchCtx`)：必选参数，前向 [engram_fetch](#engram-fetch) 训练模式返回的上下文对象，包含 `perm`、`sendCounts`、`recvCounts`、`recvLocalEntry`、`numRecv` 五个字段。
+- **fetch_ctx** (`EngramFetchCtx`)：必选参数，前向 [engram_fetch](#engram-fetch) 训练模式返回的上下文对象，包含 `perm`、`send_counts`、`recv_counts`、`recv_local_entry`、`num_recv` 五个字段。
 
 **输出**：
 

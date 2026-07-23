@@ -781,7 +781,7 @@ private:
     int64_t moeCclBufferSize_ = 0;
     bool moeContextInitialized_ = false;
 
-    int64_t engramHiddenSize_ = 0;
+    int32_t engramHiddenSize_ = 0;
     int64_t engramNumEntries_ = 0;
     at::ScalarType engramDtype_ = at::kBFloat16;
 
@@ -794,8 +794,8 @@ private:
 // Constructor
 ElasticBuffer::ElasticBuffer(const std::string &groupName, int64_t numCpuBytes, int64_t numMaxTokensPerRank,
                              bool withGrad)
-    : groupName_(groupName), engramNumCpuBytes_(numCpuBytes), destroyed_(false), engramWriteCalled_(false), numMaxTokensPerRank_(numMaxTokensPerRank),
-      withGrad_(withGrad)
+    : groupName_(groupName), engramNumCpuBytes_(numCpuBytes), destroyed_(false),
+      engramWriteCalled_(false), numMaxTokensPerRank_(numMaxTokensPerRank), withGrad_(withGrad)
 {
     InitHcclEngineCtxFunctions();
     InitHcclFunctions();
@@ -933,12 +933,13 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
         if (numTokens > 0) {
             engramFetchInProgress_.store(true);
-            ACLNN_CMD(aclnnEngramFetchTrain, engramContextTensor_, indices,
+            int64_t withGrad = static_cast<int64_t>(withGrad_);
+            ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices,
                       localStorageAddrTensor_,
                       fetched,
                       ctx.perm, ctx.sendCounts, ctx.recvCounts, ctx.recvLocalEntry, ctx.numRecv,
                       engramHiddenSize_, engramNumEntries_,
-                      numMaxTokensPerRank_, commBufferSize_);
+                      numMaxTokensPerRank_, commBufferSize_, withGrad);
             engramFetchInProgress_.store(false);
         }
         if (ctxOut != nullptr) {
@@ -949,7 +950,14 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
     engramFetchInProgress_.store(true);
 
-    ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices, engramHiddenSize_, engramNumEntries_, fetched);
+    aclTensor *nullTensor = nullptr;
+    int64_t zero = 0;
+    ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices,
+              nullTensor,
+              fetched,
+              nullTensor, nullTensor, nullTensor, nullTensor, nullTensor,
+              engramHiddenSize_, engramNumEntries_,
+              zero, zero, zero);
 
     auto capturedContext = engramContextTensor_;
     auto fetchFlag = &engramFetchInProgress_;
@@ -991,9 +999,7 @@ std::tuple<at::Tensor, at::Tensor> ElasticBuffer::EngramFetchGrad(
               gradUnique, uniqueLocalEntry, numUnique,
               engramNumEntries_, commBufferSize_);
 
-
     int64_t actualK = static_cast<int64_t>(numUnique.item<int32_t>());
-
     if (actualK < maxR) {
         gradUnique = gradUnique.narrow(0, 0, actualK);
         uniqueLocalEntry = uniqueLocalEntry.narrow(0, 0, actualK);
@@ -1275,10 +1281,10 @@ PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 
     pybind11::class_<Mc2Api::EngramFetchCtx>(m, "EngramFetchCtx")
         .def_readwrite("perm", &Mc2Api::EngramFetchCtx::perm)
-        .def_readwrite("sendCounts", &Mc2Api::EngramFetchCtx::sendCounts)
-        .def_readwrite("recvCounts", &Mc2Api::EngramFetchCtx::recvCounts)
-        .def_readwrite("recvLocalEntry", &Mc2Api::EngramFetchCtx::recvLocalEntry)
-        .def_readwrite("numRecv", &Mc2Api::EngramFetchCtx::numRecv);
+        .def_readwrite("send_counts", &Mc2Api::EngramFetchCtx::sendCounts)
+        .def_readwrite("recv_counts", &Mc2Api::EngramFetchCtx::recvCounts)
+        .def_readwrite("recv_local_entry", &Mc2Api::EngramFetchCtx::recvLocalEntry)
+        .def_readwrite("num_recv", &Mc2Api::EngramFetchCtx::numRecv);
 
     pybind11::class_<Mc2Api::ElasticBuffer>(m, "ElasticBuffer")
         .def(pybind11::init<const std::string &, int64_t, int64_t, bool>(),
