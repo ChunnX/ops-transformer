@@ -12,9 +12,15 @@
 #include <cstdint>
 #include "../../tiling/quant_matmul_tiling_data.h"
 #include "../../tiling/comm_tiling_data.h"
+#include "../../block/aiv_comm/collective_comm_context.h"
 
 struct allToAllMatmulTilingData {
     CommTilingData commTilingData;
     QuantMatmulTilingData tileQbmmTilingData;
     uint32_t localMatmul{0}; // 是否使能local块计算先行，0：不使能；1：使能atomiadd
+};
+
+struct CommContext {
+    Apace::AivComm::CommUdmaContext udmaCtx;
+    Apace::AivComm::CommUbmemContext ubmemCtx;
 };
