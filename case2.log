@@ -1,0 +1,222 @@
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel.csv --plugin /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/assets --warmup false --run 1 -t Prefill_FP8e4m3_FP8e4m3_BF16_Mxfp8_redline_1_80_8_1024_1024_128_128_TND_PABNBD_000002_test
+2026-07-23 02:06:16,893 [INFO] [792027 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel.csv 
+2026-07-23 02:06:21,446 [INFO] [792027 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-23 02:06:22,020 [INFO] [792027 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-23 02:06:23,159 [INFO] [792027 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-23 02:06:23,159 [INFO] [792027 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-23 02:06:23,160 [INFO] [792027 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-23 02:06:24,309 [INFO] [792027 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-23 02:06:24,315 [INFO] [792027 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-23 02:06:24,315 [INFO] [792027 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-23 02:06:24,316 [INFO] [792027 MP MT] [instance.py:42]: Device count: 1 
+2026-07-23 02:06:24,316 [INFO] [792027 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-23 02:06:24,316 [INFO] [792027 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-23 02:06:24,316 [INFO] [792027 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel.csv ... 
+2026-07-23 02:06:24,317 [INFO] [792027 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-23 02:06:24,317 [INFO] [792027 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+ninja: no work to do.
+ninja: no work to do.
+Checking testcase name...
+Case number: 1
+Initialize output csv file...
+Output csv file is not specified. It will be set as /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel_result.csv
+Process per device: 1
+Preparing Task Executors...
+
++------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                      |
++------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 792512 D0P0             UNKNOWN              IDLE     0s  |
++------------------------------------------------------------------------------------------------------+
+2026-07-23 02:06:30,640 [INFO] [792512 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-23 02:06:31,206 [INFO] [792512 Prefill_FP8e4m3_FP8e4m3_BF16_Mxfp8_redline_1_80_8_1024_1024_128_128_TND_PABNBD_000002_test OnWaitingForMemory] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+ninja: no work to do.
+ninja: no work to do.
+
+----------------------------------------------------------------------------------------------------
+API Name: qfa_mxfp8_wrapper.npu_qfa_mxfp8
+Golden API: 
+Backend: npu
+////////////// Tensors //////////////
+Input View Shapes: ((1024, 80, 128), (2, 8, 512, 128), (2, 8, 512, 128), (1024, 80, 2, 2), (2, 8, 512, 2, 2), (2, 8, 8, 128, 2), (1,), (1, 2))
+Input Dtypes: ('float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float32', 'int32')
+Input Storage Shapes: ()
+Input Formats: ()
+Input View Offsets: ()
+Input View Strides: ()
+//////////// Output Info //////////
+Output Tensor Indexes: ()
+//////////// Attributes //////////
+precision_tolerances: ((0.0078125, 0.0001),)
+absolute_precision: 1e-08
+p_scale_value: 448.0
+cu_seqlens_q: [0, 1024]
+cu_seqlens_kv: None
+seqused_q: [1020]
+seqused_kv: [1023]
+quant_mode: 1
+softmax_scale: 0.125
+mask_mode: 3
+win_left: -1
+win_right: -1
+max_seqlen_q: -1
+max_seqlen_kv: 1023
+layout_q: TND
+layout_q_descale: TND
+layout_kv: PA_BNBD
+layout_out: TND
+enable_lse: 1
+N_q: 80
+N_kv: 8
+D: 128
+B: 1
+enable_pa: True
+kv_cache_layout: PA_BNBD
+q_scale_layout: TND
+block_size: 512
+//////////// Test Config //////////
+Input Data Range: ((-1.0, 1.0), (-1.0, 1.0), (-1.0, 1.0), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1))
+Precision Tolerance: ((0.0078125, 0.0001),)
+Absolute Precision: (1e-08,)
+Mode: ASCEND_ONBOARD
+PID: 792512
+Device: 0
+----------------------------------------------------------------------------------------------------
+
++------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 13s Rev: 7f1d28b                     |
++------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 792512 BNBD_000002_test OnEagerProfiling     RUNNING  1s  |
++------------------------------------------------------------------------------------------------------+
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[WRAPPER] graph_path=0, 调用 npu_mxfp8_fa
+[NPU] Q layout: q_layout=TND, G=10
+[NPU TND] q=torch.Size([1024, 80, 128])
+[NPU] Q scale layout=TND, shape=torch.Size([1024, 80, 2, 2])
+[NPU PA] kv_layout=PA_BNBD
+[NPU PA] k=torch.Size([2, 8, 512, 128]), v=torch.Size([2, 8, 512, 128])
+[NPU PA] deq_k=torch.Size([2, 8, 512, 2, 2]), deq_v=torch.Size([2, 8, 8, 128, 2])
+[NPU] prepare PA inputs done.
+[NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+[NPU] max_seqlen_q=-1 → 推导为 1020
+[NPU] 调用 QFA 单算子模式...
+[NPU] output=torch.Size([1024, 80, 128])
+get env ASCEND_GLOBAL_LOG_LEVEL = 3
+[2026-07-23 02:06:38] [INFO] [793013] profiler.py: Start parsing profiling data in sync mode at: /tmp/ttk_npu_prof_n9xesx7m/aa_792512_20260723020636414_ascend_pt
+[2026-07-23 02:06:40] [INFO] [793030] profiler.py: CANN profiling data parsed in a total time of 0:00:02.039865
+[2026-07-23 02:06:41] [WARNING] [793013] profiler.py: Failed to get api data from db.
+[2026-07-23 02:06:41] [WARNING] [793013] profiler.py: Failed to get task data from db.
+[2026-07-23 02:06:42] [INFO] [793013] profiler.py: All profiling data parsed in a total time of 0:00:03.672222
+[CACHE] save input → /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/outcached/default_input.pt
+[INFO] GQA 广播
+[CPU Golden] TILES_Q=8, TILES_KV=4, Sq=1024, Skv=1023
+[CPU Golden] output=torch.Size([1, 80, 1024, 128])
+[COMPARE] atten: csv rtol=0.0078125 atol=0.0001
+split_count:10485760.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00000001         -0.0974001      -0.0971680      0.0002321       0.0023833
+00000002         0.0881925       0.0883789       0.0001864       0.0021136
+00000003         0.2435316       0.2431641       0.0003675       0.0015091
+00000004         0.1057934       0.1059570       0.0001636       0.0015465
+00000005         0.2943299       0.2949219       0.0005919       0.0020111
+00000006         -0.2635753      -0.2636719      0.0000966       0.0003663
+00000007         0.3129331       0.3125000       0.0004331       0.0013839
+00000008         -0.0270591      -0.0270996      0.0000405       0.0014984
+00000009         0.2703401       0.2695312       0.0008088       0.0029919
+00000010         0.1638577       0.1640625       0.0002048       0.0012501
+...        ...             ...             ...             ...
+10485751         0.0000000       0.0000000       0.0000000       0.0000000
+10485752         0.0000000       0.0000000       0.0000000       0.0000000
+10485753         0.0000000       0.0000000       0.0000000       0.0000000
+10485754         0.0000000       0.0000000       0.0000000       0.0000000
+10485755         0.0000000       0.0000000       0.0000000       0.0000000
+10485756         0.0000000       0.0000000       0.0000000       0.0000000
+10485757         0.0000000       0.0000000       0.0000000       0.0000000
+10485758         0.0000000       0.0000000       0.0000000       0.0000000
+10485759         0.0000000       0.0000000       0.0000000       0.0000000
+10485760         0.0000000       0.0000000       0.0000000       0.0000000
+---------------------------------------------------------------------------------------
+Rtol     Atol            PctThd          PctRlt          Result
+---------------------------------------------------------------------------------------
+0.0078           0.000100        99.50%          99.997540%      Pass
+Max-RelativeError is: 0.04679763689637184. Threshold is: 10.
+[COMPARE] out1: csv rtol=None atol=1e-08
+split_count:81920.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00000001         1.3603927       1.3603927       0.0000000       0.0000000
+00000002         1.2084240       1.2084240       0.0000000       0.0000000
+00000003         1.5839123       1.5839123       0.0000000       0.0000000
+00000004         1.4484215       1.4484215       0.0000000       0.0000000
+00000005         1.7880183       1.7880183       0.0000000       0.0000000
+00000006         1.4925864       1.4925864       0.0000000       0.0000000
+00000007         1.5853881       1.5853881       0.0000000       0.0000000
+00000008         1.7017689       1.7017689       0.0000000       0.0000000
+00000009         1.7817341       1.7817341       0.0000000       0.0000000
+00000010         1.2897366       1.2897366       0.0000000       0.0000000
+...        ...             ...             ...             ...
+00081911         0.0000000       inf     inf     inf
+00081912         0.0000000       inf     inf     inf
+00081913         0.0000000       inf     inf     inf
+00081914         0.0000000       inf     inf     inf
+00081915         0.0000000       inf     inf     inf
+00081916         0.0000000       inf     inf     inf
+00081917         0.0000000       inf     inf     inf
+00081918         0.0000000       inf     inf     inf
+00081919         0.0000000       inf     inf     inf
+00081920         0.0000000       inf     inf     inf
+---------------------------------------------------------------------------------------
+Rtol     Atol            PctThd          PctRlt          Result
+---------------------------------------------------------------------------------------
+0.0050           0.000000        99.50%          99.609375%      Failed
+Max-RelativeError is: inf. Threshold is: 10.
+Error Line-----------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00081600         0.0000000       inf     inf     inf
+00081601         0.0000000       inf     inf     inf
+00081602         0.0000000       inf     inf     inf
+00081603         0.0000000       inf     inf     inf
+00081604         0.0000000       inf     inf     inf
+00081605         0.0000000       inf     inf     inf
+00081606         0.0000000       inf     inf     inf
+00081607         0.0000000       inf     inf     inf
+00081608         0.0000000       inf     inf     inf
+     ...             ...             ...             ...             ...
+00081690         0.0000000       inf     inf     inf
+00081691         0.0000000       inf     inf     inf
+00081692         0.0000000       inf     inf     inf
+00081693         0.0000000       inf     inf     inf
+00081694         0.0000000       inf     inf     inf
+00081695         0.0000000       inf     inf     inf
+00081696         0.0000000       inf     inf     inf
+00081697         0.0000000       inf     inf     inf
+00081698         0.0000000       inf     inf     inf
+     ...             ...             ...             ...             ...
+Max-RE line:---------------------------------------------------------------------------
+00081600         0.0000000       inf     inf     inf
+00081601         0.0000000       inf     inf     inf
+00081602         0.0000000       inf     inf     inf
+---------------------------------------------------------------------------------------
+
+Eager Kernels
+-------------------------------------------------------------------------------------------------------
+Name                                              avg            max           min           # of Calls
+-------------------------------------------------------------------------------------------------------
+aclnnQuantFlashAttnMetadata_QuantFlashAttnMetada..46791.526      93087.919     495.134       2
+QuantFlashAttn                                    135.251        135.251       135.251       1
+-------------------------------------------------------------------------------------------------------
+
+
+ ####################################### Eager Result Summary  ######################################## 
+EAGER:       99.99753952026367%,99.609375%
+  DEVICE: 93718.304 us
+  CPU:    131881.244 us
+STATUS: FAIL
+Golden Shapes: ((1024, 80, 128), (1024, 80, 1))
+Golden Dtypes: ('float32', 'float32')
+#######################################################################################################
+ttk Profiling complete
