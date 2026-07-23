@@ -280,7 +280,6 @@ void QuantBlockSparseAttnTiling::FillMxTilingData()
     baseParams.actualSeqLengthsKVSize = actualSeqKVNull ? 0U : info.bSize;
     baseParams.scaleValue = info.softmaxScaleVal;
     baseParams.isKvContinuous = 0U;
-    baseParams.isSoftMaxLseEnable = info.returnSoftmaxLseVal ? 1U : 0U;
     baseParams.isActualSeqLengthsNull = actualSeqQNull ? 1U : 0U;
     baseParams.isActualSeqLengthsKVNull = actualSeqKVNull ? 1U : 0U;
     baseParams.coreNum = usedCoreNum_;
@@ -490,7 +489,6 @@ void QuantBlockSparseAttnTiling::PrintMxTilingData()
     OP_LOGD(kOpName, "actualSeqLengthsKVSize:%u", baseParams.actualSeqLengthsKVSize);
     OP_LOGD(kOpName, "scaleValue:%f", baseParams.scaleValue);
     OP_LOGD(kOpName, "isKvContinuous:%u", baseParams.isKvContinuous);
-    OP_LOGD(kOpName, "isSoftMaxLseEnable:%u", baseParams.isSoftMaxLseEnable);
     OP_LOGD(kOpName, "coreNum:%u", baseParams.coreNum);
     OP_LOGD(kOpName, "keyStrides:%lu/%lu", baseParams.keyStrides.bnStride, baseParams.keyStrides.n2Stride);
     OP_LOGD(kOpName, "valueStrides:%lu/%lu", baseParams.valueStrides.bnStride, baseParams.valueStrides.n2Stride);

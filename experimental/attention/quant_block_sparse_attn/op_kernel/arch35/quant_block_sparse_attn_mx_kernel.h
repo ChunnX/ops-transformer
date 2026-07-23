@@ -33,7 +33,7 @@ namespace BaseApi {
 // MX 独立 tiling/kernel 路径：两个 256 C1/V1 subLoop 生成 P[128,512]，再执行一次 C2/V2。
 template <typename inputType, typename mmType, typename outputType, BSALayout layout, BSALayout kvLayout,
           S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
-          DTemplateType dVTemplateType, bool hasAtten, bool isPa, bool useDn = true>
+          DTemplateType dVTemplateType, bool hasAtten, bool hasLse, bool isPa, bool useDn = true>
 class QuantBlockSparseAttnMxKernel {
 public:
     using INPUT_T = inputType;
@@ -41,6 +41,7 @@ public:
     using OUTPUT_T = outputType;
     static constexpr bool USE_DN = useDn;
     static constexpr bool HAS_ATTEN = hasAtten;
+    static constexpr bool HAS_LSE = hasLse;
     static constexpr bool IS_PA = isPa;
     static constexpr BSALayout LAYOUT = layout;
     static constexpr BSALayout KV_LAYOUT = kvLayout;
@@ -127,7 +128,6 @@ private:
         constInfo.dSize = baseParams.dSize;
         constInfo.dSizeV = baseParams.dSizeV;
         constInfo.scaleValue = baseParams.scaleValue;
-        constInfo.isSoftmaxLseEnable = baseParams.isSoftMaxLseEnable != 0U;
         constInfo.isActualLenDimsNull = baseParams.isActualSeqLengthsNull != 0U;
         constInfo.isActualLenDimsKVNull = baseParams.isActualSeqLengthsKVNull != 0U;
         constInfo.coreNum = baseParams.coreNum;
@@ -465,7 +465,7 @@ private:
                                     dTemplateType, dVTemplateType, IS_PA, USE_DN>
         cubeBlock;
     QuantBlockSparseAttnMxBlockVec<INPUT_T, MM_T, OUTPUT_T, LAYOUT, KV_LAYOUT, s1TemplateType, s2TemplateType,
-                                   dTemplateType, dVTemplateType, HAS_ATTEN, IS_PA, USE_DN>
+                                   dTemplateType, dVTemplateType, HAS_ATTEN, HAS_LSE, IS_PA, USE_DN>
         vecBlock;
 };
 } // namespace BaseApi

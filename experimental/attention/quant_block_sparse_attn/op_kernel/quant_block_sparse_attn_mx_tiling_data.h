@@ -48,7 +48,6 @@ struct QuantBlockSparseAttnMxBaseParams {
     uint32_t actualSeqLengthsKVSize = 0;
     float scaleValue = 0.0F;
     uint8_t isKvContinuous = 0;
-    uint8_t isSoftMaxLseEnable = 0;
     uint8_t isActualSeqLengthsNull = 0;
     uint8_t isActualSeqLengthsKVNull = 0;
     uint32_t coreNum = 0;
