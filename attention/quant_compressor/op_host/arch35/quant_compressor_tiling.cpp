@@ -696,7 +696,8 @@ ge::graphStatus QuantCompressorTiling::CheckSingleParaWgateDescale() const
 
 ge::graphStatus QuantCompressorTiling::CheckSingleParaQuantMode() const
 {
-    const std::vector<int> QUANT_MODE_VAL_LIST{static_cast<int>(QUANT_MODE::A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL)};
+    const std::vector<int> QUANT_MODE_VAL_LIST{
+        static_cast<int>(QUANT_MODE::A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL)};
     if (ge::GRAPH_SUCCESS != CheckAttrValueSupport(context_->quantMode, QUANT_MODE_VAL_LIST, QUANT_MODE_NAME)) {
         return ge::GRAPH_FAILED;
     }
@@ -740,7 +741,8 @@ ge::graphStatus QuantCompressorTiling::CheckRequiredInOutExistence() const
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(context_->cmpKv.desc == nullptr, OP_LOGE(context_->opName, "tensor cmpKv is nullptr"),
                 return ge::GRAPH_FAILED);
-    if (static_cast<uint8_t>(*context_->quantMode) == static_cast<uint8_t>(QUANT_MODE::A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL)) {
+    if (static_cast<uint8_t>(*context_->quantMode) ==
+        static_cast<uint8_t>(QUANT_MODE::A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL)) {
         OP_CHECK_IF(context_->xDescale.desc == nullptr,
                     OP_LOGE(context_->opName, "In quant_mode = 1, tensor xDescale should not be nullptr"),
                     return ge::GRAPH_FAILED);
@@ -806,12 +808,14 @@ ge::graphStatus QuantCompressorTiling::CheckFeature() const
             static_cast<uint8_t>(CACHE_MODE::RING_BUFFER), baseParams_->batchSize, pageAttentionParams_->blockNum),
             return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
-            OP_LOGE(context_->opName, "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %zu",
+            OP_LOGE(context_->opName,
+            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %zu",
             static_cast<uint8_t>(CACHE_MODE::RING_BUFFER), COMPRESSOR_DIM_NUM_1,
             context_->stateBlockTable.shape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_2,
-            OP_LOGE(context_->opName, "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %zu",
+            OP_LOGE(context_->opName,
+            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %zu",
             static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER), COMPRESSOR_DIM_NUM_2,
             context_->stateBlockTable.shape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
     }

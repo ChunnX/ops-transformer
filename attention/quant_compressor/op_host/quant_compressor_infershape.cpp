@@ -71,7 +71,8 @@ constexpr uint32_t DIM_INDEX_1 = 1;
 constexpr uint32_t DIM_INDEX_2 = 2;
 constexpr uint32_t DIM_INDEX_3 = 3;
 
-ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext* context, QuantCompressorProtoShapeParam &shapeParam)
+ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext* context,
+                                           QuantCompressorProtoShapeParam &shapeParam)
 {
     auto xShape = context->GetRequiredInputShape(TOKEN_X_INPUT_INDEX);      // (B, S, H) | (T, H)
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
@@ -126,7 +127,8 @@ ge::graphStatus GetQuantCompressorShapeDim(const gert::InferShapeContext* contex
     return GRAPH_SUCCESS;
 }
 
-ge::graphStatus SetQuantCompressorShapeDim(const QuantCompressorProtoShapeParam &shapeParam, gert::InferShapeContext* context)
+ge::graphStatus SetQuantCompressorShapeDim(const QuantCompressorProtoShapeParam &shapeParam,
+                                           gert::InferShapeContext* context)
 {
     // query: (B, S, N, Hckv) | (T, N, Hckv)
     auto cmpKvShape = context->GetOutputShape(CMP_KV_OUTPUT_INDEX);
