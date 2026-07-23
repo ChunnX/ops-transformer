@@ -440,7 +440,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeKFlat(void)
         AscendC::MicroAPI::RegTensor<float> kGropSumReg;
         AscendC::MicroAPI::RegTensor<bfloat16_t> kFlatOutReg;
         AscendC::MicroAPI::MaskReg valueMaskReg;
-        for (uint16_t i = 0; i < stemStride_; i++) {
+        for (uint16_t i = 0; i < static_cast<uint16_t>(stemStride_); i++) {
             uint32_t maskLen = static_cast<uint32_t>(dimQk_);
             for (uint16_t j = 0; j < loopCnt; j++) {
                 auto kGropSumAddrStart = kGropSumAddr + (stemStride_ - i - 1) * dimQk_ + j * vfLen;
@@ -504,7 +504,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVFlat(int64_t headIdx, int
             AscendC::MicroAPI::CreateMask<float, AscendC::MicroAPI::MaskPattern::ALL>();
         MicroAPI::Duplicate(zerosReg, float(0), allMaskReg);
         auto normsAddrStart = normsAddr;
-        for (uint16_t i = 0; i < r_ * stemStride_; i++) {
+        for (uint16_t i = 0; i < static_cast<uint16_t>(r_ * stemStride_); i++) {
             uint32_t maskLen = static_cast<uint32_t>(dimV_);
             MicroAPI::Duplicate(normsReg, float(0), oneMaskReg);
             for (uint16_t j = 0; j < loopCnt; j++) {
@@ -537,7 +537,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVFlat(int64_t headIdx, int
         Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>(); // where  [R, StemStride]
 
         auto vNormDownAddr = normsAddr;
-        for (uint16_t i = 0; i < r_; i++) {
+        for (uint16_t i = 0; i < static_cast<uint16_t>(r_); i++) {
             uint32_t maskLen = static_cast<uint32_t>(stemStride_);
             MicroAPI::Duplicate(normsMaxReg, float(FLT_MIN), allMaskReg);
             for (uint16_t j = 0; j < loopCntMax; j++) {
@@ -672,7 +672,7 @@ __aicore__ inline void StemOamPrepPagedKvSimd::ComputeVBias(int64_t numStemBlock
         Reg::LocalMemBar<Reg::MemType::VEC_STORE, Reg::MemType::VEC_LOAD>();
 
         auto vBiasOutAddrStart = vBiasOutAddr;
-        for (uint16_t i = 0; i < numStemBlocks; i++) {
+        for (uint16_t i = 0; i < static_cast<uint16_t>(numStemBlocks); i++) {
             uint32_t maskLen = static_cast<uint32_t>(r_);
             MicroAPI::Duplicate(vFinalBlockSumReg, float(0), oneMaskReg);
             for (uint16_t j = 0; j < loopRCnt; j++) {
