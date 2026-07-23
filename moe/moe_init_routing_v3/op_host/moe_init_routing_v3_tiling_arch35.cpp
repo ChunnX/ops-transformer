@@ -59,6 +59,8 @@ const static int64_t RANK_ONE = 1LL;
 const static int64_t RANK_TWO = 2LL;
 const static int64_t RANK_THREE = 3LL;
 const static int64_t BF16_TO_FP32_SIZE_FACTOR = 2LL;
+const static int64_t MXFP8_NO_QUANT_GATHER_COPY_MIN_K = 16LL;
+const static int64_t MXFP8_NO_QUANT_WIDE_COLS = 8192LL;
 
 // 输入输出的位置索引
 const static int64_t INPUT_X_INDEX = 0LL;
@@ -284,6 +286,8 @@ private:
     int64_t CalcMaxRowIdxPerLoopFP8GroupQuant(int64_t perLoopCols);
     bool IsFullLoad();
     bool IsOneOf3GatherKernels() const;
+    bool HasEnoughActiveExpertsForGatherCopy() const;
+    bool ShouldUseGatherCopyForMxFP8NoQuant() const;
     void ComputeUseGatherCopy();
     void SetIndicesLoopParams4GatherOut(int64_t perLoopMaxIndicesElements, int64_t perCoreIndicesElements,
                                         int64_t lastCoreIndicesElements);
@@ -2233,11 +2237,26 @@ bool MoeInitRoutingV3Arch35TilingClass::IsOneOf3GatherKernels() const
     return false;
 }
 
+bool MoeInitRoutingV3Arch35TilingClass::HasEnoughActiveExpertsForGatherCopy() const
+{
+    return (expertEnd_ - expertStart_) * NUM_THREE > expertNum_;
+}
+
+bool MoeInitRoutingV3Arch35TilingClass::ShouldUseGatherCopyForMxFP8NoQuant() const
+{
+    if (!HasEnoughActiveExpertsForGatherCopy() || k_ < MXFP8_NO_QUANT_GATHER_COPY_MIN_K) {
+        return false;
+    }
+
+    return !(n_ <= aivCoreNum_ * NUM_TWO && cols_ > MXFP8_NO_QUANT_WIDE_COLS);
+}
+
 void MoeInitRoutingV3Arch35TilingClass::ComputeUseGatherCopy()
 {
-    if (IsOneOf3GatherKernels()) {
-        tilingDataPtr_->useGatherCopy =
-            ((expertEnd_ - expertStart_) * 3 > expertNum_) && (k_ > 1);
+    if (isMXFP8NoQuantCase(quantMode_, xDtype_)) {
+        tilingDataPtr_->useGatherCopy = ShouldUseGatherCopyForMxFP8NoQuant();
+    } else if (IsOneOf3GatherKernels()) {
+        tilingDataPtr_->useGatherCopy = HasEnoughActiveExpertsForGatherCopy() && (k_ > 1);
     } else {
         tilingDataPtr_->useGatherCopy = (rowIdxType_ == ROW_IDX_GATHER);
     }

@@ -15,6 +15,7 @@
 #include <limits>
 #include <gtest/gtest.h>
 #include "../../../op_host/moe_init_routing_v3_tiling.h"
+#include "../../../op_kernel/arch35/moe_init_routing_v3_arch35_tiling_def.h"
 #include "tiling_context_faker.h"
 #include "tiling_case_executor.h"
 
@@ -325,6 +326,22 @@ void RunArch35ExtendedTestcase(int64_t N, int64_t H, int64_t K, int64_t expertCa
         aciveExpertRange, rowIdxType, scaleShape, scaleDtype, offsetShape, offsetDtype, expandedXDtypeOverride,
         &compileInfo);
     ExecuteTestCase(tilingContextPara, expectResult, expectTilingKey, "", {});
+}
+
+void ExpectArch35MxFP8NoQuantUseGatherCopy(int64_t n, int64_t h, int64_t k, int64_t expectedUseGatherCopy)
+{
+    optiling::MoeInitRoutingV3CompileInfo compileInfo = {40, 262144, platform_ascendc::SocVersion::ASCEND950};
+    std::vector<int64_t> scaleShape = {n, CeilDiv(h, 64), 2};
+    gert::TilingContextPara tilingContextPara = MakeArch35ExtendedTilingContextPara(
+        n, h, k, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT, ge::DT_FLOAT8_E5M2,
+        {0, 100}, ROW_IDX_TYPE_SCATTER, scaleShape, ge::DT_FLOAT8_E8M0, {}, ge::DT_FLOAT,
+        kExpandedXDtypeAuto, &compileInfo);
+
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
+    ASSERT_GE(tilingInfo.tilingDataSize, sizeof(MoeInitRoutingV3Arch35TilingData));
+    const auto *tilingData = reinterpret_cast<const MoeInitRoutingV3Arch35TilingData *>(tilingInfo.tilingData.get());
+    EXPECT_EQ(tilingData->useGatherCopy, expectedUseGatherCopy);
 }
 } // namespace
 
@@ -767,6 +784,17 @@ TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_unquant_fp8_sc
     RunArch35ExtendedTestcase(1, h, 27, 0, 0, EXPERT_TOKENS_TYPE_COUNT, true, QUANT_MODE_UNQUANT,
                               ge::DT_FLOAT8_E5M2, {180, 192}, ROW_IDX_TYPE_GATHER, {1, 2, 2},
                               ge::DT_FLOAT8_E8M0, {}, ge::DT_FLOAT, kExpandedXDtypeAuto, ge::GRAPH_SUCCESS);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_unquant_fp8_gather_copy_min_k)
+{
+    ExpectArch35MxFP8NoQuantUseGatherCopy(16, 64, 8, 0);
+    ExpectArch35MxFP8NoQuantUseGatherCopy(16, 64, 16, 1);
+}
+
+TEST_F(MoeInitRoutingV3Tiling, moe_init_routing_v3_tiling_regbase_unquant_fp8_gather_copy_wide_cols)
+{
+    ExpectArch35MxFP8NoQuantUseGatherCopy(16, 8193, 16, 0);
 }
 
 // dynamic quant + per-expert scale
