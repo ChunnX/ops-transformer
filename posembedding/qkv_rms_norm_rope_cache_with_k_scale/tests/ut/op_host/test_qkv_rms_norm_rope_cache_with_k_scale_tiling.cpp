@@ -115,12 +115,12 @@ struct QkvTilingCase : public HostUtParamBase {
     std::string mropeSection;
     std::string qQuantMode;
     std::string qOutDtypeAttr;
-    uint64_t aicNum = 32U;
-    std::string aivNum;
+    uint32_t aicNum = 32U;
+    uint32_t aivNum = aicNum * QkvTiling::AIV_PER_AIC;
     std::string socVersion = "Ascend950";
     ExpectedTiling expected;
 
-    explicit QkvTilingCase(const csv_map &csvMap) : HostUtParamBase(csvMap)
+    QkvTilingCase(const csv_map &csvMap) : HostUtParamBase(csvMap)
     {
         inputInstance.emplace_back(GetTensorGE(csvMap, "qkv_shape", "qkv_dtype", "qkv_format", qkv));
         inputInstance.emplace_back(
@@ -159,8 +159,10 @@ struct QkvTilingCase : public HostUtParamBase {
         mropeSection = ReadMap(csvMap, "mrope_section");
         qQuantMode = ReadMap(csvMap, "q_quant_mode");
         qOutDtypeAttr = ReadMap(csvMap, "q_out_dtype_attr");
-        aicNum = std::stoull(ReadMap(csvMap, "aic_num", "32"));
-        aivNum = ReadMap(csvMap, "aiv_num");
+        aicNum = static_cast<uint32_t>(std::stoull(ReadMap(csvMap, "aic_num", "32")));
+        const std::string aivNumValue = ReadMap(csvMap, "aiv_num");
+        aivNum = IsNullValue(aivNumValue) ? aicNum * QkvTiling::AIV_PER_AIC :
+                                           static_cast<uint32_t>(std::stoull(aivNumValue));
         socVersion = ReadMap(csvMap, "soc_version", "Ascend950");
 
         expected.tilingKey = ReadExpected(csvMap, "expectTilingKey");
@@ -226,10 +228,8 @@ std::vector<gert::TilingContextPara::OpAttr> BuildAttrs(const QkvTilingCase &tes
 CompileInfo BuildCompileInfo(const QkvTilingCase &testCase)
 {
     CompileInfo compileInfo;
-    compileInfo.aicNum = static_cast<uint32_t>(testCase.aicNum);
-    compileInfo.aivNum = static_cast<uint32_t>(IsNullValue(testCase.aivNum) ?
-                                                   testCase.aicNum * QkvTiling::AIV_PER_AIC :
-                                                   std::stoull(testCase.aivNum));
+    compileInfo.aicNum = testCase.aicNum;
+    compileInfo.aivNum = testCase.aivNum;
     compileInfo.ubSize = 262144U;
     compileInfo.l1Size = 524288U;
     compileInfo.l0cSize = 131072U;
