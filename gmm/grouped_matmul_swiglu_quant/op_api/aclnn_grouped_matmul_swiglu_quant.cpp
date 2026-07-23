@@ -163,7 +163,7 @@ static bool CheckInputOutDims_A8W4(const aclTensor *x, const aclTensor *weight, 
 static bool CheckInputOutShape_A8W8(const aclTensor *x, const aclTensor *weight, const aclTensor *weightScale,
                                     const aclTensor *xScale, const aclTensor *groupList, const aclTensor *output,
                                     const aclTensor *outputScale, const char *opName)
-{
+{ 
     int64_t m = x->GetViewShape().GetDim(0);
     int64_t k = x->GetViewShape().GetDim(1);
     int64_t n = weightScale->GetViewShape().GetDim(1);
