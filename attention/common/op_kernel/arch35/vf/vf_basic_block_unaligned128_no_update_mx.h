@@ -84,6 +84,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
     MaskReg preg5;
     MaskReg preg6;
     MaskReg preg_compare;
+    MaskReg preg_compare_max;
     MaskReg preg_compare_unroll;
     MaskReg preg_all_float = CreateMask<float, MaskPattern::ALL>();
     MaskReg preg_all_b16 = CreateMask<uint16_t, MaskPattern::ALL>();
@@ -196,6 +197,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop0(
         Muls(vreg_src_max, vreg_src_max, INV_LN2, preg_all_float);
         Truncate<T, RoundMode::CAST_CEIL>(vreg_src_max, vreg_src_max, preg_all_float);
         Muls(vreg_src_max, vreg_src_max, LN2, preg_all_float);
+        Compare<float, CMPMODE::LE>(preg_compare_max, vreg_src_max, vreg_min, preg_all_float);
+        Select(vreg_src_max, vreg_min, vreg_src_max, preg_compare_max);
         StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)maxUb),
             vreg_src_max, ureg_max, 1);
     }
@@ -415,6 +418,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
     MaskReg preg_ori_tail_n = UpdateMask<float>(pltOriTailN);
     MaskReg preg_reduce_n = CreateMask<float, MaskPattern::VL8>();
     MaskReg preg_compare;
+    MaskReg preg_compare_max;
     MaskReg preg_compare_unroll;
     uint32_t maskLen = 128;
     MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
@@ -532,6 +536,8 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128Mxfp8FullquantVFSubloop1(
         Muls(vreg_input_max, vreg_input_max, INV_LN2, preg_all);
         Truncate<T, RoundMode::CAST_CEIL>(vreg_input_max, vreg_input_max, preg_all);
         Muls(vreg_input_max, vreg_input_max, LN2, preg_all);
+        Compare<float, CMPMODE::LE>(preg_compare_max, vreg_input_max, vreg_min, preg_all);
+        Select(vreg_input_max, vreg_min, vreg_input_max, preg_compare_max);
         StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpMaxUb), vreg_input_max, ureg_max,
                                                                  1);
     }

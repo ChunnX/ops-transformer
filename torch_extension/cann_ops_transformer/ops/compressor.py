@@ -55,17 +55,18 @@ class CompressorOpBuilder(OpBuilder):
             coff=1,
             cache_mode=1,
         ):
+            d = wkv.size(0) // coff
             if x.dim() == 3:
                 b = x.size(0)
                 s = x.size(1)
                 h = x.size(2)
                 sr = (s + cmp_ratio - 1) // cmp_ratio
-                cmp_kv_size = (b, sr, h)
+                cmp_kv_size = (b, sr, d)
             else:
                 t = x.size(0)
                 h = x.size(1)
                 sr = (t + cmp_ratio - 1) // cmp_ratio
-                cmp_kv_size = (sr, h)
+                cmp_kv_size = (sr, d)
 
             return torch.empty(cmp_kv_size, dtype=x.dtype, device="meta")
 

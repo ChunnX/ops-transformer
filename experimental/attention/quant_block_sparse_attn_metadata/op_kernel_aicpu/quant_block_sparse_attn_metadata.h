@@ -19,6 +19,7 @@
 #include <cstdint>
 #ifndef __CCE_AICORE__
 #include <cassert>
+#include <cstddef>
 #endif
 
 namespace optiling {
@@ -28,7 +29,9 @@ constexpr uint32_t AIV_CORE_NUM = 72U;
 constexpr uint32_t QBSA_META_SIZE = 2048U;
 using QBSA_METADATA_T = uint32_t;
 
-// constexpr uint32_t METADATA_HEADER_SIZE = 8;
+constexpr uint32_t QBSA_HEAD_METADATA_SIZE = 8U;
+constexpr uint32_t QBSA_HEAD_SECTION_NUM_INDEX = 0U;
+
 constexpr uint32_t QBSA_METADATA_SIZE = 8U;
 constexpr uint32_t FD_METADATA_SIZE = 8U;
 
@@ -45,34 +48,63 @@ constexpr uint32_t QBSA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX = 7U; // 当前AIC核�
 #ifndef __CCE_AICORE__
 namespace detail {
 struct qbsaMetaData {
-    QBSA_METADATA_T *qbsaMetadata; // [AIC_CORE_NUM][QBSA_METADATA_SIZE];
+    uint32_t sectionNum { 0U };
+    QBSA_METADATA_T *headMetadata; // [QBSA_HEAD_METADATA_SIZE];
+    QBSA_METADATA_T *qbsaMetadata; // [sectionNum][AIC_CORE_NUM][QBSA_METADATA_SIZE];
     QBSA_METADATA_T *fdMetadata; // [AIV_CORE_NUM][FD_METADATA_SIZE];
 
-    explicit qbsaMetaData(void *metadataPtr)
-        : qbsaMetadata(static_cast<QBSA_METADATA_T *>(metadataPtr)),
-          fdMetadata(static_cast<QBSA_METADATA_T *>(metadataPtr) + AIC_CORE_NUM * QBSA_METADATA_SIZE)
+    explicit qbsaMetaData(void *metadataPtr, uint32_t sectionNumVal)
+        : sectionNum(sectionNumVal),
+          headMetadata(static_cast<QBSA_METADATA_T *>(metadataPtr)),
+          qbsaMetadata(headMetadata + QBSA_HEAD_METADATA_SIZE),
+          fdMetadata(qbsaMetadata + sectionNum * AIC_CORE_NUM * QBSA_METADATA_SIZE)
     {}
 
-    void setQbsaMetadata(uint32_t aicIdx, uint32_t metaIdx, uint32_t val)
+    void Clear()
     {
-        assert(aicIdx < AIC_CORE_NUM);
-        assert(metaIdx < QBSA_METADATA_SIZE);
-        qbsaMetadata[QBSA_METADATA_SIZE * aicIdx + metaIdx] = static_cast<QBSA_METADATA_T>(val);
+        for (size_t i = 0; i < QBSA_HEAD_METADATA_SIZE; ++i) {
+            headMetadata[i] = 0U;
+        }
+        for (size_t i = 0; i < static_cast<size_t>(sectionNum) * AIC_CORE_NUM * QBSA_METADATA_SIZE; ++i) {
+            qbsaMetadata[i] = 0U;
+        }
+        for (size_t i = 0; i < AIV_CORE_NUM * FD_METADATA_SIZE; ++i) {
+            fdMetadata[i] = 0U;
+        }
     }
 
-    uint32_t getQbsaMetadata(uint32_t aicIdx, uint32_t metaIdx) const
+    void SetHeadMetadata(uint32_t metaIdx, uint32_t val)
     {
+        assert(metaIdx < QBSA_HEAD_METADATA_SIZE);
+        headMetadata[metaIdx] = static_cast<QBSA_METADATA_T>(val);
+    }
+
+    uint32_t GetHeadMetadata(uint32_t metaIdx) const
+    {
+        assert(metaIdx < QBSA_HEAD_METADATA_SIZE);
+        return static_cast<uint32_t>(headMetadata[metaIdx]);
+    }
+
+    void SetQbsaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx, uint32_t val)
+    {
+        assert(sectionIdx < sectionNum);
         assert(aicIdx < AIC_CORE_NUM);
         assert(metaIdx < QBSA_METADATA_SIZE);
-        return static_cast<uint32_t>(qbsaMetadata[QBSA_METADATA_SIZE * aicIdx + metaIdx]);
+        qbsaMetadata[sectionIdx * AIC_CORE_NUM * QBSA_METADATA_SIZE + aicIdx * QBSA_METADATA_SIZE + metaIdx] =
+            static_cast<QBSA_METADATA_T>(val);
+    }
+
+    uint32_t GetQbsaMetadata(uint32_t sectionIdx, uint32_t aicIdx, uint32_t metaIdx) const
+    {
+        assert(sectionIdx < sectionNum);
+        assert(aicIdx < AIC_CORE_NUM);
+        assert(metaIdx < QBSA_METADATA_SIZE);
+        return static_cast<uint32_t>(
+            qbsaMetadata[sectionIdx * AIC_CORE_NUM * QBSA_METADATA_SIZE + aicIdx * QBSA_METADATA_SIZE + metaIdx]);
     }
 };
 } // namespace detail
 #endif
-
-static_assert(QBSA_META_SIZE * sizeof(QBSA_METADATA_T) >=
-              (AIC_CORE_NUM * QBSA_METADATA_SIZE + AIV_CORE_NUM * FD_METADATA_SIZE) * sizeof(QBSA_METADATA_T),
-              "QBSA metadata output buffer is too small");
 
 } // namespace optiling
 
