@@ -23,6 +23,8 @@ const int64_t QFLAT_B_DIM = 0;
 const int64_t QFLAT_N1_DIM = 1;
 const int64_t QFLAT_QB_DIM = 2;
 const int64_t KFLAT_KB_DIM = 2;
+const int64_t TOPK_SCORE_PRECISION_UINT32 = 1;
+const int64_t TOPK_SCORE_PRECISION_UINT16 = 2;
 
 // 可选张量兜底：未提供或未定义时返回一个空的 int32 张量，供 aclnn IR 的 REQUIRED 输入使用
 c10::optional<at::Tensor> get_stem_valid_tensor(
@@ -85,7 +87,8 @@ std::tuple<at::Tensor, at::Tensor> npu_stem_indexer_npu(
                 "The Kb dimensions of kflat and vbias must be equal.");
     TORCH_CHECK(qflat.size(qflat.dim() - 1) == kflat.size(kflat.dim() - 1),
                 "The last dimensions of qflat and kflat must be equal.");
-    TORCH_CHECK(topk_score_precision == 1 || topk_score_precision == 2,
+    TORCH_CHECK(topk_score_precision == TOPK_SCORE_PRECISION_UINT32 ||
+                    topk_score_precision == TOPK_SCORE_PRECISION_UINT16,
                 "topk_score_precision must be 1(uint32) or 2(uint16), but got ", topk_score_precision, ".");
 
     // construct the output tensors
@@ -117,7 +120,8 @@ std::tuple<at::Tensor, at::Tensor> npu_stem_indexer_meta(
     int64_t window_size, double k_block_num_rate_medium, int64_t k_block_num_bias_medium,
     double k_block_num_rate_large, int64_t k_block_num_bias_large, int64_t topk_score_precision)
 {
-    TORCH_CHECK(topk_score_precision == 1 || topk_score_precision == 2,
+    TORCH_CHECK(topk_score_precision == TOPK_SCORE_PRECISION_UINT32 ||
+                    topk_score_precision == TOPK_SCORE_PRECISION_UINT16,
                 "topk_score_precision must be 1(uint32) or 2(uint16), but got ", topk_score_precision, ".");
     return construct_stem_output_tensors(qflat, kflat);
 }

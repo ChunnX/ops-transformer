@@ -19,7 +19,7 @@ test_stem_indexer_paramset.py
 csv/stem_indexer_cases.csv
 ```
 
-single case直接维护在`ENABLED_PARAMS`中，每条case通过`description`记录覆盖点和设计原因。
+single case直接维护在`ENABLED_PARAMS`中，每条case前通过注释记录覆盖点和设计原因。
 `csv/stem_indexer_cases.csv`保存批量用例信息，作为批量模式生成`.pt`文件的输入。
 
 single和batch模式当前均维护154条正例case，分别从`ENABLED_PARAMS`和CSV读取。

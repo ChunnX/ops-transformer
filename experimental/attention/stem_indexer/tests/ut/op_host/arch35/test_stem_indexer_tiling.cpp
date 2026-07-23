@@ -33,6 +33,8 @@ using TensorDesc = gert::TilingContextPara::TensorDescription;
 using OpAttr = gert::TilingContextPara::OpAttr;
 
 constexpr int64_t EXPECTED_WORKSPACE_ASCEND950 = 29360128;
+constexpr int64_t TOPK_SCORE_PRECISION_UINT16 = 2;
+constexpr int64_t INVALID_TOPK_SCORE_PRECISION = 3;
 
 struct StemIndexerCompileInfo {};
 
@@ -112,13 +114,17 @@ TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_causal_false_q64_kv8)
 
 TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_topk_score_uint16)
 {
-    ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeValidAttrs(true, 2)), true);
+    ExpectTilingResult(
+        BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeValidAttrs(true, TOPK_SCORE_PRECISION_UINT16)),
+        true);
 }
 
 TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_topk_score_precision_invalid)
 {
     ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeValidAttrs(true, 0)), false);
-    ExpectTilingResult(BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeValidAttrs(true, 3)), false);
+    ExpectTilingResult(
+        BuildTilingPara(MakeValidInputs(), MakeValidOutputs(), MakeValidAttrs(true, INVALID_TOPK_SCORE_PRECISION)),
+        false);
 }
 
 TEST_F(StemIndexerTilingArch35, StemIndexer_950_tiling_qflat_dtype_invalid)
