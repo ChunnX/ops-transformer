@@ -61,7 +61,7 @@ private:
     __aicore__ inline void CalcCubeParams(RunInfo &info);
     __aicore__ inline void CalcV1Params(Vec1RunInfo &vec1Info);
 
-    using X_T = typename AscendC::Conditional<COMP::xDtype == X_DTYPE::BF16, bfloat16_t, half>::type;
+    using X_T = uint8_t;
     using T = float;
     using MM1_OUT_T = T;
     using VEC1_OUT_T = T;

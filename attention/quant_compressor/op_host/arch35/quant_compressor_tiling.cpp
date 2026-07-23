@@ -344,7 +344,7 @@ ge::graphStatus QuantCompressorTiling::RunBigKernelTiling(QuantCompressorTilingD
 
 ge::graphStatus QuantCompressorTiling::GenTilingKey() const
 {
-    // 0:A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL
+    // 0:HIFP8
     uint8_t dtype = 0;
     // 0: BSH 1:TH
     uint8_t layout = 0;
