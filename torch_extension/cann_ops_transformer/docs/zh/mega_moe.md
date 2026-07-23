@@ -1313,7 +1313,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         - num_experts_per_rank（weight1.dim0，包含共享专家槽位）范围 [1, 1024]。
         - intermediate_hidden（weight1.dim1）仅支持1024、2048、3072、4096、7168。
         - ep_world_size范围 [2, 1024]。
-        - num_experts范围 [ep_world_size, 2048]，且moe_expert_num % ep_world_size == 0。
+        - num_experts范围 [ep_world_size, 2048]，且num_experts % ep_world_size == 0。
         - max_recv_token_num范围 [0, num_tokens × ep_world_size × min(num_topk, local_moe_expert_num)]。
         - dispatch_quant_out_dtype仅支持torch.float8_e5m2或torch.float8_e4m3fn或torch.float4_e2m1。
         - 当前版本仅支持MXFP量化模式（dispatch_quant_mode = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
@@ -1323,7 +1323,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         - y的数据类型与x相同。
         - weight1的dim1（intermediate_hidden）必须等于weight2的dim2的二倍，这是因为SwiGLU激活需要将中间维度从intermediate_hidden减半为intermediate_hidden/2。
         - weight_scales1和weight_scales2不可为空指针。
-        - local_moe_expert_num = moe_expert_num / ep_world_size；启用共享专家时，shared_expert_num_per_rank = shared_l1_weights.dim0；num_experts_per_rank = shared_expert_num_per_rank + local_moe_expert_num，未启用共享专家时 shared_expert_num_per_rank = 0。
+        - local_moe_expert_num = num_experts / ep_world_size；启用共享专家时，shared_expert_num_per_rank = shared_l1_weights.dim0；num_experts_per_rank = shared_expert_num_per_rank + local_moe_expert_num，未启用共享专家时 shared_expert_num_per_rank = 0。
         - weight_scales1和weight_scales2不可为空指针。
 
         - **MXFP量化场景约束**：
