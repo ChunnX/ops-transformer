@@ -81,11 +81,10 @@ public:
             attenMaskInfoPtr = &attenMaskInfo;
         }
     }
-    __aicore__ inline void InitCommonGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
-                                                  __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-                                                  __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask,
-                                                  __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
-                                                  ConstInfo &constInfo);
+    __aicore__ inline void InitCommonGlobalBuffer(__gm__ uint8_t *qScale, __gm__ uint8_t *kScale,
+                                                  __gm__ uint8_t *vScale, __gm__ uint8_t *pScale,
+                                                  __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable,
+                                                  __gm__ uint8_t *&workspace, ConstInfo &constInfo);
     __aicore__ inline void InitLocalBuffer(TPipe *pipe, ConstInfo &constInfo);
 
     __aicore__ inline void ProcessVec1(Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &outputBuf,
@@ -99,13 +98,10 @@ public:
     __aicore__ inline void InitCubeVecSharedParams(CVSharedParams<isPa> &sharedParams, int32_t aicIdx,
                                                    uint8_t subBlockIdx);
     __aicore__ inline void CleanOutput(__gm__ uint8_t *softmaxLse, __gm__ uint8_t *attentionOut, ConstInfo &constInfo);
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
-                                            __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *prefix,
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *qScale, __gm__ uint8_t *kScale,
+                                            __gm__ uint8_t *vScale, __gm__ uint8_t *pScale,
                                             __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable,
-                                            __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-                                            __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-                                            __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
-                                            ConstInfo &constInfo);
+                                            __gm__ uint8_t *&workspace, ConstInfo &constInfo);
     __aicore__ inline void InitUniqueLocalBuffer(ConstInfo &constInfo);
     __aicore__ inline void GenerateDropoutMask(RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<uint8_t> &dropMaskUb)
     {
@@ -129,9 +125,9 @@ public:
     using attenMaskGmType = typename std::conditional<hasAtten, GlobalTensor<uint8_t>, int8_t>::type;
     attenMaskGmType attenMaskGmInt;
     using quantGmType = typename std::conditional<isFp8, GlobalTensor<float>, int8_t>::type;
-    quantGmType deScaleQGm;
-    quantGmType deScaleKGm;
-    quantGmType deScaleVGm;
+    quantGmType qScaleGm;
+    quantGmType kScaleGm;
+    quantGmType vScaleGm;
     quantGmType pScaleGm;
     GlobalTensor<int32_t> blockTableGm;
     using vec2ResGmType = typename std::conditional<splitD, GlobalTensor<float>, int8_t>::type;
@@ -205,14 +201,13 @@ private:
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCommonGlobalBuffer(
-    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-    __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace,
-    ConstInfo &constInfo)
+    __gm__ uint8_t *qScale, __gm__ uint8_t *kScale, __gm__ uint8_t *vScale, __gm__ uint8_t *pScale,
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace, ConstInfo &constInfo)
 {
     if ASCEND_IS_AIV {
-        deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
-        deScaleKGm.SetGlobalBuffer((__gm__ float *)deqScaleK);
-        deScaleVGm.SetGlobalBuffer((__gm__ float *)deqScaleV);
+        qScaleGm.SetGlobalBuffer((__gm__ float *)qScale);
+        kScaleGm.SetGlobalBuffer((__gm__ float *)kScale);
+        vScaleGm.SetGlobalBuffer((__gm__ float *)vScale);
         if (pScale != nullptr) {
             pScaleGm.SetGlobalBuffer((__gm__ float *)pScale);
             constInfo.pScale = this->pScaleGm.GetValue(0);
@@ -351,8 +346,8 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
         SetFlag<HardEvent::V_MTE2>(vDoneEvent);  // Vector 完成
         WaitFlag<HardEvent::V_MTE2>(vDoneEvent); // MTE2 等待
     }
-    copyQueryScaleGmToUb(qScaleUbTensor, deScaleQGm, runInfo, constInfo);
-    copyKeyScaleGmToUb(kScaleUbTensor, deScaleKGm, blockTableGm, runInfo, constInfo);
+    copyQueryScaleGmToUb(qScaleUbTensor, qScaleGm, runInfo, constInfo);
+    copyKeyScaleGmToUb(kScaleUbTensor, kScaleGm, blockTableGm, runInfo, constInfo);
     qScaleInputQue.template EnQue(qScaleUbTensor);
     qScaleUbTensor = qScaleInputQue.DeQue<float>();
     kScaleInputQue.template EnQue(kScaleUbTensor);
@@ -437,10 +432,10 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CRO
     runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize;
 
     int64_t vec2CalcSize = runInfo.vec2S1RealSize * dTemplateAlign64;
-    float deSCaleVValue = 1.0f;
+    float vScaleValue = 1.0f;
     // BSA: V 为 per-head 反量化，vScale shape [N2]，按 n2 head 取值。
-    // 原 deScaleKvOffset 未被赋值（未初始化），GetValue 会越界读 GM → AICore SVM page fault(507015)。
-    deSCaleVValue = this->deScaleVGm.GetValue(runInfo.n2oIdx);
+    // 原 kvScaleOffset 未被赋值（未初始化），GetValue 会越界读 GM → AICore SVM page fault(507015)。
+    vScaleValue = this->vScaleGm.GetValue(runInfo.n2oIdx);
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
@@ -449,29 +444,29 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CRO
     } else {
         LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
         // BSA: V per-head 反量化，前一块与当前块同为 vScale[n2oIdx]（非 FIA 的 per-block scale），
-        // 不能用 deScaleKvOffset 的 per-block ping-pong（未初始化且 -1 会越界，触发 507015）。
-        float deSCalePreVValue = this->deScaleVGm.GetValue(runInfo.n2oIdx);
+        // 不能用 kvScaleOffset 的 per-block ping-pong（未初始化且 -1 会越界，触发 507015）。
+        float preVScaleValue = this->vScaleGm.GetValue(runInfo.n2oIdx);
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
             if (unlikely(runInfo.s2LoopCount == 1)) {
                 FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(vec2ResUb, mmRes, vec2ResUb, expUb,
                                                                              runInfo.vec2S1RealSize, dTemplateAlign64,
-                                                                             deSCaleVValue, deSCalePreVValue);
+                                                                             vScaleValue, preVScaleValue);
             } else {
                 FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(vec2ResUb, mmRes, vec2ResUb, expUb,
                                                                               runInfo.vec2S1RealSize, dTemplateAlign64,
-                                                                              deSCaleVValue, deSCalePreVValue);
+                                                                              vScaleValue, preVScaleValue);
             }
         } else {
             if (unlikely(runInfo.s2LoopCount == 1)) {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
                 FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
-                    deSCalePreVValue);
+                    vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, vScaleValue,
+                    preVScaleValue);
             } else {
                 LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
                 FlashUpdateLastNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, false>(
-                    vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, deSCaleVValue,
-                    deSCalePreVValue);
+                    vec2ResUb, mmRes, vec2ResUb, expUb, sumUb, runInfo.vec2S1RealSize, dTemplateAlign64, vScaleValue,
+                    preVScaleValue);
             }
         }
     }
@@ -480,7 +475,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CRO
         if (unlikely(runInfo.s2LoopCount == 0)) {
             LocalTensor<float> sumUb = this->softmaxSumBuf[runInfo.multiCoreIdxMod3].template Get<float>();
             LastDivNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64>(vec2ResUb, vec2ResUb, sumUb, runInfo.vec2S1RealSize,
-                                                               (uint16_t)dTemplateAlign64, deSCaleVValue);
+                                                               (uint16_t)dTemplateAlign64, vScaleValue);
         }
         CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
     }
@@ -858,13 +853,10 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::CleanOutput(__gm__ uint8_t *s
 
 TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitGlobalBuffer(
-    __gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK, __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale,
-    __gm__ uint8_t *prefix, __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *queryPaddingSize,
-    __gm__ uint8_t *kvPaddingSize, __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum, __gm__ uint8_t *&workspace,
-    uint64_t singleCoreOffset, uint32_t aicIdx, ConstInfo &constInfo)
+    __gm__ uint8_t *qScale, __gm__ uint8_t *kScale, __gm__ uint8_t *vScale, __gm__ uint8_t *pScale,
+    __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable, __gm__ uint8_t *&workspace, ConstInfo &constInfo)
 {
-    InitCommonGlobalBuffer(deqScaleQ, deqScaleK, deqScaleV, pScale, prefix, attenMask, blockTable, workspace,
-                           constInfo);
+    InitCommonGlobalBuffer(qScale, kScale, vScale, pScale, attenMask, blockTable, workspace, constInfo);
 }
 
 
@@ -958,13 +950,10 @@ public:
     __aicore__ inline void InitVecBlock(TPipe *pipe, const QuantBlockSparseAttnTilingData *__restrict tiling,
                                         CVSharedParams<isPa> &sharedParams, int32_t aicIdx, uint8_t subBlockIdx,
                                         AttenMaskInfo &attenMaskInfo) {};
-    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
-                                            __gm__ uint8_t *deqScaleV, __gm__ uint8_t *pScale, __gm__ uint8_t *prefix,
+    __aicore__ inline void InitGlobalBuffer(__gm__ uint8_t *qScale, __gm__ uint8_t *kScale,
+                                            __gm__ uint8_t *vScale, __gm__ uint8_t *pScale,
                                             __gm__ uint8_t *attenMask, __gm__ uint8_t *blockTable,
-                                            __gm__ uint8_t *queryPaddingSize, __gm__ uint8_t *kvPaddingSize,
-                                            __gm__ uint8_t *softmaxMax, __gm__ uint8_t *softmaxSum,
-                                            __gm__ uint8_t *&workspace, uint64_t singleCoreOffset, uint32_t aicIdx,
-                                            ConstInfo &constInfo)
+                                            __gm__ uint8_t *&workspace, ConstInfo &constInfo)
     {
     }
 

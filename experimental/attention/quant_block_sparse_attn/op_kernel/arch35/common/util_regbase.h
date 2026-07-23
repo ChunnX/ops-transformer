@@ -164,7 +164,7 @@ struct RunParamStr { // 分核与切块需要使用到参数
     /* 训练场景下等于b1SSOffset，推理场景下非TND mask支持大于s1 * s2；TND场景推理的mask是补过pad的 */ \
     int64_t b1SSAttenMaskOffset; \
     int64_t b1SSOffsetAlign; /* TND场景s2 16对齐之后，前面batch的s1*s2之和 */ \
-    int64_t deScaleKvOffset; /* KV的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, 1, Ceil(S2, 128), 1] */ \
+    int64_t kvScaleOffset; /* KV的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, 1, Ceil(S2, 128), 1] */ \
     uint8_t taskIdMod2; \
     uint8_t taskIdMod3; \
     uint8_t multiCoreIdxMod2 = 0; \

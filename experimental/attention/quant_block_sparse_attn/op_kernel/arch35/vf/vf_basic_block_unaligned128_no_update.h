@@ -28,7 +28,7 @@ __simd_vf__ void ProcessVec1NoUpdateGeneralImpl128VF(
     __ubuf__ uint32_t *maskUbUnroll, const uint32_t nPadding, const uint32_t blockStride, const uint32_t repeatStride,
     const uint32_t oriTailN, const uint32_t tailN, const float dScale, uint32_t pltOriTailN, uint32_t pltTailN,
     float divValue, const uint16_t m, const T scale, const float dScaleQK, const T minValue,
-    const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
+    const float kScaleValue = 1.0f, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
@@ -211,7 +211,7 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128(
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale,
     const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
+    const float kScaleValue = 1.0f, const float pScale = 1.0f)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (65*16*2/32)，单位block, low 16bits: repeatStride (1)
@@ -245,7 +245,7 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128(
     ProcessVec1NoUpdateGeneralImpl128VF<T, T2, s1BaseSize, s2BaseSize, hasAtten, isMlaSgd>(
         expUb, x_expUb, expSumUb, maxUb, maxUbStart, srcUb, qScaleUb, indexesUb, maskUb, maskUbUnroll, nPadding,
         blockStride, repeatStride, oriTailN, tailN, dScale, pltOriTailN, pltTailN, divValue, m, scale, dScaleQK,
-        minValue, deSCaleKValue, pScale);
+        minValue, kScaleValue, pScale);
 }
 } // namespace FaVectorApi
 
