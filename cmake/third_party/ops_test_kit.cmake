@@ -29,20 +29,8 @@ else()
       SOURCE_DIR ${PROJECT_SOURCE_DIR}/build/third_party/ops-test-kit
     )
   else()
-    execute_process(
-      COMMAND git remote get-url origin
-      WORKING_DIRECTORY ${PROJECT_SOURCE_DIR}
-      OUTPUT_VARIABLE GIT_REMOTE_URL
-      OUTPUT_STRIP_TRAILING_WHITESPACE
-      ERROR_QUIET
-    )
-    if(GIT_REMOTE_URL MATCHES "^git@|^ssh://")
-      set(OPS_TEST_KIT_GIT_URL "git@gitcode.com:cann/ops-test-kit.git")
-      message(STATUS "[ThirdPartyLib][ops-test-kit] using SSH protocol: ${OPS_TEST_KIT_GIT_URL}")
-    else()
-      set(OPS_TEST_KIT_GIT_URL "https://gitcode.com/cann/ops-test-kit.git")
-      message(STATUS "[ThirdPartyLib][ops-test-kit] using HTTPS protocol: ${OPS_TEST_KIT_GIT_URL}")
-    endif()
+    set(OPS_TEST_KIT_GIT_URL "https://gitcode.com/cann/ops-test-kit.git")
+    message(STATUS "[ThirdPartyLib][ops-test-kit] using HTTPS protocol: ${OPS_TEST_KIT_GIT_URL}")
     include(FetchContent)
     FetchContent_Declare(
       ops_test_kit
