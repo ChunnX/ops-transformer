@@ -58,6 +58,7 @@ struct QkvRmsNormRopeCacheWithKScaleParams {
     const char *layoutQOut{nullptr};
     float epsilon{DEFAULT_EPSILON};
     const aclIntArray *mropeSectionOptional{nullptr};
+    // Effective mode resolved once by the ACLNN entry point.
     const char *qQuantMode{nullptr};
     int64_t qOutDtype{static_cast<int64_t>(op::DataType::DT_FLOAT8_E4M3FN)};
     // Outputs
@@ -69,6 +70,8 @@ struct QkvRmsNormRopeCacheWithKScaleParams {
 };
 
 class QkvRmsNormRopeCacheWithKScaleChecker {
+    enum class SceneType { ROPE, MROPE };
+
 public:
     // ACLNN operator name for log messages
     static constexpr const char *ACLNN_NAME = "aclnnQkvRmsNormRopeCacheWithKScale";
@@ -102,7 +105,7 @@ public:
     static constexpr const char *QKV_LAYOUT_TND = "TND";
     static constexpr const char *DEFAULT_QKV_LAYOUT = QKV_LAYOUT_TND;
     static constexpr const char *DEFAULT_Q_OUT_LAYOUT = QKV_LAYOUT_NTD;
-    static constexpr const char *DEFAULT_Q_QUANT_MODE = "PerTokenPerHead";
+    static constexpr const char *ROPE_Q_QUANT_MODE = "PerTokenPerHead";
     static constexpr const char *MROPE_Q_QUANT_MODE = "NoQuant";
 
     // Dtype support lists
@@ -125,7 +128,11 @@ public:
     aclnnStatus CheckParams(const QkvRmsNormRopeCacheWithKScaleParams &p)
     {
         params_ = p;
-        aclnnStatus ret = CheckSceneParams();
+        aclnnStatus ret = DetermineScene();
+        if (ret != ACLNN_SUCCESS) {
+            return ret;
+        }
+        ret = scene_ == SceneType::MROPE ? CheckMropeSceneParams() : CheckRopeSceneParams();
         if (ret != ACLNN_SUCCESS) {
             return ret;
         }
@@ -155,13 +162,10 @@ public:
 private:
     QkvRmsNormRopeCacheWithKScaleParams params_;
 
-    static const char *GetQQuantModeOrDefault(const char *qQuantMode)
-    {
-        return qQuantMode == nullptr || qQuantMode[0] == '\0' ? DEFAULT_Q_QUANT_MODE : qQuantMode;
-    }
+    SceneType scene_{SceneType::ROPE};
 
-    // Scene attributes determine which optional input set and output contract apply.
-    aclnnStatus CheckSceneParams() const
+    // Classify the call from the presence of the two complete position sources.
+    aclnnStatus DetermineScene()
     {
         const bool hasMropePosition = params_.mropePositionOptional != nullptr;
         const bool hasMropeSection = params_.mropeSectionOptional != nullptr;
@@ -171,43 +175,43 @@ private:
                 "both parameters must be provided together");
             return ACLNN_ERR_PARAM_INVALID;
         }
-        if (params_.qOut == nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qOut", "nullptr", "qOut can not be nullptr");
-            return ACLNN_ERR_PARAM_NULLPTR;
-        }
+        const bool hasMropePositionSource = hasMropePosition && hasMropeSection;
+        scene_ = hasMropePositionSource ? SceneType::MROPE : SceneType::ROPE;
+        return ACLNN_SUCCESS;
+    }
 
-        const char *qQuantMode = GetQQuantModeOrDefault(params_.qQuantMode);
-        if (hasMropePosition) {
-            aclnnStatus positionRet = CheckMropePositionShape();
-            if (positionRet != ACLNN_SUCCESS) {
-                return positionRet;
-            }
-            int64_t sectionHeadDim = SUPPORTED_HEAD_DIM;
-            if (params_.qkv != nullptr && params_.qkv->GetViewShape().GetDimNum() == RANK_3D) {
-                sectionHeadDim = params_.qkv->GetViewShape().GetDim(QKV_HEAD_DIM_INDEX);
-            }
-            aclnnStatus sectionRet = CheckMropeSection(sectionHeadDim);
-            if (sectionRet != ACLNN_SUCCESS) {
-                return sectionRet;
-            }
-            if (params_.queryStartLoc != nullptr || params_.seqLens != nullptr) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    ACLNN_NAME, "queryStartLocOptional/seqLensOptional", "not nullptr",
-                    "both parameters must be nullptr in the M-RoPE scene");
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-            if (std::strcmp(qQuantMode, MROPE_Q_QUANT_MODE) != 0 || params_.qScale != nullptr ||
-                params_.qOut->GetDataType() != op::DataType::DT_BF16) {
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    ACLNN_NAME, "qQuantMode/qOut/qScaleOptional", "invalid combination",
-                    "the M-RoPE scene requires NoQuant, a BF16 qOut and a nullptr qScaleOptional");
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-        } else if (std::strcmp(qQuantMode, DEFAULT_Q_QUANT_MODE) != 0 ||
-                   params_.qOut->GetDataType() != op::DataType::DT_FLOAT8_E4M3FN) {
+    aclnnStatus CheckRopeSceneParams() const
+    {
+        if (params_.qQuantMode == nullptr || std::strcmp(params_.qQuantMode, ROPE_Q_QUANT_MODE) != 0) {
             OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                ACLNN_NAME, "qQuantMode/qOut", "invalid combination",
-                "the RoPE scene requires PerTokenPerHead and an FP8 E4M3FN qOut");
+                ACLNN_NAME, "qQuantMode", params_.qQuantMode == nullptr ? "nullptr" : params_.qQuantMode,
+                "the RoPE scene requires PerTokenPerHead");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        return ACLNN_SUCCESS;
+    }
+
+    aclnnStatus CheckMropeSceneParams() const
+    {
+        aclnnStatus positionRet = CheckMropePositionShape();
+        if (positionRet != ACLNN_SUCCESS) {
+            return positionRet;
+        }
+        aclnnStatus sectionRet = CheckMropeSection(SUPPORTED_HEAD_DIM);
+        if (sectionRet != ACLNN_SUCCESS) {
+            return sectionRet;
+        }
+        if (params_.queryStartLoc != nullptr || params_.seqLens != nullptr) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                ACLNN_NAME, "queryStartLocOptional/seqLensOptional", "not nullptr",
+                "both parameters must be nullptr in the M-RoPE scene");
+            return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (params_.qScale != nullptr || params_.qQuantMode == nullptr ||
+            std::strcmp(params_.qQuantMode, MROPE_Q_QUANT_MODE) != 0) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                ACLNN_NAME, "qQuantMode/qScaleOptional", "invalid combination",
+                "the M-RoPE scene requires NoQuant and a nullptr qScaleOptional");
             return ACLNN_ERR_PARAM_INVALID;
         }
         return ACLNN_SUCCESS;
@@ -259,7 +263,7 @@ private:
 
     bool IsMropeScene() const
     {
-        return params_.mropePositionOptional != nullptr && params_.mropeSectionOptional != nullptr;
+        return scene_ == SceneType::MROPE;
     }
 
     struct PointerNullRule {

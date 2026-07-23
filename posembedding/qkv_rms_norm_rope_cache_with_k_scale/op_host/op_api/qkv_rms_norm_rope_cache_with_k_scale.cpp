@@ -20,17 +20,12 @@ OP_TYPE_REGISTER(QkvRmsNormRopeCacheWithKScale);
 namespace {
 constexpr const char *DEFAULT_QKV_LAYOUT = "TND";
 constexpr const char *DEFAULT_Q_OUT_LAYOUT = "NTD";
-constexpr const char *DEFAULT_Q_QUANT_MODE = "PerTokenPerHead";
 
 const char *GetLayoutOrDefault(const char *layout, const char *defaultLayout)
 {
     return layout == nullptr || layout[0] == '\0' ? defaultLayout : layout;
 }
 
-const char *GetQQuantModeOrDefault(const char *qQuantMode)
-{
-    return qQuantMode == nullptr || qQuantMode[0] == '\0' ? DEFAULT_Q_QUANT_MODE : qQuantMode;
-}
 } // namespace
 
 std::tuple<const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *, const aclTensor *>
@@ -45,17 +40,17 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
 {
     const char *layoutQkvAttr = GetLayoutOrDefault(layoutQkv, DEFAULT_QKV_LAYOUT);
     const char *layoutQOutAttr = GetLayoutOrDefault(layoutQOut, DEFAULT_Q_OUT_LAYOUT);
-    const char *qQuantModeAttr = GetQQuantModeOrDefault(qQuantMode);
+    // The ACLNN entry point resolves null/empty qQuantMode before calling this L0 wrapper.
     L0_DFX(QkvRmsNormRopeCacheWithKScale, qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
            queryStartLoc, seqLens, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkvAttr,
-           layoutQOutAttr, epsilon, mropeSectionOptional, qQuantModeAttr, qOutDtype);
+           layoutQOutAttr, epsilon, mropeSectionOptional, qQuantMode, qOutDtype);
 
     auto ret = INFER_SHAPE(QkvRmsNormRopeCacheWithKScale,
                            OP_INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache,
                                     queryStartLoc, seqLens, rotationOptional, vScaleOptional, mropePositionOptional),
                            OP_OUTPUT(qOut, qScaleOptional, kCache, vCache, kScaleCache),
                            OP_ATTR(headNums, layoutQkvAttr, layoutQOutAttr, epsilon, mropeSectionOptional,
-                                   qQuantModeAttr, qOutDtype));
+                                   qQuantMode, qOutDtype));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "InferShape failed.");
         return {nullptr, nullptr, nullptr, nullptr, nullptr};
@@ -67,7 +62,7 @@ QkvRmsNormRopeCacheWithKScale(const aclTensor *qkv, const aclTensor *qGamma, con
                                                mropePositionOptional),
                                       OP_OUTPUT(qOut, qScaleOptional, kCache, vCache, kScaleCache),
                                       OP_ATTR(headNums, layoutQkvAttr, layoutQOutAttr, epsilon, mropeSectionOptional,
-                                              qQuantModeAttr, qOutDtype));
+                                              qQuantMode, qOutDtype));
     if (ret != ACLNN_SUCCESS) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "ADD_TO_LAUNCHER_LIST_AICORE failed.");
         return {nullptr, nullptr, nullptr, nullptr, nullptr};

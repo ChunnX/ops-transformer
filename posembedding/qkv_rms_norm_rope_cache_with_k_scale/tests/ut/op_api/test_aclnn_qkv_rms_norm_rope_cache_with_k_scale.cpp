@@ -443,6 +443,40 @@ TEST_P(qkv_rms_norm_rope_cache_with_k_scale_csv_test, csvDrivenCase)
 INSTANTIATE_TEST_SUITE_P(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_CSV, qkv_rms_norm_rope_cache_with_k_scale_csv_test,
                          testing::ValuesIn(GetCases()), MakeParamName);
 
+aclnnStatus RunCompleteRopeScene(const char *qQuantMode,
+                                 aclDataType qOutDtype = ACL_FLOAT8_E4M3FN)
+{
+    TensorDesc qkv = MakeTensorDesc({5, 3, 128}, ACL_BF16);
+    TensorDesc qGamma = MakeTensorDesc({128}, ACL_FLOAT);
+    TensorDesc kGamma = MakeTensorDesc({128}, ACL_FLOAT);
+    TensorDesc cosSin = MakeTensorDesc({128, 128}, ACL_FLOAT);
+    TensorDesc slotMapping = MakeTensorDesc({5}, ACL_INT32);
+    TensorDesc kCache = MakeTensorDesc({1, 1, 8, 128}, ACL_FLOAT8_E4M3FN);
+    TensorDesc vCache = MakeTensorDesc({1, 1, 8, 128}, ACL_FLOAT8_E4M3FN);
+    TensorDesc kScaleCache = MakeTensorDesc({1, 1, 8, 1}, ACL_FLOAT);
+    TensorDesc queryStartLoc = MakeTensorDesc({2}, ACL_INT32);
+    TensorDesc seqLens = MakeTensorDesc({1}, ACL_INT32);
+    TensorDesc rotation = MakeTensorDesc({128, 128}, ACL_BF16);
+    TensorDesc vScale = MakeTensorDesc({1}, ACL_FLOAT);
+    TensorDesc qOut = MakeTensorDesc({5, 1, 128}, qOutDtype, false);
+    TensorDesc qScale = MakeTensorDesc({5, 1}, ACL_FLOAT, false);
+    IntArrayDesc headNums(vector<int64_t>{1, 1, 1});
+
+    auto ut = OP_API_UT(
+        aclnnQkvRmsNormRopeCacheWithKScale,
+        INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, queryStartLoc, seqLens,
+              rotation, vScale, nullptr, headNums, "TND", "TND", 1e-6f, nullptr, qQuantMode),
+        OUTPUT(qOut, qScale));
+    uint64_t workspaceSize = 0;
+    return ut.TestGetWorkspaceSize(&workspaceSize);
+}
+
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, acceptsRopeDefaultQQuantMode)
+{
+    EXPECT_EQ(RunCompleteRopeScene(nullptr), ACLNN_SUCCESS);
+    EXPECT_EQ(RunCompleteRopeScene(""), ACLNN_SUCCESS);
+}
+
 aclnnStatus RunCompleteMropeScene(const vector<int64_t> &section, const char *layoutQkv = "TND",
                                   const char *layoutQOut = "TND", aclDataType kCacheDtype = ACL_INT8,
                                   aclDataType qOutDtype = ACL_BF16, const char *qQuantMode = "NoQuant",
@@ -671,17 +705,17 @@ TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeQQuantMode)
               ACLNN_ERR_PARAM_INVALID);
 }
 
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeDefaultQQuantMode)
+{
+    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_INT8, ACL_BF16, nullptr),
+              ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_INT8, ACL_BF16, ""),
+              ACLNN_ERR_PARAM_INVALID);
+}
+
 TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsRopeDtypeReadFromQOut)
 {
-    TensorDesc qOut = MakeTensorDesc({1, 1, 128}, ACL_BF16, false);
-
     // RoPE requires FP8; ACLNN reads the effective dtype from qOut itself.
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-              nullptr, nullptr, "TND", "NTD", 1e-6f, nullptr, "PerTokenPerHead"),
-        OUTPUT(qOut, nullptr));
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunCompleteRopeScene("PerTokenPerHead", ACL_BF16), ACLNN_ERR_PARAM_INVALID);
 }
 } // namespace

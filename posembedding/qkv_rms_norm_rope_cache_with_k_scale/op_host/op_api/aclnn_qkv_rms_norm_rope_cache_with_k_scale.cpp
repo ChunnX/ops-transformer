@@ -48,7 +48,8 @@ static const char *GetLayoutQOutOrDefault(const char *layout)
     return layout == nullptr || layout[0] == '\0' ? DEFAULT_Q_OUT_LAYOUT : layout;
 }
 
-static const char *GetQQuantModeOrDefault(const char *qQuantMode)
+// Normalize the public optional attribute once before it is used by DFX, the checker, and the L0 op.
+static const char *NormalizeQQuantMode(const char *qQuantMode)
 {
     return qQuantMode == nullptr || qQuantMode[0] == '\0' ? DEFAULT_Q_QUANT_MODE : qQuantMode;
 }
@@ -59,7 +60,7 @@ static Params MakeParams(const aclTensor *qkv, const aclTensor *qGamma, const ac
                          const aclTensor *rotationOptional, const aclTensor *vScaleOptional,
                          const aclTensor *mropePositionOptional, const aclIntArray *headNums, const char *layoutQkv,
                          const char *layoutQOut, float epsilon, const aclIntArray *mropeSectionOptional,
-                         const char *qQuantMode, aclTensor *qOut, aclTensor *qScale, uint64_t *workspaceSize,
+                         const char *effectiveQQuantMode, aclTensor *qOut, aclTensor *qScale, uint64_t *workspaceSize,
                          aclOpExecutor **executor)
 {
     Params params;
@@ -81,7 +82,8 @@ static Params MakeParams(const aclTensor *qkv, const aclTensor *qGamma, const ac
     params.layoutQOut = GetLayoutQOutOrDefault(layoutQOut);
     params.epsilon = epsilon;
     params.mropeSectionOptional = mropeSectionOptional;
-    params.qQuantMode = GetQQuantModeOrDefault(qQuantMode);
+    // qQuantMode is already resolved by the public ACLNN entry point.
+    params.qQuantMode = effectiveQQuantMode;
     if (qOut != nullptr) {
         params.qOutDtype = static_cast<int64_t>(qOut->GetDataType());
     }
@@ -201,18 +203,19 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
 {
     const char *layoutQkvAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQkvOrDefault(layoutQkv);
     const char *layoutQOutAttr = QkvRmsNormRopeCacheWithKScale::GetLayoutQOutOrDefault(layoutQOut);
-    const char *qQuantModeAttr = QkvRmsNormRopeCacheWithKScale::GetQQuantModeOrDefault(qQuantMode);
+    const char *effectiveQQuantMode = QkvRmsNormRopeCacheWithKScale::NormalizeQQuantMode(qQuantMode);
     L2_DFX_PHASE_1(aclnnQkvRmsNormRopeCacheWithKScale,
                    DFX_IN(qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef,
                           queryStartLocOptional, seqLensOptional, rotationOptional, vScaleOptional,
                           mropePositionOptional, headNums, layoutQkvAttr, layoutQOutAttr, epsilon,
-                          mropeSectionOptional, qQuantModeAttr),
+                          mropeSectionOptional, effectiveQQuantMode),
                    DFX_OUT(qOut, qScaleOptional, kCacheRef, vCacheRef, kScaleCacheRef));
 
     auto params = QkvRmsNormRopeCacheWithKScale::MakeParams(
         qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, queryStartLocOptional,
         seqLensOptional, rotationOptional, vScaleOptional, mropePositionOptional, headNums, layoutQkvAttr,
-        layoutQOutAttr, epsilon, mropeSectionOptional, qQuantModeAttr, qOut, qScaleOptional, workspaceSize, executor);
+        layoutQOutAttr, epsilon, mropeSectionOptional, effectiveQQuantMode, qOut, qScaleOptional, workspaceSize,
+        executor);
     aclnnStatus checkRet = QkvRmsNormRopeCacheWithKScale::CheckParams(params);
     CHECK_RET(checkRet == ACLNN_SUCCESS, checkRet);
 
