@@ -230,10 +230,10 @@ struct WorkspaceInfo {
             uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * SIZE_INT_8;
             uint32_t scaleBytes = mxScaleNum * SIZE_INT_8;
             uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
-            uint32_t recordBytes = Ops::Base::CeilAlign(tokenScaleBytes + static_cast<uint32_t>(ALIGN_32),
-                                                        static_cast<uint32_t>(ALIGN_512));
+            uint32_t sendRecordBytes = Ops::Base::CeilAlign(tokenScaleBytes + static_cast<uint32_t>(ALIGN_32),
+                                                            static_cast<uint32_t>(ALIGN_512));
             int64_t serverWorkspaceBytes =
-                static_cast<int64_t>(ALIGN_32) + static_cast<int64_t>(tilingData->bs) * recordBytes;
+                static_cast<int64_t>(ALIGN_32) + static_cast<int64_t>(tilingData->bs) * sendRecordBytes;
             workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(serverNum) * serverWorkspaceBytes,
                                                   static_cast<int64_t>(ALIGN_512));
 
@@ -246,9 +246,10 @@ struct WorkspaceInfo {
                                                   static_cast<int64_t>(ALIGN_512));
 
             dispatchL2CommPtr = base + workspaceSize;
-            workspaceSize +=
-                Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum) * 6 * static_cast<int64_t>(recordBytes),
-                                     static_cast<int64_t>(ALIGN_512));
+            int64_t flagSnapshotBytes = static_cast<int64_t>(tilingData->bs) * static_cast<int64_t>(ALIGN_32);
+            int64_t dispatchL2ScratchBytes =
+                Ops::Base::CeilAlign(flagSnapshotBytes, static_cast<int64_t>(ALIGN_512));
+            workspaceSize += static_cast<int64_t>(tilingData->aicNum) * dispatchL2ScratchBytes;
 
             combineCommDataPtr = base + workspaceSize;
             int64_t maxDataLengthPerBlock = Ops::Base::CeilAlign(
