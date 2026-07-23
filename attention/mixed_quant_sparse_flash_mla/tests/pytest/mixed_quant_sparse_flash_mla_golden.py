@@ -465,7 +465,7 @@ class GeneralizedSFAQuant:
 
     def forward(self, q, ori_k_bnsd, cmp_k_bnsd, ori_sparse_indices, cmp_sparse_indices,
         cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks,
-        ori_topk_length, cmp_topk_length):
+        ori_topk_length, cmp_topk_length, return_softmax_lse):
         print("cpu执行中...")
         print(f"template_run_mode = {self.template_run_mode}")
 
@@ -494,7 +494,7 @@ class GeneralizedSFAQuant:
         attn_out, softmax_lse = self.calculate_by_bnsd(q_bnsd, ori_k_bnsd, cmp_k_bnsd,
                                         ori_sparse_indices_bnsd, cmp_sparse_indices_bnsd,
                                         cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks,
-                                        ori_topk_length_bnsd, cmp_topk_length_bnsd)
+                                        ori_topk_length_bnsd, cmp_topk_length_bnsd, return_softmax_lse)
 
         attn_out = self.trans_bnsd_to_target_layout(attn_out, self.layout_q, cu_seqlens_q, self.seqused_q)
         if return_softmax_lse:
@@ -1517,7 +1517,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         ori_topk_length, cmp_topk_length, template_run_mode)
     cpu_result, cpu_lse = test_qsmla.forward(q, ori_k_bnsd, cmp_k_bnsd, ori_sparse_indices, cmp_sparse_indices,
         cu_seqlens_q, seqused_ori_kv, seqused_cmp_kv, cmp_residual_kv, sinks,
-        ori_topk_length, cmp_topk_length)
+        ori_topk_length, cmp_topk_length, return_softmax_lse)
 
     print("mode:%s\n",template_run_mode)
 
