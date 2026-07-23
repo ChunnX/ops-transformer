@@ -37,7 +37,7 @@ using namespace AscendC;
         op.Process();                                                                             \
     } while (0)
 
-template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G, int QUANT_MODE, int KV_DTYPE>
+template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int SPLIT_G, int QUANT_MODE, int KV_DTYPE, int Q_DTYPE>
  __global__ __aicore__ void mixed_quant_sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV,
     __gm__ uint8_t *cmpKV, __gm__ uint8_t *oriSparseIndices, __gm__ uint8_t *cmpSparseIndices,
     __gm__ uint8_t* oriBlockTable, __gm__ uint8_t* cmpBlockTable, __gm__ uint8_t *cuSeqlensQ,
@@ -53,16 +53,32 @@ template<int FLASH_DECODE, int LAYOUT_T, int KV_LAYOUT_T, int TEMPLATE_MODE, int
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
     if constexpr (KV_DTYPE == DTYPE_FP8_E4M3FN) {
-        QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
-            fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
-            static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
-            static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
-            static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE));
+        if constexpr (Q_DTYPE == DTYPE_FP16) {
+            QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, half,
+                fp8_e4m3fn_t, float, half, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
+                static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
+                static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
+                static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE));
+        } else {
+            QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
+                fp8_e4m3fn_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
+                static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
+                static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
+                static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE));
+        }
     } else {
-        QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
-            hifloat8_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
-            static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
-            static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
-            static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE));
+        if constexpr (Q_DTYPE == DTYPE_FP16) {
+            QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, half,
+                hifloat8_t, float, half, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
+                static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
+                static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
+                static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE));
+        } else {
+            QSMLA_OP_IMPL(BaseApi::MixedQuantSparseFlashMlaCsa, MixedQuantSparseFlashMlaTilingData, bfloat16_t,
+                hifloat8_t, float, bfloat16_t, FLASH_DECODE, KV_LAYOUT_T == QSMLA_LAYOUT_PA_BBND,
+                static_cast<QSMLA_LAYOUT>(LAYOUT_T), static_cast<QSMLA_LAYOUT>(KV_LAYOUT_T),
+                static_cast<QSMLATemplateMode>(TEMPLATE_MODE), SPLIT_G,
+                static_cast<SCALE_CONTIGUOUS_MODE>(QUANT_MODE));
+        }
     }
 }

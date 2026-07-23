@@ -93,7 +93,7 @@ ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantLayout() const
 
 ge::graphStatus MQSMLATilingCheck::CheckFeatureAntiquantDtype() const
 {
-    OP_CHECK_IF(qType_ != ge::DT_BF16,
+    OP_CHECK_IF(qType_ != ge::DT_BF16 && qType_ != ge::DT_FLOAT16,
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "query",
             MQSMLADataTypeToSerialString(qType_).c_str(),
             "query dtype only support " + MQSMLADataTypeToSerialString(ge::DT_BF16) + " and " +

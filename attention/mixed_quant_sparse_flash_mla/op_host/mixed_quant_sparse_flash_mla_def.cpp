@@ -22,7 +22,7 @@ public:
     {
         this->Input("q")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
+            .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("ori_kv")
@@ -112,7 +112,7 @@ public:
             .AutoContiguous();
         this->Output("attn_out")
             .ParamType(REQUIRED)
-            .DataTypeList({ge::DT_BF16})
+            .DataTypeList({ge::DT_FLOAT16, ge::DT_BF16})
             .FormatList({ge::FORMAT_ND});
         this->Output("softmax_lse")
             .ParamType(OPTIONAL)
