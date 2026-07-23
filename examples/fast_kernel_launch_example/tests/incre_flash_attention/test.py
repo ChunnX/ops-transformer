@@ -12,6 +12,7 @@ import sys
 import logging
 import torch
 import torch.nn as nn
+import ascend_ops
 
 logging.basicConfig(
     level=logging.INFO,
