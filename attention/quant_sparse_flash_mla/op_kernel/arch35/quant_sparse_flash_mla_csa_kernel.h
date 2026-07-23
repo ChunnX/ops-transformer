@@ -252,6 +252,7 @@ __aicore__ inline void QuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>::Pars
     if constexpr (TEMPLATE_MODE != QSMLATemplateMode::SWA_TEMPLATE_MODE) {
         constInfo.cmpRatio = quantSparseFlashMlaBaseParams.cmpRatio;
     }
+    constInfo.oriMaskMode = quantSparseFlashMlaBaseParams.oriMaskMode;
     constInfo.oriWinLeft = quantSparseFlashMlaBaseParams.oriWinLeft;
     constInfo.oriWinRight = quantSparseFlashMlaBaseParams.oriWinRight;
     constInfo.softmaxScale = quantSparseFlashMlaBaseParams.softmaxScale;
