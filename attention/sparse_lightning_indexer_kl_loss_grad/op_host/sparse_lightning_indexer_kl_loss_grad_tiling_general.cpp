@@ -14,6 +14,7 @@
  */
 
 #include "sparse_lightning_indexer_kl_loss_grad_tiling_general.h"
+#include "../op_kernel/arch22/sparse_lightning_indexer_kl_loss_grad_metadata_arch22.h"
 #include <cstring>
 #include <vector>
 #include <tiling/tiling_api.h>
@@ -63,6 +64,11 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::CheckContext()
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputShape(D_KEY_OUTPUT_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputShape(D_WEIGHTS_OUTPUT_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputShape(SOFTMAX_OUT_OUTPUT_INDEX));
+    OP_CHECK_IF((context_->GetOptionalInputShape(SEQUSED_QUERY_INPUT_INDEX) != nullptr ||
+                 context_->GetOptionalInputShape(SEQUSED_KEY_INPUT_INDEX) != nullptr) &&
+                    context_->GetOptionalInputShape(METADATA_INPUT_INDEX) == nullptr,
+                OP_LOGE(context_, "metadata is required when seqused_q or seqused_k is provided on arch22."),
+                return ge::GRAPH_FAILED);
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData());
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData()->GetData());
     return ge::GRAPH_SUCCESS;
@@ -221,6 +227,25 @@ bool SparseLightningIndexerKLLossGradTilingBase::AnalyzeLayout()
         tilingKeyLayout = LayoutType::LAYOUT_BSND;
     }
 
+    auto checkOptionalVector = [this](uint32_t inputIndex, const char *inputName,
+                                      int64_t expectedElementNum) -> bool {
+        auto optionalShape = context_->GetOptionalInputShape(inputIndex);
+        if (optionalShape == nullptr) {
+            return true;
+        }
+        auto &storageShape = optionalShape->GetStorageShape();
+        if (storageShape.GetDimNum() != 1 || storageShape.GetDim(0) != expectedElementNum) {
+            OP_LOGE(context_, "%s must be a 1D tensor with %ld elements.", inputName, expectedElementNum);
+            return false;
+        }
+        return true;
+    };
+    OP_CHECK_IF(!checkOptionalVector(SEQUSED_QUERY_INPUT_INDEX, "seqused_q", bSize) ||
+                    !checkOptionalVector(SEQUSED_KEY_INPUT_INDEX, "seqused_k", bSize) ||
+                    !checkOptionalVector(CMP_RESIDUAL_KEY_INPUT_INDEX, "cmp_residual_k", bSize) ||
+                    !checkOptionalVector(METADATA_INPUT_INDEX, "metadata", SLI_METADATA_SIZE),
+                OP_LOGE(opName, "optional input shape validation failed."), return false);
+
     OP_CHECK_IF(n2Size <= 0 || qShape.GetDim(qLayoutLen - 2) % n2Size != 0,
                 OP_LOGE(opName, "q N dimension must be divisible by k N dimension."), return false);
     OP_CHECK_IF(n2Size != 1,
@@ -252,7 +277,7 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetPlatformInfo()
     if (platformInfoPtr == nullptr) {
         auto compileInfoPtr = reinterpret_cast<const SparseLightningIndexerKLLossGradCompileInfo *>(context_->GetCompileInfo());
         OP_CHECK_IF(compileInfoPtr == nullptr, OP_LOGE(opName, "compileInfoPtr is null."),
-                   return ge::GRAPH_FAILED);
+                    return ge::GRAPH_FAILED);
         aivNum = compileInfoPtr->aivNum;
         aicNum = compileInfoPtr->aicNum;
         aicoreParams_.ubSize = compileInfoPtr->ubSize;
@@ -269,7 +294,7 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetPlatformInfo()
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::L2, l2CacheSize);
     }
     OP_LOGI(context_, "get platform from compileInfo.aivNum(%u) aicNum(%u) ubSize(%lu) l1Size(%lu) l0cSize(%lu).",
-              aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize);
+            aivNum, aicNum, aicoreParams_.ubSize, aicoreParams_.l1Size, aicoreParams_.l0cSize);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -280,7 +305,7 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetShapeAttrsInfo()
     OP_CHECK_IF(CheckContext() != ge::GRAPH_SUCCESS, OP_LOGE(opName, "invalid context."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(!AnalyzeAttrs() || !AnalyzeDtype() || !AnalyzeLayout(),
-               OP_LOGE(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
+                OP_LOGE(opName, "fail to analyze context info."), return ge::GRAPH_FAILED);
 
     sliGradkllossBaseParams_->set_bSize(bSize);
     sliGradkllossBaseParams_->set_n2Size(n2Size);
@@ -380,9 +405,12 @@ uint64_t SparseLightningIndexerKLLossGradTilingBase::GetTilingKey() const
 {
     LayoutType qLayout = (tilingKeyLayout == LayoutType::LAYOUT_TND) ? LayoutType::LAYOUT_TND : LayoutType::LAYOUT_BSND;
     LayoutType kLayout = (keyLayout != nullptr && keyLayout[0] == 'T') ? LayoutType::LAYOUT_TND : LayoutType::LAYOUT_BSND;
+    bool hasSequsedQ = context_->GetOptionalInputTensor(SEQUSED_QUERY_INPUT_INDEX) != nullptr;
+    bool hasSequsedK = context_->GetOptionalInputTensor(SEQUSED_KEY_INPUT_INDEX) != nullptr;
     return GET_TPL_TILING_KEY(static_cast<uint8_t>(false), static_cast<uint32_t>(topkSize),
-        static_cast<uint8_t>(qLayout), static_cast<uint8_t>(kLayout),
-        static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(deterministic));
+                              static_cast<uint8_t>(qLayout), static_cast<uint8_t>(kLayout),
+                              static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(hasSequsedQ),
+                              static_cast<uint8_t>(hasSequsedK), static_cast<uint8_t>(deterministic));
 }
 
 ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
@@ -396,13 +424,14 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
     int64_t psySyncSize = (static_cast<int64_t>(kSize) * 2 + 32 / sizeof(float)) * sizeof(float);
     int64_t bmm3Size = static_cast<int64_t>(kSize) * dSizeQueryIndex * sizeof(float);
     int64_t scatterAddOutSize = (tilingKeyLayout == LayoutType::LAYOUT_TND) ?
-        accumS2 * dSizeQueryIndex * sizeof(float) :
-        static_cast<int64_t>(bSize) * s2Size * dSizeQueryIndex * sizeof(float);
+                                    accumS2 * dSizeQueryIndex * sizeof(float) :
+                                    static_cast<int64_t>(bSize) * s2Size * dSizeQueryIndex * sizeof(float);
 
     int64_t singleCoreTotalSize = PING_PONG_VALUE *
-        (pSize + bmm1Size + bmm2Size + reluGradSize + sySize + psySyncSize + bmm3Size);
+                                  (pSize + bmm1Size + bmm2Size + reluGradSize + sySize + psySyncSize + bmm3Size);
     int64_t multiCoreTotalSize = singleCoreTotalSize *
-        static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) + scatterAddOutSize;
+                                     static_cast<int64_t>(sliGradkllossMultiCoreParams_->get_coreNum()) +
+                                 scatterAddOutSize;
     workspaces[0] = static_cast<size_t>(multiCoreTotalSize) + WORK_SPACE_RESERVE_SIZE;
     OP_LOGW(context_, "workspace size:[%zu], multicoreTotalSize:[%ld]", workspaces[0], multiCoreTotalSize);
     return ge::GRAPH_SUCCESS;
