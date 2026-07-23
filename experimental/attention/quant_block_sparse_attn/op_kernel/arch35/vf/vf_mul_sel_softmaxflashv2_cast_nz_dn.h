@@ -532,23 +532,25 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
     uint32_t ubN_m_m_div_2 = ubN * m / 2;
     uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
-    if (needAtten && originN < ubN) {
+    if (likely(originN >= ubN)) {
+        if (needAtten) {
+            ProcessVec1DnNoUpdateVF<T, T2, hasAtten, true, ubN>(
+                x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
+                indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+                ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
+        } else {
+            ProcessVec1DnNoUpdateVF<T, T2, hasAtten, false, ubN>(
+                x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
+                indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+                ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
+        }
+    } else if (needAtten) {
         ProcessVec1DnNoUpdateAttenTailVF<T, T2, hasAtten, true, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
             indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
             ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
-    } else if (originN < ubN) {
-        ProcessVec1DnNoUpdateAttenTailVF<T, T2, hasAtten, false, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
-            ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
-    } else if (needAtten) {
-        ProcessVec1DnNoUpdateVF<T, T2, hasAtten, true, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
-            ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
     } else {
-        ProcessVec1DnNoUpdateVF<T, T2, hasAtten, false, ubN>(
+        ProcessVec1DnNoUpdateAttenTailVF<T, T2, hasAtten, false, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
             indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
             ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
@@ -1076,23 +1078,25 @@ __aicore__ inline void ProcessVec1DnUpdate(
     uint32_t ubN_m_m_div_2 = ubN * m / 2;
     uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
-    if (needAtten && originN < ubN) {
+    if (likely(originN >= ubN)) {
+        if (needAtten) {
+            ProcessVec1DnUpdateVF<T, T2, hasAtten, true, ubN>(
+                x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
+                indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+                ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
+        } else {
+            ProcessVec1DnUpdateVF<T, T2, hasAtten, false, ubN>(
+                x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
+                indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+                ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
+        }
+    } else if (needAtten) {
         ProcessVec1DnUpdateAttenTailVF<T, T2, hasAtten, true, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
             indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
             ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
-    } else if (originN < ubN) {
-        ProcessVec1DnUpdateAttenTailVF<T, T2, hasAtten, false, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
-            ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
-    } else if (needAtten) {
-        ProcessVec1DnUpdateVF<T, T2, hasAtten, true, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
-            ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
     } else {
-        ProcessVec1DnUpdateVF<T, T2, hasAtten, false, ubN>(
+        ProcessVec1DnUpdateAttenTailVF<T, T2, hasAtten, false, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
             indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
             ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4, qGatherIdxUb);
@@ -1628,23 +1632,25 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
     uint32_t ubN_m_m_div_2 = ubN * m / 2;
     uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
-    if (needAtten && originN < ubN) {
+    if (likely(originN >= ubN)) {
+        if (needAtten) {
+            ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, true, ubN>(
+                x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
+                indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+                ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
+        } else {
+            ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, false, ubN>(
+                x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
+                indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+                ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
+        }
+    } else if (needAtten) {
         ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF<T, T2, hasAtten, true, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
             indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
             ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
-    } else if (originN < ubN) {
-        ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF<T, T2, hasAtten, false, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
-            ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
-    } else if (needAtten) {
-        ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, true, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
-            ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
     } else {
-        ProcessVec1DnNoUpdatePerTokenHeadVF<T, T2, hasAtten, false, ubN>(
+        ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF<T, T2, hasAtten, false, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
             indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
             ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
@@ -2150,23 +2156,25 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
     uint32_t ubN_m_m_div_2 = ubN * m / 2;
     uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
 
-    if (needAtten && originN < ubN) {
+    if (likely(originN >= ubN)) {
+        if (needAtten) {
+            ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, true, ubN>(
+                x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
+                indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+                ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
+        } else {
+            ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, false, ubN>(
+                x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
+                indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale,
+                ubN_div_8, ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
+        }
+    } else if (needAtten) {
         ProcessVec1DnUpdatePerTokenHeadAttenTailVF<T, T2, hasAtten, true, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
             indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
             ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
-    } else if (originN < ubN) {
-        ProcessVec1DnUpdatePerTokenHeadAttenTailVF<T, T2, hasAtten, false, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
-            ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
-    } else if (needAtten) {
-        ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, true, ubN>(
-            x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
-            indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
-            ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
     } else {
-        ProcessVec1DnUpdatePerTokenHeadVF<T, T2, hasAtten, false, ubN>(
+        ProcessVec1DnUpdatePerTokenHeadAttenTailVF<T, T2, hasAtten, false, ubN>(
             x_exp, input_x_local_UB, exp_max_fp32, new_global_sum, new_global_max, maskUb, qScaleUb, kScaleUb,
             indexesUb, m, n, originN, scale, minValue, keepProb, dScale, blockStride, repeatStride, pScale, ubN_div_8,
             ubN_m_m_div_4, ubN_m_m_div_2, ubN_m_m_mul3_div_4);
