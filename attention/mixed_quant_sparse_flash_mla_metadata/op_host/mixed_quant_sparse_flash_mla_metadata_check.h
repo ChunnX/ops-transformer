@@ -13,11 +13,11 @@
  * \brief
  */
 
+#include "log/log.h"
 #include "opdev/format_utils.h"
 #include "opdev/op_log.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/tensor_view_utils.h"
-#include "log/log.h"
 #include "../../mixed_quant_sparse_flash_mla/op_kernel/mixed_quant_sparse_flash_mla_metadata.h"
 
 #ifdef __cplusplus

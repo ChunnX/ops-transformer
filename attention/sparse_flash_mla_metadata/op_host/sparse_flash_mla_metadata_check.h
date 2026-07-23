@@ -13,11 +13,11 @@
  * \brief
  */
 
+#include "log/log.h"
 #include "opdev/format_utils.h"
 #include "opdev/op_log.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/tensor_view_utils.h"
-#include "log/log.h"
 #include "../../sparse_flash_mla/op_kernel/sparse_flash_mla_metadata.h"
 #include <cstring>
 #include <string>
@@ -43,8 +43,6 @@ inline constexpr int64_t SMLA_CMP_RATIO_LOWER_BOUND = 1;
 inline constexpr int64_t SMLA_CMP_RATIO_UPPER_BOUND = 128;
 inline constexpr int64_t SMLA_NUM_HEADS_Q_LOWER_BOUND = 1;
 inline constexpr int64_t SMLA_NUM_HEADS_Q_UPPER_BOUND = 128;
-inline const std::string SMLA_A2_A3_PLATFORM_LOG = "A2/A3";
-inline const std::string SMLA_A5_PLATFORM_LOG = "A5";
 
 inline bool IsPowerOfTwoInRangeSmla(int64_t value, int64_t minValue, int64_t maxValue)
 {
@@ -73,8 +71,8 @@ aclnnStatus CheckReservedOptionalTensorSmla(const aclTensor *tensor, const char 
         return ACLNN_SUCCESS;
     }
     OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(SMLA_ACLNN_OP_NAME, tensorName,
-            "%s is reserved and does not support non-empty tensor on %s",
-            tensorName, SMLA_A2_A3_PLATFORM_LOG.c_str());
+            std::string(tensorName) + " is reserved and does not support "
+            "non-empty tensor.");
     return ACLNN_ERR_PARAM_INVALID;
 }
 
