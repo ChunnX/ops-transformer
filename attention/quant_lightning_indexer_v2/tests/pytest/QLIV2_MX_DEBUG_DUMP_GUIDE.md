@@ -10,7 +10,7 @@
 - 插桩不限制固定的 batch、Q/K 长度、布局或 sparse_count。
 - 每次只选择一行 `(b_idx, n2_idx, s1_idx)` 采集，避免 DumpTensor 数据量失控。
 - Python 侧目标由环境变量控制；NPU kernel 侧目标由编译期宏控制。两者必须完全一致。
-- 修改 NPU 目标行或 QK S2 窗口后，必须重新编译并安装算子。
+- 修改 NPU 目标行、目标 K index 或 QK S2 窗口后，必须重新编译并安装算子。
 - 不要为了让 Case 通过而修改比较阈值、过滤失败元素或放宽 TopK 规则。
 - 每个 Case 使用独立输出目录，避免前一个 Case 的文件被覆盖。
 
@@ -45,16 +45,18 @@ attention/quant_lightning_indexer_v2/op_kernel/arch35/quant_lightning_indexer_v2
 QLIV2_DEBUG_TARGET_B_IDX
 QLIV2_DEBUG_TARGET_N2_IDX
 QLIV2_DEBUG_TARGET_S1_IDX
+QLIV2_DEBUG_TARGET_S2_IDX
 QLIV2_DEBUG_QK_S2_BEGIN
 QLIV2_DEBUG_QK_S2_END
 ```
 
-默认目标为 `b=0, n2=0, s1=4`，MXFP4 QK 的默认采集窗口为 `S2=[0, 4096)`。可修改默认值，或通过编译参数传入同名宏。
+默认目标为 `b=0, n2=0, s1=4, s2=2492`，MXFP4 QK 的默认采集窗口为 `S2=[0, 4096)`。`TARGET_S2_IDX` 只选择逐 G 累加前缀所在的 K token；QK 窗口仍控制批量 QK 中间结果。可修改默认值，或通过编译参数传入同名宏。
 
 注意：
 
 - 只修改 Python 环境变量不会改变 NPU 采集位置。
 - 如果关注的 K index 不在 QK 窗口内，应调整 `QLIV2_DEBUG_QK_S2_BEGIN/END` 后重新编译。
+- `QLIV2_DEBUG_TARGET_S2_IDX` 必须位于目标行的有效 K 范围内，否则不会生成逐 G 前缀记录。
 - 完整 score 不受 QK 窗口限制；窗口只用于控制额外的 MXFP4 QK 中间结果数据量。
 
 ## 3. 运行测试
@@ -82,6 +84,7 @@ python attention/quant_lightning_indexer_v2/tests/pytest/parse_qliv2_debug_dump.
 - 将 NPU BF16 sortable key 还原为可直接比较的 FP32 数值。
 - 按 S2 起点拼接分段的完整 NPU score。
 - 提取 kernel 内部 TopK index/value、scale、seqused 和实际 S1/S2 长度。
+- 整理 MXFP4 Pack 后的 BF16 weight 和目标 S2 tile 的逐 G 累加前缀。
 - 当 DumpTensor 被截断时输出 warning。
 
 已有单独的 sortable-key 解码脚本：
@@ -129,6 +132,10 @@ python attention/quant_lightning_indexer_v2/tests/pytest/decode_qliv2_debug_dump
 | `npu_seqused_q.npy` / `npu_seqused_k.npy` | NPU 实际读取的 seqused |
 | `npu_act_s1_size.npy` / `npu_act_s2_size.npy` | NPU 运行时采用的有效 S1/S2 |
 | `npu_block_table.npy` | PA 场景目标 batch 的 block table |
+| `npu_weight_bf16_packed.npy` | `CastWeightToBf16 + Pack` 后由 `BroadcastLane` 索引的 BF16 weight 顺序 |
+| `npu_mxfp4_acc_prefix.npy` | 目标 S2 tile 上每个源代码 G 循环结束后的 BF16 累加值，shape 为 `[G, tile_valid_len]` |
+| `npu_mxfp4_acc_prefix_s2_begin.npy` | 上述前缀矩阵第 2 维下标 0 对应的全局 K index |
+| `npu_mxfp4_acc_prefix_g_indices.npy` | 前缀矩阵第 1 维对应的源代码 G index，正常应为 `0..G-1` |
 | `desc_*.npy` | 其他原始记录，包括分 G 的 MXFP4 QK 和 PA scale block |
 
 ## 6. 推荐定位顺序
@@ -155,6 +162,59 @@ python attention/quant_lightning_indexer_v2/tests/pytest/decode_qliv2_debug_dump
 - Q/K 的 scale 分组顺序与 CPU 一致。
 
 MXFP4 还可查看 `desc_*.npy` 中按 G 保存的 QK 中间值。QK dump 只覆盖配置的 S2 窗口。
+
+MXFP4 QK descriptor 的准确规则为：
+
+```text
+desc = 100000 + qk_dump_begin + g_idx
+payload[j] = QK[target_b, target_n2, target_s1, g_idx, qk_dump_begin + j]
+n1 = target_n2 * g_size + g_idx
+```
+
+descriptor不再单独编码 `b/n2/s1`，因为它们已由目标宏过滤。每个K token的4个E8M0 scale对应D轴的4个32元素分组，并不是4个G；QK dump已经是4个D分组完成缩放和归约后的BF16结果。
+
+### 阶段二点五：确认 MXFP4 的实际逐 G 累加路径
+
+源码循环的逻辑顺序为 `G=0,1,...,g_size-1`。调试插桩在同一次 `MulAddDst` 循环内完成以下操作：
+
+1. 保存 `CastWeightToBf16 + Pack` 后的寄存器 weight。
+2. 每个 G 完成 `MulAddDst` 后，将当前 `regSum` 保存到已经消费完的该 G 对应 QK 槽位。
+3. 循环结束后把各 G 槽位导出，因此 `npu_mxfp4_acc_prefix[g]` 表示源代码第 `g` 次循环后的累加结果。
+
+原始 QK 在 weighted-reduce 调用前已经完成 dump，写回前缀不会覆盖日志中的原始 QK。前缀 descriptor 规则为：
+
+```text
+desc = 9000000 + s2_tile_begin + g_idx
+```
+
+解析后直接比较目标 K：
+
+```python
+import numpy as np
+
+dump_dir = 'qliv2_npu_dump'
+target_s2 = 2492
+prefix = np.load(f'{dump_dir}/npu_mxfp4_acc_prefix.npy')
+s2_begin = int(np.load(f'{dump_dir}/npu_mxfp4_acc_prefix_s2_begin.npy'))
+g_indices = np.load(f'{dump_dir}/npu_mxfp4_acc_prefix_g_indices.npy')
+weight_bf16 = np.load(f'{dump_dir}/npu_weight_bf16_packed.npy')
+lane = target_s2 - s2_begin
+
+print('s2_begin=', s2_begin, 'lane=', lane)
+for row, g_idx in enumerate(g_indices):
+    print('g=', int(g_idx), 'weight_bf16=', weight_bf16[int(g_idx)],
+          'npu_acc=', prefix[row, lane])
+```
+
+判断顺序：
+
+- 先检查 `g_indices` 是否连续为 `0..G-1`。
+- 再检查 `npu_weight_bf16_packed[g]` 是否等于 CPU 将逻辑 `weight[g]` 按相同舍入模式转成 BF16 的结果。
+- 使用 NPU QK dump 与 packed weight 在 CPU 上按自然 G 顺序计算前缀，找出第一处与 `npu_mxfp4_acc_prefix` 不同的 G。
+- QK、packed weight、此前前缀都相同而本次前缀相差 1 ULP，说明差异发生在该次 `MulAddDst` 的 BF16 舍入语义。
+- packed weight 的下标内容不一致，优先检查 `CastWeightToBf16`、`Pack` 与 `BroadcastLane` 的 lane 映射。
+
+插桩在每次 `MulAddDst` 后增加了一次 Store，可能影响编译器调度。必须确认插桩版本目标 index 的最终 NPU score 与未插桩版本一致；若最终score发生变化，逐 G 前缀只能用于辅助分析，还需结合生成的 CCE/汇编确认真实指令顺序。
 
 ### 阶段三：逐元素比较完整 score
 

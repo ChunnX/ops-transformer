@@ -35,6 +35,9 @@ namespace DebugDump {
 #ifndef QLIV2_DEBUG_TARGET_S1_IDX
 #define QLIV2_DEBUG_TARGET_S1_IDX 4
 #endif
+#ifndef QLIV2_DEBUG_TARGET_S2_IDX
+#define QLIV2_DEBUG_TARGET_S2_IDX 2492
+#endif
 #ifndef QLIV2_DEBUG_QK_S2_BEGIN
 #define QLIV2_DEBUG_QK_S2_BEGIN 0
 #endif
@@ -46,6 +49,7 @@ namespace DebugDump {
 constexpr uint32_t TARGET_B_IDX = QLIV2_DEBUG_TARGET_B_IDX;
 constexpr uint32_t TARGET_N2_IDX = QLIV2_DEBUG_TARGET_N2_IDX;
 constexpr uint32_t TARGET_S1_IDX = QLIV2_DEBUG_TARGET_S1_IDX;
+constexpr uint32_t TARGET_S2_IDX = QLIV2_DEBUG_TARGET_S2_IDX;
 constexpr uint32_t QK_S2_BEGIN = QLIV2_DEBUG_QK_S2_BEGIN;
 constexpr uint32_t QK_S2_END = QLIV2_DEBUG_QK_S2_END;
 
@@ -53,6 +57,7 @@ constexpr uint32_t QK_S2_END = QLIV2_DEBUG_QK_S2_END;
 // Weight is dumped once for the target row.
 constexpr uint32_t QK_DESC_BASE = 100000;
 constexpr uint32_t WEIGHT_DESC_BASE = 200000;
+constexpr uint32_t PACKED_WEIGHT_DESC = 200001;
 constexpr uint32_t SCORE_KEY_DESC_BASE = 300000;
 constexpr uint32_t TOPK_INDEX_DESC = 400000;
 constexpr uint32_t TOPK_SCORE_KEY_DESC = 400001;
@@ -66,6 +71,8 @@ constexpr uint32_t LD_TOPK_INDEX_DESC = 600000;
 constexpr uint32_t LD_TOPK_SCORE_KEY_DESC = 600001;
 constexpr uint32_t ACT_S1_SIZE_DESC_BASE = 700000;
 constexpr uint32_t ACT_S2_SIZE_DESC_BASE = 800000;
+// descriptor编码目标S2分块起点和源码循环中的G下标。
+constexpr uint32_t MXFP4_ACC_PREFIX_DESC_BASE = 9000000;
 }  // namespace DebugDump
 #endif
 

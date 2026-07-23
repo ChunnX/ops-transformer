@@ -504,9 +504,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCORE_T))];
     auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(WEIGHT_T))];
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
+    auto packedWeightDumpBase = weightTempBase.template ReinterpretCast<bfloat16_t>();
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / 2 * constInfo_.mBaseSize;
+    bool dumpMxFp4AccPrefix = false;
+    uint32_t debugLocalRow = 0;
+    uint32_t debugS2BlockBegin = 0;
+    uint32_t debugS2BlockLen = 0;
 #ifdef QLIV2_DEBUG_DUMP
     if constexpr (IS_MX) {
         bool containsTargetRow = info.bIdx == DebugDump::TARGET_B_IDX &&
@@ -515,6 +520,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
             DebugDump::TARGET_S1_IDX < curAivS1Idx + curAivS1ProcNum;
         if (containsTargetRow) {
             uint64_t localRow = DebugDump::TARGET_S1_IDX - curAivS1Idx;
+            debugLocalRow = static_cast<uint32_t>(localRow);
             uint64_t qkGroupStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T);
             uint64_t qkRowStride = gSize_ * qkGroupStride;
             uint32_t qkBlockBegin = static_cast<uint32_t>(curS2Idx);
@@ -523,6 +529,12 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
             uint32_t qkDumpBegin = qkBlockBegin < DebugDump::QK_S2_BEGIN ? DebugDump::QK_S2_BEGIN : qkBlockBegin;
             uint32_t qkDumpEnd = qkBlockEnd < DebugDump::QK_S2_END ? qkBlockEnd : DebugDump::QK_S2_END;
             if constexpr (IS_MXFP4) {
+                dumpMxFp4AccPrefix = DebugDump::TARGET_S2_IDX >= qkBlockBegin &&
+                    DebugDump::TARGET_S2_IDX < qkBlockEnd;
+                if (dumpMxFp4AccPrefix) {
+                    debugS2BlockBegin = qkBlockBegin;
+                    debugS2BlockLen = qkBlockEnd - qkBlockBegin;
+                }
                 if (qkDumpBegin < qkDumpEnd) {
                     uint32_t qkDumpLen = qkDumpEnd - qkDumpBegin;
                     uint32_t qkBlockOffset = qkDumpBegin - qkBlockBegin;
@@ -540,11 +552,39 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     }
 #endif
     if constexpr (IS_MXFP4) {
-        vector1::BatchMulWeightAndReduceSumMXFP4(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
-            qkBase, qkVLstride,
-            (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T),
-            gSize_, curAivS1ProcNum);
+        if (dumpMxFp4AccPrefix) {
+            if (debugLocalRow == 0) {
+                vector1::BatchMulWeightAndReduceSumMXFP4<QK_T, SCORE_T, WEIGHT_T, true, 0>(
+                    outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T), qkBase, qkVLstride,
+                    (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+                    weightBase, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T),
+                    gSize_, curAivS1ProcNum, packedWeightDumpBase);
+            } else {
+                vector1::BatchMulWeightAndReduceSumMXFP4<QK_T, SCORE_T, WEIGHT_T, true, 1>(
+                    outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T), qkBase, qkVLstride,
+                    (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+                    weightBase, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T),
+                    gSize_, curAivS1ProcNum, packedWeightDumpBase);
+            }
+        } else {
+            vector1::BatchMulWeightAndReduceSumMXFP4<QK_T, SCORE_T, WEIGHT_T, false, 0>(
+                outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T), qkBase, qkVLstride,
+                (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+                weightBase, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T),
+                gSize_, curAivS1ProcNum, packedWeightDumpBase);
+        }
+#ifdef QLIV2_DEBUG_DUMP
+        if (dumpMxFp4AccPrefix) {
+            uint64_t qkGroupStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T);
+            uint64_t qkRowStride = gSize_ * qkGroupStride;
+            for (uint32_t gIdx = 0; gIdx < gSize_; ++gIdx) {
+                DumpTensor(qkBase[debugLocalRow * qkRowStride + gIdx * qkGroupStride],
+                           DebugDump::MXFP4_ACC_PREFIX_DESC_BASE + debugS2BlockBegin + gIdx,
+                           debugS2BlockLen);
+            }
+            DumpTensor(packedWeightDumpBase, DebugDump::PACKED_WEIGHT_DESC, gSize_);
+        }
+#endif
     } else if constexpr (IS_MX) {
         vector1::BatchMulWeightAndReduceSumMX(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
             qkBase, qkVLstride,

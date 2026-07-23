@@ -762,18 +762,21 @@ __simd_callee__ inline void CastWeightToBf16(AscendC::MicroAPI::RegTensor<bfloat
         (AscendC::MicroAPI::RegTensor<uint32_t>&)dst);
 }
 
+template <bool DUMP_ACC_PREFIX>
 __aicore__ inline void MulWeightAndReduceSumMXFP4(
     const LocalTensor<uint16_t> &out_,
     const LocalTensor<bfloat16_t> &qk_,
     const uint32_t qkVLStride,
     const LocalTensor<float> &weight_,
-    const int gSize)
+    const int gSize,
+    const LocalTensor<bfloat16_t> &packedWeightDump_)
 {
     (void)qkVLStride;
     constexpr uint32_t BF16_QK_ROW_STRIDE = UB_BANK_DEPTH_STRIDE / sizeof(bfloat16_t);
     auto out = (__local_mem__ uint16_t*)out_.GetPhyAddr();
     auto qk = (__local_mem__ bfloat16_t*)qk_.GetPhyAddr();
     auto weight = (__local_mem__ float*)weight_.GetPhyAddr();
+    auto packedWeightDump = (__local_mem__ bfloat16_t*)packedWeightDump_.GetPhyAddr();
 
     __VEC_SCOPE__
     {
@@ -791,11 +794,20 @@ __aicore__ inline void MulWeightAndReduceSumMXFP4(
 
         CastWeightToBf16(regWeight, weight, maskAllB32);
         AscendC::MicroAPI::Duplicate(regSum, bfloat16_t(0.0f), maskAllB16);
+        if constexpr (DUMP_ACC_PREFIX) {
+            AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                packedWeightDump, regWeight, maskAllB16);
+        }
 
         for (uint16_t i = 0; i < static_cast<uint16_t>(gSize); i++) {
             AscendC::MicroAPI::LoadAlign<bfloat16_t>(regQK, qk + BF16_QK_ROW_STRIDE * i);
             liV2Vector1::BroadcastLane(regWeightBrc, regWeight, i);
             AscendC::MicroAPI::MulAddDst(regSum, regQK, regWeightBrc, maskAllB16);
+            if constexpr (DUMP_ACC_PREFIX) {
+                // G=i对应的QK行已完成读取，复用该空间保存当前累加前缀。
+                AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                    qk + BF16_QK_ROW_STRIDE * i, regSum, maskAllB16);
+            }
         }
 
         AscendC::MicroAPI::RegTensor<uint16_t> regOut;
@@ -805,6 +817,7 @@ __aicore__ inline void MulWeightAndReduceSumMXFP4(
     }
 }
 
+template <bool DUMP_ACC_PREFIX, uint32_t DUMP_ROW>
 __aicore__ inline void MulWeightAndReduceSumMXFP4TwoRows(
     const LocalTensor<uint16_t> &out_,
     uint32_t outStride,
@@ -813,7 +826,8 @@ __aicore__ inline void MulWeightAndReduceSumMXFP4TwoRows(
     uint32_t qkStride,
     const LocalTensor<float> &weight_,
     uint32_t weightStride,
-    const int gSize)
+    const int gSize,
+    const LocalTensor<bfloat16_t> &packedWeightDump_)
 {
     (void)qkVLStride;
     constexpr uint32_t BF16_QK_ROW_STRIDE = UB_BANK_DEPTH_STRIDE / sizeof(bfloat16_t);
@@ -823,6 +837,7 @@ __aicore__ inline void MulWeightAndReduceSumMXFP4TwoRows(
     auto qk1 = qk0 + qkStride;
     auto weight0 = (__local_mem__ float*)weight_.GetPhyAddr();
     auto weight1 = weight0 + weightStride;
+    auto packedWeightDump = (__local_mem__ bfloat16_t*)packedWeightDump_.GetPhyAddr();
 
     __VEC_SCOPE__
     {
@@ -843,6 +858,15 @@ __aicore__ inline void MulWeightAndReduceSumMXFP4TwoRows(
         CastWeightToBf16(regWeight[1], weight1, maskAllB32);
         AscendC::MicroAPI::Duplicate(regSum[0], bfloat16_t(0.0f), maskAllB16);
         AscendC::MicroAPI::Duplicate(regSum[1], bfloat16_t(0.0f), maskAllB16);
+        if constexpr (DUMP_ACC_PREFIX) {
+            if constexpr (DUMP_ROW == 0) {
+                AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                    packedWeightDump, regWeight[0], maskAllB16);
+            } else {
+                AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                    packedWeightDump, regWeight[1], maskAllB16);
+            }
+        }
 
         for (uint16_t i = 0; i < static_cast<uint16_t>(gSize); i++) {
             AscendC::MicroAPI::LoadAlign<bfloat16_t>(regQK0, qk0 + BF16_QK_ROW_STRIDE * i);
@@ -851,6 +875,15 @@ __aicore__ inline void MulWeightAndReduceSumMXFP4TwoRows(
             liV2Vector1::BroadcastLane(regWeightBrc[1], regWeight[1], i);
             AscendC::MicroAPI::MulAddDst(regSum[0], regQK0, regWeightBrc[0], maskAllB16);
             AscendC::MicroAPI::MulAddDst(regSum[1], regQK1, regWeightBrc[1], maskAllB16);
+            if constexpr (DUMP_ACC_PREFIX) {
+                if constexpr (DUMP_ROW == 0) {
+                    AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                        qk0 + BF16_QK_ROW_STRIDE * i, regSum[0], maskAllB16);
+                } else {
+                    AscendC::MicroAPI::StoreAlign<bfloat16_t, AscendC::MicroAPI::StoreDist::DIST_NORM>(
+                        qk1 + BF16_QK_ROW_STRIDE * i, regSum[1], maskAllB16);
+                }
+            }
         }
 
         AscendC::MicroAPI::RegTensor<uint16_t> regOut[2];
@@ -863,7 +896,7 @@ __aicore__ inline void MulWeightAndReduceSumMXFP4TwoRows(
     }
 }
 
-template<typename QK_T, typename SCORE_T, typename WEIGHT_T>
+template<typename QK_T, typename SCORE_T, typename WEIGHT_T, bool DUMP_ACC_PREFIX, uint32_t DUMP_ROW>
 __aicore__ inline void BatchMulWeightAndReduceSumMXFP4(
     const LocalTensor<SCORE_T> &out_,
     uint32_t outStride,
@@ -873,16 +906,17 @@ __aicore__ inline void BatchMulWeightAndReduceSumMXFP4(
     const LocalTensor<WEIGHT_T> &weight_,
     uint32_t weightStride,
     const int gSize,
-    const int batch)
+    const int batch,
+    const LocalTensor<bfloat16_t> &packedWeightDump_)
 {
     static_assert(std::is_same_v<QK_T, bfloat16_t>);
     static_assert(std::is_same_v<SCORE_T, uint16_t>);
     static_assert(std::is_same_v<WEIGHT_T, float>);
     if (batch == 2) {
-        MulWeightAndReduceSumMXFP4TwoRows(out_, outStride, qk_, qkVLStride, qkStride,
-            weight_, weightStride, gSize);
+        MulWeightAndReduceSumMXFP4TwoRows<DUMP_ACC_PREFIX, DUMP_ROW>(out_, outStride, qk_, qkVLStride, qkStride,
+            weight_, weightStride, gSize, packedWeightDump_);
     } else if (batch == 1) {
-        MulWeightAndReduceSumMXFP4(out_, qk_, qkVLStride, weight_, gSize);
+        MulWeightAndReduceSumMXFP4<DUMP_ACC_PREFIX>(out_, qk_, qkVLStride, weight_, gSize, packedWeightDump_);
     }
 }
 template<typename QK_T, typename SCORE_T, typename WEIGHT_T>

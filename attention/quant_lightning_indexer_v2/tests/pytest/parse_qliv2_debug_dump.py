@@ -101,6 +101,7 @@ def _save_known_tensors(records, output_dir):
         np.save(output_dir / "npu_topk_score_kernel.npy", decode_bf16_sortable_keys(keys))
 
     fixed_desc_names = {
+        200001: 'npu_weight_bf16_packed',
         500000: "npu_query_scale_raw",
         500001: "npu_key_scale_raw",
         500002: "npu_seqused_q",
@@ -120,6 +121,36 @@ def _save_known_tensors(records, output_dir):
         np.save(output_dir / "npu_act_s1_size.npy", np.asarray(act_s1_sizes, dtype=np.uint32))
     if act_s2_sizes:
         np.save(output_dir / "npu_act_s2_size.npy", np.asarray(act_s2_sizes, dtype=np.uint32))
+
+    prefix_records = [
+        record for record in records if 9000000 <= record['desc'] < 10000000]
+    if prefix_records:
+        # Keep the final occurrence when a log contains repeated records for the same G.
+        prefix_by_desc = {record['desc']: record['values'] for record in prefix_records}
+        prefix_descs = sorted(prefix_by_desc)
+        prefix_desc_begin = prefix_descs[0]
+        prefix_s2_begin = prefix_desc_begin - 9000000
+        packed_weights = _records_for_desc(records, 200001)
+        expected_g = packed_weights[-1].size if packed_weights else len(prefix_descs)
+        if len(prefix_descs) != expected_g:
+            print(
+                f'warning: expected {expected_g} MXFP4 prefix records, got {len(prefix_descs)}; '
+                'the dump may be truncated')
+        g_indices = np.asarray(
+            [desc - prefix_desc_begin for desc in prefix_descs], dtype=np.uint32)
+        if not np.array_equal(g_indices, np.arange(len(prefix_descs), dtype=np.uint32)):
+            print(f'warning: non-contiguous MXFP4 prefix descriptors: {prefix_descs}')
+        prefix_lengths = {prefix_by_desc[desc].size for desc in prefix_descs}
+        if len(prefix_lengths) != 1:
+            raise RuntimeError(
+                f'inconsistent MXFP4 prefix lengths for descriptors {prefix_descs}: {prefix_lengths}')
+        prefix = np.stack(
+            [prefix_by_desc[desc].astype(np.float32, copy=False) for desc in prefix_descs])
+        np.save(output_dir / 'npu_mxfp4_acc_prefix.npy', prefix)
+        np.save(
+            output_dir / 'npu_mxfp4_acc_prefix_s2_begin.npy',
+            np.asarray(prefix_s2_begin, dtype=np.uint32))
+        np.save(output_dir / 'npu_mxfp4_acc_prefix_g_indices.npy', g_indices)
 
 
 def main():
