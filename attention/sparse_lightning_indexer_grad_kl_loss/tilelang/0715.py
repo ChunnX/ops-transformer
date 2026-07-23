@@ -165,17 +165,21 @@ def check_param_valid(
 # C scope 1: Matmul1 (query @ gatherKey^T) + Matmul2 (queryIndex @ gatherKeyIndex^T)
 # V scope 1: softmaxI, P_reduced, dWeight, reluGrad computation
 # C scope 2: Matmul4 (reluGrad @ gatherKeyIndex → dQueryIndex)
-# V scope 2: Cast dQueryIndex FP32→FP16 + Scatter dk_matmul_partial → dKeyIndex
-#   Both operations split across AIV0/AIV1 for load balance
+# V scope 2: Scatter dk_matmul_partial → FP32 dKeyIndex accumulator
+# Final V scope: dQuery/dKey/dWeight conversion and final reductions
 # ==============================================================================
 @tilelang.jit(
     out_idx=[-4, -3, -2, -1],
-    workspace_idx=[12, 13, 14, 15, 16, 17, 18, 19, 20],
+    # All intermediate buffers are allocated and passed by the wrapper.  In the
+    # installed TileLang JIT, workspace_idx means JIT-owned allocation rather
+    # than caller-owned workspace metadata.
+    workspace_idx=[],
     pass_configs=pass_configs,
 )
 def tilelang_grad_kl_loss_single_kernel(
     B, S1, S2, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
-    d_rope, input_dtype, calc_dtype, scale_value, block_n=BLOCK_N
+    launch_core_num, d_rope, input_dtype, calc_dtype, weight_output_dtype,
+    scale_value, block_n=BLOCK_N
 ):
     s1_block = BLOCK_M
     n_block = block_n
@@ -183,6 +187,11 @@ def tilelang_grad_kl_loss_single_kernel(
     s1_tile_num = ceil_div(S1, s1_block)
     n_num = K // n_block
     block_num = B * s1_tile_num * n_num
+    launch_core_num = min(max(launch_core_num, 1), block_num)
+    tasks_per_core = ceil_div(block_num, launch_core_num)
+    total_aiv_num = launch_core_num * 2
+    loss_partial_stride = 8
+    loss_partial_size = ceil_div(B * S1 * n_num * loss_partial_stride, 128) * 128
     d_num_query = DQuery // k_block
     d_num_rope = ceil_div(d_rope, k_block)
     d_num_total = d_num_query + d_num_rope
@@ -209,7 +218,7 @@ def tilelang_grad_kl_loss_single_kernel(
         dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 10 (input, host-zeroed: atomic_add target)
         # === INPUT (11) — dKeyIndex fp32 累加器，host 清零后传入（atomic_add target，照搬 dQueryIndexAccum 模式）===
         dKeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), calc_dtype),   # 11 (input, host-zeroed)
-        # === WORKSPACES (12-21) ===
+        # === CALLER-MANAGED WORKSPACES (12-23) ===
         GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),        # 12
         GatherKeyRope_ws: T.Tensor((B, S1, K, d_rope), input_dtype),    # 13
         GatherKeyIndex_ws: T.Tensor((B, S1, K, DQueryIndex), input_dtype), # 14
@@ -219,710 +228,785 @@ def tilelang_grad_kl_loss_single_kernel(
         ReduceSumY: T.Tensor((B, S1, K), calc_dtype),                   # 18
         SoftmaxI: T.Tensor((B, S1, K), calc_dtype),                     # 19
         dk_matmul_partial: T.Tensor((B, S1, K, DQueryIndex), calc_dtype), # 20 (workspace: reluGrad^T @ QueryIndex)
-        # === OUTPUTS (21-24) ===
-        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 21
-        dWeight_partial: T.Tensor((B, S1, n_num, Nidx1), input_dtype),  # 22
-        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 23
-        LossOut: T.Tensor((B, S1, n_num), calc_dtype),             # 24
+        reluGradRes: T.Tensor((B, S1, Nidx1, K), input_dtype),          # 21
+        dWeightPartial: T.Tensor((B, S1, n_num, Nidx1), calc_dtype),    # 22
+        LossPartial: T.Tensor((loss_partial_size,), calc_dtype),        # 23
+        # === OUTPUTS (-4..-1) ===
+        dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 24
+        dKeyIndexOut: T.Tensor((B, S2, Nidx2, DQueryIndex), input_dtype), # 25
+        dWeightOut: T.Tensor((B, S1, Nidx1), weight_output_dtype),      # 26
+        LossOut: T.Tensor((1,), calc_dtype),                             # 27
     ):
-        with T.Kernel(block_num, is_npu=True) as (cid, vid):
-            bz = cid // (s1_tile_num * n_num)
-            m = (cid // n_num) % s1_tile_num
-            n_idx_k = cid % n_num
-            s1_start = m * s1_block
-            s1_end = T.min(s1_start + s1_block, S1)
-            k_start = n_idx_k * n_block
-            k_end = T.min(k_start + n_block, K)
+        with T.Kernel(launch_core_num, is_npu=True) as (cid, vid):
+            # Logical K blocks can exceed resident physical cores.  Each core
+            # completes a strided set before the whole-kernel finalization
+            # phase begins.
+            for task_iter in T.serial(tasks_per_core):
+                work_id = task_iter * launch_core_num + cid
+                if work_id < block_num:
+                    bz = work_id // (s1_tile_num * n_num)
+                    m = (work_id // n_num) % s1_tile_num
+                    n_idx_k = work_id % n_num
+                    s1_start = m * s1_block
+                    s1_end = T.min(s1_start + s1_block, S1)
+                    k_start = n_idx_k * n_block
+                    k_end = T.min(k_start + n_block, K)
 
-            # ============================================================
-            # V scope 0: Gather Key/KeyIndex/KeyRope → workspace
-            # 手动同步（auto-sync 关）：chunk 级 double buffer，MTE2 fill ∥ MTE3 drain
-            #   预取下一 chunk 的 fill 与本 chunk 的 drain 并发，隐藏 burst 写延迟
-            # 标量 idx 从 GM 读，依赖 GetValue 同步语义（watch-point）
-            # ============================================================
-            num_chunks = n_block // GATHER_CHUNK_SIZE
-            with T.Scope("V"):
-                # Double-buffered chunked gather：MTE2 fill ∥ MTE3 drain（ping-pong）
-                # 照抄官方 examples/elementwise/elementwise_add_pipeline.py 的 WAR-safe 结构：
-                #   MTE3_MTE2 = "slot 可写" WAR 事件（预置两个 slot，末尾 clear 排空）
-                #   MTE2_MTE3 = "slot 已填" RAW 事件（drain 等 fill）
-                # 数据 copy 全部内联（官方范例同样内联，prim_func 内不能用未装饰的嵌套函数）
-                # 3D 前导索引 buf[slot, i, :] 由官方范例验证可用。
-                key_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
-                ki_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQueryIndex), input_dtype)
-                kr_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
+                    # ============================================================
+                    # V scope 0: Gather Key/KeyIndex/KeyRope → workspace
+                    # 手动同步（auto-sync 关）：chunk 级 double buffer，MTE2 fill ∥ MTE3 drain
+                    #   预取下一 chunk 的 fill 与本 chunk 的 drain 并发，隐藏 burst 写延迟
+                    # 标量 idx 从 GM 读，依赖 GetValue 同步语义（watch-point）
+                    # ============================================================
+                    num_chunks = n_block // GATHER_CHUNK_SIZE
+                    with T.Scope("V"):
+                        # Double-buffered chunked gather：MTE2 fill ∥ MTE3 drain（ping-pong）
+                        # 照抄官方 examples/elementwise/elementwise_add_pipeline.py 的 WAR-safe 结构：
+                        #   MTE3_MTE2 = "slot 可写" WAR 事件（预置两个 slot，末尾 clear 排空）
+                        #   MTE2_MTE3 = "slot 已填" RAW 事件（drain 等 fill）
+                        # 数据 copy 全部内联（官方范例同样内联，prim_func 内不能用未装饰的嵌套函数）
+                        # 3D 前导索引 buf[slot, i, :] 由官方范例验证可用。
+                        key_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
+                        ki_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQueryIndex), input_dtype)
+                        kr_chunk_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, max(d_rope, 1)), input_dtype)
 
-                # 零行 buffer：idx < 0 时写入零值，避免未初始化 UB 数据污染 GatherKey_ws
-                zero_key_row = T.alloc_ub(DQuery, input_dtype)
-                zero_ki_row = T.alloc_ub(DQueryIndex, input_dtype)
-                zero_kr_row = T.alloc_ub(max(d_rope, 1), input_dtype)
-                T.tile.fill(zero_key_row, 0)
-                T.tile.fill(zero_ki_row, 0)
-                if d_rope > 0:
-                    T.tile.fill(zero_kr_row, 0)
+                        # 零行 buffer：idx < 0 时写入零值，避免未初始化 UB 数据污染 GatherKey_ws
+                        zero_key_row = T.alloc_ub(DQuery, input_dtype)
+                        zero_ki_row = T.alloc_ub(DQueryIndex, input_dtype)
+                        zero_kr_row = T.alloc_ub(max(d_rope, 1), input_dtype)
+                        T.tile.fill(zero_key_row, 0)
+                        T.tile.fill(zero_ki_row, 0)
+                        if d_rope > 0:
+                            T.tile.fill(zero_kr_row, 0)
 
-                # 预置：两个 slot 都标记为"已 drain（可 fill）"
-                T.set_flag("mte3", "mte2", 0)
-                T.set_flag("mte3", "mte2", 1)
+                        # 预置：两个 slot 都标记为"已 drain（可 fill）"
+                        T.set_flag("mte3", "mte2", 0)
+                        T.set_flag("mte3", "mte2", 1)
 
-                for s1_id in T.serial(s1_start, s1_end):
-                    # prologue：fill chunk 0 → slot 0（MTE2 逐行随机读 16 行）
-                    # idx >= 0: 有效 → copy Key/KeyIndex/KeyRope
-                    # idx <  0: 无效 → zero-fill（避免未初始化 UB 污染 GatherKey_ws）
-                    T.wait_flag("mte3", "mte2", 0)
-                    for i in T.serial(GATHER_CHUNK_SIZE):
-                        k_id = k_start + i
-                        idx = SparseIndices[bz, s1_id, 0, k_id]
-                        if idx >= 0:
-                            T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[0, i, 0:DQuery])
-                            T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_chunk_ub[0, i, 0:DQueryIndex])
-                            if d_rope > 0:
-                                T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[0, i, 0:d_rope])
-                        if idx < 0:
-                            T.copy(zero_key_row, key_chunk_ub[0, i, 0:DQuery])
-                            T.copy(zero_ki_row, ki_chunk_ub[0, i, 0:DQueryIndex])
-                            if d_rope > 0:
-                                T.copy(zero_kr_row, kr_chunk_ub[0, i, 0:d_rope])
-                    T.set_flag("mte2", "mte3", 0)
-
-                    for chunk_id in T.serial(num_chunks):
-                        cur = chunk_id % 2
-                        nxt = (chunk_id + 1) % 2
-                        # 预取下一 chunk → slot nxt（MTE2，与本 chunk 的 MTE3 drain 并发）
-                        if chunk_id + 1 < num_chunks:
-                            next_start = k_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
-                            T.wait_flag("mte3", "mte2", nxt)   # WAR：slot nxt 上轮已 drain
+                        for s1_id in T.serial(s1_start, s1_end):
+                            # prologue：fill chunk 0 → slot 0（MTE2 逐行随机读 16 行）
+                            # idx >= 0: 有效 → copy Key/KeyIndex/KeyRope
+                            # idx <  0: 无效 → zero-fill（避免未初始化 UB 污染 GatherKey_ws）
+                            T.wait_flag("mte3", "mte2", 0)
                             for i in T.serial(GATHER_CHUNK_SIZE):
-                                k_id = next_start + i
+                                k_id = k_start + i
                                 idx = SparseIndices[bz, s1_id, 0, k_id]
                                 if idx >= 0:
-                                    T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[nxt, i, 0:DQuery])
-                                    T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_chunk_ub[nxt, i, 0:DQueryIndex])
+                                    T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[0, i, 0:DQuery])
+                                    T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_chunk_ub[0, i, 0:DQueryIndex])
                                     if d_rope > 0:
-                                        T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[nxt, i, 0:d_rope])
+                                        T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[0, i, 0:d_rope])
                                 if idx < 0:
-                                    T.copy(zero_key_row, key_chunk_ub[nxt, i, 0:DQuery])
-                                    T.copy(zero_ki_row, ki_chunk_ub[nxt, i, 0:DQueryIndex])
+                                    T.copy(zero_key_row, key_chunk_ub[0, i, 0:DQuery])
+                                    T.copy(zero_ki_row, ki_chunk_ub[0, i, 0:DQueryIndex])
                                     if d_rope > 0:
-                                        T.copy(zero_kr_row, kr_chunk_ub[nxt, i, 0:d_rope])
-                            T.set_flag("mte2", "mte3", nxt)    # RAW：slot nxt 已 fill
-                        # drain 本 chunk（MTE3 整块 burst 写出）
-                        T.wait_flag("mte2", "mte3", cur)       # RAW：slot cur 已 fill
-                        cur_start = k_start + chunk_id * GATHER_CHUNK_SIZE
-                        T.copy(key_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQuery],
-                               GatherKey_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQuery])
-                        T.copy(ki_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
-                               GatherKeyIndex_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
-                        if d_rope > 0:
-                            T.copy(kr_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:d_rope],
-                                   GatherKeyRope_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:d_rope])
-                        T.set_flag("mte3", "mte2", cur)        # WAR：slot cur 已 drain，可复用
+                                        T.copy(zero_kr_row, kr_chunk_ub[0, i, 0:d_rope])
+                            T.set_flag("mte2", "mte3", 0)
 
-                # clear：排空剩余 2 个 WAR set（保持 event 平衡）
-                T.wait_flag("mte3", "mte2", 0)
-                T.wait_flag("mte3", "mte2", 1)
+                            for chunk_id in T.serial(num_chunks):
+                                cur = chunk_id % 2
+                                nxt = (chunk_id + 1) % 2
+                                # 预取下一 chunk → slot nxt（MTE2，与本 chunk 的 MTE3 drain 并发）
+                                if chunk_id + 1 < num_chunks:
+                                    next_start = k_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
+                                    T.wait_flag("mte3", "mte2", nxt)   # WAR：slot nxt 上轮已 drain
+                                    for i in T.serial(GATHER_CHUNK_SIZE):
+                                        k_id = next_start + i
+                                        idx = SparseIndices[bz, s1_id, 0, k_id]
+                                        if idx >= 0:
+                                            T.copy(Key[bz, idx, 0, 0:DQuery], key_chunk_ub[nxt, i, 0:DQuery])
+                                            T.copy(KeyIndex[bz, idx, 0, 0:DQueryIndex], ki_chunk_ub[nxt, i, 0:DQueryIndex])
+                                            if d_rope > 0:
+                                                T.copy(KeyRope[bz, idx, 0, 0:d_rope], kr_chunk_ub[nxt, i, 0:d_rope])
+                                        if idx < 0:
+                                            T.copy(zero_key_row, key_chunk_ub[nxt, i, 0:DQuery])
+                                            T.copy(zero_ki_row, ki_chunk_ub[nxt, i, 0:DQueryIndex])
+                                            if d_rope > 0:
+                                                T.copy(zero_kr_row, kr_chunk_ub[nxt, i, 0:d_rope])
+                                    T.set_flag("mte2", "mte3", nxt)    # RAW：slot nxt 已 fill
+                                # drain 本 chunk（MTE3 整块 burst 写出）
+                                T.wait_flag("mte2", "mte3", cur)       # RAW：slot cur 已 fill
+                                cur_start = k_start + chunk_id * GATHER_CHUNK_SIZE
+                                T.copy(key_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQuery],
+                                       GatherKey_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQuery])
+                                T.copy(ki_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
+                                       GatherKeyIndex_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
+                                if d_rope > 0:
+                                    T.copy(kr_chunk_ub[cur, 0:GATHER_CHUNK_SIZE, 0:d_rope],
+                                           GatherKeyRope_ws[bz, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:d_rope])
+                                T.set_flag("mte3", "mte2", cur)        # WAR：slot cur 已 drain，可复用
 
-                T.set_cross_flag("V", 10)
+                        # clear：排空剩余 2 个 WAR set（保持 event 平衡）
+                        T.wait_flag("mte3", "mte2", 0)
+                        T.wait_flag("mte3", "mte2", 1)
 
-            # ============================================================
-            # C scope 1: Matmul1 (with rope) + Matmul2
-            # 手动同步（auto-sync 关，T.Pipelined 不再生成同步）：
-            #   单缓冲 serial，每次迭代 mte2→m（RAW 载入→gemm）/ m→mte2（WAR 复用 L1）
-            #   K 维累加完成后 m→fix 再 copy_l0c
-            # ============================================================
-            with T.Scope("C"):
-                T.wait_cross_flag(10)
+                        T.set_cross_flag("V", 10)
 
-                Q_L1_0 = T.alloc_L1((N1, k_block), input_dtype)
-                Q_L1_1 = T.alloc_L1((N1, k_block), input_dtype)
-                GK_L1_0 = T.alloc_L1((n_block, k_block), input_dtype)
-                GK_L1_1 = T.alloc_L1((n_block, k_block), input_dtype)
-                C_L0C = T.alloc_L0C((N1, n_block), calc_dtype)
+                    # ============================================================
+                    # C scope 1: Matmul1 (with rope) + Matmul2
+                    # 手动同步（auto-sync 关，T.Pipelined 不再生成同步）：
+                    #   单缓冲 serial，每次迭代 mte2→m（RAW 载入→gemm）/ m→mte2（WAR 复用 L1）
+                    #   K 维累加完成后 m→fix 再 copy_l0c
+                    # ============================================================
+                    with T.Scope("C"):
+                        T.wait_cross_flag(10)
 
-                for s1_row in T.serial(s1_start, s1_end):
-                    # Double-buffer Matmul1 K-loop: overlap copy[d_idx+1] ∥ gemm[d_idx]
-                    # WAR-safe ping-pong, slot 0→{Q_L1_0,GK_L1_0}, slot 1→{Q_L1_1,GK_L1_1}
-                    # MTE2_M{0,1}: RAW (slot loaded → gemm can read)
-                    # M_MTE2{0,1}: WAR (gemm done → slot safe to refill)
-                    T.set_flag("m", "mte2", 0)
-                    T.set_flag("m", "mte2", 1)
+                        Q_L1_0 = T.alloc_L1((N1, k_block), input_dtype)
+                        Q_L1_1 = T.alloc_L1((N1, k_block), input_dtype)
+                        GK_L1_0 = T.alloc_L1((n_block, k_block), input_dtype)
+                        GK_L1_1 = T.alloc_L1((n_block, k_block), input_dtype)
+                        C_L0C = T.alloc_L0C((N1, n_block), calc_dtype)
 
-                    # Prologue: load d_idx=0 → slot 0
-                    T.wait_flag("m", "mte2", 0)
-                    T.copy(Query[bz, s1_row, 0:N1, 0:k_block], Q_L1_0)
-                    T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, 0:k_block], GK_L1_0)
-                    T.set_flag("mte2", "m", 0)
+                        for s1_row in T.serial(s1_start, s1_end):
+                            # Double-buffer Matmul1 K-loop: overlap copy[d_idx+1] ∥ gemm[d_idx]
+                            # WAR-safe ping-pong, slot 0→{Q_L1_0,GK_L1_0}, slot 1→{Q_L1_1,GK_L1_1}
+                            # MTE2_M{0,1}: RAW (slot loaded → gemm can read)
+                            # M_MTE2{0,1}: WAR (gemm done → slot safe to refill)
+                            T.set_flag("m", "mte2", 0)
+                            T.set_flag("m", "mte2", 1)
 
-                    for d_idx in T.serial(d_num_total):
-                        cur = d_idx % 2
-                        nxt = (d_idx + 1) % 2
+                            # Prologue: load d_idx=0 → slot 0
+                            T.wait_flag("m", "mte2", 0)
+                            T.copy(Query[bz, s1_row, 0:N1, 0:k_block], Q_L1_0)
+                            T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, 0:k_block], GK_L1_0)
+                            T.set_flag("mte2", "m", 0)
 
-                        # Compute current slot
-                        T.wait_flag("mte2", "m", cur)
-                        if cur == 0:
-                            T.gemm_v0(Q_L1_0, GK_L1_0, C_L0C, transpose_B=True, init=(d_idx == 0))
-                        if cur == 1:
-                            T.gemm_v0(Q_L1_1, GK_L1_1, C_L0C, transpose_B=True, init=(d_idx == 0))
-                        T.set_flag("m", "mte2", cur)
+                            for d_idx in T.serial(d_num_total):
+                                cur = d_idx % 2
+                                nxt = (d_idx + 1) % 2
 
-                        # Prefetch next iteration (MTE2 load ∥ cube gemm of current)
-                        if d_idx + 1 < d_num_total:
-                            next_d = d_idx + 1
-                            T.wait_flag("m", "mte2", nxt)
-                            if next_d < d_num_query:
-                                if nxt == 0:
-                                    T.copy(Query[bz, s1_row, 0:N1, next_d * k_block:(next_d + 1) * k_block], Q_L1_0)
-                                if nxt == 1:
-                                    T.copy(Query[bz, s1_row, 0:N1, next_d * k_block:(next_d + 1) * k_block], Q_L1_1)
-                            else:
-                                rope_d = next_d - d_num_query
-                                if nxt == 0:
-                                    T.copy(QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block], Q_L1_0)
-                                if nxt == 1:
-                                    T.copy(QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block], Q_L1_1)
-                            if next_d < d_num_query:
-                                if nxt == 0:
-                                    T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, next_d * k_block:(next_d + 1) * k_block], GK_L1_0)
-                                if nxt == 1:
-                                    T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, next_d * k_block:(next_d + 1) * k_block], GK_L1_1)
-                            else:
-                                rope_d = next_d - d_num_query
-                                if nxt == 0:
-                                    T.copy(GatherKeyRope_ws[bz, s1_row, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1_0)
-                                if nxt == 1:
-                                    T.copy(GatherKeyRope_ws[bz, s1_row, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1_1)
-                            T.set_flag("mte2", "m", nxt)
+                                # Compute current slot
+                                T.wait_flag("mte2", "m", cur)
+                                if cur == 0:
+                                    T.gemm_v0(Q_L1_0, GK_L1_0, C_L0C, transpose_B=True, init=(d_idx == 0))
+                                if cur == 1:
+                                    T.gemm_v0(Q_L1_1, GK_L1_1, C_L0C, transpose_B=True, init=(d_idx == 0))
+                                T.set_flag("m", "mte2", cur)
 
-                    # Clear: drain remaining WAR events
-                    T.wait_flag("m", "mte2", 0)
-                    T.wait_flag("m", "mte2", 1)
-                    # M→FIX: copy_l0c waits for all K accumulations done
-                    T.set_flag("m", "fix", 1)
-                    T.wait_flag("m", "fix", 1)
-                    T.copy(C_L0C, bmm1Res[bz, s1_row, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                                # Prefetch next iteration (MTE2 load ∥ cube gemm of current)
+                                if d_idx + 1 < d_num_total:
+                                    next_d = d_idx + 1
+                                    T.wait_flag("m", "mte2", nxt)
+                                    if next_d < d_num_query:
+                                        if nxt == 0:
+                                            T.copy(Query[bz, s1_row, 0:N1, next_d * k_block:(next_d + 1) * k_block], Q_L1_0)
+                                        if nxt == 1:
+                                            T.copy(Query[bz, s1_row, 0:N1, next_d * k_block:(next_d + 1) * k_block], Q_L1_1)
+                                    else:
+                                        rope_d = next_d - d_num_query
+                                        if nxt == 0:
+                                            T.copy(QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block], Q_L1_0)
+                                        if nxt == 1:
+                                            T.copy(QueryRope[bz, s1_row, 0:N1, rope_d * k_block:(rope_d + 1) * k_block], Q_L1_1)
+                                    if next_d < d_num_query:
+                                        if nxt == 0:
+                                            T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, next_d * k_block:(next_d + 1) * k_block], GK_L1_0)
+                                        if nxt == 1:
+                                            T.copy(GatherKey_ws[bz, s1_row, k_start:k_end, next_d * k_block:(next_d + 1) * k_block], GK_L1_1)
+                                    else:
+                                        rope_d = next_d - d_num_query
+                                        if nxt == 0:
+                                            T.copy(GatherKeyRope_ws[bz, s1_row, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1_0)
+                                        if nxt == 1:
+                                            T.copy(GatherKeyRope_ws[bz, s1_row, k_start:k_end, rope_d * k_block:(rope_d + 1) * k_block], GK_L1_1)
+                                    T.set_flag("mte2", "m", nxt)
 
-                QI_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)
-                GKI_L1 = T.alloc_L1((n_block, k_block), input_dtype)
-                C2_L0C = T.alloc_L0C((Nidx1, n_block), calc_dtype)
+                            # Clear: drain remaining WAR events
+                            T.wait_flag("m", "mte2", 0)
+                            T.wait_flag("m", "mte2", 1)
+                            # M→FIX: copy_l0c waits for all K accumulations done
+                            T.set_flag("m", "fix", 1)
+                            T.wait_flag("m", "fix", 1)
+                            T.copy(C_L0C, bmm1Res[bz, s1_row, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                for s1_row in T.serial(s1_start, s1_end):
-                    for k_idx in T.serial(d_num_query_index):
-                        T.copy(QueryIndex[bz, s1_row, 0:Nidx1, k_idx * k_block:(k_idx + 1) * k_block], QI_L1)
-                        T.copy(GatherKeyIndex_ws[bz, s1_row, k_start:k_end, k_idx * k_block:(k_idx + 1) * k_block], GKI_L1)
-                        # RAW: gemm 等 L1 载入
-                        T.set_flag("mte2", "m", 0)
-                        T.wait_flag("mte2", "m", 0)
-                        T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
-                        # WAR: 下轮载入等 gemm 读完
-                        T.set_flag("m", "mte2", 0)
-                        T.wait_flag("m", "mte2", 0)
-                    # M→FIX
-                    T.set_flag("m", "fix", 1)
-                    T.wait_flag("m", "fix", 1)
-                    T.copy(C2_L0C, bmm2Res[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], enable_relu=True)
+                        QI_L1 = T.alloc_L1((Nidx1, k_block), input_dtype)
+                        GKI_L1 = T.alloc_L1((n_block, k_block), input_dtype)
+                        C2_L0C = T.alloc_L0C((Nidx1, n_block), calc_dtype)
 
-                T.set_cross_flag("FIX", 1)
+                        for s1_row in T.serial(s1_start, s1_end):
+                            for k_idx in T.serial(d_num_query_index):
+                                T.copy(QueryIndex[bz, s1_row, 0:Nidx1, k_idx * k_block:(k_idx + 1) * k_block], QI_L1)
+                                T.copy(GatherKeyIndex_ws[bz, s1_row, k_start:k_end, k_idx * k_block:(k_idx + 1) * k_block], GKI_L1)
+                                # RAW: gemm 等 L1 载入
+                                T.set_flag("mte2", "m", 0)
+                                T.wait_flag("mte2", "m", 0)
+                                T.gemm_v0(QI_L1, GKI_L1, C2_L0C, transpose_B=True, init=(k_idx == 0))
+                                # WAR: 下轮载入等 gemm 读完
+                                T.set_flag("m", "mte2", 0)
+                                T.wait_flag("m", "mte2", 0)
+                            # M→FIX
+                            T.set_flag("m", "fix", 1)
+                            T.wait_flag("m", "fix", 1)
+                            T.copy(C2_L0C, bmm2Res[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], enable_relu=True)
 
-            # ============================================================
-            # V scope 1: All vector ops merged (reduce memory)
-            # - P_reduced, ReduceSumY for MY K block
-            # - Global SoftmaxI (all cores execute)
-            # - dWeight, reluGrad, Loss for MY K block
-            # ============================================================
-            with T.Scope("V"):
-                T.wait_cross_flag(1)
+                        T.set_cross_flag("FIX", 1)
 
-                bmm1_ub = T.alloc_ub((N1, n_block), calc_dtype)
-                bmm2_0 = T.alloc_ub((Nidx1, n_block), calc_dtype)
-                bmm2_1 = T.alloc_ub((Nidx1, n_block), calc_dtype)
-                weight_ub = T.alloc_ub(vector_baseg, calc_dtype)
-                weight_all_ub = T.alloc_ub(Nidx1, calc_dtype)
-                weight_all_half_ub = T.alloc_ub(Nidx1, input_dtype)
-                weight_2d_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
-                p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
-                rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                rsy_reduce_db = T.alloc_ub((2, n_block), calc_dtype)
-                sm_max_ub = T.alloc_ub(G, calc_dtype)
-                sm_sum_ub = T.alloc_ub(G, calc_dtype)
-                eps_sm_ub = T.alloc_ub(G, calc_dtype)
-                sm_2d_ub = T.alloc_ub((G, n_block), calc_dtype)
-                rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                rsy_bc_ub = T.alloc_ub((1, n_block), calc_dtype)
-                rsy_max_ub = T.alloc_ub((1,), calc_dtype)
-                rsy_sum_ub = T.alloc_ub((1,), calc_dtype)
-                rsy_chunk_max_ub = T.alloc_ub((1,), calc_dtype)
-                rsy_chunk_sum_ub = T.alloc_ub((1,), calc_dtype)
-                eps_sum_ub = T.alloc_ub((1,), calc_dtype)
-                softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                rsy_all_ub = T.alloc_ub((n_num, n_block), calc_dtype)
-                # row_expand brcb 中转 buffer：(rows, elems_per_block=8 for fp32)
-                re_tmp_ub = T.alloc_ub((N1, 8), calc_dtype)
+                    # ============================================================
+                    # V scope 1: All vector ops merged (reduce memory)
+                    # - P_reduced, ReduceSumY for MY K block
+                    # - Global SoftmaxI (all cores execute)
+                    # - dWeight, reluGrad, Loss for MY K block
+                    # ============================================================
+                    with T.Scope("V"):
+                        T.wait_cross_flag(1)
+
+                        bmm1_ub = T.alloc_ub((N1, n_block), calc_dtype)
+                        bmm2_0 = T.alloc_ub((Nidx1, n_block), calc_dtype)
+                        bmm2_1 = T.alloc_ub((Nidx1, n_block), calc_dtype)
+                        weight_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                        weight_all_ub = T.alloc_ub(Nidx1, calc_dtype)
+                        weight_all_half_ub = T.alloc_ub(Nidx1, input_dtype)
+                        weight_2d_ub = T.alloc_ub((Nidx1, n_block), calc_dtype)
+                        p_reduced_tmp_ub = T.alloc_ub(n_block, calc_dtype)
+                        rsy_tmp_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                        rsy_reduce_db = T.alloc_ub((2, n_block), calc_dtype)
+                        sm_max_ub = T.alloc_ub(G, calc_dtype)
+                        sm_sum_ub = T.alloc_ub(G, calc_dtype)
+                        eps_sm_ub = T.alloc_ub(G, calc_dtype)
+                        sm_2d_ub = T.alloc_ub((G, n_block), calc_dtype)
+                        rsy_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                        rsy_bc_ub = T.alloc_ub((1, n_block), calc_dtype)
+                        rsy_max_ub = T.alloc_ub((1,), calc_dtype)
+                        rsy_sum_ub = T.alloc_ub((1,), calc_dtype)
+                        rsy_chunk_max_ub = T.alloc_ub((1,), calc_dtype)
+                        rsy_chunk_sum_ub = T.alloc_ub((1,), calc_dtype)
+                        eps_sum_ub = T.alloc_ub((1,), calc_dtype)
+                        softmax_i_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                        rsy_all_ub = T.alloc_ub((n_num, n_block), calc_dtype)
+                        # row_expand brcb 中转 buffer：(rows, elems_per_block=8 for fp32)
+                        re_tmp_ub = T.alloc_ub((N1, 8), calc_dtype)
 
 
-                for s1_id in T.serial(s1_start, s1_end):
-                    T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
-                    T.copy(SoftmaxSum[bz, 0, s1_id, 0:G], sm_sum_ub)
-                    T.set_flag("mte2", "v", 4)
-                    T.wait_flag("mte2", "v", 4)
-                    T.tile.abs(sm_sum_ub, sm_sum_ub)
-                    T.tile.fill(eps_sm_ub, 1e-8)
-                    T.pipe_barrier("v")
-                    T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
+                        for s1_id in T.serial(s1_start, s1_end):
+                            T.copy(SoftmaxMax[bz, 0, s1_id, 0:G], sm_max_ub)
+                            T.copy(SoftmaxSum[bz, 0, s1_id, 0:G], sm_sum_ub)
+                            T.set_flag("mte2", "v", 4)
+                            T.wait_flag("mte2", "v", 4)
+                            T.tile.abs(sm_sum_ub, sm_sum_ub)
+                            T.tile.fill(eps_sm_ub, 1e-8)
+                            T.pipe_barrier("v")
+                            T.tile.max(sm_sum_ub, sm_sum_ub, eps_sm_ub)
 
-                    # P_reduced: broadcast sm_max/sm_sum to 2D once, then pure vector-vector
-                    T.copy(bmm1Res[bz, s1_id, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm1_ub)
-                    T.set_flag("mte2", "v", 5)
-                    T.wait_flag("mte2", "v", 5)
-                    T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
-                    T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
-                    # sm_max 逐行减：row_expand_sub 融合替代标量广播+sub（消除 128 PIPE_ALL）
-                    # bmm1[g,k] = bmm1[g,k] - sm_max[g]，走 brcb+sub_mask（PIPE_V，非 PIPE_ALL）
-                    T.pipe_barrier("v")
-                    T.tile.row_expand_sub_experiment(bmm1_ub, bmm1_ub, sm_max_ub, re_tmp_ub)
-                    T.pipe_barrier("v")
-                    T.tile.exp(bmm1_ub, bmm1_ub)
-                    # sm_sum 逐行除：row_expand_div 融合替代标量广播+div（消除 128 PIPE_ALL）
-                    T.pipe_barrier("v")
-                    T.tile.row_expand_div_experiment(bmm1_ub, bmm1_ub, sm_sum_ub, re_tmp_ub)
-                    T.pipe_barrier("v")
-                    T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
-                    T.pipe_barrier("v")
-                    T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
-                    T.set_flag("v", "mte3", 6)
-                    T.wait_flag("v", "mte3", 6)
-                    T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                            # P_reduced: broadcast sm_max/sm_sum to 2D once, then pure vector-vector
+                            T.copy(bmm1Res[bz, s1_id, 0:N1, n_idx_k * n_block:(n_idx_k + 1) * n_block], bmm1_ub)
+                            T.set_flag("mte2", "v", 5)
+                            T.wait_flag("mte2", "v", 5)
+                            T.tile.mul(bmm1_ub, bmm1_ub, scale_value)
+                            T.tile.fill(p_reduced_tmp_ub, 1.0)  # reuse as broadcast seed
+                            # sm_max 逐行减：row_expand_sub 融合替代标量广播+sub（消除 128 PIPE_ALL）
+                            # bmm1[g,k] = bmm1[g,k] - sm_max[g]，走 brcb+sub_mask（PIPE_V，非 PIPE_ALL）
+                            T.pipe_barrier("v")
+                            T.tile.row_expand_sub_experiment(bmm1_ub, bmm1_ub, sm_max_ub, re_tmp_ub)
+                            T.pipe_barrier("v")
+                            T.tile.exp(bmm1_ub, bmm1_ub)
+                            # sm_sum 逐行除：row_expand_div 融合替代标量广播+div（消除 128 PIPE_ALL）
+                            T.pipe_barrier("v")
+                            T.tile.row_expand_div_experiment(bmm1_ub, bmm1_ub, sm_sum_ub, re_tmp_ub)
+                            T.pipe_barrier("v")
+                            T.reduce_sum(bmm1_ub, p_reduced_tmp_ub, 0)
+                            T.pipe_barrier("v")
+                            T.tile.mul(p_reduced_tmp_ub, p_reduced_tmp_ub, 1.0 / G)
+                            T.set_flag("v", "mte3", 6)
+                            T.wait_flag("v", "mte3", 6)
+                            T.copy(p_reduced_tmp_ub, PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
 
-                    # ReduceSumY: broadcast Weights to 2D once, then pure vector-vector
-                    T.copy(Weights[bz, s1_id, 0:Nidx1], weight_all_half_ub)
-                    T.set_flag("mte2", "v", 7)
-                    T.wait_flag("mte2", "v", 7)
-                    T.tile.cast(weight_all_ub, weight_all_half_ub, "CAST_NONE", Nidx1)
-                    # weight 广播：row_expand_mul 替代标量循环（消除 Nidx1×PIPE_ALL）
-                    # weight_2d[k,:] = 1.0 * weight_all_ub[k] → 单次 brcb+mask 全并行
-                    # weight_2d 需物化（dWeight 循环 (b) 直接读整行 weight_2d[idx,:] 作向量）
-                    T.tile.fill(weight_2d_ub, 1.0)
-                    T.tile.row_expand_mul_experiment(weight_2d_ub, weight_2d_ub, weight_all_ub, re_tmp_ub)
-                    # ReduceSumY + GlobalSoftmaxI max: fused K-block pass
-                    # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
-                    T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
-                    # Double-buffer ReduceSumY loop: overlap copy[n_rsy+1] ∥ compute[n_rsy]
-                    # bmm2 DB: V_MTE2{0,1} (WAR) / MTE2_V{0,1} (RAW)
-                    T.set_flag("v", "mte2", 0)
-                    T.set_flag("v", "mte2", 1)
-
-                    # Prologue: load n_rsy=0 → slot 0
-                    T.wait_flag("v", "mte2", 0)
-                    T.copy(bmm2Res[bz, s1_id, 0:Nidx1, 0:n_block], bmm2_0)
-                    T.set_flag("mte2", "v", 0)
-
-                    for n_rsy in T.serial(n_num):
-                        cur = n_rsy % 2
-                        nxt = (n_rsy + 1) % 2
-
-                        # Compute current slot
-                        T.wait_flag("mte2", "v", cur)
-                        if cur == 0:
-                            T.tile.mul(bmm2_0, bmm2_0, weight_2d_ub)
-                        if cur == 1:
-                            T.tile.mul(bmm2_1, bmm2_1, weight_2d_ub)
-                        T.pipe_barrier("v")
-                        if cur == 0:
-                            T.reduce_sum(bmm2_0, rsy_reduce_db[cur, :], 0)
-                        if cur == 1:
-                            T.reduce_sum(bmm2_1, rsy_reduce_db[cur, :], 0)
-                        T.pipe_barrier("v")
-                        # Save to UB for global SoftmaxI; ReduceSumY workspace is unused downstream.
-                        T.copy(rsy_reduce_db[cur, :], rsy_all_ub[n_rsy, :])
-                        # Fused: update global max from rsy_reduce_db[cur, :]
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur, :], 1.0)
-                        T.pipe_barrier("v")
-                        T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
-                        T.pipe_barrier("v")
-                        T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
-                        # WAR: current slot consumed → safe to refill
-                        T.set_flag("v", "mte2", cur)
-
-                        # Prefetch next iteration (MTE2 load ∥ V compute of current)
-                        if n_rsy + 1 < n_num:
-                            next_n = n_rsy + 1
-                            T.wait_flag("v", "mte2", nxt)
-                            if nxt == 0:
-                                T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_0)
-                            if nxt == 1:
-                                T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_1)
-                            T.set_flag("mte2", "v", nxt)
-
-                    # Clear: drain remaining WAR events
-                    T.wait_flag("v", "mte2", 0)
-                    T.wait_flag("v", "mte2", 1)
-
-                    # Broadcast rsy_max to vector via T.tile.broadcast (BRCB, PIPE_V, 0 PIPE_ALL)
-                    # Drain PReduced MTE3 write before refilling p_reduced_tmp_ub.
-                    T.set_flag("mte3", "v", 0)
-                    T.wait_flag("mte3", "v", 0)
-                    T.tile.fill(p_reduced_tmp_ub, 1.0)
-                    T.pipe_barrier("v")
-                    T.tile.broadcast(rsy_bc_ub, rsy_max_ub)
-                    # BRCB and the following V op have a RAW dependency.
-                    T.pipe_barrier("v")
-                    T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_bc_ub[0, :])
-
-                    # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
-                    T.tile.fill(rsy_sum_ub, 0)
-                    for n_idx_iter in T.serial(n_num):
-                        T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
-                        T.pipe_barrier("v")
-                        T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
-                        T.pipe_barrier("v")
-                        T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
-                        T.pipe_barrier("v")
-                        T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
-                        T.pipe_barrier("v")
-                        T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
-                        T.pipe_barrier("v")
-                        T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
-
-                    T.tile.fill(eps_sum_ub, 1e-8)
-                    T.pipe_barrier("v")
-                    T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
-
-                    # Per-core SoftmaxI: use UB-held ReduceSumY, then materialize to GM.
-                    T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
-                    T.pipe_barrier("v")
-                    T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
-                    T.pipe_barrier("v")
-                    T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
-                    T.pipe_barrier("v")
-                    T.tile.broadcast(rsy_bc_ub, rsy_sum_ub)
-                    # BRCB and div both use PIPE_V; preserve the broadcast result.
-                    T.pipe_barrier("v")
-                    T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_bc_ub[0, :])
-                    T.set_flag("v", "mte3", 4)
-                    T.wait_flag("v", "mte3", 4)
-                    T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
-
-                    # dWeight, reluGrad for MY K block (same V scope, no cross flag)
-                    # Strategy: 2D-vectorized per-row ops to eliminate scalar tile.mul
-                    #   - weight_2d_ub rows → rg_chunk_ub via T.copy (scalar idx, avoids UB range slicing bug)
-                    #   - diff_2d_ub broadcast once before g_id loop (32× UB→UB copy, amortized)
-                    #   - Op1/Op2/Op3 all use 2D tile.mul (3 ops per g_id vs 96 before)
-                    #   - bmm2 loaded per-chunk from GM → dw_chunk_ub (no UB→UB copy)
-                    diff_ub = T.alloc_ub(n_block, calc_dtype)
-                    diff_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
-                    rg_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    ones_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
-                    rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
-                    dw_half_ub = T.alloc_ub(vector_baseg, input_dtype)
-                    eps_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
-                    loss_val_ub = T.alloc_ub(n_block, calc_dtype)
-
-                    T.tile.fill(ones_2d_ub, 1.0)
-                    T.tile.fill(eps_ub, 1e-8)
-
-                    # dWeight, reluGrad for MY K block
-                    # RAW: PReduced/SoftmaxI 刚由 mte3 写，mte2 读回前等 mte3 完成.
-                    T.set_flag("mte3", "mte2", 5)
-                    T.wait_flag("mte3", "mte2", 5)
-                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], softmax_i_chunk_ub)
-                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], p_reduced_tmp_ub)
-                    T.set_flag("mte2", "v", 6)
-                    T.wait_flag("mte2", "v", 6)
-                    T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
-
-                    # Broadcast diff_ub → diff_2d_ub via BRCB (1 instruction replaces 32 serial copies)
-                    T.tile.broadcast(diff_2d_ub, diff_ub)
-
-                    # WAR pre-fill: dw_chunk_ub 初始可安全写入（无前序 V 读者）
-                    T.set_flag("v", "mte2", 4)
-
-                    # Keep T.serial bounds static for TIR simplification, then
-                    # select the independent Nidx1 half owned by this AIV.
-                    for g_id in T.serial(g_num):
-                        g_start = g_id * vector_baseg
-                        if g_id == vid:
-                            T.tile.fill(weight_ub, 0)
-
-                            # WAR: 等 V 读完 dw_chunk_ub → MTE2 安全覆盖（替代 barrier_all 兜底）
-                            T.wait_flag("v", "mte2", 4)
-                            T.copy(bmm2Res[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block], dw_chunk_ub)
-
+                            # ReduceSumY: broadcast Weights to 2D once, then pure vector-vector
+                            T.copy(Weights[bz, s1_id, 0:Nidx1], weight_all_half_ub)
                             T.set_flag("mte2", "v", 7)
                             T.wait_flag("mte2", "v", 7)
+                            T.tile.cast(weight_all_ub, weight_all_half_ub, "CAST_NONE", Nidx1)
+                            # weight 广播：row_expand_mul 替代标量循环（消除 Nidx1×PIPE_ALL）
+                            # weight_2d[k,:] = 1.0 * weight_all_ub[k] → 单次 brcb+mask 全并行
+                            # weight_2d 需物化（dWeight 循环 (b) 直接读整行 weight_2d[idx,:] 作向量）
+                            T.tile.fill(weight_2d_ub, 1.0)
+                            T.tile.row_expand_mul_experiment(weight_2d_ub, weight_2d_ub, weight_all_ub, re_tmp_ub)
+                            # ReduceSumY + GlobalSoftmaxI max: fused K-block pass
+                            # rsy_all_ub holds all ReduceSumY blocks (avoid GM re-reads)
+                            T.tile.fill(rsy_max_ub, -T.infinity(calc_dtype))
+                            # Double-buffer ReduceSumY loop: overlap copy[n_rsy+1] ∥ compute[n_rsy]
+                            # bmm2 DB: V_MTE2{0,1} (WAR) / MTE2_V{0,1} (RAW)
+                            T.set_flag("v", "mte2", 0)
+                            T.set_flag("v", "mte2", 1)
 
-                            T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
-                            T.pipe_barrier("v")
-                            T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
-                            T.pipe_barrier("v")
-                            T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
+                            # Prologue: load n_rsy=0 → slot 0
+                            T.wait_flag("v", "mte2", 0)
+                            T.copy(bmm2Res[bz, s1_id, 0:Nidx1, 0:n_block], bmm2_0)
+                            T.set_flag("mte2", "v", 0)
 
-                            # Op1: rg = weight_slice * diff (2D)
-                            # weight切片逐行copy（整块copy参数在CANN 9.1下不正确）
-                            for i in T.serial(vector_baseg):
-                                T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
-                            T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
-                            # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
-                            T.pipe_barrier("v")
-                            T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
-                            # Op3: dw *= diff (2D, was per-row 1D mul)
-                            T.pipe_barrier("v")
-                            T.tile.mul(dw_chunk_ub, dw_chunk_ub, diff_2d_ub)
+                            for n_rsy in T.serial(n_num):
+                                cur = n_rsy % 2
+                                nxt = (n_rsy + 1) % 2
 
+                                # Compute current slot
+                                T.wait_flag("mte2", "v", cur)
+                                if cur == 0:
+                                    T.tile.mul(bmm2_0, bmm2_0, weight_2d_ub)
+                                if cur == 1:
+                                    T.tile.mul(bmm2_1, bmm2_1, weight_2d_ub)
+                                T.pipe_barrier("v")
+                                if cur == 0:
+                                    T.reduce_sum(bmm2_0, rsy_reduce_db[cur, :], 0)
+                                if cur == 1:
+                                    T.reduce_sum(bmm2_1, rsy_reduce_db[cur, :], 0)
+                                T.pipe_barrier("v")
+                                # Save to UB for global SoftmaxI; ReduceSumY workspace is unused downstream.
+                                T.copy(rsy_reduce_db[cur, :], rsy_all_ub[n_rsy, :])
+                                # Fused: update global max from rsy_reduce_db[cur, :]
+                                T.tile.mul(rsy_bc_ub[0, :], rsy_reduce_db[cur, :], 1.0)
+                                T.pipe_barrier("v")
+                                T.reduce_max(rsy_bc_ub, rsy_chunk_max_ub, 1)
+                                T.pipe_barrier("v")
+                                T.tile.max(rsy_max_ub, rsy_max_ub, rsy_chunk_max_ub)
+                                # WAR: current slot consumed → safe to refill
+                                T.set_flag("v", "mte2", cur)
+
+                                # Prefetch next iteration (MTE2 load ∥ V compute of current)
+                                if n_rsy + 1 < n_num:
+                                    next_n = n_rsy + 1
+                                    T.wait_flag("v", "mte2", nxt)
+                                    if nxt == 0:
+                                        T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_0)
+                                    if nxt == 1:
+                                        T.copy(bmm2Res[bz, s1_id, 0:Nidx1, next_n * n_block:(next_n + 1) * n_block], bmm2_1)
+                                    T.set_flag("mte2", "v", nxt)
+
+                            # Clear: drain remaining WAR events
+                            T.wait_flag("v", "mte2", 0)
+                            T.wait_flag("v", "mte2", 1)
+
+                            # Broadcast rsy_max to vector via T.tile.broadcast (BRCB, PIPE_V, 0 PIPE_ALL)
+                            # Drain PReduced MTE3 write before refilling p_reduced_tmp_ub.
+                            T.set_flag("mte3", "v", 0)
+                            T.wait_flag("mte3", "v", 0)
+                            T.tile.fill(p_reduced_tmp_ub, 1.0)
                             T.pipe_barrier("v")
-                            T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
+                            T.tile.broadcast(rsy_bc_ub, rsy_max_ub)
+                            # BRCB and the following V op have a RAW dependency.
                             T.pipe_barrier("v")
-                            T.tile.add(weight_ub, weight_ub, dw_reduce_ub)
-                            # WAR: V 已读完 dw_chunk_ub → 通知 MTE2 下轮可覆盖
+                            T.tile.mul(softmax_i_chunk_ub, p_reduced_tmp_ub, rsy_bc_ub[0, :])
+
+                            # GlobalSoftmaxI: compute global sum from UB-held ReduceSumY (no GM reads)
+                            T.tile.fill(rsy_sum_ub, 0)
+                            for n_idx_iter in T.serial(n_num):
+                                T.copy(rsy_all_ub[n_idx_iter, :], rsy_chunk_ub)
+                                T.pipe_barrier("v")
+                                T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
+                                T.pipe_barrier("v")
+                                T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
+                                T.pipe_barrier("v")
+                                T.tile.mul(rsy_bc_ub[0, :], rsy_chunk_ub, 1.0)
+                                T.pipe_barrier("v")
+                                T.reduce_sum(rsy_bc_ub, rsy_chunk_sum_ub, 1)
+                                T.pipe_barrier("v")
+                                T.tile.add(rsy_sum_ub, rsy_sum_ub, rsy_chunk_sum_ub)
+
+                            T.tile.fill(eps_sum_ub, 1e-8)
+                            T.pipe_barrier("v")
+                            T.tile.max(rsy_sum_ub, rsy_sum_ub, eps_sum_ub)
+
+                            # Per-core SoftmaxI: use UB-held ReduceSumY, then materialize to GM.
+                            T.copy(rsy_all_ub[n_idx_k, :], rsy_chunk_ub)
+                            T.pipe_barrier("v")
+                            T.tile.sub(rsy_chunk_ub, rsy_chunk_ub, softmax_i_chunk_ub)
+                            T.pipe_barrier("v")
+                            T.tile.exp(rsy_chunk_ub, rsy_chunk_ub)
+                            T.pipe_barrier("v")
+                            T.tile.broadcast(rsy_bc_ub, rsy_sum_ub)
+                            # BRCB and div both use PIPE_V; preserve the broadcast result.
+                            T.pipe_barrier("v")
+                            T.tile.div(rsy_chunk_ub, rsy_chunk_ub, rsy_bc_ub[0, :])
+                            T.set_flag("v", "mte3", 4)
+                            T.wait_flag("v", "mte3", 4)
+                            T.copy(rsy_chunk_ub, SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+
+                            # dWeight, reluGrad for MY K block (same V scope, no cross flag)
+                            # Strategy: 2D-vectorized per-row ops to eliminate scalar tile.mul
+                            #   - weight_2d_ub rows → rg_chunk_ub via T.copy (scalar idx, avoids UB range slicing bug)
+                            #   - diff_2d_ub broadcast once before g_id loop (32× UB→UB copy, amortized)
+                            #   - Op1/Op2/Op3 all use 2D tile.mul (3 ops per g_id vs 96 before)
+                            #   - bmm2 loaded per-chunk from GM → dw_chunk_ub (no UB→UB copy)
+                            diff_ub = T.alloc_ub(n_block, calc_dtype)
+                            diff_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                            dw_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                            dw_reduce_ub = T.alloc_ub(vector_baseg, calc_dtype)
+                            rg_chunk_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                            ones_2d_ub = T.alloc_ub((vector_baseg, n_block), calc_dtype)
+                            rg_half_ub = T.alloc_ub((vector_baseg, n_block), input_dtype)
+                            eps_ub = T.alloc_ub(n_block, calc_dtype)
+                            loss_chunk_ub = T.alloc_ub(n_block, calc_dtype)
+                            loss_log_p_ub = T.alloc_ub(n_block, calc_dtype)
+                            loss_log_si_ub = T.alloc_ub(n_block, calc_dtype)
+                            loss_val_ub = T.alloc_ub(n_block, calc_dtype)
+
+                            T.tile.fill(ones_2d_ub, 1.0)
+                            T.tile.fill(eps_ub, 1e-8)
+
+                            # dWeight, reluGrad for MY K block
+                            # RAW: PReduced/SoftmaxI 刚由 mte3 写，mte2 读回前等 mte3 完成.
+                            T.set_flag("mte3", "mte2", 5)
+                            T.wait_flag("mte3", "mte2", 5)
+                            T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], softmax_i_chunk_ub)
+                            T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], p_reduced_tmp_ub)
+                            T.set_flag("mte2", "v", 6)
+                            T.wait_flag("mte2", "v", 6)
+                            T.tile.sub(diff_ub, softmax_i_chunk_ub, p_reduced_tmp_ub)
+
+                            # Broadcast diff_ub → diff_2d_ub via BRCB (1 instruction replaces 32 serial copies)
+                            T.tile.broadcast(diff_2d_ub, diff_ub)
+
+                            # WAR pre-fill: dw_chunk_ub 初始可安全写入（无前序 V 读者）
                             T.set_flag("v", "mte2", 4)
 
-                            T.tile.cast(rg_half_ub, rg_chunk_ub, "CAST_ROUND", vector_baseg * n_block)
-                            # set_flag("v",...) 自带 V pipe barrier，无需 barrier_all
-                            T.set_flag("v", "mte3", 0)
-                            T.wait_flag("v", "mte3", 0)
-                            T.pipe_barrier("mte3")
-                            T.copy(rg_half_ub, reluGradRes[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+                            # Keep T.serial bounds static for TIR simplification, then
+                            # select the independent Nidx1 half owned by this AIV.
+                            for g_id in T.serial(g_num):
+                                g_start = g_id * vector_baseg
+                                if g_id == vid:
+                                    T.tile.fill(weight_ub, 0)
+
+                                    # WAR: 等 V 读完 dw_chunk_ub → MTE2 安全覆盖（替代 barrier_all 兜底）
+                                    T.wait_flag("v", "mte2", 4)
+                                    T.copy(bmm2Res[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block], dw_chunk_ub)
+
+                                    T.set_flag("mte2", "v", 7)
+                                    T.wait_flag("mte2", "v", 7)
+
+                                    T.tile.mul(rsy_tmp_ub, dw_chunk_ub, -10000.0)
+                                    T.pipe_barrier("v")
+                                    T.tile.exp(rsy_tmp_ub, rsy_tmp_ub)
+                                    T.pipe_barrier("v")
+                                    T.tile.sub(rsy_tmp_ub, ones_2d_ub, rsy_tmp_ub)
+
+                                    # Op1: rg = weight_slice * diff (2D)
+                                    # weight切片逐行copy（整块copy参数在CANN 9.1下不正确）
+                                    for i in T.serial(vector_baseg):
+                                        T.copy(weight_2d_ub[g_start + i, :], rg_chunk_ub[i, :])
+                                    T.tile.mul(rg_chunk_ub, rg_chunk_ub, diff_2d_ub)
+                                    # Op2: rg *= rsy_tmp mask (2D, was per-row 1D mul)
+                                    T.pipe_barrier("v")
+                                    T.tile.mul(rg_chunk_ub, rg_chunk_ub, rsy_tmp_ub)
+                                    # Op3: dw *= diff (2D, was per-row 1D mul)
+                                    T.pipe_barrier("v")
+                                    T.tile.mul(dw_chunk_ub, dw_chunk_ub, diff_2d_ub)
+
+                                    T.pipe_barrier("v")
+                                    T.reduce_sum(dw_chunk_ub, dw_reduce_ub, 1)
+                                    T.pipe_barrier("v")
+                                    T.tile.add(weight_ub, weight_ub, dw_reduce_ub)
+                                    # WAR: V 已读完 dw_chunk_ub → 通知 MTE2 下轮可覆盖
+                                    T.set_flag("v", "mte2", 4)
+
+                                    T.tile.cast(rg_half_ub, rg_chunk_ub, "CAST_ROUND", vector_baseg * n_block)
+                                    # set_flag("v",...) 自带 V pipe barrier，无需 barrier_all
+                                    T.set_flag("v", "mte3", 0)
+                                    T.wait_flag("v", "mte3", 0)
+                                    T.pipe_barrier("mte3")
+                                    T.copy(rg_half_ub, reluGradRes[bz, s1_id, g_start:g_start + vector_baseg, n_idx_k * n_block:(n_idx_k + 1) * n_block])
+
+                                    # Preserve every K-block contribution in FP32.  The
+                                    # final phase reduces and converts it exactly once.
+                                    T.set_flag("v", "mte3", 1)
+                                    T.wait_flag("v", "mte3", 1)
+                                    T.copy(weight_ub, dWeightPartial[bz, s1_id, n_idx_k, g_start:g_start + vector_baseg])
+
+                            # Clear: 排空 V_MTE2(4) WAR 事件（最后轮 g_id 的 set）
+                            T.wait_flag("v", "mte2", 4)
+
+                            # Compute partial Loss for MY K block only (n_idx_k)
+                            T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
+                            T.set_flag("mte2", "v", 0)
+                            T.wait_flag("mte2", "v", 0)
+                            T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
+                            T.pipe_barrier("v")
+                            T.tile.ln(loss_log_p_ub, loss_chunk_ub)
+                            # WAR: loss_chunk 复用，下轮 mte2 覆盖前等本轮 ln 读完
+                            T.set_flag("v", "mte2", 1)
+                            T.wait_flag("v", "mte2", 1)
+
+                            T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
+                            T.set_flag("mte2", "v", 2)
+                            T.wait_flag("mte2", "v", 2)
+                            T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
+                            T.pipe_barrier("v")
+                            T.tile.ln(loss_log_si_ub, loss_chunk_ub)
+                            T.set_flag("v", "mte2", 3)
+                            T.wait_flag("v", "mte2", 3)
+
+                            T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
+                            T.pipe_barrier("v")
+                            T.tile.sub(loss_val_ub, loss_log_p_ub, loss_log_si_ub)
+                            # RAW: loss_chunk 刚 mte2 载入，mul 读前等
+                            T.set_flag("mte2", "v", 4)
+                            T.wait_flag("mte2", "v", 4)
+                            T.pipe_barrier("v")
+                            T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
 
                             T.pipe_barrier("v")
-                            T.tile.cast(dw_half_ub, weight_ub, "CAST_ROUND", vector_baseg)
-                            T.set_flag("v", "mte3", 1)
-                            T.wait_flag("v", "mte3", 1)
-                            T.copy(dw_half_ub, dWeight_partial[bz, s1_id, n_idx_k, g_start:g_start + vector_baseg])
+                            T.tile.mul(rsy_bc_ub[0, :], loss_val_ub, 1.0)
+                            T.pipe_barrier("v")
+                            loss_sum_ub = T.alloc_ub((1,), calc_dtype)
+                            T.reduce_sum(rsy_bc_ub, loss_sum_ub, 1)
+                            T.set_flag("v", "mte3", 5)
+                            T.wait_flag("v", "mte3", 5)
 
-                    # Clear: 排空 V_MTE2(4) WAR 事件（最后轮 g_id 的 set）
-                    T.wait_flag("v", "mte2", 4)
+                            # A scalar GM DMA still occupies an aligned transfer block.
+                            # Space partials by 32 bytes and reduce the zero-padded
+                            # workspace only after every K task has completed.
+                            loss_offset = ((bz * S1 + s1_id) * n_num + n_idx_k) * loss_partial_stride
+                            T.copy(loss_sum_ub, LossPartial[loss_offset:loss_offset + 1])
 
-                    # Compute partial Loss for MY K block only (n_idx_k)
-                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
-                    T.set_flag("mte2", "v", 0)
-                    T.wait_flag("mte2", "v", 0)
-                    T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
-                    T.pipe_barrier("v")
-                    T.tile.ln(loss_log_p_ub, loss_chunk_ub)
-                    # WAR: loss_chunk 复用，下轮 mte2 覆盖前等本轮 ln 读完
-                    T.set_flag("v", "mte2", 1)
-                    T.wait_flag("v", "mte2", 1)
+                        T.set_cross_flag("V", 12)
 
-                    T.copy(SoftmaxI[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
-                    T.set_flag("mte2", "v", 2)
-                    T.wait_flag("mte2", "v", 2)
-                    T.tile.max(loss_chunk_ub, loss_chunk_ub, eps_ub)
-                    T.pipe_barrier("v")
-                    T.tile.ln(loss_log_si_ub, loss_chunk_ub)
-                    T.set_flag("v", "mte2", 3)
-                    T.wait_flag("v", "mte2", 3)
+                    # ============================================================
+                    # C scope 2: Matmul4 — per-core K-block, atomic_add to accumulate
+                    # reluGrad @ GatherKeyIndex_ws → dQueryIndexAccum
+                    # (Reads from GatherKeyIndex_ws directly, not transposed)
+                    # ============================================================
+                    with T.Scope("C"):
+                        T.wait_cross_flag(12)
 
-                    T.copy(PReduced[bz, s1_id, n_idx_k * n_block:(n_idx_k + 1) * n_block], loss_chunk_ub)
-                    T.pipe_barrier("v")
-                    T.tile.sub(loss_val_ub, loss_log_p_ub, loss_log_si_ub)
-                    # RAW: loss_chunk 刚 mte2 载入，mul 读前等
-                    T.set_flag("mte2", "v", 4)
-                    T.wait_flag("mte2", "v", 4)
-                    T.pipe_barrier("v")
-                    T.tile.mul(loss_val_ub, loss_chunk_ub, loss_val_ub)
+                        RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
+                        GKI2_L1 = T.alloc_L1((n_block, k_block), input_dtype)
+                        DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
+                        # dKeyIndex low-level MMA: L1→L0A transpose 替代 V1 预转置
+                        QI_L1_dk = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)
+                        RG_L0A_dk = T.alloc_L0A((n_block, Nidx1), input_dtype)
+                        QI_L0B_dk = T.alloc_L0B((Nidx1, DQueryIndex), input_dtype)
+                        DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)
 
-                    T.pipe_barrier("v")
-                    T.tile.mul(rsy_bc_ub[0, :], loss_val_ub, 1.0)
-                    T.pipe_barrier("v")
-                    loss_sum_ub = T.alloc_ub((1,), calc_dtype)
-                    T.reduce_sum(rsy_bc_ub, loss_sum_ub, 1)
-                    T.set_flag("v", "mte3", 5)
-                    T.wait_flag("v", "mte3", 5)
-
-                    # Write partial Loss for MY K block only (single value)
-                    T.copy(loss_sum_ub, LossOut[bz, s1_id, n_idx_k:n_idx_k + 1])
-
-                T.set_cross_flag("V", 12)
-
-            # ============================================================
-            # C scope 2: Matmul4 — per-core K-block, atomic_add to accumulate
-            # reluGrad @ GatherKeyIndex_ws → dQueryIndexAccum
-            # (Reads from GatherKeyIndex_ws directly, not transposed)
-            # ============================================================
-            with T.Scope("C"):
-                T.wait_cross_flag(12)
-
-                RG_L1 = T.alloc_L1((Nidx1, n_block), input_dtype)
-                GKI2_L1 = T.alloc_L1((n_block, k_block), input_dtype)
-                DQ_L0C = T.alloc_L0C((Nidx1, k_block), calc_dtype)
-                # dKeyIndex low-level MMA: L1→L0A transpose 替代 V1 预转置
-                QI_L1_dk = T.alloc_L1((Nidx1, DQueryIndex), input_dtype)
-                RG_L0A_dk = T.alloc_L0A((n_block, Nidx1), input_dtype)
-                QI_L0B_dk = T.alloc_L0B((Nidx1, DQueryIndex), input_dtype)
-                DK_L0C = T.alloc_L0C((n_block, DQueryIndex), calc_dtype)
-
-                for s1_row in T.serial(s1_start, s1_end):
-                    for d_idx in T.serial(d_num_query_index):
-                        T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
-                        T.copy(GatherKeyIndex_ws[bz, s1_row, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GKI2_L1)
-                        # RAW: gemm 等 L1 载入
-                        T.set_flag("mte2", "m", 6)
-                        T.wait_flag("mte2", "m", 6)
-                        T.gemm_v0(RG_L1, GKI2_L1, DQ_L0C, transpose_B=False, init=True)
-                        # M→FIX: atomic_add 等 gemm 完成
-                        T.set_flag("m", "fix", 7)
-                        T.wait_flag("m", "fix", 7)
-                        T.tile.atomic_add(dQueryIndexAccum[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], DQ_L0C)
-
-                    # dKeyIndex: L1→L0A transpose (硬件转置) + T.mma，替代 V1 预转置
-                    # DK = RG^T @ QI  = (n_block,Nidx1) @ (Nidx1,DQI) = (n_block,DQI)
-                    # GM→L1 (MTE2): 直接加载 reluGradRes，无需预转置
-                    T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
-                    T.copy(QueryIndex[bz, s1_row, 0:Nidx1, 0:DQueryIndex], QI_L1_dk)
-                    # MTE2→MTE1: L1 就绪，MTE1 可以开始搬运
-                    T.set_flag("mte2", "mte1", 10)
-                    T.wait_flag("mte2", "mte1", 10)
-                    # L1→L0 (MTE1): RG 转置搬运到 L0A，QI 正常搬运到 L0B
-                    T.copy(RG_L1, RG_L0A_dk, transpose=True)
-                    T.copy(QI_L1_dk, QI_L0B_dk)
-                    # MTE1→M: L0 就绪，Cube 可以开始 MMA
-                    T.set_flag("mte1", "m", 10)
-                    T.wait_flag("mte1", "m", 10)
-                    # MMA (Cube)
-                    T.mma(RG_L0A_dk, QI_L0B_dk, DK_L0C, init=True)
-                    # M→FIX: L0C 就绪，FIX 可以写出
-                    T.set_flag("m", "fix", 9)
-                    T.wait_flag("m", "fix", 9)
-                    # 每 core 独占自己的 K 行，只写一次 → 普通 copy_l0c_to_gm
-                    T.copy(DK_L0C, dk_matmul_partial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:DQueryIndex])
-
-                T.set_cross_flag("FIX", 3)
-
-            # ============================================================
-            # V scope 2: Cast dQueryIndex FP32→FP16 + Scatter → dKeyIndex
-            #   AIV0/AIV1 split: cast by g_id range, scatter by k_id range
-            #   Both ops independent → merged into single V scope
-            # ============================================================
-            with T.Scope("V"):
-                T.wait_cross_flag(3)
-
-                dq_fp32_db = T.alloc_ub((2, 4, BLOCK_K), calc_dtype)
-                dq_fp16_db = T.alloc_ub((2, 4, BLOCK_K), input_dtype)
-                dk_chunk_0 = T.alloc_ub((1, DQueryIndex), calc_dtype)
-                dk_chunk_1 = T.alloc_ub((1, DQueryIndex), calc_dtype)
-
-                g_per_aiv = v3_chunks // 2
-                half_block = n_block // 2
-
-                for s1_row in T.serial(s1_start, s1_end):
-                    # ---- Part 1: Cast dQueryIndex FP32→FP16 (split g_id, WAR-safe ping-pong DB) ----
-                    # Pipeline: MTE2 fill ∥ (V cast → MTE3 write) ∥ MTE2 prefetch
-                    # Events: MTE2_V{7,8} (RAW), V_MTE3{7,8} (RAW), MTE3_MTE2{7,8} (WAR)
-                    # vid 是 Python int(0/1)，直接算术求 g_start/g_end，避免 if/else 跨分支变量
-                    g_start = vid * g_per_aiv           # 0 or 32
-                    g_end = g_start + g_per_aiv         # 32 or 64
-
-                    # Pre-fill WAR: both slots initially free
-                    T.set_flag("mte3", "mte2", 7)
-                    T.set_flag("mte3", "mte2", 8)
-
-                    # Prologue: MTE2 fill + V cast for slot 0 (MTE3 deferred to loop)
-                    T.wait_flag("mte3", "mte2", 7)
-                    for d_idx in T.serial(d_num_query_index):
-                        T.copy(dQueryIndexAccum[bz, s1_row, g_start * 4:(g_start + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[0, :, :])
-                    T.set_flag("mte2", "v", 7)
-                    T.wait_flag("mte2", "v", 7)
-                    T.tile.cast(dq_fp16_db[0, :, :], dq_fp32_db[0, :, :], "CAST_ROUND", 4 * BLOCK_K)
-                    T.set_flag("v", "mte3", 7)
-
-                    for g_id in T.serial(g_start, g_end):
-                        cur = (g_id - g_start) % 2
-                        nxt = (g_id - g_start + 1) % 2
-
-                        # MTE3 write slot cur → GM (∥ MTE2+V prefetch of nxt)
-                        T.wait_flag("v", "mte3", cur + 7)
-                        for d_idx in T.serial(d_num_query_index):
-                            T.copy(dq_fp16_db[cur, :, :], dQueryIndex[bz, s1_row, g_id * 4:(g_id + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K])
-                        # WAR: slot cur consumed → safe to refill
-                        T.set_flag("mte3", "mte2", cur + 7)
-
-                        # Prefetch next g_id → slot nxt (MTE2 fill + V cast)
-                        next_g = g_id + 1
-                        if next_g < g_end:
-                            T.wait_flag("mte3", "mte2", nxt + 7)
+                        for s1_row in T.serial(s1_start, s1_end):
                             for d_idx in T.serial(d_num_query_index):
-                                T.copy(dQueryIndexAccum[bz, s1_row, next_g * 4:(next_g + 1) * 4, d_idx * BLOCK_K:(d_idx + 1) * BLOCK_K], dq_fp32_db[nxt, :, :])
-                            T.set_flag("mte2", "v", nxt + 7)
-                            T.wait_flag("mte2", "v", nxt + 7)
-                            T.tile.cast(dq_fp16_db[nxt, :, :], dq_fp32_db[nxt, :, :], "CAST_ROUND", 4 * BLOCK_K)
-                            T.set_flag("v", "mte3", nxt + 7)
+                                T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
+                                T.copy(GatherKeyIndex_ws[bz, s1_row, k_start:k_end, d_idx * k_block:(d_idx + 1) * k_block], GKI2_L1)
+                                # RAW: gemm 等 L1 载入
+                                T.set_flag("mte2", "m", 6)
+                                T.wait_flag("mte2", "m", 6)
+                                T.gemm_v0(RG_L1, GKI2_L1, DQ_L0C, transpose_B=False, init=True)
+                                # M→FIX: atomic_add 等 gemm 完成
+                                T.set_flag("m", "fix", 7)
+                                T.wait_flag("m", "fix", 7)
+                                T.tile.atomic_add(dQueryIndexAccum[bz, s1_row, 0:Nidx1, d_idx * k_block:(d_idx + 1) * k_block], DQ_L0C)
 
-                    # Clear: drain remaining WAR events
-                    T.wait_flag("mte3", "mte2", 7)
-                    T.wait_flag("mte3", "mte2", 8)
+                            # dKeyIndex: L1→L0A transpose (硬件转置) + T.mma，替代 V1 预转置
+                            # DK = RG^T @ QI  = (n_block,Nidx1) @ (Nidx1,DQI) = (n_block,DQI)
+                            # GM→L1 (MTE2): 直接加载 reluGradRes，无需预转置
+                            T.copy(reluGradRes[bz, s1_row, 0:Nidx1, n_idx_k * n_block:(n_idx_k + 1) * n_block], RG_L1)
+                            T.copy(QueryIndex[bz, s1_row, 0:Nidx1, 0:DQueryIndex], QI_L1_dk)
+                            # MTE2→MTE1: L1 就绪，MTE1 可以开始搬运
+                            T.set_flag("mte2", "mte1", 10)
+                            T.wait_flag("mte2", "mte1", 10)
+                            # L1→L0 (MTE1): RG 转置搬运到 L0A，QI 正常搬运到 L0B
+                            T.copy(RG_L1, RG_L0A_dk, transpose=True)
+                            T.copy(QI_L1_dk, QI_L0B_dk)
+                            # MTE1→M: L0 就绪，Cube 可以开始 MMA
+                            T.set_flag("mte1", "m", 10)
+                            T.wait_flag("mte1", "m", 10)
+                            # MMA (Cube)
+                            T.mma(RG_L0A_dk, QI_L0B_dk, DK_L0C, init=True)
+                            # M→FIX: L0C 就绪，FIX 可以写出
+                            T.set_flag("m", "fix", 9)
+                            T.wait_flag("m", "fix", 9)
+                            # 每 core 独占自己的 K 行，只写一次 → 普通 copy_l0c_to_gm
+                            T.copy(DK_L0C, dk_matmul_partial[bz, s1_row, n_idx_k * n_block:(n_idx_k + 1) * n_block, 0:DQueryIndex])
 
-                    # ---- Part 2: Scatter dk_matmul_partial → dKeyIndex (split k_id across AIVs) ----
-                    # WAR-safe ping-pong DB: overlap MTE2 copy[k+1] ∥ MTE3 atomic_add[k]
-                    # Events: MTE2_MTE3{5,6} (RAW) / MTE3_MTE2{5,6} (WAR)
-                    # TileLang 不支持 if/else 跨分支变量 → DB 逻辑在分支内各写一份
-                    k_mid = k_start + half_block  # Python int
+                        T.set_cross_flag("FIX", 3)
+
+                    # ============================================================
+                    # V scope 2: scatter dKeyIndex partials.  dQuery conversion is
+                    # intentionally deferred until all K-block atomic adds are done.
+                    # ============================================================
+                    with T.Scope("V"):
+                        T.wait_cross_flag(3)
+
+                        dk_chunk_0 = T.alloc_ub((1, DQueryIndex), calc_dtype)
+                        dk_chunk_1 = T.alloc_ub((1, DQueryIndex), calc_dtype)
+
+                        half_block = n_block // 2
+
+                        for s1_row in T.serial(s1_start, s1_end):
+                            # ---- Part 2: Scatter dk_matmul_partial → dKeyIndex (split k_id across AIVs) ----
+                            # WAR-safe ping-pong DB: overlap MTE2 copy[k+1] ∥ MTE3 atomic_add[k]
+                            # Events: MTE2_MTE3{5,6} (RAW) / MTE3_MTE2{5,6} (WAR)
+                            # TileLang 不支持 if/else 跨分支变量 → DB 逻辑在分支内各写一份
+                            k_mid = k_start + half_block  # Python int
+                            if vid == 0:
+                                T.set_flag("mte3", "mte2", 5)
+                                T.set_flag("mte3", "mte2", 6)
+
+                                T.wait_flag("mte3", "mte2", 5)
+                                T.copy(dk_matmul_partial[bz, s1_row, k_start:k_start + 1, 0:DQueryIndex], dk_chunk_0)
+                                T.set_flag("mte2", "mte3", 5)
+
+                                for k_id in T.serial(k_start, T.min(k_mid, k_end)):
+                                    cur = (k_id - k_start) % 2
+                                    nxt = (k_id - k_start + 1) % 2
+
+                                    T.wait_flag("mte2", "mte3", cur + 5)
+                                    idx = SparseIndices[bz, s1_row, 0, k_id]
+                                    if idx >= 0:
+                                        if cur == 0:
+                                            T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
+                                        if cur == 1:
+                                            T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
+                                    T.set_flag("mte3", "mte2", cur + 5)
+
+                                    next_k = k_id + 1
+                                    if next_k < T.min(k_mid, k_end):
+                                        T.wait_flag("mte3", "mte2", nxt + 5)
+                                        if nxt == 0:
+                                            T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
+                                        if nxt == 1:
+                                            T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_1)
+                                        T.set_flag("mte2", "mte3", nxt + 5)
+
+                                T.wait_flag("mte3", "mte2", 5)
+                                T.wait_flag("mte3", "mte2", 6)
+                            else:
+                                T.set_flag("mte3", "mte2", 5)
+                                T.set_flag("mte3", "mte2", 6)
+
+                                T.wait_flag("mte3", "mte2", 5)
+                                T.copy(dk_matmul_partial[bz, s1_row, k_mid:k_mid + 1, 0:DQueryIndex], dk_chunk_0)
+                                T.set_flag("mte2", "mte3", 5)
+
+                                for k_id in T.serial(T.min(k_mid, k_end), k_end):
+                                    cur = (k_id - k_mid) % 2
+                                    nxt = (k_id - k_mid + 1) % 2
+
+                                    T.wait_flag("mte2", "mte3", cur + 5)
+                                    idx = SparseIndices[bz, s1_row, 0, k_id]
+                                    if idx >= 0:
+                                        if cur == 0:
+                                            T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
+                                        if cur == 1:
+                                            T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
+                                    T.set_flag("mte3", "mte2", cur + 5)
+
+                                    next_k = k_id + 1
+                                    if next_k < k_end:
+                                        T.wait_flag("mte3", "mte2", nxt + 5)
+                                        if nxt == 0:
+                                            T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
+                                        if nxt == 1:
+                                            T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_1)
+                                        T.set_flag("mte2", "mte3", nxt + 5)
+
+                                T.wait_flag("mte3", "mte2", 5)
+                                T.wait_flag("mte3", "mte2", 6)
+
+                        # A physical core may execute another K task.  Drain stores
+                        # before its UB/event slots are reused by that task.
+                        T.pipe_barrier("mte3")
+            # Final outputs have a true all-K dependency.  This is safe only
+            # after the task loop: every launched block participates in sync_all.
+            T.sync_all()
+            with T.Scope("V"):
+                aiv_id = cid * 2 + vid
+
+                # FP32 dQuery accumulator -> output.  One row per AIV task
+                # avoids the old racy repeated cast from every K block.
+                dq_fp32_ub = T.alloc_ub((1, DQueryIndex), calc_dtype)
+                dq_out_ub = T.alloc_ub((1, DQueryIndex), input_dtype)
+                dq_item_count = B * S1 * Nidx1
+                dq_iters_per_aiv = ceil_div(dq_item_count, total_aiv_num)
+                T.set_flag("mte3", "mte2", 0)
+                for dq_iter in T.serial(dq_iters_per_aiv):
+                    dq_item = dq_iter * total_aiv_num + aiv_id
+                    if dq_item < dq_item_count:
+                        dq_bz = dq_item // (S1 * Nidx1)
+                        dq_local = dq_item % (S1 * Nidx1)
+                        dq_s1 = dq_local // Nidx1
+                        dq_group = dq_local % Nidx1
+                        T.wait_flag("mte3", "mte2", 0)
+                        T.copy(dQueryIndexAccum[dq_bz, dq_s1, dq_group:dq_group + 1, 0:DQueryIndex], dq_fp32_ub)
+                        T.set_flag("mte2", "v", 0)
+                        T.wait_flag("mte2", "v", 0)
+                        T.tile.cast(dq_out_ub, dq_fp32_ub, "CAST_RINT", DQueryIndex)
+                        T.set_flag("v", "mte3", 0)
+                        T.wait_flag("v", "mte3", 0)
+                        T.copy(dq_out_ub, dQueryIndex[dq_bz, dq_s1, dq_group:dq_group + 1, 0:DQueryIndex])
+                        T.set_flag("mte3", "mte2", 0)
+                T.wait_flag("mte3", "mte2", 0)
+
+                # FP32 dKey accumulator -> output after all atomic scatters.
+                dk_fp32_ub = T.alloc_ub((1, DQueryIndex), calc_dtype)
+                dk_out_ub = T.alloc_ub((1, DQueryIndex), input_dtype)
+                dk_item_count = B * S2 * Nidx2
+                dk_iters_per_aiv = ceil_div(dk_item_count, total_aiv_num)
+                T.set_flag("mte3", "mte2", 1)
+                for dk_iter in T.serial(dk_iters_per_aiv):
+                    dk_item = dk_iter * total_aiv_num + aiv_id
+                    if dk_item < dk_item_count:
+                        dk_bz = dk_item // (S2 * Nidx2)
+                        dk_local = dk_item % (S2 * Nidx2)
+                        dk_s2 = dk_local // Nidx2
+                        dk_nidx = dk_local % Nidx2
+                        T.wait_flag("mte3", "mte2", 1)
+                        T.copy(dKeyIndex[dk_bz, dk_s2, dk_nidx:dk_nidx + 1, 0:DQueryIndex], dk_fp32_ub)
+                        T.set_flag("mte2", "v", 1)
+                        T.wait_flag("mte2", "v", 1)
+                        T.tile.cast(dk_out_ub, dk_fp32_ub, "CAST_RINT", DQueryIndex)
+                        T.set_flag("v", "mte3", 1)
+                        T.wait_flag("v", "mte3", 1)
+                        T.copy(dk_out_ub, dKeyIndexOut[dk_bz, dk_s2, dk_nidx:dk_nidx + 1, 0:DQueryIndex])
+                        T.set_flag("mte3", "mte2", 1)
+                T.wait_flag("mte3", "mte2", 1)
+
+                # Sum one contiguous [K-block, Nidx1] dWeight row at a time.
+                # This avoids a strided GM->UB column DMA for each output.
+                dw_partial_ub = T.alloc_ub((n_num, Nidx1), calc_dtype)
+                dw_sum_ub = T.alloc_ub(Nidx1, calc_dtype)
+                if weight_output_dtype != calc_dtype:
+                    dw_out_ub = T.alloc_ub(Nidx1, weight_output_dtype)
+                dw_item_count = B * S1
+                dw_iters_per_aiv = ceil_div(dw_item_count, total_aiv_num)
+                T.set_flag("mte3", "mte2", 2)
+                for dw_iter in T.serial(dw_iters_per_aiv):
+                    dw_item = dw_iter * total_aiv_num + aiv_id
+                    if dw_item < dw_item_count:
+                        dw_bz = dw_item // S1
+                        dw_s1 = dw_item % S1
+                        T.wait_flag("mte3", "mte2", 2)
+                        T.copy(dWeightPartial[dw_bz, dw_s1, 0:n_num, 0:Nidx1], dw_partial_ub)
+                        T.set_flag("mte2", "v", 2)
+                        T.wait_flag("mte2", "v", 2)
+                        T.reduce_sum(dw_partial_ub, dw_sum_ub, 0)
+                        if weight_output_dtype == calc_dtype:
+                            T.set_flag("v", "mte3", 2)
+                            T.wait_flag("v", "mte3", 2)
+                            T.copy(dw_sum_ub, dWeightOut[dw_bz, dw_s1, 0:Nidx1])
+                        else:
+                            T.tile.cast(dw_out_ub, dw_sum_ub, "CAST_RINT", Nidx1)
+                            T.set_flag("v", "mte3", 2)
+                            T.wait_flag("v", "mte3", 2)
+                            T.copy(dw_out_ub, dWeightOut[dw_bz, dw_s1, 0:Nidx1])
+                        T.set_flag("mte3", "mte2", 2)
+                T.wait_flag("mte3", "mte2", 2)
+
+                # LossPartial is zero-filled and stores one scalar every 32 B.
+                if cid == 0:
                     if vid == 0:
-                        T.set_flag("mte3", "mte2", 5)
-                        T.set_flag("mte3", "mte2", 6)
+                        final_loss_chunk_ub = T.alloc_ub((1, 128), calc_dtype)
+                        final_loss_chunk_sum_ub = T.alloc_ub((1,), calc_dtype)
+                        final_loss_total_ub = T.alloc_ub((1,), calc_dtype)
+                        T.tile.fill(final_loss_total_ub, 0.0)
+                        T.set_flag("v", "mte2", 3)
+                        for loss_chunk_id in T.serial(loss_partial_size // 128):
+                            loss_start = loss_chunk_id * 128
+                            T.wait_flag("v", "mte2", 3)
+                            T.copy(LossPartial[loss_start:loss_start + 128], final_loss_chunk_ub[0, :])
+                            T.set_flag("mte2", "v", 3)
+                            T.wait_flag("mte2", "v", 3)
+                            T.reduce_sum(final_loss_chunk_ub, final_loss_chunk_sum_ub, 1)
+                            T.pipe_barrier("v")
+                            T.tile.add(final_loss_total_ub, final_loss_total_ub, final_loss_chunk_sum_ub)
+                            T.set_flag("v", "mte2", 3)
+                        T.wait_flag("v", "mte2", 3)
+                        T.set_flag("v", "mte3", 3)
+                        T.wait_flag("v", "mte3", 3)
+                        T.copy(final_loss_total_ub, LossOut[0:1])
 
-                        T.wait_flag("mte3", "mte2", 5)
-                        T.copy(dk_matmul_partial[bz, s1_row, k_start:k_start + 1, 0:DQueryIndex], dk_chunk_0)
-                        T.set_flag("mte2", "mte3", 5)
-
-                        for k_id in T.serial(k_start, T.min(k_mid, k_end)):
-                            cur = (k_id - k_start) % 2
-                            nxt = (k_id - k_start + 1) % 2
-
-                            T.wait_flag("mte2", "mte3", cur + 5)
-                            idx = SparseIndices[bz, s1_row, 0, k_id]
-                            if idx >= 0:
-                                if cur == 0:
-                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
-                                if cur == 1:
-                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
-                            T.set_flag("mte3", "mte2", cur + 5)
-
-                            next_k = k_id + 1
-                            if next_k < T.min(k_mid, k_end):
-                                T.wait_flag("mte3", "mte2", nxt + 5)
-                                if nxt == 0:
-                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
-                                if nxt == 1:
-                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_1)
-                                T.set_flag("mte2", "mte3", nxt + 5)
-
-                        T.wait_flag("mte3", "mte2", 5)
-                        T.wait_flag("mte3", "mte2", 6)
-                    else:
-                        T.set_flag("mte3", "mte2", 5)
-                        T.set_flag("mte3", "mte2", 6)
-
-                        T.wait_flag("mte3", "mte2", 5)
-                        T.copy(dk_matmul_partial[bz, s1_row, k_mid:k_mid + 1, 0:DQueryIndex], dk_chunk_0)
-                        T.set_flag("mte2", "mte3", 5)
-
-                        for k_id in T.serial(T.min(k_mid, k_end), k_end):
-                            cur = (k_id - k_mid) % 2
-                            nxt = (k_id - k_mid + 1) % 2
-
-                            T.wait_flag("mte2", "mte3", cur + 5)
-                            idx = SparseIndices[bz, s1_row, 0, k_id]
-                            if idx >= 0:
-                                if cur == 0:
-                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
-                                if cur == 1:
-                                    T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
-                            T.set_flag("mte3", "mte2", cur + 5)
-
-                            next_k = k_id + 1
-                            if next_k < k_end:
-                                T.wait_flag("mte3", "mte2", nxt + 5)
-                                if nxt == 0:
-                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_0)
-                                if nxt == 1:
-                                    T.copy(dk_matmul_partial[bz, s1_row, next_k:next_k + 1, 0:DQueryIndex], dk_chunk_1)
-                                T.set_flag("mte2", "mte3", nxt + 5)
-
-                        T.wait_flag("mte3", "mte2", 5)
-                        T.wait_flag("mte3", "mte2", 6)
+                T.pipe_barrier("mte3")
 
     return main
 
@@ -1078,6 +1162,7 @@ def sparse_lightning_indexer_grad_kl_loss(
     calc_dtype_str = "float"
     input_dtype_str = "float16" if input_dtype == torch.float16 else "bfloat16"
     weights_orig_dtype = weights.dtype
+    weight_output_dtype_str = "float" if weights_orig_dtype == torch.float32 else input_dtype_str
 
     if layout_query == "BSND" and sparse_mode in (3,):
 
@@ -1105,10 +1190,6 @@ def sparse_lightning_indexer_grad_kl_loss(
             _t_prep_end = torch.npu.Event(enable_timing=True)
             _t_kernel_start = torch.npu.Event(enable_timing=True)
             _t_kernel_end = torch.npu.Event(enable_timing=True)
-            _t_reduce_start = torch.npu.Event(enable_timing=True)
-            _t_reduce_end = torch.npu.Event(enable_timing=True)
-            _t_scatter_start = torch.npu.Event(enable_timing=True)
-            _t_scatter_end = torch.npu.Event(enable_timing=True)
             _t_prep_start.record()
         d_rope_orig = query_rope.shape[-1] if query_rope is not None else 0
         # Gather moved into kernel V0 scope — no host-side preprocess needed
@@ -1134,16 +1215,21 @@ def sparse_lightning_indexer_grad_kl_loss(
         while K % n_num_ws != 0 or (K // n_num_ws) % GATHER_CHUNK_SIZE != 0:
             n_num_ws += 1
         block_n = K // n_num_ws
+        launch_core_num = min(max(core_count, 1), B * ceil_div(S1, BLOCK_M) * n_num_ws)
+        loss_partial_stride = 8
+        loss_partial_size = ceil_div(B * S1 * n_num_ws * loss_partial_stride, 128) * 128
 
         cache_key = (B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
-                     d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n)
+                     launch_core_num, d_rope, input_dtype_str, calc_dtype_str,
+                     weight_output_dtype_str, scale_value, block_n)
 
         if cache_key in _kernel_cache:
             func = _kernel_cache[cache_key]
         else:
             func = tilelang_grad_kl_loss_single_kernel(
                 B, S1, S2_pad, N1, N2, G, Nidx1, Nidx2, DQuery, DQueryIndex, K,
-                d_rope, input_dtype_str, calc_dtype_str, scale_value, block_n,
+                launch_core_num, d_rope, input_dtype_str, calc_dtype_str,
+                weight_output_dtype_str, scale_value, block_n,
             )
 
             # # dump 编译出的 AscendC 源码到文件，供离线核对手动同步转写
@@ -1158,13 +1244,15 @@ def sparse_lightning_indexer_grad_kl_loss(
 
             _kernel_cache[cache_key] = func
 
-        ws_key = (B, S1, S2_pad, N1, Nidx1, K, DQueryIndex, d_rope, input_dtype, query.device, n_num_ws)
+        ws_key = (B, S1, S2_pad, N1, Nidx1, Nidx2, K, DQueryIndex, d_rope,
+                  input_dtype, weights_orig_dtype, query.device, n_num_ws)
         if ws_key in _workspace_cache:
             ws = _workspace_cache[ws_key]
             d_query_index_accum, gather_key_ws, gather_key_rope_ws, gather_key_index_ws, \
                 bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws, \
                 dk_matmul_partial, \
-                d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out, d_key_index_out = ws
+                relu_grad_out, d_weight_partial_ws, loss_partial_ws, \
+                d_query_index_out, d_key_index_final, d_weight_out, loss_out, d_key_index_accum = ws
         else:
             gather_key_ws = torch.zeros(B, S1, K, DQuery, dtype=input_dtype, device=query.device)
             gather_key_rope_ws = torch.zeros(B, S1, K, d_rope, dtype=input_dtype, device=query.device)
@@ -1175,21 +1263,28 @@ def sparse_lightning_indexer_grad_kl_loss(
             reduce_sum_y_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
             softmax_i_ws = torch.zeros(B, S1, K, dtype=torch.float32, device=query.device)
             d_query_index_accum = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=torch.float32, device=query.device)
-            # dKeyIndex 融合：matmul 中间结果(workspace) + fp32 累加器输出
+            # FP32 dKey atomic accumulator and all caller-owned workspaces.
             dk_matmul_partial = torch.zeros(B, S1, K, DQueryIndex, dtype=torch.float32, device=query.device)
-            d_key_index_out = torch.zeros(B, S2_pad, Nidx2, DQueryIndex, dtype=torch.float32, device=query.device)
-            d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
-            d_weight_partial_out = torch.zeros(B, S1, n_num_ws, Nidx1, dtype=input_dtype, device=query.device)
+            d_key_index_accum = torch.zeros(B, S2_pad, Nidx2, DQueryIndex, dtype=torch.float32, device=query.device)
             relu_grad_out = torch.zeros(B, S1, Nidx1, K, dtype=input_dtype, device=query.device)
-            loss_out = torch.zeros(B, S1, n_num_ws, dtype=torch.float32, device=query.device)
+            d_weight_partial_ws = torch.zeros(B, S1, n_num_ws, Nidx1, dtype=torch.float32, device=query.device)
+            loss_partial_ws = torch.zeros(loss_partial_size, dtype=torch.float32, device=query.device)
+            d_query_index_out = torch.zeros(B, S1, Nidx1, DQueryIndex, dtype=input_dtype, device=query.device)
+            d_key_index_final = torch.zeros(B, S2_pad, Nidx2, DQueryIndex, dtype=input_dtype, device=query.device)
+            d_weight_out = torch.zeros(B, S1, Nidx1, dtype=weights_orig_dtype, device=query.device)
+            loss_out = torch.zeros(1, dtype=torch.float32, device=query.device)
             _workspace_cache[ws_key] = (d_query_index_accum, gather_key_ws, gather_key_rope_ws, gather_key_index_ws,
                                         bmm1_res_ws, bmm2_res_ws, p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,
                                         dk_matmul_partial,
-                                        d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out, d_key_index_out)
+                                        relu_grad_out, d_weight_partial_ws, loss_partial_ws,
+                                        d_query_index_out, d_key_index_final, d_weight_out, loss_out,
+                                        d_key_index_accum)
 
         # Zero workspaces before each call (gather_ws filled by V0 scope)
         d_query_index_accum.zero_()
-        d_key_index_out.zero_()  # dKeyIndex 改 input (#11)，host 清零 → atomic_add 目标
+        d_key_index_accum.zero_()
+        d_weight_partial_ws.zero_()
+        loss_partial_ws.zero_()
 
         if _PROFILE:
             _t_prep_end.record()
@@ -1200,21 +1295,18 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_index, key_index,                    # 5-6
             weights, softmax_max, softmax_sum,         # 7-9
             d_query_index_accum,                           # 10 (input, host-zeroed)
-            d_key_index_out,                               # 11 (input, host-zeroed: dKeyIndex atomic target)
+            d_key_index_accum,                              # 11 (input, host-zeroed: dKeyIndex atomic target)
             gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 12-14
             bmm1_res_ws, bmm2_res_ws,                  # 15-16
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,  # 17-19
             dk_matmul_partial,                         # 20 (workspace)
-            d_query_index_out, d_weight_partial_out, relu_grad_out, loss_out,  # 21-24
+            relu_grad_out, d_weight_partial_ws, loss_partial_ws,  # 21-23
+            d_query_index_out, d_key_index_final, d_weight_out, loss_out,  # 24-27
         )
         if _PROFILE:
             _t_kernel_end.record()
-            _t_reduce_start.record()
 
-        d_query_index = results[0]
-        d_weight_partial = results[1]
-        relu_grad = results[2]
-        loss_out = results[3]
+        d_query_index, d_key_index_final, d_weight, loss_tensor = results
 
         # DEBUG: compare kernel-gathered KeyIndex vs host-gathered KeyIndex
         _DEBUG = os.environ.get("SLIG_DEBUG", "0") == "1"
@@ -1226,43 +1318,20 @@ def sparse_lightning_indexer_grad_kl_loss(
             )
             gki_diff = (gather_key_index_ws.float() - expected_gki.float()).abs()
             print(f"[DEBUG] GatherKeyIndex_ws vs host_gather: max_diff={gki_diff.max().item():.6e}, mean_diff={gki_diff.mean().item():.6e}")
-            # Also check dQueryIndexAccum before cast
+            # Also check FP32 accumulators before the in-kernel final casts.
             print(f"[DEBUG] dQueryIndexAccum: max={d_query_index_accum.max().item():.6e}, min={d_query_index_accum.min().item():.6e}, has_nan={torch.isnan(d_query_index_accum).any().item()}, has_inf={torch.isinf(d_query_index_accum).any().item()}")
-            # dKeyIndex 现在是 host-zeroed input (#11)，直接读传入的张量（非 results）
-            print(f"[DEBUG] dKeyIndex(input #11): max={d_key_index_out.abs().max().item():.6e}, nonzero_rows={ (d_key_index_out.abs().sum(-1) > 0).sum().item() }")
+            print(f"[DEBUG] dKeyIndexAccum: max={d_key_index_accum.abs().max().item():.6e}, nonzero_rows={ (d_key_index_accum.abs().sum(-1) > 0).sum().item() }")
 
-        # Accumulate partial dWeight across K blocks
-        d_weight = d_weight_partial.sum(dim=2)
-        if weights_orig_dtype == torch.float32:
-            d_weight = d_weight.float()
-        else:
-            d_weight = d_weight.to(input_dtype)
-
-        # Accumulate partial Loss across K blocks
-        kl_loss = loss_out.sum()
-
-        if _PROFILE:
-            _t_reduce_end.record()
-            _t_scatter_start = torch.npu.Event(enable_timing=True)
-            _t_scatter_end = torch.npu.Event(enable_timing=True)
-            _t_scatter_start.record()
-        # dKeyIndex 已在 kernel 内融合计算（V4 scatter → atomic_add 到 host-zeroed input #11）：
-        # d_key_index_out = fp32 累加器 (B, S2_pad, Nidx2, DQueryIndex)，取真实 S2 并 cast
-        d_key_index = d_key_index_out[:, :S2].to(input_dtype)
-        if _PROFILE:
-            _t_scatter_end.record()
-
-        loss_tensor = kl_loss.reshape(1).to(torch.float32).npu()
-
+        # All final reductions/casts now run in the kernel.  Retain only the
+        # logical-S2 slice needed to discard wrapper padding.
+        d_key_index = d_key_index_final[:, :S2]
 
         if _PROFILE:
             torch.npu.synchronize()
             p_ms = _t_prep_start.elapsed_time(_t_prep_end)
             k_ms = _t_kernel_start.elapsed_time(_t_kernel_end)
-            r_ms = _t_reduce_start.elapsed_time(_t_reduce_end)
-            s_ms = _t_scatter_start.elapsed_time(_t_scatter_end)
-            total_ms = p_ms + k_ms + r_ms + s_ms
-            print(f"[PROFILE] prep={p_ms:.3f} kernel(incl gather)={k_ms:.3f} reduce={r_ms:.3f} scatter={s_ms:.3f} total={total_ms:.3f}ms")
+            total_ms = p_ms + k_ms
+            print(f"[PROFILE] prep={p_ms:.3f} kernel(incl final reductions)={k_ms:.3f} total={total_ms:.3f}ms")
 
         return d_query_index, d_key_index, d_weight, loss_tensor
 
