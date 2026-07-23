@@ -248,10 +248,11 @@ static bool CheckShape(const aclTensor *x1, const aclTensor *x2, const aclTensor
     }
 
     const auto kValX1 = x1->GetViewShape().GetDim(1);
-    auto kValX2 = x2->GetViewShape().GetDim(0);
-    if (isTransB) {
-        kValX2 = x2->GetViewShape().GetDim(1);
-    }
+    const auto kValX2 = x2->GetViewShape().GetDim(0);
+    // auto kValX2 = x2->GetViewShape().GetDim(0);
+    // if (isTransB) {
+    //     kValX2 = x2->GetViewShape().GetDim(1);
+    // }
     
     if (kValX1 != kValX2) {
         std::string shapeMsg = std::to_string(kValX1) + " and " + std::to_string(kValX2);
@@ -562,8 +563,9 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
 
     uint32_t rankSize = 0;
     bool transposeX1 = IsTransposeLastTwoDims(x1);
-    bool viewTransposeX2 = IsViewTransposeX2(x1, x2, transposeX1);
-    bool transposeX2 = viewTransposeX2 || IsTransposeLastTwoDims(x2);
+    // bool viewTransposeX2 = IsViewTransposeX2(x1, x2, transposeX1);
+    // bool transposeX2 = viewTransposeX2 || IsTransposeLastTwoDims(x2);
+    bool transposeX2 = IsTransposeLastTwoDims(x2);
     OP_LOGD("transposeX1 is %d.", transposeX1);
     OP_LOGD("transposeX2 is %d.", transposeX2);
 
@@ -577,8 +579,8 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
     CHECK_RET(CheckOutDtypeValid(outDtype, OUT_DTYPE_SUPPORT_LIST), ACLNN_ERR_PARAM_INVALID);
     auto transX2 = x2;
     auto transX2Scale = x2Scale;
-    if ((x2Scale != nullptr) && x2Scale->GetDataType() != op::DataType::DT_FLOAT8_E8M0) {
-        OP_LOGD("Restoring non-transpose because it's not an MXFP8 scenario !");
+    // if ((x2Scale != nullptr) && x2Scale->GetDataType() != op::DataType::DT_FLOAT8_E8M0) {
+    //     OP_LOGD("Restoring non-transpose because it's not an MXFP8 scenario !");
         if (transposeX2) {
             // x2转置时将两轴shape调换
             if (x2->GetTensor() == nullptr) {
@@ -590,7 +592,7 @@ aclnnStatus allGatherMatmulV2GetWorkspaceSizeCCUMode(const aclTensor *x1, const 
         if ((x2Scale != nullptr) && MC2Aclnn::IsNeedScaleTrans(x2Scale)) {
             transX2Scale = TransX2Tensor(x2Scale);
         }
-    }
+    // }
     uint8_t commModeEnum = 0;
     aclnnStatus checkCommModeRet = CheckAndHandleCommMode(group, commMode, commModeEnum);
     CHECK_RET(checkCommModeRet == ACLNN_SUCCESS, checkCommModeRet);
