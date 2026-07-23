@@ -1271,21 +1271,21 @@ def tilelang_grad_kl_loss_single_kernel(
 
             T.wait_flag("mte2", "mte1", 6)
             for s1_id in T.serial(s1_begin_task, s1_end_task):
+                # Prime the single L1 slot.  Each following iteration starts
+                # with this tile ready and prefetches its successor while the
+                # current tile is in MMA/FIX.
+                T.wait_flag("mte1", "mte2", 2)
+                T.copy(
+                    reluGradRes[bz_task, s1_id, 0:Nidx1, 0:n_block],
+                    c2_rg_l1,
+                )
+                T.copy(
+                    GatherKeyIndex_ws[bz_task, s1_id, 0:n_block,
+                                      0:DQueryIndex],
+                    c2_gki_l1,
+                )
+                T.set_flag("mte2", "mte1", 2)
                 for n_idx in T.serial(n_num):
-                    T.wait_flag("mte1", "mte2", 2)
-                    T.copy(
-                        reluGradRes[bz_task, s1_id, 0:Nidx1,
-                                    n_idx * n_block:(n_idx + 1) * n_block],
-                        c2_rg_l1,
-                    )
-                    T.copy(
-                        GatherKeyIndex_ws[bz_task, s1_id,
-                                          n_idx * n_block:(n_idx + 1) * n_block,
-                                          0:DQueryIndex],
-                        c2_gki_l1,
-                    )
-                    T.set_flag("mte2", "mte1", 2)
-
                     T.wait_flag("m", "mte1", 2)
                     T.wait_flag("m", "mte1", 3)
                     T.wait_flag("mte2", "mte1", 2)
@@ -1296,6 +1296,28 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("mte1", "mte2", 2)
                     T.set_flag("mte1", "m", 2)
                     T.set_flag("mte1", "m", 3)
+
+                    if n_idx + 1 < n_num:
+                        # L1 is no longer read once the four L1->L0 copies
+                        # complete.  Refill it before the current MMA/FIX
+                        # sequence so MTE2 overlaps Cube execution.
+                        T.wait_flag("mte1", "mte2", 2)
+                        T.copy(
+                            reluGradRes[
+                                bz_task, s1_id, 0:Nidx1,
+                                (n_idx + 1) * n_block:(n_idx + 2) * n_block,
+                            ],
+                            c2_rg_l1,
+                        )
+                        T.copy(
+                            GatherKeyIndex_ws[
+                                bz_task, s1_id,
+                                (n_idx + 1) * n_block:(n_idx + 2) * n_block,
+                                0:DQueryIndex,
+                            ],
+                            c2_gki_l1,
+                        )
+                        T.set_flag("mte2", "mte1", 2)
 
                     T.wait_flag("mte1", "m", 2)
                     T.wait_flag("fix", "m", 2)
