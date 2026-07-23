@@ -67,7 +67,7 @@ WS_MAX_CORES = 36
 #  Tiling data
 # ================================================================
 @dataclass
-class OpTiling:
+class DenseLILseV2Tiling:
     b: int
     s1: int
     s2: int
@@ -353,7 +353,7 @@ def dense_lightning_indexer_softmax_lse_v2_inner(
     cmp_ratio = tiling.cmp_ratio
 
     # s2_tiles = (s2_dim + TKV - 1) // TKV
-    core_id = pl.get_block_idx()
+    core_id = pl.get_block_idx() // pl.get_subblock_num()
     sub_id = pl.get_subblock_idx()
 
     fore_core_num = pl.getval(metadata, 0)
@@ -641,7 +641,7 @@ def dense_lightning_indexer_softmax_lse_v2(
     metadata: pl.Ptr[pl.DT_UINT8],
     softmax_lse: pl.Ptr[pl.DT_UINT8],
     workspace: pl.Ptr[pl.DT_UINT8],
-    tiling: OpTiling,
+    tiling: DenseLILseV2Tiling,
 ):
     tensor_seqused_q = pl.make_tensor(
         seq_used_q,

@@ -20,6 +20,7 @@ using namespace ge;
 
 namespace ops {
 constexpr uint32_t QUERY_INDEX = 0;
+constexpr uint32_t KEY_INDEX = 1;
 constexpr uint32_t ATTR_LAYOUT_INDEX = 0;
 constexpr uint32_t SOFTMAX_LSE_INDEX = 0;
 
@@ -27,6 +28,8 @@ static ge::graphStatus InferShapeDenseLightningIndexerSoftmaxLseV2(gert::InferSh
 {
     const gert::Shape *queryShape = context->GetInputShape(QUERY_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, queryShape);
+    const gert::Shape *keyShape = context->GetInputShape(KEY_INDEX);
+    OP_CHECK_NULL_WITH_CONTEXT(context, keyShape);
 
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
@@ -38,12 +41,14 @@ static ge::graphStatus InferShapeDenseLightningIndexerSoftmaxLseV2(gert::InferSh
     OP_CHECK_NULL_WITH_CONTEXT(context, softmaxLseShape);
 
     if (inputLayoutStr == "BSND") {
-        softmaxLseShape->SetDimNum(2);
+        softmaxLseShape->SetDimNum(3);
         softmaxLseShape->SetDim(0, queryShape->GetDim(0));
-        softmaxLseShape->SetDim(1, queryShape->GetDim(1));
+        softmaxLseShape->SetDim(1, keyShape->GetDim(2));
+        softmaxLseShape->SetDim(2, queryShape->GetDim(1));
     } else {
-        softmaxLseShape->SetDimNum(1);
-        softmaxLseShape->SetDim(0, queryShape->GetDim(0));
+        softmaxLseShape->SetDimNum(2);
+        softmaxLseShape->SetDim(0, keyShape->GetDim(1));
+        softmaxLseShape->SetDim(1, queryShape->GetDim(0));
     }
 
     return GRAPH_SUCCESS;

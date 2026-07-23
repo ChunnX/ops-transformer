@@ -21,14 +21,14 @@ DLI_METADATA_OP_NAME = "dense_lightning_indexer_softmax_lse_metadata"
 DLI_OP_NAME = "dense_lightning_indexer_softmax_lse"
 
 
-class DenseLightningIndexerSoftmaxLseV2OpBuilder(OpBuilder):
+class DenseLightningIndexerSoftmaxLseOpBuilder(OpBuilder):
     def __init__(self):
-        super(DenseLightningIndexerSoftmaxLseV2OpBuilder, self).__init__(
+        super(DenseLightningIndexerSoftmaxLseOpBuilder, self).__init__(
             "dense_lightning_indexer_softmax_lse"
         )
 
     def sources(self):
-        return ["ops/csrc/dense_lightning_indexer_softmax_lse_v2.cpp"]
+        return ["ops/csrc/dense_lightning_indexer_softmax_lse.cpp"]
 
     def schema(self) -> str:
         return [
@@ -88,14 +88,14 @@ class DenseLightningIndexerSoftmaxLseV2OpBuilder(OpBuilder):
             cmp_ratio=1,
         ):
             if layout_q == "BSND":
-                out_shape = (query_index.shape[0], query_index.shape[1])
+                out_shape = (query_index.shape[0], key_index.shape[2], query_index.shape[1])
             else:
-                out_shape = (query_index.shape[0],)
+                out_shape = (key_index.shape[1], query_index.shape[0])
             return torch.empty(out_shape, dtype=torch.float32, device="meta")
 
 
-dense_lightning_indexer_softmax_lse_v2_op_builder = DenseLightningIndexerSoftmaxLseV2OpBuilder()
-op_module = dense_lightning_indexer_softmax_lse_v2_op_builder.load()
+dense_lightning_indexer_softmax_lse_op_builder = DenseLightningIndexerSoftmaxLseOpBuilder()
+op_module = dense_lightning_indexer_softmax_lse_op_builder.load()
 
 
 @impl(AS_LIBRARY, DLI_METADATA_OP_NAME, "PrivateUse1")
