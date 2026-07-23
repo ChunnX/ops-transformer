@@ -130,6 +130,7 @@ ASCENDC_TPL_ARGS_DECL(FusedInferAttentionScore,
 );
 
 ASCENDC_TPL_SEL(
+#if 0  // 裁剪：只保留 Mxfp8 相关模板
  // ifa
 #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_INT8 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     ASCENDC_TPL_ARGS_SEL(
@@ -2744,6 +2745,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_TILING_STRUCT_SEL(FlashAttentionScoreSimplifiedTilingData)
     ),
 #endif
+#endif  // 裁剪：结束非 Mxfp8 部分
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
     // mxfp8
@@ -2766,6 +2768,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
         ASCENDC_TPL_TILING_STRUCT_SEL(FusedInferAttentionScoreFullQuantTilingData)
     ),
+#if 0  // 裁剪：注释掉 per-token-head 块
     // fp8 qk per-token-head v per-head
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_NTD_TND),
@@ -2782,6 +2785,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
         ASCENDC_TPL_TILING_STRUCT_SEL(FusedInferAttentionScoreFullQuantTilingData)
     ),
+#endif  // 裁剪：结束 per-token-head 块
 #endif
 
 #if (ORIG_DTYPE_QUERY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_KEY == DT_FLOAT8_E4M3FN && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
@@ -2805,6 +2809,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
         ASCENDC_TPL_TILING_STRUCT_SEL(FusedInferAttentionScoreFullQuantTilingData)
     ),
+#if 0  // 裁剪：注释掉 per-token-head 块
     // fp8 qk per-token-head v per-head
     ASCENDC_TPL_ARGS_SEL(
         ASCENDC_TPL_UINT_SEL(InOutLayoutType, ASCENDC_TPL_UI_LIST, InOutLayoutType_NTD_TND),
@@ -2821,6 +2826,7 @@ ASCENDC_TPL_SEL(
         ASCENDC_TPL_BOOL_SEL(IsReconstructTemp, true),
         ASCENDC_TPL_TILING_STRUCT_SEL(FusedInferAttentionScoreFullQuantTilingData)
     ),
+#endif  // 裁剪：结束 per-token-head 块
 #endif
 
 // 空tensor，必须要有一个使得列表不为空，否则会报无法推导模板参数的错误
