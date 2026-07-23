@@ -3,6 +3,7 @@
 ## 功能说明
 
 基于pytest测试框架，实现QuantCompressor算子的功能验证：
+
 - **CPU侧**：复现算子功能用以生成golden数据
 - **NPU侧**：通过torch_npu进行算子直调获取实际数据
 - **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
@@ -21,7 +22,6 @@
     -   C128A: D=512, coff=1, cmp_ratio=128。
 -   支持rotary_mode为2，Rope计算模式为interleave。
 
-
 ### 环境配置
 
 #### 前置要求
@@ -34,7 +34,7 @@
 
 ## 文件结构
 
-#### pytest文件结构说明
+### pytest文件结构说明
 
 - test_run.sh                                  # 执行脚本，支持single/batch两种命令
 
@@ -89,6 +89,7 @@ bash test_run.sh single
 2、test_run.sh中设置读取的用例excel表格路径（PATH1）和pt文件存放路径（PATH2）
 
 3、执行指令：
+
 ``` bash
 bash test_run.sh batch
 ```

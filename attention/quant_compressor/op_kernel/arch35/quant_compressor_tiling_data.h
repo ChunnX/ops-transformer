@@ -22,12 +22,12 @@ const uint32_t CMP_MAX_AIC_CORE_NUM = 36;
 
 namespace optiling {
     struct QuantCompressorSplitCoreParams {
-        uint32_t mStart;
-        uint32_t mEnd;
-        uint32_t nStart;
-        uint32_t nEnd;
-        uint32_t kStart;
-        uint32_t kEnd;
+        uint32_t mStart = 0;
+        uint32_t mEnd = 0;
+        uint32_t nStart = 0;
+        uint32_t nEnd = 0;
+        uint32_t kStart = 0;
+        uint32_t kEnd = 0;
     };
 
     // 1. 基础参数结构体
@@ -55,14 +55,14 @@ namespace optiling {
     };
 
     struct QuantCompressorInnerSplitParams {
-        uint32_t mBaseSize;
-        uint32_t dBaseSize;
+        uint32_t mBaseSize = 0;
+        uint32_t dBaseSize = 0;
     };
     
     struct QuantCompressorWorkspaceParams {
-        uint32_t mm1KvResSize;
-        uint32_t mm1ScoreResSize;
-        uint32_t vec1TailCacheSize;
+        uint32_t mm1KvResSize = 0;
+        uint32_t mm1ScoreResSize = 0;
+        uint32_t vec1TailCacheSize = 0;
         uint32_t dbWorkspaceRatio = 1;
     };
 

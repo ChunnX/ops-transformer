@@ -76,8 +76,7 @@ enum class X_LAYOUT : std::uint8_t {
 };
 
 enum class X_DTYPE : std::uint8_t {
-    BF16 = static_cast<std::uint8_t>(0),
-    FP16 = static_cast<std::uint8_t>(1)
+    HIFP8 = static_cast<std::uint8_t>(0)
 };
 
 enum class COFF : std::uint8_t {

@@ -34,7 +34,7 @@ using AscendC::CrossCoreWaitFlag;
 template <typename COMP>
 class QuantCompressorBlockVectorFullLoad {
 public:
-    static constexpr bool X_DTYPE = COMP::xDtype == X_DTYPE::BF16;
+    static constexpr bool X_DTYPE = COMP::xDtype == X_DTYPE::HIFP8;
     static constexpr float FLOAT_ZERO = 0;
     static constexpr float SOFTMAX_MIN_NUM = -2e38;
     // =================================类型定义区=================================

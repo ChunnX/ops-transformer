@@ -32,7 +32,7 @@ using AscendC::CrossCoreWaitFlag;
 template <typename COMP>
 class QuantCompressorBlockVector {
 public:
-    static constexpr bool X_DTYPE = COMP::xDtype == X_DTYPE::BF16;
+    static constexpr bool X_DTYPE = COMP::xDtype == X_DTYPE::HIFP8;
     static constexpr uint64_t BLOCK_VEC_BASE_BUFFER_SIZE = 32 * 1024; // 32k
     static constexpr uint32_t DATABLOCK_BYTES = 32;
     static constexpr float FLOAT_ZERO = 0;
