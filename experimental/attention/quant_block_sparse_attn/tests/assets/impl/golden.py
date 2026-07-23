@@ -107,8 +107,12 @@ def _auto_block_table(B, S2, block_size, pattern="sequential", seed=0):
 
 
 def _pa_to_dense(pa_tensor, block_table, B, S2, dim_perm, block_size):
-    num_dims = pa_tensor.dim()
-    dense = torch.zeros((B, S2) + pa_tensor.shape[2:], dtype=pa_tensor.dtype)
+    n2 = int(pa_tensor.shape[1])
+    if pa_tensor.dim() == 4:
+        d = int(pa_tensor.shape[3])
+        dense = torch.zeros((B, S2, n2, d), dtype=pa_tensor.dtype)
+    else:
+        dense = torch.zeros((B, S2, n2), dtype=pa_tensor.dtype)
     for b in range(B):
         for logical_block in range(block_table.shape[1]):
             physical = int(block_table[b, logical_block].item())
