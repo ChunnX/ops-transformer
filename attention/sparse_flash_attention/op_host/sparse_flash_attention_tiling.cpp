@@ -2217,7 +2217,8 @@ void SFAInfoParser::GenerateInfo(SFATilingInfo &sfaInfo)
     sfaInfo.maxBlockNumPerBatch = maxBlockNumPerBatch_;
 
     sfaInfo.keyStride0 = !keyStridesVec_.empty() ?
-        static_cast<int64_t>(keyStridesVec_[0]) / (static_cast<int64_t>(n2Size_) * static_cast<int64_t>(qkHeadDim_)) : 0;
+        static_cast<int64_t>(keyStridesVec_[0]) /
+        (static_cast<int64_t>(n2Size_) * static_cast<int64_t>(qkHeadDim_)) : 0;
 
     FillTilingInfoAttrsAndLayouts(sfaInfo);
 }
