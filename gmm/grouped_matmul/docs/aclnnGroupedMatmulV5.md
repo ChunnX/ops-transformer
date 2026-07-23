@@ -191,16 +191,16 @@ aclnnStatus aclnnGroupedMatmulV5(
   | activationInputOptional（aclTensorList *） | 可选输入 | 代表激活函数的反向输入，当前只支持传入nullptr | - | - | - | - | - |
   | activationQuantScaleOptional（aclTensorList *） | 可选输入 | 激活函数量化缩放因子（预留参数），当前只支持传入nullptr | - | - | - | - | - |
   | activationQuantOffsetOptional（aclTensorList *） | 可选输入 | 激活函数量化偏移量（预留参数），当前只支持传入nullptr | - | - | - | - | - |
-  | splitItem（int64_t） | 输入 | 代表输出是否要做Tensor切分 | `0/1` = 多Tensor 输出；`2/3` = 单Tensor 输出。接口不区分 0/1 和 2/3 的内部差异 | - | - | - | - |
+  | splitItem（int64_t） | 输入 | 代表输出是否要做Tensor切分 | `0/1` = 多Tensor 输出；`2/3` = 单Tensor 输出。接口不区分0/1和2/3的内部差异 | - | - | - | - |
   | groupType（int64_t） | 输入 | 代表需要分组的轴 | 如矩阵乘为 $C[m,n]=A[m,k]\times B[k,n]$：`-1` = 不分组；`0` = M轴分组；`2` = K轴分组 | - | - | - | - |
-  | groupListType（int64_t） | 输入 | 代表 groupList输入的分组方式 | `0` = 累积和（cumsum）；`1` = 各组大小；`2` = [组索引, 组大小] 对。详见 [约束说明](#7-约束说明) | - | - | - | - |
+  | groupListType（int64_t） | 输入 | 代表groupList输入的分组方式 | `0` = 累积和（cumsum）；`1` = 各组大小；`2` = [组索引, 组大小] 对。详见 [约束说明](#7-约束说明) | - | - | - | - |
   | actType（int64_t） | 输入 | 代表激活函数类型 | `0`=GMM_ACT_TYPE_NONE / `1`=GMM_ACT_TYPE_RELU / `2`=GMM_ACT_TYPE_GELU_TANH / `3`=GMM_ACT_TYPE_GELU_ERR_FUNC（不支持） / `4`=GMM_ACT_TYPE_FAST_GELU / `5`=GMM_ACT_TYPE_SILU | - | - | - | - |
-  | tuningConfigOptional（aclIntArray *） | 可选输入 | 第一个数代表各个专家处理的 token数的预期值；第二个数代表 <abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A8W4</abbr> 可选开启 weight先转置的 NZ格式；第三个数代表允许额外使用的内存空间。详见 [约束说明](#7-约束说明) | 兼容历史版本，用户如不使用该参数，不传（即为 nullptr）即可 | INT64 | - | 3 | - |
+  | tuningConfigOptional（aclIntArray *） | 可选输入 | 第一个数代表各个专家处理的 token数的预期值；第二个数代表 <abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A8W4</abbr> 可选开启weight先转置的NZ格式；第三个数代表允许额外使用的内存空间。详见 [约束说明](#7-约束说明) | 兼容历史版本，用户如不使用该参数，不传（即为 nullptr）即可 | INT64 | - | 3 | - |
   | out（aclTensorList *） | 输出 | 公式中的输出 $y$ | TensorList长度 [1,128] 或 [1,1024] | FLOAT、FLOAT16、INT32、INT8、BFLOAT16 | ND | 2~3 | - |
   | activationFeatureOutOptional（aclTensorList *） | 输出 | 激活函数的输入数据，当前只支持传入nullptr | - | - | - | - | - |
   | dynQuantScaleOutOptional（aclTensorList *） | 输出 | 动态量化缩放因子，当前只支持传入nullptr | - | - | - | - | - |
-  | workspaceSize（uint64_t *） | 输出 | 返回需要在 Device侧申请的 workspace大小（字节） | - | - | - | - | - |
-  | executor（aclOpExecutor **） | 输出 | 返回 op执行器，包含了算子计算流程 | - | - | - | - | - |
+  | workspaceSize（uint64_t *） | 输出 | 返回需要在Device侧申请的workspace大小（字节） | - | - | - | - | - |
+  | executor（aclOpExecutor **） | 输出 | 返回op执行器，包含了算子计算流程 | - | - | - | - | - |
 
   - <term>Ascend 950PR/Ascend 950DT</term>：
     - 上表数据类型列中的角标 <span title="Ascend 950PR/950DT 不支持"><sup>1</sup></span> 代表该系列不支持的数据类型
@@ -274,8 +274,8 @@ aclnnStatus aclnnGroupedMatmulV5(
 
   | 参数名 | 输入/输出 | 描述 |
   |--------|:---:|------|
-  | workspace | 输入 | 在 Device侧申请的 workspace内存地址 |
-  | workspaceSize | 输入 | 在 Device侧申请的 workspace大小，由第一段接口 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 |
+  | workspace | 输入 | 在Device侧申请的workspace内存地址 |
+  | workspaceSize | 输入 | 在Device侧申请的workspace大小，由第一段接口 `aclnnGroupedMatmulV5GetWorkspaceSize` 获取 |
   | executor | 输入 | op执行器，包含了算子计算流程 |
   | stream | 输入 | 指定执行任务的Stream |
 
@@ -394,7 +394,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 | 0/2 | HIFLOAT8 | HIFLOAT8 | null | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
 | 0/2 | FLOAT8_E5M2/FLOAT8_E4M3FN | FLOAT8_E5M2/FLOAT8_E4M3FN | null | FLOAT32 | FLOAT32 | BFLOAT16/FLOAT16/FLOAT32 |
 
-- **scaleOptional shape**（$g$=分组数），推荐在pertensor场景 shape 使用 `(g,)`，防止与 G-B量化模式混淆：
+- **scaleOptional shape**（$g$=分组数），推荐在pertensor场景 shape 使用 `(g,)`，防止与G-B量化模式混淆：
 
   | groupType | 子场景 | shape |
   |:---:|:---|:---|
@@ -476,8 +476,8 @@ aclnnGroupedMatmulV5默认确定性实现。
   - 在动态量化场景 M分组或K分组情况下，当 N等于1 且 scaleOptional 的 shape 为 `(g, 1)` 时，weight既可以pertensor量化也可以perchannel量化时，优先选择pertensor量化模式。
   - 在动态量化场景 M分组情况下，当 g = M 且 perTokenScaleOptional 的 shape 为 `(g,)` 时，x选择pertoken量化模式；当 g = M，K ≤ 128 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，根据weight的量化模式选择x的量化模式（weight 如果是 perchannel 或者pertensor量化，x选择pertensor量化；weight 如果是 <abbr title="简称B量化，在所有轴上对数据分块，每块使用独立的量化参数">perblock</abbr> 量化，x选择 <abbr title="简称G量化，在reduce轴上对数据分组，每组使用独立的量化参数">pergroup</abbr> 量化）。
   - 在动态量化场景 K分组情况下，K小于128，N小于等于128 且 scaleOptional 的 shape 为 `(g, 1)` 时，按照现有量化模式区分规则，既可以为非pergroup量化，又可以为G-B量化，此种场景现一律按照G-B量化处理。
-  - 在动态量化场景 K分组情况下，当 M等于 1 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，x既可以pertoken量化也可以pertensor量化时，优先选择pertensor量化模式。
-  - 在动态量化场景 K分组情况下，K小于128，M等于 1 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，如果 N小于等于128，x则选择pergroup量化；如果 N大于128，根据weight的量化模式选择x的量化模式（weight 如果是 perchannel 或者pertensor量化，x选择pertensor量化；weight 如果是 perblock量化，x选择pergroup量化）。
+  - 在动态量化场景 K分组情况下，当 M等于1 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，x既可以pertoken量化也可以pertensor量化时，优先选择pertensor量化模式。
+  - 在动态量化场景 K分组情况下，K小于128，M等于1 且 perTokenScaleOptional 的 shape 为 `(g, 1)` 时，如果 N小于等于128，x则选择pergroup量化；如果 N大于128，根据weight的量化模式选择x的量化模式（weight 如果是 perchannel 或者pertensor量化，x选择pertensor量化；weight 如果是 perblock量化，x选择pergroup量化）。
   - 在动态量化场景 K分组情况下，K小于128，M不等于 1 时，如果 N小于等于128，x则选择pergroup量化；如果 N大于128，根据weight的量化模式选择x的量化模式（weight 如果是 perchannel 或者pertensor量化，x选择pertoken量化；weight 如果是 perblock量化，x选择pergroup量化）。
 
 </details>
