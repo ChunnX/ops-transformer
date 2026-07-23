@@ -189,7 +189,6 @@ stages:
           package_name: 'cann-ops-transformer_experimental_linux-x86_64_ubuntu24.run'
       JOB_arm_experimental_compile_ubuntu24:
         name: Compile_experimental_arm_ubuntu24
-        needs: []
         uses: .gitcode/workflows/compile_action.yml
         with:
           task_name: 'Compile_Ascend_ARM_experimental_ubuntu24'
