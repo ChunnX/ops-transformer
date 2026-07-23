@@ -835,48 +835,6 @@
    <td>INT32</td>
    <td>ND</td>
   </tr>
-  <tr>
-   <td>shared_weight1</td>
-   <td>输入</td>
-   <td>共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数（仅A8W8支持ND）。第一维为 `shared_expert_num_per_rank`。</td>
-   <td>FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
-   <td>ND、FRACTAL_NZ</td>
-  </tr>
-  <tr>
-   <td>shared_weight2</td>
-   <td>输入</td>
-   <td>共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致（仅A8W8支持ND）。第一维为 `shared_expert_num_per_rank`。</td>
-   <td>FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
-   <td>ND、FRACTAL_NZ</td>
-  </tr>
-  <tr>
-   <td>shared_weight_scales1</td>
-   <td>可选输入</td>
-   <td>共享专家网络第一线性层的权重矩阵的量化缩放因子。</td>
-   <td>FP8_E8M0</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>shared_weight_scales2</td>
-   <td>可选输入</td>
-   <td>共享专家网络第二线性层的权重矩阵的量化缩放因子。</td>
-   <td>FP8_E8M0</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>shared_bias1</td>
-   <td>可选输入</td>
-   <td>共享专家网络第一线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
-   <td>FP32</td>
-   <td>ND</td>
-  </tr>
-  <tr>
-   <td>shared_bias2</td>
-   <td>可选输入</td>
-   <td>共享专家网络第二线性层的偏置，仅于A8W4-INT量化场景下需要该参数，用于精度补偿。</td>
-   <td>FP32</td>
-   <td>ND</td>
-  </tr>
  </tbody>
 </table>
 
