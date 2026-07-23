@@ -27,6 +27,7 @@
 namespace QLIV2Kernel {
 using namespace QLIV2Common;
 constexpr uint32_t TRUNK_LEN_16K = 16384;
+constexpr uint32_t TRUNK_LEN_LD = 102400;
 template <typename QLIV2T>
 class QLIV2Vector {
 public:
@@ -116,6 +117,8 @@ private:
     // tmp buff for LD
     TBuf<TPosition::VECCALC> ldValueBuf_;
     LocalTensor<uint32_t> ldValueLocal_;  // SCORE_T
+    TBuf<TPosition::VECCALC> ldIndexBuf_;
+    LocalTensor<uint32_t> ldIndexLocal_;
 
     TBuf<TPosition::VECCALC> topkIndexBuf_;
     LocalTensor<uint32_t> topkIndexLocal_;
@@ -135,8 +138,6 @@ private:
 
     TBuf<TPosition::VECCALC> topkSharedTmpBuf_;
     LocalTensor<uint32_t> topkSharedTmpLocal_;
-
-    LocalTensor<uint32_t> ldIndexLocal_;
 
     int32_t blockId_ = -1;
     // para for vector
@@ -217,7 +218,14 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitLDBuffers(TPipe *pipe,
     const struct QLIV2Common::LdSplitCoreInfo &ldInfo) {
-    ldIndexLocal_ = resMm1UB_.template ReinterpretCast<uint32_t>();
+    pipe->Reset();
+    uint32_t trunkLenLd = TRUNK_LEN_16K;
+    
+    pipe->InitBuffer(ldIndexBuf_, (topkCountAlign256_ + trunkLenLd) * sizeof(uint32_t));
+    pipe->InitBuffer(indicesOutBuf_, (topkCountAlign256_ + 64) * sizeof(uint32_t));
+    pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLenLd) * sizeof(SCORE_T));
+    pipe->InitBuffer(scoreOutBuf_, (topkCountAlign256_ + 64) * sizeof(SCORE_T));
+    pipe->InitBuffer(valueOutBuf_, (topkCountAlign256_ + 64) * sizeof(bfloat16_t));
 }
 
 template <typename QLIV2T>
@@ -842,6 +850,12 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
 {
+    LocalTensor<uint32_t> ldIndexLocal_ = ldIndexBuf_.Get<uint32_t>();
+    LocalTensor<uint32_t> indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
+    LocalTensor<SCORE_T> mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
+    LocalTensor<SCORE_T> scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
+    LocalTensor<bfloat16_t> valueOutLocal_ = valueOutBuf_.Get<bfloat16_t>();
+
     AscendC::DataCopyParams copyOutParams;
     copyOutParams.blockCount = 1;
     copyOutParams.blockLen = topkCount_ * sizeof(uint32_t); // bytes
@@ -860,11 +874,11 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
     AscendC::DataCopyPadExtParams<uint32_t> indexPadParams{true, 0, 0, 0};
     AscendC::DataCopyExtParams ldScoreParams;
     ldScoreParams.blockLen = topkCountAlign16_ * sizeof(SCORE_T); // bytes
-    ldScoreParams.srcStride = 3 * topkCountAlign16_ * sizeof(SCORE_T); // s1Basesize-1 两个基本块之间的距离
+    ldScoreParams.srcStride = (s1BaseSize_ - 1) * topkCountAlign16_ * sizeof(SCORE_T); // 两个基本块之间的距离
     ldScoreParams.dstStride = 0;
     AscendC::DataCopyExtParams ldIndexParams;
     ldIndexParams.blockLen = topkCountAlign16_ * sizeof(uint32_t); // bytes
-    ldIndexParams.srcStride = 3 * topkCountAlign16_ * sizeof(uint32_t);
+    ldIndexParams.srcStride = (s1BaseSize_ - 1) * topkCountAlign16_ * sizeof(uint32_t);
     ldIndexParams.dstStride = 0;
 
     uint64_t ldProcessLen = ldInfo_.workspaceNum * topkCountAlign16_;
@@ -968,7 +982,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
             // 可排序键还原为 bf16，并将无效位（score==0，对应 index==-1）刷为 -inf
             // Convert sortable key to bf16 and flush invalid (score==0, index==-1) positions to -inf
             vector1::UIntToFloatReturnValueWithInfMask(valueOutLocal_, scoreOutLocal_,
-                                                        topkCountAlign256_, constInfo_.NEG_INF_BFLOAT);
+                                                       topkCountAlign256_, constInfo_.NEG_INF_BFLOAT);
         }
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
