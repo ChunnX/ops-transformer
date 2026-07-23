@@ -26,26 +26,26 @@
  *
  *   1. CopyInQBlock:
  *      GM → UB: q[cu_off + qb*B : cu_off + qb*B + B, h, :]
- *      qBlockBuf: [B, D] FP8, 超出 q_len 的行填零
+ *      qBlockQue: [B, D] FP8, 超出 q_len 的行填零
  *
  *   2. CopyInScalesBulk:
  *      GM → UB: qscale[cu_off + qb*B : cu_off + qb*B + B, h]
- *      scalesBuf: [B] FP32
+ *      scalesQue: [B] FP32
  *
  *   3. CastBlockToFP32:
- *      UB: qBlockBuf [B, D] FP8 → qBlockFP32Buf [B, D] FP32
+ *      UB: qBlockQue [B, D] FP8 → qBlockFP32Que [B, D] FP32
  *
  *   4. AccumulateBlock (Weighted Group Sum, in-place binary reduce):
- *      qBlockFP32Buf 逻辑 reshape 为 [R, S, D]
- *      scalesBuf 逻辑 reshape 为 [R, S]
+ *      qBlockFP32Que 逻辑 reshape 为 [R, S, D]
+ *      scalesQue 逻辑 reshape 为 [R, S]
  *
- *      Phase 1: qBlockFP32Buf[(r*S+g)*D : (r*S+g+1)*D] *= scales[r*S+g]
+ *      Phase 1: qBlockFP32Que[(r*S+g)*D : (r*S+g+1)*D] *= scales[r*S+g]
  *                对每个 (r, g) 的原地乘 scale
  *      Phase 2: 沿 R 轴反向 reduce（stride 从 rMain 递减到 1）
- *                结果保留在 qBlockFP32Buf 的前 S 行 (偏移 0..S*D-1)
+ *                结果保留在 qBlockFP32Que 的前 S 行 (偏移 0..S*D-1)
  *
  *   5. FlattenAndCast:
- *      UB: qBlockFP32Buf[0 : S*D] FP32 → Cast → outQueueQflat [S*D] BF16
+ *      UB: qBlockFP32Que[0 : S*D] FP32 → Cast → outQueueQflat [S*D] BF16
  *
  *   6. CopyOutBlock:
  *      UB → GM: qFlat[b, h, qb, :] = outQueueQflat [S*D] BF16
@@ -200,7 +200,7 @@ public:
 
     __aicore__ inline void CopyInQBlock()
     {
-        LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf.AllocTensor<fp8_e4m3fn_t>();
+        LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockQue.AllocTensor<fp8_e4m3fn_t>();
         Duplicate((LocalTensor<int8_t> &)qBlockLocal, (int8_t)0, B * dimQk);
         SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
         WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
@@ -222,13 +222,13 @@ public:
             DataCopyPad(qBlockLocal, qGm, copyParams,
                         DataCopyPadParams{false, 0, 0, 0});
         }
-        qBlockBuf.EnQue(qBlockLocal);
+        qBlockQue.EnQue(qBlockLocal);
     }
 
     __aicore__ inline void CastBlockToFP32()
     {
-        LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf.DeQue<fp8_e4m3fn_t>();
-        LocalTensor<float> qBlockFP32Local = qBlockFP32Buf.AllocTensor<float>();
+        LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockQue.DeQue<fp8_e4m3fn_t>();
+        LocalTensor<float> qBlockFP32Local =         qBlockFP32Que.AllocTensor<float>();
         Duplicate(qBlockFP32Local, 0.0f, B * dimQk);
         PipeBarrier<PIPE_V>();
 
@@ -240,13 +240,13 @@ public:
             Cast<float, fp8_e4m3fn_t>(qBlockFP32Local, qBlockLocal,
                                       RoundMode::CAST_NONE, castCount);
         }
-        qBlockBuf.FreeTensor(qBlockLocal);
-        qBlockFP32Buf.EnQue(qBlockFP32Local);
+        qBlockQue.FreeTensor(qBlockLocal);
+        qBlockFP32Que.EnQue(qBlockFP32Local);
     }
 
     __aicore__ inline void CopyInScalesBulk()
     {
-        LocalTensor<float> scalesLocal = scalesBuf.AllocTensor<float>();
+        LocalTensor<float> scalesLocal = scalesQue.AllocTensor<float>();
         Duplicate(scalesLocal, 0.0f, B);
         event_t vsEvent = static_cast<event_t>(pipe.FetchEventID(HardEvent::V_S));
         SetFlag<HardEvent::V_S>(vsEvent);
@@ -263,14 +263,14 @@ public:
                 scalesLocal.SetValue(i, qscaleGm.GetValue(i * numQHeads));
             }
         }
-        scalesBuf.EnQue(scalesLocal);
+        scalesQue.EnQue(scalesLocal);
     }
 
     __aicore__ inline void AccumulateBlock()
     {
 
-        LocalTensor<float> fp32Buf = qBlockFP32Buf.DeQue<float>();
-        LocalTensor<float> scaleBuf = scalesBuf.DeQue<float>();
+        LocalTensor<float> fp32Buf = qBlockFP32Que.DeQue<float>();
+        LocalTensor<float> scaleBuf = scalesQue.DeQue<float>();
         __ubuf__ float *qFP32Ptr = (__ubuf__ float *)fp32Buf.GetPhyAddr();
         __ubuf__ float *scalePtr = (__ubuf__ float *)scaleBuf.GetPhyAddr();
 
@@ -278,17 +278,17 @@ public:
                                           static_cast<uint16_t>(S),
                                           static_cast<uint16_t>(dimQk));
 
-        scalesBuf.FreeTensor(scaleBuf);
-        qBlockFP32Buf.EnQue(fp32Buf);
+        scalesQue.FreeTensor(scaleBuf);
+        qBlockFP32Que.EnQue(fp32Buf);
     }
 
     __aicore__ inline void FlattenAndCast()
     {
-        LocalTensor<float> groupSumLocal = qBlockFP32Buf.DeQue<float>();
+        LocalTensor<float> groupSumLocal = qBlockFP32Que.DeQue<float>();
         LocalTensor<bfloat16_t> qflatLocal = outQueueQflat.AllocTensor<bfloat16_t>();
         Cast<bfloat16_t, float>(qflatLocal, groupSumLocal, RoundMode::CAST_RINT,
                                 kflatDim);
-        qBlockFP32Buf.FreeTensor(groupSumLocal);
+        qBlockFP32Que.FreeTensor(groupSumLocal);
         outQueueQflat.EnQue(qflatLocal);
     }
 
@@ -342,9 +342,9 @@ private:
 
     __aicore__ inline void InitUBBuffers()
     {
-        pipe.InitBuffer(qBlockBuf, ppNum, B * dimQk * sizeof(fp8_e4m3fn_t));
-        pipe.InitBuffer(qBlockFP32Buf, ppNum, B * dimQk * sizeof(float));
-        pipe.InitBuffer(scalesBuf, ppNum, B * numQHeads * sizeof(float));
+        pipe.InitBuffer(qBlockQue, ppNum, B * dimQk * sizeof(fp8_e4m3fn_t));
+        pipe.InitBuffer(qBlockFP32Que, ppNum, B * dimQk * sizeof(float));
+        pipe.InitBuffer(scalesQue, ppNum, B * numQHeads * sizeof(float));
         pipe.InitBuffer(outQueueQflat, ppNum, kflatDim * sizeof(bfloat16_t));
     }
 
@@ -392,9 +392,9 @@ private:
     GlobalTensor<int64_t> cuSeqLensGm;
     GlobalTensor<bfloat16_t> qflatGm;
 
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> qBlockBuf;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> qBlockFP32Buf;
-    TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> scalesBuf;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> qBlockQue;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> qBlockFP32Que;
+    TQue<QuePosition::VECIN, DOUBLE_BUFFER_DEPTH> scalesQue;
     TQue<TPosition::VECOUT, DOUBLE_BUFFER_DEPTH> outQueueQflat;
     TBuf<QuePosition::VECCALC> cuSeqLensQBuf;
 };
