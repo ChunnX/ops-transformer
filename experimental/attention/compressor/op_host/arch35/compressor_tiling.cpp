@@ -219,9 +219,16 @@ ge::graphStatus CompressorTiling::SetTemplateId()
     }
     if (socVersion_ == platform_ascendc::SocVersion::ASCEND950) {
         // 设置高性能模板
-        // Keep legacy BSH decode on the full-load template even when seq_used is
-        // provided. Only grouped decode needs the normal template to compose x_cache.
-        if (context_->layout == LayoutType::LAYOUT_BSH && context_->xCache.desc == nullptr &&
+        // Full-load supports both direct x and grouped-decode x_cache windows.
+        // Its vector grouping assigns one batch per group for the power-of-two
+        // decode batches used by the model. Other grouped batches fall back to
+        // the normal template, which supports arbitrary per-batch phase layouts.
+        const bool hasXCache = context_->xCache.desc != nullptr;
+        const bool groupedBatchSupported = !hasXCache ||
+            (baseParams_->batchSize > 0 && (baseParams_->batchSize & (baseParams_->batchSize - 1)) == 0 &&
+             baseParams_->batchSize <= aivNum_);
+        // tokenSize is the logical B * cmp_ratio size when x_cache is present.
+        if (context_->layout == LayoutType::LAYOUT_BSH && groupedBatchSupported &&
             baseParams_->seqSize <= 4 && baseParams_->tokenSize <= 256) {
             context_->templateId = TemplateId::FULL_LOAD;
         }

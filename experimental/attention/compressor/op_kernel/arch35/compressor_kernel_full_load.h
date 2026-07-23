@@ -118,6 +118,8 @@ private:
     uint32_t vec2Loop = 0;
     uint32_t kStartIdx_ = 0;
     uint32_t dealKSize_ = 0;
+    bool isExistXCache_ = false;
+    bool hasProjectionWork_ = false;
 };
 
 template <typename COMP>
@@ -145,22 +147,39 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Init(
         constInfo.aiCoreIdx = GetBlockIdx();
     }
 
+    isExistXCache_ = (xCache != nullptr);
     InitTilingData();
     // init tools
     tools_.toolParams_.seqSize = tilingData_->baseParams.seqSize;
+    tools_.toolParams_.xCacheReadSize = isExistXCache_ ? constInfo.xCacheReadSize : 0;
     tools_.toolParams_.cmpRatio = tilingData_->baseParams.cmpRatio;
     tools_.Init(startPos, seqUsed, cuSeqlens);
 
-    // 剔除尾部的无效batch
-    for (; constInfo.projectionBatchSize > 0; --constInfo.projectionBatchSize) {
-        uint32_t bSeqUsed = tools_.GetSeqLength(constInfo.projectionBatchSize - 1);
-        if (bSeqUsed > 0) {
+    // Full-load statically maps M over the complete input batch, so keep the
+    // original batch bound and detect projection work separately.
+    for (uint32_t bIdx = 0; bIdx < constInfo.projectionBatchSize; ++bIdx) {
+        uint32_t logicalSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(bIdx) :
+                                                          tools_.GetSeqLength(bIdx);
+        if (logicalSeqUsed > 0) {
+            hasProjectionWork_ = true;
             break;
         }
     }
 
+    const bool isXCacheUpdateOnly = isExistXCache_ && !hasProjectionWork_ && constInfo.xCacheUpdateBatchSize > 0;
+    if ASCEND_IS_AIV {
+        if (isXCacheUpdateOnly) {
+            ConstInfo updateOnlyConstInfo = constInfo;
+            updateOnlyConstInfo.projectionBatchSize = 0;
+            blockVec_.InitParams(updateOnlyConstInfo, tools_);
+            blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
+                           cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
+            blockVec_.InitXCacheUpdateBuffers(pipe_);
+        }
+    }
+
     // 所有batch的有效序列都为0时, 直接退出
-    if (constInfo.projectionBatchSize == 0) {
+    if (!hasProjectionWork_) {
         return;
     }
 
@@ -176,13 +195,13 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::Init(
     if ASCEND_IS_AIC {
         blockCube_.InitParams(constInfo, tools_);
         blockCube_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, 
-            stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut);
+            stateBlockTable, cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
         blockCube_.InitBuffers(pipe_);
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
     } else {
         blockVec_.InitParams(constInfo, tools_);
         blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable, 
-                        cuSeqlens, seqUsed, startPos, cmpKvOut);
+                        cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
         blockVec_.InitBuffers(pipe_);
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm, vec1ResGm, vec2InputGm);
     }
@@ -192,14 +211,20 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::InitTilingData() {
     constInfo.cmpRatio = tilingData_->baseParams.cmpRatio;
     constInfo.projectionBatchSize = tilingData_->baseParams.batchSize;
+    constInfo.xCacheUpdateBatchSize =
+        isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheUpdateBatchSize : 0;
+    constInfo.xCacheReadSize = isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheReadSize : 0;
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
     constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;
     constInfo.headDim = tilingData_->baseParams.headDim;
     constInfo.hSize = tilingData_->baseParams.hiddenSize;
-    constInfo.sSize = tilingData_->baseParams.seqSize;
+    // Full-load workspace rows follow the logical grouped window. The physical
+    // one-token BSH length remains available through tools_.toolParams_.seqSize.
+    constInfo.sSize = isExistXCache_ ? constInfo.xCacheReadSize : tilingData_->baseParams.seqSize;
     constInfo.ropeHeadDim = tilingData_->baseParams.ropeHeadDim;
     constInfo.normEps = tilingData_->baseParams.normEps;
     constInfo.stateCacheStrideDim0 = tilingData_->baseParams.stateCacheStrideDim0;
+    constInfo.xCacheSize = isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheSize : 0;
     constInfo.reciprocalD = tilingData_->baseParams.reciprocalD;
     constInfo.usedCoreNum = tilingData_->baseParams.usedCoreNum;
     
@@ -226,18 +251,16 @@ template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::SkipInvalidBatch(BatchInfo &batchInfo)
 {
     for (; batchInfo.bIdx < constInfo.projectionBatchSize; ++batchInfo.bIdx) {
-        batchInfo.seqCnt = tools_.GetSeqLength(batchInfo.bIdx);
-        if (batchInfo.seqCnt > 0) {
+        uint32_t seqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(batchInfo.bIdx) :
+                                                   tools_.GetSeqLength(batchInfo.bIdx);
+        if (seqUsed > 0) {
             break;
         }
     }
-    batchInfo.remSeqCnt = batchInfo.seqCnt;
-    if (tools_.isExistSeqUsed_) {
-        batchInfo.seqUsedCnt = tools_.GetSeqUsed(batchInfo.bIdx);
-    } else {
-        batchInfo.seqUsedCnt = batchInfo.seqCnt;
-    }
     if (batchInfo.bIdx < constInfo.projectionBatchSize) {
+        batchInfo.seqCnt = tools_.GetSeqLength(batchInfo.bIdx);
+        batchInfo.remSeqCnt = batchInfo.seqCnt;
+        batchInfo.seqUsedCnt = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(batchInfo.bIdx) : batchInfo.seqCnt;
         batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
         batchInfo.sIdx = 0;
         batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
@@ -382,13 +405,14 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::CalcV1Params(Vec1RunInfo 
     vec1Info.c1v1DbIdx = (vec1Loop++ & (constInfo.dbWorkspaceRatio - 1));
     vec1Info.v1v2DbIdx = (vec2Loop & (constInfo.dbWorkspaceRatio - 1));
     for (uint32_t bIdx = 0; bIdx < constInfo.projectionBatchSize; ++bIdx) {
-        uint64_t bSeqCnt = tools_.GetSeqLength(bIdx);
-        if (bSeqCnt == 0) {
+        uint64_t bSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(bIdx) : tools_.GetSeqLength(bIdx);
+        if (bSeqUsed == 0) {
             continue;
         }
+        uint64_t bSeqCnt = tools_.GetSeqLength(bIdx);
         uint64_t bStartPos = tools_.GetStartPos(bIdx);
         vec1Info.dealTcNum += (bStartPos + bSeqCnt + constInfo.cmpRatio - 1) / constInfo.cmpRatio - bStartPos / constInfo.cmpRatio;
-        vec1Info.dealScSize += (bStartPos + bSeqCnt) / constInfo.cmpRatio - bStartPos / constInfo.cmpRatio;
+        vec1Info.dealScSize += (bStartPos + bSeqUsed) / constInfo.cmpRatio - bStartPos / constInfo.cmpRatio;
     }
 }
 
@@ -443,8 +467,17 @@ __aicore__ inline void CompressorKernelFullLoad<COMP>::UpdateVec2Info(
 template <typename COMP>
 __aicore__ inline void CompressorKernelFullLoad<COMP>::Process()
 {
+    if (isExistXCache_ && constInfo.xCacheUpdateBatchSize > 0) {
+        if ASCEND_IS_AIV {
+            blockVec_.UpdateXCache();
+        }
+        if (hasProjectionWork_) {
+            // Full-load cube reads the ring cache after AIV persists current x.
+            SyncAll();
+        }
+    }
     // 所有batch的有效序列都为0时, 直接退出
-    if (constInfo.projectionBatchSize == 0) {
+    if (!hasProjectionWork_) {
         return;
     }
     AllocEventID();

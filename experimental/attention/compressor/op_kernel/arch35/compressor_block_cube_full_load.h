@@ -41,6 +41,8 @@ public:
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut);
     __aicore__ inline void InitBuffers(TPipe *pipe);
     __aicore__ inline void InitGlobalBuffers(const GlobalTensor<MM1_OUT_T>& kvMm1ResGm, const GlobalTensor<MM1_OUT_T>& scoreMm1ResGm);
@@ -70,6 +72,7 @@ private:
 
     // GM
     GlobalTensor<X_T> xGm_;
+    GlobalTensor<X_T> xCacheGm_;
     GlobalTensor<X_T> wkvGm_;
     GlobalTensor<X_T> wgateGm_;
     GlobalTensor<MM1_OUT_T>kvMm1ResGm;
@@ -78,6 +81,7 @@ private:
     GlobalTensor<int32_t> sequsedGm_;
     GlobalTensor<int32_t> startPosGm_;
     bool isExistSeqUsed = false;
+    bool isExistXCache_ = false;
 
     // =================================L1 Buffer=================================
     static constexpr uint32_t L1_X_SIZE = 128 * 1024;
@@ -142,9 +146,16 @@ template <typename COMP> __aicore__ inline void CompressorBlockCubeFullLoad<COMP
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut)
 {
+    (void)xCacheSlotMapping;
     xGm_.SetGlobalBuffer((__gm__ X_T *)x);
+    isExistXCache_ = (xCache != nullptr);
+    if (isExistXCache_) {
+        xCacheGm_.SetGlobalBuffer((__gm__ X_T *)xCache);
+    }
     wkvGm_.SetGlobalBuffer((__gm__ X_T *)wKv);
     wgateGm_.SetGlobalBuffer((__gm__ X_T *)wGate);
     startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
@@ -235,7 +246,66 @@ __aicore__ inline void CompressorBlockCubeFullLoad<COMP>::CopyXGmToL1(LocalTenso
     uint32_t dValue = kBase;  // 拷贝的列数kBase
     uint32_t srcDValue = constInfo_.hSize;
     uint32_t dstNzC0Stride = (copySeqCnt + 15) / 16 * 16;    // 1行变2行的行方向的偏移，需要16对齐
-    CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
+    if (!isExistXCache_) {
+        CopySingleMatrixNDToNZ(xL1Tensor[xL1Offset], xGm_[gmOffset], nValue, dValue, srcDValue, dstNzC0Stride);
+        return;
+    }
+
+    // Full-load flattens [B, logical_seq, H] on M. Rebuild every batch-local
+    // segment from the ring cache and the current physical BSH token.
+    uint32_t localRow = 0;
+    uint32_t remainRows = copySeqCnt;
+    uint32_t curB = constInfo_.mStart / constInfo_.sSize;
+    uint32_t curS = constInfo_.mStart % constInfo_.sSize;
+    while (remainRows > 0 && curB < constInfo_.projectionBatchSize) {
+        uint32_t curSeqLen = tools_.GetSeqLength(curB);
+        uint32_t curSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(curB) : curSeqLen;
+        uint32_t segmentRows = min(remainRows, curSeqLen - curS);
+        uint32_t segmentL1Offset = xL1Offset + localRow * (32 / sizeof(X_T));
+        uint32_t currentInputSeqSize =
+            curSeqUsed > 0 ? min(tools_.toolParams_.seqSize, curSeqUsed) : 0;
+        uint32_t currentStart = curSeqUsed - currentInputSeqSize;
+        uint32_t sliceStart = curS;
+        uint32_t sliceEnd = curS + segmentRows;
+        uint32_t cacheCopyEnd = curSeqUsed > 0 ? min(sliceEnd, currentStart) : sliceEnd;
+        if (sliceStart < cacheCopyEnd) {
+            uint32_t cacheCopyRows = cacheCopyEnd - sliceStart;
+            uint64_t cacheStart = (tools_.GetStartPos(curB) + sliceStart) % constInfo_.xCacheSize;
+            uint32_t firstCopySeqCnt =
+                min(cacheCopyRows, constInfo_.xCacheSize - static_cast<uint32_t>(cacheStart));
+            uint64_t firstGmOffset =
+                (curB * constInfo_.xCacheSize + cacheStart) * constInfo_.hSize + hIdx;
+            CopySingleMatrixNDToNZ(xL1Tensor[segmentL1Offset], xCacheGm_[firstGmOffset], firstCopySeqCnt,
+                                   dValue, srcDValue, dstNzC0Stride);
+            if (firstCopySeqCnt < cacheCopyRows) {
+                uint64_t secondGmOffset = curB * constInfo_.xCacheSize * constInfo_.hSize + hIdx;
+                uint32_t secondL1Offset = segmentL1Offset + firstCopySeqCnt * (32 / sizeof(X_T));
+                CopySingleMatrixNDToNZ(xL1Tensor[secondL1Offset], xCacheGm_[secondGmOffset],
+                                       cacheCopyRows - firstCopySeqCnt, dValue, srcDValue, dstNzC0Stride);
+            }
+        }
+        uint32_t currentCopyStart = max(sliceStart, currentStart);
+        uint32_t currentCopyEnd = min(sliceEnd, curSeqUsed);
+        if (currentCopyStart < currentCopyEnd) {
+            uint32_t currentLocalRow = currentCopyStart - sliceStart;
+            uint32_t currentXRow = currentCopyStart - currentStart;
+            uint32_t currentCopyRows = currentCopyEnd - currentCopyStart;
+            uint32_t currentL1Offset = segmentL1Offset + currentLocalRow * (32 / sizeof(X_T));
+            uint64_t currentGmOffset =
+                (static_cast<uint64_t>(curB) * tools_.toolParams_.seqSize + currentXRow) *
+                    constInfo_.hSize + hIdx;
+            CopySingleMatrixNDToNZ(xL1Tensor[currentL1Offset], xGm_[currentGmOffset], currentCopyRows,
+                                   dValue, srcDValue, dstNzC0Stride);
+        }
+
+        localRow += segmentRows;
+        remainRows -= segmentRows;
+        curS += segmentRows;
+        if (curS >= curSeqLen) {
+            curB++;
+            curS = 0;
+        }
+    }
 }
 
 template <typename COMP>

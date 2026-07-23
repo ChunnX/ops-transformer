@@ -10,7 +10,9 @@ grouped decode 的目标是在 decode 阶段将连续 `cmp_ratio` 个 token 的�
 
 - 分配并初始化每个 Attention 层自己的 `x_cache`。
 - 每轮 decode 传入当前 token `x`、`x_cache`、`x_cache_slot_mapping`、`start_pos`、`seqused` 和 `x_cache_update`。
-- 同一 C4 层内 KV Compressor 与 LI Compressor 使用相同 `x` 和同一份 `x_cache`；KV/HCA 调用负责更新，LI 调用只读。
+- HCA Compressor 层使用各自独立的 `x_cache`。同一 KV/LI 层内，KV
+  Compressor 与 LI Compressor 使用相同 `x` 和同一份 `x_cache`：HCA/KV
+  调用是各自 cache 的写入方，LI 调用只读同层 KV 已更新的 cache。
 
 算子侧负责：
 
@@ -77,13 +79,28 @@ arch35 tiling 在 `op_host/arch35/compressor_tiling.cpp` 中处理 grouped decod
 
    中间维 `cache_len` 由模型选择，可以是 `cmp_ratio` 或更深的 ring cache。
 
+5. arch35 grouped decode 可以选择 Full-Load 模板。除原有 BSH、物理
+   `seq_size <= 4` 和逻辑 `token_size <= 256` 条件外，grouped Full-Load
+   还要求 batch 为不超过 AIV 核数的 2 的幂。该约束保证 Full-Load vector
+   的静态分组仍是一组对应一个 batch，使不同 batch 的压缩 phase 可以独立跳过。
+   不满足条件时继续使用 Normal 模板。
+
+   常用场景中：
+
+   - C4、BS=16 的逻辑 `token_size=16*4=64`，进入 Full-Load。
+   - C128、BS=16 的逻辑 `token_size=16*128=2048`，回退 Normal。
+   - C128、BS=1/2 的逻辑 token 数不超过 256，可以进入 Full-Load。
+
 ## Kernel 流程
 
-arch35 `CompressorKernel` 中，`xCache != nullptr` 表示启用 grouped decode x_cache 路径。不存在 dummy x_cache 兼容逻辑。
+arch35 的 Normal `CompressorKernel` 和 `CompressorKernelFullLoad` 都以
+`xCache != nullptr` 表示启用 grouped decode x_cache 路径。不存在 dummy
+x_cache 兼容逻辑。
 
 ### 更新 x_cache
 
-`op_kernel/arch35/compressor_block_vec.h` 的 `UpdateXCache()` 在 AIV 侧执行当前 token 写入：
+Normal 路径的 `compressor_block_vec.h` 与 Full-Load 路径的
+`compressor_block_vec_full_load.h` 都在 AIV 侧执行当前 token 写入：
 
 ```text
 slot = x_cache_slot_mapping[b]
@@ -120,6 +137,21 @@ window_start = complete_group_end - xCacheReadSize
 ```
 
 kernel 从 ring cache 中按 `window_start % xCacheSize` 读取，窗口跨 ring 尾部时拆成两段拷贝。随后复用原有 Matmul、state cache 更新、softmax/reduce、RMSNorm/Rope 流程。
+
+### Full-Load 的静态 M 处理
+
+Full-Load 的 host tiling 和 workspace 按输入的完整 `B * ratio` 静态展开 M
+轴，因此 kernel 不裁剪 `projectionBatchSize`。kernel 另行扫描各 batch 的
+`GetSeqUsed()`，判断本轮是否存在投影工作：
+
+- 所有 batch 都未跨边界时，AIV 只执行 `UpdateXCache()`，AIC 不进入投影。
+- 存在 active batch 时，Cube 从每个 batch 的 ring cache 与当前 `x` 组合出
+  完整逻辑窗口。
+- Vector 根据每个 batch 的逻辑 `GetSeqUsed()` 跳过 inactive batch 的
+  state cache 与输出处理。
+
+这样既保留 Full-Load 既有的静态 M/workspace 布局，也支持一个 batch 内各
+序列 decode phase 不一致的场景。
 
 ## state cache 语义
 
@@ -161,6 +193,17 @@ state_offset = block_id * stateCacheStrideDim0 + inner_offset
 - `op_kernel/arch35/compressor_block_cube.h`
   - cube 侧从 x_cache 读取完整压缩窗口。
 
+- `op_kernel/arch35/compressor_kernel_full_load.h`
+  - 在 Full-Load 中区分 x_cache 更新工作与投影工作。
+  - update-only 轮次只初始化并运行 AIV 更新路径。
+
+- `op_kernel/arch35/compressor_block_vec_full_load.h`
+  - 实现 Full-Load 的 x_cache 当前 token 写入。
+  - 按 batch 跳过未跨压缩边界的 state cache 与输出处理。
+
+- `op_kernel/arch35/compressor_block_cube_full_load.h`
+  - 从 ring cache 与当前物理 `x` 组合 Full-Load 的静态 M 输入。
+
 - `op_kernel/arch35/compressor_tools.h`
   - 按 batch 判断 grouped decode 是否跨压缩边界。
   - 为 active batch 返回对齐后的窗口起点和 `xCacheReadSize`。
@@ -181,6 +224,13 @@ cd /home/jinxh/deepseek-v4/ops-transformer/experimental/attention/compressor/tes
 bash run_grouped_decode_update_only.sh
 bash run_grouped_decode_compress.sh
 ```
+
+现有 grouped decode 用例的 shape 同时覆盖 Full-Load 新分支：
+
+- update-only 的 C4/C128、BS=2 用例进入 Full-Load。
+- active read 的 C4/C128、BS=1 用例进入 Full-Load，并与 legacy full-x
+  输出及 state cache 对比。
+- 模型常用 C128、BS=16 仍由 Normal 路径覆盖。
 
 workspace-only ACLNN 示例：
 
