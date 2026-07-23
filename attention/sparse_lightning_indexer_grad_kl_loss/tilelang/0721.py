@@ -614,17 +614,23 @@ def tilelang_grad_kl_loss_single_kernel(
                     else:
                         T.wait_cross_flag(V0_TO_C1_SY_FLAGS[1])
 
+                    # Prime the single KeyIndex L1 slot.  The following
+                    # iteration prefetches the next (K, d) tile after MTE1
+                    # has consumed this one into L0B.
+                    first_k_start = k_outer * S2_WORKSPACE
+                    T.wait_flag("mte1", "mte2", 1)
+                    T.copy(
+                        GatherKeyIndex_ws[
+                            bz_task, s1_id,
+                            first_k_start:first_k_start + N_SPLIT,
+                            0:K_SPLIT,
+                        ],
+                        c1_ki_l1,
+                    )
+                    T.set_flag("mte2", "mte1", 1)
                     for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
                         k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
                         for d_idx in T.serial(d_num_query_index):
-                            T.wait_flag("mte1", "mte2", 1)
-                            T.copy(
-                                GatherKeyIndex_ws[bz_task, s1_id,
-                                                  k_start:k_start + N_SPLIT,
-                                                  d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT],
-                                c1_ki_l1,
-                            )
-                            T.set_flag("mte2", "mte1", 1)
                             T.wait_flag("m", "mte1", 1)
                             T.wait_flag("mte2", "mte1", 1)
                             T.copy(
@@ -635,6 +641,33 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.copy(c1_ki_l1, c1_ki_l0b, transpose=True)
                             T.set_flag("mte1", "mte2", 1)
                             T.set_flag("mte1", "m", 1)
+
+                            if d_idx + 1 < d_num_query_index:
+                                T.wait_flag("mte1", "mte2", 1)
+                                T.copy(
+                                    GatherKeyIndex_ws[
+                                        bz_task, s1_id,
+                                        k_start:k_start + N_SPLIT,
+                                        (d_idx + 1) * K_SPLIT:
+                                        (d_idx + 2) * K_SPLIT,
+                                    ],
+                                    c1_ki_l1,
+                                )
+                                T.set_flag("mte2", "mte1", 1)
+                            if d_idx + 1 >= d_num_query_index:
+                                if k_inner + 1 < S2_WORKSPACE // N_SPLIT:
+                                    T.wait_flag("mte1", "mte2", 1)
+                                    T.copy(
+                                        GatherKeyIndex_ws[
+                                            bz_task, s1_id,
+                                            k_start + N_SPLIT:
+                                            k_start + 2 * N_SPLIT,
+                                            0:K_SPLIT,
+                                        ],
+                                        c1_ki_l1,
+                                    )
+                                    T.set_flag("mte2", "mte1", 1)
+
                             T.wait_flag("mte1", "m", 1)
                             T.wait_flag("fix", "m", 1)
                             T.mma(c1_qi_l0a, c1_ki_l0b, c1_sy_l0c, init=(d_idx == 0))
@@ -1271,21 +1304,21 @@ def tilelang_grad_kl_loss_single_kernel(
 
             T.wait_flag("mte2", "mte1", 6)
             for s1_id in T.serial(s1_begin_task, s1_end_task):
-                # Prime the single L1 slot.  Each following iteration starts
-                # with this tile ready and prefetches its successor while the
-                # current tile is in MMA/FIX.
-                T.wait_flag("mte1", "mte2", 2)
-                T.copy(
-                    reluGradRes[bz_task, s1_id, 0:Nidx1, 0:n_block],
-                    c2_rg_l1,
-                )
-                T.copy(
-                    GatherKeyIndex_ws[bz_task, s1_id, 0:n_block,
-                                      0:DQueryIndex],
-                    c2_gki_l1,
-                )
-                T.set_flag("mte2", "mte1", 2)
                 for n_idx in T.serial(n_num):
+                    T.wait_flag("mte1", "mte2", 2)
+                    T.copy(
+                        reluGradRes[bz_task, s1_id, 0:Nidx1,
+                                    n_idx * n_block:(n_idx + 1) * n_block],
+                        c2_rg_l1,
+                    )
+                    T.copy(
+                        GatherKeyIndex_ws[bz_task, s1_id,
+                                          n_idx * n_block:(n_idx + 1) * n_block,
+                                          0:DQueryIndex],
+                        c2_gki_l1,
+                    )
+                    T.set_flag("mte2", "mte1", 2)
+
                     T.wait_flag("m", "mte1", 2)
                     T.wait_flag("m", "mte1", 3)
                     T.wait_flag("mte2", "mte1", 2)
@@ -1296,28 +1329,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("mte1", "mte2", 2)
                     T.set_flag("mte1", "m", 2)
                     T.set_flag("mte1", "m", 3)
-
-                    if n_idx + 1 < n_num:
-                        # L1 is no longer read once the four L1->L0 copies
-                        # complete.  Refill it before the current MMA/FIX
-                        # sequence so MTE2 overlaps Cube execution.
-                        T.wait_flag("mte1", "mte2", 2)
-                        T.copy(
-                            reluGradRes[
-                                bz_task, s1_id, 0:Nidx1,
-                                (n_idx + 1) * n_block:(n_idx + 2) * n_block,
-                            ],
-                            c2_rg_l1,
-                        )
-                        T.copy(
-                            GatherKeyIndex_ws[
-                                bz_task, s1_id,
-                                (n_idx + 1) * n_block:(n_idx + 2) * n_block,
-                                0:DQueryIndex,
-                            ],
-                            c2_gki_l1,
-                        )
-                        T.set_flag("mte2", "mte1", 2)
 
                     T.wait_flag("mte1", "m", 2)
                     T.wait_flag("fix", "m", 2)
