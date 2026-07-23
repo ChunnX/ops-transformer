@@ -18,8 +18,8 @@ def preload_sparse_flash_mla_extension():
     torch_ext = os.path.join(repo_root, "torch_extension")
     if torch_ext not in sys.path:
         sys.path.insert(0, torch_ext)
-    device_id = int(os.getenv("ASCEND_RT_VISIBLE_DEVICES", "0").split(",")[0])
-    torch_npu.npu.set_device(device_id)
+    # ASCEND_RT_VISIBLE_DEVICES remaps physical cards; always use logical device 0.
+    torch_npu.npu.set_device(0)
     import importlib.util
     import types
     if "cann_ops_transformer.ops.sparse_flash_mla" not in sys.modules:
