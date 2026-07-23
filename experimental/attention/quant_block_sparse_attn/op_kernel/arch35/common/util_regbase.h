@@ -290,7 +290,6 @@ struct RunInfo {
     /* GS1不合轴场景，外层循环是B、N2、G，内层循环S1，headNumRatio = gSize */                                          \
     uint32_t headNumRatio;                                                                                             \
     bool rsvd1;                                                                                                        \
-    bool isSoftmaxLseEnable;                                                                                           \
     int64_t queryRightPaddingSize;                                                                                     \
     int64_t kvRightPaddingSize;                                                                                        \
     /* 后量化 */                                                                                                       \

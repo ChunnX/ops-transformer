@@ -56,8 +56,6 @@ __global__ __aicore__ void quant_block_sparse_attn(
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；当前主逻辑仍通过 tilingData 读取运行期字段。
-    (void)RETURN_SOFTMAX_LSE;
     (void)seqUsedQ;
     (void)seqUsedKv;
 
@@ -72,5 +70,5 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
                 S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
-                bsaIsPa, bsaUseDn);
+                RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
 }
