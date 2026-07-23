@@ -478,7 +478,7 @@ static ge::graphStatus ValidateSparseInfo(gert::TilingContext* context,
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus GetPlatformInfo(gert::TilingContext* context, const string& opName, AiCoreParams aicoreParams_)
+static ge::graphStatus GetPlatformInfo(gert::TilingContext* context, const string& opName, AiCoreParams& aicoreParams_)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
     uint64_t l2CacheSize;
