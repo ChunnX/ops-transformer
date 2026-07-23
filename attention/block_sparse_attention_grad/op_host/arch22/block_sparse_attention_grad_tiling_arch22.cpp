@@ -483,20 +483,21 @@ ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
         gradSize_ = batch_ * numHeads_ * maxQSeqlen_ * ONEBLOCK_FLOAT_NUM * sizeof(float);
     }
 
-    workSpaceSize_ = sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_; // data 区(不含 libapi)
+    workSpaceSize_ = libapiSize_ + sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_;
 
-    // deterministic: 追加每核私有 dK/dV 缓冲 + run info 缓冲(放在 data 之后, libapi 之前——params.workspace 可用区)
+    // deterministic: deter 缓冲追加到末尾(保持原始 libapi+data 布局不变, 避免破坏 CANN libapi)
     if (deterministic_) {
-        constexpr uint64_t DETER_CORE_INFO_NUM = 8; // int64_t: bIdx/kvStart/curKvSize/qHead/group/kvLocalOff/sOffset/valid
+        constexpr uint64_t DETER_CORE_INFO_NUM = 8;
         constexpr uint64_t WORKSPACE_ALIGN = 256;
-        constexpr uint64_t DETER_SLOTS = 1; // 当前 per-round 实现: 每核 1 个 slot 逐轮复用(40 轮批缓冲为后续优化)
+        constexpr uint64_t DETER_SLOTS = 1;
         uint64_t perTile = CeilDiv(static_cast<uint64_t>(BASIC_BLOCK_SIZE) * headDim_ * sizeof(float), WORKSPACE_ALIGN) * WORKSPACE_ALIGN;
         perCoreDkTileSize_ = perTile;
-        dkDeterGmSize_ = static_cast<uint64_t>(aicNum_) * DETER_SLOTS * perTile;   // [aicNum][1 slot][perTile]
+        dkDeterGmSize_ = static_cast<uint64_t>(aicNum_) * DETER_SLOTS * perTile;
         dvDeterGmSize_ = dkDeterGmSize_;
         deterCoreInfoGmSize_ = static_cast<uint64_t>(aicNum_) * DETER_SLOTS * DETER_CORE_INFO_NUM * sizeof(int64_t);
-        // deter 紧跟 data 区, libapi 放最后
-        uint64_t base = (workSpaceSize_ + WORKSPACE_ALIGN - 1) / WORKSPACE_ALIGN * WORKSPACE_ALIGN;
+        // deter 紧跟 data 区末尾(data 在 offset 0, 与 libapi 虚拟区重叠; deter 必须在 backed 区)
+        uint64_t dataEnd = sOutSize_ + dPOutSize_ + dQOutSize_ + dKOutSize_ + dVOutSize_ + gradSize_;
+        uint64_t base = (dataEnd + WORKSPACE_ALIGN - 1) / WORKSPACE_ALIGN * WORKSPACE_ALIGN;
         dkDeterGmOffset_ = base;
         base += dkDeterGmSize_;
         dvDeterGmOffset_ = base;
@@ -505,8 +506,6 @@ ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
         base += deterCoreInfoGmSize_;
         workSpaceSize_ = base;
     }
-
-    workSpaceSize_ += libapiSize_; // libapi 放最后
 
     context->GetWorkspaceSizes(1)[0] = workSpaceSize_;
     

@@ -436,3 +436,37 @@ dQ 跨核无碰撞，`blockMmad2` 保持 `isAtomicAdd=true` 写共享 `gDq`，de
 - ✅ 默认关闭（`GetDeterministic()==1`，框架默认 `int32_max`≠1）。
 - ⏳ **确定性验证待补**：当前 examples 用例 `numHeads=1, kvHeads=1`（groupSize=1，无 GQA 跨核碰撞），deter 与非 deter 结果一致但未触发非确定性场景。需补 GQA 用例（`numHeads>kvHeads`）验证 dK/dV 多次逐 bit 一致。
 - ⏳ **40 轮批缓冲**：当前为 per-round（1 slot 复用），后续升级为 40 轮批缓冲降 SyncAll 频率。
+
+---
+
+## 11. GQA 正确性验证与根因（bsag_gqa_bnsd.py）
+
+用 `bsag_gqa_bnsd.py`（B=10,N1=12,kvHeads=4→groupSize=3，npu:7，`torch.use_deterministic_algorithms(True)` 激活 `GetDet=1`）验证：
+
+### 结果
+- ✅ **逐 bit 确定性达成**：3 次运行 dK/dV 误差模式完全一致（bit-identical）。
+- ✅ **dQ 正确**（True，未走聚合）。
+- ✅ **cube 正确写私有缓冲**（no-op 聚合时 dK/dV 全 0 → cube 未碰共享 gDk）。
+- ❌ **dK/dV 正确性 bug**：聚合开启时 dK/dV 错误（abs diff 183 vs golden 0.04，混合正确小值与错误大值如 11.3）。
+
+### 根因（确认）
+**`SyncAll<false>` 是按核心类型（per-type）同步，不跨 AIC↔AIV**：
+- 证明：非 deter 路径 AIV 的 VecPre `SyncAll<false>`（line 620）若是全局的，AIC 无匹配 SyncAll 会死锁；但非 deter 正常运行 → `SyncAll<false>` 是 per-type。
+- 后果：deter 的 AIV 聚合在 `SyncAll#1` 后读私有缓冲，但 `SyncAll#1` 只同步 AIV 核，不等 AIC 的 mmad3（私有写）完成 → AIV 读到 stale/未初始化私有数据 → dK/dV 错误。
+- 旁证：清零私有缓冲后仍出垃圾（183），说明 AIV 读到的不是 cube 写的正确数据（时序未对齐）。
+
+### 修复方向（待实现）
+用**跨核 flag**（`CrossCoreSetFlag`/`CrossCoreWaitFlag`，参考现有 CUBE2VEC/VEC2CUBE 机制）做 AIC↔AIV 同步：
+1. AIC mmad3 写私有后 → `CrossCoreSetFlag(DETER_C2V)`（私有就绪）。
+2. AIV 聚合前 → `CrossCoreWaitFlag(DETER_C2V)`（等私有就绪）→ 读私有 → 聚合 → `CrossCoreSetFlag(DETER_V2C)`（聚合完成）。
+3. AIC 下一轮前 → `CrossCoreWaitFlag(DETER_V2C)`（等聚合完成，避免覆盖 slot）。
+
+**挑战**：聚合需读**所有 AIC 核**的私有（GQA 同组跨核求和），但跨核 flag 是 per-block（AIC↔其 AIV）。需：
+- (a) 每核 AIV 只聚合本 block 私有 + 跨 block 用共享 gDk 原子加（但跨 AIV 顺序不确定 → 破坏确定性）；或
+- (b) 用全局跨类型同步原语（若 CANN 提供）；或
+- (c) 改用「同组 Q 头绑核」方案（(B)）从根本上避免跨核聚合。
+
+### 已完成的调试修复（保留）
+- runInfo 改用 DataCopy(DMA) 读 UB 再 GetValue（避免标量 GM 读不一致）。
+- kv 行划分修正（AIV0:[0,half) AIV1:[half,curKvSize) 无重叠）。
+- 聚合循环用 `deterLaunchedAic`（实际启动核数）。
