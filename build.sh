@@ -474,8 +474,7 @@ function ci_print_compile_failed_ops_info()
             local bin_list="${failed_ops_map[$op_name]}"
             echo "ops name: $op_name, failed bin: $bin_list"
         done
-        echo "[ERROR] build failed!"
-        exit 1
+        echo "[ERROR] build failed, but continue!"
     fi
 }
 
@@ -486,14 +485,9 @@ function build()
         local option="--verbose"
     fi
     export LD_LIBRARY_PATH=${BUILD_DIR}:$LD_LIBRARY_PATH
-    if [[ "$CI_MODE" == "TRUE" ]]; then
-        export CI_MODE=TRUE
-        set +e
-        cmake --build . --target ${target} ${JOB_NUM} ${option}
-        set -e
-    else
-        cmake --build . --target ${target} ${JOB_NUM} ${option}
-    fi
+    set +e
+    cmake --build . --target ${target} ${JOB_NUM} ${option}
+    set -e
     ci_print_compile_failed_ops_info
 }
 

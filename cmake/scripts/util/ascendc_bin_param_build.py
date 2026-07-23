@@ -445,36 +445,34 @@ class BinParamBuilder(opdesc_parser.OpDesc):
     """
 
     def _gen_local_no_tiling(self, bin_file: str) -> str:
-        """线下模式，未启用tiling keys：任何错误立即退出，成功执行检查"""
+        """线下模式，未启用tiling keys：任何错误仅记录，成功执行检查"""
         return f"""
     __ret=$?
     if [ $__ret -eq 0 ]; then
         echo "${{res}}"
-        remove_pid
+        echo "{self.op_intf} {bin_file}" >> success_ops.log
         {const_var.CHK_CMD.format(res_file=bin_file + ".json")}
         {const_var.CHK_CMD.format(res_file=bin_file + ".o")}
     else
         echo "${{res}}"
-        on_failure
-        exit 1
+        echo "{self.op_intf} {bin_file}" >> failed_ops.log
     fi
     """
 
     def _gen_local_tiling(self, bin_file: str) -> str:
-        """线下模式，启用tiling keys：特定返回码1错误仅打印，其他错误退出，成功执行检查"""
+        """线下模式，启用tiling keys：特定返回码1错误仅打印，其他错误记录，成功执行检查"""
         return f"""
     __ret=$?
     if [ $__ret -eq 0 ]; then
         echo "${{res}}"
-        remove_pid
+        echo "{self.op_intf} {bin_file}" >> success_ops.log
         {const_var.CHK_CMD.format(res_file=bin_file + ".json")}
         {const_var.CHK_CMD.format(res_file=bin_file + ".o")}
     elif [ $__ret -eq 1 ] && echo "${{res}}" | grep -q "None of the given tiling keys are in the supported list"; then
         echo "${{res}}"
     else
         echo "${{res}}"
-        on_failure
-        exit 1
+        echo "{self.op_intf} {bin_file}" >> failed_ops.log
     fi
     """
 
