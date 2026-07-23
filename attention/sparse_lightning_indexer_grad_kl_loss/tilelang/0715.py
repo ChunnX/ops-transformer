@@ -216,8 +216,9 @@ def tilelang_grad_kl_loss_single_kernel(
         SoftmaxMax: T.Tensor((B, N2, S1, G), calc_dtype),               # 8
         SoftmaxSum: T.Tensor((B, N2, S1, G), calc_dtype),               # 9
         dQueryIndexAccum: T.Tensor((B, S1, Nidx1, DQueryIndex), calc_dtype), # 10 (input, host-zeroed: atomic_add target)
-        # === INPUT (11) — dKeyIndex fp32 累加器，host 清零后传入（atomic_add target，照搬 dQueryIndexAccum 模式）===
-        dKeyIndex: T.Tensor((B, S2, Nidx2, DQueryIndex), calc_dtype),   # 11 (input, host-zeroed)
+        # === INPUT (11) — flattened FP32 dKey accumulator ===
+        # Flattening [B, S2, Nidx2] keeps final Vector2 DMA contiguous.
+        dKeyIndex: T.Tensor((B * S2 * Nidx2, DQueryIndex), calc_dtype), # 11 (input, host-zeroed)
         # === CALLER-MANAGED WORKSPACES (12-23) ===
         GatherKey_ws: T.Tensor((B, S1, K, DQuery), input_dtype),        # 12
         GatherKeyRope_ws: T.Tensor((B, S1, K, d_rope), input_dtype),    # 13
@@ -233,7 +234,7 @@ def tilelang_grad_kl_loss_single_kernel(
         LossPartial: T.Tensor((loss_partial_size,), calc_dtype),        # 23
         # === OUTPUTS (-4..-1) ===
         dQueryIndex: T.Tensor((B, S1, Nidx1, DQueryIndex), input_dtype), # 24
-        dKeyIndexOut: T.Tensor((B, S2, Nidx2, DQueryIndex), input_dtype), # 25
+        dKeyIndexOut: T.Tensor((B * S2 * Nidx2, DQueryIndex), input_dtype), # 25
         dWeightOut: T.Tensor((B, S1, Nidx1), weight_output_dtype),      # 26
         LossOut: T.Tensor((1,), calc_dtype),                             # 27
     ):
@@ -845,9 +846,9 @@ def tilelang_grad_kl_loss_single_kernel(
                                     idx = SparseIndices[bz, s1_row, 0, k_id]
                                     if idx >= 0:
                                         if cur == 0:
-                                            T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
+                                            T.tile.atomic_add(dKeyIndex[(bz * S2 + idx) * Nidx2, 0], dk_chunk_0)
                                         if cur == 1:
-                                            T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
+                                            T.tile.atomic_add(dKeyIndex[(bz * S2 + idx) * Nidx2, 0], dk_chunk_1)
                                     T.set_flag("mte3", "mte2", cur + 5)
 
                                     next_k = k_id + 1
@@ -877,9 +878,9 @@ def tilelang_grad_kl_loss_single_kernel(
                                     idx = SparseIndices[bz, s1_row, 0, k_id]
                                     if idx >= 0:
                                         if cur == 0:
-                                            T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_0)
+                                            T.tile.atomic_add(dKeyIndex[(bz * S2 + idx) * Nidx2, 0], dk_chunk_0)
                                         if cur == 1:
-                                            T.tile.atomic_add(dKeyIndex[bz, idx, 0, 0], dk_chunk_1)
+                                            T.tile.atomic_add(dKeyIndex[(bz * S2 + idx) * Nidx2, 0], dk_chunk_1)
                                     T.set_flag("mte3", "mte2", cur + 5)
 
                                     next_k = k_id + 1
@@ -928,29 +929,76 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.set_flag("mte3", "mte2", 0)
                 T.wait_flag("mte3", "mte2", 0)
 
-                # FP32 dKey accumulator -> output after all atomic scatters.
-                dk_fp32_ub = T.alloc_ub((1, DQueryIndex), calc_dtype)
-                dk_out_ub = T.alloc_ub((1, DQueryIndex), input_dtype)
+                # Official Vector2 final stage: contiguous T2 partitions,
+                # 64xD batches, and separate ping-pong ownership for the
+                # MTE2 input and MTE3 output buffers.
+                dk_batch_rows = 64
+                dk_fp32_db = T.alloc_ub((2, dk_batch_rows, DQueryIndex), calc_dtype)
+                dk_out_db = T.alloc_ub((2, dk_batch_rows, DQueryIndex), input_dtype)
                 dk_item_count = B * S2 * Nidx2
-                dk_iters_per_aiv = ceil_div(dk_item_count, total_aiv_num)
-                T.set_flag("mte3", "mte2", 1)
-                for dk_iter in T.serial(dk_iters_per_aiv):
-                    dk_item = dk_iter * total_aiv_num + aiv_id
-                    if dk_item < dk_item_count:
-                        dk_bz = dk_item // (S2 * Nidx2)
-                        dk_local = dk_item % (S2 * Nidx2)
-                        dk_s2 = dk_local // Nidx2
-                        dk_nidx = dk_local % Nidx2
-                        T.wait_flag("mte3", "mte2", 1)
-                        T.copy(dKeyIndex[dk_bz, dk_s2, dk_nidx:dk_nidx + 1, 0:DQueryIndex], dk_fp32_ub)
-                        T.set_flag("mte2", "v", 1)
-                        T.wait_flag("mte2", "v", 1)
-                        T.tile.cast(dk_out_ub, dk_fp32_ub, "CAST_RINT", DQueryIndex)
-                        T.set_flag("v", "mte3", 1)
-                        T.wait_flag("v", "mte3", 1)
-                        T.copy(dk_out_ub, dKeyIndexOut[dk_bz, dk_s2, dk_nidx:dk_nidx + 1, 0:DQueryIndex])
-                        T.set_flag("mte3", "mte2", 1)
-                T.wait_flag("mte3", "mte2", 1)
+                dk_rows_per_aiv = ceil_div(dk_item_count, total_aiv_num)
+                dk_start = T.min(aiv_id * dk_rows_per_aiv, dk_item_count)
+                dk_end = T.min(dk_start + dk_rows_per_aiv, dk_item_count)
+                dk_batch_count = ceil_div(dk_rows_per_aiv, dk_batch_rows)
+
+                # V_MTE2: input slot available for GM refill.
+                # MTE3_V: output slot available for the next cast.
+                T.set_flag("v", "mte2", 5)
+                T.set_flag("v", "mte2", 6)
+                T.set_flag("mte3", "v", 5)
+                T.set_flag("mte3", "v", 6)
+                for dk_batch_iter in T.serial(dk_batch_count):
+                    dk_slot = dk_batch_iter % 2
+                    dk_row = dk_start + dk_batch_iter * dk_batch_rows
+                    if dk_row < dk_end:
+                        dk_count = T.min(dk_batch_rows, dk_end - dk_row)
+                        T.wait_flag("v", "mte2", dk_slot + 5)
+                        if dk_slot == 0:
+                            T.copy(
+                                dKeyIndex[dk_row:dk_row + dk_count, 0:DQueryIndex],
+                                dk_fp32_db[0, 0:dk_count, 0:DQueryIndex],
+                            )
+                        if dk_slot == 1:
+                            T.copy(
+                                dKeyIndex[dk_row:dk_row + dk_count, 0:DQueryIndex],
+                                dk_fp32_db[1, 0:dk_count, 0:DQueryIndex],
+                            )
+                        T.set_flag("mte2", "v", dk_slot + 5)
+                        T.wait_flag("mte2", "v", dk_slot + 5)
+
+                        T.wait_flag("mte3", "v", dk_slot + 5)
+                        if dk_slot == 0:
+                            T.tile.cast(
+                                dk_out_db[0, 0:dk_count, 0:DQueryIndex],
+                                dk_fp32_db[0, 0:dk_count, 0:DQueryIndex],
+                                "CAST_RINT",
+                                dk_count * DQueryIndex,
+                            )
+                        if dk_slot == 1:
+                            T.tile.cast(
+                                dk_out_db[1, 0:dk_count, 0:DQueryIndex],
+                                dk_fp32_db[1, 0:dk_count, 0:DQueryIndex],
+                                "CAST_RINT",
+                                dk_count * DQueryIndex,
+                            )
+                        T.set_flag("v", "mte2", dk_slot + 5)
+                        T.set_flag("v", "mte3", dk_slot + 5)
+                        T.wait_flag("v", "mte3", dk_slot + 5)
+                        if dk_slot == 0:
+                            T.copy(
+                                dk_out_db[0, 0:dk_count, 0:DQueryIndex],
+                                dKeyIndexOut[dk_row:dk_row + dk_count, 0:DQueryIndex],
+                            )
+                        if dk_slot == 1:
+                            T.copy(
+                                dk_out_db[1, 0:dk_count, 0:DQueryIndex],
+                                dKeyIndexOut[dk_row:dk_row + dk_count, 0:DQueryIndex],
+                            )
+                        T.set_flag("mte3", "v", dk_slot + 5)
+                T.wait_flag("v", "mte2", 5)
+                T.wait_flag("v", "mte2", 6)
+                T.wait_flag("mte3", "v", 5)
+                T.wait_flag("mte3", "v", 6)
 
                 # Sum one contiguous [K-block, Nidx1] dWeight row at a time.
                 # This avoids a strided GM->UB column DMA for each output.
@@ -1286,6 +1334,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         d_key_index_accum.zero_()
         d_weight_partial_ws.zero_()
         loss_partial_ws.zero_()
+        d_key_index_accum_2d = d_key_index_accum.reshape(B * S2_pad * Nidx2, DQueryIndex)
+        d_key_index_final_2d = d_key_index_final.reshape(B * S2_pad * Nidx2, DQueryIndex)
 
         if _PROFILE:
             _t_prep_end.record()
@@ -1296,18 +1346,19 @@ def sparse_lightning_indexer_grad_kl_loss(
             query_index, key_index,                    # 5-6
             weights, softmax_max, softmax_sum,         # 7-9
             d_query_index_accum,                           # 10 (input, host-zeroed)
-            d_key_index_accum,                              # 11 (input, host-zeroed: dKeyIndex atomic target)
+            d_key_index_accum_2d,                           # 11 (flattened FP32 dKey atomic target)
             gather_key_ws, gather_key_rope_ws, gather_key_index_ws,  # 12-14
             bmm1_res_ws, bmm2_res_ws,                  # 15-16
             p_reduced_ws, reduce_sum_y_ws, softmax_i_ws,  # 17-19
             dk_matmul_partial,                         # 20 (workspace)
             relu_grad_out, d_weight_partial_ws, loss_partial_ws,  # 21-23
-            d_query_index_out, d_key_index_final, d_weight_out, loss_out,  # 24-27
+            d_query_index_out, d_key_index_final_2d, d_weight_out, loss_out,  # 24-27
         )
         if _PROFILE:
             _t_kernel_end.record()
 
-        d_query_index, d_key_index_final, d_weight, loss_tensor = results
+        d_query_index, d_key_index_final_2d, d_weight, loss_tensor = results
+        d_key_index_final = d_key_index_final_2d.reshape(B, S2_pad, Nidx2, DQueryIndex)
 
         # DEBUG: compare kernel-gathered KeyIndex vs host-gathered KeyIndex
         _DEBUG = os.environ.get("SLIG_DEBUG", "0") == "1"

@@ -417,8 +417,13 @@ def tilelang_grad_kl_loss_single_kernel(
     ):
         """Compute P and SY with explicit L1/L0/MMA/FIX ownership."""
         with T.Scope("C"):
-            c1_query_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
-            c1_query_rope_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            # Query is invariant across all K tiles of this task.  Keep the
+            # full Query/Rope operands in L1, matching the official C1
+            # schedule, instead of rereading them from GM for every K tile.
+            c1_query_cache_l1 = T.alloc_L1((N1, DQuery), input_dtype)
+            c1_query_rope_cache_l1 = T.alloc_L1(
+                (N1, max(d_rope, 1)), input_dtype
+            )
             c1_key_l1 = T.alloc_L1((N_SPLIT, K_SPLIT), input_dtype)
             c1_q_l0a = T.alloc_L0A((N1, K_SPLIT), input_dtype)
             c1_key_l0b = T.alloc_L0B((K_SPLIT, N_SPLIT), input_dtype)
@@ -438,6 +443,20 @@ def tilelang_grad_kl_loss_single_kernel(
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 T.copy(
+                    Query[bz_task, s1_id, 0:N1, 0:DQuery],
+                    c1_query_cache_l1,
+                )
+                if d_rope > 0:
+                    T.copy(
+                        QueryRope[bz_task, s1_id, 0:N1, 0:d_rope],
+                        c1_query_rope_cache_l1[0:N1, 0:d_rope],
+                    )
+                # Event 4 is dedicated to the one-time Query/Rope preload.
+                # The existing C1 tile event IDs remain owned by Key traffic.
+                T.set_flag("mte2", "mte1", 4)
+                T.wait_flag("mte2", "mte1", 4)
+
+                T.copy(
                     QueryIndex[bz_task, s1_id, 0:Nidx1, 0:DQueryIndex],
                     c1_qi_l1,
                 )
@@ -454,15 +473,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         for d_idx in T.serial(d_num_query):
                             T.wait_flag("mte1", "mte2", 0)
                             T.copy(
-                                Query[
-                                    bz_task,
-                                    s1_id,
-                                    0:N1,
-                                    d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT,
-                                ],
-                                c1_query_l1,
-                            )
-                            T.copy(
                                 GatherKey_ws[bz_task, s1_id,
                                              k_start:k_start + N_SPLIT,
                                              d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT],
@@ -471,7 +481,13 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "mte1", 0)
                             T.wait_flag("m", "mte1", 0)
                             T.wait_flag("mte2", "mte1", 0)
-                            T.copy(c1_query_l1, c1_q_l0a)
+                            T.copy(
+                                c1_query_cache_l1[
+                                    0:N1,
+                                    d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT,
+                                ],
+                                c1_q_l0a,
+                            )
                             T.copy(c1_key_l1, c1_key_l0b, transpose=True)
                             T.set_flag("mte1", "mte2", 0)
                             T.set_flag("mte1", "m", 0)
@@ -485,15 +501,6 @@ def tilelang_grad_kl_loss_single_kernel(
                         for rope_idx in T.serial(d_num_rope):
                             T.wait_flag("mte1", "mte2", 0)
                             T.copy(
-                                QueryRope[
-                                    bz_task,
-                                    s1_id,
-                                    0:N1,
-                                    rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT,
-                                ],
-                                c1_query_rope_l1,
-                            )
-                            T.copy(
                                 GatherKeyRope_ws[bz_task, s1_id,
                                                  k_start:k_start + N_SPLIT,
                                                  rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT],
@@ -502,7 +509,13 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "mte1", 0)
                             T.wait_flag("m", "mte1", 0)
                             T.wait_flag("mte2", "mte1", 0)
-                            T.copy(c1_query_rope_l1, c1_q_l0a)
+                            T.copy(
+                                c1_query_rope_cache_l1[
+                                    0:N1,
+                                    rope_idx * K_SPLIT:(rope_idx + 1) * K_SPLIT,
+                                ],
+                                c1_q_l0a,
+                            )
                             T.copy(c1_key_l1, c1_key_l0b, transpose=True)
                             T.set_flag("mte1", "mte2", 0)
                             T.set_flag("mte1", "m", 0)
