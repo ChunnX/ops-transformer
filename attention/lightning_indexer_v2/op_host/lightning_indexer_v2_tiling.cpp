@@ -65,7 +65,7 @@ std::string LIV2DataTypeToSerialString(ge::DataType type)
     if (it != DATATYPE_TO_STRING_MAP.end()) {
         return it->second;
     } else {
-        OP_LOGE("LIV2DataTypeToSerialString", "datatype %d not support", type);
+        OP_LOGE("LightningIndexerV2", "datatype %d not support", type);
         return "UNDEFINED";
     }
 }
