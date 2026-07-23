@@ -832,7 +832,8 @@ ge::graphStatus SparseFlashMlaGradTilingBs1Regbase::GetBaseShapeInfo()
     auto cmpMaskMode = *context_->GetAttrs()->GetAttrPointer<int>(static_cast<size_t>(AttrIndex::CMP_MASK_MODE));
     baseParams_->set_cmpSparseMode(cmpMaskMode);
 
-    auto topkValueMode = *context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::TOPK_VALUE_MODE));
+    auto topkValueMode =
+        *context_->GetAttrs()->GetAttrPointer<int64_t>(static_cast<size_t>(AttrIndex::TOPK_VALUE_MODE));
     OP_CHECK_IF(topkValueMode != 1, OP_LOGE(context_, "topkValueMode should be 1 on A5, but got %ld", topkValueMode),
                 return ge::GRAPH_FAILED);
 
