@@ -131,6 +131,10 @@ constexpr int64_t SWIGLU_SPLIT_SIZE = 64L;
 constexpr int64_t MXFP4_K_CONSTRAINT = 2L;
 constexpr int64_t SWIGLU_N_CONSTRAINT = 2L;
 constexpr int64_t MXFP4_N_CONSTRAINT = 4L;
+constexpr int64_t MXFP4_NZ_N_ALIGN = 128L;
+constexpr int64_t MXFP8_NZ_N_ALIGN = 64L;
+constexpr int64_t MXFP4_ND_N_ALIGN = 4L;
+constexpr int64_t MXFP8_ND_N_ALIGN = 2L;
 constexpr size_t SINGLE_TENSOR_SIZE = 1;
 constexpr int64_t MAX_GROUP_LIST_SIZE = 1024L;
 constexpr int64_t QUNAT_MODE_MX = 2;
@@ -169,6 +173,17 @@ const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLO
 const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
 const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT8_E4M3FN};
 const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT4_E2M1};
+
+inline bool IsFp8Dtype(DataType dtype)
+{
+    return dtype == DataType::DT_FLOAT8_E4M3FN || dtype == DataType::DT_FLOAT8_E5M2;
+}
+
+inline bool IsMxfp8WeightNzFormat(const aclTensor *weight)
+{
+    return weight != nullptr && weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ &&
+           IsFp8Dtype(weight->GetDataType());
+}
 
 inline bool IsMxfp4WeightNzFormat(const aclTensor *weight)
 {
@@ -978,15 +993,61 @@ protected:
             return false;
         }
 
-        // mxfp4场景下，当输出类型为fp4时，N需要满足为大于等于4的偶数
-        DataType outputDtype = gmmDsqParams_.output->GetDataType();
-        if (outputDtype == DataType::DT_FLOAT4_E2M1) {
-            if (!(nValue >= MXFP4_N_CONSTRAINT && nModValue == 0)) {
-                std::string gotStr = BuildLogValue("N", nValue);
+        // mxfp4、NZ场景下，N需满足128对齐
+        if (IsMxfp4WeightNzFormat((*gmmDsqParams_.weight)[0])) {
+            if (nValue % MXFP4_NZ_N_ALIGN != 0 || nValue == 0) {
+                std::string weightDtypeStr = op::ToString((*gmmDsqParams_.weight)[0]->GetDataType()).GetString();
+                std::string reasonStr = "when using the weightNZ format with " + weightDtypeStr +
+                    " data type, axis N of weight must be greater than 0 and an integer multiple of 128";
                 OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
                     apiName_.c_str(), "weight", ViewShapeToString((*gmmDsqParams_.weight)[0]),
-                    "when the output dtype is DT_FLOAT4_E2M1, axis N of weight must be an even number and "
-                    "greater than or equal to 4");
+                    reasonStr.c_str());
+                return false;
+            }
+        } else {
+            // mxfp4、ND场景下，N需满足4对齐
+            if (nValue % MXFP4_ND_N_ALIGN != 0 || nValue == 0) {
+                std::string weightDtypeStr = op::ToString((*gmmDsqParams_.weight)[0]->GetDataType()).GetString();
+                std::string reasonStr = "when using the ND format with " + weightDtypeStr +
+                    " data type, axis N of weight must be greater than 0 and an integer multiple of 4";
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    apiName_.c_str(), "weight", ViewShapeToString((*gmmDsqParams_.weight)[0]),
+                    reasonStr.c_str());
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    bool checkMxfp8InputShape()
+    {
+        // 转置情况下从weight的第1维获取n，非转置情况下从weight的第2维获取n
+        int64_t nValue = IsMxWeightNzMultiTensorSupported() ?
+                             ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
+                             (gmmDsqParams_.transposeWeight ? ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(1) :
+                                                              ((*gmmDsqParams_.weight)[0])->GetViewShape().GetDim(2));
+
+        // mxfp8、NZ场景下，N需满足64对齐
+        if (IsMxfp8WeightNzFormat((*gmmDsqParams_.weight)[0])) {
+            if (nValue % MXFP8_NZ_N_ALIGN != 0 || nValue == 0) {
+                std::string weightDtypeStr = op::ToString((*gmmDsqParams_.weight)[0]->GetDataType()).GetString();
+                std::string reasonStr = "when using the weightNZ format with " + weightDtypeStr +
+                    " data type, axis N of weight must be greater than 0 and an integer multiple of 64";
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    apiName_.c_str(), "weight", ViewShapeToString((*gmmDsqParams_.weight)[0]),
+                    reasonStr.c_str());
+                return false;
+            }
+        } else {
+            // mxfp8、ND场景下，N需满足2对齐
+            if (nValue % MXFP8_ND_N_ALIGN != 0 || nValue == 0) {
+                std::string weightDtypeStr = op::ToString((*gmmDsqParams_.weight)[0]->GetDataType()).GetString();
+                std::string reasonStr = "when using the ND format with " + weightDtypeStr +
+                    " data type, axis N of weight must be greater than 0 and an integer multiple of 2";
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                    apiName_.c_str(), "weight", ViewShapeToString((*gmmDsqParams_.weight)[0]),
+                    reasonStr.c_str());
                 return false;
             }
         }
@@ -1212,10 +1273,18 @@ protected:
             return checkMxfp4InputShape();
         }
 
+        bool isMxfp8 = IsFp8Dtype(xDtype) && IsFp8Dtype(weightDtype) &&
+                       (gmmDsqParams_.weightScale != nullptr && gmmDsqParams_.weightScale->Size() > 0 &&
+                       (*gmmDsqParams_.weightScale)[0] != nullptr &&
+                       (*gmmDsqParams_.weightScale)[0]->GetDataType() == DataType::DT_FLOAT8_E8M0);
+        if (isMxfp8) {
+            return checkMxfp8InputShape();
+        }
+
         if (gmmDsqParams_.isMxA8W4) {
             return CheckMxA8W4InputShape();
         }
-        
+
         return true;
     }
 
