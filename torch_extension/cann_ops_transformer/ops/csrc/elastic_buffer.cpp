@@ -933,12 +933,13 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
         if (numTokens > 0) {
             engramFetchInProgress_.store(true);
-            ACLNN_CMD(aclnnEngramFetchTrain, engramContextTensor_, indices,
+            int64_t withGrad = static_cast<int64_t>(withGrad_);
+            ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices,
                       localStorageAddrTensor_,
                       fetched,
                       ctx.perm, ctx.sendCounts, ctx.recvCounts, ctx.recvLocalEntry, ctx.numRecv,
                       engramHiddenSize_, engramNumEntries_,
-                      numMaxTokensPerRank_, commBufferSize_);
+                      numMaxTokensPerRank_, commBufferSize_, withGrad);
             engramFetchInProgress_.store(false);
         }
         if (ctxOut != nullptr) {
@@ -949,7 +950,14 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
     engramFetchInProgress_.store(true);
 
-    ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices, engramHiddenSize_, engramNumEntries_, fetched);
+    aclTensor *nullTensor = nullptr;
+    int64_t zero = 0;
+    ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices,
+              nullTensor,
+              fetched,
+              nullTensor, nullTensor, nullTensor, nullTensor, nullTensor,
+              engramHiddenSize_, engramNumEntries_,
+              zero, zero, zero);
 
     auto capturedContext = engramContextTensor_;
     auto fetchFlag = &engramFetchInProgress_;
