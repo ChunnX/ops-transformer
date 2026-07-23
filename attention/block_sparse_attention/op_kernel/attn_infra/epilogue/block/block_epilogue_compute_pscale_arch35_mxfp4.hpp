@@ -23,17 +23,16 @@
 namespace NpuArch::Epilogue::Block {
 
 template <
-    bool transposedMm1_,
     MXQuantMode MX_QUANT_MODE_,
     class ElementGroupMax_,
     class PScaleType_>
 class BlockEpilogue<
-    EpilogueComputePScaleBsa<transposedMm1_, MX_QUANT_MODE_>,
+    EpilogueComputePScaleBsa<true, MX_QUANT_MODE_>,
     ElementGroupMax_,
     PScaleType_>
 {
 public:
-    using DispatchPolicy = EpilogueComputePScaleBsa<transposedMm1_, MX_QUANT_MODE_>;
+    using DispatchPolicy = EpilogueComputePScaleBsa<true, MX_QUANT_MODE_>;
     static constexpr MXQuantMode mxQuantMode = DispatchPolicy::MX_QUANT_MODE;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using ElementGroupMax = ElementGroupMax_;
