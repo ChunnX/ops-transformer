@@ -302,6 +302,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
   - $-1 \le key[i][j][k] \le 1$
   - $-1 \le g[i][j] \le 0$
   - $0 < beta[i][j] < 1$
+- initialState、finalState float32数据类型仅在Ascend 950PR/Ascend 950DT支持。
 
 ## 调用示例
 
