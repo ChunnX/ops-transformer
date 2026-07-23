@@ -970,7 +970,7 @@ public:
             fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
         }
         if constexpr (BMM2_TOUB || SPLITD) {
-            fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
+            fixpipeParams.dstStride = (baseN + 15) >> 4 << 4; // dstStride=128 compact
         } else {
             fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV;
         }
@@ -979,9 +979,9 @@ public:
         fixpipeParams.params.srcNdStride = 0;
         fixpipeParams.params.dstNdStride = 0;
         if constexpr (BMM2_TOUB) {
-            Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor[nIdx * baseN], l0C, fixpipeParams);
+            Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor[nIdx * (mBaseSize / 2) * baseN], l0C, fixpipeParams);
         } else {
-            Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor[nIdx * baseN], l0C, fixpipeParams);
+            Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor[nIdx * (mBaseSize / 2) * baseN], l0C, fixpipeParams);
         }
     }
 

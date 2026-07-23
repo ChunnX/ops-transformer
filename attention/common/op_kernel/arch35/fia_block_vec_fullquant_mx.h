@@ -720,7 +720,11 @@ public:
         LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
         WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
         if (unlikely(runInfo.isFirstS2Loop)) {
-            DataCopy(vec2ResUb, mmRes, vec2CalcSize);
+            // Stride conversion: fixpipe compact (stride=128) -> stride=256
+            for (uint32_t _row = 0; _row < vecMSize; _row++) {
+                DataCopy(vec2ResUb[_row * dTemplateAlign64], mmRes[_row * 128], 128);
+                DataCopy(vec2ResUb[_row * dTemplateAlign64 + 128], mmRes[vecMSize * 128 + _row * 128], 128);
+            }
         } else {
             LocalTensor<T> expUb = softmaxExpBuf[runInfo.loop % (PRELOAD_N + 1)].template Get<T>();
             LocalTensor<T> pScaleUb;
