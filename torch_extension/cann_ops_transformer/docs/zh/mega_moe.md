@@ -400,9 +400,6 @@
 
     </details>
 
-    专家权重维度约定：`local_moe_expert_num` 表示当前 Rank 的路由 MoE 专家数，`shared_expert_num_per_rank` 表示当前 Rank 的共享专家数。权重合并布局使用现有字段 `num_experts_per_rank`，满足
-    `num_experts_per_rank = shared_expert_num_per_rank + local_moe_expert_num`；未启用共享专家时 `shared_expert_num_per_rank = 0`。其中路由 token 只计入 MoE 专家，不计入共享专家。
-
     <details>
     <summary> A8W8-FP 量化场景</summary>
 
@@ -1314,7 +1311,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     - **Ascend 950PR/Ascend 950DT：**
         - num_tokens（x.dim0）范围 [1, maxBs], maxBs = (8 * (totalUbSize - 48 * 1024)) / (num_topk * (64 + ep_world_size)), 其中totalUbSize为UB总大小，950系列产品该值为256K。
         - hidden（x.dim1）仅支持1024、2048、3072、4096、5120、6144、7168、8192。
-        - num_topk（topk_ids.dim1）支持[1, 16]。
+        - num_topk（topk_ids.dim1）支持[1, 32]。
         - num_experts_per_rank（weight1.dim0，包含共享专家槽位）范围 [1, 1024]。
         - intermediate_hidden（weight1.dim1）仅支持1024、2048、3072、4096、7168。
         - ep_world_size范围 [2, 1024]。
