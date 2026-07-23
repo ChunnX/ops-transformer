@@ -50,7 +50,7 @@ public:
     using LayoutK = layout::ColumnMajor;
     using LayoutS = layout::RowMajor;
     using LayoutP = layout::RowMajor;
-    using LayoutV = layout::RowMajor;
+    using LayoutV = layout::ColumnMajor;
     using LayoutO = layout::RowMajor;
     using LayoutLse = layout::RowMajor;
     using LayoutOTmp = layout::RowMajor;
@@ -221,20 +221,38 @@ public:
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_V2_C2 + 16);
                     }
                     ComputeMm2(delay20TileInfo);
-                    // if(coreIdx == 0){
-                        blockMmadPV(
-                            gV[delay20TaskInfo.gmOffsetV],
-                            gVDequantScale[delay20TaskInfo.gmOffsetVScale],
-                            gSparseIdx[delay20TaskInfo.gmOffsetSparseIdx],
-                            ubOTmpTensor[0],
-                            delay20TaskInfo.qsActBaseTile,   // rowNum = P 行数（Q tile 实际行数）
-                            embed_,
-                            delay20TileInfo.kvsActBaseTile,  // curBaseTileSize
-                            delay20TileInfo.pvGatheredKvSTileIdx,  // gatheredKvSTileIdx
-                            delay20TaskInfo.kvSeqlen,
-                            kvBaseTile_, blockShapeY_,
-                            delay20TaskInfo.yBlockNumAval, delay20TaskInfo.yBlockNumRsvd);
-                    // }
+
+                    // todo,这里有点问题，如果在bsnd和tnd场景下
+                    // [tla化] V 的 GM 张量：ColumnMajor(D, S2)，故 rows=embed_、cols=kvBaseTile_。
+                    //   依据布局定论：V 物理 row-major [S2,D]，tla 须以 ColumnMajor(D,S2) 表达
+                    //   （原实参 (kvBaseTile_, embed_)=(S2,D) 顺序反了，已修正为 (embed_, kvBaseTile_)）。
+                    //   raw gather 走 .data()，此 layout 暂不消费。
+                    auto gmVLayoutTla = tla::MakeLayout<ElementV, LayoutV>(embed_, kvBaseTile_);
+                    auto gmVTensorTla = tla::MakeTensor(gV[delay20TaskInfo.gmOffsetV], gmVLayoutTla, Arch::PositionGM{});
+
+                    // [catlass化] UB Oᵀ 实际存储布局：rows=embed_+1（D 行 Oᵀ + 1 行 rowsum）、
+                    //   cols=s1Align128=CeilDiv(qsActBaseTile,128)*128（对齐 128，供 fixpipe nSize）、
+                    //   row-stride=64（固定 rowsum-fractal 宽，供 fixpipe dstStride）。
+                    //   非标 RowMajor（stride≠cols），由 block 的 FixpipeMm2 经 CopyL0CToUBTla SPLIT_N 消费；
+                    //   isRowMajor 只查 stride<1>==1 → 命中。block 直传此 tla（不再 .data() 重包）。
+                    auto ubOTmpLayoutTla = tla::MakeLayout(
+                        tla::MakeShape(embed_ + 1, CeilDiv(delay20TaskInfo.qsActBaseTile, 128u) * 128),
+                        tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
+                    auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor[0], ubOTmpLayoutTla, Arch::PositionUB{});
+
+                    GemmCoord actualBlockShapePV{delay20TaskInfo.qsActBaseTile, embed_, delay20TileInfo.kvsActBaseTile};
+                    // [改造] 传 base GM 张量(gVDequantScale/gSparseIdx) + delay20TaskInfo 整体，
+                    //   block 内按 gmOffsetVScale/gmOffsetSparseIdx 取子缓冲、解析 kvSeqlen/yBlockNumAval/yBlockNumRsvd。
+                    //   调用处不再出现 delay20TaskInfo.<field> 分字段传参。
+                    blockMmadPV(
+                        gmVTensorTla,
+                        gVDequantScale,
+                        gSparseIdx,
+                        ubOTmpTensorTla,
+                        actualBlockShapePV,
+                        delay20TileInfo,  // gatheredKvSTileIdx
+                        delay20TaskInfo,
+                        kvBaseTile_, blockShapeY_);
 
                     if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_FIX>(CROSS_CORE_SYNC_C2_V2);
@@ -243,6 +261,7 @@ public:
                 } else {
                     if (delay20TileInfo.isUpdatePScale) {
                         AscendC::CrossCoreWaitFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_C2_V2);
+                        AscendC::DumpTensor(ubOTmpTensor[0], 130, 128);
                         ComputeVec2(delay20TileInfo);
                         
                         AscendC::CrossCoreSetFlag<SYNC_MODE_4, PIPE_V>(CROSS_CORE_SYNC_V2_C2);
