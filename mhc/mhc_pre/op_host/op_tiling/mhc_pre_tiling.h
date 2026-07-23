@@ -93,6 +93,7 @@ TILING_DATA_FIELD_DEF_STRUCT(TCubeTiling, mm1TilingData)
 END_TILING_DATA_DEF;
 
 REGISTER_TILING_DATA_CLASS(MhcPre_0, MhcPreMembaseTilingData)
+REGISTER_TILING_DATA_CLASS(MhcPre_10, MhcPreMembaseTilingData)
 
 struct MhcPreMembaseCompileInfo {
     uint64_t coreNum = 0;

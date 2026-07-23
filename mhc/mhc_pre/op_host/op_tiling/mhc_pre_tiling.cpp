@@ -87,8 +87,6 @@ ge::graphStatus MhcPreMembaseTiling::GetPlatformInfo()
         auto ascendcPlatform = platform_ascendc::PlatformAscendC(platformInfo);
         aivCoreNum_ = ascendcPlatform.GetCoreNumAiv();
         aicCoreNum_ = ascendcPlatform.GetCoreNumAic();
-        aivCoreNum_ = 40;
-        aicCoreNum_ = 20;
 
         uint64_t ubSizePlatForm;
         ascendcPlatform.GetCoreMemSize(platform_ascendc::CoreMemType::UB, ubSizePlatForm);
