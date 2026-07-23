@@ -975,13 +975,12 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_row_tmp = T.alloc_ub((rows_per_aiv, 8), calc_dtype)
 
             T.tile.fill(v1_bw_eps, 1e-8)
-            # Input slots are released by Vector after their last read;
-            # output slots are independently released by MTE3 after the GM
-            # store.  This is the explicit three-stage MTE2/V/MTE3 pipeline.
+            # Input slots are released by Vector after their last read.  The
+            # generated allocator may reuse an output slot for a later Vector
+            # temporary, so MTE3 completion is consumed before that next tile
+            # starts Vector work (rather than only before output-slot reuse).
             T.set_flag("v", "mte2", 0)
             T.set_flag("v", "mte2", 1)
-            T.set_flag("mte3", "v", 0)
-            T.set_flag("mte3", "v", 1)
             T.set_flag("mte3", "v", 3)
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
@@ -1075,6 +1074,13 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.set_flag("mte2", "v", next_slot)
 
                     T.wait_flag("mte2", "v", current_slot)
+                    if bw_tile_id > 0:
+                        # v1_bw_rg_half_db is physically aliased with a
+                        # Vector temporary in generated C++.  Drain the prior
+                        # MTE3 store before the temporary is written again.
+                        T.wait_flag(
+                            "mte3", "v", (bw_tile_id - 1) % 2
+                        )
 
                     T.tile.sub(
                         v1_bw_diff,
@@ -1134,9 +1140,9 @@ def tilelang_grad_kl_loss_single_kernel(
                         rows_per_aiv * bw_col_block,
                     )
                     T.pipe_barrier("v")
-                    # rg_half has its own physical slot, so MTE3 can drain it
-                    # while Vector finishes the P/SY-dependent loss branch.
-                    T.wait_flag("mte3", "v", current_slot)
+                    # MTE3 can drain the current output while Vector executes
+                    # Loss.  Its completion is consumed before the following
+                    # tile touches the aliased Vector temporary.
                     T.set_flag("v", "mte3", current_slot)
                     T.wait_flag("v", "mte3", current_slot)
                     T.pipe_barrier("mte3")
@@ -1199,8 +1205,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.set_flag("v", "mte2", current_slot)
                 T.wait_flag("v", "mte2", 0)
                 T.wait_flag("v", "mte2", 1)
-                T.wait_flag("mte3", "v", 0)
-                T.wait_flag("mte3", "v", 1)
+                T.wait_flag("mte3", "v", (bw_tile_count - 1) % 2)
                 T.pipe_barrier("v")
                 T.wait_flag("mte3", "v", 3)
                 T.tile.cast(
