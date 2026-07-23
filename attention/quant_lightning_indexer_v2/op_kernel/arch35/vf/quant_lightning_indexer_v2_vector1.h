@@ -747,10 +747,10 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor(
     __ubuf__ float* weight = (__ubuf__ float*)weight_.GetPhyAddr();
     __ubuf__ float* qk = (__ubuf__ float*)qk_.GetPhyAddr();
     if (gSize % 2 == 0) {
-        MulWeightAndReduceSumPerGSizeEvenTensorVF(out, qk, qkVLStride, weight, kScaleValue, qScaleValue,
+        MulWeightAndReduceSumPerTensorGSizeEvenVF(out, qk, qkVLStride, weight, kScaleValue, qScaleValue,
                                      (uint16_t)gSize);
     } else {
-        MulWeightAndReduceSumPerGSizeOddTensorVF(out, qk, qkVLStride, weight, kScaleValue, qScaleValue,
+        MulWeightAndReduceSumPerTensorGSizeOddVF(out, qk, qkVLStride, weight, kScaleValue, qScaleValue,
                                      (uint16_t)gSize);
     }
     
