@@ -188,9 +188,15 @@ def cpu_quant_block_sparse_attn(query, key, value, q_descale, k_descale, v_desca
     cu_seqlens_kv_inp = cu_seqlens_kv_cpu
 
     if k_descale_cpu.dim() == 3 and key_cpu.dim() == 4:
-        k_scale = _pa_to_dense(k_descale_cpu, block_table_cpu, B, S2, (1, 0), sparse_kv_block_size)
+        k_scale_dense = _pa_to_dense(k_descale_cpu, block_table_cpu, B, S2, (1, 0), sparse_kv_block_size)
+        if layout_q == "BSND":
+            k_scale = k_scale_dense
+        else:
+            k_scale = k_scale_dense.reshape(B * S2, N2)
     elif k_descale_cpu.dim() == 1:
         k_scale = k_descale_cpu.unsqueeze(0).expand(B, -1, N2).contiguous()
+        if layout_q != "BSND":
+            k_scale = k_scale.reshape(B * S2, N2)
     else:
         k_scale = k_descale_cpu
 
