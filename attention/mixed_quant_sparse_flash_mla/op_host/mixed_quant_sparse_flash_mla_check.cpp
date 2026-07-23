@@ -227,7 +227,7 @@ ge::graphStatus MQSMLATilingCheck::Process()
     Init();
     if (CheckSinglePara() != ge::GRAPH_SUCCESS || CheckConsistency() != ge::GRAPH_SUCCESS ||
         CheckParaExistence() != ge::GRAPH_SUCCESS || CheckKvContiguous() != ge::GRAPH_SUCCESS ||
-        CheckFeature() != ge::GRAPH_SUCCESS) {
+        CheckFeature() != ge::GRAPH_SUCCESS || CheckSoftmaxLse() != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
