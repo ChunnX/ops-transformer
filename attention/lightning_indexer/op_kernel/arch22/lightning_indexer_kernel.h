@@ -181,12 +181,8 @@ __aicore__ inline void LightningIndexerKernel<LIT>::InitTilingData(const LITilin
     constInfo.radixTotalBatch = tilingData->radixTotalBatch;
 
     constInfo.outputLayout = LAYOUT_T; // 输出和输入形状一致
-    if (LAYOUT_T == LI_LAYOUT::TND) {
-        constInfo.isAccumSeqS1 = true;
-    }
-    if (K_LAYOUT_T == LI_LAYOUT::TND) {
-        constInfo.isAccumSeqS2 = true;
-    }
+    constInfo.isAccumSeqS1 = (LAYOUT_T == LI_LAYOUT::TND);
+    constInfo.isAccumSeqS2 = (K_LAYOUT_T == LI_LAYOUT::TND);
 
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
