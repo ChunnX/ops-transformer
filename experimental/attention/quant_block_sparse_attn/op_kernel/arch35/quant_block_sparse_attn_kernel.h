@@ -575,7 +575,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
             runParam.n2oIdx = runParam.n1oIdx / constInfo.gSize;
             runParam.goIdx = runParam.n1oIdx % constInfo.gSize;
             ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, this->attenMaskInfo, this->keyGm,
-                                                        this->prefixSeqQlenAddr, this->prefixSeqKvlenAddr);
+                                                        this->cuSeqQlenAddr, this->cuSeqKvlenAddr);
             ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, s1StartIdx, s1EndIdx,
                                                         bn1Idx == bn1StartIdx, sectionLastBN);
             int64_t temps1End = coreLastBN ? (runParam.s1LoopEnd + 3) : runParam.s1LoopEnd;
@@ -589,7 +589,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                 if (notLastThreeLoop) {
                     runParam.s1oIdx = s1Index;
                     ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, s1Index,
-                                                             this->prefixSeqQlenAddr);
+                                                             this->cuSeqQlenAddr);
                     bool s2NoNeedCalc =
                         ComputeS2LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, sparseSeqLenGm, s1Index);
                     if (s2NoNeedCalc) {
