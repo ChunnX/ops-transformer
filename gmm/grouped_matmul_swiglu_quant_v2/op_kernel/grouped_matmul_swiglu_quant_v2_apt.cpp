@@ -13,6 +13,12 @@
  * \brief
  */
 
+#if ASC_DEVKIT_MAJOR >= 9 && ASC_DEVKIT_MINOR > 0
+#define IS_BLAZE true
+#else
+#define IS_BLAZE false
+#endif
+
 #include "kernel_tiling/kernel_tiling.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -66,7 +72,7 @@ constexpr bool isMxFp4Input = (AscendC::IsSameType<DTYPE_X, fp4x2_e2m1_t>::value
 #if defined(GMM_SWIGLU_QUANT_WEIGHT_QUANT)
 template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, bool IS_SINGLE_MULTI_SINGLE>
 #else
-template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS>
+template <int8_t QUANT_B_TRANS, int8_t QUANT_A_TRANS, int8_t KERNEL_TYPE>
 #endif
 __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xScale, GM_ADDR groupList, GM_ADDR weight,
                                                           GM_ADDR weightScale, GM_ADDR weightAssistanceMatrix,
