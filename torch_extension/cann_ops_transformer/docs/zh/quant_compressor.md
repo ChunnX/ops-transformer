@@ -11,31 +11,26 @@
 
 ## 功能说明
 
-- 接口功能：QuantCompressor是推理场景下SMLA和QLI的前处理算子，是[compressor](./compressor.md)的量化版本。用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，QuantCompressor可以有效地减少计算开销。与compressor的区别在于：输入$x$、$W^{KV}$、$W^{Gate}$为HIFLOAT8量化数据，需先通过x_descale、wkv_descale、wgate_descale缩放因子进行反量化还原为FLOAT32后再参与计算，从而降低显存占用与搬运开销。主要计算过程为：
-    1. 反量化：将HIFLOAT8量化的输入$X$、$W^{KV}$、$W^{Gate}$分别乘以对应的缩放因子x_descale、wkv_descale、wgate_descale，还原为FLOAT32数据。其中x_descale为per-tensor缩放（单个标量），wkv_descale与wgate_descale为per-channel缩放（通道数为coff\*D）。
-    2. 将反量化后的$X$与$W^{KV}$做Matmul运算得到$kv\_state$，将反量化后的$X$与$W^{Gate}$做Matmul运算后再与$Ape$做Add运算得到$score\_state$，$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
-    3. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
-    4. 对$score\_state$进行softmax运算将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
+- 接口功能：QuantCompressor是推理场景下SMLA和QLI的前处理算子，是[compressor](./compressor.md)的量化版本。用于将每4或128个token的KV cache压缩成一个，然后每个token与这些压缩的KV cache进行DSA计算。在长序列的情况下，QuantCompressor可以有效地减少计算开销。与compressor的区别在于：输入$x$、$W^{KV}$、$W^{Gate}$为HIFLOAT8量化数据，直接以HIFLOAT8参与Matmul运算（硬件原生支持），再对Matmul输出的FLOAT32结果乘以合并后的缩放因子进行反量化，从而降低显存占用与搬运开销。主要计算过程为：
+    1. Matmul与反量化：将HIFLOAT8量化的输入$X$与$W^{KV}$做Matmul运算得到FLOAT32结果，再乘以合并缩放因子$x\_descale \cdot wkv\_descale$完成反量化得到$kv\_state$；将$X$与$W^{Gate}$做Matmul运算得到FLOAT32结果，再乘以合并缩放因子$x\_descale \cdot wgate\_descale$完成反量化得到$score\_state$。其中x_descale为per-tensor缩放（单个标量），wkv_descale与wgate_descale为per-channel缩放（通道数为coff\*D），合并后仍为per-channel缩放。$kv\_state$与$score\_state$根据输入的start_pos及cu_seqlens完成更新。
+    2. 在coff为2的情况下对$kv\_state$和$score\_state$进行数据重排。
+    3. 对$score\_state$按压缩比分组并与$Ape$相加，然后进行softmax运算，将softmax结果与$kv\_state$做Mul计算，后进行ReduceSum运算。
 
 - 计算公式：
 
-    0. 反量化（quant_mode=1，HIF8_XPERTENSOR_WPERCHANNEL）：
+    1. 计算矩阵乘法与反量化（quant_mode=1，A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL）：
+
+    使用HIFLOAT8输入进行Matmul，输出FLOAT32结果后乘以合并缩放因子（x_descale与wkv/wgate_descale的乘积）完成反量化：
 
     $$
-    X_{fp32} = X_{hif8} \cdot x\_descale,\quad W^{KV}_{fp32} = W^{KV}_{hif8} \cdot wkv\_descale,\quad W^{Gate}_{fp32} = W^{Gate}_{hif8} \cdot wgate\_descale
-    $$
-
-    其中x_descale为per-tensor标量（shape为[1,]），wkv_descale、wgate_descale为per-channel向量（shape为[coff\*D,]，沿权重输出通道维度缩放）。
-
-    1. 计算矩阵乘法（使用反量化后的FP32数据）：
-
-    $$
-    C4A：\left[kv\_state^a, score\_state^a\right] = X_{fp32} @ \left[W^{aKV}_{fp32}, W^{aGate}_{fp32}\right], \left[kv\_state^b, score\_state^b\right] = X_{fp32} @ \left[W^{bKV}_{fp32}, W^{bGate}_{fp32}\right];
+    C4A：\left[kv\_state^a, score\_state^a\right] = (X_{hif8} @ \left[W^{aKV}_{hif8}, W^{aGate}_{hif8}\right]) \cdot (x\_descale \cdot [wkv\_descale^a, wgate\_descale^a]), \left[kv\_state^b, score\_state^b\right] = (X_{hif8} @ \left[W^{bKV}_{hif8}, W^{bGate}_{hif8}\right]) \cdot (x\_descale \cdot [wkv\_descale^b, wgate\_descale^b]);
     $$
 
     $$
-    C128A：\left[kv\_state, score\_state\right] = X_{fp32} @ \left[W^{KV}_{fp32}, W^{Gate}_{fp32}\right]
+    C128A：\left[kv\_state, score\_state\right] = (X_{hif8} @ \left[W^{KV}_{hif8}, W^{Gate}_{hif8}\right]) \cdot (x\_descale \cdot [wkv\_descale, wgate\_descale])
     $$
+
+    其中x_descale为per-tensor标量（shape为[1,]），wkv_descale、wgate_descale为per-channel向量（shape为[coff\*D,]，沿权重输出通道维度缩放），两者相乘后合并为per-channel缩放因子。
 
     2. 计算分组加法：
 
@@ -109,7 +104,7 @@ cann_ops_transformer.quant_compressor(
 | wgate | Tensor | 必选 | gate压缩权重，对应公式中的 $W^{Gate}$，HIFLOAT8量化输入。不支持非连续，数据格式支持ND。 | uint8（HIFLOAT8） | [coff* D,H] |
 | state_cache | Tensor | 必选 | kv_state和score_state的历史数据，对应公式中的 $\left[kv\_state, score\_state\right]$。不支持非连续，数据格式支持ND。 | float32 | [block_num,block_size,2* coff* D]，要求block_num>0 |
 | ape | Tensor | 必选 | positional biases，对应公式中的 $Ape$。不支持非连续，数据格式支持ND。 | float32 | [cmp_ratio,coff* D] |
-| quant_mode | int | 必选 | 量化模式。取值范围为[1]，1表示HIF8_XPERTENSOR_WPERCHANNEL（HIFLOAT8输入，x按per-tensor缩放、wkv/wgate按per-channel缩放反量化）。 | - | - |
+| quant_mode | int | 必选 | 量化模式。取值范围为[1]，1表示A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL（HIFLOAT8输入，x按per-tensor缩放、wkv/wgate按per-channel缩放反量化）。 | - | - |
 | cmp_ratio | int | 必选 | 数据压缩率。默认值为4. | - | - |
 | x_descale | Tensor | 可选 | x的反量化缩放因子，per-tensor缩放。quant_mode=1时必选。不支持非连续，数据格式支持ND。 | float32 | [1,] |
 | wkv_descale | Tensor | 可选 | wkv的反量化缩放因子，per-channel缩放，通道数为coff\*D。quant_mode=1时必选。不支持非连续，数据格式支持ND。 | float32 | [coff* D,] |
@@ -120,6 +115,7 @@ cann_ops_transformer.quant_compressor(
 | start_pos | Tensor | 可选 | 计算起始位置。不支持非连续，数据格式支持ND，输入为None时从0开始计算 | int32 | [B,] |
 | coff | int | 可选 | 默认值1，仅支持1/2。<br>coff=1：无需进行overlap数据重排<br>coff=2：需要进行overlap数据重排。 | int32 | - |
 | cache_mode | int | 可选 | state_cache的存储模式。<br>1：连续buffer<br>2：循环buffer<br>默认值1。 | int32 | - |
+
 - 该接口支持推理场景下使用。
 
 ## 返回值说明
@@ -129,9 +125,13 @@ cann_ops_transformer.quant_compressor(
 | cmp_kv | Tensor | 必选 | 压缩后的数据。不支持非连续，数据格式支持ND；<br>当x的shape为[B,S,H]时，输出拼接：(<batch0>compressed_tokens+pad0) +  (<batch1>compressed_tokens+pad1) + ... +  (<batchN>compressed_tokens+padN)；<br>当x的shape为[T,H]时，输出拼接：<batch0>compressed_tokens + <batch1>compressed_tokens + ... + <batchN>compressed_tokens + pad。 | bfloat16 | x=[B,S,H]：[B,ceil(S/cmp_ratio),D]<br>x=[T,H]：[min(T,T//cmp_ratio+B),D] |
 
 ## 约束说明
+
 - 该接口支持推理场景下使用。
+
 - 该接口支持单算子模式和TorchAir图模式调用。
+
 - x参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、D（Head Dim）表示hidden层的最小单元大小、T表示所有Batch输入样本序列长度的累加和。
+
 - 该接口支持B、S泛化，且存在如下场景限制：
     - 只支持B、S为0。
     - 部分长序列场景下，如果计算量过大可能会导致出现超过NPU内存的报错，注：这里计算量会受x输入shape的影响，值越大计算量越大。典型的长序列（即B、S的乘积或T较大）场景包括但不限于：
@@ -172,7 +172,7 @@ cann_ops_transformer.quant_compressor(
 - 支持D为128/512。
 - 支持H为1K~10K，512对齐。
 - 支持block_size为1~1024。
-- quant_mode取值为1（HIF8_XPERTENSOR_WPERCHANNEL），此时x_descale、wkv_descale、wgate_descale为必选输入。其中x_descale shape为[1,]（per-tensor缩放），wkv_descale、wgate_descale shape为[coff\*D,]（per-channel缩放）。
+- quant_mode取值为1（A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL），此时x_descale、wkv_descale、wgate_descale为必选输入。其中x_descale shape为[1,]（per-tensor缩放），wkv_descale、wgate_descale shape为[coff\*D,]（per-channel缩放）。
 - 支持cmp_ratio为2/4/8/16/32/64/128。支持如下三种典型组合场景：
     - C4A: D=512, coff=2, cmp_ratio=4;
     - C4Li: D=128, coff=2, cmp_ratio=4;
@@ -181,6 +181,7 @@ cann_ops_transformer.quant_compressor(
 - 该接口不支持GE图模式。
 
 ## 确定性计算
+
 - 默认支持确定性计算。
 
 ## 调用说明
@@ -313,8 +314,8 @@ cann_ops_transformer.quant_compressor(
     ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32).npu()
     # descale 缩放因子
     x_descale = torch.tensor(np.random.uniform(0.1, 1.0, (1,))).to(torch.float32).npu()
-    wkv_descale = torch.tensor(np.random.uniform(0.1, 1.0, (1,))).to(torch.float32).npu()
-    wgate_descale = torch.tensor(np.random.uniform(0.1, 1.0, (1,))).to(torch.float32).npu()
+    wkv_descale = torch.tensor(np.random.uniform(0.1, 1.0, (coff * head_dim,))).to(torch.float32).npu()
+    wgate_descale = torch.tensor(np.random.uniform(0.1, 1.0, (coff * head_dim,))).to(torch.float32).npu()
     if cache_mode == 1:  # 连续buffer
         state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
         state_cache = state_cache.npu()
@@ -362,6 +363,7 @@ cann_ops_transformer.quant_compressor(
         )
     )
     ```
+
   - TorchAir图模式调用：
 
     ```python
@@ -491,8 +493,8 @@ cann_ops_transformer.quant_compressor(
     ape = torch.tensor(np.random.uniform(-10, 10, (cmp_ratio, coff * head_dim))).to(torch.float32).npu()
     # descale 缩放因子
     x_descale = torch.tensor(np.random.uniform(0.1, 1.0, (1,))).to(torch.float32).npu()
-    wkv_descale = torch.tensor(np.random.uniform(0.1, 1.0, (1,))).to(torch.float32).npu()
-    wgate_descale = torch.tensor(np.random.uniform(0.1, 1.0, (1,))).to(torch.float32).npu()
+    wkv_descale = torch.tensor(np.random.uniform(0.1, 1.0, (coff * head_dim,))).to(torch.float32).npu()
+    wgate_descale = torch.tensor(np.random.uniform(0.1, 1.0, (coff * head_dim,))).to(torch.float32).npu()
     if cache_mode == 1:  # 连续buffer
         state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
         state_cache = state_cache.npu()

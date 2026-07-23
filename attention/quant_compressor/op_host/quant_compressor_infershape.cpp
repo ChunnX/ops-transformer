@@ -148,7 +148,7 @@ ge::graphStatus SetQuantCompressorShapeDim(const QuantCompressorProtoShapeParam 
 
 ge::graphStatus InferDataTypeQuantCompressor(gert::InferDataTypeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("QuantCompressor", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "Context is nullptr."),
                return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), "Enter QuantCompressor inferDataType impl.");
 
@@ -159,16 +159,18 @@ ge::graphStatus InferDataTypeQuantCompressor(gert::InferDataTypeContext* context
 
 ge::graphStatus InferShapeQuantCompressor(gert::InferShapeContext* context)
 {
-    OP_CHECK_IF(context == nullptr, OP_LOGE("QuantCompressor", "Context is nullptr."),
+    OP_CHECK_IF(context == nullptr, OP_LOGE(context->GetNodeName(), "Context is nullptr."),
                return ge::GRAPH_FAILED);
     OP_LOGI(context->GetNodeName(), "Enter QuantCompressor infershape impl.");
 
     QuantCompressorProtoShapeParam shapeParam {};
     auto apiRet = GetQuantCompressorShapeDim(context, shapeParam);
-    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), "Context get input shape failed", return ge::GRAPH_FAILED);
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), OP_LOGE(context->GetNodeName(), "Context get input shape failed"),
+        return ge::GRAPH_FAILED);
 
     apiRet = SetQuantCompressorShapeDim(shapeParam, context);
-    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), "Context set output shape failed", return ge::GRAPH_FAILED);
+    OP_CHECK_IF((apiRet != GRAPH_SUCCESS), OP_LOGE(context->GetNodeName(), "Context set output shape failed"),
+        return ge::GRAPH_FAILED);
 
     return GRAPH_SUCCESS;
 }

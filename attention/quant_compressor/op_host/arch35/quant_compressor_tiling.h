@@ -79,6 +79,7 @@ constexpr uint32_t MAX_HIDDEN_SIZE = 10240;
 constexpr uint32_t MIN_HIDDEN_SIZE = 1024;
 constexpr uint32_t ALIGN_FACTOR_HIDDEN_SIZE = 512;
 constexpr uint32_t MIN_BLOCK_SIZE = 1;
+constexpr uint32_t MAX_BLOCK_SIZE = 1024;
 
 constexpr uint32_t BATCH_MODE_SCHEDULE = 1;
 
@@ -127,7 +128,7 @@ const std::map<std::string, std::vector<uint32_t>> DIM_NUM_MAP = {
     {X_DESCALE_NAME,           {COMPRESSOR_DIM_NUM_1}},
     {WKV_DESCALE_NAME,        {COMPRESSOR_DIM_NUM_1}},
     {WGATE_DESCALE_NAME,      {COMPRESSOR_DIM_NUM_1}},
-    {STATE_BLOCK_TABLE_NAME,  {COMPRESSOR_DIM_NUM_2, COMPRESSOR_DIM_NUM_1}},
+    {STATE_BLOCK_TABLE_NAME,  {COMPRESSOR_DIM_NUM_2}},
     {CU_SEQLENS_NAME,         {COMPRESSOR_DIM_NUM_1}},
     {SEQUSED_NAME,            {COMPRESSOR_DIM_NUM_1}},
     {START_POS_NAME,          {COMPRESSOR_DIM_NUM_1}},
@@ -228,7 +229,7 @@ enum class CACHE_MODE:uint8_t {
 };
 
 enum class QUANT_MODE:uint8_t {
-    HIF8_XPERTENSOR_WPERCHANNEL = 1
+    A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL = 1
 };
 
 struct QuantCompressorContext {

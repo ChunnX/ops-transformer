@@ -16,7 +16,7 @@ from cann_ops_transformer.op_builder.builder import AS_LIBRARY
 
 
 class QuantMode(IntEnum):
-    HIF8_XPERTENSOR_WPERCHANNEL = 1
+    A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL = 1
 
 
 class CacheMode(IntEnum):
