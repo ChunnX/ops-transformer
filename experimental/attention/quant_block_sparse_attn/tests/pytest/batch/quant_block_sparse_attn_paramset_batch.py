@@ -26,7 +26,7 @@ EXCEL_COLUMNS = [
 
 PA_BLOCK_PADDING_BYTES = 0
 
-EXCEL_FILENAME = "cases.csv"
+EXCEL_FILENAME = "cases.csv,cases_stc.csv,cases_generalized.csv"
 
 _INT_COLS = {"B", "N1", "N2", "S1", "S2", "D",
              "sparse_q_block_size", "sparse_kv_block_size",
@@ -35,8 +35,30 @@ _FLOAT_COLS = {"p_scale_value", "softmax_scale"}
 _BOOL_COLS = {"return_softmax_lse"}
 
 
+def _get_excel_paths(csv_path=None):
+    if csv_path is None:
+        csv_path = EXCEL_FILENAME
+    if isinstance(csv_path, (list, tuple)):
+        csv_names = csv_path
+    else:
+        csv_names = str(csv_path).split(",")
+
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    csv_paths = []
+    for csv_name in csv_names:
+        csv_name = str(csv_name).strip()
+        if not csv_name:
+            continue
+        if os.path.isabs(csv_name):
+            csv_paths.append(csv_name)
+        else:
+            csv_paths.append(os.path.join(base_dir, csv_name))
+    return csv_paths
+
+
 def _get_excel_path():
-    return os.path.join(os.path.dirname(os.path.abspath(__file__)), EXCEL_FILENAME)
+    csv_paths = _get_excel_paths(EXCEL_FILENAME)
+    return csv_paths[0] if csv_paths else ""
 
 
 def _get_dtype_map():
@@ -68,10 +90,8 @@ def _parse_float(val):
     return float(val)
 
 
-def load_cases_from_csv(csv_path=None):
+def _load_cases_from_one_csv(csv_path):
     import csv
-    if csv_path is None:
-        csv_path = _get_excel_path()
     with open(csv_path, "r", encoding="utf-8", newline="") as f:
         reader = csv.reader(f)
         rows = list(reader)
@@ -117,6 +137,12 @@ def load_cases_from_csv(csv_path=None):
     return cases
 
 
-_excel_path = _get_excel_path()
-TEST_PARAMS = load_cases_from_csv(_excel_path)
+def load_cases_from_csv(csv_path=None):
+    cases = {}
+    for one_csv_path in _get_excel_paths(csv_path):
+        cases.update(_load_cases_from_one_csv(one_csv_path))
+    return cases
+
+
+TEST_PARAMS = load_cases_from_csv()
 ENABLED_PARAMS = [TEST_PARAMS[key] for key in TEST_PARAMS.keys()]

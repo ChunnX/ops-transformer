@@ -21,11 +21,12 @@ const int64_t DIM_THREE = 3;
 const int64_t FP32_BYTES = 4;
 
 // 工具函数，推导输出 attention_out / softmax_lse 的 shape 与 dtype
-//   - attention_out: BF16，shape 跟随 query 布局（BSND/TND），head-dim 取自 value
-//   - softmax_lse:   FLOAT32，return_softmax_lse 为真时 (B,N1,S1)/(N1,T)，否则空张量
+//   - attention_out: BF16，layoutType只支持 "TND"
+//   - softmax_lse:   FLOAT32，layoutType只支持 "TND"
 std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor &query, const at::Tensor &value,
-                                                                bool return_softmax_lse)
+                                                                c10::string_view layout_q, bool return_softmax_lse)
 {
+    TORCH_CHECK(query.dim() == DIM_THREE, "query should be 3D for layout_q TND/NTD, but got ", query.dim(), "D.");
     for (auto i = 0; i < query.sizes().size(); i++) {
         TORCH_CHECK(query.size(i) > 0,
                     "All values within query's shape should be greater "
@@ -33,23 +34,18 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
                     i, "] is ", query.size(i));
     }
 
-    at::SmallVector<int64_t, SIZE> atten_out_size;
-    at::SmallVector<int64_t, SIZE> softmax_lse_size;
-    int64_t d_size = query.size(query.dim() - 1);
-    if (query.dim() == DIM_THREE) {
-        // TND -> (T, N1, D)
-        int64_t t_size = query.size(0);
-        int64_t n1_size = query.size(1);
-        atten_out_size = {t_size, n1_size, d_size};
-        softmax_lse_size = {n1_size, t_size};
-    } else {
-        // BSND -> (B, S1, N1, D)
-        int64_t b_size = query.size(0);
-        int64_t s1_size = query.size(1);
-        int64_t n1_size = query.size(2);
-        atten_out_size = {b_size, s1_size, n1_size, d_size};
-        softmax_lse_size = {b_size, n1_size, s1_size};
-    }
+    const std::string layout_q_str(layout_q);
+    TORCH_CHECK(layout_q_str == "TND" || layout_q_str == "NTD", "layout_q should be TND or NTD, but got ",
+                layout_q_str);
+
+    const bool is_ntd = (layout_q_str == "NTD");
+    int64_t t_size = is_ntd ? query.size(1) : query.size(0);
+    int64_t n1_size = is_ntd ? query.size(0) : query.size(1);
+    int64_t d_size = query.size(2);
+
+    at::SmallVector<int64_t, SIZE> atten_out_size = {t_size, n1_size, d_size};
+    at::SmallVector<int64_t, SIZE> softmax_lse_size = {n1_size, t_size};
+
     if (!return_softmax_lse) {
         softmax_lse_size = {};
     }
@@ -63,7 +59,7 @@ std::tuple<at::Tensor, at::Tensor> construct_bsa_output_tensors(const at::Tensor
 std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &q_descale,
     const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
-    const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const at::Tensor &atten_mask,
+    const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const c10::optional<at::Tensor> &atten_mask,
     double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
@@ -106,7 +102,8 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
     }
 
     // construct the output tensors
-    std::tuple<at::Tensor, at::Tensor> outputs = construct_bsa_output_tensors(query, value, return_softmax_lse);
+    std::tuple<at::Tensor, at::Tensor> outputs =
+        construct_bsa_output_tensors(query, value, layout_q, return_softmax_lse);
     at::Tensor attention_out = std::get<0>(outputs);
     at::Tensor softmax_lse = std::get<1>(outputs);
 
@@ -134,7 +131,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_npu(
 std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     const at::Tensor &query, const at::Tensor &key, const at::Tensor &value, const at::Tensor &q_descale,
     const at::Tensor &k_descale, const at::Tensor &v_descale, const at::Tensor &p_scale,
-    const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const at::Tensor &atten_mask,
+    const at::Tensor &sparse_indices, const at::Tensor &sparse_seq_len, const c10::optional<at::Tensor> &atten_mask,
     double softmax_scale, int64_t sparse_q_block_size, int64_t sparse_kv_block_size,
     const c10::optional<at::Tensor> &cu_seqlens_q, const c10::optional<at::Tensor> &cu_seqlens_kv,
     const c10::optional<at::Tensor> &seqused_q, const c10::optional<at::Tensor> &seqused_kv,
@@ -143,7 +140,7 @@ std::tuple<at::Tensor, at::Tensor> npu_quant_block_sparse_attn_meta(
     c10::string_view layout_sparse_indices, c10::string_view layout_out, int64_t quant_mode, int64_t mask_mode,
     bool return_softmax_lse)
 {
-    return construct_bsa_output_tensors(query, value, return_softmax_lse);
+    return construct_bsa_output_tensors(query, value, layout_q, return_softmax_lse);
 }
 } // namespace custom
 
