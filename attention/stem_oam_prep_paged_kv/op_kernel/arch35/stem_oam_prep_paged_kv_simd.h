@@ -29,17 +29,6 @@ using namespace AscendC;
 
 constexpr static int64_t KVMAXLEN = 256 * 1024;
 constexpr static int64_t STEMBLOCKMINSIZE = 32;
-constexpr static int64_t KFLATDIMS = 0;
-constexpr static int64_t KFLATBATCHSIZE = 1;
-constexpr static int64_t KFLATHKV = 2;
-constexpr static int64_t KFLATMAXKB = 3;
-constexpr static int64_t KFLATDIM = 4;
-constexpr static int64_t VBIASDIMS = 9;
-constexpr static int64_t VBIASBATCHSIZE = 10;
-constexpr static int64_t VBIASHKV = 11;
-constexpr static int64_t VBIASDIM = 12;
-constexpr static int64_t OFFSET1 = 8;
-constexpr static int64_t OFFSET2 = 16;
 
 class StemOamPrepPagedKvSimd {
 public:
@@ -186,10 +175,10 @@ __aicore__ inline void StemOamPrepPagedKvSimd::Init(GM_ADDR kCache, GM_ADDR vCac
 
     pipe_->InitBuffer(vFLatOutQue_, 1, maxKb_ * r_ * sizeof(float)); // 64k
     pipe_->InitBuffer(vBiasOutQue_, 1, maxKb_ * sizeof(float));      // 32K
-    if (blockIdx_ == 0) {
-        InitOutput<bfloat16_t>(kFlatGm_, batchSize_ * hKv_ * maxKb_ * kflatDim_, bfloat16_t(0));
-        InitOutput<float>(vBiasGm_, batchSize_ * hKv_ * maxKb_, float(0));
-    }
+    // if (blockIdx_ == 0) {
+    //     InitOutput<bfloat16_t>(kFlatGm_, batchSize_ * hKv_ * maxKb_ * kflatDim_, bfloat16_t(0));
+    //     InitOutput<float>(vBiasGm_, batchSize_ * hKv_ * maxKb_, float(0));
+    // }
     InitKFlatAndVBias();
     SyncAll();
 }
