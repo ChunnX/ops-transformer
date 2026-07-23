@@ -146,6 +146,8 @@ public:
         totalTokens = tiling->totalTokens;
         ppNum = tiling->ubFactor > 1 ? DOUBLE_BUFFER_DEPTH : 1;
 
+        mte2sEventId = static_cast<event_t>(pipe.AllocEventID<HardEvent::MTE2_S>());
+
         InitTaskRange(tiling->blocksPerCoreBase,
                       tiling->blocksRemainder);
         InitGlobalBuffers(q, qscale, cuSeqlensQ, qflat);
@@ -157,6 +159,9 @@ public:
     {
         if (taskId >= tiling->usedCoreNum)
             return;
+
+        // 等待 LoadCuSeqLensQ 完成（只执行一次）
+        WaitFlag<HardEvent::MTE2_S>(mte2sEventId);
 
         for (uint32_t taskIdx = qbStart; taskIdx < qbEnd; taskIdx++) {
             DecodeTaskId(taskIdx);
@@ -175,7 +180,6 @@ public:
 
         // 从 cuSeqLensQ 读取当前 batch 的信息
         LocalTensor<int64_t> cuSeqLensQ = cuSeqLensQBuf.Get<int64_t>();
-        WaitFlag<HardEvent::MTE2_S>(static_cast<event_t>(pipe.FetchEventID(HardEvent::MTE2_S)));
         int64_t cuStart = cuSeqLensQ.GetValue(batchIdx);
         int64_t cuEnd = cuSeqLensQ.GetValue(batchIdx + 1);
 
@@ -202,8 +206,9 @@ public:
     {
         LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockQue.AllocTensor<fp8_e4m3fn_t>();
         Duplicate((LocalTensor<int8_t> &)qBlockLocal, (int8_t)0, B * dimQk);
-        SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
-        WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
+        event_t vmte2Event = static_cast<event_t>(pipe.FetchEventID(HardEvent::V_MTE2));
+        SetFlag<HardEvent::V_MTE2>(vmte2Event);
+        WaitFlag<HardEvent::V_MTE2>(vmte2Event);
 
         uint32_t startRow = qbLocal * B;
         uint32_t validRows = (startRow + B <= qLen) ? B :
@@ -357,8 +362,8 @@ private:
         DataCopyPad(cuSeqLensQLocal, cuSeqLensGm,
                     {1, static_cast<uint16_t>(cuSeqLensQCount * sizeof(int64_t)), 0, 0},
                     {0, 0, 0, 0});
-        SetFlag<HardEvent::MTE2_S>(static_cast<event_t>(pipe.FetchEventID(HardEvent::MTE2_S)));
-}
+        SetFlag<HardEvent::MTE2_S>(mte2sEventId);
+    }
 
     TPipe pipe;
     const StemPrepQTilingData *tiling = nullptr;
@@ -381,6 +386,8 @@ private:
     uint32_t qbEnd = 0;
     uint32_t qbLocal = 0;
     uint32_t ppNum = 2;
+
+    event_t mte2sEventId;
 
     GM_ADDR cuSeqLensQBase = nullptr;
     GM_ADDR qBase = nullptr;
