@@ -217,6 +217,7 @@ aclnnStatus aclnnGroupedMatmulSwigluQuantWeightNzV2GetWorkspaceSize(const aclTen
     } else {
         CHECK_RET(ProcessMultiWeightNz(weight) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
     }
+
     GroupedMatmulSwigluQuantParamsBase params =
         GroupedMatmulSwigluQuantParamsBuilder::Create(x, weight, weightScale, output, outputScale)
         .SetXScale(xScale).SetSmoothScale(smoothScale)
