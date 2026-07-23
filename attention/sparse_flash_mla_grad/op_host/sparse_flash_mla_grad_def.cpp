@@ -193,6 +193,7 @@ public:
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
         this->Attr("ori_mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_mask_mode").AttrType(OPTIONAL).Int(0);
+        this->Attr("topk_value_mode").AttrType(OPTIONAL).Int(1);
         this->Attr("ori_win_left").AttrType(OPTIONAL).Int(-1);
         this->Attr("ori_win_right").AttrType(OPTIONAL).Int(-1);
         this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
