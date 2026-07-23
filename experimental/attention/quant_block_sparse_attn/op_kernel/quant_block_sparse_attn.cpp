@@ -89,9 +89,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；当前主逻辑仍通过 tilingData 读取运行期字段。
-    (void)RETURN_SOFTMAX_LSE;
-
+    // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；LSE 已改为编译期模板参数。
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
 
@@ -107,7 +105,7 @@ __global__ __aicore__ void quant_block_sparse_attn(
                       "MXFullQuantMode must use S1=128, S2=512, D=128, DV=128 config");
         BSA_MX_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
                        S2TemplateType::Aligned512, DTemplateType::Aligned128, DTemplateType::Aligned128,
-                       HAS_ATTENTION, bsaIsPa, bsaUseDn);
+                       HAS_ATTENTION, RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
     } else {
         static_assert(Config == Config_S1Aligned128_S2Aligned256_DAligned128_DVAligned128,
                       "FP8QuantMode must use S1=128, S2=256, D=128, DV=128 config");

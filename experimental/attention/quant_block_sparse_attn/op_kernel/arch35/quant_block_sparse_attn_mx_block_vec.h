@@ -34,7 +34,7 @@ namespace BaseApi {
 // V1 执行 softmax/P 量化，V2 更新并写回 attention output/LSE。
 template <typename inputType, typename mmType, typename outputType, BSALayout layout, BSALayout kvLayout,
           S1TemplateType s1TemplateType, S2TemplateType s2TemplateType, DTemplateType dTemplateType,
-          DTemplateType dVTemplateType, bool hasAtten, bool isPa, bool useDn = true>
+          DTemplateType dVTemplateType, bool hasAtten, bool hasLse, bool isPa, bool useDn = true>
 class QuantBlockSparseAttnMxBlockVec {
 public:
     using INPUT_T = inputType;
@@ -45,6 +45,7 @@ public:
 
     static constexpr bool USE_DN = useDn;
     static constexpr bool HAS_ATTEN = hasAtten;
+    static constexpr bool HAS_LSE = hasLse;
     static constexpr bool IS_PA = isPa;
     static constexpr BSALayout LAYOUT = layout;
     static constexpr BSALayout KV_LAYOUT = kvLayout;
@@ -146,7 +147,7 @@ public:
             const uint64_t aivCoreNum = static_cast<uint64_t>(constInfo.coreNum) * GetSubBlockNum();
             InitOutputSingleCore(attentionOutGm_, emptyTensorParams.totalOutputSize, aivCoreNum,
                                  constInfo.aivIdx, 0.0F);
-            if (constInfo.isSoftmaxLseEnable) {
+            if constexpr (HAS_LSE) {
                 InitOutputSingleCore(softmaxLseGm_, emptyTensorParams.totalSoftMaxLseOutputSize, aivCoreNum,
                                      constInfo.aivIdx, BSA_EMPTY_LSE_VALUE);
             }
@@ -280,7 +281,9 @@ public:
         }
         if (unlikely(runInfo.isLastS2Loop && IsLastSubLoop(runInfo, subLoop))) {
             // 最后一个 S2/subLoop 后写 LSE。
-            SoftmaxLseCopyOut(runInfo, constInfo, sumUb, maxUb);
+            if constexpr (HAS_LSE) {
+                SoftmaxLseCopyOut(runInfo, constInfo, sumUb, maxUb);
+            }
         }
     }
 
@@ -524,7 +527,7 @@ private:
     __aicore__ inline void SoftmaxLseCopyOut(MxRunInfo &runInfo, const MxConstInfo &constInfo,
                                              LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
-        if (!constInfo.isSoftmaxLseEnable || runInfo.actVecMSize == 0U) {
+        if (runInfo.actVecMSize == 0U) {
             return;
         }
         LocalTensor<float> lseUb = softmaxLseQueue_.template AllocTensor<float>();

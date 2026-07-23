@@ -115,7 +115,6 @@ struct MxScaleConstInfo {
 
 // MX kernel 使用的特性开关。
 struct MxFeatureConstInfo {
-    bool isSoftmaxLseEnable = false;
     bool isActualLenDimsNull = false;
     bool isActualLenDimsKVNull = false;
 };
