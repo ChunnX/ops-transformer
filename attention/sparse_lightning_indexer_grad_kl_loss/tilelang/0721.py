@@ -484,20 +484,20 @@ def tilelang_grad_kl_loss_single_kernel(
                     else:
                         T.wait_cross_flag(V0_TO_C1_P_FLAGS[1])
 
-                    # Prime the Key L1 slot for this K outer block.  Each
-                    # inner tile then prefetches its successor before the
-                    # current final MMA/FIX completes.
-                    first_k_start = k_outer * S2_WORKSPACE
-                    T.wait_flag("mte1", "mte2", 0)
-                    T.copy(
-                        GatherKey_ws[bz_task, s1_id,
-                                     first_k_start:first_k_start + N_SPLIT,
-                                     0:K_SPLIT],
-                        c1_key_l1,
-                    )
-                    T.set_flag("mte2", "mte1", 0)
                     for k_inner in T.serial(S2_WORKSPACE // N_SPLIT):
                         k_start = k_outer * S2_WORKSPACE + k_inner * N_SPLIT
+                        # Preload the first query-dimension Key tile.  Once
+                        # MTE1 has consumed a tile into L0B, the same L1 slot
+                        # is immediately refilled while Cube executes MMA.
+                        T.wait_flag("mte1", "mte2", 0)
+                        T.copy(
+                            GatherKey_ws[bz_task, s1_id,
+                                         k_start:k_start + N_SPLIT,
+                                         0:K_SPLIT],
+                            c1_key_l1,
+                        )
+                        T.set_flag("mte2", "mte1", 0)
+
                         for d_idx in T.serial(d_num_query):
                             T.wait_flag("m", "mte1", 0)
                             T.wait_flag("mte2", "mte1", 0)
@@ -542,19 +542,6 @@ def tilelang_grad_kl_loss_single_kernel(
                                         c1_key_l1,
                                     )
                                     T.set_flag("mte2", "mte1", 0)
-                                if d_num_rope == 0:
-                                    if k_inner + 1 < S2_WORKSPACE // N_SPLIT:
-                                        T.wait_flag("mte1", "mte2", 0)
-                                        T.copy(
-                                            GatherKey_ws[
-                                                bz_task, s1_id,
-                                                k_start + N_SPLIT:
-                                                k_start + 2 * N_SPLIT,
-                                                0:K_SPLIT,
-                                            ],
-                                            c1_key_l1,
-                                        )
-                                        T.set_flag("mte2", "mte1", 0)
 
                             T.wait_flag("mte1", "m", 0)
                             T.wait_flag("fix", "m", 0)
@@ -590,19 +577,6 @@ def tilelang_grad_kl_loss_single_kernel(
                                     c1_key_l1,
                                 )
                                 T.set_flag("mte2", "mte1", 0)
-                            if rope_idx + 1 >= d_num_rope:
-                                if k_inner + 1 < S2_WORKSPACE // N_SPLIT:
-                                    T.wait_flag("mte1", "mte2", 0)
-                                    T.copy(
-                                        GatherKey_ws[
-                                            bz_task, s1_id,
-                                            k_start + N_SPLIT:
-                                            k_start + 2 * N_SPLIT,
-                                            0:K_SPLIT,
-                                        ],
-                                        c1_key_l1,
-                                    )
-                                    T.set_flag("mte2", "mte1", 0)
 
                             T.wait_flag("mte1", "m", 0)
                             T.wait_flag("fix", "m", 0)
