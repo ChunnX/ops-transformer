@@ -756,10 +756,10 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             cu_seqlens = cu_seqlens,
             seqused = seqused,
             start_pos = start_pos if exist_start_pos else None,
-            quant_mode = int(quant_mode),
+            quant_mode = quant_mode,
             cmp_ratio = cmp_ratio,
             coff = coff,
-            cache_mode = int(cache_mode)
+            cache_mode = cache_mode
         )
     )
     print(f"cmp_kv: shape {npu_out.shape}, dtype: {npu_out.dtype}")
