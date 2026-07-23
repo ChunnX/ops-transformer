@@ -72,10 +72,11 @@ def infer_geometry(query, key, sparse_indices, layout_q, cu_seqlens_q, cu_seqlen
         B, S1, N1 = int(query.shape[0]), int(query.shape[1]), int(query.shape[2])
         q_lengths = to_list(seqused_q) or [S1] * B
     else:
-        T, N1 = int(query.shape[0]), int(query.shape[1])
+        N1 = int(query.shape[1]) if layout_q == "TND" else int(query.shape[0])
+        T = int(query.shape[0]) if layout_q == "TND" else int(query.shape[1])
         B = int(sparse_indices.shape[0]) if sparse_indices is not None else 1
-        q_lengths = to_list(seqused_q) or lengths_from_prefix(cu_seqlens_q) or [T] * B
-        S1 = max(q_lengths) if q_lengths else T
+        S1 = max_seqlen_q if max_seqlen_q > 0 else (T // B if B > 0 else T)
+        q_lengths = to_list(seqused_q) or lengths_from_prefix(cu_seqlens_q) or [S1] * B
 
     kv_lengths = to_list(seqused_kv) or lengths_from_prefix(cu_seqlens_kv)
     if not kv_lengths:
