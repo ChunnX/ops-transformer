@@ -35,9 +35,8 @@ aclnnStatus aclnnIncreFlashAttentionGetWorkspaceSize(const aclTensor *query, con
                 "We apologize for any inconvenience caused and appreciate your timely migration to the new interface.");
         isFirstCall = false;
     }
-    (void) pseShift;
     aclnnStatus ret = aclnnInnerIncreFlashAttentionGetWorkspaceSize(
-        query, key, value, nullptr, attenMask, actualSeqLengths, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
+        query, key, value, pseShift, attenMask, actualSeqLengths, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
         nullptr, nullptr, nullptr, numHeads, scaleValue, inputLayout, numKeyValueHeads, 0, 1, attentionOut,
         workspaceSize, executor);
 
