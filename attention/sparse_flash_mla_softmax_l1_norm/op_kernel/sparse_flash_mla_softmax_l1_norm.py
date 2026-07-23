@@ -662,7 +662,7 @@ def sparse_flash_mla_softmax_l1_norm(
     )
 
     total_num_cores = pl.get_block_num()
-    core_id = pl.get_block_idx()
+    core_id = pl.get_block_idx() // pl.get_subblock_num()
     sub_id = pl.get_subblock_idx()
     
     has_seqused_q = tiling.has_seqused_q
