@@ -765,10 +765,20 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
     int64_t maxWavesPerExpert =
         (static_cast<int64_t>(tilingData->maxOutputSize) + static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256) - 1) /
         static_cast<int64_t>(MegaMoeImpl::L1_TILE_M_256);
-    int64_t dispatchFlagSlotsPerExpert = (maxWavesPerExpert + INT_CACHELINE - 1) / INT_CACHELINE * INT_CACHELINE;
+    bool useWavePipeline = tilingData->topoType == TOPO_TYPE_MTE &&
+                           (tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_GENERAL ||
+                            tilingData->groupedMatmulMode == GROUPED_MATMUL_MODE_A8W8_NZ) &&
+                           tilingData->combineQuantMode == COMBINE_NO_QUANT;
+    int64_t waveFlagSlotsPerExpert = maxWavesPerExpert * static_cast<int64_t>(INT_CACHELINE);
+    int64_t dispatchFlagSlotsPerExpert =
+        useWavePipeline ?
+            waveFlagSlotsPerExpert :
+            (maxWavesPerExpert + INT_CACHELINE - 1) / INT_CACHELINE * INT_CACHELINE;
+    int64_t swigluFlagSlotsPerExpert =
+        useWavePipeline ? waveFlagSlotsPerExpert : static_cast<int64_t>(INT_CACHELINE);
     uint64_t totalFlagElementCount =
         static_cast<uint64_t>(tilingData->expertPerRank) *
-        (static_cast<uint64_t>(INT_CACHELINE) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert) +
+        (static_cast<uint64_t>(swigluFlagSlotsPerExpert) + static_cast<uint64_t>(dispatchFlagSlotsPerExpert) +
          static_cast<uint64_t>(INT_CACHELINE) * tilingData->aicNum);
     if (tilingData->combineQuantMode != COMBINE_NO_QUANT) {
         uint64_t combineFlagElementCount = tilingData->combineSyncSlotCountPerExpert * tilingData->moeExpertPerRank *
