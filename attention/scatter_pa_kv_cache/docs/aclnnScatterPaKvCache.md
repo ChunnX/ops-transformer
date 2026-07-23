@@ -166,7 +166,7 @@ aclnnStatus aclnnScatterPaKvCache(
   <thead>
     <tr>
       <th class="tg-0pky">参数名</th>
-      <th class="tg-0pky">输入/输出</th>
+      <th class="tg-0pky">输入/输出/属性</th>
       <th class="tg-0pky">描述</th>
       <th class="tg-0pky">使用说明</th>
       <th class="tg-0pky">数据类型</th>
@@ -257,7 +257,7 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr>
     <tr>
       <td class="tg-0pky">cacheModeOptional（char*）</td>
-      <td class="tg-0pky">输入</td>
+      <td class="tg-0pky">属性</td>
       <td class="tg-0pky">表示keyCacheRef和valueCacheRef的内存排布格式。</td>
       <td class="tg-0pky">当传空指针或"Norm"时，仅支持ND内存排布格式。<br>当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
       <td class="tg-0pky">-</td>
@@ -267,9 +267,9 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr>
     <tr>
       <td class="tg-0lax">scatterModeOptional（char*）</td>
-      <td class="tg-0lax">输入</td>
+      <td class="tg-0lax">属性</td>
       <td class="tg-0lax">表示更新的key和value的状态。</td>
-      <td class="tg-0lax">当传空指针或"None"时，表示更新的key和value是非压缩状态且连续。<br>当传"Alibi"时，表示更新key和value是基于Alibi结构的压缩状态。<br>当传"Rope"时，表示更新key和value是基于Rope结构的压缩状态。<br>当传"Omni"时，表示更新key和value是基于Omni结构的压缩状态。<br>当传"Nct"时，表示更新的key和value是非压缩状态但非连续。<br>当传"NHSD"时，表示keyCacheRef和keyCacheRef的格式时[num_block, num_head, block_size, head_size]。</td>
+      <td class="tg-0lax">当传空指针或"None"时，表示更新的key和value是非压缩状态且连续。<br>当传"Alibi"时，表示更新key和value是基于Alibi结构的压缩状态。<br>当传"Rope"时，表示更新key和value是基于Rope结构的压缩状态。<br>当传"Omni"时，表示更新key和value是基于Omni结构的压缩状态。<br>当传"Nct"时，表示更新的key和value是非压缩状态但非连续。<br>当传"NHSD"时，表示keyCacheRef和valueCacheRef的格式为[num_block, num_head, block_size, head_size]。</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr>
     <tr>
       <td class="tg-0lax">stridesOptional（aclIntArray*）</td>
-      <td class="tg-0lax">输入</td>
+      <td class="tg-0lax">属性</td>
       <td class="tg-0lax">key和value在非连续状态下的步长。</td>
       <td class="tg-0lax">数组长度为2。其值应该大于0。仅当scatterModeOptional为"Nct"时生效，分别表示strideK和strideV。</td>
       <td class="tg-0lax">-</td>
@@ -287,9 +287,9 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr>
     <tr>
       <td class="tg-0lax">offsetsOptional（aclIntArray*）</td>
-      <td class="tg-0lax">输入</td>
+      <td class="tg-0lax">属性</td>
       <td class="tg-0lax">key和value在非连续状态下的偏移。</td>
-      <td class="tg-0lax">数组长度为2。其值应该大于0。仅当scatterModeOptional为"Nct"时生效，分别表示offsetK和offsetV。</td>
+      <td class="tg-0lax">数组长度为2。其值应该大于等于0。仅当scatterModeOptional为"Nct"时生效，分别表示offsetK和offsetV。</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
       <td class="tg-0lax">-</td>
@@ -319,9 +319,9 @@ aclnnStatus aclnnScatterPaKvCache(
 
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：
 
-    - 输入key、keyCacheRef、value、valueCacheRef不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1数据类型。
+    - 输入key、keyCacheRef、value、valueCacheRef仅支持FLOAT16、BFLOAT16、INT8数据类型，不支持FLOAT、UINT8、INT16、UINT16、INT32、UINT32、HIFLOAT8、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E1M2、FLOAT4_E2M1。
 
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅场景一、场景二scatter_mode为None时支持FLOAT4_E1M2、FLOAT4_E2M1。
+  - <term>Ascend 950PR/Ascend 950DT</term>：支持参数表中列出的全部数据类型；其中FLOAT4_E1M2、FLOAT4_E2M1仅场景一、场景二且scatterMode为"None"时支持。
 
 - **返回值：**
 
