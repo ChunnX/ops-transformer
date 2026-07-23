@@ -26,13 +26,15 @@ enum class LI_LAYOUT : uint32_t {
 
 template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename OUT_T,
     const bool PAGE_ATTENTION = false,
-          LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BBND, typename... Args>
+          LI_LAYOUT Q_LAYOUT_T = LI_LAYOUT::BSND, LI_LAYOUT K_LAYOUT_T = LI_LAYOUT::PA_BBND,
+          typename W_T = half, typename SCALE_T = half, typename... Args>
 struct QLIV2Type {
     static_assert(
         (std::is_same_v<QK_T, float> &&
          (std::is_same_v<SCORE_T, uint32_t> || std::is_same_v<SCORE_T, uint16_t>)) ||
         (std::is_same_v<QK_T, bfloat16_t> &&
-         std::is_same_v<SCORE_T, uint16_t>),
+         std::is_same_v<SCORE_T, uint16_t>) ||
+        (std::is_same_v<QK_T, int32_t> && std::is_same_v<SCORE_T, uint16_t>),
         "Invalid combination of QK_T and SCORE_T"
     );
     using queryType = Q_T;
@@ -40,7 +42,8 @@ struct QLIV2Type {
     using queryKeyType = QK_T;
     using scoreType = SCORE_T;
     using outputType = OUT_T;
-
+    using weightType = W_T;
+    using scaleType = SCALE_T;
     static constexpr bool pageAttention = PAGE_ATTENTION;
     static constexpr LI_LAYOUT layout = Q_LAYOUT_T;
     static constexpr LI_LAYOUT keyLayout = K_LAYOUT_T;

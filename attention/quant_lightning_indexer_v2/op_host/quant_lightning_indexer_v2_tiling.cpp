@@ -402,14 +402,32 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
                     "When quant_mode is 4, the data types of the input query and key"
                     " must be hifloat8."),
                 return ge::GRAPH_FAILED);
+        } else if (*opParamInfo_.quantMode == 2) {
+            OP_CHECK_IF(inputQType_ != ge::DT_INT8,
+                OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query and key",
+                    QLIV2DataTypeToSerialString(inputQType_) + " and " + QLIV2DataTypeToSerialString(inputKType_),
+                    "When quant_mode is 2, the data types of the input query and key"
+                    " must be int8."),
+                return ge::GRAPH_FAILED);
         }
-        OP_CHECK_IF(
-            inputQueryScaleType_ != ge::DT_FLOAT,
+        if (inputQType_ != ge::DT_INT8) {
+            OP_CHECK_IF(
+            inputQueryScaleType_ != ge::DT_FLOAT16,
             OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale",
                 QLIV2DataTypeToSerialString(inputQueryScaleType_) + " and " +
                 QLIV2DataTypeToSerialString(inputKeyScaleType_),
                 "The data types of the input query_dequant_scale and key_dequant_scale must be float"),
             return ge::GRAPH_FAILED);
+        } else {
+            OP_CHECK_IF(
+            inputQueryScaleType_ != ge::DT_FLOAT,
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(opName_, "query_dequant_scale and key_dequant_scale",
+                QLIV2DataTypeToSerialString(inputQueryScaleType_) + " and " +
+                QLIV2DataTypeToSerialString(inputKeyScaleType_),
+                "When data types of input query is int8, "
+                "the data types of the input query_dequant_scale and key_dequant_scale must be float16"),
+            return ge::GRAPH_FAILED);
+        }
     }
 
     if (npuArch_ == NpuArch::DAV_2201) {
@@ -419,11 +437,20 @@ ge::graphStatus QLIV2InfoParser::GetAndCheckInOutDataType()
                     "The data types of the input weights must be float16"),
                 return ge::GRAPH_FAILED);
     } else if (npuArch_ == NpuArch::DAV_3510) {
+        if (inputQType_ == ge::DT_INT8) {
+            OP_CHECK_IF(weightsType_ != ge::DT_FLOAT16,
+                OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
+                    QLIV2DataTypeToSerialString(weightsType_).c_str(),
+                    "When data types of input query is int8, the data types of the input weights must be float16"),
+                return ge::GRAPH_FAILED);
+        } else {
             OP_CHECK_IF(weightsType_ != ge::DT_FLOAT,
                 OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "weights",
                     QLIV2DataTypeToSerialString(weightsType_).c_str(),
-                    "The data types of the input weights must be float"),
+                    "When data types of input query is not int8, "
+                    "the data types of the input weights must be float"),
                 return ge::GRAPH_FAILED);
+        }
     }
 
     OP_CHECK_IF(outputType_ != ge::DT_INT32,
