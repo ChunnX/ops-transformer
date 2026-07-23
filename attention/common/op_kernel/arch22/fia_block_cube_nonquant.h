@@ -324,7 +324,7 @@ __aicore__ inline void FiaBlockCubeNonQuant<FIAT>::Init(
         keyRopeGm.SetGlobalBuffer((__gm__ KV_T *)keyRope);
         InitKVBuffer(constInfo.batchSize, constInfo.kvSeqSize, actualSeqLengthsGm, constInfo.actualLenDims,
                     constInfo.kvHeadNum, constInfo.kvCacheBlockSize, constInfo.headDimRope, keyRopeGmTensor, keyRopeGm,
-                    0);
+                    constInfo.keyRopeBnStride);
     }
 
     keyPtr = key;

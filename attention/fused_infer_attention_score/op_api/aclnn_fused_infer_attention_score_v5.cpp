@@ -193,10 +193,7 @@ aclnnStatus CheckTensorContiguous(
     const aclTensor *valueAntiquantScaleOptional,
     const aclTensor *keyRopeOptional)
 {
-    if (CheckKVContiguous(key, value) != ACLNN_SUCCESS) {
-        return ACLNN_ERR_INNER_TILING_ERROR;
-    }
-    if (keyRopeOptional != nullptr && !IsContiguous(keyRopeOptional)) {
+    if (CheckKVRopeContiguous(key, value, keyRopeOptional) != ACLNN_SUCCESS) {
         return ACLNN_ERR_INNER_TILING_ERROR;
     }
     if ((keyAntiquantScaleOptional != nullptr && !IsContiguous(keyAntiquantScaleOptional)) ||

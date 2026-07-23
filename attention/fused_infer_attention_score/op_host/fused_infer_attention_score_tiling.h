@@ -145,11 +145,12 @@ TILING_DATA_FIELD_DEF(uint32_t, isOutQuantTypeBf16)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionPostQuantParamsOp, FusedInferAttentionPostQuantParams)
 
-// PageAttention KV cache stride parameters. A zero stride keeps the original
+// PageAttention KV/keyRope cache stride parameters. A zero stride keeps the original
 // contiguous-layout calculation for TensorV1 and non-view inputs.
 BEGIN_TILING_DATA_DEF(FusedInferAttentionKvStrideParams)
 TILING_DATA_FIELD_DEF(uint64_t, keyBnStride)
 TILING_DATA_FIELD_DEF(uint64_t, valueBnStride)
+TILING_DATA_FIELD_DEF(uint64_t, keyRopeBnStride)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionKvStrideParamsOp, FusedInferAttentionKvStrideParams)
 

@@ -123,10 +123,10 @@ aclnnStatus aclnnFusedInferAttentionScoreV3GetMaxWorkspaceSize(
     TensorPreProcess(tensorListKey, tensorListValue);
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
-    aclnnStatus ret = CheckKVContiguous(tensorListKey, tensorListValue);
+    aclnnStatus ret = CheckKVRopeContiguous(tensorListKey, tensorListValue, keyRopeOptional);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When key/value is not contiguous, the opbase package must support TensorV2.");
+                "When key/value/keyRope is not contiguous, the opbase package must support TensorV2.");
         return ret;
     }
 
@@ -211,10 +211,10 @@ aclnnStatus aclnnFusedInferAttentionScoreV3GetWorkspaceSize(
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
-    aclnnStatus ret = CheckKVContiguous(key, value);
+    aclnnStatus ret = CheckKVRopeContiguous(key, value, keyRopeOptional);
     if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "When key/value is not contiguous, the opbase package must support TensorV2.");
+                "When key/value/keyRope is not contiguous, the opbase package must support TensorV2.");
         return ret;
     }
 

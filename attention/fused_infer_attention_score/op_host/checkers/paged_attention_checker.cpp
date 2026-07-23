@@ -661,6 +661,9 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
         (fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT ||
          fiaInfo.fullQuantMode == FiaFullQuantMode::QK_PER_TOKEN_HEAD_V_PER_HEAD);
     const bool supportsKvStride = (enableNonQuant_ && (isArch22 || isArch35)) || isSupportedFullQuant;
+    const bool isSplitRopeMla = fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512 ||
+        fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D128;
+    const bool supportsKeyRopeStride = isArch35 || (enableNonQuant_ && isArch22 && isSplitRopeMla);
 
     auto CheckFullyContiguous = [&fiaInfo](const char *inputName, int32_t nonContiguousDim) {
         OP_CHECK_IF(nonContiguousDim != -1,
@@ -681,8 +684,8 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
         return ge::GRAPH_SUCCESS;
     }
 
-    // arch22 kernels only receive K/V dim-0 strides; keyRope stride is not forwarded on this path.
-    if (isArch22 && CheckFullyContiguous("keyRope", keyRopeDim) != ge::GRAPH_SUCCESS) {
+    // arch22 only forwards keyRope dim-0 stride for non-quant split-RoPE MLA templates.
+    if (!supportsKeyRopeStride && CheckFullyContiguous("keyRope", keyRopeDim) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
 
@@ -705,7 +708,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
     };
     if (CheckSupportedDim("key", keyDim) != ge::GRAPH_SUCCESS ||
         CheckSupportedDim("value", valueDim) != ge::GRAPH_SUCCESS ||
-        (isArch35 && CheckSupportedDim("keyRope", keyRopeDim) != ge::GRAPH_SUCCESS)) {
+        (supportsKeyRopeStride && CheckSupportedDim("keyRope", keyRopeDim) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
 
@@ -719,7 +722,7 @@ ge::graphStatus PagedAttentionChecker::CheckNonContiguousSupport(const FiaTiling
     };
     if (CheckForwardedStride("key", keyDim, fiaInfo.keyBnStride, fiaInfo.keyN2Stride) != ge::GRAPH_SUCCESS ||
         CheckForwardedStride("value", valueDim, fiaInfo.valueBnStride, fiaInfo.valueN2Stride) != ge::GRAPH_SUCCESS ||
-        (isArch35 && CheckForwardedStride("keyRope", keyRopeDim, fiaInfo.kRopeBnStride,
+        (supportsKeyRopeStride && CheckForwardedStride("keyRope", keyRopeDim, fiaInfo.kRopeBnStride,
                          fiaInfo.kRopeN2Stride) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }

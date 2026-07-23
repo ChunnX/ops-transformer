@@ -112,6 +112,35 @@ TEST(FiaKvStrideParser, DistinguishesKeyOnlyViewAndDim1Stride)
     EXPECT_EQ(parser.valueBnStride_, 4096U);
 }
 
+TEST(FiaKvStrideParser, ExtractsKeyRopeDim0Stride)
+{
+    gert::StorageShape keyShape({8, 1, 16, 512}, {8, 1, 16, 512});
+    gert::StorageShape valueShape({8, 1, 16, 512}, {8, 1, 16, 512});
+    gert::Stride keyStride;
+    gert::Stride valueStride;
+    gert::Stride keyRopeStride;
+    SetStride(keyStride, {8192, 8192, 512, 1});
+    SetStride(valueStride, {8192, 8192, 512, 1});
+    SetStride(keyRopeStride, {2048, 1024, 64, 1});
+
+    optiling::FiaInfoParser parser(nullptr);
+    parser.hasViewStride_ = true;
+    parser.kvStorageMode_ = optiling::KvStorageMode::PAGE_ATTENTION;
+    parser.kvLayout_ = optiling::FiaLayout::BnNBsD;
+    parser.kCache_ = {&keyShape};
+    parser.vCache_ = {&valueShape};
+    parser.kStrideCache_ = {&keyStride};
+    parser.vStrideCache_ = {&valueStride};
+    parser.keyStrides_ = &keyStride;
+    parser.valueStrides_ = &valueStride;
+    parser.kRopeStrides_ = &keyRopeStride;
+
+    ASSERT_EQ(parser.GetKvStrideValues(), ge::GRAPH_SUCCESS);
+
+    EXPECT_EQ(parser.kRopeBnStride_, 2048U);
+    EXPECT_EQ(parser.kRopeN2Stride_, 1024U);
+}
+
 TEST(FiaKvStrideParser, DetectsNonContiguousStrideInLaterTensorListElement)
 {
     gert::StorageShape firstShape({1, 2, 16, 128}, {1, 2, 16, 128});
@@ -170,16 +199,35 @@ TEST(FiaKvStrideChecker, Arch22AcceptsDim0ForBnBsHAndNz)
     EXPECT_EQ(checker.CheckMultiParaConsistency(nzInfo), ge::GRAPH_SUCCESS);
 }
 
-TEST(FiaKvStrideChecker, Arch22RejectsDim1AndNonContiguousKeyRope)
+TEST(FiaKvStrideChecker, Arch22AcceptsDim0KeyRopeForSplitMla)
 {
     optiling::PagedAttentionChecker checker(true, false, false);
-    auto dim1Info = MakePagedInfo(NpuArch::DAV_2201, optiling::FiaLayout::BnNBsD, 1, -1);
-    auto keyRopeInfo = MakePagedInfo(NpuArch::DAV_2201, optiling::FiaLayout::BnNBsD, 0, 0);
+    auto keyRopeInfo = MakePagedInfo(NpuArch::DAV_2201, optiling::FiaLayout::BnNBsD, -1, -1);
     keyRopeInfo.keyRopeNonContigDim = 0;
     keyRopeInfo.kRopeBnStride = 8192;
 
+    keyRopeInfo.mlaMode = optiling::MlaMode::ROPE_SPLIT_D128;
+    EXPECT_EQ(checker.CheckMultiParaConsistency(keyRopeInfo), ge::GRAPH_SUCCESS);
+    keyRopeInfo.mlaMode = optiling::MlaMode::ROPE_SPLIT_D512;
+    EXPECT_EQ(checker.CheckMultiParaConsistency(keyRopeInfo), ge::GRAPH_SUCCESS);
+}
+
+TEST(FiaKvStrideChecker, Arch22RejectsDim1AndKeyRopeOutsideSplitMla)
+{
+    optiling::PagedAttentionChecker checker(true, false, false);
+    auto dim1Info = MakePagedInfo(NpuArch::DAV_2201, optiling::FiaLayout::BnNBsD, 1, -1);
     EXPECT_EQ(checker.CheckMultiParaConsistency(dim1Info), ge::GRAPH_FAILED);
-    EXPECT_EQ(checker.CheckMultiParaConsistency(keyRopeInfo), ge::GRAPH_FAILED);
+
+    auto keyRopeDim1Info = MakePagedInfo(NpuArch::DAV_2201, optiling::FiaLayout::BnNBsD, -1, -1);
+    keyRopeDim1Info.mlaMode = optiling::MlaMode::ROPE_SPLIT_D512;
+    keyRopeDim1Info.keyRopeNonContigDim = 1;
+    keyRopeDim1Info.kRopeN2Stride = 4096;
+    EXPECT_EQ(checker.CheckMultiParaConsistency(keyRopeDim1Info), ge::GRAPH_FAILED);
+
+    auto nonMlaInfo = MakePagedInfo(NpuArch::DAV_2201, optiling::FiaLayout::BnNBsD, -1, -1);
+    nonMlaInfo.keyRopeNonContigDim = 0;
+    nonMlaInfo.kRopeBnStride = 8192;
+    EXPECT_EQ(checker.CheckMultiParaConsistency(nonMlaInfo), ge::GRAPH_FAILED);
 }
 
 TEST(FiaKvStrideChecker, Arch35AcceptsDim1ForBnNBsDAndNz)

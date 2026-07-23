@@ -10,7 +10,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 """
-非量化 kvcache 非连续 stride 传递测试
+非量化 K/V/keyRope cache 非连续 stride 传递测试
 
 模板分发 (arch35 IsCapable → isReconstructTemp):
   新模板 (FiaTilingNonQuantArch35):
@@ -19,7 +19,7 @@
   老模板 (兼容): 其余场景 (D≠128 非MLA, 非PA等)
 
 非连续规格:
-  arch22: BnNBsD/NZ/BnBsH 仅 dim0
+  arch22: BnNBsD/NZ/BnBsH 的 K/V 仅 dim0，split-RoPE MLA 的 keyRope 也仅 dim0
   arch35: BnNBsD/NZ 支持 dim0/dim01，BnBsH 仅 dim0
   所有架构的非 PA 场景均不允许非连续 K/V
 """
@@ -179,14 +179,12 @@ def _run_one(cfg, expect_pass):
                  pre_tok,next_tok,mask_npu,sparse_mode)
 
     nc_target=cfg.get("nc_target", "both")
-    k_nc_type=nc if nc_target in ("key", "both") else "none"
-    v_nc_type=nc if nc_target in ("value", "both") else "none"
+    k_nc_type=nc if nc_target in ("key", "both", "all") else "none"
+    v_nc_type=nc if nc_target in ("value", "both", "all") else "none"
+    k_rope_nc_type=nc if dr > 0 and nc_target in ("key_rope", "all") else "none"
     k_nc=_make_nc(k_ref.npu(),k_nc_type,cfg.get("key_padding",1))
     v_nc=_make_nc(v_ref.npu(),v_nc_type,cfg.get("value_padding",1))
-    if dr > 0:
-        # This feature covers K/V cache stride only. keyRope remains contiguous, especially on arch22 where its
-        # stride is not forwarded to the kernel.
-        assert k_rope.is_contiguous(), f"{cfg['id']}:keyRope must stay contiguous"
+    k_rope_nc=_make_nc(k_rope,k_rope_nc_type,cfg.get("key_rope_padding",1)) if dr > 0 else k_rope
     if nc!="none":
         if k_nc_type != "none":
             cs=_cstrides(k_nc.shape)
@@ -196,17 +194,23 @@ def _run_one(cfg, expect_pass):
             cs=_cstrides(v_nc.shape)
             assert v_nc.stride(0)!=cs[0],f"{cfg['id']}:value-dim0"
             if nc=="dim01": assert v_nc.stride(1)!=cs[1],f"{cfg['id']}:value-dim1"
+        if k_rope_nc_type != "none":
+            cs=_cstrides(k_rope_nc.shape)
+            assert k_rope_nc.stride(0)!=cs[0],f"{cfg['id']}:key-rope-dim0"
+            if nc=="dim01": assert k_rope_nc.stride(1)!=cs[1],f"{cfg['id']}:key-rope-dim1"
         logger.info(f"  k contig={k_nc.is_contiguous()} stride={k_nc.stride()}")
         logger.info(f"  v contig={v_nc.is_contiguous()} stride={v_nc.stride()}")
+        if dr > 0:
+            logger.info(f"  key_rope contig={k_rope_nc.is_contiguous()} stride={k_rope_nc.stride()}")
         if cfg.get("expect_different_stride", False):
             assert k_nc.stride(0) != v_nc.stride(0), f"{cfg['id']}:same-stride0"
 
     if not expect_pass:
         with pytest.raises(RuntimeError) as ei:
-            _run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope,d,dr,pre_tok,next_tok,mask_npu,sparse_mode)
+            _run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope_nc,d,dr,pre_tok,next_tok,mask_npu,sparse_mode)
         logger.info(f"  [{cfg['id']}] ERROR: {ei.value}")
         return
-    out=_run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope,d,dr,pre_tok,next_tok,mask_npu,sparse_mode)
+    out=_run(q_npu,k_nc,v_nc,pa,ql,act_q,act_kv,bt_npu,bs,scale,N_q,N_kv,q_rope,k_rope_nc,d,dr,pre_tok,next_tok,mask_npu,sparse_mode)
     _check(ref_out,out,cfg["id"])
 
 
@@ -258,6 +262,12 @@ OLD_NORMAL = [
     # ROPE_SPLIT: D=128+rope64, V=128
     {"id":"OLD-ROPE-BnBsH-dim0", "B":2,"N_q":16,"N_kv":1,"pa":True,"fmt":"BnBsH","ql":"TND","nc":"dim0",
      "kv_seq":16,"bs":128,"q_seq":1,"d":128,"dr":64,"dv":128},
+    {"id":"OLD-ROPE-KROPE-BnBsH-dim0", "B":2,"N_q":16,"N_kv":1,"pa":True,"fmt":"BnBsH","ql":"TND","nc":"dim0",
+     "nc_target":"key_rope","kv_seq":16,"bs":128,"q_seq":1,"d":128,"dr":64,"dv":128},
+    {"id":"OLD-ROPE-KROPE-BnNBsD-dim0", "B":2,"N_q":8,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim0",
+     "nc_target":"key_rope","kv_seq":512,"bs":128,"q_seq":2,"d":128,"dr":64,"dv":128},
+    {"id":"OLD-ROPE-KROPE-BnNBsD-dim01", "B":2,"N_q":8,"N_kv":2,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim01",
+     "nc_target":"key_rope","kv_seq":512,"bs":128,"q_seq":2,"d":128,"dr":64,"dv":128},
     {"id":"OLD-ROPE-dim0",     "B":1,"N_q":4,"N_kv":1,"pa":True,"fmt":"BnNBsD","ql":"TND","nc":"dim0",
      "kv_seq":2048,"bs":512,"q_seq":4,"d":128,"dr":64,"dv":128},
     {"id":"OLD-ROPE-dim01",    "B":2,"N_q":8,"N_kv":4,"pa":True,"fmt":"BnNBsD","ql":"BNSD","nc":"dim01",

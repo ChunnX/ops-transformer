@@ -151,6 +151,16 @@ aclnnStatus CheckKVContiguous(const aclTensorList *key, const aclTensorList *val
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus CheckKVRopeContiguous(const aclTensorList *key, const aclTensorList *value,
+                                  const aclTensor *keyRope)
+{
+    if (CheckKVContiguous(key, value) != ACLNN_SUCCESS ||
+        (keyRope != nullptr && !IsContiguous(keyRope))) {
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+    return ACLNN_SUCCESS;
+}
+
 } // namespace
 
 #ifdef __cplusplus

@@ -351,12 +351,14 @@ template <typename FIAT> __aicore__ inline void FiaBlockCubeNonQuantMla<FIAT>::I
             if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_BNBD) {
                 keyRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize,
                                                       constInfo.headDimRope, blockTableGm,
-                                                      constInfo.maxBlockNumPerBatch);
+                                                      constInfo.maxBlockNumPerBatch,
+                                                      constInfo.keyRopeBnStride);
             } else if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_PA_NZ) {
                 uint32_t d0 = 32 / sizeof(KV_T);
                 uint32_t d1 = constInfo.headDimRope / d0;
                 keyRopeGmTensor.offsetCalculator.Init(constInfo.kvHeadNum, constInfo.kvCacheBlockSize, d1, d0,
-                                                      blockTableGm, constInfo.maxBlockNumPerBatch);
+                                                      blockTableGm, constInfo.maxBlockNumPerBatch,
+                                                      constInfo.keyRopeBnStride);
             }
         } else {
             if constexpr (GmLayoutParams<KV_FORMAT>::CATEGORY == FormatCategory::GM_KV_BNSD) {
