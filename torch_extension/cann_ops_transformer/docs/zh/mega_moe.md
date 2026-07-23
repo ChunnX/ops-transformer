@@ -1310,7 +1310,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         - num_tokens（x.dim0）范围 [1, maxBs], maxBs = (8 * (totalUbSize - 48 * 1024)) / (num_topk * (64 + ep_world_size)), 其中totalUbSize为UB总大小，950系列产品该值为256K。
         - hidden（x.dim1）仅支持1024、2048、3072、4096、5120、6144、7168、8192。
         - num_topk（topk_ids.dim1）支持[1, 32]。
-        - num_experts_per_rank（weight1.dim0，包含共享专家槽位）范围 [1, 1024]。
+        - num_experts_per_rank（weight1.dim0）范围 [1, 1024]。
         - intermediate_hidden（weight1.dim1）仅支持1024、2048、3072、4096、7168。
         - ep_world_size范围 [2, 1024]。
         - num_experts范围 [ep_world_size, 2048]，且num_experts % ep_world_size == 0。
