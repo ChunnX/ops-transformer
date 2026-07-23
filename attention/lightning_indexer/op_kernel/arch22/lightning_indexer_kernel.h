@@ -710,25 +710,46 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
         __gm__ uint8_t *scoreBase = workspaceBase + constInfo.scoreB16GmOffset;
         __gm__ uint8_t *radixWsBase = workspaceBase + constInfo.radixWsOffset;
 
-        // Each AIV core processes a subset of batches independently
+        // For TND, compute correct totalBatch from actualSeqLengthsGmQ
+        bool isTND = (constInfo.qSeqSize == 0 && constInfo.actualLenQDims > 0);
+        if (isTND) {
+            totalBatch = actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1) * constInfo.kHeadNum;
+        }
+
         for (uint32_t batchId = aivIdx; batchId < totalBatch; batchId += aivTotal) {
-            // For TND layout, qSeqSize=0, so batchId directly maps to s1Idx
             uint32_t bIdx = 0;
-            uint32_t s1Idx = batchId;  // single batch, n2Size=1, so batchId == s1Idx
+            uint32_t s1Idx = 0;
+            uint32_t n2Idx = 0;
+
             if (constInfo.qSeqSize > 0) {
+                // BSND: batchId = bIdx * (qSeq * n2) + s1Idx * n2 + n2Idx
                 bIdx = batchId / (constInfo.qSeqSize * constInfo.kHeadNum);
                 uint32_t remain = batchId % (constInfo.qSeqSize * constInfo.kHeadNum);
                 s1Idx = remain / constInfo.kHeadNum;
+                n2Idx = remain % constInfo.kHeadNum;
+            } else if (isTND) {
+                // TND: batchId = tRow * n2 + n2Idx; tRow maps to (bIdx, localS1Idx)
+                uint32_t tRow = batchId / constInfo.kHeadNum;
+                n2Idx = batchId % constInfo.kHeadNum;
+                // Find which batch tRow belongs to using cumulative act_seq_q
+                uint32_t tBase = 0;
+                for (uint32_t b = 0; b < constInfo.batchSize; b++) {
+                    uint32_t tEnd = actualSeqLengthsGmQ.GetValue(b);
+                    if (tRow < tEnd) {
+                        bIdx = b;
+                        s1Idx = tRow - tBase;
+                        break;
+                    }
+                    tBase = tEnd;
+                }
+            } else {
+                s1Idx = batchId;
             }
 
             uint32_t actS1 = 0;
             uint32_t actS2 = 0;
             GetS1S2ActualSeqLen(bIdx, actS1, actS2);
-            // For TND layout, qSeqSize=0 causes actS1=0 from GetS1S2ActualSeqLen
-            // Use radixTotalBatch as actS1 in that case
-            if (actS1 == 0 && constInfo.radixTotalBatch > 0) {
-                actS1 = actS2;  // TND single batch: actS1 == actS2
-            }
+
             int32_t cuRealAcSeq = constInfo.attenMaskFlag ?
                 (static_cast<int32_t>(actS2) - (static_cast<int32_t>(actS1) - static_cast<int32_t>(s1Idx)) + 1) :
                 static_cast<int32_t>(actS2);
@@ -742,7 +763,6 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
                 continue;
             }
 
-            // If cuRealAcSeq <= kValue, all valid indices are in TopK
             if (static_cast<uint32_t>(cuRealAcSeq) <= kValue) {
                 __gm__ int32_t *outIdx = reinterpret_cast<__gm__ int32_t *>(idxPtr);
                 for (int32_t i = 0; i < cuRealAcSeq; i++) { outIdx[i] = i; }
@@ -750,8 +770,6 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
                 continue;
             }
 
-            // RadixTopK: process all S2 tiles written by ProcessVec
-            // scoreB16Gm has [sortLenAlign] values per batch, written across multiple S2 tiles
             uint32_t effSortLen = static_cast<uint32_t>(cuRealAcSeq);
 
             InlineRadixTopK(
@@ -760,12 +778,12 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
                 idxPtr,
                 radixWsBase,
                 effSortLen,
-                sortLenAlign,  // sortLenAlign for GM stride
+                sortLenAlign,
                 kValue,
                 tileLen,
-                0,      // coreId = 0 (single core per batch)
-                1,      // coreNum = 1
-                batchId);  // debug: batchId
+                0,
+                1,
+                batchId);
         }
     }
 }
