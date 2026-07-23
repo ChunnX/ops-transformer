@@ -701,7 +701,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
             basicTiling_.baseN = 128;
             basicTiling_.baseK = 128;
         }
-        OP_LOGI(context_->GetNodeName(), "==========================yangtao0723==========================");
+        OP_LOGD(context_->GetNodeName(), "===========yangtao0723================= kernel_level_ value is %ld ======.", kernel_level_);
     } else {
         CalBasicBlock();
         auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
