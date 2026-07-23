@@ -18,13 +18,13 @@ from cann_ops_transformer.op_builder.builder import OpBuilder
 
 DLI_METADATA_SIZE = 64
 DLI_METADATA_OP_NAME = "dense_lightning_indexer_softmax_lse_metadata"
-DLI_OP_NAME = "dense_lightning_indexer_softmax_lse_v2"
+DLI_OP_NAME = "dense_lightning_indexer_softmax_lse"
 
 
 class DenseLightningIndexerSoftmaxLseV2OpBuilder(OpBuilder):
     def __init__(self):
         super(DenseLightningIndexerSoftmaxLseV2OpBuilder, self).__init__(
-            "dense_lightning_indexer_softmax_lse_v2"
+            "dense_lightning_indexer_softmax_lse"
         )
 
     def sources(self):
