@@ -59,9 +59,15 @@ def qsmla(testcase_files):
         if is_run_graph:
             npu_result, cpu_quant_result, np = quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
                 test_data, device_id=device_id)
+            if test_data['params'].get('return_softmax_lse'):
+                print("return_softmax_lse is true!!!")
+                result, fulfill_percent = result_compare_method.check_result(cpu_lse, npu_lse)
         else:
             npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
             test_data, device_id=device_id)
+            if test_data['params'].get('return_softmax_lse'):
+                print("return_softmax_lse is true!!!")
+                result, fulfill_percent = result_compare_method.check_result(cpu_lse, npu_lse)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
     except Exception as e:
         logging.exception(e)

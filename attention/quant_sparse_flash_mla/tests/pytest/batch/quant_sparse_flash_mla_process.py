@@ -74,6 +74,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
     metadata_input = test_data['metadata_input']
     op_input = test_data['op_input']
     cpu_output = test_data['cpu_output']
+    cpu_lse = test_data.get('cpu_lse')
     torch_npu.npu.set_device(device_id)
 
     # 编译
@@ -165,6 +166,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     metadata_input = test_data['metadata_input']
     op_input = test_data['op_input']
     cpu_output = test_data['cpu_output']
+    cpu_lse = test_data.get('cpu_lse')
     torch_npu.npu.set_device(device_id)
 
     logging.info(f"test_data:{params}")

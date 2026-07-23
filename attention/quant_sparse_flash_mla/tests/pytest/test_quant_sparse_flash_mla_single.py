@@ -76,6 +76,7 @@ for params in ENABLED_PARAMS:
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
         "isSink": params.get("isSink", [True]),
+        "return_softmax_lse": params.get("return_softmax_lse", [False]),
     }
 
     param_names = list(param_values.keys())
@@ -113,12 +114,14 @@ def qsmla(param_combinations):
     # 获得cpu结果(真值)和算子结果（测试值）
     try:
         if is_run_graph:
-            npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
+            npu_result, cpu_quant_result, cpu_lse, npu_lse = quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
                 test_data, device_id=device_id)
         else:
-            npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
+            npu_result, cpu_quant_result, cpu_lse, npu_lse = quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
                 test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
+        if test_data['params'].get('return_softmax_lse'):
+            result, fulfill_percent = result_compare_method.check_result(cpu_lse, npu_lse)
     except Exception as e:
         logging.exception(e)
         result = "NPU ERROR"
