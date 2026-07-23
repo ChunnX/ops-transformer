@@ -66,13 +66,13 @@ ge::graphStatus RopeChecker::CheckRopeDSizeSupport(const FiaTilingInfo &fiaInfo)
 ge::graphStatus RopeChecker::CheckQDsizeSupport(const FiaTilingInfo &fiaInfo) const
 {
     if (enableFullQuant_ && fiaInfo.fullQuantMode == FiaFullQuantMode::QKV_MXFP8_FULL_QUANT) {
-        OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_64 && fiaInfo.qkHeadDim != NUM_128),
+        OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_64 && fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_256),
                     OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
                         fiaInfo.opName, "query and key",
                         (ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
                          ToString(fiaInfo.opParamInfo.key.shape->GetStorageShape()))
                             .c_str(),
-                        "In MXFP8 fullquant scenario with rope, the D axis of query and key must be 64 or 128"),
+                        "In MXFP8 fullquant scenario with rope, the D axis of query and key must be 64, 128 or 256"),
                     return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF((fiaInfo.qkHeadDim != NUM_128 && fiaInfo.qkHeadDim != NUM_512),

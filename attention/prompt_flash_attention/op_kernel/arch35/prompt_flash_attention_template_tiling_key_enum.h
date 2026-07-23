@@ -203,6 +203,7 @@ static constexpr ConfigParams ConfigValue[] ={
 #define Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128 26
 #define Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64 27
 #define Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128 28
+#define Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256 29
 
 
 // PseMode

@@ -1340,6 +1340,7 @@ void FusedInferAttentionScoreTilingImpl::UpdateTilingKeyConfig(const FiaTilingIn
         {false, SOUTER_64, SINNER_256, DSIZE_64, DSIZE_128, Config_S1Aligned64_S2Aligned256_DAligned64_DVAligned128},
         {false, SOUTER_128, SINNER_512, DSIZE_64, DSIZE_64, Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64},
         {false, SOUTER_128, SINNER_512, DSIZE_128, DSIZE_128, Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128},
+        {false, SOUTER_128, SINNER_256, DSIZE_256, DSIZE_256, Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256},
     };
 
     for (const auto &rule : configRules) {

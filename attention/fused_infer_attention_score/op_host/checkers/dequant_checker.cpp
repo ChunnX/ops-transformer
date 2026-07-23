@@ -2083,12 +2083,13 @@ ge::graphStatus DequantChecker::CheckDSizeFullquant(const FiaTilingInfo &fiaInfo
             return ge::GRAPH_FAILED;
         }
     } else if (enableQKVMxfp8FullQuant_) {
-        if (!((fiaInfo.qkHeadDim == NUM_128 && fiaInfo.vHeadDim == NUM_128) ||
+        if (!((fiaInfo.qkHeadDim == NUM_256 && fiaInfo.vHeadDim == NUM_256) ||
+              (fiaInfo.qkHeadDim == NUM_128 && fiaInfo.vHeadDim == NUM_128) ||
               (fiaInfo.qkHeadDim == NUM_64 && fiaInfo.vHeadDim == NUM_64))) {
             std::string shapeMsg = ToString(fiaInfo.opParamInfo.query.shape->GetStorageShape()) + " and " +
                 ToString(fiaInfo.opParamInfo.value.shape->GetStorageShape());
             OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(fiaInfo.opName, "query and value", shapeMsg.c_str(),
-                "In the MXFP8 full quant scenario, the axis D of query and value must both be 64 or both be 128");
+                "In the MXFP8 full quant scenario, the axis D of query and value must both be 64, both be 128, or both be 256");
             return ge::GRAPH_FAILED;
         }
     } else if (enableQKPerTokenHeadVPerHead_) {

@@ -247,9 +247,9 @@ void FiaTilingFullQuantMxArch35::InitImplParam()
 
 void FiaTilingFullQuantMxArch35::AdjustSinnerAndSouter()
 {
-    // mxfp8 基本块大小为 128*512
+    // mxfp8 基本块大小为 128*512，D=256 时为 128*256
     sOuterFactor_ = SOUTER_64;
-    sInnerFactor_ = SINNER_512;
+    sInnerFactor_ = (fiaInfo_->vHeadDim == DSIZE_256) ? SINNER_256 : SINNER_512;
     OP_LOGI(fiaInfo_->opName, "Souter:%u SInner:%u", sOuterFactor_, sInnerFactor_);
 }
 
@@ -596,6 +596,8 @@ void FiaTilingFullQuantMxArch35::UpdateTilingKeyConfig()
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned64_DVAligned64;
     } else if (sOuter == SOUTER_128 && sInner == SINNER_512 && dSize == DSIZE_128 && dVsize == DSIZE_128) {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
+    } else if (sOuter == SOUTER_128 && sInner == SINNER_256 && dSize == DSIZE_256 && dVsize == DSIZE_256) {
+        tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned256_DAligned256_DVAligned256;
     } else {
         tilingKeyInfo_.config = Config_S1Aligned128_S2Aligned512_DAligned128_DVAligned128;
     }
