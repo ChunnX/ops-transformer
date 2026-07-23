@@ -185,10 +185,14 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint32_t* outBuf,
         FloatX2ToSortableKey<float>(regOut[0], regOut[1], regQKBias[0], regQKBias[1], fp32Ctx, maskAllB32);
         FloatX2ToSortableKey<float>(regOut[2], regOut[3], regQKBias[2], regQKBias[3], fp32Ctx, maskAllB32);
         // 搬入outBuf的value部分
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0], maskAllB32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 64, regOut[1], maskAllB32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 128, regOut[2], maskAllB32);
-        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 192, regOut[3], maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + (mrgValueLen * i), regOut[0], maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + (mrgValueLen * i) + 64, regOut[1], maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + (mrgValueLen * i) + 128, regOut[2], maskAllB32);
+        MicroAPI::StoreAlign<uint32_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + (mrgValueLen * i) + 192, regOut[3], maskAllB32);
     }
 }
 
@@ -249,8 +253,10 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t* outBuf,
         FloatX2ToSortableKey<bfloat16_t>(regOut[0], regOut[1], regQKBiasBF16[0], regQKBiasBF16[1],
                                          bf16Ctx, maskAllB16);
 
-        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i), regOut[0], maskAllB16);
-        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(outBuf + (mrgValueLen * i) + 128, regOut[1], maskAllB16);
+        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + (mrgValueLen * i), regOut[0], maskAllB16);
+        MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(
+            outBuf + (mrgValueLen * i) + 128, regOut[1], maskAllB16);
     }
 }
 
@@ -264,14 +270,11 @@ __simd_vf__ inline void MulRSquareAndAddVBiasVFImpl(__ubuf__ uint16_t* outBuf,
  * @param s2BaseSize s2方向每个vec核分到基本块大小
  * @param mrgValueLen 每次流式topk分到的长度
  */
-template<typename SCORE_T, typename QK_T>
-__aicore__ inline void MulRSquareAndAddVBiasVF(const LocalTensor<SCORE_T> &outLocal,   // out    [S2Base]       [256   ]
-                                               const LocalTensor<QK_T> &qkLocal,        // q*k^t  [qbG, S2Base]  [48 256]
-                                               const LocalTensor<float> &vBiasLocal,    // vBias  [1, S2Base]    [256   ]
-                                               const float rSquare,
-                                               const int gS1BasePerVecSize_,
-                                               const int s2BaseSize,
-                                               const int mrgValueLen)
+template <typename SCORE_T, typename QK_T>
+__aicore__ inline void MulRSquareAndAddVBiasVF(
+    const LocalTensor<SCORE_T> &outLocal, const LocalTensor<QK_T> &qkLocal,
+    const LocalTensor<float> &vBiasLocal, const float rSquare,
+    const int gS1BasePerVecSize_, const int s2BaseSize, const int mrgValueLen)
 {
     __ubuf__ QK_T * qkBuf = (__ubuf__ QK_T *)qkLocal.GetPhyAddr();
     __ubuf__ float * vBiasBuf = (__ubuf__ float *)vBiasLocal.GetPhyAddr();

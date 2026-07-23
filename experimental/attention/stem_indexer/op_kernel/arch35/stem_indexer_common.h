@@ -21,7 +21,7 @@ namespace SICommon {
 enum class SI_LAYOUT : uint32_t {
     BSND = 0,
     TND = 1,
-    PA_BNSD = 2, 
+    PA_BNSD = 2,
     BNSD = 3
 };
 // Sync mode between Cube and Vector.
@@ -154,7 +154,6 @@ struct RunInfo {
 };
 
 struct ConstInfo {
-
     // 基本块大小
     uint32_t mBaseSize = 1ULL;
     uint32_t s1BaseSize = 1ULL;

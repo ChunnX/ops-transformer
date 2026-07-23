@@ -1,12 +1,12 @@
 /**
- * Copyright (c) 2026 Huawei Technologies Co., Ltd.
- * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
- * CANN Open Software License Agreement Version 2.0 (the "License").
- * Please refer to the License for details. You may not use this file except in compliance with the License.
- * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
- * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
- * See LICENSE in the root of the software repository for the full text of the License.
-  */
+ * Copyright (c) 2026 Huawei Technologies Co., Ltd.
+ * This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+ * CANN Open Software License Agreement Version 2.0 (the "License").
+ * Please refer to the License for details. You may not use this file except in compliance with the License.
+ * THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
+ * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
+ * See LICENSE in the root of the software repository for the full text of the License.
+ */
 
 /*!
 * \file vf_topk_gather.h
@@ -704,7 +704,8 @@ __simd_callee__ inline void FindIdxOutputProcessRow(__ubuf__ uint32_t* outputIdx
         MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzIdxOut,
                                                                          (MicroAPI::RegTensor<uint32_t>&)idxC,
                                                                          poutGT);
-        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(roundOutputIdxBuf, sqzIdxOut, alignIdx);
+        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            roundOutputIdxBuf, sqzIdxOut, alignIdx);
     }
 
     for (uint16_t i = 0; i < (uint16_t)(vfLoop); ++i) {
@@ -721,7 +722,8 @@ __simd_callee__ inline void FindIdxOutputProcessRow(__ubuf__ uint32_t* outputIdx
         MicroAPI::Squeeze<uint32_t, MicroAPI::GatherMaskMode::STORE_REG>(sqzIdxOut,
                                                                          (MicroAPI::RegTensor<uint32_t>&)idxC,
                                                                          poutEQ);
-        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(roundOutputIdxBuf, sqzIdxOut, alignIdx);
+        MicroAPI::StoreUnAlign<uint32_t, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+            roundOutputIdxBuf, sqzIdxOut, alignIdx);
     }
     MicroAPI::StoreUnAlignPost(roundOutputIdxBuf, alignIdx);
 }
@@ -742,10 +744,10 @@ __simd_vf__ void FindIdxOutputVFImpl(__ubuf__ uint32_t* outputIdxBuf, __ubuf__ u
 /**
     输出最终的Value
  */
-__simd_callee__ inline void FindValueOutputProcessRow(__ubuf__ uint32_t* outputValueBuf, __ubuf__ uint32_t* inputValueBuf,
-                                               __ubuf__ uint32_t* tmpIdxBuf, uint16_t vfLoop,
-                                               uint32_t inputOffset, uint32_t tmpIdxOffset,
-                                               uint32_t rowSlot, uint32_t realRowIdx)
+__simd_callee__ inline void FindValueOutputProcessRow(
+    __ubuf__ uint32_t* outputValueBuf, __ubuf__ uint32_t* inputValueBuf,
+    __ubuf__ uint32_t* tmpIdxBuf, uint16_t vfLoop, uint32_t inputOffset,
+    uint32_t tmpIdxOffset, uint32_t rowSlot, uint32_t realRowIdx)
 {
     MicroAPI::MaskReg pregB32 = MicroAPI::CreateMask<uint32_t, MicroAPI::MaskPattern::ALL>();
 
@@ -803,7 +805,7 @@ __simd_callee__ inline void FindRealIndexProcessRow(__ubuf__ uint32_t* outputIdx
 
         MicroAPI::Compares<uint32_t, CMPMODE::GT>(pregNow, tmpIdx, topK - 1, pregB32);
         MicroAPI::Xor(pregHis, pregNow, pregB32, pregB32);
-    
+
         MicroAPI::Gather(outputGatherIdx, hisIdxBuf, tmpIdx, pregHis);
         MicroAPI::Adds(outputAddsIdx, tmpIdx, loopIndex, pregNow);
 
@@ -955,12 +957,12 @@ __aicore__ inline void SiTopKVF(const LocalTensor<uint32_t>& tmpIdxLocal,
  * @param loopBasicIdx 当前循环需要加上的基准Index
  */
 __aicore__ inline void SiTopKGatherVF(const LocalTensor<uint32_t>& outputIdxLocal,
-                                     const LocalTensor<uint32_t>& tmpIdxLocal,
-                                     const LocalTensor<uint32_t>& hisIdxLocal,
-                                     uint32_t outputIdxStride, uint32_t tmpIdxStride, uint32_t hisIdxStride,
-                                     uint32_t rowIdx0, uint32_t rowIdx1, uint32_t rowIdx2, uint32_t rowIdx3,
-                                     uint32_t topK0, uint32_t topK1, uint32_t topK2, uint32_t topK3,
-                                     uint32_t loopBasicIdx)
+    const LocalTensor<uint32_t>& tmpIdxLocal,
+    const LocalTensor<uint32_t>& hisIdxLocal,
+    uint32_t outputIdxStride, uint32_t tmpIdxStride, uint32_t hisIdxStride,
+    uint32_t rowIdx0, uint32_t rowIdx1, uint32_t rowIdx2, uint32_t rowIdx3,
+    uint32_t topK0, uint32_t topK1, uint32_t topK2, uint32_t topK3,
+    uint32_t loopBasicIdx)
 {
     __ubuf__ uint32_t* outputIdxBuf = (__ubuf__ uint32_t*)outputIdxLocal.GetPhyAddr();
     __ubuf__ uint32_t* tmpIdxBuf = (__ubuf__ uint32_t*)tmpIdxLocal.GetPhyAddr();
