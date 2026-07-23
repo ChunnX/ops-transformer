@@ -221,9 +221,6 @@ def quant_block_sparse_attn(
             cu_seqlens_q, cu_seqlens_kv, block_table,
             max_seqlen_q, max_seqlen_kv, layout_q, sparse_kv_block_size)
 
-    if pa_block_stride == 0 and key.dim() == 4:
-        key, value, k_descale, pa_block_stride = _pack_combined_kv(key, value, k_descale)
-
     if metadata is None:
         metadata = QuantBlockSparseAttnMetadataBuilder.build(
             query, key, value, q_descale, k_descale, v_descale, p_scale,
@@ -237,6 +234,9 @@ def quant_block_sparse_attn(
             mask_mode=mask_mode, quant_mode=quant_mode,
             max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
         )
+
+    if pa_block_stride == 0 and key.dim() == 4:
+        key, value, k_descale, pa_block_stride = _pack_combined_kv(key, value, k_descale)
     return torch.ops.custom.npu_quant_block_sparse_attn(
         query, key, value, q_descale, k_descale, v_descale, p_scale,
         sparse_indices, sparse_seq_len, atten_mask,
