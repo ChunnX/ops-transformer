@@ -146,7 +146,7 @@ public:
     TBuf<> preLoopMaxBuf;
     TBuf<> preLoopSumBuf;
     TBuf<> firstLoopSumBuf;
-    TQue<QuePosition::VECIN, 1> qScaleInputQue;
+    TBuf<> qScaleInputBuf;
     TQue<QuePosition::VECIN, 1> kScaleInputQue;
     TBuf<> vselrIndexesBuf[5];
     TBuf<> mm2InBuf;
@@ -346,7 +346,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
     auto expUb = this->softmaxExpBuf[runInfo.taskIdMod3].template Get<T>()[0];
     int64_t stage1Offset = runInfo.taskIdMod2;
 
-    LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
+    LocalTensor<float> qScaleUbTensor = qScaleInputBuf.template Get<float>();
     LocalTensor<float> kScaleUbTensor = kScaleInputQue.template AllocTensor<float>();
     if (unlikely(runInfo.s2SparseBlk1RealSize < constInfo.kvSparseBlockSize)) {
         Duplicate<float>(kScaleUbTensor, 1, constInfo.kvSparseBlockSize);
@@ -354,10 +354,10 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
         SetFlag<HardEvent::V_MTE2>(vDoneEvent);  // Vector 完成
         WaitFlag<HardEvent::V_MTE2>(vDoneEvent); // MTE2 等待
     }
-    copyQueryScaleGmToUb(qScaleUbTensor, qScaleGm, runInfo, constInfo);
+    if (unlikely(runInfo.s2LoopCount == 0)) {
+        copyQueryScaleGmToUb(qScaleUbTensor, qScaleGm, runInfo, constInfo);
+    }
     copyKeyScaleGmToUb(kScaleUbTensor, kScaleGm, blockTableGm, runInfo, constInfo);
-    qScaleInputQue.template EnQue(qScaleUbTensor);
-    qScaleUbTensor = qScaleInputQue.DeQue<float>();
     kScaleInputQue.template EnQue(kScaleUbTensor);
     kScaleUbTensor = kScaleInputQue.DeQue<float>();
 
@@ -393,7 +393,6 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
                 constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         }
     }
-    qScaleInputQue.FreeTensor(qScaleUbTensor);
     kScaleInputQue.FreeTensor(kScaleUbTensor);
     bmm1ResBuf.SetCrossCore();
     if constexpr (isFp8 && hasAtten) {
@@ -672,7 +671,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
     tPipe->InitBuffer(preLoopMaxBuf, 256);
     tPipe->InitBuffer(preLoopSumBuf, 256);
     tPipe->InitBuffer(firstLoopSumBuf, 256);
-    tPipe->InitBuffer(qScaleInputQue, 1, 256 * 8);
+    tPipe->InitBuffer(qScaleInputBuf, 256 * 8);
     tPipe->InitBuffer(kScaleInputQue, 1, 1024);
 }
 
