@@ -47,7 +47,7 @@ DP_ASSERT_EQUAL()
     fi
 }
 
-cd "${WORKSPACE}/" || exit
+cd "${WORKSPACE}/" || exit 1
 sudo rm -rf /home/jenkins/Ascend/cann-9.0.0/opp/built-in/op_impl/ai_core/tbe/kernel/config/ascend910_93
 
 if [ "${GIT_TARGET_BRANCH}" = "master" ]; then

@@ -45,8 +45,9 @@ stages:
             name: show_output
             run: |
               echo "Compile_Ascend_X86: ${{ steps.revise_image.outputs.Compile_Ascend_X86 }}"
-        if: "${{ default() }}"
-        runs-on: ["codearts-hosted", "ubuntu-latest", "x64", "large"]
+        runs-on: [dedicate-hosted, x64, small]
+        container:
+          image: swr.cn-north-4.myhuaweicloud.com/ci_cann/ubuntu20.04.05_x86:k8s_v1.1006
       JOB_pr:
         name: Test_get-pr
         needs: []
@@ -495,11 +496,11 @@ post:
       steps:
         - 
           name: query_pipeline
-          uses: tanghaoran7/.gitcode/actions/query-pipeline@master
+          uses: cann/.gitcode/actions/query-pipeline@master
           with:
             owner: ${{ env.org_name }}
             repo: ${{ env.repo_name }}
-            run_id: ${{atomgit. workflow_run_id}}
+            run_id: ${{ atomgit.workflow_run_id }}
             token: ${{ secrets.GIT_TOKEN }}
             pr_number: ${{ env.MERGE_ID }}
             apply_label: ${{ vars.APPLY_LABEL }}
