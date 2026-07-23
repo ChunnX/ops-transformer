@@ -2141,6 +2141,10 @@ ge::graphStatus SFAInfoParser::GetActualseqInfo()
 // 非PA_BSND时，所有轴都必须连续
 ge::graphStatus SFAInfoParser::CheckContiguous() const
 {
+    if (npuArch_ != NpuArch::DAV_3510) {
+        return ge::GRAPH_SUCCESS;
+    }
+
     bool keyNonContiguous = false;
     size_t checkStartIdx = (kvLayout_ == SFALayout::PA_BSND) ? 1 : 0;
 

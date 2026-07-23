@@ -1908,6 +1908,10 @@ ge::graphStatus QSFAInfoParser::GetActualseqInfo()
 // 非PA_BSND时，所有轴都必须连续
 ge::graphStatus QSFAInfoParser::CheckContiguous() const
 {
+    if (npuArch_ != NpuArch::DAV_3510) {
+        return ge::GRAPH_SUCCESS;
+    }
+
     bool keyNonContiguous = false;
     size_t checkStartIdx = (kvLayout_ == QSFALayout::PA_BSND) ? 1 : 0;
     if (!keyStridesVec_.empty() && keyShape_.GetDimNum() > 0) {
