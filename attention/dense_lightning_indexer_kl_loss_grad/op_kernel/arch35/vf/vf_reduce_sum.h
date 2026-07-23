@@ -33,7 +33,8 @@ __simd_vf__ inline void ReduceSumBasicVF(uint64_t dstLocalInt, uint64_t srcLocal
     MaskReg pregAccu = CreateMask<T, MaskPattern::VL1>();
     MaskReg pregTailExe = UpdateMask<float>(tailSize);
 
-    Duplicate(vregDst, 0.0f);
+    // Duplicate(vregDst, 0.0f);
+    LoadAlign(vregDst, ((__ubuf__ float *&)dstLocalInt));
     for (uint16_t k = 0; k < static_cast<uint16_t>(loopTimes); k++) {
         LoadAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(vregSrc, ((__ubuf__ float *&)srcLocalInt), 64);
         Reduce<MicroAPI::ReduceType::SUM>(vregReduceSum, vregSrc, pregFullExe);

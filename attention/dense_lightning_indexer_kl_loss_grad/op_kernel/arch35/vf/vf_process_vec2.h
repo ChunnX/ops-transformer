@@ -19,91 +19,163 @@
 
 namespace AscendC {
 using namespace MicroAPI;
-
-template <typename T, bool isAlign>
-__simd_vf__ inline void ProcessVec2BasicVF(__ubuf__ T *dstUb, __ubuf__ T *srcUb, __ubuf__ T *srcOtherUb,
-    const uint32_t alignCnt, uint32_t tailSize, float minValue)
+constexpr static AscendC::MicroAPI::CastTrait castTraitZero = {
+    AscendC::MicroAPI::RegLayout::ZERO,
+    AscendC::MicroAPI::SatMode::SAT,
+    AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_ROUND,
+};
+template <typename T, typename INPUT_T, bool isAlign>
+__simd_vf__ inline void ProcessVec2BasicVF(__ubuf__ INPUT_T *dstUb, __ubuf__ T *dwUb, __ubuf__ T *srcUb,
+    __ubuf__ T *softmaxReduceSumUb, __ubuf__ T *weightUb, __ubuf__ T *reduceSumUb, __ubuf__ T *reduceSumOtherUb,
+    __ubuf__ T *reluUb, __ubuf__ T *lseUb, uint32_t regCnt, uint32_t tailSize, uint32_t nIndexSize,
+    uint32_t nBaseSize, uint32_t repeatSize, uint32_t blockStride)
 {
-    RegTensor<float> vreg_input_other;
-    RegTensor<float> vreg_input_other_new;
-    RegTensor<float> vreg_input_x;
-    RegTensor<float> vreg_input_x_new;
-    RegTensor<float> vreg_tmp;
-    RegTensor<float> vreg_tmp_sum;
-    RegTensor<float> vreg_input_max;
-    RegTensor<float> vreg_max;
-    RegTensor<float> vreg_sum;
-    RegTensor<float> vreg_input_sum;
+    RegTensor<float> vreg_input_x1;
+    RegTensor<float> vreg_input_x2;
+    RegTensor<float> vreg_input_x3;
+    RegTensor<float> vreg_input_x2_tmp;
+    RegTensor<float> vreg_input_x1_new;
+    RegTensor<float> vreg_input_x2_new;
+    RegTensor<float> vreg_input_x2_new_tmp;
+    RegTensor<float> vreg_input_lse;
+    RegTensor<float> vreg_input_sub;
+    RegTensor<float> vreg_input_sub_new;
+    RegTensor<float> vreg_zero;
+    RegTensor<float> vreg_softmax_reduce;
+    RegTensor<half> vreg_weight_half;
+    RegTensor<bfloat16_t> vreg_weight_bf;
+    RegTensor<half> vreg_relugrad_half;
+    RegTensor<bfloat16_t> vreg_relugrad_bf;
+    RegTensor<half> vreg_relugrad_half_even;
+    RegTensor<bfloat16_t> vreg_relugrad_bf_even;
+    RegTensor<half> vreg_relugrad_half_odd;
+    RegTensor<bfloat16_t> vreg_relugrad_bf_odd;
+    RegTensor<float> vreg_weight;
+    RegTensor<float> vreg_output_dw;
+    RegTensor<float> vreg_out_dw;
+    RegTensor<float> vreg_dst;
     RegTensor<float> vreg_min;
-    MaskReg preg_all_b32 = CreateMask<float, MaskPattern::ALL>();
+    RegTensor<float> vreg_tmp1;
+    RegTensor<float> vreg_tmp2;
+    UnalignRegForStore ureg_dst;
+    MaskReg pregFullExeB16 = CreateMask<INPUT_T, MaskPattern::ALL>();
     MaskReg preg_tail_n = UpdateMask<float>(tailSize);
+    MaskReg preg_all_b32 = CreateMask<float, MaskPattern::ALL>();
+    MaskReg preg_relugrad;
+    MaskReg preg_bf16 = UpdateMask<uint16_t>(repeatSize);
 
-    Duplicate(vreg_min, minValue);
-    Duplicate(vreg_tmp, minValue);
-    Duplicate(vreg_tmp_sum, 0.0f);
-
-    for (uint16_t i = 0; i < alignCnt; ++i) {
-        LoadAlign(vreg_input_x, srcUb + i * floatRepSize);
-        LoadAlign(vreg_input_other, srcOtherUb + i * floatRepSize);
-        Add(vreg_input_x, vreg_input_x, vreg_input_other, preg_all_b32);
-        StoreAlign(((__ubuf__ T *&)srcUb + i * floatRepSize), vreg_input_x, preg_all_b32);
-        Max(vreg_tmp, vreg_tmp, vreg_input_x, preg_all_b32);
-    }
+    Duplicate(vreg_zero, 0.0f);
+    LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_softmax_reduce, softmaxReduceSumUb);
+    LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_input_lse, lseUb);
     if constexpr (!isAlign) {
-        LoadAlign(vreg_input_x, srcUb + alignCnt * floatRepSize);
-        LoadAlign(vreg_input_other, srcOtherUb + alignCnt * floatRepSize);
-        Select(vreg_input_x_new, vreg_input_x, vreg_min, preg_tail_n);
-        Select(vreg_input_other_new, vreg_input_other, vreg_min, preg_tail_n);
-        Add(vreg_input_x_new, vreg_input_x_new, vreg_input_other_new, preg_all_b32);
-        StoreAlign(((__ubuf__ T *&)srcUb + alignCnt * floatRepSize), vreg_input_x_new, preg_all_b32);
-        Max(vreg_tmp, vreg_tmp, vreg_input_x_new, preg_all_b32);
+        LoadAlign(vreg_input_x1, srcUb + regCnt * floatRepSize);
+        LoadAlign(vreg_input_x2, reduceSumUb + regCnt * floatRepSize);
+        LoadAlign(vreg_input_x3, reduceSumOtherUb + regCnt * floatRepSize);
+        Add(vreg_input_x2, vreg_input_x2, vreg_input_x3, preg_tail_n);
+        ExpSub(vreg_input_x2, vreg_input_x2, vreg_input_lse, preg_tail_n);
+        Select(vreg_input_x1_new, vreg_input_x1, vreg_zero, preg_tail_n);
+        Select(vreg_input_x2_new, vreg_input_x2, vreg_zero, preg_tail_n);
+        Mul(vreg_input_x2_new_tmp, vreg_input_x2_new, vreg_softmax_reduce, preg_all_b32);
+        Sub(vreg_input_sub_new, vreg_input_x2_new_tmp, vreg_input_x1_new, preg_all_b32);
+        StoreAlign(((__ubuf__ T *&)reduceSumUb + regCnt * floatRepSize), vreg_input_sub_new, preg_all_b32);
+        StoreAlign(((__ubuf__ T *&)reduceSumOtherUb + regCnt * floatRepSize), vreg_input_x2_new, preg_all_b32);
+    } else {
+        LoadAlign(vreg_input_x1, srcUb + regCnt * floatRepSize);
+        LoadAlign(vreg_input_x2, reduceSumUb + regCnt * floatRepSize);
+        LoadAlign(vreg_input_x3, reduceSumOtherUb + regCnt * floatRepSize);
+        Add(vreg_input_x2, vreg_input_x2, vreg_input_x3, preg_all_b32);
+        ExpSub(vreg_input_x2, vreg_input_x2, vreg_input_lse, preg_all_b32);
+        Mul(vreg_input_x2_tmp, vreg_input_x2, vreg_softmax_reduce, preg_all_b32);
+        Sub(vreg_input_sub, vreg_input_x2_tmp, vreg_input_x1, preg_all_b32);
+        StoreAlign(((__ubuf__ T *&)reduceSumUb + regCnt * floatRepSize), vreg_input_sub, preg_all_b32);
+        StoreAlign(((__ubuf__ T *&)reduceSumOtherUb + regCnt * floatRepSize), vreg_input_x2, preg_all_b32);
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-
-    Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_tmp,
-        preg_all_b32);
-    Duplicate(vreg_max, vreg_input_max, preg_all_b32);
-    for (uint16_t i = 0; i < alignCnt; ++i) {
-        LoadAlign(vreg_input_x, srcUb + i * floatRepSize);
-        ExpSub(vreg_tmp, vreg_input_x, vreg_max, preg_all_b32);
-        StoreAlign(((__ubuf__ T *&)dstUb + i * floatRepSize), vreg_tmp, preg_all_b32);
-        Add(vreg_tmp_sum, vreg_tmp, vreg_tmp_sum, preg_all_b32);
+    for (uint16_t i = 0; i < nIndexSize; ++i) {
+        Duplicate(vreg_output_dw, 0.0f);
+        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_weight, weightUb + i);
+        if constexpr (!isAlign) {
+            LoadAlign(vreg_input_sub_new, reduceSumUb + regCnt * floatRepSize);
+            LoadAlign(vreg_input_x1, reluUb + i * nBaseSize + regCnt * floatRepSize);
+            Select(vreg_input_x1_new, vreg_input_x1, vreg_zero, preg_tail_n);
+            Mul(vreg_tmp1, vreg_input_sub_new, vreg_input_x1_new, preg_all_b32);
+            Add(vreg_output_dw, vreg_tmp1, vreg_output_dw, preg_all_b32);
+            Mul(vreg_tmp1, vreg_input_sub_new, vreg_weight, preg_all_b32);
+            Compare<T, AscendC::CMPMODE::GT>(preg_relugrad, vreg_input_x1_new, vreg_zero, preg_tail_n);
+            Select(vreg_tmp2, vreg_tmp1, vreg_zero, preg_relugrad);
+            if constexpr (IsSameType<INPUT_T, half>::value) {
+                Cast<INPUT_T, float, castTraitZero>(vreg_relugrad_half, vreg_tmp2, pregFullExeB16);
+                DeInterleave(vreg_relugrad_half_even, vreg_relugrad_half_odd, vreg_relugrad_half, vreg_relugrad_half);
+                StoreAlign<INPUT_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ INPUT_T *&)dstUb), vreg_relugrad_half_even, blockStride, 1, preg_bf16);
+            } else if constexpr (IsSameType<INPUT_T, bfloat16_t>::value) {
+                Cast<INPUT_T, float, castTraitZero>(vreg_relugrad_bf, vreg_tmp2, pregFullExeB16);
+                DeInterleave(vreg_relugrad_bf_even, vreg_relugrad_bf_odd, vreg_relugrad_bf, vreg_relugrad_bf);
+                StoreAlign<INPUT_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ INPUT_T *&)dstUb), vreg_relugrad_bf_even, blockStride, 1, preg_bf16);
+            }
+        } else {
+            LoadAlign(vreg_input_sub, reduceSumUb + regCnt * floatRepSize);
+            LoadAlign(vreg_input_x1, reluUb + i * nBaseSize + regCnt * floatRepSize);
+            Mul(vreg_tmp1, vreg_input_sub, vreg_input_x1, preg_all_b32);
+            Add(vreg_output_dw, vreg_tmp1, vreg_output_dw, preg_all_b32);
+            Mul(vreg_tmp1, vreg_input_sub, vreg_weight, preg_all_b32);
+            Compare<T, AscendC::CMPMODE::GT>(preg_relugrad, vreg_input_x1, vreg_zero, preg_all_b32);
+            Select(vreg_tmp2, vreg_tmp1, vreg_zero, preg_relugrad);
+            if constexpr (IsSameType<INPUT_T, half>::value) {
+                Cast<INPUT_T, float, castTraitZero>(vreg_relugrad_half, vreg_tmp2, pregFullExeB16);
+                DeInterleave(vreg_relugrad_half_even, vreg_relugrad_half_odd, vreg_relugrad_half, vreg_relugrad_half);
+                StoreAlign<INPUT_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ INPUT_T *&)dstUb), vreg_relugrad_half_even, blockStride, 1, preg_bf16);
+            } else if constexpr (IsSameType<INPUT_T, bfloat16_t>::value) {
+                Cast<INPUT_T, float, castTraitZero>(vreg_relugrad_bf, vreg_tmp2, pregFullExeB16);
+                DeInterleave(vreg_relugrad_bf_even, vreg_relugrad_bf_odd, vreg_relugrad_bf, vreg_relugrad_bf);
+                StoreAlign<INPUT_T, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
+                    ((__ubuf__ INPUT_T *&)dstUb), vreg_relugrad_bf_even, blockStride, 1, preg_bf16);
+            }
+        }
+        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_out_dw, vreg_output_dw,
+            preg_all_b32);
+        LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_dst, (__ubuf__ T *&)dwUb);
+        Add(vreg_dst, vreg_out_dw, vreg_dst, preg_all_b32);
+        StoreUnAlign<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)dwUb), vreg_dst, ureg_dst, 1);
     }
-    if constexpr (!isAlign) {
-        LoadAlign(vreg_input_x_new, srcUb + alignCnt * floatRepSize);
-        ExpSub(vreg_tmp, vreg_input_x_new, vreg_max, preg_all_b32);
-        StoreAlign(((__ubuf__ T *&)dstUb + alignCnt * floatRepSize), vreg_tmp, preg_all_b32);
-        Add(vreg_tmp_sum, vreg_tmp, vreg_tmp_sum, preg_all_b32);
-    }
-    Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_sum, vreg_tmp_sum,
-        preg_all_b32);
-    Duplicate(vreg_sum, vreg_input_sum, preg_all_b32);
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
-    for (uint16_t i = 0; i < alignCnt; ++i) {
-        LoadAlign(vreg_input_x, dstUb + i * floatRepSize);
-        Div(vreg_tmp, vreg_input_x, vreg_sum, preg_all_b32);
-        StoreAlign(((__ubuf__ T *&)dstUb + i * floatRepSize), vreg_tmp, preg_all_b32);
-    }
-    if constexpr (!isAlign) {
-        LoadAlign(vreg_input_x_new, dstUb + alignCnt * floatRepSize);
-        Div(vreg_tmp, vreg_input_x_new, vreg_sum, preg_all_b32);
-        StoreAlign(((__ubuf__ T *&)dstUb + alignCnt * floatRepSize), vreg_tmp, preg_all_b32);
-    }
+    StoreUnAlignPost<T, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)dwUb), ureg_dst, 0);
 }
 
-template <typename T, bool isAlign>
-__aicore__ inline void ProcessVec2Vf(const LocalTensor<T> &dstTensor, const LocalTensor<T> &srcTensor,
-    const LocalTensor<T> &srcOtherTensor, const uint32_t m)
+template <typename T, typename INPUT_T, bool isAlign>
+__aicore__ inline void ProcessVec2Vf(const LocalTensor<INPUT_T> &dstTensor, const LocalTensor<T> &dwTensor,
+    const LocalTensor<T> &srcTensor, const LocalTensor<T> &softmaxReduceTensor, const LocalTensor<T> &weightTensor,
+    const LocalTensor<T> &reduceSumTensor, const LocalTensor<T> &reduceSumOtherTensor, const LocalTensor<T> &reluTensor,
+     const LocalTensor<T> &lseTensor, const uint32_t m, const uint32_t nIndexSize, const uint32_t nBaseSize)
 {
-    __ubuf__ T *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
-    __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
-    __ubuf__ T *srcOtherUb = (__ubuf__ T *)srcOtherTensor.GetPhyAddr();
     uint32_t alignCnt = m >> 6;
     uint32_t tailSize = m - (m >> 6 << 6);
-    constexpr uint32_t tmpMin = 0xFF7FFFFF;
-    float minValue = *((float *)&tmpMin);
+    uint32_t s2BaseSize = (m + 63) >> 6 << 6;
+    uint32_t repeatSize = 64;
+    uint32_t blockStride = nIndexSize;
+    __ubuf__ T *srcUb = (__ubuf__ T *)srcTensor.GetPhyAddr();
+    __ubuf__ T *reluUb = (__ubuf__ T *)reluTensor.GetPhyAddr();
+    __ubuf__ T *softmaxReduceSumUb = (__ubuf__ T *)softmaxReduceTensor.GetPhyAddr();
+    __ubuf__ T *reduceSumUb = (__ubuf__ T *)reduceSumTensor.GetPhyAddr();
+    __ubuf__ T *reduceSumOtherUb = (__ubuf__ T *)reduceSumOtherTensor.GetPhyAddr();
+    __ubuf__ T *weightUb = (__ubuf__ T *)weightTensor.GetPhyAddr();
+    __ubuf__ T *lseUb = (__ubuf__ T *)lseTensor.GetPhyAddr();
+    __ubuf__ T *dwUb = (__ubuf__ T *)dwTensor.GetPhyAddr();
 
-    ProcessVec2BasicVF<T, isAlign>(dstUb, srcUb, srcOtherUb, alignCnt, tailSize, minValue);
+    for (uint32_t regCnt = 0; regCnt < alignCnt; ++regCnt) {
+        __ubuf__ INPUT_T *dstUb =
+            (__ubuf__ INPUT_T *)dstTensor.GetPhyAddr() + (regCnt * nIndexSize) * (s2BaseSize >> 1);
+        ProcessVec2BasicVF<T, INPUT_T, true>(dstUb, dwUb, srcUb, softmaxReduceSumUb, weightUb, reduceSumUb,
+        reduceSumOtherUb, reluUb, lseUb, regCnt, tailSize, nIndexSize, nBaseSize, repeatSize, blockStride);
+    }
+    if constexpr (!isAlign) {
+        __ubuf__ INPUT_T *dstUb =
+            (__ubuf__ INPUT_T *)dstTensor.GetPhyAddr() + (alignCnt * nIndexSize) * (s2BaseSize >> 1);
+        ProcessVec2BasicVF<T, INPUT_T, false>(dstUb, dwUb, srcUb, softmaxReduceSumUb, weightUb, reduceSumUb,
+        reduceSumOtherUb, reluUb, lseUb, alignCnt, tailSize, nIndexSize, nBaseSize, repeatSize, blockStride);
+    }
 }
 } // namespace
 

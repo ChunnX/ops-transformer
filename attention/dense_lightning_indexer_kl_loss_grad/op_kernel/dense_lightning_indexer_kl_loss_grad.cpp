@@ -22,30 +22,36 @@ using namespace AscendC;
 #include "arch35/dense_lightning_indexer_kl_loss_grad_vector_block.h"
 #include "arch35/dense_lightning_indexer_kl_loss_grad_cube_block.h"
 #include "arch35/dense_lightning_indexer_kl_loss_grad_kernel_base.h"
+#include "arch35/dense_lightning_indexer_kl_loss_grad_post.h"
 using namespace Dlikg;
 #define DLI_OP_IMPL(templateClass, tilingdataClass, ...)                                                               \
     do {                                                                                                               \
         using CubeBlockType =                                                                                          \
-            typename std::conditional<g_coreType == AscendC::AIC, Dlikg::DlikgBlockCube<__VA_ARGS__>,                    \
-                                      Dlikg::DlikgBlockCubeDummy<__VA_ARGS__>>::type;                                    \
+            typename std::conditional<g_coreType == AscendC::AIC, Dlikg::DlikgBlockCube<__VA_ARGS__>,                  \
+                                      Dlikg::DlikgBlockCubeDummy<__VA_ARGS__>>::type;                                  \
         using VecBlockType =                                                                                           \
-            typename std::conditional<g_coreType == AscendC::AIV, Dlikg::DlikgBlockVec<__VA_ARGS__>,                     \
-                                      Dlikg::DlikgBlockVecDummy<__VA_ARGS__>>::type;                                     \
+            typename std::conditional<g_coreType == AscendC::AIV, Dlikg::DlikgBlockVec<__VA_ARGS__>,                   \
+                                      Dlikg::DlikgBlockVecDummy<__VA_ARGS__>>::type;                                   \
         templateClass<CubeBlockType, VecBlockType> op;                                                                 \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                          \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                               \
-        op.Init(q, k, w, attnSoftmaxL1, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK,       \
+        op.Init(q, k, w, attnSoftmaxL1, softmaxLse, cuSeqlensQ, cuSeqlensK, sequsedQ, sequsedK, cmpResidualK,          \
             metadata, dq, dk, dw, softmaxOut, user, tiling_data, &tPipe);                                              \
         op.Process();                                                                                                  \
+        tPipe.Destroy();                                                                                               \
+        TPipe pipePost;                                                                                                \
+        DenseLightningIndexerKLLossGradPost<__VA_ARGS__> opPost;                                                       \
+        opPost.Init(dk, user, tiling_data, &pipePost);                                                                 \
+        opPost.Process();                                                                                              \
     } while (0)
 
-#else
 template<int TopKRange, int LayoutT_Q, int LayoutT_KT, int SparseMode,
         bool HasCuSeqlensQ, bool HasCuSeqlensK, bool HasSequsedQ,
         bool HasSequsedK, bool HasCmpResidualK, bool Deterministic>
  __global__ __aicore__ void
-dense_lightning_indexer_kl_loss_grad(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w, __gm__,
-                              __gm__ uint8_t *attnSoftmaxL1, __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
+dense_lightning_indexer_kl_loss_grad(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm__ uint8_t *w,
+                              __gm__ uint8_t *attnSoftmaxL1, __gm__ uint8_t *softmaxLse,
+                              __gm__ uint8_t *cuSeqlensQ, __gm__ uint8_t *cuSeqlensK,
                               __gm__ uint8_t *sequsedQ, __gm__ uint8_t *sequsedK, __gm__ uint8_t *cmpResidualK,
                               __gm__ uint8_t *metadata, __gm__ uint8_t *dq, __gm__ uint8_t *dk, __gm__ uint8_t *dw,
                               __gm__ uint8_t *softmaxOut, __gm__ uint8_t *workspace, __gm__ uint8_t *tiling)
@@ -70,4 +76,3 @@ dense_lightning_indexer_kl_loss_grad(__gm__ uint8_t *q, __gm__ uint8_t *k, __gm_
                     HasCuSeqlensK, HasSequsedQ, HasSequsedK, HasCmpResidualK, Deterministic);
     }
 }
-#endif

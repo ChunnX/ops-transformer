@@ -40,6 +40,11 @@ public:
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND})
             .AutoContiguous();
+        this->Input("softmax_lse")
+            .ParamType(REQUIRED)
+            .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
+            .Format({ge::FORMAT_ND, ge::FORMAT_ND})
+            .AutoContiguous();
         this->Input("cu_seqlens_q")
             .ParamType(OPTIONAL)
             .DataType({ge::DT_INT32, ge::DT_INT32})
@@ -86,9 +91,9 @@ public:
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT, ge::DT_FLOAT})
             .Format({ge::FORMAT_ND, ge::FORMAT_ND});
-        this->Attr("layout_q").AttrType(OPTIONAL).String("TND");
-        this->Attr("layout_k").AttrType(OPTIONAL).String("TND");
-        this->Attr("mask_mode").AttrType(OPTIONAL).Int(3);
+        this->Attr("layout_q").AttrType(OPTIONAL).String("BSND");
+        this->Attr("layout_k").AttrType(OPTIONAL).String("BSND");
+        this->Attr("mask_mode").AttrType(OPTIONAL).Int(0);
         this->Attr("cmp_ratio").AttrType(OPTIONAL).Int(1);
 
         OpAICoreConfig aicore_config;

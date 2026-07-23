@@ -5,28 +5,28 @@
 |产品      | 是否支持 |
 |:----------------------------|:-----------:|
 |<term>Ascend 950PR/Ascend 950DT</term>|     √     |
-|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    √     |
-|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    √     |
+|<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>|    x     |
+|<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>|    x     |
 |<term>Atlas 200I/500 A2 推理产品</term>|      x     |
 |<term>Atlas 推理系列产品</term>|      x     |
 |<term>Atlas 训练系列产品</term>|      x     |
 
 ## 功能说明
 
-- 接口功能：DenseLightningIndexerKLLossGrad算子是LightningIndexer KL Loss的反向计算算子。该接口接收Lightning Indexer分支的q、k、w、sparseIndices，以及由主Attention分支预先计算得到的attnSoftmaxL1Norm，计算并输出dq、dk、dw和softmaxOut。与SparseLightningIndexerGradKLLoss相比，本接口不再在kernel内部重算主Attention的`Q @ K -> softmax -> reduce/l1 norm`，也不再输出loss；主Attention的目标分布由attnSoftmaxL1Norm输入提供，softmaxOut可用于后续loss计算。
+- 接口功能：DenseLightningIndexerKLLossGrad算子是LightningIndexer KL Loss的反向计算算子（Dense模式）。该接口接收Lightning Indexer分支的q、k、w，以及由主Attention分支预先计算得到的attnSoftmaxL1Norm和softmaxLse，计算并输出dq、dk、dw和softmaxOut。本接口对全部key做dense注意力计算，不再依赖sparseIndices做top-k筛选；也不需要在kernel内部重算主Attention的`Q @ K -> softmax -> reduce/l1 norm`，不再输出loss；主Attention的目标分布由attnSoftmaxL1Norm输入提供，softmaxOut可用于后续loss计算。
 
 - 计算公式：
-   用于取Top-k的value的Indexer logits可表示为：
+    Indexer logits可表示为：
 
    $$
-   S_{t,:}=q_{t,:}@K_{\operatorname{topk}(t),:}^{T}
+   S_{t,:}=q_{t,:}@K^{T}
    $$
 
    $$
    I_{t,:}=W_{t,:}@\mathrm{ReLU}(S_{t,:})
    $$
 
-   其中，$q$和$K$分别对应本接口的q和k，$W$对应本接口的w，$\operatorname{topk}(t)$由sparseIndices给出。Indexer分支的softmax输出为：
+   其中，$q$和$K$分别对应本接口的q和k，$W$对应本接口的w。Indexer分支的softmax输出为：
 
    $$
    y_{t,:}=\operatorname{Softmax}(I_{t,:})
@@ -55,14 +55,14 @@
    $$
 
    $$
-   dq_{t,:}=dS_{t,:}@K_{\operatorname{topk}(t),:}
+   dq_{t,:}=dS_{t,:}@K
    $$
 
    $$
-   dK_{\operatorname{topk}(t),:}=\left(dS_{t,:}\right)^{T}@q_{t,:}
+   dK=\sum_t\left(dS_{t,:}\right)^{T}@q_{t,:}
    $$
 
-   dK写回时会按照sparseIndices指向的key位置做scatter-add，无效top-k位置不参与计算。
+   dK直接累积到对应key位置上，无需scatter-add。
 
 ## 函数原型
 
@@ -73,8 +73,8 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGradGetWorkspaceSize(
     const aclTensor     *q,
     const aclTensor     *k,
     const aclTensor     *w,
-    const aclTensor     *sparseIndices,
     const aclTensor     *attnSoftmaxL1Norm,
+    const aclTensor     *softmaxLse,
     const aclTensor     *cuSeqLensQOptional,
     const aclTensor     *cuSeqLensKOptional,
     const aclTensor     *seqUsedQOptional,
@@ -171,35 +171,35 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>x</td>
             </tr>
             <tr>
-                <td>sparseIndices</td>
-                <td>输入</td>
-                <td>每个query对应的top-k key下标。</td>
-                <td>
-                    <ul>
-                        <li>有效部分填充key下标。</li>
-                        <li>无效部分填充-1。</li>
-                        <li>不支持空Tensor。</li>
-                    </ul>
-                </td>
-                <td>INT32</td>
-                <td>ND</td>
-                <td>(B,S1,N2,K)、(T1,N2,K)</td>
-                <td>x</td>
-            </tr>
-            <tr>
                 <td>attnSoftmaxL1Norm</td>
                 <td>输入</td>
                 <td>主Attention分支预先计算出的目标分布。</td>
                 <td>
                     <ul>
                         <li>用于替代旧kernel内部的主Attention重算结果。</li>
-                        <li>维度需与sparseIndices一致。</li>
+                        <li>维度为(B,S1,N2,S2)或(T1,N2,maxSeqLenK)，覆盖全部key。</li>
                         <li>不支持空Tensor。</li>
                     </ul>
                 </td>
                 <td>FLOAT32</td>
                 <td>ND</td>
-                <td>(B,S1,N2,K)、(T1,N2,K)</td>
+                <td>(B,S1,N2,S2)、(T1,N2,maxSeqLenK)</td>
+                <td>x</td>
+            </tr>
+            <tr>
+                <td>softmaxLse</td>
+                <td>输入</td>
+                <td>softmax log-sum-exp值，由DenseLightningIndexerSoftmaxLse预先计算。</td>
+                <td>
+                    <ul>
+                        <li>用于数值稳定计算。</li>
+                        <li>维度为(B,N2,S1)或(N2,T1)。</li>
+                        <li>不支持空Tensor。</li>
+                    </ul>
+                </td>
+                <td>FLOAT32</td>
+                <td>ND</td>
+                <td>(B,N2,S1)、(N2,T1)</td>
                 <td>x</td>
             </tr>
             <tr>
@@ -225,7 +225,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
             <tr>
                 <td>seqUsedQOptional</td>
                 <td>可选输入</td>
-                <td>预留字段，表示每个batch实际使用的q长度。</td>
+                <td>表示每个batch实际使用的q长度。</td>
                 <td>长度为B。</td>
                 <td>INT32</td>
                 <td>ND</td>
@@ -235,7 +235,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
             <tr>
                 <td>seqUsedKOptional</td>
                 <td>可选输入</td>
-                <td>预留字段，表示每个batch实际使用的k长度。</td>
+                <td>表示每个batch实际使用的k长度。</td>
                 <td>长度为B。</td>
                 <td>INT32</td>
                 <td>ND</td>
@@ -265,7 +265,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
             <tr>
                 <td>layoutQ</td>
                 <td>输入</td>
-                <td>q、w、sparseIndices、attnSoftmaxL1Norm、dq、dw、softmaxOut的layout。</td>
+                <td>q、w、attnSoftmaxL1Norm、softmaxLse、dq、dw、softmaxOut的layout。</td>
                 <td>仅支持BSND和TND。</td>
                 <td>STRING</td>
                 <td>-</td>
@@ -339,7 +339,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
                 <td>shape与attnSoftmaxL1Norm一致。</td>
                 <td>FLOAT32</td>
                 <td>ND</td>
-                <td>(B,S1,N2,K)、(T1,N2,K)</td>
+                <td>(B,S1,N2,S2)、(T1,N2,S2)</td>
                 <td>x</td>
             </tr>
             <tr>
@@ -452,17 +452,16 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
 ## 约束说明
 
 - 确定性计算：
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：aclnnDenseLightningIndexerKLLossGrad默认非确定性实现，不支持通过aclrtCtxSetSysParamOpt开启确定性。
     - <term>Ascend 950PR/Ascend 950DT</term>：aclnnDenseLightningIndexerKLLossGrad默认非确定性实现，支持通过aclrtCtxSetSysParamOpt开启确定性。
 
 - 公共约束：
   - 参数q、k、dq、dk的数据类型应保持一致，支持FLOAT16和BFLOAT16。
-  - 参数w、dw、attnSoftmaxL1Norm、softmaxOut的数据类型应为FLOAT32。
-  - 参数sparseIndices、cuSeqLensQOptional、cuSeqLensKOptional、seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional、metadataOptional的数据类型应为INT32。
+  - 参数w、dw、attnSoftmaxL1Norm、softmaxLse、softmaxOut的数据类型应为FLOAT32。
+  - 参数cuSeqLensQOptional、cuSeqLensKOptional、seqUsedQOptional、seqUsedKOptional、cmpResidualKOptional、metadataOptional的数据类型应为INT32。
   - layoutQ和layoutK当前支持BSND和TND。
   - 当layoutQ为TND时，需要传入cuSeqLensQOptional；当layoutK为TND时，需要传入cuSeqLensKOptional。
-  - sparseIndices中有效位置必须位于当前batch的key序列范围内；无效位置使用-1填充。
-  - attnSoftmaxL1Norm的无效top-k位置建议置零，并与sparseIndices的有效位置保持一致。
+  - attnSoftmaxL1Norm的维度为(B,S1,N2,S2)或(T1,N2,maxSeqLenK)，覆盖全部key的目标分布。
+  - softmaxLse由DenseLightningIndexerSoftmaxLse算子预先计算提供，维度为(B,N2,S1)或(N2,T1)，用于数值稳定计算。
 
     <table style="undefined;table-layout: fixed; width: 942px">
         <colgroup>
@@ -542,6 +541,21 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
         </thead>
         <tbody>
             <tr>
+                <td>B</td>
+                <td>-</td>
+                <td>-</td>
+            </tr>
+            <tr>
+                <td>S1、S2</td>
+                <td>-</td>
+                <td>S1、S2支持不等长</td>
+            </tr>
+            <tr>
+                <td>N1</td>
+                <td>1~128</td>
+                <td>MQA场景</td>
+            </tr>
+            <tr>
                 <td>N2</td>
                 <td>1</td>
                 <td>当前仅支持N2=1。</td>
@@ -549,7 +563,7 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
             <tr>
                 <td>D</td>
                 <td>128</td>
-                <td>q和k最后一维需保持一致。</td>
+                <td>-</td>
             </tr>
             <tr>
                 <td>cmpRatio</td>
@@ -558,19 +572,6 @@ aclnnStatus aclnnDenseLightningIndexerKLLossGrad(
             </tr>
         </tbody>
     </table>
-
-  - 参数B的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：B支持1~256。
-    - <term>Ascend 950PR/Ascend 950DT</term>：B>0。
-  - 参数S1、S2的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：S1支持1~8K，S2支持1~512K。
-    - <term>Ascend 950PR/Ascend 950DT</term>：S1>0，S2>0。
-  - 参数N1的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：N1支持8、16、32、64。
-    - <term>Ascend 950PR/Ascend 950DT</term>：N1支持1~128。
-  - 参数K的支持情况:
-    - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：K支持512、1024、2048、4096、8192。
-    - <term>Ascend 950PR/Ascend 950DT</term>：K支持0~2048。
 
 ## 调用示例
 
@@ -663,30 +664,29 @@ int main() {
   const int64_t numHeadsQ = 8;
   const int64_t numHeadsK = 1;
   const int64_t headDim = 128;
-  const int64_t topk = 512;
   const int64_t maskMode = 3;
   const int64_t cmpRatio = 4;
 
   std::vector<int64_t> qShape = {t1, numHeadsQ, headDim};
   std::vector<int64_t> kShape = {t2, numHeadsK, headDim};
   std::vector<int64_t> wShape = {t1, numHeadsQ};
-  std::vector<int64_t> sparseShape = {t1, numHeadsK, topk};
-  std::vector<int64_t> softmaxShape = {t1, numHeadsK, topk};
+  std::vector<int64_t> l1NormShape = {t1, numHeadsK, t2};
+  std::vector<int64_t> softmaxLseShape = {numHeadsK, t1};
+  std::vector<int64_t> softmaxShape = {t1, numHeadsK, t2};
   std::vector<int64_t> cuSeqLensShape = {batchSize + 1};
   std::vector<int64_t> metadataShape = {64};
 
   std::vector<uint16_t> qHostData(GetShapeSize(qShape), 0x3C00);
   std::vector<uint16_t> kHostData(GetShapeSize(kShape), 0x3C00);
   std::vector<float> wHostData(GetShapeSize(wShape), 1.0f);
-  std::vector<int32_t> sparseHostData(GetShapeSize(sparseShape), -1);
-  std::vector<float> attnSoftmaxL1NormHostData(GetShapeSize(softmaxShape), 0.0f);
+  std::vector<float> attnSoftmaxL1NormHostData(GetShapeSize(l1NormShape), 0.0f);
   for (int64_t t = 0; t < t1; ++t) {
     auto validK = std::min<int64_t>(std::max<int64_t>(1, (t + 1) / cmpRatio), t2);
     for (int64_t kIdx = 0; kIdx < validK; ++kIdx) {
-      sparseHostData[t * numHeadsK * topk + kIdx] = static_cast<int32_t>(kIdx);
-      attnSoftmaxL1NormHostData[t * numHeadsK * topk + kIdx] = 1.0f / static_cast<float>(validK);
+      attnSoftmaxL1NormHostData[t * numHeadsK * t2 + kIdx] = 1.0f / static_cast<float>(validK);
     }
   }
+  std::vector<float> softmaxLseHostData(GetShapeSize(softmaxLseShape), 0.0f);
   std::vector<int32_t> cuSeqLensQHostData = {0, static_cast<int32_t>(t1)};
   std::vector<int32_t> cuSeqLensKHostData = {0, static_cast<int32_t>(t2)};
   std::vector<int32_t> metadataHostData(GetShapeSize(metadataShape), 0);
@@ -698,8 +698,8 @@ int main() {
   void* qDeviceAddr = nullptr;
   void* kDeviceAddr = nullptr;
   void* wDeviceAddr = nullptr;
-  void* sparseDeviceAddr = nullptr;
   void* attnSoftmaxL1NormDeviceAddr = nullptr;
+  void* softmaxLseDeviceAddr = nullptr;
   void* cuSeqLensQDeviceAddr = nullptr;
   void* cuSeqLensKDeviceAddr = nullptr;
   void* metadataDeviceAddr = nullptr;
@@ -711,8 +711,8 @@ int main() {
   aclTensor* q = nullptr;
   aclTensor* k = nullptr;
   aclTensor* w = nullptr;
-  aclTensor* sparseIndices = nullptr;
   aclTensor* attnSoftmaxL1Norm = nullptr;
+  aclTensor* softmaxLse = nullptr;
   aclTensor* cuSeqLensQ = nullptr;
   aclTensor* cuSeqLensK = nullptr;
   aclTensor* metadata = nullptr;
@@ -727,10 +727,11 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(wHostData, wShape, &wDeviceAddr, aclDataType::ACL_FLOAT, &w);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(sparseHostData, sparseShape, &sparseDeviceAddr, aclDataType::ACL_INT32, &sparseIndices);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(attnSoftmaxL1NormHostData, softmaxShape, &attnSoftmaxL1NormDeviceAddr,
+  ret = CreateAclTensor(attnSoftmaxL1NormHostData, l1NormShape, &attnSoftmaxL1NormDeviceAddr,
                         aclDataType::ACL_FLOAT, &attnSoftmaxL1Norm);
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
+  ret = CreateAclTensor(softmaxLseHostData, softmaxLseShape, &softmaxLseDeviceAddr,
+                        aclDataType::ACL_FLOAT, &softmaxLse);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(cuSeqLensQHostData, cuSeqLensShape, &cuSeqLensQDeviceAddr, aclDataType::ACL_INT32, &cuSeqLensQ);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -753,7 +754,7 @@ int main() {
   uint64_t metadataWorkspaceSize = 0;
   aclOpExecutor* metadataExecutor = nullptr;
   ret = aclnnDenseLightningIndexerKLLossGradMetadataGetWorkspaceSize(
-      cuSeqLensQ, cuSeqLensK, nullptr, nullptr, nullptr, batchSize, t1, t2, numHeadsQ, numHeadsK, headDim, topk,
+      cuSeqLensQ, cuSeqLensK, nullptr, nullptr, nullptr, batchSize, t1, t2, numHeadsQ, numHeadsK, headDim,
       layoutQ, layoutK, maskMode, cmpRatio, metadata, &metadataWorkspaceSize, &metadataExecutor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnDenseLightningIndexerKLLossGradMetadataGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -765,14 +766,14 @@ int main() {
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate metadata workspace failed. ERROR: %d\n", ret); return ret);
   }
   ret = aclnnDenseLightningIndexerKLLossGradMetadata(metadataWorkspaceAddr, metadataWorkspaceSize,
-                                                     metadataExecutor, stream);
+                                                      metadataExecutor, stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnDenseLightningIndexerKLLossGradMetadata failed. ERROR: %d\n", ret); return ret);
 
   uint64_t workspaceSize = 0;
   aclOpExecutor* executor = nullptr;
   ret = aclnnDenseLightningIndexerKLLossGradGetWorkspaceSize(
-      q, k, w, sparseIndices, attnSoftmaxL1Norm, cuSeqLensQ, cuSeqLensK, nullptr, nullptr, nullptr, metadata,
+      q, k, w, attnSoftmaxL1Norm, softmaxLse, cuSeqLensQ, cuSeqLensK, nullptr, nullptr, nullptr, metadata,
       layoutQ, layoutK, maskMode, cmpRatio, dq, dk, dw, softmaxOut, &workspaceSize, &executor);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclnnDenseLightningIndexerKLLossGradGetWorkspaceSize failed. ERROR: %d\n", ret);
@@ -794,8 +795,8 @@ int main() {
   aclDestroyTensor(q);
   aclDestroyTensor(k);
   aclDestroyTensor(w);
-  aclDestroyTensor(sparseIndices);
   aclDestroyTensor(attnSoftmaxL1Norm);
+  aclDestroyTensor(softmaxLse);
   aclDestroyTensor(cuSeqLensQ);
   aclDestroyTensor(cuSeqLensK);
   aclDestroyTensor(metadata);
@@ -807,8 +808,8 @@ int main() {
   aclrtFree(qDeviceAddr);
   aclrtFree(kDeviceAddr);
   aclrtFree(wDeviceAddr);
-  aclrtFree(sparseDeviceAddr);
   aclrtFree(attnSoftmaxL1NormDeviceAddr);
+  aclrtFree(softmaxLseDeviceAddr);
   aclrtFree(cuSeqLensQDeviceAddr);
   aclrtFree(cuSeqLensKDeviceAddr);
   aclrtFree(metadataDeviceAddr);
