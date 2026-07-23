@@ -99,8 +99,8 @@ const int g_toAclOffset = 256;
     _(at::ScalarType::Bits4x2, ACL_DT_UNDEFINED)                                                                       \
     _(at::ScalarType::Bits8, ACL_DT_UNDEFINED)                                                                         \
     _(at::ScalarType::Bits16, ACL_DT_UNDEFINED)                                                                        \
-    _(at::ScalarType::Float8_e5m2, ACL_FLOAT8_E5M2)                                                                    \
-    _(at::ScalarType::Float8_e4m3fn, ACL_FLOAT8_E4M3FN)                                                                \
+    _(at::ScalarType::Float8_e5m2, ACL_DT_UNDEFINED)                                                                    \
+    _(at::ScalarType::Float8_e4m3fn, ACL_DT_UNDEFINED)                                                                 \
     _(at::ScalarType::Float8_e5m2fnuz, ACL_DT_UNDEFINED)                                                               \
     _(at::ScalarType::Float8_e4m3fnuz, ACL_DT_UNDEFINED)                                                               \
     _(at::ScalarType::UInt16, ACL_UINT16)                                                                              \
@@ -120,7 +120,7 @@ const int g_toAclOffset = 256;
     _(at::ScalarType::Int5, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int6, ACL_DT_UNDEFINED)                                                                          \
     _(at::ScalarType::Int7, ACL_DT_UNDEFINED)                                                                          \
-    _(at::ScalarType::Float8_e8m0fnu, ACL_FLOAT8_E8M0)                                                                 \
+    _(at::ScalarType::Float8_e8m0fnu, ACL_DT_UNDEFINED)                                                                 \
     _(at::ScalarType::Undefined, ACL_DT_UNDEFINED)                                                                     \
     _(at::ScalarType::NumOptions, ACL_DT_UNDEFINED)
 
@@ -141,12 +141,7 @@ enum class DType {
                 ENUM_OFFSET(DOUBLE, ACL_DOUBLE) ENUM_OFFSET(BOOL, ACL_BOOL) ENUM_OFFSET(STRING, ACL_STRING)
                     ENUM_OFFSET(COMPLEX64, ACL_COMPLEX64) ENUM_OFFSET(COMPLEX128, ACL_COMPLEX128)
                         ENUM_OFFSET(BF16, ACL_BF16) ENUM_OFFSET(INT4, ACL_INT4) ENUM_OFFSET(UINT1, ACL_UINT1)
-                            ENUM_OFFSET(COMPLEX32, ACL_COMPLEX32) ENUM_OFFSET(HIFLOAT8, ACL_HIFLOAT8)
-                                ENUM_OFFSET(FLOAT8_E5M2, ACL_FLOAT8_E5M2) ENUM_OFFSET(FLOAT8_E4M3FN, ACL_FLOAT8_E4M3FN)
-                                    ENUM_OFFSET(FLOAT8_E8M0, ACL_FLOAT8_E8M0) ENUM_OFFSET(FLOAT6_E3M2, ACL_FLOAT6_E3M2)
-                                        ENUM_OFFSET(FLOAT6_E2M3, ACL_FLOAT6_E2M3)
-                                            ENUM_OFFSET(FLOAT4_E2M1, ACL_FLOAT4_E2M1)
-                                                ENUM_OFFSET(FLOAT4_E1M2, ACL_FLOAT4_E1M2)
+                            ENUM_OFFSET(COMPLEX32, ACL_COMPLEX32)
 };
 
 namespace op_infer {
@@ -175,11 +170,11 @@ typedef struct {
 
 inline bool Is4BitDtype(const aclDataType acl_data_type)
 {
-    return acl_data_type == ACL_FLOAT4_E2M1 || acl_data_type == ACL_FLOAT4_E1M2 || acl_data_type == ACL_INT4;
+    return acl_data_type == ACL_INT4;
 }
 
 static std::unordered_map<aclFormat, aclFormat> FORMAT_FAKE_TO_REAL{
-    {ACL_FORMAT_FRACTAL_NZ_C0_16, ACL_FORMAT_FRACTAL_NZ_C0_32}, {ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_FRACTAL_NZ}};
+    {ACL_FORMAT_FRACTAL_NZ, ACL_FORMAT_FRACTAL_NZ}};
 
 static inline bool IsOpInputBaseFormat(const at::Tensor &at_tensor)
 {

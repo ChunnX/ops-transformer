@@ -338,22 +338,41 @@ __aicore__ inline void SWAVectorBlock<SMLAT>::ElewiseCompute(const RunInfo &info
     uint32_t dealTempSize = 0;
     uint32_t ubOffset = 0;
     if (info.isOriOnly) {
-        int32_t right = info.oriDealSize + s1StartIdx - info.gS1Idx / constInfo.gSize;
-        int32_t left = Max(0, static_cast<int32_t>(right) - constInfo.oriWinLeft + constInfo.oriWinRight);
-        for (uint32_t i = s1StartIdx; i <= s1EndIdx; i++) {
-            dealTempSize = constInfo.gSize - gStartIdx;
-            if (i == s1EndIdx) {
-                dealTempSize = gEndIdx - gStartIdx;
+        if (constInfo.hasOriSparseIndices) {
+            for (uint32_t i = s1StartIdx; i <= s1EndIdx; i++) {
+                dealTempSize = constInfo.gSize - gStartIdx;
+                if (i == s1EndIdx) {
+                    dealTempSize = gEndIdx - gStartIdx;
+                }
+                if (dealTempSize == 0) {
+                    continue;
+                }
+                if (info.actualSingleProcessSInnerSize < columnCount) {
+                    SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount,
+                                static_cast<int64_t>(info.actualSingleProcessSInnerSize),
+                                static_cast<int64_t>(columnCount - 1));
+                }
+                ubOffset += dealTempSize * columnCount;
+                gStartIdx = 0;
             }
-            if (dealTempSize == 0) {
-                continue;
+        } else {
+            int32_t right = info.oriDealSize + s1StartIdx - info.gS1Idx / constInfo.gSize;
+            int32_t left = Max(0, static_cast<int32_t>(right) - constInfo.oriWinLeft + constInfo.oriWinRight);
+            for (uint32_t i = s1StartIdx; i <= s1EndIdx; i++) {
+                dealTempSize = constInfo.gSize - gStartIdx;
+                if (i == s1EndIdx) {
+                    dealTempSize = gEndIdx - gStartIdx;
+                }
+                if (dealTempSize == 0) {
+                    continue;
+                }
+                SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, 0, left - 1);
+                SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, right + 1, columnCount - 1);
+                right = Min(right + 1, columnCount - 1);
+                left = Max(0, static_cast<int32_t>(right) - constInfo.oriWinLeft + constInfo.oriWinRight);
+                ubOffset += dealTempSize * columnCount;
+                gStartIdx = 0;
             }
-            SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, 0, left - 1);
-            SetInfInBlk(mmResUb[ubOffset], dealTempSize, columnCount, right + 1, columnCount - 1);
-            right = Min(right + 1, columnCount - 1);
-            left = Max(0, static_cast<int32_t>(right) - constInfo.oriWinLeft + constInfo.oriWinRight);
-            ubOffset += dealTempSize * columnCount;
-            gStartIdx = 0;
         }
     } else if (info.isOriCmpMix) {
         int32_t oriRight = info.oriDealSize + s1StartIdx - info.gS1Idx / constInfo.gSize;

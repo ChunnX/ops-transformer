@@ -55,9 +55,10 @@ using namespace SMLAKernel;
         templateClass<SMLAType<__VA_ARGS__>> op;                                                             \
         GET_TILING_DATA_WITH_STRUCT(tilingdataClass, tiling_data_in, tiling);                                \
         const tilingdataClass *__restrict tiling_data = &tiling_data_in;                                     \
-        op.Init(query, oriKV, cmpKV, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ,             \
+        op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable, cuSeqlensQ, \
                 cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV,         \
-                sinks, metadata, attentionOut, softmaxLse, user, tiling_data, tiling, &tPipe);               \
+                oriTopkLength, cmpTopkLength, sinks, metadata, attentionOut, softmaxLse, user, tiling_data, \
+                tiling, &tPipe);                                                                             \
         op.Process();                                                                                        \
     } while (0)
 #endif

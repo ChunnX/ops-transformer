@@ -1,0 +1,15 @@
+准备运行 单跑 脚本...
+===============================
+参数配置:
+  结果存储至文件 ./result/smla_phase2_dspark.xlsx
+===============================
+============================= test session starts ==============================
+platform linux -- Python 3.11.15, pytest-8.3.5, pluggy-1.6.0 -- /data/miniconda3/envs/hey311/bin/python3
+cachedir: .pytest_cache
+rootdir: /data/hey/git/ops-transformer/attention/sparse_flash_mla/tests/pytest
+configfile: pytest.ini
+collecting ... collected 11 items
+
+test_sparse_flash_mla_single.py::test_example[param_combinations0] Terminated
+===============================
+所有任务完成
