@@ -213,6 +213,27 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
         if (constInfo.subBlockIdx == 1) {
             runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
+        if (constInfo.isSoftmaxLseEnable) {
+            if constexpr (LAYOUT_T == QSMLA_LAYOUT::TND) {
+                // [N2, T, G] (TND)
+                runParam.softmaxLseOffset = runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
+                    (seqOffset + runParam.sOuterOffset) * constInfo.gSize;
+            } else {
+                // [B, N2, S1, G] (BSND)
+                runParam.softmaxLseOffset = sIdx * constInfo.n2Size * constInfo.s1Size * constInfo.gSize +
+                    runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
+                    runParam.sOuterOffset * constInfo.gSize;
+            }
+            if constexpr (IS_SPLIT_G) {
+                uint32_t aicIdxLocal = constInfo.aivIdx >> 1U;
+                if (aicIdxLocal % 2U != 0) {
+                    runParam.softmaxLseOffset += constInfo.gSize >> 1U;
+                }
+            }
+            if (constInfo.subBlockIdx == 1) {
+                runParam.softmaxLseOffset += runParam.firstHalfMRealSize;
+            }
+        }
     }
 }
 

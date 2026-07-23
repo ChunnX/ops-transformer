@@ -71,6 +71,7 @@ for params in ENABLED_PARAMS:
         "template_run_mode": params.get("template_run_mode"),
         "actlen_mode": params.get("actlen_mode"),
         "S1EQS2": params.get("S1EQS2", [False]),
+        "return_softmax_lse": params.get("return_softmax_lse", [False]),
         'ori_kv_topk_mode': params.get('ori_kv_topk_mode', ['fullK']),
         'cmp_kv_topk_mode': params.get('cmp_kv_topk_mode',['fullK']),
         'ori_sparse_indices_mode': params.get('ori_sparse_indices_mode', ['full']),
@@ -114,9 +115,12 @@ def mqsmla(param_combinations):
     # 获得cpu结果(真值)和算子结果（测试值）
     npu_error_msg = None
     try:
-        npu_result, cpu_quant_result = mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
+        npu_result, cpu_quant_result, cpu_lse, npu_lse = mixed_quant_sparse_flash_mla_process.test_mqsmla_quant_process_ci(
             test_data, device_id=device_id)
         result, fulfill_percent = result_compare_method.check_result(cpu_quant_result, npu_result)
+        if test_data['params'].get('return_softmax_lse'):
+            print("return_softmax_lse is true!!!")
+            result, fulfill_percent = result_compare_method.check_result(cpu_lse, npu_lse)
     except Exception as e:
         npu_error_msg = str(e)
         print("NPU ERROR：", npu_error_msg)
