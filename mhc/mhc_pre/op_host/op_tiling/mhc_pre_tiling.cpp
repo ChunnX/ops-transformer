@@ -136,7 +136,7 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
 
     auto shapePhi = context_->GetInputShape(1);
     hcMix_ = shapePhi->GetStorageShape().GetDim(0);
-    OP_CHECK_IF(hcMix_ != nn_fac || hcMix_ != nn_pow,
+    OP_CHECK_IF(hcMix_ != nn_fac && hcMix_ != nn_pow,
                     OP_LOGE(context_->GetNodeName(),
                              "Phi dim 0 should be equal with %ld or %ld, but is %ld", nn_fac, nn_pow, shapePhi->GetStorageShape().GetDim(1)),
                     return ge::GRAPH_FAILED);
@@ -163,11 +163,11 @@ ge::graphStatus MhcPreMembaseTiling::GetShapeAttrsInfoInner(int8_t& gammaExist)
     auto shapeGamma = context_->GetOptionalInputShape(4);
     gammaExist = CheckOptionalParamsExisting(shapeGamma);
     if (gammaExist == 1) {
-        int64_t baseFirstDim = shapeGamma->GetStorageShape().GetDim(0);
-        int64_t baseSecondDim = shapeGamma->GetStorageShape().GetDim(1);
-        OP_CHECK_IF(baseFirstDim != hcMult_ || baseSecondDim != d_,
+        int64_t gammaFirstDim = shapeGamma->GetStorageShape().GetDim(0);
+        int64_t gammaSecondDim = shapeGamma->GetStorageShape().GetDim(1);
+        OP_CHECK_IF(gammaFirstDim != hcMult_ || gammaSecondDim != d_,
                     OP_LOGE(context_->GetNodeName(),
-                             "gamma shape should be equal with [%ld, %ld], but is [%ld, %ld]", hcMult_, d_, baseFirstDim, baseSecondDim),
+                             "gamma shape should be equal with [%ld, %ld], but is [%ld, %ld]", hcMult_, d_, gammaFirstDim, gammaSecondDim),
                     return ge::GRAPH_FAILED);
     }
     OP_CHECK_IF(GetAttr() != ge::GRAPH_SUCCESS,

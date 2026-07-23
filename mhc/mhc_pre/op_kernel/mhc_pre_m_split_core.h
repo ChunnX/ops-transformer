@@ -42,11 +42,6 @@ public:
         // 计算 workspace 偏移
         int64_t ncSize = tilingData->hcMult * tilingData->d;
 
-        int64_t resSize = tilingData->hcMult * tilingData->hcMultAlign;
-        if constexpr (isFac) {
-            resSize = 24;
-        }
-
         // 计算 Cube Core ID（Vector Core ID / 2）
         if ASCEND_IS_AIV {
             cubeCoreId = blockIdx / CV_RATIO;
@@ -261,6 +256,10 @@ public:
         tilingData = tilingDataPtr;
         needGrad_ = tilingData->needGrad;
 
+        resSize = tilingData->hcMult * tilingData->hcMultAlign;
+        if constexpr (isFac) {
+            resSize = 24;
+        }
         xGm.SetGlobalBuffer((__gm__ T *)x);
         hcScaleGm.SetGlobalBuffer((__gm__ float *)hcScale);
         hcBaseGm.SetGlobalBuffer((__gm__ float *)hcBase);
@@ -479,7 +478,7 @@ public:
                         curRowFactor, resSize);
                 } else {
                     CopyOut(combFragLocal,
-                        combFragGm[stage2BlockIdx * curRowOfFormerBlock * tilingData->hcMult * tilingData->hcMult +
+                        hResGm[stage2BlockIdx * curRowOfFormerBlock * tilingData->hcMult * tilingData->hcMult +
                                     rowOuterIdx * curStage2RowFactor * tilingData->hcMult * tilingData->hcMult],
                         curRowFactor * tilingData->hcMult, tilingData->hcMult);
                 }

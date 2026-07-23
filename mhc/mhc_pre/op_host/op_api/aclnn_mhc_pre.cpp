@@ -56,8 +56,8 @@ static int64_t Factorial(int64_t n)
 
 static bool CheckAlphaShape(const aclTensor *alphaTensor);
 static bool ValidateNDParams(int64_t n, int64_t d);
-static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n2Plus2n, int64_t nD);
-static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n2Plus2n);
+static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n, int64_t nD, int64_t alphaSize);
+static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n, int64_t alphaSize);
 static bool CheckGammaShape(const aclTensor *gammaOptional, int64_t n, int64_t d);
 
 struct MhcParamsBase {
@@ -322,7 +322,7 @@ static bool CheckPhiShape(const aclTensor *phiTensor, int64_t n, int64_t nD, int
     } else {
         int64_t expectedPhiRows_pow = n * n + 2 * n;
         int64_t expectedPhiRows_factorial = Factorial(n) + 2 * n;
-        if (phiShape.GetDim(0) != expectedPhiRows_pow || phiShape.GetDim(0) != expectedPhiRows_factorial) {
+        if (phiShape.GetDim(0) != expectedPhiRows_pow && phiShape.GetDim(0) != expectedPhiRows_factorial) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Phi tensor first dim must be %ld or %ld, but got %ld", expectedPhiRows_pow, expectedPhiRows_factorial,
                     phiShape.GetDim(0));
             return false;
@@ -348,7 +348,7 @@ static bool CheckBiasShape(const aclTensor *biasTensor, int64_t n, int64_t alpha
     } else {
         int64_t expectedBiasSize_pow = n * n + 2 * n;
         int64_t expectedBiasSize_factorial = Factorial(n) + 2 * n;
-        if (biasShape.GetDim(0) != expectedBiasSize_pow || biasShape.GetDim(0) != expectedBiasSize_factorial) {
+        if (biasShape.GetDim(0) != expectedBiasSize_pow && biasShape.GetDim(0) != expectedBiasSize_factorial) {
             OP_LOGE(ACLNN_ERR_PARAM_INVALID, "Bias tensor dim must be %ld or %ld, but got %ld", expectedBiasSize_pow, expectedBiasSize_factorial,
                     biasShape.GetDim(0));
             return false;
