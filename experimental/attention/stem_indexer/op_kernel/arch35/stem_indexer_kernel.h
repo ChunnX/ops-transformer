@@ -52,7 +52,6 @@ public:
     using K_T = typename SIT::keyType;
     using OUT_T = typename SIT::outputType;
     static constexpr SI_LAYOUT Q_LAYOUT_T = SIT::layout;
-    static constexpr SI_LAYOUT K_LAYOUT_T = SIT::keyLayout;
 
     using SCORE_T = typename SIT::scoreType;
 
@@ -107,7 +106,7 @@ protected:
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
-    __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
+    __aicore__ inline uint32_t GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims,
                                                GlobalTensor<int32_t> &seqLensGm, uint32_t defaultSeqLen);
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
@@ -145,12 +144,6 @@ __aicore__ inline void SIPreload<SIT>::InitTilingData(const StemIndexerTilingDat
     constInfo.kBlockNumBiasLarge = tilingData->kBlockNumBiasLarge;
     constInfo.outputLayout = Q_LAYOUT_T;  // 输出和输入形状一致
     constInfo.attenMaskFlag = tilingData->causal != 0U;
-    if (Q_LAYOUT_T == SI_LAYOUT::TND) {
-        constInfo.isAccumSeqS1 = true;
-    }
-    if (K_LAYOUT_T == SI_LAYOUT::TND) {
-        constInfo.isAccumSeqS2 = true;
-    }
 }
 
 template <typename SIT>
@@ -204,25 +197,22 @@ __aicore__ inline bool SIPreload<SIT>::NeedCleanOutput()
 }
 
 template <typename SIT>
-__aicore__ inline uint32_t SIPreload<SIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims, bool isAccumSeq,
+__aicore__ inline uint32_t SIPreload<SIT>::GetActualSeqLen(uint32_t bIdx, uint32_t actualLenDims,
                                                              GlobalTensor<int32_t> &seqLensGm,
                                                              uint32_t defaultSeqLen)
 {
     if (actualLenDims == 0) {
         return defaultSeqLen;
-    } else if (isAccumSeq && bIdx > 0) { // TND
-        return static_cast<uint32_t>(seqLensGm.GetValue(bIdx) - seqLensGm.GetValue(bIdx - 1));
-    } else {
-        return static_cast<uint32_t>(seqLensGm.GetValue(bIdx));
     }
+    return static_cast<uint32_t>(seqLensGm.GetValue(bIdx));
 }
 
 template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size)
 {
-    uint32_t qTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenQDims, constInfo.isAccumSeqS1, qSeqLensGm,
+    uint32_t qTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenQDims, qSeqLensGm,
                                          constInfo.qSeqSize * constInfo.stemBlockSize);
-    uint32_t kTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenDims, constInfo.isAccumSeqS2, kvSeqLensGm,
+    uint32_t kTokenLen = GetActualSeqLen(bIdx, constInfo.actualLenDims, kvSeqLensGm,
                                          constInfo.kSeqSize * constInfo.stemBlockSize);
     actS1Size = CeilDiv(qTokenLen, constInfo.stemBlockSize);
     actS2Size = CeilDiv(kTokenLen, constInfo.stemBlockSize);
@@ -422,8 +412,8 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
     GetBN2Idx(bN2LoopIdx);
     tempLoopInfo.s2ValidSize = 0U;
     GetS1S2ActualSeqLen(tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size);
-    uint64_t promptTokenLen = GetActualSeqLen(tempLoopInfo.bIdx, static_cast<uint32_t>(constInfo.batchSize), false,
-                                                  numPromptTokensGm, 0U);
+    uint64_t promptTokenLen =
+        GetActualSeqLen(tempLoopInfo.bIdx, static_cast<uint32_t>(constInfo.batchSize), numPromptTokensGm, 0U);
     tempLoopInfo.promptLen = CeilDiv((uint32_t)promptTokenLen, constInfo.stemBlockSize);
     if ((tempLoopInfo.actS2Size == 0) || (tempLoopInfo.actS1Size == 0)) {
         tempLoopInfo.curActSeqLenIsZero = true;
@@ -554,8 +544,8 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
         matmulService.ComputeMm1(runInfo);
     } else {
         if (!needCleanOutput && runInfo.isFirstS2InnerLoop) {
-            vectorService.initS2LenToNeg(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
-                                         runInfo.indiceOutOffset);
+            vectorService.InitSparseIndicesToNegOne(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
+                                                    runInfo.indiceOutOffset);
         }
         vectorService.ProcessVec1(runInfo);
         vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);

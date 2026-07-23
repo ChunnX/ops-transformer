@@ -38,8 +38,8 @@ public:
     __aicore__ inline void InitParams(const struct SICommon::ConstInfo &constInfo);
     __aicore__ inline void InitVecInputTensor(GlobalTensor<float> vbiasGm,
                                               GlobalTensor<int32_t> sparseIndicesGm, GlobalTensor<int32_t> sparseSeqLenGm);
-    __aicore__ inline void initS2LenToNeg(uint32_t gS1Idx, uint32_t actMBaseSize, uint32_t actS1Size,
-                                          uint64_t indiceOutOffset);
+    __aicore__ inline void InitSparseIndicesToNegOne(uint32_t gS1Idx, uint32_t actMBaseSize, uint32_t actS1Size,
+                                                     uint64_t indiceOutOffset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
 
@@ -222,8 +222,8 @@ __aicore__ inline void SIVector<SIT>::FreeEventID()
 }
 
 template <typename SIT>
-__aicore__ inline void SIVector<SIT>::initS2LenToNeg(uint32_t gS1Idx, uint32_t actMBaseSize, uint32_t actS1Size,
-                                                     uint64_t indiceOutOffset)
+__aicore__ inline void SIVector<SIT>::InitSparseIndicesToNegOne(uint32_t gS1Idx, uint32_t actMBaseSize,
+                                                                uint32_t actS1Size, uint64_t indiceOutOffset)
 {
     if (actS1Size == 0U) {
         return;
@@ -610,7 +610,7 @@ __aicore__ inline void SIVector<SIT>::ProcessDirectOutput(const SICommon::TempLo
         uint64_t indiceOutOffset = qFlatBase * constInfo_.kSeqSize;
 
         if (!needCleanOutput_) {
-            initS2LenToNeg(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
+            InitSparseIndicesToNegOne(gS1Idx, actMBaseSize, actS1Size, indiceOutOffset);
         }
 
         LocalTensor<uint32_t> indicesOutLocal =
