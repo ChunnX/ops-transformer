@@ -29,6 +29,51 @@ def CausalConv1d_input(*input_arrays, **kwargs):
     """
     input_arrays = list(input_arrays)
 
+    # x (index 0): each row filled with its row index value (per-batch numbering for 3D)
+    if len(input_arrays) > 0 and input_arrays[0] is not None:
+        x = input_arrays[0]
+        if x.ndim == 3:
+            seq_len = x.shape[1]
+            for b in range(x.shape[0]):
+                for i in range(seq_len):
+                    x[b, i, :] = i
+            input_arrays[0] = x
+        elif x.ndim >= 2:
+            flat = x.reshape(-1, x.shape[-1])
+            for i in range(flat.shape[0]):
+                flat[i, :] = i
+            input_arrays[0] = flat.reshape(x.shape)
+
+    # weight (index 1): each row filled with its row index value
+    if len(input_arrays) > 1 and input_arrays[1] is not None:
+        w = input_arrays[1]
+        if w.ndim >= 2:
+            flat = w.reshape(-1, w.shape[-1])
+            for i in range(flat.shape[0]):
+                flat[i, :] = i
+            input_arrays[1] = flat.reshape(w.shape)
+
+    # conv_states (index 2): each row filled with its row index value (per-slot numbering)
+    if len(input_arrays) > 2 and input_arrays[2] is not None:
+        cs = input_arrays[2]
+        if cs.ndim == 3:
+            for s in range(cs.shape[0]):
+                for i in range(cs.shape[1]):
+                    cs[s, i, :] = i
+            input_arrays[2] = cs
+        elif cs.ndim >= 2:
+            flat = cs.reshape(-1, cs.shape[-1])
+            for i in range(flat.shape[0]):
+                flat[i, :] = i
+            input_arrays[2] = flat.reshape(cs.shape)
+
+    # bias (index 3): filled with row index value (single row)
+    if len(input_arrays) > 3 and input_arrays[3] is not None:
+        b = input_arrays[3]
+        if b.ndim >= 1:
+            input_arrays[3] = np.zeros_like(b)
+            input_arrays[3][...] = 0
+
     # Find query_start_loc in inputs (5th input, index 4)
     # Input order: x, weight, conv_states, bias, query_start_loc, ...
     if len(input_arrays) > 4 and input_arrays[4] is not None:
@@ -41,11 +86,12 @@ def CausalConv1d_input(*input_arrays, **kwargs):
             else:
                 total_tokens = x.shape[0] * x.shape[1]
 
-            testcase_name = kwargs.get('testcase_name', '')
+            testcase_name = kwargs.get("testcase_name", "")
             seq_len = None
-            if '_s' in testcase_name:
+            if "_s" in testcase_name:
                 import re
-                match = re.search(r'_s(\d+)_', testcase_name)
+
+                match = re.search(r"_s(\d+)_", testcase_name)
                 if match:
                     seq_len = int(match.group(1))
 
@@ -53,6 +99,7 @@ def CausalConv1d_input(*input_arrays, **kwargs):
                 seq_len = total_tokens // batch_size
 
             qsl_values = np.arange(batch_size + 1, dtype=np.int32) * seq_len
+            qsl_values[-1] = total_tokens
             input_arrays[4] = qsl_values
 
     # Generate unique cache_indices (6th input, index 5) to avoid duplicate cache slots
@@ -93,15 +140,35 @@ def _compute_conv1d(seq_input, history, weight_t, bias_t, activation, dtype, dev
     """Causal conv1d via F.conv1d with depthwise groups."""
     padded = torch.cat([history, seq_input], dim=0)
     weight_view = weight_t.T.unsqueeze(1)
-    result = F.conv1d(padded.T.unsqueeze(0), weight_view, bias=bias_t, stride=1, padding=0,
-                      groups=seq_input.shape[-1]).squeeze(0).T
+    result = (
+        F.conv1d(
+            padded.T.unsqueeze(0),
+            weight_view,
+            bias=bias_t,
+            stride=1,
+            padding=0,
+            groups=seq_input.shape[-1],
+        )
+        .squeeze(0)
+        .T
+    )
     if activation:
         result = _silu(result)
     return result.to(dtype)
 
 
-def _causal_conv1d_fn(x, weight, conv_states, bias, query_start_loc, cache_indices,
-                      initial_state_mode, activation_mode, null_block_id, **extra):
+def _causal_conv1d_fn(
+    x,
+    weight,
+    conv_states,
+    bias,
+    query_start_loc,
+    cache_indices,
+    initial_state_mode,
+    activation_mode,
+    null_block_id,
+    **extra,
+):
     """Prefill mode golden — matches vllm causal_conv1d_fn semantics.
 
     conv_states write-back: write the last state_len tokens of [history || seq] to [0:state_len].
@@ -119,7 +186,7 @@ def _causal_conv1d_fn(x, weight, conv_states, bias, query_start_loc, cache_indic
     cache_indices_t = _to_torch(cache_indices)
     init_state_mode_t = _to_torch(initial_state_mode)
 
-    activation = (activation_mode == "silu")
+    activation = activation_mode == "silu"
     kernel_size = weight_t.shape[0]
     dtype = orig_dtype
     device = x_t.device
@@ -131,11 +198,21 @@ def _causal_conv1d_fn(x, weight, conv_states, bias, query_start_loc, cache_indic
     else:
         query_starts = query_start_loc_t.to(torch.int64)
         batch_size = query_starts.shape[0] - 1
-        seq_list = [x_t[query_starts[i]:query_starts[i + 1]] for i in range(batch_size)]
+        seq_list = [
+            x_t[query_starts[i] : query_starts[i + 1]] for i in range(batch_size)
+        ]
         is_3d = False
 
-    cache_indices_list = cache_indices_t.tolist() if cache_indices_t is not None else list(range(batch_size))
-    init_state_modes = init_state_mode_t.tolist() if init_state_mode_t is not None else [0] * batch_size
+    cache_indices_list = (
+        cache_indices_t.tolist()
+        if cache_indices_t is not None
+        else list(range(batch_size))
+    )
+    init_state_modes = (
+        init_state_mode_t.tolist()
+        if init_state_mode_t is not None
+        else [0] * batch_size
+    )
     state_len = conv_states_t.shape[1]
     conv_states_out = conv_states_t.clone()
     output_list = []
@@ -144,21 +221,34 @@ def _causal_conv1d_fn(x, weight, conv_states, bias, query_start_loc, cache_indic
         cache_idx = int(cache_indices_list[i])
         if cache_indices_t is not None and cache_idx == null_block_id:
             cur_seq_len = x_t.shape[1] if is_3d else seq_list[i].shape[0]
-            output_list.append(torch.zeros(cur_seq_len, x_t.shape[-1], dtype=torch.float32, device=device))
+            output_list.append(
+                torch.zeros(
+                    cur_seq_len, x_t.shape[-1], dtype=torch.float32, device=device
+                )
+            )
             continue
 
         seq_input = seq_list[i]
         has_init = bool(init_state_modes[i])
         if has_init:
-            history = conv_states_t[cache_idx][0:kernel_size - 1].to(torch.float32)
+            history = conv_states_t[cache_idx][0 : kernel_size - 1].to(torch.float32)
         else:
-            history = torch.zeros(kernel_size - 1, seq_input.shape[-1], dtype=torch.float32, device=device)
+            history = torch.zeros(
+                kernel_size - 1, seq_input.shape[-1], dtype=torch.float32, device=device
+            )
 
-        result = _compute_conv1d(seq_input, history, weight_t, bias_t, activation, dtype, device)
+        result = _compute_conv1d(
+            seq_input, history, weight_t, bias_t, activation, dtype, device
+        )
         output_list.append(result)
 
-        write_history = history if has_init else torch.zeros(
-            kernel_size - 1, seq_input.shape[-1], dtype=torch.float32, device=device)
+        write_history = (
+            history
+            if has_init
+            else torch.zeros(
+                kernel_size - 1, seq_input.shape[-1], dtype=torch.float32, device=device
+            )
+        )
         write_padded = torch.cat([write_history, seq_input], dim=0)
         conv_states_out[cache_idx][0:state_len] = write_padded[-state_len:].to(dtype)
 
@@ -166,8 +256,18 @@ def _causal_conv1d_fn(x, weight, conv_states, bias, query_start_loc, cache_indic
     return _to_numpy(conv_states_out), _to_numpy(output)
 
 
-def _causal_conv1d_update(x, weight, conv_states, bias, query_start_loc, cache_indices,
-                          num_accepted_tokens, activation_mode, null_block_id, **extra):
+def _causal_conv1d_update(
+    x,
+    weight,
+    conv_states,
+    bias,
+    query_start_loc,
+    cache_indices,
+    num_accepted_tokens,
+    activation_mode,
+    null_block_id,
+    **extra,
+):
     """Update mode golden — matches vllm causal_conv1d_update conv_state sliding window.
 
     vllm conv_state update:
@@ -194,7 +294,7 @@ def _causal_conv1d_update(x, weight, conv_states, bias, query_start_loc, cache_i
     cache_indices_t = _to_torch(cache_indices)
     accepted_tokens_t = _to_torch(num_accepted_tokens)
 
-    activation = (activation_mode == "silu")
+    activation = activation_mode == "silu"
     kernel_size = weight_t.shape[0]
     dtype = orig_dtype
     device = x_t.device
@@ -206,10 +306,16 @@ def _causal_conv1d_update(x, weight, conv_states, bias, query_start_loc, cache_i
     else:
         query_starts = query_start_loc_t.to(torch.int64)
         batch_size = query_starts.shape[0] - 1
-        seq_list = [x_t[query_starts[i]:query_starts[i + 1]] for i in range(batch_size)]
+        seq_list = [
+            x_t[query_starts[i] : query_starts[i + 1]] for i in range(batch_size)
+        ]
         is_3d = False
 
-    cache_indices_list = cache_indices_t.tolist() if cache_indices_t is not None else list(range(batch_size))
+    cache_indices_list = (
+        cache_indices_t.tolist()
+        if cache_indices_t is not None
+        else list(range(batch_size))
+    )
     state_len = conv_states_t.shape[1]
     conv_states_out = conv_states_t.clone()
     output_list = []
@@ -218,7 +324,11 @@ def _causal_conv1d_update(x, weight, conv_states, bias, query_start_loc, cache_i
         cache_idx = int(cache_indices_list[i])
         if cache_indices_t is not None and cache_idx == null_block_id:
             cur_seq_len = x_t.shape[1] if is_3d else seq_list[i].shape[0]
-            output_list.append(torch.zeros(cur_seq_len, x_t.shape[-1], dtype=torch.float32, device=device))
+            output_list.append(
+                torch.zeros(
+                    cur_seq_len, x_t.shape[-1], dtype=torch.float32, device=device
+                )
+            )
             continue
 
         seq_input = seq_list[i]
@@ -231,16 +341,25 @@ def _causal_conv1d_update(x, weight, conv_states, bias, query_start_loc, cache_i
             offset = 0
             effective_state_len = kernel_size - 1
 
-        history = conv_states_t[cache_idx][offset:offset + kernel_size - 1].to(torch.float32)
+        history = conv_states_t[cache_idx][offset : offset + kernel_size - 1].to(
+            torch.float32
+        )
 
-        result = _compute_conv1d(seq_input, history, weight_t, bias_t, activation, dtype, device)
+        result = _compute_conv1d(
+            seq_input, history, weight_t, bias_t, activation, dtype, device
+        )
         output_list.append(result)
 
         old_keep = kernel_size - 2
-        new_state = torch.cat([
-            conv_states_t[cache_idx][offset + 1:offset + 1 + old_keep].to(torch.float32),
-            seq_input,
-        ], dim=0)
+        new_state = torch.cat(
+            [
+                conv_states_t[cache_idx][offset + 1 : offset + 1 + old_keep].to(
+                    torch.float32
+                ),
+                seq_input,
+            ],
+            dim=0,
+        )
         write_len = min(effective_state_len, state_len)
         conv_states_out[cache_idx][0:write_len] = new_state[0:write_len].to(dtype)
 
@@ -249,9 +368,18 @@ def _causal_conv1d_update(x, weight, conv_states, bias, query_start_loc, cache_i
 
 
 def CausalConv1d(
-    x, weight, conv_states, bias=None, query_start_loc=None, cache_indices=None,
-    initial_state_mode=None, num_accepted_tokens=None, *, activation_mode="silu",
-    null_block_id=0, **extra,
+    x,
+    weight,
+    conv_states,
+    bias=None,
+    query_start_loc=None,
+    cache_indices=None,
+    initial_state_mode=None,
+    num_accepted_tokens=None,
+    *,
+    activation_mode="silu",
+    null_block_id=0,
+    **extra,
 ):
     """Golden function for CausalConv1d operator.
 
@@ -268,8 +396,28 @@ def CausalConv1d(
         is_fn_mode = query_start_loc is not None
 
     if is_fn_mode:
-        return _causal_conv1d_fn(x, weight, conv_states, bias, query_start_loc, cache_indices,
-                                 initial_state_mode, activation_mode, null_block_id, **extra)
+        return _causal_conv1d_fn(
+            x,
+            weight,
+            conv_states,
+            bias,
+            query_start_loc,
+            cache_indices,
+            initial_state_mode,
+            activation_mode,
+            null_block_id,
+            **extra,
+        )
     else:
-        return _causal_conv1d_update(x, weight, conv_states, bias, query_start_loc, cache_indices,
-                                     num_accepted_tokens, activation_mode, null_block_id, **extra)
+        return _causal_conv1d_update(
+            x,
+            weight,
+            conv_states,
+            bias,
+            query_start_loc,
+            cache_indices,
+            num_accepted_tokens,
+            activation_mode,
+            null_block_id,
+            **extra,
+        )

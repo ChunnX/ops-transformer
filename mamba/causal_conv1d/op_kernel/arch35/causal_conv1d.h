@@ -152,9 +152,9 @@ protected:
         }
     }
 
-    __aicore__ inline void LoadWeightAndBias(int32_t dimStart, int32_t baseDim)
+    __aicore__ inline void LoadWeightAndBias(int64_t dimStart, int32_t baseDim)
     {
-        const int32_t dim = this->tilingData_->dim;
+        const int64_t dim = this->tilingData_->dim;
         const int32_t width = static_cast<int32_t>(this->tilingData_->kernelWidth);
         LocalTensor<float> &weightCalc = this->pool_.weight;
         LocalTensor<float> &biasCalc = this->pool_.bias;
@@ -325,11 +325,11 @@ protected:
         }
     }
 
-    __aicore__ inline void WriteBackState(int32_t cacheIdx, int32_t len, int32_t dimStart, int32_t baseDim, int32_t dim,
+    __aicore__ inline void WriteBackState(int32_t cacheIdx, int32_t len, int64_t dimStart, int32_t baseDim, int64_t dim,
                                           int32_t destStart = 0)
     {
-        const int32_t stateLen = this->tilingData_->stateLen;
-        const int32_t width = static_cast<int32_t>(this->tilingData_->kernelWidth);
+        const int64_t stateLen = this->tilingData_->stateLen;
+        const int64_t width = this->tilingData_->kernelWidth;
         const int32_t coBatch = static_cast<int32_t>(this->tilingData_->coBatch);
         if (len <= 0) {
             return;
@@ -381,15 +381,15 @@ protected:
     }
 
     template <int32_t kWindowMode>
-    __aicore__ inline void GetSeqWindow(int32_t groupIdx, int32_t seqLen, int32_t coBatch, int32_t &curSeqStart,
-                                        int32_t &curSeqEnd) const
+    __aicore__ inline void GetSeqWindow(int32_t groupIdx, int64_t seqLen, int32_t coBatch, int64_t &curSeqStart,
+                                        int64_t &curSeqEnd) const
     {
         if constexpr (kWindowMode == SEQ_PARTITION_MODE_VARLEN) {
             curSeqStart = this->queryStartLocGm_.GetValue(groupIdx);
             curSeqEnd = this->queryStartLocGm_.GetValue(groupIdx + 1);
         } else {
-            curSeqStart = groupIdx * coBatch * seqLen;
-            curSeqEnd = (groupIdx + 1) * seqLen;
+            curSeqStart = static_cast<int64_t>(groupIdx) * coBatch * seqLen;
+            curSeqEnd = static_cast<int64_t>(groupIdx + 1) * seqLen;
         }
     }
 
