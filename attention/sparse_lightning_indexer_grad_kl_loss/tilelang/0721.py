@@ -260,6 +260,12 @@ def tilelang_grad_kl_loss_single_kernel(
     task_count = B * S1
     launch_core_num = max(launch_core_num, 1)
     tasks_per_core = ceil_div(task_count, launch_core_num)
+    # With at most one task per AIC, the original one-iteration delay turns
+    # V0 and C1 into a full serial fill/drain sequence.  Let those engines
+    # start the same task together; C1 already waits on each V0 k_outer flag.
+    # Keep the inherited delay when one AIC owns multiple tasks.
+    pipeline_delay = 0 if tasks_per_core == 1 else TASK_PIPELINE_DEPTH - 1
+    pipeline_iteration_count = tasks_per_core + pipeline_delay
     total_aiv_num = launch_core_num * 2
     # The official 16 KiB scatter UB is split equally between ping and pong:
     # 16 rows * 128 fp32 values * 4 bytes = 8 KiB per slot.
@@ -2511,7 +2517,7 @@ def tilelang_grad_kl_loss_single_kernel(
         LossOut: T.Tensor((1,), calc_dtype),
     ):
         with T.Kernel(launch_core_num, is_npu=True) as (cid, vid):
-            for pipe_iter in T.serial(tasks_per_core + TASK_PIPELINE_DEPTH - 1):
+            for pipe_iter in T.serial(pipeline_iteration_count):
                 if pipe_iter < tasks_per_core:
                     task_current = pipe_iter * launch_core_num + cid
                     if task_current < task_count:
@@ -2532,8 +2538,8 @@ def tilelang_grad_kl_loss_single_kernel(
                             vid,
                         )
 
-                if pipe_iter >= 1:
-                    task_prev_iter = pipe_iter - 1
+                if pipe_iter >= pipeline_delay:
+                    task_prev_iter = pipe_iter - pipeline_delay
                     if task_prev_iter < tasks_per_core:
                         task_prev = task_prev_iter * launch_core_num + cid
                         if task_prev < task_count:
