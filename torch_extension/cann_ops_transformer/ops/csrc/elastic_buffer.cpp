@@ -933,7 +933,7 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
         if (numTokens > 0) {
             engramFetchInProgress_.store(true);
-            ACLNN_CMD(aclnnEngramFetchTrain, engramContextTensor_, indices,
+            ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices,
                       localStorageAddrTensor_,
                       fetched,
                       ctx.perm, ctx.sendCounts, ctx.recvCounts, ctx.recvLocalEntry, ctx.numRecv,
@@ -949,7 +949,12 @@ std::function<at::Tensor()> ElasticBuffer::EngramFetch(const at::Tensor &indices
 
     engramFetchInProgress_.store(true);
 
-    ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices, engramHiddenSize_, engramNumEntries_, fetched);
+    ACLNN_CMD(aclnnEngramFetch, engramContextTensor_, indices,
+              nullptr,
+              fetched,
+              nullptr, nullptr, nullptr, nullptr, nullptr,
+              engramHiddenSize_, engramNumEntries_,
+              0, 0);
 
     auto capturedContext = engramContextTensor_;
     auto fetchFlag = &engramFetchInProgress_;
