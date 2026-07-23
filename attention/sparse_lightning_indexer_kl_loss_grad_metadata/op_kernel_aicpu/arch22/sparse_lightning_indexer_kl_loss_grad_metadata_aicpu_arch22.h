@@ -45,6 +45,9 @@ private:
     bool Prepare(CpuKernelContext &ctx);
     bool ParamsCheck();
     int64_t GetActualSeqLen(Tensor *tensor, int64_t bIdx) const;
+    int64_t GetSeqUsedLen(Tensor *tensor, int64_t bIdx, int64_t defaultLen) const;
+    int64_t GetS1SeqSize(int64_t bIdx) const;
+    int64_t GetS2SeqSize(int64_t bIdx) const;
     int64_t CalcTotalSize() const;
     int64_t GetCmpResidualKey(int64_t bIdx) const;
     int64_t GetPreCompressS2Len(int64_t bIdx, int64_t s2Size) const;
@@ -198,6 +201,30 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::ParamsCheck
                          cmpResidualKey_->GetTensorShape()->GetDimSize(0), bSize_);
         return false;
     }
+    if (IsTensorValid(seqUsedQuery_) && seqUsedQuery_->GetTensorShape()->GetDimSize(0) < bSize_) {
+        KERNEL_LOG_ERROR("seqused_q length must be at least batch_size, but got %ld and batch_size=%ld.",
+                         seqUsedQuery_->GetTensorShape()->GetDimSize(0), bSize_);
+        return false;
+    }
+    if (IsTensorValid(seqUsedKey_) && seqUsedKey_->GetTensorShape()->GetDimSize(0) < bSize_) {
+        KERNEL_LOG_ERROR("seqused_k length must be at least batch_size, but got %ld and batch_size=%ld.",
+                         seqUsedKey_->GetTensorShape()->GetDimSize(0), bSize_);
+        return false;
+    }
+    for (int64_t bIdx = 0; bIdx < bSize_; ++bIdx) {
+        int64_t allocS1 = layoutType_ == SliLayout::TND ? GetActualSeqLen(cuSeqLensQuery_, bIdx) : s1Size_;
+        int64_t allocS2 = layoutType_ == SliLayout::TND ? GetActualSeqLen(cuSeqLensKey_, bIdx) : s2Size_;
+        int64_t usedS1 = GetSeqUsedLen(seqUsedQuery_, bIdx, allocS1);
+        int64_t usedS2 = GetSeqUsedLen(seqUsedKey_, bIdx, allocS2);
+        if (usedS1 < 0 || usedS1 > allocS1) {
+            KERNEL_LOG_ERROR("seqused_q[%ld] must be in [0, %ld], but got %ld.", bIdx, allocS1, usedS1);
+            return false;
+        }
+        if (usedS2 < 0 || usedS2 > allocS2) {
+            KERNEL_LOG_ERROR("seqused_k[%ld] must be in [0, %ld], but got %ld.", bIdx, allocS2, usedS2);
+            return false;
+        }
+    }
     return true;
 }
 
@@ -211,8 +238,38 @@ inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::GetActua
     return static_cast<int64_t>(data[bIdx + 1]) - static_cast<int64_t>(data[bIdx]);
 }
 
+inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::GetSeqUsedLen(Tensor *tensor,
+                                                                                       int64_t bIdx,
+                                                                                       int64_t defaultLen) const
+{
+    if (!IsTensorValid(tensor)) {
+        return defaultLen;
+    }
+    auto *data = reinterpret_cast<const int32_t *>(tensor->GetData());
+    return static_cast<int64_t>(data[bIdx]);
+}
+
+inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::GetS1SeqSize(int64_t bIdx) const
+{
+    int64_t defaultLen = layoutType_ == SliLayout::TND ? GetActualSeqLen(cuSeqLensQuery_, bIdx) : s1Size_;
+    return GetSeqUsedLen(seqUsedQuery_, bIdx, defaultLen);
+}
+
+inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::GetS2SeqSize(int64_t bIdx) const
+{
+    int64_t defaultLen = layoutType_ == SliLayout::TND ? GetActualSeqLen(cuSeqLensKey_, bIdx) : s2Size_;
+    return GetSeqUsedLen(seqUsedKey_, bIdx, defaultLen);
+}
+
 inline int64_t SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::CalcTotalSize() const
 {
+    if (IsTensorValid(seqUsedQuery_)) {
+        int64_t total = 0;
+        for (int64_t bIdx = 0; bIdx < bSize_; ++bIdx) {
+            total += GetS1SeqSize(bIdx);
+        }
+        return total;
+    }
     if (layoutType_ == SliLayout::TND) {
         auto *data = reinterpret_cast<const int32_t *>(cuSeqLensQuery_->GetData());
         return data[bSize_];
@@ -267,8 +324,8 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::BuildSparse
     if (layoutType_ == SliLayout::TND) {
         int64_t accumS1 = 0;
         for (int64_t bIdx = 0; bIdx < bSize_; ++bIdx) {
-            int64_t actualS1 = GetActualSeqLen(cuSeqLensQuery_, bIdx);
-            int64_t actualS2 = GetActualSeqLen(cuSeqLensKey_, bIdx);
+            int64_t actualS1 = GetS1SeqSize(bIdx);
+            int64_t actualS2 = GetS2SeqSize(bIdx);
             for (int64_t s1Idx = 0; s1Idx < actualS1 && accumS1 < static_cast<int64_t>(sparseValidArray.size());
                  ++s1Idx, ++accumS1) {
                 sparseValidArray[accumS1] = GetS1Load(GetS2RealSize(bIdx, actualS1, actualS2, s1Idx));
@@ -277,8 +334,11 @@ inline bool SparseLightningIndexerKLLossGradMetadataCpuKernelArch22::BuildSparse
     } else {
         int64_t accum = 0;
         for (int64_t bIdx = 0; bIdx < bSize_; ++bIdx) {
-            for (int64_t s1Idx = 0; s1Idx < s1Size_; ++s1Idx, ++accum) {
-                sparseValidArray[accum] = GetS1Load(GetS2RealSize(bIdx, s1Size_, s2Size_, s1Idx));
+            int64_t actualS1 = GetS1SeqSize(bIdx);
+            int64_t actualS2 = GetS2SeqSize(bIdx);
+            for (int64_t s1Idx = 0; s1Idx < actualS1 && accum < static_cast<int64_t>(sparseValidArray.size());
+                 ++s1Idx, ++accum) {
+                sparseValidArray[accum] = GetS1Load(GetS2RealSize(bIdx, actualS1, actualS2, s1Idx));
             }
         }
     }

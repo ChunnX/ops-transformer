@@ -63,6 +63,11 @@ ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::CheckContext()
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputShape(D_KEY_OUTPUT_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputShape(D_WEIGHTS_OUTPUT_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetOutputShape(SOFTMAX_OUT_OUTPUT_INDEX));
+    OP_CHECK_IF((context_->GetOptionalInputShape(SEQUSED_QUERY_INPUT_INDEX) != nullptr ||
+                 context_->GetOptionalInputShape(SEQUSED_KEY_INPUT_INDEX) != nullptr) &&
+                    context_->GetOptionalInputShape(METADATA_INPUT_INDEX) == nullptr,
+                OP_LOGE(context_, "metadata is required when seqused_q or seqused_k is provided on arch22."),
+                return ge::GRAPH_FAILED);
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData());
     OP_CHECK_NULL_WITH_CONTEXT(context_, context_->GetRawTilingData()->GetData());
     return ge::GRAPH_SUCCESS;
@@ -380,9 +385,12 @@ uint64_t SparseLightningIndexerKLLossGradTilingBase::GetTilingKey() const
 {
     LayoutType qLayout = (tilingKeyLayout == LayoutType::LAYOUT_TND) ? LayoutType::LAYOUT_TND : LayoutType::LAYOUT_BSND;
     LayoutType kLayout = (keyLayout != nullptr && keyLayout[0] == 'T') ? LayoutType::LAYOUT_TND : LayoutType::LAYOUT_BSND;
+    bool hasSequsedQ = context_->GetOptionalInputTensor(SEQUSED_QUERY_INPUT_INDEX) != nullptr;
+    bool hasSequsedK = context_->GetOptionalInputTensor(SEQUSED_KEY_INPUT_INDEX) != nullptr;
     return GET_TPL_TILING_KEY(static_cast<uint8_t>(false), static_cast<uint32_t>(topkSize),
         static_cast<uint8_t>(qLayout), static_cast<uint8_t>(kLayout),
-        static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(deterministic));
+        static_cast<uint8_t>(sparseMode), static_cast<uint8_t>(hasSequsedQ),
+        static_cast<uint8_t>(hasSequsedK), static_cast<uint8_t>(deterministic));
 }
 
 ge::graphStatus SparseLightningIndexerKLLossGradTilingBase::GetWorkspaceSize()
