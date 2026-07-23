@@ -1028,6 +1028,7 @@ public:
             uint64_t loopNum = param.isRightTranspose ? nLoops : 1;
     #if (__CCE_AICORE__ == 310) || (defined __DAV_310R6__)
             if constexpr (IsSameType<mx_fp8_e4m3_t, mx_fp8_e4m3_t>::value) {
+                
                 LoadDataToL0BMx<KV_T, mx_fp8_e4m3_t>(L0BTensor, bL1Tensor, bScaleL1Tensor, param, n * L1Boffset, param.singleK, tileN, loopNum);
             }
     #endif
@@ -1079,7 +1080,7 @@ public:
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
 
 
-        // Load V tile-by-tile (2 tiles of baseN=128 columns) into L1 for MatmulN
+        // Load V as one contiguous block (matching reference IterateBmm2l0Split)
         Buffer<BufferType::L1> mm2B;
         if constexpr (HAS_ROPE) {
             mm2B = l1VBuffers.Get();
@@ -1092,25 +1093,11 @@ public:
         if (unlikely(runInfo.isLastS2Loop)) {
             InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo.dSizeV);
         }
-        // Load each 128-column tile separately so L1 stride=128 matches MatmulN L1Boffset
-        for (uint32_t nIdx = 0; nIdx < nLoops; nIdx++) {
-            uint32_t tileN = (nIdx == nLoops - 1) ? ((uint32_t)constInfo.dSizeV % baseN ? (uint32_t)constInfo.dSizeV % baseN : baseN) : baseN;
-            uint32_t dOffset = nIdx * baseN;
-            uint32_t tileOffset = nIdx * (((realK) + 63) >> 6 << 6) * baseN;
-            LocalTensor<KV_T> tileTensor = mm2B.GetTensor<KV_T>(tileOffset);
-            CopyValueSlice(tileTensor, runInfo.s2Idx, realK, dOffset, tileN, runInfo);
-        }
-        // Scale loaded after all V tiles
-        uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * baseN * nLoops;
+        CopyValueSlice(mm2BTensor, runInfo.s2Idx, realK, 0, (uint32_t)constInfo.dSizeV, runInfo);
+        uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * (uint32_t)constInfo.dSizeV;
         LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
-        for (uint32_t nIdx = 0; nIdx < nLoops; nIdx++) {
-            uint32_t tileN = (nIdx == nLoops - 1) ? ((uint32_t)constInfo.dSizeV % baseN ? (uint32_t)constInfo.dSizeV % baseN : baseN) : baseN;
-            uint32_t dOffset = nIdx * baseN;
-            uint32_t scaleTileOffset = nIdx * (((realK) + 63) / MXFP_DIVISOR_SIZE) * tileN * MXFP_MULTI_BASE_SIZE;
-            LocalTensor<SCALE_T> scaleTileTensor = mm2BScaleTensor[scaleTileOffset];
-            CopyValueScaleSlice(scaleTileTensor, runInfo.s2Idx / MXFP_DIVISOR_SIZE,
-                                (realK + 63) / MXFP_DIVISOR_SIZE, dOffset, tileN * MXFP_MULTI_BASE_SIZE, runInfo);
-        }
+        CopyValueScaleSlice(mm2BScaleTensor, runInfo.s2Idx / MXFP_DIVISOR_SIZE,
+                            (realK + 63) / MXFP_DIVISOR_SIZE, 0, (uint32_t)constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
         mm2B.Set<HardEvent::MTE2_MTE1>();
 
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
@@ -1123,7 +1110,7 @@ public:
         if constexpr (!USE_DN) {
             param.realM = (uint32_t)runInfo.actMSize;
         }
-        MatmulN<INPUT_T, KV_T, T, 128, baseN, 128, ABLayout::MK, ABLayout::KN, L0AType, L0BType, SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers,
+        MatmulNLocal<128, baseN, 128>(mm2A.GetTensor<INPUT_T>(), mm2BTensor, mmL0ABuffers, mmL0BBuffers,
             mm2ResL0C.GetTensor<T>(), param, mm2AScaleFakeTensor, mm2BScaleTensor);
         mm2B.Set<HardEvent::MTE1_MTE2>();
 
