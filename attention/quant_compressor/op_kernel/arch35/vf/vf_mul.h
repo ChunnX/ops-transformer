@@ -20,6 +20,7 @@
 #include <cstdint>
 #include "../quant_compressor_comm.h"
 using namespace AscendC;
+using namespace QuantCompressor;
 
 
 template <typename T>

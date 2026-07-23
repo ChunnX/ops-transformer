@@ -20,6 +20,7 @@
 #include <cstdint>
 #include "../quant_compressor_comm.h"
 using namespace AscendC;
+using namespace QuantCompressor;
 
 template <typename T>
 struct AddRegList {
@@ -58,7 +59,8 @@ __simd_callee__ void MultiAddVFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAdd
 }
 
 template <typename T>
-__simd_vf__ void Add64VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t col, uint32_t actualCol0, uint32_t actualCol1)
+__simd_vf__ void Add64VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t col,
+                             uint32_t actualCol0, uint32_t actualCol1)
 {
     AddRegList<T> regList[4];
     uint32_t loopTimes = row / 4;
@@ -76,36 +78,47 @@ __simd_vf__ void Add64VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_
     }
 
     if (row % 4 > 1) {
-        AddVFImpl(inputAddr, apeAddr, regList[1], row, col, (loopTimes * 4 + 1) * actualCol0, (loopTimes * 4 + 1) * actualCol1);
+        AddVFImpl(inputAddr, apeAddr, regList[1], row, col,
+                  (loopTimes * 4 + 1) * actualCol0, (loopTimes * 4 + 1) * actualCol1);
     }
 
     if (row % 4 > 2) {
-        AddVFImpl(inputAddr, apeAddr, regList[2], row, col, (loopTimes * 4 + 2) * actualCol0, (loopTimes * 4 + 2) * actualCol1);
+        AddVFImpl(inputAddr, apeAddr, regList[2], row, col,
+                  (loopTimes * 4 + 2) * actualCol0, (loopTimes * 4 + 2) * actualCol1);
     }
 }
 
 template <typename T>
-__simd_vf__ void Add128VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t actualCol0, uint32_t actualCol1)
+__simd_vf__ void Add128VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row,
+                              uint32_t actualCol0, uint32_t actualCol1)
 {
     AddRegList<T> regList[4];
     uint32_t loopTimes = row / 2;
     for (uint32_t idx = 0; idx < loopTimes; idx++) {
         uint64_t offset0 = idx * 2 * actualCol0;
         uint64_t offset1 = idx * 2 * actualCol1;
-        AddVFImpl(inputAddr, apeAddr, regList[0], row, VF_FLOAT_REP_SIZE, offset0, offset1);
-        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE, offset0 + VF_FLOAT_REP_SIZE, offset1 + VF_FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[2], row, VF_FLOAT_REP_SIZE, offset0 + actualCol0, offset1 + actualCol1);
-        AddVFImpl(inputAddr, apeAddr, regList[3], row, VF_FLOAT_REP_SIZE, offset0 + actualCol0 + VF_FLOAT_REP_SIZE, offset1 + actualCol1 + VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[0], row, VF_FLOAT_REP_SIZE,
+                  offset0, offset1);
+        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE,
+                  offset0 + VF_FLOAT_REP_SIZE, offset1 + VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[2], row, VF_FLOAT_REP_SIZE,
+                  offset0 + actualCol0, offset1 + actualCol1);
+        AddVFImpl(inputAddr, apeAddr, regList[3], row, VF_FLOAT_REP_SIZE,
+                  offset0 + actualCol0 + VF_FLOAT_REP_SIZE, offset1 + actualCol1 + VF_FLOAT_REP_SIZE);
     }
 
     if (row % 2 > 0) {
-        AddVFImpl(inputAddr, apeAddr, regList[0], row, VF_FLOAT_REP_SIZE, loopTimes * 2 * actualCol0, loopTimes * 2 * actualCol1);
-        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE, loopTimes * 2 * actualCol0 + VF_FLOAT_REP_SIZE, loopTimes * 2 * actualCol1 + VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[0], row, VF_FLOAT_REP_SIZE,
+                  loopTimes * 2 * actualCol0, loopTimes * 2 * actualCol1);
+        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE,
+                  loopTimes * 2 * actualCol0 + VF_FLOAT_REP_SIZE,
+                  loopTimes * 2 * actualCol1 + VF_FLOAT_REP_SIZE);
     }
 }
 
 template <typename T>
-__simd_vf__ void Add256VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t actualCol0, uint32_t actualCol1)
+__simd_vf__ void Add256VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row,
+                              uint32_t actualCol0, uint32_t actualCol1)
 {
     AddRegList<T> regList[4];
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
@@ -113,14 +126,18 @@ __simd_vf__ void Add256VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32
         uint64_t offset0 = idx * actualCol0;
         uint64_t offset1 = idx * actualCol1;
         AddVFImpl(inputAddr, apeAddr, regList[0], row, VF_FLOAT_REP_SIZE, offset0, offset1);
-        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE, offset0 + VF_FLOAT_REP_SIZE, offset1 + VF_FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[2], row, VF_FLOAT_REP_SIZE, offset0 + 2 * VF_FLOAT_REP_SIZE, offset1 + 2 * VF_FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[3], row, VF_FLOAT_REP_SIZE, offset0 + 3 * VF_FLOAT_REP_SIZE, offset1 + 3 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE,
+                  offset0 + VF_FLOAT_REP_SIZE, offset1 + VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[2], row, VF_FLOAT_REP_SIZE,
+                  offset0 + 2 * VF_FLOAT_REP_SIZE, offset1 + 2 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[3], row, VF_FLOAT_REP_SIZE,
+                  offset0 + 3 * VF_FLOAT_REP_SIZE, offset1 + 3 * VF_FLOAT_REP_SIZE);
     }
 }
 
 template <typename T>
-__simd_vf__ void Add512VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row, uint32_t actualCol0, uint32_t actualCol1)
+__simd_vf__ void Add512VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32_t row,
+                              uint32_t actualCol0, uint32_t actualCol1)
 {
     AddRegList<T> regList[8];
     MicroAPI::MaskReg mask = MicroAPI::CreateMask<T, MicroAPI::MaskPattern::ALL>();
@@ -128,13 +145,20 @@ __simd_vf__ void Add512VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32
         uint64_t offset0 = idx * actualCol0;
         uint64_t offset1 = idx * actualCol1;
         AddVFImpl(inputAddr, apeAddr, regList[0], row, VF_FLOAT_REP_SIZE, offset0, offset1);
-        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE, offset0 + VF_FLOAT_REP_SIZE, offset1 + VF_FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[2], row, VF_FLOAT_REP_SIZE, offset0 + 2 * VF_FLOAT_REP_SIZE, offset1 + 2 * VF_FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[3], row, VF_FLOAT_REP_SIZE, offset0 + 3 * VF_FLOAT_REP_SIZE, offset1 + 3 * VF_FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[4], row, VF_FLOAT_REP_SIZE, offset0 + 4 * VF_FLOAT_REP_SIZE, offset1 + 4 * VF_FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[5], row, VF_FLOAT_REP_SIZE, offset0 + 5 * VF_FLOAT_REP_SIZE, offset1 + 5 * VF_FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[6], row, VF_FLOAT_REP_SIZE, offset0 + 6 * VF_FLOAT_REP_SIZE, offset1 + 6 * VF_FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[7], row, VF_FLOAT_REP_SIZE, offset0 + 7 * VF_FLOAT_REP_SIZE, offset1 + 7 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE,
+                  offset0 + VF_FLOAT_REP_SIZE, offset1 + VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[2], row, VF_FLOAT_REP_SIZE,
+                  offset0 + 2 * VF_FLOAT_REP_SIZE, offset1 + 2 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[3], row, VF_FLOAT_REP_SIZE,
+                  offset0 + 3 * VF_FLOAT_REP_SIZE, offset1 + 3 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[4], row, VF_FLOAT_REP_SIZE,
+                  offset0 + 4 * VF_FLOAT_REP_SIZE, offset1 + 4 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[5], row, VF_FLOAT_REP_SIZE,
+                  offset0 + 5 * VF_FLOAT_REP_SIZE, offset1 + 5 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[6], row, VF_FLOAT_REP_SIZE,
+                  offset0 + 6 * VF_FLOAT_REP_SIZE, offset1 + 6 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[7], row, VF_FLOAT_REP_SIZE,
+                  offset0 + 7 * VF_FLOAT_REP_SIZE, offset1 + 7 * VF_FLOAT_REP_SIZE);
     }
 }
 
