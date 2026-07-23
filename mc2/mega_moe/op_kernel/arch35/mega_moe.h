@@ -28,6 +28,7 @@
 #include "mega_moe_workspace_info.h"
 #include "block_epilogue_swiglu_mx_quant.h"
 #include "mega_moe_impl.h"
+#include "mega_moe_output_aggregator.h"
 #if __has_include("../../moe_distribute_dispatch_v2/quantize_functions.h")
 #include "../../moe_distribute_dispatch_v2/quantize_functions.h"
 #else
@@ -81,7 +82,6 @@ public:
     __aicore__ inline void Process();
 
 private:
-    using UnpermuteBufferConfig = MegaMoeUnpermuteBufferConfig;
     using SendMaskBufferConfig = MegaMoeSendMaskBufferConfig;
     using DispatchBufferConfig = MegaMoeDispatchBufferConfig;
 
@@ -100,13 +100,6 @@ private:
     __aicore__ inline void UpdateGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
     template <AddrUpdateMode Mode>
     __aicore__ inline void UpdateSharedGlobalBuffer(GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state);
-    __aicore__ inline void Unpermute();
-    __aicore__ inline UnpermuteBufferConfig UnpermuteBuffInit();
-    __aicore__ inline void UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset, int32_t batchTokenCount,
-                                                LocalTensor<bfloat16_t> &tempLocal);
-    __aicore__ inline void UnpermuteProcessToken(int32_t tokenIdx, int32_t localIdx,
-                                                 const GlobalTensor<bfloat16_t> &expandedX,
-                                                 const UnpermuteBufferConfig &bufferConfig);
     __aicore__ inline void InitCombineBuffers();
     __aicore__ inline void ProcessCombine(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &gmm2State,
                                           uint32_t expertIdx);
@@ -127,8 +120,6 @@ private:
     __aicore__ inline void SharedExpertCopyInput();
     __aicore__ inline void ProcessSharedExpertGmm1(const TupleShape &initShape, const BlockOffset &initOffset);
     __aicore__ inline void ProcessSharedExpertGmm2(const TupleShape &initShape, const BlockOffset &initOffset);
-    __aicore__ inline void UnpermuteSharedExpert(int32_t tokenIdx, int32_t localIdx,
-                                                 const UnpermuteBufferConfig &bufferConfig);
     template <bool IsShared = false>
     __aicore__ inline void GroupMatmulWithSwigluQuant(const GMMAddrInfo &gmmAddrInfo, const ExpertLoopState &state,
                                                       int32_t &vecSetSyncCom);
@@ -225,12 +216,6 @@ private:
     LocalTensor<int32_t> sendGatherOutTensor_; // SendMaskCal GatherMask 计 count 的废弃输出 scratch
     LocalTensor<int32_t> sendCntAccTensor_;    // SendMaskCal per-expert 跨 batch count 累加器
     LocalTensor<int32_t> expertTokenNumsOutTensor_;
-    LocalTensor<bfloat16_t> dataResTensor_;
-    LocalTensor<float> dataResFp32Tensor_;
-    LocalTensor<float> topKWeightsTensor_;
-    LocalTensor<float> fp32ScaleTensor_;
-    LocalTensor<bfloat16_t> bf16ScaleTensor_;
-    LocalTensor<bfloat16_t> topKWeightsBf16Tensor_; // Unpermute bf16 weight 搬运中转
 
     // GMM2 走 A8W4 且 QuantMode 为 a4w4（E2M1）时，SwigluQuant 输出需提升为 fp8_e4m3fn_t。
     // 同时当 Weight2 非 fp4 但 QuantMode==E2M1 时（generic GMM2 路径），也需 promotion，
@@ -1406,251 +1391,6 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::ProcessCombine(const GM
     }
 }
 
-// ===============================================================
-// UnpermuteLoadWeights：加载一个 token batch 的权重到 UB
-// ===============================================================
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteLoadWeights(int32_t coreOffset, int32_t batchTokenOffset,
-                                                       int32_t batchTokenCount, LocalTensor<bfloat16_t> &tempLocal)
-{
-    if constexpr (Std::IsSame<TopkWeightsType, float>::value) {
-        GlobalTensor<float> topKWeightsGlobalTensor_;
-        topKWeightsGlobalTensor_.SetGlobalBuffer((__gm__ float *)params_.probsGmAddr);
-        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(batchTokenCount * topK_ * sizeof(float)), 0U, 0U, 0U};
-        DataCopyPadExtParams<float> copyPadParams{false, 0U, 0U, 0U};
-        DataCopyPad(topKWeightsTensor_, topKWeightsGlobalTensor_[(coreOffset + batchTokenOffset) * topK_], copyParams,
-                    copyPadParams);
-        SetFlag<AscendC::HardEvent::MTE2_S>(0);
-        WaitFlag<AscendC::HardEvent::MTE2_S>(0);
-    }
-    if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-        GlobalTensor<bfloat16_t> topkWeightsGlobalTensor;
-        topkWeightsGlobalTensor.SetGlobalBuffer((__gm__ bfloat16_t *)params_.probsGmAddr);
-        DataCopyExtParams copyParams = {1U, static_cast<uint32_t>(batchTokenCount * topK_ * sizeof(bfloat16_t)), 0U, 0U,
-                                        0U};
-        DataCopyPadExtParams<bfloat16_t> copyPadParams{false, 0U, 0U, 0U};
-        DataCopyPad(tempLocal, topkWeightsGlobalTensor[(coreOffset + batchTokenOffset) * topK_], copyParams,
-                    copyPadParams);
-        SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID2>();
-        Cast(topKWeightsTensor_, tempLocal, AscendC::RoundMode::CAST_NONE, batchTokenCount * topK_);
-        SetFlag<AscendC::HardEvent::V_S>(0);
-        WaitFlag<AscendC::HardEvent::V_S>(0);
-    }
-}
-
-// ===============================================================
-// UnpermuteProcessToken：单个 token 的 per-expert 累加
-// ===============================================================
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteProcessToken(int32_t tokenIdx, int32_t localIdx,
-                                                        const GlobalTensor<bfloat16_t> &expandedX,
-                                                        const UnpermuteBufferConfig &bufferConfig)
-{
-    for (int32_t expId = 0; expId < topK_; ++expId) {
-        float expScale = topKWeightsTensor_.GetValue(localIdx * topK_ + expId);
-        // Routed and shared expert results form one continuous accumulation-input sequence in the dynamic ring.
-        int32_t accumulationItemIdxInBatch = localIdx * (topK_ + static_cast<int32_t>(sharedExpertNum_)) + expId;
-        int32_t inputBufferIdx = accumulationItemIdxInBatch % bufferConfig.inputBufferCount;
-        TEventID event = static_cast<TEventID>(inputBufferIdx);
-        LocalTensor<bfloat16_t> dataInBf16 = dataResTensor_[(inputBufferIdx + 1) * bufferConfig.bf16SlotElementCount];
-        LocalTensor<float> dataInFp32 = dataResFp32Tensor_[(inputBufferIdx + 1) * bufferConfig.fp32SlotElementCount];
-        if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
-            WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-            DataCopy(dataInBf16, expandedX[(static_cast<uint64_t>(tokenIdx) * topK_ + expId) * k_], k_);
-            SetFlag<AscendC::HardEvent::MTE2_V>(event);
-            WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-            Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
-        } else {
-            uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
-            uint32_t quantTokenSize = k_ + nScale;
-            uint32_t quantEleNum = quantTokenSize / sizeof(bfloat16_t);
-            WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-            DataCopy(dataInBf16, expandedX[(static_cast<uint64_t>(tokenIdx) * topK_ + expId) * quantEleNum],
-                     quantEleNum);
-            SetFlag<AscendC::HardEvent::MTE2_V>(event);
-            WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-            using Fp8Type =
-                typename std::conditional<CombineQuantMode == MXFP8_E4M3_COMM_QUANT, fp8_e4m3fn_t, fp8_e5m2_t>::type;
-            MegaMoeCombineImpl::DeQuantMxFp8<Fp8Type, bfloat16_t>(dataInBf16, dataInFp32, bf16ScaleTensor_,
-                                                                  fp32ScaleTensor_, nScale, k_);
-        }
-        // GetValue 在 Scalar 流水读取 expScale；两条反量化路径汇合后统一等待，再由 Vector 流水消费。
-        SetFlag<AscendC::HardEvent::S_V>(event);
-        WaitFlag<AscendC::HardEvent::S_V>(event);
-        PipeBarrier<PIPE_V>();
-        if (expId == 0) {
-            Muls(dataResFp32Tensor_, dataInFp32, expScale, k_);
-        } else {
-            Muls(dataInFp32, dataInFp32, expScale, k_);
-            PipeBarrier<PIPE_V>();
-            Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
-            PipeBarrier<PIPE_V>();
-        }
-        SetFlag<AscendC::HardEvent::V_MTE2>(event);
-    }
-}
-
-// ===============================================================
-// UnpermuteBuffInit：分配 Unpermute 所需固定 buffer，返回本阶段的 buffer 配置
-// ===============================================================
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline typename MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBufferConfig
-MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteBuffInit()
-{
-    // 必须与 host SetAdaptiveBufferConfigs 对 TilingByCore(m_, ..., align=1) 的完整 chunk/tail chunk
-    // 推导保持一致。coreLen 为 0 的非活跃 core 已在 Unpermute 中提前返回，不会读取 tail 配置。
-    UnpermuteBufferConfig bufferConfig = aivCoreIdx_ < params_.tilingData->unpermuteFullTokenChunkCoreCount ?
-                                             params_.tilingData->unpermuteConfigForFullTokenChunk :
-                                             params_.tilingData->unpermuteConfigForTailTokenChunk;
-
-    uint32_t bf16ScaleBufAlign = 0;
-    uint32_t fp32ScaleBufAlign = 0;
-    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        uint32_t scaleNum = Ops::Base::CeilDiv(k_, static_cast<uint32_t>(ALIGN_32));
-        bf16ScaleBufAlign =
-            Ops::Base::CeilAlign(static_cast<uint32_t>(scaleNum * sizeof(bfloat16_t) * DEQUANT_BF16_SCALE_EXPANSION),
-                                 static_cast<uint32_t>(ALIGN_32));
-        fp32ScaleBufAlign =
-            Ops::Base::CeilAlign(static_cast<uint32_t>(scaleNum * sizeof(float) * DEQUANT_FP32_SCALE_EXPANSION),
-                                 static_cast<uint32_t>(ALIGN_32));
-    }
-
-    uint32_t bf16SlotBytes = bufferConfig.bf16SlotElementCount * sizeof(bfloat16_t);
-    uint32_t fp32SlotBytes = bufferConfig.fp32SlotElementCount * sizeof(float);
-    int32_t tokensPerBatch = bufferConfig.tokensPerBatch;
-    uint32_t topKWeightsBufAlign = bufferConfig.topKWeightsBufferBytes;
-    uint32_t topKWeightsConversionBufferBytes = bufferConfig.topKWeightsConversionBufferBytes;
-
-    uint32_t dataResBufAlign = (bufferConfig.inputBufferCount + 1) * bf16SlotBytes;
-    uint32_t dataResFp32BufAlign = (bufferConfig.inputBufferCount + 1) * fp32SlotBytes;
-    // Tensor用处：Unpermute 函数用于存储 mte2 搬入 token；
-    // Tensor大小：(1 + bufferConfig.inputBufferCount) × 独立对齐后的 BF16 单槽大小；
-    // 1 块用于累加/搬出，其余用于 MTE2 搬入。
-    uint32_t dataResAddr = 0;
-    dataResTensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, dataResAddr, dataResBufAlign / sizeof(bfloat16_t));
-    // Tensor用处：Unpermute 函数用于存储 token Cast 目的 Tensor；
-    // Tensor大小：(1 + bufferConfig.inputBufferCount) × 独立对齐后的 FP32 单槽大小；
-    uint32_t dataResFp32Addr = dataResAddr + dataResBufAlign;
-    dataResFp32Tensor_ = LocalTensor<float>(TPosition::VECCALC, dataResFp32Addr, dataResFp32BufAlign / sizeof(float));
-    uint32_t tempAddr = dataResFp32Addr + dataResFp32BufAlign;
-
-    // weight buffer（在 scale 之前，与 master 顺序一致）
-    // Tensor用处：用于存储 topKWeight；
-    // Tensor大小：tokensPerBatch × topK_ × sizeof(float) align 到 32 字节对齐；
-    topKWeightsTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, topKWeightsBufAlign / sizeof(float));
-    tempAddr += topKWeightsBufAlign;
-
-    if constexpr (Std::IsSame<TopkWeightsType, bfloat16_t>::value) {
-        // Tensor用处：Unpermute 中 bf16 weight 搬运中转 buffer；
-        // Tensor大小：tokensPerBatch × topK_ × sizeof(bfloat16_t) align 到 32 字节；
-        topKWeightsBf16Tensor_ = LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr,
-                                                         topKWeightsConversionBufferBytes / sizeof(bfloat16_t));
-        tempAddr += topKWeightsConversionBufferBytes;
-    }
-
-    if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
-        // Tensor用处：DeQuantMxFp8 中用于存储 bf16 格式的 scale（e8m0 转换后的中间结果）
-        // Tensor大小：scaleNum × sizeof(bfloat16_t) × DEQUANT_BF16_SCALE_EXPANSION
-        bf16ScaleTensor_ =
-            LocalTensor<bfloat16_t>(TPosition::VECCALC, tempAddr, bf16ScaleBufAlign / sizeof(bfloat16_t));
-        tempAddr += bf16ScaleBufAlign;
-        // Tensor用处：DeQuantMxFp8 中用于存储 fp32 格式的 scale（广播后的最终 scale）
-        // Tensor大小：scaleNum × sizeof(float) × DEQUANT_FP32_SCALE_EXPANSION
-        fp32ScaleTensor_ = LocalTensor<float>(TPosition::VECCALC, tempAddr, fp32ScaleBufAlign / sizeof(float));
-        tempAddr += fp32ScaleBufAlign;
-    }
-
-    return bufferConfig;
-}
-
-// ===============================================================
-// UnpermuteSharedExpert：共享专家结果累加到当前 token 的 fp32 累加器
-// ===============================================================
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void
-MegaMoe<TemplateMegaMoeTypeFunc>::UnpermuteSharedExpert(int32_t tokenIdx, int32_t localIdx,
-                                                        const UnpermuteBufferConfig &bufferConfig)
-{
-    GlobalTensor<bfloat16_t> sharedResult;
-    sharedResult.SetGlobalBuffer((__gm__ bfloat16_t *)params_.workspaceInfo.sharedExpertResultPtr);
-    for (uint32_t sharedIdx = 0; sharedIdx < sharedExpertNum_; sharedIdx++) {
-        int32_t accumulationItemIdxInBatch =
-            localIdx * (topK_ + static_cast<int32_t>(sharedExpertNum_)) + topK_ + static_cast<int32_t>(sharedIdx);
-        int32_t inputBufferIdx = accumulationItemIdxInBatch % bufferConfig.inputBufferCount;
-        TEventID event = static_cast<TEventID>(inputBufferIdx);
-        LocalTensor<bfloat16_t> dataInBf16 = dataResTensor_[(inputBufferIdx + 1) * bufferConfig.bf16SlotElementCount];
-        LocalTensor<float> dataInFp32 = dataResFp32Tensor_[(inputBufferIdx + 1) * bufferConfig.fp32SlotElementCount];
-        WaitFlag<AscendC::HardEvent::V_MTE2>(event);
-        DataCopy(dataInBf16, sharedResult[(sharedIdx * m_ + tokenIdx) * k_], k_);
-        SetFlag<AscendC::HardEvent::MTE2_V>(event);
-        WaitFlag<AscendC::HardEvent::MTE2_V>(event);
-        SetFlag<AscendC::HardEvent::S_V>(event);
-        WaitFlag<AscendC::HardEvent::S_V>(event);
-        Cast(dataInFp32, dataInBf16, AscendC::RoundMode::CAST_NONE, k_);
-        PipeBarrier<PIPE_V>();
-        Add(dataResFp32Tensor_, dataResFp32Tensor_, dataInFp32, k_);
-        PipeBarrier<PIPE_V>();
-        SetFlag<AscendC::HardEvent::V_MTE2>(event);
-    }
-}
-
-// ===============================================================
-// Unpermute：主入口 — 初始化 buffer → 分批循环处理
-// ===============================================================
-template <TemplateMegaMoeTypeClass>
-__aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Unpermute()
-{
-    int32_t coreLen, coreOffset;
-    TilingByCore(m_, coreLen, coreOffset, 1);
-    if (coreLen == 0) {
-        return;
-    }
-    UnpermuteBufferConfig bufferConfig = UnpermuteBuffInit();
-    int32_t tokensPerBatch = bufferConfig.tokensPerBatch;
-
-    GlobalTensor<bfloat16_t> expandedX;
-    expandedX.SetGlobalBuffer((__gm__ bfloat16_t *)params_.peermemInfo.combineSendPtr);
-    GlobalTensor<bfloat16_t> output;
-    output.SetGlobalBuffer((__gm__ bfloat16_t *)params_.y2GmAddr);
-
-    // 输出槽由 Vector 写入、MTE3 读出。先将槽位交给 Vector，最终回收最后一次 MTE3 完成信号。
-    constexpr TEventID kOutputBufferEvent = EVENT_ID0;
-    SetFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
-
-    // 外层：token batch
-    for (int32_t batchTokenOffset = 0; batchTokenOffset < coreLen; batchTokenOffset += tokensPerBatch) {
-        int32_t batchTokenCount =
-            (batchTokenOffset + tokensPerBatch > coreLen) ? (coreLen - batchTokenOffset) : tokensPerBatch;
-
-        UnpermuteLoadWeights(coreOffset, batchTokenOffset, batchTokenCount, topKWeightsBf16Tensor_);
-
-        // 内层：token 循环
-        for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
-            SetFlag<AscendC::HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
-        }
-        for (int32_t localIdx = 0; localIdx < batchTokenCount; localIdx++) {
-            int32_t tokenIdx = coreOffset + batchTokenOffset + localIdx;
-            UnpermuteProcessToken(tokenIdx, localIdx, expandedX, bufferConfig);
-            // 共享专家结果累加（直接加，不乘 topk_weight）
-            if (sharedExpertNum_ > 0) {
-                UnpermuteSharedExpert(tokenIdx, localIdx, bufferConfig);
-            }
-            // MTE2 使用独立输入槽，可与上一 token 的 MTE3 输出重叠；仅在覆盖输出槽前等待 MTE3 读完。
-            WaitFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
-            Cast(dataResTensor_, dataResFp32Tensor_, AscendC::RoundMode::CAST_RINT, k_);
-            SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID3>();
-            DataCopy(output[static_cast<uint64_t>(tokenIdx) * k_], dataResTensor_, k_);
-            SetFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
-        }
-        for (int32_t bufferIdx = 0; bufferIdx < bufferConfig.inputBufferCount; ++bufferIdx) {
-            WaitFlag<AscendC::HardEvent::V_MTE2>(static_cast<TEventID>(bufferIdx));
-        }
-    }
-    WaitFlag<AscendC::HardEvent::MTE3_V>(kOutputBufferEvent);
-}
-
 // ==============================================================================================
 // CrossRankSyncInWorldSize：全卡同步，rankSyncInWorldPtr前48K用于同步，后面区域用于记录当前syncCnt值
 // ==============================================================================================
@@ -1958,10 +1698,29 @@ __aicore__ inline void MegaMoe<TemplateMegaMoeTypeFunc>::Process()
         ProcessSharedExpertGmm2(initShape, initOffset);
     }
 
-    // 4. 本卡数据Unpermute
+    // 4. 聚合 routed/shared expert 输出，生成本卡最终 token 结果。
     if constexpr (g_coreType == AIV) {
         CrossRankSyncInWorldSize(); // 全卡软同步，确认combine send完成
-        Unpermute();
+        OutputAggregationTensorAddresses outputAggregationTensorAddresses{
+            .topKWeightsGmAddr = params_.probsGmAddr,
+            .routedExpertOutputGmAddr = params_.peermemInfo.combineSendPtr,
+            .sharedExpertOutputGmAddr = params_.workspaceInfo.sharedExpertResultPtr,
+            .outputGmAddr = params_.y2GmAddr,
+        };
+        OutputAggregationDimensions outputAggregationDimensions{
+            .tokenCount = m_,
+            .hiddenSize = k_,
+            .topK = topK_,
+            .sharedExpertCount = sharedExpertNum_,
+        };
+        // Host tiling 按相同的 TilingByCore 规则预计算完整 token chunk 和 tail chunk 两套配置。
+        const MegaMoeUnpermuteBufferConfig &outputAggregationBufferConfig =
+            aivCoreIdx_ < params_.tilingData->unpermuteFullTokenChunkCoreCount ?
+                params_.tilingData->unpermuteConfigForFullTokenChunk :
+                params_.tilingData->unpermuteConfigForTailTokenChunk;
+        MegaMoeOutputAggregator<TopkWeightsType, CombineQuantMode> outputAggregator(
+            outputAggregationTensorAddresses, outputAggregationDimensions, outputAggregationBufferConfig);
+        outputAggregator.Aggregate();
     }
     SetCtrlSpr<OVERFLOW_MODE_CTRL, OVERFLOW_MODE_CTRL>(oriOverflowMode);
 }
