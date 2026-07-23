@@ -131,7 +131,7 @@ public:
                                 GM_ADDR qflat,
                                 const StemPrepQTilingData *tiling)
     {
-        tiling = tiling;
+        this->tiling = tiling;
         taskId = GetBlockIdx();
         if (taskId >= tiling->usedCoreNum) {
             return;
