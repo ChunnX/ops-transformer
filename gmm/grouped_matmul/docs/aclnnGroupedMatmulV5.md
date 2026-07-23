@@ -305,7 +305,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 - tuningConfigOptional：不支持。
 - actType（0~5）：
   - 非量化/伪量化仅支持 0。
-  - 全量化下 x/weight=INT8且 out=BFLOAT16/FLOAT16、静态 T-C或动态 K-C、scale=FLOAT32/BFLOAT16 时支持 0/1/2/4/5；其余仅支持 0。
+  - 全量化下x、weight数据类型为INT8且out数据类型为BFLOAT16/FLOAT16，静态T-C或动态K-C、scale数据类型为FLOAT32/BFLOAT16时支持0/1/2/4/5（注意3不支持）；其余场景仅支持0。
 - 输入参数 x、weight，输出参数 out在非量化场景支持最多 1024个Tensor，在伪量化支持最多 128个Tensor，在全量化场景最多支持 1个Tensor。
 
 #### groupType 支持场景
@@ -518,24 +518,24 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 #### 平台约束
 
-- x/weight中每组 Tensor的最后一维 < 65536。
+- x/weight中每组Tensor的最后一维 < 65536。
   - $x_i$ 最后一维：x不转置时为K轴，x转置时为M轴。
   - $weight_i$ 最后一维：weight不转置时为N轴，weight转置时为K轴。
 - x/weight转置时对应Tensor必须 [非连续](../../../docs/zh/context/non_contiguous_tensor.md)。
-- weight为 [FRACTAL_NZ](../../../docs/zh/context/data_format.md) 格式时，shape 须满足 NZ格式要求。
+- weight为 [FRACTAL_NZ](../../../docs/zh/context/data_format.md) 格式时，shape须满足 NZ格式要求。
 - perTokenScaleOptional：通常仅1维，长度与 x的M一致。仅支持 x/weight/out均为单Tensor 场景。
-- groupListOptional：out中 TensorList长度为1时，groupList约束输出数据有效范围，未指定部分不参与更新。
+- groupListOptional：out中TensorList长度为1时，groupList约束输出数据有效范围，未指定部分不参与更新。
 - groupListType：
   - groupListType=0：须为非负单调非递减数列（累积和）。以M=256、E=4（各组大小依次为64、0、128、64）为例：`[64, 64, 192, 256]`
   - groupListType=1：须为非负数列（各组大小）。例如：`[64, 0, 128, 64]`
   - groupListType=2：须为非负数列，shape `[E, 2]`（[组索引, 组大小]），非零组前置。例如：`[[0, 64], [2, 128], [3, 64], [1, 0]]`
-- groupType：支持 M轴分组（0）和不分组（-1），非量化额外支持 K轴分组（2）。全量化下 groupType 仅支持 0（M轴分组）。
-- tuningConfigOptional：支持，为 Host侧 INT64 aclIntArray。
-  - `[0]`：预期各专家处理的 token数，tiling 按此优化，适用场景：A8W4/A8W8/A4W4，x/weight/out 单Tensor。
-  - `[1]`：是否开启 weight 亲和格式（先转置再 NZ），适用场景：A8W4。
-  - `[2]`：允许额外 workspace 上限（-1=不限），适用场景：A8W8 定轴算法优化。
-- actType：仅 A8W8（x、weight 为 INT8）且输出为 FLOAT16/BFLOAT16时支持激活函数类型 0/1/2/4/5（3 不支持）；其余场景仅支持 0。
-- 输入参数 x、weight，输出参数 out支持最多 128个Tensor。
+- groupType：支持M轴分组（0）和不分组（-1），非量化额外支持 K轴分组（2）。全量化下 groupType 仅支持0（M轴分组）。
+- tuningConfigOptional：支持，为Host侧INT64 aclIntArray。
+  - `[0]`：预期各专家处理的token数，tiling 按此优化，适用场景：A8W4/A8W8/A4W4，x/weight/out 单Tensor。
+  - `[1]`：是否开启weight亲和格式（先转置再 NZ），适用场景：A8W4。
+  - `[2]`：允许额外workspace上限（-1=不限），适用场景：A8W8定轴算法优化。
+- actType：仅A8W8（x、weight数据类型为INT8）且输出数据类型为FLOAT16/BFLOAT16时支持激活函数类型0/1/2/4/5（3不支持）；其余场景仅支持0。
+- 输入参数 x、weight，输出参数out支持最多128个Tensor。
 
 #### groupType 支持场景
 
@@ -561,11 +561,11 @@ aclnnGroupedMatmulV5默认确定性实现。
 | 非量化 | FLOAT32 | FLOAT32 | FLOAT32 | [非量化场景约束](#非量化场景约束) |
 | 非量化 | BFLOAT16 | BFLOAT16 | BFLOAT16 | [非量化场景约束](#非量化场景约束) |
 | 非量化 | FLOAT16 | FLOAT16 | FLOAT16 | [非量化场景约束](#非量化场景约束) |
-| 全量化-<abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A8W8</abbr> | INT8 | INT8 | BFLOAT16/FLOAT16/INT32/INT8 | [A8W8场景约束](#a8w8场景约束) |
-| 全量化-<abbr title="A8 表示 Activation 采用 8bit 量化，W4 表示 weight 采用 4bit 量化，同理还有 A8W8、A4W4">A4W4</abbr> | INT4 | INT4 | BFLOAT16/FLOAT16 | [A4W4场景约束](#a4w4场景约束) |
+| 全量化-<abbr title="A8 表示x采用8bit量化，W8表示weight采用8bit量化，同理还有A8W4、A4W4">A8W8</abbr> | INT8 | INT8 | BFLOAT16/FLOAT16/INT32/INT8 | [A8W8场景约束](#a8w8场景约束) |
+| 全量化-A4W4 | INT4 | INT4 | BFLOAT16/FLOAT16 | [A4W4场景约束](#a4w4场景约束) |
 | 伪量化-A8W4 | INT8 | INT4 | BFLOAT16/FLOAT16 | [A8W4场景约束](#a8w4场景约束) |
-| 伪量化-<abbr title="A16 表示 Activation 采用 16bit 非量化，W8 表示 weight 采用 8bit 量化，同理还有 A16W4">A16W8</abbr> | BFLOAT16/FLOAT16 | INT8 | BFLOAT16/FLOAT16 | [A16W8场景约束](#a16w8场景约束) |
-| 伪量化-<abbr title="A16 表示 Activation 采用 16bit 非量化，W8 表示 weight 采用 8bit 量化，同理还有 A16W4">A16W4</abbr> | BFLOAT16/FLOAT16 | INT4 | BFLOAT16/FLOAT16 | [A16W4场景约束](#a16w4场景约束) |
+| 伪量化-<abbr title="A16表示x采用16bit非量化，W8表示weight采用8bit量化，同理还有A16W4">A16W8</abbr> | BFLOAT16/FLOAT16 | INT8 | BFLOAT16/FLOAT16 | [A16W8场景约束](#a16w8场景约束) |
+| 伪量化-A16W4 | BFLOAT16/FLOAT16 | INT4 | BFLOAT16/FLOAT16 | [A16W4场景约束](#a16w4场景约束) |
 
 <a id="非量化场景约束"></a>
 
