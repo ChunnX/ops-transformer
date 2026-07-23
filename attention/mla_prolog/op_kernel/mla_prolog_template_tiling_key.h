@@ -64,7 +64,8 @@ ASCENDC_TPL_ARGS_DECL(
     // 9-Mxfp8量化+MMCqCkvkr量化+MMQcQr量化+KVcache pertoken-pergroup量化
     // 10-fp8量化+MMcqCkvKr量化+MMQcQr量化 11-fp8量化+MMCqCkvkr量化+MMQcQr量化+KVcache量化
     // 12-hif8量化+MMcqCkvKr量化+MMQcQr量化 13-hif8量化+MMCqCkvkr量化+MMQcQr量化+KVcache量化
-    // 14-fp8量化+MMcqCkvKr量化+MMQcQr量化+KVcache pertoken-pergroup量化 15-hif8量化+MMCqCkvkr量化+MMQcQr量化+KVcache pertoken-pergroup量化
+    // 14-fp8量化+MMcqCkvKr量化+MMQcQr量化+KVcache pertoken-pergroup量化 
+    // 15-hif8量化+MMCqCkvkr量化+MMQcQr量化+KVcache pertoken-pergroup量化
     ASCENDC_TPL_UINT_DECL(QUANT_MODE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
                           13, 14, 15),
     // bit:12 反量化使能：0-关闭 1-开启
