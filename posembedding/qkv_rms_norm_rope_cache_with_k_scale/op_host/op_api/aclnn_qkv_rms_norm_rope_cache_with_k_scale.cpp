@@ -10,39 +10,12 @@
 
 #include "aclnn_qkv_rms_norm_rope_cache_with_k_scale.h"
 
-#include <cstring>
-#include <vector>
-
-#include "aclnn_kernels/common/op_error_check.h"
 #include "qkv_rms_norm_rope_cache_with_k_scale.h"
-// The checker uses opbase logging macros; restore the ACLNN macros for the bridge below.
-#pragma push_macro("OpLogSub")
-#pragma push_macro("OpLogErrSub")
-#pragma push_macro("D_OP_LOGI")
-#pragma push_macro("D_OP_LOGW")
-#pragma push_macro("D_OP_LOGE")
-#pragma push_macro("D_OP_LOGD")
-#pragma push_macro("OP_LOGI")
-#pragma push_macro("OP_LOGW")
-#pragma push_macro("OP_LOGE_WITHOUT_REPORT")
-#pragma push_macro("OP_LOGE")
-#pragma push_macro("OP_LOGD")
-#include "qkv_rms_norm_rope_cache_with_k_scale_checker.h"
-#pragma pop_macro("OP_LOGD")
-#pragma pop_macro("OP_LOGE")
-#pragma pop_macro("OP_LOGE_WITHOUT_REPORT")
-#pragma pop_macro("OP_LOGW")
-#pragma pop_macro("OP_LOGI")
-#pragma pop_macro("D_OP_LOGD")
-#pragma pop_macro("D_OP_LOGE")
-#pragma pop_macro("D_OP_LOGW")
-#pragma pop_macro("D_OP_LOGI")
-#pragma pop_macro("OpLogErrSub")
-#pragma pop_macro("OpLogSub")
 #include "aclnn_kernels/contiguous.h"
 
 #include "acl/acl.h"
 #include "aclnn/aclnn_base.h"
+#include "aclnn_kernels/common/op_error_check.h"
 #include "opdev/common_types.h"
 #include "opdev/data_type_utils.h"
 #include "opdev/format_utils.h"
@@ -53,6 +26,7 @@
 #include "opdev/shape_utils.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/make_op_executor.h"
+#include "qkv_rms_norm_rope_cache_with_k_scale_checker.h"
 
 namespace QkvRmsNormRopeCacheWithKScale {
 
@@ -63,11 +37,6 @@ using L0Outputs =
 static constexpr const char *DEFAULT_QKV_LAYOUT = "TND";
 static constexpr const char *DEFAULT_Q_OUT_LAYOUT = "NTD";
 static constexpr const char *DEFAULT_Q_QUANT_MODE = "PerTokenPerHead";
-static constexpr const char *MROPE_Q_QUANT_MODE = "NoQuant";
-static constexpr const char *ACLNN_NAME = "aclnnQkvRmsNormRopeCacheWithKScale";
-static constexpr uint64_t MROPE_SECTION_SIZE = 3;
-static constexpr int64_t MROPE_HALF_HEAD_DIM = 64;
-static constexpr int64_t MROPE_SECTION_CAPS[MROPE_SECTION_SIZE] = {22, 21, 21};
 
 static const char *GetLayoutQkvOrDefault(const char *layout)
 {
@@ -82,159 +51,6 @@ static const char *GetLayoutQOutOrDefault(const char *layout)
 static const char *GetQQuantModeOrDefault(const char *qQuantMode)
 {
     return qQuantMode == nullptr || qQuantMode[0] == '\0' ? DEFAULT_Q_QUANT_MODE : qQuantMode;
-}
-
-static aclnnStatus CheckMropePositionShape(const aclTensor *qkv, const aclTensor *mropePositionOptional,
-                                            const char *layoutQkv)
-{
-    if (mropePositionOptional == nullptr) {
-        return ACLNN_SUCCESS;
-    }
-
-    const auto &shape = mropePositionOptional->GetViewShape();
-    if (shape.GetDimNum() != 2 || shape.GetDim(1) != 3) {
-        std::string incorrectShape;
-        for (uint64_t i = 0; i < shape.GetDimNum(); ++i) {
-            if (i != 0) {
-                incorrectShape += ", ";
-            }
-            incorrectShape += std::to_string(shape.GetDim(i));
-        }
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-            ACLNN_NAME, "mropePositionOptional", incorrectShape.c_str(),
-            "mropePositionOptional must have logical shape [T, 3] (one token per row and T/H/W in columns)");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (qkv != nullptr) {
-        const auto &qkvShape = qkv->GetViewShape();
-        const char *layout = GetLayoutQkvOrDefault(layoutQkv);
-        const bool isNtd = std::strcmp(layout, "NTD") == 0;
-        const bool isTnd = std::strcmp(layout, "TND") == 0;
-        if (qkvShape.GetDimNum() == 3 && (isNtd || isTnd)) {
-            const uint64_t tokenAxis = isNtd ? 1 : 0;
-            const int64_t tokenNum = qkvShape.GetDim(tokenAxis);
-            if (shape.GetDim(0) != tokenNum) {
-                const std::string incorrectShape = std::to_string(shape.GetDim(0)) + ", 3";
-                const std::string reason = "mropePositionOptional must have shape [" + std::to_string(tokenNum) +
-                                           ", 3] to match the qkv token dimension";
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "mropePositionOptional", incorrectShape.c_str(),
-                                                      reason.c_str());
-                return ACLNN_ERR_PARAM_INVALID;
-            }
-        }
-    }
-    if (mropePositionOptional->GetDataType() != op::DataType::DT_INT32) {
-        OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(
-            ACLNN_NAME, "mropePositionOptional",
-            op::ToString(mropePositionOptional->GetDataType()).GetString(),
-            "the dtype of mropePositionOptional must be INT32");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (unlikely(op::IsPrivateFormat(mropePositionOptional->GetStorageFormat()))) {
-        OP_LOGE_FOR_INVALID_FORMAT(ACLNN_NAME, "mropePositionOptional",
-                                   op::ToString(mropePositionOptional->GetStorageFormat()).GetString(), "ND");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    return ACLNN_SUCCESS;
-}
-
-static aclnnStatus CheckMropeSection(const aclIntArray *mropeSectionOptional)
-{
-    const uint64_t sectionSize = mropeSectionOptional->Size();
-    if (sectionSize != MROPE_SECTION_SIZE) {
-        const std::string incorrectSize = std::to_string(sectionSize);
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional", incorrectSize.c_str(),
-                                              "mropeSectionOptional must contain exactly 3 values [t, h, w]");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-
-    int64_t sectionSum = 0;
-    for (uint64_t i = 0; i < MROPE_SECTION_SIZE; ++i) {
-        const int64_t value = (*mropeSectionOptional)[i];
-        if (value < 0) {
-            const std::string incorrectValue = std::to_string(value);
-            const std::string reason = "mropeSectionOptional[" + std::to_string(i) + "] must be non-negative";
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional", incorrectValue.c_str(),
-                                                  reason.c_str());
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        // Compare against the remaining budget so the sum check cannot overflow int64_t.
-        if (value > MROPE_HALF_HEAD_DIM - sectionSum) {
-            const std::string incorrectValues = mropeSectionOptional->ToString().GetString();
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                ACLNN_NAME, "mropeSectionOptional", incorrectValues.c_str(),
-                "the sum of mropeSectionOptional values must be less than or equal to D/2 (64)");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        sectionSum += value;
-    }
-
-    for (uint64_t i = 0; i < MROPE_SECTION_SIZE; ++i) {
-        const int64_t value = (*mropeSectionOptional)[i];
-        if (value > MROPE_SECTION_CAPS[i]) {
-            const std::string incorrectValue = std::to_string(value);
-            const std::string reason = "mropeSectionOptional[" + std::to_string(i) + "] must be in [0, " +
-                                       std::to_string(MROPE_SECTION_CAPS[i]) + "]";
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropeSectionOptional", incorrectValue.c_str(),
-                                                  reason.c_str());
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-    }
-    return ACLNN_SUCCESS;
-}
-
-static aclnnStatus CheckSceneParams(const aclTensor *qkv, const aclTensor *queryStartLocOptional,
-                                    const aclTensor *seqLensOptional,
-                                    const aclTensor *mropePositionOptional,
-                                    const aclIntArray *mropeSectionOptional, const char *qQuantMode,
-                                    const char *layoutQkv,
-                                    const aclTensor *qOut, const aclTensor *qScaleOptional)
-{
-    const bool hasMropePosition = mropePositionOptional != nullptr;
-    const bool hasMropeSection = mropeSectionOptional != nullptr;
-    if (hasMropePosition != hasMropeSection) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "mropePositionOptional/mropeSectionOptional",
-                                              "presence mismatch", "both parameters must be provided together");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (qOut == nullptr) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "qOut", "nullptr", "qOut can not be nullptr");
-        return ACLNN_ERR_PARAM_NULLPTR;
-    }
-
-    if (hasMropePosition) {
-        aclnnStatus mropePositionCheck = CheckMropePositionShape(qkv, mropePositionOptional, layoutQkv);
-        if (mropePositionCheck != ACLNN_SUCCESS) {
-            return mropePositionCheck;
-        }
-        aclnnStatus mropeSectionCheck = CheckMropeSection(mropeSectionOptional);
-        if (mropeSectionCheck != ACLNN_SUCCESS) {
-            return mropeSectionCheck;
-        }
-        if (queryStartLocOptional != nullptr || seqLensOptional != nullptr) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                ACLNN_NAME, "queryStartLocOptional/seqLensOptional", "not nullptr",
-                "both parameters must be nullptr in the M-RoPE scene");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        if (std::strcmp(qQuantMode, MROPE_Q_QUANT_MODE) != 0 || qScaleOptional != nullptr ||
-            qOut->GetDataType() != op::DataType::DT_BF16) {
-            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                ACLNN_NAME, "qQuantMode/qOut/qScaleOptional", "invalid combination",
-                "the M-RoPE scene requires NoQuant, a BF16 qOut and a nullptr qScaleOptional");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        return ACLNN_SUCCESS;
-    }
-
-    if (std::strcmp(qQuantMode, DEFAULT_Q_QUANT_MODE) != 0 ||
-        qOut->GetDataType() != op::DataType::DT_FLOAT8_E4M3FN) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            ACLNN_NAME, "qQuantMode/qOut", "invalid combination",
-            "the RoPE scene requires PerTokenPerHead and an FP8 E4M3FN qOut");
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    return ACLNN_SUCCESS;
 }
 
 static Params MakeParams(const aclTensor *qkv, const aclTensor *qGamma, const aclTensor *kGamma,
@@ -266,7 +82,9 @@ static Params MakeParams(const aclTensor *qkv, const aclTensor *qGamma, const ac
     params.epsilon = epsilon;
     params.mropeSectionOptional = mropeSectionOptional;
     params.qQuantMode = GetQQuantModeOrDefault(qQuantMode);
-    params.qOutDtype = static_cast<int64_t>(qOut->GetDataType());
+    if (qOut != nullptr) {
+        params.qOutDtype = static_cast<int64_t>(qOut->GetDataType());
+    }
     params.qOut = qOut;
     params.qScale = qScale;
     params.workspaceSize = workspaceSize;
@@ -390,11 +208,6 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScaleGetWorkspaceSize(
                           mropePositionOptional, headNums, layoutQkvAttr, layoutQOutAttr, epsilon,
                           mropeSectionOptional, qQuantModeAttr),
                    DFX_OUT(qOut, qScaleOptional, kCacheRef, vCacheRef, kScaleCacheRef));
-
-    aclnnStatus sceneCheckRet = QkvRmsNormRopeCacheWithKScale::CheckSceneParams(
-        qkv, queryStartLocOptional, seqLensOptional, mropePositionOptional, mropeSectionOptional, qQuantModeAttr,
-        layoutQkvAttr, qOut, qScaleOptional);
-    CHECK_RET(sceneCheckRet == ACLNN_SUCCESS, sceneCheckRet);
 
     auto params = QkvRmsNormRopeCacheWithKScale::MakeParams(
         qkv, qGamma, kGamma, cosSin, slotMapping, kCacheRef, vCacheRef, kScaleCacheRef, queryStartLocOptional,
