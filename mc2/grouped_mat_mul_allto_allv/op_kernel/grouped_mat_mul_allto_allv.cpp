@@ -91,19 +91,19 @@ grouped_mat_mul_allto_allv(GM_ADDR gmmxGM, GM_ADDR gmmweightGM, GM_ADDR sendCoun
     GM_ADDR sendBufferAddr = gmmOutputGM;
     HcclOpType hcclOp;
     hcclOp.Init(hcclInitTiling, hcclCcTilingOffset, &tilingData.taskTilingInfo, sendBufferAddr, yGM,
-                static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
+        static_cast<uint32_t>(tilingData_->taskTilingInfo.aivCoreNum));
 
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, gmmBaseTiling, gmmArray,
                                        gmmArrayAddr_, tilingGM);
     ComputeOpType computeOp;
-    computeOp.Init(gmmxGM, gmmweightGM, nullptr, nullptr, gmmOutputGM, gmmComputeWSGM, tilingData_,
-                   &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
+    computeOp.Init(gmmxGM, gmmweightGM, nullptr, nullptr, gmmOutputGM, gmmComputeWSGM,
+                   tilingData_, &tilingData_->gmmBaseTiling, gmmArrayAddr_, &pipe);
 
     GET_NESTED_TILING_DATA_MEMBER_ADDR(QuantGmmA2avTilingData, GMMQuantTilingData, sharedGmmTiling, gmmArray,
                                        mmArrayAddr_, tilingGM);
     SharedGmmExpertOpType shareComputeOp;
-    shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, mmyOptionalGM, sharedGmmComputeWSGM,
-                        tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
+    shareComputeOp.Init(mmxOptionalGM, mmweightOptionalGM, nullptr, nullptr, mmyOptionalGM,
+        sharedGmmComputeWSGM, tilingData_, &tilingData_->sharedGmmTiling, mmArrayAddr_, &pipe);
 
     GmmA2avSchedulerType gmmA2avScheduler(hcclOp, computeOp, shareComputeOp, &tilingData.taskTilingInfo);
     gmmA2avScheduler.Process();

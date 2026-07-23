@@ -192,7 +192,8 @@ public:
         int32_t coreNum = AscendC::GetBlockNum();
         int32_t mLoops = (params.problemShape.m() + L1TileShape::M - 1) / L1TileShape::M;
         uint32_t nLoops = (params.problemShape.n() + L1TileShape::N - 1) / L1TileShape::N;
-        int64_t pingPongBlockSize = static_cast<int64_t>(L1TileShape::M) * params.pValue * params.problemShape.k();
+        int64_t pingPongBlockSize =
+            static_cast<int64_t>(L1TileShape::M) * params.pValue * params.problemShape.k();
 
         int32_t commCount = (mLoops + params.pValue - 1) / params.pValue;
 

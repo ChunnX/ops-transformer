@@ -32,7 +32,8 @@ constexpr uint32_t SMALL_EXPERT_THRESHOLD = 4U;
 constexpr uint32_t ORIGINAL_LOOP_THRESHOLD = 4U;
 constexpr uint32_t MIN_LOOP_COUNT = 2U;
 
-static uint32_t CalcExpertNum(uint64_t e, uint64_t epWorldSize, uint64_t bsk, uint64_t n1, uint32_t packFactor = 1U)
+static uint32_t CalcExpertNum(uint64_t e, uint64_t epWorldSize, uint64_t bsk, uint64_t n1,
+                              uint32_t packFactor = 1U)
 {
     if (e == 0 || e == 1) {
         return 1U;
@@ -40,19 +41,20 @@ static uint32_t CalcExpertNum(uint64_t e, uint64_t epWorldSize, uint64_t bsk, ui
     if (e <= SMALL_EXPERT_THRESHOLD) {
         return 1U;
     }
-    uint32_t originalLoopCount =
-        static_cast<uint32_t>((e + DEFAULT_MERGED_EXPERT_NUM - 1U) / DEFAULT_MERGED_EXPERT_NUM);
+    uint32_t originalLoopCount = static_cast<uint32_t>((e + DEFAULT_MERGED_EXPERT_NUM - 1U)
+        / DEFAULT_MERGED_EXPERT_NUM);
     if (originalLoopCount <= ORIGINAL_LOOP_THRESHOLD) {
         return DEFAULT_MERGED_EXPERT_NUM;
     }
 
     uint64_t perRankTokens = (epWorldSize == 0) ? bsk : bsk / epWorldSize;
-    uint64_t perRankTotalMN = (packFactor == 0) ? perRankTokens * n1 : perRankTokens * n1 / packFactor;
+    uint64_t perRankTotalMN = (packFactor == 0) ? perRankTokens * n1
+        : perRankTokens * n1 / packFactor;
 
     uint32_t expertNum = DEFAULT_MERGED_EXPERT_NUM;
     if (perRankTotalMN < PER_RANK_TOTAL_MN_THRESHOLD) {
-        uint32_t upperByArray =
-            (epWorldSize == 0) ? GMM_ARRAY_MAX_NUM : static_cast<uint32_t>(GMM_ARRAY_MAX_NUM / epWorldSize);
+        uint32_t upperByArray = (epWorldSize == 0) ? GMM_ARRAY_MAX_NUM
+            : static_cast<uint32_t>(GMM_ARRAY_MAX_NUM / epWorldSize);
         uint32_t upperByLoop = static_cast<uint32_t>(e / MIN_LOOP_COUNT);
         uint32_t upperBound = std::min({static_cast<uint32_t>(e), upperByArray, upperByLoop});
         expertNum = std::max(upperBound, 1U);
@@ -909,9 +911,9 @@ ge::graphStatus AlltoAllvGmmTiling::DoAiCoreTiling(const gert::TilingContext *co
 
     if (bs_ != 0) {
         AlltoAllvGmmTilingHelper mmHelper(*this);
-        MC2_CHECK_LOG_RET(context_->GetNodeName(),
-                          mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_, mmXDataType_, mmWeightDataType_,
-                                                  mmXDataType_, SINGLE_GROUP_NUM));
+        MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.SetInputParams(bs_, n2_, h2_, transMmWeight_, mmXDataType_,
+                                                                           mmWeightDataType_, mmXDataType_,
+                                                                           SINGLE_GROUP_NUM));
         MC2_CHECK_LOG_RET(context_->GetNodeName(), mmHelper.Process());
         tilingData->mmQuantTilingData = mmHelper.GetAlltoAllvQuantHelperData();
     }
@@ -968,8 +970,9 @@ ge::graphStatus AlltoAllvGmmTilingHelper::SetInputParams(uint64_t M, uint64_t N,
                     return ge::GRAPH_FAILED);
     constexpr uint32_t MAX_TENSOR_CONT = 128U;
     OP_TILING_CHECK(groupNum > MAX_TENSOR_CONT,
-                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "groupNum", std::to_string(groupNum).c_str(),
-                                              (std::string("<=") + std::to_string(MAX_TENSOR_CONT)).c_str()),
+                    OP_LOGE_FOR_INVALID_VALUE(context_->GetNodeName(), "groupNum",
+                        std::to_string(groupNum).c_str(),
+                        (std::string("<=") + std::to_string(MAX_TENSOR_CONT)).c_str()),
                     return ge::GRAPH_FAILED);
     for (uint32_t i = 0; i < groupNum; i++) {
         mList_[i] = static_cast<int32_t>(M);
@@ -1190,8 +1193,8 @@ ge::graphStatus AlltoAllvGmmTilingBase::GetWorkspaceSize()
     uint64_t groupListSize = sizeof(int64_t) * e_ * epWorldSize_;
     uint64_t aGroupOffsetTableSize = sizeof(uint64_t) * e_ * epWorldSize_;
     uint64_t xScaleOffsetTableSize = sizeof(uint64_t) * e_ * epWorldSize_;
-    workspaces[0] = libApiWorkSpaceSize_ + commOutSize + groupListSize + aGroupOffsetTableSize + xScaleOffsetTableSize +
-                    tensorListSize;
+    workspaces[0] = libApiWorkSpaceSize_ + commOutSize + groupListSize + aGroupOffsetTableSize +
+                    xScaleOffsetTableSize + tensorListSize;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1215,8 +1218,10 @@ ge::graphStatus AlltoAllvGmmTilingBase::PostTiling()
     uint32_t expertNum = CalcExpertNum(e_, epWorldSize_, bsk_, n1_);
     tilingData->taskTilingInfo.expertNum = expertNum;
     tilingData->taskTilingInfo.mainLoopExpertNum = expertNum;
-    tilingData->taskTilingInfo.tailLoopExpertNum = (e_ % expertNum == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum);
-    tilingData->taskTilingInfo.totalLoopCount = static_cast<uint32_t>((e_ + expertNum - 1U) / expertNum);
+    tilingData->taskTilingInfo.tailLoopExpertNum =
+        (e_ % expertNum == 0) ? 0 : static_cast<uint32_t>(e_ % expertNum);
+    tilingData->taskTilingInfo.totalLoopCount =
+        static_cast<uint32_t>((e_ + expertNum - 1U) / expertNum);
 
     auto attrs = context_->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context_->GetNodeName(), "attrs"),

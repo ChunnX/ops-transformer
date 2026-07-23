@@ -749,13 +749,12 @@ private:
         AscendC::LocalTensor<int32_t> prevSumBuf = tmpBuffer[numPerCore];
         uint64_t ubOffet = 2 * numPerCore * sizeof(uint32_t);
         AscendC::LocalTensor<uint64_t> rdmaUbLocal = resource.ubBuf.template GetBufferByByte<uint64_t>(ubOffet);
-        AscendC::LocalTensor<uint32_t> rdmaUbLocalHead =
-            resource.ubBuf.template GetBufferByByte<uint32_t>(ubOffet + UB_ALIGN);
+        AscendC::LocalTensor<uint32_t> rdmaUbLocalHead = resource.ubBuf.template GetBufferByByte<uint32_t>(ubOffet + UB_ALIGN);
         // flagUb：用于路径 C 拼 32B flag payload，放在 rdmaUbLocalHead 之后
         AscendC::LocalTensor<int32_t> flagUb = resource.ubBuf.template GetBufferByByte<int32_t>(ubOffet + 2 * UB_ALIGN);
 
         // ── Stage 1：发送（每 core 处理若干 dstEpIdx）──────────────
-        for (int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
+        for(int32_t dstEpIdx = coreIdx, dstServerId = 0; dstEpIdx < params.EP; dstEpIdx += coreNum) {
             dstServerId = dstEpIdx / SERVER_RANK_SIZE_A2;
             AscendC::GlobalTensor<int32_t> srcAddress;
             int64_t localTokenPerExpertWinOutOffset = peermemInfo.offsetWinOutPeerTokenPerExpert +
@@ -780,12 +779,16 @@ private:
 
             AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
 
-            copyGmToUb(tmpBuffer, srcAddress[0], layout::RowMajor{1, numPerCore}, layout::RowMajor{1, numPerCore});
+            copyGmToUb(tmpBuffer, srcAddress[0],
+                layout::RowMajor{ 1, numPerCore},
+                layout::RowMajor{1, numPerCore});
             AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE3>(EVENT_ID0);
             if (dstEpIdx == static_cast<int32_t>(RuntimeRank(params))) {
                 // ── 路径 A：self-rank，本地搬运，无 flag ──
-                copyUbToGm(dstAddress, tmpBuffer, layout::RowMajor{1, numPerCore}, layout::RowMajor{1, numPerCore});
+                copyUbToGm(dstAddress, tmpBuffer,
+                    layout::RowMajor{ 1, numPerCore},
+                    layout::RowMajor{1, numPerCore});
                 AscendC::SetFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(EVENT_ID0);
             } else if (dstServerId == serverId_) {
@@ -1423,8 +1426,8 @@ private:
         static constexpr int64_t kFlagSlotI32 = 16;
         // 跨 server RDMA 时一次写入的 payload 大小：8 个 int32 = 32B，首 4B 为 magic，其余为 padding
         static constexpr int64_t kFlagPayloadI32 = 8;
-        int64_t offsetWinOutA; // A tensor in winOut (dispatch, outgoing tokens)
-        int64_t offsetWinOutD; // D tensor in winOut (combine, outgoing FFN results)
+        int64_t offsetWinOutA;                   // A tensor in winOut (dispatch, outgoing tokens)
+        int64_t offsetWinOutD;                   // D tensor in winOut (combine, outgoing FFN results)
         int64_t offsetAllgatherFlag;
         int64_t offsetWinOutPeerPerTokenScale;  // per-token scale in winOut
         int64_t offsetWinOutFlag;               // Dispatch Flag 区 in winOut

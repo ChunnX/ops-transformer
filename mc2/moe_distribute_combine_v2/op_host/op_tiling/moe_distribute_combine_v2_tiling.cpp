@@ -426,8 +426,8 @@ static bool CheckInputTensorDimARN(const gert::TilingContext *context, const cha
     return true;
 }
 
-static bool CheckInputTensorDim(const gert::TilingContext *context, const char *nodeName, const CombineV2Config &config,
-                                const bool hasExpertScales)
+static bool CheckInputTensorDim(const gert::TilingContext *context, const char *nodeName,
+                                const CombineV2Config &config, const bool hasExpertScales)
 {
     const gert::StorageShape *expandXStorageShape = context->GetInputShape(config.expandXIndex);
     OP_TILING_CHECK(expandXStorageShape == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "expandX"), return false);
@@ -1370,9 +1370,9 @@ static bool CheckTensorShape(const gert::TilingContext *context, MoeDistributeCo
     OP_TILING_CHECK(!CheckZeroComputeExpertsTensorShape(context, tilingData, nodeName, config, expertIdsDim0),
                     OP_LOGE(nodeName, "Zero_compute_experts' param dim check failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(
-        !CheckExpertsTensorShape(context, tilingData, nodeName, config, expertIdsDim0, expertIdsDim1, hasExpertScales),
-        OP_LOGE(nodeName, "Experts' param dim check failed."), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!CheckExpertsTensorShape(context, tilingData, nodeName, config, expertIdsDim0, expertIdsDim1,
+                                             hasExpertScales),
+                    OP_LOGE(nodeName, "Experts' param dim check failed."), return ge::GRAPH_FAILED);
 
     OP_TILING_CHECK(!CheckFromDispatchTensorShape(context, tilingData, nodeName, config, A, isLayered),
                     OP_LOGE(nodeName, "From dispatch's param dim check failed."), return ge::GRAPH_FAILED);
@@ -1572,7 +1572,7 @@ static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *cont
 {
     // 检查参数shape信息
     OP_TILING_CHECK(!CheckTensorDim(context, nodeName, isActiveMask, hasExpertScales, hasElasticInfo, isPerformance,
-                                    config, isLayered),
+        config, isLayered),
                     OP_LOGE(nodeName, "param shape is invalid"), return ge::GRAPH_FAILED);
     // 检查参数dataType信息
     OP_TILING_CHECK(!CheckExpertTensorDataType(context, nodeName, config, hasExpertScales),
@@ -1580,9 +1580,9 @@ static ge::graphStatus TilingCheckMoeDistributeCombine(gert::TilingContext *cont
     OP_TILING_CHECK(!CheckTensorDataType(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, config),
                     OP_LOGE(nodeName, "param dataType is invalid"), return ge::GRAPH_FAILED);
     // 检查参数format信息
-    OP_TILING_CHECK(
-        !CheckTensorFormat(context, nodeName, isActiveMask, hasExpertScales, hasElasticInfo, isPerformance, config),
-        OP_LOGE(nodeName, "param Format is invalid"), return ge::GRAPH_FAILED);
+    OP_TILING_CHECK(!CheckTensorFormat(context, nodeName, isActiveMask, hasExpertScales, hasElasticInfo,
+        isPerformance, config),
+                    OP_LOGE(nodeName, "param Format is invalid"), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1836,8 +1836,9 @@ ge::graphStatus CheckInputParam(gert::TilingContext *context, const char *nodeNa
     isShared = (epRankId < sharedExpertRankNum);
 
     // 检查shape各维度并赋值h,k
-    OP_TILING_CHECK(!CheckTensorShape(context, *tilingData, nodeName, isShared, isActiveMask, localMoeExpertNum,
-                                      hasElasticInfo, isPerformance, hasExpertScales, config, isLayered),
+    OP_TILING_CHECK(!CheckTensorShape(context, *tilingData, nodeName, isShared, isActiveMask,
+                                      localMoeExpertNum, hasElasticInfo, isPerformance, hasExpertScales, config,
+                                      isLayered),
                     OP_LOGE(nodeName, "param dim check failed."), return ge::GRAPH_FAILED);
 
     // 校验combine或combineARN有差异的参数
@@ -1895,8 +1896,8 @@ MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3TilingFuncImpl(gert:
                     OP_LOGE(nodeName, "Getting attr failed."), return ge::GRAPH_FAILED);
 
     // 检查并填充可选输入
-    OP_TILING_CHECK(CheckAndGetOptionalInput(context, tilingData, config, isActiveMask, hasElasticInfo, isPerformance,
-                                             hasExpertScales) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(CheckAndGetOptionalInput(context, tilingData, config, isActiveMask, hasElasticInfo,
+                                             isPerformance, hasExpertScales) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Check and get optional input param failed."), return ge::GRAPH_FAILED);
 
     // 检查context输入
@@ -1906,7 +1907,8 @@ MoeDistributeCombineV2TilingFuncBase::MoeDistributeCombineA3TilingFuncImpl(gert:
     }
 
     OP_TILING_CHECK(CheckInputParam(context, nodeName, isActiveMask, hasElasticInfo, isPerformance, hasExpertScales,
-                                    localMoeExpertNum, isLayered, isShared, tilingData, config) != ge::GRAPH_SUCCESS,
+                                    localMoeExpertNum,
+                                    isLayered, isShared, tilingData, config) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling check input param failed."), return ge::GRAPH_FAILED);
 
     // 校验win区大小

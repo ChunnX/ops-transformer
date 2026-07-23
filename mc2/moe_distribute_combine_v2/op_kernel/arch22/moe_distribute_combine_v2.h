@@ -1144,7 +1144,8 @@ __aicore__ inline void MoeDistributeCombineV2<CombineMC2TypeFunc>::ProcessMoeExp
         if (hasExpertScalesFlag_) {
             quantInst_.DeQuantProcess(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_, scaleVal);
         } else {
-            quantInst_.DeQuantProcessWithoutExpertScale(tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_);
+            quantInst_.DeQuantProcessWithoutExpertScale(
+                tmpUb, outLocalTensor, rowTmpFloatLocal_, sumFloatBufLocal_);
         }
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3510))
         // 非 A5 在外层完成 INT8 加权求和

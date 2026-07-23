@@ -49,16 +49,18 @@ moe_distribute_dispatch_v3(GM_ADDR mc2Context, GM_ADDR x, GM_ADDR expertIds, GM_
                                             false>
                 op;
             op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                    expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
-                    workspaceGM, &pipe, &tilingData);
+                    expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                    epSendCountsOut, workspaceGM,
+                    &pipe, &tilingData);
             op.Process();
             return;
         } else if constexpr (FullMesh == TILINGKEY_NO_FULLMESH) {
-            MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X, Mc2Kernel::UNQUANT, false>
-                op;
+            MoeDistributeDispatchV2<Mc2Kernel::Mc2MoeContextHolder, DTYPE_X, DTYPE_EXPAND_X,
+                                    Mc2Kernel::UNQUANT, false> op;
             op.Init(mc2Context, x, expertIds, scales, xActiveMask, expertScales, elasticInfo, performanceInfo,
-                    expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut, epSendCountsOut,
-                    workspaceGM, &pipe, &tilingData);
+                    expandXOut, dynamicScalesOut, assistInfoOut, expandScalesOut, expertTokenNumsOut,
+                    epSendCountsOut, workspaceGM,
+                    &pipe, &tilingData);
             op.Process();
             return;
         }
