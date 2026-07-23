@@ -108,12 +108,7 @@ static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext *
 
 static ge::graphStatus InferDataTypeForStemOamPrepVarlenQ(gert::InferDataTypeContext *context)
 {
-    auto qDtype = context->GetInputDataType(INPUT_Q);
-    if (qDtype == ge::DT_FLOAT16) {
-        context->SetOutputDataType(OUTPUT_Q_FLAT, ge::DT_FLOAT16);
-    } else {
-        context->SetOutputDataType(OUTPUT_Q_FLAT, ge::DT_BF16);
-    }
+    context->SetOutputDataType(OUTPUT_Q_FLAT, ge::DT_BF16);
     return ge::GRAPH_SUCCESS;
 }
 
