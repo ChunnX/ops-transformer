@@ -2440,7 +2440,7 @@ TEST_PARAMS = {
         'kv_cache_layout': ['TND'],
         'block_size': [1024],
         'sparse_mode': [3],
-        'q_scale_layout': ['N2TGD'],
+        'q_scale_layout': ['TND'],
         'p_scale': [1.0],
         'enable_lse': [False],
         'enable_rope': [False],
