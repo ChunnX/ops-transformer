@@ -251,9 +251,9 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
     __ubuf__ float* kScale = (__ubuf__ float*)kScale_.GetPhyAddr();
     __ubuf__ float* qk = (__ubuf__ float*)qk_.GetPhyAddr();
     if (gSize % 2 == 0) {
-        MulWeightAndReduceSumGSizeEvenF32VF(out, qk, qkVLStride, weight, kScale, qScale, (uint16_t)gSize);
+        MulWeightAndReduceSumF32GSizeEvenVF(out, qk, qkVLStride, weight, kScale, qScale, (uint16_t)gSize);
     } else {
-        MulWeightAndReduceSumGSizeOddF32VF(out, qk, qkVLStride, weight, kScale, qScale, (uint16_t)gSize);
+        MulWeightAndReduceSumF32GSizeOddVF(out, qk, qkVLStride, weight, kScale, qScale, (uint16_t)gSize);
     }
 }
 
