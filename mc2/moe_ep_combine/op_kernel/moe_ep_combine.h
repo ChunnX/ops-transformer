@@ -60,8 +60,6 @@ constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t FLOAT_PER_UB_ALIGN = 8U;
 constexpr uint32_t MAX_CHANNELS_PER_RANK = 8U;
 constexpr uint32_t META_TILE_TOKEN_MAX = 128U;
-constexpr uint32_t WRITE_COMMIT_FIRST_THRESHOLD = 8U;
-constexpr uint32_t WRITE_COMMIT_THRESHOLD = 32U;
 constexpr size_t MASK_CALC_NEED_WORKSPACE = 20UL * 1024UL;
 
 template <TemplateMoeEpCombineTypeClass>
@@ -393,13 +391,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
     }
     // The cores assigned to one rank use different channels and scan disjoint metadata tiles.
     uint32_t channelIndex = groupByRank ? (coreIndexInGroup % channelsPerRank_) : 0;
-    uint64_t groupedCommHandle = 0;
-    bool hasGroupedRemoteWrite = false;
-    uint32_t pendingWriteCount = 0;
-    uint32_t writeCommitThreshold = WRITE_COMMIT_FIRST_THRESHOLD;
-    if (groupByRank && targetRank != rankId_) {
-        groupedCommHandle = GetCommHandle(targetRank, channelIndex);
-    }
     Duplicate<uint32_t>(statusTensor_, (uint32_t)1, FLOAT_PER_UB_ALIGN);
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     constexpr uint32_t metaBytesPerToken = RECV_META_FIELDS * sizeof(int32_t);
@@ -444,20 +435,10 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                 SendToken(localRankWorkSpaceAddr, tokenIndex);
                 GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
                                               (src_token_idx * topK_ + src_topK_idx) * WIN_ADDR_ALIGN;
-                uint64_t commHandle = groupByRank ? groupedCommHandle : GetCommHandle(src_rank, channelIndex);
+                uint64_t commHandle = GetCommHandle(src_rank, channelIndex);
                 hcomm_.WriteWithNotifyNbi(commHandle, remoteRankWinAddr, localRankWorkSpaceAddr,
                                           XTypeAlign32Size_, remoteRankStateAddr, 1);
-                if (groupByRank) {
-                    hasGroupedRemoteWrite = true;
-                    pendingWriteCount++;
-                    if (pendingWriteCount >= writeCommitThreshold) {
-                        hcomm_.Commit(commHandle);
-                        pendingWriteCount = 0;
-                        writeCommitThreshold = WRITE_COMMIT_THRESHOLD;
-                    }
-                } else {
-                    hcomm_.Drain(commHandle);
-                }
+                hcomm_.Drain(commHandle);
             } else {
                 GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) + slotOffset;
                 SendToken(remoteRankWinAddr, tokenIndex);
@@ -469,12 +450,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             }
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>(); // 确保本轮 Scalar GetValue 读完，下一块 DataCopyPad 才可覆盖 metadataLocal
-    }
-    if (hasGroupedRemoteWrite) {
-        if (pendingWriteCount > 0) {
-            hcomm_.Commit(groupedCommHandle);
-        }
-        hcomm_.Drain(groupedCommHandle);
     }
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
 }
