@@ -220,7 +220,7 @@ __aicore__ inline void ProcessVec1UpdateImpl128(
     const LocalTensor<T>& inExpSumTensor, const LocalTensor<T>& inMaxTensor, const LocalTensor<uint8_t>& maskTensor,
     const LocalTensor<uint8_t>& sharedTmpBuffer, const LocalTensor<T>& pScaleTensor, const uint16_t m,
     const uint32_t originN, const T scale,
-    const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T>& queryScaleUb = LocalTensor<T>(),
+    const float dScaleQK, const T minValue, const LocalTensor<T>& queryScaleUb = LocalTensor<T>(),
     const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
@@ -228,7 +228,7 @@ __aicore__ inline void ProcessVec1UpdateImpl128(
     const uint32_t blockStride = s1BaseSize >> 1 | 0x1;
     const uint32_t repeatStride = 1;
     const float dScale = scale * dScaleQK;
-    float divValue = 1.0f / keepProb;
+    float divValue = 1.0f;
 
     __ubuf__ T2 * expUb = (__ubuf__ T2*)dstTensor.GetPhyAddr();
     __ubuf__ T2 * x_expUb = nullptr;

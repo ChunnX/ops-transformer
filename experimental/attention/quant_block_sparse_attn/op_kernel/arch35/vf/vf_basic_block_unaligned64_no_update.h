@@ -173,7 +173,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64(
     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale,
-    const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
+    const float dScaleQK, const T minValue, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
     const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
 {
     __ubuf__ T2 *expUb = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
@@ -194,7 +194,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64(
     const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
     uint32_t pltOriginalN = originN;
 
-    float divValue = 1.0f / keepProb;
+    float divValue = 1.0f;
     uint32_t pltSrcN = s2BaseSize;
     uint32_t pltSrcN16 = s2BaseSize;
     const float dScale = scale * dScaleQK;

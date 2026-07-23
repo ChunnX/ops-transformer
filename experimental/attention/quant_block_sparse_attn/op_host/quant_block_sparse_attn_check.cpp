@@ -88,6 +88,12 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckShapeConsistency() const
             "head dimensions must be greater than 0");
         return ge::GRAPH_FAILED;
     }
+    if (tilingInfo_.dSize != BSA_D_SIZE || tilingInfo_.dSizeV != BSA_D_SIZE) {
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            kOpName, "dSize/dSizeV", std::to_string(tilingInfo_.dSize) + "/" + std::to_string(tilingInfo_.dSizeV),
+            "only dSize=128 and dSizeV=128 are currently supported");
+        return ge::GRAPH_FAILED;
+    }
     return ge::GRAPH_SUCCESS;
 }
 

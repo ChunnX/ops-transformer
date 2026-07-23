@@ -210,7 +210,7 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128(
     const LocalTensor<T> &maxTensor, const LocalTensor<T> &srcTensor, const LocalTensor<T> &expMaxTensor,
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale,
-    const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
+    const float dScaleQK, const T minValue, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
     const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
@@ -240,7 +240,7 @@ __aicore__ inline void ProcessVec1NoUpdateGeneralImpl128(
     const float dScale = scale * dScaleQK;
     uint32_t pltOriTailN = oriTailN;
     uint32_t pltTailN = tailN;
-    float divValue = 1.0f / keepProb;
+    float divValue = 1.0f;
 
     ProcessVec1NoUpdateGeneralImpl128VF<T, T2, s1BaseSize, s2BaseSize, hasAtten, isMlaSgd>(
         expUb, x_expUb, expSumUb, maxUb, maxUbStart, srcUb, qScaleUb, indexesUb, maskUb, maskUbUnroll, nPadding,

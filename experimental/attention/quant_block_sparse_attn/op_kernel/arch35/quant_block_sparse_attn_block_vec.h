@@ -367,13 +367,13 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32 >> 1)),
                 runInfo.s2AlignedSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
-                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         } else {
             FaVectorApi::ProcessVec1VfDnPerTokenHead<T, INPUT_T, true, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32 >> 1)),
                 runInfo.s2AlignedSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
-                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         }
     } else {
         if (unlikely(runInfo.s2LoopCount == 0)) {
@@ -381,13 +381,13 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32 >> 1)),
                 runInfo.s2AlignedSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
-                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         } else {
             FaVectorApi::ProcessVec1VfDn<T, INPUT_T, true, hasAtten, s2BaseSize>(
                 stage1CastTensor, sumUb, maxUb, mmRes, expUb, this->vselrIndexesBuf, attenMaskUb, qScaleUbTensor,
                 kScaleUbTensor, Align64Func(static_cast<uint16_t>(runInfo.s1RealSizeAlign32 >> 1)),
                 runInfo.s2AlignedSize, runInfo.s2RealSize, static_cast<T>(constInfo.scaleValue), negativeFloatScalar,
-                constInfo.keepProb, runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
+                runInfo.sparseBlk1PartialMask || runInfo.sparseBlk2PartialMask, constInfo.pScale);
         }
     }
     qScaleInputQue.FreeTensor(qScaleUbTensor);
@@ -789,19 +789,12 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSha
     sharedParams.dSizeV = inputParamsRegbase.dSizeV;
     sharedParams.preTokens = inputParamsRegbase.preTokens;
     sharedParams.nextTokens = inputParamsRegbase.nextTokens;
-    sharedParams.s1SparseValidSize = inputParamsRegbase.s1SparseValidSize;
-    sharedParams.s2SparseValidSize = inputParamsRegbase.s2SparseValidSize;
     sharedParams.bandIndex = inputParamsRegbase.bandIndex;
     sharedParams.layoutType = inputParamsRegbase.layoutType;
-    sharedParams.sparseType = inputParamsRegbase.sparseType;
     sharedParams.compressMode = inputParamsRegbase.attenMaskCompressMode;
-    sharedParams.attenMaskS1Size = inputParamsRegbase.attenMaskS1Size;
     sharedParams.attenMaskS2Size = inputParamsRegbase.attenMaskS2Size;
 
-    sharedParams.transposeLayout = inputParamsRegbase.transposeLayout;
     sharedParams.fromFused = inputParamsRegbase.fromFused;
-    sharedParams.isRowInvalid = inputParamsRegbase.isRowInvalid;
-    sharedParams.headNumRatio = inputParamsRegbase.headNumRatio;
     sharedParams.isGqa = inputParamsRegbase.isGqa;
     sharedParams.isPfaGS1Merge = (inputParamsRegbase.isGqa && sharedParams.s1Size > 1);
     sharedParams.isKvContinuous = inputParamsRegbase.isKvContinuous;
@@ -810,12 +803,15 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::InitCubeVecSharedParams(CVSha
     sharedParams.isActualSeqLengthsNull = inputParamsRegbase.isActualSeqLengthsNull;
     sharedParams.isActualSeqLengthsKVNull = inputParamsRegbase.isActualSeqLengthsKVNull;
     if constexpr (isPa) {
-        sharedParams.blockTableDim2 = inputParamsRegbase.blockTableDim2;
-        sharedParams.kvSparseBlockSize = inputParamsRegbase.kvBlockSize;
-        sharedParams.qSparseBlockSize = inputParamsRegbase.qBlockSize;
-        sharedParams.paLayoutType = inputParamsRegbase.paLayoutType;
-        sharedParams.paBlockNumSum = inputParamsRegbase.paBlockNumSum;
-        sharedParams.paBlockStride = inputParamsRegbase.paBlockStride;
+        auto &paParams = this->tilingData->paParams;
+        sharedParams.attenMaskS1Size = paParams.attenMaskS1Size;
+        sharedParams.blockTableDim2 = paParams.blockTableDim2;
+        sharedParams.kvSparseBlockSize = paParams.kvBlockSize;
+        sharedParams.qSparseBlockSize = paParams.qBlockSize;
+        sharedParams.paLayoutType = paParams.paLayoutType;
+        sharedParams.paBlockNumSum = paParams.paBlockNumSum;
+        sharedParams.paBlockStride = paParams.paBlockStride;
+        sharedParams.isRowInvalid = paParams.isRowInvalid;
     }
 
     auto &multiCoreParamsRegbase = this->tilingData->multiCoreParamsRegbase;
