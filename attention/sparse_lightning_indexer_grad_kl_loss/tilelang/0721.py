@@ -417,10 +417,14 @@ def tilelang_grad_kl_loss_single_kernel(
     ):
         """Compute P and SY with explicit L1/L0/MMA/FIX ownership."""
         with T.Scope("C"):
-            # Query is invariant across all K tiles of this task.  Keep the
-            # full Query/Rope operands in L1, matching the official C1
-            # schedule, instead of rereading them from GM for every K tile.
-            c1_query_cache_l1 = T.alloc_L1((N1, DQuery), input_dtype)
+            # Query is invariant across all K tiles of this task. Keep each
+            # K_SPLIT slice in a physically exact L1 allocation: a slice of a
+            # 128x512 parent lowers as a 128x512 L1->L0A descriptor even when
+            # the logical copy is only 128x128.
+            c1_query_chunk_0_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_chunk_1_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_chunk_2_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
+            c1_query_chunk_3_l1 = T.alloc_L1((N1, K_SPLIT), input_dtype)
             c1_query_rope_cache_l1 = T.alloc_L1(
                 (N1, max(d_rope, 1)), input_dtype
             )
@@ -443,8 +447,20 @@ def tilelang_grad_kl_loss_single_kernel(
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 T.copy(
-                    Query[bz_task, s1_id, 0:N1, 0:DQuery],
-                    c1_query_cache_l1,
+                    Query[bz_task, s1_id, 0:N1, 0:K_SPLIT],
+                    c1_query_chunk_0_l1,
+                )
+                T.copy(
+                    Query[bz_task, s1_id, 0:N1, K_SPLIT:2 * K_SPLIT],
+                    c1_query_chunk_1_l1,
+                )
+                T.copy(
+                    Query[bz_task, s1_id, 0:N1, 2 * K_SPLIT:3 * K_SPLIT],
+                    c1_query_chunk_2_l1,
+                )
+                T.copy(
+                    Query[bz_task, s1_id, 0:N1, 3 * K_SPLIT:4 * K_SPLIT],
+                    c1_query_chunk_3_l1,
                 )
                 if d_rope > 0:
                     T.copy(
@@ -481,13 +497,14 @@ def tilelang_grad_kl_loss_single_kernel(
                             T.set_flag("mte2", "mte1", 0)
                             T.wait_flag("m", "mte1", 0)
                             T.wait_flag("mte2", "mte1", 0)
-                            T.copy(
-                                c1_query_cache_l1[
-                                    0:N1,
-                                    d_idx * K_SPLIT:(d_idx + 1) * K_SPLIT,
-                                ],
-                                c1_q_l0a,
-                            )
+                            if d_idx == 0:
+                                T.copy(c1_query_chunk_0_l1, c1_q_l0a)
+                            if d_idx == 1:
+                                T.copy(c1_query_chunk_1_l1, c1_q_l0a)
+                            if d_idx == 2:
+                                T.copy(c1_query_chunk_2_l1, c1_q_l0a)
+                            if d_idx == 3:
+                                T.copy(c1_query_chunk_3_l1, c1_q_l0a)
                             T.copy(c1_key_l1, c1_key_l0b, transpose=True)
                             T.set_flag("mte1", "mte2", 0)
                             T.set_flag("mte1", "m", 0)
