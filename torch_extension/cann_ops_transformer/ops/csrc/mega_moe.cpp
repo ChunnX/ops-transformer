@@ -32,7 +32,8 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
            const c10::optional<std::vector<at::Tensor>> &sharedBias2,
            int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
            int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank, std::string activation,
-           c10::optional<float> activationClamp, float beta, c10::optional<float> linearBeta,
+           c10::optional<float> activationClamp, float activationAlpha, float activationBeta,
+           c10::optional<float> activationLinearBeta,
            c10::optional<int64_t> dispatchQuantOutDtype,
            c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType,
            c10::optional<int64_t> rankNumPerServer)
@@ -98,7 +99,12 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     char *activationPtr = const_cast<char *>(activationStr.c_str());
 
     float activationClampValue = activationClamp.value_or(std::numeric_limits<float>::max());
-    float linearBetaValue = linearBeta.value_or(std::numeric_limits<float>::max());
+    float activationAlphaValue = activationAlpha;
+    if (activationStr == "situ") {
+        // MegaMoe's prototype has no dedicated linear-beta attribute. SiTU
+        // does not use alpha, so reuse the activation_alpha slot.
+        activationAlphaValue = activationLinearBeta.value_or(std::numeric_limits<float>::max());
+    }
     int64_t topoTypeValue = topoType.value_or(0);
     int64_t rankNumPerServerValue = rankNumPerServer.value_or(2);
 
@@ -135,7 +141,8 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
               sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
               moeExpertNum, epWorldSize, cclBufferSize,
               maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType, combineQuantMode, commAlgPtr,
-              numMaxTokensPerRank, activationPtr, activationClampValue, beta, linearBetaValue, topoTypeValue,
+              numMaxTokensPerRank, activationPtr, activationClampValue, activationAlphaValue, activationBeta,
+              topoTypeValue,
               rankNumPerServerValue, y, expertTokenNums);
 
     return std::tie(y, expertTokenNums);

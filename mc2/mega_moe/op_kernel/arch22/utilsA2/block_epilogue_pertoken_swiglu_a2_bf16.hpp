@@ -128,13 +128,14 @@ public:
                      AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale1,
                      AscendC::GlobalTensor<ElementD> const &gmD,
                      AscendC::GlobalTensor<ElementPerTokenScale> const &gmPerTokenScale2, uint32_t epilogueCoreNum = 40,
-                     float activationClamp = 0.0f, uint32_t activationCode = 0, float beta = 1.0f,
-                     float linearBeta = std::numeric_limits<float>::max(), uint32_t gmmOutPreRowStride = 1,
+                     float activationClamp = 0.0f, uint32_t activationCode = 0,
+                     float activationAlpha = GptOssSwigluActivation::DEFAULT_ALPHA,
+                     float activationBeta = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
                      Callback &&callback = Callback{})
     {
         activationCode_ = activationCode;
-        beta_ = beta;
-        linearBeta_ = linearBeta;
+        activationAlpha_ = activationAlpha;
+        activationBeta_ = activationBeta;
         callback();
         uint32_t blockM = shapeC.row();
         uint32_t branchLength = shapeC.column() / 2;
@@ -215,13 +216,14 @@ public:
     CATLASS_DEVICE
     void operator()(AscendC::GlobalTensor<ElementC> const &gmC, MatrixCoord const &shapeC,
                      AscendC::GlobalTensor<ElementD> const &gmD, uint32_t epilogueCoreNum = 40,
-                     float activationClamp = 0.0f, uint32_t activationCode = 0, float beta = 1.0f,
-                     float linearBeta = std::numeric_limits<float>::max(), uint32_t gmmOutPreRowStride = 1,
+                     float activationClamp = 0.0f, uint32_t activationCode = 0,
+                     float activationAlpha = GptOssSwigluActivation::DEFAULT_ALPHA,
+                     float activationBeta = SituActivation::DEFAULT_BETA, uint32_t gmmOutPreRowStride = 1,
                      Callback &&callback = Callback{})
     {
         activationCode_ = activationCode;
-        beta_ = beta;
-        linearBeta_ = linearBeta;
+        activationAlpha_ = activationAlpha;
+        activationBeta_ = activationBeta;
         callback();
         uint32_t blockM = shapeC.row();
         uint32_t branchLength = shapeC.column() / 2;
@@ -362,7 +364,7 @@ private:
             AscendC::PipeBarrier<PIPE_V>();
         }
         Activation::Compute(ubActivationList[stageId], ubGate, ubUp, sharedTmpBuffer, tileLength, activationClamp,
-                            activationCode_, beta_, linearBeta_);
+                            activationCode_, activationAlpha_, activationBeta_);
     }
 
     CATLASS_DEVICE
@@ -442,8 +444,8 @@ private:
     int32_t eventUbDMTE3VList[UB_STAGES];
     int32_t eventUbDVMTE3List[UB_STAGES];
     uint32_t activationCode_{0};
-    float beta_{1.0f};
-    float linearBeta_{std::numeric_limits<float>::max()};
+    float activationAlpha_{GptOssSwigluActivation::DEFAULT_ALPHA};
+    float activationBeta_{SituActivation::DEFAULT_BETA};
     CopyGmToUbC copyGmToUbC;
     CopyUbToGmD copyUbToGmD;
     CopyUbToGmDequantScale copyUbToGmDequantScale;
