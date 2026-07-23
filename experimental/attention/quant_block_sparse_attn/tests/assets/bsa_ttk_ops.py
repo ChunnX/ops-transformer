@@ -99,6 +99,7 @@ class QuantBlockSparseAttnMetadataBuilder:
               cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None,
               block_table=None, softmax_scale=1.0, sparse_q_block_size=128,
               sparse_kv_block_size=128, layout_q="BSND", layout_kv="PA_BNSD",
+              layout_sparse_indices="B_N_Qb_Kb",
               mask_mode=3, quant_mode=1, max_seqlen_q=0, max_seqlen_kv=0):
         _ensure_cann_ops()
         if layout_q == "BSND":
@@ -130,6 +131,7 @@ class QuantBlockSparseAttnMetadataBuilder:
             max_seqlen_kv=cls.max_seq(cu_seqlens_kv, seqused_kv, max_seqlen_kv or kv_fallback),
             layout_q=layout_q,
             layout_kv=layout_kv,
+            layout_sparse_indices=layout_sparse_indices,
         )
         if hasattr(metadata, "to") and metadata.device != query.device:
             metadata = metadata.to(query.device)
@@ -186,6 +188,7 @@ def quant_block_sparse_attn(
             block_table=block_table, softmax_scale=softmax_scale,
             sparse_q_block_size=sparse_q_block_size, sparse_kv_block_size=sparse_kv_block_size,
             layout_q=layout_q, layout_kv=layout_kv,
+            layout_sparse_indices=layout_sparse_indices,
             mask_mode=mask_mode, quant_mode=quant_mode,
             max_seqlen_q=max_seqlen_q, max_seqlen_kv=max_seqlen_kv,
         )
