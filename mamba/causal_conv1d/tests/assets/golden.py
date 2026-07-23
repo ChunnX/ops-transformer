@@ -53,6 +53,7 @@ def CausalConv1d_input(*input_arrays, **kwargs):
                 seq_len = total_tokens // batch_size
 
             qsl_values = np.arange(batch_size + 1, dtype=np.int32) * seq_len
+            qsl_values[-1] = total_tokens
             input_arrays[4] = qsl_values
 
     # Generate unique cache_indices (6th input, index 5) to avoid duplicate cache slots
