@@ -99,17 +99,18 @@ int main() {
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
   // 2. 构造输入与输出，需要根据API的接口自定义构造
-  // BSND layout: q[B,S1,N1,D] k[B,S2,1,D] w[B,S1,N1] lse[B,S1]
+  // BSND layout: q[B,S1,N1,D] k[B,S2,N2,D] w[B,S1,N1] lse[B,N2,S1]
   int64_t B = 2;
   int64_t S1 = 128;
   int64_t S2 = 256;
   int64_t N1 = 8;
+  int64_t N2 = 1;
   int64_t D = 64;
 
   std::vector<int64_t> qIndexShape = {B, S1, N1, D};
-  std::vector<int64_t> kIndexShape = {B, S2, 1, D};
+  std::vector<int64_t> kIndexShape = {B, S2, N2, D};
   std::vector<int64_t> weightShape = {B, S1, N1};
-  std::vector<int64_t> softmaxLseShape = {B, S1};
+  std::vector<int64_t> softmaxLseShape = {B, N2, S1};
   std::vector<int64_t> metadataShape = {64};
 
   void* qIndexDeviceAddr = nullptr;

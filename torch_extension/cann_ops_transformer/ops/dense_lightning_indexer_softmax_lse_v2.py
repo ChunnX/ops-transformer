@@ -88,9 +88,9 @@ class DenseLightningIndexerSoftmaxLseV2OpBuilder(OpBuilder):
             cmp_ratio=1,
         ):
             if layout_q == "BSND":
-                out_shape = (query_index.shape[0], query_index.shape[1])
+                out_shape = (query_index.shape[0], key_index.shape[2], query_index.shape[1])
             else:
-                out_shape = (query_index.shape[0],)
+                out_shape = (key_index.shape[1], query_index.shape[0])
             return torch.empty(out_shape, dtype=torch.float32, device="meta")
 
 

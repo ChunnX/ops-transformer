@@ -25,14 +25,14 @@ def _golden_dense_lightning_index_lse(query_index, key_index, weight):
     q = query_index.float()
     k = key_index.float()
     w = weight.float()
-    # q: [B, S1, N1, D], k: [B, S2, 1, D]
+    # q: [B, S1, N1, D], k: [B, S2, N2, D]
     score = torch.matmul(q, k.permute(0, 2, 3, 1))  # [B, S1, N1, S2]
     relu_score = torch.relu(score)
     weighted = relu_score * w.unsqueeze(-1)          # [B, S1, N1, S2]
     x = weighted.sum(dim=-2)                          # [B, S1, S2]
     m = x.max(dim=-1).values                          # [B, S1]
     lse = m + torch.log(torch.exp(x - m.unsqueeze(-1)).sum(dim=-1))  # [B, S1]
-    return lse
+    return lse.unsqueeze(1)  # [B, N2=1, S1]
 
 def _compute_row_valid_mask_blk(B, S1, S2, seqused_q, seqused_k, cmp_residual_k,
                                 mask_mode, cmp_ratio, device):
@@ -154,7 +154,7 @@ def golden_dli_lse_blk(query_index, key_index, weight, seqused_q=None, seqused_k
         sum_exp = torch.exp(shifted).sum(dim=1)
         lse[b] = torch.where(row_valid, reduce_max + torch.log(sum_exp), torch.full_like(reduce_max, neg_inf))
 
-    return lse
+    return lse.unsqueeze(1)  # [B, N2=1, S1]
 
 def test_bsnd_metadata():
     """BSND layout: 调用 metadata 算子。"""
@@ -369,7 +369,7 @@ def golden_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seqlens_
         sum_exp = torch.exp(shifted).sum(dim=1)
         lse[q_start:q_end] = torch.where(row_valid, reduce_max + torch.log(sum_exp), torch.full_like(reduce_max, neg_inf))
 
-    return lse
+    return lse.unsqueeze(0)  # [N2=1, T1]
 
 
 def cpu_kernel_dli_lse_blk(query_index, key_index, weight, seqused_q=None, seqused_k=None,
@@ -470,7 +470,7 @@ def cpu_kernel_dli_lse_blk(query_index, key_index, weight, seqused_q=None, sequs
                     all_sum += exp_tail.sum().item()
                 lse[b, s1_i] = running_max + math.log(all_sum) if all_sum > 0 else neg_inf
 
-    return lse
+    return lse.unsqueeze(1)  # [B, N2=1, S1]
 
 
 def cpu_kernel_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seqlens_k,
@@ -580,7 +580,7 @@ def cpu_kernel_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seql
                     all_sum += exp_tail.sum().item()
                 lse[q_start + s1_i] = running_max + math.log(all_sum) if all_sum > 0 else neg_inf
 
-    return lse
+    return lse.unsqueeze(0)  # [N2=1, T1]
 
 
 def test_invalid_num_heads_q():
@@ -1027,16 +1027,16 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                         q_end = cu_q[b + 1].item()
                         for s1_i in range(q_end - q_start):
                             idx = q_start + s1_i
-                            print(f"    [b={b}, s1={s1_i}] npu={lse_cpu[idx].item():.6f}  "
-                                  f"golden={lse_ref_f[idx].item():.6f}")
+                            print(f"    [b={b}, s1={s1_i}] npu={lse_cpu[0, idx].item():.6f}  "
+                                  f"golden={lse_ref_f[0, idx].item():.6f}")
                 else:
                     for b in range(B):
                         for s1_i in range(S1):
-                            print(f"    [b={b}, s1={s1_i}] npu={lse_cpu[b, s1_i].item():.6f}  "
-                                  f"golden={lse_ref_f[b, s1_i].item():.6f}")
+                            print(f"    [b={b}, s1={s1_i}] npu={lse_cpu[b, 0, s1_i].item():.6f}  "
+                                  f"golden={lse_ref_f[b, 0, s1_i].item():.6f}")
 
             if is_tnd:
-                T1_cmp = lse_cpu.shape[0]
+                T1_cmp = lse_cpu.shape[1]
                 valid_mask = _compute_row_valid_mask_tnd(
                     inputs["cu_seqlens_q"].cpu(), inputs["cu_seqlens_k"].cpu(), T1_cmp,
                     inputs["seqused_q"].cpu() if inputs["seqused_q"] is not None else None,
@@ -1048,6 +1048,11 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                     inputs["seqused_q"].cpu() if inputs["seqused_q"] is not None else None,
                     inputs["seqused_k"].cpu() if inputs["seqused_k"] is not None else None,
                     inputs["cmp_residual_k"].cpu(), mask_mode, cmp_ratio, "cpu")
+
+            if is_tnd:
+                valid_mask = valid_mask.unsqueeze(0)  # [1, T1]
+            else:
+                valid_mask = valid_mask.unsqueeze(1)  # [B, 1, S1]
 
             diff = (lse_cpu - lse_ref_f).abs()
             diff_valid = diff[valid_mask]
