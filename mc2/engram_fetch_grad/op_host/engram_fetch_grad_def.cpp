@@ -20,12 +20,12 @@ class EngramFetchGrad : public OpDef {
 public:
     explicit EngramFetchGrad(const char *name) : OpDef(name)
     {
-        this->Input("commContext")
+        this->Input("comm_context")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        this->Input("gradFetched")
+        this->Input("grad_fetched")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
@@ -35,37 +35,37 @@ public:
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        this->Input("sendCounts")
+        this->Input("send_counts")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        this->Input("recvCounts")
+        this->Input("recv_counts")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        this->Input("recvLocalEntry")
+        this->Input("recv_local_entry")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        this->Input("numRecv")
+        this->Input("num_recv")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        this->Output("gradUniqueOut")
+        this->Output("grad_unique_out")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND});
 
-        this->Output("uniqueLocalEntryOut")
+        this->Output("unique_local_entry_out")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
 
-        this->Output("numUniqueOut")
+        this->Output("num_unique_out")
             .ParamType(REQUIRED)
             .DataTypeList({ge::DT_INT32})
             .FormatList({ge::FORMAT_ND});
