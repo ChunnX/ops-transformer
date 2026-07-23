@@ -2253,10 +2253,8 @@ bool MoeInitRoutingV3Arch35TilingClass::ShouldUseGatherCopyForMxFP8NoQuant() con
 
 void MoeInitRoutingV3Arch35TilingClass::ComputeUseGatherCopy()
 {
-    if (isMXFP8NoQuantCase(quantMode_, xDtype_)) {
-        tilingDataPtr_->useGatherCopy = ShouldUseGatherCopyForMxFP8NoQuant();
-    } else if (IsOneOf3GatherKernels()) {
-        tilingDataPtr_->useGatherCopy = HasEnoughActiveExpertsForGatherCopy() && (k_ > 1);
+    if (IsOneOf3GatherKernels()) {
+        tilingDataPtr_->useGatherCopy = (expertEnd_ - expertStart_) * K_ > expertNum_ * NUM_THREE;
     } else {
         tilingDataPtr_->useGatherCopy = (rowIdxType_ == ROW_IDX_GATHER);
     }
