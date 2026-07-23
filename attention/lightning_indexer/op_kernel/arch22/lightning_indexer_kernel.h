@@ -706,11 +706,8 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
         __gm__ uint8_t *scoreBase = workspaceBase + constInfo.scoreB16GmOffset;
         __gm__ uint8_t *radixWsBase = workspaceBase + constInfo.radixWsOffset;
 
-        // For TND, compute correct totalBatch from actualSeqLengthsGmQ
+        // TND batch mapping: use actualSeqLengthsGmQ to find (bIdx, s1Idx)
         bool isTND = (constInfo.qSeqSize == 0 && constInfo.actualLenQDims > 0);
-        if (isTND) {
-            totalBatch = actualSeqLengthsGmQ.GetValue(constInfo.batchSize - 1) * constInfo.kHeadNum;
-        }
 
         for (uint32_t batchId = aivIdx; batchId < totalBatch; batchId += aivTotal) {
             uint32_t bIdx = 0;
