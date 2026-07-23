@@ -212,8 +212,6 @@ __aicore__ inline void InlineRadixTopK(
             int32_t cumSumOne = 0;
             uint64_t curTileLenAlign32 = (curTileLen + REPEAT_SIZE / sizeof(int32_t) - 1) /
                 (REPEAT_SIZE / sizeof(int32_t)) * (REPEAT_SIZE / sizeof(int32_t));
-            // Store bin counts in scalar array for both tileHist and globalHist update
-            int32_t binCounts[RDX_BINS] = {0, 0, 0, 0};
             for (int16_t binMask = RDX_BINS - 1; binMask > 0; binMask--) {
                 int32_t involvedMaskTemp = static_cast<int32_t>(
                     involvedMask16_ | static_cast<int16_t>(binMask << (roundId * RDX_BITS)));
@@ -225,16 +223,9 @@ __aicore__ inline void InlineRadixTopK(
                            true, curTileLen, {1, 1, 0, 0}, rsvdCnt);
                 RDX_V_S_SYNC();
                 cumSumOne += static_cast<int32_t>(rsvdCnt);
-                binCounts[binMask] = cumSumOne;
+                tileHist[binMask * tileNumAlign_].SetValue(tileId, cumSumOne);
                 gh[binMask] += cumSumOne;
             }
-            // Write tileHist: 3 scalar SetValue (scattered positions, no GetValue needed)
-            RDX_S_V_SYNC();
-            RDX_V_S_SYNC();
-            tileHist[1 * tileNumAlign_].SetValue(tileId, binCounts[1]);
-            tileHist[2 * tileNumAlign_].SetValue(tileId, binCounts[2]);
-            tileHist[3 * tileNumAlign_].SetValue(tileId, binCounts[3]);
-            RDX_S_V_SYNC();
 
             // Signal next tile data ready, flip ping-pong flag
             if (tileId < tileNum_ - 1) {
@@ -243,16 +234,13 @@ __aicore__ inline void InlineRadixTopK(
             pingPongFlag = !pingPongFlag;
         }
 
-        // Write globalHist from scalar accumulators (single batch, no per-tile GetValue)
-        RDX_V_S_SYNC();
+        // Write globalHist from scalar accumulators (already in S after tile loop)
         globalHist.SetValue(0, gh[0]);
         globalHist.SetValue(1, gh[1]);
         globalHist.SetValue(2, gh[2]);
         globalHist.SetValue(3, gh[3]);
-        RDX_S_V_SYNC();
 
-        // FindBoundaryBin + update globalHistBoundaryNum_ (single V_S/S_V pair)
-        RDX_V_S_SYNC();
+        // FindBoundaryBin (all S ops, no sync needed between S operations)
         boundaryBin = -1;
         boundaryBinPrev = -1;
         for (int32_t binMask = RDX_BINS - 1; binMask >= 0; binMask--) {
