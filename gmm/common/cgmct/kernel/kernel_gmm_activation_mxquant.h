@@ -68,8 +68,12 @@ class KernelGmmActivationMixOnlineDynamic<
     ProblemShape_, BlockMmad_, BlockEpilogue_, BlockScheduler_,
     AscendC::Std::enable_if_t<AscendC::Std::is_same_v<BlockScheduler_, GroupedMatmulAswtWithTailSplitScheduler>>> {
 public:
-    __aicore__ inline KernelGmmActivationMixOnlineDynamic() {}
-    __aicore__ inline ~KernelGmmActivationMixOnlineDynamic() {}
+    __aicore__ inline KernelGmmActivationMixOnlineDynamic()
+    {
+    }
+    __aicore__ inline ~KernelGmmActivationMixOnlineDynamic()
+    {
+    }
 
     using BlockEpilogue = BlockEpilogue_;
     using BlockMmad = BlockMmad_;
@@ -83,14 +87,13 @@ public:
     static constexpr bool transB = BlockMmad::transB;
     using LayoutB = typename BlockMmad::LayoutB;
     static constexpr CubeFormat formatB = TagToFormat<LayoutB>::format;
-    static constexpr bool isFp4 = AscendC::IsSameType<AType, fp4x2_e2m1_t>::value ||
-                                  AscendC::IsSameType<AType, fp4x2_e1m2_t>::value;
+    static constexpr bool isFp4 =
+        AscendC::IsSameType<AType, fp4x2_e2m1_t>::value || AscendC::IsSameType<AType, fp4x2_e1m2_t>::value;
     static constexpr int32_t c0Size = isFp4 ? MATMUL_MNK_ALIGN_INT4 : MATMUL_MNK_ALIGN_INT8;
 
-    using BlockSchedulerOp =
-        typename Block::BlockSchedulerSelector<ProblemShape, typename BlockMmad::L1TileShape,
-                                               typename BlockMmad::L0TileShape, BlockScheduler, transA,
-                                               transB>::SchedulerOp;
+    using BlockSchedulerOp = typename Block::BlockSchedulerSelector<ProblemShape, typename BlockMmad::L1TileShape,
+                                                                    typename BlockMmad::L0TileShape, BlockScheduler,
+                                                                    transA, transB>::SchedulerOp;
     using BlockMmadParams = typename BlockMmad::Params;
     using BlockEpilogueArguments = typename BlockEpilogue::Arguments;
     using BlockEpilogueParams = typename BlockEpilogue::Params;
@@ -136,16 +139,19 @@ public:
         int8_t groupType;
         uint8_t groupListType;
 
-        __aicore__ GMMTiling() {}
+        __aicore__ GMMTiling()
+        {
+        }
 
         __aicore__ GMMTiling(uint32_t groupNum_, uint32_t m_, uint32_t n_, uint32_t k_, uint32_t baseM_,
-                             uint32_t baseN_, uint32_t baseK_, uint32_t kAL1_, uint32_t kBL1_,
-                             uint32_t scaleKAL1_, uint32_t scaleKBL1_, uint8_t isBias_, uint8_t dbL0C_,
-                             int8_t groupType_, uint8_t groupListType_)
-            : groupNum(groupNum_), m(m_), n(n_), k(k_), baseM(baseM_), baseN(baseN_), baseK(baseK_),
-              kAL1(kAL1_), kBL1(kBL1_), scaleKAL1(scaleKAL1_), scaleKBL1(scaleKBL1_), isBias(isBias_),
-              dbL0C(dbL0C_), groupType(groupType_), groupListType(groupListType_)
-        {}
+                             uint32_t baseN_, uint32_t baseK_, uint32_t kAL1_, uint32_t kBL1_, uint32_t scaleKAL1_,
+                             uint32_t scaleKBL1_, uint8_t isBias_, uint8_t dbL0C_, int8_t groupType_,
+                             uint8_t groupListType_)
+            : groupNum(groupNum_), m(m_), n(n_), k(k_), baseM(baseM_), baseN(baseN_), baseK(baseK_), kAL1(kAL1_),
+              kBL1(kBL1_), scaleKAL1(scaleKAL1_), scaleKBL1(scaleKBL1_), isBias(isBias_), dbL0C(dbL0C_),
+              groupType(groupType_), groupListType(groupListType_)
+        {
+        }
     };
 
     struct Arguments {
@@ -269,8 +275,7 @@ public:
         Get<IDX_X2SCALE_OFFSET>(baseOffset_) = static_cast<int64_t>(groupIdx) * n * scaleK;
         Get<IDX_BIAS_OFFSET>(baseOffset_) = n * static_cast<int64_t>(groupIdx);
         Get<IDX_C_OFFSET>(baseOffset_) = (preOffset_ - m) * n;
-        Get<IDX_C_SCALE_OFFSET>(baseOffset_) =
-            (preOffset_ - m) * CeilDiv(n, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+        Get<IDX_C_SCALE_OFFSET>(baseOffset_) = (preOffset_ - m) * CeilDiv(n, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
     }
 
     __aicore__ inline bool UpdateGroupParams(const Params &params, uint32_t groupIdx)
@@ -310,19 +315,19 @@ public:
         CoordClass coord(m, n, k, params.gmmParams.baseM, params.gmmParams.baseN, params.gmmParams.baseK);
         BlockCoord tileIdx;
         if (!bs.GetTileIdx(tileIdx)) {
- 	        return;
- 	    }
- 	    UpdateOffset(groupIdx);
+            return;
+        }
+        UpdateOffset(groupIdx);
         UpdateGlobalBuffer(params);
         SetL2CacheDisableIfNeeded(Get<MNK_M>(problemShape_), static_cast<int64_t>(params.gmmParams.baseM));
- 	    do {
+        do {
             BlockShape singleShape = bs.GetBlockShape(tileIdx);
             if (Get<MNK_M>(singleShape) <= 0 || Get<MNK_N>(singleShape) <= 0) {
                 return;
             }
             auto quantOffset = coord.template GetQuantOffset<GroupedMatmul::QuantMode::MX_PERGROUP_MODE, c0Size>(
-                Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx),
-                Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape), Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
+                Get<IDX_M_TILEIDX>(tileIdx), Get<IDX_N_TILEIDX>(tileIdx), Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape),
+                Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape));
             Get<IDX_A_OFFSET>(blockOffset_) = Get<IDX_A_OFFSET>(quantOffset);
             Get<IDX_B_OFFSET>(blockOffset_) = Get<IDX_B_OFFSET>(quantOffset);
             Get<IDX_X1SCALE_OFFSET>(blockOffset_) = Get<IDX_X1SCALE_OFFSET>(quantOffset);
@@ -330,20 +335,19 @@ public:
             Get<IDX_BIAS_OFFSET>(blockOffset_) = Get<IDX_BIAS_OFFSET>(quantOffset);
             Get<IDX_C_OFFSET>(blockOffset_) = Get<IDX_C_OFFSET>(quantOffset);
 
-            int64_t mOffset = Get<IDX_M_TILEIDX>(tileIdx) * params.gmmParams.baseM +
-                              Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape);
-            int64_t nOffset = Get<IDX_N_TILEIDX>(tileIdx) * params.gmmParams.baseN +
-                              Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape);
-            Get<IDX_C_SCALE_OFFSET>(blockOffset_) =
-                mOffset * CeilDiv(n, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
-                CeilDiv(nOffset, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
+            int64_t mOffset =
+                Get<IDX_M_TILEIDX>(tileIdx) * params.gmmParams.baseM + Get<IDX_M_TAIL_SPLIT_TILEIDX>(singleShape);
+            int64_t nOffset =
+                Get<IDX_N_TILEIDX>(tileIdx) * params.gmmParams.baseN + Get<IDX_N_TAIL_SPLIT_TILEIDX>(singleShape);
+            Get<IDX_C_SCALE_OFFSET>(blockOffset_) = mOffset * CeilDiv(n, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE +
+                                                    CeilDiv(nOffset, MXFP_DIVISOR_SIZE) * MXFP_MULTI_BASE_SIZE;
 
             if ASCEND_IS_AIC {
                 if (isVecSetSyncCom_) {
                     WaitForVector();
                 }
-                AscendC::Std::tuple<int64_t, int64_t, int64_t> mmSingleShape{
-                    Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), k};
+                AscendC::Std::tuple<int64_t, int64_t, int64_t> mmSingleShape{Get<MNK_M>(singleShape),
+                                                                             Get<MNK_N>(singleShape), k};
                 mmadOp_(aGlobal_[Get<IDX_A_OFFSET>(blockOffset_)], bGlobal_[Get<IDX_B_OFFSET>(blockOffset_)],
                         x1ScaleGlobal_[Get<IDX_X1SCALE_OFFSET>(blockOffset_)],
                         x2ScaleGlobal_[Get<IDX_X2SCALE_OFFSET>(blockOffset_)],
@@ -352,10 +356,10 @@ public:
             }
             isVecSetSyncCom_ = true;
             if ASCEND_IS_AIV {
-                AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{
-                    Get<MNK_M>(singleShape), Get<MNK_N>(singleShape), 0, 0};
+                AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t> epilogueShape{Get<MNK_M>(singleShape),
+                                                                                      Get<MNK_N>(singleShape), 0, 0};
                 AscendC::Std::tuple<int64_t, int64_t, int64_t, int64_t, int64_t> epilogueOffset{
-                    Get<IDX_C_OFFSET>(blockOffset_), Get<IDX_C_SCALE_OFFSET>(blockOffset_),
+                    Get<IDX_C_OFFSET>(blockOffset_),       Get<IDX_C_SCALE_OFFSET>(blockOffset_),
                     Get<IDX_X2SCALE_OFFSET>(blockOffset_), Get<IDX_X1SCALE_OFFSET>(blockOffset_),
                     Get<IDX_BIAS_OFFSET>(blockOffset_),
                 };
@@ -394,13 +398,11 @@ public:
             if (!UpdateGroupParams(params, groupIdx)) {
                 continue;
             }
-            TupleShape resProblemShape{Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_),
-                                       Get<MNK_K>(problemShape_)};
+            TupleShape resProblemShape{Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_), Get<MNK_K>(problemShape_)};
             bs.UpdateNextProblem(resProblemShape);
             epilogueOp_.UpdateNextProblem(resProblemShape);
             if ASCEND_IS_AIC {
-                MmShape mmProblemShape{Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_),
-                                       Get<MNK_K>(problemShape_)};
+                MmShape mmProblemShape{Get<MNK_M>(problemShape_), Get<MNK_N>(problemShape_), Get<MNK_K>(problemShape_)};
                 mmadOp_.UpdateParamsForNextProblem(mmProblemShape);
             }
             ProcessSingleGroup(params, bs, groupIdx);

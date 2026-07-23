@@ -200,7 +200,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::InitTilingData(const LIV2T
     constInfo.kHeadNum = K_HEAD_NUM;
     constInfo.headDim = HEAD_DIM;
 
-    if (constInfo.gSize == 64) {
+    if (constInfo.gSize > 32) {
         constInfo.mBaseSize = S1_BASE_SIZE_SMALL * constInfo.gSize;
         constInfo.s1BaseSize = S1_BASE_SIZE_SMALL;
     } else {
@@ -686,6 +686,7 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcRunInfo(uint32_t loop,
     runInfo.isAllLoopEnd = (runInfo.bN2Idx == splitCoreInfo.bN2End) && (runInfo.gS1Idx == splitCoreInfo.gS1End) &&
                            (runInfo.s2Idx == splitCoreInfo.s2End);
     runInfo.isOutputIdxOffsetValid = isOutputIdxOffsetValid;
+    runInfo.needTndPadding = false;
     if (runInfo.isFirstS2InnerLoop) {
         uint64_t actualSeqQPrefixSum;
         if constexpr (LAYOUT_T == LI_V2_LAYOUT::TND) {
@@ -731,8 +732,10 @@ __aicore__ inline void LightningIndexerV2Kernel<LIT>::CalcRunInfo(uint32_t loop,
     runInfo.indiceOutOffset = indiceOutCoreOffset;
     runInfo.valueOutOffset = valueOutCoreOffset;
     runInfo.outputIdxCoreOffset = outputIdxCoreOffset;
-    if (runInfo.needTndPadding) {
-        vectorService.DoTndPadding(runInfo);
+    if ASCEND_IS_AIV {
+        if (runInfo.needTndPadding) {
+            vectorService.DoTndPadding(runInfo);
+        }
     }
 }
 

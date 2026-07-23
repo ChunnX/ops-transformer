@@ -196,6 +196,7 @@ struct RunInfo {
     bool isActualLenDimsNull; /* 判断是否有actualseq */ \
     bool isSoftmaxLseEnable; \
     uint32_t sparseBlockCount; \
+    uint32_t alignedSparseBlockCount; /* 按128对齐后的sparseBlockCount，用于kvPhyAddrGm的UB/GM buffer分配与寻址 */ \
     uint32_t actualSeqLenSize; /* 用户输入的actualseq的长度 */ \
     /* service mm1 mm2 pageAttention */ \
     uint32_t oriBlockSize; \

@@ -16,9 +16,9 @@
 - **接口功能**:
     aclnnMatmulReduceScatterV2接口是对aclnnMatmulReduceScatter接口的功能扩展，在支持x1和x2输入类型为FLOAT16/BFLOAT16的基础上，
     - <term>Ascend 950PR/Ascend 950DT</term>：
-        - 新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../docs/zh/context/量化介绍.md)。
+        - 新增了对低精度数据类型FLOAT8_E4M3FN/FLOAT8_E5M2/HIFLOAT8的支持。支持pertensor、perblock、mx[量化方式](../../docs/zh/context/quant_mode_introduction.md)。
     - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：
-        - 新增了对低精度数据类型INT8的支持。支持pertoken/perchannel[量化方式](../../docs/zh/context/量化介绍.md)。
+        - 新增了对低精度数据类型INT8的支持。支持pertoken/perchannel[量化方式](../../docs/zh/context/quant_mode_introduction.md)。
 
 - **计算公式**：
     - 情形1：如果x1和x2数据类型为FLOAT16/BFLOAT16时，对入参x1、x2、bias进行matmul计算后，进行ReduceScatter通信。
@@ -44,37 +44,37 @@
         $$
         output=ReduceScatter(\sum_{0}^{\left \lfloor \frac{k}{blockSize=32} \right \rfloor} (x1_{pr}@x2_{rq}*(x1Scale_{pr}*x2Scale_{rq})))
         $$
-    
+
 ## 函数原型
 
 每个算子分为两段式接口，必须先调用`aclnnMatmulReduceScatterV2GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMatmulReduceScatterV2`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMatmulReduceScatterV2GetWorkspaceSize(
-    const aclTensor* x1, 
-    const aclTensor* x2, 
-    const aclTensor* bias, 
-    const aclTensor* x1Scale, 
-    const aclTensor* x2Scale, 
-    const aclTensor* quantScale, 
-    int64_t          blockSize, 
-    const char*      group, 
-    const char*      reduceOp, 
-    int64_t          commTurn, 
-    int64_t          streamMode, 
-    int64_t          groupSize, 
-    const char*      commMode, 
-    aclTensor*       output, 
-    aclTensor*       amaxOutOptional, 
-    uint64_t*        workspaceSize, 
+    const aclTensor* x1,
+    const aclTensor* x2,
+    const aclTensor* bias,
+    const aclTensor* x1Scale,
+    const aclTensor* x2Scale,
+    const aclTensor* quantScale,
+    int64_t          blockSize,
+    const char*      group,
+    const char*      reduceOp,
+    int64_t          commTurn,
+    int64_t          streamMode,
+    int64_t          groupSize,
+    const char*      commMode,
+    aclTensor*       output,
+    aclTensor*       amaxOutOptional,
+    uint64_t*        workspaceSize,
     aclOpExecutor**  executor)
 ```
 
 ```cpp
 aclnnStatus aclnnMatmulReduceScatterV2(
-    void          *workspace, 
-    uint64_t       workspaceSize, 
-    aclOpExecutor *executor, 
+    void          *workspace,
+    uint64_t       workspaceSize,
+    aclOpExecutor *executor,
     aclrtStream    stream)
 ```
 
@@ -117,7 +117,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
         <td>x2</td>
         <td>输入</td>
         <td>MM右矩阵，即计算公式中的x2。</td>
-        <td><ul><li>当前版本仅支持二维输入， shape为[m, k]，支持转置/不转置场景。</li><li>仅支持两根轴转置情况下的非连续Tensor，其他场景的<a href="../../docs/zh/context/非连续的Tensor.md">[非连续的Tensor]</a>不支持。</li></ul></td>
+        <td><ul><li>当前版本仅支持二维输入， shape为[m, k]，支持转置/不转置场景。</li><li>仅支持两根轴转置情况下的非连续Tensor，其他场景的<a href="../../docs/zh/context/non_contiguous_tensor.md">[非连续的Tensor]</a>不支持。</li></ul></td>
         <td>FLOAT16、BFLOAT16、FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8、INT8</td>
         <td>ND、FRACTAL_NZ</td>
         <td>2</td>
@@ -295,7 +295,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
             groupSize = groupSizeK | groupSizeN << 16 | groupSizeM << 32
             $$
             - 如果满足重新设置条件，一般情况下，当x1Scale、x2Scale输入都是2维，且数据类型都为FLOAT时，[groupSizeM，groupSizeN，groupSizeK]取值组合会推导为[128, 128, 128]，对应groupSize的值为549764202624；当x1Scale、x2Scale输入都是3维，且数据类型都为FLOAT8_E8M0时，[groupSizeM, groupSizeN, groupSizeK]取值组合会推导为[1, 1, 32]，对应groupSize的值为4295032864。
-        - commMode：当前版本支持输入空字符串、“ai_cpu” 或 “ccu”。
+        - commMode：当前版本支持输入“ai_cpu” 或 “ccu”。
         - output：如果x1类型为FLOAT16、BFLOAT16，则output类型与x1保持一致。如果x1类型为FLOAT8_E4M3FN、FLOAT8_E5M2、HIFLOAT8，则数据类型支持FLOAT16、BFLOAT16、FLOAT。
 
             $$
@@ -304,7 +304,7 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -373,14 +373,14 @@ aclnnStatus aclnnMatmulReduceScatterV2(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 通信引擎约束：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持commMode为"aiv"。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：仅支持commMode为"aiv"。
-  - <term>Ascend 950PR/Ascend 950DT</term>：当前版本支持输入空字符串、“ai_cpu” 或 “ccu”。
+  - <term>Ascend 950PR/Ascend 950DT</term>：当前版本支持输入“ai_cpu” 或 “ccu”。
 
 - 确定性计算：
   - `aclnnMatmulReduceScatterV2`默认采用确定性计算实现。

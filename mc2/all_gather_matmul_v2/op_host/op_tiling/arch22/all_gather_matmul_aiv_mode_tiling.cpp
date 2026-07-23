@@ -43,6 +43,8 @@ constexpr uint32_t X1_SCALE_INDEX = 3;
 constexpr uint32_t X2_SCALE_INDEX = 4;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16 * 1024 * 1024;
 constexpr uint32_t USER_WORKSPACE_A2 = 1 * 1024 * 1024; // moeExpertNum_ * sizeof(uint32_t) + epWorldSize_ * 2 * 32
+constexpr uint64_t CCL_BUFFER_MIN_BYTES = 200ULL * 1024 * 1024;                 // 校验HCCL BUFF空间大小
+constexpr uint64_t MB_BYTES = 1024ULL * 1024;
 } // namespace
 
 namespace optiling {
@@ -284,18 +286,18 @@ static ge::graphStatus AllGatherMatmulAIVModeCheckAttrAndSetTiling(gert::TilingC
                                                                    CoCTiling &coctiling)
 {
     auto attrs = context->GetAttrs();
-    OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "attrs"),
-                    return ge::GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
     // Attr相关tilingdata的设置、校验、打印
     auto groupPtr = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     auto isTransposeX1 = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_X1);
     auto isTransposeX2 = attrs->GetAttrPointer<bool>(ATTR_IS_TRANS_X2);
-
-    OP_TILING_CHECK(groupPtr == nullptr || strlen(groupPtr) == 0,
-                    OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "group"), return GRAPH_FAILED);
-    OP_TILING_CHECK(isTransposeX2 == nullptr, OP_LOGE_WITH_INVALID_INPUT(context->GetNodeName(), "isTransposeX2"),
-                    return GRAPH_FAILED);
+    OP_CHECK_NULL_WITH_CONTEXT(context, groupPtr);
+    if (strlen(groupPtr) == 0) {
+        OP_LOGE(context->GetNodeName(), "The length of group string is 0.");
+        return GRAPH_FAILED;
+    }
+    OP_CHECK_NULL_WITH_CONTEXT(context, isTransposeX2);
 
     info.isTransposeX1 = *isTransposeX1 ? *isTransposeX1 : false;
     info.isTransposeX2 = *isTransposeX2 ? *isTransposeX2 : false;
@@ -569,6 +571,17 @@ ge::graphStatus AllGatherMatmulTilingAIVModeFunc(gert::TilingContext *context)
     auto attrs = context->GetAttrs();
     auto group = attrs->GetAttrPointer<char>(static_cast<int>(ATTR_GROUP_INDEX));
     const char *opName = context->GetNodeName();
+    // 校验HCCL BUFF空间大小
+    uint64_t hcclBuffSize = 0ULL;
+    auto cclRet = mc2tiling::GetCclBufferSize(group, &hcclBuffSize, opName);
+    if (cclRet == ge::GRAPH_SUCCESS) {
+        OP_TILING_CHECK(hcclBuffSize < CCL_BUFFER_MIN_BYTES,
+            OP_LOGE(opName, "HCCL_BUFFSIZE (%lu Bytes) too small, min required %lu Bytes (%dMB)",
+                hcclBuffSize, CCL_BUFFER_MIN_BYTES, CCL_BUFFER_MIN_BYTES / MB_BYTES),
+            return ge::GRAPH_FAILED);
+    } else {
+        OP_LOGW(opName, "Can't get HCCL_BUFFSIZE, skip CCL buffer size validation.");
+    }
     int64_t rankSize = 0;
     mc2tiling::GetRankSize(opName, group, rankSize);
     coctiling.rankSize = rankSize;

@@ -15,12 +15,23 @@
 #ifndef FLASH_ATTEN_BLOCK_CUBE_NOQUANT_GQA_H_
 #define FLASH_ATTEN_BLOCK_CUBE_NOQUANT_GQA_H_
 
+// 同一源文件在两种目录树编译：开发仓 common 多嵌套一层 op_kernel/（需 ../../../common/op_kernel/），
+// CANN部署仓扁平化（需 ../../common/）；__has_include 编译期探测自适应，免维护两份源文件。
+#if __has_include("../../../common/op_kernel/offset_calculator.h")
 #include "../../../common/op_kernel/offset_calculator.h"
 #include "../../../common/op_kernel/matmul.h"
-#include "../../../common/op_kernel/FixpipeOut.h"         // PFA_CFG_ROW_MAJOR_UB
-#include "../../../common/op_kernel/memory_copy_arch35.h" // SeqLenFromTensorList
+#include "../../../common/op_kernel/FixpipeOut.h"
+#include "../../../common/op_kernel/memory_copy_arch35.h"
 #include "../../../common/op_kernel/arch35/infer_flash_attention_comm.h"
 #include "../../../common/op_kernel/arch35/flash_attention_score_common_regbase.h"
+#else
+#include "../../common/offset_calculator.h"
+#include "../../common/matmul.h"
+#include "../../common/FixpipeOut.h"
+#include "../../common/memory_copy_arch35.h"
+#include "../../common/arch35/infer_flash_attention_comm.h"
+#include "../../common/arch35/flash_attention_score_common_regbase.h"
+#endif
 #include "kernel_operator_list_tensor_intf.h"
 using namespace AscendC;
 using namespace AscendC::Impl::Detail;
