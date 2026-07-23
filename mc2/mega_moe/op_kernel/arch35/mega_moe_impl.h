@@ -51,7 +51,7 @@ __aicore__ inline GroupSyncSlotLayout CalcGroupSyncSlotLayout(uint32_t expertTok
     return {totalSyncSlotCount / groupCount, totalSyncSlotCount % groupCount};
 }
 
-// 每个同步 slot 独占 INT_CACHELINE 个 int32_t（512B），避免不同 flag 共享 HBM/L2 sector 产生读写竞争。
+// 每个同步 slot 独占 INT_CACHELINE 个 int32_t（64B），避免不同 flag 共享 cacheline 产生读写竞争。
 __aicore__ inline __gm__ int32_t *GetCombineSyncCounterAddress(__gm__ int32_t *expertCounterBase,
                                                                uint32_t localSyncSlotIndex)
 {
@@ -162,8 +162,11 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
     if constexpr (Policy::IS_GMM1) {
         uint32_t waveIdx = mLoc / L1_TILE_M_256;
         uint32_t targetValue = (mLoc + L1_TILE_M_256 > config.m) ? (config.m - mLoc) : L1_TILE_M_256;
-        __gm__ int32_t *flagValueAddr =
-            gmmAddrInfo.dispatchToGmm1Flag + static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
+        uint64_t flagOffset = waveIdx;
+        if constexpr (Config::USE_WAVE_FLAG_LAYOUT) {
+            flagOffset *= INT_CACHELINE;
+        }
+        __gm__ int32_t *flagValueAddr = gmmAddrInfo.dispatchToGmm1Flag + flagOffset;
         while (targetValue != AscendC::ReadGmByPassDCache(flagValueAddr)) {
             int64_t st = AscendC::GetSystemCycle();
             while (AscendC::GetSystemCycle() - st < 100) {
@@ -176,8 +179,11 @@ __aicore__ inline void WaitForUpstreamReady(const GMMAddrInfo &gmmAddrInfo, cons
             uint32_t waveM = waveStart + L1_TILE_M_256 > config.m ? config.m - waveStart : L1_TILE_M_256;
             uint32_t targetLoops = Ops::Base::CeilDiv(waveM, L1_TILE_M_256) *
                                    Ops::Base::CeilDiv(config.k * SWIGLU_N_HALF, L1_TILE_N);
-            __gm__ int32_t *flagValueAddr =
-                gmmAddrInfo.swigluToGmm2Flag + static_cast<uint64_t>(waveIdx) * INT_CACHELINE;
+            uint64_t flagOffset = waveIdx;
+            if constexpr (Config::USE_WAVE_FLAG_LAYOUT) {
+                flagOffset *= INT_CACHELINE;
+            }
+            __gm__ int32_t *flagValueAddr = gmmAddrInfo.swigluToGmm2Flag + flagOffset;
             while (targetLoops != AscendC::ReadGmByPassDCache(flagValueAddr)) {
                 int64_t st = AscendC::GetSystemCycle();
                 while (AscendC::GetSystemCycle() - st < 100) {
@@ -236,9 +242,11 @@ struct BlockMmadSelector<true, C> {
 // ==================================================================================
 template <bool IsA8W4, typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB,
           typename ElementC, typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false,
-          bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsShared = false>
+          bool IsLayered = false, bool IsGmm1Interleaved = false, bool IsShared = false,
+          bool UseWaveFlagLayout = false>
 struct Config {
     static constexpr bool IS_SHARED = IsShared;
+    static constexpr bool USE_WAVE_FLAG_LAYOUT = UseWaveFlagLayout;
     using ElementAType = ElementA;
     using ElementBType = ElementB;
     using ElementCType = ElementC;
@@ -286,6 +294,7 @@ struct Config {
 
     struct ProblemConfig {
         static constexpr bool SOURCE_GMM1_INTERLEAVED = IsGmm1Interleaved;
+        static constexpr bool USE_WAVE_FLAG_LAYOUT = UseWaveFlagLayout;
 
         static __aicore__ inline typename BlockMmad::L1Params DefaultL1Params()
         {
@@ -660,13 +669,13 @@ __aicore__ inline void GroupMatmulExecGeneric(WorkSet &workSet, uint32_t startLo
 
 template <typename Policy, uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC,
           typename ElementMxScaleA, typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
-          bool IsGmm1Interleaved = false, bool IsShared = false, typename ExtraArgs>
+          bool IsGmm1Interleaved = false, bool IsShared = false, bool UseWaveFlagLayout = false, typename ExtraArgs>
 __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
                                               const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                               const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, ExtraArgs &args)
 {
     using Config = Config<false, Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
-                          ElementMxScaleB, IsWeightNZ, IsLayered, IsGmm1Interleaved, IsShared>;
+                          ElementMxScaleB, IsWeightNZ, IsLayered, IsGmm1Interleaved, IsShared, UseWaveFlagLayout>;
     auto config = Config::BuildProblemConfig(problemShape);
 
     BlockScheduler scheduler(
@@ -728,8 +737,8 @@ __aicore__ inline void GroupMatmulImplGeneric(const Params &params,
 } // namespace Detail
 // =================================================================================================
 template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
-          typename ElementMxScaleB, bool IsWeightNZ = false, bool IsGmm1Interleaved = false,
-          bool IsShared = false>
+          typename ElementMxScaleB, bool IsWeightNZ = false, bool IsShared = false,
+          bool IsGmm1Interleaved = false, bool UseWaveFlagLayout = false>
 __aicore__ inline void GroupMatmulSwigluQuant(
     BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true,
                                IsGmm1Interleaved> &epilogueOp,
@@ -739,8 +748,24 @@ __aicore__ inline void GroupMatmulSwigluQuant(
     using SwigluQuantOpType = std::remove_reference_t<decltype(epilogueOp)>;
     Detail::Gmm1ArgsGeneric<SwigluQuantOpType> args{epilogueOp, vecSetSyncCom, pingpongIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm1Policy, COMBINE_NO_QUANT, ElementA, ElementB, ElementC, ElementMxScaleA,
-                                   ElementMxScaleB, IsWeightNZ, false, IsGmm1Interleaved, IsShared>(
+                                   ElementMxScaleB, IsWeightNZ, false, IsGmm1Interleaved, IsShared,
+                                   UseWaveFlagLayout>(
         params, problemShape, gmmAddrInfo, startBlockIdx, args);
+}
+
+// Keep the legacy/layered call contract unchanged. Their non-interleaved
+// epilogue does not carry ping-pong state across expert calls.
+template <typename ElementA, typename EpilogueElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
+          typename ElementMxScaleB, bool IsWeightNZ = false, bool IsShared = false>
+__aicore__ inline void GroupMatmulSwigluQuant(
+    BlockEpilogueSwigluMxQuant<EpilogueElementA, ElementC, ElementMxScaleA, ElementMxScaleB, true> &epilogueOp,
+    const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
+    const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom)
+{
+    uint16_t pingpongIdx = 0;
+    GroupMatmulSwigluQuant<ElementA, EpilogueElementA, ElementB, ElementC, ElementMxScaleA, ElementMxScaleB,
+                           IsWeightNZ, IsShared, false>(
+        epilogueOp, params, problemShape, gmmAddrInfo, startBlockIdx, vecSetSyncCom, pingpongIdx);
 }
 
 // =================================================================================================
@@ -748,7 +773,7 @@ __aicore__ inline void GroupMatmulSwigluQuant(
 // =================================================================================================
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
           typename ElementMxScaleB, bool IsWeightNZ = false, bool IsLayered = false,
-          bool IsGmm1Interleaved = false, bool IsShared = false>
+          bool IsShared = false, bool IsGmm1Interleaved = false, bool UseWaveFlagLayout = false>
 __aicore__ inline void GroupMatmul2(const Params &params,
                                     const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                                     const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
@@ -757,7 +782,8 @@ __aicore__ inline void GroupMatmul2(const Params &params,
     (void)groupIdx;
     Detail::Gmm2ArgsGeneric args{vecSetSyncCom2, groupCnt, pingpongIdx};
     Detail::GroupMatmulImplGeneric<Detail::Gmm2Policy, CombineQuantMode, ElementA, ElementB, ElementC, ElementMxScaleA,
-                                   ElementMxScaleB, IsWeightNZ, IsLayered, IsGmm1Interleaved, IsShared>(
+                                   ElementMxScaleB, IsWeightNZ, IsLayered, IsGmm1Interleaved, IsShared,
+                                   UseWaveFlagLayout>(
         params, problemShape, gmmAddrInfo, startBlockIdx, args);
 }
 
@@ -1077,7 +1103,7 @@ __aicore__ inline void GroupMatmulSwigluQuantA8W4(
 
 // A8W4 GMM2 entry. groupIdx is retained temporarily for source compatibility with the URMA call site.
 template <uint8_t CombineQuantMode, typename ElementA, typename ElementB, typename ElementC, typename ElementMxScaleA,
-          typename ElementMxScaleB, bool IsGmm1Interleaved = false, bool IsShared = false>
+          typename ElementMxScaleB, bool IsShared = false, bool IsGmm1Interleaved = false>
 __aicore__ inline void
 GroupMatmul2CombineA8W4(const Params &params, const AscendC::Shape<int64_t, int64_t, int64_t, int64_t> &problemShape,
                         const GMMAddrInfo &gmmAddrInfo, uint32_t &startBlockIdx, int32_t &vecSetSyncCom2,
