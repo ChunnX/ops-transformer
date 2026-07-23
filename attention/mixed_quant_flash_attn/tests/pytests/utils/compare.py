@@ -373,12 +373,14 @@ def check_result(test_name, expect, result, except_label="CPU", comp_label="NPU"
     diff = torch.abs(ef - rf)
     ref_abs = torch.abs(ef)
     rel_err = diff / (ref_abs + 1e-6)
-    max_abs   = diff.max().item()
-    mean_abs  = diff.mean().item()
-    max_rel   = rel_err.max().item()
-    mean_rel  = rel_err.mean().item()
+    max_abs   = diff.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0).max().item()
+    mean_abs  = diff.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0).mean().item()
+    max_rel   = rel_err.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0).max().item()
+    mean_rel  = rel_err.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0).mean().item()
     threshold = torch.max(ref_abs.mul(RATIO_THRESHOLD), torch.full_like(diff, 0.000025))
     fail_mask = diff > threshold
+    # NaN/Inf 元素 diff 为 NaN，NaN > threshold 总是 False，须显式标记为失败
+    fail_mask = fail_mask | diff.isnan() | diff.isinf()
     fail_cnt  = int(fail_mask.sum().item())
     total     = expect.numel()
     fail_ratio = fail_cnt / total
