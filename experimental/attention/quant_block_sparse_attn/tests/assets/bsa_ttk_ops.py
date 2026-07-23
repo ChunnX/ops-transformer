@@ -101,13 +101,21 @@ class QuantBlockSparseAttnMetadataBuilder:
               sparse_kv_block_size=128, layout_q="BSND", layout_kv="PA_BNSD",
               mask_mode=3, quant_mode=1, max_seqlen_q=0, max_seqlen_kv=0):
         _ensure_cann_ops()
-        q_fallback = int(query.shape[1] if query.dim() == 4 else
-                         (query.shape[1] if layout_q == "NTD" else query.shape[0]))
+        if layout_q == "BSND":
+            num_heads_q = int(query.shape[2])
+            q_fallback = int(query.shape[1])
+        elif layout_q == "NTD":
+            num_heads_q = int(query.shape[0])
+            q_fallback = int(query.shape[1])
+        else:
+            num_heads_q = int(query.shape[1])
+            q_fallback = int(query.shape[0])
+        num_heads_kv = int(key.shape[1])
         kv_fallback = int(key.shape[0] * key.shape[2]) if key.dim() == 4 else int(key.shape[0])
         metadata = torch.ops.cann_ops_transformer.quant_block_sparse_attn_metadata(
             sparse_seq_len,
-            int(query.shape[2] if query.dim() == 4 else query.shape[1]),
-            int(key.shape[2] if key.dim() == 4 else key.shape[1]),
+            num_heads_q,
+            num_heads_kv,
             int(query.shape[-1]),
             cu_seqlens_q=cu_seqlens_q,
             cu_seqlens_kv=cu_seqlens_kv,
