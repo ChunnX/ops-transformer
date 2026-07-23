@@ -18,10 +18,6 @@
 using namespace AscendC;
 using namespace MoeGatingTopKBackward;
 
-namespace {
-constexpr uint64_t TILING_KEY_REGBASE = 10000;
-}
-
 extern "C" __global__ __aicore__ void moe_gating_top_k_backward(GM_ADDR xNorm, GM_ADDR gradY, GM_ADDR expertIdx,
                                                                 GM_ADDR gradX, GM_ADDR workspace, GM_ADDR tiling)
 {
@@ -34,7 +30,9 @@ extern "C" __global__ __aicore__ void moe_gating_top_k_backward(GM_ADDR xNorm, G
     GET_TILING_DATA_WITH_STRUCT(MoeGatingTopKBackwardRegbaseTilingData, tilingData, tiling);
     const MoeGatingTopKBackwardRegbaseTilingData *__restrict t = &tilingData;
     TPipe tPipe;
-    if (TILING_KEY_IS(TILING_KEY_REGBASE)) {
+    // TILING_KEY_IS is consumed by the CCE precompiler, so its argument must
+    // remain a literal (or a preprocessor macro), not a C++ constexpr.
+    if (TILING_KEY_IS(10000)) {
         MoeGatingTopKBackwardRegbase<DTYPE_GRAD_Y> op;
         op.Init(xNorm, gradY, expertIdx, gradX, workspace, t, &tPipe);
         op.Process();
