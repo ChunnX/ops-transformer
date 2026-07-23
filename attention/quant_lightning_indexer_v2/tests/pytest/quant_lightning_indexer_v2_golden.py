@@ -122,10 +122,10 @@ def reduce_mxfp4_weighted_qk(weight_matrix, qk_matrix):
     acc_bf16 = torch.zeros(output_shape, dtype=torch.bfloat16, device=weight_matrix.device)
 
     for g_idx in range(weight_matrix.shape[2]):
-        weight_fp32 = weight_matrix[:, :, g_idx:g_idx + 1].to(torch.float32)
-        qk_fp32 = qk_matrix[:, g_idx:g_idx + 1, :].to(torch.float32)
-        product_fp32 = weight_fp32 * qk_fp32
-        acc_bf16 = (acc_bf16.to(torch.float32) + product_fp32).to(torch.bfloat16)
+        weight_fp64 = weight_matrix[:, :, g_idx:g_idx + 1].to(torch.float64)
+        qk_fp64 = qk_matrix[:, g_idx:g_idx + 1, :].to(torch.float64)
+        # Model a BF16-destination FMA with one BF16 rounding per G.
+        acc_bf16 = (acc_bf16.to(torch.float64) + weight_fp64 * qk_fp64).to(torch.bfloat16)
     return acc_bf16
 
 

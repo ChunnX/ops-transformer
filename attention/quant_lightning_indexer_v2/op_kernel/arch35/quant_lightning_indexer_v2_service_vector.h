@@ -170,9 +170,13 @@ private:
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // 大小：2(开dB) 2 * 64 * 128 * 4 = 128KB
+    // resMm1与LD索引复用，按两种用途所需容量的较大值申请。
+    uint64_t resMm1BufferSize =
+        2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T);
+    // LD阶段将resMm1Buf_复用为uint32_t索引缓冲区，MXFP4的QK_T为BF16，需单独保证LD容量。
+    uint64_t ldIndexBufferSize = (topkCountAlign256_ + trunkLen_) * sizeof(uint32_t);
     pipe->InitBuffer(resMm1Buf_,
-        2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));
+        resMm1BufferSize > ldIndexBufferSize ? resMm1BufferSize : ldIndexBufferSize);
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
     // weight buffer按WEIGHT_T访问；UB_BANK_DEPTH_STRIDE的单位已经是字节，无需再乘数据类型大小。
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
@@ -987,7 +991,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
                 Duplicate(scoreOutLocal_[topkCount_ / 64 * 64 + 64], zero,
                     topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
                 PipeBarrier<PIPE_V>();
-                Duplicate(ldIndexLocal_.ReinterpretCast<int32_t>()[topkCount_ / 64 * 64 + 64], neg,
+                Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[topkCount_ / 64 * 64 + 64], neg,
                     topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
             }
 
