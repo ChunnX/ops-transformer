@@ -539,6 +539,75 @@ __aicore__ inline void QLIV2Preload<QLIV2T>::Init(__gm__ uint8_t *query, __gm__ 
             mxQueryScaleGmBf16.SetGlobalBuffer((__gm__ bfloat16_t *)queryScale);
             mxKeyScaleGmBf16.SetGlobalBuffer((__gm__ bfloat16_t *)keyScale);
             matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm, mxKeyScaleGmBf16, mxQueryScaleGmBf16);
+#ifdef QLIV2_DEBUG_DUMP
+            bool isTargetCase = tmpBlockIdx == 0 &&
+                DebugDump::TARGET_B_IDX < constInfo.batchSize &&
+                DebugDump::TARGET_N2_IDX < constInfo.kHeadNum;
+            if (isTargetCase) {
+                uint64_t scalePerToken = constInfo.headDim / MX_SCALE_GROUP_SIZE;
+                uint64_t queryTokenOffset = 0;
+                if constexpr (Q_LAYOUT_T == LI_LAYOUT::TND) {
+                    queryTokenOffset = cuSeqlensQGm.GetValue(DebugDump::TARGET_B_IDX);
+                } else {
+                    queryTokenOffset = DebugDump::TARGET_B_IDX * constInfo.qSeqSize;
+                }
+                uint64_t queryTokenCount = GetActualSeqLen(
+                    DebugDump::TARGET_B_IDX, constInfo.actualLenQDims, constInfo.isAccumSeqS1,
+                    cuSeqlensQGm, sequsedQGm, constInfo.qSeqSize);
+                if (DebugDump::TARGET_S1_IDX < queryTokenCount) {
+                    uint64_t queryScaleOffset =
+                        ((queryTokenOffset + DebugDump::TARGET_S1_IDX) * constInfo.qHeadNum +
+                         DebugDump::TARGET_N2_IDX * constInfo.gSize) * scalePerToken;
+                    uint32_t queryScaleCount = static_cast<uint32_t>(constInfo.gSize * scalePerToken);
+                    GlobalTensor<uint8_t> queryScaleRawGm;
+                    queryScaleRawGm.SetGlobalBuffer((__gm__ uint8_t *)queryScale);
+                    DumpTensor(queryScaleRawGm[queryScaleOffset], DebugDump::QUERY_SCALE_DESC, queryScaleCount);
+                }
+
+                GlobalTensor<uint8_t> keyScaleRawGm;
+                keyScaleRawGm.SetGlobalBuffer((__gm__ uint8_t *)keyScale);
+                uint64_t keyTokenCount = GetActualSeqLenKey(
+                    DebugDump::TARGET_B_IDX, constInfo.actualLenDims, constInfo.cmpResiduaKLenDims,
+                    constInfo.isAccumSeqS2, cuSeqlensKGm, sequsedKGm, cmpResidualKGm,
+                    constInfo.kSeqSize, constInfo.cmpRatio) / constInfo.cmpRatio;
+                if constexpr (PAGE_ATTENTION) {
+                    uint64_t blockTableOffset = DebugDump::TARGET_B_IDX * constInfo.maxBlockNumPerBatch;
+                    DumpTensor(blockTableGm[blockTableOffset], DebugDump::BLOCK_TABLE_DESC,
+                               constInfo.maxBlockNumPerBatch);
+                    uint64_t logicalBlockCount = CeilDiv(keyTokenCount, constInfo.kCacheBlockSize);
+                    uint32_t keyScaleBlockCount = static_cast<uint32_t>(
+                        constInfo.kCacheBlockSize * constInfo.kHeadNum * scalePerToken);
+                    for (uint64_t blockIdx = 0; blockIdx < logicalBlockCount; ++blockIdx) {
+                        int32_t physicalBlockId = blockTableGm.GetValue(blockTableOffset + blockIdx);
+                        if (physicalBlockId >= 0) {
+                            uint64_t keyScaleOffset = physicalBlockId * constInfo.keyDequantScaleStride0;
+                            DumpTensor(keyScaleRawGm[keyScaleOffset],
+                                       DebugDump::PA_KEY_SCALE_DESC_BASE + static_cast<uint32_t>(blockIdx),
+                                       keyScaleBlockCount);
+                        }
+                    }
+                } else {
+                    uint64_t keyTokenOffset = 0;
+                    if constexpr (K_LAYOUT_T == LI_LAYOUT::TND) {
+                        keyTokenOffset = cuSeqlensKGm.GetValue(DebugDump::TARGET_B_IDX);
+                    } else {
+                        keyTokenOffset = DebugDump::TARGET_B_IDX * constInfo.kSeqSize;
+                    }
+                    uint64_t keyScaleOffset = keyTokenOffset * constInfo.kHeadNum * scalePerToken;
+                    uint32_t keyScaleCount = static_cast<uint32_t>(
+                        keyTokenCount * constInfo.kHeadNum * scalePerToken);
+                    DumpTensor(keyScaleRawGm[keyScaleOffset], DebugDump::KEY_SCALE_DESC, keyScaleCount);
+                }
+                if (hasSequsedQ) {
+                    DumpTensor(sequsedQGm, DebugDump::SEQUSED_Q_DESC,
+                               static_cast<uint32_t>(constInfo.batchSize));
+                }
+                if (hasSequsedK) {
+                    DumpTensor(sequsedKGm, DebugDump::SEQUSED_K_DESC,
+                               static_cast<uint32_t>(constInfo.batchSize));
+                }
+            }
+#endif
         } else {
             matmulService.InitMm1GlobalTensor(blockTableGm, keyGm, queryGm);
         }

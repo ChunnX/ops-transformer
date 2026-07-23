@@ -24,6 +24,51 @@ constexpr uint32_t MX_SCALE_GROUP_SIZE = 32;  // 每32个D维度元素一个scal
 constexpr uint32_t FP8_TWO = 2;               // 2个FP8E8M0打包成1个BF16
 constexpr uint32_t FP4_PACK_NUM = 2;          // 2个FP4E2M1打包成1个字节存储
 
+#ifdef QLIV2_DEBUG_DUMP
+namespace DebugDump {
+#ifndef QLIV2_DEBUG_TARGET_B_IDX
+#define QLIV2_DEBUG_TARGET_B_IDX 0
+#endif
+#ifndef QLIV2_DEBUG_TARGET_N2_IDX
+#define QLIV2_DEBUG_TARGET_N2_IDX 0
+#endif
+#ifndef QLIV2_DEBUG_TARGET_S1_IDX
+#define QLIV2_DEBUG_TARGET_S1_IDX 4
+#endif
+#ifndef QLIV2_DEBUG_QK_S2_BEGIN
+#define QLIV2_DEBUG_QK_S2_BEGIN 0
+#endif
+#ifndef QLIV2_DEBUG_QK_S2_END
+#define QLIV2_DEBUG_QK_S2_END 4096
+#endif
+// Override the target row and QK window with compile definitions when debugging another case.
+
+constexpr uint32_t TARGET_B_IDX = QLIV2_DEBUG_TARGET_B_IDX;
+constexpr uint32_t TARGET_N2_IDX = QLIV2_DEBUG_TARGET_N2_IDX;
+constexpr uint32_t TARGET_S1_IDX = QLIV2_DEBUG_TARGET_S1_IDX;
+constexpr uint32_t QK_S2_BEGIN = QLIV2_DEBUG_QK_S2_BEGIN;
+constexpr uint32_t QK_S2_END = QLIV2_DEBUG_QK_S2_END;
+
+// QK desc adds the dumped S2 start and G index; score desc adds the S2 segment start.
+// Weight is dumped once for the target row.
+constexpr uint32_t QK_DESC_BASE = 100000;
+constexpr uint32_t WEIGHT_DESC_BASE = 200000;
+constexpr uint32_t SCORE_KEY_DESC_BASE = 300000;
+constexpr uint32_t TOPK_INDEX_DESC = 400000;
+constexpr uint32_t TOPK_SCORE_KEY_DESC = 400001;
+constexpr uint32_t QUERY_SCALE_DESC = 500000;
+constexpr uint32_t KEY_SCALE_DESC = 500001;
+constexpr uint32_t SEQUSED_Q_DESC = 500002;
+constexpr uint32_t SEQUSED_K_DESC = 500003;
+constexpr uint32_t BLOCK_TABLE_DESC = 510000;
+constexpr uint32_t PA_KEY_SCALE_DESC_BASE = 520000;
+constexpr uint32_t LD_TOPK_INDEX_DESC = 600000;
+constexpr uint32_t LD_TOPK_SCORE_KEY_DESC = 600001;
+constexpr uint32_t ACT_S1_SIZE_DESC_BASE = 700000;
+constexpr uint32_t ACT_S2_SIZE_DESC_BASE = 800000;
+}  // namespace DebugDump
+#endif
+
 // 与tiling的layout保持一致
 enum class LI_LAYOUT : uint32_t {
     BSND = 0,

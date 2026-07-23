@@ -13,6 +13,15 @@
  * \brief
  */
 
+// Temporary, configurable instrumentation for MX score/TopK mismatches.
+#ifdef ASCENDC_DUMP
+#undef ASCENDC_DUMP
+#endif
+#define ASCENDC_DUMP 1
+#ifndef QLIV2_DEBUG_DUMP
+#define QLIV2_DEBUG_DUMP
+#endif
+
 #include "kernel_operator.h"
 #include "lib/matmul_intf.h"
 #if (__CCE_AICORE__ == 310)
