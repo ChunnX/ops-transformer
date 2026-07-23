@@ -34,7 +34,8 @@ template <typename Q_T, typename K_T, typename QK_T, typename SCORE_T, typename 
 struct QLIV2Type {
     static_assert((std::is_same_v<QK_T, float> &&
                    (std::is_same_v<SCORE_T, uint32_t> || std::is_same_v<SCORE_T, uint16_t>)) ||
-                      (std::is_same_v<QK_T, bfloat16_t> && std::is_same_v<SCORE_T, uint16_t>),
+                      (std::is_same_v<QK_T, bfloat16_t> && std::is_same_v<SCORE_T, uint16_t>) ||
+                      (std::is_same_v<QK_T, int32_t> && std::is_same_v<SCORE_T, uint16_t>),
                   "Invalid combination of QK_T and SCORE_T");
     using rawQueryType = Q_T;
     using rawKeyType = K_T;

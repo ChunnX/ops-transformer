@@ -123,7 +123,7 @@ protected:
     LocalTensor<L0_K_T> keyL0_;
 
     TBuf<TPosition::CO1> bufL0C_;
-    LocalTensor<float> cL0_;
+    LocalTensor<QK_T> cL0_;
 
     TBuf<TPosition::VECCALC> bufUB_;
     LocalTensor<QK_T> mm1ResUB_;
@@ -644,7 +644,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
     WaitFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
 
-    if constexpr (std::is_same_v<QK_T, float>) {
+    if constexpr (std::is_same_v<QK_T, float> || std::is_same_v<QK_T, int32_t>) {
         // s1gL0RealSize：2*gSize(128)对齐, 最大256
         // s2L0RealSize <= S2_BASIC_BLOCK_L0, 未约束
         uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 32B对齐
