@@ -35,7 +35,7 @@ repos:
     rev: v18.1.8
     hooks:
       - id: clang-format
-        files: \.(c|h|cpp|hpp|cc|hh|cxx|hxx)$
+        files: \.(c|h|cpp|hpp|cc|hh|cxx|hxx|asc)$
         args:
           - "--style=file"
           - "--verbose"
