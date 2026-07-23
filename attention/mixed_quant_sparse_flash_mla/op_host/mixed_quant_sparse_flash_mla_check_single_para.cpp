@@ -29,7 +29,7 @@ static constexpr uint32_t DIM_2 = 2;
 static constexpr uint32_t DIM_3 = 3;
 
 const std::map<std::string, std::vector<ge::DataType>> DTYPE_SUPPORT_MAP = {
-    {QUERY_NAME, {ge::DT_BF16}},
+    {QUERY_NAME, {ge::DT_BF16, ge::DT_FLOAT16}},
     {ORI_KV_NAME, {ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
     {CMP_KV_NAME, {ge::DT_FLOAT8_E4M3FN, ge::DT_HIFLOAT8}},
     {ORI_SPARSE_INDICES_NAME, {ge::DT_INT32}},
