@@ -936,8 +936,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchToken(ui
                              RelayFlagOffset(serverId_, static_cast<uint32_t>(tokenIdx));
     ChannelHandle channel = GetUrmaCommHandle(mc2Context_, peerRank, rankId_);
     hcomm_.WriteWithNotifyNbi(channel, dstAddr, recordAddr, mxQuantTokenScaleAlignBytes_, remoteFlagAddr, uint64_t(1));
-    hcomm_.Drain(channel);
-    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID1>();
     WriteGmByPassDCache(srcMetaPtr + 1, int32_t(2));
 }
 
