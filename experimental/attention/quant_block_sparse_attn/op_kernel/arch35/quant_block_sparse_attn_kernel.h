@@ -368,23 +368,25 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
             runInfo.sparseBlkIdx2 = -1;
         }
     }
-    if ((runInfo.sparseBlkIdx1 < 0) || (runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize >= runParam.actualS2Size)) {
+    int64_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
+    int64_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
+    if ((runInfo.sparseBlkIdx1 < 0) || (sparseBlk1S2Offset >= runParam.actualS2Size)) {
         runInfo.s2SparseBlk1RealSize = 0;
         runInfo.s2SparseBlk1RealAlignedSize = 0;
         runInfo.sparseBlk1PartialMask = false;
-    } else if (unlikely((runInfo.sparseBlkIdx1 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
-        runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
+    } else if (unlikely(sparseBlk1S2Offset + constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
+        runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - sparseBlk1S2Offset;
         runInfo.s2SparseBlk1RealAlignedSize = Align(runInfo.s2SparseBlk1RealSize);
     } else {
         runInfo.s2SparseBlk1RealSize = constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk1RealAlignedSize = runInfo.s2SparseBlk1RealSize;
     }
-    if ((runInfo.sparseBlkIdx2 < 0) || (runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize >= runParam.actualS2Size)) {
+    if ((runInfo.sparseBlkIdx2 < 0) || (sparseBlk2S2Offset >= runParam.actualS2Size)) {
         runInfo.s2SparseBlk2RealSize = 0;
         runInfo.s2SparseBlk2RealAlignedSize = 0;
         runInfo.sparseBlk2PartialMask = false;
-    } else if (unlikely((runInfo.sparseBlkIdx2 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
-        runInfo.s2SparseBlk2RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
+    } else if (unlikely(sparseBlk2S2Offset + constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
+        runInfo.s2SparseBlk2RealSize = runParam.actualS2Size - sparseBlk2S2Offset;
         runInfo.s2SparseBlk2RealAlignedSize = Align(runInfo.s2SparseBlk2RealSize);
     } else {
         runInfo.s2SparseBlk2RealSize = constInfo.kvSparseBlockSize;
@@ -396,14 +398,12 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     uint32_t sparseBlk1S1Offset = runParam.s1oIdx * constInfo.s1BaseSize;
     uint32_t sparseBlk2S1Offset = sparseBlk1S1Offset;
     if (runInfo.sparseBlkIdx1 >= 0) {
-        uint32_t sparseBlk1S2Offset = runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
-        AttentionMaskFullProcessingOrRequired(sparseBlk1S1Offset, sparseBlk1S2Offset, delta,
+        AttentionMaskFullProcessingOrRequired(sparseBlk1S1Offset, static_cast<uint32_t>(sparseBlk1S2Offset), delta,
                                               runInfo.s2SparseBlk1RealSize, runInfo.sparseBlkIdx1,
                                               runInfo.sparseBlk1PartialMask);
     }
     if (runInfo.sparseBlkIdx2 >= 0) {
-        uint32_t sparseBlk2S2Offset = runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
-        AttentionMaskFullProcessingOrRequired(sparseBlk2S1Offset, sparseBlk2S2Offset, delta,
+        AttentionMaskFullProcessingOrRequired(sparseBlk2S1Offset, static_cast<uint32_t>(sparseBlk2S2Offset), delta,
                                               runInfo.s2SparseBlk2RealSize, runInfo.sparseBlkIdx2,
                                               runInfo.sparseBlk2PartialMask);
     }
