@@ -702,7 +702,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::ProcessRadixTopK()
         uint32_t sortLen = constInfo.radixSortLen;
         uint32_t sortLenAlign = constInfo.radixSortLenAlign;
         uint32_t kValue = constInfo.sparseCount;
-        uint32_t tileLen = constInfo.s2BaseSize;
+        uint32_t tileLen = (sortLen < 4096) ? sortLen : 4096;
         uint32_t totalBatch = constInfo.radixTotalBatch;
         uint32_t aivIdx = tmpBlockIdx;
         uint32_t aivTotal = constInfo.radixAivNum;
