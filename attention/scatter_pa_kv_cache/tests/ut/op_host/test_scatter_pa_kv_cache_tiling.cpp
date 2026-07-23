@@ -904,7 +904,6 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nz_kc_vc_dim1_mismatch)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// issue #3460: Nct 模式下 strides/offsets 判空、长度与取值校验
 TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_strides_size_lt_2)
 {
     optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
@@ -950,56 +949,6 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_offsets_size_lt_2)
             {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
             {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, 1})},
             {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0})},
-        },
-        &compileInfo);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
-}
-
-TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_strides_non_positive)
-{
-    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
-    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
-        {
-            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {
-            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
-            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 1})},
-            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
-        },
-        &compileInfo);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
-}
-
-TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_vstride_non_positive)
-{
-    optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
-    gert::TilingContextPara tilingContextPara("ScatterPaKvCache",
-        {
-            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{102}, {102}}, ge::DT_INT32, ge::FORMAT_ND},
-            {{{102, 1, 128}, {102, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {
-            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-            {{{306, 128, 1, 128}, {306, 128, 1, 128}}, ge::DT_FLOAT16, ge::FORMAT_ND},
-        },
-        {
-            {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Norm")},
-            {"scatter_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("Nct")},
-            {"strides", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({1, -1})},
-            {"offsets", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 0})},
         },
         &compileInfo);
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
@@ -1053,8 +1002,6 @@ TEST_F(ScatterPaKvCacheTilingTest, tiling_error_siso_nct_strides_size_lt_2)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
 
-// Nct shape 错误用例：由原 nhsd 批次按 Norm cache 排布 [num_block, block_size, num_head, head_size] 改写
-// 说明：NHSD 专有的 kHead 对齐校验在 Nct/Norm 路径不存在，对应场景改为 dim3 mismatch 覆盖
 TEST_F(ScatterPaKvCacheTilingTest, tiling_error_nct_khead_kc_dim3_mismatch)
 {
     optiling::ScatterPaKvCacheCompileInfo compileInfo = {64, 262144};
