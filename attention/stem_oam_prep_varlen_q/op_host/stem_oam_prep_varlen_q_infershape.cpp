@@ -116,6 +116,7 @@ static ge::graphStatus InferDataTypeForStemOamPrepVarlenQ(gert::InferDataTypeCon
 }
 
 IMPL_OP_INFERSHAPE(StemOamPrepVarlenQ)
+    .InputsDataDependency({INPUT_Q_SEQ_LENS})
     .InferShape(InferShapeForStemOamPrepVarlenQ)
     .InferDataType(InferDataTypeForStemOamPrepVarlenQ);
 
