@@ -37,7 +37,7 @@ __simd_vf__ inline void CastFp32ToOutVF(__ubuf__ OUT_T *dstUb, __ubuf__ float *s
     RegTensor<OUT_T> dstReg;
 
     for (uint32_t offset = 0; offset < count; offset += FP32_REG_ELEMENTS) {
-        const uint32_t validCount =
+        uint32_t validCount =
             count - offset < FP32_REG_ELEMENTS ? count - offset : FP32_REG_ELEMENTS;
         MaskReg tailMask = UpdateMask<float>(validCount);
         LoadAlign(srcReg, srcUb + offset);
