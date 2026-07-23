@@ -57,9 +57,10 @@ private:
   TPipe* pipe_{};
 
   CommTilingData commTilingData_;
-  CollectiveComm<CommCollectiveOp::AllToAll, CommMode::GET, CType, TeamBarrier> allToAll_;
+  CollectiveComm<CommCollectiveOp::AllToAll, CommMode::GET, CType, TeamBarrier, CommAddrLayout::DEFAULT> allToAll_;
 
   uint64_t ubOffset_{0};
+  uint32_t rankSize_{0};
   TeamBarrier teamBarrier_;
 };
 
@@ -78,6 +79,7 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::In
 
   barrierCtx_ = &(hcommCtx_->ubmemCtx);
   udmaCtx_ = &(hcommCtx_->udmaCtx);
+  rankSize_ = udmaCtx_->rankSize;
 
   qbmm_.Init(udmaCtx_->rankId, udmaCtx_->rankSize,
     aGM, aScaleGM, bGM, bScaleGM, cGM, tilingData);
@@ -123,13 +125,18 @@ __aicore__ inline void MatmulAllToAllMxImpl<AType, BType, CType, LocalDelay>::Al
   const auto& base = qbmm_.GetBase();
   for (uint32_t tid = 0; tid < base.totalTileCnt; ++tid) {
     CrossCoreWaitFlag<0x2, PIPE_S>(tid);
-    allToAll_.Commit();
-    allToAll_.Wait();
+    SyncAll<true>();
+    if (GetBlockIdx() < rankSize_) {
+      allToAll_.Commit();
+      allToAll_.Wait(true);
+    }
     if (base.bufferCount < base.totalTileCnt && tid < base.totalTileCnt - base.bufferCount) {
       CrossCoreSetFlag<0x2, PIPE_MTE3>(tid);
     }
   }
-  allToAll_.Finalize();
+  if (GetBlockIdx() < rankSize_) {
+    allToAll_.Finalize();
+  }
 }
 
 // =================================================================================
