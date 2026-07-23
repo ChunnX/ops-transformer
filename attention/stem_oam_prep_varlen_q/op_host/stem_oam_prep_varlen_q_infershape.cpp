@@ -40,7 +40,8 @@ static bool IsUnknownShape(const gert::Shape &shape)
     return false;
 }
 
-static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext* context) {
+static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext *context)
+{
     OP_LOGI(context, "Enter StemOamPrepVarlenQ runtime infershape impl.");
     if (context == nullptr) {
         return ge::GRAPH_FAILED;
@@ -105,7 +106,8 @@ static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext* 
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeForStemOamPrepVarlenQ(gert::InferDataTypeContext* context) {
+static ge::graphStatus InferDataTypeForStemOamPrepVarlenQ(gert::InferDataTypeContext *context)
+{
     auto qDtype = context->GetInputDataType(INPUT_Q);
     if (qDtype == ge::DT_FLOAT16) {
         context->SetOutputDataType(OUTPUT_Q_FLAT, ge::DT_FLOAT16);
@@ -117,6 +119,7 @@ static ge::graphStatus InferDataTypeForStemOamPrepVarlenQ(gert::InferDataTypeCon
 
 IMPL_OP_INFERSHAPE(StemOamPrepVarlenQ)
     .InferShape(InferShapeForStemOamPrepVarlenQ)
-    .InferDataType(InferDataTypeForStemOamPrepVarlenQ);
+    .InferDataType(InferDataTypeForStemOamPrepVarlenQ)
+    .InputsDataDependency({INPUT_Q_SEQ_LENS});
 
-}  // namespace ops
+} // namespace ops
