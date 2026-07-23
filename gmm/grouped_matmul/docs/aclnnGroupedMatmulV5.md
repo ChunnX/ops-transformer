@@ -29,7 +29,7 @@ abbr {
 | 术语 | 简要说明 |
 |------|----------|
 | 非量化 | 左矩阵和右矩阵均为浮点类型直接计算 |
-| 全量化 | 左矩阵和右矩阵均为低精度计算，通过scale还原，详见[《量化介绍》](../../../docs/zh/context/量化介绍.md) |
+| 全量化 | 左矩阵和右矩阵均为低精度计算，通过scale还原，详见[《量化介绍》](../../../docs/zh/context/quant_mode_introduction.md) |
 | 伪量化 | 对右矩阵权重进行量化，包括perchannel量化模式 |
 | pertensor | 简称T量化，每个Tensor共用一个相同的量化参数 |
 | perchannel | 简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数 |
@@ -43,7 +43,7 @@ abbr {
 | G-B | 左矩阵pergroup，右矩阵perblock |
 | MX | pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32的特例 |
 | ND | 常规连续排布 |
-| NZ | [FRACTAL_NZ](../../../docs/zh/context/数据格式.md)格式（亲和排布） |
+| NZ | [FRACTAL_NZ](../../../docs/zh/context/data_format.md)格式（亲和排布） |
 
 ---
 
@@ -314,12 +314,12 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 | groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
 |:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
-| -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | 非量化 x/out 2维，伪量化 x 2~6维；weight 2维；仅非量化/伪量化；仅 ND进ND出 |
-| 0 | 单 | 单 | 单 | 2/3 | 必须传 | x不转置；weight可转置 | weight 3维 `(g,N,K)` 或 `(g,K,N)`；x/out 2维；bias 2维 `(g,N)`；最多 1024 组；仅 ND进ND出 |
-| 0 | 单 | 多 | 单 | 2/3 | 必须传（长度 ≤1024） | x不转置；weight可转置（统一） | x/weight/y 2维；weight N轴相等；仅 ND进ND出；仅非量化 |
-| 0 | 多 | 多 | 单 | 2 | 可选 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N轴相等；仅 ND进ND出；仅非量化 |
-| 2 | 单 | 单 | 单 | 2/3 | 必须传 | x必须转置；weight不转置 | x/weight 2维 `(K,M)`/`(K,N)`；y 3维 `(g,M,N)`；bias传空；仅 ND进ND出；仅非量化/量化 |
-| 2 | 单 | 多 | 多 | 0/1 | 可选 | x必须转置；weight不转置 | x/weight/y 2维 `(M,N)`；weight最大 128 组；不支持 bias；仅 ND进ND出；仅非量化 |
+| -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | 1）非量化x，out中tensor需为2维，shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>2）仅支持非量化和伪量化<br>3）仅支持ND进ND出 |
+| 0 | 单 | 单 | 单 | 2/3 | 必须传 | x不转置；weight可转置 | 1）weight中tensor需为3维，shape为（$g$, $N$, $K$）或（$g$, $K$, $N$）；x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；bias中tensor需为2维，shape为（$g$, $N$）<br>2）仅支持ND进ND出 |
+| 0 | 单 | 多 | 单 | 2/3 | 必须传（长度 ≤1024） | x不转置；weight可转置（统一） | 1）x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；weight中tensor需为2维，shape为（$N$, $K$）或（$K$, $N$）；bias中tensor需为1维，shape为（$N$）<br>2）weight中每个tensor的N轴必须相等<br>3）仅支持非量化<br>4）仅支持ND进ND出 |
+| 0 | 多 | 多 | 单 | 2 | 可选 | x不转置；weight可转置（统一） | 1）x，out中tensor需为2维，shape分别为（$M$, $K$）和（$M$, $N$）；weight中tensor需为2维，shape为（$N$, $K$）或（$K$, $N$）；bias中tensor需为1维，shape为（$N$）<br>2）weight中每个tensor的N轴必须相等<br>3）仅支持非量化<br>4）仅支持ND进ND出 |
+| 2 | 单 | 单 | 单 | 2/3 | 必须传 | x必须转置；weight不转置 | 1）x，weight中tensor需为2维，shape分别为（$K$, $M$）和（$K$, $N$）；out中tensor需为3维，shape为（$g$, $M$, $N$）<br>2）仅支持非量化和量化<br>3）不支持bias<br>4）仅支持ND进ND出 |
+| 2 | 单 | 多 | 多 | 0/1 | 可选 | x必须转置；weight不转置 | 1）x，weight中tensor需为2维，shape分别为（$K$, $M$）和（$K$, $N$）；y中tensor需为2维，shape为（$M$, $N$）<br>2）仅支持ND进ND出<br>3）不支持bias<br>4）仅支持非量化 |
 
 #### 场景速查表
 
@@ -462,7 +462,7 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 | groupType | shape |
 |:---:|:---|
-| 0 | `(g, ceil(N/gsN), ceil(K/gsK))`（转置）/ `(g, ceil(K/gsK), ceil(N/gsN))`（非转置），gsN=gsK=128 |
+| 0 | `(g, ceil(N/gsN), ceil(K/gsK))`（weight 转置）/ `(g, ceil(K/gsK), ceil(N/gsN))`（weight 不转置）|
 | 2 | `(K/gsK + g, ceil(N/gsN))`，scale_i地址偏移为 `((K_0 + K_1 + ... + K_{i-1}) / gsK + g_i) * ceil(N / gsN)`（$g_i$ 为第 i 个分组，下标从 0 开始），即scale_0偏移为0，scale_1偏移为 `(K_0 / gsK + 1) * ceil(N / gsN)`，scale_2偏移为 `((K_0 + K_1) / gsK + 2) * ceil(N / gsN)`，依此类推 |
 
 - **perTokenScaleOptional shape**：
@@ -547,12 +547,12 @@ aclnnGroupedMatmulV5默认确定性实现。
 
 | groupType | x | weight | y | splitItem | groupListOptional | 转置 | 其余场景限制 |
 |:---:|:---:|:---:|:---:|:---:|:---|:---|:---|
-| -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | x 2-6维（维度一致），weight 2维，y 同 x |
-| 0 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 1024 组 | x不转置；weight可转置（A8W4/A4W4 不可） | weight 3维，x/y 2维 |
-| 0 | 单 | 多 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 128 组 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N 轴相等 |
-| 0 | 多 | 多 | 单 | 2/3 | 可选；若传则 groupListType=0 差值 = x 第一维、groupListType=1 数值 = x 第一维、groupListType=2 第二列 = x 第一维；最大 128 组 | x不转置；weight可转置（统一） | x/weight/y 2维；weight N 轴相等 |
-| 2 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第二维；groupListType=1 总和 ≤ x 第二维；groupListType=2 第二列总和 ≤ x 第二维；最大 1024 组 | x必须转置；weight不转置 | x/weight 2维，y 3维；bias传空 |
-| 2 | 单 | 多 | 多 | 0/1 | 必须传空 | x必须转置；weight不转置 | x/weight/y 2维；weight最大 128 组；原始 shape 各 weight 第一维之和 ≤ x 第一维；bias传空 |
+| -1 | 多 | 多 | 多 | 0/1 | 必须传空 | x不转置；weight可转置（统一） | x中tensor要求维度一致，支持2维，weight中tensor需为2维，y中tensor维度和x保持一致 |
+| 0 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 1024 组 | x不转置；weight可转置（A8W4/A4W4 不可） | weight中tensor需为3维，x，y中tensor需为2维 |
+| 0 | 单 | 多 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第一维；groupListType=1 总和 ≤ x 第一维；groupListType=2 第二列总和 ≤ x 第一维；最大 128 组 | x不转置；weight可转置（统一） | 1）x，weight，y中tensor需为2维；<br>2）weight中每个tensor的N轴必须相等 |
+| 0 | 多 | 多 | 单 | 2/3 | 可选；若传则 groupListType=0 差值 = x 第一维、groupListType=1 数值 = x 第一维、groupListType=2 第二列 = x 第一维；最大 128 组 | x不转置；weight可转置（统一） | 1）x，weight，y中tensor需为2维；<br>2）weight中每个tensor的N轴必须相等 |
+| 2 | 单 | 单 | 单 | 2/3 | 必须传；groupListType=0 末值 ≤ x 第二维；groupListType=1 总和 ≤ x 第二维；groupListType=2 第二列总和 ≤ x 第二维；最大 1024 组 | x必须转置；weight不转置 | 1）x，weight中tensor需为2维，y中tensor需为3维；<br>2）bias必须传空 |
+| 2 | 单 | 多 | 多 | 0/1 | 必须传空 | x必须转置；weight不转置 | 1）x，weight，y中tensor需为2维；<br>2）weight长度最大支持128，即最多支持128个group；<br>3）原始shape中weight每个tensor的第一维之和不应超过x第一维；<br>4）bias必须传空 |
 
 #### 场景速查表
 

@@ -49,7 +49,7 @@ graph LR
 | 术语 | 简要说明 |
 |------|----------|
 | 非量化 | 左矩阵和右矩阵均为浮点类型直接计算 |
-| 全量化 | 左矩阵和右矩阵均为低精度计算，通过scale还原，详见[《量化介绍》](../../docs/zh/context/量化介绍.md) |
+| 全量化 | 左矩阵和右矩阵均为低精度计算，通过scale还原，详见[《量化介绍》](../../docs/zh/context/quant_mode_introduction.md) |
 | 伪量化 | 对右矩阵权重进行量化，包括perchannel量化模式 |
 | pertensor | 简称T量化，每个Tensor共用一个相同的量化参数 |
 | perchannel | 简称C量化，量化对象是右矩阵，每个channel分别使用独立的量化参数 |
@@ -63,7 +63,7 @@ graph LR
 | G-B | 左矩阵pergroup，右矩阵perblock |
 | MX | pergroup-pergroup（G-G）量化模式，量化参数类型为FLOAT8_E8M0，group size为32 的特例 |
 | ND | 常规连续排布 |
-| NZ | [FRACTAL_NZ](../../docs/zh/context/数据格式.md)格式（亲和排布） |
+| NZ | [FRACTAL_NZ](../../docs/zh/context/data_format.md)格式（亲和排布） |
 
 ## 功能说明
 
@@ -126,8 +126,8 @@ $$
 
 ### 公共约束
 
-- x/weight转置时对应 Tensor必须 [非连续](../../docs/zh/context/非连续的Tensor.md)。
-- weight为 [FRACTAL_NZ](../../docs/zh/context/数据格式.md) 格式时，shape 须满足 NZ格式要求。
+- x/weight转置时对应 Tensor必须 [非连续](../../docs/zh/context/non_contiguous_tensor.md)。
+- weight为 [FRACTAL_NZ](../../docs/zh/context/data_format.md) 格式时，shape 须满足 NZ格式要求。
 - perTokenScaleOptional：通常仅1维，长度与 x的M一致。仅支持 x/weight/out均为单Tensor场景。
 - groupListOptional：out中 TensorList长度为1时，groupList约束输出数据有效范围，未指定部分不参与更新。
 - groupListType：
