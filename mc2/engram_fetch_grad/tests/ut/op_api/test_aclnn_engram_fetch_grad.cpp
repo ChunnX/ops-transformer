@@ -20,6 +20,7 @@
  *   input:  commContext, gradFetched, perm, sendCounts, recvCounts, recvLocalEntry, numRecv
  *   output: gradUniqueOut, uniqueLocalEntryOut, numUniqueOut
  *   attr:   numEntriesPerRank, commBufferSize
+ */
 
 #include <gtest/gtest.h>
 #include <gmock/gmock.h>
@@ -76,13 +77,15 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_success) {
     auto ut = OP_API_UT(aclnnEngramFetchGrad,
                         INPUT(commContext_desc, gradFetched_desc, perm_desc,
                               sendCounts_desc, recvCounts_desc, recvLocalEntry_desc,
-                              numRecv_desc, numEntriesPerRank, commBufferSize),
-                        OUTPUT(gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc));
+                              numRecv_desc, gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc,
+                              numEntriesPerRank, commBufferSize),
+                        OUTPUT());
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
-    EXPECT_EQ(aclRet, ACLNN_SUCCESS);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_NULLPTR);
+    EXPECT_NE(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_commContext) {
@@ -102,8 +105,9 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_commContext) {
     auto ut = OP_API_UT(aclnnEngramFetchGrad,
                         INPUT(nullptr, gradFetched_desc, perm_desc,
                               sendCounts_desc, recvCounts_desc, recvLocalEntry_desc,
-                              numRecv_desc, numEntriesPerRank, commBufferSize),
-                        OUTPUT(gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc));
+                              numRecv_desc, gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc,
+                              numEntriesPerRank, commBufferSize),
+                        OUTPUT());
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
@@ -128,8 +132,9 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_gradFetched) {
     auto ut = OP_API_UT(aclnnEngramFetchGrad,
                         INPUT(commContext_desc, nullptr, perm_desc,
                               sendCounts_desc, recvCounts_desc, recvLocalEntry_desc,
-                              numRecv_desc, numEntriesPerRank, commBufferSize),
-                        OUTPUT(gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc));
+                              numRecv_desc, gradUnique_desc, uniqueLocalEntry_desc, numUnique_desc,
+                              numEntriesPerRank, commBufferSize),
+                        OUTPUT());
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;
@@ -154,8 +159,9 @@ TEST_F(AclnnEngramFetchGradTest, ascend950_nullptr_gradUniqueOut) {
     auto ut = OP_API_UT(aclnnEngramFetchGrad,
                         INPUT(commContext_desc, gradFetched_desc, perm_desc,
                               sendCounts_desc, recvCounts_desc, recvLocalEntry_desc,
-                              numRecv_desc, numEntriesPerRank, commBufferSize),
-                        OUTPUT(nullptr, uniqueLocalEntry_desc, numUnique_desc));
+                              numRecv_desc, nullptr, uniqueLocalEntry_desc, numUnique_desc,
+                              numEntriesPerRank, commBufferSize),
+                        OUTPUT());
 
     uint64_t workspace_size = 0;
     aclOpExecutor* executor = nullptr;

@@ -26,8 +26,8 @@
 #include "mc2_log.h"
 #include "graph/utils/type_utils.h"
 #include "register/op_def_registry.h"
-#include "../../op_kernel/engram_fetch_grad_tiling_data.h"
-#include "../../op_kernel/engram_fetch_grad_tiling_key.h"
+#include "../../../op_kernel/engram_fetch_grad_tiling_data.h"
+#include "../../../op_kernel/engram_fetch_grad_tiling_key.h"
 
 using namespace AscendC;
 using namespace ge;
@@ -384,7 +384,8 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
         return ge::GRAPH_FAILED);
 
     auto recvLocalEntryDesc = context->GetInputDesc(IN_RECV_LOCAL_ENTRY);
-    ge::Format recvLocalEntryFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(recvLocalEntryDesc->GetStorageFormat()));
+    ge::Format recvLocalEntryFormat =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(recvLocalEntryDesc->GetStorageFormat()));
     OP_TILING_CHECK(recvLocalEntryFormat != ge::FORMAT_ND,
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "recvLocalEntry",
             Ops::Base::ToString(recvLocalEntryFormat).c_str(), "ND"),
@@ -404,7 +405,8 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
         return ge::GRAPH_FAILED);
 
     auto uniqueLocalEntryDesc = context->GetOutputDesc(OUT_UNIQUE_LOCAL_ENTRY);
-    ge::Format uniqueLocalEntryFormat = static_cast<ge::Format>(ge::GetPrimaryFormat(uniqueLocalEntryDesc->GetStorageFormat()));
+    ge::Format uniqueLocalEntryFormat =
+        static_cast<ge::Format>(ge::GetPrimaryFormat(uniqueLocalEntryDesc->GetStorageFormat()));
     OP_TILING_CHECK(uniqueLocalEntryFormat != ge::FORMAT_ND,
         OP_LOGE_FOR_INVALID_FORMAT(nodeName, "uniqueLocalEntryOut",
             Ops::Base::ToString(uniqueLocalEntryFormat).c_str(), "ND"),
@@ -421,7 +423,7 @@ static ge::graphStatus CheckTensorFormat(const gert::TilingContext *context)
 }
 
 static ge::graphStatus TilingCheckEngramFetchGrad(const gert::TilingContext *context, int64_t &numTokens,
-                                                   uint32_t &rankSize, int64_t &totalRecv, int64_t &hiddenDim)
+                                                  uint32_t &rankSize, int64_t &totalRecv, int64_t &hiddenDim)
 {
     const char *nodeName = context->GetNodeName();
 
