@@ -382,7 +382,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
         uint32_t copyTmpBytes = static_cast<uint32_t>(DISPATCH_BUFFER_NUM) * tokenScaleSize;
         uint32_t relayFlagBytes = m_ * static_cast<uint32_t>(ALIGN_32);
         uint32_t relayReceivedBytes = Ops::Base::CeilAlign(
-            static_cast<uint32_t>(DISPATCH_WAVE_TILE_M) * sizeof(int32_t), static_cast<uint32_t>(ALIGN_32));
+            static_cast<uint32_t>(DISPATCH_WAVE_TILE_M * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
         uint32_t relayAndCopyTmpBytes = (relayFlagBytes > copyTmpBytes ? relayFlagBytes : copyTmpBytes) +
                                         relayReceivedBytes;
         dispatchFixedCost = relayAndCopyTmpBytes + SEND_DEDUP_MASK_UB_BYTES + MX_QUANT_TEMP_UB_BYTES
@@ -454,7 +454,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::DispatchBuffInit
     uint32_t relayReceivedTensorAddr =
         copyTmpBaseAddr + (relayFlagTensorSize > copyTmpTotalSize ? relayFlagTensorSize : copyTmpTotalSize);
     uint32_t relayReceivedTensorSize = Ops::Base::CeilAlign(
-        static_cast<uint32_t>(DISPATCH_WAVE_TILE_M) * sizeof(int32_t), static_cast<uint32_t>(ALIGN_32));
+        static_cast<uint32_t>(DISPATCH_WAVE_TILE_M * sizeof(int32_t)), static_cast<uint32_t>(ALIGN_32));
     relayReceivedTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, relayReceivedTensorAddr,
                                                 relayReceivedTensorSize / sizeof(int32_t));
     // Tensor用处：Level1DispatchUrma 中按 (targetServer, localTokenIdx) 去重。
