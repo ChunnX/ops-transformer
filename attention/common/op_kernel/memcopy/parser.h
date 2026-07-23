@@ -149,8 +149,6 @@ public:
         return actualLenDims;
     }
 
-<<<<<<< HEAD
-=======
     __aicore__ inline uint64_t GetMxVscaleTBase(uint32_t bIdx) const
     {
         if (bIdx == 0) {
@@ -162,7 +160,7 @@ public:
         }
         return vScaleTBaseOffset;
     }
->>>>>>> 330e8dff0... 修改kv parser
+
 private:
     GlobalTensor<ACTLEN_T> seqUsedGm;
     GlobalTensor<ACTLEN_T> cuSeqLensGm;
