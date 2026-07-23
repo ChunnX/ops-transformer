@@ -166,7 +166,7 @@ aclnnStatus aclnnScatterPaKvCache(
   <thead>
     <tr>
       <th class="tg-0pky">参数名</th>
-      <th class="tg-0pky">输入/输出/属性</th>
+      <th class="tg-0pky">输入/输出</th>
       <th class="tg-0pky">描述</th>
       <th class="tg-0pky">使用说明</th>
       <th class="tg-0pky">数据类型</th>
@@ -257,7 +257,7 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr>
     <tr>
       <td class="tg-0pky">cacheModeOptional（char*）</td>
-      <td class="tg-0pky">属性</td>
+      <td class="tg-0pky">输入</td>
       <td class="tg-0pky">表示keyCacheRef和valueCacheRef的内存排布格式。</td>
       <td class="tg-0pky">当传空指针或"Norm"时，仅支持ND内存排布格式。<br>当传"PA_NZ"时，仅支持FRACTAL_NZ内存排布。</td>
       <td class="tg-0pky">-</td>
@@ -267,7 +267,7 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr>
     <tr>
       <td class="tg-0lax">scatterModeOptional（char*）</td>
-      <td class="tg-0lax">属性</td>
+      <td class="tg-0lax">输入</td>
       <td class="tg-0lax">表示更新的key和value的状态。</td>
       <td class="tg-0lax">当传空指针或"None"时，表示更新的key和value是非压缩状态且连续。<br>当传"Alibi"时，表示更新key和value是基于Alibi结构的压缩状态。<br>当传"Rope"时，表示更新key和value是基于Rope结构的压缩状态。<br>当传"Omni"时，表示更新key和value是基于Omni结构的压缩状态。<br>当传"Nct"时，表示更新的key和value是非压缩状态但非连续。<br>当传"NHSD"时，表示keyCacheRef和valueCacheRef的格式为[num_block, num_head, block_size, head_size]。</td>
       <td class="tg-0lax">-</td>
@@ -277,7 +277,7 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr>
     <tr>
       <td class="tg-0lax">stridesOptional（aclIntArray*）</td>
-      <td class="tg-0lax">属性</td>
+      <td class="tg-0lax">输入</td>
       <td class="tg-0lax">key和value在非连续状态下的步长。</td>
       <td class="tg-0lax">数组长度为2。其值应该大于0。仅当scatterModeOptional为"Nct"时生效，分别表示strideK和strideV。</td>
       <td class="tg-0lax">-</td>
@@ -287,7 +287,7 @@ aclnnStatus aclnnScatterPaKvCache(
     </tr>
     <tr>
       <td class="tg-0lax">offsetsOptional（aclIntArray*）</td>
-      <td class="tg-0lax">属性</td>
+      <td class="tg-0lax">输入</td>
       <td class="tg-0lax">key和value在非连续状态下的偏移。</td>
       <td class="tg-0lax">数组长度为2。其值应该大于等于0。仅当scatterModeOptional为"Nct"时生效，分别表示offsetK和offsetV。</td>
       <td class="tg-0lax">-</td>

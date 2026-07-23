@@ -193,28 +193,28 @@
     </tr>
     <tr>
       <td>cacheMode</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>表示keyCacheRef和valueCacheRef的内存排布格式。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>scatterMode</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>表示更新的key和value的状态。</td>
       <td>STRING</td>
       <td>-</td>
     </tr>
     <tr>
       <td>strides</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>key和value在非连续状态下的步长，数组长度为2。其值应该大于0。</td>
       <td>INT64</td>
       <td>-</td>
     </tr>
     <tr>
       <td>offsets</td>
-      <td>属性</td>
+      <td>输入</td>
       <td>key和value在非连续状态下的偏移，数组长度为2。其值应该大于等于0。</td>
       <td>INT64</td>
       <td>-</td>
@@ -224,11 +224,6 @@
 - 各产品对key/value/keyCacheRef/valueCacheRef数据类型的支持范围：
   - <term>Ascend 950PR/Ascend 950DT</term>：支持参数表中列出的全部数据类型；其中FLOAT4_E1M2、FLOAT4_E2M1仅场景一、场景二且scatterMode为"None"时支持。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：仅支持FLOAT16、BFLOAT16、INT8。
-
-## 精度说明
-
-- 当scatterMode为"None"/"Nct"/"NHSD"或cacheMode为"PA_NZ"时，本算子为数据搬运类算子，输出精度与输入数据类型一致。
-- 当scatterMode为"Alibi"/"Rope"/"Omni"时，压缩场景对指定区间token做均值归约，中间计算使用FLOAT32累加，写回结果的精度与输入数据类型一致。
 
 ## 约束说明
 
