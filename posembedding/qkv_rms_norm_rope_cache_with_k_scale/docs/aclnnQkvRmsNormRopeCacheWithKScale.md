@@ -41,24 +41,37 @@
   y_{rope} = concat(y_{low} * cos - y_{high} * sin,\ y_{high} * cos + y_{low} * sin)
   $$
 
-  M-RoPE场景公式如下。令
-  \(C=\mathrm{cosSin}\)、\(P=\mathrm{mropePosition}\)、\(D_{\mathrm{half}}=D/2\)，并定义
+  M-RoPE场景公式如下。定义
+
+  $$
+  \begin{aligned}
+  C &= \mathrm{cosSin},\\
+  P &= \mathrm{mropePosition},\\
+  D_{\mathrm{half}} &= \frac{D}{2}.
+  \end{aligned}
+  $$
+
+  轴到位置列的映射为
 
   $$
   \iota(\mathrm T)=0,\qquad \iota(\mathrm H)=1,\qquad \iota(\mathrm W)=2.
   $$
 
-  对token \(u\)、轴 \(a\in\{\mathrm T,\mathrm H,\mathrm W\}\) 和列 \(d\)，定义三路原始位置编码。
-  `mropePosition` 的逻辑shape为 \([T,3]\)，每一行对应一个token，三列依次对应T、H、W轴。
+  对token $u$、轴 $a\in\{\mathrm T,\mathrm H,\mathrm W\}$ 和列 $d$，定义三路原始位置编码。
+  `mropePosition` 的逻辑shape为 $[T,3]$，每一行对应一个token，三列依次对应T、H、W轴。
 
   $$
   R_{a,u,d}=C_{P_{u,\iota(a)},d},\qquad 0\leq u<T,\quad 0\leq d<D.
   $$
 
   将 `mropeSection=[t,h,w]` 记为
-  \(\boldsymbol{s}=(s_{\mathrm T},s_{\mathrm H},s_{\mathrm W})=(t,h,w)\)。
-  其中 \(s_{\mathrm T}\) 只参与取值域校验，不参与 lane 选源。对
-  \(0\leq\ell<D_{\mathrm{half}}\)，定义
+
+  $$
+  \boldsymbol{s}=(s_{\mathrm T},s_{\mathrm H},s_{\mathrm W})=(t,h,w).
+  $$
+
+  其中 $s_{\mathrm T}$ 只参与取值域校验，不参与 lane 选源。对
+  $0\leq\ell<D_{\mathrm{half}}$，定义
 
   $$
   r(\ell)=\left\lfloor\frac{\ell}{3}\right\rfloor,\qquad
@@ -81,8 +94,8 @@
   \widehat s_{u,\ell}=R_{\sigma(\ell),u,D_{\mathrm{half}}+\ell}.
   $$
 
-  将 \(\widehat c\)、\(\widehat s\) 代入 Q/K 的 RoPE 旋转公式，输出维度保持为
-  \(D\)，不拼接为 \(3D\)。
+  将 $\widehat c$、$\widehat s$ 代入 Q/K 的 RoPE 旋转公式，输出维度保持为
+  $D$，不拼接为 $3D$。
 
   Q/K共享`rotationOptional`矩阵：
 
@@ -102,7 +115,7 @@
   qOut=\operatorname{RNE}_{\mathrm{BF16}}\!\left(q_{rot}\right),\qquad qScaleOptional=\varnothing.
   $$
 
-  M-RoPE场景的K输出按每个token和head量化为INT8。对token \(u\)、head \(n\) 和通道 \(d\)，
+  M-RoPE场景的K输出按每个token和head量化为INT8。对token $u$、head $n$ 和通道 $d$，
 
   $$
   k_{scale}(u,n)=\frac{\displaystyle\max_{0\leq d<D}|k_{rot}(u,n,d)|}{127},
