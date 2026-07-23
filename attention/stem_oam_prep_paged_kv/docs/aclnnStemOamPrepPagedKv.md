@@ -119,7 +119,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
       <td class="tg-0pky">INT32</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">2</td>
-      <td class="tg-0pky">√</td>
+      <td class="tg-0pky">x</td>
     </tr>
     <tr>
       <td class="tg-0pky">kvSeqLens（aclTensor*）</td>
@@ -129,13 +129,13 @@ aclnnStatus aclnnStemOamPrepPagedKv(
       <td class="tg-0pky">INT32</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">1</td>
-      <td class="tg-0pky">√</td>
+      <td class="tg-0pky">x</td>
     </tr>
     <tr>
       <td class="tg-0pky">kScaleCache（aclTensor*）</td>
       <td class="tg-0pky">输入</td>
       <td class="tg-0pky">Per-token per-head K scale。</td>
-      <td class="tg-0pky">FP8输入时必填。<br>随cacheLayout变化：<br>cacheLayout=0: [total_blocks, kvBlockSize, H_kv, 1]<br>cacheLayout=1: [total_blocks, H_kv, kvBlockSize, 1]。<br>支持非连续（stride>shape）</td>
+      <td class="tg-0pky">FP8输入时必填。<br>随cacheLayout变化：<br>cacheLayout=0: [total_blocks, kvBlockSize, H_kv, 1]<br>cacheLayout=1: [total_blocks, H_kv, kvBlockSize, 1]。<br>支持非连续（stride>shape），最后一维连续。</td>
       <td class="tg-0pky">FLOAT</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">4</td>
@@ -149,7 +149,7 @@ aclnnStatus aclnnStemOamPrepPagedKv(
       <td class="tg-0pky">FLOAT</td>
       <td class="tg-0pky">ND</td>
       <td class="tg-0pky">1</td>
-      <td class="tg-0pky">√</td>
+      <td class="tg-0pky">x</td>
     </tr>
     <tr>
       <td class="tg-0pky">lambdaMag（double）</td>
