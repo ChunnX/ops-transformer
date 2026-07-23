@@ -584,6 +584,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         ResetGmm2CombineSyncCounters();
     }
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        __gm__ int32_t *combineNotifyPtr =
+            reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.combineCommNotifyPtr);
+        for (uint32_t rankIdx = aivCoreIdx_; rankIdx < worldSize_; rankIdx += blockAivNum_) {
+            WriteGmByPassDCache(combineNotifyPtr + rankIdx, int32_t(0));
+        }
+    }
 }
 
 // ==================================================
