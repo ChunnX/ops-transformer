@@ -63,6 +63,9 @@ public:
     static constexpr int64_t FP8_QUANT_KV_BLOCK_SIZE = 256;
     static constexpr int64_t FP8_QUANT_K_BLOCK_SIZE = 256;
     static constexpr int64_t FP8_QUANT_V_BLOCK_SIZE = 512;
+    static constexpr uint32_t K_SCALE_BANK_COPY_NUM = 4;
+    static constexpr uint32_t K_SCALE_BANK_PADDING = 8;
+    static constexpr uint32_t K_SCALE_BANK_STRIDE = s2BaseSize + K_SCALE_BANK_PADDING;
     static constexpr uint32_t bufferSizeByte32K = 32768;
     static constexpr uint32_t gSplitMax = 16;
     static constexpr uint32_t preloadTimes = 3;
@@ -340,8 +343,8 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
 
     LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
     LocalTensor<float> kScaleUbTensor = kScaleInputQue.template AllocTensor<float>();
-    if (runInfo.s2SparseBlk1RealSize < constInfo.kvSparseBlockSize) {
-        Duplicate<float>(kScaleUbTensor, 1, constInfo.kvSparseBlockSize);
+    if (runInfo.s2RealSize < static_cast<int32_t>(s2BaseSize)) {
+        Duplicate<float>(kScaleUbTensor, 1, K_SCALE_BANK_STRIDE * K_SCALE_BANK_COPY_NUM);
         TEventID vDoneEvent = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
         SetFlag<HardEvent::V_MTE2>(vDoneEvent);  // Vector 完成
         WaitFlag<HardEvent::V_MTE2>(vDoneEvent); // MTE2 等待
@@ -668,7 +671,7 @@ __aicore__ inline void BSABlockVec<TEMPLATE_ARGS>::SoftmaxInitBuffer()
     tPipe->InitBuffer(preLoopSumBuf, 256);
     tPipe->InitBuffer(firstLoopSumBuf, 256);
     tPipe->InitBuffer(qScaleInputQue, 1, 256 * 8);
-    tPipe->InitBuffer(kScaleInputQue, 1, 1024);
+    tPipe->InitBuffer(kScaleInputQue, 1, K_SCALE_BANK_STRIDE * K_SCALE_BANK_COPY_NUM * sizeof(float));
 }
 
 TEMPLATES_DEF_NO_DEFAULT
