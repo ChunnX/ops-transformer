@@ -21,7 +21,7 @@
 
 namespace SIKernel {
 template<typename SCORE_T>
-class SITopk {
+class StemIndexerTopk {
 public:
 
     static constexpr uint32_t MAX_LOOP_M = 4;
