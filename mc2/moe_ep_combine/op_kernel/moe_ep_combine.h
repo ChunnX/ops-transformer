@@ -106,6 +106,14 @@ private:
     {
         return (GM_ADDR)localUrmaWorkspace_ + localWsSizeStatusPerRank_ * rankId;
     }
+    __aicore__ inline uint32_t ReduceSumWorkNeedSize(int32_t count, int32_t typeSize)
+    {
+        int32_t elementsPerBlock = UB_ALIGN / typeSize;
+        int32_t elementsPerRepeat = ALIGNED_LEN_256 / typeSize;
+        int32_t iter1OutputCount = (count + elementsPerRepeat - 1) / elementsPerRepeat;
+        uint32_t iter1AlignEnd = ((iter1OutputCount + elementsPerBlock - 1) / elementsPerBlock) * elementsPerBlock;
+        return iter1AlignEnd;
+    }
 
     TPipe *tpipe_{nullptr};
     const MoeEpCombineInfo *tilingData_{nullptr};
@@ -244,13 +252,22 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     combinedXGm_.SetGlobalBuffer((__gm__ XType *)combinedX);
 
     // 计算actualA_的大小
-    for (int i = 0; i < localmoeNum_; i++) {
-        if (i % (DCCI_OFFSET / sizeof(int64_t)) == 0) {
-            DataCacheCleanAndInvalid<int64_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-                numRecvPerExpertGm_[i]);
-        }
-        actualA_ += numRecvPerExpertGm_.GetValue(i);
-    }
+    uint32_t numRecvBytes = Ceil(localmoeNum_ * sizeof(int64_t), UB_ALIGN) * UB_ALIGN;
+    uint32_t reduceTmpBytes = ReduceSumWorkNeedSize(localmoeNum_, sizeof(int64_t)) * sizeof(int64_t);
+    TBuf<TPosition::VECCALC> numRecvBuf;
+    tpipe_->InitBuffer(numRecvBuf, numRecvBytes + reduceTmpBytes + UB_ALIGN); // 数据 + ReduceSum tmp + 输出
+    LocalTensor<int64_t> numRecvLocal = numRecvBuf.Get<int64_t>();
+
+    DataCopyExtParams numRecvCopyParams{1U, static_cast<uint32_t>(localmoeNum_ * sizeof(int64_t)), 0U, 0U, 0U};
+    DataCopyPadExtParams<int64_t> numRecvPadParams{false, 0U, 0U, 0U};
+    DataCopyPad(numRecvLocal, numRecvPerExpertGm_, numRecvCopyParams, numRecvPadParams);
+    SyncFunc<AscendC::HardEvent::MTE2_V>();
+
+    LocalTensor<int64_t> reduceTmp = numRecvLocal[numRecvBytes / sizeof(int64_t)];
+    LocalTensor<int64_t> sumOut = reduceTmp[reduceTmpBytes / sizeof(int64_t)];
+    ReduceSum<int64_t>(sumOut, numRecvLocal, reduceTmp, static_cast<int32_t>(localmoeNum_));
+    SyncFunc<AscendC::HardEvent::V_S>();
+    actualA_ = static_cast<uint64_t>(sumOut.GetValue(0));
     ubXBytes_ = Ceil(axisH_ * sizeof(XType), UB_ALIGN) * UB_ALIGN;
     XTypeAlign32Size_ = hAlignSize_;
     if constexpr (HasTopkWeight == 1) {
@@ -290,7 +307,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendToken(GM_
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     DataCopyParams hCommuCopyOutParams = {1U, static_cast<uint16_t>(hAlignSize_), 0U, 0U};
-    
+
     // 从GM读取token到UB
     xTmpTensor_ = xQueue_.AllocTensor<XType>();
     DataCopyPad(xTmpTensor_, xGm_[tokenIndex * axisH_], xCopyParams, padParams);
@@ -307,7 +324,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendToken(GM_
     // 写入目标rank的窗口
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
-    PipeBarrier<PIPE_MTE3>(); // 是否需要这个流水
 }
 
 template <TemplateMoeEpCombineTypeClass>
@@ -353,24 +369,22 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                 GM_ADDR localRankWorkSpaceAddr = GetLocalWorkspaceDataAddr(src_rank, workspaceStateSize_) + slotOffset;
                 SendToken(localRankWorkSpaceAddr, tokenIndex);
                 GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
-                                (src_token_idx * topK_ + src_topK_idx) * WIN_ADDR_ALIGN;
+                                              (src_token_idx * topK_ + src_topK_idx) * WIN_ADDR_ALIGN;
                 hcomm_.WriteWithNotifyNbi(GetCommHandle(src_rank), remoteRankWinAddr, localRankWorkSpaceAddr,
-                    XTypeAlign32Size_, remoteRankStateAddr, 1);
+                                          XTypeAlign32Size_, remoteRankStateAddr, 1);
                 hcomm_.Drain(GetCommHandle(src_rank));
             } else {
                 GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) + slotOffset;
                 SendToken(remoteRankWinAddr, tokenIndex);
                 GM_ADDR localStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
-                                (src_token_idx * topK_ + src_topK_idx) * WIN_ADDR_ALIGN;
+                                         (src_token_idx * topK_ + src_topK_idx) * WIN_ADDR_ALIGN;
                 GlobalTensor<uint32_t> state;
-                state.SetGlobalBuffer((__gm__ uint32_t*) localStateAddr);
+                state.SetGlobalBuffer((__gm__ uint32_t *)localStateAddr);
                 DataCopy(state, statusTensor_, 8UL);
             }
-            PipeBarrier<PIPE_MTE3>();
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>(); // 确保本轮 Scalar GetValue 读完，下一块 DataCopyPad 才可覆盖 metadataLocal
     }
-    DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
 }
 
 template <TemplateMoeEpCombineTypeClass>
