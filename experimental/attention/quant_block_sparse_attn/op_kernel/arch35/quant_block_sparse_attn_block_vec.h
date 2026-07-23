@@ -348,7 +348,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec1Dn(Buffer<BufferType::L1, SyncType::CROSS
 
     LocalTensor<float> qScaleUbTensor = qScaleInputQue.template AllocTensor<float>();
     LocalTensor<float> kScaleUbTensor = kScaleInputQue.template AllocTensor<float>();
-    if (runInfo.s2SparseBlk1RealSize < constInfo.kvSparseBlockSize) {
+    if (unlikely(runInfo.s2SparseBlk1RealSize < constInfo.kvSparseBlockSize)) {
         Duplicate<float>(kScaleUbTensor, 1, constInfo.kvSparseBlockSize);
         TEventID vDoneEvent = GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>();
         SetFlag<HardEvent::V_MTE2>(vDoneEvent);  // Vector 完成

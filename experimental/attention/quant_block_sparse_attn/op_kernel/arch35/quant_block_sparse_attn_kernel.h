@@ -361,10 +361,10 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     runInfo.sparseBlkIdx1 = remainingSparseBlocks > 0 ? sparseIndicesGm.GetValue(sparseLoopCountOffset) : -1;
     runInfo.sparseBlkIdx2 = remainingSparseBlocks > 1 ? sparseIndicesGm.GetValue(sparseLoopCountOffset + 1) : -1;
     if constexpr (isPa) {
-        if (runInfo.sparseBlkIdx1 >= static_cast<int64_t>(constInfo.maxBlockNumPerBatch)) {
+        if (unlikely(runInfo.sparseBlkIdx1 >= static_cast<int64_t>(constInfo.maxBlockNumPerBatch))) {
             runInfo.sparseBlkIdx1 = -1;
         }
-        if (runInfo.sparseBlkIdx2 >= static_cast<int64_t>(constInfo.maxBlockNumPerBatch)) {
+        if (unlikely(runInfo.sparseBlkIdx2 >= static_cast<int64_t>(constInfo.maxBlockNumPerBatch))) {
             runInfo.sparseBlkIdx2 = -1;
         }
     }
@@ -372,7 +372,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
         runInfo.s2SparseBlk1RealSize = 0;
         runInfo.s2SparseBlk1RealAlignedSize = 0;
         runInfo.sparseBlk1PartialMask = false;
-    } else if ((runInfo.sparseBlkIdx1 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size) {
+    } else if (unlikely((runInfo.sparseBlkIdx1 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
         runInfo.s2SparseBlk1RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx1 * constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk1RealAlignedSize = Align(runInfo.s2SparseBlk1RealSize);
     } else {
@@ -383,7 +383,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
         runInfo.s2SparseBlk2RealSize = 0;
         runInfo.s2SparseBlk2RealAlignedSize = 0;
         runInfo.sparseBlk2PartialMask = false;
-    } else if ((runInfo.sparseBlkIdx2 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size) {
+    } else if (unlikely((runInfo.sparseBlkIdx2 + 1) * constInfo.kvSparseBlockSize > runParam.actualS2Size)) {
         runInfo.s2SparseBlk2RealSize = runParam.actualS2Size - runInfo.sparseBlkIdx2 * constInfo.kvSparseBlockSize;
         runInfo.s2SparseBlk2RealAlignedSize = Align(runInfo.s2SparseBlk2RealSize);
     } else {
@@ -541,7 +541,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
         if (s1EndIdx != 0U) {
             bn1EndIdx++;
         }
-        if (bn1EndIdx <= bn1StartIdx) {
+        if (unlikely(bn1EndIdx <= bn1StartIdx)) {
             continue;
         }
 
@@ -561,11 +561,11 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
             bool notLastThreeLoop = true;
             bool notLastTwoLoop = true;
             for (int64_t s1Index = runParam.s1LoopStart; s1Index < temps1End; ++s1Index) {
-                if (coreLastBN) {
+                if (unlikely(coreLastBN)) {
                     UpdateLoopFlagsBasedOnS1Index(s1Index - runParam.s1LoopEnd, notLast, notLastTwoLoop,
                                                   notLastThreeLoop);
                 }
-                if (notLastThreeLoop) {
+                if (likely(notLastThreeLoop)) {
                     runParam.s1oIdx = s1Index;
                     ComputeParamS1<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, s1Index,
                                                              this->cuSeqlensQAddr);
@@ -580,7 +580,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
                 }
                 s2LoopLimit = notLastThreeLoop ? runParam.s2LoopEndIdx - 1 : 0;
                 for (int64_t s2LoopCount = 0; s2LoopCount <= s2LoopLimit; ++s2LoopCount) {
-                    if (notLastThreeLoop) {
+                    if (likely(notLastThreeLoop)) {
                         RunInfo &runInfo1 = runInfo[static_cast<uint64_t>(taskId) & 3];
                         this->SetRunInfo(runInfo1, runParam, taskId, s2LoopCount, s2LoopLimit, multiCoreInnerIdx,
                                          sparseBase);
