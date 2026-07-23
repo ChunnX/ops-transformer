@@ -125,7 +125,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateVF(
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
-    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
+    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN >> 2); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp2, src_ub2 + iter_m * m * 4);
@@ -362,7 +362,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateAttenTailVF(
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
-    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
+    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN >> 2); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp2, src_ub2 + iter_m * m * 4);
@@ -528,10 +528,10 @@ __aicore__ inline void ProcessVec1DnNoUpdate(
     blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
-    uint32_t ubN_div_8 = ubN / 8;
-    uint32_t ubN_m_m_div_4 = ubN * m / 4;
-    uint32_t ubN_m_m_div_2 = ubN * m / 2;
-    uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
+    uint32_t ubN_div_8 = ubN >> 3;
+    uint32_t ubN_m_m_div_4 = (ubN * m) >> 2;
+    uint32_t ubN_m_m_div_2 = (ubN * m) >> 1;
+    uint32_t ubN_m_m_mul3_div_4 = ((ubN * m) >> 1) + ((ubN * m) >> 2);
 
     if (needAtten && originN < ubN) {
         ProcessVec1DnNoUpdateAttenTailVF<T, T2, hasAtten, true, ubN>(
@@ -655,7 +655,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateVF(
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
-    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
+    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN >> 2); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp2, src_ub2 + iter_m * m * 4);
@@ -900,7 +900,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateAttenTailVF(
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
     LoadAlign(vreg_qscale_vec, qScaleUb);
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
-    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
+    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN >> 2); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp2, src_ub2 + iter_m * m * 4);
@@ -1072,10 +1072,10 @@ __aicore__ inline void ProcessVec1DnUpdate(
     blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
-    uint32_t ubN_div_8 = ubN / 8;
-    uint32_t ubN_m_m_div_4 = ubN * m / 4;
-    uint32_t ubN_m_m_div_2 = ubN * m / 2;
-    uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
+    uint32_t ubN_div_8 = ubN >> 3;
+    uint32_t ubN_m_m_div_4 = (ubN * m) >> 2;
+    uint32_t ubN_m_m_div_2 = (ubN * m) >> 1;
+    uint32_t ubN_m_m_mul3_div_4 = ((ubN * m) >> 1) + ((ubN * m) >> 2);
 
     if (needAtten && originN < ubN) {
         ProcessVec1DnUpdateAttenTailVF<T, T2, hasAtten, true, ubN>(
@@ -1232,7 +1232,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadVF(
 
     LoadAlign(vreg_qscale_vec, qScaleUb);
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
-    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
+    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN >> 2); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp2, src_ub2 + iter_m * m * 4);
@@ -1458,7 +1458,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF(
 
     LoadAlign(vreg_qscale_vec, qScaleUb);
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
-    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
+    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN >> 2); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp2, src_ub2 + iter_m * m * 4);
@@ -1624,10 +1624,10 @@ __aicore__ inline void ProcessVec1DnNoUpdatePerTokenHead(
     blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
-    uint32_t ubN_div_8 = ubN / 8;
-    uint32_t ubN_m_m_div_4 = ubN * m / 4;
-    uint32_t ubN_m_m_div_2 = ubN * m / 2;
-    uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
+    uint32_t ubN_div_8 = ubN >> 3;
+    uint32_t ubN_m_m_div_4 = (ubN * m) >> 2;
+    uint32_t ubN_m_m_div_2 = (ubN * m) >> 1;
+    uint32_t ubN_m_m_mul3_div_4 = ((ubN * m) >> 1) + ((ubN * m) >> 2);
 
     if (needAtten && originN < ubN) {
         ProcessVec1DnNoUpdatePerTokenHeadAttenTailVF<T, T2, hasAtten, true, ubN>(
@@ -1740,7 +1740,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadVF(
 
     LoadAlign(vreg_qscale_vec, qScaleUb);
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
-    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
+    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN >> 2); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp2, src_ub2 + iter_m * m * 4);
@@ -1974,7 +1974,7 @@ __simd_vf__ inline void ProcessVec1DnUpdatePerTokenHeadAttenTailVF(
 
     LoadAlign(vreg_qscale_vec, qScaleUb);
     Muls(vreg_qscale_vec, vreg_qscale_vec, dScale, preg_135);
-    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN / 4); ++iter_m) {
+    for (uint64_t iter_m = 0; iter_m < uint64_t(ubN >> 2); ++iter_m) {
         LoadAlign(vreg_data_tmp0, src_ub0 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp1, src_ub1 + iter_m * m * 4);
         LoadAlign(vreg_data_tmp2, src_ub2 + iter_m * m * 4);
@@ -2146,10 +2146,10 @@ __aicore__ inline void ProcessVec1DnUpdatePerTokenHead(
     blockStride = ubN >> 2 | 0x1; // ubN / 4 + 1，表示搬运到UB上的时候，每块会间隔32bit，避免bank冲突
     repeatStride = 2;
     indexesUb = (__ubuf__ uint8_t *)vselrIndexesBuf.GetPhyAddr();
-    uint32_t ubN_div_8 = ubN / 8;
-    uint32_t ubN_m_m_div_4 = ubN * m / 4;
-    uint32_t ubN_m_m_div_2 = ubN * m / 2;
-    uint32_t ubN_m_m_mul3_div_4 = ubN * m / 2 + ubN * m / 4;
+    uint32_t ubN_div_8 = ubN >> 3;
+    uint32_t ubN_m_m_div_4 = (ubN * m) >> 2;
+    uint32_t ubN_m_m_div_2 = (ubN * m) >> 1;
+    uint32_t ubN_m_m_mul3_div_4 = ((ubN * m) >> 1) + ((ubN * m) >> 2);
 
     if (needAtten && originN < ubN) {
         ProcessVec1DnUpdatePerTokenHeadAttenTailVF<T, T2, hasAtten, true, ubN>(
@@ -2310,7 +2310,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
-        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN >> 2); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
@@ -2333,7 +2333,7 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
             Max(max3, max3, src3, preg_108);
         }
     } else {
-        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN >> 2); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
@@ -2377,9 +2377,9 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_6, 0, preg_134);
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, T>(vreg_x_sum_7, 0, preg_134);
         LoadAlign(idx_nd2nz, indexesUb);
-        loopNum = ubN / 8; // ubN：s2BaseSize = 256
+        loopNum = ubN >> 3; // ubN：s2BaseSize = 256
     } else {
-        loopNum = ubN / 4;
+        loopNum = ubN >> 2;
     }
 
     if constexpr (hasAtten == true) {
@@ -2389,19 +2389,19 @@ __simd_vf__ inline void ProcessVec1DnNoUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf_
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
             LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m * 2);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m * 2);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
+            LoadAlign(vreg_x_f32_1, input_x_local_UB + ((ubN * m) >> 2) + i0 * m * 2);
+            LoadAlign(vreg_x_f32_2, input_x_local_UB + ((ubN * m) >> 1) + i0 * m * 2);
+            LoadAlign(vreg_x_f32_3, input_x_local_UB + ((ubN * m) >> 1) + ((ubN * m) >> 2) + i0 * m * 2);
 
             LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
+            LoadAlign(vreg_x_f32_5, input_x_local_UB + ((ubN * m) >> 2) + i0 * m * 2 + 64);
+            LoadAlign(vreg_x_f32_6, input_x_local_UB + ((ubN * m) >> 1) + i0 * m * 2 + 64);
+            LoadAlign(vreg_x_f32_7, input_x_local_UB + ((ubN * m) >> 1) + ((ubN * m) >> 2) + i0 * m * 2 + 64);
         } else {
             LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m);
+            LoadAlign(vreg_x_f32_1, input_x_local_UB + ((ubN * m) >> 2) + i0 * m);
+            LoadAlign(vreg_x_f32_2, input_x_local_UB + ((ubN * m) >> 1) + i0 * m);
+            LoadAlign(vreg_x_f32_3, input_x_local_UB + ((ubN * m) >> 1) + ((ubN * m) >> 2) + i0 * m);
         }
 
         Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
@@ -2731,7 +2731,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
 
     if constexpr ((IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
                     IsSameType<T2, hifloat8_t>::value) && hasAtten) {
-        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN >> 2); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
@@ -2754,7 +2754,7 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
             Max(max3, max3, src3, preg_108);
         }
     } else {
-        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN / 4); ++iter_m) {
+        for (uint16_t iter_m = 0; iter_m < uint16_t(ubN >> 2); ++iter_m) {
             LoadAlign(src0, src_ub0 + iter_m * m * 4);
             LoadAlign(src1, src_ub1 + iter_m * m * 4);
             LoadAlign(src2, src_ub2 + iter_m * m * 4);
@@ -2808,9 +2808,9 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_6, 0, preg_134);
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_x_sum_7, 0, preg_134);
         LoadAlign(idx_nd2nz, indexesUb);
-        loopNum = ubN / 8;
+        loopNum = ubN >> 3;
     } else {
-        loopNum = ubN / 4;
+        loopNum = ubN >> 2;
     }
 
     if constexpr (hasAtten == true) {
@@ -2820,19 +2820,19 @@ __simd_vf__ inline void ProcessVec1DnUpdateMxfp8VF(__ubuf__ T2 *x_exp, __ubuf__ 
         if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
             IsSameType<T2, hifloat8_t>::value) {
             LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m * 2);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m * 2);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m * 2);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2);
+            LoadAlign(vreg_x_f32_1, input_x_local_UB + ((ubN * m) >> 2) + i0 * m * 2);
+            LoadAlign(vreg_x_f32_2, input_x_local_UB + ((ubN * m) >> 1) + i0 * m * 2);
+            LoadAlign(vreg_x_f32_3, input_x_local_UB + ((ubN * m) >> 1) + ((ubN * m) >> 2) + i0 * m * 2);
 
             LoadAlign(vreg_x_f32_4, input_x_local_UB + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_5, input_x_local_UB + ubN * m / 4 + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_6, input_x_local_UB + ubN * m / 2 + i0 * m * 2 + 64);
-            LoadAlign(vreg_x_f32_7, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m * 2 + 64);
+            LoadAlign(vreg_x_f32_5, input_x_local_UB + ((ubN * m) >> 2) + i0 * m * 2 + 64);
+            LoadAlign(vreg_x_f32_6, input_x_local_UB + ((ubN * m) >> 1) + i0 * m * 2 + 64);
+            LoadAlign(vreg_x_f32_7, input_x_local_UB + ((ubN * m) >> 1) + ((ubN * m) >> 2) + i0 * m * 2 + 64);
         } else {
             LoadAlign(vreg_x_f32_0, input_x_local_UB + i0 * m);
-            LoadAlign(vreg_x_f32_1, input_x_local_UB + ubN * m / 4 + i0 * m);
-            LoadAlign(vreg_x_f32_2, input_x_local_UB + ubN * m / 2 + i0 * m);
-            LoadAlign(vreg_x_f32_3, input_x_local_UB + ubN * m / 2 + ubN * m / 4 + i0 * m);
+            LoadAlign(vreg_x_f32_1, input_x_local_UB + ((ubN * m) >> 2) + i0 * m);
+            LoadAlign(vreg_x_f32_2, input_x_local_UB + ((ubN * m) >> 1) + i0 * m);
+            LoadAlign(vreg_x_f32_3, input_x_local_UB + ((ubN * m) >> 1) + ((ubN * m) >> 2) + i0 * m);
         }
 
         Muls(vreg_x_f32_0, vreg_x_f32_0, dScale, preg_108);
