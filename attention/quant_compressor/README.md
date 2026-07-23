@@ -168,9 +168,26 @@
       - C4Li: D=128, coff=2, cmp_ratio=4；
       - C128A: D=512, coff=1, cmp_ratio=128。
 
-## 调用说明
+## 调用示例
 
-| 调用方式  | 样例代码                                                                          | 说明                                                                          |
-| --------- | --------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
-| aclnn接口 | -| 通过[aclnnQuantCompressor](./docs/aclnnQuantCompressor.md)调用QuantCompressor算子。 |
-| PyTorch API | - | 通过[cann_ops_transformer.quant_compressor](../../torch_extension/cann_ops_transformer/docs/zh/quant_compressor.md)调用QuantCompressor算子 |
+<table class="tg"><thead>
+  <tr>
+    <th class="tg-0pky">调用方式</th>
+    <th class="tg-0pky">样例代码</th>
+    <th class="tg-0pky">说明</th>
+  </tr></thead>
+<tbody>
+  <tr>
+    <td class="tg-9wq8" rowspan="6">aclnn接口</td>
+    <td class="tg-0pky">
+    <a href="./examples/test_aclnn_quant_compressor.cpp">test_aclnn_quant_compressor
+    </a>
+    </td>
+    <td class="tg-lboi" rowspan="6">
+    通过
+    <a href="./docs/aclnnQuantCompressor.md">aclnnQuantCompressor
+    </a>
+    接口方式调用算子
+    </td>
+  </tr>
+</tbody></table>
