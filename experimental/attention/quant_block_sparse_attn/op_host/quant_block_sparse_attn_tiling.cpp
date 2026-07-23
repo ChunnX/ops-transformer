@@ -150,7 +150,6 @@ void QuantBlockSparseAttnTiling::FillInputParams()
     inputParams.set_isBSNDOut(0);
     inputParams.set_transposeLayout(0);
     inputParams.set_isGqa(info.isGqa ? 1 : 0);
-    inputParams.set_isSoftMaxLseEnable(info.returnSoftmaxLseVal ? 1 : 0);
     inputParams.set_isActualSharedPrefixLenNull(1);
     inputParams.set_isQHasLeftPadding(0);
     inputParams.set_isKVHasLeftPadding(0);
@@ -279,7 +278,6 @@ void QuantBlockSparseAttnTiling::PrintAllTilingData()
     OP_LOGD(kOpName, "isActualSeqLengthsKVNull:%u", inputParams.get_isActualSeqLengthsKVNull());
     OP_LOGD(kOpName, "isKvContinuous:%u", inputParams.get_isKvContinuous());
     OP_LOGD(kOpName, "isGqa:%u", inputParams.get_isGqa());
-    OP_LOGD(kOpName, "isSoftMaxLseEnable:%u", inputParams.get_isSoftMaxLseEnable());
     OP_LOGD(kOpName, "headNumRatio:%u", inputParams.get_headNumRatio());
     OP_LOGD(kOpName, "blockSize:%d", inputParams.get_blockSize());
     OP_LOGD(kOpName, "blockTableDim2:%d", inputParams.get_blockTableDim2());

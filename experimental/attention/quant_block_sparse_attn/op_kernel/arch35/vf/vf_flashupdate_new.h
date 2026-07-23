@@ -25,7 +25,7 @@ constexpr uint16_t REDUCE_SIZE = 1;
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre>
 __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
                                            __ubuf__ float *expMaxUb, const uint16_t m, const uint16_t d,
-                                           const float deScaleV, const float deScaleVPre)
+                                           const float vScale, const float preVScale)
 {
     constexpr uint16_t floatRepSize = 64;
     constexpr uint16_t dLoops = srcD / floatRepSize;
@@ -47,9 +47,9 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                           IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+                Muls(vreg_input_cur, vreg_input_cur, vScale, preg_all);
                 if constexpr (isUpdatePre) {
-                    Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
+                    Muls(vreg_mul, vreg_mul, preVScale, preg_all);
                 }
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
@@ -64,8 +64,8 @@ __simd_vf__ inline void FlashUpdateBasicVF(__ubuf__ float *dstUb, __ubuf__ float
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre>
 __aicore__ inline void FlashUpdateBasic(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
                                         const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
-                                        const uint16_t m, const uint16_t d, const float deScaleV,
-                                        const float deScaleVPre)
+                                        const uint16_t m, const uint16_t d, const float vScale,
+                                        const float preVScale)
 {
     __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
     __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
@@ -73,13 +73,13 @@ __aicore__ inline void FlashUpdateBasic(const LocalTensor<T> &dstTensor, const L
     __ubuf__ float *expMaxUb = (__ubuf__ T *)expMaxTensor.GetPhyAddr();
 
     FlashUpdateBasicVF<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre>(dstUb, curUb, preUb, expMaxUb, m, d,
-                                                                            deScaleV, deScaleVPre);
+                                                                            vScale, preVScale);
 }
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre>
 __simd_vf__ inline void FlashUpdateGeneralVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
                                              __ubuf__ float *expMaxUb, const uint16_t m, const uint16_t d,
-                                             const float deScaleV, const float deScaleVPre, const uint32_t pltTailD,
+                                             const float vScale, const float preVScale, const uint32_t pltTailD,
                                              const uint16_t hasTail)
 {
     RegTensor<float> vreg_exp_max;
@@ -105,9 +105,9 @@ __simd_vf__ inline void FlashUpdateGeneralVF(__ubuf__ float *dstUb, __ubuf__ flo
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                           IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+                Muls(vreg_input_cur, vreg_input_cur, vScale, preg_all);
                 if constexpr (isUpdatePre) {
-                    Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
+                    Muls(vreg_mul, vreg_mul, preVScale, preg_all);
                 }
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
@@ -121,9 +121,9 @@ __simd_vf__ inline void FlashUpdateGeneralVF(__ubuf__ float *dstUb, __ubuf__ flo
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_tail_d);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                           IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+                Muls(vreg_input_cur, vreg_input_cur, vScale, preg_all);
                 if constexpr (isUpdatePre) {
-                    Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
+                    Muls(vreg_mul, vreg_mul, preVScale, preg_all);
                 }
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_tail_d);
@@ -137,8 +137,8 @@ __simd_vf__ inline void FlashUpdateGeneralVF(__ubuf__ float *dstUb, __ubuf__ flo
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre>
 __aicore__ inline void FlashUpdateGeneral(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
                                           const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
-                                          const uint16_t m, const uint16_t d, const float deScaleV,
-                                          const float deScaleVPre)
+                                          const uint16_t m, const uint16_t d, const float vScale,
+                                          const float preVScale)
 {
     __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
     __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
@@ -154,8 +154,8 @@ __aicore__ inline void FlashUpdateGeneral(const LocalTensor<T> &dstTensor, const
         hasTail = 1;
     }
 
-    FlashUpdateGeneralVF<T, INPUT_T, OUTPUT_T, reduceSize, isUpdatePre>(dstUb, curUb, preUb, expMaxUb, m, d, deScaleV,
-                                                                        deScaleVPre, pltTailD, hasTail);
+    FlashUpdateGeneralVF<T, INPUT_T, OUTPUT_T, reduceSize, isUpdatePre>(dstUb, curUb, preUb, expMaxUb, m, d, vScale,
+                                                                        preVScale, pltTailD, hasTail);
 }
 
 /*
@@ -171,24 +171,24 @@ __aicore__ inline void FlashUpdateGeneral(const LocalTensor<T> &dstTensor, const
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool isUpdatePre>
 __aicore__ inline void FlashUpdateNew(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
                                       const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
-                                      const uint16_t m, const uint16_t d, const float deScaleV, const float deScaleVPre)
+                                      const uint16_t m, const uint16_t d, const float vScale, const float preVScale)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdate, T must be float");
 
     constexpr uint16_t floatRepSize = 64;
     if constexpr (srcD % floatRepSize == 0) {
         FlashUpdateBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre>(
-            dstTensor, curTensor, preTensor, expMaxTensor, m, d, deScaleV, deScaleVPre);
+            dstTensor, curTensor, preTensor, expMaxTensor, m, d, vScale, preVScale);
     } else {
         FlashUpdateGeneral<T, INPUT_T, OUTPUT_T, REDUCE_SIZE, isUpdatePre>(dstTensor, curTensor, preTensor,
-                                                                           expMaxTensor, m, d, deScaleV, deScaleVPre);
+                                                                           expMaxTensor, m, d, vScale, preVScale);
     }
 }
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16_t reduceSize, bool isUpdatePre>
 __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
                                                __ubuf__ float *expMaxUb, __ubuf__ float *expSumUb, const uint16_t m,
-                                               const uint16_t d, const float deScaleV, const float deScaleVPre)
+                                               const uint16_t d, const float vScale, const float preVScale)
 {
     RegTensor<float> vreg_exp_max;
     RegTensor<float> vreg_input_pre;
@@ -217,9 +217,9 @@ __simd_vf__ inline void FlashUpdateLastBasicVF(__ubuf__ float *dstUb, __ubuf__ f
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                           IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+                Muls(vreg_input_cur, vreg_input_cur, vScale, preg_all);
                 if constexpr (isUpdatePre) {
-                    Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
+                    Muls(vreg_mul, vreg_mul, preVScale, preg_all);
                 }
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
@@ -234,7 +234,7 @@ template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, uint16
 __aicore__ inline void FlashUpdateLastBasic(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
                                             const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
                                             const LocalTensor<T> &expSumTensor, const uint16_t m, const uint16_t d,
-                                            const float deScaleV, const float deScaleVPre)
+                                            const float vScale, const float preVScale)
 {
     __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
     __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
@@ -243,13 +243,13 @@ __aicore__ inline void FlashUpdateLastBasic(const LocalTensor<T> &dstTensor, con
     __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
 
     FlashUpdateLastBasicVF<T, INPUT_T, OUTPUT_T, srcD, reduceSize, isUpdatePre>(dstUb, curUb, preUb, expMaxUb, expSumUb,
-                                                                                m, d, deScaleV, deScaleVPre);
+                                                                                m, d, vScale, preVScale);
 }
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, bool isUpdatePre>
 __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *preUb,
                                                  __ubuf__ float *expMaxUb, __ubuf__ float *expSumUb, const uint16_t m,
-                                                 const uint16_t d, const float deScaleV, const float deScaleVPre,
+                                                 const uint16_t d, const float vScale, const float preVScale,
                                                  const uint32_t pltTailD, const uint16_t hasTail)
 {
     RegTensor<float> vreg_exp_max;
@@ -277,9 +277,9 @@ __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float *dstUb, __ubuf__
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_all);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                           IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+                Muls(vreg_input_cur, vreg_input_cur, vScale, preg_all);
                 if constexpr (isUpdatePre) {
-                    Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
+                    Muls(vreg_mul, vreg_mul, preVScale, preg_all);
                 }
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_all);
@@ -295,9 +295,9 @@ __simd_vf__ inline void FlashUpdateLastGeneralVF(__ubuf__ float *dstUb, __ubuf__
             Mul(vreg_mul, vreg_exp_max, vreg_input_pre, preg_tail_d);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                           IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+                Muls(vreg_input_cur, vreg_input_cur, vScale, preg_all);
                 if constexpr (isUpdatePre) {
-                    Muls(vreg_mul, vreg_mul, deScaleVPre, preg_all);
+                    Muls(vreg_mul, vreg_mul, preVScale, preg_all);
                 }
             }
             Add(vreg_add, vreg_mul, vreg_input_cur, preg_tail_d);
@@ -313,7 +313,7 @@ template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t reduceSize, 
 __aicore__ inline void FlashUpdateLastGeneral(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
                                               const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
                                               const LocalTensor<T> &expSumTensor, const uint16_t m, const uint16_t d,
-                                              const float deScaleV, const float deScaleVPre)
+                                              const float vScale, const float preVScale)
 {
     __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
     __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
@@ -331,7 +331,7 @@ __aicore__ inline void FlashUpdateLastGeneral(const LocalTensor<T> &dstTensor, c
     }
 
     FlashUpdateLastGeneralVF<T, INPUT_T, OUTPUT_T, reduceSize, isUpdatePre>(
-        dstUb, curUb, preUb, expMaxUb, expSumUb, m, d, deScaleV, deScaleVPre, pltTailD, hasTail);
+        dstUb, curUb, preUb, expMaxUb, expSumUb, m, d, vScale, preVScale, pltTailD, hasTail);
 }
 
 /*
@@ -349,23 +349,23 @@ template <typename T, typename INPUT_T, typename OUTPUT_T, uint16_t srcD, bool i
 __aicore__ inline void FlashUpdateLastNew(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
                                           const LocalTensor<T> &preTensor, const LocalTensor<T> &expMaxTensor,
                                           const LocalTensor<T> &expSumTensor, uint16_t m, uint16_t d,
-                                          const float deScaleV, const float deScaleVPre)
+                                          const float vScale, const float preVScale)
 {
     static_assert(IsSameType<T, float>::value, "VF FlashUpdateLast, T must be float");
 
     constexpr uint16_t floatRepSize = 64;
     if constexpr (srcD % floatRepSize == 0) {
         FlashUpdateLastBasic<T, INPUT_T, OUTPUT_T, srcD, REDUCE_SIZE, isUpdatePre>(
-            dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, m, d, deScaleV, deScaleVPre);
+            dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, m, d, vScale, preVScale);
     } else {
         FlashUpdateLastGeneral<T, INPUT_T, OUTPUT_T, REDUCE_SIZE, isUpdatePre>(
-            dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, m, d, deScaleV, deScaleVPre);
+            dstTensor, curTensor, preTensor, expMaxTensor, expSumTensor, m, d, vScale, preVScale);
     }
 }
 
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint32_t srcD>
 __simd_vf__ inline void LastDivNewVF(__ubuf__ float *dstUb, __ubuf__ float *curUb, __ubuf__ float *expSumUb,
-                                     const uint16_t m, const uint16_t d, const float deScaleV)
+                                     const uint16_t m, const uint16_t d, const float vScale)
 {
     RegTensor<float> vreg_input_cur;
     RegTensor<float> vreg_div;
@@ -391,7 +391,7 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float *dstUb, __ubuf__ float *curU
             LoadAlign(vreg_input_cur, curUb + i * d + j * floatRepSize);
             if constexpr (IsSameType<INPUT_T, fp8_e5m2_t>::value || IsSameType<INPUT_T, fp8_e4m3fn_t>::value ||
                           IsSameType<INPUT_T, hifloat8_t>::value || IsSameType<INPUT_T, int8_t>::value) {
-                Muls(vreg_input_cur, vreg_input_cur, deScaleV, preg_all);
+                Muls(vreg_input_cur, vreg_input_cur, vScale, preg_all);
             }
             Div(vreg_div, vreg_input_cur, vreg_exp_sum, preg_update);
             Select(vreg_div, vreg_zero, vreg_div, preg_zero_sum);
@@ -405,13 +405,13 @@ __simd_vf__ inline void LastDivNewVF(__ubuf__ float *dstUb, __ubuf__ float *curU
 template <typename T, typename INPUT_T, typename OUTPUT_T, uint32_t srcD>
 __aicore__ inline void LastDivNew(const LocalTensor<T> &dstTensor, const LocalTensor<T> &curTensor,
                                   const LocalTensor<T> &expSumTensor, const uint16_t m, const uint16_t d,
-                                  const float deScaleV)
+                                  const float vScale)
 {
     __ubuf__ float *dstUb = (__ubuf__ T *)dstTensor.GetPhyAddr();
     __ubuf__ float *curUb = (__ubuf__ T *)curTensor.GetPhyAddr();
     __ubuf__ float *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
 
-    LastDivNewVF<T, INPUT_T, OUTPUT_T, srcD>(dstUb, curUb, expSumUb, m, d, deScaleV);
+    LastDivNewVF<T, INPUT_T, OUTPUT_T, srcD>(dstUb, curUb, expSumUb, m, d, vScale);
 }
 
 template <typename T, uint32_t srcD>

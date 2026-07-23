@@ -100,6 +100,7 @@ __aicore__ constexpr TPosition GetC2Position()
     X(dTemplateType, DTemplateType, DTemplateType::Aligned128)                                                         \
     X(dVTemplateType, DTemplateType, DTemplateType::Aligned128)                                                        \
     X(hasAtten, bool, false)                                                                                           \
+    X(returnSoftmaxLse, bool, false)                                                                                   \
     X(isPa, bool, false)                                                                                               \
     X(useDn, bool, false)
 

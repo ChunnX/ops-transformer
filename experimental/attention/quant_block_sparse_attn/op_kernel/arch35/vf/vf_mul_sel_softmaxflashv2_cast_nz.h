@@ -48,7 +48,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale,
     const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
+    const float kScaleValue = 1.0f, const float pScale = 1.0f)
 {
     if constexpr (oriNRange == EQ_128) {
         LocalTensor<uint8_t> indexesTensor;
@@ -56,7 +56,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
             vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
         ProcessVec1NoUpdateImpl128<T, T2, s1BaseSize, s2BaseSize, hasAtten, isMlaSgd>(
             dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
-            maskTensor, sharedTmpBuffer, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue,
+            maskTensor, sharedTmpBuffer, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb, kScaleValue,
             pScale);
     } else if constexpr (oriNRange == GT_0_AND_LTE_64) {
         LocalTensor<uint8_t> indexesTensor;
@@ -64,7 +64,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
             vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_0_AND_LTE_64_INDEX)].template Get<uint8_t>();
         ProcessVec1NoUpdateImpl64<T, T2, s1BaseSize, s2BaseSize, hasAtten, isMlaSgd>(
             dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
-            maskTensor, sharedTmpBuffer, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue,
+            maskTensor, sharedTmpBuffer, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb, kScaleValue,
             pScale);
     } else { // GT_64_AND_LTE_128
         LocalTensor<uint8_t> indexesTensor;
@@ -72,7 +72,7 @@ __aicore__ inline void ProcessVec1NoUpdate(
             vselrIndexesBuf[static_cast<int>(VselrIndexEnum::GT_64_AND_LTE_128_INDEX)].template Get<uint8_t>();
         ProcessVec1NoUpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize, hasAtten, isMlaSgd>(
             dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
-            maskTensor, sharedTmpBuffer, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue,
+            maskTensor, sharedTmpBuffer, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb, kScaleValue,
             pScale);
     }
 }
@@ -143,7 +143,7 @@ __aicore__ inline void ProcessVec1Update(
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<uint8_t> &sharedTmpBuffer, const LocalTensor<T> &pScaleTensor, const uint16_t m,
     const uint32_t originN, const T scale, const float dScaleQK, const T minValue, float keepProb,
-    const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
+    const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float kScaleValue = 1.0f, const float pScale = 1.0f)
 {
     if constexpr (oriNRange == EQ_128) {
         LocalTensor<uint8_t> indexesTensor;
@@ -152,7 +152,7 @@ __aicore__ inline void ProcessVec1Update(
         ProcessVec1UpdateImpl128<T, T2, s1BaseSize, s2BaseSize, hasAtten, isMlaSgd>(
             dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
             maskTensor, sharedTmpBuffer, pScaleTensor, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb,
-            deSCaleKValue, pScale);
+            kScaleValue, pScale);
     } else if constexpr (oriNRange == GT_0_AND_LTE_64) {
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor =
@@ -160,7 +160,7 @@ __aicore__ inline void ProcessVec1Update(
         ProcessVec1UpdateImpl64<T, T2, s1BaseSize, s2BaseSize, hasAtten, isMlaSgd>(
             dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
             maskTensor, sharedTmpBuffer, pScaleTensor, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb,
-            deSCaleKValue, pScale);
+            kScaleValue, pScale);
     } else { // GT_64_AND_LTE_128
         LocalTensor<uint8_t> indexesTensor;
         indexesTensor =
@@ -168,7 +168,7 @@ __aicore__ inline void ProcessVec1Update(
         ProcessVec1UpdateGeneralImpl128<T, T2, s1BaseSize, s2BaseSize, hasAtten, isMlaSgd>(
             dstTensor, indexesTensor, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
             maskTensor, sharedTmpBuffer, pScaleTensor, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb,
-            deSCaleKValue, pScale);
+            kScaleValue, pScale);
     }
 }
 
@@ -201,7 +201,7 @@ __aicore__ inline void ProcessVec1Vf(
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<uint8_t> &sharedTmpBuffer, const LocalTensor<T> &pScaleTensor, const uint16_t m,
     const uint32_t originN, const T scale, const float dScaleQK, const T minValue, float keepProb,
-    const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
+    const LocalTensor<T> &queryScaleUb = LocalTensor<T>(), const float kScaleValue = 1.0f, const float pScale = 1.0f)
 {
     static_assert(IsSameType<T, float>::value, "VF mul_sel_softmaxflashv2_cast_nz, T must be float");
     static_assert(IsSameType<T2, half>::value || IsSameType<T2, bfloat16_t>::value || IsSameType<T2, float>::value ||
@@ -213,13 +213,13 @@ __aicore__ inline void ProcessVec1Vf(
     if constexpr (!isUpdate) {
         ProcessVec1NoUpdate<T, T2, s1BaseSize, s2BaseSize, oriNRange, hasAtten, isMlaSgd>(
             dstTensor, vselrIndexesBuf, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
-            maskTensor, sharedTmpBuffer, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb, deSCaleKValue,
+            maskTensor, sharedTmpBuffer, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb, kScaleValue,
             pScale);
     } else {
         ProcessVec1Update<T, T2, s1BaseSize, s2BaseSize, oriNRange, hasAtten, isMlaSgd>(
             dstTensor, vselrIndexesBuf, expSumTensor, maxTensor, srcTensor, expMaxTensor, inExpSumTensor, inMaxTensor,
             maskTensor, sharedTmpBuffer, pScaleTensor, m, originN, scale, dScaleQK, minValue, keepProb, queryScaleUb,
-            deSCaleKValue, pScale);
+            kScaleValue, pScale);
     }
 }
 

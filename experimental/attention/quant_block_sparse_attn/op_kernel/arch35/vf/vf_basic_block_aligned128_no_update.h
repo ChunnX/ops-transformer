@@ -29,7 +29,7 @@ ProcessVec1NoUpdateImpl128VF(__ubuf__ T2 *expUb, __ubuf__ T2 *x_expUb, __ubuf__ 
                              __ubuf__ uint8_t *indexesUb, __ubuf__ uint32_t *maskUb, __ubuf__ uint32_t *maskUbUnroll,
                              float divValue, const uint32_t blockStride, const uint32_t repeatStride,
                              const float dScale, const uint16_t m, const T scale, const float dScaleQK,
-                             const T minValue, const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
+                             const T minValue, const float kScaleValue = 1.0f, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
@@ -202,7 +202,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl128(
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale,
     const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
+    const float kScaleValue = 1.0f, const float pScale = 1.0f)
 {
     float divValue = 1.0f / keepProb;
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
@@ -223,7 +223,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl128(
 
     ProcessVec1NoUpdateImpl128VF<T, T2, s1BaseSize, s2BaseSize, hasAtten, isMlaSgd>(
         expUb, x_expUb, expSumUb, maxUb, maxUbStart, srcUb, qScaleUb, indexesUb, maskUb, maskUbUnroll, divValue,
-        blockStride, repeatStride, dScale, m, scale, dScaleQK, minValue, deSCaleKValue, pScale);
+        blockStride, repeatStride, dScale, m, scale, dScaleQK, minValue, kScaleValue, pScale);
 }
 } // namespace FaVectorApi
 

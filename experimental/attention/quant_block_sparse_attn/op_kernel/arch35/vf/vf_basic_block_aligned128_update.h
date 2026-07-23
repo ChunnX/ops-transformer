@@ -30,7 +30,7 @@ __simd_vf__ void ProcessVec1UpdateImpl128VF(
     __ubuf__ uint32_t * maskUb, __ubuf__ uint32_t * maskUbUnroll,
     float divValue, const uint32_t blockStride, const uint32_t repeatStride, const float dScale,
     const uint16_t m, const T scale,
-    const float dScaleQK, const T minValue, const float deSCaleKValue = 1.0f,
+    const float dScaleQK, const T minValue, const float kScaleValue = 1.0f,
     const float pScale = 1.0f)
 {
     RegTensor<float> vreg_min;
@@ -221,7 +221,7 @@ __aicore__ inline void ProcessVec1UpdateImpl128(
     const LocalTensor<uint8_t>& sharedTmpBuffer, const LocalTensor<T>& pScaleTensor, const uint16_t m,
     const uint32_t originN, const T scale,
     const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T>& queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
+    const float kScaleValue = 1.0f, const float pScale = 1.0f)
 {
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
     // stride, high 16bits: blockStride (m*16*2/32), low 16bits: repeatStride (1)
@@ -248,7 +248,7 @@ __aicore__ inline void ProcessVec1UpdateImpl128(
     ProcessVec1UpdateImpl128VF <T, T2, s1BaseSize, s2BaseSize, hasAtten, isMlaSgd>(
         expUb, x_expUb, maxUb, srcUb, expMaxUb, inMaxUb, tmpExpSumUb, tmpMaxUb, tmpMaxUb2, qScaleUb,
         pScaleUb, indexesUb, maskUb, maskUbUnroll, divValue, blockStride, repeatStride, dScale,
-        m, scale, dScaleQK, minValue, deSCaleKValue, pScale);
+        m, scale, dScaleQK, minValue, kScaleValue, pScale);
 }
 } // namespace
 

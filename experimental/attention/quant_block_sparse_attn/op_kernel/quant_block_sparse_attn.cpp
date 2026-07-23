@@ -25,7 +25,7 @@ using namespace AscendC;
 //   - 按 g_coreType 选择实/Dummy 的 Cube/Vec block（AIC 跑真 Cube + Dummy Vec，AIV 跑 Dummy Cube + 真 Vec）
 //   - 实例化 QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>
 //   - GET_TILING_DATA -> InitBaseAPI -> Process()
-// __VA_ARGS__ 为 block 模板参数（严格对齐 CUBE_BLOCK_TRAITS 字段顺序，共 17 个）。
+// __VA_ARGS__ 为 block 模板参数（严格对齐 CUBE_BLOCK_TRAITS 字段顺序）。
 
 #define BSA_OP_IMPL(...) \
     do { \
@@ -39,16 +39,9 @@ using namespace AscendC;
         GET_TILING_DATA_WITH_STRUCT(QuantBlockSparseAttnTilingData, tilingDataIn, tiling); \
         const QuantBlockSparseAttnTilingData *__restrict tilingData = &tilingDataIn; \
         op.InitBaseAPI(query, key, value, sparseIndices, sparseSeqLen, attenMask, metadata, \
-                       cuSeqlensQ, cuSeqlensKv, seqUsedQ, seqUsedKv, blockTable, \
-                       nullptr /* queryPaddingSize */, nullptr /* kvPaddingSize */, \
-                       qScale /* deqScaleQ */, kScale /* deqScaleK */, vScale /* deqScaleV */, \
-                       pScale /* pScale */, nullptr /* keySharedPrefix */, \
-                       nullptr /* valueSharedPrefix */, nullptr /* actualSharedPrefixLen */, \
-                       nullptr /* queryRope */, nullptr /* keyRope */, \
-                       nullptr /* learnableSink */, nullptr /* softmaxMax */, \
-                       nullptr /* softmaxSum */, nullptr /* softmaxOut */, \
-                       softmaxLse, attentionOut, user /* workspace */, \
-                       tilingData, &tPipe); \
+                       cuSeqlensQ, cuSeqlensKv, blockTable, \
+                       qScale, kScale, vScale, pScale, softmaxLse, attentionOut, user /* workspace */, tilingData, \
+                       &tPipe); \
         op.Process(); \
     } while (0)
 
@@ -63,8 +56,8 @@ __global__ __aicore__ void quant_block_sparse_attn(
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-    // mask 模式 / softmaxLse 使能同时进入 tilingKey 与 tilingData；当前主逻辑仍通过 tilingData 读取运行期字段。
-    (void)RETURN_SOFTMAX_LSE;
+    (void)seqUsedQ;
+    (void)seqUsedKv;
 
     TPipe tPipe;
     __gm__ uint8_t *user = GetUserWorkspace(workspace);
@@ -77,5 +70,5 @@ __global__ __aicore__ void quant_block_sparse_attn(
     constexpr bool HAS_ATTENTION = (MASK_MODE == 3);
     BSA_OP_IMPL(fp8_e4m3fn_t, float, bfloat16_t, layout, kvLayout, S1TemplateType::Aligned128,
                 S2TemplateType::Aligned256, DTemplateType::Aligned128, DTemplateType::Aligned128, HAS_ATTENTION,
-                bsaIsPa, bsaUseDn);
+                RETURN_SOFTMAX_LSE, bsaIsPa, bsaUseDn);
 }

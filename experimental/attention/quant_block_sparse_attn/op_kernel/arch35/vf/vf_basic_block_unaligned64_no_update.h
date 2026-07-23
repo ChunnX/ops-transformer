@@ -29,7 +29,7 @@ __simd_vf__ void ProcessVec1NoUpdateImpl64VF(__ubuf__ T2 *expUb, __ubuf__ T *exp
                                              const uint32_t nPadding, uint32_t pltOriginalN, float divValue,
                                              uint32_t pltSrcN, uint32_t pltSrcN16, const float dScale, const uint16_t m,
                                              const T scale, const float dScaleQK, const T minValue,
-                                             const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
+                                             const float kScaleValue = 1.0f, const float pScale = 1.0f)
 {
     RegTensor<float> vreg_min;
     RegTensor<float> vreg_sel;
@@ -174,7 +174,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64(
     const LocalTensor<T> &inExpSumTensor, const LocalTensor<T> &inMaxTensor, const LocalTensor<uint8_t> &maskTensor,
     const LocalTensor<uint8_t> &sharedTmpBuffer, const uint16_t m, const uint32_t originN, const T scale,
     const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T> &queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
+    const float kScaleValue = 1.0f, const float pScale = 1.0f)
 {
     __ubuf__ T2 *expUb = (__ubuf__ T2 *)dstTensor.GetPhyAddr();
     __ubuf__ T *expSumUb = (__ubuf__ T *)expSumTensor.GetPhyAddr();
@@ -201,7 +201,7 @@ __aicore__ inline void ProcessVec1NoUpdateImpl64(
 
     ProcessVec1NoUpdateImpl64VF<T, T2, s1BaseSize, s2BaseSize, hasAtten, isMlaSgd>(
         expUb, expSumUb, maxUb, maxUbStart, srcUb, qScaleUb, indexesUb, maskUb, blockStride, repeatStride, nPadding,
-        pltOriginalN, divValue, pltSrcN, pltSrcN16, dScale, m, scale, dScaleQK, minValue, deSCaleKValue, pScale);
+        pltOriginalN, divValue, pltSrcN, pltSrcN16, dScale, m, scale, dScaleQK, minValue, kScaleValue, pScale);
 }
 } // namespace FaVectorApi
 

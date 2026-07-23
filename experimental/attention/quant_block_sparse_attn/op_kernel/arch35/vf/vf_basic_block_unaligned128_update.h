@@ -31,7 +31,7 @@ __simd_vf__ void ProcessVec1UpdateGeneralImpl128VF(
     const uint32_t nPadding, const uint32_t blockStride, const uint32_t repeatStride, const uint32_t oriTailN,
     const uint32_t tailN, const float dScale, uint32_t pltOriTailN, uint32_t pltTailN, float divValue, uint32_t pltN,
     const uint16_t m, const T scale,
-    const float dScaleQK, const T minValue, const float deSCaleKValue = 1.0f,
+    const float dScaleQK, const T minValue, const float kScaleValue = 1.0f,
     const float pScale = 1.0f)
 {
     RegTensor<float> vreg_min;
@@ -228,7 +228,7 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl128(
     const LocalTensor<uint8_t>& sharedTmpBuffer, const LocalTensor<T>& pScaleTensor, const uint16_t m,
     const uint32_t originN, const T scale,
     const float dScaleQK, const T minValue, float keepProb, const LocalTensor<T>& queryScaleUb = LocalTensor<T>(),
-    const float deSCaleKValue = 1.0f, const float pScale = 1.0f)
+    const float kScaleValue = 1.0f, const float pScale = 1.0f)
 {
     const uint32_t nPadding = (s2BaseSize + blockBytesU8 - 1) / blockBytesU8 * blockBytesU8;
     // 写的时候固定用65或者33的stride去写，因为正向目前使能settail之后mm2的s1方向必须算满128或者64行
@@ -264,7 +264,7 @@ __aicore__ inline void ProcessVec1UpdateGeneralImpl128(
         expUb, x_expUb, maxUb, srcUb, expMaxUb, inMaxUb, tmpExpSumUb, tmpMaxUb, tmpMaxUb2, qScaleUb,
         pScaleUb, indexesUb, maskUb, maskUbUnroll, nPadding, blockStride, repeatStride, oriTailN,
         tailN, dScale, pltOriTailN, pltTailN, divValue, pltN, m, scale, dScaleQK,
-        minValue, deSCaleKValue, pScale);
+        minValue, kScaleValue, pScale);
 }
 } // namespace
 

@@ -120,16 +120,15 @@ public:
                                          __gm__ uint8_t *query, __gm__ uint8_t *key, __gm__ uint8_t *value,
                                          __gm__ uint8_t *blockTable);
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value, CVSharedParams<isPa> *sharedParams,
-                                         AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr,
-                                         __gm__ int32_t *actualSeqKvlenAddr);
+                                         AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr);
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &output, RunInfo &runInfo,
                                        ConstInfo &constInfo);
 
     __aicore__ inline void IterateBmm2(mm2ResPos &outputBuf,
                                        BuffersPolicy3buff<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> &inputBuf,
                                        RunInfo &runInfo, ConstInfo &constInfo);
-    __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
-                                             __gm__ uint8_t *deqScaleV);
+    __aicore__ inline void InitDequantParams(__gm__ uint8_t *qScale, __gm__ uint8_t *kScale,
+                                             __gm__ uint8_t *vScale);
     GlobalTensor<int32_t> blockTableGm; // pageattention需要
 private:
     __aicore__ inline void InitLocalBuffer();
@@ -157,9 +156,9 @@ private:
     FaGmTensor<INPUT_T, Q_FORMAT, int32_t> queryGm;
     FaGmTensor<INPUT_T, KV_FORMAT, int32_t> keyGm;
     FaGmTensor<INPUT_T, KV_FORMAT, int32_t> valueGm;
-    GlobalTensor<float> deScaleQGm;
-    GlobalTensor<float> deScaleKGm;
-    GlobalTensor<float> deScaleVGm;
+    GlobalTensor<float> qScaleGm;
+    GlobalTensor<float> kScaleGm;
+    GlobalTensor<float> vScaleGm;
 
     uint32_t maxBlockNumPerBatch = 0; // pageattention需要
     KVLAYOUT pa_kvLayout;             // pageattention需要
@@ -212,8 +211,7 @@ TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value,
                                                                   CVSharedParams<isPa> *sharedParams,
                                                                   AttenMaskInfo *attenMaskInfo,
-                                                                  __gm__ int32_t *actualSeqQlenAddr,
-                                                                  __gm__ int32_t *actualSeqKvlenAddr)
+                                                                  __gm__ int32_t *actualSeqQlenAddr)
 {
     if ASCEND_IS_AIC {
         if (sharedParams->fromFused) {
@@ -564,14 +562,14 @@ BSABlockCube<TEMPLATE_ARGS>::IterateBmm1Dn(Buffer<BufferType::UB, SyncType::CROS
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitDequantParams(__gm__ uint8_t *deqScaleQ,
-                                                                      __gm__ uint8_t *deqScaleK,
-                                                                      __gm__ uint8_t *deqScaleV)
+__aicore__ inline void BSABlockCube<TEMPLATE_ARGS>::InitDequantParams(__gm__ uint8_t *qScale,
+                                                                      __gm__ uint8_t *kScale,
+                                                                      __gm__ uint8_t *vScale)
 {
     if constexpr (isFp8) {
-        deScaleQGm.SetGlobalBuffer((__gm__ float *)deqScaleQ);
-        deScaleKGm.SetGlobalBuffer((__gm__ float *)deqScaleK);
-        deScaleVGm.SetGlobalBuffer((__gm__ float *)deqScaleV);
+        qScaleGm.SetGlobalBuffer((__gm__ float *)qScale);
+        kScaleGm.SetGlobalBuffer((__gm__ float *)kScale);
+        vScaleGm.SetGlobalBuffer((__gm__ float *)vScale);
     }
 }
 
@@ -748,8 +746,7 @@ public:
     {
     }
     __aicore__ inline void InitCubeInput(__gm__ uint8_t *key, __gm__ uint8_t *value, CVSharedParams<isPa> *sharedParams,
-                                         AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr,
-                                         __gm__ int32_t *actualSeqKvlenAddr)
+                                         AttenMaskInfo *attenMaskInfo, __gm__ int32_t *actualSeqQlenAddr)
     {
     }
     __aicore__ inline void IterateBmm1(Buffer<BufferType::UB, SyncType::CROSS_CORE_SYNC_BOTH> &outputBuf,
@@ -764,8 +761,8 @@ public:
                                        RunInfo &runInfo, ConstInfo &constInfo)
     {
     }
-    __aicore__ inline void InitDequantParams(__gm__ uint8_t *deqScaleQ, __gm__ uint8_t *deqScaleK,
-                                             __gm__ uint8_t *deqScaleV)
+    __aicore__ inline void InitDequantParams(__gm__ uint8_t *qScale, __gm__ uint8_t *kScale,
+                                             __gm__ uint8_t *vScale)
     {
     }
 };
