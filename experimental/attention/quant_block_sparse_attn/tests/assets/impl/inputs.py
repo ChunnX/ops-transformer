@@ -189,9 +189,9 @@ def customize_inputs(query, key, value, q_descale, k_descale, v_descale, p_scale
     if layout_q == "BSND":
         q_scale_shape = (B, S1, N1)
     elif layout_q == "NTD":
-        q_scale_shape = (N1, S1)
+        q_scale_shape = (N1, B * S1)
     else:
-        q_scale_shape = (S1, N1)
+        q_scale_shape = (B * S1, N1)
 
     q_scale = _make_scale_tensor(q_scale_shape, scale_pattern)
     q_descale.copy_(q_scale)
