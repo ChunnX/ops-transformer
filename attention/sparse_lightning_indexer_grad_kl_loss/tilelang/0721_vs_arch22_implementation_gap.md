@@ -68,14 +68,15 @@ v1_bw_rg_half   FP16 32x64  = 4096 B, offset 20992 (与 bmm2 生命周期复用)
 ```
 
 基线中直接把 BMM2 扩成 `32x128` 会额外需要 8192 B，并覆盖 `diff_2d` 的
-物理区间。当前实验版本因此同时移除了独立的 `diff_2d`：`rg` 先保存
-column-wise broadcast 的 `diff`，dWeight 规约完成后再原地乘 `weight_2d` 与
-ReLU mask。该变换释放 8192 B，同时消除一次 `weight_2d -> rg` UB copy，
-使 BMM2 可以安全地按 `32x128` 一次搬入、按两个 `32x64` 子块计算。
+物理区间。曾尝试将 `rg` 复用为 column-wise broadcast 的 `diff` 来释放
+8192 B，但生成 CPP 暴露出更根本的限制：对二维 parent buffer 的
+`[:, 64:128]` slice 被 lowering 为从线性 offset `64` 开始的连续 2048 元素
+操作，而不是每行跨过前 64 列的 strided `32x64` view。第二个子块因此读取
+错误数据，导致 dWeight 错误并向 C2 传播 NaN。该实验已回退。
 
-这个方案仍须以新生成 CPP 为准：`v1_bw_bmm2` 必须为 4096 个 FP32 元素，
-`v1_bw_rg_half` 只能覆盖已消费的前半输入，且下一次整块 BMM2 覆盖前必须
-等待对应 MTE3 写回完成。
+因此，当前 TileLang 版本不能将一个 `32x128` UB buffer 直接作为两个
+`32x64` vector intrinsic 的父 buffer 使用。除非存在已验证的 pack/copy API
+将每个子块重新紧凑化，否则 BMM2 必须保持独立的连续 `32x64` UB tile。
 
 ### 3. TileLang intrinsic 约束不同
 
@@ -99,8 +100,9 @@ scatter、kernel 内 dWeight/Loss/dKey 完成。
 
 1. 先用 profile 确认 V1 AIV1/SY、V1 backward、C2 或 V2 atomic 哪一个是
    当前关键路径。
-2. `32x128` BMM2 staging 已与 `diff_2d` 消除绑定实现；必须检查生成 CPP
-   的所有 `GetWithOffset`、两个 64 列 slice 的 copy 与 MTE3/MTE2 生命周期。
+2. 不要再直接尝试 `32x128` BMM2 parent 的列 slice。任何更大 staging 都必须
+   证明生成 CPP 使用正确的行 stride，或先通过独立 pack/copy 得到连续
+   `32x64` tile。
 3. 任何重新引入 ping-pong 的尝试必须先有可证明的物理隔离策略，不能仅靠
    增加 `set_flag`/`wait_flag`。
 4. 每次只改一个结构变量，执行多次精度和中位数性能测试，再保留或回退。
