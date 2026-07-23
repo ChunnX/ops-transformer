@@ -117,6 +117,7 @@ struct RunParamStr { // 分核与切块需要使用到参数
     // B轴offset
     int64_t qBOffset;
     int64_t qBScalarOffset;
+    float vScaleValue;
 
     // lse 输出offset
     int64_t softmaxLseOffset; // souter层确定
@@ -165,6 +166,7 @@ struct RunParamStr { // 分核与切块需要使用到参数
     int64_t b1SSAttenMaskOffset; \
     int64_t b1SSOffsetAlign; /* TND场景s2 16对齐之后，前面batch的s1*s2之和 */ \
     int64_t kvScaleOffset; /* KV的反量化scale内容在Gm中的偏移 原始shape为 [B, N2, 1, Ceil(S2, 128), 1] */ \
+    float vScaleValue; \
     uint8_t taskIdMod2; \
     uint8_t taskIdMod3; \
     uint8_t multiCoreIdxMod2 = 0; \

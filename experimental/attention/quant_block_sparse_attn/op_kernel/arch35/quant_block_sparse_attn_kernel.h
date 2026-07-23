@@ -439,6 +439,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
     runInfo.s2LoopCount = s2LoopCount;
     runInfo.qBOffset = runParam.qBOffset;
     runInfo.qBScalarOffset = runParam.qBScalarOffset;
+    runInfo.vScaleValue = runParam.vScaleValue;
     runInfo.actSparseLen = runParam.actSparseLen;
 
     runInfo.taskId = taskId;
@@ -551,6 +552,7 @@ __aicore__ inline void QuantBlockSparseAttnKernel<CubeBlockType, VecBlockType>::
             runParam.n1oIdx = bn1Idx % this->constInfo.n1Size;
             runParam.n2oIdx = runParam.n1oIdx / constInfo.gSize;
             runParam.goIdx = runParam.n1oIdx % constInfo.gSize;
+            runParam.vScaleValue = this->vecBlock.GetVScaleValue(runParam.n2oIdx);
             ComputeParamBatch<CHILD_SPEC_TEMPLATE_ARGS>(runParam, this->constInfo, this->attenMaskInfo, this->keyGm,
                                                         this->cuSeqlensQAddr, this->cuSeqlensKvAddr);
             ComputeS1LoopInfo<CHILD_SPEC_TEMPLATE_ARGS>(runParam, constInfo, s1StartIdx, s1EndIdx,

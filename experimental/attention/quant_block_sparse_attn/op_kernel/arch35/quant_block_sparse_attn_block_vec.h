@@ -166,6 +166,14 @@ public:
     TBuf<> lseTmpBuff;
     TQue<QuePosition::VECOUT, 1> softmaxLseQueue;
 
+    __aicore__ inline float GetVScaleValue(int64_t n2oIdx)
+    {
+        if constexpr (isFp8) {
+            return this->vScaleGm.GetValue(n2oIdx);
+        }
+        return 1.0f;
+    }
+
 protected:
     __aicore__ inline void BroadCastAndCopyOut(RunInfo &runInfo, GlobalTensor<T> &sumGm, GlobalTensor<T> &maxGm,
                                                int64_t gmOffset, int64_t calculateSize);
@@ -434,10 +442,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CRO
     runInfo.vec2S1RealSize = runInfo.vec2S1BaseSize;
 
     int64_t vec2CalcSize = runInfo.vec2S1RealSize * dTemplateAlign64;
-    float vScaleValue = 1.0f;
-    // BSA: V 为 per-head 反量化，vScale shape [N2]，按 n2 head 取值。
-    // 原 kvScaleOffset 未被赋值（未初始化），GetValue 会越界读 GM → AICore SVM page fault(507015)。
-    vScaleValue = this->vScaleGm.GetValue(runInfo.n2oIdx);
+    float vScaleValue = runInfo.vScaleValue;
     LocalTensor<T> vec2ResUb = this->stage2OutBuf.template Get<T>();
     LocalTensor<T> mmRes = bmm2ResBuf.template GetTensor<T>();
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId[0]);
@@ -447,7 +452,7 @@ BSABlockVec<TEMPLATE_ARGS>::ProcessVec2OnUb(Buffer<BufferType::UB, SyncType::CRO
         LocalTensor<T> expUb = softmaxExpBuf[runInfo.taskIdMod3].template Get<T>();
         // BSA: V per-head 反量化，前一块与当前块同为 vScale[n2oIdx]（非 FIA 的 per-block scale），
         // 不能用 kvScaleOffset 的 per-block ping-pong（未初始化且 -1 会越界，触发 507015）。
-        float preVScaleValue = this->vScaleGm.GetValue(runInfo.n2oIdx);
+        float preVScaleValue = vScaleValue;
         if (runInfo.s2LoopCount < runInfo.s2LoopLimit) {
             if (unlikely(runInfo.s2LoopCount == 1)) {
                 FlashUpdateNew<T, INPUT_T, OUTPUT_T, dTemplateAlign64, true>(vec2ResUb, mmRes, vec2ResUb, expUb,
@@ -971,6 +976,11 @@ public:
                                                 Buffer<BufferType::GM, SyncType::CROSS_CORE_SYNC_FORWARD>>::type;
     __aicore__ inline void ProcessVec2(mm2ResPos &bmm2ResBuf, RunInfo &runInfo, ConstInfo &constInfo)
     {
+    }
+
+    __aicore__ inline float GetVScaleValue(int64_t n2oIdx)
+    {
+        return 1.0f;
     }
 };
 } // namespace BaseApi
