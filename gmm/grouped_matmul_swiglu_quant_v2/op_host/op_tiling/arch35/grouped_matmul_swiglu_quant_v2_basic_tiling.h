@@ -24,6 +24,7 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
 #include "../grouped_matmul_swiglu_quant_v2_tiling.h"
+#include "../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.h"
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
@@ -59,6 +60,7 @@ protected:
     void Reset() override;
     void SetKernelType();
     ge::graphStatus GetWorkspaceSize() override;
+    uint64_t kernelType_{0};
 
 private:
     bool AnalyzeAttrs() override;

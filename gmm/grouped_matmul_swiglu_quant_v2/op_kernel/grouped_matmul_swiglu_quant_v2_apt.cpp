@@ -13,12 +13,6 @@
  * \brief
  */
 
-#if ASC_DEVKIT_MAJOR > 9 || (ASC_DEVKIT_MAJOR == 9 && ASC_DEVKIT_MINOR > 0)
-#define IS_BLAZE true
-#else
-#define IS_BLAZE false
-#endif
-
 #include "kernel_tiling/kernel_tiling.h"
 #if ASC_DEVKIT_MAJOR >= 9
 #include "kernel_basic_intf.h"
@@ -122,23 +116,25 @@ __global__ __aicore__ void grouped_matmul_swiglu_quant_v2(GM_ADDR x, GM_ADDR xSc
         }
     } else {
         if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_NO_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-#if IS_BLAZE
-            GmmSwigluAswtTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
-                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
-                workspace, tiling);
-#else
-            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(x, weight, weightScale,
-                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
-#endif
+            if constexpr (KERNEL_TYPE == GMM_SWIGLU_QUANT_KERNEL_TYPE) {
+                GmmSwigluAswtTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::NDExtLayoutPtn>(
+                    x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                    workspace, tiling);
+            } else {
+                GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::RowMajor>(
+                    x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                    workspace, tiling);
+            }
         } else if (QUANT_B_TRANS == GMM_SWIGLU_QUANT_TRANS && QUANT_A_TRANS == GMM_SWIGLU_QUANT_NO_TRANS) {
-#if IS_BLAZE
-            GmmSwigluAswtTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(
-                x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
-                workspace, tiling);
-#else
-            GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(x, weight, weightScale,
-                xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale, workspace, tiling);
-#endif
+            if constexpr (KERNEL_TYPE == GMM_SWIGLU_QUANT_KERNEL_TYPE) {
+                GmmSwigluAswtTensorApi<AscendC::Te::NDExtLayoutPtn, AscendC::Te::DNExtLayoutPtn>(
+                    x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                    workspace, tiling);
+            } else {
+                GmmSwigluAswt<Cgmct::Gemm::layout::RowMajor, Cgmct::Gemm::layout::ColumnMajor>(
+                    x, weight, weightScale, xScale, weightAssistanceMatrix, smoothScale, groupList, y, yScale,
+                    workspace, tiling);
+            }
         }
     }
 #elif ORIG_DTYPE_X_SCALE == DT_FLOAT

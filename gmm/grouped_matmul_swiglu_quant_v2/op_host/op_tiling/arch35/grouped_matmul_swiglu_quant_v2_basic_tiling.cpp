@@ -34,6 +34,8 @@ constexpr uint64_t MXFP_BASEK_FACTOR = 64UL;
 constexpr size_t WEIGHT_ORIGIN_LAST_DIM_OFFSET = 1;
 constexpr size_t WEIGHT_ORIGIN_LAST_SECOND_DIM_OFFSET = 2;
 constexpr size_t MXFP4_ND_N_ALIGN = 4; // MXFP4、ND场景下，N需要4对齐
+constexpr size_t MXFP8_ND_N_ALIGN_TENSORAPI = 128; // MXFP8、ND场景下，切换tensorApi时N需要128对齐
+constexpr size_t MXFP8_ND_M_LOWER_TENSORAPI = 64; // MXFP8、ND场景下，切换tensorApi时M需要大于64
 
 size_t GetDynamicInputCount(gert::TilingContext *context, size_t inputIndex)
 {
@@ -662,6 +664,17 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTiling()
         return DoOpTilingPertoken();
     }
     OP_LOGD(inputParams_.opName, "%ld", LogQuantParams());
+    // 判断是否切换tensorApi
+    const bool isAFp8 = inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
+    const bool isBFp8 = inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.bDtype == ge::DT_FLOAT8_E5M2;
+    const bool isMxQuant = inputParams_.aQuantMode == optiling::QuantMode::MX_PERGROUP_MODE &&
+                           inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE;
+    const bool hasBias = context_->GetOptionalInputDesc(BIAS_INDEX) == nullptr;
+
+    if (isAFp8 && isBFp8 && isMxQuant && inputParams_.bFormat == ge::FORMAT_ND && !hasBias &&
+        inputParams_.nSize % MXFP8_ND_N_ALIGN_TENSORAPI == 0 && inputParams_.mSize >= MXFP8_ND_M_LOWER_TENSORAPI) {
+        kernel_level_ = 1UL; // GMM_SWIGLU_QUANT_KERNEL_TYPE，确认切换tensorApi
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -679,15 +692,27 @@ int64_t GroupedMatmulSwigluQuantV2Tiling950::LogQuantParams()
 
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
 {
-    CalBasicBlock();
-    auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
-    basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
+    if (kernel_level_) {
+        GroupedQmmTiling::CalBasicBlock();
+        OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
+        if (inputParams_.mSize >= 256 && inputParams_.nSize >= 256 && inputParams_.kSize >= 128) {
+            basicTiling_.baseM = 256;
+            basicTiling_.baseN = 128;
+            basicTiling_.baseK = 128;
+        }
+        OP_LOGI(context_->GetNodeName(), "==========================yangtao0723==========================");
+    } else {
+        CalBasicBlock();
+        auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
+        basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
 
-    ge::graphStatus l1TilingStatus =
-        IsMXFp8Input() ? CalWeightNzL1Tiling() : (IsMxFp4WeightNz() ? CalWeightNzL1Tiling() : CalL1Tiling());
+        ge::graphStatus l1TilingStatus =
+            IsMXFp8Input() ? CalWeightNzL1Tiling() : (IsMxFp4WeightNz() ? CalWeightNzL1Tiling() : CalL1Tiling());
 
-    OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
-                return ge::GRAPH_FAILED);
+        OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
+                    return ge::GRAPH_FAILED);
+    }
     tilingData_.mmTilingData.set_M(inputParams_.mSize);
     tilingData_.mmTilingData.set_N(inputParams_.nSize);
     tilingData_.mmTilingData.set_Ka(inputParams_.kSize);
@@ -904,7 +929,8 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::PostTiling()
 
 uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetTilingKey() const
 {
-    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA));
+    return GET_TPL_TILING_KEY(static_cast<uint64_t>(inputParams_.transB), static_cast<uint64_t>(inputParams_.transA),
+                             static_cast<uint64_t>(kernelType_) );
 }
 
 bool GroupedMatmulSwigluQuantV2Tiling950::IsB8(ge::DataType dtype)
