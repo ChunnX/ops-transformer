@@ -16,11 +16,10 @@
 
 -   支持D为128/512。
 -   支持H为1K~10K，512对齐。
--   支持cmp_ratio为4/128。支持如下三种情况：
+-   支持cmp_ratio为2/4/8/16/32/64/128。支持如下三种典型场景：
     -   C4A: D=512, coff=2, cmp_ratio=4;
     -   C4Li: D=128, coff=2, cmp_ratio=4;
     -   C128A: D=512, coff=1, cmp_ratio=128。
--   支持rotary_mode为2，Rope计算模式为interleave。
 
 ### 环境配置
 
@@ -148,15 +147,19 @@ bash batch_isolated_run.sh ./pt_path 1         # 采集性能（挂载msprof）
 | cache_mode | int | `1` / `2` | 1:连续buffer, 2:循环buffer |
 | layout_x | str | `TH` / `BSH` | |
 | data_type | str | `BF16` / `FP16` | |
-| cu_seqlens | None/str | `None` 或 `"[0,8192]"` | TH布局必填 |
-| seqused | None/str | `None` 或 `"[8192]"` | |
-| start_pos | None/str | `None` 或 `"[0]"` | |
-| x_datarange | str | `"[-10,10]"` | |
-| wkv_datarange | str | `"[-10,10]"` | |
-| wgate_datarange | str | `"[-10,10]"` | |
-| ape_datarange | str | `"[-10,10]"` | |
-| kv_state_datarange | str | `"[-10,10]"` | |
-| score_state_datarange | str | `"[-10,10]"` | |
+| cu_seqlens | None/str | `None` 或 `0,8192` | TH布局必填，逗号分隔 |
+| seqused | None/str | `None` 或 `8192` | 逗号分隔 |
+| start_pos | None/str | `None` 或 `0` | 逗号分隔 |
+| x_datarange | str | `-10,10` | 逗号分隔 |
+| wkv_datarange | str | `-10,10` | 逗号分隔 |
+| wgate_datarange | str | `-10,10` | 逗号分隔 |
+| ape_datarange | str | `-10,10` | 逗号分隔 |
+| kv_state_datarange | str | `-10,10` | 逗号分隔 |
+| score_state_datarange | str | `-10,10` | 逗号分隔 |
+| x_descale_datarange | str | `0.001,1.0` | 逗号分隔 |
+| wkv_descale_datarange | str | `0.001,1.0` | 逗号分隔 |
+| wgate_descale_datarange | str | `0.001,1.0` | 逗号分隔 |
+| quant_mode | int | `1` | 1: A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL |
 
 **注意事项**：
 

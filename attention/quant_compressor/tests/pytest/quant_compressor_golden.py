@@ -20,8 +20,7 @@ import datetime
 import os
 import sys
 import argparse
-from hif8_utils import hif8_to_fp32_numpy, fp32_to_hif8_numpy
-from hif8_lut import hif8_to_fp32_lut, sample_hif8_value_uniform
+from hif8_utils import hif8_to_fp32_numpy, fp32_to_hif8_numpy, hif8_to_fp32_lut, sample_hif8_value_uniform
 
 np.random.seed(21)  # 固定随机种子
 np.set_printoptions(suppress=True)
@@ -288,22 +287,22 @@ def softmax_columns(z):
 # state.shape is (block_num, block_size, coff * head_dim), is numpy type
 # new_state.shape is (s, coff * head_dim), data writed to state
 # block_table.shape is (B, (s_max + block_size - 1) // block_size)
-def write_state_page_cache(state, update_position, sc_new_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=1):
+def write_state_page_cache(state, update_position, sc_new_state, b_idx, start_seq_idx, end_seq_idx, block_table, cache_mode=quant_compressor.CacheMode.LINEAR_BUFFER):
     block_size = state.shape[1] # 应该从state，不是从block_table
     seq_cnt = end_seq_idx - start_seq_idx
     finish_cnt = 0
-    if cache_mode == 2:
+    if cache_mode == quant_compressor.CacheMode.RING_BUFFER:
         block_id = block_table[b_idx]
     while finish_cnt < seq_cnt:
         cur_seq_id = start_seq_idx + finish_cnt
-        if cache_mode == 1:
+        if cache_mode == quant_compressor.CacheMode.LINEAR_BUFFER:
             block_id = block_table[b_idx][cur_seq_id // block_size]
         block_start_seq_id = cur_seq_id % block_size
         can_write_seq_cnt = block_size - block_start_seq_id
         if can_write_seq_cnt > seq_cnt - finish_cnt:
             can_write_seq_cnt = seq_cnt - finish_cnt
         # block_id为0表示block无效,不写数据
-        if (cache_mode == 1 and block_id != 0) or cache_mode == 2:
+        if (cache_mode == quant_compressor.CacheMode.LINEAR_BUFFER and block_id != 0) or cache_mode == quant_compressor.CacheMode.RING_BUFFER:
             state[block_id:(block_id+1), block_start_seq_id:(block_start_seq_id + can_write_seq_cnt), :] = sc_new_state[finish_cnt:(finish_cnt + can_write_seq_cnt), :]
             update_position[block_id:(block_id+1), block_start_seq_id:(block_start_seq_id + can_write_seq_cnt), :] = True
         finish_cnt = finish_cnt + can_write_seq_cnt
@@ -312,23 +311,23 @@ def write_state_page_cache(state, update_position, sc_new_state, b_idx, start_se
 # block_table.shape is (B, (s_max + block_size - 1) // block_size)
 # when coff_id = 0, read pre data; when coff_id = 1, read cur data
 # out.shape is (end_seq_idx - start_seq_idx, head_dim)
-def read_state_page_cache(state, b_idx, start_seq_idx, end_seq_idx, block_table, d_start, d_end, cache_mode=1):
+def read_state_page_cache(state, b_idx, start_seq_idx, end_seq_idx, block_table, d_start, d_end, cache_mode=quant_compressor.CacheMode.LINEAR_BUFFER):
     result = np.zeros(shape=(end_seq_idx - start_seq_idx, d_end - d_start), dtype=np.float32)
     block_size = state.shape[1] # 应该从state，不是从block_table
     seq_cnt = end_seq_idx - start_seq_idx
-    if cache_mode == 2:
+    if cache_mode == quant_compressor.CacheMode.RING_BUFFER:
         block_id = block_table[b_idx]
     finish_cnt = 0
     while finish_cnt < seq_cnt:
         cur_seq_id = start_seq_idx + finish_cnt
-        if cache_mode == 1:
+        if cache_mode == quant_compressor.CacheMode.LINEAR_BUFFER:
             block_id = block_table[b_idx][cur_seq_id // block_size]
         block_start_seq_id = cur_seq_id % block_size
         can_read_seq_cnt = block_size - block_start_seq_id
         if can_read_seq_cnt > seq_cnt - finish_cnt:
             can_read_seq_cnt = seq_cnt - finish_cnt
         # 如果block_id为0, 输出错误日志, 但是依然读数据
-        if cache_mode == 1 and block_id == 0:
+        if cache_mode == quant_compressor.CacheMode.LINEAR_BUFFER and block_id == 0:
             print(f"Error Info: [read_state_page_cache] block_id of block_table is 0, b_idx={b_idx} cur_seq_id={cur_seq_id} block_size={block_size}")
         result[finish_cnt:(finish_cnt + can_read_seq_cnt), :] = state[
             block_id:(block_id+1), block_start_seq_id:(block_start_seq_id + can_read_seq_cnt), d_start:d_end]
@@ -338,7 +337,7 @@ def read_state_page_cache(state, b_idx, start_seq_idx, end_seq_idx, block_table,
 def cpu_compressor(
     x, wkv, wgate, x_descale, wkv_descale, wgate_descale, kv_state, score_state, update_kv_position, update_score_position, ape,
     block_table=None, cu_seqlens=None, seqused=None, start_pos=None,
-    cmp_ratio=4, coff=1, cache_mode=1, quant_mode=1):
+    cmp_ratio=4, coff=1, cache_mode=quant_compressor.CacheMode.LINEAR_BUFFER, quant_mode=quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL):
     x = x.numpy()
     wkv = wkv.numpy()
     wgate = wgate.numpy()
@@ -357,7 +356,7 @@ def cpu_compressor(
     new_kv_state = np.matmul(x_fp32, hif8_to_fp32_lut(wkv.T), dtype=matmul_dtype)
     new_score_state = np.matmul(x_fp32, hif8_to_fp32_lut(wgate.T), dtype=matmul_dtype)
 
-    if quant_mode == 1:
+    if quant_mode == quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL:
         new_kv_state = new_kv_state * (x_descale * wkv_descale)
         new_score_state = new_score_state * (x_descale * wgate_descale)
     else:
@@ -416,7 +415,7 @@ def cpu_compressor(
             new_score_state[start_offset:end_offset, :] = np.add(new_score_state[start_offset:end_offset, :], ape[start_seq_id_in_sc : end_seq_idx_in_sc, :])
             # 1.判断块是否需要存储到state
             # 2.判断块是否需要压缩
-            if cache_mode == 1:
+            if cache_mode == quant_compressor.CacheMode.LINEAR_BUFFER:
                save_flag = True
             else:
                 save_flag = True if start_seq_idx >= (compress_seq_id - (coff - 1) * cmp_ratio) else False
@@ -510,7 +509,8 @@ def cpu_compressor(
 
 def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S = 0, start_pos=None, seqused=None, cu_seqlens=None,
                          block_size = 128, data_type = torch.bfloat16, hidden_size = 4096,
-                         save_state_seqlens = None, cache_mode = 1, quant_mode = 1,
+                         save_state_seqlens = None, cache_mode = quant_compressor.CacheMode.LINEAR_BUFFER,
+                         quant_mode = quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL,
                          x_datarange = [-10, 10],
                          wkv_datarange = [-10, 10], wgate_datarange = [-10, 10], ape_datarange = [-10, 10],
                          kv_state_datarange = [-10, 10], score_state_datarange = [-10, 10],
@@ -586,7 +586,7 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     # ======================== check input params finish ========================
     # ======================== gen input data start =============================
     # page state
-    if cache_mode == 1:
+    if cache_mode == quant_compressor.CacheMode.LINEAR_BUFFER:
         max_block_num_per_batch = (S_max + block_size - 1) // block_size
         block_num = B * max_block_num_per_batch
         next_block_id = 1
@@ -632,13 +632,13 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (actual_block_num, block_size, coff * head_dim))).to(torch.float32)
     else:
         block_table = torch.tensor(random.sample(list(range(B)), B), dtype=torch.int32)
-        token_size = (2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1)
+        block_size = min((2 * cmp_ratio + S - 1) if coff == 2 else (cmp_ratio + S - 1), 1024)
         if B==0:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, token_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (0, block_size, coff * head_dim))).to(torch.float32)
         else:
-            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
-            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, token_size, coff * head_dim))).to(torch.float32)
+            kv_state = torch.tensor(np.random.uniform(kv_state_datarange[0], kv_state_datarange[1], (B, block_size, coff * head_dim))).to(torch.float32)
+            score_state = torch.tensor(np.random.uniform(score_state_datarange[0], score_state_datarange[1], (B, block_size, coff * head_dim))).to(torch.float32)
 
     # other input
     if bs_combine_flag:
@@ -684,7 +684,7 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
     wkv_descale = wkv_descale.to("npu:%s" % DEVICE_ID)
     wgate_descale = wgate_descale.to("npu:%s" % DEVICE_ID)
     is_contiguous_flag = True
-    if cache_mode == 1:  # 连续buffer(支持在第二维非连续)
+    if cache_mode == quant_compressor.CacheMode.LINEAR_BUFFER:  # 连续buffer(支持在第二维非连续)
         if is_contiguous_flag:
             state_cache = torch.zeros((kv_state.shape[0], kv_state.shape[1], 2*kv_state.shape[2]))
             state_cache = state_cache.to("npu:%s" % DEVICE_ID)
@@ -756,10 +756,10 @@ def run_compressor_eager(B, S_max, head_dim, coff, cmp_ratio, bs_combine_flag, S
             cu_seqlens = cu_seqlens,
             seqused = seqused,
             start_pos = start_pos if exist_start_pos else None,
-            quant_mode = quant_mode,
+            quant_mode = int(quant_mode),
             cmp_ratio = cmp_ratio,
             coff = coff,
-            cache_mode = cache_mode
+            cache_mode = int(cache_mode)
         )
     )
     print(f"cmp_kv: shape {npu_out.shape}, dtype: {npu_out.dtype}")
@@ -817,10 +817,11 @@ if __name__ == "__main__":
     parser.add_argument('--seqused', type=int, nargs='*', help="sequence which is used, len is B")
     parser.add_argument('--cu_seqlens', type=int, nargs='*', help='when x is [T, h], it is required, len is B+1')
     parser.add_argument('--block_size', type=int, default=128)
-    parser.add_argument('--cache_mode', type=int, default=1)
+    parser.add_argument('--cache_mode', type=int, default=int(quant_compressor.CacheMode.LINEAR_BUFFER))
     parser.add_argument('--data_type', type=str, choices=["bfloat16", "float16"], default="bfloat16", help='bfloat16 or float16')
     parser.add_argument('--hidden_size', type=int, default=4096)
-    parser.add_argument('--quant_mode', type=int, choices=[1], default=1, help='quantization mode, only support 1(HiF8)')
+    parser.add_argument('--quant_mode', type=int, choices=[int(quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL)],
+                        default=int(quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL), help='quantization mode, only support 1(HiF8)')
     parser.add_argument('--save_state_seqlens', type=int, nargs='*', help='save to kv_state and score_state of seq id in [start_pos + seqused - save_state_seqlens, start_pos + seqused)')
     args = parser.parse_args()
 

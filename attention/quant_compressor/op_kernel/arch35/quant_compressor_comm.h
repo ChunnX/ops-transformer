@@ -325,6 +325,16 @@ inline constexpr uint32_t BUFFER_SIZE_BYTE_2K = 2048;
 inline constexpr uint32_t BUFFER_SIZE_BYTE_4K = 4096;
 inline constexpr uint32_t BUFFER_SIZE_BYTE_8K = 8192;
 inline constexpr uint32_t BUFFER_SIZE_BYTE_16K = 16384;
+
+// VF算子公共常量
+inline constexpr uint32_t VF_D_SIZE_8 = 8;
+inline constexpr uint32_t VF_D_SIZE_16 = 16;
+inline constexpr uint32_t VF_D_SIZE_32 = 32;
+inline constexpr uint32_t VF_D_SIZE_64 = 64;
+inline constexpr uint32_t VF_D_SIZE_128 = 128;
+inline constexpr uint32_t VF_D_SIZE_256 = 256;
+inline constexpr uint32_t VF_D_SIZE_512 = 512;
+inline constexpr uint32_t VF_FLOAT_REP_SIZE = 64;
 inline constexpr uint32_t BUFFER_SIZE_BYTE_32K = 32768;
 inline constexpr uint32_t BUFFER_SIZE_BYTE_64K = 65536;
 

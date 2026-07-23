@@ -13,7 +13,7 @@
 import os
 from functools import partial
 from quant_compressor_golden import cpu_compressor, get_seq_used_by_batch
-from hif8_lut import sample_hif8_value_uniform
+from hif8_utils import sample_hif8_value_uniform
 import pandas as pd
 import numpy as np
 import torch

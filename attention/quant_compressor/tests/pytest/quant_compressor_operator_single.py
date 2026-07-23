@@ -20,6 +20,7 @@ import torch
 import torch_npu
 import torchair
 import cann_ops_transformer
+from cann_ops_transformer.ops import quant_compressor
 import numpy as np
 import torch.nn as nn
 

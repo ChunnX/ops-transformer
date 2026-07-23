@@ -10,6 +10,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import torch
+from cann_ops_transformer.ops import quant_compressor
 
 # 定义测试参数组合
 TEST_PARAMS = {
@@ -22,7 +23,7 @@ TEST_PARAMS = {
         "cmp_ratio": [4],
         "coff": [2],
         "start_p": [0],
-        "cache_mode": [1],
+        "cache_mode": [quant_compressor.CacheMode.LINEAR_BUFFER],
         "layout_x": ["TH"],
         "data_type": [torch.bfloat16],
         "cu_seqlens":[None],
@@ -37,7 +38,7 @@ TEST_PARAMS = {
         "x_descale_datarange": [[0.001, 1.0]],
         "wkv_descale_datarange": [[0.001, 1.0]],
         "wgate_descale_datarange": [[0.001, 1.0]],
-        "quant_mode": [1],
+        "quant_mode": [quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL],
     },
     "Prefill1":{
         "batch_size": [1],
@@ -48,7 +49,7 @@ TEST_PARAMS = {
         "cmp_ratio": [4],
         "coff": [2],
         "start_p": [0],
-        "cache_mode": [1],
+        "cache_mode": [quant_compressor.CacheMode.LINEAR_BUFFER],
         "layout_x": ["TH"],
         "data_type": [torch.bfloat16],
         "cu_seqlens":[None],
@@ -63,7 +64,7 @@ TEST_PARAMS = {
         "x_descale_datarange": [[0.001, 1.0]],
         "wkv_descale_datarange": [[0.001, 1.0]],
         "wgate_descale_datarange": [[0.001, 1.0]],
-        "quant_mode": [1],
+        "quant_mode": [quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL],
     },
     "Prefill2":{
         "batch_size": [1],
@@ -74,7 +75,7 @@ TEST_PARAMS = {
         "cmp_ratio": [128],
         "coff": [1],
         "start_p": [0],
-        "cache_mode": [1],
+        "cache_mode": [quant_compressor.CacheMode.LINEAR_BUFFER],
         "layout_x": ["TH"],#TH BSH
         "data_type": [torch.bfloat16],
         "cu_seqlens":[None],
@@ -89,7 +90,7 @@ TEST_PARAMS = {
         "x_descale_datarange": [[0.001, 1.0]],
         "wkv_descale_datarange": [[0.001, 1.0]],
         "wgate_descale_datarange": [[0.001, 1.0]],
-        "quant_mode": [1],
+        "quant_mode": [quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL],
     },
     "decode0":{
         "batch_size": [1],
@@ -100,7 +101,7 @@ TEST_PARAMS = {
         "cmp_ratio": [4],
         "coff": [2],
         "start_p": [8192, 8195],
-        "cache_mode": [1],
+        "cache_mode": [quant_compressor.CacheMode.LINEAR_BUFFER],
         "layout_x": ["TH"],
         "data_type": [torch.bfloat16],
         "cu_seqlens":[None],
@@ -115,7 +116,7 @@ TEST_PARAMS = {
         "x_descale_datarange": [[0.001, 1.0]],
         "wkv_descale_datarange": [[0.001, 1.0]],
         "wgate_descale_datarange": [[0.001, 1.0]],
-        "quant_mode": [1],
+        "quant_mode": [quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL],
     },
     "decode1":{
         "batch_size": [1],
@@ -126,7 +127,7 @@ TEST_PARAMS = {
         "cmp_ratio": [4],
         "coff": [2],
         "start_p": [8192, 8195],
-        "cache_mode": [1],
+        "cache_mode": [quant_compressor.CacheMode.LINEAR_BUFFER],
         "layout_x": ["TH"],
         "data_type": [torch.bfloat16],
         "cu_seqlens":[None],
@@ -141,7 +142,7 @@ TEST_PARAMS = {
         "x_descale_datarange": [[0.001, 1.0]],
         "wkv_descale_datarange": [[0.001, 1.0]],
         "wgate_descale_datarange": [[0.001, 1.0]],
-        "quant_mode": [1],
+        "quant_mode": [quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL],
     },
     "decode2":{
         "batch_size": [1],
@@ -152,7 +153,7 @@ TEST_PARAMS = {
         "cmp_ratio": [128],
         "coff": [1],
         "start_p": [8192, 8195],
-        "cache_mode": [1],
+        "cache_mode": [quant_compressor.CacheMode.LINEAR_BUFFER],
         "layout_x": ["TH"],
         "data_type": [torch.bfloat16],
         "cu_seqlens":[None],
@@ -167,7 +168,7 @@ TEST_PARAMS = {
         "x_descale_datarange": [[0.001, 1.0]],
         "wkv_descale_datarange": [[0.001, 1.0]],
         "wgate_descale_datarange": [[0.001, 1.0]],
-        "quant_mode": [1],
+        "quant_mode": [quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL],
     },
     "decode3":{
         "batch_size": [8],
@@ -178,7 +179,7 @@ TEST_PARAMS = {
         "cmp_ratio": [4],
         "coff": [2],
         "start_p": [8193],
-        "cache_mode": [1],
+        "cache_mode": [quant_compressor.CacheMode.LINEAR_BUFFER],
         "layout_x": ["TH"],
         "data_type": [torch.bfloat16],
         "cu_seqlens":[None],
@@ -193,7 +194,7 @@ TEST_PARAMS = {
         "x_descale_datarange": [[0.001, 1.0]],
         "wkv_descale_datarange": [[0.001, 1.0]],
         "wgate_descale_datarange": [[0.001, 1.0]],
-        "quant_mode": [1],
+        "quant_mode": [quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL],
     },
     "decode4":{
         "batch_size": [8],
@@ -204,7 +205,7 @@ TEST_PARAMS = {
         "cmp_ratio": [4],
         "coff": [2],
         "start_p": [8192, 8193, 8191],
-        "cache_mode": [1],
+        "cache_mode": [quant_compressor.CacheMode.LINEAR_BUFFER],
         "layout_x": ["TH"],
         "data_type": [torch.bfloat16],
         "cu_seqlens":[None],
@@ -219,7 +220,7 @@ TEST_PARAMS = {
         "x_descale_datarange": [[0.001, 1.0]],
         "wkv_descale_datarange": [[0.001, 1.0]],
         "wgate_descale_datarange": [[0.001, 1.0]],
-        "quant_mode": [1],
+        "quant_mode": [quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL],
     },
     "decode5":{
         "batch_size": [8],
@@ -230,7 +231,7 @@ TEST_PARAMS = {
         "cmp_ratio": [128],
         "coff": [1],
         "start_p": [8193],
-        "cache_mode": [1],
+        "cache_mode": [quant_compressor.CacheMode.LINEAR_BUFFER],
         "layout_x": ["TH"],
         "data_type": [torch.bfloat16],
         "cu_seqlens":[None],
@@ -245,7 +246,7 @@ TEST_PARAMS = {
         "x_descale_datarange": [[0.001, 1.0]],
         "wkv_descale_datarange": [[0.001, 1.0]],
         "wgate_descale_datarange": [[0.001, 1.0]],
-        "quant_mode": [1],
+        "quant_mode": [quant_compressor.QuantMode.A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL],
     }
 }#注意单个用例组内的用例尽量不要超过32
 FIRST_CASE = [TEST_PARAMS["Prefill0"], TEST_PARAMS["Prefill1"], TEST_PARAMS["Prefill2"], TEST_PARAMS["decode0"],

@@ -18,11 +18,8 @@
 
 #include "kernel_operator.h"
 #include <cstdint>
+#include "../quant_compressor_comm.h"
 using namespace AscendC;
-constexpr uint32_t FLOAT_REP_SIZE = 64;
-constexpr uint32_t BTYEALIGNSIZE = 32;
-constexpr uint32_t REGSIZE = 256;
-constexpr uint32_t HALFCORED = 128;
 
 template <typename T>
 struct AddRegList {
@@ -95,15 +92,15 @@ __simd_vf__ void Add128VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32
     for (uint32_t idx = 0; idx < loopTimes; idx++) {
         uint64_t offset0 = idx * 2 * actualCol0;
         uint64_t offset1 = idx * 2 * actualCol1;
-        AddVFImpl(inputAddr, apeAddr, regList[0], row, FLOAT_REP_SIZE, offset0, offset1);
-        AddVFImpl(inputAddr, apeAddr, regList[1], row, FLOAT_REP_SIZE, offset0 + FLOAT_REP_SIZE, offset1 + FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[2], row, FLOAT_REP_SIZE, offset0 + actualCol0, offset1 + actualCol1);
-        AddVFImpl(inputAddr, apeAddr, regList[3], row, FLOAT_REP_SIZE, offset0 + actualCol0 + FLOAT_REP_SIZE, offset1 + actualCol1 + FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[0], row, VF_FLOAT_REP_SIZE, offset0, offset1);
+        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE, offset0 + VF_FLOAT_REP_SIZE, offset1 + VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[2], row, VF_FLOAT_REP_SIZE, offset0 + actualCol0, offset1 + actualCol1);
+        AddVFImpl(inputAddr, apeAddr, regList[3], row, VF_FLOAT_REP_SIZE, offset0 + actualCol0 + VF_FLOAT_REP_SIZE, offset1 + actualCol1 + VF_FLOAT_REP_SIZE);
     }
 
     if (row % 2 > 0) {
-        AddVFImpl(inputAddr, apeAddr, regList[0], row, FLOAT_REP_SIZE, loopTimes * 2 * actualCol0, loopTimes * 2 * actualCol1);
-        AddVFImpl(inputAddr, apeAddr, regList[1], row, FLOAT_REP_SIZE, loopTimes * 2 * actualCol0 + FLOAT_REP_SIZE, loopTimes * 2 * actualCol1 + FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[0], row, VF_FLOAT_REP_SIZE, loopTimes * 2 * actualCol0, loopTimes * 2 * actualCol1);
+        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE, loopTimes * 2 * actualCol0 + VF_FLOAT_REP_SIZE, loopTimes * 2 * actualCol1 + VF_FLOAT_REP_SIZE);
     }
 }
 
@@ -115,10 +112,10 @@ __simd_vf__ void Add256VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32
     for (uint32_t idx = 0; idx < row; idx++) {
         uint64_t offset0 = idx * actualCol0;
         uint64_t offset1 = idx * actualCol1;
-        AddVFImpl(inputAddr, apeAddr, regList[0], row, FLOAT_REP_SIZE, offset0, offset1);
-        AddVFImpl(inputAddr, apeAddr, regList[1], row, FLOAT_REP_SIZE, offset0 + FLOAT_REP_SIZE, offset1 + FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[2], row, FLOAT_REP_SIZE, offset0 + 2 * FLOAT_REP_SIZE, offset1 + 2 * FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[3], row, FLOAT_REP_SIZE, offset0 + 3 * FLOAT_REP_SIZE, offset1 + 3 * FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[0], row, VF_FLOAT_REP_SIZE, offset0, offset1);
+        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE, offset0 + VF_FLOAT_REP_SIZE, offset1 + VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[2], row, VF_FLOAT_REP_SIZE, offset0 + 2 * VF_FLOAT_REP_SIZE, offset1 + 2 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[3], row, VF_FLOAT_REP_SIZE, offset0 + 3 * VF_FLOAT_REP_SIZE, offset1 + 3 * VF_FLOAT_REP_SIZE);
     }
 }
 
@@ -130,14 +127,14 @@ __simd_vf__ void Add512VFImpl(__ubuf__ T *inputAddr, __ubuf__ T *apeAddr, uint32
     for (uint32_t idx = 0; idx < row; idx++) {
         uint64_t offset0 = idx * actualCol0;
         uint64_t offset1 = idx * actualCol1;
-        AddVFImpl(inputAddr, apeAddr, regList[0], row, FLOAT_REP_SIZE, offset0, offset1);
-        AddVFImpl(inputAddr, apeAddr, regList[1], row, FLOAT_REP_SIZE, offset0 + FLOAT_REP_SIZE, offset1 + FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[2], row, FLOAT_REP_SIZE, offset0 + 2 * FLOAT_REP_SIZE, offset1 + 2 * FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[3], row, FLOAT_REP_SIZE, offset0 + 3 * FLOAT_REP_SIZE, offset1 + 3 * FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[4], row, FLOAT_REP_SIZE, offset0 + 4 * FLOAT_REP_SIZE, offset1 + 4 * FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[5], row, FLOAT_REP_SIZE, offset0 + 5 * FLOAT_REP_SIZE, offset1 + 5 * FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[6], row, FLOAT_REP_SIZE, offset0 + 6 * FLOAT_REP_SIZE, offset1 + 6 * FLOAT_REP_SIZE);
-        AddVFImpl(inputAddr, apeAddr, regList[7], row, FLOAT_REP_SIZE, offset0 + 7 * FLOAT_REP_SIZE, offset1 + 7 * FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[0], row, VF_FLOAT_REP_SIZE, offset0, offset1);
+        AddVFImpl(inputAddr, apeAddr, regList[1], row, VF_FLOAT_REP_SIZE, offset0 + VF_FLOAT_REP_SIZE, offset1 + VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[2], row, VF_FLOAT_REP_SIZE, offset0 + 2 * VF_FLOAT_REP_SIZE, offset1 + 2 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[3], row, VF_FLOAT_REP_SIZE, offset0 + 3 * VF_FLOAT_REP_SIZE, offset1 + 3 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[4], row, VF_FLOAT_REP_SIZE, offset0 + 4 * VF_FLOAT_REP_SIZE, offset1 + 4 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[5], row, VF_FLOAT_REP_SIZE, offset0 + 5 * VF_FLOAT_REP_SIZE, offset1 + 5 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[6], row, VF_FLOAT_REP_SIZE, offset0 + 6 * VF_FLOAT_REP_SIZE, offset1 + 6 * VF_FLOAT_REP_SIZE);
+        AddVFImpl(inputAddr, apeAddr, regList[7], row, VF_FLOAT_REP_SIZE, offset0 + 7 * VF_FLOAT_REP_SIZE, offset1 + 7 * VF_FLOAT_REP_SIZE);
     }
 }
 
@@ -202,31 +199,31 @@ __simd_vf__ void MultiAdd128VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr
     for (uint32_t idx = 0; idx < loopTimes; idx++) {
         uint64_t offset = idx * actualCol * 2;
         MicroAPI::LoadAlign(regList[0].vreg, initialAddr + offset);
-        MicroAPI::LoadAlign(regList[1].vreg, initialAddr + offset + FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[1].vreg, initialAddr + offset + VF_FLOAT_REP_SIZE);
         MicroAPI::LoadAlign(regList[2].vreg, initialAddr + offset + actualCol);
-        MicroAPI::LoadAlign(regList[3].vreg, initialAddr + offset + actualCol + FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[3].vreg, initialAddr + offset + actualCol + VF_FLOAT_REP_SIZE);
         for (uint32_t repeatIdx = initialRepeatIdx; repeatIdx < repeatNum; repeatIdx++) {
             uint64_t addOffset = offset + repeatIdx * repeatOffset;
             MicroAPI::LoadAlign(regList[0].vregape, inputAddr + addOffset);
-            MicroAPI::LoadAlign(regList[1].vregape, inputAddr + addOffset + FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[1].vregape, inputAddr + addOffset + VF_FLOAT_REP_SIZE);
             MicroAPI::LoadAlign(regList[2].vregape, inputAddr + addOffset + actualCol);
-            MicroAPI::LoadAlign(regList[3].vregape, inputAddr + addOffset + actualCol + FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[3].vregape, inputAddr + addOffset + actualCol + VF_FLOAT_REP_SIZE);
             MicroAPI::Add(regList[0].vreg, regList[0].vreg, regList[0].vregape, mask);
             MicroAPI::Add(regList[1].vreg, regList[1].vreg, regList[1].vregape, mask);
             MicroAPI::Add(regList[2].vreg, regList[2].vreg, regList[2].vregape, mask);
             MicroAPI::Add(regList[3].vreg, regList[3].vreg, regList[3].vregape, mask);
         }
         MicroAPI::StoreAlign(outputAddr + offset, regList[0].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + FLOAT_REP_SIZE, regList[1].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + VF_FLOAT_REP_SIZE, regList[1].vreg, mask);
         MicroAPI::StoreAlign(outputAddr + offset + actualCol, regList[2].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + actualCol + FLOAT_REP_SIZE, regList[3].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + actualCol + VF_FLOAT_REP_SIZE, regList[3].vreg, mask);
     }
 
     if (row % 2 > 0) {
         MultiAddVFImpl<IS_FIRST, T>(outputAddr, inputAddr, regList[0], row, col, loopTimes * 2 * actualCol, repeatNum,
                                  repeatOffset);
         MultiAddVFImpl<IS_FIRST, T>(outputAddr, inputAddr, regList[1], row, col,
-                                 loopTimes * 2 * actualCol + FLOAT_REP_SIZE, repeatNum, repeatOffset);
+                                 loopTimes * 2 * actualCol + VF_FLOAT_REP_SIZE, repeatNum, repeatOffset);
     }
 }
 
@@ -242,24 +239,24 @@ __simd_vf__ void MultiAdd256VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr
     for (uint32_t idx = 0; idx < loopTimes; idx++) {
         uint64_t offset = idx * actualCol;
         MicroAPI::LoadAlign(regList[0].vreg, initialAddr + offset);
-        MicroAPI::LoadAlign(regList[1].vreg, initialAddr + offset + FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign(regList[2].vreg, initialAddr + offset + 2 * FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign(regList[3].vreg, initialAddr + offset + 3 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[1].vreg, initialAddr + offset + VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[2].vreg, initialAddr + offset + 2 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[3].vreg, initialAddr + offset + 3 * VF_FLOAT_REP_SIZE);
         for (uint32_t repeatIdx = initialRepeatIdx; repeatIdx < repeatNum; repeatIdx++) {
             uint64_t addOffset = offset + repeatIdx * repeatOffset;
             MicroAPI::LoadAlign(regList[0].vregape, inputAddr + addOffset);
-            MicroAPI::LoadAlign(regList[1].vregape, inputAddr + addOffset + FLOAT_REP_SIZE);
-            MicroAPI::LoadAlign(regList[2].vregape, inputAddr + addOffset + 2 * FLOAT_REP_SIZE);
-            MicroAPI::LoadAlign(regList[3].vregape, inputAddr + addOffset + 3 * FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[1].vregape, inputAddr + addOffset + VF_FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[2].vregape, inputAddr + addOffset + 2 * VF_FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[3].vregape, inputAddr + addOffset + 3 * VF_FLOAT_REP_SIZE);
             MicroAPI::Add(regList[0].vreg, regList[0].vreg, regList[0].vregape, mask);
             MicroAPI::Add(regList[1].vreg, regList[1].vreg, regList[1].vregape, mask);
             MicroAPI::Add(regList[2].vreg, regList[2].vreg, regList[2].vregape, mask);
             MicroAPI::Add(regList[3].vreg, regList[3].vreg, regList[3].vregape, mask);
         }
         MicroAPI::StoreAlign(outputAddr + offset, regList[0].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + FLOAT_REP_SIZE, regList[1].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + 2 * FLOAT_REP_SIZE, regList[2].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + 3 * FLOAT_REP_SIZE, regList[3].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + VF_FLOAT_REP_SIZE, regList[1].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + 2 * VF_FLOAT_REP_SIZE, regList[2].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + 3 * VF_FLOAT_REP_SIZE, regList[3].vreg, mask);
     }
 }
 
@@ -275,23 +272,23 @@ __simd_vf__ void MultiAdd512VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr
     for (uint32_t idx = 0; idx < loopTimes; idx++) {
         uint64_t offset = idx * actualCol;
         MicroAPI::LoadAlign(regList[0].vreg, initialAddr + offset);
-        MicroAPI::LoadAlign(regList[1].vreg, initialAddr + offset + FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign(regList[2].vreg, initialAddr + offset + 2 * FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign(regList[3].vreg, initialAddr + offset + 3 * FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign(regList[4].vreg, initialAddr + offset + 4 * FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign(regList[5].vreg, initialAddr + offset + 5 * FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign(regList[6].vreg, initialAddr + offset + 6 * FLOAT_REP_SIZE);
-        MicroAPI::LoadAlign(regList[7].vreg, initialAddr + offset + 7 * FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[1].vreg, initialAddr + offset + VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[2].vreg, initialAddr + offset + 2 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[3].vreg, initialAddr + offset + 3 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[4].vreg, initialAddr + offset + 4 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[5].vreg, initialAddr + offset + 5 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[6].vreg, initialAddr + offset + 6 * VF_FLOAT_REP_SIZE);
+        MicroAPI::LoadAlign(regList[7].vreg, initialAddr + offset + 7 * VF_FLOAT_REP_SIZE);
         for (uint32_t repeatIdx = initialRepeatIdx; repeatIdx < repeatNum; repeatIdx++) {
             uint64_t addOffset = offset + repeatIdx * row * actualCol;
             MicroAPI::LoadAlign(regList[0].vregape, inputAddr + addOffset);
-            MicroAPI::LoadAlign(regList[1].vregape, inputAddr + addOffset + FLOAT_REP_SIZE);
-            MicroAPI::LoadAlign(regList[2].vregape, inputAddr + addOffset + 2 * FLOAT_REP_SIZE);
-            MicroAPI::LoadAlign(regList[3].vregape, inputAddr + addOffset + 3 * FLOAT_REP_SIZE);
-            MicroAPI::LoadAlign(regList[4].vregape, inputAddr + addOffset + 4 * FLOAT_REP_SIZE);
-            MicroAPI::LoadAlign(regList[5].vregape, inputAddr + addOffset + 5 * FLOAT_REP_SIZE);
-            MicroAPI::LoadAlign(regList[6].vregape, inputAddr + addOffset + 6 * FLOAT_REP_SIZE);
-            MicroAPI::LoadAlign(regList[7].vregape, inputAddr + addOffset + 7 * FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[1].vregape, inputAddr + addOffset + VF_FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[2].vregape, inputAddr + addOffset + 2 * VF_FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[3].vregape, inputAddr + addOffset + 3 * VF_FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[4].vregape, inputAddr + addOffset + 4 * VF_FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[5].vregape, inputAddr + addOffset + 5 * VF_FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[6].vregape, inputAddr + addOffset + 6 * VF_FLOAT_REP_SIZE);
+            MicroAPI::LoadAlign(regList[7].vregape, inputAddr + addOffset + 7 * VF_FLOAT_REP_SIZE);
             MicroAPI::Add(regList[0].vreg, regList[0].vreg, regList[0].vregape, mask);
             MicroAPI::Add(regList[1].vreg, regList[1].vreg, regList[1].vregape, mask);
             MicroAPI::Add(regList[2].vreg, regList[2].vreg, regList[2].vregape, mask);
@@ -302,13 +299,13 @@ __simd_vf__ void MultiAdd512VFImpl(__ubuf__ T *outputAddr, __ubuf__ T *inputAddr
             MicroAPI::Add(regList[7].vreg, regList[7].vreg, regList[7].vregape, mask);
         }
         MicroAPI::StoreAlign(outputAddr + offset, regList[0].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + FLOAT_REP_SIZE, regList[1].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + 2 * FLOAT_REP_SIZE, regList[2].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + 3 * FLOAT_REP_SIZE, regList[3].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + 4 * FLOAT_REP_SIZE, regList[4].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + 5 * FLOAT_REP_SIZE, regList[5].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + 6 * FLOAT_REP_SIZE, regList[6].vreg, mask);
-        MicroAPI::StoreAlign(outputAddr + offset + 7 * FLOAT_REP_SIZE, regList[7].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + VF_FLOAT_REP_SIZE, regList[1].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + 2 * VF_FLOAT_REP_SIZE, regList[2].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + 3 * VF_FLOAT_REP_SIZE, regList[3].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + 4 * VF_FLOAT_REP_SIZE, regList[4].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + 5 * VF_FLOAT_REP_SIZE, regList[5].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + 6 * VF_FLOAT_REP_SIZE, regList[6].vreg, mask);
+        MicroAPI::StoreAlign(outputAddr + offset + 7 * VF_FLOAT_REP_SIZE, regList[7].vreg, mask);
     }
 }
 
@@ -329,13 +326,13 @@ __aicore__ inline void AddVF(const LocalTensor<T> &scoreLocal, const LocalTensor
     __ubuf__ T *scoreAddr = (__ubuf__ T *)scoreLocal.GetPhyAddr();
     __ubuf__ T *apeAddr = (__ubuf__ T *)apeLocal.GetPhyAddr();
 
-    if (col <= 64) {
+    if (col <= VF_D_SIZE_64) {
         Add64VFImpl<T>(scoreAddr, apeAddr, row, col, actualCol0, actualCol1);
-    } else if (col == 128) {
+    } else if (col == VF_D_SIZE_128) {
         Add128VFImpl<T>(scoreAddr, apeAddr, row, actualCol0, actualCol1);
-    } else if (col == 256) {
+    } else if (col == VF_D_SIZE_256) {
         Add256VFImpl<T>(scoreAddr, apeAddr, row, actualCol0, actualCol1);
-    } else if (col == 512) {
+    } else if (col == VF_D_SIZE_512) {
         Add512VFImpl<T>(scoreAddr, apeAddr, row, actualCol0, actualCol1);
     }
 }
@@ -347,13 +344,13 @@ __aicore__ inline void AddVF(const LocalTensor<T> &scoreLocal, const LocalTensor
     __ubuf__ T *scoreAddr = (__ubuf__ T *)scoreLocal.GetPhyAddr();
     __ubuf__ T *apeAddr = (__ubuf__ T *)apeLocal.GetPhyAddr();
 
-    if (col <= 64) {
+    if (col <= VF_D_SIZE_64) {
         Add64VFImpl<T>(scoreAddr, apeAddr, row, col, actualCol, actualCol);
-    } else if (col == 128) {
+    } else if (col == VF_D_SIZE_128) {
         Add128VFImpl<T>(scoreAddr, apeAddr, row, actualCol, actualCol);
-    } else if (col == 256) {
+    } else if (col == VF_D_SIZE_256) {
         Add256VFImpl<T>(scoreAddr, apeAddr, row, actualCol, actualCol);
-    } else if (col == 512) {
+    } else if (col == VF_D_SIZE_512) {
         Add512VFImpl<T>(scoreAddr, apeAddr, row, actualCol, actualCol);
     }
 }
@@ -364,13 +361,13 @@ __aicore__ inline void MultiAddVF(const LocalTensor<T> &outputLocal, const Local
 {
     __ubuf__ T *outputAddr = (__ubuf__ T *)outputLocal.GetPhyAddr();
     __ubuf__ T *inputAddr = (__ubuf__ T *)inputLocal.GetPhyAddr();
-    if (col <= 64) {
+    if (col <= VF_D_SIZE_64) {
         MultiAdd64VFImpl<IS_FIRST, T>(outputAddr, inputAddr, row, col, actualCol, repeatNum, repeatOffset);
-    } else if (col == 128) {
+    } else if (col == VF_D_SIZE_128) {
         MultiAdd128VFImpl<IS_FIRST, T>(outputAddr, inputAddr, row, col, actualCol, repeatNum, repeatOffset);
-    } else if (col == 256) {
+    } else if (col == VF_D_SIZE_256) {
         MultiAdd256VFImpl<IS_FIRST, T>(outputAddr, inputAddr, row, actualCol, repeatNum, repeatOffset);
-    } else if (col == 512) {
+    } else if (col == VF_D_SIZE_512) {
         MultiAdd512VFImpl<IS_FIRST, T>(outputAddr, inputAddr, row, actualCol, repeatNum, repeatOffset);
     }
 }

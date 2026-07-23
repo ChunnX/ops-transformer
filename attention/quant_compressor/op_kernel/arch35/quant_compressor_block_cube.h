@@ -81,9 +81,9 @@ private:
     TBuf<TPosition::A1> wBufL1;
     // =================================L0 Buffer=================================
     // L0 buffer size
-    static constexpr uint32_t L0A_PP_SIZE = 32 * 1024; // 128 * 128 * 2 = 32k
-    static constexpr uint32_t L0B_PP_SIZE = 32 * 1024; // 128 * 128 * 2 = 32k
-    static constexpr uint32_t L0C_PP_SIZE = 64 * 1024; // (128 * 2) * 64 * 4 = 64k
+    static constexpr uint32_t L0A_PP_SIZE = 32 * 1024; // 256 * 128 * 1 = 32k
+    static constexpr uint32_t L0B_PP_SIZE = 32 * 1024; // 256 * 128 * 1 = 32k
+    static constexpr uint32_t L0C_PP_SIZE = 64 * 1024; // 128 * 128 * 4 = 64k
     // L0_A
     TBuf<TPosition::A2> tmpBufL0A;
     // L0_B

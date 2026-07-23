@@ -16,6 +16,7 @@
 #ifndef VF_SOFTMAX_H
 #define VF_SOFTMAX_H
 #include "kernel_tensor.h"
+#include "../quant_compressor_comm.h"
 namespace FaVectorApi {
 using AscendC::LocalTensor;
 using namespace AscendC;
@@ -1565,25 +1566,25 @@ __aicore__ inline void SoftmaxDnVF(const LocalTensor<T>& dstTensor, const LocalT
 {
     __ubuf__ T *inputAddr = (__ubuf__ T*) dstTensor.GetPhyAddr();
     __ubuf__ T *outputAddr = (__ubuf__ T*) srcTensor.GetPhyAddr();
-    if (dDealSize == 8) {
+    if (dDealSize == VF_D_SIZE_8) {
         SoftmaxDndBase8<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);
-    } else if (dDealSize == 16) {
+    } else if (dDealSize == VF_D_SIZE_16) {
         SoftmaxDndBase16<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);
-    } else if (dDealSize == 32) {
+    } else if (dDealSize == VF_D_SIZE_32) {
         SoftmaxDndBase32<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);
-    } else if (dDealSize == 64) {
+    } else if (dDealSize == VF_D_SIZE_64) {
         SoftmaxDndBase64<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);
-    } else if (dDealSize == 128) {
+    } else if (dDealSize == VF_D_SIZE_128) {
         SoftmaxDndBase128<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);
-    } else if (dDealSize == 256) {
+    } else if (dDealSize == VF_D_SIZE_256) {
         SoftmaxDndBase256<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);
-    } else if (dDealSize == 512) {
+    } else if (dDealSize == VF_D_SIZE_512) {
         SoftmaxDndBase512<T>(inputAddr, outputAddr, RowSize,
             ReduceSize, vScRealSize, minValue);
     }

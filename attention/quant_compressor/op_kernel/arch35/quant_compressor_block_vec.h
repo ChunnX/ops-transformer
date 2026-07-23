@@ -631,9 +631,9 @@ __aicore__ inline void QuantCompressorBlockVector<COMP>::Dequant(const LocalTens
 {
     if constexpr (COMP::quantMode == QUANT_MODE::A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL) {
         if constexpr (IS_SINGLE) {
-            DequantVF<COFF::DISABLE>(dstLocal, dstLocal, descale, row, col, constInfo_.headDim, actualCol);
+            DequantVf<COFF::DISABLE>(dstLocal, dstLocal, descale, row, col, constInfo_.headDim, actualCol);
         } else {
-            DequantVF<COMP::coff>(dstLocal, dstLocal, descale, row, col, constInfo_.headDim, actualCol);
+            DequantVf<COMP::coff>(dstLocal, dstLocal, descale, row, col, constInfo_.headDim, actualCol);
         }
         PipeBarrier<PIPE_V>();
     }
