@@ -11,26 +11,13 @@
 #ifndef A2AV_COMM_GUARD_H
 #define A2AV_COMM_GUARD_H
 
-__aicore__ inline bool A2avAivOnly()
-{
-    if ASCEND_IS_AIC {
-        return false;
+#define A2AV_AIV_ONLY()                     \
+    if ASCEND_IS_AIC { return; }            \
+    if ASCEND_IS_AIV {                      \
+        if (GetBlockIdx() != 0) { return; } \
     }
-    if ASCEND_IS_AIV {
-        if (GetBlockIdx() != 0) {
-            return false;
-        }
-    }
-    return true;
-}
 
-__aicore__ inline bool A2avAivAll()
-{
-    if ASCEND_IS_AIC {
-        return false;
-    }
-    return true;
-}
+#define A2AV_AIV_ALL()                      \
+    if ASCEND_IS_AIC { return; }
 
 #endif // A2AV_COMM_GUARD_H
-
