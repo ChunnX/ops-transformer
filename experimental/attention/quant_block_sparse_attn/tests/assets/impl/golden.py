@@ -205,6 +205,19 @@ def cpu_quant_block_sparse_attn(query, key, value, q_descale, k_descale, v_desca
         "sparse_kv_block_size": sparse_kv_block_size,
         "mask_mode": int(mask_mode),
         "output_dtype": torch.bfloat16,
+        "actlen_mode": "full",
+        "S1EQS2": False,
+        "seed": int(kwargs.get("seed", 0)),
+        "sparse_pattern": str(kwargs.get("sparse_pattern", "sequential")),
+        "scale_pattern": str(kwargs.get("scale_pattern", "ones")),
+        "block_table_pattern": "sequential",
+        "sparse_count": int(kwargs.get("sparse_count", 0)),
+        "p_scale_value": float(p_scale_cpu[0].item()),
+        "pa_block_padding_bytes": 0,
+        "layout_kv": layout_kv,
+        "layout_sparse_indices": layout_sparse_indices,
+        "layout_out": layout_out,
+        "quant_mode": int(quant_mode),
     }
 
     attention_out, softmax_lse = golden_module._reference_attention(
