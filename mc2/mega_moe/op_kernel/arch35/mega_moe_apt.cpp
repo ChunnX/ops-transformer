@@ -20,6 +20,7 @@
 
 #ifdef ENABLE_TENSOR_API
 #include "mega_moe.h"
+#include "mega_moe_wave.h"
 #include "mega_moe_layered.h"
 #endif
 
@@ -62,13 +63,25 @@ __global__ __aicore__ void mega_moe(GM_ADDR context, GM_ADDR x, GM_ADDR topkIds,
     defined(ORIG_DTYPE_WEIGHT2) && (ORIG_DTYPE_WEIGHT2 == ORIG_DTYPE_WEIGHT1)
     if constexpr (CommModeType == TILINGKEY_TPL_MTE) {
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
-            MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType, CombineQuantOutType,
-                    TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>
-                op;
-            op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
-                    scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
-                    expertTokenNumsOut, workspaceGM, &tilingData);
-            op.Process();
+            // Shared experts use the same A8W8 compute path and can follow the
+            // wave schedule. W4 and combine-quant remain on the two-loop path.
+            using WaveOp = MegaMoeWave<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType,
+                                       CombineQuantOutType, TopkWeightsPrefetch, WEIGHT1_INTERLEAVED>;
+            if constexpr (WaveOp::SUPPORTS_WAVE) {
+                WaveOp op;
+                op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
+                        scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
+                        expertTokenNumsOut, workspaceGM, &tilingData);
+                op.Process();
+            } else {
+                MegaMoe<DTYPE_X, DTYPE_Y, DTYPE_TOPK_WEIGHTS, DTYPE_WEIGHT1, DispatchQuantOutType, CombineQuantOutType,
+                        TopkWeightsPrefetch>
+                    op;
+                op.Init(context, x, topkIds, topkWeights, weight1, weight2, xActiveMask, weightScales1, weightScales2,
+                        scales, sharedWeight1, sharedWeight2, sharedWeightScales1, sharedWeightScales2, yOut,
+                        expertTokenNumsOut, workspaceGM, &tilingData);
+                op.Process();
+            }
         }
     } else if constexpr (CommModeType == TILINGKEY_TPL_URMA) {
         if constexpr (DispatchQuantMode == DISPATCH_QUANT_MODE_MXFP) {
