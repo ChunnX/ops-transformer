@@ -122,11 +122,13 @@ at::Tensor dense_lightning_indexer_softmax_lse_v2(
         if (layout_q == "BSND") {
             int64_t bSize = query_index.size(0);
             int64_t s1Size = query_index.size(1);
-            softmax_lse_out = at::zeros({bSize, s1Size},
+            int64_t n2Size = key_index.size(2);
+            softmax_lse_out = at::zeros({bSize, n2Size, s1Size},
                 query_index.options().dtype(at::kFloat));
         } else {
             int64_t t1Size = query_index.size(0);
-            softmax_lse_out = at::zeros({t1Size},
+            int64_t n2Size = key_index.size(1);
+            softmax_lse_out = at::zeros({n2Size, t1Size},
                 query_index.options().dtype(at::kFloat));
         }
     }

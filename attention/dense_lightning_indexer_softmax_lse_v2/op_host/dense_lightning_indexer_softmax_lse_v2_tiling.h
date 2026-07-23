@@ -34,7 +34,12 @@ TILING_DATA_FIELD_DEF(int64_t, cmp_ratio)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(DenseLightningIndexerSoftmaxLseV2, DenseLISoftmaxLseV2TilingData)
 
-struct DenseLISoftmaxLseV2CompileInfo {};
+struct DenseLISoftmaxLseV2CompileInfo {
+    static ge::graphStatus ParamCheck(gert::TilingContext* context, int64_t layout, int64_t maskMode,
+                                      int64_t cmpRatio, const std::string& layoutQStr, const std::string& layoutKStr,
+                                      int64_t bSize, int64_t s1Size, int64_t s2Size,
+                                      int64_t n1Size, int64_t n2Size, int64_t dSize);
+};
 
 } // namespace optiling
 
