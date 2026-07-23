@@ -13,65 +13,113 @@
 
 ## 功能说明
 
-- 接口功能：`aclnnQkvRmsNormRopeCacheWithKScale`面向大语言模型推理中的PagedAttention KV Cache更新场景。接口从融合输入`qkv`中拆分Q、K、V分量，对Q/K执行RMSNorm、RoPE和共享`rotationOptional`矩阵乘。RoPE场景将Q/K动态量化为FP8 E4M3FN，输出`qOut`和`qScaleOptional`并将K写入FP8 `kCacheRef`；M-RoPE场景输出BF16 `qOut`且不返回`qScaleOptional`，将K动态量化为INT8并写入INT8 `kCacheRef`。两个场景均将K scale写入`kScaleCacheRef`，并将V按`vScaleOptional`缩放后量化为FP8 E4M3FN写入`vCacheRef`。
+- 接口功能：`aclnnQkvRmsNormRopeCacheWithKScale`在一次调用中完成融合QKV拆分、Q/K RMSNorm、位置编码、共享矩阵乘、Q/K量化以及PagedAttention KV Cache更新。Q分支写入`qOut`和场景相关的`qScaleOptional`；K、V分支根据`slotMapping`原地更新`kCacheRef`、`vCacheRef`和`kScaleCacheRef`。V分支不执行RMSNorm、位置编码或共享矩阵乘。
+
+- 支持场景：
+
+  | 场景 | 位置输入 | Q分支 | K分支 | 支持的N/T布局 |
+  |:---|:---|:---|:---|:---|
+  | RoPE场景 | 传入`queryStartLocOptional`和`seqLensOptional`；不传`mropePositionOptional`和`mropeSectionOptional` | `qQuantMode="PerTokenPerHead"`；`qOut`为FP8 E4M3FN；`qScaleOptional`为FP32 | K量化为FP8 E4M3FN并写入`kCacheRef`；K scale写入FP32 `kScaleCacheRef` | `NTD -> NTD`、`TND -> TND`、`TND -> NTD` |
+  | M-RoPE场景 | 不传`queryStartLocOptional`和`seqLensOptional`；传入`mropePositionOptional[T,3]`和`mropeSectionOptional=[t,h,w]` | `qQuantMode="NoQuant"`；`qOut`为BF16；`qScaleOptional`为`nullptr` | K量化为INT8并写入`kCacheRef`；K scale写入FP32 `kScaleCacheRef` | 仅`TND -> TND` |
+
+  本接口不提供独立的场景属性，而是根据两组位置输入是否存在确定场景。每组位置输入必须同时传入或同时不传，两组不能同时存在或同时缺失。`qOut`的数据类型由调用方构造的`qOut` Tensor决定，ACLNN接口不单独接收输出dtype参数。
+
+  两个场景均要求`D=128`且`Nv=Nk`。`rotationOptional`和`vScaleOptional`在接口合同中均须传入：Q/K在位置编码后共享右乘`rotationOptional[D,D]`；V按head乘`vScaleOptional[Nv]`后转换为FP8 E4M3FN。三个Cache Tensor均为输入输出别名，只更新`slotMapping`指定的slot，其余位置保持原值。
+
+- 公共处理流程：
+
+  1. 按`headNums=[Nq,Nk,Nv]`沿逻辑head轴将`qkv`拆分为Q、K、V。
+  2. Q和K分别使用`qGamma`和`kGamma`沿最后一维执行RMSNorm。
+  3. RoPE场景从`queryStartLocOptional/seqLensOptional`得到每个token的位置；M-RoPE场景从`mropePositionOptional`读取T/H/W三路位置，并按`mropeSectionOptional`选择每个half-lane的cos/sin来源。
+  4. Q/K完成half-split位置编码后，共享右乘`rotationOptional`。
+  5. Q/K按场景执行不同的输出和量化规则；V在两个场景中都执行按head缩放和FP8转换。
+  6. Q写入`qOut`；K、V及K scale按`slotMapping`写入对应Cache。
 
 - 计算公式：
 
-  按`headNums=[Nq, Nk, Nv]`从`qkv`拆分Q、K、V：
+  以下公式统一按逻辑`[T,N,D]`布局描述，`layoutQkv`和`layoutQOut`只决定Tensor中T轴与N轴的物理顺序，不改变逐元素计算。$T$表示token总数，$N_q/N_k/N_v$表示Q/K/V head数，$D=128$表示head维度。
 
-  $$
-  q, k, v = split(qkv, [Nq, Nk, Nv])
-  $$
+  **1. Q/K/V拆分与RMSNorm**
 
-  Q/K分支分别使用`qGamma`和`kGamma`做RMSNorm：
-
-  $$
-  y = \frac{x}{\sqrt{mean(x^2) + epsilon}} * gamma
-  $$
-
-  第`b`个batch中第`i`个token的RoPE位置由`queryStartLoc`和`seqLens`确定：
-
-  $$
-  position = seqLens[b] - (queryStartLoc[b + 1] - queryStartLoc[b]) + i
-  $$
-
-  Q/K分支执行RoPE，`cosSin[..., :D/2]`为cos，`cosSin[..., D/2:]`为sin；V分支不执行RoPE：
-
-  $$
-  y_{rope} = concat(y_{low} * cos - y_{high} * sin,\ y_{high} * cos + y_{low} * sin)
-  $$
-
-  M-RoPE场景公式如下。定义
+  将`qkv`的逻辑视图记为$\boldsymbol X$，则
 
   $$
   \begin{aligned}
-  C &= \mathrm{cosSin},\\
-  P &= \mathrm{mropePosition},\\
-  D_{\mathrm{half}} &= \frac{D}{2}.
+  \boldsymbol X
+  &=[\,\boldsymbol Q\mid\boldsymbol K\mid\boldsymbol V\,]_{N},\\
+  \boldsymbol Q&\in\mathbb R^{T\times N_q\times D},\qquad
+  \boldsymbol K\in\mathbb R^{T\times N_k\times D},\qquad
+  \boldsymbol V\in\mathbb R^{T\times N_v\times D}.
   \end{aligned}
   $$
 
-  轴到位置列的映射为
+  对$\boldsymbol A\in\{\boldsymbol Q,\boldsymbol K\}$，令$\boldsymbol\gamma^{Q}$和$\boldsymbol\gamma^{K}$分别对应`qGamma`和`kGamma`，RMSNorm结果为
 
   $$
-  \iota(\mathrm T)=0,\qquad \iota(\mathrm H)=1,\qquad \iota(\mathrm W)=2.
+  Y^{A}_{u,n,d}
+  =
+  \frac{A_{u,n,d}\gamma^{A}_{d}}
+  {\sqrt{\epsilon+\dfrac{1}{D}\displaystyle\sum_{j=0}^{D-1}A_{u,n,j}^{2}}},
+  \qquad 0\leq d<D.
   $$
 
-  对token $u$、轴 $a\in\{\mathrm T,\mathrm H,\mathrm W\}$ 和列 $d$，定义三路原始位置编码。
-  `mropePosition` 的逻辑shape为 $[T,3]$，每一行对应一个token，三列依次对应T、H、W轴。
+  **2. RoPE场景的位置**
+
+  对batch $b$，当前调用包含的token数为$L_b$。对该batch内第$i$个token，其全局token下标$u$和RoPE位置$p_u$为
 
   $$
-  R_{a,u,d}=C_{P_{u,\iota(a)},d},\qquad 0\leq u<T,\quad 0\leq d<D.
+  \begin{aligned}
+  L_b
+  &=\mathrm{queryStartLocOptional}_{b+1}
+    -\mathrm{queryStartLocOptional}_{b},\\
+  u
+  &=\mathrm{queryStartLocOptional}_{b}+i,\qquad 0\leq i<L_b,\\
+  p_u
+  &=\mathrm{seqLensOptional}_{b}-L_b+i.
+  \end{aligned}
   $$
 
-  将 `mropeSection=[t,h,w]` 记为
+  令$D_{\mathrm{half}}=D/2$，则token $u$使用的cos和sin为
 
   $$
-  \boldsymbol{s}=(s_{\mathrm T},s_{\mathrm H},s_{\mathrm W})=(t,h,w).
+  c_{u,\ell}
+  =\mathrm{cosSin}_{p_u,\ell},
+  \qquad
+  s_{u,\ell}
+  =\mathrm{cosSin}_{p_u,D_{\mathrm{half}}+\ell},
+  \qquad 0\leq\ell<D_{\mathrm{half}}.
   $$
 
-  其中 $s_{\mathrm T}$ 只参与取值域校验，不参与 lane 选源。对
-  $0\leq\ell<D_{\mathrm{half}}$，定义
+  **3. M-RoPE场景的位置**
+
+  `mropePositionOptional`的每一行对应一个token，三列依次给出T/H/W三路`cosSin`行下标。定义列映射
+
+  $$
+  \iota(\mathrm T)=0,\qquad
+  \iota(\mathrm H)=1,\qquad
+  \iota(\mathrm W)=2,
+  $$
+
+  以及三路原始位置编码
+
+  $$
+  R_{a,u,d}
+  =
+  \mathrm{cosSin}_{
+    \mathrm{mropePositionOptional}_{u,\iota(a)},d},
+  \qquad
+  a\in\{\mathrm T,\mathrm H,\mathrm W\}.
+  $$
+
+  将`mropeSectionOptional=[t,h,w]`记为
+
+  $$
+  \boldsymbol{s}
+  =(s_{\mathrm T},s_{\mathrm H},s_{\mathrm W})
+  =(t,h,w).
+  $$
+
+  T路是half-lane的默认来源，H/W在各自覆盖范围内替换对应lane。对$0\leq\ell<D_{\mathrm{half}}$，定义
 
   $$
   r(\ell)=\left\lfloor\frac{\ell}{3}\right\rfloor,\qquad
@@ -87,71 +135,119 @@
   \end{cases}
   $$
 
-  有效 cos/sin 为
+  M-RoPE最终使用的cos和sin为
 
   $$
-  \widehat c_{u,\ell}=R_{\sigma(\ell),u,\ell},\qquad
-  \widehat s_{u,\ell}=R_{\sigma(\ell),u,D_{\mathrm{half}}+\ell}.
-  $$
-
-  将 $\widehat c$、$\widehat s$ 代入 Q/K 的 RoPE 旋转公式，输出维度保持为
-  $D$，不拼接为 $3D$。
-
-  Q/K共享`rotationOptional`矩阵：
-
-  $$
-  q_{rot} = q_{rope} @ rotationOptional,\quad k_{rot} = k_{rope} @ rotationOptional
-  $$
-
-  RoPE场景的Q/K按每个token和head做动态量化，FP8 E4M3FN最大有限值使用`FP8_E4M3FN_MAX`，该值为448：
-
-  $$
-  scale = max(abs(x)) / FP8\_E4M3FN\_MAX,\quad x_{fp8} = cast(x / scale)
-  $$
-
-  M-RoPE场景的Q输出为BF16且没有`qScaleOptional`：
-
-  $$
-  qOut=\operatorname{RNE}_{\mathrm{BF16}}\!\left(q_{rot}\right),\qquad qScaleOptional=\varnothing.
-  $$
-
-  M-RoPE场景的K输出按每个token和head量化为INT8。对token $u$、head $n$ 和通道 $d$，
-
-  $$
-  k_{scale}(u,n)=\frac{\displaystyle\max_{0\leq d<D}|k_{rot}(u,n,d)|}{127},
+  c_{u,\ell}=R_{\sigma(\ell),u,\ell},
   \qquad
-  k_{int8}(u,n,d)=\operatorname{sat}_{[-127,127]}
-  \!\left(\operatorname{rint}\!\left(\frac{k_{rot}(u,n,d)}{k_{scale}(u,n)}\right)\right).
+  s_{u,\ell}=R_{\sigma(\ell),u,D_{\mathrm{half}}+\ell}.
   $$
 
-  V分支按`vScaleOptional`缩放后量化：
+  M-RoPE只改变cos/sin的取值方式，Q/K输出的head维度仍为$D$，不会扩展为$3D$。
+
+  **4. Q/K位置编码与共享矩阵乘**
+
+  对$\boldsymbol A\in\{\boldsymbol Q,\boldsymbol K\}$，将RMSNorm结果$\boldsymbol Y^A$按head维前后两半拆分，half-split位置编码为
 
   $$
-  v_{fp8} = cast(v * vScaleOptional)
+  \begin{aligned}
+  Z^{A,\mathrm{low}}_{u,n,\ell}
+  &=Y^{A,\mathrm{low}}_{u,n,\ell}c_{u,\ell}
+    -Y^{A,\mathrm{high}}_{u,n,\ell}s_{u,\ell},\\
+  Z^{A,\mathrm{high}}_{u,n,\ell}
+  &=Y^{A,\mathrm{high}}_{u,n,\ell}c_{u,\ell}
+    +Y^{A,\mathrm{low}}_{u,n,\ell}s_{u,\ell}.
+  \end{aligned}
   $$
 
-  Cache写回位置由`slotMapping`决定：
+  令$\boldsymbol W$表示`rotationOptional`，位置编码结果转换为BF16后右乘该共享矩阵，得到FP32结果$\boldsymbol H^Q$和$\boldsymbol H^K$：
 
   $$
-  blockId = slotMapping[t] / BlockSize,\quad blockOffset = slotMapping[t]\ \%\ BlockSize
+  \boldsymbol H^A_{u,n,:}
+  =
+  \operatorname{BF16}\!\left(\boldsymbol Z^A_{u,n,:}\right)
+  \boldsymbol W,
+  \qquad A\in\{Q,K\}.
   $$
 
+  **5. Q/K输出与量化**
+
+  RoPE场景对Q和K分别执行每token、每head的FP8动态量化。对$A\in\{Q,K\}$，
+
   $$
-  kCacheRef[blockId, nk, blockOffset, :] = k_{quant}[t, nk, :],
+  \begin{aligned}
+  m^A_{u,n}
+  &=\max_{0\leq d<D}\left|H^A_{u,n,d}\right|,\\
+  \alpha^A_{u,n}
+  &=\frac{m^A_{u,n}}{448},\\
+  \widehat H^A_{u,n,d}
+  &=\operatorname{cast}_{\mathrm{FP8\ E4M3FN}}
+    \!\left(\frac{H^A_{u,n,d}}{\alpha^A_{u,n}}\right).
+  \end{aligned}
+  $$
+
+  其中$\widehat{\boldsymbol H}^{Q}$写入`qOut`，$\boldsymbol\alpha^{Q}$写入`qScaleOptional`；$\widehat{\boldsymbol H}^{K}$和$\boldsymbol\alpha^{K}$分别写入`kCacheRef`和`kScaleCacheRef`。
+
+  M-RoPE场景不量化Q，且不输出Q scale：
+
+  $$
+  \mathrm{qOut}_{u,n,d}
+  =\operatorname{RNE}_{\mathrm{BF16}}
+    \!\left(H^Q_{u,n,d}\right),
   \qquad
-  k_{quant}=\begin{cases}
-  k_{fp8}, & \text{RoPE场景},\\
-  k_{int8}, & \text{M-RoPE场景}.
-  \end{cases}
+  \mathrm{qScaleOptional}=\varnothing.
   $$
 
-  $$
-  vCacheRef[blockId, nv, blockOffset, :] = v_{fp8}[t, nv, :]
-  $$
+  M-RoPE场景对K执行每token、每head的INT8动态量化：
 
   $$
-  kScaleCacheRef[blockId, nk, blockOffset, 0] = k_{scale}[t, nk]
+  \begin{aligned}
+  m^K_{u,n}
+  &=\max_{0\leq d<D}\left|H^K_{u,n,d}\right|,\\
+  \alpha^K_{u,n}
+  &=\frac{m^K_{u,n}}{127},\\
+  \widehat H^K_{u,n,d}
+  &=\operatorname{sat}_{[-127,127]}
+    \!\left(
+      \operatorname{rint}
+      \!\left(\frac{H^K_{u,n,d}}{\alpha^K_{u,n}}\right)
+    \right).
+  \end{aligned}
   $$
+
+  **6. V量化与Cache写回**
+
+  令$\beta_n=\mathrm{vScaleOptional}_n$，V分支输出为
+
+  $$
+  \widehat V_{u,n,d}
+  =
+  \operatorname{cast}_{\mathrm{FP8\ E4M3FN}}
+  \!\left(V_{u,n,d}\beta_n\right).
+  $$
+
+  对token $u$，令$z_u=\mathrm{slotMapping}_u$，$B_{\mathrm{cache}}$表示Cache的`BlockSize`，则写回block和block内偏移为
+
+  $$
+  b_u=\left\lfloor\frac{z_u}{B_{\mathrm{cache}}}\right\rfloor,
+  \qquad
+  o_u=z_u\bmod B_{\mathrm{cache}}.
+  $$
+
+  仅更新以下位置：
+
+  $$
+  \begin{aligned}
+  \mathrm{kCacheRef}'_{b_u,n,o_u,d}
+  &=\widehat H^K_{u,n,d},\\
+  \mathrm{vCacheRef}'_{b_u,n,o_u,d}
+  &=\widehat V_{u,n,d},\\
+  \mathrm{kScaleCacheRef}'_{b_u,n,o_u,0}
+  &=\alpha^K_{u,n}.
+  \end{aligned}
+  $$
+
+  其中带撇号的Tensor表示接口执行后的原地更新结果；未被`slotMapping`选中的Cache位置保持不变。
 
 ## 函数原型
 
@@ -252,7 +348,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     <tr>
       <td style="white-space: nowrap">cosSin（const aclTensor*）</td>
       <td>输入</td>
-      <td>RoPE位置编码表，对应公式中的<code>cosSin</code>、<code>cos</code>和<code>sin</code>。</td>
+      <td>RoPE/M-RoPE位置编码表，对应公式中的<code>cosSin</code>、<code>cos</code>和<code>sin</code>。</td>
       <td><ul><li>不支持空指针或空Tensor。</li><li>前<code>D/2</code>列为cos，后<code>D/2</code>列为sin。</li><li>第一维需覆盖本次调用会访问的RoPE位置。</li></ul></td>
       <td>FLOAT</td>
       <td>ND</td>
@@ -323,7 +419,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td style="white-space: nowrap">rotationOptional（const aclTensor*）</td>
       <td>可选输入</td>
       <td>Q/K共享矩阵乘权重，对应公式中的<code>rotationOptional</code>。</td>
-      <td><ul><li>该参数带Optional后缀，但当前实现不支持传入空指针或空Tensor。</li><li>用于Q/K共享矩阵乘场景。</li></ul></td>
+      <td><ul><li>接口合同要求非空Tensor。</li><li>用于Q/K共享矩阵乘。</li></ul></td>
       <td>BFLOAT16</td>
       <td>ND</td>
       <td><code>[D,D]</code></td>
@@ -333,7 +429,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
       <td style="white-space: nowrap">vScaleOptional（const aclTensor*）</td>
       <td>可选输入</td>
       <td>V分支量化缩放因子，对应公式中的<code>vScaleOptional</code>。</td>
-      <td><ul><li>该参数带Optional后缀，但当前实现不支持传入空指针或空Tensor。</li><li>用于V分支FP8量化前缩放场景。</li></ul></td>
+      <td><ul><li>接口合同要求非空Tensor。</li><li>用于V分支FP8量化前缩放。</li></ul></td>
       <td>FLOAT</td>
       <td>ND</td>
       <td><code>[Nv]</code></td>
@@ -412,7 +508,7 @@ aclnnStatus aclnnQkvRmsNormRopeCacheWithKScale(
     <tr>
       <td style="white-space: nowrap">qOut（aclTensor*）</td>
       <td>输出</td>
-      <td>Q分支输出。RoPE场景对应Q分支动态量化公式中的<code>x_{fp8}</code>，M-RoPE场景输出未量化结果。</td>
+      <td>Q分支输出。RoPE场景写入FP8动态量化结果，M-RoPE场景写入BF16未量化结果。</td>
       <td><ul><li>不支持空指针或空Tensor。</li><li>接口直接读取<code>qOut</code>的数据类型，不单独传入dtype属性。</li><li>RoPE场景必须为FLOAT8_E4M3FN，M-RoPE场景必须为BFLOAT16。</li></ul></td>
       <td>FLOAT8_E4M3FN、BFLOAT16</td>
       <td>ND</td>
