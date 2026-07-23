@@ -233,6 +233,9 @@ def cpu_quant_block_sparse_attn(query, key, value, q_descale, k_descale, v_desca
         cu_seqlens_q_inp, cu_seqlens_kv_inp,
         q_lengths, kv_lengths)
 
+    if layout_q == "NTD":
+        attention_out = attention_out.transpose(0, 1).contiguous()
+
     if return_softmax_lse:
         return [attention_out, softmax_lse]
     return [attention_out]
