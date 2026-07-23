@@ -20,14 +20,22 @@
 using namespace fa_base_matmul;
 
 static constexpr uint32_t VEC_SY_BASESIZE = 128;
+static constexpr uint32_t PROCESS_KV_SIZE = 8192;
 static constexpr uint32_t VEC_P_BASESIZE = 128;
+static constexpr uint32_t ATTN_SOFTMAX_REDUCE_BASESIZE = 8192;
+// task step
+constexpr int8_t TASK_INIT = 0;
+constexpr int8_t TASK_C1 = 1;
+constexpr int8_t TASK_V1 = 2;
+constexpr int8_t TASK_C2 = 3;
+
 enum class DLILayout { BSND = 0, TND = 1 };
 
 enum class DLISparseMode { DefaultMask = 0, RightDown = 3 };
 
 constexpr uint32_t L0_MAX_SIZE = 64 * 1024;
 constexpr uint32_t L1_MAX_SIZE = 512 * 1024;
-constexpr uint32_t UB_MAX_SIZE = 128 * 1024;
+constexpr uint32_t UB_MAX_SIZE = 96 * 1024;
 constexpr uint32_t L0C_MAX_SIZE = 256 * 1024;
 constexpr uint32_t MODE_NUM_2 = 2;
 constexpr uint32_t MODE_NUM_3 = 3;
@@ -73,6 +81,7 @@ struct DLIKGradConstInfo {
     uint32_t remainCoreProcessNNum;
     uint32_t remainCoreNum;
     uint32_t usedCoreNum;
+    uint32_t maxSeqKV;
 
     /* * \brief TilingData中的信息 */
     uint32_t bSize;
@@ -88,6 +97,7 @@ struct DLIKGradConstInfo {
     uint32_t kSize;               // 现阶段只支持2048
     uint32_t kSizeAlign128;
     uint32_t cmpRatio;
+    uint32_t maxSeqlenK;
     int64_t totalCost;
     DLISparseMode sparseMode; // 0或者3
     float scaleValue;
@@ -102,7 +112,6 @@ struct DLIKGradConstInfo {
     int32_t gatherKeyIndexSize;
     int32_t sparseBlockSize = 1;
 
-    int32_t gatherKBaseSize; // gather一次做的行数，一般128
     int32_t syKBaseSize;
     int32_t pKBaseSize;
     int64_t bmm3BaseOffset = 0;
@@ -111,6 +120,11 @@ struct DLIKGradConstInfo {
 struct DLIKGradRunInfo {
     uint32_t taskId;
     uint32_t taskIdMod2;
+    uint32_t taskIdMod3;
+    uint32_t sTaskId;
+    uint32_t sTaskIdMod3;
+    uint32_t deterTaskId;
+    uint32_t deterTaskIdMod3;
     uint32_t bIdx;
     uint32_t s1Idx;
     uint32_t t1Index;
@@ -126,6 +140,10 @@ struct DLIKGradRunInfo {
     uint32_t kTailSize;    // k切分之后的尾块大小，在P和阶段
     uint32_t kRealSizeAlign8;
     uint32_t kLoopTimes; // k方向的循环次数，在P和阶段
+    uint64_t s2Offset;
+    int64_t kProcessSize;
+    bool isLastBlock;
+    bool isAlign64;
 
     uint32_t nBaseSizeP;
     uint32_t nRealSizeP;
@@ -133,7 +151,6 @@ struct DLIKGradRunInfo {
     uint32_t nRealSizeSY;
     uint32_t nIdxP;
     uint32_t nIdxSY;
-    uint32_t nVecSize;
 
     // 存放一些offset，减少重复计算
     int32_t s2SparseLen;
@@ -145,20 +162,25 @@ struct DLIKGradRunInfo {
     int32_t nIndexSize;
     int32_t firstNIndexSize;
     int32_t weightOffset;
-    int32_t softmaxInputOffset;
     int32_t reduceSumOffset;
 
     // 根据bIdx、s1Idx算出的偏移
     int64_t queryTensorOffset = 0;
     int64_t queryRopeTensorOffset = 0;
     int64_t queryIndexTensorOffset = 0;
+    int64_t keyIndexTensorOffset = 0;
     int64_t topkGmBaseOffset = 0;
+    int64_t deterResOffset = 0;
+    int64_t s2BlockOffset;
     bool isLastK = false;
+
+    int8_t taskStep = TASK_INIT;
 };
 
 struct DLIKGradKRunInfo {
     uint32_t kTaskId;
     uint32_t kTaskIdMod2;
+    uint32_t kTaskIdMod3;
     uint32_t s2RealBaseSize;
     int32_t kProcessSize;
     int32_t s2Idx;
@@ -171,34 +193,14 @@ struct DLIKGradKRunInfo {
     int32_t dRopeValue;
 };
 
-struct SLIGradSYRunInfo {
-    int32_t kRealBaseSize; // gather一次做的真实行数
-    int32_t kIdx;
-};
-struct SLIGradPRunInfo {
-    int32_t kRealBaseSize; //
-    int32_t kIdx;
-};
-// / @}
+constexpr uint8_t SYNC_MM2_TO_V1_FLAG[3] = {1, 2, 3};
+constexpr uint8_t SYNC_V2_TO_C3_FLAG[3] = {10, 11, 12};
+constexpr uint8_t DETER_TO_FIX_SYNC_FLAG = 9;
+constexpr uint8_t SCATTER_CUBE_SYNC_FLAG = 4;
+constexpr uint8_t SYNC_C3_TO_V3_FLAG = 15;
 
-constexpr uint8_t SYNC_GATHER_TO_MM12_FLAG[2] = {9, 10};
-constexpr uint8_t SYNC_MM2_TO_V1_FLAG[2] = {0, 1};
-
-constexpr uint8_t SYNC_V6_TO_C3_FLAG = 8;
-constexpr uint8_t SYNC_C3_TO_V7_FLAG[2] = {13, 14};
-constexpr uint8_t SYNC_V7_TO_C3_FLAG[2] = {3, 4};
-
-constexpr uint8_t SYNC_ST_TO_P_FLAG = 12;
-constexpr uint8_t SYNC_V6_TO_RELU_FLAG = 11;
-constexpr uint8_t SYNC_RELU_TO_V6_FLAG = 2;
-
-constexpr uint8_t SYNC_C3_TO_V7_DETER_MTE2_FLAG[2] = {5, 6};
-constexpr uint8_t SYNC_C3_TO_V7_DETER_SA_FLAG = 15;
-
-template <typename T> __aicore__ inline T SLIGAlign(T num, T rnd)
-{
-    return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd) * (rnd)));
-}
+constexpr uint8_t SYNC_C3_TO_V3_DETER_MTE2_FLAG = 6;
+constexpr uint8_t SYNC_C3_TO_V3_DETER_SA_FLAG = 0;
 
 template <typename T> __aicore__ inline T CeilDiv(T num, T rnd)
 {

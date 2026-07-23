@@ -19,11 +19,10 @@
 #include <algorithm>
 #include <graph/utils/type_utils.h>
 #include "register/op_def_registry.h"
-#include "dense_lightning_indexer_kl_loss_grad_tiling_general.h"
 #include "platform/platform_info.h"
 #include "op_host/tiling_templates_registry.h"
 #include "dense_lightning_indexer_kl_loss_grad_tiling_common.h"
-
+#include "./arch35/dense_lightning_indexer_kl_loss_grad_tiling_general_regbase.h"
 using std::map;
 using std::pair;
 using std::string;
@@ -43,7 +42,7 @@ static const std::string VALUE_NAME = "value";
 ge::graphStatus TilingDenseLightningIndexerKLLossGrad(gert::TilingContext *context)
 {
     auto platformInfoPtr = context->GetPlatformInfo();
-    auto sligPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
+    auto dlikgPlatform = platform_ascendc::PlatformAscendC(platformInfoPtr);
     return Ops::Transformer::OpTiling::TilingRegistryArch::GetInstance().DoTilingImpl(context);
 }
 

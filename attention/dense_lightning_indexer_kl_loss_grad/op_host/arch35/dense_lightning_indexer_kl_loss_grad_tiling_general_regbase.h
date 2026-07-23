@@ -67,6 +67,7 @@ protected:
         deterMode = 0;
         opName = nullptr;
         inputLayout = nullptr;
+        maxSeqlenK = 0;
     }
 
     [[nodiscard]] gert::TilingContext *GetContext()
@@ -133,8 +134,8 @@ protected:
     int32_t cmpRatio;
     int32_t deterMode;
     float scaleValue;
-
-    const char *templateName = "slikbase";
+    uint32_t maxSeqlenK;
+    const char *templateName = "dlikgbase";
 
     // TilingKey
     LayoutTypeRegbase tilingKeyLayout;
@@ -164,8 +165,8 @@ protected:
 
     DenseLightningIndexerGradRegBaseTilingData *tilingData =
         context_->GetTilingData<DenseLightningIndexerGradRegBaseTilingData>();
-    SLIGradBaseParamsRegbase *sliGradBaseParams_ = &tilingData->baseParams;
-    SLIGradMultiCoreParamsRegbase *sliGradMultiCoreParams_ = &tilingData->multiCoreParams;
+    DLIKGradBaseParamsRegbase *dlikGradBaseParams_ = &tilingData->baseParams;
+    DLIKGradMultiCoreParamsRegbase *dlikGradMultiCoreParams_ = &tilingData->multiCoreParams;
 };
 } // optiling
 #endif

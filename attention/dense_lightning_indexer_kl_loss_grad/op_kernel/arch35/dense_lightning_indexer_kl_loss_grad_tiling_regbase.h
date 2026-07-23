@@ -19,11 +19,11 @@
 #include "kernel_tiling/kernel_tiling.h"
 namespace optiling {
 // ------------------公共定义--------------------------
-const uint32_t SLI_MAX_AIC_CORE_NUM_REGBASE = 36;
+const uint32_t DLIKG_MAX_AIC_CORE_NUM_REGBASE = 36;
 constexpr uint32_t MAX_CORE_NUM_REGBASE = 36; // 目前使用AIC核的最大值为36
 
 // -----------算子TilingData定义---------------
-class SLIGradBaseParamsRegbase {
+class DLIKGradBaseParamsRegbase {
 public:
     // 基础输入参数
     int32_t bSize;
@@ -40,8 +40,9 @@ public:
     int32_t sparseMode;
     int32_t rsvd;
     uint32_t cmpRatio;
-
     uint8_t layoutType; // 0: BSND, 1: TND
+    uint32_t maxSeqlenK;
+    int64_t mm3ResWorkSpaceOffset;
 
     int32_t get_bSize() const
     {
@@ -177,9 +178,27 @@ public:
     {
         this->cmpRatio = cmpRatioParam;
     }
+
+    uint32_t get_maxSeqlenK() const
+    {
+        return maxSeqlenK;
+    }
+    void set_maxSeqlenK(uint32_t maxSeqlenKParam)
+    {
+        this->maxSeqlenK = maxSeqlenKParam;
+    }
+
+    uint32_t get_mm3ResWorkSpaceOffset() const
+    {
+        return mm3ResWorkSpaceOffset;
+    }
+    void set_mm3ResWorkSpaceOffset(uint32_t mm3ResWorkSpaceOffset)
+    {
+        this->mm3ResWorkSpaceOffset = mm3ResWorkSpaceOffset;
+    }
 };
 
-class SLIGradMultiCoreParamsRegbase {
+class DLIKGradMultiCoreParamsRegbase {
 public:
     uint32_t coreNum;
     uint32_t rsvd;
@@ -191,12 +210,18 @@ public:
     int64_t qPreBlockFactor;
     int64_t qPreBlockTotal;
     int64_t qPreBlockTail;
+    int64_t kPreBlockFactor;
+    int64_t kPreBlockTotal;
+    int64_t kPreBlockTail;
     int64_t weightPreBlockFactor;
     int64_t weightPreBlockTotal;
     int64_t weightPreBlockTail;
     int64_t softmaxOutPreBlockFactor;
     int64_t softmaxOutPreBlockTotal;
     int64_t softmaxOutPreBlockTail;
+    int64_t kPostBlockFactor;
+    int64_t kPostBlockTotal;
+    int64_t kPostBlockTail;
 
     int32_t get_coreNum() const
     {
@@ -246,6 +271,18 @@ public:
     {
         return qPreBlockTail;
     }
+    int64_t get_kPreBlockFactor() const
+    {
+        return kPreBlockFactor;
+    }
+    int64_t get_kPreBlockTotal() const
+    {
+        return kPreBlockTotal;
+    }
+    int64_t get_kPreBlockTail() const
+    {
+        return kPreBlockTail;
+    }
     int64_t get_weightPreBlockFactor() const
     {
         return weightPreBlockFactor;
@@ -270,6 +307,18 @@ public:
     {
         return softmaxOutPreBlockTail;
     }
+    int64_t get_kPostBlockFactor() const
+    {
+        return kPostBlockFactor;
+    }
+    int64_t get_kPostBlockTotal() const
+    {
+        return kPostBlockTotal;
+    }
+    int64_t get_kPostBlockTail() const
+    {
+        return kPostBlockTail;
+    }
 
     void set_postUbBaseSize(int64_t value)
     {
@@ -286,6 +335,18 @@ public:
     void set_qPreBlockTail(int64_t value)
     {
         this->qPreBlockTail = value;
+    }
+    void set_kPreBlockFactor(int64_t value)
+    {
+        this->kPreBlockFactor = value;
+    }
+    void set_kPreBlockTotal(int64_t value)
+    {
+        this->kPreBlockTotal = value;
+    }
+    void set_kPreBlockTail(int64_t value)
+    {
+        this->kPreBlockTail = value;
     }
     void set_weightPreBlockFactor(int64_t value)
     {
@@ -311,9 +372,21 @@ public:
     {
         this->softmaxOutPreBlockTail = value;
     }
+    void set_kPostBlockFactor(int64_t value)
+    {
+        this->kPostBlockFactor = value;
+    }
+    void set_kPostBlockTotal(int64_t value)
+    {
+        this->kPostBlockTotal = value;
+    }
+    void set_kPostBlockTail(int64_t value)
+    {
+        this->kPostBlockTail = value;
+    }
 };
 
-class SLIGradInitOutputParamsRegbase {
+class DLIKGradInitOutputParamsRegbase {
 public:
     uint32_t singleCoreSize; // 单核需要初始化的元素个数
     uint32_t rsvd;
@@ -338,7 +411,7 @@ public:
     }
 };
 
-class SLIGradVecApiParamsRegbase {
+class DLIKGradVecApiParamsRegbase {
 public:
     SoftMaxTiling softmaxYTilingData;
     SoftMaxTiling simpleSoftmaxPTilingData;
@@ -346,10 +419,10 @@ public:
 
 class DenseLightningIndexerGradRegBaseTilingData {
 public:
-    SLIGradBaseParamsRegbase baseParams;
-    SLIGradMultiCoreParamsRegbase multiCoreParams;
-    SLIGradInitOutputParamsRegbase initOutputParams;
-    SLIGradVecApiParamsRegbase vectorParams;
+    DLIKGradBaseParamsRegbase baseParams;
+    DLIKGradMultiCoreParamsRegbase multiCoreParams;
+    DLIKGradInitOutputParamsRegbase initOutputParams;
+    DLIKGradVecApiParamsRegbase vectorParams;
 };
 } // namespace optiling
 #endif // DENSE_LIGHTNING_INDEXER_KL_LOSS_GRAD_TILING_H
