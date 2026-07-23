@@ -11,11 +11,61 @@
 #pragma once
 
 #include <cstdint>
+#include "op_host/tiling_base.h"
+#include "../../op_kernel/arch35/stem_oam_prep_varlen_q_tiling_data.h"
 
 namespace optiling {
 
 struct StemPrepQCompileInfo {
-    int32_t core_num;
+    int32_t coreNum;
 };
 
-}  // namespace optiling
+namespace stem_oam_prep_varlen_q {
+
+using namespace Ops::Transformer::OpTiling;
+
+class StemOamPrepVarlenQTiling : public TilingBaseClass {
+public:
+    explicit StemOamPrepVarlenQTiling(gert::TilingContext *context) : TilingBaseClass(context)
+    {
+    }
+    ~StemOamPrepVarlenQTiling() override = default;
+
+protected:
+    ge::graphStatus GetShapeAttrsInfo() override;
+    ge::graphStatus GetPlatformInfo() override;
+    bool IsCapable() override;
+    ge::graphStatus DoOpTiling() override;
+    ge::graphStatus DoLibApiTiling() override;
+    uint64_t GetTilingKey() const override;
+    ge::graphStatus GetWorkspaceSize() override;
+    ge::graphStatus PostTiling() override;
+
+private:
+    ge::graphStatus ValidateAttrs();
+    ge::graphStatus ValidateInputShapes();
+    ge::graphStatus ValidateDtypes();
+    ge::graphStatus ValidateConsistency();
+    ge::graphStatus ValidateCuSeqLens(const int64_t *cuSeqLensData, const int64_t *qSeqLensData, uint32_t batchU32);
+    ge::graphStatus ValidateOutputShape();
+    ge::graphStatus CalcExpectedMaxQb();
+    void CalcCoreDistribution();
+    ge::graphStatus CalcUBFactor();
+
+    StemPrepQTilingData *tilingData_ = nullptr;
+    const char *opName_ = nullptr;
+    int64_t stemBlockSize_ = 0;
+    int64_t stemStride_ = 0;
+    int64_t batch_ = 0;
+    int64_t numQHeads_ = 0;
+    ge::DataType qDtype_ = ge::DT_UNDEFINED;
+    uint32_t totalBlocks_ = 0;
+    uint32_t maxQb_ = 0;
+    uint32_t totalTokens_ = 0;
+    uint64_t ubSize_ = 0;
+    uint32_t coreNum_ = 0;
+    uint32_t blockDim_ = 0;
+};
+
+} // namespace stem_oam_prep_varlen_q
+} // namespace optiling
