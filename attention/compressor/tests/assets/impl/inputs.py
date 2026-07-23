@@ -12,7 +12,7 @@
 
 import torch
 import random
-
+import numpy as np
 
 def to_list(value):
     if value is None:
@@ -147,6 +147,81 @@ def _fill_seq_descriptors(x, state_cache, cmp_ratio, coff, cache_mode,
 
     return cu_seqlens_list, seqused_list, start_pos_list, B, S, S_max, block_size
 
+def apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, **kwargs):
+    """根据 batch_axis/batch_slice_info/batch_seed 生成切片数据并替换输入。
+
+    - batch_axis: 标记每个输入的 batch 轴位置
+    - batch_slice_info: 切片信息，指定要替换的 batch 范围
+    - batch_seed: 随机种子，确保跨用例相同 seed 生成相同数据
+    - input_ranges: ttk 框架自动传递，按 tensor 索引给出 (lo, hi) 取值范围
+    
+    流程：
+    1. 使用 batch_seed 生成 slice 片段的数据输入(取值范围取自 input_ranges[idx])
+    2. 将 slice 片段的数据，根据 slice 信息替换对应的输入位置
+    """
+    batch_axis = kwargs.get('batch_axis')
+    batch_slice_info = kwargs.get('batch_slice_info')
+    batch_seed = kwargs.get('batch_seed')
+    input_ranges = kwargs.get('input_ranges')  # ttk 框架自动传递: ((lo,hi), (lo,hi), ...) 按 tensor 索引
+    
+    if batch_axis is None or batch_slice_info is None or batch_seed is None:
+        return
+    batch_axis = kwargs.get('batch_axis')
+    # 输入 tensor 列表（与 tensor_view_shapes 顺序一致）
+    input_tensors = [x, wkv, wgate, state_cache, ape]
+    
+    for idx, tensor in enumerate(input_tensors):
+        if tensor is None or not torch.is_tensor(tensor):
+            continue
+        if idx >= len(batch_axis) or idx >= len(batch_slice_info):
+            continue
+        
+        axes = batch_axis[idx]
+
+        slices = batch_slice_info[idx]
+
+        if axes is None or slices is None:
+            continue
+        
+        # 从 input_ranges 取该 tensor 的取值范围，缺省 (-10, 10)
+        if input_ranges and idx < len(input_ranges) and input_ranges[idx] is not None:
+            rng_range = input_ranges[idx]
+            lo, hi = rng_range[0], rng_range[1]
+        else:
+            lo, hi = -10, 10
+        
+        # 构建 numpy 切片 tuple
+        np_slice = []
+        for axis_idx in range(tensor.dim()):
+            np_slice.append(slice(None))
+        
+        # 对每个 batch 轴应用对应的 slice
+        for axis_pos, sl in zip(axes, slices):
+            if sl is None:
+                continue
+            np_slice[axis_pos] = sl
+        
+        np_slice = tuple(np_slice)
+        
+        # 生成切片区域的数据
+        # 获取切片后的 shape
+        # sliced_shape = list(tensor.shape)
+        # print(axes)
+        # print(slices)
+        # print(sliced_shape)
+        for axis_pos in axes:
+            sliced_shape = list(tensor.shape)
+            for sl in slices[axis_pos]:
+                rng = np.random.RandomState(batch_seed)
+                if sl is None:
+                    continue
+                start = sl[0]
+                stop = sl[1]
+                step = sl[2]
+                sliced_shape[axis_pos] = step
+                # 用 batch_seed + 该 tensor 的 input_ranges 取值范围生成随机数据
+                data = rng.uniform(lo, hi, size=tuple(sliced_shape)).astype(np.float32)
+                tensor[start:stop,:]= torch.from_numpy(data).to(tensor.dtype)
 
 def generate_compressor_inputs(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
                                 state_block_table=None, cu_seqlens=None, seqused=None,
@@ -165,3 +240,5 @@ def generate_compressor_inputs(x, wkv, wgate, state_cache, ape, cmp_ratio=4, *,
         build_block_table(state_block_table, B, S_max, block_size,
                           cmp_ratio_val, start_pos_list,
                           seqused_list, cu_seqlens_list, cache_mode_val, S)
+    # batch一致性切片赋值
+    apply_batch_slice_seeded(x, wkv, wgate, state_cache, ape, **kwargs)
