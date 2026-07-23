@@ -20,8 +20,10 @@
     - $\mathbf{X} \in \mathbb{R}^{\text{total\_num\_tokens} \times \text{hidden}}$：激活矩阵，对应入参 `x`。$\text{total\_num\_tokens}$ 是全局总 token 数，$\text{hidden}$ 是隐藏层维度。
     - $\mathbf{E} \in \mathbb{Z}^{\text{total\_num\_tokens} \times \text{num\_topk}}$：token 选择的专家编号矩阵，对应入参 `topk_ids`。$\text{num\_topk}$ 是每个 token 选择的专家数量。
     - $\mathbf{G} \in \mathbb{R}^{\text{total\_num\_tokens} \times \text{num\_topk}}$：token 选择的专家的门控权重矩阵，对应入参 `topk_weights`。
-    - $\mathbf{W}_1 \in \mathbb{R}^{\text{num\_experts} \times \text{hidden} \times (2 \text{intermediate\_hidden})}$：Linear1 的权重矩阵，对应入参 `l1_weights`。$\text{num\_experts}$ 是专家数量，$\text{intermediate\_hidden}$ 是中间层维度。
-    - $\mathbf{W}_2 \in \mathbb{R}^{\text{num\_experts} \times \text{intermediate\_hidden} \times \text{hidden}}$：Linear2 的权重矩阵，对应入参 `l2_weights`。
+    - $\mathbf{W}_1^{\mathrm{moe}} \in \mathbb{R}^{\text{local\_moe\_expert\_num} \times \text{hidden} \times (2 \text{intermediate\_hidden})}$：路由 MoE 专家的 Linear1 权重，对应入参 `weight1` 的 MoE 专家部分。
+    - $\mathbf{W}_2^{\mathrm{moe}} \in \mathbb{R}^{\text{local\_moe\_expert\_num} \times \text{intermediate\_hidden} \times \text{hidden}}$：路由 MoE 专家的 Linear2 权重，对应入参 `weight2` 的 MoE 专家部分。
+    - $\mathbf{W}_1^{\mathrm{shared}} \in \mathbb{R}^{\text{shared\_expert\_num\_per\_rank} \times \text{hidden} \times (2 \text{intermediate\_hidden})}$：共享专家的 Linear1 权重，对应入参 `shared_weight1`。
+    - $\mathbf{W}_2^{\mathrm{shared}} \in \mathbb{R}^{\text{shared\_expert\_num\_per\_rank} \times \text{intermediate\_hidden} \times \text{hidden}}$：共享专家的 Linear2 权重，对应入参 `shared_weight2`。
   - 输出：
 
     - $\mathbf{Y} \in \mathbb{R}^{\text{total\_num\_tokens} \times \text{hidden}}$：最终输出矩阵，对应出参 `y`。
@@ -438,7 +440,7 @@
 
     说明：对每个 Token $i$，根据排序后的路由索引 $\pi(i,k)$ 从聚合后的专家结果中取出对应行，按 `topkWeights` 中的权重逐元素加权累加，得到最终输出 $Y$。
 
-    其中，$X$ 表示参数 `x`，$W$ 表示参数 `topkWeights`，$W_1$ 表示参数 `weight1`，$W_2$ 表示参数 `weight2`，$Y$ 表示参数 `y`，$E_{\text{local}}$ 表示属性 `moeExpertNum / epWorldSize`（每个 Rank 的专家数），$K$ 表示 `topkIds` 的第二维度（top-K 值，取值 6 或 8）。
+    其中，$X$ 表示参数 `x`，$W$ 表示参数 `topkWeights`，$W_1$ 表示参数 `weight1`，$W_2$ 表示参数 `weight2`，$Y$ 表示参数 `y`，$E_{\text{local}}$ 表示 `localMoeExpertNum = moeExpertNum / epWorldSize`（每个 Rank 的路由 MoE 专家数），$K$ 表示 `topkIds` 的第二维度（top-K 值，取值 6 或 8）。
 
     局部变量说明：
     - $\mathcal{T}_e$：被路由到专家 $e$ 的 Token 索引集合，由 `topkIds` 排序后确定。
@@ -453,6 +455,124 @@
     - $\pi(i, k)$：Token $i$ 的第 $k$ 个 top-k 专家在展开排序后的行索引，由路由排序确定。
     - $\mathrm{Q}_{\text{MX}}(\cdot)$：MX 逐组量化操作，block size = 32，输出 FP8 数据和 E8M0 缩放因子。
     - $\mathrm{DQ}_{\text{MX}}(\cdot)$：MX 逐组反量化操作，在 matmul 内部隐式执行。
+    </details>
+
+    <details>
+    <summary> A8W4-FP 量化场景</summary>
+
+    第一阶段（Token 选择、量化与 Dispatch）：
+
+    对本 rank 的输入 Token $X \in \mathbb{R}^{B\times H}$，根据 `topkIds` 得到每个专家 $e$ 对应的 Token 下标集合 $T_e$，并将选中的 BF16 Token 按 32 个元素一组量化为 MXFP8 E4M3：
+
+    $$
+    \hat{X}_e,\;S_{X,e}
+    = \mathrm{Q}_{\mathrm{MX}}\!\left(X[T_e]\right),
+    $$
+
+    其中，$\hat{X}_e$ 的数据类型为 `FLOAT8_E4M3FN`，$S_{X,e}$ 的数据类型为 `FLOAT8_E8M0`。随后将量化后的 Token 及其缩放因子发送到专家所在 rank。
+
+    路由 MoE 专家的第一层和第二层权重 $W_{1,e}$、$W_{2,e}$ 均为 MXFP4 E2M1 数据，缩放因子为 E8M0，$e$ 的范围为 $[0,\text{local\_moe\_expert\_num})$。共享专家权重单独由 `shared_weight1`、`shared_weight2` 提供，其第一维为 `sharedExpertNumPerRank`。A8W4 kernel 在矩阵乘 Prologue 中处理 FP4 权重，送入矩阵乘的逻辑数据流为 FP8 激活乘 FP4 权重。
+
+    第二阶段（GMM1、SwiGLU 与再次量化）：
+
+    对专家 $e$ 收到的 Token，第一层分组矩阵乘和 SwiGLU 计算为：
+
+    $$
+    Z_x = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{1,e}^{(x)},S_{1,e}^{(x)}\right),
+    $$
+
+    $$
+    Z_y = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{1,e}^{(y)},S_{1,e}^{(y)}\right),
+    $$
+
+    $$
+    U_e = Z_x \odot \sigma(Z_x) \odot Z_y.
+    $$
+
+    SwiGLU 输出继续按 32 个元素一组量化为 MXFP8 E4M3，供第二层矩阵乘使用：
+
+    $$
+    \hat{U}_e,\;S_{U,e}
+    = \mathrm{Q}_{\mathrm{MX}}\!\left(U_e\right).
+    $$
+
+    第三阶段（GMM2）：
+
+    第二层矩阵乘仍为 A8W4，即 FP8 E4M3 激活乘 FP4 E2M1 权重：
+
+    $$
+    O_e = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{U}_e,S_{U,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{2,e},S_{2,e}\right).
+    $$
+
+    第四阶段（Combine 与加权合并）：
+
+    将各专家输出送回原 rank，并根据 `topkWeights` 做加权合并：
+
+    $$
+    Y[i] = \sum_{k=0}^{K-1} W[i,k] \cdot O[\pi(i,k)],
+    $$
+
+    最终输出 $Y$ 的数据类型为 BF16。A8W4-FP 的主要数据类型流为：`BF16 -> MXFP8 E4M3 -> A8W4 GMM1 -> MXFP8 E4M3 -> A8W4 GMM2 -> BF16`。
+    </details>
+
+    <details>
+    <summary> A4W4-FP 量化场景</summary>
+
+    第一阶段（Token 选择、量化与 Dispatch）：
+
+    对每个专家 $e$ 对应的 Token 集合 $T_e$，将选中的 BF16 Token 按 32 个元素一组量化为 MXFP4 E2M1：
+
+    $$
+    \hat{X}_e,\;S_{X,e}
+    = \mathrm{Q}_{\mathrm{MX}}\!\left(X[T_e]\right),
+    $$
+
+    其中，$\hat{X}_e$ 的数据类型为 `FLOAT4_E2M1`，$S_{X,e}$ 的数据类型为 `FLOAT8_E8M0`。路由 MoE 专家的第一层和第二层权重 $W_{1,e}$、$W_{2,e}$ 均为 MXFP4 E2M1，$e$ 的范围为 $[0,\text{local\_moe\_expert\_num})$；共享专家权重的第一维为 `sharedExpertNumPerRank`。权重缩放因子为 E8M0。
+
+    第二阶段（A4W4 GMM1、SwiGLU 与输出类型提升）：
+
+    第一层分组矩阵乘为 A4W4：
+
+    $$
+    Z_x = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{1,e}^{(x)},S_{1,e}^{(x)}\right),
+    $$
+
+    $$
+    Z_y = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{X}_e,S_{X,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{1,e}^{(y)},S_{1,e}^{(y)}\right),
+    $$
+
+    $$
+    U_e = Z_x \odot \sigma(Z_x) \odot Z_y.
+    $$
+
+    这里不能继续把 SwiGLU 输出量化为 FP4。kernel 在 `QuantMode == E2M1_QUANT` 时，将 `SwigluQuantOutType` 指定为 `fp8_e4m3fn_t`，因此输出会提升为 MXFP8 E4M3：
+
+    $$
+    \hat{U}_e,\;S_{U,e}
+    = \mathrm{Q}_{\mathrm{MX}}\!\left(U_e\right).
+    $$
+
+    第三阶段（A8W4 GMM2）：
+
+    由于 SwiGLU 量化输出为 FP8 E4M3，而第二层权重仍为 FP4 E2M1，因此第二层矩阵乘实际为 A8W4，而不是 A4W4：
+
+    $$
+    O_e = \mathrm{DQ}_{\mathrm{MX}}\!\left(\hat{U}_e,S_{U,e}\right)
+          \cdot \mathrm{DQ}_{\mathrm{MX}}\!\left(W_{2,e},S_{2,e}\right).
+    $$
+
+    第四阶段（Combine 与加权合并）：
+
+    $$
+    Y[i] = \sum_{k=0}^{K-1} W[i,k] \cdot O[\pi(i,k)],
+    $$
+
+    最终输出 $Y$ 的数据类型为 BF16。A4W4-FP 的完整数据类型流为：`BF16 -> MXFP4 E2M1 -> A4W4 GMM1 -> MXFP8 E4M3 -> A8W4 GMM2 -> BF16`。其中所有 MX 缩放因子的类型均为 `FLOAT8_E8M0`，量化粒度均为 32 个连续元素。
     </details>
 
 ## 参数说明
@@ -505,14 +625,14 @@
   <tr>
    <td>weight1</td>
    <td>输入</td>
-   <td>MoE专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数（仅A8W8支持ND）。</td>
+   <td>MoE专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数（仅A8W8支持ND）。路由 MoE 专家数为 `localMoeExpertNum`。</td>
    <td>BF16、INT8、INT4、FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
    <td>ND、FRACTAL_NZ</td>
   </tr>
   <tr>
    <td>weight2</td>
    <td>输入</td>
-   <td>MoE专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致（仅A8W8支持ND）。</td>
+   <td>MoE专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致（仅A8W8支持ND）。路由 MoE 专家数为 `localMoeExpertNum`。</td>
    <td>BF16、INT8、INT4、FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
    <td>ND、FRACTAL_NZ</td>
   </tr>
@@ -617,7 +737,7 @@
   <tr>
    <td>max_recv_token_num</td>
    <td>可选属性</td>
-   <td>每个Rank最大可接收Token数。默认值为0。该值为0时，会按最大值bs*ep_world_size*min(topK,expertPerRank)预留内存大小；不为0时，将按照输入值大小预留内存，该场景下需用户保证填入值大于等于每个rank最大可接收的Token数。</td>
+   <td>每个Rank最大可接收Token数。默认值为0。该值为0时，会按最大值bs*ep_world_size*min(topK,localMoeExpertNum)预留内存大小；不为0时，将按照输入值大小预留内存，该场景下需用户保证填入值大于等于每个rank最大可接收的Token数。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -742,23 +862,25 @@
   - **<term>Ascend 950PR/Ascend 950DT</term>**：
     - BS（x.dim0）支持[1, maxBS], maxBS = (8 * (totalUbSize - 48K)) / (topK * (64 + epWorldSize)), 其中totalUbSize为UB总大小，950系列产品该值支持到当前环境能申请的最大内存。
     - H（x.dim1）支持1024、2048、3072、4096、5120、6144、7168、8192。
-    - topK（topkIds.dim1）支持[1, 16]。
+    - topK（topkIds.dim1）支持[1, 32]。
     - expertPerRank（weight1.dim0）范围 [1, 1024]。
     - hiddenDim（weight1.dim1）仅支持1024、2048、3072、4096、7168。
     - epWorldSize范围 [2, 1024]。
     - moeExpertNum范围 [epWorldSize, 2048]，且moeExpertNum % epWorldSize == 0。
-    - maxRecvTokenNum范围 [0, BS × epWorldSize × min(topK, expertPerRank)]。
+    - maxRecvTokenNum范围 [0, BS × epWorldSize × min(topK, localMoeExpertNum)]。
     - dispatchQuantOutType仅支持23（FLOAT8_E5M2）或24（FLOAT8_E4M3FN）或296（FLOAT4_E2M1）。
     - 当前版本仅支持MXFP量化模式（dispatchQuantMode = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
     - combineQuantMode取值为0、3、4，0表示非量化，3表示MXFP float8_e5m2类型，4表示MXFP float8_e4m3类型commAlg必须为空字符串""。
     - y的数据类型与x相同。
     - weight1的dim1（hiddenDim）必须等于weight2的dim2的二倍，这是因为SwiGLU激活需要将中间维度从hiddenDim减半为hiddenDim/2。
-    - expertPerRank = moeExpertNum / epWorldSize，必须为整数且在 [1, 1024] 范围内。
+    - localMoeExpertNum = moeExpertNum / epWorldSize；sharedExpertNumPerRank = shared_weight1.dim0（未启用共享专家时为0）；expertPerRank = sharedExpertNumPerRank + localMoeExpertNum。
 
   - **MXFP量化场景约束**：
-      - weight1 shape为(expertPerRank, hiddenDim, H)，weight2 shape为(expertPerRank, H, hiddenDim/2)。
-      - weightScales1 shape为(expertPerRank, hiddenDim, CeilDiv(H, 64), 2)，其中CeilDiv(H, 64) = (H + 63) / 64。
-      - weightScales2 shape为(expertPerRank, H, CeilDiv(hiddenDim/2, 64), 2)，其中CeilDiv(hiddenDim/2, 64) = (hiddenDim/2 + 63) / 64。
+      - weight1 shape为(localMoeExpertNum, hiddenDim, H)，weight2 shape为(localMoeExpertNum, H, hiddenDim/2)。
+      - weightScales1 shape为(localMoeExpertNum, hiddenDim, CeilDiv(H, 64), 2)。
+      - weightScales2 shape为(localMoeExpertNum, H, CeilDiv(hiddenDim/2, 64), 2)。
+      - shared_weight1 shape为(sharedExpertNumPerRank, hiddenDim, H)，shared_weight2 shape为(sharedExpertNumPerRank, H, hiddenDim/2)。
+      - shared_weight_scales1 shape为(sharedExpertNumPerRank, hiddenDim, CeilDiv(H, 64), 2)，shared_weight_scales2 shape为(sharedExpertNumPerRank, H, CeilDiv(hiddenDim/2, 64), 2)。
       - weightScales1的dim3和weightScales2的dim3必须等于2。
       - MXFP场景下，dispatchQuantOutType=23时weight1和weight2必须为FLOAT8_E5M2，dispatchQuantOutType=24时必须为FLOAT8_E4M3FN，dispatchQuantOutType=296时必须为FLOAT4_E2M1。
 
