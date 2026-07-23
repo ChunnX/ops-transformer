@@ -349,7 +349,7 @@ private:
     {
         pipe.InitBuffer(qBlockQue, ppNum, B * dimQk * sizeof(fp8_e4m3fn_t));
         pipe.InitBuffer(qBlockFP32Que, ppNum, B * dimQk * sizeof(float));
-        pipe.InitBuffer(scalesQue, ppNum, B * numQHeads * sizeof(float));
+        pipe.InitBuffer(scalesQue, ppNum, B * sizeof(float));
         pipe.InitBuffer(outQueueQflat, ppNum, kflatDim * sizeof(bfloat16_t));
     }
 
