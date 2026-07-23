@@ -8,6 +8,7 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import torch
+from torch import _check as torch_check
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -18,8 +19,7 @@ _BSND_RANK = 4
 
 
 def _torch_check(condition, message):
-    # torch._check preserves symbolic shape constraints during Meta tracing.
-    torch._check(condition, message)  # pylint: disable=protected-access
+    torch_check(condition, message)
 
 
 def _check_ranks_and_non_empty(grad_output, x, h_res, h_out, h_post):
