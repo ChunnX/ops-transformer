@@ -10,9 +10,12 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
-"""Input customization for quant_block_sparse_attn TTK cases."""
+"""Input customization for quant_block_sparse_attn TTK cases.
 
-import hashlib
+E2E customize_inputs contract: modify tensors in-place via x.copy_(value).
+No return value. Tensor shapes/dtypes are pre-allocated by TTK from CSV.
+"""
+
 import math
 import random
 
@@ -25,53 +28,86 @@ def _fp8_rand(shape, low=-1.0, high=1.0, generator=None):
     return torch.empty(shape, dtype=torch.float32).uniform_(low, high, generator=generator).to(FP8_DTYPE)
 
 
-def _make_lengths(batch, max_len, mode="full", rng=None):
-    if mode == "full":
-        return [max_len] * batch, max_len
-    low = max(1, max_len // 2)
-    return [rng.randint(low, max_len) for _ in range(batch)], max_len
-
-
-def _prefix(lengths):
-    values = [0]
-    for length in lengths:
-        values.append(values[-1] + int(length))
-    return torch.tensor(values, dtype=torch.int32)
-
-
-def _make_block_table(batch, seq_len, block_size, rng):
+def _make_block_table(batch, seq_len, block_size, pattern, rng):
     block_num_per_batch = math.ceil(seq_len / block_size)
     block_table = torch.empty((batch, block_num_per_batch), dtype=torch.int32)
     for batch_idx in range(batch):
         ids = list(range(batch_idx * block_num_per_batch, (batch_idx + 1) * block_num_per_batch))
+        if pattern == "reverse":
+            ids.reverse()
+        elif pattern == "random":
+            rng.shuffle(ids)
         block_table[batch_idx] = torch.tensor(ids, dtype=torch.int32)
     return block_table
 
 
-def _make_sparse_indices(B, N1, S1, S2, sparse_q_block_size, sparse_kv_block_size,
-                          mask_mode, sparse_pattern, sparse_count, rng):
+def _allowed_blocks(mask_mode, qb_idx, sparse_q_block_size, sparse_kv_block_size, q_len, kv_len):
+    block_num = math.ceil(kv_len / sparse_kv_block_size)
+    if block_num <= 0:
+        return []
+    if mask_mode == 0:
+        return list(range(block_num))
+    if mask_mode != 3:
+        raise ValueError(f"unsupported mask_mode: {mask_mode}")
+    max_token = (qb_idx + 1) * sparse_q_block_size - 1
+    max_token += kv_len - q_len
+    if max_token < 0:
+        return []
+    max_block = min(block_num - 1, max_token // sparse_kv_block_size)
+    return list(range(max_block + 1))
+
+
+def _select_blocks(blocks, sparse_count, pattern, rng):
+    if sparse_count <= 0 or not blocks or pattern == "empty":
+        return []
+    if pattern in ("sequential", "dense", "causal"):
+        return blocks[:min(sparse_count, len(blocks))]
+    if pattern == "reverse":
+        return list(reversed(blocks[-min(sparse_count, len(blocks)):]))
+    if pattern == "tail":
+        selected = blocks[:max(0, min(sparse_count, len(blocks)) - 1)]
+        if blocks[-1] not in selected:
+            selected.append(blocks[-1])
+        return selected[:sparse_count]
+    if pattern == "random":
+        selected = blocks[:]
+        rng.shuffle(selected)
+        return selected[:min(sparse_count, len(selected))]
+    raise ValueError(f"unsupported sparse_pattern: {pattern}")
+
+
+def _make_sparse_indices(B, N1, N2, S1, S2, sparse_q_block_size, sparse_kv_block_size,
+                         mask_mode, sparse_pattern, sparse_count, q_lengths, kv_lengths, rng):
+    group = N1 // N2
     qb_max = math.ceil(S1 / sparse_q_block_size)
     kv_max = math.ceil(S2 / sparse_kv_block_size)
     sparse_indices = torch.full((B, N1, qb_max, kv_max), fill_value=-1, dtype=torch.int32)
     sparse_seq_len = torch.zeros((B, N1, qb_max), dtype=torch.int32)
 
-    for b in range(B):
-        for n in range(N1):
-            for qb in range(qb_max):
-                allowed = list(range(kv_max))
-                if mask_mode == 3:
-                    max_block = min(kv_max - 1, ((qb + 1) * sparse_q_block_size - 1) // sparse_kv_block_size)
-                    allowed = list(range(max_block + 1))
-                if sparse_pattern == "sequential":
-                    selected = allowed[:min(sparse_count, len(allowed))]
-                elif sparse_pattern == "random":
-                    selected = rng.sample(allowed, min(sparse_count, len(allowed)))
-                else:
-                    selected = allowed[:min(sparse_count, len(allowed))]
-                sparse_seq_len[b, n, qb] = len(selected)
-                if selected:
-                    sparse_indices[b, n, qb, :len(selected)] = torch.tensor(selected, dtype=torch.int32)
+    for batch_idx in range(B):
+        for qb_idx in range(qb_max):
+            allowed = _allowed_blocks(
+                mask_mode, qb_idx, sparse_q_block_size, sparse_kv_block_size,
+                q_lengths[batch_idx], kv_lengths[batch_idx])
+            for n2_idx in range(N2):
+                for group_idx in range(group):
+                    head_idx = n2_idx * group + group_idx
+                    selected = _select_blocks(allowed, sparse_count, sparse_pattern, rng)
+                    sparse_seq_len[batch_idx, head_idx, qb_idx] = len(selected)
+                    if selected:
+                        sparse_indices[batch_idx, head_idx, qb_idx, :len(selected)] = torch.tensor(
+                            selected, dtype=torch.int32)
     return sparse_indices, sparse_seq_len
+
+
+def _make_scale_tensor(shape, pattern):
+    if pattern == "ones":
+        return torch.ones(shape, dtype=torch.float32)
+    numel = 1
+    for s in shape:
+        numel *= s
+    values = torch.linspace(0.25, 2.0, steps=numel, dtype=torch.float32)
+    return values.reshape(shape)
 
 
 def _dense_to_pa(dense_key, dense_value, dense_k_scale, block_table, block_size):
@@ -95,71 +131,85 @@ def _dense_to_pa(dense_key, dense_value, dense_k_scale, block_table, block_size)
     return key_pa, value_pa, k_scale_pa
 
 
-def generate_bsa_inputs(query, key, value, q_descale, k_descale, v_descale, p_scale,
-                          sparse_indices, sparse_seq_len, atten_mask,
-                          softmax_scale, sparse_q_block_size, sparse_kv_block_size,
-                          cu_seqlens_q=None, cu_seqlens_kv=None, seqused_q=None, seqused_kv=None,
-                          block_table=None, metadata=None, max_seqlen_q=0, max_seqlen_kv=0,
-                          pa_block_stride=0, layout_kv="PA_BNSD", layout_q="BSND",
-                          layout_sparse_indices="B_N_Qb_Kb", layout_out="TND",
-                          quant_mode=1, mask_mode=3, return_softmax_lse=False,
-                          testcase_name="", **kwargs):
-    """Generate proper test data for quant_block_sparse_attn.
+def customize_inputs(query, key, value, q_descale, k_descale, v_descale, p_scale,
+                     sparse_indices, sparse_seq_len, atten_mask, *,
+                     softmax_scale=1.0, sparse_q_block_size=128, sparse_kv_block_size=128,
+                     max_seqlen_q=0, max_seqlen_kv=0, layout_q="BSND", layout_kv="PA_BNSD",
+                     mask_mode=3, quant_mode=1, return_softmax_lse=False,
+                     sparse_count=0, sparse_pattern="sequential", block_table_pattern="sequential",
+                     actlen_mode="full", scale_pattern="ones", p_scale_value=1.0, seed=0,
+                     **kwargs):
+    """Fill input tensors in-place with consistent test data for quant_block_sparse_attn.
 
-    Fills metadata tensors and creates consistent sparse indices and block tables.
+    E2E customize_inputs contract: modify tensors in-place, no return value.
+    Generation params (sparse_pattern, scale_pattern, etc.) arrive via
+    extra_attrs from CSV attributes (non-operator params).
     """
     if FP8_DTYPE is None:
         raise RuntimeError("torch.float8_e4m3fn is required for quant_block_sparse_attn test data")
 
-    seed = int(hashlib.sha256(str(testcase_name).encode("utf-8")).hexdigest()[:8], 16)
     rng = random.Random(seed)
     generator = torch.Generator().manual_seed(seed)
 
-    if query.dim() == 4:
-        B, S1, N1, D = query.shape
-        N2 = value.shape[2]
-    elif query.dim() == 3:
-        if layout_q == "NTD":
-            N1, _, D = query.shape
-        else:
-            _, N1, D = query.shape
-        B = seqused_q.shape[0] if seqused_q is not None else 2
-        S1 = max_seqlen_q if max_seqlen_q > 0 else 256
+    D = int(query.shape[-1])
+    if layout_q == "BSND":
+        B, S1, N1 = int(query.shape[0]), int(query.shape[1]), int(query.shape[2])
+    elif layout_q == "NTD":
+        N1, S1 = int(query.shape[0]), int(query.shape[1])
+        B = int(sparse_indices.shape[0])
     else:
-        B, S1, N1, D = 2, 256, 8, 128
-        N2 = 2
+        S1, N1 = int(query.shape[0]), int(query.shape[1])
+        B = int(sparse_indices.shape[0])
 
-    S2 = max_seqlen_kv if max_seqlen_kv > 0 else 512
-    sparse_q_block_size = int(sparse_q_block_size)
-    sparse_kv_block_size = int(sparse_kv_block_size)
+    N2 = int(v_descale.shape[0])
+    block_size = int(key.shape[2]) if key.dim() == 4 else sparse_kv_block_size
+    num_blocks = int(key.shape[0]) if key.dim() == 4 else math.ceil(max_seqlen_kv / sparse_kv_block_size)
+    S2 = max_seqlen_kv if max_seqlen_kv > 0 else num_blocks * block_size
 
-    query = _fp8_rand((B, S1, N1, D), generator=generator)
+    q_lengths = [S1] * B
+    kv_lengths = [S2] * B
+
+    query_data = _fp8_rand(query.shape, generator=generator)
+    query.copy_(query_data)
+
     dense_key = _fp8_rand((B, S2, N2, D), generator=generator)
     dense_value = _fp8_rand((B, S2, N2, D), generator=generator)
 
-    q_lengths, q_max = _make_lengths(B, S1, "full", rng)
-    kv_lengths, kv_max = _make_lengths(B, S2, "full", rng)
-    cu_seqlens_q = _prefix(q_lengths)
-    cu_seqlens_kv = _prefix(kv_lengths)
-    seqused_q = torch.tensor(q_lengths, dtype=torch.int32)
-    seqused_kv = torch.tensor(kv_lengths, dtype=torch.int32)
+    block_table = _make_block_table(B, S2, sparse_kv_block_size, block_table_pattern, rng)
 
-    block_table = _make_block_table(B, S2, sparse_kv_block_size, rng)
+    dense_k_scale = _make_scale_tensor((B, S2, N2), scale_pattern)
     key_pa, value_pa, k_scale_pa = _dense_to_pa(
-        dense_key, dense_value,
-        torch.ones((B, S2, N2), dtype=torch.float32),
-        block_table, sparse_kv_block_size)
+        dense_key, dense_value, dense_k_scale, block_table, sparse_kv_block_size)
 
-    q_scale = torch.ones((B, S1, N1), dtype=torch.float32)
-    k_scale = k_scale_pa
-    v_scale = torch.ones((N2,), dtype=torch.float32)
-    p_scale = torch.tensor([1.0], dtype=torch.float32)
+    key.copy_(key_pa)
+    value.copy_(value_pa)
 
-    sparse_indices, sparse_seq_len = _make_sparse_indices(
-        B, N1, S1, S2, sparse_q_block_size, sparse_kv_block_size,
-        mask_mode, "sequential", 4, rng)
+    if layout_q == "BSND":
+        q_scale_shape = (B, S1, N1)
+    elif layout_q == "NTD":
+        q_scale_shape = (N1, S1)
+    else:
+        q_scale_shape = (S1, N1)
 
-    atten_mask = torch.tril(torch.ones((2048, 2048), dtype=torch.uint8)).T
+    q_scale = _make_scale_tensor(q_scale_shape, scale_pattern)
+    q_descale.copy_(q_scale)
 
-    return (query, key_pa, value_pa, q_scale, k_scale, v_scale, p_scale,
-            sparse_indices, sparse_seq_len, atten_mask)
+    k_descale.copy_(k_scale_pa)
+
+    if scale_pattern == "ones":
+        v_scale = torch.ones((N2,), dtype=torch.float32)
+    else:
+        v_scale = torch.linspace(0.5, 1.75, steps=N2, dtype=torch.float32)
+    v_descale.copy_(v_scale)
+
+    p_scale_data = torch.tensor([float(p_scale_value)], dtype=torch.float32)
+    p_scale.copy_(p_scale_data)
+
+    sparse_indices_data, sparse_seq_len_data = _make_sparse_indices(
+        B, N1, N2, S1, S2, sparse_q_block_size, sparse_kv_block_size,
+        mask_mode, sparse_pattern, sparse_count, q_lengths, kv_lengths, rng)
+    sparse_indices.copy_(sparse_indices_data)
+    sparse_seq_len.copy_(sparse_seq_len_data)
+
+    atten_mask_data = torch.tril(torch.ones(atten_mask.shape, dtype=torch.uint8)).T
+    atten_mask.copy_(atten_mask_data)
