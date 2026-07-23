@@ -619,7 +619,8 @@ ge::graphStatus MhcPreBaseTiling::ParseEpsAttributes()
 
 bool MhcPreBaseTiling::CanUseLowApiBs() const
 {
-    return tilingMode_ == TilingMode::SPLIT_BS && N_ == 4;
+    bool supportedN = N_ == N_VALID_VALUES[0] || N_ == N_VALID_VALUES[1] || N_ == N_VALID_VALUES[2];
+    return tilingMode_ == TilingMode::SPLIT_BS && supportedN;
 }
 
 bool MhcPreBaseTiling::CanUseMk() const

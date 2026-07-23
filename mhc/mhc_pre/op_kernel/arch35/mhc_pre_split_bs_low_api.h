@@ -26,7 +26,7 @@ public:
         this->pipe_->InitBuffer(mmXBuf_, mmRowsPerAiv * this->tiling_->fusionAlign * sizeof(float));
         mmXLocal_ = mmXBuf_.Get<float>();
 
-        this->InitUbBuffers();
+        InitUbBuffersLowApi();
         SyncAll<false>();
 
         if ASCEND_IS_AIV {
@@ -57,21 +57,29 @@ public:
                 if ASCEND_IS_AIV {
                     uint32_t curNdLen = MhcPreUtils::Min(this->ND_LENGTH, this->matrixInfo_.nD - offsetNd);
                     if (this->vectorCount_ >= 2) {
-                        AscendC::CrossCoreWaitFlag(SYNC_C2V);
+                        AscendC::CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_FLAG);
                     }
                     this->V0Prologue(curNdLen, offsetNd);
-                    CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNC_V2C);
+                    CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
                     this->vectorCount_++;
                 }
 
                 if ASCEND_IS_AIC {
-                    AscendC::CrossCoreWaitFlag(SYNC_V2C);
+                    AscendC::CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(SYNC_AIV_AIC_FLAG);
+                    AscendC::CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(
+                        SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
                     AICProcessLowApi(offsetNd);
-                    CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_C2V);
+                    CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(SYNC_AIC_AIV_FLAG);
+                    CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(
+                        SYNC_AIC_AIV_FLAG + FLAG_ID_MAX);
                 }
             }
             this->mmCount_++;
-            CrossCoreSetFlag<0x2, PIPE_FIX>(SYNC_C2V1);
+            if ASCEND_IS_AIC {
+                CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_FIX>(SYNC_AIC_AIV_MM_FLAG);
+                CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_FIX>(
+                    SYNC_AIC_AIV_MM_FLAG + FLAG_ID_MAX);
+            }
 
             if ASCEND_IS_AIV {
                 this->V0PostProcess(curblock, tBlockNum);
@@ -89,6 +97,44 @@ public:
     }
 
 private:
+    __aicore__ inline void InitUbBuffersLowApi()
+    {
+        if ASCEND_IS_NOT_AIV {
+            return;
+        }
+
+        static constexpr uint32_t kXInQueueBufferBytes = 80 * 1024;
+        static constexpr uint32_t kOutQueueBufferBytes = 20 * 1024;
+
+        this->pipe_->InitBuffer(this->xInQueue_, this->kDoubleBufferCount, kXInQueueBufferBytes);
+        this->pipe_->InitBuffer(this->outQueue_, this->kDoubleBufferCount, kOutQueueBufferBytes);
+
+        uint32_t invRmsRows =
+            (this->curSingleT_ + this->kHalfSplitDivisor - 1U) / this->kHalfSplitDivisor;
+        uint32_t invRmsBytes = MhcPreUtils::Align(
+            invRmsRows, this->kAlignmentBytes / sizeof(P)) * sizeof(P);
+        this->pipe_->InitBuffer(this->invRmsOutQueue_, this->kSingleBufferCount, invRmsBytes);
+
+        if (this->hasGamma_) {
+            this->pipe_->InitBuffer(this->gammaInQueue_, this->kSingleBufferCount,
+                this->ND_LENGTH * sizeof(P));
+        }
+
+        uint32_t parameterBufferBytes = MhcPreUtils::Align(
+            this->mnConfig_.n * sizeof(P), this->kAlignmentBytes);
+        this->pipe_->InitBuffer(this->biasInQue_, this->kSingleBufferCount, parameterBufferBytes);
+        this->pipe_->InitBuffer(this->alphaBuf_, parameterBufferBytes);
+        this->alphaInUb_ = this->alphaBuf_.template Get<P>();
+
+        uint32_t hSegmentBytes = MhcPreUtils::Align(
+            this->V1_BASE_T * this->N_ * sizeof(P), this->kAlignmentBytes);
+        this->pipe_->InitBuffer(this->tmpBuff_, 2U * hSegmentBytes);
+        this->hPreBuff_ = this->tmpBuff_.template GetWithOffset<P>(
+            static_cast<uint32_t>(this->V1_BASE_T * this->N_), 0);
+        this->hPostBuff_ = this->tmpBuff_.template GetWithOffset<P>(
+            static_cast<uint32_t>(this->V1_BASE_T * this->N_), hSegmentBytes);
+    }
+
     __aicore__ inline void ConfigureDirectUbRowPartition()
     {
         if ASCEND_IS_NOT_AIV {
@@ -130,6 +176,9 @@ private:
         uint64_t mAlign = LowApiAlign(this->mnConfig_.curSingleCoreM, AscendC::BLOCK_CUBE);
         uint64_t nAlign = LowApiAlign(this->mnConfig_.n, AscendC::BLOCK_CUBE);
         uint64_t baseK = (256 / AscendC::Std::max(mAlign, nAlign)) * 32;
+        if (this->implMode_ == MHC_PRE_IMPL_MODE_FP32) {
+            baseK = 32;
+        }
         mmService_.Process(this->mnConfig_.curSingleCoreM, this->mnConfig_.n,
             this->mnConfig_.curSingleCoreM, baseK, isFirstKL1, isLastKL1, currentAL1, currentBL1);
 
@@ -141,7 +190,7 @@ private:
 
     __aicore__ inline void AIV1ProcessDirect()
     {
-        AscendC::CrossCoreWaitFlag(SYNC_C2V1);
+        AscendC::CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_V>(SYNC_AIC_AIV_MM_FLAG);
         if (this->vectorOffset_.singleCoreM == 0) {
             return;
         }
@@ -189,10 +238,22 @@ private:
             CopyRawHMixToGm(offsetT, lenT);
         }
 
-        MhcPreVFPostSegments<P, MHC_PRE_LOW_API_N4, HAS_RESI == MHC_PRE_HAS_RESI>(
-            this->hPreBuff_, this->hPostBuff_, hResOutLocal, this->matmulRes_,
-            this->invRmsUb_, this->alphaInUb_, this->biasInUb_, static_cast<uint16_t>(lenT),
-            static_cast<uint32_t>(localOffset), this->tiling_->fusionAlign);
+        if (this->N_ == this->kSupportedN4) {
+            MhcPreVFPostSegments<P, 4U, HAS_RESI == MHC_PRE_HAS_RESI>(
+                this->hPreBuff_, this->hPostBuff_, hResOutLocal, this->matmulRes_,
+                this->invRmsUb_, this->alphaInUb_, this->biasInUb_, static_cast<uint16_t>(lenT),
+                static_cast<uint32_t>(localOffset), this->tiling_->fusionAlign);
+        } else if (this->N_ == this->kSupportedN6) {
+            MhcPreVFPostSegments<P, 6U, HAS_RESI == MHC_PRE_HAS_RESI>(
+                this->hPreBuff_, this->hPostBuff_, hResOutLocal, this->matmulRes_,
+                this->invRmsUb_, this->alphaInUb_, this->biasInUb_, static_cast<uint16_t>(lenT),
+                static_cast<uint32_t>(localOffset), this->tiling_->fusionAlign);
+        } else {
+            MhcPreVFPostSegments<P, 8U, HAS_RESI == MHC_PRE_HAS_RESI>(
+                this->hPreBuff_, this->hPostBuff_, hResOutLocal, this->matmulRes_,
+                this->invRmsUb_, this->alphaInUb_, this->biasInUb_, static_cast<uint16_t>(lenT),
+                static_cast<uint32_t>(localOffset), this->tiling_->fusionAlign);
+        }
         PipeBarrier<PIPE_V>();
 
         if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
@@ -214,6 +275,10 @@ private:
     LocalTensor<float> aL1_;
     LocalTensor<float> bL1_;
     LocalTensor<float> mmXLocal_;
+    static constexpr uint64_t SYNC_AIV_AIC_FLAG = 8;
+    static constexpr uint64_t SYNC_AIC_AIV_FLAG = 9;
+    static constexpr uint64_t SYNC_AIC_AIV_MM_FLAG = 10;
+    static constexpr uint64_t FLAG_ID_MAX = 16;
 };
 
 } // namespace MhcPre
