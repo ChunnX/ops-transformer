@@ -313,20 +313,20 @@ __aicore__ inline uint32_t SIVector<SIT>::CalcDynamicTopkCount(
     int32_t s1Pos = static_cast<int32_t>(s1Idx) + kbOffset;
     int32_t decayLen = numPromptK - kStart;
 
-    // 边界条件：s1Pos < kStart 或 decayLen < 1 时，直接返回 kStart
-    if (s1Pos < kStart || decayLen < 1) {
+    // 边界条件：s1Pos < kStart 或 decayLen <= 1 时，直接返回 kStart
+    if (s1Pos < kStart || decayLen <= 1) {
         return static_cast<uint32_t>(kStart);
     }
 
-    // 计算 k_end
-    int32_t k_end = static_cast<int32_t>(kStart * alpha_);
+    // 计算 kEnd
+    int32_t kEnd = static_cast<int32_t>(kStart * alpha_);
 
     // 计算插值系数 t
     float t = static_cast<float>(s1Pos - kStart) / static_cast<float>(decayLen - 1);
 
     // 计算 dynamicTopkCount
     uint32_t dynamicTopkCount = static_cast<uint32_t>(static_cast<float>(kStart) +
-                                                      t * static_cast<float>(k_end - kStart));
+                                                      t * static_cast<float>(kEnd - kStart));
 
     // 限制范围：下限为 1，上限为 kStart
     dynamicTopkCount = dynamicTopkCount < 1 ? 1 :
