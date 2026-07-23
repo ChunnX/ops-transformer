@@ -28,12 +28,12 @@
  *      GM → UB: q[cu_off + qb*B : cu_off + qb*B + B, h, :]
  *      qBlockBuf: [B, D] FP8, 超出 q_len 的行填零
  *
- *   2. CastBlockToFP32:
- *      UB: qBlockBuf [B, D] FP8 → qBlockFP32Buf [B, D] FP32
- *
- *   3. CopyInScalesBulk:
+ *   2. CopyInScalesBulk:
  *      GM → UB: qscale[cu_off + qb*B : cu_off + qb*B + B, h]
  *      scalesBuf: [B] FP32
+ *
+ *   3. CastBlockToFP32:
+ *      UB: qBlockBuf [B, D] FP8 → qBlockFP32Buf [B, D] FP32
  *
  *   4. AccumulateBlock (Weighted Group Sum, in-place binary reduce):
  *      qBlockFP32Buf 逻辑 reshape 为 [R, S, D]
@@ -158,8 +158,6 @@ public:
         if (taskId >= tiling->usedCoreNum)
             return;
 
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID2);
-
         for (uint32_t taskIdx = qbStart; taskIdx < qbEnd; taskIdx++) {
             DecodeTaskId(taskIdx);
             ProcessOneBlock();
@@ -177,6 +175,7 @@ public:
 
         // 从 cuSeqLensQ 读取当前 batch 的信息
         LocalTensor<int64_t> cuSeqLensQ = cuSeqLensQBuf.Get<int64_t>();
+        WaitFlag<HardEvent::MTE2_S>(static_cast<event_t>(pipe.FetchEventID(HardEvent::MTE2_S)));
         int64_t cuStart = cuSeqLensQ.GetValue(batchIdx);
         int64_t cuEnd = cuSeqLensQ.GetValue(batchIdx + 1);
 
@@ -192,8 +191,8 @@ public:
             return;
         }
         CopyInQBlock();
-        CastBlockToFP32();
         CopyInScalesBulk();
+        CastBlockToFP32();
         AccumulateBlock();
         FlattenAndCast();
         CopyOutBlock();
@@ -203,6 +202,8 @@ public:
     {
         LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf.AllocTensor<fp8_e4m3fn_t>();
         Duplicate((LocalTensor<int8_t> &)qBlockLocal, (int8_t)0, B * dimQk);
+        SetFlag<HardEvent::V_MTE2>(EVENT_ID0);
+        WaitFlag<HardEvent::V_MTE2>(EVENT_ID0);
 
         uint32_t startRow = qbLocal * B;
         uint32_t validRows = (startRow + B <= qLen) ? B :
@@ -221,17 +222,15 @@ public:
             DataCopyPad(qBlockLocal, qGm, copyParams,
                         DataCopyPadParams{false, 0, 0, 0});
         }
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID0);
         qBlockBuf.EnQue(qBlockLocal);
     }
 
     __aicore__ inline void CastBlockToFP32()
     {
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
-
         LocalTensor<fp8_e4m3fn_t> qBlockLocal = qBlockBuf.DeQue<fp8_e4m3fn_t>();
         LocalTensor<float> qBlockFP32Local = qBlockFP32Buf.AllocTensor<float>();
         Duplicate(qBlockFP32Local, 0.0f, B * dimQk);
+        PipeBarrier<PIPE_V>();
 
         uint32_t startRow = qbLocal * B;
         uint32_t validRows = (startRow + B <= qLen) ? B :
@@ -249,6 +248,9 @@ public:
     {
         LocalTensor<float> scalesLocal = scalesBuf.AllocTensor<float>();
         Duplicate(scalesLocal, 0.0f, B);
+        event_t vsEvent = static_cast<event_t>(pipe.FetchEventID(HardEvent::V_S));
+        SetFlag<HardEvent::V_S>(vsEvent);
+        WaitFlag<HardEvent::V_S>(vsEvent);
 
         uint32_t startRow = qbLocal * B;
         uint32_t validRows = (startRow + B <= qLen) ? B :
@@ -262,12 +264,10 @@ public:
             }
         }
         scalesBuf.EnQue(scalesLocal);
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID1);
     }
 
     __aicore__ inline void AccumulateBlock()
     {
-        WaitFlag<HardEvent::MTE2_V>(EVENT_ID1);
 
         LocalTensor<float> fp32Buf = qBlockFP32Buf.DeQue<float>();
         LocalTensor<float> scaleBuf = scalesBuf.DeQue<float>();
@@ -357,8 +357,8 @@ private:
         DataCopyPad(cuSeqLensQLocal, cuSeqLensGm,
                     {1, static_cast<uint16_t>(cuSeqLensQCount * sizeof(int64_t)), 0, 0},
                     {0, 0, 0, 0});
-        SetFlag<HardEvent::MTE2_V>(EVENT_ID2);
-    }
+        SetFlag<HardEvent::MTE2_S>(static_cast<event_t>(pipe.FetchEventID(HardEvent::MTE2_S)));
+}
 
     TPipe pipe;
     const StemPrepQTilingData *tiling = nullptr;
