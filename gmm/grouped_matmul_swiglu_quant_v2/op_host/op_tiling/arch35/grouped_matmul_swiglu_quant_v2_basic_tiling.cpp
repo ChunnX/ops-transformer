@@ -669,7 +669,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoOpTiling()
     const bool isBFp8 = inputParams_.bDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.bDtype == ge::DT_FLOAT8_E5M2;
     const bool isMxQuant = inputParams_.aQuantMode == optiling::QuantMode::MX_PERGROUP_MODE &&
                            inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE;
-    const bool hasBias = context_->GetOptionalInputDesc(BIAS_INDEX) == nullptr;
+    const bool hasBias = inputParams_.hasBias;
 
     if (isAFp8 && isBFp8 && isMxQuant && inputParams_.bFormat == ge::FORMAT_ND && !hasBias &&
         inputParams_.nSize % MXFP8_ND_N_ALIGN_TENSORAPI == 0 && inputParams_.mSize >= MXFP8_ND_M_LOWER_TENSORAPI) {
@@ -691,26 +691,167 @@ int64_t GroupedMatmulSwigluQuantV2Tiling950::LogQuantParams()
     return 0;
 }
 
-// ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalL1Tiling()
-// {
-//     InitCommonL1TilingFields();
-//     uint64_t leftL1Size = 0;
-//     OP_CHECK_IF(CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
-//                 OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed"), return ge::GRAPH_FAILED);
-//     return CalL1Depth(leftL1Size);
-// }
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalScaleFactors()
+{
+    uint64_t baseASize = GroupedQmmTiling::GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
+    uint64_t baseBSize = GroupedQmmTiling::GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
+    uint64_t baseScaleASize = GroupedQmmTiling::GetSizeWithDataType(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseM,
+                                                  inputParams_.perTokenScaleDtype);
+    uint64_t baseScaleBSize =
+        GroupedQmmTiling::GetSizeWithDataType(GroupedMatmul::CeilDiv(basicTiling_.baseK, MX_GROUP_SIZE) * basicTiling_.baseN, inputParams_.scaleDtype);
+    uint64_t biasDtypeSize = ge::GetSizeByDataType(inputParams_.biasDtype);
+    uint64_t baseBiasSize = inputParams_.hasBias ? basicTiling_.baseN * biasDtypeSize : 0;
+    uint64_t leftL1Size =
+        aicoreParams_.l1Size - (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize + baseBiasSize);
+    uint32_t scaleInit = static_cast<uint32_t>(
+        leftL1Size / (std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize)));
+    OP_CHECK_IF(
+        scaleInit == 0,
+        OP_LOGE(context_->GetNodeName(),
+                "When m(%lu)/n(%lu)/k(%lu)/groupNum(%lu) in mx quant mode, scaleFactor should not be equal to 0.",
+                inputParams_.mSize, inputParams_.nSize, inputParams_.kSize, inputParams_.groupNum),
+        return ge::GRAPH_FAILED);
+    // 计算scaleFactorA, scaleFactorB
+    // 来自K轴的约束
+    uint32_t scaleFactorAMax =
+        std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V120 / baseScaleASize), SCALER_FACTOR_MAX);
+    uint32_t scaleFactorBMax =
+        std::min(static_cast<uint32_t>(MTE2_MIN_LOAD_SIZE_V120 / baseScaleBSize), SCALER_FACTOR_MAX);
+    uint32_t scaleFactorA =
+        static_cast<uint32_t>(GroupedMatmul::CeilDiv(inputParams_.kSize, basicTiling_.stepKa * basicTiling_.baseK));
+    uint32_t scaleFactorB =
+        static_cast<uint32_t>(GroupedMatmul::CeilDiv(inputParams_.kSize, basicTiling_.stepKb * basicTiling_.baseK));
+    basicTiling_.scaleFactorA = std::max(SCALER_FACTOR_MIN, scaleFactorA);
+    basicTiling_.scaleFactorB = std::max(SCALER_FACTOR_MIN, scaleFactorB);
+    basicTiling_.scaleFactorA = std::min(scaleFactorAMax, basicTiling_.scaleFactorA);
+    basicTiling_.scaleFactorB = std::min(scaleFactorBMax, basicTiling_.scaleFactorB);
+
+    // 来自L1 size 的约束
+    if (basicTiling_.scaleFactorA > scaleInit && basicTiling_.scaleFactorB > scaleInit) { // 非scalek全载，ka/kb倍数
+        if (basicTiling_.depthA1 >= basicTiling_.depthB1) {
+            basicTiling_.scaleFactorA = scaleInit;
+            basicTiling_.scaleFactorB = scaleInit * basicTiling_.depthA1 / basicTiling_.depthB1;
+        } else {
+            basicTiling_.scaleFactorA = scaleInit * basicTiling_.depthB1 / basicTiling_.depthA1;
+            basicTiling_.scaleFactorB = scaleInit;
+        }
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+void GroupedMatmulSwigluQuantV2Tiling950::ModifyDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize,
+                                                     uint64_t baseScaleABSize)
+{
+    // 只调整K轴非对齐场景
+    if (inputParams_.kSize % GmmConstant::BASIC_BLOCK_SIZE_128 == 0) {
+        return;
+    }
+    // m，n在内轴且ND时，修改stepk无法改变ND2NZ小包数量
+    if (inputParams_.transA && (!inputParams_.transB || inputParams_.bFormat == ge::FORMAT_FRACTAL_NZ)) {
+        return;
+    }
+    if (!inputParams_.transA) {
+        if (basicTiling_.depthA1 <= basicTiling_.depthB1) {
+            uint64_t leftASize = leftL1Size - basicTiling_.depthB1 * baseBSize - basicTiling_.depthB1 * baseScaleABSize;
+            while (basicTiling_.depthA1 * POWER_OF_TWO * baseASize <= leftASize) {
+                basicTiling_.depthA1 *= POWER_OF_TWO;
+            }
+            if (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize +
+                    std::max(basicTiling_.depthA1, basicTiling_.depthB1) * baseScaleABSize >
+                leftL1Size) {
+                basicTiling_.depthA1 = basicTiling_.depthB1;
+            }
+        } else if (inputParams_.transB && inputParams_.bFormat == ge::FORMAT_ND) {
+            uint64_t leftBSize = leftL1Size - basicTiling_.depthA1 * baseASize - basicTiling_.depthA1 * baseScaleABSize;
+            while (basicTiling_.depthB1 * POWER_OF_TWO * baseBSize <= leftBSize) {
+                basicTiling_.depthB1 *= POWER_OF_TWO;
+            }
+            if (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize +
+                    std::max(basicTiling_.depthA1, basicTiling_.depthB1) * baseScaleABSize >
+                leftL1Size) {
+                basicTiling_.depthB1 = basicTiling_.depthA1;
+            }
+        }
+    } else { // transA = true, transB = true, 仅考虑B depth
+        while ((basicTiling_.depthA1 * baseASize -
+                std::max(basicTiling_.depthA1, basicTiling_.depthB1 * POWER_OF_TWO) * baseScaleABSize) < leftL1Size) {
+            basicTiling_.depthB1 *= POWER_OF_TWO;
+        }
+    }
+}
+
+uint64_t GroupedMatmulSwigluQuantV2Tiling950::GetDepthWithHighBW(uint64_t mnL1) const
+{
+    // 只需要满足读GM数据大于64KB即可获得较高的带宽，不一定要把L1用满，同时减少MTE2头开销
+    uint64_t baseKSize = GroupedQmmTiling::GetSizeWithDataType(basicTiling_.baseK, inputParams_.aDtype);
+    uint64_t depth =
+        GroupedMatmul::CeilAlign(GroupedMatmul::CeilDiv(MTE2_MIN_LOAD_SIZE_V120, mnL1), static_cast<uint64_t>(GmmConstant::BASIC_BLOCK_SIZE_256)) /
+        baseKSize * DB_SIZE;
+    uint64_t pow2Depth = POWER_OF_TWO;
+    while (pow2Depth < depth) {
+        pow2Depth *= POWER_OF_TWO;
+    }
+    // 对齐2次幂或者实际最大depth大小
+    return std::min(pow2Depth, GroupedMatmul::CeilDiv(inputParams_.kSize, basicTiling_.baseK) * DB_SIZE);
+}
+
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalL1Depth(uint64_t leftL1Size)
+{
+    uint64_t baseASize = GroupedQmmTiling::GetSizeWithDataType(basicTiling_.baseM * basicTiling_.baseK, inputParams_.aDtype);
+    uint64_t baseBSize = GroupedQmmTiling::GetSizeWithDataType(basicTiling_.baseN * basicTiling_.baseK, inputParams_.bDtype);
+
+    uint64_t baseScaleASize = 0;
+    uint64_t baseScaleBSize = 0;
+    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
+        GroupedQmmTiling::CalcAlignedMxBaseScaleSize(baseScaleASize, baseScaleBSize);
+    }
+    uint64_t baseL1Size = baseASize + baseBSize + baseScaleASize + baseScaleBSize;
+    OP_CHECK_IF(leftL1Size < baseL1Size,
+                OP_LOGE(context_->GetNodeName(), "L1 space overflow. Free L1Size : %lu, used space: %lu", leftL1Size,
+                        baseL1Size),
+                return ge::GRAPH_FAILED);
+    uint64_t depthInit = GroupedQmmTiling::GetDepthA1B1(leftL1Size, baseL1Size, 1UL); // 求A+B和的平均depth
+    // 根据一条指令带宽要求的数据量求取A,B各自的depth
+    basicTiling_.depthA1 = GetDepthWithHighBW(std::min(inputParams_.mSize, basicTiling_.baseM));
+    basicTiling_.depthB1 = GetDepthWithHighBW(std::min(inputParams_.nSize, basicTiling_.baseN));
+    // 如果按照满足带宽的L1数据量超过了L1Size，进行下调整到平均depth;适配mx低阶api scaleKAL1=scaleKBL1的约束
+    if (basicTiling_.depthA1 * baseASize + basicTiling_.depthB1 * baseBSize +
+            std::max(basicTiling_.depthA1, basicTiling_.depthB1) * (baseScaleASize + baseScaleBSize) >
+        leftL1Size) {
+        basicTiling_.depthA1 = depthInit;
+        basicTiling_.depthB1 = depthInit;
+    }
+    // 用剩余L1空间对内轴ND非对齐场景进行调整depth
+    ModifyDepthForUnalign(leftL1Size, baseASize, baseBSize, baseScaleASize + baseScaleBSize);
+    GroupedQmmTiling::CalStepKs();
+    if (inputParams_.bQuantMode == optiling::QuantMode::MX_PERGROUP_MODE) {
+        return CalScaleFactors();
+    }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::CalL1Tiling()
+{
+    GroupedQmmTiling::InitCommonL1TilingFields();
+    uint64_t leftL1Size = 0;
+    OP_CHECK_IF(GroupedQmmTiling::CalcLeftL1Size(leftL1Size) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context_->GetNodeName(), "CalcLeftL1Size failed"), return ge::GRAPH_FAILED);
+    return CalL1Depth(leftL1Size);
+}
 
 ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
 {
     if (kernelType_) {
         GroupedQmmTiling::CalBasicBlock();
-        OP_CHECK_IF(GroupedQmmBasicApiTiling::CalL1Tiling() != ge::GRAPH_SUCCESS,
+        OP_CHECK_IF(CalL1Tiling() != ge::GRAPH_SUCCESS,
                     OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed."), return ge::GRAPH_FAILED);
         OP_LOGD(context_->GetNodeName(),
                 "===========yangtao0723================= baseM %ld ====== baseN %ld ====== baseK %ld ======.",
                 basicTiling_.baseM, basicTiling_.baseM, basicTiling_.baseM);
-        if (inputParams_.mSize >= 256 && inputParams_.nSize >= 256 && inputParams_.kSize >= 128) {
+        if (inputParams_.mSize >= 256) {
             basicTiling_.baseM = 256;
+        }
+        if (inputParams_.nSize >= 256 && inputParams_.kSize >= 128) {
             basicTiling_.baseN = 128;
             basicTiling_.baseK = 128;
         }
@@ -721,10 +862,7 @@ ge::graphStatus GroupedMatmulSwigluQuantV2Tiling950::DoLibApiTiling()
         CalBasicBlock();
         auto baseM_modified = std::min(basicTiling_.baseM, static_cast<uint64_t>(128));
         basicTiling_.baseM = GroupedMatmul::CeilAlign(baseM_modified, GmmConstant::CUBE_BLOCK);
-
-        ge::graphStatus l1TilingStatus =
-            IsMXFp8Input() ? CalWeightNzL1Tiling() : (IsMxFp4WeightNz() ? CalWeightNzL1Tiling() : CalL1Tiling());
-
+        ge::graphStatus l1TilingStatus = IsMxFp4WeightNz() ? CalWeightNzL1Tiling() : GroupedQmmTiling::CalL1Tiling();
         OP_CHECK_IF(l1TilingStatus != ge::GRAPH_SUCCESS, OP_LOGE(context_->GetNodeName(), "CalL1Tiling failed"),
                     return ge::GRAPH_FAILED);
     }

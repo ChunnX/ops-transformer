@@ -24,7 +24,6 @@
 #include "tiling/tiling_api.h"
 #include "op_host/tiling_base.h"
 #include "../grouped_matmul_swiglu_quant_v2_tiling.h"
-#include "../../../../grouped_matmul/op_host/op_tiling/arch35/grouped_quant_basic_api_matmul_tiling.h"
 
 namespace optiling {
 using namespace Ops::Transformer::OpTiling;
@@ -80,6 +79,12 @@ private:
     bool IsMxFp8WeightNz() const;
     bool IsMxWeightNzMultiTensor(const gert::Shape &wShape) const;
     bool CheckMxFp4WeightNzShape(const gert::Shape &xShape, const gert::Shape &wShape) const;
+    ge::graphStatus CalL1Tiling();
+    ge::graphStatus CalL1Depth(uint64_t leftL1Size);
+    uint64_t GetDepthWithHighBW(uint64_t mnL1) const;
+    void ModifyDepthForUnalign(uint64_t leftL1Size, uint64_t baseASize, uint64_t baseBSize,
+                               uint64_t baseScaleABSize);
+    ge::graphStatus CalScaleFactors();
     ge::graphStatus CalWeightNzL1Tiling();
     ge::graphStatus CalWeightNzL1Depth(uint64_t leftL1Size);
     uint64_t GetWeightNzDepthWithHighBW(uint64_t mnL1) const;
