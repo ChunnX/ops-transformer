@@ -184,7 +184,7 @@ struct GMMBaseParamsA4W4 {
     uint32_t isA4W4Optimize = 0;
     int32_t groupType = 0;
     uint32_t groupListType = 0;
-    uint32_t reserved = 0;
+    uint64_t reserved = 0;
 };
 #pragma pack(pop)
 
