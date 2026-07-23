@@ -177,9 +177,6 @@ int RunMatmulAllToAll(int rankNum, int rankId, int m, int k, int n,
     return -1;
   }
 
-  constexpr uint32_t MAX_AIV_NUM = Apace::AivComm::COMM_MAX_RANK_NUM;
-  constexpr uint64_t SYNC_BUF_SIZE = sizeof(uint64_t) * (2 + MAX_AIV_NUM * 6 + Apace::AivComm::COMM_MAX_RANK_NUM);
-
   CommChannelBuilder builder(comm);
   CommContext hostCtx = {};
   CommUdmaContext* udmaCtx = &hostCtx.udmaCtx;
@@ -189,28 +186,25 @@ int RunMatmulAllToAll(int rankNum, int rankId, int m, int k, int n,
   ubmemCtx->rankId = builder.GetRankId();
   ubmemCtx->rankSize = builder.GetRankSize();
 
-  if (!builder.AllocRegAndBuildChannels(
-      ChannelMode::URMA, false, shmemBufBytes, "shareBuf",
-      udmaCtx->channelHandles, udmaCtx->commBufferAddrs)) {
-    ERROR_LOG("rank %d AllocRegAndBuildChannels shareBuf failed", rankId);
-    return -1;
-  }
+  const char *ctxTag = "quant_matmul_all_to_all";
+  std::string dataBufTag = std::string(ctxTag) + "dataBuf";
 
   if (!builder.AllocRegAndBuildChannels(
-      ChannelMode::UBMEM, false, SYNC_BUF_SIZE, "syncBuf",
-      nullptr, ubmemCtx->commBufferAddrs)) {
-    ERROR_LOG("rank %d AllocRegAndBuildChannels syncBuf failed", rankId);
+      ChannelMode::URMA, dataBufTag.c_str(),
+      udmaCtx->channelHandles, udmaCtx->commBufferAddrs)) {
+    ERROR_LOG("rank %d AllocRegAndBuildChannels shareBuf failed", rankId);
     return -1;
   }
 
   exchanger.Barrier();
   exchanger.Close();
 
-  CommContext *devContext = nullptr;
-  ACL_CHECK(aclrtMalloc(reinterpret_cast<void **>(&devContext), sizeof(CommContext),
-                        ACL_MEM_MALLOC_HUGE_ONLY));
-  ACL_CHECK(aclrtMemcpy(devContext, sizeof(CommContext), &hostCtx,
-                        sizeof(CommContext), ACL_MEMCPY_HOST_TO_DEVICE));
+  CommContext *devContext = reinterpret_cast<CommContext *>(
+      builder.CreateDeviceContext(&hostCtx, sizeof(CommContext), ctxTag, true, ubmemCtx));
+  if (devContext == nullptr) {
+    ERROR_LOG("rank %d CreateDeviceContext failed", rankId);
+    return -1;
+  }
 
   QuantMatmulTilingSwat<mm::DataType::DT_FLOAT8_E4M3FN, mm::DataType::DT_FLOAT8_E4M3FN> tilingEngine;
 
@@ -312,7 +306,6 @@ int RunMatmulAllToAll(int rankNum, int rankId, int m, int k, int n,
     aclrtDestroyEvent(kernelStartEvent);
   }
 
-  aclrtFree(devContext);
   aclrtFree(deviceA);
   aclrtFree(deviceScaleA);
   aclrtFree(deviceB);
