@@ -36,7 +36,9 @@ private:
     DenseLightningIndexerKLLossGradMetadataCpuKernelArch35 arch35Kernel_;
 };
 
-static const char *kernelType = "DenseLightningIndexerKLLossGradMetadata";
-REGISTER_CPU_KERNEL(kernelType, DenseLightningIndexerKLLossGradMetadataCpuKernel);
+namespace {
+    static const char *kernelType = "DenseLightningIndexerKLLossGradMetadata";
+    REGISTER_CPU_KERNEL(kernelType, DenseLightningIndexerKLLossGradMetadataCpuKernel);
+}
 
 } // namespace aicpu
