@@ -30,6 +30,7 @@ def topk_routing_with_score_function(
     topk: int,
     use_pre_softmax: bool = False,
     scaling_factor: Optional[float] = None,
+    eps: float = 1e-20,
     score_function: str = "softmax",
     expert_bias: Optional[torch.Tensor] = None,
     norm_topk_prob: bool = False,
@@ -64,10 +65,10 @@ def topk_routing_with_score_function(
         raise ValueError(f"Invalid score_function: {score_function}")
 
     if topk >= 1 and norm_topk_prob:
-        denominator = probs.sum(dim=-1, keepdim=True) + 1e-20
+        denominator = probs.sum(dim=-1, keepdim=True) + eps
         probs = probs / denominator
 
-    if scaling_factor:
+    if scaling_factor is not None:
         probs = probs * scaling_factor
 
     probs = probs.type_as(logits)
@@ -124,7 +125,8 @@ class FunctionAclnnMoeGatingTopKBackward(AclnnBaseApi):
             score_function="sigmoid", 
             expert_bias=bias_npu,
             norm_topk_prob=True, 
-            scaling_factor=rsf
+            scaling_factor=rsf,
+            eps=eps,
         )
         x_norm = torch.sigmoid(x_npu.float())   # 构造x_norm
         expert_idx_out_npu = expert_idx_out_npu.to(torch.int32)
@@ -194,7 +196,8 @@ class FunctionMoeGatingTopKFwdBwd(BaseApi):
                 score_function="sigmoid", 
                 expert_bias=bias_cpu,
                 norm_topk_prob=True, 
-                scaling_factor=rsf
+                scaling_factor=rsf,
+                eps=eps,
             )
             y_out.backward(grad_y.clone().to(y_out.dtype))
             grad_x_cpu = x_cpu.grad.detach().clone()
@@ -209,9 +212,9 @@ class FunctionMoeGatingTopKFwdBwd(BaseApi):
                 score_function="sigmoid", 
                 expert_bias=bias_bench,
                 norm_topk_prob=True, 
-                scaling_factor=rsf
+                scaling_factor=rsf,
+                eps=eps,
             )
             y_out.backward(grad_y.clone().npu().to(y_out.dtype))
             grad_x_bench = x_bench.grad.detach().clone()
             return grad_x_bench
-
