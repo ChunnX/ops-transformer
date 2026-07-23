@@ -189,7 +189,7 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     std::vector<int64_t> quantOffsetShape = {128};
     std::vector<int64_t> kCacheShape = {4, 2048, 1, 128};
     std::vector<int64_t> vCacheShape = {4, 2048, 1, 128};
-    std::vector<int64_t> indiceShape = {4,1};
+    std::vector<int64_t> indiceShape = {4, 1};
     std::vector<int64_t> qShape = {4, 1, 8, 128};
     std::vector<int64_t> kShape = {4, 1, 1, 128};
     std::vector<int64_t> vShape = {4, 1, 1, 128};
@@ -210,8 +210,8 @@ int CreateOppInGraph(DataType inDtype, std::vector<ge::Tensor> &input, std::vect
     ADD_OUTPUT(4, k_cache, DT_INT8, kCacheShape);
     ADD_OUTPUT(5, v_cache, DT_INT8, vCacheShape);
     // 添加属性
-    std::vector<int64_t> size_splits_val = {1024,128,128};
-    ADD_INPUT_ATTR(size_splits,size_splits_val);
+    std::vector<int64_t> size_splits_val = {1024, 128, 128};
+    ADD_INPUT_ATTR(size_splits, size_splits_val);
     ADD_INPUT_ATTR(layout, "BNSD");
     ADD_INPUT_ATTR(kv_output, true);
 

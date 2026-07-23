@@ -14,18 +14,18 @@
 
 - 算子功能：MoE网络中，进行AlltoAll操作从其他卡上拿到需要算的token后，将token按照专家顺序重新排列。
 
-- 计算公式：  
+- 计算公式：
   通过双重求和计算当前token在源位置的偏移量：
 
   $$
-  SrcOffset = 
+  SrcOffset =
   \sum_{i=0}^{cur\_rank} \left( \sum_{j=0}^{cur\_expert} {expert\_token\_num\_per\_rank}(i,j) \right)
   $$
 
   通过双重求和计算当前token在目标位置的偏移量：
 
   $$
-  DstOffset = 
+  DstOffset =
   \sum_{j=0}^{cur\_expert} \left( \sum_{i=0}^{cur\_rank} {expert\_token\_num\_per\_rank}(i,j) \right)
   $$
 

@@ -34,8 +34,7 @@ TEMPLATE_DECLARE
 class MhcPostKernel {
 public:
     __aicore__ inline MhcPostKernel(TPipe *tPipe, const MhcPostTilingData *__restrict tilingData)
-        : pipe_(tPipe),
-          tilingData_(tilingData){};
+        : pipe_(tPipe), tilingData_(tilingData){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost, GM_ADDR output,
                                 GM_ADDR workspace);
     __aicore__ inline void Process();
@@ -257,6 +256,6 @@ __aicore__ inline void MhcPostKernel<TEMPLATE_ARGS>::CopyOutTile(int64_t bsIdx, 
     outputTileQueue_.FreeTensor(outputTile);
 }
 
-}  // namespace MhcPost
+} // namespace MhcPost
 
-#endif  // ASCENDC_MHC_POST_H
+#endif // ASCENDC_MHC_POST_H

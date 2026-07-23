@@ -79,8 +79,7 @@ static std::string GetSwigluQuantScenarioName(const DataType &xDtype, const Data
     if (xDtype == DataType::DT_INT8 && weightDtype == DataType::DT_INT8) {
         return "A8W8";
     }
-    if (xDtype == DataType::DT_INT8 &&
-        (weightDtype == DataType::DT_INT4 || weightDtype == DataType::DT_INT32)) {
+    if (xDtype == DataType::DT_INT8 && (weightDtype == DataType::DT_INT4 || weightDtype == DataType::DT_INT32)) {
         return "A8W4";
     }
     return "unsupported";
@@ -100,10 +99,10 @@ static bool CheckNotNull(const aclTensor *x, const aclTensor *weight, const aclT
     OP_CHECK_NULL(outputScale, return false);
     if (x->GetDataType() == DataType::DT_INT8 && weight->GetDataType() == DataType::DT_INT8 && bias != nullptr) {
         OP_LOGW("In op [%s], when A8W8, nonzero bias is not supported. Features and accuracy are not guaranteed "
-                "if inputting bias with values other than 0.", opName);
+                "if inputting bias with values other than 0.",
+                opName);
     } else if (x->GetDataType() == DataType::DT_INT8 && weight->GetDataType() == DataType::DT_INT4 && bias == nullptr) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when A8W4, [%s] must not be nullptr.", opName, "bias");
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when A8W4, [%s] must not be nullptr.", opName, "bias");
         return false;
     }
     if (offset != nullptr) {
@@ -170,8 +169,8 @@ static bool CheckInputOutShape_A8W8(const aclTensor *x, const aclTensor *weight,
     int64_t e = weight->GetViewShape().GetDim(0);
     if (n % SPLIT != 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when A8W8, the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
-                opName, "weightScale", n, "N must be even when A8W8.");
+                "In op [%s], when A8W8, the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]", opName,
+                "weightScale", n, "N must be even when A8W8.");
         return false;
     }
     int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
@@ -212,8 +211,7 @@ static bool CheckInputOutShape_A8W8(const aclTensor *x, const aclTensor *weight,
         return false;
     }
     if (n > N_LIMIT) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
                 opName, "weightScale", n, "N must be less than or equal to 10240 when A8W8.");
         return false;
     }
@@ -259,8 +257,8 @@ static bool CheckInputOutShape_A8W4(const aclTensor *x, const aclTensor *weight,
     }
     if (n % SPLIT != 0) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when A8W4, the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
-                opName, "weightScale", n, "N must be even when A8W4.");
+                "In op [%s], when A8W4, the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]", opName,
+                "weightScale", n, "N must be even when A8W4.");
         return false;
     }
     int64_t nAfterHalve = static_cast<int64_t>(n / SPLIT);
@@ -300,8 +298,7 @@ static bool CheckInputOutShape_A8W4(const aclTensor *x, const aclTensor *weight,
         return false;
     }
     if (n > N_LIMIT) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], the shape of [%s] is not supported, got [N %ld]. Constraint:[%s]",
                 opName, "weightScale", n, "N must be less than or equal to 10240 when A8W4.");
         return false;
     }
@@ -343,24 +340,18 @@ static bool CheckFormat(const aclTensor *x, const aclTensor *weight, const aclTe
     std::string scenario = GetSwigluQuantScenarioName(x->GetDataType(), weight->GetDataType());
     if ((x->GetDataType() == DataType::DT_INT8 && weight->GetDataType() == DataType::DT_INT8) && !isNZ) {
         // fp16 in fp32 out that is split k template, not precision-advanced now
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when A8W8, the format of [%s] is not supported, got [%s].",
-                opName, "weight",
-                op::ToString(weight->GetStorageFormat()).GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when A8W8, the format of [%s] is not supported, got [%s].",
+                opName, "weight", op::ToString(weight->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(x->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when %s, the format of [%s] is not supported, got [%s].",
-                opName, scenario.c_str(), "x",
-                op::ToString(x->GetStorageFormat()).GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, the format of [%s] is not supported, got [%s].", opName,
+                scenario.c_str(), "x", op::ToString(x->GetStorageFormat()).GetString());
         return false;
     }
     if (IsPrivateFormat(output->GetStorageFormat())) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "In op [%s], when %s, the format of [%s] is not supported, got [%s].",
-                opName, scenario.c_str(), "output",
-                op::ToString(output->GetStorageFormat()).GetString());
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "In op [%s], when %s, the format of [%s] is not supported, got [%s].", opName,
+                scenario.c_str(), "output", op::ToString(output->GetStorageFormat()).GetString());
         return false;
     }
     return true;
@@ -437,8 +428,8 @@ static aclnnStatus aclnnGroupedMatmulSwigluQuantGetWorkspaceSizeCommon(
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     // 固定写法，参数检查
 
-    auto ret = CheckParams(x, weight, bias, offset, weightScale, xScale, groupList, output, outputScale, outputOffset,
-                           opName);
+    auto ret =
+        CheckParams(x, weight, bias, offset, weightScale, xScale, groupList, output, outputScale, outputOffset, opName);
 
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
     // 空Tensor场景

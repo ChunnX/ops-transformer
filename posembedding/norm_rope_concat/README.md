@@ -91,9 +91,9 @@
     $$
     seqRope <= min(seqQuery+seqEncoderQuery, seqKey+seqEncoderKey)
     $$
-    
+
     6. 当场景为训练时，会输出`queryMean, queryRstd, encoderQueryMean, encoderQueryRstd`供后续反向使用。
-  
+
 ## 参数说明
 
 <table style="undefined;table-layout: fixed; width: 1576px"><colgroup>
@@ -208,7 +208,7 @@
       <td>输入</td>
       <td>表示LayerNorm的仿射变换参数，作用在encoderKey上</td>
       <td>FLOAT16、BFLOAT16、FLOAT</td>
-      <td>ND</td> 
+      <td>ND</td>
     </tr>
     <tr>
       <td>ropeSin</td>

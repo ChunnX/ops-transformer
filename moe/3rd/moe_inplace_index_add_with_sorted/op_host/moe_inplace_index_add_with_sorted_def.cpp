@@ -14,10 +14,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class MoeInplaceIndexAddWithSorted : public OpDef
-{
+class MoeInplaceIndexAddWithSorted : public OpDef {
 public:
-    explicit MoeInplaceIndexAddWithSorted(const char* name) : OpDef(name)
+    explicit MoeInplaceIndexAddWithSorted(const char *name) : OpDef(name)
     {
         this->Input("var")
             .ParamType(REQUIRED)

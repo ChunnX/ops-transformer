@@ -20,15 +20,15 @@ constexpr int64_t TILING_KEY_WITH_SCALE_NOT_CUT_H_WITH_BIAS = 20021;
 constexpr int64_t DOUBLE_BUFFER = 2;
 constexpr int64_t FP32_SIZE = sizeof(float);
 
-class MoeFinalizeRoutingV2GradNotSplitHRegbase : public MoeFinalizeRoutingV2GradTiling
-{
+class MoeFinalizeRoutingV2GradNotSplitHRegbase : public MoeFinalizeRoutingV2GradTiling {
 public:
-    explicit MoeFinalizeRoutingV2GradNotSplitHRegbase(gert::TilingContext* context)
+    explicit MoeFinalizeRoutingV2GradNotSplitHRegbase(gert::TilingContext *context)
         : MoeFinalizeRoutingV2GradTiling(context)
-    {}
+    {
+    }
     ~MoeFinalizeRoutingV2GradNotSplitHRegbase() override = default;
 
-    void Reset(gert::TilingContext* context) override
+    void Reset(gert::TilingContext *context) override
     {
         MoeFinalizeRoutingV2GradTiling::Reset(context);
     }

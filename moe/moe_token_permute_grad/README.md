@@ -19,11 +19,11 @@
   $$
   inputGrad = permutedOutputGrad.indexSelect(0, sortedIndices)
   $$
-  
+
   $$
   inputGrad = inputGrad.reshape(-1, numTopk, hiddenSize)
   $$
-  
+
   $$
   inputGrad = inputGrad.sum(dim = 1)
   $$

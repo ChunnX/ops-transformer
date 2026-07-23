@@ -33,23 +33,24 @@ static constexpr int64_t UNKNOWN_RANK_DIM_VALUE_ = -2LL;
  * @param [out] output_shape: the output shape ptr
  * @return bool
  */
-static inline bool IsUnknownShape(const gert::Shape* check_shape) {
-  for (size_t i = 0; i < check_shape->GetDimNum(); i++) {
-    if (check_shape->GetDim(i) == UNKNOWN_DIM_VALUE_) {
-      return true;
+static inline bool IsUnknownShape(const gert::Shape *check_shape)
+{
+    for (size_t i = 0; i < check_shape->GetDimNum(); i++) {
+        if (check_shape->GetDim(i) == UNKNOWN_DIM_VALUE_) {
+            return true;
+        }
     }
-  }
-  return false;
+    return false;
 }
 
-static ge::graphStatus InferShapeMoeGatingTopKSoftmax(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeMoeGatingTopKSoftmax(gert::InferShapeContext *context)
 {
-    const gert::Shape* gatingShape = context->GetInputShape(0);
+    const gert::Shape *gatingShape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, gatingShape);
 
-    gert::Shape* outShape = context->GetOutputShape(0);
-    gert::Shape* indicesShape = context->GetOutputShape(1);
-    gert::Shape* sourceRowOutShape = context->GetOutputShape(2);
+    gert::Shape *outShape = context->GetOutputShape(0);
+    gert::Shape *indicesShape = context->GetOutputShape(1);
+    gert::Shape *sourceRowOutShape = context->GetOutputShape(2);
 
     if (gatingShape->GetDimNum() == 1 && gatingShape->GetDim(0) == UNKNOWN_RANK_DIM_VALUE_) {
         *outShape = *gatingShape;
@@ -67,14 +68,12 @@ static ge::graphStatus InferShapeMoeGatingTopKSoftmax(gert::InferShapeContext* c
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(0);
+    const int64_t *kPtr = attrs->GetAttrPointer<int64_t>(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, kPtr);
     const int64_t k = *kPtr;
 
     if (k <= 0 || k > MAX_K || (!IsUnknownShape(gatingShape) && k > gatingShape->GetDim(gatingDimNum - 1))) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-            context->GetNodeName(), "k", std::to_string(k),
-            "k value error!");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "k", std::to_string(k), "k value error!");
         return ge::GRAPH_FAILED;
     }
 
@@ -93,7 +92,7 @@ static ge::graphStatus InferShapeMoeGatingTopKSoftmax(gert::InferShapeContext* c
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataType4MoeGatingTopKSoftmax(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataType4MoeGatingTopKSoftmax(gert::InferDataTypeContext *context)
 {
     auto xDtype = context->GetInputDataType(INDEX_0);
     context->SetOutputDataType(INDEX_0, xDtype);

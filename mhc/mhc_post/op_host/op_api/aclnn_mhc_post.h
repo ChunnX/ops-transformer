@@ -43,4 +43,4 @@ aclnnStatus aclnnMhcPost(void *workspace, uint64_t workspaceSize, aclOpExecutor 
 }
 #endif
 
-#endif  // OP_API_INC_MHC_POST_H
+#endif // OP_API_INC_MHC_POST_H

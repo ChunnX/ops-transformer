@@ -24,10 +24,9 @@ using namespace MhcPostBackward;
 
 
 template <int64_t TILING_KEY>
-__global__ __aicore__ void mhc_post_backward(
-    GM_ADDR gradOutput, GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost,
-    GM_ADDR gradX, GM_ADDR gradHRes, GM_ADDR gradHOut, GM_ADDR gradHPost,
-    GM_ADDR workspace, GM_ADDR tiling)
+__global__ __aicore__ void mhc_post_backward(GM_ADDR gradOutput, GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost,
+                                             GM_ADDR gradX, GM_ADDR gradHRes, GM_ADDR gradHOut, GM_ADDR gradHPost,
+                                             GM_ADDR workspace, GM_ADDR tiling)
 {
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
     REGISTER_TILING_DEFAULT(MhcPostBackwardTilingDataArch35);

@@ -24,24 +24,24 @@ static constexpr size_t DIM_ONE = 1;
 static constexpr size_t DIM_TWO = 2;
 static constexpr int64_t NEG_ONE = -1;
 
-static ge::graphStatus InferShape4MoeTokenPermute(gert::InferShapeContext* context)
+static ge::graphStatus InferShape4MoeTokenPermute(gert::InferShapeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do MoeTokenPermuteInfershape.");
     // 获取输入shape
-    const gert::Shape* xShape = context->GetInputShape(0);
+    const gert::Shape *xShape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, xShape);
-    const gert::Shape* indicesShape = context->GetInputShape(1);
+    const gert::Shape *indicesShape = context->GetInputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, indicesShape);
 
-    gert::Shape* permuteXShape = context->GetOutputShape(0);
+    gert::Shape *permuteXShape = context->GetOutputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, permuteXShape);
-    gert::Shape* sortedIndices = context->GetOutputShape(1);
+    gert::Shape *sortedIndices = context->GetOutputShape(1);
     OP_CHECK_NULL_WITH_CONTEXT(context, sortedIndices);
 
     // 获取attr
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
-    const int64_t* numOutTokensPtr = attrs->GetAttrPointer<int64_t>(0);
+    const int64_t *numOutTokensPtr = attrs->GetAttrPointer<int64_t>(0);
 
     int64_t sortedIndicesLen = NEG_ONE;
     sortedIndices->SetDimNum(DIM_ONE);
@@ -70,7 +70,7 @@ static ge::graphStatus InferShape4MoeTokenPermute(gert::InferShapeContext* conte
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataType4MoeTokenPermute(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataType4MoeTokenPermute(gert::InferDataTypeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do MoeTokenPermuteInferDataType.");
     auto xDtype = context->GetInputDataType(0);

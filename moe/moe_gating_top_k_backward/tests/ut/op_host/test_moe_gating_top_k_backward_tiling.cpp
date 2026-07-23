@@ -705,11 +705,7 @@ TEST_F(MoeGatingTopKBackwardTiling, moe_gating_top_k_backward_tiling_fail_ub_spa
             {"routed_scaling_factor", Ops::Transformer::AnyValue::CreateFrom<float>(1.0f)},
             {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-20f)},
         },
-        &compileInfo,
-        "Ascend910B",
-        32,
-        8192,
-        4096);
+        &compileInfo, "Ascend910B", 32, 8192, 4096);
     uint64_t expectTilingKey = 10000;
     string expectTilingData = "";
     std::vector<size_t> expectWorkspaces = {16777216};

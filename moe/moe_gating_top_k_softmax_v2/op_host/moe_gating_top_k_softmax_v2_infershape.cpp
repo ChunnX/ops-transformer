@@ -26,18 +26,18 @@ static const int INDEX_2 = 2;
 static const int MAX_K = 1024;
 static constexpr int64_t UNKNOWN_DIM_VALUE_ = -1LL;
 static constexpr int64_t UNKNOWN_RANK_DIM_VALUE_ = -2LL;
-static inline bool IsUnknownShape(const gert::Shape* check_shape) {
-  for (size_t i = 0; i < check_shape->GetDimNum(); i++) {
-    if (check_shape->GetDim(i) == UNKNOWN_DIM_VALUE_) {
-      return true;
+static inline bool IsUnknownShape(const gert::Shape *check_shape)
+{
+    for (size_t i = 0; i < check_shape->GetDimNum(); i++) {
+        if (check_shape->GetDim(i) == UNKNOWN_DIM_VALUE_) {
+            return true;
+        }
     }
-  }
-  return false;
+    return false;
 }
 
-static void setOutShape(
-    const gert::Shape* gatingShape, gert::Shape* outShape, gert::Shape* indicesShape, gert::Shape* softmaxResultShape,
-    int64_t k, bool softmaxFlag)
+static void setOutShape(const gert::Shape *gatingShape, gert::Shape *outShape, gert::Shape *indicesShape,
+                        gert::Shape *softmaxResultShape, int64_t k, bool softmaxFlag)
 {
     const int64_t gatingDimNum = gatingShape->GetDimNum();
     outShape->SetDimNum(gatingDimNum);
@@ -60,14 +60,14 @@ static void setOutShape(
     }
 }
 
-static ge::graphStatus InferShapeMoeGatingTopKSoftmaxV2(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeMoeGatingTopKSoftmaxV2(gert::InferShapeContext *context)
 {
-    const gert::Shape* gatingShape = context->GetInputShape(0);
+    const gert::Shape *gatingShape = context->GetInputShape(0);
     OP_CHECK_NULL_WITH_CONTEXT(context, gatingShape);
 
-    gert::Shape* outShape = context->GetOutputShape(0);
-    gert::Shape* indicesShape = context->GetOutputShape(1);
-    gert::Shape* softmaxResultShape = context->GetOutputShape(2);
+    gert::Shape *outShape = context->GetOutputShape(0);
+    gert::Shape *indicesShape = context->GetOutputShape(1);
+    gert::Shape *softmaxResultShape = context->GetOutputShape(2);
 
     if (gatingShape->GetDimNum() == 1 && gatingShape->GetDim(0) == -2LL) {
         *outShape = *gatingShape;
@@ -86,17 +86,16 @@ static ge::graphStatus InferShapeMoeGatingTopKSoftmaxV2(gert::InferShapeContext*
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-    const int64_t* kPtr = attrs->GetAttrPointer<int64_t>(0);
+    const int64_t *kPtr = attrs->GetAttrPointer<int64_t>(0);
     const int64_t k = *kPtr;
 
     if (k <= 0 || k > MAX_K || (!IsUnknownShape(gatingShape) && k > gatingShape->GetDim(gatingDimNum - 1))) {
         std::string kStr = std::to_string(k);
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "k", kStr.c_str(),
-            "k value error");
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context->GetNodeName(), "k", kStr.c_str(), "k value error");
         return ge::GRAPH_FAILED;
     }
 
-    const int64_t* renormPtr = attrs->GetAttrPointer<int64_t>(INDEX_1);
+    const int64_t *renormPtr = attrs->GetAttrPointer<int64_t>(INDEX_1);
     int64_t renorm = renormPtr == nullptr ? 0 : *renormPtr;
     if (renorm < 0 || renorm > 1) {
         std::string renormStr = std::to_string(renorm);
@@ -104,14 +103,14 @@ static ge::graphStatus InferShapeMoeGatingTopKSoftmaxV2(gert::InferShapeContext*
         return ge::GRAPH_FAILED;
     }
 
-    const bool* softmaxPtr = attrs->GetAttrPointer<bool>(INDEX_2);
+    const bool *softmaxPtr = attrs->GetAttrPointer<bool>(INDEX_2);
     bool softmaxFlag = (renorm == 0) && (softmaxPtr && *softmaxPtr);
 
     setOutShape(gatingShape, outShape, indicesShape, softmaxResultShape, k, softmaxFlag);
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataType4MoeGatingTopKSoftmaxV2(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataType4MoeGatingTopKSoftmaxV2(gert::InferDataTypeContext *context)
 {
     auto xDtype = context->GetInputDataType(INDEX_0);
     context->SetOutputDataType(INDEX_0, xDtype);

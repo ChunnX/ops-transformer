@@ -242,8 +242,7 @@ static bool CheckOutputDims(const MhcParamsBase &params)
 {
     auto xDimNum = params.x->GetViewShape().GetDimNum();
     size_t outputDimNum = xDimNum == DIM_NUM_4 ? DIM_NUM_3 : DIM_NUM_2;
-    if (!CheckTensorRank(params.hIn, "hIn", outputDimNum) ||
-        !CheckTensorRank(params.hPost, "hPost", outputDimNum)) {
+    if (!CheckTensorRank(params.hIn, "hIn", outputDimNum) || !CheckTensorRank(params.hPost, "hPost", outputDimNum)) {
         return false;
     }
     int64_t alphaSize = params.alpha->GetViewShape().GetDim(0);
@@ -257,10 +256,10 @@ static bool CheckOptionalOutputGroup(const MhcParamsBase &params)
     bool hasAllOptional =
         params.invRmsOptional != nullptr && params.hMixOptional != nullptr && params.hPreOptional != nullptr;
     if (hasAnyOptional && !hasAllOptional) {
-        const std::string pointerStates = std::string("invRmsOptional=") +
-            (params.invRmsOptional == nullptr ? "nullptr" : "non-null") + ", hMixOptional=" +
-            (params.hMixOptional == nullptr ? "nullptr" : "non-null") + ", hPreOptional=" +
-            (params.hPreOptional == nullptr ? "nullptr" : "non-null");
+        const std::string pointerStates =
+            std::string("invRmsOptional=") + (params.invRmsOptional == nullptr ? "nullptr" : "non-null") +
+            ", hMixOptional=" + (params.hMixOptional == nullptr ? "nullptr" : "non-null") +
+            ", hPreOptional=" + (params.hPreOptional == nullptr ? "nullptr" : "non-null");
         OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(ACLNN_OP_NAME, "invRmsOptional, hMixOptional, hPreOptional",
                                                pointerStates.c_str(),
                                                "all optional outputs must be nullptr or all must be non-null");
@@ -297,8 +296,7 @@ static void GetXShapeInfo(const MhcParamsBase &params, int64_t &n, int64_t &d, i
     nD = n * d;
 }
 
-static bool CheckParamShapes(const MhcParamsBase &params, int64_t n, int64_t d, int64_t nD,
-                             int64_t expectedParamRows)
+static bool CheckParamShapes(const MhcParamsBase &params, int64_t n, int64_t d, int64_t nD, int64_t expectedParamRows)
 {
     if (!ValidateNDParams(n, d) || !CheckTensorShape(params.phi, {expectedParamRows, nD}, "phi") ||
         !CheckTensorShape(params.bias, {expectedParamRows}, "bias")) {
@@ -390,8 +388,7 @@ static bool CheckAlphaShape(const aclTensor *alphaTensor)
     int64_t alphaSize = alphaShape.GetDim(0);
     if (alphaSize != ALPHA_DIM_SIZE_2 && alphaSize != ALPHA_DIM_SIZE_3) {
         const std::string actualShape = TensorShapeToString(alphaTensor);
-        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_OP_NAME, "alpha", actualShape.c_str(),
-                                              "shape must be [2] or [3]");
+        OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_OP_NAME, "alpha", actualShape.c_str(), "shape must be [2] or [3]");
         return false;
     }
     return true;
@@ -487,8 +484,7 @@ static bool IsPrivateFormat(ge::Format format)
 static bool CheckTensorFormat(const aclTensor *tensor, const char *name)
 {
     if (IsPrivateFormat(tensor->GetViewFormat())) {
-        OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(ACLNN_OP_NAME, name,
-                                               op::ToString(tensor->GetViewFormat()).GetString(),
+        OP_LOGE_FOR_INVALID_FORMAT_WITH_REASON(ACLNN_OP_NAME, name, op::ToString(tensor->GetViewFormat()).GetString(),
                                                "private format is not supported");
         return false;
     }

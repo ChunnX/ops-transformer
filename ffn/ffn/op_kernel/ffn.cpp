@@ -14,7 +14,8 @@
  */
 
 #include "kernel_operator.h"
-#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 220) || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+#if (defined(__CCE_AICORE__) && __CCE_AICORE__ == 220) ||                                                              \
+    (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
 #include "ffn_high_performence.h"
 #include "ffn_quant.h"
 #include "ffn_antiquant.h"
@@ -50,10 +51,14 @@ constexpr CubeFormat formatY = CubeFormat::NZ;
 constexpr CubeFormat formatY = CubeFormat::ND;
 #endif
 
-template <typename T, CubeFormat cubeFormatA> using aType = matmul::MatmulType<TPosition::GM, cubeFormatA, T, false>;
-template <typename T, CubeFormat cubeFormatB> using bType = matmul::MatmulType<TPosition::GM, cubeFormatB, T, false>;
-template <typename T> using biasType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
-template <typename T, TPosition tPositionC> using cType = matmul::MatmulType<tPositionC, formatY, T>;
+template <typename T, CubeFormat cubeFormatA>
+using aType = matmul::MatmulType<TPosition::GM, cubeFormatA, T, false>;
+template <typename T, CubeFormat cubeFormatB>
+using bType = matmul::MatmulType<TPosition::GM, cubeFormatB, T, false>;
+template <typename T>
+using biasType = matmul::MatmulType<TPosition::GM, CubeFormat::ND, T>;
+template <typename T, TPosition tPositionC>
+using cType = matmul::MatmulType<tPositionC, formatY, T>;
 // CFG_MDL: open large pack movement mode
 template <typename T, CubeFormat cubeFormatA, CubeFormat cubeFormatB = CubeFormat::ND,
           TPosition tPositionC = TPosition::GM>
@@ -72,18 +77,22 @@ template <typename T, typename cT = T, typename biasT = T, CubeFormat cubeFormat
 using mmQuantType =
     MMType<aType<T, cubeFormatA>, bType<T, CubeFormat::ND>, cType<cT, tPositionC>, biasType<biasT>, MM_CFG>;
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
-template <typename T> struct GetC1Type {
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220 ||                                                                \
+    (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+template <typename T>
+struct GetC1Type {
     using Type = T;
 };
 
 #if !(defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
-template <> struct GetC1Type<bfloat16_t> {
+template <>
+struct GetC1Type<bfloat16_t> {
     using Type = float;
 };
 #endif
 
-template <> struct GetC1Type<half> {
+template <>
+struct GetC1Type<half> {
     using Type = half;
 };
 #endif
@@ -107,7 +116,8 @@ extern "C" __global__ __aicore__ void ffn(__gm__ uint8_t *x, __gm__ uint8_t *wei
     __gm__ uint8_t *user1 = GetUserWorkspace(workSpace);
     KERNEL_TASK_TYPE_DEFAULT(KERNEL_TYPE_MIX_AIC_1_2);
 
-#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220 || (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
+#if defined(__CCE_AICORE__) && __CCE_AICORE__ == 220 ||                                                                \
+    (defined(__NPU_ARCH__) && (__NPU_ARCH__ == 3003 || __NPU_ARCH__ == 3113))
     if (TILING_KEY_IS(2000)) { // One matmul, float16
         KERNEL_TASK_TYPE(2000, KERNEL_TYPE_MIX_AIC_1_1);
         using mt = mmType<half, CubeFormat::ND, CubeFormat::ND>;

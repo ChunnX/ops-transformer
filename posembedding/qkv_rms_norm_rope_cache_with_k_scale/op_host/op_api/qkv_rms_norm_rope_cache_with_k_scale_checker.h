@@ -441,8 +441,8 @@ private:
         }
         const auto &seqLensShape = params_.seqLens->GetViewShape();
         if (unlikely(seqLensShape.GetDimNum() != RANK_1D ||
-                    seqLensShape.GetDim(VECTOR_LENGTH_INDEX) !=
-                    queryStartLocShape.GetDim(VECTOR_LENGTH_INDEX) - SEQ_LENS_BATCH_DIFF)) {
+                     seqLensShape.GetDim(VECTOR_LENGTH_INDEX) !=
+                         queryStartLocShape.GetDim(VECTOR_LENGTH_INDEX) - SEQ_LENS_BATCH_DIFF)) {
             const std::string incorrectShape = ShapeToString(params_.seqLens);
             OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "seqLens", incorrectShape.c_str(),
                                                   "seqLens must have shape [queryStartLoc.shape[0] - 1]");

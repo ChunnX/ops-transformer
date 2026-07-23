@@ -23,7 +23,8 @@ using ops::adv::tests::utils::ReadFile;
 using ops::adv::tests::utils::WriteFile;
 
 namespace {
-template <class T> bool InitAclIntArray(aclIntArray **intArray, std::vector<T> &hostData)
+template <class T>
+bool InitAclIntArray(aclIntArray **intArray, std::vector<T> &hostData)
 {
     if (intArray == nullptr) {
         LOG_ERR("intArray nil.");

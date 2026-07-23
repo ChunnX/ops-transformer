@@ -33,9 +33,9 @@ protected:
     __aicore__ inline void ScatterOutX();
     __aicore__ inline void GatherOutX();
     __aicore__ inline void ProcessDropPadMode();
-    __aicore__ inline void GatherOutXScatterLoop(const LocalTensor<int32_t>& expandedRowIdx,
-                                                  const LocalTensor<T>& xLocal, int64_t startRowIdx,
-                                                  int64_t outputRows, int64_t inFactor);
+    __aicore__ inline void GatherOutXScatterLoop(const LocalTensor<int32_t> &expandedRowIdx,
+                                                 const LocalTensor<T> &xLocal, int64_t startRowIdx, int64_t outputRows,
+                                                 int64_t inFactor);
     __aicore__ inline void ScatterOutScale();
     __aicore__ inline void GatherOutScale();
     __aicore__ inline void ZeroOutX();
@@ -226,8 +226,8 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
     int64_t startRowIdx = this->blockIdx_ * this->perCoreIndicesElements_;
     int64_t rowLength = this->endXRow_ - this->startXRow_ + 1;
     int64_t inFactor = Align(this->cols_, sizeof(T));
-    int64_t outputRows = this->dropPadMode_ == DROP_PAD_MODE ? this->outputRows_ :
-                         Min(this->actualExpertIdxNum_, this->activeNum_);
+    int64_t outputRows =
+        this->dropPadMode_ == DROP_PAD_MODE ? this->outputRows_ : Min(this->actualExpertIdxNum_, this->activeNum_);
 
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
 
@@ -257,9 +257,10 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutX()
 }
 
 template <typename T>
-__aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutXScatterLoop(
-    const LocalTensor<int32_t>& expandedRowIdx, const LocalTensor<T>& xLocal,
-    int64_t startRowIdx, int64_t outputRows, int64_t inFactor)
+__aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutXScatterLoop(const LocalTensor<int32_t> &expandedRowIdx,
+                                                                          const LocalTensor<T> &xLocal,
+                                                                          int64_t startRowIdx, int64_t outputRows,
+                                                                          int64_t inFactor)
 {
     DataCopyExtParams copyParams{static_cast<uint16_t>(1), static_cast<uint32_t>(this->cols_ * sizeof(T)), 0, 0, 0};
     int64_t curIndex = startRowIdx;
@@ -316,8 +317,8 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::GatherOutScale()
 
     int64_t curIndex = this->blockIdx_ * this->perCoreIndicesElements_;
     int64_t k = 0;
-    int64_t outputRows = this->dropPadMode_ == DROP_PAD_MODE ? this->outputRows_ :
- 	                     Min(this->actualExpertIdxNum_, this->activeNum_);
+    int64_t outputRows =
+        this->dropPadMode_ == DROP_PAD_MODE ? this->outputRows_ : Min(this->actualExpertIdxNum_, this->activeNum_);
 
     for (int64_t i = this->startXRow_; i <= this->endXRow_; i++) {
         SetWaitFlag<HardEvent::MTE3_MTE2>(HardEvent::MTE3_MTE2);
@@ -353,8 +354,7 @@ __aicore__ inline void MoeV3FullLoadUnquantized<T>::ZeroOutX()
         InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<uint8_t>(0));
     } else {
         GlobalTensor<T> zeroGm;
-        zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startRow * this->cols_,
-                               rowCount * this->cols_);
+        zeroGm.SetGlobalBuffer((__gm__ T *)expandedXGm_.GetPhyAddr() + startRow * this->cols_, rowCount * this->cols_);
         InitGlobalMemory(zeroGm, rowCount * this->cols_, static_cast<T>(0));
     }
 }

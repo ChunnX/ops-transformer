@@ -292,7 +292,7 @@ protected:
                 uint32_t BaseMFractalN_ = (singleCoreM + baseMNum - 1) / baseMNum + 1;
                 while (baseNNum > 1 &&
                        BaseMFractalN_ * ((singleCoreN + baseNNum - NUMBER_2) / (baseNNum - 1) + extraN) <=
-                       l0CMNFractal) {
+                           l0CMNFractal) {
                     baseNNum -= 1;
                 }
                 uint32_t BaseNFractalN_ = (singleCoreN + baseNNum - 1) / baseNNum + extraN;
@@ -309,7 +309,7 @@ protected:
                 uint32_t BaseMFractalN_ = (singleCoreM + baseMNum - 1) / baseMNum + 1;
                 while (baseNNum > 1 &&
                        BaseMFractalN_ * ((singleCoreN + baseNNum - NUMBER_2) / (baseNNum - 1) + extraN) <=
-                       l0CMNFractal) {
+                           l0CMNFractal) {
                     baseNNum -= 1;
                 }
             }

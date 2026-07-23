@@ -15,10 +15,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class MoeGatingTopKSoftmax : public OpDef
-{
+class MoeGatingTopKSoftmax : public OpDef {
 public:
-    explicit MoeGatingTopKSoftmax(const char* name) : OpDef(name)
+    explicit MoeGatingTopKSoftmax(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)

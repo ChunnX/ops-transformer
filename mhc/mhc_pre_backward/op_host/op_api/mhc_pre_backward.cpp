@@ -24,8 +24,8 @@ OP_TYPE_REGISTER(MhcPreBackward);
 
 const std::tuple<aclTensor *, aclTensor *, aclTensor *, aclTensor *, aclTensor *>
 MhcPreBackward(const aclTensor *x, const aclTensor *phi, const aclTensor *alpha, const aclTensor *gradHIn,
-               const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms,
-               const aclTensor *hMix, const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma,
+               const aclTensor *gradHPost, const aclTensor *gradHRes, const aclTensor *invRms, const aclTensor *hMix,
+               const aclTensor *hPre, const aclTensor *hPost, const aclTensor *gamma,
                const aclTensor *gradXPostOptional, float hcEps, aclOpExecutor *executor)
 {
     L0_DFX(MhcPreBackward, x, phi, alpha, gradHIn, gradHPost, gradHRes, invRms, hMix, hPre, hPost, gamma,

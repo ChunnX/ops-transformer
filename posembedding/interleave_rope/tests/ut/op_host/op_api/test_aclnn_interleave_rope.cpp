@@ -20,8 +20,7 @@
 
 using namespace std;
 
-class l2_interleave_rope_test : public testing::Test
-{
+class l2_interleave_rope_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -43,6 +42,6 @@ TEST_F(l2_interleave_rope_test, Ascend910B2_interleave_rope_fp32)
     auto out = TensorDesc({8, 1, 1, 64}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto ut = OP_API_UT(aclnnInterleaveRope, INPUT(x, cos, sin), OUTPUT(out));
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus getWorkspaceResult = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspaceSize, executor);
 }

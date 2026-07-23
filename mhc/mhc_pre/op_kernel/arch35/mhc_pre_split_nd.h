@@ -54,60 +54,35 @@ template <class T, class P, int8_t HAS_RESI>
 class MhcPreKernelSplitND : public MhcPreKernelBase<T, P> {
 public:
     using Base = MhcPreKernelBase<T, P>;
-    using Base::mm;
-    using Base::mnConfig_;
-    using Base::coreNum_;
-    using Base::totalLength_;
-    using Base::N_;
-    using Base::D_;
-    using Base::outFlag_;
-    using Base::hasGamma_;
-    using Base::xGm_;
-    using Base::phiGm_;
-    using Base::alphaGm_;
-    using Base::biasGm_;
-    using Base::gammaGm_;
-    using Base::hinGm_;
-    using Base::hPostGm_;
-    using Base::hResGm_;
-    using Base::invRmsGm_;
-    using Base::hPreGm_;
-    using Base::xFloatGm_;
-    using Base::xInQueue_;
-    using Base::gammaInQueue_;
-    using Base::invRmsOutQueue_;
-    using Base::outQueue_;
-    using Base::biasInQue_;
-    using Base::tmpBuff_;
     using Base::alphaBuf_;
-    using Base::inputBuff_;
-    using Base::hPreBuff_;
-    using Base::hPostBuff_;
-    using Base::hResBuff_;
+    using Base::alphaGm_;
     using Base::alphaInUb_;
+    using Base::biasGm_;
+    using Base::biasInQue_;
     using Base::biasInUb_;
-    using Base::matmulRes_;
-    using Base::xLocal_;
-    using Base::invRmsUb_;
-    using Base::gammaUb_;
-    using Base::preOffsetBuf_;
-    using Base::postOffsetBuf_;
-    using Base::resOffsetBuf_;
-    using Base::pipe_;
-    using Base::matrixInfo_;
-    using Base::vectorOffset_;
-    using Base::tiling_;
     using Base::chunkTSize_;
-    using Base::v1ChunkDSize_;
     using Base::coreIdx_;
-    using Base::subBlockIdx_;
-    using Base::scaleMean_;
-    using Base::globalOffsetM_;
-    using Base::vectorCount_;
+    using Base::coreNum_;
     using Base::cubeCount_;
-    using Base::mmCount_;
-    using Base::vec1Count_;
+    using Base::D_;
     using Base::eleNumPerVf_;
+    using Base::gammaGm_;
+    using Base::gammaInQueue_;
+    using Base::gammaUb_;
+    using Base::globalOffsetM_;
+    using Base::hasGamma_;
+    using Base::hasResi_;
+    using Base::hinGm_;
+    using Base::hPostBuff_;
+    using Base::hPostGm_;
+    using Base::hPreBuff_;
+    using Base::hPreGm_;
+    using Base::hResBuff_;
+    using Base::hResGm_;
+    using Base::inputBuff_;
+    using Base::invRmsGm_;
+    using Base::invRmsOutQueue_;
+    using Base::invRmsUb_;
     using Base::kAlphaCombBaseOffset;
     using Base::kAlphaCombIndex;
     using Base::kAlphaPostIndex;
@@ -116,11 +91,38 @@ public:
     using Base::kSingleBufferCount;
     using Base::kSupportedN4;
     using Base::kSupportedN6;
-    using Base::hasResi_;
+    using Base::matmulRes_;
+    using Base::matrixInfo_;
+    using Base::mm;
+    using Base::mmCount_;
+    using Base::mnConfig_;
+    using Base::N_;
+    using Base::outFlag_;
+    using Base::outQueue_;
+    using Base::phiGm_;
+    using Base::pipe_;
+    using Base::postOffsetBuf_;
+    using Base::preOffsetBuf_;
+    using Base::resOffsetBuf_;
+    using Base::scaleMean_;
+    using Base::subBlockIdx_;
+    using Base::tiling_;
+    using Base::tmpBuff_;
+    using Base::totalLength_;
+    using Base::v1ChunkDSize_;
+    using Base::vec1Count_;
+    using Base::vectorCount_;
+    using Base::vectorOffset_;
+    using Base::xFloatGm_;
+    using Base::xGm_;
+    using Base::xInQueue_;
+    using Base::xLocal_;
 
     static constexpr int8_t kHasResi = HAS_RESI;
 
-    __aicore__ inline MhcPreKernelSplitND(MT &matmul) : Base(matmul) {}
+    __aicore__ inline MhcPreKernelSplitND(MT &matmul) : Base(matmul)
+    {
+    }
     __aicore__ inline void Init(InitParams initParams);
     __aicore__ inline void Process();
     __aicore__ inline void AICProcess();
@@ -201,8 +203,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::Init(InitParams init
 
     constexpr uint64_t kWorkspaceAlignBytes = 32UL;
     uint64_t xFloatWorkspaceBytes = totalLength_ * matrixInfo_.nD * sizeof(P);
-    xFloatWorkspaceBytes = (xFloatWorkspaceBytes + kWorkspaceAlignBytes - 1UL) /
-                        kWorkspaceAlignBytes * kWorkspaceAlignBytes;
+    xFloatWorkspaceBytes =
+        (xFloatWorkspaceBytes + kWorkspaceAlignBytes - 1UL) / kWorkspaceAlignBytes * kWorkspaceAlignBytes;
     if (outFlag_) {
         mmResGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(initParams.h_mix));
     } else {
@@ -232,7 +234,7 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::InitLocalBuffers()
     if (hasGamma_) {
         pipe_->InitBuffer(gammaInQueue_, kSingleBufferCount, ND_LENGTH * sizeof(P));
     }
-    
+
     pipe_->InitBuffer(tmpBuff_, kTmpBufferBytes);
 
     pipe_->InitBuffer(biasInQue_, kSingleBufferCount, mnConfig_.n * sizeof(P));
@@ -353,7 +355,7 @@ template <class T, class P, int8_t HAS_RESI>
 __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AICProcess()
 {
     AscendC::CrossCoreWaitFlag(SYNC_V0toC);
-    
+
     uint64_t offset = chunNDSize_ * coreIdx_;
     uint64_t outOffset = mnConfig_.singleCoreM * mnConfig_.singleCoreN * coreIdx_;
     if (offset + mnConfig_.singleCoreK > mnConfig_.k) {
@@ -375,7 +377,7 @@ template <class T, class P, int8_t HAS_RESI>
 __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::VectorComputeOffset()
 {
     uint64_t alignSingleM = Ceil(curSingleM_, 2);
-    vectorOffset_.singleCoreM = alignSingleM <  curSingleM_ ? alignSingleM : curSingleM_;
+    vectorOffset_.singleCoreM = alignSingleM < curSingleM_ ? alignSingleM : curSingleM_;
     if (subBlockIdx_ == 0) {
         vectorOffset_.offsetMStart = 0;
         vectorOffset_.offsetMEnd = vectorOffset_.singleCoreM;
@@ -388,8 +390,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::VectorComputeOffset(
 
 template <class T, class P, int8_t HAS_RESI>
 __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::DataCopyOutToWorkSpace(LocalTensor<P> &x, uint32_t curMLen,
-                                                                          uint32_t curNdLen, uint32_t offsetM,
-                                                                          uint32_t offsetNd)
+                                                                                   uint32_t curNdLen, uint32_t offsetM,
+                                                                                   uint32_t offsetNd)
 {
     DataCopyExtParams copyParams;
     copyParams.blockCount = static_cast<uint16_t>(curMLen);
@@ -442,16 +444,24 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::V0Prologue(uint64_t 
                 gammaUb_ = gammaInQueue_.template DeQue<P>();
 
                 if (offsetNd == 0) {
-                    this->template VFDoV0ProcessXIn<true, true>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
+                    this->template VFDoV0ProcessXIn<true, true>(
+                        (__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                        (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
                 } else {
-                    this->template VFDoV0ProcessXIn<true, false>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
+                    this->template VFDoV0ProcessXIn<true, false>(
+                        (__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                        (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(), curMLen, curNdLen);
                 }
                 gammaInQueue_.FreeTensor(gammaUb_);
             } else {
                 if (offsetNd == 0) {
-                    this->template VFDoV0ProcessXIn<false, true>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
+                    this->template VFDoV0ProcessXIn<false, true>(
+                        (__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                        (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
                 } else {
-                    this->template VFDoV0ProcessXIn<false, false>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(), (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
+                    this->template VFDoV0ProcessXIn<false, false>(
+                        (__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
+                        (__ubuf__ T *)xLocal_.GetPhyAddr(), nullptr, curMLen, curNdLen);
                 }
             }
 
@@ -467,7 +477,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::V0Prologue(uint64_t 
     AscendC::CrossCoreWaitFlag(SYNC_V0toV0);
     AscendC::CrossCoreSetFlag<0x2, PIPE_MTE3>(SYNC_V0toC);
 
-    this->VFDoV0ProcessInvRms((__ubuf__ P *)invRmsUb_.GetPhyAddr(), vectorOffset_.singleCoreM, scaleMean_, matrixInfo_.normEps);
+    this->VFDoV0ProcessInvRms((__ubuf__ P *)invRmsUb_.GetPhyAddr(), vectorOffset_.singleCoreM, scaleMean_,
+                              matrixInfo_.normEps);
     this->DataCopyOutInvRmsUb(vectorOffset_.singleCoreM, vectorOffset_.offsetMStart);
 }
 
@@ -492,40 +503,41 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Process(uint64_t
         AIV1Prologue(offsetT, lenT, singleCoreOffset);
 
         this->AIV1ProcessHPost(offsetT, lenT);
-        
+
         this->AIV1ProcessHPre(offsetT, lenT);
-        this->AIV1ProcessHIn(offsetT, lenT, lenD); 
+        this->AIV1ProcessHIn(offsetT, lenT, lenD);
 
         singleCoreOffset += V1_BASE_T;
     }
 }
 
 template <class T, class P, int8_t HAS_RESI>
-__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Prologue(
-    uint64_t offsetT, uint64_t lenT, uint64_t singleCoreOffset)
+__aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AIV1Prologue(uint64_t offsetT, uint64_t lenT,
+                                                                         uint64_t singleCoreOffset)
 {
     uint64_t offset = globalOffsetM_ + offsetT;
     uint64_t HMixOffset = 0;
-    
+
     if (outFlag_) {
         HMixOffset = (globalOffsetM_ + offsetT) * mnConfig_.n;
     } else {
-        HMixOffset = mnConfig_.singleCoreM * mnConfig_.singleCoreN * ((vec1Count_ % 2) * coreNum_ + coreIdx_) + offsetT * mnConfig_.n;
+        HMixOffset = mnConfig_.singleCoreM * mnConfig_.singleCoreN * ((vec1Count_ % 2) * coreNum_ + coreIdx_) +
+                     offsetT * mnConfig_.n;
     }
     HMixProcess(offsetT, lenT);
 
-    matmulRes_ = xInQueue_.template DeQue<P>(); 
+    matmulRes_ = xInQueue_.template DeQue<P>();
     LocalTensor<P> hResOutLocal;
     if constexpr (HAS_RESI == MHC_PRE_HAS_RESI) {
         hResOutLocal = outQueue_.template AllocTensor<P>();
     }
 
-    __ubuf__ P* matmulPtr = (__ubuf__ P*)matmulRes_.GetPhyAddr();
-    __ubuf__ P* invRmsPtr = (__ubuf__ P*)invRmsUb_.GetPhyAddr();
-    __ubuf__ P* biasInPtr = (__ubuf__ P*)biasInUb_.GetPhyAddr();
-    __ubuf__ P* alphaInPtr = (__ubuf__ P*)alphaInUb_.GetPhyAddr();
-    __ubuf__ P* hPreBuffPtr = (__ubuf__ P*)hPreBuff_.GetPhyAddr();
-    __ubuf__ P* hPostBuffPtr = (__ubuf__ P*)hPostBuff_.GetPhyAddr();
+    __ubuf__ P *matmulPtr = (__ubuf__ P *)matmulRes_.GetPhyAddr();
+    __ubuf__ P *invRmsPtr = (__ubuf__ P *)invRmsUb_.GetPhyAddr();
+    __ubuf__ P *biasInPtr = (__ubuf__ P *)biasInUb_.GetPhyAddr();
+    __ubuf__ P *alphaInPtr = (__ubuf__ P *)alphaInUb_.GetPhyAddr();
+    __ubuf__ P *hPreBuffPtr = (__ubuf__ P *)hPreBuff_.GetPhyAddr();
+    __ubuf__ P *hPostBuffPtr = (__ubuf__ P *)hPostBuff_.GetPhyAddr();
 
     __VEC_SCOPE__
     {
@@ -605,16 +617,14 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::HMixProcess(uint64_t
     hMixLocal = xInQueue_.template DeQue<P>();
 
     uint64_t addOffset = 0;
-    for(uint32_t mmResGmBlockIdx = 1; mmResGmBlockIdx < mmResGmBlockNum; mmResGmBlockIdx++)
-    {
+    for (uint32_t mmResGmBlockIdx = 1; mmResGmBlockIdx < mmResGmBlockNum; mmResGmBlockIdx++) {
         addOffset += alignLen;
         Add(hMixLocal, hMixLocal, hMixLocal[addOffset], computeLen);
         PipeBarrier<PIPE_V>();
     }
     SetFlag<HardEvent::V_MTE3>(EVENT_ID4);
     WaitFlag<HardEvent::V_MTE3>(EVENT_ID4);
-    if(outFlag_)
-    {
+    if (outFlag_) {
         DataCopyExtParams MixOutCopyParams;
         MixOutCopyParams.blockCount = static_cast<uint16_t>(1);
         MixOutCopyParams.blockLen = uint32_t(computeLen * sizeof(P));

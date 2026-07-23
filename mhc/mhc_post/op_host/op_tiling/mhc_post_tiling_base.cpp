@@ -33,8 +33,6 @@ static ge::graphStatus TilingPrepareForMhcPost(gert::TilingParseContext *context
     return ge::GRAPH_SUCCESS;
 }
 
-IMPL_OP_OPTILING(MhcPost)
-    .Tiling(TilingForMhcPost)
-    .TilingParse<MhcPostCompileInfo>(TilingPrepareForMhcPost);
+IMPL_OP_OPTILING(MhcPost).Tiling(TilingForMhcPost).TilingParse<MhcPostCompileInfo>(TilingPrepareForMhcPost);
 
 } // namespace optiling

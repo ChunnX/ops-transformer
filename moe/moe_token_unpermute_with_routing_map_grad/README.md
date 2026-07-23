@@ -17,25 +17,25 @@
 - **计算公式**：
 
   (1) probs非None：
-  
+
   $$
   permutedTokensGrad[outIndex[i]] = unpermutedTokensGrad[permuteTokenId[i]]
   $$
-  
+
   $$
   permutedProbsGrad = permutedTokensGrad * permutedTokensOptional
   $$
-  
+
   $$
   probsGradExpertOrder = \sum_{j=0}^{hidden\_size}(permutedProbsGrad_{i,j})
   $$
 
     - dropAndPad为false时
-  
+
   $$
   probsGradOut = masked\_scatter(routingMapOptional^T,probsGradExpertOrder)
   $$
-  
+
   $$
   permutedProbs = probsOptional^T.masked\_select(routingMapOptional^T)
   $$
@@ -45,7 +45,7 @@
   $$
 
     - dropAndPad为true时
-  
+
   $$
   probsGradOut[permuteTokenId[i], outIndex[i]/capacity] = probsGradExpertOrder[outIndex[i]]
   $$

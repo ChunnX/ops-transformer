@@ -36,11 +36,11 @@ static ge::graphStatus IsInputTensorNull(const gert::InferShapeContext *context)
     OP_CHECK_NULL_WITH_CONTEXT(context, context->GetInputShape(SCALE2_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context, context->GetInputShape(GROUPLIST_INDEX));
     OP_CHECK_NULL_WITH_CONTEXT(context, context->GetInputShape(YREF_INDEX));
-    OP_CHECK_IF(context->GetOptionalInputShape(SCALE1_INDEX) == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
-                    QUANT_GROUPED_MATMUL_INPLACE_ADD_OP_TYPE, "scale1", "nullptr",
-                    "null check with context: context->GetOptionalInputShape(SCALE1_INDEX)"),
-                return GRAPH_FAILED);
+    OP_CHECK_IF(
+        context->GetOptionalInputShape(SCALE1_INDEX) == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QUANT_GROUPED_MATMUL_INPLACE_ADD_OP_TYPE, "scale1", "nullptr",
+                                              "null check with context: context->GetOptionalInputShape(SCALE1_INDEX)"),
+        return GRAPH_FAILED);
     return GRAPH_SUCCESS;
 }
 
@@ -48,7 +48,7 @@ static ge::graphStatus InferShape4QuantGroupedMatmulInplaceAdd(gert::InferShapeC
 {
     OP_CHECK_NULL_WITH_CONTEXT(context, context);
     OP_CHECK_IF(IsInputTensorNull(context) != GRAPH_SUCCESS,
-              OP_LOGE(context->GetNodeName(), "Some of the required inputs are null."), return GRAPH_FAILED);
+                OP_LOGE(context->GetNodeName(), "Some of the required inputs are null."), return GRAPH_FAILED);
     auto yRefShape = context->GetInputShape(YREF_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, yRefShape);
     auto outShape = context->GetOutputShape(0);

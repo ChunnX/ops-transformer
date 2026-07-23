@@ -29,17 +29,16 @@ const static int64_t FP16_BF16_SIZE = 2;
 const static int64_t FP32_SIZE = 4;
 const static int64_t UINT16_MAX_VALUE = 65535;
 
-class MoeInitRoutingV2GradRegbaseFullLoad : public MoeInitRoutingV2GradTilingBaseClass
-{
+class MoeInitRoutingV2GradRegbaseFullLoad : public MoeInitRoutingV2GradTilingBaseClass {
 public:
-    explicit MoeInitRoutingV2GradRegbaseFullLoad(gert::TilingContext* context)
+    explicit MoeInitRoutingV2GradRegbaseFullLoad(gert::TilingContext *context)
         : MoeInitRoutingV2GradTilingBaseClass(context)
     {
         Reset();
     }
     ~MoeInitRoutingV2GradRegbaseFullLoad() override = default;
 
-    void Reset(gert::TilingContext* context) override
+    void Reset(gert::TilingContext *context) override
     {
         MoeInitRoutingV2GradTilingBaseClass::Reset(context);
         Reset();
@@ -95,7 +94,7 @@ void MoeInitRoutingV2GradRegbaseFullLoad::SetTilingShapeInfo()
 void MoeInitRoutingV2GradRegbaseFullLoad::SetTilingSplitCore()
 {
     int64_t nBlockFactor = Ops::Base::CeilDiv(N, aivNum); // 单核处理最大token数
-    numBlocks = Ops::Base::CeilDiv(N, nBlockFactor);       // 实际使用核数
+    numBlocks = Ops::Base::CeilDiv(N, nBlockFactor);      // 实际使用核数
 
     moeInitRoutingV2GradTilingData.set_numBlocks(numBlocks);
     moeInitRoutingV2GradTilingData.set_nBlockFactor(nBlockFactor);
@@ -151,7 +150,7 @@ uint64_t MoeInitRoutingV2GradRegbaseFullLoad::GetTilingKey() const
 ge::graphStatus MoeInitRoutingV2GradRegbaseFullLoad::PostTiling()
 {
     context_->SetBlockDim(numBlocks);
-    size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
+    size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     currentWorkspace[0] = workspaceSize_;
     auto tilingData = context_->GetRawTilingData();
     OP_CHECK_NULL_WITH_CONTEXT(context_, tilingData);

@@ -29,7 +29,7 @@ namespace MhcPost {
 using namespace AscendC;
 
 // Double Buffer configuration - Double Buffer提升Memory Bound算子性能
-constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2;  // Double Buffer depth for data tiles
+constexpr uint32_t DOUBLE_BUFFER_DEPTH = 2; // Double Buffer depth for data tiles
 
 #define TEMPLATE_DECLARE template <typename T, uint16_t USE_PERMANENT_X>
 #define TEMPLATE_ARGS T, USE_PERMANENT_X
@@ -38,8 +38,7 @@ TEMPLATE_DECLARE
 class MhcPostKernel {
 public:
     __aicore__ inline MhcPostKernel(TPipe *tPipe, const MhcPostTilingData *__restrict tilingData)
-        : pipe_(tPipe),
-          tilingData_(tilingData){};
+        : pipe_(tPipe), tilingData_(tilingData){};
     __aicore__ inline void Init(GM_ADDR x, GM_ADDR hRes, GM_ADDR hOut, GM_ADDR hPost, GM_ADDR output,
                                 GM_ADDR workspace);
     __aicore__ inline void Process();
@@ -268,6 +267,6 @@ __aicore__ inline void MhcPostKernel<TEMPLATE_ARGS>::CopyOutTile(int64_t bsIdx, 
     outputTileQueue_.FreeTensor(outputTile);
 }
 
-}  // namespace MhcPost
+} // namespace MhcPost
 
-#endif  // ASCENDC_MHC_POST_H
+#endif // ASCENDC_MHC_POST_H

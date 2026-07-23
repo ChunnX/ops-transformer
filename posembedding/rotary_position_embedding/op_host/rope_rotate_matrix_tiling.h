@@ -34,9 +34,9 @@ public:
 protected:
     bool IsCapable() override
     {
-        if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B || 
-             socVersion_ == platform_ascendc::SocVersion::ASCEND910_93) && 
-             context_->GetOptionalInputDesc(ROTATE_INPUT_IDX) != nullptr) {
+        if ((socVersion_ == platform_ascendc::SocVersion::ASCEND910B ||
+             socVersion_ == platform_ascendc::SocVersion::ASCEND910_93) &&
+            context_->GetOptionalInputDesc(ROTATE_INPUT_IDX) != nullptr) {
             return true;
         }
         return false;

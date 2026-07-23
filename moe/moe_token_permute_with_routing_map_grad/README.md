@@ -26,28 +26,28 @@ capacity = permutedTokenOutputGrad.size(0) / experts\_num
 $$
 
 - probs不为None：
-  
+
   $$
   probsGradOutOptional = zeros(tokens\_num, experts\_num)
   $$
-  
+
   - paddedMode为true时
-  
+
   $$
   probsGradOutOptional [sortedIndices[i], i/capacity] = permutedProbsOutputGradOptional[i]
   $$
-  
+
   - paddedMode为false时
-  
+
   $$
   probsGradOutOptional = maskedscatter(probsGradOutOptional,routingMap,permutedProbsOutputGradOptional)
   $$
 - probs为None：
-  
+
   $$
   tokensGradOut= zeros(restoreShape, dtype=permutedTokens.dtype, device=permutedTokens.device)
   $$
-  
+
   $$
   tokensGradOut[permuteTokenId[i]] += permutedTokens[outIndex[i]]
   $$

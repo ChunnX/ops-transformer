@@ -18,7 +18,7 @@
 namespace ops {
 class InterleaveRope : public OpDef {
 public:
-    explicit InterleaveRope(const char* name) : OpDef(name)
+    explicit InterleaveRope(const char *name) : OpDef(name)
     {
         this->Input("x")
             .ParamType(REQUIRED)

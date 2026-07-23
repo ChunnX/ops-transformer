@@ -16,17 +16,17 @@
 
 using namespace ge;
 namespace ops {
-static ge::graphStatus InferShapeForMoeTokenPermuteWithRoutingMapGrad(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeForMoeTokenPermuteWithRoutingMapGrad(gert::InferShapeContext *context)
 {
-    const gert::Shape* permuted_token_output_grad_shape = context->GetInputShape(0);
-    const int64_t* tokens_num = context->GetAttrs()->GetAttrPointer<int64_t>(1);
+    const gert::Shape *permuted_token_output_grad_shape = context->GetInputShape(0);
+    const int64_t *tokens_num = context->GetAttrs()->GetAttrPointer<int64_t>(1);
     int64_t tokensNum = *tokens_num;
 
     int64_t hidden_size = permuted_token_output_grad_shape->GetDim(1);
     int64_t topk_num = permuted_token_output_grad_shape->GetDim(0) / tokensNum;
 
-    gert::Shape* tokens_grad_out_shape = context->GetOutputShape(0);
-    gert::Shape* probs_grad_out_optional_shape = context->GetOutputShape(1);
+    gert::Shape *tokens_grad_out_shape = context->GetOutputShape(0);
+    gert::Shape *probs_grad_out_optional_shape = context->GetOutputShape(1);
     const int64_t out_dim_num = 2;
     tokens_grad_out_shape->SetDimNum(out_dim_num);
     tokens_grad_out_shape->SetDim(0, tokensNum);
@@ -38,7 +38,7 @@ static ge::graphStatus InferShapeForMoeTokenPermuteWithRoutingMapGrad(gert::Infe
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeForMoeTokenPermuteWithRoutingMapGrad(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataTypeForMoeTokenPermuteWithRoutingMapGrad(gert::InferDataTypeContext *context)
 {
     context->SetOutputDataType(0, context->GetInputDataType(0));
     context->SetOutputDataType(1, context->GetInputDataType(0));

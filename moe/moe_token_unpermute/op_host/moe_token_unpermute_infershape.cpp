@@ -19,19 +19,19 @@
 using namespace ge;
 
 namespace ops {
-static ge::graphStatus InferShapeForMoeTokenUnpermute(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeForMoeTokenUnpermute(gert::InferShapeContext *context)
 {
-    const gert::Shape* permuted_inputs_shape = context->GetInputShape(0);
-    const gert::Shape* probs_shape = context->GetInputShape(2);
+    const gert::Shape *permuted_inputs_shape = context->GetInputShape(0);
+    const gert::Shape *probs_shape = context->GetInputShape(2);
     int64_t tokens_num;
     if (probs_shape == nullptr) {
-        const gert::Shape* indices_shape = context->GetInputShape(1);
+        const gert::Shape *indices_shape = context->GetInputShape(1);
         tokens_num = indices_shape->GetDim(0);
     } else {
         tokens_num = probs_shape->GetDim(0);
     }
 
-    gert::Shape* out_shape = context->GetOutputShape(0);
+    gert::Shape *out_shape = context->GetOutputShape(0);
     const int8_t out_dim_num = 2;
     out_shape->SetDimNum(out_dim_num);
     out_shape->SetDim(0, tokens_num);
@@ -40,7 +40,7 @@ static ge::graphStatus InferShapeForMoeTokenUnpermute(gert::InferShapeContext* c
     return GRAPH_SUCCESS;
 }
 
-static ge::graphStatus InferDataTypeForMoeTokenUnpermute(gert::InferDataTypeContext* context)
+static ge::graphStatus InferDataTypeForMoeTokenUnpermute(gert::InferDataTypeContext *context)
 {
     context->SetOutputDataType(0, context->GetInputDataType(0));
     return GRAPH_SUCCESS;

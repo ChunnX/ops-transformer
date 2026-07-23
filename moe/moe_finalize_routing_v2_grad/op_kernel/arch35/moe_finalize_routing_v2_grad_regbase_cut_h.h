@@ -21,36 +21,35 @@ namespace MoeFinalizeRoutingV2Grad {
 using namespace AscendC;
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist = true>
-class MoeFinalizeRoutingV2GradRegBaseCutH : MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>
-{
+class MoeFinalizeRoutingV2GradRegBaseCutH : MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist> {
 public:
     __aicore__ inline MoeFinalizeRoutingV2GradRegBaseCutH(){};
-    __aicore__ inline void Init(
-        GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR bias,
-        GM_ADDR gradExpandedX, GM_ADDR gradScales, GM_ADDR workspace,
-        const MoeFinalizeRoutingV2GradSplitHTilingData* tilingData, TPipe* pipe);
+    __aicore__ inline void Init(GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales,
+                                GM_ADDR expertIdx, GM_ADDR bias, GM_ADDR gradExpandedX, GM_ADDR gradScales,
+                                GM_ADDR workspace, const MoeFinalizeRoutingV2GradSplitHTilingData *tilingData,
+                                TPipe *pipe);
     __aicore__ inline void Process();
 
 private:
     __aicore__ inline void InitOutputGm();
     __aicore__ inline void PrepareComputeParams();
     __aicore__ inline void Compute();
-    __aicore__ inline void OverLapPartProcess(const uint32_t batchIdx, const LocalTensor<float>& binaryAddCache);
-    __aicore__ inline void FoldTailProcess(const uint32_t batchIdx, const LocalTensor<float>& binaryAddCache);
-    __aicore__ inline void NoOverLapPartProcess(const uint32_t batchIdx, const LocalTensor<float>& binaryAddCache);
-    __aicore__ inline void TailBlockNumOneProcess(const uint32_t batchIdx, const LocalTensor<float>& binaryAddCache);
-    __aicore__ inline void TailBlockNumTwoProcess(const uint32_t batchIdx, const LocalTensor<float>& binaryAddCache);
-    __aicore__ inline void ProcessGradExpandedX(
-        const LocalTensor<T1>& gradYUb, int64_t mainLen, int64_t foldLen, int64_t mainOutOffset, int64_t foldOutOffset);
+    __aicore__ inline void OverLapPartProcess(const uint32_t batchIdx, const LocalTensor<float> &binaryAddCache);
+    __aicore__ inline void FoldTailProcess(const uint32_t batchIdx, const LocalTensor<float> &binaryAddCache);
+    __aicore__ inline void NoOverLapPartProcess(const uint32_t batchIdx, const LocalTensor<float> &binaryAddCache);
+    __aicore__ inline void TailBlockNumOneProcess(const uint32_t batchIdx, const LocalTensor<float> &binaryAddCache);
+    __aicore__ inline void TailBlockNumTwoProcess(const uint32_t batchIdx, const LocalTensor<float> &binaryAddCache);
+    __aicore__ inline void ProcessGradExpandedX(const LocalTensor<T1> &gradYUb, int64_t mainLen, int64_t foldLen,
+                                                int64_t mainOutOffset, int64_t foldOutOffset);
     __aicore__ inline bool IsNeedUpdateLevel1Cache(const int64_t cacheIdx);
     __aicore__ inline bool IsNeedUpdateLevel2Cache(const int64_t cacheIdx);
-    __aicore__ inline void UpdateCache(const int64_t cacheIdx, const LocalTensor<float>& binaryAddCache);
-    __aicore__ inline void CacheReduceSum(
-        const LocalTensor<float>& dstTensor, const LocalTensor<float>& srcTensor, const uint32_t idx);
+    __aicore__ inline void UpdateCache(const int64_t cacheIdx, const LocalTensor<float> &binaryAddCache);
+    __aicore__ inline void CacheReduceSum(const LocalTensor<float> &dstTensor, const LocalTensor<float> &srcTensor,
+                                          const uint32_t idx);
     __aicore__ inline void ProcessGradScales(int64_t batchIdx);
 
 private:
-    const MoeFinalizeRoutingV2GradSplitHTilingData* tilingData_;
+    const MoeFinalizeRoutingV2GradSplitHTilingData *tilingData_;
     TBuf<TPosition::VECCALC> bianryAddCacheBuf_;
     const uint32_t CACHE_BUFF_SIZE = 256;
     const uint32_t MAX_CACHE_DEPTH = 3;
@@ -72,7 +71,7 @@ template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::Init(
     GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR bias,
     GM_ADDR gradExpandedX, GM_ADDR gradScales, GM_ADDR workspace,
-    const MoeFinalizeRoutingV2GradSplitHTilingData* tilingData, TPipe* pipe)
+    const MoeFinalizeRoutingV2GradSplitHTilingData *tilingData, TPipe *pipe)
 {
     this->InitCommon(pipe);
     this->tilingData_ = tilingData;
@@ -80,14 +79,14 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
     this->foldFactor_ = tilingData->foldFactor;
     this->h_ = tilingData_->baseParams.hidden;
     this->typeAlignFactor_ = BLOCK_BYTE_SIZE / sizeof(T1);
-    this->gradYGm_.SetGlobalBuffer((__gm__ T1*)gradY);
-    this->expandedRowIdxGm_.SetGlobalBuffer((__gm__ T2*)expandedRowIdx);
-    this->expandedXGm_.SetGlobalBuffer((__gm__ T1*)expandedX);
-    this->scalesGm_.SetGlobalBuffer((__gm__ T3*)scales);
-    this->expertIdxGm_.SetGlobalBuffer((__gm__ T2*)expertIdx);
-    this->biasGm_.SetGlobalBuffer((__gm__ T1*)bias);
-    this->gradExpandedXGm_.SetGlobalBuffer((__gm__ T1*)gradExpandedX);
-    this->gradScalesGm_.SetGlobalBuffer((__gm__ T3*)gradScales);
+    this->gradYGm_.SetGlobalBuffer((__gm__ T1 *)gradY);
+    this->expandedRowIdxGm_.SetGlobalBuffer((__gm__ T2 *)expandedRowIdx);
+    this->expandedXGm_.SetGlobalBuffer((__gm__ T1 *)expandedX);
+    this->scalesGm_.SetGlobalBuffer((__gm__ T3 *)scales);
+    this->expertIdxGm_.SetGlobalBuffer((__gm__ T2 *)expertIdx);
+    this->biasGm_.SetGlobalBuffer((__gm__ T1 *)bias);
+    this->gradExpandedXGm_.SetGlobalBuffer((__gm__ T1 *)gradExpandedX);
+    this->gradScalesGm_.SetGlobalBuffer((__gm__ T3 *)gradScales);
     if (tilingData_->baseParams.dropPadMode == 1) {
         this->InitOutputGm();
         SyncAll();
@@ -169,7 +168,7 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 
         int64_t totalBlocks = this->cacheIdx_;
         int64_t level1Count = totalBlocks / CACHE_BUFF_SIZE;
-        
+
         if (level1Count == 0) {
             CacheReduceSum(gradScalesUb, binaryAddCache[CACHE_LEVEL0_IDX], 0);
         } else if (level1Count < CACHE_BUFF_SIZE) {
@@ -220,13 +219,13 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::OverLapPartProcess(
-    const uint32_t batchIdx, const LocalTensor<float>& binaryAddCache)
+    const uint32_t batchIdx, const LocalTensor<float> &binaryAddCache)
 {
     LocalTensor<T1> gradYUb;
     LocalTensor<T1> biasUb;
-    BinAddParams binAddParams = {
-        tilingData_->mainBinAddParams.binaryAddQuotient, tilingData_->mainBinAddParams.binaryAddk,
-        tilingData_->mainBinAddParams.binaryAddLastNum};
+    BinAddParams binAddParams = {tilingData_->mainBinAddParams.binaryAddQuotient,
+                                 tilingData_->mainBinAddParams.binaryAddk,
+                                 tilingData_->mainBinAddParams.binaryAddLastNum};
     int64_t gmOffset = batchIdx / tilingData_->baseParams.topK * tilingData_->baseParams.hidden;
     for (uint32_t foldIdx = 0; foldIdx < tilingData_->foldBlockNum; foldIdx++) {
         int64_t mainOffset = foldIdx * foldFactor_;
@@ -283,8 +282,9 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::FoldTailProcess(
-    const uint32_t batchIdx, const LocalTensor<float>& binaryAddCache)
+__aicore__ inline void
+MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::FoldTailProcess(const uint32_t batchIdx,
+                                                                              const LocalTensor<float> &binaryAddCache)
 {
     // tailBlockNum只有一块的时候，主块和折叠块累加时，主块只有一半，折叠部分为空
     if (tilingData_->foldTailBlockNum == 2) {
@@ -296,13 +296,13 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::TailBlockNumTwoProcess(
-    const uint32_t batchIdx, const LocalTensor<float>& binaryAddCache)
+    const uint32_t batchIdx, const LocalTensor<float> &binaryAddCache)
 {
     LocalTensor<T1> gradYUb;
     LocalTensor<T1> biasUb;
-    BinAddParams binAddParams = {
-        tilingData_->mainBinAddParams.binaryAddQuotient, tilingData_->mainBinAddParams.binaryAddk,
-        tilingData_->mainBinAddParams.binaryAddLastNum};
+    BinAddParams binAddParams = {tilingData_->mainBinAddParams.binaryAddQuotient,
+                                 tilingData_->mainBinAddParams.binaryAddk,
+                                 tilingData_->mainBinAddParams.binaryAddLastNum};
     int64_t gmOffset = batchIdx / tilingData_->baseParams.topK * tilingData_->baseParams.hidden;
     for (uint32_t foldIdx = 0; foldIdx < tilingData_->foldTailBlockNum; foldIdx++) {
         int64_t mainOffset = (tilingData_->foldBlockNum + foldIdx) * foldFactor_;
@@ -311,24 +311,21 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
         int64_t foldTailFactor = foldIdx == 0 ? foldFactor_ : tilingData_->foldTailLen - foldFactor_;
         gradYUb = this->gradYInQueue_.template AllocTensor<T1>();
         DataCopy(gradYUb, this->gradYGm_[gmOffset + mainOffset], foldFactor_);
-        DataCopy(
-            gradYUb[foldFactor_], this->gradYGm_[gmOffset + foldOffset],
-            Ops::Base::CeilAlign(foldTailFactor, typeAlignFactor_));
+        DataCopy(gradYUb[foldFactor_], this->gradYGm_[gmOffset + foldOffset],
+                 Ops::Base::CeilAlign(foldTailFactor, typeAlignFactor_));
         this->gradYInQueue_.template EnQue<T1>(gradYUb);
         gradYUb = this->gradYInQueue_.template DeQue<T1>();
         if (foldFactor_ + foldTailFactor < tilingData_->mainBinAddParams.binaryAddQuotient) {
-            binAddParams = {
-                tilingData_->foldBinAddParams.binaryAddQuotient, tilingData_->foldBinAddParams.binaryAddk,
-                tilingData_->foldBinAddParams.binaryAddLastNum};
+            binAddParams = {tilingData_->foldBinAddParams.binaryAddQuotient, tilingData_->foldBinAddParams.binaryAddk,
+                            tilingData_->foldBinAddParams.binaryAddLastNum};
         }
         if constexpr (IsBiasExist) {
             int64_t biasMainOffset = this->expertIdx_ * this->h_ + mainOffset;
             int64_t biasFoldOffset = this->expertIdx_ * this->h_ + foldOffset;
             biasUb = this->biasInQueue_.template AllocTensor<T1>();
             DataCopy(biasUb, this->biasGm_[biasMainOffset], foldFactor_);
-            DataCopy(
-                biasUb[foldFactor_], this->biasGm_[biasFoldOffset],
-                Ops::Base::CeilAlign(foldTailFactor, typeAlignFactor_));
+            DataCopy(biasUb[foldFactor_], this->biasGm_[biasFoldOffset],
+                     Ops::Base::CeilAlign(foldTailFactor, typeAlignFactor_));
         }
         if (this->rowIdx_ >= 0 && this->rowIdx_ < tilingData_->baseParams.expandedXDim0) {
             int64_t xMainOffset = this->rowIdx_ * this->h_ + mainOffset;
@@ -336,9 +333,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
             ProcessGradExpandedX(gradYUb, foldFactor_, foldTailFactor, xMainOffset, xFoldOffset);
             LocalTensor<T1> expandedXUb = this->expandedXInQueue_.template AllocTensor<T1>();
             DataCopy(expandedXUb, this->expandedXGm_[xMainOffset], foldFactor_);
-            DataCopy(
-                expandedXUb[foldFactor_], this->expandedXGm_[xFoldOffset],
-                Ops::Base::CeilAlign(foldTailFactor, typeAlignFactor_));
+            DataCopy(expandedXUb[foldFactor_], this->expandedXGm_[xFoldOffset],
+                     Ops::Base::CeilAlign(foldTailFactor, typeAlignFactor_));
             this->expandedXInQueue_.template EnQue<T1>(expandedXUb);
             expandedXUb = this->expandedXInQueue_.template DeQue<T1>();
             if constexpr (IsBiasExist) {
@@ -346,17 +342,15 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
                 biasUb = this->biasInQueue_.template DeQue<T1>();
                 Add(expandedXUb, expandedXUb, biasUb, foldFactor_ + foldTailFactor);
             }
-            this->VfCalGradScale(
-                expandedXUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
-                this->cacheIdx_ % CACHE_BUFF_SIZE);
+            this->VfCalGradScale(expandedXUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
+                                 this->cacheIdx_ % CACHE_BUFF_SIZE);
             this->expandedXInQueue_.FreeTensor(expandedXUb);
         } else {
             if constexpr (IsBiasExist) {
                 this->biasInQueue_.template EnQue<T1>(biasUb);
                 biasUb = this->biasInQueue_.template DeQue<T1>();
-                this->VfCalGradScale(
-                    biasUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
-                    this->cacheIdx_ % CACHE_BUFF_SIZE);
+                this->VfCalGradScale(biasUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
+                                     this->cacheIdx_ % CACHE_BUFF_SIZE);
             }
         }
         if constexpr (IsBiasExist) {
@@ -370,7 +364,7 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::TailBlockNumOneProcess(
-    const uint32_t batchIdx, const LocalTensor<float>& binaryAddCache)
+    const uint32_t batchIdx, const LocalTensor<float> &binaryAddCache)
 {
     LocalTensor<T1> biasUb;
     int64_t gmOffset = batchIdx / tilingData_->baseParams.topK * tilingData_->baseParams.hidden;
@@ -379,9 +373,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
     int64_t foldTailFactor = tilingData_->foldTailLen;
     LocalTensor<T1> gradYUb = this->gradYInQueue_.template AllocTensor<T1>();
     DataCopy(gradYUb, this->gradYGm_[gmOffset + mainOffset], foldFactor_);
-    DataCopy(
-        gradYUb[foldFactor_], this->gradYGm_[gmOffset + foldOffset],
-        Ops::Base::CeilAlign(foldTailFactor, typeAlignFactor_));
+    DataCopy(gradYUb[foldFactor_], this->gradYGm_[gmOffset + foldOffset],
+             Ops::Base::CeilAlign(foldTailFactor, typeAlignFactor_));
     this->gradYInQueue_.template EnQue<T1>(gradYUb);
     gradYUb = this->gradYInQueue_.template DeQue<T1>();
     if constexpr (IsBiasExist) {
@@ -392,13 +385,12 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
         DataCopy(biasUb[foldFactor_], this->biasGm_[biasFoldOffset],
                  Ops::Base::CeilAlign(foldTailFactor, typeAlignFactor_));
     }
-    BinAddParams binAddParams = {
-        tilingData_->mainBinAddParams.binaryAddQuotient, tilingData_->mainBinAddParams.binaryAddk,
-        tilingData_->mainBinAddParams.binaryAddLastNum};
+    BinAddParams binAddParams = {tilingData_->mainBinAddParams.binaryAddQuotient,
+                                 tilingData_->mainBinAddParams.binaryAddk,
+                                 tilingData_->mainBinAddParams.binaryAddLastNum};
     if (foldFactor_ + foldTailFactor < tilingData_->mainBinAddParams.binaryAddQuotient) {
-        binAddParams = {
-            tilingData_->foldBinAddParams.binaryAddQuotient, tilingData_->foldBinAddParams.binaryAddk,
-            tilingData_->foldBinAddParams.binaryAddLastNum};
+        binAddParams = {tilingData_->foldBinAddParams.binaryAddQuotient, tilingData_->foldBinAddParams.binaryAddk,
+                        tilingData_->foldBinAddParams.binaryAddLastNum};
     }
     if (this->rowIdx_ >= 0 && this->rowIdx_ < tilingData_->baseParams.expandedXDim0) {
         int64_t xMainOffset = this->rowIdx_ * this->h_ + mainOffset;
@@ -406,9 +398,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
         ProcessGradExpandedX(gradYUb, foldFactor_, foldTailFactor, xMainOffset, xFoldOffset);
         LocalTensor<T1> expandedXUb = this->expandedXInQueue_.template AllocTensor<T1>();
         DataCopy(expandedXUb, this->expandedXGm_[xMainOffset], foldFactor_);
-        DataCopy(
-            expandedXUb[foldFactor_], this->expandedXGm_[xFoldOffset],
-            Ops::Base::CeilAlign(foldTailFactor, typeAlignFactor_));
+        DataCopy(expandedXUb[foldFactor_], this->expandedXGm_[xFoldOffset],
+                 Ops::Base::CeilAlign(foldTailFactor, typeAlignFactor_));
         this->expandedXInQueue_.template EnQue<T1>(expandedXUb);
         expandedXUb = this->expandedXInQueue_.template DeQue<T1>();
         if constexpr (IsBiasExist) {
@@ -416,17 +407,15 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
             biasUb = this->biasInQueue_.template DeQue<T1>();
             Add(expandedXUb, expandedXUb, biasUb, foldFactor_ + foldTailFactor);
         }
-        this->VfCalGradScale(
-            expandedXUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
-            this->cacheIdx_ % CACHE_BUFF_SIZE);
+        this->VfCalGradScale(expandedXUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
+                             this->cacheIdx_ % CACHE_BUFF_SIZE);
         this->expandedXInQueue_.FreeTensor(expandedXUb);
     } else {
         if constexpr (IsBiasExist) {
             this->biasInQueue_.template EnQue<T1>(biasUb);
             biasUb = this->biasInQueue_.template DeQue<T1>();
-            this->VfCalGradScale(
-                biasUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
-                this->cacheIdx_ % CACHE_BUFF_SIZE);
+            this->VfCalGradScale(biasUb, gradYUb, binAddParams, foldFactor_ + foldTailFactor, binaryAddCache,
+                                 this->cacheIdx_ % CACHE_BUFF_SIZE);
         }
     }
     if constexpr (IsBiasExist) {
@@ -447,9 +436,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
         biasUb = this->biasInQueue_.template AllocTensor<T1>();
         DataCopy(biasUb, this->biasGm_[biasMainOffset], foldFactor_);
     }
-    binAddParams = {
-        tilingData_->foldBinAddParams.binaryAddQuotient, tilingData_->foldBinAddParams.binaryAddk,
-        tilingData_->foldBinAddParams.binaryAddLastNum};
+    binAddParams = {tilingData_->foldBinAddParams.binaryAddQuotient, tilingData_->foldBinAddParams.binaryAddk,
+                    tilingData_->foldBinAddParams.binaryAddLastNum};
     if (this->rowIdx_ >= 0 && this->rowIdx_ < tilingData_->baseParams.expandedXDim0) {
         int64_t xMainOffset = this->rowIdx_ * this->h_ + mainOffset;
         ProcessGradExpandedX(gradYUb, foldFactor_, 0, xMainOffset, 0);
@@ -483,13 +471,13 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::NoOverLapPartProcess(
-    const uint32_t batchIdx, const LocalTensor<float>& binaryAddCache)
+    const uint32_t batchIdx, const LocalTensor<float> &binaryAddCache)
 {
     LocalTensor<T1> gradYUb;
     LocalTensor<T1> biasUb;
-    BinAddParams binAddParams = {
-        tilingData_->mainBinAddParams.binaryAddQuotient, tilingData_->mainBinAddParams.binaryAddk,
-        tilingData_->mainBinAddParams.binaryAddLastNum};
+    BinAddParams binAddParams = {tilingData_->mainBinAddParams.binaryAddQuotient,
+                                 tilingData_->mainBinAddParams.binaryAddk,
+                                 tilingData_->mainBinAddParams.binaryAddLastNum};
     int64_t gmOffset = batchIdx / tilingData_->baseParams.topK * tilingData_->baseParams.hidden;
     int64_t mainIdxStart = tilingData_->foldBlockNum / 2 + (tilingData_->foldTailBlockNum > 0 ? 1 : 0);
     for (uint32_t mainIdx = mainIdxStart; mainIdx < tilingData_->mainBlockNum; mainIdx++) {
@@ -537,11 +525,11 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::ProcessGradExpandedX(
-    const LocalTensor<T1>& gradYUb, int64_t mainLen, int64_t foldLen, int64_t mainOutOffset, int64_t foldOutOffset)
+    const LocalTensor<T1> &gradYUb, int64_t mainLen, int64_t foldLen, int64_t mainOutOffset, int64_t foldOutOffset)
 {
     LocalTensor<T1> gradExpandedXUb = this->gradExpandedXOutQueue_.template AllocTensor<T1>();
-    __local_mem__ T1* gradExpandedXMem = (__local_mem__ T1*)gradExpandedXUb.GetPhyAddr();
-    __local_mem__ T1* gradYMem = (__local_mem__ T1*)gradYUb.GetPhyAddr();
+    __local_mem__ T1 *gradExpandedXMem = (__local_mem__ T1 *)gradExpandedXUb.GetPhyAddr();
+    __local_mem__ T1 *gradYMem = (__local_mem__ T1 *)gradYUb.GetPhyAddr();
     uint32_t count = mainLen + foldLen;
     uint16_t loopCount = (count + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
     __VEC_SCOPE__
@@ -574,23 +562,24 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline bool MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::IsNeedUpdateLevel1Cache(
-    const int64_t cacheIdx)
+__aicore__ inline bool
+MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::IsNeedUpdateLevel1Cache(const int64_t cacheIdx)
 {
     return (cacheIdx % CACHE_BUFF_SIZE == 0) && (cacheIdx > 0);
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline bool MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::IsNeedUpdateLevel2Cache(
-    const int64_t cacheIdx)
+__aicore__ inline bool
+MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::IsNeedUpdateLevel2Cache(const int64_t cacheIdx)
 {
     int64_t level1Filled = cacheIdx / CACHE_BUFF_SIZE;
     return (level1Filled % CACHE_BUFF_SIZE == 0) && (level1Filled > 0);
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::UpdateCache(
-    const int64_t cacheIdx, const LocalTensor<float>& binaryAddCache)
+__aicore__ inline void
+MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::UpdateCache(const int64_t cacheIdx,
+                                                                          const LocalTensor<float> &binaryAddCache)
 {
     if (IsNeedUpdateLevel1Cache(cacheIdx)) {
         int64_t level1Idx = (cacheIdx / CACHE_BUFF_SIZE) - 1;
@@ -607,10 +596,10 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExist>::CacheReduceSum(
-    const LocalTensor<float>& dstTensor, const LocalTensor<float>& srcTensor, const uint32_t idx)
+    const LocalTensor<float> &dstTensor, const LocalTensor<float> &srcTensor, const uint32_t idx)
 {
-    __local_mem__ float* dst = (__local_mem__ float*)dstTensor.GetPhyAddr();
-    __local_mem__ float* src = (__local_mem__ float*)srcTensor.GetPhyAddr();
+    __local_mem__ float *dst = (__local_mem__ float *)dstTensor.GetPhyAddr();
+    __local_mem__ float *src = (__local_mem__ float *)srcTensor.GetPhyAddr();
 
     __VEC_SCOPE__
     {
@@ -642,8 +631,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegBaseCutH<T1, T2, T3, IsBiasExi
 {
     LocalTensor<float> gradScalesUb = this->gradScalesOutQueue_.template DeQue<float>();
     LocalTensor<T3> tempBuf = this->binaryAddSumBuf_.template Get<T3>(); // 复用binaryAddSumBuf_ 临时空间
-    __local_mem__ float* srcAddr = (__local_mem__ float*)gradScalesUb.GetPhyAddr();
-    __local_mem__ T3* dstAddr = (__local_mem__ T3*)tempBuf.GetPhyAddr();
+    __local_mem__ float *srcAddr = (__local_mem__ float *)gradScalesUb.GetPhyAddr();
+    __local_mem__ T3 *dstAddr = (__local_mem__ T3 *)tempBuf.GetPhyAddr();
 
     __VEC_SCOPE__
     {

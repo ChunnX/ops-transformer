@@ -26,20 +26,20 @@ static constexpr size_t OUTPUT_DX_INDEX = 0;
 static constexpr size_t OUTPUT_DCOS_INDEX = 1;
 static constexpr size_t OUTPUT_DSIN_INDEX = 2;
 
-static ge::graphStatus InferShapeForRotaryPositionEmbeddingGrad(gert::InferShapeContext* context)
+static ge::graphStatus InferShapeForRotaryPositionEmbeddingGrad(gert::InferShapeContext *context)
 {
     OP_LOGD(context->GetNodeName(), "Begin to do InferShapeForRotaryPositionEmbeddingGrad.");
-    const gert::Shape* gradShape = context->GetInputShape(INPUT_GRAD_INDEX);
+    const gert::Shape *gradShape = context->GetInputShape(INPUT_GRAD_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, gradShape);
-    const gert::Shape* cosShape = context->GetInputShape(INPUT_COS_INDEX);
+    const gert::Shape *cosShape = context->GetInputShape(INPUT_COS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, cosShape);
-    const gert::Shape* sinShape = context->GetInputShape(INPUT_SIN_INDEX);
+    const gert::Shape *sinShape = context->GetInputShape(INPUT_SIN_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, sinShape);
-    gert::Shape* dxShape = context->GetOutputShape(OUTPUT_DX_INDEX);
+    gert::Shape *dxShape = context->GetOutputShape(OUTPUT_DX_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, dxShape);
-    gert::Shape* dcosShape = context->GetOutputShape(OUTPUT_DCOS_INDEX);
+    gert::Shape *dcosShape = context->GetOutputShape(OUTPUT_DCOS_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, dcosShape);
-    gert::Shape* dsinShape = context->GetOutputShape(OUTPUT_DSIN_INDEX);
+    gert::Shape *dsinShape = context->GetOutputShape(OUTPUT_DSIN_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, dsinShape);
 
     *dxShape = *gradShape;
@@ -50,7 +50,7 @@ static ge::graphStatus InferShapeForRotaryPositionEmbeddingGrad(gert::InferShape
     return ge::GRAPH_SUCCESS;
 }
 
-static graphStatus InferDataTypeForRotaryPositionEmbeddingGrad(gert::InferDataTypeContext* context)
+static graphStatus InferDataTypeForRotaryPositionEmbeddingGrad(gert::InferDataTypeContext *context)
 {
     context->SetOutputDataType(OUTPUT_DX_INDEX, context->GetInputDataType(INPUT_GRAD_INDEX));
     context->SetOutputDataType(OUTPUT_DCOS_INDEX, context->GetInputDataType(INPUT_COS_INDEX));

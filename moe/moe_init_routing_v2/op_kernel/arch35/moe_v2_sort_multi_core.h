@@ -119,7 +119,8 @@ __aicore__ inline void MoeV2SortMultiCore<T>::InitBuffers(GM_ADDR expertIdx, GM_
     }
     if (this->expertTokensBeforeCapacityFlag == EXERPT_TOKENS_BEFORE_CAPACITY) {
         expertTokensBeforeCapacityGm.SetGlobalBuffer((__gm__ int32_t *)expertTokensBeforeCapacity +
-                                                     this->blockIdx * this->perCoreExpert, this->currentCoreExpert);
+                                                         this->blockIdx * this->perCoreExpert,
+                                                     this->currentCoreExpert);
     }
 
     int64_t kvFactor = 2;

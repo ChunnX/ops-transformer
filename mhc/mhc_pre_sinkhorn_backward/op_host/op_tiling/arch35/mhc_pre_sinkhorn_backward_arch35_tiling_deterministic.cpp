@@ -78,7 +78,7 @@ bool MhcPreSinkhornBackwardArch35DeterminiticTiling::IsCapable()
 
 ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::SetTilingData()
 {
-    MhcPreSinkhornBackwardArch35DeterminiticTilingData* tilingData =
+    MhcPreSinkhornBackwardArch35DeterminiticTilingData *tilingData =
         context_->GetTilingData<MhcPreSinkhornBackwardArch35DeterminiticTilingData>();
     auto platformInfo = context_->GetPlatformInfo();
     OP_CHECK_IF(platformInfo == nullptr, OP_LOGE(opName, "fail to get platform info"), return ge::GRAPH_FAILED);
@@ -247,7 +247,7 @@ ge::graphStatus MhcPreSinkhornBackwardArch35DeterminiticTiling::GetWorkspaceSize
         batchSize_ * seqLength_ * n_ * c_ * FP32_BYTE_SIZE + WS_BUFFER_INTERVAL;               // gradXFromRms
 
     size_t systemWorkspaceSize = ascendPlatformInfo.GetLibApiWorkSpaceSize();
-    size_t* currentWorkspace = context_->GetWorkspaceSizes(1);
+    size_t *currentWorkspace = context_->GetWorkspaceSizes(1);
     OP_CHECK_IF(currentWorkspace == nullptr, OP_LOGE(opName, "fail to GetWorkspaceSizes"), return ge::GRAPH_FAILED);
     currentWorkspace[0] = systemWorkspaceSize + userWorkspaceSize;
 

@@ -1327,12 +1327,12 @@ ge::graphStatus GMMTiling::GMMGetAttrs(const gert::TilingContext *context)
     if (((compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910B ||
           compileInfoPtr->socVersion == platform_ascendc::SocVersion::ASCEND910_93)) &&
         isA4W4_) {
-        OP_CHECK_IF(!((wFormat0 == ge::FORMAT_FRACTAL_NZ) || (wFormat0 != FORMAT_FRACTAL_NZ && transposeWeight_ == 0)),
-                    OPS_REPORT_VECTOR_INNER_ERR(
-                        context->GetNodeName(),
-                        "A4W4 GMM currently supports only weight tensor nz transpose/untranspose input \
+        OP_CHECK_IF(
+            !((wFormat0 == ge::FORMAT_FRACTAL_NZ) || (wFormat0 != FORMAT_FRACTAL_NZ && transposeWeight_ == 0)),
+            OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
+                                        "A4W4 GMM currently supports only weight tensor nz transpose/untranspose input \
 or nd format untranspose input."),
-                    return ge::GRAPH_FAILED);
+            return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -2036,19 +2036,18 @@ ge::graphStatus GMMTiling::A8W4Tiling(gert::TilingContext *context, const GMMCom
             tilingDataA8W4.hpTilingData.set_output_type(1);
         }
 
-        size_t workspaceSize = static_cast<size_t>(M) * static_cast<size_t>(N) * sizeof(int16_t) +
-                               (static_cast<size_t>(SixteenAlign(M, true)) * static_cast<size_t>(K) / TWO *
-                                sizeof(uint8_t));
+        size_t workspaceSize =
+            static_cast<size_t>(M) * static_cast<size_t>(N) * sizeof(int16_t) +
+            (static_cast<size_t>(SixteenAlign(M, true)) * static_cast<size_t>(K) / TWO * sizeof(uint8_t));
         context->SetScheduleMode(1); // set as batchmod for template using SyncAll
-        context->SetTilingKey(GET_TPL_TILING_KEY(GMM_TPL_INT8, GMM_TPL_INT4, yDtype, 0, 0,
-                                                  GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
-                                                 GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_AUTOTILING,
-                                                 GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE,
-                                                 GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
+        context->SetTilingKey(
+            GET_TPL_TILING_KEY(GMM_TPL_INT8, GMM_TPL_INT4, yDtype, 0, 0, GROUPED_MATMUL_GROUP_LIST_TYPE_COUNT, 0,
+                               GROUPED_MATMUL_A8W4_KERNEL_TEMPLATE_AUTOTILING,
+                               GROUPED_MATMUL_A16W8_KERNEL_TEMPLATE_NONE, GROUPED_MATMUL_AIV_AIC_RATIO_2, 0));
 
         size_t *workspaces = context->GetWorkspaceSizes(1); // get second variable
         OP_CHECK_NULL_WITH_CONTEXT(context, workspaces);
-        workspaces[0] = SYS_WORKSPACE_SIZE;                 // default size
+        workspaces[0] = SYS_WORKSPACE_SIZE; // default size
         workspaces[0] += workspaceSize;
 
         auto rawTilingData = context->GetRawTilingData();

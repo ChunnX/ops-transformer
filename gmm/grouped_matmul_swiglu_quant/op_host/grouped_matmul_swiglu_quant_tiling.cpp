@@ -246,7 +246,8 @@ ASCENDC_EXTERN_C graphStatus TilingGMMSwigluQuant(gert::TilingContext *context)
     OP_LOGD(context->GetNodeName(), "USER_WORKSPACE_LIMIT:              %ld", usrWorkspaceLimit);
     OP_LOGD(context->GetNodeName(), "workspaceSizes:                    %lu", workspaceSizes[0]);
     OP_LOGD(context->GetNodeName(), "isSplitWorkSpace:                  %s", isSplitWorkSpace ? "true" : "false");
-    OP_LOGD(context->GetNodeName(), "GMMSWIGLUQUANT_TILING: baseM is %u, baseK is %u, baseN is %u.", A8W4_BASEM, A8W4_BASEK, A8W4_BASEN);
+    OP_LOGD(context->GetNodeName(), "GMMSWIGLUQUANT_TILING: baseM is %u, baseK is %u, baseN is %u.", A8W4_BASEM,
+            A8W4_BASEK, A8W4_BASEN);
     SetTilingKey(context, isSplitWorkSpace, isA8W4MSD);
     tilingData.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->SetBlockDim(compileInfoPtr->aicNum_); // block dim is the number of aicube

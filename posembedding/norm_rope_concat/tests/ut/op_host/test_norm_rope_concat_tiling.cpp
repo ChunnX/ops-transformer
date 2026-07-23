@@ -87,7 +87,7 @@ TEST_F(NormRopeConcatTiling, norm_rope_concat_tiling_0)
             {"norm_added_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"rope_type", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
             {"concat_order", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-                     {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+            {"eps", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
             {"is_training", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo);

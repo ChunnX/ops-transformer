@@ -25,12 +25,11 @@
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void moe_init_routing(
-    uint8_t* x, uint8_t* rowIdx, uint8_t* expertIdx, uint8_t* expandedX, uint8_t* expandedRowIdx,
-    uint8_t* expandedExpertIdx, uint8_t* workspace, uint8_t* tiling);
+extern "C" __global__ __aicore__ void moe_init_routing(uint8_t *x, uint8_t *rowIdx, uint8_t *expertIdx,
+                                                       uint8_t *expandedX, uint8_t *expandedRowIdx,
+                                                       uint8_t *expandedExpertIdx, uint8_t *workspace, uint8_t *tiling);
 
-class moe_init_routing_test : public testing::Test
-{
+class moe_init_routing_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -69,14 +68,14 @@ TEST_F(moe_init_routing_test, test_case_0)
         num_rows * k * sizeof(float) * 2 * 3 + blockDim * 32 * 2 + num_rows * k * sizeof(int32_t) + 16781184;
     size_t tiling_FileSize = 48 * sizeof(int64_t);
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(x_FileSize);
-    uint8_t* expertIdx = (uint8_t*)AscendC::GmAlloc(expertIdx_FileSize);
-    uint8_t* rowIdx = (uint8_t*)AscendC::GmAlloc(rowIdx_FileSize);
-    uint8_t* expandedX = (uint8_t*)AscendC::GmAlloc(expandedX_FileSize);
-    uint8_t* expandedRowIdx = (uint8_t*)AscendC::GmAlloc(expandedRowIdx_FileSize);
-    uint8_t* expandedExpertIdx = (uint8_t*)AscendC::GmAlloc(expandedExpertIdx_FileSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(workspace_FileSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_FileSize);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdx_FileSize);
+    uint8_t *rowIdx = (uint8_t *)AscendC::GmAlloc(rowIdx_FileSize);
+    uint8_t *expandedX = (uint8_t *)AscendC::GmAlloc(expandedX_FileSize);
+    uint8_t *expandedRowIdx = (uint8_t *)AscendC::GmAlloc(expandedRowIdx_FileSize);
+    uint8_t *expandedExpertIdx = (uint8_t *)AscendC::GmAlloc(expandedExpertIdx_FileSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
     system("cp -r ../../../../../moe/moe_init_routing/tests/ut/op_kernel/moe_init_routing_data ./");
     system("chmod -R 755 ./moe_init_routing_data/");
@@ -84,7 +83,7 @@ TEST_F(moe_init_routing_test, test_case_0)
     system("cd ./moe_init_routing_data/ && python3 gen_data.py 8 2 5120 8 float32");
     system("cd ./moe_init_routing_data/ && python3 gen_tiling.py case0");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
     ReadFile(path + "/moe_init_routing_data/input_x.bin", x_FileSize, x, x_FileSize);
     ReadFile(path + "/moe_init_routing_data/input_expertIdx.bin", expertIdx_FileSize, expertIdx, expertIdx_FileSize);
@@ -92,21 +91,20 @@ TEST_F(moe_init_routing_test, test_case_0)
     ReadFile(path + "/moe_init_routing_data/tiling.bin", tiling_FileSize, tiling, tiling_FileSize);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_init_routing, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_init_routing, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx,
+                workspace, tiling);
     // WriteFile(path + "/moe_init_routing_data/out_0.bin", expandedX, expandedX_FileSize);
     // WriteFile(path + "/moe_init_routing_data/out_1.bin", expandedRowIdx, expandedRowIdx_FileSize);
     // WriteFile(path + "/moe_init_routing_data/out_2.bin", expandedExpertIdx, expandedExpertIdx_FileSize);
 
-    AscendC::GmFree((void*)x);
-    AscendC::GmFree((void*)expertIdx);
-    AscendC::GmFree((void*)rowIdx);
-    AscendC::GmFree((void*)expandedX);
-    AscendC::GmFree((void*)expandedRowIdx);
-    AscendC::GmFree((void*)expandedExpertIdx);
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
+    AscendC::GmFree((void *)x);
+    AscendC::GmFree((void *)expertIdx);
+    AscendC::GmFree((void *)rowIdx);
+    AscendC::GmFree((void *)expandedX);
+    AscendC::GmFree((void *)expandedRowIdx);
+    AscendC::GmFree((void *)expandedExpertIdx);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
     free(path_);
 }
 
@@ -131,14 +129,14 @@ TEST_F(moe_init_routing_test, test_case_1)
         num_rows * k * sizeof(float) * 2 * 3 + blockDim * 32 * 2 + num_rows * k * sizeof(int32_t) + 16781184;
     size_t tiling_FileSize = 48 * sizeof(int64_t);
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(x_FileSize);
-    uint8_t* expertIdx = (uint8_t*)AscendC::GmAlloc(expertIdx_FileSize);
-    uint8_t* rowIdx = (uint8_t*)AscendC::GmAlloc(rowIdx_FileSize);
-    uint8_t* expandedX = (uint8_t*)AscendC::GmAlloc(expandedX_FileSize);
-    uint8_t* expandedRowIdx = (uint8_t*)AscendC::GmAlloc(expandedRowIdx_FileSize);
-    uint8_t* expandedExpertIdx = (uint8_t*)AscendC::GmAlloc(expandedExpertIdx_FileSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(workspace_FileSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_FileSize);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdx_FileSize);
+    uint8_t *rowIdx = (uint8_t *)AscendC::GmAlloc(rowIdx_FileSize);
+    uint8_t *expandedX = (uint8_t *)AscendC::GmAlloc(expandedX_FileSize);
+    uint8_t *expandedRowIdx = (uint8_t *)AscendC::GmAlloc(expandedRowIdx_FileSize);
+    uint8_t *expandedExpertIdx = (uint8_t *)AscendC::GmAlloc(expandedExpertIdx_FileSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
     system("cp -r ../../../../../moe/moe_init_routing/tests/ut/op_kernel/moe_init_routing_data ./");
     system("chmod -R 755 ./moe_init_routing_data/");
@@ -146,7 +144,7 @@ TEST_F(moe_init_routing_test, test_case_1)
     system("cd ./moe_init_routing_data/ && python3 gen_data.py 8 2 5120 8 float32");
     system("cd ./moe_init_routing_data/ && python3 gen_tiling.py case0");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
     ReadFile(path + "/moe_init_routing_data/input_x.bin", x_FileSize, x, x_FileSize);
     ReadFile(path + "/moe_init_routing_data/input_expertIdx.bin", expertIdx_FileSize, expertIdx, expertIdx_FileSize);
@@ -154,21 +152,20 @@ TEST_F(moe_init_routing_test, test_case_1)
     ReadFile(path + "/moe_init_routing_data/tiling.bin", tiling_FileSize, tiling, tiling_FileSize);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_init_routing, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_init_routing, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx,
+                workspace, tiling);
     // WriteFile(path + "/moe_init_routing_data/out_0.bin", expandedX, expandedX_FileSize);
     // WriteFile(path + "/moe_init_routing_data/out_1.bin", expandedRowIdx, expandedRowIdx_FileSize);
     // WriteFile(path + "/moe_init_routing_data/out_2.bin", expandedExpertIdx, expandedExpertIdx_FileSize);
 
-    AscendC::GmFree((void*)x);
-    AscendC::GmFree((void*)expertIdx);
-    AscendC::GmFree((void*)rowIdx);
-    AscendC::GmFree((void*)expandedX);
-    AscendC::GmFree((void*)expandedRowIdx);
-    AscendC::GmFree((void*)expandedExpertIdx);
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
+    AscendC::GmFree((void *)x);
+    AscendC::GmFree((void *)expertIdx);
+    AscendC::GmFree((void *)rowIdx);
+    AscendC::GmFree((void *)expandedX);
+    AscendC::GmFree((void *)expandedRowIdx);
+    AscendC::GmFree((void *)expandedExpertIdx);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
     free(path_);
 }
 
@@ -193,14 +190,14 @@ TEST_F(moe_init_routing_test, test_case_2)
         num_rows * k * sizeof(float) * 2 * 3 + blockDim * 32 * 2 + num_rows * k * sizeof(int32_t) + 16781184;
     size_t tiling_FileSize = 48 * sizeof(int64_t);
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(x_FileSize);
-    uint8_t* expertIdx = (uint8_t*)AscendC::GmAlloc(expertIdx_FileSize);
-    uint8_t* rowIdx = (uint8_t*)AscendC::GmAlloc(rowIdx_FileSize);
-    uint8_t* expandedX = (uint8_t*)AscendC::GmAlloc(expandedX_FileSize);
-    uint8_t* expandedRowIdx = (uint8_t*)AscendC::GmAlloc(expandedRowIdx_FileSize);
-    uint8_t* expandedExpertIdx = (uint8_t*)AscendC::GmAlloc(expandedExpertIdx_FileSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(workspace_FileSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_FileSize);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdx_FileSize);
+    uint8_t *rowIdx = (uint8_t *)AscendC::GmAlloc(rowIdx_FileSize);
+    uint8_t *expandedX = (uint8_t *)AscendC::GmAlloc(expandedX_FileSize);
+    uint8_t *expandedRowIdx = (uint8_t *)AscendC::GmAlloc(expandedRowIdx_FileSize);
+    uint8_t *expandedExpertIdx = (uint8_t *)AscendC::GmAlloc(expandedExpertIdx_FileSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
     system("cp -r ../../../../../moe/moe_init_routing/tests/ut/op_kernel/moe_init_routing_data ./");
     system("chmod -R 755 ./moe_init_routing_data/");
@@ -208,7 +205,7 @@ TEST_F(moe_init_routing_test, test_case_2)
     system("cd ./moe_init_routing_data/ && python3 gen_data.py 8 2 5120 8 float32");
     system("cd ./moe_init_routing_data/ && python3 gen_tiling.py case0");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
     ReadFile(path + "/moe_init_routing_data/input_x.bin", x_FileSize, x, x_FileSize);
     ReadFile(path + "/moe_init_routing_data/input_expertIdx.bin", expertIdx_FileSize, expertIdx, expertIdx_FileSize);
@@ -216,21 +213,20 @@ TEST_F(moe_init_routing_test, test_case_2)
     ReadFile(path + "/moe_init_routing_data/tiling.bin", tiling_FileSize, tiling, tiling_FileSize);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_init_routing, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_init_routing, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx,
+                workspace, tiling);
     // WriteFile(path + "/moe_init_routing_data/out_0.bin", expandedX, expandedX_FileSize);
     // WriteFile(path + "/moe_init_routing_data/out_1.bin", expandedRowIdx, expandedRowIdx_FileSize);
     // WriteFile(path + "/moe_init_routing_data/out_2.bin", expandedExpertIdx, expandedExpertIdx_FileSize);
 
-    AscendC::GmFree((void*)x);
-    AscendC::GmFree((void*)expertIdx);
-    AscendC::GmFree((void*)rowIdx);
-    AscendC::GmFree((void*)expandedX);
-    AscendC::GmFree((void*)expandedRowIdx);
-    AscendC::GmFree((void*)expandedExpertIdx);
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
+    AscendC::GmFree((void *)x);
+    AscendC::GmFree((void *)expertIdx);
+    AscendC::GmFree((void *)rowIdx);
+    AscendC::GmFree((void *)expandedX);
+    AscendC::GmFree((void *)expandedRowIdx);
+    AscendC::GmFree((void *)expandedExpertIdx);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
     free(path_);
 }
 
@@ -255,14 +251,14 @@ TEST_F(moe_init_routing_test, test_case_3)
         num_rows * k * sizeof(float) * 2 * 3 + blockDim * 32 * 2 + num_rows * k * sizeof(int32_t) + 16781184;
     size_t tiling_FileSize = 200 * sizeof(int64_t);
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(x_FileSize);
-    uint8_t* expertIdx = (uint8_t*)AscendC::GmAlloc(expertIdx_FileSize);
-    uint8_t* rowIdx = (uint8_t*)AscendC::GmAlloc(rowIdx_FileSize);
-    uint8_t* expandedX = (uint8_t*)AscendC::GmAlloc(expandedX_FileSize);
-    uint8_t* expandedRowIdx = (uint8_t*)AscendC::GmAlloc(expandedRowIdx_FileSize);
-    uint8_t* expandedExpertIdx = (uint8_t*)AscendC::GmAlloc(expandedExpertIdx_FileSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(workspace_FileSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_FileSize);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdx_FileSize);
+    uint8_t *rowIdx = (uint8_t *)AscendC::GmAlloc(rowIdx_FileSize);
+    uint8_t *expandedX = (uint8_t *)AscendC::GmAlloc(expandedX_FileSize);
+    uint8_t *expandedRowIdx = (uint8_t *)AscendC::GmAlloc(expandedRowIdx_FileSize);
+    uint8_t *expandedExpertIdx = (uint8_t *)AscendC::GmAlloc(expandedExpertIdx_FileSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
 
     system("cp -r ../../../../../moe/moe_init_routing/tests/ut/op_kernel/moe_init_routing_data ./");
     system("chmod -R 755 ./moe_init_routing_data/");
@@ -270,7 +266,7 @@ TEST_F(moe_init_routing_test, test_case_3)
     system("cd ./moe_init_routing_data/ && python3 gen_data.py 8 2 5120 8 float32");
     system("cd ./moe_init_routing_data/ && python3 gen_tiling.py case0");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
     ReadFile(path + "/moe_init_routing_data/input_x.bin", x_FileSize, x, x_FileSize);
     ReadFile(path + "/moe_init_routing_data/input_expertIdx.bin", expertIdx_FileSize, expertIdx, expertIdx_FileSize);
@@ -278,20 +274,19 @@ TEST_F(moe_init_routing_test, test_case_3)
     ReadFile(path + "/moe_init_routing_data/tiling.bin", tiling_FileSize, tiling, tiling_FileSize);
 
     ICPU_SET_TILING_KEY(tilingKey);
-    ICPU_RUN_KF(
-        moe_init_routing, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx, workspace,
-        tiling);
+    ICPU_RUN_KF(moe_init_routing, blockDim, x, rowIdx, expertIdx, expandedX, expandedRowIdx, expandedExpertIdx,
+                workspace, tiling);
     // WriteFile(path + "/moe_init_routing_data/out_0.bin", expandedX, expandedX_FileSize);
     // WriteFile(path + "/moe_init_routing_data/out_1.bin", expandedRowIdx, expandedRowIdx_FileSize);
     // WriteFile(path + "/moe_init_routing_data/out_2.bin", expandedExpertIdx, expandedExpertIdx_FileSize);
 
-    AscendC::GmFree((void*)x);
-    AscendC::GmFree((void*)expertIdx);
-    AscendC::GmFree((void*)rowIdx);
-    AscendC::GmFree((void*)expandedX);
-    AscendC::GmFree((void*)expandedRowIdx);
-    AscendC::GmFree((void*)expandedExpertIdx);
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
+    AscendC::GmFree((void *)x);
+    AscendC::GmFree((void *)expertIdx);
+    AscendC::GmFree((void *)rowIdx);
+    AscendC::GmFree((void *)expandedX);
+    AscendC::GmFree((void *)expandedRowIdx);
+    AscendC::GmFree((void *)expandedExpertIdx);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
     free(path_);
 }

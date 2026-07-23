@@ -39,7 +39,7 @@ extern "C" __global__ __aicore__ void inplace_partial_rotary_mul(GM_ADDR x, GM_A
 {
     AscendC::TPipe pipe;
     GET_TILING_DATA_WITH_STRUCT(InplacePartialRopeRegbaseTilingData, tilingData, tiling);
-    const InplacePartialRopeRegbaseTilingData* __restrict__ tilingData1 = &tilingData;
+    const InplacePartialRopeRegbaseTilingData *__restrict__ tilingData1 = &tilingData;
     // No-op: empty slice (sliceStart==sliceEnd), return directly
     if (tilingData1->headDim == 0) {
         return;

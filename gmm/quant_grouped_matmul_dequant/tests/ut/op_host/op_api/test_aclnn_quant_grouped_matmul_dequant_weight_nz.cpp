@@ -23,8 +23,7 @@
 using namespace std;
 using namespace op;
 
-class aclnnQuantGroupedMatmulDequantWeightNz_test : public testing::Test
-{
+class aclnnQuantGroupedMatmulDequantWeightNz_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -54,13 +53,12 @@ TEST_F(aclnnQuantGroupedMatmulDequantWeightNz_test, ascend310P_test_opapi_nz_nor
     aclTensor *x_offset_desc = nullptr;
     auto smooth_scale_desc = TensorDesc({k}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto out_desc = TensorDesc({m, n}, ACL_FLOAT16, ACL_FORMAT_ND);
-    char* quantMode = "pertoken";
+    char *quantMode = "pertoken";
     bool weightTrans = true;
 
     auto ut = OP_API_UT(aclnnQuantGroupedMatmulDequantWeightNZ,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, group_list_desc,
-                              bias_desc, x_scale_desc, x_offset_desc, smooth_scale_desc,
-                              quantMode, weightTrans),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, group_list_desc, bias_desc, x_scale_desc,
+                              x_offset_desc, smooth_scale_desc, quantMode, weightTrans),
                         OUTPUT(out_desc));
 
     uint64_t workspace_size = 0;
@@ -84,13 +82,12 @@ TEST_F(aclnnQuantGroupedMatmulDequantWeightNz_test, ascend310P_test_opapi_nz_int
     aclTensor *x_offset_desc = nullptr;
     auto smooth_scale_desc = TensorDesc({k}, ACL_FLOAT16, ACL_FORMAT_ND);
     auto out_desc = TensorDesc({m, n}, ACL_FLOAT16, ACL_FORMAT_ND);
-    char* quantMode = "pertoken";
+    char *quantMode = "pertoken";
     bool weightTrans = true;
 
     auto ut = OP_API_UT(aclnnQuantGroupedMatmulDequantWeightNZ,
-                        INPUT(x_desc, weight_desc, weight_scale_desc, group_list_desc,
-                              bias_desc, x_scale_desc, x_offset_desc, smooth_scale_desc,
-                              quantMode, weightTrans),
+                        INPUT(x_desc, weight_desc, weight_scale_desc, group_list_desc, bias_desc, x_scale_desc,
+                              x_offset_desc, smooth_scale_desc, quantMode, weightTrans),
                         OUTPUT(out_desc));
 
     uint64_t workspace_size = 0;

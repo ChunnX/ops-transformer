@@ -49,13 +49,14 @@ int dim;
 int blockNum;
 int blockSize;
 
-extern "C" __global__ __aicore__ void qkv_rms_norm_rope_cache(
-    GM_ADDR qkv, GM_ADDR gamma_q, GM_ADDR gamma_k, GM_ADDR cos, GM_ADDR sin, GM_ADDR index, GM_ADDR q_out, GM_ADDR k_cache, GM_ADDR v_cache,
-    GM_ADDR k_scale, GM_ADDR v_scale, GM_ADDR k_offset, GM_ADDR v_offset, GM_ADDR qOut_out, GM_ADDR kCache_out, 
-    GM_ADDR vCache_out, GM_ADDR q_out_before_quant, GM_ADDR k_before_quant, GM_ADDR v_before_quant, GM_ADDR workspace, GM_ADDR tiling);
+extern "C" __global__ __aicore__ void
+qkv_rms_norm_rope_cache(GM_ADDR qkv, GM_ADDR gamma_q, GM_ADDR gamma_k, GM_ADDR cos, GM_ADDR sin, GM_ADDR index,
+                        GM_ADDR q_out, GM_ADDR k_cache, GM_ADDR v_cache, GM_ADDR k_scale, GM_ADDR v_scale,
+                        GM_ADDR k_offset, GM_ADDR v_offset, GM_ADDR qOut_out, GM_ADDR kCache_out, GM_ADDR vCache_out,
+                        GM_ADDR q_out_before_quant, GM_ADDR k_before_quant, GM_ADDR v_before_quant, GM_ADDR workspace,
+                        GM_ADDR tiling);
 
-class qkv_rms_norm_rope_cache_test : public testing::Test
-{
+class qkv_rms_norm_rope_cache_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -92,7 +93,7 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_bath_qu
     size_t vCacheSize = blockNum * (Nv * dim / 32) * blockSize * 32 * sizeof(int8_t);
     size_t kScaleSize = Nk * dim * sizeof(float);
     size_t vScaleSize = Nv * dim * sizeof(float);
-    
+
     size_t qOutOutSize = batch_size * seq_len * Nq * dim * sizeof(DTYPE_QKV_fp16);
     size_t kCacheOutSize = blockNum * (Nk * dim / 32) * blockSize * 32 * sizeof(int8_t);
     size_t vCacheOutSize = blockNum * (Nv * dim / 32) * blockSize * 32 * sizeof(int8_t);
@@ -103,30 +104,30 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_bath_qu
     size_t tiling_data_size = sizeof(QkvRmsNormRopeCacheTilingData);
     uint32_t blockDim = 47;
 
-    uint8_t* qkv = (uint8_t*)AscendC::GmAlloc(qkvSize);
-    uint8_t* gammaQ = (uint8_t*)AscendC::GmAlloc(gammaQSize);
-    uint8_t* gammaK = (uint8_t*)AscendC::GmAlloc(gammaKSize);
-    uint8_t* cos = (uint8_t*)AscendC::GmAlloc(cosSize);
-    uint8_t* sin = (uint8_t*)AscendC::GmAlloc(sinSize);
-    uint8_t* index = (uint8_t*)AscendC::GmAlloc(indexSize);
-    uint8_t* qOut = (uint8_t*)AscendC::GmAlloc(qOutSize);
-    uint8_t* kCache = (uint8_t*)AscendC::GmAlloc(kCacheSize);
-    uint8_t* vCache = (uint8_t*)AscendC::GmAlloc(vCacheSize);
-    uint8_t* kScale = (uint8_t*)AscendC::GmAlloc(kScaleSize);
-    uint8_t* vScale = (uint8_t*)AscendC::GmAlloc(vScaleSize);
-    uint8_t* qOutOut = (uint8_t*)AscendC::GmAlloc(qOutOutSize);
-    uint8_t* kCacheOut = (uint8_t*)AscendC::GmAlloc(kCacheOutSize);
-    uint8_t* vCacheOut = (uint8_t*)AscendC::GmAlloc(vCacheOutSize);
-    uint8_t* qOutProtoOut = (uint8_t*)AscendC::GmAlloc(qOutProtoOutSize);
-    uint8_t* kCacheProtoOut = (uint8_t*)AscendC::GmAlloc(kCacheProtoOutSize);
-    uint8_t* vCacheProtoOut = (uint8_t*)AscendC::GmAlloc(vCacheProtoOutSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint8_t *qkv = (uint8_t *)AscendC::GmAlloc(qkvSize);
+    uint8_t *gammaQ = (uint8_t *)AscendC::GmAlloc(gammaQSize);
+    uint8_t *gammaK = (uint8_t *)AscendC::GmAlloc(gammaKSize);
+    uint8_t *cos = (uint8_t *)AscendC::GmAlloc(cosSize);
+    uint8_t *sin = (uint8_t *)AscendC::GmAlloc(sinSize);
+    uint8_t *index = (uint8_t *)AscendC::GmAlloc(indexSize);
+    uint8_t *qOut = (uint8_t *)AscendC::GmAlloc(qOutSize);
+    uint8_t *kCache = (uint8_t *)AscendC::GmAlloc(kCacheSize);
+    uint8_t *vCache = (uint8_t *)AscendC::GmAlloc(vCacheSize);
+    uint8_t *kScale = (uint8_t *)AscendC::GmAlloc(kScaleSize);
+    uint8_t *vScale = (uint8_t *)AscendC::GmAlloc(vScaleSize);
+    uint8_t *qOutOut = (uint8_t *)AscendC::GmAlloc(qOutOutSize);
+    uint8_t *kCacheOut = (uint8_t *)AscendC::GmAlloc(kCacheOutSize);
+    uint8_t *vCacheOut = (uint8_t *)AscendC::GmAlloc(vCacheOutSize);
+    uint8_t *qOutProtoOut = (uint8_t *)AscendC::GmAlloc(qOutProtoOutSize);
+    uint8_t *kCacheProtoOut = (uint8_t *)AscendC::GmAlloc(kCacheProtoOutSize);
+    uint8_t *vCacheProtoOut = (uint8_t *)AscendC::GmAlloc(vCacheProtoOutSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    QkvRmsNormRopeCacheTilingData* tilingDatafromBin = reinterpret_cast<QkvRmsNormRopeCacheTilingData*>(tiling);
+    QkvRmsNormRopeCacheTilingData *tilingDatafromBin = reinterpret_cast<QkvRmsNormRopeCacheTilingData *>(tiling);
 
     tilingDatafromBin->batchSize = 4;
     tilingDatafromBin->seqLength = 2;
@@ -155,11 +156,11 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_bath_qu
     tilingDatafromBin->isOutputQkv = false;
     tilingDatafromBin->isKQuant = 1;
     tilingDatafromBin->isVQuant = 1;
-    
+
     ICPU_SET_TILING_KEY(3);
-    ICPU_RUN_KF(
-        qkv_rms_norm_rope_cache, blockDim, qkv, gammaQ, gammaK, cos, sin, index, qOut, kCache, vCache, kScale, vScale,
-        nullptr, nullptr, qOutOut, kCacheOut, vCacheOut, qOutProtoOut, kCacheProtoOut, vCacheProtoOut, workspace, (uint8_t*)(tilingDatafromBin));
+    ICPU_RUN_KF(qkv_rms_norm_rope_cache, blockDim, qkv, gammaQ, gammaK, cos, sin, index, qOut, kCache, vCache, kScale,
+                vScale, nullptr, nullptr, qOutOut, kCacheOut, vCacheOut, qOutProtoOut, kCacheProtoOut, vCacheProtoOut,
+                workspace, (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(qkv);
     AscendC::GmFree(gammaQ);
@@ -207,7 +208,7 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_k_quant
     size_t vCacheSize = blockNum * (Nv * dim / 32) * blockSize * 32 * sizeof(int8_t);
     size_t kScaleSize = Nk * dim * sizeof(float);
     size_t vScaleSize = Nv * dim * sizeof(float);
-    
+
     size_t qOutOutSize = batch_size * seq_len * Nq * dim * sizeof(DTYPE_QKV_fp16);
     size_t kCacheOutSize = blockNum * (Nk * dim / 32) * blockSize * 32 * sizeof(int8_t);
     size_t vCacheOutSize = blockNum * (Nv * dim / 32) * blockSize * 32 * sizeof(int8_t);
@@ -218,30 +219,30 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_k_quant
     size_t tiling_data_size = sizeof(QkvRmsNormRopeCacheTilingData);
     uint32_t blockDim = 47;
 
-    uint8_t* qkv = (uint8_t*)AscendC::GmAlloc(qkvSize);
-    uint8_t* gammaQ = (uint8_t*)AscendC::GmAlloc(gammaQSize);
-    uint8_t* gammaK = (uint8_t*)AscendC::GmAlloc(gammaKSize);
-    uint8_t* cos = (uint8_t*)AscendC::GmAlloc(cosSize);
-    uint8_t* sin = (uint8_t*)AscendC::GmAlloc(sinSize);
-    uint8_t* index = (uint8_t*)AscendC::GmAlloc(indexSize);
-    uint8_t* qOut = (uint8_t*)AscendC::GmAlloc(qOutSize);
-    uint8_t* kCache = (uint8_t*)AscendC::GmAlloc(kCacheSize);
-    uint8_t* vCache = (uint8_t*)AscendC::GmAlloc(vCacheSize);
-    uint8_t* kScale = (uint8_t*)AscendC::GmAlloc(kScaleSize);
-    uint8_t* vScale = (uint8_t*)AscendC::GmAlloc(vScaleSize);
-    uint8_t* qOutOut = (uint8_t*)AscendC::GmAlloc(qOutOutSize);
-    uint8_t* kCacheOut = (uint8_t*)AscendC::GmAlloc(kCacheOutSize);
-    uint8_t* vCacheOut = (uint8_t*)AscendC::GmAlloc(vCacheOutSize);
-    uint8_t* qOutProtoOut = (uint8_t*)AscendC::GmAlloc(qOutProtoOutSize);
-    uint8_t* kCacheProtoOut = (uint8_t*)AscendC::GmAlloc(kCacheProtoOutSize);
-    uint8_t* vCacheProtoOut = (uint8_t*)AscendC::GmAlloc(vCacheProtoOutSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint8_t *qkv = (uint8_t *)AscendC::GmAlloc(qkvSize);
+    uint8_t *gammaQ = (uint8_t *)AscendC::GmAlloc(gammaQSize);
+    uint8_t *gammaK = (uint8_t *)AscendC::GmAlloc(gammaKSize);
+    uint8_t *cos = (uint8_t *)AscendC::GmAlloc(cosSize);
+    uint8_t *sin = (uint8_t *)AscendC::GmAlloc(sinSize);
+    uint8_t *index = (uint8_t *)AscendC::GmAlloc(indexSize);
+    uint8_t *qOut = (uint8_t *)AscendC::GmAlloc(qOutSize);
+    uint8_t *kCache = (uint8_t *)AscendC::GmAlloc(kCacheSize);
+    uint8_t *vCache = (uint8_t *)AscendC::GmAlloc(vCacheSize);
+    uint8_t *kScale = (uint8_t *)AscendC::GmAlloc(kScaleSize);
+    uint8_t *vScale = (uint8_t *)AscendC::GmAlloc(vScaleSize);
+    uint8_t *qOutOut = (uint8_t *)AscendC::GmAlloc(qOutOutSize);
+    uint8_t *kCacheOut = (uint8_t *)AscendC::GmAlloc(kCacheOutSize);
+    uint8_t *vCacheOut = (uint8_t *)AscendC::GmAlloc(vCacheOutSize);
+    uint8_t *qOutProtoOut = (uint8_t *)AscendC::GmAlloc(qOutProtoOutSize);
+    uint8_t *kCacheProtoOut = (uint8_t *)AscendC::GmAlloc(kCacheProtoOutSize);
+    uint8_t *vCacheProtoOut = (uint8_t *)AscendC::GmAlloc(vCacheProtoOutSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    QkvRmsNormRopeCacheTilingData* tilingDatafromBin = reinterpret_cast<QkvRmsNormRopeCacheTilingData*>(tiling);
+    QkvRmsNormRopeCacheTilingData *tilingDatafromBin = reinterpret_cast<QkvRmsNormRopeCacheTilingData *>(tiling);
 
     tilingDatafromBin->batchSize = 4;
     tilingDatafromBin->seqLength = 2;
@@ -270,11 +271,11 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_k_quant
     tilingDatafromBin->isOutputQkv = false;
     tilingDatafromBin->isKQuant = 1;
     tilingDatafromBin->isVQuant = 0;
-    
+
     ICPU_SET_TILING_KEY(3);
-    ICPU_RUN_KF(
-        qkv_rms_norm_rope_cache, blockDim, qkv, gammaQ, gammaK, cos, sin, index, qOut, kCache, vCache, kScale, nullptr,
-        nullptr, nullptr, qOutOut, kCacheOut, vCacheOut, qOutProtoOut, kCacheProtoOut, vCacheProtoOut, workspace, (uint8_t*)(tilingDatafromBin));
+    ICPU_RUN_KF(qkv_rms_norm_rope_cache, blockDim, qkv, gammaQ, gammaK, cos, sin, index, qOut, kCache, vCache, kScale,
+                nullptr, nullptr, nullptr, qOutOut, kCacheOut, vCacheOut, qOutProtoOut, kCacheProtoOut, vCacheProtoOut,
+                workspace, (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(qkv);
     AscendC::GmFree(gammaQ);
@@ -322,7 +323,7 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_v_quant
     size_t vCacheSize = blockNum * (Nv * dim / 32) * blockSize * 32 * sizeof(int8_t);
     size_t kScaleSize = Nk * dim * sizeof(float);
     size_t vScaleSize = Nv * dim * sizeof(float);
-    
+
     size_t qOutOutSize = batch_size * seq_len * Nq * dim * sizeof(DTYPE_QKV_fp16);
     size_t kCacheOutSize = blockNum * (Nk * dim / 32) * blockSize * 32 * sizeof(int8_t);
     size_t vCacheOutSize = blockNum * (Nv * dim / 32) * blockSize * 32 * sizeof(int8_t);
@@ -333,30 +334,30 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_v_quant
     size_t tiling_data_size = sizeof(QkvRmsNormRopeCacheTilingData);
     uint32_t blockDim = 47;
 
-    uint8_t* qkv = (uint8_t*)AscendC::GmAlloc(qkvSize);
-    uint8_t* gammaQ = (uint8_t*)AscendC::GmAlloc(gammaQSize);
-    uint8_t* gammaK = (uint8_t*)AscendC::GmAlloc(gammaKSize);
-    uint8_t* cos = (uint8_t*)AscendC::GmAlloc(cosSize);
-    uint8_t* sin = (uint8_t*)AscendC::GmAlloc(sinSize);
-    uint8_t* index = (uint8_t*)AscendC::GmAlloc(indexSize);
-    uint8_t* qOut = (uint8_t*)AscendC::GmAlloc(qOutSize);
-    uint8_t* kCache = (uint8_t*)AscendC::GmAlloc(kCacheSize);
-    uint8_t* vCache = (uint8_t*)AscendC::GmAlloc(vCacheSize);
-    uint8_t* kScale = (uint8_t*)AscendC::GmAlloc(kScaleSize);
-    uint8_t* vScale = (uint8_t*)AscendC::GmAlloc(vScaleSize);
-    uint8_t* qOutOut = (uint8_t*)AscendC::GmAlloc(qOutOutSize);
-    uint8_t* kCacheOut = (uint8_t*)AscendC::GmAlloc(kCacheOutSize);
-    uint8_t* vCacheOut = (uint8_t*)AscendC::GmAlloc(vCacheOutSize);
-    uint8_t* qOutProtoOut = (uint8_t*)AscendC::GmAlloc(qOutProtoOutSize);
-    uint8_t* kCacheProtoOut = (uint8_t*)AscendC::GmAlloc(kCacheProtoOutSize);
-    uint8_t* vCacheProtoOut = (uint8_t*)AscendC::GmAlloc(vCacheProtoOutSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint8_t *qkv = (uint8_t *)AscendC::GmAlloc(qkvSize);
+    uint8_t *gammaQ = (uint8_t *)AscendC::GmAlloc(gammaQSize);
+    uint8_t *gammaK = (uint8_t *)AscendC::GmAlloc(gammaKSize);
+    uint8_t *cos = (uint8_t *)AscendC::GmAlloc(cosSize);
+    uint8_t *sin = (uint8_t *)AscendC::GmAlloc(sinSize);
+    uint8_t *index = (uint8_t *)AscendC::GmAlloc(indexSize);
+    uint8_t *qOut = (uint8_t *)AscendC::GmAlloc(qOutSize);
+    uint8_t *kCache = (uint8_t *)AscendC::GmAlloc(kCacheSize);
+    uint8_t *vCache = (uint8_t *)AscendC::GmAlloc(vCacheSize);
+    uint8_t *kScale = (uint8_t *)AscendC::GmAlloc(kScaleSize);
+    uint8_t *vScale = (uint8_t *)AscendC::GmAlloc(vScaleSize);
+    uint8_t *qOutOut = (uint8_t *)AscendC::GmAlloc(qOutOutSize);
+    uint8_t *kCacheOut = (uint8_t *)AscendC::GmAlloc(kCacheOutSize);
+    uint8_t *vCacheOut = (uint8_t *)AscendC::GmAlloc(vCacheOutSize);
+    uint8_t *qOutProtoOut = (uint8_t *)AscendC::GmAlloc(qOutProtoOutSize);
+    uint8_t *kCacheProtoOut = (uint8_t *)AscendC::GmAlloc(kCacheProtoOutSize);
+    uint8_t *vCacheProtoOut = (uint8_t *)AscendC::GmAlloc(vCacheProtoOutSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    QkvRmsNormRopeCacheTilingData* tilingDatafromBin = reinterpret_cast<QkvRmsNormRopeCacheTilingData*>(tiling);
+    QkvRmsNormRopeCacheTilingData *tilingDatafromBin = reinterpret_cast<QkvRmsNormRopeCacheTilingData *>(tiling);
 
     tilingDatafromBin->batchSize = 4;
     tilingDatafromBin->seqLength = 2;
@@ -385,11 +386,11 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_v_quant
     tilingDatafromBin->isOutputQkv = false;
     tilingDatafromBin->isKQuant = 0;
     tilingDatafromBin->isVQuant = 1;
-    
+
     ICPU_SET_TILING_KEY(3);
-    ICPU_RUN_KF(
-        qkv_rms_norm_rope_cache, blockDim, qkv, gammaQ, gammaK, cos, sin, index, qOut, kCache, vCache, nullptr, vScale,
-        nullptr, nullptr, qOutOut, kCacheOut, vCacheOut, qOutProtoOut, kCacheProtoOut, vCacheProtoOut, workspace, (uint8_t*)(tilingDatafromBin));
+    ICPU_RUN_KF(qkv_rms_norm_rope_cache, blockDim, qkv, gammaQ, gammaK, cos, sin, index, qOut, kCache, vCache, nullptr,
+                vScale, nullptr, nullptr, qOutOut, kCacheOut, vCacheOut, qOutProtoOut, kCacheProtoOut, vCacheProtoOut,
+                workspace, (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(qkv);
     AscendC::GmFree(gammaQ);
@@ -437,7 +438,7 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_no_quan
     size_t vCacheSize = blockNum * (Nv * dim / 32) * blockSize * 32 * sizeof(int8_t);
     size_t kScaleSize = Nk * dim * sizeof(float);
     size_t vScaleSize = Nv * dim * sizeof(float);
-    
+
     size_t qOutOutSize = batch_size * seq_len * Nq * dim * sizeof(DTYPE_QKV_fp16);
     size_t kCacheOutSize = blockNum * (Nk * dim / 32) * blockSize * 32 * sizeof(int8_t);
     size_t vCacheOutSize = blockNum * (Nv * dim / 32) * blockSize * 32 * sizeof(int8_t);
@@ -448,30 +449,30 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_no_quan
     size_t tiling_data_size = sizeof(QkvRmsNormRopeCacheTilingData);
     uint32_t blockDim = 47;
 
-    uint8_t* qkv = (uint8_t*)AscendC::GmAlloc(qkvSize);
-    uint8_t* gammaQ = (uint8_t*)AscendC::GmAlloc(gammaQSize);
-    uint8_t* gammaK = (uint8_t*)AscendC::GmAlloc(gammaKSize);
-    uint8_t* cos = (uint8_t*)AscendC::GmAlloc(cosSize);
-    uint8_t* sin = (uint8_t*)AscendC::GmAlloc(sinSize);
-    uint8_t* index = (uint8_t*)AscendC::GmAlloc(indexSize);
-    uint8_t* qOut = (uint8_t*)AscendC::GmAlloc(qOutSize);
-    uint8_t* kCache = (uint8_t*)AscendC::GmAlloc(kCacheSize);
-    uint8_t* vCache = (uint8_t*)AscendC::GmAlloc(vCacheSize);
-    uint8_t* kScale = (uint8_t*)AscendC::GmAlloc(kScaleSize);
-    uint8_t* vScale = (uint8_t*)AscendC::GmAlloc(vScaleSize);
-    uint8_t* qOutOut = (uint8_t*)AscendC::GmAlloc(qOutOutSize);
-    uint8_t* kCacheOut = (uint8_t*)AscendC::GmAlloc(kCacheOutSize);
-    uint8_t* vCacheOut = (uint8_t*)AscendC::GmAlloc(vCacheOutSize);
-    uint8_t* qOutProtoOut = (uint8_t*)AscendC::GmAlloc(qOutProtoOutSize);
-    uint8_t* kCacheProtoOut = (uint8_t*)AscendC::GmAlloc(kCacheProtoOutSize);
-    uint8_t* vCacheProtoOut = (uint8_t*)AscendC::GmAlloc(vCacheProtoOutSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_data_size);
+    uint8_t *qkv = (uint8_t *)AscendC::GmAlloc(qkvSize);
+    uint8_t *gammaQ = (uint8_t *)AscendC::GmAlloc(gammaQSize);
+    uint8_t *gammaK = (uint8_t *)AscendC::GmAlloc(gammaKSize);
+    uint8_t *cos = (uint8_t *)AscendC::GmAlloc(cosSize);
+    uint8_t *sin = (uint8_t *)AscendC::GmAlloc(sinSize);
+    uint8_t *index = (uint8_t *)AscendC::GmAlloc(indexSize);
+    uint8_t *qOut = (uint8_t *)AscendC::GmAlloc(qOutSize);
+    uint8_t *kCache = (uint8_t *)AscendC::GmAlloc(kCacheSize);
+    uint8_t *vCache = (uint8_t *)AscendC::GmAlloc(vCacheSize);
+    uint8_t *kScale = (uint8_t *)AscendC::GmAlloc(kScaleSize);
+    uint8_t *vScale = (uint8_t *)AscendC::GmAlloc(vScaleSize);
+    uint8_t *qOutOut = (uint8_t *)AscendC::GmAlloc(qOutOutSize);
+    uint8_t *kCacheOut = (uint8_t *)AscendC::GmAlloc(kCacheOutSize);
+    uint8_t *vCacheOut = (uint8_t *)AscendC::GmAlloc(vCacheOutSize);
+    uint8_t *qOutProtoOut = (uint8_t *)AscendC::GmAlloc(qOutProtoOutSize);
+    uint8_t *kCacheProtoOut = (uint8_t *)AscendC::GmAlloc(kCacheProtoOutSize);
+    uint8_t *vCacheProtoOut = (uint8_t *)AscendC::GmAlloc(vCacheProtoOutSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_data_size);
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    QkvRmsNormRopeCacheTilingData* tilingDatafromBin = reinterpret_cast<QkvRmsNormRopeCacheTilingData*>(tiling);
+    QkvRmsNormRopeCacheTilingData *tilingDatafromBin = reinterpret_cast<QkvRmsNormRopeCacheTilingData *>(tiling);
 
     tilingDatafromBin->batchSize = 4;
     tilingDatafromBin->seqLength = 2;
@@ -500,11 +501,11 @@ TEST_F(qkv_rms_norm_rope_cache_test, test_QkvRmsNormRopeCache_fp16_pa_nz_no_quan
     tilingDatafromBin->isOutputQkv = false;
     tilingDatafromBin->isKQuant = 0;
     tilingDatafromBin->isVQuant = 0;
-    
+
     ICPU_SET_TILING_KEY(3);
-    ICPU_RUN_KF(
-        qkv_rms_norm_rope_cache, blockDim, qkv, gammaQ, gammaK, cos, sin, index, qOut, kCache, vCache, nullptr, nullptr,
-        nullptr, nullptr, qOutOut, kCacheOut, vCacheOut, qOutProtoOut, kCacheProtoOut, vCacheProtoOut, workspace, (uint8_t*)(tilingDatafromBin));
+    ICPU_RUN_KF(qkv_rms_norm_rope_cache, blockDim, qkv, gammaQ, gammaK, cos, sin, index, qOut, kCache, vCache, nullptr,
+                nullptr, nullptr, nullptr, qOutOut, kCacheOut, vCacheOut, qOutProtoOut, kCacheProtoOut, vCacheProtoOut,
+                workspace, (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(qkv);
     AscendC::GmFree(gammaQ);

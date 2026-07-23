@@ -25,7 +25,7 @@
 
 namespace optiling {
 
-static ge::graphStatus Tiling4MhcPreSinkhornBackward(gert::TilingContext* context)
+static ge::graphStatus Tiling4MhcPreSinkhornBackward(gert::TilingContext *context)
 {
     OP_LOGD(context->GetNodeName(), "MhcPreSinkhornBackward is running.");
 
@@ -42,7 +42,7 @@ static ge::graphStatus Tiling4MhcPreSinkhornBackward(gert::TilingContext* contex
     return TilingMhcPreSinkhornBackwardArch22(context);
 }
 
-static ge::graphStatus TilingPrepare4MhcPreSinkhornBackward(gert::TilingParseContext* context)
+static ge::graphStatus TilingPrepare4MhcPreSinkhornBackward(gert::TilingParseContext *context)
 {
     return ge::GRAPH_SUCCESS;
 }

@@ -20,8 +20,7 @@
 
 using namespace std;
 
-class l2_moe_init_routing_v2_grad_test : public testing::Test
-{
+class l2_moe_init_routing_v2_grad_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -41,14 +40,14 @@ TEST_F(l2_moe_init_routing_v2_grad_test, Ascend910B2_moe_init_routing_v2_grad_fp
     auto expandedRowIdxDesc = TensorDesc({1}, ACL_INT32, ACL_FORMAT_ND).ValueRange(0, 0);
     auto outDesc = TensorDesc({1, 64}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    aclTensor* gradExpandedX = DescToAclContainer(gradExpandedXDesc);
-    aclTensor* expandedRowIdx = DescToAclContainer(expandedRowIdxDesc);
-    aclTensor* out = DescToAclContainer(outDesc);
+    aclTensor *gradExpandedX = DescToAclContainer(gradExpandedXDesc);
+    aclTensor *expandedRowIdx = DescToAclContainer(expandedRowIdxDesc);
+    aclTensor *out = DescToAclContainer(outDesc);
 
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
-    aclnnStatus getWorkspaceResult = aclnnMoeInitRoutingV2GradGetWorkspaceSize(
-        gradExpandedX, expandedRowIdx, 1, 0, 0, out, &workspaceSize, &executor);
+    aclOpExecutor *executor = nullptr;
+    aclnnStatus getWorkspaceResult = aclnnMoeInitRoutingV2GradGetWorkspaceSize(gradExpandedX, expandedRowIdx, 1, 0, 0,
+                                                                               out, &workspaceSize, &executor);
     EXPECT_EQ(getWorkspaceResult, ACLNN_SUCCESS);
     ASSERT_NE(executor, nullptr);
 

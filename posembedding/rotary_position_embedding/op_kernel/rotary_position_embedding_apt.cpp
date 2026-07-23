@@ -21,7 +21,7 @@
 #define TILING_KEY_ABA 20010
 #define TILING_KEY_BA 20011
 #define TILING_KEY_BAB 20020
-#define TILING_KEY_AB  20030
+#define TILING_KEY_AB 20030
 #define TILING_KEY_A 20040
 #define TILING_KEY_B 20041
 
@@ -29,7 +29,7 @@ using namespace AscendC;
 using namespace RotaryPositionEmbedding;
 
 extern "C" __global__ __aicore__ void rotary_position_embedding(GM_ADDR x, GM_ADDR cos, GM_ADDR sin, GM_ADDR rotate,
-                                                                 GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
+                                                                GM_ADDR y, GM_ADDR workspace, GM_ADDR tiling)
 {
     if (g_coreType == AIC) {
         return;

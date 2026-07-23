@@ -179,8 +179,7 @@ TEST_P(TestQuantGroupedMatmulInplaceAddInfershape, csvDrivenCase)
     GetParam().Run();
 }
 
-INSTANTIATE_TEST_SUITE_P(QUANT_GROUPED_MATMUL_INPLACE_ADD_INFERSHAPE_CSV,
-                         TestQuantGroupedMatmulInplaceAddInfershape,
+INSTANTIATE_TEST_SUITE_P(QUANT_GROUPED_MATMUL_INPLACE_ADD_INFERSHAPE_CSV, TestQuantGroupedMatmulInplaceAddInfershape,
                          testing::ValuesIn(GetAscend950Params()), MakeParamName);
 
 } // namespace QuantGroupedMatmulInplaceAddInfershapeUT

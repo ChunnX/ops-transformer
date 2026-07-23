@@ -22,7 +22,8 @@ namespace optiling {
 class MoeReRoutingTiling : public Ops::Transformer::OpTiling::TilingBaseClass {
 public:
     explicit MoeReRoutingTiling(gert::TilingContext *contextReRouting) : TilingBaseClass(contextReRouting)
-    {}
+    {
+    }
     ~MoeReRoutingTiling() override = default;
 
     int64_t coreNum_ = 0;
@@ -45,6 +46,6 @@ private:
     ParamsMoeReRouting commonParams_;
 };
 
-}  // namespace optiling
+} // namespace optiling
 
-#endif  // OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_RE_ROUTING_MEMBASE_H_
+#endif // OPS_BUILT_IN_OP_TILING_RUNTIME_MOE_RE_ROUTING_MEMBASE_H_

@@ -290,20 +290,17 @@ int main()
     ret = CreateInputTensors(x_shape, phi_shape, alpha_shape, bias_shape, tensors);
     CHECK_RET(ret == 0, return -1);
 
-    ret = CreateOutputTensors(hin_shape, h_post_shape, h_res_shape, h_pre_shape, hc_before_norm_shape,
-                              inv_rms_shape, sum_out_shape, norm_out_shape, tensors);
+    ret = CreateOutputTensors(hin_shape, h_post_shape, h_res_shape, h_pre_shape, hc_before_norm_shape, inv_rms_shape,
+                              sum_out_shape, norm_out_shape, tensors);
     CHECK_RET(ret == 0, return -1);
 
     uint64_t workspace_size = 0;
     aclOpExecutor *executor = nullptr;
 
     aclnnStatus aclnn_ret = aclnnMhcPreSinkhornGetWorkspaceSize(
-        tensors.x, tensors.phi, tensors.alpha, tensors.bias,
-        hc_mult, num_iters, hc_eps, norm_eps, need_backward,
-        tensors.hin, tensors.h_post, tensors.h_res,
-        tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,
-        tensors.sum_out, tensors.norm_out,
-        &workspace_size, &executor);
+        tensors.x, tensors.phi, tensors.alpha, tensors.bias, hc_mult, num_iters, hc_eps, norm_eps, need_backward,
+        tensors.hin, tensors.h_post, tensors.h_res, tensors.h_pre, tensors.hc_before_norm, tensors.inv_rms,
+        tensors.sum_out, tensors.norm_out, &workspace_size, &executor);
     CHECK_RET(aclnn_ret == ACL_SUCCESS, LOG_PRINT("aclnnMhcPreSinkhornGetWorkspaceSize failed, error: %d\n", aclnn_ret);
               return -1);
 

@@ -151,8 +151,8 @@ __aicore__ inline void GMMA8W4PostProcess::MergeAuxiliaryMatrix(uint32_t loopIdx
     // perChanelScale * perTokenScale
     mmLocal_fp32 = mmOutQueue.DeQue<float>();
     LocalTensor<float> weightAuxiliaryMatrixLocal = weightAuxiliaryMatrixInQueue.DeQue<float>();
-    Add(mmLocal_fp32[loopIdx * gmmSwiglu->tokenLen], mmLocal_fp32[loopIdx * gmmSwiglu->tokenLen], weightAuxiliaryMatrixLocal,
-        gmmSwiglu->tokenLen);
+    Add(mmLocal_fp32[loopIdx * gmmSwiglu->tokenLen], mmLocal_fp32[loopIdx * gmmSwiglu->tokenLen],
+        weightAuxiliaryMatrixLocal, gmmSwiglu->tokenLen);
     vecConfig.nextUpadteInterVal--;
     PipeBarrier<PIPE_V>();
     weightAuxiliaryMatrixInQueue.EnQue(weightAuxiliaryMatrixLocal);
@@ -165,7 +165,8 @@ __aicore__ inline void GMMA8W4PostProcess::MulPertokenScale(uint32_t loopIdx, Ve
     int32_t eventIdSToV = static_cast<int32_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
     SetFlag<HardEvent::S_V>(eventIdSToV);
     WaitFlag<HardEvent::S_V>(eventIdSToV);
-    Muls(mmLocal_fp32[loopIdx * gmmSwiglu->tokenLen], mmLocal_fp32[loopIdx * gmmSwiglu->tokenLen], scale, gmmSwiglu->tokenLen);
+    Muls(mmLocal_fp32[loopIdx * gmmSwiglu->tokenLen], mmLocal_fp32[loopIdx * gmmSwiglu->tokenLen], scale,
+         gmmSwiglu->tokenLen);
     PipeBarrier<PIPE_V>();
 }
 

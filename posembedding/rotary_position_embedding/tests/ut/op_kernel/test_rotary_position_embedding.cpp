@@ -75,7 +75,8 @@ TEST_F(rotary_position_embedding_test, test_case_mode_1_pad_fp16_001)
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(2001);
-    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace,
+                (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(cos);
@@ -124,7 +125,8 @@ TEST_F(rotary_position_embedding_test, test_case_mode_0_rotate_half_fp16_001)
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(1032);
-    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace,
+                (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(cos);
@@ -173,7 +175,8 @@ TEST_F(rotary_position_embedding_test, test_case_mode_0_rotate_half_bf16_001)
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(1033);
-    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace,
+                (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(cos);
@@ -221,12 +224,14 @@ TEST_F(rotary_position_embedding_test, test_case_mode_1_rotate_bf16_001)
     ReadFile(path + "/rotary_position_embedding_data/x.pt", inputXByteSize, x, inputXByteSize);
     ReadFile(path + "/rotary_position_embedding_data/cos.pt", inputCosByteSize, cos, inputCosByteSize);
     ReadFile(path + "/rotary_position_embedding_data/sin.pt", inputCosByteSize, sin, inputCosByteSize);
-    ReadFile(path + "/rotary_position_embedding_data/rotate_inter.pt", inputRotateByteSize, rotate_inter, inputRotateByteSize);
+    ReadFile(path + "/rotary_position_embedding_data/rotate_inter.pt", inputRotateByteSize, rotate_inter,
+             inputRotateByteSize);
     ReadFile(path + "/rotary_position_embedding_data/tiling.bin", tilingDataSize, tilingDatafromBin, tilingDataSize);
 
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     ICPU_SET_TILING_KEY(3013);
-    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, rotate_inter, y, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, rotate_inter, y, workspace,
+                (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(cos);
@@ -275,12 +280,14 @@ TEST_F(rotary_position_embedding_test, test_case_mode_1_rotate_fp32_001)
     ReadFile(path + "/rotary_position_embedding_data/x.pt", inputXByteSize, x, inputXByteSize);
     ReadFile(path + "/rotary_position_embedding_data/cos.pt", inputCosByteSize, cos, inputCosByteSize);
     ReadFile(path + "/rotary_position_embedding_data/sin.pt", inputCosByteSize, sin, inputCosByteSize);
-    ReadFile(path + "/rotary_position_embedding_data/rotate_inter.pt", inputRotateByteSize, rotate_inter, inputRotateByteSize);
+    ReadFile(path + "/rotary_position_embedding_data/rotate_inter.pt", inputRotateByteSize, rotate_inter,
+             inputRotateByteSize);
     ReadFile(path + "/rotary_position_embedding_data/tiling.bin", tilingDataSize, tilingDatafromBin, tilingDataSize);
 
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     ICPU_SET_TILING_KEY(3011);
-    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, rotate_inter, y, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, rotate_inter, y, workspace,
+                (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(cos);
@@ -330,7 +337,8 @@ TEST_F(rotary_position_embedding_test, test_case_fullloadxd_fp16_001)
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(1132);
-    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace,
+                (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(cos);
@@ -379,7 +387,8 @@ TEST_F(rotary_position_embedding_test, test_case_fullloadxd_fp32_001)
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(1131);
-    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace,
+                (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(cos);
@@ -428,7 +437,8 @@ TEST_F(rotary_position_embedding_test, test_case_fullloadxd_bf16_001)
 
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
     ICPU_SET_TILING_KEY(1133);
-    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, nullptr, y, workspace,
+                (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(cos);
@@ -476,12 +486,14 @@ TEST_F(rotary_position_embedding_test, test_case_mode_1_rotate_fp16_001)
     ReadFile(path + "/rotary_position_embedding_data/x.pt", inputXByteSize, x, inputXByteSize);
     ReadFile(path + "/rotary_position_embedding_data/cos.pt", inputCosByteSize, cos, inputCosByteSize);
     ReadFile(path + "/rotary_position_embedding_data/sin.pt", inputCosByteSize, sin, inputCosByteSize);
-    ReadFile(path + "/rotary_position_embedding_data/rotate_inter.pt", inputRotateByteSize, rotate_inter, inputRotateByteSize);
+    ReadFile(path + "/rotary_position_embedding_data/rotate_inter.pt", inputRotateByteSize, rotate_inter,
+             inputRotateByteSize);
     ReadFile(path + "/rotary_position_embedding_data/tiling.bin", tilingDataSize, tilingDatafromBin, tilingDataSize);
 
     AscendC::SetKernelMode(KernelMode::MIX_MODE);
     ICPU_SET_TILING_KEY(3012);
-    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, rotate_inter, y, workspace, (uint8_t *)(tilingDatafromBin));
+    ICPU_RUN_KF(rotary_position_embedding, blockDim, x, cos, sin, rotate_inter, y, workspace,
+                (uint8_t *)(tilingDatafromBin));
 
     AscendC::GmFree(x);
     AscendC::GmFree(cos);

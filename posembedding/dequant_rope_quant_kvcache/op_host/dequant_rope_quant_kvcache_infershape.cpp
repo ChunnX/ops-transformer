@@ -51,7 +51,7 @@ static constexpr size_t BASE_3 = 3;
 static constexpr int64_t UNKNOWN_RANK_DIM_VALUE_ = -2LL;
 
 template <typename T>
-static auto GetDiv(const T& value1, const T& value2) -> T
+static auto GetDiv(const T &value1, const T &value2) -> T
 {
     if (value2 == 0) {
         return value2;
@@ -59,12 +59,12 @@ static auto GetDiv(const T& value1, const T& value2) -> T
     return (value1) / value2;
 }
 
-static inline bool IsUnknownRank(const gert::Shape* check_shape)
+static inline bool IsUnknownRank(const gert::Shape *check_shape)
 {
     return check_shape->GetDimNum() == 1 && check_shape->GetDim(0) == UNKNOWN_RANK_DIM_VALUE_;
 }
 
-static inline ge::graphStatus SetUnknownRank(gert::Shape* outShape)
+static inline ge::graphStatus SetUnknownRank(gert::Shape *outShape)
 {
     outShape->SetDimNum(0);
     outShape->AppendDim(UNKNOWN_RANK_DIM_VALUE_);
@@ -74,32 +74,32 @@ static inline ge::graphStatus SetUnknownRank(gert::Shape* outShape)
 } // namespace
 
 namespace ops {
-ge::graphStatus InferShapeForDequantRopeQuantKvcache(gert::InferShapeContext* context)
+ge::graphStatus InferShapeForDequantRopeQuantKvcache(gert::InferShapeContext *context)
 {
     // input shape
     OP_LOGD(context->GetNodeName(), "Begin to do InferShapeForDequantRopeQuantKvcache.");
-    const gert::Shape* qkvShape = context->GetInputShape(INPUT_X_INDEX);
+    const gert::Shape *qkvShape = context->GetInputShape(INPUT_X_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qkvShape);
 
-    const gert::Shape* cacheKShape = context->GetInputShape(INPUT_K_CACHE_INDEX);
+    const gert::Shape *cacheKShape = context->GetInputShape(INPUT_K_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, cacheKShape);
 
-    const gert::Shape* cacheVShape = context->GetInputShape(INPUT_V_CACHE_INDEX);
+    const gert::Shape *cacheVShape = context->GetInputShape(INPUT_V_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, cacheVShape);
 
-    gert::Shape* qOutShape = context->GetOutputShape(OUTPUT_Q_INDEX);
+    gert::Shape *qOutShape = context->GetOutputShape(OUTPUT_Q_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, qOutShape);
 
-    gert::Shape* kOutShape = context->GetOutputShape(OUTPUT_K_INDEX);
+    gert::Shape *kOutShape = context->GetOutputShape(OUTPUT_K_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kOutShape);
 
-    gert::Shape* vOutShape = context->GetOutputShape(OUTPUT_V_INDEX);
+    gert::Shape *vOutShape = context->GetOutputShape(OUTPUT_V_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, vOutShape);
 
-    gert::Shape* kCacheShape = context->GetOutputShape(OUTPUT_K_CACHE_INDEX);
+    gert::Shape *kCacheShape = context->GetOutputShape(OUTPUT_K_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, kCacheShape);
 
-    gert::Shape* vCacheShape = context->GetOutputShape(OUTPUT_V_CACHE_INDEX);
+    gert::Shape *vCacheShape = context->GetOutputShape(OUTPUT_V_CACHE_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, vCacheShape);
 
     *kCacheShape = *cacheKShape;
@@ -108,8 +108,8 @@ ge::graphStatus InferShapeForDequantRopeQuantKvcache(gert::InferShapeContext* co
     auto attrs = context->GetAttrs();
     OP_CHECK_NULL_WITH_CONTEXT(context, attrs);
 
-    const gert::ContinuousVector* splitSize = attrs->GetAttrPointer<gert::ContinuousVector>(0);
-    const int64_t* splitSizeArray = reinterpret_cast<const int64_t*>(splitSize->GetData());
+    const gert::ContinuousVector *splitSize = attrs->GetAttrPointer<gert::ContinuousVector>(0);
+    const int64_t *splitSizeArray = reinterpret_cast<const int64_t *>(splitSize->GetData());
     int64_t ifKVout = *attrs->GetAttrPointer<bool>(ATTR_IFKVOUT_INDEX) == true ? 1 : 0;
     int64_t batch = -1;
     int64_t qkvSeqlen = -1;
@@ -117,10 +117,8 @@ ge::graphStatus InferShapeForDequantRopeQuantKvcache(gert::InferShapeContext* co
     int64_t hiddenSize = -1;
 
     if (!IsUnknownRank(qkvShape)) {
-        OP_CHECK_IF(
-            (qkvShape->GetDimNum() != X_DIM && qkvShape->GetDimNum() != BASE_2),
-            OP_LOGE(context->GetNodeName(), "input_x's dimnum should be 3 or 2."),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF((qkvShape->GetDimNum() != X_DIM && qkvShape->GetDimNum() != BASE_2),
+                    OP_LOGE(context->GetNodeName(), "input_x's dimnum should be 3 or 2."), return ge::GRAPH_FAILED);
         batch = qkvShape->GetDim(0);
         if (qkvShape->GetDimNum() == BASE_2) {
             qkvSeqlen = 1;
@@ -129,17 +127,13 @@ ge::graphStatus InferShapeForDequantRopeQuantKvcache(gert::InferShapeContext* co
         }
     }
     if (!IsUnknownRank(kCacheShape)) {
-        OP_CHECK_IF(
-            kCacheShape->GetDimNum() != TOTAL_DIM,
-            OP_LOGE(context->GetNodeName(), "kCache's dimnum should be 4."),
-            return ge::GRAPH_FAILED);
+        OP_CHECK_IF(kCacheShape->GetDimNum() != TOTAL_DIM,
+                    OP_LOGE(context->GetNodeName(), "kCache's dimnum should be 4."), return ge::GRAPH_FAILED);
         kvHead = cacheKShape->GetDim(THIRD_DIM);
         hiddenSize = cacheKShape->GetDim(FORTH_DIM);
     }
-    OP_CHECK_IF(
-        splitSizeArray[0] < 0,
-        OP_LOGE(context->GetNodeName(), "size_splits[0] should not less than 0."),
-        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(splitSizeArray[0] < 0, OP_LOGE(context->GetNodeName(), "size_splits[0] should not less than 0."),
+                return ge::GRAPH_FAILED);
     int64_t qHead = hiddenSize < 0 ? -1 : GetDiv(splitSizeArray[0], hiddenSize);
 
     if (IsUnknownRank(qkvShape)) {
@@ -201,7 +195,7 @@ ge::graphStatus InferShapeForDequantRopeQuantKvcache(gert::InferShapeContext* co
     return ge::GRAPH_SUCCESS;
 }
 
-static graphStatus InferDataTypeForDequantRopeQuantKvcache(gert::InferDataTypeContext* context)
+static graphStatus InferDataTypeForDequantRopeQuantKvcache(gert::InferDataTypeContext *context)
 {
     context->SetOutputDataType(OUTPUT_Q_INDEX, context->GetInputDataType(INPUT_COS_INDEX));
     context->SetOutputDataType(OUTPUT_K_INDEX, context->GetInputDataType(INPUT_COS_INDEX));

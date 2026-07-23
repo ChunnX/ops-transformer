@@ -106,9 +106,10 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_BASIC_BLOCK_CLASS::UpdateGlobalAddr(__gm
 }
 
 GMM_WQ_A16W4_MSD_BASIC_BLOCK_TEMPLATE_PARAM
-__aicore__ inline void GMM_WQ_A16W4_MSD_BASIC_BLOCK_CLASS::ComputeBasicBlock(
-    const A16W4MsdConstParam &constParams, const A16W4MsdBasicBlockOffsetParam &curOffsetParam,
-    const A16W4MsdBasicBlockOffsetParam &lastOffsetParam)
+__aicore__ inline void
+GMM_WQ_A16W4_MSD_BASIC_BLOCK_CLASS::ComputeBasicBlock(const A16W4MsdConstParam &constParams,
+                                                      const A16W4MsdBasicBlockOffsetParam &curOffsetParam,
+                                                      const A16W4MsdBasicBlockOffsetParam &lastOffsetParam)
 {
     if ASCEND_IS_AIV {
         vecCompute_.CastW4ToW8(cvLoopIdx_, constParams, curOffsetParam);
@@ -140,6 +141,6 @@ __aicore__ inline void GMM_WQ_A16W4_MSD_BASIC_BLOCK_CLASS::EndMsd(const A16W4Msd
     }
 }
 
-}  // namespace GROUPED_MATMUL::A16W4Msd
+} // namespace GROUPED_MATMUL::A16W4Msd
 
-#endif  // GROUPED_MATMUL_WEIGHT_QUANT_A16W4_MSD_BASIC_BLOCK_H
+#endif // GROUPED_MATMUL_WEIGHT_QUANT_A16W4_MSD_BASIC_BLOCK_H

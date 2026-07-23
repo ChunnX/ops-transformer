@@ -20,8 +20,7 @@
 #include "infer_datatype_context_faker.h"
 #include "base/registry/op_impl_space_registry_v2.h"
 
-class MoeTokenUnpermuteWithEp : public testing::Test
-{
+class MoeTokenUnpermuteWithEp : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -34,7 +33,8 @@ protected:
     }
 };
 
-static std::vector<int64_t> ToVector(const gert::Shape& shape) {
+static std::vector<int64_t> ToVector(const gert::Shape &shape)
+{
     size_t shapeSize = shape.GetDimNum();
     std::vector<int64_t> shapeVec(shapeSize, 0);
 
@@ -54,22 +54,23 @@ TEST_F(MoeTokenUnpermuteWithEp, test_infershape_bf16)
     // output
     gert::StorageShape unpermuted_tokens_shape = {{6144, 5120}, {6144, 5120}};
 
-    gert::InfershapeContextPara infershapeContextPara("MoeTokenUnpermuteWithEp",
-    { // input info
-        {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
-        {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
-        {probs_shape, ge::DT_BF16, ge::FORMAT_ND}
-    }, 
-    { // output info
-        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-    }, 
-    { // attr
-        {"num_topk",Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-        {"range",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
-        {"padded_mode",Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"restore_shape",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
-    }
-    );
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeTokenUnpermuteWithEp",
+        {// input info
+         {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
+         {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
+         {probs_shape, ge::DT_BF16, ge::FORMAT_ND}},
+        {
+            // output info
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            // attr
+            {"num_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
+            {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"restore_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
+        });
     std::vector<std::vector<int64_t>> expectOutputShape = {{6144, 5120}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -83,22 +84,25 @@ TEST_F(MoeTokenUnpermuteWithEp, test_infershape_prob_none_bf16)
     gert::StorageShape unpermuted_tokens_shape = {{6144, 5120}, {6144, 5120}};
     std::vector<int64_t> restore_shape({});
 
-    gert::InfershapeContextPara infershapeContextPara("MoeTokenUnpermuteWithEp",
-    { // input info
-        {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
-        {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
-        //{probs_shape, ge::DT_BF16, ge::FORMAT_ND}
-    }, 
-    { // output info
-        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-    }, 
-    { // attr
-        {"num_topk",Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-        {"range",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
-        {"padded_mode",Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"restore_shape",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
-    }
-    );
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeTokenUnpermuteWithEp",
+        {
+            // input info
+            {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
+            {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
+            //{probs_shape, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {
+            // output info
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            // attr
+            {"num_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
+            {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"restore_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
+        });
     std::vector<std::vector<int64_t>> expectOutputShape = {{6144, 5120}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -113,22 +117,23 @@ TEST_F(MoeTokenUnpermuteWithEp, test_infershape_fp16)
     // output
     gert::StorageShape unpermuted_tokens_shape = {{6144, 5120}, {6144, 5120}};
 
-    gert::InfershapeContextPara infershapeContextPara("MoeTokenUnpermuteWithEp",
-    { // input info
-        {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
-        {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
-        {probs_shape, ge::DT_BF16, ge::FORMAT_ND}
-    }, 
-    { // output info
-        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-    }, 
-    { // attr
-        {"num_topk",Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-        {"range",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
-        {"padded_mode",Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"restore_shape",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
-    }
-    );
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeTokenUnpermuteWithEp",
+        {// input info
+         {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
+         {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
+         {probs_shape, ge::DT_BF16, ge::FORMAT_ND}},
+        {
+            // output info
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            // attr
+            {"num_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
+            {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"restore_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
+        });
     std::vector<std::vector<int64_t>> expectOutputShape = {{6144, 5120}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -142,22 +147,25 @@ TEST_F(MoeTokenUnpermuteWithEp, test_infershape_prob_none_fp16)
     gert::StorageShape unpermuted_tokens_shape = {{6144, 5120}, {6144, 5120}};
     std::vector<int64_t> restore_shape({});
 
-    gert::InfershapeContextPara infershapeContextPara("MoeTokenUnpermuteWithEp",
-    { // input info
-        {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
-        {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
-        //{probs_shape, ge::DT_BF16, ge::FORMAT_ND}
-    }, 
-    { // output info
-        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-    }, 
-    { // attr
-        {"num_topk",Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-        {"range",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
-        {"padded_mode",Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"restore_shape",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
-    }
-    );
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeTokenUnpermuteWithEp",
+        {
+            // input info
+            {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
+            {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
+            //{probs_shape, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {
+            // output info
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            // attr
+            {"num_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
+            {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"restore_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
+        });
     std::vector<std::vector<int64_t>> expectOutputShape = {{6144, 5120}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -172,22 +180,23 @@ TEST_F(MoeTokenUnpermuteWithEp, test_infershape_fp32)
     // output
     gert::StorageShape unpermuted_tokens_shape = {{6144, 5120}, {6144, 5120}};
 
-    gert::InfershapeContextPara infershapeContextPara("MoeTokenUnpermuteWithEp",
-    { // input info
-        {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
-        {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
-        {probs_shape, ge::DT_BF16, ge::FORMAT_ND}
-    }, 
-    { // output info
-        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-    }, 
-    { // attr
-        {"num_topk",Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-        {"range",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
-        {"padded_mode",Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"restore_shape",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
-    }
-    );
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeTokenUnpermuteWithEp",
+        {// input info
+         {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
+         {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
+         {probs_shape, ge::DT_BF16, ge::FORMAT_ND}},
+        {
+            // output info
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            // attr
+            {"num_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
+            {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"restore_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
+        });
     std::vector<std::vector<int64_t>> expectOutputShape = {{6144, 5120}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -201,30 +210,38 @@ TEST_F(MoeTokenUnpermuteWithEp, test_infershape_prob_none_fp32)
     gert::StorageShape unpermuted_tokens_shape = {{6144, 5120}, {6144, 5120}};
     std::vector<int64_t> restore_shape({});
 
-    gert::InfershapeContextPara infershapeContextPara("MoeTokenUnpermuteWithEp",
-    { // input info
-        {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
-        {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
-        //{probs_shape, ge::DT_BF16, ge::FORMAT_ND}
-    }, 
-    { // output info
-        {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
-    }, 
-    { // attr
-        {"num_topk",Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-        {"range",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
-        {"padded_mode",Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-        {"restore_shape",Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
-    }
-    );
+    gert::InfershapeContextPara infershapeContextPara(
+        "MoeTokenUnpermuteWithEp",
+        {
+            // input info
+            {permuted_tokens_shape, ge::DT_BF16, ge::FORMAT_ND},
+            {sorted_indices_shape, ge::DT_INT32, ge::FORMAT_ND},
+            //{probs_shape, ge::DT_BF16, ge::FORMAT_ND}
+        },
+        {
+            // output info
+            {{{}, {}}, ge::DT_BF16, ge::FORMAT_ND},
+        },
+        {
+            // attr
+            {"num_topk", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
+            {"range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>({0, 49152})},
+            {"padded_mode", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
+            {"restore_shape", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(restore_shape)},
+        });
     std::vector<std::vector<int64_t>> expectOutputShape = {{6144, 5120}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
 TEST_F(MoeTokenUnpermuteWithEp, test_infertype_bf16)
 {
-    ASSERT_NE(gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("MoeTokenUnpermuteWithEp"), nullptr);
-    auto data_type_func = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("MoeTokenUnpermuteWithEp")->infer_datatype;
+    ASSERT_NE(
+        gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("MoeTokenUnpermuteWithEp"),
+        nullptr);
+    auto data_type_func = gert::DefaultOpImplSpaceRegistryV2::GetInstance()
+                              .GetSpaceRegistry()
+                              ->GetOpImpl("MoeTokenUnpermuteWithEp")
+                              ->infer_datatype;
 
     if (data_type_func != nullptr) {
         ge::DataType input_ref = ge::DT_BF16;
@@ -253,8 +270,13 @@ TEST_F(MoeTokenUnpermuteWithEp, test_infertype_bf16)
 
 TEST_F(MoeTokenUnpermuteWithEp, test_infertype_fp16)
 {
-    ASSERT_NE(gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("MoeTokenUnpermuteWithEp"), nullptr);
-    auto data_type_func = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("MoeTokenUnpermuteWithEp")->infer_datatype;
+    ASSERT_NE(
+        gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("MoeTokenUnpermuteWithEp"),
+        nullptr);
+    auto data_type_func = gert::DefaultOpImplSpaceRegistryV2::GetInstance()
+                              .GetSpaceRegistry()
+                              ->GetOpImpl("MoeTokenUnpermuteWithEp")
+                              ->infer_datatype;
 
     if (data_type_func != nullptr) {
         ge::DataType input_ref = ge::DT_FLOAT16;
@@ -283,8 +305,13 @@ TEST_F(MoeTokenUnpermuteWithEp, test_infertype_fp16)
 
 TEST_F(MoeTokenUnpermuteWithEp, test_infertype_fp32)
 {
-    ASSERT_NE(gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("MoeTokenUnpermuteWithEp"), nullptr);
-    auto data_type_func = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("MoeTokenUnpermuteWithEp")->infer_datatype;
+    ASSERT_NE(
+        gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry()->GetOpImpl("MoeTokenUnpermuteWithEp"),
+        nullptr);
+    auto data_type_func = gert::DefaultOpImplSpaceRegistryV2::GetInstance()
+                              .GetSpaceRegistry()
+                              ->GetOpImpl("MoeTokenUnpermuteWithEp")
+                              ->infer_datatype;
 
     if (data_type_func != nullptr) {
         ge::DataType input_ref = ge::DT_FLOAT;

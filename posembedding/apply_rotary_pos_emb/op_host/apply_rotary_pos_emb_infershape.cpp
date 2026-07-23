@@ -73,7 +73,7 @@ static bool BroadcastShapeToOutShape(const gert::Shape *shape, gert::Shape *shap
 {
     OP_LOGD("BroadcastShapeToOutShape", "start broadcast %s to %s!", Ops::Base::ToString(*shape).c_str(),
             Ops::Base::ToString(*shape_output).c_str());
-    
+
     if (Ops::Base::IsUnknownRank(*shape) || Ops::Base::IsUnknownRank(*shape_output)) {
         OP_LOGD("BroadcastShapeToOutShape", "the input shape is [-2], set output shape is [-2]!");
         shape_output->SetDimNum(1);

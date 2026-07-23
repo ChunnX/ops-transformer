@@ -357,9 +357,9 @@ __aicore__ inline void MoeSortMultiCore::Init(GM_ADDR expertIdx, GM_ADDR expende
 
     if (this->expertTokensNumFlag) {
         expertCountTempGm.SetGlobalBuffer((__gm__ int32_t *)workspace +
-                                            Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
-                                            this->blockIdx * this->perCoreExpert,
-                                            this->currentCoreExpert);
+                                              Align(tilingData->n * tilingData->k, sizeof(int32_t)) * 2 +
+                                              this->blockIdx * this->perCoreExpert,
+                                          this->currentCoreExpert);
     }
 
     // key and value

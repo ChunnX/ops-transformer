@@ -16,7 +16,7 @@ from atk.configs.results_config import TaskResult
 from atk.tasks.api_execute import register
 from atk.tasks.api_execute.base_api import BaseApi
 from atk.tasks.api_execute.aclnn_base_api import AclnnBaseApi
-from atk.tasks.dataset.base_dataset import OpsDataset
+
 
 @register("ascend_function_grouped_matmul_add_v2")
 class MethodTorchGroupedMatmulAddApi(BaseApi):

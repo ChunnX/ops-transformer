@@ -26,12 +26,11 @@
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void moe_gating_top_k(
-    uint8_t* x, uint8_t* bias, uint8_t* inputIds, uint8_t* tid2eid, uint8_t* y, uint8_t* expertIdx, uint8_t* out,
-    uint8_t* workspace, uint8_t* tiling);
+extern "C" __global__ __aicore__ void moe_gating_top_k(uint8_t *x, uint8_t *bias, uint8_t *inputIds, uint8_t *tid2eid,
+                                                       uint8_t *y, uint8_t *expertIdx, uint8_t *out, uint8_t *workspace,
+                                                       uint8_t *tiling);
 
-class moe_gating_top_k_test : public testing::Test
-{
+class moe_gating_top_k_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -59,14 +58,14 @@ TEST_F(moe_gating_top_k_test, test_case_0)
     size_t workspace_FileSize = 16781184;
     size_t tiling_FileSize = sizeof(MoeGatingTopKTilingData);
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(x_FileSize);
-    uint8_t* bias = (uint8_t*)AscendC::GmAlloc(bias_FileSize);
-    uint8_t* y = (uint8_t*)AscendC::GmAlloc(y_FileSize);
-    uint8_t* expertIdx = (uint8_t*)AscendC::GmAlloc(expertIdx_FileSize);
-    uint8_t* out = (uint8_t*)AscendC::GmAlloc(out_FileSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(workspace_FileSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_FileSize);
-    MoeGatingTopKTilingData* tiling_data = reinterpret_cast<MoeGatingTopKTilingData*>(tiling);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
+    uint8_t *bias = (uint8_t *)AscendC::GmAlloc(bias_FileSize);
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(y_FileSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdx_FileSize);
+    uint8_t *out = (uint8_t *)AscendC::GmAlloc(out_FileSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
+    MoeGatingTopKTilingData *tiling_data = reinterpret_cast<MoeGatingTopKTilingData *>(tiling);
     tiling_data->groupSelectMode = 1;
     tiling_data->renorm = 0;
     tiling_data->normType = 1;
@@ -75,13 +74,13 @@ TEST_F(moe_gating_top_k_test, test_case_0)
     ICPU_SET_TILING_KEY(tilingKey);
     // ICPU_RUN_KF(moe_gating_top_k, blockDim, x, bias, y, expertIdx, out, workspace, (uint8_t*)tiling_data);
 
-    AscendC::GmFree((void*)x);
-    AscendC::GmFree((void*)bias);
-    AscendC::GmFree((void*)y);
-    AscendC::GmFree((void*)expertIdx);
-    AscendC::GmFree((void*)out);
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
+    AscendC::GmFree((void *)x);
+    AscendC::GmFree((void *)bias);
+    AscendC::GmFree((void *)y);
+    AscendC::GmFree((void *)expertIdx);
+    AscendC::GmFree((void *)out);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
 }
 
 TEST_F(moe_gating_top_k_test, test_case_1)
@@ -100,14 +99,14 @@ TEST_F(moe_gating_top_k_test, test_case_1)
     size_t workspace_FileSize = 16781184;
     size_t tiling_FileSize = sizeof(MoeGatingTopKTilingData);
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(x_FileSize);
-    uint8_t* bias = (uint8_t*)AscendC::GmAlloc(bias_FileSize);
-    uint8_t* y = (uint8_t*)AscendC::GmAlloc(y_FileSize);
-    uint8_t* expertIdx = (uint8_t*)AscendC::GmAlloc(expertIdx_FileSize);
-    uint8_t* out = (uint8_t*)AscendC::GmAlloc(out_FileSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(workspace_FileSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_FileSize);
-    MoeGatingTopKTilingData* tiling_data = reinterpret_cast<MoeGatingTopKTilingData*>(tiling);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
+    uint8_t *bias = (uint8_t *)AscendC::GmAlloc(bias_FileSize);
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(y_FileSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdx_FileSize);
+    uint8_t *out = (uint8_t *)AscendC::GmAlloc(out_FileSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
+    MoeGatingTopKTilingData *tiling_data = reinterpret_cast<MoeGatingTopKTilingData *>(tiling);
     tiling_data->groupSelectMode = 1;
     tiling_data->renorm = 0;
     tiling_data->normType = 1;
@@ -116,13 +115,13 @@ TEST_F(moe_gating_top_k_test, test_case_1)
     ICPU_SET_TILING_KEY(tilingKey);
     // ICPU_RUN_KF(moe_gating_top_k, blockDim, x, bias, y, expertIdx, out, workspace, (uint8_t *)tiling_data);
 
-    AscendC::GmFree((void*)x);
-    AscendC::GmFree((void*)bias);
-    AscendC::GmFree((void*)y);
-    AscendC::GmFree((void*)expertIdx);
-    AscendC::GmFree((void*)out);
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
+    AscendC::GmFree((void *)x);
+    AscendC::GmFree((void *)bias);
+    AscendC::GmFree((void *)y);
+    AscendC::GmFree((void *)expertIdx);
+    AscendC::GmFree((void *)out);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
 }
 
 TEST_F(moe_gating_top_k_test, test_case_2)
@@ -141,14 +140,14 @@ TEST_F(moe_gating_top_k_test, test_case_2)
     size_t workspace_FileSize = 16781184;
     size_t tiling_FileSize = sizeof(MoeGatingTopKTilingData);
 
-    uint8_t* x = (uint8_t*)AscendC::GmAlloc(x_FileSize);
-    uint8_t* bias = (uint8_t*)AscendC::GmAlloc(bias_FileSize);
-    uint8_t* y = (uint8_t*)AscendC::GmAlloc(y_FileSize);
-    uint8_t* expertIdx = (uint8_t*)AscendC::GmAlloc(expertIdx_FileSize);
-    uint8_t* out = (uint8_t*)AscendC::GmAlloc(out_FileSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(workspace_FileSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tiling_FileSize);
-    MoeGatingTopKTilingData* tiling_data = reinterpret_cast<MoeGatingTopKTilingData*>(tiling);
+    uint8_t *x = (uint8_t *)AscendC::GmAlloc(x_FileSize);
+    uint8_t *bias = (uint8_t *)AscendC::GmAlloc(bias_FileSize);
+    uint8_t *y = (uint8_t *)AscendC::GmAlloc(y_FileSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdx_FileSize);
+    uint8_t *out = (uint8_t *)AscendC::GmAlloc(out_FileSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(workspace_FileSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tiling_FileSize);
+    MoeGatingTopKTilingData *tiling_data = reinterpret_cast<MoeGatingTopKTilingData *>(tiling);
     tiling_data->groupSelectMode = 0;
     tiling_data->renorm = 0;
     tiling_data->normType = 0;
@@ -156,11 +155,11 @@ TEST_F(moe_gating_top_k_test, test_case_2)
 
     ICPU_SET_TILING_KEY(tilingKey);
     // ICPU_RUN_KF(moe_gating_top_k, blockDim, x, bias, y, expertIdx, out, workspace, (uint8_t *)tiling_data);
-    AscendC::GmFree((void*)x);
-    AscendC::GmFree((void*)bias);
-    AscendC::GmFree((void*)y);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)expertIdx);
-    AscendC::GmFree((void*)out);
-    AscendC::GmFree((void*)workspace);
+    AscendC::GmFree((void *)x);
+    AscendC::GmFree((void *)bias);
+    AscendC::GmFree((void *)y);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)expertIdx);
+    AscendC::GmFree((void *)out);
+    AscendC::GmFree((void *)workspace);
 }

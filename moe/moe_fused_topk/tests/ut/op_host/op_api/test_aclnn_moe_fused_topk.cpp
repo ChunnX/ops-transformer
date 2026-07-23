@@ -28,11 +28,14 @@ protected:
         std::cout << "moe_fused_topk_test Setup" << std::endl;
         op::SetPlatformSocVersion(op::SocVersion::ASCEND910B);
     }
-    static void TearDownTestCase() { std::cout << "moe_fused_topk_test TearDown" << std::endl; }
+    static void TearDownTestCase()
+    {
+        std::cout << "moe_fused_topk_test TearDown" << std::endl;
+    }
 };
 
-TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_1) {
-
+TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_1)
+{
     int64_t num_token = 256;
     int64_t expert_num = 256;
     int64_t max_mapping_num = 129;
@@ -62,9 +65,9 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_1) {
     auto y_desc = TensorDesc(y_dims, ACL_INT32, ACL_FORMAT_ND);
     auto indices_desc = TensorDesc(indices_dims, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeFusedTopk,  // host api第二段接口名称
+    auto ut = OP_API_UT(aclnnMoeFusedTopk, // host api第二段接口名称
                         INPUT(x_desc, add_num_desc, mapping_num_desc, mapping_table_desc, group_num, group_topk, topn,
-                        topk, activate_type, is_norm, scale, enable_expert_mapping),  // host api输入
+                              topk, activate_type, is_norm, scale, enable_expert_mapping), // host api输入
                         OUTPUT(y_desc, indices_desc));
     // SAMPLE: only test GetWorkspaceSize
     uint64_t workspace_size = 0;
@@ -72,8 +75,8 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_1) {
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_2) {
-
+TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_2)
+{
     int64_t num_token = 256;
     int64_t expert_num = 256;
     int64_t max_mapping_num = 128;
@@ -103,9 +106,9 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_2) {
     auto y_desc = TensorDesc(y_dims, ACL_FLOAT, ACL_FORMAT_ND);
     auto indices_desc = TensorDesc(indices_dims, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeFusedTopk,  // host api第二段接口名称
+    auto ut = OP_API_UT(aclnnMoeFusedTopk, // host api第二段接口名称
                         INPUT(x_desc, add_num_desc, mapping_num_desc, mapping_table_desc, group_num, group_topk, topn,
-                        topk, activate_type, is_norm, scale, enable_expert_mapping),  // host api输入
+                              topk, activate_type, is_norm, scale, enable_expert_mapping), // host api输入
                         OUTPUT(y_desc, indices_desc));
     // SAMPLE: only test GetWorkspaceSize
     uint64_t workspace_size = 0;
@@ -113,8 +116,8 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_2) {
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_3) {
-
+TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_3)
+{
     int64_t num_token = 256;
     int64_t expert_num = 256;
     int64_t max_mapping_num = 128;
@@ -144,9 +147,9 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_3) {
     auto y_desc = TensorDesc(y_dims, ACL_FLOAT, ACL_FORMAT_ND);
     auto indices_desc = TensorDesc(indices_dims, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeFusedTopk,  // host api第二段接口名称
+    auto ut = OP_API_UT(aclnnMoeFusedTopk, // host api第二段接口名称
                         INPUT(x_desc, add_num_desc, mapping_num_desc, mapping_table_desc, group_num, group_topk, topn,
-                        topk, activate_type, is_norm, scale, enable_expert_mapping),  // host api输入
+                              topk, activate_type, is_norm, scale, enable_expert_mapping), // host api输入
                         OUTPUT(y_desc, indices_desc));
     // SAMPLE: only test GetWorkspaceSize
     uint64_t workspace_size = 0;
@@ -154,8 +157,8 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_3) {
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_4) {
-
+TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_4)
+{
     int64_t num_token = 256;
     int64_t expert_num = 256;
     int64_t max_mapping_num = 128;
@@ -185,9 +188,9 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_4) {
     auto y_desc = TensorDesc(y_dims, ACL_FLOAT, ACL_FORMAT_ND);
     auto indices_desc = TensorDesc(indices_dims, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeFusedTopk,  // host api第二段接口名称
+    auto ut = OP_API_UT(aclnnMoeFusedTopk, // host api第二段接口名称
                         INPUT(x_desc, add_num_desc, mapping_num_desc, mapping_table_desc, group_num, group_topk, topn,
-                        topk, activate_type, is_norm, scale, enable_expert_mapping),  // host api输入
+                              topk, activate_type, is_norm, scale, enable_expert_mapping), // host api输入
                         OUTPUT(y_desc, indices_desc));
     // SAMPLE: only test GetWorkspaceSize
     uint64_t workspace_size = 0;
@@ -195,8 +198,8 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_4) {
     EXPECT_EQ(aclRet, ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_5) {
-
+TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_5)
+{
     int64_t num_token = 256;
     int64_t expert_num = 256;
     int64_t max_mapping_num = 128;
@@ -226,9 +229,9 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_5) {
     auto y_desc = TensorDesc(y_dims, ACL_FLOAT, ACL_FORMAT_ND);
     auto indices_desc = TensorDesc(indices_dims, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeFusedTopk,  // host api第二段接口名称
+    auto ut = OP_API_UT(aclnnMoeFusedTopk, // host api第二段接口名称
                         INPUT(x_desc, add_num_desc, mapping_num_desc, mapping_table_desc, group_num, group_topk, topn,
-                        topk, activate_type, is_norm, scale, enable_expert_mapping),  // host api输入
+                              topk, activate_type, is_norm, scale, enable_expert_mapping), // host api输入
                         OUTPUT(y_desc, indices_desc));
     // SAMPLE: only test GetWorkspaceSize
     uint64_t workspace_size = 0;
@@ -236,8 +239,8 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_5) {
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_6) {
-
+TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_6)
+{
     int64_t num_token = 256;
     int64_t expert_num = 256;
     int64_t max_mapping_num = 128;
@@ -267,9 +270,9 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_6) {
     auto y_desc = TensorDesc(y_dims, ACL_FLOAT, ACL_FORMAT_ND);
     auto indices_desc = TensorDesc(indices_dims, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeFusedTopk,  // host api第二段接口名称
+    auto ut = OP_API_UT(aclnnMoeFusedTopk, // host api第二段接口名称
                         INPUT(x_desc, add_num_desc, mapping_num_desc, mapping_table_desc, group_num, group_topk, topn,
-                        topk, activate_type, is_norm, scale, enable_expert_mapping),  // host api输入
+                              topk, activate_type, is_norm, scale, enable_expert_mapping), // host api输入
                         OUTPUT(y_desc, indices_desc));
     // SAMPLE: only test GetWorkspaceSize
     uint64_t workspace_size = 0;
@@ -277,8 +280,8 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_6) {
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
 }
 
-TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_7) {
-
+TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_7)
+{
     int64_t num_token = 256;
     int64_t expert_num = 256;
     int64_t max_mapping_num = 128;
@@ -305,9 +308,9 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_7) {
     auto y_desc = TensorDesc(y_dims, ACL_FLOAT, ACL_FORMAT_ND);
     auto indices_desc = TensorDesc(indices_dims, ACL_INT32, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(aclnnMoeFusedTopk,  // host api第二段接口名称
-                        INPUT(x_desc, add_num_desc, nullptr, nullptr, group_num, group_topk, topn,
-                        topk, activate_type, is_norm, scale, enable_expert_mapping),  // host api输入
+    auto ut = OP_API_UT(aclnnMoeFusedTopk, // host api第二段接口名称
+                        INPUT(x_desc, add_num_desc, nullptr, nullptr, group_num, group_topk, topn, topk, activate_type,
+                              is_norm, scale, enable_expert_mapping), // host api输入
                         OUTPUT(y_desc, indices_desc));
     // SAMPLE: only test GetWorkspaceSize
     uint64_t workspace_size = 0;
@@ -343,7 +346,7 @@ TEST_F(l2_moe_fused_topk_test, ascend910B2_test_moe_fused_topk_empty_x)
                               is_norm, scale, enable_expert_mapping),
                         OUTPUT(y_desc, indices_desc));
     uint64_t workspace_size = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
     aclnnStatus aclRet = ut.TestGetWorkspaceSizeWithNNopbaseInner(&workspace_size, executor);
     EXPECT_EQ(aclRet, ACLNN_SUCCESS);
     EXPECT_EQ(workspace_size, 0U);

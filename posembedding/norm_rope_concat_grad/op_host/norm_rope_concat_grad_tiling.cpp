@@ -326,18 +326,29 @@ ge::graphStatus NormRopeConcatGradTiling::ComputeUBTilingStrategy()
     uint64_t alignedNormDim_ = CeilAlign(normDim_, alignNum);
     uint64_t alignedRopeDim_ = CeilAlign(ropeDim_, alignNum);
     uint64_t normCoef = *(context_.normType) == static_cast<int64_t>(NormType::NONE) &&
-                                *(context_.normAddedType) == static_cast<int64_t>(NormType::NONE) ? 0 : 1;
+                                *(context_.normAddedType) == static_cast<int64_t>(NormType::NONE) ?
+                            0 :
+                            1;
     uint64_t ropeCoef = *(context_.ropeType) == static_cast<int64_t>(RopeType::NONE) ? 0 : 1;
-    uint64_t ropeUsedUbSize = SINGLE_BUFFER * alignedRopeDim_ * 2 * dataTypeSize + alignedRopeDim_ * sizeof(int32_t) + alignedRopeDim_ * 2 * sizeof(float); // mask, sin, cos
-    uint64_t normUsedUbSize = SINGLE_BUFFER * alignedNormDim_ * dataTypeSize // weight que
-        + NUM_TWO * DOUBLE_BUFFER * alignedNormDim_ * sizeof(float) + NUM_TWO * alignedNormDim_ * sizeof(float) // gradWeight & gradBias que + gradWeight & gradBias buf
-        + SINGLE_BUFFER * alignedNormDim_ * sizeof(float) + alignedNormDim_ * dataTypeSize + alignedNormDim_ * sizeof(float) // workspace get&push que, workspace buf
-        + MIN_SHARE_BUFFER; // extra shareCast buf
-    uint64_t oneHeadUbSize = NUM_THREE * alignedNormDim_ * sizeof(float) + NUM_TWO * DOUBLE_BUFFER * alignedNormDim_ * dataTypeSize + // grad_ouput & tempND & & shareCast buf + grad_ouput & grad_in que
+    uint64_t ropeUsedUbSize = SINGLE_BUFFER * alignedRopeDim_ * 2 * dataTypeSize + alignedRopeDim_ * sizeof(int32_t) +
+                              alignedRopeDim_ * 2 * sizeof(float); // mask, sin, cos
+    uint64_t normUsedUbSize =
+        SINGLE_BUFFER * alignedNormDim_ * dataTypeSize // weight que
+        + NUM_TWO * DOUBLE_BUFFER * alignedNormDim_ * sizeof(float) +
+        NUM_TWO * alignedNormDim_ * sizeof(float) // gradWeight & gradBias que + gradWeight & gradBias buf
+        + SINGLE_BUFFER * alignedNormDim_ * sizeof(float) + alignedNormDim_ * dataTypeSize +
+        alignedNormDim_ * sizeof(float) // workspace get&push que, workspace buf
+        + MIN_SHARE_BUFFER;             // extra shareCast buf
+    uint64_t oneHeadUbSize =
+        NUM_THREE * alignedNormDim_ * sizeof(float) +
+        NUM_TWO * DOUBLE_BUFFER * alignedNormDim_ *
+            dataTypeSize + // grad_ouput & tempND & & shareCast buf + grad_ouput & grad_in que
         normCoef * (NUM_TWO * DOUBLE_BUFFER + NUM_TWO) * sizeof(float) + // mean & rstd buf + mean & rstd que
-        normCoef * (NUM_THREE * alignedNormDim_ * sizeof(float) + DOUBLE_BUFFER * alignedNormDim_ * dataTypeSize); // input & share & weight buf + input que
+        normCoef * (NUM_THREE * alignedNormDim_ * sizeof(float) +
+                    DOUBLE_BUFFER * alignedNormDim_ * dataTypeSize); // input & share & weight buf + input que
 
-    avgHeads_ = (compileInfo_.ubSize - ropeCoef * ropeUsedUbSize - normCoef * normUsedUbSize - RES_UB_BUFFER) / oneHeadUbSize;
+    avgHeads_ =
+        (compileInfo_.ubSize - ropeCoef * ropeUsedUbSize - normCoef * normUsedUbSize - RES_UB_BUFFER) / oneHeadUbSize;
     avgHeads_ = std::min(avgHeads_, static_cast<uint64_t>(AVGHEAD_MAX_NUM));
     OP_CHECK_IF(avgHeads_ < 2, OP_LOGE(context_.opName, "input dim is too large, avgHeads_ should larger than 1"),
                 return ge::GRAPH_FAILED);
@@ -412,7 +423,7 @@ ge::graphStatus NormRopeConcatGradTiling::DoTiling(gert::TilingContext *ctx)
     }
     ctx->SetTilingKey(tilingKey_);
     ctx->SetBlockDim(numBlocks_);
-    if (tilingKey_ >= BATCH_MODE_MIN_KEY){
+    if (tilingKey_ >= BATCH_MODE_MIN_KEY) {
         ctx->SetScheduleMode(1);
     }
 

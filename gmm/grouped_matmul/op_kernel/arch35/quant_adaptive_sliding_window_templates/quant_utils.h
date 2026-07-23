@@ -181,8 +181,7 @@ __aicore__ inline void InitOutputWithZero(AscendC::GlobalTensor<T> yInitGlobal, 
     uint64_t perCoreSize = QuantUtils::CeilDiv(ySize, usedCoreNum);
     perCoreSize = GROUPED_MATMUL::AlignUp<QuantUtils::UB_ALIGN_SIZE>(perCoreSize * sizeof(T)) / sizeof(T);
     initSize = QuantUtils::Min(initSize, perCoreSize);
-    uint64_t realCoreNum =
-        QuantUtils::Min(QuantUtils::CeilDiv(ySize, initSize), static_cast<uint64_t>(usedCoreNum));
+    uint64_t realCoreNum = QuantUtils::Min(QuantUtils::CeilDiv(ySize, initSize), static_cast<uint64_t>(usedCoreNum));
     if (blockIndex >= realCoreNum) { // 多余核数返回，每个核上最少32B
         return;
     }

@@ -56,7 +56,7 @@ enum class NormType : int64_t {
 inline bool IsNormTypeValid(int64_t normType)
 {
     return normType >= static_cast<int64_t>(NormType::NONE) &&
-        normType <= static_cast<int64_t>(NormType::RMS_NORM_AFFINE);
+           normType <= static_cast<int64_t>(NormType::RMS_NORM_AFFINE);
 }
 
 // read_store

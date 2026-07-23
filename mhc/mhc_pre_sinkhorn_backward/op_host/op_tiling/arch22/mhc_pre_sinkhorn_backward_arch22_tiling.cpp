@@ -109,23 +109,22 @@ ge::graphStatus ShapeVerify(gert::TilingContext *context, int64_t batchSize, int
                                             gradHResDimNum),
                 return ge::GRAPH_FAILED);
     if (gradHResDimNum == 3) {
-        OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
-                        gradHResShape.GetDim(2) != n * n,
-                    OPS_REPORT_VECTOR_INNER_ERR(
-                        opName,
-                        "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N*N=%ld), but got (%ld, %ld, %ld)",
-                        batchSize, seqLength, n * n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
-                        gradHResShape.GetDim(2)),
-                    return ge::GRAPH_FAILED);
+        OP_CHECK_IF(
+            gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
+                gradHResShape.GetDim(2) != n * n,
+            OPS_REPORT_VECTOR_INNER_ERR(
+                opName, "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N*N=%ld), but got (%ld, %ld, %ld)",
+                batchSize, seqLength, n * n, gradHResShape.GetDim(0), gradHResShape.GetDim(1), gradHResShape.GetDim(2)),
+            return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(gradHResShape.GetDim(0) != batchSize || gradHResShape.GetDim(1) != seqLength ||
                         gradHResShape.GetDim(2) != n || gradHResShape.GetDim(3) != n,
-                    OPS_REPORT_VECTOR_INNER_ERR(
-                        opName,
-                        "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N=%ld, N=%ld), "
-                        "but got (%ld, %ld, %ld, %ld)",
-                        batchSize, seqLength, n, n, gradHResShape.GetDim(0), gradHResShape.GetDim(1),
-                        gradHResShape.GetDim(2), gradHResShape.GetDim(3)),
+                    OPS_REPORT_VECTOR_INNER_ERR(opName,
+                                                "ShapeVerify gradHRes failed, expected (B=%ld, S=%ld, N=%ld, N=%ld), "
+                                                "but got (%ld, %ld, %ld, %ld)",
+                                                batchSize, seqLength, n, n, gradHResShape.GetDim(0),
+                                                gradHResShape.GetDim(1), gradHResShape.GetDim(2),
+                                                gradHResShape.GetDim(3)),
                     return ge::GRAPH_FAILED);
     }
 
@@ -397,8 +396,8 @@ ge::graphStatus TilingMhcPreSinkhornBackwardArch22(gert::TilingContext *context)
     int64_t mm2M = n * n + 2 * n;
     int64_t mm2N = n * c;
 
-    MhcPreSinkhornBackwardArch22TilingData* tilingData =
-    context->GetTilingData<MhcPreSinkhornBackwardArch22TilingData>();
+    MhcPreSinkhornBackwardArch22TilingData *tilingData =
+        context->GetTilingData<MhcPreSinkhornBackwardArch22TilingData>();
     auto featureDataType = matmul_tiling::DataType::DT_FLOAT;
     matmul_tiling::MatmulApiTiling mm1Tiling(ascendPlatformInfo);
     matmul_tiling::MatmulApiTiling mm2Tiling(ascendPlatformInfo);

@@ -32,15 +32,15 @@ static constexpr size_t TNN_DIMS = 3;
 
 static constexpr int64_t UNKNOWN_RANK_DIM_VALUE = -2LL;
 
-static ge::graphStatus InferShape4MhcSinkhornBackward(gert::InferShapeContext* context)
+static ge::graphStatus InferShape4MhcSinkhornBackward(gert::InferShapeContext *context)
 {
     if (context == nullptr) {
         return GRAPH_FAILED;
     }
     OP_LOGD(context->GetNodeName(), "Begin to do MhcSinkhornBackwardInfershape.");
-    const gert::Shape* gradYShape = context->GetInputShape(GRAD_Y_INPUT_INDEX);
+    const gert::Shape *gradYShape = context->GetInputShape(GRAD_Y_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, gradYShape);
-    gert::Shape* gradInputShape = context->GetOutputShape(GRAD_INPUT_OUTPUT_INDEX);
+    gert::Shape *gradInputShape = context->GetOutputShape(GRAD_INPUT_OUTPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, gradInputShape);
 
     if (Ops::Base::IsUnknownRank(*gradYShape)) {
@@ -52,8 +52,9 @@ static ge::graphStatus InferShape4MhcSinkhornBackward(gert::InferShapeContext* c
 
     size_t gradYDims = gradYShape->GetDimNum();
     OP_CHECK_IF((gradYDims != TNN_DIMS) && (gradYDims != BSNN_DIMS),
-        OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "gradY",
-            std::to_string(gradYDims).c_str(), "the dim of gradY must be 3 or 4"),
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(context->GetNodeName(), "gradY",
+                                                         std::to_string(gradYDims).c_str(),
+                                                         "the dim of gradY must be 3 or 4"),
                 return ge::GRAPH_FAILED);
 
     gradInputShape->SetDimNum(gradYDims);
@@ -64,7 +65,7 @@ static ge::graphStatus InferShape4MhcSinkhornBackward(gert::InferShapeContext* c
     return GRAPH_SUCCESS;
 }
 
-static graphStatus InferDtype4MhcSinkhornBackward(gert::InferDataTypeContext* context)
+static graphStatus InferDtype4MhcSinkhornBackward(gert::InferDataTypeContext *context)
 {
     if (context == nullptr) {
         return GRAPH_FAILED;

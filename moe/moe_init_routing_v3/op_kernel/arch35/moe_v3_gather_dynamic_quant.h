@@ -30,8 +30,7 @@ template <typename T, typename QuantT = int8_t>
 class MoeGatherOutDynamicQuant {
 public:
     __aicore__ inline MoeGatherOutDynamicQuant(){};
-    __aicore__ inline void InitBaseData(GM_ADDR sortedExpertIdx,
-                                        const MoeInitRoutingV3Arch35TilingData *tilingData,
+    __aicore__ inline void InitBaseData(GM_ADDR sortedExpertIdx, const MoeInitRoutingV3Arch35TilingData *tilingData,
                                         TPipe *tPipe);
     __aicore__ inline void Init(GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR expandedRowIdx, GM_ADDR expandedX,
                                 GM_ADDR expandedScale, GM_ADDR sortedExpertIdx,
@@ -39,10 +38,8 @@ public:
     __aicore__ inline void Process();
 
 private:
-    __aicore__ inline void StoreInt4QuantOut(__local_mem__ uint8_t *outUbAddr,
-                                             MicroAPI::RegTensor<float> &inReg,
-                                             MicroAPI::MaskReg &maskRegInLoop,
-                                             MicroAPI::MaskReg &maskRegHalf);
+    __aicore__ inline void StoreInt4QuantOut(__local_mem__ uint8_t *outUbAddr, MicroAPI::RegTensor<float> &inReg,
+                                             MicroAPI::MaskReg &maskRegInLoop, MicroAPI::MaskReg &maskRegHalf);
     __aicore__ inline void CopyInExpandedExpertIdx(int64_t progress);
     __aicore__ inline void CopyOutXQuantEH(int64_t progress);
     template <bool IS_INPUT_SCALE>
@@ -118,9 +115,10 @@ private:
 };
 
 template <typename T, typename QuantT>
-__aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::StoreInt4QuantOut(
-    __local_mem__ uint8_t *outUbAddr, MicroAPI::RegTensor<float> &inReg, MicroAPI::MaskReg &maskRegInLoop,
-    MicroAPI::MaskReg &maskRegHalf)
+__aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::StoreInt4QuantOut(__local_mem__ uint8_t *outUbAddr,
+                                                                              MicroAPI::RegTensor<float> &inReg,
+                                                                              MicroAPI::MaskReg &maskRegInLoop,
+                                                                              MicroAPI::MaskReg &maskRegHalf)
 {
     MicroAPI::RegTensor<half> outRegF16;
     MicroAPI::RegTensor<uint8_t> outRegI4;
@@ -128,8 +126,8 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::StoreInt4QuantOut(
 
     MicroAPI::Cast<half, float, castTraitF32ToF16>(outRegF16, inReg, maskRegInLoop);
     MicroAPI::Pack(outRegPackedHalf, (MicroAPI::RegTensor<uint32_t> &)outRegF16);
-    MicroAPI::Cast<int4x2_t, half, castTraitF16ToI4>(
-        (MicroAPI::RegTensor<int4x2_t> &)outRegI4, (MicroAPI::RegTensor<half> &)outRegPackedHalf, maskRegInLoop);
+    MicroAPI::Cast<int4x2_t, half, castTraitF16ToI4>((MicroAPI::RegTensor<int4x2_t> &)outRegI4,
+                                                     (MicroAPI::RegTensor<half> &)outRegPackedHalf, maskRegInLoop);
     MicroAPI::DataCopy<uint8_t, MicroAPI::StoreDist::DIST_PACK4_B32>(outUbAddr, outRegI4, maskRegHalf);
 }
 
@@ -407,8 +405,7 @@ __aicore__ inline float MoeGatherOutDynamicQuant<T, QuantT>::ComputeMax(LocalTen
     inLocal = inputXInQueue_.DeQue<float>();
 
     if constexpr (IS_INPUT_SCALE) {
-        DataCopyPad(smoothLocal, quantSmoothGm_[j * perLoopCols_], intriParamsFp32,
-                    {false, 0, 0, 0});
+        DataCopyPad(smoothLocal, quantSmoothGm_[j * perLoopCols_], intriParamsFp32, {false, 0, 0, 0});
         smoothInQueue_.EnQue(smoothLocal);
         smoothLocal = smoothInQueue_.DeQue<float>();
     }
@@ -537,7 +534,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::QuantizeToInt8(Local
 
 template <typename T, typename QuantT>
 __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::ComputeScale(LocalTensor<float> &inLocal, float scaleTemp,
-                                                                          int64_t dstIndex, int64_t j)
+                                                                         int64_t dstIndex, int64_t j)
 {
     DataCopyExtParams copyInParams{1, static_cast<uint32_t>(colsTileLength_ * sizeof(float)), 0, 0, 0};
     DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(colsTileLengthAsInt8_), 0, 0, 0};
@@ -626,8 +623,9 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::CopyOutPartialXQuant
 }
 
 template <typename T, typename QuantT>
-__aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::InitBaseData(
-    GM_ADDR sortedExpertIdx, const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void
+MoeGatherOutDynamicQuant<T, QuantT>::InitBaseData(GM_ADDR sortedExpertIdx,
+                                                  const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     pipe_ = tPipe;
     blockIdx_ = GetBlockIdx();
@@ -686,10 +684,10 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::InitBaseData(
 }
 
 template <typename T, typename QuantT>
-__aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(
-    GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR sortedExpertIdx, GM_ADDR expandedRowIdx,
-    GM_ADDR expandedX, GM_ADDR expandedScale,
-    const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
+__aicore__ inline void
+MoeGatherOutDynamicQuant<T, QuantT>::Init(GM_ADDR inputX, GM_ADDR quantSmooth, GM_ADDR sortedExpertIdx,
+                                          GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR expandedScale,
+                                          const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
     InitBaseData(sortedExpertIdx, tilingData, tPipe);
     inputXGm_.SetGlobalBuffer((__gm__ T *)inputX);
@@ -734,8 +732,7 @@ __aicore__ inline void MoeGatherOutDynamicQuant<T, QuantT>::Init(
         pipe_->InitBuffer(expandRowIdxInQueue_, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM,
                           2 * AlignBytes(perLoopRows_, sizeof(int32_t)));
     }
-    pipe_->InitBuffer(smoothInQueue_, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM,
-                      AlignBytes(perLoopCols_, sizeof(float)));
+    pipe_->InitBuffer(smoothInQueue_, GATHER_OUT_DYNAMIC_QUANT_BUFFER_NUM, AlignBytes(perLoopCols_, sizeof(float)));
     pipe_->InitBuffer(inputXOutQueue_, GATHER_OUT_DYNAMIC_QUANT_OUTPUT_QUEUE_NUM,
                       AlignBytes(perLoopColsAsInt8_, sizeof(int8_t)));
     pipe_->InitBuffer(scaleOutQueue_, GATHER_OUT_DYNAMIC_QUANT_OUTPUT_QUEUE_NUM, BLOCK_BYTES + BLOCK_BYTES);

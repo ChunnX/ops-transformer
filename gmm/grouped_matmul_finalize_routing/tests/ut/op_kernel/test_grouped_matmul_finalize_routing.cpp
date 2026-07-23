@@ -26,11 +26,9 @@ using namespace std;
 extern "C" __global__ __aicore__ void grouped_matmul_finalize_routing(GM_ADDR x, GM_ADDR w, GM_ADDR scale, GM_ADDR bias,
                                                                       GM_ADDR pertoken_scale, GM_ADDR group_list,
                                                                       GM_ADDR share_input, GM_ADDR logit,
-                                                                      GM_ADDR row_index, GM_ADDR offset,
-                                                                      GM_ADDR y, GM_ADDR workspaceGM,
-                                                                      GM_ADDR tilingGM);
-class grouped_matmul_finalize_routing_test : public testing::Test
-{
+                                                                      GM_ADDR row_index, GM_ADDR offset, GM_ADDR y,
+                                                                      GM_ADDR workspaceGM, GM_ADDR tilingGM);
+class grouped_matmul_finalize_routing_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -51,15 +49,14 @@ struct HcclCombinOpParam {
 
 TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routing_test1)
 {
-    system(
-        "cp -rf "
-        "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
-        "grouped_matmul_finalize_routing_data ./");
+    system("cp -rf "
+           "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
+           "grouped_matmul_finalize_routing_data ./");
 
     system("chmod -R 755 ./grouped_matmul_finalize_routing_data/");
     system("cd ./grouped_matmul_finalize_routing_data/ && rm -rf ./*bin && python3 gen_data.py 1");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
     uint32_t m = 6144;
@@ -71,7 +68,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t shape_scale = 8 * n * sizeof(float);
     size_t shape_pertoken_scale = m * 1 * sizeof(float);
     size_t shape_group_list = 8 * sizeof(int64_t);
-    size_t shape_share_input = m * n * sizeof(uint16_t);  // bf16
+    size_t shape_share_input = m * n * sizeof(uint16_t); // bf16
     size_t shape_logit = m * 1 * sizeof(float);
     size_t shape_row_index = m * 1 * sizeof(int64_t);
 
@@ -82,19 +79,19 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t allWorkspaceSize = sysWorkspaceSize + usrWorkspaceSize;
     size_t tilingSize = sizeof(GroupMatmulFRTilingData);
 
-    uint8_t* xGM = (uint8_t*)AscendC::GmAlloc(shape_x);
-    uint8_t* wGM = (uint8_t*)AscendC::GmAlloc(shape_w);
-    uint8_t* scaleGM = (uint8_t*)AscendC::GmAlloc(shape_scale);
-    uint8_t* pertoken_scaleGM = (uint8_t*)AscendC::GmAlloc(shape_pertoken_scale);
-    uint8_t* group_listGM = (uint8_t*)AscendC::GmAlloc(shape_group_list);
-    uint8_t* share_inputGM = (uint8_t*)AscendC::GmAlloc(shape_share_input);
-    uint8_t* logitGM = (uint8_t*)AscendC::GmAlloc(shape_logit);
-    uint8_t* row_indexGM = (uint8_t*)AscendC::GmAlloc(shape_row_index);
-    uint8_t* yGM = (uint8_t*)AscendC::GmAlloc(shape_y);
+    uint8_t *xGM = (uint8_t *)AscendC::GmAlloc(shape_x);
+    uint8_t *wGM = (uint8_t *)AscendC::GmAlloc(shape_w);
+    uint8_t *scaleGM = (uint8_t *)AscendC::GmAlloc(shape_scale);
+    uint8_t *pertoken_scaleGM = (uint8_t *)AscendC::GmAlloc(shape_pertoken_scale);
+    uint8_t *group_listGM = (uint8_t *)AscendC::GmAlloc(shape_group_list);
+    uint8_t *share_inputGM = (uint8_t *)AscendC::GmAlloc(shape_share_input);
+    uint8_t *logitGM = (uint8_t *)AscendC::GmAlloc(shape_logit);
+    uint8_t *row_indexGM = (uint8_t *)AscendC::GmAlloc(shape_row_index);
+    uint8_t *yGM = (uint8_t *)AscendC::GmAlloc(shape_y);
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint8_t* contextGM = (uint8_t*)AscendC::GmAlloc(sizeof(HcclCombinOpParam));
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
+    uint8_t *contextGM = (uint8_t *)AscendC::GmAlloc(sizeof(HcclCombinOpParam));
 
     memset(xGM, 0, shape_x);
     memset(wGM, 0, shape_w);
@@ -120,7 +117,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
              shape_row_index);
     ReadFile(path + "/grouped_matmul_finalize_routing_data/y.bin", shape_y, yGM, shape_y);
 
-    GroupMatmulFRTilingData* tilingData = reinterpret_cast<GroupMatmulFRTilingData*>(tiling);
+    GroupMatmulFRTilingData *tilingData = reinterpret_cast<GroupMatmulFRTilingData *>(tiling);
     tilingData->coreNum = 24;
     tilingData->groupNum = 8;
     tilingData->totalInGroup = 576;
@@ -189,30 +186,29 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     ICPU_RUN_KF(grouped_matmul_finalize_routing, 24, xGM, wGM, scaleGM, nullptr, pertoken_scaleGM, group_listGM,
                 share_inputGM, logitGM, row_indexGM, nullptr, yGM, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)xGM);
-    AscendC::GmFree((void*)wGM);
-    AscendC::GmFree((void*)scaleGM);
-    AscendC::GmFree((void*)pertoken_scaleGM);
-    AscendC::GmFree((void*)group_listGM);
-    AscendC::GmFree((void*)share_inputGM);
-    AscendC::GmFree((void*)logitGM);
-    AscendC::GmFree((void*)row_indexGM);
-    AscendC::GmFree((void*)yGM);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)xGM);
+    AscendC::GmFree((void *)wGM);
+    AscendC::GmFree((void *)scaleGM);
+    AscendC::GmFree((void *)pertoken_scaleGM);
+    AscendC::GmFree((void *)group_listGM);
+    AscendC::GmFree((void *)share_inputGM);
+    AscendC::GmFree((void *)logitGM);
+    AscendC::GmFree((void *)row_indexGM);
+    AscendC::GmFree((void *)yGM);
     free(path_);
 }
 
 TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routing_test2)
 {
-    system(
-        "cp -rf "
-        "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
-        "grouped_matmul_finalize_routing_data ./");
+    system("cp -rf "
+           "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
+           "grouped_matmul_finalize_routing_data ./");
     system("chmod -R 755 ./grouped_matmul_finalize_routing_data/");
     system("cd ./grouped_matmul_finalize_routing_data/ && rm -rf ./*bin && python3 gen_data.py 0");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
     uint32_t m = 1024;
@@ -233,17 +229,17 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t allWorkspaceSize = sysWorkspaceSize + usrWorkspaceSize;
     size_t tilingSize = sizeof(GroupMatmulFRTilingData);
 
-    uint8_t* xGM = (uint8_t*)AscendC::GmAlloc(shape_x);
-    uint8_t* wGM = (uint8_t*)AscendC::GmAlloc(shape_w);
-    uint8_t* scaleGM = (uint8_t*)AscendC::GmAlloc(shape_scale);
-    uint8_t* pertoken_scaleGM = (uint8_t*)AscendC::GmAlloc(shape_pertoken_scale);
-    uint8_t* group_listGM = (uint8_t*)AscendC::GmAlloc(shape_group_list);
-    uint8_t* row_indexGM = (uint8_t*)AscendC::GmAlloc(shape_row_index);
-    uint8_t* yGM = (uint8_t*)AscendC::GmAlloc(shape_y);
+    uint8_t *xGM = (uint8_t *)AscendC::GmAlloc(shape_x);
+    uint8_t *wGM = (uint8_t *)AscendC::GmAlloc(shape_w);
+    uint8_t *scaleGM = (uint8_t *)AscendC::GmAlloc(shape_scale);
+    uint8_t *pertoken_scaleGM = (uint8_t *)AscendC::GmAlloc(shape_pertoken_scale);
+    uint8_t *group_listGM = (uint8_t *)AscendC::GmAlloc(shape_group_list);
+    uint8_t *row_indexGM = (uint8_t *)AscendC::GmAlloc(shape_row_index);
+    uint8_t *yGM = (uint8_t *)AscendC::GmAlloc(shape_y);
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint8_t* contextGM = (uint8_t*)AscendC::GmAlloc(sizeof(HcclCombinOpParam));
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
+    uint8_t *contextGM = (uint8_t *)AscendC::GmAlloc(sizeof(HcclCombinOpParam));
 
     memset(xGM, 0, shape_x);
     memset(wGM, 0, shape_w);
@@ -264,7 +260,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
              shape_row_index);
     ReadFile(path + "/grouped_matmul_finalize_routing_data/y.bin", shape_y, yGM, shape_y);
 
-    GroupMatmulFRTilingData* tilingData = reinterpret_cast<GroupMatmulFRTilingData*>(tiling);
+    GroupMatmulFRTilingData *tilingData = reinterpret_cast<GroupMatmulFRTilingData *>(tiling);
     tilingData->coreNum = 24;
     tilingData->groupNum = 1;
     tilingData->totalInGroup = 14024;
@@ -333,28 +329,27 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     ICPU_RUN_KF(grouped_matmul_finalize_routing, 24, xGM, wGM, scaleGM, nullptr, pertoken_scaleGM, group_listGM,
                 nullptr, nullptr, row_indexGM, nullptr, yGM, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)xGM);
-    AscendC::GmFree((void*)wGM);
-    AscendC::GmFree((void*)scaleGM);
-    AscendC::GmFree((void*)pertoken_scaleGM);
-    AscendC::GmFree((void*)group_listGM);
-    AscendC::GmFree((void*)row_indexGM);
-    AscendC::GmFree((void*)yGM);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)xGM);
+    AscendC::GmFree((void *)wGM);
+    AscendC::GmFree((void *)scaleGM);
+    AscendC::GmFree((void *)pertoken_scaleGM);
+    AscendC::GmFree((void *)group_listGM);
+    AscendC::GmFree((void *)row_indexGM);
+    AscendC::GmFree((void *)yGM);
     free(path_);
 }
 
 TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routing_test3_int32_row_index)
 {
-    system(
-        "cp -rf "
-        "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
-        "grouped_matmul_finalize_routing_data ./");
+    system("cp -rf "
+           "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
+           "grouped_matmul_finalize_routing_data ./");
     system("chmod -R 755 ./grouped_matmul_finalize_routing_data/");
     system("cd ./grouped_matmul_finalize_routing_data/ && rm -rf ./*bin && python3 gen_data.py 1");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
     uint32_t m = 6144;
@@ -366,7 +361,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t shape_scale = 8 * n * sizeof(float);
     size_t shape_pertoken_scale = m * 1 * sizeof(float);
     size_t shape_group_list = 8 * sizeof(int64_t);
-    size_t shape_share_input = m * n * sizeof(uint16_t);  // bf16
+    size_t shape_share_input = m * n * sizeof(uint16_t); // bf16
     size_t shape_logit = m * 1 * sizeof(float);
     size_t shape_row_index = m * 1 * sizeof(int32_t);
 
@@ -377,19 +372,19 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t allWorkspaceSize = sysWorkspaceSize + usrWorkspaceSize;
     size_t tilingSize = sizeof(GroupMatmulFRTilingData);
 
-    uint8_t* xGM = (uint8_t*)AscendC::GmAlloc(shape_x);
-    uint8_t* wGM = (uint8_t*)AscendC::GmAlloc(shape_w);
-    uint8_t* scaleGM = (uint8_t*)AscendC::GmAlloc(shape_scale);
-    uint8_t* pertoken_scaleGM = (uint8_t*)AscendC::GmAlloc(shape_pertoken_scale);
-    uint8_t* group_listGM = (uint8_t*)AscendC::GmAlloc(shape_group_list);
-    uint8_t* share_inputGM = (uint8_t*)AscendC::GmAlloc(shape_share_input);
-    uint8_t* logitGM = (uint8_t*)AscendC::GmAlloc(shape_logit);
-    uint8_t* row_indexGM = (uint8_t*)AscendC::GmAlloc(shape_row_index);
-    uint8_t* yGM = (uint8_t*)AscendC::GmAlloc(shape_y);
+    uint8_t *xGM = (uint8_t *)AscendC::GmAlloc(shape_x);
+    uint8_t *wGM = (uint8_t *)AscendC::GmAlloc(shape_w);
+    uint8_t *scaleGM = (uint8_t *)AscendC::GmAlloc(shape_scale);
+    uint8_t *pertoken_scaleGM = (uint8_t *)AscendC::GmAlloc(shape_pertoken_scale);
+    uint8_t *group_listGM = (uint8_t *)AscendC::GmAlloc(shape_group_list);
+    uint8_t *share_inputGM = (uint8_t *)AscendC::GmAlloc(shape_share_input);
+    uint8_t *logitGM = (uint8_t *)AscendC::GmAlloc(shape_logit);
+    uint8_t *row_indexGM = (uint8_t *)AscendC::GmAlloc(shape_row_index);
+    uint8_t *yGM = (uint8_t *)AscendC::GmAlloc(shape_y);
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint8_t* contextGM = (uint8_t*)AscendC::GmAlloc(sizeof(HcclCombinOpParam));
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
+    uint8_t *contextGM = (uint8_t *)AscendC::GmAlloc(sizeof(HcclCombinOpParam));
 
     memset(xGM, 0, shape_x);
     memset(wGM, 0, shape_w);
@@ -415,7 +410,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
              shape_row_index);
     ReadFile(path + "/grouped_matmul_finalize_routing_data/y.bin", shape_y, yGM, shape_y);
 
-    GroupMatmulFRTilingData* tilingData = reinterpret_cast<GroupMatmulFRTilingData*>(tiling);
+    GroupMatmulFRTilingData *tilingData = reinterpret_cast<GroupMatmulFRTilingData *>(tiling);
     tilingData->coreNum = 24;
     tilingData->groupNum = 8;
     tilingData->totalInGroup = 576;
@@ -484,30 +479,29 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     ICPU_RUN_KF(grouped_matmul_finalize_routing, 24, xGM, wGM, scaleGM, nullptr, pertoken_scaleGM, group_listGM,
                 share_inputGM, logitGM, row_indexGM, nullptr, yGM, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)xGM);
-    AscendC::GmFree((void*)wGM);
-    AscendC::GmFree((void*)scaleGM);
-    AscendC::GmFree((void*)pertoken_scaleGM);
-    AscendC::GmFree((void*)group_listGM);
-    AscendC::GmFree((void*)share_inputGM);
-    AscendC::GmFree((void*)logitGM);
-    AscendC::GmFree((void*)row_indexGM);
-    AscendC::GmFree((void*)yGM);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)xGM);
+    AscendC::GmFree((void *)wGM);
+    AscendC::GmFree((void *)scaleGM);
+    AscendC::GmFree((void *)pertoken_scaleGM);
+    AscendC::GmFree((void *)group_listGM);
+    AscendC::GmFree((void *)share_inputGM);
+    AscendC::GmFree((void *)logitGM);
+    AscendC::GmFree((void *)row_indexGM);
+    AscendC::GmFree((void *)yGM);
     free(path_);
 }
 
 TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routing_test4_w4a8)
 {
-    system(
-        "cp -rf "
-        "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
-        "grouped_matmul_finalize_routing_data ./");
+    system("cp -rf "
+           "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
+           "grouped_matmul_finalize_routing_data ./");
     system("chmod -R 755 ./grouped_matmul_finalize_routing_data/");
     system("cd ./grouped_matmul_finalize_routing_data/ && rm -rf ./*bin && python3 w4a8_gen_data.py");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
     uint32_t m = 576;
@@ -520,7 +514,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t shape_bias = 8 * n * sizeof(float);
     size_t shape_pertoken_scale = m * 1 * sizeof(float);
     size_t shape_group_list = 8 * sizeof(int64_t);
-    size_t shape_share_input = m * n * sizeof(uint16_t);  // bf16
+    size_t shape_share_input = m * n * sizeof(uint16_t); // bf16
     size_t shape_logit = m * 1 * sizeof(float);
     size_t shape_row_index = m * 1 * sizeof(int64_t);
 
@@ -531,20 +525,20 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t allWorkspaceSize = sysWorkspaceSize + usrWorkspaceSize;
     size_t tilingSize = sizeof(GroupMatmulFRTilingData);
 
-    uint8_t* xGM = (uint8_t*)AscendC::GmAlloc(shape_x);
-    uint8_t* wGM = (uint8_t*)AscendC::GmAlloc(shape_w);
-    uint8_t* biasGM = (uint8_t*)AscendC::GmAlloc(shape_bias);
-    uint8_t* scaleGM = (uint8_t*)AscendC::GmAlloc(shape_scale);
-    uint8_t* pertoken_scaleGM = (uint8_t*)AscendC::GmAlloc(shape_pertoken_scale);
-    uint8_t* group_listGM = (uint8_t*)AscendC::GmAlloc(shape_group_list);
-    uint8_t* share_inputGM = (uint8_t*)AscendC::GmAlloc(shape_share_input);
-    uint8_t* logitGM = (uint8_t*)AscendC::GmAlloc(shape_logit);
-    uint8_t* row_indexGM = (uint8_t*)AscendC::GmAlloc(shape_row_index);
-    uint8_t* yGM = (uint8_t*)AscendC::GmAlloc(shape_y);
+    uint8_t *xGM = (uint8_t *)AscendC::GmAlloc(shape_x);
+    uint8_t *wGM = (uint8_t *)AscendC::GmAlloc(shape_w);
+    uint8_t *biasGM = (uint8_t *)AscendC::GmAlloc(shape_bias);
+    uint8_t *scaleGM = (uint8_t *)AscendC::GmAlloc(shape_scale);
+    uint8_t *pertoken_scaleGM = (uint8_t *)AscendC::GmAlloc(shape_pertoken_scale);
+    uint8_t *group_listGM = (uint8_t *)AscendC::GmAlloc(shape_group_list);
+    uint8_t *share_inputGM = (uint8_t *)AscendC::GmAlloc(shape_share_input);
+    uint8_t *logitGM = (uint8_t *)AscendC::GmAlloc(shape_logit);
+    uint8_t *row_indexGM = (uint8_t *)AscendC::GmAlloc(shape_row_index);
+    uint8_t *yGM = (uint8_t *)AscendC::GmAlloc(shape_y);
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint8_t* contextGM = (uint8_t*)AscendC::GmAlloc(sizeof(HcclCombinOpParam));
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
+    uint8_t *contextGM = (uint8_t *)AscendC::GmAlloc(sizeof(HcclCombinOpParam));
 
     memset(xGM, 0, shape_x);
     memset(wGM, 0, shape_w);
@@ -572,7 +566,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
              shape_row_index);
     ReadFile(path + "/grouped_matmul_finalize_routing_data/y.bin", shape_y, yGM, shape_y);
 
-    GroupMatmulFRTilingData* tilingData = reinterpret_cast<GroupMatmulFRTilingData*>(tiling);
+    GroupMatmulFRTilingData *tilingData = reinterpret_cast<GroupMatmulFRTilingData *>(tiling);
     tilingData->coreNum = 24;
     tilingData->groupNum = 8;
     tilingData->totalInGroup = 576;
@@ -642,31 +636,30 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     ICPU_RUN_KF(grouped_matmul_finalize_routing, 24, xGM, wGM, scaleGM, biasGM, pertoken_scaleGM, group_listGM,
                 share_inputGM, logitGM, row_indexGM, nullptr, yGM, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)xGM);
-    AscendC::GmFree((void*)wGM);
-    AscendC::GmFree((void*)scaleGM);
-    AscendC::GmFree((void*)pertoken_scaleGM);
-    AscendC::GmFree((void*)group_listGM);
-    AscendC::GmFree((void*)share_inputGM);
-    AscendC::GmFree((void*)logitGM);
-    AscendC::GmFree((void*)biasGM);
-    AscendC::GmFree((void*)row_indexGM);
-    AscendC::GmFree((void*)yGM);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)xGM);
+    AscendC::GmFree((void *)wGM);
+    AscendC::GmFree((void *)scaleGM);
+    AscendC::GmFree((void *)pertoken_scaleGM);
+    AscendC::GmFree((void *)group_listGM);
+    AscendC::GmFree((void *)share_inputGM);
+    AscendC::GmFree((void *)logitGM);
+    AscendC::GmFree((void *)biasGM);
+    AscendC::GmFree((void *)row_indexGM);
+    AscendC::GmFree((void *)yGM);
     free(path_);
 }
 
 TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routing_test5_w4a8_offset)
 {
-    system(
-        "cp -rf "
-        "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
-        "grouped_matmul_finalize_routing_data ./");
+    system("cp -rf "
+           "../../../../../gmm/grouped_matmul_finalize_routing/tests/ut/op_kernel/"
+           "grouped_matmul_finalize_routing_data ./");
     system("chmod -R 755 ./grouped_matmul_finalize_routing_data/");
     system("cd ./grouped_matmul_finalize_routing_data/ && rm -rf ./*bin && python3 w4a8_gen_data.py");
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
     uint32_t m = 576;
@@ -680,7 +673,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t shape_bias = 8 * n * sizeof(float);
     size_t shape_pertoken_scale = m * 1 * sizeof(float);
     size_t shape_group_list = 8 * sizeof(int64_t);
-    size_t shape_share_input = m * n * sizeof(uint16_t);  // bf16
+    size_t shape_share_input = m * n * sizeof(uint16_t); // bf16
     size_t shape_logit = m * 1 * sizeof(float);
     size_t shape_row_index = m * 1 * sizeof(int64_t);
 
@@ -691,21 +684,21 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     size_t allWorkspaceSize = sysWorkspaceSize + usrWorkspaceSize;
     size_t tilingSize = sizeof(GroupMatmulFRTilingData);
 
-    uint8_t* xGM = (uint8_t*)AscendC::GmAlloc(shape_x);
-    uint8_t* wGM = (uint8_t*)AscendC::GmAlloc(shape_w);
-    uint8_t* biasGM = (uint8_t*)AscendC::GmAlloc(shape_bias);
-    uint8_t* scaleGM = (uint8_t*)AscendC::GmAlloc(shape_scale);
-    uint8_t* offsetGM = (uint8_t*)AscendC::GmAlloc(shape_scale);
-    uint8_t* pertoken_scaleGM = (uint8_t*)AscendC::GmAlloc(shape_pertoken_scale);
-    uint8_t* group_listGM = (uint8_t*)AscendC::GmAlloc(shape_group_list);
-    uint8_t* share_inputGM = (uint8_t*)AscendC::GmAlloc(shape_share_input);
-    uint8_t* logitGM = (uint8_t*)AscendC::GmAlloc(shape_logit);
-    uint8_t* row_indexGM = (uint8_t*)AscendC::GmAlloc(shape_row_index);
-    uint8_t* yGM = (uint8_t*)AscendC::GmAlloc(shape_y);
+    uint8_t *xGM = (uint8_t *)AscendC::GmAlloc(shape_x);
+    uint8_t *wGM = (uint8_t *)AscendC::GmAlloc(shape_w);
+    uint8_t *biasGM = (uint8_t *)AscendC::GmAlloc(shape_bias);
+    uint8_t *scaleGM = (uint8_t *)AscendC::GmAlloc(shape_scale);
+    uint8_t *offsetGM = (uint8_t *)AscendC::GmAlloc(shape_scale);
+    uint8_t *pertoken_scaleGM = (uint8_t *)AscendC::GmAlloc(shape_pertoken_scale);
+    uint8_t *group_listGM = (uint8_t *)AscendC::GmAlloc(shape_group_list);
+    uint8_t *share_inputGM = (uint8_t *)AscendC::GmAlloc(shape_share_input);
+    uint8_t *logitGM = (uint8_t *)AscendC::GmAlloc(shape_logit);
+    uint8_t *row_indexGM = (uint8_t *)AscendC::GmAlloc(shape_row_index);
+    uint8_t *yGM = (uint8_t *)AscendC::GmAlloc(shape_y);
 
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(allWorkspaceSize);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingSize);
-    uint8_t* contextGM = (uint8_t*)AscendC::GmAlloc(sizeof(HcclCombinOpParam));
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(allWorkspaceSize);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingSize);
+    uint8_t *contextGM = (uint8_t *)AscendC::GmAlloc(sizeof(HcclCombinOpParam));
 
     memset(xGM, 0, shape_x);
     memset(wGM, 0, shape_w);
@@ -735,7 +728,7 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
              shape_row_index);
     ReadFile(path + "/grouped_matmul_finalize_routing_data/y.bin", shape_y, yGM, shape_y);
 
-    GroupMatmulFRTilingData* tilingData = reinterpret_cast<GroupMatmulFRTilingData*>(tiling);
+    GroupMatmulFRTilingData *tilingData = reinterpret_cast<GroupMatmulFRTilingData *>(tiling);
     tilingData->coreNum = 24;
     tilingData->groupNum = 8;
     tilingData->totalInGroup = 576;
@@ -806,18 +799,18 @@ TEST_F(grouped_matmul_finalize_routing_test, test_grouped_matmul_finalize_routin
     ICPU_RUN_KF(grouped_matmul_finalize_routing, 24, xGM, wGM, scaleGM, biasGM, pertoken_scaleGM, group_listGM,
                 share_inputGM, logitGM, row_indexGM, offsetGM, yGM, workspace, tiling);
 
-    AscendC::GmFree((void*)workspace);
-    AscendC::GmFree((void*)tiling);
-    AscendC::GmFree((void*)xGM);
-    AscendC::GmFree((void*)wGM);
-    AscendC::GmFree((void*)scaleGM);
-    AscendC::GmFree((void*)offsetGM);
-    AscendC::GmFree((void*)pertoken_scaleGM);
-    AscendC::GmFree((void*)group_listGM);
-    AscendC::GmFree((void*)share_inputGM);
-    AscendC::GmFree((void*)logitGM);
-    AscendC::GmFree((void*)biasGM);
-    AscendC::GmFree((void*)row_indexGM);
-    AscendC::GmFree((void*)yGM);
+    AscendC::GmFree((void *)workspace);
+    AscendC::GmFree((void *)tiling);
+    AscendC::GmFree((void *)xGM);
+    AscendC::GmFree((void *)wGM);
+    AscendC::GmFree((void *)scaleGM);
+    AscendC::GmFree((void *)offsetGM);
+    AscendC::GmFree((void *)pertoken_scaleGM);
+    AscendC::GmFree((void *)group_listGM);
+    AscendC::GmFree((void *)share_inputGM);
+    AscendC::GmFree((void *)logitGM);
+    AscendC::GmFree((void *)biasGM);
+    AscendC::GmFree((void *)row_indexGM);
+    AscendC::GmFree((void *)yGM);
     free(path_);
 }

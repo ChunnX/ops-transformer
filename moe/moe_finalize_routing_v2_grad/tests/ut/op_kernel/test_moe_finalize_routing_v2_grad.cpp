@@ -22,12 +22,13 @@
 
 using namespace std;
 
-extern "C" __global__ __aicore__ void moe_finalize_routing_v2_grad(
-    GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR bias,
-    GM_ADDR gradExpandedX, GM_ADDR gradScales, GM_ADDR workspace, GM_ADDR tiling);
+extern "C" __global__ __aicore__ void moe_finalize_routing_v2_grad(GM_ADDR gradY, GM_ADDR expandedRowIdx,
+                                                                   GM_ADDR expandedX, GM_ADDR scales, GM_ADDR expertIdx,
+                                                                   GM_ADDR bias, GM_ADDR gradExpandedX,
+                                                                   GM_ADDR gradScales, GM_ADDR workspace,
+                                                                   GM_ADDR tiling);
 
-class moe_finalize_routing_v2_grad_test : public testing::Test
-{
+class moe_finalize_routing_v2_grad_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -47,18 +48,18 @@ TEST_F(moe_finalize_routing_v2_grad_test, test_case_10001_001)
     size_t gradScalesByteSize = 5 * 1 * sizeof(float);
 
     size_t tilingDataByteSize = sizeof(MoeFinalizeRoutingV2GradTilingData);
-    uint8_t* gradY = (uint8_t*)AscendC::GmAlloc(gradYByteSize);
-    uint8_t* expandedRowIdx = (uint8_t*)AscendC::GmAlloc(expandedRowIdxByteSize);
-    uint8_t* gradExpandedX = (uint8_t*)AscendC::GmAlloc(gradExpandedXByteSize);
-    uint8_t* gradScales = (uint8_t*)AscendC::GmAlloc(gradScalesByteSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataByteSize);
+    uint8_t *gradY = (uint8_t *)AscendC::GmAlloc(gradYByteSize);
+    uint8_t *expandedRowIdx = (uint8_t *)AscendC::GmAlloc(expandedRowIdxByteSize);
+    uint8_t *gradExpandedX = (uint8_t *)AscendC::GmAlloc(gradExpandedXByteSize);
+    uint8_t *gradScales = (uint8_t *)AscendC::GmAlloc(gradScalesByteSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataByteSize);
     uint32_t blockDim = 48;
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    MoeFinalizeRoutingV2GradTilingData* tilingData = reinterpret_cast<MoeFinalizeRoutingV2GradTilingData*>(tiling);
+    MoeFinalizeRoutingV2GradTilingData *tilingData = reinterpret_cast<MoeFinalizeRoutingV2GradTilingData *>(tiling);
 
     tilingData->initOutNeedCoreNum = 5;
     tilingData->initOutEachCoreBatchNum = 0;
@@ -77,9 +78,8 @@ TEST_F(moe_finalize_routing_v2_grad_test, test_case_10001_001)
 
     ICPU_SET_TILING_KEY(10001);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    ICPU_RUN_KF(
-        moe_finalize_routing_v2_grad, blockDim, gradY, expandedRowIdx, nullptr, nullptr, nullptr, nullptr,
-        gradExpandedX, gradScales, workspace, tiling);
+    ICPU_RUN_KF(moe_finalize_routing_v2_grad, blockDim, gradY, expandedRowIdx, nullptr, nullptr, nullptr, nullptr,
+                gradExpandedX, gradScales, workspace, tiling);
 
     AscendC::GmFree(gradY);
     AscendC::GmFree(expandedRowIdx);
@@ -98,18 +98,18 @@ TEST_F(moe_finalize_routing_v2_grad_test, test_case_10002_001)
     size_t gradScalesByteSize = 5 * 1 * sizeof(float);
 
     size_t tilingDataByteSize = sizeof(MoeFinalizeRoutingV2GradTilingData);
-    uint8_t* gradY = (uint8_t*)AscendC::GmAlloc(gradYByteSize);
-    uint8_t* expandedRowIdx = (uint8_t*)AscendC::GmAlloc(expandedRowIdxByteSize);
-    uint8_t* gradExpandedX = (uint8_t*)AscendC::GmAlloc(gradExpandedXByteSize);
-    uint8_t* gradScales = (uint8_t*)AscendC::GmAlloc(gradScalesByteSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataByteSize);
+    uint8_t *gradY = (uint8_t *)AscendC::GmAlloc(gradYByteSize);
+    uint8_t *expandedRowIdx = (uint8_t *)AscendC::GmAlloc(expandedRowIdxByteSize);
+    uint8_t *gradExpandedX = (uint8_t *)AscendC::GmAlloc(gradExpandedXByteSize);
+    uint8_t *gradScales = (uint8_t *)AscendC::GmAlloc(gradScalesByteSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataByteSize);
     uint32_t blockDim = 48;
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    MoeFinalizeRoutingV2GradTilingData* tilingData = reinterpret_cast<MoeFinalizeRoutingV2GradTilingData*>(tiling);
+    MoeFinalizeRoutingV2GradTilingData *tilingData = reinterpret_cast<MoeFinalizeRoutingV2GradTilingData *>(tiling);
 
     tilingData->initOutNeedCoreNum = 5;
     tilingData->initOutEachCoreBatchNum = 0;
@@ -128,9 +128,8 @@ TEST_F(moe_finalize_routing_v2_grad_test, test_case_10002_001)
 
     ICPU_SET_TILING_KEY(10002);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    ICPU_RUN_KF(
-        moe_finalize_routing_v2_grad, blockDim, gradY, expandedRowIdx, nullptr, nullptr, nullptr, nullptr,
-        gradExpandedX, gradScales, workspace, tiling);
+    ICPU_RUN_KF(moe_finalize_routing_v2_grad, blockDim, gradY, expandedRowIdx, nullptr, nullptr, nullptr, nullptr,
+                gradExpandedX, gradScales, workspace, tiling);
 
     AscendC::GmFree(gradY);
     AscendC::GmFree(expandedRowIdx);
@@ -153,22 +152,22 @@ TEST_F(moe_finalize_routing_v2_grad_test, test_case_20001_001)
     size_t gradScalesByteSize = 5 * 3 * sizeof(float);
 
     size_t tilingDataByteSize = sizeof(MoeFinalizeRoutingV2GradTilingData);
-    uint8_t* gradY = (uint8_t*)AscendC::GmAlloc(gradYByteSize);
-    uint8_t* expandedRowIdx = (uint8_t*)AscendC::GmAlloc(expandedRowIdxByteSize);
-    uint8_t* expandedX = (uint8_t*)AscendC::GmAlloc(expandedXByteSize);
-    uint8_t* scales = (uint8_t*)AscendC::GmAlloc(scalesByteSize);
-    uint8_t* expertIdx = (uint8_t*)AscendC::GmAlloc(expertIdxByteSize);
-    uint8_t* bias = (uint8_t*)AscendC::GmAlloc(biasByteSize);
-    uint8_t* gradExpandedX = (uint8_t*)AscendC::GmAlloc(gradExpandedXByteSize);
-    uint8_t* gradScales = (uint8_t*)AscendC::GmAlloc(gradScalesByteSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataByteSize);
+    uint8_t *gradY = (uint8_t *)AscendC::GmAlloc(gradYByteSize);
+    uint8_t *expandedRowIdx = (uint8_t *)AscendC::GmAlloc(expandedRowIdxByteSize);
+    uint8_t *expandedX = (uint8_t *)AscendC::GmAlloc(expandedXByteSize);
+    uint8_t *scales = (uint8_t *)AscendC::GmAlloc(scalesByteSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdxByteSize);
+    uint8_t *bias = (uint8_t *)AscendC::GmAlloc(biasByteSize);
+    uint8_t *gradExpandedX = (uint8_t *)AscendC::GmAlloc(gradExpandedXByteSize);
+    uint8_t *gradScales = (uint8_t *)AscendC::GmAlloc(gradScalesByteSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataByteSize);
     uint32_t blockDim = 48;
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    MoeFinalizeRoutingV2GradTilingData* tilingData = reinterpret_cast<MoeFinalizeRoutingV2GradTilingData*>(tiling);
+    MoeFinalizeRoutingV2GradTilingData *tilingData = reinterpret_cast<MoeFinalizeRoutingV2GradTilingData *>(tiling);
 
     tilingData->initOutNeedCoreNum = 5;
     tilingData->initOutEachCoreBatchNum = 0;
@@ -187,9 +186,8 @@ TEST_F(moe_finalize_routing_v2_grad_test, test_case_20001_001)
 
     ICPU_SET_TILING_KEY(20001);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    ICPU_RUN_KF(
-        moe_finalize_routing_v2_grad, blockDim, gradY, expandedRowIdx, expandedX, scales, expertIdx, bias,
-        gradExpandedX, gradScales, workspace, tiling);
+    ICPU_RUN_KF(moe_finalize_routing_v2_grad, blockDim, gradY, expandedRowIdx, expandedX, scales, expertIdx, bias,
+                gradExpandedX, gradScales, workspace, tiling);
 
     AscendC::GmFree(gradY);
     AscendC::GmFree(expandedRowIdx);
@@ -216,22 +214,22 @@ TEST_F(moe_finalize_routing_v2_grad_test, test_case_20002_001)
     size_t gradScalesByteSize = 5 * 3 * sizeof(float);
 
     size_t tilingDataByteSize = sizeof(MoeFinalizeRoutingV2GradTilingData);
-    uint8_t* gradY = (uint8_t*)AscendC::GmAlloc(gradYByteSize);
-    uint8_t* expandedRowIdx = (uint8_t*)AscendC::GmAlloc(expandedRowIdxByteSize);
-    uint8_t* expandedX = (uint8_t*)AscendC::GmAlloc(expandedXByteSize);
-    uint8_t* scales = (uint8_t*)AscendC::GmAlloc(scalesByteSize);
-    uint8_t* expertIdx = (uint8_t*)AscendC::GmAlloc(expertIdxByteSize);
-    uint8_t* bias = (uint8_t*)AscendC::GmAlloc(biasByteSize);
-    uint8_t* gradExpandedX = (uint8_t*)AscendC::GmAlloc(gradExpandedXByteSize);
-    uint8_t* gradScales = (uint8_t*)AscendC::GmAlloc(gradScalesByteSize);
-    uint8_t* workspace = (uint8_t*)AscendC::GmAlloc(16 * 1024 * 1024);
-    uint8_t* tiling = (uint8_t*)AscendC::GmAlloc(tilingDataByteSize);
+    uint8_t *gradY = (uint8_t *)AscendC::GmAlloc(gradYByteSize);
+    uint8_t *expandedRowIdx = (uint8_t *)AscendC::GmAlloc(expandedRowIdxByteSize);
+    uint8_t *expandedX = (uint8_t *)AscendC::GmAlloc(expandedXByteSize);
+    uint8_t *scales = (uint8_t *)AscendC::GmAlloc(scalesByteSize);
+    uint8_t *expertIdx = (uint8_t *)AscendC::GmAlloc(expertIdxByteSize);
+    uint8_t *bias = (uint8_t *)AscendC::GmAlloc(biasByteSize);
+    uint8_t *gradExpandedX = (uint8_t *)AscendC::GmAlloc(gradExpandedXByteSize);
+    uint8_t *gradScales = (uint8_t *)AscendC::GmAlloc(gradScalesByteSize);
+    uint8_t *workspace = (uint8_t *)AscendC::GmAlloc(16 * 1024 * 1024);
+    uint8_t *tiling = (uint8_t *)AscendC::GmAlloc(tilingDataByteSize);
     uint32_t blockDim = 48;
 
-    char* path_ = get_current_dir_name();
+    char *path_ = get_current_dir_name();
     string path(path_);
 
-    MoeFinalizeRoutingV2GradTilingData* tilingData = reinterpret_cast<MoeFinalizeRoutingV2GradTilingData*>(tiling);
+    MoeFinalizeRoutingV2GradTilingData *tilingData = reinterpret_cast<MoeFinalizeRoutingV2GradTilingData *>(tiling);
 
     tilingData->initOutNeedCoreNum = 5;
     tilingData->initOutEachCoreBatchNum = 0;
@@ -251,9 +249,8 @@ TEST_F(moe_finalize_routing_v2_grad_test, test_case_20002_001)
 
     ICPU_SET_TILING_KEY(20001);
     AscendC::SetKernelMode(KernelMode::AIV_MODE);
-    ICPU_RUN_KF(
-        moe_finalize_routing_v2_grad, blockDim, gradY, expandedRowIdx, expandedX, scales, expertIdx, bias,
-        gradExpandedX, gradScales, workspace, tiling);
+    ICPU_RUN_KF(moe_finalize_routing_v2_grad, blockDim, gradY, expandedRowIdx, expandedX, scales, expertIdx, bias,
+                gradExpandedX, gradScales, workspace, tiling);
 
     AscendC::GmFree(gradY);
     AscendC::GmFree(expandedRowIdx);

@@ -21,8 +21,7 @@
 using namespace std;
 using namespace op;
 
-class l2_rope_with_sin_cos_cache_test : public testing::Test
-{
+class l2_rope_with_sin_cos_cache_test : public testing::Test {
 protected:
     static void SetUpTestCase()
     {
@@ -47,7 +46,7 @@ TEST_F(l2_rope_with_sin_cos_cache_test, Ascend910B_case_1)
     auto tensorCosSinCache = TensorDesc({20, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
 
     vector<int64_t> mropeSectionContent = {16, 24, 24};
-    aclIntArray* mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
+    aclIntArray *mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
 
     int64_t headSize = 64;
     bool isNeoxStyle = true;
@@ -77,7 +76,7 @@ TEST_F(l2_rope_with_sin_cos_cache_test, Ascend910B_case_2)
     auto tensorCosSinCache = TensorDesc({20, 64, 51}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
 
     vector<int64_t> mropeSectionContent = {16, 24, 24};
-    aclIntArray* mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
+    aclIntArray *mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
 
     int64_t headSize = 64;
     bool isNeoxStyle = true;
@@ -107,7 +106,7 @@ TEST_F(l2_rope_with_sin_cos_cache_test, Ascend910B_case_3)
     auto tensorCosSinCache = TensorDesc({20, 64, 51}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
 
     vector<int64_t> mropeSectionContent = {16, 24, 24};
-    aclIntArray* mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
+    aclIntArray *mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
 
     int64_t headSize = 64;
     bool isNeoxStyle = true;
@@ -137,7 +136,7 @@ TEST_F(l2_rope_with_sin_cos_cache_test, Ascend910B_case_4)
     auto tensorCosSinCache = TensorDesc({20, 64, 51}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
 
     vector<int64_t> mropeSectionContent = {16, 24, 24};
-    aclIntArray* mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
+    aclIntArray *mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
 
     int64_t headSize = 64;
     bool isNeoxStyle = true;
@@ -167,7 +166,7 @@ TEST_F(l2_rope_with_sin_cos_cache_test, Ascend910B_case_5)
     auto tensorCosSinCache = TensorDesc({20, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
 
     vector<int64_t> mropeSectionContent = {16, 24, 24};
-    aclIntArray* mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
+    aclIntArray *mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
 
     int64_t headSize = 64;
     bool isNeoxStyle = true;
@@ -197,7 +196,7 @@ TEST_F(l2_rope_with_sin_cos_cache_test, Ascend910B_case_6)
     auto tensorCosSinCache = TensorDesc({20, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
 
     vector<int64_t> mropeSectionContent = {16, 24, 24};
-    aclIntArray* mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
+    aclIntArray *mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
 
     int64_t headSize = 64;
     bool isNeoxStyle = true;
@@ -227,7 +226,7 @@ TEST_F(l2_rope_with_sin_cos_cache_test, rope_v2_case_7)
     auto tensorCosSinCache = TensorDesc({20, 64}, ACL_FLOAT, ACL_FORMAT_ND).ValueRange(0, 20);
 
     vector<int64_t> mropeSectionContent = {16, 24, 24};
-    aclIntArray* mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
+    aclIntArray *mropeSection = aclCreateIntArray(mropeSectionContent.data(), mropeSectionContent.size());
 
     int64_t headSize = 64;
     bool isNeoxStyle = true;
@@ -236,10 +235,10 @@ TEST_F(l2_rope_with_sin_cos_cache_test, rope_v2_case_7)
     auto tensorQueryOutDesc = TensorDesc({4, 64}, ACL_FLOAT, ACL_FORMAT_ND);
     auto tensorKeyOutDesc = TensorDesc({4, 64, 5}, ACL_FLOAT, ACL_FORMAT_ND);
 
-    auto ut = OP_API_UT(
-        aclnnRopeWithSinCosCacheV2,
-        INPUT(tensorPositions, tensorQueryIn, tensorKeyIn, tensorCosSinCache, mropeSection, headSize, isNeoxStyle, cacheMode),
-        OUTPUT(tensorQueryOutDesc, tensorKeyOutDesc));
+    auto ut = OP_API_UT(aclnnRopeWithSinCosCacheV2,
+                        INPUT(tensorPositions, tensorQueryIn, tensorKeyIn, tensorCosSinCache, mropeSection, headSize,
+                              isNeoxStyle, cacheMode),
+                        OUTPUT(tensorQueryOutDesc, tensorKeyOutDesc));
 
     uint64_t workspaceSize = 0;
     aclnnStatus aclRet = ut.TestGetWorkspaceSize(&workspaceSize);

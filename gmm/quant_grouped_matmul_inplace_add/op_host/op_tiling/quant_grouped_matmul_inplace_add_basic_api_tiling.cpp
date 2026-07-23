@@ -47,10 +47,13 @@ bool QGMMInplaceAddBasicApiTiling::IsCapable()
 
     return inputParams_.aDtype == ge::DT_HIFLOAT8 &&
            (scaleDimNum == 1 || (scaleDimNum == QuantGroupedMatmulInplaceAdd::DIM_NUM_2D &&
-                                  static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
+                                 static_cast<uint64_t>(wScaleShape.GetDim(1)) == 1));
 }
 
-bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs() { return AnalyzeAttrsForInplaceAdd(context_, inputParams_); }
+bool QGMMInplaceAddBasicApiTiling::AnalyzeAttrs()
+{
+    return AnalyzeAttrsForInplaceAdd(context_, inputParams_);
+}
 
 bool QGMMInplaceAddBasicApiTiling::AnalyzeDtype()
 {
@@ -60,17 +63,17 @@ bool QGMMInplaceAddBasicApiTiling::AnalyzeDtype()
 bool QGMMInplaceAddBasicApiTiling::AnalyzeInputs()
 {
     auto xStorageShape = context_->GetInputShape(X_INDEX);
-    OP_CHECK_IF(xStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x1", "nullptr",
-                                                      "xStorageShape cannot be nullptr"),
-                return false);
+    OP_CHECK_IF(
+        xStorageShape == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x1", "nullptr", "xStorageShape cannot be nullptr"),
+        return false);
     const gert::Shape &xShape = xStorageShape->GetOriginShape();
 
     auto wStorageShape = context_->GetInputShape(WEIGHT_INDEX);
-    OP_CHECK_IF(wStorageShape == nullptr,
-                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x2", "nullptr",
-                                                      "wStorageShape cannot be nullptr"),
-                return false);
+    OP_CHECK_IF(
+        wStorageShape == nullptr,
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(inputParams_.opType, "x2", "nullptr", "wStorageShape cannot be nullptr"),
+        return false);
     const gert::Shape &wShape = wStorageShape->GetOriginShape();
 
     auto scaleStorageShape = context_->GetInputShape(SCALE_INDEX);
@@ -82,8 +85,7 @@ bool QGMMInplaceAddBasicApiTiling::AnalyzeInputs()
     auto scaleDimNum = wScaleShape.GetDimNum();
     OP_CHECK_IF(
         scaleDimNum < 1,
-        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale1", std::to_string(scaleDimNum),
-                                     "positive integer"),
+        OP_LOGE_FOR_INVALID_SHAPEDIM(inputParams_.opType, "scale1", std::to_string(scaleDimNum), "positive integer"),
         return false);
 
     auto x1ScaleStorageShape = context_->GetOptionalInputShape(PER_TOKEN_SCALE_INDEX);
@@ -114,7 +116,10 @@ bool QGMMInplaceAddBasicApiTiling::SetQuantModeForQGmmInplaceAdd()
     return true;
 }
 
-bool QGMMInplaceAddBasicApiTiling::CheckCoreNum() const { return CheckCoreNumForInplaceAdd(context_, inputParams_); }
+bool QGMMInplaceAddBasicApiTiling::CheckCoreNum() const
+{
+    return CheckCoreNumForInplaceAdd(context_, inputParams_);
+}
 
 ge::graphStatus QGMMInplaceAddBasicApiTiling::DoOpTiling()
 {
@@ -154,7 +159,10 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::DoLibApiTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-uint64_t QGMMInplaceAddBasicApiTiling::GetTilingKey() const { return GetTilingKeyForInplaceAdd(inputParams_); }
+uint64_t QGMMInplaceAddBasicApiTiling::GetTilingKey() const
+{
+    return GetTilingKeyForInplaceAdd(inputParams_);
+}
 
 ge::graphStatus QGMMInplaceAddBasicApiTiling::PostTiling()
 {
@@ -172,4 +180,4 @@ ge::graphStatus QGMMInplaceAddBasicApiTiling::PostTiling()
     return ge::GRAPH_SUCCESS;
 }
 
-}  // namespace optiling
+} // namespace optiling

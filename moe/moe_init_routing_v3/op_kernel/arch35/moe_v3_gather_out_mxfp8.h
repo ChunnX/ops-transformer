@@ -9,9 +9,9 @@
  */
 
 /*!
-* \file moe_v3_gather_out_mxfp8.h
-* \brief
-*/
+ * \file moe_v3_gather_out_mxfp8.h
+ * \brief
+ */
 #ifndef MOE_V3_GATHER_OUT_MXFP8_H_REGBASE
 #define MOE_V3_GATHER_OUT_MXFP8_H_REGBASE
 
@@ -25,8 +25,8 @@ template <typename T>
 class MoeV3GatherOutMxfp8 {
 public:
     __aicore__ inline MoeV3GatherOutMxfp8(){};
-    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR workspace,
-                                GM_ADDR expandedRowIdxAddr, GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
+    __aicore__ inline void Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR workspace, GM_ADDR expandedRowIdxAddr,
+                                GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
                                 const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe);
     __aicore__ inline void Process();
     __aicore__ inline void CopyInExpandedExpertIdx(int64_t progress);
@@ -93,8 +93,7 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::InitKernelTiling(GM_ADDR workspac
                                         1);
     int64_t scanRowCount = n_ * k_;
     if (rowIdxType_ == SCATTER) {
-        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(
-            expertTotalCountGm_);
+        DataCacheCleanAndInvalid<int32_t, CacheLine::SINGLE_CACHE_LINE, DcciDst::CACHELINE_OUT>(expertTotalCountGm_);
         scanRowCount = expertTotalCountGm_.GetValue(0);
     }
     perCoreRow_ = Ceil(scanRowCount, tilingData->coreNum);
@@ -121,10 +120,10 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::InitKernelTiling(GM_ADDR workspac
     lastLoopScaleCols_ = scaleCols_ - (colLoops_ - 1) * perLoopScaleCols_;
 }
 
-template <typename T >
-__aicore__ inline void MoeV3GatherOutMxfp8<T>::Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr,
-                                                    GM_ADDR workspace, GM_ADDR expandedRowIdxAddr,
-                                                    GM_ADDR expandedXAddr, GM_ADDR expandedScaleAddr,
+template <typename T>
+__aicore__ inline void MoeV3GatherOutMxfp8<T>::Init(GM_ADDR xAddr, GM_ADDR unused_ScaleAddr, GM_ADDR workspace,
+                                                    GM_ADDR expandedRowIdxAddr, GM_ADDR expandedXAddr,
+                                                    GM_ADDR expandedScaleAddr,
                                                     const MoeInitRoutingV3Arch35TilingData *tilingData, TPipe *tPipe)
 {
 #if (__NPU_ARCH__ == 3510)
@@ -174,8 +173,7 @@ template <typename T>
 __aicore__ inline void MoeV3GatherOutMxfp8<T>::CopyScaleIn(int64_t srcIdx, int64_t colIdx, int64_t loopCols)
 {
     LocalTensor<uint8_t> scaleLocal = scaleCopyInQueue_.AllocTensor<uint8_t>();
-    DataCopyExtParams copyParams1{static_cast<uint16_t>(1), static_cast<uint32_t>(loopCols * sizeof(uint8_t)),
-                                  0, 0, 0};
+    DataCopyExtParams copyParams1{static_cast<uint16_t>(1), static_cast<uint32_t>(loopCols * sizeof(uint8_t)), 0, 0, 0};
     DataCopyPadExtParams<uint8_t> padParams1{false, 0, 0, 0};
     DataCopyPad(scaleLocal, xGscaleGm_[srcIdx * scaleCols_ + colIdx * perLoopScaleCols_], copyParams1, padParams1);
     scaleCopyInQueue_.EnQue(scaleLocal);
@@ -231,8 +229,8 @@ __aicore__ inline void MoeV3GatherOutMxfp8<T>::ScatterCopyExpandedXandMXQuant(in
 
             if (isInputScale_ == 1) {
                 LocalTensor<uint8_t> mxScaleLocal = scaleCopyInQueue_.DeQue<uint8_t>();
-                DataCopyExtParams copyScaleParams = {1, static_cast<uint32_t>(loopScaleCols * sizeof(uint8_t)),
-                                                     0, 0, 0};
+                DataCopyExtParams copyScaleParams = {1, static_cast<uint32_t>(loopScaleCols * sizeof(uint8_t)), 0, 0,
+                                                     0};
                 int64_t outScaleOffset = dstIdx * scaleCols_ + j * perLoopScaleCols_;
                 DataCopyPad<uint8_t>(expandedScaleOutGm_[outScaleOffset], mxScaleLocal, copyScaleParams);
                 scaleCopyInQueue_.FreeTensor(mxScaleLocal);

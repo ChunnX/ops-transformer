@@ -1277,7 +1277,7 @@ __aicore__ inline void MhcPreSinkhornBackwardDeterministic<X_T, GRADHIN_T, U>::P
         SyncAll(); // GradNormOut需全部存储完毕再进行RMSNormGrad的计算
         // 计算GradXFromRms
         CrossCoreSetFlag<AIV_AIC_MODE, PIPE_MTE3>(PIPE_MTE3_FLAG); // GradHcBeforeNorm计算完成，可以进行matmul计算
-        CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG);            // gradX matmul计算完成可以执行进行最后的计算
+        CrossCoreWaitFlag<AIV_AIC_MODE>(PIPE_FIX_FLAG); // gradX matmul计算完成可以执行进行最后的计算
         SyncAll();
         if (blockIdx_ < usedAivNum_) {
             uint64_t bsLoopNum = Ops::Base::CeilDiv(curCoreProcessbsTask_, bsLoopDataLen_);

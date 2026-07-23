@@ -19,9 +19,8 @@ namespace ops {
 
 static const std::unordered_set<ge::DataType> X_TYPE_SUPPORT_SET = {
     ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2};
-static const std::unordered_set<ge::DataType> WEIGHT_TYPE_SUPPORT_SET = {ge::DT_INT8, ge::DT_FLOAT8_E4M3FN,
-                                                                         ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8,
-                                                                         ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2};
+static const std::unordered_set<ge::DataType> WEIGHT_TYPE_SUPPORT_SET = {
+    ge::DT_INT8, ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E5M2, ge::DT_HIFLOAT8, ge::DT_FLOAT4_E2M1, ge::DT_FLOAT4_E1M2};
 static const std::unordered_set<ge::DataType> BIAS_TYPE_SUPPORT_SET = {ge::DT_FLOAT16, ge::DT_BF16, ge::DT_FLOAT,
                                                                        ge::DT_INT32};
 static const std::unordered_set<ge::DataType> SCALE_TYPE_SUPPORT_SET = {ge::DT_UINT64, ge::DT_INT64, ge::DT_FLOAT,
@@ -111,19 +110,21 @@ x is %s, weight is %s.",
     OP_CHECK_IF(
         LogicXOR((xDtype == ge::DataType::DT_FLOAT8_E4M3FN || xDtype == ge::DataType::DT_FLOAT8_E5M2),
                  (weightDtype == ge::DataType::DT_FLOAT8_E4M3FN || weightDtype == ge::DataType::DT_FLOAT8_E5M2)),
-        OP_LOGE(
-            context->GetNodeName(),
-            "When x input dtype is FLOAT8, then the weight input dtype must be FLOAT8, vice versa, actual x is %s, \
-weight is %s.", ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
-                ge::TypeUtils::DataTypeToAscendString(weightDtype).GetString()), 
-        return ge::GRAPH_FAILED);
-    OP_CHECK_IF(LogicXOR((xDtype == ge::DataType::DT_FLOAT4_E2M1 || xDtype == ge::DataType::DT_FLOAT4_E1M2),
-        (weightDtype == ge::DataType::DT_FLOAT4_E2M1 || weightDtype == ge::DataType::DT_FLOAT4_E1M2)),
         OP_LOGE(context->GetNodeName(),
-            "When x input dtype is FLOAT4, then the weight input dtype must be FLOAT4, vice versa, actual x is %s, \
-weight is %s.", ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
-                ge::TypeUtils::DataTypeToAscendString(weightDtype).GetString()), 
-                return ge::GRAPH_FAILED);
+                "When x input dtype is FLOAT8, then the weight input dtype must be FLOAT8, vice versa, actual x is %s, \
+weight is %s.",
+                ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
+                ge::TypeUtils::DataTypeToAscendString(weightDtype).GetString()),
+        return ge::GRAPH_FAILED);
+    OP_CHECK_IF(
+        LogicXOR((xDtype == ge::DataType::DT_FLOAT4_E2M1 || xDtype == ge::DataType::DT_FLOAT4_E1M2),
+                 (weightDtype == ge::DataType::DT_FLOAT4_E2M1 || weightDtype == ge::DataType::DT_FLOAT4_E1M2)),
+        OP_LOGE(context->GetNodeName(),
+                "When x input dtype is FLOAT4, then the weight input dtype must be FLOAT4, vice versa, actual x is %s, \
+weight is %s.",
+                ge::TypeUtils::DataTypeToAscendString(xDtype).GetString(),
+                ge::TypeUtils::DataTypeToAscendString(weightDtype).GetString()),
+        return ge::GRAPH_FAILED);
     auto ScaleDtype = context->GetDynamicInputDataType(GMM_INDEX_IN_SCALE, 0);
     OP_CHECK_IF(SCALE_TYPE_SUPPORT_SET.find(ScaleDtype) == SCALE_TYPE_SUPPORT_SET.end(),
                 OP_LOGE(context->GetNodeName(),
@@ -210,8 +211,8 @@ ge::graphStatus GroupedMatmulQuantChecker::CheckFormatValid(const gert::InferSha
     const auto weightDesc = context->GetDynamicInputDesc(GMM_INDEX_IN_WEIGHT, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightDesc);
     const auto weightFormat = weightDesc->GetOriginFormat();
-    OP_CHECK_IF(weightFormat != ge::FORMAT_ND && weightFormat != ge::FORMAT_NCL &&
-                    weightFormat != ge::FORMAT_NCHW && weightFormat != ge::FORMAT_FRACTAL_NZ,
+    OP_CHECK_IF(weightFormat != ge::FORMAT_ND && weightFormat != ge::FORMAT_NCL && weightFormat != ge::FORMAT_NCHW &&
+                    weightFormat != ge::FORMAT_FRACTAL_NZ,
                 OP_LOGE(context->GetNodeName(),
                         "Format of weight only supports ND, NCL, FORMAT_FRACTAL_NZ or NCHW for now, but it is [%s].",
                         ge::TypeUtils::FormatToAscendString(weightFormat).GetString()),
@@ -621,8 +622,8 @@ ge::graphStatus GroupedMatmulQuantChecker::CheckShape(const gert::InferShapeCont
                 OP_LOGE(context->GetNodeName(), "CheckScenarioValidForShape failed."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckShapeValid(context, commonUtil.attrsInfo) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "CheckShapeValid failed."), return ge::GRAPH_FAILED);
-    OP_CHECK_IF(CheckFormatValid(context) != ge::GRAPH_SUCCESS, OP_LOGE(context->GetNodeName(), "CheckFormatValid failed."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckFormatValid(context) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context->GetNodeName(), "CheckFormatValid failed."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -664,20 +665,22 @@ is not supported, but the acutal x dtype is [%s] and actual scale dtype is [%s].
                             ge::TypeUtils::DataTypeToAscendString(scaleDtype).GetString()),
                     return ge::GRAPH_FAILED);
     }
-    if ((xDtype == ge::DT_HIFLOAT8 || xDtype == ge::DT_FLOAT8_E5M2 ||
-         xDtype == ge::DT_FLOAT8_E4M3FN) && perTokenScaleDtype != ge::DT_UNDEFINED) {
-        OP_CHECK_IF(
-            scaleDtype != perTokenScaleDtype || (scaleDtype != ge::DataType::DT_FLOAT && scaleDtype != ge::DataType::DT_FLOAT8_E8M0),
-            OP_LOGE(context->GetNodeName(), "When data type of x is float8/hifloat8, data type of scale [%s] should be \
+    if ((xDtype == ge::DT_HIFLOAT8 || xDtype == ge::DT_FLOAT8_E5M2 || xDtype == ge::DT_FLOAT8_E4M3FN) &&
+        perTokenScaleDtype != ge::DT_UNDEFINED) {
+        OP_CHECK_IF(scaleDtype != perTokenScaleDtype ||
+                        (scaleDtype != ge::DataType::DT_FLOAT && scaleDtype != ge::DataType::DT_FLOAT8_E8M0),
+                    OP_LOGE(context->GetNodeName(),
+                            "When data type of x is float8/hifloat8, data type of scale [%s] should be \
 equal to per_token_scale's dtype [%s], and be float32/float8_e8m0.",
-                    ge::TypeUtils::DataTypeToAscendString(scaleDtype).GetString(),
-                    ge::TypeUtils::DataTypeToAscendString(perTokenScaleDtype).GetString()), return ge::GRAPH_FAILED);
+                            ge::TypeUtils::DataTypeToAscendString(scaleDtype).GetString(),
+                            ge::TypeUtils::DataTypeToAscendString(perTokenScaleDtype).GetString()),
+                    return ge::GRAPH_FAILED);
     } else if (xDtype == ge::DT_FLOAT4_E2M1 || xDtype == ge::DT_FLOAT4_E1M2) {
-        OP_CHECK_IF(
-            scaleDtype != ge::DataType::DT_FLOAT8_E8M0,
-            OP_LOGE(context->GetNodeName(), "When data type of x is float4, data type of scale [%s] should be \
+        OP_CHECK_IF(scaleDtype != ge::DataType::DT_FLOAT8_E8M0,
+                    OP_LOGE(context->GetNodeName(), "When data type of x is float4, data type of scale [%s] should be \
 equal to float8_e8m0.",
-                    ge::TypeUtils::DataTypeToAscendString(scaleDtype).GetString()), return ge::GRAPH_FAILED);
+                            ge::TypeUtils::DataTypeToAscendString(scaleDtype).GetString()),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -685,8 +688,8 @@ equal to float8_e8m0.",
 ge::graphStatus GroupedMatmulQuantChecker::CheckDtype(const gert::InferDataTypeContext *context,
                                                       const GroupedMatmulCommonUtil &commonUtil) const
 {
-    OP_CHECK_IF(CheckDtypeValid(context) != ge::GRAPH_SUCCESS, OP_LOGE(context->GetNodeName(), "CheckDtypeValid failed."),
-                return ge::GRAPH_FAILED);
+    OP_CHECK_IF(CheckDtypeValid(context) != ge::GRAPH_SUCCESS,
+                OP_LOGE(context->GetNodeName(), "CheckDtypeValid failed."), return ge::GRAPH_FAILED);
     OP_CHECK_IF(CheckScenarioValidForDtype(context, commonUtil.attrsInfo) != ge::GRAPH_SUCCESS,
                 OP_LOGE(context->GetNodeName(), "CheckScenarioValidForDtype failed."), return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;

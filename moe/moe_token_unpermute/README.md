@@ -19,11 +19,11 @@
 - 计算公式：
 
   - probs非None时，计算公式如下：
-    
+
     $$
     T[k] = T[S[k]]
     $$
-    
+
     $$
     T[k] = T[k] * P[i][j]
     $$
@@ -31,7 +31,7 @@
     $$
     O[i] = \sum_{k=i*topK}^{(i+1)*topK - 1 } T[k]
     $$
-    
+
     其中$i \in {0,1,...,tokens-1}$；$j \in {0,1,...,topK-1}$；$k \in {0,1,...,tokens*topK-1}$；T表示permutedTokens；S表示sortedIndices；P表示probs；O表示out；topK表示topK\_num，表示处理每个token的专家个数；tokens表示tokens_num，表示输入token的个数。
 
   - probs为None时，此时topK\_num=1，计算公式如下：
@@ -116,7 +116,7 @@
   - paddedMode输入等同于aclnnMoeFinalizeRoutingV2接口的dropPadMode输入。
   - out输出等同于aclnnMoeFinalizeRoutingV2接口的out输出。
 - |<term>Atlas 推理系列产品</term>：
-  - permutedTokens与probsOptional支持的数据类型为FLOAT16、FLOAT32。 
+  - permutedTokens与probsOptional支持的数据类型为FLOAT16、FLOAT32。
   - topK_num <= 512。
   - hiddensize是128的倍数且小于10240。
 

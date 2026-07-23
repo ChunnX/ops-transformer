@@ -222,9 +222,9 @@ __aicore__ inline void MoeV2ExpertTokenOutSimt::Process()
     }
 
     if (this->blockIdx_ < this->needCoreNum_) {
-        asc_vf_call<ExpertFirstIndexComputeSimt>(dim3{static_cast<uint32_t>(this->threadNum_), 1, 1},
-                                                   this->coreRows_, this->startIndex_, this->totalLength_,
-                                                   expertFirstIndexGm_, expandedExpertIdxGm_);
+        asc_vf_call<ExpertFirstIndexComputeSimt>(dim3{static_cast<uint32_t>(this->threadNum_), 1, 1}, this->coreRows_,
+                                                 this->startIndex_, this->totalLength_, expertFirstIndexGm_,
+                                                 expandedExpertIdxGm_);
     }
 
     this->SyncAll();
@@ -235,8 +235,8 @@ __aicore__ inline void MoeV2ExpertTokenOutSimt::Process()
 
     if (this->expertCount_ && this->blockIdx_ < this->needCoreNum_) {
         asc_vf_call<TokensComputeSimt>(dim3{static_cast<uint32_t>(this->threadNum_), 1, 1}, this->coreRows_,
-                                         this->startIndex_, this->totalLength_, expertFirstIndexGm_,
-                                         expandedExpertIdxGm_, expertTokensBeforeCapacityGm_);
+                                       this->startIndex_, this->totalLength_, expertFirstIndexGm_, expandedExpertIdxGm_,
+                                       expertTokensBeforeCapacityGm_);
     }
 
     if (this->expertCumsum_ && this->blockIdx_ < this->needCoreNum_) {

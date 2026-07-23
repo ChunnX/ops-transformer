@@ -23,56 +23,53 @@ using namespace AscendC;
 using namespace AscendC::MicroAPI;
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist = true>
-class MoeFinalizeRoutingV2GradRegbaseNotCutH : MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist>
-{
+class MoeFinalizeRoutingV2GradRegbaseNotCutH : MoeFinalizeRoutingV2GradRegbase<T1, T2, T3, IsBiasExist> {
 public:
     __aicore__ inline MoeFinalizeRoutingV2GradRegbaseNotCutH(){};
-    __aicore__ inline void Init(
-        GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR bias,
-        GM_ADDR gradExpandedX, GM_ADDR gradScales, GM_ADDR workspace,
-        const MoeFinalizeRoutingV2GradNotSplitHTilingData* tilingData, TPipe* pipe);
+    __aicore__ inline void Init(GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales,
+                                GM_ADDR expertIdx, GM_ADDR bias, GM_ADDR gradExpandedX, GM_ADDR gradScales,
+                                GM_ADDR workspace, const MoeFinalizeRoutingV2GradNotSplitHTilingData *tilingData,
+                                TPipe *pipe);
     __aicore__ inline void Process();
 
 private:
     // Init过程使用的内部函数
-    __aicore__ inline void InitAllGlobalBuffer(
-        GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR bias,
-        GM_ADDR gradExpandedX, GM_ADDR gradScales);
+    __aicore__ inline void InitAllGlobalBuffer(GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales,
+                                               GM_ADDR expertIdx, GM_ADDR bias, GM_ADDR gradExpandedX,
+                                               GM_ADDR gradScales);
     __aicore__ inline void InitAllBuffer();
     // 计算预处理时使用的内部函数
     __aicore__ inline void InitOutputGm();
     __aicore__ inline void ComputeLoopParam();
     // 计算过程使用的内部函数
     __aicore__ inline void CopyIn(int64_t batchIdx, T2 rowIdx, int64_t hidden);
-    __aicore__ inline void CopyInWithInvalidRowIdx(
-        int64_t batchIdx,
-        int64_t hidden); // 对应行被drop、被activeNum截断的情况
+    __aicore__ inline void CopyInWithInvalidRowIdx(int64_t batchIdx,
+                                                   int64_t hidden); // 对应行被drop、被activeNum截断的情况
     __aicore__ inline void ComputeOneRow(int64_t batchIdx, T2 rowIdx, int64_t hidden);
     __aicore__ inline void ComputeOneRowWithInvalidRowIdx(int64_t batchIdx, int64_t hidden);
     __aicore__ inline void CopyOutGradExpandedX(T2 rowIdx, int64_t hidden);
     // 计算过程使用的VF函数（Todo：替换为基类函数）
-    __aicore__ inline void CalcGradExpandedXVF(
-        __local_mem__ T1* gradExpandedXUb, __local_mem__ T1* gradYUb, T3 scale, uint32_t count);
-    __aicore__ inline void CalcGradScaleVF(
-        __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* expandedXUb,
-        __local_mem__ T1* biasUb, uint32_t count);
-    __aicore__ inline void CalcGradScaleWithoutExpandedXVF(
-        __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* biasUb,
-        uint32_t count); // 针对expandedRowIdx无效的情况
-    __aicore__ inline void CalcGradScaleForSmallHVF(
-        __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* expandedXUb,
-        __local_mem__ T1* biasUb, uint32_t count);
-    __aicore__ inline void CalcGradScaleForSmallHWithoutExpandedXVF(
-        __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* biasUb,
-        uint32_t count); // 针对expandedRowIdx无效的情况
-    __aicore__ inline void BinaryAddVF(
-        __local_mem__ T3* gradScaleUb, __local_mem__ float* binaryAddTmpAddr, RegTensor<float>& x1,
-        RegTensor<float>& x2, uint16_t binaryAddKLoop, uint16_t binaryAddInnerLoop, MaskReg& pregAll,
-        MaskReg& pregLastLoop, MaskReg& pregOne);
+    __aicore__ inline void CalcGradExpandedXVF(__local_mem__ T1 *gradExpandedXUb, __local_mem__ T1 *gradYUb, T3 scale,
+                                               uint32_t count);
+    __aicore__ inline void CalcGradScaleVF(__local_mem__ T3 *gradScaleUb, __local_mem__ T1 *gradYUb,
+                                           __local_mem__ T1 *expandedXUb, __local_mem__ T1 *biasUb, uint32_t count);
+    __aicore__ inline void CalcGradScaleWithoutExpandedXVF(__local_mem__ T3 *gradScaleUb, __local_mem__ T1 *gradYUb,
+                                                           __local_mem__ T1 *biasUb,
+                                                           uint32_t count); // 针对expandedRowIdx无效的情况
+    __aicore__ inline void CalcGradScaleForSmallHVF(__local_mem__ T3 *gradScaleUb, __local_mem__ T1 *gradYUb,
+                                                    __local_mem__ T1 *expandedXUb, __local_mem__ T1 *biasUb,
+                                                    uint32_t count);
+    __aicore__ inline void CalcGradScaleForSmallHWithoutExpandedXVF(__local_mem__ T3 *gradScaleUb,
+                                                                    __local_mem__ T1 *gradYUb, __local_mem__ T1 *biasUb,
+                                                                    uint32_t count); // 针对expandedRowIdx无效的情况
+    __aicore__ inline void BinaryAddVF(__local_mem__ T3 *gradScaleUb, __local_mem__ float *binaryAddTmpAddr,
+                                       RegTensor<float> &x1, RegTensor<float> &x2, uint16_t binaryAddKLoop,
+                                       uint16_t binaryAddInnerLoop, MaskReg &pregAll, MaskReg &pregLastLoop,
+                                       MaskReg &pregOne);
 
 private:
-    const MoeFinalizeRoutingV2GradBaseTilingData* baseParams_;
-    const MoeFinalizeRoutingV2GradBinaryAddTilingData* binAddParams_;
+    const MoeFinalizeRoutingV2GradBaseTilingData *baseParams_;
+    const MoeFinalizeRoutingV2GradBinaryAddTilingData *binAddParams_;
     int64_t hAlign_ = 0;
     uint64_t binaryAddBufSize_;
 };
@@ -81,7 +78,7 @@ template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::Init(
     GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR bias,
     GM_ADDR gradExpandedX, GM_ADDR gradScales, GM_ADDR workspace,
-    const MoeFinalizeRoutingV2GradNotSplitHTilingData* tilingData, TPipe* pipe)
+    const MoeFinalizeRoutingV2GradNotSplitHTilingData *tilingData, TPipe *pipe)
 {
     this->baseParams_ = &(tilingData->baseParams);
     this->binAddParams_ = &(tilingData->binAddParams);
@@ -123,14 +120,14 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
     GM_ADDR gradY, GM_ADDR expandedRowIdx, GM_ADDR expandedX, GM_ADDR scales, GM_ADDR expertIdx, GM_ADDR bias,
     GM_ADDR gradExpandedX, GM_ADDR gradScales)
 {
-    this->gradYGm_.SetGlobalBuffer((__gm__ T1*)gradY);
-    this->expandedRowIdxGm_.SetGlobalBuffer((__gm__ T2*)expandedRowIdx);
-    this->expandedXGm_.SetGlobalBuffer((__gm__ T1*)expandedX);
-    this->scalesGm_.SetGlobalBuffer((__gm__ T3*)scales);
-    this->expertIdxGm_.SetGlobalBuffer((__gm__ T2*)expertIdx);
-    this->biasGm_.SetGlobalBuffer((__gm__ T1*)bias);
-    this->gradExpandedXGm_.SetGlobalBuffer((__gm__ T1*)gradExpandedX);
-    this->gradScalesGm_.SetGlobalBuffer((__gm__ T3*)gradScales);
+    this->gradYGm_.SetGlobalBuffer((__gm__ T1 *)gradY);
+    this->expandedRowIdxGm_.SetGlobalBuffer((__gm__ T2 *)expandedRowIdx);
+    this->expandedXGm_.SetGlobalBuffer((__gm__ T1 *)expandedX);
+    this->scalesGm_.SetGlobalBuffer((__gm__ T3 *)scales);
+    this->expertIdxGm_.SetGlobalBuffer((__gm__ T2 *)expertIdx);
+    this->biasGm_.SetGlobalBuffer((__gm__ T1 *)bias);
+    this->gradExpandedXGm_.SetGlobalBuffer((__gm__ T1 *)gradExpandedX);
+    this->gradScalesGm_.SetGlobalBuffer((__gm__ T3 *)gradScales);
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
@@ -145,9 +142,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
     this->pipe_->InitBuffer(this->gradScalesOutQueue_, DOUBLE_BUFFER, BLOCK_BYTE_SIZE);
     binaryAddBufSize_ = binAddParams_->binaryAddQuotient / VL_FLOAT32_SIZE;
     if (binaryAddBufSize_ > 0) {
-        this->pipe_->InitBuffer(
-            this->binaryAddSumBuf_,
-            (binaryAddBufSize_ * sizeof(float) + BLOCK_BYTE_SIZE - 1) / BLOCK_BYTE_SIZE * BLOCK_BYTE_SIZE);
+        this->pipe_->InitBuffer(this->binaryAddSumBuf_, (binaryAddBufSize_ * sizeof(float) + BLOCK_BYTE_SIZE - 1) /
+                                                            BLOCK_BYTE_SIZE * BLOCK_BYTE_SIZE);
     }
 }
 
@@ -186,16 +182,15 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CopyIn(
-    int64_t batchIdx, T2 rowIdx, int64_t hidden)
+__aicore__ inline void
+MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CopyIn(int64_t batchIdx, T2 rowIdx, int64_t hidden)
 {
     LocalTensor<T1> gradYUb = this->gradYInQueue_.template AllocTensor<T1>();
     DataCopyExtParams copyGradYExtParams{1, 1, 0, 0, 0};
     copyGradYExtParams.blockLen = hidden * sizeof(T1);
     DataCopyPadExtParams<T1> copyPadGradYExtparams{false, 0, 0, 0};
-    DataCopyPad(
-        gradYUb, this->gradYGm_[batchIdx / baseParams_->topK * baseParams_->hidden], copyGradYExtParams,
-        copyPadGradYExtparams);
+    DataCopyPad(gradYUb, this->gradYGm_[batchIdx / baseParams_->topK * baseParams_->hidden], copyGradYExtParams,
+                copyPadGradYExtparams);
     this->gradYInQueue_.template EnQue(gradYUb);
 
     LocalTensor<T1> expandedXUb = this->expandedXInQueue_.template AllocTensor<T1>();
@@ -213,17 +208,17 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CopyInWithInvalidRowIdx(
-    int64_t batchIdx, int64_t hidden)
+__aicore__ inline void
+MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CopyInWithInvalidRowIdx(int64_t batchIdx,
+                                                                                         int64_t hidden)
 {
     if constexpr (IsBiasExist) {
         LocalTensor<T1> gradYUb = this->gradYInQueue_.template AllocTensor<T1>();
         DataCopyExtParams copyGradYExtParams{1, 1, 0, 0, 0};
         copyGradYExtParams.blockLen = hidden * sizeof(T1);
         DataCopyPadExtParams<T1> copyPadGradYExtparams{false, 0, 0, 0};
-        DataCopyPad(
-            gradYUb, this->gradYGm_[batchIdx / baseParams_->topK * baseParams_->hidden], copyGradYExtParams,
-            copyPadGradYExtparams);
+        DataCopyPad(gradYUb, this->gradYGm_[batchIdx / baseParams_->topK * baseParams_->hidden], copyGradYExtParams,
+                    copyPadGradYExtparams);
         this->gradYInQueue_.template EnQue(gradYUb);
         LocalTensor<T1> biasUb = this->biasInQueue_.template AllocTensor<T1>();
         T2 expertIdx = this->expertIdxGm_.GetValue(batchIdx);
@@ -233,8 +228,9 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::ComputeOneRow(
-    int64_t batchIdx, T2 rowIdx, int64_t hidden)
+__aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::ComputeOneRow(int64_t batchIdx,
+                                                                                                      T2 rowIdx,
+                                                                                                      int64_t hidden)
 {
     LocalTensor<T1> gradYUb = this->gradYInQueue_.template DeQue<T1>();
     LocalTensor<T1> expandedXUb = this->expandedXInQueue_.template DeQue<T1>();
@@ -245,20 +241,18 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
     // 计算gradExpandedX
     T3 scale = this->scalesGm_.GetValue(batchIdx);
     LocalTensor<T1> gradExpandedXUb = this->gradExpandedXOutQueue_.template AllocTensor<T1>();
-    CalcGradExpandedXVF(
-        (__local_mem__ T1*)gradExpandedXUb.GetPhyAddr(), (__local_mem__ T1*)gradYUb.GetPhyAddr(), scale,
-        (uint32_t)hidden);
+    CalcGradExpandedXVF((__local_mem__ T1 *)gradExpandedXUb.GetPhyAddr(), (__local_mem__ T1 *)gradYUb.GetPhyAddr(),
+                        scale, (uint32_t)hidden);
     this->gradExpandedXOutQueue_.template EnQue(gradExpandedXUb);
     // 计算gradScales
     LocalTensor<T3> gradScalesUb = this->gradScalesOutQueue_.template AllocTensor<T3>();
     if constexpr (IsBiasExist) {
-        CalcGradScaleVF(
-            (__local_mem__ T3*)gradScalesUb.GetPhyAddr(), (__local_mem__ T1*)gradYUb.GetPhyAddr(),
-            (__local_mem__ T1*)expandedXUb.GetPhyAddr(), (__local_mem__ T1*)biasUb.GetPhyAddr(), (uint32_t)hidden);
+        CalcGradScaleVF((__local_mem__ T3 *)gradScalesUb.GetPhyAddr(), (__local_mem__ T1 *)gradYUb.GetPhyAddr(),
+                        (__local_mem__ T1 *)expandedXUb.GetPhyAddr(), (__local_mem__ T1 *)biasUb.GetPhyAddr(),
+                        (uint32_t)hidden);
     } else {
-        CalcGradScaleVF(
-            (__local_mem__ T3*)gradScalesUb.GetPhyAddr(), (__local_mem__ T1*)gradYUb.GetPhyAddr(),
-            (__local_mem__ T1*)expandedXUb.GetPhyAddr(), nullptr, (uint32_t)hidden);
+        CalcGradScaleVF((__local_mem__ T3 *)gradScalesUb.GetPhyAddr(), (__local_mem__ T1 *)gradYUb.GetPhyAddr(),
+                        (__local_mem__ T1 *)expandedXUb.GetPhyAddr(), nullptr, (uint32_t)hidden);
     }
     this->gradScalesOutQueue_.template EnQue(gradScalesUb);
     // 释放资源
@@ -270,8 +264,9 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::ComputeOneRowWithInvalidRowIdx(
-    int64_t batchIdx, int64_t hidden)
+__aicore__ inline void
+MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::ComputeOneRowWithInvalidRowIdx(int64_t batchIdx,
+                                                                                                int64_t hidden)
 {
     // 计算gradScales
     LocalTensor<T3> gradScalesUb = this->gradScalesOutQueue_.template AllocTensor<T3>();
@@ -280,9 +275,9 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
     if constexpr (IsBiasExist) {
         gradYUb = this->gradYInQueue_.template DeQue<T1>();
         biasUb = this->biasInQueue_.template DeQue<T1>();
-        CalcGradScaleWithoutExpandedXVF(
-            (__local_mem__ T3*)gradScalesUb.GetPhyAddr(), (__local_mem__ T1*)gradYUb.GetPhyAddr(),
-            (__local_mem__ T1*)biasUb.GetPhyAddr(), (uint32_t)hidden);
+        CalcGradScaleWithoutExpandedXVF((__local_mem__ T3 *)gradScalesUb.GetPhyAddr(),
+                                        (__local_mem__ T1 *)gradYUb.GetPhyAddr(),
+                                        (__local_mem__ T1 *)biasUb.GetPhyAddr(), (uint32_t)hidden);
         this->gradYInQueue_.FreeTensor(gradYUb);
         this->biasInQueue_.FreeTensor(biasUb);
     } else {
@@ -292,8 +287,8 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
-__aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CopyOutGradExpandedX(
-    T2 rowIdx, int64_t hidden)
+__aicore__ inline void
+MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CopyOutGradExpandedX(T2 rowIdx, int64_t hidden)
 {
     LocalTensor<T1> gradExpandedXUb = this->gradExpandedXOutQueue_.template DeQue<T1>();
     DataCopyExtParams copyExtParams{1, 1, 0, 0, 0};
@@ -304,7 +299,7 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradExpandedXVF(
-    __local_mem__ T1* gradExpandedXUb, __local_mem__ T1* gradYUb, T3 scale, uint32_t count)
+    __local_mem__ T1 *gradExpandedXUb, __local_mem__ T1 *gradYUb, T3 scale, uint32_t count)
 {
     uint16_t loopCount = (count + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
     __VEC_SCOPE__
@@ -329,7 +324,7 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleVF(
-    __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* expandedXUb, __local_mem__ T1* biasUb,
+    __local_mem__ T3 *gradScaleUb, __local_mem__ T1 *gradYUb, __local_mem__ T1 *expandedXUb, __local_mem__ T1 *biasUb,
     uint32_t count)
 {
     uint16_t loopCount = (count + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
@@ -337,7 +332,7 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
         CalcGradScaleForSmallHVF(gradScaleUb, gradYUb, expandedXUb, biasUb, count);
         return;
     }
-    __local_mem__ float* binaryAddUb = (__local_mem__ float*)this->binaryAddSumBuf_.template Get<float>().GetPhyAddr();
+    __local_mem__ float *binaryAddUb = (__local_mem__ float *)this->binaryAddSumBuf_.template Get<float>().GetPhyAddr();
     __VEC_SCOPE__
     {
         RegTensor<float> gradYReg;
@@ -364,15 +359,15 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
             // 拷贝输入到RegBase内
             ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
             ops::LoadOneTensorForDtypeT<T1>(expandedXUb, expandedXReg, pregLoop, i * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(
-                gradYUb, gradYTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(
-                expandedXUb, expandedXTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
+            ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYTailReg, pregLoopTail,
+                                            (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
+            ops::LoadOneTensorForDtypeT<T1>(expandedXUb, expandedXTailReg, pregLoopTail,
+                                            (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
             if constexpr (IsBiasExist) {
                 ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, i * VL_FLOAT32_SIZE);
                 Add(expandedXReg, biasReg, expandedXReg, pregLoop);
-                ops::LoadOneTensorForDtypeT<T1>(
-                    biasUb, biasTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
+                ops::LoadOneTensorForDtypeT<T1>(biasUb, biasTailReg, pregLoopTail,
+                                                (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
                 Add(expandedXTailReg, biasTailReg, expandedXTailReg, pregLoopTail);
             }
             // 计算
@@ -401,22 +396,21 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
         // 计算最终结果并拷贝
         count = (uint32_t)binAddParams_->binaryAddLastNum;
         pregLoop = UpdateMask<float>(count);
-        BinaryAddVF(
-            gradScaleUb, binaryAddUb, sumReg, gradYReg, binAddParams_->binaryAddk, binaryAddBufSize_ / VL_FLOAT32_SIZE,
-            pregAll, pregLoop, pregOne);
+        BinaryAddVF(gradScaleUb, binaryAddUb, sumReg, gradYReg, binAddParams_->binaryAddk,
+                    binaryAddBufSize_ / VL_FLOAT32_SIZE, pregAll, pregLoop, pregOne);
     }
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleWithoutExpandedXVF(
-    __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* biasUb, uint32_t count)
+    __local_mem__ T3 *gradScaleUb, __local_mem__ T1 *gradYUb, __local_mem__ T1 *biasUb, uint32_t count)
 {
     uint16_t loopCount = (count + VL_FLOAT32_SIZE - 1) / VL_FLOAT32_SIZE;
     if (loopCount == 1) {
         CalcGradScaleForSmallHWithoutExpandedXVF(gradScaleUb, gradYUb, biasUb, count);
         return;
     }
-    __local_mem__ float* binaryAddUb = (__local_mem__ float*)this->binaryAddSumBuf_.template Get<float>().GetPhyAddr();
+    __local_mem__ float *binaryAddUb = (__local_mem__ float *)this->binaryAddSumBuf_.template Get<float>().GetPhyAddr();
     __VEC_SCOPE__
     {
         RegTensor<float> gradYReg;
@@ -440,11 +434,11 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
             pregLoopTail = UpdateMask<float>(tailCount);
             // 拷贝输入到RegBase内
             ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYReg, pregLoop, i * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(
-                gradYUb, gradYTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
+            ops::LoadOneTensorForDtypeT<T1>(gradYUb, gradYTailReg, pregLoopTail,
+                                            (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
             ops::LoadOneTensorForDtypeT<T1>(biasUb, biasReg, pregLoop, i * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<T1>(
-                biasUb, biasTailReg, pregLoopTail, (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
+            ops::LoadOneTensorForDtypeT<T1>(biasUb, biasTailReg, pregLoopTail,
+                                            (i + binaryAddBufSize_) * VL_FLOAT32_SIZE);
             // 计算
             Mul(gradYReg, biasReg, gradYReg, pregLoop);
             Mul(gradYTailReg, biasTailReg, gradYTailReg, pregLoopTail);
@@ -467,15 +461,14 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
         // 计算最终结果并拷贝
         count = (uint32_t)binAddParams_->binaryAddLastNum;
         pregLoop = UpdateMask<float>(count);
-        BinaryAddVF(
-            gradScaleUb, binaryAddUb, sumReg, gradYReg, binAddParams_->binaryAddk, binaryAddBufSize_ / VL_FLOAT32_SIZE,
-            pregAll, pregLoop, pregOne);
+        BinaryAddVF(gradScaleUb, binaryAddUb, sumReg, gradYReg, binAddParams_->binaryAddk,
+                    binaryAddBufSize_ / VL_FLOAT32_SIZE, pregAll, pregLoop, pregOne);
     }
 }
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleForSmallHVF(
-    __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* expandedXUb, __local_mem__ T1* biasUb,
+    __local_mem__ T3 *gradScaleUb, __local_mem__ T1 *gradYUb, __local_mem__ T1 *expandedXUb, __local_mem__ T1 *biasUb,
     uint32_t count)
 {
     __VEC_SCOPE__
@@ -506,7 +499,7 @@ __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBias
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void
 MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleForSmallHWithoutExpandedXVF(
-    __local_mem__ T3* gradScaleUb, __local_mem__ T1* gradYUb, __local_mem__ T1* biasUb, uint32_t count)
+    __local_mem__ T3 *gradScaleUb, __local_mem__ T1 *gradYUb, __local_mem__ T1 *biasUb, uint32_t count)
 {
     __VEC_SCOPE__
     {
@@ -530,16 +523,16 @@ MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::CalcGradScaleFo
 
 template <typename T1, typename T2, typename T3, bool IsBiasExist>
 __aicore__ inline void MoeFinalizeRoutingV2GradRegbaseNotCutH<T1, T2, T3, IsBiasExist>::BinaryAddVF(
-    __local_mem__ T3* gradScaleUb, __local_mem__ float* binaryAddTmpAddr, RegTensor<float>& x1, RegTensor<float>& x2,
-    uint16_t binaryAddKLoop, uint16_t binaryAddInnerLoop, MaskReg& pregAll, MaskReg& pregLastLoop, MaskReg& pregOne)
+    __local_mem__ T3 *gradScaleUb, __local_mem__ float *binaryAddTmpAddr, RegTensor<float> &x1, RegTensor<float> &x2,
+    uint16_t binaryAddKLoop, uint16_t binaryAddInnerLoop, MaskReg &pregAll, MaskReg &pregLastLoop, MaskReg &pregOne)
 {
     uint16_t curBinaryAddInnerLoop = binaryAddInnerLoop;
     for (uint16_t i = 0; i < binaryAddKLoop; i++) {
         curBinaryAddInnerLoop = curBinaryAddInnerLoop / BINARY_ADD_COF;
         for (uint16_t j = 0; j < curBinaryAddInnerLoop; j++) {
             ops::LoadOneTensorForDtypeT<float>(binaryAddTmpAddr, x1, pregAll, j * VL_FLOAT32_SIZE);
-            ops::LoadOneTensorForDtypeT<float>(
-                binaryAddTmpAddr, x2, pregAll, (j + curBinaryAddInnerLoop) * VL_FLOAT32_SIZE);
+            ops::LoadOneTensorForDtypeT<float>(binaryAddTmpAddr, x2, pregAll,
+                                               (j + curBinaryAddInnerLoop) * VL_FLOAT32_SIZE);
             Add(x1, x1, x2, pregAll);
             ops::StoreOneTensorForDtypeT<float>(binaryAddTmpAddr, x1, pregAll, j * VL_FLOAT32_SIZE);
         }

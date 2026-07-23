@@ -153,11 +153,10 @@ int32_t ParseDeviceId(int argc, char *argv[])
 }
 
 int CreateOppInGraph(DataType inDtype, vector<Tensor> &input, vector<Operator> &inputs, vector<Operator> &outputs,
-    Graph &graph)
+                     Graph &graph)
 {
     // Build one GEIR custom-op node. Input and output port names match inplace_partial_rotary_mul_proto.h.
-    auto inplacePartialRotaryMulOp =
-        op::InplacePartialRotaryMul("test_geir_inplace_partial_rotary_mul");
+    auto inplacePartialRotaryMulOp = op::InplacePartialRotaryMul("test_geir_inplace_partial_rotary_mul");
 
     vector<int64_t> xShape = {kBatch, kSeqLen, kNumHeads, kHeadDim};
     vector<int64_t> cosShape = {kBatch, kSeqLen, kNumHeads, kSliceEnd - kSliceStart};
@@ -232,14 +231,13 @@ int main(int argc, char *argv[])
     int32_t deviceId = ParseDeviceId(argc, argv);
     string deviceIdStr = std::to_string(deviceId);
 
-    printf("%s - INFO - [XIR]: Start to initialize ge on device %d using ge global options\n",
-        GetTime().c_str(), deviceId);
+    printf("%s - INFO - [XIR]: Start to initialize ge on device %d using ge global options\n", GetTime().c_str(),
+           deviceId);
     map<AscendString, AscendString> globalOptions = {{"ge.exec.deviceId", deviceIdStr.c_str()},
-        {"ge.graphRunMode", "1"}};
+                                                     {"ge.graphRunMode", "1"}};
     Status ret = GEInitialize(globalOptions);
     if (ret != SUCCESS) {
-        printf("%s - ERROR - [XIR]: Initialize ge using ge global options failed. ERROR: %d\n",
-            GetTime().c_str(), ret);
+        printf("%s - ERROR - [XIR]: Initialize ge using ge global options failed. ERROR: %d\n", GetTime().c_str(), ret);
         return FAILED;
     }
     printf("%s - INFO - [XIR]: Initialize ge using ge global options success\n", GetTime().c_str());
@@ -296,14 +294,14 @@ int main(int argc, char *argv[])
     for (size_t i = 0; i < input.size(); ++i) {
         string inputFile = "./tc_ge_irrun_test_inplace_partial_rotary_mul_input_" + std::to_string(i) + ".bin";
         uint64_t dataSize = static_cast<uint64_t>(input[i].GetTensorDesc().GetShape().GetShapeSize()) *
-            GetDataTypeSize(input[i].GetTensorDesc().GetDataType());
+                            GetDataTypeSize(input[i].GetTensorDesc().GetDataType());
         WriteDataToFile(inputFile, dataSize, input[i].GetData());
     }
 
     for (size_t i = 0; i < output.size(); ++i) {
         string outputFile = "./tc_ge_irrun_test_inplace_partial_rotary_mul_output_" + std::to_string(i) + ".bin";
         uint64_t dataSize = static_cast<uint64_t>(output[i].GetTensorDesc().GetShape().GetShapeSize()) *
-            GetDataTypeSize(output[i].GetTensorDesc().GetDataType());
+                            GetDataTypeSize(output[i].GetTensorDesc().GetDataType());
         WriteDataToFile(outputFile, dataSize, output[i].GetData());
 
         if (output[i].GetTensorDesc().GetDataType() == DT_FLOAT) {

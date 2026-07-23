@@ -16,10 +16,9 @@
 #include "register/op_def_registry.h"
 
 namespace ops {
-class MoeTokenPermuteGrad : public OpDef
-{
+class MoeTokenPermuteGrad : public OpDef {
 public:
-    explicit MoeTokenPermuteGrad(const char* name) : OpDef(name)
+    explicit MoeTokenPermuteGrad(const char *name) : OpDef(name)
     {
         this->Input("permuted_output_grad")
             .ParamType(REQUIRED)

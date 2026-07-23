@@ -14,11 +14,10 @@
  */
 #include "register/op_def_registry.h"
 
-namespace ops
-{
-class MhcSinkhorn: public OpDef {
+namespace ops {
+class MhcSinkhorn : public OpDef {
 public:
-    explicit MhcSinkhorn(const char* name) : OpDef(name)
+    explicit MhcSinkhorn(const char *name) : OpDef(name)
     {
         this->Input("h_res")
             .ParamType(REQUIRED)
@@ -29,21 +28,21 @@ public:
         this->Output("y")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
-           .Format({ge::FORMAT_ND})
-           .UnknownShapeFormat({ge::FORMAT_ND})
-           .AutoContiguous();
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Output("norm_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
-           .Format({ge::FORMAT_ND})
-           .UnknownShapeFormat({ge::FORMAT_ND})
-           .AutoContiguous();
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Output("sum_out")
             .ParamType(REQUIRED)
             .DataType({ge::DT_FLOAT})
-           .Format({ge::FORMAT_ND})
-           .UnknownShapeFormat({ge::FORMAT_ND})
-           .AutoContiguous();
+            .Format({ge::FORMAT_ND})
+            .UnknownShapeFormat({ge::FORMAT_ND})
+            .AutoContiguous();
         this->Attr("eps").AttrType(OPTIONAL).Float(1e-06);
         this->Attr("num_iters").AttrType(OPTIONAL).Int(20);
         this->Attr("out_flag").AttrType(OPTIONAL).Int(0);
@@ -61,4 +60,4 @@ public:
 };
 
 OP_ADD(MhcSinkhorn);
-}  // namespace ops
+} // namespace ops

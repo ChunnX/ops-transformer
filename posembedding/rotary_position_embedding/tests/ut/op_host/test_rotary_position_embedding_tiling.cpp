@@ -240,9 +240,10 @@ TEST_F(RotaryPositionEmbeddingTiling, RotaryPositionEmbedding_rotate_half_fp32_r
                                               },
                                               &compileInfo);
     uint64_t expectTilingKey = 1011;
-    string expectTilingData = "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
-                              "0 0 1 2 8 4 1 1 4 0 4096 2 8 64 32 32 64 1 4 126 8064 8064 4 1 0 1 1024 64 256 256 64 64 "
-                              "0 1 0 1 1024 64 64 64 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
+    string expectTilingData =
+        "0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 "
+        "0 0 1 2 8 4 1 1 4 0 4096 2 8 64 32 32 64 1 4 126 8064 8064 4 1 0 1 1024 64 256 256 64 64 "
+        "0 1 0 1 1024 64 64 64 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ";
     std::vector<size_t> expectWorkspaces = {16 * 1024 * 1024};
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, expectTilingKey, expectTilingData, expectWorkspaces);
 }

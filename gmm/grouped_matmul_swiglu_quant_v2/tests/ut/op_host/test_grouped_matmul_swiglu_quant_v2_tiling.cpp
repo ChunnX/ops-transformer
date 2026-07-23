@@ -102,10 +102,10 @@ vector<TensorDescParam> ParseTensorDescList(const string &origin, const string &
     vector<TensorDescParam> tensors;
     tensors.reserve(originList.size());
     for (size_t i = 0; i < originList.size(); ++i) {
-        tensors.push_back(
-            {ops::ut::ParseDims(originList[i]), ops::ut::ParseDims(GetRepeatedField(storageList, i, "storage")),
-             ops::ut::ParseGeDtype(GetRepeatedField(dtypeList, i, "dtype")),
-             ops::ut::ParseGeFormat(GetRepeatedField(formatList, i, "format"))});
+        tensors.push_back({ops::ut::ParseDims(originList[i]),
+                           ops::ut::ParseDims(GetRepeatedField(storageList, i, "storage")),
+                           ops::ut::ParseGeDtype(GetRepeatedField(dtypeList, i, "dtype")),
+                           ops::ut::ParseGeFormat(GetRepeatedField(formatList, i, "format"))});
     }
     return tensors;
 }
@@ -172,8 +172,8 @@ struct GroupedMatmulSwigluQuantV2TilingCase {
 
 private:
     template <size_t N>
-    static vector<gert::TilingContextPara::TensorDescription> BuildTensorDescs(
-        const array<vector<TensorDescParam>, N> &tensors, vector<uint32_t> &instanceNum)
+    static vector<gert::TilingContextPara::TensorDescription>
+    BuildTensorDescs(const array<vector<TensorDescParam>, N> &tensors, vector<uint32_t> &instanceNum)
     {
         vector<gert::TilingContextPara::TensorDescription> descs;
         for (const auto &tensorList : tensors) {
@@ -212,10 +212,10 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
         }
         const string caseName = items.size() > 1U ? Trim(items[1]) : "";
         if (items.size() != kCsvColumnCount) {
-            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(
-                csvPath, lineNo, caseName,
-                invalid_argument("csv column count is " + to_string(items.size()) + ", expect " +
-                                 to_string(kCsvColumnCount)));
+            ADD_FAILURE() << ops::ut::BuildCsvParseErrorMessage(csvPath, lineNo, caseName,
+                                                                invalid_argument("csv column count is " +
+                                                                                 to_string(items.size()) + ", expect " +
+                                                                                 to_string(kCsvColumnCount)));
             continue;
         }
 
@@ -243,13 +243,13 @@ vector<GroupedMatmulSwigluQuantV2TilingCase> LoadCases(const string &socVersion)
             };
 
             for (size_t tensorIdx = 0; tensorIdx < kInputTensorCount; ++tensorIdx) {
-                tc.inputs[tensorIdx] = ParseTensorDescList(
-                    Trim(items[idx]), Trim(items[idx + 1U]), Trim(items[idx + 2U]), Trim(items[idx + 3U]));
+                tc.inputs[tensorIdx] = ParseTensorDescList(Trim(items[idx]), Trim(items[idx + 1U]),
+                                                           Trim(items[idx + 2U]), Trim(items[idx + 3U]));
                 idx += kTensorFieldCount;
             }
             for (size_t tensorIdx = 0; tensorIdx < kOutputTensorCount; ++tensorIdx) {
-                tc.outputs[tensorIdx] = ParseTensorDescList(
-                    Trim(items[idx]), Trim(items[idx + 1U]), Trim(items[idx + 2U]), Trim(items[idx + 3U]));
+                tc.outputs[tensorIdx] = ParseTensorDescList(Trim(items[idx]), Trim(items[idx + 1U]),
+                                                            Trim(items[idx + 2U]), Trim(items[idx + 3U]));
                 idx += kTensorFieldCount;
             }
 
@@ -316,8 +316,8 @@ INSTANTIATE_TEST_SUITE_P(GMMSQ_V2_TILING_950, TestGroupedMatmulSwigluQuantV2Tili
 const GroupedMatmulSwigluQuantV2TilingCase *FindAscend950Case(const string &prefix)
 {
     const auto &cases = GetAscend950Cases();
-    const auto iter = find_if(cases.begin(), cases.end(),
-                              [&prefix](const auto &item) { return item.prefix == prefix; });
+    const auto iter =
+        find_if(cases.begin(), cases.end(), [&prefix](const auto &item) { return item.prefix == prefix; });
     return iter == cases.end() ? nullptr : &(*iter);
 }
 
