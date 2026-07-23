@@ -1212,43 +1212,27 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo,
                                                                                           int32_t localExpertId)
 {
-    // GMM1 wave 粒度：每个 wave 包含 L1_TILE_M_256(=256) 行，dispatch flag 按 wave 索引 AtomicAdd 计数
     constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
-    // priorExpertCumsum：前一个 expert 在 cumsum 数组中的末值，即当前 expert 的全局行起始偏移；
-    // 用于将全局 dst row 转换为 expert-local row，以便计算 wave 索引
     int32_t priorExpertCumsum = (localExpertId == 0) ? 0 :
         cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1);
 
-    // MAX_TRIPLE_ROWS_PER_CHUNK：CopyGMToGMPerToken 单次调用的最大行数（受 tripleTensor_ UB 容量约束）
     constexpr int32_t MAX_TRIPLE_ROWS_PER_CHUNK = static_cast<int32_t>(DISPATCH_WAVE_TILE_M);
 
-    // ---- 外层循环：按 srcRankInServer 分配 block ----
-    // 保证同一 core 的所有 rank 共享同一 relay rank（relayRank = serverId_ * rankPerServer_ + srcRankInServer），
-    // 跨 server 通信时 URMA 连接复用、relay 侧 dispatch win 区域连续。
-    // 内层按 server 遍历，同一 srcRankInServer 下 relay rank 恒定。
     for (uint32_t srcRankInServer = blockIdx_; srcRankInServer < rankPerServer_; srcRankInServer += blockNum_) {
         for (uint32_t srcServer = 0; srcServer < serverNum_; ++srcServer) {
             uint32_t dstRankIdx = srcServer * rankPerServer_ + srcRankInServer;
             if (dstRankIdx >= worldSize_) {
                 continue;
             }
-            // rowStartIdxInDst：当前 expert 从 dstRankIdx 接收的 token 在全局 workspace 中的起始行号
-            // 取自 cumsumInfo[expert * worldSize + rank - 1]，即前一个 rank 的 cumsum 末值
             int32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
                 cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
             if (rowStartIdxInDst >= maxOutputSize_) {
                 continue;
             }
-
-            // rankMaskBasePtr：当前 expert/rank 对应的 mask slot 在 win 中的起始地址
-            // mask slot 布局：[mask 位图 | count 值]，总大小为 maskSlotSize_ = maskAlignSize_ + 32B
             __gm__ uint8_t* rankMaskBasePtr = reinterpret_cast<__gm__ uint8_t*>(
                 params_.peermemInfo.maskRecvPtr +
                 static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
                 static_cast<uint64_t>(dstRankIdx) * maskSlotSize_);
-
-            // 优化1：读 mask slot 末尾的 count 字段（由 SendMaskCal 写入），
-            // 若 count <= 0 说明该 rank 没有发给当前 expert 的 token，直接跳过，省去整轮 mask 加载 + GatherMask
             __gm__ int32_t* rankCountPtr = reinterpret_cast<__gm__ int32_t*>(
                 rankMaskBasePtr + maskAlignSize_);
             int32_t rankTotalCount = AscendC::ReadGmByPassDCache(rankCountPtr);
@@ -1256,13 +1240,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                 continue;
             }
 
-            // accumulatedRowSrcOffset：已扫描轮次累计的命中 token 数
-            // 与 rowStartIdxInDst 相加即为当前轮在 workspace 中的实际写入行偏移
             int32_t accumulatedRowSrcOffset = 0;
-
-            // ---- 优化2：跨轮次 mask 预加载相关状态 ----
-            // GatherMask 完成后 gatherMaskTensor_ 空闲，提前发起下一轮 mask 的 MTE2 加载，
-            // 使 MTE2 传输与当前轮的 CopyGMToGMPerToken 搬运流水重叠
             bool nextMaskPreLoaded = false; // 下一轮 mask 是否已预加载到 gatherMaskTensor_
             uint64_t nextRoundStart = 0;            // 预加载轮的 route 数组起始下标
             uint32_t nextRoundLen = 0;              // 预加载轮的有效 route item 数
@@ -1270,34 +1248,24 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
             uint32_t nextCurRoundMaskBytes = 0;     // 预加载轮的 mask 字节数
             uint64_t nextRoundMaskByteOffset = 0;   // 预加载轮的 mask 在 GM 中的字节偏移
 
-            // ---- 内层循环：按 dispatchTotalRounds_ 分轮次处理 ----
-            // 大 sendTotalNum 场景下完整 mask 超出 UB 容量，因此分轮加载 mask 逐批处理
             for (uint32_t roundIdx = 0; roundIdx < dispatchTotalRounds_; ++roundIdx) {
-                // 计算本轮的 route 数组区间 [roundStart, roundStart + roundLen)
                 uint64_t roundStart = static_cast<uint64_t>(roundIdx) *
                     static_cast<uint64_t>(dispatchRoundSendTotalNum_);
                 uint32_t roundLen = (roundIdx + 1 < dispatchTotalRounds_) ?
                     dispatchRoundSendTotalNum_ :
                     static_cast<uint32_t>(sendTotalNum_ - roundStart);
-                // topkIndexTensorElemCount：roundLen 个 int32 向上对齐到 ALIGN_32 的元素数（供 CreateVecIndex 使用）
                 uint32_t topkIndexTensorElemCount = Ops::Base::CeilAlign(
                     static_cast<int64_t>(roundLen * sizeof(int32_t)),
                     static_cast<int64_t>(ALIGN_32)) / sizeof(int32_t);
 
-                // curRoundMaskBytes：本轮 mask 的字节大小（roundLen 个 bit → 向上对齐到 ALIGN_32）
-                // roundMaskByteOffset：本轮 mask 在完整 mask 位图中的字节偏移（roundStart / 8）
                 uint32_t curRoundMaskBytes = (roundLen == dispatchRoundSendTotalNum_) ?
                     dispatchRoundMaskAlignSize_ :
                     static_cast<uint32_t>(Ops::Base::CeilAlign(
                         static_cast<int64_t>(Ops::Base::CeilDiv(roundLen, 8U)), static_cast<int64_t>(ALIGN_32)));
                 uint64_t roundMaskByteOffset = static_cast<uint64_t>(roundStart) / 8U;
 
-                // ---- Phase 1：加载本轮 mask 到 gatherMaskTensor_(UB) ----
                 if (nextMaskPreLoaded) {
-                    // 优化2 命中：上一轮已预加载本轮 mask，等待 MTE2 完成后直接使用
-                    // SYNC_EVENT_ID3 与预加载时 DataCopy 对应，与正常加载的 SYNC_EVENT_ID1 不冲突
                     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID3>();
-                    // 用预加载保存的参数覆盖本轮回算值，保证后续逻辑一致
                     roundStart = nextRoundStart;
                     roundLen = nextRoundLen;
                     topkIndexTensorElemCount = nextTopkIndexTensorElemCount;
@@ -1305,7 +1273,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                     roundMaskByteOffset = nextRoundMaskByteOffset;
                     nextMaskPreLoaded = false;
                 } else {
-                    // 首轮或未能预加载时，走正常 MTE2 加载路径
                     GlobalTensor<uint8_t> roundMaskSrc;
                     roundMaskSrc.SetGlobalBuffer(rankMaskBasePtr + roundMaskByteOffset);
                     SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
@@ -1313,14 +1280,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                     SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
                 }
 
-                // ---- Phase 2：GatherMask 压缩 ----
-                // CreateVecIndex：在 topkIndexTensor_ 中生成 [roundStart, roundStart+1, ...] 的连续索引序列
                 CreateVecIndex(topkIndexTensor_, static_cast<int32_t>(roundStart),
                     topkIndexTensorElemCount);
                 AscendC::PipeBarrier<PIPE_V>();
 
-                // GatherMask：根据 gatherMaskTensor_ 中的 bit mask，将 topkIndexTensor_ 中命中(bit=1)的索引
-                // 压缩写入 validTopkIndexTensor_，同时返回命中数量 roundTokenCnt
                 uint64_t roundTokenCnt = 0;
                 LocalTensor<uint32_t> rankMaskSlice = gatherMaskInt32Tensor_[0];
                 GatherMask(validTopkIndexTensor_, topkIndexTensor_,
@@ -1330,20 +1293,15 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                     continue;
                 }
 
-                // roundCopyCnt：本轮实际需要搬运的行数，受 maxOutputSize_ 截断
                 int32_t roundCopyCnt = static_cast<int32_t>(roundTokenCnt);
                 if (rowStartIdxInDst + accumulatedRowSrcOffset + roundCopyCnt > maxOutputSize_) {
                     roundCopyCnt = maxOutputSize_ - rowStartIdxInDst - accumulatedRowSrcOffset;
                 }
                 if (roundCopyCnt <= 0) {
-                    // 已超出 maxOutputSize_，本轮无需搬运，但仍需累加偏移以保持 cumsum 一致性
                     accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
                     continue;
                 }
 
-                // ---- 优化2：预加载下一轮 mask ----
-                // GatherMask 已完成，gatherMaskTensor_ 空闲，可安全复用
-                // 在当前轮的 CopyGMToGMPerToken 搬运期间，MTE2 引擎同时拉取下一轮 mask，隐藏传输延迟
                 if (roundIdx + 1 < dispatchTotalRounds_) {
                     nextRoundStart = static_cast<uint64_t>(roundIdx + 1) *
                         static_cast<uint64_t>(dispatchRoundSendTotalNum_);
@@ -1361,45 +1319,32 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                     nextRoundMaskByteOffset = nextRoundStart / 8U;
                     GlobalTensor<uint8_t> nextRoundMaskSrc;
                     nextRoundMaskSrc.SetGlobalBuffer(rankMaskBasePtr + nextRoundMaskByteOffset);
-                    // V_MTE2 + DataCopy 仅发起 MTE2 传输，不等待完成（MTE2 在后台搬运）
                     SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID3>();
                     DataCopy(gatherMaskTensor_, nextRoundMaskSrc, nextCurRoundMaskBytes);
                     nextMaskPreLoaded = true;
                 }
 
-                // ---- Phase 3：分块搬运 token 数据 ----
-                // 按 MAX_TRIPLE_ROWS_PER_CHUNK(=256) 分块调用 CopyGMToGMPerToken，
-                // 每块从 validTopkIndexTensor_ 读取对应索引，通过 5-buffer 软流水从远端 rank 搬运 token+scale 数据
                 for (int32_t chunkSrcIdx = 0; chunkSrcIdx < roundCopyCnt;
                     chunkSrcIdx += MAX_TRIPLE_ROWS_PER_CHUNK) {
                     int32_t chunkRows = roundCopyCnt - chunkSrcIdx;
                     if (chunkRows > MAX_TRIPLE_ROWS_PER_CHUNK) {
                         chunkRows = MAX_TRIPLE_ROWS_PER_CHUNK;
                     }
-                    // rowDstOffsetInCore：当前 chunk 在全局 workspace 中的目标行起始偏移
                     int32_t rowDstOffsetInCore = rowStartIdxInDst + accumulatedRowSrcOffset + chunkSrcIdx;
-                    // tripleTensor_ 动态分配：在 ubBufferUsedAddr_ 处按 chunkRows * 32B 分配
                     uint32_t tripleTensorAddr = ubBufferUsedAddr_;
                     uint32_t tripleTensorSize = chunkRows * ALIGN_32;
                     tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
                         tripleTensorSize / sizeof(int32_t));
-                    // V_S：等待 Phase 1 的 triple 组装完成（CopyGMToGMPerToken 内部读 validTopkIndexTensor_）
                     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
                     CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, chunkSrcIdx, chunkRows);
                 }
 
-                // ---- Phase 4：更新 dispatch→GMM1 wave flag（优化3：round 级而非 chunk 级） ----
-                // 所有 chunk 搬运完成后统一等一次 MTE3_S，再更新 wave flag，
-                // 减少同步点（原来每个 chunk 都等一次 MTE3_S + AtomicAdd）
                 SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
-                // 将全局行号转换为 expert-local 行号，计算本轮搬运行区间跨越的 wave 索引
                 int32_t roundRowStartLocal = rowStartIdxInDst + accumulatedRowSrcOffset - priorExpertCumsum;
                 int32_t roundRowEndLocal = roundRowStartLocal + roundCopyCnt;
                 int32_t waveLo = roundRowStartLocal / L1_TILE_M_I32;
                 int32_t waveHi = (roundRowEndLocal - 1) / L1_TILE_M_I32;
                 __gm__ int32_t* flagBase = gmmAddrInfo.dispatchToGmm1Flag;
-                // 遍历本轮行区间覆盖的每个 wave，计算该 wave 与本轮行区间的重叠行数并 AtomicAdd
-                // GMM1 消费侧等待每个 wave 的计数达到 L1_TILE_M_I32 后才开始计算
                 for (int32_t w = waveLo; w <= waveHi; ++w) {
                     int32_t waveStartLocal = w * L1_TILE_M_I32;
                     int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
@@ -1408,7 +1353,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                     AtomicAdd(flagBase + w, int32_t(hi - lo));
                 }
 
-                // 累加本轮命中数（含超出 maxOutputSize_ 的部分），保持 cumsum 偏移一致性
                 accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
             }
         }
