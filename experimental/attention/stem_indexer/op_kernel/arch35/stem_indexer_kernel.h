@@ -60,8 +60,6 @@ public:
     SIVector<SIT> vectorService;
 
     // =================================常量区=================================
-    static constexpr uint32_t GM_ALIGN_BYTES = 512;
-
 protected:
     TPipe *pipe = nullptr;
 
@@ -70,6 +68,7 @@ protected:
     uint64_t indiceOutCoreOffset = 0ULL;
     uint64_t indiceLenCoreOffset = 0ULL;
     bool isUsedCoreEqZero = false;
+    bool needCleanOutput = false;
     // ================================Global Buffer区=================================
 
     GlobalTensor<uint32_t> metadataGm;
@@ -96,6 +95,7 @@ protected:
     __aicore__ inline void InitTilingData(const StemIndexerTilingData *__restrict tilingData);
     __aicore__ inline void InitBuffers();
     __aicore__ inline void InitActualSeqLen(__gm__ uint8_t *actualSeqLengthsQ, __gm__ uint8_t *actualSeqLengthsK);
+    __aicore__ inline bool NeedCleanOutput();
     // ================================Split Core================================
     __aicore__ inline void SplitCoreByAICPU(uint32_t cubeCoreIdx, uint32_t vecCoreIdx, GlobalTensor<uint32_t> &metadataGm);
     __aicore__ inline uint32_t GetS2BaseBlockNumOnMask(uint32_t gS1Idx, uint32_t actS1Size, uint32_t actS2Size);
@@ -104,7 +104,6 @@ protected:
     __aicore__ inline void ProcessMain();
     __aicore__ inline void ProcessBaseBlock(uint32_t loop, uint64_t s2LoopIdx,
                                             SICommon::RunInfo runInfo);
-    __aicore__ inline void ProcessInvalid();
     // ================================Params Calc=====================================
     __aicore__ inline void CalcGS1LoopParams(uint32_t bN2Idx);
     __aicore__ inline void GetBN2Idx(uint32_t bN2Idx);
@@ -113,7 +112,6 @@ protected:
     __aicore__ inline void GetS1S2ActualSeqLen(uint32_t bIdx, uint32_t &actS1Size, uint32_t &actS2Size);
     __aicore__ inline void CalcS2LoopParams(uint32_t bN2LoopIdx, uint32_t gS1LoopIdx);
     __aicore__ inline void CalcRunInfo(uint32_t loop, uint32_t s2LoopIdx, SICommon::RunInfo &runInfo);
-    __aicore__ inline void ClearPaddingOutput(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start);
 };
 
 template <typename SIT>
@@ -159,7 +157,7 @@ template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::InitBuffers()
 {
     if ASCEND_IS_AIV {
-        vectorService.InitBuffers(pipe);
+        vectorService.InitBuffers(pipe, needCleanOutput);
     } else {
         matmulService.InitBuffers(pipe);
     }
@@ -181,6 +179,28 @@ __aicore__ inline void SIPreload<SIT>::InitActualSeqLen(__gm__ uint8_t *qSeqLens
         constInfo.actualLenDims = constInfo.batchSize;
         kvSeqLensGm.SetGlobalBuffer((__gm__ int32_t *)kvSeqLens, constInfo.actualLenDims);
     }
+}
+
+template <typename SIT>
+__aicore__ inline bool SIPreload<SIT>::NeedCleanOutput()
+{
+    if (isUsedCoreEqZero) {
+        return true;
+    }
+    for (uint32_t bIdx = 0U; bIdx < constInfo.batchSize; ++bIdx) {
+        uint32_t actS1Size = 0U;
+        uint32_t actS2Size = 0U;
+        GetS1S2ActualSeqLen(bIdx, actS1Size, actS2Size);
+        if (actS1Size == 0U || actS2Size == 0U) {
+            return true;
+        }
+        if constexpr (Q_LAYOUT_T == SI_LAYOUT::BNSD) {
+            if (actS1Size != constInfo.qSeqSize) {
+                return true;
+            }
+        }
+    }
+    return false;
 }
 
 template <typename SIT>
@@ -323,21 +343,6 @@ __aicore__ inline void SIPreload<SIT>::SplitCoreByAICPU(uint32_t cubeCoreIdx, ui
 }
 
 template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::ClearPaddingOutput(uint32_t bIdx, uint32_t n2Idx, uint32_t s1Start)
-{
-    if ASCEND_IS_AIV {
-        uint32_t tBase = 0U;
-        if constexpr (Q_LAYOUT_T == SI_LAYOUT::TND) {
-            if (bIdx > 0U) {
-                uint32_t tBaseIdx = constInfo.batchSupperFlag ? bIdx : bIdx - 1U;
-                tBase = qSeqLensGm.GetValue(tBaseIdx);
-            }
-        }
-        vectorService.ClearPaddingOutput(bIdx, n2Idx, s1Start, tempLoopInfo.actS1Size, tBase);
-    }
-}
-
-template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_t *kflat, __gm__ uint8_t *vbias,
                                             __gm__ uint8_t *qSeqLens, __gm__ uint8_t *kvSeqLens,
                                             __gm__ uint8_t *numPromptTokens, __gm__ uint8_t *metadata,
@@ -359,6 +364,7 @@ __aicore__ inline void SIPreload<SIT>::Init(__gm__ uint8_t *qflat, __gm__ uint8_
     // 获取 AICPU metadata 算好的分核信息。
     metadataGm.SetGlobalBuffer((__gm__ uint32_t *)metadata);
     SplitCoreByAICPU(aiCoreIdx, tmpBlockIdx, metadataGm);
+    needCleanOutput = NeedCleanOutput();
 
     pipe = tPipe;
 
@@ -414,7 +420,6 @@ template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 {
     GetBN2Idx(bN2LoopIdx);
-    tempLoopInfo.needDealActS1LessThanS1 = false;
     tempLoopInfo.s2ValidSize = 0U;
     GetS1S2ActualSeqLen(tempLoopInfo.bIdx, tempLoopInfo.actS1Size, tempLoopInfo.actS2Size);
     uint64_t promptTokenLen = GetActualSeqLen(tempLoopInfo.bIdx, static_cast<uint32_t>(constInfo.batchSize), false,
@@ -431,11 +436,6 @@ __aicore__ inline void SIPreload<SIT>::CalcGS1LoopParams(uint32_t bN2LoopIdx)
 
     uint32_t gS1SplitNum = (tempLoopInfo.actS1Size * constInfo.gSize + constInfo.mBaseSize - 1) / constInfo.mBaseSize;
     tempLoopInfo.gS1LoopEnd = (bN2LoopIdx == splitCoreInfo.bN2End) ? splitCoreInfo.gS1End : gS1SplitNum - 1;
-    if constexpr (Q_LAYOUT_T == SI_LAYOUT::BNSD) {
-        if (tempLoopInfo.gS1LoopEnd == gS1SplitNum - 1 && constInfo.qSeqSize > tempLoopInfo.actS1Size) {
-            tempLoopInfo.needDealActS1LessThanS1 = true;
-        }
-    }
 }
 
 template <typename SIT>
@@ -492,43 +492,10 @@ template <typename SIT>
 __aicore__ inline void SIPreload<SIT>::Process()
 {
     if (isUsedCoreEqZero) {
-        // 输出已由全部AIV在SIVector::InitBuffers中完成初始化。
-        // ProcessInvalid();
         return;
     }
 
     ProcessMain();
-}
-
-template <typename SIT>
-__aicore__ inline void SIPreload<SIT>::ProcessInvalid()
-{
-    if ASCEND_IS_AIV {
-        uint32_t aivCoreNum = GetBlockNum() * 2;  // 2 means c:v = 1:2
-        uint64_t totalIndiceSize =
-            constInfo.batchSize * constInfo.qHeadNum * constInfo.qSeqSize * constInfo.sparseCount;
-        uint64_t singleCoreIndiceSize = SICommon::Align((totalIndiceSize + aivCoreNum - 1) / aivCoreNum,
-                                                         GM_ALIGN_BYTES / sizeof(int32_t));
-        uint64_t indiceBaseSize = static_cast<uint64_t>(tmpBlockIdx) * singleCoreIndiceSize;
-        if (indiceBaseSize < totalIndiceSize) {
-            uint64_t dealIndiceSize = (indiceBaseSize + singleCoreIndiceSize <= totalIndiceSize)
-                                          ? singleCoreIndiceSize
-                                          : totalIndiceSize - indiceBaseSize;
-            GlobalTensor<int32_t> indiceOut = sparseIndicesGm[indiceBaseSize];
-            AscendC::InitGlobalMemory(indiceOut, dealIndiceSize, static_cast<int32_t>(SICommon::INVALID_IDX));
-        }
-
-        uint64_t totalLenSize = constInfo.batchSize * constInfo.qHeadNum * constInfo.qSeqSize;
-        uint64_t singleCoreLenSize = SICommon::Align((totalLenSize + aivCoreNum - 1) / aivCoreNum,
-                                                      GM_ALIGN_BYTES / sizeof(int32_t));
-        uint64_t lenBaseSize = static_cast<uint64_t>(tmpBlockIdx) * singleCoreLenSize;
-        if (lenBaseSize < totalLenSize) {
-            uint64_t dealLenSize =
-                (lenBaseSize + singleCoreLenSize <= totalLenSize) ? singleCoreLenSize : totalLenSize - lenBaseSize;
-            GlobalTensor<int32_t> indiceLen = sparseSeqLenGm[lenBaseSize];
-            AscendC::InitGlobalMemory(indiceLen, dealLenSize, static_cast<int32_t>(0));
-        }
-    }
 }
 
 template <typename SIT>
@@ -540,9 +507,10 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
 
     if ASCEND_IS_AIV {
         vectorService.AllocEventID();
-        // Cube首轮启动令牌已在SIVector::InitBuffers中提前设置，用于和全量输出初始化并行。
-        // CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 0);
-        // CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 1);
+        if (!needCleanOutput) {
+            CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 0U);
+            CrossCoreSetFlag<SICommon::SI_SYNC_MODE4, PIPE_V>(SICommon::CROSS_VC_EVENT + 1U);
+        }
     } else {
         matmulService.AllocEventID();
     }
@@ -552,8 +520,6 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
     for (uint32_t bN2LoopIdx = splitCoreInfo.bN2Start; bN2LoopIdx <= splitCoreInfo.bN2End; bN2LoopIdx++) {
         CalcGS1LoopParams(bN2LoopIdx);
         if (tempLoopInfo.curActSeqLenIsZero) {
-            // 输出已全量初始化，无需再次写-1和0。
-            // ClearPaddingOutput(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, 0U);
             continue;
         }
 
@@ -571,10 +537,6 @@ __aicore__ inline void SIPreload<SIT>::ProcessMain()
                 ++gloop;
             }
             splitCoreInfo.s2Start = 0;
-        }
-        if (tempLoopInfo.needDealActS1LessThanS1) {
-            // 输出已全量初始化，无需再次清理Q轴padding。
-            // ClearPaddingOutput(tempLoopInfo.bIdx, tempLoopInfo.n2Idx, tempLoopInfo.actS1Size);
         }
         splitCoreInfo.gS1Start = 0;
     }
@@ -595,10 +557,9 @@ __aicore__ inline void SIPreload<SIT>::ProcessBaseBlock(uint32_t loop, uint64_t 
     if ASCEND_IS_AIC {
         matmulService.ComputeMm1(runInfo);
     } else {
-        if (runInfo.isFirstS2InnerLoop) {
-            // sparseIndices已全量初始化为-1。
-            // vectorService.initS2LenToNeg(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
-            //                              runInfo.indiceOutOffset);
+        if (!needCleanOutput && runInfo.isFirstS2InnerLoop) {
+            vectorService.initS2LenToNeg(runInfo.gS1Idx, runInfo.actMBaseSize, runInfo.actS1Size,
+                                         runInfo.indiceOutOffset);
         }
         vectorService.ProcessVec1(runInfo);
         vectorService.ProcessTopK(runInfo, runInfo.isFirstS2InnerLoop, runInfo.isLastS2InnerLoop);
