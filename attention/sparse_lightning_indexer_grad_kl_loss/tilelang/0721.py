@@ -941,14 +941,17 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_ones = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
-            v1_bw_p = T.alloc_ub(bw_col_block, calc_dtype)
-            v1_bw_sy = T.alloc_ub(bw_col_block, calc_dtype)
+            # Keep the MTE2 inputs and MTE3 output physically separate.  The
+            # previous single-slot path intentionally aliased BMM2 fp32 and
+            # reluGrad fp16, forcing MTE2 to wait for every MTE3 store.
+            v1_bw_p_db = T.alloc_ub((2, bw_col_block), calc_dtype)
+            v1_bw_sy_db = T.alloc_ub((2, bw_col_block), calc_dtype)
             v1_bw_diff = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_diff_2d = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
-            v1_bw_bmm2 = T.alloc_ub(
-                (rows_per_aiv, bw_col_block), calc_dtype
+            v1_bw_bmm2_db = T.alloc_ub(
+                (2, rows_per_aiv, bw_col_block), calc_dtype
             )
             v1_bw_mask = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
@@ -956,8 +959,8 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_rg = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
             )
-            v1_bw_rg_half = T.alloc_ub(
-                (rows_per_aiv, bw_col_block), input_dtype
+            v1_bw_rg_half_db = T.alloc_ub(
+                (2, rows_per_aiv, bw_col_block), input_dtype
             )
             v1_bw_dw = T.alloc_ub(rows_per_aiv, calc_dtype)
             v1_bw_dw_accum = T.alloc_ub(rows_per_aiv, calc_dtype)
@@ -972,9 +975,13 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_row_tmp = T.alloc_ub((rows_per_aiv, 8), calc_dtype)
 
             T.tile.fill(v1_bw_eps, 1e-8)
-            # The FP16 reluGrad store shares its physical UB region with the
-            # next FP32 BMM2 load, so MTE2 waits for MTE3 directly.
-            T.set_flag("mte3", "mte2", 2)
+            # Input slots are released by Vector after their last read;
+            # output slots are independently released by MTE3 after the GM
+            # store.  This is the explicit three-stage MTE2/V/MTE3 pipeline.
+            T.set_flag("v", "mte2", 0)
+            T.set_flag("v", "mte2", 1)
+            T.set_flag("mte3", "v", 0)
+            T.set_flag("mte3", "v", 1)
             T.set_flag("mte3", "v", 3)
 
             for s1_id in T.serial(s1_begin_task, s1_end_task):
@@ -1005,154 +1012,195 @@ def tilelang_grad_kl_loss_single_kernel(
                     v1_bw_row_tmp,
                 )
                 T.pipe_barrier("v")
-                T.set_flag("v", "mte2", 3)
-                for n_idx in T.serial(n_num):
-                    for bw_col_id in T.serial(bw_col_count):
-                        bw_col_start = (
-                            n_idx * n_block + bw_col_id * bw_col_block
-                        )
-                        bw_col_end = bw_col_start + bw_col_block
+                bw_tile_count = n_num * bw_col_count
+                T.wait_flag("v", "mte2", 0)
+                T.copy(
+                    PReduced[bz_task, s1_id, 0:bw_col_block],
+                    v1_bw_p_db[0, :],
+                )
+                T.copy(
+                    SoftmaxI[bz_task, s1_id, 0:bw_col_block],
+                    v1_bw_sy_db[0, :],
+                )
+                T.copy(
+                    bmm2Res[
+                        bz_task, s1_id,
+                        g_start:g_start + rows_per_aiv,
+                        0:bw_col_block,
+                    ],
+                    v1_bw_bmm2_db[0, :, :],
+                )
+                T.set_flag("mte2", "v", 0)
 
-                        T.wait_flag("v", "mte2", 3)
-                        T.wait_flag("mte3", "mte2", 2)
+                for bw_tile_id in T.serial(bw_tile_count):
+                    current_slot = bw_tile_id % 2
+                    next_slot = (bw_tile_id + 1) % 2
+                    n_idx = bw_tile_id // bw_col_count
+                    bw_col_id = bw_tile_id % bw_col_count
+                    bw_col_start = (
+                        n_idx * n_block + bw_col_id * bw_col_block
+                    )
+                    bw_col_end = bw_col_start + bw_col_block
+
+                    # Queue the next MTE2 load before Vector consumes the
+                    # current slot.  The per-slot V->MTE2 event prevents
+                    # reuse until all reads of that input slot are complete.
+                    if bw_tile_id + 1 < bw_tile_count:
+                        next_n_idx = (bw_tile_id + 1) // bw_col_count
+                        next_bw_col_id = (bw_tile_id + 1) % bw_col_count
+                        next_bw_col_start = (
+                            next_n_idx * n_block
+                            + next_bw_col_id * bw_col_block
+                        )
+                        next_bw_col_end = next_bw_col_start + bw_col_block
+                        T.wait_flag("v", "mte2", next_slot)
                         T.copy(
                             PReduced[bz_task, s1_id,
-                                     bw_col_start:bw_col_end],
-                            v1_bw_p,
+                                     next_bw_col_start:next_bw_col_end],
+                            v1_bw_p_db[next_slot, :],
                         )
                         T.copy(
                             SoftmaxI[bz_task, s1_id,
-                                     bw_col_start:bw_col_end],
-                            v1_bw_sy,
+                                     next_bw_col_start:next_bw_col_end],
+                            v1_bw_sy_db[next_slot, :],
                         )
                         T.copy(
                             bmm2Res[
                                 bz_task, s1_id,
                                 g_start:g_start + rows_per_aiv,
-                                bw_col_start:bw_col_end,
+                                next_bw_col_start:next_bw_col_end,
                             ],
-                            v1_bw_bmm2,
+                            v1_bw_bmm2_db[next_slot, :, :],
                         )
-                        T.set_flag("mte2", "v", 3)
-                        T.wait_flag("mte2", "v", 3)
+                        T.set_flag("mte2", "v", next_slot)
 
+                    T.wait_flag("mte2", "v", current_slot)
+
+                    T.tile.sub(
+                        v1_bw_diff,
+                        v1_bw_sy_db[current_slot, :],
+                        v1_bw_p_db[current_slot, :],
+                    )
+                    T.pipe_barrier("v")
+                    T.tile.broadcast(
+                        v1_bw_diff_2d,
+                        v1_bw_diff,
+                    )
+
+                    # mask ~= (bmm2 > 0), evaluated from the post-ReLU C1
+                    # result using the precision-proven approximation.
+                    T.tile.mul(
+                        v1_bw_mask,
+                        v1_bw_bmm2_db[current_slot, :, :],
+                        -10000.0,
+                    )
+                    T.pipe_barrier("v")
+                    T.tile.exp(v1_bw_mask, v1_bw_mask)
+                    T.pipe_barrier("v")
+                    T.tile.sub(v1_bw_mask, v1_bw_ones, v1_bw_mask)
+                    T.pipe_barrier("v")
+
+                    T.copy(v1_bw_weight_2d, v1_bw_rg)
+                    T.pipe_barrier("v")
+                    T.tile.mul(
+                        v1_bw_rg,
+                        v1_bw_rg,
+                        v1_bw_diff_2d,
+                    )
+                    T.pipe_barrier("v")
+                    T.tile.mul(v1_bw_rg, v1_bw_rg, v1_bw_mask)
+                    T.pipe_barrier("v")
+
+                    # dWeight consumes the unweighted diff tile and is
+                    # accumulated across both 64-column subtiles.
+                    T.tile.mul(
+                        v1_bw_bmm2_db[current_slot, :, :],
+                        v1_bw_bmm2_db[current_slot, :, :],
+                        v1_bw_diff_2d,
+                    )
+                    T.pipe_barrier("v")
+                    T.reduce_sum(
+                        v1_bw_bmm2_db[current_slot, :, :],
+                        v1_bw_dw,
+                        1,
+                    )
+                    T.pipe_barrier("v")
+                    T.tile.add(v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw)
+
+                    T.tile.cast(
+                        v1_bw_rg_half_db[current_slot, :, :],
+                        v1_bw_rg,
+                        "CAST_RINT",
+                        rows_per_aiv * bw_col_block,
+                    )
+                    T.pipe_barrier("v")
+                    # rg_half has its own physical slot, so MTE3 can drain it
+                    # while Vector finishes the P/SY-dependent loss branch.
+                    T.wait_flag("mte3", "v", current_slot)
+                    T.set_flag("v", "mte3", current_slot)
+                    T.wait_flag("v", "mte3", current_slot)
+                    T.pipe_barrier("mte3")
+                    T.copy(
+                        v1_bw_rg_half_db[current_slot, :, :],
+                        reluGradRes[bz_task, s1_id,
+                                    g_start:g_start + rows_per_aiv,
+                                    bw_col_start:bw_col_end],
+                    )
+                    T.set_flag("mte3", "v", current_slot)
+
+                    # Match VectorLoss: split outer K tiles across the AIV
+                    # pair, while the owner consumes both physical subtiles.
+                    if n_idx % 2 == vector_id:
+                        T.tile.max(
+                            v1_bw_p_db[current_slot, :],
+                            v1_bw_p_db[current_slot, :],
+                            v1_bw_eps,
+                        )
+                        T.tile.max(
+                            v1_bw_sy_db[current_slot, :],
+                            v1_bw_sy_db[current_slot, :],
+                            v1_bw_eps,
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.ln(
+                            v1_bw_log_p,
+                            v1_bw_p_db[current_slot, :],
+                        )
+                        T.tile.ln(
+                            v1_bw_log_sy,
+                            v1_bw_sy_db[current_slot, :],
+                        )
+                        T.pipe_barrier("v")
                         T.tile.sub(
-                            v1_bw_diff,
-                            v1_bw_sy,
-                            v1_bw_p,
+                            v1_bw_loss, v1_bw_log_p, v1_bw_log_sy
                         )
-                        T.pipe_barrier("v")
-                        T.tile.broadcast(
-                            v1_bw_diff_2d,
-                            v1_bw_diff,
-                        )
-
-                        # mask ~= (bmm2 > 0), evaluated from the post-ReLU C1
-                        # result using the precision-proven approximation.
-                        T.tile.mul(
-                            v1_bw_mask,
-                            v1_bw_bmm2,
-                            -10000.0,
-                        )
-                        T.pipe_barrier("v")
-                        T.tile.exp(v1_bw_mask, v1_bw_mask)
-                        T.pipe_barrier("v")
-                        T.tile.sub(v1_bw_mask, v1_bw_ones, v1_bw_mask)
-                        T.pipe_barrier("v")
-
-                        T.copy(v1_bw_weight_2d, v1_bw_rg)
                         T.pipe_barrier("v")
                         T.tile.mul(
-                            v1_bw_rg,
-                            v1_bw_rg,
-                            v1_bw_diff_2d,
+                            v1_bw_loss,
+                            v1_bw_loss,
+                            v1_bw_p_db[current_slot, :],
                         )
-                        T.pipe_barrier("v")
-                        T.tile.mul(v1_bw_rg, v1_bw_rg, v1_bw_mask)
-                        T.pipe_barrier("v")
-
-                        # dWeight consumes the unweighted diff tile and is
-                        # accumulated across both 64-column subtiles.
                         T.tile.mul(
-                            v1_bw_bmm2,
-                            v1_bw_bmm2,
-                            v1_bw_diff_2d,
+                            v1_bw_loss_2d[0, :], v1_bw_loss, 1.0
                         )
                         T.pipe_barrier("v")
                         T.reduce_sum(
-                            v1_bw_bmm2,
-                            v1_bw_dw,
-                            1,
+                            v1_bw_loss_2d, v1_bw_loss_sum, 1
                         )
                         T.pipe_barrier("v")
-                        T.tile.add(v1_bw_dw_accum, v1_bw_dw_accum, v1_bw_dw)
-
-                        T.tile.cast(
-                            v1_bw_rg_half,
-                            v1_bw_rg,
-                            "CAST_RINT",
-                            rows_per_aiv * bw_col_block,
+                        T.tile.add(
+                            v1_bw_loss_accum,
+                            v1_bw_loss_accum,
+                            v1_bw_loss_sum,
                         )
-                        T.pipe_barrier("v")
-                        T.set_flag("v", "mte3", 2)
-                        T.wait_flag("v", "mte3", 2)
-                        T.pipe_barrier("mte3")
-                        T.copy(
-                            v1_bw_rg_half,
-                            reluGradRes[bz_task, s1_id,
-                                        g_start:g_start + rows_per_aiv,
-                                        bw_col_start:bw_col_end],
-                        )
-                        T.set_flag("mte3", "mte2", 2)
 
-                        # Match VectorLoss: split outer K tiles across the AIV
-                        # pair, while the owner consumes both physical subtiles.
-                        if n_idx % 2 == vector_id:
-                            T.tile.max(
-                                v1_bw_p,
-                                v1_bw_p,
-                                v1_bw_eps,
-                            )
-                            T.tile.max(
-                                v1_bw_sy,
-                                v1_bw_sy,
-                                v1_bw_eps,
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.ln(
-                                v1_bw_log_p,
-                                v1_bw_p,
-                            )
-                            T.tile.ln(
-                                v1_bw_log_sy,
-                                v1_bw_sy,
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.sub(
-                                v1_bw_loss, v1_bw_log_p, v1_bw_log_sy
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.mul(
-                                v1_bw_loss,
-                                v1_bw_loss,
-                                v1_bw_p,
-                            )
-                            T.tile.mul(
-                                v1_bw_loss_2d[0, :], v1_bw_loss, 1.0
-                            )
-                            T.pipe_barrier("v")
-                            T.reduce_sum(
-                                v1_bw_loss_2d, v1_bw_loss_sum, 1
-                            )
-                            T.pipe_barrier("v")
-                            T.tile.add(
-                                v1_bw_loss_accum,
-                                v1_bw_loss_accum,
-                                v1_bw_loss_sum,
-                            )
-                        T.set_flag("v", "mte2", 3)
-
-                T.wait_flag("v", "mte2", 3)
+                    # This is the last consumer of P/SY/BMM2 for this tile.
+                    # Only now may MTE2 reclaim the input slot.
+                    T.set_flag("v", "mte2", current_slot)
+                T.wait_flag("v", "mte2", 0)
+                T.wait_flag("v", "mte2", 1)
+                T.wait_flag("mte3", "v", 0)
+                T.wait_flag("mte3", "v", 1)
                 T.pipe_barrier("v")
                 T.wait_flag("mte3", "v", 3)
                 T.tile.cast(
@@ -1179,7 +1227,6 @@ def tilelang_grad_kl_loss_single_kernel(
                 )
                 T.set_flag("mte3", "v", 3)
 
-            T.wait_flag("mte3", "mte2", 2)
             T.wait_flag("mte3", "v", 3)
             if task_slot == 0:
                 T.set_cross_flag("MTE3", V1_TO_C2_FLAGS[0])
