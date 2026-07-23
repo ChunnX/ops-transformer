@@ -782,7 +782,9 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
         ops::CeilAlign(resetBatchElementCount, static_cast<uint32_t>(INT32_PER_256B)) * sizeof(int32_t);
     uint32_t quantTokenBytes =
         ops::CeilAlign(tilingData->h / activationElementsPerByte, static_cast<uint32_t>(ALIGN_256));
-    uint32_t quantOutputBufferBytes = quantTokenBytes + ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+    uint32_t quantScaleBytes = ops::CeilDiv(tilingData->h, static_cast<uint32_t>(ALIGN_32));
+    uint32_t quantOutputBufferBytes =
+        ops::CeilAlign(quantTokenBytes + quantScaleBytes, static_cast<uint32_t>(ALIGN_32));
     uint32_t quantInputBufferBytes = ops::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_128)) * sizeof(uint16_t);
     // sendCntAccTensor_ 按本卡 weight 容量分配，与 kernel 地址布局一致；实际 mask push 次数按 routed MoE
     // expert 数计算，不包含共享专家和未参与路由的预留 weight。
@@ -1525,7 +1527,18 @@ static ge::graphStatus CheckInputParam(const gert::TilingContext *context, MegaM
             nodeName, "H", std::to_string(xDim1).c_str(),
             (std::string("should in [") + std::to_string(H_BASE) + ", " + std::to_string(MAX_H) + "]").c_str()),
         return ge::GRAPH_FAILED);
-    // Kernel handles the final H tile, so H does not need to be 1024-aligned.
+    auto attrs = context->GetAttrs();
+    auto dispatchQuantOutDtypePtr = attrs->GetAttrPointer<int64_t>(config.attrDispatchQuantOutDtypeIndex);
+    uint32_t activationElementsPerByte =
+        *dispatchQuantOutDtypePtr == static_cast<int64_t>(ge::DT_FLOAT4_E2M1) ? 2U : 1U;
+    int64_t hiddenAlignment = UB_BLOCK_SIZE * static_cast<int64_t>(activationElementsPerByte);
+    OP_TILING_CHECK(xDim1 % hiddenAlignment != 0,
+                    OP_LOGE_FOR_INVALID_VALUE(
+                        nodeName, "H", std::to_string(xDim1).c_str(),
+                        (std::string("should make the quantized hidden data 32-byte aligned; expected a multiple of ") +
+                         std::to_string(hiddenAlignment))
+                            .c_str()),
+                    return ge::GRAPH_FAILED);
 
     auto weightOneStorageShape = context->GetDynamicInputShape(config.weight1Index, 0);
     OP_CHECK_NULL_WITH_CONTEXT(context, weightOneStorageShape);
