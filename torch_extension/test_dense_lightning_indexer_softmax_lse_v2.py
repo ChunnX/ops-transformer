@@ -25,14 +25,14 @@ def _golden_dense_lightning_index_lse(query_index, key_index, weight):
     q = query_index.float()
     k = key_index.float()
     w = weight.float()
-    # q: [B, S1, N1, D], k: [B, S2, 1, D]
+    # q: [B, S1, N1, D], k: [B, S2, N2, D]
     score = torch.matmul(q, k.permute(0, 2, 3, 1))  # [B, S1, N1, S2]
     relu_score = torch.relu(score)
     weighted = relu_score * w.unsqueeze(-1)          # [B, S1, N1, S2]
     x = weighted.sum(dim=-2)                          # [B, S1, S2]
     m = x.max(dim=-1).values                          # [B, S1]
     lse = m + torch.log(torch.exp(x - m.unsqueeze(-1)).sum(dim=-1))  # [B, S1]
-    return lse
+    return lse.unsqueeze(1)  # [B, N2=1, S1]
 
 def _compute_row_valid_mask_blk(B, S1, S2, seqused_q, seqused_k, cmp_residual_k,
                                 mask_mode, cmp_ratio, device):
@@ -43,7 +43,7 @@ def _compute_row_valid_mask_blk(B, S1, S2, seqused_q, seqused_k, cmp_residual_k,
       - mask_mode=3 时 valid_k_size=0 的行无效
       - 其他情况 k_used>0 即有效
     """
-    row_valid = torch.zeros(B, S1, dtype=torch.bool, device=device)
+    row_valid = torch.zeros(B, S1, dtype=torch.bool, device="cpu")
     for b in range(B):
         q_used = S1 if seqused_q is None else seqused_q[b, 0].item()
         k_used = S2 if seqused_k is None else seqused_k[b, 0].item()
@@ -65,7 +65,7 @@ def _compute_row_valid_mask_tnd(cu_seqlens_q, cu_seqlens_k, T1,
                                 mask_mode, cmp_ratio, device):
     """TND: 返回 [T1] bool，True=有效行。逻辑同 _compute_row_valid_mask_blk。"""
     B = cu_seqlens_q.shape[0] - 1
-    row_valid = torch.zeros(T1, dtype=torch.bool, device=device)
+    row_valid = torch.zeros(T1, dtype=torch.bool, device="cpu")
     for b in range(B):
         q_start = cu_seqlens_q[b].item()
         q_end = cu_seqlens_q[b + 1].item()
@@ -95,7 +95,7 @@ def golden_dli_lse_blk(query_index, key_index, weight, seqused_q=None, seqused_k
     w = weight.float()
     B, S1, N1, D = q.shape
     _, S2, _, _ = k.shape
-    dev = q.device
+    dev = "cpu"
 
     TKV = 128
     neg_inf = -torch.inf
@@ -154,7 +154,7 @@ def golden_dli_lse_blk(query_index, key_index, weight, seqused_q=None, seqused_k
         sum_exp = torch.exp(shifted).sum(dim=1)
         lse[b] = torch.where(row_valid, reduce_max + torch.log(sum_exp), torch.full_like(reduce_max, neg_inf))
 
-    return lse
+    return lse.unsqueeze(1)  # [B, N2=1, S1]
 
 def test_bsnd_metadata():
     """BSND layout: 调用 metadata 算子。"""
@@ -243,21 +243,23 @@ def test_e2e():
     for B, S1, S2, N1, D, sparse_mode, cmp_ratio, q_seqused, k_seqused in test_cases:
         # print(f"\n--- DenseLightningIndexLse (B={B}, S1={S1}, S2={S2}, N1={N1}, D={D}, "
             #   f"SPARSE_MODE={sparse_mode}, CMP_RATIO={cmp_ratio}) ---")
-        q = torch.randn((B, S1, N1, D), device=device, dtype=torch.float16)
-        k = torch.randn((B, S2, 1, D), device=device, dtype=torch.float16)
-        w = torch.randn((B, S1, N1), device=device, dtype=torch.float32)
+        q = torch.randn((B, S1, N1, D), dtype=torch.float16)
+        k = torch.randn((B, S2, 1, D), dtype=torch.float16)
+        w = torch.randn((B, S1, N1), dtype=torch.float32)
 
-        seqused_q = torch.full((B, 1), S1, device=device, dtype=torch.int32) if q_seqused else None
-        seqused_k = torch.full((B, 1), S2, device=device, dtype=torch.int32) if k_seqused else None
-        cmp_residual_k = torch.zeros((B, 1), device=device, dtype=torch.int32)
+        seqused_q = torch.full((B, 1), S1, dtype=torch.int32) if q_seqused else None
+        seqused_k = torch.full((B, 1), S2, dtype=torch.int32) if k_seqused else None
+        cmp_residual_k = torch.zeros((B, 1), dtype=torch.int32)
 
+        seqused_q_npu = seqused_q.to(device) if seqused_q is not None else None
+        seqused_k_npu = seqused_k.to(device) if seqused_k is not None else None
         metadata = cann_ops_transformer.dense_lightning_indexer_softmax_lse_metadata(
             num_heads_q=N1,
             num_heads_k=1,
             head_dim=D,
-            seqused_q=seqused_q,
-            seqused_k=seqused_k,
-            cmp_residual_k=cmp_residual_k,
+            seqused_q=seqused_q_npu,
+            seqused_k=seqused_k_npu,
+            cmp_residual_k=cmp_residual_k.to(device),
             batch_size=B,
             max_seqlen_q=S1,
             max_seqlen_k=S2,
@@ -268,10 +270,10 @@ def test_e2e():
         )
         print(f"metadata done, shape = {metadata.shape}, dtype = {metadata.dtype}")
         lse = cann_ops_transformer.dense_lightning_indexer_softmax_lse(
-            q, k, w,
-            seqused_q=seqused_q,
-            seqused_k=seqused_k,
-            cmp_residual_k=cmp_residual_k,
+            q.to(device), k.to(device), w.to(device),
+            seqused_q=seqused_q_npu,
+            seqused_k=seqused_k_npu,
+            cmp_residual_k=cmp_residual_k.to(device),
             metadata=metadata,
             layout_q="BSND",
             layout_k="BSND",
@@ -300,7 +302,7 @@ def golden_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seqlens_
     w = weight.float()
     T1, N1, D = q.shape
     T2, _, _ = k.shape
-    dev = q.device
+    dev = "cpu"
     B = cu_seqlens_q.shape[0] - 1
 
     TKV = 128
@@ -369,7 +371,7 @@ def golden_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seqlens_
         sum_exp = torch.exp(shifted).sum(dim=1)
         lse[q_start:q_end] = torch.where(row_valid, reduce_max + torch.log(sum_exp), torch.full_like(reduce_max, neg_inf))
 
-    return lse
+    return lse.unsqueeze(0)  # [N2=1, T1]
 
 
 def cpu_kernel_dli_lse_blk(query_index, key_index, weight, seqused_q=None, seqused_k=None,
@@ -388,7 +390,7 @@ def cpu_kernel_dli_lse_blk(query_index, key_index, weight, seqused_q=None, sequs
     w = weight.float()
     B, S1, N1, D = q.shape
     _, S2, _, _ = k.shape
-    dev = q.device
+    dev = "cpu"
 
     TKV = 128
     TKV_HALF = TKV // 2
@@ -470,7 +472,7 @@ def cpu_kernel_dli_lse_blk(query_index, key_index, weight, seqused_q=None, sequs
                     all_sum += exp_tail.sum().item()
                 lse[b, s1_i] = running_max + math.log(all_sum) if all_sum > 0 else neg_inf
 
-    return lse
+    return lse.unsqueeze(1)  # [B, N2=1, S1]
 
 
 def cpu_kernel_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seqlens_k,
@@ -486,7 +488,7 @@ def cpu_kernel_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seql
     w = weight.float()
     T1, N1, D = q.shape
     T2, _, _ = k.shape
-    dev = q.device
+    dev = "cpu"
     B = cu_seqlens_q.shape[0] - 1
 
     TKV = 128
@@ -580,7 +582,7 @@ def cpu_kernel_dli_lse_tnd(query_index, key_index, weight, cu_seqlens_q, cu_seql
                     all_sum += exp_tail.sum().item()
                 lse[q_start + s1_i] = running_max + math.log(all_sum) if all_sum > 0 else neg_inf
 
-    return lse
+    return lse.unsqueeze(0)  # [N2=1, T1]
 
 
 def test_invalid_num_heads_q():
@@ -704,7 +706,7 @@ def _compute_metadata_python(
     metadata_list[2] = b_s1_per_core
     metadata_list[3] = b_s1_per_tail_core
 
-    return torch.tensor(metadata_list, dtype=torch.int32, device=device)
+    return torch.tensor(metadata_list, dtype=torch.int32, device="cpu")
 
 
 def _compute_mare(actual, golden, valid_mask):
@@ -794,9 +796,9 @@ def _build_case_inputs(case, device):
         T1 = sum(seqlens_q_list)
         T2 = sum(seqlens_k_list)
         cu_seqlens_q = torch.tensor([0] + list(__import__("itertools").accumulate(seqlens_q_list)),
-                                     dtype=torch.int32, device=device)
+                                     dtype=torch.int32)
         cu_seqlens_k = torch.tensor([0] + list(__import__("itertools").accumulate(seqlens_k_list)),
-                                     dtype=torch.int32, device=device)
+                                     dtype=torch.int32)
     else:
         T1 = B * S1
         T2 = B * S2
@@ -804,13 +806,13 @@ def _build_case_inputs(case, device):
         cu_seqlens_k = None
 
     if is_tnd:
-        q = torch.randn((T1, N1, D), device=device, dtype=torch_dtype)
-        k = torch.randn((T2, 1, D), device=device, dtype=torch_dtype)
-        w = torch.randn((T1, N1), device=device, dtype=torch.float32)
+        q = torch.randn((T1, N1, D), dtype=torch_dtype)
+        k = torch.randn((T2, 1, D), dtype=torch_dtype)
+        w = torch.randn((T1, N1), dtype=torch.float32)
     else:
-        q = torch.randn((B, S1, N1, D), device=device, dtype=torch_dtype)
-        k = torch.randn((B, S2, 1, D), device=device, dtype=torch_dtype)
-        w = torch.randn((B, S1, N1), device=device, dtype=torch.float32)
+        q = torch.randn((B, S1, N1, D), dtype=torch_dtype)
+        k = torch.randn((B, S2, 1, D), dtype=torch_dtype)
+        w = torch.randn((B, S1, N1), dtype=torch.float32)
 
     seqused_q_val = case.get("seqused_q")
     seqused_k_val = case.get("seqused_k")
@@ -818,17 +820,17 @@ def _build_case_inputs(case, device):
 
     seqused_q = None
     if seqused_q_val is not None:
-        seqused_q = torch.tensor(seqused_q_val, dtype=torch.int32, device=device).reshape(B, 1)
+        seqused_q = torch.tensor(seqused_q_val, dtype=torch.int32).reshape(B, 1)
 
     seqused_k = None
     if seqused_k_val is not None:
-        seqused_k = torch.tensor(seqused_k_val, dtype=torch.int32, device=device).reshape(B, 1)
+        seqused_k = torch.tensor(seqused_k_val, dtype=torch.int32).reshape(B, 1)
 
     cmp_residual_k = None
     if cmp_residual_k_val is not None:
-        cmp_residual_k = torch.tensor(cmp_residual_k_val, dtype=torch.int32, device=device).reshape(B, 1)
+        cmp_residual_k = torch.tensor(cmp_residual_k_val, dtype=torch.int32).reshape(B, 1)
     else:
-        cmp_residual_k = torch.zeros((B, 1), dtype=torch.int32, device=device)
+        cmp_residual_k = torch.zeros((B, 1), dtype=torch.int32)
 
     return {
         "q": q, "k": k, "w": w,
@@ -933,8 +935,9 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                     mask_mode=mask_mode,
                     cmp_ratio=cmp_ratio,
                     aic_core_num=aic_core_num,
-                    device=device,
+                    device="cpu",
                 )
+                metadata = metadata.to(device)
                 print(f"  [metadata] fore={metadata[0].item()}, tail={metadata[1].item()}, "
                       f"per_fore={metadata[2].item()}, per_tail={metadata[3].item()}")
             else:
@@ -942,11 +945,11 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                     num_heads_q=N1,
                     num_heads_k=1,
                     head_dim=D,
-                    cu_seqlens_q=inputs["cu_seqlens_q"],
-                    cu_seqlens_k=inputs["cu_seqlens_k"],
-                    seqused_q=inputs["seqused_q"],
-                    seqused_k=inputs["seqused_k"],
-                    cmp_residual_k=inputs["cmp_residual_k"],
+                    cu_seqlens_q=inputs["cu_seqlens_q"].to(device) if inputs["cu_seqlens_q"] is not None else None,
+                    cu_seqlens_k=inputs["cu_seqlens_k"].to(device) if inputs["cu_seqlens_k"] is not None else None,
+                    seqused_q=inputs["seqused_q"].to(device) if inputs["seqused_q"] is not None else None,
+                    seqused_k=inputs["seqused_k"].to(device) if inputs["seqused_k"] is not None else None,
+                    cmp_residual_k=inputs["cmp_residual_k"].to(device),
                     batch_size=B if not is_tnd else None,
                     max_seqlen_q=S1 if not is_tnd else None,
                     max_seqlen_k=S2 if not is_tnd else None,
@@ -957,12 +960,12 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                 )
 
             lse = cann_ops_transformer.dense_lightning_indexer_softmax_lse(
-                inputs["q"], inputs["k"], inputs["w"],
-                cu_seqlens_q=inputs["cu_seqlens_q"],
-                cu_seqlens_k=inputs["cu_seqlens_k"],
-                seqused_q=inputs["seqused_q"],
-                seqused_k=inputs["seqused_k"],
-                cmp_residual_k=inputs["cmp_residual_k"],
+                inputs["q"].to(device), inputs["k"].to(device), inputs["w"].to(device),
+                cu_seqlens_q=inputs["cu_seqlens_q"].to(device) if inputs["cu_seqlens_q"] is not None else None,
+                cu_seqlens_k=inputs["cu_seqlens_k"].to(device) if inputs["cu_seqlens_k"] is not None else None,
+                seqused_q=inputs["seqused_q"].to(device) if inputs["seqused_q"] is not None else None,
+                seqused_k=inputs["seqused_k"].to(device) if inputs["seqused_k"] is not None else None,
+                cmp_residual_k=inputs["cmp_residual_k"].to(device),
                 metadata=metadata,
                 layout_q=inputs["layout_q"],
                 layout_k=inputs["layout_k"],
@@ -981,25 +984,22 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
                 else:
                     print(f"  [cache] no cached golden found, computing golden (use --save-golden to cache for next run)")
             if do_golden:
-                q_cpu = inputs["q"].cpu()
-                k_cpu = inputs["k"].cpu()
-                w_cpu = inputs["w"].cpu()
                 if is_tnd:
                     lse_ref = golden_dli_lse_tnd(
-                        q_cpu, k_cpu, w_cpu,
-                        inputs["cu_seqlens_q"].cpu(),
-                        inputs["cu_seqlens_k"].cpu(),
-                        seqused_q=inputs["seqused_q"].cpu() if inputs["seqused_q"] is not None else None,
-                        seqused_k=inputs["seqused_k"].cpu() if inputs["seqused_k"] is not None else None,
-                        cmp_residual_k=inputs["cmp_residual_k"].cpu(),
+                        inputs["q"], inputs["k"], inputs["w"],
+                        inputs["cu_seqlens_q"],
+                        inputs["cu_seqlens_k"],
+                        seqused_q=inputs["seqused_q"],
+                        seqused_k=inputs["seqused_k"],
+                        cmp_residual_k=inputs["cmp_residual_k"],
                         mask_mode=mask_mode,
                         cmp_ratio=cmp_ratio)
                 else:
                     lse_ref = golden_dli_lse_blk(
-                        q_cpu, k_cpu, w_cpu,
-                        seqused_q=inputs["seqused_q"].cpu() if inputs["seqused_q"] is not None else None,
-                        seqused_k=inputs["seqused_k"].cpu() if inputs["seqused_k"] is not None else None,
-                        cmp_residual_k=inputs["cmp_residual_k"].cpu(),
+                        inputs["q"], inputs["k"], inputs["w"],
+                        seqused_q=inputs["seqused_q"],
+                        seqused_k=inputs["seqused_k"],
+                        cmp_residual_k=inputs["cmp_residual_k"],
                         mask_mode=mask_mode,
                         cmp_ratio=cmp_ratio)
 
@@ -1020,34 +1020,39 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
             if verbose_elem:
                 print(f"  [verbose_elem] === {case_name} ===")
                 if is_tnd:
-                    cu_q = inputs["cu_seqlens_q"].cpu()
+                    cu_q = inputs["cu_seqlens_q"]
                     B_local = cu_q.shape[0] - 1
                     for b in range(B_local):
                         q_start = cu_q[b].item()
                         q_end = cu_q[b + 1].item()
                         for s1_i in range(q_end - q_start):
                             idx = q_start + s1_i
-                            print(f"    [b={b}, s1={s1_i}] npu={lse_cpu[idx].item():.6f}  "
-                                  f"golden={lse_ref_f[idx].item():.6f}")
+                            print(f"    [b={b}, s1={s1_i}] npu={lse_cpu[0, idx].item():.6f}  "
+                                  f"golden={lse_ref_f[0, idx].item():.6f}")
                 else:
                     for b in range(B):
                         for s1_i in range(S1):
-                            print(f"    [b={b}, s1={s1_i}] npu={lse_cpu[b, s1_i].item():.6f}  "
-                                  f"golden={lse_ref_f[b, s1_i].item():.6f}")
+                            print(f"    [b={b}, s1={s1_i}] npu={lse_cpu[b, 0, s1_i].item():.6f}  "
+                                  f"golden={lse_ref_f[b, 0, s1_i].item():.6f}")
 
             if is_tnd:
-                T1_cmp = lse_cpu.shape[0]
+                T1_cmp = lse_cpu.shape[1]
                 valid_mask = _compute_row_valid_mask_tnd(
-                    inputs["cu_seqlens_q"].cpu(), inputs["cu_seqlens_k"].cpu(), T1_cmp,
-                    inputs["seqused_q"].cpu() if inputs["seqused_q"] is not None else None,
-                    inputs["seqused_k"].cpu() if inputs["seqused_k"] is not None else None,
-                    inputs["cmp_residual_k"].cpu(), mask_mode, cmp_ratio, "cpu")
+                    inputs["cu_seqlens_q"], inputs["cu_seqlens_k"], T1_cmp,
+                    inputs["seqused_q"],
+                    inputs["seqused_k"],
+                    inputs["cmp_residual_k"], mask_mode, cmp_ratio, "cpu")
             else:
                 valid_mask = _compute_row_valid_mask_blk(
                     B, S1, S2,
-                    inputs["seqused_q"].cpu() if inputs["seqused_q"] is not None else None,
-                    inputs["seqused_k"].cpu() if inputs["seqused_k"] is not None else None,
-                    inputs["cmp_residual_k"].cpu(), mask_mode, cmp_ratio, "cpu")
+                    inputs["seqused_q"],
+                    inputs["seqused_k"],
+                    inputs["cmp_residual_k"], mask_mode, cmp_ratio, "cpu")
+
+            if is_tnd:
+                valid_mask = valid_mask.unsqueeze(0)  # [1, T1]
+            else:
+                valid_mask = valid_mask.unsqueeze(1)  # [B, 1, S1]
 
             diff = (lse_cpu - lse_ref_f).abs()
             diff_valid = diff[valid_mask]
@@ -1088,25 +1093,22 @@ def test_fuzz_from_xlsx(xlsx_path=None, cache_dir=None,
             case_l2_rmse_ratio = None
             case_l2_result = None
             if l2_precision:
-                q_cpu = inputs["q"].cpu()
-                k_cpu = inputs["k"].cpu()
-                w_cpu = inputs["w"].cpu()
                 if is_tnd:
                     lse_gpu = cpu_kernel_dli_lse_tnd(
-                        q_cpu, k_cpu, w_cpu,
-                        inputs["cu_seqlens_q"].cpu(),
-                        inputs["cu_seqlens_k"].cpu(),
-                        seqused_q=inputs["seqused_q"].cpu() if inputs["seqused_q"] is not None else None,
-                        seqused_k=inputs["seqused_k"].cpu() if inputs["seqused_k"] is not None else None,
-                        cmp_residual_k=inputs["cmp_residual_k"].cpu(),
+                        inputs["q"], inputs["k"], inputs["w"],
+                        inputs["cu_seqlens_q"],
+                        inputs["cu_seqlens_k"],
+                        seqused_q=inputs["seqused_q"],
+                        seqused_k=inputs["seqused_k"],
+                        cmp_residual_k=inputs["cmp_residual_k"],
                         mask_mode=mask_mode,
                         cmp_ratio=cmp_ratio)
                 else:
                     lse_gpu = cpu_kernel_dli_lse_blk(
-                        q_cpu, k_cpu, w_cpu,
-                        seqused_q=inputs["seqused_q"].cpu() if inputs["seqused_q"] is not None else None,
-                        seqused_k=inputs["seqused_k"].cpu() if inputs["seqused_k"] is not None else None,
-                        cmp_residual_k=inputs["cmp_residual_k"].cpu(),
+                        inputs["q"], inputs["k"], inputs["w"],
+                        seqused_q=inputs["seqused_q"],
+                        seqused_k=inputs["seqused_k"],
+                        cmp_residual_k=inputs["cmp_residual_k"],
                         mask_mode=mask_mode,
                         cmp_ratio=cmp_ratio)
 

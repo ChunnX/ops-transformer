@@ -225,10 +225,10 @@ aclnnStatus aclnnDenseLightningIndexerSoftmaxLseV2(
       <td>softmaxLseOut（aclTensor*）</td>
       <td>输出</td>
       <td>softmax 计算使用的 LSE（log-sum-exp）值。</td>
-      <td><ul><li>B：支持泛化与 queryIndex 的 B 保持一致。</li><li>S1：支持泛化，且与 queryIndex 的 S1 保持一致。</li><li>T1：多个 Batch 的 S1 累加。</li></ul></td>
+      <td><ul><li>B：支持泛化与 queryIndex 的 B 保持一致。</li><li>N2：key 的多头数，当前固定为 1。</li><li>S1：支持泛化，且与 queryIndex 的 S1 保持一致。</li><li>T1：多个 Batch 的 S1 累加。</li></ul></td>
       <td>FLOAT32</td>
       <td>ND</td>
-      <td>(B,S1);(T1,)</td>
+      <td>(B,N2,S1);(N2,T1)</td>
       <td>×</td>
      </tr>
      <tr>
@@ -517,7 +517,7 @@ int main() {
   auto ret = Init(deviceId, &context, &stream);
   CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("Init acl failed. ERROR: %d\n", ret); return ret);
 
-  // BSND layout: q[B,S1,N1,D] k[B,S2,1,D] w[B,S1,N1] lse[B,S1]
+  // BSND layout: q[B,S1,N1,D] k[B,S2,N2,D] w[B,S1,N1] lse[B,N2,S1]
   int64_t B = 2;
   int64_t S1 = 128;
   int64_t S2 = 256;
