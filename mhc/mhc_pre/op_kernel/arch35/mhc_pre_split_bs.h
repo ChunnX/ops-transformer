@@ -283,6 +283,12 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::AICProcess(uint32_t 
 template <class T, class P, int8_t HAS_RESI>
 __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::V0Prologue(uint32_t curNdLen, uint32_t offsetNd)
 {
+    if (hasGamma_) {
+        gammaUb_ = gammaInQueue_.template AllocTensor<P>();
+        this->DataCopyGamma(curNdLen, offsetNd);
+        gammaUb_ = gammaInQueue_.template DeQue<P>();
+    }
+
     for (uint32_t offsetM = vectorOffset_.offsetMStart; offsetM < vectorOffset_.offsetMEnd; offsetM += V0_BASE_T) {
         uint32_t curMLen = V0_BASE_T;
         if (offsetM + V0_BASE_T >= vectorOffset_.offsetMEnd) {
@@ -296,10 +302,6 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::V0Prologue(uint32_t 
 
         LocalTensor<P> aL1Ub = outQueue_.template AllocTensor<P>();
         if (hasGamma_) {
-            gammaUb_ = gammaInQueue_.template AllocTensor<P>();
-            this->DataCopyGamma(curNdLen, offsetNd);
-            gammaUb_ = gammaInQueue_.template DeQue<P>();
-
             if (offsetNd == 0) {
                 this->template VFDoV0ProcessXIn<true, true>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
                                              (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(),
@@ -309,7 +311,6 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::V0Prologue(uint32_t 
                                               (__ubuf__ T *)xLocal_.GetPhyAddr(), (__ubuf__ P *)gammaUb_.GetPhyAddr(),
                                               curMLen, curNdLen);
             }
-            gammaInQueue_.FreeTensor(gammaUb_);
         } else {
             if (offsetNd == 0) {
                 this->template VFDoV0ProcessXIn<false, true>((__ubuf__ P *)aL1Ub.GetPhyAddr(), (__ubuf__ P *)invRmsUb.GetPhyAddr(),
@@ -325,6 +326,10 @@ __aicore__ inline void MhcPreKernelSplitBS<T, P, HAS_RESI>::V0Prologue(uint32_t 
 
         xInQueue_.FreeTensor(xLocal_);
         outQueue_.FreeTensor(aL1Ub);
+    }
+
+    if (hasGamma_) {
+        gammaInQueue_.FreeTensor(gammaUb_);
     }
 }
 
