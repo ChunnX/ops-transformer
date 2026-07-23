@@ -67,8 +67,7 @@ public:
     // 将容量向上取整到最近的2的幂(=4)。代价仅为多1个RunInfoX slot，换取消除内层循环的取模scalar bound。
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = 4;
     static constexpr uint32_t PRELOAD_TASK_CACHE_MASK = PRELOAD_TASK_CACHE_SIZE - 1;
-    static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1,
-                  "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
+    static_assert(PRELOAD_TASK_CACHE_SIZE >= PRELOAD_N + 1, "PRELOAD_TASK_CACHE_SIZE must be at least PRELOAD_N + 1");
     static_assert((PRELOAD_TASK_CACHE_SIZE & PRELOAD_TASK_CACHE_MASK) == 0,
                   "PRELOAD_TASK_CACHE_SIZE must be a power of two for bitmask indexing");
 
@@ -105,7 +104,7 @@ public:
 
     ConstInfoX constInfo;
 
-    __tiling_data_ptr__ FlashAttnNoQuantTilingArch35* tilingData = nullptr;
+    __tiling_data_ptr__ FlashAttnNoQuantTilingArch35 *tilingData = nullptr;
     TPipe *pipe;
     CubeBlockType cubeBlock;
     VecFaBlockType vecFaBlock;
@@ -154,13 +153,11 @@ public:
     TBuf<> SharedBuffer3;                          // 共用
 
     // 非tnd时不使用cuSeqLens，这里保证定义
-    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND),
-                              ActualSeqLensParser<Q_MODE, int32_t, true>, ActualSeqLensParser<Q_MODE>>::type
-        qCuSeqLensParser;
+    typename std::conditional<(LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND), ActualSeqLensParser<Q_MODE, int32_t, true>,
+                              ActualSeqLensParser<Q_MODE>>::type qCuSeqLensParser;
 
-    typename std::conditional<(LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND),
-                              ActualSeqLensParser<KV_MODE, int32_t, true>, ActualSeqLensParser<KV_MODE>>::type
-        kvCuSeqLensParser;
+    typename std::conditional<(LAYOUT_KV == LayOutTypeEnum::LAYOUT_TND), ActualSeqLensParser<KV_MODE, int32_t, true>,
+                              ActualSeqLensParser<KV_MODE>>::type kvCuSeqLensParser;
 
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> qSeqUsedParser;
     ActualSeqLensParser<ActualSeqLensMode::BY_BATCH, int32_t> kvSeqUsedParser;
@@ -173,7 +170,7 @@ public:
                                 __gm__ uint8_t *blockTable, __gm__ uint8_t *learnableSink, __gm__ uint8_t *softmaxLse,
                                 __gm__ uint8_t *attentionOut, __gm__ uint8_t *workspace, __gm__ uint8_t *fiaMetaData,
                                 __gm__ uint8_t *seqUsedQ, __gm__ uint8_t *seqUsedKv,
-                                __tiling_data_ptr__ FlashAttnNoQuantTilingArch35* tiling, TPipe *tPipe)
+                                __tiling_data_ptr__ FlashAttnNoQuantTilingArch35 *tiling, TPipe *tPipe)
     {
         this->pipe = tPipe;
         this->tilingData = tiling;
@@ -200,7 +197,7 @@ public:
 
         faMetaDataGm.SetGlobalBuffer((__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET),
                                      FA_AIC_CORE_NUM * 16U * sectionNum_);
-        
+
         InitQCuSeqLensParser();
         InitKvCuSeqLensParser();
 
@@ -208,9 +205,9 @@ public:
 
         if ASCEND_IS_AIV {
             fdMetaDataGm.SetGlobalBuffer(
-            (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
-                                FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
-            FA_AIV_CORE_NUM * 16U * sectionNum_);
+                (__gm__ uint32_t *)(fiaMetaData + FA_METADATA_HEADER_OFFSET +
+                                    FLASH_ATTN_METADATA_SIZE * FA_AIC_CORE_NUM * sectionNum_ * sizeof(uint32_t)),
+                FA_AIV_CORE_NUM * 16U * sectionNum_);
             vecFaBlock.isFd = isFd;
             if constexpr (LAYOUT_Q == LayOutTypeEnum::LAYOUT_TND) {
                 vecFaBlock.InitVecBlock(tPipe, cuSeqLensQ, cuSeqLensKv, attenMask, learnableSink, softmaxLse,
@@ -332,7 +329,7 @@ public:
         constInfo.coreNum = this->tilingData->flashAttnBaseParams.coreNum;
         constInfo.outputLayout = static_cast<FA_LAYOUT>(this->tilingData->flashAttnBaseParams.outputLayout);
         constInfo.needInitOutput = this->tilingData->flashAttnBaseParams.needInitOutput;
-        
+
         constInfo.sparseMode = this->tilingData->flashAttnAttenMaskParams.sparseMode;
         constInfo.preTokens = this->tilingData->flashAttnAttenMaskParams.winLefts;
         constInfo.nextTokens = this->tilingData->flashAttnAttenMaskParams.winRights;
@@ -566,9 +563,10 @@ public:
 
         // 2. calc index of s2FirstToken, s2LastToken by index of s1GFirstToken, s1GLastToken
         int64_t s1GFirstToken = static_cast<int64_t>(gS1Cur) * static_cast<int64_t>(mBaseSize);
-        int64_t s1GLastToken = AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
-                                   static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
-                               1;
+        int64_t s1GLastToken =
+            AttentionCommon::Min(s1GFirstToken + static_cast<int64_t>(mBaseSize),
+                                 static_cast<int64_t>(actSeqLensQ) * static_cast<int64_t>(constInfo.gSize)) -
+            1;
         int64_t s1FirstToken = 0;
         int64_t s1LastToken = 0;
         if constexpr (GetOutUbFormat<LAYOUT_Q>() == UbFormat::S1G) {
@@ -621,8 +619,8 @@ public:
 
     __aicore__ inline void ExecuteTask(uint64_t loop, RunInfoX taskRunInfo[PRELOAD_TASK_CACHE_SIZE])
     {
-        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK];                  // 本轮任务
-        
+        RunInfoX &runInfo0 = taskRunInfo[loop & PRELOAD_TASK_CACHE_MASK]; // 本轮任务
+
         if (runInfo0.isValid) {
             if ASCEND_IS_AIC {
                 ComputeMm1(runInfo0);
