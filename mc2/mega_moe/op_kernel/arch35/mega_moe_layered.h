@@ -1209,11 +1209,9 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffset
 // 数据流：
 //   win mask slot → gatherMaskTensor_(UB) → GatherMask → validTopkIndexTensor_ → CopyGMToGMPerToken → workspace
 //
-// 三项优化：
+// 两项优化：
 //   1) 读 GM mask slot 末尾的 count 字段提前跳过空 rank，避免无意义的 mask 加载和 GatherMask；
-//   2) 跨轮次 mask 预加载：GatherMask 完成后 gatherMaskTensor_ 空闲，提前发起下一轮 mask 的 MTE2 加载，
-//      与当前轮的 CopyGMToGMPerToken 搬运流水重叠，隐藏 MTE2 延迟；
-//   3) AtomicAdd 提到 round 级：所有 chunk 搬运完成后统一做一次 wave flag 更新，减少同步点。
+//   2) AtomicAdd 提到 round 级：所有 chunk 搬运完成后统一做一次 wave flag 更新，减少同步点。
 // ====================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo,
