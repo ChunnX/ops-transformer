@@ -194,7 +194,8 @@ ge::graphStatus CausalConv1dTiling::SetWorkspaceSize(size_t workspaceSize)
 
 ge::graphStatus CausalConv1dTiling::SetupFnInitStateWorkspace()
 {
-    if (!IsFnInputMode(inputInfo_.inputModeKey) || !inputInfo_.hasInitialStateMode) {
+    const int64_t baseDimCnt = Ops::Base::CeilDiv(inputInfo_.dim, baseDim_);
+    if (!IsFnInputMode(inputInfo_.inputModeKey) || !inputInfo_.hasInitialStateMode || baseDimCnt <= 1) {
         return SetWorkspaceSize(0);
     }
     int64_t snapshotBytes = 0;
@@ -874,7 +875,8 @@ ge::graphStatus CausalConv1dTiling::SetTilingData(const CausalConv1dAttrInfo &at
                 return ge::GRAPH_FAILED);
     tiling->baseDim = static_cast<int32_t>(baseDim_);
     tiling->coBatch = static_cast<int32_t>(coBatch_);
-    tiling->hasInitStateWorkspace = inputInfo_.hasInitialStateMode;
+    tiling->hasInitStateWorkspace = inputInfo_.hasInitialStateMode &&
+                                    (Ops::Base::CeilDiv(inputInfo_.dim, baseDim_) > 1);
     tiling->tokensPerBlock = tokensPerBlock_;
     tiling->tokenBlockCnt = tokenBlockCnt_;
 
