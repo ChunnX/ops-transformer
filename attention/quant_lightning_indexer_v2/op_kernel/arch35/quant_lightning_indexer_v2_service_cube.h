@@ -460,7 +460,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::ComputeL0c(uint64_t s1gL0RealSize, u
 
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t s2GmOffset, uint64_t s1gL0RealSize,
-                                           uint64_t s2L0RealSize, uint64_t s1gL1SizeAlign2G,
+                                           uint64_t s2L0RealSize, uint64_t s1gSizeAlign2G,
                                            const QLIV2Common::RunInfo &runInfo)
 {
     SetFlag<HardEvent::M_FIX>(M_FIX_EVENT + l0BufIdx_ % L0_BUF_NUM);
@@ -470,11 +470,10 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::Fixp(uint64_t s1gGmOffset, uint64_t 
         // s1gL0RealSize：2*gSize(128)对齐, 最大256
         // s2L0RealSize <= S2_BASIC_BLOCK_L0, 未约束
         uint32_t nSize = (s2L0RealSize + 7) >> 3 << 3; // 32B对齐
-        uint32_t mSize = (s1gL0RealSize + 1) >> 1 << 1;
         FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
         // 固定参数
-        fixpipeParams.mSize = s1gL1SizeAlign2G;
-        fixpipeParams.srcStride = mSize; // 已16对齐
+        fixpipeParams.mSize = s1gSizeAlign2G;
+        fixpipeParams.srcStride = (s1gL0RealSize + 1) >> 1 << 1; // 已16对齐
         fixpipeParams.dstStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T); // 落到同一个bank
         // 双目标模式，按M维度拆分，M/2*N写入每个UB，M必须为2的倍数
         fixpipeParams.dualDstCtl = 1;
