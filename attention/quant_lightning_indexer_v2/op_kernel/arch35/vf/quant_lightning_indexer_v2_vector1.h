@@ -45,8 +45,8 @@ __simd_vf__ void UIntToFloatReturnValueVF(__ubuf__ bfloat16_t* outBuf, __ubuf__ 
 }
 
 __aicore__ inline void UIntToFloatReturnValue(const LocalTensor<bfloat16_t> &out_,
-                                               const LocalTensor<uint16_t> &in,
-                                               const uint32_t topK)
+                                              const LocalTensor<uint16_t> &in,
+                                              const uint32_t topK)
 {
     __ubuf__ bfloat16_t* outBuf = (__ubuf__ bfloat16_t*)out_.GetPhyAddr();
     __ubuf__ uint16_t* inBuf = (__ubuf__ uint16_t*)in.GetPhyAddr();
@@ -90,9 +90,9 @@ __simd_vf__ void UIntToFloatReturnValueWithInfMaskVF(__ubuf__ bfloat16_t* valueO
 }
 
 __aicore__ inline void UIntToFloatReturnValueWithInfMask(const LocalTensor<bfloat16_t> &valueOutLocal,
-                                                          const LocalTensor<uint16_t> &scoreOutLocal,
-                                                          const uint32_t topK,
-                                                          const uint16_t negInfBits)
+                                                         const LocalTensor<uint16_t> &scoreOutLocal,
+                                                         const uint32_t topK,
+                                                         const uint16_t negInfBits)
 {
     __ubuf__ bfloat16_t* valueOutBuf = (__ubuf__ bfloat16_t*)valueOutLocal.GetPhyAddr();
     __ubuf__ uint16_t* scoreOutBuf = (__ubuf__ uint16_t*)scoreOutLocal.GetPhyAddr();
@@ -185,8 +185,8 @@ __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_, 
 
 // bfloat16_t in uint16 out
 __simd_vf__ void MulWeightAndReduceSumB16VF(__ubuf__ uint16_t* out, __ubuf__ bfloat16_t* qk,
-                                             __ubuf__ float* weight, __ubuf__ float* kScale,
-                                             __ubuf__ float* qScale, uint16_t gSize)
+                                            __ubuf__ float* weight, __ubuf__ float* kScale,
+                                            __ubuf__ float* qScale, uint16_t gSize)
 {
     MicroAPI::RegTensor<float> regQK[4];
     MicroAPI::RegTensor<bfloat16_t> regQKB16[2];
