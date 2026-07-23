@@ -113,8 +113,13 @@ class GeneralizedSFAQuant:
         seqused_cmp_kv,
         cmp_residual_kv,
         sinks,
+        return_softmax_lse=false
     ):
         attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
+        softmax_lse = None
+        if return_softmax_lse:
+            softmax_lse = torch.zeros((q_bnsd.shape[0], ori_k_bnsd.shape[1], q_bnsd.shape[2],
+                q_bnsd.shape[1] // ori_k_bnsd.shape[1]), dtype=torch.float32)
         B = q_bnsd.shape[0]
         act_q = self.seqused_q
         G = int(self.N1 / self.N2)
@@ -418,12 +423,15 @@ class GeneralizedSFAQuant:
             seqused_cmp_kv,
             cmp_residual_kv,
             sinks,
+            return_softmax_lse
         )
 
         attn_out = self.trans_bnsd_to_target_layout(
             attn_out, self.layout_q, cu_seqlens_q, self.seqused_q
         )
-        return attn_out
+        if return_softmax_lse:
+            softmax_lse = self.lse_trans_bnsd_to_target_layout(softmax_lse, self.layout_q, cu_seqlens_q)
+        return attn_out, softmax_lse
 
 
 def prefix_sum_to_original(cu_seqlens_q):

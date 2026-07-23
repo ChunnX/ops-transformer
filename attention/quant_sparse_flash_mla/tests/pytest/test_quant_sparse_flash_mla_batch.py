@@ -57,7 +57,7 @@ def qsmla(testcase_files):
     test_data = torch.load(testcase_files, map_location="cpu")
     try:
         if is_run_graph:
-            npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
+            npu_result, cpu_quant_result, np = quant_sparse_flash_mla_process.test_qsmla_quant_process_graph(
                 test_data, device_id=device_id)
         else:
             npu_result, cpu_quant_result = quant_sparse_flash_mla_process.test_qsmla_quant_process_ci(
