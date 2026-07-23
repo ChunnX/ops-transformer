@@ -418,3 +418,39 @@ Golden Shapes: ((220, 48, 128), (220, 48, 1))
 Golden Dtypes: ('float32', 'float32')
 #######################################################################################################
 ttk Profiling complete
+
+
+规划一下
+我之前完成了pytest到ttk框架的适配，算子是/home/f00943346/ttk/ops-transformer/attention/quant_flash_attn，相关适配文件为/home/f00943346/ttk/ops-transformer/attention/quant_flash_attn/tests/assets下的，/home/f00943346/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py和/home/f00943346/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py，之前适配的交接文档如下，你可以参考/home/f00943346/ttk/HANDOFF.md，
+
+现在遇到几个问题
+
+1.之前ttk都是通过读取pytest paramset转换的csv文件进行处理，有些是直接set之前pytest golden里的变量，可能golden里有些变量还是自己计算的，现在的要求是适配测试excel表格（脚本转换），确保数据全是从测试提供的excel里获取，不要有自己内部计算推导的逻辑，因此需要你写一个excel转csv的脚本，需要转换的excel是/home/f00943346/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/redline.xlsx，这个excel里C到J列，也就是B	Q_N	KV_N	Q_S	KV_S	D	G不要去管，只是方便开发阅读，其余有值的参数应该都得用到，你需要生成符合ttk标准的csv，然后ttk读取csv传给golden，关于ttk csv的字段，可以参考/home/f00943346/ttk/ops-test-kit/docs/用例生成.md，这个ops-test-kit仓你也是可以阅读的，有几个字段，比如说input_data_ranges，我理解应该是控制输入的数据范围的，你要让生成的csv里这些范围匹配上，precision_tolerances和absolute_precision虽然excel没有传入，但你在生成的csv里要有默认的参数，在/home/f00943346/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/result_compare_method.py里默认是  diff_thd = 0.005
+
+  pct_thd = 0.005
+
+  max_diff_hd = 10
+
+  rtol = 0.005
+
+  atol = 0.000025，如果  if npu_result.dtype == torch.bfloat16:
+
+​    rtol = 0.0078125
+
+​    atol = 0.0001；然后后续测试可以修改这几个精度标准；
+
+然后pytestgolden里的generate_data这个函数，需要把dtype改成bf16，然后excel里，比如说q_datarange是-1到1，意思是bf16的范围是-1到1，然后这个bf16再量化
+
+可能的困难：
+
+可能不能复用之前的golden了，需要全部从excel转成的csv里去读，不能存在某些参数没传入，golden内部计算推导的情况
+
+我现在完成了pytest框架到ttk框架的适配，但还有一些精度问题，你可以理解下我之前的prompt，/home/f00943346/ttk/prompt.md，之前的agent团队干的应该在这里/home/f00943346/ttk/.omo，你都可以参考，现在问题是有几个case精度失败/home/f00943346/ttk/ttk.log，怀疑是golden写的问题，BnNBsD"就是"PA_BNBD"，这里  max_seqlen_kv = _resolve_max_seqlen(max_seqlen_kv, seqused_kv, cu_seqlens_kv, k.shape[0], "max_seqlen_kv")，excel传入-1，我们算子的输入就是-1，如果大于0，就是用户保证正确性，就是用户得传对，不传对精度可能有问题，这边有个以前的golden给你参考
+
+/home/f00943346/ttk/golden.py，这是上一个对话写的适配文档/home/f00943346/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/ADAPTATION.md
+
+
+
+我现在完成了pytest框架到ttk框架的适配，但还有一些精度问题，你可以理解下我之前的prompt，/home/f00943346/ttk/prompt.md，之前的agent团队干的应该在这里/home/f00943346/ttk/.omo，你都可以参考，现在问题是有几个case精度失败/home/f00943346/ttk/ttk.log，怀疑是golden写的问题，这边有个以前的golden给你参考
+
+/home/f00943346/ttk/golden.py，这是上一个对话写的适配文档/home/f00943346/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/ADAPTATION.md
