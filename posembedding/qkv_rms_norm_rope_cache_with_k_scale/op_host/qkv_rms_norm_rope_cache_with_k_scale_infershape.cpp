@@ -23,6 +23,7 @@ static constexpr uint64_t K_SCALE_CACHE_INDEX = 7;
 static constexpr uint64_t HEAD_NUMS_ATTR_INDEX = 0;
 static constexpr uint64_t QKV_LAYOUT_ATTR_INDEX = 1;
 static constexpr uint64_t Q_OUT_LAYOUT_ATTR_INDEX = 2;
+static constexpr uint64_t Q_OUT_DTYPE_ATTR_INDEX = 6;
 
 static constexpr uint64_t Q_OUT_INDEX = 0;
 static constexpr uint64_t Q_SCALE_INDEX = 1;
@@ -236,30 +237,52 @@ static ge::graphStatus GetInputShapes(gert::InferShapeContext *context, InputSha
     return ge::GRAPH_SUCCESS;
 }
 
+static gert::Shape *GetIrOutputShape(gert::InferShapeContext *context, uint64_t irIndex)
+{
+    const auto *instanceInfo = context->GetIrOutputInstanceInfo(irIndex);
+    if (instanceInfo == nullptr) {
+        return context->GetOutputShape(irIndex);
+    }
+    if (instanceInfo->GetInstanceNum() == 0) {
+        return nullptr;
+    }
+    return context->GetOutputShape(instanceInfo->GetInstanceStart());
+}
+
 static ge::graphStatus GetOutputShapes(gert::InferShapeContext *context, OutputShapes &output)
 {
-    output.qOut = context->GetOutputShape(Q_OUT_INDEX);
+    output.qOut = GetIrOutputShape(context, Q_OUT_INDEX);
     if (CheckNotNull(context, output.qOut, "q_out", "q_out shape must exist") != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    output.qScale = context->GetOutputShape(Q_SCALE_INDEX);
-    if (CheckNotNull(context, output.qScale, "q_scale", "q_scale shape must exist") != ge::GRAPH_SUCCESS) {
-        return ge::GRAPH_FAILED;
-    }
-    output.kCache = context->GetOutputShape(K_CACHE_OUT_INDEX);
+    output.qScale = GetIrOutputShape(context, Q_SCALE_INDEX);
+    output.kCache = GetIrOutputShape(context, K_CACHE_OUT_INDEX);
     if (CheckNotNull(context, output.kCache, "k_cache_out", "k_cache_out shape must exist") != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    output.vCache = context->GetOutputShape(V_CACHE_OUT_INDEX);
+    output.vCache = GetIrOutputShape(context, V_CACHE_OUT_INDEX);
     if (CheckNotNull(context, output.vCache, "v_cache_out", "v_cache_out shape must exist") != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
-    output.kScaleCache = context->GetOutputShape(K_SCALE_CACHE_OUT_INDEX);
+    output.kScaleCache = GetIrOutputShape(context, K_SCALE_CACHE_OUT_INDEX);
     if (CheckNotNull(context, output.kScaleCache, "k_scale_cache_out", "k_scale_cache_out shape must exist") !=
         ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
+}
+
+static ge::graphStatus SetIrOutputDataType(gert::InferDataTypeContext *context, uint64_t irIndex,
+                                            ge::DataType dtype)
+{
+    const auto *instanceInfo = context->GetIrOutputInstanceInfo(irIndex);
+    if (instanceInfo == nullptr) {
+        return context->SetOutputDataType(irIndex, dtype);
+    }
+    if (instanceInfo->GetInstanceNum() == 0) {
+        return ge::GRAPH_SUCCESS;
+    }
+    return context->SetOutputDataType(instanceInfo->GetInstanceStart(), dtype);
 }
 
 static void SetOutputShapes(const InputShapes &input, const OutputShapes &output, const InferAttrs &attrs,
@@ -270,9 +293,11 @@ static void SetOutputShapes(const InputShapes &input, const OutputShapes &output
     output.qOut->SetDim(1, attrs.isQOutNtd ? dims.totalTokens : attrs.qHeads);
     output.qOut->SetDim(2, dims.headDim);
 
-    output.qScale->SetDimNum(2);
-    output.qScale->SetDim(0, attrs.isQOutNtd ? attrs.qHeads : dims.totalTokens);
-    output.qScale->SetDim(1, attrs.isQOutNtd ? dims.totalTokens : attrs.qHeads);
+    if (output.qScale != nullptr) {
+        output.qScale->SetDimNum(2);
+        output.qScale->SetDim(0, attrs.isQOutNtd ? attrs.qHeads : dims.totalTokens);
+        output.qScale->SetDim(1, attrs.isQOutNtd ? dims.totalTokens : attrs.qHeads);
+    }
 
     *output.kCache = *input.kCache;
     *output.vCache = *input.vCache;
@@ -318,12 +343,27 @@ ge::graphStatus InferDtype4QkvRmsNormRopeCacheWithKScale(gert::InferDataTypeCont
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(DEFAULT_OP_NAME, "context", "nullptr", "context can not be nullptr");
         return ge::GRAPH_FAILED;
     }
-    // q_out is always the quantized FP8 query output of this op, independent of the qkv input dtype.
-    context->SetOutputDataType(Q_OUT_INDEX, ge::DT_FLOAT8_E4M3FN);
-    context->SetOutputDataType(Q_SCALE_INDEX, ge::DT_FLOAT);
-    context->SetOutputDataType(K_CACHE_OUT_INDEX, context->GetInputDataType(K_CACHE_INDEX));
-    context->SetOutputDataType(V_CACHE_OUT_INDEX, context->GetInputDataType(V_CACHE_INDEX));
-    context->SetOutputDataType(K_SCALE_CACHE_OUT_INDEX, context->GetInputDataType(K_SCALE_CACHE_INDEX));
+    ge::DataType qOutDtype = ge::DT_FLOAT8_E4M3FN;
+    const auto *attrs = context->GetAttrs();
+    if (attrs != nullptr && static_cast<uint64_t>(attrs->GetAttrNum()) > Q_OUT_DTYPE_ATTR_INDEX) {
+        const int64_t *qOutDtypeAttr = attrs->GetInt(Q_OUT_DTYPE_ATTR_INDEX);
+        if (qOutDtypeAttr != nullptr) {
+            const auto requestedDtype = static_cast<ge::DataType>(*qOutDtypeAttr);
+            if (requestedDtype != ge::DT_FLOAT8_E4M3FN && requestedDtype != ge::DT_BF16) {
+                const std::string incorrectValue = std::to_string(*qOutDtypeAttr);
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+                    DEFAULT_OP_NAME, "q_out_dtype", incorrectValue.c_str(),
+                    "q_out_dtype must be ge::DT_FLOAT8_E4M3FN or ge::DT_BF16");
+                return ge::GRAPH_FAILED;
+            }
+            qOutDtype = requestedDtype;
+        }
+    }
+    SetIrOutputDataType(context, Q_OUT_INDEX, qOutDtype);
+    SetIrOutputDataType(context, Q_SCALE_INDEX, ge::DT_FLOAT);
+    SetIrOutputDataType(context, K_CACHE_OUT_INDEX, context->GetInputDataType(K_CACHE_INDEX));
+    SetIrOutputDataType(context, V_CACHE_OUT_INDEX, context->GetInputDataType(V_CACHE_INDEX));
+    SetIrOutputDataType(context, K_SCALE_CACHE_OUT_INDEX, context->GetInputDataType(K_SCALE_CACHE_INDEX));
     return ge::GRAPH_SUCCESS;
 }
 } // namespace QkvRmsNormRopeCacheWithKScale

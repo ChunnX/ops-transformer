@@ -35,11 +35,13 @@ constexpr uint64_t QUERY_START_LOC_INDEX = 8;
 constexpr uint64_t SEQ_LENS_INDEX = 9;
 constexpr uint64_t ROTATION_INDEX = 10;
 constexpr uint64_t V_SCALE_INDEX = 11;
+constexpr uint64_t MROPE_POSITION_INDEX = 12;
 
 constexpr uint64_t HEAD_NUMS_ATTR_INDEX = 0;
 constexpr uint64_t QKV_LAYOUT_ATTR_INDEX = 1;
 constexpr uint64_t Q_OUT_LAYOUT_ATTR_INDEX = 2;
 constexpr uint64_t EPSILON_ATTR_INDEX = 3;
+constexpr uint64_t MROPE_SECTION_ATTR_INDEX = 4;
 
 constexpr float DEFAULT_EPSILON = 1e-6f;
 constexpr int32_t TILING_TEMPLATE_PRIORITY = 1000;
@@ -737,7 +739,8 @@ ge::graphStatus FillContiguousCacheTensorInfo(gert::TilingContext *context, cons
     info.shape = storageShapeInfo;
     info.shapePresent = true;
     OP_CHECK_IF(MakeContiguousStrideInfo(opName, storageShapeInfo, info.stride) != ge::GRAPH_SUCCESS,
-                OP_LOGE(context, "make contiguous cache stride failed, input index=%llu.", index),
+                OP_LOGE(context, "make contiguous cache stride failed, input index=%llu.",
+                        static_cast<unsigned long long>(index)),
                 return ge::GRAPH_FAILED);
     info.stridePresent = true;
     info.dtype = dtype;
@@ -1028,12 +1031,27 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::FillOptionalTensorInputs()
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::BuildContractInput()
 {
+    OP_CHECK_IF(ResolveScene() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to resolve operator scene."),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(ParseHeadNumsAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to parse head_nums attr."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(ParseLayoutQkvAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to parse layout_qkv attr."),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(ParseLayoutQOutAttr() != ge::GRAPH_SUCCESS, OP_LOGE(context_, "failed to parse layout_q_out attr."),
                 return ge::GRAPH_FAILED);
+
+    if (sceneMode_ == QKV_K_SCALE_SCENE_MROPE_BF16_Q_INT8_K) {
+        OP_CHECK_IF(input_.layoutQkv != QKV_K_SCALE_LAYOUT_TND || input_.layoutQOut != QKV_K_SCALE_LAYOUT_TND,
+                    OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                        opName_, "layout_qkv, layout_q_out", (std::string(LayoutName(input_.layoutQkv)) + ", " +
+                                                                  LayoutName(input_.layoutQOut))
+                            .c_str(),
+                        "M-RoPE scene requires layout_qkv=TND and layout_q_out=TND"),
+                    return ge::GRAPH_FAILED);
+        // The empty M-RoPE kernel does not consume tiling data.
+        epsilon_ = ParseEpsilonAttr();
+        return ge::GRAPH_SUCCESS;
+    }
 
     OP_CHECK_IF(FillRequiredTensorInputs() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "failed to parse required tensor inputs."), return ge::GRAPH_FAILED);
@@ -1108,6 +1126,7 @@ void QkvRmsNormRopeCacheWithKScaleBaseTiling::Reset()
     input_ = {};
     tilingData_ = {};
     aicNum_ = 0;
+    sceneMode_ = QKV_K_SCALE_SCENE_ROPE_FP8_QK;
     epsilon_ = DEFAULT_EPSILON;
     tilingDataSize_ = 0;
     numBlocks_ = 0;
@@ -1125,8 +1144,11 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetShapeAttrsInfo()
     OP_CHECK_IF(BuildContractInput() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "failed to build QkvRmsNormRopeCacheWithKScale contract input."),
                 return ge::GRAPH_FAILED);
-    OP_CHECK_IF(ValidateParsedInput() != ge::GRAPH_SUCCESS,
-                OP_LOGE(context_, "invalid QkvRmsNormRopeCacheWithKScale contract input."), return ge::GRAPH_FAILED);
+    if (sceneMode_ != QKV_K_SCALE_SCENE_MROPE_BF16_Q_INT8_K) {
+        OP_CHECK_IF(ValidateParsedInput() != ge::GRAPH_SUCCESS,
+                    OP_LOGE(context_, "invalid QkvRmsNormRopeCacheWithKScale contract input."),
+                    return ge::GRAPH_FAILED);
+    }
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1143,6 +1165,11 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetPlatformInfo()
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::DoOpTiling()
 {
+    if (sceneMode_ == QKV_K_SCALE_SCENE_MROPE_BF16_Q_INT8_K) {
+        tilingData_ = {};
+        numBlocks_ = 1;
+        return ge::GRAPH_SUCCESS;
+    }
     OP_CHECK_IF(ComputeTilingData() != ge::GRAPH_SUCCESS,
                 OP_LOGE(context_, "QkvRmsNormRopeCacheWithKScale contract tiling build failed."),
                 return ge::GRAPH_FAILED);
@@ -1158,7 +1185,34 @@ ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::DoLibApiTiling()
 uint64_t QkvRmsNormRopeCacheWithKScaleBaseTiling::GetTilingKey() const
 {
     return GET_TPL_TILING_KEY(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_TPL_HEAD_DIM_D128, input_.layoutQkv,
-                              input_.layoutQOut);
+                              input_.layoutQOut, sceneMode_);
+}
+
+ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::ResolveScene()
+{
+    const auto queryStartLoc = context_->GetOptionalInputDesc(QUERY_START_LOC_INDEX);
+    const auto seqLens = context_->GetOptionalInputDesc(SEQ_LENS_INDEX);
+    const auto mropePosition = context_->GetOptionalInputDesc(MROPE_POSITION_INDEX);
+
+    bool hasMropeSection = false;
+    const auto attrs = context_->GetAttrs();
+    if (attrs != nullptr && static_cast<uint64_t>(attrs->GetAttrNum()) > MROPE_SECTION_ATTR_INDEX) {
+        const auto mropeSection = attrs->GetListInt(MROPE_SECTION_ATTR_INDEX);
+        // OPTIONAL list attributes can be materialized as an empty vector when the
+        // caller leaves the attribute unset.  Only a non-empty section identifies
+        // the M-RoPE scene; checking the pointer alone misclassifies RoPE calls.
+        hasMropeSection = mropeSection != nullptr && mropeSection->GetSize() != 0U;
+    }
+
+    const bool isRope = queryStartLoc != nullptr && seqLens != nullptr && mropePosition == nullptr && !hasMropeSection;
+    const bool isMrope = queryStartLoc == nullptr && seqLens == nullptr && mropePosition != nullptr && hasMropeSection;
+    OP_CHECK_IF(!isRope && !isMrope,
+                OP_LOGE_FOR_INVALID_VALUES_WITH_REASON(
+                    opName_, "query_start_loc/seq_lens/mrope_position/mrope_section", "inconsistent presence",
+                    "RoPE requires query_start_loc and seq_lens; M-RoPE requires mrope_position and mrope_section"),
+                return ge::GRAPH_FAILED);
+    sceneMode_ = isMrope ? QKV_K_SCALE_SCENE_MROPE_BF16_Q_INT8_K : QKV_K_SCALE_SCENE_ROPE_FP8_QK;
+    return ge::GRAPH_SUCCESS;
 }
 
 ge::graphStatus QkvRmsNormRopeCacheWithKScaleBaseTiling::GetWorkspaceSize()

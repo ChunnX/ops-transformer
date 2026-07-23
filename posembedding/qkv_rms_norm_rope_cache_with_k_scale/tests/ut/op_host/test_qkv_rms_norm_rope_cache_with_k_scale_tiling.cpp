@@ -43,6 +43,8 @@ constexpr uint64_t TEST_LAYOUT_NTD = 0U;
 constexpr uint64_t TEST_LAYOUT_TND = 1U;
 constexpr uint64_t QKV_LAYOUT_TILING_KEY_SHIFT = 8U;
 constexpr uint64_t Q_OUT_LAYOUT_TILING_KEY_SHIFT = 12U;
+constexpr uint64_t SCENE_MODE_TILING_KEY_SHIFT = 16U;
+constexpr uint64_t TEST_SCENE_MROPE = 1U;
 
 uint64_t EncodeQkvKScaleTilingKey(uint64_t layoutQkv, uint64_t layoutQOut)
 {
@@ -290,6 +292,20 @@ bool ExecuteTilingForInput(const ContractInput &input, TilingInfo &tilingInfo, c
     gert::TilingContextPara tilingContextPara("QkvRmsNormRopeCacheWithKScale", BuildTilingInputDescs(input),
                                               BuildTilingOutputDescs(input), BuildTilingAttrs(input, options),
                                               &compileInfo, options.socVersion, options.aicNum, compileInfo.ubSize);
+    return ExecuteTiling(tilingContextPara, tilingInfo);
+}
+
+bool ExecuteRopeTilingWithEmptyMropeSection(TilingInfo &tilingInfo)
+{
+    ContractInput input = BuildInput(5U, 1U, 1U, 1U, 128U);
+    TilingRunOptions options;
+    auto compileInfo = BuildCompileInfo(options);
+    auto attrs = BuildTilingAttrs(input, options);
+    attrs.push_back(gert::TilingContextPara::OpAttr(
+        "mrope_section", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{})));
+    gert::TilingContextPara tilingContextPara("QkvRmsNormRopeCacheWithKScale", BuildTilingInputDescs(input),
+                                              BuildTilingOutputDescs(input), attrs, &compileInfo, options.socVersion,
+                                              options.aicNum, compileInfo.ubSize);
     return ExecuteTiling(tilingContextPara, tilingInfo);
 }
 
@@ -712,6 +728,84 @@ void ExpectCsvSpecChecks(const CsvTilingCase &item, const ContractInput &input, 
     }
 }
 
+bool ExecuteMropeTiling(TilingInfo &tilingInfo, bool hasMropePosition = true, bool hasMropeSection = true,
+                        const std::string &layoutQkv = "TND", const std::string &layoutQOut = "TND",
+                        bool hasQueryStartLoc = false, bool hasSeqLens = false)
+{
+    auto input = BuildInput(5U, 1U, 1U, 1U, 128U);
+    input.layoutQkv = layoutQkv == "TND" ? TEST_LAYOUT_TND : TEST_LAYOUT_NTD;
+    input.layoutQOut = layoutQOut == "TND" ? TEST_LAYOUT_TND : TEST_LAYOUT_NTD;
+    input.kCache.dtype = ge::DT_INT8;
+    RefreshShapes(input);
+
+    TensorContractInfo mropePosition;
+    mropePosition.dtype = ge::DT_INT32;
+    SetShape(mropePosition, input.totalTokens, 3U);
+
+    std::vector<gert::TilingContextPara::TensorDescription> inputs;
+    inputs.reserve(13U);
+    inputs.push_back(MakeTensorDesc(input.qkv));
+    inputs.push_back(MakeTensorDesc(input.qGamma));
+    inputs.push_back(MakeTensorDesc(input.kGamma));
+    inputs.push_back(MakeTensorDesc(input.cosSin));
+    inputs.push_back(MakeTensorDesc(input.slotMapping));
+    inputs.push_back(MakeTensorDesc(input.kCache));
+    inputs.push_back(MakeTensorDesc(input.vCache));
+    inputs.push_back(MakeTensorDesc(input.kScaleCache));
+    if (hasQueryStartLoc) {
+        inputs.push_back(MakeTensorDesc(input.queryStartLoc));
+    }
+    if (hasSeqLens) {
+        inputs.push_back(MakeTensorDesc(input.seqLens));
+    }
+    inputs.push_back(MakeTensorDesc(input.rotation));
+    inputs.push_back(MakeTensorDesc(input.vScale));
+    if (hasMropePosition) {
+        inputs.push_back(MakeTensorDesc(mropePosition));
+    }
+
+    const std::vector<uint32_t> inputInstances = {
+        1, 1, 1, 1, 1, 1, 1, 1, static_cast<uint32_t>(hasQueryStartLoc), static_cast<uint32_t>(hasSeqLens),
+        1, 1, static_cast<uint32_t>(hasMropePosition),
+    };
+
+    gert::Shape qOutShape;
+    qOutShape.AppendDim(static_cast<int64_t>(input.totalTokens));
+    qOutShape.AppendDim(static_cast<int64_t>(input.numQHeads));
+    qOutShape.AppendDim(static_cast<int64_t>(input.headDim));
+    std::vector<gert::TilingContextPara::TensorDescription> outputs = {
+        {MakeStorageShape(qOutShape), ge::DT_BF16, ge::FORMAT_ND},
+        MakeTensorDesc(input.kCache),
+        MakeTensorDesc(input.vCache),
+        MakeTensorDesc(input.kScaleCache),
+    };
+    const std::vector<uint32_t> outputInstances = {1, 0, 1, 1, 1};
+
+    const std::vector<int64_t> headNums = {1, 1, 1};
+    const std::vector<int64_t> mropeSection = {22, 12, 10};
+    std::vector<gert::TilingContextPara::OpAttr> attrs = {
+        {"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
+        {"layout_qkv", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutQkv)},
+        {"layout_q_out", Ops::Transformer::AnyValue::CreateFrom<std::string>(layoutQOut)},
+        {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6F)},
+    };
+    if (hasMropeSection) {
+        attrs.push_back({"mrope_section",
+                         Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(mropeSection)});
+        attrs.push_back(
+            {"q_quant_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("NoQuant")});
+        attrs.push_back({"q_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(
+                                                static_cast<int64_t>(ge::DT_BF16))});
+    }
+
+    TilingRunOptions options;
+    auto compileInfo = BuildCompileInfo(options);
+    gert::TilingContextPara para("QkvRmsNormRopeCacheWithKScale", inputs, outputs, attrs, inputInstances,
+                                 outputInstances, &compileInfo, options.socVersion, options.aicNum,
+                                 compileInfo.ubSize);
+    return ExecuteTiling(para, tilingInfo);
+}
+
 class QkvRmsNormRopeCacheWithKScaleCsvTiling : public testing::TestWithParam<CsvTilingCase> {};
 
 } // namespace
@@ -775,6 +869,45 @@ TEST_P(QkvRmsNormRopeCacheWithKScaleCsvTiling, RunsCase)
 
 INSTANTIATE_TEST_SUITE_P(CsvCases, QkvRmsNormRopeCacheWithKScaleCsvTiling, testing::ValuesIn(GetCsvTilingCases()),
                          MakeCsvTilingCaseName);
+
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, MropeUsesDedicatedEmptyKernelKey)
+{
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteMropeTiling(tilingInfo));
+    const uint64_t expectedKey = EncodeQkvKScaleTilingKey(TEST_LAYOUT_TND, TEST_LAYOUT_TND) |
+                                 (TEST_SCENE_MROPE << SCENE_MODE_TILING_KEY_SHIFT);
+    EXPECT_EQ(tilingInfo.tilingKey, expectedKey);
+    EXPECT_EQ(tilingInfo.blockNum, 1U);
+    ASSERT_EQ(tilingInfo.tilingDataSize, sizeof(TilingData));
+    ASSERT_NE(tilingInfo.tilingData, nullptr);
+    const auto *begin = tilingInfo.tilingData.get();
+    EXPECT_TRUE(std::all_of(begin, begin + sizeof(TilingData), [](uint8_t value) { return value == 0U; }));
+    ASSERT_EQ(tilingInfo.workspaceSizes.size(), 1U);
+    EXPECT_EQ(tilingInfo.workspaceSizes[0],
+              static_cast<int64_t>(RESERVED_WORKSPACE_SIZE + TEST_OP_WORKSPACE_SIZE));
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, EmptyMropeSectionKeepsRopeScene)
+{
+    TilingInfo tilingInfo;
+    ASSERT_TRUE(ExecuteRopeTilingWithEmptyMropeSection(tilingInfo));
+    EXPECT_EQ(tilingInfo.tilingKey, EncodeQkvKScaleTilingKey(TEST_LAYOUT_NTD, TEST_LAYOUT_NTD));
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsIncompleteMropePresence)
+{
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteMropeTiling(tilingInfo, true, false));
+    EXPECT_FALSE(ExecuteMropeTiling(tilingInfo, false, true));
+    EXPECT_FALSE(ExecuteMropeTiling(tilingInfo, true, true, "TND", "TND", true, false));
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RejectsUnsupportedMropeLayouts)
+{
+    TilingInfo tilingInfo;
+    EXPECT_FALSE(ExecuteMropeTiling(tilingInfo, true, true, "NTD", "NTD"));
+    EXPECT_FALSE(ExecuteMropeTiling(tilingInfo, true, true, "TND", "NTD"));
+}
 
 TEST(QkvRmsNormRopeCacheWithKScaleBaseTiling, RealTilingIsStableAcrossThreads)
 {

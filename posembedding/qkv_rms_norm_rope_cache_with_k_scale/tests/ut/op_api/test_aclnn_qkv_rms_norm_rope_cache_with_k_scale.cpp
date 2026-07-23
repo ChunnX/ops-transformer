@@ -443,20 +443,47 @@ TEST_P(qkv_rms_norm_rope_cache_with_k_scale_csv_test, csvDrivenCase)
 INSTANTIATE_TEST_SUITE_P(QKV_RMS_NORM_ROPE_CACHE_WITH_K_SCALE_CSV, qkv_rms_norm_rope_cache_with_k_scale_csv_test,
                          testing::ValuesIn(GetCases()), MakeParamName);
 
-aclnnStatus RunMropeSectionScene(const vector<int64_t> &section)
+aclnnStatus RunCompleteMropeScene(const vector<int64_t> &section, const char *layoutQkv = "TND",
+                                  const char *layoutQOut = "TND", aclDataType kCacheDtype = ACL_INT8,
+                                  aclDataType qOutDtype = ACL_BF16, const char *qQuantMode = "NoQuant",
+                                  bool hasQScale = false)
 {
-    TensorDesc qkv = MakeTensorDesc({5, 1, 128}, ACL_BF16);
+    TensorDesc qkv = MakeTensorDesc({5, 3, 128}, ACL_BF16);
+    TensorDesc qGamma = MakeTensorDesc({128}, ACL_FLOAT);
+    TensorDesc kGamma = MakeTensorDesc({128}, ACL_FLOAT);
+    TensorDesc cosSin = MakeTensorDesc({128, 128}, ACL_FLOAT);
+    TensorDesc slotMapping = MakeTensorDesc({5}, ACL_INT32);
+    TensorDesc kCache = MakeTensorDesc({1, 1, 8, 128}, kCacheDtype);
+    TensorDesc vCache = MakeTensorDesc({1, 1, 8, 128}, ACL_FLOAT8_E4M3FN);
+    TensorDesc kScaleCache = MakeTensorDesc({1, 1, 8, 1}, ACL_FLOAT);
+    TensorDesc rotation = MakeTensorDesc({128, 128}, ACL_BF16);
+    TensorDesc vScale = MakeTensorDesc({1}, ACL_FLOAT);
     TensorDesc mropePosition = MakeTensorDesc({5, 3}, ACL_INT32);
-    TensorDesc qOut = MakeTensorDesc({5, 1, 128}, ACL_BF16, false);
+    TensorDesc qOut = MakeTensorDesc({5, 1, 128}, qOutDtype, false);
+    TensorDesc qScale = MakeTensorDesc({5, 1}, ACL_FLOAT, false);
+    IntArrayDesc headNums(vector<int64_t>{1, 1, 1});
     IntArrayDesc mropeSection(section);
 
+    uint64_t workspaceSize = 0;
+    if (hasQScale) {
+        auto ut = OP_API_UT(
+            aclnnQkvRmsNormRopeCacheWithKScale,
+            INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, nullptr, nullptr,
+                  rotation, vScale, mropePosition, headNums, layoutQkv, layoutQOut, 1e-6f, mropeSection, qQuantMode),
+            OUTPUT(qOut, qScale));
+        return ut.TestGetWorkspaceSize(&workspaceSize);
+    }
     auto ut = OP_API_UT(
         aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(qkv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-              mropePosition, nullptr, "TND", "TND", 1e-6f, mropeSection, "NoQuant"),
+        INPUT(qkv, qGamma, kGamma, cosSin, slotMapping, kCache, vCache, kScaleCache, nullptr, nullptr, rotation,
+              vScale, mropePosition, headNums, layoutQkv, layoutQOut, 1e-6f, mropeSection, qQuantMode),
         OUTPUT(qOut, nullptr));
-    uint64_t workspaceSize = 0;
     return ut.TestGetWorkspaceSize(&workspaceSize);
+}
+
+aclnnStatus RunMropeSectionScene(const vector<int64_t> &section)
+{
+    return RunCompleteMropeScene(section);
 }
 
 TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeSectionWrongLength)
@@ -489,10 +516,9 @@ TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeSectionAxisUpp
     }
 }
 
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, routesMropeSectionBoundaryToUnsupportedScene)
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, acceptsMropeSectionBoundary)
 {
-    // The maximum values sum to D/2=64 and pass section validation before the controlled unsupported return.
-    EXPECT_EQ(RunMropeSectionScene({22, 21, 21}), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunMropeSectionScene({22, 21, 21}), ACLNN_SUCCESS);
 }
 
 TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropePositionSectionMismatch)
@@ -560,21 +586,9 @@ TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropePositionTokenC
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, routesTokenMajorMropePositionToSceneContract)
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, acceptsTokenMajorMropePosition)
 {
-    TensorDesc qkv = MakeTensorDesc({5, 1, 128}, ACL_BF16);
-    TensorDesc mropePosition = MakeTensorDesc({5, 3}, ACL_INT32);
-    TensorDesc qOut = MakeTensorDesc({5, 1, 128}, ACL_BF16, false);
-    IntArrayDesc mropeSection(vector<int64_t>{22, 12, 10});
-
-    // A valid [T, 3] position tensor passes shape validation and reaches M-RoPE scene dispatch.
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(qkv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-              nullptr, mropePosition, nullptr, "TND", "TND", 1e-6f, mropeSection, "NoQuant"),
-        OUTPUT(qOut, nullptr));
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}), ACLNN_SUCCESS);
 }
 
 TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeWithRopePositionSource)
@@ -627,21 +641,34 @@ TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeWithSeqLens)
     EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
 }
 
-TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsUnsupportedMropeScene)
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsUnsupportedMropeLayouts)
 {
-    TensorDesc qkv = MakeTensorDesc({5, 1, 128}, ACL_BF16);
-    TensorDesc mropePosition = MakeTensorDesc({5, 3}, ACL_INT32);
-    TensorDesc qOut = MakeTensorDesc({5, 1, 128}, ACL_BF16, false);
-    IntArrayDesc mropeSection(vector<int64_t>{22, 12, 10});
+    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "NTD", "NTD"), ACLNN_ERR_PARAM_INVALID);
+    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "NTD"), ACLNN_ERR_PARAM_INVALID);
+}
 
-    // ACLNN derives the Q dtype from qOut, then reaches the explicit unsupported M-RoPE branch.
-    auto ut = OP_API_UT(
-        aclnnQkvRmsNormRopeCacheWithKScale,
-        INPUT(qkv, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr, nullptr,
-              mropePosition, nullptr, "TND", "TND", 1e-6f, mropeSection, "NoQuant"),
-        OUTPUT(qOut, nullptr));
-    uint64_t workspaceSize = 0;
-    EXPECT_EQ(ut.TestGetWorkspaceSize(&workspaceSize), ACLNN_ERR_PARAM_INVALID);
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeKCacheDtype)
+{
+    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_FLOAT8_E4M3FN),
+              ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeQOutDtype)
+{
+    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_INT8, ACL_FLOAT8_E4M3FN),
+              ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeQScale)
+{
+    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_INT8, ACL_BF16, "NoQuant", true),
+              ACLNN_ERR_PARAM_INVALID);
+}
+
+TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsMropeQQuantMode)
+{
+    EXPECT_EQ(RunCompleteMropeScene({22, 12, 10}, "TND", "TND", ACL_INT8, ACL_BF16, "PerTokenPerHead"),
+              ACLNN_ERR_PARAM_INVALID);
 }
 
 TEST(qkv_rms_norm_rope_cache_with_k_scale_scene_test, rejectsRopeDtypeReadFromQOut)

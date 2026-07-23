@@ -47,16 +47,20 @@ struct QkvRmsNormRopeCacheWithKScaleParams {
     aclTensor *kCache{nullptr};
     aclTensor *vCache{nullptr};
     aclTensor *kScaleCache{nullptr};
+    // Scene-specific optional inputs
     const aclTensor *queryStartLoc{nullptr};
     const aclTensor *seqLens{nullptr};
-    // Optional inputs (required in first phase, but declared as optional in def)
     const aclTensor *rotationOptional{nullptr};
     const aclTensor *vScaleOptional{nullptr};
+    const aclTensor *mropePositionOptional{nullptr};
     // Attributes
     const aclIntArray *headNums{nullptr};
     const char *layoutQkv{nullptr};
     const char *layoutQOut{nullptr};
     float epsilon{DEFAULT_EPSILON};
+    const aclIntArray *mropeSectionOptional{nullptr};
+    const char *qQuantMode{nullptr};
+    int64_t qOutDtype{static_cast<int64_t>(op::DataType::DT_FLOAT8_E4M3FN)};
     // Outputs
     aclTensor *qOut{nullptr};
     aclTensor *qScale{nullptr};
@@ -105,12 +109,14 @@ public:
     inline static const std::vector<op::DataType> COS_SIN_TYPE_LIST = {op::DataType::DT_FLOAT};
     inline static const std::vector<op::DataType> SLOT_MAPPING_TYPE_LIST = {op::DataType::DT_INT32};
     inline static const std::vector<op::DataType> CACHE_TYPE_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
+    inline static const std::vector<op::DataType> MROPE_K_CACHE_TYPE_LIST = {op::DataType::DT_INT8};
     inline static const std::vector<op::DataType> K_SCALE_CACHE_TYPE_LIST = {op::DataType::DT_FLOAT};
     inline static const std::vector<op::DataType> QUERY_START_LOC_TYPE_LIST = {op::DataType::DT_INT32};
     inline static const std::vector<op::DataType> SEQ_LENS_TYPE_LIST = {op::DataType::DT_INT32};
     inline static const std::vector<op::DataType> ROTATION_TYPE_LIST = {op::DataType::DT_BF16};
     inline static const std::vector<op::DataType> V_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT};
     inline static const std::vector<op::DataType> Q_OUT_TYPE_LIST = {op::DataType::DT_FLOAT8_E4M3FN};
+    inline static const std::vector<op::DataType> MROPE_Q_OUT_TYPE_LIST = {op::DataType::DT_BF16};
     inline static const std::vector<op::DataType> Q_SCALE_TYPE_LIST = {op::DataType::DT_FLOAT};
 
     // Main entry point
@@ -142,6 +148,11 @@ public:
 
 private:
     QkvRmsNormRopeCacheWithKScaleParams params_;
+
+    bool IsMropeScene() const
+    {
+        return params_.mropePositionOptional != nullptr && params_.mropeSectionOptional != nullptr;
+    }
 
     struct PointerNullRule {
         const char *paramName;
@@ -249,7 +260,7 @@ private:
     // 1. Null pointer check
     aclnnStatus CheckNotNull()
     {
-        const PointerNullRule rules[] = {
+        const PointerNullRule commonRules[] = {
             {"qkv", params_.qkv, "qkv can not be nullptr"},
             {"qGamma", params_.qGamma, "qGamma can not be nullptr"},
             {"kGamma", params_.kGamma, "kGamma can not be nullptr"},
@@ -258,20 +269,30 @@ private:
             {"kCacheRef", params_.kCache, "kCacheRef can not be nullptr"},
             {"vCacheRef", params_.vCache, "vCacheRef can not be nullptr"},
             {"kScaleCacheRef", params_.kScaleCache, "kScaleCacheRef can not be nullptr"},
-            {"queryStartLoc", params_.queryStartLoc, "queryStartLoc can not be nullptr"},
-            {"seqLens", params_.seqLens, "seqLens can not be nullptr"},
             {"rotationOptional", params_.rotationOptional, "rotationOptional can not be nullptr"},
             {"vScaleOptional", params_.vScaleOptional, "vScaleOptional can not be nullptr"},
             {"headNums", params_.headNums, "headNums can not be nullptr"},
             {"qOut", params_.qOut, "qOut can not be nullptr"},
-            {"qScale", params_.qScale, "qScale can not be nullptr"},
             {"workspaceSize", params_.workspaceSize, "workspaceSize can not be nullptr"},
             {"executor", params_.executor, "executor can not be nullptr"},
         };
-        for (const auto &rule : rules) {
+        for (const auto &rule : commonRules) {
             if (rule.ptr == nullptr) {
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, rule.paramName, "nullptr", rule.reason);
                 return ACLNN_ERR_PARAM_NULLPTR;
+            }
+        }
+        if (!IsMropeScene()) {
+            const PointerNullRule ropeRules[] = {
+                {"queryStartLoc", params_.queryStartLoc, "queryStartLoc can not be nullptr"},
+                {"seqLens", params_.seqLens, "seqLens can not be nullptr"},
+                {"qScale", params_.qScale, "qScale can not be nullptr"},
+            };
+            for (const auto &rule : ropeRules) {
+                if (rule.ptr == nullptr) {
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, rule.paramName, "nullptr", rule.reason);
+                    return ACLNN_ERR_PARAM_NULLPTR;
+                }
             }
         }
         return ACLNN_SUCCESS;
@@ -280,26 +301,37 @@ private:
     // 2. Dtype check
     aclnnStatus CheckDtypeValid()
     {
-        const TensorDtypeRule rules[] = {
+        const bool isMrope = IsMropeScene();
+        const TensorDtypeRule commonRules[] = {
             {"qkv", params_.qkv, &QKV_TYPE_LIST},
             {"qGamma", params_.qGamma, &GAMMA_TYPE_LIST},
             {"kGamma", params_.kGamma, &GAMMA_TYPE_LIST},
             {"cosSin", params_.cosSin, &COS_SIN_TYPE_LIST},
             {"slotMapping", params_.slotMapping, &SLOT_MAPPING_TYPE_LIST},
-            {"kCacheRef", params_.kCache, &CACHE_TYPE_LIST},
+            {"kCacheRef", params_.kCache, isMrope ? &MROPE_K_CACHE_TYPE_LIST : &CACHE_TYPE_LIST},
             {"vCacheRef", params_.vCache, &CACHE_TYPE_LIST},
             {"kScaleCacheRef", params_.kScaleCache, &K_SCALE_CACHE_TYPE_LIST},
-            {"queryStartLoc", params_.queryStartLoc, &QUERY_START_LOC_TYPE_LIST},
-            {"seqLens", params_.seqLens, &SEQ_LENS_TYPE_LIST},
             {"rotationOptional", params_.rotationOptional, &ROTATION_TYPE_LIST},
             {"vScaleOptional", params_.vScaleOptional, &V_SCALE_TYPE_LIST},
-            {"qOut", params_.qOut, &Q_OUT_TYPE_LIST},
-            {"qScale", params_.qScale, &Q_SCALE_TYPE_LIST},
+            {"qOut", params_.qOut, isMrope ? &MROPE_Q_OUT_TYPE_LIST : &Q_OUT_TYPE_LIST},
         };
-        for (const auto &rule : rules) {
+        for (const auto &rule : commonRules) {
             aclnnStatus ret = CheckDtypeSupported(rule.paramName, rule.tensor, *rule.supportList);
             if (ret != ACLNN_SUCCESS) {
                 return ret;
+            }
+        }
+        if (!isMrope) {
+            const TensorDtypeRule ropeRules[] = {
+                {"queryStartLoc", params_.queryStartLoc, &QUERY_START_LOC_TYPE_LIST},
+                {"seqLens", params_.seqLens, &SEQ_LENS_TYPE_LIST},
+                {"qScale", params_.qScale, &Q_SCALE_TYPE_LIST},
+            };
+            for (const auto &rule : ropeRules) {
+                aclnnStatus ret = CheckDtypeSupported(rule.paramName, rule.tensor, *rule.supportList);
+                if (ret != ACLNN_SUCCESS) {
+                    return ret;
+                }
             }
         }
         return ACLNN_SUCCESS;
@@ -431,22 +463,24 @@ private:
         if (ret != ACLNN_SUCCESS) {
             return ret;
         }
-        const auto &queryStartLocShape = params_.queryStartLoc->GetViewShape();
-        if (unlikely(queryStartLocShape.GetDimNum() != RANK_1D ||
-                     queryStartLocShape.GetDim(VECTOR_LENGTH_INDEX) < MIN_QUERY_START_LOC_SIZE)) {
-            const std::string incorrectShape = ShapeToString(params_.queryStartLoc);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "queryStartLoc", incorrectShape.c_str(),
-                                                  "queryStartLoc must be a 1D tensor with length >= 2");
-            return ACLNN_ERR_PARAM_INVALID;
-        }
-        const auto &seqLensShape = params_.seqLens->GetViewShape();
-        if (unlikely(seqLensShape.GetDimNum() != RANK_1D ||
-                    seqLensShape.GetDim(VECTOR_LENGTH_INDEX) !=
-                    queryStartLocShape.GetDim(VECTOR_LENGTH_INDEX) - SEQ_LENS_BATCH_DIFF)) {
-            const std::string incorrectShape = ShapeToString(params_.seqLens);
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "seqLens", incorrectShape.c_str(),
-                                                  "seqLens must have shape [queryStartLoc.shape[0] - 1]");
-            return ACLNN_ERR_PARAM_INVALID;
+        if (!IsMropeScene()) {
+            const auto &queryStartLocShape = params_.queryStartLoc->GetViewShape();
+            if (unlikely(queryStartLocShape.GetDimNum() != RANK_1D ||
+                         queryStartLocShape.GetDim(VECTOR_LENGTH_INDEX) < MIN_QUERY_START_LOC_SIZE)) {
+                const std::string incorrectShape = ShapeToString(params_.queryStartLoc);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "queryStartLoc", incorrectShape.c_str(),
+                                                      "queryStartLoc must be a 1D tensor with length >= 2");
+                return ACLNN_ERR_PARAM_INVALID;
+            }
+            const auto &seqLensShape = params_.seqLens->GetViewShape();
+            if (unlikely(seqLensShape.GetDimNum() != RANK_1D ||
+                         seqLensShape.GetDim(VECTOR_LENGTH_INDEX) !=
+                             queryStartLocShape.GetDim(VECTOR_LENGTH_INDEX) - SEQ_LENS_BATCH_DIFF)) {
+                const std::string incorrectShape = ShapeToString(params_.seqLens);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "seqLens", incorrectShape.c_str(),
+                                                      "seqLens must have shape [queryStartLoc.shape[0] - 1]");
+                return ACLNN_ERR_PARAM_INVALID;
+            }
         }
 
         if (!IsShape(params_.rotationOptional, {d, d})) {
@@ -512,13 +546,21 @@ private:
     {
         const std::vector<int64_t> expectedQOutShape =
             isTnd ? std::vector<int64_t>{t, nq, d} : std::vector<int64_t>{nq, t, d};
-        const std::vector<int64_t> expectedQScaleShape =
-            isTnd ? std::vector<int64_t>{t, nq} : std::vector<int64_t>{nq, t};
-        if (!IsShape(params_.qOut, expectedQOutShape) || !IsShape(params_.qScale, expectedQScaleShape)) {
-            const std::string incorrectShapes = ShapeToString(params_.qOut) + ", " + ShapeToString(params_.qScale);
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(ACLNN_NAME, "qOut, qScale", incorrectShapes.c_str(),
-                                                   "qOut/qScale must match layout_q_out");
+        if (!IsShape(params_.qOut, expectedQOutShape)) {
+            const std::string incorrectShape = ShapeToString(params_.qOut);
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "qOut", incorrectShape.c_str(),
+                                                  "qOut must match layout_q_out");
             return ACLNN_ERR_PARAM_INVALID;
+        }
+        if (!IsMropeScene()) {
+            const std::vector<int64_t> expectedQScaleShape =
+                isTnd ? std::vector<int64_t>{t, nq} : std::vector<int64_t>{nq, t};
+            if (!IsShape(params_.qScale, expectedQScaleShape)) {
+                const std::string incorrectShape = ShapeToString(params_.qScale);
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(ACLNN_NAME, "qScale", incorrectShape.c_str(),
+                                                      "qScale must match layout_q_out");
+                return ACLNN_ERR_PARAM_INVALID;
+            }
         }
         return ACLNN_SUCCESS;
     }
@@ -542,6 +584,11 @@ private:
         ret = CheckLayoutQOut(qOutIsTnd);
         if (ret != ACLNN_SUCCESS) {
             return ret;
+        }
+        if (IsMropeScene() && (!isTnd || !qOutIsTnd)) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(ACLNN_NAME, "layout_qkv/layout_q_out", "not TND/TND",
+                                                  "the M-RoPE scene only supports TND to TND");
+            return ACLNN_ERR_PARAM_INVALID;
         }
 
         int64_t t = 0;
@@ -567,7 +614,7 @@ private:
     // 4. Format check
     aclnnStatus CheckFormat()
     {
-        const TensorRule rules[] = {
+        const TensorRule commonRules[] = {
             {"qkv", params_.qkv},
             {"qGamma", params_.qGamma},
             {"kGamma", params_.kGamma},
@@ -576,14 +623,25 @@ private:
             {"kCacheRef", params_.kCache},
             {"vCacheRef", params_.vCache},
             {"kScaleCacheRef", params_.kScaleCache},
-            {"queryStartLoc", params_.queryStartLoc},
-            {"seqLens", params_.seqLens},
             {"rotationOptional", params_.rotationOptional},
             {"vScaleOptional", params_.vScaleOptional},
             {"qOut", params_.qOut},
-            {"qScale", params_.qScale},
         };
-        for (const auto &rule : rules) {
+        for (const auto &rule : commonRules) {
+            aclnnStatus ret = CheckFormatValid(rule);
+            if (ret != ACLNN_SUCCESS) {
+                return ret;
+            }
+        }
+        std::vector<TensorRule> sceneRules;
+        if (IsMropeScene()) {
+            sceneRules.push_back({"mropePositionOptional", params_.mropePositionOptional});
+        } else {
+            sceneRules.push_back({"queryStartLoc", params_.queryStartLoc});
+            sceneRules.push_back({"seqLens", params_.seqLens});
+            sceneRules.push_back({"qScale", params_.qScale});
+        }
+        for (const auto &rule : sceneRules) {
             aclnnStatus ret = CheckFormatValid(rule);
             if (ret != ACLNN_SUCCESS) {
                 return ret;
@@ -595,7 +653,7 @@ private:
     // 5. Empty tensor check
     aclnnStatus CheckEmptyTensor()
     {
-        const TensorRule rules[] = {
+        const TensorRule commonRules[] = {
             {"qkv", params_.qkv},
             {"qGamma", params_.qGamma},
             {"kGamma", params_.kGamma},
@@ -604,14 +662,25 @@ private:
             {"kCacheRef", params_.kCache},
             {"vCacheRef", params_.vCache},
             {"kScaleCacheRef", params_.kScaleCache},
-            {"queryStartLoc", params_.queryStartLoc},
-            {"seqLens", params_.seqLens},
             {"rotationOptional", params_.rotationOptional},
             {"vScaleOptional", params_.vScaleOptional},
             {"qOut", params_.qOut},
-            {"qScale", params_.qScale},
         };
-        for (const auto &rule : rules) {
+        for (const auto &rule : commonRules) {
+            aclnnStatus ret = CheckTensorNotEmpty(rule);
+            if (ret != ACLNN_SUCCESS) {
+                return ret;
+            }
+        }
+        std::vector<TensorRule> sceneRules;
+        if (IsMropeScene()) {
+            sceneRules.push_back({"mropePositionOptional", params_.mropePositionOptional});
+        } else {
+            sceneRules.push_back({"queryStartLoc", params_.queryStartLoc});
+            sceneRules.push_back({"seqLens", params_.seqLens});
+            sceneRules.push_back({"qScale", params_.qScale});
+        }
+        for (const auto &rule : sceneRules) {
             aclnnStatus ret = CheckTensorNotEmpty(rule);
             if (ret != ACLNN_SUCCESS) {
                 return ret;

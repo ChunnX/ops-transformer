@@ -12,6 +12,8 @@
 
 #include <string>
 
+#include "base/registry/op_impl_space_registry_v2.h"
+#include "infer_datatype_context_faker.h"
 #include "infer_shape_case_executor.h"
 
 namespace {
@@ -55,7 +57,70 @@ std::vector<OpAttr> BuildAttrs(const std::vector<int64_t> &headNums, const std::
     };
 }
 
+void VerifyInferDtype(const std::vector<std::pair<std::string, Ops::Transformer::AnyValue>> &attrs,
+                      ge::DataType kCacheDtype, ge::DataType expectedQOutDtype)
+{
+    ge::DataType bf16 = ge::DT_BF16;
+    ge::DataType fp32 = ge::DT_FLOAT;
+    ge::DataType int32 = ge::DT_INT32;
+    ge::DataType fp8 = ge::DT_FLOAT8_E4M3FN;
+    ge::DataType qOut = ge::DT_UNDEFINED;
+    ge::DataType qScale = ge::DT_UNDEFINED;
+    ge::DataType kCacheOut = ge::DT_UNDEFINED;
+    ge::DataType vCacheOut = ge::DT_UNDEFINED;
+    ge::DataType kScaleCacheOut = ge::DT_UNDEFINED;
+
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .SetOpType("QkvRmsNormRopeCacheWithKScale")
+                             .IrInputNum(13)
+                             .NodeIoNum(13, 5)
+                             .NodeAttrs(attrs)
+                             .InputDataTypes({&bf16, &fp32, &fp32, &fp32, &int32, &kCacheDtype, &fp8, &fp32,
+                                              &int32, &int32, &bf16, &fp32, &int32})
+                             .OutputDataTypes({&qOut, &qScale, &kCacheOut, &vCacheOut, &kScaleCacheOut})
+                             .Build();
+
+    auto registry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    ASSERT_NE(registry->GetOpImpl("QkvRmsNormRopeCacheWithKScale"), nullptr);
+    auto inferDtype = registry->GetOpImpl("QkvRmsNormRopeCacheWithKScale")->infer_datatype;
+    ASSERT_NE(inferDtype, nullptr);
+    auto *context = contextHolder.GetContext<gert::InferDataTypeContext>();
+    ASSERT_NE(context, nullptr);
+    EXPECT_EQ(inferDtype(context), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(context->GetOutputDataType(0), expectedQOutDtype);
+    EXPECT_EQ(context->GetOutputDataType(1), ge::DT_FLOAT);
+    EXPECT_EQ(context->GetOutputDataType(2), kCacheDtype);
+    EXPECT_EQ(context->GetOutputDataType(3), ge::DT_FLOAT8_E4M3FN);
+    EXPECT_EQ(context->GetOutputDataType(4), ge::DT_FLOAT);
+}
+
 } // namespace
+
+TEST(QkvRmsNormRopeCacheWithKScaleInferDtype, DefaultsQOutToFp8)
+{
+    const std::vector<int64_t> headNums = {16, 2, 2};
+    VerifyInferDtype(
+        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
+         {"layout_qkv", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"layout_q_out", Ops::Transformer::AnyValue::CreateFrom<std::string>("NTD")},
+         {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)}},
+        ge::DT_FLOAT8_E4M3FN, ge::DT_FLOAT8_E4M3FN);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleInferDtype, UsesQOutDtypeAttr)
+{
+    const std::vector<int64_t> headNums = {16, 2, 2};
+    const std::vector<int64_t> mropeSection = {22, 12, 10};
+    VerifyInferDtype(
+        {{"head_nums", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(headNums)},
+         {"layout_qkv", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"layout_q_out", Ops::Transformer::AnyValue::CreateFrom<std::string>("TND")},
+         {"epsilon", Ops::Transformer::AnyValue::CreateFrom<float>(1e-6f)},
+         {"mrope_section", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(mropeSection)},
+         {"q_quant_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("NoQuant")},
+         {"q_out_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int64_t>(ge::DT_BF16))}},
+        ge::DT_INT8, ge::DT_BF16);
+}
 
 TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersOutputAndCacheShapes)
 {
@@ -66,6 +131,20 @@ TEST(QkvRmsNormRopeCacheWithKScaleInferShape, InfersOutputAndCacheShapes)
     std::vector<std::vector<int64_t>> expected = {
         {16, 17, 128}, {16, 17}, {8, 2, 128, 128}, {8, 2, 128, 128}, {8, 2, 128, 1},
     };
+    ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
+}
+
+TEST(QkvRmsNormRopeCacheWithKScaleInferShape, AllowsMissingQScaleOutput)
+{
+    std::vector<int64_t> headNums = {16, 2, 2};
+    auto outputs = BuildOutputs();
+    outputs.erase(outputs.begin() + 1);
+    const std::vector<uint32_t> inputInstances = {1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 0};
+    const std::vector<uint32_t> outputInstances = {1, 0, 1, 1, 1};
+    gert::InfershapeContextPara para("QkvRmsNormRopeCacheWithKScale", BuildInputs(), outputs, BuildAttrs(headNums),
+                                     inputInstances, outputInstances);
+
+    std::vector<std::vector<int64_t>> expected = {{16, 17, 128}};
     ExecuteTestCase(para, ge::GRAPH_SUCCESS, expected);
 }
 

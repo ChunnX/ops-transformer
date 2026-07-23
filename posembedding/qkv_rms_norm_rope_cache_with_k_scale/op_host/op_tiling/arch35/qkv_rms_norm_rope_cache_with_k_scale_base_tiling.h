@@ -117,6 +117,7 @@ private:
     ge::graphStatus ParseHeadNumsAttr();
     ge::graphStatus ParseLayoutQkvAttr();
     ge::graphStatus ParseLayoutQOutAttr();
+    ge::graphStatus ResolveScene();
     float ParseEpsilonAttr() const;
     ge::graphStatus FillShapeDerivedFields();
     ge::graphStatus FillRequiredTensorInputs();
@@ -129,6 +130,7 @@ private:
     ContractInput input_;
     QkvRmsNormRopeCacheWithKScaleTilingData tilingData_;
     uint64_t aicNum_ = 0;
+    uint64_t sceneMode_ = 0;
     float epsilon_ = 1e-6f;
     uint64_t tilingDataSize_ = 0;
 };
