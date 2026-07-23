@@ -189,7 +189,7 @@ FlashAttnMetadataCheck::CheckExistency(int64_t maxSeqlenQ, int64_t maxSeqlenKv,
     } else if (IsPA(layoutKv)) {
         CHECK_COND(IsTensorExist(sequsedKvOptional), ACLNN_ERR_RUNTIME_ERROR,
             "When layoutKv is PA, sequsedKvOptional must be provided");
-    }else {
+    } else {
         // layoutKv不为TND时，不可以传入cuSeqlensKvOptional
         CHECK_COND(!IsTensorExist(cuSeqlensKvOptional), ACLNN_ERR_RUNTIME_ERROR,
             "When layoutKv is not TND, cuSeqlensKvOptional should not be provided, but got non-null");
