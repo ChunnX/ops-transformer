@@ -188,8 +188,8 @@ struct MegaMoeTilingData {
     MegaMoeSendMaskBufferConfig sendMaskConfigForCoreWithExtraExpert;
     MegaMoeSendMaskBufferConfig sendMaskConfigForCoreWithoutExtraExpert;
     uint32_t sendMaskCoreCountWithExtraExpert;
-    // Unpermute 的 TilingByCore 生成若干完整 token chunk 和至多一个尾 chunk，分别预计算配置；
-    // 对应 kernel UnpermuteBuffInit 的选择条件。
+    // Output Aggregator 的 TilingByCore 生成若干完整 token chunk 和至多一个尾 chunk，分别预计算配置；
+    // 对应 kernel MegaMoe::Process 构造聚合器前的配置选择条件。字段名暂时保留 unpermute 以维持 tiling ABI。
     MegaMoeUnpermuteBufferConfig unpermuteConfigForFullTokenChunk;
     MegaMoeUnpermuteBufferConfig unpermuteConfigForTailTokenChunk;
     uint32_t unpermuteFullTokenChunkCoreCount;

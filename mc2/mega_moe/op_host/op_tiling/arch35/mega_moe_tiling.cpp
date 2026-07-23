@@ -769,14 +769,14 @@ static ge::graphStatus SetAdaptiveBufferConfigs(const gert::TilingContext *conte
         tilingData, sendMaskFixedBufferBytes, expertCountPerCoreWithoutExtraExpert, availableUbBytes);
 
     /*
-     * 与 kernel Unpermute 开头的 TilingByCore(m_, ..., align=1) 一一对应。TilingByCore 使用：
+     * 与 kernel Output Aggregator 开头的 TilingByCore(tokenCount, ..., align=1) 一一对应。TilingByCore 使用：
      *   fullTokenChunkSize = ceil(bs / blockAivNum)
      * 为连续 core 分配等长完整 chunk，最后一个活跃 core 可能只处理 tail，后续 core 的 coreLen 为 0
      * 并在读取配置前返回。因此 host 只需预计算“完整 chunk”和“tail chunk”两套配置，并记录完整
      * chunk 对应的 core 数作为 kernel 选择边界。
      *
-     * 若修改 TilingByCore、Unpermute 的 align 参数或分核方式，必须同步更新下面的 chunk 推导以及
-     * kernel 中 UnpermuteBuffInit 的配置选择条件。
+     * 若修改 TilingByCore、Output Aggregator 的 align 参数或分核方式，必须同步更新下面的 chunk 推导以及
+     * kernel 中 MegaMoe::Process 构造聚合器前的配置选择条件。
      */
     ge::DataType topKWeightsDataType = topKWeightsDesc->GetDataType();
     // FP32 可直接搬入计算 buffer；其他已支持类型按实际元素大小预留转换中转区。
