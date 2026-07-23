@@ -26,7 +26,12 @@
 
 namespace QLIV2Kernel {
 using namespace QLIV2Common;
+// ProcessTopK（非LD路径）每次处理的s2长度
+// s2 length processed per iteration in ProcessTopK (non-LD path)
 constexpr uint32_t TRUNK_LEN_16K = 16384;
+// LD阶段UB目标占用（248KB = 256KB UB - 8KB 系统保留）
+// Target UB usage for the LD stage (248KB = 256KB UB - 8KB system reserved)
+constexpr uint32_t LD_UB_TARGET_BYTES = 248 * 1024;
 template <typename QLIV2T>
 class QLIV2Vector {
 public:
@@ -116,6 +121,8 @@ private:
     // tmp buff for LD
     TBuf<TPosition::VECCALC> ldValueBuf_;
     LocalTensor<uint32_t> ldValueLocal_;  // SCORE_T
+    TBuf<TPosition::VECCALC> ldIndexBuf_;
+    LocalTensor<uint32_t> ldIndexLocal_;
 
     TBuf<TPosition::VECCALC> topkIndexBuf_;
     LocalTensor<uint32_t> topkIndexLocal_;
@@ -136,8 +143,6 @@ private:
     TBuf<TPosition::VECCALC> topkSharedTmpBuf_;
     LocalTensor<uint32_t> topkSharedTmpLocal_;
 
-    LocalTensor<uint32_t> ldIndexLocal_;
-
     int32_t blockId_ = -1;
     // para for vector
     int32_t groupInner_ = 0;
@@ -156,7 +161,8 @@ private:
     uint32_t topkCountAlign16_ = 0; // LD读取到UB，需要满足32B对齐
     float globalQScale_ = 1.0f;     // quantMode=4时全局query scale
     float globalKScale_ = 1.0f;     // quantMode=4时全局key scale
-    uint32_t trunkLen_ = 0;
+    uint32_t trunkLen_ = 0;       // ProcessTopK（非LD路径）每次处理的s2长度
+    uint32_t trunkLenLd_ = 0;     // ProcessLD路径每次处理的s2长度，根据sparseCount动态计算以填满UB
     bool returnValueFlag = false;
 
     struct QLIV2Common::ConstInfo constInfo_;
@@ -217,7 +223,58 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitLDBuffers(TPipe *pipe,
     const struct QLIV2Common::LdSplitCoreInfo &ldInfo) {
-    ldIndexLocal_ = resMm1UB_.template ReinterpretCast<uint32_t>();
+    pipe->Reset();
+
+    // 根据sparseCount动态计算LD的trunk长度，使LD阶段UB占用尽量接近248KB且不超限
+    //
+    // UB总占用 = Σ各buffer，按 A=topkCountAlign256_、L=trunkLenLd_ 归并后：
+    //   Total = 20·A + 8·L + fixedBytes
+    //   A系数20 = ldIndex(4)+indicesOut(4)+mrgValue(2)+scoreOut(2)+valueOut(2)+topkTmp(6) (字节/元素)
+    //   L系数8  = ldIndex(4)+mrgValue(2)+topkTmp(2)                                  (字节/元素)
+    //   fixedBytes = topk内部固定区 + 三输出buffer的+64余量(见下方命名常量)
+    //
+    // Dynamically compute LD trunk length so UB usage approaches 248KB without exceeding it.
+    // Total = 20·A + 8·L + fixedBytes (A=topkCountAlign256_, L=trunkLenLd_)
+
+    // topk内部固定区: histograms(256)+idxHigh(256)+idxLow(256)+nkValue(64)，均为uint32
+    // topk internal fixed area: histograms+idxHigh+idxLow (3×256) + nkValue(64), all uint32
+    constexpr uint32_t TOPK_FIXED_BYTES = (3 * 256 + 64) * sizeof(uint32_t);
+    // 三输出buffer的+64余量(用于duplicate刷-1/刷0): indicesOut(uint32)+scoreOut(SCORE_T)+valueOut(bf16)
+    // +64 padding of 3 output buffers for duplicate/zero-fill
+    constexpr uint32_t OUTPUT_PAD_BYTES = 64 * (sizeof(uint32_t) + sizeof(SCORE_T) + sizeof(bfloat16_t));
+    const uint32_t fixedBytes = TOPK_FIXED_BYTES + OUTPUT_PAD_BYTES;
+
+    uint32_t availForTrunk = (LD_UB_TARGET_BYTES > 20 * topkCountAlign256_ + fixedBytes)
+        ? (LD_UB_TARGET_BYTES - 20 * topkCountAlign256_ - fixedBytes) : 0;
+    trunkLenLd_ = availForTrunk / 8;
+    // 保底：至少能装下一个topkCountAlign16_块
+    // Floor: at least one topkCountAlign16_ block
+    if (trunkLenLd_ < topkCountAlign16_) {
+        trunkLenLd_ = topkCountAlign16_;
+    }
+
+    // 更新topkOp_的trunkLen，使GetSharedTmpBufferSize返回正确尺寸
+    // Update topkOp_ trunkLen so GetSharedTmpBufferSize returns the correct size
+    topkOp_.Init(topkCount_, trunkLenLd_);
+
+    pipe->InitBuffer(ldIndexBuf_, (topkCountAlign256_ + trunkLenLd_) * sizeof(uint32_t));
+    pipe->InitBuffer(indicesOutBuf_, (topkCountAlign256_ + 64) * sizeof(uint32_t));
+    pipe->InitBuffer(mrgValueBuf_, (topkCountAlign256_ + trunkLenLd_) * sizeof(SCORE_T));
+    pipe->InitBuffer(scoreOutBuf_, (topkCountAlign256_ + 64) * sizeof(SCORE_T));
+    pipe->InitBuffer(valueOutBuf_, (topkCountAlign256_ + 64) * sizeof(bfloat16_t));
+    // 补齐topk共享tmp buffer分配：pipe->Reset()后原topkSharedTmpBuf_已释放，
+    // 需重新分配并重新绑定topkOp_内部指针，避免悬垂指针
+    // Re-allocate topk shared tmp buffer: pipe->Reset() freed the original
+    // topkSharedTmpBuf_; re-allocate and rebind topkOp_ internal pointers
+    pipe->InitBuffer(topkSharedTmpBuf_, topkOp_.GetSharedTmpBufferSize());
+
+    ldIndexLocal_ = ldIndexBuf_.Get<uint32_t>();
+    indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
+    mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
+    scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
+    valueOutLocal_ = valueOutBuf_.Get<bfloat16_t>();
+    topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
+    topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
 }
 
 template <typename QLIV2T>
@@ -842,6 +899,12 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
 {
+    LocalTensor<uint32_t> ldIndexLocal_ = ldIndexBuf_.Get<uint32_t>();
+    LocalTensor<uint32_t> indicesOutLocal_ = indicesOutBuf_.Get<uint32_t>();
+    LocalTensor<SCORE_T> mrgValueLocal_ = mrgValueBuf_.Get<SCORE_T>();
+    LocalTensor<SCORE_T> scoreOutLocal_ = scoreOutBuf_.Get<SCORE_T>();
+    LocalTensor<bfloat16_t> valueOutLocal_ = valueOutBuf_.Get<bfloat16_t>();
+
     AscendC::DataCopyParams copyOutParams;
     copyOutParams.blockCount = 1;
     copyOutParams.blockLen = topkCount_ * sizeof(uint32_t); // bytes
@@ -860,19 +923,19 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
     AscendC::DataCopyPadExtParams<uint32_t> indexPadParams{true, 0, 0, 0};
     AscendC::DataCopyExtParams ldScoreParams;
     ldScoreParams.blockLen = topkCountAlign16_ * sizeof(SCORE_T); // bytes
-    ldScoreParams.srcStride = 3 * topkCountAlign16_ * sizeof(SCORE_T); // s1Basesize-1 两个基本块之间的距离
+    ldScoreParams.srcStride = (s1BaseSize_ - 1) * topkCountAlign16_ * sizeof(SCORE_T); // 两个基本块之间的距离
     ldScoreParams.dstStride = 0;
     AscendC::DataCopyExtParams ldIndexParams;
     ldIndexParams.blockLen = topkCountAlign16_ * sizeof(uint32_t); // bytes
-    ldIndexParams.srcStride = 3 * topkCountAlign16_ * sizeof(uint32_t);
+    ldIndexParams.srcStride = (s1BaseSize_ - 1) * topkCountAlign16_ * sizeof(uint32_t);
     ldIndexParams.dstStride = 0;
 
     uint64_t ldProcessLen = ldInfo_.workspaceNum * topkCountAlign16_;
     if (ldProcessLen <= 0) {
         return;
     }
-    uint64_t mrgValueLen = trunkLen_ + topkCountAlign256_;
-    uint32_t ldWorkspaceNum = (ldProcessLen > mrgValueLen) ? (trunkLen_ / topkCountAlign16_) : ldInfo_.workspaceNum;
+    uint64_t mrgValueLen = trunkLenLd_ + topkCountAlign256_;
+    uint32_t ldWorkspaceNum = (ldProcessLen > mrgValueLen) ? (trunkLenLd_ / topkCountAlign16_) : ldInfo_.workspaceNum;
     // 搬运次数，一次搬运ldworkspaceNum块
     uint32_t ldProcessNum = CeilDiv(ldInfo_.workspaceNum, ldWorkspaceNum);
     uint32_t ldProcessOffset = 0;
@@ -894,9 +957,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
             ldProcessOffset = (i != 0) ? topkCountAlign256_ : 0;
             PipeBarrier<PIPE_V>();
             // 索引全部刷-1 value全部刷0
-            Duplicate(mrgValueLocal_[ldProcessOffset], zero, topkCountAlign256_ + trunkLen_ - ldProcessOffset);
+            Duplicate(mrgValueLocal_[ldProcessOffset], zero, topkCountAlign256_ + trunkLenLd_ - ldProcessOffset);
             Duplicate(ldIndexLocal_.ReinterpretCast<int32_t>()[ldProcessOffset], neg,
-                topkCountAlign256_ + trunkLen_ - ldProcessOffset);
+                topkCountAlign256_ + trunkLenLd_ - ldProcessOffset);
 
             ldScoreParams.blockCount = ldProWorkspaceNum;
             ldIndexParams.blockCount = ldProWorkspaceNum;
@@ -968,7 +1031,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
             // 可排序键还原为 bf16，并将无效位（score==0，对应 index==-1）刷为 -inf
             // Convert sortable key to bf16 and flush invalid (score==0, index==-1) positions to -inf
             vector1::UIntToFloatReturnValueWithInfMask(valueOutLocal_, scoreOutLocal_,
-                                                        topkCountAlign256_, constInfo_.NEG_INF_BFLOAT);
+                                                       topkCountAlign256_, constInfo_.NEG_INF_BFLOAT);
         }
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
