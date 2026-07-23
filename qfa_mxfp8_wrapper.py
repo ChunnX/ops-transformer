@@ -92,11 +92,17 @@ def npu_qfa_mxfp8(q: torch.Tensor, k: torch.Tensor, v: torch.Tensor,
         "ENABLE_PA": enable_pa, "KV_CACHE_LAYOUT": kv_cache_layout,
         "BLOCK_SIZE": block_size, "SPARSE_MODE": mask_mode,
         "Q_SCALE_LAYOUT": q_scale_layout, "P_SCALE": p_scale_val,
-        "ENABLE_ROPE": False, "D_rope": 64,
         "ENABLE_LSE": enable_lse, "FP8_DTYPE": torch.float8_e4m3fn,
         "QUANT_GROUP_SIZE": 32, "INPUT_LAYOUT": input_layout,
         "IS_CONTIGUOUS": is_contiguous, "DEVICE_ID": device_id,
         "GRAPH_PATH": graph_path,
+        "SOFTMAX_SCALE": softmax_scale,
+        "SEED_Q": kwargs.get("seed_q"),
+        "SEED_K": kwargs.get("seed_k"),
+        "SEED_V": kwargs.get("seed_v"),
+        "DATA_RANGE_Q": kwargs.get("data_range_q"),
+        "DATA_RANGE_K": kwargs.get("data_range_k"),
+        "DATA_RANGE_V": kwargs.get("data_range_v"),
     })
 
     # 调用 golden 的 npu_mxfp8_fa

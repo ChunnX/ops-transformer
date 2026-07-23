@@ -1,34 +1,37 @@
-(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv --plugin /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/assets --backend npu -o func_result.csv --warmup false --run 1 -t PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0
-2026-07-21 08:01:03,344 [INFO] [3538336 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv 
-2026-07-21 08:01:07,832 [INFO] [3538336 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-21 08:01:08,400 [INFO] [3538336 MP MT] [instance.py:33]: Framework API mode: backend=npu 
-2026-07-21 08:01:08,400 [INFO] [3538336 MP MT] [instance_base.py:100]: TTK Profiling Start! 
-2026-07-21 08:01:08,400 [INFO] [3538336 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
-2026-07-21 08:01:08,400 [INFO] [3538336 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
-2026-07-21 08:01:09,542 [INFO] [3538336 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
-2026-07-21 08:01:09,548 [INFO] [3538336 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
-2026-07-21 08:01:09,548 [INFO] [3538336 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
-2026-07-21 08:01:10,673 [INFO] [3538336 MP MT] [instance.py:42]: Device count: 1 
-2026-07-21 08:01:10,673 [INFO] [3538336 MP MT] [instance_base.py:111]: Device Count: 1 
-2026-07-21 08:01:10,673 [INFO] [3538336 MP MT] [instance_base.py:231]: Preparing testcases ... 
-2026-07-21 08:01:10,673 [INFO] [3538336 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8.csv ... 
-2026-07-21 08:01:10,674 [INFO] [3538336 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
-2026-07-21 08:01:10,674 [INFO] [3538336 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+
+ p_scale_value改成1.0就会出现realout没有小数的情况，例如560.0000000这样的
+(fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel.csv --plugin /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/assets --warmup false --run 1 -t Decode_FP8e4m3_FP8e4m3_BF16_Mxfp8_redline_19_48_1_22_384_128_128_TND_PANZ_000005_test
+2026-07-22 13:39:14,172 [INFO] [3075542 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel.csv 
+2026-07-22 13:39:18,639 [INFO] [3075542 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-22 13:39:19,236 [INFO] [3075542 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-22 13:39:20,375 [INFO] [3075542 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-22 13:39:20,376 [INFO] [3075542 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-22 13:39:20,376 [INFO] [3075542 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-22 13:39:21,524 [INFO] [3075542 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-22 13:39:21,529 [INFO] [3075542 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-22 13:39:21,529 [INFO] [3075542 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-22 13:39:21,530 [INFO] [3075542 MP MT] [instance.py:42]: Device count: 1 
+2026-07-22 13:39:21,530 [INFO] [3075542 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-22 13:39:21,530 [INFO] [3075542 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-22 13:39:21,530 [INFO] [3075542 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel.csv ... 
+2026-07-22 13:39:21,530 [INFO] [3075542 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-22 13:39:21,531 [INFO] [3075542 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
 ninja: no work to do.
 ninja: no work to do.
 Checking testcase name...
 Case number: 1
 Initialize output csv file...
+Output csv file is not specified. It will be set as /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel_result.csv
 Process per device: 1
 Preparing Task Executors...
 
 +-------------------------------------------------------------------------------------------------------+
 | Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
 +-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 3538640 D0P0             UNKNOWN              IDLE     0s  |
+| npu:0                                    | 3076895 D0P0             UNKNOWN              IDLE     0s  |
 +-------------------------------------------------------------------------------------------------------+
-2026-07-21 08:01:17,074 [INFO] [3538640 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
-2026-07-21 08:01:17,732 [INFO] [3538640 PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0 OnWaitingForMemory] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-22 13:39:27,883 [INFO] [3076895 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-22 13:39:28,487 [INFO] [3076895 Decode_FP8e4m3_FP8e4m3_BF16_Mxfp8_redline_19_48_1_22_384_128_128_TND_PANZ_000005_test OnWaitingForMemory] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
 ninja: no work to do.
 ninja: no work to do.
 
@@ -37,8 +40,8 @@ API Name: qfa_mxfp8_wrapper.npu_qfa_mxfp8
 Golden API: 
 Backend: npu
 ////////////// Tensors //////////////
-Input View Shapes: ((1, 20, 15, 128), (1, 4, 0, 128), (1, 4, 0, 128), (1, 20, 15, 4), (1, 4, 0, 4), (1, 4, 0, 128), (1,), (0,))
-Input Dtypes: ('float16', 'float16', 'float16', 'float32', 'float32', 'float32', 'float32', 'int32')
+Input View Shapes: ((220, 48, 128), (19, 1, 4, 512, 32), (19, 1, 4, 512, 32), (1, 220, 48, 2, 2), (19, 1, 32, 2, 16, 2), (19, 1, 8, 8, 16, 2), (1,), (19, 1))
+Input Dtypes: ('float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float32', 'int32')
 Input Storage Shapes: ()
 Input Formats: ()
 Input View Offsets: ()
@@ -46,170 +49,372 @@ Input View Strides: ()
 //////////// Output Info //////////
 Output Tensor Indexes: ()
 //////////// Attributes //////////
-B: 1
-N_q: 20
-N_kv: 4
-D: 128
-cu_seqlens_q: [0, 15]
-cu_seqlens_kv: []
-seqused_q: [15]
-seqused_kv: [0]
-max_seqlen_q: 15
-max_seqlen_kv: 0
-enable_pa: True
-kv_cache_layout: BnNBsD
-block_size: 512
-mask_mode: 0
-q_scale_layout: N2TGD
+precision_tolerances: ((0.0078125, 0.0001),)
+absolute_precision: 1e-08
+p_scale_value: 448.0
+cu_seqlens_q: [0, 22, 33, 44, 55, 66, 77, 88, 99, 110, 121, 132, 143, 154, 165, 176, 187, 198, 209, 220]
+cu_seqlens_kv: None
+seqused_q: None
+seqused_kv: [8, 55, 113, 9, 18, 42, 101, 32, 8, 16, 77, 24, 30, 101, 85, 35, 40, 46, 384]
 quant_mode: 1
-enable_lse: False
-graph_path: 0
-input_layout: TND
-is_contiguous: True
-device_id: 0
-softmax_scale: None
-data_range_q: 1.0
-data_range_k: 1.0
-data_range_v: 1.0
+softmax_scale: 0.088388
+mask_mode: 0
+win_left: -1
+win_right: -1
+max_seqlen_q: -1
+max_seqlen_kv: 384
+layout_q: TND
+layout_q_descale: N2TGD
+layout_kv: PA_NZ
+layout_out: TND
+enable_lse: 1
+N_q: 48
+N_kv: 1
+D: 128
+B: 19
+enable_pa: True
+kv_cache_layout: PA_NZ
+q_scale_layout: N2TGD
+block_size: 512
 //////////// Test Config //////////
-Input Data Range: ((None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None), (None, None))
-Precision Tolerance: None
+Input Data Range: ((10.0, 1000.0), (10.0, 1000.0), (10.0, 1000.0), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1))
+Precision Tolerance: ((0.0078125, 0.0001),)
 Absolute Precision: (1e-08,)
 Mode: ASCEND_ONBOARD
-PID: 3538640
+PID: 3076895
 Device: 0
 ----------------------------------------------------------------------------------------------------
 
 +-------------------------------------------------------------------------------------------------------+
 | Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 13s Rev: 7f1d28b                      |
 +-------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 3538640 20_Nkv4_D128_SP0 OnEagerProfiling     RUNNING  3s  |
+| npu:0                                    | 3076895 PANZ_000005_test OnEagerProfiling     RUNNING  2s  |
 +-------------------------------------------------------------------------------------------------------+
 [WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
 [WRAPPER] graph_path=0, 调用 npu_mxfp8_fa
-[NPU] Q layout: q_layout=N2TGD, G=5
-[NPU TND] q=torch.Size([15, 20, 128])
-[NPU] Q scale layout=N2TGD, shape=torch.Size([4, 15, 5, 2, 2])
-[NPU PA] kv_layout=BnNBsD
-[NPU PA] k=torch.Size([0, 4, 512, 128]), v=torch.Size([0, 4, 512, 128])
-[NPU PA] deq_k=torch.Size([0, 4, 512, 2, 2]), deq_v=torch.Size([0, 4, 8, 128, 2])
+[NPU] Q layout: q_layout=N2TGD, G=48
+[NPU TND] q=torch.Size([220, 48, 128])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 220, 48, 2, 2])
+[NPU PA] kv_layout=PA_NZ
+[NPU PA] k=torch.Size([19, 1, 4, 512, 32]), v=torch.Size([19, 1, 4, 512, 32])
+[NPU PA] deq_k=torch.Size([19, 1, 32, 2, 16, 2]), deq_v=torch.Size([19, 1, 8, 8, 16, 2])
 [NPU] prepare PA inputs done.
 [NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+[NPU] max_seqlen_q=-1 → 推导为 22
+[NPU] 调用 QFA 单算子模式...
+[NPU] output=torch.Size([220, 48, 128])
+get env ASCEND_GLOBAL_LOG_LEVEL = 3
+[2026-07-22 13:39:35] [INFO] [3077382] profiler.py: Start parsing profiling data in sync mode at: /tmp/ttk_npu_prof_0ky6o3n4/aa_3076895_20260722133933070_ascend_pt
+[2026-07-22 13:39:38] [INFO] [3077397] profiler.py: CANN profiling data parsed in a total time of 0:00:03.038453
+[2026-07-22 13:39:39] [WARNING] [3077382] profiler.py: Failed to get api data from db.
+[2026-07-22 13:39:39] [WARNING] [3077382] profiler.py: Failed to get task data from db.
+[2026-07-22 13:39:40] [INFO] [3077382] profiler.py: All profiling data parsed in a total time of 0:00:04.701494
+[INFO] GQA 广播
+[CPU Golden] TILES_Q=1, TILES_KV=2, Sq=22, Skv=384
+[CPU Golden] output=torch.Size([19, 48, 22, 128])
+[COMPARE] atten: csv rtol=0.0078125 atol=0.0001
+split_count:1351680.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00000001         560.7365723     560.0000000     0.7365723       0.0013136
+00000002         747.6487427     748.0000000     0.3512573       0.0004698
+00000003         58.4100571      58.5000000      0.0899429       0.0015399
+00000004         872.2568970     872.0000000     0.2568970       0.0002945
+00000005         116.8201141     117.0000000     0.1798859       0.0015399
+00000006         155.7601624     156.0000000     0.2398376       0.0015398
+00000007         872.2568970     872.0000000     0.2568970       0.0002945
+00000008         467.2804565     468.0000000     0.7195435       0.0015399
+00000009         872.2568970     872.0000000     0.2568970       0.0002945
+00000010         685.3446655     684.0000000     1.3446655       0.0019620
+...        ...             ...             ...             ...
+01351671         494.6163635     494.0000000     0.6163635       0.0012461
+01351672         725.4373779     724.0000000     1.4373779       0.0019814
+01351673         164.8721313     165.0000000     0.1278687       0.0007756
+01351674         857.3350220     856.0000000     1.3350220       0.0015572
+01351675         90.6796722      90.5000000      0.1796722       0.0019814
+01351676         395.6931152     396.0000000     0.3068848       0.0007756
+01351677         923.2838745     924.0000000     0.7161255       0.0007756
+01351678         296.7698364     296.0000000     0.7698364       0.0025941
+01351679         527.5908203     528.0000000     0.4091797       0.0007756
+01351680         461.6419373     462.0000000     0.3580627       0.0007756
+---------------------------------------------------------------------------------------
+Rtol     Atol            PctThd          PctRlt          Result
+---------------------------------------------------------------------------------------
+0.0078           0.000100        99.50%          95.501894%      Failed
+Max-RelativeError is: 0.05754462629556656. Threshold is: 10.
+Error Line-----------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00011648         593.5396729     560.0000000     33.5396729      0.0565079
+00011649         98.9232788      93.5000000      5.4232788       0.0548231
+00011650         230.8209686     218.0000000     12.8209686      0.0555451
+00011651         362.7186890     342.0000000     20.7186890      0.0571205
+00011652         923.2838745     872.0000000     51.2838745      0.0555451
+00011653         197.8465576     187.0000000     10.8465576      0.0548231
+00011654         791.3862305     748.0000000     43.3862305      0.0548231
+00011655         230.8209686     218.0000000     12.8209686      0.0555451
+00011656         428.6675110     404.0000000     24.6675110      0.0575446
+     ...             ...             ...             ...             ...
+00011738         230.8209686     218.0000000     12.8209686      0.0555451
+00011739         593.5396729     560.0000000     33.5396729      0.0565079
+00011740         263.7954102     249.0000000     14.7954102      0.0560867
+00011741         659.4885254     624.0000000     35.4885254      0.0538122
+00011742         791.3862305     748.0000000     43.3862305      0.0548231
+00011743         247.3081818     234.0000000     13.3081818      0.0538121
+00011744         923.2838745     872.0000000     51.2838745      0.0555451
+00011745         923.2838745     872.0000000     51.2838745      0.0555451
+00011746         923.2838745     872.0000000     51.2838745      0.0555451
+     ...             ...             ...             ...             ...
+Max-RE line:---------------------------------------------------------------------------
+00011656         428.6675110     404.0000000     24.6675110      0.0575446
+00011663         428.6675110     404.0000000     24.6675110      0.0575446
+00011667         857.3350220     808.0000000     49.3350220      0.0575446
+---------------------------------------------------------------------------------------
+[COMPARE] out1: csv rtol=None atol=1e-08
+split_count:10560.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00000001         2949736.5000000         2949736.5000000         0.0000000       0.0000000
+00000002         2925879.0000000         2925879.0000000         0.0000000       0.0000000
+00000003         2756342.5000000         2756342.5000000         0.0000000       0.0000000
+00000004         2785683.7500000         2785683.7500000         0.0000000       0.0000000
+00000005         2668292.5000000         2668292.5000000         0.0000000       0.0000000
+00000006         3074465.7500000         3074465.7500000         0.0000000       0.0000000
+00000007         3146053.0000000         3146053.0000000         0.0000000       0.0000000
+00000008         2989010.7500000         2989010.7500000         0.0000000       0.0000000
+00000009         2914728.0000000         2914728.0000000         0.0000000       0.0000000
+00000010         3031553.0000000         3031553.0000000         0.0000000       0.0000000
+...        ...             ...             ...             ...
+00010551         3248430.2500000         3248430.2500000         0.0000000       0.0000000
+00010552         2861848.0000000         2861848.0000000         0.0000000       0.0000000
+00010553         3257684.7500000         3257684.7500000         0.0000000       0.0000000
+00010554         3114103.0000000         3114103.0000000         0.0000000       0.0000000
+00010555         3079349.0000000         3079349.0000000         0.0000000       0.0000000
+00010556         3417511.5000000         3417511.5000000         0.0000000       0.0000000
+00010557         3129054.0000000         3129054.0000000         0.0000000       0.0000000
+00010558         3121434.2500000         3121434.2500000         0.0000000       0.0000000
+00010559         3064803.7500000         3064803.7500000         0.0000000       0.0000000
+00010560         3231228.5000000         3231228.5000000         0.0000000       0.0000000
+---------------------------------------------------------------------------------------
+Rtol     Atol            PctThd          PctRlt          Result
+---------------------------------------------------------------------------------------
+0.0050           0.000000        99.50%          100.000000%     Pass
+
+Eager Kernels
+-------------------------------------------------------------------------------------------------------
+Name                                              avg            max           min           # of Calls
+-------------------------------------------------------------------------------------------------------
+aclnnQuantFlashAttnMetadata_QuantFlashAttnMetada..45227.619      89923.477     531.761       2
+QuantFlashAttn                                    22.709         22.709        22.709        1
+-------------------------------------------------------------------------------------------------------
+
+
+ ####################################### Eager Result Summary  ######################################## 
+EAGER:       95.50189393939394%,100.0%
+  DEVICE: 90477.947 us
+  CPU:    205614.644 us
+STATUS: FAIL
+Golden Shapes: ((220, 48, 128), (220, 48, 1))
+Golden Dtypes: ('float32', 'float32')
+#######################################################################################################
+ttk Profiling complete
+
+改成
+    rq_min, rq_max = -1, 1
+    rk_min, rk_max = -1, 1
+    rv_min, rv_max = -1, 1
+    就能pass
+    (fzx_py311) root@aa:/home/z00954345/Ascendfzxttk/cann/ops-test-kit# PYTHONPATH=/home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test python3 -m ttk e2e -i /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel.csv --plugin /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/assets --warmup false --run 1 -t Decode_FP8e4m3_FP8e4m3_BF16_Mxfp8_redline_19_48_1_22_384_128_128_TND_PANZ_000005_test
+2026-07-22 13:44:33,621 [INFO] [3090773 MP MT] [bridge.py:198]: Command: ttk framework-api -i /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel.csv 
+2026-07-22 13:44:38,045 [INFO] [3090773 MP MT] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-22 13:44:38,616 [INFO] [3090773 MP MT] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+2026-07-22 13:44:39,775 [INFO] [3090773 MP MT] [instance.py:33]: Framework API mode: backend=npu 
+2026-07-22 13:44:39,776 [INFO] [3090773 MP MT] [instance_base.py:100]: TTK Profiling Start! 
+2026-07-22 13:44:39,776 [INFO] [3090773 MP MT] [instance_base.py:101]: Mode: ASCEND_ONBOARD 
+2026-07-22 13:44:40,922 [INFO] [3090773 MP MT] [patch_getenv.py:15]: get env ASCEND_OPP_PATH = /home/z00954345/Ascendfzxttk/cann/opp 
+2026-07-22 13:44:40,928 [INFO] [3090773 MP MT] [instance.py:49]: Device platform: Ascend950DT_9592 
+2026-07-22 13:44:40,928 [INFO] [3090773 MP MT] [instance_base.py:104]: Device Platform: Ascend950DT_9592 
+2026-07-22 13:44:40,928 [INFO] [3090773 MP MT] [instance.py:42]: Device count: 1 
+2026-07-22 13:44:40,928 [INFO] [3090773 MP MT] [instance_base.py:111]: Device Count: 1 
+2026-07-22 13:44:40,929 [INFO] [3090773 MP MT] [instance_base.py:231]: Preparing testcases ... 
+2026-07-22 13:44:40,929 [INFO] [3090773 MP MT] [instance_base.py:233]: Reading testcase file /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel.csv ... 
+2026-07-22 13:44:40,929 [INFO] [3090773 MP MT] [instance_base.py:296]: Input testcase file is not a valid zip file, switch to normal csv mode... 
+2026-07-22 13:44:40,929 [INFO] [3090773 MP MT] [instance_base.py:461]: Reading normal csv testcases... 
+ninja: no work to do.
+ninja: no work to do.
+Checking testcase name...
+Case number: 1
+Initialize output csv file...
+Output csv file is not specified. It will be set as /home/z00954345/jialunew/ttk/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_excel_result.csv
+Process per device: 1
+Preparing Task Executors...
+
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 3s Rev: 7f1d28b                       |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 3091163 D0P0             UNKNOWN              IDLE     0s  |
++-------------------------------------------------------------------------------------------------------+
+2026-07-22 13:44:46,818 [INFO] [3091163 D0P0 MainThread] [patch_getenv.py:15]: get env ASCEND_HOME_PATH = /home/z00954345/Ascendfzxttk/cann 
+2026-07-22 13:44:47,418 [INFO] [3091163 Decode_FP8e4m3_FP8e4m3_BF16_Mxfp8_redline_19_48_1_22_384_128_128_TND_PANZ_000005_test OnWaitingForMemory] [patch_getenv.py:15]: get env PATH = /home/z00954345/Ascendfzxttk/cann/bin:/home/z00954345/Ascendfzxttk/cann/tools/ccec_compiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/profiler/bin:/home/z00954345/Ascendfzxttk/cann/tools/ascend_system_advisor/asys:/home/z00954345/Ascendfzxttk/cann/tools/show_kernel_debug_data:/home/z00954345/Ascendfzxttk/cann/tools/msobjdump:/usr/local/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67/bin/remote-cli:/root/miniconda3/envs/fzx_py311/bin:/root/miniconda3/condabin:/usr/local/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/usr/games:/usr/local/games:/snap/bin:/root/.remotedev-server/bin/54b7d5e655f755d970eae443dec651dc57c16686/1.96.67 
+ninja: no work to do.
+ninja: no work to do.
+
+----------------------------------------------------------------------------------------------------
+API Name: qfa_mxfp8_wrapper.npu_qfa_mxfp8
+Golden API: 
+Backend: npu
+////////////// Tensors //////////////
+Input View Shapes: ((220, 48, 128), (19, 1, 4, 512, 32), (19, 1, 4, 512, 32), (1, 220, 48, 2, 2), (19, 1, 32, 2, 16, 2), (19, 1, 8, 8, 16, 2), (1,), (19, 1))
+Input Dtypes: ('float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float8_e4m3fn', 'float32', 'int32')
+Input Storage Shapes: ()
+Input Formats: ()
+Input View Offsets: ()
+Input View Strides: ()
+//////////// Output Info //////////
+Output Tensor Indexes: ()
+//////////// Attributes //////////
+precision_tolerances: ((0.0078125, 0.0001),)
+absolute_precision: 1e-08
+p_scale_value: 448.0
+cu_seqlens_q: [0, 22, 33, 44, 55, 66, 77, 88, 99, 110, 121, 132, 143, 154, 165, 176, 187, 198, 209, 220]
+cu_seqlens_kv: None
+seqused_q: None
+seqused_kv: [8, 55, 113, 9, 18, 42, 101, 32, 8, 16, 77, 24, 30, 101, 85, 35, 40, 46, 384]
+quant_mode: 1
+softmax_scale: 0.088388
+mask_mode: 0
+win_left: -1
+win_right: -1
+max_seqlen_q: -1
+max_seqlen_kv: 384
+layout_q: TND
+layout_q_descale: N2TGD
+layout_kv: PA_NZ
+layout_out: TND
+enable_lse: 1
+N_q: 48
+N_kv: 1
+D: 128
+B: 19
+enable_pa: True
+kv_cache_layout: PA_NZ
+q_scale_layout: N2TGD
+block_size: 512
+//////////// Test Config //////////
+Input Data Range: ((10.0, 1000.0), (10.0, 1000.0), (10.0, 1000.0), (0, 1), (0, 1), (0, 1), (0, 1), (0, 1))
+Precision Tolerance: ((0.0078125, 0.0001),)
+Absolute Precision: (1e-08,)
+Mode: ASCEND_ONBOARD
+PID: 3091163
+Device: 0
+----------------------------------------------------------------------------------------------------
+[WRAPPER] 使用 customize_inputs 缓存的真实 FP8 数据
+[WRAPPER] graph_path=0, 调用 npu_mxfp8_fa
+[NPU] Q layout: q_layout=N2TGD, G=48
+[NPU TND] q=torch.Size([220, 48, 128])
+[NPU] Q scale layout=N2TGD, shape=torch.Size([1, 220, 48, 2, 2])
+[NPU PA] kv_layout=PA_NZ
+[NPU PA] k=torch.Size([19, 1, 4, 512, 32]), v=torch.Size([19, 1, 4, 512, 32])
+[NPU PA] deq_k=torch.Size([19, 1, 32, 2, 16, 2]), deq_v=torch.Size([19, 1, 8, 8, 16, 2])
+[NPU] prepare PA inputs done.
+[NPU] 调用 PA 模式 (GRAPH_PATH=0)...
+[NPU] max_seqlen_q=-1 → 推导为 22
 [NPU] 调用 QFA 单算子模式...
 
-+--------------------------------------------------------------------------------------------------------+
-| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 23s Rev: 7f1d28b                       |
-+--------------------------------------------------------------------------------------------------------+
-| npu:0                                    | 3538640 20_Nkv4_D128_SP0 OnEagerProfiling     RUNNING  13s  |
-+--------------------------------------------------------------------------------------------------------+
-[WRAPPER] NPU 调用失败: call aclnnQuantFlashAttn failed, detail:[PID: 3538640] 2026-07-21-08:01:32.967.475 Execution_Error(EZ1008): Failed to execute operator QuantFlashAttn_0. Reason: Failed to execute tiling function.
-        Solution: 1.If the tiling function does not exist, check whether the tiling function is registered successfully. 2.If the tiling function fails to be executed, check the implementation logic of the tiling function.
-TraceBack (most recent call last):
-        Tensor k has empty dimension at axis 0, size is 0.[FUNC:operator()][FILE:qfa_tiling_info_parser.cpp][LINE:40]
-        empty tensor is not![FUNC:Parse][FILE:qfa_tiling_info_parser.cpp][LINE:683]
-        Failed to execute operator QuantFlashAttn_0. Reason: Failed to execute tiling function.
-        Check NnopbaseExecutorDoTiling(executor) failed
-        Check NnopbaseExecutorTilingAndUpdateBinInfo(executor) failed
-        Check NnopbaseExecutorMatchCache(executor) failed
-        Check NnopbaseRunForWorkspace(*executor, workspaceSize) failed
-
++-------------------------------------------------------------------------------------------------------+
+| Version: 3.0.0 Summary (Device Total: 1) Progress: 0% 0 / 1 ET: 13s Rev: 7f1d28b                      |
++-------------------------------------------------------------------------------------------------------+
+| npu:0                                    | 3091163 PANZ_000005_test OnEagerProfiling     RUNNING  2s  |
++-------------------------------------------------------------------------------------------------------+
+[NPU] output=torch.Size([220, 48, 128])
 get env ASCEND_GLOBAL_LOG_LEVEL = 3
-[2026-07-21 08:01:33] [INFO] [3539983] profiler.py: Start parsing profiling data in sync mode at: /tmp/ttk_npu_prof_os3dgo_9/aa_3538640_20260721080131271_ascend_pt
-[2026-07-21 08:01:36] [INFO] [3540002] profiler.py: CANN profiling data parsed in a total time of 0:00:03.040695
-[2026-07-21 08:01:37] [WARNING] [3539983] profiler.py: Failed to get api data from db.
-[2026-07-21 08:01:37] [WARNING] [3539983] profiler.py: Failed to get task data from db.
-[2026-07-21 08:01:38] [INFO] [3539983] profiler.py: All profiling data parsed in a total time of 0:00:04.704739
-[PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0] Error: call aclnnQuantFlashAttn failed, detail:[PID: 3538640] 2026-07-21-08:01:32.967.475 Execution_Error(EZ1008): Failed to execute operator QuantFlashAttn_0. Reason: Failed to execute tiling function.
-        Solution: 1.If the tiling function does not exist, check whether the tiling function is registered successfully. 2.If the tiling function fails to be executed, check the implementation logic of the tiling function.
-TraceBack (most recent call last):
-        Tensor k has empty dimension at axis 0, size is 0.[FUNC:operator()][FILE:qfa_tiling_info_parser.cpp][LINE:40]
-        empty tensor is not![FUNC:Parse][FILE:qfa_tiling_info_parser.cpp][LINE:683]
-        Failed to execute operator QuantFlashAttn_0. Reason: Failed to execute tiling function.
-        Check NnopbaseExecutorDoTiling(executor) failed
-        Check NnopbaseExecutorTilingAndUpdateBinInfo(executor) failed
-        Check NnopbaseExecutorMatchCache(executor) failed
-        Check NnopbaseRunForWorkspace(*executor, workspaceSize) failed
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
-    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
-    result_nps, perf = _execute_eager(
-                       ^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 336, in _execute_eager
-    r = resolved(*args, **kwargs)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 135, in npu_qfa_mxfp8
-    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1222, in npu_mxfp8_fa
-    atten_out, lse_out = mxfp8_fa_torch_npu(**inputs)
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1241, in mxfp8_fa_torch_npu
-    return _call_npu_fa_op(
-           ^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 989, in _call_npu_fa_op
-    atten_out, lse_out = quant_flash_attn(**main_kwargs)
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/quant_flash_attn.py", line 320, in quant_flash_attn
-    return op_module.quant_flash_attn(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: call aclnnQuantFlashAttn failed, detail:[PID: 3538640] 2026-07-21-08:01:32.967.475 Execution_Error(EZ1008): Failed to execute operator QuantFlashAttn_0. Reason: Failed to execute tiling function.
-        Solution: 1.If the tiling function does not exist, check whether the tiling function is registered successfully. 2.If the tiling function fails to be executed, check the implementation logic of the tiling function.
-TraceBack (most recent call last):
-        Tensor k has empty dimension at axis 0, size is 0.[FUNC:operator()][FILE:qfa_tiling_info_parser.cpp][LINE:40]
-        empty tensor is not![FUNC:Parse][FILE:qfa_tiling_info_parser.cpp][LINE:683]
-        Failed to execute operator QuantFlashAttn_0. Reason: Failed to execute tiling function.
-        Check NnopbaseExecutorDoTiling(executor) failed
-        Check NnopbaseExecutorTilingAndUpdateBinInfo(executor) failed
-        Check NnopbaseExecutorMatchCache(executor) failed
-        Check NnopbaseRunForWorkspace(*executor, workspaceSize) failed
+[2026-07-22 13:44:54] [INFO] [3091635] profiler.py: Start parsing profiling data in sync mode at: /tmp/ttk_npu_prof_xmil0t9n/aa_3091163_20260722134451898_ascend_pt
+[2026-07-22 13:44:57] [INFO] [3091651] profiler.py: CANN profiling data parsed in a total time of 0:00:03.038589
+[2026-07-22 13:44:58] [WARNING] [3091635] profiler.py: Failed to get api data from db.
+[2026-07-22 13:44:58] [WARNING] [3091635] profiler.py: Failed to get task data from db.
+[2026-07-22 13:44:58] [INFO] [3091635] profiler.py: All profiling data parsed in a total time of 0:00:04.697344
+[INFO] GQA 广播
+[CPU Golden] TILES_Q=1, TILES_KV=2, Sq=22, Skv=384
+[CPU Golden] output=torch.Size([19, 48, 22, 128])
+[COMPARE] atten: csv rtol=0.0078125 atol=0.0001
+split_count:1351680.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00000001         0.1656142       0.1660156       0.0004014       0.0024237
+00000002         0.1728207       0.1728516       0.0000308       0.0001785
+00000003         0.0915410       0.0913086       0.0002324       0.0025385
+00000004         0.3199546       0.3203125       0.0003579       0.0011186
+00000005         0.1617156       0.1621094       0.0003937       0.0024348
+00000006         -0.4244909      -0.4238281      0.0006627       0.0015613
+00000007         0.2796185       0.2792969       0.0003216       0.0011502
+00000008         0.0090461       0.0090332       0.0000129       0.0014239
+00000009         0.4690462       0.4687500       0.0002962       0.0006316
+00000010         0.2484298       0.2480469       0.0003829       0.0015413
+...        ...             ...             ...             ...
+01351671         -0.0041965      -0.0042114      0.0000150       0.0035648
+01351672         0.0058674       0.0058594       0.0000081       0.0013730
+01351673         0.0007755       0.0007744       0.0000011       0.0014623
+01351674         0.0313280       0.0312500       0.0000780       0.0024912
+01351675         0.0775201       0.0776367       0.0001166       0.0015041
+01351676         0.0124020       0.0123901       0.0000119       0.0009557
+01351677         0.0329954       0.0329590       0.0000364       0.0011044
+01351678         0.0116022       0.0115967       0.0000055       0.0004732
+01351679         0.0582215       0.0581055       0.0001160       0.0019932
+01351680         0.0401304       0.0400391       0.0000914       0.0022764
+---------------------------------------------------------------------------------------
+Rtol     Atol            PctThd          PctRlt          Result
+---------------------------------------------------------------------------------------
+0.0078           0.000100        99.50%          99.963231%      Pass
+Max-RelativeError is: 0.5169238448143005. Threshold is: 10.
+[COMPARE] out1: csv rtol=None atol=1e-08
+split_count:10560.0; max_diff_hd:10;
+---------------------------------------------------------------------------------------
+Loop     ExpectOut       RealOut         FpDiff          RateDiff
+---------------------------------------------------------------------------------------
+00000001         8.2169685       8.2169685       0.0000000       0.0000000
+00000002         8.0807810       8.0807810       0.0000000       0.0000000
+00000003         8.2923164       8.2923164       0.0000000       0.0000000
+00000004         8.0693007       8.0692997       0.0000010       0.0000001
+00000005         8.2786579       8.2786589       0.0000010       0.0000001
+00000006         8.0749607       8.0749607       0.0000000       0.0000000
+00000007         8.3606205       8.3606205       0.0000000       0.0000000
+00000008         8.1316719       8.1316719       0.0000000       0.0000000
+00000009         8.2940531       8.2940531       0.0000000       0.0000000
+00000010         8.0579987       8.0579987       0.0000000       0.0000000
+...        ...             ...             ...             ...
+00010551         12.1057119      12.1057119      0.0000000       0.0000000
+00010552         12.1484671      12.1484671      0.0000000       0.0000000
+00010553         12.1003313      12.1003313      0.0000000       0.0000000
+00010554         12.0595341      12.0595341      0.0000000       0.0000000
+00010555         12.1393633      12.1393633      0.0000000       0.0000000
+00010556         12.1089668      12.1089668      0.0000000       0.0000000
+00010557         12.1355171      12.1355171      0.0000000       0.0000000
+00010558         12.0792084      12.0792084      0.0000000       0.0000000
+00010559         12.1299038      12.1299038      0.0000000       0.0000000
+00010560         12.0937519      12.0937529      0.0000010       0.0000001
+---------------------------------------------------------------------------------------
+Rtol     Atol            PctThd          PctRlt          Result
+---------------------------------------------------------------------------------------
+0.0050           0.000000        99.50%          100.000000%     Pass
 
-Profiling process failed for testcase PA_BnNBsD_B1_QS15_KVS0_Nq20_Nkv4_D128_SP0 with pid 3538640, fail reason:
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 215, in profile_process
-    _do_profile(testcase, backend, device_grant_events, device_granted_indices,
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 577, in _do_profile
-    result_nps, perf = _execute_eager(
-                       ^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 336, in _execute_eager
-    r = resolved(*args, **kwargs)
-        ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/qfa_mxfp8_wrapper.py", line 135, in npu_qfa_mxfp8
-    atten_out, lse_out = golden_mod.npu_mxfp8_fa(
-                         ^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1222, in npu_mxfp8_fa
-    atten_out, lse_out = mxfp8_fa_torch_npu(**inputs)
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 1241, in mxfp8_fa_torch_npu
-    return _call_npu_fa_op(
-           ^^^^^^^^^^^^^^^^
-  File "/home/z00954345/jialunew/ops-transformer/attention/quant_flash_attn/tests/pytest/fia_fullquant_mxfp8_test/common/fia_fullquant_mxfp8_golden.py", line 989, in _call_npu_fa_op
-    atten_out, lse_out = quant_flash_attn(**main_kwargs)
-                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/root/miniconda3/envs/fzx_py311/lib/python3.11/site-packages/cann_ops_transformer/ops/quant_flash_attn.py", line 320, in quant_flash_attn
-    return op_module.quant_flash_attn(
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^
-RuntimeError: call aclnnQuantFlashAttn failed, detail:[PID: 3538640] 2026-07-21-08:01:32.967.475 Execution_Error(EZ1008): Failed to execute operator QuantFlashAttn_0. Reason: Failed to execute tiling function.
-        Solution: 1.If the tiling function does not exist, check whether the tiling function is registered successfully. 2.If the tiling function fails to be executed, check the implementation logic of the tiling function.
-TraceBack (most recent call last):
-        Tensor k has empty dimension at axis 0, size is 0.[FUNC:operator()][FILE:qfa_tiling_info_parser.cpp][LINE:40]
-        empty tensor is not![FUNC:Parse][FILE:qfa_tiling_info_parser.cpp][LINE:683]
-        Failed to execute operator QuantFlashAttn_0. Reason: Failed to execute tiling function.
-        Check NnopbaseExecutorDoTiling(executor) failed
-        Check NnopbaseExecutorTilingAndUpdateBinInfo(executor) failed
-        Check NnopbaseExecutorMatchCache(executor) failed
-        Check NnopbaseRunForWorkspace(*executor, workspaceSize) failed
+Eager Kernels
+-------------------------------------------------------------------------------------------------------
+Name                                              avg            max           min           # of Calls
+-------------------------------------------------------------------------------------------------------
+aclnnQuantFlashAttnMetadata_QuantFlashAttnMetada..42298.682      83305.025     1292.339      2
+QuantFlashAttn                                    22.352         22.352        22.352        1
+-------------------------------------------------------------------------------------------------------
 
 
-During handling of the above exception, another exception occurred:
-
-Traceback (most recent call last):
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/tbe_multiprocessing/pool.py", line 202, in intermediate_func
-    function_return = func(*func_args, **func_kwargs)
-                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "/home/z00954345/Ascendfzxttk/cann/ops-test-kit/ttk/core_modules/framework_api/profiling.py", line 219, in profile_process
-    return_struct.precision = str(e)
-    ^^^^^^^^^^^^^^^^^^^^^^^
-AttributeError: 'FrameworkApiReturnStructure' object has no attribute 'precision'
-
+ ####################################### Eager Result Summary  ######################################## 
+EAGER:       99.96323094223484%,100.0%
+  DEVICE: 84619.716 us
+  CPU:    205598.599 us
+STATUS: PASS
+Golden Shapes: ((220, 48, 128), (220, 48, 1))
+Golden Dtypes: ('float32', 'float32')
+#######################################################################################################
 ttk Profiling complete
