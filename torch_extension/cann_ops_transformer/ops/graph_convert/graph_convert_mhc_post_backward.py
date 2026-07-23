@@ -27,7 +27,7 @@ if _TORCHAIR_AVAILABLE:
     @auto_convert_to_tensor(
         [False, False, False, False, False], [False, False, False, False, False]
     )
-    def MhcPostBackward(
+    def mhc_post_backward_ge(
         grad_output: Tensor,
         x: Tensor,
         h_res: Tensor,
@@ -74,9 +74,10 @@ if _TORCHAIR_AVAILABLE:
         h_res: Tensor,
         h_out: Tensor,
         h_post: Tensor,
+        *,
         meta_outputs: TensorSpec = None,
     ):
-        return MhcPostBackward(
+        return mhc_post_backward_ge(
             grad_output=grad_output,
             x=x,
             h_res=h_res,
