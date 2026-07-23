@@ -11,13 +11,15 @@
 
 ## 功能说明
 
-- 接口功能:
+- 接口功能：
 
-  `mixed_quant_sparse_flash_mla`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`MixedQuantSparseFlashMla`算子完成量化和稀疏场景下的MLA（Multi-head Latent Attention）注意力计算，训练推理归一化。该接口支持以下三类计算模式：
+  `mixed_quant_sparse_flash_mla`是基于`torch_npu`的`cann_ops_transformer`扩展接口，用于调用`MixedQuantSparseFlashMla`算子完成量化和稀疏场景下的MLA（Multi-head Latent Attention）注意力计算，训练推理归一化。该接口支持以下五类计算模式：
 
   - **SWA（Sliding Window Attention）**：仅传入`ori_kv`，对原始KV做滑动窗口注意力。
   - **CSA（Compressed Sparse Attention）**：同时传入`ori_kv`、`cmp_kv`和`cmp_sparse_indices`，对原始KV窗口和TopK选择出的压缩KV共同做注意力。
   - **HCA（Heavily Compressed Attention）**：同时传入`ori_kv`和`cmp_kv`，对原始KV窗口和连续压缩KV段共同做注意力。
+  - **ORI_SPARSE**：仅传入`ori_kv`和`ori_sparse_indices`，对原始KV窗口做稀疏注意力。
+  - **ORI_CMP_SPARSE**：同时传入`ori_kv`、`cmp_kv`、`ori_sparse_indices`和`cmp_sparse_indices`，对原始KV窗口和连续压缩KV段共同做稀疏注意力。
 
   `mixed_quant_sparse_flash_mla_metadata`是`mixed_quant_sparse_flash_mla`的元数据生成接口，用于在主算子执行前生成metadata。metadata记录AICore/AIVCore的任务切分结果，主算子必须传入该metadata。典型调用流程如下：
 
@@ -25,7 +27,7 @@
   2. 调用`mixed_quant_sparse_flash_mla_metadata`生成`metadata`。
   3. 调用`mixed_quant_sparse_flash_mla`，将上一步得到的`metadata`传入主算子。
 
-- 计算公式:
+- 计算公式：
 
   mixed_quant_sparse_flash_mla采用MLA（Multi-head Latent Attention）对KV共享输入的稀疏注意力进行计算，其原理是对输入的KV进行选择性压缩与量化处理，再将Query与拼接后的KV计算结果通过Softmax得到注意力权重。
 
@@ -129,20 +131,20 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 | num_heads_kv | int | 必选 | Key/Value head数 | int32 | - | - | - |
 | head_dim | int | 必选 | 每个注意力头的维度 | int32 | - | - | - |
 | quant_mode | int | 必选 | 表示量化模式，当前仅支持1和2 | int32 | - | - | - |
-| cu_seqlens_q | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | √ |
-| cu_seqlens_ori_kv | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | √ |
-| cu_seqlens_cmp_kv | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0 | int32 | ND | (B+1,) | √ |
+| cu_seqlens_q | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0且其余元素需大于等于前一个值 | int32 | ND | (B+1,) | √ |
+| cu_seqlens_ori_kv | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0且其余元素需大于等于前一个值 | int32 | ND | (B+1,) | √ |
+| cu_seqlens_cmp_kv | Tensor | 可选 | 累积序列长度，用于处理变长序列，第一个元素必须为0且其余元素需大于等于前一个值 | int32 | ND | (B+1,) | √ |
 | seqused_q | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | √ |
 | seqused_ori_kv | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | √ |
 | seqused_cmp_kv | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | √ |
 | cmp_residual_kv | Tensor | 可选 | 不同batch中cmp_kv压缩后序列长度的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算 | int32 | ND | (B,) | √ |
-| ori_topk_length | Tensor | 可选 | 预留参数，当前不生效 | int32 | ND | <ul><li>(B, Q_S, KV_N)</li><li>(Q_T, KV_N)</li></ul> | √ |
-| cmp_topk_length | Tensor | 可选 | 预留参数，当前不生效 | int32 | ND | <ul><li>(B, Q_S, KV_N)</li><li>(Q_T, KV_N)</li></ul> | √ |
+| ori_topk_length | Tensor | 可选 | 用于标识ori_sparse_indices实际参与计算的长度 | int32 | ND | <ul><li>(B, Q_S, KV_N)</li><li>(Q_T, KV_N)</li></ul> | √ |
+| cmp_topk_length | Tensor | 可选 | 用于标识cmp_sparse_indices实际参与计算的长度 | int32 | ND | <ul><li>(B, Q_S, KV_N)</li><li>(Q_T, KV_N)</li></ul> | √ |
 | batch_size | int | 可选 | batch大小。若未传入，则从cu_seqlens_q或seqused_q推导。默认值为0 | int32 | - | - | - |
 | max_seqlen_q | int | 可选 | 指定查询q序列的长度上限 | int32 | - | - | - |
 | max_seqlen_ori_kv | int | 可选 | 指定ori_kv序列的长度上限 | int32 | - | - | - |
 | max_seqlen_cmp_kv | int | 可选 | 指定cmp_kv序列的长度上限 | int32 | - | - | - |
-| ori_topk | int | 可选 | 表示ori_kv中筛选出的关键稀疏token的个数，0表示非稀疏场景。默认值为0 | int32 | - | - | - |
+| ori_topk | int | 可选 | 表示ori_kv中筛选出的关键稀疏token的个数。0表示非稀疏场景。默认值为0 | int32 | - | - | - |
 | cmp_topk | int | 可选 | 表示cmp_kv中筛选出的关键稀疏token的个数。0表示非稀疏场景。默认值为0 | int32 | - | - | - |
 | rope_head_dim | int | 可选 | rope头的维度。默认值为64 | int32 | - | - | - |
 | cmp_ratio | int | 可选 | 表示对cmp_kv的压缩率。默认值为1 | int32 | - | - | - |
@@ -161,9 +163,9 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
 | q | Tensor | 必选 | 公式中的q | bfloat16 | ND |  <ul><li>(B, Q_N, Q_S, D)</li><li>(Q_T, Q_N, D)</li></ul> | × |
 | quant_mode | int | 必选 | 表示量化模式。当前仅支持1和2 | int32 | - | - | - |
-| ori_kv | Tensor | 可选 | 原始量化KV输入，Key和Value共享同一份数据。 | fp8_e4m3 | ND | <ul><li>(B, KV_S1, KV_N, D)</li><li>(KV_T1, KV_N, D)</li><li>(block_nums1, block_size1, KV_N, D)</li></ul> | × |
-| cmp_kv | Tensor | 可选 | 压缩量化KV输入，Key和Value共享同一份数据。 | fp8_e4m3 | ND | <ul><li>(B, KV_S2, KV_N, D)</li><li>(KV_T2, KV_N, D)</li><li>(block_nums2, block_size2, KV_N, D)</li></ul> | × |
-| ori_sparse_indices | Tensor | 可选 | 原始KV稀疏索引，无效位置填-1 | int32 | ND | <ul><li>(Q_T, KV_N, K)</li><li>(B, Q_S, KV_N, K1)</li></ul> | × |
+| ori_kv | Tensor | 必选 | 原始量化KV输入，Key和Value共享同一份数据 | fp8_e4m3 | ND | <ul><li>(B, KV_S1, KV_N, D)</li><li>(KV_T1, KV_N, D)</li><li>(block_nums1, block_size1, KV_N, D)</li></ul> | √ |
+| cmp_kv | Tensor | 可选 | 压缩量化KV输入，Key和Value共享同一份数据 | fp8_e4m3 | ND | <ul><li>(B, KV_S2, KV_N, D)</li><li>(KV_T2, KV_N, D)</li><li>(block_nums2, block_size2, KV_N, D)</li></ul> | √ |
+| ori_sparse_indices | Tensor | 可选 | 原始KV TopK索引，无效位置填-1 | int32 | ND | <ul><li>(Q_T, KV_N, K)</li><li>(B, Q_S, KV_N, K1)</li></ul> | × |
 | cmp_sparse_indices | Tensor | 可选 | 压缩KV TopK索引，无效位置填-1 | int32 | ND | <ul><li>(Q_T, KV_N, K)</li><li>(B, Q_S, KV_N, K2)</li></ul> | × |
 | ori_block_table | Tensor | 可选 | PageAttention场景下ori_kv使用的block映射表 | int32 | ND | (B, Sori_max/block_size1) | × |
 | cmp_block_table | Tensor | 可选 | PageAttention场景下cmp_kv使用的block映射表 | int32 | ND | (B, Scmp_max/block_size2) | × |
@@ -174,9 +176,9 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 | seqused_ori_kv | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
 | seqused_cmp_kv | Tensor | 可选 | 指定每batch中实际使用的序列长度，截断冗余运算 | int32 | ND | (B,) | × |
 | cmp_residual_kv | Tensor | 可选 | 不同batch中cmp_kv压缩后序列长度的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算 | int32 | ND | (B,) | × |
-| ori_topk_length | Tensor | 可选 | 参数ori_kv进行稀疏计算时，实际参与运算的元素数。 | int32 | ND | <ul><li>(B, Q_S, KV_N)</li><li>(Q_T, KV_N)</li></ul> | × |
-| cmp_topk_length | Tensor | 可选 | 参数cmp_kv进行稀疏计算时，实际参与运算的元素数。 | int32 | ND | <ul><li>(B, Q_S, KV_N)</li><li>(Q_T, KV_N)</li></ul> | × |
-| sinks | Tensor | 可选 | attention sinks输入 | float32 | ND | (Q_N,) | × |
+| ori_topk_length | Tensor | 可选 | 用于标识ori_sparse_indices实际参与计算的长度 | int32 | ND | <ul><li>(B, Q_S, KV_N)</li><li>(Q_T, KV_N)</li></ul> | × |
+| cmp_topk_length | Tensor | 可选 | 用于标识cmp_sparse_indices实际参与计算的长度 | int32 | ND | <ul><li>(B, Q_S, KV_N)</li><li>(Q_T, KV_N)</li></ul> | × |
+| sinks | Tensor | 必选 | attention sinks输入 | float32 | ND | (Q_N,) | × |
 | metadata | Tensor | 必选 | mixed_quant_sparse_flash_mla_metadata生成的任务切分结果，传入后可优化调度 | int32 | ND | (1024,) | × |
 | rope_head_dim | int | 可选 | rope头的维度。默认值为64 | int32 | - | - | - |
 | softmax_scale | float | 可选 | 可显式设置缩放因子，覆盖默认计算。默认值为1.0 | float32 | - | - | - |
@@ -212,8 +214,9 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 ## 约束说明
 
 - 声明
-  - 参数cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv、seqused_q、seqused_ori_kv、seqused_cmp_kv、cmp_residual_kv、ori_block_table、cmp_block_table、等输入属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
+  - 参数cu_seqlens_q、cu_seqlens_ori_kv、cu_seqlens_cmp_kv、seqused_q、seqused_ori_kv、seqused_cmp_kv、cmp_residual_kv、ori_block_table、cmp_block_table等输入属于tensor。由于算子在Tiling阶段无法获取tensor的具体数值，tiling侧不对值进行校验，正确性需要用户自行保证。若上述参数传入非法值，会触发未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
   - mixed_quant_sparse_flash_mla_metadata和mixed_quant_sparse_flash_mla的入参在调用时应该保持一致。由于算子分为两个接口分段调用，算子无法自行校验，正确性需要由用户自行保证。若接口传入参数不一致，会发生未定义行为（精度问题、非法内存访问导致的程序崩溃等）。
+  - ori_topk_length、cmp_topk_length用于标识ori/cmp sparse_indices实际参与计算的长度。其值不能大于sparse_indices的最后一维大小，且当seqused_q传入时，topk_length对应有效部分的值需要大于等于0。
 
 ### 特性参数组
 
@@ -221,9 +224,9 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 | :-------------------: | :-------------------: | :-------------: | :--------: |
 |      公共参数组      |         q         |      INPUT      |   Tensor   |
 |                      |      quant_mode      |      INPUT      |    int    |
-|                      |      ori_kv      |      INPUT(OPTIONAL)      |   Tensor   |
+|                      |      ori_kv      |      INPUT      |   Tensor   |
 |                      |      cmp_kv      |      INPUT(OPTIONAL)      |   Tensor   |
-|                      |      metadata      |       INPUT(OPTIONAL)      |   Tensor   |
+|                      |      metadata      |       INPUT      |   Tensor   |
 |                      |      rope_head_dim      |      ATTR(OPTIONAL)      |    int    |
 |                      |      softmax_scale      |      ATTR(OPTIONAL)      |   float   |
 |                      |      layout_q      |      ATTR(OPTIONAL)      |   string   |
@@ -248,7 +251,7 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 |                      |      topk_value_mode      |      ATTR(OPTIONAL)      |    int    |
 | Paged Attention参数组 |      ori_block_table      |      INPUT(OPTIONAL)      |   Tensor   |
 |                      |      cmp_block_table      |      INPUT(OPTIONAL)      |   Tensor   |
-|   Sinks参数组   |      sinks      |      INPUT(OPTIONAL)      |   Tensor   |
+|   Sinks参数组   |      sinks      |      INPUT      |   Tensor   |
 |   SoftmaxLse参数组   |      return_softmax_lse      |      ATTR(OPTIONAL)      |    bool    |
 |                      |      softmax_lse      |      OUTPUT(OPTIONAL)      |   Tensor   |
 
@@ -267,7 +270,8 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 |      Q_D      |          输入q tensor以及输出attention_out隐藏层最小的单元尺寸headdim         |
 |      KV_D      |          输入ori_kv/cmp_kv tensor隐藏层最小的单元尺寸headdim         |
 |     Q_T     |          输入q tensor所有batch序列长度的累加和          |
-|     KV_T    |          输入ori_kv/cmp_kv tensor所有batch序列长度的累加和          |
+|     KV_T1    |          输入ori_kv tensor所有batch序列长度的累加和          |
+|     KV_T2    |          输入cmp_kv tensor所有batch序列长度的累加和          |
 |      K1      |           ori_sparse_indices中TopK选出的token个数         |
 |      K2      |           cmp_sparse_indices中TopK选出的token个数         |
 
@@ -277,13 +281,14 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
 |      SWA      |                ori_kv                |
 |      HCA      |                ori_kv、cmp_kv                |
 |      CSA      |                ori_kv、cmp_kv、cmp_sparse_indices                |
-|      ALL_CSA      |                ori_kv、cmp_kv、cmp_sparse_indices、ori_sparse_indices（新版应该怎么区分CSA和all_sca）                |
+|      ORI_SPARSE      |                ori_kv、ori_sparse_indices|
+|      ORI_CMP_SPARSE      |                ori_kv、cmp_kv、ori_sparse_indices、cmp_sparse_indices|
 
 ### 参数组约束
 
 #### 公共参数组
 - 入参为空的场景处理：
-    - 空Tensor指必选输入、计算模式（SWA\CSA\HCA\ALL_CSA）下必传输入和输出的shape size为0，即有任意轴为0。
+    - 空Tensor指必选输入、计算模式（SWA\CSA\HCA\ORI_SPARSE\ORI_CMP_SPARSE）下必传输入和输出的shape size为0，即有任意轴为0。
     - 触发空tensor的用例将全部拦截报错。
 
 
@@ -379,7 +384,7 @@ cann_ops_transformer.ops.mixed_quant_sparse_flash_mla(
             </ul>
         </td>
         <td>
-            SWA计算模式下不传入；CSA/HCA计算模式下必传
+            SWA、ORI_SPARSE计算模式下不传入；CSA/HCA/ORI_CMP_SPARSE计算模式下必传
         </td>
     </tr>
 </tbody>
@@ -445,13 +450,13 @@ metadata校验
             <td>
                 <ul>
                     <li>tensor_type仅支持INT32</li>
-                    <li>shape由flash_attn_metadata动态计算</li>
+                    <li>shape由mixed_quant_sparse_flash_metadata动态计算</li>
                     <li>当前不支持不传入，未传入将发出拦截报警</li>
                 </ul>
             </td>
-            <td>可选参数</td>
+            <td>必传</td>
             <td>无</td>
-            <td>传入时需与flash_attn_metadata生成的结果一致</td>
+            <td>传入时需与mixed_quant_sparse_flash_metadata生成的结果一致</td>
         </tr>
     </tbody>
 </table>
@@ -494,7 +499,7 @@ metadata校验
             </td>
             <td>
                 <ul>
-                    无
+                    <li>在ORI_SPARSE和ORI_CMP_SPARSE场景下，只能为0</li>
                 </ul>
             </td>
             <td>
@@ -517,7 +522,7 @@ metadata校验
             </td>
             <td>
                 <ul>
-                    无
+                    <li>在ORI_SPARSE和ORI_CMP_SPARSE场景下，只能为0</li>
                 </ul>
             </td>
             <td>
@@ -617,8 +622,9 @@ metadata校验
             </td>
             <td >
                 <ul>
-                    <li>当layout_kv为BSND时，必须传入(待确认，可以不传，S为每个batch)</li>
+                    <li>当layout_kv为BSND时，可选传入</li>
                     <li>当layout_kv为PA_BBND时，必须传入</li>
+                    <li>ORI_SPARSE计算模式下，不传入</li>
                 </ul>
             </td>
             <td>无</td>
@@ -636,8 +642,9 @@ metadata校验
             </td>
             <td >
                 <ul>
-                    <li>当layout_kv为BSND时且非SWA场景下，必须传入</li>
+                    <li>当layout_kv为BSND时，可选传入</li>
                     <li>当layout_kv为PA_BBND且非SWA计算模式，必须传入</li>
+                    <li>ORI_CMP_SPARSE计算模式下，可以不传</li>
                 </ul>
             </td>
             <td>无</td>
@@ -727,7 +734,7 @@ metadata校验
             <td>cmp_ratio</td>
             <td>
                 <ul>
-                    <li>data_type支持INT</li>
+                    <li>data_type支持INT32</li>
                     <li>表示cmp_kv相对于压缩前KV长度的压缩倍率，需大于0</li>
                     <li>默认值为1</li>
                 </ul>
@@ -741,7 +748,7 @@ metadata校验
             <td>
                 <ul>
                     <li>在SWA场景，仅支持默认值1。</li>
-                    <li>在CSA\HCA场景，支持1-128。</li>
+                    <li>在CSA\HCA\ORI_CMP_SPARSE场景，支持1-128。</li>
                 </ul>
             </td>
         </tr>
@@ -757,6 +764,7 @@ metadata校验
             <td>
                 <ul>
                     <li>可选参数</li>
+                    <li>当cmp_mask_mode=3且cmp_ratio!=1时，必传</li>
                 </ul>
             </td>
             <td>
@@ -778,7 +786,7 @@ metadata校验
             <td>
                 <ul>
                     <li>可选参数</li>
-                    <li>在CSA情景下，该参数必传。</li>
+                    <li>在ORI_SPARSE计算模式下，该参数必传。</li>
                 </ul>
             </td>
             <td>
@@ -801,7 +809,7 @@ metadata校验
             <td>
                 <ul>
                     <li>可选参数</li>
-                    <li>在CSA情景下，该参数必传。</li>
+                    <li>在CSA和ORI_CMP_SPARSE计算模式下，该参数必传。</li>
                 </ul>
             </td>
             <td>
@@ -814,29 +822,55 @@ metadata校验
         </tr>
         <tr>
             <td>ori_topk_length</td>
-            <td rowspan="2">
+            <td>
                 <ul>
                     <li>tensor_type支持INT32</li>
                     <li>tensor_shape为(B, Q_S, KV_N)或(Q_T, KV_N)</li>
                 </ul>
             </td>
-            <td rowspan="2">可选参数</td>
-            <td rowspan="2">
+            <td>
+                <ul>
+                    <li>在ORI_CMP_SPARSE场景下必传</li>
+                    <li>在CSA、ORI_SPARSE场景下可选传入</li>
+                    <li>其他场景不支持传入</li>
+                </ul>
+            </td>
+            <td>
                 <ul>
                     <li>当layout_q为TND时，该tensor_shape为(Q_T, KV_N)</li>
                     <li>当layout_q为BSND时，该tensor_shape为(B, Q_S, KV_N)</li>
                 </ul>
             </td>
-            <td rowspan="2">无</td>
+            <td>无</td>
         </tr>
         <tr>
             <td>cmp_topk_length</td>
+            <td>
+                <ul>
+                    <li>tensor_type支持INT32</li>
+                    <li>tensor_shape为(B, Q_S, KV_N)或(Q_T, KV_N)</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>在ORI_CMP_SPARSE场景下必传</li>
+                    <li>在CSA且cmp_mask_mode=0场景下必传</li>
+                    <li>其他场景不支持传入</li>
+                </ul>
+            </td>
+            <td>
+                <ul>
+                    <li>当layout_q为TND时，该tensor_shape为(Q_T, KV_N)</li>
+                    <li>当layout_q为BSND时，该tensor_shape为(B, Q_S, KV_N)</li>
+                </ul>
+            </td>
+            <td>无</td>
         </tr>
         <tr>
             <td>topk_value_mode</td>
             <td>
                 <ul>
-                    <li>data_type支持INT</li>
+                    <li>data_type支持INT32</li>
                     <li>TopK索引取值模式，默认值为1</li>
                 </ul>
             </td>
@@ -934,7 +968,7 @@ metadata校验
                     <li>tensor_shape为(B, )。</li>
                 </ul>
             </td>
-            <td> 可选参数 </td>
+            <td> 必传 </td>
             <td> 无 </td>
             <td> 暂不支持 </td>
         </tr>
