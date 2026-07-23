@@ -161,9 +161,7 @@ def cpu_quant_block_sparse_attn(query, key, value, q_descale, k_descale, v_desca
 
     if key_cpu.dim() == 4:
         if block_table_cpu is None:
-            bt_pattern = kwargs.get("block_table_pattern", "sequential")
-            bt_seed = kwargs.get("seed", 0)
-            block_table_cpu = _auto_block_table(B, S2, sparse_kv_block_size, bt_pattern, bt_seed)
+            block_table_cpu = _auto_block_table(B, S2, sparse_kv_block_size, "sequential", 0)
         dense_key = _pa_to_dense(key_cpu, block_table_cpu, B, S2, (1, 0, 2), sparse_kv_block_size)
         dense_value = _pa_to_dense(value_cpu, block_table_cpu, B, S2, (1, 0, 2), sparse_kv_block_size)
         cu_seqlens_q_inp = None

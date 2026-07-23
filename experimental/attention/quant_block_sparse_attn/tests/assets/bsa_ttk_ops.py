@@ -27,6 +27,43 @@ def _ensure_cann_ops():
         _CANN_OPS_LOADED = True
 
 
+_FP32_BYTES = 4
+
+
+def _pack_combined_kv(key, value, k_descale):
+    """Pack separate PA key/value/k_descale into a combined KV storage.
+
+    Layout per physical block: [key_segment (FP8)] [value_segment (FP8)] [k_scale_segment (FP32)]
+    Returns 1D tail views and pa_block_stride, matching the kernel's expected interface.
+    """
+    num_blocks, n2, block_size, d = int(key.shape[0]), int(key.shape[1]), int(key.shape[2]), int(key.shape[3])
+    dv = int(value.shape[-1])
+
+    key_seg = n2 * block_size * d
+    value_seg = n2 * block_size * dv
+    k_scale_seg = n2 * block_size * _FP32_BYTES
+    pa_block_stride = key_seg + value_seg + k_scale_seg
+
+    storage = torch.zeros((num_blocks * pa_block_stride,), dtype=torch.uint8, device=key.device)
+    fp8_storage = storage.view(torch.float8_e4m3fn)
+    fp32_storage = storage.view(torch.float32)
+
+    key_view = torch.as_strided(fp8_storage, key.shape, (pa_block_stride, block_size * d, d, 1), 0)
+    value_view = torch.as_strided(fp8_storage, value.shape, (pa_block_stride, block_size * dv, dv, 1), key_seg)
+    k_scale_view = torch.as_strided(fp32_storage, k_descale.shape,
+                                    (pa_block_stride // _FP32_BYTES, block_size, 1),
+                                    (key_seg + value_seg) // _FP32_BYTES)
+
+    key_view.copy_(key)
+    value_view.copy_(value)
+    k_scale_view.copy_(k_descale)
+
+    key_1d = fp8_storage[0:]
+    value_1d = fp8_storage[key_seg:]
+    k_scale_1d = fp32_storage[(key_seg + value_seg) // _FP32_BYTES:]
+    return key_1d, value_1d, k_scale_1d, pa_block_stride
+
+
 def _auto_generate_params(query, key, sparse_indices, seqused_q, seqused_kv,
                           cu_seqlens_q, cu_seqlens_kv, block_table,
                           max_seqlen_q, max_seqlen_kv, layout_q, sparse_kv_block_size):
@@ -178,6 +215,9 @@ def quant_block_sparse_attn(
             query, key, sparse_indices, seqused_q, seqused_kv,
             cu_seqlens_q, cu_seqlens_kv, block_table,
             max_seqlen_q, max_seqlen_kv, layout_q, sparse_kv_block_size)
+
+    if pa_block_stride == 0 and key.dim() == 4:
+        key, value, k_descale, pa_block_stride = _pack_combined_kv(key, value, k_descale)
 
     if metadata is None:
         metadata = QuantBlockSparseAttnMetadataBuilder.build(
