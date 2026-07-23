@@ -999,7 +999,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::LoadTokenFromLoc
     uint64_t remoteCopyOffset = RelayTokenOffset(srcServer, tokenIndex);
     GM_ADDR localRecordAddr = GetRankWinAddrWithOffset(rankId_, dispatchWinOffset_) + remoteCopyOffset;
     uint64_t flagOffset = static_cast<uint64_t>(mxQuantTokenScaleAlignBytes_) + 2 * sizeof(int32_t);
-    __gm__ uint64_t *readyFlag = reinterpret_cast<__gm__ uint64_t *>(remoteRecordAddr + flagOffset);
+    __gm__ uint64_t *readyFlag = reinterpret_cast<__gm__ uint64_t *>(localRecordAddr + flagOffset);
     while (ReadGmByPassDCache(readyFlag) != uint64_t(1)) {
     }
     GlobalTensor<ActivationType> relayGlobalTensor;
