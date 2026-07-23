@@ -62,7 +62,8 @@ __aicore__ inline GM_ADDR GetWinAddrByRankId(__gm__ Mc2Aclnn::MoeCommContext *ct
 __aicore__ inline uint64_t GetCommHandle(__gm__ Mc2Aclnn::MoeCommContext *ctx, uint32_t localRankId, uint32_t rankId)
 {
     uint32_t index = rankId > localRankId ? rankId - 1 : rankId;
-    return ctx->hcommHandle[index];
+    uint32_t channelsPerRank = ctx->channelsPerRank == 0 ? 1 : ctx->channelsPerRank;
+    return ctx->hcommHandle[index * channelsPerRank];
 }
 
 } // namespace Mc2Kernel
