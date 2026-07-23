@@ -302,11 +302,19 @@ TestResult RunTest(const TestConfig &config)
     int32_t qBlockNum = static_cast<int32_t>((config.qSeqlen + config.blockShapeX - 1) / config.blockShapeX);
     int32_t kvBlockNum = static_cast<int32_t>((config.kvSeqlen + config.blockShapeY - 1) / config.blockShapeY);
 
-    void *qDev = nullptr, *kDev = nullptr, *vDev = nullptr, *oDev = nullptr;
-    void *selIdxDev = nullptr, *selNumDev = nullptr;
+    void *qDev = nullptr;
+    void *kDev = nullptr;
+    void *vDev = nullptr;
+    void *oDev = nullptr;
+    void *selIdxDev = nullptr;
+    void *selNumDev = nullptr;
 
-    aclTensor *qTensor = nullptr, *kTensor = nullptr, *vTensor = nullptr, *oTensor = nullptr;
-    aclTensor *selIdxTensor = nullptr, *selNumTensor = nullptr;
+    aclTensor *qTensor = nullptr;
+    aclTensor *kTensor = nullptr;
+    aclTensor *vTensor = nullptr;
+    aclTensor *oTensor = nullptr;
+    aclTensor *selIdxTensor = nullptr;
+    aclTensor *selNumTensor = nullptr;
     aclIntArray *blockShapeArray = nullptr;
     aclIntArray *actualSeqLenQ = nullptr;
     aclIntArray *actualSeqLenKv = nullptr;
@@ -340,7 +348,7 @@ TestResult RunTest(const TestConfig &config)
 
         std::vector<int64_t> selIdxHost, selNumHost;
         GenerateSparsePattern(qBlockNum, kvBlockNum, static_cast<int32_t>(config.numHeads),
-                             config.sparsity, selIdxHost, selNumHost);
+            config.sparsity, selIdxHost, selNumHost);
 
         int64_t maxKvBlockNum = static_cast<int64_t>(kvBlockNum);
 
@@ -407,7 +415,6 @@ TestResult RunTest(const TestConfig &config)
             scaleValue, 1, 128,
             oTensor, nullptr,
             &workspaceSize, &executor);
-
         if (ret != ACL_SUCCESS) {
             throw std::runtime_error("GetWorkspaceSize failed with code: " + std::to_string(ret));
         }
@@ -444,7 +451,6 @@ TestResult RunTest(const TestConfig &config)
         int64_t maxIdx = -1;
         bool cmpResult = CompareResults(oNpu.data(), oRef.data(), oElementCount,
                                         atol, rtol, &maxDiff, &maxIdx);
-
         if (cmpResult) {
             std::cout << "Result: PASS (max_diff=" << maxDiff << ")" << std::endl;
         } else {
@@ -473,7 +479,6 @@ TestResult RunTest(const TestConfig &config)
         aclrtFree(selNumDev);
 
         return cmpResult ? TEST_PASS : TEST_FAIL;
-
     } catch (const std::exception &e) {
         std::cerr << "Result: FAIL - " << e.what() << std::endl;
 
