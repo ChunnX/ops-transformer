@@ -693,9 +693,9 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                         if (topkCount_ > trunkLen_) {
                             copyInParams.blockLen = topkCountAlign256_ * sizeof(SCORE_T); // byte
                             AscendC::DataCopyPad(scoreOutLocal_,
-                                                scoreGm[vecOffset * QLIV2Common::Align(
-                                                    (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + ldDstOffset],
-                                                copyInParams, padParams);
+                                                 scoreGm[vecOffset * QLIV2Common::Align(
+                                                 (uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + ldDstOffset],
+                                                 copyInParams, padParams);
                             SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                             WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                             AscendC::CreateVecIndex(indicesOutLocal_.ReinterpretCast<int32_t>(), (int32_t)zero,
@@ -706,12 +706,13 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                             copyInParams.blockLen = trunkLen_ * sizeof(SCORE_T); // byte
                             AscendC::DataCopyPad(mrgValueLocal_,
                                 scoreGm[vecOffset
-                                * QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) + ldDstOffset],
+                                * QLIV2Common::Align((uint64_t)constInfo_.kSeqSize, (uint64_t)s2BaseSize_) +
+                                ldDstOffset],
                                 copyInParams, padParams);
                             SetFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
                             WaitFlag<HardEvent::MTE2_V>(TOPK_MTE2_V_EVENT);
-                            topkOp_.TopK(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, trunkLen_, loopIdx, actS2LoopNum,
-                                info.isNeedLD, returnValueFlag, outputIdxOffsetTmp);
+                            topkOp_.TopK(mrgValueLocal_, indicesOutLocal_, scoreOutLocal_, trunkLen_, loopIdx,
+                                actS2LoopNum, info.isNeedLD, returnValueFlag, outputIdxOffsetTmp);
                         }
                         
                         continue;
