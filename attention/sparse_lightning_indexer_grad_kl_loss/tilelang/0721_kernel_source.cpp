@@ -252,10 +252,10 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             } else {
               AscendC::CrossCoreWaitFlag(1);
             }
+            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+            tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_key_l1[0], GatherKey_ws[((((pipe_iter * 25165824) + (cid * 1048576)) + (k_outer_1 * 524288)) - 25165824)], 512, 128, 128, true);
+            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
             for (int32_t k_inner = 0; k_inner < 8; ++k_inner) {
-              AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
-              tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_key_l1[0], GatherKey_ws[(((((pipe_iter * 25165824) + (cid * 1048576)) + (k_outer_1 * 524288)) + (k_inner * 65536)) - 25165824)], 512, 128, 128, true);
-              AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
               for (int32_t d_idx = 0; d_idx < 4; ++d_idx) {
                 AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(0);
                 AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(0);
@@ -296,6 +296,11 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               tl::ascend::copy_l1_to_l0b<half, 128, 128, true>(c1_key_l0b[0], c1_key_l1[0], 128, 128);
               AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(0);
               AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(0);
+              if (k_inner < 7) {
+                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(0);
+                tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_key_l1[0], GatherKey_ws[(((((pipe_iter * 25165824) + (cid * 1048576)) + (k_outer_1 * 524288)) + (k_inner * 65536)) - 25100288)], 512, 128, 128, true);
+                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(0);
+              }
               AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(0);
               AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
               tl::ascend::mma<half, float, 128, 128>(c1_q_l0a[0],c1_key_l0b[0],c1_p_l0c[0], (bool)0, 128);
@@ -317,21 +322,16 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             } else {
               AscendC::CrossCoreWaitFlag(3);
             }
-            AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
-            tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_ki_l1[0], GatherKeyIndex_ws[((((pipe_iter * 6291456) + (cid * 262144)) + (k_outer_2 * 131072)) - 6291456)], 128, 128, 128, true);
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(1);
             for (int32_t k_inner_1 = 0; k_inner_1 < 8; ++k_inner_1) {
+              AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
+              tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_ki_l1[0], GatherKeyIndex_ws[(((((pipe_iter * 6291456) + (cid * 262144)) + (k_outer_2 * 131072)) + (k_inner_1 * 16384)) - 6291456)], 128, 128, 128, true);
+              AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(1);
               AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(1);
               AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(1);
               tl::ascend::copy_l1_to_l0a<half, 64, 128, false>(c1_qi_l0a[0], c1_qi_l1[0], 64, 128);
               tl::ascend::copy_l1_to_l0b<half, 128, 128, true>(c1_ki_l0b[0], c1_ki_l1[0], 128, 128);
               AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(1);
               AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(1);
-              if (k_inner_1 < 7) {
-                AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(1);
-                tl::ascend::copy_gm_to_l1<half, 128, 128>(c1_ki_l1[0], GatherKeyIndex_ws[(((((pipe_iter * 6291456) + (cid * 262144)) + (k_outer_2 * 131072)) + (k_inner_1 * 16384)) - 6275072)], 128, 128, 128, true);
-                AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(1);
-              }
               AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(1);
               AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(1);
               tl::ascend::mma<half, float, 64, 128>(c1_qi_l0a[0],c1_ki_l0b[0],c1_sy_l0c[0], (bool)1, 128);
