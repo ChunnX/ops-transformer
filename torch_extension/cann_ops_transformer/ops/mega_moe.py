@@ -127,7 +127,7 @@ class SymmBuffer:
             dispatch_quant_out_dtype,
             combine_quant_mode,
             comm_alg,
-        )
+        ) * 2
         self._ctx_manager = CommContextManager(
             self.group_name,
             self.ep_world_size,
