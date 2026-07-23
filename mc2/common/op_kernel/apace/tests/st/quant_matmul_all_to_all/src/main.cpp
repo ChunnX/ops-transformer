@@ -28,8 +28,8 @@
 #include "apace/tiling/quant_matmul_mx_tiling_swat.h"
 #include "apace/kernel/quant_matmul_all_to_all/mx_matmul_all_to_all_hcomm_impl.h"
 #include "apace/block/aiv_comm/collective_comm_context.h"
-#include "comm_channel_builder.h"
-#include "root_info_exchanger.h"
+#include "../../utils/comm_channel_builder.h"
+#include "../../utils/root_info_exchanger.h"
 
 using CommUdmaContext = Apace::AivComm::CommUdmaContext;
 using CommUbmemContext = Apace::AivComm::CommUbmemContext;
