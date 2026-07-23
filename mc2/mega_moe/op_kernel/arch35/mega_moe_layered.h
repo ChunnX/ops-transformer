@@ -1324,6 +1324,120 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
     }
 }
 
+// // ====================================================================================================
+// // TripleInfoCalAndDispatch：专家接收token的三元组信息计算搬出 & token dispatch & 写Flag位
+// // ----------------------------------------------------------------------------------------------------
+// //   逐 rank 从 win 加载单个 [mask|count] 槽位到 gatherMaskTensor_，
+// //   再按 dispatchTotalRounds_ 分轮次做 GatherMask → CopyGMToGMPerToken；
+// //   Phase 2: dispatch->gmm1 flag 位 AtomicAdd，每个 expert 有 maxWavesPerExpert_ 个槽位；
+// // ====================================================================================================
+// template <TemplateMegaMoeTypeClass>
+// __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo,
+//                                                                                          int32_t localExpertId)
+// {
+//     constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
+//     int32_t priorExpertCumsum = (localExpertId == 0) ? 0 :
+//         cumsumInfoTensor_.GetValue(localExpertId * worldSize_ - 1);
+
+//     constexpr int32_t MAX_TRIPLE_ROWS_PER_CHUNK = static_cast<int32_t>(DISPATCH_WAVE_TILE_M);
+//     for (uint32_t srcRankInServer = blockIdx_; srcRankInServer < rankPerServer_; srcRankInServer += blockNum_) {
+//         for (uint32_t srcServer = 0; srcServer < serverNum_; ++srcServer) {
+//             uint32_t dstRankIdx = srcServer * rankPerServer_ + srcRankInServer;
+//             if (dstRankIdx >= worldSize_) {
+//                 continue;
+//             }
+//             int32_t rowStartIdxInDst = ((dstRankIdx == 0 && localExpertId == 0) ? 0 :
+//                 cumsumInfoTensor_.GetValue(localExpertId * worldSize_ + dstRankIdx - 1));
+//             if (rowStartIdxInDst >= maxOutputSize_) {
+//                 continue;
+//             }
+
+//             __gm__ uint8_t* rankMaskBasePtr = reinterpret_cast<__gm__ uint8_t*>(
+//                 params_.peermemInfo.maskRecvPtr +
+//                 static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
+//                 static_cast<uint64_t>(dstRankIdx) * maskSlotSize_);
+
+//             uint64_t totalSendToCurExp = 0;
+//             int32_t accumulatedRowSrcOffset = 0;
+
+//             for (uint32_t roundIdx = 0; roundIdx < dispatchTotalRounds_; ++roundIdx) {
+//                 uint64_t roundStart = static_cast<uint64_t>(roundIdx) *
+//                     static_cast<uint64_t>(dispatchRoundSendTotalNum_);
+//                 uint32_t roundLen = (roundIdx + 1 < dispatchTotalRounds_) ?
+//                     dispatchRoundSendTotalNum_ :
+//                     static_cast<uint32_t>(sendTotalNum_ - roundStart);
+//                 uint32_t topkIndexTensorElemCount = Ops::Base::CeilAlign(
+//                     static_cast<int64_t>(roundLen * sizeof(int32_t)),
+//                     static_cast<int64_t>(ALIGN_32)) / sizeof(int32_t);
+
+//                 // 逐轮加载本轮 mask 位（从完整 mask 的 roundStart/8 偏移处读取）
+//                 uint32_t curRoundMaskBytes = (roundLen == dispatchRoundSendTotalNum_) ?
+//                     dispatchRoundMaskAlignSize_ :
+//                     static_cast<uint32_t>(Ops::Base::CeilAlign(
+//                         static_cast<int64_t>(Ops::Base::CeilDiv(roundLen, 8U)), static_cast<int64_t>(ALIGN_32)));
+//                 uint64_t roundMaskByteOffset = static_cast<uint64_t>(roundStart) / 8U;
+//                 GlobalTensor<uint8_t> roundMaskSrc;
+//                 roundMaskSrc.SetGlobalBuffer(rankMaskBasePtr + roundMaskByteOffset);
+//                 SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
+//                 DataCopy(gatherMaskTensor_, roundMaskSrc, curRoundMaskBytes);
+//                 SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
+
+//                 CreateVecIndex(topkIndexTensor_, static_cast<int32_t>(roundStart),
+//                     topkIndexTensorElemCount);
+//                 AscendC::PipeBarrier<PIPE_V>();
+
+//                 uint64_t roundTokenCnt = 0;
+//                 LocalTensor<uint32_t> rankMaskSlice = gatherMaskInt32Tensor_[0];
+//                 GatherMask(validTopkIndexTensor_, topkIndexTensor_,
+//                     rankMaskSlice, true, roundLen, {1, 1, 0, 0}, roundTokenCnt);
+//                 totalSendToCurExp += roundTokenCnt;
+
+//                 if (roundTokenCnt == 0) {
+//                     continue;
+//                 }
+
+//                 int32_t roundCopyCnt = static_cast<int32_t>(roundTokenCnt);
+//                 if (rowStartIdxInDst + accumulatedRowSrcOffset + roundCopyCnt > maxOutputSize_) {
+//                     roundCopyCnt = maxOutputSize_ - rowStartIdxInDst - accumulatedRowSrcOffset;
+//                 }
+//                 if (roundCopyCnt <= 0) {
+//                     accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
+//                     continue;
+//                 }
+
+//                 for (int32_t chunkSrcIdx = 0; chunkSrcIdx < roundCopyCnt;
+//                     chunkSrcIdx += MAX_TRIPLE_ROWS_PER_CHUNK) {
+//                     int32_t chunkRows = roundCopyCnt - chunkSrcIdx;
+//                     if (chunkRows > MAX_TRIPLE_ROWS_PER_CHUNK) {
+//                         chunkRows = MAX_TRIPLE_ROWS_PER_CHUNK;
+//                     }
+//                     int32_t rowDstOffsetInCore = rowStartIdxInDst + accumulatedRowSrcOffset + chunkSrcIdx;
+//                     uint32_t tripleTensorAddr = ubBufferUsedAddr_;
+//                     uint32_t tripleTensorSize = chunkRows * ALIGN_32;
+//                     tripleTensor_ = LocalTensor<int32_t>(TPosition::VECCALC, tripleTensorAddr,
+//                         tripleTensorSize / sizeof(int32_t));
+//                     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
+//                     CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, chunkSrcIdx, chunkRows);
+//                     SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+//                     int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
+//                     int32_t rowEndLocal = rowStartLocal + chunkRows;
+//                     int32_t waveLo = rowStartLocal / L1_TILE_M_I32;
+//                     int32_t waveHi = (rowEndLocal - 1) / L1_TILE_M_I32;
+//                     __gm__ int32_t* flagBase = gmmAddrInfo.dispatchToGmm1Flag;
+//                     for (int32_t w = waveLo; w <= waveHi; ++w) {
+//                         int32_t waveStartLocal = w * L1_TILE_M_I32;
+//                         int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
+//                         int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
+//                         int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
+//                         AtomicAdd(flagBase + w, int32_t(hi - lo));
+//                     }
+//                 }
+//                 accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
+//             }
+//         }
+//     }
+// }
+
 // =====================================================================================================
 // UpdateGroupParams：更新当前expertIdx的problemShape，偏移掉本卡前侧专家收到的cnt数
 // ----------------------------------------------------------------------------------------------------
