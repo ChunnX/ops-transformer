@@ -1,7 +1,7 @@
 {
   "_comment": "SMLA pytest/NPU 验证环境配置。未知项填 null，运行 probe_smla_test_env.sh 可自动探测并回写。",
   "_version": "1.0",
-  "_updated": "2026-07-20",
+  "_updated": "2026-07-23",
   "conda": {
     "env_name": "hey311",
     "activate_cmd": "conda activate hey311",
@@ -31,7 +31,7 @@
     "ops_transformer_root": "/data/hey/git/ops-transformer",
     "smla_pytest_dir": "/data/hey/git/ops-transformer/attention/sparse_flash_mla/tests/pytest",
     "torch_extension_dir": "/data/hey/git/ops-transformer/torch_extension",
-    "source_branch_or_topic": "dspark-ori-sparse-swa-a2a3"
+    "source_branch_or_topic": "add_smla_dspark"
   },
   "build": {
     "operator_built": false,
@@ -53,7 +53,7 @@
   "feature_under_test": {
     "name": "DSpark ori-sparse SWA",
     "platform": "A2/A3 arch22",
-    "indices_semantic": "physical_slot",
+    "indices_semantic": "logical_index",
     "layout_q": "TND",
     "layout_kv": "PA_BBND",
     "requires_ori_sparse_indices": true,

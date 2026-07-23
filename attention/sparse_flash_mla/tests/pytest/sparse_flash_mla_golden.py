@@ -980,7 +980,8 @@ def gen_data(params, template_mode=None):
 
     B = int(B)
     S1 = int(S1)
-    S2 = int(S2)
+    if S2 is not None:
+        S2 = int(S2)
     N1 = int(N1)
     N2 = int(N2)
     D = int(D)

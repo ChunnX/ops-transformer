@@ -206,11 +206,16 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>oriTopkLengthOptional（aclTensor*）</td>
       <td>输入</td>
-      <td>预留输入，当前版本不支持传入非空Tensor。</td>
-      <td>必须传入nullptr或空Tensor；传入非空Tensor会返回参数错误。</td>
+      <td>表示每行query对应的ori_sparse_indices实际有效长度。</td>
+      <td>SWA ori sparse场景（oriTopk&gt;0）可选；shape须与ori_sparse_indices去掉最后一维后一致。连续SWA须传入nullptr或空Tensor。</td>
       <td>INT32</td>
       <td>ND</td>
-      <td>-</td>
+      <td>
+        <ul>
+          <li>layoutQ为BSND时：(B, S1, N2)</li>
+          <li>layoutQ为TND时：(T1, N2)</li>
+        </ul>
+      </td>
       <td>√</td>
     </tr>
     <tr>
@@ -296,8 +301,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
     <tr>
       <td>oriTopk（int64_t）</td>
       <td>输入</td>
-      <td>从oriKv中筛选的稀疏token个数。</td>
-      <td>当前暂不支持传入非0值，仅支持0。</td>
+      <td>ori_sparse_indices最后一维K_ori。</td>
+      <td>连续SWA传0；SWA ori sparse（DSpark draft attention等）传K_ori（&gt;0）。与cmpKv同时启用时A2/A3暂不支持oriTopk&gt;0。</td>
       <td>-</td>
       <td>-</td>
       <td>-</td>
@@ -436,8 +441,8 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
   </tbody>
   </table>
 
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numHeadsQ/numHeadsKv支持1、2、4、8、16、32、64、128，oriMaskMode仅支持4，cmpMaskMode仅支持3，oriWinLeft仅支持127，oriWinRight仅支持0。
-  - <term>Ascend 950PR/Ascend 950DT</term>：numHeadsQ/numHeadsKv不支持1，oriMaskMode仅支持4，cmpMaskMode仅支持3，oriWinLeft仅支持127，oriWinRight仅支持0。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：numHeadsQ/numHeadsKv支持1、2、4、8、16、32、64、128，oriMaskMode仅支持4，cmpMaskMode仅支持3；连续SWA时oriWinLeft仅支持127、oriWinRight仅支持0；SWA ori sparse（oriTopk&gt;0）时oriWinLeft/oriWinRight须为非负数。
+  - <term>Ascend 950PR/Ascend 950DT</term>：numHeadsQ/numHeadsKv不支持1，oriMaskMode仅支持4，cmpMaskMode仅支持3；连续SWA时oriWinLeft仅支持127、oriWinRight仅支持0。
 
 - **返回值**
 
@@ -485,7 +490,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
         <td>oriMaskMode不为4，或cmpMaskMode不为3。</td>
       </tr>
       <tr>
-        <td>oriWinLeft不为127，或oriWinRight不为0。</td>
+        <td>oriWinLeft不为127，或oriWinRight不为0（连续SWA且oriTopk为0时）。</td>
       </tr>
       <tr>
         <td>SWA场景cmpRatio不为1，或cmpRatio与CSA、HCA场景不匹配。</td>
@@ -494,7 +499,7 @@ aclnnStatus aclnnSparseFlashMlaMetadata(
         <td>cmpTopk不为0、512或1024。</td>
       </tr>
       <tr>
-        <td>oriTopkLengthOptional或cmpTopkLengthOptional传入非空Tensor。</td>
+        <td>cmpTopkLengthOptional传入非空Tensor；或连续SWA下oriTopkLengthOptional传入非空Tensor。</td>
       </tr>
       <tr>
         <td>layoutQOptional、layoutKvOptional、cuSeqlens、seqused或metaData的shape、数据类型、必选关系不在支持范围内。</td>

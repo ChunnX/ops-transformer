@@ -109,7 +109,7 @@
     <tr>
       <td>ori_topk_length</td>
       <td>可选输入</td>
-      <td>预留输入，当前版本不支持传入非空Tensor。</td>
+      <td>表示每行query对应的ori_sparse_indices实际有效长度。SWA ori sparse场景可选；未传时由indices中-1推导。</td>
       <td>INT32</td>
       <td>ND</td>
     </tr>
@@ -151,7 +151,7 @@
     <tr>
       <td>ori_topk</td>
       <td>可选属性</td>
-      <td>预留参数，表示从`ori_kv`中筛选出的关键稀疏token个数；当前仅支持0。</td>
+      <td>表示ori_sparse_indices最后一维K_ori；连续SWA传0，SWA ori sparse传K_ori（&gt;0）。</td>
       <td>INT</td>
       <td>-</td>
     </tr>
@@ -242,10 +242,11 @@
 - 通用规格约束如下：
   - `num_heads_kv`仅支持1，`head_dim`仅支持512。
   - `cmp_ratio`表示`cmp_kv`相对于压缩前KV长度的压缩倍率；仅传入`ori_kv`时不参与压缩KV计算。CSA场景传4，HCA场景传128。
-  - `ori_mask_mode`仅支持4，`cmp_mask_mode`仅支持3，`ori_win_left`仅支持127，`ori_win_right`仅支持0。
+  - `ori_mask_mode`连续SWA仅支持4；SWA ori sparse（`ori_topk`&gt;0）亦须为4。`cmp_mask_mode`仅支持3。
+  - 连续SWA场景（`ori_topk`=0）下`ori_win_left`仅支持127、`ori_win_right`仅支持0；SWA ori sparse场景下二者须为非负数。
   - `cmp_topk`在CSA场景支持512或1024，SWA、HCA场景传0。
   - `layout_q`和`layout_kv`组合仅支持"BSND"/"BSND"、"TND"/"TND"、"BSND"/"PA_BBND"、"TND"/"PA_BBND"；非PA_BBND场景下`layout_q`和`layout_kv`必须一致。
-  - `ori_topk_length`和`cmp_topk_length`为预留输入，全平台均不支持传入非空Tensor。
+  - `ori_topk_length`在SWA ori sparse场景可选；`cmp_topk_length`仍为预留输入，全平台均不支持传入非空Tensor。
 - 产品型号约束如下：
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：`num_heads_q`/`num_heads_kv`支持1、2、4、8、16、32、64、128。
   - <term>Ascend 950PR/Ascend 950DT</term>：`num_heads_q`/`num_heads_kv`支持2、4、8、16、32、64、128，不支持1。
