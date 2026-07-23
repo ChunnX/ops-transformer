@@ -92,6 +92,13 @@ def infer_geometry(query, key, sparse_indices, layout_q, cu_seqlens_q, cu_seqlen
     return B, S1, N1, N2, D, q_lengths, kv_lengths
 
 
+def _lengths_to_prefix(lengths):
+    values = [0]
+    for length in lengths:
+        values.append(values[-1] + int(length))
+    return torch.tensor(values, dtype=torch.int32)
+
+
 def _auto_block_table(B, S2, block_size, pattern="sequential", seed=0):
     num_blocks_per_batch = math.ceil(S2 / block_size)
     block_table = torch.empty((B, num_blocks_per_batch), dtype=torch.int32)
@@ -168,13 +175,16 @@ def cpu_quant_block_sparse_attn(query, key, value, q_descale, k_descale, v_desca
             block_table_cpu = _auto_block_table(B, S2, sparse_kv_block_size, "sequential", 0)
         dense_key = _pa_to_dense(key_cpu, block_table_cpu, B, S2, (1, 0, 2), sparse_kv_block_size)
         dense_value = _pa_to_dense(value_cpu, block_table_cpu, B, S2, (1, 0, 2), sparse_kv_block_size)
-        cu_seqlens_q_inp = None
-        cu_seqlens_kv_inp = None
     else:
         dense_key = key_cpu
         dense_value = value_cpu
-        cu_seqlens_q_inp = cu_seqlens_q_cpu
-        cu_seqlens_kv_inp = cu_seqlens_kv_cpu
+
+    if cu_seqlens_q_cpu is None and layout_q != "BSND":
+        cu_seqlens_q_cpu = _lengths_to_prefix(q_lengths)
+    if cu_seqlens_kv_cpu is None and layout_q != "BSND":
+        cu_seqlens_kv_cpu = _lengths_to_prefix(kv_lengths)
+    cu_seqlens_q_inp = cu_seqlens_q_cpu
+    cu_seqlens_kv_inp = cu_seqlens_kv_cpu
 
     if k_descale_cpu.dim() == 3 and key_cpu.dim() == 4:
         k_scale = _pa_to_dense(k_descale_cpu, block_table_cpu, B, S2, (1, 0), sparse_kv_block_size)
