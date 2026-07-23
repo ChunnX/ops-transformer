@@ -824,8 +824,7 @@ ge::graphStatus SFATilingCheck::CheckRopeExistence()
 {
     OP_CHECK_IF((opParamInfo_.queryRope.tensor != nullptr || opParamInfo_.keyRope.tensor != nullptr) &&
                     *opParamInfo_.attentionMode == 0,
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(
-                    opName_, "queryRope and keyRope",
+                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(opName_, "query_rope and key_rope",
                     Ops::Base::ToString(opParamInfo_.queryRope.tensor->GetStorageShape()) + " and " +
                         Ops::Base::ToString(opParamInfo_.keyRope.tensor->GetStorageShape()),
                     "In MHA/GQA situation(attentionMode=0), queryRope and keyRope should be empty tensor"),
@@ -836,18 +835,18 @@ ge::graphStatus SFATilingCheck::CheckRopeExistence()
                                                       "attentionMode only support 2"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((opParamInfo_.queryRope.tensor != nullptr && opParamInfo_.keyRope.tensor == nullptr),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "queryRope", Ops::Base::ToString(opParamInfo_.queryRope.tensor->GetStorageShape()),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query_rope",
+                    Ops::Base::ToString(opParamInfo_.queryRope.tensor->GetStorageShape()),
                     "keyRope is an empty tensor, queryRope must also be an empty tensor"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF((opParamInfo_.queryRope.tensor == nullptr && opParamInfo_.keyRope.tensor != nullptr),
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
-                    opName_, "keyRope", Ops::Base::ToString(opParamInfo_.keyRope.tensor->GetStorageShape()),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "key_rope",
+                Ops::Base::ToString(opParamInfo_.keyRope.tensor->GetStorageShape()),
                     "queryRope is an empty tensor, keyRope must also be an empty tensor"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.keyRope.desc == nullptr || opParamInfo_.queryRope.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "keyRope and queryRope",
-                    "In Mla situation, desc of keyRope and queryRope should not be null"),
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query_rope and key_rope",
+                    "In Mla situation, desc of queryRope and key_rope should not be null"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -1452,7 +1451,7 @@ ge::graphStatus SFATilingCheck::CheckFeatureMlaNoQuantShape() const
                 return ge::GRAPH_FAILED);
 
     OP_CHECK_IF(ropeHeadDim_ != 64,
-                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "queryRope",
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(opName_, "query_rope",
                     Ops::Base::ToString(opParamInfo_.queryRope.tensor->GetStorageShape()).c_str(),
                     "rope_head_dim should be 64, but got " + std::to_string(ropeHeadDim_)),
                 return ge::GRAPH_FAILED);
@@ -1668,7 +1667,7 @@ ge::graphStatus SFAInfoParser::CheckTensorShapes() const
                     "Shape of tensor softmaxSum is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.queryRope.tensor == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "queryRope",
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query_rope",
                     "Shape of tensor queryRope is nullptr"),
                 return ge::GRAPH_FAILED);
 
@@ -1706,7 +1705,7 @@ ge::graphStatus SFAInfoParser::CheckTensorDescriptions() const
                     "Desc of tensor softmaxSum is nullptr"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(opParamInfo_.queryRope.desc == nullptr,
-                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "queryRope",
+                OP_LOGE_FOR_INVALID_ARGUMENT_WITH_REASON(opName_, "query_rope",
                     "Desc of tensor queryRope is nullptr"),
                 return ge::GRAPH_FAILED);
 
