@@ -61,6 +61,7 @@ const std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> MhcPostBackward
     // 根据输入x的shape分配输出tensor
     auto gradX = executor->AllocTensor(x->GetViewShape(), x->GetDataType(), x->GetViewFormat());
     aclTensor* gradHres = nullptr;
+    const aclTensor* hResInput = hRes;
     if (hRes != nullptr) {
         gradHres = executor->AllocTensor(hRes->GetViewShape(), hRes->GetDataType(), hRes->GetViewFormat());
     } else {
@@ -68,11 +69,14 @@ const std::tuple<aclTensor*, aclTensor*, aclTensor*, aclTensor*> MhcPostBackward
         auto gradHresShape = x->GetViewShape();
         gradHresShape.SetDim(gradHresShape.GetDimNum() - 1, gradHresShape.GetDim(gradHresShape.GetDimNum() - 2));
         gradHres = executor->AllocTensor(gradHresShape, op::DataType::DT_FLOAT, x->GetViewFormat());
+        // A5 no-hres: create empty tensor for operator layer
+        op::Shape emptyShape({0});
+        hResInput = executor->AllocTensor(emptyShape, op::DataType::DT_FLOAT, x->GetViewFormat());
     }
     auto gradHout = executor->AllocTensor(hOut->GetViewShape(), hOut->GetDataType(), hOut->GetViewFormat());
     auto gradHpost = executor->AllocTensor(hPost->GetViewShape(), hPost->GetDataType(), hPost->GetViewFormat());
 
-    return MhcPostBackwardAICore(gradOutput, x, hRes, hOut, hPost, gradX, gradHres, gradHout, gradHpost, executor);
+    return MhcPostBackwardAICore(gradOutput, x, hResInput, hOut, hPost, gradX, gradHres, gradHout, gradHpost, executor);
 }
 
 } // namespace l0op
