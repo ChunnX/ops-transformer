@@ -155,11 +155,13 @@ def customize_inputs(query, key, value, q_descale, k_descale, v_descale, p_scale
     if layout_q == "BSND":
         B, S1, N1 = int(query.shape[0]), int(query.shape[1]), int(query.shape[2])
     elif layout_q == "NTD":
-        N1, S1 = int(query.shape[0]), int(query.shape[1])
+        N1 = int(query.shape[0])
         B = int(sparse_indices.shape[0])
+        S1 = max_seqlen_q if max_seqlen_q > 0 else int(query.shape[1]) // B
     else:
-        S1, N1 = int(query.shape[0]), int(query.shape[1])
+        N1 = int(query.shape[1])
         B = int(sparse_indices.shape[0])
+        S1 = max_seqlen_q if max_seqlen_q > 0 else int(query.shape[0]) // B
 
     N2 = int(v_descale.shape[0])
     block_size = int(key.shape[2]) if key.dim() == 4 else sparse_kv_block_size
