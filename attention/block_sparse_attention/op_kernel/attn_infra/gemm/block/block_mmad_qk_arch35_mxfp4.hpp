@@ -73,7 +73,7 @@ struct BlockMmadTla<
     TileMmad_>
 {
 public:
-    using DispatchPolicy = MmadAtlasA5BsaQK<transposedMm1_>;
+    using DispatchPolicy = MmadAtlasA5BsaQK<true>;
     using ArchTag = typename DispatchPolicy::ArchTag;
     using TileCopy = TileCopy_;
     using ElementA = ElementA_;
