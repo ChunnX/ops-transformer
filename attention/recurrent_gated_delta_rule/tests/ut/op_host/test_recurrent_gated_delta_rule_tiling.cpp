@@ -172,25 +172,24 @@ TEST_F(RecurrentGatedDeltaRuleTilingTest, Test1)
     gert::StorageShape stateOutShape = {{sBlockNum, nv, dv, dk}, {sBlockNum, nv, dv, dk}};
 
     gert::TilingContextPara tilingContextPara("RecurrentGatedDeltaRule",
-        {
-            {queryShape, ge::DT_BF16, ge::FORMAT_ND},
-            {keyShape, ge::DT_BF16, ge::FORMAT_ND},
-            {valueShape, ge::DT_BF16, ge::FORMAT_ND},
-            {betaShape, ge::DT_BF16, ge::FORMAT_ND},
-            {stateShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
-            {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {outShape, ge::DT_BF16, ge::FORMAT_ND},
-            {stateOutShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-        },
-        &compileinfo
-    );
+                                              {
+                                                  {queryShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {keyShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {valueShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {betaShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {stateShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {outShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {stateOutShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+                                              },
+                                              &compileinfo);
 
     int64_t expectTilingKey = 1UL;
 
@@ -225,26 +224,26 @@ TEST_F(RecurrentGatedDeltaRuleTilingTest, WithGkInput)
     gert::StorageShape finalStateShape = {{sBlockNum, nv, dv, dk}, {sBlockNum, nv, dv, dk}};
 
     gert::TilingContextPara tilingContextPara("RecurrentGatedDeltaRule",
-        {
-            {queryShape, ge::DT_BF16, ge::FORMAT_ND},
-            {keyShape, ge::DT_BF16, ge::FORMAT_ND},
-            {valueShape, ge::DT_BF16, ge::FORMAT_ND},
-            {betaShape, ge::DT_BF16, ge::FORMAT_ND},
-            {stateShape, ge::DT_BF16, ge::FORMAT_ND},
-            {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
-            {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {gkShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {emptyShape, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {outShape, ge::DT_BF16, ge::FORMAT_ND},
-            {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
-        },
-        {
-            {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-        },
-        &compileinfo);
+                                              {
+                                                  {queryShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {keyShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {valueShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {betaShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {stateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {gkShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {emptyShape, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {outShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+                                              },
+                                              &compileinfo);
 
     TilingInfo tilingInfo;
     EXPECT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
@@ -282,26 +281,26 @@ TEST_F(RecurrentGatedDeltaRuleTilingTest, WithNumAcceptedTokens)
     gert::StorageShape finalStateShape = {{sBlockNum, nv, dv, dk}, {sBlockNum, nv, dv, dk}};
 
     gert::TilingContextPara tilingContextPara("RecurrentGatedDeltaRule",
-        {
-            {queryShape, ge::DT_BF16, ge::FORMAT_ND},
-            {keyShape, ge::DT_BF16, ge::FORMAT_ND},
-            {valueShape, ge::DT_BF16, ge::FORMAT_ND},
-            {betaShape, ge::DT_BF16, ge::FORMAT_ND},
-            {stateShape, ge::DT_BF16, ge::FORMAT_ND},
-            {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
-            {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {emptyShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {accTokensShape, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {outShape, ge::DT_BF16, ge::FORMAT_ND},
-            {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
-        },
-        {
-            {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-        },
-        &compileinfo);
+                                              {
+                                                  {queryShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {keyShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {valueShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {betaShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {stateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {emptyShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {accTokensShape, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {outShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+                                              },
+                                              &compileinfo);
 
     TilingInfo tilingInfo;
     EXPECT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
@@ -339,26 +338,26 @@ TEST_F(RecurrentGatedDeltaRuleTilingTest, WithGkAndNumAcceptedTokens)
     gert::StorageShape finalStateShape = {{sBlockNum, nv, dv, dk}, {sBlockNum, nv, dv, dk}};
 
     gert::TilingContextPara tilingContextPara("RecurrentGatedDeltaRule",
-        {
-            {queryShape, ge::DT_BF16, ge::FORMAT_ND},
-            {keyShape, ge::DT_BF16, ge::FORMAT_ND},
-            {valueShape, ge::DT_BF16, ge::FORMAT_ND},
-            {betaShape, ge::DT_BF16, ge::FORMAT_ND},
-            {stateShape, ge::DT_BF16, ge::FORMAT_ND},
-            {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
-            {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {gkShape, ge::DT_FLOAT, ge::FORMAT_ND},
-            {accTokensShape, ge::DT_INT32, ge::FORMAT_ND},
-        },
-        {
-            {outShape, ge::DT_BF16, ge::FORMAT_ND},
-            {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
-        },
-        {
-            {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-        },
-        &compileinfo);
+                                              {
+                                                  {queryShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {keyShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {valueShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {betaShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {stateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {gkShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                                  {accTokensShape, ge::DT_INT32, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {outShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+                                              },
+                                              &compileinfo);
 
     TilingInfo tilingInfo;
     EXPECT_TRUE(ExecuteTiling(tilingContextPara, tilingInfo));
@@ -394,24 +393,24 @@ TEST_F(RecurrentGatedDeltaRuleTilingTest, InvalidFormatNZ)
     gert::StorageShape finalStateShape = {{sBlockNum, nv, dv, dk}, {sBlockNum, nv, dv, dk}};
 
     gert::TilingContextPara tilingContextPara("RecurrentGatedDeltaRule",
-        {
-            {queryShape, ge::DT_BF16, ge::FORMAT_FRACTAL_NZ},
-            {keyShape, ge::DT_BF16, ge::FORMAT_ND},
-            {valueShape, ge::DT_BF16, ge::FORMAT_ND},
-            {betaShape, ge::DT_BF16, ge::FORMAT_ND},
-            {stateShape, ge::DT_BF16, ge::FORMAT_ND},
-            {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
-            {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {outShape, ge::DT_BF16, ge::FORMAT_ND},
-            {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
-        },
-        {
-            {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-        },
-        &compileinfo);
+                                              {
+                                                  {queryShape, ge::DT_BF16, ge::FORMAT_FRACTAL_NZ},
+                                                  {keyShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {valueShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {betaShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {stateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {outShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+                                              },
+                                              &compileinfo);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -440,24 +439,24 @@ TEST_F(RecurrentGatedDeltaRuleTilingTest, InvalidDtype)
     gert::StorageShape finalStateShape = {{sBlockNum, nv, dv, dk}, {sBlockNum, nv, dv, dk}};
 
     gert::TilingContextPara tilingContextPara("RecurrentGatedDeltaRule",
-        {
-            {queryShape, ge::DT_INT8, ge::FORMAT_ND},
-            {keyShape, ge::DT_BF16, ge::FORMAT_ND},
-            {valueShape, ge::DT_BF16, ge::FORMAT_ND},
-            {betaShape, ge::DT_BF16, ge::FORMAT_ND},
-            {stateShape, ge::DT_BF16, ge::FORMAT_ND},
-            {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
-            {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {outShape, ge::DT_BF16, ge::FORMAT_ND},
-            {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
-        },
-        {
-            {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-        },
-        &compileinfo);
+                                              {
+                                                  {queryShape, ge::DT_INT8, ge::FORMAT_ND},
+                                                  {keyShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {valueShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {betaShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {stateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {outShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+                                              },
+                                              &compileinfo);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
@@ -486,24 +485,24 @@ TEST_F(RecurrentGatedDeltaRuleTilingTest, InvalidDim)
     gert::StorageShape finalStateShape = {{sBlockNum, nv, dv, dk}, {sBlockNum, nv, dv, dk}};
 
     gert::TilingContextPara tilingContextPara("RecurrentGatedDeltaRule",
-        {
-            {queryShape, ge::DT_BF16, ge::FORMAT_ND},
-            {keyShape, ge::DT_BF16, ge::FORMAT_ND},
-            {valueShape, ge::DT_BF16, ge::FORMAT_ND},
-            {betaShape, ge::DT_BF16, ge::FORMAT_ND},
-            {stateShape, ge::DT_BF16, ge::FORMAT_ND},
-            {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
-            {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
-            {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
-        },
-        {
-            {outShape, ge::DT_BF16, ge::FORMAT_ND},
-            {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
-        },
-        {
-            {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
-        },
-        &compileinfo);
+                                              {
+                                                  {queryShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {keyShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {valueShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {betaShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {stateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {seqLengthsShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {ssmStateIndicesShape, ge::DT_INT32, ge::FORMAT_ND},
+                                                  {gShape, ge::DT_FLOAT, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {outShape, ge::DT_BF16, ge::FORMAT_ND},
+                                                  {finalStateShape, ge::DT_BF16, ge::FORMAT_ND},
+                                              },
+                                              {
+                                                  {"sacle_value", Ops::Transformer::AnyValue::CreateFrom<float>(1.0)},
+                                              },
+                                              &compileinfo);
 
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED);
 }
