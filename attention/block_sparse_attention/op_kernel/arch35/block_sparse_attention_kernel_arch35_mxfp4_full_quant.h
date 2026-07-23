@@ -76,8 +76,11 @@ public:
     static constexpr uint32_t PRELOAD_TASK_CACHE_SIZE = PV_RE_DELAY_N + 1;
     static constexpr uint32_t TILE_GROUP_N = 16;
 
-    static constexpr uint32_t PRE_LAUNCH = 2;
-    static constexpr uint32_t MAX_CROSS_CORE_BUF_STAGES = PRE_LAUNCH + 1;
+    static constexpr uint32_t L1_P_BUF_CNT = 20;
+    static constexpr uint32_t UB_S_BUF_CNT = 2;
+    static constexpr uint32_t L1_PSCALE_CNT = 20;
+    static constexpr uint32_t L1_LOCAL_GLOBAL_MAX_CNT = 4;
+    static constexpr uint32_t UB_PEER_GLOBAL_MAX_CNT = 4;
     static constexpr uint32_t UB_S_OTMP_BUF_STAGES = 2;
 
     // Methods
@@ -136,9 +139,10 @@ public:
         AscendC::GlobalTensor<ElementSparseCount> gSparseCount;
         gSparseCount.SetGlobalBuffer((__gm__ ElementSparseCount *)(params.workSpace + sparseIdxSize_));
         // cross core data move dst buffers
-        AscendC::LocalTensor<ElementP> l1PTensor[MAX_CROSS_CORE_BUF_STAGES];
-        AscendC::LocalTensor<ElementS> ubSTensor[UB_S_OTMP_BUF_STAGES];
+        AscendC::LocalTensor<ElementP> l1PTensor[L1_P_BUF_CNT];
+        AscendC::LocalTensor<ElementS> ubSTensor[UB_S_BUF_CNT];
         AscendC::LocalTensor<ElementOTmp> ubOTmpTensor[UB_S_OTMP_BUF_STAGES];
+
         InitCrossCoreDstBuf(l1PTensor, ubSTensor, ubOTmpTensor);
         // core idx
         uint32_t coreIdx = AscendC::GetBlockIdx();
@@ -450,9 +454,10 @@ public:
 
     __aicore__ inline
     void InitCrossCoreDstBuf(
-        AscendC::LocalTensor<ElementP> (&l1PTensor)[MAX_CROSS_CORE_BUF_STAGES],
-        AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_OTMP_BUF_STAGES],
+        AscendC::LocalTensor<ElementP> (&l1PTensor)[L1_P_BUF_CNT],
+        AscendC::LocalTensor<ElementS> (&ubSTensor)[UB_S_BUF_CNT],
         AscendC::LocalTensor<ElementOTmp> (&ubOTmpTensor)[UB_S_OTMP_BUF_STAGES])
+
     {
         ubOTmpTensor[0] = resource.ubBuf.template GetBufferByByte<ElementOTmp>(0);
     }
