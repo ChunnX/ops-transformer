@@ -34,6 +34,7 @@
 #include "../../common/op_kernel/moe_distribute_base.h"
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif
+
 #include "moe_ep_combine_base.h"
 #include "moe_ep_combine_tiling.h"
 
@@ -72,18 +73,20 @@ public:
     __aicore__ inline void Process();
 
 private:
-    enum TimingSlot : int32_t {
-        TIMING_SEND_TOKEN = 0,
-        TIMING_SET_STATUS = 1,
-        TIMING_TOKEN_WRITE_NBI = 2,
-        TIMING_STATUS_DRAIN_BEFORE = 3,
-        TIMING_STATUS_WRITE_NBI = 4,
-        TIMING_STATUS_DRAIN_AFTER = 5,
-        TIMING_SLOT_COUNT = 6,
+    // Per-core timing record written to the beginning of combinedX:
+    // seven exclusive accumulated phase cycles, token count, then magic.
+    enum TimingField : int32_t {
+        TOKEN_PREPARE_AND_COPY = 0,
+        TOKEN_WRITE_NBI = 1,
+        TOKEN_TO_STATUS_GAP = 2,
+        STATUS_PREPARE_AND_COPY = 3,
+        STATUS_DRAIN_BEFORE = 4,
+        STATUS_WRITE_NBI = 5,
+        STATUS_DRAIN_AFTER = 6,
+        TIMING_PHASE_COUNT = 7,
     };
-    static constexpr int32_t TIMING_OUTPUT_SLOT_COUNT = 16;
-    static constexpr int32_t CORE_ASSIGNMENT_SLOT = 6;
-    static constexpr int32_t PROCESSED_TOKEN_COUNT_SLOT = 7;
+    static constexpr int32_t TIMING_RECORD_FIELD_COUNT = 9;
+    static constexpr uint64_t TIMING_MAGIC = 0x4D4F45455054494DULL;
 
     __aicore__ inline void SplitToCore(uint32_t curSendCnt, uint32_t curUseAivNum, uint32_t &startTokenId,
                                        uint32_t &endTokenId, uint32_t &tokenPerAivNum);
@@ -206,11 +209,8 @@ private:
     GM_ADDR maskCalcWorkspaceGM_{nullptr};
     uint32_t aivId_{0};
     GM_ADDR timingOutputAddr_{nullptr};
-    uint64_t timingLastStartCycles_[TIMING_SLOT_COUNT];
-    uint64_t timingTotalCycles_[TIMING_SLOT_COUNT];
-    uint32_t assignedRankBegin_{0};
-    uint32_t assignedRankEnd_{0};
-    uint32_t processedTokenCount_{0};
+    uint64_t timingPhaseCycles_[TIMING_PHASE_COUNT];
+    uint64_t processedTokenCount_{0};
 };
 
 template <TemplateMoeEpCombineTypeClass>
@@ -262,12 +262,9 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Init(
     numRecvPerExpertGm_.SetGlobalBuffer((__gm__ int64_t *)numRecvPerExpert);
     combinedXGm_.SetGlobalBuffer((__gm__ XType *)combinedX);
     timingOutputAddr_ = combinedX;
-    assignedRankBegin_ = 0;
-    assignedRankEnd_ = 0;
     processedTokenCount_ = 0;
-    for (int32_t i = 0; i < TIMING_SLOT_COUNT; i++) {
-        timingLastStartCycles_[i] = 0;
-        timingTotalCycles_[i] = 0;
+    for (int32_t i = 0; i < TIMING_PHASE_COUNT; i++) {
+        timingPhaseCycles_[i] = 0;
     }
 
     // 计算actualA_的大小
@@ -312,6 +309,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendToken(GM_
                                                                              GM_ADDR remoteRankWinAddr,
                                                                              uint32_t tokenIndex, uint32_t dstRankId)
 {
+    uint64_t prepareStartCycle = GetSystemCycle();
     // 处理单个token：
     // 1. 从输入GM读取token数据到UB
     // 2. 将token数据写入目标rank的窗口
@@ -342,11 +340,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendToken(GM_
     DataCopyPad(outTokenGT, xTmpTensor_, hCommuCopyOutParams);
     xQueue_.FreeTensor<XType>(xTmpTensor_);
     PipeBarrier<PIPE_MTE3>(); // 是否需要这个流水
+    timingPhaseCycles_[TOKEN_PREPARE_AND_COPY] += GetSystemCycle() - prepareStartCycle;
     if (dstRankId != rankId_) {
-        uint64_t tokenWriteStartCycle = GetSystemCycle();
-        timingLastStartCycles_[TIMING_TOKEN_WRITE_NBI] = tokenWriteStartCycle;
+        uint64_t writeStartCycle = GetSystemCycle();
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankWinAddr, localWorkspaceAddr, XTypeAlign32Size_);
-        timingTotalCycles_[TIMING_TOKEN_WRITE_NBI] += GetSystemCycle() - tokenWriteStartCycle;
+        timingPhaseCycles_[TOKEN_WRITE_NBI] += GetSystemCycle() - writeStartCycle;
     }
 }
 
@@ -355,6 +353,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStatus(GM_
                                                                              GM_ADDR remoteRankStateAddr,
                                                                              uint32_t tokenIndex, uint32_t dstRankId)
 {
+    uint64_t prepareStartCycle = GetSystemCycle();
     // ============ 将状态写入目标rank的状态区 ============
     // 写入位置: 目标rank状态区 + 当前rank的偏移
     LocalTensor<float> statusTensor = readStateBuf_.Get<float>();
@@ -367,21 +366,19 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SetStatus(GM_
     SyncFunc<AscendC::HardEvent::V_MTE3>();
     DataCopy<float>(outStateTensor, statusTensor, 8UL);
     PipeBarrier<PIPE_MTE3>();
+    timingPhaseCycles_[STATUS_PREPARE_AND_COPY] += GetSystemCycle() - prepareStartCycle;
     if (dstRankId != rankId_) {
         uint64_t drainBeforeStartCycle = GetSystemCycle();
-        timingLastStartCycles_[TIMING_STATUS_DRAIN_BEFORE] = drainBeforeStartCycle;
         hcomm_.Drain(GetCommHandle(dstRankId));
-        timingTotalCycles_[TIMING_STATUS_DRAIN_BEFORE] += GetSystemCycle() - drainBeforeStartCycle;
+        timingPhaseCycles_[STATUS_DRAIN_BEFORE] += GetSystemCycle() - drainBeforeStartCycle;
 
-        uint64_t statusWriteStartCycle = GetSystemCycle();
-        timingLastStartCycles_[TIMING_STATUS_WRITE_NBI] = statusWriteStartCycle;
+        uint64_t writeStartCycle = GetSystemCycle();
         hcomm_.WriteNbi(GetCommHandle(dstRankId), remoteRankStateAddr, localRankStateAddr, UB_ALIGN);
-        timingTotalCycles_[TIMING_STATUS_WRITE_NBI] += GetSystemCycle() - statusWriteStartCycle;
+        timingPhaseCycles_[STATUS_WRITE_NBI] += GetSystemCycle() - writeStartCycle;
 
         uint64_t drainAfterStartCycle = GetSystemCycle();
-        timingLastStartCycles_[TIMING_STATUS_DRAIN_AFTER] = drainAfterStartCycle;
         hcomm_.Drain(GetCommHandle(dstRankId));
-        timingTotalCycles_[TIMING_STATUS_DRAIN_AFTER] += GetSystemCycle() - drainAfterStartCycle;
+        timingPhaseCycles_[STATUS_DRAIN_AFTER] += GetSystemCycle() - drainAfterStartCycle;
     }
 }
 
@@ -390,8 +387,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
 {
     uint32_t startRankId, endRankId, sendRankNum;
     SplitToCore(epWorldSize_, aivNum_, startRankId, endRankId, sendRankNum);
-    assignedRankBegin_ = startRankId;
-    assignedRankEnd_ = endRankId;
     if (startRankId >= endRankId || sendRankNum == 0) {
         return;
     }
@@ -409,20 +404,16 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
             GM_ADDR localRankWorkSpaceAddr = GetLocalWorkspaceDataAddr(src_rank, workspaceStateSize_) + slotOffset;
             GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) + slotOffset;
             processedTokenCount_++;
-            uint64_t sendTokenStartCycle = GetSystemCycle();
-            timingLastStartCycles_[TIMING_SEND_TOKEN] = sendTokenStartCycle;
             SendToken(localRankWorkSpaceAddr, remoteRankWinAddr, tokenIndex, src_rank);
-            timingTotalCycles_[TIMING_SEND_TOKEN] += GetSystemCycle() - sendTokenStartCycle;
+            uint64_t tokenToStatusStartCycle = GetSystemCycle();
             PipeBarrier<PIPE_MTE3>();
             GM_ADDR localRankStateAddr =
                 GetLocalWorkspaceStateAddr(src_rank) + (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
             GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
                                           (src_token_idx * topK_ + src_topK_idx) * stateOffset_;
+            timingPhaseCycles_[TOKEN_TO_STATUS_GAP] += GetSystemCycle() - tokenToStatusStartCycle;
 
-            uint64_t setStatusStartCycle = GetSystemCycle();
-            timingLastStartCycles_[TIMING_SET_STATUS] = setStatusStartCycle;
             SetStatus(localRankStateAddr, remoteRankStateAddr, tokenIndex, src_rank);
-            timingTotalCycles_[TIMING_SET_STATUS] += GetSystemCycle() - setStatusStartCycle;
         }
     }
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
@@ -570,25 +561,24 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::Process()
     PipeBarrier<PIPE_ALL>(); // MaskCheck中包含reset操作，需确保前面操作完成
     BuffInit();
     RecvPhaseReduce();
-    constexpr uint64_t timingBytesPerCore = TIMING_OUTPUT_SLOT_COUNT * 2UL * sizeof(uint64_t);
+
+    uint32_t activeSendCoreCount = epWorldSize_ < aivNum_ ? epWorldSize_ : aivNum_;
+    uint64_t timingBytes =
+        static_cast<uint64_t>(activeSendCoreCount) * TIMING_RECORD_FIELD_COUNT * sizeof(uint64_t);
     uint64_t combinedXBytes = static_cast<uint64_t>(numTokens_) * axisH_ * sizeof(XType);
-    if (combinedXBytes >= static_cast<uint64_t>(aivNum_) * timingBytesPerCore) {
+    if (combinedXBytes >= timingBytes) {
         PipeBarrier<PIPE_ALL>();
         SyncAll<true>();
-        GlobalTensor<uint64_t> timingOutput;
-        timingOutput.SetGlobalBuffer((__gm__ uint64_t *)timingOutputAddr_);
-        uint64_t coreOffset = static_cast<uint64_t>(GetBlockIdx()) * TIMING_OUTPUT_SLOT_COUNT * 2UL;
-        for (int32_t slot = 0; slot < TIMING_OUTPUT_SLOT_COUNT; slot++) {
-            timingOutput.SetValue(coreOffset + slot * 2UL, 0);
-            timingOutput.SetValue(coreOffset + slot * 2UL + 1UL, 0);
+        if (aivId_ < activeSendCoreCount) {
+            GlobalTensor<uint64_t> timingOutput;
+            timingOutput.SetGlobalBuffer((__gm__ uint64_t *)timingOutputAddr_);
+            uint64_t coreOffset = static_cast<uint64_t>(aivId_) * TIMING_RECORD_FIELD_COUNT;
+            for (int32_t phase = 0; phase < TIMING_PHASE_COUNT; phase++) {
+                timingOutput.SetValue(coreOffset + phase, timingPhaseCycles_[phase]);
+            }
+            timingOutput.SetValue(coreOffset + TIMING_PHASE_COUNT, processedTokenCount_);
+            timingOutput.SetValue(coreOffset + TIMING_PHASE_COUNT + 1, TIMING_MAGIC);
         }
-        for (int32_t slot = 0; slot < TIMING_SLOT_COUNT; slot++) {
-            timingOutput.SetValue(coreOffset + slot * 2UL, timingLastStartCycles_[slot]);
-            timingOutput.SetValue(coreOffset + slot * 2UL + 1UL, timingTotalCycles_[slot]);
-        }
-        timingOutput.SetValue(coreOffset + CORE_ASSIGNMENT_SLOT * 2UL, assignedRankBegin_);
-        timingOutput.SetValue(coreOffset + CORE_ASSIGNMENT_SLOT * 2UL + 1UL, assignedRankEnd_);
-        timingOutput.SetValue(coreOffset + PROCESSED_TOKEN_COUNT_SLOT * 2UL, processedTokenCount_);
     }
 }
 

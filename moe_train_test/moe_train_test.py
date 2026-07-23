@@ -236,41 +236,56 @@ dispatch_total_op_type = "MoeEpDispatchTotal"
 combine_op_types = ["MoeEpCombine"]
 continue_op_types = dispatch_op_types + combine_op_types
 profiling_file_time_window_seconds = 30
-COMBINE_TIMING_SLOTS = (
-    "send_token_total",
-    "set_status_total",
-    "token_write_nbi",
-    "status_drain_before",
-    "status_write_nbi",
-    "status_drain_after",
-)
-COMBINE_FLOW_STAGES = (
+COMBINE_TIMING_STAGES = (
     "token_prepare_and_copy",
     "token_write_nbi",
+    "token_to_status_gap",
     "status_prepare_and_copy",
     "status_drain_before",
     "status_write_nbi",
     "status_drain_after",
 )
-COMBINE_CORE_ASSIGNMENT_SLOT = 6
-COMBINE_PROCESSED_TOKEN_COUNT_SLOT = 7
+COMBINE_TIMING_RECORD_FIELDS = 9
+COMBINE_TIMING_MAGIC = 0x4D4F45455054494D
 COMBINE_TIMING_CYCLES_PER_US = 1000  # Ascend 950
+
+
+def combine_timing_bytes(num_send_cores: int) -> int:
+    return num_send_cores * COMBINE_TIMING_RECORD_FIELDS * 8
 
 
 def extract_combine_kernel_timing(
     output_tensor: torch.Tensor,
-    num_cores: int,
+    num_send_cores: int,
     rank: int,
     out_dir: Optional[Path] = None,
-    cycles_per_us: int = COMBINE_TIMING_CYCLES_PER_US,
 ) -> torch.Tensor:
-    """Export accumulated MoeEpCombine timing for every active send core."""
-    timing_slots = 16
-    timing_bytes = num_cores * timing_slots * 2 * 8
+    """Parse exclusive per-core phase totals written by MoeEpCombine."""
+    timing_bytes = combine_timing_bytes(num_send_cores)
     available_bytes = output_tensor.numel() * output_tensor.element_size()
     if available_bytes < timing_bytes:
-        raise ValueError(
-            f"combined_x has {available_bytes} bytes, but kernel timing needs {timing_bytes} bytes"
+        raise RuntimeError(
+            f"combined_x has {available_bytes} bytes, but timing output needs {timing_bytes} bytes"
+        )
+
+    timing = (
+        output_tensor.contiguous()
+        .view(torch.uint8)
+        .reshape(-1)[:timing_bytes]
+        .cpu()
+        .view(torch.uint64)
+        .reshape(num_send_cores, COMBINE_TIMING_RECORD_FIELDS)
+    )
+    invalid_cores = [
+        core
+        for core in range(num_send_cores)
+        if int(timing[core, 8].item()) != COMBINE_TIMING_MAGIC
+    ]
+    if invalid_cores:
+        observed = [hex(int(timing[core, 8].item())) for core in invalid_cores]
+        raise RuntimeError(
+            "invalid MoeEpCombine timing magic for cores "
+            f"{invalid_cores}: {observed}; rebuild the operator and verify timing output capacity"
         )
 
     if out_dir is None:
@@ -278,165 +293,64 @@ def extract_combine_kernel_timing(
     rank_dir = Path(out_dir) / f"rank{rank}"
     rank_dir.mkdir(parents=True, exist_ok=True)
 
-    # The kernel writes uint64_t values. Reinterpreting them as int64 would turn
-    # values with bit 63 set into misleading negative timestamps/durations.
-    timing = (
-        output_tensor.contiguous()
-        .view(torch.uint8)
-        .reshape(-1)[:timing_bytes]
-        .cpu()
-        .view(torch.uint64)
-        .reshape(num_cores, timing_slots, 2)
-    )
+    stage_cycles_by_core = [
+        [int(timing[core, stage].item()) for stage in range(len(COMBINE_TIMING_STAGES))]
+        for core in range(num_send_cores)
+    ]
+    token_counts = [int(timing[core, 7].item()) for core in range(num_send_cores)]
 
-    core_assignment_rows = []
-    for core in range(num_cores):
-        assigned_rank_begin = int(timing[core, COMBINE_CORE_ASSIGNMENT_SLOT, 0].item())
-        assigned_rank_end = int(timing[core, COMBINE_CORE_ASSIGNMENT_SLOT, 1].item())
-        processed_token_count = int(
-            timing[core, COMBINE_PROCESSED_TOKEN_COUNT_SLOT, 0].item()
-        )
-        core_assignment_rows.append(
-            {
-                "core": core,
-                "assigned_rank_begin": assigned_rank_begin,
-                "assigned_rank_end": assigned_rank_end,
-                "processed_token_count": processed_token_count,
-                "has_send_data": int(processed_token_count > 0),
-            }
-        )
-    assignment_path = rank_dir / f"combine_timing_rank_{rank}_core_assignment.csv"
-    with assignment_path.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=core_assignment_rows[0].keys())
-        writer.writeheader()
-        writer.writerows(core_assignment_rows)
-
-    raw_path = rank_dir / f"combine_timing_rank_{rank}_raw.csv"
-    with raw_path.open("w", newline="", encoding="utf-8") as csv_file:
+    stage_path = rank_dir / f"combine_timing_rank_{rank}_per_core_stages.csv"
+    with stage_path.open("w", newline="", encoding="utf-8") as csv_file:
         writer = csv.writer(csv_file)
-        writer.writerow(
-            ["core", "slot", "name", "last_start_cycle", "accumulated_cycles", "accumulated_us"]
-        )
-        for core in range(num_cores):
-            for slot, name in enumerate(COMBINE_TIMING_SLOTS):
-                accumulated_cycles = int(timing[core, slot, 1].item())
+        writer.writerow(["core", "processed_token_count", "stage", "cycles", "duration_us"])
+        for core in range(num_send_cores):
+            for stage, stage_name in enumerate(COMBINE_TIMING_STAGES):
+                cycles = stage_cycles_by_core[core][stage]
                 writer.writerow(
-                    [
-                        core,
-                        slot,
-                        name,
-                        int(timing[core, slot, 0].item()),
-                        accumulated_cycles,
-                        round(accumulated_cycles / cycles_per_us, 3),
-                    ]
+                    [core, token_counts[core], stage_name, cycles, cycles / COMBINE_TIMING_CYCLES_PER_US]
                 )
 
-    duration_path = rank_dir / f"combine_timing_rank_{rank}_duration.csv"
-    with duration_path.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.writer(csv_file)
-        writer.writerow(["core", *COMBINE_TIMING_SLOTS])
-        for core in range(num_cores):
-            writer.writerow(
-                [core]
-                + [
-                    round(int(timing[core, slot, 1].item()) / cycles_per_us, 3)
-                    for slot in range(len(COMBINE_TIMING_SLOTS))
-                ]
-            )
-
-    # Slots 0/1 are inclusive totals and contain their communication sub-slots.
-    # Subtract those nested timings to build mutually exclusive accumulated
-    # components. This is a logical flow breakdown, not a per-token event trace.
-    flow_rows = []
-    flow_durations_by_core = []
-    for core in range(num_cores):
-        send_token_cycles = int(timing[core, 0, 1].item())
-        set_status_cycles = int(timing[core, 1, 1].item())
-        token_write_cycles = int(timing[core, 2, 1].item())
-        drain_before_cycles = int(timing[core, 3, 1].item())
-        status_write_cycles = int(timing[core, 4, 1].item())
-        drain_after_cycles = int(timing[core, 5, 1].item())
-        token_prepare_cycles = max(send_token_cycles - token_write_cycles, 0)
-        status_prepare_cycles = max(
-            set_status_cycles - drain_before_cycles - status_write_cycles - drain_after_cycles,
-            0,
-        )
-        stage_cycles = (
-            token_prepare_cycles,
-            token_write_cycles,
-            status_prepare_cycles,
-            drain_before_cycles,
-            status_write_cycles,
-            drain_after_cycles,
-        )
-        flow_durations_by_core.append(
-            [stage_cycle / cycles_per_us for stage_cycle in stage_cycles]
-        )
-        total_cycles = sum(stage_cycles)
-        logical_offset_cycles = 0
-        for stage_name, stage_cycle in zip(COMBINE_FLOW_STAGES, stage_cycles):
-            flow_rows.append(
-                {
-                    "core": core,
-                    "stage": stage_name,
-                    "logical_start_us": logical_offset_cycles / cycles_per_us,
-                    "duration_us": stage_cycle / cycles_per_us,
-                    "share_percent": 100.0 * stage_cycle / total_cycles if total_cycles else 0.0,
-                }
-            )
-            logical_offset_cycles += stage_cycle
-
-    flow_path = rank_dir / f"combine_timing_rank_{rank}_send_flow.csv"
-    with flow_path.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=flow_rows[0].keys())
-        writer.writeheader()
-        writer.writerows(flow_rows)
-
-    per_core_total_rows = []
-    for core, stage_durations in enumerate(flow_durations_by_core):
-        per_core_total_rows.append(
+    total_rows = []
+    for core, stage_cycles in enumerate(stage_cycles_by_core):
+        stage_us = [cycles / COMBINE_TIMING_CYCLES_PER_US for cycles in stage_cycles]
+        total_rows.append(
             {
                 "core": core,
-                "assigned_rank_begin": core_assignment_rows[core]["assigned_rank_begin"],
-                "assigned_rank_end": core_assignment_rows[core]["assigned_rank_end"],
-                "processed_token_count": core_assignment_rows[core]["processed_token_count"],
-                "send_token_total_us": int(timing[core, 0, 1].item()) / cycles_per_us,
-                "set_status_total_us": int(timing[core, 1, 1].item()) / cycles_per_us,
-                "token_prepare_and_copy_us": stage_durations[0],
-                "token_write_nbi_us": stage_durations[1],
-                "status_prepare_and_copy_us": stage_durations[2],
-                "status_drain_before_us": stage_durations[3],
-                "status_write_nbi_us": stage_durations[4],
-                "status_drain_after_us": stage_durations[5],
-                "communication_total_us": sum(
-                    stage_durations[index] for index in (1, 3, 4, 5)
-                ),
-                "drain_total_us": stage_durations[3] + stage_durations[5],
+                "processed_token_count": token_counts[core],
+                "send_token_total_us": stage_us[0] + stage_us[1],
+                "token_to_status_gap_us": stage_us[2],
+                "set_status_total_us": sum(stage_us[3:]),
+                "communication_total_us": stage_us[1] + sum(stage_us[4:]),
+                "drain_total_us": stage_us[4] + stage_us[6],
+                **{f"{name}_us": stage_us[index] for index, name in enumerate(COMBINE_TIMING_STAGES)},
             }
         )
-    per_core_total_path = rank_dir / f"combine_timing_rank_{rank}_per_core_totals.csv"
-    with per_core_total_path.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=per_core_total_rows[0].keys())
+    total_path = rank_dir / f"combine_timing_rank_{rank}_per_core_totals.csv"
+    with total_path.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=total_rows[0].keys())
         writer.writeheader()
-        writer.writerows(per_core_total_rows)
+        writer.writerows(total_rows)
 
-    flow_summary_rows = []
-    for stage_index, stage_name in enumerate(COMBINE_FLOW_STAGES):
-        stage_durations = [durations[stage_index] for durations in flow_durations_by_core]
-        slowest_core = max(range(num_cores), key=lambda core: stage_durations[core])
-        flow_summary_rows.append(
+    summary_rows = []
+    for stage, stage_name in enumerate(COMBINE_TIMING_STAGES):
+        durations = [
+            stage_cycles_by_core[core][stage] / COMBINE_TIMING_CYCLES_PER_US
+            for core in range(num_send_cores)
+        ]
+        slowest_core = max(range(num_send_cores), key=lambda core: durations[core])
+        summary_rows.append(
             {
                 "stage": stage_name,
-                "avg_us": sum(stage_durations) / len(stage_durations),
-                "max_us": stage_durations[slowest_core],
+                "average_us": sum(durations) / len(durations),
+                "maximum_us": durations[slowest_core],
                 "slowest_core": slowest_core,
             }
         )
-    flow_summary_path = rank_dir / f"combine_timing_rank_{rank}_send_flow_summary.csv"
-    with flow_summary_path.open("w", newline="", encoding="utf-8") as csv_file:
-        writer = csv.DictWriter(csv_file, fieldnames=flow_summary_rows[0].keys())
+    summary_path = rank_dir / f"combine_timing_rank_{rank}_stage_summary.csv"
+    with summary_path.open("w", newline="", encoding="utf-8") as csv_file:
+        writer = csv.DictWriter(csv_file, fieldnames=summary_rows[0].keys())
         writer.writeheader()
-        writer.writerows(flow_summary_rows)
+        writer.writerows(summary_rows)
 
     try:
         import matplotlib
@@ -444,165 +358,93 @@ def extract_combine_kernel_timing(
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
 
-        inclusive_durations_us = [
-            [
-                int(timing[core, slot, 1].item()) / cycles_per_us
-                for core in range(num_cores)
-            ]
-            for slot in range(len(COMBINE_TIMING_SLOTS))
-        ]
-        fig, ax = plt.subplots(figsize=(14, max(5, num_cores * 0.3)))
-        bar_height = 0.12
-        core_positions = list(range(num_cores))
-        core_labels = [
-            f"core_{row['core']} rank[{row['assigned_rank_begin']},{row['assigned_rank_end']}) "
-            f"tokens={row['processed_token_count']}"
-            for row in core_assignment_rows
-        ]
-        for slot, name in enumerate(COMBINE_TIMING_SLOTS):
-            offset = (slot - (len(COMBINE_TIMING_SLOTS) - 1) / 2) * bar_height
-            ax.barh(
-                [core + offset for core in core_positions],
-                inclusive_durations_us[slot],
-                height=bar_height,
-                label=name,
-            )
-        ax.set_yticks(core_positions)
-        ax.set_yticklabels(core_labels, fontsize=7)
-        ax.set_xlabel("accumulated time (us)")
-        ax.set_title(f"MoeEpCombine cumulative kernel timing - rank {rank}")
-        ax.invert_yaxis()
-        ax.legend(fontsize=7)
-        fig.tight_layout()
-        fig.savefig(rank_dir / f"combine_timing_rank_{rank}_bars.png", dpi=150)
-        plt.close(fig)
-
-        fig, (summary_ax, flow_ax) = plt.subplots(
-            2,
-            1,
-            figsize=(16, max(10, num_cores * 0.3 + 5)),
-            gridspec_kw={"height_ratios": [1, max(2, num_cores * 0.08)]},
-        )
-        stage_positions = list(range(len(COMBINE_FLOW_STAGES)))
-        summary_width = 0.35
-        summary_ax.bar(
-            [position - summary_width / 2 for position in stage_positions],
-            [row["avg_us"] for row in flow_summary_rows],
-            width=summary_width,
-            label="average",
-        )
-        summary_ax.bar(
-            [position + summary_width / 2 for position in stage_positions],
-            [row["max_us"] for row in flow_summary_rows],
-            width=summary_width,
-            label="maximum",
-        )
-        summary_ax.set_xticks(stage_positions)
-        summary_ax.set_xticklabels(COMBINE_FLOW_STAGES, rotation=15, ha="right")
-        summary_ax.set_ylabel("duration (us)")
-        summary_ax.set_title(f"MoeEpCombine accumulated send-flow summary - rank {rank}")
-        summary_ax.legend()
-        summary_ax.grid(axis="y", alpha=0.25)
-
+        core_positions = list(range(num_send_cores))
+        core_labels = [f"core_{core} tokens={token_counts[core]}" for core in core_positions]
         colors = plt.cm.Set2.colors
-        left = [0.0] * num_cores
-        for stage_index, stage_name in enumerate(COMBINE_FLOW_STAGES):
-            stage_durations = [durations[stage_index] for durations in flow_durations_by_core]
-            flow_ax.barh(
+        fig, ax = plt.subplots(figsize=(17, max(6, num_send_cores * 0.65)))
+        left = [0.0] * num_send_cores
+        for stage, stage_name in enumerate(COMBINE_TIMING_STAGES):
+            durations = [
+                stage_cycles_by_core[core][stage] / COMBINE_TIMING_CYCLES_PER_US
+                for core in core_positions
+            ]
+            ax.barh(
                 core_positions,
-                stage_durations,
+                durations,
                 left=left,
-                height=0.72,
-                color=colors[stage_index % len(colors)],
+                height=0.7,
+                color=colors[stage % len(colors)],
                 label=stage_name,
             )
-            left = [offset + duration for offset, duration in zip(left, stage_durations)]
-        flow_ax.set_yticks(core_positions)
-        flow_ax.set_yticklabels(core_labels, fontsize=7)
-        flow_ax.set_xlabel("accumulated logical time (us)")
-        flow_ax.set_ylabel("AIV core")
-        flow_ax.set_title(
-            "Per-core accumulated logical breakdown (exclusive components, not wall-clock timeline)"
-        )
-        flow_ax.invert_yaxis()
-        flow_ax.legend(fontsize=7, ncol=3)
-        flow_ax.grid(axis="x", alpha=0.25)
+            left = [offset + duration for offset, duration in zip(left, durations)]
+        ax.set_yticks(core_positions)
+        ax.set_yticklabels(core_labels)
+        ax.set_xlabel("accumulated exclusive stage time (us)")
+        ax.set_title(f"MoeEpCombine per-core accumulated send stages - rank {rank}")
+        ax.invert_yaxis()
+        ax.grid(axis="x", alpha=0.25)
+        ax.legend(fontsize=8, ncol=3)
         fig.tight_layout()
-        fig.savefig(rank_dir / f"combine_timing_rank_{rank}_send_flow.png", dpi=150)
+        fig.savefig(rank_dir / f"combine_timing_rank_{rank}_per_core_pipeline.png", dpi=180)
         plt.close(fig)
 
-        # The boxes contain totals accumulated over every token handled by a
-        # core. Arrows show the dependency order repeated for each token; they
-        # are deliberately not presented as one wall-clock event timeline.
-        dependency_colors = plt.cm.Set2.colors
-        fig, dependency_ax = plt.subplots(figsize=(24, max(8, num_cores * 1.35)))
+        fig, dependency_ax = plt.subplots(figsize=(25, max(8, num_send_cores * 1.35)))
         box_width = 0.82
         box_height = 0.62
-        for core in range(num_cores):
-            y_position = num_cores - 1 - core
-            for stage_index, stage_name in enumerate(COMBINE_FLOW_STAGES):
-                duration_us = flow_durations_by_core[core][stage_index]
+        for core in core_positions:
+            y_position = num_send_cores - 1 - core
+            for stage, stage_name in enumerate(COMBINE_TIMING_STAGES):
+                duration_us = stage_cycles_by_core[core][stage] / COMBINE_TIMING_CYCLES_PER_US
                 dependency_ax.add_patch(
                     plt.Rectangle(
-                        (stage_index - box_width / 2, y_position - box_height / 2),
+                        (stage - box_width / 2, y_position - box_height / 2),
                         box_width,
                         box_height,
-                        facecolor=dependency_colors[stage_index % len(dependency_colors)],
+                        facecolor=colors[stage % len(colors)],
                         edgecolor="#333333",
                         linewidth=0.8,
-                        alpha=0.9,
                     )
                 )
                 short_name = stage_name.replace("_and_copy", "").replace("_", "\n")
                 dependency_ax.text(
-                    stage_index,
+                    stage,
                     y_position,
-                    f"{short_name}\nTOTAL {duration_us:.3f} us",
+                    f"{short_name}\n{duration_us:.3f} us",
                     ha="center",
                     va="center",
                     fontsize=7,
                 )
-            for stage_index in range(len(COMBINE_FLOW_STAGES) - 1):
+            for stage in range(len(COMBINE_TIMING_STAGES) - 1):
                 dependency_ax.annotate(
                     "",
-                    xy=(stage_index + 1 - box_width / 2, y_position),
-                    xytext=(stage_index + box_width / 2, y_position),
+                    xy=(stage + 1 - box_width / 2, y_position),
+                    xytext=(stage + box_width / 2, y_position),
                     arrowprops={"arrowstyle": "->", "color": "#555555", "lw": 1.0},
                 )
-
-        dependency_ax.set_xlim(-0.65, len(COMBINE_FLOW_STAGES) - 0.35)
-        dependency_ax.set_ylim(-0.7, num_cores - 0.1)
-        dependency_ax.set_yticks(list(range(num_cores)))
+        dependency_ax.set_xlim(-0.65, len(COMBINE_TIMING_STAGES) - 0.35)
+        dependency_ax.set_ylim(-0.7, num_send_cores - 0.1)
+        dependency_ax.set_yticks(core_positions)
         dependency_ax.set_yticklabels(list(reversed(core_labels)))
         dependency_ax.set_xticks([])
         dependency_ax.set_title(
-            f"MoeEpCombine per-core accumulated stage totals - rank {rank}\n"
-            "arrows show the dependency order repeated for each token"
+            f"MoeEpCombine per-core stage dependencies - rank {rank}\n"
+            "each box is the accumulated total over all tokens handled by that core"
         )
         for spine_name in ("top", "right", "bottom"):
             dependency_ax.spines[spine_name].set_visible(False)
         fig.tight_layout()
-        fig.savefig(
-            rank_dir / f"combine_timing_rank_{rank}_accumulated_dependencies.png",
-            dpi=180,
-        )
+        fig.savefig(rank_dir / f"combine_timing_rank_{rank}_dependencies.png", dpi=180)
         plt.close(fig)
     except Exception as error:
         print(f"[TIMING] rank {rank}: skipped timing chart: {error}")
 
-    flow_hotspot = max(flow_summary_rows, key=lambda row: row["max_us"])
+    active_cores = [core for core, token_count in enumerate(token_counts) if token_count > 0]
+    hotspot = max(summary_rows, key=lambda row: row["maximum_us"])
     print(
-        f"[TIMING] rank {rank}: send-flow hotspot={flow_hotspot['stage']}, "
-        f"max={flow_hotspot['max_us']:.3f} us on core {flow_hotspot['slowest_core']}"
+        f"[TIMING] rank {rank}: active send cores={active_cores}, "
+        f"hotspot={hotspot['stage']} {hotspot['maximum_us']:.3f} us on core {hotspot['slowest_core']}"
     )
-    active_send_cores = [
-        row["core"] for row in core_assignment_rows if row["processed_token_count"] > 0
-    ]
-    print(
-        f"[TIMING] rank {rank}: active send cores={active_send_cores}; "
-        f"see {assignment_path.name} for assigned ranks and token counts"
-    )
-    print(f"[TIMING] rank {rank}: combine timing saved to {rank_dir}")
+    print(f"[TIMING] rank {rank}: timing output saved to {rank_dir}")
     return timing
 
 
@@ -1514,9 +1356,8 @@ def run_combine_npu(
                     prof.step()
 
         torch_npu.npu.synchronize()
-        timing_output = feature_main(combined_x).clone()
-        send_timing_core_num = min(world_size, aiv_core_num)
-        extract_combine_kernel_timing(timing_output, send_timing_core_num, rank)
+        num_send_cores = min(world_size, aiv_core_num)
+        extract_combine_kernel_timing(feature_main(combined_x).clone(), num_send_cores, rank)
         dist.destroy_process_group()
         queue.put([
             rank,
@@ -1607,9 +1448,8 @@ def run_continue_npu(
                     prof.step()
 
         torch_npu.npu.synchronize()
-        timing_output = feature_main(combined_x).clone()
-        send_timing_core_num = min(world_size, aiv_core_num)
-        extract_combine_kernel_timing(timing_output, send_timing_core_num, rank)
+        num_send_cores = min(world_size, aiv_core_num)
+        extract_combine_kernel_timing(feature_main(combined_x).clone(), num_send_cores, rank)
         dist.destroy_process_group()
         queue.put([
             rank,
@@ -1701,15 +1541,17 @@ def compare_dispatch_outputs(
 def compare_combine_outputs(rank_outputs: List[Dict[str, Any]], expected_goldens: List[Any], tag: str) -> Dict[str, bool]:
     config = build_compare_config()
     expected_host = expected_goldens[config.server_ranks]
-    timing_bytes = aiv_core_num * 16 * 2 * 8
+    timing_bytes = combine_timing_bytes(min(world_size, aiv_core_num))
     for local_rank_id, output in enumerate(rank_outputs):
         actual_main = feature_main(output["combined_x"])
         expected_main = feature_main(expected_host[local_rank_id].combined_x)
         if actual_main.numel() * actual_main.element_size() < timing_bytes:
-            continue
+            raise RuntimeError(
+                f"combined_x is too small to contain {timing_bytes} timing bytes"
+            )
         timing_elements = timing_bytes // actual_main.element_size()
         actual_main.view(-1)[:timing_elements].copy_(expected_main.view(-1)[:timing_elements])
-    print(f"[TIMING] {tag}: excluded the first {timing_bytes} bytes of combined_x from accuracy comparison")
+    print(f"[TIMING] {tag}: excluded the first {timing_bytes} bytes from accuracy comparison")
     return compare_combine_outputs_impl(rank_outputs, expected_goldens, tag, config)
 
 
