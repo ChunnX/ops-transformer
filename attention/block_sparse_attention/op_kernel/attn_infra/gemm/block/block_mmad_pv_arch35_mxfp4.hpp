@@ -20,6 +20,8 @@
 #include "../../../attn_infra/bsa_gemm_coord.hpp"
 #include "../../../attn_infra/gemm/tile_common/bsa_gemm_tile_copy.hpp"
 #include "../../../attn_infra/gemm/tile_common/bsa_tile_mmad.hpp"
+// [改造-新增] mx 专用 L1->L0 搬运 functor（带 E8M0 scale 的 5 参 mx LoadData）
+#include "../../../attn_infra/gemm/tile_common/copy_l1_to_l0_mx_a5.hpp"
 #include "../../../tla/layout.hpp"
 #include "../../../tla/tensor.hpp"
 
@@ -54,16 +56,30 @@ public:
     using ElementC = ElementC_;
 
     using TileMmad = TileMmad_;
-    using LayoutTagL1A = typename TileCopy::LayoutTagL1A;
-    using LayoutTagL1B = typename TileCopy::LayoutTagL1B;
-    using LayoutTagL0A = typename TileCopy::LayoutTagL0A;
-    using LayoutTagL0B = typename TileCopy::LayoutTagL0B;
+
+    // [改造-新增] Copy policy 别名（原文件缺失，仅持 TileCopy/TileMmad）。
+    //   GM->L1 数据搬运走 TileCopy 模板别名；mx L1->L0 走下方独立 functor。
+    //   [TODO] CopyL0CToDst(L0C->UB fixpipe)：PackedTileCopyTla 的 CopyL0CToDst 实为 L0C->GM（语义不符），
+    //          UB 版在 PackedTileCopyTlaToUB；待 TileCopy 切到 ToUB 后再别名化，FixpipeMm2 暂保留手写。
+    template <class TensorA> using CopyGmToL1A = typename TileCopy::template CopyGmToL1A<TensorA>;
+    template <class TensorB> using CopyGmToL1B = typename TileCopy::template CopyGmToL1B<TensorB>;
+
     using ElementAccumulator = typename TileCopy::ElementAccumulator;
+
+    using LayoutTagL1A = typename TileCopy::LayoutTagL1A;   // V: nZ（由 ColumnMajor GM 经 L1ATypeSelector 推出）
+    using LayoutTagL1B = typename TileCopy::LayoutTagL1B;   // P: zN（由 RowMajor GM 经 L1BTypeSelector 推出）
+    using LayoutTagL0A = typename TileCopy::LayoutTagL0A;   // Vᵀ: zN（A5 arch 固定）
+    using LayoutTagL0B = typename TileCopy::LayoutTagL0B;   // Pᵀ: nZ（PackedTileCopyTla 固定）
+
+    // [改造-新增] mxfp4 标志，供 if constexpr 分支（仿 ABf16 FULL_QUANT_FP8）。
+    static constexpr bool IS_MXFP4 = AscendC::IsSameType<ElementA, fp4x2_e2m1_t>::value;
+    static_assert(IS_MXFP4, "BlockMmadTla<MmadAtlasA5BsaPVMxfp4> requires ElementA = fp4x2_e2m1_t");
 
     static constexpr uint32_t L0_STAGES = DispatchPolicy::L0_STAGES;
     static constexpr uint32_t L0_TILE_M = tla::get<0>(L0TileShape_{});
     static constexpr uint32_t L0_TILE_N = tla::get<1>(L0TileShape_{});
     static constexpr uint32_t L0_TILE_K = tla::get<2>(L0TileShape_{});
+
 
         // mode4 核间同步：AIC 侧对两个 AIV 各用一个 flagId，第二个 = 第一个 + 16
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16;
@@ -156,71 +172,52 @@ public:
     }
     __aicore__ inline ~BlockMmadTla() {}
 
-    __aicore__ inline void LoadVToL0(uint32_t l1ABufId,uint32_t l0ABufId,uint32_t embedReal,uint32_t s2Align64)
+    // [改造] V 的 L1->L0A 转置搬运改走 mx functor（原裸 LoadVToL0 的 5 参 mx LoadData 下沉到 policy）。
+    //   nZ L1(V) + V-scale -> zN L0A(Vᵀ)，ifTranspose=true 由 functor 内部设定。
+    __aicore__ inline void LoadVToL0(uint32_t l1ABufId, uint32_t l0ABufId,
+                                     uint32_t embedReal, uint32_t s2Align64)
     {
-        AscendC::LoadData2DParamsV2 loadData2DParamsA;
-        loadData2DParamsA.mStartPosition = 0;
-        loadData2DParamsA.kStartPosition = 0;
-        loadData2DParamsA.mStep = s2Align64 / 16;                  // 源 m = S2（16-块单位）[已参数化]
-        loadData2DParamsA.kStep = embedReal / 64;                  // 源 k = D（64-块单位）[已参数化]
-        loadData2DParamsA.srcStride = s2Align64 / 16;
-        loadData2DParamsA.dstStride = (embedReal + 15) / 16 + 1;   // L0A dst stride（+1 给 D+16 留间隔）
-        loadData2DParamsA.ifTranspose = true;                // 转置：源 (S2,D) → L0A (D,S2)
-
-        AscendC::LoadData2DMxParams load2DMxParamsA;
-        load2DMxParamsA.xStartPosition = 0;
-        load2DMxParamsA.yStartPosition = 0;
-        load2DMxParamsA.xStep = (embedReal + 15) / 16;             // 转置后 L0A m = D  [已参数化]
-        load2DMxParamsA.yStep = (s2Align64 + 64 - 1) / 64;         // 转置后 L0A k = S2（V 量化轴）[已参数化]
-        load2DMxParamsA.srcStride = load2DMxParamsA.yStep;
-        load2DMxParamsA.dstStride = load2DMxParamsA.yStep;
-
-        AscendC::LoadData(l0ATensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),          // dst = L0A  [恒[0], gap G5]
-                 l1ATensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),                   // src = V(L1)
-                 l1AScaleTensor[0].template ReinterpretCast<AscendC::fp8_e8m0_t>(),       // scale = V-scale(L1)
-                 loadData2DParamsA, load2DMxParamsA);
+        // [改造] 删除 ReinterpretCast<fp4x2_e2m1_t / fp8_e8m0_t> 散点：
+        //   l1ATensor/l0ATensor 已是 ElementA=fp4x2_e2m1_t；scale 由 uint8 reinterpret 为 fp8_e8m0_t 传入 functor。
+        copyL1ToL0AMx(
+            l0ATensor[l0ABufId],
+            l1ATensor[l1ABufId],
+            l1AScaleTensor[l1ABufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
+            embedReal, s2Align64);
     }
 
-    __aicore__ inline void LoadPToL0(uint32_t l1BBufId,uint32_t l0BBufId,uint32_t s1Align128,uint32_t s2Align64,uint32_t embedReal)
+    // [改造] P 的 L1->L0B 转置搬运改走 mx functor（原裸 LoadPToL0 下沉到 policy）。
+    //   zN L1(P) + P-scale -> nZ L0B(Pᵀ)，ifTranspose=true 由 functor 内部设定。
+    __aicore__ inline void LoadPToL0(uint32_t l1BBufId, uint32_t l0BBufId,
+                                     uint32_t s1Align128, uint32_t s2Align64,
+                                     uint32_t embedReal)
     {
-        AscendC::LoadData2DParamsV2 loadData2DParamsB;
-        loadData2DParamsB.mStartPosition = 0;
-        loadData2DParamsB.kStartPosition = 0;
-        loadData2DParamsB.mStep = (s2Align64 + 15) / 16;   // 源 m = S2（16-块单位）[已参数化]
-        loadData2DParamsB.kStep = s1Align128 / 64;          // 源 k = M（64-块单位）[残留: raw rowNum, 尾块需 align128]
-        loadData2DParamsB.srcStride = loadData2DParamsB.mStep;
-        loadData2DParamsB.dstStride = s1Align128 / 16;      // L0B dst stride [残留: raw rowNum, 尾块需 align128]
-        loadData2DParamsB.ifTranspose = true;        // 转置 → P 在 L0B 直通 (k=S2, n=M)
-
-        AscendC::LoadData2DMxParams load2DMxParamsB;
-        load2DMxParamsB.xStartPosition = 0;
-        load2DMxParamsB.yStartPosition = 0;
-        load2DMxParamsB.xStep = embedReal / 16;            // D=M=128 时 = M/16 [已参数化]
-        load2DMxParamsB.yStep = (s2Align64 + 63) / 64;     // P 量化轴 S2（64-块）[已参数化]
-        load2DMxParamsB.srcStride = 5;               // [残留硬编码] = S2Base/64+1 = 256/64+1（仅 S2=256 正确）
-        load2DMxParamsB.dstStride = load2DMxParamsB.yStep;
-
-        AscendC::LoadData(l0BTensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),          // dst = L0B  [恒[0], gap G5]
-                 l1BTensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),                   // src = P(L1)
-                 l1BScaleTensor[0].template ReinterpretCast<AscendC::fp8_e8m0_t>(),       // scale = P-scale(L1)
-                 loadData2DParamsB, load2DMxParamsB);
+        // s2Base 取整 tile S2Base(=256)，用于推导 P-scale srcStride（原硬编码 5 的来源）。
+        // [TODO] s2Base 应由调用方/TileShape 传入，此处暂以 256 占位（与 L1_P_SIZE 排布一致）。
+        constexpr uint32_t s2Base = 256;
+        copyL1ToL0BMx(
+            l0BTensor[l0BBufId],
+            l1BTensor[l1BBufId],
+            l1BScaleTensor[l1BBufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
+            s1Align128, s2Align64, embedReal, s2Base, 5);
     }
 
+    // [改造] Mmad 改走 tileMmad functor（原裸 MatmulPV 的 AscendC::Mmad 下沉到 TileMmadTla）。
+    //   C=Vᵀ@P=Oᵀ，m=D+16（含 rowsum seed 行）、n=M、k=S2(对齐64)。
+    //   tileMmad 只读 .data()（不消费 layout stride），故 fp4 粒度不影响；这里包 tla 张量传入。
     __aicore__ inline void MatmulPV(uint32_t l0ABufId, uint32_t l0BBufId,
                                     uint32_t m, uint32_t n, uint32_t k)
     {
-        AscendC::MmadParams mmadParams;
-        mmadParams.m = m;   // D+16（含 rowsum seed 行）
-        mmadParams.n = n;   // M
-        mmadParams.k = k;   // S2（对齐 64）
-        mmadParams.cmatrixInitVal = true;
-        mmadParams.cmatrixSource = false;
-        mmadParams.disableGemv = true;
-        AscendC::Mmad(l0CTensor[0],                                          // C = L0C  [恒[0], gap G5]
-             l0ATensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),          // A = V(L0A，含 +16 seed)
-             l0BTensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),          // B = P(L0B)
-             mmadParams);
+        // [改造] 裸 LocalTensor 包成 tla 张量（布局对象仅用于满足 MakeTensor 签名，tileMmad 不读其 stride）。
+        auto l0ALayout = tla::MakeLayout<ElementA, LayoutTagL0A>(m, k);
+        auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayout, Arch::PositionL0A{});
+        auto l0BLayout = tla::MakeLayout<ElementB, LayoutTagL0B>(k, n);
+        auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayout, Arch::PositionL0B{});
+        auto l0CLayout = tla::MakeLayoutL0C(m, n);
+        auto l0CTensorTla = tla::MakeTensor(l0CTensor[0], l0CLayout, Arch::PositionL0C{});
+        tileMmad(l0CTensorTla, l0ATensorTla, l0BTensorTla, m, n, k, /*initC=*/true);
     }
+
 
     __aicore__ inline void CopyInA1(uint32_t m,uint32_t k,uint32_t alignK,AscendC::GlobalTensor<fp4x2_e2m1_t> gV)
     {
@@ -257,20 +254,27 @@ public:
         AscendC::DataCopy(l1AScaleTensorB16, scaleAGMB16, nd2nzParams);
     }
 
-    // 稀疏 V 数据 gather：按 gSparseBlockIdx 把稀疏 Y-block 逐段 Nd2Nz 到 L1 整 tile 的对应位置。
-    // 复用 CopyInA1 的 Nd2Nz 参数语义，仅 nValue 改为段长、src/dst 加段偏移。
-    // NZ 布局推导：dstNzNStride=1（每行 32B），故 gather 行 r 的 dst 字节偏移 = r*32；
-    // dstNzC0Stride=s2Align64 保持与整 tile 一致，使 K-block 跨段对齐。
-    // （V 是 fp4，sizeof(fp4x2_e2m1_t)=1，元素偏移即字节偏移。）
+    // [step2-tla化] V 数据 gather 改 ABf16 风格：GetTile(gV段) + GetTile(l1A段) + copyGmToL1A。
+    //   gV=ColumnMajor(D,S2)、l1A=nZ(D,s2Align64)，两者 dim0=embed、dim1=seq，
+    //   coord/shape 同序 (0, seq_off)/(embed, curDealtLen)。
+    //   Nd2Nz 参数（nValue=curDealtLen / dValue=D/2 / srcDValue=D/2 / dstNzC0Stride=s2Align64 /
+    //   dstNzNStride=1 / dstOffset=dealtAccum*64）由 copyGmToL1A 的 ColumnMajor→nZ 特化 +
+    //   A2 的 bit-granular ELE_PER_C0(fp4→64) + step1 的 /2 分支自动给出，与原 raw gather 1:1 对齐。
+    //   [注] 直接用 Tile::TileCopyTla<ArchTag,TensorV,TensorL1A>（按 gather 实参类型派发），
+    //        不用 TileCopy::CopyGmToL1A 别名（后者用 Packed 的 TensorL1A/LayoutL1A，
+    //        若主模板默认 LayoutTagA=RowMajor→zN 会派发 ColumnMajor→zN 无特化）。
+    template <class TensorV, class TensorL1A>
     __aicore__ inline
     void SparseVBaseTileL1FullLoad(
-        AscendC::GlobalTensor<fp4x2_e2m1_t> gV,         // 已带 batch+head 偏移
+        TensorV &gVTensor, TensorL1A &l1ATensorTla,
         AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
         uint32_t gatheredKvSTileIdx, int64_t kvSeqlen,
         uint32_t kvSBaseTile, uint32_t blockShapeY,
         uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
         uint32_t curBaseTileSize, uint32_t embed, uint32_t s2Align64)
     {
+        using CopyGmToL1A = Tile::TileCopyTla<ArchTag, TensorV, TensorL1A>;
+        CopyGmToL1A copyGmToL1A;
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
         uint32_t baseTileEndOffset   = baseTileStartOffset + curBaseTileSize;
         uint32_t gatheredStartOffset = baseTileStartOffset;
@@ -280,7 +284,6 @@ public:
         uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
         uint32_t dealtLenAccum  = 0;
 
-        uint16_t aColValue = CeilDivision(embed, 2);   // D/2（fp4x2 元素 = 字节）
         while (dealtLenAccum < curBaseTileSize && gatheredYBlockIdx < yBlockNumRsvd &&
                oriYBlockIdx < yBlockNumAval && oriStartOffset < kvSeqlen) {
             uint32_t curYBlockSize = (oriYBlockIdx == yBlockNumAval - 1)
@@ -291,29 +294,20 @@ public:
             uint32_t curDealtLen = gatheredEndOffset - gatheredStartOffset;
             if (curDealtLen == 0) { break; }
 
-            AscendC::Nd2NzParams p;
-            p.ndNum = 1;
-            p.nValue = curDealtLen;
-            p.dValue = aColValue;
-            p.srcNdMatrixStride = 0;
-            p.srcDValue = aColValue;          // 源行 stride = D/2 字节
-            p.dstNzC0Stride = s2Align64;      // 与整 tile 一致，K-block 跨段对齐
-            p.dstNzNStride = 1;               // 每行 32B
-            p.dstNzMatrixStride = 0;
-            // gV 是 GlobalTensor<fp4x2_e2m1_t>，其索引单位是 fp4 元素（4-bit），gV[i] 内部按 i/2 字节寻址。
-            // 故行 stride 在索引单位下 = embed（每行 D 个 fp4 = D 索引 = D/2 字节）。
-            uint32_t srcByteOff = oriStartOffset * embed;
-            // l1ATensor 是 LocalTensor<fp4x2_e2m1_t>，索引单位同样是 fp4 元素（[i]→字节 i/2，与 gV 一致）。
-            // NZ 每行 32 字节 = 64 fp4 元素，故段落到 gather 行 dealtLenAccum 的 dst 索引 = dealtLenAccum*64。
-            // （单段 dealtAccum=0 时与 *32 同值，不生效；仅多段才考验。）
-            uint32_t dstByteOff = dealtLenAccum * 64;             // NZ 每行 32B=64 fp4 元素
-            AscendC::printf(
-                "[V-GATHER] seg: oriYBlock=%u oriStart=%u curDealtLen=%u dealtAccum=%u "
-                "srcByteOff=%u dstByteOff=%u nVal=%u dVal=%u c0Stride=%u nStride=1\n",
-                (unsigned)oriYBlockIdx, (unsigned)oriStartOffset, (unsigned)curDealtLen,
-                (unsigned)dealtLenAccum, (unsigned)srcByteOff, (unsigned)dstByteOff,
-                (unsigned)curDealtLen, (unsigned)aColValue, (unsigned)s2Align64);
-            AscendC::DataCopy(l1ATensor[0][dstByteOff], gV[srcByteOff], p);
+            // [step2] 段切片：gV/l1A 维序均 (embed, seq)，coord(0, seq_off)/shape(embed, curDealtLen)
+            auto gVTensorTile = GetTile(gVTensor,
+                tla::MakeCoord(0, oriStartOffset), tla::MakeShape(embed, curDealtLen));
+            auto l1ATensorTile = GetTile(l1ATensorTla,
+                tla::MakeCoord(0, dealtLenAccum), tla::MakeShape(embed, curDealtLen));
+            // [验证] catlass offset vs raw：srcOff 应=oriStartOffset*embed，dstOff 应=dealtAccum*64
+            AscendC::printf("[V-CHK] oriStart=%u dealtAccum=%u curDealtLen=%u srcOff=%u(want %u) dstOff=%u(want %u)\n",
+                (unsigned)oriStartOffset, (unsigned)dealtLenAccum, (unsigned)curDealtLen,
+                (unsigned)static_cast<uint32_t>(gVTensorTile.layout()(gVTensorTile.coord())),
+                (unsigned)(oriStartOffset * embed),
+                (unsigned)static_cast<uint32_t>(l1ATensorTile.layout()(l1ATensorTile.coord())),
+                (unsigned)(dealtLenAccum * 64));
+
+            copyGmToL1A(l1ATensorTile, gVTensorTile);
 
             dealtLenAccum += curDealtLen;
             gatheredStartOffset += curDealtLen;
@@ -326,20 +320,26 @@ public:
         }
     }
 
-    // 稀疏 V-scale gather：V-scale GM [BT2//64,N2,D,2]，S2 方向按 64 分组。
-    // 一个 sparse Y-block（blockShapeY 行 V，须为 64 倍数）对应 blockShapeY/64 个连续 scale-group。
-    // B16 视图 Nd2Nz（与 CopyInScaleA1 同语义），段内 scaleRows=ceil(curDealtLen,64)/64 组。
-    // NZ 布局：dstNzNStride=1（每组 32B=16 个 half），故 gather 组 g 的 dst half 偏移 = g*16。
+
+    // [step2-tla化] V-scale gather 改 ABf16 风格：GetTile(gVScale段) + GetTile(l1AScale段) + mx functor。
+    //   gVScale=MxScaleA(ColumnMajor,trans)、l1AScale=zZ，均 (rows=embed, cols=s2Align64/32) 维序 (embed, seq-scale)。
+    //   coord(0, seqOff/32)/shape(embed, curDealtLen/32)；nValue=CeilDiv(curDealtLen/32,2)=curDealtLen/64=scaleRows。
+    //   Nd2Nz 参数 + B16-view reinterpret + offset 由 step1 移植的 MxScaleA→zZ 特化自动给出，与 raw 1:1 对齐：
+    //     nValue=scaleRows / dValue=D / srcDValue=D / dstNzC0Stride=s2Align64/64 / dstNzNStride=1
+    //     srcOffset=(oriStartOffset/32)*embed fp8 → half srcB16Off=(oriStartOffset/64)*embed
+    //     dstOffset=dealtAccum/2 fp8 → half dstB16Off=(dealtAccum/64)*16
+    template <class TensorVScale, class TensorL1AScale>
     __aicore__ inline
     void SparseVScaleBaseTileL1FullLoad(
-        AscendC::GlobalTensor<uint8_t> gVScale,       // 已带 batch+head 偏移
+        TensorVScale &gVScaleTensor, TensorL1AScale &l1AScaleTensorTla,
         AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
         uint32_t gatheredKvSTileIdx, int64_t kvSeqlen,
         uint32_t kvSBaseTile, uint32_t blockShapeY,
         uint32_t yBlockNumAval, uint32_t yBlockNumRsvd,
         uint32_t curBaseTileSize, uint32_t embed, uint32_t s2Align64)
     {
-        constexpr uint32_t SCALE_GROUP = 64;
+        using CopyGmToL1AScale = Tile::TileCopyTla<ArchTag, TensorVScale, TensorL1AScale>;
+        CopyGmToL1AScale copyGmToL1AScale;
         uint32_t baseTileStartOffset = gatheredKvSTileIdx * kvSBaseTile;
         uint32_t baseTileEndOffset   = baseTileStartOffset + curBaseTileSize;
         uint32_t gatheredStartOffset = baseTileStartOffset;
@@ -347,12 +347,7 @@ public:
         uint32_t yBlockInnerStart    = gatheredStartOffset % blockShapeY;
         uint32_t oriYBlockIdx   = gSparseBlockIdx.GetValue(gatheredYBlockIdx);
         uint32_t oriStartOffset = oriYBlockIdx * blockShapeY + yBlockInnerStart;
-        uint32_t dealtLenAccum  = 0;     // 已 gather 的 V 行数
-
-        uint32_t scaleK = s2Align64 / SCALE_GROUP * 2;   // 与 CopyInScaleA1 一致
-        AscendC::GlobalTensor<half> gVScaleB16;
-        gVScaleB16.SetGlobalBuffer((__gm__ half*)(gVScale.GetPhyAddr()), 0x7FFFFFFFu);
-        auto l1ScaleB16 = l1AScaleTensor[0].ReinterpretCast<half>();
+        uint32_t dealtLenAccum  = 0;
 
         while (dealtLenAccum < curBaseTileSize && gatheredYBlockIdx < yBlockNumRsvd &&
                oriYBlockIdx < yBlockNumAval && oriStartOffset < kvSeqlen) {
@@ -364,27 +359,25 @@ public:
             uint32_t curDealtLen = gatheredEndOffset - gatheredStartOffset;
             if (curDealtLen == 0) { break; }
 
-            uint32_t scaleRows = (curDealtLen + SCALE_GROUP - 1) / SCALE_GROUP;  // 组数向上取整
-            AscendC::Nd2NzParams p;
-            p.ndNum = 1;
-            p.nValue = scaleRows;
-            p.dValue = embed;                // D
-            p.srcNdMatrixStride = 0;
-            p.srcDValue = embed;             // 每组 D 个 B16 = 2D 字节
-            p.dstNzC0Stride = scaleK / 2;    // = s2Align64/64，与整 tile 一致
-            p.dstNzNStride = 1;              // 每组 32B
-            p.dstNzMatrixStride = 0;
-            uint32_t srcGroupIdx = oriStartOffset / SCALE_GROUP;
-            uint32_t srcB16Off   = srcGroupIdx * embed;          // B16 单位
-            uint32_t dstGroupIdx = dealtLenAccum / SCALE_GROUP;
-            uint32_t dstB16Off   = dstGroupIdx * 16;             // 每组 32B = 16 个 half
-            AscendC::printf(
-                "[VS-GATHER] seg: oriStart=%u curDealtLen=%u dealtAccum=%u scaleRows=%u "
-                "srcB16Off=%u dstB16Off=%u nVal=%u dVal=%u c0Stride=%u\n",
-                (unsigned)oriStartOffset, (unsigned)curDealtLen, (unsigned)dealtLenAccum,
-                (unsigned)scaleRows, (unsigned)srcB16Off, (unsigned)dstB16Off,
-                (unsigned)scaleRows, (unsigned)embed, (unsigned)(scaleK / 2));
-            AscendC::DataCopy(l1ScaleB16[dstB16Off], gVScaleB16[srcB16Off], p);
+            // [step2] 段切片：gVScale/l1AScale 维序 (embed, seq-scale)，col=32 fp4（1 quant group=MX_SCALE_GROUP_NUM）。
+            //   coord dim1 = seqOff/32（flat col），crd2offset 内部 %2//2 拆 inner/outer → nValue=cols/2=seqOff/64。
+            auto gVScaleTile = GetTile(gVScaleTensor,
+                tla::MakeCoord(0, oriStartOffset / MX_SCALE_GROUP_NUM),
+                tla::MakeShape(embed, CeilDiv(curDealtLen, MX_SCALE_GROUP_NUM)));
+            auto l1AScaleTile = GetTile(l1AScaleTensorTla,
+                tla::MakeCoord(0, dealtLenAccum / MX_SCALE_GROUP_NUM),
+                tla::MakeShape(embed, CeilDiv(curDealtLen, MX_SCALE_GROUP_NUM)));
+            // [验证] catlass offset vs raw：raw 用 B16/half 视图，catlass 用 fp8——
+            //   srcOff(fp8) 应=2*srcB16Off=(oriStart/64)*embed*2，dstOff(fp8) 应=2*dstB16Off=(dealtAccum/64)*16*2
+            uint32_t rawSrcB16Off = (oriStartOffset / 64) * embed;
+            uint32_t rawDstB16Off = (dealtLenAccum / 64) * 16;
+            AscendC::printf("[VS-CHK] oriStart=%u dealtAccum=%u curDealtLen=%u srcOff=%u(want %u=2*srcB16) dstOff=%u(want %u=2*dstB16)\n",
+                (unsigned)oriStartOffset, (unsigned)dealtLenAccum, (unsigned)curDealtLen,
+                (unsigned)static_cast<uint32_t>(gVScaleTile.layout()(gVScaleTile.coord())),
+                (unsigned)(rawSrcB16Off * 2),
+                (unsigned)static_cast<uint32_t>(l1AScaleTile.layout()(l1AScaleTile.coord())),
+                (unsigned)(rawDstB16Off * 2));
+            copyGmToL1AScale(l1AScaleTile, gVScaleTile);
 
             dealtLenAccum += curDealtLen;
             gatheredStartOffset += curDealtLen;
@@ -397,18 +390,37 @@ public:
         }
     }
 
-    __aicore__ inline void FixpipeMm2(uint32_t s1Align128,uint32_t embedReal,AscendC::LocalTensor<ElementC> ubOTmpTensor)
+    // [catlass化] L0C→UB fixpipe 走 CopyL0CToUBTla SPLIT_N/NO_QUANT（dualDstCtl=2），删手写 FixpipeParams。
+    //   catlass 从 L0C+UB 张量布局算全部参数，与 raw 1:1：
+    //     nSize=RoundUp(M,32)=s1Align128 / mSize=D+1 / srcStride=RoundUp(D+16,16)=D+16 /
+    //     dstStride=64 / dualDstCtl=2 / quantPre=NoQuant。
+    //   L0C tla 本地构：rows=D+16（srcStride=D+16，含 rowsum seed +16 行，与 MatmulPV 一致）。
+    //   UB tla 由调用处（kernel）按 Oᵀ 实际存储布局构好直传（rows=D+1、cols=s1Align128、stride=64），
+    //     这里不再 .data() 重包——直收 tla。
+    //   [注] 直接实例化 Tile::CopyL0CToUBTla（block 的 TileCopy::CopyL0CToDst 实为 L0C→GM，非 UB）。
+    template <class TensorUB>
+    __aicore__ inline void FixpipeMm2(uint32_t s1Align128, uint32_t embedReal, TensorUB &ubOTmpTensor)
     {
-        AscendC::FixpipeParamsArch3510<AscendC::CO2Layout::ROW_MAJOR> fixpipeParams;
-        fixpipeParams.nSize = (s1Align128 + 7) >> 3 << 3;   // n = M 对齐到 8
-        fixpipeParams.mSize = embedReal + 1;                       // m = D+1（D 行 Oᵀ + 1 行 rowsum）
-        fixpipeParams.srcStride = embedReal + 16;                 // L0C 源行 stride = D+16
-        fixpipeParams.dstStride = 64;                                    // UB 目标行 stride = 64 元素
-        fixpipeParams.quantPre = QuantMode_t::NoQuant;                  // 不量化（保持 fp32，V2 反量化/归一）
-        fixpipeParams.dualDstCtl = 2;                                    // 按 N 维拆分给 2 个 UB
-
-        // uint32_t pvL0COffset = pvL0cBufId * (QK_L0C_SIZE / sizeof(COMPUTE_T));  // L0C 槽
-        AscendC::Fixpipe<float, float, CFG_ROW_MAJOR_UB>(ubOTmpTensor, l0CTensor[0], fixpipeParams);
+        // L0C tla：rows=D+16（与 MatmulPV 的 mMmad=D+16 一致）→ srcStride=D+16
+        auto l0CTensorTla = tla::MakeTensor(l0CTensor[0],
+            tla::MakeLayoutL0C(embedReal + 16, s1Align128), Arch::PositionL0C{});
+        // 模板参序 (ArchTag, TensorSrc=L0C, TensorDst=UB, SPLIT_N, NO_QUANT, ReluEnable=false)
+        using CopyL0CToDst = Tile::CopyL0CToUBTla<ArchTag, decltype(l0CTensorTla), TensorUB,
+                                                   Tile::CopyL0CToUBMode::SPLIT_N,
+                                                   Tile::ScaleGranularity::NO_QUANT, false>;
+        CopyL0CToDst copyL0CToDst;
+        // [验证] catlass 从布局算出的 fixpipe 参数 vs raw 期望
+        uint32_t fpMSize = static_cast<uint32_t>(tla::get<0>(ubOTmpTensor.shape()));
+        uint32_t fpNSizeBase = static_cast<uint32_t>(tla::get<1>(ubOTmpTensor.shape()));
+        uint32_t fpDstStride = static_cast<uint32_t>(tla::get<0>(ubOTmpTensor.stride()));
+        uint32_t fpSrcStride = static_cast<uint32_t>(tla::get<1, 1>(l0CTensorTla.stride())) /
+                               static_cast<uint32_t>(tla::get<0, 0>(l0CTensorTla.shape()));
+        AscendC::printf("[FP-CHK] mSize=%u(want %u) nSizeBase=%u(want %u) srcStride=%u(want %u) dstStride=%u(want 64) dualDstCtl=2\n",
+            (unsigned)fpMSize, (unsigned)(embedReal + 1),
+            (unsigned)fpNSizeBase, (unsigned)s1Align128,
+            (unsigned)fpSrcStride, (unsigned)(embedReal + 16),
+            (unsigned)fpDstStride);
+        copyL0CToDst(ubOTmpTensor, l0CTensorTla);   // operator()(dst=UB, src=L0C)
     }
 
     __aicore__ inline uint16_t CeilDivision(uint16_t numerator, uint16_t denominator)
@@ -493,21 +505,30 @@ public:
     }
 
 
-    // template <class TensorB, class TensorC>
+    template <class TensorV, class TensorC, class TaskInfoT, class TileInfoT>
     __aicore__ inline
     void operator()(
-        AscendC::GlobalTensor<fp4x2_e2m1_t> gV,          // 已带 batch+head 偏移
-        AscendC::GlobalTensor<uint8_t> gVScale,          // 已带 batch+head 偏移
-        AscendC::GlobalTensor<int32_t> gSparseBlockIdx,
-        AscendC::LocalTensor<float> ubOTmpTensor,
-        uint32_t rowNum, uint32_t embed, uint32_t curBaseTileSize,
-        uint32_t gatheredKvSTileIdx, int64_t kvSeqlen,
-        uint32_t kvSBaseTile, uint32_t blockShapeY,
-        uint32_t yBlockNumAval, uint32_t yBlockNumRsvd)
+        TensorV &gV,                  // tla GM 张量（V，ColumnMajor(D,S2)，已在调用处按 gmOffsetV 子缓冲化）
+        AscendC::GlobalTensor<uint8_t> gVDequantScale,   // V-scale 基址；block 按 delay20TaskInfo.gmOffsetVScale 取子缓冲
+        AscendC::GlobalTensor<int32_t> gSparseIdx,        // sparseIdx 基址；block 按 delay20TaskInfo.gmOffsetSparseIdx 取子缓冲
+        TensorC &ubOTmpTensor,        // tla UB 张量（Oᵀ，RowMajor）
+        GemmCoord actualBlockShapePV,
+        TileInfoT &delay20TileInfo,
+        TaskInfoT &delay20TaskInfo,   // block 解析 gmOffsetVScale/gmOffsetSparseIdx/kvSeqlen/yBlockNumAval/yBlockNumRsvd
+        uint32_t kvSBaseTile, uint32_t blockShapeY)
     {
-        AscendC::printf("MmadAtlasA5BsaPVMxfp4\n");
+        uint32_t rowNum = actualBlockShapePV[0];
+        uint32_t embed = actualBlockShapePV[1];
+        uint32_t curBaseTileSize = actualBlockShapePV[2];
 
         uint32_t embedReal = embed;
+        // [改造] 在 block 内解析 delay20TaskInfo：取 V-scale/sparseIdx GM 子缓冲 + gather 标量
+        AscendC::GlobalTensor<uint8_t> gVScale = gVDequantScale[delay20TaskInfo.gmOffsetVScale];
+        AscendC::GlobalTensor<int32_t> gSparseBlockIdx = gSparseIdx[delay20TaskInfo.gmOffsetSparseIdx];
+        int64_t  kvSeqlen      = delay20TaskInfo.kvSeqlen;
+        uint32_t yBlockNumAval = delay20TaskInfo.yBlockNumAval;
+        uint32_t yBlockNumRsvd = delay20TaskInfo.yBlockNumRsvd;
+        uint32_t gatheredKvSTileIdx = delay20TileInfo.pvGatheredKvSTileIdx;
         // 验证阶段只用 0 号 buffer（l1ABufNum/l1BBufNum 未初始化，不能拿来取模）
         uint32_t l1BBufId = 0;              // P (l1BTensor)
         uint32_t l1BEventId = l1BBufId + 3;
@@ -524,7 +545,7 @@ public:
         uint32_t kMmad = s2Align64;        // k = S2（对齐 64）
 
         // todo 规避行为，qk占用了pv的buffer
-        InitL0BufferForReduceSum();
+        // InitL0BufferForReduceSum();
 
         // --- P 尾部补零（S2 对齐 32 但没到 64 → P pad 到 align64）---
         if (s2Align32 != s2Align64) {
@@ -540,11 +561,27 @@ public:
         AscendC::PipeBarrier<PIPE_MTE2>();
 
         // ===== 稀疏 gather：按 gSparseBlockIdx 把稀疏 V / V-scale 逐段搬到 L1 整 tile =====
+        // [step2] V 数据 gather 走 tla：gV(tla ColumnMajor) + l1A(tla nZ) + copyGmToL1A(GetTile 段)。
+        //   l1A 直接构 nZ(D, s2Align64)——V GM=ColumnMajor→L1 nZ 是布局定论（恒成立），
+        //   不用 LayoutTagL1A（主模板默认 LayoutTagA=RowMajor→zN，与 V 不一致）。
+        auto l1ATensorTla = tla::MakeTensor(l1ATensor[l1ABufId],
+            tla::MakeLayout<ElementA, layout::nZ>(embedReal, s2Align64), Arch::PositionL1{});
         SparseVBaseTileL1FullLoad(
-            gV, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
+            gV, l1ATensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
             yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embedReal, s2Align64);
+        // [step2] V-scale gather 走 tla：gVScale MxScaleA(ColumnMajor,trans) + l1AScale zZ。
+        //   实参 (rows=embed, cols=s2Align64/32) 反推自 raw（nValue=s2Align64/64, dValue=D,
+        //   srcDValue=D, dstNzC0Stride=s2Align64/64）。gVScale（line 500 已取 gVScale=base[gmOffsetVScale]）
+        //   重解释为 fp8_e8m0_t；mx 特化内部再 reinterpret 成 half 做 B16 Nd2Nz（与 raw 一致）。
+        auto gVScaleTensorTla = tla::MakeTensor(
+            gVScale.ReinterpretCast<AscendC::fp8_e8m0_t>(),
+            tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::ColumnMajor, false>(embedReal, s2Align64 / 32),
+            Arch::PositionGM{});
+        auto l1AScaleTensorTla = tla::MakeTensor(l1AScaleTensor[l1ABufId].ReinterpretCast<AscendC::fp8_e8m0_t>(),
+            tla::MakeMxScaleLayout<AscendC::fp8_e8m0_t, layout::zZ, false>(embedReal, s2Align64 / 32),
+            Arch::PositionL1{});
         SparseVScaleBaseTileL1FullLoad(
-            gVScale, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
+            gVScaleTensorTla, l1AScaleTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
             yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embedReal, s2Align64);
 
         AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
@@ -568,12 +605,19 @@ public:
         AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
 
         MatmulPV(l0ABufId, l0BBufId, mMmad, nMmad, kMmad);
-
-        AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
-        AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
         AscendC::DumpTensor(l0CTensor[0], 123, 128);
-        AscendC::PipeBarrier<PIPE_ALL>();
-        FixpipeMm2(s1Align128,embedReal,ubOTmpTensor);
+        // AscendC::DumpTensor(l0CTensor[1024], 124, 128);
+        AscendC::DumpTensor(l0CTensor[0][1024 * 2], 125, 128);
+
+        if (delay20TileInfo.isUpdatePScale) {  // tile 末尾 → Fixpipe L0C→UB
+            AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
+            AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
+            FixpipeMm2(s1Align128,embedReal,ubOTmpTensor);
+        }
+
+        if (delay20TileInfo.isLastSecondKvsTile) {
+            InitL0BufferForReduceSum();  // 倒数第二块 → re-seed L0A +16=1.0 给最后块 rowsum
+        }
     }
 
 protected:
@@ -588,6 +632,11 @@ protected:
     // MXFP4 专用：E8M0 scale 的 L1 buffer（V-scale 4 份，P-scale 20 份）+ MX 版 L1->L0 拷贝器
     AscendC::LocalTensor<uint8_t> l1AScaleTensor[L1_KV_BUFCNT];
     AscendC::LocalTensor<uint8_t> l1BScaleTensor[L1_P_BUFCNT];
+
+    // [改造-新增] policy functor 成员（原文件只有裸 tensor）。
+    TileMmad tileMmad;                 // fp4 Mmad（3 参，scale 已在 L1->L0 烘焙）
+    Tile::CopyL1ToL0AMxA5 copyL1ToL0AMx;   // V: nZ L1 -> zN L0A 转置（带 V-scale）
+    Tile::CopyL1ToL0BMxA5 copyL1ToL0BMx;   // P: zN L1 -> nZ L0B 转置（带 P-scale）
 
     uint32_t l1ATileM;
     uint32_t l1BTileN;
