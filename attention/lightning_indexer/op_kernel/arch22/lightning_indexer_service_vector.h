@@ -361,10 +361,9 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
 
             if (constInfo_.radixTotalBatch > 0) {
             // RadixTopK path: write scoreB16Gm, skip Sort+MergeSort
-            // Fix cuRealAcSeq for TND (actS1=0 causes wrong cuRealAcSeq in ProcessVec)
             int32_t radixCuRealAcSeq = cuRealAcSeq;
             if (constInfo_.qSeqSize == 0 && constInfo_.attenMaskFlag) {
-                radixCuRealAcSeq = info.actS2Size - (info.actS2Size - cuS1Idx) + 1;
+                radixCuRealAcSeq = info.actS2Size - (info.actS1Size - cuS1Idx) + 1;
             }
             int32_t radixCuS2Len = cuBaseS2Idx + s2BaseSize_ >= radixCuRealAcSeq ?
                 radixCuRealAcSeq - cuBaseS2Idx : s2BaseSize_;
