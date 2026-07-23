@@ -380,17 +380,28 @@ public:
             }
             DataCopyExtParams copyInParams;
             DataCopyPadExtParams<QINPUT_T> copyInPadParams{};
-            copyInParams.blockCount = copyRowCnt;
-            copyInParams.blockLen = grpNum * sizeof(int8_t);
-            copyInParams.dstStride = 0;
-            copyInParams.srcStride = constInfo.n2Size * grpNum - grpNum;
             if (constInfo.paLayoutType == static_cast<uint32_t>(MqfaPaLayoutType::BNBD)) {
+                copyInParams.blockCount = 1;
+                copyInParams.blockLen = copyRowCnt * grpNum * sizeof(int8_t);
+                copyInParams.dstStride = 0;
                 copyInParams.srcStride = 0;
+
+                copyInPadParams.isPad = false;
+                copyInPadParams.leftPadding = 0;
+                copyInPadParams.rightPadding = 0;
+                copyInPadParams.paddingValue = 0;
+            }else {
+                copyInParams.blockCount = copyRowCnt;
+                copyInParams.blockLen = grpNum * sizeof(int8_t);
+                copyInParams.dstStride = 0;
+                copyInParams.srcStride = constInfo.n2Size * grpNum - grpNum;
+
+                copyInPadParams.isPad = true;
+                copyInPadParams.leftPadding = 0;
+                copyInPadParams.rightPadding = (blockBytes / sizeof(QINPUT_T)) - copyInParams.blockLen / sizeof(QINPUT_T);
+                copyInPadParams.paddingValue = 0;
             }
-            copyInPadParams.isPad = true;
-            copyInPadParams.leftPadding = 0;
-            copyInPadParams.rightPadding = (blockBytes / sizeof(QINPUT_T)) - copyInParams.blockLen / sizeof(QINPUT_T);
-            copyInPadParams.paddingValue = 0;
+
             DataCopyPad(dstLocal[(copyFinishRowCnt * grpNum) >> 1], srcGm[curOffset >> 1],
                         copyInParams, copyInPadParams);
             copyFinishRowCnt += copyRowCnt;
