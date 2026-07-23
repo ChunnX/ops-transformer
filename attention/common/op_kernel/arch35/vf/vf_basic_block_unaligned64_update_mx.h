@@ -120,8 +120,8 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop0(
         if constexpr (pseMode != PseTypeEnum::PSE_OUTER_ADD_MUL_TYPE) {
             Muls(vreg_src_x, vreg_src_x, dScale, preg_ori_src_n); // Muls(scale)
         } else {
-            if constexpr (IsSameType<T2, fp8_e5m2_t>::value||
-                IsSameType<T2, fp8_e4m3fn_t>::value || IsSameType<T2, hifloat8_t>::value) {
+            if constexpr (IsSameType<T2, fp8_e5m2_t>::value || IsSameType<T2, fp8_e4m3fn_t>::value ||
+                          IsSameType<T2, hifloat8_t>::value) {
                 Muls(vreg_src_x, vreg_src_x, dScaleQK, preg_ori_src_n); // Muls(dScaleQK)
             }
         }
@@ -159,13 +159,13 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop0(
                     preg_comp, (__ubuf__ uint32_t *&)maskUb, nPadding);
             }
             Select(vreg_sel, vreg_min, vreg_src_x, preg_comp);
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize,
-                                                              vreg_sel, preg_src_n);
-            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max,
-                vreg_sel, preg_ori_src_n);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_sel,
+                                                              preg_src_n);
+            Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_input_max, vreg_sel,
+                                                                                              preg_ori_src_n);
         } else {
-            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize,
-                                                            vreg_src_x, preg_src_n);
+            StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)srcUb + i * s2BaseSize, vreg_src_x,
+                                                              preg_src_n);
             Reduce<MicroAPI::ReduceType::MAX, float, float, MicroAPI::MaskMergeMode::ZEROING>(
                 vreg_input_max, vreg_src_x, preg_ori_src_n);
         }
@@ -194,7 +194,7 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop0(
     if constexpr (hasDrop == 1) {
         Duplicate<T, MicroAPI::MaskMergeMode::ZEROING, float>(vreg_zero, 0.0f, preg_all_float);
     }
-    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();  // 同步
+    LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>(); // 同步
 
     for (uint16_t i = 0; i < m; ++i) {
         LoadAlign<T, MicroAPI::LoadDist::DIST_BRC_B32>(vreg_max, maxUbStart + i);
@@ -203,8 +203,8 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop0(
         ExpSub(vreg_exp, vreg_src_x, vreg_max, preg_ori_src_n);
 
         // x_sum = sum(x_exp, axis=-1, keepdims=True)
-        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(
-            vreg_exp_sum, vreg_exp, preg_ori_src_n);
+        Reduce<MicroAPI::ReduceType::SUM, float, float, MicroAPI::MaskMergeMode::ZEROING>(vreg_exp_sum, vreg_exp,
+                                                                                          preg_ori_src_n);
         StoreUnAlign<float, MicroAPI::PostLiteral::POST_MODE_UPDATE>(((__ubuf__ T *&)tmpExpSumUb), vreg_exp_sum,
                                                                      ureg_exp_sum, 1);
         // dropmask compute
@@ -295,8 +295,8 @@ __simd_vf__ void ProcessVec1UpdateImpl64Mxfp8FullquantVFSubloop0(
     Mul(vreg_exp_max, vreg_exp_max, vreg_src_exp_sum, preg_all_float);
     Add(vreg_exp_max, vreg_exp_max, vreg_exp_sum_brc, preg_all_float);
     StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)expSumUb, vreg_exp_max, preg_all_float);
-    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)firstLoopSumUb,
-        vreg_exp_sum_brc, preg_all_float); // 传给loop1用于更新rowSum
+    StoreAlign<T, MicroAPI::StoreDist::DIST_NORM_B32>((__ubuf__ T *&)firstLoopSumUb, vreg_exp_sum_brc,
+                                                      preg_all_float); // 传给loop1用于更新rowSum
     Duplicate(vreg_p_scale_e8m0, 0x7f, preg_src_b8_n);
     StoreAlign<fp8_e8m0_t, MicroAPI::StoreDist::DIST_NORM_B8>(((__ubuf__ fp8_e8m0_t *&)pScaleSubLoop0),
                                                               vreg_p_scale_e8m0, preg_src_b8_n);
