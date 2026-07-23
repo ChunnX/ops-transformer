@@ -1246,14 +1246,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
             if (rankTotalCount <= 0) {
                 continue;
             }
-
             int32_t accumulatedRowSrcOffset = 0;
-            bool nextMaskPreLoaded = false; // 下一轮 mask 是否已预加载到 gatherMaskTensor_
-            uint64_t nextRoundStart = 0;            // 预加载轮的 route 数组起始下标
-            uint32_t nextRoundLen = 0;              // 预加载轮的有效 route item 数
-            uint32_t nextTopkIndexTensorElemCount = 0; // 预加载轮的 topkIndex 对齐后元素数
-            uint32_t nextCurRoundMaskBytes = 0;     // 预加载轮的 mask 字节数
-            uint64_t nextRoundMaskByteOffset = 0;   // 预加载轮的 mask 在 GM 中的字节偏移
 
             for (uint32_t roundIdx = 0; roundIdx < dispatchTotalRounds_; ++roundIdx) {
                 uint64_t roundStart = static_cast<uint64_t>(roundIdx) *
@@ -1271,21 +1264,11 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                         static_cast<int64_t>(Ops::Base::CeilDiv(roundLen, 8U)), static_cast<int64_t>(ALIGN_32)));
                 uint64_t roundMaskByteOffset = static_cast<uint64_t>(roundStart) / 8U;
 
-                if (nextMaskPreLoaded) {
-                    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID3>();
-                    roundStart = nextRoundStart;
-                    roundLen = nextRoundLen;
-                    topkIndexTensorElemCount = nextTopkIndexTensorElemCount;
-                    curRoundMaskBytes = nextCurRoundMaskBytes;
-                    roundMaskByteOffset = nextRoundMaskByteOffset;
-                    nextMaskPreLoaded = false;
-                } else {
-                    GlobalTensor<uint8_t> roundMaskSrc;
-                    roundMaskSrc.SetGlobalBuffer(rankMaskBasePtr + roundMaskByteOffset);
-                    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
-                    DataCopy(gatherMaskTensor_, roundMaskSrc, curRoundMaskBytes);
-                    SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
-                }
+                GlobalTensor<uint8_t> roundMaskSrc;
+                roundMaskSrc.SetGlobalBuffer(rankMaskBasePtr + roundMaskByteOffset);
+                SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID1>();
+                DataCopy(gatherMaskTensor_, roundMaskSrc, curRoundMaskBytes);
+                SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID1>();
 
                 CreateVecIndex(topkIndexTensor_, static_cast<int32_t>(roundStart),
                     topkIndexTensorElemCount);
@@ -1307,28 +1290,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                 if (roundCopyCnt <= 0) {
                     accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
                     continue;
-                }
-
-                if (roundIdx + 1 < dispatchTotalRounds_) {
-                    nextRoundStart = static_cast<uint64_t>(roundIdx + 1) *
-                        static_cast<uint64_t>(dispatchRoundSendTotalNum_);
-                    nextRoundLen = (roundIdx + 2 < dispatchTotalRounds_) ?
-                        dispatchRoundSendTotalNum_ :
-                        static_cast<uint32_t>(sendTotalNum_ - nextRoundStart);
-                    nextTopkIndexTensorElemCount = Ops::Base::CeilAlign(
-                        static_cast<int64_t>(nextRoundLen * sizeof(int32_t)),
-                        static_cast<int64_t>(ALIGN_32)) / sizeof(int32_t);
-                    nextCurRoundMaskBytes = (nextRoundLen == dispatchRoundSendTotalNum_) ?
-                        dispatchRoundMaskAlignSize_ :
-                        static_cast<uint32_t>(Ops::Base::CeilAlign(
-                            static_cast<int64_t>(Ops::Base::CeilDiv(nextRoundLen, 8U)),
-                            static_cast<int64_t>(ALIGN_32)));
-                    nextRoundMaskByteOffset = nextRoundStart / 8U;
-                    GlobalTensor<uint8_t> nextRoundMaskSrc;
-                    nextRoundMaskSrc.SetGlobalBuffer(rankMaskBasePtr + nextRoundMaskByteOffset);
-                    SyncFuncStatic<AscendC::HardEvent::V_MTE2, SYNC_EVENT_ID3>();
-                    DataCopy(gatherMaskTensor_, nextRoundMaskSrc, nextCurRoundMaskBytes);
-                    nextMaskPreLoaded = true;
                 }
 
                 for (int32_t chunkSrcIdx = 0; chunkSrcIdx < roundCopyCnt;
@@ -1359,7 +1320,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                     int32_t hi = roundRowEndLocal < waveEndLocal ? roundRowEndLocal : waveEndLocal;
                     AtomicAdd(flagBase + w, int32_t(hi - lo));
                 }
-
                 accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
             }
         }
