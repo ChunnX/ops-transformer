@@ -61,6 +61,8 @@ private:
     __aicore__ inline void ComputeExpertScore(int64_t rowInBatch);
     __aicore__ inline void SelectTop1AndScore(LocalTensor<T> yOutTensor,
                                               LocalTensor<int32_t> expertIdxOut, int64_t rowInBatch);
+    __aicore__ inline void SelectTopKAndScore(LocalTensor<T> yOutTensor,
+                                              LocalTensor<int32_t> expertIdxOut, int64_t rowInBatch);
     __aicore__ inline void CopyOut(int64_t globalRow);
     __aicore__ inline void CopyOutBatch(int64_t globalBaseRow, int64_t rowsInBatch);
 
@@ -370,6 +372,85 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTop1AndScore(L
 
         ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOutput, preg0, 0);
         MicroAPI::DataCopy(expertIdxAddr, vreg1, preg0);
+    }
+}
+
+template <typename T>
+__aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::SelectTopKAndScore(LocalTensor<T> yOutTensor,
+                                                                               LocalTensor<int32_t> expertIdxOut,
+                                                                               int64_t rowInBatch)
+{
+    LocalTensor<float> xNormTensor = xNormBuf_.Get<float>();
+    LocalTensor<float> xNormWithBiasTensor = xNormWithBiasBuf_.Get<float>();
+    LocalTensor<uint32_t> expertIdTensor = expertIdBuf_.Get<uint32_t>();
+    LocalTensor<float> sortedScore = sortedBuf_.Get<float>();
+    LocalTensor<float> sortTmp = calcTmpBuf_.Get<float>();
+
+    ArithProgression(expertIdTensor.ReinterpretCast<int32_t>(), static_cast<int32_t>(0), static_cast<int32_t>(1),
+                     expertCountAlign_);
+    PipeBarrier<PIPE_V>();
+
+    Sort<float, true>(sortedScore, xNormWithBiasTensor, expertIdTensor, sortTmp,
+                      expertCountAlign_ / ONE_REPEAT_SORT_NUM);
+
+    __local_mem__ float *xNormAddr = (__local_mem__ float *)xNormTensor.GetPhyAddr();
+    __local_mem__ float *sortedAddr = (__local_mem__ float *)sortedScore.GetPhyAddr();
+    __local_mem__ T *outputAddr = (__local_mem__ T *)yOutTensor.GetPhyAddr() + rowInBatch * kStride_;
+    __local_mem__ uint32_t *expertIdxAddr =
+        (__local_mem__ uint32_t *)expertIdxOut.GetPhyAddr() + rowInBatch * kStride_;
+
+    uint32_t kU32 = static_cast<uint32_t>(k_);
+    uint16_t vfLoopNum = static_cast<uint16_t>(CeilDiv(kU32, WG_VL_FLOAT_SIZE));
+
+    __VEC_SCOPE__
+    {
+        RegTensor<float> vregSum;
+        RegTensor<uint32_t> vreg0;
+        RegTensor<uint32_t> vreg1;
+        RegTensor<float> vreg2;
+        RegTensor<float> vreg3;
+        RegTensor<float> vreg4;
+        RegTensor<float> vregOutput;
+        MicroAPI::MaskReg preg0 = MicroAPI::CreateMask<float>();
+        MicroAPI::MaskReg preg1 = MicroAPI::CreateMask<float>();
+        MicroAPI::Duplicate(vregSum, static_cast<float>(0), preg0);
+
+        bool needRenorm = !(normType_ == 0 && renorm_ == 0);
+
+        if (needRenorm) {
+            for (uint16_t i = 0; i < vfLoopNum; i++) {
+                preg0 = MicroAPI::UpdateMask<uint32_t>(kU32);
+                MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    vreg0, vreg1, (__local_mem__ uint32_t *)sortedAddr + i * 2 * WG_VL_FLOAT_SIZE);
+                MicroAPI::Duplicate(vreg2, static_cast<float>(0), preg1);
+                MicroAPI::DataCopyGather(vreg2, xNormAddr, vreg1, preg0);
+                MicroAPI::Add(vregSum, vregSum, vreg2, preg1);
+            }
+            MicroAPI::ReduceSum(vregSum, vregSum, preg1);
+            MicroAPI::Adds(vregSum, vregSum, eps_, preg1);
+            MicroAPI::Duplicate(vreg4, vregSum, preg1);
+
+            for (uint16_t i = 0; i < vfLoopNum; i++) {
+                preg1 = MicroAPI::UpdateMask<uint32_t>(kU32);
+                MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    vreg0, vreg1, (__local_mem__ uint32_t *)sortedAddr + i * 2 * WG_VL_FLOAT_SIZE);
+                MicroAPI::DataCopyGather(vreg2, xNormAddr, vreg1, preg1);
+                MicroAPI::Div(vregOutput, vreg2, vreg4, preg1);
+                MicroAPI::Muls(vregOutput, vregOutput, routedScalingFactor_, preg1);
+                ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOutput, preg1, i * WG_VL_FLOAT_SIZE);
+                MicroAPI::DataCopy(expertIdxAddr + i * WG_VL_FLOAT_SIZE, vreg1, preg1);
+            }
+        } else {
+            for (uint16_t i = 0; i < vfLoopNum; i++) {
+                preg1 = MicroAPI::UpdateMask<uint32_t>(kU32);
+                MicroAPI::DataCopy<uint32_t, MicroAPI::LoadDist::DIST_DINTLV_B32>(
+                    vreg0, vreg1, (__local_mem__ uint32_t *)sortedAddr + i * 2 * WG_VL_FLOAT_SIZE);
+                MicroAPI::DataCopyGather(vreg2, xNormAddr, vreg1, preg1);
+                MicroAPI::Muls(vregOutput, vreg2, routedScalingFactor_, preg1);
+                ops::StoreOneTensorForDtypeT<T>(outputAddr, vregOutput, preg1, i * WG_VL_FLOAT_SIZE);
+                MicroAPI::DataCopy(expertIdxAddr + i * WG_VL_FLOAT_SIZE, vreg1, preg1);
+            }
+        }
     }
 }
 
@@ -707,16 +788,19 @@ __aicore__ inline void MoeGatingTopKWithoutGroupRegbase<T>::Process()
             expertIdxOutQueue_.EnQue<int32_t>(expertIdxOut);
             CopyOutBatch(batch * batchRows_, rowsInBatch);
         } else {
+            LocalTensor<T> yOutTensor = yOutQueue_.AllocTensor<T>();
+            LocalTensor<int32_t> expertIdxOut = expertIdxOutQueue_.AllocTensor<int32_t>();
             for (int64_t r = 0; r < rowsInBatch; r++) {
                 int64_t globalRow = batch * batchRows_ + r;
                 ComputeNorm(xInTensor, r);
                 if (outFlag_) {
                     CopyOutXNorm(globalRow);
                 }
-                SelectTopKBySort(r);
-                ComputeExpertScore(r);
-                CopyOut(globalRow);
+                SelectTopKAndScore(yOutTensor, expertIdxOut, r);
             }
+            yOutQueue_.EnQue<T>(yOutTensor);
+            expertIdxOutQueue_.EnQue<int32_t>(expertIdxOut);
+            CopyOutBatch(batch * batchRows_, rowsInBatch);
         }
         xInQueue_.FreeTensor(xInTensor);
     }
