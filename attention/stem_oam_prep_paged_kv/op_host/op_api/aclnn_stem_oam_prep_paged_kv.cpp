@@ -41,12 +41,11 @@ static const std::initializer_list<op::DataType> KV_SCALE_DTYPE_SUPPORT_LIST = {
 
 
 inline static bool CheckNull(const aclTensor* kCache, const aclTensor* vCache, const aclTensor* kvIndices,
-                             const aclTensor* kvSeqLens, const aclTensor* kScaleCache, const aclTensor* vScale)
+                             const aclTensor* kScaleCache, const aclTensor* vScale)
 {
     OP_CHECK_NULL(kCache, return false);
     OP_CHECK_NULL(vCache, return false);
     OP_CHECK_NULL(kvIndices, return false);
-    OP_CHECK_NULL(kvSeqLens, return false);
     OP_CHECK_NULL(kScaleCache, return false);
     OP_CHECK_NULL(vScale, return false);
     return true;
@@ -91,11 +90,11 @@ inline static bool CheckAttr(int64_t stemBlockSize, int64_t stemStride)
 }
 
 inline static aclnnStatus CheckParams(const aclTensor* kCache, const aclTensor* vCache, const aclTensor* kvIndices,
-                                      const aclTensor* kvSeqLens, const aclTensor* kScaleCache, const aclTensor* vScale,
+                                      const aclTensor* kScaleCache, const aclTensor* vScale,
                                       int64_t cacheLayout, int64_t kvBlockSize, int64_t stemBlockSize, int64_t stemStride,
                                       const aclTensor* kFlat, const aclTensor* vBias)
 {
-    CHECK_RET(CheckNull(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale), ACLNN_ERR_PARAM_NULLPTR);
+    CHECK_RET(CheckNull(kCache, vCache, kvIndices, kScaleCache, vScale), ACLNN_ERR_PARAM_NULLPTR);
     CHECK_RET(CheckDtype(kCache, vCache, kScaleCache, vScale), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckShape(kCache, vCache, kScaleCache, vScale, cacheLayout, kvBlockSize), ACLNN_ERR_PARAM_INVALID);
     CHECK_RET(CheckAttr(stemBlockSize, stemStride), ACLNN_ERR_PARAM_INVALID);
@@ -104,7 +103,7 @@ inline static aclnnStatus CheckParams(const aclTensor* kCache, const aclTensor* 
 
 aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
     const aclTensor* kCache, const aclTensor* vCache, const aclTensor* kvIndices,
-    const aclTensor* kvSeqLens, const aclTensor* kScaleCache, const aclTensor* vScale, float lambdaMag,
+    const aclIntArray* kvSeqLens, const aclTensor* kScaleCache, const aclTensor* vScale, float lambdaMag,
     int64_t cacheLayout, int64_t kvBlockSize, int64_t stemBlockSize, int64_t stemStride,
     const aclTensor* kFlat, const aclTensor* vBias, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
@@ -113,8 +112,8 @@ aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
 
-    auto ret = CheckParams(kCache, vCache, kvIndices, kvSeqLens, kScaleCache, vScale,
-                           cacheLayout, kvBlockSize, stemBlockSize, stemStride, kFlat, vBias);
+    auto ret = CheckParams(kCache, vCache, kvIndices, kScaleCache, vScale, cacheLayout,
+                           kvBlockSize, stemBlockSize, stemStride, kFlat, vBias);
     CHECK_RET(ret == ACLNN_SUCCESS, ret);
 
     auto kCacheView = IsContiguous(kCache) ? kCache
@@ -131,10 +130,11 @@ aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
             kScaleCache->GetViewStrides(), kScaleCache->GetViewOffset());
 
     auto kvIndicesContiguous = l0op::Contiguous(kvIndices, uniqueExecutor.get());
-    auto kvSeqLensContiguous = l0op::Contiguous(kvSeqLens, uniqueExecutor.get());
+    const aclTensor *kvSeqLensTensor = uniqueExecutor->ConvertToTensor(kvSeqLens, DataType::DT_INT32);
+    OP_CHECK_NULL(kvSeqLensTensor, return ACLNN_ERR_PARAM_NULLPTR);
     auto vScaleContiguous = l0op::Contiguous(vScale, uniqueExecutor.get());
 
-    auto result = l0op::StemOamPrepPagedKv(kCacheView, vCacheView, kvIndicesContiguous, kvSeqLensContiguous,
+    auto result = l0op::StemOamPrepPagedKv(kCacheView, vCacheView, kvIndicesContiguous, kvSeqLensTensor,
                                            kScaleCacheView, vScaleContiguous, lambdaMag,
                                            cacheLayout, kvBlockSize, stemBlockSize, stemStride,
                                            kFlat, vBias, uniqueExecutor.get());
