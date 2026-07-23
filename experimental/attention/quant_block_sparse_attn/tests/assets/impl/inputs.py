@@ -175,7 +175,7 @@ def customize_inputs(query, key, value, q_descale, k_descale, v_descale, p_scale
     dense_key = _fp8_rand((B, S2, N2, D), generator=generator)
     dense_value = _fp8_rand((B, S2, N2, D), generator=generator)
 
-    block_table = _make_block_table(B, S2, sparse_kv_block_size, block_table_pattern, rng)
+    block_table = _make_block_table(B, S2, sparse_kv_block_size, "sequential", rng)
 
     dense_k_scale = _make_scale_tensor((B, S2, N2), scale_pattern)
     key_pa, value_pa, k_scale_pa = _dense_to_pa(
