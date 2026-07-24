@@ -103,7 +103,7 @@ inline static aclnnStatus CheckParams(const aclTensor* kCache, const aclTensor* 
 
 aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
     const aclTensor* kCache, const aclTensor* vCache, const aclTensor* kvIndices,
-    const aclIntArray* kvSeqLens, const aclTensor* kScaleCache, const aclTensor* vScale, float lambdaMag,
+    const aclIntArray* kvSeqLens, const aclTensor* kScaleCache, const aclTensor* vScale, double lambdaMag,
     int64_t cacheLayout, int64_t kvBlockSize, int64_t stemBlockSize, int64_t stemStride,
     const aclTensor* kFlat, const aclTensor* vBias, uint64_t* workspaceSize, aclOpExecutor** executor)
 {
