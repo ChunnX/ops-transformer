@@ -276,9 +276,40 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckKeyValueShape() const
         return ge::GRAPH_FAILED;
     }
     const gert::Shape &keyShape = opParamInfo.key.shape->GetStorageShape();
+
+    if (opParamInfo.value.shape == nullptr) {
+        OP_LOGE(kOpName, "CheckKeyValueShape: value shape is nullptr");
+        return ge::GRAPH_FAILED;
+    }
+    const gert::Shape &valueShape = opParamInfo.value.shape->GetStorageShape();
+
+    if (keyShape.GetDimNum() == DIM_NUM_1) {
+        // 1D combined KV storage 路径
+        if (tilingInfo_.paBlockStrideVal == 0U) {
+            OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(kOpName, "pa_block_stride", "0",
+                                                  "must be greater than 0 for 1D combined KV storage");
+            return ge::GRAPH_FAILED;
+        }
+        const int64_t keyStorageSize = keyShape.GetShapeSize();
+        if (keyStorageSize <= 0 || static_cast<uint64_t>(keyStorageSize) % tilingInfo_.paBlockStrideVal != 0U) {
+            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(
+                kOpName, "key", Ops::Base::ToString(keyShape),
+                "1D combined KV storage size must be a positive multiple of pa_block_stride=" +
+                    std::to_string(tilingInfo_.paBlockStrideVal));
+            return ge::GRAPH_FAILED;
+        }
+        if (valueShape.GetDimNum() != DIM_NUM_1) {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "value", std::to_string(valueShape.GetDimNum()) + "D",
+                                                     "1D (must match key when using 1D combined KV storage)");
+            return ge::GRAPH_FAILED;
+        }
+        return ge::GRAPH_SUCCESS;
+    }
+
+    // 4D PA 路径
     if (keyShape.GetDimNum() != DIM_NUM_4) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "key", std::to_string(keyShape.GetDimNum()) + "D",
-                                                 "4D [blockNum, kvHeadNum, blockSize, headDim]");
+                                                 "4D [blockNum, kvHeadNum, blockSize, headDim] or 1D combined KV");
         return ge::GRAPH_FAILED;
     }
     if (keyShape.GetDim(DIM_2) != static_cast<int64_t>(tilingInfo_.kvBlockSizeVal)) {
@@ -293,11 +324,6 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckKeyValueShape() const
         return ge::GRAPH_FAILED;
     }
 
-    if (opParamInfo.value.shape == nullptr) {
-        OP_LOGE(kOpName, "CheckKeyValueShape: value shape is nullptr");
-        return ge::GRAPH_FAILED;
-    }
-    const gert::Shape &valueShape = opParamInfo.value.shape->GetStorageShape();
     if (valueShape.GetDimNum() != DIM_NUM_4) {
         OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "value", std::to_string(valueShape.GetDimNum()) + "D",
                                                  "4D [blockNum, kvHeadNum, blockSize, valueHeadDim]");
@@ -359,20 +385,31 @@ ge::graphStatus QuantBlockSparseAttnCheck::CheckQuantShape() const
         }
     }
 
-    // k_descale: (paBlockNumSum, N2, kvBlockSizeVal)
+    // k_descale: 3D (paBlockNumSum, N2, kvBlockSizeVal) 或 1D combined KV storage 切片
     if (opParamInfo.kDescale.shape != nullptr) {
         const gert::Shape &kDescaleShape = opParamInfo.kDescale.shape->GetStorageShape();
-        if (kDescaleShape.GetDimNum() != DIM_NUM_3) {
-            OP_LOGE_FOR_INVALID_SHAPEDIM(kOpName, "k_descale", std::to_string(kDescaleShape.GetDimNum()) + "D", "3D");
-            return ge::GRAPH_FAILED;
-        }
-        if (kDescaleShape.GetDim(DIM_0) != static_cast<int64_t>(tilingInfo_.paBlockNumSum) ||
-            kDescaleShape.GetDim(DIM_1) != static_cast<int64_t>(tilingInfo_.n2Size) ||
-            kDescaleShape.GetDim(DIM_2) != static_cast<int64_t>(tilingInfo_.kvBlockSizeVal)) {
-            OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "k_descale", Ops::Base::ToString(kDescaleShape),
-                                                  "must be (" + std::to_string(tilingInfo_.paBlockNumSum) + ", " +
-                                                      std::to_string(tilingInfo_.n2Size) + ", " +
-                                                      std::to_string(tilingInfo_.kvBlockSizeVal) + ")");
+        const gert::Shape &keyShape = opParamInfo.key.shape->GetStorageShape();
+        if (kDescaleShape.GetDimNum() == DIM_NUM_1) {
+            // 1D combined KV storage 路径，仅当 key 也是 1D 时才允许
+            if (keyShape.GetDimNum() != DIM_NUM_1) {
+                OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(kOpName, "k_descale",
+                                                         std::to_string(kDescaleShape.GetDimNum()) + "D",
+                                                         "3D (when key is 4D) or 1D (when key is 1D combined KV)");
+                return ge::GRAPH_FAILED;
+            }
+        } else if (kDescaleShape.GetDimNum() == DIM_NUM_3) {
+            if (kDescaleShape.GetDim(DIM_0) != static_cast<int64_t>(tilingInfo_.paBlockNumSum) ||
+                kDescaleShape.GetDim(DIM_1) != static_cast<int64_t>(tilingInfo_.n2Size) ||
+                kDescaleShape.GetDim(DIM_2) != static_cast<int64_t>(tilingInfo_.kvBlockSizeVal)) {
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(kOpName, "k_descale", Ops::Base::ToString(kDescaleShape),
+                                                      "must be (" + std::to_string(tilingInfo_.paBlockNumSum) + ", " +
+                                                          std::to_string(tilingInfo_.n2Size) + ", " +
+                                                          std::to_string(tilingInfo_.kvBlockSizeVal) + ")");
+                return ge::GRAPH_FAILED;
+            }
+        } else {
+            OP_LOGE_FOR_INVALID_SHAPEDIM_WITH_REASON(
+                kOpName, "k_descale", std::to_string(kDescaleShape.GetDimNum()) + "D", "3D or 1D combined KV");
             return ge::GRAPH_FAILED;
         }
     }

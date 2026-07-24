@@ -178,6 +178,32 @@ std::vector<TensorDesc> MakeBSNDInputs(int64_t b = 4, int64_t s = 256, int64_t n
         EmptyInput,                                                                                  // metadata
     };
 }
+
+// 1D combined KV storage: key/value 为 1D storage 切片，k_descale 为 1D，v_descale 为 (N2,)
+// pa_block_stride = N2 * blockSize * D + N2 * blockSize * Dv + N2 * blockSize * 4
+// 当 N2=4, blockSize=128, D=Dv=128 时: 4*128*128 + 4*128*128 + 4*128*4 = 65536 + 65536 + 2048 = 131072
+// keyStorageSize = blockNum * pa_block_stride = 4 * 131072 = 524288
+std::vector<TensorDesc> Make1DKVInputs(int64_t n1 = 4, int64_t n2 = 4, int64_t keyStorageSize = 524288)
+{
+    return {
+        {{{256, n1, 128}, {256, n1, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},     // query TND
+        {{{keyStorageSize}, {keyStorageSize}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND}, // key 1D
+        {{{keyStorageSize}, {keyStorageSize}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND}, // value 1D
+        {{{256, n1}, {256, n1}}, ge::DT_FLOAT, ge::FORMAT_ND},                       // q_descale TND
+        {{{keyStorageSize}, {keyStorageSize}}, ge::DT_FLOAT, ge::FORMAT_ND},         // k_descale 1D
+        {{{n2}, {n2}}, ge::DT_FLOAT, ge::FORMAT_ND},                                 // v_descale
+        {{{1}, {1}}, ge::DT_FLOAT, ge::FORMAT_ND},                                   // p_scale
+        {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},                                   // cu_seqlens_q
+        {{{2}, {2}}, ge::DT_INT32, ge::FORMAT_ND},                                   // cu_seqlens_kv
+        EmptyInput,                                                                  // seqused_q
+        EmptyInput,                                                                  // seqused_kv
+        {{{1, n1, 2, 4}, {1, n1, 2, 4}}, ge::DT_INT32, ge::FORMAT_ND},               // sparse_indices
+        {{{1, n1, 2}, {1, n1, 2}}, ge::DT_INT32, ge::FORMAT_ND},                     // sparse_seq_len
+        {{{1, 8}, {1, 8}}, ge::DT_INT32, ge::FORMAT_ND},                             // block_table
+        {{{2048, 2048}, {2048, 2048}}, ge::DT_UINT8, ge::FORMAT_ND},                 // atten_mask
+        EmptyInput,                                                                  // metadata
+    };
+}
 } // namespace
 
 // ===================== 正向用例：基础功能 =====================
@@ -576,4 +602,36 @@ TEST_F(QuantBlockSparseAttnTilingArch35, tiling_with_seqused)
     inputs[9] = TensorDesc({{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND);
     inputs[10] = TensorDesc({{1}, {1}}, ge::DT_INT32, ge::FORMAT_ND);
     ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeValidAttrs()), true);
+}
+
+// ===================== 1D combined KV storage 用例 =====================
+
+TEST_F(QuantBlockSparseAttnTilingArch35, tiling_1d_combined_kv)
+{
+    ExpectTilingResult(BuildTilingPara(Make1DKVInputs(), MakeValidOutputs(), MakeAttrsEx("TND", 131072)), true);
+}
+
+TEST_F(QuantBlockSparseAttnTilingArch35, tiling_1d_kv_pa_block_stride_zero)
+{
+    ExpectTilingResult(BuildTilingPara(Make1DKVInputs(), MakeValidOutputs(), MakeAttrsEx("TND", 0)), false);
+}
+
+TEST_F(QuantBlockSparseAttnTilingArch35, tiling_1d_kv_invalid_storage_size)
+{
+    ExpectTilingResult(BuildTilingPara(Make1DKVInputs(4, 4, 524289), MakeValidOutputs(), MakeAttrsEx("TND", 131072)),
+                       false);
+}
+
+TEST_F(QuantBlockSparseAttnTilingArch35, tiling_1d_kv_n1_n2_mismatch)
+{
+    auto inputs = Make1DKVInputs();
+    inputs[5] = TensorDesc({{3}, {3}}, ge::DT_FLOAT, ge::FORMAT_ND);
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeAttrsEx("TND", 131072)), false);
+}
+
+TEST_F(QuantBlockSparseAttnTilingArch35, tiling_1d_kv_value_not_1d)
+{
+    auto inputs = Make1DKVInputs();
+    inputs[2] = TensorDesc({{4, 4, 128, 128}, {4, 4, 128, 128}}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND);
+    ExpectTilingResult(BuildTilingPara(inputs, MakeValidOutputs(), MakeAttrsEx("TND", 131072)), false);
 }
