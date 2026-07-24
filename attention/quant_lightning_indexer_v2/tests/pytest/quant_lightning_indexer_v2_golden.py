@@ -10,6 +10,9 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 
+import os
+from pathlib import Path
+
 import test
 import torch
 try:
@@ -107,6 +110,140 @@ FP4_E2M1_VALUES = torch.tensor(
      -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0],
     dtype=torch.float32)
 MXFP4_TORCH_DTYPE = torch.float4_e2m1fn_x2
+
+
+def _qliv2_debug_enabled():
+    return os.getenv('QLIV2_DEBUG_DUMP', '0').lower() in ('1', 'true', 'yes', 'on')
+
+
+def _qliv2_debug_target():
+    return (int(os.getenv('QLIV2_DEBUG_B_IDX', '0')),
+            int(os.getenv('QLIV2_DEBUG_N2_IDX', '0')),
+            int(os.getenv('QLIV2_DEBUG_S1_IDX', '4')))
+
+
+def _qliv2_debug_numpy(value, raw=False):
+    if value is None:
+        return np.array([], dtype=np.float32)
+    if isinstance(value, torch.Tensor):
+        tensor = value.detach().cpu().contiguous()
+        if raw:
+            return tensor.view(torch.uint8).numpy().copy()
+        try:
+            return tensor.numpy().copy()
+        except (TypeError, RuntimeError):
+            return tensor.float().numpy().copy()
+    return np.asarray(value)
+
+
+def _qliv2_debug_save(dump_dir, name, value, raw=False):
+    np.save(dump_dir / f'{name}.npy', _qliv2_debug_numpy(value, raw=raw))
+
+
+def _qliv2_debug_output_row(tensor, layout_query, b_idx, n2_idx, s1_idx, cu_seqlens_q):
+    if layout_query == 'BSND':
+        return tensor[b_idx, s1_idx, n2_idx]
+    token_idx = int(cu_seqlens_q[b_idx]) + s1_idx
+    return tensor[token_idx, n2_idx]
+
+
+def _qliv2_debug_valid_len(layout, seq_size, b_idx, cu_seqlens, seqused):
+    if seqused is not None:
+        return int(seqused[b_idx])
+    if layout == 'TND':
+        return int(cu_seqlens[b_idx + 1]) - int(cu_seqlens[b_idx])
+    return int(seq_size)
+
+
+def _dump_qliv2_cpu_debug(dump_dir, topk_value, cpu_result, cpu_topk_value,
+                          query, query_cpu_ref, key, key_cpu_ref, weights,
+                          query_dequant_scale, query_dequant_scale_cpu,
+                          key_dequant_scale, key_dequant_scale_cpu, block_table, output_idx_offset,
+                          q_seq, k_seq, q_head_num, k_head_num, sparse_count, quant_mode,
+                          sparse_mode, cmp_ratio, return_value, layout_query, layout_key,
+                          cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k):
+    b_idx, n2_idx, s1_idx = _qliv2_debug_target()
+    q_valid_len = _qliv2_debug_valid_len(layout_query, q_seq, b_idx, cu_seqlens_q, seqused_q)
+    k_valid_len = _qliv2_debug_valid_len(layout_key, k_seq, b_idx, cu_seqlens_k, seqused_k)
+    if s1_idx < 0 or s1_idx >= q_valid_len:
+        raise ValueError(f'QLIV2 debug target s1={s1_idx} is outside valid q length {q_valid_len}')
+
+    score_len = min(k_valid_len, topk_value.shape[-1])
+    effective_score_len = score_len
+    if sparse_mode == 3:
+        residual = 0
+        if cmp_residual_k is not None:
+            residual = int(_qliv2_debug_numpy(cmp_residual_k).reshape(-1)[b_idx])
+        original_k_len = k_valid_len * cmp_ratio + residual
+        effective_score_len = max(
+            0, min(score_len, (original_k_len - q_valid_len + s1_idx + 1) // cmp_ratio))
+    cpu_score = topk_value[b_idx, n2_idx, s1_idx, :score_len]
+    cpu_index = _qliv2_debug_output_row(
+        cpu_result, layout_query, b_idx, n2_idx, s1_idx, cu_seqlens_q)
+    _qliv2_debug_save(dump_dir, 'cpu_score', cpu_score)
+    _qliv2_debug_save(dump_dir, 'cpu_score_effective', cpu_score[:effective_score_len])
+    _qliv2_debug_save(dump_dir, 'cpu_topk_index', cpu_index)
+    if return_value:
+        cpu_value = _qliv2_debug_output_row(
+            cpu_topk_value, layout_query, b_idx, n2_idx, s1_idx, cu_seqlens_q)
+        _qliv2_debug_save(dump_dir, 'cpu_topk_value', cpu_value)
+        np.save(dump_dir / 'cpu_topk_pairs.npy', np.stack((
+            _qliv2_debug_numpy(cpu_index).astype(np.float64),
+            _qliv2_debug_numpy(cpu_value).astype(np.float64)), axis=-1))
+
+    if layout_query == 'BSND':
+        q_token = (b_idx, s1_idx)
+    else:
+        q_token = (int(cu_seqlens_q[b_idx]) + s1_idx,)
+    g_size = q_head_num // k_head_num
+    g_slice = slice(n2_idx * g_size, (n2_idx + 1) * g_size)
+    query_raw_storage = query.view(torch.uint8)
+    query_scale_raw_storage = query_dequant_scale.view(torch.uint8)
+    _qliv2_debug_save(dump_dir, 'query_raw', query_raw_storage[q_token][g_slice])
+    _qliv2_debug_save(dump_dir, 'query_decoded', query_cpu_ref[q_token][g_slice])
+    _qliv2_debug_save(dump_dir, 'weight', weights[q_token][g_slice])
+    _qliv2_debug_save(dump_dir, 'q_scale_e8m0_raw', query_scale_raw_storage[q_token][g_slice])
+    _qliv2_debug_save(dump_dir, 'q_scale_decoded', query_dequant_scale_cpu[q_token][g_slice])
+
+    if layout_key == 'BSND':
+        key_slice = (b_idx, slice(0, score_len), n2_idx)
+        key_scale_cpu_slice = key_slice
+        key_cpu_slice = key_slice
+    elif layout_key == 'TND':
+        k_start = int(cu_seqlens_k[b_idx])
+        key_slice = (slice(k_start, k_start + score_len), n2_idx)
+        key_scale_cpu_slice = key_slice
+        key_cpu_slice = key_slice
+    else:
+        block_table_np = _qliv2_debug_numpy(block_table)
+        logical_block_count = math.ceil(score_len / key.shape[1])
+        physical_block_ids = block_table_np[b_idx, :logical_block_count].astype(np.int64)
+        physical_block_ids = physical_block_ids[physical_block_ids >= 0]
+        _qliv2_debug_save(dump_dir, 'pa_physical_block_ids', physical_block_ids)
+        key_slice = (physical_block_ids.tolist(), slice(None), n2_idx)
+        key_scale_cpu_slice = (b_idx, n2_idx, slice(0, score_len))
+        key_cpu_slice = key_scale_cpu_slice
+    key_raw_storage = key.view(torch.uint8)
+    key_scale_raw_storage = key_dequant_scale.view(torch.uint8)
+    _qliv2_debug_save(dump_dir, 'key_raw', key_raw_storage[key_slice])
+    _qliv2_debug_save(dump_dir, 'key_decoded', key_cpu_ref[key_cpu_slice])
+    _qliv2_debug_save(dump_dir, 'k_scale_e8m0_raw', key_scale_raw_storage[key_slice])
+    _qliv2_debug_save(dump_dir, 'k_scale_decoded', key_dequant_scale_cpu[key_scale_cpu_slice])
+    _qliv2_debug_save(dump_dir, 'seqused_q', seqused_q)
+    _qliv2_debug_save(dump_dir, 'seqused_k', seqused_k)
+    _qliv2_debug_save(dump_dir, 'cu_seqlens_q', cu_seqlens_q)
+    _qliv2_debug_save(dump_dir, 'cu_seqlens_k', cu_seqlens_k)
+    _qliv2_debug_save(dump_dir, 'block_table', block_table)
+    _qliv2_debug_save(dump_dir, 'output_idx_offset', output_idx_offset)
+    _qliv2_debug_save(dump_dir, 'cmp_residual_k', cmp_residual_k)
+    np.savez(
+        dump_dir / 'debug_metadata.npz', q_seq=q_seq, k_seq=k_seq,
+        sparse_count=sparse_count, b_idx=b_idx, n2_idx=n2_idx, s1_idx=s1_idx,
+        q_valid_len=q_valid_len, k_valid_len=k_valid_len, score_len=score_len,
+        effective_score_len=effective_score_len, g_size=g_size,
+        q_head_num=q_head_num, k_head_num=k_head_num, scale_group_size=MX_SCALE_GROUP_SIZE,
+        quant_mode=quant_mode, sparse_mode=sparse_mode, cmp_ratio=cmp_ratio,
+        return_value=return_value, layout_query=layout_query, layout_key=layout_key)
 
 
 def is_mx_quant_mode(quant_mode):
@@ -1536,6 +1673,28 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
         block_table = torch.from_numpy(block_table).to(dtype=torch.int32)
     # ======================== metadata 构造 ========================
     # max_seqlen 从个体长度中取
+    debug_dump_dir = None
+    if not is_batch and _qliv2_debug_enabled():
+        b_idx, n2_idx, _ = _qliv2_debug_target()
+        if b_idx < 0 or b_idx >= batch_size or n2_idx < 0 or n2_idx >= k_head_num:
+            raise ValueError(
+                f'QLIV2 debug target (b={b_idx}, n2={n2_idx}) exceeds '
+                f'(B={batch_size}, N2={k_head_num})')
+        debug_dump_dir = Path(os.getenv('QLIV2_DEBUG_DUMP_DIR', 'qliv2_debug_dump'))
+        debug_dump_dir.mkdir(parents=True, exist_ok=True)
+        debug_key_cpu_ref = key_bnsd_cpu_ref if layout_key == 'PA_BBND' else key_cpu_ref
+        debug_key_scale_cpu = (
+            key_dequant_scale_bns if layout_key == 'PA_BBND' else key_dequant_scale_cpu)
+        _dump_qliv2_cpu_debug(
+            debug_dump_dir, topk_value, cpu_result, cpu_topk_value,
+            query, query_cpu_ref, key, debug_key_cpu_ref, weights,
+            query_dequant_scale, query_dequant_scale_cpu,
+            key_dequant_scale, debug_key_scale_cpu, block_table, output_idx_offset,
+            q_seq, k_seq, q_head_num, k_head_num, sparse_count, quant_mode,
+            sparse_mode, cmp_ratio, return_value, layout_query, layout_key,
+            cu_seqlens_q, cu_seqlens_k, seqused_q, seqused_k, cmp_residual_k)
+        print(f'[QLIV2 debug] CPU tensors saved to {debug_dump_dir.resolve()}')
+
     max_seqlen_q_meta = actual_seq_lengths_query.max().item()
     max_seqlen_k_meta = actual_seq_lengths_key.max().item()
 
@@ -1596,6 +1755,8 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
                                 layout_q = layout_query,
                                 layout_k = layout_key,
                                 cmp_ratio = cmp_ratio)
+        if debug_dump_dir is not None:
+            _qliv2_debug_save(debug_dump_dir, 'metadata_host', metadata)
         metadata = metadata.npu()
         if blockFusion is not None:
             blockFusion = blockFusion.npu()
@@ -1633,6 +1794,27 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
                                                     return_value = return_value)
 
         torch.npu.synchronize()
+        if debug_dump_dir is not None:
+            b_idx, n2_idx, s1_idx = _qliv2_debug_target()
+            raw_index = _qliv2_debug_output_row(
+                npu_result, layout_query, b_idx, n2_idx, s1_idx, cu_seqlens_q)
+            _qliv2_debug_save(debug_dump_dir, 'npu_topk_index_raw', raw_index)
+            if return_value:
+                raw_value = _qliv2_debug_output_row(
+                    npu_topk_value, layout_query, b_idx, n2_idx, s1_idx, cu_seqlens_q)
+                raw_index_np = _qliv2_debug_numpy(raw_index)
+                raw_value_np = _qliv2_debug_numpy(raw_value)
+                _qliv2_debug_save(debug_dump_dir, 'npu_topk_value_raw', raw_value)
+                np.save(debug_dump_dir / 'npu_topk_pairs_raw.npy', np.stack((
+                    raw_index_np.astype(np.float64),
+                    raw_value_np.astype(np.float64)), axis=-1))
+                watch_indices = os.getenv('QLIV2_DEBUG_WATCH_INDICES', '')
+                for target_idx in (int(item) for item in watch_indices.split(',') if item.strip()):
+                    positions = np.flatnonzero(raw_index_np == target_idx)
+                    values = raw_value_np[positions].tolist() if positions.size else []
+                    print(
+                        f'[QLIV2 debug] raw TopK idx={target_idx}, '
+                        f'positions={positions.tolist()}, values={values}')
         if return_value:
             if npu_topk_value.shape != npu_result.shape:
                 raise RuntimeError(
@@ -1640,6 +1822,19 @@ def qliv2_output_single(params, is_batch = False, split_s1 = DEFAULT_SPLIT_S1, s
                     f"but got {tuple(npu_topk_value.shape)} and {tuple(npu_result.shape)}")
             npu_topk_value, npu_sort_order = npu_topk_value.sort(dim=-1, descending=True)
             npu_result = torch.gather(npu_result, dim=-1, index=npu_sort_order)
+            if debug_dump_dir is not None:
+                sorted_index = _qliv2_debug_output_row(
+                    npu_result, layout_query, b_idx, n2_idx, s1_idx, cu_seqlens_q)
+                sorted_value = _qliv2_debug_output_row(
+                    npu_topk_value, layout_query, b_idx, n2_idx, s1_idx, cu_seqlens_q)
+                sorted_index_np = _qliv2_debug_numpy(sorted_index)
+                sorted_value_np = _qliv2_debug_numpy(sorted_value)
+                _qliv2_debug_save(debug_dump_dir, 'npu_topk_index_sorted', sorted_index)
+                _qliv2_debug_save(debug_dump_dir, 'npu_topk_value_sorted', sorted_value)
+                np.save(debug_dump_dir / 'npu_topk_pairs_sorted.npy', np.stack((
+                    sorted_index_np.astype(np.float64),
+                    sorted_value_np.astype(np.float64)), axis=-1))
+                print(f'[QLIV2 debug] NPU TopK tensors saved to {debug_dump_dir.resolve()}')
         return cpu_result, npu_result, topk_value, cpu_topk_value, npu_topk_value
     
 
