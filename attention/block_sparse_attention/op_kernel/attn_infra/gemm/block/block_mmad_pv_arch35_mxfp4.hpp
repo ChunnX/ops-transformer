@@ -81,8 +81,25 @@ public:
     static constexpr uint32_t L0_TILE_K = tla::get<2>(L0TileShape_{});
 
 
-        // mode4 核间同步：AIC 侧对两个 AIV 各用一个 flagId，第二个 = 第一个 + 16
+    static constexpr uint32_t mBaseSize = 128;     // [#9] M 方向基准 tile（对应 QFA mBaseSize），用于 pad 满块判断
+
+    // mode4 核间同步：AIC 侧对两个 AIV 各用一个 flagId，第二个 = 第一个 + 16
     static constexpr uint32_t V0_V1_FLAG_ID_OFFSET = 16;
+
+    // ====================== Event ID 命名常量（与 QFA 完全一致）======================
+    // QFA 的 ID 分配策略：QK 用 2-3，PV 用 4-7。同 ID 不同 HardEvent 类型不冲突。
+    // 2+2 方案：PV 用 2 槽 ping-pong（KV_EVENT0/1），QK 后续用 ID 2-3 各自独立。
+    //
+    // V L1 双路（MTE1_MTE2 / MTE2_MTE1：GM→L1 gather ↔ L1→L0 LoadV）
+    static constexpr uint32_t KV_EVENT0 = 4;
+    static constexpr uint32_t KV_EVENT1 = 5;
+    // PV L0A/B 双缓冲（M_MTE1 / MTE1_M：LoadV/P ↔ Mmad）
+    //   与 KV_EVENT 复用同一 ID——不同 HardEvent 类型，硬件 flag 独立存储，不冲突
+    static constexpr uint32_t PV_L0AB_EVENT0 = KV_EVENT0;  // = 4
+    static constexpr uint32_t PV_L0AB_EVENT1 = KV_EVENT1;  // = 5
+    // PV L0C 单缓冲（M_FIX / FIX_M：Mmad ↔ Fixpipe）
+    //   同样与 KV_EVENT0 复用——M_FIX / FIX_M 与 MTE1_MTE2 / M_MTE1 是不同 HardEvent 类型
+    static constexpr uint32_t PV_L0C_EVENT0 = KV_EVENT0;   // = 4
 
     // L1 各区单份字节数（fp4 两元素占 1 字节；scale 为 E8M0，每 32 元素 1 字节）
     static constexpr uint32_t L1_Q_SIZE = 128 * 128 / 2;                                          // Q 数据：8K
@@ -92,7 +109,7 @@ public:
     static constexpr uint32_t L1_P_SIZE = 128 * 256 / 2;                                          // P 数据：16K
     static constexpr uint32_t L1_P_DESCALE_SIZE = 128 * 2 * (256 / 64 + 1) * sizeof(AscendC::fp8_e8m0_t); // P-scale：1.25K
     static constexpr uint32_t L1_Q_BUFCNT = 2;    // Q 区份数
-    static constexpr uint32_t L1_KV_BUFCNT = 4;   // KV/V 区份数
+    static constexpr uint32_t L1_KV_BUFCNT = 2;   // KV/V 区份数（2+2 方案：PV 2 槽 ping-pong，QK 另 2 槽独立）
     static constexpr uint32_t L1_P_BUFCNT = 20;   // P 区份数
 
     static constexpr uint32_t L1_SINGLE_GLOBAL_MAX_SIZE = 128;
@@ -167,10 +184,40 @@ public:
         uint32_t addrL0CStart = QK_L0C_SIZE * QK_L0C_BUFCNT;
         l0CTensor[0] = resource.l0CBuf.template GetBufferByByte<float>(addrL0CStart);
 
-        // 初始化L0A中v pad的16行
+        // ====================== Event 预置（对应 QFA AllocEventID）======================
+        AllocEventID();
+
+        // 初始化L0A中v pad的16行（循环 seed 两个 L0A 槽，配合 ping-pong）
         InitL0BufferForReduceSum();
     }
     __aicore__ inline ~BlockMmadTla() {}
+
+    // ============================================================================
+    // AllocEventID：预置所有 event flag（让首轮不用等），对应 QFA AllocEventID
+    // ============================================================================
+    __aicore__ inline void AllocEventID()
+    {
+        // PV L0A/B 双缓冲（M_MTE1：Mmad→MTE1，两个槽都预置）
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT0);
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT1);
+        // PV L0C 单缓冲（FIX_M：Fixpipe→M，预置可写）
+        AscendC::SetFlag<AscendC::HardEvent::FIX_M>(PV_L0C_EVENT0);
+        // V L1 双路（MTE1_MTE2：LoadV→MTE2 gather，2 槽都预置）
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0);
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT1);
+    }
+
+    // ============================================================================
+    // FreeEventID：等所有 event 排空（释放），对应 QFA FreeEventID
+    // ============================================================================
+    __aicore__ inline void FreeEventID()
+    {
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT0);
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT1);
+        AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(PV_L0C_EVENT0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT1);
+    }
 
     // [改造] V 的 L1->L0A 转置搬运改走 mx functor（原裸 LoadVToL0 的 5 参 mx LoadData 下沉到 policy）。
     //   nZ L1(V) + V-scale -> zN L0A(Vᵀ)，ifTranspose=true 由 functor 内部设定。
@@ -205,54 +252,22 @@ public:
     // [改造] Mmad 改走 tileMmad functor（原裸 MatmulPV 的 AscendC::Mmad 下沉到 TileMmadTla）。
     //   C=Vᵀ@P=Oᵀ，m=D+16（含 rowsum seed 行）、n=M、k=S2(对齐64)。
     //   tileMmad 只读 .data()（不消费 layout stride），故 fp4 粒度不影响；这里包 tla 张量传入。
+    //   [#1] initC 由 isTileGoupFirstTile 控制：TileGroup 首 tile 重置 L0C、tile 内累加（cmatrixInitVal 语义）。
     __aicore__ inline void MatmulPV(uint32_t l0ABufId, uint32_t l0BBufId,
-                                    uint32_t m, uint32_t n, uint32_t k)
+                                    uint32_t m, uint32_t n, uint32_t k, bool initC)
     {
-        // [改造] 裸 LocalTensor 包成 tla 张量（布局对象仅用于满足 MakeTensor 签名，tileMmad 不读其 stride）。
         auto l0ALayout = tla::MakeLayout<ElementA, LayoutTagL0A>(m, k);
         auto l0ATensorTla = tla::MakeTensor(l0ATensor[l0ABufId], l0ALayout, Arch::PositionL0A{});
         auto l0BLayout = tla::MakeLayout<ElementB, LayoutTagL0B>(k, n);
         auto l0BTensorTla = tla::MakeTensor(l0BTensor[l0BBufId], l0BLayout, Arch::PositionL0B{});
         auto l0CLayout = tla::MakeLayoutL0C(m, n);
         auto l0CTensorTla = tla::MakeTensor(l0CTensor[0], l0CLayout, Arch::PositionL0C{});
-        tileMmad(l0CTensorTla, l0ATensorTla, l0BTensorTla, m, n, k, /*initC=*/true);
+        tileMmad(l0CTensorTla, l0ATensorTla, l0BTensorTla, m, n, k, initC);
     }
 
 
-    __aicore__ inline void CopyInA1(uint32_t m,uint32_t k,uint32_t alignK,AscendC::GlobalTensor<fp4x2_e2m1_t> gV)
-    {
-        AscendC::Nd2NzParams nd2nzA1Params;
-
-        uint16_t aColValue = CeilDivision(m, 2);
-        nd2nzA1Params.ndNum = 1;  // ND矩阵的数目
-        nd2nzA1Params.nValue = k; // 源操作ND矩阵的行数
-        nd2nzA1Params.dValue = aColValue; // 源操作ND矩阵的列数，FP4类型下2个连续数据合并为1个FP8数据进行搬运
-        nd2nzA1Params.srcNdMatrixStride = 0; // 源操作数相邻ND矩阵间的起始地址偏移
-        nd2nzA1Params.srcDValue = aColValue; // 源操作数同一ND矩阵内相邻行的起始地址偏移
-        nd2nzA1Params.dstNzC0Stride = alignK; // ND转Nz后，同一行数据切分后各段的起始地址间隔，单位32B
-        nd2nzA1Params.dstNzNStride = 1; // ND矩阵第x行与第x+1行转Nz后在dst中的偏移
-        nd2nzA1Params.dstNzMatrixStride = 0; // 目的Nz矩阵中，相邻Nz矩阵起始地址的偏移，配置为0时，无意义
-        
-        AscendC::DataCopy(l1ATensor[0], gV, nd2nzA1Params);
-    }
-
-    __aicore__ inline void CopyInScaleA1(uint32_t m,uint32_t scaleK,AscendC::GlobalTensor<uint8_t> gVScale )
-    {
-        AscendC::GlobalTensor<half> scaleAGMB16;
-        scaleAGMB16.SetGlobalBuffer((__gm__ half*)(gVScale.GetPhyAddr()), m * scaleK / 2);
-        auto l1AScaleTensorB16 = l1AScaleTensor[0].ReinterpretCast<half>();
-        // 转置输入时scaleA的GM shape为[scaleK, m, 2]，按B16视图使用Nd2NzParams搬运
-        AscendC::Nd2NzParams nd2nzParams;
-        nd2nzParams.ndNum = 1;           // 源操作数中ND矩阵的个数
-        nd2nzParams.nValue = scaleK / 2; // 源操作ND矩阵的行数，按B16视图后2个fp8 scale合并为1个half
-        nd2nzParams.dValue = m;          // 源操作ND矩阵的列数
-        nd2nzParams.srcDValue = m;       // 源操作数同一ND矩阵内相邻行的起始地址偏移
-        nd2nzParams.dstNzC0Stride = scaleK / 2; // ND转Nz后，同一行数据切分后各段的起始地址间隔，单位32B
-        nd2nzParams.dstNzNStride = 1;      // ND矩阵第x行与第x+1行转Nz后在dst中的偏移
-        nd2nzParams.dstNzMatrixStride = 0; // 相邻Nz矩阵间的起始地址偏移
-
-        AscendC::DataCopy(l1AScaleTensorB16, scaleAGMB16, nd2nzParams);
-    }
+    // [Clean-1] CopyInA1/CopyInScaleA1 已删除——operator() 走 tla gather（SparseVBaseTileL1FullLoad +
+    //   SparseVScaleBaseTileL1FullLoad），这两个 raw Nd2Nz 方法不再使用。
 
     // [step2-tla化] V 数据 gather 改 ABf16 风格：GetTile(gV段) + GetTile(l1A段) + copyGmToL1A。
     //   gV=ColumnMajor(D,S2)、l1A=nZ(D,s2Align64)，两者 dim0=embed、dim1=seq，
@@ -306,7 +321,6 @@ public:
                 (unsigned)(oriStartOffset * embed),
                 (unsigned)static_cast<uint32_t>(l1ATensorTile.layout()(l1ATensorTile.coord())),
                 (unsigned)(dealtLenAccum * 64));
-
             copyGmToL1A(l1ATensorTile, gVTensorTile);
 
             dealtLenAccum += curDealtLen;
@@ -319,7 +333,6 @@ public:
             }
         }
     }
-
 
     // [step2-tla化] V-scale gather 改 ABf16 风格：GetTile(gVScale段) + GetTile(l1AScale段) + mx functor。
     //   gVScale=MxScaleA(ColumnMajor,trans)、l1AScale=zZ，均 (rows=embed, cols=s2Align64/32) 维序 (embed, seq-scale)。
@@ -430,36 +443,41 @@ public:
 
     __aicore__ inline void InitL0BufferForReduceSum()
     {
-          // 用 Fill 假数据填 L1：l1ATensor=V、l1BTensor=P 及各自 scale，
-            // 份数按各自 L1 buffer 字节数 /32（Fill 单位是 32B block），不越界。
-            AscendC::InitConstValueParams<uint16_t> vFillParams(1, static_cast<uint16_t>(PV_L0A_SIZE / 32 ), 0, 0x2222);
-            AscendC::Fill(l1ATensor[0].template ReinterpretCast<uint16_t>(), vFillParams);          // V 数据
-            AscendC::PipeBarrier<PIPE_MTE2>();
-            AscendC::InitConstValueParams<uint16_t> vscaleFillParams(1, static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32), 0, 0x7f7f);
-            AscendC::Fill(l1AScaleTensor[0].template ReinterpretCast<uint16_t>(), vscaleFillParams); // V scale
-            AscendC::PipeBarrier<PIPE_MTE2>();
-            // P 数据：只填 S2*M(=L1_P_SIZE=16K)。【不可用 PV_L0B_SIZE(18K)】——
-            //   P 无 +16 seed 行(只有 L0A/V 才有)，L1 P 单槽=L1_P_SIZE=16K；
-            //   PV_L0B_SIZE(18K) 里的 +16 是 L0B 侧对称 padding，不来自 L1，填 18K 会越界 2K 到 l1BTensor[1]。
-            AscendC::InitConstValueParams<uint16_t> pFillParams(1, static_cast<uint16_t>(L1_P_SIZE / 32), 0, 0x2222);
-            AscendC::Fill(l1BTensor[0].template ReinterpretCast<uint16_t>(), pFillParams);           // P 数据
-            AscendC::PipeBarrier<PIPE_MTE2>();
-            AscendC::InitConstValueParams<uint16_t> pscaleFillParams(1, static_cast<uint16_t>(L1_P_DESCALE_SIZE / 32), 0, 0x7f7f);
-            AscendC::Fill(l1BScaleTensor[0].template ReinterpretCast<uint16_t>(), pscaleFillParams); // P scale
-            AscendC::PipeBarrier<PIPE_MTE2>();
+        // [#10b] 等 V L1 当前 slot 空闲（上次 LoadV 释放了它）
+        //   ctor 调用时：MTE1_MTE2(KV_EVENT0+l1ABufId) 已预置，Wait 直接通过
+        //   re-seed 调用时：l1ABufId 已轮转到 NEW slot（operator() 先 Set+rotate 再调这里），
+        //     Wait 等 NEW slot 的上次 LoadV 完成
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
 
-            AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(7);
-            AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(7);
-            // [gap G6] QFA 用 KV_EVENT0+kvBufId(=4) 做 Fill->LoadData 的 MTE2->MTE1 同步；
-            //   此处用 event=7(=KV_EVENT3 槽)，单缓冲假数据下不冲突，但与隐式 kvBufId=0 不一致
+        // [#10] seed fill 值与 QFA 一致：
+        //   V 数据 = 0x6666（fp4 4.0）、V scale = 0x7d7d（e8m0 0x25→2^(125-127)=0.25）→ 有效 4.0×0.25=1.0
+        //   原 0x2222(1.0)×0x7f7f(1.0)=1.0 也是 1.0，但 QFA 用 4.0×0.25（规避 fp4 0x2 编码问题）
+        //   对应 QFA Fill kvL1[kvBufId]（当前 slot，非固定 slot 0）
+        AscendC::InitConstValueParams<uint16_t> vFillParams(1, static_cast<uint16_t>(PV_L0A_SIZE / 32 ), 0, 0x6666);
+        AscendC::Fill(l1ATensor[l1ABufId].template ReinterpretCast<uint16_t>(), vFillParams);          // V 数据
+        AscendC::PipeBarrier<PIPE_MTE2>();
+        AscendC::InitConstValueParams<uint16_t> vscaleFillParams(1, static_cast<uint16_t>(V_SCALE_L0A_SIZE / 32), 0, 0x7d7d);
+        AscendC::Fill(l1AScaleTensor[l1ABufId].template ReinterpretCast<uint16_t>(), vscaleFillParams); // V scale
+        AscendC::PipeBarrier<PIPE_MTE2>();
+        AscendC::InitConstValueParams<uint16_t> pFillParams(1, static_cast<uint16_t>(L1_P_SIZE / 32), 0, 0x6666);
+        AscendC::InitConstValueParams<uint16_t> pscaleFillParams(1, static_cast<uint16_t>(L1_P_DESCALE_SIZE / 32), 0, 0x7d7d);
+        // P/P-scale：填满全部 20 槽（确保假数据可观测，任意 pSlot 都有数据）
+        //   QFA 不做这步（P 由 vector 推）；BSA stub 阶段需要，生产阶段删
+        for (uint32_t i = 0; i < L1_P_BUFCNT; i++) {
+            AscendC::Fill(l1BTensor[i].template ReinterpretCast<uint16_t>(), pFillParams);           // P 数据
+            AscendC::PipeBarrier<PIPE_MTE2>();
+            AscendC::Fill(l1BScaleTensor[i].template ReinterpretCast<uint16_t>(), pscaleFillParams); // P scale
+            AscendC::PipeBarrier<PIPE_MTE2>();
+        }
+
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
+        // Fill→LoadData 的 MTE2→MTE1 同步，复用 L1 pipeline event（对应 QFA KV_EVENT0+kvBufId）
 
             // seed 装载：把 V 的全部 D+16 行(含 rowsum seed)非转置装入 L0A。
-            // --- 对照 QFA InitL0BufferForReduceSum() (quant_flash_attn_block_cube_dn.h:627) ---
-            //   QFA: Fill kvL1(0x6666)+kvDescale(0x7d7d) → LoadData pvL0A，m=(128+16)/16, k=256/64, ifTranspose=false，
-            //        循环 2 次填两份 ping-pong L0A。本处：假数据已由上方 Fill 填好，此处只 LoadData 一次到 L0A[0]。
-            // k 必须用真实 S2(=kMmad)：否则 +16 seed 行按 256 排布、真实 V 行/mmad 按 S2 排布，
-            // 两者在 L0A 的 k 方向错位 → mmad 尾部 16 行(dump 里那 256 个)乱值。
-            // [与 QFA 差异] QFA 硬编码 k=256/64(因 s2BaseSize=256)；本处用 kMmad/64 适配真实 S2(已修)。
+            // --- 对照 QFA InitL0BufferForReduceSum() (quant_flash_attn_block_cube_dn.h:675) ---
+            //   QFA: Fill kvL1(0x6666)+kvDescale(0x7d7d) → 循环 2 次 LoadData pvL0A（两份 ping-pong L0A）。
+            //   [#3] 本处改为循环 PV_L0AB_BUFCNT(=2) 次，seed 两个 L0A 槽，配合 ping-pong。
             AscendC::LoadData2DParamsV2 loadData2DParamsA;
             loadData2DParamsA.mStartPosition = 0;
             loadData2DParamsA.kStartPosition = 0;
@@ -477,20 +495,30 @@ public:
             loadData2DMXParamsA.srcStride = loadData2DMXParamsA.yStep;
             loadData2DMXParamsA.dstStride = loadData2DMXParamsA.yStep;
 
-            LoadData(l0ATensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),
-                    l1ATensor[0].template ReinterpretCast<fp4x2_e2m1_t>(),
-                    l1AScaleTensor[0].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
-                    loadData2DParamsA, loadData2DMXParamsA);
+            // [#3] 循环 seed 两个 L0A 槽（对应 QFA for(i<2)），Wait/Set M_MTE1 配合 ping-pong
+            //   src 用 l1ATensor[l1ABufId]（当前 slot，与 QFA kvL1[kvBufId] 一致）
+            for (uint32_t i = 0; i < PV_L0AB_BUFCNT; i++) {
+                AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
+                LoadData(l0ATensor[pvL0abBufId].template ReinterpretCast<fp4x2_e2m1_t>(),
+                        l1ATensor[l1ABufId].template ReinterpretCast<fp4x2_e2m1_t>(),
+                        l1AScaleTensor[l1ABufId].template ReinterpretCast<AscendC::fp8_e8m0_t>(),
+                        loadData2DParamsA, loadData2DMXParamsA);
+                AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
+                pvL0abBufId = (pvL0abBufId + 1) % PV_L0AB_BUFCNT;
+            }
             AscendC::PipeBarrier<PIPE_ALL>();
+        // [#10b] 释放 V L1 当前 slot 给下次 gather（与开头的 Wait 配对），轮转
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
+        l1ABufId = (l1ABufId + 1) % L1_KV_BUFCNT;
     }
 
-    __aicore__ inline void PadPS2NotAlign64(uint32_t s2Align64,uint32_t s2Align32,uint32_t embedReal)
+    __aicore__ inline void PadPS2NotAlign64(uint32_t s2Align64, uint32_t s2Align32, uint32_t embedReal, uint32_t pSlot)
     {
         // 补零量 = align64 - align32
         AscendC::InitConstValueParams<uint16_t> PL1InitParams(1, static_cast<uint16_t>(s2Align64 - s2Align32), 0, 0x0000);
-        AscendC::Fill(l1BTensor[0][s2Align32 * 64].template ReinterpretCast<uint16_t>(), PL1InitParams);
-        if (embedReal == 128) {  // 满块 M 才补第二个 plane（sub1 的 P 半块）
-            AscendC::Fill(l1BTensor[0][2 * s2Align32 * 64 + 32 * 64].template ReinterpretCast<uint16_t>(), PL1InitParams);
+        AscendC::Fill(l1BTensor[pSlot][s2Align32 * 64].template ReinterpretCast<uint16_t>(), PL1InitParams);
+        if (embedReal == mBaseSize) {  // [#9] 满块 M 才补第二个 plane（sub1 的 P 半块）
+            AscendC::Fill(l1BTensor[pSlot][2 * s2Align32 * 64 + (s2Align64 - s2Align32) * 64].template ReinterpretCast<uint16_t>(), PL1InitParams);
         }
     }
 
@@ -499,9 +527,9 @@ public:
         // 补零量 = align64 - align32
         AscendC::InitConstValueParams<uint16_t> kvL1InitParams(1, static_cast<uint16_t>((s2Align64 - curBaseTileSize)), 0, 0x0000);
         // 两个 plane 各补零（fp4 2-element 打包使 L1 NZ fractal 尾部分两段）
-        AscendC::Fill(l1ATensor[0][embedReal / 2 * curBaseTileSize].template ReinterpretCast<uint16_t>(), kvL1InitParams);
+        AscendC::Fill(l1ATensor[l1ABufId][embedReal / 2 * curBaseTileSize].template ReinterpretCast<uint16_t>(), kvL1InitParams);
         // AscendC::PipeBarrier<PIPE_ALL>();
-        AscendC::Fill(l1ATensor[0][embedReal / 2 * curBaseTileSize * 2 + (s2Align64 - curBaseTileSize) * embedReal / 2].template ReinterpretCast<uint16_t>(), kvL1InitParams);
+        AscendC::Fill(l1ATensor[l1ABufId][embedReal / 2 * curBaseTileSize * 2 + (s2Align64 - curBaseTileSize) * embedReal / 2].template ReinterpretCast<uint16_t>(), kvL1InitParams);
     }
 
 
@@ -511,7 +539,7 @@ public:
         TensorV &gV,                  // tla GM 张量（V，ColumnMajor(D,S2)，已在调用处按 gmOffsetV 子缓冲化）
         AscendC::GlobalTensor<uint8_t> gVDequantScale,   // V-scale 基址；block 按 delay20TaskInfo.gmOffsetVScale 取子缓冲
         AscendC::GlobalTensor<int32_t> gSparseIdx,        // sparseIdx 基址；block 按 delay20TaskInfo.gmOffsetSparseIdx 取子缓冲
-        TensorC &ubOTmpTensor,        // tla UB 张量（Oᵀ，RowMajor）
+        TensorC &ubOTmpTensor,        // tla UB 张量（Oᵀ，非标 RowMajor：D+1×s1Align128、stride 64，由 kernel 构）
         GemmCoord actualBlockShapePV,
         TileInfoT &delay20TileInfo,
         TaskInfoT &delay20TaskInfo,   // block 解析 gmOffsetVScale/gmOffsetSparseIdx/kvSeqlen/yBlockNumAval/yBlockNumRsvd
@@ -529,10 +557,13 @@ public:
         uint32_t yBlockNumAval = delay20TaskInfo.yBlockNumAval;
         uint32_t yBlockNumRsvd = delay20TaskInfo.yBlockNumRsvd;
         uint32_t gatheredKvSTileIdx = delay20TileInfo.pvGatheredKvSTileIdx;
-        // 验证阶段只用 0 号 buffer（l1ABufNum/l1BBufNum 未初始化，不能拿来取模）
-        uint32_t l1BBufId = 0;              // P (l1BTensor)
-        uint32_t l1BEventId = l1BBufId + 3;
-        uint32_t l1ABufId = 0;              // V (l1ATensor)
+        // [#4] V L1 四路轮转：l1ABufId 是成员变量（0..3）
+        // P L1 用 delay20TileInfo.loop % 20 轮转（对应 QFA info.loop % 20），
+        //   P 由 vector 推送到此槽，block 从此槽读。P L1 不走 event 同步（靠 delay20 调度）
+        uint32_t pSlot = delay20TileInfo.loop % L1_P_BUFCNT;
+        // [验证] P L1 槽位轮转
+        AscendC::printf("[P-CHK] loop=%u pSlot=%u\n", (unsigned)delay20TileInfo.loop, (unsigned)pSlot);
+        // l1ABufId 是成员变量，不再 local 声明
         // mmad 维度：C = Vᵀ@P = Oᵀ
         uint32_t s2Align64 = RoundUp(curBaseTileSize, 64);
         uint32_t s2Align32 = RoundUp(curBaseTileSize, 32);
@@ -549,7 +580,7 @@ public:
 
         // --- P 尾部补零（S2 对齐 32 但没到 64 → P pad 到 align64）---
         if (s2Align32 != s2Align64) {
-            PadPS2NotAlign64(s2Align64,s2Align32,embedReal);
+            PadPS2NotAlign64(s2Align64, s2Align32, embedReal, pSlot);
         }
 
         // AscendC::PipeBarrier<PIPE_ALL>();
@@ -559,6 +590,11 @@ public:
         }
 
         AscendC::PipeBarrier<PIPE_MTE2>();
+
+        // [#4] 等 V L1 槽空闲（上次 LoadV 释放了它），对应 QFA WaitFlag<MTE1_MTE2>(KV_EVENT0+kvBufId)
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
+        // [验证] V L1 槽轮转
+        AscendC::printf("[L1-CHK] l1ABufId=%u\n", (unsigned)l1ABufId);
 
         // ===== 稀疏 gather：按 gSparseBlockIdx 把稀疏 V / V-scale 逐段搬到 L1 整 tile =====
         // [step2] V 数据 gather 走 tla：gV(tla ColumnMajor) + l1A(tla nZ) + copyGmToL1A(GetTile 段)。
@@ -584,27 +620,42 @@ public:
             gVScaleTensorTla, l1AScaleTensorTla, gSparseBlockIdx, gatheredKvSTileIdx, kvSeqlen, kvSBaseTile, blockShapeY,
             yBlockNumAval, yBlockNumRsvd, curBaseTileSize, embedReal, s2Align64);
 
-        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(l1BEventId);
+        AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(KV_EVENT0 + l1ABufId);
         // 验证用：gather 后 V 经 LoadVToL0→Mmad 得 L0C = Vᵀ@P。
         // stub 下 P=fill(0x22)=fp4 1.0、P-scale/V-scale=fill(0x7f)=e8m0 1.0，
         // 故 L0C[d,m] = Σ_s V[s,d] = (gather 行数) × (V 块值)，可用 desc=123 dump 核对。
 
-        uint32_t l0CBufId = 0;
-        uint32_t l0CEventId = l0CBufId + 2;
+        uint32_t l0CEventId = PV_L0C_EVENT0;
 
-        uint32_t l0ABufId = 0;
-        uint32_t l0BBufId = 0;
-        uint32_t l0AEventId = l0ABufId;
-        uint32_t l0BEventId = l0BBufId + 2;
+        // [#3] L0A/B 双缓冲 ping-pong：pvL0abBufId 轮转 0/1（成员变量，跨 operator() 持久化）
+        uint32_t l0ABufId = pvL0abBufId;
+        uint32_t l0BBufId = pvL0abBufId;
+        uint32_t l0ABEventId = PV_L0AB_EVENT0 + pvL0abBufId;
 
-        LoadPToL0(l1BBufId,l0BBufId,s1Align128,s2Align64,embedReal);
+        // [#5] tile 开头（isTileGoupFirstTile）等上一 TileGroup 的 fixpipe 完成（L0C 可复用）
+        if (delay20TileInfo.isTileGoupFirstTile) {
+            AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(l0CEventId);
+        }
 
-        LoadVToL0(l1ABufId,l0ABufId,embedReal,s2Align64);
-        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
-        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0AEventId);
+        // [#3] 等上次 Mmad 释放 L0A/B 槽（M_MTE1：M→MTE1，Mmad 完成后 L0A/B 可复用）
+        AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
 
-        MatmulPV(l0ABufId, l0BBufId, mMmad, nMmad, kMmad);
+        // [验证] L0A/B bufId 轮转
+        AscendC::printf("[L0-CHK] pvL0abBufId=%u\n", (unsigned)pvL0abBufId);
+
+        LoadPToL0(pSlot, l0BBufId, s1Align128, s2Align64, embedReal);
+
+        LoadVToL0(l1ABufId, l0ABufId, embedReal, s2Align64);
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+        AscendC::WaitFlag<AscendC::HardEvent::MTE1_M>(l0ABEventId);
+
+        // [#1] initC=isTileGoupFirstTile：TileGroup 首 tile 重置 L0C、tile 内累加
+        MatmulPV(l0ABufId, l0BBufId, mMmad, nMmad, kMmad, delay20TileInfo.isTileGoupFirstTile);
+
+        // [#3] Mmad 完成 → 释放 L0A/B 槽给下次（M_MTE1：M→MTE1），轮转
+        AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(l0ABEventId);
+        pvL0abBufId = (pvL0abBufId + 1) % PV_L0AB_BUFCNT;
         AscendC::DumpTensor(l0CTensor[0], 123, 128);
         // AscendC::DumpTensor(l0CTensor[1024], 124, 128);
         AscendC::DumpTensor(l0CTensor[0][1024 * 2], 125, 128);
@@ -613,11 +664,21 @@ public:
             AscendC::SetFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             AscendC::WaitFlag<AscendC::HardEvent::M_FIX>(l0CEventId);
             FixpipeMm2(s1Align128,embedReal,ubOTmpTensor);
+            AscendC::SetFlag<AscendC::HardEvent::FIX_M>(l0CEventId);  // [#5] FIX→M: fixpipe 完成，L0C 释放给下一 TileGroup
         }
+
+        // [#4] V L1→L0 完成（LoadVToL0 已过）→ 释放 V L1 槽给下次 gather，轮转
+        //   必须在 isLastSecondKvsTile 之前：re-seed 的 InitL0BufferForReduceSum 会 Wait 新 slot 的
+        //   MTE1_MTE2，需要这里先 Set 当前 slot + 轮转到新 slot
+        AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(KV_EVENT0 + l1ABufId);
+        l1ABufId = (l1ABufId + 1) % L1_KV_BUFCNT;
 
         if (delay20TileInfo.isLastSecondKvsTile) {
             InitL0BufferForReduceSum();  // 倒数第二块 → re-seed L0A +16=1.0 给最后块 rowsum
         }
+
+        // [诊断] 确认轮转是否执行
+        AscendC::printf("[L1-ROT] l1ABufId after rotate=%u\n", (unsigned)l1ABufId);
     }
 
 protected:
@@ -637,6 +698,9 @@ protected:
     TileMmad tileMmad;                 // fp4 Mmad（3 参，scale 已在 L1->L0 烘焙）
     Tile::CopyL1ToL0AMxA5 copyL1ToL0AMx;   // V: nZ L1 -> zN L0A 转置（带 V-scale）
     Tile::CopyL1ToL0BMxA5 copyL1ToL0BMx;   // P: zN L1 -> nZ L0B 转置（带 P-scale）
+
+    uint32_t pvL0abBufId = 0;   // [#3] L0A/B 双缓冲轮转索引（0/1），跨 operator() 调用持久化
+    uint32_t l1ABufId = 0;     // [#4] V L1 双路轮转索引（0/1），跨 operator() 调用持久化
 
     uint32_t l1ATileM;
     uint32_t l1BTileN;
