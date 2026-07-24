@@ -1191,13 +1191,15 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()");
 
-    // 空tensor场景：n_==0、k_==0、cols_==0
-    if (n_ == 0 || k_ == 0 || cols_ == 0) {
+    // A zero-width unquantized dropless input still has n*k routing entries. Keep it on the
+    // routing path so expandedRowIdx contains the inverse sort rather than an all-zero tensor.
+    const bool indexOnlyRouting = cols_ == 0 && quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 0 &&
+                                  dropPadMode_ == DROP_PAD_MODE_DROPLESS;
+    if (n_ == 0 || k_ == 0 || (cols_ == 0 && !indexOnlyRouting)) {
         isEmptyTensor_ = true;
     }
 
-    // 空tensor场景下activeNum无实际意义（如cols_==0但n_*k_>0时，调用方可能传入0），跳过校验并
-    // 归一化为totalLength_，与非arch35版本保持一致，避免语义上合法的空输入误失败。
+    // 空tensor场景下activeNum无实际意义，跳过校验并归一化为totalLength_，避免语义上合法的空输入误失败。
     if (isEmptyTensor_) {
         tilingDataPtr_->activeNum = totalLength_;
     } else if (activeNum_ != ACTIVE_NUM_MIN_VALUE) {
@@ -1889,6 +1891,21 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()");
 
     auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
+    // The index-only path does not execute the gather stage. It still needs the core partition
+    // used by FullLoad, but no column-loop parameters can be derived from a zero column width.
+    if (cols_ == 0) {
+        int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
+        if (perCoreIndicesElements <= 0) {
+            gatherOutTiling->needCoreNum = 0;
+            return;
+        }
+        int64_t needCoreNum = Ops::Base::CeilDiv(totalLength_, perCoreIndicesElements);
+        gatherOutTiling->needCoreNum = needCoreNum;
+        gatherOutTiling->perCoreIndicesElements = perCoreIndicesElements;
+        gatherOutTiling->lastCoreIndicesElements =
+            totalLength_ - (needCoreNum - 1) * perCoreIndicesElements;
+        return;
+    }
     int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
         gatherOutTiling->needCoreNum = 0;
