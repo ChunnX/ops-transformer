@@ -134,27 +134,19 @@ static aclnnStatus CheckDtype(const aclTensor *q, const aclTensor *qScale, const
     return ACLNN_SUCCESS;
 }
 
+static constexpr int64_t SUPPORTED_STEM_BLOCK_SIZE = 128;
+static constexpr int64_t SUPPORTED_STEM_STRIDE = 16;
+
 static aclnnStatus CheckAttr(int64_t stemBlockSize, int64_t stemStride)
 {
-    if (stemBlockSize % 32 != 0 || stemBlockSize > 256 || stemBlockSize <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "stemBlockSize must be positive, <= 256, and multiple of 32, but got %ld.",
-                stemBlockSize);
+    if (stemBlockSize != SUPPORTED_STEM_BLOCK_SIZE) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "stemBlockSize only supports %ld, but got %ld.",
+                SUPPORTED_STEM_BLOCK_SIZE, stemBlockSize);
         return ACLNN_ERR_PARAM_INVALID;
     }
-    if (stemStride % 16 != 0 || stemStride > 64 || stemStride <= 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "stemStride must be positive, <= 64, and multiple of 16, but got %ld.",
-                stemStride);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (stemStride > stemBlockSize) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "stemStride must be <= stemBlockSize, but got stride=%ld, blockSize=%ld.",
-                stemStride, stemBlockSize);
-        return ACLNN_ERR_PARAM_INVALID;
-    }
-    if (stemBlockSize % stemStride != 0) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                "stemBlockSize must be a multiple of stemStride, but got blockSize=%ld, stride=%ld.", stemBlockSize,
-                stemStride);
+    if (stemStride != SUPPORTED_STEM_STRIDE) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "stemStride only supports %ld, but got %ld.",
+                SUPPORTED_STEM_STRIDE, stemStride);
         return ACLNN_ERR_PARAM_INVALID;
     }
     return ACLNN_SUCCESS;
