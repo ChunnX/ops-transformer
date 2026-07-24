@@ -129,16 +129,6 @@ def reduce_mxfp4_weighted_qk(weight_matrix, qk_matrix):
     return acc_bf16
 
 
-def reduce_mxfp4_qk_blocks(scaled_blocks):
-    if not scaled_blocks:
-        raise ValueError('MXFP4 QK reduction requires at least one scale block')
-
-    result = scaled_blocks[0]
-    for block in scaled_blocks[1:]:
-        result = result + block
-    return result
-
-
 def get_qk_physical_head_dim(head_dim, quant_mode):
     return head_dim // FP4_PACK_NUM if is_mxfp4_quant_mode(quant_mode) else head_dim
 
@@ -530,20 +520,12 @@ class GeneralizedQLIV2:
                 raise ValueError(
                     f"MXFP4 head_dim must be divisible by {MX_SCALE_GROUP_SIZE}, but got {head_dim}")
 
-            scaled_blocks = []
-            for block_start in range(0, head_dim, MX_SCALE_GROUP_SIZE):
-                block_end = block_start + MX_SCALE_GROUP_SIZE
-                block_dot = torch.bmm(
-                    cur_q[..., block_start:block_end].squeeze(0),
-                    cur_k[..., block_start:block_end].permute(0, 1, 3, 2).squeeze(0)
-                ).unsqueeze(0)
-                scale_block_start = (block_start // MX_SCALE_GROUP_SIZE) * MX_SCALE_GROUP_SIZE
-                q_block_scale = cur_q_scale[..., scale_block_start].unsqueeze(-1)
-                k_block_scale = cur_k_scale[..., scale_block_start].unsqueeze(-2)
-                scaled_block_dot = block_dot * (q_block_scale * k_block_scale)
-                scaled_blocks.append(scaled_block_dot)
-
-            qk_bmm_res = reduce_mxfp4_qk_blocks(scaled_blocks)
+            cur_q = cur_q * cur_q_scale
+            cur_k = cur_k * cur_k_scale
+            qk_bmm_res = torch.bmm(
+                cur_q.squeeze(0),
+                cur_k.permute(0, 1, 3, 2).squeeze(0)
+            ).unsqueeze(0)
 
             qk_relu_out = qk_bmm_res.clamp_min(0.0).to(torch.bfloat16)
             weight_matrix = cur_wt.to(torch.bfloat16).permute(0, 2, 3, 1).squeeze(0)
