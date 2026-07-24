@@ -390,7 +390,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 WaitFlag<HardEvent::V_S>(eVS);
                 for (int32_t i = 0; i < s2BaseSize_; i++) {
                     float v = reduceOutInner.GetValue(i);
-                    if (v > 1.0e29f) {
+                    if (v > 1.0e6f || v < -1.0e6f || !(v == v)) {
                         reduceOutInner.SetValue(i, -1.0e30f);
                     }
                 }
