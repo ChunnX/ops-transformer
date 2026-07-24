@@ -29,15 +29,11 @@ def matmul_reduce_scatter_v2_inputs(
     group_size=0,
     is_amax_out=False,
     y_dtype=0,
-    comm_mode="ai_cpu",
+    comm_mode="aiv",
     **kwargs,
 ):
     if is_trans_b:
         x2 = x2.transpose()
-        if x2_scale is not None:
-            per_block_flag = kwargs.get("per_block_flag", False)
-            if per_block_flag:
-                x2_scale = x2_scale.transpose()
 
     if rank_size <= 0:
         rank_size = kwargs.get("world_size", 1)

@@ -9,5 +9,9 @@
 # -----------------------------------------------------------------------------------------------------------
 
 if(UT_TEST_ALL OR OP_HOST_UT)
+    # The operator deliberately reuses arch22 tiling on Ascend950.
+    if("ascend950" IN_LIST ASCEND_COMPUTE_UNIT)
+        list(APPEND ARCH_DIRECTORY arch22)
+    endif()
     add_modules_ut_sources(UT_NAME ${OP_TILING_MODULE_NAME} MODE PRIVATE DIR ${CMAKE_CURRENT_SOURCE_DIR})
 endif()

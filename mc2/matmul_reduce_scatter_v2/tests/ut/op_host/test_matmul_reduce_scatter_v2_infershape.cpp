@@ -54,7 +54,7 @@ TEST_F(MatmulReduceScatterV2InferShapeTest, Basic)
          {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}});
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aiv")}});
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{1024, 12288}};
@@ -85,77 +85,10 @@ TEST_F(MatmulReduceScatterV2InferShapeTest, EmptyTensorTest)
          {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
          {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}});
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aiv")}});
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues);
-}
-
-TEST_F(MatmulReduceScatterV2InferShapeTest, Pertensor)
-{
-    gert::StorageShape x1Shape = {{8192, 1536}, {}};
-    gert::StorageShape x2Shape = {{1536, 12288}, {}};
-    gert::StorageShape biasShape = {{12288}, {}};
-    gert::StorageShape x1ScaleShape = {{1}, {}};
-    gert::StorageShape x2ScaleShape = {{1}, {}};
-
-    gert::InfershapeContextPara infershapeContextPara(
-        "MatmulReduceScatterV2",
-        {{x1Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-         {x2Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-         {biasShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {x1ScaleShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {x2ScaleShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
-         {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>("sum")},
-         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}});
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-
-    std::vector<std::vector<int64_t>> expectOutputShape = {{1024, 12288}};
-    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
-}
-
-TEST_F(MatmulReduceScatterV2InferShapeTest, Perblock)
-{
-    gert::StorageShape x1Shape = {{8192, 1536}, {}};
-    gert::StorageShape x2Shape = {{1536, 12288}, {}};
-    gert::StorageShape x1ScaleShape = {{1}, {}};
-    gert::StorageShape x2ScaleShape = {{1}, {}};
-
-    gert::InfershapeContextPara infershapeContextPara(
-        "MatmulReduceScatterV2",
-        {{x1Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-         {x2Shape, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND},
-         {{}, ge::DT_FLOAT, ge::FORMAT_ND},
-         {x1ScaleShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {x2ScaleShape, ge::DT_FLOAT, ge::FORMAT_ND},
-         {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{{}, ge::DT_FLOAT16, ge::FORMAT_ND}, {{}, ge::DT_FLOAT, ge::FORMAT_ND}},
-        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>("hcclCom")},
-         {"reduce_op", Ops::Transformer::AnyValue::CreateFrom<std::string>("sum")},
-         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(8)},
-         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
-         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}});
-    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
-
-    std::vector<std::vector<int64_t>> expectOutputShape = {{1024, 12288}};
-    Mc2ExecuteTestCase(infershapeContextPara, hcomTopologyMockValues, ge::GRAPH_SUCCESS, expectOutputShape);
 }
 
 // inferDtype用例 ======================================================================================================
@@ -171,45 +104,44 @@ protected:
     }
 };
 
-// TEST_F(MatmulReduceScatterV2InferDTypeTest, y_dtype_equal_x1_dtype_fp16)
-// {
-//     ge::DataType x1Type = ge::DT_FLOAT16;
+TEST_F(MatmulReduceScatterV2InferDTypeTest, YDtypeEqualsX1DtypeFp16)
+{
+    ge::DataType x1Type = ge::DT_FLOAT16;
 
-//     auto contextHolder = gert::InferDataTypeContextFaker()
-//         .NodeIoNum(1, 2)
-//         .InputDataTypes({&x1Type})
-//         .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-//         .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-//         .Build();
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .NodeIoNum(1, 2)
+                             .InputDataTypes({&x1Type})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
-//     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-//     auto inferDataTypeFunc = spaceRegistry->GetOpImpl("MatmulReduceScatterV2")->infer_datatype;
-//     ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
-//     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), x1Type);
-// }
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto inferDataTypeFunc = spaceRegistry->GetOpImpl("MatmulReduceScatterV2")->infer_datatype;
+    ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), x1Type);
+}
 
+TEST_F(MatmulReduceScatterV2InferDTypeTest, YDtypeEqualsX1DtypeBf16)
+{
+    ge::DataType x1Type = ge::DT_BF16;
 
-// TEST_F(MatmulReduceScatterV2InferDTypeTest, y_dtype_equal_x1_dtype_bf16)
-// {
-//     ge::DataType x1Type = ge::DT_BF16;
+    auto contextHolder = gert::InferDataTypeContextFaker()
+                             .NodeIoNum(1, 2)
+                             .InputDataTypes({&x1Type})
+                             .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
+                             .Build();
 
-//     auto contextHolder = gert::InferDataTypeContextFaker()
-//         .NodeIoNum(1, 2)
-//         .InputDataTypes({&x1Type})
-//         .NodeOutputTd(0, ge::FORMAT_ND, ge::FORMAT_ND)
-//         .NodeOutputTd(1, ge::FORMAT_ND, ge::FORMAT_ND)
-//         .Build();
-
-//     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
-//     auto inferDataTypeFunc = spaceRegistry->GetOpImpl("MatmulReduceScatterV2")->infer_datatype;
-//     ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
-//     EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), x1Type);
-// }
+    auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
+    auto inferDataTypeFunc = spaceRegistry->GetOpImpl("MatmulReduceScatterV2")->infer_datatype;
+    ASSERT_EQ(inferDataTypeFunc(contextHolder.GetContext<gert::InferDataTypeContext>()), ge::GRAPH_SUCCESS);
+    EXPECT_EQ(contextHolder.GetContext<gert::InferDataTypeContext>()->GetOutputDataType(0), x1Type);
+}
 
 TEST_F(MatmulReduceScatterV2InferDTypeTest, AttrYDtype)
 {
-    ge::DataType x1Type = ge::DT_FLOAT8_E4M3FN;
-    ge::DataType attrYDtype = ge::DT_FLOAT;
+    ge::DataType x1Type = ge::DT_INT8;
+    ge::DataType attrYDtype = ge::DT_FLOAT16;
 
     auto contextHolder =
         gert::InferDataTypeContextFaker()
@@ -226,7 +158,7 @@ TEST_F(MatmulReduceScatterV2InferDTypeTest, AttrYDtype)
                         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
                         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
-                        {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))}})
+                        {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(attrYDtype))}})
             .Build();
 
     auto spaceRegistry = gert::DefaultOpImplSpaceRegistryV2::GetInstance().GetSpaceRegistry();
@@ -260,7 +192,7 @@ TEST_F(MatmulReduceScatterV2InferShapeTest, AmaxOutEnabled)
          {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
          {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(true)},
          {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(static_cast<int>(ge::DT_FLOAT))},
-         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("ai_cpu")}});
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>("aiv")}});
     Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", 8}};
 
     std::vector<std::vector<int64_t>> expectOutputShape = {{1024, 12288}, {1}};
