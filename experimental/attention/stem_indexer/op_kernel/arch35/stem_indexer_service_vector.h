@@ -66,7 +66,7 @@ protected:
 private:
     __aicore__ inline void CleanOutput();
     __aicore__ inline void InitOutputSingleCore(GlobalTensor<int32_t> &outputGm, uint64_t totalSize, int32_t value);
-    __aicore__ inline uint32_t CalcDynamicTopkCount(uint32_t s1Idx, int32_t kbOffset, int32_t numPromptK);
+    __aicore__ inline uint32_t CalcDynamicTopkCount(uint32_t s1Idx, int64_t kbOffset, int32_t numPromptK);
     __aicore__ inline void WriteDirectIndices(uint32_t outputLen, uint64_t baseLenOffset,
                                               uint64_t baseOutOffset, uint32_t curAivGSize,
                                               int64_t curAivGS1ProcNum,
@@ -297,7 +297,7 @@ __aicore__ inline void SIVector<SIT>::ProcessVec1(const SICommon::RunInfo &info)
 
 template <typename SIT>
 __aicore__ inline uint32_t SIVector<SIT>::CalcDynamicTopkCount(
-    uint32_t s1Idx, int32_t kbOffset, int32_t numPromptK)
+    uint32_t s1Idx, int64_t kbOffset, int32_t numPromptK)
 {
     // 计算 kStart（分段函数）
     int32_t kStart;
@@ -310,7 +310,7 @@ __aicore__ inline uint32_t SIVector<SIT>::CalcDynamicTopkCount(
     }
 
     // 计算 s1Pos 和 decayLen
-    int32_t s1Pos = static_cast<int32_t>(s1Idx) + kbOffset;
+    int64_t s1Pos = static_cast<int64_t>(s1Idx) + kbOffset;
     int32_t decayLen = numPromptK - kStart;
 
     // 边界条件：s1Pos < kStart 或 decayLen <= 1 时，直接返回 kStart
@@ -472,8 +472,8 @@ __aicore__ inline void SIVector<SIT>::RunTopKBatchRows(
         }
 
         uint32_t topkSelectNum = Min(SICommon::GetLane(topkNum4, rowIdx), MAX_TOPK_COUNT);
-        uint32_t mrgValueOffset = mInnerIdx * mrgRowStride_;
-        uint32_t globalIndexOffset = mInnerIdx * MAX_TOPK_COUNT;
+        uint64_t mrgValueOffset = static_cast<uint64_t>(mInnerIdx) * mrgRowStride_;
+        uint64_t globalIndexOffset = static_cast<uint64_t>(mInnerIdx) * MAX_TOPK_COUNT;
         LocalTensor<uint32_t> packedRow =
             mrgValueLocal_[mrgValueOffset].template ReinterpretCast<uint32_t>();
         TopkUtils::PackSparseIndicesU32VF(
@@ -503,7 +503,7 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
     uint32_t s2BlockStart = info.s2Idx * s2BaseSize_;
 
     // 计算动态 topkCount 所需的块级常量（使用原始 actS2Size）
-    int32_t kbOffset = static_cast<int32_t>(info.actS2Size) - static_cast<int32_t>(info.actS1Size);
+    int64_t kbOffset = static_cast<int64_t>(info.actS2Size) - static_cast<int64_t>(info.actS1Size);
     int32_t numPromptK = static_cast<int32_t>(info.promptLen);
 
     uint32_t curAivGSize = CeilDiv(curAivGS1ProcNum, info.actS1Size);
@@ -544,8 +544,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
                     if (mInnerIdx >= curAivGS1ProcNum) {
                         break;
                     }
-                    uint32_t mrgValueOffset = mInnerIdx * mrgRowStride_;
-                    uint32_t globalIndexOffset = mInnerIdx * MAX_TOPK_COUNT;
+                    uint64_t mrgValueOffset = static_cast<uint64_t>(mInnerIdx) * mrgRowStride_;
+                    uint64_t globalIndexOffset = static_cast<uint64_t>(mInnerIdx) * MAX_TOPK_COUNT;
                     LocalTensor<uint32_t> packedRow =
                         mrgValueLocal_[mrgValueOffset].template ReinterpretCast<uint32_t>();
                     TopkUtils::PackSparseIndicesU32VF(

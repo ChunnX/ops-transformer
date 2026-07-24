@@ -27,26 +27,26 @@ public:
     static constexpr uint32_t MAX_LOOP_M = 4;
 
     // reuseMm1ResLocal 内的复用偏移，以下大小均以 uint32_t 元素为单位。
-    static constexpr uint32_t TOPK_ALIGN_SIZE = 256U;
-    static constexpr uint32_t NK_VALUE_PER_ROW = 64U;
+    static constexpr uint64_t TOPK_ALIGN_SIZE = 256ULL;
+    static constexpr uint64_t NK_VALUE_PER_ROW = 64ULL;
     // uint16只需要idxHigh和idxLow两组；uint32需要idx0到idx3四组。
-    static constexpr uint32_t IDX_BUFFER_NUM = std::is_same_v<SCORE_T, uint16_t> ? 2U : 4U;
-    static constexpr uint32_t IDX_BUFFER_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
+    static constexpr uint64_t IDX_BUFFER_NUM = std::is_same_v<SCORE_T, uint16_t> ? 2ULL : 4ULL;
+    static constexpr uint64_t IDX_BUFFER_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
 
-    static constexpr uint32_t IDX_WORKSPACE_SIZE_U32 =
+    static constexpr uint64_t IDX_WORKSPACE_SIZE_U32 =
         IDX_BUFFER_NUM * IDX_BUFFER_SIZE_U32;
-    static constexpr uint32_t HISTOGRAM_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
-    static constexpr uint32_t NK_VALUE_SIZE_U32 = MAX_LOOP_M * NK_VALUE_PER_ROW;
+    static constexpr uint64_t HISTOGRAM_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
+    static constexpr uint64_t NK_VALUE_SIZE_U32 = MAX_LOOP_M * NK_VALUE_PER_ROW;
     // uint16 路径每行使用 512 个 uint16_t，折算后同样占 256 个 uint32_t。
-    static constexpr uint32_t TMP_INDEX_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
+    static constexpr uint64_t TMP_INDEX_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
     // indicesOut在mm1Res复用区内使用独立子区，避免覆盖仍需读取的历史索引。
-    static constexpr uint32_t INDICES_OUT_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
+    static constexpr uint64_t INDICES_OUT_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
 
-    static constexpr uint32_t REUSE_INDICES_OUT_OFFSET =
+    static constexpr uint64_t REUSE_INDICES_OUT_OFFSET =
         IDX_WORKSPACE_SIZE_U32 + HISTOGRAM_SIZE_U32 + NK_VALUE_SIZE_U32 + TMP_INDEX_SIZE_U32;
-    static constexpr uint32_t REUSE_SCORE_OUT_OFFSET_U32 =
+    static constexpr uint64_t REUSE_SCORE_OUT_OFFSET_U32 =
         REUSE_INDICES_OUT_OFFSET + INDICES_OUT_SIZE_U32;
-    static constexpr uint32_t REUSE_SCORE_OUT_OFFSET =
+    static constexpr uint64_t REUSE_SCORE_OUT_OFFSET =
         REUSE_SCORE_OUT_OFFSET_U32 * sizeof(uint32_t) / sizeof(SCORE_T);
 
     __aicore__ inline void InitBuffers(
@@ -83,7 +83,6 @@ public:
         uint32_t inputOffset, uint32_t validLen, uint32_t loopIdx, uint32_t s2LoopNum)
     {
         const uint32_t offset = mrgRowStride;
-        const uint32_t computeRowNum = MAX_LOOP_M;
         const uint32_t topkAlign = 256U;
         const uint32_t tmpIdxStride16 = topkAlign + SICommon::TRUNK_LEN_256;
         InitBuffers(reuseMm1ResLocal, reuseGlobalIndexLocal);
@@ -102,7 +101,7 @@ public:
             } else {
                 SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
                                                  idx0Local, idx1Local, idx2Local, idx3Local,
-                                                 nkValueLocal, validLen, computeRowNum, offset,
+                                                 nkValueLocal, validLen, MAX_LOOP_M, offset,
                                                  rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
                                                  topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
             }
@@ -129,7 +128,7 @@ public:
             } else {
                 SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
                                                 idx0Local, idx1Local, idx2Local, idx3Local,
-                                                nkValueLocal, validLen, computeRowNum, offset,
+                                                nkValueLocal, validLen, MAX_LOOP_M, offset,
                                                 rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
                                                 topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
             }
@@ -158,7 +157,7 @@ public:
             } else {
                 SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
                                                 idx0Local, idx1Local, idx2Local, idx3Local,
-                                                nkValueLocal, validLen, computeRowNum, offset,
+                                                nkValueLocal, validLen, MAX_LOOP_M, offset,
                                                 rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
                                                 topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
             }
