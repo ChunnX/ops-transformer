@@ -27,6 +27,8 @@
 #define SWA_TEMPLATE 0
 #define HCA_TEMPLATE 1
 #define CSA_TEMPLATE 2
+#define ORI_SPARSE_TEMPLATE 3
+#define ORI_CMP_SPARSE_TEMPLATE 4
 // 模板参数支持的范围定义
 ASCENDC_TPL_ARGS_DECL(SparseFlashMla, // 算子OpType
                       ASCENDC_TPL_BOOL_DECL(FLASH_DECODE, 0, 1),
@@ -35,7 +37,8 @@ ASCENDC_TPL_ARGS_DECL(SparseFlashMla, // 算子OpType
                       ASCENDC_TPL_UINT_DECL(KV_LAYOUT_T, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, SMLA_LAYOUT_BSND,
                                             SMLA_LAYOUT_TND, SMLA_LAYOUT_PA_BBND),
                       ASCENDC_TPL_UINT_DECL(TEMPLATE_MODE, ASCENDC_TPL_4_BW, ASCENDC_TPL_UI_LIST, SWA_TEMPLATE,
-                                            HCA_TEMPLATE, CSA_TEMPLATE),
+                                            HCA_TEMPLATE, CSA_TEMPLATE, ORI_SPARSE_TEMPLATE,
+                                            ORI_CMP_SPARSE_TEMPLATE),
                       ASCENDC_TPL_BOOL_DECL(SPLIT_G, 0, 1),
                       ASCENDC_TPL_BOOL_DECL(HEAD_RATIO_ONE, 0, 1),
 );
@@ -48,7 +51,8 @@ ASCENDC_TPL_SEL(
                          ASCENDC_TPL_UINT_SEL(KV_LAYOUT_T, ASCENDC_TPL_UI_LIST, SMLA_LAYOUT_BSND,
                                               SMLA_LAYOUT_TND, SMLA_LAYOUT_PA_BBND),
                          ASCENDC_TPL_UINT_SEL(TEMPLATE_MODE, ASCENDC_TPL_UI_LIST, SWA_TEMPLATE,
-                                              HCA_TEMPLATE, CSA_TEMPLATE),
+                                              HCA_TEMPLATE, CSA_TEMPLATE, ORI_SPARSE_TEMPLATE,
+                                              ORI_CMP_SPARSE_TEMPLATE),
                          ASCENDC_TPL_BOOL_SEL(SPLIT_G, 0, 1),
                          ASCENDC_TPL_BOOL_SEL(HEAD_RATIO_ONE, 0, 1),
     )

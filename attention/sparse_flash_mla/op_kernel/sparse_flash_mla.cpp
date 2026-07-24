@@ -80,7 +80,8 @@ sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *c
     
 #if (__CCE_AICORE__ == 310)
     if constexpr (ORIG_DTYPE_Q == DT_FLOAT16 && ORIG_DTYPE_ORI_KV == DT_FLOAT16 && ORIG_DTYPE_ATTN_OUT == DT_FLOAT16) {
-        if constexpr (TEMPLATE_MODE == CSA_TEMPLATE) {
+        if constexpr (TEMPLATE_MODE == CSA_TEMPLATE || TEMPLATE_MODE == ORI_SPARSE_TEMPLATE ||
+                      TEMPLATE_MODE == ORI_CMP_SPARSE_TEMPLATE) {
             SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaCsaKernel, SparseFlashMlaTilingData, half, half, float,
                 half, FLASH_DECODE, static_cast<SMLA_LAYOUT>(LAYOUT_T),
                 static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G);
@@ -91,7 +92,8 @@ sparse_flash_mla(__gm__ uint8_t *query, __gm__ uint8_t *oriKV, __gm__ uint8_t *c
         }
     }
     if constexpr (ORIG_DTYPE_Q == DT_BF16 && ORIG_DTYPE_ORI_KV == DT_BF16 && ORIG_DTYPE_ATTN_OUT == DT_BF16) {
-        if constexpr (TEMPLATE_MODE == CSA_TEMPLATE) {
+        if constexpr (TEMPLATE_MODE == CSA_TEMPLATE || TEMPLATE_MODE == ORI_SPARSE_TEMPLATE ||
+                      TEMPLATE_MODE == ORI_CMP_SPARSE_TEMPLATE) {
             SMLA_OP_IMPL(SMLAKernel::SparseFlashMlaCsaKernel, SparseFlashMlaTilingData, bfloat16_t, bfloat16_t, float,
                 bfloat16_t, FLASH_DECODE, static_cast<SMLA_LAYOUT>(LAYOUT_T),
                 static_cast<SMLA_LAYOUT>(KV_LAYOUT_T), static_cast<SMLATemplateMode>(TEMPLATE_MODE), SPLIT_G);
