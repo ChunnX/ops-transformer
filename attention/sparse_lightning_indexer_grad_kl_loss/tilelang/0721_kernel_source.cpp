@@ -97,8 +97,8 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto c1_q_l0a = ascend_l0a.GetWithOffset<half>(16384, 0);
   auto c1_key_l0b = ascend_l0b.GetWithOffset<half>(16384, 0);
   auto c1_p_l0c = ascend_l0c.GetWithOffset<float>(16384, 0);
-  auto c1_ki_l1 = ascend_l1.GetWithOffset<half>(16384, 212992);
   auto c1_qi_l0a = ascend_l0a.GetWithOffset<half>(8192, 32768);
+  auto c1_ki_l1 = ascend_l1.GetWithOffset<half>(16384, 212992);
   auto c1_ki_l0b = ascend_l0b.GetWithOffset<half>(16384, 32768);
   auto c1_sy_l0c = ascend_l0c.GetWithOffset<float>(8192, 65536);
   auto v1_p_max = ascend_ub.GetWithOffset<float>(128, 53760);
@@ -311,6 +311,9 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(0);
           AscendC::CrossCoreSetFlag<0x2, PIPE_FIX>(4);
           AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(5);
+          AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(1);
+          tl::ascend::copy_l1_to_l0a<half, 64, 128, false>(c1_qi_l0a[0], c1_qi_l1[0], 64, 128);
+          AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(1);
           for (int32_t k_outer_2 = 0; k_outer_2 < 2; ++k_outer_2) {
             if (k_outer_2 == 0) {
               AscendC::CrossCoreWaitFlag(2);
@@ -323,7 +326,6 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
               AscendC::SetFlag<AscendC::HardEvent::MTE2_MTE1>(1);
               AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(1);
               AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(1);
-              tl::ascend::copy_l1_to_l0a<half, 64, 128, false>(c1_qi_l0a[0], c1_qi_l1[0], 64, 128);
               tl::ascend::copy_l1_to_l0b<half, 128, 128, true>(c1_ki_l0b[0], c1_ki_l1[0], 128, 128);
               AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(1);
               AscendC::SetFlag<AscendC::HardEvent::MTE1_M>(1);
