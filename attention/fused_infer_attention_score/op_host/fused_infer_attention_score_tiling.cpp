@@ -1203,9 +1203,9 @@ ge::graphStatus CheckFAISinglePara(const gert::TilingContext *context, bool isPa
     OP_CHECK_IF((tempQD != tempKD) || (tempQD != tempVD),
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(), "HeadDim of Q, K, and V must be consistent"),
             return ge::GRAPH_FAILED);
-    OP_CHECK_IF(tempQD > 256U,
+    OP_CHECK_IF(tempQD > 512U,
         OPS_REPORT_VECTOR_INNER_ERR(context->GetNodeName(),
-            "When input layout is TND, headDim shall not exceed 256"),
+            "When input layout is TND, headDim shall not exceed 512"),
             return ge::GRAPH_FAILED);
     
     if (isLearnableSinkFlag) {
