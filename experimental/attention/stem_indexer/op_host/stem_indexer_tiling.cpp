@@ -122,25 +122,41 @@ ge::graphStatus StemIndexerInfoParser::GetAndCheckAttrParaInfo()
     }
 
     OP_CHECK_IF(*opParamInfo_.stemBlockSize != STEM_BLOCK_SIZE_LIMIT,
-                OP_LOGE(opName_, "stem_block_size only support %u.", STEM_BLOCK_SIZE_LIMIT),
+                OP_LOGE(opName_, "stem_block_size only supports %u, but got %ld.", STEM_BLOCK_SIZE_LIMIT,
+                        *opParamInfo_.stemBlockSize),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.stemStride != STEM_STRIDE_LIMIT,
-                OP_LOGE(opName_, "stem_stride only support %u.", STEM_STRIDE_LIMIT), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "stem_stride only supports %u, but got %ld.", STEM_STRIDE_LIMIT,
+                        *opParamInfo_.stemStride),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.initialBlocks != INITIAL_BLOCKS_LIMIT,
-                OP_LOGE(opName_, "initial_blocks only support %u.", INITIAL_BLOCKS_LIMIT),
+                OP_LOGE(opName_, "initial_blocks only supports %u, but got %ld.", INITIAL_BLOCKS_LIMIT,
+                        *opParamInfo_.initialBlocks),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.windowSize != WINDOW_SIZE_LIMIT,
-                OP_LOGE(opName_, "window_size only support %u.", WINDOW_SIZE_LIMIT), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "window_size only supports %u, but got %ld.", WINDOW_SIZE_LIMIT,
+                        *opParamInfo_.windowSize),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF((*opParamInfo_.alpha <= ALPHA_MIN) || (*opParamInfo_.alpha > ALPHA_MAX),
-                OP_LOGE(opName_, "alpha should be in (0, 1]."), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "alpha should be in (%f, %f], but got %f.", ALPHA_MIN, ALPHA_MAX,
+                        *opParamInfo_.alpha),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateMedium, K_BLOCK_NUM_RATE_MEDIUM_LIMIT),
-                OP_LOGE(opName_, "k_block_num_rate_medium only support 0.2."), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "k_block_num_rate_medium only supports %f, but got %f.",
+                        K_BLOCK_NUM_RATE_MEDIUM_LIMIT, *opParamInfo_.kBlockNumRateMedium),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.kBlockNumBiasMedium != K_BLOCK_NUM_BIAS_MEDIUM_LIMIT,
-                OP_LOGE(opName_, "k_block_num_bias_medium only support 30."), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "k_block_num_bias_medium only supports %u, but got %ld.",
+                        K_BLOCK_NUM_BIAS_MEDIUM_LIMIT, *opParamInfo_.kBlockNumBiasMedium),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(!IsFloatEqual(*opParamInfo_.kBlockNumRateLarge, K_BLOCK_NUM_RATE_LARGE_LIMIT),
-                OP_LOGE(opName_, "k_block_num_rate_large only support 0.1."), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "k_block_num_rate_large only supports %f, but got %f.",
+                        K_BLOCK_NUM_RATE_LARGE_LIMIT, *opParamInfo_.kBlockNumRateLarge),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.kBlockNumBiasLarge != K_BLOCK_NUM_BIAS_LARGE_LIMIT,
-                OP_LOGE(opName_, "k_block_num_bias_large only support 30."), return ge::GRAPH_FAILED);
+                OP_LOGE(opName_, "k_block_num_bias_large only supports %u, but got %ld.",
+                        K_BLOCK_NUM_BIAS_LARGE_LIMIT, *opParamInfo_.kBlockNumBiasLarge),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(*opParamInfo_.topkScorePrecision != TOPK_SCORE_PRECISION_UINT32 &&
                     *opParamInfo_.topkScorePrecision != TOPK_SCORE_PRECISION_UINT16,
                 OP_LOGE(opName_, "topk_score_precision only supports 1(uint32) or 2(uint16), but got %ld.",
