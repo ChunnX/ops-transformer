@@ -1437,7 +1437,6 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_bmm2 = T.alloc_ub(
                 (bw_rows_per_tile, K), calc_dtype
             )
-            v1_bw_weight_row = T.alloc_ub((1, K), calc_dtype)
             v1_bw_rg_half = T.alloc_ub(
                 (bw_rows_per_tile, K), input_dtype
             )
@@ -1597,18 +1596,9 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.copy(v1_bw_exp_or_diff, v1_bw_bmm2)
                     T.pipe_barrier("v")
                     # row_expand_mul on a 4x2048 matrix lowers its stride
-                    # fields to uint8_t 256.  Broadcast each scalar weight
-                    # to one full row instead; 2048-element vector mul is
-                    # legal and preserves the 4x2048 tile's data ownership.
+                    # fields to uint8_t 256.  Use TileLang's scalar-vector
+                    # form instead of broadcasting an unaligned UB scalar.
                     for bw_local_row in T.serial(bw_rows_per_tile):
-                        T.tile.broadcast(
-                            v1_bw_weight_row,
-                            v1_bw_weight[
-                                bw_row_start + bw_local_row:
-                                bw_row_start + bw_local_row + 1
-                            ],
-                        )
-                        T.pipe_barrier("v")
                         T.tile.mul(
                             v1_bw_bmm2[
                                 bw_local_row:bw_local_row + 1, 0:K
@@ -1616,7 +1606,7 @@ def tilelang_grad_kl_loss_single_kernel(
                             v1_bw_bmm2[
                                 bw_local_row:bw_local_row + 1, 0:K
                             ],
-                            v1_bw_weight_row,
+                            v1_bw_weight[bw_row_start + bw_local_row],
                         )
                         T.pipe_barrier("v")
                     T.tile.mul(
