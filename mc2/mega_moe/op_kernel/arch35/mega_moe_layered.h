@@ -1465,6 +1465,14 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::UpdateGlobalBuff
         gmmAddrInfo.bGlobal = params_.b2GmAddr + Get<IDX_B2_OFFSET>(state.baseOffset) * sizeof(ActivationType);
         gmmAddrInfo.bScaleGlobal =
             params_.b2ScaleGmAddr + Get<IDX_B2_SCALE_OFFSET>(state.baseOffset) * sizeof(QuantScaleOutType);
+        // GMM2→Combine 同步计数器基址：每个 expert 独占一段 slot 区间，基址按 expert 偏移。
+        // 与 generic UpdateGlobalBuffer (mega_moe.h) 保持一致；producer 通知与 consumer 轮询共用此基址。
+        // layered 路径量化/非量化均走 ProcessCombine，此处不按 CombineQuantMode 守卫
+        // (非量化需配套 tiling 端 combineSyncSlotCountPerExpert>0，见 CalcCombineSyncSlotCountPerExpert)。
+        uint64_t expertSyncSlotOffset = static_cast<uint64_t>(Get<IDX_FLAG_OFFSET>(state.baseOffset)) *
+                                        params_.tilingData->combineSyncSlotCountPerExpert;
+        gmmAddrInfo.gmm2CombineSyncCounter = (__gm__ int32_t *)params_.workspaceInfo.gmm2CombineSyncCounterPtr +
+                                             expertSyncSlotOffset * static_cast<uint64_t>(INT_CACHELINE);
     }
     gmmAddrInfo.swigluToGmm2Flag = (__gm__ int32_t *)params_.workspaceInfo.flagSwiGluToGmm2Ptr +
                                    Get<IDX_FLAG_OFFSET>(state.baseOffset) * INT_CACHELINE;
@@ -1515,8 +1523,12 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetGmm2CombineSyncCounters()
 {
     if constexpr (g_coreType == AIV) {
-        int32_t totalCounters =
-            static_cast<int32_t>(static_cast<int64_t>(expertPerRank_) * blockAivNum_ * INT_CACHELINE);
+        // 计数器总数 = 每 expert slot 数 * MoE expert 数，与 workspace 分配
+        // (mega_moe_workspace_info.h: gmm2CombineSyncCounterPtr) 及 generic ResetGmm2CombineSyncCounters
+        // (mega_moe.h:1296) 保持一致。非量化下 combineSyncSlotCountPerExpert=0 → totalCounters=0，自然跳过。
+        int32_t totalCounters = static_cast<int32_t>(
+            params_.tilingData->combineSyncSlotCountPerExpert * moeExpertPerRank_ *
+            static_cast<uint64_t>(INT_CACHELINE));
         int32_t coreLen, coreOffset;
         TilingByCore(totalCounters, coreLen, coreOffset);
         GlobalTensor<int32_t> gmm2CombineSyncCounterGm;
@@ -1693,6 +1705,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineGr
     uint32_t totalTokensToProcess, uint32_t batchBaseOffset, int64_t &offset,
     uint32_t quantTokenSizeBytes)
 {
+    (void)tokenGroupsThisExpert; // groupCount 已由 CalcGroupSyncSlotLayout(mExpert) 内部重算
+    // 与 producer (AicComputeGeneric::NotifyCombineConsumersOfTileCompletion) 使用完全相同的 slot 布局：
+    // group 数 <= 逻辑核数时多核协作一个 group(一个 group 占连续多个 slot)，否则一个 group 占一个 slot。
+    // consumer 只需读取该 group 的首个 slot —— producer 会对本 group 的所有 slot 逐个 AtomicAdd，
+    // 因此首个 slot 达到 nTilesPerGroup 即代表整组 GMM2 tile 已写回。寻址方案与 generic
+    // ProcessCombine (mega_moe.h:1363-1376) 一致。
+    MegaMoeImpl::GroupSyncSlotLayout slotLayout =
+        MegaMoeImpl::CalcGroupSyncSlotLayout(mExpert, blockAivNum_);
+    __gm__ int32_t *expertCounterBase = (__gm__ int32_t *)gmm2CombineSyncCounter.GetPhyAddr();
+
     uint32_t rankIndex = 0;
     uint32_t totalProcessed = 0;
     while (totalProcessed < totalTokensToProcess) {
@@ -1708,12 +1730,12 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombineGr
         uint32_t currentRow = startRow + processedCnt;
         uint32_t targetGroup = currentRow / L1_TILE_M_256;
 
-        // 检查 row group 的同步计数器（非阻塞）
-        uint32_t groupCoreStart, groupCoreSize;
-        MegaMoeImpl::ComputeGroupRange(targetGroup, tokenGroupsThisExpert,
-                                        blockAivNum_, groupCoreStart, groupCoreSize);
-        __gm__ int32_t *counterAddr = (__gm__ int32_t *)gmm2CombineSyncCounter.GetPhyAddr() +
-            expertIdx * blockAivNum_ * INT_CACHELINE + groupCoreStart * INT_CACHELINE;
+        // 非阻塞检查 row group 的首个同步 slot
+        uint32_t firstSyncSlot = 0;
+        uint32_t syncSlotCount = 0;
+        MegaMoeImpl::GetGroupSyncSlotRange(targetGroup, slotLayout, firstSyncSlot, syncSlotCount);
+        __gm__ int32_t *counterAddr =
+            MegaMoeImpl::GetCombineSyncCounterAddress(expertCounterBase, firstSyncSlot);
 
         if (AscendC::ReadGmByPassDCache(counterAddr) >= static_cast<int32_t>(nTilesPerGroup)) {
             ProcessCombineBatch(gmmAddrInfo, gmm2State, expertIdx,
@@ -1755,9 +1777,10 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ProcessCombine(
     uint32_t nTilesPerGroup = Ops::Base::CeilDiv(k_, L1_TILE_N);
     int64_t offset = ALIGN_512;
 
+    // 直接复用 GMMAddrInfo 中已按 expert 偏移好的同步计数器基址（与 generic ProcessCombine 一致，
+    // mega_moe.h:1370-1371），不再取全局基址并手工加 expertIdx * blockAivNum_ 偏移。
     GlobalTensor<int32_t> gmm2CombineSyncCounter;
-    gmm2CombineSyncCounter.SetGlobalBuffer(
-        (__gm__ int32_t *)params_.workspaceInfo.gmm2CombineSyncCounterPtr);
+    gmm2CombineSyncCounter.SetGlobalBuffer(gmmAddrInfo.gmm2CombineSyncCounter);
 
     uint32_t nScale = Ops::Base::CeilDiv(k_, uint32_t(MXFP_SCALE_GROUP_NUM));
     uint32_t quantTokenSizeBytes =

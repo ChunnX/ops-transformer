@@ -683,7 +683,7 @@ static MegaMoeUnpermuteBufferConfig CalcUnpermuteBufferConfig(const MegaMoeTilin
 
 static uint64_t CalcCombineSyncSlotCountPerExpert(const MegaMoeTilingData *tilingData)
 {
-    if (tilingData->combineQuantMode == COMBINE_NO_QUANT || tilingData->moeExpertPerRank == 0U) {
+    if (tilingData->combineQuantMode == COMBINE_NO_QUANT && tilingData->topoType != 1 || tilingData->moeExpertPerRank == 0U) {
         return 0U;
     }
 
