@@ -308,7 +308,8 @@ private:
     __aicore__ inline void ComputeMMDKV(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
                                         const LocalTensor<INPUT_TYPE> &l1_b_tensor, const GlobalTensor<float> &outGm,
                                         const RunTimeInfo &runTimeInfo, float dequantScale)
-    {(void)dequantScale;
+    {
+        (void)dequantScale;
         int32_t mProcess = runTimeInfo.s1Len;
         int32_t nProcess = runTimeInfo.s2Len;
         int32_t mProcessAlign = runTimeInfo.s1LenAlign;
@@ -378,7 +379,8 @@ private:
     __aicore__ inline void ComputeMMDQ(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
                                        const LocalTensor<INPUT_TYPE> &l1_b_tensor, const GlobalTensor<float> &outGm,
                                        const RunTimeInfo &runTimeInfo, float dequantScale)
-    {(void)dequantScale;
+    {
+        (void)dequantScale;
         int32_t mProcess = runTimeInfo.s1Len;
         int32_t nProcess = runTimeInfo.s2Len;
         int32_t mProcessAlign = runTimeInfo.s1LenAlign;
