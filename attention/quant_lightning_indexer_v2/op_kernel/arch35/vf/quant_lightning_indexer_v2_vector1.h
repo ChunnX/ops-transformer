@@ -511,12 +511,12 @@ __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &ou
                                                   const LocalTensor<QK_T> &qk_,       // q*k^t  [G, S2Base]  [64 128]
                                                   uint32_t qkVLStride,
                                                   uint32_t qkStride,
-                                                  const LocalTensor<WEIGHT_T> &weight_,   // w      [G]          [64    ]
+                                                  const LocalTensor<WEIGHT_T> &weight_,   // w      [G]      [64    ]
                                                   uint32_t weightStride,
                                                   const LocalTensor<float> &weightTemp_,
-                                                  const LocalTensor<float> &kScale_,   // kScale [S2Base]     [128   ]
+                                                  const LocalTensor<float> &kScale_,   // kScale [S2Base]    [128   ]
                                                   uint32_t kScaleStride,
-                                                  const LocalTensor<float> &qScale_,   // qScale [G]          [64    ]
+                                                  const LocalTensor<float> &qScale_,   // qScale [G]         [64    ]
                                                   uint32_t qScaleStride,
                                                   const int gSize,                     // G 64
                                                   const int batch)
@@ -952,7 +952,7 @@ __aicore__ inline void BatchMulWeightAndReduceSumMX(const LocalTensor<SCORE_T> &
                                                   const LocalTensor<QK_T> &qk_,       // q*k^t  [G, S2Base]  [64 128]
                                                   uint32_t qkVLStride,
                                                   uint32_t qkStride,
-                                                  const LocalTensor<WEIGHT_T> &weight_,   // w      [G]          [64    ]
+                                                  const LocalTensor<WEIGHT_T> &weight_,   // w      [G]      [64    ]
                                                   uint32_t weightStride,
                                                   const LocalTensor<float> &weightTemp_,
                                                   const int gSize,
@@ -978,7 +978,7 @@ __aicore__ inline void BatchMulWeightAndReduceSumPerTensor(const LocalTensor<SCO
                                                   const LocalTensor<QK_T> &qk_,       // q*k^t  [G, S2Base]  [64 128]
                                                   uint32_t qkVLStride,
                                                   uint32_t qkStride,
-                                                  const LocalTensor<WEIGHT_T> &weight_,   // w      [G]          [64    ]
+                                                  const LocalTensor<WEIGHT_T> &weight_,   // w  [G]          [64    ]
                                                   uint32_t weightStride,
                                                   const LocalTensor<float> &weightTemp_,
                                                   const float kScaleValue,

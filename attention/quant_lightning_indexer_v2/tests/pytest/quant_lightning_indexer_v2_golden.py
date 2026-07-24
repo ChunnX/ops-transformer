@@ -102,6 +102,9 @@ MX_SCALE_PACK_NUM = 2
 MX_SCALE_GROUP_SIZE = MX_SCALE_SHAPE_ALIGN // MX_SCALE_PACK_NUM
 FP4_PACK_NUM = 2
 E8M0_ONE_VALUE = 127
+BF16_SIGNIFICAND_BITS = 8
+BF16_MIN_NORMAL = 2.0 ** -126
+BF16_MIN_SUBNORMAL = 2.0 ** -133
 FP4_E2M1_VALUES = torch.tensor(
     [0.0, 0.5, 1.0, 1.5, 2.0, 3.0, 4.0, 6.0,
      -0.0, -0.5, -1.0, -1.5, -2.0, -3.0, -4.0, -6.0],
@@ -117,6 +120,22 @@ def is_mxfp4_quant_mode(quant_mode):
     return quant_mode == QUANT_MODE_MXFP4
 
 
+def round_fp64_to_bf16_rne(value):
+    if value.dtype != torch.float64:
+        raise TypeError(f'round_fp64_to_bf16_rne expects float64 input, got {value.dtype}')
+
+    mantissa, exponent = torch.frexp(value)
+    rounded_normal = torch.ldexp(
+        torch.round(mantissa * (1 << BF16_SIGNIFICAND_BITS)),
+        exponent - BF16_SIGNIFICAND_BITS)
+    rounded_subnormal = torch.round(value / BF16_MIN_SUBNORMAL) * BF16_MIN_SUBNORMAL
+    rounded = torch.where(value.abs() < BF16_MIN_NORMAL, rounded_subnormal, rounded_normal)
+    rounded = torch.where(torch.isfinite(value), rounded, value)
+
+    # The value is already on the BF16 grid, so both casts below are exact.
+    return rounded.to(torch.float32).to(torch.bfloat16)
+
+
 def reduce_mxfp4_weighted_qk(weight_matrix, qk_matrix):
     output_shape = (weight_matrix.shape[0], weight_matrix.shape[1], qk_matrix.shape[2])
     acc_bf16 = torch.zeros(output_shape, dtype=torch.bfloat16, device=weight_matrix.device)
@@ -125,7 +144,8 @@ def reduce_mxfp4_weighted_qk(weight_matrix, qk_matrix):
         weight_fp64 = weight_matrix[:, :, g_idx:g_idx + 1].to(torch.float64)
         qk_fp64 = qk_matrix[:, g_idx:g_idx + 1, :].to(torch.float64)
         # Model a BF16-destination FMA with one BF16 rounding per G.
-        acc_bf16 = (acc_bf16.to(torch.float64) + weight_fp64 * qk_fp64).to(torch.bfloat16)
+        fma_fp64 = acc_bf16.to(torch.float64) + weight_fp64 * qk_fp64
+        acc_bf16 = round_fp64_to_bf16_rne(fma_fp64)
     return acc_bf16
 
 
