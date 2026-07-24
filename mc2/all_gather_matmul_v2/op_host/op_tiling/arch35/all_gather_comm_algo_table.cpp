@@ -52,11 +52,11 @@ static constexpr Mc2Hcom::CommAlgoEntry ALLGATHER_COMM_ALGO_TABLE[] = {
     // rank16 中大数据量 → parallel[mesh,nhr.multi_channel]
     {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_16M, DATA_BYTES_32M,
      RANK_SIZE_16, RANK_SIZE_16, MEDIUM, "parallel[mesh,nhr.multi_channel]"},
-    // rank8~16 其余数据量 → sole[nhr]
+    rank8~16 其余数据量 → sole[nhr]
     {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO,
      MAX_DATA_BYTES_UNLIMITED, RANK_SIZE_8, RANK_SIZE_16, MEDIUM, "sole[nhr]"},
-    // CCU_SCHED通信算法
-    // rank4 小数据量 → sole[mesh]
+    CCU_SCHED通信算法
+    rank4 小数据量 → sole[mesh]
     {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO, DATA_BYTES_8M,
      RANK_SIZE_4, RANK_SIZE_4, MEDIUM, "sole[mesh]"},
     // rank4 大数据量 → concur[mesh,nhr.multi_channel]
