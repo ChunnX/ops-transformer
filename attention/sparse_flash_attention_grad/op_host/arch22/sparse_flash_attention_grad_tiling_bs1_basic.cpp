@@ -27,49 +27,95 @@ constexpr uint32_t BASE_LEN_256 = 256;
 constexpr int64_t GM_ALIGN = 512;
 constexpr uint32_t PING_PONG_BUFFER = 2;
 constexpr uint32_t SCATTER_BUFFER_NUM = 3;
-constexpr int64_t OPT_SCATTER_AVG_EFFECTIVE_TOKEN_THRESHOLD = 1024;
-constexpr int64_t OPT_SCATTER_AVG_BASIC_BLOCK_THRESHOLD = 4;
 
-inline int64_t CeilDivInt64(int64_t x, int64_t y)
+namespace {
+struct OptimizedScatterGateDecision {
+    bool enabled = false;
+    const char *reason = "unknown";
+    int64_t n1 = 0;
+    int64_t gateS1 = 0;
+    int64_t gateS2 = 0;
+    int64_t effectiveSelectedTokens = 0;
+};
+
+OptimizedScatterGateDecision GetOptimizedScatterGateDecision(const TempParams &tmpData)
 {
-    return y == 0 ? 0 : (x + y - 1) / y;
+    OptimizedScatterGateDecision decision;
+    int64_t s1 = tmpData.s1;
+    int64_t s2 = tmpData.s2;
+    int64_t n1 = tmpData.n2 * tmpData.g;
+    int64_t selectedBlockCount = static_cast<int64_t>(tmpData.selected_block_count);
+    int64_t selectedBlockSize = static_cast<int64_t>(tmpData.selected_block_size);
+    int64_t selectedTokenLimit = selectedBlockCount * selectedBlockSize;
+    decision.n1 = n1;
+    if (tmpData.deterministic) {
+        decision.reason = "disabled: deterministic path uses non-optimized scatter";
+        return decision;
+    }
+    if (s1 <= 0 || s2 <= 0 || selectedBlockCount <= 0 || selectedBlockSize <= 0) {
+        decision.reason = "disabled: invalid s1/s2/selected block count/selected block size";
+        return decision;
+    }
+    if (n1 <= 0 || n1 >= 128) {
+        decision.reason = "disabled: N1 must be in [1, 127] for optimized scatter";
+        return decision;
+    }
+    int64_t gateS1 = s1;
+    int64_t gateS2 = s2;
+    if (tmpData.layout == static_cast<uint32_t>(InputLayout::TND) && tmpData.b > 1) {
+        // TND s1/s2 are total tokens across batch; gate by per-sequence scale.
+        gateS1 = s1 / tmpData.b;
+        gateS2 = s2 / tmpData.b;
+    }
+    decision.gateS1 = gateS1;
+    decision.gateS2 = gateS2;
+    if (gateS1 <= 0 || gateS2 <= 0) {
+        decision.reason = "disabled: invalid per-sequence S1/S2 after TND batch normalization";
+        return decision;
+    }
+    int64_t effectiveSelectedTokens = std::min(selectedTokenLimit, gateS2);
+    decision.effectiveSelectedTokens = effectiveSelectedTokens;
+
+    if (selectedBlockSize >= 8) {
+        decision.enabled = selectedBlockCount >= 1024 && effectiveSelectedTokens >= 8192 &&
+            gateS1 >= 2048 && gateS2 >= 8192;
+        decision.reason = decision.enabled ?
+            "enabled: block_size>=8 and long-sequence thresholds satisfied" :
+            "disabled: block_size>=8 but selected_count/effective_tokens/S1/S2 below thresholds";
+        return decision;
+    }
+
+    if (n1 <= 32) {
+        decision.enabled = effectiveSelectedTokens >= 1024 && gateS1 >= 2048 && gateS2 >= 4096;
+        decision.reason = decision.enabled ?
+            "enabled: block_size=1, N1<=32 and long-sequence thresholds satisfied" :
+            "disabled: block_size=1, N1<=32 but effective_tokens/S1/S2 below thresholds";
+        return decision;
+    }
+
+    if (n1 == 64) {
+        if (effectiveSelectedTokens >= 4096) {
+            decision.enabled = gateS2 >= 8192 || gateS1 >= 2048;
+            decision.reason = decision.enabled ?
+                "enabled: block_size=1, N1=64, effective_tokens>=4096 and S1/S2 threshold satisfied" :
+                "disabled: block_size=1, N1=64, effective_tokens>=4096 but S1/S2 below thresholds";
+            return decision;
+        }
+        decision.enabled = effectiveSelectedTokens >= 2048 && (gateS2 >= 16384 || gateS1 >= 4096);
+        decision.reason = decision.enabled ?
+            "enabled: block_size=1, N1=64, effective_tokens>=2048 and longer S1/S2 threshold satisfied" :
+            "disabled: block_size=1, N1=64 but effective_tokens/S1/S2 below thresholds";
+        return decision;
+    }
+
+    decision.reason = "disabled: block_size=1 optimization only supports N1<=64";
+    return decision;
 }
+} // namespace
 
 bool EnableOptimizedScatterPath(const TempParams &tmpData)
 {
-    int64_t s1 = tmpData.s1;
-    int64_t s2 = tmpData.s2;
-    int64_t selectedBlockCount = static_cast<int64_t>(tmpData.selected_block_count);
-    int64_t selectedBlockSize = static_cast<int64_t>(tmpData.selected_block_size);
-    if (s1 <= 0 || s2 <= 0 || selectedBlockCount <= 0 || selectedBlockSize <= 0) {
-        return false;
-    }
-    if (tmpData.n2 != 1) {
-        return true;
-    }
-
-    int64_t selectedCountOffset = BASE_LEN_256 / selectedBlockSize;
-    if (selectedBlockCount * selectedBlockSize <= BASE_LEN_256) {
-        selectedCountOffset = selectedBlockCount;
-    }
-    if (selectedCountOffset <= 0) {
-        return false;
-    }
-
-    int64_t selectedTokenLimit = selectedBlockCount * selectedBlockSize;
-    int64_t totalEffectiveTokens = 0;
-    int64_t totalBasicBlocks = 0;
-    for (int64_t s1Index = 0; s1Index < s1; ++s1Index) {
-        int64_t curMaxS2 = tmpData.attenEnable ? (s2 - s1 + s1Index + 1) : s2;
-        curMaxS2 = curMaxS2 > 0 ? curMaxS2 : 0;
-        int64_t maxS2Blk = CeilDivInt64(curMaxS2, selectedBlockSize);
-        int64_t actualSelectedBlockCount = std::min(selectedBlockCount, maxS2Blk);
-        totalEffectiveTokens += std::min(curMaxS2, selectedTokenLimit);
-        totalBasicBlocks += CeilDivInt64(actualSelectedBlockCount, selectedCountOffset);
-    }
-
-    return totalEffectiveTokens >= OPT_SCATTER_AVG_EFFECTIVE_TOKEN_THRESHOLD * s1 &&
-        totalBasicBlocks >= OPT_SCATTER_AVG_BASIC_BLOCK_THRESHOLD * s1;
+    return GetOptimizedScatterGateDecision(tmpData).enabled;
 }
 
 ge::graphStatus SparseFlashAttentionGradBasicTiling::GetShapeAttrsInfo()
@@ -230,7 +276,8 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetWorkspaceSize()
 
     int64_t dAlign = (tilingData.opInfo.get_D() + tilingData.opInfo.get_ropeD() + 15) / 16 * 16;
     int64_t d2Align = (tilingData.opInfo.get_D2() + 15) / 16 * 16;
-    workspaces[0] += 24 * SCATTER_BUFFER_NUM * tmpData.selected_block_count * tmpData.selected_block_size * (dAlign + d2Align) * B32;
+    uint32_t scatterBufferNum = tmpData.enableOptimizedScatter ? SCATTER_BUFFER_NUM : PING_PONG_BUFFER;
+    workspaces[0] += 24 * scatterBufferNum * tmpData.selected_block_count * tmpData.selected_block_size * (dAlign + d2Align) * B32;
 
     tilingData.opInfo.set_mm12WorkspaceLen(mm12WorkspaceLen);
     tilingData.opInfo.set_selectedKWorkspaceLen(selectedKWorkspaceLen);
@@ -325,7 +372,7 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::DoSftTiling()
     constexpr int32_t maxProcessDataSize = 8 * 1024;
 
     uint32_t sftBaseN = tmpData.singleN;
-    uint32_t sftBaseM = 6;
+    uint32_t sftBaseM = tmpData.enableOptimizedScatter ? 6 : 16;
 
     tilingData.splitCoreParams.set_sftBaseM(sftBaseM);
     tilingData.splitCoreParams.set_sftBaseN(sftBaseN);
@@ -580,7 +627,18 @@ ge::graphStatus SparseFlashAttentionGradBasicTiling::GetBaseShapeInfo()
     tmpData.selected_block_count = selected_block_count;
     tmpData.selected_block_size = selected_block_size;
     tmpData.deterministic = deterministic;
-    tilingData.opInfo.set_enableOptimizedScatter(EnableOptimizedScatterPath(tmpData));
+    auto gateDecision = GetOptimizedScatterGateDecision(tmpData);
+    tmpData.enableOptimizedScatter = gateDecision.enabled;
+    tilingData.opInfo.set_enableOptimizedScatter(tmpData.enableOptimizedScatter);
+    OP_LOGI(context_->GetNodeName(),
+        "SFAG optimized scatter gate: enable=%d reason=%s layout=%u B=%ld N1=%ld N2=%ld G=%ld "
+        "S1=%ld S2=%ld gateS1=%ld gateS2=%ld selectedBlockCount=%u selectedBlockSize=%u "
+        "effectiveSelectedTokens=%ld D=%ld D2=%ld ropeD=%ld dtype=%u deterministic=%d attenEnable=%d",
+        static_cast<int32_t>(tmpData.enableOptimizedScatter), gateDecision.reason, tmpData.layout, tmpData.b,
+        gateDecision.n1, tmpData.n2, tmpData.g, tmpData.s1, tmpData.s2, gateDecision.gateS1,
+        gateDecision.gateS2, tmpData.selected_block_count, tmpData.selected_block_size,
+        gateDecision.effectiveSelectedTokens, tmpData.d, tmpData.d2, tmpData.ropeDim, tmpData.queryType,
+        static_cast<int32_t>(tmpData.deterministic), static_cast<int32_t>(tmpData.attenEnable));
 
     auto ret = CheckDtypeValid(context_);
 

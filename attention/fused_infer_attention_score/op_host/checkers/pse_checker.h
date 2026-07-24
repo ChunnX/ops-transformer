@@ -42,10 +42,8 @@ private:
     // existence
     ge::graphStatus CheckPseShiftExistence(const FiaTilingInfo &fiaInfo);
     // feature
-    ge::graphStatus CheckFeaturePA(const FiaTilingInfo &fiaInfo);
+    ge::graphStatus CheckFeatureDConsistency(const FiaTilingInfo &fiaInfo);
     ge::graphStatus CheckerFeatureCrossover(const FiaTilingInfo &fiaInfo);
-    // multipara
-    ge::graphStatus CheckAlibiStartIdx(const FiaTilingInfo &fiaInfo);
 
 private:
 };

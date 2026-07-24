@@ -147,7 +147,7 @@ TEST_F(SparseFlashMlaTiling, test_tiling_swa_only_ori_kv_bf16_tnd_pa_nd)
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdSwaTilingKey);
 }
 
-TEST_F(SparseFlashMlaTiling, test_tiling_cfa_ori_and_cmp_kv_fp16_tnd_pa_nd)
+TEST_F(SparseFlashMlaTiling, test_tiling_hca_ori_and_cmp_kv_fp16_tnd_pa_nd)
 {
     SMLACompileInfo compileInfo = {};
     int64_t cuSeqLensQData[] = {0, 128, 256, 384, 512};
@@ -193,10 +193,10 @@ TEST_F(SparseFlashMlaTiling, test_tiling_cfa_ori_and_cmp_kv_fp16_tnd_pa_nd)
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdCfaTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdHcaTilingKey);
 }
 
-TEST_F(SparseFlashMlaTiling, test_tiling_scfa_with_sparse_indices_fp16_tnd_pa_nd)
+TEST_F(SparseFlashMlaTiling, test_tiling_csa_with_sparse_indices_fp16_tnd_pa_nd)
 {
     SMLACompileInfo compileInfo = {};
     int64_t cuSeqLensQData[] = {0, 128, 256, 384, 512};
@@ -242,10 +242,10 @@ TEST_F(SparseFlashMlaTiling, test_tiling_scfa_with_sparse_indices_fp16_tnd_pa_nd
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdScfaTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdCsaTilingKey);
 }
 
-TEST_F(SparseFlashMlaTiling, test_tiling_scfa_with_sparse_indices_bf16_tnd_pa_nd)
+TEST_F(SparseFlashMlaTiling, test_tiling_csa_with_sparse_indices_bf16_tnd_pa_nd)
 {
     SMLACompileInfo compileInfo = {};
     int64_t cuSeqLensQData[] = {0, 128, 256, 384, 512};
@@ -291,7 +291,7 @@ TEST_F(SparseFlashMlaTiling, test_tiling_scfa_with_sparse_indices_bf16_tnd_pa_nd
             {"return_softmax_lse", Ops::Transformer::AnyValue::CreateFrom<bool>(false)},
         },
         &compileInfo, "Ascend910B", 40, 196608);
-    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdScfaTilingKey);
+    ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, smla_ut::kTndPaBnbdCsaTilingKey);
 }
 
 TEST_F(SparseFlashMlaTiling, test_tiling_n1_not_64_failed)

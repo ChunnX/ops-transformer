@@ -68,5 +68,5 @@ std::string DebugTilingData(gert::TilingContext *context)
 
     return oss.str();
 }
-}  // namespace Transformer
-}  // namespace Ops
+} // namespace Transformer
+} // namespace Ops

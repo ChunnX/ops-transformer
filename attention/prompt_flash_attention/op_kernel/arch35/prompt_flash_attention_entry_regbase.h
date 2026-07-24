@@ -300,11 +300,9 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     #if (ORIG_DTYPE_QUERY == DT_FLOAT16 && ORIG_DTYPE_KEY == DT_FLOAT16 && ORIG_DTYPE_ATTENTION_OUT == DT_FLOAT16)
         // 解析两个合并字段
         if constexpr (isReconstructTemp  == true) {
-            run_fia_noquant_gqa_kernel<half, half, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-                                    isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
-                query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, postQuantScale,
-                postQuantOffset, blocktable, queryPaddingSize, kvPaddingSize, keySharedPrefix, valueSharedPrefix,
-                actualSharedPrefixLen, queryRope, keyRope, learnableSink, attentionOut, softmaxLse, user, tiling);
+            run_fia_noquant_gqa_kernel<half, half, inOutLayoutType, config, hasAttenMask, KvLayoutType,
+                isFd, emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV,
+                blocktable, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         } else{
             PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);
             // 计算参数，这个地方必须先用constexpr将表达式的值计算出来，否则INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI会报结构体的某些变量不存在
@@ -335,11 +333,9 @@ inline __aicore__ void prompt_flash_attention_FIAS_regbase(__gm__ uint8_t* query
     #if (ORIG_DTYPE_QUERY == DT_BF16 && ORIG_DTYPE_KEY == DT_BF16 && ORIG_DTYPE_ATTENTION_OUT == DT_BF16)
         // 解析两个合并字段
         if constexpr (isReconstructTemp  == true) {
-            run_fia_noquant_gqa_kernel<bfloat16_t, bfloat16_t, inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, KvLayoutType,
-                                    isFd, emptyTensor, enableKVPrefix, enableS1OutSplit>(
-                query, key, value, pseShift, attenMask, actualSeqLengths, actualSeqLengthsKV, postQuantScale,
-                postQuantOffset, blocktable, queryPaddingSize, kvPaddingSize, keySharedPrefix, valueSharedPrefix,
-                actualSharedPrefixLen, queryRope, keyRope, learnableSink, attentionOut, softmaxLse, user, tiling);
+            run_fia_noquant_gqa_kernel<bfloat16_t, bfloat16_t, inOutLayoutType, config, hasAttenMask, KvLayoutType,
+                isFd, emptyTensor, enableS1OutSplit>(query, key, value, attenMask, actualSeqLengths, actualSeqLengthsKV,
+                blocktable, queryRope, keyRope, attentionOut, softmaxLse, user, tiling);
         } else {
             PARSE_PARAMS_NoQuant(inOutLayoutType, config, pseMode, quantMode, hasAttenMask, hasRope, isPa, isFd, emptyTensor, enableKVPrefix, enableS1OutSplit);
             // 计算参数，这个地方必须先用constexpr将表达式的值计算出来，否则INVOKE_FA_OP_IMPL_ASCEND950_KVSAME_BASEAPI会报结构体的某些变量不存在

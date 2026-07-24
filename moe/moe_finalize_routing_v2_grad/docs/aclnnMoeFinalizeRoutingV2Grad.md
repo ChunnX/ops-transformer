@@ -21,7 +21,7 @@
   $$
   i : 0 \sim R * K - 1
   $$
-  
+
   $$
   j : 0 \sim H
   $$
@@ -43,7 +43,7 @@
   $$
 
   (3) scalesOptional不为空指针， biasOptional不为空指针：
-  
+
   $$
   gradExpandedXOut[expandedRowIdx[i]][j] = gradY[i / K][j] * scalesOptional[i / K][i \% K]
   $$
@@ -56,7 +56,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeFinalizeRoutingV2Grad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeFinalizeRoutingV2Grad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeFinalizeRoutingV2GradGetWorkspaceSize(
@@ -259,7 +259,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -334,7 +334,7 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -343,14 +343,14 @@ aclnnStatus aclnnMoeFinalizeRoutingV2Grad(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_moe_finalize_routing_v2_grad.h"
-#include <iostream>
+#include <cstdio>
 
 #define CHECK_RET(cond, return_expr)                                           \
   do {                                                                         \
@@ -482,7 +482,7 @@ int main() {
                         &gradExpandedX);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(gradScalesHostData, gradScalesShape, &gradScalesDeviceAddr, aclDataType::ACL_FLOAT, &gradScales);
-  CHECK_RET(ret == ACL_SUCCESS, return ret);  
+  CHECK_RET(ret == ACL_SUCCESS, return ret);
 
   // 3. 调用CANN算子库API，需要修改为具体的Api名称
   uint64_t workspaceSize = 0;

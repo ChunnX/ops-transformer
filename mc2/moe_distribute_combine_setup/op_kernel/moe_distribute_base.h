@@ -16,8 +16,8 @@
 #ifndef MOE_DISTRIBUTE_BASE_H
 #define MOE_DISTRIBUTE_BASE_H
 
-#if __has_include("../common/op_kernel/mc2_kernel_utils.h")
-#include "../common/op_kernel/mc2_kernel_utils.h"
+#if __has_include("../common/mc2_kernel_utils.h")
+#include "../common/mc2_kernel_utils.h"
 #else
 #include "../../common/op_kernel/mc2_kernel_utils.h"
 #endif

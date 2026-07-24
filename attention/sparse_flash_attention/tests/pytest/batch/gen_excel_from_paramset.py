@@ -29,9 +29,9 @@ EXCEL_COLUMNS = [
     "layout_query", "layout_kv", "q_type", "kv_type",
     "B", "T1", "T2", "S1", "S2", "N1", "N2", "D", "K",
     "scale_value", "sparse_block_size", "rope_head_dim",
-    "sparse_mode", "attention_mode", "return_softmax_lse",
+    "sparse_mode", "attention_mode", "return_softmax_lse", "use_sinks",
     "block_size", "block_num", "actual_seq_q", "actual_seq_kv",
-    "range_query", "range_key", "range_query_rope", "range_key_rope",
+    "range_query", "range_key", "range_query_rope", "range_key_rope", "range_sinks",
 ]
 
 

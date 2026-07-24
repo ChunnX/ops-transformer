@@ -23,12 +23,14 @@ using AscendC::QuePosition;
 
 namespace regbaseutil {
 constexpr int64_t MAX_PRE_NEXT_TOKENS = 0x7FFFFFFF;
+enum class VselrIndexEnum {GT_64_AND_LTE_128_INDEX = 0, GT_0_AND_LTE_64_INDEX = 1};
 
 #define COMMON_RUN_PARAM \
     int64_t boIdx; \
     int64_t s1oIdx; \
     int64_t n2oIdx; \
     int64_t goIdx; \
+    int64_t gSplitSize;            /* split-G模式下当前AIC处理的G轴行数 */ \
     int64_t s2LoopEndIdx;          /* S2方向的循环控制信息 souter层确定 */ \
     int64_t s2LineStartIdx = 0;    /* S2方向按行的起始位置 */ \
     int64_t s2LineEndIdx;          /* S2方向按行的结束位置 */ \
@@ -78,6 +80,11 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t qSNumInOneBlock;
     int64_t oriKvLoopEndIdx;
     int64_t cmpKvLoopEndIdx;
+    // FD S2-split
+    int64_t firstFdDataWorkspaceIdx = 0;
+    bool isS2Split = false;
+    int64_t s2SplitIdx = 0;
+    bool isFirstS2SplitCore = true;
 };
 
 #define COMMON_RUN_INFO \
@@ -119,6 +126,9 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     uint8_t resv[3]; \
     int64_t sOuterOffset; \
     int64_t mOuterOffset; \
+    bool    isS2Split = false; \
+    int64_t s2SplitIdx = 0; \
+    bool    isFirstS2SplitCore = true; \
 
 struct RunInfo {
     COMMON_RUN_INFO;
@@ -131,6 +141,7 @@ struct RunInfo {
     int64_t cmpKvLoopEndIdx;
     uint32_t oriSparseBlockCount;
     uint32_t cmpSparseBlockCount;
+    int64_t firstFdDataWorkspaceIdx = 0;
 };
 
 #define COMMON_CONST_INFO \

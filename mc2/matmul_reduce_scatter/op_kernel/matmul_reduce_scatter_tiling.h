@@ -17,17 +17,12 @@
 
 #include "kernel_tiling/kernel_tiling.h"
 
-#if __has_include("../../common/op_kernel/mc2_tiling_struct.h")
 #include "../../common/op_kernel/mc2_tiling_struct.h"
 #include "../../3rd/mat_mul_v3/op_kernel/mat_mul_v3_tiling_data.h"
-#else
-#include "../common/op_kernel/mc2_tiling_struct.h"
-#include "../3rd/mat_mul_v3/op_kernel/mat_mul_v3_tiling_data.h"
-#endif
 
 struct ReduceScatterSoc {
     uint32_t commAlg;
-	uint32_t isA3;
+    uint32_t isA3;
     uint32_t isStep;
     uint32_t isND2NZ;
     uint32_t baseBD;
@@ -45,7 +40,7 @@ public:
     Mc2Tiling::TileL2Tiling tileL2Tiling;
     Mc2Tiling::TileL2Tiling tailL2Tiling;
     Mc2Tiling::TileL2Tiling localL2Tiling;
-	ReduceScatterSoc socParam;
+    ReduceScatterSoc socParam;
     Mc2L2cacheUseInfo l2cacheUseInfo;
 };
 

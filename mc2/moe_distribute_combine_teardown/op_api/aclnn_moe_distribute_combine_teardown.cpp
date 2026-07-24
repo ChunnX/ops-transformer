@@ -68,7 +68,8 @@ static aclnnStatus CheckParams(const aclTensor *expandX, const aclTensor *quantE
                            sharedExpertXOptional, groupEp, xOut),
               ACLNN_ERR_PARAM_NULLPTR);
     if (strnlen(groupEp, HCCL_GROUP_NAME_MAX) >= HCCL_GROUP_NAME_MAX) {
-        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON("aclnnMoeDistributeCombineTeardown", "groupEp",
+        OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(
+            "aclnnMoeDistributeCombineTeardown", "groupEp",
             std::to_string(strnlen(groupEp, HCCL_GROUP_NAME_MAX)).c_str(),
             std::string("groupEp name exceeds ").append(std::to_string(HCCL_GROUP_NAME_MAX)).c_str());
         return ACLNN_ERR_PARAM_INVALID;
@@ -112,9 +113,9 @@ extern "C" aclnnStatus aclnnMoeDistributeCombineTeardownGetWorkspaceSize(
 
     aclnnStatus ret = aclnnInnerMoeDistributeCombineTeardownGetWorkspaceSize(
         expandX, quantExpandX, expertIds, expandIdx, expertScales, commCmdInfo, xActiveMaskOptional,
-        sharedExpertXOptional, const_cast<char*>(groupEp), epWorldSize, epRankId, moeExpertNum,
-        expertShardType, sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType,
-        const_cast<char*>(commAlg), xOut, workspaceSize, executor);
+        sharedExpertXOptional, const_cast<char *>(groupEp), epWorldSize, epRankId, moeExpertNum, expertShardType,
+        sharedExpertNum, sharedExpertRankNum, globalBs, commQuantMode, commType, const_cast<char *>(commAlg), xOut,
+        workspaceSize, executor);
     OP_LOGD("aclnn_moe_distribute_combine_teardown get_workspace_size success");
     return ret;
 }

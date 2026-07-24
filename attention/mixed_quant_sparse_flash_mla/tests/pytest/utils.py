@@ -47,7 +47,7 @@ def infer_template_run_mode(K, cmp_ratio, ori_kv_type, cmp_kv_type, cmp_mask_mod
             block_size2 = block_size1 if block_size2 is None else block_size2
             block_num2 = 0 if block_num2 is None else block_num2
         else:
-            template_run_mode = "CFA"
+            template_run_mode = "HCA"
             cmp_ratio = int(cmp_ratio)
             cmp_kv_type = ori_kv_type if cmp_kv_type is None else cmp_kv_type
             K = 0
@@ -55,7 +55,7 @@ def infer_template_run_mode(K, cmp_ratio, ori_kv_type, cmp_kv_type, cmp_mask_mod
             cmp_mask_mode = int(cmp_mask_mode) if cmp_mask_mode is not None else 3
             block_num2 = block_num2  # 后续计算
     else:
-        template_run_mode = "SCFA"
+        template_run_mode = "CSA"
         K = int(K)
         cmp_ratio = int(cmp_ratio)
         cmp_kv_type = ori_kv_type if cmp_kv_type is None else cmp_kv_type
@@ -93,6 +93,10 @@ def parse_list_param(value):
         return None
     if isinstance(value, list):
         return value
+    if isinstance(value, (int,)) and not isinstance(value, bool):
+        return [value]
+    if isinstance(value, float) and not pd.isna(value):
+        return [int(value)]
     if isinstance(value, str):
         s = value.strip()
         if s.lower() == 'none' or s == '':
@@ -101,6 +105,24 @@ def parse_list_param(value):
             s = s[1:-1]
         try:
             return [int(x.strip()) for x in s.split(',') if x.strip() != '']
+        except ValueError:
+            return None
+    return None
+
+
+def parse_datarange_param(value):
+    if value is None or (isinstance(value, float) and pd.isna(value)):
+        return None
+    if isinstance(value, list):
+        return value
+    if isinstance(value, str):
+        s = value.strip()
+        if s.lower() == 'none' or s == '':
+            return None
+        if s.startswith('[') and s.endswith(']'):
+            s = s[1:-1]
+        try:
+            return [float(x.strip()) for x in s.split(',') if x.strip() != '']
         except ValueError:
             return None
     return None
@@ -290,8 +312,8 @@ def fill_none_params(params_dict):
         if slot_len < seqused_ori_kv[i]:
             raise ValueError(f"cu_seqlens_ori_kv slot ({slot_len}) at batch {i} must >= seqused_ori_kv ({seqused_ori_kv[i]})")
 
-    # 3. 填充cmp参数 (SWA场景为None, 非SWA场景自动生成)
-    if template_run_mode == "SWA":
+    # 3. 填充cmp参数 (SWA/ORI_SPARSE场景为None, 其他场景自动生成)
+    if template_run_mode in ("SWA", "ORI_SPARSE"):
         seqused_cmp_kv = None
         cu_seqlens_cmp_kv = None
         cmp_residual_kv = None
@@ -301,7 +323,7 @@ def fill_none_params(params_dict):
         if cu_seqlens_cmp_kv is None:
             cu_seqlens_cmp_kv = [math.floor(c / cmp_ratio) for c in cu_seqlens_ori_kv]
         if cmp_residual_kv is None:
-            cmp_residual_kv = [s % cmp_ratio for s in seqused_ori_kv]
+            cmp_residual_kv = [s % cmp_ratio for s in seqused_ori_kv] if cmp_mask_mode != 0 else None
         for i in range(B):
             slot_len = cu_seqlens_cmp_kv[i + 1] - cu_seqlens_cmp_kv[i]
             if slot_len < seqused_cmp_kv[i]:
@@ -318,7 +340,7 @@ def fill_none_params(params_dict):
         )
         block_num1 = ori_block_num
     if block_num2 is None:
-        if template_run_mode == "SWA":
+        if template_run_mode in ("SWA", "ORI_SPARSE"):
             block_num2 = 0
         else:
             _, cmp_block_num = calc_block_num(
@@ -344,6 +366,7 @@ def fill_none_params(params_dict):
         'N1': params_dict['N1'],
         'N2': params_dict['N2'],
         'D': params_dict['D'],
+        'K1': params_dict.get('K1'),
         'K': K,
         'block_num1': block_num1,
         'block_num2': block_num2,
@@ -370,6 +393,15 @@ def fill_none_params(params_dict):
         'S1EQS2': S1EQS2,
         'topk_value_mode': params_dict.get('topk_value_mode', 1),
         'return_softmax_lse': params_dict.get('return_softmax_lse', False),
+        'q_datarange': params_dict.get('q_datarange'),
+        'ori_kv_datarange': params_dict.get('ori_kv_datarange'),
+        'cmp_kv_datarange': params_dict.get('cmp_kv_datarange'),
+        'ori_kv_topk_mode': params_dict.get('ori_kv_topk_mode', 'fullK'),
+        'cmp_kv_topk_mode': params_dict.get('cmp_kv_topk_mode', 'fullK'),
+        'ori_sparse_indices_mode': params_dict.get('ori_sparse_indices_mode', 'full'),
+        'cmp_sparse_indices_mode': params_dict.get('cmp_sparse_indices_mode', 'full'),
+        'ori_topk_length': params_dict.get('ori_topk_length', None),
+        'cmp_topk_length': params_dict.get('cmp_topk_length', None),
     }
 
     return filled_params
@@ -400,15 +432,23 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         # 定义必需的列名
         required_columns = [
             "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1",
-            "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio",
-            "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "quant_mode", "tile_size",
+            "N2", "D", "K", "K1", "block_num1", "block_num2", "block_size1", "block_size2", "softmax_scale",
+            "cmp_ratio", "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "quant_mode", "tile_size",
             "rope_head_dim", "template_run_mode", "actlen_mode", "S1EQS2",
-            "topk_value_mode", "return_softmax_lse",
+            "topk_value_mode",
+            "ori_kv_topk_mode", "cmp_kv_topk_mode", "ori_sparse_indices_mode", "cmp_sparse_indices_mode",
         ]
         optional_columns = [
             "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
             "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv",
+            "ori_topk_length", "cmp_topk_length",
         ]
+        datarange_columns = [
+            "q_datarange", "ori_kv_datarange", "cmp_kv_datarange",
+        ]
+        default_value_columns = {
+            "return_softmax_lse": False,
+        }
         # 检查是否缺少必要列
         missing_cols = [col for col in required_columns if col not in df.columns]
         if missing_cols:
@@ -424,6 +464,14 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                     row_dict[col] = None
                 else:
                     row_dict[col] = parse_list_param(row_dict[col])
+            for col in datarange_columns:
+                if col not in row_dict:
+                    row_dict[col] = None
+                else:
+                    row_dict[col] = parse_datarange_param(row_dict[col])
+            for col, default_val in default_value_columns.items():
+                if col not in row_dict or row_dict[col] is None:
+                    row_dict[col] = default_val
             test_cases.append(row_dict)
             i = i + 1
 
@@ -478,6 +526,15 @@ def save_result(params, result, fulfill_percent, result_path):
         "rope_head_dim": params.get('rope_head_dim'),
         "topk_value_mode": params.get('topk_value_mode'),
         "return_softmax_lse": params.get('return_softmax_lse'),
+        "q_datarange": params.get('q_datarange'),
+        "ori_kv_datarange": params.get('ori_kv_datarange'),
+        "cmp_kv_datarange": params.get('cmp_kv_datarange'),
+        'ori_kv_topk_mode': params.get('ori_kv_topk_mode'),
+        'cmp_kv_topk_mode': params.get('cmp_kv_topk_mode'),
+        'ori_sparse_indices_mode': params.get('ori_sparse_indices_mode'),
+        'cmp_sparse_indices_mode': params.get('cmp_sparse_indices_mode'),
+        'ori_topk_length': str(params.get('ori_topk_length')),
+        'cmp_topk_length': str(params.get('cmp_topk_length')),
         "result": result,
         "fulfill_percent": fulfill_percent,
     }

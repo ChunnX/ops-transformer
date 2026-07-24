@@ -39,7 +39,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用"aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnAlltoAllAllGatherBatchMatMul"接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用"aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize"接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用"aclnnAlltoAllAllGatherBatchMatMul"接口执行计算。
 
 ```cpp
 aclnnStatus aclnnAlltoAllAllGatherBatchMatMulGetWorkspaceSize(
@@ -237,7 +237,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一阶段接口完成入参校验，出现以下场景报错：
 
@@ -321,7 +321,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -363,7 +363,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>  ：
 
@@ -439,21 +439,21 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] HcclGetTpCommName failed. ret: %d\n", ret); return -1);
         LOG_PRINT("[INFO] rank = %d, hcomEpName = %s, hcomTpName = %s, stream = %p, context = %p\n", args.rankId,
         hcomEpName, hcomTpName, args.stream, args.context);
-        
+
         int64_t E = 2 * EP_WORLD_SIZE;
         int64_t C = 2 * TP_WORLD_SIZE;
         int64_t H = 6 * TP_WORLD_SIZE;
         int64_t M = 6 * TP_WORLD_SIZE;
         int64_t xShardType = 1; // 可切换为0，开启gather H轴场景
         int64_t actType = 1;
-        
+
         std::vector<int64_t> xShape;
         std::vector<int64_t> weightShape;
         std::vector<int64_t> biasShape;
         std::vector<int64_t> y1OutShape;
         std::vector<int64_t> y2OutShape;
         std::vector<int64_t> y3OutShape;
-        
+
         if (xShardType == 1) {
             xShape = {E, C / TP_WORLD_SIZE, H};
             weightShape = {E / EP_WORLD_SIZE, H, M / TP_WORLD_SIZE};
@@ -496,7 +496,7 @@ aclnnStatus aclnnAlltoAllAllGatherBatchMatMul(
         long long y1OutShapeSize = GetShapeSize(y1OutShape);
         long long y2OutShapeSize = GetShapeSize(y2OutShape);
         long long y3OutShapeSize = GetShapeSize(y3OutShape);
-        
+
         std::vector<int16_t> xHostData(xShapeSize, 1);
         std::vector<int16_t> weightHostData(weightShapeSize, 2);
         std::vector<int16_t> biasHostData(biasShapeSize, 3);

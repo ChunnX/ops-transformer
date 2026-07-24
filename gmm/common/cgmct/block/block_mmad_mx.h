@@ -473,10 +473,27 @@ public:
                 AscendC::LocalTensor<AType> l0a = l0aLocal.template ReinterpretCast<AType>();
                 uint64_t loadTimes =
                     Cgmct::Gemm::CeilDiv(Cgmct::Gemm::CeilDiv(tileL1L0Param.curKL0, AscendC::BLOCK_CUBE), MIN_STEP);
-                for (uint64_t i = 1; i < loadTimes; i++) {
-                    loadDataParams.mStartPosition = MIN_STEP * i + Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
-                    AscendC::LoadData(l0a[i * m1 * AscendC::BLOCK_CUBE * C0_SIZE], al1Local, loadDataParams);
-                    AscendC::PipeBarrier<PIPE_MTE1>();
+                if constexpr (IS_FP4) {
+                    loadData2DMxParams.xStartPosition = 0;
+                    loadData2DMxParams.yStartPosition = 0;
+                    loadData2DMxParams.xStep = 0;
+                    loadData2DMxParams.yStep = 0;
+                    loadData2DMxParams.srcStride = 0;
+                    loadData2DMxParams.dstStride = 0;
+                    for (uint64_t i = 1; i < loadTimes; i++) {
+                        loadDataParams.mStartPosition =
+                            MIN_STEP * i + Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
+                        AscendC::LoadData(l0a[i * m1 * AscendC::BLOCK_CUBE * C0_SIZE], al1Local, scaleAl1Local,
+                                          loadDataParams, loadData2DMxParams);
+                        AscendC::PipeBarrier<PIPE_MTE1>();
+                    }
+                } else {
+                    for (uint64_t i = 1; i < loadTimes; i++) {
+                        loadDataParams.mStartPosition =
+                            MIN_STEP * i + Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
+                        AscendC::LoadData(l0a[i * m1 * AscendC::BLOCK_CUBE * C0_SIZE], al1Local, loadDataParams);
+                        AscendC::PipeBarrier<PIPE_MTE1>();
+                    }
                 }
             }
         }
@@ -527,10 +544,27 @@ public:
                 AscendC::LocalTensor<BType> l0b = l0bLocal.template ReinterpretCast<BType>();
                 uint64_t loadTimes =
                     Cgmct::Gemm::CeilDiv(Cgmct::Gemm::CeilDiv(tileL1L0Param.curKL0, AscendC::BLOCK_CUBE), MIN_STEP);
-                for (uint64_t i = 1; i < loadTimes; i++) {
-                    loadDataParams.mStartPosition = MIN_STEP * i + Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
-                    AscendC::LoadData(l0b[i * n1 * AscendC::BLOCK_CUBE * C0_SIZE], bl1Local, loadDataParams);
-                    AscendC::PipeBarrier<PIPE_MTE1>();
+                if constexpr (IS_FP4) {
+                    loadData2DMxParams.xStartPosition = 0;
+                    loadData2DMxParams.yStartPosition = 0;
+                    loadData2DMxParams.xStep = 0;
+                    loadData2DMxParams.yStep = 0;
+                    loadData2DMxParams.srcStride = 0;
+                    loadData2DMxParams.dstStride = 0;
+                    for (uint64_t i = 1; i < loadTimes; i++) {
+                        loadDataParams.mStartPosition =
+                            MIN_STEP * i + Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
+                        AscendC::LoadData(l0b[i * n1 * AscendC::BLOCK_CUBE * C0_SIZE], bl1Local, scaleBl1Local,
+                                          loadDataParams, loadData2DMxParams);
+                        AscendC::PipeBarrier<PIPE_MTE1>();
+                    }
+                } else {
+                    for (uint64_t i = 1; i < loadTimes; i++) {
+                        loadDataParams.mStartPosition =
+                            MIN_STEP * i + Cgmct::Gemm::CeilDiv(kL0L1Off, AscendC::BLOCK_CUBE);
+                        AscendC::LoadData(l0b[i * n1 * AscendC::BLOCK_CUBE * C0_SIZE], bl1Local, loadDataParams);
+                        AscendC::PipeBarrier<PIPE_MTE1>();
+                    }
                 }
             }
         }
@@ -827,9 +861,8 @@ private:
                                        const AscendC::GlobalTensor<BType> &bGlobal,
                                        const AscendC::GlobalTensor<fp8_e8m0_t> &scaleAGlobal,
                                        const AscendC::GlobalTensor<fp8_e8m0_t> &scaleBGlobal,
-                                       const AscendC::GlobalTensor<BiasType> &biasGlobal,
-                                       const BlockShape &singleShape, AscendC::MmadParams &mmParams,
-                                       uint64_t &l0cOffset)
+                                       const AscendC::GlobalTensor<BiasType> &biasGlobal, const BlockShape &singleShape,
+                                       AscendC::MmadParams &mmParams, uint64_t &l0cOffset)
     {
         TileL1L0Param tileL1L0Param;
         tileL1L0Param.curM = Get<IDX_M_TILE_IDX>(singleShape);

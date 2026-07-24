@@ -52,6 +52,7 @@ static const int64_t DROP_MODE_VALUE_3 = 3;
 static const size_t DIM_INDEX_0 = 0;
 static const size_t DIM_INDEX_1 = 1;
 static const size_t DIM_INDEX_2 = 2;
+static const size_t ATTR_K_IDX = 4;
 
 class MoeFinalizeRoutingV2Membase : public MoeFinalizeRoutingTilingV2
 {
@@ -201,18 +202,30 @@ ge::graphStatus MoeFinalizeRoutingV2Membase::DoGetShapeAttrsInfo()
             std::to_string(expandedRowIdxShape.GetDimNum()).c_str(), "1D"),
         return ge::GRAPH_FAILED);
     int64_t nk = expandedRowIdxShape.GetDim(DIM_INDEX_0);
-    k_ = 1;
+    const int64_t* attrKPtr = attrsPtr->GetAttrPointer<int64_t>(ATTR_K_IDX);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, attrKPtr);
+    int64_t attrK = *attrKPtr;
+    k_ = attrK;
     if (scalesShape != nullptr) {
         OP_CHECK_IF(
             scalesShape->GetStorageShape().GetDimNum() != SHAPE_SIZE_V2,
             OP_LOGE_FOR_INVALID_SHAPEDIM(context_->GetNodeName(), "scales",
                 std::to_string(scalesShape->GetStorageShape().GetDimNum()).c_str(), "2D"),
             return ge::GRAPH_FAILED);
-        k_ = (params.scalesShape)->GetStorageShape().GetDim(DIM_INDEX_1);
-
+        int64_t scalesK = scalesShape->GetStorageShape().GetDim(DIM_INDEX_1);
+        // k > 1 means user explicitly specified k, need to verify consistency with scales dim1
+        if (attrK > 1) {
+            OP_CHECK_IF(
+                attrK != scalesK,
+                OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
+                    std::to_string(attrK).c_str(), "k must equal scales dim1"),
+                return ge::GRAPH_FAILED);
+        }
+        k_ = scalesK;
         OP_CHECK_IF(
-            k_ == 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "K",
-                std::to_string(k_).c_str(), "K can not be 0."), return ge::GRAPH_FAILED);
+            k_ <= 0, OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(context_->GetNodeName(), "k",
+                std::to_string(k_).c_str(), "k must be greater than 0."),
+            return ge::GRAPH_FAILED);
     }
 
     int64_t n = nk / k_;

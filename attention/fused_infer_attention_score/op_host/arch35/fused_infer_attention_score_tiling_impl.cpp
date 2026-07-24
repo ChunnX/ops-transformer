@@ -103,6 +103,11 @@ void FusedInferAttentionScoreTilingImpl::SetIsIFA(const FiaTilingInfo &fiaInfo)
 
 void FusedInferAttentionScoreTilingImpl::SetGSMerge(const FiaTilingInfo &fiaInfo)
 {
+    // 非量化场景且存在公共前缀时，禁用gs1合轴
+    if (fiaInfo.quantMode == FiaQuantMode::NO_QUANT && fiaInfo.sysPrefixFlag) {
+        gsMergeFlag_ = false;
+        return;
+    }
     if (fiaInfo.mlaMode == MlaMode::ROPE_SPLIT_D512) {
         gsMergeFlag_ = true;
         return;
@@ -1061,6 +1066,9 @@ void FusedInferAttentionScoreTilingImpl::GetActualSeqLength(const FiaTilingInfo 
         if (fiaInfo.kvStorageMode != KvStorageMode::PAGE_ATTENTION && bIdx > 0) {
             actualSeqLengthsKV -= fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>()[bIdx - 1];
         }
+        if (actualSeqLengthsKV <= 0) {
+            needInit_ = true;
+        }
     } else {
         if (fiaInfo.actualSeqLenFlag && fiaInfo.actualLenKvDims > 0 &&
             fiaInfo.opParamInfo.actualSeqLengths.tensor->GetData<int64_t>() != nullptr) { // kvLengths
@@ -1096,24 +1104,23 @@ int64_t FusedInferAttentionScoreTilingImpl::GetAntiQuantCalcBlockNumsOneHead(
         return (innerBlockNums + sInnerLoopTimesPrefix) * outerBlockNums;
     } else {
         int64_t blockSeqLength = outerBlockNums * static_cast<int64_t>(sOuterFactor_);
-        int64_t blockSeqLengthKV = innerBlockNums * static_cast<int64_t>(sInnerFactor_);
+        int64_t blockSeqLengthKV = innerBlockNums * static_cast<int64_t>(sInnerFactorSize_);
         int64_t toCalcBlockNums = innerBlockNums * outerBlockNums;
         // 必须满足pretoken + nexttoken > 0，否则会减出小于0的块数，这里需要去除prefix影响
-        toCalcBlockNums -= 
-            GetCutBlockNums(blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_),
-                            static_cast<int64_t>(sOuterFactor_), nextTokensLeftUp - fiaInfo.systemPrefixLen);
-        toCalcBlockNums -= GetCutBlockNums(
-            blockSeqLengthKV, blockSeqLength, static_cast<int64_t>(sInnerFactor_), static_cast<int64_t>(sOuterFactor_),
+        toCalcBlockNums -= GetCutBlockNums(blockSeqLengthKV, blockSeqLength,
+            static_cast<int64_t>(sInnerFactorSize_), static_cast<int64_t>(sOuterFactor_),
+            nextTokensLeftUp - fiaInfo.systemPrefixLen);
+        toCalcBlockNums -= GetCutBlockNums(blockSeqLengthKV, blockSeqLength,
+            static_cast<int64_t>(sInnerFactorSize_), static_cast<int64_t>(sOuterFactor_),
             blockSeqLengthKV - blockSeqLength + preTokensLeftUp + fiaInfo.systemPrefixLen);
-        
+
         // prefix部分单独计算
-        int64_t blockSharedPrefix = sInnerLoopTimesPrefix * static_cast<int64_t>(sInnerFactor_);
+        int64_t blockSharedPrefix = sInnerLoopTimesPrefix * static_cast<int64_t>(sInnerFactorSize_);
         toCalcBlockNums += sInnerLoopTimesPrefix * outerBlockNums;
-        toCalcBlockNums -=  GetCutBlockNums(blockSharedPrefix, blockSeqLength, 
-                                                     static_cast<int64_t>(sInnerFactor_),
-                                                     static_cast<int64_t>(sOuterFactor_), nextTokensLeftUp);
-        toCalcBlockNums -= GetCutBlockNums(
-            blockSharedPrefix, blockSeqLength, static_cast<int64_t>(sInnerFactor_), static_cast<int64_t>(sOuterFactor_),
+        toCalcBlockNums -= GetCutBlockNums(blockSharedPrefix, blockSeqLength,
+            static_cast<int64_t>(sInnerFactorSize_), static_cast<int64_t>(sOuterFactor_), nextTokensLeftUp);
+        toCalcBlockNums -= GetCutBlockNums(blockSharedPrefix, blockSeqLength,
+            static_cast<int64_t>(sInnerFactorSize_), static_cast<int64_t>(sOuterFactor_),
             blockSharedPrefix - blockSeqLength + preTokensLeftUp);
         return toCalcBlockNums;
     }
@@ -1926,14 +1933,14 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_s2Size(fiaInfo.s2Size);
     inputParams.set_dSize(fiaInfo.qkHeadDim);
     inputParams.set_dSizeV(fiaInfo.vHeadDim);
-    if (!fiaInfo.isTensorV1) {
-        inputParams.keyStrides.set_bnStride(fiaInfo.keyStrides->GetStride(0));
-        inputParams.keyStrides.set_n2Stride(fiaInfo.keyStrides->GetStride(1));
-        inputParams.valueStrides.set_bnStride(fiaInfo.valueStrides->GetStride(0));
-        inputParams.valueStrides.set_n2Stride(fiaInfo.valueStrides->GetStride(1));
+    if (fiaInfo.hasViewStride) {
+        inputParams.keyStrides.set_bnStride(fiaInfo.keyBnStride);
+        inputParams.keyStrides.set_n2Stride(fiaInfo.keyN2Stride);
+        inputParams.valueStrides.set_bnStride(fiaInfo.valueBnStride);
+        inputParams.valueStrides.set_n2Stride(fiaInfo.valueN2Stride);
         if (fiaInfo.kRopeStrides != nullptr) {
-            inputParams.kRopeStrides.set_bnStride(fiaInfo.kRopeStrides->GetStride(0));
-            inputParams.kRopeStrides.set_n2Stride(fiaInfo.kRopeStrides->GetStride(1));
+            inputParams.kRopeStrides.set_bnStride(fiaInfo.kRopeBnStride);
+            inputParams.kRopeStrides.set_n2Stride(fiaInfo.kRopeN2Stride);
         }
     }
     inputParams.set_dSizeRope(DSIZE_64);
@@ -1951,6 +1958,14 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_remain(0);
     inputParams.set_rsv1(0);
     inputParams.set_seed(0);
+    SetFATilingDataInputParams(fiaInfo);
+    SetFATilingDataInitOutput(fiaInfo);
+    return ge::GRAPH_SUCCESS;
+}
+
+void FusedInferAttentionScoreTilingImpl::SetFATilingDataInputParams(const FiaTilingInfo &fiaInfo)
+{
+    auto &inputParams = faRunTilingAdapter_.inputParamsRegbase;
     inputParams.set_offset(0);
     inputParams.set_keepProbUint8(0);
     inputParams.set_pseType(*fiaInfo.opParamInfo.pseType);
@@ -1997,7 +2012,10 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     inputParams.set_s2SparseValidSize(0);  // 默认值，未使用
     inputParams.set_pseAlibiBaseS1(0);     // 默认值，未使用
     inputParams.set_pseAlibiBaseS2(0);     // 默认值，未使用
+}
 
+void FusedInferAttentionScoreTilingImpl::SetFATilingDataInitOutput(const FiaTilingInfo &fiaInfo)
+{
     auto &initOutputParams = faRunTilingAdapter_.initOutputParams;
     int64_t outSize = fiaInfo.opParamInfo.attenOut.shape->GetStorageShape().GetShapeSize();
     int64_t lseSize = fiaInfo.softmaxLseFlag ? fiaInfo.opParamInfo.lseOut.shape->GetStorageShape().GetShapeSize() : 0;
@@ -2014,9 +2032,8 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::SetFATilingData(const FiaTil
     initOutputParams.set_totalSoftMaxLseOutputSize(lseSize);
     initOutputParams.set_needInit(fiaInfo.needInit || needInit_);
     initOutputParams.set_isOneN(0);  // 默认值,当前未使用
-
-    return ge::GRAPH_SUCCESS;
 }
+
 
 ge::graphStatus FusedInferAttentionScoreTilingImpl::SetTilingData(gert::TilingContext *context,
                                                                   const FiaTilingInfo &fiaInfo)
@@ -2087,15 +2104,23 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     OP_LOGD(fiaInfo.opName, "deqScale2Flag:%d", faRunTilingAdapter_.inputParamsRegbase.get_deqScale2Flag());
     OP_LOGD(fiaInfo.opName, "isActualSeqLengthsNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSeqLengthsNull());
     OP_LOGD(fiaInfo.opName, "isActualSeqLengthsKVNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSeqLengthsKVNull());
-    OP_LOGD(fiaInfo.opName, "actualSeqLengthsSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsSize());
-    OP_LOGD(fiaInfo.opName, "actualSeqLengthsKVSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsKVSize());
+    PrintInputParams(fiaInfo);
+}
+
+void FusedInferAttentionScoreTilingImpl::PrintInputParams(const FiaTilingInfo &fiaInfo)
+{
+    OP_LOGD(fiaInfo.opName, "actualSeqLengthsSize:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsSize());
+    OP_LOGD(fiaInfo.opName, "actualSeqLengthsKVSize:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_actualSeqLengthsKVSize());
     OP_LOGD(fiaInfo.opName, "isKvContinuous:%d", faRunTilingAdapter_.inputParamsRegbase.get_isKvContinuous());
     OP_LOGD(fiaInfo.opName, "fromFused:%d", faRunTilingAdapter_.inputParamsRegbase.get_fromFused());
     OP_LOGD(fiaInfo.opName, "isBSNDOut:%d", faRunTilingAdapter_.inputParamsRegbase.get_isBSNDOut());
     OP_LOGD(fiaInfo.opName, "transposeLayout:%d", faRunTilingAdapter_.inputParamsRegbase.get_transposeLayout());
     OP_LOGD(fiaInfo.opName, "isGqa:%d", faRunTilingAdapter_.inputParamsRegbase.get_isGqa());
     OP_LOGD(fiaInfo.opName, "isSoftMaxLseEnable:%d", faRunTilingAdapter_.inputParamsRegbase.get_isSoftMaxLseEnable());
-    OP_LOGD(fiaInfo.opName, "isActualSharedPrefixLenNull:%d", faRunTilingAdapter_.inputParamsRegbase.get_isActualSharedPrefixLenNull());
+    OP_LOGD(fiaInfo.opName, "isActualSharedPrefixLenNull:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_isActualSharedPrefixLenNull());
     OP_LOGD(fiaInfo.opName, "isQHasLeftPadding:%d", faRunTilingAdapter_.inputParamsRegbase.get_isQHasLeftPadding());
     OP_LOGD(fiaInfo.opName, "isKVHasLeftPadding:%d", faRunTilingAdapter_.inputParamsRegbase.get_isKVHasLeftPadding());
     OP_LOGD(fiaInfo.opName, "prefixSeqInnerSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_prefixSeqInnerSize());
@@ -2111,15 +2136,19 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
     OP_LOGD(fiaInfo.opName, "logSumExpSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_logSumExpSize());
     OP_LOGD(fiaInfo.opName, "isPostQuantPerChnl:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantPerChnl());
     OP_LOGD(fiaInfo.opName, "isPostQuantBF16:%d", faRunTilingAdapter_.inputParamsRegbase.get_isPostQuantBF16());
-    OP_LOGD(fiaInfo.opName, "antiquantPerTensorFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerTensorFlag());
-    OP_LOGD(fiaInfo.opName, "antiquantPerHeadFlag:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerHeadFlag());
-    OP_LOGD(fiaInfo.opName, "antiquantParaSeqSize:%d", faRunTilingAdapter_.inputParamsRegbase.get_antiquantParaSeqSize());
+    OP_LOGD(fiaInfo.opName, "antiquantPerTensorFlag:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerTensorFlag());
+    OP_LOGD(fiaInfo.opName, "antiquantPerHeadFlag:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_antiquantPerHeadFlag());
+    OP_LOGD(fiaInfo.opName, "antiquantParaSeqSize:%d",
+            faRunTilingAdapter_.inputParamsRegbase.get_antiquantParaSeqSize());
 
     OP_LOGD(fiaInfo.opName, "coreNum:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_coreNum());
     OP_LOGD(fiaInfo.opName, "totalSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_totalSize());
     OP_LOGD(fiaInfo.opName, "s1OuterSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_s1OuterSize());
     OP_LOGD(fiaInfo.opName, "splitFactorSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorSize());
-    OP_LOGD(fiaInfo.opName, "splitFactorTailSize:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorTailSize());
+    OP_LOGD(fiaInfo.opName, "splitFactorTailSize:%d",
+            faRunTilingAdapter_.multiCoreParamsRegbase.get_splitFactorTailSize());
     for (uint32_t i = 0; i < 48; i++) { // 48 cores
         OP_LOGD(fiaInfo.opName, "bnStartIdx[%d]:%d", i,
                 faRunTilingAdapter_.multiCoreParamsRegbase.get_bnStartIdxPtr()[i]);
@@ -2128,14 +2157,16 @@ void FusedInferAttentionScoreTilingImpl::PrintAllTilingData(const FiaTilingInfo 
         OP_LOGD(fiaInfo.opName, "sparseStartIdx[%d]:%d", i,
                 faRunTilingAdapter_.multiCoreParamsRegbase.get_sparseStartIdxPtr()[i]);
     }
-    OP_LOGD(fiaInfo.opName, "firstFullLoadS1OuterIdx:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_firstFullLoadS1OuterIdx());
+    OP_LOGD(fiaInfo.opName, "firstFullLoadS1OuterIdx:%d",
+            faRunTilingAdapter_.multiCoreParamsRegbase.get_firstFullLoadS1OuterIdx());
     OP_LOGD(fiaInfo.opName, "splitCoreMode:%d", faRunTilingAdapter_.multiCoreParamsRegbase.get_splitCoreMode());
 
     OP_LOGD(fiaInfo.opName, "singleCoreSize:%d", faRunTilingAdapter_.initOutputParams.get_singleCoreSize());
     OP_LOGD(fiaInfo.opName, "needInit:%d", faRunTilingAdapter_.initOutputParams.get_needInit());
     OP_LOGD(fiaInfo.opName, "isOneN:%d", faRunTilingAdapter_.initOutputParams.get_isOneN());
     OP_LOGD(fiaInfo.opName, "totalOutputSize:%d", faRunTilingAdapter_.initOutputParams.get_totalOutputSize());
-    OP_LOGD(fiaInfo.opName, "totalSoftMaxLseOutputSize:%d", faRunTilingAdapter_.initOutputParams.get_totalSoftMaxLseOutputSize());
+    OP_LOGD(fiaInfo.opName, "totalSoftMaxLseOutputSize:%d",
+            faRunTilingAdapter_.initOutputParams.get_totalSoftMaxLseOutputSize());
 }
 ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingContext *context,
                                                                const FiaTilingInfo &fiaInfo)
@@ -2153,6 +2184,13 @@ ge::graphStatus FusedInferAttentionScoreTilingImpl::DoOpTiling(gert::TilingConte
 
     OP_CHECK_IF(SplitPolicy(context, fiaInfo) != ge::GRAPH_SUCCESS,
                 OP_LOGE(fiaInfo.opName, "Excute split policy fail."), return ge::GRAPH_FAILED);
+
+    if (fiaInfo.quantMode == FiaQuantMode::NO_QUANT && fiaInfo.mlaMode != MlaMode::ROPE_SPLIT_D512 &&
+        gsMergeFlag_ && !dnFlag_ && (((fiaInfo.s1Size * fiaInfo.gSize + 1) / 2) + fiaInfo.gSize - 1) /
+        fiaInfo.gSize * fiaInfo.gSize > sOuterFactor_ && fiaInfo.s1Size > 1) {
+        pfaMergeFlag_ = false;
+        gsMergeFlag_ = false;
+    }
 
     OP_CHECK_IF(ComputeTilingData(fiaInfo) != ge::GRAPH_SUCCESS, OP_LOGE(fiaInfo.opName, "Compute tilingData fail."),
                 return ge::GRAPH_FAILED);

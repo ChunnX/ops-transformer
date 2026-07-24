@@ -26,7 +26,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用`aclnnMatmulAllReduceV3GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMatmulAllReduceV3`接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用`aclnnMatmulAllReduceV3GetWorkspaceSize`接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用`aclnnMatmulAllReduceV3`接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMatmulAllReduceV3GetWorkspaceSize(
@@ -202,7 +202,7 @@ aclnnStatus aclnnMatmulAllReduceV3(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一阶段接口完成入参校验，出现以下场景报错：
 
@@ -277,13 +277,13 @@ aclnnStatus aclnnMatmulAllReduceV3(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 通信引擎commMode支持度：
-  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：目前不支持指定通信引擎，commMode仅允许输入为空字符串，默认使用AICPU。
-  - <term>Ascend 950PR/Ascend 950DT</term>：目前通信引擎支持AICPU和CCU，commMode允许输入为"ai_cpu"、"ccu"和空字符串，前两者直接指定AICPU和CCU，空字符串表示自适应模式，优先选择最佳的通信引擎，当前版本默认使用CCU作为通信引擎。CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
+  - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：目前不支持指定通信引擎，commMode仅允许输入为"ai_cpu"，使用AICPU通信引擎。
+  - <term>Ascend 950PR/Ascend 950DT</term>：目前通信引擎支持AICPU和CCU，commMode允许输入为"ai_cpu"或者"ccu"。CCU仅支持单机UB域内互联，AICPU可支持跨机UB域内互联。
   - 同一条通信链路内，只能选择同一种通信引擎。
   - AICPU和CCU通信引擎简单介绍：
     - AICPU：不占用计算核，通信效率高，但通信静态开销较大，对小数据量通信场景不友好。适用于大数据高带宽场景。
@@ -307,9 +307,9 @@ aclnnStatus aclnnMatmulAllReduceV3(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
-说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[ <<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
+说明：本示例代码调用了部分HCCL集合通信库接口：HcclGetCommName、HcclCommInitAll、HcclCommDestroy,请参考[<<HCCL API (C)>>](https://hiascend.com/document/redirect/CannCommunityHcclCppApi)。
 
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 

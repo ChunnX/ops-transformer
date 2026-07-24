@@ -772,6 +772,19 @@ void NsaCompressAttentionTilingBase::TopKTiling()
                         AscendC::TopKMode::TOPK_NORMAL, 
                         true,                 //islargest
                         tilingData.topkTilingData);
+    uint32_t maxsize = 0;
+    uint32_t minsize = 0;
+    AscendC::GetTopKMaxMinTmpSize(ascendcPlatform,
+        S2sizeAlign32,   // inner
+        topkBase,        // outter
+        false,           // isReuseSource
+        false,           // isInitIndex
+        AscendC::TopKMode::TOPK_NORMAL,
+        true,            // islargest
+        dtypesize,
+        maxsize,
+        minsize);
+    tilingData.importanceScoreParams.set_tmpUbSize(static_cast<uint64_t>(maxsize));
 }
 
 bool NsaCompressAttentionTilingBase::CheckUbSize(uint64_t &s2ScoreLoopLen, uint64_t &outerLoop)

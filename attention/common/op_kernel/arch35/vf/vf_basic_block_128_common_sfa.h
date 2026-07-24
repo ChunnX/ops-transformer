@@ -25,7 +25,7 @@ template<typename T, typename T2>
 __simd_callee__ inline void CastStoreExp128(
     RegTensor<float> &vreg_exp_even, RegTensor<float> &vreg_exp_odd,
     __ubuf__ T2 *&expUb, const uint32_t blockStride, const uint32_t repeatStride,
-    MaskReg &preg_all, MaskReg &storeMask)
+    MaskReg &preg_all, MaskReg &storeMask, __ubuf__ uint8_t * indexesUb)
 {
     RegTensor<bfloat16_t> vreg_exp_even_bf16;
     RegTensor<bfloat16_t> vreg_exp_odd_bf16;
@@ -33,6 +33,11 @@ __simd_callee__ inline void CastStoreExp128(
     RegTensor<half> vreg_exp_even_fp16;
     RegTensor<half> vreg_exp_odd_fp16;
     RegTensor<half> vreg_exp_fp16;
+
+    if constexpr (IsSameType<T2, hifloat8_t>::value) { // T2 == hifp8 为全量化
+        Muls(vreg_exp_even, vreg_exp_even, hifp8ScaleValue, preg_all);
+        Muls(vreg_exp_odd, vreg_exp_odd, hifp8ScaleValue, preg_all);
+    }
     if constexpr (IsSameType<T2, bfloat16_t>::value) {
         Cast<T2, T, castTraitZero>(vreg_exp_even_bf16, vreg_exp_even, preg_all);
         Cast<T2, T, castTraitOne>(vreg_exp_odd_bf16, vreg_exp_odd, preg_all);
@@ -47,6 +52,23 @@ __simd_callee__ inline void CastStoreExp128(
             (RegTensor<uint16_t>&)vreg_exp_odd_fp16, storeMask);
         StoreAlign<T2, MicroAPI::DataCopyMode::DATA_BLOCK_COPY, MicroAPI::PostLiteral::POST_MODE_UPDATE>(
             ((__ubuf__ T2 *&)expUb), vreg_exp_fp16, blockStride, repeatStride, storeMask);
+    } else if constexpr (IsSameType<T2, hifloat8_t>::value) {
+        RegTensor<hifloat8_t> vreg_exp_even_hifp8;
+        RegTensor<hifloat8_t> vreg_exp_odd_hifp8;
+        RegTensor<hifloat8_t> vreg_exp_merge_tmp_hifp8;
+        RegTensor<hifloat8_t> vreg_exp_hifp8;
+        RegTensor<uint8_t> vreg_exp_merge_hifp8_indexes;
+        MaskReg preg_all_b8 = CreateMask<uint8_t, MaskPattern::ALL>();
+        uint32_t maskLen = 128;
+        MaskReg preg_all_b8_128 = UpdateMask<T2>(maskLen);
+        Cast<T2, T, castTraitZero>(vreg_exp_even_hifp8, vreg_exp_even, preg_all);
+        Cast<T2, T, castTraitTwo>(vreg_exp_odd_hifp8, vreg_exp_odd, preg_all);
+        Or((RegTensor<uint8_t> &)vreg_exp_merge_tmp_hifp8, (RegTensor<uint8_t> &)vreg_exp_even_hifp8,
+           (RegTensor<uint8_t> &)vreg_exp_odd_hifp8, preg_all_b8);
+        LoadAlign(vreg_exp_merge_hifp8_indexes, indexesUb);
+        Gather(vreg_exp_hifp8, vreg_exp_merge_tmp_hifp8, vreg_exp_merge_hifp8_indexes);
+        StoreAlign<T2, DataCopyMode::DATA_BLOCK_COPY, PostLiteral::POST_MODE_UPDATE>(
+            ((__ubuf__ T2 *&)expUb), vreg_exp_hifp8, blockStride, repeatStride, preg_all_b8_128);
     }
 }
 

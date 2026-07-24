@@ -30,15 +30,32 @@ def _mhc_post_golden_impl(x_f32, h_res_f32, h_out_f32, h_post_f32):
     return h_comb_term
 
 
-def mhc_post_golden(x, h_res, h_out, h_post, **kwargs):
+def _mhc_post_nohres_golden_impl(x_f32, h_out_f32, h_post_f32):
+    h_post_term = h_post_f32.unsqueeze(-1) * h_out_f32.unsqueeze(-2)
+    return x_f32 + h_post_term
+
+
+def mhc_post_golden(x, *args, **kwargs):
     dtype = x.dtype
 
     x_f32 = torch.from_numpy(x.astype(np.float32))
-    h_res_f32 = torch.from_numpy(h_res.astype(np.float32))
-    h_out_f32 = torch.from_numpy(h_out.astype(np.float32))
-    h_post_f32 = torch.from_numpy(h_post.astype(np.float32))
 
-    y = _mhc_post_golden_impl(x_f32, h_res_f32, h_out_f32, h_post_f32)
+    # Case 1: nohres - TTK passed 4 params (x, None, h_out, h_post)
+    if len(args) == 3 and args[0] is None:
+        h_out_f32 = torch.from_numpy(args[1].astype(np.float32))
+        h_post_f32 = torch.from_numpy(args[2].astype(np.float32))
+        y = _mhc_post_nohres_golden_impl(x_f32, h_out_f32, h_post_f32)
+    # Case 2: nohres - TTK passed 3 params (x, h_out, h_post), None skipped
+    elif len(args) == 2:
+        h_out_f32 = torch.from_numpy(args[0].astype(np.float32))
+        h_post_f32 = torch.from_numpy(args[1].astype(np.float32))
+        y = _mhc_post_nohres_golden_impl(x_f32, h_out_f32, h_post_f32)
+    # Case 3: with h_res - 4 params (x, h_res, h_out, h_post)
+    else:
+        h_res_f32 = torch.from_numpy(args[0].astype(np.float32))
+        h_out_f32 = torch.from_numpy(args[1].astype(np.float32))
+        h_post_f32 = torch.from_numpy(args[2].astype(np.float32))
+        y = _mhc_post_golden_impl(x_f32, h_res_f32, h_out_f32, h_post_f32)
     return y.numpy().astype(dtype)
 
 
@@ -58,9 +75,14 @@ def aclnn_mhc_post_golden(x, hRes, hOut, hPost, out, **kwargs):
     Returns:
         Output tensors.
     '''
+    import torch
 
     def _to_numpy(t):
+        if t is None:
+            return None
         if hasattr(t, 'numpy'):
+            if t.dtype == torch.bfloat16:
+                return t.float().numpy()
             return t.numpy()
         return t
 
@@ -72,5 +94,9 @@ def aclnn_mhc_post_golden(x, hRes, hOut, hPost, out, **kwargs):
     result = mhc_post_golden(x_np, hRes_np, hOut_np, hPost_np, **kwargs)
 
     if hasattr(x, 'numpy'):
-        return torch.from_numpy(result)
+        import torch
+        result_tensor = torch.from_numpy(result)
+        if x.dtype == torch.bfloat16:
+            result_tensor = result_tensor.to(torch.bfloat16)
+        return result_tensor
     return result

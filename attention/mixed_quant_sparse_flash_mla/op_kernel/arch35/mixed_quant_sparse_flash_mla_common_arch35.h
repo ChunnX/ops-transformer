@@ -71,7 +71,7 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
     X(isPa, bool, true) \
     X(LAYOUT_T, QSMLA_LAYOUT, QSMLA_LAYOUT::BSND) \
     X(KV_LAYOUT_T, QSMLA_LAYOUT, QSMLA_LAYOUT::PA_BBND) \
-    X(TEMPLATE_MODE, QSMLATemplateMode, QSMLATemplateMode::SCFA_TEMPLATE_MODE) \
+    X(TEMPLATE_MODE, QSMLATemplateMode, QSMLATemplateMode::CSA_TEMPLATE_MODE) \
     X(IS_SPLIT_G, bool, false) \
     X(QUANT_MODE, SCALE_CONTIGUOUS_MODE, SCALE_CONTIGUOUS_MODE::CONTIGUOUS) \
 

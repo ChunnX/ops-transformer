@@ -53,7 +53,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulV2GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulV2GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmulV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulV2GetWorkspaceSize(
@@ -85,7 +85,7 @@ aclnnStatus aclnnGroupedMatmulV2(
 - **参数说明**
 
   <table style="undefined;table-layout: fixed; width: 1483px"><colgroup>
-  <col style="width: 210px">
+  <col style="width: 240px">
   <col style="width: 90px">
   <col style="width: 370px">
   <col style="width: 232px">
@@ -107,7 +107,7 @@ aclnnStatus aclnnGroupedMatmulV2(
     </tr></thead>
   <tbody>
     <tr>
-      <td>x（aclTensorList）</td>
+      <td>x（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的输入x。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -117,7 +117,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>weight（aclTensorList）</td>
+      <td>weight（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的weight。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -127,7 +127,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>biasOptional（aclTensorList）</td>
+      <td>biasOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>公式中的bias。</td>
       <td>长度与weight相同。</td>
@@ -137,7 +137,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>scaleOptional（aclTensorList）</td>
+      <td>scaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的缩放因子。</td>
       <td>一般情况下，长度与weight相同。</td>
@@ -147,7 +147,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>offsetOptional（aclTensorList）</td>
+      <td>offsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -157,7 +157,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantScaleOptional（aclTensorList）</td>
+      <td>antiquantScaleOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表伪量化参数中的缩放因子。</td>
       <td>长度与weight相同。</td>
@@ -167,7 +167,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>antiquantOffsetOptional（aclTensorList）</td>
+      <td>antiquantOffsetOptional（aclTensorList *）</td>
       <td>输入</td>
       <td>代表伪量化参数中的偏移量。</td>
       <td>长度与weight相同。</td>
@@ -177,7 +177,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>groupListOptional（aclTensorList）</td>
+      <td>groupListOptional（aclIntArray *）</td>
       <td>输入</td>
       <td>代表输入和输出分组轴方向的matmul大小分布。</td>
       <td>
@@ -212,7 +212,7 @@ aclnnStatus aclnnGroupedMatmulV2(
       <td>-</td>
     </tr>
     <tr>
-      <td>y（aclTensorList）</td>
+      <td>y（aclTensorList *）</td>
       <td>输出</td>
       <td>公式中的输出y。</td>
       <td>tensorList长度支持[1, 128]或者[1, 1024]。</td>
@@ -260,7 +260,7 @@ aclnnStatus aclnnGroupedMatmulV2(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一阶段接口完成入参校验，出现以下场景时报错:
 
@@ -344,7 +344,7 @@ aclnnStatus aclnnGroupedMatmulV2(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -439,7 +439,7 @@ aclnnStatus aclnnGroupedMatmulV2(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```c++
 #include <iostream>

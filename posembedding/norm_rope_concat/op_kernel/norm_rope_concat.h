@@ -191,10 +191,13 @@ __aicore__ inline void NormOperationForward<isTraining>::Prepare(GM_ADDR x, GM_A
         return;
     }
     // if affine, copy weight & bias
+    DataCopyExtParams copyParams{1, static_cast<uint32_t>(this->normDim_ * sizeof(DTYPE_QUERY)), 0, 0, 0};
+    DataCopyPadExtParams<DTYPE_QUERY> padParams{true, 0,
+        static_cast<uint8_t>(this->alignedNormDim_ - this->normDim_), 0};
     if constexpr (normType == NormType::LAYER_NORM_AFFINE || normType == NormType::LAYER_NORM_AFFINE_ACROSS_HEADS) {
         LocalTensor<DTYPE_QUERY> norm = normQue_.AllocTensor<DTYPE_QUERY>();
-        DataCopy(norm, this->weightGm_, this->alignedNormDim_);
-        DataCopy(norm[this->alignedNormDim_], this->biasGm_, this->alignedNormDim_);
+        DataCopyPad(norm, this->weightGm_, copyParams, padParams);
+        DataCopyPad(norm[this->alignedNormDim_], this->biasGm_, copyParams, padParams);
         normQue_.EnQue(norm);
         LocalTensor<DTYPE_QUERY> deQue = normQue_.DeQue<DTYPE_QUERY>();
         if constexpr (sizeof(DTYPE_QUERY) == sizeof(float)) {
@@ -207,7 +210,7 @@ __aicore__ inline void NormOperationForward<isTraining>::Prepare(GM_ADDR x, GM_A
     
     if constexpr (normType == NormType::RMS_NORM_AFFINE) {
         LocalTensor<DTYPE_QUERY> norm = normQue_.AllocTensor<DTYPE_QUERY>();
-        DataCopy(norm, this->weightGm_, this->alignedNormDim_);
+        DataCopyPad(norm, this->weightGm_, copyParams, padParams);
         normQue_.EnQue(norm);
         LocalTensor<DTYPE_QUERY> deQue = normQue_.DeQue<DTYPE_QUERY>();
         if constexpr (sizeof(DTYPE_QUERY) == sizeof(float)) {

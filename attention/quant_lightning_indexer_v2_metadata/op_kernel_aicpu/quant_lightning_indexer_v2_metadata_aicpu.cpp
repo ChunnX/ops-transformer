@@ -140,9 +140,9 @@ bool QuantLightningIndexerV2MetadataCpuKernel::ParamsCheck()
     if (cmpResidualK_ != nullptr && cmpResidualK_->GetData() != nullptr) {
         const int32_t *cmpResidualKPtr = static_cast<const int32_t*>(cmpResidualK_->GetData());
         for (int i = 0; i < batchSize; i++) {
-            if (cmpResidualKPtr[i] < 0) {
-                KERNEL_LOG_ERROR("The elements in cmp_residual_k should be >= 0, but got cmp_residual_k[%d] = %d",
-                    i, cmpResidualKPtr[i]);
+            if (cmpResidualKPtr[i] < 0 || cmpResidualKPtr[i] >= cmpRatio_) {
+                KERNEL_LOG_ERROR("The elements in cmp_residual_k should be in [0, cmpRatio_), but got "
+                    "cmp_residual_k[%d] = %d", i, cmpResidualKPtr[i]);
                 return false;
             }
         }
@@ -264,6 +264,7 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &split
     for (uint32_t bIdx = 0; bIdx < batchSize_; bIdx++) {
         uint32_t s1Size = GetS1SeqSize(bIdx);
         uint32_t s2Size = GetS2SeqSize(bIdx);
+        maxS2Size_ = std::max(maxS2Size_, s2Size);
         splitInfo.s1GBaseNum[bIdx] = (static_cast<uint64_t>(s1Size) * groupSize_ + (mBaseSize_ - 1U)) / mBaseSize_;
         splitInfo.s1GTailSize[bIdx] = (static_cast<uint64_t>(s1Size) * groupSize_) % mBaseSize_;
         splitInfo.s2BaseNum[bIdx] = (s2Size + s2BaseSize_ - 1U) / s2BaseSize_;
@@ -272,7 +273,17 @@ void QuantLightningIndexerV2MetadataCpuKernel::CalcSplitInfo(SplitContext &split
             splitInfo.isKvSeqAllZero = false;
         }
     }
-    return;
+    ValidSocVersion validSocVersion = ProcessSocVersion();
+    if (validSocVersion == ValidSocVersion::ASCEND950) {
+        if (maxS2Size_ < topk_) {
+            supportFd_ = false;
+            return;
+        }
+        if (maxS2Size_ > fdToleranceRatio * s2BaseSize_) {
+            supportFd_ = true;
+            return;
+        }
+    }
 }
 
 int64_t QuantLightningIndexerV2MetadataCpuKernel::CalcPreTokenLeftUp(
@@ -775,17 +786,30 @@ void QuantLightningIndexerV2MetadataCpuKernel::SplitFD(SplitResult &splitRes)
     for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
         totalFDLoad += splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i];
     }
+    // 计算当前最大冗余vec核数
+    uint32_t emptyVectorNum = aivCoreNum_ - splitRes.numOfFdHead;
     // 计算每个核处理的load
     // 向上取整，避免核负载为0
     uint64_t averageLoad = (totalFDLoad + aivCoreNum_ - 1U) / aivCoreNum_;
     uint32_t curCoreIndex = 0;
     for (uint32_t i = 0; i < splitRes.numOfFdHead; i++) {
+        // 冗余vec核数为0，此时规约任务无法进行更小的切分，只能1个vec核计算1个规约任务
+        if (emptyVectorNum == 0U) {
+            splitRes.fdRes.fdIdx[curCoreIndex] = i;
+            splitRes.fdRes.fdMStart[curCoreIndex] = 0U;
+            splitRes.fdRes.fdMNum[curCoreIndex] = splitRes.fdRes.fdMSize[i];
+            curCoreIndex++;
+            continue;
+        }
         // 计算当前归约任务所用核数，向下取整，避免使用核数超出总核数
         uint32_t curFDVectorNum = splitRes.fdRes.fdS2SplitNum[i] * splitRes.fdRes.fdMSize[i] / averageLoad;
         curFDVectorNum = std::max(1U, curFDVectorNum);
         // 计算当前归约任务每个核的行数，向上取整，避免行数为0
         uint32_t curAveMSize = (splitRes.fdRes.fdMSize[i] + curFDVectorNum - 1U) / curFDVectorNum;
         curFDVectorNum = (splitRes.fdRes.fdMSize[i] + curAveMSize -1U)/ curAveMSize;
+        // 需要使用的vec核数与当前剩余可用vec核数取最小
+        curFDVectorNum = std::min(curFDVectorNum, emptyVectorNum + 1U); // 1: Fd任务自身带一个核
+        // FD负载分配
         for (uint32_t vid = 0; vid < curFDVectorNum; vid++) {
             splitRes.fdRes.fdIdx[curCoreIndex] = i;
             splitRes.fdRes.fdMStart[curCoreIndex] = vid * curAveMSize;
@@ -793,6 +817,8 @@ void QuantLightningIndexerV2MetadataCpuKernel::SplitFD(SplitResult &splitRes)
                 (vid < curFDVectorNum - 1) ? curAveMSize : (splitRes.fdRes.fdMSize[i] - vid * curAveMSize);
             curCoreIndex++;
         }
+        // 更新冗余vec核数
+        emptyVectorNum -= (curFDVectorNum - 1U); // 1: 空余核不包含FD自身的核，要-1
     }
     splitRes.fdRes.fdUsedVecNum = curCoreIndex;
 }

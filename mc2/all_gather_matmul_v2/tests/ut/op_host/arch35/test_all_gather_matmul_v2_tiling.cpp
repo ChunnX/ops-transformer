@@ -32,7 +32,9 @@ protected:
 
 struct AllGatherMatmulV2CompileInfo {};
 
-gert::TilingContextPara BuildTilingContextParam(const AllGatherMatmulV2TilingUtParam &param, AllGatherMatmulV2CompileInfo *compileInfo){
+gert::TilingContextPara BuildTilingContextParam(const AllGatherMatmulV2TilingUtParam &param,
+                                                AllGatherMatmulV2CompileInfo *compileInfo)
+{
     return gert::TilingContextPara(
         "AllGatherMatmulV2",
         {
@@ -48,25 +50,20 @@ gert::TilingContextPara BuildTilingContextParam(const AllGatherMatmulV2TilingUtP
             param.gather_out,
             param.amax_out,
         },
-        {
-            {"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
-            {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
-            {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
-            {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gather_index)},
-            {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
-            {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
-            {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.block_size)},
-            {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
-            {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_gather_out)},
-            {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_amax_out)},
-            {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.y_dtype)},
-            {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.comm_mode)}
-        },
-        param.inputInstance, param.outputInstance,
-        compileInfo,
-        param.soc, param.coreNum, param.ubsize
-    );
- }
+        {{"group", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.group)},
+         {"is_trans_a", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_a)},
+         {"is_trans_b", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_trans_b)},
+         {"gather_index", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.gather_index)},
+         {"comm_turn", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.comm_turn)},
+         {"rank_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.rank_size)},
+         {"block_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.block_size)},
+         {"group_size", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.group_size)},
+         {"is_gather_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_gather_out)},
+         {"is_amax_out", Ops::Transformer::AnyValue::CreateFrom<bool>(param.is_amax_out)},
+         {"y_dtype", Ops::Transformer::AnyValue::CreateFrom<int64_t>(param.y_dtype)},
+         {"comm_mode", Ops::Transformer::AnyValue::CreateFrom<std::string>(param.comm_mode)}},
+        param.inputInstance, param.outputInstance, compileInfo, param.soc, param.coreNum, param.ubsize);
+}
 
 TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
 {
@@ -80,22 +77,18 @@ TEST_P(AllGatherMatmulV2Arch35TilingTest, param)
     }
     AllGatherMatmulV2CompileInfo compileInfo;
     gert::TilingContextPara tilingContextPara = BuildTilingContextParam(param, &compileInfo);
-    
-    Mc2Hcom::MockValues hcomTopologyMockValues {
-        {"rankNum", param.rank_size}
-    };
+
+    Mc2Hcom::MockValues hcomTopologyMockValues{{"rankNum", param.rank_size}};
     Mc2ExecuteTestCase(tilingContextPara, hcomTopologyMockValues, param.expectResult, param.expectTilingKey,
-        param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
+                       param.expectTilingDataHash, {}, MC2_TILING_DATA_RESERVED_LEN, true);
     if (debugModeEnvSet) {
         (void)unsetenv(kAscendMc2DebugMode);
     }
 }
 
 INSTANTIATE_TEST_SUITE_P(
-    AllGatherMatmulV2,
-    AllGatherMatmulV2Arch35TilingTest,
+    AllGatherMatmulV2, AllGatherMatmulV2Arch35TilingTest,
     testing::ValuesIn(GetCasesFromCsv<AllGatherMatmulV2TilingUtParam>(ReplaceFileExtension2Csv(__FILE__))),
-    GetCaseInfoString<AllGatherMatmulV2TilingUtParam>
-);
+    GetCaseInfoString<AllGatherMatmulV2TilingUtParam>);
 
 } // namespace all_gather_matmul_v2_ut

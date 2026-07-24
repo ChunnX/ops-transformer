@@ -23,38 +23,38 @@
     ```Cpp
     x: [batch, 1, dim]
     weight: [K, dim]，其中K∈{2,3,4}
-    convStates: [batch, stateLen, dim]
-    bias: [dim] 或 nullptr
-    queryStartLoc: [batch+1] 或 nullptr
-    cacheIndices: [batch] 或 nullptr（默认使用恒等映射）
-    numAcceptedTokens: [batch] 或 nullptr（投机解码场景，仅K=4支持）
-    blockIdxLastScheduledToken: [batch] 或 nullptr
-    initialStateIdx: [batch] 或 nullptr
+    convStatesRef: [numCacheLines, stateLen, dim]
+    biasOptional: [dim] 或 nullptr
+    queryStartLocOptional: [batch+1] 或 nullptr
+    cacheIndicesOptional: [batch] 或 nullptr（默认使用恒等映射）
+    numAcceptedTokensOptional: [batch] 或 nullptr（投机解码场景，仅K=4支持）
+    blockIdxLastScheduledTokenOptional: [batch] 或 nullptr
+    initialStateIdxOptional: [batch] 或 nullptr
     activation: "silu" or "none"
     nullBlockId: int64_t
     maxQueryLen: int64_t
     y: [batch, 1, dim]
     ```
 
-  - 场景二（decode/update场景 — 变长序列）：
+  - 场景二（decode/update场景 — 投机解码变长序列）：
 
     ```Cpp
     x: [cuSeqLen, dim]
     weight: [K, dim]，其中K∈{2,3,4}
-    convStates: [numCacheLines, stateLen, dim]
-    bias: [dim] 或 nullptr
-    queryStartLoc: [batch+1] （必须提供）
-    cacheIndices: [batch] 或 nullptr
-    numAcceptedTokens: [batch] 或 nullptr（投机解码场景，仅K=4支持）
-    blockIdxLastScheduledToken: [batch] 或 nullptr
-    initialStateIdx: [batch] 或 nullptr
+    convStatesRef: [numCacheLines, stateLen, dim]
+    biasOptional: [dim] 或 nullptr
+    queryStartLocOptional: [batch+1] （必须提供）
+    cacheIndicesOptional: [batch] 或 nullptr
+    numAcceptedTokensOptional: [batch] （必须提供，仅K=4支持）
+    blockIdxLastScheduledTokenOptional: [batch] 或 nullptr
+    initialStateIdxOptional: [batch] 或 nullptr
     activation: "silu" or "none"
     nullBlockId: int64_t
     maxQueryLen: int64_t
     y: [cuSeqLen, dim]
     ```
 
-    其中cuSeqLen为batch内所有变长序列拼接后的总长度，decode场景下cuSeqLen等于batch。
+    其中cuSeqLen为batch内所有变长序列拼接后的总长度。2D变长输入仅在提供numAcceptedTokens（投机解码）时支持，非投机解码的decode场景请使用3D输入[batch, 1, dim]。
 
 - 计算公式：
 
@@ -68,7 +68,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用 `aclnnCausalConv1dUpdateGetWorkspaceSize` 接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用 `aclnnCausalConv1dUpdate` 接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用 `aclnnCausalConv1dUpdateGetWorkspaceSize` 接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用 `aclnnCausalConv1dUpdate` 接口执行计算。
 
 ```cpp
 aclnnStatus aclnnCausalConv1dUpdateGetWorkspaceSize(
@@ -128,7 +128,7 @@ aclnnStatus aclnnCausalConv1dUpdate(
       <td>x（aclTensor*）</td>
       <td>输入</td>
       <td>计算公式中的x，代表输入序列。</td>
-      <td><ul><li>不支持空tensor。</li><li>decode固定batch场景：shape为[batch, 1, dim]。</li><li>decode变长场景：shape为[cuSeqLen, dim]。</li></ul></td>
+      <td><ul><li>不支持空tensor。</li><li>decode固定batch场景：shape为[batch, 1, dim]（3D）。</li><li>投机解码变长场景：shape为[cuSeqLen, dim]（2D），需同时提供numAcceptedTokens。非投机解码的decode场景请使用3D输入[batch, 1, dim]。</li></ul></td>
       <td>FLOAT16、BFLOAT16</td>
       <td>ND</td>
       <td>2-3</td>
@@ -167,7 +167,7 @@ aclnnStatus aclnnCausalConv1dUpdate(
     <tr>
       <td>queryStartLocOptional（aclTensor*）</td>
       <td>可选输入</td>
-      <td>序列起始位置索引，记录各序列在拼接张量x中的起始位置。变长序列场景必须提供。</td>
+      <td>序列起始位置索引，记录各序列在拼接张量x中的起始位置。变长序列场景必须提供。提供时，batch大小由queryStartLoc.size(0)-1决定，而非由x的shape推导。</td>
       <td>shape为[batch+1]。queryStartLoc[0]必须为0，queryStartLoc[-1]必须等于cuSeqLen，值必须非递减。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -178,7 +178,7 @@ aclnnStatus aclnnCausalConv1dUpdate(
       <td>cacheIndicesOptional（aclTensor*）</td>
       <td>可选输入</td>
       <td>缓存索引，指定每个序列对应的缓存状态在convStates中的索引。不传时使用恒等映射。</td>
-      <td>shape为[batch]。值∈[0, numCacheLines)，或等于nullBlockId表示跳过该序列。</td>
+      <td>shape为[batch]。值∈[0, numCacheLines)，或等于nullBlockId表示跳过该序列。nullBlockId可被多个序列重复使用（padding场景）；除nullBlockId外的值不应重复，否则多个序列读写同一缓存槽位会导致历史状态错误和写入冲突。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
@@ -187,8 +187,8 @@ aclnnStatus aclnnCausalConv1dUpdate(
     <tr>
       <td>numAcceptedTokensOptional（aclTensor*）</td>
       <td>可选输入</td>
-      <td>投机解码中每个batch已接受的token数，用于确定从convStates中读取历史状态的起始位置。仅K=4支持，不传时从convStates的最后一个位置开始读取历史。</td>
-      <td>shape为[batch]。值∈[0, seqLen]，0表示全为投机token。算子从convStates的第(numAcceptedTokens[i]-1)个位置开始读取历史状态进行卷积计算。</td>
+      <td>投机解码中每个batch已接受的token数，用于确定从convStates中读取历史状态的起始位置。仅K=4支持，不传时从convStates的起始位置开始读取历史。</td>
+      <td>shape为[batch]，dtype为INT32。取值范围[0, stateLen - (K - 1)]，其中stateLen为convStates.shape[1]，K为weight.shape[0]。算子内部计算offset = max(numAcceptedTokens[i] - 1, 0)，从convStates的第offset个位置开始读取历史状态进行卷积计算。超出此范围会导致convStates越界访问。</td>
       <td>INT32</td>
       <td>ND</td>
       <td>1</td>
@@ -248,7 +248,7 @@ aclnnStatus aclnnCausalConv1dUpdate(
       <td>y（aclTensor*）</td>
       <td>输出</td>
       <td>计算公式中的y，代表卷积输出序列。</td>
-      <td><ul><li>decode固定batch：shape为[batch, 1, dim]。</li><li>变长序列：shape为[cuSeqLen, dim]。</li></ul></td>
+      <td><ul><li>decode固定batch：shape为[batch, 1, dim]。</li><li>投机解码变长序列：shape为[cuSeqLen, dim]。</li></ul></td>
       <td>数据类型与x一致</td>
       <td>ND</td>
       <td>2-3</td>
@@ -278,7 +278,7 @@ aclnnStatus aclnnCausalConv1dUpdate(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -358,7 +358,7 @@ aclnnStatus aclnnCausalConv1dUpdate(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -369,25 +369,26 @@ aclnnStatus aclnnCausalConv1dUpdate(
   - decode场景（固定batch）：
     - x为3维[batch, 1, dim]。
     - weight为2维[K, dim]，K∈{2,3,4}。
-    - convStatesRef为3维[batch, stateLen, dim]，stateLen ≥ K-1。
+    - convStatesRef为3维[numCacheLines, stateLen, dim]，stateLen ≥ K-1，numCacheLines ≥ batch。
     - dim范围[64, 16384]且满足 (dim * dtypeSize) % 32 == 0，batch范围[1, 1024]。
-  - decode场景（变长序列）：
-    - x为2维[cuSeqLen, dim]。
+  - decode场景（投机解码变长序列）：
+    - x为2维[cuSeqLen, dim]，必须同时提供numAcceptedTokens。
     - queryStartLocOptional为1维[batch+1]，必须提供。
     - convStatesRef为3维[numCacheLines, stateLen, dim]，numCacheLines ≥ batch。
     - cuSeqLen范围[batch, batch×8]。
+  - 非投机解码的decode场景不支持2D变长输入，请使用3D输入[batch, 1, dim]。
 
 - 输入值域限制：
   - queryStartLocOptional[0]必须为0，queryStartLocOptional[-1]必须等于cuSeqLen，值必须非递减。
-  - cacheIndicesOptional中的值∈[0, numCacheLines)，或等于nullBlockId表示跳过。
-  - numAcceptedTokensOptional仅在K=4时支持，值∈[0, seqLen]。
+  - cacheIndicesOptional中的值∈[0, numCacheLines)，或等于nullBlockId表示跳过。nullBlockId可重复；除nullBlockId外的值不应重复，否则多个序列读写同一缓存槽位会导致历史状态错误和写入冲突。
+  - numAcceptedTokensOptional仅在K=4时支持，值∈[0, stateLen - (K - 1)]，其中stateLen为convStates.shape[1]。
 
 - 卷积核宽度K仅支持2、3、4。
 - K为运行时参数。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```cpp
 #include <iostream>

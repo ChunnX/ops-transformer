@@ -83,6 +83,7 @@ constexpr uint32_t DIM_NUM_FOUR = 4;
 constexpr uint32_t HEAD_DIM_LIMIT = 128;
 constexpr uint32_t SPARSE_LIMIT = 2048;
 constexpr uint32_t G_SIZE_LIMIT = 64;
+constexpr uint32_t G_SIZE_LIMIT_32_950 = 32;
 constexpr uint32_t BLOCK_SIZE_LIMIT = 1024;
 constexpr uint32_t BLOCK_SIZE_FACTOR = 16;
 constexpr uint32_t SPARSE_MODE_LOWER = 3;

@@ -16,33 +16,26 @@
 #ifndef CATLASS_GEMM_KERNEL_MATMUL_REDUCE_SCATTER_AIV_MODE_SMALLM_HPP
 #define CATLASS_GEMM_KERNEL_MATMUL_REDUCE_SCATTER_AIV_MODE_SMALLM_HPP
 
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_ub_to_gm.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/catlass.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/matrix_coord.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/resource.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/arch/cross_core_sync.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_gm_to_ub.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/epilogue/tile/copy_ub_to_gm.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/kernel/padding_matmul.hpp"
 #include "matmul_reduce_scatter_aiv_mode_util.h"
 #include "matmul_reduce_scatter_v2_aiv_mode_tiling.h"
 #include "block_mmad_preload_fixpipe.h"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
-#include "../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_copy.hpp"
+#include "../../3rd/template_linear_algebra/op_kernel/template_linear_algebra/gemm/tile/tile_mmad.hpp"
 
 using namespace AscendC;
 using namespace matmulReduceScatterV2_aivmode_tiling;
 using namespace matmulReduceScatterV2_util;
 namespace Catlass::Gemm::Kernel {
-template <
-    class PrologueA,
-    class PrologueB,
-    class BlockMmad_,
-    class BlockEpilogue_,
-    class BlockScheduler_,
-    bool HasBias
->
+template <class PrologueA, class PrologueB, class BlockMmad_, class BlockEpilogue_, class BlockScheduler_, bool HasBias>
 
 class MatmulReduceScatterAivModeSmallM : public CommBase {
 public:
@@ -55,21 +48,21 @@ public:
     using LayoutWA = typename BlockMmad::LayoutA;
     using LayoutWB = typename BlockMmad::LayoutB;
     using LayoutScale = typename layout::VectorLayout;
-    template<bool condition, class mmad>
+    template <bool condition, class mmad>
     struct BiasTypeHelper {
         using type = typename mmad::ElementBias;
     };
 
-    template<class mmad>
+    template <class mmad>
     struct BiasTypeHelper<false, mmad> {
         using type = float;
     };
 
-    template<class T>
+    template <class T>
     struct LayoutHelper {
         using type = typename T::LayoutIn;
     };
-    template<>
+    template <>
     struct LayoutHelper<void> {
         using type = void;
     };
@@ -84,9 +77,8 @@ public:
     using ElementAInt8 = int8_t;
     using ElementBInt8 = int8_t;
     using ElementCHalf = half;
-    using FixpipeBlockMmad =
-        Gemm::Block::FixpipeBlockMmad<Gemm::MmadAtlasA2Preload<false, false>, L1TileShape, L0TileShape, LayoutA,
-            LayoutB, LayoutC>;
+    using FixpipeBlockMmad = Gemm::Block::FixpipeBlockMmad<Gemm::MmadAtlasA2Preload<false, false>, L1TileShape,
+                                                           L0TileShape, LayoutA, LayoutB, LayoutC>;
 
     /// Parameters structure
     struct Params {
@@ -125,7 +117,9 @@ public:
 
     // Methods
     CATLASS_DEVICE
-    MatmulReduceScatterAivModeSmallM(){}
+    MatmulReduceScatterAivModeSmallM()
+    {
+    }
 
     template <int32_t CORE_TYPE = g_coreType>
     CATLASS_DEVICE void operator()(Params const &params);
@@ -182,8 +176,7 @@ public:
 
         FixpipeBlockMmad fixpipeBlockMmad(resource);
         int32_t blockSize = L1TileShape::M * L1TileShape::N;
-        CommColumnSplitter taskSplit(loop_num_per_comm, m_loop,
-                                     params.swizzlDirect ? params.swizzlCount : 1, n_loop);
+        CommColumnSplitter taskSplit(loop_num_per_comm, m_loop, params.swizzlDirect ? params.swizzlCount : 1, n_loop);
 
         for (int32_t calIdx = 0; calIdx < calCount; calIdx++) {
             int32_t n_st = taskSplit.GetCulumnStartPos(calIdx);
@@ -213,7 +206,7 @@ public:
                 LayoutC layoutTmp;
                 // 计算切片的layout和offset
                 if (blockIdxCoord.n() < n_ed) {
-                    //当前切片属于下一次通信的范围，放入n_st~n_ed的通信矩阵切块中。n_st~n_ed的通信矩阵切块是nd排布。
+                    // 当前切片属于下一次通信的范围，放入n_st~n_ed的通信矩阵切块中。n_st~n_ed的通信矩阵切块是nd排布。
                     nCommBlock = n_ed - n_st;
                     int32_t comm_loopIdx = loopIdx - m_loop * n_st;
                     layoutTmp = {static_cast<uint32_t>(params.problemShape.m()),
@@ -225,7 +218,8 @@ public:
                     }
                     GemmCoord comm_blockLocCoord_ = GetBlockLocCoord(comm_blockIdxCoord_);
                     MatrixCoord offsetC_comm_{comm_blockLocCoord_.m(), comm_blockLocCoord_.n()};
-                    gmOffsetC_ = L1TileShape::N * n_st * params.problemShape.m() + layoutTmp.GetOffset(offsetC_comm_);
+                    gmOffsetC_ = static_cast<int64_t>(L1TileShape::N) * n_st * params.problemShape.m() +
+                                 layoutTmp.GetOffset(offsetC_comm_);
                 } else {
                     // 当前切片属于下下一次通信的范围，放入n_ed~n_nxt_ed的通信矩阵切块中。
                     nCommBlock = n_nxt_ed - n_ed;
@@ -239,7 +233,8 @@ public:
                     }
                     GemmCoord comm_blockLocCoord_ = GetBlockLocCoord(comm_blockIdxCoord_);
                     MatrixCoord offsetC_comm_{comm_blockLocCoord_.m(), comm_blockLocCoord_.n()};
-                    gmOffsetC_ = L1TileShape::N * n_ed * params.problemShape.m() + layoutTmp.GetOffset(offsetC_comm_);
+                    gmOffsetC_ = static_cast<int64_t>(L1TileShape::N) * n_ed * params.problemShape.m() +
+                                 layoutTmp.GetOffset(offsetC_comm_);
                 }
 
                 bool isFirstBlock = loopIdx == block_id;
@@ -289,8 +284,7 @@ public:
 
         BlockMmad blockMmad(resource);
         int32_t smallMBlockSize = L1TileShape::M * L1TileShape::N;
-        CommColumnSplitter taskSplit(loop_num_per_comm, m_loop,
-                                     params.swizzlDirect ? params.swizzlCount : 1, n_loop);
+        CommColumnSplitter taskSplit(loop_num_per_comm, m_loop, params.swizzlDirect ? params.swizzlCount : 1, n_loop);
 
         for (int32_t smallMCalIdx = 0; smallMCalIdx < calCount; smallMCalIdx++) {
             int32_t smallMNSt = taskSplit.GetCulumnStartPos(smallMCalIdx);
@@ -334,9 +328,8 @@ public:
                     }
                     GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
                     MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
-                    smallMGmOffsetC = L1TileShape::N * smallMNSt *
-                        params.problemShape.m() +
-                        layout_tmp.GetOffset(offsetC_comm);
+                    smallMGmOffsetC = static_cast<int64_t>(L1TileShape::N) * smallMNSt * params.problemShape.m() +
+                                      layout_tmp.GetOffset(offsetC_comm);
                 } else {
                     // 当前切片属于下下一次通信的范围，放入n_ed~n_nxt_ed的通信矩阵切块中。
                     n_comm_block = smallMNxtEd - smallMNEd;
@@ -350,19 +343,15 @@ public:
                     }
                     GemmCoord comm_blockLocCoord = GetBlockLocCoord(comm_blockIdxCoord);
                     MatrixCoord offsetC_comm{comm_blockLocCoord.m(), comm_blockLocCoord.n()};
-                    smallMGmOffsetC = L1TileShape::N * smallMNEd *
-                        params.problemShape.m() +
-                        layout_tmp.GetOffset(offsetC_comm);
+                    smallMGmOffsetC = static_cast<int64_t>(L1TileShape::N) * smallMNEd * params.problemShape.m() +
+                                      layout_tmp.GetOffset(offsetC_comm);
                 }
 
                 if constexpr (HasBias) {
-                    blockMmad(
-                        gmA[smallMGmOffsetA], params.layoutA,
-                        gmB[smallMGmOffsetB], params.layoutB,
-                        gmDst[smallMGmOffsetC], layout_tmp,
-                        gmBias[smallMBlockLocCoord.n()], smallMBlockSizeCoord);
+                    blockMmad(gmA[smallMGmOffsetA], params.layoutA, gmB[smallMGmOffsetB], params.layoutB,
+                              gmDst[smallMGmOffsetC], layout_tmp, gmBias[smallMBlockLocCoord.n()],
+                              smallMBlockSizeCoord);
                 } else {
-
                     bool smallMIsFirstBlock = smallMLoopIdx == block_id;
                     bool smallMHasNextBlock = false;
                     GemmCoord nextBlockIdCoord;
@@ -378,21 +367,16 @@ public:
                         nextBlockLocCoord = GetBlockLocCoord(nextBlockIdCoord);
                         smallMNextBlockSizeCoord =
                             GetBlockSizeCoord(nextBlockIdCoord, nextBlockLocCoord, m_loop, params.problemShape.m(),
-                                n_loop, params.problemShape.n(), params.problemShape.k());
+                                              n_loop, params.problemShape.n(), params.problemShape.k());
                     }
                     MatrixCoord offsetNextA{nextBlockLocCoord.m(), nextBlockLocCoord.k()};
                     MatrixCoord offsetNextB{nextBlockLocCoord.k(), nextBlockLocCoord.n()};
                     int64_t smallMGmOffsetNextA = params.layoutA.GetOffset(offsetNextA);
                     int64_t smallMGmOffsetNextB = params.layoutB.GetOffset(offsetNextB);
 
-                    blockMmad(gmA[smallMGmOffsetA], params.layoutA,
-                              gmB[smallMGmOffsetB], params.layoutB,
-                              gmDst[smallMGmOffsetC], layout_tmp,
-                              gmA[smallMGmOffsetNextA],
-                              gmB[smallMGmOffsetNextB],
-                              smallMBlockSizeCoord,
-                              smallMNextBlockSizeCoord,
-                              smallMIsFirstBlock, smallMHasNextBlock);
+                    blockMmad(gmA[smallMGmOffsetA], params.layoutA, gmB[smallMGmOffsetB], params.layoutB,
+                              gmDst[smallMGmOffsetC], layout_tmp, gmA[smallMGmOffsetNextA], gmB[smallMGmOffsetNextB],
+                              smallMBlockSizeCoord, smallMNextBlockSizeCoord, smallMIsFirstBlock, smallMHasNextBlock);
                 }
             }
             FFTSCrossCoreSync<PIPE_FIX, 2>(smallMFlagIdx);

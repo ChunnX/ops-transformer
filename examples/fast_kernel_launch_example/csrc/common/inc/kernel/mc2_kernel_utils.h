@@ -18,12 +18,13 @@
 
 namespace AscendC {
 
-template<AscendC::HardEvent event>
-__aicore__ inline void SyncFunc() {
+template <AscendC::HardEvent event>
+__aicore__ inline void SyncFunc()
+{
     AscendC::TEventID eventID = GetTPipePtr()->FetchEventID(event);
     AscendC::SetFlag<event>(eventID);
     AscendC::WaitFlag<event>(eventID);
 }
 
-}
+} // namespace AscendC
 #endif // MC2_KERNEL_UTILS_H

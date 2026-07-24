@@ -906,8 +906,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::AntiquantVa
     }
     SetAntiqParamCommon(runInfo, runInfo.valueOffset, constInfo);
     if constexpr (VALUE_ANTIQUANT_PER_TOKEN || ANTIQUANT_PER_GROUP) {
-        taskParam.isLoadAntiqParam = true;
         taskParam.isFreeAntiqParam = true;
+        taskParam.isLoadAntiqParam = true;
     } else {
         if (antiquantPerTensorFlag) {
             taskParam.isLoadAntiqParam = (first);
@@ -1054,8 +1054,8 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::Bmm2DataCop
         attenOutOffset = constInfo.n2GDv;
         if constexpr (isInfer) {
             if (constInfo.isPfaGS1Merge) {
-                attenOutOffset = 0;
                 dataCopyParams.blockLen *= constInfo.gSize;
+                attenOutOffset = 0;
                 dataCopyParams.blockCount /= constInfo.gSize;
             } else if (constInfo.isGqa) {
                 attenOutOffset = constInfo.dSizeV;
@@ -1617,7 +1617,7 @@ __aicore__ inline void FABlockVecAntiquant<ANTIQUANT_TEMPLATE_ARGS>::SoftmaxData
     int64_t n2Offset;
     int64_t gOffset;
     if constexpr (layout == LayOutTypeEnum::LAYOUT_TND) {
-        bOffset = constInfo.n2G * runInfo.s1SizeAcc;
+        bOffset = runInfo.s1SizeAcc * constInfo.n2G;
         n2Offset = runInfo.n2oIdx * constInfo.gSize * runInfo.actualS1Size;
         gOffset = runInfo.goIdx * runInfo.actualS1Size;
     } else {

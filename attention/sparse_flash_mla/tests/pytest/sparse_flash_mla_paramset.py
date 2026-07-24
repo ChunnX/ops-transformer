@@ -22,6 +22,7 @@ TEST_PARAMS = {
         "ori_kv_type": [torch.bfloat16],
         "B": [1],
         "S1": [1],
+        "S2": [8193],
         "T1": [1],
         "N1": [64],
         "N2": [1],
@@ -34,7 +35,8 @@ TEST_PARAMS = {
         "return_softmax_lse": [False],
         "ori_mask_mode": [4],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
+        "template_mode": ["SWA"],
     },
     "test_swa_decode_pa": {
         "testcase_name": ["test_swa_decode_pa"],
@@ -44,6 +46,7 @@ TEST_PARAMS = {
         "ori_kv_type": [torch.bfloat16],
         "B": [1],
         "S1": [1],
+        "S2": [1024],
         "T1": [1],
         "N1": [64],
         "N2": [1],
@@ -56,10 +59,11 @@ TEST_PARAMS = {
         "return_softmax_lse": [False],
         "ori_mask_mode": [4],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
+        "template_mode": ["SWA"],
     },
-    "cfa_tnd": {
-        "testcase_name": ["cfa_tnd"],
+    "hca_tnd": {
+        "testcase_name": ["hca_tnd"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -67,6 +71,7 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.bfloat16],
         "B": [1],
         "S1": [1],
+        "S2": [18],
         "T1": [1],
         "T2": [18],
         "T3": [4],
@@ -84,10 +89,11 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
+        "template_mode": ["HCA"],
     },
-    "scfa_decode":{
-        "testcase_name": ["scfa_decode"],
+    "csa_decode":{
+        "testcase_name": ["csa_decode"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -95,6 +101,7 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.bfloat16],
         "B": [1],
         "S1": [1],
+        "S2": [4],
         "T1": [1],
         "T2": [4],
         "T3": [1],
@@ -112,10 +119,11 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
+        "template_mode": ["CSA"],
     },
-    "scfa_decode_pa":{
-        "testcase_name": ["scfa_decode_pa"],
+    "csa_decode_pa":{
+        "testcase_name": ["csa_decode_pa"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -123,6 +131,7 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.bfloat16],
         "B": [1],
         "S1": [1],
+        "S2": [1024],
         "T1": [1],
         "T2": [1024],
         "N1": [64],
@@ -143,10 +152,11 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
+        "template_mode": ["CSA"],
     },
-    "scfa_g128_test_decode":{
-        "testcase_name": ["scfa_g128_test_decode"],
+    "csa_g64_test_decode":{
+        "testcase_name": ["csa_g64_test_decode"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -154,8 +164,9 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.bfloat16],
         "B": [2],
         "S1": [1],
+        "S2": [2050],
         "T1": [2],
-        "T2": [2050],
+        "T2": [4100],
         "N1": [64],
         "N2": [1],
         "D": [512],
@@ -176,10 +187,11 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
+        "template_mode": ["CSA"],
     },
-    "scfa_g128_test_decode_B1":{
-        "testcase_name": ["scfa_g128_test_decode_B1"],
+    "csa_g128_test_decode_B1":{
+        "testcase_name": ["csa_g128_test_decode_B1"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -187,9 +199,10 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.bfloat16],
         "B": [1],
         "S1": [1],
+        "S2": [2050],
         "T1": [1],
         "T2": [2050],
-        "N1": [64],
+        "N1": [128],
         "N2": [1],
         "D": [512],
         "K": [512],
@@ -209,10 +222,11 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
+        "template_mode": ["CSA"],
     },
-    "scfa_g128_test_decode_B16": {
-        "testcase_name": ["scfa_g128_test_decode_B16"],
+    "csa_g128_test_decode_B16": {
+        "testcase_name": ["csa_g128_test_decode_B16"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -220,9 +234,10 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.bfloat16],
         "B": [16],
         "S1": [1],
+        "S2": [128],
         "T1": [16],
         "T2": [128],
-        "N1": [64],
+        "N1": [128],
         "N2": [1],
         "D": [512],
         "K": [512],
@@ -241,9 +256,10 @@ TEST_PARAMS = {
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
         "ori_win_right": [0],
+        "template_mode": ["CSA"],
     },
-    "scfa_g64_test_prefill":{
-        "testcase_name": ["scfa_g64_test_prefill"],
+    "csa_g64_test_prefill":{
+        "testcase_name": ["csa_g64_test_prefill"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -251,6 +267,7 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.bfloat16],
         "B": [1],
         "S1": [2],
+        "S2": [2050],
         "T1": [2],
         "T2": [2050],
         "N1": [64],
@@ -273,10 +290,11 @@ TEST_PARAMS = {
         "ori_mask_mode": [4],
         "cmp_mask_mode": [3], # == 3
         "ori_win_left": [127],
-        "ori_win_right": [0]
+        "ori_win_right": [0],
+        "template_mode": ["CSA"],
     },
-    "scfa_g128_test_prefill":{
-        "testcase_name": ["scfa_g128_test_prefill"],
+    "csa_g128_test_prefill":{
+        "testcase_name": ["csa_g128_test_prefill"],
         "layout_q": ["TND"],
         "layout_kv": ["PA_BBND"],
         "q_type": [torch.bfloat16],
@@ -284,6 +302,7 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.bfloat16],
         "B": [1],
         "S1": [16],
+        "S2": [640],
         "T1": [16],
         "T2": [640],
         "N1": [128],
@@ -307,9 +326,10 @@ TEST_PARAMS = {
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
         "ori_win_right": [0],
+        "template_mode": ["CSA"],
     },
-    "scfa_g128_test_prefill_padding":{
-        "testcase_name": ["scfa_g128_test_prefill_padding"],
+    "csa_g128_test_prefill_padding":{
+        "testcase_name": ["csa_g128_test_prefill_padding"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -317,6 +337,7 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.bfloat16],
         "B": [1],
         "S1": [16],
+        "S2": [38],
         "T1": [16],
         "T2": [38],
         "T3": [9],
@@ -338,9 +359,10 @@ TEST_PARAMS = {
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
         "ori_win_right": [0],
+        "template_mode": ["CSA"],
     },
-    "scfa_g128_test_prefill_TND":{
-        "testcase_name": ["scfa_g128_test_prefill_TND"],
+    "csa_g128_test_prefill_TND":{
+        "testcase_name": ["csa_g128_test_prefill_TND"],
         "layout_q": ["TND"],
         "layout_kv": ["TND"],
         "q_type": [torch.bfloat16],
@@ -348,7 +370,7 @@ TEST_PARAMS = {
         "cmp_kv_type": [torch.bfloat16],
         "B": [1],
         "S1": [16],
-        "S2": [40],
+        "S2": [38],
         "T1": [16],
         "T2": [38],
         "T3": [9], # TND且cmp
@@ -367,9 +389,10 @@ TEST_PARAMS = {
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
         "ori_win_right": [0],
+        "template_mode": ["CSA"],
     },
-    "cmp_scfa_g64_test_prefill":{
-        "testcase_name": ["cmp_scfa_g64_test_prefill"],
+    "cmp_csa_g64_test_prefill":{
+        "testcase_name": ["cmp_csa_g64_test_prefill"],
         "layout_q": ["BSND"],
         "layout_kv": ["BSND"],
         "q_type": [torch.bfloat16],
@@ -395,6 +418,7 @@ TEST_PARAMS = {
         "cmp_mask_mode": [3],
         "ori_win_left": [127],
         "ori_win_right": [0],
+        "template_mode": ["CSA"],
     }
 }
 

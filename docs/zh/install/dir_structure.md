@@ -9,7 +9,7 @@
 > - 若缺少op_api目录，说明该算子暂不支持aclnn调用。
 > - 若缺少op_graph目录，说明该算子暂不支持图模式调用。
 
-```
+```text
 ├── cmake                                               # 项目工程编译目录
 │   ├── aclnn_ops_transformer.h.in                       # aclnn汇总头文件模板
 │   └── ...
@@ -20,8 +20,8 @@
 ├── experimental                                        # 用户自定义算子存放目录
 │   ├── attention                                       # 可选，用户开发的attention类算子目录
 │   │   └── CMakeLists.txt
-│   └── ...                                        
-│    
+│   └── ...
+│
 ├── ${op_class}                                         # 算子分类，如attention、ffn、gmm类算子
 │   ├${op_name}                                         # 算子工程目录，${op_name}表示算子名（小写下划线形式）
 │   │   ├── CMakeLists.txt                              # 算子cmakelist入口
@@ -70,7 +70,7 @@
 ├── docs                                                # 项目相关文档目录
 ├── examples                                            # 端到端算子开发和调用示例
 │   ├── add_example                                     # AI Core算子示例目录
-│   │   ├── CMakeLists.txt                              # 算子编译配置文件 
+│   │   ├── CMakeLists.txt                              # 算子编译配置文件
 │   │   ├── examples                                    # 算子使用示例目录
 │   │   ├── op_graph                                    # 算子构图相关目录
 │   │   ├── op_host                                     # 算子信息库、Tiling、InferShape相关实现目录

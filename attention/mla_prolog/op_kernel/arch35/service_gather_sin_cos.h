@@ -49,7 +49,7 @@ __aicore__ inline void GatherSinCos(LocalTensor<O> &cosLocal, LocalTensor<O> &si
         WaitFlag<HardEvent::MTE2_V>(EVENT_ID0);
         Cast(cosLocal, tmpUbBf16, RoundMode::CAST_NONE, curDataSize);
         Cast(sinLocal, tmpUbBf16[curDataSize], RoundMode::CAST_NONE, curDataSize);
-        AscendC::PipeBarrier<PIPE_V>();
+        PipeBarrier<PIPE_V>();
     } else {
         DataCopy(cosLocal, cosGm[offset], curDataSize);
         DataCopy(sinLocal, sinGm[offset], curDataSize);
@@ -58,7 +58,7 @@ __aicore__ inline void GatherSinCos(LocalTensor<O> &cosLocal, LocalTensor<O> &si
     }
     uint8_t blockNumPerRow = col / (ALIGN_BLOCK_SIZE / sizeof(O));
     Muls<O>(sinLocal, sinLocal, -1.0f, col >> 1, curVecToken, {1, 1, blockNumPerRow, blockNumPerRow});
-    AscendC::PipeBarrier<PIPE_V>();
+    PipeBarrier<PIPE_V>();
 }
 
 } // namespace MlaProlog

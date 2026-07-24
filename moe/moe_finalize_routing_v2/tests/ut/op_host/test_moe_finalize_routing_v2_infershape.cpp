@@ -19,7 +19,11 @@ namespace {
 
 std::vector<gert::InfershapeContextPara::OpAttr> DropPadModeAttr(int64_t mode)
 {
-    return {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(mode)}};
+    return {{"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(mode)},
+            {"zero_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{-1, -1})},
+            {"copy_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{-1, -1})},
+            {"constant_expert_range", Ops::Transformer::AnyValue::CreateFrom<std::vector<int64_t>>(std::vector<int64_t>{-1, -1})},
+            {"k", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}};
 }
 } // namespace
 
@@ -52,9 +56,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_infershape_0)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-                                                      }
+                                                       DropPadModeAttr(0)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -75,9 +77,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_infershape_1)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
-                                                      }
+                                                       DropPadModeAttr(1)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -98,9 +98,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_error_shape_0)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-                                                      }
+                                                       DropPadModeAttr(0)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
@@ -121,9 +119,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_error_shape_1)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(5)}
-                                                      }
+                                                       DropPadModeAttr(5)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
@@ -144,9 +140,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_error_shape_2)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-                                                      }
+                                                       DropPadModeAttr(0)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
@@ -167,9 +161,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_error_shape_3)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
-                                                      }
+                                                       DropPadModeAttr(1)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
@@ -190,9 +182,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_error_shape_4) // drop
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
-                                                      }
+                                                       DropPadModeAttr(1)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
@@ -213,9 +203,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_error_shape_5) // drop
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-                                                      }
+                                                       DropPadModeAttr(0)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
@@ -236,9 +224,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_error_shape_6)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-                                                      }
+                                                       DropPadModeAttr(0)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
@@ -259,9 +245,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_error_shape_7)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-                                                      }
+                                                       DropPadModeAttr(0)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
@@ -282,9 +266,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_error_shape_8)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-                                                      }
+                                                       DropPadModeAttr(0)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
@@ -305,9 +287,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_error_shape_9)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-                                                      }
+                                                       DropPadModeAttr(0)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{3,5}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_FAILED, expectOutputShape);
@@ -468,9 +448,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_dynamic_shape_0)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
-                                                      }
+                                                       DropPadModeAttr(1)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{-2}};
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
@@ -491,9 +469,7 @@ TEST_F(MoeFinalizeRoutingV2Proto, moe_finalize_routing_v2_dynamic_shape_1)
                                                       {
                                                         {{{}, {}}, ge::DT_FLOAT, ge::FORMAT_ND},
                                                       },
-                                                      {
-                                                        {"drop_pad_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
-                                                      }
+                                                       DropPadModeAttr(1)
                                                       );
     std::vector<std::vector<int64_t>> expectOutputShape = {{-1, -1} };
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);

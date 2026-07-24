@@ -53,7 +53,7 @@ struct QuantAllReduceTestParam {
     uint64_t mc2TilingDataReservedLen;
 };
 
-inline std::ostream& operator<<(std::ostream& os, const QuantAllReduceTestParam& param)
+inline std::ostream &operator<<(std::ostream &os, const QuantAllReduceTestParam &param)
 {
     return os << param.caseName;
 }
@@ -62,11 +62,25 @@ inline std::ostream& operator<<(std::ostream& os, const QuantAllReduceTestParam&
 // expectWorkspaces = 16 * 1024 * 1024
 static QuantAllReduceTestParam g_testCases[] = {
     {"quant_all_reduce_abuse_case_tg_10_x3d",
-    {8, 128, 5120}, ge::DT_FLOAT8_E4M3FN, ge::FORMAT_ND,
-    {8, 128, 80, 2}, ge::DT_FLOAT8_E8M0, ge::FORMAT_ND,
-    {8, 128, 5120}, ge::DT_FLOAT16, ge::FORMAT_ND,
-    "group", "sum", ge::DT_FLOAT16, 8, "Ascend910_93",
-    ge::GRAPH_FAILED, 0UL, "", {}, 0},
+     {8, 128, 5120},
+     ge::DT_FLOAT8_E4M3FN,
+     ge::FORMAT_ND,
+     {8, 128, 80, 2},
+     ge::DT_FLOAT8_E8M0,
+     ge::FORMAT_ND,
+     {8, 128, 5120},
+     ge::DT_FLOAT16,
+     ge::FORMAT_ND,
+     "group",
+     "sum",
+     ge::DT_FLOAT16,
+     8,
+     "Ascend910_93",
+     ge::GRAPH_FAILED,
+     0UL,
+     "",
+     {},
+     0},
 };
 
 // setup & teardown
@@ -83,7 +97,8 @@ protected:
     }
 };
 
-static struct QuantAllReduceCompileInfo {} compileInfo;
+static struct QuantAllReduceCompileInfo {
+} compileInfo;
 
 static gert::TilingContextPara BuildTilingContextPara(const QuantAllReduceTestParam &param)
 {
@@ -142,4 +157,4 @@ TEST_F(QuantAllReduceArch22TilingTest, GeneralCasesMultiThread)
 
 INSTANTIATE_TEST_CASE_P(QuantAllReduceTilingUT, QuantAllReduceArch22TilingTest, testing::ValuesIn(g_testCases));
 
-} // namespace
+} // namespace QuantAllReduceUT

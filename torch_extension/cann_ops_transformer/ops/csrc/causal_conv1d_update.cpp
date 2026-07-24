@@ -18,38 +18,33 @@
 
 namespace op_api {
 
-at::Tensor causal_conv1d_update(const at::Tensor &x, at::Tensor &conv_states,
-                                const at::Tensor &weight,
-                                const c10::optional<at::Tensor> &bias,
-                                const std::string &activation,
-                                const c10::optional<at::Tensor> &cache_indices,
-                                const c10::optional<at::Tensor> &num_accepted_tokens,
-                                const c10::optional<at::Tensor> &query_start_loc,
-                                int64_t max_query_len, int64_t null_block_id,
-                                const c10::optional<at::Tensor> &block_idx_last_scheduled_token,
-                                const c10::optional<at::Tensor> &initial_state_idx)
+at::Tensor CausalConv1dUpdate(const at::Tensor &x, at::Tensor &convStates, const at::Tensor &weight,
+                              const c10::optional<at::Tensor> &bias, const std::string &activation,
+                              const c10::optional<at::Tensor> &cacheIndices,
+                              const c10::optional<at::Tensor> &numAcceptedTokens,
+                              const c10::optional<at::Tensor> &queryStartLoc, int64_t maxQueryLen, int64_t nullBlockId,
+                              const c10::optional<at::Tensor> &blockIdxLastScheduledToken,
+                              const c10::optional<at::Tensor> &initialStateIdx)
 {
-    TORCH_CHECK(activation == "silu" || activation == "none",
-                "activation must be 'silu' or 'none', got: ", activation);
+    TORCH_CHECK(activation == "silu" || activation == "none", "activation must be 'silu' or 'none', got: ", activation);
 
     at::Tensor y{nullptr};
     {
-        auto local_device = c10::Device(x.device());
-        const c10::OptionalDeviceGuard device_guard(local_device);
+        auto localDevice = c10::Device(x.device());
+        const c10::OptionalDeviceGuard deviceGuard(localDevice);
         y = at::empty_like(x);
     }
 
-    const char* activation_mode = activation.c_str();
-    ACLNN_CMD(aclnnCausalConv1dUpdate, x, weight, conv_states, bias, query_start_loc, cache_indices,
-              num_accepted_tokens, block_idx_last_scheduled_token, initial_state_idx,
-              activation_mode, null_block_id, max_query_len, y);
+    const char *activationMode = activation.c_str();
+    ACLNN_CMD(aclnnCausalConv1dUpdate, x, weight, convStates, bias, queryStartLoc, cacheIndices, numAcceptedTokens,
+              blockIdxLastScheduledToken, initialStateIdx, activationMode, nullBlockId, maxQueryLen, y);
 
     return y;
 }
 
 PYBIND11_MODULE(TORCH_EXTENSION_NAME, m)
 {
-    m.def("causal_conv1d_update", &causal_conv1d_update, "causal_conv1d decode/update");
+    m.def("causal_conv1d_update", &CausalConv1dUpdate, "causal_conv1d decode/update");
 }
 
 } // namespace op_api

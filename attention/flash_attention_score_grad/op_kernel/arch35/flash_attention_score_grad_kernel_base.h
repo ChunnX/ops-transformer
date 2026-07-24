@@ -17,7 +17,7 @@
 #define FLASH_ATTENTION_SCORE_GRAD_KERNEL_BASE_H
  
 #include "flash_attention_score_grad_common.h"
- 
+#include "cube_api/mutex_buffers_policy.h"
 namespace FagBaseApi {
  
 template <typename ChildClass, typename CubeBlockType, typename VecBlockType>
@@ -109,6 +109,9 @@ public:
     constexpr static uint32_t DETER_CUBE_BASEN = CUBE_BASEM > CUBE_BASEN ? CUBE_BASEM : CUBE_BASEN;
     constexpr static uint32_t IS_NORMAL_SWIZZLE = !IS_TND && CUBE_BASEM == CUBE_BASEN && SPLIT_AXIS == BN2GS1S2 &&
                                                   DETER_SPARSE_TYPE == NO_DETER;
+    constexpr static bool IS_PRELOAD_TWO_TIMES = HEAD_DIM_ALIGN <= static_cast<uint16_t>(DTemplateType::Aligned128) &&
+                                                 !IS_DROP && SPLIT_AXIS == BN2GS1S2 && DETER_SPARSE_TYPE == NO_DETER &&
+                                                 !IS_FP32_INPUT;
 
 protected:
     TPipe *pipe;
@@ -120,10 +123,12 @@ protected:
     // CV核间共享Buffer
     TBuf<> mm1ResBuf[2];
     TBuf<> mm2ResBuf[2];
-    BufferManager<BufferType::L1> l1BufferManager;
-    BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> pL1Buf;
-    BuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC> dSL1Buf;
- 
+    MutexBufferManager<BufferType::L1> l1BufferManager;
+    typename std::conditional<IS_PRELOAD_TWO_TIMES, MutexBuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC>,
+                              MutexBuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC>>::type pL1Buf;
+    typename std::conditional<IS_PRELOAD_TWO_TIMES, MutexBuffersPolicyDB<BufferType::L1, SyncType::NO_SYNC>,
+                              MutexBuffersPolicySingleBuffer<BufferType::L1, SyncType::NO_SYNC>>::type dSL1Buf;
+
     GM_ADDR prefixNAddr;
     GM_ADDR actualSeqQlenAddr;
     GM_ADDR actualSeqKvlenAddr;

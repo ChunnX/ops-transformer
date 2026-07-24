@@ -31,7 +31,7 @@ enum class CommQuantMode : int32_t {
 
 /**
  * @brief 验证参数常量结构体
- * 
+ *
  * 包含所有用于输入验证的常量值，便于统一管理和调整
  */
 struct ValidationConstants {
@@ -47,7 +47,7 @@ struct ValidationConstants {
 
 /**
  * @brief MOE分步组合验证参数结构体
- * 
+ *
  * 用于验证MOE分布式组合操作的输入参数合法性
  */
 struct MoeDistributeCombineV2ValidateParams {
@@ -63,14 +63,14 @@ struct MoeDistributeCombineV2ValidateParams {
     int64_t zero_expert_num;
     int64_t copy_expert_num;
     int64_t const_expert_num;
-    
+
     // 计算出的中间变量
     int64_t maxEpWorldSize;
     int64_t maxMoeExpertNum;
     int64_t zeroComputeExpertNum;
     int64_t moeExpertNumDivisor;
     int64_t localMoeExpertNum;
-    
+
     // 共享专家相关标志
     bool isNoShared;
     bool isValidShared;
@@ -78,7 +78,7 @@ struct MoeDistributeCombineV2ValidateParams {
 
 /**
  * @brief 验证MOE分布式组合V2输入参数
- * 
+ *
  * @param expand_x 扩展输入张量 [bs*k, h]
  * @param expert_ids 专家ID张量 [bs, k]
  * @param assist_info_for_combine 组合辅助信息张量 [bs*k]
@@ -95,19 +95,12 @@ struct MoeDistributeCombineV2ValidateParams {
  * @return 验证通过返回true，失败则抛出TorchCheckError异常
  */
 bool ValidateMoeDistributeCombineV2Input(
-    const at::Tensor& expand_x,
-    const at::Tensor& expert_ids,
-    const at::Tensor& assist_info_for_combine,
-    const at::Tensor& ep_send_counts,
-    const at::Tensor& expert_scales,
-    const c10::optional<at::Tensor>& x_active_mask,
-    const c10::optional<at::Tensor>& shared_expert_x,
-    const c10::optional<at::Tensor>& ori_x,
-    const c10::optional<at::Tensor>& const_expert_alpha_1,
-    const c10::optional<at::Tensor>& const_expert_alpha_2,
-    const c10::optional<at::Tensor>& const_expert_v,
-    const c10::optional<at::Tensor>& performance_info,
-    MoeDistributeCombineV2ValidateParams& params);
+    const at::Tensor &expand_x, const at::Tensor &expert_ids, const at::Tensor &assist_info_for_combine,
+    const at::Tensor &ep_send_counts, const at::Tensor &expert_scales, const c10::optional<at::Tensor> &x_active_mask,
+    const c10::optional<at::Tensor> &shared_expert_x, const c10::optional<at::Tensor> &ori_x,
+    const c10::optional<at::Tensor> &const_expert_alpha_1, const c10::optional<at::Tensor> &const_expert_alpha_2,
+    const c10::optional<at::Tensor> &const_expert_v, const c10::optional<at::Tensor> &performance_info,
+    MoeDistributeCombineV2ValidateParams &params);
 
 } // namespace MoeDistributeCombineV2
 } // namespace ascend_ops

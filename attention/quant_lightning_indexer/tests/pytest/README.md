@@ -15,8 +15,9 @@
 ### 环境配置
 
 #### 前置要求
-1. torch_npu安装包下载路径（需及时更换为最新版本）：[torch_npu安装教程](https://gitcode.com/Ascend/pytorch)
-2. 完成环境安装和环境变量配置，具体操作请参考：[ops-transformer](../../../../README.md)
+
+1. 完成环境安装和环境变量配置，具体操作请参考：[环境部署](../../../../docs/zh/install/quick_install.md)
+2. torch_npu安装包下载路径（需及时更换为最新版本）：[Attention融合算子Experimental使用说明](../../../../experimental/attention/Attention融合算子Experimental使用说明.md)
 
 #### custom包调用
 支持custom包调用

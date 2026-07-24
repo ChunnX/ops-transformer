@@ -16,11 +16,7 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-#if __has_include("../common/op_kernel/mc2_kernel_utils.h")
-#include "../common/op_kernel/mc2_kernel_utils.h"
-#else
 #include "../../common/op_kernel/mc2_kernel_utils.h"
-#endif
 namespace AscendC {
 
 // 向上取整除法：计算a除以b的向上取整结果
@@ -76,11 +72,12 @@ __aicore__ inline uint64_t FracDiv(uint64_t total, uint64_t base, uint32_t num, 
     return total * num / (base * num + den);
 }
 
-static constexpr AscendC::MicroAPI::CastTrait castTrait = {AscendC::MicroAPI::RegLayout::ZERO,
-    AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING, AscendC::RoundMode::CAST_NONE};
+static constexpr AscendC::MicroAPI::CastTrait castTrait = {
+    AscendC::MicroAPI::RegLayout::ZERO, AscendC::MicroAPI::SatMode::NO_SAT, AscendC::MicroAPI::MaskMergeMode::ZEROING,
+    AscendC::RoundMode::CAST_NONE};
 
 // fp8_e8m0_t数据类型到bf16_t数据类型转换
-static __aicore__ inline void CastVf(__local_mem__ bfloat16_t* dstPtr, __local_mem__ fp8_e8m0_t* srcPtr, uint32_t count)
+static __aicore__ inline void CastVf(__local_mem__ bfloat16_t *dstPtr, __local_mem__ fp8_e8m0_t *srcPtr, uint32_t count)
 {
     AscendC::MicroAPI::RegTensor<fp8_e8m0_t> srcReg;
     AscendC::MicroAPI::RegTensor<fp8_e8m0_t> srcZeroReg;
@@ -95,6 +92,6 @@ static __aicore__ inline void CastVf(__local_mem__ bfloat16_t* dstPtr, __local_m
     AscendC::MicroAPI::DataCopy(dstPtr, bf16DstReg, maskReg);
 }
 
-}  // namespace AscendC
+} // namespace AscendC
 
 #endif

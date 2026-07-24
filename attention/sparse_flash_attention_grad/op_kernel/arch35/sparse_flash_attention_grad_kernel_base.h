@@ -581,8 +581,13 @@ FlashAttentionScoreGradKernelBase<ChildClass, CubeBlockType, VecBlockType>::GetT
     int64_t t2Offset = 0;
     if constexpr (IS_TND) {
         int64_t curT1 = ((__gm__ int32_t *)actualSeqQlenAddr)[bIndex];
-        while (t1Idx >= curT1) {
+        while (t1Idx >= curT1 && bIndex < constInfo.bSize - 1) {
             curT1 = ((__gm__ int32_t *)actualSeqQlenAddr)[++bIndex];
+        }
+
+        if (t1Idx >= curT1) {
+            curS2 = 0;
+            return;
         }
 
         if (unlikely(bIndex == 0)) {

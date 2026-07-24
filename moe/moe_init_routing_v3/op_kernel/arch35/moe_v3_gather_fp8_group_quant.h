@@ -49,9 +49,11 @@ __simd_callee__ inline void LoadFp8GroupInput(RegTensor<float> &dst, __local_mem
 
 template <typename T, typename U, bool CLAMP_AMAX>
 __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float *scaleAddr, __ubuf__ U *yAddr,
-                                            uint32_t groupElemNum, float fp8MaxValue)
+                                               uint32_t groupElemNum, float fp8MaxValue)
 {
     const uint16_t vfLen = AscendC::VECTOR_REG_WIDTH / sizeof(float);
+    uint32_t inputElemNum = groupElemNum;
+    uint32_t outputElemNum = groupElemNum;
 
     static constexpr DivSpecificMode divMode = {MaskMergeMode::ZEROING, false};
 
@@ -95,8 +97,8 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         Duplicate(oneIntReg, 1U, maskAllUint);
         Duplicate(zeroIntReg, 0U, maskAllUint);
 
-        if (groupElemNum > vfLen) {
-            uint32_t rightElemNum = groupElemNum - vfLen;
+        if (inputElemNum > vfLen) {
+            uint32_t rightElemNum = inputElemNum - vfLen;
             maskRight = UpdateMask<float>(rightElemNum);
             LoadFp8GroupInput<T>(xLeftReg, xAddr, maskAll, 0);
             LoadFp8GroupInput<T>(xRightReg, xAddr, maskRight, vfLen);
@@ -105,8 +107,8 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
             ReduceMax(maxReg, absLeftReg, maskAll);
             ReduceMax(maxRightReg, absRightReg, maskRight);
             Max(maxReg, maxReg, maxRightReg, maskScalar);
-        } else if (groupElemNum > 0) {
-            maskLoop = UpdateMask<float>(groupElemNum);
+        } else if (inputElemNum > 0) {
+            maskLoop = UpdateMask<float>(inputElemNum);
             LoadFp8GroupInput<T>(xLeftReg, xAddr, maskLoop, 0);
             Abs(absLeftReg, xLeftReg, maskLoop);
             ReduceMax(maxReg, absLeftReg, maskLoop);
@@ -129,15 +131,15 @@ __simd_vf__ inline void ComputeFp8GroupQuantVF(__ubuf__ T *xAddr, __ubuf__ float
         Duplicate(fp8MaxReg, 1.0f, maskAll);
         Div<float, &divMode>(invScaleReg, fp8MaxReg, roundScaleReg, maskAll);
 
-        if (groupElemNum > vfLen) {
+        if (outputElemNum > vfLen) {
             Mul(quantLeftReg, xLeftReg, invScaleReg, maskAll);
             Mul(quantRightReg, xRightReg, invScaleReg, maskRight);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskAll);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outRightReg, quantRightReg, maskRight);
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr, outLeftReg, maskAll);
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr + vfLen, outRightReg, maskRight);
-        } else if (groupElemNum > 0) {
-            maskLoop = UpdateMask<float>(groupElemNum);
+        } else if (outputElemNum > 0) {
+            maskLoop = UpdateMask<float>(outputElemNum);
             Mul(quantLeftReg, xLeftReg, invScaleReg, maskLoop);
             Cast<U, float, CAST_TRAIT_F32_TO_FP8>(outLeftReg, quantLeftReg, maskLoop);
             DataCopy<U, StoreDist::DIST_PACK4_B32>(yAddr, outLeftReg, maskLoop);
@@ -240,7 +242,7 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Init(
 template <typename T, typename U, bool CLAMP_AMAX>
 __aicore__ inline void
 MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::InitKernelTiling(GM_ADDR sortedExpertIdxAddr,
-                                                              const MoeInitRoutingV3Arch35TilingData *tilingData)
+                                                             const MoeInitRoutingV3Arch35TilingData *tilingData)
 {
     gatherOutTilingData_ = &(tilingData->gatherOutComputeParamsOp);
     cols_ = tilingData->cols;
@@ -335,7 +337,7 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::CopyExpandedX
 
 template <typename T, typename U, bool CLAMP_AMAX>
 __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::CopyIn(int64_t srcIdx, int64_t colIdx,
-                                                                           int64_t loopCols)
+                                                                          int64_t loopCols)
 {
     LocalTensor<T> inLocal = inQueue_.AllocTensor<T>();
     DataCopyExtParams copyParams{1, static_cast<uint32_t>(loopCols * sizeof(T)), 0, 0, 0};
@@ -347,8 +349,7 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::CopyIn(int64_
 }
 
 template <typename T, typename U, bool CLAMP_AMAX>
-__aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Compute(int64_t loopCols,
-                                                                            int64_t loopScaleCols)
+__aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Compute(int64_t loopCols, int64_t loopScaleCols)
 {
     LocalTensor<T> xLocal = inQueue_.DeQue<T>();
     __ubuf__ T *xAddr = reinterpret_cast<__ubuf__ T *>(xLocal.GetPhyAddr());
@@ -374,7 +375,7 @@ __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::Compute(int64
 
 template <typename T, typename U, bool CLAMP_AMAX>
 __aicore__ inline void MoeV3GatherFP8GroupQuant<T, U, CLAMP_AMAX>::CopyOut(int64_t dstIdx, int64_t colIdx,
-                                                                            int64_t loopCols, int64_t loopScaleCols)
+                                                                           int64_t loopCols, int64_t loopScaleCols)
 {
     LocalTensor<U> outLocal = outQueue_.DeQue<U>();
     DataCopyExtParams copyOutParams{1, static_cast<uint32_t>(loopCols * sizeof(U)), 0, 0, 0};

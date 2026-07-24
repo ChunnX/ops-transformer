@@ -18,10 +18,10 @@ import torch.multiprocessing as mp
 from ml_dtypes import float8_e5m2, float8_e8m0fnu, bfloat16
 
 # 3. 日志配置（仅初始化一次，全局生效）
-logging.basicConfig(level=logging.INFO, format='%(message)s')
+logging.basicConfig(level=logging.INFO, format="%(message)s")
 
-MASTER_ADDR = '127.0.0.1'
-MASTER_PORT = '29500'
+MASTER_ADDR = "127.0.0.1"
+MASTER_PORT = "29500"
 
 
 class QuantAllReduceGoldenGenerator:
@@ -29,15 +29,16 @@ class QuantAllReduceGoldenGenerator:
     quant_all_reduce golden data generator
     CPU计算逻辑实现：dequant(x*scale) → all_reduce → 保存结果
     """
+
     # 类常量：数据类型范围映射（所有实例共享）
     DTYPE_RANGE: Dict[Type, tuple] = {
         np.int8: (-128, 127),
         np.int16: (-32768, 32767),
         np.float16: (-65504, 65504),
         np.float32: (-1e38, 1e38),
-        bfloat16: (-1e38, 1e38), 
-        float8_e5m2: (1e-9, 1e6),  
-        float8_e8m0fnu: (2**-126, 2**127),  
+        bfloat16: (-1e38, 1e38),
+        float8_e5m2: (1e-9, 1e6),
+        float8_e8m0fnu: (2**-126, 2**127),
     }
 
     # 类常量：数据类型映射表（命令行参数→实际类型）
@@ -49,7 +50,7 @@ class QuantAllReduceGoldenGenerator:
         "int8_t": np.int8,
         "fp8_e5m2_t": float8_e5m2,
         "fp8_e8m0_t": float8_e8m0fnu,
-        "bfloat16_t": bfloat16
+        "bfloat16_t": bfloat16,
     }
 
     def __init__(self, rank: int, args: argparse.Namespace):
@@ -74,7 +75,9 @@ class QuantAllReduceGoldenGenerator:
         self.input_len = self.bs * self.hidden_size
         self.scale_len = self._calc_scale_len()
         # 初始化Golden数据目录（对齐参考代码的output_path）
-        self.output_path = f"./golden/quantallreduce_{self.case_name}_{self.bs}_{self.hidden_size}"
+        self.output_path = (
+            f"./golden/quantallreduce_{self.case_name}_{self.bs}_{self.hidden_size}"
+        )
         self._init_golden_dir()
         # 设置随机种子（保证结果可复现）
         np.random.seed(self.seed)
@@ -85,7 +88,9 @@ class QuantAllReduceGoldenGenerator:
         self.scale = None  # 输入scale张量
         self._init_distributed_env()  # 初始化CPU分布式环境
 
-    def gen_random_data(self, size: int, dtype: Union[np.dtype, Type], drange: str) -> np.ndarray:
+    def gen_random_data(
+        self, size: int, dtype: Union[np.dtype, Type], drange: str
+    ) -> np.ndarray:
         """
         根据数据类型和数据范围生成随机数据
         :param size: 数据长度
@@ -109,9 +114,13 @@ class QuantAllReduceGoldenGenerator:
             clip_low = max(low, dtype_low)
             clip_high = min(high, dtype_high)
             if clip_low >= clip_high:
-                raise ValueError(f"{dtype}的预设范围{self.DTYPE_RANGE[dtype]}与输入范围{drange}无交集")
+                raise ValueError(
+                    f"{dtype}的预设范围{self.DTYPE_RANGE[dtype]}与输入范围{drange}无交集"
+                )
         # 生成随机数（先按float32生成，再做类型转换）
-        random_data = np.random.uniform(low=clip_low, high=clip_high, size=size).astype(np.float32)
+        random_data = np.random.uniform(low=clip_low, high=clip_high, size=size).astype(
+            np.float32
+        )
         # 特殊类型处理（适配FP8格式）
         if dtype == float8_e8m0fnu:
             log2_data = np.log2(np.abs(random_data) + 1e-10)  # 避免log2(0)报错
@@ -126,7 +135,9 @@ class QuantAllReduceGoldenGenerator:
             raise RuntimeError(f"生成的数据包含{nan_count}个NaN值, 请检查参数!")
         return target_data
 
-    def input_generate(self, data_name: str, data_len: int, data_type: Type, drange: str) -> torch.Tensor:
+    def input_generate(
+        self, data_name: str, data_len: int, data_type: Type, drange: str
+    ) -> torch.Tensor:
         """
         生成输入数据并保存为bin文件, 返回torch张量
         :param data_name: 数据名称
@@ -146,7 +157,9 @@ class QuantAllReduceGoldenGenerator:
         logging.info(f"{data_name}数据生成完成！保存路径：{self.output_path}")
         return input_tensor
 
-    def cpu_dequant(self, x: np.ndarray, scale: np.ndarray, group_size: int) -> torch.Tensor:
+    def cpu_dequant(
+        self, x: np.ndarray, scale: np.ndarray, group_size: int
+    ) -> torch.Tensor:
         """
         完全对齐参考代码的反量化逻辑
         :param x: 输入numpy数组
@@ -180,9 +193,9 @@ class QuantAllReduceGoldenGenerator:
         """
         # 1. 构建reduce操作映射（对齐参考代码）
         reduce_op_map = {
-            'sum': dist.ReduceOp.SUM,
-            'max': dist.ReduceOp.MAX,
-            'min': dist.ReduceOp.MIN,
+            "sum": dist.ReduceOp.SUM,
+            "max": dist.ReduceOp.MAX,
+            "min": dist.ReduceOp.MIN,
         }
         op = reduce_op_map.get(self.reduce_op, dist.ReduceOp.SUM)  # 默认sum
         # 2. 转换为numpy（对齐参考代码的x.numpy()/scale.numpy()）
@@ -194,7 +207,7 @@ class QuantAllReduceGoldenGenerator:
         # 4. 执行all_reduce
         dist.all_reduce(output, op)
         # 6. 保存结果（仅主rank保存，避免多rank覆盖）
-        self.save(output, self.output_path, f'output_cpu_{self.rank}.bin')
+        self.save(output, self.output_path, f"output_cpu_{self.rank}.bin")
         return output
 
     def run(self):
@@ -206,14 +219,14 @@ class QuantAllReduceGoldenGenerator:
             data_name="x",
             data_len=self.input_len,
             data_type=self.input_tensor_type,
-            drange=self.input_tensor_range
+            drange=self.input_tensor_range,
         )
         # 2. 生成scale输入数据并赋值给self.scale（对齐参考代码）
         self.scale = self.input_generate(
             data_name="scale",
             data_len=self.scale_len,
             data_type=self.scales_type,
-            drange=self.scales_range
+            drange=self.scales_range,
         )
         # 3. 打印数据形状
         logging.info(f"self.x.shape: {self.x.shape}")
@@ -248,19 +261,21 @@ class QuantAllReduceGoldenGenerator:
     def _init_distributed_env(self):
         """私有方法: 初始化CPU分布式环境"""
         # 设置环境变量（每个进程都要设置）
-        os.environ['MASTER_ADDR'] = MASTER_ADDR
-        os.environ['MASTER_PORT'] = MASTER_PORT
-        os.environ['RANK'] = str(self.rank)
-        os.environ['WORLD_SIZE'] = str(self.ranksize)
+        os.environ["MASTER_ADDR"] = MASTER_ADDR
+        os.environ["MASTER_PORT"] = MASTER_PORT
+        os.environ["RANK"] = str(self.rank)
+        os.environ["WORLD_SIZE"] = str(self.ranksize)
         # 初始化Gloo后端（CPU）
         if not dist.is_initialized():
             dist.init_process_group(
-                backend='gloo',
+                backend="gloo",
                 rank=self.rank,
                 world_size=self.ranksize,
-                init_method=f'tcp://{MASTER_ADDR}:{MASTER_PORT}'
+                init_method=f"tcp://{MASTER_ADDR}:{MASTER_PORT}",
             )
-        logging.info(f"Rank {self.rank}: 分布式环境初始化完成（总进程数：{self.ranksize}）")
+        logging.info(
+            f"Rank {self.rank}: 分布式环境初始化完成（总进程数：{self.ranksize}）"
+        )
 
 
 def parse_args() -> argparse.Namespace:
@@ -268,19 +283,21 @@ def parse_args() -> argparse.Namespace:
     解析命令行参数
     :return: 解析后的参数对象
     """
-    parser = argparse.ArgumentParser(description="quant_all_reduce golden generator (对齐指定CPU逻辑)")
-    parser.add_argument('case_name', type=str, help="测试用例名称")
-    parser.add_argument('bs', type=int, help="Batch Size")
-    parser.add_argument('hidden_size', type=int, help="Hidden Size")
-    parser.add_argument('input_tensor_range', type=str, help="input tensor范围")
-    parser.add_argument('input_tensor_type', type=str, help="input tensor类型")
-    parser.add_argument('scales_range', type=str, help="scale tensor范围")
-    parser.add_argument('scales_type', type=str, help="scale tensor类型")
-    parser.add_argument('output_type', type=str, help="输出类型")
-    parser.add_argument('ranksize', type=int, help="Rank数量")
-    parser.add_argument('reduce_op', type=str, help="Reduce操作 (sum/max/min)")
-    parser.add_argument('mxfp', type=int, help="MXFP模式 (0/1)")
-    parser.add_argument('seed', type=int, help="随机种子（保证结果可复现）")
+    parser = argparse.ArgumentParser(
+        description="quant_all_reduce golden generator (对齐指定CPU逻辑)"
+    )
+    parser.add_argument("case_name", type=str, help="测试用例名称")
+    parser.add_argument("bs", type=int, help="Batch Size")
+    parser.add_argument("hidden_size", type=int, help="Hidden Size")
+    parser.add_argument("input_tensor_range", type=str, help="input tensor范围")
+    parser.add_argument("input_tensor_type", type=str, help="input tensor类型")
+    parser.add_argument("scales_range", type=str, help="scale tensor范围")
+    parser.add_argument("scales_type", type=str, help="scale tensor类型")
+    parser.add_argument("output_type", type=str, help="输出类型")
+    parser.add_argument("ranksize", type=int, help="Rank数量")
+    parser.add_argument("reduce_op", type=str, help="Reduce操作 (sum/max/min)")
+    parser.add_argument("mxfp", type=int, help="MXFP模式 (0/1)")
+    parser.add_argument("seed", type=int, help="随机种子（保证结果可复现）")
     return parser.parse_args()
 
 
@@ -294,13 +311,13 @@ def run_worker(rank: int, args: argparse.Namespace):
         raise
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     """主函数：解析参数 → 实例化生成器 → 执行指定CPU逻辑"""
     # 1. 解析命令行参数
     args = parse_args()
     # 2. 设置多进程启动方式（避免Windows/Linux兼容问题）
     try:
-        mp.set_start_method('spawn', force=True)
+        mp.set_start_method("spawn", force=True)
     except RuntimeError:
         pass
     # 3. 启动多个进程
@@ -317,4 +334,6 @@ if __name__ == '__main__':
             raise RuntimeError(f"进程 {p.pid} 执行失败，退出码：{p.exitcode}")
     # 5. 最终提示
     logging.info("\n===== 所有进程执行完成 =====")
-    logging.info(f"Golden数据保存目录：./golden/quantallreduce_{args.case_name}_{args.bs}_{args.hidden_size}")
+    logging.info(
+        f"Golden数据保存目录：./golden/quantallreduce_{args.case_name}_{args.bs}_{args.hidden_size}"
+    )

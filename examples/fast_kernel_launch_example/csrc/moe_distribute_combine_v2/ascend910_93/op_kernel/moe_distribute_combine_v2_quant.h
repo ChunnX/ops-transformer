@@ -24,7 +24,7 @@ using namespace AscendC;
 using namespace MoeDistributeV2Base;
 
 template <typename ExpandXType, bool IsInt8Quant>
-class MoeDistributeCombineQuant{
+class MoeDistributeCombineQuant {
 public:
     float scaleValFloat_;
     uint32_t axisH_{0};
@@ -37,12 +37,12 @@ public:
 
     __aicore__ inline MoeDistributeCombineQuant() = default;
 
-    __aicore__ inline void SetQuantInitParams(uint32_t axisH) 
+    __aicore__ inline void SetQuantInitParams(uint32_t axisH)
     {
         axisH_ = axisH;
     }
 
-    __aicore__ inline void InitInt8Quant(uint32_t &scaleNum_, uint32_t &hExpandXAlign32Size_, 
+    __aicore__ inline void InitInt8Quant(uint32_t &scaleNum_, uint32_t &hExpandXAlign32Size_,
                                          uint32_t &hFloatAlign256Size_, uint32_t &tokenScaleCnt_)
     {
         hAlign32Size_ = Ceil(axisH_, UB_ALIGN) * UB_ALIGN;
@@ -50,13 +50,18 @@ public:
         uint32_t scaleGranu = static_cast<uint32_t>(UB_ALIGN / sizeof(float)); // 计算每个block得到的reducemax结果数量
         quantScaleNum_ = (hExpandXAlign32Size_ / sizeof(ExpandXType)) / scaleGranu; // 得到有效scale的个数
         scaleNum_ = quantScaleNum_;
-        repeatNum_ = static_cast<uint32_t>(hFloatAlign256Size_ / ALIGNED_LEN); // BlockReduceMax 与 Brcb的重复迭代次数，每次256b参与计算
+        repeatNum_ = static_cast<uint32_t>(hFloatAlign256Size_ /
+                                           ALIGNED_LEN); // BlockReduceMax 与 Brcb的重复迭代次数，每次256b参与计算
         mask_ = static_cast<uint32_t>(ALIGNED_LEN / sizeof(float));
         tokenScaleCnt_ = hAlign32Size_ / sizeof(ExpandXType) + quantScaleNum_; // int8_align + scale有效个数
     }
 
-    __aicore__ inline void Int8QuantProcess(LocalTensor<ExpandXType> &sendLocalTensor_, LocalTensor<float> &winTpSendCountFloatTensor_, LocalTensor<ExpandXType> &gmTpSendCountTensor_, 
-                                            LocalTensor<half> &fp16CastTensor_, LocalTensor<float> &absFloatTensor_, LocalTensor<float> reduceMaxFloatTensor_, LocalTensor<float> scaleDupLocalTensor_)
+    __aicore__ inline void Int8QuantProcess(LocalTensor<ExpandXType> &sendLocalTensor_,
+                                            LocalTensor<float> &winTpSendCountFloatTensor_,
+                                            LocalTensor<ExpandXType> &gmTpSendCountTensor_,
+                                            LocalTensor<half> &fp16CastTensor_, LocalTensor<float> &absFloatTensor_,
+                                            LocalTensor<float> reduceMaxFloatTensor_,
+                                            LocalTensor<float> scaleDupLocalTensor_)
     {
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         castLocalTensor_ = sendLocalTensor_.template ReinterpretCast<int8_t>(); // 长度为int8H_Align + scaleNum
@@ -64,7 +69,8 @@ public:
 
         Cast(winTpSendCountFloatTensor_, gmTpSendCountTensor_, RoundMode::CAST_NONE, axisH_);
         PipeBarrier<PIPE_V>();
-        Abs(absFloatTensor_, winTpSendCountFloatTensor_, axisH_); // absFloatTensor_ align到256并写0，支持ReduceMax与Brcb
+        Abs(absFloatTensor_, winTpSendCountFloatTensor_,
+            axisH_); // absFloatTensor_ align到256并写0，支持ReduceMax与Brcb
         PipeBarrier<PIPE_V>();
         BlockReduceMax(reduceMaxFloatTensor_, absFloatTensor_, repeatNum_, mask_, 1, 1, BLOCK_NUM); // 32->1 256->8
         PipeBarrier<PIPE_V>();
@@ -82,8 +88,9 @@ public:
         SyncFunc<AscendC::HardEvent::V_MTE3>();
     }
 
-    __aicore__ inline void Int8DequantProcess(LocalTensor<ExpandXType>& src, LocalTensor<float> scaleDivFloatTensor_, LocalTensor<half> &fp16CastTensor_, 
-                                              LocalTensor<float> &absFloatTensor_, LocalTensor<float> scaleDupLocalTensor_)
+    __aicore__ inline void Int8DequantProcess(LocalTensor<ExpandXType> &src, LocalTensor<float> scaleDivFloatTensor_,
+                                              LocalTensor<half> &fp16CastTensor_, LocalTensor<float> &absFloatTensor_,
+                                              LocalTensor<float> scaleDupLocalTensor_)
     {
         SyncFunc<AscendC::HardEvent::MTE2_V>();
         castLocalTensor_ = src.template ReinterpretCast<int8_t>();
@@ -102,5 +109,5 @@ public:
         PipeBarrier<PIPE_V>();
     }
 };
-}
+} // namespace Mc2Kernel
 #endif // MOE_DISTRIBUTE_V2_QUANT_H

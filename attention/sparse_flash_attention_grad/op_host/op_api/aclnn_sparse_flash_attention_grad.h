@@ -49,7 +49,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGrad
 __attribute__((visibility("default"))) aclnnStatus aclnnSparseFlashAttentionGrad(void *workspace,
                                                                                  uint64_t workspaceSize,
                                                                                  aclOpExecutor *executor,
-                                                                                 const aclrtStream stream);
+                                                                                 aclrtStream stream);
 
 #ifdef __cplusplus
 }

@@ -33,24 +33,24 @@ namespace fallback {
 
 using OpApiAnyValueDeleter = void (*)(void *);
 typedef struct {
-  void *pointer;
-  OpApiAnyValueDeleter deleter;
+    void *pointer;
+    OpApiAnyValueDeleter deleter;
 } OpApiAnyValue;
 
 // aclnn算子params结构体，用于传递算子一阶段到二阶段的参数，定义在算子仓，由算子感知，GE框架不感知
 using OpApiFunc = int (*)(void *, uint64_t, aclOpExecutor *, const aclrtStream);
 struct OpApiParams {
-  std::vector<OpApiAnyValue> converted_params; // 算子下发依赖的参数
-  aclOpExecutor *executor = nullptr; // aclOpExecutor指针
-  OpApiFunc op_api_func = nullptr; // aclnnxx函数指针，实现算子launch下发
+    std::vector<OpApiAnyValue> converted_params; // 算子下发依赖的参数
+    aclOpExecutor *executor = nullptr;           // aclOpExecutor指针
+    OpApiFunc op_api_func = nullptr;             // aclnnxx函数指针，实现算子launch下发
 };
 
 // aclnn算子注册的二阶段launch func，函数实现可以与算子类型无关，所有算子使用同一个二阶段注册接口
 ge::graphStatus ExecuteOpLaunch(gert::OpExecuteLaunchContext *context);
-}  // namespace fallback
+} // namespace fallback
 
 #ifdef __cplusplus
 }
 #endif
 
-#endif  // INC_EXTERNAL_GRAPH_FALLBACK_COMMON_TWOSTAGES_H_
+#endif // INC_EXTERNAL_GRAPH_FALLBACK_COMMON_TWOSTAGES_H_

@@ -16,7 +16,7 @@
 ## 功能说明
 
 - 接口功能：
-    - 完成量化的路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，先计算后通信，支持Pertensor-Pertensor、Mx[量化模式](../../../docs/zh/context/量化介绍.md)。
+    - 完成量化的路由专家GroupedMatMul、Unpermute、AlltoAllv融合并实现与共享专家MatMul并行融合，先计算后通信，支持Pertensor-Pertensor、Mx[量化模式](../../../docs/zh/context/quant_mode_introduction.md)。
 
 - 计算公式：
     - 路由专家：
@@ -55,15 +55,15 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllvGetWorkspaceSize(
     int64_t            mmWeightQuantMode,
     int64_t            commQuantMode,
     int64_t            commQuantDtypeOptional,
-    int64_t            groupSize, 
+    int64_t            groupSize,
     const char*        group,
     int64_t            epWorldSize,
     const aclIntArray* sendCounts,
     const aclIntArray* recvCounts,
     bool               transGmmWeight,
     bool               transMmWeight,
-    aclTensor*         y,
-    aclTensor*         mmYOptional,
+    const aclTensor*   y,
+    const aclTensor*   mmYOptional,
     uint64_t*          workspaceSize,
     aclOpExecutor**    executor)
 ```
@@ -415,7 +415,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
         </tbody>
     </table>
 
-  gmmXQuantMode、gmmWeightQuantMode、mmXQuantMode、mmWeightQuantMode、commQuantMode的枚举值跟[量化模式](../../../docs/zh/context/量化介绍.md)关系如下:
+  gmmXQuantMode、gmmWeightQuantMode、mmXQuantMode、mmWeightQuantMode、commQuantMode的枚举值跟[量化模式](../../../docs/zh/context/quant_mode_introduction.md)关系如下:
   * 0: 非量化
   * 1: pertensor
   * 2: perchannel
@@ -427,7 +427,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一阶段接口完成入参校验，出现以下场景报错：
 
@@ -495,14 +495,14 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
 
 - **返回值**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
 - 确定性计算：
   - aclnnQuantGroupedMatMulAlltoAllv默认确定性实现。
 - 通信引擎约束：
-  - Ascend 950DT：支持CCU通信。
+  - Ascend 950DT：支持AI_CPU通信。
 - e * epWorldSize最大支持256，e表示单卡上的专家数量，最大支持到32，epWorldSize支持2/4/8/16/32/64/128/256;
 - gmmX的shape(A, H1)，A为sendCounts之和，H1取值范围(0, 65536);
 - gmmWeight的shape(e, H1, N1)，N1取值范围(0, 65536);
@@ -526,7 +526,7 @@ aclnnStatus aclnnQuantGroupedMatMulAlltoAllv(
   - ep通信域内所有卡的A参数的累加和等于所有卡上的BSK参数的累加和。
   - mx量化且gmmX与gmmWeight为FLOAT4_E2M1时，H1和H2必须为偶数且不能为2，同时transGmmWeight和transMmWeight为false情况下，N1和N2必须为偶数。
   - gmmWeight和gmmWeightScale的转置状态必须保持一致：同时转置或同时不转置。mmWeight和mmWeightScale同样需要保持转置状态一致。
-  - groupSize: 
+  - groupSize:
     - 仅当gmmXScale/gmmWeightScale/mmXScale/mmWeightScale输入都是2维及以上数据时，groupSize取值有效，其他场景需传入0。
     - groupSize值支持公式推导：传入的groupSize内部会按如下公式分解得到groupSizeM、groupSizeN、groupSizeK，当其中有1个或多个为0，会根据gmmX/gmmWeight/mmX/mmWeight/gmmXScale/gmmWeightScale/mmXScale/mmWeightScale输入shape重新设置groupSizeM、groupSizeN、groupSizeK用于计算。设置原理：如果groupSizeM=0，表示m方向量化分组值由接口推导，推导公式为groupSizeM = m / scaleM（需保证m能被scaleM整除），其中m与gmmX/mmX shape中的m一致，scaleM与gmmXScale/mmXScale shape中的m一致；如果groupSizeK=0，表示k方向量化分组值由接口推导，推导公式为groupSizeK = k / scaleK（需保证k能被scaleK整除），其中k与gmmX/mmX shape中的k一致，scaleK与gmmXScale/mmXScale shape中的k一致；如果groupSizeN=0，表示n方向量化分组值由接口推导，推导公式为groupSizeN = n / scaleN（需保证n能被scaleN整除），其中n与gmmWeight/mmWeight shape中的n一致，scaleN与gmmWeightScale/mmWeightScale shape中的n一致。
     $$
@@ -764,9 +764,9 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
         mmWScale,
         commQuantScaleOptional,
         gmmXQuantMode,
-        gmmWQuantMode, 
+        gmmWQuantMode,
         mmXQuantMode,
-        mmWQuantMode, 
+        mmWQuantMode,
         commQuantMode,
         commQuantDtypeOptional,
         groupSize,
@@ -794,7 +794,7 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
             return ret);
     //（固定写法）同步等待任务执行结束
     ret = aclrtSynchronizeStreamWithTimeout(args.stream, 10000000);
-    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret); 
+    CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclrtSynchronizeStreamWithTimeout failed. ret = %d \n", ret);
             return ret);
     LOG_PRINT("[INFO] device_%d aclnnQuantGroupedMatMulAlltoAllv execute successfully.\n", args.rankId);
     // 释放device资源，需要根据具体API的接口定义修改
@@ -872,7 +872,7 @@ int LaunchOneThreadAlltoAllvGmm(Args &args)
     return 0;
 }
 
-int main(int argc, char *argv[]) 
+int main(int argc, char *argv[])
 {
     int ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("[ERROR] aclInit failed. ret = %d \n", ret); return ret);
@@ -913,4 +913,3 @@ int main(int argc, char *argv[])
     return 0;
 }
 ```
-    
