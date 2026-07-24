@@ -13,9 +13,9 @@ if (BUILD_OPEN_PROJECT)  # custom
         matmul_all_reduce_add_rms_norm_def.cpp
     )
     add_modules_sources_with_soc(
-        OP_API_INDEPENDENT ON 
-        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api 
-        OP_MC2_ENABLE ON 
+        OP_API_INDEPENDENT ON
+        OP_API_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../op_api
+        OP_MC2_ENABLE ON
         OPTYPE matmul_all_reduce_add_rms_norm matmul_all_reduce_add_rms_norm ACLNNTYPE aclnn aclnn_inner)
     set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
     set(MC2_OPT ON PARENT_SCOPE)
@@ -31,5 +31,5 @@ if (BUILD_OPEN_PROJECT)  # custom
     endif()
 else() # 回黄host
     add_mc2_modules_sources(OPTYPE matmul_all_reduce_add_rms_norm matmul_all_reduce_add_rms_norm ACLNNTYPE aclnn aclnn_inner)
-    set(SUB_MC2_COMPILE TRUE PARENT_SCOPE) 
+    set(SUB_MC2_COMPILE TRUE PARENT_SCOPE)
 endif()

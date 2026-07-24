@@ -25,12 +25,12 @@ using namespace Cgmct::Gemm::Kernel;
 
 template <typename layoutA, typename layoutB>
 __aicore__ inline void GmmSwigluAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR weightScale, GM_ADDR xScale,
-                                     GM_ADDR weightAssistanceMatrix, GM_ADDR smoothScale, GM_ADDR groupList,
-                                     GM_ADDR y, GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
+                                     GM_ADDR weightAssistanceMatrix, GM_ADDR smoothScale, GM_ADDR groupList, GM_ADDR y,
+                                     GM_ADDR yScale, GM_ADDR workspace, GM_ADDR tiling)
 {
-    GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingDataParams, gmmSwigluQuantParams, gmmSwigluQuantParams_, tiling);       \
-    GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingDataParams, mmTilingData, mmTilingData_, tiling);                       \
-    // 定义L1和L0的TileShape
+    GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingDataParams, gmmSwigluQuantParams, gmmSwigluQuantParams_, tiling);
+    GET_TILING_DATA_MEMBER(GMMSwigluQuantTilingDataParams, mmTilingData, mmTilingData_,
+                           tiling); // 定义L1和L0的TileShape
     using L1TileShape = AscendC::Shape<_0, _0, _0>;
     using L0TileShape = AscendC::Shape<_0, _0, _0>;
     // 定义矩阵的类型和布局
@@ -47,29 +47,32 @@ __aicore__ inline void GmmSwigluAswt(GM_ADDR x, GM_ADDR weight, GM_ADDR weightSc
     // 定义MMAD类型
     using C1Type = float;
     // 定义BlockEpilogue类型
-    using BlockEpilogue = Block::BlockEpilogueSwigluQuant<L0TileShape, CType, C1Type, weightscaleType, weightscaleType,
-                                                          true>;
+    using BlockEpilogue =
+        Block::BlockEpilogueSwigluQuant<L0TileShape, CType, C1Type, weightscaleType, weightscaleType, true>;
     // 定义shape的形状，tuple保存 m n k batch
     using ProblemShape = MatmulShape;
-    using BlockMmad = Block::BlockMxMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type, LayoutC, L1TileShape,
-                                                 L0TileShape, BlockScheduler, QuantMatmulWithTileMultiBlock<>,
-                        Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
-    using QGmmKernel =
-    Kernel::KernelGmmSwiGluMixOnlineDynamic<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
+    using BlockMmad =
+        Block::BlockMxMmAicToAivBuilder<AType, LayoutA, BType, LayoutB, BiasType, C1Type, LayoutC, L1TileShape,
+                                        L0TileShape, BlockScheduler, QuantMatmulWithTileMultiBlock<>,
+                                        Tile::TileCopy<Arch::DAV3510, Tile::CopyInAndCopyOutSplitMWithParams>>;
+    using QGmmKernel = Kernel::KernelGmmSwiGluMixOnlineDynamic<ProblemShape, BlockMmad, BlockEpilogue, BlockScheduler>;
     using Params = typename QGmmKernel::Params;
     using GMMTiling = typename QGmmKernel::GMMTiling;
-    GMMTiling gmmParams{gmmSwigluQuantParams_.groupNum, gmmSwigluQuantParams_.groupListType, mmTilingData_.baseM,
-                        mmTilingData_.baseN, mmTilingData_.baseK,
+    GMMTiling gmmParams{gmmSwigluQuantParams_.groupNum,
+                        gmmSwigluQuantParams_.groupListType,
+                        mmTilingData_.baseM,
+                        mmTilingData_.baseN,
+                        mmTilingData_.baseK,
                         gmmSwigluQuantParams_.isMxWeightNzMultiTensor};
     gmmParams.matmulTiling = &mmTilingData_;
     Params params = {// template shape, gmm shape can not get now
-                    {1, 1, 1, 1},
-                    // mmad args
-                    {x, weight, weightScale, xScale, y, groupList},
-                    {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
-                        static_cast<uint32_t>(mmTilingData_.baseN)},
-                    // gmm tiling data
-                    gmmParams};
+                     {1, 1, 1, 1},
+                     // mmad args
+                     {x, weight, weightScale, xScale, y, groupList},
+                     {y, yScale, nullptr, nullptr, nullptr, static_cast<uint32_t>(mmTilingData_.baseM),
+                      static_cast<uint32_t>(mmTilingData_.baseN)},
+                     // gmm tiling data
+                     gmmParams};
     QGmmKernel op;
     op(params);
 }

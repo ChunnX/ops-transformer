@@ -35,7 +35,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMatmulAlltoAllV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulAlltoAllV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMatmulAlltoAllV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMatmulAlltoAllV2”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnMatmulAlltoAllV2GetWorkspaceSize(
@@ -200,7 +200,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -289,7 +289,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
 
 * **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -444,7 +444,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
         ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口
-        ret = aclnnMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, "default", false, false,
+        ret = aclnnMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, "aiv", false, false,
                                                 out, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                 LOG_PRINT("aclnnMatmulAlltoAllV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);
@@ -650,7 +650,7 @@ aclnnStatus aclnnMatmulAlltoAllV2(
         ret = CreateAclTensor(outHostData, outShape, &outDeviceAddr, aclDataType::ACL_FLOAT16, &out);
         CHECK_RET(ret == ACL_SUCCESS, return ret);
         // 调用第一段接口
-        ret = aclnnMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, "ccu", false, false,
+        ret = aclnnMatmulAlltoAllV2GetWorkspaceSize(x1, x2, bias, alltoAllAxesOptional, hcom_name, "ai_cpu", false, false,
                                                 out, &workspaceSize, &executor);
         CHECK_RET(ret == ACL_SUCCESS,
                 LOG_PRINT("aclnnMatmulAlltoAllV2GetWorkspaceSize failed. ERROR: %d\n", ret); return ret);

@@ -20,7 +20,7 @@
 - 输入输出支持以下场景：
   - 场景一：
 
-    ```
+    ```python
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch * seq_len, num_head, v_head_size]
     keyCache:[num_blocks, num_head * k_head_size // last_dim_k, block_size, last_dim_k]/[num_blocks, num_head, k_head_size // last_dim_k, block_size, last_dim_k]
@@ -36,7 +36,7 @@
 
   - 场景二：
 
-    ```
+    ```python
     key:[batch * seq_len, num_head, k_head_size]
     value:[batch * seq_len, num_head, v_head_size]
     keyCache:[num_blocks, block_size, num_head, k_head_size]
@@ -50,7 +50,7 @@
 
   - 场景三：
 
-    ```
+    ```python
     key:[batch, seq_len, num_head, k_head_size]
     value:[batch, seq_len, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -64,7 +64,7 @@
 
   - 场景四：
 
-    ```
+    ```python
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -78,7 +78,7 @@
 
   - 场景五：
 
-    ```
+    ```python
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, block_size, 1, k_head_size]
@@ -93,7 +93,7 @@
 
   - 场景六：
 
-    ```
+    ```python
     key:[batch * seq_len, num_head, k_head_size]
     value:[]
     keyCache:[num_blocks, block_size, num_head, k_head_size]
@@ -105,7 +105,7 @@
 
   - 场景七：
 
-    ```
+    ```python
     key:[num_tokens, num_head, k_head_size]
     value:[num_tokens, num_head, v_head_size]
     keyCache:[num_blocks, num_head, block_size, k_head_size]
@@ -121,31 +121,31 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnScatterPaKvCacheGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnScatterPaKvCache”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnScatterPaKvCacheGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnScatterPaKvCache”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnScatterPaKvCacheGetWorkspaceSize(
-  const aclTensor   *key, 
-  aclTensor         *keyCacheRef, 
-  const aclTensor   *slotMapping, 
-  const aclTensor   *value, 
-  aclTensor         *valueCacheRef, 
-  const aclTensor   *compressLensOptional, 
-  const aclTensor   *compressSeqOffsetOptional, 
-  const aclTensor   *seqLensOptional, 
-  char              *cacheModeOptional, 
-  char              *scatterModeOptional, 
-  const aclIntArray *stridesOptional, 
-  const aclIntArray *offsetsOptional, 
-  uint64_t          *workspaceSize, 
+  const aclTensor   *key,
+  aclTensor         *keyCacheRef,
+  const aclTensor   *slotMapping,
+  const aclTensor   *value,
+  aclTensor         *valueCacheRef,
+  const aclTensor   *compressLensOptional,
+  const aclTensor   *compressSeqOffsetOptional,
+  const aclTensor   *seqLensOptional,
+  char              *cacheModeOptional,
+  char              *scatterModeOptional,
+  const aclIntArray *stridesOptional,
+  const aclIntArray *offsetsOptional,
+  uint64_t          *workspaceSize,
   aclOpExecutor    **executor)
 ```
 
 ```Cpp
 aclnnStatus aclnnScatterPaKvCache(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -325,7 +325,7 @@ aclnnStatus aclnnScatterPaKvCache(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -404,7 +404,7 @@ aclnnStatus aclnnScatterPaKvCache(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -424,12 +424,12 @@ aclnnStatus aclnnScatterPaKvCache(
 - 当cacheModeOptional为“PA_NZ”时，keyCacheRef和valueCacheRef的倒数第二维必须小于UINT16_MAX（对应场景一）。
 - k_head_size和v_head_size必须32字节对齐（对应场景七）。
 - num_head必须小于4095（对应场景七）。
-- block_size * k_head_size和block_size * v_head_size必须小于UINT32_MAX（对应场景七）。
-- （num_head * k_head_size + num_head * v_head_size） * sizeof(dtype_key)必须小于196608（对应场景七）。
+- block_size *k_head_size和block_size* v_head_size必须小于UINT32_MAX（对应场景七）。
+- （num_head *k_head_size + num_head* v_head_size） * sizeof(dtype_key)必须小于196608（对应场景七）。
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>、<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Ascend 950PR/Ascend 950DT</term>：
 

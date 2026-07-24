@@ -7,7 +7,7 @@
  * INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
  * See LICENSE in the root of the software repository for the full text of the License.
  */
- 
+
 /*!
  * \file sparse_flash_mla_metadata_aicpu.cpp
  * \brief
@@ -156,6 +156,30 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
                 }
             }
         }
+        // 校验 ori_topk_length 元素
+        if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
+            // 校验 ori_topk_length 元素数量
+            int32_t sumOfQuerySeq = GetSumOfQuerySeq();
+            const int32_t *oriTopkLengthPtr = static_cast<const int32_t*>(oriTopkLength_->GetData());
+            auto oriTopkLengthShape = oriTopkLength_->GetTensorShape();
+            int32_t oriTopkLengthSize = layoutQ_ == "TND" ?
+                oriTopkLengthShape->GetDimSize(0) * oriTopkLengthShape->GetDimSize(1) :
+                oriTopkLengthShape->GetDimSize(0) * oriTopkLengthShape->GetDimSize(1) *
+                    oriTopkLengthShape->GetDimSize(2);
+            if (oriTopkLengthSize < sumOfQuerySeq) {
+                KERNEL_LOG_ERROR("The size of ori_topk_length %d should not be smaller than "
+                    "the sum of query sequence %d!", oriTopkLengthSize, sumOfQuerySeq);
+                return false;
+            }
+            // 校验 ori_topk_length 元素非负
+            for (int i = 0; i < oriTopkLengthSize; i++) {
+                if (oriTopkLengthPtr[i] < 0) {
+                    KERNEL_LOG_ERROR("The elements in ori_topk_length should be >= 0, but got ori_topk_length[%d] = %d",
+                        i, oriTopkLengthPtr[i]);
+                    return false;
+                }
+            }
+        }
     }
     if (hasCmpKv_) {
         if (layoutKv_ == "TND") {
@@ -196,15 +220,67 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsCheck()
             const int32_t *cmpResidualKvPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
             for (int i = 0; i < batchSize; i++) {
                 // 校验 cmp_residual_kv 元素非负
-                if (cmpResidualKvPtr[i] < 0) {
-                    KERNEL_LOG_ERROR("The elements in cmp_residual_kv should be >= 0, but got cmp_residual_kv[%d] = %d",
-                        i, cmpResidualKvPtr[i]);
+                if (cmpResidualKvPtr[i] < 0 || cmpResidualKvPtr[i] >= cmpRatio_) {
+                    KERNEL_LOG_ERROR("The elements in cmp_residual_kv should be in [0, cmpRatio_), but got "
+                        "cmp_residual_kv[%d] = %d", i, cmpResidualKvPtr[i]);
+                    return false;
+                }
+            }
+        }
+        // 校验 cmp_topk_length 元素
+        if (cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
+            // 校验 cmp_topk_length 元素数量
+            int32_t sumOfQuerySeq = GetSumOfQuerySeq();
+            const int32_t *cmpTopkLengthPtr = static_cast<const int32_t*>(cmpTopkLength_->GetData());
+            auto cmpTopkLengthShape = cmpTopkLength_->GetTensorShape();
+            int32_t cmpTopkLengthSize = layoutQ_ == "TND" ?
+                cmpTopkLengthShape->GetDimSize(0) * cmpTopkLengthShape->GetDimSize(1) :
+                cmpTopkLengthShape->GetDimSize(0) * cmpTopkLengthShape->GetDimSize(1) *
+                    cmpTopkLengthShape->GetDimSize(2);
+            if (cmpTopkLengthSize < sumOfQuerySeq) {
+                KERNEL_LOG_ERROR("The size of cmp_topk_length %d should not be smaller than "
+                    "the sum of query sequence %d!", cmpTopkLengthSize, sumOfQuerySeq);
+                return false;
+            }
+            // 校验 cmp_topk_length 元素非负
+            for (int i = 0; i < cmpTopkLengthSize; i++) {
+                if (cmpTopkLengthPtr[i] < 0) {
+                    KERNEL_LOG_ERROR("The elements in cmp_topk_length should be >= 0, but got cmp_topk_length[%d] = %d",
+                        i, cmpTopkLengthPtr[i]);
                     return false;
                 }
             }
         }
     }
     return true;
+}
+
+int32_t SparseFlashMlaMetadataCpuKernel::GetSumOfQuerySeq()
+{
+    int32_t batchSize = GetQueryBatchSize();
+    // 如果sequsedQ_ 传了，使用sequsedQ_获取 BsSize
+    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        if (sequsedQ_->GetTensorShape() != nullptr) {
+            const int32_t *seqUsedPtr = static_cast<const int32_t*>(sequsedQ_->GetData());
+            int32_t queryBsSize = 0;
+            for (int i = 0; i < batchSize; i++) {
+                queryBsSize += seqUsedPtr[i];
+            }
+            return queryBsSize;
+        }
+    }
+    // sequsedQ_ 没传，判断 Layout
+    if (layoutQ_ == "TND") {
+        // 如果是 TND，尝试使用 cuSeqlensQ_获取 BsSize
+        if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+            if (cuSeqlensQ_->GetTensorShape() != nullptr) {
+                const int32_t *s1Ptr = static_cast<const int32_t*>(cuSeqlensQ_->GetData());
+                return s1Ptr[batchSize];
+            }
+        }
+    }
+    // 如果不是 TND，或者 cuSeqlensQ_ 为空，使用shape信息计算 BsSize
+    return batchSize_ * maxSeqlenQ_;
 }
 
 int32_t SparseFlashMlaMetadataCpuKernel::GetQueryBatchSize()
@@ -294,7 +370,7 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
         mBaseSize_ = isSparseCmpKv_ ? groupSize_ : (256U / groupSize_) * groupSize_;
         s2BaseSize_ = 512U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
-        if (numHeadsQ_ == 128) {
+        if (groupSize_ > 64U) {
             isSplitG_ = true;
             aicCoreNum_ /= 2;
         }
@@ -307,13 +383,59 @@ bool SparseFlashMlaMetadataCpuKernel::ParamsInit()
     return true;
 }
 
-uint32_t SparseFlashMlaMetadataCpuKernel::GetOriTopkLength()
+uint32_t SparseFlashMlaMetadataCpuKernel::GetS1Idx(uint32_t s1Size, uint32_t s1GIdx)
 {
+    uint32_t s1GToken = s1GIdx * mBaseSize_;
+    uint32_t s1Idx = 0;
+    if (isS1G_) {
+        s1Idx = s1GToken / static_cast<int64_t>(groupSize_);
+    } else {
+        s1Idx = s1GToken % static_cast<int64_t>(s1Size);
+    }
+    return s1Idx;
+}
+
+uint32_t SparseFlashMlaMetadataCpuKernel::GetBsStride(uint32_t bIdx, uint32_t s1Idx)
+{
+    uint32_t bsStride = 0;
+    if (sequsedQ_ != nullptr && sequsedQ_->GetData() != nullptr) {
+        const int32_t *seqUsedPtr = static_cast<const int32_t *>(sequsedQ_->GetData());
+        for (uint32_t i = 0; i < bIdx; i++) {
+            bsStride += seqUsedPtr[i];
+        }
+        bsStride += s1Idx;
+        return bsStride;
+    }
+    if (layoutQ_ == "TND") {
+        if (cuSeqlensQ_ != nullptr && cuSeqlensQ_->GetData() != nullptr) {
+            const int32_t *s1Ptr = static_cast<const int32_t *>(cuSeqlensQ_->GetData());
+            bsStride = s1Ptr[bIdx] + s1Idx;
+            return bsStride;
+        }
+    }
+    bsStride = bIdx * static_cast<uint32_t>(maxSeqlenQ_) + s1Idx;
+    return bsStride;
+}
+
+uint32_t SparseFlashMlaMetadataCpuKernel::GetOriTopkLength(uint32_t bsStride)
+{
+    // 尝试使用 oriTopkLength_
+    if (oriTopkLength_ != nullptr && oriTopkLength_->GetData() != nullptr) {
+        const int32_t *oriTopkPtr = static_cast<const int32_t*>(oriTopkLength_->GetData());
+        return static_cast<uint32_t>(oriTopkPtr[bsStride]);
+    }
+    // 如果不是 DEFAULT_MASK，使用 oriTopK_
     return static_cast<uint32_t>(oriTopK_);
 }
 
-uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpTopkLength()
+uint32_t SparseFlashMlaMetadataCpuKernel::GetCmpTopkLength(uint32_t bsStride)
 {
+    // 尝试使用 cmpTopkLength_
+    if (cmpTopkLength_ != nullptr && cmpTopkLength_->GetData() != nullptr) {
+        const int32_t *cmpTopkPtr = static_cast<const int32_t*>(cmpTopkLength_->GetData());
+        return static_cast<uint32_t>(cmpTopkPtr[bsStride]);
+    }
+    // 如果不是 DEFAULT_MASK，使用 cmpTopK_
     return static_cast<uint32_t>(cmpTopK_);
 }
 
@@ -387,9 +509,9 @@ uint64_t SparseFlashMlaMetadataCpuKernel::GetRevertS2Size(uint32_t bIdx)
     uint32_t cmpS2Size = GetCmpS2SeqSize(bIdx);
     if (cmpResidualKv_ != nullptr && cmpResidualKv_->GetData() != nullptr) {
         const int32_t *residualPtr = static_cast<const int32_t*>(cmpResidualKv_->GetData());
-        return static_cast<uint64_t>(cmpS2Size) * cmpRatio_ + residualPtr[bIdx];
+        return static_cast<uint64_t>(cmpS2Size) * static_cast<uint64_t>(cmpRatio_) + residualPtr[bIdx];
     } else {
-        return static_cast<uint64_t>(cmpS2Size) * cmpRatio_;
+        return static_cast<uint64_t>(cmpS2Size) * static_cast<uint64_t>(cmpRatio_);
     }
 }
 
@@ -540,7 +662,7 @@ Range<int64_t> SparseFlashMlaMetadataCpuKernel::CalcS2TokenRange(uint32_t s1GIdx
     int64_t s1GFirstToken = static_cast<int64_t>(s1GIdx) * static_cast<int64_t>(mBaseSize_);
     int64_t s1GLastToken = std::min(s1GFirstToken + static_cast<int64_t>(mBaseSize_),
         static_cast<int64_t>(batchCache.s1Size) * static_cast<int64_t>(groupSize_)) - 1;
-    
+
     int64_t s1FirstToken = 0;
     int64_t s1LastToken = 0;
     if (isS1G_) {
@@ -671,7 +793,9 @@ void SparseFlashMlaMetadataCpuKernel::CalcOriBlockRange(const Range<int64_t> &or
             static_cast<int64_t>(batchCache.oriS2Size - 1U));
         oriS2LastToken = Clip(oriS2LastToken, static_cast<int64_t>(0), static_cast<int64_t>(batchCache.oriS2Size - 1U));
         // oriS2LastToken 与 topk 取最小
-        uint32_t oriTopkSize = GetOriTopkLength();
+        uint32_t s1Idx = GetS1Idx(batchCache.s1Size, s1GCache.s1GIdx);
+        uint32_t bsStride = GetBsStride(s1GCache.bIdx, s1Idx);
+        uint32_t oriTopkSize = GetOriTopkLength(bsStride);
         uint32_t actOriS2Size = isSparseOriKv_ ?
             std::min(static_cast<uint32_t>(oriS2LastToken - oriS2FirstToken + 1), oriTopkSize) :
             static_cast<uint32_t>(oriS2LastToken - oriS2FirstToken + 1);
@@ -707,7 +831,9 @@ void SparseFlashMlaMetadataCpuKernel::CalcCmpBlockRange(const Range<int64_t> &cm
             0 : (cmpRevertS2FirstToken + 1) / cmpRatio_ - 1U;
         uint64_t cmpS2LastToken = (cmpRevertS2LastToken + 1) / cmpRatio_ - 1U;
         // cmpS2LastToken 与 topk 取最小
-        uint32_t cmpTopkSize = GetCmpTopkLength();
+        uint32_t s1Idx = GetS1Idx(batchCache.s1Size, s1GCache.s1GIdx);
+        uint32_t bsStride = GetBsStride(s1GCache.bIdx, s1Idx);
+        uint32_t cmpTopkSize = GetCmpTopkLength(bsStride);
         uint32_t actCmpS2Size = isSparseCmpKv_ ?
             std::min(static_cast<uint32_t>(cmpS2LastToken - cmpS2FirstToken + 1), cmpTopkSize) :
             static_cast<uint32_t>(cmpS2LastToken - cmpS2FirstToken + 1);
@@ -1199,7 +1325,7 @@ bool SparseFlashMlaMetadataCpuKernel::BalanceSchedule(SplitResult &splitRes)
     // 2、获取每个核的分配方案
     splitRes.maxCost = INT64_MAX;
     splitRes.usedCoreNum = 1U;
-    
+
     CalcSplitPlan(splitRes.maxCost, splitContext, splitRes);
     // 3、存在FD任务，对FD进行负载均衡分配
     if (splitRes.numOfFdHead > 0U) {
@@ -1219,7 +1345,7 @@ bool SparseFlashMlaMetadataCpuKernel::GenMetadata(SplitResult &splitRes)
             // 单核s2基本块最大数量
             metadataPtr->faMetadata[2 * i][FA_S2_MAX_NUM] = splitRes.maxS2GBaseNum;
             metadataPtr->faMetadata[2 * i + 1][FA_S2_MAX_NUM] = splitRes.maxS2GBaseNum;
-            
+
             if (i >= splitRes.usedCoreNum) {
                 metadataPtr->faMetadata[2 * i][FA_CORE_ENABLE_INDEX] = 0; // AIC disenable
                 metadataPtr->faMetadata[2 * i + 1][FA_CORE_ENABLE_INDEX] = 0; // AIC disenable

@@ -525,7 +525,7 @@
           "value": 0
         }
       ]
-    },  
+    },
     {
       "bin_filename": "MatmulAllReduce_A8W8_ND_ND_INT8_INT8_BF16",
       "inputs": [
@@ -1575,7 +1575,7 @@
           "value": 0
         }
       ]
-    },   
+    },
     {
       "bin_filename": "MatmulAllReduce_A8W8_ND_FRACTAL_NZ_INT8_INT8_BF16",
       "inputs": [
@@ -1841,7 +1841,7 @@
             -2
           ],
           "format_match_mode": "FormatAgnostic"
-        },        
+        },
         {
           "name": "comm_quant_scale_1",
           "index": 8,

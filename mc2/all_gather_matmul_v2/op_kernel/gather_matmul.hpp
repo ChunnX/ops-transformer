@@ -385,8 +385,10 @@ public:
                 uint64_t gmOffsetB = params.layoutB.GetOffset(offsetB);
                 int64_t gmOffsetC = dstBlockIdx * mnSize + calIdx * outputBlockSize + params.layoutC.GetOffset(offsetC);
                 if (params.accumWorkSpacePingPong) {
-                    gmOffsetC = static_cast<int64_t>(dstBlockIdx + flagIdx * params.rankSize) * outputBlockSize +
-                                params.layoutC.GetOffset(offsetC);
+                    gmOffsetC =
+                        (static_cast<int64_t>(dstBlockIdx) + static_cast<int64_t>(flagIdx) * params.rankSize) *
+                            outputBlockSize +
+                        params.layoutC.GetOffset(offsetC);
                 }
 
                 AscendC::GlobalTensor<ElementA> gmAIn = gmPeerMem;

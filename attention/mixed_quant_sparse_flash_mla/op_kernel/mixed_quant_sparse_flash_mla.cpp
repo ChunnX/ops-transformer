@@ -33,7 +33,7 @@ using namespace AscendC;
         op.Init(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable,           \
             cmpBlockTable, cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, seqUsedQ, seqUsedOriKV,    \
             seqUsedCmpKV, cmpResidualKv, oriTopkLength, cmpTopkLength, sinks, metadata,            \
-            attentionOut, user, tilingData, &tPipe);                                              \
+            attentionOut, softmax_lse, user, tilingData, &tPipe);                                   \
         op.Process();                                                                             \
     } while (0)
 

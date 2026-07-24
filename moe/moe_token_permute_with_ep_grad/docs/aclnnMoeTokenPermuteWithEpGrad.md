@@ -17,7 +17,7 @@
 
 - **接口功能**：aclnnMoeTokenPermuteWithEp的反向传播计算。
 - **计算公式**：
-    
+
   - 首先计算tokenGradOut：
     - 当rangeOptional[0] <= sortedIndices[i] < rangeOptional[1]时：
 
@@ -26,7 +26,7 @@
       $$
 
     - 否则：
-      
+
       $$
       tokenGradOut[i] = 0
       $$
@@ -43,7 +43,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenPermuteWithEpGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithEpGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenPermuteWithEpGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenPermuteWithEpGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenPermuteWithEpGradGetWorkspaceSize(
@@ -199,7 +199,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -270,7 +270,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -283,7 +283,7 @@ aclnnStatus aclnnMoeTokenPermuteWithEpGrad(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 

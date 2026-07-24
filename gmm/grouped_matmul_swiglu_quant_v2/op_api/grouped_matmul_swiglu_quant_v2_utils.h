@@ -141,13 +141,16 @@ constexpr int64_t MXA8W4_N_ALIGN = 128LL;
 constexpr int64_t MXA8W4_N_MIN = 128LL;
 constexpr int64_t MXA8W4_SCALE_BLOCK = 128LL;
 const std::vector<DataType> X_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2};
-const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
+const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXFP4_ND = {DataType::DT_FLOAT4_E2M1};
+const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXFP4_NZ = {DataType::DT_FLOAT4_E2M1,
+                                                             DataType::DT_FLOAT4_E1M2};
 const std::vector<DataType> XW_DTYPE_SUPPORT_LIST_PERTOKEN = {
     DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
 const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E4M3FN,
                                                          DataType::DT_FLOAT8_E5M2};
-const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4 = {DataType::DT_FLOAT4_E2M1,
-                                                               DataType::DT_FLOAT4_E1M2};
+const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4_ND = {DataType::DT_FLOAT4_E2M1};
+const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXFP4_NZ = {DataType::DT_FLOAT4_E2M1,
+                                                                  DataType::DT_FLOAT4_E1M2};
 const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
 const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN_XINT8 = {
     DataType::DT_FLOAT16, DataType::DT_BF16, DataType::DT_FLOAT};
@@ -156,14 +159,43 @@ const std::vector<DataType> WEIGHT_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN_XFP8HIF8 = 
 const std::vector<DataType> X_SCALE_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
 const std::vector<DataType> X_SCALE_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
 const std::vector<DataType> GROUP_LIST_DTYPE_SUPPORT_LIST = {DataType::DT_INT64};
-const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4 = {
-    DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
+const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4_ND = {
+    DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_FLOAT4_E2M1};
+const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4_NZ = {
+    DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT4_E2M1, DataType::DT_FLOAT4_E1M2};
 const std::vector<DataType> QUANTOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {
     DataType::DT_INT8, DataType::DT_FLOAT8_E4M3FN, DataType::DT_FLOAT8_E5M2, DataType::DT_HIFLOAT8};
 const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST = {DataType::DT_FLOAT8_E8M0};
 const std::vector<DataType> QUANTSCALEOUT_DTYPE_SUPPORT_LIST_PERTOKEN = {DataType::DT_FLOAT};
 const std::vector<DataType> X_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT8_E4M3FN};
 const std::vector<DataType> WEIGHT_DTYPE_SUPPORT_LIST_MXA8W4 = {DataType::DT_FLOAT4_E2M1};
+
+inline bool IsMxfp4WeightNzFormat(const aclTensor *weight)
+{
+    return weight != nullptr && weight->GetStorageFormat() == op::Format::FORMAT_FRACTAL_NZ;
+}
+
+inline const std::vector<DataType> &GetXSupportListMxfp4(const aclTensor *weight)
+{
+    return IsMxfp4WeightNzFormat(weight) ? X_DTYPE_SUPPORT_LIST_MXFP4_NZ : X_DTYPE_SUPPORT_LIST_MXFP4_ND;
+}
+
+inline const std::vector<DataType> &GetWeightSupportListMxfp4(const aclTensor *weight)
+{
+    return IsMxfp4WeightNzFormat(weight) ? WEIGHT_DTYPE_SUPPORT_LIST_MXFP4_NZ :
+        WEIGHT_DTYPE_SUPPORT_LIST_MXFP4_ND;
+}
+
+inline const std::vector<DataType> &GetOutputSupportListMxfp4(const aclTensor *weight)
+{
+    return IsMxfp4WeightNzFormat(weight) ? QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4_NZ :
+        QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4_ND;
+}
+
+inline bool IsMxfp4Dtype(DataType dtype)
+{
+    return dtype == DataType::DT_FLOAT4_E2M1 || dtype == DataType::DT_FLOAT4_E1M2;
+}
 
 inline const char *GetGroupedMatmulSwigluQuantV2ScenarioName(const GroupedMatmulSwigluQuantParamsBase &params)
 {
@@ -174,7 +206,7 @@ inline const char *GetGroupedMatmulSwigluQuantV2ScenarioName(const GroupedMatmul
     DataType xDtype = params.x->GetDataType();
     DataType weightDtype = (*params.weight)[0]->GetDataType();
     if (params.quantMode == QUNAT_MODE_MX) {
-        if (xDtype == DataType::DT_FLOAT4_E2M1 && weightDtype == DataType::DT_FLOAT4_E2M1) {
+        if (IsMxfp4Dtype(xDtype) && IsMxfp4Dtype(weightDtype)) {
             return "MXFP4";
         }
         if ((xDtype == DataType::DT_FLOAT8_E4M3FN || xDtype == DataType::DT_FLOAT8_E5M2) &&
@@ -258,7 +290,7 @@ protected:
         return false;
     }
 
-    void CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList,
+    bool CreateContiguousTensorListForMXTypeMScale(const aclTensorList *tensorList,
                                                    std::vector<aclTensor *> &newTensorList,
                                                    aclOpExecutor *executor) const
     {
@@ -278,12 +310,17 @@ protected:
             shape.AppendDim(viewShape.GetDim(viewShape.GetDimNum() - 1));
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
+            if (tensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous MX scale failed.");
+                return false;
+            }
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
             newTensorList.emplace_back(tensor);
         }
+        return true;
     }
 
-    void CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
+    bool CreateContiguousTensorList(const aclTensorList *tensorList, std::vector<aclTensor *> &newTensorList,
                                     aclOpExecutor *executor) const
     {
         op::Shape shape;
@@ -304,10 +341,15 @@ protected:
             shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - LAST_SECOND_DIM_INDEX));
             aclTensor *tensor =
                 executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
+            if (tensor == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "CreateView for contiguous tensor failed.");
+                return false;
+            }
             tensor->SetStorageFormat(inputTensor->GetStorageFormat());
             tensor->SetStorageShape(storageShape);
             newTensorList.emplace_back(tensor);
         }
+        return true;
     }
 
     static void CheckOptionalTensorListEmpty(const aclTensorList *&tensorList)
@@ -443,18 +485,31 @@ protected:
 
         if (transposeWeightScale && transposeWeight) {
             gmmDsqParams_.transposeWeight = true;
-            if (!IsMultiTensorWeight()) {
+            if (!IsMxWeightNzMultiTensorSupported()) {
                 auto uniqueExecutor = CREATE_EXECUTOR();
                 CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
                 aclOpExecutor *executorPtr = uniqueExecutor.get();
                 CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
                 std::vector<aclTensor *> scaleTensorList;
                 std::vector<aclTensor *> weightTensorList;
-                CreateContiguousTensorListForMXTypeMScale(gmmDsqParams_.weightScale, scaleTensorList, executorPtr);
+                if (!CreateContiguousTensorListForMXTypeMScale(
+                    gmmDsqParams_.weightScale, scaleTensorList, executorPtr)) {
+                    return false;
+                }
                 gmmDsqParams_.weightScale =
                     executorPtr->AllocTensorList(scaleTensorList.data(), scaleTensorList.size());
-                CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr);
+                if (gmmDsqParams_.weightScale == nullptr) {
+                    OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weightScale failed.");
+                    return false;
+                }
+                if (!CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr)) {
+                    return false;
+                }
                 gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
+                if (gmmDsqParams_.weight == nullptr) {
+                    OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
+                    return false;
+                }
                 uniqueExecutor.ReleaseTo(executor_);
             }
         }
@@ -560,8 +615,14 @@ protected:
             aclOpExecutor *executorPtr = uniqueExecutor.get();
             CHECK_RET(executorPtr != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
             std::vector<aclTensor *> weightTensorList;
-            CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr);
+            if (!CreateContiguousTensorList(gmmDsqParams_.weight, weightTensorList, executorPtr)) {
+                return false;
+            }
             gmmDsqParams_.weight = executorPtr->AllocTensorList(weightTensorList.data(), weightTensorList.size());
+            if (gmmDsqParams_.weight == nullptr) {
+                OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "AllocTensorList for contiguous weight failed.");
+                return false;
+            }
             uniqueExecutor.ReleaseTo(executor_);
         }
         if ((gmmDsqParams_.x->GetViewShape().GetDim(0) == 1 && gmmDsqParams_.x->GetViewShape().GetDim(1) == 1) ||
@@ -681,11 +742,7 @@ protected:
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
             if (gmmDsqParams_.transposeWeight) {
                 GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightTransExpectShape, return false);
-                if (gmmDsqParams_.isMxA8W4) {
-                    GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
-                } else {
-                    GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
-                }
+                GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleTransExpectShape, return false);
             } else {
                 GMM_SWIGLU_CHECK_SHAPE(weight, "weight", weightExpectShape, return false);
                 GMM_SWIGLU_CHECK_SHAPE(weightScale, "weightScale", weightScaleExpectShape, return false);
@@ -821,13 +878,13 @@ protected:
         for (size_t i = 0; i < weightLength; i++) {
             const aclTensor *weightScale = (*gmmDsqParams_.weightScale)[i];
             const aclTensor *weight = (*gmmDsqParams_.weight)[i];
-            GMM_SWIGLU_CHECK_DTYPE(weight, "weight", WEIGHT_DTYPE_SUPPORT_LIST_MXFP4, return false);
+            GMM_SWIGLU_CHECK_DTYPE(weight, "weight", GetWeightSupportListMxfp4(weight), return false);
             GMM_SWIGLU_CHECK_DTYPE(weightScale, "weightScale", WEIGHT_SCALE_DTYPE_SUPPORT_LIST, return false);
         }
-        GMM_SWIGLU_CHECK_DTYPE(x, "x", X_DTYPE_SUPPORT_LIST_MXFP4, return false);
+        GMM_SWIGLU_CHECK_DTYPE(x, "x", GetXSupportListMxfp4((*gmmDsqParams_.weight)[0]), return false);
         GMM_SWIGLU_CHECK_DTYPE(xScale, "xScale", X_SCALE_DTYPE_SUPPORT_LIST, return false);
         GMM_SWIGLU_CHECK_DTYPE(groupList, "groupList", GROUP_LIST_DTYPE_SUPPORT_LIST, return false);
-        GMM_SWIGLU_CHECK_DTYPE(output, "output", QUANTOUT_DTYPE_SUPPORT_LIST_MXFP4, return false);
+        GMM_SWIGLU_CHECK_DTYPE(output, "output", GetOutputSupportListMxfp4((*gmmDsqParams_.weight)[0]), return false);
         GMM_SWIGLU_CHECK_DTYPE(outputScale, "outputScale", QUANTSCALEOUT_DTYPE_SUPPORT_LIST, return false);
         return true;
     }
@@ -1179,6 +1236,22 @@ protected:
         return true;
     }
 
+    bool CheckWeightFormatConsistency() const
+    {
+        const auto firstFormat = (*gmmDsqParams_.weight)[0]->GetStorageFormat();
+        size_t weightLength = gmmDsqParams_.weight->Size();
+        for (size_t i = 1; i < weightLength; ++i) {
+            const auto currentFormat = (*gmmDsqParams_.weight)[i]->GetStorageFormat();
+            if (currentFormat != firstFormat) {
+                const std::string firstFormatStr = op::ToString(firstFormat).GetString();
+                OP_LOGE_FOR_INVALID_FORMAT(apiName_.c_str(), "weight",
+                                           op::ToString(currentFormat).GetString(), firstFormatStr.c_str());
+                return false;
+            }
+        }
+        return true;
+    }
+
     bool CheckDtypeValid() override
     {
         DataType xDtype = gmmDsqParams_.x->GetDataType();
@@ -1189,38 +1262,49 @@ protected:
         const aclTensor *groupList = gmmDsqParams_.groupList;
         const aclTensor *output = gmmDsqParams_.output;
         const aclTensor *outputScale = gmmDsqParams_.outputScale;
-        if (weight->GetStorageFormat() == ge::FORMAT_ND && (weight->GetDataType() == DataType::DT_FLOAT4_E1M2 ||
-            gmmDsqParams_.x->GetDataType() == DataType::DT_FLOAT4_E1M2 ||
-            gmmDsqParams_.output->GetDataType() == DataType::DT_FLOAT4_E1M2)) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID,
-                    "ND format weight does not support weight/x/quant_dtype with DT_FLOAT4_E1M2 data type.");
+        if (!CheckWeightFormatConsistency()) {
             return false;
         }
+        if (weight->GetStorageFormat() == ge::FORMAT_ND && (weightDtype == DataType::DT_FLOAT4_E1M2 ||
+            xDtype == DataType::DT_FLOAT4_E1M2 || output->GetDataType() == DataType::DT_FLOAT4_E1M2)) {
+            OP_LOGE_FOR_INVALID_DTYPES_WITH_REASON(
+                apiName_.c_str(), "weight, x and output",
+                "weight=" + std::string(op::ToString(weightDtype).GetString()) +
+                    ", x=" + op::ToString(xDtype).GetString() +
+                    ", output=" + op::ToString(output->GetDataType()).GetString(),
+                "when the format of weight is ND, the dtypes of weight, x and output can not be DT_FLOAT4_E1M2");
+            return false;
+        }
+        const auto &xDtypeSupportListMxfp4 = GetXSupportListMxfp4(weight);
+        const auto &weightDtypeSupportListMxfp4 = GetWeightSupportListMxfp4(weight);
+        const char *dtypeSupportList =
+            IsMxfp4WeightNzFormat(weight) ?
+                "{INT8, FLOAT8_E4M3FN, FLOAT8_E5M2, HIFLOAT8, FLOAT4_E2M1, FLOAT4_E1M2}" :
+                "{INT8, FLOAT8_E4M3FN, FLOAT8_E5M2, HIFLOAT8, FLOAT4_E2M1}";
         bool xDtypeNotSupported =
             std::find(X_DTYPE_SUPPORT_LIST.begin(), X_DTYPE_SUPPORT_LIST.end(), xDtype) == X_DTYPE_SUPPORT_LIST.end();
         bool xDtypeNotSupportedMxfp4 =
-            std::find(X_DTYPE_SUPPORT_LIST_MXFP4.begin(), X_DTYPE_SUPPORT_LIST_MXFP4.end(), xDtype) ==
-            X_DTYPE_SUPPORT_LIST_MXFP4.end();
+            std::find(xDtypeSupportListMxfp4.begin(), xDtypeSupportListMxfp4.end(), xDtype) ==
+            xDtypeSupportListMxfp4.end();
         bool xDtypeNotSupportedPertoken =
             std::find(XW_DTYPE_SUPPORT_LIST_PERTOKEN.begin(), XW_DTYPE_SUPPORT_LIST_PERTOKEN.end(), xDtype) ==
             XW_DTYPE_SUPPORT_LIST_PERTOKEN.end();
         if (xDtypeNotSupported && xDtypeNotSupportedMxfp4 && xDtypeNotSupportedPertoken) {
-            OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), "x", op::ToString(xDtype).GetString(),
-                                      "{INT8, FLOAT8_E4M3FN, FLOAT8_E5M2, HIFLOAT8, FLOAT4_E2M1}");
+            OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), "x", op::ToString(xDtype).GetString(), dtypeSupportList);
             return false;
         }
         bool weightDtypeNotSupported =
             std::find(WEIGHT_DTYPE_SUPPORT_LIST.begin(), WEIGHT_DTYPE_SUPPORT_LIST.end(), weightDtype) ==
             WEIGHT_DTYPE_SUPPORT_LIST.end();
         bool weightDtypeNotSupportedMxfp4 =
-            std::find(WEIGHT_DTYPE_SUPPORT_LIST_MXFP4.begin(), WEIGHT_DTYPE_SUPPORT_LIST_MXFP4.end(), weightDtype) ==
-            WEIGHT_DTYPE_SUPPORT_LIST_MXFP4.end();
+            std::find(weightDtypeSupportListMxfp4.begin(), weightDtypeSupportListMxfp4.end(), weightDtype) ==
+            weightDtypeSupportListMxfp4.end();
         bool weightDtypeNotSupportedPertoken =
             std::find(XW_DTYPE_SUPPORT_LIST_PERTOKEN.begin(), XW_DTYPE_SUPPORT_LIST_PERTOKEN.end(), weightDtype) ==
             XW_DTYPE_SUPPORT_LIST_PERTOKEN.end();
         if (weightDtypeNotSupported && weightDtypeNotSupportedMxfp4 && weightDtypeNotSupportedPertoken) {
             OP_LOGE_FOR_INVALID_DTYPE(apiName_.c_str(), "weight", op::ToString(weightDtype).GetString(),
-                                      "{INT8, FLOAT8_E4M3FN, FLOAT8_E5M2, HIFLOAT8, FLOAT4_E2M1}");
+                                      dtypeSupportList);
             return false;
         }
         if (gmmDsqParams_.quantMode == QUNAT_MODE_MX &&
@@ -1246,7 +1330,7 @@ protected:
                     ", weight=" + op::ToString(weightDtype).GetString(),
                 "the dtypes of x and weight must be within the range quantMode 0: both INT8, both "
                 "FLOAT8_E4M3FN/FLOAT8_E5M2, or both HIFLOAT8; quantMode 2: both FLOAT8_E4M3FN/FLOAT8_E5M2 "
-                "or both FLOAT4_E2M1");
+                "or MXFP4 dtypes supported by the format of weight");
             return false;
         }
         return true;

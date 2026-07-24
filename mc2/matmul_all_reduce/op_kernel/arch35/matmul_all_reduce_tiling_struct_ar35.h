@@ -20,9 +20,9 @@
 #include "../../../3rd/mat_mul_v3/op_kernel/arch35/mat_mul_tiling_data.h"
 #include "../../../3rd/weight_quant_batch_matmul_v2/op_kernel/weight_quant_batch_matmul_v2_tiling_data.h"
 #include "../../../3rd/quant_batch_matmul_v3/op_kernel/arch35/quant_batch_matmul_v3_tiling_data.h"
-#include "../arch22/unquant_matmul_all_reduce_tiling_data.h"
-#include "../arch22/quant_matmul_all_reduce_tiling_data.h"
-#include "../arch22/weight_quant_matmul_all_reduce_tiling_data.h"
+#include "../unquant_matmul_all_reduce_tiling_data.h"
+#include "../quant_matmul_all_reduce_tiling_data.h"
+#include "../weight_quant_matmul_all_reduce_tiling_data.h"
 namespace Mc2Tiling {
 
 // 确保tilingData按8byte对齐
@@ -31,8 +31,8 @@ constexpr uint32_t STRUCT_ALIGNAS_EIGHT = 8;
 #pragma pack(push, 8)
 struct alignas(STRUCT_ALIGNAS_EIGHT) WeightQuantMatmulAllReduceA5TilingData {
     Mc2InitTiling mc2InitTiling;
- 	Mc2CcTiling mc2CcTiling;
- 	Mc2CcTiling mc2CcTilingComm;
+    Mc2CcTiling mc2CcTiling;
+    Mc2CcTiling mc2CcTilingComm;
     Mc2Tiling::RCSTiling param;
     Mc2WeightQuantBatchMatmulV2RegBaseTilingData tileRegBaseMmTiling;
     Mc2WeightQuantBatchMatmulV2RegBaseTilingData tailRegBaseMmTiling;
@@ -42,8 +42,8 @@ struct alignas(STRUCT_ALIGNAS_EIGHT) WeightQuantMatmulAllReduceA5TilingData {
 #pragma pack(push, 8)
 struct alignas(STRUCT_ALIGNAS_EIGHT) WeightQuantMatmulAllReduceA5Fp8TilingData {
     Mc2InitTiling mc2InitTiling;
- 	Mc2CcTiling mc2CcTiling;
- 	Mc2CcTiling mc2CcTilingComm;
+    Mc2CcTiling mc2CcTiling;
+    Mc2CcTiling mc2CcTilingComm;
     Mc2Tiling::RCSTiling param;
     Mc2WeightQuantBatchMatmulV2ASTilingData tileMmASTiling;
     Mc2WeightQuantBatchMatmulV2ASTilingData tailMmASTiling;
@@ -53,8 +53,8 @@ struct alignas(STRUCT_ALIGNAS_EIGHT) WeightQuantMatmulAllReduceA5Fp8TilingData {
 #pragma pack(push, 8)
 struct alignas(STRUCT_ALIGNAS_EIGHT) QuantMatmulAllReduceTilingDataA5 {
     Mc2InitTiling mc2InitTiling;
- 	Mc2CcTiling mc2CcTiling;
- 	Mc2CcTiling mc2CcTilingComm;
+    Mc2CcTiling mc2CcTiling;
+    Mc2CcTiling mc2CcTilingComm;
     Mc2Tiling::RCSTiling param;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams tilematmulTiling;
     DequantBmm::Mc2QuantBatchMatmulV3TilingDataParams tailmatmulTiling;
@@ -64,13 +64,13 @@ struct alignas(STRUCT_ALIGNAS_EIGHT) QuantMatmulAllReduceTilingDataA5 {
 #pragma pack(push, 8)
 struct alignas(STRUCT_ALIGNAS_EIGHT) MatmulAllReduce910TilingDataA5 {
     Mc2InitTiling mc2InitTiling;
- 	Mc2CcTiling mc2CcTiling;
- 	Mc2CcTiling mc2CcTilingComm;
+    Mc2CcTiling mc2CcTiling;
+    Mc2CcTiling mc2CcTilingComm;
     Mc2Tiling::RCSTiling param;
     Mc2MatMulV3TilingData mC2Mmv3TileTilingData;
     Mc2MatMulV3TilingData mC2Mmv3TailTilingData;
 };
 #pragma pack(pop)
 
-}
+} // namespace Mc2Tiling
 #endif // MATMUL_ALL_REDUCE_TILING_STRUCT_ARCH35_H

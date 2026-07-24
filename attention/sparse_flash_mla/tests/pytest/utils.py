@@ -20,7 +20,7 @@ import pytest
 import torch
 import time
 import random
- 	 
+
 str_map_dict = {
     'True': True,
     'False': False,
@@ -122,7 +122,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         for key in default_None_columns:
             if key not in df.columns:
                 df[key] = None
-        
+
         if "actlen_mode" not in df.columns:
             df["actlen_mode"] = 'full'
 
@@ -139,7 +139,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
                 "layout_q",
                 "layout_kv",
             ]
-            
+
             df["testcase_name"] = df[cols_to_combine].astype(str).agg("_".join, axis=1)
 
         # 定义必需的列名
@@ -157,7 +157,7 @@ def load_excel_test_cases(excel_file_path: str, sheetname: str):
         test_cases = []
         for _, row in df.iterrows():
             test_cases.append(row.to_dict())
-        
+
         print(test_cases)
 
         return test_cases
@@ -178,7 +178,7 @@ def save_result(result, fulfill_percent, params, result_path='./result/smla_resu
     if result_path.exists():
         # 读取现有数据
         df = pd.read_excel(result_path)
-        
+
         # 检查列名是否一致
         if set(df.columns) != set(row_data.keys()):
             print("警告：变量名与Excel列名不匹配！")
@@ -186,14 +186,14 @@ def save_result(result, fulfill_percent, params, result_path='./result/smla_resu
             print(f"变量名: {list(row_data.keys())}")
             print("请检查变量名或Excel文件")
             return False
-        
+
         # 追加新行
         new_df = pd.DataFrame([row_data])
         df = pd.concat([df, new_df], ignore_index=True)
     else:
         # 文件不存在，创建新的DataFrame
         df = pd.DataFrame([row_data])
-    
+
     # 保存到Excel
     df.to_excel(result_path, index=False)
 
@@ -208,7 +208,7 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
         list: 参数组合列表
     """
     param_combinations = []
-    
+
     for params in ENABLED_PARAMS:
         # 确保所有参数都存在，缺失的用默认值填充
         param_values = {
@@ -268,7 +268,7 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
         else:
             # 生成参数名和值列表
             values_lists = [param_values[name] for name in param_names]
-    
+
         # 生成所有组合
         for combo in itertools.product(*values_lists):
             combination = dict(zip(param_names, combo))
@@ -278,14 +278,14 @@ def generate_param_combinations(ENABLED_PARAMS, is_save_pt=False):
 def generate_cu_seqlens(seqused: list) -> list:
     """
     根据seqused生成cu_seqlens
-    
+
     参数:
         seqused: 一维list，包含n个元素，表示每个序列的长度
-        
+
     返回:
         cu_seqlens: 一维list，长度为n+1，第一个元素为0，
                     后续每个元素是seqused对应位置及之前元素的累加和
-                    
+
     示例:
         >>> seqused = [2, 2, 2, 2, 2]
         >>> cu_seqlens = generate_cu_seqlens(seqused)
@@ -294,23 +294,23 @@ def generate_cu_seqlens(seqused: list) -> list:
     """
     cu_seqlens = [0]  # 第一个元素总是0
     current_sum = 0
-    
+
     for length in seqused:
         current_sum += length
         cu_seqlens.append(current_sum)
-    
+
     return cu_seqlens
 
 def generate_seqused(cu_seqlens: list) -> list:
     """
     根据cu_seqlens生成seqused
-    
+
     参数:
         cu_seqlens: 一维list，长度为n+1，表示累积序列长度
-        
+
     返回:
         seqused: 一维list，长度为n，表示每个序列的真实长度
-        
+
     示例:
         >>> cu_seqlens = [0, 2, 4, 6, 8, 10]
         >>> generate_seqused(cu_seqlens)

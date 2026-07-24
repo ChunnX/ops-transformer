@@ -91,7 +91,7 @@ public:
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();
         this->Input("atten_mask")
-            .ParamType(REQUIRED)
+            .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_UINT8})
             .FormatList({ge::FORMAT_ND})
             .AutoContiguous();

@@ -185,7 +185,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
     vecBlock.InitS2SplitStaging(s2SplitStagingBase);
     cubeBlock.InitCubeBlock(pipe, l1BufferManager, query);
     this->ComputeConstexpr();
-    
+
     this->InitGlobalBuffer(query, oriKV, cmpKV, oriSparseIndices, cmpSparseIndices, oriBlockTable, cmpBlockTable,
         cuSeqlensQ, cuSeqlensOriKv, cuSeqlensCmpKv, sequsedQ, seqUsedOriKV, seqUsedCmpKV, cmpResidualKV,
         oriTopkLength, cmpTopkLength, sinks, workspace, tiling, tPipe); // gm设置
@@ -416,7 +416,7 @@ template <typename CubeBlockType, typename VecBlockType>
 __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::ComputeConstexpr()
 {
     // 计算轴的乘积
-    
+
     constInfo.s1S2 = constInfo.s1Size * constInfo.s2Size;
     constInfo.gS1 = constInfo.gSize * constInfo.s1Size;
     constInfo.n2G = constInfo.n2Size * constInfo.gSize;
@@ -500,7 +500,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
     uint32_t s2EndIdx = metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_S2_END_INDEX, false));
     uint32_t firstFdDataWorkspaceIdx =
         metadataGm.GetValue(GetAttrAbsIndex(aicIdx, FA_FIRST_FD_DATA_WORKSPACE_IDX_INDEX, false));
-    
+
     uint32_t s2LoopLimit = 0;
 
     if (nextGs1Idx != 0 || s2EndIdx != 0) {
@@ -640,9 +640,12 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Com
     // GS1合轴, 不切G, 只切S1
     runParam.s1oIdx = gS1Index * runParam.qSNumInOneBlock;
     if constexpr (IS_SPLIT_G) {
-        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : 64;
+        int64_t halfG = (constInfo.gSize + 1) / 2; // ceil(gSize/2), 第一个AIC多处理一行
+        runParam.goIdx = (aicIdx % 2 == 0) ? 0 : halfG;
+        runParam.gSplitSize = (aicIdx % 2 == 0) ? halfG : (constInfo.gSize - halfG);
     } else {
         runParam.goIdx = 0;
+        runParam.gSplitSize = constInfo.gSize;
     }
 }
 

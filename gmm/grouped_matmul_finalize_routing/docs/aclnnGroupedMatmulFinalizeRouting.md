@@ -19,35 +19,35 @@ GroupedMatmul和MoeFinalizeRouting的融合算子，GroupedMatmul计算后的输
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulFinalizeRouting”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnGroupedMatmulFinalizeRouting”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRoutingGetWorkspaceSize(
-  const aclTensor *x, 
-  aclTensor       *w, 
-  const aclTensor *scaleOptional, 
-  const aclTensor *biasOptional, 
-  const aclTensor *pertokenScaleOptional, 
-  const aclTensor *groupListOptional, 
-  const aclTensor *sharedInputOptional, 
-  const aclTensor *logitOptional, 
-  const aclTensor *rowIndexOptional, 
-  int64_t          dtype, 
-  float            sharedInputWeight, 
-  int64_t          sharedInputOffset, 
-  bool             transposeX, 
-  bool             transposeW, 
-  int64_t          groupListType, 
-  aclTensor       *y, 
-  uint64_t        *workspaceSize, 
+  const aclTensor *x,
+  aclTensor       *w,
+  const aclTensor *scaleOptional,
+  const aclTensor *biasOptional,
+  const aclTensor *pertokenScaleOptional,
+  const aclTensor *groupListOptional,
+  const aclTensor *sharedInputOptional,
+  const aclTensor *logitOptional,
+  const aclTensor *rowIndexOptional,
+  int64_t          dtype,
+  float            sharedInputWeight,
+  int64_t          sharedInputOffset,
+  bool             transposeX,
+  bool             transposeW,
+  int64_t          groupListType,
+  aclTensor       *y,
+  uint64_t        *workspaceSize,
   aclOpExecutor   **executor)
 ```
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulFinalizeRouting(
-  void          *workspace, 
-  uint64_t       workspaceSize, 
-  aclOpExecutor *executor, 
+  void          *workspace,
+  uint64_t       workspaceSize,
+  aclOpExecutor *executor,
   aclrtStream    stream)
 ```
 
@@ -115,36 +115,6 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
       <td>FLOAT32</td>
       <td>ND</td>
       <td>shape支持二维，维度为(e, n)，e、n和w的e、n一致</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>offsetOptional</td>
-      <td>输入</td>
-      <td>非对称量化的偏移量。</td>
-      <td>-</td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td>shape支持三维，维度为(e, 1, n)，e、n和w的e、n一致</td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>antiquantScaleOptional</td>
-      <td>输入</td>
-      <td>伪量化的缩放因子。</td>
-      <td>目前暂未启用</td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td></td>
-      <td>-</td>
-    </tr>
-    <tr>
-      <td>antiquantOffsetOptional</td>
-      <td>输入</td>
-      <td>伪量化的偏移量。</td>
-      <td>目前暂未启用</td>
-      <td>FLOAT32</td>
-      <td>ND</td>
-      <td></td>
       <td>-</td>
     </tr>
     <tr>
@@ -292,8 +262,8 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
-  
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
+
   第一段接口完成入参校验，出现以下场景时报错：
   <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
   <col style="width: 250px">
@@ -316,13 +286,13 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
     <tr>
       <td rowspan="8">ACLNN_ERR_PARAM_INVALID</td>
       <td rowspan="8">161002</td>
-      <td>x、w、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional、sharedInputWeight、sharedInputOffset、transposeX、transposeW、或y的数据类型或数据格式不在支持的范围内。</td>
+      <td>x、w、scaleOptional、biasOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional、sharedInputWeight、sharedInputOffset、transposeX、transposeW、或y的数据类型或数据格式不在支持的范围内。</td>
     </tr>
     <tr>
-      <td>x、w、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或y的shape不满足校验条件。</td>
+      <td>x、w、scaleOptional、biasOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或y的shape不满足校验条件。</td>
     </tr>
     <tr>
-      <td>x、w、scaleOptional、biasOptional、offsetOptional、antiquantScaleOptional、antiquantOffsetOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或y的shape是空tensor。</td>
+      <td>x、w、scaleOptional、biasOptional、pertokenScaleOptional、groupListOptional、sharedInputOptional、logitOptional、rowIndexOptional或y的shape是空tensor。</td>
     </tr>
     <tr>
       <td>dtype、sharedInputOffset、transposeX、transposeW、groupListType的取值范围不满足条件。</td>
@@ -369,7 +339,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
 
 - **返回值**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -378,7 +348,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
 
 - **伪量化场景支持类型**
   输入和输出支持以下数据类型组合：
-  
+
   | x    | w    | scale | bias    | pertokenScale | groupList | sharedInput | logit   | rowIndex | out     |
   |------|------|-------|---------|---------------|-----------|-------------|---------|----------|---------|
   | INT8 | INT4 | INT64 | FLOAT32 | FLOAT32       | INT64     | BFLOAT16    | FLOAT32 | INT64    | FLOAT32 |
@@ -388,7 +358,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
   ```Cpp
   #include <iostream>
@@ -518,7 +488,7 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
       bool transposeX = false;
       bool transposeW = false;
       int64_t groupListType = 1;
-      
+
       std::vector<int64_t> xShape = {m, k};
       std::vector<int64_t> wShape = {e, k, n / 8};
       std::vector<int64_t> scaleShape = {e, 1, n};
@@ -682,4 +652,3 @@ aclnnStatus aclnnGroupedMatmulFinalizeRouting(
       return 0;
   }
   ```
-  

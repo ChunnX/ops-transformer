@@ -48,7 +48,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnMoeTokenUnpermuteGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteGrad”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnMoeTokenUnpermuteGradGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnMoeTokenUnpermuteGrad”接口执行计算。
 
 ```c++
 aclnnStatus aclnnMoeTokenUnpermuteGradGetWorkspaceSize(
@@ -203,7 +203,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口完成入参校验，出现以下场景时报错：
 
@@ -251,7 +251,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 
 - **返回值**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -272,7 +272,7 @@ aclnnStatus aclnnMoeTokenUnpermuteGrad(
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 #include <iostream>
@@ -358,7 +358,7 @@ int CreateAclTensor(const std::vector<T> &hostData,
   // 调用aclCreateTensor接口创建aclTensor
   *tensor = aclCreateTensor(shape.data(), shape.size(), dataType,
                             strides.data(), 0, aclFormat::ACL_FORMAT_ND,
-                            *deviceAddr,0,nullptr);
+                            shape.data(), shape.size(), *deviceAddr);
   return 0;
 }
 
@@ -401,23 +401,23 @@ int main() {
   std::vector<float> probsGradHostData = {0, 0, 0};
 
   ret = CreateAclTensor(permutedTokensHostData, permutedTokensShape,
-                        &permutedTokensDeviceAddr, aclDataType::ACL FLOAT,
+                        &permutedTokensDeviceAddr, aclDataType::ACL_FLOAT,
                         &permutedTokens);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(unpermutedTokensGradHostData, unpermutedTokensGradShape, &unpermutedTokensGradDeviceAddr,
-                      aclDataType::ACL_BF16, &unpermutedTokensGrad);
+                      aclDataType::ACL_FLOAT, &unpermutedTokensGrad);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(probsHostData, probsShape, &probsDeviceAddr,
-                      aclDataType::ACL_BF16, &probs);
+                      aclDataType::ACL_FLOAT, &probs);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
   ret = CreateAclTensor(sortedIndicesHostData, sortedIndicesShape, &sortedIndicesDeviceAddr,
                       aclDataType::ACL_INT32, &sortedIndices);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
-  ret = CreateAclTensor(permutedTokensGradHostData, permutedTokensGradShape, &permutedTokensGradDeviceAddr, aclDataType::ACL_BF16,
+  ret = CreateAclTensor(permutedTokensGradHostData, permutedTokensGradShape, &permutedTokensGradDeviceAddr, aclDataType::ACL_FLOAT,
                         &permutedTokensGrad);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
-  ret = CreateAclTensor(probsGradHostData, probsGradShape, &probsGradDeviceAddr, aclDataType::ACL_BF16,
+  ret = CreateAclTensor(probsGradHostData, probsGradShape, &probsGradDeviceAddr, aclDataType::ACL_FLOAT,
                         &probsGrad);
   CHECK_RET(ret == ACL_SUCCESS, return ret);
 
@@ -448,7 +448,7 @@ int main() {
             LOG_PRINT("aclnnMoeTokenUnpermuteGrad failed. ERROR: %d\n", ret);
             return ret);
 
-  // 4.（固定写法）同步等待任务执行结束
+  // 4. （固定写法）同步等待任务执行结束
   ret = aclrtSynchronizeStream(stream);
   CHECK_RET(ret == ACL_SUCCESS,
             LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);

@@ -18,8 +18,7 @@ using namespace GroupedMatmul;
 using namespace optiling::GmmConstant;
 using GMMQuantBasicApiTilingData = GroupedMatmulTilingData::GMMQuantBasicApiTilingData;
 namespace optiling {
-GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context)
-    : GroupedQmmTiling(context)
+GroupedQmmBasicApiTiling::GroupedQmmBasicApiTiling(gert::TilingContext *context) : GroupedQmmTiling(context)
 {
     Reset();
 }
@@ -30,10 +29,8 @@ bool GroupedQmmBasicApiTiling::IsCapable()
     if (!IsMicroScaling()) {
         return false;
     }
-    const bool isMxFp8 =
-        inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
-    const bool isMxFp4 =
-        inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2;
+    const bool isMxFp8 = inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
+    const bool isMxFp4 = inputParams_.aDtype == ge::DT_FLOAT4_E2M1 || inputParams_.aDtype == ge::DT_FLOAT4_E1M2;
     return isMxFp8 || isMxFp4;
 }
 

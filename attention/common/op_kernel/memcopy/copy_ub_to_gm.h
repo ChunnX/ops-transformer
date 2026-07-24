@@ -22,11 +22,11 @@
 #include "../const_def.h"
 // ----------------------------------------------CopyAttenOutUbToGm--------------------------------
 template <typename OUT_T, GmFormat GM_FORMAT, UbFormat UB_FORMAT>
-class CopyAttenOutUbToGm
-{
+class CopyAttenOutUbToGm {
 public:
     __aicore__ inline void SafeStrideCopy(GlobalTensor<OUT_T> gmTensor, const LocalTensor<OUT_T> ubTensor,
-                                            uint32_t blockCount, uint32_t blockLen, uint32_t srcStride, uint64_t dstStride)
+                                          uint32_t blockCount, uint32_t blockLen, uint32_t srcStride,
+                                          uint64_t dstStride)
     {
         DataCopyExtParams dataCopyParams;
         // B*S过大时，跳写参数dataCopyParams.dstStride(uint32_t)计算结果将溢出，使用for循环拷贝代替
@@ -50,8 +50,7 @@ public:
         }
     }
     template <typename FaGmTensorType, bool ROW_PAD = true>
-    __aicore__ inline void operator()(FaGmTensorType &dstTensor,
-                                      FaUbTensor<OUT_T, ROW_PAD> &srcTensor,
+    __aicore__ inline void operator()(FaGmTensorType &dstTensor, FaUbTensor<OUT_T, ROW_PAD> &srcTensor,
                                       GmCoord &gmCoord)
     {
         if constexpr (UB_FORMAT == UbFormat::GS1) {
@@ -60,7 +59,7 @@ public:
             if constexpr (GmLayoutParams<GM_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
                 s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
             } else {
-                if( offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0 ) {
+                if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
                     s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
                 } else {
                     s1Size = offsetCalculator.GetDimS1();
@@ -88,7 +87,7 @@ public:
                 (srcTensor.colCount - gmCoord.dDealSize) / (AttentionCommon::BYTE_BLOCK / sizeof(OUT_T));
             uint64_t dstStride = (offsetCalculator.GetStrideS1() - gmCoord.dDealSize) * sizeof(OUT_T); // 单位为Byte
             SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
-                            dstStride);
+                           dstStride);
 
             if (gIdxEnd - gIdxStart >= 1) {
                 // 处理中间块
@@ -97,7 +96,7 @@ public:
                 for (uint32_t i = gIdxStart + 1; i < gIdxEnd; i++) {
                     blockCount = s1Size;
                     SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                    srcStride, dstStride);
+                                   srcStride, dstStride);
                     gmOffset += offsetCalculator.GetStrideG();
                     ubOffset += s1Size * srcTensor.colCount;
                 }
@@ -106,7 +105,7 @@ public:
                 if (s1IdxEnd > 0) {
                     blockCount = s1IdxEnd;
                     SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                    srcStride, dstStride);
+                                   srcStride, dstStride);
                 }
             }
         } else if constexpr (UB_FORMAT == UbFormat::S1G) {
@@ -118,7 +117,8 @@ public:
 
             uint64_t attenOutGmbaseOffset = offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, 0, s1IdxStart, 0);
             uint32_t blockLen = gmCoord.dDealSize * sizeof(OUT_T);
-            uint32_t srcStride = (srcTensor.colCount - gmCoord.dDealSize) / (AttentionCommon::BYTE_BLOCK / sizeof(OUT_T));
+            uint32_t srcStride =
+                (srcTensor.colCount - gmCoord.dDealSize) / (AttentionCommon::BYTE_BLOCK / sizeof(OUT_T));
             uint64_t dstStride = (offsetCalculator.GetStrideG() - gmCoord.dDealSize) * sizeof(OUT_T); // 单位为Byte
 
             uint32_t headSize = 0;
@@ -132,22 +132,23 @@ public:
             uint32_t blockCount = headSize;
 
             SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen, srcStride,
-                            dstStride);
+                           dstStride);
 
             if (s1IdxEnd - s1IdxStart >= 1) {
                 // 处理中间块
                 gmOffset = attenOutGmbaseOffset + offsetCalculator.GetStrideS1();
                 ubOffset = ((uint64_t)headSize) * ((uint64_t)srcTensor.colCount);
-                if constexpr((!ROW_PAD) && (GM_FORMAT == GmFormat::BSNGD) || (GM_FORMAT == GmFormat::TNGD)) {
+                if constexpr ((!ROW_PAD) && (GM_FORMAT == GmFormat::BSNGD) || (GM_FORMAT == GmFormat::TNGD)) {
                     if (s1IdxEnd > 1 + s1IdxStart) {
-                        uint32_t blockCountTmp = s1IdxEnd - s1IdxStart -1;
+                        uint32_t blockCountTmp = s1IdxEnd - s1IdxStart - 1;
                         uint32_t blockLenTmp = gmCoord.dDealSize * sizeof(OUT_T) * offsetCalculator.GetDimG();
                         uint32_t srcStrideTmp = 0;
-                        uint64_t dstStrideTmp = offsetCalculator.GetStrideS1() * sizeof(OUT_T) - blockLenTmp; // 单位为Byte
+                        uint64_t dstStrideTmp =
+                            offsetCalculator.GetStrideS1() * sizeof(OUT_T) - blockLenTmp; // 单位为Byte
 
                         // blockCount = offsetCalculator.GetDimG() * (s1IdxEnd - s1IdxStart -1);
-                        SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCountTmp, blockLenTmp,
-                                        srcStrideTmp, dstStrideTmp);
+                        SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCountTmp,
+                                       blockLenTmp, srcStrideTmp, dstStrideTmp);
                         gmOffset += offsetCalculator.GetStrideS1() * blockCountTmp;
                         ubOffset += offsetCalculator.GetDimG() * srcTensor.colCount * blockCountTmp;
                     }
@@ -155,7 +156,7 @@ public:
                     for (uint32_t i = s1IdxStart + 1; i < s1IdxEnd; i++) {
                         blockCount = offsetCalculator.GetDimG();
                         SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                        srcStride, dstStride);
+                                       srcStride, dstStride);
                         gmOffset += offsetCalculator.GetStrideS1();
                         ubOffset += offsetCalculator.GetDimG() * srcTensor.colCount;
                     }
@@ -164,7 +165,7 @@ public:
                 if (gIdxEnd > 0) {
                     blockCount = gIdxEnd;
                     SafeStrideCopy(dstTensor.gmTensor[gmOffset], srcTensor.tensor[ubOffset], blockCount, blockLen,
-                                    srcStride, dstStride);
+                                   srcStride, dstStride);
                 }
             }
         }

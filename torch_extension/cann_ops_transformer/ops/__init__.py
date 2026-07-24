@@ -11,14 +11,18 @@ from .sparse_flash_mla_grad import sparse_flash_mla_grad, sparse_flash_mla_grad_
 from .moe_token_permute import moe_token_permute
 from .mega_moe import (
     get_symm_buffer_for_mega_moe,
-    mega_moe,
-    get_mega_moe_ccl_buffer_size,
+    mega_moe
 )
 from .deep_ep import MoeDistributeBuffer
 from .flash_attn import flash_attn, flash_attn_metadata
+from .quant_flash_attn import quant_flash_attn, quant_flash_attn_metadata
 from .mixed_quant_sparse_flash_mla import (
     mixed_quant_sparse_flash_mla,
     mixed_quant_sparse_flash_mla_metadata,
+)
+from .quant_sparse_flash_mla import (
+    quant_sparse_flash_mla,
+    quant_sparse_flash_mla_metadata,
 )
 from .scatter_pa_kv_cache_with_k_scale import scatter_pa_kv_cache_with_k_scale
 from .sparse_flash_mla import sparse_flash_mla, sparse_flash_mla_metadata
@@ -33,6 +37,7 @@ from .quant_lightning_indexer import (
 )
 from .mhc_post import mhc_post
 from .mhc_pre_sinkhorn import mhc_pre_sinkhorn
+from .mhc_pre_sinkhorn_backward import mhc_pre_sinkhorn_backward
 from .kv_compress_epilog import kv_compress_epilog
 from .indexer_quant_cache import indexer_quant_cache
 from .compressor import compressor
