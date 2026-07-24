@@ -1150,77 +1150,77 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     - 各卡的通信域缓存区大小应当一致。`ccl_buffer_size` 为 HBM 上分配的 CCL 通信缓冲区**总大小**（Bytes），包含等大小的 **windowIn** 和 **windowOut** 两块空间，其中
         - Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
 
-        $$ccl\_buffer\_size\ /\ 2 \ge \mathrm{offset\_token\_per\_expert} + \mathrm{offset\_tensor} + \mathrm{offset\_flag} + 10\,\mathrm{MB}$$
+        $$ccl\_buffer\_size\ /\ 2 \ge \mathrm{offsetTokenPerExpert} + \mathrm{offsetTensor} + \mathrm{offsetFlag} + 10\,\mathrm{MB}$$
         - Ascend 950PR/Ascend 950DT校验时以单个空间 `ccl_buffer_size ` 为准，需满足：
 
-        $$ccl\_buffer\_size \ge \mathrm{peermem\_data\_offset} + \mathrm{mask\_recv\_size} + \mathrm{quant\_token\_scale\_size} + \mathrm{combine\_out}$$
+        $$ccl\_buffer\_size \ge \mathrm{peermemDataOffset} + \mathrm{maskRecvSize} + \mathrm{quantTokenScaleSize} + \mathrm{combineOut}$$
         **Atlas A2 训练系列产品/Atlas A2 推理系列产品：**
 
         ```
-        offset_token_per_expert = ep_world_size × CeilAlign(ep_world_size × max_expert_per_rank + 1, 128) × 4B
+        offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
 
         // winIn
-        offset_a_after_dispatch = max_recv_token_num × (quant ? hidden + 512 : hidden × 2)
-        offset_d                = num_max_tokens_per_rank × num_topk × hidden × 2B
-        win_in_tensor_size      = offset_a_after_dispatch + offset_d
+        offsetAAfterDispatch = max_recv_token_num × (quant ? hidden + 512 : hidden × 2)
+        offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2B
+        winInTensorSize      = offsetAAfterDispatch + offsetD
 
         // winOut
-        offset_a                = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
-        offset_c                = max_recv_token_num × hidden × 2B
-        win_out_tensor_size     = offset_a + offset_c
+        offsetA              = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
+        offsetC              = max_recv_token_num × hidden × 2B
+        winOutTensorSize     = offsetA + offsetC
 
-        offset_tensor           = max(win_in_tensor_size, win_out_tensor_size)
-                                + (quant ? max_recv_token_num × 4B : 0)
+        offsetTensor         = max(winInTensorSize, winOutTensorSize)
+                            + (quant ? max_recv_token_num × 4B : 0)
 
         // sync flags
-        offset_flag             = ep_world_size × 512B
-                                + ep_world_size × max_expert_per_rank × 64B
-                                + ep_world_size × 64B
+        offsetFlag           = ep_world_size × 512B
+                            + ep_world_size × maxExpertPerRank × 64B
+                            + ep_world_size × 64B
         ```
 
         **Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
 
         ```
-        offset_token_per_expert = ep_world_size × CeilAlign(ep_world_size × max_expert_per_rank + 1, 128) × 4B
+        offsetTokenPerExpert = ep_world_size × CeilAlign(ep_world_size × maxExpertPerRank + 1, 128) × 4B
 
         // winIn（A3 仅 winIn，无 winOut）
-        offset_a_after_dispatch = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
-        offset_d                = num_max_tokens_per_rank × num_topk × hidden × 2B
-        win_in_tensor_size      = offset_a_after_dispatch + offset_d
+        offsetAAfterDispatch = num_max_tokens_per_rank × num_topk × (quant ? hidden + 512 : hidden × 2)
+        offsetD              = num_max_tokens_per_rank × num_topk × hidden × 2B
+        winInTensorSize      = offsetAAfterDispatch + offsetD
 
-        offset_tensor           = win_in_tensor_size
-                                + (quant ? num_max_tokens_per_rank × num_topk × 4B : 0)
+        offsetTensor         = winInTensorSize
+                            + (quant ? num_max_tokens_per_rank × num_topk × 4B : 0)
 
         // sync flags（A3 仅 CrossRankSync）
-        offset_flag             = ep_world_size × 512B
+        offsetFlag           = ep_world_size × 512B
         ```
 
         **Ascend 950PR/Ascend 950DT：**
         
         ```
-        expert_per_rank = num_experts / ep_world_size;
+        expertPerRank = moeExpertNum / epWorldSize;
 
         // 全卡软同步使用 60KB
-        peermem_data_offset = 60LL * 1024LL;
+        peermemDataOffset = 60LL * 1024LL;
 
         // mask_recv_size
-        compare_count = CeilAlign(num_max_tokens_per_rank * num_topk * 4, 256) / 4;
-        mask_align_size = CeilAlign(compare_count / 8, 32);
-        mask_slot_size = mask_align_size + 32;
-        mask_recv_size = CeilAlign(expert_per_rank * ep_world_size * mask_slot_size, 512);
+        compareCount = CeilAlign(numMaxTokensPerRank * numTopk * 4, 256) / 4;
+        maskAlignSize = CeilAlign(compareCount / 8, 32);
+        maskSlotSize = maskAlignSize + 32;
+        maskRecvSize = CeilAlign(expertPerRank * epWorldSize * maskSlotSize, 512);
 
         // quant_token_scale_size
-        mx_scale_num = (hidden + 31) / 32;
-        data_bytes = CeilAlign(hidden, 256);
-        token_bytes = CeilAlign(data_bytes + mx_scale_num, 32);
-        quant_token_scale_size = CeilAlign(num_max_tokens_per_rank * token_bytes, 512);
+        mxScaleNum = (hidden + 31) / 32;
+        dataBytes = CeilAlign(hidden, 256);
+        tokenBytes = CeilAlign(dataBytes + mxScaleNum, 32);
+        quantTokenScaleSize = CeilAlign(numMaxTokensPerRank * tokenBytes, 512);
 
         // combine_send_size
-        combine_out = CeilAlign(num_max_tokens_per_rank * hidden * num_topk * 2, 512);
+        combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
 
-        total_bytes = peermem_data_offset + mask_recv_size + quant_token_scale_size + combine_out;
+        totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
         ```
-        其中 `ep_world_size` 即通信域大小，$max\_expert\_per\_rank$ 表示每张卡上可能专家数的最大值，$\mathrm{quant}$ 表示是否开启 dispatch 量化（`dispatch_quant_mode = 2`）。预留空间 10 MB 为内部元数据对齐与安全余量。
+        其中 `ep_world_size` 即通信域大小，$maxExpertPerRank$ 表示每张卡上可能专家数的最大值，$\mathrm{quant}$ 表示是否开启 dispatch 量化（`dispatch_quant_mode = 2`）。预留空间 10 MB 为内部元数据对齐与安全余量。
     - 通信域各节点的驱动版本应当相同。
     - Atlas A2 训练系列产品/Atlas A2 推理系列产品：多机通信域要求交换机组网，不支持双机直连组网。
     - Atlas A3 训练系列产品/Atlas A3 推理系列产品：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
