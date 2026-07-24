@@ -38,16 +38,16 @@ class StemOamPrepVarlenQOpBuilder(OpBuilder):
             stemBlockSize=128,
             stemStride=16,
         ):
-            S = stemStride
-            qflat_dim = S * 128
+            stem_stride = stemStride
+            qflat_dim = stem_stride * 128
             batch = len(q_seq_lens)
-            H_q = q.size(1)
+            h_q = q.size(1)
             max_q_len = max(q_seq_lens)
-            B = stemBlockSize
-            max_q_padded = ((max_q_len + B - 1) // B) * B
-            max_q_b = max_q_padded // B
+            stem_block_size = stemBlockSize
+            max_q_padded = ((max_q_len + stem_block_size - 1) // stem_block_size) * stem_block_size
+            max_q_b = max_q_padded // stem_block_size
             return torch.empty(
-                batch, H_q, max_q_b, qflat_dim, dtype=torch.bfloat16, device="meta"
+                batch, h_q, max_q_b, qflat_dim, dtype=torch.bfloat16, device="meta"
             )
 
 
