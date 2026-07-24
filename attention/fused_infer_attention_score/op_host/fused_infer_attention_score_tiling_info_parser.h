@@ -67,6 +67,8 @@ public:
     void GetKvStorageMode();
     void GetQuantMode();
     ge::graphStatus GetKvLayout();
+    void GetKvIsContiguous();
+    ge::graphStatus GetKvStrideValues();
     void SetFiaShape();
     ge::graphStatus GetMaxActualSeq(const gert::Tensor *actualSeqLensTensor, FiaLayout layout,
                                     int64_t &maxActualSeqLen);
@@ -140,10 +142,24 @@ public:
     // 增加strides参数，预计5个，k/v/krope/kscale/vscale
     const gert::Stride *keyStrides_ = nullptr;
     const gert::Stride *valueStrides_ = nullptr;
+    gert::Stride keyContiguousStrides_;
+    gert::Stride valueContiguousStrides_;
+    gert::Stride keyRopeContiguousStrides_;
     const gert::Stride *kRopeStrides_ = nullptr;
+    gert::Stride keyScaleContiguousStrides_;
+    gert::Stride valueScaleContiguousStrides_;
     const gert::Stride *kScaleStrides_ = nullptr;
     const gert::Stride *vScaleStrides_ = nullptr;
-    bool isTensorV1_ = false;
+    bool hasViewStride_ = true;
+    uint64_t keyBnStride_ = 0;
+    uint64_t keyN2Stride_ = 0;
+    uint64_t valueBnStride_ = 0;
+    uint64_t valueN2Stride_ = 0;
+    uint64_t kRopeBnStride_ = 0;
+    uint64_t kRopeN2Stride_ = 0;
+    int32_t keyNonContigDim_ = -1;
+    int32_t valueNonContigDim_ = -1;
+    int32_t keyRopeNonContigDim_ = -1;
     KvStorageMode kvStorageMode_ = KvStorageMode::BATCH_CONTINUOUS;
     RopeMode ropeMode_ = RopeMode::NO_ROPE;
     MlaMode mlaMode_ = MlaMode::NO_MLA;

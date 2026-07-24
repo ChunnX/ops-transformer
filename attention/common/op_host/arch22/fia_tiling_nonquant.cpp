@@ -497,6 +497,14 @@ void FiaTilingNonQuant::FillTilingBaseParams()
     tilingData_.baseParams.set_l2CacheOffFlag(l2CacheOffFlag_);
     tilingData_.baseParams.set_isLegacyIfa(fiaInfo_->isLegacyIfa);
     tilingData_.baseParams.set_isEmptyBatchOverHalf(GetIsEmptyBatchOverHalf());
+    tilingData_.kvStrideParams.set_keyBnStride(0);
+    tilingData_.kvStrideParams.set_valueBnStride(0);
+    tilingData_.kvStrideParams.set_keyRopeBnStride(0);
+    if (fiaInfo_->pageAttentionFlag && fiaInfo_->hasViewStride) {
+        tilingData_.kvStrideParams.set_keyBnStride(fiaInfo_->keyBnStride);
+        tilingData_.kvStrideParams.set_valueBnStride(fiaInfo_->valueBnStride);
+        tilingData_.kvStrideParams.set_keyRopeBnStride(fiaInfo_->kRopeBnStride);
+    }
 }
  
 void FiaTilingNonQuant::FillTilingPageAttenParams()

@@ -25,6 +25,12 @@ aclnnStatus FakeArray(const aclIntArray *inArray, aclTensor *&outArray);
 void FusedInferAttentionScoreProcessSoftmaxLse(bool softmaxLseFlag, const aclTensor *softmaxLse,
                                                const aclTensor *&tempTensor, const aclTensor *&placeHolder);
 
+aclnnStatus CheckKVContiguous(const aclTensorList *key, const aclTensorList *value);
+aclnnStatus CheckKVRopeContiguous(const aclTensorList *key, const aclTensorList *value,
+                                  const aclTensor *keyRope);
+
+// TensorV2 is required to retain view strides instead of materializing TensorV1 inputs.
+bool NnopbaseSupportTensorV2() __attribute__((weak));
 
 #ifdef __cplusplus
 }
