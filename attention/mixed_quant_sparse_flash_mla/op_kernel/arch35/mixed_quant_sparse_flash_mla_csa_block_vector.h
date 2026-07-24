@@ -256,13 +256,6 @@ private:
     __aicore__ inline void SoftmaxInitBuffer();
     __aicore__ inline void GetExtremeValue(T &negativeScalar);
     __aicore__ inline void InitSinksBuffer(ConstInfo &constInfo);
-    __aicore__ inline void StageBroadcastLse(const AttentionCommon::S2SplitFdStagingLayout &layout,
-        __gm__ uint8_t *stagingBase, int64_t workspaceIdx, int64_t stagingMOffset, int64_t validRows,
-        LocalTensor<float> &lseBroadcastUb, LocalTensor<float> &sumBroadcastUb);
-    template <typename VEC2_RES_T>
-    __aicore__ inline void StageVec2PartialOAndWait(const AttentionCommon::S2SplitFdStagingLayout &layout,
-        GlobalTensor<float> &stagingOut, int64_t workspaceIdx, int64_t stagingMOffset,
-        int64_t validRows, int64_t dValid, LocalTensor<VEC2_RES_T> &vec2ResUb);
     __aicore__ inline void ReduceIntraBlockAndStage(RunInfo &runInfo, ConstInfo &constInfo,
         LocalTensor<T> &vec2ResUb, LocalTensor<T> &partialTmpUb);
 
@@ -1297,44 +1290,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec1(
 }
 
 TEMPLATES_DEF_NO_DEFAULT
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::StageBroadcastLse(
-    const AttentionCommon::S2SplitFdStagingLayout &layout, __gm__ uint8_t *stagingBase,
-    int64_t workspaceIdx, int64_t stagingMOffset, int64_t validRows,
-    LocalTensor<float> &lseBroadcastUb, LocalTensor<float> &sumBroadcastUb)
-{
-    __gm__ uint8_t *maxRegion = layout.MaxRegion(stagingBase);
-    __gm__ uint8_t *sumRegion = layout.SumRegion(stagingBase);
-    GlobalTensor<float> maxGm;
-    maxGm.SetGlobalBuffer((__gm__ float *)maxRegion);
-    GlobalTensor<float> sumGm;
-    sumGm.SetGlobalBuffer((__gm__ float *)sumRegion);
-    int64_t maxSumBytes = layout.StagingMaxSumBytes();
-    int64_t floatOffset = workspaceIdx * (maxSumBytes / sizeof(float)) +
-        stagingMOffset * layout.broadcastElems;
-    DataCopyExtParams lseOutParams{static_cast<uint16_t>(validRows),
-        static_cast<uint32_t>(layout.broadcastElems * sizeof(float)), 0, 0, 0};
-    SetFlag<HardEvent::V_MTE3>(vToMte3Id);
-    WaitFlag<HardEvent::V_MTE3>(vToMte3Id);
-    DataCopyPad(sumGm[floatOffset], sumBroadcastUb, lseOutParams);
-    DataCopyPad(maxGm[floatOffset], lseBroadcastUb, lseOutParams);
-    SetFlag<HardEvent::MTE3_V>(mte3ToVId);
-    WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
-template <typename VEC2_RES_T>
-__aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::StageVec2PartialOAndWait(
-    const AttentionCommon::S2SplitFdStagingLayout &layout, GlobalTensor<float> &stagingOut,
-    int64_t workspaceIdx, int64_t stagingMOffset, int64_t validRows, int64_t dValid,
-    LocalTensor<VEC2_RES_T> &vec2ResUb)
-{
-    AttentionCommon::StageVec2PartialO<VEC2_RES_T>(layout, stagingOut, workspaceIdx,
-        stagingMOffset, validRows, dValid, vec2ResUb, vToMte3Id, mte3ToVId);
-    SetFlag<HardEvent::MTE3_V>(mte3ToVId);
-    WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
-}
-
-TEMPLATES_DEF_NO_DEFAULT
 __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
     RunInfo &runInfo, ConstInfo &constInfo, LocalTensor<T> &vec2ResUb, LocalTensor<T> &partialTmpUb)
 {
@@ -1350,18 +1305,6 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
     uint32_t crossWorkspaceIdx = static_cast<uint32_t>(
         runInfo.firstFdDataWorkspaceIdx + runInfo.s2SplitIdx - runInfo.reduceBlockId);
     int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-    int64_t attenOutElems = intraLayout.StagingAttenOutElems();
-    int64_t maxSumBytes = intraLayout.StagingMaxSumBytes();
-    __gm__ uint8_t *maxRegion = intraLayout.MaxRegion(intraCoreCombineBase);
-    __gm__ uint8_t *sumRegion = intraLayout.SumRegion(intraCoreCombineBase);
-    GlobalTensor<float> prevMaxGm;
-    prevMaxGm.SetGlobalBuffer((__gm__ float *)(maxRegion + intraWorkspaceIdx * maxSumBytes));
-    GlobalTensor<float> prevSumGm;
-    prevSumGm.SetGlobalBuffer((__gm__ float *)(sumRegion + intraWorkspaceIdx * maxSumBytes));
-    GlobalTensor<float> prevOutGm;
-    prevOutGm.SetGlobalBuffer((__gm__ float *)(intraLayout.AttenOutRegion(intraCoreCombineBase) +
-        intraWorkspaceIdx * attenOutElems * sizeof(float)));
-
     LocalTensor<float> tmpUb = this->dequantScaleBuff.template Get<float>();
     LocalTensor<float> blockMaxUb = tmpUb;
     LocalTensor<float> blockSumUb = tmpUb[256];
@@ -1380,57 +1323,33 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ReduceIntraBlockAndStage(
         if (startRow + dealRowCount > runInfo.vec2MRealSize) {
             dealRowCount = runInfo.vec2MRealSize - startRow;
         }
-        int64_t dealRowsElems = dealRowCount * intraLayout.broadcastElems;
-        int64_t brcbRepeat = (dealRowCount + intraLayout.broadcastElems - 1) / intraLayout.broadcastElems;
-        Brcb(blockMaxUb[dealRowsElems], maxUb[startRow], brcbRepeat, {1, static_cast<uint16_t>(intraLayout.broadcastElems)});
-        Brcb(blockSumUb[dealRowsElems], sumUb[startRow], brcbRepeat, {1, static_cast<uint16_t>(intraLayout.broadcastElems)});
-
-        WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
-        int64_t lseSrcOffset = (stagingMOffset + startRow) * intraLayout.broadcastElems;
-        DataCopy(blockMaxUb, prevMaxGm[lseSrcOffset], dealRowsElems);
-        DataCopy(blockSumUb, prevSumGm[lseSrcOffset], dealRowsElems);
-        SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
-        WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
-
-        WaitFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
-        int64_t outSrcOffset = (stagingMOffset + startRow) * static_cast<int64_t>(constInfo.dSizeV);
-        DataCopyExtParams inParams;
-        inParams.blockLen = static_cast<uint32_t>(constInfo.dSizeV * sizeof(float));
-        inParams.srcStride = 0;
-        inParams.dstStride = static_cast<uint16_t>((dTemplateAlign64 - constInfo.dSizeV) /
-            (DATABLOCK_BYTES / sizeof(float)));
-        inParams.blockCount = static_cast<uint16_t>(dealRowCount);
-        DataCopyPadExtParams<float> padParams{true, 0,
-            static_cast<uint8_t>((dTemplateAlign64 - constInfo.dSizeV) % (DATABLOCK_BYTES / sizeof(float))), 0};
-        DataCopyPad(partialTmpUb, prevOutGm[outSrcOffset], inParams, padParams);
-        SetFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
-        WaitFlag<HardEvent::MTE2_V>(mte2ToVV0Id[0]);
         LocalTensor<T> chunkCurrent = vec2ResUb[startRow * dTemplateAlign64];
-        DataCopy(partialTmpUb[dealRowCount * dTemplateAlign64], chunkCurrent,
-            dealRowCount * dTemplateAlign64);
-        PipeBarrier<PIPE_V>();
+        LocalTensor<float> chunkMaxUb = maxUb[startRow];
+        LocalTensor<float> chunkSumUb = sumUb[startRow];
+        AttentionCommon::MergeStagedAndCurrentChunk<T, dTemplateAlign64>(intraLayout,
+            intraCoreCombineBase, intraWorkspaceIdx, stagingMOffset + startRow,
+            dealRowCount, static_cast<int64_t>(constInfo.dSizeV), chunkMaxUb, chunkSumUb,
+            chunkCurrent, blockMaxUb, blockSumUb, partialTmpUb, lseBroadcastUb, sumBroadcastUb,
+            vToMte2V0Id[0], vToMte2V0Id[1], mte2ToVV0Id[0]);
 
-        AttentionCommon::ReduceUb<T, dTemplateAlign64>(intraLayout, dealRowCount, chunkCurrent,
-            lseBroadcastUb, blockMaxUb, blockSumUb, partialTmpUb, 2, true);
-        Duplicate(sumBroadcastUb, static_cast<float>(1.0), dealRowsElems);
-        PipeBarrier<PIPE_V>();
-        SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[1]);
-
-        StageBroadcastLse(intraLayout, intraCoreCombineBase, intraWorkspaceIdx,
-            stagingMOffset + startRow, dealRowCount, lseBroadcastUb, sumBroadcastUb);
+        AttentionCommon::StageBroadcastMaxSum(intraLayout, intraCoreCombineBase, intraWorkspaceIdx,
+            stagingMOffset + startRow, dealRowCount, lseBroadcastUb, sumBroadcastUb,
+            vToMte3Id, mte3ToVId);
         if (runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
-            StageBroadcastLse(crossLayout, crossCoreCombineBase, crossWorkspaceIdx,
-                stagingMOffset + startRow, dealRowCount, lseBroadcastUb, sumBroadcastUb);
+            AttentionCommon::StageBroadcastMaxSum(crossLayout, crossCoreCombineBase, crossWorkspaceIdx,
+                stagingMOffset + startRow, dealRowCount, lseBroadcastUb, sumBroadcastUb,
+                vToMte3Id, mte3ToVId);
         }
-        SetFlag<HardEvent::V_MTE2>(vToMte2V0Id[0]);
         startRow += intraLayout.chunkRows;
     }
 
-    StageVec2PartialOAndWait<T>(intraLayout, intraCoreCombineGm, intraWorkspaceIdx,
-        stagingMOffset, runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb);
+    AttentionCommon::StageVec2PartialOAndWait<T>(intraLayout, intraCoreCombineGm, intraWorkspaceIdx,
+        stagingMOffset, runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
+        vToMte3Id, mte3ToVId);
     if (runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
-        StageVec2PartialOAndWait<T>(crossLayout, crossCoreCombineGm, crossWorkspaceIdx,
-            stagingMOffset, runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb);
+        AttentionCommon::StageVec2PartialOAndWait<T>(crossLayout, crossCoreCombineGm, crossWorkspaceIdx,
+            stagingMOffset, runInfo.vec2MRealSize, static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb,
+            vToMte3Id, mte3ToVId);
     }
 }
 
@@ -1506,9 +1425,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                         dTemplateAlign64, GetStagingSlotNum(true), AttentionCommon::FD_BROADCAST_ELEMS_PER_ROW,
                         AttentionCommon::FD_REDUCE_CHUNK_ROWS};
                     int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-                    StageVec2PartialOAndWait<T>(stagingLayout, intraCoreCombineGm,
+                    AttentionCommon::StageVec2PartialOAndWait<T>(stagingLayout, intraCoreCombineGm,
                         GetIntraCoreWorkspaceIdx(constInfo), stagingMOffset, runInfo.vec2MRealSize,
-                        static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb);
+                        static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb, vToMte3Id, mte3ToVId);
                 }
                 if (runInfo.isCrossCoreSplit &&
                     (!runInfo.isFirstS2SplitCore ||
@@ -1519,9 +1438,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                         AttentionCommon::FD_REDUCE_CHUNK_ROWS};
                     uint32_t workspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
                     int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-                    StageVec2PartialOAndWait<T>(stagingLayout, crossCoreCombineGm,
+                    AttentionCommon::StageVec2PartialOAndWait<T>(stagingLayout, crossCoreCombineGm,
                         workspaceIdx, stagingMOffset, runInfo.vec2MRealSize,
-                        static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb);
+                        static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb, vToMte3Id, mte3ToVId);
                 } else if (!runInfo.isCrossCoreSplit && runInfo.s2LoopCount == runInfo.s2LoopLimit) {
                     this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
                 }
@@ -1540,9 +1459,9 @@ __aicore__ inline void CSABlockVec<TEMPLATE_ARGS>::ProcessVec2(
                     AttentionCommon::FD_REDUCE_CHUNK_ROWS};
                 uint32_t workspaceIdx = GetCrossCoreWorkspaceIdx(runInfo);
                 int64_t stagingMOffset = GetFaStagingMOffset(runInfo, constInfo);
-                StageVec2PartialOAndWait<T>(stagingLayout, stagingOutGm,
+                AttentionCommon::StageVec2PartialOAndWait<T>(stagingLayout, stagingOutGm,
                     workspaceIdx, stagingMOffset, runInfo.vec2MRealSize,
-                    static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb);
+                    static_cast<uint32_t>(constInfo.dSizeV), vec2ResUb, vToMte3Id, mte3ToVId);
             } else {
                 this->CopyOutAttentionOut(runInfo, constInfo, vec2ResUb, 0, vec2CalcSize);
             }
