@@ -26,6 +26,7 @@ struct EvenCoreInfo {
 template <typename BSA_TYPE>
 class VecOp {
     using INPUT_TYPE = typename BSA_TYPE::input_type;
+    using OUTPUT_TYPE = typename BSA_TYPE::output_type;
     static constexpr uint32_t INPUT_LAYOUT = BSA_TYPE::input_layout;
     using TILING_CLASS = typename BSA_TYPE::tiling_class;
     static constexpr bool DETERMINISTIC_ENABLE = BSA_TYPE::deterministic_enable;
@@ -63,8 +64,8 @@ private:
 
     LocalTensor<float> vec_in_ping_;
     LocalTensor<float> vec_in_pong_;
-    LocalTensor<INPUT_TYPE> vec_out_ping_;
-    LocalTensor<INPUT_TYPE> vec_out_pong_;
+    LocalTensor<OUTPUT_TYPE> vec_out_ping_;
+    LocalTensor<OUTPUT_TYPE> vec_out_pong_;
     // sftg
     LocalTensor<INPUT_TYPE> dy_in_ping_;
     LocalTensor<INPUT_TYPE> dy_in_pong_;
@@ -338,9 +339,9 @@ public:
         SET_FLAG(V, MTE2, event_id);
     }
 
-    __aicore__ inline void SendVecPost(const GlobalTensor<INPUT_TYPE> &dq_out_gm,
-                                       const GlobalTensor<INPUT_TYPE> &dk_out_gm,
-                                       const GlobalTensor<INPUT_TYPE> &dv_out_gm,
+    __aicore__ inline void SendVecPost(const GlobalTensor<OUTPUT_TYPE> &dq_out_gm,
+                                       const GlobalTensor<OUTPUT_TYPE> &dk_out_gm,
+                                       const GlobalTensor<OUTPUT_TYPE> &dv_out_gm,
                                        const GlobalTensor<float> &dq_workspace, const GlobalTensor<float> &dk_workspace,
                                        const GlobalTensor<float> &dv_workspace, const TILING_CLASS *tilingData,
                                        TBuf<TPosition::VECCALC> &ub_buffer)
@@ -353,10 +354,10 @@ public:
         ub_offset += POST_TILE_LEN * sizeof(float);
         vec_in_pong_ = ub_buffer.GetWithOffset<float>(POST_TILE_LEN, ub_offset);
         ub_offset += POST_TILE_LEN * sizeof(float);
-        vec_out_ping_ = ub_buffer.GetWithOffset<INPUT_TYPE>(POST_TILE_LEN, ub_offset);
-        ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
-        vec_out_pong_ = ub_buffer.GetWithOffset<INPUT_TYPE>(POST_TILE_LEN, ub_offset);
-        ub_offset += POST_TILE_LEN * sizeof(INPUT_TYPE);
+        vec_out_ping_ = ub_buffer.GetWithOffset<OUTPUT_TYPE>(POST_TILE_LEN, ub_offset);
+        ub_offset += POST_TILE_LEN * sizeof(OUTPUT_TYPE);
+        vec_out_pong_ = ub_buffer.GetWithOffset<OUTPUT_TYPE>(POST_TILE_LEN, ub_offset);
+        ub_offset += POST_TILE_LEN * sizeof(OUTPUT_TYPE);
         SET_FLAG(MTE3, MTE2, event_ping_);
         SET_FLAG(MTE3, MTE2, event_pong_);
 
@@ -474,7 +475,7 @@ private:
     }
 
     template <bool MULS>
-    __aicore__ inline void ComputeVecPost(const GlobalTensor<INPUT_TYPE> &dst_tensor,
+    __aicore__ inline void ComputeVecPost(const GlobalTensor<OUTPUT_TYPE> &dst_tensor,
                                           const GlobalTensor<float> &src_tensor, const EvenCoreInfo &info,
                                           uint32_t &post_ping_pong_idx)
     {
@@ -483,7 +484,7 @@ private:
         }
 
         LocalTensor<float> vecIn;
-        LocalTensor<INPUT_TYPE> vecOut;
+        LocalTensor<OUTPUT_TYPE> vecOut;
         uint32_t process_size = info.max_process_size;
 
         for (uint32_t i = 0; i < info.loop_num; i++) {
@@ -543,7 +544,7 @@ private:
 
             SET_FLAG(V, MTE3, EVENT_ID0);
             WAIT_FLAG(V, MTE3, EVENT_ID0);
-            copyParam.blockLen = info.pad_tail * sizeof(INPUT_TYPE);
+            copyParam.blockLen = info.pad_tail * sizeof(OUTPUT_TYPE);
             DataCopyPad(dst_tensor[gm_offset], vecOut, copyParam);
             SET_FLAG(MTE3, MTE2, event_id);
             post_ping_pong_idx = 1 - post_ping_pong_idx;

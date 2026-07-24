@@ -54,14 +54,27 @@ private:
     static constexpr int32_t L0_AB_SIZE = 64 * 1024;
     static constexpr int32_t L0_C_SIZE = 256 * 1024;
     static constexpr int32_t BASE_BLOCK_SIZE = 128 * 128;
+    static constexpr bool IS_FP8 = (sizeof(INPUT_TYPE) == 1);
     TEventID event_ping_ = EVENT_ID3;
     TEventID event_pong_ = EVENT_ID4;
+    GlobalTensor<float> qDequantScale_;
+    GlobalTensor<float> kDequantScale_;
+    GlobalTensor<float> vDequantScale_;
+    int32_t block_x_;
+    int32_t block_y_;
+    LocalTensor<float> dequant_ub_tensor_;
+    static constexpr uint32_t DEQUANT_UB_SIZE = 128 * 128;
 
 public:
     __aicore__ inline CubeOp(){};
     __aicore__ inline void Init(const TILING_CLASS *tilingData, TPipe *tPipe, TBuf<TPosition::A1> &l1_buffer,
-                                uint32_t l1_offset)
+                                uint32_t l1_offset, TBuf<TPosition::VECCALC> &ub_buffer, uint32_t ub_offset,
+                                GM_ADDR qDequantScale, GM_ADDR kDequantScale,
+                                GM_ADDR vDequantScale)
     {
+        qDequantScale_.SetGlobalBuffer((__gm__ float *)qDequantScale);
+        kDequantScale_.SetGlobalBuffer((__gm__ float *)kDequantScale);
+        vDequantScale_.SetGlobalBuffer((__gm__ float *)vDequantScale);
         this->batch_num_ = tilingData->batchNum;
         this->q_seq_len_ = tilingData->qSeqLen;
         this->kv_seq_len_ = tilingData->kvSeqLen;
@@ -70,6 +83,8 @@ public:
         this->kv_head_num_ = tilingData->kvHeadNum;
         this->head_dim_ = tilingData->headDim;
         this->head_dim_align_ = RoundUp(head_dim_, 16);
+        this->block_x_ = tilingData->BlockX;
+        this->block_y_ = tilingData->BlockY;
         uint32_t base_m = tilingData->baseM;
         uint32_t base_n = tilingData->baseN;
         if constexpr (INPUT_LAYOUT == BSND) {
@@ -118,6 +133,7 @@ public:
         l0_c_tensor_pong_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 64 * 1024);
         l0_c_dk_tensor_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 128 * 1024);
         l0_c_dv_tensor_ = l0_c_buffer_.GetWithOffset<float>(64 * 1024 / sizeof(float), 192 * 1024);
+        dequant_ub_tensor_ = ub_buffer.GetWithOffset<float>(DEQUANT_UB_SIZE, ub_offset);
         SET_FLAG(M, MTE1, event_ping_);
         SET_FLAG(M, MTE1, event_pong_);
         SET_FLAG(FIX, M, event_ping_);
@@ -132,6 +148,34 @@ public:
         WAIT_FLAG(FIX, M, event_pong_);
     }
 
+    __aicore__ inline float GetQDequantScale(const RunTimeInfo &runTimeInfo)
+    {
+        int64_t xBlockNum = (q_seq_len_ + block_x_ - 1) / block_x_;
+        int64_t xBlockIdx = runTimeInfo.s1Idx / block_x_;
+        int64_t offset = runTimeInfo.bIdx * q_head_num_ * xBlockNum +
+                         runTimeInfo.n1Idx * xBlockNum + xBlockIdx;
+        return qDequantScale_.GetValue(offset);
+    }
+
+    __aicore__ inline float GetKDequantScale(const RunTimeInfo &runTimeInfo)
+    {
+        int64_t yBlockNum = (kv_seq_len_ + block_y_ - 1) / block_y_;
+        int64_t yBlockIdx = runTimeInfo.s2Idx / block_y_;
+        int64_t offset = runTimeInfo.bIdx * kv_head_num_ * yBlockNum +
+                         runTimeInfo.n2Idx * yBlockNum + yBlockIdx;
+        return kDequantScale_.GetValue(offset);
+    }
+
+    __aicore__ inline float GetVDequantScale(const RunTimeInfo &runTimeInfo)
+    {
+        return GetKDequantScale(runTimeInfo);
+    }
+
+    __aicore__ inline float GetQKDequantScale(const RunTimeInfo &runTimeInfo)
+    {
+        return GetQDequantScale(runTimeInfo) * GetKDequantScale(runTimeInfo);
+    }
+
     __aicore__ inline void SendMatmulQK(const GlobalTensor<INPUT_TYPE> &queryGm, const GlobalTensor<INPUT_TYPE> &keyGm,
                                         const LocalTensor<float> &mm1OutUb, const RunTimeInfo &runTimeInfo,
                                         const uint32_t ping_pong_idx)
@@ -140,8 +184,12 @@ public:
         LocalTensor<INPUT_TYPE> l1_b_tensor =
             runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
 
+        float dequantScale = 1.0f;
+        if constexpr (IS_FP8) {
+            dequantScale = GetQKDequantScale(runTimeInfo);
+        }
         ComputeMM12(queryGm[runTimeInfo.queryGmOffset], keyGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
-                    mm1OutUb, runTimeInfo);
+                    mm1OutUb, runTimeInfo, dequantScale);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -153,8 +201,12 @@ public:
         LocalTensor<INPUT_TYPE> l1_b_tensor =
             runTimeInfo.kv_ping_pong_idx == 0 ? value_l1_tensor_ping_ : value_l1_tensor_pong_;
 
+        float dequantScale = 1.0f;
+        if constexpr (IS_FP8) {
+            dequantScale = GetKDequantScale(runTimeInfo);
+        }
         ComputeMM12(dyGm[runTimeInfo.queryGmOffset], valueGm[runTimeInfo.keyGmOffset], l1_a_tensor, l1_b_tensor,
-                    mm2OutUb, runTimeInfo);
+                    mm2OutUb, runTimeInfo, dequantScale);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -164,7 +216,11 @@ public:
         LocalTensor<INPUT_TYPE> l1_b_tensor =
             runTimeInfo.kv_ping_pong_idx == 0 ? key_l1_tensor_ping_ : key_l1_tensor_pong_;
 
-        ComputeMMDQ(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.queryGmOffset], runTimeInfo);
+        float dequantScale = 1.0f;
+        if constexpr (IS_FP8) {
+            dequantScale = GetKDequantScale(runTimeInfo);
+        }
+        ComputeMMDQ(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.queryGmOffset], runTimeInfo, dequantScale);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -172,7 +228,11 @@ public:
                                         const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
     {
         LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? query_l1_tensor_ping_ : query_l1_tensor_pong_;
-        ComputeMMDKV<DK>(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
+        float dequantScale = 1.0f;
+        if constexpr (IS_FP8) {
+            dequantScale = GetQDequantScale(runTimeInfo);
+        }
+        ComputeMMDKV<DK>(ds_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo, dequantScale);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -180,7 +240,11 @@ public:
                                         const RunTimeInfo &runTimeInfo, const uint32_t ping_pong_idx)
     {
         LocalTensor<INPUT_TYPE> l1_b_tensor = ping_pong_idx == 0 ? dy_l1_tensor_ping_ : dy_l1_tensor_pong_;
-        ComputeMMDKV<DV>(p_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo);
+        float dequantScale = 1.0f;
+        if constexpr (IS_FP8) {
+            dequantScale = GetVDequantScale(runTimeInfo);
+        }
+        ComputeMMDKV<DV>(p_l1_tensor, l1_b_tensor, outGm[runTimeInfo.keyGmOffset], runTimeInfo, dequantScale);
         event_ping_pong_flag = 1 - event_ping_pong_flag;
     }
 
@@ -188,7 +252,7 @@ private:
     __aicore__ inline void ComputeMM12(const GlobalTensor<INPUT_TYPE> &leftGm, const GlobalTensor<INPUT_TYPE> &rightGm,
                                        const LocalTensor<INPUT_TYPE> &l1_a_tensor,
                                        const LocalTensor<INPUT_TYPE> &l1_b_tensor, const LocalTensor<float> &outUb,
-                                       const RunTimeInfo &runTimeInfo)
+                                       const RunTimeInfo &runTimeInfo, float dequantScale)
     {
         int32_t mProcess = runTimeInfo.s1Len;
         int32_t nProcess = runTimeInfo.s2Len;
@@ -232,14 +296,19 @@ private:
         fixpipeParams.unitFlag = 3;
         constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
         AscendC::Fixpipe<float, float, ROW_MAJOR_UB>(outUb, l0_c_tensor, fixpipeParams);
+
+        if constexpr (IS_FP8) {
+            AscendC::Muls(outUb, outUb, dequantScale, mProcessAlign * nProcessAlign);
+        }
+
         SET_FLAG(FIX, M, evnet_id);
     }
 
     template <uint32_t TYPE>
     __aicore__ inline void ComputeMMDKV(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
                                         const LocalTensor<INPUT_TYPE> &l1_b_tensor, const GlobalTensor<float> &outGm,
-                                        const RunTimeInfo &runTimeInfo)
-    {
+                                        const RunTimeInfo &runTimeInfo, float dequantScale)
+    {(void)dequantScale;
         int32_t mProcess = runTimeInfo.s1Len;
         int32_t nProcess = runTimeInfo.s2Len;
         int32_t mProcessAlign = runTimeInfo.s1LenAlign;
@@ -272,21 +341,44 @@ private:
         SET_FLAG(M, MTE1, evnet_id);
 
         if (runTimeInfo.is_singlekv_last) {
-            AscendC::FixpipeParamsV220 fixpipeParamsV220;
-            fixpipeParamsV220.mSize = nProcess;
-            fixpipeParamsV220.nSize = head_dim_;
-            fixpipeParamsV220.srcStride = nProcessAlign;
-            fixpipeParamsV220.dstStride = kv_stride_;
-            fixpipeParamsV220.unitFlag = 3;
-            MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
+            if constexpr (IS_FP8) {
+                FixpipeParamsC310<CO2Layout::ROW_MAJOR> fpParams;
+                fpParams.mSize = nProcessAlign;
+                fpParams.nSize = head_dim_align_;
+                fpParams.srcStride = nProcessAlign;
+                fpParams.dstStride = nProcessAlign;
+                fpParams.dualDstCtl = 1;
+                fpParams.unitFlag = 3;
+                constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
+                AscendC::Fixpipe<float, float, ROW_MAJOR_UB>(dequant_ub_tensor_, l0_c_tensor, fpParams);
+                AscendC::Muls(dequant_ub_tensor_, dequant_ub_tensor_, dequantScale,
+                              nProcessAlign * head_dim_align_);
+                AscendC::FixpipeParamsV220 fixpipeParamsV220;
+                fixpipeParamsV220.mSize = nProcess;
+                fixpipeParamsV220.nSize = head_dim_;
+                fixpipeParamsV220.srcStride = nProcessAlign;
+                fixpipeParamsV220.dstStride = kv_stride_;
+                fixpipeParamsV220.unitFlag = 3;
+                AscendC::SetAtomicType<float>();
+                AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(outGm, dequant_ub_tensor_, fixpipeParamsV220);
+                AscendC::SetAtomicNone();
+            } else {
+                AscendC::FixpipeParamsV220 fixpipeParamsV220;
+                fixpipeParamsV220.mSize = nProcess;
+                fixpipeParamsV220.nSize = head_dim_;
+                fixpipeParamsV220.srcStride = nProcessAlign;
+                fixpipeParamsV220.dstStride = kv_stride_;
+                fixpipeParamsV220.unitFlag = 3;
+                MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
+            }
         }
         SET_FLAG(FIX, M, evnet_id);
     }
 
     __aicore__ inline void ComputeMMDQ(const LocalTensor<INPUT_TYPE> &l1_a_tensor,
                                        const LocalTensor<INPUT_TYPE> &l1_b_tensor, const GlobalTensor<float> &outGm,
-                                       const RunTimeInfo &runTimeInfo)
-    {
+                                       const RunTimeInfo &runTimeInfo, float dequantScale)
+    {(void)dequantScale;
         int32_t mProcess = runTimeInfo.s1Len;
         int32_t nProcess = runTimeInfo.s2Len;
         int32_t mProcessAlign = runTimeInfo.s1LenAlign;
@@ -313,13 +405,36 @@ private:
         AscendC::PipeBarrier<PIPE_M>();
         SET_FLAG(M, MTE1, evnet_id);
 
-        AscendC::FixpipeParamsV220 fixpipeParamsV220;
-        fixpipeParamsV220.mSize = mProcess;
-        fixpipeParamsV220.nSize = head_dim_;
-        fixpipeParamsV220.srcStride = mProcessAlign;
-        fixpipeParamsV220.dstStride = q_stride_;
-        fixpipeParamsV220.unitFlag = 3;
-        MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
+        if constexpr (IS_FP8) {
+            FixpipeParamsC310<CO2Layout::ROW_MAJOR> fpParams;
+            fpParams.mSize = mProcessAlign;
+            fpParams.nSize = head_dim_align_;
+            fpParams.srcStride = mProcessAlign;
+            fpParams.dstStride = mProcessAlign;
+            fpParams.dualDstCtl = 1;
+            fpParams.unitFlag = 3;
+            constexpr static FixpipeConfig ROW_MAJOR_UB = {CO2Layout::ROW_MAJOR, true};
+            AscendC::Fixpipe<float, float, ROW_MAJOR_UB>(dequant_ub_tensor_, l0_c_tensor, fpParams);
+            AscendC::Muls(dequant_ub_tensor_, dequant_ub_tensor_, dequantScale,
+                          mProcessAlign * head_dim_align_);
+            AscendC::FixpipeParamsV220 fixpipeParamsV220;
+            fixpipeParamsV220.mSize = mProcess;
+            fixpipeParamsV220.nSize = head_dim_;
+            fixpipeParamsV220.srcStride = mProcessAlign;
+            fixpipeParamsV220.dstStride = q_stride_;
+            fixpipeParamsV220.unitFlag = 3;
+            AscendC::SetAtomicType<float>();
+            AscendC::Fixpipe<float, float, AscendC::CFG_ROW_MAJOR>(outGm, dequant_ub_tensor_, fixpipeParamsV220);
+            AscendC::SetAtomicNone();
+        } else {
+            AscendC::FixpipeParamsV220 fixpipeParamsV220;
+            fixpipeParamsV220.mSize = mProcess;
+            fixpipeParamsV220.nSize = head_dim_;
+            fixpipeParamsV220.srcStride = mProcessAlign;
+            fixpipeParamsV220.dstStride = q_stride_;
+            fixpipeParamsV220.unitFlag = 3;
+            MM345CopyOut<true>(outGm, l0_c_tensor, fixpipeParamsV220);
+        }
         SET_FLAG(FIX, M, evnet_id);
     }
 

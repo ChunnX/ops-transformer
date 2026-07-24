@@ -16,9 +16,11 @@ using namespace AscendC;
 
 namespace BSA_ARC35 {
 
-template <typename INPUT_TYPE, uint32_t INPUT_LAYOUT, class TILING_CLASS, bool DETERMINISTIC_ENABLE>
+template <typename INPUT_TYPE, typename OUTPUT_TYPE, uint32_t INPUT_LAYOUT, class TILING_CLASS,
+          bool DETERMINISTIC_ENABLE>
 struct BSA_TYPE {
     using input_type = INPUT_TYPE;
+    using output_type = OUTPUT_TYPE;
     static constexpr uint32_t input_layout = INPUT_LAYOUT;
     using tiling_class = TILING_CLASS;
     static constexpr bool deterministic_enable = DETERMINISTIC_ENABLE;
@@ -27,6 +29,7 @@ struct BSA_TYPE {
 template <typename BSA_TYPE>
 class BlockSparseAttentionGradArch35 {
     using INPUT_TYPE = typename BSA_TYPE::input_type;
+    using OUTPUT_TYPE = typename BSA_TYPE::output_type;
     static constexpr uint32_t INPUT_LAYOUT = BSA_TYPE::input_layout;
     using TILING_CLASS = typename BSA_TYPE::tiling_class;
     static constexpr bool DETERMINISTIC_ENABLE = BSA_TYPE::deterministic_enable;
@@ -35,7 +38,7 @@ private:
     RunTimeInfo runTimeInfo_[2];
     AddrComputeModule<BSA_TYPE> addr_;
     GlobalTensor<INPUT_TYPE> query_gm_, key_gm_, val_gm_, dout_gm_, attention_out_gm_;
-    GlobalTensor<INPUT_TYPE> dq_gm_, dk_gm_, dv_gm_;
+    GlobalTensor<OUTPUT_TYPE> dq_gm_, dk_gm_, dv_gm_;
     GlobalTensor<float> dq_workspace_, dk_workspace_, dv_workspace_, sftg_workspace_;
     TBuf<TPosition::VECCALC> ub_buffer_;
     TBuf<TPosition::A1> l1_buffer_;
@@ -60,6 +63,7 @@ public:
                                    GM_ADDR softmaxLse, GM_ADDR blockSparseMask, GM_ADDR blockShape,
                                    GM_ADDR attentionMask, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR dq,
                                    GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *tilingData,
+                                   GM_ADDR qDequantScale, GM_ADDR kDequantScale, GM_ADDR vDequantScale,
                                    TPipe *tPipe)
     {
         uint32_t base_m = tilingData->baseM;
@@ -72,9 +76,9 @@ public:
         val_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)v);
         dout_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dout);
         attention_out_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)attention_out);
-        dq_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dq);
-        dk_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dk);
-        dv_gm_.SetGlobalBuffer((__gm__ INPUT_TYPE *)dv);
+        dq_gm_.SetGlobalBuffer((__gm__ OUTPUT_TYPE *)dq);
+        dk_gm_.SetGlobalBuffer((__gm__ OUTPUT_TYPE *)dk);
+        dv_gm_.SetGlobalBuffer((__gm__ OUTPUT_TYPE *)dv);
         dq_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dqWorkspaceOffset));
         dk_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dkWorkspaceOffset));
         dv_workspace_.SetGlobalBuffer((__gm__ float *)(workspace + tilingData->dvWorkspaceOffset));
@@ -105,13 +109,15 @@ public:
         if ASCEND_IS_AIC {
             // printf("=====================cubeIdx=%d=====================\n", GetBlockIdx());
             CubeProcess(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask,
-                        actualQseqlen, actualKvseqlen, dq, dk, dv, workspace, tilingData, tPipe);
+                        actualQseqlen, actualKvseqlen, dq, dk, dv, workspace, tilingData,
+                        qDequantScale, kDequantScale, vDequantScale, tPipe);
             // printf("====================================================\n\n");
         }
         if ASCEND_IS_AIV {
             // printf("=====================vectorIdx=%d=====================\n", GetBlockIdx());
             VectorProcess(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask,
-                          actualQseqlen, actualKvseqlen, dq, dk, dv, workspace, tilingData, tPipe);
+                          actualQseqlen, actualKvseqlen, dq, dk, dv, workspace, tilingData,
+                          qDequantScale, kDequantScale, vDequantScale, tPipe);
             // printf("====================================================\n\n");
         }
     }
@@ -120,10 +126,12 @@ public:
                                        GM_ADDR softmaxLse, GM_ADDR blockSparseMask, GM_ADDR blockShape,
                                        GM_ADDR attentionMask, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen, GM_ADDR dq,
                                        GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace, const TILING_CLASS *tilingData,
+                                       GM_ADDR qDequantScale, GM_ADDR kDequantScale, GM_ADDR vDequantScale,
                                        TPipe *tPipe)
     {
         CubeOp<BSA_TYPE> cubeOp;
-        cubeOp.Init(tilingData, tPipe, l1_buffer_, l1_offset_);
+        cubeOp.Init(tilingData, tPipe, l1_buffer_, l1_offset_, ub_buffer_, ub_offset_,
+                    qDequantScale, kDequantScale, vDequantScale);
         CrossCoreWaitFlag(FLAG_CUBE_POST);
 
         while (true) {
@@ -167,7 +175,9 @@ public:
                                          GM_ADDR softmaxLse, GM_ADDR blockSparseMask, GM_ADDR blockShape,
                                          GM_ADDR attentionMask, GM_ADDR actualQseqlen, GM_ADDR actualKvseqlen,
                                          GM_ADDR dq, GM_ADDR dk, GM_ADDR dv, GM_ADDR workspace,
-                                         const TILING_CLASS *tilingData, TPipe *tPipe)
+                                         const TILING_CLASS *tilingData,
+                                         GM_ADDR qDequantScale, GM_ADDR kDequantScale, GM_ADDR vDequantScale,
+                                         TPipe *tPipe)
     {
         VecOp<BSA_TYPE> vecOp;
         vecOp.Init(dout, q, k, v, attention_out, softmaxLse, blockSparseMask, blockShape, attentionMask, actualQseqlen,

@@ -63,8 +63,9 @@ struct RunTimeInfo {
     int64_t keyGmOffset{0};   // key gm offset
     int64_t lseGmOffset{0};   // lse gm offset
     int64_t sftgGmOffset{0};  // softmaxGradFront gm offset
+    int64_t qDequantScaleOffset{0}; // q dequant scale gm offset
+    int64_t kDequantScaleOffset{0}; // k/v dequant scale gm offset
 };
-
 
 inline __aicore__ uint32_t max(const uint32_t a, const uint32_t b)
 {
@@ -141,7 +142,6 @@ __aicore__ inline int64_t GetSftgGmOffset(int64_t lastBatchSum, int64_t current_
     }
 }
 
-
 __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t batch_idx, const int64_t n1_idx,
                                     const int64_t q_block_idx, const int64_t kv_block_idx,
                                     __gm__ uint8_t *block_sparse_mask)
@@ -153,7 +153,6 @@ __aicore__ inline bool IsValidBlock(const ConstInfo &const_info, const int64_t b
     bool is_valid = block_sparse_mask[offset];
     return is_valid;
 }
-
 
 __aicore__ inline int32_t GetBlockLen(int32_t start_idx, int32_t end_idx, int32_t max_len)
 {
