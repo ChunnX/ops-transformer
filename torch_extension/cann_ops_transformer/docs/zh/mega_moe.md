@@ -1307,7 +1307,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         </tfoot>
         </table>
     - **Ascend 950PR/Ascend 950DT：**
-        - num_tokens（x.dim0）范围 [1, maxBs], maxBs = (8 * (totalUbSize - 48 * 1024)) / (num_topk * (64 + ep_world_size)), 其中totalUbSize为UB总大小，950系列产品该值为256K。
+        - num_tokens（x.dim0）范围 [1, maxBs], maxBs = (8 * (totalUbSize - 48 * 1024)) / (num_topk * (64 + ep_world_size)), 其中totalUbSize为UB总大小，950系列产品该值支持到当前环境能申请的最大内存。
         - hidden（x.dim1）仅支持1024、2048、3072、4096、5120、6144、7168、8192。
         - num_topk（topk_ids.dim1）支持[1, 32]。
         - num_experts_per_rank 范围 [1, 1024]。
