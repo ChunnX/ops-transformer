@@ -397,6 +397,9 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 SetFlag<HardEvent::S_V>(eSV);
                 WaitFlag<HardEvent::S_V>(eSV);
             }
+            // DEBUG: overwrite ALL with -1e30
+            Duplicate<float>(reduceOutInner, -1.0e30f, s2BaseSize_);
+            PipeBarrier<PIPE_V>();
             {
                 PipeBarrier<PIPE_V>();
                 uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
