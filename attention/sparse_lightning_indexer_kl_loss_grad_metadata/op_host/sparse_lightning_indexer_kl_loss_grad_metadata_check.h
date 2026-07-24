@@ -60,37 +60,63 @@ aclDataType GetDataTypeSli(const aclTensor *tensor)
     return dataType;
 }
 
-int64_t GetQueryBatchSizeSli(int64_t batchSize, const aclTensor *cuSeqlensQOptional,
-    const aclTensor *sequsedQOptional, const char *layoutQOptional)
+inline bool IsTensorSourceSli(const std::string &source)
 {
-    // 1. 如果sequsedQOptional 传了，使用sequsedQOptional获取BatchSize
+    return source != "batch_size";
+}
+
+inline int64_t GetRawShapeSizeSli(const std::string &source, int64_t batchValue)
+{
+    if (source.find("cu_seqlens") != std::string::npos) {
+        return batchValue + 1;
+    }
+    return batchValue;
+}
+
+inline std::string GetSourceDescSli(const std::string &source)
+{
+    if (source == "batch_size") {
+        return "batch_size";
+    }
+    if (source.find("cu_seqlens") != std::string::npos) {
+        return "the shape size of " + source + " minus 1";
+    }
+    return "the shape size of " + source;
+}
+
+int64_t GetQueryBatchSizeSli(int64_t batchSize, const aclTensor *cuSeqlensQOptional,
+    const aclTensor *sequsedQOptional, const char *layoutQOptional,
+    std::string &source)
+{
     if (IsTensorExistSli(sequsedQOptional)) {
+        source = "seqused_q";
         return sequsedQOptional->GetViewShape().GetDim(0);
     }
-    // 2. 如果sequsedQOptional 没传，使用cuSeqlensQOptional获取BatchSize
     if (strcmp(layoutQOptional, "TND") == 0) {
-        if (IsTensorExistSli(cuSeqlensQOptional)) { // 前序校验已保证layout_q = TND时，cu_seqlens_q必须传入，此通路必达
+        if (IsTensorExistSli(cuSeqlensQOptional)) {
+            source = "cu_seqlens_q";
             return cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    // 3. 使用batchSize
+    source = "batch_size";
     return batchSize;
 }
 
 int64_t GetKeyBatchSizeSli(int64_t batchSize, const aclTensor *cuSeqlensKOptional,
-    const aclTensor *sequsedKOptional, const char *layoutKOptional)
+    const aclTensor *sequsedKOptional, const char *layoutKOptional,
+    std::string &source)
 {
-    // 1. 如果sequsedKOptional 传了，使用sequsedKOptional获取BatchSize
     if (IsTensorExistSli(sequsedKOptional)) {
+        source = "seqused_k";
         return sequsedKOptional->GetViewShape().GetDim(0);
     }
-    // 如果是 TND，必须使用 cuSeqlensKOptional获取BatchSize
     if (strcmp(layoutKOptional, "TND") == 0) {
-        if (IsTensorExistSli(cuSeqlensKOptional)) { // 前序校验已保证layout_k = TND时，cu_seqlens_k必须传入，此通路必达
+        if (IsTensorExistSli(cuSeqlensKOptional)) {
+            source = "cu_seqlens_k";
             return cuSeqlensKOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    // 3. 使用batchSize
+    source = "batch_size";
     return batchSize;
 }
 
@@ -384,29 +410,49 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
         }
     }
     // 校验batch
+    std::string querySource;
     int64_t queryBatchSize = GetQueryBatchSizeSli(batchSize, cuSeqlensQOptional,
-                                                   sequsedQOptional, layoutQOptional);
+                                                   sequsedQOptional, layoutQOptional,
+                                                   querySource);
+    std::string keySource;
     int64_t keyBatchSize = GetKeyBatchSizeSli(batchSize, cuSeqlensKOptional,
-                                               sequsedKOptional, layoutKOptional);
+                                               sequsedKOptional, layoutKOptional,
+                                               keySource);
     if (queryBatchSize != keyBatchSize) {
-        OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(SLI_ACLNN_OP_NAME,
-            "query, key",
-            std::to_string(queryBatchSize) + ", " +
-            std::to_string(keyBatchSize),
-            "The batch sizes of query, key must be the same.");
+        if (IsTensorSourceSli(querySource) &&
+            IsTensorSourceSli(keySource)) {
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SLI_ACLNN_OP_NAME,
+                querySource + ", " + keySource,
+                std::to_string(GetRawShapeSizeSli(querySource, queryBatchSize)) +
+                ", " + std::to_string(GetRawShapeSizeSli(keySource, keyBatchSize)),
+                GetSourceDescSli(querySource) + " must be equal to " +
+                GetSourceDescSli(keySource) + ".");
+        } else if (IsTensorSourceSli(querySource)) {
+            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SLI_ACLNN_OP_NAME,
+                querySource,
+                std::to_string(GetRawShapeSizeSli(querySource, queryBatchSize)).c_str(),
+                GetSourceDescSli(querySource) +
+                " must be equal to batch_size.");
+        } else {
+            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SLI_ACLNN_OP_NAME,
+                keySource,
+                std::to_string(GetRawShapeSizeSli(keySource, keyBatchSize)).c_str(),
+                "batch_size must be equal to " +
+                GetSourceDescSli(keySource) + ".");
+        }
         return ACLNN_ERR_PARAM_INVALID;
     }
     // 校验TND场景q维度一致性
     if (strcmp(layoutQOptional, "TND") == 0 && IsTensorExistSli(sequsedQOptional)) {
         int64_t cuSeqlensQBatchSize = cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         if (cuSeqlensQBatchSize != queryBatchSize) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(SLI_ACLNN_OP_NAME,
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SLI_ACLNN_OP_NAME,
                 "cu_seqlens_q, seqused_q",
-                std::to_string(cuSeqlensQBatchSize) + ", " +
-                std::to_string(queryBatchSize),
+                std::to_string(cuSeqlensQOptional->GetViewShape().GetDim(0)) +
+                ", " + std::to_string(sequsedQOptional->GetViewShape().GetDim(0)),
                 "When layout_q is TND and seqused_q is passed, "
-                "the batch sizes of cu_seqlens_q, "
-                "seqused_q must be the same.");
+                "the shape size of cu_seqlens_q minus 1 must be equal to "
+                "the shape size of seqused_q.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -414,13 +460,13 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     if (strcmp(layoutKOptional, "TND") == 0 && IsTensorExistSli(sequsedKOptional)) {
         int64_t cuSeqlensKBatchSize = cuSeqlensKOptional->GetViewShape().GetDim(0) - 1;
         if (cuSeqlensKBatchSize != keyBatchSize) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(SLI_ACLNN_OP_NAME,
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SLI_ACLNN_OP_NAME,
                 "cu_seqlens_k, seqused_k",
-                std::to_string(cuSeqlensKBatchSize) + ", " +
-                std::to_string(keyBatchSize),
+                std::to_string(cuSeqlensKOptional->GetViewShape().GetDim(0)) +
+                ", " + std::to_string(sequsedKOptional->GetViewShape().GetDim(0)),
                 "When layout_k is TND and seqused_k is passed, "
-                "the batch sizes of cu_seqlens_k, "
-                "seqused_k must be the same.");
+                "the shape size of cu_seqlens_k minus 1 must be equal to "
+                "the shape size of seqused_k.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
@@ -428,11 +474,20 @@ aclnnStatus CheckConsistencySli(int64_t batchSize, const aclTensor *cuSeqlensQOp
     if (IsTensorExistSli(cmpResidualKOptional)) {
         auto cmpResidualKBatch = cmpResidualKOptional->GetViewShape().GetDim(0);
         if (cmpResidualKBatch != queryBatchSize) {
-            OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SLI_ACLNN_OP_NAME,
-                "cmp_residual_k",
-                std::to_string(cmpResidualKBatch).c_str(),
-                "The shape size of cmp_residual_k should be equal to "
-                "the batch size of query.");
+            if (IsTensorSourceSli(querySource)) {
+                OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SLI_ACLNN_OP_NAME,
+                    "cmp_residual_k, " + querySource,
+                    std::to_string(cmpResidualKBatch) +
+                    ", " + std::to_string(GetRawShapeSizeSli(querySource, queryBatchSize)),
+                    "The shape size of cmp_residual_k must be equal to " +
+                    GetSourceDescSli(querySource) + ".");
+            } else {
+                OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SLI_ACLNN_OP_NAME,
+                    "cmp_residual_k",
+                    std::to_string(cmpResidualKBatch).c_str(),
+                    "The shape size of cmp_residual_k must be equal "
+                    "to batch_size.");
+            }
             return ACLNN_ERR_PARAM_INVALID;
         }
     }

@@ -65,6 +65,30 @@ aclDataType GetDataTypeSmlag(const aclTensor *tensor)
     return dataType;
 }
 
+inline bool IsTensorSourceSmlag(const std::string &source)
+{
+    return source != "batch_size";
+}
+
+inline int64_t GetRawShapeSizeSmlag(const std::string &source, int64_t batchValue)
+{
+    if (source.find("cu_seqlens") != std::string::npos) {
+        return batchValue + 1;
+    }
+    return batchValue;
+}
+
+inline std::string GetSourceDescSmlag(const std::string &source)
+{
+    if (source == "batch_size") {
+        return "batch_size";
+    }
+    if (source.find("cu_seqlens") != std::string::npos) {
+        return "the shape size of " + source + " minus 1";
+    }
+    return "the shape size of " + source;
+}
+
 aclnnStatus CheckSingleParamSmlag(int64_t batchSize, int64_t maxSeqlenQ, int64_t maxSeqlenOriKv,
                                   int64_t maxSeqlenCmpKv, int64_t numHeadsQ, int64_t numHeadsKv, int64_t headDim,
                                   int64_t oriTopk, int64_t cmpTopk, int64_t cmpRatio, int64_t oriMaskMode,
@@ -324,53 +348,56 @@ aclnnStatus CheckExistenceSmlag(const aclTensor *cuSeqlensQOptional, const aclTe
 }
 
 int64_t GetQueryBatchSizeSmlag(const aclTensor *sequsedQOptional, const aclTensor *cuSeqlensQOptional,
-                               const char *layoutQOptional, int64_t batchSize)
+                                const char *layoutQOptional, int64_t batchSize,
+                                std::string &source)
 {
-    // 1. 如果 sequsedQOptional 传了，使用 sequsedQOptional 获取 BatchSize
     if (IsTensorExistSmlag(sequsedQOptional)) {
+        source = "seqused_q";
         return sequsedQOptional->GetViewShape().GetDim(0);
     }
-    // 2. sequsedQOptional 没传，判断 Layout
     if (strcmp(layoutQOptional, "TND") == 0) {
         if (IsTensorExistSmlag(cuSeqlensQOptional)) {
+            source = "cu_seqlens_q";
             return cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    // 3. 使用 batchSize
+    source = "batch_size";
     return batchSize;
 }
 
 int64_t GetOriKvBatchSizeSmlag(const aclTensor *sequsedOriKvOptional, const aclTensor *cuSeqlensOriKvOptional,
-                               const char *layoutKvOptional, int64_t batchSize)
+                                const char *layoutKvOptional, int64_t batchSize,
+                                std::string &source)
 {
-    // 1. 如果 sequsedOriKvOptional 传了，使用 sequsedOriKvOptional 获取 BatchSize
     if (IsTensorExistSmlag(sequsedOriKvOptional)) {
+        source = "seqused_ori_kv";
         return sequsedOriKvOptional->GetViewShape().GetDim(0);
     }
-    // 2. sequsedOriKvOptional 没传，判断 Layout
     if (strcmp(layoutKvOptional, "TND") == 0) {
         if (IsTensorExistSmlag(cuSeqlensOriKvOptional)) {
+            source = "cu_seqlens_ori_kv";
             return cuSeqlensOriKvOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    // 3. 使用 batchSize
+    source = "batch_size";
     return batchSize;
 }
 
 int64_t GetCmpKvBatchSizeSmlag(const aclTensor *sequsedCmpKvOptional, const aclTensor *cuSeqlensCmpKvOptional,
-                               const char *layoutKvOptional, int64_t batchSize)
+                                const char *layoutKvOptional, int64_t batchSize,
+                                std::string &source)
 {
-    // 1. 如果 sequsedCmpKvOptional 传了，使用 sequsedCmpKvOptional 获取 BatchSize
     if (IsTensorExistSmlag(sequsedCmpKvOptional)) {
+        source = "seqused_cmp_kv";
         return sequsedCmpKvOptional->GetViewShape().GetDim(0);
     }
-    // 2. sequsedCmpKvOptional 没传，判断 Layout
     if (strcmp(layoutKvOptional, "TND") == 0) {
         if (IsTensorExistSmlag(cuSeqlensCmpKvOptional)) {
+            source = "cu_seqlens_cmp_kv";
             return cuSeqlensCmpKvOptional->GetViewShape().GetDim(0) - 1;
         }
     }
-    // 3. 使用 batchSize
+    source = "batch_size";
     return batchSize;
 }
 
@@ -620,85 +647,131 @@ aclnnStatus CheckConsistencySmlag(const aclTensor *cuSeqlensQOptional, const acl
         }
     }
     // 校验 q/kv 维度一致性
-    int64_t queryBatchSize = GetQueryBatchSizeSmlag(sequsedQOptional, cuSeqlensQOptional,
-                                                    layoutQOptional, batchSize);
+    std::string querySource;
+    int64_t queryBatchSize = GetQueryBatchSizeSmlag(sequsedQOptional,
+        cuSeqlensQOptional, layoutQOptional, batchSize, querySource);
     // 校验TND场景q维度一致性
     if (strcmp(layoutQOptional, "TND") == 0 && IsTensorExistSmlag(sequsedQOptional)) {
         int64_t cuSeqlensQBatchSize = cuSeqlensQOptional->GetViewShape().GetDim(0) - 1;
         if (cuSeqlensQBatchSize != queryBatchSize) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(SMLAG_ACLNN_OP_NAME,
+            OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                 "cu_seqlens_q, seqused_q",
-                std::to_string(cuSeqlensQBatchSize) + ", " +
-                std::to_string(queryBatchSize),
+                std::to_string(cuSeqlensQOptional->GetViewShape().GetDim(0)) +
+                ", " + std::to_string(sequsedQOptional->GetViewShape().GetDim(0)),
                 "When layout_q is TND and seqused_q is passed, "
-                "the batch sizes of cu_seqlens_q, "
-                "seqused_q must be the same.");
+                "the shape size of cu_seqlens_q minus 1 must be equal to "
+                "the shape size of seqused_q.");
             return ACLNN_ERR_PARAM_INVALID;
         }
     }
     if (hasOriKv) {
+        std::string oriKvSource;
         int64_t oriKvBatchSize = GetOriKvBatchSizeSmlag(sequsedOriKvOptional,
-            cuSeqlensOriKvOptional, layoutKvOptional, batchSize);
+            cuSeqlensOriKvOptional, layoutKvOptional, batchSize, oriKvSource);
         // 校验q与ori_kv维度一致性
         if (queryBatchSize != oriKvBatchSize) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(SMLAG_ACLNN_OP_NAME,
-                "query, ori_kv",
-                std::to_string(queryBatchSize) + ", " +
-                std::to_string(oriKvBatchSize),
-                "When has_ori_kv is true, the batch sizes of "
-                "query, ori_kv must be the same.");
+            if (IsTensorSourceSmlag(querySource) &&
+                IsTensorSourceSmlag(oriKvSource)) {
+                OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SMLAG_ACLNN_OP_NAME,
+                    querySource + ", " + oriKvSource,
+                    std::to_string(GetRawShapeSizeSmlag(querySource, queryBatchSize)) +
+                    ", " + std::to_string(GetRawShapeSizeSmlag(oriKvSource, oriKvBatchSize)),
+                    "When has_ori_kv is true, " +
+                    GetSourceDescSmlag(querySource) + " must be equal to " +
+                    GetSourceDescSmlag(oriKvSource) + ".");
+            } else if (IsTensorSourceSmlag(querySource)) {
+                OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
+                    querySource,
+                    std::to_string(GetRawShapeSizeSmlag(querySource, queryBatchSize)).c_str(),
+                    "When has_ori_kv is true, " +
+                    GetSourceDescSmlag(querySource) +
+                    " must be equal to batch_size.");
+            } else {
+                OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
+                    oriKvSource,
+                    std::to_string(GetRawShapeSizeSmlag(oriKvSource, oriKvBatchSize)).c_str(),
+                    "When has_ori_kv is true, batch_size must be equal to " +
+                    GetSourceDescSmlag(oriKvSource) + ".");
+            }
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验TND场景ori_kv维度一致性
         if (strcmp(layoutKvOptional, "TND") == 0 && IsTensorExistSmlag(sequsedOriKvOptional)) {
             int64_t cuSeqlensOriKvBatchSize = cuSeqlensOriKvOptional->GetViewShape().GetDim(0) - 1;
             if (cuSeqlensOriKvBatchSize != oriKvBatchSize) {
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(SMLAG_ACLNN_OP_NAME,
+                OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                     "cu_seqlens_ori_kv, seqused_ori_kv",
-                    std::to_string(cuSeqlensOriKvBatchSize) + ", " +
-                    std::to_string(oriKvBatchSize),
+                    std::to_string(cuSeqlensOriKvOptional->GetViewShape().GetDim(0)) +
+                    ", " + std::to_string(sequsedOriKvOptional->GetViewShape().GetDim(0)),
                     "When layout_kv is TND and seqused_ori_kv is passed, "
-                    "the batch sizes of cu_seqlens_ori_kv, "
-                    "seqused_ori_kv must be the same.");
+                    "the shape size of cu_seqlens_ori_kv minus 1 must be "
+                    "equal to the shape size of seqused_ori_kv.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
     }
     if (hasCmpKv) {
+        std::string cmpKvSource;
         int64_t cmpKvBatchSize = GetCmpKvBatchSizeSmlag(sequsedCmpKvOptional,
-            cuSeqlensCmpKvOptional, layoutKvOptional, batchSize);
+            cuSeqlensCmpKvOptional, layoutKvOptional, batchSize, cmpKvSource);
         // 校验q与cmp_kv维度一致性
         if (queryBatchSize != cmpKvBatchSize) {
-            OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(SMLAG_ACLNN_OP_NAME,
-                "query, cmp_kv",
-                std::to_string(queryBatchSize) + ", " +
-                std::to_string(cmpKvBatchSize),
-                "When has_cmp_kv is true, the batch sizes of "
-                "query, cmp_kv must be the same.");
+            if (IsTensorSourceSmlag(querySource) &&
+                IsTensorSourceSmlag(cmpKvSource)) {
+                OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SMLAG_ACLNN_OP_NAME,
+                    querySource + ", " + cmpKvSource,
+                    std::to_string(GetRawShapeSizeSmlag(querySource, queryBatchSize)) +
+                    ", " + std::to_string(GetRawShapeSizeSmlag(cmpKvSource, cmpKvBatchSize)),
+                    "When has_cmp_kv is true, " +
+                    GetSourceDescSmlag(querySource) + " must be equal to " +
+                    GetSourceDescSmlag(cmpKvSource) + ".");
+            } else if (IsTensorSourceSmlag(querySource)) {
+                OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
+                    querySource,
+                    std::to_string(GetRawShapeSizeSmlag(querySource, queryBatchSize)).c_str(),
+                    "When has_cmp_kv is true, " +
+                    GetSourceDescSmlag(querySource) +
+                    " must be equal to batch_size.");
+            } else {
+                OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
+                    cmpKvSource,
+                    std::to_string(GetRawShapeSizeSmlag(cmpKvSource, cmpKvBatchSize)).c_str(),
+                    "When has_cmp_kv is true, batch_size must be equal to " +
+                    GetSourceDescSmlag(cmpKvSource) + ".");
+            }
             return ACLNN_ERR_PARAM_INVALID;
         }
         // 校验TND场景cmp_kv维度一致性
         if (strcmp(layoutKvOptional, "TND") == 0 && IsTensorExistSmlag(sequsedCmpKvOptional)) {
             int64_t cuSeqlensCmpKvBatchSize = cuSeqlensCmpKvOptional->GetViewShape().GetDim(0) - 1;
             if (cuSeqlensCmpKvBatchSize != cmpKvBatchSize) {
-                OP_LOGE_FOR_INVALID_SHAPES_WITH_REASON(SMLAG_ACLNN_OP_NAME,
+                OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SMLAG_ACLNN_OP_NAME,
                     "cu_seqlens_cmp_kv, seqused_cmp_kv",
-                    std::to_string(cuSeqlensCmpKvBatchSize) + ", " +
-                    std::to_string(cmpKvBatchSize),
+                    std::to_string(cuSeqlensCmpKvOptional->GetViewShape().GetDim(0)) +
+                    ", " + std::to_string(sequsedCmpKvOptional->GetViewShape().GetDim(0)),
                     "When layout_kv is TND and seqused_cmp_kv is passed, "
-                    "the batch sizes of cu_seqlens_cmp_kv, "
-                    "seqused_cmp_kv must be the same.");
+                    "the shape size of cu_seqlens_cmp_kv minus 1 must be "
+                    "equal to the shape size of seqused_cmp_kv.");
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
         // 校验 cmp_residual_kv 元素数
         if (IsTensorExistSmlag(cmpResidualKvOptional)) {
             if (cmpResidualKvOptional->GetViewShape().GetDim(0) != queryBatchSize) {
-                OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
-                    "cmp_residual_kv",
-                    std::to_string(cmpResidualKvOptional->GetViewShape().GetDim(0)).c_str(),
-                    "The shape size of cmp_residual_kv should be equal to "
-                    "the batch size of query.");
+                if (IsTensorSourceSmlag(querySource)) {
+                    OP_LOGE_FOR_INVALID_SHAPESIZES_WITH_REASON(SMLAG_ACLNN_OP_NAME,
+                        "cmp_residual_kv, " + querySource,
+                        std::to_string(cmpResidualKvOptional->GetViewShape().GetDim(0)) +
+                        ", " + std::to_string(GetRawShapeSizeSmlag(querySource, queryBatchSize)),
+                        "The shape size of cmp_residual_kv must be equal to " +
+                        GetSourceDescSmlag(querySource) + ".");
+                } else {
+                    OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(SMLAG_ACLNN_OP_NAME,
+                        "cmp_residual_kv",
+                        std::to_string(cmpResidualKvOptional->GetViewShape().GetDim(0)).c_str(),
+                        "The shape size of cmp_residual_kv must be equal "
+                        "to batch_size.");
+                }
                 return ACLNN_ERR_PARAM_INVALID;
             }
         }
