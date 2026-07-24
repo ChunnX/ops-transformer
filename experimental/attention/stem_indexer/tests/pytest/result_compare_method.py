@@ -187,13 +187,27 @@ def assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, c
     failures = []
     bad_index_count = 0
     valid_index_count = 0
+    padding_failures = []
+    bad_padding_count = 0
     for index in torch.nonzero(expected_seq_len >= 0, as_tuple=False):
         b_idx, q_head_idx, q_block_idx = [int(item) for item in index]
         valid_len = int(expected_seq_len[b_idx, q_head_idx, q_block_idx])
         valid_index_count += valid_len
+        actual_row = actual_indices[b_idx, q_head_idx, q_block_idx]
+        invalid_positions = torch.nonzero(actual_row[valid_len:] != -1, as_tuple=False).flatten()
+        bad_padding_count += int(invalid_positions.numel())
+        if invalid_positions.numel() > 0 and len(padding_failures) < MAX_PRINT_FAILURES:
+            positions = (invalid_positions[:MAX_PRINT_FAILURES] + valid_len).tolist()
+            padding_failures.append({
+                "b": b_idx,
+                "q_head": q_head_idx,
+                "q_block": q_block_idx,
+                "positions": positions,
+                "actual": actual_row[positions].tolist(),
+            })
         if valid_len == 0:
             continue
-        actual_prefix = actual_indices[b_idx, q_head_idx, q_block_idx, :valid_len].tolist()
+        actual_prefix = actual_row[:valid_len].tolist()
         expected_prefix = expected_indices[b_idx, q_head_idx, q_block_idx, :valid_len].tolist()
         if sorted(actual_prefix) != sorted(expected_prefix):
             row_bad_index_count = count_index_mismatches(actual_prefix, expected_prefix)
@@ -212,6 +226,26 @@ def assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, c
                     }
                 failure["bad_index_count"] = row_bad_index_count
                 failures.append(failure)
+
+    for index in torch.nonzero(expected_seq_len < 0, as_tuple=False):
+        b_idx, q_head_idx, q_block_idx = [int(item) for item in index]
+        actual_row = actual_indices[b_idx, q_head_idx, q_block_idx]
+        invalid_positions = torch.nonzero(actual_row != -1, as_tuple=False).flatten()
+        bad_padding_count += int(invalid_positions.numel())
+        if invalid_positions.numel() > 0 and len(padding_failures) < MAX_PRINT_FAILURES:
+            positions = invalid_positions[:MAX_PRINT_FAILURES].tolist()
+            padding_failures.append({
+                "b": b_idx,
+                "q_head": q_head_idx,
+                "q_block": q_block_idx,
+                "positions": positions,
+                "actual": actual_row[positions].tolist(),
+            })
+
+    assert bad_padding_count == 0, (
+        f"{case['case_id']} sparse_indices padding mismatch: "
+        f"bad_padding_count={bad_padding_count}, expected padding value=-1, failures={padding_failures}"
+    )
 
     index_error_ratio = bad_index_count / valid_index_count if valid_index_count else 0.0
     assert index_error_ratio <= MAX_INDEX_ERROR_RATIO, (

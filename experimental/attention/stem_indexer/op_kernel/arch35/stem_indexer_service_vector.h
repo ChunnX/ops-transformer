@@ -537,8 +537,8 @@ __aicore__ inline void SIVector<SIT>::ProcessTopK(
         if ((constInfo_.attenMaskFlag && (curS1RealS2Len <= initialBlocks_ + windowSize_)) ||
             (curS1RealS2Len <= totalOutput)) {
             if (isLastS2InnerLoop) {
-                uint32_t directOutputLen = Min(curS1RealS2Len, MAX_TOPK_COUNT);
                 const uint32_t packedOutputLen = MAX_TOPK_COUNT + initialBlocks_ + windowSize_;
+                uint32_t directOutputLen = Min(curS1RealS2Len, packedOutputLen);
                 for (uint32_t gIdx = 0; gIdx < curAivGSize; gIdx++) {
                     uint32_t mInnerIdx = gIdx * info.actS1Size + s1Idx;
                     if (mInnerIdx >= curAivGS1ProcNum) {
