@@ -419,7 +419,7 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(QLI_V2_ACLNN_OP_NAME,
                 "cu_seqlens_q",
-                std::to_string(static_cast<int32_t>(dataType)).c_str(),
+                op::ToString(dataType).GetString(),
                 "The dtype of cu_seqlens_q must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -436,7 +436,7 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(QLI_V2_ACLNN_OP_NAME,
                 "cu_seqlens_k",
-                std::to_string(static_cast<int32_t>(dataType)).c_str(),
+                op::ToString(dataType).GetString(),
                 "The dtype of cu_seqlens_k must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -453,7 +453,7 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(QLI_V2_ACLNN_OP_NAME,
                 "seqused_q",
-                std::to_string(static_cast<int32_t>(dataType)).c_str(),
+                op::ToString(dataType).GetString(),
                 "The dtype of seqused_q must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -470,7 +470,7 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(QLI_V2_ACLNN_OP_NAME,
                 "seqused_k",
-                std::to_string(static_cast<int32_t>(dataType)).c_str(),
+                op::ToString(dataType).GetString(),
                 "The dtype of seqused_k must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -488,7 +488,7 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(QLI_V2_ACLNN_OP_NAME,
                 "cmp_residual_k",
-                std::to_string(static_cast<int32_t>(dataType)).c_str(),
+                op::ToString(dataType).GetString(),
                 "The dtype of cmp_residual_k must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -505,7 +505,7 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
         if (dataType != aclDataType::ACL_INT32) {
             OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(QLI_V2_ACLNN_OP_NAME,
                 "metadata",
-                std::to_string(static_cast<int32_t>(dataType)).c_str(),
+                op::ToString(dataType).GetString(),
                 "The dtype of metadata must be int32.");
             return ACLNN_ERR_PARAM_INVALID;
         }
@@ -545,8 +545,8 @@ aclnnStatus CheckConsistencyQliV2(int64_t batchSize, const aclTensor *cuSeqlensQ
             OP_LOGE_FOR_INVALID_SHAPESIZE_WITH_REASON(QLI_V2_ACLNN_OP_NAME,
                 keySource,
                 std::to_string(GetRawShapeSizeQliV2(keySource, keyBatchSize)).c_str(),
-                "batch_size must be equal to " +
-                GetSourceDescQliV2(keySource) + ".");
+                GetSourceDescQliV2(keySource) +
+                " must be equal to batch_size.");
         }
         return ACLNN_ERR_PARAM_INVALID;
     }
