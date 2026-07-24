@@ -2607,8 +2607,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2GmWa
                 uint32_t wavePreloadedChunkCount = 0U;
 
                 if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
-                    // Meta-info routing data was finalized by Dispatch(B), so it
-                    // can be prefetched while AIC is still finishing GMM2(B).
                     // GMM2 rows and meta-info use the same expert-major prefix
                     // sum, so the whole wave is one contiguous row stream.
                     uint32_t waveTokenCount = 0U;
@@ -2624,6 +2622,9 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2GmWa
                     }
 
                     waveOwned = GetCombineNoQuantOwnedRange(waveTokenCount);
+                    // GMM2 ready transitively guarantees that Dispatch has
+                    // finished publishing the matching meta-info routing data.
+                    WaitGmm2NoQuantReady(batchIdx);
                     if (waveOwned.count != 0U) {
                         waveGmm2OutGlobal = params_.workspaceInfo.gmm2MmadResPtr +
                                            static_cast<uint64_t>(waveTokenBegin) * k_ * sizeof(bfloat16_t);
@@ -2634,7 +2635,6 @@ __aicore__ inline void MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2GmWa
                             static_cast<uint64_t>(waveTokenBegin) + waveOwned.start, wavePreloadedChunkCount, 0U);
                         SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
                     }
-                    WaitGmm2NoQuantReady(batchIdx);
                     if (wavePreloadedChunkCount != 0U) {
                         WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                     }
