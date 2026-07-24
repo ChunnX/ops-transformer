@@ -135,8 +135,14 @@ def cpu_lightning_indexer(query, key, weights, *, actual_seq_lengths_query=None,
     clear_topk_scores()
     q_shape = list(query.shape)
     k_shape = list(key.shape)
-    act_q = ttk_tensor_to_list(actual_seq_lengths_query)
-    act_k = ttk_tensor_to_list(actual_seq_lengths_key)
+    actual_q_values = kwargs.get("actual_seq_lengths_query_values")
+    actual_k_values = kwargs.get("actual_seq_lengths_key_values")
+    act_q = ttk_tensor_to_list(
+        actual_q_values if actual_q_values is not None else actual_seq_lengths_query
+    )
+    act_k = ttk_tensor_to_list(
+        actual_k_values if actual_k_values is not None else actual_seq_lengths_key
+    )
 
     if layout_query == "TND":
         batch_size = len(act_q) if act_q else 1
