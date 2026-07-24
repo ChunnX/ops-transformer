@@ -137,9 +137,8 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v1_bw_rg_half = ascend_ub.GetWithOffset<half>(2048, 20992);
   auto v1_bw_log_p = ascend_ub.GetWithOffset<float>(64, 512);
   auto v1_bw_log_sy = ascend_ub.GetWithOffset<float>(64, 768);
-  auto v1_bw_loss = ascend_ub.GetWithOffset<float>(64, 256);
-  auto v1_bw_loss_2d = ascend_ub.GetWithOffset<float>(64, 0);
-  auto v1_bw_loss_sum = ascend_ub.GetWithOffset<float>(1, 256);
+  auto v1_bw_loss_2d = ascend_ub.GetWithOffset<float>(64, 256);
+  auto v1_bw_loss_sum = ascend_ub.GetWithOffset<float>(1, 0);
   auto v1_bw_dw_half = ascend_ub.GetWithOffset<half>(32, 0);
   auto c2_dq_l0c = ascend_l0c.GetWithOffset<float>(8192, 98304);
   auto c2_rg_l1 = ascend_l1.GetWithOffset<half>(8192, 262144);
@@ -542,12 +541,9 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
                 AscendC::Ln(v1_bw_log_p[0], v1_bw_p[0], 64);
                 AscendC::Ln(v1_bw_log_sy[0], v1_bw_sy[0], 64);
                 AscendC::PipeBarrier<PIPE_V>();
-                AscendC::Sub(v1_bw_loss[0], v1_bw_log_p[0], v1_bw_log_sy[0], 64);
+                AscendC::Sub(v1_bw_loss_2d[0], v1_bw_log_p[0], v1_bw_log_sy[0], 64);
                 AscendC::PipeBarrier<PIPE_V>();
-                AscendC::Mul(v1_bw_loss[0], v1_bw_loss[0], v1_bw_p[0], 64);
-                {
-                AscendC::Muls(v1_bw_loss_2d[0], v1_bw_loss[0], 1.000000e+00f, 64);
-                }
+                AscendC::Mul(v1_bw_loss_2d[0], v1_bw_loss_2d[0], v1_bw_p[0], 64);
                 AscendC::PipeBarrier<PIPE_V>();
                 tl::ascend::reduce_sum<float,  1,  64,  -1>(v1_bw_loss_sum[0], v1_bw_loss_2d[0], tmp_ub[0], true);
                 AscendC::PipeBarrier<PIPE_V>();
