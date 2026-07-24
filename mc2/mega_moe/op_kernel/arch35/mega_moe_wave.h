@@ -2419,8 +2419,6 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2GmWaves(const DispatchBuffe
                 uint32_t wavePreloadedChunkCount = 0U;
 
                 if constexpr (MEGA_MOE_GMM2_READY_MODE == MEGA_MOE_GMM2_READY_PER_BATCH) {
-                    // Triple routing data was finalized by Dispatch(B), so it
-                    // can be prefetched while AIC is still finishing GMM2(B).
                     // GMM2 rows and triples use the same expert-major prefix
                     // sum, so the whole wave is one contiguous row stream.
                     uint32_t waveTokenCount = 0U;
@@ -2435,6 +2433,9 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2GmWaves(const DispatchBuffe
                     }
 
                     waveOwned = GetCombineNoQuantOwnedRange(waveTokenCount);
+                    // GMM2 ready transitively guarantees that Dispatch has
+                    // finished publishing the matching triple routing data.
+                    WaitGmm2NoQuantReady(batchIdx);
                     if (waveOwned.count != 0U) {
                         waveGmm2OutGlobal = params_.workspaceInfo.gmm2MmadResPtr +
                                             static_cast<uint64_t>(waveTokenBegin) * k_ * sizeof(bfloat16_t);
@@ -2445,7 +2446,6 @@ MegaMoeWave<TemplateMegaMoeWaveTypeFunc>::ProcessGmm2GmWaves(const DispatchBuffe
                                                      wavePreloadedChunkCount, 0U);
                         SetFlag<HardEvent::MTE2_S>(EVENT_ID0);
                     }
-                    WaitGmm2NoQuantReady(batchIdx);
                     if (wavePreloadedChunkCount != 0U) {
                         WaitFlag<HardEvent::MTE2_S>(EVENT_ID0);
                     }
