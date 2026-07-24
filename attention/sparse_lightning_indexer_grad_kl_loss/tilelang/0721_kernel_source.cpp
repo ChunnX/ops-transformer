@@ -289,6 +289,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
                     AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(1);
                     tl::ascend::mma<half, float, 128, 128>(c1_q_l0a_ping[0],c1_key_l0b_ping[0],c1_p_l0c_pong[0], (d_idx == 0), 128);
                   }
+                  AscendC::PipeBarrier<PIPE_M>();
                   AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(0);
                   if ((k_inner % 2) == 0) {
                     AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
@@ -326,6 +327,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
                     AscendC::WaitFlag<AscendC::HardEvent::FIX_M>(1);
                     tl::ascend::mma<half, float, 128, 128>(c1_q_l0a_pong[0],c1_key_l0b_pong[0],c1_p_l0c_pong[0], (d_idx == 0), 128);
                   }
+                  AscendC::PipeBarrier<PIPE_M>();
                   AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(1);
                   if ((k_inner % 2) == 0) {
                     AscendC::SetFlag<AscendC::HardEvent::FIX_M>(0);
