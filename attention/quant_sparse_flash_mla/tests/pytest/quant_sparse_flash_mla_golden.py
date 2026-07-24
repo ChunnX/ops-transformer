@@ -113,7 +113,7 @@ class GeneralizedSFAQuant:
         seqused_cmp_kv,
         cmp_residual_kv,
         sinks,
-        return_softmax_lse=false
+        return_softmax_lse=False
     ):
         attn_out = torch.zeros(q_bnsd.shape, dtype=q_bnsd.dtype)
         softmax_lse = None
@@ -261,7 +261,9 @@ class GeneralizedSFAQuant:
                     acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
                     acc_o = acc_o / hifp8_scale_value
                     attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(torch.bfloat16)
-        return attn_out
+                    if return_softmax_lse:
+                        softmax_lse[i_B, i_N2, i_S1, :] = score_max + torch.log(sumexp + 1e-10)
+        return attn_out, softmax_lse
 
     def gather_cmp_kv(
         self,
@@ -382,6 +384,30 @@ class GeneralizedSFAQuant:
         else:
             return tensor
 
+    def lse_trans_bnsd_to_target_layout(self, tensor, layout, act_seq=None):
+        if layout in ["BSND"]: #B N S G
+            return tensor
+        elif layout in ["TND"]: #B N2 S1 G  --> T1 N2 G --> N2 T1 G
+            T = act_seq[-1]
+            B = tensor.shape[0]
+            N2 = tensor.shape[1]
+            G = tensor.shape[3]
+            output = torch.zeros((N2, T, G), dtype=torch.float)
+            t_start = 0
+            act_seq_per_batch = prefix_sum_to_original(act_seq)  # prefix_sum_to_original 还原成每个batch的真实长度
+            for b_index in range(B):
+                cur_act_seq = act_seq_per_batch[b_index]
+                t_end = t_start + cur_act_seq
+                if cur_act_seq == 0:
+                    continue
+                for n_index in range(N2):
+                    output[n_index, t_start:t_end, :] = tensor[b_index, n_index, :cur_act_seq, :]
+                t_start += cur_act_seq
+            output = output.transpose(0, 1).contiguous()
+            return output
+        else:
+            return tensor
+
     def forward(
         self,
         q,
@@ -393,6 +419,7 @@ class GeneralizedSFAQuant:
         seqused_cmp_kv,
         cmp_residual_kv,
         sinks,
+        return_softmax_lse
     ):
         logging.info("cpu执行中...")
         logging.info(f"template_run_mode = {self.template_run_mode}")
@@ -413,7 +440,7 @@ class GeneralizedSFAQuant:
                 )
             )
 
-        attn_out = self.calculate_by_bnsd(
+        attn_out, softmax_lse = self.calculate_by_bnsd(
             q_bnsd,
             ori_k_bnsd,
             cmp_k_bnsd,
@@ -832,7 +859,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
     return_softmax_lse = params.get("return_softmax_lse", False)
     quant_mode = params.get("quant_mode", False)
     isSink = params.get("isSink", True)
-
+    return_softmax_lse = params.get('return_softmax_lse', False)
     cu_seqlens_q = torch.tensor(cu_seqlens_q).to(torch.int32)
     seqused_q = torch.tensor(seqused_q).to(torch.int32)
     seqused_ori_kv = torch.tensor(seqused_ori_kv).to(torch.int32)
@@ -841,6 +868,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         if seqused_cmp_kv is not None
         else None
     )
+    B = int(B)
     assert quant_mode == 1, f"quant_mode only support 1, but got {quant_mode}"
     # generate q (hifp8FullQuant)
     if layout_q == "BSND":
@@ -993,7 +1021,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         ori_kv_descale_val=ori_kv_descale.item(),
         cmp_kv_descale_val=cmp_kv_descale.item() if cmp_kv_descale is not None else None,
     )
-    cpu_result = test_qsmla.forward(
+    cpu_result, cpu_lse = test_qsmla.forward(
         q,
         ori_k_bnsd,
         cmp_k_bnsd,
@@ -1003,6 +1031,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
         seqused_cmp_kv,
         cmp_residual_kv,
         sinks,
+        return_softmax_lse
     )
 
     logging.info("mode:%s\n", template_run_mode)
@@ -1099,6 +1128,7 @@ def generate_and_save_testdata(params, save_pt=False, save_path=""):
             "return_softmax_lse": return_softmax_lse,
         },
         "cpu_output": cpu_result,
+        'cpu_lse': cpu_lse if return_softmax_lse else None
     }
 
     if save_pt:
