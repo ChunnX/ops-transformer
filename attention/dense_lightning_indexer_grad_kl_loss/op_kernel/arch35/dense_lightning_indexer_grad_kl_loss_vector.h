@@ -600,18 +600,16 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorSy(DLIGradKLLossRunIn
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4SY);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4SY);
 
-        DenseDliGradKLLossArch35::ComputeSyWeightedHead(
-            mm2ResUb_, weightUb_[pingpongFlag], curS1InnerSize,
-            runInfo.curS2StepSizeAlign8, actualLenFirstRow,
-            constInfo.n1IndexSize, n1IndexIdx);
-
-        PipeBarrier<PIPE_V>();
-
-        // Reduce N
         if (n1IndexIdx == 0) {
-            AscendC::DataCopy(syReduceUb_, mm2ResUb_, processNumPerHead);
+            DenseDliGradKLLossArch35::ComputeSyHead<true>(
+                syReduceUb_, mm2ResUb_, weightUb_[pingpongFlag],
+                curS1InnerSize, runInfo.curS2StepSizeAlign8,
+                actualLenFirstRow, constInfo.n1IndexSize, n1IndexIdx);
         } else {
-            AscendC::Add(syReduceUb_, syReduceUb_, mm2ResUb_, processNumPerHead);
+            DenseDliGradKLLossArch35::ComputeSyHead<false>(
+                syReduceUb_, mm2ResUb_, weightUb_[pingpongFlag],
+                curS1InnerSize, runInfo.curS2StepSizeAlign8,
+                actualLenFirstRow, constInfo.n1IndexSize, n1IndexIdx);
         }
 
         AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(eventIdVToMte24SY);
