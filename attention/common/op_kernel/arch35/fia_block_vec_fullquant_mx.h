@@ -378,7 +378,8 @@ public:
         constexpr uint16_t pScaleDstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            for (uint16_t i = 0; i < 4; i++) { // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
+            constexpr uint16_t pScaleRepeatCount = s2SplitSize / MXFP_GROUP_SIZE / 2;
+            for (uint16_t i = 0; i < pScaleRepeatCount; i++) { // PScale在s2方向的block块大小为32，L1上需要满足16x2的分形，所以重复拷贝s2SplitSize/32/2次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32], pScaleSubLoop0Tensor, {4, 1, 0, pScaleDstStride});
             }
         } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
@@ -651,7 +652,8 @@ public:
         uint64_t vecOffset = constInfo.subBlockIdx * pScaleDataLen;
         uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
-            for (uint16_t i = 0; i < 4; i++) { // PScale在s2方向的block块大小为32，所以一共有256/32=8个，而L1上需要满足16x2的分形，所以重复拷贝4次
+            constexpr uint16_t pScaleRepeatCount = s2SplitSize / MXFP_GROUP_SIZE / 2;
+            for (uint16_t i = 0; i < pScaleRepeatCount; i++) { // PScale在s2方向的block块大小为32，L1上需要满足16x2的分形，所以重复拷贝s2SplitSize/32/2次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32],
                     pScaleSubLoop0Tensor, {copyCount, 1, 0, pScaleDstStride});
                 DataCopy(mm2AScaleL1Tensor[pScaleSubLoopOffset + vecOffset + i * 32],
