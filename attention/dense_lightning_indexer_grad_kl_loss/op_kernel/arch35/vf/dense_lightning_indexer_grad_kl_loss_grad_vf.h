@@ -122,7 +122,8 @@ __simd_vf__ inline void ComputeGradAndReduceVF(
     }
     Reduce<ReduceType::SUM, float, float, MaskMergeMode::ZEROING>(
         dwResultReg, dwSumReg, fullMask);
-    MaskReg scalarMask = UpdateMask<float>(1);
+    uint32_t scalarCount = 1;
+    MaskReg scalarMask = UpdateMask<float>(scalarCount);
     StoreAlign(dwResultUb, dwResultReg, scalarMask);
 }
 
