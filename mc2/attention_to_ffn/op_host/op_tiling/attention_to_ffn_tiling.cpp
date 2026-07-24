@@ -719,7 +719,8 @@ static bool CheckInputAndSetTilingData(gert::TilingContext *context, AttentionTo
     return true;
 }
  
-static uint64_t CalTilingKey(const uint32_t syncFlag, const uint32_t quantMode, const bool activeMaskFlag)
+static uint64_t CalTilingKey(const gert::TilingContext *context, const uint32_t syncFlag,
+                            const uint32_t quantMode, const bool activeMaskFlag)
 {
     // TilingKey
     bool isSync = false;
