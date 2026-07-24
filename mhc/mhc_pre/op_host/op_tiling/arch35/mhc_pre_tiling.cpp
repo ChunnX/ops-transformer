@@ -106,6 +106,7 @@ const constexpr uint32_t M_K_B_L1_ELEMENT_COUNT = 128 * 256;
 const constexpr uint32_t M_K_K_L1_MAX_SIZE = 1024;
 const constexpr uint32_t M_K_K_L1_ALIGN = 128;
 const constexpr size_t M_K_WORKSPACE_ALIGN = 512;
+const constexpr uint32_t M_K_USE_GM_STAGE = 1;
 
 static constexpr size_t OUT_H_IN_INDEX = 0;
 static constexpr size_t OUT_H_POST_INDEX = 1;
@@ -703,6 +704,7 @@ void MhcPreBaseTiling::FillMkTilingData()
     tilingData_.set_mkWorkspaceMmOffset(static_cast<uint32_t>(mmOffset));
     tilingData_.set_mkWorkspaceRmsOffset(static_cast<uint32_t>(rmsOffset));
     tilingData_.set_mkWorkspaceFinalOffset(static_cast<uint32_t>(finalOffset));
+    tilingData_.set_mkUseGmStage(M_K_USE_GM_STAGE);
 }
 
 void MhcPreBaseTiling::FillTilingData()
@@ -792,7 +794,12 @@ ge::graphStatus MhcPreBaseTiling::TilingProcess()
 
     if (tilingMode_ == TilingMode::SPLIT_M_K) {
         size_t finalBytes = outFlag_ ? 0U : static_cast<size_t>(totalLength_) * matN_ * sizeof(float);
-        userWorkspaceSize = static_cast<size_t>(tilingData_.get_mkWorkspaceFinalOffset()) + finalBytes;
+        size_t mkXStageBytes = tilingData_.get_mkUseGmStage() == 0U ? 0U :
+            static_cast<size_t>(tilingData_.get_cubeBlockDimM()) *
+            tilingData_.get_cubeBlockDimK() * 2U *
+            tilingData_.get_mL1Size() * tilingData_.get_kL1Size() * sizeof(float);
+        userWorkspaceSize = static_cast<size_t>(tilingData_.get_mkWorkspaceFinalOffset()) +
+                            finalBytes + mkXStageBytes;
     } else if (tilingMode_ == TilingMode::SPLIT_ND) {
         size_t xFloatWorkspaceSizeRaw = static_cast<size_t>(matM_) * static_cast<size_t>(matK_) * sizeof(float);
         size_t xFloatWorkspaceSize =
