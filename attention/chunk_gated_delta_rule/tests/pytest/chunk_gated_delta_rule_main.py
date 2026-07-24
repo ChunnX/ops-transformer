@@ -48,8 +48,8 @@ class MyModel(torch.nn.Module):
     def forward(
         self, query, key, value, initial_state, beta, actual_seq_lengths, scale, gamma
     ):
-        chunk_gated_delta_rule = torch_npu.npu_chunk_gated_delta_rule(
-            # chunk_gated_delta_rule = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
+        # chunk_gated_delta_rule = torch_npu.npu_chunk_gated_delta_rule(
+        chunk_gated_delta_rule = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
             query,
             key,
             value,
@@ -257,8 +257,8 @@ def cgdr_npu(q, k, v, g, beta, scale, initial_state, actual_seq_lengths):
             q, k, v, initial_state.clone(), beta, actual_seq_lengths, scale, g
         )
     else:
-        # o_npu, state_npu = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
-        o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule(
+        o_npu, state_npu = torch.ops.cann_ops_transformer.chunk_gated_delta_rule(
+        # o_npu, state_npu = torch_npu.npu_chunk_gated_delta_rule(
             q,
             k,
             v,

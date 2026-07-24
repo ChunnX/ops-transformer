@@ -14,7 +14,9 @@
  */
 
 #include "arch22/chunk_gated_delta_rule.h"
+#include "arch22/chunk_gated_delta_rule_float.h"
 #include "chunk_gated_delta_rule_tiling_data.h"
+#include "chunk_gated_delta_rule_tiling_key.h"
 
 using namespace AscendC;
 using namespace matmul;
@@ -31,9 +33,14 @@ extern "C" __global__ __aicore__ void chunk_gated_delta_rule(GM_ADDR query, GM_A
     TPipe pipe;
 
     __gm__ uint8_t *user = GetUserWorkspace(workspaceGM);
-
-    CGDR<bfloat16_t, float> op(&pipe, &tilingData);
     CGDRInitParams initParams{query, key, value, beta, initialState, seqlens, gOptional, out, finalState};
-    op.Init(initParams, user);
-    op.Process();
+    if (TILING_KEY_IS(TILING_KEY_CGDR_FP32_STATE)) {
+        CGDRFloat<bfloat16_t, float> op(&pipe, &tilingData);
+        op.Init(initParams, user);
+        op.Process();
+    } else if (TILING_KEY_IS(TILING_KEY_CGDR_BF16_STATE)) {
+        CGDR<bfloat16_t, float> op(&pipe, &tilingData);
+        op.Init(initParams, user);
+        op.Process();
+    }
 }
