@@ -180,7 +180,8 @@ int RunMatmulAllToAll(int rankNum, int rankId, int m, int k, int n,
   const char *ctxTag = "quant_matmul_all_to_all";
 
   CommContext *devContext = reinterpret_cast<CommContext *>(
-      builder.CreateDeviceContext(&hostCtx, ctxTag));
+      builder.CreateDeviceContext(&hostCtx, sizeof(CommContext), ctxTag,
+                                  &hostCtx.udmaCtx, &hostCtx.ubmemCtx));
   if (devContext == nullptr) {
     ERROR_LOG("rank %d CreateDeviceContext failed", rankId);
     return -1;
