@@ -586,9 +586,14 @@ ge::graphStatus QSMLATilingCheck::CheckConsistency() const
 {
     if (ge::GRAPH_SUCCESS != CheckLayoutQKvConsistency() || ge::GRAPH_SUCCESS != CheckSparseIndicesShapeMatchQ() ||
         ge::GRAPH_SUCCESS != CheckTopkLengthConsistency() || ge::GRAPH_SUCCESS != CheckN2Consistency() ||
-        ge::GRAPH_SUCCESS != CheckBConsistency()) {
+        ge::GRAPH_SUCCESS != CheckBConsistency() || ge::GRAPH_SUCCESS != CheckSoftmaxLse()) {
         return ge::GRAPH_FAILED;
     }
+    return ge::GRAPH_SUCCESS;
+}
+
+ge::graphStatus QSMLATilingCheck::CheckSoftmaxLse() const
+{
     return ge::GRAPH_SUCCESS;
 }
 }

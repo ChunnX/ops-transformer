@@ -246,6 +246,7 @@ struct QSMLAParaInfo {
     QSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
     QSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     QSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
+    QSMLATilingRequiredParaInfo softmaxLse = {nullptr, nullptr};
 
     const int64_t *quantMode = nullptr;
     const float *softmaxScale = nullptr;
@@ -259,6 +260,7 @@ struct QSMLAParaInfo {
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
     const int64_t *topkValueMode = nullptr;
+    const bool *returnSoftmaxLse = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -304,6 +306,7 @@ public:
     int64_t oriWinRight = 0;
     int64_t sparseBlockSize = 0;
     int64_t sparseBlockCount = 0;
+    bool returnSoftmaxLse = false;
     // Mask
     int32_t sparseMode = 0;
     // Others Flag
@@ -524,6 +527,7 @@ private:
     ge::graphStatus CheckMultiParaConsistency();
 
     ge::graphStatus CheckConsistency() const;
+    ge::graphStatus CheckSoftmaxLse() const;
     ge::graphStatus CheckLayoutQKvConsistency() const;
     ge::graphStatus CheckSparseIndicesShapeMatchQ() const;
     ge::graphStatus CheckTopkLengthConsistency() const;

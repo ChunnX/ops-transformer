@@ -261,7 +261,9 @@ class GeneralizedSFAQuant:
                     acc_o = torch.div(acc_o, sumexp.unsqueeze(1))
                     acc_o = acc_o / hifp8_scale_value
                     attn_out[i_B, i_N2 * G : (i_N2 + 1) * G, i_S1, :] = acc_o.to(torch.bfloat16)
-        return attn_out
+                    if return_softmax_lse:
+                        softmax_lse[i_B, i_N2, i_S1, :] = score_max + torch.log(sumexp + 1e-10)
+        return attn_out, softmax_lse
 
     def gather_cmp_kv(
         self,
@@ -378,6 +380,30 @@ class GeneralizedSFAQuant:
                     output[t_start : t_start + cur_seqused, n_index, :] = tensor[
                         b_index, n_index, :cur_seqused, :
                     ]
+            return output
+        else:
+            return tensor
+
+    def lse_trans_bnsd_to_target_layout(self, tensor, layout, act_seq=None):
+        if layout in ["BSND"]: #B N S G
+            return tensor
+        elif layout in ["TND"]: #B N2 S1 G  --> T1 N2 G --> N2 T1 G
+            T = act_seq[-1]
+            B = tensor.shape[0]
+            N2 = tensor.shape[1]
+            G = tensor.shape[3]
+            output = torch.zeros((N2, T, G), dtype=torch.float)
+            t_start = 0
+            act_seq_per_batch = prefix_sum_to_original(act_seq)
+            for b_index in range(B):
+                cur_act_seq = act_seq_per_batch[b_index]
+                t_end = t_start + cur_act_seq
+                if cur_act_seq == 0:
+                    continue
+                for n_index in range(N2):
+                    output[n_index, t_start:t_end, :] = tensor[b_index, n_index, :cur_act_seq, :]
+                t_start += cur_act_seq
+            output = output.transpose(0, 1).contiguous()
             return output
         else:
             return tensor
