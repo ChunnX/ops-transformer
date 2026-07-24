@@ -23,18 +23,14 @@ using namespace AscendC::MicroAPI;
 
 constexpr uint32_t SY_FP32_REG_ELEMENTS = 64;
 
-template <bool FIRST_HEAD>
-__simd_vf__ inline void ComputeSyHeadVF(
-    __ubuf__ float *dstUb, __ubuf__ float *scoreUb, __ubuf__ float *weightUb,
-    uint32_t rowCount, uint32_t rowSize, int32_t actualLenFirstRow,
-    uint32_t n1IndexSize, uint32_t n1IndexIdx)
+__simd_vf__ inline void ComputeSyWeightedHeadVF(
+    __ubuf__ float *scoreUb, __ubuf__ float *weightUb, uint32_t rowCount,
+    uint32_t rowSize, int32_t actualLenFirstRow, uint32_t n1IndexSize,
+    uint32_t n1IndexIdx)
 {
     RegTensor<float> scoreReg;
     RegTensor<float> weightReg;
     RegTensor<float> weightedReg;
-    RegTensor<float> weightedOrPadReg;
-    RegTensor<float> accReg;
-    RegTensor<float> outputReg;
 
     for (uint32_t rowIdx = 0; rowIdx < rowCount; ++rowIdx) {
         int32_t validRowCount = actualLenFirstRow + static_cast<int32_t>(rowIdx);
@@ -42,60 +38,42 @@ __simd_vf__ inline void ComputeSyHeadVF(
         validRowCount = validRowCount > static_cast<int32_t>(S2_BASE_STEP) ?
                             static_cast<int32_t>(S2_BASE_STEP) :
                             validRowCount;
+        if (validRowCount == 0) {
+            continue;
+        }
 
         LoadAlign<float, LoadDist::DIST_BRC_B32>(
             weightReg, weightUb + rowIdx * n1IndexSize + n1IndexIdx);
         uint32_t rowOffset = rowIdx * rowSize;
-        for (uint32_t columnOffset = 0; columnOffset < rowSize;
+        for (uint32_t columnOffset = 0;
+             columnOffset < static_cast<uint32_t>(validRowCount);
              columnOffset += SY_FP32_REG_ELEMENTS) {
-            uint32_t rowCountThisChunk =
-                rowSize - columnOffset < SY_FP32_REG_ELEMENTS ?
-                    rowSize - columnOffset :
-                    SY_FP32_REG_ELEMENTS;
-            int32_t validCountThisChunk =
-                validRowCount - static_cast<int32_t>(columnOffset);
-            validCountThisChunk = validCountThisChunk < 0 ? 0 : validCountThisChunk;
             uint32_t validCount =
-                static_cast<uint32_t>(validCountThisChunk) < rowCountThisChunk ?
-                    static_cast<uint32_t>(validCountThisChunk) :
-                    rowCountThisChunk;
-            MaskReg rowMask = UpdateMask<float>(rowCountThisChunk);
+                static_cast<uint32_t>(validRowCount) - columnOffset < SY_FP32_REG_ELEMENTS ?
+                    static_cast<uint32_t>(validRowCount) - columnOffset :
+                    SY_FP32_REG_ELEMENTS;
+            MaskReg validMask = UpdateMask<float>(validCount);
             uint32_t offset = rowOffset + columnOffset;
             LoadAlign(scoreReg, scoreUb + offset);
-            if (validCount > 0) {
-                MaskReg validMask = UpdateMask<float>(validCount);
-                Mul(weightedReg, scoreReg, weightReg, validMask);
-                Select(weightedOrPadReg, weightedReg, scoreReg, validMask);
-            } else {
-                Move(weightedOrPadReg, scoreReg);
-            }
-            if constexpr (FIRST_HEAD) {
-                StoreAlign(dstUb + offset, weightedOrPadReg, rowMask);
-            } else {
-                LoadAlign(accReg, dstUb + offset);
-                Add(outputReg, accReg, weightedOrPadReg, rowMask);
-                StoreAlign(dstUb + offset, outputReg, rowMask);
-            }
+            Mul(weightedReg, scoreReg, weightReg, validMask);
+            StoreAlign(scoreUb + offset, weightedReg, validMask);
         }
     }
     LocalMemBar<MemType::VEC_STORE, MemType::VEC_LOAD>();
 }
 
-template <bool FIRST_HEAD>
-__aicore__ inline void ComputeSyHead(
-    const LocalTensor<float> &dstTensor, const LocalTensor<float> &scoreTensor,
-    const LocalTensor<float> &weightTensor, uint32_t rowCount, uint32_t rowSize,
-    int32_t actualLenFirstRow, uint32_t n1IndexSize, uint32_t n1IndexIdx)
+__aicore__ inline void ComputeSyWeightedHead(
+    const LocalTensor<float> &scoreTensor, const LocalTensor<float> &weightTensor,
+    uint32_t rowCount, uint32_t rowSize, int32_t actualLenFirstRow,
+    uint32_t n1IndexSize, uint32_t n1IndexIdx)
 {
-    __ubuf__ float *dstUb =
-        reinterpret_cast<__ubuf__ float *>(dstTensor.GetPhyAddr());
     __ubuf__ float *scoreUb =
         reinterpret_cast<__ubuf__ float *>(scoreTensor.GetPhyAddr());
     __ubuf__ float *weightUb =
         reinterpret_cast<__ubuf__ float *>(weightTensor.GetPhyAddr());
-    ComputeSyHeadVF<FIRST_HEAD>(
-        dstUb, scoreUb, weightUb, rowCount, rowSize, actualLenFirstRow,
-        n1IndexSize, n1IndexIdx);
+    ComputeSyWeightedHeadVF(
+        scoreUb, weightUb, rowCount, rowSize, actualLenFirstRow, n1IndexSize,
+        n1IndexIdx);
 }
 } // namespace DenseDliGradKLLossArch35
 
