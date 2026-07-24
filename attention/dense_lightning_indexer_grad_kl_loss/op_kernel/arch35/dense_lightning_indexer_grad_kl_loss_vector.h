@@ -26,7 +26,6 @@
 #include "vf/dense_lightning_indexer_grad_kl_loss_cast_vf.h"
 #include "vf/dense_lightning_indexer_grad_kl_loss_loss_vf.h"
 #include "vf/dense_lightning_indexer_grad_kl_loss_p_vf.h"
-#include "vf/dense_lightning_indexer_grad_kl_loss_sy_vf.h"
 
 using namespace AscendC;
 using AscendC::CrossCoreSetFlag;
@@ -584,6 +583,11 @@ template <typename DLIT>
 __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorSy(DLIGradKLLossRunInfo &runInfo, uint32_t s1InnerIdx,
                                                               uint32_t curS1InnerSize, uint32_t pingpongFlag)
 {
+    // weight UB cast To weight.GetValue and release eventID
+    event_t eventIdVToS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+    AscendC::SetFlag<AscendC::HardEvent::V_S>(eventIdVToS);
+    AscendC::WaitFlag<AscendC::HardEvent::V_S>(eventIdVToS);
+
     uint32_t mm2ResGmOffsetS1 = constInfo.subBlockIdx * runInfo.curS1Size / AIC_AIV_RATIO * runInfo.curS2StepSize
                                 + s1InnerIdx * S1_VEC_SIZE_8 * runInfo.curS2StepSize;
     uint32_t processNumPerHead = curS1InnerSize * runInfo.curS2StepSizeAlign8;
@@ -600,10 +604,22 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorSy(DLIGradKLLossRunIn
         AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4SY);
         AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(eventIdMte2ToV4SY);
 
-        DenseDliGradKLLossArch35::ComputeSyWeightedHead(
-            mm2ResUb_, weightUb_[pingpongFlag], curS1InnerSize,
-            runInfo.curS2StepSizeAlign8, actualLenFirstRow,
-            constInfo.n1IndexSize, n1IndexIdx);
+        for (uint32_t rowIdx = 0; rowIdx < curS1InnerSize; rowIdx++) {
+            float weightValue = weightUb_[pingpongFlag].GetValue(rowIdx * constInfo.n1IndexSize + n1IndexIdx);
+            uint32_t mulOffset = rowIdx * runInfo.curS2StepSizeAlign8;
+
+            event_t eventIdSToV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+            AscendC::SetFlag<AscendC::HardEvent::S_V>(eventIdSToV);
+            AscendC::WaitFlag<AscendC::HardEvent::S_V>(eventIdSToV);
+
+            int32_t processNumThisRow = actualLenFirstRow + rowIdx;
+            if (processNumThisRow > static_cast<int32_t>(S2_BASE_STEP)) {
+                processNumThisRow = static_cast<int32_t>(S2_BASE_STEP);
+            }
+            if (processNumThisRow > 0) {
+                AscendC::Muls<T>(mm2ResUb_[mulOffset], mm2ResUb_[mulOffset], weightValue, processNumThisRow);
+            }
+        }
 
         PipeBarrier<PIPE_V>();
 
