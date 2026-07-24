@@ -1724,13 +1724,26 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
     return ge::GRAPH_SUCCESS;
 }
 
-static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const char *nodeName)
+static ge::graphStatus SetWorkSpace(gert::TilingContext *context, MoeDistributeDispatchV2TilingData &tilingData,
+                                    uint32_t localMoeExpertNum, const char *nodeName)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "workSpaces"), return ge::GRAPH_FAILED);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
+    // 原子定序：专家>0 的完整 token（data + 量化scales + expandIdx 三元组 + 可选专家scale）会暂存到 workspace
+    // （内核 recvCntWorkspaceGM_）再密排重排，地址空间达 localMoeExpertNum * globalBs * tokenBytes。
+    // 旧"跨核前缀和" scratch（WORKSPACE_ELEMENT_OFFSET*aivNum*aivNum）已随 SyncCntOnCore/GetCumSum 删除而废弃，
+    // 此处改为按完整 token 放宽上界分配 staging 区：scale 按 ceil128(h) 个 float 预留，覆盖所有量化模式（PERGROUP 最大）。
+    constexpr uint64_t EXPAND_IDX_BYTES = 3UL * sizeof(uint32_t); // expandIdx 三元组: rankId/tokenIndex/k
+    uint64_t h = static_cast<uint64_t>(tilingData.moeDistributeDispatchV2Info.h);
+    uint64_t globalBs = static_cast<uint64_t>(tilingData.moeDistributeDispatchV2Info.globalBs);
+    uint64_t dtypeSize = ge::GetSizeByDataType(context->GetInputDesc(X_INDEX)->GetDataType());
+    uint64_t dataBytes = ops::CeilAlign(h * dtypeSize, static_cast<uint64_t>(WORKSPACE_ELEMENT_OFFSET));
+    uint64_t scaleCnt = ops::CeilAlign(h, static_cast<uint64_t>(128U));
+    uint64_t scaleReserve = scaleCnt * sizeof(float) + EXPAND_IDX_BYTES + sizeof(float);
+    uint64_t fullTokenBytes = dataBytes + ops::CeilAlign(scaleReserve, static_cast<uint64_t>(WORKSPACE_ELEMENT_OFFSET));
+    size_t stagingSize = static_cast<size_t>(localMoeExpertNum) * static_cast<size_t>(globalBs) *
+                         static_cast<size_t>(fullTokenBytes);
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + stagingSize;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1886,7 +1899,7 @@ ge::graphStatus CheckSizeAndSetRelevantCfg(gert::TilingContext *context, MoeDist
                                        config) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(SetWorkSpace(context, *tilingData, localMoeExpertNum, nodeName) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
 
     if (!config.isMc2Context) {
