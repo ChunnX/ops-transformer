@@ -76,7 +76,16 @@ else:
     print(f"错误: 输出目录不存在: {pt_dir}")
 
 def compressor(testcase_files):   # 初始化参数和tensor
-    cpu_result, kv_mask_result, npu_result ,cpu_kv_state, mask_cpu_kv_state, cpu_score_state, mask_cpu_score_state, state_cache, params = quant_compressor_pt_loadprocess.test_compressor_process(testcase_files, device_id=0)
+    ret = quant_compressor_pt_loadprocess.test_compressor_process(testcase_files, device_id=0)
+    cpu_result = ret["cpu_result"]
+    kv_mask_result = ret["kv_mask_result"]
+    npu_result = ret["npu_result"]
+    cpu_kv_state = ret["cpu_kv_state"]
+    mask_cpu_kv_state = ret["mask_cpu_kv_state"]
+    cpu_score_state = ret["cpu_score_state"]
+    mask_cpu_score_state = ret["mask_cpu_score_state"]
+    state_cache = ret["state_cache"]
+    params = ret["params"]
     if npu_result is not None:
         cpu_kv_state_update = cpu_kv_state[mask_cpu_kv_state]
         cpu_kv_state_origin =  cpu_kv_state[~mask_cpu_kv_state]

@@ -23,7 +23,6 @@ import cann_ops_transformer as ops
 
 def test_compressor_process(filepath, device_id=0):
     # 加载测试数据
-    # test_data = torch.load(filepath, map_location="cpu")
     test_data = torch.load(filepath, map_location="cpu",weights_only=False)
 
     params = test_data['params']
@@ -37,7 +36,7 @@ def test_compressor_process(filepath, device_id=0):
     print("执行用例：", filepath)
     torch_npu.npu.set_device(device_id)
 
-    x =test_data['x']
+    x = test_data['x']
     wkv = test_data['wkv']
     wgate = test_data['wgate']
     x_descale = test_data['x_descale']
@@ -75,7 +74,8 @@ def test_compressor_process(filepath, device_id=0):
             # 填充数据
             state_cache[:, :, :kv_state.shape[2]] = kv_state.clone()
             state_cache[:, :, kv_state.shape[2]:] = score_state.clone()
-            print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride: {state_cache.stride()}") 
+            print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, "
+                f"is_contiguous: {state_cache.is_contiguous()}, stride: {state_cache.stride()}")
     else:
         layer_num = random.randint(1, 50)
         layer_start_idx = random.randint(0, layer_num-1)
@@ -83,9 +83,8 @@ def test_compressor_process(filepath, device_id=0):
         print(f"layer_start_idx: {layer_start_idx}")
         state_cache_pad = torch.zeros((kv_state.shape[0], layer_num*kv_state.shape[1]*kv_state.shape[2]*2))
         print(f"state_cache_pad: shape {state_cache_pad.shape}")
-        # state_cache_pad = state_cache_pad.to("npu:%s" % DEVICE_ID)
-        state_cache = state_cache_pad[:, layer_start_idx*kv_state.shape[1]*kv_state.shape[2]*2: (layer_start_idx+1)*kv_state.shape[1]*kv_state.shape[2]*2].view(-1, kv_state.shape[1], kv_state.shape[2]*2)
-        # state_cache = state_cache.to("npu:%s" % DEVICE_ID)
+        state_cache = state_cache_pad[:, layer_start_idx * kv_state.shape[1] * kv_state.shape[2] * 2:
+            (layer_start_idx+1) * kv_state.shape[1] * kv_state.shape[2] * 2].view(-1, kv_state.shape[1], kv_state.shape[2] * 2)
         state_cache[:, :, :state_cache.shape[2]//2] = kv_state.clone()
         state_cache[:, :, state_cache.shape[2]//2:] = score_state.clone()
         print(f"state_cache: shape {state_cache.shape}, dtype: {state_cache.dtype}, is_contiguous: {state_cache.is_contiguous()}, stride0: {state_cache.stride(0)}")
@@ -121,4 +120,14 @@ def test_compressor_process(filepath, device_id=0):
                 coff = coff,
                 cache_mode = cache_mode
             )
-    return cpu_result, kv_mask_result, npu_result ,cpu_kv_state, update_kv, cpu_score_state, update_score, state_cache, params
+    return {
+        "cpu_result": cpu_result,
+        "kv_mask_result": kv_mask_result,
+        "npu_result": npu_result,
+        "cpu_kv_state": cpu_kv_state,
+        "mask_cpu_kv_state": update_kv,
+        "cpu_score_state": cpu_score_state,
+        "mask_cpu_score_state": update_score,
+        "state_cache": state_cache,
+        "params": params,
+    }

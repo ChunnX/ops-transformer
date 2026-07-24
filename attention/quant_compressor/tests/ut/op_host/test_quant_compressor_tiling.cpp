@@ -132,7 +132,7 @@ TEST_F(QuantCompressorTiling, quant_compressor_tiling_bsh_full_load)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend950", 8
+        &compileInfo, "Ascend950", 8 // 8: corenum
     );
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }
@@ -762,7 +762,7 @@ TEST_F(QuantCompressorTiling, quant_compressor_tiling_bsh_full_load_core2)
             {"cache_mode", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)},
             {"state_cache_stride_dim0", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)},
         },
-        &compileInfo, "Ascend950", 2
+        &compileInfo, "Ascend950", 2 // 2: corenum
     );
     ExecuteTestCase(tilingContextPara, ge::GRAPH_SUCCESS, std::numeric_limits<uint64_t>::max());
 }

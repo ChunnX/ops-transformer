@@ -23,6 +23,7 @@
 #include <vector>
 #include "acl/acl.h"
 #include "aclnnop/aclnn_quant_compressor.h"
+#include "securec.h"
 
 #define CHECK_RET(cond, return_expr) \
   do {                               \
@@ -43,7 +44,7 @@ inline To BitCopy(const From& src)
 {
     static_assert(sizeof(To) == sizeof(From), "size mismatch");
     To dst;
-    std::memcpy(&dst, &src, sizeof(To));
+    memcpy_s(&dst, sizeof(To), &src, sizeof(From));
     return dst;
 }
 
@@ -108,7 +109,7 @@ void PrintBf16Result(const std::vector<int64_t>& shape, void** deviceAddr)
     auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
                            *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
-    for (int64_t i = 0; i < size && i < 10; i++) {
+    for (int64_t i = 0; i < size && i < 10; i++) { // 10: max print
         LOG_PRINT("cmp_kv[%ld] is: %f\n", i, Bf16ToFloat(resultData[i]));
     }
 }
@@ -163,9 +164,9 @@ int main()
     int64_t apeSize = GetShapeSize(apeShape);
     int64_t cmpKvSize = GetShapeSize(cmpKvShape);
 
-    std::vector<uint8_t> xHostData(xSize, 128);
-    std::vector<uint8_t> wkvHostData(wkvSize, 128);
-    std::vector<uint8_t> wgateHostData(wgateSize, 128);
+    std::vector<uint8_t> xHostData(xSize, blockSize);
+    std::vector<uint8_t> wkvHostData(wkvSize, blockSize);
+    std::vector<uint8_t> wgateHostData(wgateSize, blockSize);
     std::vector<float_t> stateCacheHostData(stateCacheSize, 0.1f);
     std::vector<float_t> apeHostData(apeSize, 0.1f);
     std::vector<float_t> xDescaleHostData = {0.5f};
