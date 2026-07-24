@@ -393,7 +393,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                 GM_ADDR localRankWorkSpaceAddr = GetLocalWorkspaceDataAddr(src_rank, workspaceStateSize_) + slotOffset;
                 SendToken(localRankWorkSpaceAddr, tokenIndex);
                 GM_ADDR remoteRankStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
-                                              (src_token_idx * topK_ + src_topK_idx) * WIN_ADDR_ALIGN;
+                                              (static_cast<uint64_t>(src_token_idx) * epWorldSize_ + rankId_) * WIN_ADDR_ALIGN;
                 uint64_t commHandle = GetCommHandle(src_rank, channelIndex);
                 hcomm_.WriteWithNotifyNbi(commHandle, remoteRankWinAddr, localRankWorkSpaceAddr,
                                           XTypeAlign32Size_, remoteRankStateAddr, 1);
@@ -401,7 +401,7 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                 GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) + slotOffset;
                 SendToken(remoteRankWinAddr, tokenIndex);
                 GM_ADDR localStateAddr = GetUrmaStateAddrByRankId(src_rank, CombineStateAddr_) +
-                                         (src_token_idx * topK_ + src_topK_idx) * WIN_ADDR_ALIGN;
+                                         (static_cast<uint64_t>(src_token_idx) * epWorldSize_ + rankId_) * WIN_ADDR_ALIGN;
                 GlobalTensor<uint32_t> state;
                 state.SetGlobalBuffer((__gm__ uint32_t *)localStateAddr);
                 DataCopy(state, statusTensor_, 8UL);
@@ -467,24 +467,24 @@ template <TemplateMoeEpCombineTypeClass>
 __aicore__ inline bool MoeEpCombine<TemplateMoeEpCombineTypeFunc>::WaitDispatch(uint32_t tokenIndex, uint32_t copyCount)
 {
     // 计算地址偏移
-    GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, CombineStateAddr_) + tokenIndex * topK_ * WIN_ADDR_ALIGN;
+    GM_ADDR stateGM = GetUrmaStateAddrByRankId(rankId_, CombineStateAddr_) + tokenIndex * epWorldSize_ * WIN_ADDR_ALIGN;
     GlobalTensor<uint32_t> stateGMTensor;
     stateGMTensor.SetGlobalBuffer((__gm__ uint32_t *)stateGM);
 
     LocalTensor<uint32_t> stateTensor = stateBuf_.Get<uint32_t>();
     SyncFunc<AscendC::HardEvent::S_MTE2>();
-    DataCopyParams params = {static_cast<uint16_t>(topK_), 1, WIN_ADDR_ALIGN / UB_ALIGN - 1, 0};
+    DataCopyParams params = {static_cast<uint16_t>(epWorldSize_), 1, WIN_ADDR_ALIGN / UB_ALIGN - 1, 0};
     DataCopy<uint32_t>(stateTensor, stateGMTensor, params);
     SyncFunc<AscendC::HardEvent::MTE2_V>();
 
     LocalTensor<uint32_t> stateSumTensor = stateSumBuf_.Get<uint32_t>();
-    uint32_t shape[] = {topK_, UB_ALIGN / sizeof(uint32_t)};
+    uint32_t shape[] = {epWorldSize_, UB_ALIGN / sizeof(uint32_t)};
     ReduceSum<uint32_t, AscendC::Pattern::Reduce::RA, false>(stateSumTensor, stateTensor, shape, true);
     SyncFunc<AscendC::HardEvent::V_S>();
 
     uint32_t localState = stateSumTensor(0);
     if (localState == copyCount) {
-        DataCopyParams resetParams = {static_cast<uint16_t>(topK_), 1, 0, WIN_ADDR_ALIGN / UB_ALIGN - 1};
+        DataCopyParams resetParams = {static_cast<uint16_t>(epWorldSize_), 1, 0, WIN_ADDR_ALIGN / UB_ALIGN - 1};
         DataCopy<uint32_t>(stateGMTensor, stateResetTensor_, resetParams);
         SyncFunc<AscendC::HardEvent::MTE3_S>();
         return true;
@@ -527,11 +527,11 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::RecvPhaseRedu
     DataCopyPadParams padParams = {false, 0, 0, 0};
     DataCopyParams xCopyParams = {1U, static_cast<uint16_t>(axisH_ * sizeof(XType)), 0U, 0U};
     tpipe_->InitBuffer(tokenStatusBuf_, Ceil(tPerCore_ * sizeof(int32_t), UB_ALIGN) * UB_ALIGN);
-    tpipe_->InitBuffer(stateBuf_, topK_ * STATE_OFFSET);
+    tpipe_->InitBuffer(stateBuf_, epWorldSize_ * STATE_OFFSET);
     tpipe_->InitBuffer(stateSumBuf_, UB_ALIGN);
-    tpipe_->InitBuffer(stateResetBuf_, topK_ * STATE_OFFSET); // 清理状态区
+    tpipe_->InitBuffer(stateResetBuf_, epWorldSize_ * STATE_OFFSET); // 清理状态区
     stateResetTensor_ = stateResetBuf_.Get<uint32_t>();
-    Duplicate<uint32_t>(stateResetTensor_, (uint32_t)0.0, static_cast<uint32_t>(topK_ * FLOAT_PER_UB_ALIGN));
+    Duplicate<uint32_t>(stateResetTensor_, (uint32_t)0.0, static_cast<uint32_t>(epWorldSize_ * FLOAT_PER_UB_ALIGN));
     LocalTensor<int32_t> tokenStatusTensor = tokenStatusBuf_.Get<int32_t>();
     Duplicate<int32_t>(tokenStatusTensor, static_cast<int32_t>(0), tPerCore_);
     SyncFunc<AscendC::HardEvent::V_S>();
