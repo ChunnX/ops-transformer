@@ -116,12 +116,12 @@ public:
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
+            .AutoContiguous();
         aicore_config_95.Input("value_dequant_scale")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_FLOAT})
             .FormatList({ge::FORMAT_ND})
-            .IgnoreContiguous();
+            .AutoContiguous();
         aicore_config_95.Input("block_table")
             .ParamType(OPTIONAL)
             .DataTypeList({ge::DT_INT32})
