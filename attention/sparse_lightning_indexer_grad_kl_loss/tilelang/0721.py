@@ -1283,6 +1283,12 @@ def tilelang_grad_kl_loss_single_kernel(
             T.set_flag("fix", "m", 3)
 
             T.wait_flag("mte2", "mte1", 6)
+            # QueryIndex is invariant over the complete dKey K loop and its
+            # L0B region does not overlap dQuery's KeyIndex L0B region.
+            # Preload it once, then leave it read-only for every dKey MMA.
+            T.wait_flag("m", "mte1", 2)
+            T.copy(c2_qi_l1, c2_dk_qi_l0b)
+            T.set_flag("m", "mte1", 2)
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 for n_idx in T.serial(n_num):
                     T.wait_flag("mte1", "mte2", 2)
@@ -1303,7 +1309,6 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("m", "mte1", 3)
                     T.wait_flag("mte2", "mte1", 2)
                     T.copy(c2_rg_l1, c2_dk_rg_l0a, transpose=True)
-                    T.copy(c2_qi_l1, c2_dk_qi_l0b)
                     T.copy(c2_rg_l1, c2_dq_rg_l0a)
                     T.copy(c2_gki_l1, c2_dq_gki_l0b)
                     T.set_flag("mte1", "mte2", 2)

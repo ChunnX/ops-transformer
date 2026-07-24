@@ -174,7 +174,8 @@ V2 不是当前 shape 的主 Cube 关键路径，但仍有端到端开销差异�
 | C1 Key/Rope 单槽预取 | 保留 | C++ 确认 MTE1 消费后 MTE2 refill，是小而安全的基线收益。 |
 | C1-SY 或 C2 单槽预取 | 持平或变慢 | 控制开销无法突破单 L0/Cube 依赖，已回退。 |
 | V1 按分支等待 C1 | 有效但很小 | 不死锁、精度安全，profile 约减少 5 us，可保留。 |
-| C1-SY QueryIndex 常驻 L0A | 正在验证 | QueryIndex 对当前 shape 的全部 16 个 K tile 不变；将 16 次 L1->L0A 装载收敛为一次。算术、MMA/FIX 顺序和跨核标志不变，预期仅有小收益。 |
+| C1-SY QueryIndex 常驻 L0A | 已保留，收益未量化 | C++ 已确认将 16 次 L1->L0A 装载收敛为一次；精度保持基线。五轮整体中位数约 0.488 ms，未证明稳定加速，但也无回归。 |
+| C2 dKey QueryIndex 常驻 L0B | 待验证 | QueryIndex 已完整驻留 C2 L1，却在每个 n_idx 重复装载到 dKey L0B；计划将 16 次 L1->L0B 装载收敛为一次，dQuery 的 L0B 槽不重叠。 |
 
 ## 不应重试
 
@@ -222,16 +223,31 @@ broadcast、cast、reduction、store。32x128 路径或真正独立 UB 双缓冲
 减少指令数，但必须先以独立最小用例证明当前 TileLang 向量 intrinsic 支持
 4096 元素路径，且生成 UB offset 不会不安全别名。在此之前它只是研究方向。
 
-### 优先级 4：C1-SY 不变左操作数常驻 L0A（当前实验）
+### 已完成：C1-SY 不变左操作数常驻 L0A
 
 当前 shape 的 DQueryIndex=128，因此 C1-SY 的 QueryIndex 只有一个 64x128
 块，并对 16 个 K tile 完全不变。原实现每个 K tile 都从 L1 重载一次 L0A；
 当前实验仅在 C1-SY 前预载一次，循环内只更新 KeyIndex 的 L0B。该改动不增加
 buffer、不改变 MMA 累加或 FIX 顺序，也不改变 V0/C1、C1/V1 的跨核协议。
 
-它的理论上限只是消除 15 次 16 KiB L1->L0A 搬运及相应 MTE1 调度，不足以追平
-官方；它是低风险微优化，必须由生成 C++ 和重复中位数验证。若生成 C++ 未将
-L0A copy 移出 C1-SY K 循环、精度变化或中位数无收益，则立即回退。
+生成 C++ 已确认 L0A copy 位于 C1-SY K 循环外，循环内只保留 KeyIndex 的
+L0B copy、MMA、FIX。五轮测试精度均保持基线；TileLang 中位数为
+0.460/0.483/0.488/0.498/0.500 ms，整体中位数 0.488 ms，对应官方整体
+中位数 0.300 ms。它没有证明稳定加速，但消除了确定的冗余搬运且未引入回归，
+因此保留。它的理论上限只是 15 次 16 KiB L1->L0A 搬运和相应 MTE1 调度，
+不能替代物理 C1 双缓冲路线。
+
+### 当前实验：C2 dKey QueryIndex 常驻 L0B
+
+C2 在进入 n_idx 循环前已经将完整 QueryIndex 载入 c2_qi_l1，但原实现仍在
+每个 n_idx 中重复执行 c2_qi_l1 到 c2_dk_qi_l0b 的 64x128 L1->L0B copy。
+c2_dk_qi_l0b 位于 L0B offset 0，而同轮 dQuery 的 c2_dq_gki_l0b 位于另一
+物理区域，因此 dKey 的 QueryIndex 可以在循环前一次预载，并跨 16 次 dKey
+MMA 保持只读。
+
+该实验不增加 buffer，不改变 dKey/dQuery 的 MMA、FIX、GM 写回顺序；仅移除
+重复搬运。必须确认生成 C++ 将该 copy 移出 n_idx 循环，且 event 2 在预载后
+重新回到 MTE1 可用状态。
 
 ### 优先级 5：Cube 改善后再处理 V2
 
