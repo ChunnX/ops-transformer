@@ -65,12 +65,10 @@ class CompressorOpBuilder(OpBuilder):
             if x.dim() == 3:
                 b = x.size(0)
                 s = x.size(1)
-                h = x.size(2)
                 sr = (s + cmp_ratio - 1) // cmp_ratio
                 cmp_kv_size = (b, sr, d)
             else:
                 t = x.size(0)
-                h = x.size(1)
                 sr = (t + cmp_ratio - 1) // cmp_ratio
                 cmp_kv_size = (sr, d)
 
@@ -115,4 +113,6 @@ def compressor(
         coff,
         cache_mode,
     )
+
+
 compressor.CacheMode = CacheMode

@@ -272,11 +272,11 @@ ge::graphStatus QuantCompressorTiling::CalcWorkSpace()
 ge::graphStatus QuantCompressorTiling::CheckEmptyTensor() const
 {
     if ((context_->layout == LayoutType::LAYOUT_BSH &&
-            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0) ||
+         context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0) ||
         (context_->layout == LayoutType::LAYOUT_BSH &&
-            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1) == 0) ||
+         context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1) == 0) ||
         (context_->layout == LayoutType::LAYOUT_TH &&
-            context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0)) {
+         context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0) == 0)) {
         context_->templateId = TemplateId::EMPTY_X;
     } else {
         if (context_->x.shape->GetStorageShape().GetShapeSize() == 0 ||
@@ -796,29 +796,34 @@ ge::graphStatus QuantCompressorTiling::CheckFeature() const
         return ge::GRAPH_FAILED;
     }
     OP_CHECK_IF(baseParams_->hiddenSize > MAX_HIDDEN_SIZE || baseParams_->hiddenSize < MIN_HIDDEN_SIZE ||
-        baseParams_->hiddenSize % ALIGN_FACTOR_HIDDEN_SIZE != 0,
-        OP_LOGE(context_->opName, "hiddenSize should be within [%u, %u] and be 512-aligned, but got %u",
-        MIN_HIDDEN_SIZE, MAX_HIDDEN_SIZE, baseParams_->hiddenSize), return ge::GRAPH_FAILED);
+                    baseParams_->hiddenSize % ALIGN_FACTOR_HIDDEN_SIZE != 0,
+                OP_LOGE(context_->opName, "hiddenSize should be within [%u, %u] and be 512-aligned, but got %u",
+                        MIN_HIDDEN_SIZE, MAX_HIDDEN_SIZE, baseParams_->hiddenSize),
+                return ge::GRAPH_FAILED);
     OP_CHECK_IF(pageAttentionParams_->blockSize > MAX_BLOCK_SIZE || pageAttentionParams_->blockSize < MIN_BLOCK_SIZE,
-        OP_LOGE(context_->opName, "blockSize should be within [%u, %u], but got %u", MIN_BLOCK_SIZE, MAX_BLOCK_SIZE,
-        pageAttentionParams_->blockSize), return ge::GRAPH_FAILED);
+                OP_LOGE(context_->opName, "blockSize should be within [%u, %u], but got %u", MIN_BLOCK_SIZE,
+                        MAX_BLOCK_SIZE, pageAttentionParams_->blockSize),
+                return ge::GRAPH_FAILED);
     if (static_cast<uint8_t>(*context_->cacheMode) == static_cast<uint8_t>(CACHE_MODE::RING_BUFFER)) {
         OP_CHECK_IF(pageAttentionParams_->blockNum < baseParams_->batchSize,
-            OP_LOGE(context_->opName,
-            "when cacheMode is %u, blockNum should not be less than batchSize(%u), but got %u",
-            static_cast<uint8_t>(CACHE_MODE::RING_BUFFER), baseParams_->batchSize, pageAttentionParams_->blockNum),
-            return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->opName,
+                            "when cacheMode is %u, blockNum should not be less than batchSize(%u), but got %u",
+                            static_cast<uint8_t>(CACHE_MODE::RING_BUFFER), baseParams_->batchSize,
+                            pageAttentionParams_->blockNum),
+                    return ge::GRAPH_FAILED);
         OP_CHECK_IF(context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_1,
-            OP_LOGE(context_->opName,
-            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %zu",
-            static_cast<uint8_t>(CACHE_MODE::RING_BUFFER), COMPRESSOR_DIM_NUM_1,
-            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->opName,
+                            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %zu",
+                            static_cast<uint8_t>(CACHE_MODE::RING_BUFFER), COMPRESSOR_DIM_NUM_1,
+                            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                    return ge::GRAPH_FAILED);
     } else {
         OP_CHECK_IF(context_->stateBlockTable.shape->GetStorageShape().GetDimNum() != COMPRESSOR_DIM_NUM_2,
-            OP_LOGE(context_->opName,
-            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %zu",
-            static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER), COMPRESSOR_DIM_NUM_2,
-            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()), return ge::GRAPH_FAILED);
+                    OP_LOGE(context_->opName,
+                            "when cacheMode is %u, stateBlockTable dim num should be equal to %u, but got %zu",
+                            static_cast<uint8_t>(CACHE_MODE::LINEAR_BUFFER), COMPRESSOR_DIM_NUM_2,
+                            context_->stateBlockTable.shape->GetStorageShape().GetDimNum()),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
