@@ -19,6 +19,7 @@ VECTOR_BASEN = 256
 
 GATHER_CHUNK_SIZE = 16
 V2_SCATTER_BATCH = 16
+MIN_LAUNCH_CORE_NUM = 4
 
 # One physical core owns a complete (B, S1 tile) task.  These constants mirror
 # the original service split: V0 publishes separate gathered Key and KeyIndex
@@ -136,7 +137,10 @@ def _make_task_schedule(
 ) -> TaskSchedule:
     task_count = B * S1
     hardware_core_num = max(hardware_core_num, 1)
-    active_cores = min(max(task_count, 1), hardware_core_num)
+    active_cores = min(
+        max(task_count, MIN_LAUNCH_CORE_NUM),
+        hardware_core_num,
+    )
     return TaskSchedule(
         task_count=task_count,
         launch_core_num=active_cores,
