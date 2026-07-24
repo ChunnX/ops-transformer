@@ -583,6 +583,35 @@ __aicore__ inline void LightningIndexerKernel<LIT>::Process()
         ProcessInvalid();
         return;
     }
+
+    // Initialize scoreB16Gm with -1e30 for RadixTopK path
+    // This prevents uninitialized GM garbage from being selected by radix
+    if (constInfo.radixTotalBatch > 0 && ASCEND_IS_AIV) {
+        uint64_t totalFloats = static_cast<uint64_t>(constInfo.radixTotalBatch) * constInfo.radixSortLenAlign;
+        uint64_t perCore = (totalFloats + constInfo.radixAivNum - 1) / constInfo.radixAivNum;
+        uint64_t start = static_cast<uint64_t>(tmpBlockIdx) * perCore;
+        uint64_t end = start + perCore;
+        if (end > totalFloats) { end = totalFloats; }
+
+        TBuf<TPosition::VECCALC> initBuf;
+        tPipe.InitBuffer(initBuf, 512 * sizeof(float) + 32);
+        LocalTensor<float> initTensor = initBuf.Get<float>();
+        Duplicate<float>(initTensor, -1.0e30f, 512);
+        PipeBarrier<PIPE_V>();
+
+        event_t eVM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+        constexpr uint64_t CHUNK = 512;
+        for (uint64_t off = start; off < end; off += CHUNK) {
+            uint64_t len = (off + CHUNK <= end) ? CHUNK : (end - off);
+            SetFlag<HardEvent::V_MTE3>(eVM);
+            WaitFlag<HardEvent::V_MTE3>(eVM);
+            DataCopyPad(scoreB16Gm[off], initTensor, DataCopyExtParams{
+                static_cast<uint16_t>(1), static_cast<uint32_t>(sizeof(float) * len), 0, 0, 0});
+        }
+        SetFlag<HardEvent::MTE3_ALL>(0);
+        WaitFlag<HardEvent::MTE3_ALL>(0);
+    }
+
     ProcessMain();
     if (constInfo.radixTotalBatch > 0) {
         ProcessRadixTopK();
