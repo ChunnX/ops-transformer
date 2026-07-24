@@ -17,6 +17,7 @@ from torch_npu.testing.testcase import TestCase, run_tests
 
 import result_compare_method
 import stem_indexer_golden
+import custom_ops  # noqa: F401
 
 
 DEVICE_ID = int(os.environ.get("DEVICE_ID", "0"))

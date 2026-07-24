@@ -19,6 +19,7 @@ torch_npu = pytest.importorskip("torch_npu")
 
 import result_compare_method  # noqa: E402
 import stem_indexer_golden  # noqa: E402
+import custom_ops  # noqa: E402, F401
 from test_stem_indexer_paramset import ENABLED_PARAMS  # noqa: E402
 
 

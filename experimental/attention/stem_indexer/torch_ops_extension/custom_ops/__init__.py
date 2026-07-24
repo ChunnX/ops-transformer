@@ -6,8 +6,8 @@
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
 
-import os
-import pkgutil
+"""Register custom ops for torch.ops.custom and torch_npu."""
+
 import warnings
 
 import torch
@@ -18,15 +18,7 @@ from . import custom_ops_lib as custom_ops_lib
 from .converter import npu_stem_indexer as npu_stem_indexer
 from .converter import npu_stem_indexer_metadata as npu_stem_indexer_metadata
 
-__all__ = list(
-    module for _, module, _ in pkgutil.iter_modules([os.path.dirname(__file__)])
-)
-
-"""
-import custom ops as torch_npu ops to support the following usage:
-'torch.ops.custom.npu_stem_indexer()'
-'torch_npu.npu_stem_indexer()'
-"""
+__all__ = ["converter", "custom_ops_lib"]
 
 # get torch.ops.custom module
 custom_ops_module = getattr(torch.ops, "custom", None)

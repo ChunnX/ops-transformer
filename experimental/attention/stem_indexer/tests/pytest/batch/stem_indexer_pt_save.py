@@ -27,6 +27,7 @@ if PYTEST_DIR not in sys.path:
     sys.path.insert(0, PYTEST_DIR)
 
 import stem_indexer_golden  # noqa: E402
+import custom_ops  # noqa: E402, F401
 
 
 LIST_COLUMNS = {

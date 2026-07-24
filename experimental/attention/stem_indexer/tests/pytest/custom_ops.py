@@ -70,12 +70,10 @@ def _load_shared_libraries(root):
     if root.is_file() and root.suffix == ".so":
         candidates = [root]
     else:
-        candidates = [
-            Path(path)
-            for path in glob.glob(
-                str(root / "**" / "custom_ops_lib*.so"), recursive=True
-            )
-        ]
+        matched_paths = glob.glob(
+            str(root / "**" / "custom_ops_lib*.so"), recursive=True
+        )
+        candidates = [Path(path) for path in matched_paths]
     for lib_path in candidates[:1]:
         try:
             torch.ops.load_library(str(lib_path))
