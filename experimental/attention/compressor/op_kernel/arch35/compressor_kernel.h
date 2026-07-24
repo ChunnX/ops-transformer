@@ -46,6 +46,8 @@ public:
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut,
         __gm__ uint8_t *workspace);
     __aicore__ inline void Process();
@@ -122,6 +124,7 @@ private:
     uint32_t dealKSize_ = 0;
     uint32_t hStart_ = 0;
     bool isFirstUpdateCurGroup = true;
+    bool isExistXCache_ = false;
 };
 
 template <typename COMP>
@@ -138,6 +141,8 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         __gm__ uint8_t *cuSeqlens,
         __gm__ uint8_t *seqUsed,
         __gm__ uint8_t *startPos,
+        __gm__ uint8_t *xCache,
+        __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut,
         __gm__ uint8_t *workspace)
 {
@@ -146,27 +151,47 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     } else {
         constInfo.aiCoreIdx = GetBlockIdx();
     }
+    isExistXCache_ = (xCache != nullptr);
     InitTilingData();
     // init tools
     tools_.toolParams_.seqSize = tilingData_->baseParams.seqSize;
+    tools_.toolParams_.xCacheReadSize = isExistXCache_ ? constInfo.xCacheReadSize : 0;
     tools_.toolParams_.cmpRatio = tilingData_->baseParams.cmpRatio;
     tools_.Init(startPos, seqUsed, cuSeqlens);
 
-    // 剔除尾部的无效batch
-    for (; constInfo.batchSize > 0; --constInfo.batchSize) {
-        uint32_t bSeqUsed = tools_.GetSeqLength(constInfo.batchSize - 1);
-        if (bSeqUsed > 0) {
+    // Trim only the compression work range. For grouped decode, GetSeqUsed()
+    // returns the logical compression length derived from raw start_pos/seq_used:
+    // xCacheReadSize for batches crossing a compression boundary, otherwise 0.
+    // The caller no longer passes 0/ratio as an active flag. x_cache update is
+    // still controlled by xCacheUpdateBatchSize.
+    for (; constInfo.projectionBatchSize > 0; --constInfo.projectionBatchSize) {
+        uint32_t logicalSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(constInfo.projectionBatchSize - 1) :
+                                                          tools_.GetSeqLength(constInfo.projectionBatchSize - 1);
+        if (logicalSeqUsed > 0) {
             break;
         }
     }
 
+    const bool hasProjectionWork = constInfo.projectionBatchSize > 0;
+    const bool isXCacheUpdateOnly = isExistXCache_ && !hasProjectionWork && constInfo.xCacheUpdateBatchSize > 0;
+    if ASCEND_IS_AIV {
+        if (isXCacheUpdateOnly) {
+            blockVec_.InitParams(constInfo, tools_);
+            blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
+                           cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
+            // UpdateXCache still needs InitParams/Init for constInfo and GM tensor bindings,
+            // but only this small buffer is used when no projection work remains.
+            blockVec_.InitXCacheUpdateBuffers(pipe_);
+        }
+    }
+
     // 所有batch的有效序列都为0时, 直接退出
-    if (constInfo.batchSize == 0) {
+    if (!hasProjectionWork) {
         return;
     }
 
     // 0. 计算最后一个Tc块的起始位置
-    constInfo.bIdxOfLastTc = constInfo.batchSize - 1;
+    constInfo.bIdxOfLastTc = constInfo.projectionBatchSize - 1;
     // 1. 计算head_dim的切分大小, 构建ConstInfo的其他信息
     CalcSplitCoreInfo();
     SplitK(); // K轴切分
@@ -177,14 +202,18 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     // 4. 初始化block层
     if ASCEND_IS_AIC {
         blockCube_.InitParams(constInfo, tools_);
-        blockCube_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, 
-            stateBlockTable, cuSeqlens, seqUsed, startPos, cmpKvOut);
+        blockCube_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos,
+                        stateBlockTable, cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
         blockCube_.InitBuffers(pipe_);
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
     } else {
+        // Projection must copy the finalized split/workspace fields into BlockVec.
+        // The x-cache path used to initialize BlockVec before CalcSplitCoreInfo(),
+        // SplitK(), and InitWorkspace(), leaving fields such as kBaseNum, dbSize,
+        // and mm1KvResSize stale while Cube used the updated values.
         blockVec_.InitParams(constInfo, tools_);
-        blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable, 
-                        cuSeqlens, seqUsed, startPos, cmpKvOut);
+        blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
+                       cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
         blockVec_.InitBuffers(pipe_);
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm, vec1ResGm, vec2InputGm);
     }
@@ -193,7 +222,10 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
     constInfo.cmpRatio = tilingData_->baseParams.cmpRatio;
-    constInfo.batchSize = tilingData_->baseParams.batchSize;
+    constInfo.projectionBatchSize = tilingData_->baseParams.batchSize;
+    constInfo.xCacheUpdateBatchSize =
+        isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheUpdateBatchSize : 0;
+    constInfo.xCacheReadSize = isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheReadSize : 0;
     constInfo.mBaseSize = tilingData_->innerSplitParams.mBaseSize;
     constInfo.dBaseSize = tilingData_->innerSplitParams.dBaseSize;
     constInfo.kBaseSize = tilingData_->baseParams.hiddenSize;
@@ -204,6 +236,7 @@ __aicore__ inline void CompressorKernel<COMP>::InitTilingData() {
     constInfo.ropeHeadDim = tilingData_->baseParams.ropeHeadDim;
     constInfo.normEps = tilingData_->baseParams.normEps;
     constInfo.stateCacheStrideDim0 = tilingData_->baseParams.stateCacheStrideDim0;
+    constInfo.xCacheSize = isExistXCache_ ? tilingData_->groupedDecodeParams.xCacheSize : 0;
     constInfo.reciprocalD = tilingData_->baseParams.reciprocalD;
     constInfo.usedCoreNum = tilingData_->baseParams.usedCoreNum;
     
@@ -220,10 +253,12 @@ template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::SplitK()
 {
     uint32_t mSize = 0;
-    for (uint32_t i = 0; i < constInfo.batchSize; i++) {
-        uint32_t bSeqUsed = tools_.GetSeqLength(i);
+    for (uint32_t i = 0; i < constInfo.projectionBatchSize; i++) {
+        uint32_t bSeqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(i) : tools_.GetSeqLength(i);
         // 获取m大小
-        mSize += bSeqUsed;
+        if (bSeqUsed > 0) {
+            mSize += tools_.GetSeqLength(i);
+        }
     }
 
     uint32_t mBaseNum = CeilDivT(mSize, constInfo.mBaseSize);
@@ -258,19 +293,17 @@ __aicore__ inline void CompressorKernel<COMP>::SplitK()
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::SkipInvalidBatch(BatchInfo &batchInfo)
 {
-    for (; batchInfo.bIdx < constInfo.batchSize; ++batchInfo.bIdx) {
-        batchInfo.seqCnt = tools_.GetSeqLength(batchInfo.bIdx);
-        if (batchInfo.seqCnt > 0) {
+    for (; batchInfo.bIdx < constInfo.projectionBatchSize; ++batchInfo.bIdx) {
+        uint32_t seqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(batchInfo.bIdx) :
+                                                   tools_.GetSeqLength(batchInfo.bIdx);
+        if (seqUsed > 0) {
             break;
         }
     }
-    batchInfo.remSeqCnt = batchInfo.seqCnt;
-    if (tools_.isExistSeqUsed_) {
-        batchInfo.seqUsedCnt = tools_.GetSeqUsed(batchInfo.bIdx);
-    } else {
-        batchInfo.seqUsedCnt = batchInfo.seqCnt;
-    }
-    if (batchInfo.bIdx < constInfo.batchSize) {
+    if (batchInfo.bIdx < constInfo.projectionBatchSize) {
+        batchInfo.seqCnt = tools_.GetSeqLength(batchInfo.bIdx);
+        batchInfo.remSeqCnt = batchInfo.seqCnt;
+        batchInfo.seqUsedCnt = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(batchInfo.bIdx) : batchInfo.seqCnt;
         batchInfo.bStartPos = tools_.GetStartPos(batchInfo.bIdx);
         batchInfo.sIdx = 0;
         batchInfo.headHolderSeq = batchInfo.bStartPos & (constInfo.cmpRatio - 1);
@@ -295,11 +328,12 @@ __aicore__ inline void CompressorKernel<COMP>::UpdateCurGroup(BasicBlockInfo &ba
     basicBlockInfo.dealSeqCnt += curGroupDealSeq;
     curGroupQuota -= curGroupDealSeq;
     // 结尾需要跳batch，需要考虑在当前组起始为末尾，或者当前组起始大于整个M轴
-    if ((curGroupQuota == 0 || basicBlockInfo.bIdx == constInfo.batchSize - 1) && basicBlockInfo.sIdx == batchInfo.seqCnt) {
+    if ((curGroupQuota == 0 || basicBlockInfo.bIdx == constInfo.projectionBatchSize - 1) && basicBlockInfo.sIdx == batchInfo.seqCnt) {
         basicBlockInfo.sIdx = 0;
-        for (basicBlockInfo.bIdx++; basicBlockInfo.bIdx < constInfo.batchSize; ++basicBlockInfo.bIdx) {
-            uint32_t seqCnt = tools_.GetSeqLength(basicBlockInfo.bIdx);
-            if (seqCnt > 0) {
+        for (basicBlockInfo.bIdx++; basicBlockInfo.bIdx < constInfo.projectionBatchSize; ++basicBlockInfo.bIdx) {
+            uint32_t seqUsed = tools_.isExistSeqUsed_ ? tools_.GetSeqUsed(basicBlockInfo.bIdx) :
+                                                       tools_.GetSeqLength(basicBlockInfo.bIdx);
+            if (seqUsed > 0) {
                 break;
             }
         }
@@ -315,7 +349,7 @@ __aicore__ inline BasicBlockInfo CompressorKernel<COMP>::SkipOneLoop(BatchInfo &
     bool curGroupStartFlag = false;
     uint32_t quota = constInfo.mGroupNum * constInfo.mBaseSize;
 
-    for (; batchInfo.bIdx < constInfo.batchSize;) {
+    for (; batchInfo.bIdx < constInfo.projectionBatchSize;) {
         uint32_t curDealSeq = 0;
         uint32_t curDealTcNum = 0;
         uint32_t curDealCompressedTcNum = 0;
@@ -383,7 +417,7 @@ __aicore__ inline uint32_t CompressorKernel<COMP>::GetLoopTimes()
     uint32_t loopTimes = 0;
     BatchInfo batchInfo{};
     SkipInvalidBatch(batchInfo);
-    for (;batchInfo.bIdx < constInfo.batchSize; ++loopTimes) {
+    for (;batchInfo.bIdx < constInfo.projectionBatchSize; ++loopTimes) {
         SkipOneLoop(batchInfo);
     }
     return loopTimes;
@@ -512,7 +546,7 @@ template <typename COMP>
 __aicore__ inline bool CompressorKernel<COMP>::IsNeedExcuteC1(RunInfo info)
 {
     // B超出范围则cube不执行
-    return info.bStart < constInfo.batchSize;
+    return info.bStart < constInfo.projectionBatchSize;
 }
 
 template <typename COMP>
@@ -588,8 +622,17 @@ __aicore__ inline void CompressorKernel<COMP>::UpdateVec2Info(
 template <typename COMP>
 __aicore__ inline void CompressorKernel<COMP>::Process()
 {
+    if (isExistXCache_ && constInfo.xCacheUpdateBatchSize > 0) {
+        if ASCEND_IS_AIV {
+            blockVec_.UpdateXCache();
+        }
+        if (constInfo.projectionBatchSize > 0) {
+            // Projection reads may consume rows written by AIV update work above.
+            SyncAll();
+        }
+    }
     // 所有batch的有效序列都为0时, 直接退出
-    if (constInfo.batchSize == 0) {
+    if (constInfo.projectionBatchSize == 0) {
         return;
     }
     AllocEventID();

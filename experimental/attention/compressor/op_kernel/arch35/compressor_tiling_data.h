@@ -72,11 +72,20 @@ namespace optiling {
         uint32_t dbWorkspaceRatio = 1;
     };
 
+    // Keep grouped-decode fields in a tail extension so the legacy tiling-data
+    // prefix remains byte-for-byte compatible with host libraries without x_cache.
+    struct CompressorGroupedDecodeParams {
+        uint32_t xCacheReadSize = 0;
+        uint32_t xCacheUpdateBatchSize = 0;
+        uint32_t xCacheSize = 0;
+    };
+
     struct CompressorTilingData {
         CompressorBaseParams baseParams;
         CompressorPageAttentionParams pageAttentionParams;
         CompressorInnerSplitParams innerSplitParams;
         CompressorWorkspaceParams workspaceParams;
+        CompressorGroupedDecodeParams groupedDecodeParams;
     };
 } // optiling
 

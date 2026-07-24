@@ -962,7 +962,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::OverLapScoreKv(
     uint32_t dDealSize, uint32_t dBaseSize, uint32_t dealSeqStartIdx, uint32_t needDealTcSize)
 {
     CompressorVec1SliceIterator overLapSliceIterator(tools_);
-    overLapSliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    overLapSliceIterator.SetMaxBatchSize(constInfo_.projectionBatchSize);
     Vec1SliceInfo &overLapSliceInfo = overLapSliceIterator.GetSlice();
 
     GlobalTensor<T> scoreDBMm1ResGm = scoreMm1ResGm_;
@@ -1071,7 +1071,7 @@ CompressorBlockVectorFullLoad<COMP>::CalRope(const LocalTensor<X_T> &outputUb, c
                                              const Vec2SliceInfo &originSliceInfo, uint32_t dealRowCount)
 {
     CompressorVec2SliceIterator<COMP> ropeSliceIterator(tools_);
-    ropeSliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    ropeSliceIterator.SetMaxBatchSize(constInfo_.projectionBatchSize);
     ropeSliceIterator.Reset(originSliceInfo.bIdx, originSliceInfo.scIdx, originSliceInfo.dealedScCnt);
     Vec2SliceInfo &sliceInfo = ropeSliceIterator.GetSlice();
 
@@ -1159,12 +1159,12 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcGroupInfo(Vec1Sp
 {
     uint32_t aiCoreNum = constInfo_.usedCoreNum * 2;
     splitInfo.dBaseSize =
-        constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, constInfo_.batchSize)));
+        constInfo_.headDim / min(FloorPow2(aiCoreNum), CeilPow2(CeilDivT(aiCoreNum, constInfo_.projectionBatchSize)));
     if (constInfo_.kBaseNum > 1) {
         splitInfo.dBaseSize = max(splitInfo.dBaseSize, FP32_REPEAT_ELEMENT_NUM);
     }
     splitInfo.vec1GroupSize = constInfo_.headDim / splitInfo.dBaseSize;
-    splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), constInfo_.batchSize);
+    splitInfo.vec1GroupNum = min(static_cast<uint32_t>(aiCoreNum / splitInfo.vec1GroupSize), constInfo_.projectionBatchSize);
 }
 
 template <typename COMP>
@@ -1173,7 +1173,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::CalcTaskDistribution
     uint32_t blockIdx = GetBlockIdx();
     uint32_t groupSize = splitInfo.vec1GroupSize;
     uint32_t groupNum = splitInfo.vec1GroupNum;
-    uint32_t totalDealBatchNum = constInfo_.batchSize;
+    uint32_t totalDealBatchNum = constInfo_.projectionBatchSize;
 
     if (blockIdx < groupSize * (totalDealBatchNum % groupNum)) {
         splitInfo.dealBatchNum = totalDealBatchNum / groupNum + 1;
@@ -1197,7 +1197,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::UpdateIteratorState(
     splitInfo.curSStart = 0;
     totalCompressedCnt_ = 0;
     uint32_t endB = splitInfo.preDealBatchNum + splitInfo.dealBatchNum;
-    for (uint32_t curB = 0; curB < constInfo_.batchSize; curB++) {
+    for (uint32_t curB = 0; curB < constInfo_.projectionBatchSize; curB++) {
         uint32_t startPos = GetStartPos(curB);
         uint32_t seqLength = GetSeqLength(curB);
         if (curB < splitInfo.curBStart) {
@@ -1271,7 +1271,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec1()
 
 
     CompressorVec1SliceIterator sliceIterator(tools_);
-    sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    sliceIterator.SetMaxBatchSize(constInfo_.projectionBatchSize);
     // 切块循环
     uint64_t baseOffset = loopInfo.coreColIdx * splitInfo.dBaseSize;
 
@@ -1371,7 +1371,7 @@ __aicore__ inline Vec2SplitInfo CompressorBlockVectorFullLoad<COMP>::SplitCoreV2
     }
 
     uint32_t preScCnt = splitInfo.preScCnt;
-    for (uint32_t curB = 0; curB < constInfo_.batchSize; curB++) {
+    for (uint32_t curB = 0; curB < constInfo_.projectionBatchSize; curB++) {
         uint32_t startPos = GetStartPos(curB);
         uint32_t seqUsed = GetSeqUsed(curB);
         uint32_t curScNum = (startPos + seqUsed) / cmpRatio_ - startPos / cmpRatio_;
@@ -1396,7 +1396,7 @@ __aicore__ inline void CompressorBlockVectorFullLoad<COMP>::ComputeVec2()
         return;
     }
     CompressorVec2SliceIterator sliceIterator(tools_);
-    sliceIterator.SetMaxBatchSize(constInfo_.batchSize);
+    sliceIterator.SetMaxBatchSize(constInfo_.projectionBatchSize);
     sliceIterator.Reset(splitInfo.curBStart, splitInfo.curScStart, splitInfo.dealedScCnt + splitInfo.preScCnt);
 
     uint32_t singleLoopScNum = BUFFER_SIZE_BYTE_32K / (constInfo_.headDim * sizeof(T));
