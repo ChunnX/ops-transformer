@@ -399,6 +399,12 @@ public:
             initParams.workspace + this->tiling_->mkWorkspaceMmOffset));
         partialRmsGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(
             initParams.workspace + this->tiling_->mkWorkspaceRmsOffset));
+        if (UseGmStage()) {
+            uint64_t finalBytes = this->outFlag_ ? 0U :
+                this->totalLength_ * this->matrixInfo_.fusionSize * sizeof(P);
+            xStageGm_.SetGlobalBuffer(reinterpret_cast<__gm__ P *>(
+                initParams.workspace + this->tiling_->mkWorkspaceFinalOffset + finalBytes));
+        }
 
         this->pipe_->InitBuffer(l1Buffer_, MHC_PRE_LOW_API_L1_ALLOC_SIZE);
         aL1_ = l1Buffer_.Get<P>();
@@ -415,7 +421,7 @@ public:
             uint32_t rowCapacity = (this->tiling_->mL1Size + 1U) / 2U;
             uint32_t kCapacity = LowApiRoundUp<T>(this->tiling_->kUbSize);
             this->pipe_->InitBuffer(this->xInQueue_, 2, rowCapacity * kCapacity * sizeof(T));
-            this->pipe_->InitBuffer(this->outQueue_, 1,
+            this->pipe_->InitBuffer(this->outQueue_, UseGmStage() ? 2 : 1,
                 rowCapacity * LowApiRoundUp<P>(this->tiling_->kUbSize) * sizeof(P));
             this->pipe_->InitBuffer(this->invRmsOutQueue_, 1,
                 LowApiRoundUp<P>(rowCapacity) * sizeof(P));
@@ -423,10 +429,12 @@ public:
                 this->pipe_->InitBuffer(this->gammaInQueue_, 2,
                     LowApiRoundUp<P>(this->tiling_->kUbSize) * sizeof(P));
             }
-            this->pipe_->InitBuffer(nd2NzBuf_,
-                LowApiAlign(rowCapacity, MHC_PRE_LOW_API_C0_SIZE) *
-                LowApiRoundUp<P>(this->tiling_->kUbSize) * sizeof(P));
-            nd2NzLocal_ = nd2NzBuf_.Get<P>();
+            if (!UseGmStage()) {
+                this->pipe_->InitBuffer(nd2NzBuf_,
+                    LowApiAlign(rowCapacity, MHC_PRE_LOW_API_C0_SIZE) *
+                    LowApiRoundUp<P>(this->tiling_->kUbSize) * sizeof(P));
+                nd2NzLocal_ = nd2NzBuf_.Get<P>();
+            }
             this->invRmsUb_ = this->invRmsOutQueue_.template AllocTensor<P>();
         }
     }
@@ -461,6 +469,11 @@ public:
     }
 
 private:
+    __aicore__ inline bool UseGmStage() const
+    {
+        return this->tiling_->mkUseGmStage != 0U;
+    }
+
     __aicore__ inline void ProcessAic(uint32_t mStart, uint32_t mReal, uint32_t kIndex,
         uint32_t kStart, uint32_t kEnd)
     {
@@ -473,8 +486,21 @@ private:
             LocalTensor<P> currentBL1 = bL1_[bL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET];
             mmService_.CopyInB1Nd2Nz(this->matrixInfo_.nD, currentK, this->matrixInfo_.fusionSize,
                 this->phiGm_[kOffset], currentBL1);
-            CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
-            CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
+            if (UseGmStage()) {
+                CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(SYNC_AIV_AIC_FLAG);
+                CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE2>(
+                    SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
+                uint64_t stageSlotElements =
+                    static_cast<uint64_t>(this->tiling_->mL1Size) * this->tiling_->kL1Size;
+                uint64_t stageOffset =
+                    (2U * GetBlockIdx() + aL1BufferId) * stageSlotElements;
+                mmService_.CopyInA1Nd2Nz(mReal, currentK, this->tiling_->kL1Size,
+                    xStageGm_[stageOffset], currentAL1);
+            } else {
+                CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(SYNC_AIV_AIC_FLAG);
+                CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE1>(
+                    SYNC_AIV_AIC_FLAG + FLAG_ID_MAX);
+            }
 
             bool isFirst = kOffset == kStart;
             bool isLast = kOffset + currentK >= kEnd;
@@ -511,7 +537,9 @@ private:
             this->invRmsOutQueue_.FreeTensor(this->invRmsUb_);
             return;
         }
-        SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
+        if (!UseGmStage()) {
+            SetFlag<HardEvent::MTE3_V>(EVENT_ID0);
+        }
         uint32_t firstK = AscendC::Std::min(
             static_cast<uint64_t>(this->tiling_->kL1Size), static_cast<uint64_t>(kEnd - kStart));
         this->xLocal_ = this->xInQueue_.template AllocTensor<T>();
@@ -567,28 +595,49 @@ private:
             }
             this->xInQueue_.FreeTensor(currentXLocal);
 
-            constexpr event_t eventId = EVENT_ID0;
-            WaitFlag<HardEvent::MTE3_V>(eventId);
-            LocalTensor<P> currentNd2Nz = nd2NzLocal_;
-            MhcPreMkVFTransND2NZ(currentNd2Nz, xFloatLocal, rowCount, currentK);
-            this->outQueue_.FreeTensor(xFloatLocal);
-            SetFlag<HardEvent::V_MTE3>(eventId);
-            WaitFlag<HardEvent::V_MTE3>(eventId);
-            DataCopyParams copyParams;
-            copyParams.blockCount = LowApiCeilDiv(currentK, MHC_PRE_LOW_API_C0_SIZE);
-            copyParams.blockLen =
-                rowCount * MHC_PRE_LOW_API_C0_SIZE * sizeof(P) / MHC_PRE_LOW_API_BLOCK_SIZE;
-            copyParams.srcStride = LowApiAlign(rowCount, MHC_PRE_LOW_API_C0_SIZE) - rowCount;
-            copyParams.dstStride = LowApiAlign(mReal, AscendC::BLOCK_CUBE) - rowCount;
-            uint32_t dstRowOffset = GetSubBlockIdx() == 0 ? 0U :
-                firstRows * (MHC_PRE_LOW_API_BLOCK_SIZE / sizeof(P));
-            LowApiCopyToL1(currentNd2Nz,
-                aL1_[aL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET + dstRowOffset], copyParams);
-            SetFlag<HardEvent::MTE3_V>(eventId);
+            if (UseGmStage()) {
+                this->outQueue_.template EnQue<P>(xFloatLocal);
+                xFloatLocal = this->outQueue_.template DeQue<P>();
+                DataCopyExtParams xCopyParams;
+                xCopyParams.blockCount = static_cast<uint16_t>(rowCount);
+                xCopyParams.blockLen = currentK * sizeof(P);
+                xCopyParams.srcStride =
+                    (LowApiRoundUp<P>(currentK) - currentK) * sizeof(P);
+                xCopyParams.dstStride =
+                    (this->tiling_->kL1Size - currentK) * sizeof(P);
+                uint64_t stageSlotElements =
+                    static_cast<uint64_t>(this->tiling_->mL1Size) * this->tiling_->kL1Size;
+                uint64_t stageOffset =
+                    (2U * (GetBlockIdx() / 2U) + aL1BufferId) * stageSlotElements +
+                    static_cast<uint64_t>(rowStart) * this->tiling_->kL1Size;
+                DataCopyPad(xStageGm_[stageOffset], xFloatLocal, xCopyParams);
+                this->outQueue_.FreeTensor(xFloatLocal);
+            } else {
+                constexpr event_t eventId = EVENT_ID0;
+                WaitFlag<HardEvent::MTE3_V>(eventId);
+                LocalTensor<P> currentNd2Nz = nd2NzLocal_;
+                MhcPreMkVFTransND2NZ(currentNd2Nz, xFloatLocal, rowCount, currentK);
+                this->outQueue_.FreeTensor(xFloatLocal);
+                SetFlag<HardEvent::V_MTE3>(eventId);
+                WaitFlag<HardEvent::V_MTE3>(eventId);
+                DataCopyParams copyParams;
+                copyParams.blockCount = LowApiCeilDiv(currentK, MHC_PRE_LOW_API_C0_SIZE);
+                copyParams.blockLen =
+                    rowCount * MHC_PRE_LOW_API_C0_SIZE * sizeof(P) / MHC_PRE_LOW_API_BLOCK_SIZE;
+                copyParams.srcStride = LowApiAlign(rowCount, MHC_PRE_LOW_API_C0_SIZE) - rowCount;
+                copyParams.dstStride = LowApiAlign(mReal, AscendC::BLOCK_CUBE) - rowCount;
+                uint32_t dstRowOffset = GetSubBlockIdx() == 0 ? 0U :
+                    firstRows * (MHC_PRE_LOW_API_BLOCK_SIZE / sizeof(P));
+                LowApiCopyToL1(currentNd2Nz,
+                    aL1_[aL1BufferId * MHC_PRE_LOW_API_L1_BUF_OFFSET + dstRowOffset], copyParams);
+                SetFlag<HardEvent::MTE3_V>(eventId);
+            }
             CrossCoreSetFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIV_AIC_FLAG);
             aL1BufferId ^= 1U;
         }
-        WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+        if (!UseGmStage()) {
+            WaitFlag<HardEvent::MTE3_V>(EVENT_ID0);
+        }
         CrossCoreWaitFlag<MHC_PRE_LOW_API_SYNC_MODE4, PIPE_MTE3>(SYNC_AIC_AIV_MM_FLAG);
         DataCopyExtParams mmCopyParams;
         mmCopyParams.blockCount = static_cast<uint16_t>(rowCount);
@@ -614,6 +663,7 @@ private:
 private:
     GlobalTensor<P> partialMmGm_;
     GlobalTensor<P> partialRmsGm_;
+    GlobalTensor<P> xStageGm_;
     TBuf<TPosition::A1> l1Buffer_;
     TBuf<TPosition::VECCALC> mmPartialBuf_;
     LocalTensor<P> mmPartialLocal_;

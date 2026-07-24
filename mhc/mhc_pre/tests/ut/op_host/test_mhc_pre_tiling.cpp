@@ -1688,6 +1688,8 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
         readField(fieldOffset([](auto &data, uint32_t value) { data.set_mkWorkspaceRmsOffset(value); }));
     uint32_t finalOffset =
         readField(fieldOffset([](auto &data, uint32_t value) { data.set_mkWorkspaceFinalOffset(value); }));
+    uint32_t mkUseGmStage =
+        readField(fieldOffset([](auto &data, uint32_t value) { data.set_mkUseGmStage(value); }));
     uint32_t stage2UsedAivNum =
         readField(fieldOffset([](auto &data, uint32_t value) { data.set_stage2UsedAivNum(value); }));
     uint32_t stage2RowsPerCore =
@@ -1716,6 +1718,7 @@ TEST_F(MhcPreTiling, Ut_Check_MK_N4_M1024_D5120_HasResi)
     EXPECT_EQ(mmOffset, 0U);
     EXPECT_LT(mmOffset, rmsOffset);
     EXPECT_LT(rmsOffset, finalOffset);
+    EXPECT_EQ(mkUseGmStage, 1U);
     EXPECT_EQ(stage2UsedAivNum, expectedStage2UsedAivNum);
     EXPECT_EQ(stage2RowsPerCore, expectedStage2RowsPerCore);
     ASSERT_FALSE(tilingInfo.workspaceSizes.empty());
