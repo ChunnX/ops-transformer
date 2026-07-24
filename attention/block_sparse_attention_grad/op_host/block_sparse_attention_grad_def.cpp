@@ -14,7 +14,7 @@ namespace ops {
 
 class BlockSparseAttentionGrad : public OpDef {
 public:
-    explicit BlockSparseAttentionGrad(const char* name) : OpDef(name)
+    explicit BlockSparseAttentionGrad(const char *name) : OpDef(name)
     {
         this->Input("dout")
             .ParamType(REQUIRED)
@@ -101,5 +101,4 @@ public:
 
 OP_ADD(BlockSparseAttentionGrad);
 
-}  // namespace ops
-
+} // namespace ops

@@ -42,5 +42,4 @@ const std::array<const aclTensor *, 3> BlockSparseAttentionGrad(
 
 } // namespace l0op
 
-#endif  // BLOCK_SPARSE_ATTENTION_GRAD_H
-
+#endif // BLOCK_SPARSE_ATTENTION_GRAD_H

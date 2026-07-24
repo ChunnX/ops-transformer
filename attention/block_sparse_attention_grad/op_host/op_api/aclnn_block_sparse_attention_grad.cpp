@@ -108,7 +108,7 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
     CHECK_RET(CheckMandatoryTensors(params.attentionOutGrad, params.query, params.key, params.value,
                                     params.attentionOut, params.softmaxLse, params.blockSparseMaskOptional) == ACLNN_SUCCESS,
               ACLNN_ERR_PARAM_NULLPTR);
-    // dtype检查
+    // dtype检�?
     DataType qDtype = params.query->GetDataType();
     DataType kDtype = params.key->GetDataType();
     DataType vDtype = params.value->GetDataType();
@@ -137,7 +137,7 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
         CHECK_COND(dkDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dkOut dtype must match query dtype.");
         CHECK_COND(dvDtype == qDtype, ACLNN_ERR_PARAM_INVALID, "dvOut dtype must match query dtype.");
     }
-    // format检查
+    // format检�?
     if (params.query->GetStorageFormat() != ge::FORMAT_ND ||
         params.key->GetStorageFormat() != ge::FORMAT_ND ||
         params.value->GetStorageFormat() != ge::FORMAT_ND ||
@@ -150,7 +150,7 @@ static aclnnStatus ValidateParams(const BSAGParams& params)
         params.dvOut->GetStorageFormat() != ge::FORMAT_ND) {
         OP_LOGW("Format of input is not ND, this format may lead to precision failure.");
     }
-    // shape检查
+    // shape检�?
     auto queryShape = params.query->GetViewShape();
     auto keyShape = params.key->GetViewShape();
     auto valueShape = params.value->GetViewShape();
@@ -442,4 +442,3 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
 #ifdef __cplusplus
 }
 #endif
-

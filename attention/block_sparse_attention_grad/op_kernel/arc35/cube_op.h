@@ -462,7 +462,7 @@ private:
                                                 const int32_t kSizeAlign)
     {
         /*
-         * Load 左矩阵非转置 or 右矩阵转置
+         * Load 左矩阵非转置 or 右矩阵转�?
          */
         AscendC::LoadData2DParamsV2 loadData2dParams;
         loadData2dParams.mStartPosition = 0;
@@ -481,7 +481,7 @@ private:
                                                 const int32_t kSizeAlign)
     {
         /*
-         * Load 左矩阵转置 or 右矩阵非转置
+         * Load 左矩阵转�?or 右矩阵非转置
          */
         AscendC::LoadData2DParamsV2 loadData2dParams;
         loadData2dParams.kStartPosition = 0;

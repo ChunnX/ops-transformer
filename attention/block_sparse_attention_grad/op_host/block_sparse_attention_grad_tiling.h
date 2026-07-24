@@ -57,7 +57,7 @@ TILING_DATA_FIELD_DEF(float, scaleValue);
 TILING_DATA_FIELD_DEF(uint32_t, totalQBlocks); // T: 所有batch中Q方向切块的总数
 
 
-// 稀疏分块参数 (blockShapeOptional)
+// 稀疏分块参�?(blockShapeOptional)
 TILING_DATA_FIELD_DEF(uint64_t, blockShapeX); // block的x维度(Q方向)
 TILING_DATA_FIELD_DEF(uint64_t, blockShapeY); // block的y维度(KV方向)
 
@@ -66,13 +66,13 @@ TILING_DATA_FIELD_DEF(uint64_t, blockShapeY); // block的y维度(KV方向)
 // Layout: 0=TND, 1=BNSD
 TILING_DATA_FIELD_DEF(uint32_t, inputLayout);
 
-// BNSD格式的最大序列长度（用于计算stride）
-// 当actualSeqLengths为nullptr时，maxQSeqlen也用作统一的qseqlen值
-TILING_DATA_FIELD_DEF(uint32_t, maxQSeqlen); // BNSD格式Q的第三维（S维度），或统一的qseqlen值
-// 当actualSeqLengthsKv为nullptr时，maxKvSeqlen也用作统一的kvseqlen值
-TILING_DATA_FIELD_DEF(uint32_t, maxKvSeqlen); // BNSD格式KV的第三维（S维度），或统一的kvseqlen值
+// BNSD格式的最大序列长度（用于计算stride�?
+// 当actualSeqLengths为nullptr时，maxQSeqlen也用作统一的qseqlen�?
+TILING_DATA_FIELD_DEF(uint32_t, maxQSeqlen); // BNSD格式Q的第三维（S维度），或统一的qseqlen�?
+// 当actualSeqLengthsKv为nullptr时，maxKvSeqlen也用作统一的kvseqlen�?
+TILING_DATA_FIELD_DEF(uint32_t, maxKvSeqlen); // BNSD格式KV的第三维（S维度），或统一的kvseqlen�?
 
-// TilingKey for kernel dispatch (生成在tiling层)
+// TilingKey for kernel dispatch (生成在tiling�?
 TILING_DATA_FIELD_DEF(uint64_t, tilingKey);
 TILING_DATA_FIELD_DEF(uint64_t, gradSize);
 
@@ -134,7 +134,7 @@ enum InputLayout : uint32_t {
     BNSD = 1 // [B, N, S, D] format
 };
 
-// Tiling类
+// Tiling�?
 class BSAGradTiling {
 public:
     BSAGradTiling() = default;
@@ -186,8 +186,8 @@ private:
     const int64_t *qSeqLenList = nullptr;
     const int64_t *kvSeqLenList = nullptr;
     const int64_t *blockShapeList = nullptr;
-    bool useUniformQSeqlen_ = false;  // 是否使用统一的qseqlen值（使用maxQSeqlen_）
-    bool useUniformKvSeqlen_ = false; // 是否使用统一的kvseqlen值（使用maxKvSeqlen_）
+    bool useUniformQSeqlen_ = false;  // 是否使用统一的qseqlen值（使用maxQSeqlen_�?
+    bool useUniformKvSeqlen_ = false; // 是否使用统一的kvseqlen值（使用maxKvSeqlen_�?
 
     uint64_t sOutSize_ = 0;
     uint64_t dPOutSize_ = 0;
@@ -211,8 +211,8 @@ private:
 
     uint64_t dqSize_ = 0;      // dq 元素总量
     uint64_t dkvSize_ = 0;     // dkv dv元素总量
-    uint32_t maxQSeqlen_ = 0;  // BNSD格式Q的第三维（S维度）
-    uint32_t maxKvSeqlen_ = 0; // BNSD格式KV的第三维（S维度）
+    uint32_t maxQSeqlen_ = 0;  // BNSD格式Q的第三维（S维度�?
+    uint32_t maxKvSeqlen_ = 0; // BNSD格式KV的第三维（S维度�?
     int64_t totalTokensT_ = 0; // TND格式Q的第一维（T维度，总token数）
 
     ge::DataType dataType_ = ge::DT_FLOAT16;

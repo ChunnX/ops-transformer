@@ -118,5 +118,3 @@ const std::array<const aclTensor *, 3> BlockSparseAttentionGrad(
     return {dqTensor, dkTensor, dvTensor};
 }
 } // namespace l0op
-
-

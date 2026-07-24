@@ -43,7 +43,7 @@ bool IsSameShape(Args... shapes)
 ge::graphStatus InputCheck(const std::vector<int32_t> &q_shape, const std::vector<int32_t> &k_shape,
                            const std::vector<int32_t> &v_shape, const int32_t q_group, gert::TilingContext *context)
 {
-    /* function: 根据固定格式传入shape检查输入是否符合要求
+    /* function: 根据固定格式传入shape检查输入是否符合要�?
      * shape：[b, n, s, d]
      */
     if (!IsSameShape(q_shape[0], k_shape[0], v_shape[0])) {
@@ -297,14 +297,14 @@ protected:
 
     ge::graphStatus DoLibApiTiling() override
     {
-        // softmaxGrad tiling，一次最多处理16K个元素个数
+        // softmaxGrad tiling，一次最多处�?6K个元素个�?
         constexpr uint32_t element_num = 8 * 1024;
         uint32_t process_s1_size = element_num / head_dim_;
         auto input_shape = ge::Shape({process_s1_size, head_dim_});
         uint32_t tmp_space_size = AscendC::GetSoftMaxGradMaxTmpSize(input_shape, sizeof(float), true, true);
         AscendC::SoftMaxGradTilingFunc(input_shape, sizeof(float), tmp_space_size,
                                        tilingData_.softmaxGradFrontTilingData, true);
-        tilingData_.set_sftgTmpSpaceSize(tmp_space_size); // 元素个数=8K时需要50K的临时空间
+        tilingData_.set_sftgTmpSpaceSize(tmp_space_size); // 元素个数=8K时需�?0K的临时空�?
         return ge::GRAPH_SUCCESS;
     }
 
@@ -376,7 +376,7 @@ private:
     const char *layout_;
     ge::DataType dataType_;
     ge::DataType outputDataType_ = ge::DT_FLOAT16;
-    uint64_t tilingKey_ = 1000; // arc35 默认tilingkey从1000开始
+    uint64_t tilingKey_ = 1000; // arc35 默认tilingkey�?000开�?
     BlockSparseAttentionGradTilingDataArch35 tilingData_;
     static constexpr const char *BSND_STR = "BSND";
     static constexpr const char *BNSD_STR = "BNSD";
