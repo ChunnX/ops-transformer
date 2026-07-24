@@ -403,7 +403,11 @@ static ge::graphStatus InferDataTypeMoeDistributeDispatchV2(gert::InferDataTypeC
     bool quantFlag = (scalesType != ge::DT_UNDEFINED) ? true : false;
     OP_LOGD(context->GetNodeName(), "quantFlag id %d.", quantFlag);
     ge::DataType expandXDtype = ge::DT_INT8;
-    if (!quantFlag && (static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_NO_QUANT)) {
+    const bool isNoQuant = static_cast<QuantMode>(*quantMode) == QuantMode::QUANT_MODE_NO_QUANT;
+    // A2 packed INT4 is exposed as INT32. Its required per-token scale is
+    // transported together with x, rather than being used to quantize x.
+    // Therefore expand_x must preserve x's INT32 dtype even when scales exists.
+    if (isNoQuant && (!quantFlag || xDtype == ge::DT_INT32)) {
         expandXDtype = xDtype;
     }
     if ((yDtypePtr != nullptr) && (*yDtypePtr != ge::DT_UNDEFINED)) {
