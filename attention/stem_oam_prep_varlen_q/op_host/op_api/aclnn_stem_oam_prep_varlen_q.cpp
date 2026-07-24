@@ -106,23 +106,25 @@ static aclnnStatus CheckShape(const aclTensor *q, const aclIntArray *qSeqLens, c
 static aclnnStatus CheckDtype(const aclTensor *q, const aclTensor *qScale, const aclTensor *qFlat)
 {
     auto qDtype = q->GetDataType();
-    if (qDtype != DataType::DT_FLOAT8_E4M3FN && qDtype != DataType::DT_BF16 && qDtype != DataType::DT_FLOAT16) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "q dtype must be FLOAT8_E4M3FN, BF16 or FP16, but got %d.",
-                static_cast<int>(qDtype));
+    if (qDtype != DataType::DT_FLOAT8_E4M3FN) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "q dtype must be FLOAT8_E4M3FN, but got %d.", static_cast<int>(qDtype));
         return ACLNN_ERR_PARAM_INVALID;
     }
 
-    if (qScale != nullptr) {
-        auto qScaleDtype = qScale->GetDataType();
-        if (qScaleDtype != DataType::DT_FLOAT) {
-            OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qScale dtype must be FLOAT, but got %d.", static_cast<int>(qScaleDtype));
-            return ACLNN_ERR_PARAM_INVALID;
-        }
+    if (qScale == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qScale must be provided when q is FLOAT8_E4M3FN.");
+        return ACLNN_ERR_PARAM_INVALID;
+    }
+
+    auto qScaleDtype = qScale->GetDataType();
+    if (qScaleDtype != DataType::DT_FLOAT) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qScale dtype must be FLOAT, but got %d.", static_cast<int>(qScaleDtype));
+        return ACLNN_ERR_PARAM_INVALID;
     }
 
     auto qFlatDtype = qFlat->GetDataType();
-    if (qFlatDtype != DataType::DT_BF16 && qFlatDtype != DataType::DT_FLOAT16) {
-        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qFlat dtype must be BF16 or FP16, but got %d.", static_cast<int>(qFlatDtype));
+    if (qFlatDtype != DataType::DT_BF16) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qFlat dtype must be BF16, but got %d.", static_cast<int>(qFlatDtype));
         return ACLNN_ERR_PARAM_INVALID;
     }
 
