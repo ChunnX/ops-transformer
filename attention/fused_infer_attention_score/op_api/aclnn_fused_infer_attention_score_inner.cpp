@@ -384,6 +384,21 @@ aclnnStatus ReshapeTensorToViewShape(const aclTensor *&tensor, const char *name,
     return ACLNN_SUCCESS;
 }
 
+aclnnStatus MakeTensorContiguous(const aclTensor *&tensor, const char *name, aclOpExecutor *executor)
+{
+    if (tensor == nullptr) {
+        return ACLNN_SUCCESS;
+    }
+
+    tensor = l0op::Contiguous(tensor, executor);
+    if (tensor == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_NULLPTR, "Try make %s contiguous failed.", name);
+        return ACLNN_ERR_INNER_NULLPTR;
+    }
+    SetTensorFormatToND(tensor);
+    return ACLNN_SUCCESS;
+}
+
 aclnnStatus ReshapeTensorListToViewShape(const aclTensorList *&tensorList, const char *name, aclOpExecutor *executor)
 {
     if (tensorList == nullptr) {
@@ -585,60 +600,87 @@ aclnnStatus InnerFusedInferAttentionScoreGetWorkspaceSize(
     const aclTensor *processedValueSharedPrefix = valueSharedPrefixOptional;
     const aclTensor *processedQueryRope = queryRopeOptional;
     const aclTensor *processedKeyRope = keyRopeOptional;
+    const aclTensor *processedDeqScale1 = deqScale1Optional;
+    const aclTensor *processedQuantScale1 = quantScale1Optional;
+    const aclTensor *processedDeqScale2 = deqScale2Optional;
+    const aclTensor *processedQuantScale2 = quantScale2Optional;
+    const aclTensor *processedQuantOffset2 = quantOffset2Optional;
+    const aclTensor *processedAntiquantScale = antiquantScaleOptional;
+    const aclTensor *processedAntiquantOffset = antiquantOffsetOptional;
+    const aclTensor *processedQueryPaddingSize = queryPaddingSizeOptional;
+    const aclTensor *processedKvPaddingSize = kvPaddingSizeOptional;
+    const aclTensor *processedKeyAntiquantScale = keyAntiquantScaleOptional;
+    const aclTensor *processedKeyAntiquantOffset = keyAntiquantOffsetOptional;
+    const aclTensor *processedValueAntiquantScale = valueAntiquantScaleOptional;
+    const aclTensor *processedValueAntiquantOffset = valueAntiquantOffsetOptional;
+    const aclTensor *processedKeyRopeAntiquantScale = keyRopeAntiquantScaleOptional;
+    const aclTensor *processedDequantScaleQuery = dequantScaleQueryOptional;
+    const aclTensor *processedLearnableSink = learnableSinkOptional;
 
     aclOpExecutor *l0Executor = uniqueExecutor.get();
-    if (processedQuery != nullptr) {
-        std::printf("processedQuery is not nullptr.\n");
-        processedQuery = l0op::Contiguous(processedQuery, l0Executor);
-        CHECK_RET(processedQuery != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-    if (processedPseShift != nullptr) {
-        std::printf("processedPseShift is not nullptr.\n");
-        processedPseShift = l0op::Contiguous(processedPseShift, l0Executor);
-        CHECK_RET(processedPseShift != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-    if (processedAttenMask != nullptr) {
-        std::printf("processedAttenMask is not nullptr.\n");
-        processedAttenMask = l0op::Contiguous(processedAttenMask, l0Executor);
-        CHECK_RET(processedAttenMask != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-    if (processedBlockTable != nullptr) {
-        std::printf("processedBlockTable is not nullptr.\n");
-        processedBlockTable = l0op::Contiguous(processedBlockTable, l0Executor);
-        CHECK_RET(processedBlockTable != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-    if (processedKeySharedPrefix != nullptr) {
-        std::printf("processedKeySharedPrefix is not nullptr.\n");
-        processedKeySharedPrefix = l0op::Contiguous(processedKeySharedPrefix, l0Executor);
-        CHECK_RET(processedKeySharedPrefix != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-    if (processedValueSharedPrefix != nullptr) {
-        std::printf("processedValueSharedPrefix is not nullptr.\n");
-        processedValueSharedPrefix = l0op::Contiguous(processedValueSharedPrefix, l0Executor);
-        CHECK_RET(processedValueSharedPrefix != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-    if (processedQueryRope != nullptr) {
-        std::printf("processedQueryRope is not nullptr.\n");
-        processedQueryRope = l0op::Contiguous(processedQueryRope, l0Executor);
-        CHECK_RET(processedQueryRope != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
-    if (processedKeyRope != nullptr) {
-        std::printf("processedKeyRope is not nullptr.\n");
-        processedKeyRope = l0op::Contiguous(processedKeyRope, l0Executor);
-        CHECK_RET(processedKeyRope != nullptr, ACLNN_ERR_INNER_NULLPTR);
-    }
+    CHECK_RET(MakeTensorContiguous(processedQuery, "query", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedPseShift, "pseShift", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedAttenMask, "attenMask", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedBlockTable, "blockTable", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedKeySharedPrefix, "keySharedPrefix", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedValueSharedPrefix, "valueSharedPrefix", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedQueryRope, "queryRope", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedKeyRope, "keyRope", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedDeqScale1, "deqScale1", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedQuantScale1, "quantScale1", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedDeqScale2, "deqScale2", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedQuantScale2, "quantScale2", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedQuantOffset2, "quantOffset2", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedAntiquantScale, "antiquantScale", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedAntiquantOffset, "antiquantOffset", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedQueryPaddingSize, "queryPaddingSize", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedKvPaddingSize, "kvPaddingSize", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedKeyAntiquantScale, "keyAntiquantScale", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedKeyAntiquantOffset, "keyAntiquantOffset", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedValueAntiquantScale, "valueAntiquantScale", l0Executor) ==
+                  ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedValueAntiquantOffset, "valueAntiquantOffset", l0Executor) ==
+                  ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedKeyRopeAntiquantScale, "keyRopeAntiquantScale", l0Executor) ==
+                  ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedDequantScaleQuery, "dequantScaleQuery", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
+    CHECK_RET(MakeTensorContiguous(processedLearnableSink, "learnableSink", l0Executor) == ACLNN_SUCCESS,
+              ACLNN_ERR_INNER_NULLPTR);
     auto kvProcessRet = ProcessKVForL0Input(
         processedKey, processedValue, processedBlockTable, isFAIRoutingCandidate, l0Executor);
     CHECK_RET(kvProcessRet == ACLNN_SUCCESS, kvProcessRet);
 
     auto l0Out = l0op::FusedInferAttentionScore(
         processedQuery, processedKey, processedValue, processedPseShift, processedAttenMask, actualSeqLengthsOptional,
-        actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
-        quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, processedBlockTable,
-        queryPaddingSizeOptional, kvPaddingSizeOptional, keyAntiquantScaleOptional, keyAntiquantOffsetOptional,
-        valueAntiquantScaleOptional, valueAntiquantOffsetOptional, processedKeySharedPrefix,
+        actualSeqLengthsKvOptional, processedDeqScale1, processedQuantScale1, processedDeqScale2, processedQuantScale2,
+        processedQuantOffset2, processedAntiquantScale, processedAntiquantOffset, processedBlockTable,
+        processedQueryPaddingSize, processedKvPaddingSize, processedKeyAntiquantScale, processedKeyAntiquantOffset,
+        processedValueAntiquantScale, processedValueAntiquantOffset, processedKeySharedPrefix,
         processedValueSharedPrefix, actualSharedPrefixLenOptional, processedQueryRope, processedKeyRope,
-        keyRopeAntiquantScaleOptional, dequantScaleQueryOptional, learnableSinkOptional, qStartIdxOptional,
+        processedKeyRopeAntiquantScale, processedDequantScaleQuery, processedLearnableSink, qStartIdxOptional,
         kvStartIdxOptional, numHeads, scaleValue, preTokens, nextTokens, inputLayout, numKeyValueHeads,
         sparseMode, innerPrecise, blockSize, antiquantMode, softmaxLseFlag, keyAntiquantMode, valueAntiquantMode,
         queryQuantMode, pseType, outDtype, attentionOut, softmaxLse, l0Executor);
