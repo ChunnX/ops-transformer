@@ -584,6 +584,13 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetFlagList()
     if constexpr (CombineQuantMode != COMBINE_NO_QUANT) {
         ResetGmm2CombineSyncCounters();
     }
+    if constexpr (CombineQuantMode == COMBINE_NO_QUANT) {
+        __gm__ int32_t *combineNotifyPtr =
+            reinterpret_cast<__gm__ int32_t *>(params_.workspaceInfo.combineCommNotifyPtr);
+        for (uint32_t rankIdx = aivCoreIdx_; rankIdx < worldSize_; rankIdx += blockAivNum_) {
+            WriteGmByPassDCache(combineNotifyPtr + rankIdx, int32_t(0));
+        }
+    }
 }
 
 // ==================================================
@@ -1190,13 +1197,13 @@ MegaMoeLayered<TemplateMegaMoeTypeFunc>::CopyGMToGMPerToken(int32_t rowDstOffset
 // ====================================================================================================
 // TripleInfoCalAndDispatch：专家接收token的三元组信息计算搬出 & token dispatch & 写Flag位
 // ----------------------------------------------------------------------------------------------------
-//   逐 rank 从 win 加载单个 [mask|count] 槽位到 gatherMaskTensor_，
-//   再按 dispatchTotalRounds_ 分轮次做 GatherMask → CopyGMToGMPerToken；
-//   Phase 2: dispatch->gmm1 flag 位 AtomicAdd，每个 expert 有 maxWavesPerExpert_ 个槽位；
+// 两项优化：
+//   1) 读 GM mask slot 末尾的 count 字段提前跳过空 rank，避免无意义的 mask 加载和 GatherMask；
+//   2) AtomicAdd 提到 round 级：所有 chunk 搬运完成后统一做一次 wave flag 更新，减少同步点。
 // ====================================================================================================
 template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAndDispatch(GMMAddrInfo &gmmAddrInfo,
-                                                                                         int32_t localExpertId)
+                                                                                          int32_t localExpertId)
 {
     constexpr int32_t L1_TILE_M_I32 = static_cast<int32_t>(MegaMoeImpl::L1_TILE_M_256);
     int32_t priorExpertCumsum = (localExpertId == 0) ? 0 :
@@ -1214,13 +1221,16 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
             if (rowStartIdxInDst >= maxOutputSize_) {
                 continue;
             }
-
             __gm__ uint8_t* rankMaskBasePtr = reinterpret_cast<__gm__ uint8_t*>(
                 params_.peermemInfo.maskRecvPtr +
                 static_cast<uint64_t>(localExpertId) * worldSize_ * maskSlotSize_ +
                 static_cast<uint64_t>(dstRankIdx) * maskSlotSize_);
-
-            uint64_t totalSendToCurExp = 0;
+            __gm__ int32_t* rankCountPtr = reinterpret_cast<__gm__ int32_t*>(
+                rankMaskBasePtr + maskAlignSize_);
+            int32_t rankTotalCount = AscendC::ReadGmByPassDCache(rankCountPtr);
+            if (rankTotalCount <= 0) {
+                continue;
+            }
             int32_t accumulatedRowSrcOffset = 0;
 
             for (uint32_t roundIdx = 0; roundIdx < dispatchTotalRounds_; ++roundIdx) {
@@ -1233,7 +1243,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                     static_cast<int64_t>(roundLen * sizeof(int32_t)),
                     static_cast<int64_t>(ALIGN_32)) / sizeof(int32_t);
 
-                // 逐轮加载本轮 mask 位（从完整 mask 的 roundStart/8 偏移处读取）
                 uint32_t curRoundMaskBytes = (roundLen == dispatchRoundSendTotalNum_) ?
                     dispatchRoundMaskAlignSize_ :
                     static_cast<uint32_t>(Ops::Base::CeilAlign(
@@ -1253,7 +1262,6 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                 LocalTensor<uint32_t> rankMaskSlice = gatherMaskInt32Tensor_[0];
                 GatherMask(validTopkIndexTensor_, topkIndexTensor_,
                     rankMaskSlice, true, roundLen, {1, 1, 0, 0}, roundTokenCnt);
-                totalSendToCurExp += roundTokenCnt;
 
                 if (roundTokenCnt == 0) {
                     continue;
@@ -1281,19 +1289,20 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::TripleInfoCalAnd
                         tripleTensorSize / sizeof(int32_t));
                     SyncFuncStatic<AscendC::HardEvent::V_S, SYNC_EVENT_ID4>();
                     CopyGMToGMPerToken(rowDstOffsetInCore, dstRankIdx, chunkSrcIdx, chunkRows);
-                    SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
-                    int32_t rowStartLocal = rowDstOffsetInCore - priorExpertCumsum;
-                    int32_t rowEndLocal = rowStartLocal + chunkRows;
-                    int32_t waveLo = rowStartLocal / L1_TILE_M_I32;
-                    int32_t waveHi = (rowEndLocal - 1) / L1_TILE_M_I32;
-                    __gm__ int32_t* flagBase = gmmAddrInfo.dispatchToGmm1Flag;
-                    for (int32_t w = waveLo; w <= waveHi; ++w) {
-                        int32_t waveStartLocal = w * L1_TILE_M_I32;
-                        int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
-                        int32_t lo = rowStartLocal > waveStartLocal ? rowStartLocal : waveStartLocal;
-                        int32_t hi = rowEndLocal < waveEndLocal ? rowEndLocal : waveEndLocal;
-                        AtomicAdd(flagBase + w, int32_t(hi - lo));
-                    }
+                }
+
+                SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID5>();
+                int32_t roundRowStartLocal = rowStartIdxInDst + accumulatedRowSrcOffset - priorExpertCumsum;
+                int32_t roundRowEndLocal = roundRowStartLocal + roundCopyCnt;
+                int32_t waveLo = roundRowStartLocal / L1_TILE_M_I32;
+                int32_t waveHi = (roundRowEndLocal - 1) / L1_TILE_M_I32;
+                __gm__ int32_t* flagBase = gmmAddrInfo.dispatchToGmm1Flag;
+                for (int32_t w = waveLo; w <= waveHi; ++w) {
+                    int32_t waveStartLocal = w * L1_TILE_M_I32;
+                    int32_t waveEndLocal = waveStartLocal + L1_TILE_M_I32;
+                    int32_t lo = roundRowStartLocal > waveStartLocal ? roundRowStartLocal : waveStartLocal;
+                    int32_t hi = roundRowEndLocal < waveEndLocal ? roundRowEndLocal : waveEndLocal;
+                    AtomicAdd(flagBase + w, int32_t(hi - lo));
                 }
                 accumulatedRowSrcOffset += static_cast<int32_t>(roundTokenCnt);
             }
