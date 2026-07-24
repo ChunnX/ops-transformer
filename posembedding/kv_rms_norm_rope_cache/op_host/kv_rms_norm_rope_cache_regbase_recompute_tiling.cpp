@@ -65,8 +65,9 @@ int64_t KvRmsNormRopeCacheRegbaseRecomputeTiling::GetCacheBlockElemNum(const ge:
 
 // NZ 场景下 cache 按 dk0(=32B) 分形排布，本模板 Rope 按 rotate-half 分前后半区。dk/2 非 dk0 对齐(dk1 奇数)
 // 时，前/后半区分别按 dk0 分形写出会使后半偏移不落分形块边界。该场景(量化与非量化)已全部由 kernel 接管：
-// 先用非对齐向量存(StoreUnAlign)把 UB 后半区紧凑成连续整行，再单发 dk1 个 dk0 分形块写出
-// (见 recompute kernel 的 ScatterKNzWholeRow / RepackKBackHalfVec)。故此处不再对 dk/2 对齐做限制。
+// 逐 dk0 子块写出，其中 back 半区用非对齐向量存(StoreUnAlign)右移 r=dk0/2 重排出对齐源，跨界子块两半分别落
+// GM 两个 half(见 recompute kernel 的 ScatterKNzOddDk1)。逐子块且无跨 tile 携带，泛化到任意 dk / 多 tile。
+// 故此处不再对 dk/2 对齐做限制。
 bool KvRmsNormRopeCacheRegbaseRecomputeTiling::CheckNzHalfDkAligned()
 {
     return true;
@@ -333,8 +334,8 @@ ge::graphStatus KvRmsNormRopeCacheRegbaseRecomputeTiling::DoOpTiling()
             !CheckVCacheValidPA(context_, numHead, dv_), OP_LOGE(context_->GetNodeName(), "ckv_cache shape invalid."),
             return ge::GRAPH_FAILED);
     }
-    // NZ 下非量化 dk/2 非对齐已由 kernel 紧凑整行写接管(依赖单 tile: ubFactorDkLoopCountCeil==1,
-    // 由 ubFactor 恒 >> dk 保证)；量化仍要求对齐，见 CheckNzHalfDkAligned。
+    // NZ 下 dk/2 非对齐(dk1 奇数)已由 kernel 逐子块写 + back 半区右移重排接管(量化与非量化，泛化到多 tile)，
+    // 见 ScatterKNzOddDk1 与 CheckNzHalfDkAligned；此处不再限制。
     OP_CHECK_IF(
         !CheckNzHalfDkAligned(), OP_LOGE(context_->GetNodeName(), "dk is invalid for NZ cache in recompute template."),
         return ge::GRAPH_FAILED);
