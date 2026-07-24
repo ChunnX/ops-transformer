@@ -1003,7 +1003,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 - **参数约束**：
     - **Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
-        - 各卡 `num_tokens` 需保持一致。
+        - 各卡 `num_tokens` 需保持一致，且每卡 `num_tokens`（即 `x.dim0`）必须小于或等于 `num_max_tokens_per_rank`。
         - `ep_world_size`：取值为 `2`、`4`、`8`、`16`、`32`。
         - `num_experts`：取值范围为`world_size ≤ num_experts ≤ 1024`，且 `num_experts % ep_world_size == 0`。
         - `num_experts_per_rank`：取值范围为 `1 ≤ num_experts_per_rank ≤ 128`，且 `num_experts_per_rank = num_experts / world_size`。
