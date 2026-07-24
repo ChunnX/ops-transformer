@@ -28,7 +28,6 @@ except ImportError:
     _TORCHAIR_AVAILABLE = False
 
 if _TORCHAIR_AVAILABLE:
-
     @auto_convert_to_tensor(
         [False, False, False, False],
         [False, False, False, True],
@@ -65,14 +64,11 @@ if _TORCHAIR_AVAILABLE:
             "cuSeqLensQ": cuSeqLensQ,
             "qScale": qScale,
         }
-
         attrs = {
             "stemBlockSize": attr.Int(stemBlockSize),
             "stemStride": attr.Int(stemStride),
         }
-
         outputs = ["qFlat"]
-
         return ge_op(
             op_type="StemOamPrepVarlenQ",
             inputs=inputs,
@@ -117,7 +113,6 @@ if _TORCHAIR_AVAILABLE:
             stemStride=stemStride,
         )
 else:
-
     def convert_stem_oam_prep_varlen_q(*args, **kwargs):
         raise RuntimeError(
             "GE converter requires torchair, but torchair is not available."
