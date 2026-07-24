@@ -372,7 +372,9 @@ ge::graphStatus QSMLATilingCheck::CheckLayoutQKvConsistency() const
 
 ge::graphStatus QSMLATilingCheck::CheckSparseIndicesShapeMatchQ() const
 {
-    if (perfMode_ != QSMLATemplateMode::CSA_TEMPLATE_MODE) {
+    if (perfMode_ != QSMLATemplateMode::CSA_TEMPLATE_MODE &&
+        perfMode_ != QSMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
+        perfMode_ != QSMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
         return ge::GRAPH_SUCCESS;
     }
 
