@@ -153,12 +153,8 @@ __aicore__ inline void StageVec1Lse(const S2SplitFdStagingLayout &layout,
         static_cast<uint32_t>(layout.broadcastElems * sizeof(float)), 0, 0, 0};
     DataCopyPad(sumGm[floatOffset], tmpSumBlockUb, lseOutParams);
     DataCopyPad(maxGm[floatOffset], tmpMaxBlockUb, lseOutParams);
-    printf("[2GM]sum addr: 0x%x\n", sumGm[floatOffset].GetPhyAddr());
-    printf("[2GM]max addr: 0x%x\n", maxGm[floatOffset].GetPhyAddr());
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
-    DumpTensor(sumGm[floatOffset], 110, 64);
-    DumpTensor(maxGm[floatOffset], 111, 64);
 }
 
 // Stage Vec2 normalized partial O to GM staging.
@@ -180,8 +176,6 @@ __aicore__ inline void StageVec2PartialO(const S2SplitFdStagingLayout &layout,
     outParams.dstStride = 0;
     outParams.blockCount = validRows;
     DataCopyPad(stagingOut[offset], vec2ResUb, outParams);
-    printf("[2GM]out addr: 0x%x\n", stagingOut[offset].GetPhyAddr());
-    DumpTensor(stagingOut[offset], 112, 64);
 }
 
 // FD chunk reduction: read all splits from staging, compute weights, reduce partial O.
@@ -287,14 +281,11 @@ __aicore__ inline void ReduceUb(const S2SplitFdStagingLayout &layout,
         FaVectorApi::ComputeScaleValue_VF<T, T>(sinkUb, chunkMaxUb, chunkSumUb, lseExpUb,
             dealRowCount, workspaceNum, softmaxLseFlag, false);
         PipeBarrier<PIPE_V>();
-        DumpTensor(chunkMaxUb, 130, 32*8);
-        DumpTensor(chunkSumUb, 131, 32*8);
         LocalTensor<T> chunkAccumO = accumulatedO[startRow * D_ALIGN];
         int64_t partialOSplitStride = mNum * D_ALIGN;
         for (int64_t splitIdx = 0; splitIdx < workspaceNum; splitIdx++) {
             int64_t partialOOffset = splitIdx * partialOSplitStride + startRow * D_ALIGN;
             LocalTensor<T> splitPartialO = partialOUb[partialOOffset];
-            DumpTensor(partialOUb[partialOOffset], 132, 16);
             FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, chunkSumUb, splitPartialO,
                 dealRowCount, splitIdx);
             PipeBarrier<PIPE_V>();

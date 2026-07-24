@@ -312,7 +312,7 @@ public:
     int32_t sparseMode = 0;
     // Others Flag
     uint32_t sparseCount = 0;
-    bool batchConsistency = true;
+    bool batchConsistency = false;
 
     // PageAttention
     uint32_t blockTypeSize = 0;
@@ -406,7 +406,7 @@ public:
     int64_t sparseBlockCount_ = 0;
     uint32_t maxActualseq_ = 0;
     bool isSameSeqAllKVTensor_ = true;
-    bool batchConsistency_ = true;
+    bool batchConsistency_ = false;
     uint32_t dSizeQ_ = 0;
     uint32_t dSizeKV_ = 0;
     uint32_t oriKvStride_ = 0;

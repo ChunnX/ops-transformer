@@ -502,16 +502,10 @@ __aicore__ inline void MixedQuantSparseFlashMlaCsa<CubeBlockType, VecBlockType>:
                     ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(runParam, this->constInfo);
                 if constexpr (BATCH_CONSISTENCY) {
                     int64_t s2Load = runParam.s2LineOriEndIdx - runParam.s2LineStartIdx + runParam.s2CmpLineEndIdx;
-                    printf("runParam.s2LineOriEndIdx(%d) - runParam.s2LineStartIdx(%d) + runParam.s2CmpLineEndIdx(%d)\n", runParam.s2LineOriEndIdx, runParam.s2LineStartIdx, runParam.s2CmpLineEndIdx);
-                    printf("s2Load: %d\n", s2Load);
                     int64_t s2BaseSize = static_cast<int64_t>(constInfo.s2BaseSize);
-                    printf("s2BaseSize: %d\n", s2BaseSize);
                     int64_t s2PerReduceBlock = (s2Load / 32LL + s2BaseSize - 1) >> 7 << 7;
-                    printf("s2PerReduceBlock: %d\n", s2PerReduceBlock);
                     int64_t baseBlockNum = s2PerReduceBlock >> 7;
-                    printf("baseBlockNum: %d\n", baseBlockNum);
                     runParam.baseBlockNumInTile = baseBlockNum > 0 ? baseBlockNum : 1LL;
-                    printf("base block: %d\n", runParam.baseBlockNumInTile);
                 }
                 if (!s2NoNeedCalc) {
                     bool isFirstS2RangeTask = (bnIdx == bN2StartIdx && gS1Index == runParam.gs1LoopStartIdx);
