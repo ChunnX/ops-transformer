@@ -2,15 +2,9 @@
 
 ## 产品支持情况
 
-<!-- npu="950" id2 -->
 - <term>Ascend 950PR/Ascend 950DT</term>：支持
-<!-- end id2 -->
-<!-- npu="A3" id3 -->
 - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：支持
-<!-- end id3 -->
-<!-- npu="910b" id4 -->
 - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：支持
-<!-- end id4 -->
 - <term>Atlas 200I/500 A2 推理产品</term>：不支持
 - <term>Atlas 推理系列产品</term>：不支持
 - <term>Atlas 训练系列产品</term>：不支持
@@ -106,7 +100,7 @@ cann_ops_transformer.quant_lightning_indexer(
 | cu_seqlens_k | Tensor | 可选 | 表示不同Batch中Key的有效Sequence Length，仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND，支持非连续的Tensor。 | int32 | (B+1, ) |
 | seqused_q | Tensor | 可选 | 表示不同Batch中Query实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
 | seqused_k | Tensor | 可选 | 表示不同Batch中Key实际参与运算的Sequence Length。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
-| cmp_residual_k | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_ratio不为1且mask_mode为3场景下必传。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
+| cmp_residual_k | Tensor | 可选 | 表示不同Batch中cmp_kv压缩后Sequence Length的余数，配合cmp_ratio实现cmp_kv部分的mask和负载计算。cmp_ratio不为1且mask_mode为3场景下必传。需满足cmp_residual_k\[i\] \< cmp_ratio。数据格式为ND，支持非连续的Tensor。 | int32 | (B, ) |
 | batch_size | int | 可选 | 表示Batch数量，默认值为0。 | int32 | - |
 | max_seqlen_q | int | 可选 | 表示Query的最长Sequence Length，-1表示任意可能长度，默认值为-1。 | int32 | - |
 | max_seqlen_k | int | 可选 | 表示Key的最长Sequence Length，-1表示任意可能长度，默认值为-1。 | int32 | - |
@@ -126,17 +120,17 @@ Ascend 950PR/Ascend 950DT
 | 参数名 | 参数类型 | 可选/必选 | 描述 | 数据类型 | 维度(shape) |
 |--------|----------|-----------|------|----------|-------------|
 | query | Tensor | 必选 | 公式中的量化输入$Q_{index}^{Quant}$。不支持空tensor。数据格式为ND。 | INT8、FLOAT8_e4m3fn、HIFLOAT8 | layout_q为BSND时shape为(B,S1,N1,D)；layout_q为TND时shape为(T1,N1,D) |
-| key | Tensor | 必选 | 公式中的量化输入$K_{index}^{Quant}$。不支持空tensor。数据格式为ND，支持非连续的Tensor（仅PA_BBND场景下0轴及key_dequant_scale的0轴支持非连续）。 | INT8、FLOAT8_e4m3fn、HIFLOAT8 | layout_k为BSND时shape为(B,S2,N2,D)；layout_k为TND时shape为(T2,N2,D)；layout_k为PA_BBND时shape为(block_num,block_size,N2,D) |
+| key | Tensor | 必选 | 公式中的量化输入$K_{index}^{Quant}$。不支持空tensor。数据格式为ND，仅PA_BBND场景下0轴支持非连续。PA_BBND场景下block_size取值为16的倍数，最大支持1024。 | INT8、FLOAT8_e4m3fn、HIFLOAT8 | layout_k为BSND时shape为(B,S2,N2,D)；layout_k为TND时shape为(T2,N2,D)；layout_k为PA_BBND时shape为(block_num,block_size,N2,D) |
 | weights | Tensor | 必选 | 公式中的权重系数$W$。不支持空tensor。数据格式为ND。 | float16、float32 | layout_q为BSND时shape为(B,S1,N1)；layout_q为TND时shape为(T1,N1) |
 | query_dequant_scale | Tensor | 必选 | 公式中的$Scale_Q$，表示Index Query的反量化系数。不支持空tensor。数据格式为ND。 | float16、float32 | shape与weights保持一致 |
-| key_dequant_scale | Tensor | 必选 | 公式中的$Scale_K$，表示Index Key的反量化系数。不支持空tensor。数据格式为ND。 | float16、float32 | layout_k为PA_BBND时shape为(block_num,block_size,N2)；layout_k为BSND时shape为(B,S2,N2)；layout_k为TND时shape为(T2,N2)。quant_mode为4时shape必须为(1,)，表示Per-Tensor量化 |
+| key_dequant_scale | Tensor | 必选 | 公式中的$Scale_K$，表示Index Key的反量化系数。不支持空tensor。数据格式为ND，仅PA_BBND场景下0轴支持非连续。 | float16、float32 | layout_k为PA_BBND时shape为(block_num,block_size,N2)；layout_k为BSND时shape为(B,S2,N2)；layout_k为TND时shape为(T2,N2)。quant_mode为4时shape必须为(1,)，表示Per-Tensor量化 |
 | topk | int | 必选 | topK阶段需要保留的block数量，当前支持[1, 2048]。 | int32 | - |
 | quant_mode | int | 必选 | 表示量化模式，当前仅支持1/2/4。1表示qk: fp8(e4m3fn) per-token-head, scale: fp32；2表示qk: int8 per-token-head, scale: fp16, w: fp16；4表示qk: hifloat8 per-tensor, scale: fp32。 | int32 | - |
-| cu_seqlens_q | Tensor | 可选 | 当前Batch及前序Batch中query的有效token数的累加和。仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND。 | int32 | (B+1,) |
-| cu_seqlens_k | Tensor | 可选 | 当前Batch及前序Batch中key的有效token数的累加和。仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND。 | int32 | (B+1,) |
-| seqused_q | Tensor | 可选 | 不同Batch中query的真实使用长度。数据格式为ND。 | int32 | (B,) |
-| seqused_k | Tensor | 可选 | 不同Batch中key的真实使用长度。数据格式为ND。layout_k为PA_BBND时必须传入。 | int32 | (B,) |
-| cmp_residual_k | Tensor | 可选 | 表示k压缩前token数量除以cmp_ratio的余数。需要在mask_mode等于3、cmp_ratio不等于1的场景下使用。数据格式为ND。 | int32 | (B,) |
+| cu_seqlens_q | Tensor | 可选 | 当前Batch及前序Batch中query的有效token数的累加和，后一个元素的值必须大于等于前一个元素的值。仅layout_q为TND场景下必传，第一个值固定为0。数据格式为ND。 | int32 | (B+1,) |
+| cu_seqlens_k | Tensor | 可选 | 当前Batch及前序Batch中key的有效token数的累加和，后一个元素的值必须大于等于前一个元素的值。仅layout_k为TND场景下必传，第一个值固定为0。数据格式为ND。 | int32 | (B+1,) |
+| seqused_q | Tensor | 可选 | 不同Batch中query的真实使用长度，每个Batch的有效token数不超过query中的维度S大小且不小于0。数据格式为ND。 | int32 | (B,) |
+| seqused_k | Tensor | 可选 | 不同Batch中key的真实使用长度，每个Batch的有效token数不超过key中的维度S大小且不小于0。数据格式为ND。layout_k为PA_BBND时必须传入。 | int32 | (B,) |
+| cmp_residual_k | Tensor | 可选 | 表示k压缩前token数量除以cmp_ratio的余数，需满足cmp_residual_k\[i\] \< cmp_ratio。需要在mask_mode等于3、cmp_ratio不等于1的场景下使用。数据格式为ND。 | int32 | (B,) |
 | block_table | Tensor | 可选 | 表示PageAttention中KV存储使用的block映射表。不支持空tensor。layout_k为PA_BBND时必须传入。数据格式为ND。 | int32 | (B, S2_max/block_size) |
 | output_idx_offset | Tensor | 可选 | 表示topK结果输出索引所需要加上的偏移。值必须大于0，加上偏移后topK index不能超过int32最大值。数据格式为ND。 | int32 | (B,) |
 | metadata | Tensor | 可选 | quant_lightning_indexer_metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。不支持空tensor。数据格式为ND。 | int32 | (1024,) |
@@ -176,22 +170,10 @@ Ascend 950PR/Ascend 950DT
 
 ## 约束说明
 
-- 该接口支持推理场景下使用。
-- 该接口支持单算子模式和aclgraph图模式调用。
+- 该接口支持推理场景下使用，支持单算子模式和aclgraph图模式调用。
 - quant_lightning_indexer_metadata接口需与quant_lightning_indexer算子配套使用。
-- B（Batch）表示输入样本批量大小。
-- 参数cu_seqlens_q、cu_seqlens_k要求其值为当前Batch与前序Batch有效token数的累加值，后一个元素的值必须大于等于前一个元素的值。
-- 参数seqused_q、seqused_k要求其值表示每个Batch中的有效token数。
-- 参数cmp_residual_k需满足cmp_residual_k\[i\] < cmp_ratio。
 - mask_mode所表示的mask模式的详细介绍见[sparse_mode参数说明](../../../../docs/zh/context/sparse_mode_introduction.md)。
-- 参数query的N在Atlas A3/A2上仅支持64，在Ascend 950PR/950DT上支持32或64。key的N仅支持1。
-- head_dim支持128。
-- block_size取值为16的倍数，最大支持1024。
-- 当layout_k不为PA_BBND时，layout_q和layout_k必须一致。
-- 当quant_mode为4时（仅Ascend 950PR/950DT），query_dequant_scale和key_dequant_scale的shape维度必须为1且shape[0]=1（Per-Tensor量化）。
-- key和key_dequant_scale仅支持0轴非连续。
-- query、key应保持一致的量化模式（即quant_mode相同）。
-- 该接口要求$W \odot Scale_Q$的结果在对应平台的表示范围内（Atlas A3/A2: float16，Ascend 950PR/950DT: float32）。
+- 该接口要求$W \odot Scale_Q$的结果在float16的表示范围内（Atlas A3/A2）。
 - 该接口的TopK过程对NaN排序是未定义行为。
 - sparse_indices无效部分填-1；sparse_values无效部分填-inf。
 
