@@ -19,7 +19,7 @@ VECTOR_BASEN = 256
 
 GATHER_CHUNK_SIZE = 16
 V2_SCATTER_BATCH = 16
-MIN_LAUNCH_CORE_NUM = 4
+V2_TARGET_BATCHES_PER_AIV = 16
 
 # One physical core owns a complete (B, S1 tile) task.  These constants mirror
 # the original service split: V0 publishes separate gathered Key and KeyIndex
@@ -133,12 +133,21 @@ class TaskSchedule:
 def _make_task_schedule(
     B: int,
     S1: int,
+    S2: int,
+    K: int,
     hardware_core_num: int,
 ) -> TaskSchedule:
     task_count = B * S1
     hardware_core_num = max(hardware_core_num, 1)
+    scatter_batches = ceil_div(K, V2_SCATTER_BATCH)
+    finalize_batches = ceil_div(B * S2, V2_SCATTER_BATCH)
+    v2_batches = max(scatter_batches, finalize_batches)
+    v2_core_need = ceil_div(
+        v2_batches,
+        2 * V2_TARGET_BATCHES_PER_AIV,
+    )
     active_cores = min(
-        max(task_count, MIN_LAUNCH_CORE_NUM),
+        max(task_count, v2_core_need, 1),
         hardware_core_num,
     )
     return TaskSchedule(
@@ -3267,6 +3276,8 @@ def sparse_lightning_indexer_grad_kl_loss(
         schedule = _make_task_schedule(
             B,
             S1,
+            S2_pad,
+            K,
             hardware_core_count,
         )
         core_count = schedule.launch_core_num

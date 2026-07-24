@@ -1,5 +1,11 @@
 # 0721 TileLang 性能分析
 
+> 本文保留早期 profiling 和实验过程。当前 4 核基线、官方对齐状态、后端能力
+> 边界及最新优化路线请优先阅读
+> [0721_ascendc_alignment_summary_zh.md](0721_ascendc_alignment_summary_zh.md)。
+> 通用开发方法见
+> [tilelang-ascend优化实操指南.md](tilelang-ascend优化实操指南.md)。
+
 ## 范围与基线
 
 本文记录 Case 0 下已经通过精度验证的 TileLang 0721.py 实现：
