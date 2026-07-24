@@ -91,7 +91,8 @@ bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
 {
     const bool isMxFp8 =
         inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
-    if (inputParams_.bQuantMode != optiling::QuantMode::MX_PERGROUP_MODE || inputParams_.transA || !isMxFp8) {
+    const bool isMx = isMxFp8 || IsMxfp4();
+    if (inputParams_.bQuantMode != optiling::QuantMode::MX_PERGROUP_MODE || inputParams_.transA || !isMx) {
         return false;
     }
 
