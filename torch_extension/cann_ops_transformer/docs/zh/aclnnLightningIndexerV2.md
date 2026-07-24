@@ -198,7 +198,7 @@ cann_ops_transformer.lightning_indexer_v2(
     <tr>
       <td>cmp_residual_k</td>
       <td>输入</td>
-      <td>压缩场景下Key的残余长度。</td>
+      <td>压缩场景下Key的残余长度,每个元素均需小于cmp_ratio。</td>
       <td>如果不指定可传入None。</td>
       <td>INT32</td>
       <td>ND</td>
@@ -286,7 +286,7 @@ cann_ops_transformer.lightning_indexer_v2(
       <td>用于标识输入Key的数据排布格式。</td>
       <td>
           <ul>
-                <li>用户不特意指定时可传入默认值"PA_BSND"。</li>
+                <li>用户不特意指定时可传入默认值"BSND"。</li>
                 <li>Atlas A3 训练系列产品/Atlas A3 推理系列产品、Atlas A2 训练系列产品/Atlas A2 推理系列产品仅支持PA_BSND。</li>
                 <li>Ascend 950PR/Ascend 950DT支持PA_BSND、BSND、TND。</li>
           </ul>

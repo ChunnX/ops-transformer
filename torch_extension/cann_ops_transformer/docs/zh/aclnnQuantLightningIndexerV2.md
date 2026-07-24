@@ -222,7 +222,7 @@ cann_ops_transformer.quant_lightning_indexer_v2(
     <tr>
       <td>cmp_residual_k</td>
       <td>输入</td>
-      <td>压缩场景下Key的残余长度。</td>
+      <td>压缩场景下Key的残余长度,每个元素均需小于cmp_ratio。</td>
       <td>如果不指定可传入None。</td>
       <td>INT32</td>
       <td>ND</td>
