@@ -19,7 +19,7 @@ const int64_t DIM_QK = 128;
 std::tuple<at::Tensor, at::Tensor>
 StemOamPrepPagedKv(
     const at::Tensor &kCache, const at::Tensor &vCache, const at::Tensor &kvIndices,
-    const at::Tensor &kvSeqLens, const at::Tensor &kScaleCache, const at::Tensor &vScale,
+    const at::IntArrayRef &kvSeqLens, const at::Tensor &kScaleCache, const at::Tensor &vScale,
     double lambdaMag, int64_t cacheLayout, int64_t kvBlockSize,
     int64_t stemBlockSize, int64_t stemStride)
 {
@@ -41,15 +41,8 @@ StemOamPrepPagedKv(
     int64_t kflatDim = stemStride * DIM_QK;
 
     // read kvSeqLens from NPU to host to compute max_Kb
-    at::Tensor kvSeqLensCpu = kvSeqLens.to(at::kCPU);
-    auto kvSeqLensData = kvSeqLensCpu.data_ptr<int32_t>();
-    int64_t maxKvLen = 0;
-    for (int64_t i = 0; i < batch; i++) {
-        if (kvSeqLensData[i] > maxKvLen) {
-            maxKvLen = kvSeqLensData[i];
-        }
-    }
-    int64_t maxKb = (maxKvLen + stemBlockSize - 1) / stemBlockSize;
+    int64_t maxKvSeqLens = *std::max_element(kvSeqLens.begin(), kvSeqLens.end());
+    int64_t maxKb = (maxKvSeqLens + stemBlockSize - 1) / stemBlockSize;
     if (maxKb < 1) maxKb = 1;
 
     at::Tensor kFlat = at::empty({batch, numHeads, maxKb, kflatDim},
