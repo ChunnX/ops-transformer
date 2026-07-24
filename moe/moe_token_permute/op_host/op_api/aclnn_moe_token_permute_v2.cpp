@@ -21,6 +21,7 @@
 #include "aclnn_kernels/cast.h"
 #include "aclnn_kernels/contiguous.h"
 #include "aclnn_kernels/slice.h"
+#include "level0/sort.h"
 #include "opdev/tensor_view_utils.h"
 #include "opdev/op_log.h"
 #include "moe/moe_init_routing_v2/op_host/op_api/moe_init_routing_v2.h"
@@ -205,6 +206,35 @@ static aclnnStatus PrepareIndicesForV3(
     return ACLNN_SUCCESS;
 }
 
+static aclnnStatus BuildZeroWidthTokensExecutor(const aclTensor* indices, int64_t fullTokenNum,
+                                                 const aclTensor* sortedIndicesOut, aclOpExecutor* executor)
+{
+    op::Shape flatShape;
+    flatShape.AppendDim(fullTokenNum);
+
+    auto indicesFlat = executor->CreateView(indices, flatShape, 0);
+    CHECK_RET(indicesFlat != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto indicesFloat = l0op::Cast(indicesFlat, DataType::DT_FLOAT, executor);
+    CHECK_RET(indicesFloat != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    constexpr bool descending = false;
+    constexpr bool stable = true;
+    auto firstSort = l0op::Sort(indicesFloat, -1, descending, stable, DataType::DT_INT32, executor);
+    auto sortedRowIdx = std::get<1>(firstSort);
+    CHECK_RET(sortedRowIdx != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    // argsort(argsort(indices)) converts sorted-position -> source-row into source-row -> sorted-position.
+    auto sortedRowIdxAsFloat = l0op::Cast(sortedRowIdx, DataType::DT_FLOAT, executor);
+    CHECK_RET(sortedRowIdxAsFloat != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    auto secondSort = l0op::Sort(sortedRowIdxAsFloat, -1, descending, stable, DataType::DT_INT32, executor);
+    auto expandedRowIdx = std::get<1>(secondSort);
+    CHECK_RET(expandedRowIdx != nullptr, ACLNN_ERR_INNER_NULLPTR);
+
+    CHECK_RET(l0op::ViewCopy(expandedRowIdx, sortedIndicesOut, executor) != nullptr,
+              ACLNN_ERR_INNER_NULLPTR);
+    return ACLNN_SUCCESS;
+}
+
 static aclnnStatus AllocIntermediateTensorsForV3(
     int64_t fullTokenNum, int64_t quantMode,
     const aclTensor* permuteTokensOut, const aclTensor* expandedScaleOut,
@@ -325,6 +355,25 @@ aclnnStatus aclnnMoeTokenPermuteV2GetWorkspaceSize(
         tokens, indices, &tokensContiguous, &indicesContiguous,
         &fullTokenNum, uniqueExecutor.get()) == ACLNN_SUCCESS,
         ACLNN_ERR_INNER_NULLPTR);
+
+    const auto& tokensShape = tokensContiguous->GetViewShape();
+    const auto& permuteTokensShape = permuteTokensOut->GetViewShape();
+    const auto& sortedIndicesShape = sortedIndicesOut->GetViewShape();
+    const auto& expandedScaleShape = expandedScaleOut->GetViewShape();
+    const bool isZeroWidthUnquant = quantMode == MoeTokenPermuteV2Check::QUANT_MODE_NONE &&
+                                    tokensShape.GetDimNum() == 2 && tokensShape.GetDim(1) == 0 &&
+                                    permuteTokensShape.GetDimNum() == 2 && permuteTokensShape.GetDim(1) == 0 &&
+                                    fullTokenNum > 0 && sortedIndicesShape.GetDimNum() == 1 &&
+                                    sortedIndicesShape.GetDim(0) == fullTokenNum &&
+                                    expandedScaleShape.GetDimNum() == 1 && expandedScaleShape.GetDim(0) == 0;
+    if (isZeroWidthUnquant) {
+        CHECK_RET(BuildZeroWidthTokensExecutor(indicesContiguous, fullTokenNum, sortedIndicesOut,
+                                                uniqueExecutor.get()) == ACLNN_SUCCESS,
+                  ACLNN_ERR_INNER_NULLPTR);
+        *workspaceSize = uniqueExecutor->GetWorkspaceSize();
+        uniqueExecutor.ReleaseTo(executor);
+        return ACLNN_SUCCESS;
+    }
 
     aclTensor *fullExpandedX = nullptr;
     aclTensor *fullExpandedRowIdx = nullptr;
