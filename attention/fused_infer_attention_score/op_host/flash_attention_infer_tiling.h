@@ -90,7 +90,6 @@ namespace optiling{
     const uint32_t SIZE_OF_16BIT = 2;
     const uint32_t SIZE_OF_32BIT = 4;
     const uint32_t N_SPLIT_HELPER = 2;
-    const uint32_t WORKSPACE_BLOCK_SIZE_DB = Q_TILE_CEIL * MAX_KV_STACK_LEN;
     const uint32_t BASE_KV_SIZE = 128;
     const uint32_t PRELANCH_NUM = 3;
     const int64_t SPARSE_MODE_INT_MAX = 2147483647;
@@ -100,6 +99,7 @@ namespace optiling{
     uint32_t Q_TILE_CEIL = 128;
     const uint32_t Q_TILE_CEIL_MIN = 64;       // halving floor for QBasicTile
     const uint32_t MAX_KV_STACK_LEN_MIN = 256; // halving floor for KSeqStackTile
+    const uint32_t WORKSPACE_BLOCK_SIZE_DB = Q_TILE_CEIL * MAX_KV_STACK_LEN;
     // L1 memory budget and tiling helpers for headDim>256 halving strategy
     const uint32_t L1_MAX_SIZE = 524288;       // 512KB L1
     const uint32_t L1_DOUBLE_BUFFER = 2;
