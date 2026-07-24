@@ -258,9 +258,6 @@ def tilelang_grad_kl_loss_single_kernel(
     bw_rows_per_tile = 4
     assert rows_per_aiv % bw_rows_per_tile == 0
     bw_row_tile_count = rows_per_aiv // bw_rows_per_tile
-    # The row-expand lowering may load a 32-byte scalar block.  Four padding
-    # values keep the final 4-row tile within the physical allocation.
-    bw_weight_padded = rows_per_aiv + 4
 
     v3_chunks = Nidx1 // 4
     task_count = B * S1
@@ -1426,7 +1423,7 @@ def tilelang_grad_kl_loss_single_kernel(
         """
         with T.Scope("V"):
             v1_bw_weight_half = T.alloc_ub(rows_per_aiv, input_dtype)
-            v1_bw_weight = T.alloc_ub(bw_weight_padded, calc_dtype)
+            v1_bw_weight = T.alloc_ub(rows_per_aiv, calc_dtype)
             v1_bw_p_full = T.alloc_ub(K, calc_dtype)
             v1_bw_sy_full = T.alloc_ub(K, calc_dtype)
             v1_bw_p = T.alloc_ub(bw_col_block, calc_dtype)
@@ -1440,6 +1437,7 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_bmm2 = T.alloc_ub(
                 (bw_rows_per_tile, K), calc_dtype
             )
+            v1_bw_weight_row = T.alloc_ub((1, K), calc_dtype)
             v1_bw_rg_half = T.alloc_ub(
                 (bw_rows_per_tile, K), input_dtype
             )
@@ -1452,7 +1450,6 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_loss_2d = T.alloc_ub((1, bw_col_block), calc_dtype)
             v1_bw_loss_sum = T.alloc_ub((1,), calc_dtype)
             v1_bw_loss_accum = T.alloc_ub((1,), calc_dtype)
-            v1_bw_row_tmp = T.alloc_ub((bw_rows_per_tile, 8), calc_dtype)
 
             T.tile.fill(v1_bw_eps, 1e-8)
             # Keep the precision-proven WAR edge even when the generated
@@ -1596,15 +1593,29 @@ def tilelang_grad_kl_loss_single_kernel(
                     # apply the already computed ReLU mask.
                     T.copy(v1_bw_exp_or_diff, v1_bw_bmm2)
                     T.pipe_barrier("v")
-                    T.tile.row_expand_mul_experiment(
-                        v1_bw_bmm2,
-                        v1_bw_bmm2,
-                        v1_bw_weight[
-                            bw_row_start:bw_row_start + bw_rows_per_tile
-                        ],
-                        v1_bw_row_tmp,
-                    )
-                    T.pipe_barrier("v")
+                    # row_expand_mul on a 4x2048 matrix lowers its stride
+                    # fields to uint8_t 256.  Broadcast each scalar weight
+                    # to one full row instead; 2048-element vector mul is
+                    # legal and preserves the 4x2048 tile's data ownership.
+                    for bw_local_row in T.serial(bw_rows_per_tile):
+                        T.tile.broadcast(
+                            v1_bw_weight_row,
+                            v1_bw_weight[
+                                bw_row_start + bw_local_row:
+                                bw_row_start + bw_local_row + 1
+                            ],
+                        )
+                        T.pipe_barrier("v")
+                        T.tile.mul(
+                            v1_bw_bmm2[
+                                bw_local_row:bw_local_row + 1, 0:K
+                            ],
+                            v1_bw_bmm2[
+                                bw_local_row:bw_local_row + 1, 0:K
+                            ],
+                            v1_bw_weight_row,
+                        )
+                        T.pipe_barrier("v")
                     T.tile.mul(
                         v1_bw_bmm2,
                         v1_bw_bmm2,
