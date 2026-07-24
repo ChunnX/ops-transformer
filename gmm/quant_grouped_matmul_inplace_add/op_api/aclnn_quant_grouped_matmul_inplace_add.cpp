@@ -70,7 +70,7 @@ std::string ViewShapeToString(const aclTensor *tensor)
         }                                                        \
     } while (0)
 
-static aclnnStatus CheckNotNull(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
+static aclnnStatus CheckX1X2NotNull(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
 {
     QGMM_INPLACE_ADD_CHECK_REPORT(params.x1 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x1", "nullptr",
@@ -78,6 +78,12 @@ static aclnnStatus CheckNotNull(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddPara
     QGMM_INPLACE_ADD_CHECK_REPORT(params.x2 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "x2", "nullptr",
                                               "the value of x2 cannot be nullptr"));
+    return ACLNN_SUCCESS;
+}
+
+static aclnnStatus CheckNotNull(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params)
+{
+    CHECK_RET(CheckX1X2NotNull(params) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_NULLPTR);
     QGMM_INPLACE_ADD_CHECK_REPORT(params.scale2 != nullptr, return ACLNN_ERR_PARAM_NULLPTR,
         OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(QGMM_INPLACE_ADD_ACLNN_OP_NAME, "scale2", "nullptr",
                                               "the value of scale2 cannot be nullptr"));
@@ -268,10 +274,11 @@ static aclnnStatus CheckParams(QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParam
     return ACLNN_SUCCESS;
 }
 
-static void SetTransViewShape(const aclTensor *&inputTensor, aclOpExecutor *executor)
+static aclnnStatus SetTransViewShape(const aclTensor *&inputTensor, aclOpExecutor *executor)
 {
     op::Shape viewShape = inputTensor->GetViewShape();
     uint32_t viewShapeDimsNum = viewShape.GetDimNum();
+    CHECK_RET(viewShapeDimsNum >= 2, ACLNN_ERR_PARAM_INVALID);
     op::Shape shape;
     shape.SetScalar();
     // 2: the second last dimension; in for-loops, it indicates dimensions before the second last remain unchanged.
@@ -282,6 +289,8 @@ static void SetTransViewShape(const aclTensor *&inputTensor, aclOpExecutor *exec
     shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - 1));
     shape.AppendDim(viewShape.GetDim(viewShapeDimsNum - 2)); // 2:the second last dim.
     inputTensor = executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset());
+    CHECK_RET(inputTensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
+    return ACLNN_SUCCESS;
 }
 
 static aclnnStatus SetTransViewShapeForPertoken(const aclTensor *&inputTensor, aclOpExecutor *executor)
@@ -300,6 +309,7 @@ static aclnnStatus SetTransViewShapeForPertoken(const aclTensor *&inputTensor, a
     shape.AppendDim(viewShape.GetDim(2)); // 2 is last dim contiguous in k axis in mx typek quant mode
     inputTensor =
         executor->CreateView(inputTensor, shape, inputTensor->GetViewOffset()); // use executor to create tensor
+    CHECK_RET(inputTensor != nullptr, ACLNN_ERR_INNER_NULLPTR);
     return ACLNN_SUCCESS;
 }
 
@@ -338,6 +348,9 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(
     QGmmInPlaceAdd::QuantGroupedMatmulInplaceAddParams params, uint64_t *workspaceSize, aclOpExecutor **executor)
 {
     // 固定写法，创建OpExecutor
+    OP_CHECK_COMM_INPUT(workspaceSize, executor);
+    auto ret = CheckX1X2NotNull(params);
+    CHECK_RET(ret == ACLNN_SUCCESS, ret);
     auto uniqueExecutor = CREATE_EXECUTOR();
     CHECK_RET(uniqueExecutor.get() != nullptr, ACLNN_ERR_INNER_CREATE_EXECUTOR);
     auto executorPtr = uniqueExecutor.get();
@@ -349,9 +362,8 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(
         return ACLNN_SUCCESS;
     }
     // 固定写法，参数检查
-    auto ret = CheckParams(params);
+    ret = CheckParams(params);
     CHECK_RET(ret == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
-
     bool transposeX = gmm::IsTransposeLastTwoDims(params.x1);      // check is transpose x
     bool transposeWeight = gmm::IsTransposeLastTwoDims(params.x2); // check is transpose weight
     // when the last two dims of weight are (1, 1), consider tranB as false
@@ -364,14 +376,14 @@ static aclnnStatus aclnnQuantGroupedMatmulInplaceAddGetWorkspaceSizeCommon(
             "supported"));
 
     if (transposeX) {
-        SetTransViewShape(params.x1, executorPtr);
+        CHECK_RET(SetTransViewShape(params.x1, executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         if (params.scale1Optional->GetDataType() == DataType::DT_FLOAT8_E8M0) {
             CHECK_RET(SetTransViewShapeForPertoken(params.scale1Optional, executorPtr) == ACLNN_SUCCESS,
                       ACLNN_ERR_PARAM_INVALID);
         }
     }
     if (transposeWeight) {
-        SetTransViewShape((params.x2), executorPtr);
+        CHECK_RET(SetTransViewShape((params.x2), executorPtr) == ACLNN_SUCCESS, ACLNN_ERR_PARAM_INVALID);
         if (params.scale2->GetDataType() == DataType::DT_FLOAT8_E8M0) {
             CHECK_RET(SetTransViewShapeForPertoken(params.scale2, executorPtr) == ACLNN_SUCCESS,
                       ACLNN_ERR_PARAM_INVALID);

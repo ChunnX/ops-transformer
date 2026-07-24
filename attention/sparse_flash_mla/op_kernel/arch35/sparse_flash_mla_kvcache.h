@@ -157,7 +157,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
         runParam.s1RealSize = Min(runParam.qSNumInOneBlock, runParam.actualS1Size - cubeSOuterOffset);
         runParam.mRealSize = runParam.s1RealSize * constInfo.gSize;
         if constexpr (IS_SPLIT_G) {
-            runParam.mRealSize = runParam.mRealSize >> 1;
+            runParam.mRealSize = runParam.s1RealSize * runParam.gSplitSize;
         }
     }
 
@@ -175,7 +175,7 @@ __aicore__ inline void ComputeSouterParam(RunParamStr& runParam, const ConstInfo
     runParam.firstHalfS1RealSize = runParam.halfS1RealSize;
     if (constInfo.subBlockIdx == 1) {
         runParam.halfS1RealSize = runParam.s1RealSize - runParam.halfS1RealSize;
-        runParam.sOuterOffset = cubeSOuterOffset + runParam.halfMRealSize / constInfo.gSize;
+        runParam.sOuterOffset = cubeSOuterOffset + runParam.firstHalfMRealSize / constInfo.gSize;
     } else {
         runParam.sOuterOffset = cubeSOuterOffset;
     }
@@ -201,7 +201,7 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
                 runParam.goIdx * constInfo.dSizeV;
         }
         if (constInfo.subBlockIdx == 1) {
-            runParam.attentionOutOffset += runParam.halfMRealSize * constInfo.dSizeV;
+            runParam.attentionOutOffset += runParam.firstHalfMRealSize * constInfo.dSizeV;
         }
         if (constInfo.returnSoftmaxLse) {
             if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
@@ -214,9 +214,8 @@ __aicore__ inline void LoopSOuterOffsetInit(RunParamStr& runParam, const ConstIn
                     runParam.n2oIdx * constInfo.s1Size * constInfo.gSize +
                     runParam.sOuterOffset * constInfo.gSize;
             }
-            uint32_t aicIdx = constInfo.aivIdx >> 1U;
-            if (IS_SPLIT_G && aicIdx % 2U != 0) {
-                runParam.softmaxLseOffset += constInfo.gSize >> 1U;
+            if (IS_SPLIT_G) {
+                runParam.softmaxLseOffset += runParam.goIdx;
             }
             if (constInfo.subBlockIdx == 1) {
                 runParam.softmaxLseOffset += runParam.firstHalfMRealSize;

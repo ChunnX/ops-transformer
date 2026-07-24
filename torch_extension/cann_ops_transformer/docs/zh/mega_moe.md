@@ -904,13 +904,13 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
             <td>l1_weights</td>
             <td>num_experts_per_rank（BFLOAT16/INT8/INT4场景）或1（FLOAT8_E5M2/FLOAT8_E4M3FN/FLOAT4_E2M1场景）</td>
             <td>否（BFLOAT16/INT8/INT4场景）/是（FLOAT8_E5M2/FLOAT8_E4M3FN/FLOAT4_E2M1场景）</td>
-            <td>支持</td>
+            <td>不支持/td>
         </tr>
         <tr>
             <td>l2_weights</td>
             <td>num_experts_per_rank（BFLOAT16/INT8/INT4场景）或1（FLOAT8_E5M2/FLOAT8_E4M3FN/FLOAT4_E2M1场景）</td>
             <td>否（BFLOAT16/INT8/INT4场景）/是（FLOAT8_E5M2/FLOAT8_E4M3FN/FLOAT4_E2M1场景）</td>
-            <td>支持</td>
+            <td>不支持</td>
         </tr>
         <tr>
             <td>l1_weights_sf</td>
@@ -947,10 +947,9 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
 
 - **参数一致性约束**：
     - mega_moe 接口的所有输入参数及其对应的张量维度，必须与 get_symm_buffer_for_mega_moe 的同名参数（例如 `num_experts`、`hidden`、`intermediate_hidden` 等）保持一致。
-    - 调用算子过程中使用的`moe_expert_num`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
+    - 调用算子过程中使用的`num_experts`、`max_recv_token_num`、`dispatch_quant_mode`、`dispatch_quant_out_dtype`、`num_max_tokens_per_rank`等参数取值，所有卡需保持一致，网络中不同层中也需保持一致。
 
 - **通信域和组网约束**：
-    - 仅支持`EP`域，无`TP`域，不支持`groupTp`、`tpWorldSize`、`tpRankId`属性。
     - 所有卡的`ep_world_size`、`ccl_buffer_size`参数取值需保持一致。
     - 各卡的通信域缓存区大小应当一致。`ccl_buffer_size` 为 HBM 上分配的 CCL 通信缓冲区**总大小**（Bytes），包含等大小的 **windowIn** 和 **windowOut** 两块空间，校验时以单个空间 `ccl_buffer_size / 2` 为准，需满足：
 
@@ -1003,17 +1002,16 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     - Atlas A3 训练系列产品/Atlas A3 推理系列产品：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
 
 - **参数约束**：
-    - **公共约束**：
-        - `moe_expert_num`：取值范围为`[world_size, 1024]`（get_symm_buffer_for_mega_moe），且 `moe_expert_num % ep_world_size == 0`（或 `moe_expert_num % world_size == 0`）。
     - **Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品：**
         - 各卡 `num_tokens` 需保持一致。
         - `ep_world_size`：取值为 `2`、`4`、`8`、`16`、`32`。
-        - `num_experts_per_rank`：取值范围为 `1 ≤ num_experts_per_rank ≤ 128`，且 `num_experts_per_rank = moe_expert_num / world_size`。
+        - `num_experts`：取值范围为`world_size ≤ num_experts ≤ 1024`，且 `num_experts % ep_world_size == 0`。
+        - `num_experts_per_rank`：取值范围为 `1 ≤ num_experts_per_rank ≤ 128`，且 `num_experts_per_rank = num_experts / world_size`。
         - `num_max_tokens_per_rank`：取值范围为 `1 ≤ num_max_tokens_per_rank ≤ 4096`。
         - `max_recv_token_num` 需大于0，输入0表示自动计算，公式为 `num_tokens × ep_world_size × min(num_topk, num_experts_per_rank)`。
         - `num_topk`：取值范围为 `1 ≤ num_topk ≤ 16`。
         - `hidden`：取值范围为 `1024 ≤ hidden ≤ 8192`，且 `hidden % 512 == 0`。
-        - `intermediate_hidden`：取值范围为 `1024 ≤ intermediate_hidden ≤ 8192`，且 `intermediate_hidden % 512 == 0`。
+        - `intermediate_hidden`：取值范围为 `1024 ≤ intermediate_hidden ≤ 3072`，且 `intermediate_hidden % 512 == 0`。
         - `dispatch_quant_mode`：取值范围为 `0`（非量化）、`2`（pertoken量化）。
         - `dispatch_quant_out_dtype`：取值为 `torch.int8`。
         - 支持三种计算场景（A16W16、A8W8-INT、A8W4-INT），不同场景下可选入参（缩放因子、偏置等）的必需性及数据类型有严格配套要求。调用时必须根据所选场景完整提供对应参数，不可混用或遗漏，配套关系见下表。
@@ -1090,7 +1088,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         - num_experts_per_rank（weight1.dim0）范围 [1, 1024]。
         - intermediate_hidden（weight1.dim1）仅支持1024、2048、3072、4096、7168。
         - ep_world_size范围 [2, 1024]。
-        - moe_expert_num范围 [ep_world_size, 2048]，且moe_expert_num % ep_world_size == 0。
+        - num_experts范围 [ep_world_size, 2048]，且num_experts % ep_world_size == 0。
         - max_recv_token_num范围 [0, num_tokens × ep_world_size × min(num_topk, num_experts_per_rank)]。
         - dispatch_quant_out_dtype仅支持torch.float8_e5m2或torch.float8_e4m3fn或torch.float4_e2m1。
         - 当前版本仅支持MXFP量化模式（dispatch_quant_mode = 4），dispatch阶段使用MX逐组量化（group size = 32），量化缩放因子类型为FLOAT8_E8M0。
@@ -1100,7 +1098,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         - y的数据类型与x相同。
         - weight1的dim1（intermediate_hidden）必须等于weight2的dim2的二倍，这是因为SwiGLU激活需要将中间维度从intermediate_hidden减半为intermediate_hidden/2。
         - weight_scales1和weight_scales2不可为空指针。
-        - num_experts_per_rank = moe_expert_num / ep_world_size，必须为整数且在 [1, 1024] 范围内。
+        - num_experts_per_rank = num_experts / ep_world_size，必须为整数且在 [1, 1024] 范围内。
         - weight_scales1和weight_scales2不可为空指针。
 
         - **MXFP量化场景约束**：
@@ -1219,7 +1217,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
     H = 4096
     N = 1024
     topK = 6
-    moe_expert_num = 8
+    num_experts = 8
 
     server_num = 1
     rank_per_dev = 2
@@ -1291,7 +1289,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         ep_hcomm_info, ep_group = init_hccl_comm(rank)
         # 步骤1：构造distribute_buffer（SymmBuffer结构体）
         distribute_buffer = get_symm_buffer_for_mega_moe(
-            ep_group, num_experts=moe_expert_num,
+            ep_group, num_experts=num_experts,
             num_max_tokens_per_rank=num_tokens, num_topk=topK,
             hidden=H, intermediate_hidden=0,
             dispatch_quant_mode=4, dispatch_quant_out_dtype=torch.float8_e5m2
@@ -1381,7 +1379,7 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
         x = torch.randn(x_shape, dtype=torch.bfloat16)
         expert_scales = torch.randn(expert_scales_shape, dtype=torch.bfloat16)
         expert_ids = torch.stack(
-            [torch.randperm(moe_expert_num)[:topK] for _ in range(num_tokens)]
+            [torch.randperm(num_experts)[:topK] for _ in range(num_tokens)]
         ).to(torch.int32)
         weight1 = torch.randn(weight_shape, dtype=torch.float32).to(torch.float8_e5m2)
         weight_scales1 = torch.randint(125, 130, weight_scale_shape, dtype=torch.uint8).view(torch.float8_e8m0fnu)
@@ -1406,4 +1404,228 @@ mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer, *, l1_we
             weights_scales2_list=golden_weights_scales2_list,
             expert_scales_list=golden_expert_scales_list,
         )
+    ```
+
+  - **Atlas A2 训练系列产品/Atlas A2 推理系列产品、Atlas A3 训练系列产品/Atlas A3 推理系列产品**：
+
+    ```python
+    import torch
+    import torch_npu
+    import torch.multiprocessing as mp
+    import torch.distributed as dist
+    from cann_ops_transformer.ops import get_symm_buffer_for_mega_moe, mega_moe
+
+    num_tokens = 64
+    hidden = 4096
+    intermediate_hidden = 1024
+    num_topk = 6
+    num_experts = 16
+    num_max_tokens_per_rank = 256
+    num_servers = 1
+    num_ranks_per_server = 2
+    server_index = 0  # 当前机器在集群中的编号
+    master_addr = '127.0.0.1'
+    master_port = 50001
+    scene = 'A16W16'
+
+    world_size = num_servers * num_ranks_per_server
+    num_experts_per_rank = num_experts // world_size
+
+    torch_npu.npu.config.allow_internal_format = True
+
+
+    def init_hccl_comm(rank):
+        print(f'device_{rank} start init_process_group')
+        options = torch_npu._C._distributed_c10d.ProcessGroupHCCL.Options()
+        # 使用时hccl_buffer_size的值需根据算子接口文档中给出的通信域缓存区大小的约束进行配置
+        options.hccl_config = {'hccl_buffer_size': 200}
+        dist.init_process_group(
+            backend='hccl',
+            rank=server_index * num_ranks_per_server + rank,
+            world_size=world_size,
+            init_method=f'tcp://{master_addr}:{master_port}',
+            pg_options=options,
+        )
+        print(f'device_{rank} init_process_group success')
+        ep_group = dist.new_group(backend='hccl', ranks=list(range(world_size)))
+        _ = ep_group._get_backend(torch.device('npu')).get_hccl_comm_name(rank)
+        return ep_group
+
+
+    def bf16_mega_moe(rank):
+        torch_npu.npu.set_device(rank % num_ranks_per_server)
+
+        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16, device='npu')
+        scores = torch.randn((num_tokens, num_experts), dtype=torch.float, device='npu')
+        topk_weights, topk_ids = torch.topk(scores, num_topk, dim=-1, largest=True, sorted=False)
+        topk_ids = topk_ids.to(torch.int32)
+        l1_weights = [
+            torch.randn((hidden, intermediate_hidden * 2), dtype=torch.bfloat16, device='npu')
+            for _ in range(num_experts_per_rank)
+        ]
+        l2_weights = [
+            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16, device='npu')
+            for _ in range(num_experts_per_rank)
+        ]
+
+        ep_group = init_hccl_comm(rank)
+
+        sym_buffer = get_symm_buffer_for_mega_moe(
+            ep_group,
+            num_experts=num_experts,
+            num_max_tokens_per_rank=num_max_tokens_per_rank,
+            num_topk=num_topk,
+            hidden=hidden,
+            intermediate_hidden=intermediate_hidden,
+            dispatch_quant_mode=0,
+            dispatch_quant_out_dtype=None,
+        )
+        y, expert_token_nums = mega_moe(x, topk_ids, topk_weights, l1_weights, l2_weights, sym_buffer)
+
+        dist.barrier()
+        dist.destroy_process_group()
+
+
+    def int8_int8_mega_moe(rank):
+        torch_npu.npu.set_device(rank % num_ranks_per_server)
+
+        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16, device='npu')
+        scores = torch.randn((num_tokens, num_experts), dtype=torch.float, device='npu')
+        topk_weights, topk_ids = torch.topk(scores, num_topk, dim=-1, largest=True, sorted=False)
+        topk_ids = topk_ids.to(torch.int32)
+        l1_weights_bf16 = [
+            torch.randn((hidden, intermediate_hidden * 2), dtype=torch.bfloat16, device='npu')
+            for _ in range(num_experts_per_rank)
+        ]
+        l2_weights_bf16 = [
+            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16, device='npu')
+            for _ in range(num_experts_per_rank)
+        ]
+
+        def per_channel_cast_to_int8(w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            max_abs = torch.amax(torch.abs(w), dim=0, keepdim=True)
+            sf = torch.clamp(max_abs / 127.0, min=1e-8)
+            q_weight = torch.round(w / sf).clamp(-127, 127).to(torch.int8)
+            return q_weight, sf.squeeze().to(torch.float32)
+
+        l1_weights_int8, l1_weights_sf_float = map(list, zip(*[per_channel_cast_to_int8(w) for w in l1_weights_bf16]))
+        l2_weights_int8, l2_weights_sf_float = map(list, zip(*[per_channel_cast_to_int8(w) for w in l2_weights_bf16]))
+
+        # Cast weights to NZ format for better performance.
+        l1_weights = [torch_npu.npu_format_cast(w, torch_npu.Format.FRACTAL_NZ) for w in l1_weights_int8]
+        l2_weights = [torch_npu.npu_format_cast(w, torch_npu.Format.FRACTAL_NZ) for w in l2_weights_int8]
+
+        # Pack float32 scale factors into uint64, which is required for the process of fixpipe dequantization.
+        l1_weights_sf = [sf.view(torch.int32).to(torch.int64).view(torch.uint64) for sf in l1_weights_sf_float]
+        l2_weights_sf = [sf.view(torch.int32).to(torch.int64).view(torch.uint64) for sf in l2_weights_sf_float]
+
+        ep_group = init_hccl_comm(rank)
+
+        sym_buffer = get_symm_buffer_for_mega_moe(
+            ep_group,
+            num_experts=num_experts,
+            num_max_tokens_per_rank=num_max_tokens_per_rank,
+            num_topk=num_topk,
+            hidden=hidden,
+            intermediate_hidden=intermediate_hidden,
+            dispatch_quant_mode=2,
+            dispatch_quant_out_dtype=torch.int8,
+        )
+        y, expert_token_nums = mega_moe(
+            x,
+            topk_ids,
+            topk_weights,
+            l1_weights,
+            l2_weights,
+            sym_buffer,
+            l1_weights_sf=l1_weights_sf,
+            l2_weights_sf=l2_weights_sf,
+        )
+
+        dist.barrier()
+        dist.destroy_process_group()
+
+
+    def int8_int4_mega_moe(rank):
+        torch_npu.npu.set_device(rank % num_ranks_per_server)
+
+        x = torch.randn((num_tokens, hidden), dtype=torch.bfloat16, device='npu')
+        scores = torch.randn((num_tokens, num_experts), dtype=torch.float, device='npu')
+        topk_weights, topk_ids = torch.topk(scores, num_topk, dim=-1, largest=True, sorted=False)
+        topk_ids = topk_ids.to(torch.int32)
+        l1_weights_bf16 = [
+            torch.randn((hidden, intermediate_hidden * 2), dtype=torch.bfloat16, device='npu')
+            for _ in range(num_experts_per_rank)
+        ]
+        l2_weights_bf16 = [
+            torch.randn((intermediate_hidden, hidden), dtype=torch.bfloat16, device='npu')
+            for _ in range(num_experts_per_rank)
+        ]
+
+        def per_channel_cast_to_int4(w: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+            max_abs = torch.amax(torch.abs(w), dim=0, keepdim=True)
+            sf = torch.clamp(max_abs / 7.0, min=1e-8)
+            q_weight = torch.round(w / sf).clamp(-7, 7).to(torch.int8)
+            return q_weight, sf.squeeze().to(torch.float)
+
+        def pack_int4_to_int8(x: torch.Tensor) -> torch.Tensor:
+            x = (x + 8).to(torch.uint8).reshape(x.shape[0], -1, 2)
+            x = ((x[..., 1] << 4) | x[..., 0]).view(torch.int8)
+            return x
+
+        l1_weights_int8, l1_weights_sf_float = map(list, zip(*[per_channel_cast_to_int4(w) for w in l1_weights_bf16]))
+        l2_weights_int8, l2_weights_sf_float = map(list, zip(*[per_channel_cast_to_int4(w) for w in l2_weights_bf16]))
+
+        l1_weights_int4 = [pack_int4_to_int8(w) for w in l1_weights_int8]
+        l2_weights_int4 = [pack_int4_to_int8(w) for w in l2_weights_int8]
+
+        # Cast weights to NZ format for better performance.
+        l1_weights = [torch_npu.npu_format_cast(w, torch_npu.Format.FRACTAL_NZ).view(torch.int32) for w in l1_weights_int4]
+        l2_weights = [torch_npu.npu_format_cast(w, torch_npu.Format.FRACTAL_NZ).view(torch.int32) for w in l2_weights_int4]
+
+        # Pack float32 scale factors into uint64, which is required for the process of fixpipe dequantization.
+        l1_weights_sf = [sf.view(torch.int32).to(torch.int64).view(torch.uint64) for sf in l1_weights_sf_float]
+        l2_weights_sf = [sf.view(torch.int32).to(torch.int64).view(torch.uint64) for sf in l2_weights_sf_float]
+
+        l1_bias = [(w.float() * sf.unsqueeze(0)).sum(dim=0) * 8.0 for w, sf in zip(l1_weights_int8, l1_weights_sf_float)]
+        l2_bias = [(w.float() * sf.unsqueeze(0)).sum(dim=0) * 8.0 for w, sf in zip(l2_weights_int8, l2_weights_sf_float)]
+
+        ep_group = init_hccl_comm(rank)
+
+        sym_buffer = get_symm_buffer_for_mega_moe(
+            ep_group,
+            num_experts=num_experts,
+            num_max_tokens_per_rank=num_max_tokens_per_rank,
+            num_topk=num_topk,
+            hidden=hidden,
+            intermediate_hidden=intermediate_hidden,
+            dispatch_quant_mode=2,
+            dispatch_quant_out_dtype=torch.int8,
+        )
+        y, expert_token_nums = mega_moe(
+            x,
+            topk_ids,
+            topk_weights,
+            l1_weights,
+            l2_weights,
+            sym_buffer,
+            l1_weights_sf=l1_weights_sf,
+            l2_weights_sf=l2_weights_sf,
+            l1_bias=l1_bias,
+            l2_bias=l2_bias,
+        )
+
+        dist.barrier()
+        dist.destroy_process_group()
+
+
+    if __name__ == '__main__':
+        if scene == 'A16W16':
+            torch.multiprocessing.spawn(bf16_mega_moe, nprocs=num_ranks_per_server)
+        elif scene == 'A8W8-INT':
+            torch.multiprocessing.spawn(int8_int8_mega_moe, nprocs=num_ranks_per_server)
+        elif scene == 'A8W4-INT':
+            torch.multiprocessing.spawn(int8_int4_mega_moe, nprocs=num_ranks_per_server)
+        else:
+            raise ValueError(f"Unsupported scene: {scene}, please choose from ['A16W16', 'A8W8-INT', 'A8W4-INT']")
     ```

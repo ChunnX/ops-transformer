@@ -35,9 +35,9 @@ namespace op_api {
  * @return tuple(key_cache_out, value_cache_out, key_scale_cache_out)
  */
 std::tuple<at::Tensor, at::Tensor, at::Tensor>
-ScatterPaKvCacheWithKScale(const at::Tensor &key, const at::Tensor &value, const at::Tensor &keyCache,
-                           const at::Tensor &valueCache, const at::Tensor &slotMapping, const at::Tensor &keyScale,
-                           const at::Tensor &keyScaleCache, std::string cacheLayout)
+ScatterPaKvCacheWithKScale(const at::Tensor &key, const at::Tensor &value, at::Tensor &keyCache,
+                           at::Tensor &valueCache, const at::Tensor &slotMapping, const at::Tensor &keyScale,
+                           at::Tensor &keyScaleCache, std::string cacheLayout)
 {
     // 检查输入tensor维度
     TORCH_CHECK(key.dim() == 3, "key must be 3D tensor [num_tokens, num_head, k_head_size]");
@@ -59,19 +59,14 @@ ScatterPaKvCacheWithKScale(const at::Tensor &key, const at::Tensor &value, const
     TORCH_CHECK(slotMapping.dtype() == at::kInt || slotMapping.dtype() == at::kLong,
                 "slot_mapping dtype must be int32 or int64");
 
-    // 创建输出tensor（与输入cache相同shape和dtype）
-    at::Tensor keyCacheOut = keyCache.clone();
-    at::Tensor valueCacheOut = valueCache.clone();
-    at::Tensor keyScaleCacheOut = keyScaleCache.clone();
-
     // 转换cache_layout为char指针
     char *cacheLayoutPtr = const_cast<char *>(cacheLayout.c_str());
 
-    // 调用ACLNN算子
-    ACLNN_CMD(aclnnScatterPaKvCacheWithKScale, key, value, keyCacheOut, valueCacheOut, slotMapping, keyScale,
-              keyScaleCacheOut, cacheLayoutPtr);
+    // 调用ACLNN算子（inplace更新输入cache）
+    ACLNN_CMD(aclnnScatterPaKvCacheWithKScale, key, value, keyCache, valueCache, slotMapping, keyScale,
+              keyScaleCache, cacheLayoutPtr);
 
-    return std::tuple<at::Tensor, at::Tensor, at::Tensor>(keyCacheOut, valueCacheOut, keyScaleCacheOut);
+    return std::tuple<at::Tensor, at::Tensor, at::Tensor>(keyCache, valueCache, keyScaleCache);
 }
 
 // 绑定C++函数到Python模块

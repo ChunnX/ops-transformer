@@ -421,7 +421,9 @@ void FiaTilingFullQuantMxArch35::CreateSplitInput(split_core_v2::BaseInfo &baseI
     splitParam.mBaseSize = sOuterFactor_ * CV_RATIO;
     splitParam.s2BaseSize = sInnerFactor_;
     splitParam.gS1BaseSizeOfFd = 8;
-    splitParam.streamK = false;
+    splitParam.streamK = true;
+    splitParam.fdTolerance = 10; // 实验经验值
+    splitParam.fdLeastBlock = 2; // 实验经验值
 }
 
 void FiaTilingFullQuantMxArch35::SetSplitOutput(const split_core_v2::FAMetaData &splitRes)
@@ -816,7 +818,7 @@ void FiaTilingFullQuantMxArch35::SetFATilingData()
     tilingData_.baseTiling.fiaBaseParams.isSoftMaxLseEnable = fiaInfo_->softmaxLseFlag;
     tilingData_.baseTiling.fiaBaseParams.coreNum = numBlocks_;
     tilingData_.baseTiling.fiaBaseParams.outputLayout = static_cast<uint32_t>(fiaInfo_->outputLayout);
-    if (!fiaInfo_->isTensorV1) { // 只有tensorv2才会包含strides信息
+    if (fiaInfo_->hasViewStride) { // 只有tensorv2才会包含strides信息
         // fiaBaseParams增加strides参数，从fiaInfo获取strides值
         tilingData_.baseTiling.fiaBaseParams.keyStrides.bnStride = fiaInfo_->keyStrides->GetStride(0);
         tilingData_.baseTiling.fiaBaseParams.keyStrides.n2Stride = fiaInfo_->keyStrides->GetStride(1);

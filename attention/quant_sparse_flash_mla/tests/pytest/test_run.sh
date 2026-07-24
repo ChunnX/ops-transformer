@@ -38,7 +38,7 @@ run_batch_save() {
     export QSMLA_EXCEL="$EXCEL_FILE"
     export QSMLA_SHEET="$SHEET_NAME"
     export QSMLA_PT_DIR="$PT_SAVE_DIR"
-    python3 -m pytest -rA -s $QSMLA_PT_SAVE_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
+    python3 -m pytest -rA -s $QSMLA_PT_SAVE_SCRIPT -x -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
     if [ $? -ne 0 ]; then
         echo "batch_save 执行失败，退出"
         exit 1
@@ -64,7 +64,7 @@ run_batch_exec() {
     echo "找到 $pt_count 个pt文件，开始执行NPU测试"
     export QSMLA_PT_DIR="$PT_SAVE_DIR"
     export RUN_GRAPH="$RUN_GRAPH"
-    python3 -m pytest -rA -s $TEST_QSMLA_PT_BATCH_SCRIPT -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
+    python3 -m pytest -rA -s $TEST_QSMLA_PT_BATCH_SCRIPT -x -v -m ci -W ignore::UserWarning -W ignore::DeprecationWarning --show-capture=no
     if [ $? -ne 0 ]; then
         echo "batch_exec 执行失败"
         exit 1

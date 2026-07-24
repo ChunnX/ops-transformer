@@ -88,7 +88,7 @@ public:
     }
 
     __aicore__ inline void FindCurrentGroup(int64_t basicBlockIdxInGlobal, uint32_t &currentGroupId,
-                                            uint32_t &globalMOffset, int64_t &processedBasicBlock)
+                                            uint64_t &globalMOffset, int64_t &processedBasicBlock)
     {
         for (int groupId = currentGroupId; groupId < tilingData_->groupNum; groupId++) {
             int tokens = groupListGm_.GetValue(groupId);
@@ -138,7 +138,7 @@ public:
     }
 
     __aicore__ inline void ProcessCubeBlock(int64_t basicBlockIdxInGlobal, uint32_t &currentGroupId,
-                                            uint32_t &globalMOffset, int64_t &processedBasicBlock)
+                                            uint64_t &globalMOffset, int64_t &processedBasicBlock)
     {
         FindCurrentGroup(basicBlockIdxInGlobal, currentGroupId, globalMOffset, processedBasicBlock);
         int tokens = groupListGm_.GetValue(currentGroupId);
@@ -177,7 +177,7 @@ public:
             int64_t calcBlockNum = 0;
             int64_t cvTimes = 0;
             int64_t syncId = 0;
-            uint32_t globalMOffset = 0;
+            uint64_t globalMOffset = 0;
             int64_t processedBasicBlock = 0;
             uint32_t currentGroupId = 0;
             uint32_t realSyncId = 0;
@@ -206,7 +206,7 @@ public:
         }
     }
 
-    __aicore__ inline void CalculateEndGroupInfo(int64_t endBasicBlockId, int endGroupId, int &endGroupMOffset,
+    __aicore__ inline void CalculateEndGroupInfo(int64_t endBasicBlockId, int endGroupId, uint64_t &endGroupMOffset,
                                                  int64_t &basicBlockCountBeforeEndGroup)
     {
         endGroupMOffset = 0;
@@ -226,9 +226,10 @@ public:
         endGroupMOffset += currentBasicBlockMId * matmulTilingData_->baseM;
     }
 
-    __aicore__ inline void ProcessGroupRange(int startGroupId, int endGroupId, int endGroupMOffset,
-        uint32_t& globalMOffset, bool &isSyncAll) {
-        int currentGroupMOffset = 0;
+    __aicore__ inline void ProcessGroupRange(int startGroupId, int endGroupId, uint64_t endGroupMOffset,
+        uint64_t& globalMOffset, bool &isSyncAll)
+    {
+        uint64_t currentGroupMOffset = 0;
         for (int gId = 0; gId < startGroupId; gId++) {
             currentGroupMOffset += groupListGm_.GetValue(gId);
         }
@@ -238,7 +239,7 @@ public:
             } else {
                 currentGroupMOffset += groupListGm_.GetValue(groupId);
             }
-            int calcCount = 0;
+            uint64_t calcCount = 0;
             if (currentGroupMOffset <= endGroupMOffset) {
                 calcCount = currentGroupMOffset - globalMOffset;
             } else {
@@ -249,7 +250,7 @@ public:
         }
     }
 
-    __aicore__ inline void ProcessVectorBlock(int64_t syncId, bool &isSyncAll, uint32_t &globalMOffset)
+    __aicore__ inline void ProcessVectorBlock(int64_t syncId, bool &isSyncAll, uint64_t &globalMOffset)
     {
         int64_t startBasicBlockId = syncId * tilingData_->cubeBlockDim;
         int64_t endBasicBlockId = startBasicBlockId + tilingData_->cubeBlockDim;
@@ -258,7 +259,7 @@ public:
         }
         int startGroupId = GetGroupId(startBasicBlockId);
         int endGroupId = GetGroupId(endBasicBlockId);
-        int endGroupMOffset = 0;
+        uint64_t endGroupMOffset = 0;
         int64_t basicBlockCountBeforeEndGroup = 0;
         CalculateEndGroupInfo(endBasicBlockId, endGroupId, endGroupMOffset, basicBlockCountBeforeEndGroup);
         ProcessGroupRange(startGroupId, endGroupId, endGroupMOffset, globalMOffset, isSyncAll);
@@ -272,7 +273,7 @@ public:
             int64_t calcBlockNum = 0;
             int64_t cvTimes = 0;
             int64_t syncId = 0;
-            uint32_t globalMOffset = 0;
+            uint64_t globalMOffset = 0;
             int64_t processedBasicBlock = 0;
             uint32_t currentGroupId = 0;
             uint32_t realSyncId = 0;
@@ -307,7 +308,7 @@ public:
     {
         int64_t processedBasicBlock = 0;
         int currentGroupId = 0;
-        int globalMOffset = 0;
+        uint64_t globalMOffset = 0;
         for (int groupId = 0; groupId < tilingData_->groupNum; groupId++) {
             int tokens = groupListGm_.GetValue(groupId);
             if (tilingData_->groupListType == 0 && groupId > 0) {
@@ -347,9 +348,14 @@ public:
         }
     }
 
-    __aicore__ inline void ProcessDSQ(int groupId, int globalOffset, int calcCount, bool &isSyncAll) {
-        int32_t blockDimxFactor = (calcCount + tilingData_->vectorBlockDim - 1) / tilingData_->vectorBlockDim;
-        int32_t realCoreDim = calcCount == 0 ? 0 : (calcCount + blockDimxFactor - 1) / blockDimxFactor;
+    __aicore__ inline void ProcessDSQ(int groupId, uint64_t globalOffset, uint64_t calcCount, bool &isSyncAll)
+    {
+        if (tilingData_->vectorBlockDim == 0 || calcCount == 0) {
+            return;
+        }
+        int32_t blockDimxFactor =
+            static_cast<int32_t>((calcCount + tilingData_->vectorBlockDim - 1) / tilingData_->vectorBlockDim);
+        int32_t realCoreDim = static_cast<int32_t>((calcCount + blockDimxFactor - 1) / blockDimxFactor);
 
         if (GetBlockIdx() >= realCoreDim) {
             if (isSyncAll) {
@@ -386,7 +392,7 @@ public:
         inScaleQueue_.EnQue(inScaleLocal);
         inScaleLocal = inScaleQueue_.DeQue<float>();
 
-        int32_t blockDimxTailFactor = calcCount - blockDimxFactor * (realCoreDim - 1);
+        int32_t blockDimxTailFactor = static_cast<int32_t>(calcCount - blockDimxFactor * (realCoreDim - 1));
         int32_t DimxCore = GetBlockIdx() == (realCoreDim - 1) ? blockDimxTailFactor : blockDimxFactor;
 
         int32_t ubDimxLoop = (DimxCore + tilingData_->ubFactorDimx - 1) / tilingData_->ubFactorDimx;

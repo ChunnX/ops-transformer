@@ -46,6 +46,20 @@ for _, params in enumerate(ENABLED_PARAMS):
         normalized_params[key] = value
     normalized_params["topk_value_mode"] = params.get("topk_value_mode", 1)
     normalized_params["return_softmax_lse"] = params.get("return_softmax_lse", False)
+    normalized_params["ori_kv_topk_mode"] = params.get("ori_kv_topk_mode", "fullK")
+    normalized_params["cmp_kv_topk_mode"] = params.get("cmp_kv_topk_mode", "fullK")
+    normalized_params["ori_sparse_indices_mode"] = params.get("ori_sparse_indices_mode", "full")
+    normalized_params["cmp_sparse_indices_mode"] = params.get("cmp_sparse_indices_mode", "full")
+    normalized_params["ori_topk_length"] = utils.parse_list_param(params.get("ori_topk_length"))
+    normalized_params["cmp_topk_length"] = utils.parse_list_param(params.get("cmp_topk_length"))
+    int_keys = ["B", "S1", "S2", "N1", "N2", "D", "K", "K1", "block_num1", "block_num2",
+                "block_size1", "block_size2", "cmp_ratio", "ori_mask_mode", "cmp_mask_mode",
+                "ori_win_left", "ori_win_right", "quant_mode", "tile_size", "rope_head_dim",
+                "topk_value_mode"]
+    for ik in int_keys:
+        v = normalized_params.get(ik)
+        if v is not None and not isinstance(v, bool):
+            normalized_params[ik] = int(v)
     for key in ["seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv",
                 "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv"]:
         normalized_params[key] = utils.parse_list_param(params.get(key))
@@ -57,12 +71,14 @@ for _, params in enumerate(ENABLED_PARAMS):
 
     param_names = [
         "Testcase_Name", "layout_q", "layout_kv", "q_type", "ori_kv_type", "cmp_kv_type", "B", "S1", "S2", "N1", \
-        "N2", "D", "K", "block_size1", "block_size2", "softmax_scale", "cmp_ratio", "ori_mask_mode", "cmp_mask_mode", \
-        "ori_win_left", "ori_win_right", "quant_mode", "tile_size", "rope_head_dim", "template_run_mode", \
-        "actlen_mode", "S1EQS2", "topk_value_mode", "return_softmax_lse", \
+        "N2", "D", "K", "K1", "block_num1", "block_num2", "block_size1", "block_size2", "softmax_scale", "cmp_ratio", \
+        "ori_mask_mode", "cmp_mask_mode", "ori_win_left", "ori_win_right", "quant_mode", "tile_size", "rope_head_dim", \
+        "template_run_mode", "actlen_mode", "S1EQS2", "topk_value_mode", "return_softmax_lse", \
+        "ori_kv_topk_mode", "cmp_kv_topk_mode", "ori_sparse_indices_mode", "cmp_sparse_indices_mode", \
+        "ori_topk_length", "cmp_topk_length", \
         "seqused_q", "cu_seqlens_q", "seqused_ori_kv", "seqused_cmp_kv", \
         "cu_seqlens_ori_kv", "cu_seqlens_cmp_kv", "cmp_residual_kv", \
-        "q_datarange", "ori_kv_datarange", "cmp_kv_datarange"
+        "q_datarange", "ori_kv_datarange", "cmp_kv_datarange",
     ]
 
     param_values = [
@@ -79,6 +95,9 @@ for _, params in enumerate(ENABLED_PARAMS):
         [normalized_params["N2"]],
         [normalized_params["D"]],
         [normalized_params["K"]],
+        [normalized_params.get("K1")],
+        [normalized_params.get("block_num1")],
+        [normalized_params.get("block_num2")],
         [normalized_params["block_size1"]],
         [normalized_params["block_size2"]],
         [normalized_params["softmax_scale"]],
@@ -95,6 +114,12 @@ for _, params in enumerate(ENABLED_PARAMS):
         [normalized_params["S1EQS2"]],
         [normalized_params["topk_value_mode"]],
         [normalized_params["return_softmax_lse"]],
+        [normalized_params["ori_kv_topk_mode"]],
+        [normalized_params["cmp_kv_topk_mode"]],
+        [normalized_params["ori_sparse_indices_mode"]],
+        [normalized_params["cmp_sparse_indices_mode"]],
+        [normalized_params["ori_topk_length"]],
+        [normalized_params["cmp_topk_length"]],
         [normalized_params["seqused_q"]],
         [normalized_params["cu_seqlens_q"]],
         [normalized_params["seqused_ori_kv"]],
@@ -114,29 +139,64 @@ for _, params in enumerate(ENABLED_PARAMS):
     print(param_combinations)
 
 case_id = 0
+failed_cases = []
+failed_record_path = Path('pt_save_failed.xlsx')
+
+def record_failed_case(param_combinations, error_msg):
+    row = {
+        "case_id": case_id,
+        "template_run_mode": param_combinations.get("template_run_mode"),
+        "layout_q": param_combinations.get("layout_q"),
+        "layout_kv": param_combinations.get("layout_kv"),
+        "B": param_combinations.get("B"),
+        "S1": param_combinations.get("S1"),
+        "S2": param_combinations.get("S2"),
+        "N1": param_combinations.get("N1"),
+        "K": param_combinations.get("K"),
+        "K1": param_combinations.get("K1"),
+        "quant_mode": param_combinations.get("quant_mode"),
+        "cmp_ratio": param_combinations.get("cmp_ratio"),
+        "ori_mask_mode": param_combinations.get("ori_mask_mode"),
+        "cmp_mask_mode": param_combinations.get("cmp_mask_mode"),
+        "seqused_q": str(param_combinations.get("seqused_q")),
+        "seqused_ori_kv": str(param_combinations.get("seqused_ori_kv")),
+        "cmp_residual_kv": str(param_combinations.get("cmp_residual_kv")),
+        "ori_kv_topk_mode": param_combinations.get("ori_kv_topk_mode"),
+        "cmp_kv_topk_mode": param_combinations.get("cmp_kv_topk_mode"),
+        "error_msg": str(error_msg),
+    }
+    failed_cases.append(row)
+    df = pd.DataFrame(failed_cases)
+    df.to_excel(failed_record_path, index=False)
+
 def mqsmla(param_combinations):
     global case_id
-    params = utils.fill_none_params(param_combinations)
-
-    Testcase_Name = params['Testcase_Name']
-    if Testcase_Name is None:
-        ops_mode = 'prefill' if params['S1'] > 4 else "decode"
-        q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
-        kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
-        prefix_part = f"{param_combinations['tc_prefix']}_"if param_combinations.get('tc_prefix', '') else ""
-        Testcase_Name = f"MQSMLA_{prefix_part}{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
-        params['Testcase_Name'] = Testcase_Name
-    print("input_params:", params)
-
-    # 输入参数的合法性校验
     try:
-        check_valid_param.check_valid_param(params)
-    except ValueError as e:
-        pytest.skip(f"输入参数校验失败:{e}")
+        params = utils.fill_none_params(param_combinations)
 
-    # 生成测试数据
-    input_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(params, save_pt=True, save_path=save_path)
-    case_id += 1
+        Testcase_Name = params['Testcase_Name']
+        if Testcase_Name is None:
+            ops_mode = 'prefill' if params['S1'] > 4 else "decode"
+            q_type_str = "BF16" if params['q_type'] == torch.bfloat16 else "FP16"
+            kv_type_str = "HIF8" if params['ori_kv_type'] == torch.uint8 else "FP8_E4M3FN"
+            prefix_part = f"{param_combinations['tc_prefix']}_"if param_combinations.get('tc_prefix', '') else ""
+            Testcase_Name = f"MQSMLA_{prefix_part}{params['template_run_mode']}_{ops_mode}_{params['layout_q']}_{q_type_str}_{params['layout_kv']}_{kv_type_str}_{params['B']}_{params['N1']}_{params['N2']}_{params['S1']}_{params['S2']}_{params['D']}_{params['K']}_{params['rope_head_dim']}_{case_id:06d}"
+            params['Testcase_Name'] = Testcase_Name
+        print("input_params:", params)
+
+        # 输入参数的合法性校验
+        try:
+            check_valid_param.check_valid_param(params)
+        except ValueError as e:
+            pytest.skip(f"输入参数校验失败:{e}")
+
+        # 生成测试数据
+        input_data = mixed_quant_sparse_flash_mla_golden.generate_and_save_testdata(params, save_pt=True, save_path=save_path)
+    except Exception as e:
+        record_failed_case(param_combinations, e)
+        print(f"[FAILED CASE RECORDED] case_id={case_id}, error={e}")
+    finally:
+        case_id += 1
 
 @pytest.mark.ci
 @pytest.mark.parametrize("param_combinations", param_combinations)
