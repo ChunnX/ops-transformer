@@ -38,6 +38,13 @@ struct alignas(STRUCT_ALIGNAS) ChunkGatedDeltaRuleTilingData {
     float scale;
     AscendC::tiling::TCubeTiling matmulTilingFp32;  // BF16 C matmul tiling
     AscendC::tiling::TCubeTiling matmulTilingFp32C; // FP32 C matmul tiling (for FP32 state path)
+    // FP32 state 路径 (A2/A3 aggressive) 专用 matmul tiling:
+    //   stage1: bf16,bf16 -> fp32 (kk / qk); fp32,fp32 -> fp32 (求逆 / attn@v_beta); fp32,fp32 -> bf16 (attn@k_cumdecay)
+    //   stage2: bf16,bf16 -> float (state 递推); stage3 复用 matmulTilingFp32 (bf16->bf16, 见 kernel InitMatmul)
+    AscendC::tiling::TCubeTiling matmulTilingBf16ToFp32;  // stage1 bf16,bf16 -> fp32
+    AscendC::tiling::TCubeTiling matmulTilingFp32ToFp32;  // stage1 fp32,fp32 -> fp32
+    AscendC::tiling::TCubeTiling matmulTilingFp32ToBf16;  // stage1 fp32,fp32 -> bf16
+    AscendC::tiling::TCubeTiling matmulTilingStage2;      // stage2 bf16,bf16 -> float
     int64_t stateIsFp32;
     int64_t stateStride0;
     int64_t stateStride1;
