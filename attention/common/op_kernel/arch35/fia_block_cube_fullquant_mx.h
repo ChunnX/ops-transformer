@@ -972,32 +972,6 @@ public:
         Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
     }
 
-    template <typename DST_TENSOR_T>
-    __aicore__ inline void FixpipeMm2DnSlice(const DST_TENSOR_T &dstTensor, const LocalTensor<T> &l0C,
-                                              RunInfoX &runInfo, uint32_t sliceN)
-    {
-        FixpipeParamsC310<CO2Layout::ROW_MAJOR> fixpipeParams;
-        if constexpr (BMM2_TOUB) {
-            fixpipeParams.nSize = (sliceN + 7) >> 3 << 3;
-        } else {
-            fixpipeParams.nSize = sliceN;
-        }
-
-        fixpipeParams.mSize = mBaseSize;
-        fixpipeParams.srcStride = ((mBaseSize + 15) / 16) * 16;
-
-        if constexpr (BMM2_TOUB || SPLITD) {
-            fixpipeParams.dstStride = ((uint32_t)dVTemplateType + 15) >> 4 << 4;
-        } else {
-            fixpipeParams.dstStride = (uint32_t)constInfo.dSizeV;
-        }
-        fixpipeParams.dualDstCtl = 1;
-        fixpipeParams.params.ndNum = 1;
-        fixpipeParams.params.srcNdStride = 0;
-        fixpipeParams.params.dstNdStride = 0;
-        Fixpipe<T, T, BMM2_FIXPIPE_CONFIG>(dstTensor, l0C, fixpipeParams);
-    }
-
     __aicore__ inline void IterateBmm2Dn(mm2ResPos &outputBuf, MM2_ABUF_POLICY_T &inputBuf, RunInfoX &runInfo)
     {
         MM2_ABUF_T mm2A = inputBuf.Get();
@@ -1016,55 +990,48 @@ public:
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
-        constexpr uint32_t baseK = s2BaseSize;
-        constexpr uint32_t baseN = (dVBaseSize > 128) ? 128 : dVBaseSize;
-        constexpr uint32_t nLoops = dVBaseSize / baseN;
+        constexpr uint32_t baseK = s2SplitSize;
         uint64_t l1BaseKOffset = baseK * mBaseSize;
         uint64_t l1ScaleOffset = l1BaseKOffset / MXFP_GROUP_SIZE;
         uint32_t kLoops = (runInfo.actSingleLoopS2Size + baseK - 1) / baseK;
         uint32_t realK = baseK;
         for (uint32_t k = 0; k < kLoops; k++) {
+            Buffer<BufferType::L1> mm2B;
+            if constexpr (HAS_ROPE) {
+                mm2B = l1VBuffers.Get();
+            } else {
+                mm2B = l1KVBuffers.Get();
+            }
             if (k == kLoops - 1) {
                 realK = runInfo.actSingleLoopS2Size - k * baseK;
             }
-            
-            // N 维度切分：当 dVBaseSize > 128 时，分多次加载 V 切片并计算
-            for (uint32_t n = 0; n < nLoops; n++) {
-                Buffer<BufferType::L1> mm2B;
-                if constexpr (HAS_ROPE) {
-                    mm2B = l1VBuffers.Get();
-                } else {
-                    mm2B = l1KVBuffers.Get();
-                }
-                mm2B.Wait<HardEvent::MTE1_MTE2>();
-                LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
-                if (unlikely(runInfo.isLastS2Loop)) {
-                    InitValueL1BufferNoTrans(mm2BTensor, realK, baseN);
-                }
-                CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, n * baseN, baseN, runInfo);
-                uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * baseN; // VScale在mm1B的偏移量（单位：元素）
-                LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
-                CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK) / MXFP_DIVISOR_SIZE,
-                                    (realK + 63) / MXFP_DIVISOR_SIZE, n * baseN / MXFP_GROUP_SIZE, 
-                                    baseN * MXFP_MULTI_BASE_SIZE, runInfo);
-                mm2B.Set<HardEvent::MTE2_MTE1>();
-
-                mm2B.Wait<HardEvent::MTE2_MTE1>();
-                MMParam param = MakeMMParam((uint32_t)mBaseSize, baseN,
-                                            (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE,
-                                            USE_DN, false, k == 0 && n == 0, k == 0 && n == 0);
-                if constexpr (!USE_DN) {
-                    param.realM = (uint32_t)runInfo.actMSize;
-                }
-                MatmulFullMX<INPUT_T, KV_T, T, 128, baseN, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
-                           SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
-                    mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
-                    mm2BTensor, mmL0ABuffers, mmL0BBuffers,
-                    mm2ResL0C.GetTensor<T>()[n * mBaseSize * baseN],
-                    param,
-                    mm2AScaleFakeTensor[k * l1ScaleOffset], mm2BScaleTensor);
-                mm2B.Set<HardEvent::MTE1_MTE2>();
+            mm2B.Wait<HardEvent::MTE1_MTE2>();
+            LocalTensor<KV_T> mm2BTensor = mm2B.GetTensor<KV_T>();
+            if (unlikely(runInfo.isLastS2Loop)) {
+                InitValueL1BufferNoTrans(mm2BTensor, realK, (uint32_t)constInfo.dSizeV);
             }
+            CopyValueSlice(mm2BTensor, runInfo.s2Idx + k * baseK, realK, 0, constInfo.dSizeV, runInfo);
+            uint32_t vScaleOffset = (((realK) + 63) >> 6 << 6) * constInfo.dSizeV; // VScale在mm1B的偏移量（单位：元素）
+            LocalTensor<SCALE_T> mm2BScaleTensor = mm2B.GetTensor<SCALE_T>(vScaleOffset);
+            CopyValueScaleSlice(mm2BScaleTensor, (runInfo.s2Idx + k * baseK) / MXFP_DIVISOR_SIZE,
+                                (realK + 63) / MXFP_DIVISOR_SIZE, 0, constInfo.dSizeV * MXFP_MULTI_BASE_SIZE, runInfo);
+            mm2B.Set<HardEvent::MTE2_MTE1>();
+
+            mm2B.Wait<HardEvent::MTE2_MTE1>();
+            MMParam param = MakeMMParam((uint32_t)mBaseSize, (uint32_t)constInfo.dSizeV,
+                                        (realK + 63) / MXFP_DIVISOR_SIZE * MXFP_DIVISOR_SIZE,
+                                        USE_DN, false, k == 0, k == 0);
+            if constexpr (!USE_DN) {
+                param.realM = (uint32_t)runInfo.actMSize;
+            }
+            MatmulFullMX<INPUT_T, KV_T, T, 128, dVBaseSize, baseK, ABLayout::MK, ABLayout::KN, L0AType, L0BType,
+                       SCALE_T, SCALE_T, mx_fp8_e4m3_t, mx_fp8_e4m3_t>(
+                mm2A.GetTensor<INPUT_T>()[k * l1BaseKOffset],
+                mm2BTensor, mmL0ABuffers, mmL0BBuffers,
+                mm2ResL0C.GetTensor<T>(),
+                param,
+                mm2AScaleFakeTensor[k * l1ScaleOffset], mm2BScaleTensor);
+            mm2B.Set<HardEvent::MTE1_MTE2>();
         }
 
         mm2ResL0C.Set<HardEvent::M_FIX>();
@@ -1073,15 +1040,7 @@ public:
         if constexpr (BMM2_TOUB) {
             outputBuf.WaitCrossCore();
         }
-        if constexpr (nLoops > 1) {
-            for (uint32_t n = 0; n < nLoops; n++) {
-                FixpipeMm2DnSlice(outputBuf.template GetTensor<T>()[n * baseN],
-                                  mm2ResL0C.GetTensor<T>()[n * mBaseSize * baseN],
-                                  runInfo, baseN);
-            }
-        } else {
-            FixpipeMm2(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), runInfo);
-        }
+        FixpipeMm2(outputBuf.template GetTensor<T>(), mm2ResL0C.GetTensor<T>(), runInfo);
         mm2ResL0C.Set<HardEvent::FIX_M>();
 
         outputBuf.SetCrossCore();
