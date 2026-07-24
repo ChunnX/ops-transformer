@@ -8,7 +8,8 @@
 - **NPU侧**：通过TorchNPU进行算子直调获取实际数据
 - **精度对比**：进行CPU与NPU结果的精度对比验证算子功能
 - **双模式执行隔离**：支持直接pytest多进程执行和shell层进程隔离两种批量模式
-- **batch_exec 模式**：根据 Excel 表格筛选已有 pt 文件直接执行 NPU 测试（跳过 pt 生成步骤）
+- **PT 复跑模式**：`batch -P <目录>` 直接执行已有 PT；增加 `-E` 才会先生成 PT
+- **可控批跑**：`-P` 统一指定 PT 生成和读取目录，支持结果路径、case 名和 1-based 序号选择
 - **性能采集**：支持挂载msprof采集算子性能数据并汇总输出
 - **运行模式切换**：支持eager直接调用和graph（torch.compile + torchair）两种算子调用模式
 
@@ -50,6 +51,7 @@
 - quant_lightning_indexer_v2_golden.py         # cpu侧算子golden实现
 - quant_lightning_indexer_v2_acl_graph.py      # graph模式torchair后端实现
 - result_compare_method.py                     # cpu golden与npu输出精度对比
+- qliv2_test_utils.py                          # case选择、稳定命名和结果表公共逻辑
 - collect_perf_data.py                         # msprof性能数据收集与汇总
 - pytest.ini                                   # 创建测试标记
 
@@ -64,14 +66,15 @@
 - ./batch/quant_lightning_indexer_v2_pt_loadprocess.py   # 读取pt文件并调用算子获取npu输出
 - ./batch/quant_lightning_indexer_v2_pt_save.py          # 读取excel表格批量生成用例pt文件
 - ./batch/list_pt_from_excel.py                           # 从Excel提取Testcase_Name并按名匹配pt文件（batch_exec模式用）
-- ./batch/replace_path.py                                # test_quant_lightning_indexer_v2_batch.py占位符替换
 
 ## 架构说明
 
-- **single 模式**：`qliv2_output_acl_graph` 调用 `qliv2_output_single(is_batch=True)` 即时生成数据 → `torch.compile` + `torchair` 执行
-- **batch 模式**：从 Excel 生成 .pt 文件 → 读取 pt 执行 NPU 测试和精度对比 → 生成 result.xlsx
-- **batch_exec 模式**：从 Excel 筛选已有 .pt 文件 → 跳过 pt 生成 → 直接执行 NPU 测试和精度对比 → 生成 result.xlsx
+- **数据生成入口**：`generate_qliv2_test_data` 复用原有 batch 数据链生成输入和 CPU golden，不调用 metadata 或主算子；参数准备仍可查询设备信息
+- **single 模式**：直接执行配置用例；指定 `--save-pt` 时保存并执行同一份实际输入，避免二次随机生成
+- **batch 模式**：`-P` 是唯一 PT 目录；有 `-E` 时先生成再执行，无 `-E` 时直接执行已有 PT
+- **batch_exec 模式**：按 Excel 的 `Testcase_Name` 筛选已有 PT，仅执行 NPU 和精度对比
 - 两路共用 `_qliv2_prepare_tensors_and_metadata` 和 `_qliv2_run_compiled_graph`，统一使用 `fullgraph=False`
+- 结果表会先落盘；index 或 return value 精度结果为 `Failed` 时，pytest 随后以非零状态退出
 
 ## 使用方法
 
@@ -87,6 +90,8 @@
 
 ``` bash
 bash test_run.sh single
+bash test_run.sh single --save-pt ./single_pt -O ./result/single.xlsx
+bash test_run.sh single -M graph --save-pt ./single_pt
 ```
 
 #### 用例的批量生成与测试
@@ -95,17 +100,20 @@ bash test_run.sh single
 
 1、excel路径下存放用例excel表格
 
-2、修改test_run.sh配置区中的DEFAULT_EXCEL（Excel表格路径）和DEFAULT_PT_PATH（pt文件存放路径），或通过命令行参数指定
+`-P` 同时指定 PT 的保存目录和读取目录，默认是当前 pytest 目录下的 `pt_path`。
+
+##### 直接执行已有 PT
+
+不传 `-E` 时不读取 Excel、不重新生成 PT，只执行 NPU 和 compare：
 
 3、执行指令：
 
 ``` bash
-bash test_run.sh batch                                    # 使用配置区默认值（eager 模式）
-bash test_run.sh batch -E ./excel/test_cases.xlsx        # 指定 Excel 路径
-bash test_run.sh batch -S Sheet1 -P ./pt_path            # 指定 Sheet 和 pt 目录
-bash test_run.sh batch -M graph                          # graph 模式
-bash test_run.sh batch -E ./excel/my.xlsx -S Sheet2 -M graph  # 组合使用
-bash test_run.sh batch graph                             # 兼容旧用法：直接跟 run_mode
+bash test_run.sh batch -P ./pt_path
+bash test_run.sh batch -P ./pt_path -O ./result/rerun.xlsx
+bash test_run.sh batch -P ./pt_path -C case_b,case_a       # 按名称和给定顺序
+bash test_run.sh batch -P ./pt_path -I 3,1,5-7             # 按自然排序后的序号
+bash test_run.sh batch -P ./pt_path -M graph
 ```
 
 4、配置区默认值：
@@ -121,15 +129,14 @@ bash test_run.sh batch graph                             # 兼容旧用法：直
 >
 > 仅重新执行 NPU 测试和精度对比，不重新生成 pt 文件。适用于已有 pt 文件、只需更新精度结果的场景。
 
-1、确认 pt_path 下已有对应 .pt 文件（可通过 `batch` 模式或手工生成）
+增加 `-E` 后，脚本先把 Excel 用例生成到 `-P`，再从同一个目录执行：
 
 2、执行指令：
 
 ``` bash
-bash test_run.sh batch_exec                                    # 默认: excel/test_cases.xlsx, Sheet1, pt_path
-bash test_run.sh batch_exec -E ./excel/test_cases.xlsx         # 指定 Excel 路径
-bash test_run.sh batch_exec -S Sheet1 -P ./pt_path             # 指定 Sheet 和 pt 目录
-bash test_run.sh batch_exec -E ./excel/test_cases.xlsx -M graph  # graph 模式
+bash test_run.sh batch -E ./excel/test_cases.xlsx -P ./pt_path
+bash test_run.sh batch -E ./excel/test_cases.xlsx -S Sheet1 -P ./pt_path
+bash test_run.sh batch -E ./excel/test_cases.xlsx -P ./pt_path -O ./result/batch.xlsx
 ```
 
 3、执行流程：
@@ -160,7 +167,8 @@ python3 batch/quant_lightning_indexer_v2_pt_save.py excel/test_cases.xlsx pt_pat
 2、替换测试脚本路径：
 
 ``` bash
-python3 batch/replace_path.py test_quant_lightning_indexer_v2_batch.py pt_path
+QLIV2_TESTCASE_DIR=pt_path QLIV2_RESULT_PATH=result.xlsx \
+python3 -m pytest -rA -s test_quant_lightning_indexer_v2_batch.py -v -m ci
 ```
 
 3、执行测试：

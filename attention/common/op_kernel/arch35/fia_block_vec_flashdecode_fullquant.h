@@ -91,8 +91,8 @@ protected:
 
     // postquant
     using postQuantGmType = typename std::conditional<POST_QUANT, FaGmTensor<T, PostQuant_FORMAT>, int8_t>::type;
-    using postQuantBf16GmType = typename std::conditional<POST_QUANT,
-        FaGmTensor<bfloat16_t, PostQuant_FORMAT>, int8_t>::type;
+    using postQuantBf16GmType =
+        typename std::conditional<POST_QUANT, FaGmTensor<bfloat16_t, PostQuant_FORMAT>, int8_t>::type;
     postQuantGmType quantScale2GmTensor;
     postQuantGmType quantOffset2GmTensor;
     postQuantBf16GmType quantScale2Bf16GmTensor;
@@ -422,8 +422,8 @@ protected:
         LocalTensor<SINK_T> sinkCopyInBuf =
             fdSinkCopyInBuf.GetWithOffset<SINK_T>(BUFFER_SIZE_BYTE_1K, (cntM & 1) * BUFFER_SIZE_BYTE_1K);
 
-        uint32_t copySize = AttentionCommon::Align(constInfo.realGSize,
-                                                   static_cast<uint32_t>(BYTE_BLOCK / sizeof(SINK_T)));
+        uint32_t copySize =
+            AttentionCommon::Align(constInfo.realGSize, static_cast<uint32_t>(BYTE_BLOCK / sizeof(SINK_T)));
         uint64_t sinkGmOffset = taskInfo.n2Idx * constInfo.realGSize;
 
         WaitFlag<AscendC::HardEvent::V_MTE2>(SYNC_SINK_BUF1_FLAG + (cntM & 1));
@@ -702,7 +702,7 @@ template <typename INPUT_T, typename T, typename OUTPUT_T, LayOutTypeEnum layout
 class FiaBlockVecFlashDecodeFullQuantDummy {
 public:
     using ConstInfoX = ConstInfo_t<FiaKernelType::FULL_QUANT>;
-    __aicore__ inline FiaBlockVecFlashDecodeFullQuantDummy(ConstInfoX &constInfo) {};
+    __aicore__ inline FiaBlockVecFlashDecodeFullQuantDummy(ConstInfoX &constInfo){};
 };
 
 } // namespace BaseApi

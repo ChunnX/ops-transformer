@@ -512,12 +512,9 @@ gmm@ops-transformer:
                 - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape_quant_checker.h
                 - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.cpp
                 - ops/ops-transformer/gmm/grouped_matmul/op_host/grouped_matmul_infershape_weight_quant_checker.h
-                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.cpp
-                - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/grouped_matmul_tiling.h
                 - ops/ops-transformer/gmm/grouped_matmul/op_host/op_tiling/arch35
                 - ops/ops-transformer/gmm/grouped_matmul/op_kernel/arch35
                 - ops/ops-transformer/gmm/grouped_matmul/op_kernel/grouped_matmul_apt.cpp
-                - ops/ops-transformer/gmm/grouped_matmul/op_kernel/grouped_matmul_utils.h
                 - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_api
                 - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_graph
                 - ops/ops-transformer/gmm/grouped_matmul_finalize_routing/op_host/grouped_matmul_finalize_routing_base_tiling.cpp
@@ -540,7 +537,6 @@ gmm@ops-transformer:
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_host/op_tiling/arch35
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/arch35
                 - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/grouped_matmul_swiglu_quant_v2_apt.cpp
-                - ops/ops-transformer/gmm/grouped_matmul_swiglu_quant_v2/op_kernel/grouped_matmul_swiglu_quant_v2_utils.h
                 - ops/ops-transformer/gmm/quant_grouped_matmul_inplace_add
             opensource_style: null
             kernel_style: null

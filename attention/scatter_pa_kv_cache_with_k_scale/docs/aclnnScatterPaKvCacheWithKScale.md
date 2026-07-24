@@ -231,8 +231,8 @@ aclnnStatus aclnnScatterPaKvCacheWithKScale(
       <td>传入的key、value、keyCacheRef、valueCacheRef、slotMapping、keyScale、keyScaleCacheRef是空指针。</td>
     </tr>
     <tr>
-      <td rowspan="4">ACLNN_ERR_PARAM_INVALID</td>
-      <td rowspan="4">161002</td>
+      <td rowspan="5">ACLNN_ERR_PARAM_INVALID</td>
+      <td rowspan="5">161002</td>
       <td>参数key、value的数据类型不在支持的范围之内（FLOAT8_E5M2、FLOAT8_E4M3FN）。</td>
     </tr>
     <tr>
@@ -245,8 +245,6 @@ aclnnStatus aclnnScatterPaKvCacheWithKScale(
       <td>keyScale、keyScaleCacheRef的数据类型不一致或不在支持的范围之内（FLOAT）。</td>
     </tr>
     <tr>
-      <td>ACLNN_ERR_PARAM_INVALID</td>
-      <td>561002</td>
       <td>key或value的维数不等于3维，slotMapping的维数不等于1维。</td>
     </tr>
   </tbody>

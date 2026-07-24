@@ -32,10 +32,10 @@ class PostQuant {
 public:
     template <typename PARAM_T, GmFormat GM_FORMAT>
     __aicore__ inline void InitPerChannel(FaGmTensor<PARAM_T, GM_FORMAT> &srcTensor, __gm__ uint8_t *quantParam,
-        uint32_t n2Size, uint32_t gSize, uint32_t dSize)
+                                          uint32_t n2Size, uint32_t gSize, uint32_t dSize)
     {
         GlobalTensor<PARAM_T> quantParamGm;
-        quantParamGm.SetGlobalBuffer((__gm__ PARAM_T*)quantParam);
+        quantParamGm.SetGlobalBuffer((__gm__ PARAM_T *)quantParam);
         srcTensor.gmTensor = quantParamGm;
         srcTensor.offsetCalculator.Init(n2Size, gSize, dSize);
     }
@@ -44,11 +44,11 @@ public:
     {
         if (isQuant2Bf16) {
             GlobalTensor<bfloat16_t> quantParamGm;
-            quantParamGm.SetGlobalBuffer((__gm__ bfloat16_t*)quantParam);
+            quantParamGm.SetGlobalBuffer((__gm__ bfloat16_t *)quantParam);
             value = ToFloat(quantParamGm.GetValue(0));
         } else {
             GlobalTensor<float> quantParamGm;
-            quantParamGm.SetGlobalBuffer((__gm__ float*)quantParam);
+            quantParamGm.SetGlobalBuffer((__gm__ float *)quantParam);
             value = quantParamGm.GetValue(0);
         }
     }
@@ -70,7 +70,8 @@ public:
                 uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
                 uint32_t blockCount = offsetCalculator.GetDimG();
                 CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset], offsetCalculator.GetDimG(),
-                    offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
+                                                offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(),
+                                                postQuantInfo.colCount);
             } else {
                 // 处理第一段S1
                 uint32_t headSize = 0;
@@ -80,16 +81,17 @@ public:
                     headSize = offsetCalculator.GetDimG() - gIdxStart;
                 }
                 uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
-                CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset],
-                    headSize, offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
+                CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset], headSize, offsetCalculator.GetDimD(),
+                                                offsetCalculator.GetStrideG(), postQuantInfo.colCount);
 
                 // 处理第二段S1
                 if ((s1IdxEnd - s1IdxStart == 1) && (gIdxEnd > 0)) {
                     offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, 0, 0);
                     uint32_t ubOffset = headSize * postQuantInfo.colCount;
 
-                    CopySingleMatrixNDToND<PARAM_T>(dstUb[ubOffset], srcTensor.gmTensor[offset],
-                        gIdxEnd, offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
+                    CopySingleMatrixNDToND<PARAM_T>(dstUb[ubOffset], srcTensor.gmTensor[offset], gIdxEnd,
+                                                    offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(),
+                                                    postQuantInfo.colCount);
                 }
             }
         } else {
@@ -98,14 +100,16 @@ public:
 
             uint64_t offset = offsetCalculator.GetOffset(postQuantInfo.n2Idx, gIdxStart, 0);
             // postQuantInfo.gS1DealSize + s1IdxStart是将第一个G的S1部分补齐后的总GS1行数
-            CopySingleMatrixNDToND<PARAM_T>(dstUb, srcTensor.gmTensor[offset],
+            CopySingleMatrixNDToND<PARAM_T>(
+                dstUb, srcTensor.gmTensor[offset],
                 ((postQuantInfo.gS1DealSize + s1IdxStart) + (postQuantInfo.s1Size - 1)) / postQuantInfo.s1Size,
                 offsetCalculator.GetDimD(), offsetCalculator.GetStrideG(), postQuantInfo.colCount);
         }
     }
 
     // src0Ub为需要量化的数据, src1为存放scale/offset参数的UB
-    __aicore__ inline void AddOffset(LocalTensor<float> &dstUb, LocalTensor<float> &src0Ub, LocalTensor<float> &src1Ub, PostQuantInfo_V2 &postQuantInfo)
+    __aicore__ inline void AddOffset(LocalTensor<float> &dstUb, LocalTensor<float> &src0Ub, LocalTensor<float> &src1Ub,
+                                     PostQuantInfo_V2 &postQuantInfo)
     {
         if constexpr (UB_FORMAT == UbFormat::S1G) {
             uint32_t s1IdxStart = postQuantInfo.gS1Idx / postQuantInfo.gSize;
@@ -152,8 +156,8 @@ public:
             }
             uint32_t src0Offset = 0;
             uint32_t src1Offset = 0; // src1中存放[gIdxStart, gIdxEnd)的数据
-            fa_base_vector::VecAddMatForBigRowCount(dstUb[src0Offset], src1Ub[src1Offset], src0Ub[src0Offset],
-                headS1, postQuantInfo.colCount, postQuantInfo.dSize);
+            fa_base_vector::VecAddMatForBigRowCount(dstUb[src0Offset], src1Ub[src1Offset], src0Ub[src0Offset], headS1,
+                                                    postQuantInfo.colCount, postQuantInfo.dSize);
 
             if (gIdxEnd - gIdxStart >= 1) {
                 // 处理中间块
@@ -161,7 +165,8 @@ public:
                 src1Offset += postQuantInfo.colCount;
                 for (uint32_t i = gIdxStart + 1; i < gIdxEnd; i++) {
                     fa_base_vector::VecAddMatForBigRowCount(dstUb[src0Offset], src1Ub[src1Offset], src0Ub[src0Offset],
-                        postQuantInfo.s1Size, postQuantInfo.colCount, postQuantInfo.dSize);
+                                                            postQuantInfo.s1Size, postQuantInfo.colCount,
+                                                            postQuantInfo.dSize);
 
                     src0Offset += postQuantInfo.s1Size * postQuantInfo.colCount;
                     src1Offset += postQuantInfo.colCount;
@@ -170,14 +175,15 @@ public:
                 // 处理尾块
                 if (s1IdxEnd > 0) {
                     fa_base_vector::VecAddMatForBigRowCount(dstUb[src0Offset], src1Ub[src1Offset], src0Ub[src0Offset],
-                        s1IdxEnd, postQuantInfo.colCount, postQuantInfo.dSize);
+                                                            s1IdxEnd, postQuantInfo.colCount, postQuantInfo.dSize);
                 }
             }
         }
     }
 
     // src0Ub为需要量化的数据, src1为存放scale/offset参数的UB
-    __aicore__ inline void MulScale(LocalTensor<float> &dstUb, LocalTensor<float> &src0Ub, LocalTensor<float> &src1Ub, PostQuantInfo_V2 &postQuantInfo)
+    __aicore__ inline void MulScale(LocalTensor<float> &dstUb, LocalTensor<float> &src0Ub, LocalTensor<float> &src1Ub,
+                                    PostQuantInfo_V2 &postQuantInfo)
     {
         if constexpr (UB_FORMAT == UbFormat::S1G) {
             uint32_t s1IdxStart = postQuantInfo.gS1Idx / postQuantInfo.gSize;
@@ -224,8 +230,8 @@ public:
             }
             uint32_t src0Offset = 0;
             uint32_t src1Offset = 0; // src1中存放[gIdxStart, gIdxEnd)的数据
-            fa_base_vector::VecMulMatForBigRowCount(dstUb[src0Offset], src1Ub[src1Offset], src0Ub[src0Offset],
-                headS1, postQuantInfo.colCount, postQuantInfo.dSize);
+            fa_base_vector::VecMulMatForBigRowCount(dstUb[src0Offset], src1Ub[src1Offset], src0Ub[src0Offset], headS1,
+                                                    postQuantInfo.colCount, postQuantInfo.dSize);
 
             if (gIdxEnd - gIdxStart >= 1) {
                 // 处理中间块
@@ -233,7 +239,8 @@ public:
                 src1Offset += postQuantInfo.colCount;
                 for (uint32_t i = gIdxStart + 1; i < gIdxEnd; i++) {
                     fa_base_vector::VecMulMatForBigRowCount(dstUb[src0Offset], src1Ub[src1Offset], src0Ub[src0Offset],
-                        postQuantInfo.s1Size, postQuantInfo.colCount, postQuantInfo.dSize);
+                                                            postQuantInfo.s1Size, postQuantInfo.colCount,
+                                                            postQuantInfo.dSize);
 
                     src0Offset += postQuantInfo.s1Size * postQuantInfo.colCount;
                     src1Offset += postQuantInfo.colCount;
@@ -242,7 +249,7 @@ public:
                 // 处理尾块
                 if (s1IdxEnd > 0) {
                     fa_base_vector::VecMulMatForBigRowCount(dstUb[src0Offset], src1Ub[src1Offset], src0Ub[src0Offset],
-                        s1IdxEnd, postQuantInfo.colCount, postQuantInfo.dSize);
+                                                            s1IdxEnd, postQuantInfo.colCount, postQuantInfo.dSize);
                 }
             }
         }
