@@ -19,7 +19,9 @@ ASSET_IMPL_DIR = Path(__file__).with_name("impl")
 
 def load_impl_module(stem):
     path = ASSET_IMPL_DIR / f"{stem}.py"
-    spec = importlib.util.spec_from_file_location(f"qfa_assets_impl_{stem}_{abs(hash(path))}", path)
+    spec = importlib.util.spec_from_file_location(
+        f"qfa_assets_impl_{stem}_{abs(hash(path))}", path
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -32,13 +34,24 @@ compare_module = load_impl_module("compare")
 
 class QfaMxfp8Spec:
     """quant_flash_attn (MXFP8) 测试规范。"""
+
     golden = golden_module.cpu_qfa_mxfp8
     customize_inputs = inputs_module.generate_qfa_mxfp8_inputs
     compare = compare_module.compare
 
     tolerance = {
-        "float16": {"standard": "IsClose", "rtol": 0.005, "ptol": 0.005, "atol": 0.000025},
-        "bfloat16": {"standard": "IsClose", "rtol": 0.0078125, "ptol": 0.005, "atol": 0.0001},
+        "float16": {
+            "standard": "IsClose",
+            "rtol": 0.005,
+            "ptol": 0.005,
+            "atol": 0.000025,
+        },
+        "bfloat16": {
+            "standard": "IsClose",
+            "rtol": 0.0078125,
+            "ptol": 0.005,
+            "atol": 0.0001,
+        },
     }
 
 
@@ -48,13 +61,24 @@ class QfaMetadataSpec:
     复用 QfaMxfp8Spec 的 golden / customize_inputs / compare / tolerance:
     输入生成与 golden 计算路径与合并测试一致, 仅 wrapper 分流到 metadata-only op。
     """
+
     golden = golden_module.cpu_qfa_mxfp8
     customize_inputs = inputs_module.generate_qfa_mxfp8_inputs
     compare = compare_module.compare
 
     tolerance = {
-        "float16": {"standard": "IsClose", "rtol": 0.005, "ptol": 0.005, "atol": 0.000025},
-        "bfloat16": {"standard": "IsClose", "rtol": 0.0078125, "ptol": 0.005, "atol": 0.0001},
+        "float16": {
+            "standard": "IsClose",
+            "rtol": 0.005,
+            "ptol": 0.005,
+            "atol": 0.000025,
+        },
+        "bfloat16": {
+            "standard": "IsClose",
+            "rtol": 0.0078125,
+            "ptol": 0.005,
+            "atol": 0.0001,
+        },
     }
 
 
@@ -64,13 +88,24 @@ class QfaMainSpec:
     run_main 内部重建 metadata 后调主算子; golden / customize_inputs / compare
     与合并测试一致, 仅 wrapper 分流到 main-only 路径。
     """
+
     golden = golden_module.cpu_qfa_mxfp8
     customize_inputs = inputs_module.generate_qfa_mxfp8_inputs
     compare = compare_module.compare
 
     tolerance = {
-        "float16": {"standard": "IsClose", "rtol": 0.005, "ptol": 0.005, "atol": 0.000025},
-        "bfloat16": {"standard": "IsClose", "rtol": 0.0078125, "ptol": 0.005, "atol": 0.0001},
+        "float16": {
+            "standard": "IsClose",
+            "rtol": 0.005,
+            "ptol": 0.005,
+            "atol": 0.000025,
+        },
+        "bfloat16": {
+            "standard": "IsClose",
+            "rtol": 0.0078125,
+            "ptol": 0.005,
+            "atol": 0.0001,
+        },
     }
 
 

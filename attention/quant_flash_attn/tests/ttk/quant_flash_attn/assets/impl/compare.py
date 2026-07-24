@@ -86,31 +86,41 @@ def compare(*outputs, **kwargs):
     non_none = [o for o in outputs if o is not None]
 
     if len(non_none) < 2:
-        return {"pass": False, "precision": "invalid",
-                "error_info": f"not enough valid outputs: {len(non_none)}"}
+        return {
+            "pass": False,
+            "precision": "invalid",
+            "error_info": f"not enough valid outputs: {len(non_none)}",
+        }
 
     # 检查是否都是空 tensor (actual_seq_q=[0] 时会出现)
     all_empty = all(
-        (hasattr(o, 'size') and o.size == 0) or (hasattr(o, 'numel') and o.numel() == 0)
+        (hasattr(o, "size") and o.size == 0) or (hasattr(o, "numel") and o.numel() == 0)
         for o in non_none
     )
     if all_empty:
         logger.info("[COMPARE] 所有输出都是空 tensor,视为 PASS")
-        return {"pass": True, "precision": "100.0%",
-                "error_info": None, "metrics": {"result": "Pass", "PctRlt": "100.0%", "MaxRE": 0.0}}
+        return {
+            "pass": True,
+            "precision": "100.0%",
+            "error_info": None,
+            "metrics": {"result": "Pass", "PctRlt": "100.0%", "MaxRE": 0.0},
+        }
 
     # 过滤掉空数组,只保留有效输出
     valid = []
     for o in non_none:
-        if hasattr(o, 'size') and o.size == 0:
+        if hasattr(o, "size") and o.size == 0:
             continue
-        if hasattr(o, 'numel') and o.numel() == 0:
+        if hasattr(o, "numel") and o.numel() == 0:
             continue
         valid.append(o)
 
     if len(valid) < 2:
-        return {"pass": False, "precision": "invalid",
-                "error_info": f"not enough valid outputs after filtering: {len(valid)}"}
+        return {
+            "pass": False,
+            "precision": "invalid",
+            "error_info": f"not enough valid outputs after filtering: {len(valid)}",
+        }
 
     # 前半 NPU,后半 golden
     half = len(valid) // 2
@@ -127,16 +137,26 @@ def compare(*outputs, **kwargs):
         rtol, atol = _resolve_csv_tolerance(idx)
         logger.info("[COMPARE] %s: csv rtol=%s atol=%s", label, rtol, atol)
         result, fulfill_percent, max_error = result_compare_method.check_result(
-            golden_torch, npu_torch, rtol=rtol, atol=atol)
-        is_pass = (result == "Pass")
+            golden_torch, npu_torch, rtol=rtol, atol=atol
+        )
+        is_pass = result == "Pass"
         if not is_pass:
             all_pass = False
-        results.append({
-            "pass": is_pass,
-            "precision": fulfill_percent,
-            "error_info": None if is_pass else f"{label}: result={result}, MaxRE={max_error}",
-            "metrics": {"label": label, "result": result, "PctRlt": fulfill_percent, "MaxRE": max_error},
-        })
+        results.append(
+            {
+                "pass": is_pass,
+                "precision": fulfill_percent,
+                "error_info": None
+                if is_pass
+                else f"{label}: result={result}, MaxRE={max_error}",
+                "metrics": {
+                    "label": label,
+                    "result": result,
+                    "PctRlt": fulfill_percent,
+                    "MaxRE": max_error,
+                },
+            }
+        )
 
     if len(results) == 1:
         return results[0]

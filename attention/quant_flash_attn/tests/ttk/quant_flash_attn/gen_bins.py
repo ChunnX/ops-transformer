@@ -2,9 +2,9 @@
 # -*- coding: utf-8 -*-
 # -----------------------------------------------------------------------------------------------------------
 # Copyright (c) 2026 Huawei Technologies Co., Ltd.
-# This program is free software, you can redistribute it and/or modify it under the terms and conditions of
+# This program is free software: you can redistribute it and/or modify it under the terms and conditions of
 # CANN Open Software License Agreement Version 2.0 (the "License").
-# Please refer to the License for details. You may not use this file except in compliance with the License.
+# Please refer to the License in details. You may not use this file except in compliance with the License.
 # THIS SOFTWARE IS PROVIDED ON AN "AS IS" BASIS, WITHOUT WARRANTIES OF ANY KIND, EITHER EXPRESS OR IMPLIED,
 # INCLUDING BUT NOT LIMITED TO NON-INFRINGEMENT, MERCHANTABILITY, OR FITNESS FOR A PARTICULAR PURPOSE.
 # See LICENSE in the root of the software repository for the full text of the License.
@@ -23,6 +23,7 @@ bin 格式：numpy raw .bin（tensor.numpy().tofile()），
 
 cpu 侧不需要 torch_npu / cann_ops_transformer，本脚本在纯 torch CPU 环境下可运行。
 """
+
 import argparse
 import ast
 import csv
@@ -78,9 +79,11 @@ from common import quant_flash_attn_golden as golden_mod  # noqa: E402
 def _load_impl_module(stem):
     """与 spec.py 同样的方式加载 assets/impl/{stem}.py（无 __init__.py 的目录）。"""
     import importlib.util
+
     path = os.path.join(_ASSETS_IMPL_DIR, f"{stem}.py")
     spec = importlib.util.spec_from_file_location(
-        f"qfa_assets_impl_{stem}_{abs(hash(path))}", path)
+        f"qfa_assets_impl_{stem}_{abs(hash(path))}", path
+    )
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     return module
@@ -89,7 +92,7 @@ def _load_impl_module(stem):
 inputs_module = _load_impl_module("inputs")
 golden_module = _load_impl_module("golden")
 
-logging.basicConfig(level=logging.INFO, format='%(message)s', force=True)
+logging.basicConfig(level=logging.INFO, format="%(message)s", force=True)
 logger = logging.getLogger("gen_bins")
 
 
@@ -140,7 +143,9 @@ def _bin_input_descriptor(tensor, path):
 def _parse_csv_row(row):
     """解析 csv 一行为 (case_name, shapes, dtypes, attrs)。"""
     case_name = row["testcase_name"]
-    shapes = ast.literal_eval(row["tensor_view_shapes"]) if row["tensor_view_shapes"] else ()
+    shapes = (
+        ast.literal_eval(row["tensor_view_shapes"]) if row["tensor_view_shapes"] else ()
+    )
     dtypes = ast.literal_eval(row["tensor_dtypes"]) if row["tensor_dtypes"] else ()
     attrs = ast.literal_eval(row["attributes"]) if row["attributes"] else {}
     return case_name, shapes, dtypes, attrs
@@ -225,7 +230,9 @@ def _make_dummy_tensors(shapes, dtypes):
             tensors.append(None)
             continue
         dt = _torch_dtype_from_str(dtype_name)
-        tensors.append(torch.zeros(shape, dtype=dt if dt != torch.float8_e4m3fn else torch.uint8))
+        tensors.append(
+            torch.zeros(shape, dtype=dt if dt != torch.float8_e4m3fn else torch.uint8)
+        )
     return tensors
 
 
@@ -233,8 +240,13 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
     """为一个 case 生成 cpu 侧 bin 文件。"""
     logger.info("=" * 60)
     logger.info("Case: %s", case_name)
-    logger.info("attrs: B=N_q=%s N_kv=%s D=%s, enable_lse=%s",
-                attrs.get("N_q"), attrs.get("N_kv"), attrs.get("D"), attrs.get("enable_lse"))
+    logger.info(
+        "attrs: B=N_q=%s N_kv=%s D=%s, enable_lse=%s",
+        attrs.get("N_q"),
+        attrs.get("N_kv"),
+        attrs.get("D"),
+        attrs.get("enable_lse"),
+    )
 
     # 1. 占位 tensor（inputs.py 签名要求位置参数，但生成路径不读它们的值）
     placeholder_tensors = _make_dummy_tensors(shapes, dtypes)
@@ -247,7 +259,9 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
     )
     cached = getattr(golden_mod, "_cached_mxfp8_inputs", None)
     if cached is None:
-        raise RuntimeError(f"case {case_name}: inputs 生成后 _cached_mxfp8_inputs 仍为空")
+        raise RuntimeError(
+            f"case {case_name}: inputs 生成后 _cached_mxfp8_inputs 仍为空"
+        )
 
     # 3. 保存输入 bin：{case}_cpu_{idx}.bin
     # cached 顺序：q, k, v, dequant_scale_q, dequant_scale_k, dequant_scale_v, p_scale, block_table
@@ -257,14 +271,23 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
             continue
         path = os.path.join(output_dir, f"{case_name}_cpu_{idx}.bin")
         _torch_to_bin(tensor, path)
-        bin_input_paths.append((idx, path, tuple(tensor.shape), _torch_dtype_name(tensor.dtype)))
-        logger.info("  saved input %d → %s (shape=%s, dtype=%s)",
-                    idx, path, tuple(tensor.shape), _torch_dtype_name(tensor.dtype))
+        bin_input_paths.append(
+            (idx, path, tuple(tensor.shape), _torch_dtype_name(tensor.dtype))
+        )
+        logger.info(
+            "  saved input %d → %s (shape=%s, dtype=%s)",
+            idx,
+            path,
+            tuple(tensor.shape),
+            _torch_dtype_name(tensor.dtype),
+        )
 
     # 4. 调用 golden 函数 + __bin_golden_out 保存 golden 输出
     enable_lse = bool(attrs.get("enable_lse", 0))
-    golden_out_paths = [os.path.join(output_dir, f"{case_name}_golden_{i}.bin")
-                        for i in range(2 if enable_lse else 1)]
+    golden_out_paths = [
+        os.path.join(output_dir, f"{case_name}_golden_{i}.bin")
+        for i in range(2 if enable_lse else 1)
+    ]
     golden_module.cpu_qfa_mxfp8(
         *placeholder_tensors[:8],
         **kwargs,
@@ -284,12 +307,19 @@ def generate_for_case(case_name, shapes, dtypes, attrs, output_dir):
 
 def main():
     parser = argparse.ArgumentParser(description="预生成 cpu 侧 bin 文件")
-    parser.add_argument("--csv", default=os.path.join(_TEST_DIR, "qfa_mxfp8_excel.csv"),
-                        help="输入 csv 路径（默认 qfa_mxfp8_excel.csv）")
-    parser.add_argument("--output-dir", default="/tmp/qfa_bins",
-                        help="bin 文件输出目录")
-    parser.add_argument("--cases", default=None,
-                        help="只生成指定 case（逗号分隔 testcase_name），默认全部")
+    parser.add_argument(
+        "--csv",
+        default=os.path.join(_TEST_DIR, "qfa_mxfp8_excel.csv"),
+        help="输入 csv 路径（默认 qfa_mxfp8_excel.csv）",
+    )
+    parser.add_argument(
+        "--output-dir", default="/tmp/qfa_bins", help="bin 文件输出目录"
+    )
+    parser.add_argument(
+        "--cases",
+        default=None,
+        help="只生成指定 case（逗号分隔 testcase_name），默认全部",
+    )
     args = parser.parse_args()
 
     os.makedirs(args.output_dir, exist_ok=True)
@@ -311,9 +341,13 @@ def main():
             raise
 
     logger.info("=" * 60)
-    logger.info("Done. Generated bin files for %d cases in %s", len(results), args.output_dir)
+    logger.info(
+        "Done. Generated bin files for %d cases in %s", len(results), args.output_dir
+    )
     for r in results:
-        logger.info("  %s: %d inputs, %d golden", r["case"], len(r["inputs"]), len(r["golden"]))
+        logger.info(
+            "  %s: %d inputs, %d golden", r["case"], len(r["inputs"]), len(r["golden"])
+        )
 
 
 if __name__ == "__main__":
