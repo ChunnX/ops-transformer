@@ -848,7 +848,7 @@
   - 通信域各节点的驱动版本应当相同。
   - <term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>：多机通信域要求交换机组网，不支持双机直连组网。
   - <term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>：多机通信域要求在一个超节点内，不支持双机直连组网和跨超节点组网。
-  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持UB Memory通信。
+  - <term>Ascend 950PR/Ascend 950DT</term>：仅支持UB Memory通信协议。
 - **参数约束**：
   - **<term>Atlas A2 训练系列产品/Atlas A2 推理系列产品</term>、<term>Atlas A3 训练系列产品/Atlas A3 推理系列产品</term>**：
     - 场景配套矩阵：
