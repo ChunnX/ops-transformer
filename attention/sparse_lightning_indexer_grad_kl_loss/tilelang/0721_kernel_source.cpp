@@ -87,6 +87,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto v0_rope_ub = ascend_ub.GetWithOffset<half>(4096, 45568);
   auto v1_bw_eps = ascend_ub.GetWithOffset<float>(64, 195104);
   auto c2_qi_l1 = ascend_l1.GetWithOffset<half>(8192, 245760);
+  auto c2_dk_qi_l0b = ascend_l0b.GetWithOffset<half>(8192, 0);
   auto c1_query_chunk_0_l1 = ascend_l1.GetWithOffset<half>(16384, 0);
   auto c1_query_chunk_1_l1 = ascend_l1.GetWithOffset<half>(16384, 32768);
   auto c1_query_chunk_2_l1 = ascend_l1.GetWithOffset<half>(16384, 65536);
@@ -146,7 +147,6 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
   auto c2_rg_l1 = ascend_l1.GetWithOffset<half>(8192, 262144);
   auto c2_gki_l1 = ascend_l1.GetWithOffset<half>(16384, 278528);
   auto c2_dk_rg_l0a = ascend_l0a.GetWithOffset<half>(8192, 49152);
-  auto c2_dk_qi_l0b = ascend_l0b.GetWithOffset<half>(8192, 0);
   auto c2_dq_rg_l0a = ascend_l0a.GetWithOffset<half>(8192, 0);
   auto c2_dq_gki_l0b = ascend_l0b.GetWithOffset<half>(16384, 16384);
   auto c2_dk_l0c = ascend_l0c.GetWithOffset<float>(16384, 0);
@@ -590,6 +590,9 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
           AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(3);
           AscendC::SetFlag<AscendC::HardEvent::FIX_M>(3);
           AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(6);
+          AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(2);
+          tl::ascend::copy_l1_to_l0b<half, 64, 128, false>(c2_dk_qi_l0b[0], c2_qi_l1[0], 64, 128);
+          AscendC::SetFlag<AscendC::HardEvent::M_MTE1>(2);
           for (int32_t n_idx_5 = 0; n_idx_5 < 16; ++n_idx_5) {
             AscendC::WaitFlag<AscendC::HardEvent::MTE1_MTE2>(2);
             tl::ascend::copy_gm_to_l1<half, 64, 128>(c2_rg_l1[0], reluGradRes[((((pipe_iter * 3145728) + (cid * 131072)) + (n_idx_5 * 128)) - 3145728)], 2048, 64, 128, true);
@@ -599,7 +602,6 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             AscendC::WaitFlag<AscendC::HardEvent::M_MTE1>(3);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_MTE1>(2);
             tl::ascend::copy_l1_to_l0a<half, 64, 128, true>(c2_dk_rg_l0a[0], c2_rg_l1[0], 128, 64);
-            tl::ascend::copy_l1_to_l0b<half, 64, 128, false>(c2_dk_qi_l0b[0], c2_qi_l1[0], 64, 128);
             tl::ascend::copy_l1_to_l0a<half, 64, 128, false>(c2_dq_rg_l0a[0], c2_rg_l1[0], 64, 128);
             tl::ascend::copy_l1_to_l0b<half, 128, 128, false>(c2_dq_gki_l0b[0], c2_gki_l1[0], 128, 128);
             AscendC::SetFlag<AscendC::HardEvent::MTE1_MTE2>(2);
