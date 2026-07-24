@@ -24,6 +24,7 @@
 #include "dense_lightning_indexer_grad_kl_loss_common.h"
 #include "dense_lightning_indexer_grad_kl_loss_tiling_data.h"
 #include "vf/dense_lightning_indexer_grad_kl_loss_cast_vf.h"
+#include "vf/dense_lightning_indexer_grad_kl_loss_grad_vf.h"
 #include "vf/dense_lightning_indexer_grad_kl_loss_loss_vf.h"
 #include "vf/dense_lightning_indexer_grad_kl_loss_p_vf.h"
 
@@ -838,18 +839,18 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorDwDqDk(DLIGradKLLossR
             SetFlag<HardEvent::MTE2_V>(mte2ToV);
             WaitFlag<HardEvent::MTE2_V>(mte2ToV);
 
-            AscendC::Mul(mulLeftUb_, reduceSumPUb_[rowIdx * runInfo.curS2StepSizeAlign8], reluResUb_, runInfo.curS2StepSizeAlign8);
+            uint32_t weightOffset = rowIdx * constInfo.n1IndexSize + nIdx;
+            DenseDliGradKLLossArch35::ComputeGradElementwise(
+                mulLeftUb_, reluGradUb_,
+                reduceSumPUb_[rowIdx * runInfo.curS2StepSizeAlign8], reluResUb_,
+                weightUb_[runInfo.pingPongFlagV1V2], weightOffset,
+                runInfo.curS2StepSizeAlign8);
             PipeBarrier<PIPE_V>();
 
             AscendC::Sum(reduceSumResTensor_[nIdx * 8], mulLeftUb_, tmpUb_, sumParams);
             PipeBarrier<PIPE_V>();
 
-            float weightValue = weightUb_[runInfo.pingPongFlagV1V2].GetValue(rowIdx * constInfo.n1IndexSize + nIdx);
-            AscendC::Muls(mulLeftUb_, reduceSumPUb_[rowIdx * runInfo.curS2StepSizeAlign8], weightValue, runInfo.curS2StepSizeAlign8);
-            PipeBarrier<PIPE_V>();
-
             WaitFlag<HardEvent::MTE3_V>(mte3ToV);
-            ReLUGrad(reluGradUb_, mulLeftUb_, reluResUb_, runInfo);
             SetFlag<HardEvent::V_MTE2>(vToMte2);
 
             SetFlag<HardEvent::V_MTE3>(vToMte3);
