@@ -322,9 +322,10 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
             int32_t cuS2LenVecAlign = CeilDiv(cuS2Len, s2BaseSize_) * s2BaseSize_;
             int32_t mmUbStride = (cuS2LenVecAlign - info.actualSingleProcessSInnerSizeAlign) / B32_BLOCK_ALIGN_NUM;
             LocalTensor<float> reduceOutInner = reduceOutBuff[s2BaseSize_];
-            Duplicate<float>(reduceOutInner, 0.0f, s2BaseSize_);
             PipeBarrier<PIPE_V>();
             LocalTensor<float> reduceCacheBuf = outQueue_.AllocTensor<float>();
+            Duplicate<float>(reduceCacheBuf, 0.0f, s2BaseSize_);
+            PipeBarrier<PIPE_V>();
             if (constInfo_.isSparseCountOver2K) {
                 WaitFlag<HardEvent::V_MTE2>(EVENTID_V_TO_MTE2_TMPUB);
             }
