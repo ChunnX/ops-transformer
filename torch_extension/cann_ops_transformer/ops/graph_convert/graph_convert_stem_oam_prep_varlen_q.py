@@ -97,7 +97,7 @@ if _TORCHAIR_AVAILABLE:
         q_seq_lens: List[int],
         cu_seq_lens_q: List[int],
         *,
-        qscale: Optional[Tensor] = None,
+        qScale: Optional[Tensor] = None,
         stemBlockSize: int = 128,
         stemStride: int = 16,
         meta_outputs: TensorSpec = None,
@@ -112,7 +112,7 @@ if _TORCHAIR_AVAILABLE:
             q=q,
             qSeqLens=q_seq_lens,
             cuSeqLensQ=cu_seq_lens_q,
-            qScale=qscale,
+            qScale=qScale,
             stemBlockSize=stemBlockSize,
             stemStride=stemStride,
         )

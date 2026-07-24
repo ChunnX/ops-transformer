@@ -8,7 +8,6 @@
 # See LICENSE in the root of the software repository for the full text of the License.
 # -----------------------------------------------------------------------------------------------------------
 import torch
-import torch_npu
 from torch.library import impl
 from cann_ops_transformer.op_builder.builder import OpBuilder
 from cann_ops_transformer.op_builder.builder import AS_LIBRARY
@@ -19,18 +18,26 @@ class StemOamPrepVarlenQOpBuilder(OpBuilder):
         super(StemOamPrepVarlenQOpBuilder, self).__init__("stem_oam_prep_varlen_q")
 
     def sources(self):
-        return ['ops/csrc/stem_oam_prep_varlen_q.cpp']
+        return ["ops/csrc/stem_oam_prep_varlen_q.cpp"]
 
     def schema(self) -> str:
-        return "stem_oam_prep_varlen_q(Tensor q, int[] q_seq_lens, int[] cu_seq_lens_q, *, " \
-               "Tensor? q_scale=None, " \
-               "int stem_block_size=128, int stem_stride=16) -> Tensor"
+        return (
+            "stem_oam_prep_varlen_q(Tensor q, int[] q_seq_lens, int[] cu_seq_lens_q, *, "
+            "Tensor? qScale=None, "
+            "int stemBlockSize=128, int stemStride=16) -> Tensor"
+        )
 
     def register_meta(self):
         @impl(AS_LIBRARY, self.name, "Meta")
-        def stem_oam_prep_varlen_q_meta(q, q_seq_lens, cu_seq_lens_q, *,
-                                             q_scale=None,
-                                             stem_block_size=128, stem_stride=16):
+        def stem_oam_prep_varlen_q_meta(
+            q,
+            q_seq_lens,
+            cu_seq_lens_q,
+            *,
+            qScale=None,
+            stemBlockSize=128,
+            stemStride=16,
+        ):
             S = stem_stride
             qflat_dim = S * 128
             batch = len(q_seq_lens)
@@ -39,7 +46,9 @@ class StemOamPrepVarlenQOpBuilder(OpBuilder):
             B = stem_block_size
             max_q_padded = ((max_q_len + B - 1) // B) * B
             max_q_b = max_q_padded // B
-            return torch.empty(batch, H_q, max_q_b, qflat_dim, dtype=torch.bfloat16, device='meta')
+            return torch.empty(
+                batch, H_q, max_q_b, qflat_dim, dtype=torch.bfloat16, device="meta"
+            )
 
 
 stem_oam_prep_varlen_q_op_builder = StemOamPrepVarlenQOpBuilder()
@@ -47,9 +56,9 @@ op_module = stem_oam_prep_varlen_q_op_builder.load()
 
 
 @impl(AS_LIBRARY, stem_oam_prep_varlen_q_op_builder.name, "PrivateUse1")
-def stem_oam_prep_varlen_q(q, q_seq_lens, cu_seq_lens_q, *,
-                           q_scale=None,
-                           stem_block_size=128, stem_stride=16):
-    return op_module.stem_oam_prep_varlen_q(q, q_seq_lens, cu_seq_lens_q,
-                                            q_scale,
-                                            stem_block_size, stem_stride)
+def stem_oam_prep_varlen_q(
+    q, q_seq_lens, cu_seq_lens_q, *, qScale=None, stemBlockSize=128, stemStride=16
+):
+    return op_module.stem_oam_prep_varlen_q(
+        q, q_seq_lens, cu_seq_lens_q, qScale, stemBlockSize, stemStride
+    )
