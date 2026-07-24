@@ -128,7 +128,7 @@ struct WorkspaceInfo {
     GM_ADDR sharedExpertSwigluScalePtr{nullptr};
 
     GM_ADDR maskSlotPtr{nullptr};          // urma发送mask临时GM
-    GM_ADDR dispatchL1CommPtr{nullptr};    // dispatch L1 communication workspace
+    GM_ADDR dispatchL1CommPtr{nullptr};    // per-server dispatch L1 metadata queue: count + [tokenId, state]
     GM_ADDR dispatchCursorPtr{nullptr};    // dispatch cnt for each expert
     GM_ADDR dispatchDonePtr{nullptr};      // dispatch done
     GM_ADDR dispatchL2CommPtr{nullptr};    // dispatch l2 communication workspace
@@ -225,20 +225,14 @@ struct WorkspaceInfo {
                 (int64_t)tilingData->expertPerRank * tilingData->epWorldSize * maskSlotSize, (int64_t)ALIGN_512);
 
             dispatchL1CommPtr = base + workspaceSize;
-            uint32_t mxScaleNum = Ops::Base::CeilDiv(tilingData->h, static_cast<uint32_t>(MXFP_SCALE_GROUP_NUM));
-            uint32_t dataBytes = Ops::Base::CeilAlign(tilingData->h, static_cast<uint32_t>(ALIGN_256)) * SIZE_INT_8;
-            uint32_t scaleBytes = mxScaleNum * SIZE_INT_8;
-            uint32_t tokenScaleBytes = Ops::Base::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
-            uint32_t sendRecordBytes = Ops::Base::CeilAlign(tokenScaleBytes + static_cast<uint32_t>(ALIGN_32),
-                                                            static_cast<uint32_t>(ALIGN_512));
             int64_t serverWorkspaceBytes =
-                static_cast<int64_t>(ALIGN_32) + static_cast<int64_t>(tilingData->bs) * sendRecordBytes;
-            workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(serverNum) * serverWorkspaceBytes,
-                                                  static_cast<int64_t>(ALIGN_512));
+                static_cast<int64_t>(ALIGN_32) + static_cast<int64_t>(tilingData->bs) * ALIGN_32;
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(serverNum) * serverWorkspaceBytes, static_cast<int64_t>(ALIGN_512));
 
             dispatchCursorPtr = base + workspaceSize;
-            workspaceSize +=
-                Ops::Base::CeilAlign(static_cast<int64_t>(serverNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
+            workspaceSize += Ops::Base::CeilAlign(
+                static_cast<int64_t>(serverNum * SIZE_INT_32), static_cast<int64_t>(ALIGN_512));
 
             dispatchDonePtr = base + workspaceSize;
             workspaceSize += Ops::Base::CeilAlign(static_cast<int64_t>(tilingData->aicNum * SIZE_INT_32),
