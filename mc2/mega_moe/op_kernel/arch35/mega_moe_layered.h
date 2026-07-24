@@ -2209,7 +2209,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithC
         }
     }
     if constexpr (g_coreType == AIV && !IsShared) {
-        ProcessCombine(gmmAddrInfo, state, expertIdx);
+        // ProcessCombine(gmmAddrInfo, state, expertIdx);
     }
 }
 
