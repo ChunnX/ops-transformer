@@ -284,8 +284,8 @@ __aicore__ inline int64_t ClipSInnerTokenCube(int64_t sInnerToken, int64_t minVa
 
 TEMPLATE_INTF
 __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, GlobalTensor<int32_t> &cuSeqlensQGm,
-    GlobalTensor<int32_t>& oriTopkLengthGm, bool hasOriTopkLength, GlobalTensor<int32_t>& cmpTopkLengthGm,
-    bool hasCmpTopkLength, RunParamStr& runParam, const ConstInfo &constInfo)
+    GlobalTensor<int32_t>& oriTopkLengthGm, GlobalTensor<int32_t>& cmpTopkLengthGm,
+    RunParamStr& runParam, const ConstInfo &constInfo)
 {
     if (TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE &&
         TEMPLATE_MODE != SMLATemplateMode::ORI_CMP_SPARSE_TEMPLATE_MODE) {
@@ -300,23 +300,24 @@ __aicore__ inline bool ComputeS2LoopInfo(int64_t bnIndex, int64_t gS1Index, Glob
     uint32_t s2BaseSize = constInfo.s2BaseSize;
 
     // 计算topk length
-    // TODO 删除hasOriTopkLength入参 用constInfo中的该参数 运算符留在行末
     if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
         uint64_t actualSeqQPrefixSum = cuSeqlensQGm.GetValue(runParam.boIdx);
-        runParam.oriSparseBlockCount = hasOriTopkLength
-            ? Min(oriTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx), constInfo.oriSparseBlockCount)
-            : constInfo.oriSparseBlockCount;
-        runParam.cmpSparseBlockCount = hasCmpTopkLength
-            ? Min(cmpTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx), constInfo.cmpSparseBlockCount)
-            : constInfo.cmpSparseBlockCount;
+        runParam.oriSparseBlockCount = constInfo.hasOriTopkLength ?
+            Min(oriTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx),
+                constInfo.oriSparseBlockCount) :
+            constInfo.oriSparseBlockCount;
+        runParam.cmpSparseBlockCount = constInfo.hasCmpTopkLength ?
+            Min(cmpTopkLengthGm.GetValue(actualSeqQPrefixSum + runParam.s1oIdx),
+                constInfo.cmpSparseBlockCount) :
+            constInfo.cmpSparseBlockCount;
     } else {
         uint64_t bsndTopkIdx = runParam.boIdx * constInfo.s1Size + runParam.s1oIdx;
-        runParam.oriSparseBlockCount = hasOriTopkLength
-            ? Min(oriTopkLengthGm.GetValue(bsndTopkIdx), constInfo.oriSparseBlockCount)
-            : constInfo.oriSparseBlockCount;
-        runParam.cmpSparseBlockCount = hasCmpTopkLength
-            ? Min(cmpTopkLengthGm.GetValue(bsndTopkIdx), constInfo.cmpSparseBlockCount)
-            : constInfo.cmpSparseBlockCount;
+        runParam.oriSparseBlockCount = constInfo.hasOriTopkLength ?
+            Min(oriTopkLengthGm.GetValue(bsndTopkIdx), constInfo.oriSparseBlockCount) :
+            constInfo.oriSparseBlockCount;
+        runParam.cmpSparseBlockCount = constInfo.hasCmpTopkLength ?
+            Min(cmpTopkLengthGm.GetValue(bsndTopkIdx), constInfo.cmpSparseBlockCount) :
+            constInfo.cmpSparseBlockCount;
     }
 
     // orikv
@@ -371,7 +372,6 @@ __aicore__ inline void InitTaskParamByRun(const RunParamStr& runParam, RunInfo &
     runInfo.preTokensPerBatchOri = runParam.preTokensPerBatchOri;
     runInfo.nextTokensPerBatchOri = runParam.nextTokensPerBatchOri;
     runInfo.actualS1Size = runParam.actualS1Size;
-    runInfo.actualS2OriSize = runParam.actualS2OriSize;
     if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
         TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
         runInfo.actualS2CmpSize = runParam.actualS2CmpSize;

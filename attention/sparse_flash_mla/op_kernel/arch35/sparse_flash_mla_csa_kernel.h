@@ -569,8 +569,7 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Pro
                     runParam, this->constInfo, gS1Index, this->cuSeqlensQGm);
                 bool s2NoNeedCalc =
                     ComputeS2LoopInfo<TEMPLATE_INTF_ARGS>(bnIdx, gS1Index, this->cuSeqlensQGm,
-                        oriTopkLengthGm, constInfo.hasOriTopkLength, cmpTopkLengthGm,
-                        constInfo.hasCmpTopkLength, runParam, this->constInfo);
+                        oriTopkLengthGm, cmpTopkLengthGm, runParam, this->constInfo);
                 if (!s2NoNeedCalc) {
                     bool isFirstS2RangeTask = (bnIdx == bN2StartIdx && gS1Index == runParam.gs1LoopStartIdx);
                     bool isLastS2RangeTask = (lastBN && gS1Index == runParam.gs1LoopEndIdx - 1);
@@ -702,7 +701,6 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Set
     runInfo.s2LoopLimit = s2LoopLimit;
 
     runInfo.actualS1Size = runParam.actualS1Size;
-    runInfo.actualS2OriSize = runParam.actualS2OriSize;
     runInfo.attentionOutOffset = runParam.attentionOutOffset;
     runInfo.sOuterOffset = runParam.sOuterOffset;
     runInfo.firstFdDataWorkspaceIdx = runParam.firstFdDataWorkspaceIdx;
