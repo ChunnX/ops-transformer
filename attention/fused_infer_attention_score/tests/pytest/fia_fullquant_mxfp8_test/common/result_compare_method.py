@@ -11,6 +11,7 @@
 # -----------------------------------------------------------------------------------------------------------
 
 import logging
+import numpy as np
 import torch
 
 logging.basicConfig(
@@ -67,7 +68,7 @@ def display_output_torch(real_data, expect_data, start, end, expect_fp32_data=No
         for i in range(split_count + 1):
             display_row(i)
     else:
-        for i in range(64):
+        for i in range(10):
             display_row(i)
         logger.info('...   \t   ...   \t   ...   \t   ...    \t   ...')
         for i in range(split_count - 10 + 1, split_count + 1):
@@ -149,6 +150,19 @@ def check_result(expect, npu_result):
 
     diff_result = torch.isclose(real_float, expect_float, rtol=rtol, atol=atol, equal_nan=True)
     err_idx = torch.nonzero(~diff_result, as_tuple=False).flatten()
+
+    if err_idx.numel() > 0:
+        out_shape = np.array(npu_result.squeeze().shape)
+        if out_shape.prod() == real_data.numel() and out_shape.size >= 2:
+            sample_n = min(err_idx.numel(), 5000)
+            coords = np.array(np.unravel_index(err_idx[:sample_n].tolist(), tuple(out_shape)))
+            logger.info('ErrorAxis shape=%s err_total=%d first_fail_idx=%d',
+                        list(out_shape), err_idx.numel(), err_idx[0].item())
+            for axis in range(out_shape.size):
+                uniq = np.unique(coords[axis])
+                logger.info('  axis%d(size=%d): %d/%d values have error, range=[%d,%d]',
+                            axis, out_shape[axis], len(uniq), out_shape[axis],
+                            int(uniq[0]), int(uniq[-1]))
 
     if expect_data.dtype == torch.bool:
         expect_data = expect_data.to(torch.int8)
