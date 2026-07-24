@@ -67,7 +67,7 @@ def display_output_torch(real_data, expect_data, start, end, expect_fp32_data=No
         for i in range(split_count + 1):
             display_row(i)
     else:
-        for i in range(10):
+        for i in range(64):
             display_row(i)
         logger.info('...   \t   ...   \t   ...   \t   ...    \t   ...')
         for i in range(split_count - 10 + 1, split_count + 1):
