@@ -737,7 +737,7 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorLoss(DLIGradKLLossRun
     int64_t calcCount = runInfo.curS1InnerSizeV1V2 * runInfo.curS2StepSizeAlign8;
 
     DenseDliGradKLLossArch35::ComputeLossElementwise(
-        reduceSumYUb_, reduceSumPUb_, reduceSumYUb_, calcCount);
+        reduceSumYUb_, pReduceUb_, syReduceUb_, calcCount);
     PipeBarrier<PIPE_V>();
 
     for (int64_t rowIdx = 0; rowIdx < runInfo.curS1InnerSizeV1V2; rowIdx++) {
