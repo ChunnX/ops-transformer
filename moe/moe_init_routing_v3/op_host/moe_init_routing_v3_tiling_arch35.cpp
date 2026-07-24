@@ -281,6 +281,7 @@ private:
     void Tiling4VBSMultiCoreCompute(MoeV3Arch35VBSComputeTilingData *vbsTiling);
     int64_t CalcMaxRowIdxPerLoopMxQuant(int64_t perLoopCols);
     int64_t CalcMaxRowIdxPerLoopFP8Quant(int64_t perLoopCols);
+    bool IsIndexOnlyRouting() const;
     bool IsFullLoad();
     void SetIndicesLoopParams4GatherOut(int64_t perLoopMaxIndicesElements, int64_t perCoreIndicesElements,
                                         int64_t lastCoreIndicesElements);
@@ -1191,8 +1192,8 @@ ge::graphStatus MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()
 {
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::CheckSetEmptyTensor()");
 
-    // 空tensor场景：n_==0、k_==0、cols_==0
-    if (n_ == 0 || k_ == 0 || cols_ == 0) {
+    // A zero-width dropless input still needs row-index routing when indices are non-empty.
+    if (n_ == 0 || k_ == 0 || (cols_ == 0 && !IsIndexOnlyRouting())) {
         isEmptyTensor_ = true;
     }
 
@@ -1889,6 +1890,10 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()
     OP_LOGD(context_, "Entered MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutCompute()");
 
     auto *gatherOutTiling = &(tilingDataPtr_->gatherOutComputeParamsOp);
+    // Index-only routing finishes after RowIdxGather, so no column-loop tiling is required.
+    if (IsIndexOnlyRouting()) {
+        return;
+    }
     int64_t perCoreIndicesElements = Ops::Base::CeilDiv(totalLength_, aivCoreNum_);
     if (perCoreIndicesElements <= 0) {
         gatherOutTiling->needCoreNum = 0;
@@ -2128,8 +2133,17 @@ void MoeInitRoutingV3Arch35TilingClass::Tiling4GatherOutFP8Quant()
     return;
 }
 
+bool MoeInitRoutingV3Arch35TilingClass::IsIndexOnlyRouting() const
+{
+    return n_ > 0 && k_ > 0 && cols_ == 0 && quantMode_ == QUANT_MODE_UNQUANT && isInputScale_ == 0 &&
+           dropPadMode_ == DROP_PAD_MODE_DROPLESS;
+}
+
 bool MoeInitRoutingV3Arch35TilingClass::IsFullLoad()
 {
+    if (IsIndexOnlyRouting()) {
+        return false;
+    }
     if (dropPadMode_ == DROP_PAD_MODE_DROPPAD) {
         return false;
     }
