@@ -397,18 +397,10 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 SetFlag<HardEvent::S_V>(eSV);
                 WaitFlag<HardEvent::S_V>(eSV);
             }
-            // DEBUG: also replace position 0-255 with known good value to test if DataCopyPad works
+            // DEBUG: fill ALL positions with -1e30 to test if DataCopyPad writes correctly
             {
-                event_t eVS2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
-                SetFlag<HardEvent::V_S>(eVS2);
-                WaitFlag<HardEvent::V_S>(eVS2);
-                float firstVal = reduceOutInner.GetValue(256);
-                for (int32_t i = 0; i < 256; i++) {
-                    reduceOutInner.SetValue(i, firstVal);
-                }
-                event_t eSV2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
-                SetFlag<HardEvent::S_V>(eSV2);
-                WaitFlag<HardEvent::S_V>(eSV2);
+                Duplicate<float>(reduceOutInner, -1.0e30f, s2BaseSize_);
+                PipeBarrier<PIPE_V>();
             }
             {
                 PipeBarrier<PIPE_V>();
