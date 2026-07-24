@@ -338,7 +338,6 @@ ge::graphStatus MQSMLATilingCheck::CheckActualSeqLensDType()
         OP_LOGE_FOR_INVALID_DTYPE_WITH_REASON(opName_, "sequsedOriKv",
             MQSMLADataTypeToSerialString(opParamInfo_.sequsedOriKv.desc->GetDataType()).c_str(),
             "sequsedOriKv's dtype should be DT_INT32");
-
             return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;
