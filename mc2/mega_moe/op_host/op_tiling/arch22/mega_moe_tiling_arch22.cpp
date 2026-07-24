@@ -84,9 +84,9 @@ constexpr int64_t ALIGN_512 = 512LL;
 // 维度范围限制
 constexpr int64_t MIN_BS = 1;
 constexpr int64_t MAX_BS = 4096;
-constexpr int64_t MIN_HIDDEN_SIZE = 1024;
+constexpr int64_t MIN_HIDDEN_SIZE = 512;
 constexpr int64_t MAX_HIDDEN_SIZE = 8192;
-constexpr int64_t MIN_INTERMEDIATE_HIDDEN = 1024;
+constexpr int64_t MIN_INTERMEDIATE_HIDDEN = 512;
 constexpr int64_t MAX_INTERMEDIATE_HIDDEN = 3072;
 constexpr int64_t MIN_TOPK = 1;
 constexpr int64_t MAX_TOPK = 16;
