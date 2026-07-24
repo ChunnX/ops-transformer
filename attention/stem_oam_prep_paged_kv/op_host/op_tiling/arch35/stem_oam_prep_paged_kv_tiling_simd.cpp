@@ -92,11 +92,22 @@ ge::graphStatus StemPrepKvTiling::GetShapeAttrsInfo()
     tilingData_ = context_->GetTilingData<StemOamPrepPagedKvTilingData>();
     OP_CHECK_NULL_WITH_CONTEXT(context_, tilingData_);
 
-    lambdaMag_ = *attrs->GetAttrPointer<float>(0);
-    kvLayout_ = *attrs->GetAttrPointer<int64_t>(1);
-    kvBlockSize_ = *attrs->GetAttrPointer<int64_t>(2);
-    stemBlocks_ = *attrs->GetAttrPointer<int64_t>(3);
-    stemStride_ = *attrs->GetAttrPointer<int64_t>(4);
+    const double *lambdaMagAttr = attrs->GetAttrPointer<double>(0);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, lambdaMagAttr);
+    const int64_t *kvLayoutAttr = attrs->GetAttrPointer<int64_t>(1);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kvLayoutAttr);
+    const int64_t *kvBlockSizeAttr = attrs->GetAttrPointer<int64_t>(2);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, kvBlockSizeAttr);
+    const int64_t *stemBlocksAttr = attrs->GetAttrPointer<int64_t>(3);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, stemBlocksAttr);
+    const int64_t *stemStrideAttr = attrs->GetAttrPointer<int64_t>(4);
+    OP_CHECK_NULL_WITH_CONTEXT(context_, stemStrideAttr);
+
+    lambdaMag_ = static_cast<float>(*lambdaMagAttr);
+    kvLayout_ = *kvLayoutAttr;
+    kvBlockSize_ = *kvBlockSizeAttr;
+    stemBlocks_ = *stemBlocksAttr;
+    stemStride_ = *stemStrideAttr;
 
     rVal_ = stemBlocks_ / stemStride_;
 
