@@ -321,6 +321,9 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::IterateBmm2CSA(
 
     Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
     mm2ResL0C.Wait<HardEvent::FIX_M>(); // 占用
+    if (GetBlockIdx() == 0 && runInfo.boIdx == 0 && runInfo.taskId < 2) {
+        DumpTensor(inputRightBuf.GetTensor<Q_T>(), 133, 256);
+    }
     MMParam param = {static_cast<uint32_t>(runInfo.mRealSize), // singleM 64
                      static_cast<uint32_t>(constInfo.dSizeV), // singleN 512
                      static_cast<uint32_t>(runInfo.s2RealSize), // singleK 128

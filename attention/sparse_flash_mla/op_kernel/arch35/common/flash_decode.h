@@ -153,8 +153,12 @@ __aicore__ inline void StageVec1Lse(const S2SplitFdStagingLayout &layout,
         static_cast<uint32_t>(layout.broadcastElems * sizeof(float)), 0, 0, 0};
     DataCopyPad(sumGm[floatOffset], tmpSumBlockUb, lseOutParams);
     DataCopyPad(maxGm[floatOffset], tmpMaxBlockUb, lseOutParams);
+    printf("[2GM]sum addr: 0x%x\n", sumGm[floatOffset].GetPhyAddr());
+    printf("[2GM]max addr: 0x%x\n", maxGm[floatOffset].GetPhyAddr());
     SetFlag<HardEvent::MTE3_V>(mte3ToVId);
     WaitFlag<HardEvent::MTE3_V>(mte3ToVId);
+    DumpTensor(sumGm[floatOffset], 110, 64);
+    DumpTensor(maxGm[floatOffset], 111, 64);
 }
 
 // Stage Vec2 normalized partial O to GM staging.
@@ -176,6 +180,8 @@ __aicore__ inline void StageVec2PartialO(const S2SplitFdStagingLayout &layout,
     outParams.dstStride = 0;
     outParams.blockCount = validRows;
     DataCopyPad(stagingOut[offset], vec2ResUb, outParams);
+    printf("[2GM]out addr: 0x%x\n", stagingOut[offset].GetPhyAddr());
+    DumpTensor(stagingOut[offset], 112, 64);
 }
 
 // FD chunk reduction: read all splits from staging, compute weights, reduce partial O.
@@ -207,11 +213,6 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
     int64_t outSplitStride = attenOutElems;
     int64_t mChunks = (mNum + layout.chunkRows - 1) / layout.chunkRows;
     int64_t startRow = 0;
-    if (GetBlockIdx() == 50) {
-        printf("[MQSMLA_FD_LINE] Reduce enter line=%d blk=%d wsIdx=%ld wsNum=%ld fdMOff=%ld mNum=%ld dValid=%ld chunks=%ld splitStride=%ld outSplitStride=%ld\n",
-            __LINE__, GetBlockIdx(), workspaceIdx, workspaceNum, fdMOffset, mNum, dValid,
-            mChunks, splitStride, outSplitStride);
-    }
     for (int64_t chunkIdx = 0; chunkIdx < mChunks; chunkIdx++) {
         int64_t dealRowCount = layout.chunkRows;
         if (startRow + dealRowCount > mNum) {
@@ -222,10 +223,6 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
         int64_t srcOffset = (fdMOffset + startRow) * layout.broadcastElems;
         int64_t dstOffset = 0;
         for (int64_t splitIdx = 0; splitIdx < workspaceNum; splitIdx++) {
-            if (GetBlockIdx() == 50) {
-                printf("[MQSMLA_FD_LINE] LSE copy before line=%d blk=%d chunk=%ld split=%ld srcOff=%ld dstOff=%ld elems=%ld\n",
-                    __LINE__, GetBlockIdx(), chunkIdx, splitIdx, srcOffset, dstOffset, dealRowsElems);
-            }
             DataCopy(blockMaxUb[dstOffset], maxGm[srcOffset], dealRowsElems);
             DataCopy(blockSumUb[dstOffset], sumGm[srcOffset], dealRowsElems);
             srcOffset += splitStride;
@@ -233,23 +230,11 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
         }
         SetFlag<HardEvent::MTE2_V>(mte2ToVId);
         WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
-        if (GetBlockIdx() == 50) {
-            printf("[MQSMLA_FD_LINE] LSE copy after line=%d blk=%d chunk=%ld\n",
-                __LINE__, GetBlockIdx(), chunkIdx);
-        }
 
         LocalTensor<T> sinkUb;
-        if (GetBlockIdx() == 50) {
-            printf("[MQSMLA_FD_LINE] ComputeScale before line=%d blk=%d chunk=%ld rows=%ld wsNum=%ld\n",
-                __LINE__, GetBlockIdx(), chunkIdx, dealRowCount, workspaceNum);
-        }
         FaVectorApi::ComputeScaleValue_VF<T, T>(sinkUb, blockMaxUb, blockSumUb, lseExpUb,
                                    dealRowCount, workspaceNum, false, false);
         PipeBarrier<PIPE_V>();
-        if (GetBlockIdx() == 50) {
-            printf("[MQSMLA_FD_LINE] ComputeScale after line=%d blk=%d chunk=%ld\n",
-                __LINE__, GetBlockIdx(), chunkIdx);
-        }
 
         LocalTensor<T> chunkAccumO = accumulatedO[startRow * D_ALIGN];
         int64_t outSrcOffset = (fdMOffset + startRow) * dValid;
@@ -262,33 +247,59 @@ __aicore__ inline void Reduce(const S2SplitFdStagingLayout &layout,
             DataCopyPadExtParams<float> padParams{true, 0,
                 static_cast<uint8_t>((D_ALIGN - dValid) % OUTPUT_ELEMS_PER_BLOCK), 0};
             WaitFlag<HardEvent::V_MTE2>(vToMte2Id1);
-            if (GetBlockIdx() == 50) {
-                printf("[MQSMLA_FD_LINE] PartialO copy before line=%d blk=%d chunk=%ld split=%ld outSrcOff=%ld rows=%ld blockLen=%u\n",
-                    __LINE__, GetBlockIdx(), chunkIdx, splitIdx, outSrcOffset, dealRowCount, inParams.blockLen);
-            }
             DataCopyPad(partialOFp32, stagingOutGm[outSrcOffset], inParams, padParams);
             SetFlag<HardEvent::MTE2_V>(mte2ToVId);
             WaitFlag<HardEvent::MTE2_V>(mte2ToVId);
-            if (GetBlockIdx() == 50) {
-                printf("[MQSMLA_FD_LINE] PartialO copy after line=%d blk=%d chunk=%ld split=%ld\n",
-                    __LINE__, GetBlockIdx(), chunkIdx, splitIdx);
-            }
-            if (GetBlockIdx() == 50) {
-                printf("[MQSMLA_FD_LINE] ReduceFinal before line=%d blk=%d chunk=%ld split=%ld\n",
-                    __LINE__, GetBlockIdx(), chunkIdx, splitIdx);
-            }
             FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, blockSumUb, partialOFp32,
                                                          dealRowCount, splitIdx);
             PipeBarrier<PIPE_V>();
-            if (GetBlockIdx() == 50) {
-                printf("[MQSMLA_FD_LINE] ReduceFinal after line=%d blk=%d chunk=%ld split=%ld\n",
-                    __LINE__, GetBlockIdx(), chunkIdx, splitIdx);
-            }
             SetFlag<HardEvent::V_MTE2>(vToMte2Id1);
             outSrcOffset += outSplitStride;
         }
 
         SetFlag<HardEvent::V_MTE2>(vToMte2Id0);
+        startRow += layout.chunkRows;
+    }
+}
+
+// FD UB reduction: reduce max/sum and partial O that are already resident in UB.
+// maxUb/sumUb layout: [chunk][split][chunkRows][broadcastElems].
+// partialOUb layout: [split][mNum][D_ALIGN]. sumUb is updated in-place to hold split weights.
+template <typename T, int64_t D_ALIGN>
+__aicore__ inline void ReduceUb(const S2SplitFdStagingLayout &layout,
+    int64_t mNum, LocalTensor<T> &accumulatedO, LocalTensor<float> &lseExpUb,
+    LocalTensor<float> &maxUb, LocalTensor<float> &sumUb, LocalTensor<T> &partialOUb,
+    int64_t workspaceNum, bool softmaxLseFlag)
+{
+    int64_t mChunks = (mNum + layout.chunkRows - 1) / layout.chunkRows;
+    int64_t startRow = 0;
+    for (int64_t chunkIdx = 0; chunkIdx < mChunks; chunkIdx++) {
+        int64_t dealRowCount = layout.chunkRows;
+        if (startRow + dealRowCount > mNum) {
+            dealRowCount = mNum - startRow;
+        }
+
+        int64_t maxSumChunkOffset = chunkIdx * workspaceNum * layout.chunkRows * layout.broadcastElems;
+        LocalTensor<float> chunkMaxUb = maxUb[maxSumChunkOffset];
+        LocalTensor<float> chunkSumUb = sumUb[maxSumChunkOffset];
+
+        LocalTensor<T> sinkUb;
+        FaVectorApi::ComputeScaleValue_VF<T, T>(sinkUb, chunkMaxUb, chunkSumUb, lseExpUb,
+            dealRowCount, workspaceNum, softmaxLseFlag, false);
+        PipeBarrier<PIPE_V>();
+        DumpTensor(chunkMaxUb, 130, 32*8);
+        DumpTensor(chunkSumUb, 131, 32*8);
+        LocalTensor<T> chunkAccumO = accumulatedO[startRow * D_ALIGN];
+        int64_t partialOSplitStride = mNum * D_ALIGN;
+        for (int64_t splitIdx = 0; splitIdx < workspaceNum; splitIdx++) {
+            int64_t partialOOffset = splitIdx * partialOSplitStride + startRow * D_ALIGN;
+            LocalTensor<T> splitPartialO = partialOUb[partialOOffset];
+            DumpTensor(partialOUb[partialOOffset], 132, 16);
+            FaVectorApi::ReduceFinalRes_const_VF<T, D_ALIGN>(chunkAccumO, chunkSumUb, splitPartialO,
+                dealRowCount, splitIdx);
+            PipeBarrier<PIPE_V>();
+        }
+
         startRow += layout.chunkRows;
     }
 }

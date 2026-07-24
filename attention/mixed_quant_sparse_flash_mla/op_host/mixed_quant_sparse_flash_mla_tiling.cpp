@@ -98,7 +98,7 @@ ge::graphStatus MQSMLAInfoParser::GetNpuInfo()
         OP_LOGE(opName_, "NpuArch[%d] is not support.", static_cast<int32_t>(npuArch_));
         return GRAPH_FAILED;
     }
-    batchConsistency_ = IsBatchConsistencyEnabled(context_, opName_);
+    batchConsistency_ = true;
 
     return ge::GRAPH_SUCCESS;
 }
@@ -634,21 +634,25 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
     constexpr uint32_t MAX_S2_SPLIT_NUM = 2;  // 每核最多S2切分次数
     constexpr uint32_t FLOAT_ELEM_SIZE = 4;   // sizeof(float)
     constexpr uint32_t FD_BLOCK_ELEM = 8;     // FD广播份数
-    uint32_t workspaceSize = ascendcPlatform.GetLibApiWorkSpaceSize();
+    constexpr uint32_t FD_MAX_SUM_REGION_NUM = 2; // max和sum两个区域
+    size_t workspaceSize = static_cast<size_t>(ascendcPlatform.GetLibApiWorkSpaceSize());
     bool isSplitG = tilingInfo->gSize > 64; // gSize超过64时采用Split-G
     if (isSplitG) {
-        workspaceSize += (S2_BASE_SIZE * D_SIZE * VEC_RES_ELEM_SIZE * TRIPLE_BUFFER_NUM * (aicNum >> 1));
+        workspaceSize += static_cast<size_t>(S2_BASE_SIZE) * D_SIZE * VEC_RES_ELEM_SIZE *
+            TRIPLE_BUFFER_NUM * (aicNum >> 1);
     }
     uint32_t fdStagingMSize = tilingInfo->gSize;
     uint32_t fdStagingSlotNum = isSplitG ? (aicNum >> 1) : aicNum;
     if (tilingInfo->batchConsistency) {
-        uint32_t combineElemSize = fdStagingMSize * D_SIZE + 2 * fdStagingMSize;
-        workspaceSize += 33 * combineElemSize * FLOAT_ELEM_SIZE; // 33: 同token最大规约块数
-        workspaceSize += 32 * 33 * combineElemSize * FLOAT_ELEM_SIZE; // 32: 跨核数, 33: 同token最大规约块数
+        size_t combineElemSize = static_cast<size_t>(fdStagingMSize) * D_SIZE +
+            static_cast<size_t>(FD_MAX_SUM_REGION_NUM) * fdStagingMSize * FD_BLOCK_ELEM;
+        workspaceSize += 33ULL * combineElemSize * FLOAT_ELEM_SIZE; // 33: 同token最大规约块数
+        workspaceSize += 32ULL * 33ULL * combineElemSize * FLOAT_ELEM_SIZE; // 32: 跨核数, 33: 同token最大规约块数
     } else {
         // 末尾的2对应每个split分别暂存max和sum。
-        uint32_t s2SplitStagingPerSlot = fdStagingMSize * D_SIZE * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM +
-                                         fdStagingMSize * FD_BLOCK_ELEM * FLOAT_ELEM_SIZE * MAX_S2_SPLIT_NUM * 2;
+        size_t s2SplitStagingPerSlot = static_cast<size_t>(fdStagingMSize) * D_SIZE * FLOAT_ELEM_SIZE *
+            MAX_S2_SPLIT_NUM + static_cast<size_t>(fdStagingMSize) * FD_BLOCK_ELEM * FLOAT_ELEM_SIZE *
+            MAX_S2_SPLIT_NUM * FD_MAX_SUM_REGION_NUM;
         workspaceSize += s2SplitStagingPerSlot * fdStagingSlotNum;
     }
     size_t *workSpaces = context_->GetWorkspaceSizes(1);
@@ -693,8 +697,7 @@ ge::graphStatus MixedQuantSparseFlashMlaTiling::DoOpTiling(MQSMLATilingInfo *til
     uint32_t tilingKey =
         GET_TPL_TILING_KEY(0U, qLayout, inputKvLayout, static_cast<uint32_t>(perfMode_),
                            static_cast<uint32_t>(isSplitG), static_cast<uint32_t>(tilingInfo->quantMode),
-                           ((oriKvType == ge::DT_FLOAT8_E4M3FN) ? DTYPE_FP8_E4M3FN : DTYPE_HIF8),
-                           static_cast<uint32_t>(tilingInfo->batchConsistency));
+                           ((oriKvType == ge::DT_FLOAT8_E4M3FN) ? DTYPE_FP8_E4M3FN : DTYPE_HIF8));
     context_->SetTilingKey(tilingKey);
     context_->SetScheduleMode(1);
 

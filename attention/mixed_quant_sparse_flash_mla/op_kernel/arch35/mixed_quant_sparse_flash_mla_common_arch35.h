@@ -77,7 +77,7 @@ __aicore__ constexpr uint64_t Align64Func(uint64_t data)
     X(TEMPLATE_MODE, QSMLATemplateMode, QSMLATemplateMode::CSA_TEMPLATE_MODE) \
     X(IS_SPLIT_G, bool, false) \
     X(QUANT_MODE, SCALE_CONTIGUOUS_MODE, SCALE_CONTIGUOUS_MODE::CONTIGUOUS) \
-    X(BATCH_CONSISTENCY, bool, false) \
+    X(BATCH_CONSISTENCY, bool, true) \
 
 /* 1. 生成带默认值的模版Template */
 #define GEN_TYPE_PARAM(name) typename name,
