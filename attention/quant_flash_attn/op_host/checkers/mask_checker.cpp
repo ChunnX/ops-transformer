@@ -74,8 +74,9 @@ ge::graphStatus MaskChecker::CheckSingleParaAttnMask(const QfaTilingInfo &qfaInf
     const int64_t ATTN_MASK_DIM0 = 2048;
     const int64_t ATTN_MASK_DIM1 = 2048;
     OP_CHECK_IF(shape.GetDim(0) != ATTN_MASK_DIM0 || shape.GetDim(1) != ATTN_MASK_DIM1,
-                OP_LOGE(qfaInfo.opName, "%s shape must be (%ld, %ld), but got (%ld, %ld).",
-                    ATTN_MASK_NAME.c_str(), ATTN_MASK_DIM0, ATTN_MASK_DIM1, shape.GetDim(0), shape.GetDim(1)),
+                OP_LOGE_FOR_INVALID_SHAPE_WITH_REASON(qfaInfo.opName, ATTN_MASK_NAME.c_str(),
+                    ToStringRaw(shape).c_str(),
+                    "The shape of attn_mask must be [2048, 2048]"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -86,11 +87,13 @@ ge::graphStatus MaskChecker::CheckSingleParaWindowParams(const QfaTilingInfo &qf
     // win_left / win_right 为可选属性，默认值为 -1（表示无穷）
     OP_CHECK_IF(qfaInfo.winLeft < -1,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, WIN_LEFT_NAME.c_str(),
-                    std::to_string(qfaInfo.winLeft).c_str(), "The value of win_left must be >= -1"),
+                    std::to_string(qfaInfo.winLeft).c_str(),
+                    "The value of win_left must be greater than or equal to -1"),
                 return ge::GRAPH_FAILED);
     OP_CHECK_IF(qfaInfo.winRight < -1,
                 OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, WIN_RIGHT_NAME.c_str(),
-                    std::to_string(qfaInfo.winRight).c_str(), "The value of win_right must be >= -1"),
+                    std::to_string(qfaInfo.winRight).c_str(),
+                    "The value of win_right must be greater than or equal to -1"),
                 return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
@@ -131,8 +134,8 @@ ge::graphStatus MaskChecker::CheckMaskModeAttnMaskConsistency(const QfaTilingInf
                            qfaInfo.opParamInfo.attnMask.desc != nullptr);
     if (qfaInfo.maskMode == static_cast<int64_t>(MaskMode::NO_MASK)) {
         OP_CHECK_IF(attnMaskExists,
-                    OP_LOGE(qfaInfo.opName,
-                            "When mask_mode is 0 (NO_MASK), attn_mask should not be provided."),
+                    OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, ATTN_MASK_NAME.c_str(), "provided",
+                        "When mask_mode is 0 (NO_MASK), attn_mask cannot be passed"),
                     return ge::GRAPH_FAILED);
     } else {
         // mask_mode 为 3 (CAUSAL) 或 4 (BAND) 时，必须传入 attn_mask
@@ -162,7 +165,7 @@ ge::graphStatus MaskChecker::CheckMaskModeQuantMode(const QfaTilingInfo &qfaInfo
         OP_CHECK_IF(qfaInfo.maskMode == static_cast<int64_t>(MaskMode::BAND),
                     OP_LOGE_FOR_INVALID_VALUE_WITH_REASON(qfaInfo.opName, MASK_MODE_NAME.c_str(),
                         std::to_string(qfaInfo.maskMode).c_str(),
-                        "MxFP8 only supports mask_mode 0 (NO_MASK) and 3 (CAUSAL), BAND(4) is not supported"),
+                        "When quant_mode is MxFP8, the value of mask_mode can only be 0 (NO_MASK) or 3 (CAUSAL)"),
                     return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
