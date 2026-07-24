@@ -26,9 +26,9 @@ at::Tensor stem_oam_prep_varlen_q(const at::Tensor &q, at::IntArrayRef qSeqLens,
 {
     TORCH_CHECK(q.size(2) == DIM_QK, "q last dim must be 128, but got ", q.size(2));
     TORCH_CHECK(stemBlockSize % 32 == 0, "stemBlockSize must be multiple of 32");
-    TORCH_CHECK(stemStride % 16 == 0, "stemStride must be multiple of 16");
-    TORCH_CHECK(stemStride <= stemBlockSize, "stemStride must be <= stemBlockSize");
     TORCH_CHECK(stemBlockSize <= 256, "stemBlockSize must be <= 256");
+    TORCH_CHECK(stemStride <= stemBlockSize, "stemStride must be <= stemBlockSize");
+    TORCH_CHECK(stemStride % 16 == 0, "stemStride must be multiple of 16");
     TORCH_CHECK(stemStride <= 64, "stemStride must be <= 64");
 
     int64_t H_q = q.size(1);
@@ -38,11 +38,9 @@ at::Tensor stem_oam_prep_varlen_q(const at::Tensor &q, at::IntArrayRef qSeqLens,
     int64_t maxQLen = batch > 0 ? *std::max_element(qSeqLens.begin(), qSeqLens.end()) : 0;
     int64_t maxQPadded = ((maxQLen + stemBlockSize - 1) / stemBlockSize) * stemBlockSize;
     int64_t maxQb = maxQPadded / stemBlockSize;
-
     at::Tensor qFlat = at::empty({batch, H_q, maxQb, qflat_dim}, q.options().dtype(at::kBFloat16));
 
     ACLNN_CMD(aclnnStemOamPrepVarlenQ, q, qSeqLens, cuSeqLensQ, qScale, stemBlockSize, stemStride, qFlat);
-
     return qFlat;
 }
 
