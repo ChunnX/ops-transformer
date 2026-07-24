@@ -395,7 +395,6 @@ __aicore__ inline void SparseFlashMlaCsaKernel<CubeBlockType, VecBlockType>::Ini
         bmm1Buffers.Get().SetCrossCore();
         bmm1Buffers.Get().SetCrossCore();
     }
-    // TODO 整改下这段  上下可合并
     if constexpr (IS_SPLIT_G || \
         TEMPLATE_MODE == SMLATemplateMode::CSA_TEMPLATE_MODE || \
         TEMPLATE_MODE == SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE || \

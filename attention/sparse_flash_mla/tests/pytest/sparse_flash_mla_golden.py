@@ -321,8 +321,6 @@ class GeneralizedSFA:
             threshold = math.floor(cur_ori_act_kv / cmp_ratio)
         threshold = min(threshold, cur_cmp_act_kv)
 
-        print("===mark K", K)
-        print("===mark threshold / sparse_block_size", threshold / sparse_block_size)
         valid_count = min(K, math.ceil(threshold / sparse_block_size))
         if topk_length_bnsd != None:
             valid_count = min(topk_length_bnsd[i_B, 0, i_S1, 0], valid_count)
@@ -408,7 +406,6 @@ class GeneralizedSFA:
                 cur_seqused = int(seqused_per_batch[b_index])
                 if cur_seqused == 0:
                     continue
-                # print("======mark new_tensor[b_index, 0, 0:cur_seqused, :].shape=", new_tensor[b_index, 0, 0:cur_seqused, :].shape)
                 new_tensor[b_index, 0, 0:cur_seqused, :] = tensor[t_start:t_start + cur_seqused, :]
             return new_tensor, [B, 1, max_s1, 1]
 
@@ -606,8 +603,6 @@ def gen_sparse_indices_bsnd(cmp_ratio, B, S1, S2, N2, K,
                 valid_blocks_max = max(0, cur_valid_s2_max_update)
                 block_indices = torch.randperm(valid_blocks_max).to(torch.int32)
                 valid_blocks_topk = min(valid_blocks_max, K)
-                print("===mark i_S1:", i_S1)
-                print("===mark S1:", S1)
                 sparse_indices[i_B, i_S1, i_N2, :valid_blocks_topk] = block_indices[0:valid_blocks_topk]
 
                 if topk_length is not None:
@@ -675,7 +670,7 @@ def gen_sparse_indices_tnd(cmp_ratio, B, T1, N2, K,
                         topk_length[s1_prefix + i_S1] = min(cur_valid_s2_max, K)
                     elif kv_topk_mode == "random":
                         if K > 1:
-                            topk_length[s1_prefix + i_S1] = torch.randint(1, K, (1, 1))[0]
+                            topk_length[s1_prefix + i_S1] = min(torch.randint(1, K, (1, 1))[0], cur_valid_s2_max_update)
                         else:
                             topk_length[s1_prefix + i_S1] = 1
     return sparse_indices, topk_length
@@ -749,7 +744,6 @@ def gen_ori_kv(layout_q, layout_kv, ori_kv_type, B, S1, S2, T1, T2, N2, D, K1, b
         if K1 is None:
             raise ValueError(f"K1 must be provided for ORI_SPARSE/ORI_CMP_SPARSE mode")
         if layout_q == "BSND":
-            print("====mark seqused_q", seqused_q)
             ori_sparse_indices, ori_topk_length = gen_sparse_indices_bsnd(
                 1, B, S1, S2, N2, K1, cu_seqlens_q, seqused_q, seqused_ori_kv, None, None,
                 ori_mask_mode, ori_sparse_indices_mode, ori_kv_topk_mode)
@@ -940,7 +934,7 @@ def gen_data(params):
         q = (torch.rand((B, S1, N1, D)) * (q_datarange[1] - q_datarange[0]) + q_datarange[0]).to(q_type)
         if seqused_q is None:
             act_q = B * [S1]
-            #seqused_q = torch.tensor(B * [S1]).to(torch.int32)
+            seqused_q = torch.tensor(B * [S1]).to(torch.int32)
         else:
             act_q = seqused_q
             seqused_q = torch.tensor(seqused_q).to(torch.int32)

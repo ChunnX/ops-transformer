@@ -324,19 +324,18 @@ def generate_seqused(cu_seqlens: list) -> list:
 def fill_random_cu_len(T, SMax, B, random_seq=False):
     cu_seqlens = [0]
     S = min(SMax, T // B)
-    S_eq = random.randint(0, S) if random_seq else S
     for i in range(B):
-        length = S_eq
-        cu_seqlens.append(cu_seqlens[-1] + length)
+        S_eq = random.randint(0, S) if random_seq else S
+        cu_seqlens.append(cu_seqlens[-1] + S_eq)
     cu_seqlens[-1] = T
     return cu_seqlens
 
 def fill_random_used_len(SMax, B, random_seq=False):
     used_lens = []
-    S_eq = random.randint(0, SMax) if random_seq else SMax
+    S = SMax
     for i in range(B):
-        length = S_eq
-        used_lens.append(length)
+        S_eq = random.randint(0, S) if random_seq else S
+        used_lens.append(S_eq)
     return used_lens
 
 def generate_case_with_default_param(param_combinations):

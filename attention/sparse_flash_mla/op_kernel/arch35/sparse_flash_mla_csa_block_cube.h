@@ -267,7 +267,8 @@ __aicore__ inline void CSABlockCube<TEMPLATE_ARGS>::InitGmTensor(__gm__ uint8_t 
         ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
         parser.Init(cuSeqlensOriKv, constInfo.actualSeqLenSize + 1, seqUsedOriKV, seqUsedOriKvSize);
         this->oriKvGm.offsetCalculator.Init(constInfo.n2Size, constInfo.dSize, parser);
-        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE) {
+        if constexpr (TEMPLATE_MODE != SMLATemplateMode::SWA_TEMPLATE_MODE &&
+            TEMPLATE_MODE != SMLATemplateMode::ORI_SPARSE_TEMPLATE_MODE) {
             uint32_t seqUseCmpKvSize = (seqUsedCmpKV == nullptr) ? 0 : constInfo.bSize;
             ActualSeqLensParser<ActualSeqLensMode::ACCUM, int32_t, true> parser;
             parser.Init(cuSeqlensCmpKv, constInfo.actualSeqLenSize + 1, seqUsedCmpKV, seqUseCmpKvSize);

@@ -302,20 +302,18 @@ __aicore__ inline int64_t CSABlockVec<TEMPLATE_ARGS>::GetkeyOffset(
         int64_t paBlockStride = runInfo.isCmp ? constInfo.cmpKeyStride0 : constInfo.oriKeyStride0;
         realkeyOffset = blockTableGm.GetValue(runInfo.boIdx * maxBlockNumPerBatch + blkTableIdx) *
             paBlockStride + blkTableOffset * constInfo.dSizeVInput; // BlockNum, BlockSize, N(1), D
-    } else {
-        if (LAYOUT_T == SMLA_LAYOUT::BSND) {
-            if (runInfo.isCmp) {
-                realkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.cmpS2Size * constInfo.dSize + \
-                    runInfo.n2oIdx * constInfo.cmpS2Size * constInfo.dSize + s2Idx * constInfo.dSize; // BSN(1)D
-            } else {
-                realkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.s2Size * constInfo.dSize +
-                    runInfo.n2oIdx * constInfo.s2Size * constInfo.dSize + s2Idx * constInfo.dSize; // BSN(1)D
-            }
-        } else if (LAYOUT_T == SMLA_LAYOUT::TND) {
-            realkeyOffset = (cuSeqlensKvGm.GetValue(runInfo.boIdx) + s2Idx) *
-                constInfo.n2Size * constInfo.dSize +
-                runInfo.n2oIdx * constInfo.dSize; // TN(1)D
+    } else if constexpr (LAYOUT_T == SMLA_LAYOUT::BSND) {
+        if (runInfo.isCmp) {
+            realkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.cmpS2Size * constInfo.dSize + \
+                runInfo.n2oIdx * constInfo.cmpS2Size * constInfo.dSize + s2Idx * constInfo.dSize; // BSN(1)D
+        } else {
+            realkeyOffset = runInfo.boIdx * constInfo.n2Size * constInfo.s2Size * constInfo.dSize +
+                runInfo.n2oIdx * constInfo.s2Size * constInfo.dSize + s2Idx * constInfo.dSize; // BSN(1)D
         }
+    } else if constexpr (LAYOUT_T == SMLA_LAYOUT::TND) {
+        realkeyOffset = (cuSeqlensKvGm.GetValue(runInfo.boIdx) + s2Idx) *
+            constInfo.n2Size * constInfo.dSize +
+            runInfo.n2oIdx * constInfo.dSize; // TN(1)D
     }
     return realkeyOffset;
 }
