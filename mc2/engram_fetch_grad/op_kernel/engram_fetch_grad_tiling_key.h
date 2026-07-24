@@ -20,11 +20,10 @@
 
 #define ENGRAM_FETCH_GRAD_DEFAULT_MODE 0
 
-ASCENDC_TPL_ARGS_DECL(EngramFetchGrad,
-                      ASCENDC_TPL_UINT_DECL(EngramFetchGradMode, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_LIST,
-                                            ENGRAM_FETCH_GRAD_DEFAULT_MODE), );
+ASCENDC_TPL_ARGS_DECL(EngramFetchGrad, ASCENDC_TPL_UINT_DECL(EngramFetchGradMode, ASCENDC_TPL_8_BW, ASCENDC_TPL_UI_LIST,
+                                                             ENGRAM_FETCH_GRAD_DEFAULT_MODE));
 
 ASCENDC_TPL_SEL(ASCENDC_TPL_ARGS_SEL(ASCENDC_TPL_UINT_SEL(EngramFetchGradMode, ASCENDC_TPL_UI_LIST,
-                                                          ENGRAM_FETCH_GRAD_DEFAULT_MODE), ), );
+                                                          ENGRAM_FETCH_GRAD_DEFAULT_MODE)));
 
 #endif // ENGRAM_FETCH_GRAD_TILING_KEY_H
