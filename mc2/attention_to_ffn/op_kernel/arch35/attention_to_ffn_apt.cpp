@@ -20,13 +20,13 @@
 #endif
 #include "../attention_to_ffn.h"
 #include "../attention_to_ffn_tiling.h"
-#include "../attention_to_ffn_tiling_key.h"
+#include "attention_to_ffn_apt_tiling_key.h"
 
 using namespace AscendC;
 using namespace AttentionToFFNImpl;
 using namespace Mc2Tiling;
 
-template<bool isQuant, bool isSync, bool isActiveMask, uint8_t>
+template<bool isQuant, bool isSync, bool isActiveMask, uint8_t ArchTag>
 __global__ __aicore__ void attention_to_ffn(GM_ADDR x, GM_ADDR sessionId, GM_ADDR microBatchId,
     GM_ADDR layerId, GM_ADDR expertIds, GM_ADDR expertRankTable, GM_ADDR scales, GM_ADDR activeMask,
     GM_ADDR workspaceGM, GM_ADDR tilingGM)
@@ -35,8 +35,10 @@ __global__ __aicore__ void attention_to_ffn(GM_ADDR x, GM_ADDR sessionId, GM_ADD
     GET_TILING_DATA_WITH_STRUCT(AttentionToFFNTilingData, tilingData, tilingGM);
     TPipe pipe;
 
-    AttentionToFFN<DTYPE_X, isQuant, isSync, isActiveMask> op;
-    op.Init(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, activeMask,
-            workspaceGM, &pipe, &tilingData);
-    op.Process();
+    if constexpr (ArchTag == TILINGKEY_TPL_A5) {
+        AttentionToFFN<DTYPE_X, isQuant, isSync, isActiveMask> op;
+        op.Init(x, sessionId, microBatchId, layerId, expertIds, expertRankTable, scales, activeMask,
+                workspaceGM, &pipe, &tilingData);
+        op.Process();
+    }
 }
