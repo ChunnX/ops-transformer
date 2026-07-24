@@ -168,7 +168,7 @@ public:
 
         // tla define
         auto ubOTmpLayoutTla = tla::MakeLayout(
-            tla::MakeShape(embed_ + 1, CeilDiv(delay20TaskInfo.qsActBaseTile, 128u) * 128),
+            tla::MakeShape(embed_, qBaseTile_ / 2),
             tla::MakeStride(static_cast<int64_t>(64), tla::Int<1>{}));
         auto ubOTmpTensorTla = tla::MakeTensor(ubOTmpTensor, ubOTmpLayoutTla, Arch::PositionUB{});
 
