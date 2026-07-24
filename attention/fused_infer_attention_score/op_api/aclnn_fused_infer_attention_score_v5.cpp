@@ -56,9 +56,6 @@ __attribute__((visibility("default"))) aclnnStatus CheckTensorContiguous(
     const aclTensor *valueAntiquantScaleOptional,
     const aclTensor *keyRopeOptional);
 
-// 新版本opbase存在TensorV2的新接口，用弱符号判断当前opbase是新版本还是旧版本，旧版本不支持传入非连续tensor
-bool NnopbaseSupportTensorV2() __attribute__((weak));
-
 aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     const aclTensor *query, const aclTensorList *key, const aclTensorList *value,
     const aclTensor *pseShiftOptional,
@@ -105,6 +102,13 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
+    aclnnStatus ret = CheckTensorContiguous(
+        key, value, keyAntiquantScaleOptional, valueAntiquantScaleOptional, keyRopeOptional);
+    if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
+        OP_LOGE(ACLNN_ERR_INNER_TILING_ERROR, "When tensor is not contiguous, opbase package version check failed");
+        return ret;
+    }
+
     aclTensor *fakeActualSeqLengthsOptional{nullptr};
     aclTensor *fakeActualSeqLengthsKvOptional{nullptr};
     aclTensor *fakeActualSharedPrefixLenOptional{nullptr};
@@ -112,7 +116,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV5GetMaxWorkspaceSize(
     aclTensor *fakeKVStartIdxOptional{nullptr};
 
     // nullptr不处理， nullptr是空指针，这样不会影响原来就不传入actual seq length为空的逻辑
-    aclnnStatus ret = FakeArray(actualSeqLengthsOptional, fakeActualSeqLengthsOptional);
+    ret = FakeArray(actualSeqLengthsOptional, fakeActualSeqLengthsOptional);
     CHECK_RET_CODE(ret, "Try alloc fake actualSeqLengthsOptional failed");
 
     ret = FakeArray(actualSeqLengthsKvOptional, fakeActualSeqLengthsKvOptional);
@@ -189,10 +193,7 @@ aclnnStatus CheckTensorContiguous(
     const aclTensor *valueAntiquantScaleOptional,
     const aclTensor *keyRopeOptional)
 {
-    if ((key != nullptr && !IsContiguous((*key)[0])) || (value != nullptr && !IsContiguous((*value)[0]))) {
-        return ACLNN_ERR_INNER_TILING_ERROR;
-    }
-    if (keyRopeOptional != nullptr && !IsContiguous(keyRopeOptional)) {
+    if (CheckKVRopeContiguous(key, value, keyRopeOptional) != ACLNN_SUCCESS) {
         return ACLNN_ERR_INNER_TILING_ERROR;
     }
     if ((keyAntiquantScaleOptional != nullptr && !IsContiguous(keyAntiquantScaleOptional)) ||

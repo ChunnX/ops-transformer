@@ -123,9 +123,16 @@ aclnnStatus aclnnFusedInferAttentionScoreV3GetMaxWorkspaceSize(
     TensorPreProcess(tensorListKey, tensorListValue);
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
+    aclnnStatus ret = CheckKVRopeContiguous(tensorListKey, tensorListValue, keyRopeOptional);
+    if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "When key/value/keyRope is not contiguous, the opbase package must support TensorV2.");
+        return ret;
+    }
+
     FiaActualSeqInArrays actualSeqArrays{actualSeqLengthsOptional, actualSeqLengthsKvOptional, actualSharedPrefixLenOptional};
     FiaActualSeqOutTensors fakeActualSeqTensors{};
-    aclnnStatus ret = FakeFiaActualSeqArrays(actualSeqArrays, fakeActualSeqTensors);
+    ret = FakeFiaActualSeqArrays(actualSeqArrays, fakeActualSeqTensors);
     if (ret != ACLNN_SUCCESS) {
         return ret;
     }
@@ -204,11 +211,18 @@ aclnnStatus aclnnFusedInferAttentionScoreV3GetWorkspaceSize(
     const aclTensor *tensorValueSharedPrefixOptional = valueSharedPrefixOptional;
     PrefixTensorPreProcess(tensorKeySharedPrefixOptional, tensorValueSharedPrefixOptional);
 
+    aclnnStatus ret = CheckKVRopeContiguous(key, value, keyRopeOptional);
+    if (ret != ACLNN_SUCCESS && NnopbaseSupportTensorV2 == nullptr) {
+        OP_LOGE(ACLNN_ERR_PARAM_INVALID,
+                "When key/value/keyRope is not contiguous, the opbase package must support TensorV2.");
+        return ret;
+    }
+
     const aclTensor *placeHolder = nullptr;
     const aclTensor *tempTensor = nullptr;
     FusedInferAttentionScoreProcessSoftmaxLse(softmaxLseFlag, softmaxLse, tempTensor, placeHolder);
 
-    aclnnStatus ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
+    ret = aclnnInnerFusedInferAttentionScoreGetWorkspaceSize(
         query, tensorListKey, tensorListValue, pseShiftOptional, attenMaskOptional, actualSeqLengthsOptional,
         actualSeqLengthsKvOptional, deqScale1Optional, quantScale1Optional, deqScale2Optional, quantScale2Optional,
         quantOffset2Optional, antiquantScaleOptional, antiquantOffsetOptional, blockTableOptional,

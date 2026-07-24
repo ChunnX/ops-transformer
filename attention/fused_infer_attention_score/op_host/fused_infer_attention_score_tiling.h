@@ -145,6 +145,14 @@ TILING_DATA_FIELD_DEF(uint32_t, isOutQuantTypeBf16)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(FusedInferAttentionPostQuantParamsOp, FusedInferAttentionPostQuantParams)
 
+// PageAttention cache dim0 strides in tensor elements. Zero keeps the dense-layout calculation.
+BEGIN_TILING_DATA_DEF(FusedInferAttentionKvStrideParams)
+TILING_DATA_FIELD_DEF(uint64_t, keyBnStride)
+TILING_DATA_FIELD_DEF(uint64_t, valueBnStride)
+TILING_DATA_FIELD_DEF(uint64_t, keyRopeBnStride)
+END_TILING_DATA_DEF
+REGISTER_TILING_DATA_CLASS(FusedInferAttentionKvStrideParamsOp, FusedInferAttentionKvStrideParams)
+
 //MLA非量化模板TilingData
 BEGIN_TILING_DATA_DEF(FusedInferAttentionScoreTilingData)
 TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionBaseParams, baseParams);
@@ -158,6 +166,7 @@ TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionPrefixParams, prefixParams);
 TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionPseParams, pseParams);
 TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionLeftPaddingParams, leftPaddingParams);
 TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionPostQuantParams, postquantParams);
+TILING_DATA_FIELD_DEF_STRUCT(FusedInferAttentionKvStrideParams, kvStrideParams);
 END_TILING_DATA_DEF
 
 // empty tenmsor 模板TilingData
