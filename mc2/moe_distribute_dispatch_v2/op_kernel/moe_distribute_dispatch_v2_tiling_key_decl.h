@@ -29,6 +29,7 @@ namespace Mc2Tiling {
 #define TILINGKEY_NO_FULLMESH 0
 #define TILINGKEY_ENABLE_FULLMESH 1
 #define TILINGKEY_ENABLE_HIERARCHY 2
+#define TILINGKEY_ENABLE_ATOMIC 3 // A5 原子定序（BS<=4 非 fullmesh/layered 的 MTE 路由到 a5_atomic 内核）
 #define TILINGKEY_TPL_MTE 0
 #define TILINGKEY_TPL_AICPU 1
 #define TILINGKEY_TPL_CCU 2

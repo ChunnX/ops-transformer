@@ -42,8 +42,8 @@ public:
     bool CheckTensorDataType(const gert::TilingContext *context, const char *nodeName, const bool isScales,
                              const uint32_t quantMode, const bool isActiveMask, const bool hasElasticInfo,
                              const bool isPerformance, DispatchV2Config &config) override;
-    uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode, const bool isSetFullMeshV2,
-                          bool isLayered) override;
+    uint64_t CalTilingKey(const bool isScales, const uint32_t quantMode, const bool isSetFullMeshV2, bool isLayered,
+                          const bool isAtomicSort) override;
     ge::graphStatus CheckQuantModeMatchScales(gert::TilingContext *context, const char *nodeName, bool isScales,
                                               uint32_t quantMode, DispatchV2Config &config) override;
     ge::graphStatus CheckCommAlgPtr(const char *commAlgPtr, const char *nodeName) override;

@@ -1303,7 +1303,8 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncA5::MoeDistributeDispatchV2Tili
 }
 
 uint64_t MoeDistributeDispatchV2TilingFuncA5::CalTilingKey(const bool isScales, const uint32_t quantMode,
-                                                           const bool isSetFullMeshV2, bool isLayered)
+                                                           const bool isSetFullMeshV2, bool isLayered,
+                                                           const bool isAtomicSort)
 {
     uint32_t templateDispatch = TILINGKEY_NO_FULLMESH;
     uint32_t tilingKeyQuantMode = quantMode;
@@ -1318,6 +1319,11 @@ uint64_t MoeDistributeDispatchV2TilingFuncA5::CalTilingKey(const bool isScales, 
     }
     if (isLayered) {
         templateDispatch = TILINGKEY_ENABLE_HIERARCHY;
+    }
+    // 原子定序：BS<=4 的非 fullmesh/layered MTE 场景路由到 a5_atomic 内核（调用方已保证三条件，
+    // 此处再防御性校验 fullmesh/layered 优先级）
+    if (isAtomicSort && !isSetFullMeshV2 && !isLayered) {
+        templateDispatch = TILINGKEY_ENABLE_ATOMIC;
     }
     tilingKey = GET_TPL_TILING_KEY(tilingKeyQuantMode, scaleMode, templateDispatch, commMode, TILINGKEY_TPL_A5);
     return tilingKey;
