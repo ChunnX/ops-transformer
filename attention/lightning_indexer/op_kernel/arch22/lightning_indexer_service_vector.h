@@ -389,7 +389,7 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 WaitFlag<HardEvent::V_S>(eVS);
                 for (int32_t i = 0; i < s2BaseSize_; i++) {
                     float v = reduceOutInner.GetValue(i);
-                    if (v > 1.0e6f || v < -1.0e6f || !(v == v)) {
+                    if (v > 1.0e29f) {
                         reduceOutInner.SetValue(i, -1.0e30f);
                     }
                 }
@@ -397,17 +397,13 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 SetFlag<HardEvent::S_V>(eSV);
                 WaitFlag<HardEvent::S_V>(eSV);
             }
-            // DEBUG: fill ALL positions with -1e30 to test if DataCopyPad writes correctly
-            {
-                Duplicate<float>(reduceOutInner, -1.0e30f, s2BaseSize_);
-                PipeBarrier<PIPE_V>();
-            }
             {
                 PipeBarrier<PIPE_V>();
-                // Use indiceOutOffset/sparseCount + cuS1Idx as row index to match ProcessRadixTopK's batchId
-                // (cuS1Idx alone is 0,1,2 for every batch when s1BaseSize > qSeqSize, causing overwrites)
                 uint64_t scoreRowIdx = static_cast<uint64_t>(info.indiceOutOffset) / constInfo_.sparseCount + cuS1Idx;
                 uint64_t scoreOffset = scoreRowIdx * constInfo_.radixSortLenAlign + cuBaseS2Idx;
+                event_t eVM = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_MTE3));
+                SetFlag<HardEvent::V_MTE3>(eVM);
+                WaitFlag<HardEvent::V_MTE3>(eVM);
                 DataCopyPad(scoreB16Gm[scoreOffset], reduceOutInner, DataCopyExtParams{
                     static_cast<uint16_t>(1), static_cast<uint32_t>(s2BaseSize_ * sizeof(float)), 0, 0, 0});
             }
