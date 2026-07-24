@@ -102,6 +102,7 @@ __aicore__ inline void CombineSendTokenToRemote(uint32_t batchStart, uint32_t cu
     if (IsQuantized || toRankId == rankId) {
         uint64_t dstOffset = toRankId == rankId ? dstBaseOffset : 0;
         AscendC::DataCopyPad(gmLocalD[dstOffset], ubQuant, singleCopyParams);
+        SyncFuncStatic<AscendC::HardEvent::MTE3_S, SYNC_EVENT_ID4>();
     }
 
     if (toRankId != rankId) {
