@@ -322,8 +322,7 @@ __aicore__ inline void AttentionmaskCopyInForGsLayout(LocalTensor<T> &attenMaskU
         Mutex::Lock<PIPE_V>(mte2ToVEventId);
         // head
         if (headS1Count > 0) {
-            DataCopy(attenMaskUb, attenMaskUb[info.s1Size * attenMaskS2Stride],
-                     headS1Count * attenMaskS2Stride);
+            DataCopy(attenMaskUb, attenMaskUb[info.s1Size * attenMaskS2Stride], headS1Count * attenMaskS2Stride);
         }
         // mid
         for (uint32_t i = 1; i < midGCount; i++) {
