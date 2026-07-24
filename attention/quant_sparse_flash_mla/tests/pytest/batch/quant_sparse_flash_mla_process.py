@@ -125,7 +125,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
 
     torch.npu.synchronize()
     logging.info("quant_sparse_flash_mla...")
-    npu_result = npu_model(q=op_input['q'].npu() if op_input['q'] is not None else None,
+    npu_result, npu_lse  = npu_model(q=op_input['q'].npu() if op_input['q'] is not None else None,
                           ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
                           cmp_kv=op_input['cmp_kv'].npu() if op_input['cmp_kv'] is not None else None,
                           q_descale=op_input['q_descale'].npu() if op_input['q_descale'] is not None else None,
@@ -158,7 +158,7 @@ def test_qsmla_quant_process_graph(test_data, device_id=0):
                           topk_value_mode=op_input.get('topk_value_mode', 1),
                           return_softmax_lse=op_input.get('return_softmax_lse', False)
                         )
-    return npu_result, cpu_output
+    return npu_result, cpu_output, npu_lse, cpu_lse
 
 def test_qsmla_quant_process_ci(test_data, device_id=0):
     params = test_data['params']
@@ -206,7 +206,7 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
     metadata.npu()
 
     logging.info("quant_sparse_flash_mla...")
-    npu_result, _ = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
+    npu_result, npu_lse = torch.ops.cann_ops_transformer.quant_sparse_flash_mla(
                                 q=op_input['q'].npu() if op_input['q'] is not None else None,
                                 ori_kv=op_input['ori_kv'].npu() if op_input['ori_kv'] is not None else None,
                                 cmp_kv=op_input['cmp_kv'].npu() if op_input['cmp_kv'] is not None else None,
@@ -242,4 +242,4 @@ def test_qsmla_quant_process_ci(test_data, device_id=0):
 
     torch.npu.synchronize()
 
-    return npu_result, cpu_output
+    return npu_result, cpu_output, cpu_lse, npu_lse

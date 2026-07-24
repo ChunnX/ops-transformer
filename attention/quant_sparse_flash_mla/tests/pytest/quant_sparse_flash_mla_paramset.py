@@ -49,6 +49,7 @@ TEST_PARAMS = {
         "actlen_mode":["full"],
         "S1EQS2":[False],
         "isSink":[True],
+        "return_softmax_lse":[True],
     },
 
     "prefill_first":{
@@ -87,6 +88,7 @@ TEST_PARAMS = {
         "actlen_mode":["full"],
         "S1EQS2":[False],
         "isSink":[True],
+        "return_softmax_lse":[True],
     },
     "csa_small_prefill":{
         "Testcase_Name": [None],
@@ -124,6 +126,7 @@ TEST_PARAMS = {
         "actlen_mode":["full"],
         "S1EQS2":[False],
         "isSink":[True],
+        "return_softmax_lse":[True],
     }
 }
 
