@@ -384,7 +384,7 @@ public:
             }
         } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
             for (uint16_t i = 0; i < 2; i++) {
-                DataCopy(mm2AScaleL1Tensor[vecOffset + i * 256], pScaleSubLoop0Tensor, {1, 8, 0, 0});
+                DataCopy(mm2AScaleL1Tensor[vecOffset + i * s2BaseSizeCur], pScaleSubLoop0Tensor, {1, 8, 0, 0});
             }
         }
         this->pScaleSubLoop0Que.template FreeTensor(pScaleSubLoop0Tensor);
@@ -653,14 +653,16 @@ public:
         uint16_t dstStride = s2BaseSizeCur / MXFP_GROUP_SIZE / 2 - 1;
         if ((runInfo.actSingleLoopS2Size > s2SplitSize) && (subLoop % 2 == 1)) {
             constexpr uint16_t pScaleRepeatCount = s2SplitSize / MXFP_GROUP_SIZE / 2;
+            constexpr uint16_t pScaleTensorOffset = mBaseSize * s2BaseSizeCur / MXFP_GROUP_SIZE / 4;
             for (uint16_t i = 0; i < pScaleRepeatCount; i++) { // PScale在s2方向的block块大小为32，L1上需要满足16x2的分形，所以重复拷贝s2SplitSize/32/2次
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32],
                     pScaleSubLoop0Tensor, {copyCount, 1, 0, pScaleDstStride});
                 DataCopy(mm2AScaleL1Tensor[pScaleSubLoopOffset + vecOffset + i * 32],
-                    pScaleSubLoop0Tensor[128], {copyCount, 1, 0, pScaleDstStride});
+                    pScaleSubLoop0Tensor[pScaleTensorOffset], {copyCount, 1, 0, pScaleDstStride});
             }
         } else if (unlikely(runInfo.actSingleLoopS2Size <= s2SplitSize)) {
-            for (uint16_t i = 0; i < 4; i++) {
+            constexpr uint16_t pScaleRepeatCount = s2SplitSize / MXFP_GROUP_SIZE / 2;
+            for (uint16_t i = 0; i < pScaleRepeatCount; i++) {
                 DataCopy(mm2AScaleL1Tensor[vecOffset + i * 32],
                     pScaleSubLoop0Tensor, {copyCount, 1, 0, pScaleDstStride});
             }
