@@ -8,6 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
  
+
 #include <iostream>
 #include <vector>
 #include <string>
@@ -15,12 +16,12 @@
 #include "acl/acl.h"
 #include "aclnnop/aclnn_gen_position_ids_from_mask.h"
 
-#define CHECK(cond, msg)                                     \
-    do {                                                     \
-        if (!(cond)) {                                       \
-            std::cerr << "[FATAL] " << msg << std::endl;     \
-            return false;                                    \
-        }                                                    \
+#define CHECK(cond, msg)                                                                                               \
+    do {                                                                                                               \
+        if (!(cond)) {                                                                                                 \
+            std::cerr << "[FATAL] " << msg << std::endl;                                                               \
+            return false;                                                                                              \
+        }                                                                                                              \
     } while (0)
 
 namespace {
@@ -29,8 +30,7 @@ int g_passed = 0;
 int g_failed = 0;
 
 // ---- host 侧 golden ----
-std::vector<int64_t> ComputeGolden(const std::vector<int32_t> &mask,
-                                   int64_t B, int64_t S, int64_t fill)
+std::vector<int64_t> ComputeGolden(const std::vector<int32_t> &mask, int64_t B, int64_t S, int64_t fill)
 {
     std::vector<int64_t> golden(static_cast<size_t>(B * S));
     for (int64_t r = 0; r < B; ++r) {
@@ -38,8 +38,7 @@ std::vector<int64_t> ComputeGolden(const std::vector<int32_t> &mask,
         for (int64_t i = 0; i < S; ++i) {
             int32_t m = mask[static_cast<size_t>(r * S + i)];
             running += m;
-            golden[static_cast<size_t>(r * S + i)] =
-                (m == 0) ? fill : static_cast<int64_t>(running - 1);
+            golden[static_cast<size_t>(r * S + i)] = (m == 0) ? fill : static_cast<int64_t>(running - 1);
         }
     }
     return golden;
@@ -47,24 +46,26 @@ std::vector<int64_t> ComputeGolden(const std::vector<int32_t> &mask,
 
 // ---- 把 int32 mask 转成目标 dtype 的字节流 ----
 // 返回设备侧输入字节数, 并填充 hostBytes
-size_t MakeInputBytes(const std::vector<int32_t> &mask, aclDataType dtype,
-                      std::vector<uint8_t> &hostBytes)
+size_t MakeInputBytes(const std::vector<int32_t> &mask, aclDataType dtype, std::vector<uint8_t> &hostBytes)
 {
     size_t n = mask.size();
     if (dtype == ACL_INT32) {
         hostBytes.resize(n * sizeof(int32_t));
         auto *p = reinterpret_cast<int32_t *>(hostBytes.data());
-        for (size_t i = 0; i < n; ++i) p[i] = mask[i];
+        for (size_t i = 0; i < n; ++i)
+            p[i] = mask[i];
         return hostBytes.size();
     } else if (dtype == ACL_INT64) {
         hostBytes.resize(n * sizeof(int64_t));
         auto *p = reinterpret_cast<int64_t *>(hostBytes.data());
-        for (size_t i = 0; i < n; ++i) p[i] = mask[i];
+        for (size_t i = 0; i < n; ++i)
+            p[i] = mask[i];
         return hostBytes.size();
-    } else {  // ACL_BOOL, 以 1 字节存
+    } else { // ACL_BOOL, 以 1 字节存
         hostBytes.resize(n * sizeof(uint8_t));
         auto *p = reinterpret_cast<uint8_t *>(hostBytes.data());
-        for (size_t i = 0; i < n; ++i) p[i] = static_cast<uint8_t>(mask[i]);
+        for (size_t i = 0; i < n; ++i)
+            p[i] = static_cast<uint8_t>(mask[i]);
         return hostBytes.size();
     }
 }
@@ -72,17 +73,20 @@ size_t MakeInputBytes(const std::vector<int32_t> &mask, aclDataType dtype,
 const char *DtypeName(aclDataType dt)
 {
     switch (dt) {
-        case ACL_INT32: return "int32";
-        case ACL_INT64: return "int64";
-        case ACL_BOOL:  return "bool ";
-        default:        return "?????";
+        case ACL_INT32:
+            return "int32";
+        case ACL_INT64:
+            return "int64";
+        case ACL_BOOL:
+            return "bool ";
+        default:
+            return "?????";
     }
 }
 
 // ---- 单个用例 ----
-bool RunCase(const std::string &name, const std::vector<int32_t> &mask,
-             int64_t B, int64_t S, int64_t fill, aclDataType inDtype,
-             aclrtStream stream)
+bool RunCase(const std::string &name, const std::vector<int32_t> &mask, int64_t B, int64_t S, int64_t fill,
+             aclDataType inDtype, aclrtStream stream)
 {
     std::vector<int64_t> shape = {B, S};
     std::vector<int64_t> golden = ComputeGolden(mask, B, S, fill);
@@ -94,24 +98,20 @@ bool RunCase(const std::string &name, const std::vector<int32_t> &mask,
 
     void *maskDev = nullptr;
     void *posDev = nullptr;
-    CHECK(aclrtMalloc(&maskDev, inBytes, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS,
-          name + ": malloc mask failed");
-    CHECK(aclrtMalloc(&posDev, outBytes, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS,
-          name + ": malloc pos failed");
-    CHECK(aclrtMemcpy(maskDev, inBytes, hostIn.data(), inBytes,
-                      ACL_MEMCPY_HOST_TO_DEVICE) == ACL_SUCCESS,
+    CHECK(aclrtMalloc(&maskDev, inBytes, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, name + ": malloc mask failed");
+    CHECK(aclrtMalloc(&posDev, outBytes, ACL_MEM_MALLOC_HUGE_FIRST) == ACL_SUCCESS, name + ": malloc pos failed");
+    CHECK(aclrtMemcpy(maskDev, inBytes, hostIn.data(), inBytes, ACL_MEMCPY_HOST_TO_DEVICE) == ACL_SUCCESS,
           name + ": memcpy H2D failed");
 
-    aclTensor *maskT = aclCreateTensor(shape.data(), shape.size(), inDtype,
-        nullptr, 0, ACL_FORMAT_ND, shape.data(), shape.size(), maskDev);
-    aclTensor *posT = aclCreateTensor(shape.data(), shape.size(), ACL_INT64,
-        nullptr, 0, ACL_FORMAT_ND, shape.data(), shape.size(), posDev);
+    aclTensor *maskT = aclCreateTensor(shape.data(), shape.size(), inDtype, nullptr, 0, ACL_FORMAT_ND, shape.data(),
+                                       shape.size(), maskDev);
+    aclTensor *posT = aclCreateTensor(shape.data(), shape.size(), ACL_INT64, nullptr, 0, ACL_FORMAT_ND, shape.data(),
+                                      shape.size(), posDev);
     CHECK(maskT != nullptr && posT != nullptr, name + ": create tensor failed");
 
     uint64_t workspaceSize = 0;
     aclOpExecutor *executor = nullptr;
-    aclnnStatus st = aclnnGenPositionIdsFromMaskGetWorkspaceSize(
-        maskT, fill, posT, &workspaceSize, &executor);
+    aclnnStatus st = aclnnGenPositionIdsFromMaskGetWorkspaceSize(maskT, fill, posT, &workspaceSize, &executor);
     CHECK(st == ACL_SUCCESS, name + ": GetWorkspaceSize failed, ret=" + std::to_string(st));
 
     void *workspace = nullptr;
@@ -124,24 +124,29 @@ bool RunCase(const std::string &name, const std::vector<int32_t> &mask,
     CHECK(aclrtSynchronizeStream(stream) == ACL_SUCCESS, name + ": sync failed");
 
     std::vector<int64_t> hostOut(static_cast<size_t>(B * S));
-    CHECK(aclrtMemcpy(hostOut.data(), outBytes, posDev, outBytes,
-                      ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS,
+    CHECK(aclrtMemcpy(hostOut.data(), outBytes, posDev, outBytes, ACL_MEMCPY_DEVICE_TO_HOST) == ACL_SUCCESS,
           name + ": memcpy D2H failed");
 
     bool ok = (hostOut == golden);
-    std::cout << "[" << (ok ? "PASS" : "FAIL") << "] " << DtypeName(inDtype)
-              << " | " << name << " B=" << B << " S=" << S << " fill=" << fill;
+    std::cout << "[" << (ok ? "PASS" : "FAIL") << "] " << DtypeName(inDtype) << " | " << name << " B=" << B
+              << " S=" << S << " fill=" << fill;
     if (!ok) {
         std::cout << "\n        got   :";
-        for (auto v : hostOut) std::cout << " " << v;
+        for (auto v : hostOut)
+            std::cout << " " << v;
         std::cout << "\n        expect:";
-        for (auto v : golden) std::cout << " " << v;
+        for (auto v : golden)
+            std::cout << " " << v;
     }
     std::cout << std::endl;
 
-    if (ok) ++g_passed; else ++g_failed;
+    if (ok)
+        ++g_passed;
+    else
+        ++g_failed;
 
-    if (workspace) aclrtFree(workspace);
+    if (workspace)
+        aclrtFree(workspace);
     aclDestroyTensor(maskT);
     aclDestroyTensor(posT);
     aclrtFree(maskDev);
@@ -149,7 +154,7 @@ bool RunCase(const std::string &name, const std::vector<int32_t> &mask,
     return true;
 }
 
-}  // namespace
+} // namespace
 
 int main()
 {
@@ -168,17 +173,17 @@ int main()
         int64_t B, S, fill;
     };
     std::vector<Case> cases = {
-        {"left_pad",   {0,0,1,1,1,1}, 1, 6, 1},
-        {"right_pad",  {1,1,1,1,0,0}, 1, 6, 1},
-        {"mid_pad",    {1,1,0,0,1,1}, 1, 6, 1},
-        {"all_zeros",  {0,0,0,0},     1, 4, 1},
-        {"all_ones",   {1,1,1,1},     1, 4, 1},
-        {"s_one",      {1},           1, 1, 1},
-        {"s_one_zero", {0},           1, 1, 1},
-        {"fill_zero",  {0,1,1,0,1},   1, 5, 0},
-        {"fill_neg",   {0,1,1,0,1},   1, 5, -1},
+        {"left_pad", {0, 0, 1, 1, 1, 1}, 1, 6, 1},
+        {"right_pad", {1, 1, 1, 1, 0, 0}, 1, 6, 1},
+        {"mid_pad", {1, 1, 0, 0, 1, 1}, 1, 6, 1},
+        {"all_zeros", {0, 0, 0, 0}, 1, 4, 1},
+        {"all_ones", {1, 1, 1, 1}, 1, 4, 1},
+        {"s_one", {1}, 1, 1, 1},
+        {"s_one_zero", {0}, 1, 1, 1},
+        {"fill_zero", {0, 1, 1, 0, 1}, 1, 5, 0},
+        {"fill_neg", {0, 1, 1, 0, 1}, 1, 5, -1},
         // 多行: 验证按 B 切核
-        {"multi_row",  {0,0,1,1, 1,1,1,1, 1,0,0,1}, 3, 4, 1},
+        {"multi_row", {0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1}, 3, 4, 1},
     };
 
     std::vector<aclDataType> dtypes = {ACL_INT32, ACL_INT64, ACL_BOOL};
@@ -191,11 +196,11 @@ int main()
                 break;
             }
         }
-        if (fatal) break;
+        if (fatal)
+            break;
     }
 
-    std::cout << "\n==== summary: " << g_passed << " passed, "
-              << g_failed << " failed ====" << std::endl;
+    std::cout << "\n==== summary: " << g_passed << " passed, " << g_failed << " failed ====" << std::endl;
 
     aclrtDestroyStream(stream);
     aclrtResetDevice(0);

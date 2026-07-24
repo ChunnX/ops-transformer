@@ -21,10 +21,12 @@ using namespace ge;
 
 class GenPositionIdsFromMaskTilingTest : public testing::Test {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
         std::cout << "--- GenPositionIdsFromMask Tiling UT SetUp ---" << std::endl;
     }
-    static void TearDownTestCase() {
+    static void TearDownTestCase()
+    {
         std::cout << "--- GenPositionIdsFromMask Tiling UT TearDown ---" << std::endl;
     }
 };
@@ -32,22 +34,16 @@ protected:
 // int32 mask -> tiling key 1
 TEST_F(GenPositionIdsFromMaskTilingTest, tiling_int32)
 {
-    struct GenPositionIdsFromMaskCompileInfo {} compileInfo;
+    struct GenPositionIdsFromMaskCompileInfo {
+    } compileInfo;
 
     int64_t b = 4, s = 128;
 
     gert::TilingContextPara tilingContextPara(
-        "GenPositionIdsFromMask",
-        {
-            {{ {b, s}, {b, s} }, ge::DT_INT32, ge::FORMAT_ND}
-        },
-        {
-            {{ {b, s}, {b, s} }, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        {
-            {"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
-        },
-        &compileInfo, "Ascend910B", 64, 262144, 16384);
+        "GenPositionIdsFromMask", {{{{b, s}, {b, s}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{{b, s}, {b, s}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {{"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}}, &compileInfo, "Ascend910B", 64,
+        262144, 16384);
 
     uint64_t expectTilingKey = 1UL;
 
@@ -57,22 +53,16 @@ TEST_F(GenPositionIdsFromMaskTilingTest, tiling_int32)
 // int64 mask -> tiling key 2
 TEST_F(GenPositionIdsFromMaskTilingTest, tiling_int64)
 {
-    struct GenPositionIdsFromMaskCompileInfo {} compileInfo;
+    struct GenPositionIdsFromMaskCompileInfo {
+    } compileInfo;
 
     int64_t b = 4, s = 128;
 
     gert::TilingContextPara tilingContextPara(
-        "GenPositionIdsFromMask",
-        {
-            {{ {b, s}, {b, s} }, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        {
-            {{ {b, s}, {b, s} }, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        {
-            {"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
-        },
-        &compileInfo, "Ascend910B", 64, 262144, 16384);
+        "GenPositionIdsFromMask", {{{{b, s}, {b, s}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {{{{b, s}, {b, s}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {{"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}}, &compileInfo, "Ascend910B", 64,
+        262144, 16384);
 
     uint64_t expectTilingKey = 2UL;
 
@@ -82,22 +72,16 @@ TEST_F(GenPositionIdsFromMaskTilingTest, tiling_int64)
 // bool mask -> tiling key 3
 TEST_F(GenPositionIdsFromMaskTilingTest, tiling_bool)
 {
-    struct GenPositionIdsFromMaskCompileInfo {} compileInfo;
+    struct GenPositionIdsFromMaskCompileInfo {
+    } compileInfo;
 
     int64_t b = 4, s = 128;
 
     gert::TilingContextPara tilingContextPara(
-        "GenPositionIdsFromMask",
-        {
-            {{ {b, s}, {b, s} }, ge::DT_BOOL, ge::FORMAT_ND}
-        },
-        {
-            {{ {b, s}, {b, s} }, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        {
-            {"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
-        },
-        &compileInfo, "Ascend910B", 64, 262144, 16384);
+        "GenPositionIdsFromMask", {{{{b, s}, {b, s}}, ge::DT_BOOL, ge::FORMAT_ND}},
+        {{{{b, s}, {b, s}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {{"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}}, &compileInfo, "Ascend910B", 64,
+        262144, 16384);
 
     uint64_t expectTilingKey = 3UL;
 
@@ -107,22 +91,16 @@ TEST_F(GenPositionIdsFromMaskTilingTest, tiling_bool)
 // 非 2D 输入 -> tiling 失败
 TEST_F(GenPositionIdsFromMaskTilingTest, tiling_invalid_3d_fail)
 {
-    struct GenPositionIdsFromMaskCompileInfo {} compileInfo;
+    struct GenPositionIdsFromMaskCompileInfo {
+    } compileInfo;
 
     int64_t b = 4, s = 128, k = 2;
 
     gert::TilingContextPara tilingContextPara(
-        "GenPositionIdsFromMask",
-        {
-            {{ {b, s, k}, {b, s, k} }, ge::DT_INT32, ge::FORMAT_ND}
-        },
-        {
-            {{ {b, s, k}, {b, s, k} }, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        {
-            {"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
-        },
-        &compileInfo, "Ascend910B", 64, 262144, 16384);
+        "GenPositionIdsFromMask", {{{{b, s, k}, {b, s, k}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{{b, s, k}, {b, s, k}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {{"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}}, &compileInfo, "Ascend910B", 64,
+        262144, 16384);
 
     // shape 维度非 2 时 TilingGenPositionIdsFromMask 返回 GRAPH_FAILED
     ExecuteTestCase(tilingContextPara, ge::GRAPH_FAILED, 0UL);
@@ -131,22 +109,16 @@ TEST_F(GenPositionIdsFromMaskTilingTest, tiling_invalid_3d_fail)
 // 非默认 fillValue 也能正常出 tiling
 TEST_F(GenPositionIdsFromMaskTilingTest, tiling_fill_value_neg)
 {
-    struct GenPositionIdsFromMaskCompileInfo {} compileInfo;
+    struct GenPositionIdsFromMaskCompileInfo {
+    } compileInfo;
 
     int64_t b = 8, s = 64;
 
     gert::TilingContextPara tilingContextPara(
-        "GenPositionIdsFromMask",
-        {
-            {{ {b, s}, {b, s} }, ge::DT_INT32, ge::FORMAT_ND}
-        },
-        {
-            {{ {b, s}, {b, s} }, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        {
-            {"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}
-        },
-        &compileInfo, "Ascend910B", 64, 262144, 16384);
+        "GenPositionIdsFromMask", {{{{b, s}, {b, s}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {{{{b, s}, {b, s}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {{"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(-1)}}, &compileInfo, "Ascend910B", 64,
+        262144, 16384);
 
     uint64_t expectTilingKey = 1UL;
 

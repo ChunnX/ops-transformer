@@ -19,22 +19,26 @@ using namespace ge;
 
 namespace optiling {
 
-constexpr uint32_t DIMS_LIMIT = 2;   // [B, S]
+constexpr uint32_t DIMS_LIMIT = 2; // [B, S]
 constexpr uint32_t DIM_B = 0;
 constexpr uint32_t DIM_S = 1;
-constexpr size_t   ATTR_PADDING_FILL_VALUE_INDEX = 0;
+constexpr size_t ATTR_PADDING_FILL_VALUE_INDEX = 0;
 
 constexpr uint64_t TILING_KEY_INT32 = 1;
 constexpr uint64_t TILING_KEY_INT64 = 2;
-constexpr uint64_t TILING_KEY_BOOL  = 3;
+constexpr uint64_t TILING_KEY_BOOL = 3;
 
 static uint64_t GetTilingKeyByDtype(ge::DataType dt)
 {
     switch (dt) {
-        case ge::DT_INT32: return TILING_KEY_INT32;
-        case ge::DT_INT64: return TILING_KEY_INT64;
-        case ge::DT_BOOL:  return TILING_KEY_BOOL;
-        default:           return TILING_KEY_INT32;
+        case ge::DT_INT32:
+            return TILING_KEY_INT32;
+        case ge::DT_INT64:
+            return TILING_KEY_INT64;
+        case ge::DT_BOOL:
+            return TILING_KEY_BOOL;
+        default:
+            return TILING_KEY_INT32;
     }
 }
 
@@ -84,8 +88,7 @@ static ge::graphStatus TilingGenPositionIdsFromMask(gert::TilingContext *context
     }
     context->SetTilingKey(GetTilingKeyByDtype(maskDesc->GetDataType()));
 
-    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(),
-                        context->GetRawTilingData()->GetCapacity());
+    tiling.SaveToBuffer(context->GetRawTilingData()->GetData(), context->GetRawTilingData()->GetCapacity());
     context->GetRawTilingData()->SetDataSize(tiling.GetDataSize());
 
     // workspace: 计算在片上完成, 仅需系统预留
@@ -100,4 +103,4 @@ static ge::graphStatus TilingGenPositionIdsFromMask(gert::TilingContext *context
 
 IMPL_OP_OPTILING(GenPositionIdsFromMask).Tiling(TilingGenPositionIdsFromMask);
 
-}  // namespace optiling
+} // namespace optiling

@@ -22,8 +22,7 @@ constexpr uint32_t MASK_INPUT_INDEX = 0;
 
 ge::graphStatus InferShapeGenPositionIdsFromMask(gert::InferShapeContext *context)
 {
-    OP_CHECK_IF(context == nullptr,
-                OP_LOGE("GenPositionIdsFromMask", "InferShapeContext is nullptr!"),
+    OP_CHECK_IF(context == nullptr, OP_LOGE("GenPositionIdsFromMask", "InferShapeContext is nullptr!"),
                 return ge::GRAPH_FAILED);
     const gert::Shape *maskShape = context->GetInputShape(MASK_INPUT_INDEX);
     OP_CHECK_NULL_WITH_CONTEXT(context, maskShape);
@@ -41,10 +40,9 @@ ge::graphStatus InferShapeGenPositionIdsFromMask(gert::InferShapeContext *contex
 
 ge::graphStatus InferDataTypeGenPositionIdsFromMask(gert::InferDataTypeContext *context)
 {
-    OP_CHECK_IF(context == nullptr,
-                OP_LOGE("GenPositionIdsFromMask", "InferDataTypeContext is nullptr!"),
+    OP_CHECK_IF(context == nullptr, OP_LOGE("GenPositionIdsFromMask", "InferDataTypeContext is nullptr!"),
                 return ge::GRAPH_FAILED);
-    context->SetOutputDataType(0, ge::DT_INT64);   // 固定 int64, 不跟随输入
+    context->SetOutputDataType(0, ge::DT_INT64); // 固定 int64, 不跟随输入
     return ge::GRAPH_SUCCESS;
 }
 

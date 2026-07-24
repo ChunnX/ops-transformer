@@ -12,8 +12,8 @@
  */
 #include "kernel_gen_position_ids_from_mask.h"
 
-extern "C" __global__ __aicore__ void gen_position_ids_from_mask(
-    GM_ADDR attention_mask, GM_ADDR position_ids, GM_ADDR workspace, GM_ADDR tiling)
+extern "C" __global__ __aicore__ void gen_position_ids_from_mask(GM_ADDR attention_mask, GM_ADDR position_ids,
+                                                                 GM_ADDR workspace, GM_ADDR tiling)
 {
     GET_TILING_DATA(tilingData, tiling);
 
@@ -27,7 +27,7 @@ extern "C" __global__ __aicore__ void gen_position_ids_from_mask(
         op.Init(attention_mask, position_ids, &tilingData);
         op.Process();
     } else if (TILING_KEY_IS(3)) {
-        KernelGenPositionIdsFromMask<int8_t> op;  // bool 以 int8 搬运
+        KernelGenPositionIdsFromMask<int8_t> op; // bool 以 int8 搬运
         op.Init(attention_mask, position_ids, &tilingData);
         op.Process();
     }

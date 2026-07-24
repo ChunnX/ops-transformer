@@ -16,10 +16,12 @@
 
 class GenPositionIdsFromMaskInferShapeTest : public testing::Test {
 protected:
-    static void SetUpTestCase() {
+    static void SetUpTestCase()
+    {
         std::cout << "--- GenPositionIdsFromMask InferShape UT SetUp ---" << std::endl;
     }
-    static void TearDownTestCase() {
+    static void TearDownTestCase()
+    {
         std::cout << "--- GenPositionIdsFromMask InferShape UT TearDown ---" << std::endl;
     }
 };
@@ -31,20 +33,14 @@ TEST_F(GenPositionIdsFromMaskInferShapeTest, infershape_same_as_input)
 
     gert::InfershapeContextPara infershapeContextPara(
         "GenPositionIdsFromMask",
-        { // input info
-            {{ {b, s}, {b, s} }, ge::DT_INT32, ge::FORMAT_ND}
-        },
-        { // output info: 占位给空 shape, 由 infershape 从零构造
-            {{ {}, {} }, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        { // attr
-            {"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}
-        }
-    );
+        {// input info
+         {{{b, s}, {b, s}}, ge::DT_INT32, ge::FORMAT_ND}},
+        {// output info: 占位给空 shape, 由 infershape 从零构造
+         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {// attr
+         {"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(1)}});
 
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {b, s}
-    };
+    std::vector<std::vector<int64_t>> expectOutputShape = {{b, s}};
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }
@@ -56,20 +52,14 @@ TEST_F(GenPositionIdsFromMaskInferShapeTest, infershape_another_shape)
 
     gert::InfershapeContextPara infershapeContextPara(
         "GenPositionIdsFromMask",
-        { // input info
-            {{ {b, s}, {b, s} }, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        { // output info: 占位给空 shape
-            {{ {}, {} }, ge::DT_INT64, ge::FORMAT_ND}
-        },
-        { // attr
-            {"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}
-        }
-    );
+        {// input info
+         {{{b, s}, {b, s}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {// output info: 占位给空 shape
+         {{{}, {}}, ge::DT_INT64, ge::FORMAT_ND}},
+        {// attr
+         {"padding_fill_value", Ops::Transformer::AnyValue::CreateFrom<int64_t>(0)}});
 
-    std::vector<std::vector<int64_t>> expectOutputShape = {
-        {b, s}
-    };
+    std::vector<std::vector<int64_t>> expectOutputShape = {{b, s}};
 
     ExecuteTestCase(infershapeContextPara, ge::GRAPH_SUCCESS, expectOutputShape);
 }

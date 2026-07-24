@@ -8,7 +8,7 @@
  * See LICENSE in the root of the software repository for the full text of the License.
  */
 /**
- * @file gen_position_ids_from_mask.h
+ * @file kernel_gen_position_ids_from_mask.h
  */
 #ifndef GEN_POSITION_IDS_FROM_MASK_H_
 #define GEN_POSITION_IDS_FROM_MASK_H_
@@ -20,7 +20,9 @@ using namespace AscendC;
 template <typename TIn>
 class KernelGenPositionIdsFromMask {
 public:
-    __aicore__ inline KernelGenPositionIdsFromMask() {}
+    __aicore__ inline KernelGenPositionIdsFromMask()
+    {
+    }
 
     __aicore__ inline void Init(GM_ADDR attentionMask, GM_ADDR positionIds,
                                 const GenPositionIdsFromMaskTilingData *tiling)
@@ -32,7 +34,7 @@ public:
 
         int64_t blockIdx = GetBlockIdx();
         int64_t base = b_ / coreNum_;
-        int64_t rem  = b_ % coreNum_;
+        int64_t rem = b_ % coreNum_;
         if (blockIdx < rem) {
             rowNum_ = base + 1;
             rowBegin_ = blockIdx * (base + 1);
@@ -74,4 +76,4 @@ private:
     int64_t rowBegin_ = 0;
 };
 
-#endif  // GEN_POSITION_IDS_FROM_MASK_H_
+#endif // GEN_POSITION_IDS_FROM_MASK_H_
