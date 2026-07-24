@@ -977,18 +977,21 @@ def tilelang_grad_kl_loss_single_kernel(
 
                             T.wait_flag("mte3", "v", dk_slot + 5)
                             if dk_slot == 0:
+                                # PTO requires a compile-time physical cast
+                                # shape.  The dynamic tail is constrained only
+                                # by the surrounding GM copies.
                                 T.tile.cast(
-                                    dk_out_ping_ub[0:dk_count, 0:DQueryIndex],
-                                    dk_fp32_ping_ub[0:dk_count, 0:DQueryIndex],
+                                    dk_out_ping_ub,
+                                    dk_fp32_ping_ub,
                                     "CAST_RINT",
-                                    dk_count * DQueryIndex,
+                                    dk_batch_rows * DQueryIndex,
                                 )
                             if dk_slot == 1:
                                 T.tile.cast(
-                                    dk_out_pong_ub[0:dk_count, 0:DQueryIndex],
-                                    dk_fp32_pong_ub[0:dk_count, 0:DQueryIndex],
+                                    dk_out_pong_ub,
+                                    dk_fp32_pong_ub,
                                     "CAST_RINT",
-                                    dk_count * DQueryIndex,
+                                    dk_batch_rows * DQueryIndex,
                                 )
                             T.set_flag("v", "mte2", dk_slot + 5)
                             T.set_flag("v", "mte3", dk_slot + 5)
