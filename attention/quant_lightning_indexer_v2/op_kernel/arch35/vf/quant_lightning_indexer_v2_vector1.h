@@ -628,7 +628,7 @@ __simd_vf__ void MulWeightAndReduceSum2F16VF(__ubuf__ uint16_t* out0, __ubuf__ u
     MicroAPI::RegTensor<float> regQK0[2];
     MicroAPI::RegTensor<float> regQK1[2];
     MicroAPI::RegTensor<float> regW[2];
-
+    MicroAPI::RegTensor<half> regWFP16[2];
     MicroAPI::RegTensor<float> regQScale[2];
     MicroAPI::RegTensor<half> regQScaleFP16[2];
     MicroAPI::RegTensor<float> regKScale[2];
@@ -664,7 +664,7 @@ __simd_vf__ void MulWeightAndReduceSum2F16VF(__ubuf__ uint16_t* out0, __ubuf__ u
     liV2Vector1::DuplicateZero(regSum0, maskAllB32);
     liV2Vector1::DuplicateZero(regSum1, maskAllB32);
 
-    LoadKScaleFP16(regKScaleFP16, regKScale, maskAllB16, kScale);
+    LoadKScaleFP16(regKScaleFP16, regKScale, maskAllB16, kScale0);
 
     for (uint16_t i = (uint16_t)(0); i < gSize; i++) {
         MicroAPI::LoadAlign<float>(regQK0[0], qk0 + 128 * i);
@@ -891,7 +891,7 @@ __aicore__ inline void MulWeightAndReduceSum2(const LocalTensor<uint16_t> &out_,
                                 qScale0, qScale1, kScale0, (uint16_t)gSize);
 }
 
-template<typename QK_T, typename SCORE_T>
+template<typename QK_T, typename SCORE_T, typename W_T, typename SCALE_T>
 __aicore__ inline void BatchMulWeightAndReduceSum(const LocalTensor<SCORE_T> &out_,   // out    [S2Base]     [128   ]
                                                   uint32_t outStride,
                                                   const LocalTensor<QK_T> &qk_,       // q*k^t  [G, S2Base]  [64 128]
