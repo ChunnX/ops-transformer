@@ -1451,7 +1451,6 @@ def tilelang_grad_kl_loss_single_kernel(
             v1_bw_eps = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_log_p = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_log_sy = T.alloc_ub(bw_col_block, calc_dtype)
-            v1_bw_loss = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_loss_2d = T.alloc_ub((1, bw_col_block), calc_dtype)
             v1_bw_loss_sum = T.alloc_ub((1,), calc_dtype)
             v1_bw_loss_accum = T.alloc_ub((1,), calc_dtype)
@@ -1613,16 +1612,15 @@ def tilelang_grad_kl_loss_single_kernel(
                             )
                             T.pipe_barrier("v")
                             T.tile.sub(
-                                v1_bw_loss, v1_bw_log_p, v1_bw_log_sy
+                                v1_bw_loss_2d[0, :],
+                                v1_bw_log_p,
+                                v1_bw_log_sy,
                             )
                             T.pipe_barrier("v")
                             T.tile.mul(
-                                v1_bw_loss,
-                                v1_bw_loss,
+                                v1_bw_loss_2d[0, :],
+                                v1_bw_loss_2d[0, :],
                                 v1_bw_p,
-                            )
-                            T.tile.mul(
-                                v1_bw_loss_2d[0, :], v1_bw_loss, 1.0
                             )
                             T.pipe_barrier("v")
                             T.reduce_sum(
