@@ -43,8 +43,8 @@ public:
     static constexpr bool IS_MX = QLIV2T::isMx;
     static constexpr bool IS_MXFP4 = QLIV2T::isMxFp4;
     using SCALE_T = typename QLIV2T::scaleType;
-
-    __aicore__ inline QLIV2Vector(){};
+    static constexpr bool IS_WEIGHT_FP16 = QLIV2T::isWeightFP16;
+    __aicore__ inline QLIV2Vector() {};
     __aicore__ inline void ProcessVec1(const QLIV2Common::RunInfo &info);
     __aicore__ inline void ProcessTopK(const QLIV2Common::RunInfo &info);
     __aicore__ inline void ProcessLD();
@@ -57,7 +57,7 @@ public:
     __aicore__ inline void InitVecInputTensor(GlobalTensor<WEIGHT_T> weightsGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<int32_t> blockTableGm, GlobalTensor<bfloat16_t> valueOutGm,
                                               GlobalTensor<int32_t> outputIdxOffsetGm,
-                                              GlobalTensor<float> qScaleGm = {}, GlobalTensor<float> kScaleGm = {});
+                                              GlobalTensor<SCALE_T> qScaleGm = {}, GlobalTensor<SCALE_T> kScaleGm = {});
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -94,13 +94,13 @@ protected:
     static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
 
 private:
-    __aicore__ inline void GetKeyScale(const QLIV2Common::RunInfo &runInfo, LocalTensor<float> &kScaleUB,
+    __aicore__ inline void GetKeyScale(const QLIV2Common::RunInfo &runInfo, LocalTensor<SCALE_T> &kScaleUB,
                                        int64_t batchId, int64_t startS2, int64_t getLen);
     // ================================Local Buffer区====================================
 
     // tmp buff for vector
     TBuf<TPosition::VECCALC> resMm1Buf_;
-    LocalTensor<QK_T> resMm1UB_;
+    LocalTensor<float> resMm1UB_;
     // tmp buff for weight
     TBuf<TPosition::VECCALC> weightBuf_;
     LocalTensor<WEIGHT_T> weightUB_;
@@ -179,7 +179,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     weightUB_ = weightBuf_.Get<WEIGHT_T>(); // weight
     pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
-    weightTempUB_ = weightTempBuf_.Get<W_T>();
+    weightTempUB_ = weightTempBuf_.Get<float>();
     // 大小：2(开dB) * 128 * 4 = 1KB
     pipe->InitBuffer(kScaleBuf_, 2 * s2BaseSize_ * 16 * sizeof(SCALE_T));
     kScaleUB_ = kScaleBuf_.Get<SCALE_T>(); // kScale
@@ -212,7 +212,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 
     // MX场景不走vector侧kScale路径
     if constexpr (!IS_MX) {
-        Duplicate(kScaleUB_, float(0), 2 * s2BaseSize_ * 16);
+        Duplicate(kScaleUB_, (SCALE_T)(0), 2 * s2BaseSize_ * 16);
     }
 }
 
@@ -553,6 +553,17 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
                                               (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)), weightBase,
                                               UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), weightTempBase, gSize_,
                                               curAivS1ProcNum);
+    } else if constexpr (IS_WEIGHT_FP16) {
+        auto qScaleBase = qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
+        auto kScaleBase = kScaleUB_[kScalepingpong * 16 * s2BaseSize_ +
+            ((info.s2Idx - info.s2Start) % 16) * s2BaseSize_];
+        vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
+            qkBase, qkVLstride,
+            (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
+            kScaleBase, (uint32_t)0,
+            qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float),
+            gSize_, curAivS1ProcNum);
     } else if (constInfo_.quantMode == 4) { // 4: per_tensor量化
         // quantMode为4时不适用sacle的UB
         float kScaleValue = globalKScale_;

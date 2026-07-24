@@ -126,7 +126,7 @@ protected:
     LocalTensor<QK_T> cL0_;
 
     TBuf<TPosition::VECCALC> bufUB_;
-    LocalTensor<QK_T> mm1ResUB_;
+    LocalTensor<float> mm1ResUB_;
 
     uint64_t keyL1BufIdx_ = 0;
     uint64_t queryL1Mte2BufIdx_ = 0;
@@ -187,7 +187,7 @@ __aicore__ inline void QLIV2Matmul<QLIV2T>::InitBuffers(TPipe *pipe)
     keyL0_ = bufKeyL0_.Get<L0_K_T>();
 
     pipe->InitBuffer(bufL0C_, L0_BUF_NUM * M_BASIC_BLOCK_L0 * S2_BASIC_BLOCK_L0 * sizeof(float));
-    cL0_ = bufL0C_.Get<float>();
+    cL0_ = bufL0C_.Get<QK_T>();
 }
 
 template <typename QLIV2T>

@@ -57,6 +57,7 @@ struct QLIV2Type {
     static constexpr bool pageAttention = PAGE_ATTENTION;
     static constexpr LI_LAYOUT layout = Q_LAYOUT_T;
     static constexpr LI_LAYOUT keyLayout = K_LAYOUT_T;
+    static constexpr bool isWeightFP16 = std::is_same_v<W_T, half>;
 };
 
 struct RunInfo {
