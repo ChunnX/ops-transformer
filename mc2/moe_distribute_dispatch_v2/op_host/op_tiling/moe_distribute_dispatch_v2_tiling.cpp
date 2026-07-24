@@ -998,6 +998,20 @@ static ge::graphStatus CheckAttrs(const gert::TilingContext *context, const char
                     return ge::GRAPH_FAILED);
     tilingData.moeDistributeDispatchV2Info.bs = static_cast<uint32_t>(xDim0);
 
+    // 原子定序路由（仅 A5）：BS<=4 且非 fullmesh/layered 时 tiling key 选 ENABLE_ATOMIC，该内核的每专家
+    // 原子计数器区容量 = (890KB-880KB)/512B = 20（常量在 arch35/moe_distribute_dispatch_v2_a5_atomic.h 的
+    // EXPERT_COUNTERS_*/COUNTER_STRIDE），localMoeExpertNum 超限直接拒绝（fail-fast 防乒乓计数器区互踩）。
+    // 基线路径（A3 全部、A5 的 BS>4）不使用计数器区，不受此限。
+    if (!isSetFullMeshV2 && !isLayered && (xDim0 <= 4) && (mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510)) {
+        constexpr uint32_t EXPERT_COUNTERS_CAPACITY = 20U;
+        OP_TILING_CHECK(localMoeExpertNum > EXPERT_COUNTERS_CAPACITY,
+                        OP_LOGE(nodeName,
+                                "localMoeExpertNum(%u) exceeds atomic expert-counters capacity(%u) when bs<=4 on A5. "
+                                "Please reduce moeExpertNum per rank or use bs>4/fullmesh/hierarchy.",
+                                localMoeExpertNum, EXPERT_COUNTERS_CAPACITY),
+                        return ge::GRAPH_FAILED);
+    }
+
     return CheckGlobalBsAttr(context, nodeName, tilingData, xDim0, epWorldSize, isActiveMask, config);
 }
 
@@ -1777,18 +1791,41 @@ static ge::graphStatus CheckUBSize(const gert::TilingContext *context, MoeDistri
     return CheckUsedUbSize(context, tilingData, nodeName, ubSize, bsSize, hSize, kSize);
 }
 
-static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const char *nodeName)
+static ge::graphStatus SetWorkSpace(gert::TilingContext *context, MoeDistributeDispatchV2TilingData &tilingData,
+                                    uint32_t localMoeExpertNum, const bool isSetFullMeshV2, const bool isLayered,
+                                    const char *nodeName)
 {
     size_t *workSpaces = context->GetWorkspaceSizes(1);
     OP_TILING_CHECK(workSpaces == nullptr, OP_LOGE_WITH_INVALID_INPUT(nodeName, "workSpaces"), return ge::GRAPH_FAILED);
-    auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
-    uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
-    workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
-    if (mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510) {
-        // A5为前缀和同步标记预留空间
-        workSpaces[0] +=
-            A5_CUMSUM_WS_FLAG_OFFSET + static_cast<uint64_t>(aivNum) * A5_CUMSUM_WORKSPACE_MAX_CORE_NUM * UB_ALIGN_VAL;
+    // 原子定序路由（条件须与 CalTilingKey 的 ENABLE_ATOMIC 保持一致）：a5_atomic 内核用下方暂存区公式，
+    // 其余路径用基线公式。
+    bool isA5 = mc2tiling::GetNpuArch(context) == Ops::Base::DAV_3510;
+    bool isAtomicSort = (!isSetFullMeshV2 && !isLayered && (tilingData.moeDistributeDispatchV2Info.bs <= 4U) && isA5);
+    if (!isAtomicSort) {
+        auto ascendcPlatform = platform_ascendc::PlatformAscendC(context->GetPlatformInfo());
+        uint32_t aivNum = ascendcPlatform.GetCoreNumAiv();
+        workSpaces[0] = SYSTEM_NEED_WORKSPACE + static_cast<size_t>(WORKSPACE_ELEMENT_OFFSET * aivNum * aivNum);
+        if (isA5) {
+            // A5为前缀和同步标记预留空间
+            workSpaces[0] += A5_CUMSUM_WS_FLAG_OFFSET +
+                             static_cast<uint64_t>(aivNum) * A5_CUMSUM_WORKSPACE_MAX_CORE_NUM * UB_ALIGN_VAL;
+        }
+        return ge::GRAPH_SUCCESS;
     }
+    // 原子定序：专家>0 的完整 token（data + 量化scales + expandIdx 三元组 + 可选专家scale）会暂存到 workspace
+    // （内核 recvCntWorkspaceGM_）再密排重排，地址空间达 localMoeExpertNum * globalBs * tokenBytes。
+    // scale 按 ceil128(h) 个 float 预留，覆盖所有量化模式（PERGROUP 最大）。
+    constexpr uint64_t EXPAND_IDX_BYTES = 3UL * sizeof(uint32_t); // expandIdx 三元组: rankId/tokenIndex/k
+    uint64_t h = static_cast<uint64_t>(tilingData.moeDistributeDispatchV2Info.h);
+    uint64_t globalBs = static_cast<uint64_t>(tilingData.moeDistributeDispatchV2Info.globalBs);
+    uint64_t dtypeSize = ge::GetSizeByDataType(context->GetInputDesc(X_INDEX)->GetDataType());
+    uint64_t dataBytes = ops::CeilAlign(h * dtypeSize, static_cast<uint64_t>(WORKSPACE_ELEMENT_OFFSET));
+    uint64_t scaleCnt = ops::CeilAlign(h, static_cast<uint64_t>(128U));
+    uint64_t scaleReserve = scaleCnt * sizeof(float) + EXPAND_IDX_BYTES + sizeof(float);
+    uint64_t fullTokenBytes = dataBytes + ops::CeilAlign(scaleReserve, static_cast<uint64_t>(WORKSPACE_ELEMENT_OFFSET));
+    size_t stagingSize =
+        static_cast<size_t>(localMoeExpertNum) * static_cast<size_t>(globalBs) * static_cast<size_t>(fullTokenBytes);
+    workSpaces[0] = SYSTEM_NEED_WORKSPACE + stagingSize;
     return ge::GRAPH_SUCCESS;
 }
 
@@ -1944,7 +1981,8 @@ ge::graphStatus CheckSizeAndSetRelevantCfg(gert::TilingContext *context, MoeDist
                                        config) != ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling check window size failed."), return ge::GRAPH_FAILED);
 
-    OP_TILING_CHECK(SetWorkSpace(context, nodeName) != ge::GRAPH_SUCCESS,
+    OP_TILING_CHECK(SetWorkSpace(context, *tilingData, localMoeExpertNum, isSetFullMeshV2, isLayered, nodeName) !=
+                        ge::GRAPH_SUCCESS,
                     OP_LOGE(nodeName, "Tiling set workspace failed."), return ge::GRAPH_FAILED);
 
     if (!config.isMc2Context) {
@@ -2067,7 +2105,10 @@ ge::graphStatus MoeDistributeDispatchV2TilingFuncBase::MoeDistributeDispatchA3Ti
                     OP_LOGE(nodeName, "Check UB/window size or set workspace/hcomm cfg failed."),
                     return ge::GRAPH_FAILED);
 
-    uint64_t tilingKey = CalTilingKey(isScales, quantMode, isSetFullMeshV2, isLayered);
+    // 原子定序路由条件：BS<=4 且非 fullmesh/layered（A5 的 CalTilingKey 据此选 ENABLE_ATOMIC 内核，
+    // A3/A2A3 实现忽略该参数恒走基线）
+    bool isAtomicSort = (tilingData->moeDistributeDispatchV2Info.bs <= 4U) && !isSetFullMeshV2 && !isLayered;
+    uint64_t tilingKey = CalTilingKey(isScales, quantMode, isSetFullMeshV2, isLayered, isAtomicSort);
     return FinalizeDispatchTiling(context, *tilingData, tilingKey, isLayered, nodeName, config.isMc2Context,
                                   localMoeExpertNum);
 }

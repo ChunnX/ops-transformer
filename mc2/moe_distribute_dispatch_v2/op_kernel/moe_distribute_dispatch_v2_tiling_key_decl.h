@@ -29,6 +29,7 @@ namespace Mc2Tiling {
 #define TILINGKEY_NO_FULLMESH 0
 #define TILINGKEY_ENABLE_FULLMESH 1
 #define TILINGKEY_ENABLE_HIERARCHY 2
+#define TILINGKEY_ENABLE_ATOMIC 3 // A5 原子定序（BS<=4 非 fullmesh/layered 的 MTE 路由到 a5_atomic 内核）
 #define TILINGKEY_TPL_MTE 0
 #define TILINGKEY_TPL_AICPU 1
 #define TILINGKEY_TPL_CCU 2
@@ -39,7 +40,7 @@ ASCENDC_TPL_ARGS_DECL(MoeDistributeDispatchV2,
                       ASCENDC_TPL_BOOL_DECL(TILINGKEY_SCALE, 0, 1),
                       ASCENDC_TPL_UINT_DECL(TILINGKEY_FULLMESH, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
                                             TILINGKEY_NO_FULLMESH, TILINGKEY_ENABLE_FULLMESH,
-                                            TILINGKEY_ENABLE_HIERARCHY),
+                                            TILINGKEY_ENABLE_HIERARCHY, TILINGKEY_ENABLE_ATOMIC),
                       ASCENDC_TPL_UINT_DECL(TILINGKEY_COMM_MODE, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST,
                                             TILINGKEY_TPL_MTE, TILINGKEY_TPL_AICPU, TILINGKEY_TPL_CCU),
                       ASCENDC_TPL_UINT_DECL(ARCH_TAG, ASCENDC_TPL_2_BW, ASCENDC_TPL_UI_LIST, TILINGKEY_TPL_A2,
