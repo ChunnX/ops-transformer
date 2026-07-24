@@ -42,6 +42,7 @@ const std::string CMP_KV_NAME = "cmp_kv";
 const std::string ORI_SPARSE_INDICES_NAME = "ori_sparse_indices";
 const std::string CMP_SPARSE_INDICES_NAME = "cmp_sparse_indices";
 const std::string ATTEN_OUT_NAME = "attention_out";
+const std::string SOFTMAX_LSE_NAME = "softmax_lse";
 
 const std::string CU_SEQLENS_Q_NAME = "cu_seqlens_q";
 const std::string CU_SEQLENS_ORI_KV_NAME = "cu_seqlens_ori_kv";
@@ -146,6 +147,7 @@ constexpr uint32_t ATTR_TOPK_VALUE_MODE_INDEX = 10;
 constexpr uint32_t ATTR_RETURN_SOFTMAX_LSE_INDEX = 11;
 
 // Dim Index
+constexpr uint32_t DIM_IDX_ZERO = 0;
 constexpr uint32_t DIM_IDX_ONE = 1;
 constexpr uint32_t DIM_IDX_TWO = 2;
 constexpr uint32_t DIM_IDX_THREE = 3;
@@ -248,6 +250,7 @@ struct MQSMLAParaInfo {
     MQSMLATilingOptionalParaInfo sinks = {nullptr, nullptr};
     MQSMLATilingOptionalParaInfo metadata = {nullptr, nullptr};
     MQSMLATilingRequiredParaInfo attnOut = {nullptr, nullptr};
+    MQSMLATilingRequiredParaInfo softmaxLse = {nullptr, nullptr};
 
     const int64_t *quantMode = nullptr;
     const int64_t *tileSize = nullptr;
@@ -263,6 +266,7 @@ struct MQSMLAParaInfo {
     const char *layoutQ = nullptr;
     const char *layoutKv = nullptr;
     const int64_t *topkValueMode = nullptr;
+    const bool *returnSoftmaxLse = nullptr;
 };
 
 // -----------算子Tiling入参信息类---------------
@@ -334,6 +338,8 @@ public:
     MQSMLALayout qLayout = MQSMLALayout::BSND;
     MQSMLALayout kvLayout = MQSMLALayout::PA_BBND;
     MQSMLALayout outLayout = MQSMLALayout::BSND;
+
+    bool returnSoftmaxLse = false;
 };
 
 class MQSMLAInfoParser {
@@ -526,6 +532,7 @@ private:
 
     ge::graphStatus CheckAttenOut();
     ge::graphStatus CheckAttenOutShape();
+    ge::graphStatus CheckSoftmaxLse() const;
     ge::graphStatus CheckActualSeqLensQ();
     ge::graphStatus CheckActualSeqLensQShape();
     ge::graphStatus CheckActualSeqLensQDType();

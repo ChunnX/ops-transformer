@@ -31,7 +31,6 @@
 
   Chunked Gated Delta Rule是GDR的chunk版实现([参考论文](https://arxiv.org/abs/2412.06464))，它通过将输入序列切块，实现了一定的并行效果，在长上下文场景其计算效率相对Recurrent Gated Delta Rule更高，适用于prefill阶段。输入一个长度为L的序列，该算子可以计算出每一步的输出 $o_t, t \in \{1, .., L\}$ 以及最终的状态矩阵 $S_L$。
 
-
 ## 函数原型
 
 每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnChunkGatedDeltaRuleGetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnChunkGatedDeltaRule”接口执行计算。
@@ -244,7 +243,6 @@ aclnnStatus aclnnChunkGatedDeltaRule(
   </tbody>
   </table>
 
-
 ## aclnnChunkGatedDeltaRule
 
 - 参数说明
@@ -288,7 +286,6 @@ aclnnStatus aclnnChunkGatedDeltaRule(
 - 返回值
   aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
-
 ## 约束说明
 
 - 确定性计算：
@@ -302,6 +299,7 @@ aclnnStatus aclnnChunkGatedDeltaRule(
   - $-1 \le key[i][j][k] \le 1$
   - $-1 \le g[i][j] \le 0$
   - $0 < beta[i][j] < 1$
+- initialState、finalState float32数据类型仅在Ascend 950PR/Ascend 950DT支持。
 
 ## 调用示例
 

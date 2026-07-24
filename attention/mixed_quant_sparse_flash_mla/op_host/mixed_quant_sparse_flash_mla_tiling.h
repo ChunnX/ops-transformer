@@ -57,6 +57,7 @@ TILING_DATA_FIELD_DEF(int32_t, oriWinRight)
 TILING_DATA_FIELD_DEF(uint32_t, sparseBlockSize)
 TILING_DATA_FIELD_DEF(uint32_t, dSize)
 TILING_DATA_FIELD_DEF(uint32_t, dSizeVInput)
+TILING_DATA_FIELD_DEF(uint32_t, returnSoftmaxLse)
 END_TILING_DATA_DEF
 REGISTER_TILING_DATA_CLASS(MixedQuantSparseFlashMlaBaseParamsOp, MixedQuantSparseFlashMlaBaseParams)
 
