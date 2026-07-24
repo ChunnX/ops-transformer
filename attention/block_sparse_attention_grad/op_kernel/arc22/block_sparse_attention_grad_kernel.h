@@ -426,10 +426,7 @@ namespace BSA {
 
             AscendC::SyncAll<false>();
 
-            // deter: 等 AIV 清零 slot 完成(用跨核 flag, SyncAll 是 per-type 不跨 AIC↔AIV)
-            if (deter) {
-                AscendC::CrossCoreWaitFlag(DETER_V2C); // 用 DETER_V2C 做 AIV→AIC 清零完成信号
-            }
+            // deter: 方案D — 无需等待 AIV 清零 (cube 写共享 gDk/gDv)
             SetFlag();
             uint32_t vec2CubeFlag = 0;
             for (uint32_t i = 0; i < taskLength; i++) {
@@ -519,7 +516,7 @@ namespace BSA {
 
                                 blockMmad3(gP[preTaskInfo.sOffset],
                                     gDout[preTaskInfo.qOffset],
-                                    deter ? gDvDeter[coreIdx * (dvSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDv[preTaskInfo.kvOffset],
+                                    gDv[preTaskInfo.kvOffset],
                                     layoutA3,
                                     layoutB3,
                                     layoutC3,
@@ -528,20 +525,14 @@ namespace BSA {
 
                                 blockMmad3(gDs[preTaskInfo.sOffset],
                                     gQ[preTaskInfo.qOffset],
-                                    deter ? gDkDeter[coreIdx * (dkSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDk[preTaskInfo.kvOffset],
+                                    gDk[preTaskInfo.kvOffset],
                                     layoutA3,
                                     layoutB3,
                                     layoutC3,
                                     actualShape3,
                                     mmadFlag);
 
-                                // deter: SyncAll 已移除(调试: 验证 SyncAll 是否干扰流水线)
-                                if (deter) {
-                                    AscendC::PipeBarrier<PIPE_ALL>();
-                                    deterRoundCnt++;
-                                    AscendC::SyncAll<false>(); // ① cube 写完本轮私有 tile
-                                    AscendC::SyncAll<false>(); // ② 等 AIV 聚合完
-                                }
+                                // deter: 方案D — cube 写共享 gDk/gDv, 无逐轮 SyncAll
                             }
                             preTaskInfo = curInfo;
                             preTaskInfo.sOffset = curInfo.sOffset * 2; // float32偏移转成bf16/half偏移
@@ -590,7 +581,7 @@ namespace BSA {
                     mmadFlag);
                 blockMmad3(gP[preTaskInfo.sOffset],
                     gDout[preTaskInfo.qOffset],
-                    deter ? gDvDeter[coreIdx * (dvSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDv[preTaskInfo.kvOffset],
+                    gDv[preTaskInfo.kvOffset],
                     layoutA3,
                     layoutB3,
                     layoutC3,
@@ -598,27 +589,15 @@ namespace BSA {
                     mmadFlag);
                 blockMmad3(gDs[preTaskInfo.sOffset],
                     gQ[preTaskInfo.qOffset],
-                    deter ? gDkDeter[coreIdx * (dkSlotSize / sizeof(float)) + preTaskInfo.kvOffset] : gDk[preTaskInfo.kvOffset],
+                    gDk[preTaskInfo.kvOffset],
                     layoutA3,
                     layoutB3,
                     layoutC3,
                     actualShape3,
                     mmadFlag);
-                if (deter) {
-                    AscendC::PipeBarrier<PIPE_ALL>();
-                    deterRoundCnt++;
-                    AscendC::SyncAll<false>();
-                    AscendC::SyncAll<false>();
-                }
+                // deter: 方案D — final mmad3 写共享, 无 SyncAll
             }
-            // deter: 不足 maxLoopSize 的轮次发 invalid + SyncAll 同步, 保证与 AIV 锁步
-            if (deter) {
-                while (deterRoundCnt < deterMaxLoop) {
-                    deterRoundCnt++;
-                    AscendC::SyncAll<false>();
-                    AscendC::SyncAll<false>();
-                }
-            }
+            // deter: 方案D — 无需 padding SyncAll
             AscendC::CrossCoreSetFlag<2, PIPE_FIX>(CUBE2POST);
             WaitFlag();
         }
@@ -848,30 +827,7 @@ namespace BSA {
 
                             AscendC::CrossCoreSetFlag<2, PIPE_MTE3>(VEC2CUBE);
 
-                            // deter: AIV 发布本轮 runInfo(curInfo) → SyncAll#1 → 聚合 → SyncAll#2
-                            // cube 的 mmad3(r) 写 tile r 到私有 slot(在 iter r+1), AIV 的 curInfo(r) 即 tile r
-                            if (deter) {
-                                if (subBlockIdx == 0) {
-                                    // 用 WriteGmByPassDCache 发布 runInfo(绕过 DCache, 保证跨核可见)
-                                    __gm__ int32_t* infoGm = (__gm__ int32_t*)(params.workspace + tilingData->deterCoreInfoGmOffset);
-                                    uint64_t io = coreIdx * DETER_CORE_INFO_NUM;
-                                    AscendC::WriteGmByPassDCache<int32_t>(infoGm + io + 0, (int32_t)curInfo.kvOffset);
-                                    AscendC::WriteGmByPassDCache<int32_t>(infoGm + io + 1, (int32_t)curInfo.curCalKVSize);
-                                    AscendC::WriteGmByPassDCache<int32_t>(infoGm + io + 2, (int32_t)headDim);
-                                    AscendC::WriteGmByPassDCache<int32_t>(infoGm + io + 3, (int32_t)1); // valid
-                                    AscendC::PipeBarrier<PIPE_ALL>(); // 确保 S 管线写落地后再 SyncAll
-                                }
-                                deterRoundCntVec++;
-                                AscendC::SyncAll<false>(); // ① 等 cube 写完本轮私有 tile
-                                // 只有 coreIdx==0 的 AIV 跑聚合(避免多 AIV 对重复写共享 gDk/gDv)
-                                if (coreIdx == 0) {
-                                    VecDeterReduceOneRound(gDkShared, gDvShared,
-                                                           (__gm__ float*)(params.workspace + tilingData->dkDeterGmOffset),
-                                                           (__gm__ float*)(params.workspace + tilingData->dvDeterGmOffset),
-                                                           deterInfoGm, deterLaunchedAic, deterSlotElem, subBlockIdx, coreIdx, dkSlotSize, dvSlotSize);
-                                }
-                                AscendC::SyncAll<false>(); // ② 通知 cube 可写下一轮
-                            }
+                            // deter: 方案D — 无逐轮同步/聚合
 
                             preTaskInfo = curInfo;
                             pingpongFlag = 1 - pingpongFlag;
@@ -886,111 +842,9 @@ namespace BSA {
                         blockShapeX, basicQBlockSize, inputLayout, taskInfoVec[i % 2], taskInfoVec[(i + 1) % 2]);
                 }
             }
-            // deter: 不足 maxLoopSize 的轮次补齐(发 invalid runInfo + flag 同步 + 聚合跳过), 与 cube 锁步
-            if (deter) {
-                while (deterRoundCntVec < deterMaxLoop) {
-                    if (subBlockIdx == 0) {
-                        __gm__ int32_t* infoGm = (__gm__ int32_t*)(params.workspace + tilingData->deterCoreInfoGmOffset);
-                        uint64_t io = coreIdx * DETER_CORE_INFO_NUM;
-                        AscendC::WriteGmByPassDCache<int32_t>(infoGm + io + 3, (int32_t)0); // invalid
-                    }
-                    deterRoundCntVec++;
-                    AscendC::SyncAll<false>();
-                    if (coreIdx == 0) {
-                        VecDeterReduceOneRound(gDkShared, gDvShared,
-                                               (__gm__ float*)(params.workspace + tilingData->dkDeterGmOffset),
-                                               (__gm__ float*)(params.workspace + tilingData->dvDeterGmOffset),
-                                               deterInfoGm, deterLaunchedAic, deterSlotElem, subBlockIdx, coreIdx, dkSlotSize, dvSlotSize);
-                    }
-                    AscendC::SyncAll<false>();
-                }
-            }
+            // deter: 方案D — 无需 padding
         }
 
-        // deter: 聚合本轮各 AIC 核私有 dK/dV tile 到共享 gDk/gDv(固定核序, 单 AIV 顺序原子加 → 确定)
-        // AIV0/AIV1 按 kv 行划分(前半/后半), 行不重叠 → 无跨 AIV 碰撞
-        __aicore__ inline
-        void VecDeterReduceOneRound(AscendC::GlobalTensor<float>& gDkShared, AscendC::GlobalTensor<float>& gDvShared,
-                                    __gm__ float* dkDeterGm, __gm__ float* dvDeterGm,
-                                    __gm__ int32_t* infoGm,
-                                    uint32_t aicNum, uint64_t slotElem, uint32_t subBlockIdx, uint32_t coreIdx,
-                                    uint64_t dkSlotSize, uint64_t dvSlotSize)
-        {
-            AscendC::GlobalTensor<float> gDkDeter;
-            gDkDeter.SetGlobalBuffer(dkDeterGm);
-            AscendC::GlobalTensor<float> gDvDeter;
-            gDvDeter.SetGlobalBuffer(dvDeterGm);
-            // 方案B: 读 slots[aicIdx] → UB Add → 覆写 final (不用 SetAtomicAdd)
-            constexpr uint32_t RMW_CHUNK = 1024;
-            AscendC::LocalTensor<float> slotUb = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET);
-            AscendC::LocalTensor<float> sumUb = resource.ubBuf.template GetBufferByByte<float>(DETER_AG_UB_OFFSET + RMW_CHUNK * sizeof(float));
-            uint64_t dkSlotElem = dkSlotSize / sizeof(float);
-            uint64_t dvSlotElem = dvSlotSize / sizeof(float);
-            for (uint32_t aicIdx = 0; aicIdx < aicNum; aicIdx++) {
-                uint64_t infoOff = aicIdx * DETER_CORE_INFO_NUM;
-                int32_t valid = AscendC::ReadGmByPassDCache<int32_t>(infoGm + infoOff + 3);
-                if (valid == 0) { continue; }
-                int32_t globKvOff = AscendC::ReadGmByPassDCache<int32_t>(infoGm + infoOff + 0);
-                int32_t curKvSize = AscendC::ReadGmByPassDCache<int32_t>(infoGm + infoOff + 1);
-                int32_t hd = AscendC::ReadGmByPassDCache<int32_t>(infoGm + infoOff + 2);
-                if (curKvSize <= 0 || curKvSize > 256 || hd <= 0 || hd > 256 || globKvOff < 0) { continue; }
-                int64_t half = curKvSize / 2;
-                int64_t rowStart = subBlockIdx * half;
-                int64_t rowNum = (subBlockIdx == 0) ? half : (curKvSize - half);
-                if (rowNum <= 0 || hd <= 0) { continue; }
-                int64_t totalElem = rowNum * hd;
-                uint32_t copyN = static_cast<uint32_t>(totalElem);
-
-                // dK: Read-Modify-Write
-                uint64_t slotOff = aicIdx * dkSlotElem + globKvOff + rowStart * hd;
-                uint64_t finalOff = globKvOff + rowStart * hd;
-                uint32_t remaining = copyN;
-                uint32_t off = 0;
-                while (remaining > 0) {
-                    uint32_t chunk = (remaining > RMW_CHUNK) ? RMW_CHUNK : remaining;
-                    if (aicIdx == 0) {
-                        AscendC::DataCopy(sumUb, gDkDeter[slotOff + off], chunk);
-                        AscendC::PipeBarrier<PIPE_ALL>();
-                        AscendC::DataCopy(gDkShared[finalOff + off], sumUb, chunk);
-                        AscendC::PipeBarrier<PIPE_ALL>();
-                    } else {
-                        AscendC::DataCopy(sumUb, gDkShared[finalOff + off], chunk);
-                        AscendC::DataCopy(slotUb, gDkDeter[slotOff + off], chunk);
-                        AscendC::PipeBarrier<PIPE_ALL>();
-                        AscendC::Add(sumUb, sumUb, slotUb, chunk);
-                        AscendC::PipeBarrier<PIPE_ALL>();
-                        AscendC::DataCopy(gDkShared[finalOff + off], sumUb, chunk);
-                        AscendC::PipeBarrier<PIPE_ALL>();
-                    }
-                    remaining -= chunk;
-                    off += chunk;
-                }
-
-                // dV: 同上
-                slotOff = aicIdx * dvSlotElem + globKvOff + rowStart * hd;
-                remaining = copyN;
-                off = 0;
-                while (remaining > 0) {
-                    uint32_t chunk = (remaining > RMW_CHUNK) ? RMW_CHUNK : remaining;
-                    if (aicIdx == 0) {
-                        AscendC::DataCopy(sumUb, gDvDeter[slotOff + off], chunk);
-                        AscendC::PipeBarrier<PIPE_ALL>();
-                        AscendC::DataCopy(gDvShared[finalOff + off], sumUb, chunk);
-                        AscendC::PipeBarrier<PIPE_ALL>();
-                    } else {
-                        AscendC::DataCopy(sumUb, gDvShared[finalOff + off], chunk);
-                        AscendC::DataCopy(slotUb, gDvDeter[slotOff + off], chunk);
-                        AscendC::PipeBarrier<PIPE_ALL>();
-                        AscendC::Add(sumUb, sumUb, slotUb, chunk);
-                        AscendC::PipeBarrier<PIPE_ALL>();
-                        AscendC::DataCopy(gDvShared[finalOff + off], sumUb, chunk);
-                        AscendC::PipeBarrier<PIPE_ALL>();
-                    }
-                    remaining -= chunk;
-                    off += chunk;
-                }
-            }
-        }
 
         __aicore__ inline
         void VecPost(Params const &params)

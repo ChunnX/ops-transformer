@@ -162,6 +162,7 @@ public:
         if (isAtomicAdd) {
             AscendC::SetAtomicAdd<ElementC>();
             copyL0CToGm(gC, l0CTensor[pingpongFlag], layoutC, layoutInL0C);
+            AscendC::PipeBarrier<PIPE_FIX>();
             AscendC::SetAtomicNone();
         } else {
             copyL0CToGm(gC, l0CTensor[pingpongFlag], layoutC, layoutInL0C);
