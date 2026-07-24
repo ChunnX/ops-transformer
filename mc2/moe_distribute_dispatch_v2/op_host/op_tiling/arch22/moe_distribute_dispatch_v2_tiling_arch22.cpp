@@ -69,6 +69,7 @@ constexpr uint32_t RANK_NUM_PER_NODE_A2 = 8;
 constexpr uint32_t BLOCK_SIZE_A2 = 32;
 constexpr uint32_t MAX_K_VALUE_A2 = 16;
 constexpr uint32_t MAX_HIDDEN_SIZE_A2 = 10240;
+constexpr uint32_t MAX_HIDDEN_SIZE_A2_INT32 = 5120;
 constexpr int32_t MAX_EP_WORLD_SIZE_A2 = 384;
 constexpr int32_t MAX_EP_WORLD_SIZE_A2_LAYERED = 64;
 constexpr int32_t MAX_MOE_EXPERT_NUMS_A2_FULLMESH = 1024;
@@ -471,10 +472,12 @@ static ge::graphStatus MoeDistributeDispatchA2CheckShapeAndSetTiling(const gert:
     auto attrs = context->GetAttrs();
     OP_TILING_CHECK(attrs == nullptr, OP_LOGE_WITH_INVALID_INPUT(K_INNER_DEBUG, "attrs"), return ge::GRAPH_FAILED);
     auto quantModePtr = attrs->GetAttrPointer<int64_t>(ATTR_QUANT_MODE_INDEX);
-    if (h % BLOCK_SIZE_A2 != 0 || h == 0 || h > MAX_HIDDEN_SIZE_A2) {
+    uint32_t maxHiddenSizeA2 =
+        xDesc->GetDataType() == ge::DT_INT32 ? MAX_HIDDEN_SIZE_A2_INT32 : MAX_HIDDEN_SIZE_A2;
+    if (h % BLOCK_SIZE_A2 != 0 || h == 0 || h > maxHiddenSizeA2) {
         OP_LOGE_FOR_INVALID_VALUE(K_INNER_DEBUG, "h (hidden size)", std::to_string(h).c_str(),
                                   (std::string("positive, divisible by ") + std::to_string(BLOCK_SIZE_A2) +
-                                   ", and at most " + std::to_string(MAX_HIDDEN_SIZE_A2))
+                                   ", and at most " + std::to_string(maxHiddenSizeA2))
                                       .c_str());
         return GRAPH_FAILED;
     }
