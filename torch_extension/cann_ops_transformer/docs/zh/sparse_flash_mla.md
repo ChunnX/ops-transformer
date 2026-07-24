@@ -218,47 +218,44 @@ cann_ops_transformer.sparse_flash_mla(
 
 | 特性参数组 | 参数字段名称 | 字段分组 | 字段类型 |
 | :--- | :--- | :--- | :--- |
-| 元数据参数组 | num_heads_q | ATTR | int |
-| 元数据参数组 | num_heads_kv | ATTR | int |
-| 元数据参数组 | head_dim | ATTR | int |
-| 元数据参数组 | batch_size | ATTR(OPTIONAL) | int |
-| 元数据参数组 | max_seqlen_q | ATTR(OPTIONAL) | int |
-| 元数据参数组 | max_seqlen_ori_kv | ATTR(OPTIONAL) | int |
-| 元数据参数组 | max_seqlen_cmp_kv | ATTR(OPTIONAL) | int |
-| 稀疏压缩参数组 | ori_topk | ATTR(OPTIONAL) | int |
-| 稀疏压缩参数组 | cmp_topk | ATTR(OPTIONAL) | int |
-| 稀疏压缩参数组 | cmp_ratio | ATTR(OPTIONAL) | int |
-| Mask和窗口参数组 | ori_mask_mode | ATTR(OPTIONAL) | int |
-| Mask和窗口参数组 | cmp_mask_mode | ATTR(OPTIONAL) | int |
-| Mask和窗口参数组 | ori_win_left | ATTR(OPTIONAL) | int |
-| Mask和窗口参数组 | ori_win_right | ATTR(OPTIONAL) | int |
 | 公共参数组 | layout_q | ATTR(OPTIONAL) | string |
-| 公共参数组 | layout_kv | ATTR(OPTIONAL) | string |
-| 元数据参数组 | has_ori_kv | ATTR(OPTIONAL) | bool |
-| 元数据参数组 | has_cmp_kv | ATTR(OPTIONAL) | bool |
-| 公共参数组 | q | INPUT | Tensor |
-| 公共参数组 | ori_kv | INPUT(OPTIONAL) | Tensor |
-| 公共参数组 | cmp_kv | INPUT(OPTIONAL) | Tensor |
-| 稀疏压缩参数组 | ori_sparse_indices | INPUT(OPTIONAL) | Tensor |
-| 稀疏压缩参数组 | cmp_sparse_indices | INPUT(OPTIONAL) | Tensor |
+|           | layout_kv | ATTR(OPTIONAL) | string |
+|           | q | INPUT | Tensor |
+|           | ori_kv | INPUT(OPTIONAL) | Tensor |
+|           | cmp_kv | INPUT(OPTIONAL) | Tensor |
+|           | attention_out | OUTPUT | Tensor |
+|           | softmax_scale | ATTR(OPTIONAL) | float |
+| 元数据参数组 | num_heads_q | ATTR | int |
+|             | num_heads_kv | ATTR | int |
+|             | head_dim | ATTR | int |
+|             | batch_size | ATTR(OPTIONAL) | int |
+|             | max_seqlen_q | ATTR(OPTIONAL) | int |
+|             | max_seqlen_ori_kv | ATTR(OPTIONAL) | int |
+|             | max_seqlen_cmp_kv | ATTR(OPTIONAL) | int |
+|             | metadata | INPUT / OUTPUT | Tensor |
+|             | has_ori_kv | ATTR(OPTIONAL) | bool |
+|             | has_cmp_kv | ATTR(OPTIONAL) | bool |
+| 稀疏压缩参数组 | ori_topk | ATTR(OPTIONAL) | int |
+|               | cmp_topk | ATTR(OPTIONAL) | int |
+|               | cmp_ratio | ATTR(OPTIONAL) | int |
+|               | ori_sparse_indices | INPUT(OPTIONAL) | Tensor |
+|               | cmp_sparse_indices | INPUT(OPTIONAL) | Tensor |
+| Mask和窗口参数组 | ori_mask_mode | ATTR(OPTIONAL) | int |
+|                 | cmp_mask_mode | ATTR(OPTIONAL) | int |
+|                 | ori_win_left | ATTR(OPTIONAL) | int |
+|                 | ori_win_right | ATTR(OPTIONAL) | int |
+|                 | cmp_residual_kv | INPUT(OPTIONAL) | Tensor |
 | Paged Attention参数组 | ori_block_table | INPUT(OPTIONAL) | Tensor |
-| Paged Attention参数组 | cmp_block_table | INPUT(OPTIONAL) | Tensor |
+|                      | cmp_block_table | INPUT(OPTIONAL) | Tensor |
 | SeqLengths参数组 | cu_seqlens_q | INPUT(OPTIONAL) | Tensor |
-| SeqLengths参数组 | cu_seqlens_ori_kv | INPUT(OPTIONAL) | Tensor |
-| SeqLengths参数组 | cu_seqlens_cmp_kv | INPUT(OPTIONAL) | Tensor |
-| SeqLengths参数组 | seqused_q | INPUT(OPTIONAL) | Tensor |
-| SeqLengths参数组 | seqused_ori_kv | INPUT(OPTIONAL) | Tensor |
-| SeqLengths参数组 | seqused_cmp_kv | INPUT(OPTIONAL) | Tensor |
-| Mask和窗口参数组 | cmp_residual_kv | INPUT(OPTIONAL) | Tensor |
-| 稀疏压缩参数组 | ori_topk_length | INPUT(OPTIONAL) | Tensor |
-| 稀疏压缩参数组 | cmp_topk_length | INPUT(OPTIONAL) | Tensor |
+|                  | cu_seqlens_ori_kv | INPUT(OPTIONAL) | Tensor |
+|                  | cu_seqlens_cmp_kv | INPUT(OPTIONAL) | Tensor |
+|                  | seqused_q | INPUT(OPTIONAL) | Tensor |
+|                  | seqused_ori_kv | INPUT(OPTIONAL) | Tensor |
+|                  | seqused_cmp_kv | INPUT(OPTIONAL) | Tensor |
 | Sinks参数组 | sinks | INPUT(OPTIONAL) | Tensor |
-| 元数据参数组 | metadata | INPUT / OUTPUT | Tensor |
-| 公共参数组 | softmax_scale | ATTR(OPTIONAL) | float |
-| 稀疏压缩参数组 | topk_value_mode | ATTR(OPTIONAL) | int |
 | SoftmaxLSE参数组 | return_softmax_lse | ATTR(OPTIONAL) | bool |
-| 公共参数组 | attention_out | OUTPUT | Tensor |
-| SoftmaxLSE参数组 | softmax_lse | OUTPUT | Tensor |
+|                  | softmax_lse | OUTPUT | Tensor |
 
 ### 基准信息说明
 
