@@ -22,7 +22,7 @@
 #else
 #include "kernel_operator.h"
 #endif
-#include "mega_moe_base.h"
+#include "../mega_moe_base.h"
 
 namespace SwigluQuantMsg {
 enum class QuantMode : uint32_t {
