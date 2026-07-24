@@ -56,11 +56,11 @@ __simd_vf__ inline void vfComputeAmax(__ubuf__ T *xAddr, __ubuf__ uint16_t *amax
     UnalignReg uReg;
 
     for (uint16_t i = 0; i < vfLoopNum; i++) {
-        uint32_t curXOffset = static_cast<uint32_t>(i) * vlForT * 2;
-        uint32_t curXElemNum = (xElemNum > curXOffset) ? (xElemNum - curXOffset) : 0;
-        curXElemNum = (curXElemNum > vlForT * 2) ? (vlForT * 2) : curXElemNum;
-        mask0 = UpdateMask<T>(curXElemNum);
-        mask1 = UpdateMask<T>(curXElemNum);
+        // uint32_t curXOffset = static_cast<uint32_t>(i) * vlForT * 2;
+        // uint32_t curXElemNum = (xElemNum > curXOffset) ? (xElemNum - curXOffset) : 0;
+        // curXElemNum = (curXElemNum > vlForT * 2) ? (vlForT * 2) : curXElemNum;
+        mask0 = UpdateMask<T>(xElemNum);
+        mask1 = UpdateMask<T>(xElemNum);
         MaskDeInterleave<T>(mask0, mask1, mask0, mask1);
 
         // 双搬入，奇数位放x0、偶数位放x1
@@ -143,14 +143,14 @@ __simd_vf__ inline void vfComputeRoundScale(__ubuf__ uint16_t *amaxInAddr, __ubu
     MaskReg maskInfBF16, maskZero, maskLowExp, maskSpecialMin, maskMantHigh, maskClamp;
 
     for (uint16_t i = 0; i < vfLoopNum; i++) {
-        uint32_t curScaleOffset = static_cast<uint32_t>(i) * vlForT;
-        uint32_t curScaleElemNum = (scaleElemNum > curScaleOffset) ? (scaleElemNum - curScaleOffset) : 0;
-        curScaleElemNum = (curScaleElemNum > vlForT) ? vlForT : curScaleElemNum;
-        uint32_t curValidScaleElemNum =
-            (validScaleElemNum > curScaleOffset) ? (validScaleElemNum - curScaleOffset) : 0;
-        curValidScaleElemNum = (curValidScaleElemNum > vlForT) ? vlForT : curValidScaleElemNum;
-        maskLoop = UpdateMask<uint16_t>(curScaleElemNum);
-        maskValid = UpdateMask<uint16_t>(curValidScaleElemNum);
+        // uint32_t curScaleOffset = static_cast<uint32_t>(i) * vlForT;
+        // uint32_t curScaleElemNum = (scaleElemNum > curScaleOffset) ? (scaleElemNum - curScaleOffset) : 0;
+        // curScaleElemNum = (curScaleElemNum > vlForT) ? vlForT : curScaleElemNum;
+        // uint32_t curValidScaleElemNum =
+        //     (validScaleElemNum > curScaleOffset) ? (validScaleElemNum - curScaleOffset) : 0;
+        // curValidScaleElemNum = (curValidScaleElemNum > vlForT) ? vlForT : curValidScaleElemNum;
+        maskLoop = UpdateMask<uint16_t>(scaleElemNum);
+        maskValid = UpdateMask<uint16_t>(validScaleElemNum);
         // 拷入vfComputeAmax算好的amax
         DataCopy<uint16_t, PostLiteral::POST_MODE_UPDATE>(amax, amaxInAddr, vlForT);
 
