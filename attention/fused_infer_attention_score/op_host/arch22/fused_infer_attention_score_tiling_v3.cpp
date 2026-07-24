@@ -1413,7 +1413,7 @@ bool RouteToFia(gert::TilingContext *context)
             return false;
         }
     }
-    if (inputLayoutStr == "NSD") {
+    if (inputLayoutStr == "NSD" || inputLayoutStr == "TND") {
         return false;
     }
     return true;
