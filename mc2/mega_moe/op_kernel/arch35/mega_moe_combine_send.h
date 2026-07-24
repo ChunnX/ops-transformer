@@ -446,6 +446,56 @@ __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCoun
                                          LocalTensor<int32_t> &tripleTensor, int64_t ubTensorSize, int64_t offset,
                                          uint32_t quantTokenSizeBytes)
 {
+    if constexpr (QuantMode == COMBINE_NO_QUANT) {
+        // ============ combine data-as-flag(甲案): 480+32 合并打包发送 ============
+        // 从 gmm2Out(HBM) 回读整 token → 按 combine_v2 方式打包成 blockCnt 个 512B 块
+        //   (每块 480B 数据 + 32B flag=1.0) → 一次 DataCopy 把"数据+flag"合并发到对端窗口。
+        //   对端窗口每 (token,topk) 槽位 = blockCnt * 512B。
+        uint32_t blockCnt = Ops::Base::CeilDiv(n * static_cast<uint32_t>(sizeof(T)),
+                                               static_cast<uint32_t>(MegaMoeImpl::SPLIT_BLOCK_DATA_SIZE));
+        uint32_t readElems =
+            blockCnt * (MegaMoeImpl::SPLIT_BLOCK_DATA_SIZE / sizeof(T)); // 读缓冲每 slot 元素数(含末块 padding)
+        uint32_t packedElems = blockCnt * (MegaMoeImpl::SPLIT_BLOCK_SIZE / sizeof(T)); // 打包每 slot 元素数
+        uint32_t slotBytes = blockCnt * MegaMoeImpl::SPLIT_BLOCK_SIZE;
+        // UB 布局(双缓冲): [read0][read1][packed0][packed1]
+        LocalTensor<T> readBuf(TPosition::VECIN, offset, 2 * readElems);
+        LocalTensor<T> packedBuf(TPosition::VECIN, offset + static_cast<int64_t>(2 * readElems) * sizeof(T),
+                                 2 * packedElems);
+        GlobalTensor<T> gmm2OutGm;
+        gmm2OutGm.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(gmm2OutAddr));
+        AscendC::GlobalTensor<T> gmRemoteD;
+        uint64_t gmRemoteOffset = params.peermemInfo.combineSendPtr - params.peermemInfo.rankSyncInWorldPtr;
+        DataCopyPadExtParams<T> copyPadParams{false, 0U, 0U, 0U};
+        AscendC::DataCopyExtParams gm2UbParams{1, static_cast<uint32_t>(n * sizeof(T)), 0, 0, 0};
+        for (uint32_t i = 0; i < tokenCount; i++) {
+            uint32_t pingPong = i % 2;
+            LocalTensor<T> ubBf16 = readBuf[pingPong * readElems];
+            LocalTensor<T> ubPacked = packedBuf[pingPong * packedElems];
+            LocalTensor<float> srcFloat = ubBf16.template ReinterpretCast<float>();
+            LocalTensor<float> packedFloat = ubPacked.template ReinterpretCast<float>();
+            uint32_t toRankId = tripleTensor.GetValue(i * TRIPLE_SIZE + RANK_ID);
+            uint32_t tokenIdx = tripleTensor.GetValue(i * TRIPLE_SIZE + TOKEN_ID);
+            uint32_t topkIdx = tripleTensor.GetValue(i * TRIPLE_SIZE + TOPK_INDEX);
+            // MTE2: gmm2Out → 读缓冲(本 slot 上次发送完成后再覆盖)
+            SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID3>();
+            AscendC::DataCopyPad(ubBf16, gmm2OutGm[(tokenStart + i) * n], gm2UbParams, copyPadParams);
+            SyncFuncStatic<AscendC::HardEvent::MTE2_V, SYNC_EVENT_ID4>();
+            // V: 整块预填 flag=1.0, 再把数据插入每块前 480B(留末尾 32B 为 flag)
+            Duplicate(packedFloat, MegaMoeImpl::COMBINE_FLAG_VALUE, static_cast<int32_t>(packedElems / 2));
+            PipeBarrier<PIPE_V>();
+            Copy(packedFloat, srcFloat, uint64_t(64), uint8_t(blockCnt), {1, 1, 16, 15});
+            Copy(packedFloat[64], srcFloat[64], uint64_t(56), uint8_t(blockCnt), {1, 1, 16, 15});
+            SyncFuncStatic<AscendC::HardEvent::V_MTE3, SYNC_EVENT_ID5>();
+            // MTE3: 一次把"数据+flag"发到对端窗口 slot
+            gmRemoteD.SetGlobalBuffer(reinterpret_cast<__gm__ T *>(GetRankWinAddrWithOffset(toRankId, gmRemoteOffset)));
+            uint64_t slotElemOffset =
+                (static_cast<uint64_t>(tokenIdx) * params.tilingData->topK + topkIdx) * (slotBytes / sizeof(T));
+            AscendC::DataCopyExtParams sendParams{1, slotBytes, 0, 0, 0};
+            AscendC::DataCopyPad(gmRemoteD[slotElemOffset], ubPacked, sendParams);
+        }
+        SyncFuncStatic<AscendC::HardEvent::MTE3_MTE2, SYNC_EVENT_ID2>();
+        return;
+    }
     LocalTensor<T> combineUbTensor(TPosition::VECIN, offset, ubTensorSize);
     offset += ubTensorSize * sizeof(T);
 

@@ -30,5 +30,13 @@ constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_256 = (MAX_SINGLE_MN_256_256 + 31U)
 constexpr uint32_t MAX_SINGLE_MN_128_256 = 128 * 256;
 constexpr uint32_t MAX_SINGLE_MN_ALIGN32_NUM_128 = (MAX_SINGLE_MN_128_256 + 31U) / ALIGN32 * ALIGN32;
 constexpr uint32_t TRIPLE_TENSOR_ADDR = 200U * 1024U; // triple tensor 在 UB 中的起始地址
+
+// combine data-as-flag(甲案): 对齐 moe_distribute_combine_v2 的合并式分包。
+//   每个 512B 块 = 480B 数据 + 32B flag(8 个 float, 值 1.0), 数据与 flag 一次 DataCopy 发出。
+constexpr uint32_t SPLIT_BLOCK_SIZE = 512U;
+constexpr uint32_t SPLIT_BLOCK_DATA_SIZE = 480U;
+constexpr uint32_t SPLIT_BLOCK_FLAG_SIZE = 32U;
+constexpr uint32_t SPLIT_BLOCK_FLAG_COUNT = SPLIT_BLOCK_FLAG_SIZE / sizeof(float); // 8 个 float
+constexpr float COMBINE_FLAG_VALUE = 1.0f;
 } // namespace MegaMoeImpl
 #endif

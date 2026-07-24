@@ -143,7 +143,10 @@ void PrintPeermemInfo(const MegaMoeTilingData *tilingData, const char *nodeName)
     int64_t quantTokenScaleSize =
         ops::CeilAlign((int64_t)((int64_t)(tilingData->bs) * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
     OP_LOGD(nodeName, "quantTokenScaleSize: {%ld}\n", quantTokenScaleSize);
-    int64_t combineSendSize = sendTotalNum * tilingData->h * 2; //  2 = sizeof(bfloat16_t)
+    // combine data-as-flag(甲案): 每 (token,topk) 槽位按 480B 数据 + 32B flag 分成 blockCnt 个 512B 块,
+    //   窗口按打包布局定大小(是连续 bf16 的 ~1.067 倍, 对量化/generic 为安全上界估计)。
+    int64_t combineBlockCnt = ops::CeilDiv(static_cast<int64_t>(tilingData->h) * 2, static_cast<int64_t>(480));
+    int64_t combineSendSize = sendTotalNum * combineBlockCnt * 512;
     OP_LOGD(nodeName, "combineSendSize: {%ld}\n", combineSendSize);
     OP_LOGD(nodeName, "total PeermemInfo Size: {%ld}\n",
             rankSyncInWorldSize + maskRecvSize + quantTokenScaleSize + combineSendSize);
@@ -312,8 +315,11 @@ static ge::graphStatus CheckAttrParams(const gert::TilingContext *context, MegaM
     uint32_t scaleBytes = mxScaleNum * sizeof(int8_t);
     uint32_t tokenBytes = ops::CeilAlign(dataBytes + scaleBytes, static_cast<uint32_t>(ALIGN_32));
     int64_t quantTokenScaleSize = ops::CeilAlign((int64_t)(bs * tokenBytes * sizeof(int8_t)), (int64_t)ALIGN_512);
-    // combineSend Size
-    int64_t combineSendSize = ops::CeilAlign(bs * h * topK * yDtypeSize, ALIGN_512);
+    // combineSend Size: combine data-as-flag(甲案) 按 480B 数据 + 32B flag 分块打包,
+    //   每 slot = blockCnt*512B(blockCnt = CeilDiv(h*2, 480)), 为兼容各模式取安全上界。
+    (void)yDtypeSize;
+    int64_t combineBlockCnt = ops::CeilDiv(static_cast<int64_t>(h) * 2, static_cast<int64_t>(480));
+    int64_t combineSendSize = ops::CeilAlign(bs * topK * combineBlockCnt * 512, ALIGN_512);
     int64_t leastCclBufferSize = PEERMEM_DATA_OFFSET + maskRecvSize + quantTokenScaleSize + combineSendSize;
     auto cclBufferSizePtr = attrs->GetAttrPointer<int64_t>((config.attrCclBufferSizeIndex));
     int64_t cclBufferSize = static_cast<int64_t>(*cclBufferSizePtr);

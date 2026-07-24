@@ -19,20 +19,17 @@ const int DIM_TWO = 2;
 std::tuple<at::Tensor, at::Tensor>
 NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &topkIds, const at::Tensor &topkWeights,
            const std::vector<at::Tensor> &weight1, const std::vector<at::Tensor> &weight2, int64_t moeExpertNum,
-           int64_t epWorldSize, int64_t cclBufferSize,
-           const c10::optional<std::vector<at::Tensor>> &weightScales1,
+           int64_t epWorldSize, int64_t cclBufferSize, const c10::optional<std::vector<at::Tensor>> &weightScales1,
            const c10::optional<std::vector<at::Tensor>> &weightScales2,
            const c10::optional<std::vector<at::Tensor>> &bias1, const c10::optional<std::vector<at::Tensor>> &bias2,
-           const c10::optional<at::Tensor> &xActiveMask,
-           const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
+           const c10::optional<at::Tensor> &xActiveMask, const c10::optional<std::vector<at::Tensor>> &sharedWeight1,
            const c10::optional<std::vector<at::Tensor>> &sharedWeight2,
            const c10::optional<std::vector<at::Tensor>> &sharedWeightScales1,
            const c10::optional<std::vector<at::Tensor>> &sharedWeightScales2,
            const c10::optional<std::vector<at::Tensor>> &sharedBias1,
-           const c10::optional<std::vector<at::Tensor>> &sharedBias2,
-           int64_t maxRecvTokenNum, int64_t dispatchQuantMode,
-           int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank, std::string activation,
-           c10::optional<float> activationClamp, c10::optional<int64_t> dispatchQuantOutDtype,
+           const c10::optional<std::vector<at::Tensor>> &sharedBias2, int64_t maxRecvTokenNum,
+           int64_t dispatchQuantMode, int64_t combineQuantMode, std::string commAlg, int64_t numMaxTokensPerRank,
+           std::string activation, c10::optional<float> activationClamp, c10::optional<int64_t> dispatchQuantOutDtype,
            c10::optional<int64_t> weight1Type, c10::optional<int64_t> weight2Type, c10::optional<int64_t> topoType,
            c10::optional<int64_t> rankNumPerServer)
 {
@@ -128,13 +125,11 @@ NpuMegaMoe(const at::Tensor &context, const at::Tensor &x, const at::Tensor &top
     TensorListWrapper sharedBias2Wrapper = {sharedBias2Ref, aclDataType::ACL_FLOAT};
 
     ACLNN_CMD(aclnnMegaMoe, context, x, topkIds, topkWeights, weight1Wrapper, weight2Wrapper, weightScales1Wrapper,
-              weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask,
-              sharedWeight1Wrapper, sharedWeight2Wrapper, sharedWeightScales1Wrapper,
-              sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
-              moeExpertNum, epWorldSize, cclBufferSize,
-              maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType, combineQuantMode, commAlgPtr,
-              numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue, rankNumPerServerValue, y,
-              expertTokenNums);
+              weightScales2Wrapper, bias1Wrapper, bias2Wrapper, xActiveMask, sharedWeight1Wrapper, sharedWeight2Wrapper,
+              sharedWeightScales1Wrapper, sharedWeightScales2Wrapper, sharedBias1Wrapper, sharedBias2Wrapper,
+              moeExpertNum, epWorldSize, cclBufferSize, maxRecvTokenNum, dispatchQuantMode, dispatchQuantResultType,
+              combineQuantMode, commAlgPtr, numMaxTokensPerRank, activationPtr, activationClampValue, topoTypeValue,
+              rankNumPerServerValue, y, expertTokenNums);
 
     return std::tie(y, expertTokenNums);
 }
@@ -230,8 +225,10 @@ int64_t CalcHalfBufferSizeMBA5(int64_t epWorldSize, int64_t moeExpertNum, int64_
     int64_t tokenBytes = CeilAlign(dataBytes + mxScaleNum, 32);
     int64_t quantTokenScaleSize = CeilAlign(numMaxTokensPerRank * tokenBytes, 512);
 
-    // combine_send_size
-    int64_t combineOut = CeilAlign(numMaxTokensPerRank * hidden * numTopk * 2, 512);
+    // combine_send_size: combine data-as-flag(甲案) 按 480B 数据 + 32B flag 分块打包,
+    //   每 slot = blockCnt*512B(blockCnt = CeilDiv(hidden*2, 480)), 取安全上界兼容各模式。
+    int64_t combineBlockCnt = (hidden * 2 + 479) / 480;
+    int64_t combineOut = CeilAlign(numMaxTokensPerRank * numTopk * combineBlockCnt * 512, 512);
 
     int64_t totalBytes = peermemDataOffset + maskRecvSize + quantTokenScaleSize + combineOut;
 
