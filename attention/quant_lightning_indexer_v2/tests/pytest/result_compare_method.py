@@ -188,31 +188,41 @@ def compare_topk_valid(cur_cpu, cur_npu, topk_value, bsn, diff_npu, diff_cpu,
     b_idx, s1_idx, n2_idx = bsn
     max_re = 0.0
     npu_pass = True
+    cur_cpu = np.asarray(cur_cpu, dtype=np.int64)
+    cur_npu = np.asarray(cur_npu, dtype=np.int64)
+
+    if output_idx_offset is not None:
+        # 统一转换后使用
+        offset_data = (output_idx_offset.cpu().numpy()
+                    if hasattr(output_idx_offset, 'device') and output_idx_offset.device.type != 'cpu'
+                    else np.array(output_idx_offset))
+        offset_flat = offset_data.flatten()
+        if layout_query == "TND":
+            cur_prefix = cu_seqlens_q[b_idx]
+            offset = offset_flat[cur_prefix + s1_idx]
+        else:
+            offset = offset_flat[b_idx * q_seq + s1_idx]
+        cpu_offset_mask = cur_cpu != -1
+        npu_offset_mask = cur_npu != -1
+        cur_cpu = np.where(cpu_offset_mask, cur_cpu - offset, cur_cpu)
+        cur_npu = np.where(npu_offset_mask, cur_npu - offset, cur_npu)
+
+    element_list = topk_value[b_idx, n2_idx, s1_idx, :]
+    score_size = element_list.shape[-1]
+    invalid_cpu = (cur_cpu < 0) | (cur_cpu >= score_size)
+    invalid_npu = (cur_npu < 0) | (cur_npu >= score_size)
+    has_duplicate_cpu = np.unique(cur_cpu).size != cur_cpu.size
+    has_duplicate_npu = np.unique(cur_npu).size != cur_npu.size
+    if (cur_cpu.size != cur_npu.size or np.any(invalid_cpu) or np.any(invalid_npu) or
+            has_duplicate_cpu or has_duplicate_npu):
+        diff_cpu.append(cur_cpu.tolist())
+        diff_npu.append(cur_npu.tolist())
+        return False, float("inf")
+
     npu_set = set(cur_npu)
     cpu_set = set(cur_cpu)
-
-    is_equivalent = npu_set == cpu_set
-    if is_equivalent:
-        pass
-    else:
-        if output_idx_offset is not None:
-            # 统一转换后使用
-            offset_data = (output_idx_offset.cpu().numpy()
-                        if hasattr(output_idx_offset, 'device') and output_idx_offset.device.type != 'cpu'
-                        else np.array(output_idx_offset))
-            offset_flat = offset_data.flatten()
-            if layout_query == "TND":
-                cur_prefix = cu_seqlens_q[b_idx]
-                offset = offset_flat[cur_prefix + s1_idx]
-            else:
-                offset = offset_flat[b_idx * q_seq + s1_idx]
-            offset_mask = cur_cpu != -1
-            cur_npu = np.where(offset_mask, cur_npu - offset, cur_npu)
-            cur_cpu = np.where(offset_mask, cur_cpu - offset, cur_cpu)
-            npu_set = set(cur_npu)
-            cpu_set = set(cur_cpu)
+    if npu_set != cpu_set:
         value_bm = topk_value[b_idx, n2_idx, s1_idx, cur_cpu[-1]]
-        element_list = topk_value[b_idx, n2_idx, s1_idx, :]
         only_in_npu = npu_set - cpu_set
         only_in_cpu = cpu_set - npu_set
         only_in_npu_list = list(only_in_npu)
@@ -543,7 +553,7 @@ def _gather_return_values_by_index(topk_value, result_indices, params, output_id
         row_score = full_score[b_idx, n2_idx, s1_idx]
         valid = (row_indices >= 0) & (logical_indices >= 0) & (logical_indices < row_score.shape[-1])
         expected[row_idx, valid] = row_score[logical_indices[valid]]
-        invalid_index[row_idx] = (row_indices >= 0) & ~valid
+        invalid_index[row_idx] = (row_indices < -1) | ((row_indices >= 0) & ~valid)
 
     return expected, invalid_index
 
