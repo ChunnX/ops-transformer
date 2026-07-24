@@ -667,7 +667,7 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34(const DLIGradKLLossR
     mm3Params.isL0CInit = true;
     mm3Params.isLeftTranspose = true;
     mm3Params.isRightTranspose = true;      // NZ -> ZN
-    // mm3Params.isRightReuse = true;
+    mm3Params.isRightReuse = true;
 
     MMParam mm4Params;
     mm4Params.singleM = info.curS1Size;
@@ -693,7 +693,7 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34(const DLIGradKLLossR
             uint32_t curS2BlkSize = (s2InnerIdx == info.curS2LoopTimes - 1) ?
                                     (info.curS2StepSize - s2InnerIdx * constInfo.s2BaseBlk) : constInfo.s2BaseBlk;
             mm3Params.singleM = curS2BlkSize;
-            // mm3Params.needCopyRight = (s2InnerIdx == 0);
+            mm3Params.needCopyRight = (s2InnerIdx == 0);
 
             uint32_t l1ReluGradOffset = s2InnerIdx * constInfo.s2BaseBlk * info.curS1SizeAlign16;
             auto l1aTensor = l1ReLuGradTensor[l1ReluGradOffset];
@@ -768,6 +768,7 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34Deter(const DLIGradKL
     mm3Params.isL0CInit = true;
     mm3Params.isLeftTranspose = true;
     mm3Params.isRightTranspose = true;      // NZ -> ZN
+    mm3Params.isRightReuse = true;
 
     MMParam mm4Params;
     mm4Params.singleM = info.curS1Size;
@@ -795,6 +796,7 @@ __aicore__ inline void DLITMatmulService<DLIT>::ComputeMm34Deter(const DLIGradKL
             uint32_t curS2BlkSize = (s2InnerIdx == info.curS2LoopTimes - 1) ?
                                     (info.curS2StepSize - s2InnerIdx * constInfo.s2BaseBlk) : constInfo.s2BaseBlk;
             mm3Params.singleM = curS2BlkSize;
+            mm3Params.needCopyRight = (s2InnerIdx == 0);
             uint32_t l1ReluGradOffset = s2InnerIdx * constInfo.s2BaseBlk * info.curS1SizeAlign16;
             auto l1aTensor = l1ReLuGradTensor[l1ReluGradOffset];
             auto l1bTensor = l1QIndexTensor[l1PingPongFlag & 1];
