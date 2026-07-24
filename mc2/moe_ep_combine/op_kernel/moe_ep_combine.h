@@ -438,7 +438,6 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
                 uint64_t commHandle = GetCommHandle(src_rank, channelIndex);
                 hcomm_.WriteWithNotifyNbi(commHandle, remoteRankWinAddr, localRankWorkSpaceAddr,
                                           XTypeAlign32Size_, remoteRankStateAddr, 1);
-                hcomm_.Drain(commHandle);
             } else {
                 GM_ADDR remoteRankWinAddr = GetUrmaWinAddrByRankId(src_rank, CombineDataAddr_) + slotOffset;
                 SendToken(remoteRankWinAddr, tokenIndex);
@@ -451,6 +450,23 @@ __aicore__ inline void MoeEpCombine<TemplateMoeEpCombineTypeFunc>::SendPhaseExpe
         }
         SyncFunc<AscendC::HardEvent::S_MTE2>(); // 确保本轮 Scalar GetValue 读完，下一块 DataCopyPad 才可覆盖 metadataLocal
     }
+
+    // 按 channel 统一 drain：所有 token 批量发送完成后，再等待通信完成
+    if (groupByRank) {
+        if (targetRank != rankId_) {
+            uint64_t commHandle = GetCommHandle(targetRank, channelIndex);
+            hcomm_.Drain(commHandle);
+        }
+    } else {
+        for (uint32_t rank = 0; rank < epWorldSize_; ++rank) {
+            if (rank == rankId_ || rank % activeAivNum != aivId_) {
+                continue;
+            }
+            uint64_t commHandle = GetCommHandle(rank, 0);
+            hcomm_.Drain(commHandle);
+        }
+    }
+
     DataCacheCleanAndInvalid<int32_t, CacheLine::ENTIRE_DATA_CACHE, DcciDst::CACHELINE_OUT>(recvSrcMetadataGm_);
 }
 
