@@ -56,8 +56,8 @@ namespace ge {
 
 * @par Outputs
 * Seven outputs, including:
-* @li expand_x: A tensor. Result of each expert after dispatching. Support dtype: float16,bfloat16,int32,int8,float8_e4m3,
-  float8_e5m2,hifloat8,float4_e2m1,float4_e1m2. Shape supports (A, H), support format: ND.
+* @li expand_x: A tensor. Result of each expert after dispatching. Support dtype: float16,bfloat16,int32,
+  int8,float8_e4m3,float8_e5m2,hifloat8,float4_e2m1,float4_e1m2. Shape supports (A, H), support format: ND.
 * @li dynamic_scales: If quant is enabled, scale value of each token. A tensor. Support dtype: float32,float8_e8m0.
   Shape supports (A, ), support format: ND.
 * @li assist_info_for_combine: A tensor. Support dtype: int32. Shape supports (A * 128), support format: ND.
