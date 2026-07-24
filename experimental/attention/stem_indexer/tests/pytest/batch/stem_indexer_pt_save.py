@@ -26,8 +26,7 @@ PYTEST_DIR = os.path.dirname(CURRENT_DIR)
 if PYTEST_DIR not in sys.path:
     sys.path.insert(0, PYTEST_DIR)
 
-import stem_indexer_golden
-import custom_ops  # 注册 torch.ops.custom.npu_stem_indexer(_metadata)
+import stem_indexer_golden  # noqa: E402
 
 
 LIST_COLUMNS = {
@@ -138,7 +137,9 @@ def load_csv_test_cases(path_pattern):
     test_cases = []
     for csv_file in csv_files:
         df = pd.read_csv(csv_file, encoding="utf-8-sig")
-        missing_columns = [column for column in REQUIRED_COLUMNS if column not in df.columns]
+        missing_columns = [
+            column for column in REQUIRED_COLUMNS if column not in df.columns
+        ]
         if missing_columns:
             raise ValueError(f"{csv_file} missing columns: {missing_columns}")
         for _, row in df.iterrows():
@@ -193,7 +194,9 @@ def build_pt_payload(case):
     expected_indices = None
     expected_seq_len = None
     if case["expected_result"] == "PASS":
-        expected_indices, expected_seq_len = stem_indexer_golden.stem_indexer_golden(case, inputs)
+        expected_indices, expected_seq_len = stem_indexer_golden.stem_indexer_golden(
+            case, inputs
+        )
 
     return {
         "case": case,
@@ -220,7 +223,9 @@ def save_test_cases(test_cases, output_dir):
                 skipped_count += 1
                 print(f"Skipped existing StemIndexer testcase pt: {output_path}")
                 continue
-            print(f"Generating StemIndexer testcase pt for {case.get('case_id', '<unknown>')}: {output_path}")
+            print(
+                f"Generating StemIndexer testcase pt for {case.get('case_id', '<unknown>')}: {output_path}"
+            )
             payload = build_pt_payload(case)
             torch.save(payload, output_path)
             saved_count += 1
@@ -228,13 +233,19 @@ def save_test_cases(test_cases, output_dir):
         except Exception as err:
             print(f"[FAILED] Generate pt for {case.get('case_id', '<unknown>')}: {err}")
             raise
-    print(f"Saved {saved_count}, skipped {skipped_count} existing StemIndexer testcase pt files.")
+    print(
+        f"Saved {saved_count}, skipped {skipped_count} existing StemIndexer testcase pt files."
+    )
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Generate StemIndexer pt cases from CSV.")
+    parser = argparse.ArgumentParser(
+        description="Generate StemIndexer pt cases from CSV."
+    )
     parser.add_argument("csv_path", type=str, help="CSV file path or glob pattern.")
-    parser.add_argument("pt_output_dir", type=str, help="Output directory for pt files.")
+    parser.add_argument(
+        "pt_output_dir", type=str, help="Output directory for pt files."
+    )
     parser.add_argument("--device-id", type=int, default=0)
     args = parser.parse_args()
 

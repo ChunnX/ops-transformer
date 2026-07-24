@@ -85,8 +85,8 @@ __aicore__ inline uint32_t GetLane(const T &value4, uint32_t lane)
 }
 
 
-template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false,
-          const int TOPK_SCORE_PRECISION = 1, typename... Args>
+template <typename Q_T, typename K_T, typename OUT_T, const bool CAUSAL = false, const int TOPK_SCORE_PRECISION = 1,
+          typename... Args>
 struct SIType {
     static_assert(TOPK_SCORE_PRECISION == 1 || TOPK_SCORE_PRECISION == 2,
                   "TOPK_SCORE_PRECISION must be 1(uint32) or 2(uint16)");
@@ -95,10 +95,7 @@ struct SIType {
     using keyType = K_T;
     using outputType = OUT_T;
 
-    using scoreType = std::conditional_t<
-        TOPK_SCORE_PRECISION == 1,
-        uint32_t,
-        uint16_t>;
+    using scoreType = std::conditional_t<TOPK_SCORE_PRECISION == 1, uint32_t, uint16_t>;
 
     static constexpr bool causalFlag = CAUSAL;
     static constexpr bool pageAttention = false;
@@ -111,17 +108,17 @@ struct TempLoopInfo {
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
     uint32_t gS1Idx = 0U;
-    uint32_t gS1LoopEnd = 0U;   // gS1方向循环的结束Idx
-    uint32_t s2LoopEnd = 0U;    // S2方向循环的结束Idx
+    uint32_t gS1LoopEnd = 0U; // gS1方向循环的结束Idx
+    uint32_t s2LoopEnd = 0U;  // S2方向循环的结束Idx
     uint32_t actS1Size = 1U;  // 当前Batch循环处理的S1轴的实际大小
     uint32_t actS2Size = 0U;
     uint32_t promptLen = 0U;
     uint32_t s2ValidSize = 0U;
     bool curActSeqLenIsZero = false;
-    uint32_t actMBaseSize = 0U;            // m轴(gS1)方向实际大小
-    uint32_t mBasicSizeTail = 0U;          // gS1方向循环的尾基本块大小
-    uint32_t s2BasicSizeTail = 0U;         // S2方向循环的尾基本块大小
-    bool isNeedLD = false;     // 该基本块是否需要LD
+    uint32_t actMBaseSize = 0U;    // m轴(gS1)方向实际大小
+    uint32_t mBasicSizeTail = 0U;  // gS1方向循环的尾基本块大小
+    uint32_t s2BasicSizeTail = 0U; // S2方向循环的尾基本块大小
+    bool isNeedLD = false;         // 该基本块是否需要LD
 };
 struct RunInfo {
     uint32_t loop;
@@ -166,9 +163,9 @@ struct ConstInfo {
     uint64_t headDim = 0ULL;
     uint64_t maxQb = 0ULL;
     uint64_t maxKb = 0ULL;
-    uint64_t sparseCount = 0ULL;       // topK选取大小
-    uint64_t kSeqSize = 0ULL;          // kv最大S长度
-    uint64_t qSeqSize = 1ULL;          // q最大S长度
+    uint64_t sparseCount = 0ULL; // topK选取大小
+    uint64_t kSeqSize = 0ULL;    // kv最大S长度
+    uint64_t qSeqSize = 1ULL;    // q最大S长度
     uint32_t usedCoreNum = 0U;
     uint32_t causal = 1U;
     uint32_t stemBlockSize = 128U;
@@ -181,41 +178,41 @@ struct ConstInfo {
     uint32_t kBlockNumBiasMedium = 30U;
     float kBlockNumRateLarge = 0.1f;
     uint32_t kBlockNumBiasLarge = 30U;
-    uint32_t kCacheBlockSize = 0;      // PA场景的block size
-    uint32_t maxBlockNumPerBatch = 0;  // PA场景的最大单batch block number
-    SI_LAYOUT outputLayout;            // 输出的格式
+    uint32_t kCacheBlockSize = 0;     // PA场景的block size
+    uint32_t maxBlockNumPerBatch = 0; // PA场景的最大单batch block number
+    SI_LAYOUT outputLayout;           // 输出的格式
     bool attenMaskFlag = false;
     uint32_t cmpRatio = 1;
     uint32_t keyStride0 = 0;
     uint32_t keyDequantScaleStride0 = 0;
 
-    uint32_t actualLenQDims = 0U;  // query的actualSeqLength 的维度
-    uint32_t actualLenDims = 0U;   // KV 的actualSeqLength 的维度
+    uint32_t actualLenQDims = 0U; // query的actualSeqLength 的维度
+    uint32_t actualLenDims = 0U;  // KV 的actualSeqLength 的维度
     bool isLDOpen = false;
 };
 
 struct LdSplitCoreInfo {
-    bool isLdCoreEnable = false;     // 当前核是否参与规约任务
-    uint32_t saveWorkSpaceIdx = 0U;  // 存放LD参数的地址
-    uint32_t bn2Idx = 0U;            // 归约任务
+    bool isLdCoreEnable = false;    // 当前核是否参与规约任务
+    uint32_t saveWorkSpaceIdx = 0U; // 存放LD参数的地址
+    uint32_t bn2Idx = 0U;           // 归约任务
     uint32_t bIdx = 0U;
     uint32_t n2Idx = 0U;
     uint32_t mIdx = 0U;
-    uint32_t workspaceIdx = 0U;      // 当前AIV核上规约任务的索引
-    uint32_t workspaceNum = 0U;      // 当前AIV核上规约任务的S2切分数量
+    uint32_t workspaceIdx = 0U; // 当前AIV核上规约任务的索引
+    uint32_t workspaceNum = 0U; // 当前AIV核上规约任务的S2切分数量
     uint32_t mStart = 0U;
     uint32_t mNum = 0U;
-    uint64_t indiceOutCoreOffset = 0U;  // 最终输出索引搬出Topk的初始偏移地址
+    uint64_t indiceOutCoreOffset = 0U; // 最终输出索引搬出Topk的初始偏移地址
 };
 
 struct SplitCoreInfo {
-    uint32_t s2Start = 0U;  // S2的起始位置
-    uint32_t s2End = 0U;    // S2循环index上限
+    uint32_t s2Start = 0U; // S2的起始位置
+    uint32_t s2End = 0U;   // S2循环index上限
     uint32_t bN2Start = 0U;
     uint32_t bN2End = 0U;
     uint32_t gS1Start = 0U;
     uint32_t gS1End = 0U;
-    bool isLD = false;  // 当前核是否需要进行Decode归约任务
+    bool isLD = false; // 当前核是否需要进行Decode归约任务
     bool isCoreEnable = false;
 };
 
@@ -242,6 +239,6 @@ __aicore__ inline T CeilDiv(T num, T rnd)
 {
     return (((rnd) == 0) ? 0 : (((num) + (rnd)-1) / (rnd)));
 }
-}  // namespace SICommon
+} // namespace SICommon
 
-#endif  // stem_indexer_COMMON_H
+#endif // stem_indexer_COMMON_H

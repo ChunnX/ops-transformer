@@ -17,10 +17,9 @@ import torch
 
 torch_npu = pytest.importorskip("torch_npu")
 
-import result_compare_method
-import stem_indexer_golden
-import custom_ops  # 注册 torch.ops.custom.npu_stem_indexer(_metadata)
-from test_stem_indexer_paramset import ENABLED_PARAMS
+import result_compare_method  # noqa: E402
+import stem_indexer_golden  # noqa: E402
+from test_stem_indexer_paramset import ENABLED_PARAMS  # noqa: E402
 
 
 # 支持通过环境变量 STEM_INDEXER_CASE_ID 指定只跑特定 case_id（逗号分隔多个）
@@ -28,7 +27,8 @@ from test_stem_indexer_paramset import ENABLED_PARAMS
 _FILTER_IDS_RAW = os.environ.get("STEM_INDEXER_CASE_ID", "").strip()
 _FILTER_IDS = {item.strip() for item in _FILTER_IDS_RAW.split(",") if item.strip()}
 TEST_CASES = [
-    case for case in ENABLED_PARAMS
+    case
+    for case in ENABLED_PARAMS
     if not _FILTER_IDS or case.get("case_id") in _FILTER_IDS
 ]
 if _FILTER_IDS:
@@ -81,15 +81,21 @@ def run_stem_indexer_case(case):
 
     if case["expected_result"] == "FAIL":
         if case["testcase_name"] == "invalid_sparse_indices_shape":
-            pytest.skip("Torch custom op API does not expose output tensor shape injection.")
+            pytest.skip(
+                "Torch custom op API does not expose output tensor shape injection."
+            )
         with pytest.raises(Exception):
             call_stem_indexer(case, inputs)
         return
 
-    expected_indices, expected_seq_len = stem_indexer_golden.stem_indexer_golden(case, inputs)
+    expected_indices, expected_seq_len = stem_indexer_golden.stem_indexer_golden(
+        case, inputs
+    )
     npu_result = call_stem_indexer(case, inputs)
     torch_npu.npu.synchronize()
-    result_compare_method.assert_stem_indexer_result(expected_indices, expected_seq_len, npu_result, case, inputs)
+    result_compare_method.assert_stem_indexer_result(
+        expected_indices, expected_seq_len, npu_result, case, inputs
+    )
 
 
 @pytest.mark.ci

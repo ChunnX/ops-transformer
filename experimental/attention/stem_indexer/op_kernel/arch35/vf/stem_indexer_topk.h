@@ -20,10 +20,9 @@
 #include "vf_topk_16_gather.h"
 
 namespace SIKernel {
-template<typename SCORE_T>
+template <typename SCORE_T>
 class StemIndexerTopk {
 public:
-
     static constexpr uint32_t MAX_LOOP_M = 4;
 
     // reuseMm1ResLocal 内的复用偏移，以下大小均以 uint32_t 元素为单位。
@@ -33,8 +32,7 @@ public:
     static constexpr uint64_t IDX_BUFFER_NUM = std::is_same_v<SCORE_T, uint16_t> ? 2ULL : 4ULL;
     static constexpr uint64_t IDX_BUFFER_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
 
-    static constexpr uint64_t IDX_WORKSPACE_SIZE_U32 =
-        IDX_BUFFER_NUM * IDX_BUFFER_SIZE_U32;
+    static constexpr uint64_t IDX_WORKSPACE_SIZE_U32 = IDX_BUFFER_NUM * IDX_BUFFER_SIZE_U32;
     static constexpr uint64_t HISTOGRAM_SIZE_U32 = MAX_LOOP_M * TOPK_ALIGN_SIZE;
     static constexpr uint64_t NK_VALUE_SIZE_U32 = MAX_LOOP_M * NK_VALUE_PER_ROW;
     // uint16 路径每行使用 512 个 uint16_t，折算后同样占 256 个 uint32_t。
@@ -44,14 +42,11 @@ public:
 
     static constexpr uint64_t REUSE_INDICES_OUT_OFFSET =
         IDX_WORKSPACE_SIZE_U32 + HISTOGRAM_SIZE_U32 + NK_VALUE_SIZE_U32 + TMP_INDEX_SIZE_U32;
-    static constexpr uint64_t REUSE_SCORE_OUT_OFFSET_U32 =
-        REUSE_INDICES_OUT_OFFSET + INDICES_OUT_SIZE_U32;
-    static constexpr uint64_t REUSE_SCORE_OUT_OFFSET =
-        REUSE_SCORE_OUT_OFFSET_U32 * sizeof(uint32_t) / sizeof(SCORE_T);
+    static constexpr uint64_t REUSE_SCORE_OUT_OFFSET_U32 = REUSE_INDICES_OUT_OFFSET + INDICES_OUT_SIZE_U32;
+    static constexpr uint64_t REUSE_SCORE_OUT_OFFSET = REUSE_SCORE_OUT_OFFSET_U32 * sizeof(uint32_t) / sizeof(SCORE_T);
 
-    __aicore__ inline void InitBuffers(
-        const LocalTensor<uint32_t>& reuseMm1ResLocal,
-        const LocalTensor<uint32_t>& reuseGlobalIndexLocal)
+    __aicore__ inline void InitBuffers(const LocalTensor<uint32_t> &reuseMm1ResLocal,
+                                       const LocalTensor<uint32_t> &reuseGlobalIndexLocal)
     {
         // reuseMm1ResLocal按idx -> histogram -> nk -> tmpIndex -> indicesOut -> scoreOut排布。
         idx0Local = reuseMm1ResLocal;
@@ -73,14 +68,12 @@ public:
         hisIndexLocal[1] = indicesOutLocal;
     }
 
-    __aicore__ inline void Batch4Rows(
-        const LocalTensor<SCORE_T>& mrgValueLocal,
-        const LocalTensor<uint32_t>& reuseMm1ResLocal,
-        const LocalTensor<uint32_t>& reuseGlobalIndexLocal,
-        const SICommon::RowIdx4 &rowIdx4,
-        const SICommon::TopkNum4 &topkNum4,
-        uint32_t batchRowNum, uint32_t mrgRowStride,
-        uint32_t inputOffset, uint32_t validLen, uint32_t loopIdx, uint32_t s2LoopNum)
+    __aicore__ inline void Batch4Rows(const LocalTensor<SCORE_T> &mrgValueLocal,
+                                      const LocalTensor<uint32_t> &reuseMm1ResLocal,
+                                      const LocalTensor<uint32_t> &reuseGlobalIndexLocal,
+                                      const SICommon::RowIdx4 &rowIdx4, const SICommon::TopkNum4 &topkNum4,
+                                      uint32_t batchRowNum, uint32_t mrgRowStride, uint32_t inputOffset,
+                                      uint32_t validLen, uint32_t loopIdx, uint32_t s2LoopNum)
     {
         const uint32_t offset = mrgRowStride;
         const uint32_t topkAlign = 256U;
@@ -93,16 +86,13 @@ public:
             if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                 LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
                 SITopkb16gather::SiTopKVF<false>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
-                                                 idx0Local, idx1Local, nkValueLocal,
-                                                 validLen, MAX_LOOP_M, offset,
-                                                 rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
-                                                 topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3,
-                                                 tmpIdxStride16, topkAlign);
+                                                 idx0Local, idx1Local, nkValueLocal, validLen, MAX_LOOP_M, offset,
+                                                 rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3, topkNum4.v0,
+                                                 topkNum4.v1, topkNum4.v2, topkNum4.v3, tmpIdxStride16, topkAlign);
             } else {
                 SITopkb32gather::SiTopKVF<false>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
-                                                 idx0Local, idx1Local, idx2Local, idx3Local,
-                                                 nkValueLocal, validLen, MAX_LOOP_M, offset,
-                                                 rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
+                                                 idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, validLen,
+                                                 MAX_LOOP_M, offset, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
                                                  topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
             }
             PipeBarrier<PIPE_V>();
@@ -120,16 +110,13 @@ public:
             if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                 LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
                 SITopkb16gather::SiTopKVF<true>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
-                                                idx0Local, idx1Local, nkValueLocal,
-                                                validLen, MAX_LOOP_M, offset,
-                                                rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
-                                                topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3,
-                                                tmpIdxStride16, topkAlign);
+                                                idx0Local, idx1Local, nkValueLocal, validLen, MAX_LOOP_M, offset,
+                                                rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3, topkNum4.v0,
+                                                topkNum4.v1, topkNum4.v2, topkNum4.v3, tmpIdxStride16, topkAlign);
             } else {
                 SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
-                                                idx0Local, idx1Local, idx2Local, idx3Local,
-                                                nkValueLocal, validLen, MAX_LOOP_M, offset,
-                                                rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
+                                                idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, validLen,
+                                                MAX_LOOP_M, offset, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
                                                 topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
             }
             PipeBarrier<PIPE_V>();
@@ -149,35 +136,28 @@ public:
             if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                 LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
                 SITopkb16gather::SiTopKVF<true>(tmpIdxLocal16, hisValueLocal, inputValueLocal, histogramsLocal,
-                                                idx0Local, idx1Local, nkValueLocal,
-                                                validLen, MAX_LOOP_M, offset,
-                                                rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
-                                                topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3,
-                                                tmpIdxStride16, topkAlign);
+                                                idx0Local, idx1Local, nkValueLocal, validLen, MAX_LOOP_M, offset,
+                                                rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3, topkNum4.v0,
+                                                topkNum4.v1, topkNum4.v2, topkNum4.v3, tmpIdxStride16, topkAlign);
             } else {
                 SITopkb32gather::SiTopKVF<true>(tmpIndexLocal, hisValueLocal, inputValueLocal, histogramsLocal,
-                                                idx0Local, idx1Local, idx2Local, idx3Local,
-                                                nkValueLocal, validLen, MAX_LOOP_M, offset,
-                                                rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
+                                                idx0Local, idx1Local, idx2Local, idx3Local, nkValueLocal, validLen,
+                                                MAX_LOOP_M, offset, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
                                                 topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3);
             }
             PipeBarrier<PIPE_V>();
             // gather: 一次VF处理4个compact行，从globalIndexLocal读取上轮结果，输出到indicesOutLocal。
             if constexpr (std::is_same_v<SCORE_T, uint16_t>) {
                 LocalTensor<uint16_t> tmpIdxLocal16 = tmpIndexLocal.ReinterpretCast<uint16_t>();
-                SITopkb16gather::SiTopKGatherVF(
-                    hisIndexLocal[1], tmpIdxLocal16, hisIndexLocal[0],
-                    topkAlign, tmpIdxStride16, topkAlign,
-                    rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
-                    topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3,
-                    loopIdx * SICommon::TRUNK_LEN_256 - topkAlign);
+                SITopkb16gather::SiTopKGatherVF(hisIndexLocal[1], tmpIdxLocal16, hisIndexLocal[0], topkAlign,
+                                                tmpIdxStride16, topkAlign, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2,
+                                                rowIdx4.v3, topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3,
+                                                loopIdx * SICommon::TRUNK_LEN_256 - topkAlign);
             } else {
-                SITopkb32gather::SiTopKGatherVF(
-                    hisIndexLocal[1], tmpIndexLocal, hisIndexLocal[0],
-                    topkAlign, topkAlign, topkAlign,
-                    rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3,
-                    topkNum4.v0, topkNum4.v1, topkNum4.v2, topkNum4.v3,
-                    loopIdx * SICommon::TRUNK_LEN_256 - topkAlign);
+                SITopkb32gather::SiTopKGatherVF(hisIndexLocal[1], tmpIndexLocal, hisIndexLocal[0], topkAlign, topkAlign,
+                                                topkAlign, rowIdx4.v0, rowIdx4.v1, rowIdx4.v2, rowIdx4.v3, topkNum4.v0,
+                                                topkNum4.v1, topkNum4.v2, topkNum4.v3,
+                                                loopIdx * SICommon::TRUNK_LEN_256 - topkAlign);
             }
             PipeBarrier<PIPE_V>();
             for (uint32_t m = 0; m < batchRowNum; ++m) {
@@ -201,5 +181,5 @@ private:
     LocalTensor<uint32_t> indicesOutLocal;  // 本轮gather产生的TopK索引 MAX_LOOP_M * 256 * 4B
     LocalTensor<SCORE_T> hisValueLocal;     // 本轮TopK value MAX_LOOP_M * 256 * sizeof(SCORE_T)
 };
-}
+} // namespace SIKernel
 #endif
