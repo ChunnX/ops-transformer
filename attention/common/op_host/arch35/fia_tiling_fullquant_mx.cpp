@@ -729,7 +729,7 @@ void FiaTilingFullQuantMxArch35::CalcWorkspaceSize()
     int64_t bmm2Bytes = 0;
     int64_t vec2Bytes = 0;
     int64_t bmm2ResBlockSize = dVBasicBlock;
-    if (dVBasicBlock > DSIZE_256) {
+    if (dVBasicBlock >= DSIZE_256) {
         bmm2ResBlockSize = DSIZE_512;
     }
     if (dSize > DSIZE_128) {
