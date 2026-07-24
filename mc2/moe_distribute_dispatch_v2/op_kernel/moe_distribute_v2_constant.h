@@ -37,6 +37,10 @@ constexpr uint32_t UB_ALIGN = 32U;
 
 // dispatchv2所需常量段
 constexpr uint64_t DISPATCH_STATE_WIN_OFFSET = 768UL * 1024UL;
+// 原子定序：每专家独立原子计数器区（状态区尾段，PINGPONG 两块，基址 statusDataSpaceGm_）
+constexpr uint64_t EXPERT_COUNTERS_OFFSET = 880UL * 1024UL;          // dataState_ == 0
+constexpr uint64_t EXPERT_COUNTERS_PINGPONG_OFFSET = 890UL * 1024UL; // dataState_ == 1
+constexpr uint32_t COUNTER_STRIDE = UB_ALIGN / sizeof(uint32_t); // 每计数器 32B，保 AtomicAdd 地址对齐
 constexpr uint8_t BUFFER_NUM = 2; // 多buf
 constexpr uint8_t BUFFER_SINGLE = 1;
 constexpr uint32_t STATE_OFFSET = 32U; // 状态空间偏移地址
