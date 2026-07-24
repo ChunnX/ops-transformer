@@ -26,21 +26,21 @@
 #include "securec.h"
 
 #define CHECK_RET(cond, return_expr) \
-  do {                               \
-    if (!(cond)) {                   \
-      return_expr;                   \
-    }                                \
-  } while (0)
+    do { \
+        if (!(cond)) { \
+            return_expr; \
+        } \
+    } while (0)
 
-#define LOG_PRINT(message, ...)     \
-  do {                              \
-    printf(message, ##__VA_ARGS__); \
-  } while (0)
+#define LOG_PRINT(message, ...) \
+    do { \
+        printf(message, ##__VA_ARGS__); \
+    } while (0)
 
 namespace {
 
 template <typename To, typename From>
-inline To BitCopy(const From& src)
+inline To BitCopy(const From &src)
 {
     static_assert(sizeof(To) == sizeof(From), "size mismatch");
     To dst;
@@ -54,7 +54,7 @@ inline float Bf16ToFloat(uint16_t h)
     return BitCopy<float>(x);
 }
 
-int64_t GetShapeSize(const std::vector<int64_t>& shape)
+int64_t GetShapeSize(const std::vector<int64_t> &shape)
 {
     int64_t shapeSize = 1;
     for (auto i : shape) {
@@ -63,7 +63,7 @@ int64_t GetShapeSize(const std::vector<int64_t>& shape)
     return shapeSize;
 }
 
-int Init(int32_t deviceId, aclrtContext* context, aclrtStream* stream)
+int Init(int32_t deviceId, aclrtContext *context, aclrtStream *stream)
 {
     auto ret = aclInit(nullptr);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclInit failed. ERROR: %d\n", ret); return ret);
@@ -79,8 +79,8 @@ int Init(int32_t deviceId, aclrtContext* context, aclrtStream* stream)
 }
 
 template <typename T>
-int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& shape, void** deviceAddr,
-                    aclDataType dataType, aclTensor** tensor)
+int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &shape, void **deviceAddr,
+                    aclDataType dataType, aclTensor **tensor)
 {
     auto size = GetShapeSize(shape) * sizeof(T);
     if (size > 0) {
@@ -102,19 +102,19 @@ int CreateAclTensor(const std::vector<T>& hostData, const std::vector<int64_t>& 
     return 0;
 }
 
-void PrintBf16Result(const std::vector<int64_t>& shape, void** deviceAddr)
+void PrintBf16Result(const std::vector<int64_t> &shape, void **deviceAddr)
 {
     auto size = GetShapeSize(shape);
     std::vector<uint16_t> resultData(size, 0);
-    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]),
-                           *deviceAddr, size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
+    auto ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), *deviceAddr,
+                           size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); return);
     for (int64_t i = 0; i < size && i < 10; i++) { // 10: max print
         LOG_PRINT("cmp_kv[%ld] is: %f\n", i, Bf16ToFloat(resultData[i]));
     }
 }
 
-}  // namespace
+} // namespace
 
 int main()
 {
@@ -132,8 +132,8 @@ int main()
     int64_t headDim = 512;
     int64_t coff = 2;
     int64_t cmpRatio = 4;
-    int64_t cacheMode = 1;  // 1: 连续buffer (LINEAR_BUFFER)
-    int64_t quantMode = 1;  // 1: A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL
+    int64_t cacheMode = 1; // 1: 连续buffer (LINEAR_BUFFER)
+    int64_t quantMode = 1; // 1: A8W8_A_HIFP8_PER_TENSOR_W_HIFP8_PER_CHANNEL
     int64_t stateCacheStrideDim0 = 0;
     int64_t blockSize = 128;
 
@@ -180,29 +180,29 @@ int main()
     std::vector<uint16_t> cmpKvHostData(cmpKvSize, 0);
 
     // 4. 创建 aclTensor
-    void* xDeviceAddr = nullptr;
-    void* wkvDeviceAddr = nullptr;
-    void* wgateDeviceAddr = nullptr;
-    void* stateCacheDeviceAddr = nullptr;
-    void* apeDeviceAddr = nullptr;
-    void* xDescaleDeviceAddr = nullptr;
-    void* wkvDescaleDeviceAddr = nullptr;
-    void* wgateDescaleDeviceAddr = nullptr;
-    void* stateBlockTableDeviceAddr = nullptr;
-    void* startPosDeviceAddr = nullptr;
-    void* cmpKvDeviceAddr = nullptr;
+    void *xDeviceAddr = nullptr;
+    void *wkvDeviceAddr = nullptr;
+    void *wgateDeviceAddr = nullptr;
+    void *stateCacheDeviceAddr = nullptr;
+    void *apeDeviceAddr = nullptr;
+    void *xDescaleDeviceAddr = nullptr;
+    void *wkvDescaleDeviceAddr = nullptr;
+    void *wgateDescaleDeviceAddr = nullptr;
+    void *stateBlockTableDeviceAddr = nullptr;
+    void *startPosDeviceAddr = nullptr;
+    void *cmpKvDeviceAddr = nullptr;
 
-    aclTensor* x = nullptr;
-    aclTensor* wkv = nullptr;
-    aclTensor* wgate = nullptr;
-    aclTensor* stateCacheRef = nullptr;
-    aclTensor* ape = nullptr;
-    aclTensor* xDescale = nullptr;
-    aclTensor* wkvDescale = nullptr;
-    aclTensor* wgateDescale = nullptr;
-    aclTensor* stateBlockTable = nullptr;
-    aclTensor* startPos = nullptr;
-    aclTensor* cmpKvOut = nullptr;
+    aclTensor *x = nullptr;
+    aclTensor *wkv = nullptr;
+    aclTensor *wgate = nullptr;
+    aclTensor *stateCacheRef = nullptr;
+    aclTensor *ape = nullptr;
+    aclTensor *xDescale = nullptr;
+    aclTensor *wkvDescale = nullptr;
+    aclTensor *wgateDescale = nullptr;
+    aclTensor *stateBlockTable = nullptr;
+    aclTensor *startPos = nullptr;
+    aclTensor *cmpKvOut = nullptr;
 
     ret = CreateAclTensor(xHostData, xShape, &xDeviceAddr, aclDataType::ACL_HIFLOAT8, &x);
     CHECK_RET(ret == ACL_SUCCESS, return ret);
@@ -233,19 +233,16 @@ int main()
 
     // 5. 调用 aclnnQuantCompressorGetWorkspaceSize
     uint64_t workspaceSize = 0;
-    aclOpExecutor* executor = nullptr;
+    aclOpExecutor *executor = nullptr;
 
-    ret = aclnnQuantCompressorGetWorkspaceSize(
-        x, wkv, wgate, stateCacheRef, ape,
-        xDescale, wkvDescale, wgateDescale,
-        stateBlockTable, nullptr, nullptr, startPos,
-        quantMode, cmpRatio, coff, cacheMode, stateCacheStrideDim0,
-        cmpKvOut, &workspaceSize, &executor);
+    ret = aclnnQuantCompressorGetWorkspaceSize(x, wkv, wgate, stateCacheRef, ape, xDescale, wkvDescale, wgateDescale,
+                                               stateBlockTable, nullptr, nullptr, startPos, quantMode, cmpRatio, coff,
+                                               cacheMode, stateCacheStrideDim0, cmpKvOut, &workspaceSize, &executor);
     CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("aclnnQuantCompressorGetWorkspaceSize failed. ERROR: %d\n", ret);
               return ret);
 
     // 6. 申请 workspace
-    void* workspaceAddr = nullptr;
+    void *workspaceAddr = nullptr;
     if (workspaceSize > 0) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         CHECK_RET(ret == ACL_SUCCESS, LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); return ret);
