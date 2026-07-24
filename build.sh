@@ -798,7 +798,38 @@ function collect_rpm_deb_package() {
     done
 }
 
+function delete_arch(){
+    TARGET_DIR="${CURRENT_DIR}/mc2"
+    FOLDER_NAME=""
+    if [[ "$ASCEND_SOC_UNITS" == "ascend910b" || "$ASCEND_SOC_UNITS" == "ascend910_93" ]]; then
+        FOLDER_NAME="op_kernel/arch35"
+    elif [[ "$ASCEND_SOC_UNITS" == "ascend950" ]]; then
+        FOLDER_NAME="op_kernel/arch22"
+    fi
+
+    if [ -z "$FOLDER_NAME" ]; then
+        return
+    fi
+
+    echo "Cleaning up all $FOLDER_NAMEdirectories in $TARGET_DIR..."
+    python3 "${CURRENT_DIR}/cmake/scripts/delete_arch.py" "$TARGET_DIR" "$FOLDER_NAME"
+
+    if [[ "$ASCEND_SOC_UNITS" == "ascend910b" || "$ASCEND_SOC_UNITS" == "ascend910_93" ]]; then
+        FOLDER_NAME="op_host/op_tiling/arch35"
+    elif [[ "$ASCEND_SOC_UNITS" == "ascend950" ]]; then
+        FOLDER_NAME="op_host/op_tiling/arch22"
+    fi
+    python3 "${CURRENT_DIR}/cmake/scripts/delete_arch.py" "$TARGET_DIR" "$FOLDER_NAME"
+
+    if [ $? -eq 0 ]; then
+        echo "Finish cleaning up!"
+    else
+        echo "Cleanup failed." >&2
+    fi
+}
+
 function build_package(){
+    delete_arch
     if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
         echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip package generation."
         return 0
@@ -832,6 +863,7 @@ function build_host(){
 }
 
 function build_kernel(){
+    delete_arch
     if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
         echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip kernel build."
         return 0
