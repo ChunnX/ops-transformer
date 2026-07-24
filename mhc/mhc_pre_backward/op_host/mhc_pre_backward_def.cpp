@@ -114,6 +114,15 @@ public:
             .NeedCheckSupportFlag(false)
             .ExtendCfgInfo("opFile.value", "mhc_pre_backward_apt");
         this->AICore().AddConfig("ascend950", aicConfig);
+        OpAICoreConfig aicoreConfig910b;
+        aicoreConfig910b.DynamicCompileStaticFlag(true)
+            .DynamicFormatFlag(false)
+            .DynamicRankSupportFlag(true)
+            .DynamicShapeSupportFlag(true)
+            .NeedCheckSupportFlag(false)
+            .ExtendCfgInfo("aclnnSupport.value", "support_aclnn")
+            .ExtendCfgInfo("opFile.value", "mhc_pre_backward");
+        this->AICore().AddConfig("ascend910b", aicoreConfig910b);
         this->Attr("hc_eps").AttrType(OPTIONAL).Float(1e-6f);
     }
 };
