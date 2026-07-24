@@ -29,7 +29,6 @@ at::Tensor stem_oam_prep_varlen_q(
     int64_t stemBlockSize,
     int64_t stemStride)
 {
-    TORCH_CHECK(q.numel() > 0, "Tensor q is empty.");
     TORCH_CHECK(q.size(2) == DIM_QK, "q last dim must be 128, but got ", q.size(2));
     TORCH_CHECK(stemBlockSize % 32 == 0, "stemBlockSize must be multiple of 32");
     TORCH_CHECK(stemStride % 16 == 0, "stemStride must be multiple of 16");
@@ -39,6 +38,11 @@ at::Tensor stem_oam_prep_varlen_q(
 
     int64_t H_q = q.size(1);
     int64_t batch = static_cast<int64_t>(qSeqLens.size());
+
+    if (batch == 0) {
+        return at::empty({0, H_q, 0, stemStride * DIM_QK},
+                         q.options().dtype(at::kBFloat16));
+    }
 
     int64_t maxQLen = *std::max_element(qSeqLens.begin(), qSeqLens.end());
     int64_t maxQPadded = ((maxQLen + stemBlockSize - 1) / stemBlockSize) * stemBlockSize;
