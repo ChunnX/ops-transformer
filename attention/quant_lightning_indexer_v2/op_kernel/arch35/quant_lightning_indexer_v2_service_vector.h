@@ -37,6 +37,9 @@ public:
 
     using QK_T = typename QLIV2T::queryKeyType;
     using SCORE_T = typename QLIV2T::scoreType;
+    using WEIGHT_T = typename QLIV2T::weightType;
+    static constexpr bool IS_MX = QLIV2T::isMx;
+    static constexpr bool IS_MXFP4 = QLIV2T::isMxFp4;
 
     __aicore__ inline QLIV2Vector() {};
     __aicore__ inline void ProcessVec1(const QLIV2Common::RunInfo &info);
@@ -49,10 +52,11 @@ public:
     __aicore__ inline void InitVecWorkspaceTensor(GlobalTensor<SCORE_T> scoreGm,
                                                     GlobalTensor<SCORE_T> ldScoreGm,
                                                     GlobalTensor<int32_t> ldIndexGm);
-    __aicore__ inline void InitVecInputTensor(GlobalTensor<float> weightsGm, GlobalTensor<float> qScaleGm,
-                                              GlobalTensor<float> kScaleGm, GlobalTensor<int32_t> indiceOutGm,
+    __aicore__ inline void InitVecInputTensor(GlobalTensor<WEIGHT_T> weightsGm, GlobalTensor<int32_t> indiceOutGm,
                                               GlobalTensor<int32_t> blockTableGm, GlobalTensor<bfloat16_t> valueOutGm,
-                                              GlobalTensor<int32_t> outputIdxOffsetGm);
+                                              GlobalTensor<int32_t> outputIdxOffsetGm,
+                                              GlobalTensor<float> qScaleGm = {},
+                                              GlobalTensor<float> kScaleGm = {});
     __aicore__ inline void CleanInvalidOutput(int64_t invalidS1offset);
     __aicore__ inline void AllocEventID();
     __aicore__ inline void FreeEventID();
@@ -61,7 +65,7 @@ public:
 
 protected:
     GlobalTensor<SCORE_T> scoreGm;
-    GlobalTensor<float> weightsGm;
+    GlobalTensor<WEIGHT_T> weightsGm;
     GlobalTensor<SCORE_T> ldScoreGm;
     GlobalTensor<int32_t> ldIndexGm;
     GlobalTensor<float> qScaleGm;
@@ -91,6 +95,13 @@ protected:
 private:
     __aicore__ inline void GetKeyScale(const QLIV2Common::RunInfo &runInfo, LocalTensor<float> &kScaleUB,
                                        int64_t batchId, int64_t startS2, int64_t getLen);
+#ifdef QLIV2_DEBUG_DUMP
+    __aicore__ inline bool IsDebugRow(const QLIV2Common::RunInfo &info, uint32_t absoluteS1Idx);
+    __aicore__ inline bool IsDebugLdRow(uint32_t ldRowIdx);
+    __aicore__ inline void DumpLdPartial(const QLIV2Common::RunInfo &info, uint32_t rowIdx,
+                                         uint32_t absoluteS1Idx, int32_t curS2StartIdx,
+                                         int32_t validS2Len, uint64_t workspaceOffset);
+#endif
     // ================================Local Buffer区====================================
 
     // tmp buff for vector
@@ -98,7 +109,7 @@ private:
     LocalTensor<QK_T> resMm1UB_;
     // tmp buff for weight
     TBuf<TPosition::VECCALC> weightBuf_;
-    LocalTensor<float> weightUB_;
+    LocalTensor<WEIGHT_T> weightUB_;
     // tmp buff for weight cast float
     TBuf<TPosition::VECCALC> weightTempBuf_;
     LocalTensor<float> weightTempUB_;
@@ -111,7 +122,6 @@ private:
     // tmp buff for out
     TBuf<TPosition::VECCALC> outBuf_;
     LocalTensor<SCORE_T> vec1OutUB_;
-    TBuf<TPosition::VECCALC> valueOutBuf_;
     LocalTensor<bfloat16_t> valueOutLocal_;
     // tmp buff for LD
     TBuf<TPosition::VECCALC> ldValueBuf_;
@@ -164,17 +174,69 @@ private:
     topk::LITopk<SCORE_T> topkOp_;
 };
 
+#ifdef QLIV2_DEBUG_DUMP
+template <typename QLIV2T>
+__aicore__ inline bool QLIV2Vector<QLIV2T>::IsDebugRow(
+    const QLIV2Common::RunInfo &info, uint32_t absoluteS1Idx)
+{
+    return info.bIdx == DebugDump::TARGET_B_IDX &&
+           info.n2Idx == DebugDump::TARGET_N2_IDX &&
+           absoluteS1Idx == DebugDump::TARGET_S1_IDX;
+}
+
+template <typename QLIV2T>
+__aicore__ inline bool QLIV2Vector<QLIV2T>::IsDebugLdRow(uint32_t ldRowIdx)
+{
+    uint32_t absoluteS1Idx = ldInfo_.mIdx * s1BaseSize_ + ldInfo_.mStart + ldRowIdx;
+    return ldInfo_.bIdx == DebugDump::TARGET_B_IDX &&
+           ldInfo_.n2Idx == DebugDump::TARGET_N2_IDX &&
+           absoluteS1Idx == DebugDump::TARGET_S1_IDX;
+}
+
+template <typename QLIV2T>
+__aicore__ inline void QLIV2Vector<QLIV2T>::DumpLdPartial(
+    const QLIV2Common::RunInfo &info, uint32_t rowIdx, uint32_t absoluteS1Idx,
+    int32_t curS2StartIdx, int32_t validS2Len, uint64_t workspaceOffset)
+{
+    if (!IsDebugRow(info, absoluteS1Idx)) {
+        return;
+    }
+    uint32_t partialId = info.saveWorkSpaceIdx * DebugDump::LD_PARTIAL_ROW_STRIDE + rowIdx;
+    LocalTensor<uint32_t> debugMeta = weightTempUB_.template ReinterpretCast<uint32_t>();
+    debugMeta.SetValue(0, 1U);
+    debugMeta.SetValue(1, static_cast<uint32_t>(blockId_));
+    debugMeta.SetValue(2, info.bIdx);
+    debugMeta.SetValue(3, info.n2Idx);
+    debugMeta.SetValue(4, absoluteS1Idx);
+    debugMeta.SetValue(5, static_cast<uint32_t>(curS2StartIdx));
+    debugMeta.SetValue(6, static_cast<uint32_t>(validS2Len > 0 ? validS2Len : 0));
+    debugMeta.SetValue(7, info.saveWorkSpaceIdx);
+    debugMeta.SetValue(8, rowIdx);
+    debugMeta.SetValue(9, static_cast<uint32_t>(workspaceOffset));
+    debugMeta.SetValue(10, topkCount_);
+    debugMeta.SetValue(11, topkCountAlign16_);
+    PipeBarrier<PIPE_V>();
+    DumpTensor(debugMeta, DebugDump::LD_PARTIAL_META_DESC_BASE + partialId, DebugDump::LD_META_WORDS);
+    DumpTensor(scoreOutLocal_, DebugDump::LD_PARTIAL_SCORE_DESC_BASE + partialId, topkCountAlign16_);
+    DumpTensor(indicesOutLocal_.template ReinterpretCast<int32_t>(),
+               DebugDump::LD_PARTIAL_INDEX_DESC_BASE + partialId, topkCountAlign16_);
+}
+#endif
+
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
 {
-    // 大小：2(开dB) 2 * 64 * 128 * 4 = 128KB
+    // resMm1与LD索引复用，按两种用途所需容量的较大值申请。
+    uint64_t resMm1BufferSize =
+        2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T);
+    // LD阶段将resMm1Buf_复用为uint32_t索引缓冲区，MXFP4的QK_T为BF16，需单独保证LD容量。
+    uint64_t ldIndexBufferSize = (topkCountAlign256_ + trunkLen_) * sizeof(uint32_t);
     pipe->InitBuffer(resMm1Buf_,
-        2 * CeilDiv(constInfo_.mBaseSize, 2) * s2BaseSize_ * sizeof(QK_T));
+        resMm1BufferSize > ldIndexBufferSize ? resMm1BufferSize : ldIndexBufferSize);
     resMm1UB_ = resMm1Buf_.Get<QK_T>(); // qk
-    // 大小：2(开dB) * 2 * 64 * 2 = 0.5KB
-    pipe->InitBuffer(weightBuf_,
-        2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
-    weightUB_ = weightBuf_.Get<float>(); // weight
+    // weight buffer按WEIGHT_T访问；UB_BANK_DEPTH_STRIDE的单位已经是字节，无需再乘数据类型大小。
+    pipe->InitBuffer(weightBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
+    weightUB_ = weightBuf_.Get<WEIGHT_T>(); // weight
     pipe->InitBuffer(weightTempBuf_, 2 * CeilDiv(s1BaseSize_, 2) * UB_BANK_DEPTH_STRIDE);
     weightTempUB_ = weightTempBuf_.Get<float>();
     // 大小：2(开dB) * 128 * 4 = 1KB
@@ -210,8 +272,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitBuffers(TPipe *pipe)
     topkSharedTmpLocal_ = topkSharedTmpBuf_.Get<uint32_t>();
     topkOp_.InitBuffers(topkSharedTmpLocal_, indicesOutLocal_);
 
-    // 刷-1
-    Duplicate(kScaleUB_, float(0), 2 * s2BaseSize_ * 16);
+    // MX场景不走vector侧kScale路径
+    if constexpr (!IS_MX) {
+        Duplicate(kScaleUB_, float(0), 2 * s2BaseSize_ * 16);
+    }
 }
 
 template <typename QLIV2T>
@@ -246,28 +310,32 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitParams(const struct QLIV2Common:
     topkCountAlign16_ = QLIV2Common::Align(constInfo.sparseCount, (uint64_t)16); // topkCount对齐到16
     topkOp_.Init(topkCount_, trunkLen_);
 
-    if (constInfo_.quantMode == 4) {
-        globalQScale_ = qScaleGm.GetValue(0);
-        globalKScale_ = kScaleGm.GetValue(0);
+    if constexpr (!IS_MX) {
+        if (constInfo_.quantMode == 4) {
+            globalQScale_ = qScaleGm.GetValue(0);
+            globalKScale_ = kScaleGm.GetValue(0);
+        }
     }
 }
 
 template <typename QLIV2T>
-__aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(GlobalTensor<float> weightsGm,
-                                                               GlobalTensor<float> qScaleGm,
-                                                               GlobalTensor<float> kScaleGm,
+__aicore__ inline void QLIV2Vector<QLIV2T>::InitVecInputTensor(GlobalTensor<WEIGHT_T> weightsGm,
                                                                GlobalTensor<int32_t> indiceOutGm,
                                                                GlobalTensor<int32_t> blockTableGm,
                                                                GlobalTensor<bfloat16_t> valueOutGm,
-                                                               GlobalTensor<int32_t> outputIdxOffsetGm)
+                                                               GlobalTensor<int32_t> outputIdxOffsetGm,
+                                                               GlobalTensor<float> qScaleGm,
+                                                               GlobalTensor<float> kScaleGm)
 {
     this->weightsGm = weightsGm;
-    this->qScaleGm = qScaleGm;
-    this->kScaleGm = kScaleGm;
     this->indiceOutGm = indiceOutGm;
     this->blockTableGm = blockTableGm;
     this->valueOutGm = valueOutGm;
     this->outputIdxOffsetGm = outputIdxOffsetGm;
+    if constexpr (!IS_MX) {
+        this->qScaleGm = qScaleGm;
+        this->kScaleGm = kScaleGm;
+    }
 }
 
 template <typename QLIV2T>
@@ -283,8 +351,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::InitVecWorkspaceTensor(GlobalTensor<
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::AllocEventID()
 {
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 0);
-    SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 1);
+    if constexpr (!IS_MX) {
+        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 0);
+        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 1);
+    }
     SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 0);
     SetFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 1);
     SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 0);
@@ -298,8 +368,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::AllocEventID()
 template <typename QLIV2T>
 __aicore__ inline void QLIV2Vector<QLIV2T>::FreeEventID()
 {
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 0);
-    WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 1);
+    if constexpr (!IS_MX) {
+        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 0);
+        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + 1);
+    }
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 0);
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + 1);
     WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + 0);
@@ -442,35 +514,44 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
         // weightsGm --> weightUB_
         int64_t weightGmOffset = info.tensorWeightsOffset + curAivS1Idx * kHeadNum_ * gSize_;
-        DataCopyPadExtParams<float> padWeightsParams{false, 0, 0, 0};
+        DataCopyPadExtParams<WEIGHT_T> padWeightsParams{false, 0, 0, 0};
         DataCopyExtParams qwDataCopyExtParams;
         qwDataCopyExtParams.blockCount = curAivS1ProcNum;
-        qwDataCopyExtParams.blockLen = gSize_ * sizeof(float);
+        qwDataCopyExtParams.blockLen = gSize_ * sizeof(WEIGHT_T);
         qwDataCopyExtParams.srcStride = 0;
         qwDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qwDataCopyExtParams.blockLen) / 32;
-        DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))],
+        DataCopyPad(weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(WEIGHT_T))],
                     weightsGm[weightGmOffset], qwDataCopyExtParams, padWeightsParams);
 
-        if (constInfo_.quantMode != 4) {
-            // qScaleGm  -->  qScaleUB_
-            DataCopyPadExtParams<float> padQScaleParams{false, 0, 0, 0};
-            DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))],
-                        qScaleGm[weightGmOffset], qwDataCopyExtParams, padQScaleParams);
+        if constexpr (!IS_MX) {
+            if (constInfo_.quantMode != 4) {
+                // qScaleGm  -->  qScaleUB_
+                DataCopyPadExtParams<float> padQScaleParams{false, 0, 0, 0};
+                DataCopyExtParams qScaleDataCopyExtParams;
+                qScaleDataCopyExtParams.blockCount = curAivS1ProcNum;
+                qScaleDataCopyExtParams.blockLen = gSize_ * sizeof(float);
+                qScaleDataCopyExtParams.srcStride = 0;
+                qScaleDataCopyExtParams.dstStride = (UB_BANK_DEPTH_STRIDE - qScaleDataCopyExtParams.blockLen) / 32;
+                DataCopyPad(qScaleUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))],
+                            qScaleGm[weightGmOffset], qScaleDataCopyExtParams, padQScaleParams);
+            }
         }
 
         SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_QSCALE + qScalepingpong);
         WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_QSCALE + qScalepingpong);
     }
 
-    if (((info.s2Idx - info.s2Start) % 16 == 0) && (constInfo_.quantMode != 4)) {
-        WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
-        uint32_t getLen = 16 * s2BaseSize_ > (info.validS2Len - info.s2Idx * s2BaseSize_)
-                                           ? info.validS2Len - info.s2Idx * s2BaseSize_
-                                           : 16 * s2BaseSize_;
-        // kScaleGm  -->  kScaleUB_
-        GetKeyScale(info, kScaleUB_, info.bIdx, curS2Idx, getLen);
-        SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
-        WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
+    if constexpr (!IS_MX) {
+        if (((info.s2Idx - info.s2Start) % 16 == 0) && (constInfo_.quantMode != 4)) {
+            WaitFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
+            uint32_t getLen = 16 * s2BaseSize_ > (info.validS2Len - info.s2Idx * s2BaseSize_)
+                                               ? info.validS2Len - info.s2Idx * s2BaseSize_
+                                               : 16 * s2BaseSize_;
+            // kScaleGm  -->  kScaleUB_
+            GetKeyScale(info, kScaleUB_, info.bIdx, curS2Idx, getLen);
+            SetFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
+            WaitFlag<HardEvent::MTE2_V>(VEC1_MTE2_V_EVENT_KSCALE + kScalepingpong);
+        }
     }
 
     WaitFlag<HardEvent::MTE3_V>(VEC1_MTE3_V_EVENT + pingpong);
@@ -481,19 +562,86 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
 
     static_assert(std::is_same_v<SCORE_T, uint16_t>);
     auto outBase = vec1OutUB_[pingpong * (UB_BANK_STRIDE / sizeof(SCORE_T))];
-    auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
+    auto weightBase = weightUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(WEIGHT_T))];
     auto weightTempBase = weightTempUB_[qScalepingpong * (UB_BANK_STRIDE / sizeof(float))];
 
     auto qkBase = resMm1UB_[pingpong * (UB_BANK_STRIDE / sizeof(QK_T))];
     auto qkVLstride = (UB_BANK_DEPTH_STRIDE / sizeof(QK_T)) / 2 * constInfo_.mBaseSize;
-    if (constInfo_.quantMode == 4) { // 4: per_tensor量化
+#ifdef QLIV2_DEBUG_DUMP
+    if constexpr (IS_MX) {
+        bool containsTargetRow = info.bIdx == DebugDump::TARGET_B_IDX &&
+            info.n2Idx == DebugDump::TARGET_N2_IDX &&
+            DebugDump::TARGET_S1_IDX >= curAivS1Idx &&
+            DebugDump::TARGET_S1_IDX < curAivS1Idx + curAivS1ProcNum;
+        if (containsTargetRow) {
+            uint64_t localRow = DebugDump::TARGET_S1_IDX - curAivS1Idx;
+            uint64_t qkGroupStride = UB_BANK_DEPTH_STRIDE / sizeof(QK_T);
+            uint64_t qkRowStride = gSize_ * qkGroupStride;
+            uint32_t qkBlockBegin = static_cast<uint32_t>(curS2Idx);
+            uint32_t qkBlockEnd = static_cast<uint32_t>(
+                curS2Idx + s2BaseSize_ > info.validS2Len ? info.validS2Len : curS2Idx + s2BaseSize_);
+            uint32_t qkDumpBegin =
+                qkBlockBegin < DebugDump::QK_S2_BEGIN ? DebugDump::QK_S2_BEGIN : qkBlockBegin;
+            uint32_t qkDumpEnd =
+                qkBlockEnd < DebugDump::QK_S2_END ? qkBlockEnd : DebugDump::QK_S2_END;
+            if (qkDumpBegin < qkDumpEnd) {
+                uint32_t qkDumpLen = qkDumpEnd - qkDumpBegin;
+                uint32_t qkBlockOffset = qkDumpBegin - qkBlockBegin;
+                for (uint32_t gIdx = 0; gIdx < static_cast<uint32_t>(gSize_); ++gIdx) {
+                    uint32_t qkRecordId = static_cast<uint32_t>(blockId_) * DebugDump::QK_CORE_DESC_STRIDE +
+                                          qkDumpBegin + gIdx;
+                    LocalTensor<uint32_t> qkDebugMeta = topkSharedTmpLocal_;
+                    qkDebugMeta.SetValue(0, 1U);
+                    qkDebugMeta.SetValue(1, static_cast<uint32_t>(blockId_));
+                    qkDebugMeta.SetValue(2, static_cast<uint32_t>(blockId_ / 2));
+                    qkDebugMeta.SetValue(3, info.bIdx);
+                    qkDebugMeta.SetValue(4, info.n2Idx);
+                    qkDebugMeta.SetValue(5, static_cast<uint32_t>(curS2Idx));
+                    qkDebugMeta.SetValue(6, static_cast<uint32_t>(curAivS1Idx));
+                    qkDebugMeta.SetValue(7, static_cast<uint32_t>(localRow));
+                    qkDebugMeta.SetValue(8, gIdx);
+                    qkDebugMeta.SetValue(9, qkDumpBegin);
+                    qkDebugMeta.SetValue(10, qkDumpLen);
+                    qkDebugMeta.SetValue(11, qkBlockOffset);
+                    qkDebugMeta.SetValue(12, static_cast<uint32_t>(pingpong));
+                    qkDebugMeta.SetValue(13, static_cast<uint32_t>(qkGroupStride));
+                    qkDebugMeta.SetValue(14, static_cast<uint32_t>(qkRowStride));
+                    qkDebugMeta.SetValue(15, DebugDump::TARGET_S1_IDX);
+                    PipeBarrier<PIPE_V>();
+                    DumpTensor(qkDebugMeta,
+                               DebugDump::QK_META_DESC_BASE + qkRecordId,
+                               DebugDump::QK_META_WORDS);
+                    DumpTensor(qkBase[localRow * qkRowStride + gIdx * qkGroupStride + qkBlockOffset],
+                               DebugDump::QK_DESC_BASE + qkRecordId, qkDumpLen);
+                }
+            }
+            uint64_t weightRowStride = UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T);
+            if (info.isFirstS2InnerLoop) {
+                DumpTensor(weightBase[localRow * weightRowStride], DebugDump::WEIGHT_DESC, gSize_);
+            }
+        }
+    }
+#endif
+    if constexpr (IS_MXFP4) {
+        vector1::BatchMulWeightAndReduceSumMXFP4(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
+            qkBase, qkVLstride,
+            (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T),
+            gSize_, curAivS1ProcNum);
+    } else if constexpr (IS_MX) {
+        vector1::BatchMulWeightAndReduceSumMX(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
+            qkBase, qkVLstride,
+            (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
+            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), weightTempBase,
+            gSize_, curAivS1ProcNum);
+    } else if (constInfo_.quantMode == 4) { // 4: per_tensor量化
         // quantMode为4时不适用sacle的UB
         float kScaleValue = globalKScale_;
         float qScaleValue = globalQScale_;
         vector1::BatchMulWeightAndReduceSumPerTensor(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
             qkBase, qkVLstride,
             (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
+            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), weightTempBase,
             kScaleValue, qScaleValue,
             gSize_, curAivS1ProcNum);
     } else {
@@ -503,7 +651,7 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
         vector1::BatchMulWeightAndReduceSum(outBase, UB_BANK_DEPTH_STRIDE / sizeof(SCORE_T),
             qkBase, qkVLstride,
             (uint32_t)(gSize_ * UB_BANK_DEPTH_STRIDE / sizeof(QK_T)),
-            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(float), weightTempBase,
+            weightBase, UB_BANK_DEPTH_STRIDE / sizeof(WEIGHT_T), weightTempBase,
             kScaleBase, (uint32_t)0,
             qScaleBase, UB_BANK_DEPTH_STRIDE / sizeof(float),
             gSize_, curAivS1ProcNum);
@@ -511,8 +659,10 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessVec1(const QLIV2Common::RunIn
     if (info.isFirstS2InnerLoop) {
         SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_QSCALE + qScalepingpong);
     }
-    if (((info.s2Idx - info.s2Start) % 16 == 0) && (constInfo_.quantMode != 4)) {
-        SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
+    if constexpr (!IS_MX) {
+        if (((info.s2Idx - info.s2Start) % 16 == 0) && (constInfo_.quantMode != 4)) {
+            SetFlag<HardEvent::V_MTE2>(VEC1_V_MTE2_EVENT_KSCALE + kScalepingpong);
+        }
     }
     SetFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
     WaitFlag<HardEvent::V_MTE3>(VEC1_V_MTE3_EVENT + pingpong);
@@ -596,6 +746,26 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             // 当前核处理的s2长度validS2Len
             validS2Len = Min((info.s2LoopEnd + 1) * s2BaseSize_, validAllS2Len) - curS2StartIdx;
         }
+#ifdef QLIV2_DEBUG_DUMP
+        uint32_t absoluteS1Idx = static_cast<uint32_t>(curS1Idx + rowIdx);
+        bool isDebugRow = false;
+        if constexpr (IS_MX) {
+            isDebugRow = IsDebugRow(info, absoluteS1Idx);
+        }
+        if (isDebugRow && validS2Len > 0) {
+            uint64_t debugScoreOffset = vecOffset * QLIV2Common::Align(
+                static_cast<uint64_t>(constInfo_.kSeqSize), static_cast<uint64_t>(s2BaseSize_)) + ldDstOffset;
+            DumpTensor(scoreGm[debugScoreOffset],
+                       DebugDump::SCORE_KEY_DESC_BASE + static_cast<uint32_t>(curS2StartIdx),
+                       static_cast<uint32_t>(validS2Len));
+            if (curS2StartIdx == 0) {
+                DumpTensor(scoreGm[debugScoreOffset],
+                           DebugDump::ACT_S1_SIZE_DESC_BASE + info.actS1Size, 1);
+                DumpTensor(scoreGm[debugScoreOffset],
+                           DebugDump::ACT_S2_SIZE_DESC_BASE + info.actS2Size, 1);
+            }
+        }
+#endif
 
         uint64_t offset = info.saveWorkSpaceIdx * s1BaseSize_ * topkCountAlign16_ + rowIdx * topkCountAlign16_;
         if (validS2Len <= 0 && !info.isNeedLD) {
@@ -630,6 +800,12 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
             WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
             Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>(), neg, topkCountAlign16_);
             Duplicate(scoreOutLocal_, zero, topkCountAlign16_);
+#ifdef QLIV2_DEBUG_DUMP
+            if constexpr (IS_MX) {
+                DumpLdPartial(info, rowIdx, absoluteS1Idx, static_cast<int32_t>(curS2StartIdx),
+                              validS2Len, offset);
+            }
+#endif
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             // 将每一行S1的Topk结果存放在ldScoreGm和ldIndexGm中
@@ -750,13 +926,6 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                     topkCount_ - (validS2Len / 8 * 8 + 64));
             }
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-            SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-            WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-
-            AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
-                indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
-            SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
-
             if (returnValueFlag) {
                 WaitFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
                 vector1::UIntToFloatReturnValue(valueOutLocal_, scoreOutLocal_, topkCountAlign256_);
@@ -777,18 +946,31 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                             topkCount_ - (validS2Len / 16 * 16 + 64));
                 }
                 SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
-                SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
-                WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            }
 
+#ifdef QLIV2_DEBUG_DUMP
+            if (isDebugRow) {
+                DumpTensor(indicesOutLocal_.ReinterpretCast<int32_t>(),
+                           DebugDump::TOPK_INDEX_DESC, topkCount_);
+                if (returnValueFlag) {
+                    DumpTensor(scoreOutLocal_, DebugDump::TOPK_SCORE_KEY_DESC, topkCount_);
+                }
+            }
+#endif
+            SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
+            AscendC::DataCopyPad(indiceOutGm[info.indiceOutOffset + (curS1Idx + rowIdx) * topkCount_],
+                indicesOutLocal_.ReinterpretCast<int32_t>(), copyOutParams);
+            if (returnValueFlag) {
                 AscendC::DataCopyParams copyOutValueParams;
                 copyOutValueParams.blockCount = 1;
                 copyOutValueParams.blockLen = topkCount_ * sizeof(bfloat16_t); // bytes
                 copyOutValueParams.srcStride = 0;
                 copyOutValueParams.dstStride = 0;
-                // 搬运到GM
                 AscendC::DataCopyPad(valueOutGm[info.valueOutOffset + (curS1Idx + rowIdx) * topkCount_],
                     valueOutLocal_, copyOutValueParams);
             }
+            SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
         } else {
             PipeBarrier<PIPE_V>();
             AscendC::Adds(indicesOutLocal_.ReinterpretCast<int32_t>(), indicesOutLocal_.ReinterpretCast<int32_t>(),
@@ -828,6 +1010,12 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessTopK(const QLIV2Common::RunIn
                 Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[topkCount_ / 8 * 8], neg, maskIndices, 1, 1, 0);
             }
 
+#ifdef QLIV2_DEBUG_DUMP
+            if constexpr (IS_MX) {
+                DumpLdPartial(info, rowIdx, absoluteS1Idx, static_cast<int32_t>(curS2StartIdx),
+                              validS2Len, offset);
+            }
+#endif
             SetFlag<HardEvent::V_MTE2>(TOPK_V_MTE2_EVENT);
             SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
             WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
@@ -885,6 +1073,12 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
     SetFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
     for (uint32_t j = 0; j < ldInfo_.mNum; j++) {
         WaitFlag<HardEvent::MTE3_V>(TOPK_MTE3_V_EVENT);
+#ifdef QLIV2_DEBUG_DUMP
+        bool isDebugLdRow = false;
+        if constexpr (IS_MX) {
+            isDebugLdRow = IsDebugLdRow(j);
+        }
+#endif
         for (uint32_t i = 0; i < ldProcessNum; i++) {
             // 读取数据段过长
             if (ldProcessNum > 1) {
@@ -933,6 +1127,29 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
                     s2LenAlign - (s2Len / 64 * 64 + 64));
             }
 
+#ifdef QLIV2_DEBUG_DUMP
+            if (isDebugLdRow) {
+                uint32_t absoluteS1Idx = ldInfo_.mIdx * s1BaseSize_ + ldInfo_.mStart + j;
+                LocalTensor<uint32_t> debugMeta = weightTempUB_.template ReinterpretCast<uint32_t>();
+                debugMeta.SetValue(0, 2U);
+                debugMeta.SetValue(1, static_cast<uint32_t>(blockId_));
+                debugMeta.SetValue(2, ldInfo_.bIdx);
+                debugMeta.SetValue(3, ldInfo_.n2Idx);
+                debugMeta.SetValue(4, absoluteS1Idx);
+                debugMeta.SetValue(5, ldInfo_.workspaceIdx + i * ldWorkspaceNum);
+                debugMeta.SetValue(6, ldProWorkspaceNum);
+                debugMeta.SetValue(7, i);
+                debugMeta.SetValue(8, ldProcessOffset);
+                debugMeta.SetValue(9, topkCountAlign16_);
+                debugMeta.SetValue(10, static_cast<uint32_t>(s2Len));
+                debugMeta.SetValue(11, s2LenAlign);
+                PipeBarrier<PIPE_V>();
+                DumpTensor(debugMeta, DebugDump::LD_READ_META_DESC_BASE + i, DebugDump::LD_META_WORDS);
+                DumpTensor(mrgValueLocal_, DebugDump::LD_READ_SCORE_DESC_BASE + i, s2LenAlign);
+                DumpTensor(ldIndexLocal_.ReinterpretCast<int32_t>(),
+                           DebugDump::LD_READ_INDEX_DESC_BASE + i, s2LenAlign);
+            }
+#endif
             PipeBarrier<PIPE_V>();
             topkOp_.LdTopK(mrgValueLocal_, ldIndexLocal_,
                          indicesOutLocal_, scoreOutLocal_,
@@ -955,20 +1172,42 @@ __aicore__ inline void QLIV2Vector<QLIV2T>::ProcessLD()
                 Duplicate(scoreOutLocal_[topkCount_ / 64 * 64 + 64], zero,
                     topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
                 PipeBarrier<PIPE_V>();
-                Duplicate(ldIndexLocal_.ReinterpretCast<int32_t>()[topkCount_ / 64 * 64 + 64], neg,
+                Duplicate(indicesOutLocal_.ReinterpretCast<int32_t>()[topkCount_ / 64 * 64 + 64], neg,
                     topkCountAlign256_ - (topkCount_ / 64 * 64 + 64));
             }
 
+#ifdef QLIV2_DEBUG_DUMP
+            if (isDebugLdRow) {
+                PipeBarrier<PIPE_V>();
+                DumpTensor(scoreOutLocal_, DebugDump::LD_MERGED_SCORE_DESC_BASE + i, topkCountAlign256_);
+                DumpTensor(indicesOutLocal_.ReinterpretCast<int32_t>(),
+                           DebugDump::LD_MERGED_INDEX_DESC_BASE + i, topkCountAlign256_);
+            }
+#endif
             PipeBarrier<PIPE_V>();
             AscendC::DataCopy(ldIndexLocal_, indicesOutLocal_, copyBytes);
             AscendC::DataCopy(mrgValueLocal_, scoreOutLocal_, copyBytes);
         }
+#ifdef QLIV2_DEBUG_DUMP
+        if (isDebugLdRow) {
+            PipeBarrier<PIPE_V>();
+            DumpTensor(indicesOutLocal_.ReinterpretCast<int32_t>(),
+                       DebugDump::LD_TOPK_INDEX_DESC, topkCount_);
+            DumpTensor(scoreOutLocal_, DebugDump::LD_TOPK_SCORE_KEY_DESC, topkCount_);
+        }
+#endif
         if (returnValueFlag) {
             PipeBarrier<PIPE_V>();
             // 可排序键还原为 bf16，并将无效位（score==0，对应 index==-1）刷为 -inf
             // Convert sortable key to bf16 and flush invalid (score==0, index==-1) positions to -inf
             vector1::UIntToFloatReturnValueWithInfMask(valueOutLocal_, scoreOutLocal_,
                                                         topkCountAlign256_, constInfo_.NEG_INF_BFLOAT);
+#ifdef QLIV2_DEBUG_DUMP
+            if (isDebugLdRow) {
+                PipeBarrier<PIPE_V>();
+                DumpTensor(valueOutLocal_, DebugDump::LD_TOPK_VALUE_DESC, topkCount_);
+            }
+#endif
         }
         SetFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
         WaitFlag<HardEvent::V_MTE3>(TOPK_V_MTE3_EVENT);
