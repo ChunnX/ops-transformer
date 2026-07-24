@@ -144,10 +144,10 @@ bool FiaTilingNonQuantMla::IsCapable()
     }
 
     // 支持的G的取值范围
-    std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
-    if (std::find(gSizeSupportList.begin(), gSizeSupportList.end(), fiaInfo_->gSize) == gSizeSupportList.end()) {
-        return false;
-    }
+    // std::vector<uint32_t> gSizeSupportList = {1, 2, 4, 8, 16, 32, 64, 128};
+    // if (std::find(gSizeSupportList.begin(), gSizeSupportList.end(), fiaInfo_->gSize) == gSizeSupportList.end()) {
+    //     return false;
+    // }
 
     return true;
 }
