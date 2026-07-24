@@ -1337,17 +1337,27 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("v", "mte2", 3)
                     T.tile.fill(v1_sy_sum, 0.0)
                     for n_idx in T.serial(n_num):
-                        T.copy(
-                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
-                            v1_sy_chunk,
-                        )
                         T.tile.broadcast(v1_sy_broadcast, v1_sy_max)
                         T.pipe_barrier("v")
-                        T.tile.sub(v1_sy_chunk, v1_sy_chunk, v1_sy_broadcast[0, :])
+                        # The ReduceSumY history is no longer needed after the
+                        # global max has been found.  Keep exp(x - max) in the
+                        # same row so the normalization pass does not repeat it.
+                        T.tile.sub(
+                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                            v1_sy_broadcast[0, :],
+                        )
                         T.pipe_barrier("v")
-                        T.tile.exp(v1_sy_chunk, v1_sy_chunk)
+                        T.tile.exp(
+                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                        )
                         T.pipe_barrier("v")
-                        T.tile.mul(v1_sy_broadcast[0, :], v1_sy_chunk, 1.0)
+                        T.tile.mul(
+                            v1_sy_broadcast[0, :],
+                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                            1.0,
+                        )
                         T.pipe_barrier("v")
                         T.reduce_sum(v1_sy_broadcast, v1_sy_tmp_sum, 1)
                         T.pipe_barrier("v")
@@ -1358,23 +1368,17 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.tile.max(v1_sy_sum, v1_sy_sum, v1_sy_eps)
                     for n_idx in T.serial(n_num):
                         T.wait_flag("mte3", "v", 1)
-                        T.copy(
-                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
-                            v1_sy_chunk,
-                        )
-                        T.tile.broadcast(v1_sy_broadcast, v1_sy_max)
-                        T.pipe_barrier("v")
-                        T.tile.sub(v1_sy_chunk, v1_sy_chunk, v1_sy_broadcast[0, :])
-                        T.pipe_barrier("v")
-                        T.tile.exp(v1_sy_chunk, v1_sy_chunk)
-                        T.pipe_barrier("v")
                         T.tile.broadcast(v1_sy_broadcast, v1_sy_sum)
                         T.pipe_barrier("v")
-                        T.tile.div(v1_sy_chunk, v1_sy_chunk, v1_sy_broadcast[0, :])
+                        T.tile.div(
+                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
+                            v1_sy_broadcast[0, :],
+                        )
                         T.set_flag("v", "mte3", 1)
                         T.wait_flag("v", "mte3", 1)
                         T.copy(
-                            v1_sy_chunk,
+                            v1_sy_storage[Nidx1 + n_idx, 0:n_block],
                             SoftmaxI[bz_task, s1_id,
                                      n_idx * n_block:(n_idx + 1) * n_block],
                         )
