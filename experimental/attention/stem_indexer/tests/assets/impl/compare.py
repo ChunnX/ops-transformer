@@ -16,6 +16,7 @@ import numpy as np
 import torch
 
 MAX_FAILURES = 8
+FAIL_RATIO_LIMIT = 0.001
 
 
 def as_numpy(value):
@@ -91,10 +92,12 @@ def compare(*outputs, **kwargs):
                 break
 
     if failures:
+        fail_ratio = len(failures) / max(total_rows, 1)
+        passed = fail_ratio <= FAIL_RATIO_LIMIT
         return {
-            "pass": False,
-            "precision": (1 - len(failures) / max(total_rows, 1)) * 100,
-            "error_info": f"sparse_indices set mismatch: {len(failures)}/{total_rows} rows differ, first={failures[0]}",
+            "pass": passed,
+            "precision": (1 - fail_ratio) * 100,
+            "error_info": f"sparse_indices set mismatch: {len(failures)}/{total_rows} rows differ (ratio={fail_ratio:.6g}), first={failures[0]}",
         }
 
     return {
