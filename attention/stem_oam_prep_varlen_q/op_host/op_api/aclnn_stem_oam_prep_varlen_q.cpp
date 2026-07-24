@@ -57,7 +57,7 @@ static aclnnStatus CheckShape(const aclTensor *q, const aclIntArray *qSeqLens, c
     }
 
     uint64_t batchSize = qSeqLens->Size();
-    if (batchSize == 0 || batchSize > MAX_BATCH_SIZE) {
+    if (batchSize > MAX_BATCH_SIZE) {
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "qSeqLens size must be in (0, %ld], but got %lu.", MAX_BATCH_SIZE, batchSize);
         return ACLNN_ERR_PARAM_INVALID;
     }
