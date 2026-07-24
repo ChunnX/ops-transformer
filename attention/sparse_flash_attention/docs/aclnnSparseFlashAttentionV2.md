@@ -27,13 +27,13 @@ $$
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnSparseFlashAttentionV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttentionV2”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnSparseFlashAttentionV2GetWorkspaceSize”接口获取计算所需workspace大小以及包含了算子计算流程的执行器，再调用“aclnnSparseFlashAttentionV2”接口执行计算。
 
 ```Cpp
 aclnnStatus aclnnSparseFlashAttentionV2GetWorkspaceSize(
     const aclTensor     *query,
     const aclTensor     *key,
-    const aclTensor     *value, 
+    const aclTensor     *value,
     const aclTensor     *sparseIndices,
     const aclTensor     *blockTableOptional,
     const aclTensor     *actualSeqLengthsQueryOptional,
@@ -59,9 +59,9 @@ aclnnStatus aclnnSparseFlashAttentionV2GetWorkspaceSize(
 
 ```Cpp
 aclnnStatus aclnnSparseFlashAttentionV2(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     const aclrtStream stream)
 ```
 
@@ -69,7 +69,7 @@ aclnnStatus aclnnSparseFlashAttentionV2(
 
 - **参数说明：**
 
-  > [!NOTE]  
+  > [!NOTE]
   >
   >- query、key、value参数维度含义：B（Batch Size）表示输入样本批量大小、S（Sequence Length）表示输入样本序列长度、H（Head Size）表示hidden层的大小、N（Head Num）表示多头数、D（Head Dim）表示hidden层最小的单元尺寸，且满足D=H/N、T表示所有Batch输入样本序列长度的累加和。
   >- Q\_S和S1表示query shape中的S，KV\_S和S2表示key shape中的S，Q\_N和N1表示num\_query\_heads，KV\_N和N2表示num\_key\_value\_heads，T1表示query shape中的T，T2表示key shape中的输入样本序列长度的累加和。
@@ -442,10 +442,10 @@ aclnnStatus aclnnSparseFlashAttentionV2(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一段接口会完成入参校验，出现以下场景时报错：
-  
+
     <table style="undefined;table-layout: fixed;width: 1155px"><colgroup>
     <col style="width: 319px">
     <col style="width: 144px">
@@ -511,7 +511,7 @@ aclnnStatus aclnnSparseFlashAttentionV2(
 
 - **返回值：**
 
-  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  aclnnStatus：返回状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -534,7 +534,7 @@ aclnnStatus aclnnSparseFlashAttentionV2(
 - 参数sinks仅支持Ascend 950PR/Ascend 950DT。
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```Cpp
 /*!

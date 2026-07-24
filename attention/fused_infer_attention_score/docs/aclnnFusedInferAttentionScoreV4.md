@@ -20,7 +20,7 @@
 
     相比于FusedInferAttentionScoreV3，本接口新增dequantScaleQueryOptional、learnableSinkOptional、queryQuantMode参数，另外新增alibi的fullmask能力。
 
-    **说明：** 
+    **说明：**
 
     decode场景下特有KV Cache：KV Cache是大模型推理性能优化的一个常用技术。采样时，Transformer模型会以给定的prompt/context作为初始输入进行推理（可以并行处理），随后逐一生成额外的token来继续完善生成的序列（体现了模型的自回归性质）。在采样过程中，Transformer会执行自注意力操作，为此需要给当前序列中的每个项目（无论是prompt/context还是生成的token）提取键值（KV）向量。这些向量存储在一个矩阵中，通常被称为kv缓存（KV Cache）。
 - 计算公式：
@@ -47,64 +47,64 @@
 
 ## 函数原型
 
-算子执行接口为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnFusedInferAttentionScoreV4GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScoreV4”接口执行计算。
+算子执行接口为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnFusedInferAttentionScoreV4GetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnFusedInferAttentionScoreV4”接口执行计算。
 
 ```c++
 aclnnStatus aclnnFusedInferAttentionScoreV4GetWorkspaceSize(
-    const aclTensor     *query, 
-    const aclTensorList *key, 
-    const aclTensorList *value, 
-    const aclTensor     *pseShiftOptional, 
-    const aclTensor     *attenMaskOptional, 
-    const aclIntArray   *actualSeqLengthsOptional, 
-    const aclIntArray   *actualSeqLengthsKvOptional, 
-    const aclTensor     *deqScale1Optional, 
-    const aclTensor     *quantScale1Optional, 
-    const aclTensor     *deqScale2Optional, 
-    const aclTensor     *quantScale2Optional, 
-    const aclTensor     *quantOffset2Optional, 
-    const aclTensor     *antiquantScaleOptional, 
-    const aclTensor     *antiquantOffsetOptional, 
-    const aclTensor     *blockTableOptional, 
-    const aclTensor     *queryPaddingSizeOptional, 
-    const aclTensor     *kvPaddingSizeOptional, 
-    const aclTensor     *keyAntiquantScaleOptional, 
-    const aclTensor     *keyAntiquantOffsetOptional, 
-    const aclTensor     *valueAntiquantScaleOptional, 
-    const aclTensor     *valueAntiquantOffsetOptional, 
-    const aclTensor     *keySharedPrefixOptional, 
-    const aclTensor     *valueSharedPrefixOptional, 
-    const aclIntArray   *actualSharedPrefixLenOptional, 
-    const aclTensor     *queryRopeOptional, 
-    const aclTensor     *keyRopeOptional, 
-    const aclTensor     *keyRopeAntiquantScaleOptional, 
+    const aclTensor     *query,
+    const aclTensorList *key,
+    const aclTensorList *value,
+    const aclTensor     *pseShiftOptional,
+    const aclTensor     *attenMaskOptional,
+    const aclIntArray   *actualSeqLengthsOptional,
+    const aclIntArray   *actualSeqLengthsKvOptional,
+    const aclTensor     *deqScale1Optional,
+    const aclTensor     *quantScale1Optional,
+    const aclTensor     *deqScale2Optional,
+    const aclTensor     *quantScale2Optional,
+    const aclTensor     *quantOffset2Optional,
+    const aclTensor     *antiquantScaleOptional,
+    const aclTensor     *antiquantOffsetOptional,
+    const aclTensor     *blockTableOptional,
+    const aclTensor     *queryPaddingSizeOptional,
+    const aclTensor     *kvPaddingSizeOptional,
+    const aclTensor     *keyAntiquantScaleOptional,
+    const aclTensor     *keyAntiquantOffsetOptional,
+    const aclTensor     *valueAntiquantScaleOptional,
+    const aclTensor     *valueAntiquantOffsetOptional,
+    const aclTensor     *keySharedPrefixOptional,
+    const aclTensor     *valueSharedPrefixOptional,
+    const aclIntArray   *actualSharedPrefixLenOptional,
+    const aclTensor     *queryRopeOptional,
+    const aclTensor     *keyRopeOptional,
+    const aclTensor     *keyRopeAntiquantScaleOptional,
     const aclTensor     *dequantScaleQueryOptional,
-    const aclTensor     *learnableSinkOptional, 
-    int64_t              numHeads, 
-    double               scaleValue, 
-    int64_t              preTokens, 
-    int64_t              nextTokens, 
-    char                *inputLayout, 
-    int64_t              numKeyValueHeads, 
-    int64_t              sparseMode, 
-    int64_t              innerPrecise, 
-    int64_t              blockSize, 
-    int64_t              antiquantMode, 
-    bool                 softmaxLseFlag, 
-    int64_t              keyAntiquantMode, 
-    int64_t              valueAntiquantMode, 
-    int64_t              queryQuantMode, 
-    const aclTensor     *attentionOut, 
-    const aclTensor     *softmaxLse, 
-    uint64_t            *workspaceSize, 
+    const aclTensor     *learnableSinkOptional,
+    int64_t              numHeads,
+    double               scaleValue,
+    int64_t              preTokens,
+    int64_t              nextTokens,
+    char                *inputLayout,
+    int64_t              numKeyValueHeads,
+    int64_t              sparseMode,
+    int64_t              innerPrecise,
+    int64_t              blockSize,
+    int64_t              antiquantMode,
+    bool                 softmaxLseFlag,
+    int64_t              keyAntiquantMode,
+    int64_t              valueAntiquantMode,
+    int64_t              queryQuantMode,
+    const aclTensor     *attentionOut,
+    const aclTensor     *softmaxLse,
+    uint64_t            *workspaceSize,
     aclOpExecutor      **executor)
 ```
 
 ```c++
 aclnnStatus aclnnFusedInferAttentionScoreV4(
-    void             *workspace, 
-    uint64_t          workspaceSize, 
-    aclOpExecutor    *executor, 
+    void             *workspace,
+    uint64_t          workspaceSize,
+    aclOpExecutor    *executor,
     const aclrtStream stream)
 ```
 
@@ -774,7 +774,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
         <td>
         RingAttention算法对query乘key的结果，先取max得到softmax_max。query乘key的结果减去softmax_max,再取exp，接着求sum，得到softmax_sum。最后对softmax_sum取log，再加上softmax_max得到的结果。</td>
         <td>
-        <ul>    
+        <ul>
             <li>softmaxLseFlag为True时，数据为inf的代表无效数据。</li>
             <li>softmaxLseFlag为False时，如果softmaxLse传入的Tensor非空，则直接返回该Tensor数据，如果softmaxLse传入的是nullptr，则返回shape为{1}全0的Tensor。</li>
         </ul>
@@ -809,7 +809,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
     第一段接口完成入参校验，出现以下场景时报错：
 
@@ -883,7 +883,7 @@ aclnnStatus aclnnFusedInferAttentionScoreV4(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -2008,7 +2008,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
             <tr>
                 <td colspan="2">
-                其它约束见 <a href="#PagedAttention">PagedAttention约束说明。</a> 
+                其它约束见 <a href="#PagedAttention">PagedAttention约束说明。</a>
                 </td>
             </tr>
             <tr>
@@ -2118,7 +2118,7 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
             <tr>
                 <td colspan="2">
-                其它约束见 <a href="#PagedAttention">PagedAttention约束说明。</a> 
+                其它约束见 <a href="#PagedAttention">PagedAttention约束说明。</a>
                 </td>
             </tr>
             <tr>
@@ -2145,12 +2145,12 @@ BFLOAT16和INT8不区分高精度和高性能，行无效修正对FLOAT16、BFLO
             </tr>
         </tbody>
     </table>
-    
+
 </details>
 
 ## 调用示例
 
-示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>
@@ -2185,17 +2185,17 @@ int Init(int32_t deviceId, aclrtStream *stream) {
     // Fixed writing method, AscendCL initialization.
     auto ret = aclInit(nullptr);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclInit failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclInit failed. ERROR: %d\n", ret);
         return ret;
     }
     ret = aclrtSetDevice(deviceId);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclrtSetDevice failed. ERROR: %d\n", ret);
         return ret;
     }
     ret = aclrtCreateStream(stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclrtCreateStream failed. ERROR: %d\n", ret);
         return ret;
     }
     return 0;
@@ -2207,14 +2207,14 @@ int CreateAclTensor(const std::vector<T> &hostData, const std::vector<int64_t> &
     auto size = GetShapeSize(shape) * sizeof(T);
     // Call aclrtMalloc to request device side memory.
     auto ret = aclrtMalloc(deviceAddr, size, ACL_MEM_MALLOC_HUGE_FIRST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret); 
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("aclrtMalloc failed. ERROR: %d\n", ret);
         return ret;
     }
     // Call aclrtMemcpy to copy host side data to device side memory.
     ret = aclrtMemcpy(*deviceAddr, size, hostData.data(), size, ACL_MEMCPY_HOST_TO_DEVICE);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclrtMemcpy failed. ERROR: %d\n", ret);
         return ret;
     }
 
@@ -2239,7 +2239,7 @@ int main() {
     aclrtStream stream;
     auto ret = Init(deviceId, &stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("Init acl failed. ERROR: %d\n", ret); 
+        LOG_PRINT("Init acl failed. ERROR: %d\n", ret);
         return ret;
     }
 
@@ -2342,21 +2342,21 @@ int main() {
     if (workspaceSize > 0U) {
         ret = aclrtMalloc(&workspaceAddr, workspaceSize, ACL_MEM_MALLOC_HUGE_FIRST);
         if (!CHECK_RET(ret == ACL_SUCCESS)) {
-            LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret); 
+            LOG_PRINT("allocate workspace failed. ERROR: %d\n", ret);
             return ret;
         }
     }
     // Call the second interface.
     ret = aclnnFusedInferAttentionScoreV4(workspaceAddr, workspaceSize, executor, stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclnnFusedInferAttentionScoreV4 failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclnnFusedInferAttentionScoreV4 failed. ERROR: %d\n", ret);
         return ret;
     }
 
     // 4. (Fixed writing method) Synchronize and wait for task execution to end.
     ret = aclrtSynchronizeStream(stream);
     if (!CHECK_RET(ret == ACL_SUCCESS)) {
-        LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret); 
+        LOG_PRINT("aclrtSynchronizeStream failed. ERROR: %d\n", ret);
         return ret;
     }
 
@@ -2366,8 +2366,8 @@ int main() {
     std::vector<op::fp16_t> resultData(size, 0);
     ret = aclrtMemcpy(resultData.data(), resultData.size() * sizeof(resultData[0]), attentionOutDeviceAddr,
                       size * sizeof(resultData[0]), ACL_MEMCPY_DEVICE_TO_HOST);
-    if (!CHECK_RET(ret == ACL_SUCCESS)) { 
-        LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret); 
+    if (!CHECK_RET(ret == ACL_SUCCESS)) {
+        LOG_PRINT("copy result from device to host failed. ERROR: %d\n", ret);
         return ret;
     }
     for (int64_t i = 0; i < size; i++) {

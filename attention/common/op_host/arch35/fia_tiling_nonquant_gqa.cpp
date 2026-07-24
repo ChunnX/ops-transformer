@@ -114,15 +114,15 @@ bool FiaTilingNonQuantArch35::IsCapableBasicCheckGqa()
 }
 
 bool FiaTilingNonQuantArch35::IsCapableFeatureCheckGqa()
-{ // 以下场景路由至重构前模板
-    if (fiaInfo_->sysPrefixFlag ||     // 使能公共前缀
-        fiaInfo_->pseShiftFlag ||      // 使能PSE
-        fiaInfo_->enableAlibiPse ||    // 使能alibi
-        fiaInfo_->qPaddingSizeFlag ||  // 使能Q 左padding
-        fiaInfo_->kvPaddingSizeFlag || // 使能KV 左padding
-        fiaInfo_->isOutQuantEnable ||  // 使能后量化
-        fiaInfo_->learnableSinkFlag || // 使能sink
-        fiaInfo_->isQKVDDifferent ||   // D<=128情况下，D不等长
+{                                                                // 以下场景路由至重构前模板
+    if (fiaInfo_->sysPrefixFlag ||                               // 使能公共前缀
+        fiaInfo_->pseShiftFlag ||                                // 使能PSE
+        fiaInfo_->enableAlibiPse ||                              // 使能alibi
+        fiaInfo_->qPaddingSizeFlag ||                            // 使能Q 左padding
+        fiaInfo_->kvPaddingSizeFlag ||                           // 使能KV 左padding
+        fiaInfo_->isOutQuantEnable ||                            // 使能后量化
+        fiaInfo_->learnableSinkFlag ||                           // 使能sink
+        fiaInfo_->isQKVDDifferent ||                             // D<=128情况下，D不等长
         fiaInfo_->kvStorageMode == KvStorageMode::TENSOR_LIST) { // 使能tensorlist
         return false;
     }
@@ -142,8 +142,7 @@ bool FiaTilingNonQuantArch35::IsCapableSparseLayoutCheckGqa()
         fiaInfo_->qLayout != FiaLayout::BNSD && fiaInfo_->qLayout != FiaLayout::TND) { // layout非 BSH/BSND/BNSD/TND
         return false;
     }
-    if (fiaInfo_->qkHeadDim != 128 &&
-        fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) { // 非D=128 GQA，且非Prefill MLA
+    if (fiaInfo_->qkHeadDim != 128 && fiaInfo_->mlaMode != MlaMode::ROPE_COMBINE_D128) { // 非D=128 GQA，且非Prefill MLA
         return false;
     }
     if (CheckS1OutSplit()) { // 使能S1外切场景
@@ -247,8 +246,7 @@ ge::graphStatus FiaTilingNonQuantArch35::DoOpTiling()
     GenTilingKey();
 
     if ((SetNumBlocks(numBlocks_) != ge::GRAPH_SUCCESS) || (SetTilingKey(tilingKey_) != ge::GRAPH_SUCCESS) ||
-        (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) ||
-        (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
+        (SetWorkspaceSize(workspaceSize_) != ge::GRAPH_SUCCESS) || (SetTilingData(tilingData_) != ge::GRAPH_SUCCESS) ||
         (SetScheduleMode(scheduleMode_) != ge::GRAPH_SUCCESS)) {
         return ge::GRAPH_FAILED;
     }
@@ -295,7 +293,7 @@ int64_t GetActSeqLenGqa(const gert::Tensor *tensor, uint32_t dims, FiaLayout lay
     }
     return tensor->GetData<int64_t>()[bIdx] - tensor->GetData<int64_t>()[bIdx - 1];
 }
-}
+} // namespace
 
 void FiaTilingNonQuantArch35::InitImplParam()
 {
@@ -484,7 +482,7 @@ void FiaTilingNonQuantArch35::CreateSplitInput(split_core_v2::BaseInfo &baseInfo
     splitParam.s2BaseSize = sInnerFactor_;
     splitParam.gS1BaseSizeOfFd = 8;
     splitParam.streamK = true;
-    splitParam.fdTolerance = 9; // 实验经验值
+    splitParam.fdTolerance = 9;  // 实验经验值
     splitParam.fdLeastBlock = 0; // 实验经验值
 }
 
@@ -1023,7 +1021,7 @@ void FiaTilingNonQuantArch35::PrintAllTilingData()
 // 1. 百位代表非量化、伪量化、全量化等场景, 即: 0xx-非量化，1xx-伪量化, 2xx-全量化
 // 2. 十位表示gqa、mla、泛化，即: x0x-mla, x1x-gpa, x2x-泛化
 // 3. 个位代表特化模板到泛化模板的优先级排序
-REGISTER_TILING_TEMPLATE_FIA(
-    FusedInferAttentionScore, FiaTilingNonQuantArch35, std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}),
-    28); // 29改28，注册时未区分npu arch，会存在多重定义
+REGISTER_TILING_TEMPLATE_FIA(FusedInferAttentionScore, FiaTilingNonQuantArch35,
+                             std::vector<int32_t>({static_cast<int32_t>(NpuArch::DAV_3510)}),
+                             28); // 29改28，注册时未区分npu arch，会存在多重定义
 } // namespace optiling

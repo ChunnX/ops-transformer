@@ -51,7 +51,7 @@
 
 ## 函数原型
 
-每个算子分为[两段式接口](../../../docs/zh/context/两段式接口.md)，必须先调用“aclnnGroupedMatmulGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmul”接口执行计算。
+每个算子分为[两段式接口](../../../docs/zh/context/two_phase_api.md)，必须先调用“aclnnGroupedMatmulGetWorkspaceSize”接口获取入参并根据计算流程计算所需workspace大小，再调用“aclnnGroupedMatmul”接口执行计算。
 
 ```cpp
 aclnnStatus aclnnGroupedMatmulGetWorkspaceSize(
@@ -98,9 +98,9 @@ aclnnStatus aclnnGroupedMatmul(
         <th>描述</th>
         <th>使用说明</th>
         <th>数据类型</th>
-        <th><a href="../../../docs/zh/context/数据格式.md" target="_blank">数据格式</a></th>
+        <th><a href="../../../docs/zh/context/data_format.md" target="_blank">数据格式</a></th>
         <th style="white-space: nowrap">维度(shape)</th>
-        <th><a href="../../../docs/zh/context/非连续的Tensor.md" target="_blank">非连续的Tensor</a></th>
+        <th><a href="../../../docs/zh/context/non_contiguous_tensor.md" target="_blank">非连续的Tensor</a></th>
       </tr>
     </thead>
     <tbody>
@@ -278,7 +278,7 @@ aclnnStatus aclnnGroupedMatmul(
 
 - **返回值：**
 
-  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+  返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
   第一阶段接口完成入参校验，出现以下场景时报错:
 
@@ -336,7 +336,7 @@ aclnnStatus aclnnGroupedMatmul(
 
 - **返回值：**
 
-    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn返回码.md)。
+    返回aclnnStatus状态码，具体参见[aclnn返回码](../../../docs/zh/context/aclnn_return_code.md)。
 
 ## 约束说明
 
@@ -413,7 +413,7 @@ aclnnStatus aclnnGroupedMatmul(
       <a id="支持场景约束"></a>
 
     - 支持场景中单表示单tensor，多表示多tensor，表示顺序为x、weight、y。例如单多单表示支持x为单tensor、weight多tensor、y单tensor的场景。
-    
+
       |支持场景 |场景限制 |
       |:-------:|:-------|
       | 多多多 |1）仅支持splitItem为0/1<br>2）伪量化场景x中tensor要求维度一致，支持2-6维，y中tensor维度和x保持一致；非量化场景x，y中tensor需为2维， shape分别为（$m_i$, $k_i$）和（$m_i$, $n_i$）；weight中tensor需为2维，shape为（$n_i$, $k_i$）或（$k_i$, $n_i$）；bias中tensor需为1维，shape为（$n_i$）<br>3）若x中存在tensor大于2维，groupListOptional必须传空<br>4）若x中tensor为2维且传入groupListOptional，groupListOptional的差值需与x中tensor的第一维一一对应，且长度最大为128<br>5）仅支持ND进ND出<br>6）不支持x转置，不支持weight转置 |
@@ -425,7 +425,7 @@ aclnnStatus aclnnGroupedMatmul(
 
 ## 调用示例
 
-调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/编译与运行样例.md)。
+调用示例代码如下，仅供参考，具体编译和执行过程请参考[编译与运行样例](../../../docs/zh/context/compile_and_run_sample.md)。
 
 ```c++
 #include <iostream>

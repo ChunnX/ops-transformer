@@ -24,8 +24,7 @@
 
 using AscendC::LocalTensor;
 
-enum class UbFormat
-{
+enum class UbFormat {
     GS1 = 0,
     S1G = 1,
 };

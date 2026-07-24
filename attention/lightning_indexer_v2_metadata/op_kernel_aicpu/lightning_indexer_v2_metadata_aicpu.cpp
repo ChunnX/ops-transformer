@@ -140,9 +140,9 @@ bool LightningIndexerV2MetadataCpuKernel::ParamsCheck()
     if (cmpResidualK_ != nullptr && cmpResidualK_->GetData() != nullptr) {
         const int32_t *cmpResidualKPtr = static_cast<const int32_t*>(cmpResidualK_->GetData());
         for (int i = 0; i < batchSize; i++) {
-            if (cmpResidualKPtr[i] < 0) {
-                KERNEL_LOG_ERROR("The elements in cmp_residual_k should be >= 0, but got cmp_residual_k[%d] = %d",
-                    i, cmpResidualKPtr[i]);
+            if (cmpResidualKPtr[i] < 0 || cmpResidualKPtr[i] >= cmpRatio_) {
+                KERNEL_LOG_ERROR("The elements in cmp_residual_k should be in [0, cmpRatio_), but got "
+                    "cmp_residual_k[%d] = %d", i, cmpResidualKPtr[i]);
                 return false;
             }
         }
@@ -198,7 +198,7 @@ bool LightningIndexerV2MetadataCpuKernel::ParamsInit()
         mBaseSize_ = s1BaseSize_ * groupSize_;
         s2BaseSize_ = 2048U;
     } else if (validSocVersion == ValidSocVersion::ASCEND950) {
-        if (groupSize_ == 64) {
+        if (groupSize_ > 32) {
             s1BaseSize_ = 2;
         }
         mBaseSize_ = s1BaseSize_ * groupSize_;
