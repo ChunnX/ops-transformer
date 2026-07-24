@@ -507,6 +507,7 @@ extern "C" __global__ __aicore__ void main_pipeline_kernel( GM_ADDR SparseIndice
             tl::ascend::copy_gm_to_ub<float, 128>(v1_bw_sy_n[0], SoftmaxI[((((pipe_iter * 49152) + (cid * 2048)) + (n_idx_4 * 128)) - 49152)], 2048, 1, 128, 0.000000e+00f);
             AscendC::SetFlag<AscendC::HardEvent::MTE2_V>(3);
             AscendC::WaitFlag<AscendC::HardEvent::MTE2_V>(3);
+            AscendC::SetFlag<AscendC::HardEvent::V_MTE2>(3);
             for (int32_t bw_col_id = 0; bw_col_id < 2; ++bw_col_id) {
               AscendC::WaitFlag<AscendC::HardEvent::V_MTE2>(3);
               AscendC::WaitFlag<AscendC::HardEvent::MTE3_MTE2>(2);
