@@ -491,7 +491,7 @@ __aicore__ inline void LightningIndexerKernel<LIT>::CalcS2LoopParams(uint32_t bN
     } else {
         s2BlockNum = (tempLoopInfo.actS2Size + constInfo.s2BaseSize - 1) / constInfo.s2BaseSize;
     }
-    tempLoopInfo.s2LoopEnd = isEnd ? splitCoreInfo.s2End : s2BlockNum - 1;
+    tempLoopInfo.s2LoopEnd = isEnd ? (splitCoreInfo.s2End < s2BlockNum - 1 ? splitCoreInfo.s2End : s2BlockNum - 1) : s2BlockNum - 1;
 }
 
 template <typename LIT>
