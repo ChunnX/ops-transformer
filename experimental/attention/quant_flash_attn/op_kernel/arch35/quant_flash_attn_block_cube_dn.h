@@ -77,9 +77,9 @@ template <QFA_LAYOUT LAYOUT_Q>
 __aicore__ inline constexpr GmFormat GetQueryScaleGmFormat()
 {
     if constexpr (LAYOUT_Q == QFA_LAYOUT::BNSD) {
-        return GmFormat::BNGSD2;
+        return GmFormat::BNGSD;
     } else if constexpr (LAYOUT_Q == QFA_LAYOUT::BSND) {
-        return GmFormat::NBSGD2;
+        return GmFormat::NTGD;
     }
     else if constexpr (LAYOUT_Q == QFA_LAYOUT::TND) {
         return GmFormat::NTGD;
@@ -205,7 +205,6 @@ private:
 
     CopyQueryGmToL1<DATA_T, Q_FORMAT> copyQueryGmToL1;
     CopyKvGmToL1<DATA_T, KV_FORMAT> copyKvGmToL1;
-    CopyQueryScaleGmToL1<SCALE_T, Q_SCALE_FORMAT> copyQueryScaleGmToL1;
     CopyKeyScaleGmToL1<SCALE_T, K_SCALE_FORMAT> copyKeyScaleGmToL1;
     CopyValueScaleGmToL1<SCALE_T, V_SCALE_FORMAT> copyValueScaleGmToL1;
 
@@ -466,7 +465,6 @@ public:
                 WaitFlag<HardEvent::MTE1_M>(PV_L0AB_EVENT0 + pvL0abBufId);
                 MatmulPV(info);
                 SetFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
-                pvL0abBufId = (pvL0abBufId + 1) % 2;
             }
             if (info.isUpdatePScale) {
                 SetFlag<HardEvent::M_FIX>(PV_L0C_EVENT0 + pvL0cBufId);
@@ -500,6 +498,66 @@ public:
     }
 
 private:
+    __aicore__ inline void CopySingleMXScaleDNToNZBNSD(LocalTensor<SCALE_T> l1Tensor,
+                                                       const GlobalTensor<SCALE_T> gmTensor, uint32_t nValue,
+                                                       uint32_t dValue, uint32_t srcDValue, uint32_t dstNzC0Stride)
+    {
+        Dn2NzParams dn2nzPara;
+        dn2nzPara.dnNum = 1;
+        dn2nzPara.nValue = nValue / 2;
+        dn2nzPara.dValue = dValue;
+        dn2nzPara.srcDnMatrixStride = 0;
+        dn2nzPara.srcDValue = srcDValue / 2;
+        dn2nzPara.dstNzC0Stride = dstNzC0Stride / 2;
+        dn2nzPara.dstNzNStride = 1;
+        dn2nzPara.dstNzMatrixStride = dn2nzPara.nValue;
+
+        LocalTensor<bfloat16_t> l1TensorCast = l1Tensor.template ReinterpretCast<bfloat16_t>();
+        GlobalTensor<bfloat16_t> gmTensorCast;
+        gmTensorCast.SetGlobalBuffer(((__gm__ bfloat16_t *)(gmTensor.GetPhyAddr())));
+        DataCopy(l1TensorCast, gmTensorCast, dn2nzPara);
+    }
+
+    template <typename GmTensorType>
+    __aicore__ inline void CopyQueryScaleGmToL1BNSD(FaL1Tensor<SCALE_T, L1Format::NZ> &dstTensor,
+                                                     GmTensorType &srcTensor, GmCoord &gmCoord)
+    {
+        static_assert(std::is_same_v<SCALE_T, typename GmTensorType::dataType>, "DataType of GmTensorType mismatch");
+        static_assert(Q_SCALE_FORMAT == GmTensorType::gmFormat, "GmFormat of GmTensorType mismatch");
+
+        if constexpr (LAYOUT_Q == QFA_LAYOUT::BNSD) {
+            // BNSD: ProcessGS1MXFP4
+            auto &offsetCalculator = srcTensor.offsetCalculator;
+            uint64_t s1Size = 0;
+            if (offsetCalculator.actualSeqLensQParser.GetActualLenDims() != 0) {
+                s1Size = offsetCalculator.actualSeqLensQParser.GetActualSeqLength(gmCoord.bIdx);
+            } else {
+                s1Size = offsetCalculator.GetDimS1();
+            }
+
+            uint32_t gIdxStart = gmCoord.gS1Idx / s1Size;
+            uint32_t s1IdxStart = gmCoord.gS1Idx % s1Size;
+            uint32_t gIdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) / s1Size;
+            uint32_t s1IdxEnd = (gmCoord.gS1Idx + gmCoord.gS1DealSize) % s1Size;
+
+            uint64_t queryScaleGmbaseOffset =
+                offsetCalculator.GetOffset(gmCoord.bIdx, gmCoord.n2Idx, gIdxStart, 0, gmCoord.dIdx);
+
+            uint32_t headQsSize = 0;
+            uint64_t scaleGmOffset = queryScaleGmbaseOffset + s1IdxStart * offsetCalculator.GetDimD();
+            if (gIdxStart == gIdxEnd) {
+                headQsSize = s1IdxEnd - s1IdxStart;
+            } else {
+                headQsSize = s1Size - s1IdxStart;
+                headQsSize += s1Size * (gIdxEnd - gIdxStart - 1);
+                headQsSize += s1IdxEnd;
+            }
+
+            CopySingleMXScaleDNToNZBNSD(dstTensor.tensor, srcTensor.gmTensor[scaleGmOffset], gmCoord.dDealSize,
+                                        headQsSize, offsetCalculator.GetStrideS1(), gmCoord.dDealSize);
+        }
+    }
+
     __aicore__ inline void AllocEventID()
     {
         SetFlag<HardEvent::MTE1_MTE2>(Q_EVENT0);
@@ -557,10 +615,6 @@ private:
         qScaleGmTensor.gmTensor.SetGlobalBuffer((__gm__ SCALE_T *)gm);
         if constexpr (GmLayoutParams<Q_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_BNGSD) {
             qScaleGmTensor.offsetCalculator.Init(batchSize, n2Size, gSize, qSeqSize, headDim, qSeqLensTool.seqUsedParser);
-        } else if constexpr (GmLayoutParams<Q_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_TND) {
-            qScaleGmTensor.offsetCalculator.Init(n2Size, gSize, headDim, qSeqLensTool.cuSeqLensParser);
-        } else if constexpr (GmLayoutParams<Q_SCALE_FORMAT>::CATEGORY == FormatCategory::GM_Q_OUT_NBSGD2) {
-            qScaleGmTensor.offsetCalculator.Init(n2Size, batchSize, gSize, qSeqSize, headDim, qSeqLensTool.seqUsedParser);
         }
     }
 
@@ -669,17 +723,15 @@ private:
         loadData2DMXParamsA.srcStride = loadData2DMXParamsA.yStep;
         loadData2DMXParamsA.dstStride = loadData2DMXParamsA.yStep;
 
-        for (uint32_t i = 0; i < 2; i++) {
-            WaitFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
-            uint32_t pvL0AOffset = pvL0abBufId * (PV_L0A_SIZE / sizeof(DATA_T));
-            LoadData(pvL0ATensor[pvL0AOffset].ReinterpretCast<QUANT_T>(),
-                    kvL1Tensor[l1BaseOffset].ReinterpretCast<QUANT_T>(),
-                    kvDescaleL1Tensor[vScaleL1Offset],
-                    loadData2DParamsA,
-                    loadData2DMXParamsA);
-            SetFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
-            pvL0abBufId = (pvL0abBufId + 1) % 2;
-        }
+        WaitFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
+        uint32_t pvL0AOffset = pvL0abBufId * (PV_L0A_SIZE / sizeof(DATA_T));
+        LoadData(pvL0ATensor[pvL0AOffset].ReinterpretCast<QUANT_T>(),
+                kvL1Tensor[l1BaseOffset].ReinterpretCast<QUANT_T>(),
+                kvDescaleL1Tensor[vScaleL1Offset],
+                loadData2DParamsA,
+                loadData2DMXParamsA);
+        SetFlag<HardEvent::M_MTE1>(PV_L0AB_EVENT0 + pvL0abBufId);
+
         SetFlag<HardEvent::MTE1_MTE2>(KV_EVENT0 + kvBufId);
         kvBufId = (kvBufId + 1) % L1_KV_BUFCNT;
     }
@@ -764,7 +816,7 @@ private:
             .gS1DealSize = info.actMSize,
             .dDealSize = dDealSize
         };
-        copyQueryScaleGmToL1(l1Tensor, queryScaleGm, gmCoord);
+        CopyQueryScaleGmToL1BNSD(l1Tensor, queryScaleGm, gmCoord);
     }
 
     // copy key scale with full s2
