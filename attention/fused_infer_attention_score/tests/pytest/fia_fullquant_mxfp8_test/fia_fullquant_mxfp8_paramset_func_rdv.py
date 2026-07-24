@@ -2429,12 +2429,12 @@ TEST_PARAMS = {
         'enable_lse': [True],
         'enable_rope': [False],
     },
-    "TND_B1_QS128_KVS256_Nq8_Nkv8_D256_SP3": {
+    "TND_B1_QS256_KVS256_Nq8_Nkv8_D256_SP3": {
         'B': [1],
         'N_q': [8],
         'N_kv': [8],
         'D': [256],
-        'actual_seq_q': [[128]],
+        'actual_seq_q': [[256]],
         'actual_seq_kv': [[256]],
         'enable_pa': [False],
         'kv_cache_layout': ['TND'],
