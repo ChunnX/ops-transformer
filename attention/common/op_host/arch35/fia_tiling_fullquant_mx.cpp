@@ -734,7 +734,7 @@ void FiaTilingFullQuantMxArch35::CalcWorkspaceSize()
     }
     if (dSize > DSIZE_128) {
         bmm2Bytes = mSize * bmm2ResBlockSize * sizeof(float);
-        if (dVBasicBlock > DSIZE_256) {
+        if (dVBasicBlock >= DSIZE_256) {
             vec2Bytes = mSize * dVBasicBlock * sizeof(float);
         }
     }
