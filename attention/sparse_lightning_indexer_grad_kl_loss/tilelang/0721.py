@@ -239,8 +239,8 @@ def tilelang_grad_kl_loss_single_kernel(
     p_row_chunk_count = ceil_div(N1, p_rows_per_chunk)
     p_cols_per_chunk = min(n_block, 64)
     p_col_chunk_count = ceil_div(n_block, p_cols_per_chunk)
-    # V1 backward follows the official small-K path: four QueryIndex rows
-    # consume the full K axis in one single-slot vector tile.
+    # Keep V1 backward vector operations within the precision-proven 32x64
+    # physical tile.  C1/C2 retain their 128-column scheduling tile.
     bw_col_block = min(n_block, 64)
     assert n_block % bw_col_block == 0
     bw_col_count = n_block // bw_col_block
@@ -255,9 +255,6 @@ def tilelang_grad_kl_loss_single_kernel(
     vector_baseg = Nidx1 if Nidx1 <= VECTOR_BASEG else VECTOR_BASEG
     g_num = Nidx1 // vector_baseg
     rows_per_aiv = Nidx1 // 2
-    bw_rows_per_tile = 4
-    assert rows_per_aiv % bw_rows_per_tile == 0
-    bw_row_tile_count = rows_per_aiv // bw_rows_per_tile
 
     v3_chunks = Nidx1 // 4
     task_count = B * S1
@@ -1432,8 +1429,6 @@ def tilelang_grad_kl_loss_single_kernel(
             )
             v1_bw_p = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_sy = T.alloc_ub(bw_col_block, calc_dtype)
-            v1_bw_p_n = T.alloc_ub(n_block, calc_dtype)
-            v1_bw_sy_n = T.alloc_ub(n_block, calc_dtype)
             v1_bw_diff = T.alloc_ub(bw_col_block, calc_dtype)
             v1_bw_diff_2d = T.alloc_ub(
                 (rows_per_aiv, bw_col_block), calc_dtype
@@ -1498,23 +1493,6 @@ def tilelang_grad_kl_loss_single_kernel(
                 T.pipe_barrier("v")
                 T.set_flag("v", "mte2", 3)
                 for n_idx in T.serial(n_num):
-                    n_col_start = n_idx * n_block
-                    n_col_end = n_col_start + n_block
-                    T.wait_flag("v", "mte2", 3)
-                    T.copy(
-                        PReduced[bz_task, s1_id, n_col_start:n_col_end],
-                        v1_bw_p_n,
-                    )
-                    T.copy(
-                        SoftmaxI[bz_task, s1_id, n_col_start:n_col_end],
-                        v1_bw_sy_n,
-                    )
-                    T.set_flag("mte2", "v", 3)
-                    T.wait_flag("mte2", "v", 3)
-                    # P/SY are now resident in their n_block UB caches.  Give
-                    # MTE2 ownership back before the first 64-column BMM2
-                    # refill; each inner tile keeps the original token cycle.
-                    T.set_flag("v", "mte2", 3)
                     for bw_col_id in T.serial(bw_col_count):
                         bw_col_start = (
                             n_idx * n_block + bw_col_id * bw_col_block
@@ -1524,13 +1502,13 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.wait_flag("v", "mte2", 3)
                         T.wait_flag("mte3", "mte2", 2)
                         T.copy(
-                            v1_bw_p_n[bw_col_id * bw_col_block:
-                                      (bw_col_id + 1) * bw_col_block],
+                            PReduced[bz_task, s1_id,
+                                     bw_col_start:bw_col_end],
                             v1_bw_p,
                         )
                         T.copy(
-                            v1_bw_sy_n[bw_col_id * bw_col_block:
-                                       (bw_col_id + 1) * bw_col_block],
+                            SoftmaxI[bz_task, s1_id,
+                                     bw_col_start:bw_col_end],
                             v1_bw_sy,
                         )
                         T.copy(
@@ -1568,11 +1546,9 @@ def tilelang_grad_kl_loss_single_kernel(
                         T.tile.sub(v1_bw_mask, v1_bw_ones, v1_bw_mask)
                         T.pipe_barrier("v")
 
-                        T.copy(v1_bw_weight_2d, v1_bw_rg)
-                        T.pipe_barrier("v")
                         T.tile.mul(
                             v1_bw_rg,
-                            v1_bw_rg,
+                            v1_bw_weight_2d,
                             v1_bw_diff_2d,
                         )
                         T.pipe_barrier("v")
