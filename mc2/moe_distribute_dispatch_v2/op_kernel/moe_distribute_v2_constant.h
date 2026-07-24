@@ -37,6 +37,11 @@ constexpr uint32_t UB_ALIGN = 32U;
 
 // dispatchv2所需常量段
 constexpr uint64_t DISPATCH_STATE_WIN_OFFSET = 768UL * 1024UL;
+constexpr uint64_t WIN_ADDR_ALIGN = 512UL; // 窗口/地址对齐粒度（计数器步进复用）
+// 原子定序：每专家独立原子计数器区（状态区尾段，PINGPONG 两块，基址 statusDataSpaceGm_）
+constexpr uint64_t EXPERT_COUNTERS_OFFSET = 880UL * 1024UL;          // dataState_ == 0
+constexpr uint64_t EXPERT_COUNTERS_PINGPONG_OFFSET = 890UL * 1024UL; // dataState_ == 1
+constexpr uint32_t COUNTER_STRIDE = WIN_ADDR_ALIGN / sizeof(uint32_t); // GM 内每计数器 512B（AtomicAdd 对齐）
 constexpr uint8_t BUFFER_NUM = 2; // 多buf
 constexpr uint8_t BUFFER_SINGLE = 1;
 constexpr uint32_t STATE_OFFSET = 32U; // 状态空间偏移地址
@@ -52,8 +57,6 @@ constexpr uint64_t CYCLES_PER_US = 50UL;
 constexpr uint64_t TIMEOUT_DETECTION_TX_UNITS = 8UL;
 constexpr uint64_t STATE_HCCL_OFFSET = 32UL;
 constexpr uint32_t TP_STATE_SIZE = 100U * 1024U;
-constexpr uint32_t WORKSPACE_ELEMENT_OFFSET = 512U;
-constexpr uint64_t WIN_ADDR_ALIGN = 512UL;
 constexpr uint64_t ALIGNED_LEN_256 = 256UL;
 constexpr uint32_t RANK_LIST_NUM = 2U;
 constexpr uint32_t EXPAND_IDX_INFO = 3U; // expand_idx是按3元组保存信息，分别为rank_id token_id topk_id
