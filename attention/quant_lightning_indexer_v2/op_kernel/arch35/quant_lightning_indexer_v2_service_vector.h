@@ -91,7 +91,7 @@ protected:
     static constexpr uint32_t V_MTE2_EVENT3 = EVENT_ID5;
 
 private:
-    __aicore__ inline void GetKeyScale(const QLIV2Common::RunInfo &runInfo, LocalTensor<float> &kScaleUB,
+    __aicore__ inline void GetKeyScale(const QLIV2Common::RunInfo &runInfo, LocalTensor<SCALE_T> &kScaleUB,
                                        int64_t batchId, int64_t startS2, int64_t getLen);
     // ================================Local Buffer区====================================
 
