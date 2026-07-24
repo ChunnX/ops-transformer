@@ -37,11 +37,11 @@ CubeOp<T1>::cube5Process(const int64_t pGmOffset, const int32_t blkCntOffset, co
     if constexpr (IS_DETER) {
         if constexpr (MODE == SMLAG_SCFA_MODE) {
             if (!runInfo.isOri) {
-                mm5ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimDv +
+                mm5ResOutBaseOffset = runInfo.roundDbIdx * MAX_CORE_NUM * selectedBlockCount * dimDv +
                                       cBlockIdx * selectedBlockCount * dimDv;
                 mm5ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm5ResAddr);
             } else {
-                int64_t dbIdx = runInfo.scatterTaskId & 1;
+                int64_t dbIdx = runInfo.roundDbIdx;
                 int64_t perCore = singleN * dimDTotal * 2;
                 // Dv 紧跟 Dk：offset += singleN * Dk
                 mm5ResOutBaseOffset = dbIdx * usedCoreNum * perCore + cBlockIdx * perCore + singleN * dimDTotal -

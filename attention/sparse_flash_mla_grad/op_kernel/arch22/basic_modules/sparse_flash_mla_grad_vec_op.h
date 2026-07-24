@@ -44,9 +44,9 @@ public:
     __aicore__ inline void Process(const RunInfo &runInfo);
     __aicore__ inline void GatherKV(const int64_t n2Index, uint64_t currentS1Offset, const RunInfo &runInfo);
     __aicore__ inline void ScatterAdd(const RunInfo &runInfo);
-    // 路径1：全核 SyncAll 后调用；按 coreIdx 解析各核 S1 的 indices，方案 A 按 s2Idx 所有权写
+    // 全核 SyncAll 后调用；按 coreIdx 解析各核 S1 的 indices，方案 A 按 s2Idx 所有权写
     __aicore__ inline void ScatterAddDeter(int64_t s1Round, int64_t scatterDbIdx);
-    // 路径1配套：调用方 SyncAll 且按 core 串行后调用；只累加本 cube staging
+    // 调用方 SyncAll 且按 core 串行后调用；只累加本 cube staging
     __aicore__ inline void AccumulateKvDeter(const RunInfo &runInfo);
     __aicore__ inline void CopyOutDsinks();
 protected:
@@ -95,8 +95,8 @@ protected:
     GlobalTensor<T1> dsWorkspaceGm;
     GlobalTensor<float> dqWorkspaceGm;
     GlobalTensor<float> dkWorkspaceGm;
-    GlobalTensor<float> mm4ResWorkspaceGm; // 24 * 2 * K * Dk
-    GlobalTensor<float> mm5ResWorkspaceGm; // 24 * 2 * K * Dv
+    GlobalTensor<float> mm4ResWorkspaceGm; // 24 * SCFA_SCATTER_DB_NUM(2) * K * Dk
+    GlobalTensor<float> mm5ResWorkspaceGm; // 24 * SCFA_SCATTER_DB_NUM(2) * K * Dv
     GlobalTensor<float> additionalWorkspaceGm;
     GlobalTensor<float> dSinkWorkspaceGm;
     GlobalTensor<float> cmpSoftmaxL1WorkspaceGm;
@@ -498,6 +498,7 @@ __aicore__ inline void VecOp<SMLAGT>::AtomicClean()
     }
     if constexpr (IS_DETER) {
         DumpGmZero(deterKvWorkspaceGm, deterKvWorkspaceLen / sizeof(float));
+        DumpGmZero(dSinkWorkspaceGm, dSinkWorkspaceLen / sizeof(float));
     }
 }
 
@@ -1155,25 +1156,22 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAddDeter(int64_t s1Round, int64_t s
 {
     LocalTensor<float> dkInUb;
     LocalTensor<float> dvInUb;
+    LocalTensor<float> accRowUb;
     int64_t UB_ROW_SIZE = 16;
-    // 方案 A：所有权按 usedCore 双子核划分，避免 aivNum 与空闲核不一致导致 K 切片丢失
     int64_t totalVec = usedCoreNum * 2;
     if (totalVec <= 0) {
         return;
     }
     int64_t myVecId = static_cast<int64_t>(cubeBlockIdx) * 2 + static_cast<int64_t>(subBlockIdx);
 
-    // 路径1：调用方已 SyncAll，保证 usedCoreNum 各核本轮 mm45 staging 写完。
     // 按 coreIdx 使用该核 S1 的 indices；s2Idx % totalVec == myVecId 唯一写。
-    // 与 ScatterAdd 相同：双 buffer ping-pong 重叠 MTE2/V/MTE3。
-    SetAtomicAdd<float>();
+    // 同 AIV 内多 core 可能写同一 s2Idx：load-add-store 保证累加序确定（非 Atomic）。
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3Pong);
     // 空闲 AIV（cubeBlockIdx >= usedCoreNum）无所有权，只对齐事件后返回
     if (static_cast<int64_t>(cubeBlockIdx) >= usedCoreNum) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3Pong);
-        SetAtomicNone();
         return;
     }
     for (int64_t coreIdx = 0; coreIdx < usedCoreNum; coreIdx++) {
@@ -1216,13 +1214,23 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAddDeter(int64_t s1Round, int64_t s
             Add(dkInUb, dkInUb, dvInUb, UB_ROW_SIZE * dimDAlign);
             SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
             WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+            // dvInUb 已消费完，复用其首行作 load-add-store 累加缓冲
+            accRowUb = dvInUb;
+            SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
             for (int64_t row = 0; row < UB_ROW_SIZE; row++) {
                 int32_t s2Idx = indicesGm.GetValue(slotBase + row);
                 if (s2Idx >= 0 && (static_cast<int64_t>(s2Idx) % totalVec) == myVecId) {
-                    DataCopy(dCmpKvOutGm[s2Idx * dimDAlign], dkInUb[row * dimDAlign], dimDAlign);
+                    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
+                    DataCopy(accRowUb, dCmpKvOutGm[s2Idx * dimDAlign], dimDAlign);
+                    SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                    WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                    Add(accRowUb, accRowUb, dkInUb[row * dimDAlign], dimDAlign);
+                    SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+                    WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+                    DataCopy(dCmpKvOutGm[s2Idx * dimDAlign], accRowUb, dimDAlign);
+                    SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
                 }
             }
-            SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
             pingPongIdx = 1 - pingPongIdx;
         }
         event_t backEvent = pingPongIdx == 0 ? mte2WaitMte3 : mte2WaitMte3Pong;
@@ -1242,18 +1250,26 @@ __aicore__ inline void VecOp<SMLAGT>::ScatterAddDeter(int64_t s1Round, int64_t s
         Add(dkInUb, dkInUb, dvInUb, tailRows * dimDAlign);
         SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
         WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+        accRowUb = dvInUb;
+        SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
         for (int64_t row = 0; row < tailRows; row++) {
             int32_t s2Idx = indicesGm.GetValue(slotBase + row);
             if (s2Idx >= 0 && (static_cast<int64_t>(s2Idx) % totalVec) == myVecId) {
-                DataCopy(dCmpKvOutGm[s2Idx * dimDAlign], dkInUb[row * dimDAlign], dimDAlign);
+                WaitFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
+                DataCopy(accRowUb, dCmpKvOutGm[s2Idx * dimDAlign], dimDAlign);
+                SetFlag<AscendC::HardEvent::MTE2_V>(event);
+                WaitFlag<AscendC::HardEvent::MTE2_V>(event);
+                Add(accRowUb, accRowUb, dkInUb[row * dimDAlign], dimDAlign);
+                SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+                WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
+                DataCopy(dCmpKvOutGm[s2Idx * dimDAlign], accRowUb, dimDAlign);
+                SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
             }
         }
-        SetFlag<AscendC::HardEvent::MTE3_MTE2>(backEvent);
         pingPongIdx = 1 - pingPongIdx;
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3Pong);
-    SetAtomicNone();
 
     SetFlag<AscendC::HardEvent::MTE3_V>(vWaitMte3);
     WaitFlag<AscendC::HardEvent::MTE3_V>(vWaitMte3);
@@ -1263,10 +1279,11 @@ template <typename SMLAGT>
 __aicore__ inline void VecOp<SMLAGT>::AccumulateKvDeter(const RunInfo &runInfo)
 {
     // 只读本 cube 的 deterKv staging → 本核 selectedKGmOffset，避免他核窗错配。
+    // 调用方已按 coreIdx 串行；同 cube 双子核写不同 S2 段 → load-add-store，不用 Atomic。
     LocalTensor<float> dkInUb;
     LocalTensor<float> dvInUb;
+    LocalTensor<float> accUb;
     int64_t UB_ROW_SIZE = 16;
-    // 本 cube 双子核均分本窗 S2，避免与其它 cube 并发写同一地址
     int64_t totalVec = 2;
     int64_t localVec = subBlockIdx;
     int64_t s2RealSize = runInfo.actualSelCntOffset;
@@ -1283,7 +1300,13 @@ __aicore__ inline void VecOp<SMLAGT>::AccumulateKvDeter(const RunInfo &runInfo)
     }
 
     int64_t singleN = params.singleN;
-    int64_t dbIdx = runInfo.scatterTaskId & 1;
+    int64_t dbIdx = 0;
+    if constexpr (MODE == SMLAG_SCFA_MODE) {
+        dbIdx = runInfo.roundDbIdx;
+    } else {
+        // SWA/CFA 保持原有按 task ping-pong，不受 SCFA round DB 调度影响。
+        dbIdx = runInfo.task & 1;
+    }
     // layout: [db][aic][singleN][Dk] then [db][aic][singleN][Dv]
     int64_t perCoreDk = singleN * dimDAlign;
     int64_t perCoreDv = singleN * dimD2Align;
@@ -1302,43 +1325,60 @@ __aicore__ inline void VecOp<SMLAGT>::AccumulateKvDeter(const RunInfo &runInfo)
     int64_t maxLoops = CeilDiv(currentCoreKSize, UB_ROW_SIZE);
     int64_t tailRows = currentCoreKSize - (maxLoops - 1) * UB_ROW_SIZE;
 
-    SetAtomicAdd<float>();
     SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
     for (int64_t loop = 0; loop < maxLoops - 1; loop++) {
         WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
-        // 复用一下UB
         dkInUb = scatterAddTensorK[0];
         dvInUb = scatterAddTensorV[0];
-        DataCopy(dkInUb, dkSrcGm[loop * UB_ROW_SIZE * dimDAlign], UB_ROW_SIZE * dimDAlign);
+        accUb = scatterAddTensorK[UB_ROW_SIZE * dimDAlign];
+        int64_t tileElems = UB_ROW_SIZE * dimDAlign;
+        DataCopy(dkInUb, dkSrcGm[loop * tileElems], tileElems);
         SetFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
         WaitFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
-        Muls(dkInUb, dkInUb, (float)tilingData->opInfo.scaleValue, UB_ROW_SIZE * dimDAlign);
+        Muls(dkInUb, dkInUb, (float)tilingData->opInfo.scaleValue, tileElems);
         DataCopy(dvInUb, dvSrcGm[loop * UB_ROW_SIZE * dimD2Align], UB_ROW_SIZE * dimD2Align);
         SetFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
         WaitFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
         PipeBarrier<PIPE_V>();
-        Add(dkInUb, dkInUb, dvInUb, UB_ROW_SIZE * dimDAlign);
+        Add(dkInUb, dkInUb, dvInUb, tileElems);
+        PipeBarrier<PIPE_V>();
+        // load GM 旧值 → add → store（替代 AtomicAdd）
+        DataCopy(accUb, dkOutGm[loop * tileElems], tileElems);
+        SetFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
+        WaitFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
+        Add(dkInUb, dkInUb, accUb, tileElems);
         SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
         WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
-        DataCopy(dkOutGm[loop * UB_ROW_SIZE * dimDAlign], dkInUb, UB_ROW_SIZE * dimDAlign);
+        DataCopy(dkOutGm[loop * tileElems], dkInUb, tileElems);
         SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
     }
     WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
     dkInUb = scatterAddTensorK[0];
     dvInUb = scatterAddTensorV[0];
-    DataCopy(dkInUb, dkSrcGm[(maxLoops - 1) * UB_ROW_SIZE * dimDAlign], tailRows * dimDAlign);
+    accUb = scatterAddTensorK[UB_ROW_SIZE * dimDAlign];
+    int64_t tailElems = tailRows * dimDAlign;
+    DataCopy(dkInUb, dkSrcGm[(maxLoops - 1) * UB_ROW_SIZE * dimDAlign], tailElems);
     SetFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
     WaitFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
-    Muls(dkInUb, dkInUb, (float)tilingData->opInfo.scaleValue, tailRows * dimDAlign);
+    Muls(dkInUb, dkInUb, (float)tilingData->opInfo.scaleValue, tailElems);
     DataCopy(dvInUb, dvSrcGm[(maxLoops - 1) * UB_ROW_SIZE * dimD2Align], tailRows * dimD2Align);
     SetFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
     WaitFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
     PipeBarrier<PIPE_V>();
-    Add(dkInUb, dkInUb, dvInUb, tailRows * dimDAlign);
+    Add(dkInUb, dkInUb, dvInUb, tailElems);
+    PipeBarrier<PIPE_V>();
+    DataCopy(accUb, dkOutGm[(maxLoops - 1) * UB_ROW_SIZE * dimDAlign], tailElems);
+    SetFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
+    WaitFlag<AscendC::HardEvent::MTE2_V>(vWaitMte2);
+    Add(dkInUb, dkInUb, accUb, tailElems);
     SetFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
     WaitFlag<AscendC::HardEvent::V_MTE3>(mte3WaitV);
-    DataCopy(dkOutGm[(maxLoops - 1) * UB_ROW_SIZE * dimDAlign], dkInUb, tailRows * dimDAlign);
-    SetAtomicNone();
+    DataCopy(dkOutGm[(maxLoops - 1) * UB_ROW_SIZE * dimDAlign], dkInUb, tailElems);
+    // 排空 MTE3，再交给 mode0 barrier，避免与下一 core 的 load-add-store 竞态
+    SetFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
+    WaitFlag<AscendC::HardEvent::MTE3_MTE2>(mte2WaitMte3);
+    SetFlag<AscendC::HardEvent::MTE3_V>(vWaitMte3);
+    WaitFlag<AscendC::HardEvent::MTE3_V>(vWaitMte3);
 }
 
 } // namespace SMLAG_BASIC

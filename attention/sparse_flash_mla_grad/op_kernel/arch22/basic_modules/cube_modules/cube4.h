@@ -43,13 +43,13 @@ CubeOp<T1>::cube4Process(const int64_t dsGmOffset, const int64_t queryGmOffset,
         if constexpr (MODE == SMLAG_SCFA_MODE) {
             if (!runInfo.isOri) {
                 // cmp_kv
-                mm4ResOutBaseOffset = runInfo.scatterTaskId * MAX_CORE_NUM * selectedBlockCount * dimDTotal +
+                mm4ResOutBaseOffset = runInfo.roundDbIdx * MAX_CORE_NUM * selectedBlockCount * dimDTotal +
                                       cBlockIdx * selectedBlockCount * dimDTotal;
                 mm4ResWorkspaceGm.SetGlobalBuffer((__gm__ float *)workspace + mm4ResAddr);
             } else {
                 // ori_kv
                 // [db][aic][singleN][Dk]，相对 blkCntOffset 从 0 起写
-                int64_t dbIdx = runInfo.scatterTaskId & 1;
+                int64_t dbIdx = runInfo.roundDbIdx;
                 int64_t perCore = singleN * dimDTotal * 2; // Dk+Dv
                 mm4ResOutBaseOffset = dbIdx * usedCoreNum * perCore + cBlockIdx * perCore -
                                       blkCntOffset * selectedBlockSize * dimDTotal;

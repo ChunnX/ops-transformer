@@ -27,6 +27,8 @@ namespace SMLAG_BASIC {
 #define SMLAG_SCFA_MODE 2
 
 constexpr static uint64_t MAX_CORE_NUM = 24;
+// SCFA deter mm4/mm5 scatter staging：2 面 ping-pong（对齐 SFAG，非三缓冲）
+constexpr static uint64_t SCFA_SCATTER_DB_NUM = 2;
 
 #define SET_FLAG(trigger, waiter, e) AscendC::SetFlag<AscendC::HardEvent::trigger##_##waiter>((e))
 #define WAIT_FLAG(trigger, waiter, e) AscendC::WaitFlag<AscendC::HardEvent::trigger##_##waiter>((e))
@@ -69,7 +71,8 @@ struct RunInfo {
     int64_t dqOutGmOffset;
     int64_t actualSelCntOffset;
     int64_t scatterTaskId;
-    int64_t s1Round{0}; // processBS1 轮次 i，供路径1全局 ScatterAddDeter 解析各 core 的 S1
+    int64_t s1Round{0}; // processBS1 轮次 i，供全局 ScatterAddDeter 解析各 core 的 S1
+    int64_t roundDbIdx{0}; // SCFA scatter staging face：s1Round & 1（B3′ 对齐 SFAG 2-buffer）
     int64_t s1Index;
     int64_t actualSelectedBlockCount;
     int64_t changeS1 = false;

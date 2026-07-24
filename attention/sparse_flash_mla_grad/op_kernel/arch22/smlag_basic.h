@@ -217,7 +217,8 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__re
     }
 
     if constexpr (IS_DETER) {
-        // 全核 SyncAll 次数对齐：取各 usedCore 的 task 数上界 +1（首轮空 barrier）
+        // 全核 SyncAll 次数对齐：取各 usedCore 的 task 数上界。
+        // Acc-previous：有 pending 才 Acc，不再额外加「首轮空 barrier」（原 maxT+1）。
         maxDeterAccWaves = 0;
         for (int64_t coreIdx = 0; coreIdx < static_cast<int64_t>(usedCoreNum); coreIdx++) {
             int64_t n = EstimateCoreTaskNum(coreIdx);
@@ -225,7 +226,6 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Init(const TILING_CLASS *__re
                 maxDeterAccWaves = n;
             }
         }
-        maxDeterAccWaves += 1;
         deterAccSeq = 0;
     }
 }
@@ -314,10 +314,11 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::Process(
             CrossCoreWaitFlag<2, PIPE_MTE2>(POST_WAIT_CUBE);
         }
         if constexpr (IS_DETER) {
+            // 冲刷最后一笔 pending（若有）；无 task 核仅靠下方 pad 对齐到 maxDeterAccWaves
             if (needDeterAcc) {
                 CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
+                DeterAccumulateAfterLocalSync(vecOp);
             }
-            DeterAccumulateAfterLocalSync(vecOp);
             // former/remain/空核对齐 SyncAll 轮次
             while (deterAccSeq < maxDeterAccWaves) {
                 needDeterAcc = false;
@@ -364,11 +365,12 @@ __aicore__ inline void SparseFlashMlaGrad<SMLAGT>::VecCompute(VecOp<SMLAGT> &vec
     CrossCoreSetFlag<2, PIPE_MTE3>(taskMod == 0 ? CUBE_WAIT_VEC_PING : CUBE_WAIT_VEC_PONG);
 
     if constexpr (IS_DETER) {
+        // Acc-previous：仅当已有 pending 时 Acc，去掉首 task 上的空 SyncAll+mode0
         if (needDeterAcc) {
             CrossCoreWaitFlag<2, PIPE_MTE2>(DETER_KV_SYNC_FLAG);
+            // 全核 SyncAll + 按 core0..N-1 串行累加本核 staging，保证重叠 S2 写入序确定
+            DeterAccumulateAfterLocalSync(vecOp);
         }
-        // 全核 SyncAll + 按 core0..N-1 串行累加本核 staging，保证重叠 S2 写入序确定
-        DeterAccumulateAfterLocalSync(vecOp);
         // 调度对本轮 task 的保序累加：cube345 在下一轮 CubeCompute 完成后再执行
         deterAccRunInfo = runInfo[mmPingPongIdx];
         deterAccRunInfo.scatterTaskId = deterAccRunInfo.task;

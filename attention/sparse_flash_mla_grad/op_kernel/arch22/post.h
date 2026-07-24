@@ -368,11 +368,13 @@ template <typename OUT_TYPE, typename TILING_TYPE, const bool CAST_DV, const uin
 __aicore__ inline void
 SparseFlashMlaGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, MODE>::ProcessSink()
 {
-    if (aivNum == 0 || dimG == 0) {
+    // CopyOutDsinks 只写入 mix 实际 AIV：vecBlockIdx ∈ [0, usedCoreNum*2)
+    int64_t sinkAivNum = static_cast<int64_t>(tilingData->opInfo.usedCoreNum) * 2;
+    if (sinkAivNum <= 0 || dimG == 0) {
         return;
     }
-    // 按 G/aivNum 均分，每核独立按 aiv0..aivN-1 顺序累加自己负责的 G 切片
-    int64_t gPerCore = (dimG + aivNum - 1) / aivNum;
+    // 按实际写 workspace 的 AIV 数均分 G，避免用平台 aivNum 导致尾部 G 无人写
+    int64_t gPerCore = (dimG + sinkAivNum - 1) / sinkAivNum;
     int64_t gStart = cBlockIdx * gPerCore;
     int64_t gEnd = gStart + gPerCore;
     if (gEnd > dimG) {
@@ -382,20 +384,24 @@ SparseFlashMlaGradPost<OUT_TYPE, TILING_TYPE, CAST_DV, LAYOUT, INPUT_FORMAT, MOD
         return;
     }
     int64_t gLen = gEnd - gStart;
-    AscendC::LocalTensor<float> accTensor = tmpBuf.GetWithOffset<float>(gLen, 0);
-    AscendC::LocalTensor<float> tmpTensor = tmpBuf.GetWithOffset<float>(gLen, gLen * sizeof(float));
+    // VEC/MTE 要求 UB 基址与长度按 32B（8 个 float）对齐
+    constexpr int64_t FP32_ALIGN = 8;
+    int64_t gLenAlign = (gLen + FP32_ALIGN - 1) / FP32_ALIGN * FP32_ALIGN;
+    AscendC::LocalTensor<float> accTensor = tmpBuf.GetWithOffset<float>(gLenAlign, 0);
+    AscendC::LocalTensor<float> tmpTensor =
+        tmpBuf.GetWithOffset<float>(gLenAlign, gLenAlign * sizeof(float));
 
-    Duplicate(accTensor, (float)0.0, gLen);
+    Duplicate(accTensor, (float)0.0, gLenAlign);
     PIPE_BARRIER(PIPE_V);
     event_t eventId = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::MTE3_MTE2));
     SetFlag<HardEvent::MTE3_MTE2>(eventId);
-    for (int64_t srcAiv = 0; srcAiv < aivNum; srcAiv++) {
+    for (int64_t srcAiv = 0; srcAiv < sinkAivNum; srcAiv++) {
         WaitFlag<HardEvent::MTE3_MTE2>(eventId);
         DataCopyPad(tmpTensor, dsinkWorkspaceGm[srcAiv * dimG + gStart],
                     {1, (uint32_t)(gLen * sizeof(float)), 0, 0, 0}, {false, 0, 0, 0});
         SetFlag<HardEvent::MTE2_V>(vWaitMte2);
         WaitFlag<HardEvent::MTE2_V>(vWaitMte2);
-        Add(accTensor, accTensor, tmpTensor, gLen);
+        Add(accTensor, accTensor, tmpTensor, gLenAlign);
         SetFlag<HardEvent::V_MTE3>(mte3WaitV);
         WaitFlag<HardEvent::V_MTE3>(mte3WaitV);
         SetFlag<HardEvent::MTE3_MTE2>(eventId);

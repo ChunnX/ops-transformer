@@ -132,18 +132,19 @@ SparseFlashMlaGrad(const at::Tensor &q, const at::Tensor &dout, const at::Tensor
     if (oriKvConst.defined()) {
         dOriKv = at::empty_like(oriKvConst);
     } else {
-        dOriKv = at::empty({0}, q.options());
+        // undefined → ConvertType 得到 nullptr，避免 empty({0}) data_ptr=0 触发 aclTensor nil 段错误
+        dOriKv = at::Tensor();
     }
     if (cmpKvConst.defined()) {
         dCmpKv = at::empty_like(cmpKvConst);
     } else {
-        dCmpKv = at::empty({0}, q.options());
+        dCmpKv = at::Tensor();
     }
     at::Tensor dSinks;
     if (sinksConst.defined()) {
         dSinks = at::empty_like(sinksConst);
     } else {
-        dSinks = at::empty({0}, q.options().dtype(at::kFloat));
+        dSinks = at::Tensor();
     }
 
     auto headDim = q.size(q.dim() - 1);
@@ -160,22 +161,24 @@ SparseFlashMlaGrad(const at::Tensor &q, const at::Tensor &dout, const at::Tensor
     if (oriSparseIndicesConst.defined()) {
         oriSoftmaxL1Norm = at::empty(oriSparseIndicesConst.sizes(), oriSparseIndicesConst.options().dtype(at::kFloat));
     } else {
-        oriSoftmaxL1Norm = at::empty({0}, q.options().dtype(at::kFloat));
+        oriSoftmaxL1Norm = at::Tensor();
     }
 
     at::Tensor cmpSoftmaxL1Norm;
     if (cmpSparseIndicesConst.defined()) {
         cmpSoftmaxL1Norm = at::empty(cmpSparseIndicesConst.sizes(), cmpSparseIndicesConst.options().dtype(at::kFloat));
     } else {
-        cmpSoftmaxL1Norm = at::empty({0}, q.options().dtype(at::kFloat));
+        cmpSoftmaxL1Norm = at::Tensor();
     }
 
+    // aclnn 签名在 layoutKv 与 dQueryOut 之间有 bool deterministic，漏传会导致参数错位/段错误
+    const bool deterministic = at::globalContext().deterministicAlgorithms();
     ACLNN_CMD(aclnnSparseFlashMlaGrad, q, dout, attnOut, softmaxLse, oriKvConst, cmpKvConst, oriSparseIndicesConst,
               cmpSparseIndicesConst, cuSeqlensQConst, cuSeqlensOriKvConst, cuSeqlensCmpKvConst, sequsedQConst,
               sequsedOriKvConst, sequsedCmpKvConst, cmpResidualKvConst, oriTopkLengthConst, cmpTopkLengthConst,
               sinksConst, metadataConst, softmaxScaleConst, cmpRatioConst, oriMaskModeConst, cmpMaskModeConst,
-              oriWinLeftConst, oriWinRightConst, layoutQPtr, layoutKvPtr, dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm,
-              cmpSoftmaxL1Norm);
+              oriWinLeftConst, oriWinRightConst, layoutQPtr, layoutKvPtr, deterministic, dq, dOriKv, dCmpKv, dSinks,
+              oriSoftmaxL1Norm, cmpSoftmaxL1Norm);
 
     return std::tuple<at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor, at::Tensor>(
         dq, dOriKv, dCmpKv, dSinks, oriSoftmaxL1Norm, cmpSoftmaxL1Norm);
