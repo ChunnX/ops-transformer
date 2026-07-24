@@ -112,7 +112,6 @@ struct RunParamStr {  // 分核与切块需要使用到参数
     int64_t multiCoreInnerIdx = 0; \
     int64_t attentionOutOffset; \
     int32_t actualS1Size; /* 非TND场景=总s1Size, Tnd场景下当前batch对应的s1 */ \
-    int32_t actualS2OriSize; /* ori_kv的真实使用长度 */ \
     int32_t actualS2CmpSize; /* cmp_kv的真实使用长度 */ \
     int32_t cmpResidual;     /* cmp的余数，用于mask计算 */ \
     int64_t preTokensPerBatchOri; /* vector2 左上顶点的pretoken */ \
