@@ -382,7 +382,6 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 PipeBarrier<PIPE_V>();
             }
             // Replace +1e30 (MM1 cube L0C uninitialized garbage) with -1e30
-            // so radix (largest=true) excludes it instead of selecting it
             PipeBarrier<PIPE_V>();
             {
                 event_t eVS = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
@@ -397,6 +396,19 @@ __aicore__ inline void LightningIndexerServiceVector<LIT>::ProcessVec(const LICo
                 event_t eSV = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
                 SetFlag<HardEvent::S_V>(eSV);
                 WaitFlag<HardEvent::S_V>(eSV);
+            }
+            // DEBUG: also replace position 0-255 with known good value to test if DataCopyPad works
+            {
+                event_t eVS2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::V_S));
+                SetFlag<HardEvent::V_S>(eVS2);
+                WaitFlag<HardEvent::V_S>(eVS2);
+                float firstVal = reduceOutInner.GetValue(256);
+                for (int32_t i = 0; i < 256; i++) {
+                    reduceOutInner.SetValue(i, firstVal);
+                }
+                event_t eSV2 = static_cast<event_t>(GetTPipePtr()->FetchEventID(HardEvent::S_V));
+                SetFlag<HardEvent::S_V>(eSV2);
+                WaitFlag<HardEvent::S_V>(eSV2);
             }
             {
                 PipeBarrier<PIPE_V>();
