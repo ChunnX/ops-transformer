@@ -48,6 +48,17 @@ constexpr uint32_t DIM_TWO = 2U;
 constexpr uint32_t SYSTEM_NEED_WORKSPACE = 16U * 1024 * 1024;
 
 constexpr int32_t HIDDEN_SIZE_ALIGN = 128;
+constexpr int64_t UB_ALIGN = 32;
+
+static int64_t CeilDiv(int64_t x, int64_t y)
+{
+    return (x + y - 1) / y;
+}
+
+static int64_t AlignTo(int64_t x, int64_t y)
+{
+    return CeilDiv(x, y) * y;
+}
 
 static const std::vector<ge::DataType> OUTPUT_DTYPE_LIST = {ge::DT_BF16, ge::DT_FLOAT16, ge::DT_FLOAT};
 
@@ -428,17 +439,16 @@ static ge::graphStatus SetWorkSpace(gert::TilingContext *context, const EngramFe
         int64_t hiddenBytes = tilingData.hiddenBytes;
         int64_t totalRecv = tilingData.totalRecv;
 
-        int64_t wsSdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
-        int64_t wsRdispls = numRanks * static_cast<int64_t>(sizeof(int64_t));
-        int64_t wsSortedIndices = numTokens * static_cast<int64_t>(sizeof(int32_t));
-        int64_t wsTokenIdxRank = numTokens * static_cast<int64_t>(sizeof(int32_t));
-        int64_t wsRecvIndices = totalRecv * static_cast<int64_t>(sizeof(int32_t));
+        int64_t wsSdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);
+        int64_t wsRdispls = AlignTo(numRanks * static_cast<int64_t>(sizeof(int64_t)), UB_ALIGN);
+        int64_t wsSortedIndices = AlignTo(numTokens * static_cast<int64_t>(sizeof(int32_t)), UB_ALIGN);
         int64_t wsLocalData = totalRecv * hiddenBytes;
         int64_t wsRecvData = numTokens * hiddenBytes;
+        int64_t wsCounterScratch = static_cast<int64_t>(tilingData.aivNum) * UB_ALIGN;
         int64_t wsFlagScratch = 32;
 
-        int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices + wsTokenIdxRank
-                        + wsRecvIndices + wsLocalData + wsRecvData + wsFlagScratch;
+        int64_t wsTotal = wsSdispls + wsRdispls + wsSortedIndices
+                    + wsLocalData + wsRecvData + wsCounterScratch + wsFlagScratch;
         int64_t alignTo = 2 * 1024 * 1024;
         wsTotal = ((wsTotal + alignTo - 1) / alignTo) * alignTo;
         wsTotal += SYSTEM_NEED_WORKSPACE;

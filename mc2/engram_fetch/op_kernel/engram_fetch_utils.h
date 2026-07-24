@@ -33,6 +33,13 @@ constexpr int32_t BITS_PER_BYTE = 8;
 constexpr uint32_t ALIGNED_LEN_256 = 256U;
 constexpr uint32_t RELAY_BUFFER_NUM = 2U;
 
+// ===== train 模式专用常量 =====
+constexpr uint32_t STATE_OFFSET = 32U;       // 每 rank flag slot 间距
+constexpr uint32_t WIN_REGION_COUNT = 8U;    // win 区状态区域数
+constexpr uint32_t NUM_SLOTS = 4U;           // quad-buffer 流控 slot 数
+constexpr uint32_t INDICES_RATIO = 50U;      // indices 区占剩余空间的比例分母
+constexpr uint32_t UB_RESERVED_SIZE = 8U * 1024U; // UB 预留空间
+
 struct EngramCommContext {
     uint32_t rankId;
     uint32_t rankSize;
