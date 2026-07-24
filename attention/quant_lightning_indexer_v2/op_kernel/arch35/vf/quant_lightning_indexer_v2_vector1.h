@@ -1019,7 +1019,7 @@ __aicore__ inline void MulWeightAndReduceSumPerTensor2(
                                       weightTemp, kScaleValue, qScaleValue, (uint16_t)gSize);
 }
 
-template<typename QK_T, typename SCORE_T>
+template<typename QK_T, typename SCORE_T, typename W_T>
 __aicore__ inline void BatchMulWeightAndReduceSumPerTensor(const LocalTensor<SCORE_T> &out_,
                                                   uint32_t outStride,                 // out    [S2Base]     [128   ]
                                                   const LocalTensor<QK_T> &qk_,       // q*k^t  [G, S2Base]  [64 128]
