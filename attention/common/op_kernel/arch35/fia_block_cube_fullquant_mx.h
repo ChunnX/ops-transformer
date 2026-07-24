@@ -990,7 +990,7 @@ public:
         Buffer<BufferType::L0C> mm2ResL0C = mmL0CBuffers.Get();
         mm2ResL0C.Wait<HardEvent::FIX_M>();
 
-        constexpr uint32_t baseK = s2SplitSize;
+        constexpr uint32_t baseK = s2BaseSize;
         constexpr uint32_t baseN = (dVBaseSize > 128) ? 128 : dVBaseSize;
         constexpr uint32_t nLoops = dVBaseSize / baseN;
         uint64_t l1BaseKOffset = baseK * mBaseSize;
