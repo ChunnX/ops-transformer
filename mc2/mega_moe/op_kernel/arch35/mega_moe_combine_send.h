@@ -271,7 +271,7 @@ __aicore__ inline void CombineQuantizedTokens(uint32_t batchStart, uint32_t curR
 // =============================================
 // CombineTokenGroup：处理一个 token group 的 Combine 操作，从 GMM2 输出读取数据，量化后发送到目标 rank
 // =============================================
-template <uint8_t QuantMode, typename T, bool IsQuantized = true, bool IsLayered = false>
+template <uint8_t QuantMode, typename T, bool IsLayered = false, bool IsQuantized = true>
 __aicore__ inline void CombineTokenGroup(uint32_t tokenStart, uint32_t tokenCount, uint32_t n, uint32_t groupIdx,
                                          uint32_t rankId, GM_ADDR gmm2OutAddr, const Params &params,
                                          LocalTensor<int32_t> &tripleTensor, int64_t ubTensorSize, int64_t offset,
