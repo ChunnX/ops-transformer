@@ -21,8 +21,8 @@
 
 /**
  * @brief BlockSparseAttentionGrad算子的kernel入口函数
- * 
- * 这是NPU上执行的入口点，使用extern "C"以避免C++名称修饰�?
+ *
+ * 这是NPU上执行的入口点，使用extern "C"以避免C++名称修饰�?
  * 使用__global__和__aicore__修饰符标识为全局kernel函数
  */
 extern "C" __global__ __aicore__ void block_sparse_attention_grad(__gm__ uint8_t* dout,
@@ -175,7 +175,7 @@ extern "C" __global__ __aicore__ void block_sparse_attention_grad(__gm__ uint8_t
     }
 
 #else
-    __gm__ BlockSparseAttentionGradTilingData *tilingDataPtr = 
+    __gm__ BlockSparseAttentionGradTilingData *tilingDataPtr =
         reinterpret_cast<__gm__ BlockSparseAttentionGradTilingData *>(tiling);
     if (TILING_KEY_IS(0)) {
         BSA::BlockSparseAttentionGradInfer<half, 0>(

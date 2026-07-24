@@ -20,7 +20,7 @@ extern "C" {
 /**
  * @brief aclnnBlockSparseAttentionGrad的第一段接�?根据具体的计算流�?计算workspace大小
  * @domain aclnn_ops_infer
- * 
+ *
  * @param [in] dout: attention out 梯度输入
  * @param [in] query: Query tensor输入
  * @param [in] key: Key tensor输入
@@ -76,7 +76,7 @@ __attribute__((visibility("default"))) aclnnStatus aclnnBlockSparseAttentionGrad
 
 /**
  * @brief aclnnBlockSparseAttentionGrad的第二段接口,用于执行计算
- * 
+ *
  * @param [in] workspace: 工作空间地址
  * @param [in] workspaceSize: 工作空间大小
  * @param [in] executor: op执行�?

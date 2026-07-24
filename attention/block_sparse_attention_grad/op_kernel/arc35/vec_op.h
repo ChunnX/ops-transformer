@@ -16,10 +16,10 @@ namespace BSA_ARC35 {
 struct EvenCoreInfo {
     uint32_t data_size{0};        // 总共需要处理的元素个数
     uint32_t start_idx{0};        // 每个core处理的起始idx
-    uint32_t len{0};              // 每个core处理的元素个�?
+    uint32_t len{0};              // 每个core处理的元素个�?
     uint32_t loop_num{0};         // 每个core需要循环的次数
     uint32_t max_process_size{0}; // 每个core单次循环最大处理的元素个数
-    uint32_t align_tail{0};       // 每个core处理的对齐尾�? tail = align_tail + pad_tail
+    uint32_t align_tail{0};       // 每个core处理的对齐尾�? tail = align_tail + pad_tail
     uint32_t pad_tail{0};         // 每个core处理的pad尾块, tail = align_tail + pad_tail
 };
 
@@ -416,7 +416,7 @@ private:
         LocalTensor<float> dy_out_tensor = sftg_ping_pong_idx ? dy_out_ping_ : dy_out_pong_;
         LocalTensor<float> attention_out_tensor = sftg_ping_pong_idx ? attention_out_ping_ : attention_out_pong_;
         LocalTensor<float> sftg_front_tensor = sftg_ping_pong_idx ? sftg_front_ping_ : sftg_front_pong_;
-        uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个�?
+        uint32_t process_size = info.max_process_size; // 表示处理S1方向的元素个�?
         uint32_t src_stride;
         if constexpr (INPUT_LAYOUT == BSND) {
             src_stride = q_head_num_ * head_dim_;
@@ -625,7 +625,7 @@ private:
         info.loop_num = CeilDiv<uint32_t>(info.len, max_process_size);
 
         uint32_t tail = info.len % max_process_size;
-        // 由于DataCopyPad最多处�?5535，因此tail部分分成align_tail和pad_tail计算
+        // 由于DataCopyPad最多处�?5535，因此tail部分分成align_tail和pad_tail计算
         if (tail == 0) {
             info.align_tail = max_process_size;
             info.pad_tail = 0;
@@ -640,7 +640,7 @@ private:
     {
         /*
          * function: Copy lse from global memory to local memory
-         * input shape�?b, n, s, 1) or (t, n, 1)
+         * input shape�?b, n, s, 1) or (t, n, 1)
          * out shape:   (s, 8)
          * dtype:       float
          */

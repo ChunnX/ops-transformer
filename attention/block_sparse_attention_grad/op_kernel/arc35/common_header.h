@@ -51,14 +51,14 @@ struct RunTimeInfo {
     int32_t last_kv_seq_sum{0};
     int32_t cur_q_seq_len{0};
     int32_t cur_kv_seq_len{0};
-    int32_t need_compute{0};     // 是否存在任务需要计�?
+    int32_t need_compute{0};     // 是否存在任务需要计�?
     int32_t need_copy_kv{0};     // 是否需要copy kv
     int32_t kv_ping_pong_idx{0}; // kv的ping pong idx
     int32_t is_singlekv_last{0};
-    int64_t s1Len{0};      // 当前计算的q_seq的长�?
-    int64_t s2Len{0};      // 当前计算的kv_seq的长�?
-    int64_t s1LenAlign{0}; // 当前计算的q_seq�?6对齐的长�?
-    int64_t s2LenAlign{0}; // 当前计算的kv_seq�?6对齐的长�?
+    int64_t s1Len{0};      // 当前计算的q_seq的长�?
+    int64_t s2Len{0};      // 当前计算的kv_seq的长�?
+    int64_t s1LenAlign{0}; // 当前计算的q_seq�?6对齐的长�?
+    int64_t s2LenAlign{0}; // 当前计算的kv_seq�?6对齐的长�?
     int64_t queryGmOffset{0}; // query gm offset
     int64_t keyGmOffset{0};   // key gm offset
     int64_t lseGmOffset{0};   // lse gm offset

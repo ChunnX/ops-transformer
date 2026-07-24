@@ -65,8 +65,8 @@ const std::array<const aclTensor *, 3> BlockSparseAttentionGrad(
     aclOpExecutor *executor)
 {
     const char *safeKvInputLayout = (kvInputLayout != nullptr) ? kvInputLayout : qInputLayout;
-    
-    L0_DFX(BlockSparseAttentionGrad, dout, query, key, value, attentionOut, softmaxLse, blockSparseMaskOptional, 
+
+    L0_DFX(BlockSparseAttentionGrad, dout, query, key, value, attentionOut, softmaxLse, blockSparseMaskOptional,
            attenMaskOptional, blockShapeOptional,actualSeqLengthsOptional, actualSeqLengthsKvOptional, qInputLayout, safeKvInputLayout,
            numKeyValueHeads, maskType, scaleValue, preTokens, nextTokens);
     const aclTensor *attenMaskTensor = (attenMaskOptional != nullptr) ? attenMaskOptional :
@@ -105,9 +105,9 @@ const std::array<const aclTensor *, 3> BlockSparseAttentionGrad(
         OP_LOGE(ACLNN_ERR_PARAM_INVALID, "BlockSparseAttentionGrad infer shape failed, scaleValue: %f.", scaleValue);
         return {nullptr, nullptr};
     }
-    
+
     ADD_TO_LAUNCHER_LIST_AICORE(BlockSparseAttentionGrad,
-                                OP_INPUT(dout, query, key, value, attentionOut, softmaxLse, blockSparseMaskOptional, 
+                                OP_INPUT(dout, query, key, value, attentionOut, softmaxLse, blockSparseMaskOptional,
                                          attenMaskTensor, blockShapeTensor, actualSeqTensor, actualSeqKvTensor,
                                          qDequantScaleTensor, kDequantScaleTensor, vDequantScaleTensor),
                                 OP_OUTPUT(dqTensor, dkTensor, dvTensor),
