@@ -23,6 +23,7 @@ BUILD_OUT_DIR=${CURRENT_DIR}/build_out
 USER_ID=$(id -u)
 PARENT_JOB="false"
 HOST_TILING="false"
+DELETE_ARCH="false"
 CHECK_COMPATIBLE="true"
 ASAN="false"
 UBSAN="false"
@@ -376,6 +377,7 @@ function help_info() {
     echo "    --opkernel_aicpu build aicpu kernel"
     echo "    --mssanitizer Build with mssanitizer mode on the kernel side, with options: '-g --cce-enable-sanitizer'"
     echo "    --dump_cce Dump kernel precompiled files"
+    echo "    --delete_arch Delete non-target arch directories under mc2/ before building kernel/package"
     echo "    --opapi_test build and run opapi unit tests"
     echo "    --ophost_test build and run ophost unit tests"
     echo "    --opgraph_test build and run opgraph unit tests"
@@ -798,7 +800,40 @@ function collect_rpm_deb_package() {
     done
 }
 
+function delete_arch(){
+    TARGET_DIR="${CURRENT_DIR}/mc2"
+    FOLDER_NAME=""
+    if [[ "$ASCEND_SOC_UNITS" == "ascend910b" || "$ASCEND_SOC_UNITS" == "ascend910_93" ]]; then
+        FOLDER_NAME="op_kernel/arch35"
+    elif [[ "$ASCEND_SOC_UNITS" == "ascend950" ]]; then
+        FOLDER_NAME="op_kernel/arch22"
+    fi
+
+    if [ -z "$FOLDER_NAME" ]; then
+        return
+    fi
+
+    echo "Cleaning up all $FOLDER_NAMEdirectories in $TARGET_DIR..."
+    python3 "${CURRENT_DIR}/cmake/scripts/delete_arch.py" "$TARGET_DIR" "$FOLDER_NAME"
+
+    if [[ "$ASCEND_SOC_UNITS" == "ascend910b" || "$ASCEND_SOC_UNITS" == "ascend910_93" ]]; then
+        FOLDER_NAME="op_host/op_tiling/arch35"
+    elif [[ "$ASCEND_SOC_UNITS" == "ascend950" ]]; then
+        FOLDER_NAME="op_host/op_tiling/arch22"
+    fi
+    python3 "${CURRENT_DIR}/cmake/scripts/delete_arch.py" "$TARGET_DIR" "$FOLDER_NAME"
+
+    if [ $? -eq 0 ]; then
+        echo "Finish cleaning up!"
+    else
+        echo "Cleanup failed." >&2
+    fi
+}
+
 function build_package(){
+    if [ "${DELETE_ARCH}" == "true" ]; then
+        delete_arch
+    fi
     if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
         echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip package generation."
         return 0
@@ -832,6 +867,9 @@ function build_host(){
 }
 
 function build_kernel(){
+    if [ "${DELETE_ARCH}" == "true" ]; then
+        delete_arch
+    fi
     if [ -f "${BUILD_PATH}/no_ops.flag" ]; then
         echo "[INFO] No operator can be compiled (all requested ops skipped by CANN version check), skip kernel build."
         return 0
@@ -1262,7 +1300,7 @@ SUPPORTED_LONG_OPTS=(
   "ophost" "opapi" "opgraph" "onnxplugin"
   "ophost_test" "opapi_test" "opgraph_test" "opkernel_test"
   "asan" "valgrind" "ubsan" "cov" "clang" "run_example"
-  "parent_job" "enable_host_tiling" "disable-check-compatible" "disable-check-compatiable"
+  "parent_job" "enable_host_tiling" "delete_arch" "disable-check-compatible" "disable-check-compatiable"
   "ops=" "module=" "aicpu=" "bisheng_flags=" "soc=" "build-type=" "version="
   "rule_launch=" "simulator=" "example_name=" "tiling_key=" "tiling-key="
   "kernel_template_input=" "vendor_name=" "genop=" "genop_aicpu="
@@ -1795,6 +1833,10 @@ while [[ $# -gt 0 ]]; do
         ;;
     --enable_host_tiling)
         HOST_TILING="true"
+        shift
+        ;;
+    --delete_arch)
+        DELETE_ARCH="true"
         shift
         ;;
     --disable-check-compatible|--disable-check-compatiable)
