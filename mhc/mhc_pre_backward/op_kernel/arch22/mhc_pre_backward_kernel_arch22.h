@@ -428,17 +428,10 @@ __aicore__ inline void MhcPreBackwardKernelArch22<TYPE_X, T, DETERMINISTIC>::Com
     // 反向: H_res_2_grad = H_res_grad (α_res 乘法在后续 scaleLocal_ 中体现)
     // grad_h_res 支持 BSNN(B,S,N,N) 和 BSN!(B,S,N!) 两种布局
     gradHResLocal_ = inputGradQueue.AllocTensor<T>();
-    if (isBSNN_ != 0) {
-        // BSNN: grad_h_res shape = [B,S,N,N], 按 N×N 矩阵加载, 每行 N 元素 pad 到 8 对齐
-        DataCopyPad(gradHResLocal_, gradHResGlobal_[taskOffset * n_ * n_],
-                    {static_cast<uint16_t>(tileTaskCount * n_), static_cast<uint32_t>(n_ * sizeof(T)), 0, 0, 0},
-                    {true, 0, static_cast<uint8_t>(ELEMENTS_SIZE_PER_BLOCK - n_), 0});
-    } else {
-        // BSN!: grad_h_res shape = [B,S,N!], 扁平向量加载
-        DataCopyPad(gradHResLocal_, gradHResGlobal_[taskOffset * factN_],
-                    {static_cast<uint16_t>(1), static_cast<uint32_t>(tileTaskCount * factN_ * sizeof(T)), 0, 0, 0},
-                    {false, 0, 0, 0});
-    }
+    // BSNN(B,S,N,N) 和 BSN!(B,S,N!) 均使用扁平加载: factN_ = N²(BSNN) 或 N!(BSN!)
+    DataCopyPad(gradHResLocal_, gradHResGlobal_[taskOffset * factN_],
+                {static_cast<uint16_t>(1), static_cast<uint32_t>(tileTaskCount * factN_ * sizeof(T)), 0, 0, 0},
+                {false, 0, 0, 0});
     inputGradQueue.EnQue(gradHResLocal_);
     inputGradQueue.DeQue();
 

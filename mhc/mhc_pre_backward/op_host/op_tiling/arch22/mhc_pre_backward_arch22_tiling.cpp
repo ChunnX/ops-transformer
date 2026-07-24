@@ -51,18 +51,6 @@ constexpr int64_t DEFAULT_KEY = 0;
 constexpr int64_t DETERMINISTIC_KEY = 1;
 constexpr int64_t ELEMENTS_SIZE_PER_BLOCK = 8;
 
-// 计算 N!
-int64_t Factorial(int64_t n)
-{
-    if (n <= 1) {
-        return 1;
-    }
-    int64_t result = 1;
-    for (int64_t i = 2; i <= n; i++) {
-        result *= i;
-    }
-    return result;
-}
 } // namespace
 
 using namespace ge;
