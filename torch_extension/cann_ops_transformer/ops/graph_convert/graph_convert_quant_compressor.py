@@ -43,10 +43,7 @@ except ImportError:
 
 if _TORCHAIR_AVAILABLE:
 
-    @auto_convert_to_tensor(
-        [False, False, False, False, False, False, False, False, False, False, False, False, False],
-        [False, False, False, False, False, False, False, False, False, False, False, False, False],
-    )
+    @auto_convert_to_tensor([False] * 13, [False] * 13)
     def QuantCompressor(
         x: Tensor,
         wkv: Tensor,
@@ -67,11 +64,12 @@ if _TORCHAIR_AVAILABLE:
         cache_mode: int = 1,
         state_cache_stride_dim0: int = 0,
     ):
-
         result = x.new_empty(x.size())
         return result
 
-    @register_fx_node_ge_converter(torch.ops.cann_ops_transformer.quant_compressor.default)
+    @register_fx_node_ge_converter(
+        torch.ops.cann_ops_transformer.quant_compressor.default
+    )
     def convert_quant_compressor(
         x: Tensor,
         wkv: Tensor,
@@ -92,7 +90,6 @@ if _TORCHAIR_AVAILABLE:
         cache_mode: int = 1,
         state_cache_stride_dim0: int = 0,
     ):
-
         raise AssertionError(
             "quant_compressor is not supported in GE graph mode. Please use aclgraph mode instead."
         )

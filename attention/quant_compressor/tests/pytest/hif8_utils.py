@@ -16,7 +16,8 @@ HIF8_POSITIVE_INF = 0x6F
 HIF8_NEGATIVE_INF = 0xEF
 HIF8_MAX_POSITIVE_NORMAL = 0x6E
 HIF8_MAX_NEGATIVE_NORMAL = 0xEE
-HIF8_OVERFLOW_THRESHOLD = (2.0 ** 15) * 1.25
+HIF8_OVERFLOW_THRESHOLD = (2.0**15) * 1.25
+
 
 def _as_numpy_uint8_codes(codes):
     arr = np.asarray(codes)
@@ -26,7 +27,9 @@ def _as_numpy_uint8_codes(codes):
         min_code = int(arr.min())
         max_code = int(arr.max())
         if min_code < 0 or max_code > 0xFF:
-            raise ValueError(f"codes must be in [0, 255], got min={min_code}, max={max_code}")
+            raise ValueError(
+                f"codes must be in [0, 255], got min={min_code}, max={max_code}"
+            )
     return arr.astype(np.uint8, copy=False)
 
 
@@ -41,8 +44,11 @@ def _decode_normal_payload_numpy(payload, d, mantissa_bits):
     sign_exp = (exponent_payload >> (d - 1)) & 1
     mag_tail_mask = (1 << (d - 1)) - 1
     magnitude = (1 << (d - 1)) | (exponent_payload & mag_tail_mask)
-    exponent = np.where(sign_exp == 0, magnitude, -magnitude).astype(np.float32, copy=False)
+    exponent = np.where(sign_exp == 0, magnitude, -magnitude).astype(
+        np.float32, copy=False
+    )
     return np.power(np.float32(2.0), exponent) * significand
+
 
 def hif8_to_fp32_numpy(codes):
     bits = _as_numpy_uint8_codes(codes).astype(np.int16, copy=False)
@@ -57,17 +63,19 @@ def hif8_to_fp32_numpy(codes):
     inf_mask = payload == HIF8_POSITIVE_INF
     if inf_mask.any():
         out[inf_mask] = np.where(sign[inf_mask], -np.inf, np.inf)
-    
+
     dml_mask = (payload <= 0x07) & ~nan_mask
     if dml_mask.any():
         mantissa = payload[dml_mask]
         nonzero = mantissa != 0
         if nonzero.any():
-            values = np.power(np.float32(2.0), mantissa[nonzero].astype(np.float32) - np.float32(23.0))
+            values = np.power(
+                np.float32(2.0), mantissa[nonzero].astype(np.float32) - np.float32(23.0)
+            )
             dml_values = out[dml_mask]
             dml_values[nonzero] = values
             out[dml_mask] = dml_values
-    
+
     layouts = (
         (0, 0x78, 0x08, 3),
         (1, 0x70, 0x10, 3),
@@ -80,11 +88,12 @@ def hif8_to_fp32_numpy(codes):
         mask = ((payload & prefix_mask) == prefix_value) & ~inf_mask
         if mask.any():
             out[mask] = _decode_normal_payload_numpy(payload[mask], d, mantissa_bits)
-    
+
     negative_finite = sign & np.isfinite(out) & (out != 0.0)
     if negative_finite.any():
         out[negative_finite] = -out[negative_finite]
     return out
+
 
 def _positive_finite_codebook_numpy():
     codes = np.arange(128, dtype=np.uint8)
@@ -95,10 +104,11 @@ def _positive_finite_codebook_numpy():
     order = np.argsort(values)
     return values[order], codes[order]
 
+
 def fp32_to_hif8_numpy(values, saturate=False, nan_to_zero=False):
     arr = np.asarray(values, dtype=np.float32)
     out = np.empty(arr.shape, dtype=np.uint8)
-    
+
     nan_mask = np.isnan(arr)
     if nan_mask.any():
         out[nan_mask] = HIF8_POSITIVE_ZERO if nan_to_zero else HIF8_NAN
@@ -110,11 +120,11 @@ def fp32_to_hif8_numpy(values, saturate=False, nan_to_zero=False):
     neg_inf_mask = arr == -np.inf
     if neg_inf_mask.any():
         out[neg_inf_mask] = HIF8_MAX_NEGATIVE_NORMAL if saturate else HIF8_NEGATIVE_INF
-    
+
     finite_mask = np.isfinite(arr)
     if not finite_mask.any():
         return out
-    
+
     magnitude = np.abs(arr[finite_mask]).astype(np.float32, copy=False)
     pos_values, pos_codes = _positive_finite_codebook_numpy()
     hi = np.searchsorted(pos_values, magnitude, side="left")
@@ -124,15 +134,21 @@ def fp32_to_hif8_numpy(values, saturate=False, nan_to_zero=False):
 
     dist_hi = np.abs(pos_values[hi_clamped] - magnitude)
     dist_lo = np.abs(pos_values[lo_clamped] - magnitude)
-    rounded_pos = np.where(dist_hi <= dist_lo, pos_codes[hi_clamped], pos_codes[lo_clamped]).astype(np.uint8, copy=False)
+    rounded_pos = np.where(
+        dist_hi <= dist_lo, pos_codes[hi_clamped], pos_codes[lo_clamped]
+    ).astype(np.uint8, copy=False)
 
     overflow_mask = magnitude >= np.float32(HIF8_OVERFLOW_THRESHOLD)
     overflow_code = HIF8_MAX_POSITIVE_NORMAL if saturate else HIF8_POSITIVE_INF
-    rounded_pos = np.where(overflow_mask, np.uint8(overflow_code), rounded_pos).astype(np.uint8, copy=False)
+    rounded_pos = np.where(overflow_mask, np.uint8(overflow_code), rounded_pos).astype(
+        np.uint8, copy=False
+    )
 
     negative = arr[finite_mask] < 0
     negative_codes = (rounded_pos.astype(np.int16) | 0x80).astype(np.uint8, copy=False)
-    signed_codes = np.where(negative & (rounded_pos != 0), negative_codes, rounded_pos).astype(np.uint8, copy=False)
+    signed_codes = np.where(
+        negative & (rounded_pos != 0), negative_codes, rounded_pos
+    ).astype(np.uint8, copy=False)
     out[finite_mask] = signed_codes
     return out
 
@@ -187,6 +203,7 @@ def get_valid_hif8_codes(min_val, max_val):
     _VALID_CACHE[key] = valid
     return valid.copy()
 
+
 _VU_CACHE = {}
 
 # LUT size: 1MB (2^20 entries). Every valid code gets at least 1 entry
@@ -225,12 +242,14 @@ def _build_sampling_lut(codes, vals, min_val, max_val):
     if frac_sum > 0:
         extra = (fractional / frac_sum * remaining).astype(np.int32)
         remainder = fractional / frac_sum * remaining - extra.astype(np.float64)
-        extra[np.argsort(-remainder)[:remaining - extra.sum()]] += 1
+        extra[np.argsort(-remainder)[: remaining - extra.sum()]] += 1
         counts += extra
 
     lut = np.repeat(sorted_codes.astype(np.uint8), counts)
     if len(lut) < _SAMPLE_LUT_SIZE:
-        lut = np.pad(lut, (0, _SAMPLE_LUT_SIZE - len(lut)), constant_values=sorted_codes[-1])
+        lut = np.pad(
+            lut, (0, _SAMPLE_LUT_SIZE - len(lut)), constant_values=sorted_codes[-1]
+        )
     return lut[:_SAMPLE_LUT_SIZE]
 
 

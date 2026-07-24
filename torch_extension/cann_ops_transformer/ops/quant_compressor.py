@@ -132,5 +132,6 @@ def quant_compressor(
         cache_mode,
     )
 
+
 quant_compressor.QuantMode = QuantMode
 quant_compressor.CacheMode = CacheMode
