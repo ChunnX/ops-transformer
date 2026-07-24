@@ -89,9 +89,7 @@ ge::graphStatus GroupedQmmBasicApiTiling::DoLibApiTiling()
 
 bool GroupedQmmBasicApiTiling::CanEnableThreeL1Buffer() const
 {
-    const bool isMxFp8 =
-        inputParams_.aDtype == ge::DT_FLOAT8_E4M3FN || inputParams_.aDtype == ge::DT_FLOAT8_E5M2;
-    if (inputParams_.bQuantMode != optiling::QuantMode::MX_PERGROUP_MODE || inputParams_.transA || !isMxFp8) {
+    if (!IsMicroScaling() || inputParams_.transA) {
         return false;
     }
 
