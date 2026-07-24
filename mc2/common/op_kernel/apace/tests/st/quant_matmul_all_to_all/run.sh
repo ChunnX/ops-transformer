@@ -104,7 +104,7 @@ run_single() {
         echo "[3/4] NPU 运行 ($RANK_NUM ranks)..."
         local EXE_PATH="$BUILD_DIR/quant_matmul_all_to_all/apace_a2a_qmm_st"
         local EXE_DIR="$(dirname "$EXE_PATH")"
-        rm -rf "$EXE_DIR/input"
+        rm -rf "$EXE_DIR/input" "$EXE_DIR/output"
         cp -r input "$EXE_DIR/input"
         mkdir -p "$EXE_DIR/output"
         for r in $(seq 0 $((RANK_NUM-1))); do
