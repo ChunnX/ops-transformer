@@ -76,7 +76,6 @@ static ge::graphStatus InferShapeForStemOamPrepVarlenQ(gert::InferShapeContext *
     int64_t kflat_dim = stemStride * DIM_QK;
 
     bool hasUnknownDim = IsUnknownShape(*qShape) || IsUnknownShape(*qSeqLensShape);
-
     if (hasUnknownDim) {
         qFlatShape->SetDimNum(4);
         qFlatShape->SetDim(0, batch);
