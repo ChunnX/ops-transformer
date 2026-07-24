@@ -625,29 +625,29 @@
   <tr>
    <td>weight1</td>
    <td>输入</td>
-   <td>MoE专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数（仅A8W8支持ND）。路由 MoE 专家数为 `localMoeExpertNum`。</td>
-   <td>BF16、INT8、INT4、FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
-   <td>ND、FRACTAL_NZ</td>
+   <td>MoE专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。路由 MoE 专家数为 <code>localMoeExpertNum</code>。</td>
+   <td>BF16、INT8、INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
+   <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
   <tr>
    <td>weight2</td>
    <td>输入</td>
-   <td>MoE专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致（仅A8W8支持ND）。路由 MoE 专家数为 `localMoeExpertNum`。</td>
-   <td>BF16、INT8、INT4、FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
-   <td>ND、FRACTAL_NZ</td>
+   <td>MoE专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致。路由 MoE 专家数为 <code>localMoeExpertNum</code>。</td>
+   <td>BF16、INT8、INT4、FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
+   <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
   <tr>
    <td>weightScales1</td>
    <td>可选输入</td>
    <td>MoE专家网络第一线性层的权重矩阵的量化缩放因子。</td>
-   <td>FP8_E8M0、UINT64</td>
+   <td>FLOAT8_E8M0、UINT64</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>weightScales2</td>
    <td>可选输入</td>
    <td>MoE专家网络第二线性层的权重矩阵的量化缩放因子。</td>
-   <td>FP8_E8M0、UINT64</td>
+   <td>FLOAT8_E8M0、UINT64</td>
    <td>ND</td>
   </tr>
   <tr>
@@ -674,29 +674,29 @@
     <tr>
    <td>sharedWeight1</td>
    <td>可选输入</td>
-   <td>共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数（仅A8W8支持ND）。</td>
-   <td>FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
-   <td>ND、FRACTAL_NZ</td>
+   <td>共享专家网络第一线性层的权重矩阵（包括门控与上投影），用于将输入映射至中间维度，输出供给激活函数。</td>
+   <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
+   <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
   <tr>
    <td>sharedWeight2</td>
    <td>可选输入</td>
-   <td>共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致（仅A8W8支持ND）。</td>
-   <td>FP8_E5M2、FP8_E4M3、FP4_E2M1</td>
-   <td>ND、FRACTAL_NZ</td>
+   <td>共享专家网络第二线性层的权重矩阵，负责将激活后的中间特征投影回隐藏维度。数据类型与weight1一致。</td>
+   <td>FLOAT8_E5M2、FLOAT8_E4M3FN、FLOAT4_E2M1</td>
+   <td>ND、FRACTAL_NZ、FORMAT_FRACTAL_NZ_C0_32</td>
   </tr>
   <tr>
    <td>sharedWeightScales1</td>
    <td>可选输入</td>
    <td>共享专家网络第一线性层的权重矩阵的量化缩放因子。</td>
-   <td>FP8_E8M0</td>
+   <td>FLOAT8_E8M0</td>
    <td>ND</td>
   </tr>
   <tr>
    <td>sharedWeightScales2</td>
    <td>可选输入</td>
    <td>共享专家网络第二线性层的权重矩阵的量化缩放因子。</td>
-   <td>FP8_E8M0</td>
+   <td>FLOAT8_E8M0</td>
    <td>ND</td>
   </tr>
   <tr>
@@ -751,7 +751,7 @@
   <tr>
    <td>dispatchQuantOutDtype</td>
    <td>可选属性</td>
-   <td>dispatch量化后输出的数据类型。支持1（INT8）、23（FP8_E5M2）、24（FP8_E4M3FN）、296（FP4_E2M1）。默认值为DT_UNDEFINED。</td>
+   <td>dispatch量化后输出的数据类型。支持1（INT8）、23（FLOAT8_E5M2）、24（FLOAT8_E4M3FN）、296（FLOAT4_E2M1）。默认值为DT_UNDEFINED。</td>
    <td>INT64</td>
    <td></td>
   </tr>
@@ -883,6 +883,7 @@
       - sharedWeight1 shape为(sharedExpertNumPerRank, hiddenDim, H)，sharedWeight2 shape为(sharedExpertNumPerRank, H, hiddenDim/2)。
       - sharedWeightScales1 shape为(sharedExpertNumPerRank, hiddenDim, CeilDiv(H, 64), 2)，sharedWeightScales2 shape为(sharedExpertNumPerRank, H, CeilDiv(hiddenDim/2, 64), 2)。
       - weightScales1的dim3和weightScales2的dim3必须等于2。
+      - A8W4-FP场景下，FLOAT4_E2M1类型的weight1必须使用FORMAT_FRACTAL_NZ_C0_32格式。
       - MXFP场景下，dispatchQuantOutDtype=23时weight1和weight2必须为FLOAT8_E5M2，dispatchQuantOutDtype=24时必须为FLOAT8_E4M3FN，dispatchQuantOutDtype=296时必须为FLOAT4_E2M1。
 
 ## 调用说明
