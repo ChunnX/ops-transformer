@@ -728,6 +728,8 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::ReLUGrad(LocalTensor<KV_T> 
 template <typename DLIT>
 __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorLoss(DLIGradKLLossRunInfo &runInfo)
 {
+    event_t vToMte2 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE2>());
+    event_t mte2ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE2_V>());
     event_t vToMte3 = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::V_MTE3>());
     event_t mte3ToV = static_cast<event_t>(GetTPipePtr()->AllocEventID<HardEvent::MTE3_V>());
     SumParams sumParams;
@@ -736,6 +738,10 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorLoss(DLIGradKLLossRun
     sumParams.n = runInfo.curS2StepSize;
     int64_t calcCount = runInfo.curS1InnerSizeV1V2 * runInfo.curS2StepSizeAlign8;
 
+    VectorCopyInDwDqDk(runInfo);
+
+    SetFlag<HardEvent::MTE2_V>(mte2ToV);
+    WaitFlag<HardEvent::MTE2_V>(mte2ToV);
     DenseDliGradKLLossArch35::ComputeLossElementwise(
         reduceSumYUb_, reduceSumPUb_, reduceSumYUb_, calcCount);
     PipeBarrier<PIPE_V>();
@@ -770,6 +776,8 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorLoss(DLIGradKLLossRun
         SetAtomicNone();
     }
 
+    GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::V_MTE2>(vToMte2);
+    GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE2_V>(mte2ToV);
     GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::V_MTE3>(vToMte3);
     GetTPipePtr()->ReleaseEventID<AscendC::HardEvent::MTE3_V>(mte3ToV);
 }
@@ -806,8 +814,12 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorDwDqDk(DLIGradKLLossR
     uint32_t mm2ResGmOffsetS1 = constInfo.subBlockIdx * runInfo.curS1Size / AIC_AIV_RATIO * runInfo.curS2StepSize +
                         runInfo.s1InnerIdxV1V2 * S1_VEC_SIZE_8 * runInfo.curS2StepSize;
 
-    Sub(tmpResultUb_, syReduceUb_, pReduceUb_,
-        runInfo.curS1InnerSizeV1V2 * runInfo.curS2StepSizeAlign8);
+    VectorCopyInDwDqDk(runInfo);
+
+    SetFlag<HardEvent::MTE2_V>(mte2ToV);
+    WaitFlag<HardEvent::MTE2_V>(mte2ToV);
+
+    Sub(reduceSumPUb_, reduceSumYUb_, reduceSumPUb_, runInfo.curS1InnerSizeV1V2 * runInfo.curS2StepSizeAlign8);
     PipeBarrier<PIPE_V>();
 
     SetFlag<HardEvent::MTE3_V>(mte3ToV);
@@ -830,7 +842,7 @@ __aicore__ inline void DLIKLLossVectorService<DLIT>::VectorDwDqDk(DLIGradKLLossR
             uint32_t weightOffset = rowIdx * constInfo.n1IndexSize + nIdx;
             DenseDliGradKLLossArch35::ComputeGradElementwise(
                 mulLeftUb_, reluGradUb_,
-                tmpResultUb_[rowIdx * runInfo.curS2StepSizeAlign8], reluResUb_,
+                reduceSumPUb_[rowIdx * runInfo.curS2StepSizeAlign8], reluResUb_,
                 weightUb_[runInfo.pingPongFlagV1V2], weightOffset,
                 runInfo.curS2StepSizeAlign8);
             PipeBarrier<PIPE_V>();
