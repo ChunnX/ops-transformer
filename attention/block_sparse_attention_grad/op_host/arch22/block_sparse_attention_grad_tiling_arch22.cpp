@@ -489,7 +489,7 @@ ge::graphStatus BSAGradTiling::CalculateWorkSpace(gert::TilingContext *context)
     if (deterministic_) {
         constexpr uint64_t DETER_CORE_INFO_NUM = 8;
         constexpr uint64_t WORKSPACE_ALIGN = 256;
-        constexpr uint64_t GAP = 262144; // 256KB gap 防 sftmgGm 溢出
+        constexpr uint64_t GAP = 67108864; // 64MB gap
 
         dkSlotSize_ = dKOutSize_;
         dvSlotSize_ = dVOutSize_;
