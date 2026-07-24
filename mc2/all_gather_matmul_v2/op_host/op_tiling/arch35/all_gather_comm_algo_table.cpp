@@ -41,39 +41,39 @@ enum CommAlgoPriority : int32_t {
 static constexpr Mc2Hcom::CommAlgoEntry ALLGATHER_COMM_ALGO_TABLE[] = {
     // AICPU通信算法
     // rank4 小数据量 → sole[mesh]
-    {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO, DATA_BYTES_2M,
-     RANK_SIZE_4, RANK_SIZE_4, MEDIUM, "sole[mesh]"},
-    // rank4 大数据量 → concur[mesh,nhr]
-    {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_2M,
-     MAX_DATA_BYTES_UNLIMITED, RANK_SIZE_4, RANK_SIZE_4, MEDIUM, "concur[mesh,nhr]"},
-    // rank8 中数据量 → parallel[mesh,nhr.multi_channel]
-    {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_8M, DATA_BYTES_16M,
-     RANK_SIZE_8, RANK_SIZE_8, MEDIUM, "parallel[mesh,nhr.multi_channel]"},
-    // rank16 中大数据量 → parallel[mesh,nhr.multi_channel]
-    {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_16M, DATA_BYTES_32M,
-     RANK_SIZE_16, RANK_SIZE_16, MEDIUM, "parallel[mesh,nhr.multi_channel]"},
+    // {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO, DATA_BYTES_2M,
+    //  RANK_SIZE_4, RANK_SIZE_4, MEDIUM, "sole[mesh]"},
+    // // rank4 大数据量 → concur[mesh,nhr]
+    // {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_2M,
+    //  MAX_DATA_BYTES_UNLIMITED, RANK_SIZE_4, RANK_SIZE_4, MEDIUM, "concur[mesh,nhr]"},
+    // // rank8 中数据量 → parallel[mesh,nhr.multi_channel]
+    // {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_8M, DATA_BYTES_16M,
+    //  RANK_SIZE_8, RANK_SIZE_8, MEDIUM, "parallel[mesh,nhr.multi_channel]"},
+    // // rank16 中大数据量 → parallel[mesh,nhr.multi_channel]
+    // {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_16M, DATA_BYTES_32M,
+    //  RANK_SIZE_16, RANK_SIZE_16, MEDIUM, "parallel[mesh,nhr.multi_channel]"},
     // rank8~16 其余数据量 → sole[nhr]
-    {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO,
-     MAX_DATA_BYTES_UNLIMITED, RANK_SIZE_8, RANK_SIZE_16, MEDIUM, "sole[nhr]"},
+    // {mc2tiling::A5_AICPU_TS_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO,
+    //  MAX_DATA_BYTES_UNLIMITED, RANK_SIZE_8, RANK_SIZE_16, MEDIUM, "sole[nhr]"},
     // CCU_SCHED通信算法
     // rank4 小数据量 → sole[mesh]
-    {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO, DATA_BYTES_8M,
-     RANK_SIZE_4, RANK_SIZE_4, MEDIUM, "sole[mesh]"},
-    // rank4 大数据量 → concur[mesh,nhr.multi_channel]
-    {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_8M, MAX_DATA_BYTES_UNLIMITED,
-     RANK_SIZE_4, RANK_SIZE_4, MEDIUM, "concur[mesh,nhr.multi_channel]"},
-    // rank8 小数据量 → sole[mesh]
-    {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO, DATA_BYTES_4M,
-     RANK_SIZE_8, RANK_SIZE_8, MEDIUM, "sole[mesh]"},
-    // rank8 大数据量 → parallel[mesh,nhr.multi_channel]
-    {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_4M, MAX_DATA_BYTES_UNLIMITED,
-     RANK_SIZE_8, RANK_SIZE_8, MEDIUM, "parallel[mesh,nhr.multi_channel]"},
-    // rank16 小数据量 → sole[mesh]
-    {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO, DATA_BYTES_8M,
-     RANK_SIZE_16, RANK_SIZE_16, MEDIUM, "sole[mesh]"},
-    // rank16 大数据量 → parallel[mesh,nhr.multi_channel]
-    {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_8M, MAX_DATA_BYTES_UNLIMITED,
-     RANK_SIZE_16, RANK_SIZE_16, MEDIUM, "parallel[mesh,nhr.multi_channel]"},
+    // {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO, DATA_BYTES_8M,
+    //  RANK_SIZE_4, RANK_SIZE_4, MEDIUM, "sole[mesh]"},
+    // // rank4 大数据量 → concur[mesh,nhr.multi_channel]
+    // {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_8M, MAX_DATA_BYTES_UNLIMITED,
+    //  RANK_SIZE_4, RANK_SIZE_4, MEDIUM, "concur[mesh,nhr.multi_channel]"},
+    // // rank8 小数据量 → sole[mesh]
+    // {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO, DATA_BYTES_4M,
+    //  RANK_SIZE_8, RANK_SIZE_8, MEDIUM, "sole[mesh]"},
+    // // rank8 大数据量 → parallel[mesh,nhr.multi_channel]
+    // {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_4M, MAX_DATA_BYTES_UNLIMITED,
+    //  RANK_SIZE_8, RANK_SIZE_8, MEDIUM, "parallel[mesh,nhr.multi_channel]"},
+    // // rank16 小数据量 → sole[mesh]
+    // {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, MIN_DATA_BYTES_ZERO, DATA_BYTES_8M,
+    //  RANK_SIZE_16, RANK_SIZE_16, MEDIUM, "sole[mesh]"},
+    // // rank16 大数据量 → parallel[mesh,nhr.multi_channel]
+    // {mc2tiling::A5_CCU_ENGINE, COMM_TOPO_CUSTOM, MIN_LAYERS, MAX_LAYERS_UBX, DATA_BYTES_8M, MAX_DATA_BYTES_UNLIMITED,
+    //  RANK_SIZE_16, RANK_SIZE_16, MEDIUM, "parallel[mesh,nhr.multi_channel]"},
     // 未命中场景（其他卡数如 rank 2/3/5/6/7/17+、两层网络、拓扑不匹配等）回退默认算法
     {mc2tiling::A5_AICPU_TS_ENGINE, Mc2Hcom::WILDCARD_TOPO_TYPE, MIN_LAYERS, MAX_LAYERS_SERVER, MIN_DATA_BYTES_ZERO,
      MAX_DATA_BYTES_UNLIMITED, RANK_SIZE_2, MAX_RANK_SIZE, DEFAULT, ALLGATHER_DEFAULT_ALGO_NAME},
