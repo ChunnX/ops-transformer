@@ -1523,9 +1523,6 @@ template <TemplateMegaMoeTypeClass>
 __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::ResetGmm2CombineSyncCounters()
 {
     if constexpr (g_coreType == AIV) {
-        // 计数器总数 = 每 expert slot 数 * MoE expert 数，与 workspace 分配
-        // (mega_moe_workspace_info.h: gmm2CombineSyncCounterPtr) 及 generic ResetGmm2CombineSyncCounters
-        // (mega_moe.h:1296) 保持一致。非量化下 combineSyncSlotCountPerExpert=0 → totalCounters=0，自然跳过。
         int32_t totalCounters = static_cast<int32_t>(
             params_.tilingData->combineSyncSlotCountPerExpert * moeExpertPerRank_ *
             static_cast<uint64_t>(INT_CACHELINE));
@@ -2209,7 +2206,7 @@ __aicore__ inline void MegaMoeLayered<TemplateMegaMoeTypeFunc>::GroupMatmulWithC
         }
     }
     if constexpr (g_coreType == AIV && !IsShared) {
-        // ProcessCombine(gmmAddrInfo, state, expertIdx);
+        ProcessCombine(gmmAddrInfo, state, expertIdx);
     }
 }
 
