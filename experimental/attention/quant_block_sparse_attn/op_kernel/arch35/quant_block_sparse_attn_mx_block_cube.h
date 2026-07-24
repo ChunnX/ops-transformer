@@ -175,7 +175,6 @@ public:
         // C2: P[128,512] x V[512,DV]，P/V 均携带 e8m0 scale。
         Buffer<BufferType::L1, SyncType::CROSS_CORE_SYNC_FORWARD> pBuf = inputBuf.GetCube();
         pBuf.WaitCrossCore();
-
         constexpr uint32_t pScaleOffset = M_BASE * S2_BASE;
         if (runInfo.actSingleLoopS2Size > S2_SPLIT) {
             // tail PScale 填 e8m0(1.0)。
@@ -457,7 +456,7 @@ private:
     {
         // V tail 补零到 64-token 对齐。
         const uint32_t curPadK = AlignUp64(realK);
-        if (curPadK == realK) {
+        if (likely(curPadK == realK)) {
             return;
         }
         InitConstValueParams<half> initConstValueParams;

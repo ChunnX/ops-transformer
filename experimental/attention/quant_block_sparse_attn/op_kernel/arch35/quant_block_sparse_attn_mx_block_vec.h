@@ -402,7 +402,7 @@ private:
     {
         // 返回值仅表示本段是否发起了 GM->UB 的 MTE2 搬运；Duplicate 写 UB 不需要 MTE2_V 同步。
         const uint32_t dstOffset = dstS2Offset * VEC_M_BASE;
-        if (segmentS2Len == 0U) {
+        if (unlikely(segmentS2Len == 0U)) {
             return false;
         }
         // mask_mode=3 的 MX kernel 固定使用 right-down causal mask；完全可见段直接填 1。
@@ -527,7 +527,7 @@ private:
     __aicore__ inline void SoftmaxLseCopyOut(MxRunInfo &runInfo, const MxConstInfo &constInfo,
                                              LocalTensor<float> &sumUb, LocalTensor<float> &maxUb)
     {
-        if (runInfo.actVecMSize == 0U) {
+        if (unlikely(runInfo.actVecMSize == 0U)) {
             return;
         }
         LocalTensor<float> lseUb = softmaxLseQueue_.template AllocTensor<float>();
