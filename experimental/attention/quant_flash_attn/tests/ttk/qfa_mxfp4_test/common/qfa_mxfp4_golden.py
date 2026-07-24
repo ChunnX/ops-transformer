@@ -31,15 +31,16 @@ import torch
 import torch.nn as nn
 import torch_npu
 
-# 复用 pytest 根目录下的 mxfp4 工具与 CPU golden
-_PYTEST_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
-if _PYTEST_DIR not in sys.path:
-    sys.path.insert(0, _PYTEST_DIR)
+_COMMON_DIR = os.path.dirname(os.path.abspath(__file__))
+if _COMMON_DIR not in sys.path:
+    sys.path.insert(0, _COMMON_DIR)
 
 from cann_ops_transformer.ops import quant_flash_attn_metadata, quant_flash_attn
 
-from mx_quant_fp4_tool import mxfp4_quantize_pack_last
-from flash_attention_cpu_golden import flash_attention_cpu_golden_varlen
+from . import mx_quant_fp4_tool as _mx_tool
+from . import flash_attention_cpu_golden as _cpu_golden_mod
+mxfp4_quantize_pack_last = _mx_tool.mxfp4_quantize_pack_last
+flash_attention_cpu_golden_varlen = _cpu_golden_mod.flash_attention_cpu_golden_varlen
 
 try:
     from . import result_compare_method
@@ -645,7 +646,6 @@ def cpu_mxfp4_golden(data_dict):
 
 # ==============================================================================
 # NPU 调用: GRAPH_PATH=0 eager / GRAPH_PATH=7 npugraph_ex
-# 与原 quant_flash_attn_golden.py 中 run_fia_eager NPU 段一致
 # ==============================================================================
 def _to_npu(tensor):
     if tensor is None:
