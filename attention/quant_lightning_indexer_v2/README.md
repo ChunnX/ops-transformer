@@ -26,35 +26,32 @@
 
 | 参数名                     | 输入/输出/属性 | 描述  | 数据类型       | 数据格式   |
 |----------------------------|-----------|----------------------------------------------------------------------|----------------|------------|
-| query                     | 输入      | 公式中的$Q_{index}^{Quant}\in\R^{g\times d}$，表示输入Index Query，不支持非连续。layout_q为BSND时shape为[B, S1, N1, D]，layout_q为TND时shape为[T1, N1, D]。| INT8、FLOAT8_e4m3fn、HIFLOAT8 | ND         |
-| key                   | 输入      | 公式中的$K_{index}^{Quant}\in\R^{S_{k}\times d}$，表示压缩后的输入Index Key，支持0轴非连续。layout_k为PA_BSND时shape为[block_num, block_size, N2, D]；layout_k为BSND时shape为[B, S2, N2, D]；layout_k为TND时shape为[T2, N2, D]。| INT8、FLOAT8_e4m3fn、HIFLOAT8 | ND |
-| weights                 | 输入      | 公式中的$W$，表示权重系数，不支持非连续。layout_q为BSND时shape为[B, S1, N1]，layout_q为TND时shape为[T1, N1]。 | FLOAT16、FLOAT32 | ND |
+| query                     | 输入      | 公式中的$Q_{index}^{Quant}\in\R^{g\times d}$，表示输入Index Query，不支持非连续。| INT8、FLOAT8_e4m3fn、HIFLOAT8 | ND         |
+| key                   | 输入      | 公式中的$K_{index}^{Quant}\in\R^{S_{k}\times d}$，表示压缩后的输入Index Key，支持0轴非连续。| INT8、FLOAT8_e4m3fn、HIFLOAT8 | ND |
+| weights                 | 输入      | 公式中的$W$，表示权重系数，不支持非连续。 | FLOAT16、FLOAT32 | ND |
 | query_dequant_scale             | 输入      | 公式中的$Scale_Q$，表示Index Query的反量化系数，不支持非连续。shape与weights一致 | FLOAT16、FLOAT32     | ND         |
-| key_dequant_scale            | 输入      | 公式中的$Scale_K$，表示Index Key的反量化系数，支持0轴非连续。layout_k为PA_BSND时shape为[block_num, block_size, N2] | FLOAT16、FLOAT32       | ND         |
-| cu_seqlens_q                    | 可选输入      | layout_q为TND时必须传入，表示每个Batch中`query`的有效token数前缀和，shape为[B+1]。；layout_q为BSND时不能传入 | INT32       | ND         |
-| cu_seqlens_k                    | 可选输入      | layout_k为TND时必须传入，表示每个Batch中`key`的有效token数前缀和，shape为[B+1]；layout_k为PA_BSND或BSND时不能传入 | INT32       | ND         |
-| seqused_q                    | 可选输入      | layout_q为BSND时可选传入，表示每个Batch中`query`的有效token数，shape为[B]，可传入None表示与query的S长度相同 | INT32       | ND         |
-| seqused_k                    | 可选输入      | layout_k为PA_BSND或BSND时使用，表示每个Batch中`key`的有效token数，shape为[B]。| INT32       | ND         |
-| cmp_residual_k                    | 可选输入      | 压缩场景下Key的残余长度，shape为[B]。| INT32       | ND         |
-| block_table                    | 可选输入      | 表示PageAttention中KV存储使用的block映射表，shape为[B, block_num]。 | INT32       | ND         |
+| key_dequant_scale            | 输入      | 公式中的$Scale_K$，表示Index Key的反量化系数，支持0轴非连续。| FLOAT16、FLOAT32       | ND         |
+| cu_seqlens_q                    | 可选输入      | layout_q为TND时必须传入，表示每个Batch中`query`的有效token数前缀和。；layout_q为BSND时不能传入 | INT32       | ND         |
+| cu_seqlens_k                    | 可选输入      | layout_k为TND时必须传入，表示每个Batch中`key`的有效token数前缀和；layout_k为PA_BSND或BSND时不能传入 | INT32       | ND         |
+| seqused_q                    | 可选输入      | layout_q为BSND时可选传入，表示每个Batch中`query`的有效token数，可传入None表示与query的S长度相同 | INT32       | ND         |
+| seqused_k                    | 可选输入      | layout_k为PA_BSND或BSND时使用，表示每个Batch中`key`的有效token数。| INT32       | ND         |
+| cmp_residual_k                    | 可选输入      | 压缩场景下Key的残余长度。| INT32       | ND         |
+| block_table                    | 可选输入      | 表示PageAttention中KV存储使用的block映射表。 | INT32       | ND         |
 | output_idx_offset                    | 可选输入      | 输出索引的偏移量 | INT32       | ND         |
 | metadata                    | 可选输入      | QuantLightningIndexerV2Metadata算子传入的分核信息，包含使用核数、分块大小以及每个核处理数据的起始点等内容。 | INT32       | ND         |
 | quant_mode                 | 属性      | 用于标识输入的量化模式。 | INT32          | -         |
 | max_seqlen_q                 | 可选属性| Query的最大序列长度，默认值-1表示任意可能长度 | INT32 | -         |
-| layout_q                 | 可选属性| 用于标识输入`query`的数据排布格式，当前支持BSND、TND，默认值"BSND" | STRING | -         |
+| layout_q                 | 可选属性| 用于标识输入`query`的数据排布格式，默认值"BSND"。 | STRING | -         |
 | layout_k      | 可选属性      | 用于标识输入`key`的数据排布格式。| STRING          | -         |
-| topk  | 属性      | 代表topK阶段需要保留的索引数量 | INT32          | -         |
-| mask_mode | 可选属性      | 表示mask的模式，支持0/3。mask_mode为0时代表defaultMask模式；mask_mode为3时代表rightDownCausal模式的mask，对应以右顶点为划分的下三角场景。默认值0 | INT32          | -         |
-| cmp_ratio      | 可选属性      | 用于稀疏计算，表示key的压缩倍数。Atlas A3/A2支持2的幂次方且范围为[1, 128]，即1/2/4/8/16/32/64/128；Ascend 950PR/950DT支持(0, 128]范围内的正整数。默认值1 | INT32          | -         |
-| return_value      |  可选属性     | 表示是否输出`sparse_values`。True表示输出，False表示不输出，默认值为False。仅Ascend 950PR/950DT支持设为True，Atlas A3/A2不支持 | BOOL          | -         |
-| sparse_indices     | 输出      | 公式中的输出Out，参与稀疏attention计算的token索引值。layout_q为BSND时shape为[B, S1, N2, topk]，layout_q为TND时shape为[T1, N2, topk] | INT32          | ND         |
+| topk  | 属性      | 代表topK阶段需要保留的索引数量。 | INT32          | -         |
+| mask_mode | 可选属性      | 表示mask的模式，默认值0。 | INT32          | -         |
+| cmp_ratio      | 可选属性      | 用于稀疏计算，表示key的压缩倍数，默认值1。 | INT32          | -         |
+| return_value      |  可选属性     | 表示是否输出`sparse_values`。 | INT32          | -         |
+| sparse_indices     | 输出      | 公式中的输出Out，参与稀疏attention计算的token索引值。 | INT32          | ND         |
 | sparse_values           | 输出      | 公式中的Indices输出对应的value值。shape与sparse_indices一致。仅当return_value为True时输出有效值，否则输出bf16负无穷 | BFLOAT16         | ND          |
-
-> **维度说明：** B（Batch Size）表示输入样本批量大小；S/S1/S2（Sequence Length）表示输入样本序列长度，其中S1对应query的序列长度，S2对应key的序列长度；N/N1/N2（Head Num）表示多头数，其中N1对应query的head数量，N2对应key的head数量；D（Head Dim）表示hidden层最小的单元尺寸，满足D=H/N；T/T1/T2（Total Tokens）表示所有Batch输入样本序列长度的累加和，其中T1对应query，T2对应key；g表示GQA的group size，g=N1/N2；block_num和block_size分别表示PageAttention场景下的block总数和每个block的token数。
 
 ## 调用示例
 
 | 调用方式 | 调用样例 | 说明 |
 |----------|----------|------|
-| aclnn调用 | [test_aclnn_quant_lightning_indexer_v2](./examples/test_aclnn_quant_lightning_indexer_v2.cpp) | 通过[aclnnQuantLightningIndexerV2](./docs/aclnnQuantLightningIndexerV2.md)接口方式调用QuantLightningIndexerV2算子。 |
 | PyTorch API | - | 通过[torch.ops.cann_ops_transformer.quant_lightning_indexer](../../torch_extension/cann_ops_transformer/docs/zh/quant_lightning_indexer.md)接口调用QuantLightningIndexerV2算子。 |
