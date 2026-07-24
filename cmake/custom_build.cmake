@@ -176,7 +176,6 @@ if (BUILD_OPEN_PROJECT)
             exe_graph
             platform
             register
-            ops_base
             error_manager
             ascendalog
             unified_dlog

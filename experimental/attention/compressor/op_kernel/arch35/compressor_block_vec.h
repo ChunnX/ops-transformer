@@ -49,17 +49,12 @@ public:
     __aicore__ inline void InitParams(const ConstInfo &constInfo, const CompressorTools<COMP> &tools);
     __aicore__ inline void Init(
         __gm__ uint8_t *x,
-        __gm__ uint8_t *wKv,
-        __gm__ uint8_t *wGate,
         __gm__ uint8_t *stateCache,
         __gm__ uint8_t *ape,
         __gm__ uint8_t *normWeight,
         __gm__ uint8_t *ropeSin,
         __gm__ uint8_t *ropeCos,
         __gm__ uint8_t *stateBlockTable,
-        __gm__ uint8_t *cuSeqlens,
-        __gm__ uint8_t *seqUsed,
-        __gm__ uint8_t *startPos,
         __gm__ uint8_t *xCache,
         __gm__ uint8_t *xCacheSlotMapping,
         __gm__ uint8_t *cmpKvOut);
@@ -192,14 +187,9 @@ private:
     uint32_t prevApeDStartIdx_ = 0;
     uint32_t prevApeDDealSize_ = 0;
     bool apeIsLoad_ = false;
-    bool isExistSeqUsed_ = false;
-    bool isExistStartPos_ = false;
     CompressorTools<COMP> tools_;
     ConstInfo constInfo_ = {};
     MSplitInfo mSplitInfo = {};
-    GlobalTensor<int32_t> startPosGm_;
-    GlobalTensor<int32_t> cuSeqlensGm_;
-    GlobalTensor<int32_t> sequsedGm_;
     GlobalTensor<int32_t> stateBlockTableGm_;
     GlobalTensor<int32_t> xCacheSlotMappingGm_;
     GlobalTensor<T> stateCacheGm_;
@@ -243,13 +233,12 @@ __aicore__ inline void CompressorBlockVector<COMP>::InitParams(const ConstInfo &
 }
 
 template <typename COMP>
-__aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm__ uint8_t *wKv, __gm__ uint8_t *wGate,
-                                                         __gm__ uint8_t *stateCache, __gm__ uint8_t *ape,
+__aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm__ uint8_t *stateCache,
+                                                         __gm__ uint8_t *ape,
                                                          __gm__ uint8_t *normWeight, __gm__ uint8_t *ropeSin,
                                                          __gm__ uint8_t *ropeCos, __gm__ uint8_t *stateBlockTable,
-                                                         __gm__ uint8_t *cuSeqlens, __gm__ uint8_t *seqUsed,
-                                                         __gm__ uint8_t *startPos, __gm__ uint8_t *xCache,
-                                                         __gm__ uint8_t *xCacheSlotMapping, __gm__ uint8_t *cmpKvOut)
+                                                         __gm__ uint8_t *xCache, __gm__ uint8_t *xCacheSlotMapping,
+                                                         __gm__ uint8_t *cmpKvOut)
 {
     xGm_.SetGlobalBuffer((__gm__ X_T *)x);
     isExistXCache_ = (xCache != nullptr);
@@ -264,17 +253,6 @@ __aicore__ inline void CompressorBlockVector<COMP>::Init(__gm__ uint8_t *x, __gm
     ropeSinGm_.SetGlobalBuffer((__gm__ T *)ropeSin);
     ropeCosGm_.SetGlobalBuffer((__gm__ T *)ropeCos);
     cmpKvOutGm_.SetGlobalBuffer((__gm__ X_T *)cmpKvOut);
-    isExistSeqUsed_ = (seqUsed != nullptr);
-    isExistStartPos_ = (startPos != nullptr);
-    if constexpr (COMP::xLayout == X_LAYOUT::TH) {
-        cuSeqlensGm_.SetGlobalBuffer((__gm__ int32_t *)cuSeqlens);
-    }
-    if (isExistSeqUsed_) {
-        sequsedGm_.SetGlobalBuffer((__gm__ int32_t *)seqUsed);
-    }
-    if (isExistStartPos_) {
-        startPosGm_.SetGlobalBuffer((__gm__ int32_t *)startPos);
-    }
 }
 
 template <typename COMP>
@@ -283,12 +261,11 @@ __aicore__ inline void CompressorBlockVector<COMP>::UpdateXCache()
     if (!isExistXCache_) {
         return;
     }
-    // Write the current decode token into x_cache before any grouped-window read.
-    // Work is split by (batch, hidden block) so update-only rounds can run on AIV
-    // without launching cube projection work.
+    // Write this decode step's valid BSH tokens into x_cache before any grouped-window read.
     constexpr uint32_t COPY_BASE = BUFFER_SIZE_BYTE_32K / sizeof(X_T);
     uint32_t hBlockNum = CeilDivT(constInfo_.hSize, COPY_BASE);
-    uint32_t totalTaskNum = constInfo_.xCacheUpdateBatchSize * hBlockNum;
+    uint32_t taskNumPerBatch = constInfo_.sSize * hBlockNum;
+    uint32_t totalTaskNum = constInfo_.xCacheUpdateBatchSize * taskNumPerBatch;
     uint32_t aivCoreIdx = constInfo_.aiCoreIdx;
     uint32_t aivCoreNum = constInfo_.usedCoreNum;
     if ASCEND_IS_AIV {
@@ -298,12 +275,18 @@ __aicore__ inline void CompressorBlockVector<COMP>::UpdateXCache()
         aivCoreNum = constInfo_.usedCoreNum * subBlockNum;
     }
     for (uint32_t taskIdx = aivCoreIdx; taskIdx < totalTaskNum; taskIdx += aivCoreNum) {
-        uint32_t bIdx = taskIdx / hBlockNum;
-        uint32_t hBlockIdx = taskIdx % hBlockNum;
+        uint32_t bIdx = taskIdx / taskNumPerBatch;
+        uint32_t batchTaskIdx = taskIdx % taskNumPerBatch;
+        uint32_t sIdx = batchTaskIdx / hBlockNum;
+        if (sIdx >= tools_.GetRawSeqUsed(bIdx)) {
+            continue;
+        }
+        uint32_t hBlockIdx = batchTaskIdx % hBlockNum;
         uint32_t hStart = hBlockIdx * COPY_BASE;
         uint32_t hDealSize = min(COPY_BASE, constInfo_.hSize - hStart);
-        uint32_t slot = xCacheSlotMappingGm_.GetValue(bIdx);
-        uint64_t srcOffset = static_cast<uint64_t>(bIdx) * constInfo_.hSize + hStart;
+        uint32_t tokenIdx = bIdx * constInfo_.sSize + sIdx;
+        uint32_t slot = xCacheSlotMappingGm_.GetValue(tokenIdx);
+        uint64_t srcOffset = static_cast<uint64_t>(tokenIdx) * constInfo_.hSize + hStart;
         uint64_t dstOffset = static_cast<uint64_t>(slot) * constInfo_.hSize + hStart;
         LocalTensor<X_T> inputUb =
             constInfo_.projectionBatchSize > 0 ? tmpBuff1.Get<X_T>() : xCacheUpdateBuf.Get<X_T>();

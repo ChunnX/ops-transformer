@@ -177,8 +177,8 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     if ASCEND_IS_AIV {
         if (isXCacheUpdateOnly) {
             blockVec_.InitParams(constInfo, tools_);
-            blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
-                            cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
+            blockVec_.Init(x, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
+                           xCache, xCacheSlotMapping, cmpKvOut);
             // UpdateXCache still needs InitParams/Init for constInfo and GM tensor bindings,
             // but only this small buffer is used when no projection work remains.
             blockVec_.InitXCacheUpdateBuffers(pipe_);
@@ -202,8 +202,7 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
     // 4. 初始化block层
     if ASCEND_IS_AIC {
         blockCube_.InitParams(constInfo, tools_);
-        blockCube_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos,
-            stateBlockTable, cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
+        blockCube_.Init(x, wKv, wGate, xCache);
         blockCube_.InitBuffers(pipe_);
         blockCube_.InitGlobalBuffers(mm1KvResGm, mm1ScoreResGm);
     } else {
@@ -212,8 +211,8 @@ __aicore__ inline void CompressorKernel<COMP>::Init(
         // SplitK(), and InitWorkspace(), leaving fields such as kBaseNum, dbSize,
         // and mm1KvResSize stale while Cube used the updated values.
         blockVec_.InitParams(constInfo, tools_);
-        blockVec_.Init(x, wKv, wGate, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
-                        cuSeqlens, seqUsed, startPos, xCache, xCacheSlotMapping, cmpKvOut);
+        blockVec_.Init(x, stateCache, ape, normWeight, ropeSin, ropeCos, stateBlockTable,
+                       xCache, xCacheSlotMapping, cmpKvOut);
         blockVec_.InitBuffers(pipe_);
         blockVec_.InitVec1GlobalTensor(Vec1InputKvGm, Vec1InputScoreGm, vec1KvCacheGm, vec1ScoreCacheGm, vec1ResGm, vec2InputGm);
     }

@@ -66,17 +66,6 @@ bash run_grouped_decode_update_only.sh
 bash run_grouped_decode_compress.sh
 ```
 
-#### 调试完成备份点
-
-2026-07-09，`feature/compressor-grouped-decode-op-xcache` 调试阶段完成后，算子仓已创建本地只读备份分支：
-
-```bash
-backup/feature-compressor-grouped-decode-op-xcache-debug-complete-20260709
-```
-
-该分支指向 `c8ae29172 test: add compressor aclnn workspace cases`，用于 code review 前回退/对照；
-后续检视继续在当前开发分支查看 `experimental/attention/compressor/` 的算子、ACLNN 直调和 pytest 变更。
-
 #### 用例的批量生成与测试
 1、excel路径下存放用例excel表格
 

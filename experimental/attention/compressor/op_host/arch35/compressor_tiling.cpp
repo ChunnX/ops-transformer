@@ -139,8 +139,8 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
         const bool hasXCache = context_->xCache.desc != nullptr;
         baseParams_->batchSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_0);
         baseParams_->seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
-        // With x_cache present, one decode token plus cached history is computed as
-        // a full compression window.  Without x_cache, keep the original BSH seq size.
+        // With x_cache present, current decode tokens plus cached history are computed
+        // as a full compression window. Without x_cache, keep the original BSH seq size.
         groupedDecodeParams_->xCacheReadSize = hasXCache ? static_cast<uint32_t>(*context_->cmpRatio) : 0;
         baseParams_->hiddenSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_2);
         computeSeqSize = hasXCache ? groupedDecodeParams_->xCacheReadSize : baseParams_->seqSize;
@@ -169,8 +169,8 @@ ge::graphStatus CompressorTiling::SetBaseInfo()
     groupedDecodeParams_->xCacheSize = context_->xCache.desc == nullptr ? 0 :
         context_->xCache.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
     bool xCacheUpdate = context_->xCacheUpdate == nullptr || *context_->xCacheUpdate;
-    // Only HCA/update calls write current x into the ring cache.  Read-only KV/LI
-    // calls still pass x_cache for grouped-window reads but leave update batch size 0.
+    // HCA/KV calls write current x into the ring cache. The same-layer LI call
+    // reads that cache without writing the token a second time.
     groupedDecodeParams_->xCacheUpdateBatchSize =
         (context_->xCache.desc != nullptr && xCacheUpdate) ? baseParams_->batchSize : 0;
     baseParams_->nSize = 2; // 2:每个核处理两个基本块后做全核同步
@@ -717,12 +717,26 @@ ge::graphStatus CompressorTiling::CheckSingleParaStartPos() const
 ge::graphStatus CompressorTiling::CheckSingleParaXCache() const
 {
     if (context_->xCache.desc == nullptr) {
+        OP_CHECK_IF(context_->xCacheUpdate != nullptr && !*context_->xCacheUpdate,
+                    OP_LOGE(context_->opName, "x_cache is required when x_cache_update is false"),
+                    return ge::GRAPH_FAILED);
         return ge::GRAPH_SUCCESS;
     }
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->xCache.desc, X_CACHE_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->xCache.shape, X_CACHE_NAME)) {
         return ge::GRAPH_FAILED;
     }
+    OP_CHECK_IF(context_->layout != LayoutType::LAYOUT_BSH,
+                OP_LOGE(context_->opName, "x_cache is supported only for BSH decode input"),
+                return ge::GRAPH_FAILED);
+    const auto &xCacheShape = context_->xCache.shape->GetStorageShape();
+    const auto seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+    const auto minCacheSize = *context_->cmpRatio + seqSize - 1;
+    OP_CHECK_IF(xCacheShape.GetDim(COMPRESSOR_DIM_INDEX_1) < minCacheSize,
+                OP_LOGE(context_->opName,
+                        "x_cache slot size should be at least cmp_ratio + seq_size - 1 (%ld), but got %ld",
+                        minCacheSize, xCacheShape.GetDim(COMPRESSOR_DIM_INDEX_1)),
+                return ge::GRAPH_FAILED);
     return ge::GRAPH_SUCCESS;
 }
 
@@ -742,6 +756,20 @@ ge::graphStatus CompressorTiling::CheckSingleParaXCacheSlotMapping() const
     if (ge::GRAPH_SUCCESS != CheckDtypeSupport(context_->xCacheSlotMapping.desc, X_CACHE_SLOT_MAPPING_NAME) ||
         ge::GRAPH_SUCCESS != CheckDimNumSupport(context_->xCacheSlotMapping.shape, X_CACHE_SLOT_MAPPING_NAME)) {
         return ge::GRAPH_FAILED;
+    }
+    const auto &slotMappingShape = context_->xCacheSlotMapping.shape->GetStorageShape();
+    const auto seqSize = context_->x.shape->GetStorageShape().GetDim(COMPRESSOR_DIM_INDEX_1);
+    if (slotMappingShape.GetDimNum() == COMPRESSOR_DIM_NUM_2) {
+        OP_CHECK_IF(slotMappingShape.GetDim(COMPRESSOR_DIM_INDEX_1) != seqSize,
+                    OP_LOGE(context_->opName,
+                            "x_cache_slot_mapping second dimension should match x seq size %ld, but got %ld",
+                            seqSize, slotMappingShape.GetDim(COMPRESSOR_DIM_INDEX_1)),
+                    return ge::GRAPH_FAILED);
+    } else {
+        OP_CHECK_IF(seqSize != 1,
+                    OP_LOGE(context_->opName,
+                            "1D x_cache_slot_mapping is supported only when x seq size is 1, but got %ld", seqSize),
+                    return ge::GRAPH_FAILED);
     }
     return ge::GRAPH_SUCCESS;
 }
@@ -1032,6 +1060,10 @@ ge::graphStatus CompressorTiling::CheckDtypeConsistency() const
     if (CheckDtypeConsistencyX(context_->wkv.desc, WKV_NAME) != ge::GRAPH_SUCCESS ||
         CheckDtypeConsistencyX(context_->wgate.desc, WGATE_NAME) != ge::GRAPH_SUCCESS ||
         CheckDtypeConsistencyX(context_->cmpKv.desc, CMP_KV_NAME) != ge::GRAPH_SUCCESS) {
+        return ge::GRAPH_FAILED;
+    }
+    if (context_->xCache.desc != nullptr &&
+        CheckDtypeConsistencyX(context_->xCache.desc, X_CACHE_NAME) != ge::GRAPH_SUCCESS) {
         return ge::GRAPH_FAILED;
     }
     return ge::GRAPH_SUCCESS;

@@ -24,6 +24,38 @@
  
 using namespace Compressor;
 
+#if (__CCE_AICORE__ != 220)
+__aicore__ inline bool ShouldSkipInactiveReadOnlyGroupedDecode(
+    const optiling::CompressorTilingData &tilingData,
+    __gm__ uint8_t *seqUsed,
+    __gm__ uint8_t *startPos,
+    __gm__ uint8_t *xCache)
+{
+    const auto &baseParams = tilingData.baseParams;
+    const auto &groupedDecodeParams = tilingData.groupedDecodeParams;
+    if (xCache == nullptr || seqUsed == nullptr || startPos == nullptr ||
+        groupedDecodeParams.xCacheReadSize == 0 || groupedDecodeParams.xCacheUpdateBatchSize > 0 ||
+        baseParams.cmpRatio == 0) {
+        return false;
+    }
+
+    GlobalTensor<int32_t> seqUsedGm;
+    GlobalTensor<int32_t> startPosGm;
+    seqUsedGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(seqUsed));
+    startPosGm.SetGlobalBuffer(reinterpret_cast<__gm__ int32_t *>(startPos));
+
+    const uint32_t cmpRatio = baseParams.cmpRatio;
+    for (uint32_t batchIdx = 0; batchIdx < baseParams.batchSize; ++batchIdx) {
+        const uint32_t rawSeqUsed = static_cast<uint32_t>(seqUsedGm.GetValue(batchIdx));
+        const uint32_t rawStartPos = static_cast<uint32_t>(startPosGm.GetValue(batchIdx));
+        if (CrossesCompressionBoundary(rawStartPos, rawSeqUsed, cmpRatio)) {
+            return false;
+        }
+    }
+    return true;
+}
+#endif
+
 #if (__CCE_AICORE__ == 220)
 #define INVOKE_COMPRESSOR_GENERAL_OP_IMPL(templateClass, ...)                                                          \
     do {                                                                                                               \
@@ -68,6 +100,15 @@ __global__ __aicore__ void compressor(
     if constexpr (static_cast<TEMPLATE_ID>(TemplateId) == TEMPLATE_ID::EMPTY_X) {
         return;
     }
+#if (__CCE_AICORE__ != 220)
+    // LI reuses the KV Compressor's x_cache update.  On a normal decode round
+    // with no completed compression group, it has neither cache-update nor
+    // projection work.  Return before constructing TPipe or either kernel
+    // template; mixed-phase batches continue when any row crosses a boundary.
+    if (ShouldSkipInactiveReadOnlyGroupedDecode(tilingDataIn, seqUsed, startPos, xCache)) {
+        return;
+    }
+#endif
     // xCache/xCacheSlotMapping are optional kernel args.  Null keeps the legacy
     // direct-x path; non-null enables grouped decode composition in arch35 kernels.
     const optiling::CompressorTilingData *__restrict tilingData = &tilingDataIn;

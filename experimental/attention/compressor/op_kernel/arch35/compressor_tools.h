@@ -30,6 +30,15 @@ struct ToolsParams {
     uint32_t cmpRatio = 0U;
 };
 
+__aicore__ inline bool CrossesCompressionBoundary(
+    uint32_t startPos, uint32_t seqUsed, uint32_t cmpRatio)
+{
+    const bool isPowerOfTwoRatio = (cmpRatio & (cmpRatio - 1)) == 0;
+    const uint32_t groupOffset =
+        isPowerOfTwoRatio ? (startPos & (cmpRatio - 1)) : (startPos % cmpRatio);
+    return seqUsed >= cmpRatio - groupOffset;
+}
+
 template <typename COMP>
 class CompressorTools {
 public:
@@ -38,6 +47,7 @@ public:
     __aicore__ inline void Init(__gm__ uint8_t *startPos, __gm__ uint8_t *seqUsed, __gm__ uint8_t *cuSeqlens);
 
     __aicore__ inline uint32_t GetSeqUsed(uint32_t bIdx);
+    __aicore__ inline uint32_t GetRawSeqUsed(uint32_t bIdx);
     __aicore__ inline uint32_t GetStartPos(uint32_t bIdx);
     __aicore__ inline uint32_t GetSeqLength(uint32_t bIdx);
     __aicore__ inline uint32_t GetTIdxByBatch(uint32_t bIdx);
@@ -48,7 +58,6 @@ public:
 
 private:
     __aicore__ inline bool IsGroupedDecodeActive(uint32_t bIdx);
-    __aicore__ inline uint32_t GetRawSeqUsed(uint32_t bIdx);
     __aicore__ inline uint32_t GetRawStartPos(uint32_t bIdx);
 
     bool isExistStartPos_ = false;
@@ -110,8 +119,7 @@ __aicore__ inline bool CompressorTools<COMP>::IsGroupedDecodeActive(uint32_t bId
     // when raw [start_pos, start_pos + seq_used) crosses a compression boundary.
     uint32_t rawStartPos = GetRawStartPos(bIdx);
     uint32_t rawSeqUsed = GetRawSeqUsed(bIdx);
-    uint32_t cmpRatio = toolParams_.cmpRatio;
-    return ((rawStartPos + rawSeqUsed) / cmpRatio) > (rawStartPos / cmpRatio);
+    return CrossesCompressionBoundary(rawStartPos, rawSeqUsed, toolParams_.cmpRatio);
 }
 
 template <typename COMP>
