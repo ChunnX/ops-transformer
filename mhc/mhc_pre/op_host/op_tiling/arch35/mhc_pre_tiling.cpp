@@ -79,7 +79,7 @@ const constexpr uint32_t SCHEDULE_MODE = 1;
 const constexpr float DEFAULT_NORM_EPS = 1e-6f;
 const constexpr float DEFAULT_HC_EPS = 1e-6f;
 
-const constexpr uint64_t DECODE_BS_THRESHOLD = 512;
+const constexpr uint64_t DECODE_BS_THRESHOLD = 256;
 const constexpr uint32_t DECODE_CHUNK_T_SIZE = 2;
 const constexpr uint32_t DECODE_ALIGN_16 = 16;
 const constexpr size_t DECODE_WORKSPACE_ALIGN = 32;

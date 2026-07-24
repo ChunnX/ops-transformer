@@ -382,6 +382,8 @@ __aicore__ inline void MhcPreKernelSplitND<T, P, HAS_RESI>::AICProcess()
     maxKL1 = AscendC::Std::max(maxKL1, static_cast<uint64_t>(MHC_PRE_LOW_API_C0_SIZE));
     uint64_t baseK = (256U / AscendC::Std::max(mAlign, nAlign)) * 32U;
     baseK = AscendC::Std::max(baseK, 32UL);
+    // Keep each B GM-to-L1 transfer within the low-level cube K block.
+    maxKL1 = AscendC::Std::min(maxKL1, baseK);
 
     uint8_t aL1BufferId = 0;
     uint64_t endOffset = offset + mnConfig_.curSingleCoreK;
