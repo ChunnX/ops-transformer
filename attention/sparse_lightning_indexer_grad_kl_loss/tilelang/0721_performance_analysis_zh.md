@@ -175,7 +175,8 @@ V2 不是当前 shape 的主 Cube 关键路径，但仍有端到端开销差异�
 | C1-SY 或 C2 单槽预取 | 持平或变慢 | 控制开销无法突破单 L0/Cube 依赖，已回退。 |
 | V1 按分支等待 C1 | 有效但很小 | 不死锁、精度安全，profile 约减少 5 us，可保留。 |
 | C1-SY QueryIndex 常驻 L0A | 已保留，收益未量化 | C++ 已确认将 16 次 L1->L0A 装载收敛为一次；精度保持基线。五轮整体中位数约 0.488 ms，未证明稳定加速，但也无回归。 |
-| C2 dKey QueryIndex 常驻 L0B | 待验证 | QueryIndex 已完整驻留 C2 L1，却在每个 n_idx 重复装载到 dKey L0B；计划将 16 次 L1->L0B 装载收敛为一次，dQuery 的 L0B 槽不重叠。 |
+| C2 dKey QueryIndex 常驻 L0B | 已回退 | C++ 与精度正确，但一次预载形成 C2 MTE1 前导，未与首轮 reluGrad/KeyIndex GM->L1 重叠；性能波动扩大且无稳定中位数收益。 |
+| V0 P/SY 两阶段 gather | 当前实验 | 对齐官方 `ProcessVector0`：先写 Key+Rope 并逐块发布 P flag，再写 KeyIndex 并发布 SY flag，消除 C1-P 对 KeyIndex gather 的无关等待。 |
 
 ## 不应重试
 
@@ -216,6 +217,23 @@ V0 生产下一槽。
 还必须确认新增跨核 flag 不会抵消节省的气泡。先审计官方 V0/C1 flag cadence，
 不能只按可视化时间线猜测实现。
 
+### 当前实验：V0 P/SY 两阶段 gather
+
+官方 `ProcessVector0` 并不在同一稀疏行中同时 gather 三种数据。它先遍历全部
+K outer block，gather `Key` 与 `KeyRope` 到 P workspace，并在每个 block 完成后
+发布 `SYNC_V0_TO_C1_P_FLAG`；随后才遍历全部 block，gather `KeyIndex` 并发布
+`SYNC_V0_TO_C1_SY_FLAG`。C1-P 因而不会等待它根本不读取的 KeyIndex。
+
+0721 原实现将三种流混在同一个 UB ping-pong 循环中，并且在三者都写入 GM 后
+才同时发布 P/SY flag。当前改动把该循环拆成两个静态阶段，继续复用既有的两组
+UB 槽和 `MTE3_MTE2` event 0/1：P 阶段只读写 Key/KeyRope 并只发布 P flag；SY
+阶段只读写 KeyIndex 并只发布 SY flag。无效 sparse index 的零填充分别保留。
+
+验收时必须检查生成 C++：所有 Key/KeyRope 的 GM->UB 与 UB->GM copy 必须位于
+首个 P flag 之前；全部 KeyIndex copy 必须位于 P 阶段之后且 SY flag 之前；不得
+出现逐 sparse-row 的运行时 phase 分支。该改动不触碰 MMA、归约、输出和 workspace
+ABI，预期只缩短 V0 到 C1-P 的依赖前缀；收益应以重复中位数和 profile 为准。
+
 ### 优先级 3：减少 V1 backward 的真实工作
 
 低风险的 V1 等待空洞已经利用完。剩余成本是两个 32x64 子块、barrier、
@@ -237,7 +255,7 @@ L0B copy、MMA、FIX。五轮测试精度均保持基线；TileLang 中位数为
 因此保留。它的理论上限只是 15 次 16 KiB L1->L0A 搬运和相应 MTE1 调度，
 不能替代物理 C1 双缓冲路线。
 
-### 当前实验：C2 dKey QueryIndex 常驻 L0B
+### 已回退：C2 dKey QueryIndex 常驻 L0B
 
 C2 在进入 n_idx 循环前已经将完整 QueryIndex 载入 c2_qi_l1，但原实现仍在
 每个 n_idx 中重复执行 c2_qi_l1 到 c2_dk_qi_l0b 的 64x128 L1->L0B copy。
@@ -245,9 +263,10 @@ c2_dk_qi_l0b 位于 L0B offset 0，而同轮 dQuery 的 c2_dq_gki_l0b 位于另�
 物理区域，因此 dKey 的 QueryIndex 可以在循环前一次预载，并跨 16 次 dKey
 MMA 保持只读。
 
-该实验不增加 buffer，不改变 dKey/dQuery 的 MMA、FIX、GM 写回顺序；仅移除
-重复搬运。必须确认生成 C++ 将该 copy 移出 n_idx 循环，且 event 2 在预载后
-重新回到 MTE1 可用状态。
+该实验不增加 buffer，也不改变 dKey/dQuery 的 MMA、FIX、GM 写回顺序。生成
+C++ 与精度均正确，但预载发生在首轮 reluGrad/KeyIndex GM->L1 发射之前，形成
+C2 的 MTE1 前导，未获得预期重叠。实测性能波动增大且无稳定中位数收益，因此
+已回退；不能将“减少 copy 次数”直接等同于缩短关键路径。
 
 ### 优先级 5：Cube 改善后再处理 V2
 

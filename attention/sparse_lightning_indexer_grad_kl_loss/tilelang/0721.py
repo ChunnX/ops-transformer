@@ -302,11 +302,11 @@ def tilelang_grad_kl_loss_single_kernel(
         task_slot,
         vector_id,
     ):
-        """Gather one task with the same subblock ownership as MergeKv.
+        """Gather one task using the official P-then-SY publication order.
 
-        Both AIVs gather all three streams.  Each AIV owns one contiguous half
-        of the current 1024-row K tile, then both publish the same mode-2
-        readiness flags consumed by C1.
+        Each AIV owns one contiguous half of a 1024-row K tile.  Key/Rope are
+        gathered and published to C1-P first; KeyIndex is gathered afterwards
+        for C1-SY, so P never waits on an unrelated stream.
         """
         with T.Scope("V"):
             v0_key_ub = T.alloc_ub((2, GATHER_CHUNK_SIZE, DQuery), input_dtype)
@@ -332,6 +332,9 @@ def tilelang_grad_kl_loss_single_kernel(
 
             T.set_flag("mte3", "mte2", 0)
             T.set_flag("mte3", "mte2", 1)
+            # Phase P mirrors ProcessVector0's first MergeKv pass.  Keep the
+            # Key/KeyRope ping-pong DMA independent from KeyIndex so C1-P can
+            # consume each completed outer block immediately.
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
                     outer_start = k_outer * S2_WORKSPACE
@@ -345,12 +348,10 @@ def tilelang_grad_kl_loss_single_kernel(
                         sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
                         if sparse_idx >= 0:
                             T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[0, lane, 0:DQuery])
-                            T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
                             if d_rope > 0:
                                 T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[0, lane, 0:d_rope])
                         if sparse_idx < 0:
                             T.copy(v0_zero_key, v0_key_ub[0, lane, 0:DQuery])
-                            T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
                             if d_rope > 0:
                                 T.copy(v0_zero_rope, v0_rope_ub[0, lane, 0:d_rope])
                     T.set_flag("mte2", "mte3", 0)
@@ -366,12 +367,10 @@ def tilelang_grad_kl_loss_single_kernel(
                                 sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
                                 if sparse_idx >= 0:
                                     T.copy(Key[bz_task, sparse_idx, 0, 0:DQuery], v0_key_ub[nxt, lane, 0:DQuery])
-                                    T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
                                     if d_rope > 0:
                                         T.copy(KeyRope[bz_task, sparse_idx, 0, 0:d_rope], v0_rope_ub[nxt, lane, 0:d_rope])
                                 if sparse_idx < 0:
                                     T.copy(v0_zero_key, v0_key_ub[nxt, lane, 0:DQuery])
-                                    T.copy(v0_zero_ki, v0_ki_ub[nxt, lane, 0:DQueryIndex])
                                     if d_rope > 0:
                                         T.copy(v0_zero_rope, v0_rope_ub[nxt, lane, 0:d_rope])
                             T.set_flag("mte2", "mte3", nxt)
@@ -380,21 +379,62 @@ def tilelang_grad_kl_loss_single_kernel(
                         cur_start = aiv_start + chunk_id * GATHER_CHUNK_SIZE
                         T.copy(v0_key_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQuery],
                                GatherKey_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQuery])
-                        T.copy(v0_ki_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
-                               GatherKeyIndex_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
                         if d_rope > 0:
                             T.copy(v0_rope_ub[cur, 0:GATHER_CHUNK_SIZE, 0:d_rope],
                                    GatherKeyRope_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:d_rope])
                         T.set_flag("mte3", "mte2", cur)
 
-                    # A mode-2 AIC wait joins the same flag from both AIVs.
-                    # Publish both readiness flags after each AIV finishes its
-                    # half, so C1 cannot observe either workspace prematurely.
+                    # A mode-2 AIC wait joins the same P flag from both AIVs.
                     if k_outer % 2 == 0:
                         T.set_cross_flag("MTE3", V0_TO_C1_P_FLAGS[0])
-                        T.set_cross_flag("MTE3", V0_TO_C1_SY_FLAGS[0])
                     else:
                         T.set_cross_flag("MTE3", V0_TO_C1_P_FLAGS[1])
+
+            # Phase SY is a separate static pass, matching the official
+            # KeyIndex-only MergeKv loop.  It reuses the same event protocol
+            # after the P phase has released both ping-pong slots.
+            for s1_id in T.serial(s1_begin_task, s1_end_task):
+                for k_outer in T.serial(ceil_div(K, S2_WORKSPACE)):
+                    outer_start = k_outer * S2_WORKSPACE
+                    rows_per_aiv = S2_WORKSPACE // 2
+                    aiv_start = outer_start + vector_id * rows_per_aiv
+                    gather_chunks = rows_per_aiv // GATHER_CHUNK_SIZE
+
+                    T.wait_flag("mte3", "mte2", 0)
+                    for lane in T.serial(GATHER_CHUNK_SIZE):
+                        k_id = aiv_start + lane
+                        sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
+                        if sparse_idx >= 0:
+                            T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[0, lane, 0:DQueryIndex])
+                        if sparse_idx < 0:
+                            T.copy(v0_zero_ki, v0_ki_ub[0, lane, 0:DQueryIndex])
+                    T.set_flag("mte2", "mte3", 0)
+
+                    for chunk_id in T.serial(gather_chunks):
+                        cur = chunk_id % 2
+                        nxt = (chunk_id + 1) % 2
+                        if chunk_id + 1 < gather_chunks:
+                            next_start = aiv_start + (chunk_id + 1) * GATHER_CHUNK_SIZE
+                            T.wait_flag("mte3", "mte2", nxt)
+                            for lane in T.serial(GATHER_CHUNK_SIZE):
+                                k_id = next_start + lane
+                                sparse_idx = SparseIndices[bz_task, s1_id, 0, k_id]
+                                if sparse_idx >= 0:
+                                    T.copy(KeyIndex[bz_task, sparse_idx, 0, 0:DQueryIndex], v0_ki_ub[nxt, lane, 0:DQueryIndex])
+                                if sparse_idx < 0:
+                                    T.copy(v0_zero_ki, v0_ki_ub[nxt, lane, 0:DQueryIndex])
+                            T.set_flag("mte2", "mte3", nxt)
+
+                        T.wait_flag("mte2", "mte3", cur)
+                        cur_start = aiv_start + chunk_id * GATHER_CHUNK_SIZE
+                        T.copy(v0_ki_ub[cur, 0:GATHER_CHUNK_SIZE, 0:DQueryIndex],
+                               GatherKeyIndex_ws[bz_task, s1_id, cur_start:cur_start + GATHER_CHUNK_SIZE, 0:DQueryIndex])
+                        T.set_flag("mte3", "mte2", cur)
+
+                    # A mode-2 AIC wait joins the same SY flag from both AIVs.
+                    if k_outer % 2 == 0:
+                        T.set_cross_flag("MTE3", V0_TO_C1_SY_FLAGS[0])
+                    else:
                         T.set_cross_flag("MTE3", V0_TO_C1_SY_FLAGS[1])
 
             T.wait_flag("mte3", "mte2", 0)
@@ -1283,12 +1323,6 @@ def tilelang_grad_kl_loss_single_kernel(
             T.set_flag("fix", "m", 3)
 
             T.wait_flag("mte2", "mte1", 6)
-            # QueryIndex is invariant over the complete dKey K loop and its
-            # L0B region does not overlap dQuery's KeyIndex L0B region.
-            # Preload it once, then leave it read-only for every dKey MMA.
-            T.wait_flag("m", "mte1", 2)
-            T.copy(c2_qi_l1, c2_dk_qi_l0b)
-            T.set_flag("m", "mte1", 2)
             for s1_id in T.serial(s1_begin_task, s1_end_task):
                 for n_idx in T.serial(n_num):
                     T.wait_flag("mte1", "mte2", 2)
@@ -1309,6 +1343,7 @@ def tilelang_grad_kl_loss_single_kernel(
                     T.wait_flag("m", "mte1", 3)
                     T.wait_flag("mte2", "mte1", 2)
                     T.copy(c2_rg_l1, c2_dk_rg_l0a, transpose=True)
+                    T.copy(c2_qi_l1, c2_dk_qi_l0b)
                     T.copy(c2_rg_l1, c2_dq_rg_l0a)
                     T.copy(c2_gki_l1, c2_dq_gki_l0b)
                     T.set_flag("mte1", "mte2", 2)
