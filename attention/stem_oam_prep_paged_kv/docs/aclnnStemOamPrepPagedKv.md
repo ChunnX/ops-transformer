@@ -43,7 +43,7 @@ aclnnStatus aclnnStemOamPrepPagedKvGetWorkspaceSize(
   const aclTensor  *kCache,
   const aclTensor  *vCache,
   const aclTensor  *kvIndices,
-  const aclTensor  *kvSeqLens,
+  const aclIntArray  *kvSeqLens,
   const aclTensor  *kScaleCache,
   const aclTensor  *vScale,
   double            lambdaMag,
