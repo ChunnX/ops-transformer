@@ -101,6 +101,19 @@ __aicore__ inline void UIntToFloatReturnValueWithInfMask(const LocalTensor<bfloa
     UIntToFloatReturnValueWithInfMaskVF(valueOutBuf, scoreOutBuf, topkLoopNum, negInfBits);
 }
 
+__simd_callee__ inline void LoadKScaleFP16(AscendC::MicroAPI::RegTensor<half> (&regKScaleFP16)[2],
+                                           AscendC::MicroAPI::RegTensor<float> (&regKScale)[2],
+                                           AscendC::MicroAPI::MaskReg& maskAllB16,
+                                           __ubuf__ half* kScale_)
+{
+    constexpr static MicroAPI::CastTrait castTraitFP16ToFP32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
+        MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
+    AscendC::MicroAPI::LoadAlign<half, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(regKScaleFP16[0], kScale_);
+    AscendC::MicroAPI::LoadAlign<half, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(regKScaleFP16[1], kScale_ + 64);
+    AscendC::MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regKScale[0], regKScaleFP16[0], maskAllB16);
+    AscendC::MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regKScale[1], regKScaleFP16[1], maskAllB16);
+}
+
 // float in uint16 out, and weight & scale is fp16
 __simd_vf__ void MulWeightAndReduceSumF16GSizeOddVF(__ubuf__ uint16_t* out, __ubuf__ float* qk,
                                              uint32_t qkVLStride, __ubuf__ half* weight,
@@ -310,19 +323,6 @@ __simd_vf__ void MulWeightAndReduceSumF32VF(__ubuf__ uint16_t* out, __ubuf__ flo
     liV2Vector1::FloatToSortableKey<bfloat16_t>(regOut, regSumBF16, bf16Ctx, maskAllB16);
     // normal store
     MicroAPI::StoreAlign<uint16_t, MicroAPI::StoreDist::DIST_NORM>(out, regOut, maskAllB16);
-}
-
-__simd_callee__ inline void LoadKScaleFP16(AscendC::MicroAPI::RegTensor<half> (&regKScaleFP16)[2],
-                                           AscendC::MicroAPI::RegTensor<float> (&regKScale)[2],
-                                           AscendC::MicroAPI::MaskReg& maskAllB16,
-                                           __ubuf__ half* kScale_)
-{
-    constexpr static MicroAPI::CastTrait castTraitFP16ToFP32 = {MicroAPI::RegLayout::ZERO, MicroAPI::SatMode::UNKNOWN,
-        MicroAPI::MaskMergeMode::ZEROING, RoundMode::UNKNOWN};
-    AscendC::MicroAPI::LoadAlign<half, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(regKScaleFP16[0], kScale_);
-    AscendC::MicroAPI::LoadAlign<half, AscendC::MicroAPI::LoadDist::DIST_UNPACK_B16>(regKScaleFP16[1], kScale_ + 64);
-    AscendC::MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regKScale[0], regKScaleFP16[0], maskAllB16);
-    AscendC::MicroAPI::Cast<float, half, castTraitFP16ToFP32>(regKScale[1], regKScaleFP16[1], maskAllB16);
 }
 
 __aicore__ inline void MulWeightAndReduceSum(const LocalTensor<uint16_t> &out_,   // out    [S2Base]     [128   ]
@@ -1025,7 +1025,7 @@ __aicore__ inline void BatchMulWeightAndReduceSumPerTensor(const LocalTensor<SCO
                                                   const LocalTensor<QK_T> &qk_,       // q*k^t  [G, S2Base]  [64 128]
                                                   uint32_t qkVLStride,
                                                   uint32_t qkStride,
-                                                  const LocalTensor<float> &weight_,   // w      [G]          [64    ]
+                                                  const LocalTensor<W_T> &weight_,   // w      [G]          [64    ]
                                                   uint32_t weightStride,
                                                   const LocalTensor<float> &weightTemp_,
                                                   const float kScaleValue,
